@@ -24,48 +24,34 @@ function LoginForm() {
     setLoading(true);
     setError(null);
 
-    try {
-      const { data: signInData, error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+    const { error: authError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
 
-      if (authError) {
-        setError(authError.message === 'Invalid login credentials'
-          ? 'Email ou mot de passe incorrect'
-          : authError.message);
-        return;
-      }
+    if (authError) {
+      setError(authError.message === 'Invalid login credentials'
+        ? 'Email ou mot de passe incorrect'
+        : authError.message);
+      setLoading(false);
+      return;
+    }
 
-      const userId = signInData.user?.id;
-      if (!userId) {
-        setError('Connexion impossible. Veuillez reessayer.');
-        return;
-      }
-
-      const { data: profile, error: profileError } = await supabase
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data: profile } = await supabase
         .from('users')
         .select('role')
-        .eq('id', userId)
-        .maybeSingle();
+        .eq('id', user.id)
+        .single();
 
-      if (profileError) {
-        setError('Impossible de recuperer votre profil. Veuillez reessayer.');
-        return;
+      if (profile?.role === 'admin') {
+        router.push('/admin');
+      } else {
+        router.push('/poseur');
       }
-
-      if (!profile) {
-        setError('Aucun profil associe a ce compte. Contactez votre administrateur.');
-        return;
-      }
-
-      router.push(profile.role === 'admin' ? '/admin' : '/poseur');
-    } catch (err) {
-      console.error('Login error:', err);
-      setError('Une erreur est survenue lors de la connexion. Veuillez reessayer.');
-    } finally {
-      setLoading(false);
     }
+    setLoading(false);
   };
 
   return (
