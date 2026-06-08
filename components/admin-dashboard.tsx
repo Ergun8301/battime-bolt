@@ -47,7 +47,7 @@ export default function AdminDashboard() {
         .select(`
           *,
           worksite:worksites(*),
-          user:users(*)
+          user:users!user_id(*)
         `)
         .eq('company_id', user.company_id)
         .eq('work_date', today)

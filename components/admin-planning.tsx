@@ -96,7 +96,7 @@ export default function AdminPlanning() {
         .select(`
           *,
           worksite:worksites(*),
-          user:users(*)
+          user:users!user_id(*)
         `)
         .eq('company_id', user.company_id)
         .gte('work_date', format(currentWeekStart, 'yyyy-MM-dd'))
