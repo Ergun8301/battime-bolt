@@ -14,10 +14,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
-  Plus, Trash2, Send, Loader2, MapPin, Clock, Utensils,
-  WifiOff, RefreshCw, AlertTriangle,
+  Plus, Minus, Trash2, Send, Loader2, MapPin, Clock, Utensils,
+  WifiOff, RefreshCw, AlertTriangle, Copy,
 } from 'lucide-react';
-import { format, addDays, startOfWeek } from 'date-fns';
+import { format, addDays, subDays, startOfWeek } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import {
@@ -42,6 +42,102 @@ function calculateTotalMinutes(start: string, end: string, breakMins: number): n
   let e = eh * 60 + em;
   if (e < s) e += 24 * 60;
   return Math.max(0, e - s - breakMins);
+}
+
+// Step a HH:MM string by ±delta minutes, wrapping within a 24h day.
+// When empty, the first tap reveals the fallback default instead of stepping.
+function stepTime(time: string, delta: number, fallback: string): string {
+  if (!time) return fallback;
+  const [h, m] = time.split(':').map(Number);
+  let total = h * 60 + m + delta;
+  total = ((total % 1440) + 1440) % 1440;
+  const nh = Math.floor(total / 60);
+  const nm = total % 60;
+  return `${nh.toString().padStart(2, '0')}:${nm.toString().padStart(2, '0')}`;
+}
+
+// Normalise for fuzzy worksite-name matching (lowercase, strip accents/spaces).
+function normalizeStr(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Big touch-friendly time stepper (±15 min) replacing native time inputs.
+function TimeStepper({
+  label, value, onChange, fallback,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  fallback: string;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label>{label}</Label>
+      <div className="flex items-center gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          className="h-14 w-14 shrink-0"
+          onClick={() => onChange(stepTime(value, -15, fallback))}
+          aria-label={`${label} moins 15 minutes`}
+        >
+          <Minus className="h-5 w-5" />
+        </Button>
+        <div className="flex-1 text-center rounded-md border bg-muted/30 py-3">
+          <span className="text-2xl font-bold tabular-nums">{value || '--:--'}</span>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          className="h-14 w-14 shrink-0"
+          onClick={() => onChange(stepTime(value, 15, fallback))}
+          aria-label={`${label} plus 15 minutes`}
+        >
+          <Plus className="h-5 w-5" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// Touch-friendly break stepper (±15 min, clamped 0..480).
+function BreakStepper({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const mins = parseInt(value) || 0;
+  const step = (delta: number) => onChange(String(Math.min(480, Math.max(0, mins + delta))));
+  return (
+    <div className="space-y-2">
+      <Label>Pause</Label>
+      <div className="flex items-center gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          className="h-14 w-14 shrink-0"
+          onClick={() => step(-15)}
+          aria-label="Pause moins 15 minutes"
+        >
+          <Minus className="h-5 w-5" />
+        </Button>
+        <div className="flex-1 text-center rounded-md border bg-muted/30 py-3">
+          <span className="text-2xl font-bold tabular-nums">{mins}</span>
+          <span className="text-sm text-muted-foreground ml-1">min</span>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          className="h-14 w-14 shrink-0"
+          onClick={() => step(15)}
+          aria-label="Pause plus 15 minutes"
+        >
+          <Plus className="h-5 w-5" />
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 export default function PoseurDay() {
@@ -73,7 +169,11 @@ export default function PoseurDay() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [coherenceWarnings, setCoherenceWarnings] = useState<string[]>([]);
 
+  // Copy-yesterday
+  const [copyingYesterday, setCopyingYesterday] = useState(false);
+
   const today = format(new Date(), 'yyyy-MM-dd');
+  const yesterday = format(subDays(new Date(), 1), 'yyyy-MM-dd');
 
   // ─── Fetch server data ─────────────────────────────────────────────────────
 
@@ -329,6 +429,57 @@ export default function PoseurDay() {
     toast.success('Intervention supprimée');
   };
 
+  // ─── Copy yesterday ──────────────────────────────────────────────────────────
+
+  const handleCopyYesterday = async () => {
+    if (!user) return;
+    if (!navigator.onLine) {
+      toast.error('Copie indisponible hors-ligne');
+      return;
+    }
+    setCopyingYesterday(true);
+    try {
+      const { data: yEntries, error } = await supabase
+        .from('time_entries')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('work_date', yesterday)
+        .order('start_time');
+      if (error) throw error;
+
+      if (!yEntries || yEntries.length === 0) {
+        toast.error("Aucune intervention hier à copier");
+        return;
+      }
+
+      const rows = yEntries.map((e) => ({
+        company_id: user.company_id,
+        user_id: user.id,
+        worksite_id: e.worksite_id,
+        planning_id: planning.find(p => p.worksite_id === e.worksite_id)?.id || null,
+        work_date: today,
+        start_time: e.start_time,
+        end_time: e.end_time,
+        break_minutes: e.break_minutes,
+        total_minutes: e.total_minutes,
+        meal_allowance: e.meal_allowance,
+        observation: e.observation,
+        status: 'draft' as const,
+      }));
+
+      const { error: insErr } = await supabase.from('time_entries').insert(rows);
+      if (insErr) throw insErr;
+
+      toast.success(`${rows.length} intervention${rows.length > 1 ? 's' : ''} copiée${rows.length > 1 ? 's' : ''} depuis hier`);
+      fetchData();
+    } catch (err) {
+      console.error('Error copying yesterday:', err);
+      toast.error("Impossible de copier la journée d'hier");
+    } finally {
+      setCopyingYesterday(false);
+    }
+  };
+
   // ─── Submit day ────────────────────────────────────────────────────────────
 
   const checkCoherenceWarnings = (): string[] => {
@@ -398,6 +549,14 @@ export default function PoseurDay() {
     setObservation('');
   };
 
+  const handlePickSuggestion = (ws: Worksite) => {
+    setNewEntryType('existing');
+    setSelectedWorksiteId(ws.id);
+    setNewClientName('');
+    setNewProductType('');
+    setNewCity('');
+  };
+
   // ─── Computed ──────────────────────────────────────────────────────────────
 
   const serverTotal = entries.reduce((s, e) => s + e.total_minutes, 0);
@@ -405,6 +564,19 @@ export default function PoseurDay() {
   const totalMinutes = serverTotal + pendingTotal;
   const hasDrafts = entries.some(e => e.status === 'draft') || pendingEntries.length > 0;
   const allSubmitted = entries.length > 0 && entries.every(e => e.status !== 'draft') && pendingEntries.length === 0;
+  const isEmpty = entries.length === 0 && pendingEntries.length === 0;
+
+  // Anti-duplicate: existing worksites whose name resembles what's being typed.
+  const typedNorm = normalizeStr(newClientName);
+  const similarWorksites =
+    newEntryType === 'new' && typedNorm.length >= 2
+      ? worksites
+          .filter((w) => {
+            const n = normalizeStr(w.client_name);
+            return n.includes(typedNorm) || typedNorm.includes(n);
+          })
+          .slice(0, 4)
+      : [];
 
   if (loading) {
     return (
@@ -482,15 +654,23 @@ export default function PoseurDay() {
       )}
 
       {/* Empty state */}
-      {entries.length === 0 && pendingEntries.length === 0 && (
+      {isEmpty && (
         <Card>
           <CardContent className="py-8 text-center">
             <Clock className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
             <p className="text-muted-foreground">Aucune intervention aujourd'hui</p>
-            <Button className="mt-4" onClick={() => setAddDialogOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Ajouter une intervention
-            </Button>
+            <div className="flex flex-col sm:flex-row gap-2 justify-center mt-4">
+              <Button onClick={() => setAddDialogOpen(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Ajouter une intervention
+              </Button>
+              {isOnline && (
+                <Button variant="outline" onClick={handleCopyYesterday} disabled={copyingYesterday}>
+                  {copyingYesterday ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Copy className="h-4 w-4 mr-2" />}
+                  Copier la journée d'hier
+                </Button>
+              )}
+            </div>
           </CardContent>
         </Card>
       )}
@@ -654,6 +834,30 @@ export default function PoseurDay() {
               ) : (
                 <div className="space-y-3">
                   <Input placeholder="Nom du client *" value={newClientName} onChange={(e) => setNewClientName(e.target.value)} required />
+
+                  {/* Anti-duplicate guard: suggest existing similar worksites */}
+                  {similarWorksites.length > 0 && (
+                    <div className="rounded-md border border-orange-200 bg-orange-50 p-2 space-y-1">
+                      <p className="text-xs text-orange-700 flex items-center gap-1">
+                        <AlertTriangle className="h-3 w-3" />
+                        Chantiers existants similaires — évitez les doublons :
+                      </p>
+                      {similarWorksites.map((ws) => (
+                        <button
+                          key={ws.id}
+                          type="button"
+                          onClick={() => handlePickSuggestion(ws)}
+                          className="w-full text-left text-sm bg-white border rounded px-2 py-1.5 hover:bg-orange-100 transition-colors flex items-center justify-between gap-2"
+                        >
+                          <span className="truncate">
+                            {ws.client_name}{ws.city ? ` - ${ws.city}` : ''}
+                          </span>
+                          <span className="text-xs text-orange-600 shrink-0">Utiliser</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
                   <Input placeholder="Type de produit (stores, volets...)" value={newProductType} onChange={(e) => setNewProductType(e.target.value)} />
                   <Input placeholder="Ville" value={newCity} onChange={(e) => setNewCity(e.target.value)} />
                 </div>
@@ -661,26 +865,17 @@ export default function PoseurDay() {
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label>Heure début</Label>
-                <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} required />
-              </div>
-              <div className="space-y-2">
-                <Label>Heure fin</Label>
-                <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} required />
-              </div>
+              <TimeStepper label="Heure début" value={startTime} onChange={setStartTime} fallback="07:30" />
+              <TimeStepper label="Heure fin" value={endTime} onChange={setEndTime} fallback="17:00" />
             </div>
 
             {startTime && endTime && (
-              <p className="text-sm text-muted-foreground -mt-2">
-                Total: <strong>{formatMinutesToHours(calculateTotalMinutes(startTime, endTime, parseInt(breakMinutes) || 0))}</strong>
+              <p className="text-center text-sm text-muted-foreground">
+                Total travaillé : <strong className="text-foreground">{formatMinutesToHours(calculateTotalMinutes(startTime, endTime, parseInt(breakMinutes) || 0))}</strong>
               </p>
             )}
 
-            <div className="space-y-2">
-              <Label>Pause (minutes)</Label>
-              <Input type="number" value={breakMinutes} onChange={(e) => setBreakMinutes(e.target.value)} min="0" step="15" />
-            </div>
+            <BreakStepper value={breakMinutes} onChange={setBreakMinutes} />
 
             <div className="flex items-center space-x-2">
               <Checkbox id="meal" checked={mealAllowance} onCheckedChange={(v) => setMealAllowance(v as boolean)} />
