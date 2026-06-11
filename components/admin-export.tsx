@@ -42,6 +42,11 @@ export default function AdminExport() {
   const fetchEntries = async (startDate: Date, endDate: Date): Promise<(TimeEntryWithWorksite & { user: User })[]> => {
     if (!user?.company_id) return [];
 
+    const fromStr = format(startDate, 'yyyy-MM-dd');
+    const toStr = format(endDate, 'yyyy-MM-dd');
+
+    console.log('[export] fetchEntries', { company_id: user.company_id, from: fromStr, to: toStr, startDate: startDate.toISOString(), endDate: endDate.toISOString() });
+
     const { data, error } = await supabase
       .from('time_entries')
       .select(`
@@ -50,10 +55,12 @@ export default function AdminExport() {
         user:users!user_id(*)
       `)
       .eq('company_id', user.company_id)
-      .gte('work_date', format(startDate, 'yyyy-MM-dd'))
-      .lte('work_date', format(endDate, 'yyyy-MM-dd'))
+      .gte('work_date', fromStr)
+      .lte('work_date', toStr)
       .order('work_date', { ascending: false })
       .order('user_id');
+
+    console.log('[export] results', { count: data?.length ?? 0, error: error?.message ?? null });
 
     if (error) throw error;
     return data || [];
@@ -226,7 +233,7 @@ export default function AdminExport() {
               <input
                 type="date"
                 value={format(weekStart, 'yyyy-MM-dd')}
-                onChange={(e) => { if (e.target.value) setWeekStart(startOfWeek(parseISO(e.target.value), { weekStartsOn: 1 })); }}
+                onChange={(e) => { if (e.target.value) setWeekStart(startOfWeek(parseISO(e.target.value + 'T00:00:00'), { weekStartsOn: 1 })); }}
                 className="w-full px-3 py-2 border rounded-md"
               />
             </div>
@@ -253,7 +260,7 @@ export default function AdminExport() {
               <input
                 type="date"
                 value={format(weekStart, 'yyyy-MM-dd')}
-                onChange={(e) => { if (e.target.value) setWeekStart(startOfWeek(parseISO(e.target.value), { weekStartsOn: 1 })); }}
+                onChange={(e) => { if (e.target.value) setWeekStart(startOfWeek(parseISO(e.target.value + 'T00:00:00'), { weekStartsOn: 1 })); }}
                 className="w-full px-3 py-2 border rounded-md"
               />
             </div>
