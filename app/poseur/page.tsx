@@ -4,8 +4,9 @@ import { useState } from 'react';
 import { useAuth } from '@/components/auth-provider';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
-import { LogOut, Clock, Calendar } from 'lucide-react';
+import { LogOut, Clock, CalendarDays, History } from 'lucide-react';
 import PoseurDay from '@/components/poseur-day';
+import PoseurWeek from '@/components/poseur-week';
 import PoseurHistory from '@/components/poseur-history';
 
 export default function PoseurPage() {
@@ -35,19 +36,26 @@ export default function PoseurPage() {
 
       <main className="max-w-2xl mx-auto px-4 py-4">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-2 mb-4">
-            <TabsTrigger value="day" className="flex items-center gap-2">
+          <TabsList className="grid w-full grid-cols-3 mb-4">
+            <TabsTrigger value="day" className="flex items-center gap-1.5">
               <Clock className="h-4 w-4" />
-              Ma journee
+              <span>Ma journée</span>
             </TabsTrigger>
-            <TabsTrigger value="history" className="flex items-center gap-2">
-              <Calendar className="h-4 w-4" />
-              Historique
+            <TabsTrigger value="week" className="flex items-center gap-1.5">
+              <CalendarDays className="h-4 w-4" />
+              <span>Ma semaine</span>
+            </TabsTrigger>
+            <TabsTrigger value="history" className="flex items-center gap-1.5">
+              <History className="h-4 w-4" />
+              <span>Historique</span>
             </TabsTrigger>
           </TabsList>
 
           <TabsContent value="day">
             <PoseurDay />
+          </TabsContent>
+          <TabsContent value="week">
+            <PoseurWeek />
           </TabsContent>
           <TabsContent value="history">
             <PoseurHistory />

@@ -86,7 +86,15 @@ export default function AdminExport() {
       const fileName = `battime-export-${format(weekStart, 'yyyy-MM-dd')}.xlsx`;
       XLSX.writeFile(wb, fileName);
 
-      toast.success('Export Excel téléchargé');
+      // Lock exported entries so they can no longer be edited or unvalidated
+      const now = new Date().toISOString();
+      await supabase
+        .from('time_entries')
+        .update({ exported_at: now, locked: true })
+        .in('id', entries.map(e => e.id))
+        .eq('company_id', user!.company_id);
+
+      toast.success(`Export téléchargé — ${entries.length} saisie${entries.length > 1 ? 's' : ''} verrouillée${entries.length > 1 ? 's' : ''}`);
     } catch (err) {
       console.error('Error exporting to Excel:', err);
       toast.error('Erreur lors de l\'export');
@@ -146,7 +154,15 @@ export default function AdminExport() {
       const fileName = `battime-rapport-${format(weekStart, 'yyyy-MM-dd')}.pdf`;
       doc.save(fileName);
 
-      toast.success('Export PDF téléchargé');
+      // Lock exported entries
+      const now = new Date().toISOString();
+      await supabase
+        .from('time_entries')
+        .update({ exported_at: now, locked: true })
+        .in('id', entries.map(e => e.id))
+        .eq('company_id', user!.company_id);
+
+      toast.success(`Export téléchargé — ${entries.length} saisie${entries.length > 1 ? 's' : ''} verrouillée${entries.length > 1 ? 's' : ''}`);
     } catch (err) {
       console.error('Error exporting to PDF:', err);
       toast.error('Erreur lors de l\'export');
