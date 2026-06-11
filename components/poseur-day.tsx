@@ -212,7 +212,8 @@ export default function PoseurDay() {
   };
 
   const handleSubmitDay = async () => {
-    if (entries.length === 0) {
+    const draftIds = entries.filter(e => e.status === 'draft' && !e.locked).map(e => e.id);
+    if (draftIds.length === 0) {
       toast.error('Ajoutez au moins une intervention');
       return;
     }
@@ -227,7 +228,7 @@ export default function PoseurDay() {
           status: 'submitted',
           submitted_at: now,
         })
-        .in('id', entries.map(e => e.id))
+        .in('id', draftIds)
         .eq('user_id', user!.id);
 
       if (error) throw error;
