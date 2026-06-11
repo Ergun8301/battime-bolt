@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
 import { TimeEntryWithWorksite, User } from '@/lib/types';
@@ -25,6 +25,19 @@ export default function AdminExport() {
   const { user } = useAuth();
   const [weekStart, setWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [loading, setLoading] = useState(false);
+  const [companyName, setCompanyName] = useState('');
+
+  useEffect(() => {
+    if (!user?.company_id) return;
+    supabase
+      .from('companies')
+      .select('name')
+      .eq('id', user.company_id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.name) setCompanyName(data.name);
+      });
+  }, [user?.company_id]);
 
   const fetchEntries = async (startDate: Date, endDate: Date): Promise<(TimeEntryWithWorksite & { user: User })[]> => {
     if (!user?.company_id) return [];
@@ -86,7 +99,15 @@ export default function AdminExport() {
       const fileName = `battime-export-${format(weekStart, 'yyyy-MM-dd')}.xlsx`;
       XLSX.writeFile(wb, fileName);
 
-      toast.success('Export Excel téléchargé');
+      // Lock exported entries so they can no longer be edited or unvalidated
+      const now = new Date().toISOString();
+      await supabase
+        .from('time_entries')
+        .update({ exported_at: now, locked: true })
+        .in('id', entries.map(e => e.id))
+        .eq('company_id', user!.company_id);
+
+      toast.success(`Export téléchargé — ${entries.length} saisie${entries.length > 1 ? 's' : ''} verrouillée${entries.length > 1 ? 's' : ''}`);
     } catch (err) {
       console.error('Error exporting to Excel:', err);
       toast.error('Erreur lors de l\'export');
@@ -114,7 +135,7 @@ export default function AdminExport() {
 
       doc.setFontSize(11);
       doc.text(`Période : ${format(weekStart, 'dd/MM/yyyy')} au ${format(weekEnd, 'dd/MM/yyyy')}`, 14, 30);
-      doc.text(`Entreprise : ${user?.company_id}`, 14, 36);
+      doc.text(`Entreprise : ${companyName || '-'}`, 14, 36);
 
       const totalMinutes = entries.reduce((sum, e) => sum + e.total_minutes, 0);
       const totalMealAllowance = entries.filter(e => e.meal_allowance).length;
@@ -146,7 +167,15 @@ export default function AdminExport() {
       const fileName = `battime-rapport-${format(weekStart, 'yyyy-MM-dd')}.pdf`;
       doc.save(fileName);
 
-      toast.success('Export PDF téléchargé');
+      // Lock exported entries
+      const now = new Date().toISOString();
+      await supabase
+        .from('time_entries')
+        .update({ exported_at: now, locked: true })
+        .in('id', entries.map(e => e.id))
+        .eq('company_id', user!.company_id);
+
+      toast.success(`Export téléchargé — ${entries.length} saisie${entries.length > 1 ? 's' : ''} verrouillée${entries.length > 1 ? 's' : ''}`);
     } catch (err) {
       console.error('Error exporting to PDF:', err);
       toast.error('Erreur lors de l\'export');

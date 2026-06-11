@@ -48,11 +48,12 @@ export interface Planning {
   id: string;
   company_id: string;
   user_id: string;
-  worksite_id: string;
+  worksite_id: string | null;
   work_date: string;
   estimated_start?: string;
   estimated_end?: string;
   notes?: string;
+  absence_type?: 'conge' | 'maladie' | 'intemperie' | null;
   created_at: string;
   created_by: string;
 }
@@ -76,6 +77,10 @@ export interface TimeEntry {
   submitted_at?: string;
   validated_at?: string;
   validated_by?: string;
+  locked?: boolean;
+  exported_at?: string | null;
+  modified_by?: string | null;
+  modified_at?: string | null;
 }
 
 export interface Invitation {
@@ -98,6 +103,6 @@ export interface TimeEntryWithWorksite extends TimeEntry {
 }
 
 export interface PlanningWithWorksite extends Planning {
-  worksite: Worksite;
+  worksite: Worksite | null;
   user: User;
 }

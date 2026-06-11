@@ -10,6 +10,17 @@ export default function Home() {
   const router = useRouter();
 
   useEffect(() => {
+    // B2: if an invitation/recovery link lands on the root with its auth hash,
+    // forward it (hash intact) to /connexion, which owns the hash handler.
+    // A plain router.push would drop the hash and break the flow.
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash;
+      if (hash && (hash.includes('access_token') || hash.includes('type='))) {
+        window.location.replace(`/connexion${hash}`);
+        return;
+      }
+    }
+
     if (!loading) {
       if (user) {
         if (user.role === 'admin') {
