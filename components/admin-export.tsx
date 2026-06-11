@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
 import { TimeEntryWithWorksite, User } from '@/lib/types';
@@ -25,6 +25,19 @@ export default function AdminExport() {
   const { user } = useAuth();
   const [weekStart, setWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [loading, setLoading] = useState(false);
+  const [companyName, setCompanyName] = useState('');
+
+  useEffect(() => {
+    if (!user?.company_id) return;
+    supabase
+      .from('companies')
+      .select('name')
+      .eq('id', user.company_id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.name) setCompanyName(data.name);
+      });
+  }, [user?.company_id]);
 
   const fetchEntries = async (startDate: Date, endDate: Date): Promise<(TimeEntryWithWorksite & { user: User })[]> => {
     if (!user?.company_id) return [];
@@ -122,7 +135,7 @@ export default function AdminExport() {
 
       doc.setFontSize(11);
       doc.text(`Période : ${format(weekStart, 'dd/MM/yyyy')} au ${format(weekEnd, 'dd/MM/yyyy')}`, 14, 30);
-      doc.text(`Entreprise : ${user?.company_id}`, 14, 36);
+      doc.text(`Entreprise : ${companyName || '-'}`, 14, 36);
 
       const totalMinutes = entries.reduce((sum, e) => sum + e.total_minutes, 0);
       const totalMealAllowance = entries.filter(e => e.meal_allowance).length;

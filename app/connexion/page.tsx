@@ -386,37 +386,73 @@ function SetPasswordForm() {
 export default function ConnexionPage() {
   const [showPasswordSet, setShowPasswordSet] = useState(false);
   const [isRecovery, setIsRecovery] = useState(false);
+  const [processingHash, setProcessingHash] = useState(false);
+  const router = useRouter();
 
   useEffect(() => {
+    const hash = window.location.hash;
+    if (!hash || (!hash.includes('access_token') && !hash.includes('type='))) {
+      return;
+    }
+
+    // Show a loading screen immediately so the login form never flashes while
+    // we establish the invitation/recovery session.
+    setProcessingHash(true);
+
     const handleAuthHash = async () => {
-      const hash = window.location.hash;
-      if (hash.includes('access_token') || hash.includes('type=')) {
+      try {
         const params = new URLSearchParams(hash.substring(1));
         const accessToken = params.get('access_token');
         const refreshToken = params.get('refresh_token');
         const type = params.get('type');
+        const errorDescription = params.get('error_description');
+
+        if (errorDescription) {
+          console.error('Auth link error:', errorDescription);
+          return;
+        }
 
         if (accessToken && refreshToken) {
-          await supabase.auth.setSession({
+          const { error } = await supabase.auth.setSession({
             access_token: accessToken,
             refresh_token: refreshToken,
           });
-
-          if (type === 'recovery') {
-            setIsRecovery(true);
-            setShowPasswordSet(true);
-          } else if (type === 'invite') {
-            setIsRecovery(false);
-            setShowPasswordSet(true);
+          if (error) {
+            console.error('setSession failed:', error);
+            return;
           }
 
-          window.history.replaceState(null, '', window.location.pathname);
+          if (type === 'recovery' || type === 'invite') {
+            setIsRecovery(type === 'recovery');
+            setShowPasswordSet(true);
+          } else {
+            // A valid session was established via another link type
+            // (magic link, signup confirmation). Let the app route normally.
+            router.replace('/');
+          }
         }
+      } catch (err) {
+        console.error('Auth hash handling failed:', err);
+      } finally {
+        // Strip the hash so tokens never linger in the URL / history.
+        window.history.replaceState(null, '', window.location.pathname);
+        setProcessingHash(false);
       }
     };
 
     handleAuthHash();
-  }, []);
+  }, [router]);
+
+  if (processingHash) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-muted-foreground">Validation du lien...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (showPasswordSet) {
     return (
