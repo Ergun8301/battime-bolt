@@ -16,7 +16,7 @@ export default function PoseurPage() {
   return (
     <div className="min-h-screen bg-background safe-top safe-bottom">
       <header className="bg-white border-b sticky top-0 z-50">
-        <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
+        <div className="max-w-2xl lg:max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="bg-primary text-primary-foreground rounded-lg p-1.5">
               <Clock className="h-5 w-5" />
@@ -34,9 +34,9 @@ export default function PoseurPage() {
         </div>
       </header>
 
-      <main className="max-w-2xl mx-auto px-4 py-4">
+      <main className="max-w-2xl lg:max-w-5xl mx-auto px-4 py-4">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-3 mb-4">
+          <TabsList className="grid w-full grid-cols-3 mb-4 lg:max-w-2xl lg:mx-auto">
             <TabsTrigger value="day" className="flex items-center gap-1.5">
               <Clock className="h-4 w-4" />
               <span>Ma journée</span>
@@ -51,14 +51,20 @@ export default function PoseurPage() {
             </TabsTrigger>
           </TabsList>
 
+          {/* Day & history stay phone-width and centered even on desktop;
+              only the week view uses the full width for its grid. */}
           <TabsContent value="day">
-            <PoseurDay />
+            <div className="lg:max-w-2xl lg:mx-auto">
+              <PoseurDay />
+            </div>
           </TabsContent>
           <TabsContent value="week">
             <PoseurWeek />
           </TabsContent>
           <TabsContent value="history">
-            <PoseurHistory />
+            <div className="lg:max-w-2xl lg:mx-auto">
+              <PoseurHistory />
+            </div>
           </TabsContent>
         </Tabs>
       </main>

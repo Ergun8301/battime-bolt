@@ -15,7 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Plus, Minus, Trash2, Send, Loader2, MapPin, Clock, Utensils,
-  WifiOff, RefreshCw, AlertTriangle, Copy,
+  WifiOff, RefreshCw, AlertTriangle, Copy, Pencil,
 } from 'lucide-react';
 import { format, addDays, subDays, startOfWeek } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -171,6 +171,15 @@ export default function PoseurDay() {
 
   // Copy-yesterday
   const [copyingYesterday, setCopyingYesterday] = useState(false);
+
+  // Edit an existing entry (the worker owns it until validated/locked)
+  const [editingEntry, setEditingEntry] = useState<TimeEntryWithWorksite | null>(null);
+  const [editStart, setEditStart] = useState('');
+  const [editEnd, setEditEnd] = useState('');
+  const [editBreak, setEditBreak] = useState('60');
+  const [editMeal, setEditMeal] = useState(true);
+  const [editObs, setEditObs] = useState('');
+  const [editSaving, setEditSaving] = useState(false);
 
   const today = format(new Date(), 'yyyy-MM-dd');
   const yesterday = format(subDays(new Date(), 1), 'yyyy-MM-dd');
@@ -429,6 +438,57 @@ export default function PoseurDay() {
     toast.success('Intervention supprimée');
   };
 
+  // ─── Edit an existing entry ──────────────────────────────────────────────────
+
+  // An entry stays editable by its owner until it is validated or locked.
+  const isEditable = (entry: TimeEntryWithWorksite) =>
+    entry.status !== 'validated' && !entry.locked && !entry.exported_at;
+
+  const openEdit = (entry: TimeEntryWithWorksite) => {
+    if (!isEditable(entry)) return;
+    setEditingEntry(entry);
+    setEditStart(entry.start_time?.substring(0, 5) || '');
+    setEditEnd(entry.end_time?.substring(0, 5) || '');
+    setEditBreak(String(entry.break_minutes ?? 0));
+    setEditMeal(entry.meal_allowance);
+    setEditObs(entry.observation || '');
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingEntry || !user) return;
+    if (!editStart || !editEnd) {
+      toast.error('Les heures de début et fin sont requises');
+      return;
+    }
+    setEditSaving(true);
+    try {
+      const totalMins = calculateTotalMinutes(editStart, editEnd, parseInt(editBreak) || 0);
+      const { error } = await supabase
+        .from('time_entries')
+        .update({
+          start_time: editStart,
+          end_time: editEnd,
+          break_minutes: parseInt(editBreak) || 0,
+          total_minutes: totalMins,
+          meal_allowance: editMeal,
+          observation: editObs.trim() || null,
+        })
+        .eq('id', editingEntry.id)
+        .eq('user_id', user.id)
+        .neq('status', 'validated');
+      if (error) throw error;
+      toast.success('Intervention modifiée');
+      setEditingEntry(null);
+      fetchData();
+    } catch (err) {
+      console.error('Error editing entry:', err);
+      toast.error("Impossible de modifier l'intervention");
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
   // ─── Copy yesterday ──────────────────────────────────────────────────────────
 
   const handleCopyYesterday = async () => {
@@ -678,8 +738,14 @@ export default function PoseurDay() {
       {/* Server entries */}
       {(entries.length > 0 || pendingEntries.length > 0) && (
         <div className="space-y-3">
-          {entries.map((entry) => (
-            <Card key={entry.id}>
+          {entries.map((entry) => {
+            const editable = isEditable(entry);
+            return (
+            <Card
+              key={entry.id}
+              className={editable ? 'cursor-pointer transition-colors hover:bg-muted/40' : ''}
+              onClick={editable ? () => openEdit(entry) : undefined}
+            >
               <CardContent className="py-4 space-y-3">
                 <div className="flex items-start justify-between">
                   <div>
@@ -691,11 +757,28 @@ export default function PoseurDay() {
                       </p>
                     )}
                   </div>
-                  {entry.status === 'draft' && !entry.locked && (
-                    <Button variant="ghost" size="icon" className="text-destructive" onClick={() => handleDeleteEntry(entry.id)}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  )}
+                  <div className="flex items-center gap-1 shrink-0">
+                    {editable && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={(e) => { e.stopPropagation(); openEdit(entry); }}
+                        aria-label="Modifier l'intervention"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    )}
+                    {entry.status === 'draft' && !entry.locked && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-destructive"
+                        onClick={(e) => { e.stopPropagation(); handleDeleteEntry(entry.id); }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center gap-4">
                   <div className="flex items-center gap-1 text-sm">
@@ -717,7 +800,8 @@ export default function PoseurDay() {
                 {entry.observation && <p className="text-sm text-muted-foreground">{entry.observation}</p>}
               </CardContent>
             </Card>
-          ))}
+            );
+          })}
 
           {/* Pending (offline) entries */}
           {pendingEntries.map((entry) => (
@@ -918,6 +1002,51 @@ export default function PoseurDay() {
               Confirmer l'envoi
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Edit entry dialog ────────────────────────────────────────────────── */}
+      <Dialog open={!!editingEntry} onOpenChange={(open) => { if (!open) setEditingEntry(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Modifier l'intervention</DialogTitle>
+          </DialogHeader>
+          {editingEntry && (
+            <form onSubmit={handleSaveEdit} className="space-y-4 pt-2">
+              <div className="text-sm text-muted-foreground">
+                {editingEntry.worksite?.client_name || 'Chantier'}
+                {editingEntry.worksite?.city ? ` — ${editingEntry.worksite.city}` : ''}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <TimeStepper label="Heure début" value={editStart} onChange={setEditStart} fallback="07:30" />
+                <TimeStepper label="Heure fin" value={editEnd} onChange={setEditEnd} fallback="17:00" />
+              </div>
+
+              {editStart && editEnd && (
+                <p className="text-center text-sm text-muted-foreground">
+                  Total travaillé : <strong className="text-foreground">{formatMinutesToHours(calculateTotalMinutes(editStart, editEnd, parseInt(editBreak) || 0))}</strong>
+                </p>
+              )}
+
+              <BreakStepper value={editBreak} onChange={setEditBreak} />
+
+              <div className="flex items-center space-x-2">
+                <Checkbox id="edit-meal" checked={editMeal} onCheckedChange={(v) => setEditMeal(v as boolean)} />
+                <Label htmlFor="edit-meal" className="cursor-pointer">Panier repas</Label>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Observation (optionnel)</Label>
+                <Input placeholder="Note..." value={editObs} onChange={(e) => setEditObs(e.target.value)} />
+              </div>
+
+              <Button type="submit" className="w-full" disabled={editSaving}>
+                {editSaving && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                Enregistrer
+              </Button>
+            </form>
+          )}
         </DialogContent>
       </Dialog>
     </div>

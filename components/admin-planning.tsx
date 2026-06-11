@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -45,6 +45,7 @@ export default function AdminPlanning() {
   const [loading, setLoading] = useState(true);
   const [currentWeekStart, setCurrentWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedWorker, setSelectedWorker] = useState<string>('');
   const [selectedWorksite, setSelectedWorksite] = useState<string>('');
   const [selectedDate, setSelectedDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
@@ -107,7 +108,7 @@ export default function AdminPlanning() {
   useEffect(() => { fetchData(); }, [fetchData]);
   useEffect(() => { fetchPlanning(); }, [fetchPlanning]);
 
-  const handleCreatePlanning = async (e: React.FormEvent) => {
+  const handleSubmitPlanning = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user?.company_id || !selectedWorker || !selectedDate) return;
     if (!isAbsence && !selectedWorksite) {
@@ -121,8 +122,7 @@ export default function AdminPlanning() {
 
     setSaving(true);
     try {
-      const { error } = await supabase.from('planning').insert({
-        company_id: user.company_id,
+      const payload = {
         user_id: selectedWorker,
         worksite_id: isAbsence ? null : selectedWorksite,
         work_date: selectedDate,
@@ -130,19 +130,61 @@ export default function AdminPlanning() {
         estimated_end: estimatedEnd || null,
         notes: notes.trim() || null,
         absence_type: isAbsence ? absenceType : null,
-        created_by: user.id,
-      });
-      if (error) throw error;
-      toast.success(isAbsence ? 'Absence enregistree' : 'Affectation creee');
+      };
+
+      if (editingId) {
+        const { error } = await supabase
+          .from('planning')
+          .update(payload)
+          .eq('id', editingId)
+          .eq('company_id', user.company_id);
+        if (error) throw error;
+        toast.success('Affectation modifiee');
+      } else {
+        const { error } = await supabase.from('planning').insert({
+          ...payload,
+          company_id: user.company_id,
+          created_by: user.id,
+        });
+        if (error) throw error;
+        toast.success(isAbsence ? 'Absence enregistree' : 'Affectation creee');
+      }
+
       setDialogOpen(false);
       resetForm();
+      setEditingId(null);
       fetchPlanning();
     } catch (err) {
-      console.error('Error creating planning:', err);
-      toast.error("Impossible de creer l'affectation");
+      console.error('Error saving planning:', err);
+      toast.error("Impossible d'enregistrer l'affectation");
     } finally {
       setSaving(false);
     }
+  };
+
+  const openCreate = () => {
+    resetForm();
+    setEditingId(null);
+    setDialogOpen(true);
+  };
+
+  const openEdit = (p: PlanningWithWorksite) => {
+    setEditingId(p.id);
+    setSelectedWorker(p.user_id);
+    setSelectedDate(p.work_date);
+    setEstimatedStart(p.estimated_start ? p.estimated_start.substring(0, 5) : '');
+    setEstimatedEnd(p.estimated_end ? p.estimated_end.substring(0, 5) : '');
+    setNotes(p.notes || '');
+    if (p.absence_type) {
+      setIsAbsence(true);
+      setAbsenceType(p.absence_type);
+      setSelectedWorksite('');
+    } else {
+      setIsAbsence(false);
+      setAbsenceType('');
+      setSelectedWorksite(p.worksite_id || '');
+    }
+    setDialogOpen(true);
   };
 
   const handleDeletePlanning = async (id: string) => {
@@ -181,7 +223,10 @@ export default function AdminPlanning() {
 
   const getPlanningForDay = (workerId: string, date: Date) => {
     const dateStr = format(date, 'yyyy-MM-dd');
-    return planning.filter(p => p.user_id === workerId && p.work_date === dateStr);
+    return planning
+      .filter(p => p.user_id === workerId && p.work_date === dateStr)
+      // Chronological order; entries without a start time fall to the bottom.
+      .sort((a, b) => (a.estimated_start || '99:99').localeCompare(b.estimated_start || '99:99'));
   };
 
   if (loading) {
@@ -215,18 +260,17 @@ export default function AdminPlanning() {
             <ChevronRight className="h-4 w-4" />
           </Button>
 
-          <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
-            <DialogTrigger asChild>
-              <Button className="ml-2">
-                <Plus className="h-4 w-4 mr-2" />
-                Affecter
-              </Button>
-            </DialogTrigger>
+          <Button className="ml-2" onClick={openCreate}>
+            <Plus className="h-4 w-4 mr-2" />
+            Affecter
+          </Button>
+
+          <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) { resetForm(); setEditingId(null); } }}>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Nouvelle affectation</DialogTitle>
+                <DialogTitle>{editingId ? "Modifier l'affectation" : 'Nouvelle affectation'}</DialogTitle>
               </DialogHeader>
-              <form onSubmit={handleCreatePlanning} className="space-y-4 pt-4">
+              <form onSubmit={handleSubmitPlanning} className="space-y-4 pt-4">
                 <div className="space-y-2">
                   <Label>Salarié</Label>
                   <Select value={selectedWorker} onValueChange={setSelectedWorker} required>
@@ -317,7 +361,7 @@ export default function AdminPlanning() {
 
                 <Button type="submit" className="w-full" disabled={saving}>
                   {saving && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-                  {isAbsence ? "Enregistrer l'absence" : "Créer l'affectation"}
+                  {editingId ? 'Enregistrer' : (isAbsence ? "Enregistrer l'absence" : "Créer l'affectation")}
                 </Button>
               </form>
             </DialogContent>
@@ -374,7 +418,12 @@ export default function AdminPlanning() {
                               const isAbs = !!p.absence_type;
                               const colorClass = isAbs ? ABSENCE_COLORS : getWorkerColor(index);
                               return (
-                                <div key={p.id} className={`${colorClass} border rounded-md p-2 text-xs mb-1 group relative`}>
+                                <div
+                                  key={p.id}
+                                  onClick={() => openEdit(p)}
+                                  className={`${colorClass} border rounded-md p-2 text-xs mb-1 group relative cursor-pointer transition-opacity hover:opacity-90`}
+                                  title="Modifier l'affectation"
+                                >
                                   <div className="flex items-start justify-between gap-1">
                                     <div className="font-medium truncate flex-1">
                                       {isAbs
@@ -382,7 +431,7 @@ export default function AdminPlanning() {
                                         : (p.worksite?.client_name || 'Chantier')}
                                     </div>
                                     <button
-                                      onClick={() => handleDeletePlanning(p.id)}
+                                      onClick={(e) => { e.stopPropagation(); handleDeletePlanning(p.id); }}
                                       disabled={deletingId === p.id}
                                       className="opacity-0 group-hover:opacity-100 transition-opacity ml-1 shrink-0 hover:text-red-600"
                                     >
