@@ -122,12 +122,14 @@ export default function PoseurWeek() {
         </Button>
       </div>
 
-      {/* Day-by-day list */}
-      <div className="space-y-3">
+      {/* Day-by-day list (mobile / portrait) */}
+      <div className="space-y-3 lg:hidden">
         {weekDays.map((day) => {
           const dateStr = format(day, 'yyyy-MM-dd');
           const isToday = dateStr === todayStr;
-          const dayPlanning = planning.filter(p => p.work_date === dateStr);
+          const dayPlanning = planning
+            .filter(p => p.work_date === dateStr)
+            .sort((a, b) => (a.estimated_start || '99:99').localeCompare(b.estimated_start || '99:99'));
           const dayEntries = entries.filter(e => e.work_date === dateStr);
           const hasContent = dayPlanning.length > 0 || dayEntries.length > 0;
 
@@ -210,6 +212,82 @@ export default function PoseurWeek() {
               {!hasContent && (
                 <p className="text-sm text-muted-foreground text-center py-1">Aucune affectation</p>
               )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Week grid (landscape / desktop) */}
+      <div className="hidden lg:grid grid-cols-6 gap-3">
+        {weekDays.map((day) => {
+          const dateStr = format(day, 'yyyy-MM-dd');
+          const isToday = dateStr === todayStr;
+          const dayPlanning = planning
+            .filter(p => p.work_date === dateStr)
+            .sort((a, b) => (a.estimated_start || '99:99').localeCompare(b.estimated_start || '99:99'));
+          const dayEntries = entries.filter(e => e.work_date === dateStr);
+          const hasContent = dayPlanning.length > 0 || dayEntries.length > 0;
+
+          return (
+            <div
+              key={dateStr}
+              className={`rounded-lg border p-2 min-h-[140px] flex flex-col ${isToday ? 'border-primary bg-primary/5' : 'bg-card'}`}
+            >
+              <div className="text-center mb-2 pb-2 border-b">
+                <p className={`text-xs capitalize ${isToday ? 'text-primary font-medium' : 'text-muted-foreground'}`}>
+                  {format(day, 'EEEE', { locale: fr })}
+                </p>
+                <p className={`text-lg font-bold ${isToday ? 'text-primary' : ''}`}>{format(day, 'd')}</p>
+              </div>
+
+              <div className="space-y-1 flex-1">
+                {dayPlanning.map((p) => (
+                  p.absence_type ? (
+                    <div key={p.id} className="rounded bg-gray-100 text-gray-700 px-1.5 py-1 text-[11px] flex items-center gap-1">
+                      <AlertTriangle className="h-3 w-3 text-orange-500 shrink-0" />
+                      <span className="truncate">{ABSENCE_LABELS[p.absence_type] || p.absence_type}</span>
+                    </div>
+                  ) : (
+                    <div key={p.id} className="rounded bg-blue-50 border border-blue-200 text-blue-800 px-1.5 py-1 text-[11px]">
+                      <div className="flex items-center gap-1">
+                        <MapPin className="h-3 w-3 shrink-0" />
+                        <span className="truncate font-medium">{p.worksite?.client_name || 'Chantier'}</span>
+                      </div>
+                      {p.estimated_start && p.estimated_end && (
+                        <div className="text-blue-600 mt-0.5">{p.estimated_start.substring(0, 5)}–{p.estimated_end.substring(0, 5)}</div>
+                      )}
+                    </div>
+                  )
+                ))}
+
+                {dayEntries.map((entry) => {
+                  const statusColor =
+                    entry.status === 'validated' ? 'bg-green-50 border-green-200 text-green-800' :
+                    entry.status === 'submitted' ? 'bg-blue-50 border-blue-200 text-blue-800' :
+                    'bg-gray-50 border-gray-200 text-gray-700';
+                  return (
+                    <div key={entry.id} className={`rounded border px-1.5 py-1 text-[11px] ${statusColor}`}>
+                      <div className="flex items-center gap-1">
+                        <Clock className="h-3 w-3 shrink-0" />
+                        <span className="truncate font-medium">{entry.worksite?.client_name || 'Chantier'}</span>
+                      </div>
+                      <div className="flex items-center justify-between mt-0.5">
+                        <span className="opacity-75">{entry.start_time?.substring(0, 5)}–{entry.end_time?.substring(0, 5)}</span>
+                        <span className="font-semibold">{formatMinutes(entry.total_minutes)}</span>
+                      </div>
+                      <div className="flex items-center gap-1 mt-0.5">
+                        {entry.meal_allowance && <Utensils className="h-3 w-3 opacity-60" aria-label="Panier repas" />}
+                        {entry.status === 'submitted' && <Send className="h-3 w-3 opacity-70" aria-label="Envoyé" />}
+                        {entry.status === 'validated' && <CheckCircle className="h-3 w-3 opacity-70" aria-label="Validé" />}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {!hasContent && (
+                  <p className="text-[11px] text-muted-foreground text-center py-2">—</p>
+                )}
+              </div>
             </div>
           );
         })}

@@ -4,10 +4,9 @@ import { useState } from 'react';
 import { useAuth } from '@/components/auth-provider';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
-import { LogOut, Clock, Calendar, Building2, Users, FileDown, CheckSquare } from 'lucide-react';
+import { LogOut, Clock, Calendar, Building2, Users, FileDown } from 'lucide-react';
 import AdminDashboard from '@/components/admin-dashboard';
 import AdminPlanning from '@/components/admin-planning';
-import AdminValidation from '@/components/admin-validation';
 import AdminWorksites from '@/components/admin-worksites';
 import AdminWorkers from '@/components/admin-workers';
 import AdminExport from '@/components/admin-export';
@@ -40,7 +39,7 @@ export default function AdminPage() {
 
       <main className="max-w-7xl mx-auto px-4 py-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-6 mb-6">
+          <TabsList className="grid w-full grid-cols-5 mb-6">
             <TabsTrigger value="dashboard" className="flex items-center gap-2">
               <Clock className="h-4 w-4" />
               <span className="hidden sm:inline">Tableau de bord</span>
@@ -50,11 +49,6 @@ export default function AdminPage() {
               <Calendar className="h-4 w-4" />
               <span className="hidden sm:inline">Planning</span>
               <span className="sm:hidden">Planning</span>
-            </TabsTrigger>
-            <TabsTrigger value="validation" className="flex items-center gap-2">
-              <CheckSquare className="h-4 w-4" />
-              <span className="hidden sm:inline">Validation</span>
-              <span className="sm:hidden">Valid.</span>
             </TabsTrigger>
             <TabsTrigger value="worksites" className="flex items-center gap-2">
               <Building2 className="h-4 w-4" />
@@ -78,9 +72,6 @@ export default function AdminPage() {
           </TabsContent>
           <TabsContent value="planning">
             <AdminPlanning />
-          </TabsContent>
-          <TabsContent value="validation">
-            <AdminValidation />
           </TabsContent>
           <TabsContent value="worksites">
             <AdminWorksites />

@@ -162,7 +162,7 @@ export default function PoseurHistory() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-bold">Historique</h2>
-        <Button variant="outline" size="sm" onClick={exportToPDF} disabled={exporting || entries.length === 0}>
+        <Button variant="outline" size="sm" onClick={exportToPDF} disabled={exporting}>
           {exporting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <FileText className="h-4 w-4 mr-2" />}
           PDF
         </Button>

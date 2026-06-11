@@ -286,7 +286,6 @@ function SetPasswordForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
-  const router = useRouter();
   const searchParams = useSearchParams();
   const type = searchParams.get('type');
   const isRecovery = type === 'recovery';
@@ -321,8 +320,12 @@ function SetPasswordForm() {
     setSuccess(true);
     setLoading(false);
 
+    // We are already on /connexion (showing the set-password screen), so a
+    // router.push('/connexion') is a no-op and would leave the user stuck on
+    // the success message. A hard redirect re-mounts the page and shows the
+    // login form again.
     setTimeout(() => {
-      router.push('/connexion');
+      window.location.href = '/connexion';
     }, 2000);
   };
 

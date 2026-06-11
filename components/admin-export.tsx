@@ -60,13 +60,22 @@ export default function AdminExport() {
   };
 
   const exportToExcel = async () => {
+    if (!user?.company_id) {
+      toast.error('Profil non chargé, réessayez dans un instant');
+      return;
+    }
     setLoading(true);
     try {
       const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 });
       const entries = await fetchEntries(weekStart, weekEnd);
 
       if (entries.length === 0) {
-        toast.error('Aucune saisie pour cette semaine');
+        console.warn('[export] aucune saisie', {
+          company_id: user.company_id,
+          from: format(weekStart, 'yyyy-MM-dd'),
+          to: format(weekEnd, 'yyyy-MM-dd'),
+        });
+        toast.error(`Aucune saisie du ${format(weekStart, 'dd/MM')} au ${format(weekEnd, 'dd/MM')}`);
         setLoading(false);
         return;
       }
@@ -117,13 +126,22 @@ export default function AdminExport() {
   };
 
   const exportToPDF = async () => {
+    if (!user?.company_id) {
+      toast.error('Profil non chargé, réessayez dans un instant');
+      return;
+    }
     setLoading(true);
     try {
       const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 });
       const entries = await fetchEntries(weekStart, weekEnd);
 
       if (entries.length === 0) {
-        toast.error('Aucune saisie pour cette semaine');
+        console.warn('[export] aucune saisie', {
+          company_id: user.company_id,
+          from: format(weekStart, 'yyyy-MM-dd'),
+          to: format(weekEnd, 'yyyy-MM-dd'),
+        });
+        toast.error(`Aucune saisie du ${format(weekStart, 'dd/MM')} au ${format(weekEnd, 'dd/MM')}`);
         setLoading(false);
         return;
       }
@@ -208,7 +226,7 @@ export default function AdminExport() {
               <input
                 type="date"
                 value={format(weekStart, 'yyyy-MM-dd')}
-                onChange={(e) => setWeekStart(startOfWeek(parseISO(e.target.value), { weekStartsOn: 1 }))}
+                onChange={(e) => { if (e.target.value) setWeekStart(startOfWeek(parseISO(e.target.value), { weekStartsOn: 1 })); }}
                 className="w-full px-3 py-2 border rounded-md"
               />
             </div>
@@ -235,7 +253,7 @@ export default function AdminExport() {
               <input
                 type="date"
                 value={format(weekStart, 'yyyy-MM-dd')}
-                onChange={(e) => setWeekStart(startOfWeek(parseISO(e.target.value), { weekStartsOn: 1 }))}
+                onChange={(e) => { if (e.target.value) setWeekStart(startOfWeek(parseISO(e.target.value), { weekStartsOn: 1 })); }}
                 className="w-full px-3 py-2 border rounded-md"
               />
             </div>
