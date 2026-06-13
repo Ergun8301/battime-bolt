@@ -18,8 +18,9 @@ export default function PoseurPage() {
       <header className="bg-white border-b sticky top-0 z-50">
         <div className="max-w-2xl lg:max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="bg-primary text-primary-foreground rounded-lg p-1.5">
+            <div className="relative bg-primary text-primary-foreground rounded-lg p-1.5">
               <Clock className="h-5 w-5" />
+              <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-orange-500 ring-2 ring-white" />
             </div>
             <div>
               <h1 className="font-bold text-base">Battime</h1>

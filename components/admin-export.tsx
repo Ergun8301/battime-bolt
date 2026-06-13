@@ -186,7 +186,7 @@ export default function AdminExport() {
         head: [['Date', 'Salarié', 'Client', 'Ville', 'Début', 'Fin', 'Pause', 'Total', 'Panier', 'Statut']],
         body: rows,
         styles: { fontSize: 9 },
-        headStyles: { fillColor: [220, 38, 38] },
+        headStyles: { fillColor: [30, 64, 175] },
       });
 
       const fileName = `battime-rapport-${format(weekStart, 'yyyy-MM-dd')}.pdf`;
