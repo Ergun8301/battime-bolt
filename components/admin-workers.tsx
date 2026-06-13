@@ -18,12 +18,14 @@ import {
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
+import WorkerDetailDialog from '@/components/worker-detail';
 
 export default function AdminWorkers() {
   const { user } = useAuth();
   const [workers, setWorkers] = useState<User[]>([]);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedWorker, setSelectedWorker] = useState<User | null>(null);
 
   // Invite dialog
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -370,7 +372,11 @@ export default function AdminWorkers() {
         ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {workers.map((worker) => (
-              <Card key={worker.id} className={worker.is_active ? '' : 'opacity-60'}>
+              <Card
+                key={worker.id}
+                className={`cursor-pointer transition-colors hover:bg-muted/40 ${worker.is_active ? '' : 'opacity-60'}`}
+                onClick={() => setSelectedWorker(worker)}
+              >
                 <CardContent className="pt-4 space-y-3">
                   <div className="flex items-start justify-between gap-2">
                     <div>
@@ -409,7 +415,7 @@ export default function AdminWorkers() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => openEdit(worker)}
+                      onClick={(e) => { e.stopPropagation(); openEdit(worker); }}
                       disabled={togglingId === worker.id || deletingId === worker.id}
                     >
                       <Pencil className="h-3 w-3 mr-1" />
@@ -418,7 +424,7 @@ export default function AdminWorkers() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => handleToggleActive(worker)}
+                      onClick={(e) => { e.stopPropagation(); handleToggleActive(worker); }}
                       disabled={togglingId === worker.id || deletingId === worker.id}
                     >
                       {togglingId === worker.id
@@ -432,7 +438,7 @@ export default function AdminWorkers() {
                       variant="ghost"
                       size="sm"
                       className="text-destructive hover:text-destructive ml-auto"
-                      onClick={() => handleDeleteWorker(worker)}
+                      onClick={(e) => { e.stopPropagation(); handleDeleteWorker(worker); }}
                       disabled={togglingId === worker.id || deletingId === worker.id}
                       title="Supprimer (seulement si aucune saisie)"
                     >
@@ -509,6 +515,11 @@ export default function AdminWorkers() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <WorkerDetailDialog
+        worker={selectedWorker}
+        onOpenChange={(open) => { if (!open) setSelectedWorker(null); }}
+      />
     </div>
   );
 }
