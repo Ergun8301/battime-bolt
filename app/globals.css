@@ -2,32 +2,66 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================================
+   Battime — BTP design system theme
+   Worksite blue (#1E40AF), safety orange (#EA580C),
+   validation green (#15803D), on warm concrete greys.
+   shadcn HSL tokens, so the whole app re-skins from here.
+   ============================================================ */
+
 @layer base {
   :root {
-    --background: 0 0% 98%;
-    --foreground: 0 0% 10%;
+    /* Warm concrete neutrals */
+    --background: 60 9% 96%;
+    --foreground: 60 6% 10%;
     --card: 0 0% 100%;
-    --card-foreground: 0 0% 10%;
+    --card-foreground: 60 6% 10%;
     --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 10%;
-    --primary: 0 72% 51%;
+    --popover-foreground: 60 6% 10%;
+
+    /* Primary — Battime worksite blue (#1E40AF) */
+    --primary: 226 71% 40%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 0 0% 96%;
-    --secondary-foreground: 0 0% 10%;
-    --muted: 0 0% 96%;
-    --muted-foreground: 0 0% 45%;
-    --accent: 0 0% 96%;
-    --accent-foreground: 0 0% 10%;
+
+    --secondary: 60 7% 94%;
+    --secondary-foreground: 60 6% 13%;
+    --muted: 60 7% 94%;
+    --muted-foreground: 60 3% 44%;
+
+    /* Neutral hover surface (menus, dropdowns) — kept neutral on purpose */
+    --accent: 60 7% 94%;
+    --accent-foreground: 60 6% 13%;
+
+    /* Destructive — red (#dc2626) */
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
-    --border: 0 0% 90%;
-    --input: 0 0% 90%;
-    --ring: 0 72% 51%;
-    --success: 142 76% 36%;
+
+    /* Semantic status colours */
+    --success: 142 72% 29%;          /* validation green #15803D */
     --success-foreground: 0 0% 100%;
-    --warning: 38 92% 50%;
-    --warning-foreground: 0 0% 10%;
+    --warning: 32 94% 44%;           /* warning amber #d97706 */
+    --warning-foreground: 0 0% 100%;
+
+    /* Safety orange accent (#EA580C) — used sparingly */
+    --orange: 21 90% 48%;
+    --orange-foreground: 0 0% 100%;
+
+    --border: 60 7% 89%;
+    --input: 60 7% 89%;
+    --ring: 226 71% 40%;
     --radius: 0.5rem;
+
+    /* ---- Chantier bubble palette (planning board) ----
+       One constant pastel per worksite. Mirrored as Tailwind
+       class strings in components/admin-planning.tsx. */
+    --chip-blue-bg:   #dbe6fe; --chip-blue-bd:   #93b4fb; --chip-blue-fg:   #1e40af;
+    --chip-orange-bg: #ffe6d5; --chip-orange-bd: #fdba8c; --chip-orange-fg: #c2410c;
+    --chip-green-bg:  #dcfce7; --chip-green-bd:  #86efac; --chip-green-fg:  #15803d;
+    --chip-violet-bg: #ede9fe; --chip-violet-bd: #c4b5fd; --chip-violet-fg: #6d28d9;
+    --chip-cyan-bg:   #cffafe; --chip-cyan-bd:   #67e8f9; --chip-cyan-fg:   #0e7490;
+    --chip-pink-bg:   #fce7f3; --chip-pink-bd:   #f9a8d4; --chip-pink-fg:   #be185d;
+    --chip-amber-bg:  #fef3c7; --chip-amber-bd:  #fcd34d; --chip-amber-fg:  #b45309;
+    --chip-slate-bg:  #e2e8f0; --chip-slate-bd:  #cbd5e1; --chip-slate-fg:  #475569;
   }
 }
 
@@ -37,6 +71,10 @@
   }
   body {
     @apply bg-background text-foreground antialiased;
+  }
+  /* Tabular numerals for hours, totals, time steppers across the app */
+  .tabular {
+    font-variant-numeric: tabular-nums;
   }
 }
 

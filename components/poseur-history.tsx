@@ -103,7 +103,7 @@ export default function PoseurHistory() {
         head: [['Date', 'Client', 'Ville', 'Heures', 'Total', 'Panier', 'Statut']],
         body: rows,
         styles: { fontSize: 8 },
-        headStyles: { fillColor: [220, 38, 38] },
+        headStyles: { fillColor: [30, 64, 175] },
         columnStyles: {
           0: { cellWidth: 25 },
           1: { cellWidth: 45 },
