@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   ChevronLeft, ChevronRight, MapPin, Clock, Utensils,
-  CheckCircle, Send, AlertTriangle,
+  Send, AlertTriangle,
 } from 'lucide-react';
 import { format, addDays, startOfWeek, addWeeks, subWeeks, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -83,11 +83,8 @@ export default function PoseurWeek() {
   const weekDays = Array.from({ length: 6 }, (_, i) => addDays(weekStart, i));
   const todayStr = format(new Date(), 'yyyy-MM-dd');
 
-  const totalValidated = entries
-    .filter(e => e.status === 'validated')
-    .reduce((s, e) => s + e.total_minutes, 0);
-  const totalSubmitted = entries
-    .filter(e => e.status === 'submitted' || e.status === 'validated')
+  const totalSent = entries
+    .filter(e => e.status !== 'draft')
     .reduce((s, e) => s + e.total_minutes, 0);
 
   if (loading) {
@@ -110,10 +107,9 @@ export default function PoseurWeek() {
           <p className="font-semibold text-sm">
             {format(weekStart, 'd MMMM', { locale: fr })} – {format(weekEnd, 'd MMMM yyyy', { locale: fr })}
           </p>
-          {(totalValidated > 0 || totalSubmitted > 0) && (
+          {totalSent > 0 && (
             <p className="text-xs text-muted-foreground mt-0.5">
-              {totalSubmitted > 0 ? `${formatMinutes(totalSubmitted)} soumises` : ''}
-              {totalValidated > 0 ? ` · ${formatMinutes(totalValidated)} validées` : ''}
+              {formatMinutes(totalSent)} envoyées
             </p>
           )}
         </div>
@@ -177,7 +173,6 @@ export default function PoseurWeek() {
               {/* Time entries */}
               {dayEntries.map((entry) => {
                 const statusColor =
-                  entry.status === 'validated' ? 'bg-green-50 border-green-200 text-green-800' :
                   entry.status === 'submitted' ? 'bg-blue-50 border-blue-200 text-blue-800' :
                   'bg-gray-50 border-gray-200 text-gray-700';
 
@@ -199,9 +194,6 @@ export default function PoseurWeek() {
                         )}
                         {entry.status === 'submitted' && (
                           <Send className="h-3 w-3 opacity-70" aria-label="Envoyé" />
-                        )}
-                        {entry.status === 'validated' && (
-                          <CheckCircle className="h-3 w-3 opacity-70" aria-label="Validé" />
                         )}
                       </div>
                     </div>
@@ -262,7 +254,6 @@ export default function PoseurWeek() {
 
                 {dayEntries.map((entry) => {
                   const statusColor =
-                    entry.status === 'validated' ? 'bg-green-50 border-green-200 text-green-800' :
                     entry.status === 'submitted' ? 'bg-blue-50 border-blue-200 text-blue-800' :
                     'bg-gray-50 border-gray-200 text-gray-700';
                   return (
@@ -278,7 +269,6 @@ export default function PoseurWeek() {
                       <div className="flex items-center gap-1 mt-0.5">
                         {entry.meal_allowance && <Utensils className="h-3 w-3 opacity-60" aria-label="Panier repas" />}
                         {entry.status === 'submitted' && <Send className="h-3 w-3 opacity-70" aria-label="Envoyé" />}
-                        {entry.status === 'validated' && <CheckCircle className="h-3 w-3 opacity-70" aria-label="Validé" />}
                       </div>
                     </div>
                   );

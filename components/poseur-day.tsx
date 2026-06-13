@@ -17,13 +17,14 @@ import {
   Plus, Minus, Trash2, Send, Loader2, MapPin, Clock, Utensils,
   WifiOff, RefreshCw, AlertTriangle, Copy, Pencil,
 } from 'lucide-react';
-import { format, addDays, subDays, startOfWeek } from 'date-fns';
+import { format, addDays, subDays, startOfWeek, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import {
   addPendingEntry, getPendingEntries, removePendingEntry,
   generateLocalId, PendingEntry,
 } from '@/lib/offline-store';
+import { missingBusinessDays } from '@/lib/work-status';
 
 interface TimeEntryWithWorksite extends TimeEntry {
   worksite: Worksite;
@@ -150,6 +151,7 @@ export default function PoseurDay() {
   const [submitting, setSubmitting] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
+  const [missingDays, setMissingDays] = useState<string[]>([]);
 
   // Add-entry form
   const [addDialogOpen, setAddDialogOpen] = useState(false);
@@ -172,7 +174,7 @@ export default function PoseurDay() {
   // Copy-yesterday
   const [copyingYesterday, setCopyingYesterday] = useState(false);
 
-  // Edit an existing entry (the worker owns it until validated/locked)
+  // Edit an existing entry (the worker owns it until exported/locked)
   const [editingEntry, setEditingEntry] = useState<TimeEntryWithWorksite | null>(null);
   const [editStart, setEditStart] = useState('');
   const [editEnd, setEditEnd] = useState('');
@@ -189,7 +191,8 @@ export default function PoseurDay() {
   const fetchData = useCallback(async () => {
     if (!user) return;
     try {
-      const [entriesRes, worksitesRes, planningRes] = await Promise.all([
+      const recentStart = format(subDays(new Date(), 8), 'yyyy-MM-dd');
+      const [entriesRes, worksitesRes, planningRes, recentRes] = await Promise.all([
         supabase
           .from('time_entries')
           .select('*, worksite:worksites(*)')
@@ -207,6 +210,13 @@ export default function PoseurDay() {
           .select('*, worksite:worksites(*)')
           .eq('user_id', user.id)
           .eq('work_date', today),
+        // Recent sent days (not draft) to warn about unsent business days.
+        supabase
+          .from('time_entries')
+          .select('work_date, status')
+          .eq('user_id', user.id)
+          .neq('status', 'draft')
+          .gte('work_date', recentStart),
       ]);
 
       if (entriesRes.error) throw entriesRes.error;
@@ -216,6 +226,11 @@ export default function PoseurDay() {
       setEntries(entriesRes.data || []);
       setWorksites(worksitesRes.data || []);
       setPlanning(planningRes.data || []);
+
+      if (!recentRes.error) {
+        const sentDates = new Set<string>((recentRes.data || []).map((e: { work_date: string }) => e.work_date));
+        setMissingDays(missingBusinessDays(sentDates, 7));
+      }
 
       // Pre-fill form from planning if no entries yet
       if (planningRes.data?.length && !entriesRes.data?.length) {
@@ -440,9 +455,9 @@ export default function PoseurDay() {
 
   // ─── Edit an existing entry ──────────────────────────────────────────────────
 
-  // An entry stays editable by its owner until it is validated or locked.
+  // An entry stays editable by its owner until it is exported/locked.
   const isEditable = (entry: TimeEntryWithWorksite) =>
-    entry.status !== 'validated' && !entry.locked && !entry.exported_at;
+    !entry.locked && !entry.exported_at;
 
   const openEdit = (entry: TimeEntryWithWorksite) => {
     if (!isEditable(entry)) return;
@@ -474,8 +489,7 @@ export default function PoseurDay() {
           observation: editObs.trim() || null,
         })
         .eq('id', editingEntry.id)
-        .eq('user_id', user.id)
-        .neq('status', 'validated');
+        .eq('user_id', user.id);
       if (error) throw error;
       toast.success('Intervention modifiée');
       setEditingEntry(null);
@@ -652,6 +666,16 @@ export default function PoseurDay() {
         <h2 className="text-xl font-bold capitalize">{format(new Date(), 'EEEE d MMMM', { locale: fr })}</h2>
       </div>
 
+      {/* Unsent-days reminder (non-blocking) */}
+      {missingDays.length > 0 && (
+        <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 flex items-start gap-2 text-sm text-orange-800">
+          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+          <span>
+            Tu n'as pas envoyé ta journée : {missingDays.map((d) => format(parseISO(d), 'EEE d MMM', { locale: fr })).join(', ')}.
+          </span>
+        </div>
+      )}
+
       {/* Offline / syncing banner */}
       {!isOnline && (
         <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 flex items-center gap-2 text-sm text-orange-700">
@@ -794,7 +818,6 @@ export default function PoseurDay() {
                     <Badge variant="outline" className="text-xs">Pause {entry.break_minutes}min</Badge>
                   )}
                   {entry.status === 'submitted' && <Badge variant="default" className="text-xs">Envoyé</Badge>}
-                  {entry.status === 'validated' && <Badge variant="default" className="text-xs bg-green-600">Validé</Badge>}
                 </div>
                 {entry.observation && <p className="text-sm text-muted-foreground">{entry.observation}</p>}
               </CardContent>

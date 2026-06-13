@@ -8,7 +8,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { FileText, MapPin, Clock, Utensils, Loader2, CheckCircle, Send } from 'lucide-react';
+import { FileText, MapPin, Clock, Utensils, Loader2, Send } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -95,7 +95,7 @@ export default function PoseurHistory() {
         `${entry.start_time?.substring(0, 5) || '-'} - ${entry.end_time?.substring(0, 5) || '-'}`,
         formatMinutesToHours(entry.total_minutes),
         entry.meal_allowance ? 'Oui' : 'Non',
-        entry.status === 'submitted' ? 'Envoye' : entry.status === 'validated' ? 'Valide' : 'Brouillon',
+        entry.status === 'draft' ? 'Brouillon' : 'Envoye',
       ]);
 
       autoTable(doc, {
@@ -222,12 +222,6 @@ export default function PoseurHistory() {
                               <Badge variant="default" className="text-xs">
                                 <Send className="h-3 w-3 mr-1" />
                                 Envoye
-                              </Badge>
-                            )}
-                            {entry.status === 'validated' && (
-                              <Badge variant="default" className="text-xs bg-green-600">
-                                <CheckCircle className="h-3 w-3 mr-1" />
-                                Valide
                               </Badge>
                             )}
                           </div>
