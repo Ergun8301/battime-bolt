@@ -1,24 +1,25 @@
-// Helpers to figure out which recent business days a worker hasn't sent yet.
-// Used by the admin dashboard (per-worker status) and the poseur banner.
-// "Sent" = a time_entry whose status is not 'draft' (submitted; legacy 'validated').
+// A day is "missing" ONLY when the worker had a CHANTIER assignment that day
+// (planning row, absence excluded) and hasn't declared their hours. No planning
+// => never missing. An absence (congé/maladie/intempérie) => never missing.
+// "Declared" = a time_entry whose status is not 'draft'.
 
-import { subDays, isWeekend, format } from 'date-fns';
+import { format } from 'date-fns';
 
-/** Business days (Mon–Fri) within the last `windowDays` calendar days, excluding today. */
-export function recentBusinessDays(windowDays = 7, refDate: Date = new Date()): string[] {
-  const out: string[] = [];
-  for (let i = 1; i <= windowDays; i++) {
-    const d = subDays(refDate, i);
-    if (!isWeekend(d)) out.push(format(d, 'yyyy-MM-dd'));
-  }
-  return out;
-}
-
-/** Recent business days (most recent first) that have no sent entry. */
-export function missingBusinessDays(
-  sentDates: Set<string>,
-  windowDays = 7,
-  refDate: Date = new Date(),
+/**
+ * @param plannedDates work_date (yyyy-MM-dd) of chantier assignments (absences already excluded)
+ * @param declaredDates work_date of declared (non-draft) time entries
+ * @returns the missing dates (planned, past, not declared), most recent first
+ */
+export function computeMissingDays(
+  plannedDates: string[],
+  declaredDates: Set<string>,
 ): string[] {
-  return recentBusinessDays(windowDays, refDate).filter((d) => !sentDates.has(d));
+  const todayStr = format(new Date(), 'yyyy-MM-dd');
+  const missing = new Set<string>();
+  for (const d of plannedDates) {
+    if (d >= todayStr) continue;        // today/future not missing yet
+    if (declaredDates.has(d)) continue; // already declared
+    missing.add(d);
+  }
+  return Array.from(missing).sort((a, b) => (a < b ? 1 : -1));
 }

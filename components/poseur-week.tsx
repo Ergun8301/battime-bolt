@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { format, addDays, startOfWeek, addWeeks, subWeeks, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { slotLabel } from '@/lib/slot';
 
 interface TimeEntryWithWorksite extends TimeEntry {
   worksite: Worksite | null;
@@ -162,7 +163,7 @@ export default function PoseurWeek() {
                       </div>
                       {p.estimated_start && p.estimated_end && (
                         <span className="text-blue-600 text-xs shrink-0">
-                          {p.estimated_start.substring(0, 5)}–{p.estimated_end.substring(0, 5)}
+                          {slotLabel(p.estimated_start, p.estimated_end)}
                         </span>
                       )}
                     </div>
@@ -246,7 +247,7 @@ export default function PoseurWeek() {
                         <span className="truncate font-medium">{p.worksite?.client_name || 'Chantier'}</span>
                       </div>
                       {p.estimated_start && p.estimated_end && (
-                        <div className="text-blue-600 mt-0.5">{p.estimated_start.substring(0, 5)}–{p.estimated_end.substring(0, 5)}</div>
+                        <div className="text-blue-600 mt-0.5">{slotLabel(p.estimated_start, p.estimated_end)}</div>
                       )}
                     </div>
                   )

@@ -24,7 +24,7 @@ import {
   addPendingEntry, getPendingEntries, removePendingEntry,
   generateLocalId, PendingEntry,
 } from '@/lib/offline-store';
-import { missingBusinessDays } from '@/lib/work-status';
+import { computeMissingDays } from '@/lib/work-status';
 
 interface TimeEntryWithWorksite extends TimeEntry {
   worksite: Worksite;
@@ -191,8 +191,8 @@ export default function PoseurDay() {
   const fetchData = useCallback(async () => {
     if (!user) return;
     try {
-      const recentStart = format(subDays(new Date(), 8), 'yyyy-MM-dd');
-      const [entriesRes, worksitesRes, planningRes, recentRes] = await Promise.all([
+      const recentStart = format(subDays(new Date(), 14), 'yyyy-MM-dd');
+      const [entriesRes, worksitesRes, planningRes, recentRes, recentPlanRes] = await Promise.all([
         supabase
           .from('time_entries')
           .select('*, worksite:worksites(*)')
@@ -210,12 +210,20 @@ export default function PoseurDay() {
           .select('*, worksite:worksites(*)')
           .eq('user_id', user.id)
           .eq('work_date', today),
-        // Recent sent days (not draft) to warn about unsent business days.
+        // Recent declared days (not draft).
         supabase
           .from('time_entries')
           .select('work_date, status')
           .eq('user_id', user.id)
           .neq('status', 'draft')
+          .gte('work_date', recentStart),
+        // Recent PLANNED chantier days (absences excluded) — a day is only
+        // "missing" if it was planned and not declared.
+        supabase
+          .from('planning')
+          .select('work_date, absence_type')
+          .eq('user_id', user.id)
+          .is('absence_type', null)
           .gte('work_date', recentStart),
       ]);
 
@@ -227,9 +235,10 @@ export default function PoseurDay() {
       setWorksites(worksitesRes.data || []);
       setPlanning(planningRes.data || []);
 
-      if (!recentRes.error) {
-        const sentDates = new Set<string>((recentRes.data || []).map((e: { work_date: string }) => e.work_date));
-        setMissingDays(missingBusinessDays(sentDates, 7));
+      if (!recentRes.error && !recentPlanRes.error) {
+        const declared = new Set<string>((recentRes.data || []).map((e: { work_date: string }) => e.work_date));
+        const planned = (recentPlanRes.data || []).map((p: { work_date: string }) => p.work_date);
+        setMissingDays(computeMissingDays(planned, declared));
       }
 
       // Pre-fill form from planning if no entries yet
