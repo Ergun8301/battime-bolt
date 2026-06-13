@@ -4,16 +4,21 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { User } from '@/lib/types';
 import { ExportEntry, exportEntriesToExcel, exportEntriesToPDF } from '@/lib/export-utils';
+import { computeMissingDays } from '@/lib/work-status';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   CalendarRange, Clock, Utensils, MapPin, FileSpreadsheet, FileText, Loader2,
+  Settings2, Archive, ArchiveRestore, Trash2, AlertTriangle,
 } from 'lucide-react';
 import {
-  format, parseISO, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isSameDay,
+  format, parseISO, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isSameDay, subDays,
 } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -28,12 +33,15 @@ function formatMinutesToHours(minutes: number): string {
 interface WorkerDetailDialogProps {
   worker: User | null;
   onOpenChange: (open: boolean) => void;
+  onChanged?: () => void;
 }
 
-// Per-employee fiche. Opens on today; the secretary clicks the calendar (range,
-// Booking style) or the Cette semaine / Ce mois shortcuts to consult any period,
-// then exports exactly what's shown. Consultation only — no edits, no locking.
-export default function WorkerDetailDialog({ worker, onOpenChange }: WorkerDetailDialogProps) {
+const MISSING_WINDOW_DAYS = 30;
+
+// Per-employee fiche: opens on today, Booking-style range calendar, interventions
+// + total, planning-based missing-days detail, per-period export (no lock), and
+// worker management (modify / archive / reactivate / delete-if-empty).
+export default function WorkerDetailDialog({ worker, onOpenChange, onChanged }: WorkerDetailDialogProps) {
   const [range, setRange] = useState<DateRange | undefined>(() => {
     const t = new Date();
     return { from: t, to: t };
@@ -43,20 +51,47 @@ export default function WorkerDetailDialog({ worker, onOpenChange }: WorkerDetai
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
 
-  // Reset to today's view whenever a different worker is opened.
+  const [missing, setMissing] = useState<string[]>([]);
+
+  // management
+  const [showManage, setShowManage] = useState(false);
+  const [mFirst, setMFirst] = useState('');
+  const [mLast, setMLast] = useState('');
+  const [mPhone, setMPhone] = useState('');
+  const [mSaving, setMSaving] = useState(false);
+  const [mBusy, setMBusy] = useState(false);
+
+  // Reset per worker.
   useEffect(() => {
-    if (worker) {
-      const t = new Date();
-      setRange({ from: t, to: t });
-    }
+    if (!worker) return;
+    const t = new Date();
+    setRange({ from: t, to: t });
+    setShowManage(false);
+    setMFirst(worker.first_name || '');
+    setMLast(worker.last_name || '');
+    setMPhone(worker.phone || '');
   }, [worker?.id]);
 
-  // Company name for the export header.
   useEffect(() => {
     if (!worker?.company_id) return;
     supabase.from('companies').select('name').eq('id', worker.company_id).maybeSingle()
       .then(({ data }) => setCompanyName(data?.name || ''));
   }, [worker?.company_id]);
+
+  // Planning-based missing days (recent window).
+  const fetchMissing = useCallback(async () => {
+    if (!worker) return;
+    const windowStart = format(subDays(new Date(), MISSING_WINDOW_DAYS), 'yyyy-MM-dd');
+    const [planRes, entRes] = await Promise.all([
+      supabase.from('planning').select('work_date').eq('user_id', worker.id).is('absence_type', null).gte('work_date', windowStart),
+      supabase.from('time_entries').select('work_date, status').eq('user_id', worker.id).neq('status', 'draft').gte('work_date', windowStart),
+    ]);
+    const planned = (planRes.data || []).map((p: { work_date: string }) => p.work_date);
+    const declared = new Set<string>((entRes.data || []).map((e: { work_date: string }) => e.work_date));
+    setMissing(computeMissingDays(planned, declared));
+  }, [worker?.id]);
+
+  useEffect(() => { fetchMissing(); }, [fetchMissing]);
 
   const fetchEntries = useCallback(async () => {
     if (!worker || !range?.from) return;
@@ -90,29 +125,20 @@ export default function WorkerDetailDialog({ worker, onOpenChange }: WorkerDetai
   const periodLabel = (() => {
     if (!range?.from) return '';
     const to = range.to ?? range.from;
-    if (isSameDay(range.from, to)) return format(range.from, 'dd/MM/yyyy');
-    return `${format(range.from, 'dd/MM/yyyy')} au ${format(to, 'dd/MM/yyyy')}`;
+    return isSameDay(range.from, to) ? format(range.from, 'dd/MM/yyyy') : `${format(range.from, 'dd/MM/yyyy')} au ${format(to, 'dd/MM/yyyy')}`;
   })();
 
   const triggerLabel = (() => {
     if (!range?.from) return 'Choisir une période';
     const to = range.to ?? range.from;
     if (isSameDay(range.from, to)) {
-      return isSameDay(range.from, new Date())
-        ? "Aujourd'hui"
-        : format(range.from, 'EEE d MMM yyyy', { locale: fr });
+      return isSameDay(range.from, new Date()) ? "Aujourd'hui" : format(range.from, 'EEE d MMM yyyy', { locale: fr });
     }
     return `${format(range.from, 'd MMM')} – ${format(to, 'd MMM yyyy', { locale: fr })}`;
   })();
 
-  const setWeek = () => setRange({
-    from: startOfWeek(new Date(), { weekStartsOn: 1 }),
-    to: endOfWeek(new Date(), { weekStartsOn: 1 }),
-  });
-  const setMonth = () => setRange({
-    from: startOfMonth(new Date()),
-    to: endOfMonth(new Date()),
-  });
+  const setWeek = () => setRange({ from: startOfWeek(new Date(), { weekStartsOn: 1 }), to: endOfWeek(new Date(), { weekStartsOn: 1 }) });
+  const setMonth = () => setRange({ from: startOfMonth(new Date()), to: endOfMonth(new Date()) });
 
   const doExport = (kind: 'excel' | 'pdf') => {
     if (!worker) return;
@@ -122,15 +148,8 @@ export default function WorkerDetailDialog({ worker, onOpenChange }: WorkerDetai
       const name = `${worker.first_name} ${worker.last_name}`;
       const fromStr = range?.from ? format(range.from, 'yyyy-MM-dd') : '';
       const toStr = range?.to ? format(range.to, 'yyyy-MM-dd') : fromStr;
-      const fileName = `battime-${worker.last_name}-${worker.first_name}-${fromStr}_${toStr}`
-        .toLowerCase().replace(/\s+/g, '-');
-      const opts = {
-        fileName,
-        title: 'Battime — Relevé salarié',
-        periodLabel,
-        companyName,
-        singleWorkerName: name,
-      };
+      const fileName = `battime-${worker.last_name}-${worker.first_name}-${fromStr}_${toStr}`.toLowerCase().replace(/\s+/g, '-');
+      const opts = { fileName, title: 'Battime — Relevé salarié', periodLabel, companyName, singleWorkerName: name };
       if (kind === 'excel') exportEntriesToExcel(entries, opts);
       else exportEntriesToPDF(entries, opts);
       toast.success('Export téléchargé');
@@ -142,54 +161,154 @@ export default function WorkerDetailDialog({ worker, onOpenChange }: WorkerDetai
     }
   };
 
+  // ─── management ────────────────────────────────────────────────────────────
+
+  const saveWorker = async () => {
+    if (!worker) return;
+    if (!mFirst.trim() || !mLast.trim()) { toast.error('Prénom et nom requis'); return; }
+    setMSaving(true);
+    try {
+      const { error } = await supabase.from('users').update({
+        first_name: mFirst.trim(), last_name: mLast.trim(), phone: mPhone.trim() || null,
+      }).eq('id', worker.id).eq('company_id', worker.company_id);
+      if (error) throw error;
+      toast.success('Salarié modifié');
+      onChanged?.();
+    } catch (err) {
+      console.error('Error updating worker:', err);
+      toast.error('Impossible de modifier le salarié');
+    } finally {
+      setMSaving(false);
+    }
+  };
+
+  const toggleArchive = async () => {
+    if (!worker) return;
+    setMBusy(true);
+    try {
+      const { error } = await supabase.from('users').update({ is_active: !worker.is_active })
+        .eq('id', worker.id).eq('company_id', worker.company_id);
+      if (error) throw error;
+      toast.success(worker.is_active ? 'Salarié archivé' : 'Salarié réactivé');
+      onChanged?.();
+      onOpenChange(false);
+    } catch (err) {
+      console.error('Error archiving worker:', err);
+      toast.error('Impossible de mettre à jour le salarié');
+    } finally {
+      setMBusy(false);
+    }
+  };
+
+  // Delete only if the worker is an empty shell (no entries, no planning).
+  const deleteWorker = async () => {
+    if (!worker) return;
+    setMBusy(true);
+    try {
+      const [{ count: entryCount, error: e1 }, { count: planCount, error: e2 }] = await Promise.all([
+        supabase.from('time_entries').select('*', { count: 'exact', head: true }).eq('user_id', worker.id),
+        supabase.from('planning').select('*', { count: 'exact', head: true }).eq('user_id', worker.id),
+      ]);
+      if (e1) throw e1;
+      if (e2) throw e2;
+      if ((entryCount || 0) > 0 || (planCount || 0) > 0) {
+        toast.error('Ce salarié a des données. Archivez-le plutôt.');
+        return;
+      }
+      const { error } = await supabase.from('users').delete().eq('id', worker.id).eq('company_id', worker.company_id);
+      if (error) throw error;
+      toast.success('Salarié supprimé');
+      onChanged?.();
+      onOpenChange(false);
+    } catch (err) {
+      console.error('Error deleting worker:', err);
+      toast.error('Impossible de supprimer le salarié');
+    } finally {
+      setMBusy(false);
+    }
+  };
+
   return (
     <Dialog open={!!worker} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl max-h-[88vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{worker ? `${worker.first_name} ${worker.last_name}` : ''}</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            {worker ? `${worker.first_name} ${worker.last_name}` : ''}
+            {worker && !worker.is_active && <Badge variant="secondary" className="text-xs">Archivé</Badge>}
+          </DialogTitle>
         </DialogHeader>
 
-        {/* Period controls: calendar range (Booking style) + shortcuts + export */}
+        {/* Management */}
+        <div className="rounded-lg border p-3 space-y-3">
+          <button type="button" onClick={() => setShowManage((v) => !v)} className="flex items-center gap-2 text-sm font-medium">
+            <Settings2 className="h-4 w-4" /> Gérer le salarié
+          </button>
+          {showManage && worker && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div className="space-y-1"><Label className="text-xs">Prénom</Label><Input value={mFirst} onChange={(e) => setMFirst(e.target.value)} /></div>
+                <div className="space-y-1"><Label className="text-xs">Nom</Label><Input value={mLast} onChange={(e) => setMLast(e.target.value)} /></div>
+                <div className="space-y-1"><Label className="text-xs">Téléphone</Label><Input value={mPhone} onChange={(e) => setMPhone(e.target.value)} /></div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" onClick={saveWorker} disabled={mSaving}>
+                  {mSaving && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer
+                </Button>
+                <Button size="sm" variant="outline" onClick={toggleArchive} disabled={mBusy}>
+                  {worker.is_active ? <Archive className="h-4 w-4 mr-1" /> : <ArchiveRestore className="h-4 w-4 mr-1" />}
+                  {worker.is_active ? 'Archiver' : 'Réactiver'}
+                </Button>
+                <Button size="sm" variant="ghost" className="text-destructive" onClick={deleteWorker} disabled={mBusy} title="Supprimer (seulement si aucune donnée)">
+                  <Trash2 className="h-4 w-4 mr-1" /> Supprimer
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Missing days (planning-based) */}
+        {missing.length > 0 && (
+          <div className="rounded-lg border border-orange-200 bg-orange-50 p-3 text-sm">
+            <p className="font-medium text-orange-800 flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4" /> {missing.length} jour{missing.length > 1 ? 's' : ''} planifié{missing.length > 1 ? 's' : ''} non déclaré{missing.length > 1 ? 's' : ''}
+            </p>
+            <p className="text-orange-700 mt-1">
+              {missing.map((d) => format(parseISO(d), 'EEE d MMM', { locale: fr })).join(', ')}
+            </p>
+          </div>
+        )}
+
+        {/* Period controls */}
         <div className="flex flex-wrap items-center gap-2">
           <Popover>
             <PopoverTrigger asChild>
               <Button variant="outline" className="justify-start gap-2">
-                <CalendarRange className="h-4 w-4" />
-                {triggerLabel}
+                <CalendarRange className="h-4 w-4" />{triggerLabel}
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0" align="start">
-              <Calendar
-                mode="range"
-                selected={range}
-                onSelect={setRange}
-                numberOfMonths={1}
-                locale={fr}
-                defaultMonth={range?.from}
-              />
+              <Calendar mode="range" selected={range} onSelect={setRange} numberOfMonths={1} locale={fr} defaultMonth={range?.from} />
             </PopoverContent>
           </Popover>
           <Button variant="ghost" size="sm" onClick={setWeek}>Cette semaine</Button>
           <Button variant="ghost" size="sm" onClick={setMonth}>Ce mois</Button>
           <div className="ml-auto flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={() => doExport('excel')} disabled={exporting || entries.length === 0}>
-              {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
-              <span className="hidden sm:inline ml-1">Excel</span>
+              {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}<span className="hidden sm:inline ml-1">Excel</span>
             </Button>
             <Button variant="outline" size="sm" onClick={() => doExport('pdf')} disabled={exporting || entries.length === 0}>
-              {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
-              <span className="hidden sm:inline ml-1">PDF</span>
+              {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}<span className="hidden sm:inline ml-1">PDF</span>
             </Button>
           </div>
         </div>
 
-        {/* Period total */}
+        {/* Total */}
         <div className="flex items-center justify-between rounded-lg bg-primary/5 border border-primary/20 px-4 py-3">
           <span className="text-sm text-muted-foreground">Total de la période</span>
           <span className="text-xl font-bold">{formatMinutesToHours(totalMinutes)}</span>
         </div>
 
-        {/* Entries, newest first */}
+        {/* Entries */}
         {loading ? (
           <div className="space-y-2">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full" />)}</div>
         ) : entries.length === 0 ? (
@@ -207,9 +326,7 @@ export default function WorkerDetailDialog({ worker, onOpenChange }: WorkerDetai
                 <div className="min-w-0 flex-1">
                   <p className="font-medium text-sm truncate">{entry.worksite?.client_name || 'Chantier inconnu'}</p>
                   {entry.worksite?.city && (
-                    <p className="text-xs text-muted-foreground flex items-center gap-1">
-                      <MapPin className="h-3 w-3" />{entry.worksite.city}
-                    </p>
+                    <p className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="h-3 w-3" />{entry.worksite.city}</p>
                   )}
                 </div>
                 <div className="text-right shrink-0">
