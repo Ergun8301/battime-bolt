@@ -251,7 +251,7 @@ export default function PoseurDay() {
           start_time: entry.start_time,
           end_time: entry.end_time,
           break_minutes: entry.break_minutes,
-          total_minutes: entry.total_minutes,
+          // total_minutes is a generated column in Postgres — never send it.
           meal_allowance: entry.meal_allowance,
           observation: entry.observation,
           status: 'draft',
@@ -395,7 +395,7 @@ export default function PoseurDay() {
         start_time: startTime,
         end_time: endTime,
         break_minutes: parseInt(breakMinutes) || 0,
-        total_minutes: totalMins,
+        // total_minutes is a generated column in Postgres — never send it.
         meal_allowance: mealAllowance,
         observation: observation.trim() || null,
         status: 'draft',
@@ -463,14 +463,13 @@ export default function PoseurDay() {
     }
     setEditSaving(true);
     try {
-      const totalMins = calculateTotalMinutes(editStart, editEnd, parseInt(editBreak) || 0);
       const { error } = await supabase
         .from('time_entries')
         .update({
           start_time: editStart,
           end_time: editEnd,
           break_minutes: parseInt(editBreak) || 0,
-          total_minutes: totalMins,
+          // total_minutes is a generated column in Postgres — never send it.
           meal_allowance: editMeal,
           observation: editObs.trim() || null,
         })
@@ -521,7 +520,7 @@ export default function PoseurDay() {
         start_time: e.start_time,
         end_time: e.end_time,
         break_minutes: e.break_minutes,
-        total_minutes: e.total_minutes,
+        // total_minutes is a generated column in Postgres — never send it.
         meal_allowance: e.meal_allowance,
         observation: e.observation,
         status: 'draft' as const,
