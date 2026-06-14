@@ -53,7 +53,7 @@ export interface Planning {
   estimated_start?: string;
   estimated_end?: string;
   notes?: string;
-  absence_type?: 'conge' | 'maladie' | 'intemperie' | 'repos' | null;
+  absence_type?: 'conge' | 'maladie' | 'intemperie' | null;
   created_at: string;
   created_by: string;
 }

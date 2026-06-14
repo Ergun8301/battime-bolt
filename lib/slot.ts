@@ -39,10 +39,3 @@ export function slotFromTimes(start?: string | null, end?: string | null): Slot 
 export function slotLabel(start?: string | null, end?: string | null): string {
   return SLOT_LABELS[slotFromTimes(start, end)];
 }
-
-// Like slotFromTimes, but returns null when no slot is set (both times empty).
-// Assignments now default to "no precise slot" — the secretary can set it later.
-export function slotFromTimesOrNull(start?: string | null, end?: string | null): Slot | null {
-  if (!start && !end) return null;
-  return slotFromTimes(start, end);
-}

@@ -15,9 +15,11 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   CalendarRange, Clock, Utensils, MapPin, FileSpreadsheet, FileText, Loader2,
-  Settings2, Archive, ArchiveRestore, Trash2, AlertTriangle, ArrowLeft,
+  Settings2, Archive, ArchiveRestore, Trash2, AlertTriangle,
 } from 'lucide-react';
-import { format, parseISO, isSameDay, subDays } from 'date-fns';
+import {
+  format, parseISO, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isSameDay, subDays,
+} from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import type { DateRange } from 'react-day-picker';
@@ -81,12 +83,10 @@ export default function WorkerDetailDialog({ worker, onOpenChange, onChanged }: 
     if (!worker) return;
     const windowStart = format(subDays(new Date(), MISSING_WINDOW_DAYS), 'yyyy-MM-dd');
     const [planRes, entRes] = await Promise.all([
-      supabase.from('planning').select('work_date, absence_type').eq('user_id', worker.id).gte('work_date', windowStart),
+      supabase.from('planning').select('work_date').eq('user_id', worker.id).is('absence_type', null).gte('work_date', windowStart),
       supabase.from('time_entries').select('work_date, status').eq('user_id', worker.id).neq('status', 'draft').gte('work_date', windowStart),
     ]);
-    const rows = (planRes.data || []) as { work_date: string; absence_type: string | null }[];
-    const absenceDays = new Set<string>(rows.filter((p) => p.absence_type).map((p) => p.work_date));
-    const planned = rows.filter((p) => !p.absence_type && !absenceDays.has(p.work_date)).map((p) => p.work_date);
+    const planned = (planRes.data || []).map((p: { work_date: string }) => p.work_date);
     const declared = new Set<string>((entRes.data || []).map((e: { work_date: string }) => e.work_date));
     setMissing(computeMissingDays(planned, declared));
   }, [worker?.id]);
@@ -136,6 +136,9 @@ export default function WorkerDetailDialog({ worker, onOpenChange, onChanged }: 
     }
     return `${format(range.from, 'd MMM')} – ${format(to, 'd MMM yyyy', { locale: fr })}`;
   })();
+
+  const setWeek = () => setRange({ from: startOfWeek(new Date(), { weekStartsOn: 1 }), to: endOfWeek(new Date(), { weekStartsOn: 1 }) });
+  const setMonth = () => setRange({ from: startOfMonth(new Date()), to: endOfMonth(new Date()) });
 
   const doExport = (kind: 'excel' | 'pdf') => {
     if (!worker) return;
@@ -228,13 +231,6 @@ export default function WorkerDetailDialog({ worker, onOpenChange, onChanged }: 
   return (
     <Dialog open={!!worker} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl max-h-[88vh] overflow-y-auto">
-        <button
-          type="button"
-          onClick={() => onOpenChange(false)}
-          className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground -mt-1 mb-1"
-        >
-          <ArrowLeft className="h-4 w-4" /> Retour
-        </button>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {worker ? `${worker.first_name} ${worker.last_name}` : ''}
@@ -294,6 +290,8 @@ export default function WorkerDetailDialog({ worker, onOpenChange, onChanged }: 
               <Calendar mode="range" selected={range} onSelect={setRange} numberOfMonths={1} locale={fr} defaultMonth={range?.from} />
             </PopoverContent>
           </Popover>
+          <Button variant="ghost" size="sm" onClick={setWeek}>Cette semaine</Button>
+          <Button variant="ghost" size="sm" onClick={setMonth}>Ce mois</Button>
           <div className="ml-auto flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={() => doExport('excel')} disabled={exporting || entries.length === 0}>
               {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}<span className="hidden sm:inline ml-1">Excel</span>

@@ -217,12 +217,13 @@ export default function PoseurDay() {
           .eq('user_id', user.id)
           .neq('status', 'draft')
           .gte('work_date', recentStart),
-        // Recent planning (chantiers + absences) — a day is only "missing" if it
-        // was a chantier day, not declared, and not an absence day.
+        // Recent PLANNED chantier days (absences excluded) — a day is only
+        // "missing" if it was planned and not declared.
         supabase
           .from('planning')
           .select('work_date, absence_type')
           .eq('user_id', user.id)
+          .is('absence_type', null)
           .gte('work_date', recentStart),
       ]);
 
@@ -236,9 +237,7 @@ export default function PoseurDay() {
 
       if (!recentRes.error && !recentPlanRes.error) {
         const declared = new Set<string>((recentRes.data || []).map((e: { work_date: string }) => e.work_date));
-        const rows = (recentPlanRes.data || []) as { work_date: string; absence_type: string | null }[];
-        const absenceDays = new Set<string>(rows.filter((p) => p.absence_type).map((p) => p.work_date));
-        const planned = rows.filter((p) => !p.absence_type && !absenceDays.has(p.work_date)).map((p) => p.work_date);
+        const planned = (recentPlanRes.data || []).map((p: { work_date: string }) => p.work_date);
         setMissingDays(computeMissingDays(planned, declared));
       }
 
