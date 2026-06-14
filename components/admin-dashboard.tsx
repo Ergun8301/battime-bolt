@@ -48,17 +48,20 @@ export default function AdminDashboard() {
       const [workersRes, planRes, entriesRes, companyRes, invRes] = await Promise.all([
         supabase.from('users').select('*').eq('company_id', user.company_id).eq('role', 'worker').eq('is_active', true).order('first_name'),
         // Planned chantier days (absences excluded → never "missing").
-        supabase.from('planning').select('user_id, work_date, absence_type').eq('company_id', user.company_id).is('absence_type', null).gte('work_date', windowStart),
+        supabase.from('planning').select('user_id, work_date, absence_type').eq('company_id', user.company_id).gte('work_date', windowStart),
         supabase.from('time_entries').select('user_id, work_date, status').eq('company_id', user.company_id).neq('status', 'draft').gte('work_date', windowStart),
         supabase.from('companies').select('name').eq('id', user.company_id).maybeSingle(),
         supabase.from('invitations').select('*').eq('company_id', user.company_id).is('accepted_at', null).gt('expires_at', new Date().toISOString()).order('created_at', { ascending: false }),
       ]);
       if (workersRes.error) throw workersRes.error;
 
-      const plannedByUser = new Map<string, string[]>();
+      // Planned chantier days, minus absence days (an absence day is never "missing").
+      const plannedByUser = new Map<string, Set<string>>();
+      const absenceByUser = new Map<string, Set<string>>();
       for (const p of planRes.data || []) {
-        if (!plannedByUser.has(p.user_id)) plannedByUser.set(p.user_id, []);
-        plannedByUser.get(p.user_id)!.push(p.work_date);
+        const bucket = p.absence_type ? absenceByUser : plannedByUser;
+        if (!bucket.has(p.user_id)) bucket.set(p.user_id, new Set());
+        bucket.get(p.user_id)!.add(p.work_date);
       }
       const declaredByUser = new Map<string, Set<string>>();
       for (const e of entriesRes.data || []) {
@@ -68,7 +71,10 @@ export default function AdminDashboard() {
 
       const list: WorkerStatus[] = (workersRes.data || []).map((worker: User) => ({
         worker,
-        missing: computeMissingDays(plannedByUser.get(worker.id) || [], declaredByUser.get(worker.id) || new Set()),
+        missing: computeMissingDays(
+          Array.from(plannedByUser.get(worker.id) || []).filter((d) => !absenceByUser.get(worker.id)?.has(d)),
+          declaredByUser.get(worker.id) || new Set(),
+        ),
       }));
       // Workers with missing days first.
       list.sort((a, b) => (b.missing.length > 0 ? 1 : 0) - (a.missing.length > 0 ? 1 : 0) || a.worker.first_name.localeCompare(b.worker.first_name));

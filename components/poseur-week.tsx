@@ -33,6 +33,7 @@ const ABSENCE_LABELS: Record<string, string> = {
   conge: 'Congé',
   maladie: 'Maladie',
   intemperie: 'Intempérie',
+  repos: 'Repos',
 };
 
 export default function PoseurWeek() {

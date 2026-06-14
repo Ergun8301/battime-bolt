@@ -10,7 +10,7 @@ import AdminDashboard from '@/components/admin-dashboard';
 
 export default function AdminPage() {
   const { user, signOut } = useAuth();
-  const [activeTab, setActiveTab] = useState('planning');
+  const [activeTab, setActiveTab] = useState('dashboard');
 
   return (
     <div className="min-h-screen bg-background">
