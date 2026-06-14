@@ -10,6 +10,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -23,9 +26,11 @@ import {
 import { format, startOfWeek, addDays, addWeeks, subWeeks } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
-import { Slot, SLOT_TIMES, SLOT_LABELS, SLOT_SHORT, SLOT_ORDER, slotFromTimes } from '@/lib/slot';
+import {
+  Slot, SLOT_TIMES, SLOT_SHORT, slotFromTimesOrNull,
+} from '@/lib/slot';
 
-// ─── helpers ─────────────────────────────────────────────────────────────────
+// ─── helpers / constants ──────────────────────────────────────────────────────
 
 function formatMinutes(minutes: number): string {
   const h = Math.floor(minutes / 60);
@@ -43,8 +48,35 @@ const CHANTIER_PALETTES = [
   { chip: 'bg-pink-100 border-pink-300 text-pink-700',       dot: 'bg-pink-400' },
   { chip: 'bg-amber-100 border-amber-300 text-amber-800',    dot: 'bg-amber-400' },
 ];
-const ABSENCE_PALETTE = { chip: 'bg-slate-100 border-slate-300 text-slate-600', dot: 'bg-slate-400' };
-const ABSENCE_LABELS: Record<string, string> = { conge: 'Congé', maladie: 'Maladie', intemperie: 'Intempérie' };
+
+const ABSENCE_LABELS: Record<string, string> = { conge: 'Congé', maladie: 'Maladie', intemperie: 'Intempérie', repos: 'Repos' };
+const ABSENCE_STATUS_LABELS: Record<string, string> = { conge: 'Congé', maladie: 'Arrêt maladie', intemperie: 'Intempérie', repos: 'Repos' };
+const ABSENCE_OPTIONS: { value: string; label: string }[] = [
+  { value: 'conge', label: 'Congé' },
+  { value: 'maladie', label: 'Arrêt maladie' },
+  { value: 'intemperie', label: 'Intempérie' },
+  { value: 'repos', label: 'Repos' },
+];
+
+type SlotChoice = Slot | 'none';
+const SLOT_OPTIONS: { value: SlotChoice; label: string }[] = [
+  { value: 'none', label: 'Aucun' },
+  { value: 'morning', label: 'Matin' },
+  { value: 'afternoon', label: 'Après-midi' },
+  { value: 'day', label: 'Journée' },
+];
+const timesForChoice = (c: SlotChoice) =>
+  c === 'none' ? { start: null, end: null } : { start: SLOT_TIMES[c].start, end: SLOT_TIMES[c].end };
+
+// Open-ended absences are materialised up to this horizon (no DB column to store
+// an "until further notice" flag); the secretary ends them by setting "Présent".
+const HORIZON_DAYS = 90;
+
+// Subtle grey hatch for absence cells.
+const HATCH_STYLE = {
+  backgroundImage:
+    'repeating-linear-gradient(45deg, rgba(100,116,139,0.16) 0, rgba(100,116,139,0.16) 5px, transparent 5px, transparent 10px)',
+};
 
 function hashStr(s: string): number {
   let h = 0;
@@ -52,30 +84,25 @@ function hashStr(s: string): number {
   return Math.abs(h);
 }
 const paletteFor = (p: PlanningWithWorksite) =>
-  p.absence_type ? ABSENCE_PALETTE : CHANTIER_PALETTES[hashStr(p.worksite_id || p.id) % CHANTIER_PALETTES.length];
+  CHANTIER_PALETTES[hashStr(p.worksite_id || p.id) % CHANTIER_PALETTES.length];
 
 interface RealAgg { minutes: number; start: string; end: string; count: number }
 const realKey = (userId: string, date: string, worksiteId: string | null) => `${userId}|${date}|${worksiteId}`;
 
-// ─── compact bubble ──────────────────────────────────────────────────────────
+// ─── compact one-line chantier bubble ──────────────────────────────────────────
 
 function BubbleContent({ p, palette, real }: { p: PlanningWithWorksite; palette: string; real?: RealAgg }) {
-  const isAbs = !!p.absence_type;
-  const slot = slotFromTimes(p.estimated_start, p.estimated_end);
+  const slot = slotFromTimesOrNull(p.estimated_start, p.estimated_end);
   return (
-    <div className={`${palette} border rounded-md px-2 py-1 text-[11px] leading-tight`}>
-      <div className="flex items-center gap-1">
-        <span className="font-medium truncate flex-1">
-          {isAbs ? (ABSENCE_LABELS[p.absence_type!] || p.absence_type) : (p.worksite?.client_name || 'Chantier')}
+    <div className={`${palette} border rounded px-2 py-1 text-[11px] leading-tight flex items-center gap-1`}>
+      <span className="font-medium truncate flex-1">{p.worksite?.client_name || 'Chantier'}</span>
+      {real ? (
+        <span className="flex items-center gap-0.5 text-green-700 shrink-0">
+          <Check className="h-3 w-3" />{formatMinutes(real.minutes)}
         </span>
-        {!isAbs && <span className="opacity-70 shrink-0">{SLOT_SHORT[slot]}</span>}
-      </div>
-      {!isAbs && real && (
-        <div className="flex items-center gap-1 mt-0.5 text-green-700">
-          <Check className="h-3 w-3 shrink-0" />
-          <span className="font-semibold">{formatMinutes(real.minutes)} réelles</span>
-        </div>
-      )}
+      ) : slot ? (
+        <span className="opacity-70 shrink-0">{SLOT_SHORT[slot]}</span>
+      ) : null}
     </div>
   );
 }
@@ -103,7 +130,7 @@ function DraggableBubble({
   );
 }
 
-// A draggable client chip (the "palette"): drag onto a cell to create.
+// Draggable client chip ("palette"): drag onto a cell to create directly.
 function PaletteChip({ worksite }: { worksite: Worksite | null }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: 'palette-new',
@@ -129,11 +156,12 @@ function PaletteChip({ worksite }: { worksite: Worksite | null }) {
 }
 
 function DroppableCell({
-  workerId, dateStr, isToday, onAdd, children,
+  workerId, dateStr, isToday, hasAbsence, onAdd, children,
 }: {
   workerId: string;
   dateStr: string;
   isToday: boolean;
+  hasAbsence: boolean;
   onAdd: (workerId: string, dateStr: string) => void;
   children: ReactNode;
 }) {
@@ -142,16 +170,19 @@ function DroppableCell({
     <td
       ref={setNodeRef}
       className={`p-1.5 align-top transition-colors ${
-        isOver ? 'bg-primary/10 outline-dashed outline-2 -outline-offset-2 outline-primary' : isToday ? 'bg-primary/5' : ''
+        isOver
+          ? 'bg-primary/10 outline-dashed outline-2 -outline-offset-2 outline-primary'
+          : hasAbsence ? 'bg-slate-50' : isToday ? 'bg-primary/5' : ''
       }`}
     >
-      {/* Fixed height so a worker row never grows — bubbles scroll within. */}
-      <div className="flex flex-col h-28">
-        <div className="flex-1 overflow-y-auto space-y-1 pr-0.5">{children}</div>
+      {/* Height adapts to the number of bubbles — everything stays visible,
+          never a hidden scroll. */}
+      <div className="space-y-1">
+        <div className="space-y-1">{children}</div>
         <button
           type="button"
           onClick={() => onAdd(workerId, dateStr)}
-          className="mt-1 h-5 shrink-0 rounded text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground transition-colors flex items-center justify-center gap-1"
+          className="h-5 w-full rounded text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground transition-colors flex items-center justify-center gap-1"
         >
           <Plus className="h-3 w-3" /> Ajouter
         </button>
@@ -168,6 +199,7 @@ export default function AdminPlanning() {
   const [worksites, setWorksites] = useState<Worksite[]>([]);
   const [planning, setPlanning] = useState<PlanningWithWorksite[]>([]);
   const [realEntries, setRealEntries] = useState<{ user_id: string; work_date: string; worksite_id: string | null; start_time: string; end_time: string; total_minutes: number }[]>([]);
+  const [todayAbsence, setTodayAbsence] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
   const [currentWeekStart, setCurrentWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }));
 
@@ -175,19 +207,12 @@ export default function AdminPlanning() {
   const [paletteWorksiteId, setPaletteWorksiteId] = useState<string>('');
   const [activeDrag, setActiveDrag] = useState<{ id: string; type: 'move' | 'new'; worksiteId?: string } | null>(null);
 
-  // drop slot picker (after dragging a client onto a cell)
-  const [dropOpen, setDropOpen] = useState(false);
-  const [dropTarget, setDropTarget] = useState<{ workerId: string; date: string; worksiteId: string } | null>(null);
-  const [dropSlot, setDropSlot] = useState<Slot>('day');
-  const [dropNote, setDropNote] = useState('');
-  const [dropSaving, setDropSaving] = useState(false);
-
   // cell "+" add dialog (client or absence)
   const [addOpen, setAddOpen] = useState(false);
   const [addTarget, setAddTarget] = useState<{ workerId: string; date: string } | null>(null);
   const [addMode, setAddMode] = useState<'client' | 'absence'>('client');
   const [addWorksite, setAddWorksite] = useState('');
-  const [addSlot, setAddSlot] = useState<Slot>('day');
+  const [addSlot, setAddSlot] = useState<SlotChoice>('none');
   const [addAbsenceType, setAddAbsenceType] = useState('');
   const [addNote, setAddNote] = useState('');
   const [addSaving, setAddSaving] = useState(false);
@@ -195,12 +220,11 @@ export default function AdminPlanning() {
   // bubble edit dialog
   const [editing, setEditing] = useState<PlanningWithWorksite | null>(null);
   const [editWorksiteId, setEditWorksiteId] = useState('');
-  const [editSlot, setEditSlot] = useState<Slot>('day');
+  const [editSlot, setEditSlot] = useState<SlotChoice>('none');
   const [editAbsenceType, setEditAbsenceType] = useState('');
   const [editNote, setEditNote] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
   const [deletingEdit, setDeletingEdit] = useState(false);
-  // worksite (chantier) edit fields inside the bubble dialog
   const [wsName, setWsName] = useState('');
   const [wsProduct, setWsProduct] = useState('');
   const [wsPhone, setWsPhone] = useState('');
@@ -209,6 +233,11 @@ export default function AdminPlanning() {
   const [wsDesc, setWsDesc] = useState('');
   const [savingWs, setSavingWs] = useState(false);
   const [wsBusy, setWsBusy] = useState(false);
+
+  // absence end-date dialog (from the status menu)
+  const [pendingAbsence, setPendingAbsence] = useState<{ worker: User; type: string } | null>(null);
+  const [absEndDate, setAbsEndDate] = useState('');
+  const [absSaving, setAbsSaving] = useState(false);
 
   // create client / worker dialogs
   const [clientOpen, setClientOpen] = useState(false);
@@ -228,6 +257,7 @@ export default function AdminPlanning() {
   const [wSaving, setWSaving] = useState(false);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+  const todayStr = format(new Date(), 'yyyy-MM-dd');
 
   // ─── data ──────────────────────────────────────────────────────────────────
 
@@ -259,7 +289,6 @@ export default function AdminPlanning() {
       const [planRes, realRes] = await Promise.all([
         supabase.from('planning').select('*, worksite:worksites(*), user:users!user_id(*)')
           .eq('company_id', user.company_id).gte('work_date', from).lte('work_date', to).order('work_date'),
-        // Declared real hours for the week, to overlay on the bubbles.
         supabase.from('time_entries').select('user_id, work_date, worksite_id, start_time, end_time, total_minutes')
           .eq('company_id', user.company_id).neq('status', 'draft').gte('work_date', from).lte('work_date', to),
       ]);
@@ -271,8 +300,19 @@ export default function AdminPlanning() {
     }
   }, [user?.company_id, currentWeekStart]);
 
+  // Worker status libellé reflects TODAY's state (current absence, if any).
+  const fetchTodayStatus = useCallback(async () => {
+    if (!user?.company_id) return;
+    const { data } = await supabase.from('planning').select('user_id, absence_type')
+      .eq('company_id', user.company_id).eq('work_date', format(new Date(), 'yyyy-MM-dd')).not('absence_type', 'is', null);
+    const m = new Map<string, string>();
+    for (const r of data || []) if (r.absence_type) m.set(r.user_id, r.absence_type);
+    setTodayAbsence(m);
+  }, [user?.company_id]);
+
   useEffect(() => { fetchData(); }, [fetchData]);
   useEffect(() => { fetchPlanning(); }, [fetchPlanning]);
+  useEffect(() => { fetchTodayStatus(); }, [fetchTodayStatus]);
 
   const realMap = useMemo(() => {
     const m = new Map<string, RealAgg>();
@@ -293,7 +333,7 @@ export default function AdminPlanning() {
   const realForPlanning = (p: PlanningWithWorksite): RealAgg | undefined =>
     p.absence_type ? undefined : realMap.get(realKey(p.user_id, p.work_date, p.worksite_id));
 
-  // ─── drag ────────────────────────────────────────────────────────────────────
+  // ─── drag (move existing / create new directly, no popup) ───────────────────
 
   const handleDragStart = (e: DragStartEvent) => {
     const data = e.active.data.current as { type?: 'move' | 'new'; worksiteId?: string } | undefined;
@@ -307,12 +347,29 @@ export default function AdminPlanning() {
     if (!over || !user?.company_id) return;
     const [workerId, dateStr] = String(over.id).split('|');
 
+    // Create directly on drop — no slot popup. Slot/notes set later via the bubble.
     if (drag?.type === 'new') {
       if (!drag.worksiteId) return;
-      setDropTarget({ workerId, date: dateStr, worksiteId: drag.worksiteId });
-      setDropSlot('day');
-      setDropNote('');
-      setDropOpen(true);
+      const ws = worksites.find(w => w.id === drag.worksiteId);
+      try {
+        const { error } = await supabase.from('planning').insert({
+          company_id: user.company_id,
+          created_by: user.id,
+          user_id: workerId,
+          worksite_id: drag.worksiteId,
+          work_date: dateStr,
+          estimated_start: null,
+          estimated_end: null,
+          notes: null,
+          absence_type: null,
+        });
+        if (error) throw error;
+        toast.success(`${ws?.client_name || 'Chantier'} affecté`);
+        fetchPlanning();
+      } catch (err) {
+        console.error('Error creating planning:', err);
+        toast.error("Impossible de créer l'affectation");
+      }
       return;
     }
 
@@ -333,41 +390,13 @@ export default function AdminPlanning() {
     }
   };
 
-  const confirmDrop = async () => {
-    if (!user?.company_id || !dropTarget) return;
-    setDropSaving(true);
-    try {
-      const { error } = await supabase.from('planning').insert({
-        company_id: user.company_id,
-        created_by: user.id,
-        user_id: dropTarget.workerId,
-        worksite_id: dropTarget.worksiteId,
-        work_date: dropTarget.date,
-        estimated_start: SLOT_TIMES[dropSlot].start,
-        estimated_end: SLOT_TIMES[dropSlot].end,
-        notes: dropNote.trim() || null,
-        absence_type: null,
-      });
-      if (error) throw error;
-      toast.success('Affectation créée');
-      setDropOpen(false);
-      setDropTarget(null);
-      fetchPlanning();
-    } catch (err) {
-      console.error('Error creating planning:', err);
-      toast.error("Impossible de créer l'affectation");
-    } finally {
-      setDropSaving(false);
-    }
-  };
-
   // ─── cell "+" add ─────────────────────────────────────────────────────────────
 
   const openAdd = (workerId: string, dateStr: string) => {
     setAddTarget({ workerId, date: dateStr });
     setAddMode('client');
     setAddWorksite(paletteWorksiteId || '');
-    setAddSlot('day');
+    setAddSlot('none');
     setAddAbsenceType('');
     setAddNote('');
     setAddOpen(true);
@@ -381,14 +410,15 @@ export default function AdminPlanning() {
     setAddSaving(true);
     try {
       const isAbs = addMode === 'absence';
+      const times = isAbs ? { start: null, end: null } : timesForChoice(addSlot);
       const { error } = await supabase.from('planning').insert({
         company_id: user.company_id,
         created_by: user.id,
         user_id: addTarget.workerId,
         worksite_id: isAbs ? null : addWorksite,
         work_date: addTarget.date,
-        estimated_start: isAbs ? null : SLOT_TIMES[addSlot].start,
-        estimated_end: isAbs ? null : SLOT_TIMES[addSlot].end,
+        estimated_start: times.start,
+        estimated_end: times.end,
         notes: addNote.trim() || null,
         absence_type: isAbs ? addAbsenceType : null,
       });
@@ -397,6 +427,7 @@ export default function AdminPlanning() {
       setAddOpen(false);
       setAddTarget(null);
       fetchPlanning();
+      fetchTodayStatus();
     } catch (err) {
       console.error('Error adding planning:', err);
       toast.error("Impossible d'enregistrer");
@@ -405,12 +436,80 @@ export default function AdminPlanning() {
     }
   };
 
+  // ─── worker status menu (présent / absences) ────────────────────────────────
+
+  const setPresent = async (workerId: string) => {
+    if (!user?.company_id) return;
+    try {
+      const { error } = await supabase.from('planning').delete()
+        .eq('company_id', user.company_id).eq('user_id', workerId)
+        .gte('work_date', todayStr).not('absence_type', 'is', null);
+      if (error) throw error;
+      toast.success('Salarié repassé présent');
+      fetchPlanning();
+      fetchTodayStatus();
+    } catch (err) {
+      console.error('Error setting present:', err);
+      toast.error('Impossible de mettre à jour le statut');
+    }
+  };
+
+  const askAbsence = (worker: User, type: string) => {
+    setPendingAbsence({ worker, type });
+    setAbsEndDate('');
+  };
+
+  const confirmAbsence = async () => {
+    if (!user?.company_id || !pendingAbsence) return;
+    const endStr = absEndDate || format(addDays(new Date(), HORIZON_DAYS), 'yyyy-MM-dd');
+    if (endStr < todayStr) { toast.error("La date de fin est avant aujourd'hui"); return; }
+    setAbsSaving(true);
+    try {
+      // Build the covered days (one planning absence row per day — no DB column needed).
+      const dates: string[] = [];
+      let d = new Date(`${todayStr}T00:00:00`);
+      const endD = new Date(`${endStr}T00:00:00`);
+      let guard = 0;
+      while (d <= endD && guard < 400) { dates.push(format(d, 'yyyy-MM-dd')); d = addDays(d, 1); guard++; }
+
+      // Replace any existing absence from today forward, then insert the new run.
+      const { error: delErr } = await supabase.from('planning').delete()
+        .eq('company_id', user.company_id).eq('user_id', pendingAbsence.worker.id)
+        .gte('work_date', todayStr).not('absence_type', 'is', null);
+      if (delErr) throw delErr;
+
+      const rows = dates.map((dt) => ({
+        company_id: user.company_id,
+        created_by: user.id,
+        user_id: pendingAbsence.worker.id,
+        worksite_id: null,
+        work_date: dt,
+        estimated_start: null,
+        estimated_end: null,
+        notes: null,
+        absence_type: pendingAbsence.type,
+      }));
+      const { error } = await supabase.from('planning').insert(rows);
+      if (error) throw error;
+
+      toast.success(absEndDate ? "Absence enregistrée jusqu'à la date de fin" : 'Absence enregistrée (jusqu\'au retour "Présent")');
+      setPendingAbsence(null);
+      fetchPlanning();
+      fetchTodayStatus();
+    } catch (err) {
+      console.error('Error saving absence:', err);
+      toast.error("Impossible d'enregistrer l'absence (si « Repos », ta base la refuse peut-être encore)");
+    } finally {
+      setAbsSaving(false);
+    }
+  };
+
   // ─── bubble edit ──────────────────────────────────────────────────────────────
 
   const openEdit = (p: PlanningWithWorksite) => {
     setEditing(p);
     setEditWorksiteId(p.worksite_id || '');
-    setEditSlot(slotFromTimes(p.estimated_start, p.estimated_end));
+    setEditSlot(slotFromTimesOrNull(p.estimated_start, p.estimated_end) ?? 'none');
     setEditAbsenceType(p.absence_type || '');
     setEditNote(p.notes || '');
     const ws = p.worksite;
@@ -431,22 +530,24 @@ export default function AdminPlanning() {
     if (isAbs && !editAbsenceType) { toast.error("Choisissez le type d'absence"); return; }
     setSavingEdit(true);
     try {
+      const times = timesForChoice(editSlot);
       const payload = isAbs
         ? { absence_type: editAbsenceType, notes: editNote.trim() || null }
         : {
             worksite_id: editWorksiteId,
-            estimated_start: SLOT_TIMES[editSlot].start,
-            estimated_end: SLOT_TIMES[editSlot].end,
+            estimated_start: times.start,
+            estimated_end: times.end,
             notes: editNote.trim() || null,
           };
       const { error } = await supabase.from('planning').update(payload).eq('id', editing.id).eq('company_id', user.company_id);
       if (error) throw error;
-      toast.success('Affectation modifiée');
+      toast.success('Modifié');
       closeEdit();
       fetchPlanning();
+      fetchTodayStatus();
     } catch (err) {
       console.error('Error saving affectation:', err);
-      toast.error("Impossible de modifier l'affectation");
+      toast.error('Impossible de modifier');
     } finally {
       setSavingEdit(false);
     }
@@ -458,9 +559,10 @@ export default function AdminPlanning() {
     try {
       const { error } = await supabase.from('planning').delete().eq('id', editing.id).eq('company_id', user.company_id);
       if (error) throw error;
-      toast.success('Affectation supprimée');
+      toast.success('Supprimé');
       closeEdit();
       fetchPlanning();
+      fetchTodayStatus();
     } catch (err) {
       console.error('Error deleting affectation:', err);
       toast.error('Impossible de supprimer');
@@ -513,7 +615,6 @@ export default function AdminPlanning() {
     }
   };
 
-  // Delete the worksite only if it's an empty shell (no entries, no other planning).
   const deleteWorksite = async () => {
     if (!user?.company_id || !editing?.worksite_id) return;
     const worksiteId = editing.worksite_id;
@@ -525,12 +626,11 @@ export default function AdminPlanning() {
       ]);
       if (e1) throw e1;
       if (e2) throw e2;
-      const others = (planCount || 0) - 1; // exclude the current assignment
+      const others = (planCount || 0) - 1;
       if ((entryCount || 0) > 0 || others > 0) {
         toast.error('Chantier utilisé ailleurs. Archivez-le plutôt.');
         return;
       }
-      // remove this assignment then the empty worksite
       await supabase.from('planning').delete().eq('id', editing.id).eq('company_id', user.company_id);
       const { error } = await supabase.from('worksites').delete().eq('id', worksiteId).eq('company_id', user.company_id);
       if (error) throw error;
@@ -571,7 +671,7 @@ export default function AdminPlanning() {
       setClientOpen(false);
       resetClient();
       await fetchData();
-      if (data?.id) setPaletteWorksiteId(data.id); // ready to drag immediately
+      if (data?.id) setPaletteWorksiteId(data.id);
     } catch (err) {
       console.error('Error creating client:', err);
       toast.error('Impossible de créer le client');
@@ -588,14 +688,7 @@ export default function AdminPlanning() {
     setWSaving(true);
     try {
       const { error } = await supabase.functions.invoke('invite-worker', {
-        body: {
-          email: wEmail,
-          first_name: wFirst,
-          last_name: wLast,
-          phone: wPhone || null,
-          company_id: user.company_id,
-          role: 'worker',
-        },
+        body: { email: wEmail, first_name: wFirst, last_name: wLast, phone: wPhone || null, company_id: user.company_id, role: 'worker' },
       });
       if (error) throw error;
       toast.success('Invitation envoyée');
@@ -613,12 +706,20 @@ export default function AdminPlanning() {
   // ─── derived ──────────────────────────────────────────────────────────────────
 
   const weekDays = Array.from({ length: 6 }, (_, i) => addDays(currentWeekStart, i));
-  const todayStr = format(new Date(), 'yyyy-MM-dd');
 
-  const getPlanningForDay = (workerId: string, dateStr: string) =>
+  // Chantiers of a day, chronological (slot asc, no-slot last), then by creation.
+  const chantiersForDay = (workerId: string, dateStr: string) =>
     planning
-      .filter(p => p.user_id === workerId && p.work_date === dateStr)
-      .sort((a, b) => (a.estimated_start || '99:99').localeCompare(b.estimated_start || '99:99'));
+      .filter(p => p.user_id === workerId && p.work_date === dateStr && !p.absence_type)
+      .sort((a, b) => {
+        const sa = a.estimated_start || '99:99:99';
+        const sb = b.estimated_start || '99:99:99';
+        if (sa !== sb) return sa.localeCompare(sb);
+        return (a.created_at || '').localeCompare(b.created_at || '');
+      });
+
+  const absencesForDay = (workerId: string, dateStr: string) =>
+    planning.filter(p => p.user_id === workerId && p.work_date === dateStr && p.absence_type);
 
   const chantierLegend = useMemo(() => {
     const map = new Map<string, { id: string; name: string; dot: string }>();
@@ -642,7 +743,7 @@ export default function AdminPlanning() {
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h2 className="text-2xl font-bold">Planning</h2>
-          <p className="text-muted-foreground text-sm">Glisse un client sur une case · clique une bulle pour modifier</p>
+          <p className="text-muted-foreground text-sm">Glisse un client sur une case · clique une bulle pour préciser</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" onClick={() => setClientOpen(true)}>
@@ -700,7 +801,7 @@ export default function AdminPlanning() {
               <table className="w-full border-collapse">
                 <thead>
                   <tr className="border-b bg-muted/50">
-                    <th className="p-3 text-left font-medium w-32 sm:w-40 sticky left-0 bg-muted/50 z-10">Salarié</th>
+                    <th className="p-3 text-left font-medium w-36 sm:w-44 sticky left-0 bg-muted/50 z-10">Salarié</th>
                     {weekDays.map(day => {
                       const isToday = format(day, 'yyyy-MM-dd') === todayStr;
                       return (
@@ -716,29 +817,63 @@ export default function AdminPlanning() {
                   {workers.length === 0 ? (
                     <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">Aucun salarié — utilise « Nouveau salarié »</td></tr>
                   ) : (
-                    workers.map(worker => (
-                      <tr key={worker.id} className="border-b last:border-b-0">
-                        <td className="p-3 font-medium sticky left-0 bg-background z-10">
-                          <div className="flex items-center gap-2">
-                            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-muted text-[11px] font-bold text-muted-foreground shrink-0">
-                              {((worker.first_name?.[0] || '') + (worker.last_name?.[0] || '')).toUpperCase()}
-                            </span>
-                            <span className="truncate text-sm">{worker.first_name} {worker.last_name}</span>
-                          </div>
-                        </td>
-                        {weekDays.map(day => {
-                          const dateStr = format(day, 'yyyy-MM-dd');
-                          const dayPlanning = getPlanningForDay(worker.id, dateStr);
-                          return (
-                            <DroppableCell key={dateStr} workerId={worker.id} dateStr={dateStr} isToday={dateStr === todayStr} onAdd={openAdd}>
-                              {dayPlanning.map(p => (
-                                <DraggableBubble key={p.id} p={p} palette={paletteFor(p).chip} real={realForPlanning(p)} onEdit={openEdit} />
-                              ))}
-                            </DroppableCell>
-                          );
-                        })}
-                      </tr>
-                    ))
+                    workers.map(worker => {
+                      const abs = todayAbsence.get(worker.id);
+                      return (
+                        <tr key={worker.id} className="border-b last:border-b-0">
+                          <td className="p-3 align-top sticky left-0 bg-background z-10">
+                            <div className="flex items-center gap-2">
+                              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-muted text-[11px] font-bold text-muted-foreground shrink-0">
+                                {((worker.first_name?.[0] || '') + (worker.last_name?.[0] || '')).toUpperCase()}
+                              </span>
+                              <span className="truncate text-sm font-medium">{worker.first_name} {worker.last_name}</span>
+                            </div>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <button className="mt-1 ml-9 inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground">
+                                  <span className={`h-2 w-2 rounded-full ${abs ? 'bg-orange-500' : 'bg-green-500'}`} />
+                                  {abs ? (ABSENCE_STATUS_LABELS[abs] || abs) : 'Présent'}
+                                </button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="start">
+                                <DropdownMenuItem onClick={() => setPresent(worker.id)}>
+                                  <span className="h-2 w-2 rounded-full bg-green-500 mr-2" /> Présent
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                {ABSENCE_OPTIONS.map(opt => (
+                                  <DropdownMenuItem key={opt.value} onClick={() => askAbsence(worker, opt.value)}>
+                                    <span className="h-2 w-2 rounded-full bg-orange-500 mr-2" /> {opt.label}
+                                  </DropdownMenuItem>
+                                ))}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </td>
+                          {weekDays.map(day => {
+                            const dateStr = format(day, 'yyyy-MM-dd');
+                            const absences = absencesForDay(worker.id, dateStr);
+                            const chantiers = chantiersForDay(worker.id, dateStr);
+                            return (
+                              <DroppableCell key={dateStr} workerId={worker.id} dateStr={dateStr} isToday={dateStr === todayStr} hasAbsence={absences.length > 0} onAdd={openAdd}>
+                                {absences.map(p => (
+                                  <div
+                                    key={p.id}
+                                    onClick={() => openEdit(p)}
+                                    style={HATCH_STYLE}
+                                    className="cursor-pointer rounded border border-slate-300 text-slate-600 text-[11px] font-semibold uppercase tracking-wide px-2 py-1 text-center"
+                                    title="Absence — cliquer pour modifier"
+                                  >
+                                    {ABSENCE_LABELS[p.absence_type!] || p.absence_type}
+                                  </div>
+                                ))}
+                                {chantiers.map(p => (
+                                  <DraggableBubble key={p.id} p={p} palette={paletteFor(p).chip} real={realForPlanning(p)} onEdit={openEdit} />
+                                ))}
+                              </DroppableCell>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -758,35 +893,7 @@ export default function AdminPlanning() {
         </DragOverlay>
       </DndContext>
 
-      {/* Drop slot picker */}
-      <Dialog open={dropOpen} onOpenChange={(o) => { setDropOpen(o); if (!o) setDropTarget(null); }}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>{worksites.find(w => w.id === dropTarget?.worksiteId)?.client_name || 'Affectation'}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 pt-2">
-            <div className="space-y-2">
-              <Label>Créneau</Label>
-              <div className="grid grid-cols-3 gap-2">
-                {SLOT_ORDER.map(s => (
-                  <Button key={s} type="button" variant={dropSlot === s ? 'default' : 'outline'} onClick={() => setDropSlot(s)}>
-                    {SLOT_LABELS[s]}
-                  </Button>
-                ))}
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Note (optionnel)</Label>
-              <Textarea value={dropNote} onChange={(e) => setDropNote(e.target.value)} rows={2} placeholder="Infos complémentaires…" />
-            </div>
-            <Button className="w-full" onClick={confirmDrop} disabled={dropSaving}>
-              {dropSaving && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Créer l'affectation
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Cell "+" add (client or absence) */}
+      {/* Cell "+" add (client or absence on a specific day) */}
       <Dialog open={addOpen} onOpenChange={(o) => { setAddOpen(o); if (!o) setAddTarget(null); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>Ajouter au planning</DialogTitle></DialogHeader>
@@ -808,9 +915,9 @@ export default function AdminPlanning() {
                 </div>
                 <div className="space-y-2">
                   <Label>Créneau</Label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {SLOT_ORDER.map(s => (
-                      <Button key={s} type="button" variant={addSlot === s ? 'default' : 'outline'} onClick={() => setAddSlot(s)}>{SLOT_LABELS[s]}</Button>
+                  <div className="grid grid-cols-2 gap-2">
+                    {SLOT_OPTIONS.map(s => (
+                      <Button key={s.value} type="button" variant={addSlot === s.value ? 'default' : 'outline'} onClick={() => setAddSlot(s.value)}>{s.label}</Button>
                     ))}
                   </div>
                 </div>
@@ -821,9 +928,7 @@ export default function AdminPlanning() {
                 <Select value={addAbsenceType} onValueChange={setAddAbsenceType}>
                   <SelectTrigger><SelectValue placeholder="Choisir le type" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="conge">Congé</SelectItem>
-                    <SelectItem value="maladie">Maladie</SelectItem>
-                    <SelectItem value="intemperie">Intempérie</SelectItem>
+                    {ABSENCE_OPTIONS.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -839,6 +944,30 @@ export default function AdminPlanning() {
         </DialogContent>
       </Dialog>
 
+      {/* Absence end-date (from status menu) */}
+      <Dialog open={!!pendingAbsence} onOpenChange={(o) => { if (!o) setPendingAbsence(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>
+              {pendingAbsence ? `${ABSENCE_STATUS_LABELS[pendingAbsence.type] || pendingAbsence.type} — ${pendingAbsence.worker.first_name}` : ''}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <p className="text-sm text-muted-foreground">
+              Début aujourd'hui ({format(new Date(), 'EEEE d MMMM', { locale: fr })}).
+            </p>
+            <div className="space-y-1">
+              <Label>Date de fin (optionnel)</Label>
+              <Input type="date" min={todayStr} value={absEndDate} onChange={(e) => setAbsEndDate(e.target.value)} />
+              <p className="text-xs text-muted-foreground">Laisser vide si indéterminé</p>
+            </div>
+            <Button className="w-full" onClick={confirmAbsence} disabled={absSaving}>
+              {absSaving && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer l'absence
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Bubble edit */}
       <Dialog open={!!editing} onOpenChange={(o) => { if (!o) closeEdit(); }}>
         <DialogContent className="max-w-md max-h-[88vh] overflow-y-auto">
@@ -847,7 +976,6 @@ export default function AdminPlanning() {
           </DialogHeader>
           {editing && (
             <div className="space-y-5 pt-2">
-              {/* Affectation */}
               <div className="space-y-3">
                 {editing.absence_type ? (
                   <div className="space-y-2">
@@ -855,9 +983,7 @@ export default function AdminPlanning() {
                     <Select value={editAbsenceType} onValueChange={setEditAbsenceType}>
                       <SelectTrigger><SelectValue placeholder="Type" /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="conge">Congé</SelectItem>
-                        <SelectItem value="maladie">Maladie</SelectItem>
-                        <SelectItem value="intemperie">Intempérie</SelectItem>
+                        {ABSENCE_OPTIONS.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>
@@ -874,9 +1000,9 @@ export default function AdminPlanning() {
                     </div>
                     <div className="space-y-2">
                       <Label>Créneau</Label>
-                      <div className="grid grid-cols-3 gap-2">
-                        {SLOT_ORDER.map(s => (
-                          <Button key={s} type="button" size="sm" variant={editSlot === s ? 'default' : 'outline'} onClick={() => setEditSlot(s)}>{SLOT_LABELS[s]}</Button>
+                      <div className="grid grid-cols-2 gap-2">
+                        {SLOT_OPTIONS.map(s => (
+                          <Button key={s.value} type="button" size="sm" variant={editSlot === s.value ? 'default' : 'outline'} onClick={() => setEditSlot(s.value)}>{s.label}</Button>
                         ))}
                       </div>
                     </div>
@@ -896,7 +1022,6 @@ export default function AdminPlanning() {
                 </div>
               </div>
 
-              {/* Réel déclaré */}
               {!editing.absence_type && (
                 <div className="rounded-lg border bg-muted/30 p-3 text-sm">
                   <p className="font-medium mb-1">Heures déclarées</p>
@@ -911,7 +1036,6 @@ export default function AdminPlanning() {
                 </div>
               )}
 
-              {/* Chantier (worksite) management */}
               {!editing.absence_type && editing.worksite_id && (
                 <div className="space-y-3 border-t pt-4">
                   <p className="font-medium text-sm flex items-center gap-2"><Building2 className="h-4 w-4" /> Modifier ce chantier</p>
