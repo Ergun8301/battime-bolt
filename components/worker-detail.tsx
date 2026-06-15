@@ -15,7 +15,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   CalendarRange, Clock, Utensils, MapPin, FileSpreadsheet, FileText, Loader2,
-  Settings2, Archive, ArchiveRestore, Trash2, AlertTriangle,
+  Settings2, Archive, ArchiveRestore, Trash2,
 } from 'lucide-react';
 import { format, parseISO, isSameDay, subDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -52,7 +52,6 @@ export default function WorkerDetailDialog({ worker, onOpenChange, onChanged }: 
   const [missing, setMissing] = useState<string[]>([]);
 
   // management
-  const [showManage, setShowManage] = useState(false);
   const [mFirst, setMFirst] = useState('');
   const [mLast, setMLast] = useState('');
   const [mPhone, setMPhone] = useState('');
@@ -64,7 +63,6 @@ export default function WorkerDetailDialog({ worker, onOpenChange, onChanged }: 
     if (!worker) return;
     const t = new Date();
     setRange({ from: t, to: t });
-    setShowManage(false);
     setMFirst(worker.first_name || '');
     setMLast(worker.last_name || '');
     setMPhone(worker.phone || '');
@@ -235,44 +233,39 @@ export default function WorkerDetailDialog({ worker, onOpenChange, onChanged }: 
           </DialogTitle>
         </DialogHeader>
 
-        {/* Management */}
-        <div className="rounded-lg border p-3 space-y-3">
-          <button type="button" onClick={() => setShowManage((v) => !v)} className="flex items-center gap-2 text-sm font-medium">
-            <Settings2 className="h-4 w-4" /> Gérer le salarié
-          </button>
-          {showManage && worker && (
-            <div className="space-y-3">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <div className="space-y-1"><Label className="text-xs">Prénom</Label><Input value={mFirst} onChange={(e) => setMFirst(e.target.value)} /></div>
-                <div className="space-y-1"><Label className="text-xs">Nom</Label><Input value={mLast} onChange={(e) => setMLast(e.target.value)} /></div>
-                <div className="space-y-1"><Label className="text-xs">Téléphone</Label><Input value={mPhone} onChange={(e) => setMPhone(e.target.value)} /></div>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button size="sm" onClick={saveWorker} disabled={mSaving}>
-                  {mSaving && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer
-                </Button>
-                <Button size="sm" variant="outline" onClick={toggleArchive} disabled={mBusy}>
-                  {worker.is_active ? <Archive className="h-4 w-4 mr-1" /> : <ArchiveRestore className="h-4 w-4 mr-1" />}
-                  {worker.is_active ? 'Archiver' : 'Réactiver'}
-                </Button>
-                <Button size="sm" variant="ghost" className="text-destructive" onClick={deleteWorker} disabled={mBusy} title="Supprimer (seulement si aucune donnée)">
-                  <Trash2 className="h-4 w-4 mr-1" /> Supprimer
-                </Button>
-              </div>
+        {/* Management — always visible */}
+        {worker && (
+          <div className="rounded-lg border p-3 space-y-3">
+            <p className="flex items-center gap-2 text-sm font-medium"><Settings2 className="h-4 w-4" /> Gérer le salarié</p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div className="space-y-1"><Label className="text-xs">Prénom</Label><Input value={mFirst} onChange={(e) => setMFirst(e.target.value)} /></div>
+              <div className="space-y-1"><Label className="text-xs">Nom</Label><Input value={mLast} onChange={(e) => setMLast(e.target.value)} /></div>
+              <div className="space-y-1"><Label className="text-xs">Téléphone</Label><Input value={mPhone} onChange={(e) => setMPhone(e.target.value)} /></div>
             </div>
-          )}
-        </div>
-
-        {/* Missing days (planning-based) */}
-        {missing.length > 0 && (
-          <div className="rounded-lg border border-orange-200 bg-orange-50 p-3 text-sm">
-            <p className="font-medium text-orange-800 flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4" /> {missing.length} jour{missing.length > 1 ? 's' : ''} planifié{missing.length > 1 ? 's' : ''} non déclaré{missing.length > 1 ? 's' : ''}
-            </p>
-            <p className="text-orange-700 mt-1">
-              {missing.map((d) => format(parseISO(d), 'EEE d MMM', { locale: fr })).join(', ')}
-            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" onClick={saveWorker} disabled={mSaving}>
+                {mSaving && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer
+              </Button>
+              <Button size="sm" variant="outline" onClick={toggleArchive} disabled={mBusy}>
+                {worker.is_active ? <Archive className="h-4 w-4 mr-1" /> : <ArchiveRestore className="h-4 w-4 mr-1" />}
+                {worker.is_active ? 'Archiver' : 'Réactiver'}
+              </Button>
+              <Button size="sm" variant="ghost" className="text-destructive" onClick={deleteWorker} disabled={mBusy} title="Supprimer (seulement si aucune donnée)">
+                <Trash2 className="h-4 w-4 mr-1" /> Supprimer
+              </Button>
+            </div>
           </div>
+        )}
+
+        {/* Missing days — discreet inline line */}
+        {missing.length > 0 && (
+          <p className="flex items-start gap-2 text-sm">
+            <span className="mt-1.5 h-2 w-2 rounded-full bg-red-500 shrink-0" />
+            <span>
+              <span className="font-medium">{missing.length} jour{missing.length > 1 ? 's' : ''} non déclaré{missing.length > 1 ? 's' : ''}</span>
+              <span className="text-muted-foreground"> · {missing.map((d) => format(parseISO(d), 'EEE d MMM', { locale: fr })).join(', ')}</span>
+            </span>
+          </p>
         )}
 
         {/* Period controls */}
