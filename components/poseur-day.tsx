@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
 import { TimeEntry, Worksite, Planning } from '@/lib/types';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -43,6 +43,13 @@ function calculateTotalMinutes(start: string, end: string, breakMins: number): n
   let e = eh * 60 + em;
   if (e < s) e += 24 * 60;
   return Math.max(0, e - s - breakMins);
+}
+
+// Suggested default break: 1h once the worked span exceeds 6h, else none.
+function suggestBreak(start: string, end: string): number {
+  if (!start || !end) return 0;
+  const span = calculateTotalMinutes(start, end, 0);
+  return span > 360 ? 60 : 0;
 }
 
 // Step a HH:MM string by ±delta minutes, wrapping within a 24h day.
@@ -162,7 +169,8 @@ export default function PoseurDay() {
   const [newCity, setNewCity] = useState('');
   const [startTime, setStartTime] = useState('07:30');
   const [endTime, setEndTime] = useState('');
-  const [breakMinutes, setBreakMinutes] = useState('60');
+  const [breakMinutes, setBreakMinutes] = useState('0');
+  const [breakTouched, setBreakTouched] = useState(false);
   const [mealAllowance, setMealAllowance] = useState(true);
   const [observation, setObservation] = useState('');
   const [saving, setSaving] = useState(false);
@@ -331,6 +339,12 @@ export default function PoseurDay() {
       }
     }
   }, [user, today, syncPendingEntries]);
+
+  // Smart default break: propose 1h once the day exceeds 6h (until the worker adjusts).
+  useEffect(() => {
+    if (!addDialogOpen || breakTouched) return;
+    if (startTime && endTime) setBreakMinutes(String(suggestBreak(startTime, endTime)));
+  }, [startTime, endTime, addDialogOpen, breakTouched]);
 
   // ─── Add entry ─────────────────────────────────────────────────────────────
 
@@ -627,9 +641,25 @@ export default function PoseurDay() {
     setNewCity('');
     setStartTime('07:30');
     setEndTime('');
-    setBreakMinutes('60');
+    setBreakMinutes('0');
+    setBreakTouched(false);
     setMealAllowance(true);
     setObservation('');
+  };
+
+  const openBlankAdd = () => { resetForm(); setAddDialogOpen(true); };
+
+  const openAddFromPlanning = (p: Planning & { worksite: Worksite }) => {
+    setNewEntryType('existing');
+    setSelectedWorksiteId(p.worksite_id || '');
+    setNewClientName(''); setNewProductType(''); setNewCity('');
+    setStartTime(p.estimated_start ? p.estimated_start.substring(0, 5) : '07:30');
+    setEndTime(p.estimated_end ? p.estimated_end.substring(0, 5) : '');
+    setBreakMinutes('0');
+    setBreakTouched(false);
+    setMealAllowance(true);
+    setObservation('');
+    setAddDialogOpen(true);
   };
 
   const handlePickSuggestion = (ws: Worksite) => {
@@ -648,6 +678,13 @@ export default function PoseurDay() {
   const hasDrafts = entries.some(e => e.status === 'draft') || pendingEntries.length > 0;
   const allSubmitted = entries.length > 0 && entries.every(e => e.status !== 'draft') && pendingEntries.length === 0;
   const isEmpty = entries.length === 0 && pendingEntries.length === 0;
+  // Planned chantiers not yet declared — stay actionable, drop off once declared.
+  const declaredWorksiteIds = new Set<string>([
+    ...(entries.map(e => e.worksite_id).filter(Boolean) as string[]),
+    ...pendingEntries.map(e => e.worksite_id),
+  ]);
+  const plannedTodo = planning.filter(p => p.worksite_id && !declaredWorksiteIds.has(p.worksite_id));
+  const mealCount = entries.filter(e => e.meal_allowance).length + pendingEntries.filter(e => e.meal_allowance).length;
 
   // Anti-duplicate: existing worksites whose name resembles what's being typed.
   const typedNorm = normalizeStr(newClientName);
@@ -716,44 +753,50 @@ export default function PoseurDay() {
                 {entries.length + pendingEntries.length} intervention{entries.length + pendingEntries.length > 1 ? 's' : ''}
               </p>
               <p className="text-sm opacity-90">
-                {[...entries, ...pendingEntries.map(p => ({ meal_allowance: p.meal_allowance }))].filter(e => e.meal_allowance).length} panier{entries.filter(e => e.meal_allowance).length > 1 ? 's' : ''}
+                {mealCount} panier{mealCount > 1 ? 's' : ''}
               </p>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Planning preview */}
-      {planning.length > 0 && entries.length === 0 && pendingEntries.length === 0 && (
-        <Card className="border-primary/20 bg-primary/5">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Chantiers prévus aujourd'hui</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {planning.map((p) => (
-              <div key={p.id} className="flex items-center gap-2 text-sm">
-                <MapPin className="h-4 w-4 text-muted-foreground" />
-                <span className="font-medium">{p.worksite?.client_name}</span>
-                {p.worksite?.city && <span className="text-muted-foreground">- {p.worksite.city}</span>}
-                {p.estimated_start && p.estimated_end && (
-                  <Badge variant="outline" className="ml-auto">
-                    {p.estimated_start.substring(0, 5)}-{p.estimated_end.substring(0, 5)}
-                  </Badge>
-                )}
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+      {/* Planned chantiers still to declare — tap to declare (pre-filled) */}
+      {plannedTodo.length > 0 && (
+        <div className="space-y-2">
+          {plannedTodo.map((p) => (
+            <Card
+              key={p.id}
+              className="border-primary/30 bg-primary/5 cursor-pointer transition-colors hover:bg-primary/10"
+              onClick={() => openAddFromPlanning(p)}
+            >
+              <CardContent className="py-4 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground">Chantier prévu</p>
+                  <p className="font-semibold truncate flex items-center gap-1">
+                    <MapPin className="h-4 w-4 text-muted-foreground shrink-0" />
+                    {p.worksite?.client_name}{p.worksite?.city ? ` — ${p.worksite.city}` : ''}
+                  </p>
+                  {p.estimated_start && p.estimated_end && (
+                    <p className="text-xs text-muted-foreground mt-0.5">Prévu {p.estimated_start.substring(0, 5)}–{p.estimated_end.substring(0, 5)}</p>
+                  )}
+                </div>
+                <span className="flex items-center gap-1 text-primary font-medium text-sm shrink-0">
+                  <Plus className="h-4 w-4" /> Déclarer mes heures
+                </span>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       )}
 
-      {/* Empty state */}
-      {isEmpty && (
+      {/* Empty state — only when nothing planned and nothing declared */}
+      {isEmpty && plannedTodo.length === 0 && (
         <Card>
           <CardContent className="py-8 text-center">
             <Clock className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
             <p className="text-muted-foreground">Aucune intervention aujourd'hui</p>
             <div className="flex flex-col sm:flex-row gap-2 justify-center mt-4">
-              <Button onClick={() => setAddDialogOpen(true)}>
+              <Button onClick={openBlankAdd}>
                 <Plus className="h-4 w-4 mr-2" />
                 Ajouter une intervention
               </Button>
@@ -766,6 +809,21 @@ export default function PoseurDay() {
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {/* Planned but nothing declared yet — still offer a free entry / copy */}
+      {isEmpty && plannedTodo.length > 0 && (
+        <div className="flex flex-col sm:flex-row gap-2">
+          <Button variant="outline" className="flex-1" onClick={openBlankAdd}>
+            <Plus className="h-4 w-4 mr-2" /> Autre intervention
+          </Button>
+          {isOnline && (
+            <Button variant="outline" className="flex-1" onClick={handleCopyYesterday} disabled={copyingYesterday}>
+              {copyingYesterday ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Copy className="h-4 w-4 mr-2" />}
+              Copier la journée d'hier
+            </Button>
+          )}
+        </div>
       )}
 
       {/* Server entries */}
@@ -883,7 +941,7 @@ export default function PoseurDay() {
             <Button
               variant="outline"
               className="flex-1"
-              onClick={() => setAddDialogOpen(true)}
+              onClick={openBlankAdd}
             >
               <Plus className="h-4 w-4 mr-2" />
               Ajouter
@@ -911,7 +969,7 @@ export default function PoseurDay() {
           {allSubmitted && (
             <div className="text-center py-2">
               <p className="text-sm text-muted-foreground">Journée envoyée ✓</p>
-              <Button variant="outline" size="sm" className="mt-2" onClick={() => setAddDialogOpen(true)}>
+              <Button variant="outline" size="sm" className="mt-2" onClick={openBlankAdd}>
                 <Plus className="h-4 w-4 mr-2" />
                 Ajouter une intervention
               </Button>
@@ -991,7 +1049,7 @@ export default function PoseurDay() {
               </p>
             )}
 
-            <BreakStepper value={breakMinutes} onChange={setBreakMinutes} />
+            <BreakStepper value={breakMinutes} onChange={(v) => { setBreakTouched(true); setBreakMinutes(v); }} />
 
             <div className="flex items-center space-x-2">
               <Checkbox id="meal" checked={mealAllowance} onCheckedChange={(v) => setMealAllowance(v as boolean)} />
