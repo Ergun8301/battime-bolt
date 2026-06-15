@@ -16,17 +16,17 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import {
   ChevronLeft, ChevronRight, Plus, Trash2, Loader2, AlertTriangle, GripVertical, Check,
-  UserPlus, Building2, Archive, CalendarRange, Download, FileSpreadsheet, FileText,
+  UserPlus, Users, Building2, Archive, CalendarRange, Download, FileSpreadsheet, FileText,
   Bell, Clock, Mail, RefreshCw, X, Pencil,
 } from 'lucide-react';
 import {
   DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
-  useDraggable, useDroppable, type DragEndEvent, type DragStartEvent,
+  useDraggable, useDroppable, pointerWithin, rectIntersection,
+  type DragEndEvent, type DragStartEvent, type CollisionDetection,
 } from '@dnd-kit/core';
 import { format, startOfWeek, endOfWeek, addDays, addWeeks, subWeeks, subDays, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
-import { Slot, SLOT_TIMES, SLOT_SHORT, slotFromTimesOrNull } from '@/lib/slot';
 import { computeMissingDays } from '@/lib/work-status';
 import { exportEntriesToExcel, exportEntriesToPDF } from '@/lib/export-utils';
 import WorkerDetailDialog from '@/components/worker-detail';
@@ -61,18 +61,6 @@ const ABSENCE_OPTIONS: { value: string; label: string }[] = [
   { value: 'repos', label: 'Repos' },
 ];
 
-type SlotChoice = Slot | 'none';
-const SLOT_OPTIONS: { value: SlotChoice; label: string }[] = [
-  { value: 'none', label: 'Aucun' },
-  { value: 'morning', label: 'Matin' },
-  { value: 'afternoon', label: 'Après-midi' },
-  { value: 'day', label: 'Journée' },
-];
-// The affectation popup offers only the 3 real slots (no precise hours).
-const SLOT_3 = SLOT_OPTIONS.filter((s) => s.value !== 'none');
-const timesForChoice = (c: SlotChoice) =>
-  c === 'none' ? { start: null, end: null } : { start: SLOT_TIMES[c].start, end: SLOT_TIMES[c].end };
-
 // Open-ended absences are materialised up to this horizon (no DB column to store
 // an "until further notice" flag); the secretary ends them by setting "Présent".
 const HORIZON_DAYS = 90;
@@ -83,6 +71,29 @@ const HATCH_STYLE = {
 };
 // Trick to let a child `h-full` stretch to the table-row height.
 const CELL_HEIGHT_HACK = { height: '1px' } as const;
+
+// Fixed hour (rare RDV) is stored in estimated_start with estimated_end empty.
+const fixedHourOf = (p: PlanningWithWorksite): string | null =>
+  p.estimated_start && !p.estimated_end ? p.estimated_start.slice(0, 5) : null;
+
+// Display order inside a cell: manual position first (asc), then creation order.
+const orderCmp = (a: PlanningWithWorksite, b: PlanningWithWorksite) => {
+  const pa = a.position ?? null;
+  const pb = b.position ?? null;
+  if (pa !== null && pb !== null) return pa - pb;
+  if (pa !== null) return -1;
+  if (pb !== null) return 1;
+  return (a.created_at || '').localeCompare(b.created_at || '');
+};
+
+// Prefer a bubble droppable under the pointer, else fall back to the cell.
+const collisionDetection: CollisionDetection = (args) => {
+  const within = pointerWithin(args);
+  const bub = within.find((c) => String(c.id).startsWith('bub|'));
+  if (bub) return [bub];
+  if (within.length) return within;
+  return rectIntersection(args);
+};
 
 function hashStr(s: string): number {
   let h = 0;
@@ -98,21 +109,21 @@ const realKey = (userId: string, date: string, worksiteId: string | null) => `${
 // ─── compact one-line chantier bubble ──────────────────────────────────────────
 
 function BubbleContent({ p, palette, real }: { p: PlanningWithWorksite; palette: string; real?: RealAgg }) {
-  const slot = slotFromTimesOrNull(p.estimated_start, p.estimated_end);
+  const hour = fixedHourOf(p);
   return (
     <div className={`${palette} border rounded px-2 py-1 text-[11px] leading-tight flex items-center gap-1`}>
+      {hour && <span className="shrink-0 rounded border bg-white/70 px-1 font-semibold tabular-nums">{hour}</span>}
       <span className="font-medium truncate flex-1">{p.worksite?.client_name || 'Chantier'}</span>
-      {real ? (
+      {real && (
         <span className="flex items-center gap-0.5 text-green-700 shrink-0">
           <Check className="h-3 w-3" />{formatMinutes(real.minutes)}
         </span>
-      ) : slot ? (
-        <span className="opacity-70 shrink-0">{SLOT_SHORT[slot]}</span>
-      ) : null}
+      )}
     </div>
   );
 }
 
+// A bubble is both draggable (move/reorder) and droppable (reorder target).
 function DraggableBubble({
   p, palette, real, onEdit,
 }: {
@@ -121,17 +132,20 @@ function DraggableBubble({
   real?: RealAgg;
   onEdit: (p: PlanningWithWorksite) => void;
 }) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: p.id, data: { type: 'move' } });
+  const drag = useDraggable({ id: p.id, data: { type: 'move' } });
+  const drop = useDroppable({ id: `bub|${p.id}` });
   return (
-    <div
-      ref={setNodeRef}
-      {...attributes}
-      {...listeners}
-      onClick={(e) => { e.stopPropagation(); onEdit(p); }}
-      className={`cursor-grab active:cursor-grabbing ${isDragging ? 'opacity-40' : ''}`}
-      title="Glisser pour déplacer · cliquer pour modifier"
-    >
-      <BubbleContent p={p} palette={palette} real={real} />
+    <div ref={drop.setNodeRef} className={drop.isOver ? 'rounded ring-2 ring-primary/50' : ''}>
+      <div
+        ref={drag.setNodeRef}
+        {...drag.attributes}
+        {...drag.listeners}
+        onClick={(e) => { e.stopPropagation(); onEdit(p); }}
+        className={`cursor-grab active:cursor-grabbing ${drag.isDragging ? 'opacity-40' : ''}`}
+        title="Glisser pour déplacer / réordonner · cliquer pour modifier"
+      >
+        <BubbleContent p={p} palette={palette} real={real} />
+      </div>
     </div>
   );
 }
@@ -156,7 +170,6 @@ function PaletteChip({ worksite }: { worksite: Worksite }) {
   );
 }
 
-// A droppable day cell whose content fills the full row height.
 function DroppableCell({
   workerId, dateStr, isToday, children,
 }: {
@@ -195,15 +208,17 @@ export default function AdminPlanning() {
   const [companyName, setCompanyName] = useState('');
   const [loading, setLoading] = useState(true);
   const [currentWeekStart, setCurrentWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }));
+  const [positionWarned, setPositionWarned] = useState(false);
 
   // client to place on the planning
   const [paletteWorksiteId, setPaletteWorksiteId] = useState<string>('');
   const [activeDrag, setActiveDrag] = useState<{ id: string; type: 'move' | 'new'; worksiteId?: string } | null>(null);
 
-  // status popup (5 buttons) — opened from a worker cell (today) or an absence day
+  // disponibilité popup + worker fiche + management screens
   const [statusTarget, setStatusTarget] = useState<{ worker: User; fromStr: string } | null>(null);
-  // worker fiche
   const [ficheWorker, setFicheWorker] = useState<User | null>(null);
+  const [salariesOpen, setSalariesOpen] = useState(false);
+  const [clientsListOpen, setClientsListOpen] = useState(false);
 
   // team export
   const [exportOpen, setExportOpen] = useState(false);
@@ -219,20 +234,19 @@ export default function AdminPlanning() {
   const [addTarget, setAddTarget] = useState<{ workerId: string; date: string } | null>(null);
   const [addMode, setAddMode] = useState<'client' | 'absence'>('client');
   const [addWorksite, setAddWorksite] = useState('');
-  const [addSlot, setAddSlot] = useState<SlotChoice>('none');
   const [addAbsenceType, setAddAbsenceType] = useState('');
   const [addNote, setAddNote] = useState('');
   const [addSaving, setAddSaving] = useState(false);
 
   // affectation (bubble) edit dialog
   const [editing, setEditing] = useState<PlanningWithWorksite | null>(null);
-  const [editSlot, setEditSlot] = useState<SlotChoice>('none');
+  const [editHour, setEditHour] = useState('');
   const [editNote, setEditNote] = useState('');
-  // separate client fiche (permanent data) + clients list
-  const [clientFiche, setClientFiche] = useState<Worksite | null>(null);
-  const [clientsListOpen, setClientsListOpen] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [deletingEdit, setDeletingEdit] = useState(false);
+
+  // separate client fiche (permanent data)
+  const [clientFiche, setClientFiche] = useState<Worksite | null>(null);
   const [wsName, setWsName] = useState('');
   const [wsProduct, setWsProduct] = useState('');
   const [wsPhone, setWsPhone] = useState('');
@@ -308,7 +322,7 @@ export default function AdminPlanning() {
     }
   }, [user?.company_id, currentWeekStart]);
 
-  // Today's absence (status libellé) + planned-but-undeclared dots + company + invitations.
+  // Today's absence (cell tint) + planned-but-undeclared dots + company + invitations.
   const fetchExtras = useCallback(async () => {
     if (!user?.company_id) return;
     const windowStart = format(subDays(new Date(), WINDOW_DAYS), 'yyyy-MM-dd');
@@ -378,7 +392,11 @@ export default function AdminPlanning() {
   const realForPlanning = (p: PlanningWithWorksite): RealAgg | undefined =>
     p.absence_type ? undefined : realMap.get(realKey(p.user_id, p.work_date, p.worksite_id));
 
-  // ─── drag (move existing / create new directly, no popup) ───────────────────
+  const cellChantiers = useCallback((workerId: string, dateStr: string) =>
+    planning.filter(p => p.user_id === workerId && p.work_date === dateStr && !p.absence_type).sort(orderCmp),
+  [planning]);
+
+  // ─── drag: create (palette) · move (cross-cell) · reorder (within cell) ──────
 
   const handleDragStart = (e: DragStartEvent) => {
     const data = e.active.data.current as { type?: 'move' | 'new'; worksiteId?: string } | undefined;
@@ -390,16 +408,28 @@ export default function AdminPlanning() {
     setActiveDrag(null);
     const { active, over } = e;
     if (!over || !user?.company_id) return;
-    const [workerId, dateStr] = String(over.id).split('|');
 
-    // Create directly on drop. Slot/notes set later via the bubble.
+    const overId = String(over.id);
+    let tWorker: string;
+    let tDate: string;
+    let overBubbleId: string | null = null;
+    if (overId.startsWith('bub|')) {
+      overBubbleId = overId.slice(4);
+      const ob = planning.find(p => p.id === overBubbleId);
+      if (!ob) return;
+      tWorker = ob.user_id; tDate = ob.work_date;
+    } else {
+      [tWorker, tDate] = overId.split('|');
+    }
+
+    // Create a new affectation by dropping a client.
     if (drag?.type === 'new') {
       if (!drag.worksiteId) return;
       const ws = worksites.find(w => w.id === drag.worksiteId);
       try {
         const { error } = await supabase.from('planning').insert({
-          company_id: user.company_id, created_by: user.id, user_id: workerId, worksite_id: drag.worksiteId,
-          work_date: dateStr, estimated_start: null, estimated_end: null, notes: null, absence_type: null,
+          company_id: user.company_id, created_by: user.id, user_id: tWorker, worksite_id: drag.worksiteId,
+          work_date: tDate, estimated_start: null, estimated_end: null, notes: null, absence_type: null,
         });
         if (error) throw error;
         toast.success(`${ws?.client_name || 'Client'} ajouté au planning`);
@@ -411,20 +441,50 @@ export default function AdminPlanning() {
       return;
     }
 
-    // Move an existing assignment.
-    const planningId = String(active.id);
-    const item = planning.find(p => p.id === planningId);
-    if (!item || (item.user_id === workerId && item.work_date === dateStr)) return;
+    // Move / reorder an existing chantier bubble.
+    const draggedId = String(active.id);
+    const dragged = planning.find(p => p.id === draggedId);
+    if (!dragged || dragged.absence_type) return;
+    if (overBubbleId === draggedId) return;
+
+    const sameCell = dragged.user_id === tWorker && dragged.work_date === tDate;
+    const target = cellChantiers(tWorker, tDate).filter(p => p.id !== draggedId);
+    const idx = overBubbleId ? (() => { const i = target.findIndex(p => p.id === overBubbleId); return i < 0 ? target.length : i; })() : target.length;
+    const newIds = target.map(p => p.id);
+    newIds.splice(idx, 0, draggedId);
+    if (sameCell && newIds.every((id, i) => (cellChantiers(tWorker, tDate)[i]?.id === id))) return; // no change
+
+    // Optimistic reorder/move.
     const prev = planning;
-    setPlanning(ps => ps.map(p => p.id === planningId ? { ...p, user_id: workerId, work_date: dateStr } : p));
+    setPlanning(ps => ps.map(p => {
+      if (p.id === draggedId) return { ...p, user_id: tWorker, work_date: tDate, position: newIds.indexOf(draggedId) };
+      const i = newIds.indexOf(p.id);
+      return i >= 0 ? { ...p, position: i } : p;
+    }));
+
+    // 1) The move itself (user_id/date) must work even without the position column.
+    if (!sameCell) {
+      const { error } = await supabase.from('planning').update({ user_id: tWorker, work_date: tDate })
+        .eq('id', draggedId).eq('company_id', user.company_id);
+      if (error) {
+        console.error('Error moving planning:', error);
+        toast.error('Impossible de déplacer');
+        setPlanning(prev);
+        return;
+      }
+    }
+    // 2) Persist the order (best-effort — requires the `position` column).
     try {
-      const { error } = await supabase.from('planning').update({ user_id: workerId, work_date: dateStr })
-        .eq('id', planningId).eq('company_id', user.company_id);
-      if (error) throw error;
+      const results = await Promise.all(newIds.map((id, i) =>
+        supabase.from('planning').update({ position: i }).eq('id', id).eq('company_id', user.company_id)));
+      const bad = results.find(r => r.error);
+      if (bad?.error) throw bad.error;
     } catch (err) {
-      console.error('Error moving planning:', err);
-      toast.error('Impossible de déplacer');
-      setPlanning(prev);
+      console.warn('Order not persisted (run the SQL migration?):', err);
+      if (!positionWarned) {
+        toast('Astuce : exécute le SQL « position » pour mémoriser l\'ordre des chantiers.');
+        setPositionWarned(true);
+      }
     }
   };
 
@@ -434,7 +494,6 @@ export default function AdminPlanning() {
     setAddTarget({ workerId, date: dateStr });
     setAddMode('client');
     setAddWorksite(paletteWorksiteId || '');
-    setAddSlot('none');
     setAddAbsenceType('');
     setAddNote('');
     setAddOpen(true);
@@ -448,11 +507,10 @@ export default function AdminPlanning() {
     setAddSaving(true);
     try {
       const isAbs = addMode === 'absence';
-      const times = isAbs ? { start: null, end: null } : timesForChoice(addSlot);
       const { error } = await supabase.from('planning').insert({
         company_id: user.company_id, created_by: user.id, user_id: addTarget.workerId,
         worksite_id: isAbs ? null : addWorksite, work_date: addTarget.date,
-        estimated_start: times.start, estimated_end: times.end,
+        estimated_start: null, estimated_end: null,
         notes: addNote.trim() || null, absence_type: isAbs ? addAbsenceType : null,
       });
       if (error) throw error;
@@ -473,7 +531,6 @@ export default function AdminPlanning() {
   const fromLabel = (fromStr: string) =>
     fromStr === todayStr ? "aujourd'hui" : format(new Date(`${fromStr}T00:00:00`), 'EEEE d MMMM', { locale: fr });
 
-  // Mark present FROM a given date (clears absence rows on/after it).
   const setPresentFrom = async (workerId: string, fromStr: string) => {
     if (!user?.company_id) return;
     try {
@@ -489,7 +546,6 @@ export default function AdminPlanning() {
     }
   };
 
-  // Choose an absence motif from the status popup → ask for the optional end date.
   const chooseAbsence = (worker: User, type: string, fromStr: string) => {
     setStatusTarget(null);
     setAbsEndDate(undefined);
@@ -503,14 +559,12 @@ export default function AdminPlanning() {
     if (endStr < fromStr) { toast.error('La date de fin est avant le début'); return; }
     setAbsSaving(true);
     try {
-      // One planning absence row per day — no DB column needed.
       const dates: string[] = [];
       let d = new Date(`${fromStr}T00:00:00`);
       const endD = new Date(`${endStr}T00:00:00`);
       let guard = 0;
       while (d <= endD && guard < 400) { dates.push(format(d, 'yyyy-MM-dd')); d = addDays(d, 1); guard++; }
 
-      // Replace any existing absence from the start day forward, then insert the run.
       const { error: delErr } = await supabase.from('planning').delete()
         .eq('company_id', user.company_id).eq('user_id', worker.id)
         .gte('work_date', fromStr).not('absence_type', 'is', null);
@@ -535,7 +589,6 @@ export default function AdminPlanning() {
     }
   };
 
-  // mailto reminder for a worker's undeclared days
   const sendReminder = (worker: User) => {
     const missing = missingByWorker.get(worker.id) || [];
     if (!worker.email) { toast.error(`Pas d'email pour ${worker.first_name}`); return; }
@@ -631,11 +684,12 @@ export default function AdminPlanning() {
 
   const openEdit = (p: PlanningWithWorksite) => {
     setEditing(p);
-    setEditSlot(slotFromTimesOrNull(p.estimated_start, p.estimated_end) ?? 'none');
+    setEditHour(fixedHourOf(p) || '');
     setEditNote(p.notes || '');
   };
 
-  // Open the separate client fiche (permanent data). Closing it returns to the planning.
+  const closeEdit = () => { setEditing(null); };
+
   const openClientFiche = (ws: Worksite | null | undefined) => {
     if (!ws) return;
     setWsName(ws.client_name || '');
@@ -648,15 +702,12 @@ export default function AdminPlanning() {
     setClientFiche(ws);
   };
 
-  const closeEdit = () => { setEditing(null); };
-
   const saveAffectation = async () => {
     if (!user?.company_id || !editing) return;
     setSavingEdit(true);
     try {
-      const times = timesForChoice(editSlot);
       const { error } = await supabase.from('planning').update({
-        estimated_start: times.start, estimated_end: times.end, notes: editNote.trim() || null,
+        estimated_start: editHour ? `${editHour}:00` : null, estimated_end: null, notes: editNote.trim() || null,
       }).eq('id', editing.id).eq('company_id', user.company_id);
       if (error) throw error;
       toast.success('Enregistré');
@@ -687,16 +738,17 @@ export default function AdminPlanning() {
     }
   };
 
+  // ─── client fiche (permanent) ───────────────────────────────────────────────
+
   const saveClientFiche = async () => {
     if (!user?.company_id || !clientFiche) return;
     if (!wsName.trim()) { toast.error('Le nom du client est requis'); return; }
     setSavingWs(true);
     try {
-      const patch = {
+      const { error } = await supabase.from('worksites').update({
         client_name: wsName.trim(), product_type: wsProduct.trim() || null, client_phone: wsPhone.trim() || null,
         city: wsCity.trim() || null, address: wsAddress.trim() || null, description: wsDesc.trim() || null,
-      };
-      const { error } = await supabase.from('worksites').update(patch).eq('id', clientFiche.id).eq('company_id', user.company_id);
+      }).eq('id', clientFiche.id).eq('company_id', user.company_id);
       if (error) throw error;
       toast.success('Fiche client enregistrée');
       fetchData();
@@ -728,7 +780,6 @@ export default function AdminPlanning() {
     }
   };
 
-  // Delete only if nothing is linked to the client; otherwise archive.
   const deleteClientFiche = async () => {
     if (!user?.company_id || !clientFiche) return;
     const worksiteId = clientFiche.id;
@@ -815,16 +866,6 @@ export default function AdminPlanning() {
 
   const weekDays = Array.from({ length: 6 }, (_, i) => addDays(currentWeekStart, i));
 
-  const chantiersForDay = (workerId: string, dateStr: string) =>
-    planning
-      .filter(p => p.user_id === workerId && p.work_date === dateStr && !p.absence_type)
-      .sort((a, b) => {
-        const sa = a.estimated_start || '99:99:99';
-        const sb = b.estimated_start || '99:99:99';
-        if (sa !== sb) return sa.localeCompare(sb);
-        return (a.created_at || '').localeCompare(b.created_at || '');
-      });
-
   const absenceForDay = (workerId: string, dateStr: string) =>
     planning.find(p => p.user_id === workerId && p.work_date === dateStr && p.absence_type);
 
@@ -842,7 +883,6 @@ export default function AdminPlanning() {
 
   const paletteWorksite = worksites.find(w => w.id === paletteWorksiteId) || null;
   const editRealAgg = editing ? realForPlanning(editing) : undefined;
-  const statusMissing = statusTarget ? (missingByWorker.get(statusTarget.worker.id) || []) : [];
 
   if (loading) {
     return <div className="space-y-4"><Skeleton className="h-12 w-full" /><Skeleton className="h-64 w-full" /></div>;
@@ -852,17 +892,14 @@ export default function AdminPlanning() {
     <div className="space-y-4">
       <div>
         <h2 className="text-2xl font-bold">Planning</h2>
-        <p className="text-muted-foreground text-sm">Glisse un client sur une case · clique une case pour ajouter · clique un salarié pour son statut</p>
+        <p className="text-muted-foreground text-sm">Glisse un client sur une case · réordonne les bulles à la main · clique un salarié pour son statut</p>
       </div>
 
-      <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setActiveDrag(null)}>
+      <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setActiveDrag(null)}>
         {/* Action bar */}
         <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card p-2">
-          <Button variant="outline" size="sm" onClick={() => setWorkerOpen(true)}>
-            <UserPlus className="h-4 w-4 mr-1.5" /> Nouveau salarié
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setClientOpen(true)}>
-            <Plus className="h-4 w-4 mr-1.5" /> Nouveau client
+          <Button variant="outline" size="sm" onClick={() => setSalariesOpen(true)}>
+            <Users className="h-4 w-4 mr-1.5" /> Salariés
           </Button>
           <Button variant="outline" size="sm" onClick={() => setClientsListOpen(true)}>
             <Building2 className="h-4 w-4 mr-1.5" /> Clients
@@ -893,7 +930,7 @@ export default function AdminPlanning() {
           </div>
         </div>
 
-        {/* Pending invitations (kept from the old dashboard) */}
+        {/* Pending invitations */}
         {pendingInvites.length > 0 && (
           <div className="mt-3 space-y-1.5 rounded-lg border border-yellow-200 bg-yellow-50/50 p-2.5">
             <p className="text-xs font-semibold text-muted-foreground flex items-center gap-1"><Clock className="h-3.5 w-3.5" /> Invitations en attente</p>
@@ -946,52 +983,40 @@ export default function AdminPlanning() {
                 </thead>
                 <tbody>
                   {workers.length === 0 ? (
-                    <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">Aucun salarié — utilise « Nouveau salarié »</td></tr>
+                    <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">Aucun salarié — bouton « Salariés »</td></tr>
                   ) : (
                     workers.map(worker => {
-                      const abs = todayAbsence.get(worker.id);
-                      const missingCount = (missingByWorker.get(worker.id) || []).length;
+                      const absToday = todayAbsence.get(worker.id);
+                      const isLate = (missingByWorker.get(worker.id) || []).length > 0;
                       const fullName = `${worker.first_name} ${worker.last_name}`;
                       return (
                         <tr key={worker.id} className="border-b last:border-b-0">
-                          {/* Whole left cell opens the status popup */}
-                          <td style={CELL_HEIGHT_HACK} className="p-0 align-top sticky left-0 bg-background z-10">
+                          {/* Left cell: name (bold) + discreet red dot if undeclared days. */}
+                          <td style={absToday ? { ...CELL_HEIGHT_HACK, ...HATCH_STYLE } : CELL_HEIGHT_HACK} className="p-0 align-top sticky left-0 bg-background z-10">
                             <button
                               onClick={() => setStatusTarget({ worker, fromStr: todayStr })}
-                              className="flex h-full w-full items-start gap-2 p-3 text-left hover:bg-muted/50 transition-colors"
-                              title="Cliquer pour le statut et la fiche"
+                              className="flex h-full w-full flex-col justify-center gap-0.5 p-3 text-left hover:bg-muted/50 transition-colors"
+                              title="Cliquer pour le statut / la disponibilité"
                             >
-                              <span className="relative shrink-0">
-                                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-muted text-[11px] font-bold text-muted-foreground">
-                                  {((worker.first_name?.[0] || '') + (worker.last_name?.[0] || '')).toUpperCase()}
-                                </span>
-                                {missingCount > 0 && (
-                                  <span
-                                    className="absolute -top-1.5 -right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-orange-500 px-1 text-[9px] font-bold text-white"
-                                    title={`${missingCount} jour(s) planifié(s) non déclaré(s)`}
-                                  >
-                                    {missingCount}
-                                  </span>
-                                )}
+                              <span className="flex items-center gap-1.5">
+                                <span className="font-bold text-sm truncate">{fullName}</span>
+                                {isLate && <span className="h-2 w-2 rounded-full bg-red-500 shrink-0" title="Des jours planifiés ne sont pas déclarés" />}
                               </span>
-                              <span className="min-w-0 flex-1">
-                                <span className="block truncate text-sm font-medium">{fullName}</span>
-                                <span className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-                                  <span className={`h-2 w-2 rounded-full ${abs ? 'bg-orange-500' : 'bg-green-500'}`} />
-                                  {abs ? (ABSENCE_STATUS_LABELS[abs] || abs) : 'Présent'}
+                              {absToday && (
+                                <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                                  {ABSENCE_LABELS[absToday] || absToday}
                                 </span>
-                              </span>
+                              )}
                             </button>
                           </td>
 
                           {weekDays.map(day => {
                             const dateStr = format(day, 'yyyy-MM-dd');
                             const absence = absenceForDay(worker.id, dateStr);
-                            const chantiers = chantiersForDay(worker.id, dateStr);
+                            const chantiers = cellChantiers(worker.id, dateStr);
                             return (
                               <DroppableCell key={dateStr} workerId={worker.id} dateStr={dateStr} isToday={dateStr === todayStr}>
                                 {absence ? (
-                                  // Absence fills the whole cell; click → status popup from that day.
                                   <button
                                     style={HATCH_STYLE}
                                     onClick={() => setStatusTarget({ worker, fromStr: dateStr })}
@@ -1001,7 +1026,6 @@ export default function AdminPlanning() {
                                     {ABSENCE_LABELS[absence.absence_type!] || absence.absence_type}
                                   </button>
                                 ) : (
-                                  // Empty / chantier cell: whole area clickable to add.
                                   <div
                                     className="group flex h-full min-h-[3.25rem] cursor-pointer flex-col gap-1 rounded p-0.5 hover:bg-muted/40 transition-colors"
                                     onClick={() => openAdd(worker.id, dateStr)}
@@ -1040,7 +1064,7 @@ export default function AdminPlanning() {
         </DragOverlay>
       </DndContext>
 
-      {/* Status popup — 5 clear buttons + fiche + reminder */}
+      {/* Disponibilité popup — 5 buttons + fiche link */}
       <Dialog open={!!statusTarget} onOpenChange={(o) => { if (!o) setStatusTarget(null); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
@@ -1058,28 +1082,57 @@ export default function AdminPlanning() {
                   <span className="h-3 w-3 rounded-full bg-orange-500 mr-3" /> {opt.label}
                 </Button>
               ))}
-
-              <div className="border-t pt-2 mt-1 space-y-1">
-                <Button variant="ghost" className="w-full justify-start" onClick={() => { setFicheWorker(statusTarget.worker); setStatusTarget(null); }}>
-                  <Clock className="h-4 w-4 mr-2" /> Voir les heures / la fiche
+              <div className="border-t pt-2 mt-1">
+                <Button variant="ghost" className="w-full justify-start text-muted-foreground" onClick={() => { setFicheWorker(statusTarget.worker); setStatusTarget(null); }}>
+                  <Clock className="h-4 w-4 mr-2" /> Voir la fiche / les heures
                 </Button>
-                {statusMissing.length > 0 && (
-                  <Button variant="ghost" className="w-full justify-start text-orange-600 hover:text-orange-700" onClick={() => sendReminder(statusTarget.worker)}>
-                    <Bell className="h-4 w-4 mr-2" /> Envoyer un rappel ({statusMissing.length} jour{statusMissing.length > 1 ? 's' : ''} non déclaré{statusMissing.length > 1 ? 's' : ''})
-                  </Button>
-                )}
               </div>
             </div>
           )}
         </DialogContent>
       </Dialog>
 
-      {/* Worker fiche (detailed) */}
+      {/* Worker fiche (detailed — management + hours) */}
       <WorkerDetailDialog
         worker={ficheWorker}
         onOpenChange={(open) => { if (!open) setFicheWorker(null); }}
         onChanged={() => { fetchData(); refresh(); }}
       />
+
+      {/* Salariés — administrative management */}
+      <Dialog open={salariesOpen} onOpenChange={setSalariesOpen}>
+        <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>Salariés</DialogTitle></DialogHeader>
+          <div className="pt-1">
+            <Button variant="outline" size="sm" className="mb-2 w-full" onClick={() => { setSalariesOpen(false); setWorkerOpen(true); }}>
+              <UserPlus className="h-4 w-4 mr-1.5" /> Nouveau salarié
+            </Button>
+            <div className="space-y-1">
+              {workers.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-6 text-center">Aucun salarié</p>
+              ) : (
+                workers.map(w => {
+                  const miss = (missingByWorker.get(w.id) || []).length;
+                  return (
+                    <div key={w.id} className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
+                      <button className="flex min-w-0 flex-1 items-center gap-1.5 text-left" onClick={() => { setSalariesOpen(false); setFicheWorker(w); }}>
+                        <span className="font-medium truncate">{w.first_name} {w.last_name}</span>
+                        {miss > 0 && <span className="h-2 w-2 rounded-full bg-red-500 shrink-0" title={`${miss} jour(s) non déclaré(s)`} />}
+                      </button>
+                      {miss > 0 && (
+                        <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => sendReminder(w)} title="Envoyer un rappel">
+                          <Bell className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                      <Pencil className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Team export */}
       <Dialog open={exportOpen} onOpenChange={setExportOpen}>
@@ -1117,25 +1170,15 @@ export default function AdminPlanning() {
               <Button type="button" variant={addMode === 'absence' ? 'default' : 'outline'} className="flex-1" onClick={() => setAddMode('absence')}>Absence</Button>
             </div>
             {addMode === 'client' ? (
-              <>
-                <div className="space-y-2">
-                  <Label>Client</Label>
-                  <Select value={addWorksite} onValueChange={setAddWorksite}>
-                    <SelectTrigger><SelectValue placeholder="Choisir un client" /></SelectTrigger>
-                    <SelectContent>
-                      {worksites.map(ws => <SelectItem key={ws.id} value={ws.id}>{ws.client_name}{ws.city ? ` — ${ws.city}` : ''}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Créneau</Label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {SLOT_OPTIONS.map(s => (
-                      <Button key={s.value} type="button" variant={addSlot === s.value ? 'default' : 'outline'} onClick={() => setAddSlot(s.value)}>{s.label}</Button>
-                    ))}
-                  </div>
-                </div>
-              </>
+              <div className="space-y-2">
+                <Label>Client</Label>
+                <Select value={addWorksite} onValueChange={setAddWorksite}>
+                  <SelectTrigger><SelectValue placeholder="Choisir un client" /></SelectTrigger>
+                  <SelectContent>
+                    {worksites.map(ws => <SelectItem key={ws.id} value={ws.id}>{ws.client_name}{ws.city ? ` — ${ws.city}` : ''}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
             ) : (
               <div className="space-y-2">
                 <Label className="flex items-center gap-1"><AlertTriangle className="h-4 w-4 text-orange-500" /> Motif d'absence</Label>
@@ -1232,14 +1275,11 @@ export default function AdminPlanning() {
                 )}
               </div>
 
-              {/* Slot — Matin / Après-midi / Journée (no precise hours) */}
+              {/* Optional fixed hour (rare RDV) */}
               <div className="space-y-2">
-                <Label>Créneau</Label>
-                <div className="grid grid-cols-3 gap-2">
-                  {SLOT_3.map(s => (
-                    <Button key={s.value} type="button" size="sm" variant={editSlot === s.value ? 'default' : 'outline'} onClick={() => setEditSlot(s.value)}>{s.label}</Button>
-                  ))}
-                </div>
+                <Label>Heure (facultatif)</Label>
+                <Input type="time" value={editHour} onChange={(e) => setEditHour(e.target.value)} className="w-36" />
+                <p className="text-xs text-muted-foreground">Seulement pour un RDV à heure fixe. Sinon, l'ordre des bulles suffit.</p>
               </div>
 
               {/* Note for the poseur */}
@@ -1313,24 +1353,29 @@ export default function AdminPlanning() {
       <Dialog open={clientsListOpen} onOpenChange={setClientsListOpen}>
         <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Clients</DialogTitle></DialogHeader>
-          <div className="space-y-1 pt-1">
-            {worksites.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-6 text-center">Aucun client — utilise « Nouveau client »</p>
-            ) : (
-              worksites.map(ws => (
-                <button
-                  key={ws.id}
-                  onClick={() => { setClientsListOpen(false); openClientFiche(ws); }}
-                  className="flex w-full items-center justify-between gap-2 rounded-md border px-3 py-2 text-left text-sm hover:bg-muted/50 transition-colors"
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate font-medium">{ws.client_name}</span>
-                    {(ws.city || ws.product_type) && <span className="block truncate text-xs text-muted-foreground">{[ws.product_type, ws.city].filter(Boolean).join(' · ')}</span>}
-                  </span>
-                  <Pencil className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                </button>
-              ))
-            )}
+          <div className="pt-1">
+            <Button variant="outline" size="sm" className="mb-2 w-full" onClick={() => { setClientsListOpen(false); setClientOpen(true); }}>
+              <Plus className="h-4 w-4 mr-1.5" /> Nouveau client
+            </Button>
+            <div className="space-y-1">
+              {worksites.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-6 text-center">Aucun client</p>
+              ) : (
+                worksites.map(ws => (
+                  <button
+                    key={ws.id}
+                    onClick={() => { setClientsListOpen(false); openClientFiche(ws); }}
+                    className="flex w-full items-center justify-between gap-2 rounded-md border px-3 py-2 text-left text-sm hover:bg-muted/50 transition-colors"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate font-medium">{ws.client_name}</span>
+                      {(ws.city || ws.product_type) && <span className="block truncate text-xs text-muted-foreground">{[ws.product_type, ws.city].filter(Boolean).join(' · ')}</span>}
+                    </span>
+                    <Pencil className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  </button>
+                ))
+              )}
+            </div>
           </div>
         </DialogContent>
       </Dialog>
