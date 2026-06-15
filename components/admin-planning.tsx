@@ -899,7 +899,7 @@ export default function AdminPlanning() {
             <Building2 className="h-4 w-4 mr-1.5" /> Clients
           </Button>
           <Select value={paletteWorksiteId} onValueChange={setPaletteWorksiteId}>
-            <SelectTrigger className="h-9 w-[220px]"><SelectValue placeholder="Glisser un client sur le planning…" /></SelectTrigger>
+            <SelectTrigger className="h-9 w-[190px]"><SelectValue placeholder="Choisir un client" /></SelectTrigger>
             <SelectContent>
               {worksites.map(ws => (
                 <SelectItem key={ws.id} value={ws.id}>{ws.client_name}{ws.city ? ` — ${ws.city}` : ''}</SelectItem>
@@ -1079,6 +1079,11 @@ export default function AdminPlanning() {
                   <span className="h-3 w-3 rounded-full bg-orange-500 mr-3" /> {opt.label}
                 </Button>
               ))}
+              <div className="border-t pt-2 mt-1">
+                <Button variant="ghost" className="w-full justify-start text-muted-foreground" onClick={() => { setFicheWorker(statusTarget.worker); setStatusTarget(null); }}>
+                  <FileText className="h-4 w-4 mr-2" /> Feuille d'heures
+                </Button>
+              </div>
             </div>
           )}
         </DialogContent>
@@ -1233,9 +1238,9 @@ export default function AdminPlanning() {
             <DialogTitle>{editing?.worksite?.client_name || 'Intervention'}</DialogTitle>
           </DialogHeader>
           {editing && (
-            <div className="space-y-4 pt-1">
+            <div className="space-y-3 pt-1">
               {/* Client (read-only) + link to the separate fiche */}
-              <div className="rounded-lg border bg-muted/30 p-3 flex items-start justify-between gap-2">
+              <div className="rounded-lg border bg-muted/30 p-2.5 flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="text-base font-semibold truncate">{editing.worksite?.client_name || 'Client'}</p>
                   {(editing.worksite?.address || editing.worksite?.city) && (
@@ -1252,38 +1257,36 @@ export default function AdminPlanning() {
               </div>
 
               {/* Optional fixed hour (rare RDV) */}
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <Label>Heure (facultatif)</Label>
-                <Input type="time" value={editHour} onChange={(e) => setEditHour(e.target.value)} className="w-36" />
-                <p className="text-xs text-muted-foreground">Seulement pour un RDV à heure fixe. Sinon, l'ordre des bulles suffit.</p>
+                <div className="flex items-center gap-2">
+                  <Input type="time" value={editHour} onChange={(e) => setEditHour(e.target.value)} className="w-32" />
+                  <span className="text-xs text-muted-foreground">Seulement pour un RDV à heure fixe.</span>
+                </div>
               </div>
 
               {/* Note for the poseur */}
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <Label>Note pour le poseur</Label>
-                <Textarea value={editNote} onChange={(e) => setEditNote(e.target.value)} rows={2} placeholder="Ex : code portail 1234, prendre la grande échelle, attention au chien…" />
-                <p className="text-xs text-muted-foreground">Consigne visible par le poseur sur son mobile.</p>
+                <Textarea value={editNote} onChange={(e) => setEditNote(e.target.value)} rows={2} placeholder="Ex : code portail 1234, attention au chien…" />
               </div>
 
               {/* Real hours (read-only) */}
-              <div className="rounded-lg border bg-muted/30 p-3 text-sm">
-                <p className="font-medium mb-1">Heures déclarées</p>
+              <div className="rounded-lg border bg-muted/30 p-2.5 text-sm">
+                <span className="font-medium">Heures déclarées : </span>
                 {editRealAgg ? (
-                  <div className="flex items-center gap-2 text-green-700">
-                    <Check className="h-4 w-4" />
-                    <span>{editRealAgg.start?.substring(0, 5)}–{editRealAgg.end?.substring(0, 5)} · <strong>{formatMinutes(editRealAgg.minutes)} réelles</strong>{editRealAgg.count > 1 ? ` (${editRealAgg.count} saisies)` : ''}</span>
-                  </div>
+                  <span className="text-green-700">{editRealAgg.start?.substring(0, 5)}–{editRealAgg.end?.substring(0, 5)} · <strong>{formatMinutes(editRealAgg.minutes)} réelles</strong>{editRealAgg.count > 1 ? ` (${editRealAgg.count} saisies)` : ''}</span>
                 ) : (
-                  <p className="text-muted-foreground">Pas encore déclaré par le salarié</p>
+                  <span className="text-muted-foreground">pas encore déclaré</span>
                 )}
               </div>
 
-              <div className="flex flex-col gap-2">
-                <Button onClick={saveAffectation} disabled={savingEdit}>
+              <div className="flex gap-2">
+                <Button className="flex-1" onClick={saveAffectation} disabled={savingEdit}>
                   {savingEdit && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer
                 </Button>
                 <Button variant="outline" className="text-destructive" onClick={deleteAffectation} disabled={deletingEdit}>
-                  {deletingEdit ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Trash2 className="h-4 w-4 mr-2" />} Retirer du planning
+                  {deletingEdit ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Trash2 className="h-4 w-4 mr-2" />} Retirer
                 </Button>
               </div>
             </div>
