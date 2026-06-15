@@ -17,7 +17,7 @@ import { Textarea } from '@/components/ui/textarea';
 import {
   ChevronLeft, ChevronRight, Plus, Trash2, Loader2, AlertTriangle, GripVertical, Check,
   UserPlus, Building2, Archive, CalendarRange, Download, FileSpreadsheet, FileText,
-  Bell, Clock, Mail, RefreshCw, X,
+  Bell, Clock, Mail, RefreshCw, X, Pencil,
 } from 'lucide-react';
 import {
   DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
@@ -68,6 +68,8 @@ const SLOT_OPTIONS: { value: SlotChoice; label: string }[] = [
   { value: 'afternoon', label: 'Après-midi' },
   { value: 'day', label: 'Journée' },
 ];
+// The affectation popup offers only the 3 real slots (no precise hours).
+const SLOT_3 = SLOT_OPTIONS.filter((s) => s.value !== 'none');
 const timesForChoice = (c: SlotChoice) =>
   c === 'none' ? { start: null, end: null } : { start: SLOT_TIMES[c].start, end: SLOT_TIMES[c].end };
 
@@ -222,11 +224,13 @@ export default function AdminPlanning() {
   const [addNote, setAddNote] = useState('');
   const [addSaving, setAddSaving] = useState(false);
 
-  // bubble edit dialog
+  // affectation (bubble) edit dialog
   const [editing, setEditing] = useState<PlanningWithWorksite | null>(null);
-  const [editWorksiteId, setEditWorksiteId] = useState('');
   const [editSlot, setEditSlot] = useState<SlotChoice>('none');
   const [editNote, setEditNote] = useState('');
+  // separate client fiche (permanent data) + clients list
+  const [clientFiche, setClientFiche] = useState<Worksite | null>(null);
+  const [clientsListOpen, setClientsListOpen] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [deletingEdit, setDeletingEdit] = useState(false);
   const [wsName, setWsName] = useState('');
@@ -623,40 +627,44 @@ export default function AdminPlanning() {
     }
   };
 
-  // ─── bubble edit (chantier) ─────────────────────────────────────────────────
+  // ─── affectation popup (this day only) ──────────────────────────────────────
 
   const openEdit = (p: PlanningWithWorksite) => {
     setEditing(p);
-    setEditWorksiteId(p.worksite_id || '');
     setEditSlot(slotFromTimesOrNull(p.estimated_start, p.estimated_end) ?? 'none');
     setEditNote(p.notes || '');
-    const ws = p.worksite;
-    setWsName(ws?.client_name || '');
-    setWsProduct(ws?.product_type || '');
-    setWsPhone(ws?.client_phone || '');
-    setWsCity(ws?.city || '');
-    setWsAddress(ws?.address || '');
-    setWsDesc(ws?.description || '');
+  };
+
+  // Open the separate client fiche (permanent data). Closing it returns to the planning.
+  const openClientFiche = (ws: Worksite | null | undefined) => {
+    if (!ws) return;
+    setWsName(ws.client_name || '');
+    setWsProduct(ws.product_type || '');
+    setWsPhone(ws.client_phone || '');
+    setWsCity(ws.city || '');
+    setWsAddress(ws.address || '');
+    setWsDesc(ws.description || '');
+    setEditing(null);
+    setClientFiche(ws);
   };
 
   const closeEdit = () => { setEditing(null); };
 
   const saveAffectation = async () => {
     if (!user?.company_id || !editing) return;
-    if (!editWorksiteId) { toast.error('Choisissez un client'); return; }
     setSavingEdit(true);
     try {
       const times = timesForChoice(editSlot);
       const { error } = await supabase.from('planning').update({
-        worksite_id: editWorksiteId, estimated_start: times.start, estimated_end: times.end, notes: editNote.trim() || null,
+        estimated_start: times.start, estimated_end: times.end, notes: editNote.trim() || null,
       }).eq('id', editing.id).eq('company_id', user.company_id);
       if (error) throw error;
-      toast.success('Modifié');
+      toast.success('Enregistré');
       closeEdit();
       refresh();
     } catch (err) {
       console.error('Error saving affectation:', err);
-      toast.error('Impossible de modifier');
+      toast.error("Impossible d'enregistrer");
     } finally {
       setSavingEdit(false);
     }
@@ -668,60 +676,62 @@ export default function AdminPlanning() {
     try {
       const { error } = await supabase.from('planning').delete().eq('id', editing.id).eq('company_id', user.company_id);
       if (error) throw error;
-      toast.success('Supprimé');
+      toast.success('Retiré du planning');
       closeEdit();
       refresh();
     } catch (err) {
       console.error('Error deleting affectation:', err);
-      toast.error('Impossible de supprimer');
+      toast.error('Impossible de retirer du planning');
     } finally {
       setDeletingEdit(false);
     }
   };
 
-  const saveWorksite = async () => {
-    if (!user?.company_id || !editing?.worksite_id) return;
+  const saveClientFiche = async () => {
+    if (!user?.company_id || !clientFiche) return;
     if (!wsName.trim()) { toast.error('Le nom du client est requis'); return; }
     setSavingWs(true);
     try {
-      const { error } = await supabase.from('worksites').update({
+      const patch = {
         client_name: wsName.trim(), product_type: wsProduct.trim() || null, client_phone: wsPhone.trim() || null,
         city: wsCity.trim() || null, address: wsAddress.trim() || null, description: wsDesc.trim() || null,
-      }).eq('id', editing.worksite_id).eq('company_id', user.company_id);
+      };
+      const { error } = await supabase.from('worksites').update(patch).eq('id', clientFiche.id).eq('company_id', user.company_id);
       if (error) throw error;
-      toast.success('Client modifié');
+      toast.success('Fiche client enregistrée');
       fetchData();
       fetchPlanning();
     } catch (err) {
-      console.error('Error saving worksite:', err);
-      toast.error('Impossible de modifier le client');
+      console.error('Error saving client:', err);
+      toast.error("Impossible d'enregistrer la fiche client");
     } finally {
       setSavingWs(false);
     }
   };
 
-  const archiveWorksite = async () => {
-    if (!user?.company_id || !editing?.worksite_id) return;
+  const archiveClientFiche = async () => {
+    if (!user?.company_id || !clientFiche) return;
     setWsBusy(true);
     try {
       const { error } = await supabase.from('worksites').update({ is_active: false })
-        .eq('id', editing.worksite_id).eq('company_id', user.company_id);
+        .eq('id', clientFiche.id).eq('company_id', user.company_id);
       if (error) throw error;
       toast.success('Client archivé');
-      closeEdit();
+      setClientFiche(null);
       fetchData();
       fetchPlanning();
     } catch (err) {
-      console.error('Error archiving worksite:', err);
+      console.error('Error archiving client:', err);
       toast.error("Impossible d'archiver");
     } finally {
       setWsBusy(false);
     }
   };
 
-  const deleteWorksite = async () => {
-    if (!user?.company_id || !editing?.worksite_id) return;
-    const worksiteId = editing.worksite_id;
+  // Delete only if nothing is linked to the client; otherwise archive.
+  const deleteClientFiche = async () => {
+    if (!user?.company_id || !clientFiche) return;
+    const worksiteId = clientFiche.id;
     setWsBusy(true);
     try {
       const [{ count: entryCount, error: e1 }, { count: planCount, error: e2 }] = await Promise.all([
@@ -730,20 +740,18 @@ export default function AdminPlanning() {
       ]);
       if (e1) throw e1;
       if (e2) throw e2;
-      const others = (planCount || 0) - 1;
-      if ((entryCount || 0) > 0 || others > 0) {
-        toast.error('Client utilisé ailleurs. Archivez-le plutôt.');
+      if ((entryCount || 0) > 0 || (planCount || 0) > 0) {
+        toast.error('Client utilisé dans le planning. Archivez-le plutôt.');
         return;
       }
-      await supabase.from('planning').delete().eq('id', editing.id).eq('company_id', user.company_id);
       const { error } = await supabase.from('worksites').delete().eq('id', worksiteId).eq('company_id', user.company_id);
       if (error) throw error;
       toast.success('Client supprimé');
-      closeEdit();
+      setClientFiche(null);
       fetchData();
       fetchPlanning();
     } catch (err) {
-      console.error('Error deleting worksite:', err);
+      console.error('Error deleting client:', err);
       toast.error('Impossible de supprimer le client');
     } finally {
       setWsBusy(false);
@@ -855,6 +863,9 @@ export default function AdminPlanning() {
           </Button>
           <Button variant="outline" size="sm" onClick={() => setClientOpen(true)}>
             <Plus className="h-4 w-4 mr-1.5" /> Nouveau client
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setClientsListOpen(true)}>
+            <Building2 className="h-4 w-4 mr-1.5" /> Clients
           </Button>
           <Select value={paletteWorksiteId} onValueChange={setPaletteWorksiteId}>
             <SelectTrigger className="h-9 w-[190px]"><SelectValue placeholder="Choisir un client" /></SelectTrigger>
@@ -1196,46 +1207,49 @@ export default function AdminPlanning() {
         </DialogContent>
       </Dialog>
 
-      {/* Bubble edit (chantier) */}
+      {/* Affectation popup — ONLY this day's assignment */}
       <Dialog open={!!editing} onOpenChange={(o) => { if (!o) closeEdit(); }}>
         <DialogContent className="max-w-md max-h-[88vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editing?.worksite?.client_name || 'Intervention'}</DialogTitle>
           </DialogHeader>
           {editing && (
-            <div className="space-y-5 pt-2">
-              <div className="space-y-3">
-                <div className="space-y-2">
-                  <Label>Client</Label>
-                  <Select value={editWorksiteId} onValueChange={setEditWorksiteId}>
-                    <SelectTrigger><SelectValue placeholder="Client" /></SelectTrigger>
-                    <SelectContent>
-                      {worksites.map(ws => <SelectItem key={ws.id} value={ws.id}>{ws.client_name}{ws.city ? ` — ${ws.city}` : ''}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+            <div className="space-y-4 pt-1">
+              {/* Client (read-only) + link to the separate fiche */}
+              <div className="rounded-lg border bg-muted/30 p-3 flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-base font-semibold truncate">{editing.worksite?.client_name || 'Client'}</p>
+                  {(editing.worksite?.address || editing.worksite?.city) && (
+                    <p className="text-xs text-muted-foreground truncate">
+                      {[editing.worksite?.address, editing.worksite?.city].filter(Boolean).join(', ')}
+                    </p>
+                  )}
                 </div>
-                <div className="space-y-2">
-                  <Label>Créneau</Label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {SLOT_OPTIONS.map(s => (
-                      <Button key={s.value} type="button" size="sm" variant={editSlot === s.value ? 'default' : 'outline'} onClick={() => setEditSlot(s.value)}>{s.label}</Button>
-                    ))}
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label>Note</Label>
-                  <Textarea value={editNote} onChange={(e) => setEditNote(e.target.value)} rows={2} />
-                </div>
-                <div className="flex gap-2">
-                  <Button className="flex-1" onClick={saveAffectation} disabled={savingEdit}>
-                    {savingEdit && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer
+                {editing.worksite && (
+                  <Button variant="ghost" size="sm" className="shrink-0 text-muted-foreground" onClick={() => openClientFiche(editing.worksite)}>
+                    <Pencil className="h-3.5 w-3.5 mr-1" /> Fiche client
                   </Button>
-                  <Button variant="outline" className="text-destructive" onClick={deleteAffectation} disabled={deletingEdit}>
-                    {deletingEdit ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                  </Button>
+                )}
+              </div>
+
+              {/* Slot — Matin / Après-midi / Journée (no precise hours) */}
+              <div className="space-y-2">
+                <Label>Créneau</Label>
+                <div className="grid grid-cols-3 gap-2">
+                  {SLOT_3.map(s => (
+                    <Button key={s.value} type="button" size="sm" variant={editSlot === s.value ? 'default' : 'outline'} onClick={() => setEditSlot(s.value)}>{s.label}</Button>
+                  ))}
                 </div>
               </div>
 
+              {/* Note for the poseur */}
+              <div className="space-y-2">
+                <Label>Note pour le poseur</Label>
+                <Textarea value={editNote} onChange={(e) => setEditNote(e.target.value)} rows={2} placeholder="Ex : code portail 1234, prendre la grande échelle, attention au chien…" />
+                <p className="text-xs text-muted-foreground">Consigne visible par le poseur sur son mobile.</p>
+              </div>
+
+              {/* Real hours (read-only) */}
               <div className="rounded-lg border bg-muted/30 p-3 text-sm">
                 <p className="font-medium mb-1">Heures déclarées</p>
                 {editRealAgg ? (
@@ -1248,34 +1262,76 @@ export default function AdminPlanning() {
                 )}
               </div>
 
-              {editing.worksite_id && (
-                <div className="space-y-3 border-t pt-4">
-                  <p className="font-medium text-sm flex items-center gap-2"><Building2 className="h-4 w-4" /> Modifier ce client</p>
-                  <div className="space-y-2"><Label>Nom du client</Label><Input value={wsName} onChange={(e) => setWsName(e.target.value)} /></div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-2"><Label>Type produit</Label><Input value={wsProduct} onChange={(e) => setWsProduct(e.target.value)} /></div>
-                    <div className="space-y-2"><Label>Téléphone</Label><Input value={wsPhone} onChange={(e) => setWsPhone(e.target.value)} /></div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-2"><Label>Ville</Label><Input value={wsCity} onChange={(e) => setWsCity(e.target.value)} /></div>
-                    <div className="space-y-2"><Label>Adresse</Label><Input value={wsAddress} onChange={(e) => setWsAddress(e.target.value)} /></div>
-                  </div>
-                  <div className="space-y-2"><Label>Description</Label><Textarea value={wsDesc} onChange={(e) => setWsDesc(e.target.value)} rows={2} /></div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button size="sm" onClick={saveWorksite} disabled={savingWs}>
-                      {savingWs && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer le client
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={archiveWorksite} disabled={wsBusy}>
-                      <Archive className="h-4 w-4 mr-1" /> Archiver
-                    </Button>
-                    <Button size="sm" variant="ghost" className="text-destructive" onClick={deleteWorksite} disabled={wsBusy} title="Supprimer (seulement si aucune donnée rattachée)">
-                      <Trash2 className="h-4 w-4 mr-1" /> Supprimer
-                    </Button>
-                  </div>
-                </div>
-              )}
+              <div className="flex flex-col gap-2">
+                <Button onClick={saveAffectation} disabled={savingEdit}>
+                  {savingEdit && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer
+                </Button>
+                <Button variant="outline" className="text-destructive" onClick={deleteAffectation} disabled={deletingEdit}>
+                  {deletingEdit ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Trash2 className="h-4 w-4 mr-2" />} Retirer du planning
+                </Button>
+              </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Client fiche — permanent client data (separate) */}
+      <Dialog open={!!clientFiche} onOpenChange={(o) => { if (!o) setClientFiche(null); }}>
+        <DialogContent className="max-w-md max-h-[88vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Building2 className="h-4 w-4" /> Fiche client</DialogTitle>
+          </DialogHeader>
+          {clientFiche && (
+            <div className="space-y-3 pt-1">
+              <div className="space-y-2"><Label>Nom du client</Label><Input value={wsName} onChange={(e) => setWsName(e.target.value)} /></div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-2"><Label>Type de produit</Label><Input value={wsProduct} onChange={(e) => setWsProduct(e.target.value)} /></div>
+                <div className="space-y-2"><Label>Téléphone</Label><Input type="tel" value={wsPhone} onChange={(e) => setWsPhone(e.target.value)} /></div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-2"><Label>Ville</Label><Input value={wsCity} onChange={(e) => setWsCity(e.target.value)} /></div>
+                <div className="space-y-2"><Label>Adresse</Label><Input value={wsAddress} onChange={(e) => setWsAddress(e.target.value)} /></div>
+              </div>
+              <div className="space-y-2"><Label>Description</Label><Textarea value={wsDesc} onChange={(e) => setWsDesc(e.target.value)} rows={2} /></div>
+              <div className="flex flex-wrap gap-2 pt-1">
+                <Button onClick={saveClientFiche} disabled={savingWs}>
+                  {savingWs && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer
+                </Button>
+                <Button variant="outline" onClick={archiveClientFiche} disabled={wsBusy}>
+                  <Archive className="h-4 w-4 mr-1" /> Archiver
+                </Button>
+                <Button variant="ghost" className="text-destructive" onClick={deleteClientFiche} disabled={wsBusy} title="Supprimer (seulement si aucune donnée rattachée)">
+                  <Trash2 className="h-4 w-4 mr-1" /> Supprimer
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Clients list — open any client fiche */}
+      <Dialog open={clientsListOpen} onOpenChange={setClientsListOpen}>
+        <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>Clients</DialogTitle></DialogHeader>
+          <div className="space-y-1 pt-1">
+            {worksites.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-6 text-center">Aucun client — utilise « Nouveau client »</p>
+            ) : (
+              worksites.map(ws => (
+                <button
+                  key={ws.id}
+                  onClick={() => { setClientsListOpen(false); openClientFiche(ws); }}
+                  className="flex w-full items-center justify-between gap-2 rounded-md border px-3 py-2 text-left text-sm hover:bg-muted/50 transition-colors"
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium">{ws.client_name}</span>
+                    {(ws.city || ws.product_type) && <span className="block truncate text-xs text-muted-foreground">{[ws.product_type, ws.city].filter(Boolean).join(' · ')}</span>}
+                  </span>
+                  <Pencil className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                </button>
+              ))
+            )}
+          </div>
         </DialogContent>
       </Dialog>
 
