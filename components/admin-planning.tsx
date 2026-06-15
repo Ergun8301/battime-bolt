@@ -222,6 +222,7 @@ export default function AdminPlanning() {
 
   // team export
   const [exportOpen, setExportOpen] = useState(false);
+  const [exportWorkerOpen, setExportWorkerOpen] = useState(false);
   const [exportWeek, setExportWeek] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [exporting, setExporting] = useState(false);
 
@@ -908,7 +909,10 @@ export default function AdminPlanning() {
           </Select>
           {paletteWorksite && <PaletteChip worksite={paletteWorksite} />}
           <Button variant="outline" size="sm" onClick={() => setExportOpen(true)}>
-            <Download className="h-4 w-4 mr-1.5" /> Exporter
+            <Download className="h-4 w-4 mr-1.5" /> Export équipe
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setExportWorkerOpen(true)}>
+            <FileText className="h-4 w-4 mr-1.5" /> Export salarié
           </Button>
 
           <div className="ml-auto flex items-center gap-2">
@@ -1153,6 +1157,32 @@ export default function AdminPlanning() {
               </Button>
             </div>
             <p className="text-xs text-muted-foreground">Verrouille les saisies exportées (paie).</p>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Export one worker — pick a worker, then their fiche (calendar + Excel/PDF, no lock) */}
+      <Dialog open={exportWorkerOpen} onOpenChange={setExportWorkerOpen}>
+        <DialogContent className="max-w-sm max-h-[80vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>Exporter un salarié</DialogTitle></DialogHeader>
+          <div className="space-y-3 pt-1">
+            <p className="text-sm text-muted-foreground">Choisis un salarié : sa fiche s'ouvre avec le calendrier (jour / semaine / période) et le téléchargement Excel / PDF. Cet export ne verrouille pas les heures.</p>
+            <div className="space-y-1">
+              {workers.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-6 text-center">Aucun salarié</p>
+              ) : (
+                workers.map(w => (
+                  <button
+                    key={w.id}
+                    onClick={() => { setExportWorkerOpen(false); setFicheWorker(w); }}
+                    className="flex w-full items-center justify-between gap-2 rounded-md border px-3 py-2 text-left text-sm hover:bg-muted/50 transition-colors"
+                  >
+                    <span className="font-medium truncate">{w.first_name} {w.last_name}</span>
+                    <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  </button>
+                ))
+              )}
+            </div>
           </div>
         </DialogContent>
       </Dialog>
