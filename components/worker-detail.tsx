@@ -15,7 +15,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   CalendarRange, Clock, Utensils, MapPin, FileSpreadsheet, FileText, Loader2,
-  Settings2, Archive, ArchiveRestore, Trash2, AlertTriangle, ArrowLeft,
+  Settings2, Archive, ArchiveRestore, Trash2, AlertTriangle,
 } from 'lucide-react';
 import { format, parseISO, isSameDay, subDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -228,13 +228,6 @@ export default function WorkerDetailDialog({ worker, onOpenChange, onChanged }: 
   return (
     <Dialog open={!!worker} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl max-h-[88vh] overflow-y-auto">
-        <button
-          type="button"
-          onClick={() => onOpenChange(false)}
-          className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground -mt-1 mb-1"
-        >
-          <ArrowLeft className="h-4 w-4" /> Retour
-        </button>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {worker ? `${worker.first_name} ${worker.last_name}` : ''}

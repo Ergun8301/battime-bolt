@@ -3,34 +3,37 @@
 import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
-import { PlanningWithWorksite, Worksite, User } from '@/lib/types';
+import { PlanningWithWorksite, Worksite, User, Invitation, TimeEntryWithWorksite } from '@/lib/types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import {
   ChevronLeft, ChevronRight, Plus, Trash2, Loader2, AlertTriangle, GripVertical, Check,
-  UserPlus, Building2, Archive, ArchiveRestore, Settings2, Pencil, CalendarRange,
+  UserPlus, Building2, Archive, CalendarRange, Download, FileSpreadsheet, FileText,
+  Bell, Clock, Mail, RefreshCw, X,
 } from 'lucide-react';
 import {
   DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
   useDraggable, useDroppable, type DragEndEvent, type DragStartEvent,
 } from '@dnd-kit/core';
-import { format, startOfWeek, addDays, addWeeks, subWeeks } from 'date-fns';
+import { format, startOfWeek, endOfWeek, addDays, addWeeks, subWeeks, subDays, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { Slot, SLOT_TIMES, SLOT_SHORT, slotFromTimesOrNull } from '@/lib/slot';
+import { computeMissingDays } from '@/lib/work-status';
+import { exportEntriesToExcel, exportEntriesToPDF } from '@/lib/export-utils';
+import WorkerDetailDialog from '@/components/worker-detail';
 
 // ─── helpers / constants ──────────────────────────────────────────────────────
+
+const WINDOW_DAYS = 21; // how far back the "planned but not declared" dot looks
 
 function formatMinutes(minutes: number): string {
   const h = Math.floor(minutes / 60);
@@ -72,7 +75,6 @@ const timesForChoice = (c: SlotChoice) =>
 // an "until further notice" flag); the secretary ends them by setting "Présent".
 const HORIZON_DAYS = 90;
 
-// Grey hatch for absence cells.
 const HATCH_STYLE = {
   backgroundImage:
     'repeating-linear-gradient(45deg, rgba(100,116,139,0.18) 0, rgba(100,116,139,0.18) 5px, transparent 5px, transparent 10px)',
@@ -132,33 +134,27 @@ function DraggableBubble({
   );
 }
 
-// Draggable client chip ("palette"): drag onto a cell to create directly.
-function PaletteChip({ worksite }: { worksite: Worksite | null }) {
+// Draggable client chip: appears once a client is chosen, drag it onto a cell.
+function PaletteChip({ worksite }: { worksite: Worksite }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: 'palette-new',
-    data: { type: 'new', worksiteId: worksite?.id },
-    disabled: !worksite,
+    data: { type: 'new', worksiteId: worksite.id },
   });
   return (
     <div
       ref={setNodeRef}
-      {...(worksite ? attributes : {})}
-      {...(worksite ? listeners : {})}
-      className={`flex items-center gap-1.5 rounded-md border px-3 h-10 text-sm select-none ${
-        worksite
-          ? 'cursor-grab active:cursor-grabbing bg-primary/5 border-primary/30 text-foreground'
-          : 'opacity-50 cursor-not-allowed bg-muted border-dashed'
-      } ${isDragging ? 'opacity-40' : ''}`}
-      title={worksite ? 'Glisser sur une case du planning' : 'Choisis un client à glisser'}
+      {...attributes}
+      {...listeners}
+      className={`flex items-center gap-1.5 rounded-md border px-3 h-9 text-sm select-none cursor-grab active:cursor-grabbing bg-primary/5 border-primary/30 text-foreground ${isDragging ? 'opacity-40' : ''}`}
+      title="Glisser sur une case du planning"
     >
       <GripVertical className="h-4 w-4 text-muted-foreground shrink-0" />
-      <span className="truncate max-w-[160px]">{worksite ? worksite.client_name : 'Choisis un client…'}</span>
+      <span className="truncate max-w-[150px]">{worksite.client_name}</span>
     </div>
   );
 }
 
-// A droppable day cell. Content fills the full row height (so an absence covers
-// the whole cell, and the empty area is fully clickable to add).
+// A droppable day cell whose content fills the full row height.
 function DroppableCell({
   workerId, dateStr, isToday, children,
 }: {
@@ -192,12 +188,29 @@ export default function AdminPlanning() {
   const [planning, setPlanning] = useState<PlanningWithWorksite[]>([]);
   const [realEntries, setRealEntries] = useState<{ user_id: string; work_date: string; worksite_id: string | null; start_time: string; end_time: string; total_minutes: number }[]>([]);
   const [todayAbsence, setTodayAbsence] = useState<Map<string, string>>(new Map());
+  const [missingByWorker, setMissingByWorker] = useState<Map<string, string[]>>(new Map());
+  const [invitations, setInvitations] = useState<Invitation[]>([]);
+  const [companyName, setCompanyName] = useState('');
   const [loading, setLoading] = useState(true);
   const [currentWeekStart, setCurrentWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }));
 
-  // palette
+  // client to place on the planning
   const [paletteWorksiteId, setPaletteWorksiteId] = useState<string>('');
   const [activeDrag, setActiveDrag] = useState<{ id: string; type: 'move' | 'new'; worksiteId?: string } | null>(null);
+
+  // status popup (5 buttons) — opened from a worker cell (today) or an absence day
+  const [statusTarget, setStatusTarget] = useState<{ worker: User; fromStr: string } | null>(null);
+  // worker fiche
+  const [ficheWorker, setFicheWorker] = useState<User | null>(null);
+
+  // team export
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportWeek, setExportWeek] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }));
+  const [exporting, setExporting] = useState(false);
+
+  // invitation row actions
+  const [resendingId, setResendingId] = useState<string | null>(null);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
 
   // cell add dialog (client or absence on a specific day)
   const [addOpen, setAddOpen] = useState(false);
@@ -226,17 +239,9 @@ export default function AdminPlanning() {
   const [wsBusy, setWsBusy] = useState(false);
 
   // absence start dialog (optional end date via calendar)
-  const [pendingAbsence, setPendingAbsence] = useState<{ worker: User; type: string } | null>(null);
+  const [pendingAbsence, setPendingAbsence] = useState<{ worker: User; type: string; fromStr: string } | null>(null);
   const [absEndDate, setAbsEndDate] = useState<Date | undefined>(undefined);
   const [absSaving, setAbsSaving] = useState(false);
-
-  // worker management dialog (modify name)
-  const [manageWorker, setManageWorker] = useState<User | null>(null);
-  const [mFirst, setMFirst] = useState('');
-  const [mLast, setMLast] = useState('');
-  const [mPhone, setMPhone] = useState('');
-  const [mSaving, setMSaving] = useState(false);
-  const [mBusy, setMBusy] = useState(false);
 
   // create client / worker dialogs
   const [clientOpen, setClientOpen] = useState(false);
@@ -299,21 +304,56 @@ export default function AdminPlanning() {
     }
   }, [user?.company_id, currentWeekStart]);
 
-  // Worker status libellé reflects TODAY's state (current absence, if any).
-  const fetchTodayStatus = useCallback(async () => {
+  // Today's absence (status libellé) + planned-but-undeclared dots + company + invitations.
+  const fetchExtras = useCallback(async () => {
     if (!user?.company_id) return;
-    const { data } = await supabase.from('planning').select('user_id, absence_type')
-      .eq('company_id', user.company_id).eq('work_date', format(new Date(), 'yyyy-MM-dd')).not('absence_type', 'is', null);
-    const m = new Map<string, string>();
-    for (const r of data || []) if (r.absence_type) m.set(r.user_id, r.absence_type);
-    setTodayAbsence(m);
+    const windowStart = format(subDays(new Date(), WINDOW_DAYS), 'yyyy-MM-dd');
+    const [planRes, entRes, compRes, invRes] = await Promise.all([
+      supabase.from('planning').select('user_id, work_date, absence_type').eq('company_id', user.company_id).gte('work_date', windowStart),
+      supabase.from('time_entries').select('user_id, work_date').eq('company_id', user.company_id).neq('status', 'draft').gte('work_date', windowStart),
+      supabase.from('companies').select('name').eq('id', user.company_id).maybeSingle(),
+      supabase.from('invitations').select('*').eq('company_id', user.company_id).is('accepted_at', null).gt('expires_at', new Date().toISOString()).order('created_at', { ascending: false }),
+    ]);
+
+    const todayKey = format(new Date(), 'yyyy-MM-dd');
+    const planned = new Map<string, Set<string>>();
+    const absence = new Map<string, Set<string>>();
+    const today = new Map<string, string>();
+    for (const p of planRes.data || []) {
+      if (p.absence_type) {
+        if (!absence.has(p.user_id)) absence.set(p.user_id, new Set());
+        absence.get(p.user_id)!.add(p.work_date);
+        if (p.work_date === todayKey) today.set(p.user_id, p.absence_type);
+      } else {
+        if (!planned.has(p.user_id)) planned.set(p.user_id, new Set());
+        planned.get(p.user_id)!.add(p.work_date);
+      }
+    }
+    const declared = new Map<string, Set<string>>();
+    for (const e of entRes.data || []) {
+      if (!declared.has(e.user_id)) declared.set(e.user_id, new Set());
+      declared.get(e.user_id)!.add(e.work_date);
+    }
+    const miss = new Map<string, string[]>();
+    planned.forEach((days, uid) => {
+      const m = computeMissingDays(Array.from(days).filter((d) => !absence.get(uid)?.has(d)), declared.get(uid) || new Set<string>());
+      if (m.length) miss.set(uid, m);
+    });
+    setTodayAbsence(today);
+    setMissingByWorker(miss);
+    setCompanyName(compRes.data?.name || '');
+    setInvitations((invRes.data || []) as Invitation[]);
   }, [user?.company_id]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
   useEffect(() => { fetchPlanning(); }, [fetchPlanning]);
-  useEffect(() => { fetchTodayStatus(); }, [fetchTodayStatus]);
+  useEffect(() => {
+    fetchExtras();
+    const id = setInterval(fetchExtras, 60000);
+    return () => clearInterval(id);
+  }, [fetchExtras]);
 
-  const refresh = () => { fetchPlanning(); fetchTodayStatus(); };
+  const refresh = () => { fetchPlanning(); fetchExtras(); };
 
   const realMap = useMemo(() => {
     const m = new Map<string, RealAgg>();
@@ -348,7 +388,7 @@ export default function AdminPlanning() {
     if (!over || !user?.company_id) return;
     const [workerId, dateStr] = String(over.id).split('|');
 
-    // Create directly on drop — no slot popup. Slot/notes set later via the bubble.
+    // Create directly on drop. Slot/notes set later via the bubble.
     if (drag?.type === 'new') {
       if (!drag.worksiteId) return;
       const ws = worksites.find(w => w.id === drag.worksiteId);
@@ -358,11 +398,11 @@ export default function AdminPlanning() {
           work_date: dateStr, estimated_start: null, estimated_end: null, notes: null, absence_type: null,
         });
         if (error) throw error;
-        toast.success(`${ws?.client_name || 'Chantier'} affecté`);
+        toast.success(`${ws?.client_name || 'Client'} ajouté au planning`);
         fetchPlanning();
       } catch (err) {
         console.error('Error creating planning:', err);
-        toast.error("Impossible de créer l'affectation");
+        toast.error("Impossible d'ajouter au planning");
       }
       return;
     }
@@ -379,7 +419,7 @@ export default function AdminPlanning() {
       if (error) throw error;
     } catch (err) {
       console.error('Error moving planning:', err);
-      toast.error("Impossible de déplacer l'affectation");
+      toast.error('Impossible de déplacer');
       setPlanning(prev);
     }
   };
@@ -399,8 +439,8 @@ export default function AdminPlanning() {
   const confirmAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user?.company_id || !addTarget) return;
-    if (addMode === 'client' && !addWorksite) { toast.error('Choisissez un chantier'); return; }
-    if (addMode === 'absence' && !addAbsenceType) { toast.error("Choisissez le type d'absence"); return; }
+    if (addMode === 'client' && !addWorksite) { toast.error('Choisissez un client'); return; }
+    if (addMode === 'absence' && !addAbsenceType) { toast.error("Choisissez le motif d'absence"); return; }
     setAddSaving(true);
     try {
       const isAbs = addMode === 'absence';
@@ -412,7 +452,7 @@ export default function AdminPlanning() {
         notes: addNote.trim() || null, absence_type: isAbs ? addAbsenceType : null,
       });
       if (error) throw error;
-      toast.success(isAbs ? 'Absence enregistrée' : 'Affectation créée');
+      toast.success(isAbs ? 'Absence enregistrée' : 'Ajouté au planning');
       setAddOpen(false);
       setAddTarget(null);
       refresh();
@@ -426,8 +466,10 @@ export default function AdminPlanning() {
 
   // ─── status / absence ───────────────────────────────────────────────────────
 
-  // Mark the worker present FROM a given date (clears absence rows on/after it).
-  // Earlier days stay marked absent. Works even for open-ended absences.
+  const fromLabel = (fromStr: string) =>
+    fromStr === todayStr ? "aujourd'hui" : format(new Date(`${fromStr}T00:00:00`), 'EEEE d MMMM', { locale: fr });
+
+  // Mark present FROM a given date (clears absence rows on/after it).
   const setPresentFrom = async (workerId: string, fromStr: string) => {
     if (!user?.company_id) return;
     try {
@@ -435,9 +477,7 @@ export default function AdminPlanning() {
         .eq('company_id', user.company_id).eq('user_id', workerId)
         .gte('work_date', fromStr).not('absence_type', 'is', null);
       if (error) throw error;
-      toast.success(fromStr === todayStr
-        ? 'Salarié repassé présent'
-        : `Présent à partir du ${format(new Date(`${fromStr}T00:00:00`), 'd MMM', { locale: fr })}`);
+      toast.success(fromStr === todayStr ? 'Salarié présent' : `Présent à partir du ${format(new Date(`${fromStr}T00:00:00`), 'd MMM', { locale: fr })}`);
       refresh();
     } catch (err) {
       console.error('Error setting present:', err);
@@ -445,34 +485,37 @@ export default function AdminPlanning() {
     }
   };
 
-  const askAbsence = (worker: User, type: string) => {
-    setPendingAbsence({ worker, type });
+  // Choose an absence motif from the status popup → ask for the optional end date.
+  const chooseAbsence = (worker: User, type: string, fromStr: string) => {
+    setStatusTarget(null);
     setAbsEndDate(undefined);
+    setPendingAbsence({ worker, type, fromStr });
   };
 
   const confirmAbsence = async () => {
     if (!user?.company_id || !pendingAbsence) return;
-    const endStr = absEndDate ? format(absEndDate, 'yyyy-MM-dd') : format(addDays(new Date(), HORIZON_DAYS), 'yyyy-MM-dd');
-    if (endStr < todayStr) { toast.error("La date de fin est avant aujourd'hui"); return; }
+    const { worker, type, fromStr } = pendingAbsence;
+    const endStr = absEndDate ? format(absEndDate, 'yyyy-MM-dd') : format(addDays(new Date(`${fromStr}T00:00:00`), HORIZON_DAYS), 'yyyy-MM-dd');
+    if (endStr < fromStr) { toast.error('La date de fin est avant le début'); return; }
     setAbsSaving(true);
     try {
       // One planning absence row per day — no DB column needed.
       const dates: string[] = [];
-      let d = new Date(`${todayStr}T00:00:00`);
+      let d = new Date(`${fromStr}T00:00:00`);
       const endD = new Date(`${endStr}T00:00:00`);
       let guard = 0;
       while (d <= endD && guard < 400) { dates.push(format(d, 'yyyy-MM-dd')); d = addDays(d, 1); guard++; }
 
-      // Replace any existing absence from today forward, then insert the new run.
+      // Replace any existing absence from the start day forward, then insert the run.
       const { error: delErr } = await supabase.from('planning').delete()
-        .eq('company_id', user.company_id).eq('user_id', pendingAbsence.worker.id)
-        .gte('work_date', todayStr).not('absence_type', 'is', null);
+        .eq('company_id', user.company_id).eq('user_id', worker.id)
+        .gte('work_date', fromStr).not('absence_type', 'is', null);
       if (delErr) throw delErr;
 
       const rows = dates.map((dt) => ({
-        company_id: user.company_id, created_by: user.id, user_id: pendingAbsence.worker.id,
+        company_id: user.company_id, created_by: user.id, user_id: worker.id,
         worksite_id: null, work_date: dt, estimated_start: null, estimated_end: null,
-        notes: null, absence_type: pendingAbsence.type,
+        notes: null, absence_type: type,
       }));
       const { error } = await supabase.from('planning').insert(rows);
       if (error) throw error;
@@ -488,105 +531,95 @@ export default function AdminPlanning() {
     }
   };
 
-  // Change the absence type from a given day onward (for the current run).
-  const changeAbsenceFrom = async (workerId: string, fromStr: string, type: string) => {
-    if (!user?.company_id) return;
-    try {
-      const { error } = await supabase.from('planning').update({ absence_type: type })
-        .eq('company_id', user.company_id).eq('user_id', workerId)
-        .gte('work_date', fromStr).not('absence_type', 'is', null);
-      if (error) throw error;
-      toast.success("Type d'absence mis à jour");
-      refresh();
-    } catch (err) {
-      console.error('Error changing absence type:', err);
-      toast.error("Impossible de changer le type (si « Repos », ta base la refuse peut-être encore)");
-    }
+  // mailto reminder for a worker's undeclared days
+  const sendReminder = (worker: User) => {
+    const missing = missingByWorker.get(worker.id) || [];
+    if (!worker.email) { toast.error(`Pas d'email pour ${worker.first_name}`); return; }
+    const jours = missing.map((d) => format(parseISO(d), 'EEEE d MMMM', { locale: fr })).join(', ');
+    const subject = encodeURIComponent('Rappel : pense à envoyer tes heures');
+    const body = encodeURIComponent(
+      `Bonjour ${worker.first_name},\n\n`
+      + `Il manque l'envoi de tes heures pour : ${jours || 'des journées planifiées'}.\n`
+      + `Merci de les saisir et de les envoyer dès que possible depuis l'application Battime.\n\n`
+      + `— ${companyName || "L'équipe"}`,
+    );
+    window.location.href = `mailto:${worker.email}?subject=${subject}&body=${body}`;
+    toast.success(`Rappel préparé pour ${worker.first_name}`);
   };
 
-  const deleteAbsenceDay = async (planningId: string) => {
-    if (!user?.company_id) return;
+  // ─── team export (locks) ──────────────────────────────────────────────────────
+
+  const runExport = async (kind: 'excel' | 'pdf') => {
+    if (!user?.company_id) { toast.error('Profil non chargé'); return; }
+    setExporting(true);
     try {
-      const { error } = await supabase.from('planning').delete().eq('id', planningId).eq('company_id', user.company_id);
+      const weekEnd = endOfWeek(exportWeek, { weekStartsOn: 1 });
+      const from = format(exportWeek, 'yyyy-MM-dd');
+      const to = format(weekEnd, 'yyyy-MM-dd');
+      const { data, error } = await supabase
+        .from('time_entries')
+        .select('*, worksite:worksites(*), user:users!user_id(*)')
+        .eq('company_id', user.company_id)
+        .gte('work_date', from).lte('work_date', to)
+        .order('work_date', { ascending: false }).order('user_id');
       if (error) throw error;
-      toast.success("Jour d'absence supprimé");
-      refresh();
+      const entries = (data || []) as (TimeEntryWithWorksite & { user: User })[];
+      if (entries.length === 0) { toast.error(`Aucune saisie du ${format(exportWeek, 'dd/MM')} au ${format(weekEnd, 'dd/MM')}`); return; }
+
+      const opts = {
+        fileName: `battime-${kind === 'pdf' ? 'rapport' : 'export'}-${from}`,
+        title: 'Battime - Rapport hebdomadaire',
+        periodLabel: `${format(exportWeek, 'dd/MM/yyyy')} au ${format(weekEnd, 'dd/MM/yyyy')}`,
+        companyName,
+      };
+      if (kind === 'excel') exportEntriesToExcel(entries, opts);
+      else exportEntriesToPDF(entries, opts);
+
+      await supabase.from('time_entries').update({ exported_at: new Date().toISOString(), locked: true })
+        .in('id', entries.map(e => e.id)).eq('company_id', user.company_id);
+
+      toast.success(`Export téléchargé — ${entries.length} saisie${entries.length > 1 ? 's' : ''} verrouillée${entries.length > 1 ? 's' : ''}`);
     } catch (err) {
-      console.error('Error deleting absence day:', err);
-      toast.error('Impossible de supprimer');
-    }
-  };
-
-  // ─── worker management (mirror of the fiche) ────────────────────────────────
-
-  const openManage = (w: User) => {
-    setManageWorker(w);
-    setMFirst(w.first_name || '');
-    setMLast(w.last_name || '');
-    setMPhone(w.phone || '');
-  };
-
-  const saveWorkerName = async () => {
-    if (!user?.company_id || !manageWorker) return;
-    if (!mFirst.trim() || !mLast.trim()) { toast.error('Prénom et nom requis'); return; }
-    setMSaving(true);
-    try {
-      const { error } = await supabase.from('users').update({
-        first_name: mFirst.trim(), last_name: mLast.trim(), phone: mPhone.trim() || null,
-      }).eq('id', manageWorker.id).eq('company_id', user.company_id);
-      if (error) throw error;
-      toast.success('Salarié modifié');
-      setManageWorker(null);
-      fetchData();
-    } catch (err) {
-      console.error('Error updating worker:', err);
-      toast.error('Impossible de modifier le salarié');
+      console.error('Error exporting team:', err);
+      toast.error("Erreur lors de l'export");
     } finally {
-      setMSaving(false);
+      setExporting(false);
     }
   };
 
-  const toggleArchiveWorker = async (w: User) => {
+  // ─── invitations ──────────────────────────────────────────────────────────────
+
+  const resendInvitation = async (inv: Invitation) => {
     if (!user?.company_id) return;
-    setMBusy(true);
+    setResendingId(inv.id);
     try {
-      const { error } = await supabase.from('users').update({ is_active: !w.is_active })
-        .eq('id', w.id).eq('company_id', user.company_id);
+      const { error } = await supabase.functions.invoke('invite-worker', {
+        body: { email: inv.email, first_name: inv.first_name, last_name: inv.last_name, phone: inv.phone || null, company_id: user.company_id, role: 'worker' },
+      });
       if (error) throw error;
-      toast.success(w.is_active ? 'Salarié archivé' : 'Salarié réactivé');
-      fetchData();
+      toast.success('Invitation renvoyée');
+      fetchExtras();
     } catch (err) {
-      console.error('Error archiving worker:', err);
-      toast.error('Impossible de mettre à jour le salarié');
+      console.error('Error resending invitation:', err);
+      toast.error("Impossible de renvoyer l'invitation");
     } finally {
-      setMBusy(false);
+      setResendingId(null);
     }
   };
 
-  // Delete only if the worker is an empty shell (no entries, no planning).
-  const deleteWorkerRow = async (w: User) => {
+  const cancelInvitation = async (inv: Invitation) => {
     if (!user?.company_id) return;
-    setMBusy(true);
+    setCancellingId(inv.id);
     try {
-      const [{ count: entryCount, error: e1 }, { count: planCount, error: e2 }] = await Promise.all([
-        supabase.from('time_entries').select('*', { count: 'exact', head: true }).eq('user_id', w.id),
-        supabase.from('planning').select('*', { count: 'exact', head: true }).eq('user_id', w.id),
-      ]);
-      if (e1) throw e1;
-      if (e2) throw e2;
-      if ((entryCount || 0) > 0 || (planCount || 0) > 0) {
-        toast.error('Ce salarié a des données. Archivez-le plutôt.');
-        return;
-      }
-      const { error } = await supabase.from('users').delete().eq('id', w.id).eq('company_id', user.company_id);
+      const { error } = await supabase.from('invitations').delete().eq('id', inv.id).eq('company_id', user.company_id);
       if (error) throw error;
-      toast.success('Salarié supprimé');
-      fetchData();
+      toast.success('Invitation annulée');
+      fetchExtras();
     } catch (err) {
-      console.error('Error deleting worker:', err);
-      toast.error('Impossible de supprimer le salarié');
+      console.error('Error cancelling invitation:', err);
+      toast.error("Impossible d'annuler l'invitation");
     } finally {
-      setMBusy(false);
+      setCancellingId(null);
     }
   };
 
@@ -610,7 +643,7 @@ export default function AdminPlanning() {
 
   const saveAffectation = async () => {
     if (!user?.company_id || !editing) return;
-    if (!editWorksiteId) { toast.error('Choisissez un chantier'); return; }
+    if (!editWorksiteId) { toast.error('Choisissez un client'); return; }
     setSavingEdit(true);
     try {
       const times = timesForChoice(editSlot);
@@ -656,12 +689,12 @@ export default function AdminPlanning() {
         city: wsCity.trim() || null, address: wsAddress.trim() || null, description: wsDesc.trim() || null,
       }).eq('id', editing.worksite_id).eq('company_id', user.company_id);
       if (error) throw error;
-      toast.success('Chantier modifié');
+      toast.success('Client modifié');
       fetchData();
       fetchPlanning();
     } catch (err) {
       console.error('Error saving worksite:', err);
-      toast.error('Impossible de modifier le chantier');
+      toast.error('Impossible de modifier le client');
     } finally {
       setSavingWs(false);
     }
@@ -674,13 +707,13 @@ export default function AdminPlanning() {
       const { error } = await supabase.from('worksites').update({ is_active: false })
         .eq('id', editing.worksite_id).eq('company_id', user.company_id);
       if (error) throw error;
-      toast.success('Chantier archivé');
+      toast.success('Client archivé');
       closeEdit();
       fetchData();
       fetchPlanning();
     } catch (err) {
       console.error('Error archiving worksite:', err);
-      toast.error("Impossible d'archiver le chantier");
+      toast.error("Impossible d'archiver");
     } finally {
       setWsBusy(false);
     }
@@ -699,19 +732,19 @@ export default function AdminPlanning() {
       if (e2) throw e2;
       const others = (planCount || 0) - 1;
       if ((entryCount || 0) > 0 || others > 0) {
-        toast.error('Chantier utilisé ailleurs. Archivez-le plutôt.');
+        toast.error('Client utilisé ailleurs. Archivez-le plutôt.');
         return;
       }
       await supabase.from('planning').delete().eq('id', editing.id).eq('company_id', user.company_id);
       const { error } = await supabase.from('worksites').delete().eq('id', worksiteId).eq('company_id', user.company_id);
       if (error) throw error;
-      toast.success('Chantier supprimé');
+      toast.success('Client supprimé');
       closeEdit();
       fetchData();
       fetchPlanning();
     } catch (err) {
       console.error('Error deleting worksite:', err);
-      toast.error('Impossible de supprimer le chantier');
+      toast.error('Impossible de supprimer le client');
     } finally {
       setWsBusy(false);
     }
@@ -761,6 +794,7 @@ export default function AdminPlanning() {
       setWorkerOpen(false);
       resetWorker();
       fetchData();
+      fetchExtras();
     } catch (err) {
       console.error('Error inviting worker:', err);
       toast.error("Impossible d'envoyer l'invitation");
@@ -795,8 +829,12 @@ export default function AdminPlanning() {
     return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
   }, [planning]);
 
+  const workerEmails = useMemo(() => new Set(workers.map(w => w.email.toLowerCase())), [workers]);
+  const pendingInvites = invitations.filter(inv => !workerEmails.has(inv.email.toLowerCase()));
+
   const paletteWorksite = worksites.find(w => w.id === paletteWorksiteId) || null;
   const editRealAgg = editing ? realForPlanning(editing) : undefined;
+  const statusMissing = statusTarget ? (missingByWorker.get(statusTarget.worker.id) || []) : [];
 
   if (loading) {
     return <div className="space-y-4"><Skeleton className="h-12 w-full" /><Skeleton className="h-64 w-full" /></div>;
@@ -804,48 +842,65 @@ export default function AdminPlanning() {
 
   return (
     <div className="space-y-4">
-      {/* Header + actions */}
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <h2 className="text-2xl font-bold">Planning</h2>
-          <p className="text-muted-foreground text-sm">Glisse un client sur une case · clique une case pour ajouter · clique un salarié pour son statut</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" onClick={() => setClientOpen(true)}>
-            <Building2 className="h-4 w-4 mr-2" /> Nouveau client
-          </Button>
-          <Button variant="outline" onClick={() => setWorkerOpen(true)}>
-            <UserPlus className="h-4 w-4 mr-2" /> Nouveau salarié
-          </Button>
-        </div>
+      <div>
+        <h2 className="text-2xl font-bold">Planning</h2>
+        <p className="text-muted-foreground text-sm">Glisse un client sur une case · clique une case pour ajouter · clique un salarié pour son statut</p>
       </div>
 
       <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setActiveDrag(null)}>
-        {/* Palette + week nav */}
-        <div className="flex flex-col gap-3 rounded-lg border bg-card p-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2">
-            <Select value={paletteWorksiteId} onValueChange={setPaletteWorksiteId}>
-              <SelectTrigger className="w-[220px]"><SelectValue placeholder="Choisir un client à affecter" /></SelectTrigger>
-              <SelectContent>
-                {worksites.map(ws => (
-                  <SelectItem key={ws.id} value={ws.id}>{ws.client_name}{ws.city ? ` — ${ws.city}` : ''}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <PaletteChip worksite={paletteWorksite} />
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="icon" onClick={() => setCurrentWeekStart(subWeeks(currentWeekStart, 1))}>
+        {/* Action bar */}
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card p-2">
+          <Button variant="outline" size="sm" onClick={() => setWorkerOpen(true)}>
+            <UserPlus className="h-4 w-4 mr-1.5" /> Nouveau salarié
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setClientOpen(true)}>
+            <Plus className="h-4 w-4 mr-1.5" /> Nouveau client
+          </Button>
+          <Select value={paletteWorksiteId} onValueChange={setPaletteWorksiteId}>
+            <SelectTrigger className="h-9 w-[190px]"><SelectValue placeholder="Choisir un client" /></SelectTrigger>
+            <SelectContent>
+              {worksites.map(ws => (
+                <SelectItem key={ws.id} value={ws.id}>{ws.client_name}{ws.city ? ` — ${ws.city}` : ''}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {paletteWorksite && <PaletteChip worksite={paletteWorksite} />}
+          <Button variant="outline" size="sm" onClick={() => setExportOpen(true)}>
+            <Download className="h-4 w-4 mr-1.5" /> Exporter
+          </Button>
+
+          <div className="ml-auto flex items-center gap-2">
+            <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => setCurrentWeekStart(subWeeks(currentWeekStart, 1))}>
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <div className="text-center min-w-[190px] text-sm font-medium">
+            <div className="text-center min-w-[170px] text-sm font-medium">
               {format(currentWeekStart, 'd MMM', { locale: fr })} – {format(addDays(currentWeekStart, 5), 'd MMM yyyy', { locale: fr })}
             </div>
-            <Button variant="outline" size="icon" onClick={() => setCurrentWeekStart(addWeeks(currentWeekStart, 1))}>
+            <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => setCurrentWeekStart(addWeeks(currentWeekStart, 1))}>
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
         </div>
+
+        {/* Pending invitations (kept from the old dashboard) */}
+        {pendingInvites.length > 0 && (
+          <div className="mt-3 space-y-1.5 rounded-lg border border-yellow-200 bg-yellow-50/50 p-2.5">
+            <p className="text-xs font-semibold text-muted-foreground flex items-center gap-1"><Clock className="h-3.5 w-3.5" /> Invitations en attente</p>
+            {pendingInvites.map(inv => (
+              <div key={inv.id} className="flex items-center gap-2 text-sm">
+                <Mail className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                <span className="min-w-0 flex-1 truncate">{inv.first_name} {inv.last_name} · {inv.email}</span>
+                <Button variant="outline" size="sm" className="h-7" onClick={() => resendInvitation(inv)} disabled={resendingId === inv.id || cancellingId === inv.id}>
+                  {resendingId === inv.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                  <span className="hidden sm:inline ml-1">Relancer</span>
+                </Button>
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => cancelInvitation(inv)} disabled={resendingId === inv.id || cancellingId === inv.id}>
+                  {cancellingId === inv.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <X className="h-3.5 w-3.5" />}
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Legend */}
         {chantierLegend.length > 0 && (
@@ -884,51 +939,38 @@ export default function AdminPlanning() {
                   ) : (
                     workers.map(worker => {
                       const abs = todayAbsence.get(worker.id);
+                      const missingCount = (missingByWorker.get(worker.id) || []).length;
                       const fullName = `${worker.first_name} ${worker.last_name}`;
                       return (
                         <tr key={worker.id} className="border-b last:border-b-0">
-                          {/* Whole left cell is the status + settings menu */}
+                          {/* Whole left cell opens the status popup */}
                           <td style={CELL_HEIGHT_HACK} className="p-0 align-top sticky left-0 bg-background z-10">
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <button className="flex h-full w-full items-start gap-2 p-3 text-left hover:bg-muted/50 transition-colors">
-                                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-muted text-[11px] font-bold text-muted-foreground shrink-0">
-                                    {((worker.first_name?.[0] || '') + (worker.last_name?.[0] || '')).toUpperCase()}
+                            <button
+                              onClick={() => setStatusTarget({ worker, fromStr: todayStr })}
+                              className="flex h-full w-full items-start gap-2 p-3 text-left hover:bg-muted/50 transition-colors"
+                              title="Cliquer pour le statut et la fiche"
+                            >
+                              <span className="relative shrink-0">
+                                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-muted text-[11px] font-bold text-muted-foreground">
+                                  {((worker.first_name?.[0] || '') + (worker.last_name?.[0] || '')).toUpperCase()}
+                                </span>
+                                {missingCount > 0 && (
+                                  <span
+                                    className="absolute -top-1.5 -right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-orange-500 px-1 text-[9px] font-bold text-white"
+                                    title={`${missingCount} jour(s) planifié(s) non déclaré(s)`}
+                                  >
+                                    {missingCount}
                                   </span>
-                                  <span className="min-w-0 flex-1">
-                                    <span className="block truncate text-sm font-medium">{fullName}</span>
-                                    <span className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-                                      <span className={`h-2 w-2 rounded-full ${abs ? 'bg-orange-500' : 'bg-green-500'}`} />
-                                      {abs ? (ABSENCE_STATUS_LABELS[abs] || abs) : 'Présent'}
-                                    </span>
-                                  </span>
-                                  <Settings2 className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0 mt-0.5" />
-                                </button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="start" className="w-56">
-                                <DropdownMenuLabel className="truncate">{fullName}</DropdownMenuLabel>
-                                <DropdownMenuItem onClick={() => setPresentFrom(worker.id, todayStr)}>
-                                  <span className="h-2 w-2 rounded-full bg-green-500 mr-2" /> Présent
-                                </DropdownMenuItem>
-                                {ABSENCE_OPTIONS.map(opt => (
-                                  <DropdownMenuItem key={opt.value} onClick={() => askAbsence(worker, opt.value)}>
-                                    <span className="h-2 w-2 rounded-full bg-orange-500 mr-2" /> {opt.label}
-                                  </DropdownMenuItem>
-                                ))}
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem onClick={() => openManage(worker)}>
-                                  <Pencil className="h-3.5 w-3.5 mr-2" /> Modifier le nom
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => toggleArchiveWorker(worker)}>
-                                  {worker.is_active
-                                    ? <><Archive className="h-3.5 w-3.5 mr-2" /> Archiver</>
-                                    : <><ArchiveRestore className="h-3.5 w-3.5 mr-2" /> Réactiver</>}
-                                </DropdownMenuItem>
-                                <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => deleteWorkerRow(worker)}>
-                                  <Trash2 className="h-3.5 w-3.5 mr-2" /> Supprimer
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
+                                )}
+                              </span>
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate text-sm font-medium">{fullName}</span>
+                                <span className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                                  <span className={`h-2 w-2 rounded-full ${abs ? 'bg-orange-500' : 'bg-green-500'}`} />
+                                  {abs ? (ABSENCE_STATUS_LABELS[abs] || abs) : 'Présent'}
+                                </span>
+                              </span>
+                            </button>
                           </td>
 
                           {weekDays.map(day => {
@@ -938,34 +980,15 @@ export default function AdminPlanning() {
                             return (
                               <DroppableCell key={dateStr} workerId={worker.id} dateStr={dateStr} isToday={dateStr === todayStr}>
                                 {absence ? (
-                                  // Absence fills the whole cell; click to reactivate / change / remove.
-                                  <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                      <button
-                                        style={HATCH_STYLE}
-                                        className="flex h-full min-h-[3.25rem] w-full items-center justify-center rounded border border-slate-300 px-1 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-600 hover:border-slate-400"
-                                        title="Absence — cliquer pour gérer"
-                                      >
-                                        {ABSENCE_LABELS[absence.absence_type!] || absence.absence_type}
-                                      </button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="start" className="w-60">
-                                      <DropdownMenuItem onClick={() => setPresentFrom(worker.id, dateStr)}>
-                                        <span className="h-2 w-2 rounded-full bg-green-500 mr-2" /> Présent à partir de ce jour
-                                      </DropdownMenuItem>
-                                      <DropdownMenuSeparator />
-                                      <DropdownMenuLabel className="text-[11px] font-normal text-muted-foreground">Changer le type (à partir de ce jour)</DropdownMenuLabel>
-                                      {ABSENCE_OPTIONS.map(opt => (
-                                        <DropdownMenuItem key={opt.value} onClick={() => changeAbsenceFrom(worker.id, dateStr, opt.value)}>
-                                          <span className="h-2 w-2 rounded-full bg-orange-500 mr-2" /> {opt.label}
-                                        </DropdownMenuItem>
-                                      ))}
-                                      <DropdownMenuSeparator />
-                                      <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => deleteAbsenceDay(absence.id)}>
-                                        <Trash2 className="h-3.5 w-3.5 mr-2" /> Supprimer ce jour
-                                      </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                  </DropdownMenu>
+                                  // Absence fills the whole cell; click → status popup from that day.
+                                  <button
+                                    style={HATCH_STYLE}
+                                    onClick={() => setStatusTarget({ worker, fromStr: dateStr })}
+                                    className="flex h-full min-h-[3.25rem] w-full items-center justify-center rounded border border-slate-300 px-1 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-600 hover:border-slate-400"
+                                    title="Absence — cliquer pour changer le statut"
+                                  >
+                                    {ABSENCE_LABELS[absence.absence_type!] || absence.absence_type}
+                                  </button>
                                 ) : (
                                   // Empty / chantier cell: whole area clickable to add.
                                   <div
@@ -1006,21 +1029,88 @@ export default function AdminPlanning() {
         </DragOverlay>
       </DndContext>
 
+      {/* Status popup — 5 clear buttons + fiche + reminder */}
+      <Dialog open={!!statusTarget} onOpenChange={(o) => { if (!o) setStatusTarget(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>
+              {statusTarget ? `Statut de ${statusTarget.worker.first_name} à partir ${statusTarget.fromStr === todayStr ? "d'aujourd'hui" : `du ${fromLabel(statusTarget.fromStr)}`}` : ''}
+            </DialogTitle>
+          </DialogHeader>
+          {statusTarget && (
+            <div className="space-y-2 pt-1">
+              <Button variant="outline" className="w-full justify-start h-11 text-[15px]" onClick={() => { setPresentFrom(statusTarget.worker.id, statusTarget.fromStr); setStatusTarget(null); }}>
+                <span className="h-3 w-3 rounded-full bg-green-500 mr-3" /> Présent
+              </Button>
+              {ABSENCE_OPTIONS.map(opt => (
+                <Button key={opt.value} variant="outline" className="w-full justify-start h-11 text-[15px]" onClick={() => chooseAbsence(statusTarget.worker, opt.value, statusTarget.fromStr)}>
+                  <span className="h-3 w-3 rounded-full bg-orange-500 mr-3" /> {opt.label}
+                </Button>
+              ))}
+
+              <div className="border-t pt-2 mt-1 space-y-1">
+                <Button variant="ghost" className="w-full justify-start" onClick={() => { setFicheWorker(statusTarget.worker); setStatusTarget(null); }}>
+                  <Clock className="h-4 w-4 mr-2" /> Voir les heures / la fiche
+                </Button>
+                {statusMissing.length > 0 && (
+                  <Button variant="ghost" className="w-full justify-start text-orange-600 hover:text-orange-700" onClick={() => sendReminder(statusTarget.worker)}>
+                    <Bell className="h-4 w-4 mr-2" /> Envoyer un rappel ({statusMissing.length} jour{statusMissing.length > 1 ? 's' : ''} non déclaré{statusMissing.length > 1 ? 's' : ''})
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Worker fiche (detailed) */}
+      <WorkerDetailDialog
+        worker={ficheWorker}
+        onOpenChange={(open) => { if (!open) setFicheWorker(null); }}
+        onChanged={() => { fetchData(); refresh(); }}
+      />
+
+      {/* Team export */}
+      <Dialog open={exportOpen} onOpenChange={setExportOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Exporter les heures de l'équipe</DialogTitle></DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="space-y-1">
+              <Label>Semaine du {format(exportWeek, 'd MMM yyyy', { locale: fr })}</Label>
+              <Input
+                type="date"
+                value={format(exportWeek, 'yyyy-MM-dd')}
+                onChange={(e) => { if (e.target.value) setExportWeek(startOfWeek(parseISO(`${e.target.value}T00:00:00`), { weekStartsOn: 1 })); }}
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button className="flex-1" onClick={() => runExport('excel')} disabled={exporting}>
+                {exporting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <FileSpreadsheet className="h-4 w-4 mr-2" />} Excel
+              </Button>
+              <Button className="flex-1" variant="outline" onClick={() => runExport('pdf')} disabled={exporting}>
+                {exporting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <FileText className="h-4 w-4 mr-2" />} PDF
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">Verrouille les saisies exportées (paie).</p>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Cell add (client or absence on a specific day) */}
       <Dialog open={addOpen} onOpenChange={(o) => { setAddOpen(o); if (!o) setAddTarget(null); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>Ajouter au planning</DialogTitle></DialogHeader>
           <form onSubmit={confirmAdd} className="space-y-4 pt-2">
             <div className="flex gap-2">
-              <Button type="button" variant={addMode === 'client' ? 'default' : 'outline'} className="flex-1" onClick={() => setAddMode('client')}>Chantier</Button>
+              <Button type="button" variant={addMode === 'client' ? 'default' : 'outline'} className="flex-1" onClick={() => setAddMode('client')}>Client</Button>
               <Button type="button" variant={addMode === 'absence' ? 'default' : 'outline'} className="flex-1" onClick={() => setAddMode('absence')}>Absence</Button>
             </div>
             {addMode === 'client' ? (
               <>
                 <div className="space-y-2">
-                  <Label>Chantier</Label>
+                  <Label>Client</Label>
                   <Select value={addWorksite} onValueChange={setAddWorksite}>
-                    <SelectTrigger><SelectValue placeholder="Choisir un chantier" /></SelectTrigger>
+                    <SelectTrigger><SelectValue placeholder="Choisir un client" /></SelectTrigger>
                     <SelectContent>
                       {worksites.map(ws => <SelectItem key={ws.id} value={ws.id}>{ws.client_name}{ws.city ? ` — ${ws.city}` : ''}</SelectItem>)}
                     </SelectContent>
@@ -1037,9 +1127,9 @@ export default function AdminPlanning() {
               </>
             ) : (
               <div className="space-y-2">
-                <Label className="flex items-center gap-1"><AlertTriangle className="h-4 w-4 text-orange-500" /> Type d'absence</Label>
+                <Label className="flex items-center gap-1"><AlertTriangle className="h-4 w-4 text-orange-500" /> Motif d'absence</Label>
                 <Select value={addAbsenceType} onValueChange={setAddAbsenceType}>
-                  <SelectTrigger><SelectValue placeholder="Choisir le type" /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Choisir le motif" /></SelectTrigger>
                   <SelectContent>
                     {ABSENCE_OPTIONS.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
                   </SelectContent>
@@ -1065,59 +1155,44 @@ export default function AdminPlanning() {
               {pendingAbsence ? `${ABSENCE_STATUS_LABELS[pendingAbsence.type] || pendingAbsence.type} — ${pendingAbsence.worker.first_name}` : ''}
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 pt-2">
-            <p className="text-sm text-muted-foreground">
-              Début aujourd'hui ({format(new Date(), 'EEEE d MMMM', { locale: fr })}).
-            </p>
-            <div className="space-y-1">
-              <Label>Date de fin (optionnel)</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className="w-full justify-start font-normal">
-                    <CalendarRange className="h-4 w-4 mr-2" />
-                    {absEndDate ? format(absEndDate, 'EEEE d MMMM yyyy', { locale: fr }) : 'Choisir une date…'}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={absEndDate}
-                    onSelect={setAbsEndDate}
-                    numberOfMonths={1}
-                    locale={fr}
-                    disabled={{ before: new Date() }}
-                    defaultMonth={absEndDate || new Date()}
-                  />
-                </PopoverContent>
-              </Popover>
-              <div className="flex items-center justify-between pt-0.5">
-                <p className="text-xs text-muted-foreground">Laisser vide si indéterminé</p>
-                {absEndDate && (
-                  <Button type="button" variant="ghost" size="sm" className="h-auto p-0 text-xs" onClick={() => setAbsEndDate(undefined)}>Effacer</Button>
-                )}
+          {pendingAbsence && (
+            <div className="space-y-4 pt-2">
+              <p className="text-sm text-muted-foreground">
+                Début {pendingAbsence.fromStr === todayStr ? "aujourd'hui" : `le ${fromLabel(pendingAbsence.fromStr)}`}.
+              </p>
+              <div className="space-y-1">
+                <Label>Date de fin (optionnel)</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className="w-full justify-start font-normal">
+                      <CalendarRange className="h-4 w-4 mr-2" />
+                      {absEndDate ? format(absEndDate, 'EEEE d MMMM yyyy', { locale: fr }) : 'Choisir une date…'}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={absEndDate}
+                      onSelect={setAbsEndDate}
+                      numberOfMonths={1}
+                      locale={fr}
+                      disabled={{ before: new Date(`${pendingAbsence.fromStr}T00:00:00`) }}
+                      defaultMonth={absEndDate || new Date(`${pendingAbsence.fromStr}T00:00:00`)}
+                    />
+                  </PopoverContent>
+                </Popover>
+                <div className="flex items-center justify-between pt-0.5">
+                  <p className="text-xs text-muted-foreground">Laisser vide si indéterminé</p>
+                  {absEndDate && (
+                    <Button type="button" variant="ghost" size="sm" className="h-auto p-0 text-xs" onClick={() => setAbsEndDate(undefined)}>Effacer</Button>
+                  )}
+                </div>
               </div>
+              <Button className="w-full" onClick={confirmAbsence} disabled={absSaving}>
+                {absSaving && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer l'absence
+              </Button>
             </div>
-            <Button className="w-full" onClick={confirmAbsence} disabled={absSaving}>
-              {absSaving && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer l'absence
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Worker management — modify name */}
-      <Dialog open={!!manageWorker} onOpenChange={(o) => { if (!o) setManageWorker(null); }}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>Modifier le salarié</DialogTitle></DialogHeader>
-          <div className="space-y-4 pt-2">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2"><Label>Prénom</Label><Input value={mFirst} onChange={(e) => setMFirst(e.target.value)} disabled={mSaving} /></div>
-              <div className="space-y-2"><Label>Nom</Label><Input value={mLast} onChange={(e) => setMLast(e.target.value)} disabled={mSaving} /></div>
-            </div>
-            <div className="space-y-2"><Label>Téléphone</Label><Input type="tel" value={mPhone} onChange={(e) => setMPhone(e.target.value)} disabled={mSaving} /></div>
-            <Button className="w-full" onClick={saveWorkerName} disabled={mSaving || mBusy}>
-              {mSaving && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer
-            </Button>
-          </div>
+          )}
         </DialogContent>
       </Dialog>
 
@@ -1125,15 +1200,15 @@ export default function AdminPlanning() {
       <Dialog open={!!editing} onOpenChange={(o) => { if (!o) closeEdit(); }}>
         <DialogContent className="max-w-md max-h-[88vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editing?.worksite?.client_name || 'Affectation'}</DialogTitle>
+            <DialogTitle>{editing?.worksite?.client_name || 'Intervention'}</DialogTitle>
           </DialogHeader>
           {editing && (
             <div className="space-y-5 pt-2">
               <div className="space-y-3">
                 <div className="space-y-2">
-                  <Label>Chantier</Label>
+                  <Label>Client</Label>
                   <Select value={editWorksiteId} onValueChange={setEditWorksiteId}>
-                    <SelectTrigger><SelectValue placeholder="Chantier" /></SelectTrigger>
+                    <SelectTrigger><SelectValue placeholder="Client" /></SelectTrigger>
                     <SelectContent>
                       {worksites.map(ws => <SelectItem key={ws.id} value={ws.id}>{ws.client_name}{ws.city ? ` — ${ws.city}` : ''}</SelectItem>)}
                     </SelectContent>
@@ -1175,7 +1250,7 @@ export default function AdminPlanning() {
 
               {editing.worksite_id && (
                 <div className="space-y-3 border-t pt-4">
-                  <p className="font-medium text-sm flex items-center gap-2"><Building2 className="h-4 w-4" /> Modifier ce chantier</p>
+                  <p className="font-medium text-sm flex items-center gap-2"><Building2 className="h-4 w-4" /> Modifier ce client</p>
                   <div className="space-y-2"><Label>Nom du client</Label><Input value={wsName} onChange={(e) => setWsName(e.target.value)} /></div>
                   <div className="grid grid-cols-2 gap-2">
                     <div className="space-y-2"><Label>Type produit</Label><Input value={wsProduct} onChange={(e) => setWsProduct(e.target.value)} /></div>
@@ -1188,7 +1263,7 @@ export default function AdminPlanning() {
                   <div className="space-y-2"><Label>Description</Label><Textarea value={wsDesc} onChange={(e) => setWsDesc(e.target.value)} rows={2} /></div>
                   <div className="flex flex-wrap gap-2">
                     <Button size="sm" onClick={saveWorksite} disabled={savingWs}>
-                      {savingWs && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer le chantier
+                      {savingWs && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer le client
                     </Button>
                     <Button size="sm" variant="outline" onClick={archiveWorksite} disabled={wsBusy}>
                       <Archive className="h-4 w-4 mr-1" /> Archiver
