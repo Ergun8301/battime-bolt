@@ -15,7 +15,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import {
-  ChevronLeft, ChevronRight, Plus, Trash2, Loader2, AlertTriangle, GripVertical, Check,
+  ChevronLeft, ChevronRight, Plus, Trash2, Loader2, GripVertical, Check,
   UserPlus, Users, Building2, Archive, CalendarRange, Download, FileSpreadsheet, FileText,
   Bell, Clock, Mail, RefreshCw, X, Pencil,
 } from 'lucide-react';
@@ -229,12 +229,10 @@ export default function AdminPlanning() {
   const [resendingId, setResendingId] = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
 
-  // cell add dialog (client or absence on a specific day)
+  // cell add dialog (a client on a specific day)
   const [addOpen, setAddOpen] = useState(false);
   const [addTarget, setAddTarget] = useState<{ workerId: string; date: string } | null>(null);
-  const [addMode, setAddMode] = useState<'client' | 'absence'>('client');
   const [addWorksite, setAddWorksite] = useState('');
-  const [addAbsenceType, setAddAbsenceType] = useState('');
   const [addNote, setAddNote] = useState('');
   const [addSaving, setAddSaving] = useState(false);
 
@@ -492,9 +490,7 @@ export default function AdminPlanning() {
 
   const openAdd = (workerId: string, dateStr: string) => {
     setAddTarget({ workerId, date: dateStr });
-    setAddMode('client');
     setAddWorksite(paletteWorksiteId || '');
-    setAddAbsenceType('');
     setAddNote('');
     setAddOpen(true);
   };
@@ -502,19 +498,17 @@ export default function AdminPlanning() {
   const confirmAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user?.company_id || !addTarget) return;
-    if (addMode === 'client' && !addWorksite) { toast.error('Choisissez un client'); return; }
-    if (addMode === 'absence' && !addAbsenceType) { toast.error("Choisissez le motif d'absence"); return; }
+    if (!addWorksite) { toast.error('Choisissez un client'); return; }
     setAddSaving(true);
     try {
-      const isAbs = addMode === 'absence';
       const { error } = await supabase.from('planning').insert({
         company_id: user.company_id, created_by: user.id, user_id: addTarget.workerId,
-        worksite_id: isAbs ? null : addWorksite, work_date: addTarget.date,
+        worksite_id: addWorksite, work_date: addTarget.date,
         estimated_start: null, estimated_end: null,
-        notes: addNote.trim() || null, absence_type: isAbs ? addAbsenceType : null,
+        notes: addNote.trim() || null, absence_type: null,
       });
       if (error) throw error;
-      toast.success(isAbs ? 'Absence enregistrée' : 'Ajouté au planning');
+      toast.success('Ajouté au planning');
       setAddOpen(false);
       setAddTarget(null);
       refresh();
@@ -905,7 +899,7 @@ export default function AdminPlanning() {
             <Building2 className="h-4 w-4 mr-1.5" /> Clients
           </Button>
           <Select value={paletteWorksiteId} onValueChange={setPaletteWorksiteId}>
-            <SelectTrigger className="h-9 w-[190px]"><SelectValue placeholder="Choisir un client" /></SelectTrigger>
+            <SelectTrigger className="h-9 w-[220px]"><SelectValue placeholder="Glisser un client sur le planning…" /></SelectTrigger>
             <SelectContent>
               {worksites.map(ws => (
                 <SelectItem key={ws.id} value={ws.id}>{ws.client_name}{ws.city ? ` — ${ws.city}` : ''}</SelectItem>
@@ -926,6 +920,9 @@ export default function AdminPlanning() {
             </div>
             <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => setCurrentWeekStart(addWeeks(currentWeekStart, 1))}>
               <ChevronRight className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" size="sm" className="h-9" onClick={() => setCurrentWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))}>
+              Aujourd'hui
             </Button>
           </div>
         </div>
@@ -1082,11 +1079,6 @@ export default function AdminPlanning() {
                   <span className="h-3 w-3 rounded-full bg-orange-500 mr-3" /> {opt.label}
                 </Button>
               ))}
-              <div className="border-t pt-2 mt-1">
-                <Button variant="ghost" className="w-full justify-start text-muted-foreground" onClick={() => { setFicheWorker(statusTarget.worker); setStatusTarget(null); }}>
-                  <Clock className="h-4 w-4 mr-2" /> Voir la fiche / les heures
-                </Button>
-              </div>
             </div>
           )}
         </DialogContent>
@@ -1160,42 +1152,26 @@ export default function AdminPlanning() {
         </DialogContent>
       </Dialog>
 
-      {/* Cell add (client or absence on a specific day) */}
+      {/* Cell add — a client on a specific day */}
       <Dialog open={addOpen} onOpenChange={(o) => { setAddOpen(o); if (!o) setAddTarget(null); }}>
         <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>Ajouter au planning</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Ajouter un client</DialogTitle></DialogHeader>
           <form onSubmit={confirmAdd} className="space-y-4 pt-2">
-            <div className="flex gap-2">
-              <Button type="button" variant={addMode === 'client' ? 'default' : 'outline'} className="flex-1" onClick={() => setAddMode('client')}>Client</Button>
-              <Button type="button" variant={addMode === 'absence' ? 'default' : 'outline'} className="flex-1" onClick={() => setAddMode('absence')}>Absence</Button>
-            </div>
-            {addMode === 'client' ? (
-              <div className="space-y-2">
-                <Label>Client</Label>
-                <Select value={addWorksite} onValueChange={setAddWorksite}>
-                  <SelectTrigger><SelectValue placeholder="Choisir un client" /></SelectTrigger>
-                  <SelectContent>
-                    {worksites.map(ws => <SelectItem key={ws.id} value={ws.id}>{ws.client_name}{ws.city ? ` — ${ws.city}` : ''}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <Label className="flex items-center gap-1"><AlertTriangle className="h-4 w-4 text-orange-500" /> Motif d'absence</Label>
-                <Select value={addAbsenceType} onValueChange={setAddAbsenceType}>
-                  <SelectTrigger><SelectValue placeholder="Choisir le motif" /></SelectTrigger>
-                  <SelectContent>
-                    {ABSENCE_OPTIONS.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
             <div className="space-y-2">
-              <Label>Note (optionnel)</Label>
-              <Textarea value={addNote} onChange={(e) => setAddNote(e.target.value)} rows={2} />
+              <Label>Client</Label>
+              <Select value={addWorksite} onValueChange={setAddWorksite}>
+                <SelectTrigger><SelectValue placeholder="Choisir un client" /></SelectTrigger>
+                <SelectContent>
+                  {worksites.map(ws => <SelectItem key={ws.id} value={ws.id}>{ws.client_name}{ws.city ? ` — ${ws.city}` : ''}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Note pour le poseur (optionnel)</Label>
+              <Textarea value={addNote} onChange={(e) => setAddNote(e.target.value)} rows={2} placeholder="Ex : code portail 1234…" />
             </div>
             <Button type="submit" className="w-full" disabled={addSaving}>
-              {addSaving && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer
+              {addSaving && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Ajouter au planning
             </Button>
           </form>
         </DialogContent>
