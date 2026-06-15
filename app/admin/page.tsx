@@ -1,16 +1,12 @@
 'use client';
 
-import { useState } from 'react';
 import { useAuth } from '@/components/auth-provider';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
-import { LogOut, Clock, Calendar, LayoutDashboard } from 'lucide-react';
+import { LogOut, Clock } from 'lucide-react';
 import AdminPlanning from '@/components/admin-planning';
-import AdminDashboard from '@/components/admin-dashboard';
 
 export default function AdminPage() {
   const { user, signOut } = useAuth();
-  const [activeTab, setActiveTab] = useState('dashboard');
 
   return (
     <div className="min-h-screen bg-background">
@@ -36,26 +32,7 @@ export default function AdminPage() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 py-6">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-2 mb-6 max-w-md">
-            <TabsTrigger value="planning" className="flex items-center gap-2">
-              <Calendar className="h-4 w-4" />
-              Planning
-            </TabsTrigger>
-            <TabsTrigger value="dashboard" className="flex items-center gap-2">
-              <LayoutDashboard className="h-4 w-4" />
-              <span className="hidden sm:inline">Tableau de bord</span>
-              <span className="sm:hidden">Tableau</span>
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="planning">
-            <AdminPlanning />
-          </TabsContent>
-          <TabsContent value="dashboard">
-            <AdminDashboard />
-          </TabsContent>
-        </Tabs>
+        <AdminPlanning />
       </main>
     </div>
   );
