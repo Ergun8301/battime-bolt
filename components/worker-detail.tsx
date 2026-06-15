@@ -262,7 +262,7 @@ export default function WorkerDetailDialog({ worker, onOpenChange, onChanged }: 
           <p className="flex items-start gap-2 text-sm">
             <span className="mt-1.5 h-2 w-2 rounded-full bg-red-500 shrink-0" />
             <span>
-              <span className="font-medium">{missing.length} jour{missing.length > 1 ? 's' : ''} non déclaré{missing.length > 1 ? 's' : ''}</span>
+              <span className="font-medium">{missing.length} jour{missing.length > 1 ? 's' : ''} en attente</span>
               <span className="text-muted-foreground"> · {missing.map((d) => format(parseISO(d), 'EEE d MMM', { locale: fr })).join(', ')}</span>
             </span>
           </p>

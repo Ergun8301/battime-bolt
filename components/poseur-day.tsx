@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, type ReactNode } from 'react';
+import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
 import { TimeEntry, Worksite, Planning } from '@/lib/types';
@@ -16,14 +16,13 @@ import { Skeleton } from '@/components/ui/skeleton';
 import {
   Plus, Trash2, Send, Loader2, MapPin, Clock, Utensils, WifiOff, RefreshCw, AlertTriangle, Copy,
 } from 'lucide-react';
-import { format, subDays, parseISO } from 'date-fns';
-import { fr } from 'date-fns/locale';
+import { format, subDays } from 'date-fns';
 import { toast } from 'sonner';
 import {
   addPendingEntry, getPendingEntries, removePendingEntry, clearPendingEntriesForDate,
   generateLocalId, PendingEntry,
 } from '@/lib/offline-store';
-import { computeMissingDays } from '@/lib/work-status';
+import { TimeCylinder, snapToGrid } from '@/components/time-cylinder';
 
 interface TimeEntryWithWorksite extends TimeEntry {
   worksite: Worksite;
@@ -63,36 +62,6 @@ function normalizeStr(s: string): string {
   return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
 }
 
-// ─── Time field: BTP quick-presets (1 tap) + the phone's native wheel ──────────
-
-const TIME_PRESETS: [string, string][] = [
-  ['07:00', '7h'], ['07:30', '7h30'], ['08:00', '8h'], ['12:00', '12h'], ['12:45', '12h45'],
-  ['13:00', '13h'], ['16:00', '16h'], ['16:15', '16h15'], ['17:00', '17h'], ['18:00', '18h'],
-];
-
-function TimeField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
-  return (
-    <div className="space-y-1.5">
-      <Label>{label}</Label>
-      <div className="flex flex-wrap gap-1.5">
-        {TIME_PRESETS.map(([v, lbl]) => (
-          <button
-            type="button"
-            key={v}
-            onClick={() => onChange(v)}
-            className={`h-9 rounded-md border px-2.5 text-sm font-medium tabular-nums transition-colors ${
-              value === v ? 'bg-primary text-primary-foreground border-primary' : 'bg-background hover:bg-muted'
-            }`}
-          >
-            {lbl}
-          </button>
-        ))}
-      </div>
-      <Input type="time" value={value} onChange={(e) => onChange(e.target.value)} className="h-12 text-lg tabular-nums" />
-    </div>
-  );
-}
-
 // ─── Inline slot editor (replaces the old modals) ──────────────────────────────
 
 function SlotEditor({
@@ -102,12 +71,28 @@ function SlotEditor({
   onStart: (v: string) => void; onEnd: (v: string) => void; onObs: (v: string) => void;
   onSave: () => void; onCancel: () => void; saving: boolean; clientPicker?: ReactNode;
 }) {
+  const rootRef = useRef<HTMLDivElement>(null);
   const total = start && end ? calculateTotalMinutes(start, end, 0) : 0;
+
+  // Clicking in the empty space (outside) closes the editor — Radix popups excepted.
+  useEffect(() => {
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (!t || !rootRef.current || rootRef.current.contains(t)) return;
+      if (t.closest('[data-radix-popper-content-wrapper]') || t.closest('[role="dialog"]')) return;
+      onCancel();
+    };
+    document.addEventListener('pointerdown', onDown);
+    return () => document.removeEventListener('pointerdown', onDown);
+  }, [onCancel]);
+
   return (
-    <div className="rounded-lg border bg-muted/20 p-3 space-y-3">
+    <div ref={rootRef} className="rounded-lg border bg-muted/20 p-3 space-y-3">
       {clientPicker}
-      <TimeField label="Heure de début" value={start} onChange={onStart} />
-      <TimeField label="Heure de fin" value={end} onChange={onEnd} />
+      <div className="space-y-3">
+        <div className="space-y-1.5"><Label className="block text-center">Heure de début</Label><TimeCylinder value={start} onChange={onStart} /></div>
+        <div className="space-y-1.5"><Label className="block text-center">Heure de fin</Label><TimeCylinder value={end} onChange={onEnd} /></div>
+      </div>
       {start && end && (
         <p className="text-center text-sm">Durée : <strong className="text-foreground">{formatMinutesToHours(total)}</strong></p>
       )}
@@ -143,7 +128,6 @@ export default function PoseurDay() {
   const [submitting, setSubmitting] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
-  const [missingDays, setMissingDays] = useState<string[]>([]);
 
   // Day-level panier repas (one per day).
   const [dayMeal, setDayMeal] = useState(false);
@@ -176,13 +160,10 @@ export default function PoseurDay() {
   const fetchData = useCallback(async () => {
     if (!user) return;
     try {
-      const recentStart = format(subDays(new Date(), 14), 'yyyy-MM-dd');
-      const [entriesRes, worksitesRes, planningRes, recentRes, recentPlanRes] = await Promise.all([
+      const [entriesRes, worksitesRes, planningRes] = await Promise.all([
         supabase.from('time_entries').select('*, worksite:worksites(*)').eq('user_id', user.id).eq('work_date', today).order('start_time'),
         supabase.from('worksites').select('*').eq('company_id', user.company_id).eq('is_active', true).order('client_name'),
         supabase.from('planning').select('*, worksite:worksites(*)').eq('user_id', user.id).eq('work_date', today),
-        supabase.from('time_entries').select('work_date, status').eq('user_id', user.id).neq('status', 'draft').gte('work_date', recentStart),
-        supabase.from('planning').select('work_date, absence_type').eq('user_id', user.id).gte('work_date', recentStart),
       ]);
       if (entriesRes.error) throw entriesRes.error;
       if (worksitesRes.error) throw worksitesRes.error;
@@ -194,14 +175,6 @@ export default function PoseurDay() {
 
       const pendForToday = getPendingEntries(user.id).filter((e) => e.work_date === today);
       setDayMeal((entriesRes.data || []).some((e: TimeEntryWithWorksite) => e.meal_allowance) || pendForToday.some((e) => e.meal_allowance));
-
-      if (!recentRes.error && !recentPlanRes.error) {
-        const declared = new Set<string>((recentRes.data || []).map((e: { work_date: string }) => e.work_date));
-        const rows = (recentPlanRes.data || []) as { work_date: string; absence_type: string | null }[];
-        const absenceDays = new Set<string>(rows.filter((p) => p.absence_type).map((p) => p.work_date));
-        const planned = rows.filter((p) => !p.absence_type && !absenceDays.has(p.work_date)).map((p) => p.work_date);
-        setMissingDays(computeMissingDays(planned, declared));
-      }
     } catch (err) {
       console.error('Error fetching data:', err);
       toast.error('Impossible de charger vos données');
@@ -313,26 +286,26 @@ export default function PoseurDay() {
 
   const openPlanned = (p: Planning & { worksite: Worksite }) => {
     setOpenSlot({ kind: 'planned', planningId: p.id });
-    setFStart(p.estimated_start ? p.estimated_start.substring(0, 5) : '');
-    setFEnd(p.estimated_end ? p.estimated_end.substring(0, 5) : '');
+    setFStart(snapToGrid(p.estimated_start ? p.estimated_start.substring(0, 5) : '08:00'));
+    setFEnd(snapToGrid(p.estimated_end ? p.estimated_end.substring(0, 5) : '17:00'));
     setFObs('');
   };
   const openEntry = (e: TimeEntryWithWorksite) => {
     setOpenSlot({ kind: 'entry', entryId: e.id });
-    setFStart(e.start_time?.substring(0, 5) || '');
-    setFEnd(e.end_time?.substring(0, 5) || '');
+    setFStart(snapToGrid(e.start_time?.substring(0, 5) || '08:00'));
+    setFEnd(snapToGrid(e.end_time?.substring(0, 5) || '17:00'));
     setFObs(e.observation || '');
   };
   const openPending = (e: PendingEntry) => {
     setOpenSlot({ kind: 'pending', localId: e.localId });
-    setFStart(e.start_time.substring(0, 5));
-    setFEnd(e.end_time.substring(0, 5));
+    setFStart(snapToGrid(e.start_time.substring(0, 5)));
+    setFEnd(snapToGrid(e.end_time.substring(0, 5)));
     setFObs(e.observation || '');
   };
   const openNew = () => {
     setOpenSlot({ kind: 'new' });
     setFMode('existing'); setFWorksiteId(''); setFClientName(''); setFProductType(''); setFCity('');
-    setFStart(''); setFEnd(''); setFObs('');
+    setFStart('08:00'); setFEnd('17:00'); setFObs('');
   };
   const cancelSlot = () => setOpenSlot(null);
 
@@ -555,18 +528,6 @@ export default function PoseurDay() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-xl font-bold capitalize">{format(new Date(), 'EEEE d MMMM', { locale: fr })}</h2>
-      </div>
-
-      {/* Unsent-days reminder */}
-      {missingDays.length > 0 && (
-        <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 flex items-start gap-2 text-sm text-orange-800">
-          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-          <span>Tu n'as pas envoyé ta journée : {missingDays.map((d) => format(parseISO(d), 'EEE d MMM', { locale: fr })).join(', ')}.</span>
-        </div>
-      )}
-
       {/* Offline / syncing */}
       {!isOnline && (
         <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 flex items-center gap-2 text-sm text-orange-700">
