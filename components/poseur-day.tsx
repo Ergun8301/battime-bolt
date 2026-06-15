@@ -89,9 +89,15 @@ function SlotEditor({
   return (
     <div ref={rootRef} className="rounded-lg border bg-muted/20 p-3 space-y-3">
       {clientPicker}
-      <div className="space-y-3">
-        <div className="space-y-1.5"><Label className="block text-center">Heure de début</Label><TimeCylinder value={start} onChange={onStart} /></div>
-        <div className="space-y-1.5"><Label className="block text-center">Heure de fin</Label><TimeCylinder value={end} onChange={onEnd} /></div>
+      <div className="grid grid-cols-2 overflow-hidden rounded-lg border bg-background">
+        <div className="p-2">
+          <Label className="mb-1 block text-center text-xs text-muted-foreground">Début</Label>
+          <TimeCylinder value={start} onChange={onStart} />
+        </div>
+        <div className="border-l p-2">
+          <Label className="mb-1 block text-center text-xs text-muted-foreground">Fin</Label>
+          <TimeCylinder value={end} onChange={onEnd} />
+        </div>
       </div>
       {start && end && (
         <p className="text-center text-sm">Durée : <strong className="text-foreground">{formatMinutesToHours(total)}</strong></p>
