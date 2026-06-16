@@ -104,7 +104,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
   // Correction mode: a sent day is frozen; tapping an intervention asks to confirm.
   const [correcting, setCorrecting] = useState(false);
   const [confirmCorrectOpen, setConfirmCorrectOpen] = useState(false);
-  const [pendingEditId, setPendingEditId] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
   const [lateOpen, setLateOpen] = useState(false);
 
   const date = dateProp || format(new Date(), 'yyyy-MM-dd');
@@ -275,16 +275,15 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
   };
   const cancelSlot = () => setOpenSlot(null);
 
-  // Tap a sent intervention (or the meal) → confirm → unlock the day, then open the slot.
-  const askCorrect = (entryId: string | null) => { setPendingEditId(entryId); setConfirmCorrectOpen(true); };
+  // On a sent (frozen) day, any touch — edit a sent entry OR declare a remaining
+  // chantier OR the meal — goes through this confirm, then unlocks the day.
+  const askCorrect = (action: (() => void) | null) => { setPendingAction(() => action); setConfirmCorrectOpen(true); };
   const confirmCorrect = () => {
     setCorrecting(true);
     setConfirmCorrectOpen(false);
-    if (pendingEditId) {
-      const e = entries.find((x) => x.id === pendingEditId);
-      setPendingEditId(null);
-      if (e) openEntry(e);
-    }
+    const action = pendingAction;
+    setPendingAction(null);
+    action?.();
   };
 
   const saveSlot = async () => {
@@ -625,7 +624,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
           if (item.kind === 'planned') {
             const p = item.data;
             return (
-              <Card key={item.key} className="border-primary/30 bg-primary/5 cursor-pointer transition-colors hover:bg-primary/10" onClick={() => openPlanned(p)}>
+              <Card key={item.key} className="border-primary/30 bg-primary/5 cursor-pointer transition-colors hover:bg-primary/10" onClick={monthLocked ? () => setLateOpen(true) : frozen ? () => askCorrect(() => openPlanned(p)) : () => openPlanned(p)}>
                 <CardContent className="py-4 flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-xs text-muted-foreground">À déclarer</p>
@@ -641,7 +640,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
           if (item.kind === 'entry') {
             const entry = item.data;
             const tappable = isEditable(entry);
-            const onTap = !tappable ? undefined : monthLocked ? () => setLateOpen(true) : frozen ? () => askCorrect(entry.id) : () => openEntry(entry);
+            const onTap = !tappable ? undefined : monthLocked ? () => setLateOpen(true) : frozen ? () => askCorrect(() => openEntry(entry)) : () => openEntry(entry);
             return (
               <Card key={item.key} className={tappable ? 'cursor-pointer transition-colors hover:bg-muted/40' : ''} onClick={onTap}>
                 <CardContent className="py-4">
@@ -723,20 +722,12 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
 
       {allSubmitted && !openSlot && (
         <div className="text-center py-2">
-          {plannedTodo.length > 0 ? (
-            <p className="text-sm text-orange-600">
-              {entries.length} intervention{entries.length > 1 ? 's' : ''} envoyée{entries.length > 1 ? 's' : ''} · il reste {plannedTodo.length} chantier{plannedTodo.length > 1 ? 's' : ''} à déclarer
-            </p>
-          ) : (
-            <>
-              <p className="text-sm text-muted-foreground">Journée envoyée ✓</p>
-              {monthLocked
-                ? <p className="text-xs text-muted-foreground mt-0.5">Mois clôturé — vois avec la secrétaire pour modifier.</p>
-                : frozen
-                  ? <p className="text-xs text-muted-foreground mt-0.5">Touche une intervention pour la corriger.</p>
-                  : <p className="text-xs text-orange-600 mt-0.5">Mode correction — tes changements sont signalés à la secrétaire.</p>}
-            </>
-          )}
+          <p className="text-sm text-muted-foreground">Journée envoyée ✓</p>
+          {monthLocked
+            ? <p className="text-xs text-muted-foreground mt-0.5">Mois clôturé — vois avec la secrétaire pour modifier.</p>
+            : frozen
+              ? <p className="text-xs text-muted-foreground mt-0.5">Touche une intervention pour la corriger.</p>
+              : <p className="text-xs text-orange-600 mt-0.5">Mode correction — tes changements sont signalés à la secrétaire.</p>}
         </div>
       )}
 
@@ -831,15 +822,15 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
       </Dialog>
 
       {/* Confirm correcting an already-sent day */}
-      <Dialog open={confirmCorrectOpen} onOpenChange={(o) => { setConfirmCorrectOpen(o); if (!o) setPendingEditId(null); }}>
+      <Dialog open={confirmCorrectOpen} onOpenChange={(o) => { setConfirmCorrectOpen(o); if (!o) setPendingAction(null); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-orange-500" /> Journée déjà envoyée</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-muted-foreground">Cette feuille a déjà été envoyée. Si tu la corriges, la secrétaire en sera informée.</p>
+          <p className="text-sm text-muted-foreground">Cette journée a déjà été envoyée. Si tu y touches, la secrétaire en sera informée.</p>
           <div className="flex gap-2 mt-2">
-            <Button variant="outline" className="flex-1" onClick={() => { setConfirmCorrectOpen(false); setPendingEditId(null); }}>Annuler</Button>
-            <Button className="flex-1" onClick={confirmCorrect}>Corriger</Button>
+            <Button variant="outline" className="flex-1" onClick={() => { setConfirmCorrectOpen(false); setPendingAction(null); }}>Annuler</Button>
+            <Button className="flex-1" onClick={confirmCorrect}>Continuer</Button>
           </div>
         </DialogContent>
       </Dialog>
