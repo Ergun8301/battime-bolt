@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, type ReactNode } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
 import { TimeEntry, Worksite, Planning } from '@/lib/types';
@@ -14,16 +14,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
-  Plus, Trash2, Send, Loader2, MapPin, Clock, Utensils, WifiOff, RefreshCw, AlertTriangle, Copy,
+  Plus, Trash2, Send, Loader2, MapPin, Clock, Utensils, WifiOff, RefreshCw, AlertTriangle, Copy, X,
 } from 'lucide-react';
-import { format, subDays, parseISO } from 'date-fns';
-import { fr } from 'date-fns/locale';
+import { format, subDays } from 'date-fns';
 import { toast } from 'sonner';
 import {
   addPendingEntry, getPendingEntries, removePendingEntry, clearPendingEntriesForDate,
   generateLocalId, PendingEntry,
 } from '@/lib/offline-store';
-import { computeMissingDays } from '@/lib/work-status';
+import { TimeCylinder, snapToGrid } from '@/components/time-cylinder';
 
 interface TimeEntryWithWorksite extends TimeEntry {
   worksite: Worksite;
@@ -63,67 +62,7 @@ function normalizeStr(s: string): string {
   return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
 }
 
-// ─── Time field: BTP quick-presets (1 tap) + the phone's native wheel ──────────
-
-const TIME_PRESETS: [string, string][] = [
-  ['07:00', '7h'], ['07:30', '7h30'], ['08:00', '8h'], ['12:00', '12h'], ['12:45', '12h45'],
-  ['13:00', '13h'], ['16:00', '16h'], ['16:15', '16h15'], ['17:00', '17h'], ['18:00', '18h'],
-];
-
-function TimeField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
-  return (
-    <div className="space-y-1.5">
-      <Label>{label}</Label>
-      <div className="flex flex-wrap gap-1.5">
-        {TIME_PRESETS.map(([v, lbl]) => (
-          <button
-            type="button"
-            key={v}
-            onClick={() => onChange(v)}
-            className={`h-9 rounded-md border px-2.5 text-sm font-medium tabular-nums transition-colors ${
-              value === v ? 'bg-primary text-primary-foreground border-primary' : 'bg-background hover:bg-muted'
-            }`}
-          >
-            {lbl}
-          </button>
-        ))}
-      </div>
-      <Input type="time" value={value} onChange={(e) => onChange(e.target.value)} className="h-12 text-lg tabular-nums" />
-    </div>
-  );
-}
-
-// ─── Inline slot editor (replaces the old modals) ──────────────────────────────
-
-function SlotEditor({
-  start, end, obs, onStart, onEnd, onObs, onSave, onCancel, saving, clientPicker,
-}: {
-  start: string; end: string; obs: string;
-  onStart: (v: string) => void; onEnd: (v: string) => void; onObs: (v: string) => void;
-  onSave: () => void; onCancel: () => void; saving: boolean; clientPicker?: ReactNode;
-}) {
-  const total = start && end ? calculateTotalMinutes(start, end, 0) : 0;
-  return (
-    <div className="rounded-lg border bg-muted/20 p-3 space-y-3">
-      {clientPicker}
-      <TimeField label="Heure de début" value={start} onChange={onStart} />
-      <TimeField label="Heure de fin" value={end} onChange={onEnd} />
-      {start && end && (
-        <p className="text-center text-sm">Durée : <strong className="text-foreground">{formatMinutesToHours(total)}</strong></p>
-      )}
-      <div className="space-y-1.5">
-        <Label>Observation (optionnel)</Label>
-        <Input value={obs} onChange={(e) => onObs(e.target.value)} placeholder="Note…" />
-      </div>
-      <div className="flex gap-2">
-        <Button className="flex-1" onClick={onSave} disabled={saving}>
-          {saving && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer
-        </Button>
-        <Button variant="outline" onClick={onCancel} disabled={saving}>Annuler</Button>
-      </div>
-    </div>
-  );
-}
+// (The intervention editor is a full-screen sheet, rendered inline in the component below.)
 
 // ─── main ──────────────────────────────────────────────────────────────────────
 
@@ -143,7 +82,6 @@ export default function PoseurDay() {
   const [submitting, setSubmitting] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
-  const [missingDays, setMissingDays] = useState<string[]>([]);
 
   // Day-level panier repas (one per day).
   const [dayMeal, setDayMeal] = useState(false);
@@ -176,13 +114,10 @@ export default function PoseurDay() {
   const fetchData = useCallback(async () => {
     if (!user) return;
     try {
-      const recentStart = format(subDays(new Date(), 14), 'yyyy-MM-dd');
-      const [entriesRes, worksitesRes, planningRes, recentRes, recentPlanRes] = await Promise.all([
+      const [entriesRes, worksitesRes, planningRes] = await Promise.all([
         supabase.from('time_entries').select('*, worksite:worksites(*)').eq('user_id', user.id).eq('work_date', today).order('start_time'),
         supabase.from('worksites').select('*').eq('company_id', user.company_id).eq('is_active', true).order('client_name'),
         supabase.from('planning').select('*, worksite:worksites(*)').eq('user_id', user.id).eq('work_date', today),
-        supabase.from('time_entries').select('work_date, status').eq('user_id', user.id).neq('status', 'draft').gte('work_date', recentStart),
-        supabase.from('planning').select('work_date, absence_type').eq('user_id', user.id).gte('work_date', recentStart),
       ]);
       if (entriesRes.error) throw entriesRes.error;
       if (worksitesRes.error) throw worksitesRes.error;
@@ -194,14 +129,6 @@ export default function PoseurDay() {
 
       const pendForToday = getPendingEntries(user.id).filter((e) => e.work_date === today);
       setDayMeal((entriesRes.data || []).some((e: TimeEntryWithWorksite) => e.meal_allowance) || pendForToday.some((e) => e.meal_allowance));
-
-      if (!recentRes.error && !recentPlanRes.error) {
-        const declared = new Set<string>((recentRes.data || []).map((e: { work_date: string }) => e.work_date));
-        const rows = (recentPlanRes.data || []) as { work_date: string; absence_type: string | null }[];
-        const absenceDays = new Set<string>(rows.filter((p) => p.absence_type).map((p) => p.work_date));
-        const planned = rows.filter((p) => !p.absence_type && !absenceDays.has(p.work_date)).map((p) => p.work_date);
-        setMissingDays(computeMissingDays(planned, declared));
-      }
     } catch (err) {
       console.error('Error fetching data:', err);
       toast.error('Impossible de charger vos données');
@@ -313,26 +240,26 @@ export default function PoseurDay() {
 
   const openPlanned = (p: Planning & { worksite: Worksite }) => {
     setOpenSlot({ kind: 'planned', planningId: p.id });
-    setFStart(p.estimated_start ? p.estimated_start.substring(0, 5) : '');
-    setFEnd(p.estimated_end ? p.estimated_end.substring(0, 5) : '');
+    setFStart(snapToGrid(p.estimated_start ? p.estimated_start.substring(0, 5) : '08:00'));
+    setFEnd(snapToGrid(p.estimated_end ? p.estimated_end.substring(0, 5) : '17:00'));
     setFObs('');
   };
   const openEntry = (e: TimeEntryWithWorksite) => {
     setOpenSlot({ kind: 'entry', entryId: e.id });
-    setFStart(e.start_time?.substring(0, 5) || '');
-    setFEnd(e.end_time?.substring(0, 5) || '');
+    setFStart(snapToGrid(e.start_time?.substring(0, 5) || '08:00'));
+    setFEnd(snapToGrid(e.end_time?.substring(0, 5) || '17:00'));
     setFObs(e.observation || '');
   };
   const openPending = (e: PendingEntry) => {
     setOpenSlot({ kind: 'pending', localId: e.localId });
-    setFStart(e.start_time.substring(0, 5));
-    setFEnd(e.end_time.substring(0, 5));
+    setFStart(snapToGrid(e.start_time.substring(0, 5)));
+    setFEnd(snapToGrid(e.end_time.substring(0, 5)));
     setFObs(e.observation || '');
   };
   const openNew = () => {
     setOpenSlot({ kind: 'new' });
     setFMode('existing'); setFWorksiteId(''); setFClientName(''); setFProductType(''); setFCity('');
-    setFStart(''); setFEnd(''); setFObs('');
+    setFStart('08:00'); setFEnd('17:00'); setFObs('');
   };
   const cancelSlot = () => setOpenSlot(null);
 
@@ -543,11 +470,11 @@ export default function PoseurDay() {
       ? worksites.filter((w) => { const n = normalizeStr(w.client_name); return n.includes(typedNorm) || typedNorm.includes(n); }).slice(0, 4)
       : [];
 
-  const editorProps = {
-    start: fStart, end: fEnd, obs: fObs,
-    onStart: setFStart, onEnd: setFEnd, onObs: setFObs,
-    onSave: saveSlot, onCancel: cancelSlot, saving: fSaving,
-  };
+  const slotTitle = !openSlot ? ''
+    : openSlot.kind === 'planned' ? (planning.find((p) => p.id === openSlot.planningId)?.worksite?.client_name || 'Intervention')
+    : openSlot.kind === 'entry' ? (entries.find((e) => e.id === openSlot.entryId)?.worksite?.client_name || 'Intervention')
+    : openSlot.kind === 'pending' ? (pendingEntries.find((e) => e.localId === openSlot.localId)?._worksite_name || 'Intervention')
+    : 'Nouvelle intervention';
 
   if (loading) {
     return <div className="space-y-4"><Skeleton className="h-24 w-full" /><Skeleton className="h-40 w-full" /></div>;
@@ -555,18 +482,6 @@ export default function PoseurDay() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-xl font-bold capitalize">{format(new Date(), 'EEEE d MMMM', { locale: fr })}</h2>
-      </div>
-
-      {/* Unsent-days reminder */}
-      {missingDays.length > 0 && (
-        <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 flex items-start gap-2 text-sm text-orange-800">
-          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-          <span>Tu n'as pas envoyé ta journée : {missingDays.map((d) => format(parseISO(d), 'EEE d MMM', { locale: fr })).join(', ')}.</span>
-        </div>
-      )}
-
       {/* Offline / syncing */}
       {!isOnline && (
         <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 flex items-center gap-2 text-sm text-orange-700">
@@ -619,36 +534,21 @@ export default function PoseurDay() {
       <div className="space-y-2">
         {/* Planned chantiers still to declare */}
         {plannedTodo.map((p) => (
-          openSlot?.kind === 'planned' && openSlot.planningId === p.id ? (
-            <div key={p.id} className="space-y-1">
-              <p className="text-sm font-medium flex items-center gap-1"><MapPin className="h-4 w-4 text-muted-foreground" />{p.worksite?.client_name}{p.worksite?.city ? ` — ${p.worksite.city}` : ''}</p>
-              <SlotEditor {...editorProps} />
-            </div>
-          ) : (
-            <Card key={p.id} className="border-primary/30 bg-primary/5 cursor-pointer transition-colors hover:bg-primary/10" onClick={() => openPlanned(p)}>
-              <CardContent className="py-4 flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-xs text-muted-foreground">À déclarer</p>
-                  <p className="font-semibold truncate flex items-center gap-1"><MapPin className="h-4 w-4 text-muted-foreground shrink-0" />{p.worksite?.client_name}{p.worksite?.city ? ` — ${p.worksite.city}` : ''}</p>
-                  {p.estimated_start && p.estimated_end && <p className="text-xs text-muted-foreground mt-0.5">Prévu {p.estimated_start.substring(0, 5)}–{p.estimated_end.substring(0, 5)}</p>}
-                </div>
-                <span className="flex items-center gap-1 text-primary font-medium text-sm shrink-0"><Plus className="h-4 w-4" /> Mes heures</span>
-              </CardContent>
-            </Card>
-          )
+          <Card key={p.id} className="border-primary/30 bg-primary/5 cursor-pointer transition-colors hover:bg-primary/10" onClick={() => openPlanned(p)}>
+            <CardContent className="py-4 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground">À déclarer</p>
+                <p className="font-semibold truncate flex items-center gap-1"><MapPin className="h-4 w-4 text-muted-foreground shrink-0" />{p.worksite?.client_name}{p.worksite?.city ? ` — ${p.worksite.city}` : ''}</p>
+                {p.estimated_start && p.estimated_end && <p className="text-xs text-muted-foreground mt-0.5">Prévu {p.estimated_start.substring(0, 5)}–{p.estimated_end.substring(0, 5)}</p>}
+              </div>
+              <span className="flex items-center gap-1 text-primary font-medium text-sm shrink-0"><Plus className="h-4 w-4" /> Mes heures</span>
+            </CardContent>
+          </Card>
         ))}
 
         {/* Declared (server) entries */}
         {entries.map((entry) => {
           const editable = isEditable(entry);
-          if (openSlot?.kind === 'entry' && openSlot.entryId === entry.id) {
-            return (
-              <div key={entry.id} className="space-y-1">
-                <p className="text-sm font-medium">{entry.worksite?.client_name || 'Chantier'}</p>
-                <SlotEditor {...editorProps} />
-              </div>
-            );
-          }
           return (
             <Card key={entry.id} className={editable ? 'cursor-pointer transition-colors hover:bg-muted/40' : ''} onClick={editable ? () => openEntry(entry) : undefined}>
               <CardContent className="py-4">
@@ -674,73 +574,28 @@ export default function PoseurDay() {
 
         {/* Pending (offline) entries */}
         {pendingEntries.map((entry) => (
-          openSlot?.kind === 'pending' && openSlot.localId === entry.localId ? (
-            <div key={entry.localId} className="space-y-1">
-              <p className="text-sm font-medium">{entry._worksite_name}</p>
-              <SlotEditor {...editorProps} />
-            </div>
-          ) : (
-            <Card key={entry.localId} className="border-orange-300 bg-orange-50/30 cursor-pointer hover:bg-orange-50/60 transition-colors" onClick={() => openPending(entry)}>
-              <CardContent className="py-4">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="font-semibold truncate">{entry._worksite_name}</p>
-                    <p className="text-sm flex items-center gap-1 mt-0.5"><Clock className="h-3.5 w-3.5 text-muted-foreground" />{entry.start_time.substring(0, 5)}–{entry.end_time.substring(0, 5)} · <span className="font-semibold text-primary">{formatMinutesToHours(entry.total_minutes)}</span></p>
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <Badge variant="outline" className="text-xs text-orange-600 border-orange-300"><WifiOff className="h-3 w-3 mr-1" />Hors-ligne</Badge>
-                    <Button variant="ghost" size="icon" className="text-destructive" onClick={(e) => { e.stopPropagation(); handleDeletePending(entry.localId); }}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
+          <Card key={entry.localId} className="border-orange-300 bg-orange-50/30 cursor-pointer hover:bg-orange-50/60 transition-colors" onClick={() => openPending(entry)}>
+            <CardContent className="py-4">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="font-semibold truncate">{entry._worksite_name}</p>
+                  <p className="text-sm flex items-center gap-1 mt-0.5"><Clock className="h-3.5 w-3.5 text-muted-foreground" />{entry.start_time.substring(0, 5)}–{entry.end_time.substring(0, 5)} · <span className="font-semibold text-primary">{formatMinutesToHours(entry.total_minutes)}</span></p>
                 </div>
-              </CardContent>
-            </Card>
-          )
+                <div className="flex items-center gap-1 shrink-0">
+                  <Badge variant="outline" className="text-xs text-orange-600 border-orange-300"><WifiOff className="h-3 w-3 mr-1" />Hors-ligne</Badge>
+                  <Button variant="ghost" size="icon" className="text-destructive" onClick={(e) => { e.stopPropagation(); handleDeletePending(entry.localId); }}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         ))}
 
         {/* + Ajouter une intervention */}
-        {openSlot?.kind === 'new' ? (
-          <SlotEditor
-            {...editorProps}
-            clientPicker={(
-              <div className="space-y-2">
-                <Label>Chantier</Label>
-                <div className="flex gap-2">
-                  <Button type="button" size="sm" variant={fMode === 'existing' ? 'default' : 'outline'} className="flex-1" onClick={() => setFMode('existing')}>Existant</Button>
-                  <Button type="button" size="sm" variant={fMode === 'new' ? 'default' : 'outline'} className="flex-1" onClick={() => setFMode('new')}>Nouveau</Button>
-                </div>
-                {fMode === 'existing' ? (
-                  <Select value={fWorksiteId} onValueChange={setFWorksiteId}>
-                    <SelectTrigger><SelectValue placeholder="Choisir un chantier" /></SelectTrigger>
-                    <SelectContent>{worksites.map((ws) => <SelectItem key={ws.id} value={ws.id}>{ws.client_name}{ws.city ? ` - ${ws.city}` : ''}</SelectItem>)}</SelectContent>
-                  </Select>
-                ) : (
-                  <div className="space-y-2">
-                    <Input placeholder="Nom du client *" value={fClientName} onChange={(e) => setFClientName(e.target.value)} />
-                    {similarWorksites.length > 0 && (
-                      <div className="rounded-md border border-orange-200 bg-orange-50 p-2 space-y-1">
-                        <p className="text-xs text-orange-700 flex items-center gap-1"><AlertTriangle className="h-3 w-3" />Chantiers similaires — évite les doublons :</p>
-                        {similarWorksites.map((ws) => (
-                          <button key={ws.id} type="button" onClick={() => pickSuggestion(ws)} className="w-full text-left text-sm bg-white border rounded px-2 py-1.5 hover:bg-orange-100 flex items-center justify-between gap-2">
-                            <span className="truncate">{ws.client_name}{ws.city ? ` - ${ws.city}` : ''}</span>
-                            <span className="text-xs text-orange-600 shrink-0">Utiliser</span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    <Input placeholder="Type de produit (stores, volets...)" value={fProductType} onChange={(e) => setFProductType(e.target.value)} />
-                    <Input placeholder="Ville" value={fCity} onChange={(e) => setFCity(e.target.value)} />
-                  </div>
-                )}
-              </div>
-            )}
-          />
-        ) : (
-          <Button variant="outline" className="w-full" onClick={openNew}>
-            <Plus className="h-4 w-4 mr-2" /> Ajouter une intervention
-          </Button>
-        )}
+        <Button variant="outline" className="w-full" onClick={openNew}>
+          <Plus className="h-4 w-4 mr-2" /> Ajouter une intervention
+        </Button>
       </div>
 
       {/* Empty hint + copy yesterday */}
@@ -773,6 +628,79 @@ export default function PoseurDay() {
 
       {allSubmitted && !openSlot && (
         <p className="text-center text-sm text-muted-foreground py-2">Journée envoyée ✓</p>
+      )}
+
+      {/* Full-screen intervention editor — closes only via ✕ / Annuler / Enregistrer */}
+      {openSlot && (
+        <div className="fixed inset-0 z-[60] bg-background">
+          <div className="mx-auto flex h-full w-full max-w-md flex-col safe-top safe-bottom">
+            <div className="flex items-center gap-2 border-b px-2 py-2">
+              <Button variant="ghost" size="icon" onClick={cancelSlot} aria-label="Fermer"><X className="h-5 w-5" /></Button>
+              <p className="font-semibold truncate">{slotTitle}</p>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {openSlot.kind === 'new' && (
+                <div className="space-y-2">
+                  <Label>Chantier</Label>
+                  <div className="flex gap-2">
+                    <Button type="button" variant={fMode === 'existing' ? 'default' : 'outline'} className="flex-1" onClick={() => setFMode('existing')}>Existant</Button>
+                    <Button type="button" variant={fMode === 'new' ? 'default' : 'outline'} className="flex-1" onClick={() => setFMode('new')}>Nouveau</Button>
+                  </div>
+                  {fMode === 'existing' ? (
+                    <Select value={fWorksiteId} onValueChange={setFWorksiteId}>
+                      <SelectTrigger><SelectValue placeholder="Choisir un chantier" /></SelectTrigger>
+                      <SelectContent>{worksites.map((ws) => <SelectItem key={ws.id} value={ws.id}>{ws.client_name}{ws.city ? ` - ${ws.city}` : ''}</SelectItem>)}</SelectContent>
+                    </Select>
+                  ) : (
+                    <div className="space-y-2">
+                      <Input placeholder="Nom du client *" value={fClientName} onChange={(e) => setFClientName(e.target.value)} />
+                      {similarWorksites.length > 0 && (
+                        <div className="rounded-md border border-orange-200 bg-orange-50 p-2 space-y-1">
+                          <p className="text-xs text-orange-700 flex items-center gap-1"><AlertTriangle className="h-3 w-3" />Chantiers similaires — évite les doublons :</p>
+                          {similarWorksites.map((ws) => (
+                            <button key={ws.id} type="button" onClick={() => pickSuggestion(ws)} className="w-full text-left text-sm bg-white border rounded px-2 py-1.5 hover:bg-orange-100 flex items-center justify-between gap-2">
+                              <span className="truncate">{ws.client_name}{ws.city ? ` - ${ws.city}` : ''}</span>
+                              <span className="text-xs text-orange-600 shrink-0">Utiliser</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      <Input placeholder="Type de produit (stores, volets...)" value={fProductType} onChange={(e) => setFProductType(e.target.value)} />
+                      <Input placeholder="Ville" value={fCity} onChange={(e) => setFCity(e.target.value)} />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 overflow-hidden rounded-lg border bg-background">
+                <div className="p-2">
+                  <Label className="mb-1 block text-center text-sm text-muted-foreground">Début</Label>
+                  <TimeCylinder value={fStart} onChange={setFStart} />
+                </div>
+                <div className="border-l p-2">
+                  <Label className="mb-1 block text-center text-sm text-muted-foreground">Fin</Label>
+                  <TimeCylinder value={fEnd} onChange={setFEnd} />
+                </div>
+              </div>
+              {fStart && fEnd && (
+                <p className="text-center text-base">Durée : <strong>{formatMinutesToHours(calculateTotalMinutes(fStart, fEnd, 0))}</strong></p>
+              )}
+
+              <div className="space-y-1.5">
+                <Label>Observation (optionnel)</Label>
+                <Input value={fObs} onChange={(e) => setFObs(e.target.value)} placeholder="Note pour la secrétaire…" />
+              </div>
+            </div>
+
+            <div className="flex gap-2 border-t p-4">
+              <Button variant="outline" className="h-12 flex-1 text-base" onClick={cancelSlot} disabled={fSaving}>Annuler</Button>
+              <Button className="h-12 flex-1 text-base" onClick={saveSlot} disabled={fSaving}>
+                {fSaving && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Coherence confirmation */}

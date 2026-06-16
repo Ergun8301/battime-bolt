@@ -1001,7 +1001,7 @@ export default function AdminPlanning() {
                             >
                               <span className="flex items-center gap-1.5">
                                 <span className="font-bold text-sm truncate">{fullName}</span>
-                                {isLate && <span className="h-2 w-2 rounded-full bg-red-500 shrink-0" title="Des jours planifiés ne sont pas déclarés" />}
+                                {isLate && <span className="h-2 w-2 rounded-full bg-red-500 shrink-0" title="Jours en attente d'envoi" />}
                               </span>
                               {absToday && (
                                 <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
@@ -1118,7 +1118,7 @@ export default function AdminPlanning() {
                     <div key={w.id} className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
                       <button className="flex min-w-0 flex-1 items-center gap-1.5 text-left" onClick={() => { setSalariesOpen(false); setFicheWorker(w); }}>
                         <span className="font-medium truncate">{w.first_name} {w.last_name}</span>
-                        {miss > 0 && <span className="h-2 w-2 rounded-full bg-red-500 shrink-0" title={`${miss} jour(s) non déclaré(s)`} />}
+                        {miss > 0 && <span className="h-2 w-2 rounded-full bg-red-500 shrink-0" title={`${miss} jour(s) en attente`} />}
                       </button>
                       {miss > 0 && (
                         <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => sendReminder(w)} title="Envoyer un rappel">
