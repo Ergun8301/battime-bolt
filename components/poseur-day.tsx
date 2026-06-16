@@ -687,7 +687,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
         })}
 
         {/* + Ajouter une intervention */}
-        <Button variant="outline" className="w-full" onClick={openNew}>
+        <Button variant="outline" className="w-full" onClick={frozen && !monthLocked ? () => askCorrect(openNew) : openNew}>
           <Plus className="h-4 w-4 mr-2" /> Ajouter une intervention
         </Button>
       </div>
