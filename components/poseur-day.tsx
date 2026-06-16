@@ -105,9 +105,12 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
   const [correcting, setCorrecting] = useState(false);
   const [confirmCorrectOpen, setConfirmCorrectOpen] = useState(false);
   const [pendingEditId, setPendingEditId] = useState<string | null>(null);
+  const [lateOpen, setLateOpen] = useState(false);
 
   const date = dateProp || format(new Date(), 'yyyy-MM-dd');
   const yesterday = format(subDays(new Date(`${date}T00:00:00`), 1), 'yyyy-MM-dd');
+  // Payroll cutoff: a day in a past month is locked — corrections go through the secretary.
+  const monthLocked = date.slice(0, 7) < format(new Date(), 'yyyy-MM');
 
   // A sent day is frozen again whenever we switch day.
   useEffect(() => { setCorrecting(false); }, [date]);
@@ -242,6 +245,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
   // ─── Inline editor open / save / delete ─────────────────────────────────────
 
   const openPlanned = (p: Planning & { worksite: Worksite }) => {
+    if (monthLocked) { setLateOpen(true); return; }
     setOpenSlot({ kind: 'planned', planningId: p.id });
     setFStart(snapToGrid(p.estimated_start ? p.estimated_start.substring(0, 5) : '08:00'));
     setFEnd(snapToGrid(p.estimated_end ? p.estimated_end.substring(0, 5) : '17:00'));
@@ -260,6 +264,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
     setFObs(e.observation || '');
   };
   const openNew = () => {
+    if (monthLocked) { setLateOpen(true); return; }
     setOpenSlot({ kind: 'new' });
     setFWorksiteId('');
     // First slot of the day → morning ; otherwise → afternoon. Worker adjusts if needed.
@@ -288,10 +293,12 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
     setFSaving(true);
     try {
       const totalMins = calculateTotalMinutes(fStart, fEnd, 0);
+      let savedMsg = 'Heures enregistrées';
 
       // ── Update an existing entry ──
       if (openSlot.kind === 'entry') {
         const wasSubmitted = entries.find((e) => e.id === openSlot.entryId)?.status === 'submitted';
+        if (wasSubmitted) savedMsg = 'Modification enregistrée — la secrétaire est prévenue';
         const { error } = await supabase.from('time_entries').update({
           start_time: fStart, end_time: fEnd, break_minutes: 0, observation: fObs.trim() || null,
           // Editing an already-sent entry: flag it so the secretary sees the change.
@@ -346,7 +353,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
       await applyDayMeal(dayMeal);
       if (navigator.onLine) fetchData();
       setPendingEntries(getPendingEntries(user.id).filter((e) => e.work_date === date));
-      toast.success('Heures enregistrées');
+      toast.success(savedMsg);
     } catch (err) {
       console.error('Error saving slot:', err);
       toast.error("Impossible d'enregistrer");
@@ -561,15 +568,6 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
 
   return (
     <div className="space-y-4">
-      {/* Duplicate this day — discreet, top-right (next to the date in the header) */}
-      {!isEmpty && !openSlot && (
-        <div className="flex justify-end -mb-2">
-          <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => setRepeatOpen(true)}>
-            <Copy className="h-4 w-4 mr-1.5" /> Dupliquer
-          </Button>
-        </div>
-      )}
-
       {/* Offline / syncing */}
       {!isOnline && (
         <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 flex items-center gap-2 text-sm text-orange-700">
@@ -584,24 +582,29 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
         </div>
       )}
 
-      {/* Total + pauses */}
-      <Card className="bg-primary text-primary-foreground">
-        <CardContent className="py-4">
-          <div className="flex items-center gap-3">
-            <Clock className="h-6 w-6" />
+      {/* Total (left) + récap (right), in one bubble */}
+      <Card className="relative bg-primary text-primary-foreground">
+        {!isEmpty && !openSlot && !monthLocked && (
+          <Button
+            variant="ghost" size="icon"
+            className="absolute right-2 top-2 h-8 w-8 text-primary-foreground/80 hover:bg-white/15 hover:text-primary-foreground"
+            onClick={() => setRepeatOpen(true)} aria-label="Dupliquer cette journée" title="Dupliquer cette journée"
+          >
+            <Copy className="h-4 w-4" />
+          </Button>
+        )}
+        <CardContent className="py-4 pr-12 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 shrink-0">
+            <Clock className="h-7 w-7 opacity-90 shrink-0" />
             <div>
               <p className="text-sm opacity-90">Total travaillé</p>
-              <p className="text-2xl font-bold">{formatMinutesToHours(totalMinutes)}</p>
+              <p className="text-3xl font-bold leading-none mt-0.5">{formatMinutesToHours(totalMinutes)}</p>
             </div>
           </div>
-          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-            <span>🧱 {nbInterventions} intervention{nbInterventions > 1 ? 's' : ''}</span>
-            <span>🍽️ {dayMeal ? 'Panier repas' : 'Sans panier'}</span>
-            {pauses.length > 0 ? (
-              <span>☕ {pauses.map((p) => `${p.start}–${p.end} (${formatMinutesToHours(p.minutes)})`).join(' · ')}</span>
-            ) : (
-              <span>☕ Aucune pause</span>
-            )}
+          <div className="space-y-1 text-sm text-right">
+            <p>🧱 {nbInterventions} intervention{nbInterventions > 1 ? 's' : ''}</p>
+            <p>🍽️ {dayMeal ? 'Panier repas' : 'Sans panier'}</p>
+            <p>☕ {pauses.length > 0 ? `Pause ${pauses.map((p) => `${p.start}–${p.end} (${formatMinutesToHours(p.minutes)})`).join(' · ')}` : 'Aucune pause'}</p>
           </div>
         </CardContent>
       </Card>
@@ -613,7 +616,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
             <Utensils className="h-4 w-4 text-muted-foreground" />
             <span className="text-sm font-medium">Panier repas <span className="text-muted-foreground font-normal">(pour la journée)</span></span>
           </div>
-          <Switch checked={dayMeal} onCheckedChange={(v) => { if (frozen) { askCorrect(null); return; } toggleDayMeal(v); }} />
+          <Switch checked={dayMeal} onCheckedChange={(v) => { if (monthLocked) { setLateOpen(true); return; } if (frozen) { askCorrect(null); return; } toggleDayMeal(v); }} />
         </CardContent>
       </Card>
 
@@ -638,7 +641,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
           if (item.kind === 'entry') {
             const entry = item.data;
             const tappable = isEditable(entry);
-            const onTap = !tappable ? undefined : frozen ? () => askCorrect(entry.id) : () => openEntry(entry);
+            const onTap = !tappable ? undefined : monthLocked ? () => setLateOpen(true) : frozen ? () => askCorrect(entry.id) : () => openEntry(entry);
             return (
               <Card key={item.key} className={tappable ? 'cursor-pointer transition-colors hover:bg-muted/40' : ''} onClick={onTap}>
                 <CardContent className="py-4">
@@ -694,7 +697,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
       {isEmpty && plannedTodo.length === 0 && !openSlot && (
         <div className="text-center text-sm text-muted-foreground pt-2">
           <p>Aucune intervention aujourd'hui.</p>
-          {isOnline && (
+          {isOnline && !monthLocked && (
             <Button variant="outline" size="sm" className="mt-2" onClick={handleCopyYesterday} disabled={copyingYesterday}>
               {copyingYesterday ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Copy className="h-4 w-4 mr-2" />} Copier la journée d'hier
             </Button>
@@ -721,9 +724,11 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
       {allSubmitted && !openSlot && (
         <div className="text-center py-2">
           <p className="text-sm text-muted-foreground">Journée envoyée ✓</p>
-          {frozen
-            ? <p className="text-xs text-muted-foreground mt-0.5">Touche une intervention pour la corriger.</p>
-            : <p className="text-xs text-orange-600 mt-0.5">Mode correction — tes changements sont signalés à la secrétaire.</p>}
+          {monthLocked
+            ? <p className="text-xs text-muted-foreground mt-0.5">Mois clôturé — vois avec la secrétaire pour modifier.</p>
+            : frozen
+              ? <p className="text-xs text-muted-foreground mt-0.5">Touche une intervention pour la corriger.</p>
+              : <p className="text-xs text-orange-600 mt-0.5">Mode correction — tes changements sont signalés à la secrétaire.</p>}
         </div>
       )}
 
@@ -803,6 +808,17 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
             </Button>
           </div>
           {copying && <p className="text-center text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin inline mr-2" />Copie…</p>}
+        </DialogContent>
+      </Dialog>
+
+      {/* Month closed — too late to edit */}
+      <Dialog open={lateOpen} onOpenChange={setLateOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-orange-500" /> Mois clôturé</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">Cette journée appartient à un mois déjà clôturé. Pour toute modification, rapproche-toi de la secrétaire.</p>
+          <Button className="w-full mt-2" onClick={() => setLateOpen(false)}>Compris</Button>
         </DialogContent>
       </Dialog>
 
