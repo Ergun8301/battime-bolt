@@ -8,12 +8,12 @@ import { useEffect, useMemo, useRef } from 'react';
 // into the middle copy (invisible, same value) so the user can always keep turning
 // in either direction. overscroll-contain stops the page from scrolling underneath.
 
-const ITEM_H = 36;        // px per row
-const CONTAINER_H = 180;  // px (≈ 5 rows visible)
+const ITEM_H = 40;        // px per row
+const CONTAINER_H = 200;  // px (≈ 5 rows visible)
 const PAD = (CONTAINER_H - ITEM_H) / 2;
 const ANGLE = 22;         // degrees of tilt per row from center
 const MAX_D = 4.2;        // cull beyond this many rows from center
-const COL_W = 52;         // px per column
+const COL_W = 64;         // px per column
 
 function WheelColumn({ values, value, onChange }: { values: string[]; value: string; onChange: (v: string) => void }) {
   const N = values.length;
@@ -84,7 +84,7 @@ function WheelColumn({ values, value, onChange }: { values: string[]; value: str
           <li
             key={i}
             ref={(el) => { itemsRef.current[i] = el; }}
-            className="grid snap-center place-items-center text-xl font-semibold tabular-nums"
+            className="grid snap-center place-items-center text-2xl font-semibold tabular-nums"
             style={{ height: ITEM_H, backfaceVisibility: 'hidden', willChange: 'transform, opacity' }}
           >
             {v}
