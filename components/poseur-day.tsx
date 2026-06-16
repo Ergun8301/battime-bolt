@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
-  Plus, Trash2, Send, Loader2, MapPin, Clock, Utensils, WifiOff, RefreshCw, AlertTriangle, Copy, ArrowLeft, Pencil,
+  Plus, Trash2, Send, Loader2, MapPin, Clock, Utensils, WifiOff, RefreshCw, AlertTriangle, Copy, ArrowLeft,
 } from 'lucide-react';
 import { format, subDays, addDays, startOfWeek } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -101,8 +101,10 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
   // Repeat this day onto other days (same chantier for several days).
   const [repeatOpen, setRepeatOpen] = useState(false);
   const [copying, setCopying] = useState(false);
-  // Correction mode: a sent day is frozen until the worker taps "Corriger".
+  // Correction mode: a sent day is frozen; tapping an intervention asks to confirm.
   const [correcting, setCorrecting] = useState(false);
+  const [confirmCorrectOpen, setConfirmCorrectOpen] = useState(false);
+  const [pendingEditId, setPendingEditId] = useState<string | null>(null);
 
   const date = dateProp || format(new Date(), 'yyyy-MM-dd');
   const yesterday = format(subDays(new Date(`${date}T00:00:00`), 1), 'yyyy-MM-dd');
@@ -267,6 +269,18 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
     setFObs('');
   };
   const cancelSlot = () => setOpenSlot(null);
+
+  // Tap a sent intervention (or the meal) → confirm → unlock the day, then open the slot.
+  const askCorrect = (entryId: string | null) => { setPendingEditId(entryId); setConfirmCorrectOpen(true); };
+  const confirmCorrect = () => {
+    setCorrecting(true);
+    setConfirmCorrectOpen(false);
+    if (pendingEditId) {
+      const e = entries.find((x) => x.id === pendingEditId);
+      setPendingEditId(null);
+      if (e) openEntry(e);
+    }
+  };
 
   const saveSlot = async () => {
     if (!user || !openSlot) return;
@@ -547,6 +561,15 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
 
   return (
     <div className="space-y-4">
+      {/* Duplicate this day — discreet, top-right (next to the date in the header) */}
+      {!isEmpty && !openSlot && (
+        <div className="flex justify-end -mb-2">
+          <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => setRepeatOpen(true)}>
+            <Copy className="h-4 w-4 mr-1.5" /> Dupliquer
+          </Button>
+        </div>
+      )}
+
       {/* Offline / syncing */}
       {!isOnline && (
         <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 flex items-center gap-2 text-sm text-orange-700">
@@ -564,23 +587,22 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
       {/* Total + pauses */}
       <Card className="bg-primary text-primary-foreground">
         <CardContent className="py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Clock className="h-6 w-6" />
-              <div>
-                <p className="text-sm opacity-90">Total travaillé</p>
-                <p className="text-2xl font-bold">{formatMinutesToHours(totalMinutes)}</p>
-              </div>
+          <div className="flex items-center gap-3">
+            <Clock className="h-6 w-6" />
+            <div>
+              <p className="text-sm opacity-90">Total travaillé</p>
+              <p className="text-2xl font-bold">{formatMinutesToHours(totalMinutes)}</p>
             </div>
-            <p className="text-sm opacity-90">{nbInterventions} intervention{nbInterventions > 1 ? 's' : ''}</p>
           </div>
-          {pauses.length > 0 && (
-            <p className="mt-2 text-sm opacity-90">
-              {pauses.map((p, i) => (
-                <span key={i}>{i > 0 ? ' · ' : ''}Pause {p.start}–{p.end} ({formatMinutesToHours(p.minutes)})</span>
-              ))}
-            </p>
-          )}
+          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+            <span>🧱 {nbInterventions} intervention{nbInterventions > 1 ? 's' : ''}</span>
+            <span>🍽️ {dayMeal ? 'Panier repas' : 'Sans panier'}</span>
+            {pauses.length > 0 ? (
+              <span>☕ {pauses.map((p) => `${p.start}–${p.end} (${formatMinutesToHours(p.minutes)})`).join(' · ')}</span>
+            ) : (
+              <span>☕ Aucune pause</span>
+            )}
+          </div>
         </CardContent>
       </Card>
 
@@ -591,7 +613,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
             <Utensils className="h-4 w-4 text-muted-foreground" />
             <span className="text-sm font-medium">Panier repas <span className="text-muted-foreground font-normal">(pour la journée)</span></span>
           </div>
-          <Switch checked={dayMeal} onCheckedChange={toggleDayMeal} disabled={frozen} />
+          <Switch checked={dayMeal} onCheckedChange={(v) => { if (frozen) { askCorrect(null); return; } toggleDayMeal(v); }} />
         </CardContent>
       </Card>
 
@@ -615,13 +637,15 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
           }
           if (item.kind === 'entry') {
             const entry = item.data;
-            const editable = !frozen && isEditable(entry);
+            const tappable = isEditable(entry);
+            const onTap = !tappable ? undefined : frozen ? () => askCorrect(entry.id) : () => openEntry(entry);
             return (
-              <Card key={item.key} className={editable ? 'cursor-pointer transition-colors hover:bg-muted/40' : ''} onClick={editable ? () => openEntry(entry) : undefined}>
+              <Card key={item.key} className={tappable ? 'cursor-pointer transition-colors hover:bg-muted/40' : ''} onClick={onTap}>
                 <CardContent className="py-4">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="font-semibold truncate">{entry.worksite?.client_name || OTHER_NAME}</p>
+                      {entry.worksite?.city && <p className="text-xs text-muted-foreground truncate">{entry.worksite.city}</p>}
                       <p className="text-sm flex items-center gap-1 mt-0.5"><Clock className="h-3.5 w-3.5 text-muted-foreground" />{entry.start_time?.substring(0, 5)}–{entry.end_time?.substring(0, 5)} · <span className="font-semibold text-primary">{formatMinutesToHours(entry.total_minutes)}</span></p>
                       {entry.observation && <p className="text-sm text-muted-foreground mt-0.5">{entry.observation}</p>}
                     </div>
@@ -664,13 +688,6 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
         <Button variant="outline" className="w-full" onClick={openNew}>
           <Plus className="h-4 w-4 mr-2" /> Ajouter une intervention
         </Button>
-
-        {/* Repeat this day onto other days (same chantier on several days) */}
-        {!isEmpty && !openSlot && (
-          <Button variant="ghost" className="w-full text-muted-foreground" onClick={() => setRepeatOpen(true)}>
-            <Copy className="h-4 w-4 mr-2" /> Répéter sur d'autres jours
-          </Button>
-        )}
       </div>
 
       {/* Empty hint + copy yesterday */}
@@ -702,18 +719,11 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
       )}
 
       {allSubmitted && !openSlot && (
-        <div className="flex flex-col items-center gap-2 py-2">
-          <p className="text-center text-sm text-muted-foreground">Journée envoyée ✓</p>
-          {frozen ? (
-            <Button variant="outline" size="sm" onClick={() => setCorrecting(true)}>
-              <Pencil className="h-4 w-4 mr-2" /> Corriger
-            </Button>
-          ) : (
-            <p className="text-center text-xs text-muted-foreground">
-              Mode correction — tes changements sont signalés à la secrétaire.{' '}
-              <button type="button" className="underline" onClick={() => setCorrecting(false)}>Terminer</button>
-            </p>
-          )}
+        <div className="text-center py-2">
+          <p className="text-sm text-muted-foreground">Journée envoyée ✓</p>
+          {frozen
+            ? <p className="text-xs text-muted-foreground mt-0.5">Touche une intervention pour la corriger.</p>
+            : <p className="text-xs text-orange-600 mt-0.5">Mode correction — tes changements sont signalés à la secrétaire.</p>}
         </div>
       )}
 
@@ -781,7 +791,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
       <Dialog open={repeatOpen} onOpenChange={setRepeatOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><Copy className="h-5 w-5" /> Répéter cette journée</DialogTitle>
+            <DialogTitle className="flex items-center gap-2"><Copy className="h-5 w-5" /> Dupliquer cette journée</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">Recopier les mêmes interventions (chantier + heures) sur :</p>
           <div className="space-y-2">
@@ -793,6 +803,20 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
             </Button>
           </div>
           {copying && <p className="text-center text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin inline mr-2" />Copie…</p>}
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirm correcting an already-sent day */}
+      <Dialog open={confirmCorrectOpen} onOpenChange={(o) => { setConfirmCorrectOpen(o); if (!o) setPendingEditId(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-orange-500" /> Journée déjà envoyée</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">Cette feuille a déjà été envoyée. Si tu la corriges, la secrétaire en sera informée.</p>
+          <div className="flex gap-2 mt-2">
+            <Button variant="outline" className="flex-1" onClick={() => { setConfirmCorrectOpen(false); setPendingEditId(null); }}>Annuler</Button>
+            <Button className="flex-1" onClick={confirmCorrect}>Corriger</Button>
+          </div>
         </DialogContent>
       </Dialog>
 
