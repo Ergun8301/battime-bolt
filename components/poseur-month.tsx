@@ -25,7 +25,6 @@ export default function PoseurMonth({ onSelectDay }: { onSelectDay?: (date: stri
   const [entries, setEntries] = useState<EntryW[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const monthEnd = endOfMonth(monthStart);
   const todayStr = format(new Date(), 'yyyy-MM-dd');
 
   const fetchData = useCallback(async () => {
@@ -33,7 +32,7 @@ export default function PoseurMonth({ onSelectDay }: { onSelectDay?: (date: stri
     setLoading(true);
     try {
       const from = format(monthStart, 'yyyy-MM-dd');
-      const to = format(monthEnd, 'yyyy-MM-dd');
+      const to = format(endOfMonth(monthStart), 'yyyy-MM-dd');
       const [planRes, entRes] = await Promise.all([
         supabase.from('planning').select('*, worksite:worksites(*)').eq('user_id', user.id).gte('work_date', from).lte('work_date', to),
         supabase.from('time_entries').select('*, worksite:worksites(*)').eq('user_id', user.id).gte('work_date', from).lte('work_date', to).order('start_time'),
@@ -45,7 +44,7 @@ export default function PoseurMonth({ onSelectDay }: { onSelectDay?: (date: stri
     } finally {
       setLoading(false);
     }
-  }, [user, monthStart, monthEnd]);
+  }, [user, monthStart]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 

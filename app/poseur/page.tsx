@@ -29,6 +29,7 @@ export default function PoseurPage() {
   const [view, setView] = useState('day');
   const [selectedDate, setSelectedDate] = useState<string | null>(null); // declare a specific day
   const [pending, setPending] = useState<string[]>([]); // days "en attente"
+  const [pendingOpen, setPendingOpen] = useState(false); // "jours à déclarer" popover
 
   const fetchPending = useCallback(async () => {
     if (!user) return;
@@ -51,8 +52,8 @@ export default function PoseurPage() {
     return () => clearInterval(id);
   }, [fetchPending]);
 
-  const openDay = (d: string) => setSelectedDate(d);
-  const backFromDay = () => { setSelectedDate(null); fetchPending(); };
+  const openDay = (d: string) => { setSelectedDate(d); setPendingOpen(false); };
+  const goHome = () => { setSelectedDate(null); setView('day'); fetchPending(); };
   const goTo = (v: string) => { setSelectedDate(null); setView(v); };
 
   const todayLabel = format(new Date(), 'EEEE d MMMM', { locale: fr });
@@ -61,32 +62,39 @@ export default function PoseurPage() {
     <div className="min-h-screen bg-background safe-top safe-bottom">
       <header className="bg-white border-b sticky top-0 z-50">
         <div className="max-w-2xl lg:max-w-5xl mx-auto px-4 py-3 flex items-center gap-2">
-          <p className="font-bold text-base capitalize shrink-0">{todayLabel}</p>
+          {view === 'day' && !selectedDate ? (
+            <p className="font-bold text-base capitalize shrink-0">{todayLabel}</p>
+          ) : (
+            <button
+              onClick={goHome}
+              className="inline-flex items-center gap-1 font-bold text-base shrink-0 text-primary hover:opacity-80"
+            >
+              <ArrowLeft className="h-4 w-4" /> Ma journée
+            </button>
+          )}
 
           <div className="flex-1 flex justify-center">
             {pending.length > 0 && (
-              <Popover>
+              <Popover open={pendingOpen} onOpenChange={setPendingOpen}>
                 <PopoverTrigger asChild>
                   <button
                     className="inline-flex h-8 w-8 items-center justify-center rounded-full text-orange-500 hover:bg-orange-50 animate-pulse"
-                    aria-label="Journées en attente"
-                    title="Journées en attente"
+                    aria-label="Jours à déclarer"
+                    title="Jours à déclarer"
                   >
                     <AlertTriangle className="h-5 w-5" />
                   </button>
                 </PopoverTrigger>
                 <PopoverContent align="center" className="w-72">
-                  <p className="text-sm font-medium">En attente</p>
-                  <p className="text-xs text-muted-foreground mt-0.5 mb-2">Touche une journée pour déclarer tes heures :</p>
+                  <p className="text-sm font-medium mb-2">Jours à déclarer</p>
                   <div className="space-y-1.5">
                     {pending.map((d) => (
                       <button
                         key={d}
                         onClick={() => openDay(d)}
-                        className="w-full rounded-md border px-3 py-2.5 text-left text-sm font-medium capitalize hover:bg-muted/50 transition-colors flex items-center justify-between gap-2"
+                        className="w-full truncate rounded-md border px-3 py-2.5 text-left text-sm font-medium capitalize hover:bg-muted/50 transition-colors"
                       >
-                        <span className="truncate">{format(parseISO(d), 'EEEE d MMMM', { locale: fr })}</span>
-                        <span className="text-xs text-primary shrink-0">Déclarer</span>
+                        {format(parseISO(d), 'EEEE d MMMM', { locale: fr })}
                       </button>
                     ))}
                   </div>
@@ -119,10 +127,7 @@ export default function PoseurPage() {
       <main className="max-w-2xl lg:max-w-5xl mx-auto px-4 py-4">
         {selectedDate ? (
           <div className="lg:max-w-2xl lg:mx-auto">
-            <div className="flex items-center gap-2 mb-2">
-              <Button variant="ghost" size="sm" onClick={backFromDay}><ArrowLeft className="h-4 w-4 mr-1" /> Retour</Button>
-              <p className="font-semibold capitalize">{format(parseISO(selectedDate), 'EEEE d MMMM', { locale: fr })}</p>
-            </div>
+            <p className="font-semibold capitalize mb-2">{format(parseISO(selectedDate), 'EEEE d MMMM', { locale: fr })}</p>
             <PoseurDay date={selectedDate} />
           </div>
         ) : view === 'day' ? (
