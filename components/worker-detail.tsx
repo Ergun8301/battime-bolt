@@ -36,7 +36,7 @@ interface WorkerDetailDialogProps {
 }
 
 const MISSING_WINDOW_DAYS = 30;
-const UNKNOWN_NAME = 'Chantier inconnu';
+const OTHER_NAME = 'Autre';
 
 // Per-employee fiche: opens on today, Booking-style range calendar, interventions
 // + total, planning-based missing-days detail, per-period export (no lock), and
@@ -80,7 +80,7 @@ export default function WorkerDetailDialog({ worker, onOpenChange, onChanged }: 
       .then(({ data }) => setWorksites(data || []));
   }, [worker?.company_id]);
 
-  // Reassign a "Chantier inconnu" entry to a real client.
+  // Reassign an "Autre" entry to a real client.
   const reassignEntry = async (entryId: string, newWorksiteId: string) => {
     if (!worker) return;
     try {
@@ -329,8 +329,8 @@ export default function WorkerDetailDialog({ worker, onOpenChange, onChanged }: 
         ) : (
           <div className="divide-y rounded-lg border">
             {entries.map((entry) => {
-              const isUnknown = entry.worksite?.client_name === UNKNOWN_NAME;
-              const realWorksites = worksites.filter((w) => w.client_name !== UNKNOWN_NAME);
+              const isUnknown = entry.worksite?.client_name === OTHER_NAME;
+              const realWorksites = worksites.filter((w) => w.client_name !== OTHER_NAME);
               return (
                 <div key={entry.id} className={`p-3 ${isUnknown ? 'bg-orange-50' : ''}`}>
                   <div className="flex items-center gap-3">
@@ -338,9 +338,14 @@ export default function WorkerDetailDialog({ worker, onOpenChange, onChanged }: 
                       {format(parseISO(entry.work_date), 'EEE d MMM', { locale: fr })}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className={`font-medium text-sm truncate ${isUnknown ? 'text-orange-700 italic' : ''}`}>
-                        {entry.worksite?.client_name || UNKNOWN_NAME}
-                      </p>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <p className={`font-medium text-sm truncate ${isUnknown ? 'text-orange-700 italic' : ''}`}>
+                          {entry.worksite?.client_name || OTHER_NAME}
+                        </p>
+                        {!entry.planning_id && (
+                          <Badge variant="outline" className="text-[10px] py-0 text-muted-foreground shrink-0">hors planning</Badge>
+                        )}
+                      </div>
                       {entry.worksite?.city && (
                         <p className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="h-3 w-3" />{entry.worksite.city}</p>
                       )}

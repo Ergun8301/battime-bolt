@@ -198,7 +198,7 @@ export default function PoseurHistory() {
                   {dayEntries.map((entry) => (
                     <div key={entry.id} className="flex items-center justify-between py-2 border-t first:border-t-0">
                       <div className="flex-1">
-                        <p className="font-medium">{entry.worksite?.client_name || 'Chantier inconnu'}</p>
+                        <p className="font-medium">{entry.worksite?.client_name || 'Autre'}</p>
                         {entry.worksite?.city && (
                           <p className="text-sm text-muted-foreground flex items-center gap-1">
                             <MapPin className="h-3 w-3" />

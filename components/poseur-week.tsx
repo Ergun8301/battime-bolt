@@ -130,7 +130,7 @@ export default function PoseurWeek({ onSelectDay }: { onSelectDay?: (date: strin
             .sort((a, b) => (a.estimated_start || '99:99').localeCompare(b.estimated_start || '99:99'));
           const dayEntries = entries.filter(e => e.work_date === dateStr);
           const hasContent = dayPlanning.length > 0 || dayEntries.length > 0;
-          const canOpen = !!onSelectDay && hasContent;
+          const canOpen = !!onSelectDay;
 
           return (
             <div
@@ -184,7 +184,7 @@ export default function PoseurWeek({ onSelectDay }: { onSelectDay?: (date: strin
                   <div key={entry.id} className={`flex items-start gap-2 text-sm border rounded p-2 ${statusColor}`}>
                     <Clock className="h-4 w-4 shrink-0 mt-0.5" />
                     <div className="flex-1 min-w-0">
-                      <span className="font-medium truncate block">{entry.worksite?.client_name || 'Chantier inconnu'}</span>
+                      <span className="font-medium truncate block">{entry.worksite?.client_name || 'Autre'}</span>
                       <span className="text-xs opacity-75">
                         {entry.start_time?.substring(0, 5)}–{entry.end_time?.substring(0, 5)}
                         {entry.break_minutes > 0 ? ` · pause ${entry.break_minutes}min` : ''}
@@ -223,7 +223,7 @@ export default function PoseurWeek({ onSelectDay }: { onSelectDay?: (date: strin
             .sort((a, b) => (a.estimated_start || '99:99').localeCompare(b.estimated_start || '99:99'));
           const dayEntries = entries.filter(e => e.work_date === dateStr);
           const hasContent = dayPlanning.length > 0 || dayEntries.length > 0;
-          const canOpen = !!onSelectDay && hasContent;
+          const canOpen = !!onSelectDay;
 
           return (
             <div

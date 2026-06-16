@@ -11,12 +11,14 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Calendar } from '@/components/ui/calendar';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Plus, Trash2, Send, Loader2, MapPin, Clock, Utensils, WifiOff, RefreshCw, AlertTriangle, Copy, ArrowLeft,
 } from 'lucide-react';
 import { format, subDays } from 'date-fns';
+import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import {
   addPendingEntry, getPendingEntries, removePendingEntry, clearPendingEntriesForDate,
@@ -96,6 +98,11 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
 
   // Copy-yesterday
   const [copyingYesterday, setCopyingYesterday] = useState(false);
+
+  // Copy this day onto other days (same chantier for days/weeks).
+  const [copyOpen, setCopyOpen] = useState(false);
+  const [copyDates, setCopyDates] = useState<Date[]>([]);
+  const [copying, setCopying] = useState(false);
 
   const date = dateProp || format(new Date(), 'yyyy-MM-dd');
   const yesterday = format(subDays(new Date(`${date}T00:00:00`), 1), 'yyyy-MM-dd');
@@ -383,6 +390,45 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
     }
   };
 
+  // ─── Copy this day onto other days ───────────────────────────────────────────
+
+  const copyTargetStrs = copyDates.map((d) => format(d, 'yyyy-MM-dd')).filter((d) => d !== date);
+
+  const copyToDays = async () => {
+    if (!user) return;
+    if (!navigator.onLine) { toast.error('Copie indisponible hors-ligne'); return; }
+    const sources = [
+      ...entries.map((e) => ({ worksite_id: e.worksite_id, start_time: e.start_time, end_time: e.end_time, meal_allowance: e.meal_allowance, observation: e.observation })),
+      ...pendingEntries.map((e) => ({ worksite_id: e.worksite_id, start_time: e.start_time, end_time: e.end_time, meal_allowance: e.meal_allowance, observation: e.observation })),
+    ];
+    if (sources.length === 0) { toast.error('Aucune intervention à copier'); return; }
+    if (copyTargetStrs.length === 0) { toast.error('Choisis au moins un autre jour'); return; }
+    setCopying(true);
+    try {
+      // Link planning_id where the target day already has that chantier planned.
+      const { data: plan } = await supabase.from('planning').select('id, work_date, worksite_id').eq('user_id', user.id).in('work_date', copyTargetStrs);
+      const planMap = new Map<string, string>();
+      (plan || []).forEach((p: { id: string; work_date: string; worksite_id: string | null }) => {
+        if (p.worksite_id) planMap.set(`${p.work_date}|${p.worksite_id}`, p.id);
+      });
+      const rows = copyTargetStrs.flatMap((td) => sources.map((s) => ({
+        company_id: user.company_id, user_id: user.id, worksite_id: s.worksite_id,
+        planning_id: planMap.get(`${td}|${s.worksite_id}`) || null,
+        work_date: td, start_time: s.start_time, end_time: s.end_time, break_minutes: 0,
+        meal_allowance: s.meal_allowance, observation: s.observation || null, status: 'draft' as const,
+      })));
+      const { error } = await supabase.from('time_entries').insert(rows);
+      if (error) throw error;
+      toast.success(`Copié sur ${copyTargetStrs.length} jour${copyTargetStrs.length > 1 ? 's' : ''}`);
+      setCopyOpen(false); setCopyDates([]);
+    } catch (err) {
+      console.error('Error copying day:', err);
+      toast.error('Impossible de copier');
+    } finally {
+      setCopying(false);
+    }
+  };
+
   // ─── Submit day ────────────────────────────────────────────────────────────
 
   const checkCoherenceWarnings = (): string[] => {
@@ -451,12 +497,12 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
     [...entries, ...pendingEntries].map((e) => ({ start: (e.start_time || '').slice(0, 5), end: (e.end_time || '').slice(0, 5) })),
   );
 
-  // "Chantier inconnu" is a real worksite pinned at the top of the picker
-  // (created once per company in Supabase, see UNKNOWN_NAME below).
-  const UNKNOWN_NAME = 'Chantier inconnu';
+  // "Autre" is a real worksite pinned at the top of the picker (created once per
+  // company in Supabase) — for work the secretary hasn't listed / the worker can't name.
+  const OTHER_NAME = 'Autre';
   const sortedWorksites = [...worksites].sort((a, b) => {
-    if (a.client_name === UNKNOWN_NAME) return -1;
-    if (b.client_name === UNKNOWN_NAME) return 1;
+    if (a.client_name === OTHER_NAME) return -1;
+    if (b.client_name === OTHER_NAME) return 1;
     return a.client_name.localeCompare(b.client_name);
   });
 
@@ -562,7 +608,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
                 <CardContent className="py-4">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="font-semibold truncate">{entry.worksite?.client_name || UNKNOWN_NAME}</p>
+                      <p className="font-semibold truncate">{entry.worksite?.client_name || OTHER_NAME}</p>
                       <p className="text-sm flex items-center gap-1 mt-0.5"><Clock className="h-3.5 w-3.5 text-muted-foreground" />{entry.start_time?.substring(0, 5)}–{entry.end_time?.substring(0, 5)} · <span className="font-semibold text-primary">{formatMinutesToHours(entry.total_minutes)}</span></p>
                       {entry.observation && <p className="text-sm text-muted-foreground mt-0.5">{entry.observation}</p>}
                     </div>
@@ -605,6 +651,13 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
         <Button variant="outline" className="w-full" onClick={openNew}>
           <Plus className="h-4 w-4 mr-2" /> Ajouter une intervention
         </Button>
+
+        {/* Copy this day onto other days (same chantier on several days) */}
+        {!isEmpty && !openSlot && (
+          <Button variant="ghost" className="w-full text-muted-foreground" onClick={() => { setCopyDates([]); setCopyOpen(true); }}>
+            <Copy className="h-4 w-4 mr-2" /> Copier ces heures sur d'autres jours
+          </Button>
+        )}
       </div>
 
       {/* Empty hint + copy yesterday */}
@@ -654,22 +707,18 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
               {openSlot.kind === 'new' && (
                 <div className="space-y-1.5">
-                  <Label>Chantier</Label>
                   <Select value={fWorksiteId} onValueChange={setFWorksiteId}>
                     <SelectTrigger className="h-11"><SelectValue placeholder="Choisir un chantier" /></SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="z-[70]">
                       {sortedWorksites.map((ws) => (
                         <SelectItem key={ws.id} value={ws.id}>
-                          {ws.client_name === UNKNOWN_NAME
-                            ? <span className="italic">— {ws.client_name} —</span>
+                          {ws.client_name === OTHER_NAME
+                            ? <span className="italic">{ws.client_name}</span>
                             : <>{ws.client_name}{ws.city ? ` - ${ws.city}` : ''}</>}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-muted-foreground">
-                    Tu ne trouves pas ton client ? Choisis <em>Chantier inconnu</em> et ajoute un mot dans la note pour la secrétaire.
-                  </p>
                 </div>
               )}
 
@@ -702,6 +751,23 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
           </div>
         </div>
       )}
+
+      {/* Copy this day onto other days */}
+      <Dialog open={copyOpen} onOpenChange={setCopyOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Copy className="h-5 w-5" /> Copier sur d'autres jours</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">Sélectionne les jours où tu as fait les mêmes heures (même chantier).</p>
+          <div className="flex justify-center">
+            <Calendar mode="multiple" selected={copyDates} onSelect={(d) => setCopyDates(d || [])} locale={fr} weekStartsOn={1} />
+          </div>
+          <Button className="w-full h-11" disabled={copying || copyTargetStrs.length === 0} onClick={copyToDays}>
+            {copying ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Copy className="h-4 w-4 mr-2" />}
+            Copier{copyTargetStrs.length > 0 ? ` (${copyTargetStrs.length})` : ''}
+          </Button>
+        </DialogContent>
+      </Dialog>
 
       {/* Coherence confirmation */}
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
