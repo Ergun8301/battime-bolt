@@ -582,32 +582,32 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
         </div>
       )}
 
-      {/* Total + récap (interventions / repas / pause) */}
-      <Card className="bg-primary text-primary-foreground">
-        <CardContent className="py-4">
-          <div className="flex items-center gap-3">
-            <Clock className="h-6 w-6 shrink-0" />
-            <div>
-              <p className="text-sm opacity-90">Total travaillé</p>
-              <p className="text-2xl font-bold">{formatMinutesToHours(totalMinutes)}</p>
-            </div>
-          </div>
-          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-            <span>🧱 {nbInterventions} intervention{nbInterventions > 1 ? 's' : ''}</span>
-            <span>🍽️ {dayMeal ? 'Panier repas' : 'Sans panier'}</span>
-            <span>☕ {pauses.length > 0 ? `Pause ${pauses.map((p) => `${p.start}–${p.end} (${formatMinutesToHours(p.minutes)})`).join(' · ')}` : 'Aucune pause'}</span>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Duplicate this day — clear, labelled, discreet */}
+      {/* Duplicate this day — between the date and the timesheet block */}
       {!isEmpty && !openSlot && !monthLocked && (
-        <div className="flex justify-center">
+        <div className="flex justify-end">
           <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => setRepeatOpen(true)}>
             <Copy className="h-4 w-4 mr-2" /> Dupliquer cette journée
           </Button>
         </div>
       )}
+
+      {/* Total + récap (interventions / repas / pause) */}
+      <Card className="bg-primary text-primary-foreground">
+        <CardContent className="py-4 space-y-3">
+          <div className="flex items-center gap-3">
+            <Clock className="h-6 w-6 shrink-0 opacity-90" />
+            <div>
+              <p className="text-sm opacity-90">Total travaillé</p>
+              <p className="text-2xl font-bold leading-tight">{formatMinutesToHours(totalMinutes)}</p>
+            </div>
+          </div>
+          <div className="space-y-1.5 border-t border-white/15 pt-3 text-sm">
+            <p>🧱 {nbInterventions} intervention{nbInterventions > 1 ? 's' : ''}</p>
+            <p>🍽️ {dayMeal ? 'Panier repas' : 'Sans panier'}</p>
+            <p>☕ {pauses.length > 0 ? `Pause ${pauses.map((p) => `${p.start}–${p.end} (${formatMinutesToHours(p.minutes)})`).join(' · ')}` : 'Aucune pause'}</p>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Panier repas — once per day */}
       <Card>
