@@ -629,7 +629,8 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
                 <CardContent className="py-4 flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-xs text-muted-foreground">À déclarer</p>
-                    <p className="font-semibold truncate flex items-center gap-1"><MapPin className="h-4 w-4 text-muted-foreground shrink-0" />{p.worksite?.client_name}{p.worksite?.city ? ` — ${p.worksite.city}` : ''}</p>
+                    <p className="font-semibold truncate flex items-center gap-1"><MapPin className="h-4 w-4 text-muted-foreground shrink-0" />{p.worksite?.client_name}</p>
+                    {p.worksite?.city && <p className="text-xs text-muted-foreground truncate">{p.worksite.city}</p>}
                     {p.estimated_start && p.estimated_end && <p className="text-xs text-muted-foreground mt-0.5">Prévu {p.estimated_start.substring(0, 5)}–{p.estimated_end.substring(0, 5)}</p>}
                   </div>
                   <span className="flex items-center gap-1 text-primary font-medium text-sm shrink-0"><Plus className="h-4 w-4" /> Mes heures</span>
@@ -722,12 +723,20 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
 
       {allSubmitted && !openSlot && (
         <div className="text-center py-2">
-          <p className="text-sm text-muted-foreground">Journée envoyée ✓</p>
-          {monthLocked
-            ? <p className="text-xs text-muted-foreground mt-0.5">Mois clôturé — vois avec la secrétaire pour modifier.</p>
-            : frozen
-              ? <p className="text-xs text-muted-foreground mt-0.5">Touche une intervention pour la corriger.</p>
-              : <p className="text-xs text-orange-600 mt-0.5">Mode correction — tes changements sont signalés à la secrétaire.</p>}
+          {plannedTodo.length > 0 ? (
+            <p className="text-sm text-orange-600">
+              {entries.length} intervention{entries.length > 1 ? 's' : ''} envoyée{entries.length > 1 ? 's' : ''} · il reste {plannedTodo.length} chantier{plannedTodo.length > 1 ? 's' : ''} à déclarer
+            </p>
+          ) : (
+            <>
+              <p className="text-sm text-muted-foreground">Journée envoyée ✓</p>
+              {monthLocked
+                ? <p className="text-xs text-muted-foreground mt-0.5">Mois clôturé — vois avec la secrétaire pour modifier.</p>
+                : frozen
+                  ? <p className="text-xs text-muted-foreground mt-0.5">Touche une intervention pour la corriger.</p>
+                  : <p className="text-xs text-orange-600 mt-0.5">Mode correction — tes changements sont signalés à la secrétaire.</p>}
+            </>
+          )}
         </div>
       )}
 
