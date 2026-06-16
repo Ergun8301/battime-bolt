@@ -36,7 +36,7 @@ const ABSENCE_LABELS: Record<string, string> = {
   repos: 'Repos',
 };
 
-export default function PoseurWeek() {
+export default function PoseurWeek({ onSelectDay }: { onSelectDay?: (date: string) => void } = {}) {
   const { user } = useAuth();
   const [weekStart, setWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [planning, setPlanning] = useState<PlanningWithWorksite[]>([]);
@@ -134,7 +134,8 @@ export default function PoseurWeek() {
           return (
             <div
               key={dateStr}
-              className={`rounded-lg border p-3 space-y-2 ${isToday ? 'border-primary bg-primary/5' : 'bg-card'}`}
+              onClick={() => onSelectDay?.(dateStr)}
+              className={`rounded-lg border p-3 space-y-2 transition-colors ${onSelectDay ? 'cursor-pointer hover:border-primary/60' : ''} ${isToday ? 'border-primary bg-primary/5' : 'bg-card'}`}
             >
               {/* Day header */}
               <div className="flex items-center gap-2">
@@ -225,7 +226,8 @@ export default function PoseurWeek() {
           return (
             <div
               key={dateStr}
-              className={`rounded-lg border p-2 min-h-[140px] flex flex-col ${isToday ? 'border-primary bg-primary/5' : 'bg-card'}`}
+              onClick={() => onSelectDay?.(dateStr)}
+              className={`rounded-lg border p-2 min-h-[140px] flex flex-col transition-colors ${onSelectDay ? 'cursor-pointer hover:border-primary/60' : ''} ${isToday ? 'border-primary bg-primary/5' : 'bg-card'}`}
             >
               <div className="text-center mb-2 pb-2 border-b">
                 <p className={`text-xs capitalize ${isToday ? 'text-primary font-medium' : 'text-muted-foreground'}`}>

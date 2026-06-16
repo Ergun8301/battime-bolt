@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertCircle, Eye, EyeOff, Loader2 } from 'lucide-react';
 import Link from 'next/link';
@@ -505,18 +504,7 @@ export default function ConnexionPage() {
           <CardDescription>Feuilles d'heures BTP simplifiees</CardDescription>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue="login" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="login">Connexion</TabsTrigger>
-              <TabsTrigger value="signup">Creer un compte</TabsTrigger>
-            </TabsList>
-            <TabsContent value="login" className="mt-4">
-              <LoginForm />
-            </TabsContent>
-            <TabsContent value="signup" className="mt-4">
-              <SignupForm />
-            </TabsContent>
-          </Tabs>
+          <LoginForm />
         </CardContent>
       </Card>
     </div>

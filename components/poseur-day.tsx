@@ -72,7 +72,7 @@ type SlotTarget =
   | { kind: 'pending'; localId: string }
   | { kind: 'new' };
 
-export default function PoseurDay() {
+export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
   const { user } = useAuth();
   const [entries, setEntries] = useState<TimeEntryWithWorksite[]>([]);
   const [pendingEntries, setPendingEntries] = useState<PendingEntry[]>([]);
@@ -106,8 +106,8 @@ export default function PoseurDay() {
   // Copy-yesterday
   const [copyingYesterday, setCopyingYesterday] = useState(false);
 
-  const today = format(new Date(), 'yyyy-MM-dd');
-  const yesterday = format(subDays(new Date(), 1), 'yyyy-MM-dd');
+  const date = dateProp || format(new Date(), 'yyyy-MM-dd');
+  const yesterday = format(subDays(new Date(`${date}T00:00:00`), 1), 'yyyy-MM-dd');
 
   // ─── Fetch server data ─────────────────────────────────────────────────────
 
@@ -115,9 +115,9 @@ export default function PoseurDay() {
     if (!user) return;
     try {
       const [entriesRes, worksitesRes, planningRes] = await Promise.all([
-        supabase.from('time_entries').select('*, worksite:worksites(*)').eq('user_id', user.id).eq('work_date', today).order('start_time'),
+        supabase.from('time_entries').select('*, worksite:worksites(*)').eq('user_id', user.id).eq('work_date', date).order('start_time'),
         supabase.from('worksites').select('*').eq('company_id', user.company_id).eq('is_active', true).order('client_name'),
-        supabase.from('planning').select('*, worksite:worksites(*)').eq('user_id', user.id).eq('work_date', today),
+        supabase.from('planning').select('*, worksite:worksites(*)').eq('user_id', user.id).eq('work_date', date),
       ]);
       if (entriesRes.error) throw entriesRes.error;
       if (worksitesRes.error) throw worksitesRes.error;
@@ -127,7 +127,7 @@ export default function PoseurDay() {
       setWorksites(worksitesRes.data || []);
       setPlanning(planningRes.data || []);
 
-      const pendForToday = getPendingEntries(user.id).filter((e) => e.work_date === today);
+      const pendForToday = getPendingEntries(user.id).filter((e) => e.work_date === date);
       setDayMeal((entriesRes.data || []).some((e: TimeEntryWithWorksite) => e.meal_allowance) || pendForToday.some((e) => e.meal_allowance));
     } catch (err) {
       console.error('Error fetching data:', err);
@@ -135,13 +135,13 @@ export default function PoseurDay() {
     } finally {
       setLoading(false);
     }
-  }, [user, today]);
+  }, [user, date]);
 
   // ─── Sync pending offline entries ─────────────────────────────────────────
 
   const syncPendingEntries = useCallback(async () => {
     if (!user || !navigator.onLine) return;
-    const pending = getPendingEntries(user.id).filter((e) => e.work_date === today);
+    const pending = getPendingEntries(user.id).filter((e) => e.work_date === date);
     if (pending.length === 0) return;
 
     setSyncing(true);
@@ -172,10 +172,10 @@ export default function PoseurDay() {
 
     if (synced > 0) {
       toast.success(`${synced} intervention${synced > 1 ? 's' : ''} synchronisée${synced > 1 ? 's' : ''}`);
-      setPendingEntries(getPendingEntries(user.id).filter((e) => e.work_date === today));
+      setPendingEntries(getPendingEntries(user.id).filter((e) => e.work_date === date));
       fetchData();
     }
-  }, [user, today, fetchData]);
+  }, [user, date, fetchData]);
 
   // ─── Online / offline listeners ───────────────────────────────────────────
 
@@ -195,18 +195,18 @@ export default function PoseurDay() {
 
   useEffect(() => {
     if (user) {
-      const pending = getPendingEntries(user.id).filter((e) => e.work_date === today);
+      const pending = getPendingEntries(user.id).filter((e) => e.work_date === date);
       setPendingEntries(pending);
       if (navigator.onLine && pending.length > 0) syncPendingEntries();
     }
-  }, [user, today, syncPendingEntries]);
+  }, [user, date, syncPendingEntries]);
 
   // ─── Day meal: keep exactly one flagged row per day (no migration) ──────────
 
   const applyDayMeal = useCallback(async (value: boolean) => {
     if (!user) return;
     if (navigator.onLine) {
-      const { data } = await supabase.from('time_entries').select('id, start_time, meal_allowance').eq('user_id', user.id).eq('work_date', today);
+      const { data } = await supabase.from('time_entries').select('id, start_time, meal_allowance').eq('user_id', user.id).eq('work_date', date);
       const rows = [...(data || [])].sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''));
       const ups = [];
       for (let i = 0; i < rows.length; i++) {
@@ -217,14 +217,14 @@ export default function PoseurDay() {
       }
       if (ups.length) await Promise.all(ups);
     }
-    const pend = getPendingEntries(user.id).filter((e) => e.work_date === today);
+    const pend = getPendingEntries(user.id).filter((e) => e.work_date === date);
     if (pend.length > 0) {
       const sorted = [...pend].sort((a, b) => a.start_time.localeCompare(b.start_time));
-      clearPendingEntriesForDate(user.id, today);
+      clearPendingEntriesForDate(user.id, date);
       sorted.forEach((e, i) => addPendingEntry(user.id, { ...e, meal_allowance: i === 0 ? value : false }));
-      setPendingEntries(getPendingEntries(user.id).filter((e) => e.work_date === today));
+      setPendingEntries(getPendingEntries(user.id).filter((e) => e.work_date === date));
     }
-  }, [user, today]);
+  }, [user, date]);
 
   const toggleDayMeal = async (value: boolean) => {
     setDayMeal(value);
@@ -315,7 +315,7 @@ export default function PoseurDay() {
         if (!navigator.onLine) {
           const pending: PendingEntry = {
             localId: generateLocalId(), company_id: user.company_id, user_id: user.id, worksite_id: worksiteId,
-            planning_id: planningId, work_date: today, start_time: fStart, end_time: fEnd, break_minutes: 0,
+            planning_id: planningId, work_date: date, start_time: fStart, end_time: fEnd, break_minutes: 0,
             total_minutes: totalMins, meal_allowance: false, observation: fObs.trim() || null,
             _worksite_name: worksiteName, _worksite_city: worksiteCity, _saved_at: Date.now(),
           };
@@ -323,7 +323,7 @@ export default function PoseurDay() {
         } else {
           const { error } = await supabase.from('time_entries').insert({
             company_id: user.company_id, user_id: user.id, worksite_id: worksiteId, planning_id: planningId,
-            work_date: today, start_time: fStart, end_time: fEnd, break_minutes: 0,
+            work_date: date, start_time: fStart, end_time: fEnd, break_minutes: 0,
             meal_allowance: false, observation: fObs.trim() || null, status: 'draft',
           });
           if (error) throw error;
@@ -333,7 +333,7 @@ export default function PoseurDay() {
       setOpenSlot(null);
       await applyDayMeal(dayMeal);
       if (navigator.onLine) fetchData();
-      setPendingEntries(getPendingEntries(user.id).filter((e) => e.work_date === today));
+      setPendingEntries(getPendingEntries(user.id).filter((e) => e.work_date === date));
       toast.success('Heures enregistrées');
     } catch (err) {
       console.error('Error saving slot:', err);
@@ -380,7 +380,7 @@ export default function PoseurDay() {
       const rows = yEntries.map((e) => ({
         company_id: user.company_id, user_id: user.id, worksite_id: e.worksite_id,
         planning_id: planning.find((p) => p.worksite_id === e.worksite_id)?.id || null,
-        work_date: today, start_time: e.start_time, end_time: e.end_time, break_minutes: 0,
+        work_date: date, start_time: e.start_time, end_time: e.end_time, break_minutes: 0,
         // total_minutes is a generated column in Postgres — never send it.
         meal_allowance: false, observation: e.observation, status: 'draft' as const,
       }));
