@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
-import { User } from '@/lib/types';
+import { User, Worksite } from '@/lib/types';
 import { ExportEntry, exportEntriesToExcel, exportEntriesToPDF } from '@/lib/export-utils';
 import { computeMissingDays } from '@/lib/work-status';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -12,10 +12,11 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   CalendarRange, Clock, Utensils, MapPin, FileSpreadsheet, FileText, Loader2,
-  Settings2, Archive, ArchiveRestore, Trash2,
+  Settings2, Archive, ArchiveRestore, Trash2, Link2,
 } from 'lucide-react';
 import { format, parseISO, isSameDay, subDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -35,6 +36,7 @@ interface WorkerDetailDialogProps {
 }
 
 const MISSING_WINDOW_DAYS = 30;
+const UNKNOWN_NAME = 'Chantier inconnu';
 
 // Per-employee fiche: opens on today, Booking-style range calendar, interventions
 // + total, planning-based missing-days detail, per-period export (no lock), and
@@ -46,6 +48,8 @@ export default function WorkerDetailDialog({ worker, onOpenChange, onChanged }: 
   });
   const [entries, setEntries] = useState<ExportEntry[]>([]);
   const [companyName, setCompanyName] = useState('');
+  const [worksites, setWorksites] = useState<Worksite[]>([]);
+  const [reassigningId, setReassigningId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
 
@@ -72,7 +76,25 @@ export default function WorkerDetailDialog({ worker, onOpenChange, onChanged }: 
     if (!worker?.company_id) return;
     supabase.from('companies').select('name').eq('id', worker.company_id).maybeSingle()
       .then(({ data }) => setCompanyName(data?.name || ''));
+    supabase.from('worksites').select('*').eq('company_id', worker.company_id).eq('is_active', true).order('client_name')
+      .then(({ data }) => setWorksites(data || []));
   }, [worker?.company_id]);
+
+  // Reassign a "Chantier inconnu" entry to a real client.
+  const reassignEntry = async (entryId: string, newWorksiteId: string) => {
+    if (!worker) return;
+    try {
+      const { error } = await supabase.from('time_entries').update({ worksite_id: newWorksiteId })
+        .eq('id', entryId).eq('user_id', worker.id);
+      if (error) throw error;
+      toast.success('Chantier réaffecté');
+      setReassigningId(null);
+      fetchEntries();
+    } catch (err) {
+      console.error('Error reassigning worksite:', err);
+      toast.error('Impossible de réaffecter');
+    }
+  };
 
   // Planning-based missing days (recent window).
   const fetchMissing = useCallback(async () => {
@@ -306,27 +328,57 @@ export default function WorkerDetailDialog({ worker, onOpenChange, onChanged }: 
           </div>
         ) : (
           <div className="divide-y rounded-lg border">
-            {entries.map((entry) => (
-              <div key={entry.id} className="flex items-center gap-3 p-3">
-                <div className="w-24 shrink-0 text-xs text-muted-foreground capitalize">
-                  {format(parseISO(entry.work_date), 'EEE d MMM', { locale: fr })}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="font-medium text-sm truncate">{entry.worksite?.client_name || 'Chantier inconnu'}</p>
-                  {entry.worksite?.city && (
-                    <p className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="h-3 w-3" />{entry.worksite.city}</p>
+            {entries.map((entry) => {
+              const isUnknown = entry.worksite?.client_name === UNKNOWN_NAME;
+              const realWorksites = worksites.filter((w) => w.client_name !== UNKNOWN_NAME);
+              return (
+                <div key={entry.id} className={`p-3 ${isUnknown ? 'bg-orange-50' : ''}`}>
+                  <div className="flex items-center gap-3">
+                    <div className="w-24 shrink-0 text-xs text-muted-foreground capitalize">
+                      {format(parseISO(entry.work_date), 'EEE d MMM', { locale: fr })}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className={`font-medium text-sm truncate ${isUnknown ? 'text-orange-700 italic' : ''}`}>
+                        {entry.worksite?.client_name || UNKNOWN_NAME}
+                      </p>
+                      {entry.worksite?.city && (
+                        <p className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="h-3 w-3" />{entry.worksite.city}</p>
+                      )}
+                      {entry.observation && (
+                        <p className="text-xs text-muted-foreground mt-0.5 truncate">« {entry.observation} »</p>
+                      )}
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-sm">{entry.start_time?.substring(0, 5)}–{entry.end_time?.substring(0, 5)}</p>
+                      <div className="flex items-center justify-end gap-2 text-xs text-muted-foreground">
+                        {entry.break_minutes > 0 && <span>pause {entry.break_minutes}min</span>}
+                        {entry.meal_allowance && <Utensils className="h-3 w-3" aria-label="Panier repas" />}
+                      </div>
+                    </div>
+                    <div className="w-16 shrink-0 text-right font-semibold">{formatMinutesToHours(entry.total_minutes)}</div>
+                  </div>
+                  {isUnknown && realWorksites.length > 0 && (
+                    reassigningId === entry.id ? (
+                      <div className="mt-2 flex items-center gap-2">
+                        <Select onValueChange={(v) => reassignEntry(entry.id, v)}>
+                          <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Choisir le vrai chantier…" /></SelectTrigger>
+                          <SelectContent>
+                            {realWorksites.map((ws) => (
+                              <SelectItem key={ws.id} value={ws.id}>{ws.client_name}{ws.city ? ` - ${ws.city}` : ''}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Button variant="ghost" size="sm" onClick={() => setReassigningId(null)}>Annuler</Button>
+                      </div>
+                    ) : (
+                      <Button variant="outline" size="sm" className="mt-2 h-8 text-xs text-orange-700 border-orange-300" onClick={() => setReassigningId(entry.id)}>
+                        <Link2 className="h-3 w-3 mr-1" /> Réaffecter à un client
+                      </Button>
+                    )
                   )}
                 </div>
-                <div className="text-right shrink-0">
-                  <p className="text-sm">{entry.start_time?.substring(0, 5)}–{entry.end_time?.substring(0, 5)}</p>
-                  <div className="flex items-center justify-end gap-2 text-xs text-muted-foreground">
-                    {entry.break_minutes > 0 && <span>pause {entry.break_minutes}min</span>}
-                    {entry.meal_allowance && <Utensils className="h-3 w-3" aria-label="Panier repas" />}
-                  </div>
-                </div>
-                <div className="w-16 shrink-0 text-right font-semibold">{formatMinutesToHours(entry.total_minutes)}</div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 

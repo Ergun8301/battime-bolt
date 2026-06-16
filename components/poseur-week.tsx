@@ -130,12 +130,13 @@ export default function PoseurWeek({ onSelectDay }: { onSelectDay?: (date: strin
             .sort((a, b) => (a.estimated_start || '99:99').localeCompare(b.estimated_start || '99:99'));
           const dayEntries = entries.filter(e => e.work_date === dateStr);
           const hasContent = dayPlanning.length > 0 || dayEntries.length > 0;
+          const canOpen = !!onSelectDay && hasContent;
 
           return (
             <div
               key={dateStr}
-              onClick={() => onSelectDay?.(dateStr)}
-              className={`rounded-lg border p-3 space-y-2 transition-colors ${onSelectDay ? 'cursor-pointer hover:border-primary/60' : ''} ${isToday ? 'border-primary bg-primary/5' : 'bg-card'}`}
+              onClick={canOpen ? () => onSelectDay?.(dateStr) : undefined}
+              className={`rounded-lg border p-3 space-y-2 transition-colors ${canOpen ? 'cursor-pointer hover:border-primary/60' : ''} ${isToday ? 'border-primary bg-primary/5' : 'bg-card'}`}
             >
               {/* Day header */}
               <div className="flex items-center gap-2">
@@ -222,12 +223,13 @@ export default function PoseurWeek({ onSelectDay }: { onSelectDay?: (date: strin
             .sort((a, b) => (a.estimated_start || '99:99').localeCompare(b.estimated_start || '99:99'));
           const dayEntries = entries.filter(e => e.work_date === dateStr);
           const hasContent = dayPlanning.length > 0 || dayEntries.length > 0;
+          const canOpen = !!onSelectDay && hasContent;
 
           return (
             <div
               key={dateStr}
-              onClick={() => onSelectDay?.(dateStr)}
-              className={`rounded-lg border p-2 min-h-[140px] flex flex-col transition-colors ${onSelectDay ? 'cursor-pointer hover:border-primary/60' : ''} ${isToday ? 'border-primary bg-primary/5' : 'bg-card'}`}
+              onClick={canOpen ? () => onSelectDay?.(dateStr) : undefined}
+              className={`rounded-lg border p-2 min-h-[140px] flex flex-col transition-colors ${canOpen ? 'cursor-pointer hover:border-primary/60' : ''} ${isToday ? 'border-primary bg-primary/5' : 'bg-card'}`}
             >
               <div className="text-center mb-2 pb-2 border-b">
                 <p className={`text-xs capitalize ${isToday ? 'text-primary font-medium' : 'text-muted-foreground'}`}>

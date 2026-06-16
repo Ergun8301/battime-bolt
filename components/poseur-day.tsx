@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
-  Plus, Trash2, Send, Loader2, MapPin, Clock, Utensils, WifiOff, RefreshCw, AlertTriangle, Copy, X,
+  Plus, Trash2, Send, Loader2, MapPin, Clock, Utensils, WifiOff, RefreshCw, AlertTriangle, Copy, ArrowLeft,
 } from 'lucide-react';
 import { format, subDays } from 'date-fns';
 import { toast } from 'sonner';
@@ -57,11 +57,6 @@ function computePauses(slots: { start: string; end: string }[]) {
   return out;
 }
 
-// Normalise for fuzzy worksite-name matching.
-function normalizeStr(s: string): string {
-  return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
-}
-
 // (The intervention editor is a full-screen sheet, rendered inline in the component below.)
 
 // ─── main ──────────────────────────────────────────────────────────────────────
@@ -92,12 +87,8 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
   const [fEnd, setFEnd] = useState('');
   const [fObs, setFObs] = useState('');
   const [fSaving, setFSaving] = useState(false);
-  // 'new' client picker
-  const [fMode, setFMode] = useState<'existing' | 'new'>('existing');
+  // Chantier picker (existing chantiers only — workers don't create clients)
   const [fWorksiteId, setFWorksiteId] = useState('');
-  const [fClientName, setFClientName] = useState('');
-  const [fProductType, setFProductType] = useState('');
-  const [fCity, setFCity] = useState('');
 
   // Coherence confirmation
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -258,12 +249,14 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
   };
   const openNew = () => {
     setOpenSlot({ kind: 'new' });
-    setFMode('existing'); setFWorksiteId(''); setFClientName(''); setFProductType(''); setFCity('');
-    setFStart('08:00'); setFEnd('17:00'); setFObs('');
+    setFWorksiteId('');
+    // First slot of the day → morning ; otherwise → afternoon. Worker adjusts if needed.
+    const hasContent = entries.length + pendingEntries.length > 0;
+    if (hasContent) { setFStart('13:00'); setFEnd('17:00'); }
+    else { setFStart('08:00'); setFEnd('12:00'); }
+    setFObs('');
   };
   const cancelSlot = () => setOpenSlot(null);
-
-  const pickSuggestion = (ws: Worksite) => { setFMode('existing'); setFWorksiteId(ws.id); };
 
   const saveSlot = async () => {
     if (!user || !openSlot) return;
@@ -295,14 +288,6 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
           worksiteId = p?.worksite_id || '';
           worksiteName = p?.worksite?.client_name || '';
           worksiteCity = p?.worksite?.city || null;
-        } else if (fMode === 'new') {
-          if (!fClientName.trim()) { toast.error('Le nom du client est requis'); return; }
-          if (!navigator.onLine) { toast.error('Impossible de créer un chantier hors-ligne. Choisis un chantier existant.'); return; }
-          const { data: newWs, error: wsErr } = await supabase.from('worksites').insert({
-            company_id: user.company_id, client_name: fClientName.trim(), product_type: fProductType.trim() || null, city: fCity.trim() || null, is_active: true,
-          }).select().single();
-          if (wsErr) throw wsErr;
-          worksiteId = newWs.id; worksiteName = newWs.client_name; worksiteCity = newWs.city || null;
         } else {
           worksiteId = fWorksiteId;
           const ws = worksites.find((w) => w.id === worksiteId);
@@ -404,6 +389,9 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
     const drafts = entries.filter((e) => e.status === 'draft' && !e.locked);
     if (drafts.length === 0) return [];
     const warnings: string[] = [];
+    if (plannedTodo.length > 0) {
+      warnings.push(`Il reste ${plannedTodo.length} chantier${plannedTodo.length > 1 ? 's' : ''} prévu${plannedTodo.length > 1 ? 's' : ''} sans heures.`);
+    }
     const totalMins = drafts.reduce((s, e) => s + e.total_minutes, 0);
     if (totalMins > 600) warnings.push(`Total : ${formatMinutesToHours(totalMins)} (dépasse 10h). Vérifie tes horaires.`);
     const slots = [...entries, ...pendingEntries]
@@ -463,18 +451,36 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
     [...entries, ...pendingEntries].map((e) => ({ start: (e.start_time || '').slice(0, 5), end: (e.end_time || '').slice(0, 5) })),
   );
 
-  // Anti-duplicate suggestions for the "new" client form.
-  const typedNorm = normalizeStr(fClientName);
-  const similarWorksites =
-    openSlot?.kind === 'new' && fMode === 'new' && typedNorm.length >= 2
-      ? worksites.filter((w) => { const n = normalizeStr(w.client_name); return n.includes(typedNorm) || typedNorm.includes(n); }).slice(0, 4)
-      : [];
+  // "Chantier inconnu" is a real worksite pinned at the top of the picker
+  // (created once per company in Supabase, see UNKNOWN_NAME below).
+  const UNKNOWN_NAME = 'Chantier inconnu';
+  const sortedWorksites = [...worksites].sort((a, b) => {
+    if (a.client_name === UNKNOWN_NAME) return -1;
+    if (b.client_name === UNKNOWN_NAME) return 1;
+    return a.client_name.localeCompare(b.client_name);
+  });
 
+  // Unified list of the day's slots — planned-not-yet-declared, declared entries, and pending
+  // (offline) entries — sorted by start time. The card position stays put as soon as the slot
+  // has a start time, so filling a planned card no longer makes it jump to the bottom.
+  type DayItem =
+    | { kind: 'planned'; sort: string; key: string; data: Planning & { worksite: Worksite } }
+    | { kind: 'entry'; sort: string; key: string; data: TimeEntryWithWorksite }
+    | { kind: 'pending'; sort: string; key: string; data: PendingEntry };
+  const items: DayItem[] = [
+    ...plannedTodo.map((p): DayItem => ({ kind: 'planned', sort: (p.estimated_start || '99:99').slice(0, 5), key: `p:${p.id}`, data: p })),
+    ...entries.map((e): DayItem => ({ kind: 'entry', sort: (e.start_time || '99:99').slice(0, 5), key: `e:${e.id}`, data: e })),
+    ...pendingEntries.map((pe): DayItem => ({ kind: 'pending', sort: (pe.start_time || '99:99').slice(0, 5), key: `pe:${pe.localId}`, data: pe })),
+  ].sort((a, b) => a.sort.localeCompare(b.sort));
+
+  const titleName = !openSlot ? ''
+    : openSlot.kind === 'planned' ? (planning.find((p) => p.id === openSlot.planningId)?.worksite?.client_name || '')
+    : openSlot.kind === 'entry' ? (entries.find((e) => e.id === openSlot.entryId)?.worksite?.client_name || '')
+    : openSlot.kind === 'pending' ? (pendingEntries.find((e) => e.localId === openSlot.localId)?._worksite_name || '')
+    : '';
   const slotTitle = !openSlot ? ''
-    : openSlot.kind === 'planned' ? (planning.find((p) => p.id === openSlot.planningId)?.worksite?.client_name || 'Intervention')
-    : openSlot.kind === 'entry' ? (entries.find((e) => e.id === openSlot.entryId)?.worksite?.client_name || 'Intervention')
-    : openSlot.kind === 'pending' ? (pendingEntries.find((e) => e.localId === openSlot.localId)?._worksite_name || 'Intervention')
-    : 'Nouvelle intervention';
+    : openSlot.kind === 'new' ? 'Nouvelle intervention'
+    : titleName ? `Chantier ${titleName}` : 'Intervention';
 
   if (loading) {
     return <div className="space-y-4"><Skeleton className="h-24 w-full" /><Skeleton className="h-40 w-full" /></div>;
@@ -530,67 +536,70 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
         </CardContent>
       </Card>
 
-      {/* Interventions */}
+      {/* Interventions — unified, sorted by start time so a card stays put when filled */}
       <div className="space-y-2">
-        {/* Planned chantiers still to declare */}
-        {plannedTodo.map((p) => (
-          <Card key={p.id} className="border-primary/30 bg-primary/5 cursor-pointer transition-colors hover:bg-primary/10" onClick={() => openPlanned(p)}>
-            <CardContent className="py-4 flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-xs text-muted-foreground">À déclarer</p>
-                <p className="font-semibold truncate flex items-center gap-1"><MapPin className="h-4 w-4 text-muted-foreground shrink-0" />{p.worksite?.client_name}{p.worksite?.city ? ` — ${p.worksite.city}` : ''}</p>
-                {p.estimated_start && p.estimated_end && <p className="text-xs text-muted-foreground mt-0.5">Prévu {p.estimated_start.substring(0, 5)}–{p.estimated_end.substring(0, 5)}</p>}
-              </div>
-              <span className="flex items-center gap-1 text-primary font-medium text-sm shrink-0"><Plus className="h-4 w-4" /> Mes heures</span>
-            </CardContent>
-          </Card>
-        ))}
-
-        {/* Declared (server) entries */}
-        {entries.map((entry) => {
-          const editable = isEditable(entry);
+        {items.map((item) => {
+          if (item.kind === 'planned') {
+            const p = item.data;
+            return (
+              <Card key={item.key} className="border-primary/30 bg-primary/5 cursor-pointer transition-colors hover:bg-primary/10" onClick={() => openPlanned(p)}>
+                <CardContent className="py-4 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-xs text-muted-foreground">À déclarer</p>
+                    <p className="font-semibold truncate flex items-center gap-1"><MapPin className="h-4 w-4 text-muted-foreground shrink-0" />{p.worksite?.client_name}{p.worksite?.city ? ` — ${p.worksite.city}` : ''}</p>
+                    {p.estimated_start && p.estimated_end && <p className="text-xs text-muted-foreground mt-0.5">Prévu {p.estimated_start.substring(0, 5)}–{p.estimated_end.substring(0, 5)}</p>}
+                  </div>
+                  <span className="flex items-center gap-1 text-primary font-medium text-sm shrink-0"><Plus className="h-4 w-4" /> Mes heures</span>
+                </CardContent>
+              </Card>
+            );
+          }
+          if (item.kind === 'entry') {
+            const entry = item.data;
+            const editable = isEditable(entry);
+            return (
+              <Card key={item.key} className={editable ? 'cursor-pointer transition-colors hover:bg-muted/40' : ''} onClick={editable ? () => openEntry(entry) : undefined}>
+                <CardContent className="py-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-semibold truncate">{entry.worksite?.client_name || UNKNOWN_NAME}</p>
+                      <p className="text-sm flex items-center gap-1 mt-0.5"><Clock className="h-3.5 w-3.5 text-muted-foreground" />{entry.start_time?.substring(0, 5)}–{entry.end_time?.substring(0, 5)} · <span className="font-semibold text-primary">{formatMinutesToHours(entry.total_minutes)}</span></p>
+                      {entry.observation && <p className="text-sm text-muted-foreground mt-0.5">{entry.observation}</p>}
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {entry.status === 'submitted' && <Badge variant="default" className="text-xs">Envoyé</Badge>}
+                      {entry.status === 'draft' && !entry.locked && (
+                        <Button variant="ghost" size="icon" className="text-destructive" onClick={(e) => { e.stopPropagation(); handleDeleteEntry(entry.id); }}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          }
+          // pending (offline)
+          const entry = item.data;
           return (
-            <Card key={entry.id} className={editable ? 'cursor-pointer transition-colors hover:bg-muted/40' : ''} onClick={editable ? () => openEntry(entry) : undefined}>
+            <Card key={item.key} className="border-orange-300 bg-orange-50/30 cursor-pointer hover:bg-orange-50/60 transition-colors" onClick={() => openPending(entry)}>
               <CardContent className="py-4">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="font-semibold truncate">{entry.worksite?.client_name || 'Chantier inconnu'}</p>
-                    <p className="text-sm flex items-center gap-1 mt-0.5"><Clock className="h-3.5 w-3.5 text-muted-foreground" />{entry.start_time?.substring(0, 5)}–{entry.end_time?.substring(0, 5)} · <span className="font-semibold text-primary">{formatMinutesToHours(entry.total_minutes)}</span></p>
-                    {entry.observation && <p className="text-sm text-muted-foreground mt-0.5">{entry.observation}</p>}
-                  </div>
+                    <p className="font-semibold truncate">{entry._worksite_name}</p>
+                    <p className="text-sm flex items-center gap-1 mt-0.5"><Clock className="h-3.5 w-3.5 text-muted-foreground" />{entry.start_time.substring(0, 5)}–{entry.end_time.substring(0, 5)} · <span className="font-semibold text-primary">{formatMinutesToHours(entry.total_minutes)}</span></p>
+                </div>
                   <div className="flex items-center gap-1 shrink-0">
-                    {entry.status === 'submitted' && <Badge variant="default" className="text-xs">Envoyé</Badge>}
-                    {entry.status === 'draft' && !entry.locked && (
-                      <Button variant="ghost" size="icon" className="text-destructive" onClick={(e) => { e.stopPropagation(); handleDeleteEntry(entry.id); }}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    )}
+                    <Badge variant="outline" className="text-xs text-orange-600 border-orange-300"><WifiOff className="h-3 w-3 mr-1" />Hors-ligne</Badge>
+                    <Button variant="ghost" size="icon" className="text-destructive" onClick={(e) => { e.stopPropagation(); handleDeletePending(entry.localId); }}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </div>
                 </div>
               </CardContent>
             </Card>
           );
         })}
-
-        {/* Pending (offline) entries */}
-        {pendingEntries.map((entry) => (
-          <Card key={entry.localId} className="border-orange-300 bg-orange-50/30 cursor-pointer hover:bg-orange-50/60 transition-colors" onClick={() => openPending(entry)}>
-            <CardContent className="py-4">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="font-semibold truncate">{entry._worksite_name}</p>
-                  <p className="text-sm flex items-center gap-1 mt-0.5"><Clock className="h-3.5 w-3.5 text-muted-foreground" />{entry.start_time.substring(0, 5)}–{entry.end_time.substring(0, 5)} · <span className="font-semibold text-primary">{formatMinutesToHours(entry.total_minutes)}</span></p>
-                </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  <Badge variant="outline" className="text-xs text-orange-600 border-orange-300"><WifiOff className="h-3 w-3 mr-1" />Hors-ligne</Badge>
-                  <Button variant="ghost" size="icon" className="text-destructive" onClick={(e) => { e.stopPropagation(); handleDeletePending(entry.localId); }}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
 
         {/* + Ajouter une intervention */}
         <Button variant="outline" className="w-full" onClick={openNew}>
@@ -630,46 +639,37 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
         <p className="text-center text-sm text-muted-foreground py-2">Journée envoyée ✓</p>
       )}
 
-      {/* Full-screen intervention editor — closes only via ✕ / Annuler / Enregistrer */}
+      {/* Full-screen intervention editor — closes only via ← / Annuler / Enregistrer */}
       {openSlot && (
         <div className="fixed inset-0 z-[60] bg-background">
           <div className="mx-auto flex h-full w-full max-w-md flex-col safe-top safe-bottom">
-            <div className="flex items-center gap-2 border-b px-2 py-2">
-              <Button variant="ghost" size="icon" onClick={cancelSlot} aria-label="Fermer"><X className="h-5 w-5" /></Button>
-              <p className="font-semibold truncate">{slotTitle}</p>
+            <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2 border-b px-2 py-2">
+              <Button variant="ghost" size="sm" className="h-10 px-2" onClick={cancelSlot} aria-label="Retour">
+                <ArrowLeft className="h-5 w-5 mr-1" /> Retour
+              </Button>
+              <p className="font-semibold text-center truncate">{slotTitle}</p>
+              <span className="w-[88px]" aria-hidden />
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
               {openSlot.kind === 'new' && (
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <Label>Chantier</Label>
-                  <div className="flex gap-2">
-                    <Button type="button" variant={fMode === 'existing' ? 'default' : 'outline'} className="flex-1" onClick={() => setFMode('existing')}>Existant</Button>
-                    <Button type="button" variant={fMode === 'new' ? 'default' : 'outline'} className="flex-1" onClick={() => setFMode('new')}>Nouveau</Button>
-                  </div>
-                  {fMode === 'existing' ? (
-                    <Select value={fWorksiteId} onValueChange={setFWorksiteId}>
-                      <SelectTrigger><SelectValue placeholder="Choisir un chantier" /></SelectTrigger>
-                      <SelectContent>{worksites.map((ws) => <SelectItem key={ws.id} value={ws.id}>{ws.client_name}{ws.city ? ` - ${ws.city}` : ''}</SelectItem>)}</SelectContent>
-                    </Select>
-                  ) : (
-                    <div className="space-y-2">
-                      <Input placeholder="Nom du client *" value={fClientName} onChange={(e) => setFClientName(e.target.value)} />
-                      {similarWorksites.length > 0 && (
-                        <div className="rounded-md border border-orange-200 bg-orange-50 p-2 space-y-1">
-                          <p className="text-xs text-orange-700 flex items-center gap-1"><AlertTriangle className="h-3 w-3" />Chantiers similaires — évite les doublons :</p>
-                          {similarWorksites.map((ws) => (
-                            <button key={ws.id} type="button" onClick={() => pickSuggestion(ws)} className="w-full text-left text-sm bg-white border rounded px-2 py-1.5 hover:bg-orange-100 flex items-center justify-between gap-2">
-                              <span className="truncate">{ws.client_name}{ws.city ? ` - ${ws.city}` : ''}</span>
-                              <span className="text-xs text-orange-600 shrink-0">Utiliser</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      <Input placeholder="Type de produit (stores, volets...)" value={fProductType} onChange={(e) => setFProductType(e.target.value)} />
-                      <Input placeholder="Ville" value={fCity} onChange={(e) => setFCity(e.target.value)} />
-                    </div>
-                  )}
+                  <Select value={fWorksiteId} onValueChange={setFWorksiteId}>
+                    <SelectTrigger className="h-11"><SelectValue placeholder="Choisir un chantier" /></SelectTrigger>
+                    <SelectContent>
+                      {sortedWorksites.map((ws) => (
+                        <SelectItem key={ws.id} value={ws.id}>
+                          {ws.client_name === UNKNOWN_NAME
+                            ? <span className="italic">— {ws.client_name} —</span>
+                            : <>{ws.client_name}{ws.city ? ` - ${ws.city}` : ''}</>}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Tu ne trouves pas ton client ? Choisis <em>Chantier inconnu</em> et ajoute un mot dans la note pour la secrétaire.
+                  </p>
                 </div>
               )}
 
@@ -688,8 +688,8 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
               )}
 
               <div className="space-y-1.5">
-                <Label>Observation (optionnel)</Label>
-                <Input value={fObs} onChange={(e) => setFObs(e.target.value)} placeholder="Note pour la secrétaire…" />
+                <Label>Note (optionnel)</Label>
+                <Input value={fObs} onChange={(e) => setFObs(e.target.value)} placeholder="Lieu, chef d'équipe, détail…" />
               </div>
             </div>
 
