@@ -582,24 +582,23 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
         </div>
       )}
 
-      {/* Duplicate this day — between the date and the timesheet block */}
+      {/* Duplicate this day — centered, looks like a real button */}
       {!isEmpty && !openSlot && !monthLocked && (
-        <div className="flex justify-end">
-          <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => setRepeatOpen(true)}>
+        <div className="flex justify-center">
+          <Button variant="outline" size="sm" onClick={() => setRepeatOpen(true)}>
             <Copy className="h-4 w-4 mr-2" /> Dupliquer cette journée
           </Button>
         </div>
       )}
 
-      {/* Total + récap (interventions / repas / pause) */}
+      {/* Total (label + clock left, total right) + récap below */}
       <Card className="bg-primary text-primary-foreground">
         <CardContent className="py-4 space-y-3">
-          <div className="flex items-center gap-3">
-            <Clock className="h-6 w-6 shrink-0 opacity-90" />
-            <div>
-              <p className="text-sm opacity-90">Total travaillé</p>
-              <p className="text-2xl font-bold leading-tight">{formatMinutesToHours(totalMinutes)}</p>
-            </div>
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm opacity-90 flex items-center gap-2">
+              <Clock className="h-4 w-4 opacity-90 shrink-0" /> Total travaillé
+            </p>
+            <p className="text-2xl font-bold leading-none">{formatMinutesToHours(totalMinutes)}</p>
           </div>
           <div className="space-y-1.5 border-t border-white/15 pt-3 text-sm">
             <p>🧱 {nbInterventions} intervention{nbInterventions > 1 ? 's' : ''}</p>
