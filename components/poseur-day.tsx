@@ -11,13 +11,12 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Calendar } from '@/components/ui/calendar';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
-  Plus, Trash2, Send, Loader2, MapPin, Clock, Utensils, WifiOff, RefreshCw, AlertTriangle, Copy, ArrowLeft,
+  Plus, Trash2, Send, Loader2, MapPin, Clock, Utensils, WifiOff, RefreshCw, AlertTriangle, Copy, ArrowLeft, Pencil,
 } from 'lucide-react';
-import { format, subDays } from 'date-fns';
+import { format, subDays, addDays, startOfWeek } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import {
@@ -99,13 +98,17 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
   // Copy-yesterday
   const [copyingYesterday, setCopyingYesterday] = useState(false);
 
-  // Copy this day onto other days (same chantier for days/weeks).
-  const [copyOpen, setCopyOpen] = useState(false);
-  const [copyDates, setCopyDates] = useState<Date[]>([]);
+  // Repeat this day onto other days (same chantier for several days).
+  const [repeatOpen, setRepeatOpen] = useState(false);
   const [copying, setCopying] = useState(false);
+  // Correction mode: a sent day is frozen until the worker taps "Corriger".
+  const [correcting, setCorrecting] = useState(false);
 
   const date = dateProp || format(new Date(), 'yyyy-MM-dd');
   const yesterday = format(subDays(new Date(`${date}T00:00:00`), 1), 'yyyy-MM-dd');
+
+  // A sent day is frozen again whenever we switch day.
+  useEffect(() => { setCorrecting(false); }, [date]);
 
   // ─── Fetch server data ─────────────────────────────────────────────────────
 
@@ -274,8 +277,11 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
 
       // ── Update an existing entry ──
       if (openSlot.kind === 'entry') {
+        const wasSubmitted = entries.find((e) => e.id === openSlot.entryId)?.status === 'submitted';
         const { error } = await supabase.from('time_entries').update({
           start_time: fStart, end_time: fEnd, break_minutes: 0, observation: fObs.trim() || null,
+          // Editing an already-sent entry: flag it so the secretary sees the change.
+          ...(wasSubmitted ? { modified_at: new Date().toISOString(), modified_by: user.id } : {}),
         }).eq('id', openSlot.entryId).eq('user_id', user.id);
         if (error) throw error;
       } else if (openSlot.kind === 'pending') {
@@ -390,28 +396,34 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
     }
   };
 
-  // ─── Copy this day onto other days ───────────────────────────────────────────
+  // ─── Repeat this day onto other days ─────────────────────────────────────────
 
-  const copyTargetStrs = copyDates.map((d) => format(d, 'yyyy-MM-dd')).filter((d) => d !== date);
+  const base = new Date(`${date}T00:00:00`);
+  const tomorrowStr = format(addDays(base, 1), 'yyyy-MM-dd');
+  const tomorrowLabel = format(addDays(base, 1), 'EEEE d MMMM', { locale: fr });
+  const saturday = addDays(startOfWeek(base, { weekStartsOn: 1 }), 5); // Mon→Sat work week
+  const restOfWeekStrs: string[] = [];
+  for (let d = addDays(base, 1); d <= saturday; d = addDays(d, 1)) restOfWeekStrs.push(format(d, 'yyyy-MM-dd'));
 
-  const copyToDays = async () => {
+  const copyToDates = async (targetStrs: string[]) => {
     if (!user) return;
     if (!navigator.onLine) { toast.error('Copie indisponible hors-ligne'); return; }
+    const targets = Array.from(new Set(targetStrs)).filter((d) => d !== date);
     const sources = [
       ...entries.map((e) => ({ worksite_id: e.worksite_id, start_time: e.start_time, end_time: e.end_time, meal_allowance: e.meal_allowance, observation: e.observation })),
       ...pendingEntries.map((e) => ({ worksite_id: e.worksite_id, start_time: e.start_time, end_time: e.end_time, meal_allowance: e.meal_allowance, observation: e.observation })),
     ];
     if (sources.length === 0) { toast.error('Aucune intervention à copier'); return; }
-    if (copyTargetStrs.length === 0) { toast.error('Choisis au moins un autre jour'); return; }
+    if (targets.length === 0) { toast.error('Aucun jour à remplir'); return; }
     setCopying(true);
     try {
       // Link planning_id where the target day already has that chantier planned.
-      const { data: plan } = await supabase.from('planning').select('id, work_date, worksite_id').eq('user_id', user.id).in('work_date', copyTargetStrs);
+      const { data: plan } = await supabase.from('planning').select('id, work_date, worksite_id').eq('user_id', user.id).in('work_date', targets);
       const planMap = new Map<string, string>();
       (plan || []).forEach((p: { id: string; work_date: string; worksite_id: string | null }) => {
         if (p.worksite_id) planMap.set(`${p.work_date}|${p.worksite_id}`, p.id);
       });
-      const rows = copyTargetStrs.flatMap((td) => sources.map((s) => ({
+      const rows = targets.flatMap((td) => sources.map((s) => ({
         company_id: user.company_id, user_id: user.id, worksite_id: s.worksite_id,
         planning_id: planMap.get(`${td}|${s.worksite_id}`) || null,
         work_date: td, start_time: s.start_time, end_time: s.end_time, break_minutes: 0,
@@ -419,10 +431,10 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
       })));
       const { error } = await supabase.from('time_entries').insert(rows);
       if (error) throw error;
-      toast.success(`Copié sur ${copyTargetStrs.length} jour${copyTargetStrs.length > 1 ? 's' : ''}`);
-      setCopyOpen(false); setCopyDates([]);
+      toast.success(`Copié sur ${targets.length} jour${targets.length > 1 ? 's' : ''}`);
+      setRepeatOpen(false);
     } catch (err) {
-      console.error('Error copying day:', err);
+      console.error('Error repeating day:', err);
       toast.error('Impossible de copier');
     } finally {
       setCopying(false);
@@ -484,6 +496,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
   const nbInterventions = entries.length + pendingEntries.length;
   const hasDrafts = entries.some((e) => e.status === 'draft') || pendingEntries.length > 0;
   const allSubmitted = entries.length > 0 && entries.every((e) => e.status !== 'draft') && pendingEntries.length === 0;
+  const frozen = allSubmitted && !correcting; // a sent day is read-only until "Corriger"
   const isEmpty = entries.length === 0 && pendingEntries.length === 0;
   const isEditable = (e: TimeEntryWithWorksite) => !e.locked && !e.exported_at;
 
@@ -578,7 +591,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
             <Utensils className="h-4 w-4 text-muted-foreground" />
             <span className="text-sm font-medium">Panier repas <span className="text-muted-foreground font-normal">(pour la journée)</span></span>
           </div>
-          <Switch checked={dayMeal} onCheckedChange={toggleDayMeal} />
+          <Switch checked={dayMeal} onCheckedChange={toggleDayMeal} disabled={frozen} />
         </CardContent>
       </Card>
 
@@ -602,7 +615,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
           }
           if (item.kind === 'entry') {
             const entry = item.data;
-            const editable = isEditable(entry);
+            const editable = !frozen && isEditable(entry);
             return (
               <Card key={item.key} className={editable ? 'cursor-pointer transition-colors hover:bg-muted/40' : ''} onClick={editable ? () => openEntry(entry) : undefined}>
                 <CardContent className="py-4">
@@ -652,10 +665,10 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
           <Plus className="h-4 w-4 mr-2" /> Ajouter une intervention
         </Button>
 
-        {/* Copy this day onto other days (same chantier on several days) */}
+        {/* Repeat this day onto other days (same chantier on several days) */}
         {!isEmpty && !openSlot && (
-          <Button variant="ghost" className="w-full text-muted-foreground" onClick={() => { setCopyDates([]); setCopyOpen(true); }}>
-            <Copy className="h-4 w-4 mr-2" /> Copier ces heures sur d'autres jours
+          <Button variant="ghost" className="w-full text-muted-foreground" onClick={() => setRepeatOpen(true)}>
+            <Copy className="h-4 w-4 mr-2" /> Répéter sur d'autres jours
           </Button>
         )}
       </div>
@@ -689,7 +702,19 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
       )}
 
       {allSubmitted && !openSlot && (
-        <p className="text-center text-sm text-muted-foreground py-2">Journée envoyée ✓</p>
+        <div className="flex flex-col items-center gap-2 py-2">
+          <p className="text-center text-sm text-muted-foreground">Journée envoyée ✓</p>
+          {frozen ? (
+            <Button variant="outline" size="sm" onClick={() => setCorrecting(true)}>
+              <Pencil className="h-4 w-4 mr-2" /> Corriger
+            </Button>
+          ) : (
+            <p className="text-center text-xs text-muted-foreground">
+              Mode correction — tes changements sont signalés à la secrétaire.{' '}
+              <button type="button" className="underline" onClick={() => setCorrecting(false)}>Terminer</button>
+            </p>
+          )}
+        </div>
       )}
 
       {/* Full-screen intervention editor — closes only via ← / Annuler / Enregistrer */}
@@ -752,20 +777,22 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
         </div>
       )}
 
-      {/* Copy this day onto other days */}
-      <Dialog open={copyOpen} onOpenChange={setCopyOpen}>
+      {/* Repeat this day onto other days */}
+      <Dialog open={repeatOpen} onOpenChange={setRepeatOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><Copy className="h-5 w-5" /> Copier sur d'autres jours</DialogTitle>
+            <DialogTitle className="flex items-center gap-2"><Copy className="h-5 w-5" /> Répéter cette journée</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-muted-foreground">Sélectionne les jours où tu as fait les mêmes heures (même chantier).</p>
-          <div className="flex justify-center">
-            <Calendar mode="multiple" selected={copyDates} onSelect={(d) => setCopyDates(d || [])} locale={fr} weekStartsOn={1} />
+          <p className="text-sm text-muted-foreground">Recopier les mêmes interventions (chantier + heures) sur :</p>
+          <div className="space-y-2">
+            <Button variant="outline" className="w-full h-12 justify-start capitalize" disabled={copying} onClick={() => copyToDates([tomorrowStr])}>
+              Demain — {tomorrowLabel}
+            </Button>
+            <Button variant="outline" className="w-full h-12 justify-start" disabled={copying || restOfWeekStrs.length === 0} onClick={() => copyToDates(restOfWeekStrs)}>
+              Reste de la semaine{restOfWeekStrs.length > 0 ? ` (${restOfWeekStrs.length} j)` : ''}
+            </Button>
           </div>
-          <Button className="w-full h-11" disabled={copying || copyTargetStrs.length === 0} onClick={copyToDays}>
-            {copying ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Copy className="h-4 w-4 mr-2" />}
-            Copier{copyTargetStrs.length > 0 ? ` (${copyTargetStrs.length})` : ''}
-          </Button>
+          {copying && <p className="text-center text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin inline mr-2" />Copie…</p>}
         </DialogContent>
       </Dialog>
 

@@ -345,6 +345,9 @@ export default function WorkerDetailDialog({ worker, onOpenChange, onChanged }: 
                         {!entry.planning_id && (
                           <Badge variant="outline" className="text-[10px] py-0 text-muted-foreground shrink-0">hors planning</Badge>
                         )}
+                        {entry.modified_at && (
+                          <Badge variant="outline" className="text-[10px] py-0 text-amber-700 border-amber-300 shrink-0">modifié après envoi</Badge>
+                        )}
                       </div>
                       {entry.worksite?.city && (
                         <p className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="h-3 w-3" />{entry.worksite.city}</p>
