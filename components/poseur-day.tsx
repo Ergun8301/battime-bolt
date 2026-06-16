@@ -582,32 +582,32 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
         </div>
       )}
 
-      {/* Total (left) + récap (right), in one bubble */}
-      <Card className="relative bg-primary text-primary-foreground">
-        {!isEmpty && !openSlot && !monthLocked && (
-          <Button
-            variant="ghost" size="icon"
-            className="absolute right-2 top-2 h-8 w-8 text-primary-foreground/80 hover:bg-white/15 hover:text-primary-foreground"
-            onClick={() => setRepeatOpen(true)} aria-label="Dupliquer cette journée" title="Dupliquer cette journée"
-          >
-            <Copy className="h-4 w-4" />
-          </Button>
-        )}
-        <CardContent className="py-4 pr-12 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 shrink-0">
-            <Clock className="h-7 w-7 opacity-90 shrink-0" />
+      {/* Total + récap (interventions / repas / pause) */}
+      <Card className="bg-primary text-primary-foreground">
+        <CardContent className="py-4">
+          <div className="flex items-center gap-3">
+            <Clock className="h-6 w-6 shrink-0" />
             <div>
               <p className="text-sm opacity-90">Total travaillé</p>
-              <p className="text-3xl font-bold leading-none mt-0.5">{formatMinutesToHours(totalMinutes)}</p>
+              <p className="text-2xl font-bold">{formatMinutesToHours(totalMinutes)}</p>
             </div>
           </div>
-          <div className="space-y-1 text-sm text-right">
-            <p>🧱 {nbInterventions} intervention{nbInterventions > 1 ? 's' : ''}</p>
-            <p>🍽️ {dayMeal ? 'Panier repas' : 'Sans panier'}</p>
-            <p>☕ {pauses.length > 0 ? `Pause ${pauses.map((p) => `${p.start}–${p.end} (${formatMinutesToHours(p.minutes)})`).join(' · ')}` : 'Aucune pause'}</p>
+          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+            <span>🧱 {nbInterventions} intervention{nbInterventions > 1 ? 's' : ''}</span>
+            <span>🍽️ {dayMeal ? 'Panier repas' : 'Sans panier'}</span>
+            <span>☕ {pauses.length > 0 ? `Pause ${pauses.map((p) => `${p.start}–${p.end} (${formatMinutesToHours(p.minutes)})`).join(' · ')}` : 'Aucune pause'}</span>
           </div>
         </CardContent>
       </Card>
+
+      {/* Duplicate this day — clear, labelled, discreet */}
+      {!isEmpty && !openSlot && !monthLocked && (
+        <div className="flex justify-center">
+          <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => setRepeatOpen(true)}>
+            <Copy className="h-4 w-4 mr-2" /> Dupliquer cette journée
+          </Button>
+        </div>
+      )}
 
       {/* Panier repas — once per day */}
       <Card>
