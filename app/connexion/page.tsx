@@ -489,7 +489,7 @@ export default function ConnexionPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+    <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <div className="flex justify-center mb-4">
@@ -507,6 +507,13 @@ export default function ConnexionPage() {
           <LoginForm />
         </CardContent>
       </Card>
+      <p className="text-xs text-muted-foreground text-center">
+        <a href="/mentions-legales" className="hover:underline">Mentions légales</a>
+        {' · '}
+        <a href="/confidentialite" className="hover:underline">Confidentialité</a>
+        {' · '}
+        <a href="/cgu" className="hover:underline">CGU</a>
+      </p>
     </div>
   );
 }
