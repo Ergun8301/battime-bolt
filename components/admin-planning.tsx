@@ -122,7 +122,11 @@ function BubbleContent({ p, palette, real }: { p: PlanningWithWorksite; palette:
           </span>
         )}
       </div>
-      {p.worksite?.city && <div className="truncate text-[10px] opacity-75">{p.worksite.city}</div>}
+      {(p.worksite?.product_type || p.worksite?.city) && (
+        <div className="truncate text-[10px] opacity-80">
+          {[p.worksite?.product_type, p.worksite?.city].filter(Boolean).join(' · ')}
+        </div>
+      )}
     </div>
   );
 }
