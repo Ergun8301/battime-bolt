@@ -8,15 +8,15 @@ export default function MentionsLegalesPage() {
       <h2>1. Éditeur du site et de l'application</h2>
       <p>
         L'application <strong>Battime</strong> est éditée par <strong>K.HABITAT</strong>, société par actions
-        simplifiée (SAS) au capital de [À COMPLÉTER] €, immatriculée sous le numéro{' '}
+        simplifiée (SAS) au capital de 10&nbsp;000&nbsp;€, immatriculée sous le numéro{' '}
         <strong>SIRET 840&nbsp;185&nbsp;607&nbsp;00024</strong> (RCS Bourg-en-Bresse 840&nbsp;185&nbsp;607), dont le
         siège est situé <strong>1100 chemin de Champagne, 01440 Viriat</strong>.
       </p>
       <p>
         Numéro de TVA intracommunautaire : FR96&nbsp;840&nbsp;185&nbsp;607.<br />
-        Contact : <a href="mailto:kilicergun01@gmail.com">kilicergun01@gmail.com</a>.
+        Contact : <a href="mailto:khabitatcontact@gmail.com">khabitatcontact@gmail.com</a>.
       </p>
-      <p>Directeur de la publication : <strong>[À COMPLÉTER : nom du représentant légal de K.HABITAT]</strong>.</p>
+      <p>Directeur de la publication : <strong>Ergun Kilic</strong>.</p>
 
       <h2>2. Hébergement</h2>
       <p>L'application et les données sont hébergées par :</p>
@@ -47,7 +47,7 @@ export default function MentionsLegalesPage() {
       </p>
 
       <h2>5. Contact</h2>
-      <p>Pour toute question relative au site ou à l'application : <a href="mailto:kilicergun01@gmail.com">kilicergun01@gmail.com</a>.</p>
+      <p>Pour toute question relative au site ou à l'application : <a href="mailto:khabitatcontact@gmail.com">khabitatcontact@gmail.com</a>.</p>
     </LegalLayout>
   );
 }

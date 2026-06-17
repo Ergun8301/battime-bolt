@@ -89,7 +89,7 @@ export default function ConfidentialitePage() {
       <p>
         Vous disposez des droits d'accès, de rectification, d'effacement, de limitation, d'opposition et de portabilité.
         Pour les données traitées par votre employeur, adressez-vous à lui ; pour les autres, contactez Battime à{' '}
-        <a href="mailto:kilicergun01@gmail.com">kilicergun01@gmail.com</a>. Vous pouvez également introduire une réclamation auprès
+        <a href="mailto:khabitatcontact@gmail.com">khabitatcontact@gmail.com</a>. Vous pouvez également introduire une réclamation auprès
         de la <strong>CNIL</strong> (<a href="https://www.cnil.fr" target="_blank" rel="noreferrer">cnil.fr</a>).
       </p>
 
@@ -101,7 +101,7 @@ export default function ConfidentialitePage() {
       </p>
 
       <h2>11. Contact</h2>
-      <p>Pour toute question sur cette politique : <a href="mailto:kilicergun01@gmail.com">kilicergun01@gmail.com</a>.</p>
+      <p>Pour toute question sur cette politique : <a href="mailto:khabitatcontact@gmail.com">khabitatcontact@gmail.com</a>.</p>
     </LegalLayout>
   );
 }
