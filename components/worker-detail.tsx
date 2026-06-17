@@ -18,7 +18,7 @@ import {
   CalendarRange, Clock, Utensils, MapPin, FileSpreadsheet, FileText, Loader2,
   Settings2, Archive, ArchiveRestore, Trash2, Link2, User as UserIcon,
 } from 'lucide-react';
-import { format, parseISO, isSameDay, subDays } from 'date-fns';
+import { format, parseISO, isSameDay, subDays, startOfWeek, addDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import type { DateRange } from 'react-day-picker';
@@ -316,26 +316,29 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
 
         {/* Timesheet — only in "hours" mode (consult + export) */}
         {mode === 'hours' && (<>
-        {/* Period controls */}
-        <div className="flex flex-wrap items-center gap-2">
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="outline" className="justify-start gap-2">
-                <CalendarRange className="h-4 w-4" />{triggerLabel}
+        {/* Period controls — same options as the team export */}
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => { const t = new Date(); setRange({ from: t, to: t }); }}>Aujourd'hui</Button>
+            <Button variant="outline" size="sm" onClick={() => { const m = startOfWeek(new Date(), { weekStartsOn: 1 }); setRange({ from: m, to: addDays(m, 5) }); }}>Cette semaine</Button>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm"><CalendarRange className="h-4 w-4 mr-1" /> Créneau</Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar mode="range" selected={range} onSelect={setRange} numberOfMonths={1} locale={fr} defaultMonth={range?.from} />
+              </PopoverContent>
+            </Popover>
+            <div className="ml-auto flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => doExport('excel')} disabled={exporting || liveEntries.length === 0}>
+                {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}<span className="hidden sm:inline ml-1">Excel</span>
               </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="start">
-              <Calendar mode="range" selected={range} onSelect={setRange} numberOfMonths={1} locale={fr} defaultMonth={range?.from} />
-            </PopoverContent>
-          </Popover>
-          <div className="ml-auto flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => doExport('excel')} disabled={exporting || liveEntries.length === 0}>
-              {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}<span className="hidden sm:inline ml-1">Excel</span>
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => doExport('pdf')} disabled={exporting || liveEntries.length === 0}>
-              {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}<span className="hidden sm:inline ml-1">PDF</span>
-            </Button>
+              <Button variant="outline" size="sm" onClick={() => doExport('pdf')} disabled={exporting || liveEntries.length === 0}>
+                {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}<span className="hidden sm:inline ml-1">PDF</span>
+              </Button>
+            </div>
           </div>
+          <p className="text-sm text-muted-foreground">Période : <span className="font-medium text-foreground capitalize">{triggerLabel}</span></p>
         </div>
 
         {/* Total */}

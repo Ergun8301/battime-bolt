@@ -226,7 +226,6 @@ export default function AdminPlanning() {
   const [exportWorkerOpen, setExportWorkerOpen] = useState(false);
   const [exportRange, setExportRange] = useState<{ from: Date; to: Date } | null>(null);
   const [attributeTarget, setAttributeTarget] = useState<{ userId: string; dateStr: string; worksiteId: string | null; label: string } | null>(null);
-  const [attrNewName, setAttrNewName] = useState('');
   const [attrBusy, setAttrBusy] = useState(false);
   const [exporting, setExporting] = useState(false);
 
@@ -431,7 +430,7 @@ export default function AdminPlanning() {
       const { error } = await (attributeTarget.worksiteId ? base.eq('worksite_id', attributeTarget.worksiteId) : base.is('worksite_id', null));
       if (error) throw error;
       toast.success('Client attribué');
-      setAttributeTarget(null); setAttrNewName('');
+      setAttributeTarget(null);
       fetchPlanning();
     } catch (err) {
       console.error('Error attributing client:', err);
@@ -440,23 +439,6 @@ export default function AdminPlanning() {
       setAttrBusy(false);
     }
   };
-  const createAndAttributeClient = async () => {
-    if (!user?.company_id || !attrNewName.trim()) return;
-    setAttrBusy(true);
-    try {
-      const { data: ws, error } = await supabase.from('worksites')
-        .insert({ company_id: user.company_id, client_name: attrNewName.trim(), city: '', is_active: true })
-        .select().single();
-      if (error) throw error;
-      await fetchData();
-      await attributeClient(ws.id);
-    } catch (err) {
-      console.error('Error creating client:', err);
-      toast.error('Impossible de créer le client');
-      setAttrBusy(false);
-    }
-  };
-
   const cellChantiers = useCallback((workerId: string, dateStr: string) =>
     planning.filter(p => p.user_id === workerId && p.work_date === dateStr && !p.absence_type).sort(orderCmp),
   [planning]);
@@ -887,11 +869,15 @@ export default function AdminPlanning() {
         description: cDesc.trim() || null, is_active: true,
       }).select().single();
       if (error) throw error;
-      toast.success('Client créé — glisse-le sur le planning');
       setClientOpen(false);
       resetClient();
       await fetchData();
-      if (data?.id) setPaletteWorksiteId(data.id);
+      if (attributeTarget && data?.id) {
+        await attributeClient(data.id);
+      } else {
+        toast.success('Client créé — glisse-le sur le planning');
+        if (data?.id) setPaletteWorksiteId(data.id);
+      }
     } catch (err) {
       console.error('Error creating client:', err);
       toast.error('Impossible de créer le client');
@@ -1112,11 +1098,15 @@ export default function AdminPlanning() {
                                         type="button"
                                         onClick={(e) => { e.stopPropagation(); setAttributeTarget({ userId: worker.id, dateStr, worksiteId: x.worksiteId, label: x.name }); }}
                                         title="Ajouté par le salarié — cliquer pour attribuer un client"
-                                        className="w-full rounded border border-dashed border-green-400 bg-green-50 px-2 py-1 text-[11px] leading-tight flex items-center gap-1 hover:border-green-500 hover:bg-green-100 transition-colors"
+                                        className="w-full rounded border border-dashed border-green-400 bg-green-50 px-2 py-1 leading-tight text-left hover:border-green-500 hover:bg-green-100 transition-colors"
                                       >
-                                        <UserIcon className="h-3 w-3 text-green-700 shrink-0" />
-                                        <span className="font-medium truncate flex-1 text-left">{x.name}</span>
-                                        <span className="text-green-700 shrink-0 flex items-center gap-0.5"><Check className="h-3 w-3" />{formatMinutes(x.minutes)}</span>
+                                        <span className="flex items-center gap-0.5 text-[9px] font-semibold uppercase tracking-wide text-green-700">
+                                          <UserIcon className="h-2.5 w-2.5 shrink-0" /> ajouté par le salarié
+                                        </span>
+                                        <span className="mt-0.5 flex items-center gap-1 text-[11px]">
+                                          <span className="font-medium truncate flex-1">{x.name}</span>
+                                          <span className="text-green-700 shrink-0 flex items-center gap-0.5"><Check className="h-3 w-3" />{formatMinutes(x.minutes)}</span>
+                                        </span>
                                       </button>
                                     ))}
                                     <div className="flex flex-1 items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
@@ -1221,7 +1211,7 @@ export default function AdminPlanning() {
       </Dialog>
 
       {/* Attribute a client to a worker-added intervention (clicked from the grid) */}
-      <Dialog open={!!attributeTarget} onOpenChange={(o) => { if (!o) { setAttributeTarget(null); setAttrNewName(''); } }}>
+      <Dialog open={!!attributeTarget && !clientOpen} onOpenChange={(o) => { if (!o) setAttributeTarget(null); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>Attribuer un client</DialogTitle></DialogHeader>
           <div className="space-y-3 pt-1">
@@ -1234,12 +1224,9 @@ export default function AdminPlanning() {
                 ))}
               </SelectContent>
             </Select>
-            <div className="flex items-center gap-2">
-              <Input value={attrNewName} onChange={(e) => setAttrNewName(e.target.value)} placeholder="…ou nouveau client" disabled={attrBusy} />
-              <Button onClick={createAndAttributeClient} disabled={attrBusy || !attrNewName.trim()}>
-                {attrBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Créer'}
-              </Button>
-            </div>
+            <Button variant="outline" className="w-full" disabled={attrBusy} onClick={() => setClientOpen(true)}>
+              <Building2 className="h-4 w-4 mr-2" /> Créer un nouveau client…
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
