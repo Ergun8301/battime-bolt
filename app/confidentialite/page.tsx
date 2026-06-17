@@ -4,7 +4,7 @@ export const metadata = { title: 'Politique de confidentialité — Battime' };
 
 export default function ConfidentialitePage() {
   return (
-    <LegalLayout title="Politique de confidentialité" updated="[À COMPLÉTER]">
+    <LegalLayout title="Politique de confidentialité" updated="17 juin 2026">
       <p>
         La présente politique explique comment Battime traite les données personnelles dans le cadre de son service de
         gestion des feuilles d'heures pour le BTP. Elle est rédigée conformément au Règlement (UE) 2016/679 (RGPD) et à
@@ -24,7 +24,7 @@ export default function ConfidentialitePage() {
         </li>
         <li>
           Pour les données du <strong>compte de l'entreprise cliente</strong> elle-même (création de compte, facturation),
-          Battime est responsable de traitement.
+          Battime (édité par K.HABITAT) est responsable de traitement.
         </li>
       </ul>
 
@@ -89,7 +89,7 @@ export default function ConfidentialitePage() {
       <p>
         Vous disposez des droits d'accès, de rectification, d'effacement, de limitation, d'opposition et de portabilité.
         Pour les données traitées par votre employeur, adressez-vous à lui ; pour les autres, contactez Battime à{' '}
-        <a href="mailto:[À COMPLÉTER]">[À COMPLÉTER : email]</a>. Vous pouvez également introduire une réclamation auprès
+        <a href="mailto:kilicergun01@gmail.com">kilicergun01@gmail.com</a>. Vous pouvez également introduire une réclamation auprès
         de la <strong>CNIL</strong> (<a href="https://www.cnil.fr" target="_blank" rel="noreferrer">cnil.fr</a>).
       </p>
 
@@ -101,7 +101,7 @@ export default function ConfidentialitePage() {
       </p>
 
       <h2>11. Contact</h2>
-      <p>Pour toute question sur cette politique : <a href="mailto:[À COMPLÉTER]">[À COMPLÉTER : email]</a>.</p>
+      <p>Pour toute question sur cette politique : <a href="mailto:kilicergun01@gmail.com">kilicergun01@gmail.com</a>.</p>
     </LegalLayout>
   );
 }

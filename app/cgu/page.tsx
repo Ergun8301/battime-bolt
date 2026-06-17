@@ -4,12 +4,12 @@ export const metadata = { title: "Conditions générales d'utilisation — Batti
 
 export default function CguPage() {
   return (
-    <LegalLayout title="Conditions générales d'utilisation" updated="[À COMPLÉTER]">
+    <LegalLayout title="Conditions générales d'utilisation" updated="17 juin 2026">
       <h2>1. Objet</h2>
       <p>
         Les présentes conditions (« CGU ») encadrent l'accès et l'utilisation de l'application <strong>Battime</strong>,
         un service en ligne (SaaS) de gestion des feuilles d'heures et de planning pour le secteur du BTP, édité par
-        [À COMPLÉTER]. L'utilisation de Battime implique l'acceptation des présentes CGU.
+        <strong>K.HABITAT</strong> (SAS). L'utilisation de Battime implique l'acceptation des présentes CGU.
       </p>
 
       <h2>2. Accès au service</h2>

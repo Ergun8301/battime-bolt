@@ -9,7 +9,7 @@
 ## Entre les parties
 
 - **Le Responsable de traitement** : `[À COMPLÉTER : raison sociale de l'entreprise cliente]`, SIRET `[À COMPLÉTER]`, siège `[À COMPLÉTER]` (ci-après « le Responsable »).
-- **Le Sous-traitant** : Battime, édité par `[À COMPLÉTER : nom / raison sociale]`, SIRET `[À COMPLÉTER]`, siège `[À COMPLÉTER]` (ci-après « Battime »).
+- **Le Sous-traitant** : Battime, édité par **K.HABITAT** (SAS), SIRET 840 185 607 00024, siège 1100 chemin de Champagne, 01440 Viriat (ci-après « Battime »).
 
 ## 1. Objet
 Le présent accord encadre le traitement, par Battime pour le compte du Responsable, des données
