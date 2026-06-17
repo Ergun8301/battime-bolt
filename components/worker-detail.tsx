@@ -361,32 +361,30 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
               const realWorksites = worksites.filter((w) => w.client_name !== OTHER_NAME);
               return (
                 <div key={entry.id} className={`p-4 ${isCancelled ? 'opacity-60' : isUnknown ? 'bg-amber-50/60' : ''}`}>
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 space-y-1">
-                      <p className="text-xs text-muted-foreground capitalize">{format(parseISO(entry.work_date), 'EEEE d MMM', { locale: fr })}</p>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className={`font-semibold ${isCancelled ? 'line-through text-muted-foreground' : isUnknown ? 'text-amber-700' : ''}`}>
-                          {entry.worksite?.client_name || OTHER_NAME}
-                        </p>
-                        {isCancelled && <Badge variant="outline" className="text-[10px] py-0">Retirée</Badge>}
-                        {isWorkerAdded && (
-                          <Badge variant="outline" className="text-[10px] py-0 gap-1 text-muted-foreground">
-                            <UserIcon className="h-2.5 w-2.5" /> ajouté par le salarié
-                          </Badge>
-                        )}
-                        {!isCancelled && entry.modified_at && (
-                          <Badge variant="outline" className="text-[10px] py-0 text-amber-700 border-amber-300">modifié après envoi</Badge>
-                        )}
-                      </div>
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
-                        <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5" />{entry.start_time?.substring(0, 5)}–{entry.end_time?.substring(0, 5)}</span>
-                        {entry.worksite?.city && <span className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{entry.worksite.city}</span>}
-                        {entry.meal_allowance && <span className="flex items-center gap-1"><Utensils className="h-3.5 w-3.5" />panier</span>}
-                      </div>
-                      {entry.observation && <p className="text-sm text-muted-foreground">« {entry.observation} »</p>}
-                    </div>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <p className="text-xs text-muted-foreground capitalize">{format(parseISO(entry.work_date), 'EEEE d MMM', { locale: fr })}</p>
                     <p className="shrink-0 text-lg font-bold">{formatMinutesToHours(entry.total_minutes)}</p>
                   </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    <p className={`font-semibold ${isCancelled ? 'line-through text-muted-foreground' : isUnknown ? 'text-amber-700' : ''}`}>
+                      {entry.worksite?.client_name || OTHER_NAME}
+                    </p>
+                    {isCancelled && <Badge variant="outline" className="text-[10px] py-0">Retirée</Badge>}
+                    {isWorkerAdded && (
+                      <Badge variant="outline" className="text-[10px] py-0 gap-1 text-muted-foreground">
+                        <UserIcon className="h-2.5 w-2.5" /> ajouté par le salarié
+                      </Badge>
+                    )}
+                    {!isCancelled && entry.modified_at && (
+                      <Badge variant="outline" className="text-[10px] py-0 text-amber-700 border-amber-300">modifié après envoi</Badge>
+                    )}
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+                    <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5" />{entry.start_time?.substring(0, 5)}–{entry.end_time?.substring(0, 5)}</span>
+                    {entry.worksite?.city && <span className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{entry.worksite.city}</span>}
+                    {entry.meal_allowance && <span className="flex items-center gap-1"><Utensils className="h-3.5 w-3.5" />panier</span>}
+                  </div>
+                  {entry.observation && <p className="mt-1 text-sm text-muted-foreground">« {entry.observation} »</p>}
 
                   {!isCancelled && isUnknown && (
                     reassigningId === entry.id ? (

@@ -103,8 +103,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
   const [repeatOpen, setRepeatOpen] = useState(false);
   const [copying, setCopying] = useState(false);
   const [copyDates, setCopyDates] = useState<Date[]>([]);
-  // Correction mode: a sent day is frozen; tapping an intervention asks to confirm.
-  const [correcting, setCorrecting] = useState(false);
+  // A sent day is frozen; every change re-asks for confirmation (secretary informed).
   const [confirmCorrectOpen, setConfirmCorrectOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
   const [lateOpen, setLateOpen] = useState(false);
@@ -113,9 +112,6 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
   const yesterday = format(subDays(new Date(`${date}T00:00:00`), 1), 'yyyy-MM-dd');
   // Payroll cutoff: a day in a past month is locked — corrections go through the secretary.
   const monthLocked = date.slice(0, 7) < format(new Date(), 'yyyy-MM');
-
-  // A sent day is frozen again whenever we switch day.
-  useEffect(() => { setCorrecting(false); }, [date]);
 
   // ─── Fetch server data ─────────────────────────────────────────────────────
 
@@ -281,7 +277,6 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
   // chantier OR the meal — goes through this confirm, then unlocks the day.
   const askCorrect = (action: (() => void) | null) => { setPendingAction(() => action); setConfirmCorrectOpen(true); };
   const confirmCorrect = () => {
-    setCorrecting(true);
     setConfirmCorrectOpen(false);
     const action = pendingAction;
     setPendingAction(null);
@@ -540,7 +535,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
   const nbInterventions = liveEntries.length + pendingEntries.length;
   const hasDrafts = liveEntries.some((e) => e.status === 'draft') || pendingEntries.length > 0;
   const allSubmitted = liveEntries.length > 0 && liveEntries.every((e) => e.status !== 'draft') && pendingEntries.length === 0;
-  const frozen = allSubmitted && !correcting; // a sent day is read-only until "Corriger"
+  const frozen = allSubmitted; // a sent day stays frozen; every change re-asks to confirm
   const isEmpty = liveEntries.length === 0 && pendingEntries.length === 0;
   const isEditable = (e: TimeEntryWithWorksite) => !e.locked && !e.exported_at;
 
@@ -767,9 +762,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
           <p className="text-sm text-muted-foreground">Journée envoyée ✓</p>
           {monthLocked
             ? <p className="text-xs text-muted-foreground mt-0.5">Mois clôturé — vois avec la secrétaire pour modifier.</p>
-            : frozen
-              ? <p className="text-xs text-muted-foreground mt-0.5">Touche une intervention pour la corriger.</p>
-              : <p className="text-xs text-orange-600 mt-0.5">Mode correction — tes changements sont signalés à la secrétaire.</p>}
+            : <p className="text-xs text-muted-foreground mt-0.5">Touche une intervention pour la corriger (la secrétaire sera prévenue).</p>}
         </div>
       )}
 

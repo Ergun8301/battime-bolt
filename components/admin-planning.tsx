@@ -24,7 +24,7 @@ import {
   useDraggable, useDroppable, pointerWithin, rectIntersection,
   type DragEndEvent, type DragStartEvent, type CollisionDetection,
 } from '@dnd-kit/core';
-import { format, startOfWeek, endOfWeek, addDays, addWeeks, subWeeks, subDays, parseISO } from 'date-fns';
+import { format, startOfWeek, addDays, addWeeks, subWeeks, subDays, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { computeMissingDays } from '@/lib/work-status';
@@ -224,8 +224,7 @@ export default function AdminPlanning() {
   // team export
   const [exportOpen, setExportOpen] = useState(false);
   const [exportWorkerOpen, setExportWorkerOpen] = useState(false);
-  const [exportFrom, setExportFrom] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }));
-  const [exportTo, setExportTo] = useState(endOfWeek(new Date(), { weekStartsOn: 1 }));
+  const [exportRange, setExportRange] = useState<{ from: Date; to: Date } | null>(null);
   const [attributeTarget, setAttributeTarget] = useState<{ userId: string; dateStr: string; worksiteId: string | null; label: string } | null>(null);
   const [attrNewName, setAttrNewName] = useState('');
   const [attrBusy, setAttrBusy] = useState(false);
@@ -672,8 +671,9 @@ export default function AdminPlanning() {
     if (!user?.company_id) { toast.error('Profil non chargé'); return; }
     setExporting(true);
     try {
-      const from = format(exportFrom, 'yyyy-MM-dd');
-      const to = format(exportTo, 'yyyy-MM-dd');
+      if (!exportRange) { toast.error('Choisis une période'); return; }
+      const from = format(exportRange.from, 'yyyy-MM-dd');
+      const to = format(exportRange.to, 'yyyy-MM-dd');
       const { data, error } = await supabase
         .from('time_entries')
         .select('*, worksite:worksites(*), user:users!user_id(*)')
@@ -682,12 +682,12 @@ export default function AdminPlanning() {
         .order('work_date', { ascending: false }).order('user_id');
       if (error) throw error;
       const entries = (data || []) as (TimeEntryWithWorksite & { user: User })[];
-      if (entries.length === 0) { toast.error(`Aucune saisie du ${format(exportFrom, 'dd/MM')} au ${format(exportTo, 'dd/MM')}`); return; }
+      if (entries.length === 0) { toast.error(`Aucune saisie du ${format(exportRange.from, 'dd/MM')} au ${format(exportRange.to, 'dd/MM')}`); return; }
 
       const opts = {
         fileName: `battime-${kind === 'pdf' ? 'rapport' : 'export'}-${from}`,
         title: 'Battime - Rapport hebdomadaire',
-        periodLabel: `${format(exportFrom, 'dd/MM/yyyy')} au ${format(exportTo, 'dd/MM/yyyy')}`,
+        periodLabel: `${format(exportRange.from, 'dd/MM/yyyy')} au ${format(exportRange.to, 'dd/MM/yyyy')}`,
         companyName,
       };
       if (kind === 'excel') exportEntriesToExcel(entries, opts);
@@ -1019,15 +1019,19 @@ export default function AdminPlanning() {
         )}
 
         {/* Legend */}
-        {chantierLegend.length > 0 && (
+        {(chantierLegend.length > 0 || realEntries.length > 0) && (
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border bg-card p-3 mt-3">
-            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Chantiers de la semaine</span>
+            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Légende</span>
             {chantierLegend.map(c => (
               <div key={c.id} className="flex items-center gap-1.5">
                 <span className={`h-3 w-3 rounded-[3px] ${c.dot}`} />
                 <span className="text-xs">{c.name}</span>
               </div>
             ))}
+            <div className="flex items-center gap-1.5">
+              <span className="h-3 w-3 rounded-[3px] border border-dashed border-green-500 bg-green-50" />
+              <span className="text-xs flex items-center gap-1"><UserIcon className="h-3 w-3 text-green-700" /> ajouté par le salarié</span>
+            </div>
           </div>
         )}
 
@@ -1241,29 +1245,32 @@ export default function AdminPlanning() {
       </Dialog>
 
       {/* Team export */}
-      <Dialog open={exportOpen} onOpenChange={setExportOpen}>
+      <Dialog open={exportOpen} onOpenChange={(o) => { setExportOpen(o); if (o) setExportRange(null); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>Exporter les heures de l'équipe</DialogTitle></DialogHeader>
           <div className="space-y-4 pt-2">
-            <div className="flex gap-2">
-              <Button variant="outline" className="flex-1" onClick={() => { const t = new Date(); setExportFrom(t); setExportTo(t); }}>Aujourd'hui</Button>
+            <div className="grid grid-cols-3 gap-2">
+              <Button variant="outline" size="sm" onClick={() => { const t = new Date(); setExportRange({ from: t, to: t }); }}>Aujourd'hui</Button>
+              <Button variant="outline" size="sm" onClick={() => setExportRange({ from: currentWeekStart, to: addDays(currentWeekStart, 5) })}>Cette semaine</Button>
               <Popover>
                 <PopoverTrigger asChild>
-                  <Button variant="outline" className="flex-1"><CalendarRange className="h-4 w-4 mr-2" /> Choisir un créneau</Button>
+                  <Button variant="outline" size="sm"><CalendarRange className="h-4 w-4 mr-1" /> Créneau</Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar mode="range" numberOfMonths={1} locale={fr} defaultMonth={exportFrom}
-                    selected={{ from: exportFrom, to: exportTo }}
-                    onSelect={(r) => { if (r?.from) setExportFrom(r.from); setExportTo(r?.to ?? r?.from ?? exportTo); }} />
+                <PopoverContent className="w-auto p-0" align="end">
+                  <Calendar mode="range" numberOfMonths={1} locale={fr}
+                    selected={exportRange ?? undefined}
+                    onSelect={(r) => { if (r?.from) setExportRange({ from: r.from, to: r.to ?? r.from }); }} />
                 </PopoverContent>
               </Popover>
             </div>
-            <p className="text-center text-sm font-medium capitalize">{format(exportFrom, 'd MMM', { locale: fr })} → {format(exportTo, 'd MMM yyyy', { locale: fr })}</p>
+            {exportRange
+              ? <p className="text-center text-sm font-medium capitalize">{format(exportRange.from, 'd MMM', { locale: fr })} → {format(exportRange.to, 'd MMM yyyy', { locale: fr })}</p>
+              : <p className="text-center text-sm text-muted-foreground">Choisis une période à exporter.</p>}
             <div className="flex gap-2">
-              <Button className="flex-1" onClick={() => runExport('excel')} disabled={exporting}>
+              <Button className="flex-1" onClick={() => runExport('excel')} disabled={exporting || !exportRange}>
                 {exporting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <FileSpreadsheet className="h-4 w-4 mr-2" />} Excel
               </Button>
-              <Button className="flex-1" variant="outline" onClick={() => runExport('pdf')} disabled={exporting}>
+              <Button className="flex-1" variant="outline" onClick={() => runExport('pdf')} disabled={exporting || !exportRange}>
                 {exporting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <FileText className="h-4 w-4 mr-2" />} PDF
               </Button>
             </div>
