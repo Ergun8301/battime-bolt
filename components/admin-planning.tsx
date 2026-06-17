@@ -1497,15 +1497,19 @@ export default function AdminPlanning() {
 
       {/* Nouveau client */}
       <Dialog open={clientOpen} onOpenChange={(o) => { setClientOpen(o); if (!o) resetClient(); }}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Nouveau client / chantier</DialogTitle></DialogHeader>
-          <form onSubmit={createClient} className="space-y-4 pt-2">
+          <form onSubmit={createClient} className="space-y-3 pt-2">
             <div className="space-y-2"><Label>Nom du client *</Label><Input value={cName} onChange={(e) => setCName(e.target.value)} required disabled={cSaving} /></div>
-            <div className="space-y-2"><Label>Type de produit</Label><Input placeholder="Stores, volets, pergola…" value={cProduct} onChange={(e) => setCProduct(e.target.value)} disabled={cSaving} /></div>
-            <div className="space-y-2"><Label>Téléphone</Label><Input type="tel" value={cPhone} onChange={(e) => setCPhone(e.target.value)} disabled={cSaving} /></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2"><Label>Type de produit</Label><Input placeholder="Stores, volets…" value={cProduct} onChange={(e) => setCProduct(e.target.value)} disabled={cSaving} /></div>
+              <div className="space-y-2"><Label>Téléphone</Label><Input type="tel" value={cPhone} onChange={(e) => setCPhone(e.target.value)} disabled={cSaving} /></div>
+            </div>
             <div className="space-y-2"><Label>Email</Label><Input type="email" value={cEmail} onChange={(e) => setCEmail(e.target.value)} disabled={cSaving} /></div>
-            <div className="space-y-2"><Label>Ville</Label><Input value={cCity} onChange={(e) => setCCity(e.target.value)} disabled={cSaving} /></div>
-            <div className="space-y-2"><Label>Adresse</Label><Input value={cAddress} onChange={(e) => setCAddress(e.target.value)} disabled={cSaving} /></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2"><Label>Ville</Label><Input value={cCity} onChange={(e) => setCCity(e.target.value)} disabled={cSaving} /></div>
+              <div className="space-y-2"><Label>Adresse</Label><Input value={cAddress} onChange={(e) => setCAddress(e.target.value)} disabled={cSaving} /></div>
+            </div>
             <div className="space-y-2"><Label>Description</Label><Textarea value={cDesc} onChange={(e) => setCDesc(e.target.value)} rows={2} disabled={cSaving} /></div>
             <Button type="submit" className="w-full" disabled={cSaving}>
               {cSaving && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Créer le client
