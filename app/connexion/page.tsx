@@ -8,8 +8,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { AlertCircle, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { AlertCircle, Eye, EyeOff, Loader2, CheckCircle2 } from 'lucide-react';
 import Link from 'next/link';
+import { cn } from '@/lib/utils';
 
 function LoginForm() {
   const [email, setEmail] = useState('');
@@ -389,6 +390,7 @@ export default function ConnexionPage() {
   const [showPasswordSet, setShowPasswordSet] = useState(false);
   const [isRecovery, setIsRecovery] = useState(false);
   const [processingHash, setProcessingHash] = useState(false);
+  const [mode, setMode] = useState<'login' | 'signup'>('login');
   const router = useRouter();
 
   useEffect(() => {
@@ -489,31 +491,88 @@ export default function ConnexionPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <div className="flex justify-center mb-4">
-            <div className="bg-primary text-primary-foreground rounded-lg p-3">
-              <svg className="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="10" />
-                <path d="M12 6v6l4 2" />
-              </svg>
-            </div>
+    <div className="min-h-screen bg-background lg:grid lg:grid-cols-[1.05fr_1fr]">
+      {/* ── Brand panel (desktop only) ─────────────────────────── */}
+      <div className="relative hidden overflow-hidden bg-gradient-to-br from-[#172554] via-[#1E40AF] to-[#2563EB] p-12 text-white lg:flex lg:flex-col lg:justify-between">
+        <div aria-hidden className="pointer-events-none absolute -right-28 -top-28 h-96 w-96 rounded-full bg-white/10 blur-3xl" />
+        <div aria-hidden className="pointer-events-none absolute -bottom-28 -left-24 h-96 w-96 rounded-full bg-[#EA580C]/25 blur-3xl" />
+
+        <div className="relative flex items-center gap-3">
+          <div className="rounded-xl bg-white/15 p-2.5 ring-1 ring-white/20 backdrop-blur">
+            <svg className="h-7 w-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></svg>
           </div>
-          <CardTitle className="text-2xl">Battime</CardTitle>
-          <CardDescription>Feuilles d'heures BTP simplifiees</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <LoginForm />
-        </CardContent>
-      </Card>
-      <p className="text-xs text-muted-foreground text-center">
-        <a href="/mentions-legales" className="hover:underline">Mentions légales</a>
-        {' · '}
-        <a href="/confidentialite" className="hover:underline">Confidentialité</a>
-        {' · '}
-        <a href="/cgu" className="hover:underline">CGU</a>
-      </p>
+          <span className="text-2xl font-bold tracking-tight">Battime</span>
+        </div>
+
+        <div className="relative max-w-md">
+          <h1 className="text-[2.5rem] font-bold leading-[1.1] tracking-tight">
+            Les feuilles d'heures du BTP, <span className="text-orange-400">enfin simples.</span>
+          </h1>
+          <p className="mt-5 text-lg leading-relaxed text-blue-100/90">
+            Le planning des chantiers, les heures des poseurs et les exports pour la paie — réunis au même endroit.
+          </p>
+          <ul className="mt-8 space-y-3.5 text-blue-50">
+            {['Saisie des heures en un clic', 'Planning des chantiers clair et coloré', 'Exports prêts pour la paie'].map((f) => (
+              <li key={f} className="flex items-center gap-3">
+                <CheckCircle2 className="h-5 w-5 shrink-0 text-orange-400" />
+                <span>{f}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <p className="relative text-sm text-blue-200/80">Vos données hébergées en France · Conçu pour le bâtiment.</p>
+      </div>
+
+      {/* ── Auth panel ─────────────────────────────────────────── */}
+      <div className="flex min-h-screen flex-col items-center justify-center px-5 py-10 lg:min-h-0">
+        <div className="mb-7 flex items-center gap-2.5 lg:hidden">
+          <div className="rounded-xl bg-primary p-2.5 text-primary-foreground shadow-sm">
+            <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></svg>
+          </div>
+          <span className="text-2xl font-bold tracking-tight">Battime</span>
+        </div>
+
+        <Card className="w-full max-w-md border-border/70 shadow-xl">
+          <CardHeader className="space-y-3 pb-4">
+            <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1">
+              <button
+                type="button"
+                onClick={() => setMode('login')}
+                className={cn('rounded-md py-2 text-sm font-semibold transition-all active:scale-[0.98]', mode === 'login' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}
+              >
+                Connexion
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode('signup')}
+                className={cn('rounded-md py-2 text-sm font-semibold transition-all active:scale-[0.98]', mode === 'signup' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}
+              >
+                Créer un compte
+              </button>
+            </div>
+            <div>
+              <CardTitle className="text-xl">{mode === 'login' ? 'Bon retour' : 'Créez votre espace'}</CardTitle>
+              <CardDescription className="mt-1">
+                {mode === 'login'
+                  ? 'Connectez-vous pour accéder à vos chantiers.'
+                  : 'Quelques informations et votre entreprise est prête.'}
+              </CardDescription>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {mode === 'login' ? <LoginForm /> : <SignupForm />}
+          </CardContent>
+        </Card>
+
+        <p className="mt-6 text-center text-xs text-muted-foreground">
+          <a href="/mentions-legales" className="transition-colors hover:text-foreground hover:underline">Mentions légales</a>
+          {' · '}
+          <a href="/confidentialite" className="transition-colors hover:text-foreground hover:underline">Confidentialité</a>
+          {' · '}
+          <a href="/cgu" className="transition-colors hover:text-foreground hover:underline">CGU</a>
+        </p>
+      </div>
     </div>
   );
 }
