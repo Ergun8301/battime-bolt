@@ -31,6 +31,7 @@ function formatMinutesToHours(minutes: number): string {
 
 interface WorkerDetailDialogProps {
   worker: User | null;
+  mode?: 'hours' | 'manage';
   onOpenChange: (open: boolean) => void;
   onChanged?: () => void;
 }
@@ -41,7 +42,7 @@ const OTHER_NAME = 'Autre';
 // Per-employee fiche: opens on today, Booking-style range calendar, interventions
 // + total, planning-based missing-days detail, per-period export (no lock), and
 // worker management (modify / archive / reactivate / delete-if-empty).
-export default function WorkerDetailDialog({ worker, onOpenChange, onChanged }: WorkerDetailDialogProps) {
+export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChange, onChanged }: WorkerDetailDialogProps) {
   const [range, setRange] = useState<DateRange | undefined>(() => {
     const t = new Date();
     return { from: t, to: t };
@@ -256,8 +257,8 @@ export default function WorkerDetailDialog({ worker, onOpenChange, onChanged }: 
           </DialogTitle>
         </DialogHeader>
 
-        {/* Management — always visible */}
-        {worker && (
+        {/* Management — only in "manage" mode (settings) */}
+        {mode === 'manage' && worker && (
           <div className="rounded-lg border p-3 space-y-3">
             <p className="flex items-center gap-2 text-sm font-medium"><Settings2 className="h-4 w-4" /> Gérer le salarié</p>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -265,6 +266,7 @@ export default function WorkerDetailDialog({ worker, onOpenChange, onChanged }: 
               <div className="space-y-1"><Label className="text-xs">Nom</Label><Input value={mLast} onChange={(e) => setMLast(e.target.value)} /></div>
               <div className="space-y-1"><Label className="text-xs">Téléphone</Label><Input value={mPhone} onChange={(e) => setMPhone(e.target.value)} /></div>
             </div>
+            <div className="space-y-1"><Label className="text-xs">Email (identifiant de connexion)</Label><Input value={worker.email || ''} readOnly className="bg-muted/50" /></div>
             <div className="flex flex-wrap gap-2">
               <Button size="sm" onClick={saveWorker} disabled={mSaving}>
                 {mSaving && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer
@@ -291,6 +293,8 @@ export default function WorkerDetailDialog({ worker, onOpenChange, onChanged }: 
           </p>
         )}
 
+        {/* Timesheet — only in "hours" mode (consult + export) */}
+        {mode === 'hours' && (<>
         {/* Period controls */}
         <div className="flex flex-wrap items-center gap-2">
           <Popover>
@@ -400,6 +404,7 @@ export default function WorkerDetailDialog({ worker, onOpenChange, onChanged }: 
             {liveEntries.length} intervention{liveEntries.length > 1 ? 's' : ''} · période {periodLabel}
           </p>
         )}
+        </>)}
       </DialogContent>
     </Dialog>
   );
