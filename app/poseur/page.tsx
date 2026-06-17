@@ -37,7 +37,7 @@ export default function PoseurPage() {
     const windowStart = format(subDays(new Date(), 60), 'yyyy-MM-dd');
     const [planRes, entRes] = await Promise.all([
       supabase.from('planning').select('work_date, absence_type').eq('user_id', user.id).gte('work_date', windowStart),
-      supabase.from('time_entries').select('work_date').eq('user_id', user.id).neq('status', 'draft').gte('work_date', windowStart),
+      supabase.from('time_entries').select('work_date').eq('user_id', user.id).in('status', ['submitted', 'validated']).gte('work_date', windowStart),
     ]);
     const rows = (planRes.data || []) as { work_date: string; absence_type: string | null }[];
     const absenceDays = new Set(rows.filter((p) => p.absence_type).map((p) => p.work_date));

@@ -102,7 +102,7 @@ export default function WorkerDetailDialog({ worker, onOpenChange, onChanged }: 
     const windowStart = format(subDays(new Date(), MISSING_WINDOW_DAYS), 'yyyy-MM-dd');
     const [planRes, entRes] = await Promise.all([
       supabase.from('planning').select('work_date, absence_type').eq('user_id', worker.id).gte('work_date', windowStart),
-      supabase.from('time_entries').select('work_date, status').eq('user_id', worker.id).neq('status', 'draft').gte('work_date', windowStart),
+      supabase.from('time_entries').select('work_date, status').eq('user_id', worker.id).in('status', ['submitted', 'validated']).gte('work_date', windowStart),
     ]);
     const rows = (planRes.data || []) as { work_date: string; absence_type: string | null }[];
     const absenceDays = new Set<string>(rows.filter((p) => p.absence_type).map((p) => p.work_date));
@@ -140,7 +140,8 @@ export default function WorkerDetailDialog({ worker, onOpenChange, onChanged }: 
 
   useEffect(() => { fetchEntries(); }, [fetchEntries]);
 
-  const totalMinutes = entries.reduce((s, e) => s + e.total_minutes, 0);
+  const liveEntries = entries.filter((e) => e.status !== 'cancelled');
+  const totalMinutes = liveEntries.reduce((s, e) => s + e.total_minutes, 0);
 
   const periodLabel = (() => {
     if (!range?.from) return '';
@@ -159,7 +160,7 @@ export default function WorkerDetailDialog({ worker, onOpenChange, onChanged }: 
 
   const doExport = (kind: 'excel' | 'pdf') => {
     if (!worker) return;
-    if (entries.length === 0) { toast.error('Aucune saisie sur cette période'); return; }
+    if (liveEntries.length === 0) { toast.error('Aucune saisie sur cette période'); return; }
     setExporting(true);
     try {
       const name = `${worker.first_name} ${worker.last_name}`;
@@ -167,8 +168,8 @@ export default function WorkerDetailDialog({ worker, onOpenChange, onChanged }: 
       const toStr = range?.to ? format(range.to, 'yyyy-MM-dd') : fromStr;
       const fileName = `battime-${worker.last_name}-${worker.first_name}-${fromStr}_${toStr}`.toLowerCase().replace(/\s+/g, '-');
       const opts = { fileName, title: 'Battime — Relevé salarié', periodLabel, companyName, singleWorkerName: name };
-      if (kind === 'excel') exportEntriesToExcel(entries, opts);
-      else exportEntriesToPDF(entries, opts);
+      if (kind === 'excel') exportEntriesToExcel(liveEntries, opts);
+      else exportEntriesToPDF(liveEntries, opts);
       toast.success('Export téléchargé');
     } catch (err) {
       console.error('Error exporting worker:', err);
@@ -303,10 +304,10 @@ export default function WorkerDetailDialog({ worker, onOpenChange, onChanged }: 
             </PopoverContent>
           </Popover>
           <div className="ml-auto flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => doExport('excel')} disabled={exporting || entries.length === 0}>
+            <Button variant="outline" size="sm" onClick={() => doExport('excel')} disabled={exporting || liveEntries.length === 0}>
               {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}<span className="hidden sm:inline ml-1">Excel</span>
             </Button>
-            <Button variant="outline" size="sm" onClick={() => doExport('pdf')} disabled={exporting || entries.length === 0}>
+            <Button variant="outline" size="sm" onClick={() => doExport('pdf')} disabled={exporting || liveEntries.length === 0}>
               {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}<span className="hidden sm:inline ml-1">PDF</span>
             </Button>
           </div>
@@ -330,22 +331,26 @@ export default function WorkerDetailDialog({ worker, onOpenChange, onChanged }: 
           <div className="divide-y rounded-lg border">
             {entries.map((entry) => {
               const isUnknown = entry.worksite?.client_name === OTHER_NAME;
+              const isCancelled = entry.status === 'cancelled';
               const realWorksites = worksites.filter((w) => w.client_name !== OTHER_NAME);
               return (
-                <div key={entry.id} className={`p-3 ${isUnknown ? 'bg-orange-50' : ''}`}>
+                <div key={entry.id} className={`p-3 ${isCancelled ? 'opacity-60' : isUnknown ? 'bg-orange-50' : ''}`}>
                   <div className="flex items-center gap-3">
                     <div className="w-24 shrink-0 text-xs text-muted-foreground capitalize">
                       {format(parseISO(entry.work_date), 'EEE d MMM', { locale: fr })}
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <p className={`font-medium text-sm truncate ${isUnknown ? 'text-orange-700 italic' : ''}`}>
+                        <p className={`font-medium text-sm truncate ${isCancelled ? 'line-through text-muted-foreground' : isUnknown ? 'text-orange-700 italic' : ''}`}>
                           {entry.worksite?.client_name || OTHER_NAME}
                         </p>
-                        {!entry.planning_id && (
+                        {isCancelled && (
+                          <Badge variant="outline" className="text-[10px] py-0 shrink-0">Retirée</Badge>
+                        )}
+                        {!isCancelled && !entry.planning_id && (
                           <Badge variant="outline" className="text-[10px] py-0 text-muted-foreground shrink-0">hors planning</Badge>
                         )}
-                        {entry.modified_at && (
+                        {!isCancelled && entry.modified_at && (
                           <Badge variant="outline" className="text-[10px] py-0 text-amber-700 border-amber-300 shrink-0">modifié après envoi</Badge>
                         )}
                       </div>
@@ -365,7 +370,7 @@ export default function WorkerDetailDialog({ worker, onOpenChange, onChanged }: 
                     </div>
                     <div className="w-16 shrink-0 text-right font-semibold">{formatMinutesToHours(entry.total_minutes)}</div>
                   </div>
-                  {isUnknown && realWorksites.length > 0 && (
+                  {!isCancelled && isUnknown && realWorksites.length > 0 && (
                     reassigningId === entry.id ? (
                       <div className="mt-2 flex items-center gap-2">
                         <Select onValueChange={(v) => reassignEntry(entry.id, v)}>
@@ -392,7 +397,7 @@ export default function WorkerDetailDialog({ worker, onOpenChange, onChanged }: 
 
         {entries.length > 0 && (
           <p className="text-xs text-muted-foreground text-center">
-            {entries.length} intervention{entries.length > 1 ? 's' : ''} · période {periodLabel}
+            {liveEntries.length} intervention{liveEntries.length > 1 ? 's' : ''} · période {periodLabel}
           </p>
         )}
       </DialogContent>

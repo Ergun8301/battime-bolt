@@ -11,12 +11,13 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Calendar } from '@/components/ui/calendar';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Plus, Trash2, Send, Loader2, MapPin, Clock, Utensils, WifiOff, RefreshCw, AlertTriangle, Copy, ArrowLeft,
 } from 'lucide-react';
-import { format, subDays, addDays, startOfWeek } from 'date-fns';
+import { format, subDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import {
@@ -101,6 +102,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
   // Repeat this day onto other days (same chantier for several days).
   const [repeatOpen, setRepeatOpen] = useState(false);
   const [copying, setCopying] = useState(false);
+  const [copyDates, setCopyDates] = useState<Date[]>([]);
   // Correction mode: a sent day is frozen; tapping an intervention asks to confirm.
   const [correcting, setCorrecting] = useState(false);
   const [confirmCorrectOpen, setConfirmCorrectOpen] = useState(false);
@@ -376,6 +378,31 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
     }
   };
 
+  // Remove a wrong intervention. Draft → delete. Sent → soft-cancel (stays
+  // visible "Retirée", excluded from the total, secretary informed).
+  const handleRetire = async (entry: TimeEntryWithWorksite) => {
+    if (!user) return;
+    try {
+      if (entry.status === 'submitted') {
+        const { error } = await supabase.from('time_entries')
+          .update({ status: 'cancelled', modified_at: new Date().toISOString(), modified_by: user.id })
+          .eq('id', entry.id).eq('user_id', user.id);
+        if (error) throw error;
+        toast.success('Intervention retirée — la secrétaire est prévenue');
+      } else {
+        const { error } = await supabase.from('time_entries').delete().eq('id', entry.id).eq('user_id', user.id);
+        if (error) throw error;
+        toast.success('Intervention retirée');
+      }
+      setOpenSlot(null);
+      await applyDayMeal(dayMeal);
+      fetchData();
+    } catch (err) {
+      console.error('Error retiring entry:', err);
+      toast.error('Impossible de retirer');
+    }
+  };
+
   const handleDeletePending = (localId: string) => {
     if (!user) return;
     removePendingEntry(user.id, localId);
@@ -418,12 +445,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
 
   // ─── Repeat this day onto other days ─────────────────────────────────────────
 
-  const base = new Date(`${date}T00:00:00`);
-  const tomorrowStr = format(addDays(base, 1), 'yyyy-MM-dd');
-  const tomorrowLabel = format(addDays(base, 1), 'EEEE d MMMM', { locale: fr });
-  const saturday = addDays(startOfWeek(base, { weekStartsOn: 1 }), 5); // Mon→Sat work week
-  const restOfWeekStrs: string[] = [];
-  for (let d = addDays(base, 1); d <= saturday; d = addDays(d, 1)) restOfWeekStrs.push(format(d, 'yyyy-MM-dd'));
+  const copyTargetStrs = copyDates.map((d) => format(d, 'yyyy-MM-dd')).filter((d) => d !== date);
 
   const copyToDates = async (targetStrs: string[]) => {
     if (!user) return;
@@ -510,16 +532,20 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
 
   // ─── Computed ──────────────────────────────────────────────────────────────
 
-  const serverTotal = entries.reduce((s, e) => s + e.total_minutes, 0);
+  const liveEntries = entries.filter((e) => e.status !== 'cancelled');
+  const cancelledEntries = entries.filter((e) => e.status === 'cancelled');
+  const serverTotal = liveEntries.reduce((s, e) => s + e.total_minutes, 0);
   const pendingTotal = pendingEntries.reduce((s, e) => s + e.total_minutes, 0);
   const totalMinutes = serverTotal + pendingTotal;
-  const nbInterventions = entries.length + pendingEntries.length;
-  const hasDrafts = entries.some((e) => e.status === 'draft') || pendingEntries.length > 0;
-  const allSubmitted = entries.length > 0 && entries.every((e) => e.status !== 'draft') && pendingEntries.length === 0;
+  const nbInterventions = liveEntries.length + pendingEntries.length;
+  const hasDrafts = liveEntries.some((e) => e.status === 'draft') || pendingEntries.length > 0;
+  const allSubmitted = liveEntries.length > 0 && liveEntries.every((e) => e.status !== 'draft') && pendingEntries.length === 0;
   const frozen = allSubmitted && !correcting; // a sent day is read-only until "Corriger"
-  const isEmpty = entries.length === 0 && pendingEntries.length === 0;
+  const isEmpty = liveEntries.length === 0 && pendingEntries.length === 0;
   const isEditable = (e: TimeEntryWithWorksite) => !e.locked && !e.exported_at;
 
+  // Keep cancelled worksites in the set too, so a removed planned chantier doesn't
+  // pop back as "à déclarer" (it shows only as "Retirée").
   const declaredWorksiteIds = new Set<string>([
     ...(entries.map((e) => e.worksite_id).filter(Boolean) as string[]),
     ...pendingEntries.map((e) => e.worksite_id),
@@ -527,7 +553,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
   const plannedTodo = planning.filter((p) => p.worksite_id && !declaredWorksiteIds.has(p.worksite_id));
 
   const pauses = computePauses(
-    [...entries, ...pendingEntries].map((e) => ({ start: (e.start_time || '').slice(0, 5), end: (e.end_time || '').slice(0, 5) })),
+    [...liveEntries, ...pendingEntries].map((e) => ({ start: (e.start_time || '').slice(0, 5), end: (e.end_time || '').slice(0, 5) })),
   );
 
   // "Autre" is a real worksite pinned at the top of the picker (created once per
@@ -545,11 +571,13 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
   type DayItem =
     | { kind: 'planned'; sort: string; key: string; data: Planning & { worksite: Worksite } }
     | { kind: 'entry'; sort: string; key: string; data: TimeEntryWithWorksite }
-    | { kind: 'pending'; sort: string; key: string; data: PendingEntry };
+    | { kind: 'pending'; sort: string; key: string; data: PendingEntry }
+    | { kind: 'cancelled'; sort: string; key: string; data: TimeEntryWithWorksite };
   const items: DayItem[] = [
     ...plannedTodo.map((p): DayItem => ({ kind: 'planned', sort: (p.estimated_start || '99:99').slice(0, 5), key: `p:${p.id}`, data: p })),
-    ...entries.map((e): DayItem => ({ kind: 'entry', sort: (e.start_time || '99:99').slice(0, 5), key: `e:${e.id}`, data: e })),
+    ...liveEntries.map((e): DayItem => ({ kind: 'entry', sort: (e.start_time || '99:99').slice(0, 5), key: `e:${e.id}`, data: e })),
     ...pendingEntries.map((pe): DayItem => ({ kind: 'pending', sort: (pe.start_time || '99:99').slice(0, 5), key: `pe:${pe.localId}`, data: pe })),
+    ...cancelledEntries.map((e): DayItem => ({ kind: 'cancelled', sort: (e.start_time || '99:99').slice(0, 5), key: `c:${e.id}`, data: e })),
   ].sort((a, b) => a.sort.localeCompare(b.sort));
 
   const titleName = !openSlot ? ''
@@ -584,7 +612,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
       {/* Duplicate this day — centered, looks like a real button */}
       {!isEmpty && !openSlot && !monthLocked && (
         <div className="flex justify-center">
-          <Button variant="outline" size="sm" onClick={() => setRepeatOpen(true)}>
+          <Button variant="outline" size="sm" onClick={() => { setCopyDates([]); setRepeatOpen(true); }}>
             <Copy className="h-4 w-4 mr-2" /> Dupliquer cette journée
           </Button>
         </div>
@@ -660,6 +688,20 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
                       )}
                     </div>
                   </div>
+                </CardContent>
+              </Card>
+            );
+          }
+          if (item.kind === 'cancelled') {
+            const entry = item.data;
+            return (
+              <Card key={item.key} className="border-dashed opacity-60">
+                <CardContent className="py-3 flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-medium truncate line-through">{entry.worksite?.client_name || OTHER_NAME}</p>
+                    <p className="text-xs text-muted-foreground line-through">{entry.start_time?.substring(0, 5)}–{entry.end_time?.substring(0, 5)}</p>
+                  </div>
+                  <Badge variant="outline" className="text-xs shrink-0">Retirée</Badge>
                 </CardContent>
               </Card>
             );
@@ -781,11 +823,19 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
               </div>
             </div>
 
-            <div className="flex gap-2 border-t p-4">
-              <Button variant="outline" className="h-12 flex-1 text-base" onClick={cancelSlot} disabled={fSaving}>Annuler</Button>
-              <Button className="h-12 flex-1 text-base" onClick={saveSlot} disabled={fSaving}>
-                {fSaving && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer
-              </Button>
+            <div className="border-t p-4 space-y-2">
+              {openSlot.kind === 'entry' && (
+                <Button variant="ghost" className="w-full text-destructive" disabled={fSaving}
+                  onClick={() => { const e = entries.find((x) => x.id === (openSlot.kind === 'entry' ? openSlot.entryId : '')); if (e) handleRetire(e); }}>
+                  <Trash2 className="h-4 w-4 mr-2" /> Retirer cette intervention
+                </Button>
+              )}
+              <div className="flex gap-2">
+                <Button variant="outline" className="h-12 flex-1 text-base" onClick={cancelSlot} disabled={fSaving}>Annuler</Button>
+                <Button className="h-12 flex-1 text-base" onClick={saveSlot} disabled={fSaving}>
+                  {fSaving && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer
+                </Button>
+              </div>
             </div>
           </div>
         </div>
@@ -797,16 +847,14 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2"><Copy className="h-5 w-5" /> Dupliquer cette journée</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-muted-foreground">Recopier les mêmes interventions (chantier + heures) sur :</p>
-          <div className="space-y-2">
-            <Button variant="outline" className="w-full h-12 justify-start capitalize" disabled={copying} onClick={() => copyToDates([tomorrowStr])}>
-              Demain — {tomorrowLabel}
-            </Button>
-            <Button variant="outline" className="w-full h-12 justify-start" disabled={copying || restOfWeekStrs.length === 0} onClick={() => copyToDates(restOfWeekStrs)}>
-              Reste de la semaine{restOfWeekStrs.length > 0 ? ` (${restOfWeekStrs.length} j)` : ''}
-            </Button>
+          <p className="text-sm text-muted-foreground">Choisis les jours où copier cette journée (mêmes chantiers + heures).</p>
+          <div className="flex justify-center">
+            <Calendar mode="multiple" selected={copyDates} onSelect={(d) => setCopyDates(d || [])} locale={fr} weekStartsOn={1} disabled={{ before: new Date() }} />
           </div>
-          {copying && <p className="text-center text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin inline mr-2" />Copie…</p>}
+          <Button className="w-full h-11" disabled={copying || copyTargetStrs.length === 0} onClick={() => copyToDates(copyTargetStrs)}>
+            {copying ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Copy className="h-4 w-4 mr-2" />}
+            Copier{copyTargetStrs.length > 0 ? ` (${copyTargetStrs.length})` : ''}
+          </Button>
         </DialogContent>
       </Dialog>
 
