@@ -16,9 +16,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   CalendarRange, Clock, Utensils, MapPin, FileSpreadsheet, FileText, Loader2,
-  Settings2, Archive, ArchiveRestore, Trash2, Link2,
+  Settings2, Archive, ArchiveRestore, Trash2, Link2, User as UserIcon,
 } from 'lucide-react';
-import { format, parseISO, isSameDay, subDays } from 'date-fns';
+import { format, parseISO, isSameDay, subDays, startOfWeek, addDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import type { DateRange } from 'react-day-picker';
@@ -31,6 +31,7 @@ function formatMinutesToHours(minutes: number): string {
 
 interface WorkerDetailDialogProps {
   worker: User | null;
+  mode?: 'hours' | 'manage';
   onOpenChange: (open: boolean) => void;
   onChanged?: () => void;
 }
@@ -41,7 +42,7 @@ const OTHER_NAME = 'Autre';
 // Per-employee fiche: opens on today, Booking-style range calendar, interventions
 // + total, planning-based missing-days detail, per-period export (no lock), and
 // worker management (modify / archive / reactivate / delete-if-empty).
-export default function WorkerDetailDialog({ worker, onOpenChange, onChanged }: WorkerDetailDialogProps) {
+export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChange, onChanged }: WorkerDetailDialogProps) {
   const [range, setRange] = useState<DateRange | undefined>(() => {
     const t = new Date();
     return { from: t, to: t };
@@ -50,6 +51,8 @@ export default function WorkerDetailDialog({ worker, onOpenChange, onChanged }: 
   const [companyName, setCompanyName] = useState('');
   const [worksites, setWorksites] = useState<Worksite[]>([]);
   const [reassigningId, setReassigningId] = useState<string | null>(null);
+  const [creatingFor, setCreatingFor] = useState<string | null>(null);
+  const [newClientName, setNewClientName] = useState('');
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
 
@@ -59,6 +62,9 @@ export default function WorkerDetailDialog({ worker, onOpenChange, onChanged }: 
   const [mFirst, setMFirst] = useState('');
   const [mLast, setMLast] = useState('');
   const [mPhone, setMPhone] = useState('');
+  const [mNir, setMNir] = useState('');
+  const [mHireDate, setMHireDate] = useState('');
+  const [mContract, setMContract] = useState('');
   const [mSaving, setMSaving] = useState(false);
   const [mBusy, setMBusy] = useState(false);
 
@@ -70,6 +76,9 @@ export default function WorkerDetailDialog({ worker, onOpenChange, onChanged }: 
     setMFirst(worker.first_name || '');
     setMLast(worker.last_name || '');
     setMPhone(worker.phone || '');
+    setMNir(worker.social_security_number || '');
+    setMHireDate(worker.hire_date || '');
+    setMContract(worker.contract_type || '');
   }, [worker?.id]);
 
   useEffect(() => {
@@ -87,12 +96,31 @@ export default function WorkerDetailDialog({ worker, onOpenChange, onChanged }: 
       const { error } = await supabase.from('time_entries').update({ worksite_id: newWorksiteId })
         .eq('id', entryId).eq('user_id', worker.id);
       if (error) throw error;
-      toast.success('Chantier réaffecté');
+      toast.success('Client attribué');
       setReassigningId(null);
       fetchEntries();
     } catch (err) {
       console.error('Error reassigning worksite:', err);
-      toast.error('Impossible de réaffecter');
+      toast.error("Impossible d'attribuer le client");
+    }
+  };
+
+  // Create a client on the fly (the worker couldn't find it in the list → the
+  // secretary creates it here) and attribute it to the intervention.
+  const createAndAttribute = async (entryId: string) => {
+    if (!worker?.company_id || !newClientName.trim()) return;
+    try {
+      const { data: ws, error } = await supabase.from('worksites')
+        .insert({ company_id: worker.company_id, client_name: newClientName.trim(), city: '', is_active: true })
+        .select().single();
+      if (error) throw error;
+      setWorksites((prev) => [...prev, ws]);
+      setNewClientName('');
+      setCreatingFor(null);
+      await reassignEntry(entryId, ws.id);
+    } catch (err) {
+      console.error('Error creating client:', err);
+      toast.error('Impossible de créer le client');
     }
   };
 
@@ -188,6 +216,9 @@ export default function WorkerDetailDialog({ worker, onOpenChange, onChanged }: 
     try {
       const { error } = await supabase.from('users').update({
         first_name: mFirst.trim(), last_name: mLast.trim(), phone: mPhone.trim() || null,
+        social_security_number: mNir.trim() || null,
+        hire_date: mHireDate || null,
+        contract_type: mContract.trim() || null,
       }).eq('id', worker.id).eq('company_id', worker.company_id);
       if (error) throw error;
       toast.success('Salarié modifié');
@@ -256,14 +287,24 @@ export default function WorkerDetailDialog({ worker, onOpenChange, onChanged }: 
           </DialogTitle>
         </DialogHeader>
 
-        {/* Management — always visible */}
-        {worker && (
+        {/* Management — only in "manage" mode (settings) */}
+        {mode === 'manage' && worker && (
           <div className="rounded-lg border p-3 space-y-3">
             <p className="flex items-center gap-2 text-sm font-medium"><Settings2 className="h-4 w-4" /> Gérer le salarié</p>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <div className="space-y-1"><Label className="text-xs">Prénom</Label><Input value={mFirst} onChange={(e) => setMFirst(e.target.value)} /></div>
               <div className="space-y-1"><Label className="text-xs">Nom</Label><Input value={mLast} onChange={(e) => setMLast(e.target.value)} /></div>
               <div className="space-y-1"><Label className="text-xs">Téléphone</Label><Input value={mPhone} onChange={(e) => setMPhone(e.target.value)} /></div>
+            </div>
+            <div className="space-y-1"><Label className="text-xs">Email (identifiant de connexion)</Label><Input value={worker.email || ''} readOnly className="bg-muted/50" /></div>
+            {/* Optional payroll info — clearly facultatif */}
+            <div className="rounded-md border bg-muted/30 p-2 space-y-2">
+              <p className="text-xs font-medium text-muted-foreground">Infos paie — <span className="italic">facultatif</span> (remplis seulement ce que tu as)</p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div className="space-y-1"><Label className="text-xs">N° de sécurité sociale</Label><Input value={mNir} onChange={(e) => setMNir(e.target.value)} placeholder="1 23 45…" /></div>
+                <div className="space-y-1"><Label className="text-xs">Date d'embauche</Label><Input type="date" value={mHireDate} onChange={(e) => setMHireDate(e.target.value)} /></div>
+                <div className="space-y-1"><Label className="text-xs">Type de contrat</Label><Input value={mContract} onChange={(e) => setMContract(e.target.value)} placeholder="CDI, CDD, Intérim…" /></div>
+              </div>
             </div>
             <div className="flex flex-wrap gap-2">
               <Button size="sm" onClick={saveWorker} disabled={mSaving}>
@@ -291,26 +332,31 @@ export default function WorkerDetailDialog({ worker, onOpenChange, onChanged }: 
           </p>
         )}
 
-        {/* Period controls */}
-        <div className="flex flex-wrap items-center gap-2">
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="outline" className="justify-start gap-2">
-                <CalendarRange className="h-4 w-4" />{triggerLabel}
+        {/* Timesheet — only in "hours" mode (consult + export) */}
+        {mode === 'hours' && (<>
+        {/* Period controls — same options as the team export */}
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => { const t = new Date(); setRange({ from: t, to: t }); }}>Aujourd'hui</Button>
+            <Button variant="outline" size="sm" onClick={() => { const m = startOfWeek(new Date(), { weekStartsOn: 1 }); setRange({ from: m, to: addDays(m, 5) }); }}>Cette semaine</Button>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm"><CalendarRange className="h-4 w-4 mr-1" /> Créneau</Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar mode="range" selected={range} onSelect={setRange} numberOfMonths={1} locale={fr} defaultMonth={range?.from} />
+              </PopoverContent>
+            </Popover>
+            <div className="ml-auto flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => doExport('excel')} disabled={exporting || liveEntries.length === 0}>
+                {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}<span className="hidden sm:inline ml-1">Excel</span>
               </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="start">
-              <Calendar mode="range" selected={range} onSelect={setRange} numberOfMonths={1} locale={fr} defaultMonth={range?.from} />
-            </PopoverContent>
-          </Popover>
-          <div className="ml-auto flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => doExport('excel')} disabled={exporting || liveEntries.length === 0}>
-              {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}<span className="hidden sm:inline ml-1">Excel</span>
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => doExport('pdf')} disabled={exporting || liveEntries.length === 0}>
-              {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}<span className="hidden sm:inline ml-1">PDF</span>
-            </Button>
+              <Button variant="outline" size="sm" onClick={() => doExport('pdf')} disabled={exporting || liveEntries.length === 0}>
+                {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}<span className="hidden sm:inline ml-1">PDF</span>
+              </Button>
+            </div>
           </div>
+          <p className="text-sm text-muted-foreground">Période : <span className="font-medium text-foreground capitalize">{triggerLabel}</span></p>
         </div>
 
         {/* Total */}
@@ -332,60 +378,59 @@ export default function WorkerDetailDialog({ worker, onOpenChange, onChanged }: 
             {entries.map((entry) => {
               const isUnknown = entry.worksite?.client_name === OTHER_NAME;
               const isCancelled = entry.status === 'cancelled';
+              const isWorkerAdded = !isCancelled && !entry.planning_id;
               const realWorksites = worksites.filter((w) => w.client_name !== OTHER_NAME);
               return (
-                <div key={entry.id} className={`p-3 ${isCancelled ? 'opacity-60' : isUnknown ? 'bg-orange-50' : ''}`}>
-                  <div className="flex items-center gap-3">
-                    <div className="w-24 shrink-0 text-xs text-muted-foreground capitalize">
-                      {format(parseISO(entry.work_date), 'EEE d MMM', { locale: fr })}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <p className={`font-medium text-sm truncate ${isCancelled ? 'line-through text-muted-foreground' : isUnknown ? 'text-orange-700 italic' : ''}`}>
-                          {entry.worksite?.client_name || OTHER_NAME}
-                        </p>
-                        {isCancelled && (
-                          <Badge variant="outline" className="text-[10px] py-0 shrink-0">Retirée</Badge>
-                        )}
-                        {!isCancelled && !entry.planning_id && (
-                          <Badge variant="outline" className="text-[10px] py-0 text-muted-foreground shrink-0">hors planning</Badge>
-                        )}
-                        {!isCancelled && entry.modified_at && (
-                          <Badge variant="outline" className="text-[10px] py-0 text-amber-700 border-amber-300 shrink-0">modifié après envoi</Badge>
-                        )}
-                      </div>
-                      {entry.worksite?.city && (
-                        <p className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="h-3 w-3" />{entry.worksite.city}</p>
-                      )}
-                      {entry.observation && (
-                        <p className="text-xs text-muted-foreground mt-0.5 truncate">« {entry.observation} »</p>
-                      )}
-                    </div>
-                    <div className="text-right shrink-0">
-                      <p className="text-sm">{entry.start_time?.substring(0, 5)}–{entry.end_time?.substring(0, 5)}</p>
-                      <div className="flex items-center justify-end gap-2 text-xs text-muted-foreground">
-                        {entry.break_minutes > 0 && <span>pause {entry.break_minutes}min</span>}
-                        {entry.meal_allowance && <Utensils className="h-3 w-3" aria-label="Panier repas" />}
-                      </div>
-                    </div>
-                    <div className="w-16 shrink-0 text-right font-semibold">{formatMinutesToHours(entry.total_minutes)}</div>
+                <div key={entry.id} className={`p-4 ${isCancelled ? 'opacity-60' : isUnknown ? 'bg-amber-50/60' : ''}`}>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <p className="text-xs text-muted-foreground capitalize">{format(parseISO(entry.work_date), 'EEEE d MMM', { locale: fr })}</p>
+                    <p className="shrink-0 text-lg font-bold">{formatMinutesToHours(entry.total_minutes)}</p>
                   </div>
-                  {!isCancelled && isUnknown && realWorksites.length > 0 && (
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    <p className={`font-semibold ${isCancelled ? 'line-through text-muted-foreground' : isUnknown ? 'text-amber-700' : ''}`}>
+                      {entry.worksite?.client_name || OTHER_NAME}
+                    </p>
+                    {isCancelled && <Badge variant="outline" className="text-[10px] py-0">Retirée</Badge>}
+                    {isWorkerAdded && (
+                      <Badge variant="outline" className="text-[10px] py-0 gap-1 text-muted-foreground">
+                        <UserIcon className="h-2.5 w-2.5" /> ajouté par le salarié
+                      </Badge>
+                    )}
+                    {!isCancelled && entry.modified_at && (
+                      <Badge variant="outline" className="text-[10px] py-0 text-amber-700 border-amber-300">modifié après envoi</Badge>
+                    )}
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+                    <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5" />{entry.start_time?.substring(0, 5)}–{entry.end_time?.substring(0, 5)}</span>
+                    {entry.worksite?.city && <span className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{entry.worksite.city}</span>}
+                    {entry.meal_allowance && <span className="flex items-center gap-1"><Utensils className="h-3.5 w-3.5" />panier</span>}
+                  </div>
+                  {entry.observation && <p className="mt-1 text-sm text-muted-foreground">« {entry.observation} »</p>}
+
+                  {!isCancelled && isUnknown && (
                     reassigningId === entry.id ? (
-                      <div className="mt-2 flex items-center gap-2">
-                        <Select onValueChange={(v) => reassignEntry(entry.id, v)}>
-                          <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Choisir le vrai chantier…" /></SelectTrigger>
+                      <div className="mt-3 space-y-2 rounded-md border bg-background p-2">
+                        <p className="text-xs font-medium">Attribuer un client à cette intervention</p>
+                        <Select onValueChange={(v) => { if (v === '__new__') setCreatingFor(entry.id); else reassignEntry(entry.id, v); }}>
+                          <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Choisir un client existant…" /></SelectTrigger>
                           <SelectContent>
                             {realWorksites.map((ws) => (
                               <SelectItem key={ws.id} value={ws.id}>{ws.client_name}{ws.city ? ` - ${ws.city}` : ''}</SelectItem>
                             ))}
+                            <SelectItem value="__new__">+ Créer un nouveau client</SelectItem>
                           </SelectContent>
                         </Select>
-                        <Button variant="ghost" size="sm" onClick={() => setReassigningId(null)}>Annuler</Button>
+                        {creatingFor === entry.id && (
+                          <div className="flex items-center gap-2">
+                            <Input value={newClientName} onChange={(e) => setNewClientName(e.target.value)} placeholder="Nom du nouveau client" className="h-9" />
+                            <Button size="sm" onClick={() => createAndAttribute(entry.id)} disabled={!newClientName.trim()}>Créer</Button>
+                          </div>
+                        )}
+                        <Button variant="ghost" size="sm" onClick={() => { setReassigningId(null); setCreatingFor(null); setNewClientName(''); }}>Annuler</Button>
                       </div>
                     ) : (
-                      <Button variant="outline" size="sm" className="mt-2 h-8 text-xs text-orange-700 border-orange-300" onClick={() => setReassigningId(entry.id)}>
-                        <Link2 className="h-3 w-3 mr-1" /> Réaffecter à un client
+                      <Button variant="outline" size="sm" className="mt-2 h-8 text-xs" onClick={() => setReassigningId(entry.id)}>
+                        <Link2 className="h-3 w-3 mr-1" /> Attribuer un client
                       </Button>
                     )
                   )}
@@ -400,6 +445,7 @@ export default function WorkerDetailDialog({ worker, onOpenChange, onChanged }: 
             {liveEntries.length} intervention{liveEntries.length > 1 ? 's' : ''} · période {periodLabel}
           </p>
         )}
+        </>)}
       </DialogContent>
     </Dialog>
   );

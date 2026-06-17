@@ -17,15 +17,16 @@ import { Textarea } from '@/components/ui/textarea';
 import {
   ChevronLeft, ChevronRight, Plus, Trash2, Loader2, GripVertical, Check,
   UserPlus, Users, Building2, Archive, CalendarRange, Download, FileSpreadsheet, FileText,
-  Bell, Clock, Mail, RefreshCw, X, Pencil,
+  Bell, Clock, Mail, RefreshCw, X, Pencil, User as UserIcon,
 } from 'lucide-react';
 import {
   DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
   useDraggable, useDroppable, pointerWithin, rectIntersection,
   type DragEndEvent, type DragStartEvent, type CollisionDetection,
 } from '@dnd-kit/core';
-import { format, startOfWeek, endOfWeek, addDays, addWeeks, subWeeks, subDays, parseISO } from 'date-fns';
+import { format, startOfWeek, addDays, addWeeks, subWeeks, subDays, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import type { DateRange } from 'react-day-picker';
 import { toast } from 'sonner';
 import { computeMissingDays } from '@/lib/work-status';
 import { exportEntriesToExcel, exportEntriesToPDF } from '@/lib/export-utils';
@@ -111,13 +112,20 @@ const realKey = (userId: string, date: string, worksiteId: string | null) => `${
 function BubbleContent({ p, palette, real }: { p: PlanningWithWorksite; palette: string; real?: RealAgg }) {
   const hour = fixedHourOf(p);
   return (
-    <div className={`${palette} border rounded px-2 py-1 text-[11px] leading-tight flex items-center gap-1`}>
-      {hour && <span className="shrink-0 rounded border bg-white/70 px-1 font-semibold tabular-nums">{hour}</span>}
-      <span className="font-medium truncate flex-1">{p.worksite?.client_name || 'Chantier'}</span>
-      {real && (
-        <span className="flex items-center gap-0.5 text-green-700 shrink-0">
-          <Check className="h-3 w-3" />{formatMinutes(real.minutes)}
-        </span>
+    <div className={`${palette} border rounded px-2 py-1 text-[11px] leading-tight`}>
+      <div className="flex items-center gap-1">
+        {hour && <span className="shrink-0 rounded border bg-white/70 px-1 font-semibold tabular-nums">{hour}</span>}
+        <span className="font-medium truncate flex-1">{p.worksite?.client_name || 'Chantier'}</span>
+        {real && (
+          <span className="flex items-center gap-0.5 text-green-700 shrink-0">
+            <Check className="h-3 w-3" />{formatMinutes(real.minutes)}
+          </span>
+        )}
+      </div>
+      {(p.worksite?.product_type || p.worksite?.city) && (
+        <div className="truncate text-[10px] opacity-80">
+          {[p.worksite?.product_type, p.worksite?.city].filter(Boolean).join(' · ')}
+        </div>
       )}
     </div>
   );
@@ -217,13 +225,16 @@ export default function AdminPlanning() {
   // disponibilité popup + worker fiche + management screens
   const [statusTarget, setStatusTarget] = useState<{ worker: User; fromStr: string } | null>(null);
   const [ficheWorker, setFicheWorker] = useState<User | null>(null);
+  const [ficheMode, setFicheMode] = useState<'hours' | 'manage'>('hours');
   const [salariesOpen, setSalariesOpen] = useState(false);
   const [clientsListOpen, setClientsListOpen] = useState(false);
 
   // team export
   const [exportOpen, setExportOpen] = useState(false);
   const [exportWorkerOpen, setExportWorkerOpen] = useState(false);
-  const [exportWeek, setExportWeek] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }));
+  const [exportRange, setExportRange] = useState<{ from: Date; to: Date } | null>(null);
+  const [attributeTarget, setAttributeTarget] = useState<{ userId: string; dateStr: string; worksiteId: string | null; label: string } | null>(null);
+  const [attrBusy, setAttrBusy] = useState(false);
   const [exporting, setExporting] = useState(false);
 
   // invitation row actions
@@ -249,6 +260,7 @@ export default function AdminPlanning() {
   const [wsName, setWsName] = useState('');
   const [wsProduct, setWsProduct] = useState('');
   const [wsPhone, setWsPhone] = useState('');
+  const [wsEmail, setWsEmail] = useState('');
   const [wsCity, setWsCity] = useState('');
   const [wsAddress, setWsAddress] = useState('');
   const [wsDesc, setWsDesc] = useState('');
@@ -257,7 +269,7 @@ export default function AdminPlanning() {
 
   // absence start dialog (optional end date via calendar)
   const [pendingAbsence, setPendingAbsence] = useState<{ worker: User; type: string; fromStr: string } | null>(null);
-  const [absEndDate, setAbsEndDate] = useState<Date | undefined>(undefined);
+  const [absRange, setAbsRange] = useState<DateRange | undefined>(undefined);
   const [absSaving, setAbsSaving] = useState(false);
 
   // create client / worker dialogs
@@ -265,6 +277,7 @@ export default function AdminPlanning() {
   const [cName, setCName] = useState('');
   const [cProduct, setCProduct] = useState('');
   const [cPhone, setCPhone] = useState('');
+  const [cEmail, setCEmail] = useState('');
   const [cCity, setCCity] = useState('');
   const [cAddress, setCAddress] = useState('');
   const [cDesc, setCDesc] = useState('');
@@ -391,6 +404,49 @@ export default function AdminPlanning() {
   const realForPlanning = (p: PlanningWithWorksite): RealAgg | undefined =>
     p.absence_type ? undefined : realMap.get(realKey(p.user_id, p.work_date, p.worksite_id));
 
+  // Declared hours that DON'T match a planned chantier of the cell (hors-planning) —
+  // shown as a distinct "déclaré par le salarié" chip on the grid.
+  const worksiteNameById = useMemo(() => {
+    const m = new Map<string, string>();
+    worksites.forEach((w) => m.set(w.id, w.client_name));
+    return m;
+  }, [worksites]);
+  const extraDeclaredForCell = (workerId: string, dateStr: string) => {
+    const plannedWs = new Set(
+      planning.filter((p) => p.user_id === workerId && p.work_date === dateStr && !p.absence_type).map((p) => p.worksite_id),
+    );
+    const agg = new Map<string, { worksiteId: string | null; name: string; minutes: number }>();
+    for (const e of realEntries) {
+      if (e.user_id !== workerId || e.work_date !== dateStr) continue;
+      if (e.worksite_id && plannedWs.has(e.worksite_id)) continue; // already shown on its bubble
+      const key = e.worksite_id || 'none';
+      const name = (e.worksite_id && worksiteNameById.get(e.worksite_id)) || 'Autre';
+      const cur = agg.get(key);
+      if (cur) cur.minutes += e.total_minutes;
+      else agg.set(key, { worksiteId: e.worksite_id, name, minutes: e.total_minutes });
+    }
+    return Array.from(agg.values());
+  };
+
+  // Attribute a real client to a worker-added intervention (from the grid).
+  const attributeClient = async (newWorksiteId: string) => {
+    if (!user?.company_id || !attributeTarget) return;
+    setAttrBusy(true);
+    try {
+      const base = supabase.from('time_entries').update({ worksite_id: newWorksiteId })
+        .eq('company_id', user.company_id).eq('user_id', attributeTarget.userId).eq('work_date', attributeTarget.dateStr);
+      const { error } = await (attributeTarget.worksiteId ? base.eq('worksite_id', attributeTarget.worksiteId) : base.is('worksite_id', null));
+      if (error) throw error;
+      toast.success('Client attribué');
+      setAttributeTarget(null);
+      fetchPlanning();
+    } catch (err) {
+      console.error('Error attributing client:', err);
+      toast.error("Impossible d'attribuer le client");
+    } finally {
+      setAttrBusy(false);
+    }
+  };
   const cellChantiers = useCallback((workerId: string, dateStr: string) =>
     planning.filter(p => p.user_id === workerId && p.work_date === dateStr && !p.absence_type).sort(orderCmp),
   [planning]);
@@ -543,14 +599,16 @@ export default function AdminPlanning() {
 
   const chooseAbsence = (worker: User, type: string, fromStr: string) => {
     setStatusTarget(null);
-    setAbsEndDate(undefined);
+    setAbsRange({ from: new Date(`${fromStr}T00:00:00`), to: undefined });
     setPendingAbsence({ worker, type, fromStr });
   };
 
   const confirmAbsence = async () => {
     if (!user?.company_id || !pendingAbsence) return;
-    const { worker, type, fromStr } = pendingAbsence;
-    const endStr = absEndDate ? format(absEndDate, 'yyyy-MM-dd') : format(addDays(new Date(`${fromStr}T00:00:00`), HORIZON_DAYS), 'yyyy-MM-dd');
+    const { worker, type } = pendingAbsence;
+    const fromD = absRange?.from ?? new Date(`${pendingAbsence.fromStr}T00:00:00`);
+    const fromStr = format(fromD, 'yyyy-MM-dd');
+    const endStr = absRange?.to ? format(absRange.to, 'yyyy-MM-dd') : format(addDays(fromD, HORIZON_DAYS), 'yyyy-MM-dd');
     if (endStr < fromStr) { toast.error('La date de fin est avant le début'); return; }
     setAbsSaving(true);
     try {
@@ -573,7 +631,7 @@ export default function AdminPlanning() {
       const { error } = await supabase.from('planning').insert(rows);
       if (error) throw error;
 
-      toast.success(absEndDate ? "Absence enregistrée jusqu'à la date de fin" : 'Absence enregistrée (jusqu\'au retour « Présent »)');
+      toast.success(absRange?.to ? "Absence enregistrée jusqu'à la date de fin" : 'Absence enregistrée (jusqu\'au retour « Présent »)');
       setPendingAbsence(null);
       refresh();
     } catch (err) {
@@ -605,9 +663,9 @@ export default function AdminPlanning() {
     if (!user?.company_id) { toast.error('Profil non chargé'); return; }
     setExporting(true);
     try {
-      const weekEnd = endOfWeek(exportWeek, { weekStartsOn: 1 });
-      const from = format(exportWeek, 'yyyy-MM-dd');
-      const to = format(weekEnd, 'yyyy-MM-dd');
+      if (!exportRange) { toast.error('Choisis une période'); return; }
+      const from = format(exportRange.from, 'yyyy-MM-dd');
+      const to = format(exportRange.to, 'yyyy-MM-dd');
       const { data, error } = await supabase
         .from('time_entries')
         .select('*, worksite:worksites(*), user:users!user_id(*)')
@@ -616,12 +674,12 @@ export default function AdminPlanning() {
         .order('work_date', { ascending: false }).order('user_id');
       if (error) throw error;
       const entries = (data || []) as (TimeEntryWithWorksite & { user: User })[];
-      if (entries.length === 0) { toast.error(`Aucune saisie du ${format(exportWeek, 'dd/MM')} au ${format(weekEnd, 'dd/MM')}`); return; }
+      if (entries.length === 0) { toast.error(`Aucune saisie du ${format(exportRange.from, 'dd/MM')} au ${format(exportRange.to, 'dd/MM')}`); return; }
 
       const opts = {
         fileName: `battime-${kind === 'pdf' ? 'rapport' : 'export'}-${from}`,
         title: 'Battime - Rapport hebdomadaire',
-        periodLabel: `${format(exportWeek, 'dd/MM/yyyy')} au ${format(weekEnd, 'dd/MM/yyyy')}`,
+        periodLabel: `${format(exportRange.from, 'dd/MM/yyyy')} au ${format(exportRange.to, 'dd/MM/yyyy')}`,
         companyName,
       };
       if (kind === 'excel') exportEntriesToExcel(entries, opts);
@@ -688,6 +746,7 @@ export default function AdminPlanning() {
   const openClientFiche = (ws: Worksite | null | undefined) => {
     if (!ws) return;
     setWsName(ws.client_name || '');
+    setWsEmail(ws.client_email || '');
     setWsProduct(ws.product_type || '');
     setWsPhone(ws.client_phone || '');
     setWsCity(ws.city || '');
@@ -741,7 +800,7 @@ export default function AdminPlanning() {
     setSavingWs(true);
     try {
       const { error } = await supabase.from('worksites').update({
-        client_name: wsName.trim(), product_type: wsProduct.trim() || null, client_phone: wsPhone.trim() || null,
+        client_name: wsName.trim(), product_type: wsProduct.trim() || null, client_phone: wsPhone.trim() || null, client_email: wsEmail.trim() || null,
         city: wsCity.trim() || null, address: wsAddress.trim() || null, description: wsDesc.trim() || null,
       }).eq('id', clientFiche.id).eq('company_id', user.company_id);
       if (error) throw error;
@@ -806,7 +865,7 @@ export default function AdminPlanning() {
 
   // ─── create client / worker ─────────────────────────────────────────────────
 
-  const resetClient = () => { setCName(''); setCProduct(''); setCPhone(''); setCCity(''); setCAddress(''); setCDesc(''); };
+  const resetClient = () => { setCName(''); setCProduct(''); setCPhone(''); setCEmail(''); setCCity(''); setCAddress(''); setCDesc(''); };
 
   const createClient = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -816,15 +875,19 @@ export default function AdminPlanning() {
     try {
       const { data, error } = await supabase.from('worksites').insert({
         company_id: user.company_id, client_name: cName.trim(), product_type: cProduct.trim() || null,
-        client_phone: cPhone.trim() || null, city: cCity.trim() || null, address: cAddress.trim() || null,
+        client_phone: cPhone.trim() || null, client_email: cEmail.trim() || null, city: cCity.trim() || null, address: cAddress.trim() || null,
         description: cDesc.trim() || null, is_active: true,
       }).select().single();
       if (error) throw error;
-      toast.success('Client créé — glisse-le sur le planning');
       setClientOpen(false);
       resetClient();
       await fetchData();
-      if (data?.id) setPaletteWorksiteId(data.id);
+      if (attributeTarget && data?.id) {
+        await attributeClient(data.id);
+      } else {
+        toast.success('Client créé — glisse-le sur le planning');
+        if (data?.id) setPaletteWorksiteId(data.id);
+      }
     } catch (err) {
       console.error('Error creating client:', err);
       toast.error('Impossible de créer le client');
@@ -863,15 +926,6 @@ export default function AdminPlanning() {
 
   const absenceForDay = (workerId: string, dateStr: string) =>
     planning.find(p => p.user_id === workerId && p.work_date === dateStr && p.absence_type);
-
-  const chantierLegend = useMemo(() => {
-    const map = new Map<string, { id: string; name: string; dot: string }>();
-    planning.forEach(p => {
-      if (p.absence_type || !p.worksite_id || map.has(p.worksite_id)) return;
-      map.set(p.worksite_id, { id: p.worksite_id, name: p.worksite?.client_name || 'Chantier', dot: paletteFor(p).dot });
-    });
-    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
-  }, [planning]);
 
   const workerEmails = useMemo(() => new Set(workers.map(w => w.email.toLowerCase())), [workers]);
   const pendingInvites = invitations.filter(inv => !workerEmails.has(inv.email.toLowerCase()));
@@ -951,18 +1005,7 @@ export default function AdminPlanning() {
           </div>
         )}
 
-        {/* Legend */}
-        {chantierLegend.length > 0 && (
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border bg-card p-3 mt-3">
-            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Chantiers de la semaine</span>
-            {chantierLegend.map(c => (
-              <div key={c.id} className="flex items-center gap-1.5">
-                <span className={`h-3 w-3 rounded-[3px] ${c.dot}`} />
-                <span className="text-xs">{c.name}</span>
-              </div>
-            ))}
-          </div>
-        )}
+        {/* Legend removed — the green grid chip is now explicit on its own */}
 
         <Card className="mt-3">
           <CardContent className="p-0">
@@ -1035,6 +1078,23 @@ export default function AdminPlanning() {
                                     {chantiers.map(p => (
                                       <DraggableBubble key={p.id} p={p} palette={paletteFor(p).chip} real={realForPlanning(p)} onEdit={openEdit} />
                                     ))}
+                                    {extraDeclaredForCell(worker.id, dateStr).map((x, i) => (
+                                      <button
+                                        key={`xd${i}`}
+                                        type="button"
+                                        onClick={(e) => { e.stopPropagation(); setAttributeTarget({ userId: worker.id, dateStr, worksiteId: x.worksiteId, label: x.name }); }}
+                                        title="Ajouté par le salarié — cliquer pour attribuer un client"
+                                        className="w-full rounded border border-dashed border-green-400 bg-green-50 px-2 py-1 leading-tight text-left hover:border-green-500 hover:bg-green-100 transition-colors"
+                                      >
+                                        <span className="flex items-center gap-1 text-[12px]">
+                                          <span className="font-semibold truncate flex-1">{x.name}</span>
+                                          <span className="text-green-700 shrink-0 flex items-center gap-0.5"><Check className="h-3 w-3" />{formatMinutes(x.minutes)}</span>
+                                        </span>
+                                        <span className="flex items-center gap-0.5 text-[8px] text-green-700/80">
+                                          <UserIcon className="h-2 w-2 shrink-0" /> ajouté par le salarié
+                                        </span>
+                                      </button>
+                                    ))}
                                     <div className="flex flex-1 items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                       <Plus className="h-4 w-4 text-muted-foreground/50" />
                                     </div>
@@ -1084,7 +1144,7 @@ export default function AdminPlanning() {
                 </Button>
               ))}
               <div className="border-t pt-2 mt-1">
-                <Button variant="ghost" className="w-full justify-start text-muted-foreground" onClick={() => { setFicheWorker(statusTarget.worker); setStatusTarget(null); }}>
+                <Button variant="ghost" className="w-full justify-start text-muted-foreground" onClick={() => { setFicheMode('hours'); setFicheWorker(statusTarget.worker); setStatusTarget(null); }}>
                   <FileText className="h-4 w-4 mr-2" /> Feuille d'heures
                 </Button>
               </div>
@@ -1096,6 +1156,7 @@ export default function AdminPlanning() {
       {/* Worker fiche (detailed — management + hours) */}
       <WorkerDetailDialog
         worker={ficheWorker}
+        mode={ficheMode}
         onOpenChange={(open) => { if (!open) setFicheWorker(null); }}
         onChanged={() => { fetchData(); refresh(); }}
       />
@@ -1116,7 +1177,7 @@ export default function AdminPlanning() {
                   const miss = (missingByWorker.get(w.id) || []).length;
                   return (
                     <div key={w.id} className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
-                      <button className="flex min-w-0 flex-1 items-center gap-1.5 text-left" onClick={() => { setSalariesOpen(false); setFicheWorker(w); }}>
+                      <button className="flex min-w-0 flex-1 items-center gap-1.5 text-left" onClick={() => { setSalariesOpen(false); setFicheMode('manage'); setFicheWorker(w); }}>
                         <span className="font-medium truncate">{w.first_name} {w.last_name}</span>
                         {miss > 0 && <span className="h-2 w-2 rounded-full bg-red-500 shrink-0" title={`${miss} jour(s) en attente`} />}
                       </button>
@@ -1135,24 +1196,54 @@ export default function AdminPlanning() {
         </DialogContent>
       </Dialog>
 
+      {/* Attribute a client to a worker-added intervention (clicked from the grid) */}
+      <Dialog open={!!attributeTarget && !clientOpen} onOpenChange={(o) => { if (!o) setAttributeTarget(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Attribuer un client</DialogTitle></DialogHeader>
+          <div className="space-y-3 pt-1">
+            <p className="text-sm text-muted-foreground">Intervention <strong>« {attributeTarget?.label} »</strong> ajoutée par le salarié. Choisis le bon client, ou crée-le.</p>
+            <Select onValueChange={(v) => attributeClient(v)} disabled={attrBusy}>
+              <SelectTrigger><SelectValue placeholder="Choisir un client existant…" /></SelectTrigger>
+              <SelectContent>
+                {worksites.filter((w) => w.client_name !== 'Autre' && w.id !== attributeTarget?.worksiteId).map((ws) => (
+                  <SelectItem key={ws.id} value={ws.id}>{ws.client_name}{ws.city ? ` — ${ws.city}` : ''}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button variant="outline" className="w-full" disabled={attrBusy} onClick={() => setClientOpen(true)}>
+              <Building2 className="h-4 w-4 mr-2" /> Créer un nouveau client…
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Team export */}
-      <Dialog open={exportOpen} onOpenChange={setExportOpen}>
+      <Dialog open={exportOpen} onOpenChange={(o) => { setExportOpen(o); if (o) setExportRange(null); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>Exporter les heures de l'équipe</DialogTitle></DialogHeader>
           <div className="space-y-4 pt-2">
-            <div className="space-y-1">
-              <Label>Semaine du {format(exportWeek, 'd MMM yyyy', { locale: fr })}</Label>
-              <Input
-                type="date"
-                value={format(exportWeek, 'yyyy-MM-dd')}
-                onChange={(e) => { if (e.target.value) setExportWeek(startOfWeek(parseISO(`${e.target.value}T00:00:00`), { weekStartsOn: 1 })); }}
-              />
+            <div className="grid grid-cols-3 gap-2">
+              <Button variant="outline" size="sm" onClick={() => { const t = new Date(); setExportRange({ from: t, to: t }); }}>Aujourd'hui</Button>
+              <Button variant="outline" size="sm" onClick={() => setExportRange({ from: currentWeekStart, to: addDays(currentWeekStart, 5) })}>Cette semaine</Button>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm"><CalendarRange className="h-4 w-4 mr-1" /> Créneau</Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="end">
+                  <Calendar mode="range" numberOfMonths={1} locale={fr}
+                    selected={exportRange ?? undefined}
+                    onSelect={(r) => { if (r?.from) setExportRange({ from: r.from, to: r.to ?? r.from }); }} />
+                </PopoverContent>
+              </Popover>
             </div>
+            {exportRange
+              ? <p className="text-center text-sm font-medium capitalize">{format(exportRange.from, 'd MMM', { locale: fr })} → {format(exportRange.to, 'd MMM yyyy', { locale: fr })}</p>
+              : <p className="text-center text-sm text-muted-foreground">Choisis une période à exporter.</p>}
             <div className="flex gap-2">
-              <Button className="flex-1" onClick={() => runExport('excel')} disabled={exporting}>
+              <Button className="flex-1" onClick={() => runExport('excel')} disabled={exporting || !exportRange}>
                 {exporting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <FileSpreadsheet className="h-4 w-4 mr-2" />} Excel
               </Button>
-              <Button className="flex-1" variant="outline" onClick={() => runExport('pdf')} disabled={exporting}>
+              <Button className="flex-1" variant="outline" onClick={() => runExport('pdf')} disabled={exporting || !exportRange}>
                 {exporting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <FileText className="h-4 w-4 mr-2" />} PDF
               </Button>
             </div>
@@ -1174,7 +1265,7 @@ export default function AdminPlanning() {
                 workers.map(w => (
                   <button
                     key={w.id}
-                    onClick={() => { setExportWorkerOpen(false); setFicheWorker(w); }}
+                    onClick={() => { setExportWorkerOpen(false); setFicheMode('hours'); setFicheWorker(w); }}
                     className="flex w-full items-center justify-between gap-2 rounded-md border px-3 py-2 text-left text-sm hover:bg-muted/50 transition-colors"
                   >
                     <span className="font-medium truncate">{w.first_name} {w.last_name}</span>
@@ -1221,41 +1312,32 @@ export default function AdminPlanning() {
             </DialogTitle>
           </DialogHeader>
           {pendingAbsence && (
-            <div className="space-y-4 pt-2">
-              <p className="text-sm text-muted-foreground">
-                Début {pendingAbsence.fromStr === todayStr ? "aujourd'hui" : `le ${fromLabel(pendingAbsence.fromStr)}`}.
-              </p>
-              <div className="space-y-1">
-                <Label>Date de fin (optionnel)</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" className="w-full justify-start font-normal">
-                      <CalendarRange className="h-4 w-4 mr-2" />
-                      {absEndDate ? format(absEndDate, 'EEEE d MMMM yyyy', { locale: fr }) : 'Choisir une date…'}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={absEndDate}
-                      onSelect={setAbsEndDate}
-                      numberOfMonths={1}
-                      locale={fr}
-                      disabled={{ before: new Date(`${pendingAbsence.fromStr}T00:00:00`) }}
-                      defaultMonth={absEndDate || new Date(`${pendingAbsence.fromStr}T00:00:00`)}
-                    />
-                  </PopoverContent>
-                </Popover>
-                <div className="flex items-center justify-between pt-0.5">
-                  <p className="text-xs text-muted-foreground">Laisser vide si indéterminé</p>
-                  {absEndDate && (
-                    <Button type="button" variant="ghost" size="sm" className="h-auto p-0 text-xs" onClick={() => setAbsEndDate(undefined)}>Effacer</Button>
-                  )}
-                </div>
+            <div className="space-y-3 pt-2">
+              <p className="text-sm text-muted-foreground">Choisis la période (clique le 1er jour puis le dernier). Dernier jour vide = jusqu'au retour « Présent ».</p>
+              <div className="flex justify-center">
+                <Calendar
+                  mode="range"
+                  selected={absRange}
+                  onSelect={setAbsRange}
+                  numberOfMonths={1}
+                  locale={fr}
+                  weekStartsOn={1}
+                  defaultMonth={absRange?.from || new Date(`${pendingAbsence.fromStr}T00:00:00`)}
+                />
               </div>
-              <Button className="w-full" onClick={confirmAbsence} disabled={absSaving}>
-                {absSaving && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer l'absence
-              </Button>
+              <p className="text-center text-sm">
+                {absRange?.from
+                  ? <>Du <strong className="capitalize">{format(absRange.from, 'd MMM', { locale: fr })}</strong>{absRange.to ? <> au <strong className="capitalize">{format(absRange.to, 'd MMM yyyy', { locale: fr })}</strong></> : <span className="text-muted-foreground"> (jusqu'au retour)</span>}</>
+                  : <span className="text-muted-foreground">Aucune date choisie</span>}
+              </p>
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => { setStatusTarget({ worker: pendingAbsence.worker, fromStr: pendingAbsence.fromStr }); setPendingAbsence(null); }}>
+                  <ChevronLeft className="h-4 w-4 mr-1" /> Retour
+                </Button>
+                <Button className="flex-1" onClick={confirmAbsence} disabled={absSaving || !absRange?.from}>
+                  {absSaving && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer
+                </Button>
+              </div>
             </div>
           )}
         </DialogContent>
@@ -1336,6 +1418,7 @@ export default function AdminPlanning() {
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-2"><Label>Type de produit</Label><Input value={wsProduct} onChange={(e) => setWsProduct(e.target.value)} /></div>
                 <div className="space-y-2"><Label>Téléphone</Label><Input type="tel" value={wsPhone} onChange={(e) => setWsPhone(e.target.value)} /></div>
+                <div className="space-y-2"><Label>Email</Label><Input type="email" value={wsEmail} onChange={(e) => setWsEmail(e.target.value)} /></div>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-2"><Label>Ville</Label><Input value={wsCity} onChange={(e) => setWsCity(e.target.value)} /></div>
@@ -1393,12 +1476,17 @@ export default function AdminPlanning() {
       <Dialog open={clientOpen} onOpenChange={(o) => { setClientOpen(o); if (!o) resetClient(); }}>
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>Nouveau client / chantier</DialogTitle></DialogHeader>
-          <form onSubmit={createClient} className="space-y-4 pt-2">
+          <form onSubmit={createClient} className="space-y-3 pt-2">
             <div className="space-y-2"><Label>Nom du client *</Label><Input value={cName} onChange={(e) => setCName(e.target.value)} required disabled={cSaving} /></div>
-            <div className="space-y-2"><Label>Type de produit</Label><Input placeholder="Stores, volets, pergola…" value={cProduct} onChange={(e) => setCProduct(e.target.value)} disabled={cSaving} /></div>
-            <div className="space-y-2"><Label>Téléphone</Label><Input type="tel" value={cPhone} onChange={(e) => setCPhone(e.target.value)} disabled={cSaving} /></div>
-            <div className="space-y-2"><Label>Ville</Label><Input value={cCity} onChange={(e) => setCCity(e.target.value)} disabled={cSaving} /></div>
-            <div className="space-y-2"><Label>Adresse</Label><Input value={cAddress} onChange={(e) => setCAddress(e.target.value)} disabled={cSaving} /></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2"><Label>Type de produit</Label><Input placeholder="Stores, volets…" value={cProduct} onChange={(e) => setCProduct(e.target.value)} disabled={cSaving} /></div>
+              <div className="space-y-2"><Label>Téléphone</Label><Input type="tel" value={cPhone} onChange={(e) => setCPhone(e.target.value)} disabled={cSaving} /></div>
+            </div>
+            <div className="space-y-2"><Label>Email</Label><Input type="email" value={cEmail} onChange={(e) => setCEmail(e.target.value)} disabled={cSaving} /></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2"><Label>Ville</Label><Input value={cCity} onChange={(e) => setCCity(e.target.value)} disabled={cSaving} /></div>
+              <div className="space-y-2"><Label>Adresse</Label><Input value={cAddress} onChange={(e) => setCAddress(e.target.value)} disabled={cSaving} /></div>
+            </div>
             <div className="space-y-2"><Label>Description</Label><Textarea value={cDesc} onChange={(e) => setCDesc(e.target.value)} rows={2} disabled={cSaving} /></div>
             <Button type="submit" className="w-full" disabled={cSaving}>
               {cSaving && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Créer le client
