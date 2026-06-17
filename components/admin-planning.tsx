@@ -42,15 +42,18 @@ function formatMinutes(minutes: number): string {
   return `${h}h${m.toString().padStart(2, '0')}`;
 }
 
-// Colour belongs to the CHANTIER (stable pastel all week), not the poseur.
-const CHANTIER_PALETTES = [
-  { chip: 'bg-blue-100 border-blue-300 text-blue-800',      dot: 'bg-blue-400' },
-  { chip: 'bg-orange-100 border-orange-300 text-orange-700', dot: 'bg-orange-400' },
-  { chip: 'bg-green-100 border-green-300 text-green-700',    dot: 'bg-green-400' },
-  { chip: 'bg-violet-100 border-violet-300 text-violet-700', dot: 'bg-violet-400' },
-  { chip: 'bg-cyan-100 border-cyan-300 text-cyan-700',       dot: 'bg-cyan-400' },
-  { chip: 'bg-pink-100 border-pink-300 text-pink-700',       dot: 'bg-pink-400' },
-  { chip: 'bg-amber-100 border-amber-300 text-amber-800',    dot: 'bg-amber-400' },
+// Colour belongs to the CHANTIER (stable tint + bold left bar all week), not the
+// poseur. The strong left stripe is what makes each chantier scannable at a glance.
+type ChantierPalette = { chip: string; bar: string; dot: string };
+const CHANTIER_PALETTES: ChantierPalette[] = [
+  { chip: 'bg-blue-50 border-blue-200 text-blue-900',       bar: 'border-l-blue-500',    dot: 'bg-blue-500' },
+  { chip: 'bg-orange-50 border-orange-200 text-orange-900',  bar: 'border-l-orange-500',  dot: 'bg-orange-500' },
+  { chip: 'bg-emerald-50 border-emerald-200 text-emerald-900', bar: 'border-l-emerald-500', dot: 'bg-emerald-500' },
+  { chip: 'bg-violet-50 border-violet-200 text-violet-900',  bar: 'border-l-violet-500',  dot: 'bg-violet-500' },
+  { chip: 'bg-cyan-50 border-cyan-200 text-cyan-900',        bar: 'border-l-cyan-500',    dot: 'bg-cyan-500' },
+  { chip: 'bg-pink-50 border-pink-200 text-pink-900',        bar: 'border-l-pink-500',    dot: 'bg-pink-500' },
+  { chip: 'bg-amber-50 border-amber-200 text-amber-900',     bar: 'border-l-amber-500',   dot: 'bg-amber-500' },
+  { chip: 'bg-teal-50 border-teal-200 text-teal-900',        bar: 'border-l-teal-500',    dot: 'bg-teal-500' },
 ];
 
 const ABSENCE_LABELS: Record<string, string> = { conge: 'Congé', maladie: 'Maladie', intemperie: 'Intempérie', repos: 'Repos' };
@@ -109,10 +112,10 @@ const realKey = (userId: string, date: string, worksiteId: string | null) => `${
 
 // ─── compact one-line chantier bubble ──────────────────────────────────────────
 
-function BubbleContent({ p, palette, real }: { p: PlanningWithWorksite; palette: string; real?: RealAgg }) {
+function BubbleContent({ p, palette, real }: { p: PlanningWithWorksite; palette: ChantierPalette; real?: RealAgg }) {
   const hour = fixedHourOf(p);
   return (
-    <div className={`${palette} border rounded px-2 py-1 text-[11px] leading-tight`}>
+    <div className={`${palette.chip} ${palette.bar} border border-l-4 rounded-md px-2 py-1 text-[11px] leading-tight shadow-sm transition-shadow hover:shadow`}>
       <div className="flex items-center gap-1">
         {hour && <span className="shrink-0 rounded border bg-white/70 px-1 font-semibold tabular-nums">{hour}</span>}
         <span className="font-medium truncate flex-1">{p.worksite?.client_name || 'Chantier'}</span>
@@ -136,7 +139,7 @@ function DraggableBubble({
   p, palette, real, onEdit,
 }: {
   p: PlanningWithWorksite;
-  palette: string;
+  palette: ChantierPalette;
   real?: RealAgg;
   onEdit: (p: PlanningWithWorksite) => void;
 }) {
@@ -1076,7 +1079,7 @@ export default function AdminPlanning() {
                                     title="Cliquer pour ajouter une intervention"
                                   >
                                     {chantiers.map(p => (
-                                      <DraggableBubble key={p.id} p={p} palette={paletteFor(p).chip} real={realForPlanning(p)} onEdit={openEdit} />
+                                      <DraggableBubble key={p.id} p={p} palette={paletteFor(p)} real={realForPlanning(p)} onEdit={openEdit} />
                                     ))}
                                     {extraDeclaredForCell(worker.id, dateStr).map((x, i) => (
                                       <button
@@ -1119,7 +1122,7 @@ export default function AdminPlanning() {
           ) : activeDrag?.type === 'move' ? (
             (() => {
               const p = planning.find(x => x.id === activeDrag.id);
-              return p ? <div className="rotate-[-2deg] scale-105 shadow-xl"><BubbleContent p={p} palette={paletteFor(p).chip} real={realForPlanning(p)} /></div> : null;
+              return p ? <div className="rotate-[-2deg] scale-105 shadow-xl"><BubbleContent p={p} palette={paletteFor(p)} real={realForPlanning(p)} /></div> : null;
             })()
           ) : null}
         </DragOverlay>
