@@ -26,6 +26,7 @@ import {
 } from '@dnd-kit/core';
 import { format, startOfWeek, addDays, addWeeks, subWeeks, subDays, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import type { DateRange } from 'react-day-picker';
 import { toast } from 'sonner';
 import { computeMissingDays } from '@/lib/work-status';
 import { exportEntriesToExcel, exportEntriesToPDF } from '@/lib/export-utils';
@@ -111,14 +112,17 @@ const realKey = (userId: string, date: string, worksiteId: string | null) => `${
 function BubbleContent({ p, palette, real }: { p: PlanningWithWorksite; palette: string; real?: RealAgg }) {
   const hour = fixedHourOf(p);
   return (
-    <div className={`${palette} border rounded px-2 py-1 text-[11px] leading-tight flex items-center gap-1`}>
-      {hour && <span className="shrink-0 rounded border bg-white/70 px-1 font-semibold tabular-nums">{hour}</span>}
-      <span className="font-medium truncate flex-1">{p.worksite?.client_name || 'Chantier'}</span>
-      {real && (
-        <span className="flex items-center gap-0.5 text-green-700 shrink-0">
-          <Check className="h-3 w-3" />{formatMinutes(real.minutes)}
-        </span>
-      )}
+    <div className={`${palette} border rounded px-2 py-1 text-[11px] leading-tight`}>
+      <div className="flex items-center gap-1">
+        {hour && <span className="shrink-0 rounded border bg-white/70 px-1 font-semibold tabular-nums">{hour}</span>}
+        <span className="font-medium truncate flex-1">{p.worksite?.client_name || 'Chantier'}</span>
+        {real && (
+          <span className="flex items-center gap-0.5 text-green-700 shrink-0">
+            <Check className="h-3 w-3" />{formatMinutes(real.minutes)}
+          </span>
+        )}
+      </div>
+      {p.worksite?.city && <div className="truncate text-[10px] opacity-75">{p.worksite.city}</div>}
     </div>
   );
 }
@@ -261,7 +265,7 @@ export default function AdminPlanning() {
 
   // absence start dialog (optional end date via calendar)
   const [pendingAbsence, setPendingAbsence] = useState<{ worker: User; type: string; fromStr: string } | null>(null);
-  const [absEndDate, setAbsEndDate] = useState<Date | undefined>(undefined);
+  const [absRange, setAbsRange] = useState<DateRange | undefined>(undefined);
   const [absSaving, setAbsSaving] = useState(false);
 
   // create client / worker dialogs
@@ -591,14 +595,16 @@ export default function AdminPlanning() {
 
   const chooseAbsence = (worker: User, type: string, fromStr: string) => {
     setStatusTarget(null);
-    setAbsEndDate(undefined);
+    setAbsRange({ from: new Date(`${fromStr}T00:00:00`), to: undefined });
     setPendingAbsence({ worker, type, fromStr });
   };
 
   const confirmAbsence = async () => {
     if (!user?.company_id || !pendingAbsence) return;
-    const { worker, type, fromStr } = pendingAbsence;
-    const endStr = absEndDate ? format(absEndDate, 'yyyy-MM-dd') : format(addDays(new Date(`${fromStr}T00:00:00`), HORIZON_DAYS), 'yyyy-MM-dd');
+    const { worker, type } = pendingAbsence;
+    const fromD = absRange?.from ?? new Date(`${pendingAbsence.fromStr}T00:00:00`);
+    const fromStr = format(fromD, 'yyyy-MM-dd');
+    const endStr = absRange?.to ? format(absRange.to, 'yyyy-MM-dd') : format(addDays(fromD, HORIZON_DAYS), 'yyyy-MM-dd');
     if (endStr < fromStr) { toast.error('La date de fin est avant le début'); return; }
     setAbsSaving(true);
     try {
@@ -621,7 +627,7 @@ export default function AdminPlanning() {
       const { error } = await supabase.from('planning').insert(rows);
       if (error) throw error;
 
-      toast.success(absEndDate ? "Absence enregistrée jusqu'à la date de fin" : 'Absence enregistrée (jusqu\'au retour « Présent »)');
+      toast.success(absRange?.to ? "Absence enregistrée jusqu'à la date de fin" : 'Absence enregistrée (jusqu\'au retour « Présent »)');
       setPendingAbsence(null);
       refresh();
     } catch (err) {
@@ -1076,12 +1082,12 @@ export default function AdminPlanning() {
                                         title="Ajouté par le salarié — cliquer pour attribuer un client"
                                         className="w-full rounded border border-dashed border-green-400 bg-green-50 px-2 py-1 leading-tight text-left hover:border-green-500 hover:bg-green-100 transition-colors"
                                       >
-                                        <span className="flex items-center gap-0.5 text-[9px] font-semibold uppercase tracking-wide text-green-700">
-                                          <UserIcon className="h-2.5 w-2.5 shrink-0" /> ajouté par le salarié
-                                        </span>
-                                        <span className="mt-0.5 flex items-center gap-1 text-[11px]">
-                                          <span className="font-medium truncate flex-1">{x.name}</span>
+                                        <span className="flex items-center gap-1 text-[12px]">
+                                          <span className="font-semibold truncate flex-1">{x.name}</span>
                                           <span className="text-green-700 shrink-0 flex items-center gap-0.5"><Check className="h-3 w-3" />{formatMinutes(x.minutes)}</span>
+                                        </span>
+                                        <span className="flex items-center gap-0.5 text-[8px] text-green-700/80">
+                                          <UserIcon className="h-2 w-2 shrink-0" /> ajouté par le salarié
                                         </span>
                                       </button>
                                     ))}
@@ -1302,41 +1308,32 @@ export default function AdminPlanning() {
             </DialogTitle>
           </DialogHeader>
           {pendingAbsence && (
-            <div className="space-y-4 pt-2">
-              <p className="text-sm text-muted-foreground">
-                Début {pendingAbsence.fromStr === todayStr ? "aujourd'hui" : `le ${fromLabel(pendingAbsence.fromStr)}`}.
-              </p>
-              <div className="space-y-1">
-                <Label>Date de fin (optionnel)</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" className="w-full justify-start font-normal">
-                      <CalendarRange className="h-4 w-4 mr-2" />
-                      {absEndDate ? format(absEndDate, 'EEEE d MMMM yyyy', { locale: fr }) : 'Choisir une date…'}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={absEndDate}
-                      onSelect={setAbsEndDate}
-                      numberOfMonths={1}
-                      locale={fr}
-                      disabled={{ before: new Date(`${pendingAbsence.fromStr}T00:00:00`) }}
-                      defaultMonth={absEndDate || new Date(`${pendingAbsence.fromStr}T00:00:00`)}
-                    />
-                  </PopoverContent>
-                </Popover>
-                <div className="flex items-center justify-between pt-0.5">
-                  <p className="text-xs text-muted-foreground">Laisser vide si indéterminé</p>
-                  {absEndDate && (
-                    <Button type="button" variant="ghost" size="sm" className="h-auto p-0 text-xs" onClick={() => setAbsEndDate(undefined)}>Effacer</Button>
-                  )}
-                </div>
+            <div className="space-y-3 pt-2">
+              <p className="text-sm text-muted-foreground">Choisis la période (clique le 1er jour puis le dernier). Dernier jour vide = jusqu'au retour « Présent ».</p>
+              <div className="flex justify-center">
+                <Calendar
+                  mode="range"
+                  selected={absRange}
+                  onSelect={setAbsRange}
+                  numberOfMonths={1}
+                  locale={fr}
+                  weekStartsOn={1}
+                  defaultMonth={absRange?.from || new Date(`${pendingAbsence.fromStr}T00:00:00`)}
+                />
               </div>
-              <Button className="w-full" onClick={confirmAbsence} disabled={absSaving}>
-                {absSaving && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer l'absence
-              </Button>
+              <p className="text-center text-sm">
+                {absRange?.from
+                  ? <>Du <strong className="capitalize">{format(absRange.from, 'd MMM', { locale: fr })}</strong>{absRange.to ? <> au <strong className="capitalize">{format(absRange.to, 'd MMM yyyy', { locale: fr })}</strong></> : <span className="text-muted-foreground"> (jusqu'au retour)</span>}</>
+                  : <span className="text-muted-foreground">Aucune date choisie</span>}
+              </p>
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => { setStatusTarget({ worker: pendingAbsence.worker, fromStr: pendingAbsence.fromStr }); setPendingAbsence(null); }}>
+                  <ChevronLeft className="h-4 w-4 mr-1" /> Retour
+                </Button>
+                <Button className="flex-1" onClick={confirmAbsence} disabled={absSaving || !absRange?.from}>
+                  {absSaving && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer
+                </Button>
+              </div>
             </div>
           )}
         </DialogContent>
