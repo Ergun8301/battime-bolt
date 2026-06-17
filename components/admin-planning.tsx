@@ -917,15 +917,6 @@ export default function AdminPlanning() {
   const absenceForDay = (workerId: string, dateStr: string) =>
     planning.find(p => p.user_id === workerId && p.work_date === dateStr && p.absence_type);
 
-  const chantierLegend = useMemo(() => {
-    const map = new Map<string, { id: string; name: string; dot: string }>();
-    planning.forEach(p => {
-      if (p.absence_type || !p.worksite_id || map.has(p.worksite_id)) return;
-      map.set(p.worksite_id, { id: p.worksite_id, name: p.worksite?.client_name || 'Chantier', dot: paletteFor(p).dot });
-    });
-    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
-  }, [planning]);
-
   const workerEmails = useMemo(() => new Set(workers.map(w => w.email.toLowerCase())), [workers]);
   const pendingInvites = invitations.filter(inv => !workerEmails.has(inv.email.toLowerCase()));
 
@@ -1004,22 +995,7 @@ export default function AdminPlanning() {
           </div>
         )}
 
-        {/* Legend */}
-        {(chantierLegend.length > 0 || realEntries.length > 0) && (
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border bg-card p-3 mt-3">
-            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Légende</span>
-            {chantierLegend.map(c => (
-              <div key={c.id} className="flex items-center gap-1.5">
-                <span className={`h-3 w-3 rounded-[3px] ${c.dot}`} />
-                <span className="text-xs">{c.name}</span>
-              </div>
-            ))}
-            <div className="flex items-center gap-1.5">
-              <span className="h-3 w-3 rounded-[3px] border border-dashed border-green-500 bg-green-50" />
-              <span className="text-xs flex items-center gap-1"><UserIcon className="h-3 w-3 text-green-700" /> ajouté par le salarié</span>
-            </div>
-          </div>
-        )}
+        {/* Legend removed — the green grid chip is now explicit on its own */}
 
         <Card className="mt-3">
           <CardContent className="p-0">
@@ -1497,7 +1473,7 @@ export default function AdminPlanning() {
 
       {/* Nouveau client */}
       <Dialog open={clientOpen} onOpenChange={(o) => { setClientOpen(o); if (!o) resetClient(); }}>
-        <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>Nouveau client / chantier</DialogTitle></DialogHeader>
           <form onSubmit={createClient} className="space-y-3 pt-2">
             <div className="space-y-2"><Label>Nom du client *</Label><Input value={cName} onChange={(e) => setCName(e.target.value)} required disabled={cSaving} /></div>
