@@ -11,12 +11,14 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Calendar } from '@/components/ui/calendar';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
-  Plus, Trash2, Send, Loader2, MapPin, Clock, Utensils, WifiOff, RefreshCw, AlertTriangle, Copy, X,
+  Plus, Trash2, Send, Loader2, MapPin, Clock, Utensils, WifiOff, RefreshCw, AlertTriangle, Copy, ArrowLeft,
 } from 'lucide-react';
 import { format, subDays } from 'date-fns';
+import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import {
   addPendingEntry, getPendingEntries, removePendingEntry, clearPendingEntriesForDate,
@@ -57,11 +59,6 @@ function computePauses(slots: { start: string; end: string }[]) {
   return out;
 }
 
-// Normalise for fuzzy worksite-name matching.
-function normalizeStr(s: string): string {
-  return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
-}
-
 // (The intervention editor is a full-screen sheet, rendered inline in the component below.)
 
 // ─── main ──────────────────────────────────────────────────────────────────────
@@ -72,7 +69,7 @@ type SlotTarget =
   | { kind: 'pending'; localId: string }
   | { kind: 'new' };
 
-export default function PoseurDay() {
+export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
   const { user } = useAuth();
   const [entries, setEntries] = useState<TimeEntryWithWorksite[]>([]);
   const [pendingEntries, setPendingEntries] = useState<PendingEntry[]>([]);
@@ -92,12 +89,8 @@ export default function PoseurDay() {
   const [fEnd, setFEnd] = useState('');
   const [fObs, setFObs] = useState('');
   const [fSaving, setFSaving] = useState(false);
-  // 'new' client picker
-  const [fMode, setFMode] = useState<'existing' | 'new'>('existing');
+  // Chantier picker (existing chantiers only — workers don't create clients)
   const [fWorksiteId, setFWorksiteId] = useState('');
-  const [fClientName, setFClientName] = useState('');
-  const [fProductType, setFProductType] = useState('');
-  const [fCity, setFCity] = useState('');
 
   // Coherence confirmation
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -106,8 +99,23 @@ export default function PoseurDay() {
   // Copy-yesterday
   const [copyingYesterday, setCopyingYesterday] = useState(false);
 
-  const today = format(new Date(), 'yyyy-MM-dd');
-  const yesterday = format(subDays(new Date(), 1), 'yyyy-MM-dd');
+  // Repeat this day onto other days (same chantier for several days).
+  const [repeatOpen, setRepeatOpen] = useState(false);
+  const [copying, setCopying] = useState(false);
+  const [copyDates, setCopyDates] = useState<Date[]>([]);
+  // Correction mode: a sent day is frozen; tapping an intervention asks to confirm.
+  const [correcting, setCorrecting] = useState(false);
+  const [confirmCorrectOpen, setConfirmCorrectOpen] = useState(false);
+  const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
+  const [lateOpen, setLateOpen] = useState(false);
+
+  const date = dateProp || format(new Date(), 'yyyy-MM-dd');
+  const yesterday = format(subDays(new Date(`${date}T00:00:00`), 1), 'yyyy-MM-dd');
+  // Payroll cutoff: a day in a past month is locked — corrections go through the secretary.
+  const monthLocked = date.slice(0, 7) < format(new Date(), 'yyyy-MM');
+
+  // A sent day is frozen again whenever we switch day.
+  useEffect(() => { setCorrecting(false); }, [date]);
 
   // ─── Fetch server data ─────────────────────────────────────────────────────
 
@@ -115,9 +123,9 @@ export default function PoseurDay() {
     if (!user) return;
     try {
       const [entriesRes, worksitesRes, planningRes] = await Promise.all([
-        supabase.from('time_entries').select('*, worksite:worksites(*)').eq('user_id', user.id).eq('work_date', today).order('start_time'),
+        supabase.from('time_entries').select('*, worksite:worksites(*)').eq('user_id', user.id).eq('work_date', date).order('start_time'),
         supabase.from('worksites').select('*').eq('company_id', user.company_id).eq('is_active', true).order('client_name'),
-        supabase.from('planning').select('*, worksite:worksites(*)').eq('user_id', user.id).eq('work_date', today),
+        supabase.from('planning').select('*, worksite:worksites(*)').eq('user_id', user.id).eq('work_date', date),
       ]);
       if (entriesRes.error) throw entriesRes.error;
       if (worksitesRes.error) throw worksitesRes.error;
@@ -127,7 +135,7 @@ export default function PoseurDay() {
       setWorksites(worksitesRes.data || []);
       setPlanning(planningRes.data || []);
 
-      const pendForToday = getPendingEntries(user.id).filter((e) => e.work_date === today);
+      const pendForToday = getPendingEntries(user.id).filter((e) => e.work_date === date);
       setDayMeal((entriesRes.data || []).some((e: TimeEntryWithWorksite) => e.meal_allowance) || pendForToday.some((e) => e.meal_allowance));
     } catch (err) {
       console.error('Error fetching data:', err);
@@ -135,13 +143,13 @@ export default function PoseurDay() {
     } finally {
       setLoading(false);
     }
-  }, [user, today]);
+  }, [user, date]);
 
   // ─── Sync pending offline entries ─────────────────────────────────────────
 
   const syncPendingEntries = useCallback(async () => {
     if (!user || !navigator.onLine) return;
-    const pending = getPendingEntries(user.id).filter((e) => e.work_date === today);
+    const pending = getPendingEntries(user.id).filter((e) => e.work_date === date);
     if (pending.length === 0) return;
 
     setSyncing(true);
@@ -172,10 +180,10 @@ export default function PoseurDay() {
 
     if (synced > 0) {
       toast.success(`${synced} intervention${synced > 1 ? 's' : ''} synchronisée${synced > 1 ? 's' : ''}`);
-      setPendingEntries(getPendingEntries(user.id).filter((e) => e.work_date === today));
+      setPendingEntries(getPendingEntries(user.id).filter((e) => e.work_date === date));
       fetchData();
     }
-  }, [user, today, fetchData]);
+  }, [user, date, fetchData]);
 
   // ─── Online / offline listeners ───────────────────────────────────────────
 
@@ -195,18 +203,18 @@ export default function PoseurDay() {
 
   useEffect(() => {
     if (user) {
-      const pending = getPendingEntries(user.id).filter((e) => e.work_date === today);
+      const pending = getPendingEntries(user.id).filter((e) => e.work_date === date);
       setPendingEntries(pending);
       if (navigator.onLine && pending.length > 0) syncPendingEntries();
     }
-  }, [user, today, syncPendingEntries]);
+  }, [user, date, syncPendingEntries]);
 
   // ─── Day meal: keep exactly one flagged row per day (no migration) ──────────
 
   const applyDayMeal = useCallback(async (value: boolean) => {
     if (!user) return;
     if (navigator.onLine) {
-      const { data } = await supabase.from('time_entries').select('id, start_time, meal_allowance').eq('user_id', user.id).eq('work_date', today);
+      const { data } = await supabase.from('time_entries').select('id, start_time, meal_allowance').eq('user_id', user.id).eq('work_date', date);
       const rows = [...(data || [])].sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''));
       const ups = [];
       for (let i = 0; i < rows.length; i++) {
@@ -217,14 +225,14 @@ export default function PoseurDay() {
       }
       if (ups.length) await Promise.all(ups);
     }
-    const pend = getPendingEntries(user.id).filter((e) => e.work_date === today);
+    const pend = getPendingEntries(user.id).filter((e) => e.work_date === date);
     if (pend.length > 0) {
       const sorted = [...pend].sort((a, b) => a.start_time.localeCompare(b.start_time));
-      clearPendingEntriesForDate(user.id, today);
+      clearPendingEntriesForDate(user.id, date);
       sorted.forEach((e, i) => addPendingEntry(user.id, { ...e, meal_allowance: i === 0 ? value : false }));
-      setPendingEntries(getPendingEntries(user.id).filter((e) => e.work_date === today));
+      setPendingEntries(getPendingEntries(user.id).filter((e) => e.work_date === date));
     }
-  }, [user, today]);
+  }, [user, date]);
 
   const toggleDayMeal = async (value: boolean) => {
     setDayMeal(value);
@@ -239,6 +247,7 @@ export default function PoseurDay() {
   // ─── Inline editor open / save / delete ─────────────────────────────────────
 
   const openPlanned = (p: Planning & { worksite: Worksite }) => {
+    if (monthLocked) { setLateOpen(true); return; }
     setOpenSlot({ kind: 'planned', planningId: p.id });
     setFStart(snapToGrid(p.estimated_start ? p.estimated_start.substring(0, 5) : '08:00'));
     setFEnd(snapToGrid(p.estimated_end ? p.estimated_end.substring(0, 5) : '17:00'));
@@ -257,13 +266,27 @@ export default function PoseurDay() {
     setFObs(e.observation || '');
   };
   const openNew = () => {
+    if (monthLocked) { setLateOpen(true); return; }
     setOpenSlot({ kind: 'new' });
-    setFMode('existing'); setFWorksiteId(''); setFClientName(''); setFProductType(''); setFCity('');
-    setFStart('08:00'); setFEnd('17:00'); setFObs('');
+    setFWorksiteId('');
+    // First slot of the day → morning ; otherwise → afternoon. Worker adjusts if needed.
+    const hasContent = entries.length + pendingEntries.length > 0;
+    if (hasContent) { setFStart('13:00'); setFEnd('17:00'); }
+    else { setFStart('08:00'); setFEnd('12:00'); }
+    setFObs('');
   };
   const cancelSlot = () => setOpenSlot(null);
 
-  const pickSuggestion = (ws: Worksite) => { setFMode('existing'); setFWorksiteId(ws.id); };
+  // On a sent (frozen) day, any touch — edit a sent entry OR declare a remaining
+  // chantier OR the meal — goes through this confirm, then unlocks the day.
+  const askCorrect = (action: (() => void) | null) => { setPendingAction(() => action); setConfirmCorrectOpen(true); };
+  const confirmCorrect = () => {
+    setCorrecting(true);
+    setConfirmCorrectOpen(false);
+    const action = pendingAction;
+    setPendingAction(null);
+    action?.();
+  };
 
   const saveSlot = async () => {
     if (!user || !openSlot) return;
@@ -271,11 +294,16 @@ export default function PoseurDay() {
     setFSaving(true);
     try {
       const totalMins = calculateTotalMinutes(fStart, fEnd, 0);
+      let savedMsg = 'Heures enregistrées';
 
       // ── Update an existing entry ──
       if (openSlot.kind === 'entry') {
+        const wasSubmitted = entries.find((e) => e.id === openSlot.entryId)?.status === 'submitted';
+        if (wasSubmitted) savedMsg = 'Modification enregistrée — la secrétaire est prévenue';
         const { error } = await supabase.from('time_entries').update({
           start_time: fStart, end_time: fEnd, break_minutes: 0, observation: fObs.trim() || null,
+          // Editing an already-sent entry: flag it so the secretary sees the change.
+          ...(wasSubmitted ? { modified_at: new Date().toISOString(), modified_by: user.id } : {}),
         }).eq('id', openSlot.entryId).eq('user_id', user.id);
         if (error) throw error;
       } else if (openSlot.kind === 'pending') {
@@ -295,14 +323,6 @@ export default function PoseurDay() {
           worksiteId = p?.worksite_id || '';
           worksiteName = p?.worksite?.client_name || '';
           worksiteCity = p?.worksite?.city || null;
-        } else if (fMode === 'new') {
-          if (!fClientName.trim()) { toast.error('Le nom du client est requis'); return; }
-          if (!navigator.onLine) { toast.error('Impossible de créer un chantier hors-ligne. Choisis un chantier existant.'); return; }
-          const { data: newWs, error: wsErr } = await supabase.from('worksites').insert({
-            company_id: user.company_id, client_name: fClientName.trim(), product_type: fProductType.trim() || null, city: fCity.trim() || null, is_active: true,
-          }).select().single();
-          if (wsErr) throw wsErr;
-          worksiteId = newWs.id; worksiteName = newWs.client_name; worksiteCity = newWs.city || null;
         } else {
           worksiteId = fWorksiteId;
           const ws = worksites.find((w) => w.id === worksiteId);
@@ -315,7 +335,7 @@ export default function PoseurDay() {
         if (!navigator.onLine) {
           const pending: PendingEntry = {
             localId: generateLocalId(), company_id: user.company_id, user_id: user.id, worksite_id: worksiteId,
-            planning_id: planningId, work_date: today, start_time: fStart, end_time: fEnd, break_minutes: 0,
+            planning_id: planningId, work_date: date, start_time: fStart, end_time: fEnd, break_minutes: 0,
             total_minutes: totalMins, meal_allowance: false, observation: fObs.trim() || null,
             _worksite_name: worksiteName, _worksite_city: worksiteCity, _saved_at: Date.now(),
           };
@@ -323,7 +343,7 @@ export default function PoseurDay() {
         } else {
           const { error } = await supabase.from('time_entries').insert({
             company_id: user.company_id, user_id: user.id, worksite_id: worksiteId, planning_id: planningId,
-            work_date: today, start_time: fStart, end_time: fEnd, break_minutes: 0,
+            work_date: date, start_time: fStart, end_time: fEnd, break_minutes: 0,
             meal_allowance: false, observation: fObs.trim() || null, status: 'draft',
           });
           if (error) throw error;
@@ -333,8 +353,8 @@ export default function PoseurDay() {
       setOpenSlot(null);
       await applyDayMeal(dayMeal);
       if (navigator.onLine) fetchData();
-      setPendingEntries(getPendingEntries(user.id).filter((e) => e.work_date === today));
-      toast.success('Heures enregistrées');
+      setPendingEntries(getPendingEntries(user.id).filter((e) => e.work_date === date));
+      toast.success(savedMsg);
     } catch (err) {
       console.error('Error saving slot:', err);
       toast.error("Impossible d'enregistrer");
@@ -355,6 +375,31 @@ export default function PoseurDay() {
     } catch (err) {
       console.error('Error deleting entry:', err);
       toast.error('Impossible de supprimer');
+    }
+  };
+
+  // Remove a wrong intervention. Draft → delete. Sent → soft-cancel (stays
+  // visible "Retirée", excluded from the total, secretary informed).
+  const handleRetire = async (entry: TimeEntryWithWorksite) => {
+    if (!user) return;
+    try {
+      if (entry.status === 'submitted') {
+        const { error } = await supabase.from('time_entries')
+          .update({ status: 'cancelled', modified_at: new Date().toISOString(), modified_by: user.id })
+          .eq('id', entry.id).eq('user_id', user.id);
+        if (error) throw error;
+        toast.success('Intervention retirée — la secrétaire est prévenue');
+      } else {
+        const { error } = await supabase.from('time_entries').delete().eq('id', entry.id).eq('user_id', user.id);
+        if (error) throw error;
+        toast.success('Intervention retirée');
+      }
+      setOpenSlot(null);
+      await applyDayMeal(dayMeal);
+      fetchData();
+    } catch (err) {
+      console.error('Error retiring entry:', err);
+      toast.error('Impossible de retirer');
     }
   };
 
@@ -380,7 +425,7 @@ export default function PoseurDay() {
       const rows = yEntries.map((e) => ({
         company_id: user.company_id, user_id: user.id, worksite_id: e.worksite_id,
         planning_id: planning.find((p) => p.worksite_id === e.worksite_id)?.id || null,
-        work_date: today, start_time: e.start_time, end_time: e.end_time, break_minutes: 0,
+        work_date: date, start_time: e.start_time, end_time: e.end_time, break_minutes: 0,
         // total_minutes is a generated column in Postgres — never send it.
         meal_allowance: false, observation: e.observation, status: 'draft' as const,
       }));
@@ -398,12 +443,55 @@ export default function PoseurDay() {
     }
   };
 
+  // ─── Repeat this day onto other days ─────────────────────────────────────────
+
+  const copyTargetStrs = copyDates.map((d) => format(d, 'yyyy-MM-dd')).filter((d) => d !== date);
+
+  const copyToDates = async (targetStrs: string[]) => {
+    if (!user) return;
+    if (!navigator.onLine) { toast.error('Copie indisponible hors-ligne'); return; }
+    const targets = Array.from(new Set(targetStrs)).filter((d) => d !== date);
+    const sources = [
+      ...entries.map((e) => ({ worksite_id: e.worksite_id, start_time: e.start_time, end_time: e.end_time, meal_allowance: e.meal_allowance, observation: e.observation })),
+      ...pendingEntries.map((e) => ({ worksite_id: e.worksite_id, start_time: e.start_time, end_time: e.end_time, meal_allowance: e.meal_allowance, observation: e.observation })),
+    ];
+    if (sources.length === 0) { toast.error('Aucune intervention à copier'); return; }
+    if (targets.length === 0) { toast.error('Aucun jour à remplir'); return; }
+    setCopying(true);
+    try {
+      // Link planning_id where the target day already has that chantier planned.
+      const { data: plan } = await supabase.from('planning').select('id, work_date, worksite_id').eq('user_id', user.id).in('work_date', targets);
+      const planMap = new Map<string, string>();
+      (plan || []).forEach((p: { id: string; work_date: string; worksite_id: string | null }) => {
+        if (p.worksite_id) planMap.set(`${p.work_date}|${p.worksite_id}`, p.id);
+      });
+      const rows = targets.flatMap((td) => sources.map((s) => ({
+        company_id: user.company_id, user_id: user.id, worksite_id: s.worksite_id,
+        planning_id: planMap.get(`${td}|${s.worksite_id}`) || null,
+        work_date: td, start_time: s.start_time, end_time: s.end_time, break_minutes: 0,
+        meal_allowance: s.meal_allowance, observation: s.observation || null, status: 'draft' as const,
+      })));
+      const { error } = await supabase.from('time_entries').insert(rows);
+      if (error) throw error;
+      toast.success(`Copié sur ${targets.length} jour${targets.length > 1 ? 's' : ''}`);
+      setRepeatOpen(false);
+    } catch (err) {
+      console.error('Error repeating day:', err);
+      toast.error('Impossible de copier');
+    } finally {
+      setCopying(false);
+    }
+  };
+
   // ─── Submit day ────────────────────────────────────────────────────────────
 
   const checkCoherenceWarnings = (): string[] => {
     const drafts = entries.filter((e) => e.status === 'draft' && !e.locked);
     if (drafts.length === 0) return [];
     const warnings: string[] = [];
+    if (plannedTodo.length > 0) {
+      warnings.push(`Il reste ${plannedTodo.length} chantier${plannedTodo.length > 1 ? 's' : ''} prévu${plannedTodo.length > 1 ? 's' : ''} sans heures.`);
+    }
     const totalMins = drafts.reduce((s, e) => s + e.total_minutes, 0);
     if (totalMins > 600) warnings.push(`Total : ${formatMinutesToHours(totalMins)} (dépasse 10h). Vérifie tes horaires.`);
     const slots = [...entries, ...pendingEntries]
@@ -444,15 +532,20 @@ export default function PoseurDay() {
 
   // ─── Computed ──────────────────────────────────────────────────────────────
 
-  const serverTotal = entries.reduce((s, e) => s + e.total_minutes, 0);
+  const liveEntries = entries.filter((e) => e.status !== 'cancelled');
+  const cancelledEntries = entries.filter((e) => e.status === 'cancelled');
+  const serverTotal = liveEntries.reduce((s, e) => s + e.total_minutes, 0);
   const pendingTotal = pendingEntries.reduce((s, e) => s + e.total_minutes, 0);
   const totalMinutes = serverTotal + pendingTotal;
-  const nbInterventions = entries.length + pendingEntries.length;
-  const hasDrafts = entries.some((e) => e.status === 'draft') || pendingEntries.length > 0;
-  const allSubmitted = entries.length > 0 && entries.every((e) => e.status !== 'draft') && pendingEntries.length === 0;
-  const isEmpty = entries.length === 0 && pendingEntries.length === 0;
+  const nbInterventions = liveEntries.length + pendingEntries.length;
+  const hasDrafts = liveEntries.some((e) => e.status === 'draft') || pendingEntries.length > 0;
+  const allSubmitted = liveEntries.length > 0 && liveEntries.every((e) => e.status !== 'draft') && pendingEntries.length === 0;
+  const frozen = allSubmitted && !correcting; // a sent day is read-only until "Corriger"
+  const isEmpty = liveEntries.length === 0 && pendingEntries.length === 0;
   const isEditable = (e: TimeEntryWithWorksite) => !e.locked && !e.exported_at;
 
+  // Keep cancelled worksites in the set too, so a removed planned chantier doesn't
+  // pop back as "à déclarer" (it shows only as "Retirée").
   const declaredWorksiteIds = new Set<string>([
     ...(entries.map((e) => e.worksite_id).filter(Boolean) as string[]),
     ...pendingEntries.map((e) => e.worksite_id),
@@ -460,21 +553,41 @@ export default function PoseurDay() {
   const plannedTodo = planning.filter((p) => p.worksite_id && !declaredWorksiteIds.has(p.worksite_id));
 
   const pauses = computePauses(
-    [...entries, ...pendingEntries].map((e) => ({ start: (e.start_time || '').slice(0, 5), end: (e.end_time || '').slice(0, 5) })),
+    [...liveEntries, ...pendingEntries].map((e) => ({ start: (e.start_time || '').slice(0, 5), end: (e.end_time || '').slice(0, 5) })),
   );
 
-  // Anti-duplicate suggestions for the "new" client form.
-  const typedNorm = normalizeStr(fClientName);
-  const similarWorksites =
-    openSlot?.kind === 'new' && fMode === 'new' && typedNorm.length >= 2
-      ? worksites.filter((w) => { const n = normalizeStr(w.client_name); return n.includes(typedNorm) || typedNorm.includes(n); }).slice(0, 4)
-      : [];
+  // "Autre" is a real worksite pinned at the top of the picker (created once per
+  // company in Supabase) — for work the secretary hasn't listed / the worker can't name.
+  const OTHER_NAME = 'Autre';
+  const sortedWorksites = [...worksites].sort((a, b) => {
+    if (a.client_name === OTHER_NAME) return -1;
+    if (b.client_name === OTHER_NAME) return 1;
+    return a.client_name.localeCompare(b.client_name);
+  });
 
+  // Unified list of the day's slots — planned-not-yet-declared, declared entries, and pending
+  // (offline) entries — sorted by start time. The card position stays put as soon as the slot
+  // has a start time, so filling a planned card no longer makes it jump to the bottom.
+  type DayItem =
+    | { kind: 'planned'; sort: string; key: string; data: Planning & { worksite: Worksite } }
+    | { kind: 'entry'; sort: string; key: string; data: TimeEntryWithWorksite }
+    | { kind: 'pending'; sort: string; key: string; data: PendingEntry }
+    | { kind: 'cancelled'; sort: string; key: string; data: TimeEntryWithWorksite };
+  const items: DayItem[] = [
+    ...plannedTodo.map((p): DayItem => ({ kind: 'planned', sort: (p.estimated_start || '99:99').slice(0, 5), key: `p:${p.id}`, data: p })),
+    ...liveEntries.map((e): DayItem => ({ kind: 'entry', sort: (e.start_time || '99:99').slice(0, 5), key: `e:${e.id}`, data: e })),
+    ...pendingEntries.map((pe): DayItem => ({ kind: 'pending', sort: (pe.start_time || '99:99').slice(0, 5), key: `pe:${pe.localId}`, data: pe })),
+    ...cancelledEntries.map((e): DayItem => ({ kind: 'cancelled', sort: (e.start_time || '99:99').slice(0, 5), key: `c:${e.id}`, data: e })),
+  ].sort((a, b) => a.sort.localeCompare(b.sort));
+
+  const titleName = !openSlot ? ''
+    : openSlot.kind === 'planned' ? (planning.find((p) => p.id === openSlot.planningId)?.worksite?.client_name || '')
+    : openSlot.kind === 'entry' ? (entries.find((e) => e.id === openSlot.entryId)?.worksite?.client_name || '')
+    : openSlot.kind === 'pending' ? (pendingEntries.find((e) => e.localId === openSlot.localId)?._worksite_name || '')
+    : '';
   const slotTitle = !openSlot ? ''
-    : openSlot.kind === 'planned' ? (planning.find((p) => p.id === openSlot.planningId)?.worksite?.client_name || 'Intervention')
-    : openSlot.kind === 'entry' ? (entries.find((e) => e.id === openSlot.entryId)?.worksite?.client_name || 'Intervention')
-    : openSlot.kind === 'pending' ? (pendingEntries.find((e) => e.localId === openSlot.localId)?._worksite_name || 'Intervention')
-    : 'Nouvelle intervention';
+    : openSlot.kind === 'new' ? 'Nouvelle intervention'
+    : titleName ? `Chantier ${titleName}` : 'Intervention';
 
   if (loading) {
     return <div className="space-y-4"><Skeleton className="h-24 w-full" /><Skeleton className="h-40 w-full" /></div>;
@@ -496,26 +609,29 @@ export default function PoseurDay() {
         </div>
       )}
 
-      {/* Total + pauses */}
+      {/* Duplicate this day — centered, looks like a real button */}
+      {!isEmpty && !openSlot && !monthLocked && (
+        <div className="flex justify-center">
+          <Button variant="outline" size="sm" onClick={() => { setCopyDates([]); setRepeatOpen(true); }}>
+            <Copy className="h-4 w-4 mr-2" /> Dupliquer cette journée
+          </Button>
+        </div>
+      )}
+
+      {/* Total (label + clock left, total right) + récap below */}
       <Card className="bg-primary text-primary-foreground">
-        <CardContent className="py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Clock className="h-6 w-6" />
-              <div>
-                <p className="text-sm opacity-90">Total travaillé</p>
-                <p className="text-2xl font-bold">{formatMinutesToHours(totalMinutes)}</p>
-              </div>
-            </div>
-            <p className="text-sm opacity-90">{nbInterventions} intervention{nbInterventions > 1 ? 's' : ''}</p>
-          </div>
-          {pauses.length > 0 && (
-            <p className="mt-2 text-sm opacity-90">
-              {pauses.map((p, i) => (
-                <span key={i}>{i > 0 ? ' · ' : ''}Pause {p.start}–{p.end} ({formatMinutesToHours(p.minutes)})</span>
-              ))}
+        <CardContent className="py-4 space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm opacity-90 flex items-center gap-2">
+              <Clock className="h-4 w-4 opacity-90 shrink-0" /> Total travaillé
             </p>
-          )}
+            <p className="text-2xl font-bold leading-none">{formatMinutesToHours(totalMinutes)}</p>
+          </div>
+          <div className="space-y-1.5 border-t border-white/15 pt-3 text-sm">
+            <p>🧱 {nbInterventions} intervention{nbInterventions > 1 ? 's' : ''}</p>
+            <p>🍽️ {dayMeal ? 'Panier repas' : 'Sans panier'}</p>
+            <p>☕ {pauses.length > 0 ? `Pause ${pauses.map((p) => `${p.start}–${p.end} (${formatMinutesToHours(p.minutes)})`).join(' · ')}` : 'Aucune pause'}</p>
+          </div>
         </CardContent>
       </Card>
 
@@ -526,45 +642,85 @@ export default function PoseurDay() {
             <Utensils className="h-4 w-4 text-muted-foreground" />
             <span className="text-sm font-medium">Panier repas <span className="text-muted-foreground font-normal">(pour la journée)</span></span>
           </div>
-          <Switch checked={dayMeal} onCheckedChange={toggleDayMeal} />
+          <Switch checked={dayMeal} onCheckedChange={(v) => { if (monthLocked) { setLateOpen(true); return; } if (frozen) { askCorrect(null); return; } toggleDayMeal(v); }} />
         </CardContent>
       </Card>
 
-      {/* Interventions */}
+      {/* Interventions — unified, sorted by start time so a card stays put when filled */}
       <div className="space-y-2">
-        {/* Planned chantiers still to declare */}
-        {plannedTodo.map((p) => (
-          <Card key={p.id} className="border-primary/30 bg-primary/5 cursor-pointer transition-colors hover:bg-primary/10" onClick={() => openPlanned(p)}>
-            <CardContent className="py-4 flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-xs text-muted-foreground">À déclarer</p>
-                <p className="font-semibold truncate flex items-center gap-1"><MapPin className="h-4 w-4 text-muted-foreground shrink-0" />{p.worksite?.client_name}{p.worksite?.city ? ` — ${p.worksite.city}` : ''}</p>
-                {p.estimated_start && p.estimated_end && <p className="text-xs text-muted-foreground mt-0.5">Prévu {p.estimated_start.substring(0, 5)}–{p.estimated_end.substring(0, 5)}</p>}
-              </div>
-              <span className="flex items-center gap-1 text-primary font-medium text-sm shrink-0"><Plus className="h-4 w-4" /> Mes heures</span>
-            </CardContent>
-          </Card>
-        ))}
-
-        {/* Declared (server) entries */}
-        {entries.map((entry) => {
-          const editable = isEditable(entry);
+        {items.map((item) => {
+          if (item.kind === 'planned') {
+            const p = item.data;
+            return (
+              <Card key={item.key} className="border-primary/30 bg-primary/5 cursor-pointer transition-colors hover:bg-primary/10" onClick={monthLocked ? () => setLateOpen(true) : frozen ? () => askCorrect(() => openPlanned(p)) : () => openPlanned(p)}>
+                <CardContent className="py-4 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-xs text-muted-foreground">À déclarer</p>
+                    <p className="font-semibold truncate flex items-center gap-1"><MapPin className="h-4 w-4 text-muted-foreground shrink-0" />{p.worksite?.client_name}</p>
+                    {p.worksite?.city && <p className="text-xs text-muted-foreground truncate">{p.worksite.city}</p>}
+                    {p.estimated_start && p.estimated_end && <p className="text-xs text-muted-foreground mt-0.5">Prévu {p.estimated_start.substring(0, 5)}–{p.estimated_end.substring(0, 5)}</p>}
+                  </div>
+                  <span className="flex items-center gap-1 text-primary font-medium text-sm shrink-0"><Plus className="h-4 w-4" /> Mes heures</span>
+                </CardContent>
+              </Card>
+            );
+          }
+          if (item.kind === 'entry') {
+            const entry = item.data;
+            const tappable = isEditable(entry);
+            const onTap = !tappable ? undefined : monthLocked ? () => setLateOpen(true) : frozen ? () => askCorrect(() => openEntry(entry)) : () => openEntry(entry);
+            return (
+              <Card key={item.key} className={tappable ? 'cursor-pointer transition-colors hover:bg-muted/40' : ''} onClick={onTap}>
+                <CardContent className="py-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-semibold truncate">{entry.worksite?.client_name || OTHER_NAME}</p>
+                      {entry.worksite?.city && <p className="text-xs text-muted-foreground truncate">{entry.worksite.city}</p>}
+                      <p className="text-sm flex items-center gap-1 mt-0.5"><Clock className="h-3.5 w-3.5 text-muted-foreground" />{entry.start_time?.substring(0, 5)}–{entry.end_time?.substring(0, 5)} · <span className="font-semibold text-primary">{formatMinutesToHours(entry.total_minutes)}</span></p>
+                      {entry.observation && <p className="text-sm text-muted-foreground mt-0.5">{entry.observation}</p>}
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {entry.status === 'submitted' && <Badge variant="default" className="text-xs">Envoyé</Badge>}
+                      {entry.status === 'draft' && !entry.locked && (
+                        <Button variant="ghost" size="icon" className="text-destructive" onClick={(e) => { e.stopPropagation(); handleDeleteEntry(entry.id); }}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          }
+          if (item.kind === 'cancelled') {
+            const entry = item.data;
+            return (
+              <Card key={item.key} className="border-dashed opacity-60">
+                <CardContent className="py-3 flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-medium truncate line-through">{entry.worksite?.client_name || OTHER_NAME}</p>
+                    <p className="text-xs text-muted-foreground line-through">{entry.start_time?.substring(0, 5)}–{entry.end_time?.substring(0, 5)}</p>
+                  </div>
+                  <Badge variant="outline" className="text-xs shrink-0">Retirée</Badge>
+                </CardContent>
+              </Card>
+            );
+          }
+          // pending (offline)
+          const entry = item.data;
           return (
-            <Card key={entry.id} className={editable ? 'cursor-pointer transition-colors hover:bg-muted/40' : ''} onClick={editable ? () => openEntry(entry) : undefined}>
+            <Card key={item.key} className="border-orange-300 bg-orange-50/30 cursor-pointer hover:bg-orange-50/60 transition-colors" onClick={() => openPending(entry)}>
               <CardContent className="py-4">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="font-semibold truncate">{entry.worksite?.client_name || 'Chantier inconnu'}</p>
-                    <p className="text-sm flex items-center gap-1 mt-0.5"><Clock className="h-3.5 w-3.5 text-muted-foreground" />{entry.start_time?.substring(0, 5)}–{entry.end_time?.substring(0, 5)} · <span className="font-semibold text-primary">{formatMinutesToHours(entry.total_minutes)}</span></p>
-                    {entry.observation && <p className="text-sm text-muted-foreground mt-0.5">{entry.observation}</p>}
-                  </div>
+                    <p className="font-semibold truncate">{entry._worksite_name}</p>
+                    <p className="text-sm flex items-center gap-1 mt-0.5"><Clock className="h-3.5 w-3.5 text-muted-foreground" />{entry.start_time.substring(0, 5)}–{entry.end_time.substring(0, 5)} · <span className="font-semibold text-primary">{formatMinutesToHours(entry.total_minutes)}</span></p>
+                </div>
                   <div className="flex items-center gap-1 shrink-0">
-                    {entry.status === 'submitted' && <Badge variant="default" className="text-xs">Envoyé</Badge>}
-                    {entry.status === 'draft' && !entry.locked && (
-                      <Button variant="ghost" size="icon" className="text-destructive" onClick={(e) => { e.stopPropagation(); handleDeleteEntry(entry.id); }}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    )}
+                    <Badge variant="outline" className="text-xs text-orange-600 border-orange-300"><WifiOff className="h-3 w-3 mr-1" />Hors-ligne</Badge>
+                    <Button variant="ghost" size="icon" className="text-destructive" onClick={(e) => { e.stopPropagation(); handleDeletePending(entry.localId); }}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </div>
                 </div>
               </CardContent>
@@ -572,28 +728,8 @@ export default function PoseurDay() {
           );
         })}
 
-        {/* Pending (offline) entries */}
-        {pendingEntries.map((entry) => (
-          <Card key={entry.localId} className="border-orange-300 bg-orange-50/30 cursor-pointer hover:bg-orange-50/60 transition-colors" onClick={() => openPending(entry)}>
-            <CardContent className="py-4">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="font-semibold truncate">{entry._worksite_name}</p>
-                  <p className="text-sm flex items-center gap-1 mt-0.5"><Clock className="h-3.5 w-3.5 text-muted-foreground" />{entry.start_time.substring(0, 5)}–{entry.end_time.substring(0, 5)} · <span className="font-semibold text-primary">{formatMinutesToHours(entry.total_minutes)}</span></p>
-                </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  <Badge variant="outline" className="text-xs text-orange-600 border-orange-300"><WifiOff className="h-3 w-3 mr-1" />Hors-ligne</Badge>
-                  <Button variant="ghost" size="icon" className="text-destructive" onClick={(e) => { e.stopPropagation(); handleDeletePending(entry.localId); }}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-
         {/* + Ajouter une intervention */}
-        <Button variant="outline" className="w-full" onClick={openNew}>
+        <Button variant="outline" className="w-full" onClick={frozen && !monthLocked ? () => askCorrect(openNew) : openNew}>
           <Plus className="h-4 w-4 mr-2" /> Ajouter une intervention
         </Button>
       </div>
@@ -602,7 +738,7 @@ export default function PoseurDay() {
       {isEmpty && plannedTodo.length === 0 && !openSlot && (
         <div className="text-center text-sm text-muted-foreground pt-2">
           <p>Aucune intervention aujourd'hui.</p>
-          {isOnline && (
+          {isOnline && !monthLocked && (
             <Button variant="outline" size="sm" className="mt-2" onClick={handleCopyYesterday} disabled={copyingYesterday}>
               {copyingYesterday ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Copy className="h-4 w-4 mr-2" />} Copier la journée d'hier
             </Button>
@@ -627,49 +763,43 @@ export default function PoseurDay() {
       )}
 
       {allSubmitted && !openSlot && (
-        <p className="text-center text-sm text-muted-foreground py-2">Journée envoyée ✓</p>
+        <div className="text-center py-2">
+          <p className="text-sm text-muted-foreground">Journée envoyée ✓</p>
+          {monthLocked
+            ? <p className="text-xs text-muted-foreground mt-0.5">Mois clôturé — vois avec la secrétaire pour modifier.</p>
+            : frozen
+              ? <p className="text-xs text-muted-foreground mt-0.5">Touche une intervention pour la corriger.</p>
+              : <p className="text-xs text-orange-600 mt-0.5">Mode correction — tes changements sont signalés à la secrétaire.</p>}
+        </div>
       )}
 
-      {/* Full-screen intervention editor — closes only via ✕ / Annuler / Enregistrer */}
+      {/* Full-screen intervention editor — closes only via ← / Annuler / Enregistrer */}
       {openSlot && (
         <div className="fixed inset-0 z-[60] bg-background">
           <div className="mx-auto flex h-full w-full max-w-md flex-col safe-top safe-bottom">
-            <div className="flex items-center gap-2 border-b px-2 py-2">
-              <Button variant="ghost" size="icon" onClick={cancelSlot} aria-label="Fermer"><X className="h-5 w-5" /></Button>
-              <p className="font-semibold truncate">{slotTitle}</p>
+            <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2 border-b px-2 py-2">
+              <Button variant="ghost" size="sm" className="h-10 px-2" onClick={cancelSlot} aria-label="Retour">
+                <ArrowLeft className="h-5 w-5 mr-1" /> Retour
+              </Button>
+              <p className="font-semibold text-center truncate">{slotTitle}</p>
+              <span className="w-[88px]" aria-hidden />
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
               {openSlot.kind === 'new' && (
-                <div className="space-y-2">
-                  <Label>Chantier</Label>
-                  <div className="flex gap-2">
-                    <Button type="button" variant={fMode === 'existing' ? 'default' : 'outline'} className="flex-1" onClick={() => setFMode('existing')}>Existant</Button>
-                    <Button type="button" variant={fMode === 'new' ? 'default' : 'outline'} className="flex-1" onClick={() => setFMode('new')}>Nouveau</Button>
-                  </div>
-                  {fMode === 'existing' ? (
-                    <Select value={fWorksiteId} onValueChange={setFWorksiteId}>
-                      <SelectTrigger><SelectValue placeholder="Choisir un chantier" /></SelectTrigger>
-                      <SelectContent>{worksites.map((ws) => <SelectItem key={ws.id} value={ws.id}>{ws.client_name}{ws.city ? ` - ${ws.city}` : ''}</SelectItem>)}</SelectContent>
-                    </Select>
-                  ) : (
-                    <div className="space-y-2">
-                      <Input placeholder="Nom du client *" value={fClientName} onChange={(e) => setFClientName(e.target.value)} />
-                      {similarWorksites.length > 0 && (
-                        <div className="rounded-md border border-orange-200 bg-orange-50 p-2 space-y-1">
-                          <p className="text-xs text-orange-700 flex items-center gap-1"><AlertTriangle className="h-3 w-3" />Chantiers similaires — évite les doublons :</p>
-                          {similarWorksites.map((ws) => (
-                            <button key={ws.id} type="button" onClick={() => pickSuggestion(ws)} className="w-full text-left text-sm bg-white border rounded px-2 py-1.5 hover:bg-orange-100 flex items-center justify-between gap-2">
-                              <span className="truncate">{ws.client_name}{ws.city ? ` - ${ws.city}` : ''}</span>
-                              <span className="text-xs text-orange-600 shrink-0">Utiliser</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      <Input placeholder="Type de produit (stores, volets...)" value={fProductType} onChange={(e) => setFProductType(e.target.value)} />
-                      <Input placeholder="Ville" value={fCity} onChange={(e) => setFCity(e.target.value)} />
-                    </div>
-                  )}
+                <div className="space-y-1.5">
+                  <Select value={fWorksiteId} onValueChange={setFWorksiteId}>
+                    <SelectTrigger className="h-11"><SelectValue placeholder="Choisir un chantier" /></SelectTrigger>
+                    <SelectContent className="z-[70]">
+                      {sortedWorksites.map((ws) => (
+                        <SelectItem key={ws.id} value={ws.id}>
+                          {ws.client_name === OTHER_NAME
+                            ? <span className="italic">{ws.client_name}</span>
+                            : <>{ws.client_name}{ws.city ? ` - ${ws.city}` : ''}</>}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               )}
 
@@ -688,20 +818,70 @@ export default function PoseurDay() {
               )}
 
               <div className="space-y-1.5">
-                <Label>Observation (optionnel)</Label>
-                <Input value={fObs} onChange={(e) => setFObs(e.target.value)} placeholder="Note pour la secrétaire…" />
+                <Label>Note (optionnel)</Label>
+                <Input value={fObs} onChange={(e) => setFObs(e.target.value)} placeholder="Lieu, chef d'équipe, détail…" />
               </div>
             </div>
 
-            <div className="flex gap-2 border-t p-4">
-              <Button variant="outline" className="h-12 flex-1 text-base" onClick={cancelSlot} disabled={fSaving}>Annuler</Button>
-              <Button className="h-12 flex-1 text-base" onClick={saveSlot} disabled={fSaving}>
-                {fSaving && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer
-              </Button>
+            <div className="border-t p-4 space-y-2">
+              {openSlot.kind === 'entry' && (
+                <Button variant="ghost" className="w-full text-destructive" disabled={fSaving}
+                  onClick={() => { const e = entries.find((x) => x.id === (openSlot.kind === 'entry' ? openSlot.entryId : '')); if (e) handleRetire(e); }}>
+                  <Trash2 className="h-4 w-4 mr-2" /> Retirer cette intervention
+                </Button>
+              )}
+              <div className="flex gap-2">
+                <Button variant="outline" className="h-12 flex-1 text-base" onClick={cancelSlot} disabled={fSaving}>Annuler</Button>
+                <Button className="h-12 flex-1 text-base" onClick={saveSlot} disabled={fSaving}>
+                  {fSaving && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer
+                </Button>
+              </div>
             </div>
           </div>
         </div>
       )}
+
+      {/* Repeat this day onto other days */}
+      <Dialog open={repeatOpen} onOpenChange={setRepeatOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Copy className="h-5 w-5" /> Dupliquer cette journée</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">Choisis les jours où copier cette journée (mêmes chantiers + heures).</p>
+          <div className="flex justify-center">
+            <Calendar mode="multiple" selected={copyDates} onSelect={(d) => setCopyDates(d || [])} locale={fr} weekStartsOn={1} disabled={{ before: new Date() }} />
+          </div>
+          <Button className="w-full h-11" disabled={copying || copyTargetStrs.length === 0} onClick={() => copyToDates(copyTargetStrs)}>
+            {copying ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Copy className="h-4 w-4 mr-2" />}
+            Copier{copyTargetStrs.length > 0 ? ` (${copyTargetStrs.length})` : ''}
+          </Button>
+        </DialogContent>
+      </Dialog>
+
+      {/* Month closed — too late to edit */}
+      <Dialog open={lateOpen} onOpenChange={setLateOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-orange-500" /> Mois clôturé</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">Cette journée appartient à un mois déjà clôturé. Pour toute modification, rapproche-toi de la secrétaire.</p>
+          <Button className="w-full mt-2" onClick={() => setLateOpen(false)}>Compris</Button>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirm correcting an already-sent day */}
+      <Dialog open={confirmCorrectOpen} onOpenChange={(o) => { setConfirmCorrectOpen(o); if (!o) setPendingAction(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-orange-500" /> Journée déjà envoyée</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">Cette journée a déjà été envoyée. Si tu y touches, la secrétaire en sera informée.</p>
+          <div className="flex gap-2 mt-2">
+            <Button variant="outline" className="flex-1" onClick={() => { setConfirmCorrectOpen(false); setPendingAction(null); }}>Annuler</Button>
+            <Button className="flex-1" onClick={confirmCorrect}>Continuer</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Coherence confirmation */}
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
-import { User } from '@/lib/types';
+import { User, Worksite } from '@/lib/types';
 import { ExportEntry, exportEntriesToExcel, exportEntriesToPDF } from '@/lib/export-utils';
 import { computeMissingDays } from '@/lib/work-status';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -12,10 +12,11 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   CalendarRange, Clock, Utensils, MapPin, FileSpreadsheet, FileText, Loader2,
-  Settings2, Archive, ArchiveRestore, Trash2,
+  Settings2, Archive, ArchiveRestore, Trash2, Link2,
 } from 'lucide-react';
 import { format, parseISO, isSameDay, subDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -35,6 +36,7 @@ interface WorkerDetailDialogProps {
 }
 
 const MISSING_WINDOW_DAYS = 30;
+const OTHER_NAME = 'Autre';
 
 // Per-employee fiche: opens on today, Booking-style range calendar, interventions
 // + total, planning-based missing-days detail, per-period export (no lock), and
@@ -46,6 +48,8 @@ export default function WorkerDetailDialog({ worker, onOpenChange, onChanged }: 
   });
   const [entries, setEntries] = useState<ExportEntry[]>([]);
   const [companyName, setCompanyName] = useState('');
+  const [worksites, setWorksites] = useState<Worksite[]>([]);
+  const [reassigningId, setReassigningId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
 
@@ -72,7 +76,25 @@ export default function WorkerDetailDialog({ worker, onOpenChange, onChanged }: 
     if (!worker?.company_id) return;
     supabase.from('companies').select('name').eq('id', worker.company_id).maybeSingle()
       .then(({ data }) => setCompanyName(data?.name || ''));
+    supabase.from('worksites').select('*').eq('company_id', worker.company_id).eq('is_active', true).order('client_name')
+      .then(({ data }) => setWorksites(data || []));
   }, [worker?.company_id]);
+
+  // Reassign an "Autre" entry to a real client.
+  const reassignEntry = async (entryId: string, newWorksiteId: string) => {
+    if (!worker) return;
+    try {
+      const { error } = await supabase.from('time_entries').update({ worksite_id: newWorksiteId })
+        .eq('id', entryId).eq('user_id', worker.id);
+      if (error) throw error;
+      toast.success('Chantier réaffecté');
+      setReassigningId(null);
+      fetchEntries();
+    } catch (err) {
+      console.error('Error reassigning worksite:', err);
+      toast.error('Impossible de réaffecter');
+    }
+  };
 
   // Planning-based missing days (recent window).
   const fetchMissing = useCallback(async () => {
@@ -80,7 +102,7 @@ export default function WorkerDetailDialog({ worker, onOpenChange, onChanged }: 
     const windowStart = format(subDays(new Date(), MISSING_WINDOW_DAYS), 'yyyy-MM-dd');
     const [planRes, entRes] = await Promise.all([
       supabase.from('planning').select('work_date, absence_type').eq('user_id', worker.id).gte('work_date', windowStart),
-      supabase.from('time_entries').select('work_date, status').eq('user_id', worker.id).neq('status', 'draft').gte('work_date', windowStart),
+      supabase.from('time_entries').select('work_date, status').eq('user_id', worker.id).in('status', ['submitted', 'validated']).gte('work_date', windowStart),
     ]);
     const rows = (planRes.data || []) as { work_date: string; absence_type: string | null }[];
     const absenceDays = new Set<string>(rows.filter((p) => p.absence_type).map((p) => p.work_date));
@@ -118,7 +140,8 @@ export default function WorkerDetailDialog({ worker, onOpenChange, onChanged }: 
 
   useEffect(() => { fetchEntries(); }, [fetchEntries]);
 
-  const totalMinutes = entries.reduce((s, e) => s + e.total_minutes, 0);
+  const liveEntries = entries.filter((e) => e.status !== 'cancelled');
+  const totalMinutes = liveEntries.reduce((s, e) => s + e.total_minutes, 0);
 
   const periodLabel = (() => {
     if (!range?.from) return '';
@@ -137,7 +160,7 @@ export default function WorkerDetailDialog({ worker, onOpenChange, onChanged }: 
 
   const doExport = (kind: 'excel' | 'pdf') => {
     if (!worker) return;
-    if (entries.length === 0) { toast.error('Aucune saisie sur cette période'); return; }
+    if (liveEntries.length === 0) { toast.error('Aucune saisie sur cette période'); return; }
     setExporting(true);
     try {
       const name = `${worker.first_name} ${worker.last_name}`;
@@ -145,8 +168,8 @@ export default function WorkerDetailDialog({ worker, onOpenChange, onChanged }: 
       const toStr = range?.to ? format(range.to, 'yyyy-MM-dd') : fromStr;
       const fileName = `battime-${worker.last_name}-${worker.first_name}-${fromStr}_${toStr}`.toLowerCase().replace(/\s+/g, '-');
       const opts = { fileName, title: 'Battime — Relevé salarié', periodLabel, companyName, singleWorkerName: name };
-      if (kind === 'excel') exportEntriesToExcel(entries, opts);
-      else exportEntriesToPDF(entries, opts);
+      if (kind === 'excel') exportEntriesToExcel(liveEntries, opts);
+      else exportEntriesToPDF(liveEntries, opts);
       toast.success('Export téléchargé');
     } catch (err) {
       console.error('Error exporting worker:', err);
@@ -281,10 +304,10 @@ export default function WorkerDetailDialog({ worker, onOpenChange, onChanged }: 
             </PopoverContent>
           </Popover>
           <div className="ml-auto flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => doExport('excel')} disabled={exporting || entries.length === 0}>
+            <Button variant="outline" size="sm" onClick={() => doExport('excel')} disabled={exporting || liveEntries.length === 0}>
               {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}<span className="hidden sm:inline ml-1">Excel</span>
             </Button>
-            <Button variant="outline" size="sm" onClick={() => doExport('pdf')} disabled={exporting || entries.length === 0}>
+            <Button variant="outline" size="sm" onClick={() => doExport('pdf')} disabled={exporting || liveEntries.length === 0}>
               {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}<span className="hidden sm:inline ml-1">PDF</span>
             </Button>
           </div>
@@ -306,33 +329,75 @@ export default function WorkerDetailDialog({ worker, onOpenChange, onChanged }: 
           </div>
         ) : (
           <div className="divide-y rounded-lg border">
-            {entries.map((entry) => (
-              <div key={entry.id} className="flex items-center gap-3 p-3">
-                <div className="w-24 shrink-0 text-xs text-muted-foreground capitalize">
-                  {format(parseISO(entry.work_date), 'EEE d MMM', { locale: fr })}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="font-medium text-sm truncate">{entry.worksite?.client_name || 'Chantier inconnu'}</p>
-                  {entry.worksite?.city && (
-                    <p className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="h-3 w-3" />{entry.worksite.city}</p>
+            {entries.map((entry) => {
+              const isUnknown = entry.worksite?.client_name === OTHER_NAME;
+              const isCancelled = entry.status === 'cancelled';
+              const realWorksites = worksites.filter((w) => w.client_name !== OTHER_NAME);
+              return (
+                <div key={entry.id} className={`p-3 ${isCancelled ? 'opacity-60' : isUnknown ? 'bg-orange-50' : ''}`}>
+                  <div className="flex items-center gap-3">
+                    <div className="w-24 shrink-0 text-xs text-muted-foreground capitalize">
+                      {format(parseISO(entry.work_date), 'EEE d MMM', { locale: fr })}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <p className={`font-medium text-sm truncate ${isCancelled ? 'line-through text-muted-foreground' : isUnknown ? 'text-orange-700 italic' : ''}`}>
+                          {entry.worksite?.client_name || OTHER_NAME}
+                        </p>
+                        {isCancelled && (
+                          <Badge variant="outline" className="text-[10px] py-0 shrink-0">Retirée</Badge>
+                        )}
+                        {!isCancelled && !entry.planning_id && (
+                          <Badge variant="outline" className="text-[10px] py-0 text-muted-foreground shrink-0">hors planning</Badge>
+                        )}
+                        {!isCancelled && entry.modified_at && (
+                          <Badge variant="outline" className="text-[10px] py-0 text-amber-700 border-amber-300 shrink-0">modifié après envoi</Badge>
+                        )}
+                      </div>
+                      {entry.worksite?.city && (
+                        <p className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="h-3 w-3" />{entry.worksite.city}</p>
+                      )}
+                      {entry.observation && (
+                        <p className="text-xs text-muted-foreground mt-0.5 truncate">« {entry.observation} »</p>
+                      )}
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-sm">{entry.start_time?.substring(0, 5)}–{entry.end_time?.substring(0, 5)}</p>
+                      <div className="flex items-center justify-end gap-2 text-xs text-muted-foreground">
+                        {entry.break_minutes > 0 && <span>pause {entry.break_minutes}min</span>}
+                        {entry.meal_allowance && <Utensils className="h-3 w-3" aria-label="Panier repas" />}
+                      </div>
+                    </div>
+                    <div className="w-16 shrink-0 text-right font-semibold">{formatMinutesToHours(entry.total_minutes)}</div>
+                  </div>
+                  {!isCancelled && isUnknown && realWorksites.length > 0 && (
+                    reassigningId === entry.id ? (
+                      <div className="mt-2 flex items-center gap-2">
+                        <Select onValueChange={(v) => reassignEntry(entry.id, v)}>
+                          <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Choisir le vrai chantier…" /></SelectTrigger>
+                          <SelectContent>
+                            {realWorksites.map((ws) => (
+                              <SelectItem key={ws.id} value={ws.id}>{ws.client_name}{ws.city ? ` - ${ws.city}` : ''}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Button variant="ghost" size="sm" onClick={() => setReassigningId(null)}>Annuler</Button>
+                      </div>
+                    ) : (
+                      <Button variant="outline" size="sm" className="mt-2 h-8 text-xs text-orange-700 border-orange-300" onClick={() => setReassigningId(entry.id)}>
+                        <Link2 className="h-3 w-3 mr-1" /> Réaffecter à un client
+                      </Button>
+                    )
                   )}
                 </div>
-                <div className="text-right shrink-0">
-                  <p className="text-sm">{entry.start_time?.substring(0, 5)}–{entry.end_time?.substring(0, 5)}</p>
-                  <div className="flex items-center justify-end gap-2 text-xs text-muted-foreground">
-                    {entry.break_minutes > 0 && <span>pause {entry.break_minutes}min</span>}
-                    {entry.meal_allowance && <Utensils className="h-3 w-3" aria-label="Panier repas" />}
-                  </div>
-                </div>
-                <div className="w-16 shrink-0 text-right font-semibold">{formatMinutesToHours(entry.total_minutes)}</div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
         {entries.length > 0 && (
           <p className="text-xs text-muted-foreground text-center">
-            {entries.length} intervention{entries.length > 1 ? 's' : ''} · période {periodLabel}
+            {liveEntries.length} intervention{liveEntries.length > 1 ? 's' : ''} · période {periodLabel}
           </p>
         )}
       </DialogContent>

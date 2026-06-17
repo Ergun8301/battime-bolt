@@ -73,7 +73,7 @@ export interface TimeEntry {
   meal_allowance: boolean;
   observation?: string;
   photos?: string[];
-  status: 'draft' | 'submitted' | 'validated';
+  status: 'draft' | 'submitted' | 'validated' | 'cancelled';
   created_at: string;
   submitted_at?: string;
   validated_at?: string;
