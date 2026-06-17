@@ -226,6 +226,9 @@ export default function AdminPlanning() {
   const [exportWorkerOpen, setExportWorkerOpen] = useState(false);
   const [exportFrom, setExportFrom] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [exportTo, setExportTo] = useState(endOfWeek(new Date(), { weekStartsOn: 1 }));
+  const [attributeTarget, setAttributeTarget] = useState<{ userId: string; dateStr: string; worksiteId: string | null; label: string } | null>(null);
+  const [attrNewName, setAttrNewName] = useState('');
+  const [attrBusy, setAttrBusy] = useState(false);
   const [exporting, setExporting] = useState(false);
 
   // invitation row actions
@@ -406,7 +409,7 @@ export default function AdminPlanning() {
     const plannedWs = new Set(
       planning.filter((p) => p.user_id === workerId && p.work_date === dateStr && !p.absence_type).map((p) => p.worksite_id),
     );
-    const agg = new Map<string, { name: string; minutes: number }>();
+    const agg = new Map<string, { worksiteId: string | null; name: string; minutes: number }>();
     for (const e of realEntries) {
       if (e.user_id !== workerId || e.work_date !== dateStr) continue;
       if (e.worksite_id && plannedWs.has(e.worksite_id)) continue; // already shown on its bubble
@@ -414,9 +417,45 @@ export default function AdminPlanning() {
       const name = (e.worksite_id && worksiteNameById.get(e.worksite_id)) || 'Autre';
       const cur = agg.get(key);
       if (cur) cur.minutes += e.total_minutes;
-      else agg.set(key, { name, minutes: e.total_minutes });
+      else agg.set(key, { worksiteId: e.worksite_id, name, minutes: e.total_minutes });
     }
     return Array.from(agg.values());
+  };
+
+  // Attribute a real client to a worker-added intervention (from the grid).
+  const attributeClient = async (newWorksiteId: string) => {
+    if (!user?.company_id || !attributeTarget) return;
+    setAttrBusy(true);
+    try {
+      const base = supabase.from('time_entries').update({ worksite_id: newWorksiteId })
+        .eq('company_id', user.company_id).eq('user_id', attributeTarget.userId).eq('work_date', attributeTarget.dateStr);
+      const { error } = await (attributeTarget.worksiteId ? base.eq('worksite_id', attributeTarget.worksiteId) : base.is('worksite_id', null));
+      if (error) throw error;
+      toast.success('Client attribué');
+      setAttributeTarget(null); setAttrNewName('');
+      fetchPlanning();
+    } catch (err) {
+      console.error('Error attributing client:', err);
+      toast.error("Impossible d'attribuer le client");
+    } finally {
+      setAttrBusy(false);
+    }
+  };
+  const createAndAttributeClient = async () => {
+    if (!user?.company_id || !attrNewName.trim()) return;
+    setAttrBusy(true);
+    try {
+      const { data: ws, error } = await supabase.from('worksites')
+        .insert({ company_id: user.company_id, client_name: attrNewName.trim(), city: '', is_active: true })
+        .select().single();
+      if (error) throw error;
+      await fetchData();
+      await attributeClient(ws.id);
+    } catch (err) {
+      console.error('Error creating client:', err);
+      toast.error('Impossible de créer le client');
+      setAttrBusy(false);
+    }
   };
 
   const cellChantiers = useCallback((workerId: string, dateStr: string) =>
@@ -1064,16 +1103,17 @@ export default function AdminPlanning() {
                                       <DraggableBubble key={p.id} p={p} palette={paletteFor(p).chip} real={realForPlanning(p)} onEdit={openEdit} />
                                     ))}
                                     {extraDeclaredForCell(worker.id, dateStr).map((x, i) => (
-                                      <div
+                                      <button
                                         key={`xd${i}`}
-                                        onClick={(e) => e.stopPropagation()}
-                                        title="Déclaré par le salarié (hors planning)"
-                                        className="rounded border border-dashed border-green-400 bg-green-50 px-2 py-1 text-[11px] leading-tight flex items-center gap-1"
+                                        type="button"
+                                        onClick={(e) => { e.stopPropagation(); setAttributeTarget({ userId: worker.id, dateStr, worksiteId: x.worksiteId, label: x.name }); }}
+                                        title="Ajouté par le salarié — cliquer pour attribuer un client"
+                                        className="w-full rounded border border-dashed border-green-400 bg-green-50 px-2 py-1 text-[11px] leading-tight flex items-center gap-1 hover:border-green-500 hover:bg-green-100 transition-colors"
                                       >
                                         <UserIcon className="h-3 w-3 text-green-700 shrink-0" />
-                                        <span className="font-medium truncate flex-1">{x.name}</span>
+                                        <span className="font-medium truncate flex-1 text-left">{x.name}</span>
                                         <span className="text-green-700 shrink-0 flex items-center gap-0.5"><Check className="h-3 w-3" />{formatMinutes(x.minutes)}</span>
-                                      </div>
+                                      </button>
                                     ))}
                                     <div className="flex flex-1 items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                       <Plus className="h-4 w-4 text-muted-foreground/50" />
@@ -1176,24 +1216,49 @@ export default function AdminPlanning() {
         </DialogContent>
       </Dialog>
 
+      {/* Attribute a client to a worker-added intervention (clicked from the grid) */}
+      <Dialog open={!!attributeTarget} onOpenChange={(o) => { if (!o) { setAttributeTarget(null); setAttrNewName(''); } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Attribuer un client</DialogTitle></DialogHeader>
+          <div className="space-y-3 pt-1">
+            <p className="text-sm text-muted-foreground">Intervention <strong>« {attributeTarget?.label} »</strong> ajoutée par le salarié. Choisis le bon client, ou crée-le.</p>
+            <Select onValueChange={(v) => attributeClient(v)} disabled={attrBusy}>
+              <SelectTrigger><SelectValue placeholder="Choisir un client existant…" /></SelectTrigger>
+              <SelectContent>
+                {worksites.filter((w) => w.client_name !== 'Autre' && w.id !== attributeTarget?.worksiteId).map((ws) => (
+                  <SelectItem key={ws.id} value={ws.id}>{ws.client_name}{ws.city ? ` — ${ws.city}` : ''}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="flex items-center gap-2">
+              <Input value={attrNewName} onChange={(e) => setAttrNewName(e.target.value)} placeholder="…ou nouveau client" disabled={attrBusy} />
+              <Button onClick={createAndAttributeClient} disabled={attrBusy || !attrNewName.trim()}>
+                {attrBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Créer'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Team export */}
       <Dialog open={exportOpen} onOpenChange={setExportOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>Exporter les heures de l'équipe</DialogTitle></DialogHeader>
           <div className="space-y-4 pt-2">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label>Du</Label>
-                <Input type="date" value={format(exportFrom, 'yyyy-MM-dd')}
-                  onChange={(e) => { if (e.target.value) setExportFrom(parseISO(`${e.target.value}T00:00:00`)); }} />
-              </div>
-              <div className="space-y-1">
-                <Label>Au</Label>
-                <Input type="date" value={format(exportTo, 'yyyy-MM-dd')}
-                  onChange={(e) => { if (e.target.value) setExportTo(parseISO(`${e.target.value}T00:00:00`)); }} />
-              </div>
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => { const t = new Date(); setExportFrom(t); setExportTo(t); }}>Aujourd'hui</Button>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="flex-1"><CalendarRange className="h-4 w-4 mr-2" /> Choisir un créneau</Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar mode="range" numberOfMonths={1} locale={fr} defaultMonth={exportFrom}
+                    selected={{ from: exportFrom, to: exportTo }}
+                    onSelect={(r) => { if (r?.from) setExportFrom(r.from); setExportTo(r?.to ?? r?.from ?? exportTo); }} />
+                </PopoverContent>
+              </Popover>
             </div>
-            <p className="text-xs text-muted-foreground">Un jour, une semaine ou un mois — au choix.</p>
+            <p className="text-center text-sm font-medium capitalize">{format(exportFrom, 'd MMM', { locale: fr })} → {format(exportTo, 'd MMM yyyy', { locale: fr })}</p>
             <div className="flex gap-2">
               <Button className="flex-1" onClick={() => runExport('excel')} disabled={exporting}>
                 {exporting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <FileSpreadsheet className="h-4 w-4 mr-2" />} Excel
