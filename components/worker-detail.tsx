@@ -62,6 +62,9 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
   const [mFirst, setMFirst] = useState('');
   const [mLast, setMLast] = useState('');
   const [mPhone, setMPhone] = useState('');
+  const [mNir, setMNir] = useState('');
+  const [mHireDate, setMHireDate] = useState('');
+  const [mContract, setMContract] = useState('');
   const [mSaving, setMSaving] = useState(false);
   const [mBusy, setMBusy] = useState(false);
 
@@ -73,6 +76,9 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
     setMFirst(worker.first_name || '');
     setMLast(worker.last_name || '');
     setMPhone(worker.phone || '');
+    setMNir(worker.social_security_number || '');
+    setMHireDate(worker.hire_date || '');
+    setMContract(worker.contract_type || '');
   }, [worker?.id]);
 
   useEffect(() => {
@@ -210,6 +216,9 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
     try {
       const { error } = await supabase.from('users').update({
         first_name: mFirst.trim(), last_name: mLast.trim(), phone: mPhone.trim() || null,
+        social_security_number: mNir.trim() || null,
+        hire_date: mHireDate || null,
+        contract_type: mContract.trim() || null,
       }).eq('id', worker.id).eq('company_id', worker.company_id);
       if (error) throw error;
       toast.success('Salarié modifié');
@@ -288,6 +297,15 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
               <div className="space-y-1"><Label className="text-xs">Téléphone</Label><Input value={mPhone} onChange={(e) => setMPhone(e.target.value)} /></div>
             </div>
             <div className="space-y-1"><Label className="text-xs">Email (identifiant de connexion)</Label><Input value={worker.email || ''} readOnly className="bg-muted/50" /></div>
+            {/* Optional payroll info — clearly facultatif */}
+            <div className="rounded-md border bg-muted/30 p-2 space-y-2">
+              <p className="text-xs font-medium text-muted-foreground">Infos paie — <span className="italic">facultatif</span> (remplis seulement ce que tu as)</p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div className="space-y-1"><Label className="text-xs">N° de sécurité sociale</Label><Input value={mNir} onChange={(e) => setMNir(e.target.value)} placeholder="1 23 45…" /></div>
+                <div className="space-y-1"><Label className="text-xs">Date d'embauche</Label><Input type="date" value={mHireDate} onChange={(e) => setMHireDate(e.target.value)} /></div>
+                <div className="space-y-1"><Label className="text-xs">Type de contrat</Label><Input value={mContract} onChange={(e) => setMContract(e.target.value)} placeholder="CDI, CDD, Intérim…" /></div>
+              </div>
+            </div>
             <div className="flex flex-wrap gap-2">
               <Button size="sm" onClick={saveWorker} disabled={mSaving}>
                 {mSaving && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer
