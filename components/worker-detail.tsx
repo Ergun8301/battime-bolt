@@ -16,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   CalendarRange, Clock, Utensils, MapPin, FileSpreadsheet, FileText, Loader2,
-  Settings2, Archive, ArchiveRestore, Trash2, Link2,
+  Settings2, Archive, ArchiveRestore, Trash2, Link2, User as UserIcon,
 } from 'lucide-react';
 import { format, parseISO, isSameDay, subDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -51,6 +51,8 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
   const [companyName, setCompanyName] = useState('');
   const [worksites, setWorksites] = useState<Worksite[]>([]);
   const [reassigningId, setReassigningId] = useState<string | null>(null);
+  const [creatingFor, setCreatingFor] = useState<string | null>(null);
+  const [newClientName, setNewClientName] = useState('');
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
 
@@ -88,12 +90,31 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
       const { error } = await supabase.from('time_entries').update({ worksite_id: newWorksiteId })
         .eq('id', entryId).eq('user_id', worker.id);
       if (error) throw error;
-      toast.success('Chantier réaffecté');
+      toast.success('Client attribué');
       setReassigningId(null);
       fetchEntries();
     } catch (err) {
       console.error('Error reassigning worksite:', err);
-      toast.error('Impossible de réaffecter');
+      toast.error("Impossible d'attribuer le client");
+    }
+  };
+
+  // Create a client on the fly (the worker couldn't find it in the list → the
+  // secretary creates it here) and attribute it to the intervention.
+  const createAndAttribute = async (entryId: string) => {
+    if (!worker?.company_id || !newClientName.trim()) return;
+    try {
+      const { data: ws, error } = await supabase.from('worksites')
+        .insert({ company_id: worker.company_id, client_name: newClientName.trim(), city: '', is_active: true })
+        .select().single();
+      if (error) throw error;
+      setWorksites((prev) => [...prev, ws]);
+      setNewClientName('');
+      setCreatingFor(null);
+      await reassignEntry(entryId, ws.id);
+    } catch (err) {
+      console.error('Error creating client:', err);
+      toast.error('Impossible de créer le client');
     }
   };
 
@@ -336,60 +357,61 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
             {entries.map((entry) => {
               const isUnknown = entry.worksite?.client_name === OTHER_NAME;
               const isCancelled = entry.status === 'cancelled';
+              const isWorkerAdded = !isCancelled && !entry.planning_id;
               const realWorksites = worksites.filter((w) => w.client_name !== OTHER_NAME);
               return (
-                <div key={entry.id} className={`p-3 ${isCancelled ? 'opacity-60' : isUnknown ? 'bg-orange-50' : ''}`}>
-                  <div className="flex items-center gap-3">
-                    <div className="w-24 shrink-0 text-xs text-muted-foreground capitalize">
-                      {format(parseISO(entry.work_date), 'EEE d MMM', { locale: fr })}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <p className={`font-medium text-sm truncate ${isCancelled ? 'line-through text-muted-foreground' : isUnknown ? 'text-orange-700 italic' : ''}`}>
+                <div key={entry.id} className={`p-4 ${isCancelled ? 'opacity-60' : isUnknown ? 'bg-amber-50/60' : ''}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 space-y-1">
+                      <p className="text-xs text-muted-foreground capitalize">{format(parseISO(entry.work_date), 'EEEE d MMM', { locale: fr })}</p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className={`font-semibold ${isCancelled ? 'line-through text-muted-foreground' : isUnknown ? 'text-amber-700' : ''}`}>
                           {entry.worksite?.client_name || OTHER_NAME}
                         </p>
-                        {isCancelled && (
-                          <Badge variant="outline" className="text-[10px] py-0 shrink-0">Retirée</Badge>
-                        )}
-                        {!isCancelled && !entry.planning_id && (
-                          <Badge variant="outline" className="text-[10px] py-0 text-muted-foreground shrink-0">hors planning</Badge>
+                        {isCancelled && <Badge variant="outline" className="text-[10px] py-0">Retirée</Badge>}
+                        {isWorkerAdded && (
+                          <Badge variant="outline" className="text-[10px] py-0 gap-1 text-muted-foreground">
+                            <UserIcon className="h-2.5 w-2.5" /> ajouté par le salarié
+                          </Badge>
                         )}
                         {!isCancelled && entry.modified_at && (
-                          <Badge variant="outline" className="text-[10px] py-0 text-amber-700 border-amber-300 shrink-0">modifié après envoi</Badge>
+                          <Badge variant="outline" className="text-[10px] py-0 text-amber-700 border-amber-300">modifié après envoi</Badge>
                         )}
                       </div>
-                      {entry.worksite?.city && (
-                        <p className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="h-3 w-3" />{entry.worksite.city}</p>
-                      )}
-                      {entry.observation && (
-                        <p className="text-xs text-muted-foreground mt-0.5 truncate">« {entry.observation} »</p>
-                      )}
-                    </div>
-                    <div className="text-right shrink-0">
-                      <p className="text-sm">{entry.start_time?.substring(0, 5)}–{entry.end_time?.substring(0, 5)}</p>
-                      <div className="flex items-center justify-end gap-2 text-xs text-muted-foreground">
-                        {entry.break_minutes > 0 && <span>pause {entry.break_minutes}min</span>}
-                        {entry.meal_allowance && <Utensils className="h-3 w-3" aria-label="Panier repas" />}
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+                        <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5" />{entry.start_time?.substring(0, 5)}–{entry.end_time?.substring(0, 5)}</span>
+                        {entry.worksite?.city && <span className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{entry.worksite.city}</span>}
+                        {entry.meal_allowance && <span className="flex items-center gap-1"><Utensils className="h-3.5 w-3.5" />panier</span>}
                       </div>
+                      {entry.observation && <p className="text-sm text-muted-foreground">« {entry.observation} »</p>}
                     </div>
-                    <div className="w-16 shrink-0 text-right font-semibold">{formatMinutesToHours(entry.total_minutes)}</div>
+                    <p className="shrink-0 text-lg font-bold">{formatMinutesToHours(entry.total_minutes)}</p>
                   </div>
-                  {!isCancelled && isUnknown && realWorksites.length > 0 && (
+
+                  {!isCancelled && isUnknown && (
                     reassigningId === entry.id ? (
-                      <div className="mt-2 flex items-center gap-2">
-                        <Select onValueChange={(v) => reassignEntry(entry.id, v)}>
-                          <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Choisir le vrai chantier…" /></SelectTrigger>
+                      <div className="mt-3 space-y-2 rounded-md border bg-background p-2">
+                        <p className="text-xs font-medium">Attribuer un client à cette intervention</p>
+                        <Select onValueChange={(v) => { if (v === '__new__') setCreatingFor(entry.id); else reassignEntry(entry.id, v); }}>
+                          <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Choisir un client existant…" /></SelectTrigger>
                           <SelectContent>
                             {realWorksites.map((ws) => (
                               <SelectItem key={ws.id} value={ws.id}>{ws.client_name}{ws.city ? ` - ${ws.city}` : ''}</SelectItem>
                             ))}
+                            <SelectItem value="__new__">+ Créer un nouveau client</SelectItem>
                           </SelectContent>
                         </Select>
-                        <Button variant="ghost" size="sm" onClick={() => setReassigningId(null)}>Annuler</Button>
+                        {creatingFor === entry.id && (
+                          <div className="flex items-center gap-2">
+                            <Input value={newClientName} onChange={(e) => setNewClientName(e.target.value)} placeholder="Nom du nouveau client" className="h-9" />
+                            <Button size="sm" onClick={() => createAndAttribute(entry.id)} disabled={!newClientName.trim()}>Créer</Button>
+                          </div>
+                        )}
+                        <Button variant="ghost" size="sm" onClick={() => { setReassigningId(null); setCreatingFor(null); setNewClientName(''); }}>Annuler</Button>
                       </div>
                     ) : (
-                      <Button variant="outline" size="sm" className="mt-2 h-8 text-xs text-orange-700 border-orange-300" onClick={() => setReassigningId(entry.id)}>
-                        <Link2 className="h-3 w-3 mr-1" /> Réaffecter à un client
+                      <Button variant="outline" size="sm" className="mt-2 h-8 text-xs" onClick={() => setReassigningId(entry.id)}>
+                        <Link2 className="h-3 w-3 mr-1" /> Attribuer un client
                       </Button>
                     )
                   )}
