@@ -30,7 +30,13 @@ const STYLES = `@import url('https://fonts.googleapis.com/css2?family=Archivo:wg
  .lp h2{font-size:30px !important}
  .lp-footer-row{flex-direction:column !important;text-align:center;gap:18px !important}
 }
-@media(max-width:560px){ .lp-hide-sm{display:none !important} }`;
+@media(max-width:560px){
+ .lp-hide-sm{display:none !important}
+ .lp h1{font-size:34px !important;line-height:1.05 !important}
+ .lp h2{font-size:26px !important}
+ .lp-tarif-sec{padding:58px 20px !important}
+ .lp-tarif-card{padding:30px 22px !important}
+}`;
 
 const BODY = `<!-- ============ HEADER ============ -->
   <header style="position:sticky;top:0;z-index:50;background:rgba(242,237,227,.85);backdrop-filter:blur(10px);border-bottom:1px solid rgba(21,18,15,.12)">
@@ -88,12 +94,12 @@ const BODY = `<!-- ============ HEADER ============ -->
 
       <!-- RIGHT : phone over site photo -->
       <div data-reveal class="lp-hero-visual" style="position:relative;height:560px">
-        <!-- hazard cap on top of the photo -->
-        <div style="position:absolute;top:30px;right:0;width:86%;height:14px;background:repeating-linear-gradient(45deg,#15120F 0 11px,#FFC21A 11px 22px);border-radius:4px 4px 0 0;z-index:2"></div>
+        <!-- hazard cap : habille uniquement le bord superieur de la PHOTO, passe DERRIERE le telephone (z-index sous le telephone) -->
+        <div style="position:absolute;top:30px;right:0;width:86%;height:14px;background:repeating-linear-gradient(45deg,#15120F 0 11px,#FFC21A 11px 22px);border-radius:4px 4px 0 0;z-index:1"></div>
         <!-- site photo panel -->
         <img src="https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=1200&q=80" alt="Chantier en cours" style="position:absolute;top:44px;right:0;width:86%;height:478px;border-radius:14px;object-fit:cover" />
         <!-- the phone -->
-        <div style="position:absolute;bottom:0;left:0;width:268px;height:540px;background:#15120F;border-radius:38px;padding:11px;box-shadow:0 28px 60px -18px rgba(21,18,15,.5),0 0 0 2px rgba(21,18,15,.1);animation:float 6s ease-in-out infinite">
+        <div style="position:absolute;bottom:0;left:0;width:268px;height:540px;background:#15120F;border-radius:38px;padding:11px;box-shadow:0 28px 60px -18px rgba(21,18,15,.5),0 0 0 2px rgba(21,18,15,.1);animation:float 6s ease-in-out infinite;z-index:3">
           <div style="width:100%;height:100%;background:#F2EDE3;border-radius:28px;overflow:hidden;position:relative;display:flex;flex-direction:column">
             <!-- notch -->
             <div style="position:absolute;top:9px;left:50%;transform:translateX(-50%);width:88px;height:20px;background:#15120F;border-radius:11px;z-index:5"></div>
@@ -320,28 +326,40 @@ const BODY = `<!-- ============ HEADER ============ -->
 
   <!-- ============ TARIF ============ -->
   <section id="tarif" style="background:#E8E1D3">
-    <div style="max-width:1140px;margin:0 auto;padding:88px 28px">
+    <div class="lp-tarif-sec" style="max-width:1140px;margin:0 auto;padding:88px 28px">
       <div data-reveal style="text-align:center;max-width:600px;margin:0 auto 50px">
         <div style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#9a8a3a;margin-bottom:16px">Tarif</div>
         <h2 style="font-size:42px;line-height:1.04;font-weight:900;letter-spacing:-.02em">Un prix simple, comme le produit.</h2>
       </div>
-      <div data-reveal style="max-width:520px;margin:0 auto;background:#15120F;color:#F2EDE3;border-radius:22px;padding:40px 38px;position:relative;overflow:hidden;box-shadow:0 28px 60px -24px rgba(21,18,15,.5)">
+      <div data-reveal class="lp-tarif-card" style="max-width:520px;margin:0 auto;background:#15120F;color:#F2EDE3;border-radius:22px;padding:38px 36px;position:relative;overflow:hidden;box-shadow:0 28px 60px -24px rgba(21,18,15,.5)">
         <div style="position:absolute;top:0;left:0;width:100%;height:12px;background:repeating-linear-gradient(45deg,#15120F 0 9px,#FFC21A 9px 18px)"></div>
-        <div style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#FFC21A;margin:10px 0 18px">Abonnement Battime</div>
-        <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px">
-          <span style="font-size:64px;font-weight:900;letter-spacing:-.03em;font-family:'JetBrains Mono',monospace">49€</span>
-          <span style="font-size:17px;color:#c9c3b8;font-weight:600">/ mois</span>
+
+        <!-- HAUT : l'essai gratuit, mis en avant et dissocie du prix -->
+        <div style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#FFC21A;margin:12px 0 16px">Essai gratuit — 30 jours</div>
+        <a href="/connexion" style="display:block;text-align:center;background:#FFC21A;color:#15120F;font-weight:900;font-size:19px;padding:19px;border-radius:13px;text-decoration:none;box-shadow:0 4px 0 #C99300">Commencer 30 jours gratuits</a>
+        <p style="text-align:center;font-size:13.5px;color:#9a948a;margin-top:13px;font-weight:500">Sans carte bancaire · installé en 5 min · sans engagement</p>
+
+        <!-- MILIEU : ce qui est inclus -->
+        <div style="border-top:1px solid rgba(242,237,227,.14);margin-top:28px;padding-top:26px">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#9a948a;margin-bottom:18px">Tout est inclus</div>
+          <div style="display:flex;flex-direction:column;gap:14px">
+            <div style="display:flex;gap:11px;align-items:center;font-size:15px;font-weight:500;color:#e3ddd2"><span style="color:#FFC21A;font-weight:900;flex:none">✓</span> Pointage illimité, chantiers illimités</div>
+            <div style="display:flex;gap:11px;align-items:center;font-size:15px;font-weight:500;color:#e3ddd2"><span style="color:#FFC21A;font-weight:900;flex:none">✓</span> Suivi des heures en temps réel</div>
+            <div style="display:flex;gap:11px;align-items:center;font-size:15px;font-weight:500;color:#e3ddd2"><span style="color:#FFC21A;font-weight:900;flex:none">✓</span> Export prêt pour la paie</div>
+            <div style="display:flex;gap:11px;align-items:center;font-size:15px;font-weight:500;color:#e3ddd2"><span style="color:#FFC21A;font-weight:900;flex:none">✓</span> Support en français, par des gens qui répondent</div>
+            <div style="display:flex;gap:11px;align-items:center;font-size:15px;font-weight:500;color:#e3ddd2"><span style="color:#FFC21A;font-weight:900;flex:none">✓</span> Mises à jour incluses</div>
+          </div>
         </div>
-        <p style="font-size:14.5px;color:#9a948a;font-weight:500;margin-bottom:26px">Jusqu'à 10 salariés · sans engagement, vous arrêtez quand vous voulez.</p>
-        <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:30px">
-          <div style="display:flex;gap:11px;align-items:center;font-size:15px;font-weight:500;color:#e3ddd2"><span style="color:#FFC21A;font-weight:900">✓</span> Jusqu'à 10 salariés inclus</div>
-          <div style="display:flex;gap:11px;align-items:center;font-size:15px;font-weight:500;color:#e3ddd2"><span style="color:#FFC21A;font-weight:900">✓</span> Pointage illimité, chantiers illimités</div>
-          <div style="display:flex;gap:11px;align-items:center;font-size:15px;font-weight:500;color:#e3ddd2"><span style="color:#FFC21A;font-weight:900">✓</span> Suivi temps réel + export paie</div>
-          <div style="display:flex;gap:11px;align-items:center;font-size:15px;font-weight:500;color:#e3ddd2"><span style="color:#FFC21A;font-weight:900">✓</span> Support en français, par des gens qui répondent</div>
-          <div style="display:flex;gap:11px;align-items:center;font-size:15px;font-weight:500;color:#e3ddd2"><span style="color:#FFC21A;font-weight:900">✓</span> Mises à jour incluses</div>
+
+        <!-- BAS : le prix, discret -->
+        <div style="border-top:1px solid rgba(242,237,227,.14);margin-top:26px;padding-top:22px;text-align:center">
+          <div style="display:flex;align-items:baseline;justify-content:center;gap:7px;flex-wrap:wrap">
+            <span style="font-size:14px;color:#9a948a;font-weight:500">Ensuite</span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:27px;font-weight:700;color:#e3ddd2;letter-spacing:-.02em">49€</span>
+            <span style="font-size:14px;color:#9a948a;font-weight:500">/ mois · jusqu'à 10 salariés</span>
+          </div>
+          <p style="font-size:13px;color:#6E6A63;margin-top:7px;font-weight:500">Sans engagement, vous arrêtez quand vous voulez.</p>
         </div>
-        <a href="/connexion" style="display:block;text-align:center;background:#FFC21A;color:#15120F;font-weight:800;font-size:17px;padding:17px;border-radius:12px;text-decoration:none;box-shadow:0 4px 0 #C99300">Commencer 30 jours gratuits</a>
-        <p style="text-align:center;font-size:13px;color:#9a948a;margin-top:14px;font-weight:500">Sans carte bancaire · Installé en 5 minutes</p>
       </div>
     </div>
   </section>
