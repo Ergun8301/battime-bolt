@@ -94,8 +94,8 @@ const BODY = `<!-- ============ HEADER ============ -->
 
       <!-- RIGHT : phone over site photo -->
       <div data-reveal class="lp-hero-visual" style="position:relative;height:560px">
-        <!-- hazard cap : habille uniquement le bord superieur de la PHOTO, passe DERRIERE le telephone (z-index sous le telephone) ; right:16px pour s'arreter AVANT l'arrondi du coin de la photo -->
-        <div style="position:absolute;top:30px;right:16px;width:86%;height:14px;background:repeating-linear-gradient(45deg,#15120F 0 11px,#FFC21A 11px 22px);border-radius:4px 4px 0 0;z-index:1"></div>
+        <!-- hazard band : integre au bord superieur de la PHOTO, A FLEUR du bord droit (right:0) avec le MEME arrondi que la photo (14px) -> le coin du hachure epouse exactement la courbe de la photo. Hauteur augmentee pour couvrir tout le quart-de-rond du coin. z-index:1 = au-dessus de la photo mais SOUS le telephone (z-index:3). -->
+        <div style="position:absolute;top:44px;right:0;width:86%;height:22px;background:repeating-linear-gradient(45deg,#15120F 0 11px,#FFC21A 11px 22px);border-radius:14px 14px 0 0;z-index:1"></div>
         <!-- site photo panel -->
         <img src="https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=1200&q=80" alt="Chantier en cours" style="position:absolute;top:44px;right:0;width:86%;height:478px;border-radius:14px;object-fit:cover" />
         <!-- the phone -->
