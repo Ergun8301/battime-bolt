@@ -63,7 +63,7 @@ const BODY = `<!-- ============ HEADER ============ -->
 
   <!-- ============ HERO ============ -->
   <section style="position:relative;background:#F2EDE3">
-    <div class="lp-hero-grid" style="max-width:1200px;margin:0 auto;padding:70px 28px 90px;display:grid;grid-template-columns:1.05fr .95fr;gap:48px;align-items:center">
+    <div class="lp-hero-grid" style="max-width:1200px;margin:0 auto;min-height:calc(100vh - 72px);padding:40px 28px;display:grid;grid-template-columns:1.05fr .95fr;gap:48px;align-items:center;align-content:center">
 
       <!-- LEFT -->
       <div data-reveal style="">
@@ -326,7 +326,7 @@ const BODY = `<!-- ============ HEADER ============ -->
   </section>
 
   <!-- ============ TARIF ============ -->
-  <section id="tarif" class="lp-tarif-sec" style="position:relative;min-height:100vh;display:flex;flex-direction:column;justify-content:center;background:#15120F;color:#F2EDE3;-webkit-font-smoothing:antialiased;padding:64px 28px 40px">
+  <section id="tarif" class="lp-tarif-sec" style="position:relative;min-height:calc(100vh - 72px);display:flex;flex-direction:column;justify-content:center;background:#15120F;color:#F2EDE3;-webkit-font-smoothing:antialiased;padding:48px 28px 44px">
     <!-- ruban haut -->
     <div style="position:absolute;top:0;left:0;width:100%;height:12px;background:repeating-linear-gradient(45deg,#15120F 0 9px,#FFC21A 9px 18px)"></div>
     <div style="max-width:1080px;margin:0 auto;width:100%">
