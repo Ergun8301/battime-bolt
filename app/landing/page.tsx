@@ -327,62 +327,77 @@ const BODY = `<!-- ============ HEADER ============ -->
 
   <!-- ============ TARIF ============ -->
   <section id="tarif" style="background:#E8E1D3">
-    <div class="lp-tarif-sec" style="max-width:1080px;margin:0 auto;padding:44px 28px">
-      <div data-reveal style="text-align:center;max-width:640px;margin:0 auto 30px">
+    <div class="lp-tarif-sec" style="max-width:1040px;margin:0 auto;padding:48px 28px">
+      <div data-reveal style="text-align:center;max-width:660px;margin:0 auto 18px">
         <div style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#9a8a3a;margin-bottom:12px">Tarif</div>
-        <h2 style="font-size:36px;line-height:1.05;font-weight:900;letter-spacing:-.02em">Un prix simple, selon la taille de l'équipe.</h2>
+        <h2 style="font-size:38px;line-height:1.05;font-weight:900;letter-spacing:-.02em">Un prix simple, selon la taille de l'équipe.</h2>
       </div>
 
-      <!-- 3 paliers (noms / tailles / prix a confirmer — placeholders) -->
-      <div class="lp-tarif-grid" data-reveal style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;align-items:stretch;max-width:920px;margin:0 auto">
-        <!-- Palier 1 -->
-        <div style="background:#fff;border:1px solid rgba(21,18,15,.12);border-radius:18px;padding:24px 22px;display:flex;flex-direction:column">
-          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#9a8a3a;margin-bottom:8px">Artisan</div>
-          <div style="font-size:14.5px;font-weight:700;color:#46413a;margin-bottom:14px">Jusqu'à 5 salariés</div>
-          <div style="display:flex;align-items:baseline;gap:6px;margin-top:auto">
-            <span style="font-size:38px;font-weight:900;letter-spacing:-.03em;font-family:'JetBrains Mono',monospace">29€</span>
-            <span style="font-size:14px;color:#6E6A63;font-weight:600">/ mois</span>
+      <!-- bandeau essai gratuit, bien visible -->
+      <div data-reveal style="text-align:center;margin:0 auto 30px">
+        <span style="display:inline-flex;align-items:center;gap:9px;background:#15120F;color:#F2EDE3;font-size:13.5px;font-weight:700;padding:9px 16px;border-radius:30px">
+          <span style="width:8px;height:8px;background:#FFC21A;border-radius:50%;flex:none;animation:blink 1.4s infinite"></span>
+          30 jours gratuits sur toutes les offres — sans carte bancaire
+        </span>
+      </div>
+
+      <!-- 3 paliers differencies (noms / tailles / prix a confirmer — placeholders) -->
+      <div class="lp-tarif-grid" data-reveal style="display:grid;grid-template-columns:repeat(3,1fr);gap:18px;align-items:stretch;max-width:980px;margin:0 auto">
+
+        <!-- Palier 1 : Artisan (clair) -->
+        <div style="background:#fff;border:1px solid rgba(21,18,15,.14);border-radius:20px;padding:30px 26px;display:flex;flex-direction:column;box-shadow:0 12px 32px -20px rgba(21,18,15,.4)">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;color:#9a8a3a;margin-bottom:6px">Artisan</div>
+          <div style="font-size:14px;font-weight:600;color:#6E6A63;margin-bottom:20px">Pour démarrer</div>
+          <div style="display:flex;align-items:baseline;gap:7px;margin-bottom:3px">
+            <span style="font-size:46px;font-weight:900;letter-spacing:-.03em;font-family:'JetBrains Mono',monospace;color:#15120F">29€</span>
+            <span style="font-size:15px;color:#6E6A63;font-weight:600">/ mois</span>
           </div>
+          <div style="font-size:13.5px;color:#6E6A63;font-weight:700;margin-bottom:26px">Jusqu'à 5 salariés</div>
+          <a href="/connexion" style="margin-top:auto;display:block;text-align:center;background:#15120F;color:#F2EDE3;font-weight:800;font-size:15.5px;padding:14px;border-radius:11px;text-decoration:none">Commencer l'essai</a>
         </div>
-        <!-- Palier 2 : le plus choisi -->
-        <div style="background:#15120F;color:#F2EDE3;border-radius:18px;padding:24px 22px;display:flex;flex-direction:column;position:relative;overflow:hidden;box-shadow:0 20px 44px -22px rgba(21,18,15,.6)">
-          <div style="position:absolute;top:0;left:0;width:100%;height:9px;background:repeating-linear-gradient(45deg,#15120F 0 7px,#FFC21A 7px 14px)"></div>
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:6px 0 8px">
-            <span style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#FFC21A">Chantier</span>
-            <span style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;background:#FFC21A;color:#15120F;padding:3px 8px;border-radius:20px;white-space:nowrap">Le plus choisi</span>
+
+        <!-- Palier 2 : Chantier (noir, le plus choisi) -->
+        <div style="background:#15120F;color:#F2EDE3;border-radius:20px;padding:30px 26px;display:flex;flex-direction:column;position:relative;overflow:hidden;box-shadow:0 28px 58px -24px rgba(21,18,15,.75)">
+          <div style="position:absolute;top:0;left:0;width:100%;height:11px;background:repeating-linear-gradient(45deg,#15120F 0 8px,#FFC21A 8px 16px)"></div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:8px 0 6px">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;color:#FFC21A">Chantier</span>
+            <span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;background:#FFC21A;color:#15120F;padding:4px 9px;border-radius:20px;white-space:nowrap">Le plus choisi</span>
           </div>
-          <div style="font-size:14.5px;font-weight:700;color:#c9c3b8;margin-bottom:14px">Jusqu'à 10 salariés</div>
-          <div style="display:flex;align-items:baseline;gap:6px;margin-top:auto">
-            <span style="font-size:42px;font-weight:900;letter-spacing:-.03em;font-family:'JetBrains Mono',monospace">49€</span>
-            <span style="font-size:14px;color:#9a948a;font-weight:600">/ mois</span>
+          <div style="font-size:14px;font-weight:600;color:#c9c3b8;margin-bottom:20px">Le plus courant</div>
+          <div style="display:flex;align-items:baseline;gap:7px;margin-bottom:3px">
+            <span style="font-size:54px;font-weight:900;letter-spacing:-.03em;font-family:'JetBrains Mono',monospace;color:#fff">49€</span>
+            <span style="font-size:15px;color:#9a948a;font-weight:600">/ mois</span>
           </div>
+          <div style="font-size:13.5px;color:#9a948a;font-weight:700;margin-bottom:26px">Jusqu'à 10 salariés</div>
+          <a href="/connexion" style="margin-top:auto;display:block;text-align:center;background:#FFC21A;color:#15120F;font-weight:900;font-size:16.5px;padding:16px;border-radius:11px;text-decoration:none;box-shadow:0 4px 0 #C99300">Commencer l'essai</a>
         </div>
-        <!-- Palier 3 -->
-        <div style="background:#fff;border:1px solid rgba(21,18,15,.12);border-radius:18px;padding:24px 22px;display:flex;flex-direction:column">
-          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#9a8a3a;margin-bottom:8px">Entreprise</div>
-          <div style="font-size:14.5px;font-weight:700;color:#46413a;margin-bottom:14px">Jusqu'à 20 salariés</div>
-          <div style="display:flex;align-items:baseline;gap:6px;margin-top:auto">
-            <span style="font-size:38px;font-weight:900;letter-spacing:-.03em;font-family:'JetBrains Mono',monospace">89€</span>
-            <span style="font-size:14px;color:#6E6A63;font-weight:600">/ mois</span>
+
+        <!-- Palier 3 : Entreprise (jaune) -->
+        <div style="background:#FFC21A;color:#15120F;border-radius:20px;padding:30px 26px;display:flex;flex-direction:column;position:relative;overflow:hidden;box-shadow:0 16px 36px -18px rgba(201,147,0,.8)">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;color:#7a5e00;margin-bottom:6px">Entreprise</div>
+          <div style="font-size:14px;font-weight:700;color:#5c4a12;margin-bottom:20px">Pour les grosses équipes</div>
+          <div style="display:flex;align-items:baseline;gap:7px;margin-bottom:3px">
+            <span style="font-size:46px;font-weight:900;letter-spacing:-.03em;font-family:'JetBrains Mono',monospace;color:#15120F">89€</span>
+            <span style="font-size:15px;color:#5c4a12;font-weight:700">/ mois</span>
           </div>
-          <div style="font-size:12px;color:#6E6A63;font-weight:600;margin-top:10px">Plus de 20 salariés ? <a href="mailto:khabitatcontact@gmail.com" style="color:#15120F;text-decoration:underline">Parlons-en</a></div>
+          <div style="font-size:13.5px;color:#5c4a12;font-weight:800;margin-bottom:26px">Jusqu'à 20 salariés</div>
+          <a href="/connexion" style="margin-top:auto;display:block;text-align:center;background:#15120F;color:#FFC21A;font-weight:900;font-size:16px;padding:15px;border-radius:11px;text-decoration:none">Commencer l'essai</a>
         </div>
       </div>
 
-      <!-- inclus dans toutes les offres -->
-      <div data-reveal style="max-width:860px;margin:22px auto 0;display:flex;flex-wrap:wrap;justify-content:center;gap:10px 20px">
-        <span style="display:inline-flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600;color:#2a2622"><span style="width:19px;height:19px;flex:none;background:#15120F;color:#FFC21A;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:900">✓</span> Pointage &amp; chantiers illimités</span>
-        <span style="display:inline-flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600;color:#2a2622"><span style="width:19px;height:19px;flex:none;background:#15120F;color:#FFC21A;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:900">✓</span> Suivi en temps réel</span>
-        <span style="display:inline-flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600;color:#2a2622"><span style="width:19px;height:19px;flex:none;background:#15120F;color:#FFC21A;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:900">✓</span> Export prêt pour la paie</span>
-        <span style="display:inline-flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600;color:#2a2622"><span style="width:19px;height:19px;flex:none;background:#15120F;color:#FFC21A;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:900">✓</span> Support en français</span>
-        <span style="display:inline-flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600;color:#2a2622"><span style="width:19px;height:19px;flex:none;background:#15120F;color:#FFC21A;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:900">✓</span> Mises à jour incluses</span>
+      <!-- compris dans toutes les offres -->
+      <div data-reveal style="max-width:880px;margin:30px auto 0">
+        <div style="text-align:center;font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#9a8a3a;margin-bottom:16px">Compris dans toutes les offres</div>
+        <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:11px 22px">
+          <span style="display:inline-flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600;color:#2a2622"><span style="width:19px;height:19px;flex:none;background:#15120F;color:#FFC21A;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:900">✓</span> Pointage &amp; chantiers illimités</span>
+          <span style="display:inline-flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600;color:#2a2622"><span style="width:19px;height:19px;flex:none;background:#15120F;color:#FFC21A;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:900">✓</span> Suivi en temps réel</span>
+          <span style="display:inline-flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600;color:#2a2622"><span style="width:19px;height:19px;flex:none;background:#15120F;color:#FFC21A;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:900">✓</span> Export prêt pour la paie</span>
+          <span style="display:inline-flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600;color:#2a2622"><span style="width:19px;height:19px;flex:none;background:#15120F;color:#FFC21A;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:900">✓</span> Support en français</span>
+          <span style="display:inline-flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600;color:#2a2622"><span style="width:19px;height:19px;flex:none;background:#15120F;color:#FFC21A;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:900">✓</span> Mises à jour incluses</span>
+        </div>
       </div>
 
-      <!-- CTA essai gratuit, mis en avant -->
-      <div data-reveal style="text-align:center;margin-top:28px">
-        <a href="/connexion" style="display:inline-flex;align-items:center;gap:10px;background:#FFC21A;color:#15120F;font-weight:900;font-size:18px;padding:17px 30px;border-radius:13px;text-decoration:none;box-shadow:0 4px 0 #C99300">Commencer 30 jours gratuits <span style="font-size:20px;line-height:1">→</span></a>
-        <p style="font-size:13px;color:#6E6A63;margin-top:13px;font-weight:600;font-family:'JetBrains Mono',monospace">Sans carte bancaire · 30 jours offerts · sans engagement</p>
-      </div>
+      <p data-reveal style="text-align:center;font-size:13.5px;color:#6E6A63;font-weight:600;margin-top:24px">Plus de 20 salariés ? <a href="mailto:khabitatcontact@gmail.com" style="color:#15120F;font-weight:800;text-decoration:underline">Parlons-en</a> · sans engagement, vous arrêtez quand vous voulez.</p>
     </div>
   </section>
 
