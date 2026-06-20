@@ -36,7 +36,7 @@ const STYLES = `@import url('https://fonts.googleapis.com/css2?family=Archivo:wg
  .lp-hide-sm{display:none !important}
  .lp h1{font-size:34px !important;line-height:1.05 !important}
  .lp h2{font-size:26px !important}
- .lp-tarif-sec{padding:36px 18px !important}
+ .lp-tarif-sec{padding:32px 18px 56px !important}
 }`;
 
 const BODY = `<!-- ============ HEADER ============ -->
@@ -326,7 +326,7 @@ const BODY = `<!-- ============ HEADER ============ -->
   </section>
 
   <!-- ============ TARIF ============ -->
-  <section id="tarif" class="lp-tarif-sec" style="background:#F2EDE3;color:#15120F;-webkit-font-smoothing:antialiased;padding:90px 28px 96px">
+  <section id="tarif" class="lp-tarif-sec" style="background:#F2EDE3;color:#15120F;-webkit-font-smoothing:antialiased;padding:48px 28px 80px">
     <div style="max-width:1140px;margin:0 auto">
 
       <!-- En-tête -->
