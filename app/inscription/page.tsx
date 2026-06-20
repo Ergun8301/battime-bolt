@@ -31,8 +31,8 @@ const SIGNUP_CSS = `
 .bt-logo{display:inline-flex;align-items:center;gap:11px;text-decoration:none;color:inherit}
 .bt-logo-mark{width:34px;height:34px;border-radius:7px;display:flex;align-items:center;justify-content:center}
 .bt-logo-dot{width:14px;height:14px;border-radius:50%;border-top-color:transparent;transform:rotate(45deg)}
-.bt-back{position:absolute;top:28px;left:clamp(20px,4vw,48px);z-index:6;display:inline-flex;align-items:center;gap:7px;text-decoration:none;color:#c9c3b8;font-weight:700;font-size:13.5px}
-.bt-back:hover{color:#FFC21A}
+.bt-logo-arrow{color:#a59c86;font-size:15px;line-height:1;transition:color .15s}
+.bt-logo:hover .bt-logo-arrow{color:#FFC21A}
 .bt-back-m{display:none;align-items:center;gap:7px;text-decoration:none;color:#6E6A63;font-weight:700;font-size:14px;margin-bottom:16px}
 .bt-back-m:hover{color:#15120F}
 .bt-h1{font-size:clamp(24px,4.2vh,30px);line-height:1.05;font-weight:900;letter-spacing:-.025em;margin:0 0 clamp(3px,0.8vh,7px)}
@@ -151,12 +151,10 @@ export default function InscriptionPage() {
 
           {/* ============ COLONNE ASIDE (noir) ============ */}
           <div className="bt-aside">
-            {/* Retour a l'accueil : coin haut-gauche du panneau noir, detache (desktop) */}
-            <Link href="/landing" className="bt-back">
-              <span style={{ fontSize: '16px' }}>←</span> Retour à l&apos;accueil
-            </Link>
             <div style={{ maxWidth: '440px', width: '100%' }}>
-              <Link href="/landing" className="bt-logo" style={{ color: '#F2EDE3', marginBottom: '24px', display: 'flex' }}>
+              {/* Le logo ramene a l'accueil (petite fleche discrete pour l'affordance) */}
+              <Link href="/landing" className="bt-logo" title="Retour à l'accueil" style={{ color: '#F2EDE3', marginBottom: '24px', display: 'inline-flex', alignItems: 'center' }}>
+                <span className="bt-logo-arrow" aria-hidden="true">←</span>
                 <div className="bt-logo-mark" style={{ background: '#FFC21A' }}><div className="bt-logo-dot" style={{ border: '2.5px solid #15120F', borderTopColor: 'transparent' }} /></div>
                 <span style={{ fontWeight: 900, fontSize: '22px', letterSpacing: '-.02em' }}>Battime</span>
               </Link>
