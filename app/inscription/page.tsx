@@ -17,10 +17,10 @@ const SIGNUP_CSS = `
 .bt-auth *{box-sizing:border-box}
 .bt-auth .mono{font-family:'JetBrains Mono',monospace}
 .bt-mono{font-family:'JetBrains Mono',monospace}
-.bt-split{display:grid;grid-template-columns:1fr 1fr;min-height:100vh}
-.bt-aside{position:relative;background:#15120F;color:#F2EDE3;overflow:hidden;display:flex;flex-direction:column;justify-content:center;padding:40px 4vw}
-.bt-aside-ruban{position:absolute;top:0;right:0;width:12px;height:100%;background:repeating-linear-gradient(180deg,#15120F 0 9px,#FFC21A 9px 18px)}
-.bt-formcol{display:flex;flex-direction:column;justify-content:center;padding:32px 6vw}
+.bt-split{display:grid;grid-template-columns:1fr 1fr;min-height:100vh;position:relative}
+.bt-aside{position:relative;background:#15120F;color:#F2EDE3;overflow:hidden;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:40px 4vw;min-width:0}
+.bt-ruban-center{position:absolute;top:0;left:calc(50% - 6px);width:12px;height:100%;background:repeating-linear-gradient(45deg,#15120F 0 9px,#FFC21A 9px 18px);z-index:5;pointer-events:none}
+.bt-formcol{display:flex;flex-direction:column;justify-content:center;padding:32px 6vw;min-width:0}
 .bt-wrap{width:100%;max-width:480px;margin:0 auto}
 .bt-logo{display:inline-flex;align-items:center;gap:11px;text-decoration:none;color:inherit}
 .bt-logo-mark{width:34px;height:34px;border-radius:7px;display:flex;align-items:center;justify-content:center}
@@ -44,10 +44,15 @@ const SIGNUP_CSS = `
 .bt-foot a{font-weight:800;color:#15120F;text-decoration:none;border-bottom:2px solid #FFC21A}
 .bt-err{background:#fce8e6;border:1px solid #f3b4ad;color:#9a2820;font-size:14px;font-weight:600;border-radius:10px;padding:11px 14px;margin-bottom:16px}
 .bt-info{background:#e7f6ed;border:1px solid #a8dcc0;color:#1f7a4d;font-size:14px;font-weight:600;border-radius:10px;padding:11px 14px;margin-bottom:16px}
+@media(min-width:881px){
+  .bt-split{height:100vh;min-height:0}
+  .bt-formcol{overflow-y:auto}
+}
 @media(max-width:880px){
   .bt-split{grid-template-columns:1fr}
   .bt-aside{display:none}
   .bt-formcol{padding:36px 28px}
+  .bt-ruban-center{display:none}
 }
 `;
 
@@ -130,10 +135,10 @@ export default function InscriptionPage() {
       <style dangerouslySetInnerHTML={{ __html: SIGNUP_CSS }} />
       <div className="bt-auth">
         <div className="bt-split">
+          <div className="bt-ruban-center" />
 
           {/* ============ COLONNE ASIDE (noir) ============ */}
           <div className="bt-aside">
-            <div className="bt-aside-ruban" />
             <div style={{ maxWidth: '440px' }}>
               <Link href="/landing" className="bt-logo" style={{ color: '#F2EDE3', marginBottom: '26px' }}>
                 <div className="bt-logo-mark" style={{ background: '#FFC21A' }}><div className="bt-logo-dot" style={{ border: '2.5px solid #15120F', borderTopColor: 'transparent' }} /></div>

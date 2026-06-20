@@ -19,8 +19,8 @@ const AUTH_CSS = `
 .bt-auth *{box-sizing:border-box}
 .bt-auth .mono{font-family:'JetBrains Mono',monospace}
 .bt-mono{font-family:'JetBrains Mono',monospace}
-.bt-split{display:grid;grid-template-columns:1.05fr .95fr;min-height:100vh}
-.bt-leftcol{display:flex;flex-direction:column;justify-content:center;padding:32px 7vw}
+.bt-split{display:grid;grid-template-columns:1fr 1fr;min-height:100vh;position:relative}
+.bt-leftcol{display:flex;flex-direction:column;justify-content:center;padding:32px 7vw;min-width:0}
 .bt-wrap{width:100%;max-width:430px;margin:0 auto}
 .bt-logo{display:inline-flex;align-items:center;gap:11px;text-decoration:none;margin-bottom:24px;color:inherit}
 .bt-logo-mark{width:34px;height:34px;background:#15120F;border-radius:7px;display:flex;align-items:center;justify-content:center}
@@ -42,20 +42,25 @@ const AUTH_CSS = `
 .bt-foot{text-align:center;font-size:14.5px;color:#6E6A63;font-weight:500;margin:18px 0 0}
 .bt-foot a{font-weight:800;color:#15120F;text-decoration:none;border-bottom:2px solid #FFC21A}
 .bt-err{background:#fce8e6;border:1px solid #f3b4ad;color:#9a2820;font-size:14px;font-weight:600;border-radius:10px;padding:11px 14px;margin-bottom:16px}
-.bt-visual{position:relative;background:#15120F;overflow:hidden;display:flex;align-items:center;justify-content:center;padding:40px}
-.bt-ruban{position:absolute;top:0;left:0;width:12px;height:100%;background:repeating-linear-gradient(180deg,#15120F 0 9px,#FFC21A 9px 18px)}
+.bt-visual{position:relative;background:#15120F;overflow:hidden;display:flex;align-items:center;justify-content:center;padding:40px;min-width:0}
+.bt-ruban-center{position:absolute;top:0;left:calc(50% - 6px);width:12px;height:100%;background:repeating-linear-gradient(45deg,#15120F 0 9px,#FFC21A 9px 18px);z-index:5;pointer-events:none}
 .bt-vis-inner{display:flex;flex-direction:column;align-items:center}
 .bt-vis-tagline{display:none;font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:#FFC21A;text-align:center;font-weight:700}
 .bt-card{width:100%;max-width:420px;background:#fff;border:1px solid rgba(21,18,15,.12);border-radius:18px;padding:34px 30px;box-shadow:0 24px 50px -24px rgba(21,18,15,.4)}
 .bt-center{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
 .bt-spin{width:34px;height:34px;border:3px solid rgba(21,18,15,.18);border-top-color:#15120F;border-radius:50%;animation:btspin .8s linear infinite;margin:0 auto}
 @keyframes btspin{to{transform:rotate(360deg)}}
+@media(min-width:881px){
+  .bt-split{height:100vh;min-height:0}
+  .bt-leftcol{overflow-y:auto}
+}
 @media(max-width:880px){
   .bt-split{grid-template-columns:1fr}
   .bt-leftcol{order:2;padding:40px 28px}
   .bt-visual{order:1;min-height:0;padding:24px}
   .bt-vis-inner{display:none}
   .bt-vis-tagline{display:block}
+  .bt-ruban-center{display:none}
 }
 `;
 
@@ -121,6 +126,7 @@ function LoginView() {
 
   return (
     <div className="bt-split">
+      <div className="bt-ruban-center" />
       {/* ============ COLONNE FORMULAIRE ============ */}
       <div className="bt-leftcol">
         <div className="bt-wrap">
@@ -188,7 +194,6 @@ function LoginView() {
 
       {/* ============ COLONNE VISUELLE (vrais écrans de l'app) ============ */}
       <div className="bt-visual">
-        <div className="bt-ruban" />
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
           <div className="bt-vis-inner" dangerouslySetInnerHTML={{ __html: isEnt ? ENT_ILLUS : SAL_ILLUS }} />
           <div className="bt-vis-tagline">{isEnt ? '🏢 Espace entreprise · le planning' : '👷 Espace salarié · vos heures'}</div>
