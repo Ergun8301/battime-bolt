@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { AlertCircle, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 
 function LoginForm() {
@@ -108,173 +108,6 @@ function LoginForm() {
           Mot de passe oublie ?
         </Link>
       </div>
-    </form>
-  );
-}
-
-function SignupForm() {
-  const [companyName, setCompanyName] = useState('');
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const router = useRouter();
-
-  const handleSignup = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-
-    if (password !== confirmPassword) {
-      setError('Les mots de passe ne correspondent pas');
-      setLoading(false);
-      return;
-    }
-
-    if (password.length < 6) {
-      setError('Le mot de passe doit contenir au moins 6 caracteres');
-      setLoading(false);
-      return;
-    }
-
-    const { error: authError } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          company_name: companyName,
-          first_name: firstName,
-          last_name: lastName,
-        },
-      },
-    });
-
-    if (authError) {
-      setError(authError.message);
-      setLoading(false);
-      return;
-    }
-
-    setSuccess(true);
-    setLoading(false);
-  };
-
-  if (success) {
-    return (
-      <div className="text-center space-y-4">
-        <div className="p-4 bg-green-50 rounded-lg border border-green-200">
-          <p className="text-green-800">Compte cree avec succes !</p>
-          <p className="text-sm text-green-600 mt-2">
-            Vous pouvez maintenant vous connecter.
-          </p>
-        </div>
-        <Button onClick={() => router.push('/connexion')} variant="outline" className="w-full">
-          Retour a la connexion
-        </Button>
-      </div>
-    );
-  }
-
-  return (
-    <form onSubmit={handleSignup} className="space-y-4">
-      <div className="space-y-2">
-        <Label htmlFor="company-name">Nom de l'entreprise</Label>
-        <Input
-          id="company-name"
-          type="text"
-          placeholder="Votre entreprise"
-          value={companyName}
-          onChange={(e) => setCompanyName(e.target.value)}
-          required
-          disabled={loading}
-        />
-      </div>
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="signup-firstname">Prenom</Label>
-          <Input
-            id="signup-firstname"
-            type="text"
-            placeholder="Prenom"
-            value={firstName}
-            onChange={(e) => setFirstName(e.target.value)}
-            required
-            disabled={loading}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="signup-lastname">Nom</Label>
-          <Input
-            id="signup-lastname"
-            type="text"
-            placeholder="Nom"
-            value={lastName}
-            onChange={(e) => setLastName(e.target.value)}
-            required
-            disabled={loading}
-          />
-        </div>
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="signup-email">Email</Label>
-        <Input
-          id="signup-email"
-          type="email"
-          placeholder="votre@email.com"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-          disabled={loading}
-        />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="signup-password">Mot de passe</Label>
-        <div className="relative">
-          <Input
-            id="signup-password"
-            type={showPassword ? 'text' : 'password'}
-            placeholder="Minimum 6 caracteres"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            disabled={loading}
-          />
-          <button
-            type="button"
-            onClick={() => setShowPassword(!showPassword)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-          >
-            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-          </button>
-        </div>
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="signup-confirm">Confirmer le mot de passe</Label>
-        <Input
-          id="signup-confirm"
-          type="password"
-          placeholder="Confirmez le mot de passe"
-          value={confirmPassword}
-          onChange={(e) => setConfirmPassword(e.target.value)}
-          required
-          disabled={loading}
-        />
-      </div>
-      {error && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-      <Button type="submit" className="w-full" disabled={loading}>
-        {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-        Creer mon compte
-      </Button>
     </form>
   );
 }
@@ -505,6 +338,21 @@ export default function ConnexionPage() {
         </CardHeader>
         <CardContent>
           <LoginForm />
+          <div className="mt-6 space-y-3 text-center text-sm">
+            <p className="text-muted-foreground">
+              Pas encore de compte ?{' '}
+              <Link href="/inscription" className="text-primary hover:underline">
+                Creer un compte entreprise
+              </Link>
+            </p>
+            <Link
+              href="/landing"
+              className="inline-flex items-center justify-center text-muted-foreground hover:text-foreground"
+            >
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Retour
+            </Link>
+          </div>
         </CardContent>
       </Card>
     </div>
