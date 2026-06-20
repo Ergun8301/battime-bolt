@@ -4,47 +4,50 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
+import { ASIDE_ILLUS } from './_illustrations';
 
-// Design "noir + jaune chantier" (maquette Claude Design). Habillage uniquement :
+// Design "noir + jaune chantier" (maquette Claude Design v2). Habillage uniquement :
 // la creation de compte (signUp + metadonnees -> trigger qui cree l'entreprise +
 // rattache en admin), la redirection /admin et la gestion d'erreurs restent
-// INCHANGEES.
+// INCHANGEES. L'illustration de l'aside (vrai mini-planning) est du HTML statique
+// decoratif injecte tel quel (_illustrations.ts).
 const SIGNUP_CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
 .bt-auth{font-family:'Archivo',sans-serif;background:#F2EDE3;color:#15120F;-webkit-font-smoothing:antialiased;min-height:100vh}
 .bt-auth *{box-sizing:border-box}
+.bt-auth .mono{font-family:'JetBrains Mono',monospace}
 .bt-mono{font-family:'JetBrains Mono',monospace}
 .bt-split{display:grid;grid-template-columns:1fr 1fr;min-height:100vh}
-.bt-aside{position:relative;background:#15120F;color:#F2EDE3;overflow:hidden;display:flex;flex-direction:column;justify-content:center;padding:56px 5vw}
+.bt-aside{position:relative;background:#15120F;color:#F2EDE3;overflow:hidden;display:flex;flex-direction:column;justify-content:center;padding:40px 4vw}
 .bt-aside-ruban{position:absolute;top:0;right:0;width:12px;height:100%;background:repeating-linear-gradient(180deg,#15120F 0 9px,#FFC21A 9px 18px)}
-.bt-formcol{display:flex;flex-direction:column;justify-content:center;padding:48px 6vw}
+.bt-formcol{display:flex;flex-direction:column;justify-content:center;padding:32px 6vw}
 .bt-wrap{width:100%;max-width:480px;margin:0 auto}
 .bt-logo{display:inline-flex;align-items:center;gap:11px;text-decoration:none;color:inherit}
 .bt-logo-mark{width:34px;height:34px;border-radius:7px;display:flex;align-items:center;justify-content:center}
 .bt-logo-dot{width:14px;height:14px;border-radius:50%;border-top-color:transparent;transform:rotate(45deg)}
-.bt-back{display:inline-flex;align-items:center;gap:8px;text-decoration:none;color:#6E6A63;font-weight:700;font-size:14px;margin-bottom:28px}
-.bt-h1{font-size:34px;line-height:1.05;font-weight:900;letter-spacing:-.025em;margin:0 0 8px}
-.bt-sub{font-size:15.5px;color:#6E6A63;font-weight:500;margin:0 0 30px}
-.bt-label{display:block;font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#6E6A63;font-weight:700;margin-bottom:7px}
+.bt-back{display:inline-flex;align-items:center;gap:8px;text-decoration:none;color:#6E6A63;font-weight:700;font-size:14px;margin-bottom:18px}
+.bt-h1{font-size:30px;line-height:1.05;font-weight:900;letter-spacing:-.025em;margin:0 0 7px}
+.bt-sub{font-size:15px;color:#6E6A63;font-weight:500;margin:0 0 22px}
+.bt-label{display:block;font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#6E6A63;font-weight:700;margin-bottom:6px}
 .bt-opt{font-family:'Archivo',sans-serif;text-transform:none;letter-spacing:0;font-size:11px;color:#a39d92;font-weight:600;margin-left:7px}
-.bt-field{width:100%;font-family:'Archivo',sans-serif;font-size:16px;font-weight:500;padding:15px 16px;border:1.5px solid rgba(21,18,15,.18);border-radius:11px;background:#FBF8F2;outline:none;color:#15120F}
+.bt-field{width:100%;font-family:'Archivo',sans-serif;font-size:16px;font-weight:500;padding:13px 16px;border:1.5px solid rgba(21,18,15,.18);border-radius:11px;background:#FBF8F2;outline:none;color:#15120F}
 .bt-field::placeholder{color:#a39d92}
 .bt-field:focus{border-color:#15120F;background:#fff}
 .bt-grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-.bt-ybtn{width:100%;border:none;cursor:pointer;background:#FFC21A;color:#15120F;font-family:'Archivo',sans-serif;font-weight:900;font-size:17px;padding:18px;border-radius:12px;box-shadow:0 4px 0 #C99300;transition:transform .12s ease, box-shadow .12s ease}
+.bt-ybtn{width:100%;border:none;cursor:pointer;background:#FFC21A;color:#15120F;font-family:'Archivo',sans-serif;font-weight:900;font-size:17px;padding:16px;border-radius:12px;box-shadow:0 4px 0 #C99300;transition:transform .12s ease, box-shadow .12s ease}
 .bt-ybtn:hover{transform:translateY(-2px);box-shadow:0 6px 0 #C99300}
 .bt-ybtn:active{transform:translateY(2px);box-shadow:0 1px 0 #C99300}
 .bt-ybtn:disabled{opacity:.65;cursor:default;transform:none;box-shadow:0 4px 0 #C99300}
-.bt-legal{font-size:12.5px;color:#9a948a;font-weight:500;text-align:center;line-height:1.5;margin:16px 0 0}
+.bt-legal{font-size:12.5px;color:#9a948a;font-weight:500;text-align:center;line-height:1.5;margin:13px 0 0}
 .bt-legal a{color:#6E6A63;font-weight:700}
-.bt-foot{text-align:center;font-size:14.5px;color:#6E6A63;font-weight:500;margin:26px 0 0}
+.bt-foot{text-align:center;font-size:14.5px;color:#6E6A63;font-weight:500;margin:16px 0 0}
 .bt-foot a{font-weight:800;color:#15120F;text-decoration:none;border-bottom:2px solid #FFC21A}
-.bt-err{background:#fce8e6;border:1px solid #f3b4ad;color:#9a2820;font-size:14px;font-weight:600;border-radius:10px;padding:11px 14px;margin-bottom:18px}
-.bt-info{background:#e7f6ed;border:1px solid #a8dcc0;color:#1f7a4d;font-size:14px;font-weight:600;border-radius:10px;padding:11px 14px;margin-bottom:18px}
+.bt-err{background:#fce8e6;border:1px solid #f3b4ad;color:#9a2820;font-size:14px;font-weight:600;border-radius:10px;padding:11px 14px;margin-bottom:16px}
+.bt-info{background:#e7f6ed;border:1px solid #a8dcc0;color:#1f7a4d;font-size:14px;font-weight:600;border-radius:10px;padding:11px 14px;margin-bottom:16px}
 @media(max-width:880px){
   .bt-split{grid-template-columns:1fr}
   .bt-aside{display:none}
-  .bt-formcol{padding:40px 28px}
+  .bt-formcol{padding:36px 28px}
 }
 `;
 
@@ -131,27 +134,25 @@ export default function InscriptionPage() {
           {/* ============ COLONNE ASIDE (noir) ============ */}
           <div className="bt-aside">
             <div className="bt-aside-ruban" />
-            <div style={{ maxWidth: '420px' }}>
-              <Link href="/landing" className="bt-logo" style={{ color: '#F2EDE3', marginBottom: '56px' }}>
+            <div style={{ maxWidth: '440px' }}>
+              <Link href="/landing" className="bt-logo" style={{ color: '#F2EDE3', marginBottom: '26px' }}>
                 <div className="bt-logo-mark" style={{ background: '#FFC21A' }}><div className="bt-logo-dot" style={{ border: '2.5px solid #15120F', borderTopColor: 'transparent' }} /></div>
                 <span style={{ fontWeight: 900, fontSize: '22px', letterSpacing: '-.02em' }}>Battime</span>
               </Link>
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '9px', background: 'rgba(255,194,26,.12)', border: '1px solid rgba(255,194,26,.35)', borderRadius: '30px', padding: '8px 15px', marginBottom: '24px' }}>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '9px', background: 'rgba(255,194,26,.12)', border: '1px solid rgba(255,194,26,.35)', borderRadius: '30px', padding: '7px 14px', marginBottom: '16px' }}>
                 <span className="bt-mono" style={{ fontSize: '12px', fontWeight: 700, color: '#FFC21A', letterSpacing: '.06em' }}>30 JOURS GRATUITS</span>
               </div>
-              <h2 style={{ fontSize: '38px', lineHeight: 1.06, fontWeight: 900, letterSpacing: '-.025em', margin: '0 0 22px' }}>Vos gars pointent dès demain matin.</h2>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '8px' }}>
+              <h2 style={{ fontSize: '32px', lineHeight: 1.06, fontWeight: 900, letterSpacing: '-.025em', margin: '0 0 16px' }}>Vos gars pointent dès demain matin.</h2>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '24px' }}>
                 {['Sans carte bancaire, sans engagement', 'Prêt à l’emploi en 5 minutes', 'Un vrai support en français'].map((t) => (
-                  <div key={t} style={{ display: 'flex', gap: '13px', alignItems: 'flex-start' }}>
-                    <span style={{ width: '26px', height: '26px', flex: 'none', background: '#FFC21A', color: '#15120F', borderRadius: '7px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: '13px' }}>✓</span>
-                    <span style={{ fontSize: '16px', fontWeight: 600, color: '#e3ddd2', lineHeight: 1.4, paddingTop: '2px' }}>{t}</span>
+                  <div key={t} style={{ display: 'flex', gap: '11px', alignItems: 'center' }}>
+                    <span style={{ width: '22px', height: '22px', flex: 'none', background: '#FFC21A', color: '#15120F', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: '12px' }}>✓</span>
+                    <span style={{ fontSize: '15px', fontWeight: 600, color: '#e3ddd2' }}>{t}</span>
                   </div>
                 ))}
               </div>
-              <div style={{ marginTop: '48px', borderTop: '1px solid rgba(242,237,227,.14)', paddingTop: '24px' }}>
-                <p style={{ fontSize: '15px', lineHeight: 1.5, color: '#c9c3b8', fontWeight: 500, margin: '0 0 10px' }}>« Avant je passais mon lundi à déchiffrer des feuilles. Maintenant tout est déjà là quand j&apos;arrive. »</p>
-                <div className="bt-mono" style={{ fontSize: '12px', color: '#a59c86', fontWeight: 700, letterSpacing: '.04em' }}>THIERRY R. · CHARPENTE RIVIÈRE</div>
-              </div>
+              {/* Vrai mini-planning (illustration statique de la maquette) */}
+              <div dangerouslySetInnerHTML={{ __html: ASIDE_ILLUS }} />
             </div>
           </div>
 
@@ -167,9 +168,9 @@ export default function InscriptionPage() {
 
               <form onSubmit={handleSignup}>
                 <label className="bt-label" htmlFor="company-name">Nom de l&apos;entreprise</label>
-                <input id="company-name" className="bt-field" type="text" required disabled={loading} placeholder="Ex. Martin Menuiserie" value={companyName} onChange={(e) => setCompanyName(e.target.value)} style={{ marginBottom: '18px' }} />
+                <input id="company-name" className="bt-field" type="text" required disabled={loading} placeholder="Ex. Martin Menuiserie" value={companyName} onChange={(e) => setCompanyName(e.target.value)} style={{ marginBottom: '14px' }} />
 
-                <div className="bt-grid2" style={{ marginBottom: '18px' }}>
+                <div className="bt-grid2" style={{ marginBottom: '14px' }}>
                   <div>
                     <label className="bt-label" htmlFor="firstname">Prénom</label>
                     <input id="firstname" className="bt-field" type="text" required disabled={loading} placeholder="Thierry" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
@@ -181,12 +182,12 @@ export default function InscriptionPage() {
                 </div>
 
                 <label className="bt-label" htmlFor="signup-email">Email professionnel</label>
-                <input id="signup-email" className="bt-field" type="email" required disabled={loading} placeholder="bureau@entreprise.fr" value={email} onChange={(e) => setEmail(e.target.value)} style={{ marginBottom: '18px' }} />
+                <input id="signup-email" className="bt-field" type="email" required disabled={loading} placeholder="bureau@entreprise.fr" value={email} onChange={(e) => setEmail(e.target.value)} style={{ marginBottom: '14px' }} />
 
                 <label className="bt-label" htmlFor="signup-password">Mot de passe</label>
-                <input id="signup-password" className="bt-field" type="password" required disabled={loading} placeholder="6 caractères minimum" value={password} onChange={(e) => setPassword(e.target.value)} style={{ marginBottom: '18px' }} />
+                <input id="signup-password" className="bt-field" type="password" required disabled={loading} placeholder="6 caractères minimum" value={password} onChange={(e) => setPassword(e.target.value)} style={{ marginBottom: '14px' }} />
 
-                <div className="bt-grid2" style={{ marginBottom: '26px' }}>
+                <div className="bt-grid2" style={{ marginBottom: '20px' }}>
                   <div>
                     <label className="bt-label" htmlFor="phone">Téléphone <span className="bt-opt">facultatif</span></label>
                     <input id="phone" className="bt-field" type="tel" disabled={loading} placeholder="06 12 34 56 78" value={phone} onChange={(e) => setPhone(e.target.value)} />

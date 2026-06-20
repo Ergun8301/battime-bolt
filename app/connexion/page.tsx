@@ -4,42 +4,47 @@ import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
+import { SAL_ILLUS, ENT_ILLUS } from './_illustrations';
 
-// Design "noir + jaune chantier" (maquette Claude Design). Habillage uniquement :
+// Design "noir + jaune chantier" (maquette Claude Design v2). Habillage uniquement :
 // toute la logique d'authentification (signInWithPassword, lecture du role +
 // redirection, gestion du lien invitation/recuperation, updateUser) est conservee
 // a l'identique. Les onglets Salarie/Entreprise sont purement visuels : meme
 // connexion pour tous, c'est le role qui pilote la redirection.
+// Les illustrations des panneaux noirs (vrais ecrans Ma journee / Planning) sont
+// du HTML statique decoratif injecte tel quel (_illustrations.ts).
 const AUTH_CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
 .bt-auth{font-family:'Archivo',sans-serif;background:#F2EDE3;color:#15120F;-webkit-font-smoothing:antialiased;min-height:100vh}
 .bt-auth *{box-sizing:border-box}
+.bt-auth .mono{font-family:'JetBrains Mono',monospace}
 .bt-mono{font-family:'JetBrains Mono',monospace}
 .bt-split{display:grid;grid-template-columns:1.05fr .95fr;min-height:100vh}
-.bt-leftcol{display:flex;flex-direction:column;justify-content:center;padding:48px 7vw}
+.bt-leftcol{display:flex;flex-direction:column;justify-content:center;padding:32px 7vw}
 .bt-wrap{width:100%;max-width:430px;margin:0 auto}
-.bt-logo{display:inline-flex;align-items:center;gap:11px;text-decoration:none;margin-bottom:38px;color:inherit}
+.bt-logo{display:inline-flex;align-items:center;gap:11px;text-decoration:none;margin-bottom:24px;color:inherit}
 .bt-logo-mark{width:34px;height:34px;background:#15120F;border-radius:7px;display:flex;align-items:center;justify-content:center}
 .bt-logo-dot{width:14px;height:14px;border:2.5px solid #FFC21A;border-radius:50%;border-top-color:transparent;transform:rotate(45deg)}
-.bt-h1{font-size:34px;line-height:1.05;font-weight:900;letter-spacing:-.025em;margin:0 0 8px}
-.bt-sub{font-size:15.5px;color:#6E6A63;font-weight:500;margin:0 0 28px}
-.bt-tabs{display:grid;grid-template-columns:1fr 1fr;gap:6px;background:#E4DCCE;border-radius:12px;padding:5px;margin-bottom:26px}
+.bt-h1{font-size:30px;line-height:1.05;font-weight:900;letter-spacing:-.025em;margin:0 0 7px}
+.bt-sub{font-size:15px;color:#6E6A63;font-weight:500;margin:0 0 20px}
+.bt-tabs{display:grid;grid-template-columns:1fr 1fr;gap:6px;background:#E4DCCE;border-radius:12px;padding:5px;margin-bottom:20px}
 .bt-tab{cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;border-radius:9px;font-weight:800;font-size:15px;color:#6E6A63;border:none;background:transparent;font-family:'Archivo',sans-serif}
 .bt-tab.is-active{background:#15120F;color:#FFC21A}
-.bt-label{display:block;font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#6E6A63;font-weight:700;margin-bottom:7px}
-.bt-field{width:100%;font-family:'Archivo',sans-serif;font-size:16px;font-weight:500;padding:15px 16px;border:1.5px solid rgba(21,18,15,.18);border-radius:11px;background:#FBF8F2;outline:none;color:#15120F}
+.bt-label{display:block;font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#6E6A63;font-weight:700;margin-bottom:6px}
+.bt-field{width:100%;font-family:'Archivo',sans-serif;font-size:16px;font-weight:500;padding:13px 16px;border:1.5px solid rgba(21,18,15,.18);border-radius:11px;background:#FBF8F2;outline:none;color:#15120F}
 .bt-field::placeholder{color:#a39d92}
 .bt-field:focus{border-color:#15120F;background:#fff}
 .bt-forgot{font-size:12.5px;font-weight:700;color:#9a7c14;text-decoration:none}
-.bt-ybtn{width:100%;border:none;cursor:pointer;background:#FFC21A;color:#15120F;font-family:'Archivo',sans-serif;font-weight:900;font-size:17px;padding:17px;border-radius:12px;box-shadow:0 4px 0 #C99300;transition:transform .12s ease, box-shadow .12s ease}
+.bt-ybtn{width:100%;border:none;cursor:pointer;background:#FFC21A;color:#15120F;font-family:'Archivo',sans-serif;font-weight:900;font-size:17px;padding:16px;border-radius:12px;box-shadow:0 4px 0 #C99300;transition:transform .12s ease, box-shadow .12s ease}
 .bt-ybtn:hover{transform:translateY(-2px);box-shadow:0 6px 0 #C99300}
 .bt-ybtn:active{transform:translateY(2px);box-shadow:0 1px 0 #C99300}
 .bt-ybtn:disabled{opacity:.65;cursor:default;transform:none;box-shadow:0 4px 0 #C99300}
-.bt-foot{text-align:center;font-size:14.5px;color:#6E6A63;font-weight:500;margin:26px 0 0}
+.bt-foot{text-align:center;font-size:14.5px;color:#6E6A63;font-weight:500;margin:18px 0 0}
 .bt-foot a{font-weight:800;color:#15120F;text-decoration:none;border-bottom:2px solid #FFC21A}
-.bt-err{background:#fce8e6;border:1px solid #f3b4ad;color:#9a2820;font-size:14px;font-weight:600;border-radius:10px;padding:11px 14px;margin-bottom:18px}
+.bt-err{background:#fce8e6;border:1px solid #f3b4ad;color:#9a2820;font-size:14px;font-weight:600;border-radius:10px;padding:11px 14px;margin-bottom:16px}
 .bt-visual{position:relative;background:#15120F;overflow:hidden;display:flex;align-items:center;justify-content:center;padding:40px}
 .bt-ruban{position:absolute;top:0;left:0;width:12px;height:100%;background:repeating-linear-gradient(180deg,#15120F 0 9px,#FFC21A 9px 18px)}
+.bt-vis-inner{display:flex;flex-direction:column;align-items:center}
 .bt-vis-tagline{display:none;font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:#FFC21A;text-align:center;font-weight:700}
 .bt-card{width:100%;max-width:420px;background:#fff;border:1px solid rgba(21,18,15,.12);border-radius:18px;padding:34px 30px;box-shadow:0 24px 50px -24px rgba(21,18,15,.4)}
 .bt-center{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
@@ -148,10 +153,10 @@ function LoginView() {
               placeholder={isEnt ? 'bureau@entreprise.fr' : 'prenom@entreprise.fr'}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              style={{ marginBottom: '18px' }}
+              style={{ marginBottom: '14px' }}
             />
 
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '7px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
               <label className="bt-label" htmlFor="login-password" style={{ marginBottom: 0 }}>Mot de passe</label>
               <Link href="/mot-de-passe-oublie" className="bt-forgot">Oublié&nbsp;?</Link>
             </div>
@@ -165,7 +170,7 @@ function LoginView() {
               placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              style={{ marginBottom: '24px' }}
+              style={{ marginBottom: '18px' }}
             />
 
             {error && <div className="bt-err">{error}</div>}
@@ -181,50 +186,13 @@ function LoginView() {
         </div>
       </div>
 
-      {/* ============ COLONNE VISUELLE ============ */}
+      {/* ============ COLONNE VISUELLE (vrais écrans de l'app) ============ */}
       <div className="bt-visual">
         <div className="bt-ruban" />
-
-        {!isEnt ? (
-          /* VISUEL SALARIÉ */
-          <div style={{ flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%', display: 'flex' }}>
-            <div className="bt-vis-inner" style={{ width: '100%', maxWidth: '330px' }}>
-              <div className="bt-mono" style={{ fontSize: '11px', letterSpacing: '.14em', textTransform: 'uppercase', color: '#FFC21A', textAlign: 'center', marginBottom: '18px' }}>Votre feuille d&apos;heures</div>
-              <div style={{ background: '#F2EDE3', borderRadius: '16px', padding: '20px', boxShadow: '0 24px 50px -20px rgba(0,0,0,.6)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '2px solid rgba(21,18,15,.1)', paddingBottom: '12px', marginBottom: '14px' }}>
-                  <div style={{ fontWeight: 900, fontSize: '16px' }}>Karim B.</div>
-                  <div className="bt-mono" style={{ fontSize: '12px', color: '#6E6A63', fontWeight: 700 }}>SEM. 25</div>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 0' }}><span style={{ fontSize: '14px', fontWeight: 600, color: '#3a352f' }}>Lun · Villa Lupin</span><span className="bt-mono" style={{ fontSize: '14px', fontWeight: 700 }}>8:00</span></div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 0', borderTop: '1px solid rgba(21,18,15,.07)' }}><span style={{ fontSize: '14px', fontWeight: 600, color: '#3a352f' }}>Mar · Villa Lupin</span><span className="bt-mono" style={{ fontSize: '14px', fontWeight: 700 }}>7:30</span></div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 0', borderTop: '1px solid rgba(21,18,15,.07)' }}><span style={{ fontSize: '14px', fontWeight: 600, color: '#3a352f' }}>Mer · Toiture Pasteur</span><span className="bt-mono" style={{ fontSize: '14px', fontWeight: 700 }}>8:15</span></div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '12px', background: '#FFC21A', borderRadius: '9px', padding: '11px 13px' }}><span style={{ fontWeight: 900, fontSize: '14px' }}>Total semaine</span><span className="bt-mono" style={{ fontWeight: 700, fontSize: '16px' }}>23:45</span></div>
-              </div>
-              <p style={{ textAlign: 'center', fontSize: '14px', color: '#a59c86', fontWeight: 500, margin: '20px 0 0', lineHeight: 1.5 }}>Vos heures, pointées sur le chantier.<br />Toujours justes, jamais perdues.</p>
-            </div>
-            <div className="bt-vis-tagline">👷 Espace salarié · vos heures</div>
-          </div>
-        ) : (
-          /* VISUEL ENTREPRISE */
-          <div style={{ flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%', display: 'flex' }}>
-            <div className="bt-vis-inner" style={{ width: '100%', maxWidth: '340px' }}>
-              <div className="bt-mono" style={{ fontSize: '11px', letterSpacing: '.14em', textTransform: 'uppercase', color: '#FFC21A', textAlign: 'center', marginBottom: '18px' }}>Vos équipes en direct</div>
-              <div style={{ background: '#F2EDE3', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 24px 50px -20px rgba(0,0,0,.6)' }}>
-                <div style={{ background: '#fff', padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(21,18,15,.08)' }}>
-                  <div style={{ fontWeight: 900, fontSize: '15px' }}>Lundi 20 juin</div>
-                  <div className="bt-mono" style={{ fontSize: '11px', color: '#2FA36B', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ width: '7px', height: '7px', background: '#2FA36B', borderRadius: '50%' }} />4 EN COURS</div>
-                </div>
-                <div style={{ padding: '6px 0' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '11px', padding: '10px 16px' }}><div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#15120F', color: '#FFC21A', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '12px', flex: 'none' }}>KB</div><div style={{ flex: 1 }}><div style={{ fontSize: '13.5px', fontWeight: 700 }}>Karim B.</div><div style={{ fontSize: '11px', color: '#6E6A63', fontWeight: 600 }}>Villa Lupin</div></div><div className="bt-mono" style={{ fontSize: '13px', fontWeight: 700 }}>06:18</div></div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '11px', padding: '10px 16px', borderTop: '1px solid rgba(21,18,15,.06)' }}><div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#15120F', color: '#FFC21A', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '12px', flex: 'none' }}>JM</div><div style={{ flex: 1 }}><div style={{ fontSize: '13.5px', fontWeight: 700 }}>Julien M.</div><div style={{ fontSize: '11px', color: '#6E6A63', fontWeight: 600 }}>Toiture Pasteur</div></div><div className="bt-mono" style={{ fontSize: '13px', fontWeight: 700 }}>05:42</div></div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '11px', padding: '10px 16px', borderTop: '1px solid rgba(21,18,15,.06)' }}><div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#c4bdae', color: '#15120F', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '12px', flex: 'none' }}>ST</div><div style={{ flex: 1 }}><div style={{ fontSize: '13.5px', fontWeight: 700 }}>Sofiane T.</div><div style={{ fontSize: '11px', color: '#6E6A63', fontWeight: 600 }}>En pause</div></div><div className="bt-mono" style={{ fontSize: '13px', fontWeight: 700, color: '#9a948a' }}>04:55</div></div>
-                </div>
-              </div>
-              <p style={{ textAlign: 'center', fontSize: '14px', color: '#a59c86', fontWeight: 500, margin: '20px 0 0', lineHeight: 1.5 }}>Qui est où, depuis quand.<br />Tout remonte au bureau, en temps réel.</p>
-            </div>
-            <div className="bt-vis-tagline">🏢 Espace entreprise · vos équipes</div>
-          </div>
-        )}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
+          <div className="bt-vis-inner" dangerouslySetInnerHTML={{ __html: isEnt ? ENT_ILLUS : SAL_ILLUS }} />
+          <div className="bt-vis-tagline">{isEnt ? '🏢 Espace entreprise · le planning' : '👷 Espace salarié · vos heures'}</div>
+        </div>
       </div>
     </div>
   );
