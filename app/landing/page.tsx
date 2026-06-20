@@ -327,13 +327,13 @@ const BODY = `<!-- ============ HEADER ============ -->
   </section>
 
   <!-- ============ TARIF ============ -->
-  <section id="tarif" class="lp-tarif-sec" style="position:relative;background:#15120F;color:#F2EDE3;-webkit-font-smoothing:antialiased;scroll-margin-top:90px">
+  <section class="lp-tarif-sec" style="position:relative;background:#15120F;color:#F2EDE3;-webkit-font-smoothing:antialiased">
     <!-- ruban haut -->
     <div style="position:absolute;top:0;left:0;width:100%;height:12px;background:repeating-linear-gradient(45deg,#15120F 0 9px,#FFC21A 9px 18px);z-index:1"></div>
     <div class="lp-tarif-inner" style="max-width:1080px;margin:0 auto;width:100%;display:flex;flex-direction:column;gap:34px;padding:64px 28px 72px">
 
-      <!-- En-tête -->
-      <div style="text-align:center">
+      <!-- En-tête (cible de l'ancre #tarif : le clic atterrit sur le titre, sous la barre de nav) -->
+      <div id="tarif" style="scroll-margin-top:84px;text-align:center">
         <div style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:#FFC21A;margin-bottom:12px">Tarif</div>
         <h2 style="font-size:38px;line-height:1.04;font-weight:900;letter-spacing:-.025em;margin:0 0 16px">Un prix simple, selon la taille de l'équipe.</h2>
         <div style="display:inline-flex;align-items:center;flex-wrap:wrap;justify-content:center;gap:11px;background:rgba(255,194,26,.12);border:1px solid rgba(255,194,26,.35);border-radius:30px;padding:9px 18px">
