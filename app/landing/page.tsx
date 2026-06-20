@@ -330,7 +330,7 @@ const BODY = `<!-- ============ HEADER ============ -->
   <section id="tarif" class="lp-tarif-sec" style="position:relative;background:#15120F;color:#F2EDE3;-webkit-font-smoothing:antialiased;scroll-margin-top:72px">
     <!-- ruban haut -->
     <div style="position:absolute;top:0;left:0;width:100%;height:12px;background:repeating-linear-gradient(45deg,#15120F 0 9px,#FFC21A 9px 18px);z-index:1"></div>
-    <div class="lp-tarif-inner" style="max-width:1080px;margin:0 auto;width:100%;min-height:calc(100vh - 72px);display:flex;flex-direction:column;gap:34px;padding:30px 28px 40px">
+    <div class="lp-tarif-inner" style="max-width:1080px;margin:0 auto;width:100%;display:flex;flex-direction:column;gap:34px;padding:64px 28px 72px">
 
       <!-- En-tête -->
       <div style="text-align:center">
