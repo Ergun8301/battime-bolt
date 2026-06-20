@@ -3,13 +3,50 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { AlertCircle, ArrowLeft, Eye, EyeOff, Loader2 } from 'lucide-react';
 import Link from 'next/link';
+
+// Design "noir + jaune chantier" (maquette Claude Design). Habillage uniquement :
+// la creation de compte (signUp + metadonnees -> trigger qui cree l'entreprise +
+// rattache en admin), la redirection /admin et la gestion d'erreurs restent
+// INCHANGEES.
+const SIGNUP_CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
+.bt-auth{font-family:'Archivo',sans-serif;background:#F2EDE3;color:#15120F;-webkit-font-smoothing:antialiased;min-height:100vh}
+.bt-auth *{box-sizing:border-box}
+.bt-mono{font-family:'JetBrains Mono',monospace}
+.bt-split{display:grid;grid-template-columns:1fr 1fr;min-height:100vh}
+.bt-aside{position:relative;background:#15120F;color:#F2EDE3;overflow:hidden;display:flex;flex-direction:column;justify-content:center;padding:56px 5vw}
+.bt-aside-ruban{position:absolute;top:0;right:0;width:12px;height:100%;background:repeating-linear-gradient(180deg,#15120F 0 9px,#FFC21A 9px 18px)}
+.bt-formcol{display:flex;flex-direction:column;justify-content:center;padding:48px 6vw}
+.bt-wrap{width:100%;max-width:480px;margin:0 auto}
+.bt-logo{display:inline-flex;align-items:center;gap:11px;text-decoration:none;color:inherit}
+.bt-logo-mark{width:34px;height:34px;border-radius:7px;display:flex;align-items:center;justify-content:center}
+.bt-logo-dot{width:14px;height:14px;border-radius:50%;border-top-color:transparent;transform:rotate(45deg)}
+.bt-back{display:inline-flex;align-items:center;gap:8px;text-decoration:none;color:#6E6A63;font-weight:700;font-size:14px;margin-bottom:28px}
+.bt-h1{font-size:34px;line-height:1.05;font-weight:900;letter-spacing:-.025em;margin:0 0 8px}
+.bt-sub{font-size:15.5px;color:#6E6A63;font-weight:500;margin:0 0 30px}
+.bt-label{display:block;font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#6E6A63;font-weight:700;margin-bottom:7px}
+.bt-opt{font-family:'Archivo',sans-serif;text-transform:none;letter-spacing:0;font-size:11px;color:#a39d92;font-weight:600;margin-left:7px}
+.bt-field{width:100%;font-family:'Archivo',sans-serif;font-size:16px;font-weight:500;padding:15px 16px;border:1.5px solid rgba(21,18,15,.18);border-radius:11px;background:#FBF8F2;outline:none;color:#15120F}
+.bt-field::placeholder{color:#a39d92}
+.bt-field:focus{border-color:#15120F;background:#fff}
+.bt-grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.bt-ybtn{width:100%;border:none;cursor:pointer;background:#FFC21A;color:#15120F;font-family:'Archivo',sans-serif;font-weight:900;font-size:17px;padding:18px;border-radius:12px;box-shadow:0 4px 0 #C99300;transition:transform .12s ease, box-shadow .12s ease}
+.bt-ybtn:hover{transform:translateY(-2px);box-shadow:0 6px 0 #C99300}
+.bt-ybtn:active{transform:translateY(2px);box-shadow:0 1px 0 #C99300}
+.bt-ybtn:disabled{opacity:.65;cursor:default;transform:none;box-shadow:0 4px 0 #C99300}
+.bt-legal{font-size:12.5px;color:#9a948a;font-weight:500;text-align:center;line-height:1.5;margin:16px 0 0}
+.bt-legal a{color:#6E6A63;font-weight:700}
+.bt-foot{text-align:center;font-size:14.5px;color:#6E6A63;font-weight:500;margin:26px 0 0}
+.bt-foot a{font-weight:800;color:#15120F;text-decoration:none;border-bottom:2px solid #FFC21A}
+.bt-err{background:#fce8e6;border:1px solid #f3b4ad;color:#9a2820;font-size:14px;font-weight:600;border-radius:10px;padding:11px 14px;margin-bottom:18px}
+.bt-info{background:#e7f6ed;border:1px solid #a8dcc0;color:#1f7a4d;font-size:14px;font-weight:600;border-radius:10px;padding:11px 14px;margin-bottom:18px}
+@media(max-width:880px){
+  .bt-split{grid-template-columns:1fr}
+  .bt-aside{display:none}
+  .bt-formcol{padding:40px 28px}
+}
+`;
 
 // Traduction des messages d'erreur Supabase les plus courants a l'inscription.
 function translateAuthError(message: string): string {
@@ -34,12 +71,12 @@ export default function InscriptionPage() {
   const [password, setPassword] = useState('');
   const [phone, setPhone] = useState('');
   const [employeeCount, setEmployeeCount] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const router = useRouter();
 
+  // ── Creation de compte : INCHANGEE ──
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -52,11 +89,6 @@ export default function InscriptionPage() {
 
     setLoading(true);
     try {
-      // Le trigger SQL `handle_new_user` lit ces metadonnees : la presence de
-      // `company_name` cree l'entreprise et rattache ce compte en role admin.
-      // L'essai 30 jours est pose par defaut sur la nouvelle entreprise
-      // (colonne companies.trial_ends_at). `employee_count` reste pour l'instant
-      // dans les metadonnees du compte (non persiste en base).
       const { data, error: authError } = await supabase.auth.signUp({
         email: email.trim(),
         password,
@@ -77,12 +109,10 @@ export default function InscriptionPage() {
       }
 
       if (data.session) {
-        // Confirmation d'email desactivee => session immediate => tableau de bord.
         router.push('/admin');
         return;
       }
 
-      // Filet de securite si la confirmation d'email etait reactivee un jour.
       setInfo('Compte cree. Verifiez votre email pour activer votre acces, puis connectez-vous.');
     } catch (err) {
       console.error('Signup error:', err);
@@ -93,155 +123,100 @@ export default function InscriptionPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <div className="flex justify-center mb-4">
-            <div className="bg-primary text-primary-foreground rounded-lg p-3">
-              <svg className="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="10" />
-                <path d="M12 6v6l4 2" />
-              </svg>
-            </div>
-          </div>
-          <CardTitle className="text-2xl">Creer votre compte entreprise</CardTitle>
-          <CardDescription>30 jours d&apos;essai gratuits, sans carte bancaire</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSignup} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="company-name">Nom de l&apos;entreprise *</Label>
-              <Input
-                id="company-name"
-                type="text"
-                placeholder="Votre entreprise"
-                value={companyName}
-                onChange={(e) => setCompanyName(e.target.value)}
-                required
-                disabled={loading}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="firstname">Prenom *</Label>
-                <Input
-                  id="firstname"
-                  type="text"
-                  placeholder="Prenom"
-                  value={firstName}
-                  onChange={(e) => setFirstName(e.target.value)}
-                  required
-                  disabled={loading}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="lastname">Nom *</Label>
-                <Input
-                  id="lastname"
-                  type="text"
-                  placeholder="Nom"
-                  value={lastName}
-                  onChange={(e) => setLastName(e.target.value)}
-                  required
-                  disabled={loading}
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="signup-email">Email *</Label>
-              <Input
-                id="signup-email"
-                type="email"
-                placeholder="votre@email.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                disabled={loading}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="signup-password">Mot de passe *</Label>
-              <div className="relative">
-                <Input
-                  id="signup-password"
-                  type={showPassword ? 'text' : 'password'}
-                  placeholder="Minimum 6 caracteres"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  disabled={loading}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="phone">Telephone</Label>
-                <Input
-                  id="phone"
-                  type="tel"
-                  placeholder="Facultatif"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  disabled={loading}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="employee-count">Nb de salaries</Label>
-                <Input
-                  id="employee-count"
-                  type="number"
-                  min="0"
-                  placeholder="Facultatif"
-                  value={employeeCount}
-                  onChange={(e) => setEmployeeCount(e.target.value)}
-                  disabled={loading}
-                />
-              </div>
-            </div>
+    <>
+      <style dangerouslySetInnerHTML={{ __html: SIGNUP_CSS }} />
+      <div className="bt-auth">
+        <div className="bt-split">
 
-            {error && (
-              <Alert variant="destructive">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
-            {info && (
-              <Alert>
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>{info}</AlertDescription>
-              </Alert>
-            )}
-
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Creer mon compte
-            </Button>
-          </form>
-
-          <div className="mt-6 space-y-3 text-center text-sm">
-            <p className="text-muted-foreground">
-              Deja un compte ?{' '}
-              <Link href="/connexion" className="text-primary hover:underline">
-                Se connecter
+          {/* ============ COLONNE ASIDE (noir) ============ */}
+          <div className="bt-aside">
+            <div className="bt-aside-ruban" />
+            <div style={{ maxWidth: '420px' }}>
+              <Link href="/landing" className="bt-logo" style={{ color: '#F2EDE3', marginBottom: '56px' }}>
+                <div className="bt-logo-mark" style={{ background: '#FFC21A' }}><div className="bt-logo-dot" style={{ border: '2.5px solid #15120F', borderTopColor: 'transparent' }} /></div>
+                <span style={{ fontWeight: 900, fontSize: '22px', letterSpacing: '-.02em' }}>Battime</span>
               </Link>
-            </p>
-            <Link
-              href="/landing"
-              className="inline-flex items-center justify-center text-muted-foreground hover:text-foreground"
-            >
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Retour
-            </Link>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '9px', background: 'rgba(255,194,26,.12)', border: '1px solid rgba(255,194,26,.35)', borderRadius: '30px', padding: '8px 15px', marginBottom: '24px' }}>
+                <span className="bt-mono" style={{ fontSize: '12px', fontWeight: 700, color: '#FFC21A', letterSpacing: '.06em' }}>30 JOURS GRATUITS</span>
+              </div>
+              <h2 style={{ fontSize: '38px', lineHeight: 1.06, fontWeight: 900, letterSpacing: '-.025em', margin: '0 0 22px' }}>Vos gars pointent dès demain matin.</h2>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '8px' }}>
+                {['Sans carte bancaire, sans engagement', 'Prêt à l’emploi en 5 minutes', 'Un vrai support en français'].map((t) => (
+                  <div key={t} style={{ display: 'flex', gap: '13px', alignItems: 'flex-start' }}>
+                    <span style={{ width: '26px', height: '26px', flex: 'none', background: '#FFC21A', color: '#15120F', borderRadius: '7px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: '13px' }}>✓</span>
+                    <span style={{ fontSize: '16px', fontWeight: 600, color: '#e3ddd2', lineHeight: 1.4, paddingTop: '2px' }}>{t}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginTop: '48px', borderTop: '1px solid rgba(242,237,227,.14)', paddingTop: '24px' }}>
+                <p style={{ fontSize: '15px', lineHeight: 1.5, color: '#c9c3b8', fontWeight: 500, margin: '0 0 10px' }}>« Avant je passais mon lundi à déchiffrer des feuilles. Maintenant tout est déjà là quand j&apos;arrive. »</p>
+                <div className="bt-mono" style={{ fontSize: '12px', color: '#a59c86', fontWeight: 700, letterSpacing: '.04em' }}>THIERRY R. · CHARPENTE RIVIÈRE</div>
+              </div>
+            </div>
           </div>
-        </CardContent>
-      </Card>
-    </div>
+
+          {/* ============ COLONNE FORMULAIRE ============ */}
+          <div className="bt-formcol">
+            <div className="bt-wrap">
+              <Link href="/landing" className="bt-back">
+                <span style={{ fontSize: '17px' }}>←</span> Retour à l&apos;accueil
+              </Link>
+
+              <h1 className="bt-h1">Créez votre compte.</h1>
+              <p className="bt-sub">Lancez votre essai gratuit — aucune carte demandée.</p>
+
+              <form onSubmit={handleSignup}>
+                <label className="bt-label" htmlFor="company-name">Nom de l&apos;entreprise</label>
+                <input id="company-name" className="bt-field" type="text" required disabled={loading} placeholder="Ex. Martin Menuiserie" value={companyName} onChange={(e) => setCompanyName(e.target.value)} style={{ marginBottom: '18px' }} />
+
+                <div className="bt-grid2" style={{ marginBottom: '18px' }}>
+                  <div>
+                    <label className="bt-label" htmlFor="firstname">Prénom</label>
+                    <input id="firstname" className="bt-field" type="text" required disabled={loading} placeholder="Thierry" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="bt-label" htmlFor="lastname">Nom</label>
+                    <input id="lastname" className="bt-field" type="text" required disabled={loading} placeholder="Rivière" value={lastName} onChange={(e) => setLastName(e.target.value)} />
+                  </div>
+                </div>
+
+                <label className="bt-label" htmlFor="signup-email">Email professionnel</label>
+                <input id="signup-email" className="bt-field" type="email" required disabled={loading} placeholder="bureau@entreprise.fr" value={email} onChange={(e) => setEmail(e.target.value)} style={{ marginBottom: '18px' }} />
+
+                <label className="bt-label" htmlFor="signup-password">Mot de passe</label>
+                <input id="signup-password" className="bt-field" type="password" required disabled={loading} placeholder="6 caractères minimum" value={password} onChange={(e) => setPassword(e.target.value)} style={{ marginBottom: '18px' }} />
+
+                <div className="bt-grid2" style={{ marginBottom: '26px' }}>
+                  <div>
+                    <label className="bt-label" htmlFor="phone">Téléphone <span className="bt-opt">facultatif</span></label>
+                    <input id="phone" className="bt-field" type="tel" disabled={loading} placeholder="06 12 34 56 78" value={phone} onChange={(e) => setPhone(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="bt-label" htmlFor="employee-count">Salariés <span className="bt-opt">facultatif</span></label>
+                    <input id="employee-count" className="bt-field" type="number" min="1" disabled={loading} placeholder="Ex. 9" value={employeeCount} onChange={(e) => setEmployeeCount(e.target.value)} />
+                  </div>
+                </div>
+
+                {error && <div className="bt-err">{error}</div>}
+                {info && <div className="bt-info">{info}</div>}
+
+                <button className="bt-ybtn" type="submit" disabled={loading}>
+                  {loading ? 'Création…' : 'Démarrer mon essai gratuit →'}
+                </button>
+
+                <p className="bt-legal">
+                  En créant un compte, vous acceptez les <Link href="/mentions-legales">conditions d&apos;utilisation</Link> et la <Link href="/confidentialite">politique de confidentialité</Link>.
+                </p>
+              </form>
+
+              <p className="bt-foot">
+                Déjà un compte&nbsp;? <Link href="/connexion">Se connecter</Link>
+              </p>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </>
   );
 }
