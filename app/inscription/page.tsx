@@ -28,7 +28,7 @@ const SIGNUP_CSS = `
 .bt-auth .backbtn{transition:background .15s ease,border-color .15s ease,color .15s ease}
 .bt-auth .backbtn:hover{background:rgba(255,194,26,.16);border-color:rgba(255,194,26,.6);color:#FFC21A}
 .bt-split{display:grid;grid-template-columns:1fr 1fr;min-height:100vh;min-height:100svh;position:relative}
-.bt-aside{position:relative;background:#15120F;color:#F2EDE3;overflow:hidden;display:flex;flex-direction:column;justify-content:center;padding:clamp(20px,3.5vh,46px) clamp(22px,4vw,50px);min-width:0}
+.bt-aside{position:relative;background:#15120F;color:#F2EDE3;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-start;padding:clamp(30px,6vh,72px) clamp(22px,4vw,50px) clamp(20px,3vh,40px);min-width:0}
 .bt-ruban-center{position:absolute;top:0;left:calc(50% - 6px);width:12px;height:100%;background:repeating-linear-gradient(45deg,#15120F 0 9px,#FFC21A 9px 18px);z-index:5;pointer-events:none}
 .bt-formcol{display:flex;flex-direction:column;padding:clamp(14px,3vh,34px) 6vw;min-width:0}
 .bt-wrap{width:100%;max-width:480px;margin:auto}
