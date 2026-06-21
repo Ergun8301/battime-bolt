@@ -4,35 +4,34 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
-import { ASIDE_ILLUS } from './_illustrations';
+import { ASIDE_FULL } from './_illustrations';
 
-// Design "noir + jaune chantier" (maquette Claude Design v2). Habillage uniquement :
+// Design "noir + jaune chantier" (maquette Claude Design). Habillage uniquement :
 // la creation de compte (signUp + metadonnees -> trigger qui cree l'entreprise +
 // rattache en admin), la redirection /admin et la gestion d'erreurs restent
 // INCHANGEES.
 //
-// Hauteur RESPONSIVE : meme structure que /connexion (split plein ecran + contenu
-// centre). Comme le formulaire est plus haut (7 champs), ses espacements verticaux
-// sont fluides (clamp(min, vh, max)) -> ils suivent la hauteur de l'ecran : ca
-// respire sur grand ecran, ca se resserre sur petit ecran, sans etre calibre pour
-// une taille precise. Filet de securite : si l'ecran est vraiment trop court, la
-// colonne defile proprement du haut (margin:auto + overflow-y:auto), rien de coupe.
+// IMPORTANT — repartition des roles :
+//  - Le PANNEAU NOIR (aside, vitrine 3D) vient du designer : injecte tel quel
+//    (_illustrations.ts / ASIDE_FULL), purement decoratif.
+//  - La TENUE DANS L'ECRAN (hauteur, scroll, dimensions) reste la notre :
+//    grille plein ecran + .bt-aside en overflow:hidden (le panneau ne peut jamais
+//    causer de scroll de page ; au pire il se rogne sur un ecran tres court) +
+//    formulaire fluide (clamp/vh) qui s'adapte a la hauteur, + 100svh pour eviter
+//    le bug de scroll mobile du 100vh.
 const SIGNUP_CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
 .bt-auth{font-family:'Archivo',sans-serif;background:#F2EDE3;color:#15120F;-webkit-font-smoothing:antialiased;min-height:100vh;min-height:100svh}
 .bt-auth *{box-sizing:border-box}
 .bt-auth .mono{font-family:'JetBrains Mono',monospace}
 .bt-mono{font-family:'JetBrains Mono',monospace}
+.bt-auth .backbtn{transition:background .15s ease,border-color .15s ease,color .15s ease}
+.bt-auth .backbtn:hover{background:rgba(255,194,26,.16);border-color:rgba(255,194,26,.6);color:#FFC21A}
 .bt-split{display:grid;grid-template-columns:1fr 1fr;min-height:100vh;min-height:100svh;position:relative}
-.bt-aside{position:relative;background:#15120F;color:#F2EDE3;overflow:hidden;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:40px 4vw;min-width:0}
+.bt-aside{position:relative;background:#15120F;color:#F2EDE3;overflow:hidden;display:flex;flex-direction:column;justify-content:center;padding:clamp(20px,3.5vh,46px) clamp(22px,4vw,50px);min-width:0}
 .bt-ruban-center{position:absolute;top:0;left:calc(50% - 6px);width:12px;height:100%;background:repeating-linear-gradient(45deg,#15120F 0 9px,#FFC21A 9px 18px);z-index:5;pointer-events:none}
 .bt-formcol{display:flex;flex-direction:column;padding:clamp(14px,3vh,34px) 6vw;min-width:0}
 .bt-wrap{width:100%;max-width:480px;margin:auto}
-.bt-logo{display:inline-flex;align-items:center;gap:11px;text-decoration:none;color:inherit}
-.bt-logo-mark{width:34px;height:34px;border-radius:7px;display:flex;align-items:center;justify-content:center}
-.bt-logo-dot{width:14px;height:14px;border-radius:50%;border-top-color:transparent;transform:rotate(45deg)}
-.bt-logo-arrow{color:#a59c86;font-size:15px;line-height:1;transition:color .15s}
-.bt-logo:hover .bt-logo-arrow{color:#FFC21A}
 .bt-back-m{display:none;align-items:center;gap:7px;text-decoration:none;color:#6E6A63;font-weight:700;font-size:14px;margin-bottom:16px}
 .bt-back-m:hover{color:#15120F}
 .bt-h1{font-size:clamp(24px,4.2vh,30px);line-height:1.05;font-weight:900;letter-spacing:-.025em;margin:0 0 clamp(3px,0.8vh,7px)}
@@ -149,39 +148,19 @@ export default function InscriptionPage() {
         <div className="bt-split">
           <div className="bt-ruban-center" />
 
-          {/* ============ COLONNE ASIDE (noir) ============ */}
-          <div className="bt-aside">
-            <div style={{ maxWidth: '440px', width: '100%' }}>
-              {/* Le logo ramene a l'accueil (petite fleche discrete pour l'affordance) */}
-              <Link href="/landing" className="bt-logo" title="Retour à l'accueil" style={{ color: '#F2EDE3', marginBottom: '24px', display: 'inline-flex', alignItems: 'center' }}>
-                <span className="bt-logo-arrow" aria-hidden="true">←</span>
-                <div className="bt-logo-mark" style={{ background: '#FFC21A' }}><div className="bt-logo-dot" style={{ border: '2.5px solid #15120F', borderTopColor: 'transparent' }} /></div>
-                <span style={{ fontWeight: 900, fontSize: '22px', letterSpacing: '-.02em' }}>Battime</span>
-              </Link>
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '9px', background: 'rgba(255,194,26,.12)', border: '1px solid rgba(255,194,26,.35)', borderRadius: '30px', padding: '7px 14px', marginBottom: '16px' }}>
-                <span className="bt-mono" style={{ fontSize: '12px', fontWeight: 700, color: '#FFC21A', letterSpacing: '.06em' }}>30 JOURS GRATUITS</span>
-              </div>
-              <h2 style={{ fontSize: '32px', lineHeight: 1.06, fontWeight: 900, letterSpacing: '-.025em', margin: '0 0 16px' }}>Vos gars pointent dès demain matin.</h2>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '24px' }}>
-                {['Sans carte bancaire, sans engagement', 'Prêt à l’emploi en 5 minutes', 'Un vrai support en français'].map((t) => (
-                  <div key={t} style={{ display: 'flex', gap: '11px', alignItems: 'center' }}>
-                    <span style={{ width: '22px', height: '22px', flex: 'none', background: '#FFC21A', color: '#15120F', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: '12px' }}>✓</span>
-                    <span style={{ fontSize: '15px', fontWeight: 600, color: '#e3ddd2' }}>{t}</span>
-                  </div>
-                ))}
-              </div>
-              {/* Vrai mini-planning (illustration statique de la maquette) */}
-              <div dangerouslySetInnerHTML={{ __html: ASIDE_ILLUS }} />
-            </div>
-          </div>
+          {/* Panneau noir (design Claude Design v3) injecte tel quel. La tenue dans
+              l'ecran reste geree par .bt-aside (overflow:hidden) dans la grille
+              .bt-split -> ne peut jamais causer de scroll de page. */}
+          <div className="bt-aside" dangerouslySetInnerHTML={{ __html: ASIDE_FULL }} />
 
-          {/* ============ COLONNE FORMULAIRE ============ */}
+          {/* ============ COLONNE FORMULAIRE (notre gestion hauteur/scroll, inchangee) ============ */}
           <div className="bt-formcol">
             <div className="bt-wrap">
               {/* Retour visible sur telephone (le panneau noir est masque en mobile) */}
               <Link href="/landing" className="bt-back-m">
                 <span style={{ fontSize: '16px' }}>←</span> Retour à l&apos;accueil
               </Link>
+
               <h1 className="bt-h1">Créez votre compte.</h1>
               <p className="bt-sub">Lancez votre essai gratuit — aucune carte demandée.</p>
 
