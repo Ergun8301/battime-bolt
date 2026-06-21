@@ -4,19 +4,11 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
 import { TimeEntry, Worksite, Planning } from '@/lib/types';
-import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Calendar } from '@/components/ui/calendar';
-import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Plus, Trash2, Send, Loader2, MapPin, Clock, Utensils, WifiOff, RefreshCw, AlertTriangle, Copy, ArrowLeft,
-} from 'lucide-react';
+import { Loader2, Copy, AlertTriangle } from 'lucide-react';
 import { format, subDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -30,10 +22,17 @@ interface TimeEntryWithWorksite extends TimeEntry {
   worksite: Worksite;
 }
 
+// "h" format for the editor duration boxes (ex: 4h00).
 function formatMinutesToHours(minutes: number): string {
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
   return `${h}h${m.toString().padStart(2, '0')}`;
+}
+// ":" format used everywhere on « Ma journée » (ex: 6:45).
+function fmtHM(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `${h}:${m.toString().padStart(2, '0')}`;
 }
 
 // Worked duration of a slot (break is always 0 in the slot model).
@@ -59,7 +58,137 @@ function computePauses(slots: { start: string; end: string }[]) {
   return out;
 }
 
-// (The intervention editor is a full-screen sheet, rendered inline in the component below.)
+const DAY_CSS = `
+.bt-day{display:flex;flex-direction:column;height:100%;min-height:0;flex:1}
+.bt-day-scroll{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:16px 16px 6px}
+.bt-day-scroll::-webkit-scrollbar{display:none}
+
+.bt-net{flex:none;color:#fff;padding:7px 18px;display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700}
+.bt-net-off{background:#C0461F}
+.bt-net-sync{background:#2a2620;color:#FFC21A}
+.bt-net-dot{width:7px;height:7px;background:currentColor;border-radius:50%;flex:none}
+
+.bt-total{background:#15120F;color:#F2EDE3;border-radius:20px;padding:20px;position:relative;overflow:hidden}
+.bt-total-ruban{position:absolute;top:0;right:0;width:88px;height:9px;background:repeating-linear-gradient(45deg,#15120F 0 7px,#FFC21A 7px 14px)}
+.bt-total-k{font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:#a59c86;margin-bottom:8px}
+.bt-total-big{font-family:'JetBrains Mono',monospace;font-size:52px;font-weight:700;letter-spacing:-.02em;line-height:.9}
+.bt-total-unit{font-size:15px;font-weight:700;color:#a59c86;margin-left:4px}
+.bt-stats{display:flex;gap:8px;margin-top:16px}
+.bt-stat{flex:1;background:#211D19;border-radius:11px;padding:10px 12px}
+.bt-stat-n{font-family:'JetBrains Mono',monospace;font-size:19px;font-weight:700;color:#F2EDE3;line-height:1}
+.bt-stat-l{font-size:11px;font-weight:600;color:#a59c86;margin-top:2px}
+.bt-stat.on{background:#FFC21A}
+.bt-stat.on .bt-stat-n{color:#15120F;font-family:'Archivo',sans-serif;font-size:16px;font-weight:900;line-height:1.1}
+.bt-stat.on .bt-stat-l{color:#7a5e00;font-weight:700}
+
+.bt-meal{display:flex;align-items:center;gap:12px;background:#fff;border:1px solid rgba(21,18,15,.1);border-radius:14px;padding:13px 15px;margin-top:12px}
+.bt-meal-emoji{font-size:22px}
+.bt-meal-t{font-size:15px;font-weight:800;color:#15120F}
+.bt-meal-s{font-size:12.5px;color:#6E6A63;font-weight:500}
+.bt-switch{width:54px;height:31px;background:#cfc8b8;border-radius:30px;position:relative;flex:none;border:none;cursor:pointer;transition:background .15s;padding:0}
+.bt-switch.on{background:#15120F}
+.bt-switch i{position:absolute;top:3px;left:3px;width:25px;height:25px;background:#fff;border-radius:50%;transition:left .15s,background .15s}
+.bt-switch.on i{left:26px;background:#FFC21A}
+
+.bt-sec{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#9a8a3a;font-weight:700;margin:24px 4px 12px}
+
+.bt-iv{background:#fff;border:1px solid rgba(21,18,15,.1);border-radius:16px;padding:15px;margin-bottom:11px}
+.bt-iv.draft{background:#FFFDF6;border:1.5px dashed #E0AE1C}
+.bt-iv.off{background:#FFFBF4;border:1.5px dashed #C0461F}
+.bt-iv-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:10px}
+.bt-iv-name{font-size:17px;font-weight:800;letter-spacing:-.01em;color:#15120F}
+.bt-iv-city{font-size:13px;color:#6E6A63;font-weight:600}
+.bt-badge{flex:none;display:flex;align-items:center;gap:5px;border-radius:7px;padding:4px 9px;font-size:11px;font-weight:800;white-space:nowrap}
+.bt-badge-sent{background:#E4F2E9;border:1px solid #B7DCC4;color:#1F7A4D}
+.bt-badge-sent .dot{width:14px;height:14px;background:#2FA36B;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px;font-weight:900}
+.bt-badge-draft{background:#FFF1CC;border:1px solid #E8CE7A;color:#8a6d05}
+.bt-badge-off{background:#FBE3D8;border:1px solid #E8B79E;color:#9a3b14}
+.bt-iv-times{display:flex;align-items:center;gap:14px;border-top:1px solid rgba(21,18,15,.08);padding-top:10px;font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700;color:#15120F}
+.bt-iv-times .dot{width:4px;height:4px;background:#c4bdae;border-radius:50%}
+.bt-iv-note{font-size:13px;color:#6E6A63;margin-top:8px}
+.bt-iv-acts{display:flex;gap:8px;margin-top:12px}
+.bt-iv-mod{flex:1;border:1.5px solid #15120F;background:transparent;border-radius:10px;padding:10px;font-weight:800;font-size:13.5px;color:#15120F;cursor:pointer;font-family:inherit}
+.bt-iv-del{flex:none;border:none;background:#15120F;border-radius:10px;padding:10px 13px;font-weight:800;font-size:13.5px;color:#F2EDE3;cursor:pointer;font-family:inherit}
+
+.bt-iv-cancel{background:transparent;border:1px solid rgba(21,18,15,.12);border-radius:16px;padding:13px 15px;margin-bottom:11px;opacity:.55;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.bt-cancel-name{font-size:16px;font-weight:800;color:#6E6A63;text-decoration:line-through}
+.bt-cancel-time{font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#9a948a;font-weight:600;text-decoration:line-through}
+.bt-cancel-badge{flex:none;font-size:11px;font-weight:800;color:#9a948a;border:1px solid rgba(21,18,15,.18);border-radius:7px;padding:4px 9px;white-space:nowrap}
+
+.bt-iv-plan{background:transparent;border:1.5px dashed rgba(21,18,15,.28);border-radius:16px;padding:15px;margin-bottom:11px}
+.bt-plan-k{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#9a8a3a;font-weight:700;margin-bottom:4px}
+.bt-plan-btn{width:100%;border:none;background:#15120F;border-radius:11px;padding:13px;font-weight:800;font-size:14.5px;color:#FFC21A;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;margin-top:12px;font-family:inherit}
+
+.bt-empty{text-align:center;font-size:13.5px;color:#6E6A63;font-weight:600;padding:18px 0 4px}
+.bt-ghostbtn{display:inline-flex;align-items:center;gap:8px;margin-top:12px;background:transparent;border:1.5px solid rgba(21,18,15,.2);color:#15120F;border-radius:11px;padding:11px 16px;font-weight:800;font-size:13.5px;cursor:pointer;font-family:inherit}
+.bt-dup{display:inline-flex;align-items:center;gap:7px;margin:6px auto 4px;background:transparent;border:1px solid rgba(21,18,15,.16);color:#6E6A63;border-radius:10px;padding:9px 15px;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit}
+.bt-sentnote{text-align:center;font-size:12.5px;color:#9a948a;font-weight:600;padding:4px 0 2px}
+
+.bt-day-dock{flex:none;padding:14px 16px calc(env(safe-area-inset-bottom) + 16px);background:#F2EDE3;border-top:1px solid rgba(21,18,15,.1);display:flex;gap:10px}
+.bt-fab{flex:none;width:58px;border:2px solid #15120F;background:#F2EDE3;border-radius:15px;font-weight:900;font-size:26px;color:#15120F;display:flex;align-items:center;justify-content:center;cursor:pointer;font-family:inherit}
+.bt-send{flex:1;border:none;background:#FFC21A;border-radius:15px;padding:17px;font-weight:900;font-size:17px;color:#15120F;box-shadow:0 4px 0 #C99300;display:flex;align-items:center;justify-content:center;gap:9px;cursor:pointer;font-family:inherit}
+.bt-send:disabled{background:#e7ddc4;color:#9a948a;box-shadow:0 4px 0 #cfc4a5;cursor:default}
+.bt-send.done{background:#E4F2E9;color:#1F7A4D;box-shadow:0 4px 0 #b7dcc4}
+
+/* ===== ÉDITEUR PLEIN ÉCRAN ===== */
+.bt-ed{position:fixed;inset:0;z-index:60;display:flex;justify-content:center;background:rgba(21,18,15,.35)}
+.bt-ed-inner{width:100%;max-width:480px;height:100vh;height:100svh;height:100dvh;background:#F2EDE3;display:flex;flex-direction:column;position:relative;overflow:hidden}
+.bt-ed-hdr{background:#15120F;color:#F2EDE3;flex:none;padding:calc(env(safe-area-inset-top) + 16px) 18px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.bt-ed-cancel{border:none;background:transparent;color:#a59c86;font-size:15px;font-weight:700;padding:6px 2px;cursor:pointer;font-family:inherit;flex:none;min-width:54px;text-align:left}
+.bt-ed-title{font-size:17px;font-weight:900;letter-spacing:-.01em;text-align:center;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bt-ed-scroll{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 18px 18px}
+.bt-ed-scroll::-webkit-scrollbar{display:none}
+.bt-ed-dock{flex:none;padding:13px 18px calc(env(safe-area-inset-bottom) + 18px);background:#F2EDE3;border-top:1px solid rgba(21,18,15,.12);box-shadow:0 -10px 24px -12px rgba(21,18,15,.18)}
+
+.bt-site{border:1px solid rgba(21,18,15,.14);text-align:left;background:#fff;color:#15120F;border-radius:13px;padding:14px 15px;display:flex;align-items:center;gap:12px;width:100%;cursor:pointer;margin-bottom:8px;font-family:inherit}
+.bt-site.on{background:#15120F;color:#F2EDE3;border-color:#15120F}
+.bt-site.other{border-style:dashed;border-color:rgba(21,18,15,.3)}
+.bt-site-name{display:block;font-size:16px;font-weight:800;letter-spacing:-.01em}
+.bt-site-city{display:block;font-size:13px;font-weight:600;color:#6E6A63}
+.bt-site.on .bt-site-city{color:#a59c86}
+.bt-rdo{flex:none;width:22px;height:22px;border:2px solid rgba(21,18,15,.2);border-radius:50%;display:flex;align-items:center;justify-content:center}
+.bt-site.on .bt-rdo{width:26px;height:26px;border:none;background:#FFC21A;color:#15120F;font-weight:900;font-size:14px;border-radius:50%}
+.bt-rdo-plus{flex:none;width:26px;height:26px;background:#15120F;color:#FFC21A;border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:17px}
+
+.bt-times{display:flex;gap:9px;align-items:stretch}
+.bt-timecard{flex:1;border:1.5px solid rgba(21,18,15,.16);background:#fff;border-radius:13px;padding:11px 14px;display:flex;flex-direction:column;gap:3px;cursor:pointer;text-align:left;font-family:inherit}
+.bt-timecard:active{border-color:#15120F}
+.bt-timecard .k{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#9a948a;font-weight:700}
+.bt-timecard .v{font-family:'JetBrains Mono',monospace;font-size:25px;font-weight:700;color:#15120F;line-height:1}
+.bt-dur{flex:none;width:84px;background:#15120F;border-radius:13px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#FFC21A}
+.bt-dur .k{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:#a59c86;font-weight:700}
+.bt-dur .v{font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:700}
+.bt-times-hint{text-align:center;font-size:12.5px;color:#9a948a;font-weight:600;margin-top:8px}
+
+.bt-pause-row{display:flex;align-items:center;gap:8px;margin-top:16px;flex-wrap:wrap}
+.bt-pause-k{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#9a8a3a;font-weight:700;margin-right:2px}
+.bt-pause{border:1px solid rgba(21,18,15,.2);background:#fff;color:#6E6A63;border-radius:20px;padding:8px 15px;font-weight:700;font-size:13.5px;cursor:pointer;font-family:inherit}
+.bt-pause.on{background:#15120F;color:#FFC21A;border-color:#15120F;font-weight:800}
+
+.bt-note{width:100%;font-family:inherit;font-size:15.5px;font-weight:500;color:#15120F;padding:14px 15px;border:1.5px solid rgba(21,18,15,.16);border-radius:13px;background:#fff;outline:none;resize:none}
+
+.bt-save{width:100%;border:none;background:#FFC21A;border-radius:13px;padding:15px;font-weight:900;font-size:16px;color:#15120F;box-shadow:0 4px 0 #C99300;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;font-family:inherit}
+.bt-save:disabled{opacity:.6;cursor:default}
+.bt-retire{width:100%;background:transparent;border:none;color:#C0461F;font-weight:800;font-size:14px;padding:10px;cursor:pointer;margin-bottom:8px;font-family:inherit}
+
+/* ===== TIROIR MOLETTE ===== */
+.bt-overlay{position:absolute;inset:0;background:rgba(21,18,15,.5);z-index:8;opacity:0;pointer-events:none;transition:opacity .25s ease}
+.bt-overlay.open{opacity:1;pointer-events:auto}
+.bt-sheet{position:absolute;left:0;right:0;bottom:0;background:#15120F;border-radius:24px 24px 0 0;z-index:9;padding:12px 16px calc(env(safe-area-inset-bottom) + 22px);transform:translateY(106%);transition:transform .32s cubic-bezier(.22,1,.36,1)}
+.bt-sheet.open{transform:translateY(0)}
+.bt-grip{width:42px;height:5px;background:#3a352f;border-radius:3px;margin:2px auto 12px}
+.bt-seg{display:flex;background:#211D19;border-radius:11px;padding:4px;gap:4px;margin-bottom:8px}
+.bt-segb{flex:1;border:none;background:transparent;color:#a59c86;border-radius:8px;padding:9px;font-weight:800;font-size:13px;cursor:pointer;text-align:center;font-family:inherit}
+.bt-segb .lbl{display:block}
+.bt-segb .v{font-family:'JetBrains Mono',monospace;font-size:17px;font-weight:700;color:#6E6A63;display:block;margin-top:1px}
+.bt-segb.on{background:#000}
+.bt-segb.on .lbl{color:#FFC21A}
+.bt-segb.on .v{color:#F2EDE3}
+.bt-sheet-dur{display:flex;align-items:center;justify-content:center;gap:7px;margin-bottom:2px}
+.bt-sheet-dur .k{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#a59c86;font-weight:700}
+.bt-sheet-dur .v{font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700;color:#FFC21A}
+.bt-molette{display:flex;justify-content:center;padding:4px 0 2px}
+`;
 
 // ─── main ──────────────────────────────────────────────────────────────────────
 
@@ -91,6 +220,12 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
   const [fSaving, setFSaving] = useState(false);
   // Chantier picker (existing chantiers only — workers don't create clients)
   const [fWorksiteId, setFWorksiteId] = useState('');
+  // Tiroir molette (purement présentation : quelle roue on règle)
+  const [drawerField, setDrawerField] = useState<'start' | 'end' | null>(null);
+  // Pastilles de pause de la maquette — VISUEL UNIQUEMENT. Le modèle testé calcule
+  // les pauses comme les trous entre créneaux (break_minutes reste 0). On ne touche
+  // donc PAS à la logique : ces pastilles ne modifient ni l'enregistrement ni le total.
+  const [pauseSel, setPauseSel] = useState<'none' | '45' | '60'>('none');
 
   // Coherence confirmation
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -205,6 +340,12 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
     }
   }, [user, date, syncPendingEntries]);
 
+  // Reset the (presentation-only) editor sub-state when the editor opens/closes.
+  useEffect(() => {
+    if (openSlot) setPauseSel('none');
+    else setDrawerField(null);
+  }, [openSlot]);
+
   // ─── Day meal: keep exactly one flagged row per day (no migration) ──────────
 
   const applyDayMeal = useCallback(async (value: boolean) => {
@@ -271,7 +412,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
     else { setFStart('08:00'); setFEnd('12:00'); }
     setFObs('');
   };
-  const cancelSlot = () => setOpenSlot(null);
+  const cancelSlot = () => { setDrawerField(null); setOpenSlot(null); };
 
   // On a sent (frozen) day, any touch — edit a sent entry OR declare a remaining
   // chantier OR the meal — goes through this confirm, then unlocks the day.
@@ -345,6 +486,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
         }
       }
 
+      setDrawerField(null);
       setOpenSlot(null);
       await applyDayMeal(dayMeal);
       if (navigator.onLine) fetchData();
@@ -534,6 +676,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
   const totalMinutes = serverTotal + pendingTotal;
   const nbInterventions = liveEntries.length + pendingEntries.length;
   const hasDrafts = liveEntries.some((e) => e.status === 'draft') || pendingEntries.length > 0;
+  const hasRealDrafts = liveEntries.some((e) => e.status === 'draft' && !e.locked);
   const allSubmitted = liveEntries.length > 0 && liveEntries.every((e) => e.status !== 'draft') && pendingEntries.length === 0;
   const frozen = allSubmitted; // a sent day stays frozen; every change re-asks to confirm
   const isEmpty = liveEntries.length === 0 && pendingEntries.length === 0;
@@ -550,6 +693,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
   const pauses = computePauses(
     [...liveEntries, ...pendingEntries].map((e) => ({ start: (e.start_time || '').slice(0, 5), end: (e.end_time || '').slice(0, 5) })),
   );
+  const pauseMinutes = pauses.reduce((s, p) => s + p.minutes, 0);
 
   // "Autre" is a real worksite pinned at the top of the picker (created once per
   // company in Supabase) — for work the secretary hasn't listed / the worker can't name.
@@ -580,256 +724,379 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
     : openSlot.kind === 'entry' ? (entries.find((e) => e.id === openSlot.entryId)?.worksite?.client_name || '')
     : openSlot.kind === 'pending' ? (pendingEntries.find((e) => e.localId === openSlot.localId)?._worksite_name || '')
     : '';
+  const titleCity = !openSlot ? ''
+    : openSlot.kind === 'planned' ? (planning.find((p) => p.id === openSlot.planningId)?.worksite?.city || '')
+    : openSlot.kind === 'entry' ? (entries.find((e) => e.id === openSlot.entryId)?.worksite?.city || '')
+    : openSlot.kind === 'pending' ? (pendingEntries.find((e) => e.localId === openSlot.localId)?._worksite_city || '')
+    : '';
   const slotTitle = !openSlot ? ''
     : openSlot.kind === 'new' ? 'Nouvelle intervention'
     : titleName ? `Chantier ${titleName}` : 'Intervention';
 
+  const editorEntry = openSlot?.kind === 'entry' ? entries.find((x) => x.id === openSlot.entryId) : undefined;
+  const durMin = (fStart && fEnd) ? calculateTotalMinutes(fStart, fEnd, 0) : 0;
+
   if (loading) {
-    return <div className="space-y-4"><Skeleton className="h-24 w-full" /><Skeleton className="h-40 w-full" /></div>;
+    return (
+      <div className="bt-day">
+        <style dangerouslySetInnerHTML={{ __html: DAY_CSS }} />
+        <div className="bt-day-scroll space-y-3">
+          <Skeleton className="h-28 w-full rounded-2xl" />
+          <Skeleton className="h-16 w-full rounded-2xl" />
+          <Skeleton className="h-24 w-full rounded-2xl" />
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="space-y-4">
-      {/* Offline / syncing */}
+    <div className="bt-day">
+      <style dangerouslySetInnerHTML={{ __html: DAY_CSS }} />
+
+      {/* ===== BANDEAU RÉSEAU ===== */}
       {!isOnline && (
-        <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 flex items-center gap-2 text-sm text-orange-700">
-          <WifiOff className="h-4 w-4 shrink-0" />
-          <span>Mode hors-ligne — tes saisies seront synchronisées au retour du réseau</span>
+        <div className="bt-net bt-net-off">
+          <span className="bt-net-dot" />
+          <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            Hors-ligne, tout est gardé{pendingEntries.length > 0 ? ` · ${pendingEntries.length} en attente` : ''}
+          </span>
         </div>
       )}
       {isOnline && syncing && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center gap-2 text-sm text-blue-700">
-          <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+        <div className="bt-net bt-net-sync">
+          <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
           <span>Synchronisation…</span>
         </div>
       )}
 
-      {/* Duplicate this day — centered, looks like a real button */}
-      {!isEmpty && !openSlot && !monthLocked && (
-        <div className="flex justify-center">
-          <Button variant="outline" size="sm" onClick={() => { setCopyDates([]); setRepeatOpen(true); }}>
-            <Copy className="h-4 w-4 mr-2" /> Dupliquer cette journée
-          </Button>
+      {/* ===== ZONE SCROLLABLE ===== */}
+      <div className="bt-day-scroll">
+
+        {/* ----- TOTAL DU JOUR ----- */}
+        <div className="bt-total">
+          <div className="bt-total-ruban" />
+          <div className="bt-total-k">Total aujourd&apos;hui</div>
+          <div style={{ display: 'flex', alignItems: 'baseline' }}>
+            <span className="bt-total-big">{fmtHM(totalMinutes)}</span>
+            <span className="bt-total-unit">travaillées</span>
+          </div>
+          <div className="bt-stats">
+            <div className="bt-stat">
+              <div className="bt-stat-n">{nbInterventions}</div>
+              <div className="bt-stat-l">intervention{nbInterventions > 1 ? 's' : ''}</div>
+            </div>
+            <div className="bt-stat">
+              <div className="bt-stat-n">{fmtHM(pauseMinutes)}</div>
+              <div className="bt-stat-l">pause{pauses.length > 1 ? 's' : ''}</div>
+            </div>
+            <div className={`bt-stat${dayMeal ? ' on' : ''}`}>
+              <div className="bt-stat-n">{dayMeal ? 'Panier ✓' : 'Panier'}</div>
+              <div className="bt-stat-l">{dayMeal ? 'repas pris' : 'non pris'}</div>
+            </div>
+          </div>
         </div>
-      )}
 
-      {/* Total (label + clock left, total right) + récap below */}
-      <Card className="bg-primary text-primary-foreground">
-        <CardContent className="py-4 space-y-3">
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-sm opacity-90 flex items-center gap-2">
-              <Clock className="h-4 w-4 opacity-90 shrink-0" /> Total travaillé
-            </p>
-            <p className="text-2xl font-bold leading-none">{formatMinutesToHours(totalMinutes)}</p>
+        {/* ----- PANIER REPAS (toggle, une fois/jour) ----- */}
+        <div className="bt-meal">
+          <span className="bt-meal-emoji">🥪</span>
+          <div style={{ flex: 1 }}>
+            <div className="bt-meal-t">Panier repas</div>
+            <div className="bt-meal-s">{dayMeal ? "Déclaré pour aujourd'hui" : 'Pour la journée'}</div>
           </div>
-          <div className="space-y-1.5 border-t border-white/15 pt-3 text-sm">
-            <p>🧱 {nbInterventions} intervention{nbInterventions > 1 ? 's' : ''}</p>
-            <p>🍽️ {dayMeal ? 'Panier repas' : 'Sans panier'}</p>
-            <p>☕ {pauses.length > 0 ? `Pause ${pauses.map((p) => `${p.start}–${p.end} (${formatMinutesToHours(p.minutes)})`).join(' · ')}` : 'Aucune pause'}</p>
-          </div>
-        </CardContent>
-      </Card>
+          <button
+            type="button"
+            className={`bt-switch${dayMeal ? ' on' : ''}`}
+            aria-label="Panier repas"
+            aria-pressed={dayMeal}
+            onClick={() => {
+              if (monthLocked) { setLateOpen(true); return; }
+              if (frozen) { askCorrect(null); return; }
+              toggleDayMeal(!dayMeal);
+            }}
+          >
+            <i />
+          </button>
+        </div>
 
-      {/* Panier repas — once per day */}
-      <Card>
-        <CardContent className="py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Utensils className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium">Panier repas <span className="text-muted-foreground font-normal">(pour la journée)</span></span>
-          </div>
-          <Switch checked={dayMeal} onCheckedChange={(v) => { if (monthLocked) { setLateOpen(true); return; } if (frozen) { askCorrect(null); return; } toggleDayMeal(v); }} />
-        </CardContent>
-      </Card>
+        {/* ----- INTERVENTIONS ----- */}
+        <div className="bt-sec">Interventions du jour</div>
 
-      {/* Interventions — unified, sorted by start time so a card stays put when filled */}
-      <div className="space-y-2">
         {items.map((item) => {
           if (item.kind === 'planned') {
             const p = item.data;
+            const onTap = monthLocked ? () => setLateOpen(true) : frozen ? () => askCorrect(() => openPlanned(p)) : () => openPlanned(p);
             return (
-              <Card key={item.key} className="border-primary/30 bg-primary/5 cursor-pointer transition-colors hover:bg-primary/10" onClick={monthLocked ? () => setLateOpen(true) : frozen ? () => askCorrect(() => openPlanned(p)) : () => openPlanned(p)}>
-                <CardContent className="py-4 flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-xs text-muted-foreground">À déclarer</p>
-                    <p className="font-semibold truncate flex items-center gap-1"><MapPin className="h-4 w-4 text-muted-foreground shrink-0" />{p.worksite?.client_name}</p>
-                    {p.worksite?.city && <p className="text-xs text-muted-foreground truncate">{p.worksite.city}</p>}
-                    {p.estimated_start && p.estimated_end && <p className="text-xs text-muted-foreground mt-0.5">Prévu {p.estimated_start.substring(0, 5)}–{p.estimated_end.substring(0, 5)}</p>}
-                  </div>
-                  <span className="flex items-center gap-1 text-primary font-medium text-sm shrink-0"><Plus className="h-4 w-4" /> Mes heures</span>
-                </CardContent>
-              </Card>
+              <div key={item.key} className="bt-iv-plan">
+                <div className="bt-plan-k">
+                  {p.estimated_start && p.estimated_end ? `Prévu · ${p.estimated_start.substring(0, 5)}–${p.estimated_end.substring(0, 5)}` : 'Prévu'}
+                </div>
+                <div className="bt-iv-name">{p.worksite?.client_name}</div>
+                {p.worksite?.city && <div className="bt-iv-city">{p.worksite.city}</div>}
+                <button type="button" className="bt-plan-btn" onClick={onTap}>
+                  <span style={{ fontSize: 18 }}>+</span> Déclarer ce chantier
+                </button>
+              </div>
             );
           }
+
           if (item.kind === 'entry') {
             const entry = item.data;
             const tappable = isEditable(entry);
+            const isDraft = entry.status === 'draft' && !entry.locked;
             const onTap = !tappable ? undefined : monthLocked ? () => setLateOpen(true) : frozen ? () => askCorrect(() => openEntry(entry)) : () => openEntry(entry);
             return (
-              <Card key={item.key} className={tappable ? 'cursor-pointer transition-colors hover:bg-muted/40' : ''} onClick={onTap}>
-                <CardContent className="py-4">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="font-semibold truncate">{entry.worksite?.client_name || OTHER_NAME}</p>
-                      {entry.worksite?.city && <p className="text-xs text-muted-foreground truncate">{entry.worksite.city}</p>}
-                      <p className="text-sm flex items-center gap-1 mt-0.5"><Clock className="h-3.5 w-3.5 text-muted-foreground" />{entry.start_time?.substring(0, 5)}–{entry.end_time?.substring(0, 5)} · <span className="font-semibold text-primary">{formatMinutesToHours(entry.total_minutes)}</span></p>
-                      {entry.observation && <p className="text-sm text-muted-foreground mt-0.5">{entry.observation}</p>}
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      {entry.status === 'submitted' && <Badge variant="default" className="text-xs">Envoyé</Badge>}
-                      {entry.status === 'draft' && !entry.locked && (
-                        <Button variant="ghost" size="icon" className="text-destructive" onClick={(e) => { e.stopPropagation(); handleDeleteEntry(entry.id); }}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </div>
+              <div key={item.key} className={`bt-iv${isDraft ? ' draft' : ''}`}>
+                <div className="bt-iv-top">
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="bt-iv-name">{entry.worksite?.client_name || OTHER_NAME}</div>
+                    {entry.worksite?.city && <div className="bt-iv-city">{entry.worksite.city}</div>}
                   </div>
-                </CardContent>
-              </Card>
+                  {entry.status === 'submitted' && (
+                    <div className="bt-badge bt-badge-sent"><span className="dot">✓</span> Envoyé</div>
+                  )}
+                  {isDraft && <div className="bt-badge bt-badge-draft">● Brouillon</div>}
+                </div>
+                <div className="bt-iv-times">
+                  <span>{entry.start_time?.substring(0, 5)} → {entry.end_time?.substring(0, 5)}</span>
+                  <span className="dot" />
+                  <span>{fmtHM(entry.total_minutes)}</span>
+                </div>
+                {entry.observation && <div className="bt-iv-note">{entry.observation}</div>}
+                {isDraft && (
+                  <div className="bt-iv-acts">
+                    <button type="button" className="bt-iv-mod" onClick={onTap}>Modifier</button>
+                    <button type="button" className="bt-iv-del" onClick={() => handleRetire(entry)}>Retirer</button>
+                  </div>
+                )}
+                {!isDraft && tappable && (
+                  <div className="bt-iv-acts">
+                    <button type="button" className="bt-iv-mod" onClick={onTap}>Modifier</button>
+                  </div>
+                )}
+              </div>
             );
           }
+
           if (item.kind === 'cancelled') {
             const entry = item.data;
             return (
-              <Card key={item.key} className="border-dashed opacity-60">
-                <CardContent className="py-3 flex items-center justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="font-medium truncate line-through">{entry.worksite?.client_name || OTHER_NAME}</p>
-                    <p className="text-xs text-muted-foreground line-through">{entry.start_time?.substring(0, 5)}–{entry.end_time?.substring(0, 5)}</p>
-                  </div>
-                  <Badge variant="outline" className="text-xs shrink-0">Retirée</Badge>
-                </CardContent>
-              </Card>
+              <div key={item.key} className="bt-iv-cancel">
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="bt-cancel-name">{entry.worksite?.client_name || OTHER_NAME}</div>
+                  <div className="bt-cancel-time">{entry.start_time?.substring(0, 5)} → {entry.end_time?.substring(0, 5)} · {fmtHM(entry.total_minutes)}</div>
+                </div>
+                <div className="bt-cancel-badge">Retirée</div>
+              </div>
             );
           }
+
           // pending (offline)
           const entry = item.data;
           return (
-            <Card key={item.key} className="border-orange-300 bg-orange-50/30 cursor-pointer hover:bg-orange-50/60 transition-colors" onClick={() => openPending(entry)}>
-              <CardContent className="py-4">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="font-semibold truncate">{entry._worksite_name}</p>
-                    <p className="text-sm flex items-center gap-1 mt-0.5"><Clock className="h-3.5 w-3.5 text-muted-foreground" />{entry.start_time.substring(0, 5)}–{entry.end_time.substring(0, 5)} · <span className="font-semibold text-primary">{formatMinutesToHours(entry.total_minutes)}</span></p>
+            <div key={item.key} className="bt-iv off">
+              <div className="bt-iv-top">
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="bt-iv-name">{entry._worksite_name}</div>
+                  {entry._worksite_city && <div className="bt-iv-city">{entry._worksite_city}</div>}
                 </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <Badge variant="outline" className="text-xs text-orange-600 border-orange-300"><WifiOff className="h-3 w-3 mr-1" />Hors-ligne</Badge>
-                    <Button variant="ghost" size="icon" className="text-destructive" onClick={(e) => { e.stopPropagation(); handleDeletePending(entry.localId); }}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                <div className="bt-badge bt-badge-off">● En attente</div>
+              </div>
+              <div className="bt-iv-times">
+                <span>{entry.start_time.substring(0, 5)} → {entry.end_time.substring(0, 5)}</span>
+                <span className="dot" />
+                <span>{fmtHM(entry.total_minutes)}</span>
+              </div>
+              <div className="bt-iv-acts">
+                <button type="button" className="bt-iv-mod" onClick={() => openPending(entry)}>Modifier</button>
+                <button type="button" className="bt-iv-del" onClick={() => handleDeletePending(entry.localId)}>Retirer</button>
+              </div>
+            </div>
           );
         })}
 
-        {/* + Ajouter une intervention */}
-        <Button variant="outline" className="w-full" onClick={frozen && !monthLocked ? () => askCorrect(openNew) : openNew}>
-          <Plus className="h-4 w-4 mr-2" /> Ajouter une intervention
-        </Button>
+        {/* Vide → astuce + copier hier */}
+        {isEmpty && plannedTodo.length === 0 && (
+          <div className="bt-empty">
+            <div>Aucune intervention aujourd&apos;hui.</div>
+            {isOnline && !monthLocked && (
+              <button type="button" className="bt-ghostbtn" onClick={handleCopyYesterday} disabled={copyingYesterday}>
+                {copyingYesterday ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />} Copier la journée d&apos;hier
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Dupliquer cette journée */}
+        {!isEmpty && !monthLocked && (
+          <div style={{ textAlign: 'center' }}>
+            <button type="button" className="bt-dup" onClick={() => { setCopyDates([]); setRepeatOpen(true); }}>
+              <Copy className="h-4 w-4" /> Dupliquer cette journée
+            </button>
+          </div>
+        )}
+
+        {/* Journée envoyée — note de correction */}
+        {allSubmitted && (
+          <div className="bt-sentnote">
+            {monthLocked
+              ? 'Mois clôturé — vois avec la secrétaire pour modifier.'
+              : 'Touche une intervention pour la corriger (la secrétaire sera prévenue).'}
+          </div>
+        )}
       </div>
 
-      {/* Empty hint + copy yesterday */}
-      {isEmpty && plannedTodo.length === 0 && !openSlot && (
-        <div className="text-center text-sm text-muted-foreground pt-2">
-          <p>Aucune intervention aujourd'hui.</p>
-          {isOnline && !monthLocked && (
-            <Button variant="outline" size="sm" className="mt-2" onClick={handleCopyYesterday} disabled={copyingYesterday}>
-              {copyingYesterday ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Copy className="h-4 w-4 mr-2" />} Copier la journée d'hier
-            </Button>
-          )}
-        </div>
-      )}
+      {/* ===== BARRE D'ACTION DOCKÉE (bas) ===== */}
+      <div className="bt-day-dock">
+        <button
+          type="button"
+          className="bt-fab"
+          aria-label="Ajouter une intervention"
+          onClick={frozen && !monthLocked ? () => askCorrect(openNew) : openNew}
+        >
+          +
+        </button>
 
-      {/* Submit / sync */}
-      {!openSlot && (hasDrafts || pendingEntries.length > 0) && (
-        <div className="flex gap-2">
-          {hasDrafts && isOnline && (
-            <Button className="flex-1" onClick={handleSubmitDay} disabled={submitting || pendingEntries.length > 0} title={pendingEntries.length > 0 ? 'Synchronisation en cours…' : undefined}>
-              {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />} Envoyer ma journée
-            </Button>
-          )}
-          {pendingEntries.length > 0 && isOnline && (
-            <Button variant="outline" onClick={syncPendingEntries} disabled={syncing}>
-              {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            </Button>
-          )}
-        </div>
-      )}
+        {!isOnline ? (
+          <button type="button" className="bt-send" disabled>Envoyer ma journée</button>
+        ) : pendingEntries.length > 0 ? (
+          <button type="button" className="bt-send" onClick={syncPendingEntries} disabled={syncing}>
+            {syncing && <Loader2 className="h-4 w-4 animate-spin" />} Synchroniser ({pendingEntries.length})
+          </button>
+        ) : allSubmitted ? (
+          <button type="button" className="bt-send done" disabled>Journée envoyée ✓</button>
+        ) : hasRealDrafts ? (
+          <button type="button" className="bt-send" onClick={handleSubmitDay} disabled={submitting}>
+            {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Envoyer ma journée <span style={{ fontSize: 19 }}>→</span>
+          </button>
+        ) : (
+          <button type="button" className="bt-send" disabled>Envoyer ma journée <span style={{ fontSize: 19 }}>→</span></button>
+        )}
+      </div>
 
-      {allSubmitted && !openSlot && (
-        <div className="text-center py-2">
-          <p className="text-sm text-muted-foreground">Journée envoyée ✓</p>
-          {monthLocked
-            ? <p className="text-xs text-muted-foreground mt-0.5">Mois clôturé — vois avec la secrétaire pour modifier.</p>
-            : <p className="text-xs text-muted-foreground mt-0.5">Touche une intervention pour la corriger (la secrétaire sera prévenue).</p>}
-        </div>
-      )}
-
-      {/* Full-screen intervention editor — closes only via ← / Annuler / Enregistrer */}
+      {/* ===== ÉDITEUR PLEIN ÉCRAN — Ajouter / modifier une intervention ===== */}
       {openSlot && (
-        <div className="fixed inset-0 z-[60] bg-background">
-          <div className="mx-auto flex h-full w-full max-w-md flex-col safe-top safe-bottom">
-            <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2 border-b px-2 py-2">
-              <Button variant="ghost" size="sm" className="h-10 px-2" onClick={cancelSlot} aria-label="Retour">
-                <ArrowLeft className="h-5 w-5 mr-1" /> Retour
-              </Button>
-              <p className="font-semibold text-center truncate">{slotTitle}</p>
-              <span className="w-[88px]" aria-hidden />
+        <div className="bt-ed">
+          <div className="bt-ed-inner">
+            <div className="bt-ed-hdr">
+              <button type="button" className="bt-ed-cancel" onClick={cancelSlot}>Annuler</button>
+              <div className="bt-ed-title">{slotTitle}</div>
+              <span style={{ width: 54, flex: 'none' }} aria-hidden />
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
-              {openSlot.kind === 'new' && (
-                <div className="space-y-1.5">
-                  <Select value={fWorksiteId} onValueChange={setFWorksiteId}>
-                    <SelectTrigger className="h-11"><SelectValue placeholder="Choisir un chantier" /></SelectTrigger>
-                    <SelectContent className="z-[70]">
-                      {sortedWorksites.map((ws) => (
-                        <SelectItem key={ws.id} value={ws.id}>
-                          {ws.client_name === OTHER_NAME
-                            ? <span className="italic">{ws.client_name}</span>
-                            : <>{ws.client_name}{ws.city ? ` - ${ws.city}` : ''}</>}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+            <div className="bt-ed-scroll">
+
+              {/* 1 · Chantier */}
+              <div className="bt-sec">1 · Chantier</div>
+              {openSlot.kind === 'new' ? (
+                sortedWorksites.map((ws) => {
+                  const isOther = ws.client_name === OTHER_NAME;
+                  const on = fWorksiteId === ws.id;
+                  return (
+                    <button
+                      key={ws.id}
+                      type="button"
+                      className={`bt-site${on ? ' on' : ''}${isOther ? ' other' : ''}`}
+                      onClick={() => setFWorksiteId(ws.id)}
+                    >
+                      {isOther && !on ? <span className="bt-rdo-plus">+</span> : null}
+                      <span style={{ flex: 1, minWidth: 0 }}>
+                        <span className="bt-site-name">{isOther ? 'Autre chantier' : ws.client_name}</span>
+                        <span className="bt-site-city">{isOther ? 'Travail non prévu, à préciser' : (ws.city || '')}</span>
+                      </span>
+                      {!(isOther && !on) && <span className="bt-rdo">{on ? '✓' : ''}</span>}
+                    </button>
+                  );
+                })
+              ) : (
+                <div className="bt-site on">
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span className="bt-site-name">{titleName || OTHER_NAME}</span>
+                    {titleCity && <span className="bt-site-city">{titleCity}</span>}
+                  </span>
+                  <span className="bt-rdo">✓</span>
                 </div>
               )}
 
-              <div className="grid grid-cols-2 overflow-hidden rounded-lg border bg-background">
-                <div className="p-2">
-                  <Label className="mb-1 block text-center text-sm text-muted-foreground">Début</Label>
-                  <TimeCylinder value={fStart} onChange={setFStart} />
-                </div>
-                <div className="border-l p-2">
-                  <Label className="mb-1 block text-center text-sm text-muted-foreground">Fin</Label>
-                  <TimeCylinder value={fEnd} onChange={setFEnd} />
+              {/* 2 · Horaires */}
+              <div className="bt-sec">2 · Horaires</div>
+              <div className="bt-times">
+                <button type="button" className="bt-timecard" onClick={() => setDrawerField('start')}>
+                  <span className="k">Début</span>
+                  <span className="v">{fStart}</span>
+                </button>
+                <button type="button" className="bt-timecard" onClick={() => setDrawerField('end')}>
+                  <span className="k">Fin</span>
+                  <span className="v">{fEnd}</span>
+                </button>
+                <div className="bt-dur">
+                  <span className="k">Durée</span>
+                  <span className="v">{formatMinutesToHours(durMin)}</span>
                 </div>
               </div>
-              {fStart && fEnd && (
-                <p className="text-center text-base">Durée : <strong>{formatMinutesToHours(calculateTotalMinutes(fStart, fEnd, 0))}</strong></p>
-              )}
+              <div className="bt-times-hint">Touchez une heure pour la régler</div>
 
-              <div className="space-y-1.5">
-                <Label>Note (optionnel)</Label>
-                <Input value={fObs} onChange={(e) => setFObs(e.target.value)} placeholder="Lieu, chef d'équipe, détail…" />
+              {/* Pause — pastilles fidèles à la maquette (présentation seule, cf. note plus haut) */}
+              <div className="bt-pause-row">
+                <span className="bt-pause-k">Pause</span>
+                <button type="button" className={`bt-pause${pauseSel === 'none' ? ' on' : ''}`} onClick={() => setPauseSel('none')}>Aucune</button>
+                <button type="button" className={`bt-pause${pauseSel === '45' ? ' on' : ''}`} onClick={() => setPauseSel('45')}>45 min</button>
+                <button type="button" className={`bt-pause${pauseSel === '60' ? ' on' : ''}`} onClick={() => setPauseSel('60')}>1h00</button>
               </div>
+
+              {/* 3 · Note */}
+              <div className="bt-sec">3 · Note <span style={{ textTransform: 'none', letterSpacing: 0, color: '#a39d92' }}>(facultatif)</span></div>
+              <textarea
+                className="bt-note"
+                rows={2}
+                placeholder="Préciser le travail effectué…"
+                value={fObs}
+                onChange={(e) => setFObs(e.target.value)}
+              />
             </div>
 
-            <div className="border-t p-4 space-y-2">
-              {openSlot.kind === 'entry' && (
-                <Button variant="ghost" className="w-full text-destructive" disabled={fSaving}
-                  onClick={() => { const e = entries.find((x) => x.id === (openSlot.kind === 'entry' ? openSlot.entryId : '')); if (e) handleRetire(e); }}>
-                  <Trash2 className="h-4 w-4 mr-2" /> Retirer cette intervention
-                </Button>
+            {/* Barre d'action dockée */}
+            <div className="bt-ed-dock">
+              {openSlot.kind === 'entry' && editorEntry && (
+                <button type="button" className="bt-retire" disabled={fSaving} onClick={() => handleRetire(editorEntry)}>
+                  Retirer cette intervention
+                </button>
               )}
-              <div className="flex gap-2">
-                <Button variant="outline" className="h-12 flex-1 text-base" onClick={cancelSlot} disabled={fSaving}>Annuler</Button>
-                <Button className="h-12 flex-1 text-base" onClick={saveSlot} disabled={fSaving}>
-                  {fSaving && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer
-                </Button>
-              </div>
+              <button type="button" className="bt-save" onClick={saveSlot} disabled={fSaving}>
+                {fSaving && <Loader2 className="h-4 w-4 animate-spin" />}
+                Enregistrer l&apos;intervention <span style={{ fontSize: 18 }}>✓</span>
+              </button>
             </div>
+
+            {/* ===== TIROIR MOLETTE ===== */}
+            <div className={`bt-overlay${drawerField ? ' open' : ''}`} onClick={() => setDrawerField(null)} />
+            <div className={`bt-sheet${drawerField ? ' open' : ''}`}>
+              <div className="bt-grip" />
+              <div className="bt-seg">
+                <button type="button" className={`bt-segb${drawerField !== 'end' ? ' on' : ''}`} onClick={() => setDrawerField('start')}>
+                  <span className="lbl">Début</span>
+                  <span className="v">{fStart}</span>
+                </button>
+                <button type="button" className={`bt-segb${drawerField === 'end' ? ' on' : ''}`} onClick={() => setDrawerField('end')}>
+                  <span className="lbl">Fin</span>
+                  <span className="v">{fEnd}</span>
+                </button>
+              </div>
+              <div className="bt-sheet-dur">
+                <span className="k">Durée totale</span>
+                <span className="v">{formatMinutesToHours(durMin)}</span>
+              </div>
+              <div className="bt-molette">
+                {/* La molette TimeCylinder et sa mécanique restent intactes. */}
+                <TimeCylinder
+                  value={drawerField === 'end' ? fEnd : fStart}
+                  onChange={(v) => (drawerField === 'end' ? setFEnd(v) : setFStart(v))}
+                />
+              </div>
+              <button type="button" className="bt-save" style={{ marginTop: 14 }} onClick={() => setDrawerField(null)}>
+                Valider les heures ✓
+              </button>
+            </div>
+
           </div>
         </div>
       )}
@@ -888,7 +1155,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
           </div>
           <div className="flex gap-2 mt-2">
             <Button variant="outline" className="flex-1" onClick={() => setConfirmOpen(false)}>Corriger</Button>
-            <Button className="flex-1" onClick={() => { setConfirmOpen(false); doSubmit(); }}>Confirmer l'envoi</Button>
+            <Button className="flex-1" onClick={() => { setConfirmOpen(false); doSubmit(); }}>Confirmer l&apos;envoi</Button>
           </div>
         </DialogContent>
       </Dialog>

@@ -84,8 +84,8 @@ function WheelColumn({ values, value, onChange }: { values: string[]; value: str
           <li
             key={i}
             ref={(el) => { itemsRef.current[i] = el; }}
-            className="grid snap-center place-items-center text-2xl font-semibold tabular-nums"
-            style={{ height: ITEM_H, backfaceVisibility: 'hidden', willChange: 'transform, opacity' }}
+            className="grid snap-center place-items-center text-2xl font-bold tabular-nums text-[#F2EDE3]"
+            style={{ height: ITEM_H, backfaceVisibility: 'hidden', willChange: 'transform, opacity', fontFamily: "'JetBrains Mono', monospace" }}
           >
             {v}
           </li>
@@ -114,10 +114,10 @@ export function TimeCylinder({ value, onChange }: { value: string; onChange: (v:
   const [hh, mm] = norm.split(':');
   return (
     <div className="relative mx-auto flex w-fit items-center justify-center gap-0.5 select-none">
-      {/* central visor */}
-      <div className="pointer-events-none absolute inset-x-1 top-1/2 h-9 -translate-y-1/2 rounded-md border-y-2 border-primary/30 bg-primary/10" />
+      {/* central visor — bande jaune chantier sur le tiroir noir */}
+      <div className="pointer-events-none absolute inset-x-1 top-1/2 h-10 -translate-y-1/2 rounded-md border-y-2 border-[#FFC21A] bg-[rgba(255,194,26,0.16)]" />
       <WheelColumn values={HOURS} value={hh} onChange={(h) => onChange(`${h}:${mm}`)} />
-      <span className="text-xl font-bold text-muted-foreground">:</span>
+      <span className="text-xl font-bold text-[#a59c86]" style={{ fontFamily: "'JetBrains Mono', monospace" }}>:</span>
       <WheelColumn values={MINUTES} value={mm} onChange={(m) => onChange(`${hh}:${m}`)} />
     </div>
   );
