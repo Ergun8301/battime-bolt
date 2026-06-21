@@ -3,12 +3,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
-import { Button } from '@/components/ui/button';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Menu, Clock, CalendarDays, CalendarRange, History, LogOut, AlertTriangle, Check, ArrowLeft } from 'lucide-react';
+import { Clock, CalendarDays, CalendarRange, History, LogOut, Check, ArrowLeft } from 'lucide-react';
 import { format, subDays, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { computeMissingDays } from '@/lib/work-status';
@@ -23,6 +22,35 @@ const TABS = [
   { value: 'month', label: 'Mon mois', icon: CalendarRange },
   { value: 'history', label: 'Historique', icon: History },
 ];
+
+const POSEUR_CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+.bt-poseur{font-family:'Archivo',sans-serif;color:#15120F;-webkit-font-smoothing:antialiased;background:#e7e0d2;display:flex;justify-content:center;height:100vh;height:100svh;height:100dvh;overflow:hidden}
+.bt-poseur *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+.bt-poseur .mono{font-family:'JetBrains Mono',monospace}
+.bt-phone{width:100%;max-width:480px;height:100%;display:flex;flex-direction:column;background:#F2EDE3;overflow:hidden;position:relative}
+.bt-phone.wide{max-width:920px}
+
+/* ===== EN-TÊTE NOIR ===== */
+.bt-phdr{background:#15120F;color:#F2EDE3;flex:none;padding:calc(env(safe-area-inset-top) + 16px) 18px 16px;position:relative}
+.bt-phdr-row{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.bt-phdr-kicker{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#FFC21A;font-weight:700;margin-bottom:5px}
+.bt-phdr-date{font-size:24px;font-weight:900;letter-spacing:-.02em;line-height:1;text-transform:capitalize}
+.bt-phdr-back{display:flex;align-items:center;gap:10px;background:transparent;border:none;color:#F2EDE3;cursor:pointer;padding:0;text-align:left;min-width:0}
+.bt-phdr-back-col{display:flex;flex-direction:column;min-width:0}
+.bt-burger{flex:none;width:46px;height:46px;border:none;background:#211D19;border-radius:13px;color:#F2EDE3;display:flex;align-items:center;justify-content:center;gap:3px;flex-direction:column;cursor:pointer}
+.bt-burger span{width:18px;height:2.5px;background:#FFC21A;border-radius:2px;display:block}
+
+.bt-alert{display:flex;align-items:center;gap:9px;margin-top:14px;width:100%;background:rgba(255,194,26,.13);border:1px solid rgba(255,194,26,.4);border-radius:11px;padding:10px 13px;cursor:pointer;text-align:left}
+.bt-alert-badge{width:22px;height:22px;flex:none;background:#FFC21A;color:#15120F;border-radius:6px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:13px;font-family:'JetBrains Mono',monospace}
+.bt-alert-txt{font-size:13.5px;font-weight:700;color:#FFC21A;flex:1}
+.bt-alert-chev{font-size:16px;color:#FFC21A}
+
+/* ===== CORPS ===== */
+.bt-phbody{flex:1;min-height:0;display:flex;flex-direction:column;position:relative}
+.bt-phscroll{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:16px}
+`;
 
 export default function PoseurPage() {
   const { user, signOut } = useAuth();
@@ -57,89 +85,105 @@ export default function PoseurPage() {
   const goTo = (v: string) => { setSelectedDate(null); setView(v); };
 
   const todayLabel = format(new Date(), 'EEEE d MMMM', { locale: fr });
+  const isToday = view === 'day' && !selectedDate;
+  // « Ma journée » garde le format téléphone ; les écrans hérités (semaine/mois/
+  // historique) restent larges sur ordinateur — on ne les bride pas à 480 px.
+  const wide = !selectedDate && view !== 'day';
+  const headerTitle = selectedDate
+    ? format(parseISO(selectedDate), 'EEEE d MMMM', { locale: fr })
+    : (TABS.find((t) => t.value === view)?.label || 'Ma journée');
 
   return (
-    <div className="min-h-screen bg-background safe-top safe-bottom">
-      <header className="bg-white border-b sticky top-0 z-50">
-        <div className="max-w-2xl lg:max-w-5xl mx-auto px-4 py-3 flex items-center gap-2">
-          {view === 'day' && !selectedDate ? (
-            <p className="font-bold text-base capitalize shrink-0">{todayLabel}</p>
-          ) : (
-            <button
-              onClick={goHome}
-              className="inline-flex items-center gap-1 font-bold text-base shrink-0 text-primary hover:opacity-80"
-            >
-              <ArrowLeft className="h-4 w-4" /> Ma journée
-            </button>
-          )}
+    <div className="bt-poseur">
+      <style dangerouslySetInnerHTML={{ __html: POSEUR_CSS }} />
+      <div className={`bt-phone${wide ? ' wide' : ''}`}>
 
-          <div className="flex-1 flex justify-center">
-            {pending.length > 0 && (
-              <Popover open={pendingOpen} onOpenChange={setPendingOpen}>
-                <PopoverTrigger asChild>
-                  <button
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-full text-orange-500 hover:bg-orange-50 animate-pulse"
-                    aria-label="Jours à déclarer"
-                    title="Jours à déclarer"
-                  >
-                    <AlertTriangle className="h-5 w-5" />
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent align="center" className="w-72">
-                  <p className="text-sm font-medium mb-2">Jours à déclarer</p>
-                  <div className="space-y-1.5">
-                    {pending.map((d) => (
-                      <button
-                        key={d}
-                        onClick={() => openDay(d)}
-                        className="w-full truncate rounded-md border px-3 py-2.5 text-left text-sm font-medium capitalize hover:bg-muted/50 transition-colors"
-                      >
-                        {format(parseISO(d), 'EEEE d MMMM', { locale: fr })}
-                      </button>
-                    ))}
-                  </div>
-                </PopoverContent>
-              </Popover>
+        {/* ===== EN-TÊTE NOIR ===== */}
+        <header className="bt-phdr">
+          <div className="bt-phdr-row">
+            {isToday ? (
+              <div>
+                <div className="bt-phdr-kicker">Ma journée</div>
+                <div className="bt-phdr-date">{todayLabel}</div>
+              </div>
+            ) : (
+              <button onClick={goHome} className="bt-phdr-back" aria-label="Retour à ma journée">
+                <ArrowLeft className="h-5 w-5 shrink-0" />
+                <span className="bt-phdr-back-col">
+                  <span className="bt-phdr-kicker">Ma journée</span>
+                  <span className="bt-phdr-date truncate">{headerTitle}</span>
+                </span>
+              </button>
             )}
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="bt-burger" aria-label="Menu">
+                  <span /><span /><span />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuLabel className="truncate">{user?.first_name} {user?.last_name}</DropdownMenuLabel>
+                {TABS.map((t) => (
+                  <DropdownMenuItem key={t.value} onClick={() => goTo(t.value)}>
+                    <t.icon className="h-4 w-4 mr-2" /> {t.label}
+                    {!selectedDate && view === t.value && <Check className="h-4 w-4 ml-auto" />}
+                  </DropdownMenuItem>
+                ))}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={signOut}><LogOut className="h-4 w-4 mr-2" /> Déconnexion</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="shrink-0" aria-label="Menu">
-                <Menu className="h-5 w-5" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-52">
-              <DropdownMenuLabel className="truncate">{user?.first_name} {user?.last_name}</DropdownMenuLabel>
-              {TABS.map((t) => (
-                <DropdownMenuItem key={t.value} onClick={() => goTo(t.value)}>
-                  <t.icon className="h-4 w-4 mr-2" /> {t.label}
-                  {!selectedDate && view === t.value && <Check className="h-4 w-4 ml-auto" />}
-                </DropdownMenuItem>
-              ))}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={signOut}><LogOut className="h-4 w-4 mr-2" /> Déconnexion</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </header>
+          {/* alerte discrète : jours à déclarer (uniquement sur « Ma journée » du jour) */}
+          {isToday && pending.length > 0 && (
+            <Popover open={pendingOpen} onOpenChange={setPendingOpen}>
+              <PopoverTrigger asChild>
+                <button className="bt-alert" aria-label="Jours à déclarer">
+                  <span className="bt-alert-badge">{pending.length}</span>
+                  <span className="bt-alert-txt">{pending.length} jour{pending.length > 1 ? 's' : ''} oublié{pending.length > 1 ? 's' : ''} à déclarer</span>
+                  <span className="bt-alert-chev">›</span>
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="center" className="w-72">
+                <p className="text-sm font-medium mb-2">Jours à déclarer</p>
+                <div className="space-y-1.5">
+                  {pending.map((d) => (
+                    <button
+                      key={d}
+                      onClick={() => openDay(d)}
+                      className="w-full truncate rounded-md border px-3 py-2.5 text-left text-sm font-medium capitalize hover:bg-muted/50 transition-colors"
+                    >
+                      {format(parseISO(d), 'EEEE d MMMM', { locale: fr })}
+                    </button>
+                  ))}
+                </div>
+              </PopoverContent>
+            </Popover>
+          )}
+        </header>
 
-      <main className="max-w-2xl lg:max-w-5xl mx-auto px-4 py-4">
-        {selectedDate ? (
-          <div className="lg:max-w-2xl lg:mx-auto">
-            <p className="font-semibold capitalize mb-2">{format(parseISO(selectedDate), 'EEEE d MMMM', { locale: fr })}</p>
+        {/* ===== CORPS ===== */}
+        <div className="bt-phbody">
+          {selectedDate ? (
             <PoseurDay date={selectedDate} />
-          </div>
-        ) : view === 'day' ? (
-          <div className="lg:max-w-2xl lg:mx-auto"><PoseurDay /></div>
-        ) : view === 'week' ? (
-          <PoseurWeek onSelectDay={openDay} />
-        ) : view === 'month' ? (
-          <div className="lg:max-w-2xl lg:mx-auto"><PoseurMonth onSelectDay={openDay} /></div>
-        ) : (
-          <div className="lg:max-w-2xl lg:mx-auto"><PoseurHistory /></div>
-        )}
-      </main>
+          ) : view === 'day' ? (
+            <PoseurDay />
+          ) : (
+            <div className="bt-phscroll">
+              {view === 'week' ? (
+                <PoseurWeek onSelectDay={openDay} />
+              ) : view === 'month' ? (
+                <PoseurMonth onSelectDay={openDay} />
+              ) : (
+                <PoseurHistory />
+              )}
+            </div>
+          )}
+        </div>
+
+      </div>
     </div>
   );
 }
