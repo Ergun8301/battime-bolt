@@ -12,6 +12,9 @@ export interface Company {
   logo_url?: string;
   created_at: string;
   is_active: boolean;
+  // Fin de periode d'essai 30 j (posee a la creation via l'inscription patron).
+  // NULL = pas en essai. Rien ne l'applique encore (pas de blocage a l'expiration).
+  trial_ends_at?: string | null;
 }
 
 export interface User {
