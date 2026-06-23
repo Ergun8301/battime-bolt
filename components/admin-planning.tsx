@@ -230,7 +230,7 @@ const PL_CSS = `
 .bt-pl{font-family:'Archivo',sans-serif;color:#15120F}
 .bt-pl *{box-sizing:border-box}
 .bt-pl .mono{font-family:'JetBrains Mono',monospace}
-.bt-pl-win{background:#F2EDE3;border-radius:14px;overflow:hidden;box-shadow:0 30px 70px -34px rgba(0,0,0,.55)}
+.bt-pl-win{background:#F2EDE3;border-radius:14px;overflow:hidden;border:1px solid rgba(255,194,26,.30);box-shadow:0 26px 64px -26px rgba(0,0,0,.78)}
 
 /* toolbar noire */
 .bt-pl-toolbar{background:#15120F;color:#F2EDE3;padding:16px 20px;display:flex;flex-direction:column;gap:12px}
@@ -328,6 +328,36 @@ const PL_CSS = `
 .bt-pl-m-badge{display:flex;align-items:center;gap:5px;border-radius:7px;padding:4px 8px;font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700}
 .bt-pl-m-bubs{margin-top:11px;display:flex;flex-direction:column;gap:8px}
 .bt-pl-m-empty{font-size:12.5px;color:#9a948a;font-weight:600;margin-top:8px}
+
+/* ===== MOUVEMENT / EFFETS (apparence seulement — dnd-kit non touché) ===== */
+.bt-pl-bub{transition:box-shadow .16s ease, transform .12s ease}
+.bt-pl-grab{transition:transform .12s ease}
+.bt-pl-grab:hover .bt-pl-bub{transform:translateY(-1px);box-shadow:0 8px 18px -8px rgba(21,18,15,.45)}
+.bt-pl-dragging{opacity:.35}
+.bt-pl-dragging .bt-pl-bub{box-shadow:none;transform:none}
+.bt-pl-overlay{transform:rotate(-2.5deg) scale(1.06);filter:drop-shadow(0 16px 22px rgba(21,18,15,.5));cursor:grabbing}
+.bt-pl-extra{transition:box-shadow .16s ease, transform .12s ease}
+.bt-pl-extra:hover{transform:translateY(-1px);box-shadow:0 8px 18px -8px rgba(181,71,46,.4)}
+.bt-pl-cell{transition:background .14s ease}
+.bt-pl-cellfill{transition:background .14s ease}
+.bt-pl-cellfill:hover{background:rgba(21,18,15,.028)}
+.bt-pl-add{transition:border-color .14s ease, color .14s ease, background .14s ease}
+.bt-pl-cellfill:hover .bt-pl-add{border-color:rgba(21,18,15,.34);color:#9a8a3a;background:rgba(255,194,26,.06)}
+.bt-pl-namebtn{transition:background .14s ease}
+.bt-pl-chip{transition:box-shadow .16s ease, transform .12s ease}
+.bt-pl-chip:hover{transform:translateY(-1px);box-shadow:0 8px 18px -8px rgba(21,18,15,.45)}
+.bt-pl-chip:active{transform:translateY(0) scale(.98)}
+.bt-pl-ybtn{transition:filter .12s ease, transform .08s ease}
+.bt-pl-ybtn:hover{filter:brightness(1.05)}
+.bt-pl-ybtn:active{transform:translateY(1px)}
+.bt-pl-dbtn{transition:background .12s ease, transform .08s ease}
+.bt-pl-dbtn:active{transform:translateY(1px)}
+.bt-pl-ibtn{transition:background .12s ease, transform .08s ease}
+.bt-pl-ibtn:active{transform:translateY(1px)}
+.bt-pl-abs{transition:filter .12s ease}
+.bt-pl-abs:hover{filter:brightness(.97)}
+.bt-pl-daypill{transition:background .14s ease, border-color .14s ease, transform .08s ease}
+.bt-pl-daypill:active{transform:translateY(1px)}
 `;
 
 // ─── main ────────────────────────────────────────────────────────────────────
@@ -1095,7 +1125,7 @@ export default function AdminPlanning() {
                 <button className="bt-pl-dbtn" onClick={() => setClientsListOpen(true)}><Building2 className="h-4 w-4" /> Clients</button>
                 <Select value={paletteWorksiteId} onValueChange={setPaletteWorksiteId}>
                   <SelectTrigger className="h-9 w-[190px] bg-[#F2EDE3] text-[#15120F] border-0"><SelectValue placeholder="Choisir un client" /></SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="bt-skin">
                     {worksites.map(ws => (
                       <SelectItem key={ws.id} value={ws.id}>{ws.client_name}{ws.city ? ` — ${ws.city}` : ''}</SelectItem>
                     ))}
@@ -1317,11 +1347,11 @@ export default function AdminPlanning() {
 
         <DragOverlay>
           {activeDrag?.type === 'new' && paletteWorksite ? (
-            <div className="rotate-[-2deg] scale-105 shadow-xl"><PaletteChip worksite={paletteWorksite} /></div>
+            <div className="bt-pl-overlay"><PaletteChip worksite={paletteWorksite} /></div>
           ) : activeDrag?.type === 'move' ? (
             (() => {
               const p = planning.find(x => x.id === activeDrag.id);
-              return p ? <div className="rotate-[-2deg] scale-105 shadow-xl"><BubbleContent p={p} palette={paletteFor(p)} real={realForPlanning(p)} /></div> : null;
+              return p ? <div className="bt-pl-overlay"><BubbleContent p={p} palette={paletteFor(p)} real={realForPlanning(p)} /></div> : null;
             })()
           ) : null}
         </DragOverlay>
@@ -1329,7 +1359,7 @@ export default function AdminPlanning() {
 
       {/* Disponibilité popup — 5 buttons + fiche link */}
       <Dialog open={!!statusTarget} onOpenChange={(o) => { if (!o) setStatusTarget(null); }}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="bt-skin max-w-sm">
           <DialogHeader>
             <DialogTitle>
               {statusTarget ? `Statut de ${statusTarget.worker.first_name} à partir ${statusTarget.fromStr === todayStr ? "d'aujourd'hui" : `du ${fromLabel(statusTarget.fromStr)}`}` : ''}
@@ -1365,7 +1395,7 @@ export default function AdminPlanning() {
 
       {/* Salariés — administrative management */}
       <Dialog open={salariesOpen} onOpenChange={setSalariesOpen}>
-        <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
+        <DialogContent className="bt-skin max-w-md max-h-[80vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Salariés</DialogTitle></DialogHeader>
           <div className="pt-1">
             <Button variant="outline" size="sm" className="mb-2 w-full" onClick={() => { setSalariesOpen(false); setWorkerOpen(true); }}>
@@ -1400,13 +1430,13 @@ export default function AdminPlanning() {
 
       {/* Attribute a client to a worker-added intervention (clicked from the grid) */}
       <Dialog open={!!attributeTarget && !clientOpen} onOpenChange={(o) => { if (!o) setAttributeTarget(null); }}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="bt-skin max-w-sm">
           <DialogHeader><DialogTitle>Attribuer un client</DialogTitle></DialogHeader>
           <div className="space-y-3 pt-1">
             <p className="text-sm text-muted-foreground">Intervention <strong>« {attributeTarget?.label} »</strong> ajoutée par le salarié. Choisis le bon client, ou crée-le.</p>
             <Select onValueChange={(v) => attributeClient(v)} disabled={attrBusy}>
               <SelectTrigger><SelectValue placeholder="Choisir un client existant…" /></SelectTrigger>
-              <SelectContent>
+              <SelectContent className="bt-skin">
                 {worksites.filter((w) => w.client_name !== 'Autre' && w.id !== attributeTarget?.worksiteId).map((ws) => (
                   <SelectItem key={ws.id} value={ws.id}>{ws.client_name}{ws.city ? ` — ${ws.city}` : ''}</SelectItem>
                 ))}
@@ -1421,7 +1451,7 @@ export default function AdminPlanning() {
 
       {/* Team export */}
       <Dialog open={exportOpen} onOpenChange={(o) => { setExportOpen(o); if (o) setExportRange(null); }}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="bt-skin max-w-sm">
           <DialogHeader><DialogTitle>Exporter les heures de l'équipe</DialogTitle></DialogHeader>
           <div className="space-y-4 pt-2">
             <div className="grid grid-cols-3 gap-2">
@@ -1431,7 +1461,7 @@ export default function AdminPlanning() {
                 <PopoverTrigger asChild>
                   <Button variant="outline" size="sm"><CalendarRange className="h-4 w-4 mr-1" /> Créneau</Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="end">
+                <PopoverContent className="bt-skin w-auto p-0" align="end">
                   <Calendar mode="range" numberOfMonths={1} locale={fr}
                     selected={exportRange ?? undefined}
                     onSelect={(r) => { if (r?.from) setExportRange({ from: r.from, to: r.to ?? r.from }); }} />
@@ -1456,7 +1486,7 @@ export default function AdminPlanning() {
 
       {/* Export one worker — pick a worker, then their fiche (calendar + Excel/PDF, no lock) */}
       <Dialog open={exportWorkerOpen} onOpenChange={setExportWorkerOpen}>
-        <DialogContent className="max-w-sm max-h-[80vh] overflow-y-auto">
+        <DialogContent className="bt-skin max-w-sm max-h-[80vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Exporter un salarié</DialogTitle></DialogHeader>
           <div className="space-y-3 pt-1">
             <p className="text-sm text-muted-foreground">Choisis un salarié : sa fiche s'ouvre avec le calendrier (jour / semaine / période) et le téléchargement Excel / PDF. Cet export ne verrouille pas les heures.</p>
@@ -1482,14 +1512,14 @@ export default function AdminPlanning() {
 
       {/* Cell add — a client on a specific day */}
       <Dialog open={addOpen} onOpenChange={(o) => { setAddOpen(o); if (!o) setAddTarget(null); }}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="bt-skin max-w-sm">
           <DialogHeader><DialogTitle>Ajouter un client</DialogTitle></DialogHeader>
           <form onSubmit={confirmAdd} className="space-y-4 pt-2">
             <div className="space-y-2">
               <Label>Client</Label>
               <Select value={addWorksite} onValueChange={setAddWorksite}>
                 <SelectTrigger><SelectValue placeholder="Choisir un client" /></SelectTrigger>
-                <SelectContent>
+                <SelectContent className="bt-skin">
                   {worksites.map(ws => <SelectItem key={ws.id} value={ws.id}>{ws.client_name}{ws.city ? ` — ${ws.city}` : ''}</SelectItem>)}
                 </SelectContent>
               </Select>
@@ -1507,7 +1537,7 @@ export default function AdminPlanning() {
 
       {/* Absence start — optional end date via calendar */}
       <Dialog open={!!pendingAbsence} onOpenChange={(o) => { if (!o) setPendingAbsence(null); }}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="bt-skin max-w-sm">
           <DialogHeader>
             <DialogTitle>
               {pendingAbsence ? `${ABSENCE_STATUS_LABELS[pendingAbsence.type] || pendingAbsence.type} — ${pendingAbsence.worker.first_name}` : ''}
@@ -1547,7 +1577,7 @@ export default function AdminPlanning() {
 
       {/* Affectation popup — ONLY this day's assignment */}
       <Dialog open={!!editing} onOpenChange={(o) => { if (!o) closeEdit(); }}>
-        <DialogContent className="max-w-md max-h-[88vh] overflow-y-auto">
+        <DialogContent className="bt-skin max-w-md max-h-[88vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editing?.worksite?.client_name || 'Intervention'}</DialogTitle>
           </DialogHeader>
@@ -1610,7 +1640,7 @@ export default function AdminPlanning() {
 
       {/* Client fiche — permanent client data (separate) */}
       <Dialog open={!!clientFiche} onOpenChange={(o) => { if (!o) setClientFiche(null); }}>
-        <DialogContent className="max-w-md max-h-[88vh] overflow-y-auto">
+        <DialogContent className="bt-skin max-w-md max-h-[88vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2"><Building2 className="h-4 w-4" /> Fiche client</DialogTitle>
           </DialogHeader>
@@ -1645,7 +1675,7 @@ export default function AdminPlanning() {
 
       {/* Clients list — open any client fiche */}
       <Dialog open={clientsListOpen} onOpenChange={setClientsListOpen}>
-        <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
+        <DialogContent className="bt-skin max-w-md max-h-[80vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Clients</DialogTitle></DialogHeader>
           <div className="pt-1">
             <Button variant="outline" size="sm" className="mb-2 w-full" onClick={() => { setClientsListOpen(false); setClientOpen(true); }}>
@@ -1676,7 +1706,7 @@ export default function AdminPlanning() {
 
       {/* Nouveau client */}
       <Dialog open={clientOpen} onOpenChange={(o) => { setClientOpen(o); if (!o) resetClient(); }}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="bt-skin max-w-md">
           <DialogHeader><DialogTitle>Nouveau client / chantier</DialogTitle></DialogHeader>
           <form onSubmit={createClient} className="space-y-3 pt-2">
             <div className="space-y-2"><Label>Nom du client *</Label><Input value={cName} onChange={(e) => setCName(e.target.value)} required disabled={cSaving} /></div>
@@ -1699,7 +1729,7 @@ export default function AdminPlanning() {
 
       {/* Nouveau salarié */}
       <Dialog open={workerOpen} onOpenChange={(o) => { setWorkerOpen(o); if (!o) resetWorker(); }}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="bt-skin max-w-md">
           <DialogHeader><DialogTitle>Nouveau salarié</DialogTitle></DialogHeader>
           <form onSubmit={createWorker} className="space-y-4 pt-2">
             <div className="grid grid-cols-2 gap-3">
