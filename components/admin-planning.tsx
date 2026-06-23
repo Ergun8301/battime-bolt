@@ -294,13 +294,13 @@ const PL_CSS = `
 .bt-pl-acct-item.danger{color:#C0461F}
 
 /* grille desktop */
-.bt-pl-table{width:100%;border-collapse:collapse;min-width:980px}
+.bt-pl-table{width:100%;border-collapse:collapse;min-width:980px;table-layout:fixed}
 .bt-pl-th{background:#F2EDE3;padding:13px 10px;text-align:center;border-right:1px solid rgba(21,18,15,.6);border-bottom:2px solid #15120F}
 .bt-pl-th-day{font-family:'JetBrains Mono',monospace;font-size:11px;color:#9a948a;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
 .bt-pl-th-num{font-size:19px;font-weight:900}
 .bt-pl-th.today{background:rgba(255,194,26,.14)}
 .bt-pl-th.today .bt-pl-th-day{color:#9a7c14}
-.bt-pl-th-name{position:sticky;left:0;z-index:6;background:#F2EDE3;text-align:left;font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#9a948a;font-weight:700;padding:13px 13px;border-right:2px solid #15120F;border-bottom:2px solid #15120F}
+.bt-pl-th-name{position:sticky;left:0;z-index:6;background:#F2EDE3;text-align:left;font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#9a948a;font-weight:700;padding:13px 13px;width:200px;border-right:2px solid #15120F;border-bottom:2px solid #15120F}
 .bt-pl-namecell{position:sticky;left:0;z-index:5;background:#fff;border-right:2px solid #15120F;border-bottom:1px solid rgba(21,18,15,.6);padding:0;vertical-align:top}
 .bt-pl-namebtn{display:flex;align-items:center;gap:10px;width:100%;height:100%;padding:12px 13px;background:transparent;border:none;cursor:pointer;text-align:left;font-family:inherit}
 .bt-pl-namebtn:hover{background:rgba(21,18,15,.03)}
