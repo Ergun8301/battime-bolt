@@ -14,7 +14,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import {
-  ChevronLeft, ChevronRight, Plus, Trash2, Loader2, GripVertical,
+  ChevronLeft, ChevronRight, Plus, Trash2, Loader2,
   UserPlus, Users, Building2, Archive, CalendarRange, Download, FileSpreadsheet, FileText,
   Bell, Clock, Mail, RefreshCw, X, Pencil, User as UserIcon,
 } from 'lucide-react';
@@ -168,22 +168,28 @@ function DraggableBubble({
   );
 }
 
-// Draggable client chip: appears once a client is chosen, drag it onto a cell.
-function PaletteChip({ worksite }: { worksite: Worksite }) {
+// Une ligne du menu « + Chantier » : attrapable (drag → crée une affectation).
+// Chaque ligne porte son propre worksiteId ; les handlers dnd lisent data.worksiteId.
+function PaletteRow({ worksite, color }: { worksite: Worksite; color: string }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: 'palette-new',
+    id: `palette-new-${worksite.id}`,
     data: { type: 'new', worksiteId: worksite.id },
   });
+  const sub = [worksite.product_type, worksite.city].filter(Boolean).join(' · ');
   return (
     <div
       ref={setNodeRef}
       {...attributes}
       {...listeners}
-      className={`bt-pl-chip ${isDragging ? 'bt-pl-dragging' : ''}`}
+      className={`bt-pl-ddrow ${isDragging ? 'bt-pl-dragging' : ''}`}
       title="Glisser sur une case du planning"
     >
-      <GripVertical className="h-4 w-4 shrink-0" style={{ color: '#FFC21A' }} />
-      <span className="truncate max-w-[150px]">{worksite.client_name}</span>
+      <span className="bt-pl-grip"><span /><span /><span /></span>
+      <span className="bt-pl-pilldot" style={{ background: color }} />
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <span className="bt-pl-ddname">{worksite.client_name}</span>
+        {sub && <span className="bt-pl-ddsub">{sub}</span>}
+      </span>
     </div>
   );
 }
@@ -230,21 +236,47 @@ const PL_CSS = `
 .bt-pl{font-family:'Archivo',sans-serif;color:#15120F}
 .bt-pl *{box-sizing:border-box}
 .bt-pl .mono{font-family:'JetBrains Mono',monospace}
-.bt-pl-win{background:#F2EDE3;border-radius:14px;overflow:hidden;border:1px solid rgba(255,194,26,.30);box-shadow:0 26px 64px -26px rgba(0,0,0,.78)}
+/* ===== CADRE CLAIR : barre sticky + grille, bordées noir fin ===== */
+.bt-pl-stick{position:sticky;top:var(--bt-admin-h,56px);z-index:20;background:#F2EDE3;border:1.5px solid #15120F;border-bottom:none;border-radius:15px 15px 0 0;box-shadow:0 8px 16px -13px rgba(21,18,15,.5)}
+.bt-pl-gridwrap{overflow-x:auto;background:#F2EDE3;border:1.5px solid #15120F;border-top:none;border-radius:0 0 15px 15px;box-shadow:0 26px 60px -30px rgba(21,18,15,.5)}
 
-/* toolbar noire */
-.bt-pl-toolbar{background:#15120F;color:#F2EDE3;padding:16px 20px;display:flex;flex-direction:column;gap:12px}
-.bt-pl-tb-row{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
-.bt-pl-kicker{font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:#FFC21A;margin-bottom:3px;font-weight:700}
-.bt-pl-week{font-size:22px;font-weight:900;letter-spacing:-.02em}
-.bt-pl-nav{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.bt-pl-ibtn{border:1px solid rgba(242,237,227,.22);background:transparent;color:#F2EDE3;border-radius:9px;width:38px;height:38px;display:inline-flex;align-items:center;justify-content:center;font-size:17px;cursor:pointer}
-.bt-pl-ibtn:hover{background:rgba(242,237,227,.08)}
-.bt-pl-ybtn{border:none;background:#FFC21A;color:#15120F;border-radius:9px;padding:0 16px;height:38px;font-weight:800;font-size:13.5px;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px}
-.bt-pl-dbtn{border:1px solid rgba(242,237,227,.22);background:#211D19;color:#F2EDE3;border-radius:9px;padding:0 14px;height:38px;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:7px}
-.bt-pl-dbtn:hover{background:#2a2620}
-.bt-pl-tb-sep{width:1px;height:26px;background:rgba(242,237,227,.18);margin:0 2px}
-.bt-pl-tools{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+/* toolbar claire compacte */
+.bt-pl-toolbar{background:#F2EDE3;border-bottom:1px solid rgba(21,18,15,.12);padding:9px 14px;display:flex;align-items:center;justify-content:space-between;gap:13px;flex-wrap:wrap;border-radius:14px 14px 0 0}
+.bt-pl-tb-left{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.bt-pl-tb-right{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.bt-pl-nav{display:flex;align-items:center;gap:6px}
+.bt-pl-week2{font-size:14.5px;font-weight:800;letter-spacing:-.01em;white-space:nowrap;color:#15120F}
+.bt-pl-icobtn{width:33px;height:33px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;font-size:15px;cursor:pointer;border:1.5px solid rgba(21,18,15,.18);background:#fff;color:#15120F;font-family:inherit;transition:border-color .14s ease,background .14s ease,transform .08s ease}
+.bt-pl-icobtn:hover{border-color:#15120F;background:rgba(21,18,15,.05)}
+.bt-pl-icobtn:active{transform:translateY(1px)}
+.bt-pl-dark{background:#15120F;color:#F2EDE3;border:none;border-radius:10px;padding:7px 12px;height:33px;font-size:12.5px;font-weight:800;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;transition:background .14s ease,transform .08s ease}
+.bt-pl-dark:hover{background:#2a2620;transform:translateY(-1px)}
+.bt-pl-dark:active{transform:translateY(1px)}
+.bt-pl-seg{display:inline-flex;background:#E3DAC8;border-radius:11px;padding:4px;gap:3px}
+.bt-pl-segbtn{font-family:inherit;font-weight:800;font-size:12.5px;border:none;background:transparent;color:#6E6A63;padding:7px 12px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:background .14s ease,color .14s ease}
+.bt-pl-segbtn:hover{color:#15120F;background:rgba(21,18,15,.05)}
+.bt-pl-out{background:transparent;border:1.5px solid rgba(21,18,15,.3);color:#15120F;border-radius:10px;padding:7px 13px;height:33px;font-size:12.5px;font-weight:800;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;transition:border-color .14s ease,background .14s ease,transform .08s ease}
+.bt-pl-out:hover{border-color:#15120F;background:rgba(21,18,15,.04)}
+.bt-pl-out:active{transform:translateY(1px)}
+.bt-pl-fill{background:#FFC21A;color:#15120F;border:none;box-shadow:0 3px 0 #C99300;border-radius:10px;padding:8px 14px;height:33px;font-size:12.5px;font-weight:800;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;transition:transform .12s ease,box-shadow .12s ease}
+.bt-pl-fill:hover{transform:translateY(-1px);box-shadow:0 5px 0 #C99300}
+.bt-pl-fill:active{transform:translateY(2px);box-shadow:0 1px 0 #C99300}
+/* dropdown « + Chantier » — lignes attrapables */
+.bt-pl-ddwrap{position:relative}
+.bt-pl-ddbackdrop{position:fixed;inset:0;z-index:35}
+.bt-pl-dd{position:absolute;top:42px;right:0;z-index:40;width:266px;background:#fff;border:1px solid rgba(21,18,15,.14);border-radius:14px;box-shadow:0 24px 50px -18px rgba(21,18,15,.45);overflow:hidden}
+.bt-pl-dd-h{padding:9px 13px 7px;border-bottom:1px solid rgba(21,18,15,.08);font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:#9a948a;font-weight:700}
+.bt-pl-ddrow{display:flex;align-items:center;gap:10px;padding:10px 13px;cursor:grab;background:#fff;border:none;width:100%;text-align:left;font-family:inherit;transition:background .12s ease}
+.bt-pl-ddrow:hover{background:#FBF6EA}
+.bt-pl-ddrow:active{cursor:grabbing}
+.bt-pl-grip{display:flex;flex-direction:column;gap:2px;flex:none}
+.bt-pl-grip span{display:block;width:11px;height:1.7px;background:#c4bdae;border-radius:2px}
+.bt-pl-pilldot{width:11px;height:11px;border-radius:50%;flex:none}
+.bt-pl-ddname{display:block;font-size:13.5px;font-weight:800;line-height:1.1;color:#15120F}
+.bt-pl-ddsub{display:block;font-size:11px;color:#9a948a;font-weight:600}
+.bt-pl-ddcreate{display:flex;align-items:center;gap:9px;padding:11px 13px;border-top:1px solid rgba(21,18,15,.1);background:#FBF6EA;cursor:pointer;border:none;width:100%;text-align:left;font-family:inherit;color:#15120F;font-size:13.5px;font-weight:800}
+.bt-pl-ddcreate-ico{width:22px;height:22px;background:#FFC21A;color:#15120F;border-radius:6px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:14px;flex:none}
+.bt-pl-dragchip{display:inline-flex;align-items:center;gap:9px;background:#fff;border:1px solid rgba(21,18,15,.16);border-radius:11px;padding:8px 13px;box-shadow:0 16px 30px -12px rgba(21,18,15,.55);font-weight:800;font-size:13.5px;color:#15120F}
 
 /* légende */
 .bt-pl-legend{background:#E8E1D3;padding:10px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;border-bottom:1px solid rgba(21,18,15,.1)}
@@ -255,13 +287,12 @@ const PL_CSS = `
 .bt-pl-legend-key{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:#6E6A63}
 
 /* grille desktop */
-.bt-pl-gridwrap{overflow-x:auto}
 .bt-pl-table{width:100%;border-collapse:collapse;min-width:980px}
 .bt-pl-th{background:#F2EDE3;padding:13px 10px;text-align:center;border-right:1px solid rgba(21,18,15,.09);border-bottom:2px solid rgba(21,18,15,.14)}
 .bt-pl-th-day{font-family:'JetBrains Mono',monospace;font-size:11px;color:#9a948a;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
 .bt-pl-th-num{font-size:19px;font-weight:900}
-.bt-pl-th.today{background:#15120F;color:#F2EDE3}
-.bt-pl-th.today .bt-pl-th-day{color:#FFC21A}
+.bt-pl-th.today{background:rgba(255,194,26,.14)}
+.bt-pl-th.today .bt-pl-th-day{color:#9a7c14}
 .bt-pl-th-name{position:sticky;left:0;z-index:6;background:#F2EDE3;text-align:left;font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#9a948a;font-weight:700;padding:13px 13px;border-bottom:2px solid rgba(21,18,15,.14)}
 .bt-pl-namecell{position:sticky;left:0;z-index:5;background:#fff;border-right:2px solid rgba(21,18,15,.14);border-bottom:1px solid rgba(21,18,15,.09);padding:0;vertical-align:top}
 .bt-pl-namebtn{display:flex;align-items:center;gap:10px;width:100%;height:100%;padding:12px 13px;background:transparent;border:none;cursor:pointer;text-align:left;font-family:inherit}
@@ -310,9 +341,9 @@ const PL_CSS = `
 .bt-pl-abs-lbl{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em}
 
 /* mobile */
-.bt-pl-mobile{display:none;flex-direction:column}
+.bt-pl-mobile{display:none;flex-direction:column;border:1.5px solid #15120F;border-radius:14px;overflow:hidden;background:#F2EDE3}
 .bt-pl-m-headrow{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
-@media (max-width:1023px){.bt-pl-toolbar,.bt-pl-legend,.bt-pl-gridwrap{display:none}.bt-pl-mobile{display:flex}}
+@media (max-width:1023px){.bt-pl-stick,.bt-pl-gridwrap{display:none}.bt-pl-mobile{display:flex}}
 .bt-pl-m-head{background:#15120F;color:#F2EDE3;padding:18px 16px 14px}
 .bt-pl-m-date{font-size:20px;font-weight:900;letter-spacing:-.02em;text-transform:capitalize}
 .bt-pl-m-days{display:flex;gap:6px;margin-top:14px;overflow-x:auto}
@@ -347,13 +378,6 @@ const PL_CSS = `
 .bt-pl-chip{transition:box-shadow .16s ease, transform .12s ease}
 .bt-pl-chip:hover{transform:translateY(-1px);box-shadow:0 8px 18px -8px rgba(21,18,15,.45)}
 .bt-pl-chip:active{transform:translateY(0) scale(.98)}
-.bt-pl-ybtn{transition:filter .12s ease, transform .08s ease}
-.bt-pl-ybtn:hover{filter:brightness(1.05)}
-.bt-pl-ybtn:active{transform:translateY(1px)}
-.bt-pl-dbtn{transition:background .12s ease, transform .08s ease}
-.bt-pl-dbtn:active{transform:translateY(1px)}
-.bt-pl-ibtn{transition:background .12s ease, transform .08s ease}
-.bt-pl-ibtn:active{transform:translateY(1px)}
 .bt-pl-abs{transition:filter .12s ease}
 .bt-pl-abs:hover{filter:brightness(.97)}
 .bt-pl-daypill{transition:background .14s ease, border-color .14s ease, transform .08s ease}
@@ -380,6 +404,7 @@ export default function AdminPlanning() {
 
   // client to place on the planning
   const [paletteWorksiteId, setPaletteWorksiteId] = useState<string>('');
+  const [chantierMenuOpen, setChantierMenuOpen] = useState(false); // dropdown « + Chantier »
   const [activeDrag, setActiveDrag] = useState<{ id: string; type: 'move' | 'new'; worksiteId?: string } | null>(null);
 
   // disponibilité popup + worker fiche + management screens
@@ -1093,7 +1118,6 @@ export default function AdminPlanning() {
   const workerEmails = useMemo(() => new Set(workers.map(w => w.email.toLowerCase())), [workers]);
   const pendingInvites = invitations.filter(inv => !workerEmails.has(inv.email.toLowerCase()));
 
-  const paletteWorksite = worksites.find(w => w.id === paletteWorksiteId) || null;
   const editRealAgg = editing ? realForPlanning(editing) : undefined;
 
   if (loading) {
@@ -1104,39 +1128,43 @@ export default function AdminPlanning() {
     <div className="bt-pl">
       <style dangerouslySetInnerHTML={{ __html: PL_CSS }} />
 
-      <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setActiveDrag(null)}>
-        <div className="bt-pl-win">
-          {/* Toolbar noire */}
+      <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragStart={handleDragStart} onDragEnd={(e) => { handleDragEnd(e); setChantierMenuOpen(false); }} onDragCancel={() => { setActiveDrag(null); setChantierMenuOpen(false); }}>
+        {/* Barre figée (sticky) — reste visible au défilement */}
+        <div className="bt-pl-stick">
+          {/* Barre d'outils claire et compacte */}
           <div className="bt-pl-toolbar">
-            <div className="bt-pl-tb-row">
-              <div>
-                <div className="bt-pl-kicker">Planning équipe</div>
-                <div className="bt-pl-week">Semaine {getISOWeek(currentWeekStart)} · {format(currentWeekStart, 'd', { locale: fr })}–{format(addDays(currentWeekStart, 5), 'd MMM', { locale: fr })}</div>
-              </div>
+            <div className="bt-pl-tb-left">
               <div className="bt-pl-nav">
-                <button className="bt-pl-ibtn" aria-label="Semaine précédente" onClick={() => setCurrentWeekStart(subWeeks(currentWeekStart, 1))}>‹</button>
-                <button className="bt-pl-ybtn" onClick={() => setCurrentWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))}>Aujourd'hui</button>
-                <button className="bt-pl-ibtn" aria-label="Semaine suivante" onClick={() => setCurrentWeekStart(addWeeks(currentWeekStart, 1))}>›</button>
+                <button className="bt-pl-icobtn" aria-label="Semaine précédente" onClick={() => setCurrentWeekStart(subWeeks(currentWeekStart, 1))}>‹</button>
+                <button className="bt-pl-dark" onClick={() => setCurrentWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))}>Aujourd'hui</button>
+                <button className="bt-pl-icobtn" aria-label="Semaine suivante" onClick={() => setCurrentWeekStart(addWeeks(currentWeekStart, 1))}>›</button>
               </div>
+              <div className="bt-pl-week2">Semaine {getISOWeek(currentWeekStart)} · {format(currentWeekStart, 'd', { locale: fr })}–{format(addDays(currentWeekStart, 5), 'd MMM', { locale: fr })}</div>
             </div>
-            <div className="bt-pl-tb-row">
-              <div className="bt-pl-tools">
-                <button className="bt-pl-dbtn" onClick={() => setSalariesOpen(true)}><Users className="h-4 w-4" /> Salariés</button>
-                <button className="bt-pl-dbtn" onClick={() => setClientsListOpen(true)}><Building2 className="h-4 w-4" /> Clients</button>
-                <Select value={paletteWorksiteId} onValueChange={setPaletteWorksiteId}>
-                  <SelectTrigger className="h-9 w-[190px] bg-[#F2EDE3] text-[#15120F] border-0"><SelectValue placeholder="Choisir un client" /></SelectTrigger>
-                  <SelectContent className="bt-skin">
-                    {worksites.map(ws => (
-                      <SelectItem key={ws.id} value={ws.id}>{ws.client_name}{ws.city ? ` — ${ws.city}` : ''}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {paletteWorksite && <PaletteChip worksite={paletteWorksite} />}
+            <div className="bt-pl-tb-right">
+              <div className="bt-pl-seg">
+                <button className="bt-pl-segbtn" onClick={() => setSalariesOpen(true)}><Users className="h-3.5 w-3.5" /> Salariés</button>
+                <button className="bt-pl-segbtn" onClick={() => setClientsListOpen(true)}><Building2 className="h-3.5 w-3.5" /> Clients</button>
               </div>
-              <div className="bt-pl-tools">
-                <button className="bt-pl-dbtn" onClick={() => setExportOpen(true)}><Download className="h-4 w-4" /> Export équipe</button>
-                <button className="bt-pl-dbtn" onClick={() => setExportWorkerOpen(true)}><FileText className="h-4 w-4" /> Export salarié</button>
+              <div className="bt-pl-ddwrap">
+                <button className="bt-pl-out" onClick={() => setChantierMenuOpen((o) => !o)}>＋ Chantier ▾</button>
+                {chantierMenuOpen && (
+                  <>
+                    <div className="bt-pl-ddbackdrop" onClick={() => setChantierMenuOpen(false)} />
+                    <div className="bt-pl-dd">
+                      <div className="bt-pl-dd-h">Glissez sur le planning ↘</div>
+                      {worksites.map((ws) => (
+                        <PaletteRow key={ws.id} worksite={ws} color={colorForWorksite(ws.id).bar} />
+                      ))}
+                      <button className="bt-pl-ddcreate" onClick={() => { setChantierMenuOpen(false); setClientOpen(true); }}>
+                        <span className="bt-pl-ddcreate-ico">＋</span> Créer un client
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
+              <button className="bt-pl-fill" onClick={() => setExportOpen(true)}><Download className="h-4 w-4" /> Exporter la paie</button>
+              <button className="bt-pl-out" onClick={() => setExportWorkerOpen(true)}><FileText className="h-4 w-4" /> Export salarié</button>
             </div>
           </div>
 
@@ -1171,6 +1199,7 @@ export default function AdminPlanning() {
           {legendWorksites.length > 0 && <span className="bt-pl-legend-sep" />}
           <span className="bt-pl-legend-key"><span style={{ width: 13, height: 13, border: '1.5px dashed #9a948a', borderRadius: 3, display: 'inline-block' }} />Prévu</span>
           <span className="bt-pl-legend-key"><span style={{ width: 13, height: 13, background: '#15120F', borderRadius: 3, display: 'inline-block' }} />Pointé (réel)</span>
+        </div>
         </div>
 
         {/* GRILLE — desktop (glisser-déposer) */}
@@ -1343,12 +1372,14 @@ export default function AdminPlanning() {
               })}
             </div>
           </div>
-        </div>
 
         <DragOverlay>
-          {activeDrag?.type === 'new' && paletteWorksite ? (
-            <div className="bt-pl-overlay"><PaletteChip worksite={paletteWorksite} /></div>
-          ) : activeDrag?.type === 'move' ? (
+          {activeDrag?.type === 'new' ? (() => {
+            const ws = worksites.find((w) => w.id === activeDrag.worksiteId);
+            return ws ? (
+              <div className="bt-pl-dragchip"><span className="bt-pl-pilldot" style={{ background: colorForWorksite(ws.id).bar }} />{ws.client_name}</div>
+            ) : null;
+          })() : activeDrag?.type === 'move' ? (
             (() => {
               const p = planning.find(x => x.id === activeDrag.id);
               return p ? <div className="bt-pl-overlay"><BubbleContent p={p} palette={paletteFor(p)} real={realForPlanning(p)} /></div> : null;
