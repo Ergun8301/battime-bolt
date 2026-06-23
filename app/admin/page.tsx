@@ -1,39 +1,51 @@
 'use client';
 
-import { useAuth } from '@/components/auth-provider';
-import { Button } from '@/components/ui/button';
-import { LogOut, Clock } from 'lucide-react';
 import AdminPlanning from '@/components/admin-planning';
 
+const ADMIN_CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
+.bt-admin{font-family:'Archivo',sans-serif;min-height:100vh;background:#15120F;padding:6px}
+.bt-admin *{box-sizing:border-box}
+
+/* ============================================================
+   .bt-skin — thème CLAIR (crème + jaune + noir en accent) appliqué
+   à TOUTES les fenêtres, menus déroulants et calendriers (portails
+   Radix au niveau du body). On surcharge les variables shadcn :
+   aucune fenêtre n'échappe à l'identité, sans réécrire chaque champ.
+   ============================================================ */
+.bt-skin{
+  --background:40 33% 95%;
+  --foreground:36 16% 7%;
+  --card:0 0% 100%;
+  --card-foreground:36 16% 7%;
+  --popover:40 33% 96%;
+  --popover-foreground:36 16% 7%;
+  --primary:43 100% 55%;
+  --primary-foreground:36 16% 7%;
+  --secondary:40 24% 90%;
+  --secondary-foreground:36 16% 12%;
+  --muted:40 22% 91%;
+  --muted-foreground:40 6% 42%;
+  --accent:42 58% 88%;
+  --accent-foreground:36 16% 12%;
+  --destructive:14 72% 44%;
+  --destructive-foreground:40 33% 97%;
+  --border:38 16% 82%;
+  --input:38 16% 80%;
+  --ring:43 100% 55%;
+  font-family:'Archivo',sans-serif;
+}
+.bt-skin .mono,.bt-skin .tabular{font-variant-numeric:tabular-nums}
+/* fin liseré jaune en haut de chaque fenêtre pour l'identité */
+.bt-skin[role="dialog"]{border-top:3px solid #FFC21A}
+.bt-skin[role="dialog"] h2{font-weight:900;letter-spacing:-.01em}
+`;
+
 export default function AdminPage() {
-  const { user, signOut } = useAuth();
-
   return (
-    <div className="min-h-screen bg-background">
-      <header className="bg-white border-b sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="relative bg-primary text-primary-foreground rounded-lg p-2">
-              <Clock className="h-5 w-5" />
-              <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-orange-500 ring-2 ring-white" />
-            </div>
-            <div>
-              <h1 className="font-bold text-lg">Battime</h1>
-              <p className="text-sm text-muted-foreground">
-                {user?.first_name} {user?.last_name}
-              </p>
-            </div>
-          </div>
-          <Button variant="ghost" size="sm" onClick={signOut}>
-            <LogOut className="h-4 w-4 mr-2" />
-            Deconnexion
-          </Button>
-        </div>
-      </header>
-
-      <main className="max-w-7xl mx-auto px-4 py-6">
-        <AdminPlanning />
-      </main>
+    <div className="bt-admin">
+      <style dangerouslySetInnerHTML={{ __html: ADMIN_CSS }} />
+      <AdminPlanning />
     </div>
   );
 }

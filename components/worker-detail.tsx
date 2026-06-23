@@ -279,7 +279,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
 
   return (
     <Dialog open={!!worker} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[88vh] overflow-y-auto">
+      <DialogContent className="bt-skin max-w-3xl max-h-[88vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {worker ? `${worker.first_name} ${worker.last_name}` : ''}
@@ -343,7 +343,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
               <PopoverTrigger asChild>
                 <Button variant="outline" size="sm"><CalendarRange className="h-4 w-4 mr-1" /> Créneau</Button>
               </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
+              <PopoverContent className="bt-skin w-auto p-0" align="start">
                 <Calendar mode="range" selected={range} onSelect={setRange} numberOfMonths={1} locale={fr} defaultMonth={range?.from} />
               </PopoverContent>
             </Popover>
@@ -413,7 +413,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
                         <p className="text-xs font-medium">Attribuer un client à cette intervention</p>
                         <Select onValueChange={(v) => { if (v === '__new__') setCreatingFor(entry.id); else reassignEntry(entry.id, v); }}>
                           <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Choisir un client existant…" /></SelectTrigger>
-                          <SelectContent>
+                          <SelectContent className="bt-skin">
                             {realWorksites.map((ws) => (
                               <SelectItem key={ws.id} value={ws.id}>{ws.client_name}{ws.city ? ` - ${ws.city}` : ''}</SelectItem>
                             ))}

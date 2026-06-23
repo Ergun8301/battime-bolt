@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
 import { PlanningWithWorksite, Worksite, User, Invitation, TimeEntryWithWorksite } from '@/lib/types';
-import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -15,16 +14,16 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import {
-  ChevronLeft, ChevronRight, Plus, Trash2, Loader2, GripVertical, Check,
+  ChevronLeft, ChevronRight, Plus, Trash2, Loader2,
   UserPlus, Users, Building2, Archive, CalendarRange, Download, FileSpreadsheet, FileText,
-  Bell, Clock, Mail, RefreshCw, X, Pencil, User as UserIcon,
+  Bell, Clock, Mail, RefreshCw, X, Pencil, LogOut, User as UserIcon,
 } from 'lucide-react';
 import {
   DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
   useDraggable, useDroppable, pointerWithin, rectIntersection,
   type DragEndEvent, type DragStartEvent, type CollisionDetection,
 } from '@dnd-kit/core';
-import { format, startOfWeek, addDays, addWeeks, subWeeks, subDays, parseISO } from 'date-fns';
+import { format, startOfWeek, addDays, addWeeks, subWeeks, subDays, parseISO, getISOWeek } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import type { DateRange } from 'react-day-picker';
 import { toast } from 'sonner';
@@ -42,15 +41,17 @@ function formatMinutes(minutes: number): string {
   return `${h}h${m.toString().padStart(2, '0')}`;
 }
 
-// Colour belongs to the CHANTIER (stable pastel all week), not the poseur.
-const CHANTIER_PALETTES = [
-  { chip: 'bg-blue-100 border-blue-300 text-blue-800',      dot: 'bg-blue-400' },
-  { chip: 'bg-orange-100 border-orange-300 text-orange-700', dot: 'bg-orange-400' },
-  { chip: 'bg-green-100 border-green-300 text-green-700',    dot: 'bg-green-400' },
-  { chip: 'bg-violet-100 border-violet-300 text-violet-700', dot: 'bg-violet-400' },
-  { chip: 'bg-cyan-100 border-cyan-300 text-cyan-700',       dot: 'bg-cyan-400' },
-  { chip: 'bg-pink-100 border-pink-300 text-pink-700',       dot: 'bg-pink-400' },
-  { chip: 'bg-amber-100 border-amber-300 text-amber-800',    dot: 'bg-amber-400' },
+// Colour belongs to the CHANTIER (stable all week), not the poseur.
+// Palette BTP noir/jaune : barre de couleur du chantier + tag « Prévu » assorti.
+interface ChantierPalette { bar: string; tagBg: string; tagText: string }
+const CHANTIER_PALETTES: ChantierPalette[] = [
+  { bar: '#C9821F', tagBg: '#F1E3CB', tagText: '#9a7c14' },
+  { bar: '#3E6E8E', tagBg: '#D7E2EA', tagText: '#356283' },
+  { bar: '#2F8A5B', tagBg: '#D5E8DD', tagText: '#27744c' },
+  { bar: '#B5472E', tagBg: '#F4D9D1', tagText: '#a8412a' },
+  { bar: '#7A5EA8', tagBg: '#E7DEF2', tagText: '#6b4f99' },
+  { bar: '#2C7A8C', tagBg: '#D3E7EB', tagText: '#256673' },
+  { bar: '#A8742A', tagBg: '#EFE2CC', tagText: '#8a5f1e' },
 ];
 
 const ABSENCE_LABELS: Record<string, string> = { conge: 'Congé', maladie: 'Maladie', intemperie: 'Intempérie', repos: 'Repos' };
@@ -109,24 +110,33 @@ const realKey = (userId: string, date: string, worksiteId: string | null) => `${
 
 // ─── compact one-line chantier bubble ──────────────────────────────────────────
 
-function BubbleContent({ p, palette, real }: { p: PlanningWithWorksite; palette: string; real?: RealAgg }) {
+function BubbleContent({ p, palette, real }: { p: PlanningWithWorksite; palette: ChantierPalette; real?: RealAgg }) {
   const hour = fixedHourOf(p);
-  return (
-    <div className={`${palette} border rounded px-2 py-1 text-[11px] leading-tight`}>
-      <div className="flex items-center gap-1">
-        {hour && <span className="shrink-0 rounded border bg-white/70 px-1 font-semibold tabular-nums">{hour}</span>}
-        <span className="font-medium truncate flex-1">{p.worksite?.client_name || 'Chantier'}</span>
-        {real && (
-          <span className="flex items-center gap-0.5 text-green-700 shrink-0">
-            <Check className="h-3 w-3" />{formatMinutes(real.minutes)}
-          </span>
-        )}
-      </div>
-      {(p.worksite?.product_type || p.worksite?.city) && (
-        <div className="truncate text-[10px] opacity-80">
-          {[p.worksite?.product_type, p.worksite?.city].filter(Boolean).join(' · ')}
+  const sub = [p.worksite?.product_type, p.worksite?.city].filter(Boolean).join(' · ');
+  if (real) {
+    // Pointé (réel) — fond noir, heures réelles en mono jaune.
+    return (
+      <div className="bt-pl-bub" style={{ background: '#15120F', color: '#F2EDE3' }}>
+        <span className="bt-pl-bub-bar" style={{ background: palette.bar }} />
+        <div className="bt-pl-bub-name">{p.worksite?.client_name || 'Chantier'}</div>
+        {sub && <div className="bt-pl-bub-sub" style={{ color: '#a59c86' }}>{sub}</div>}
+        <div className="bt-pl-bub-real">
+          <span className="bt-pl-check">✓</span>
+          <span className="bt-pl-real-txt">{real.start.slice(0, 5)}–{real.end.slice(0, 5)} · {formatMinutes(real.minutes)}</span>
         </div>
-      )}
+      </div>
+    );
+  }
+  // Prévu — fond blanc, pointillé couleur chantier.
+  return (
+    <div className="bt-pl-bub" style={{ background: '#fff', border: `1.5px dashed ${palette.bar}`, color: '#15120F' }}>
+      <span className="bt-pl-bub-bar" style={{ background: palette.bar }} />
+      <div className="bt-pl-bub-name">{p.worksite?.client_name || 'Chantier'}</div>
+      {sub && <div className="bt-pl-bub-sub" style={{ color: '#6E6A63' }}>{sub}</div>}
+      <div className="bt-pl-bub-foot">
+        <span className="bt-pl-tag" style={{ background: palette.tagBg, color: palette.tagText }}>Prévu</span>
+        {hour && <span className="bt-pl-hour">{hour}</span>}
+      </div>
     </div>
   );
 }
@@ -136,20 +146,20 @@ function DraggableBubble({
   p, palette, real, onEdit,
 }: {
   p: PlanningWithWorksite;
-  palette: string;
+  palette: ChantierPalette;
   real?: RealAgg;
   onEdit: (p: PlanningWithWorksite) => void;
 }) {
   const drag = useDraggable({ id: p.id, data: { type: 'move' } });
   const drop = useDroppable({ id: `bub|${p.id}` });
   return (
-    <div ref={drop.setNodeRef} className={drop.isOver ? 'rounded ring-2 ring-primary/50' : ''}>
+    <div ref={drop.setNodeRef} className={drop.isOver ? 'bt-pl-bub-over' : ''}>
       <div
         ref={drag.setNodeRef}
         {...drag.attributes}
         {...drag.listeners}
         onClick={(e) => { e.stopPropagation(); onEdit(p); }}
-        className={`cursor-grab active:cursor-grabbing ${drag.isDragging ? 'opacity-40' : ''}`}
+        className={`bt-pl-grab ${drag.isDragging ? 'bt-pl-dragging' : ''}`}
         title="Glisser pour déplacer / réordonner · cliquer pour modifier"
       >
         <BubbleContent p={p} palette={palette} real={real} />
@@ -158,22 +168,28 @@ function DraggableBubble({
   );
 }
 
-// Draggable client chip: appears once a client is chosen, drag it onto a cell.
-function PaletteChip({ worksite }: { worksite: Worksite }) {
+// Une ligne du menu « + Chantier » : attrapable (drag → crée une affectation).
+// Chaque ligne porte son propre worksiteId ; les handlers dnd lisent data.worksiteId.
+function PaletteRow({ worksite, color }: { worksite: Worksite; color: string }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: 'palette-new',
+    id: `palette-new-${worksite.id}`,
     data: { type: 'new', worksiteId: worksite.id },
   });
+  const sub = [worksite.product_type, worksite.city].filter(Boolean).join(' · ');
   return (
     <div
       ref={setNodeRef}
       {...attributes}
       {...listeners}
-      className={`flex items-center gap-1.5 rounded-md border px-3 h-9 text-sm select-none cursor-grab active:cursor-grabbing bg-primary/5 border-primary/30 text-foreground ${isDragging ? 'opacity-40' : ''}`}
+      className={`bt-pl-ddrow ${isDragging ? 'bt-pl-dragging' : ''}`}
       title="Glisser sur une case du planning"
     >
-      <GripVertical className="h-4 w-4 text-muted-foreground shrink-0" />
-      <span className="truncate max-w-[150px]">{worksite.client_name}</span>
+      <span className="bt-pl-grip"><span /><span /><span /></span>
+      <span className="bt-pl-pilldot" style={{ background: color }} />
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <span className="bt-pl-ddname">{worksite.client_name}</span>
+        {sub && <span className="bt-pl-ddsub">{sub}</span>}
+      </span>
     </div>
   );
 }
@@ -191,21 +207,197 @@ function DroppableCell({
     <td
       ref={setNodeRef}
       style={CELL_HEIGHT_HACK}
-      className={`p-1.5 align-top transition-colors ${
-        isOver
-          ? 'bg-primary/10 outline-dashed outline-2 -outline-offset-2 outline-primary'
-          : isToday ? 'bg-primary/5' : ''
-      }`}
+      className={`bt-pl-cell ${isOver ? 'bt-pl-cell-over' : isToday ? 'bt-pl-cell-today' : ''}`}
     >
-      <div className="h-full min-h-[3.25rem]">{children}</div>
+      <div className="bt-pl-cellinner">
+        {children}
+        {isOver && (
+          <div className="bt-pl-drop"><span className="bt-pl-drop-arrow">↓</span><span>Déposer ici</span></div>
+        )}
+      </div>
     </td>
   );
 }
 
+// Stable colour for a chantier (legend + mobile) — same hash as paletteFor.
+const colorForWorksite = (worksiteId: string | null | undefined): ChantierPalette =>
+  CHANTIER_PALETTES[hashStr(worksiteId || 'x') % CHANTIER_PALETTES.length];
+
+const ABSENCE_VISUAL: Record<string, { icon: string; bg: string; fg: string }> = {
+  conge: { icon: '🌴', bg: 'repeating-linear-gradient(45deg,#E7E1D5 0 8px,#DDD5C6 8px 16px)', fg: '#7c766c' },
+  repos: { icon: '💤', bg: 'repeating-linear-gradient(45deg,#ECE6DA 0 7px,#E4DCCE 7px 14px)', fg: '#9a948a' },
+  intemperie: { icon: '🌧️', bg: 'repeating-linear-gradient(45deg,#E0E4E7 0 8px,#D2D7DB 8px 16px)', fg: '#5e6a72' },
+  maladie: { icon: '🤒', bg: 'repeating-linear-gradient(45deg,#EBE0DC 0 8px,#E0D2CD 8px 16px)', fg: '#8a6a60' },
+};
+
+// Scoped noir/jaune styling for the planning. Logic-free — appearance only.
+const PL_CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
+.bt-pl{font-family:'Archivo',sans-serif;color:#15120F}
+.bt-pl *{box-sizing:border-box}
+.bt-pl .mono{font-family:'JetBrains Mono',monospace}
+/* ===== BARRE UNIQUE pleine largeur (sticky) — pas de cadre ===== */
+.bt-pl-bar{position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:#F2EDE3;border-bottom:2px solid #15120F;padding:8px 16px;border-radius:16px 16px 0 0}
+.bt-pl-gridwrap{overflow-x:auto;background:#F2EDE3;border-radius:0 0 16px 16px}
+.bt-pl-bar-left{display:flex;align-items:center;gap:11px;flex-wrap:wrap}
+.bt-pl-bar-right{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.bt-pl-logo{width:30px;height:30px;background:#15120F;color:#FFC21A;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;flex:none}
+.bt-pl-nav{display:flex;align-items:center;gap:6px}
+.bt-pl-week2{font-size:14px;font-weight:800;letter-spacing:-.01em;white-space:nowrap;color:#15120F;display:inline-flex;align-items:center;gap:8px}
+.bt-pl-wk{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;background:#15120F;color:#FFC21A;border-radius:6px;padding:3px 7px;letter-spacing:.04em}
+.bt-pl-icobtn{width:33px;height:33px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;font-size:15px;cursor:pointer;border:1.5px solid rgba(21,18,15,.18);background:#fff;color:#15120F;font-family:inherit;transition:border-color .14s ease,background .14s ease,transform .08s ease}
+.bt-pl-icobtn:hover{border-color:#15120F;background:rgba(21,18,15,.05)}
+.bt-pl-icobtn:active{transform:translateY(1px)}
+.bt-pl-dark{background:#15120F;color:#F2EDE3;border:none;border-radius:10px;padding:7px 12px;height:33px;font-size:12.5px;font-weight:800;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;transition:background .14s ease,transform .08s ease}
+.bt-pl-dark:hover{background:#2a2620;transform:translateY(-1px)}
+.bt-pl-dark:active{transform:translateY(1px)}
+.bt-pl-seg{display:inline-flex;background:#E3DAC8;border-radius:11px;padding:4px;gap:3px}
+.bt-pl-segbtn{font-family:inherit;font-weight:800;font-size:12.5px;border:none;background:transparent;color:#6E6A63;padding:7px 12px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:background .14s ease,color .14s ease}
+.bt-pl-segbtn:hover{color:#15120F;background:rgba(21,18,15,.05)}
+.bt-pl-out{background:transparent;border:1.5px solid rgba(21,18,15,.3);color:#15120F;border-radius:10px;padding:7px 13px;height:33px;font-size:12.5px;font-weight:800;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;transition:border-color .14s ease,background .14s ease,transform .08s ease}
+.bt-pl-out:hover{border-color:#15120F;background:rgba(21,18,15,.04)}
+.bt-pl-out:active{transform:translateY(1px)}
+.bt-pl-fill{background:#FFC21A;color:#15120F;border:none;box-shadow:0 3px 0 #C99300;border-radius:10px;padding:8px 14px;height:33px;font-size:12.5px;font-weight:800;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;transition:transform .12s ease,box-shadow .12s ease}
+.bt-pl-fill:hover{transform:translateY(-1px);box-shadow:0 5px 0 #C99300}
+.bt-pl-fill:active{transform:translateY(2px);box-shadow:0 1px 0 #C99300}
+/* dropdown « + Chantier » — lignes attrapables */
+.bt-pl-ddwrap{position:relative}
+.bt-pl-ddbackdrop{position:fixed;inset:0;z-index:35}
+.bt-pl-dd{position:absolute;top:42px;right:0;z-index:40;width:266px;background:#fff;border:1px solid rgba(21,18,15,.14);border-radius:14px;box-shadow:0 24px 50px -18px rgba(21,18,15,.45);overflow:hidden}
+.bt-pl-dd-h{padding:9px 13px 7px;border-bottom:1px solid rgba(21,18,15,.08);font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:#9a948a;font-weight:700}
+.bt-pl-ddrow{display:flex;align-items:center;gap:10px;padding:10px 13px;cursor:grab;background:#fff;border:none;width:100%;text-align:left;font-family:inherit;transition:background .12s ease}
+.bt-pl-ddrow:hover{background:#FBF6EA}
+.bt-pl-ddrow:active{cursor:grabbing}
+.bt-pl-grip{display:flex;flex-direction:column;gap:2px;flex:none}
+.bt-pl-grip span{display:block;width:11px;height:1.7px;background:#c4bdae;border-radius:2px}
+.bt-pl-pilldot{width:11px;height:11px;border-radius:50%;flex:none}
+.bt-pl-ddname{display:block;font-size:13.5px;font-weight:800;line-height:1.1;color:#15120F}
+.bt-pl-ddsub{display:block;font-size:11px;color:#9a948a;font-weight:600}
+.bt-pl-ddcreate{display:flex;align-items:center;gap:9px;padding:11px 13px;border-top:1px solid rgba(21,18,15,.1);background:#FBF6EA;cursor:pointer;border:none;width:100%;text-align:left;font-family:inherit;color:#15120F;font-size:13.5px;font-weight:800}
+.bt-pl-ddcreate-ico{width:22px;height:22px;background:#FFC21A;color:#15120F;border-radius:6px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:14px;flex:none}
+.bt-pl-dragchip{display:inline-flex;align-items:center;gap:9px;background:#fff;border:1px solid rgba(21,18,15,.16);border-radius:11px;padding:8px 13px;box-shadow:0 16px 30px -12px rgba(21,18,15,.55);font-weight:800;font-size:13.5px;color:#15120F}
+
+/* compte entreprise (remplace le bouton Déconnexion) */
+.bt-pl-sep{width:1px;height:24px;background:rgba(21,18,15,.16)}
+.bt-pl-acctwrap{position:relative}
+.bt-pl-acct{display:inline-flex;align-items:center;gap:8px;background:transparent;border:1.5px solid rgba(21,18,15,.18);border-radius:10px;padding:4px 10px 4px 4px;cursor:pointer;font-family:inherit;height:33px;transition:border-color .14s ease,background .14s ease}
+.bt-pl-acct:hover{border-color:#15120F;background:rgba(21,18,15,.04)}
+.bt-pl-acct-av{width:24px;height:24px;border-radius:50%;background:#15120F;color:#FFC21A;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:10px;flex:none}
+.bt-pl-acct-name{font-size:13px;font-weight:800;color:#15120F;max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bt-pl-acct-car{font-size:10px;color:#9a948a}
+.bt-pl-acctmenu{position:absolute;top:42px;right:0;z-index:40;width:232px;background:#fff;border:1px solid rgba(21,18,15,.14);border-radius:13px;box-shadow:0 24px 50px -18px rgba(21,18,15,.45);overflow:hidden}
+.bt-pl-acctmenu-h{padding:11px 13px;border-bottom:1px solid rgba(21,18,15,.08)}
+.bt-pl-acctmenu-co{font-size:13.5px;font-weight:900;color:#15120F}
+.bt-pl-acctmenu-u{font-size:11.5px;color:#6E6A63;font-weight:600}
+.bt-pl-acct-item{display:flex;align-items:center;gap:9px;width:100%;padding:11px 13px;background:#fff;border:none;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:800;color:#15120F;text-align:left;transition:background .12s ease}
+.bt-pl-acct-item:hover{background:#FBF6EA}
+.bt-pl-acct-item.danger{color:#C0461F}
+
+/* grille desktop */
+.bt-pl-table{width:100%;border-collapse:collapse;min-width:980px;table-layout:fixed}
+.bt-pl-th{background:#F2EDE3;padding:13px 10px;text-align:center;border-right:1px solid rgba(21,18,15,.6);border-bottom:2px solid #15120F}
+.bt-pl-th-day{font-family:'JetBrains Mono',monospace;font-size:11px;color:#9a948a;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.bt-pl-th-num{font-size:19px;font-weight:900}
+.bt-pl-th.today{background:rgba(255,194,26,.14)}
+.bt-pl-th.today .bt-pl-th-day{color:#9a7c14}
+.bt-pl-th-name{position:sticky;left:0;z-index:6;background:#F2EDE3;text-align:left;font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#9a948a;font-weight:700;padding:13px 13px;width:200px;border-right:2px solid #15120F;border-bottom:2px solid #15120F}
+.bt-pl-namecell{position:sticky;left:0;z-index:5;background:#fff;border-right:2px solid #15120F;border-bottom:1px solid rgba(21,18,15,.6);padding:0;vertical-align:top}
+.bt-pl-namebtn{display:flex;align-items:center;gap:10px;width:100%;height:100%;padding:12px 13px;background:transparent;border:none;cursor:pointer;text-align:left;font-family:inherit}
+.bt-pl-namebtn:hover{background:rgba(21,18,15,.03)}
+.bt-pl-avatar{width:36px;height:36px;border-radius:50%;background:#15120F;color:#FFC21A;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex:none}
+.bt-pl-name{font-size:14.5px;font-weight:800;letter-spacing:-.01em}
+.bt-pl-status{display:flex;align-items:center;gap:5px;margin-top:2px}
+.bt-pl-status-dot{width:7px;height:7px;border-radius:50%;background:#E0A21C}
+.bt-pl-status-txt{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700}
+.bt-pl-cell{border-right:1px solid rgba(21,18,15,.6);border-bottom:1px solid rgba(21,18,15,.6);padding:8px;vertical-align:top}
+.bt-pl-cell-today{background:rgba(255,194,26,.05)}
+.bt-pl-cell-over{background:rgba(255,194,26,.16);outline:2px dashed #FFC21A;outline-offset:-3px}
+.bt-pl-cellinner{position:relative;height:100%;min-height:88px;display:flex;flex-direction:column}
+.bt-pl-cellfill{flex:1;display:flex;flex-direction:column;gap:7px;cursor:pointer;border-radius:6px}
+.bt-pl-drop{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;color:#9a7c14;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;pointer-events:none}
+.bt-pl-drop-arrow{font-size:20px;font-weight:900}
+
+/* bulle */
+.bt-pl-bub{position:relative;overflow:hidden;border-radius:9px;padding:7px 9px 7px 12px;font-family:'Archivo',sans-serif}
+.bt-pl-bub-bar{position:absolute;left:0;top:0;bottom:0;width:4px}
+.bt-pl-bub-name{font-size:12.5px;font-weight:800;letter-spacing:-.01em;line-height:1.15}
+.bt-pl-bub-sub{font-size:10.5px;font-weight:600;margin-bottom:5px;line-height:1.2}
+.bt-pl-bub-real{display:flex;align-items:center;gap:5px}
+.bt-pl-check{width:14px;height:14px;background:#2FA36B;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px;font-weight:900;flex:none}
+.bt-pl-real-txt{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;color:#FFC21A}
+.bt-pl-bub-foot{display:flex;align-items:center;justify-content:space-between;gap:6px}
+.bt-pl-tag{font-family:'JetBrains Mono',monospace;font-size:8.5px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;padding:2px 5px;border-radius:4px;white-space:nowrap}
+.bt-pl-hour{font-family:'JetBrains Mono',monospace;font-size:10px;color:#9a948a;font-weight:700}
+.bt-pl-grab{cursor:grab}
+.bt-pl-grab:active{cursor:grabbing}
+.bt-pl-dragging{opacity:.4}
+.bt-pl-bub-over{border-radius:9px;outline:2px solid rgba(255,194,26,.7);outline-offset:1px}
+
+/* hors-planning (déclaré salarié) */
+.bt-pl-extra{position:relative;overflow:hidden;border-radius:9px;padding:7px 9px 7px 12px;background:#fff;border:1.5px dashed #B5472E;width:100%;text-align:left;cursor:pointer;font-family:inherit}
+.bt-pl-extra-top{display:flex;align-items:center;justify-content:space-between;gap:6px}
+.bt-pl-extra-name{font-size:12px;font-weight:800;color:#15120F;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bt-pl-extra-by{display:flex;align-items:center;gap:4px;font-size:8.5px;color:#9a3b14;margin-top:3px;font-weight:700}
+
+/* case vide */
+.bt-pl-add{flex:1;min-height:60px;border:1.5px dashed rgba(21,18,15,.18);border-radius:9px;display:flex;align-items:center;justify-content:center;color:#b8b1a4;font-size:22px;font-weight:800}
+
+/* absence cell */
+.bt-pl-abs{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;width:100%;height:100%;min-height:88px;border:none;border-radius:6px;cursor:pointer;font-family:inherit}
+.bt-pl-abs-ico{font-size:16px}
+.bt-pl-abs-lbl{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em}
+
+/* mobile */
+.bt-pl-mobile{display:none;flex-direction:column;border:1.5px solid #15120F;border-radius:14px;overflow:hidden;background:#F2EDE3}
+.bt-pl-m-headrow{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+@media (max-width:1023px){.bt-pl-bar,.bt-pl-gridwrap{display:none}.bt-pl-mobile{display:flex}}
+.bt-pl-kicker{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#FFC21A;margin-bottom:3px;font-weight:700}
+.bt-pl-m-ibtn{flex:none;width:38px;height:38px;border-radius:9px;border:1px solid rgba(242,237,227,.22);background:transparent;color:#F2EDE3;display:inline-flex;align-items:center;justify-content:center;font-size:17px;cursor:pointer;font-family:inherit}
+.bt-pl-m-ibtn:hover{background:rgba(242,237,227,.08)}
+.bt-pl-m-head{background:#15120F;color:#F2EDE3;padding:18px 16px 14px}
+.bt-pl-m-date{font-size:20px;font-weight:900;letter-spacing:-.02em;text-transform:capitalize}
+.bt-pl-m-days{display:flex;gap:6px;margin-top:14px;overflow-x:auto}
+.bt-pl-daypill{flex:none;min-width:46px;border-radius:11px;padding:8px 4px;text-align:center;border:1px solid rgba(242,237,227,.18);cursor:pointer;background:transparent;color:#F2EDE3;font-family:inherit}
+.bt-pl-daypill-d{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#a59c86;font-weight:700;text-transform:uppercase}
+.bt-pl-daypill-n{font-size:15px;font-weight:800}
+.bt-pl-daypill.on{background:#FFC21A;border-color:#FFC21A}
+.bt-pl-daypill.on .bt-pl-daypill-d{color:#7a5e00}
+.bt-pl-daypill.on .bt-pl-daypill-n{color:#15120F}
+.bt-pl-m-list{padding:14px 14px 24px;display:flex;flex-direction:column;gap:11px}
+.bt-pl-m-card{background:#fff;border:1px solid rgba(21,18,15,.1);border-radius:15px;padding:13px 14px}
+.bt-pl-m-top{display:flex;align-items:center;gap:10px}
+.bt-pl-m-badge{display:flex;align-items:center;gap:5px;border-radius:7px;padding:4px 8px;font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700}
+.bt-pl-m-bubs{margin-top:11px;display:flex;flex-direction:column;gap:8px}
+.bt-pl-m-empty{font-size:12.5px;color:#9a948a;font-weight:600;margin-top:8px}
+
+/* ===== MOUVEMENT / EFFETS (apparence seulement — dnd-kit non touché) ===== */
+.bt-pl-bub{transition:box-shadow .16s ease, transform .12s ease}
+.bt-pl-grab{transition:transform .12s ease}
+.bt-pl-grab:hover .bt-pl-bub{transform:translateY(-1px);box-shadow:0 8px 18px -8px rgba(21,18,15,.45)}
+.bt-pl-dragging{opacity:.35}
+.bt-pl-dragging .bt-pl-bub{box-shadow:none;transform:none}
+.bt-pl-overlay{transform:rotate(-2.5deg) scale(1.06);filter:drop-shadow(0 16px 22px rgba(21,18,15,.5));cursor:grabbing}
+.bt-pl-extra{transition:box-shadow .16s ease, transform .12s ease}
+.bt-pl-extra:hover{transform:translateY(-1px);box-shadow:0 8px 18px -8px rgba(181,71,46,.4)}
+.bt-pl-cell{transition:background .14s ease}
+.bt-pl-cellfill{transition:background .14s ease}
+.bt-pl-cellfill:hover{background:rgba(21,18,15,.028)}
+.bt-pl-add{transition:border-color .14s ease, color .14s ease, background .14s ease}
+.bt-pl-cellfill:hover .bt-pl-add{border-color:rgba(21,18,15,.34);color:#9a8a3a;background:rgba(255,194,26,.06)}
+.bt-pl-namebtn{transition:background .14s ease}
+.bt-pl-chip{transition:box-shadow .16s ease, transform .12s ease}
+.bt-pl-chip:hover{transform:translateY(-1px);box-shadow:0 8px 18px -8px rgba(21,18,15,.45)}
+.bt-pl-chip:active{transform:translateY(0) scale(.98)}
+.bt-pl-abs{transition:filter .12s ease}
+.bt-pl-abs:hover{filter:brightness(.97)}
+.bt-pl-daypill{transition:background .14s ease, border-color .14s ease, transform .08s ease}
+.bt-pl-daypill:active{transform:translateY(1px)}
+`;
+
 // ─── main ────────────────────────────────────────────────────────────────────
 
 export default function AdminPlanning() {
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
   const [workers, setWorkers] = useState<User[]>([]);
   const [worksites, setWorksites] = useState<Worksite[]>([]);
   const [planning, setPlanning] = useState<PlanningWithWorksite[]>([]);
@@ -217,9 +409,13 @@ export default function AdminPlanning() {
   const [loading, setLoading] = useState(true);
   const [currentWeekStart, setCurrentWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [positionWarned, setPositionWarned] = useState(false);
+  // Mobile (consultation only) — which weekday is shown. Default = today (Mon..Sat → 0..5).
+  const [mobileDayIdx, setMobileDayIdx] = useState(() => { const d = new Date().getDay(); return d === 0 ? 0 : Math.min(d - 1, 5); });
 
   // client to place on the planning
   const [paletteWorksiteId, setPaletteWorksiteId] = useState<string>('');
+  const [chantierMenuOpen, setChantierMenuOpen] = useState(false); // dropdown « + Chantier »
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false); // menu compte (entreprise → Déconnexion)
   const [activeDrag, setActiveDrag] = useState<{ id: string; type: 'move' | 'new'; worksiteId?: string } | null>(null);
 
   // disponibilité popup + worker fiche + management screens
@@ -923,6 +1119,10 @@ export default function AdminPlanning() {
   // ─── derived ──────────────────────────────────────────────────────────────────
 
   const weekDays = Array.from({ length: 6 }, (_, i) => addDays(currentWeekStart, i));
+  const dayShort = (d: Date) => format(d, 'EEE', { locale: fr }).replace('.', '');
+  // Nom + initiales de l'entreprise connectée (bouton compte).
+  const companyLabel = companyName || `${user?.first_name || ''} ${user?.last_name || ''}`.trim() || 'Mon compte';
+  const companyInitials = (companyLabel.replace(/[^a-zA-Z0-9 ]/g, ' ').trim().split(/\s+/).map((w) => w[0]).join('') || 'BT').slice(0, 2).toUpperCase();
 
   const absenceForDay = (workerId: string, dateStr: string) =>
     planning.find(p => p.user_id === workerId && p.work_date === dateStr && p.absence_type);
@@ -930,7 +1130,6 @@ export default function AdminPlanning() {
   const workerEmails = useMemo(() => new Set(workers.map(w => w.email.toLowerCase())), [workers]);
   const pendingInvites = invitations.filter(inv => !workerEmails.has(inv.email.toLowerCase()));
 
-  const paletteWorksite = worksites.find(w => w.id === paletteWorksiteId) || null;
   const editRealAgg = editing ? realForPlanning(editing) : undefined;
 
   if (loading) {
@@ -938,56 +1137,73 @@ export default function AdminPlanning() {
   }
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h2 className="text-2xl font-bold">Planning</h2>
-        <p className="text-muted-foreground text-sm">Glisse un client sur une case · réordonne les bulles à la main · clique un salarié pour son statut</p>
-      </div>
+    <div className="bt-pl">
+      <style dangerouslySetInnerHTML={{ __html: PL_CSS }} />
 
-      <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setActiveDrag(null)}>
-        {/* Action bar */}
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card p-2">
-          <Button variant="outline" size="sm" onClick={() => setSalariesOpen(true)}>
-            <Users className="h-4 w-4 mr-1.5" /> Salariés
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setClientsListOpen(true)}>
-            <Building2 className="h-4 w-4 mr-1.5" /> Clients
-          </Button>
-          <Select value={paletteWorksiteId} onValueChange={setPaletteWorksiteId}>
-            <SelectTrigger className="h-9 w-[190px]"><SelectValue placeholder="Choisir un client" /></SelectTrigger>
-            <SelectContent>
-              {worksites.map(ws => (
-                <SelectItem key={ws.id} value={ws.id}>{ws.client_name}{ws.city ? ` — ${ws.city}` : ''}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {paletteWorksite && <PaletteChip worksite={paletteWorksite} />}
-          <Button variant="outline" size="sm" onClick={() => setExportOpen(true)}>
-            <Download className="h-4 w-4 mr-1.5" /> Export équipe
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setExportWorkerOpen(true)}>
-            <FileText className="h-4 w-4 mr-1.5" /> Export salarié
-          </Button>
-
-          <div className="ml-auto flex items-center gap-2">
-            <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => setCurrentWeekStart(subWeeks(currentWeekStart, 1))}>
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <div className="text-center min-w-[170px] text-sm font-medium">
-              {format(currentWeekStart, 'd MMM', { locale: fr })} – {format(addDays(currentWeekStart, 5), 'd MMM yyyy', { locale: fr })}
+      <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragStart={handleDragStart} onDragEnd={(e) => { handleDragEnd(e); setChantierMenuOpen(false); }} onDragCancel={() => { setActiveDrag(null); setChantierMenuOpen(false); }}>
+        {/* Barre UNIQUE pleine largeur, figée (sticky) — tout aligné sur une ligne */}
+        <div className="bt-pl-bar">
+          <div className="bt-pl-bar-left">
+            <span className="bt-pl-logo"><Clock className="h-4 w-4" /></span>
+            <div className="bt-pl-nav">
+              <button className="bt-pl-icobtn" aria-label="Semaine précédente" onClick={() => setCurrentWeekStart(subWeeks(currentWeekStart, 1))}>‹</button>
+              <button className="bt-pl-dark" onClick={() => setCurrentWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))}>Aujourd'hui</button>
+              <button className="bt-pl-icobtn" aria-label="Semaine suivante" onClick={() => setCurrentWeekStart(addWeeks(currentWeekStart, 1))}>›</button>
             </div>
-            <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => setCurrentWeekStart(addWeeks(currentWeekStart, 1))}>
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-            <Button variant="outline" size="sm" className="h-9" onClick={() => setCurrentWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))}>
-              Aujourd'hui
-            </Button>
+            <div className="bt-pl-week2"><span className="bt-pl-wk">S.{getISOWeek(currentWeekStart)}</span> {format(currentWeekStart, 'd', { locale: fr })}–{format(addDays(currentWeekStart, 5), 'd MMM', { locale: fr })}</div>
+          </div>
+          <div className="bt-pl-bar-right">
+            <div className="bt-pl-seg">
+              <button className="bt-pl-segbtn" onClick={() => setSalariesOpen(true)}><Users className="h-3.5 w-3.5" /> Salariés</button>
+              <button className="bt-pl-segbtn" onClick={() => setClientsListOpen(true)}><Building2 className="h-3.5 w-3.5" /> Clients</button>
+            </div>
+            <div className="bt-pl-ddwrap">
+              <button className="bt-pl-out" onClick={() => setChantierMenuOpen((o) => !o)}>＋ Chantier ▾</button>
+              {chantierMenuOpen && (
+                <>
+                  <div className="bt-pl-ddbackdrop" onClick={() => setChantierMenuOpen(false)} />
+                  <div className="bt-pl-dd">
+                    <div className="bt-pl-dd-h">Glissez sur le planning ↘</div>
+                    {worksites.map((ws) => (
+                      <PaletteRow key={ws.id} worksite={ws} color={colorForWorksite(ws.id).bar} />
+                    ))}
+                    <button className="bt-pl-ddcreate" onClick={() => { setChantierMenuOpen(false); setClientOpen(true); }}>
+                      <span className="bt-pl-ddcreate-ico">＋</span> Créer un client
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+            <button className="bt-pl-fill" onClick={() => setExportOpen(true)}><Download className="h-4 w-4" /> Exporter la paie</button>
+            <button className="bt-pl-out" onClick={() => setExportWorkerOpen(true)}><FileText className="h-4 w-4" /> Export salarié</button>
+            <span className="bt-pl-sep" />
+            <div className="bt-pl-acctwrap">
+              <button className="bt-pl-acct" onClick={() => setAccountMenuOpen((o) => !o)} title="Compte entreprise">
+                <span className="bt-pl-acct-av">{companyInitials}</span>
+                <span className="bt-pl-acct-name">{companyLabel}</span>
+                <span className="bt-pl-acct-car">▾</span>
+              </button>
+              {accountMenuOpen && (
+                <>
+                  <div className="bt-pl-ddbackdrop" onClick={() => setAccountMenuOpen(false)} />
+                  <div className="bt-pl-acctmenu">
+                    <div className="bt-pl-acctmenu-h">
+                      <div className="bt-pl-acctmenu-co">{companyLabel}</div>
+                      <div className="bt-pl-acctmenu-u">{user?.first_name} {user?.last_name}</div>
+                    </div>
+                    <button className="bt-pl-acct-item danger" onClick={() => { setAccountMenuOpen(false); signOut(); }}>
+                      <LogOut className="h-4 w-4" /> Déconnexion
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Pending invitations */}
+        {/* Invitations en attente (sous la barre) */}
         {pendingInvites.length > 0 && (
-          <div className="mt-3 space-y-1.5 rounded-lg border border-yellow-200 bg-yellow-50/50 p-2.5">
+          <div className="space-y-1.5 border-b border-yellow-200 bg-yellow-50/60 px-4 py-2.5">
             <p className="text-xs font-semibold text-muted-foreground flex items-center gap-1"><Clock className="h-3.5 w-3.5" /> Invitations en attente</p>
             {pendingInvites.map(inv => (
               <div key={inv.id} className="flex items-center gap-2 text-sm">
@@ -1005,26 +1221,23 @@ export default function AdminPlanning() {
           </div>
         )}
 
-        {/* Legend removed — the green grid chip is now explicit on its own */}
-
-        <Card className="mt-3">
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr className="border-b bg-muted/50">
-                    <th className="p-3 text-left font-medium w-36 sm:w-44 sticky left-0 bg-muted/50 z-10">Salarié</th>
-                    {weekDays.map(day => {
-                      const isToday = format(day, 'yyyy-MM-dd') === todayStr;
-                      return (
-                        <th key={day.toISOString()} className={`p-2 text-center font-medium min-w-[140px] ${isToday ? 'bg-primary/10' : ''}`}>
-                          <div className="text-xs text-muted-foreground capitalize">{format(day, 'EEEE', { locale: fr })}</div>
-                          <div className={`text-lg tabular ${isToday ? 'font-bold text-primary' : ''}`}>{format(day, 'd')}</div>
-                        </th>
-                      );
-                    })}
-                  </tr>
-                </thead>
+        {/* GRILLE — desktop (glisser-déposer) */}
+        <div className="bt-pl-gridwrap">
+          <table className="bt-pl-table">
+            <thead>
+              <tr>
+                <th className="bt-pl-th-name">Salarié</th>
+                {weekDays.map(day => {
+                  const isToday = format(day, 'yyyy-MM-dd') === todayStr;
+                  return (
+                    <th key={day.toISOString()} className={`bt-pl-th ${isToday ? 'today' : ''}`}>
+                      <div className="bt-pl-th-day">{dayShort(day)}{isToday ? ' · Auj.' : ''}</div>
+                      <div className="bt-pl-th-num">{format(day, 'd')}</div>
+                    </th>
+                  );
+                })}
+              </tr>
+            </thead>
                 <tbody>
                   {workers.length === 0 ? (
                     <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">Aucun salarié — bouton « Salariés »</td></tr>
@@ -1034,23 +1247,27 @@ export default function AdminPlanning() {
                       const isLate = (missingByWorker.get(worker.id) || []).length > 0;
                       const fullName = `${worker.first_name} ${worker.last_name}`;
                       return (
-                        <tr key={worker.id} className="border-b last:border-b-0">
-                          {/* Left cell: name (bold) + discreet red dot if undeclared days. */}
-                          <td style={absToday ? { ...CELL_HEIGHT_HACK, ...HATCH_STYLE } : CELL_HEIGHT_HACK} className="p-0 align-top sticky left-0 bg-background z-10">
+                        <tr key={worker.id}>
+                          {/* Cellule nom : avatar + nom + statut (en attente / à jour / absence). */}
+                          <td className="bt-pl-namecell" style={absToday ? { ...CELL_HEIGHT_HACK, ...HATCH_STYLE } : CELL_HEIGHT_HACK}>
                             <button
                               onClick={() => setStatusTarget({ worker, fromStr: todayStr })}
-                              className="flex h-full w-full flex-col justify-center gap-0.5 p-3 text-left hover:bg-muted/50 transition-colors"
+                              className="bt-pl-namebtn"
                               title="Cliquer pour le statut / la disponibilité"
                             >
-                              <span className="flex items-center gap-1.5">
-                                <span className="font-bold text-sm truncate">{fullName}</span>
-                                {isLate && <span className="h-2 w-2 rounded-full bg-red-500 shrink-0" title="Jours en attente d'envoi" />}
+                              <span className="bt-pl-avatar" style={absToday ? { background: '#c4bdae', color: '#15120F' } : undefined}>
+                                {(worker.first_name?.[0] || '')}{(worker.last_name?.[0] || '')}
                               </span>
-                              {absToday && (
-                                <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                                  {ABSENCE_LABELS[absToday] || absToday}
-                                </span>
-                              )}
+                              <span style={{ flex: 1, minWidth: 0 }}>
+                                <span className="bt-pl-name" style={{ display: 'block' }}>{fullName}</span>
+                                {absToday ? (
+                                  <span className="bt-pl-status"><span className="bt-pl-status-txt" style={{ color: '#6E6A63' }}>{ABSENCE_LABELS[absToday] || absToday}</span></span>
+                                ) : isLate ? (
+                                  <span className="bt-pl-status"><span className="bt-pl-status-dot" /><span className="bt-pl-status-txt" style={{ color: '#9a7c14' }}>{(missingByWorker.get(worker.id) || []).length} jour{(missingByWorker.get(worker.id) || []).length > 1 ? 's' : ''} en attente</span></span>
+                                ) : (
+                                  <span className="bt-pl-status"><span className="bt-pl-status-txt" style={{ color: '#9a948a' }}>À jour</span></span>
+                                )}
+                              </span>
                             </button>
                           </td>
 
@@ -1058,46 +1275,48 @@ export default function AdminPlanning() {
                             const dateStr = format(day, 'yyyy-MM-dd');
                             const absence = absenceForDay(worker.id, dateStr);
                             const chantiers = cellChantiers(worker.id, dateStr);
+                            const extra = extraDeclaredForCell(worker.id, dateStr);
                             return (
                               <DroppableCell key={dateStr} workerId={worker.id} dateStr={dateStr} isToday={dateStr === todayStr}>
-                                {absence ? (
-                                  <button
-                                    style={HATCH_STYLE}
-                                    onClick={() => setStatusTarget({ worker, fromStr: dateStr })}
-                                    className="flex h-full min-h-[3.25rem] w-full items-center justify-center rounded border border-slate-300 px-1 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-600 hover:border-slate-400"
-                                    title="Absence — cliquer pour changer le statut"
-                                  >
-                                    {ABSENCE_LABELS[absence.absence_type!] || absence.absence_type}
-                                  </button>
-                                ) : (
+                                {absence ? (() => {
+                                  const av = ABSENCE_VISUAL[absence.absence_type!] || ABSENCE_VISUAL.conge;
+                                  return (
+                                    <button
+                                      style={{ background: av.bg, color: av.fg }}
+                                      onClick={() => setStatusTarget({ worker, fromStr: dateStr })}
+                                      className="bt-pl-abs"
+                                      title="Absence — cliquer pour changer le statut"
+                                    >
+                                      <span className="bt-pl-abs-ico">{av.icon}</span>
+                                      <span className="bt-pl-abs-lbl">{ABSENCE_LABELS[absence.absence_type!] || absence.absence_type}</span>
+                                    </button>
+                                  );
+                                })() : (
                                   <div
-                                    className="group flex h-full min-h-[3.25rem] cursor-pointer flex-col gap-1 rounded p-0.5 hover:bg-muted/40 transition-colors"
+                                    className="bt-pl-cellfill"
                                     onClick={() => openAdd(worker.id, dateStr)}
                                     title="Cliquer pour ajouter une intervention"
                                   >
                                     {chantiers.map(p => (
-                                      <DraggableBubble key={p.id} p={p} palette={paletteFor(p).chip} real={realForPlanning(p)} onEdit={openEdit} />
+                                      <DraggableBubble key={p.id} p={p} palette={paletteFor(p)} real={realForPlanning(p)} onEdit={openEdit} />
                                     ))}
-                                    {extraDeclaredForCell(worker.id, dateStr).map((x, i) => (
+                                    {extra.map((x, i) => (
                                       <button
                                         key={`xd${i}`}
                                         type="button"
                                         onClick={(e) => { e.stopPropagation(); setAttributeTarget({ userId: worker.id, dateStr, worksiteId: x.worksiteId, label: x.name }); }}
                                         title="Ajouté par le salarié — cliquer pour attribuer un client"
-                                        className="w-full rounded border border-dashed border-green-400 bg-green-50 px-2 py-1 leading-tight text-left hover:border-green-500 hover:bg-green-100 transition-colors"
+                                        className="bt-pl-extra"
                                       >
-                                        <span className="flex items-center gap-1 text-[12px]">
-                                          <span className="font-semibold truncate flex-1">{x.name}</span>
-                                          <span className="text-green-700 shrink-0 flex items-center gap-0.5"><Check className="h-3 w-3" />{formatMinutes(x.minutes)}</span>
+                                        <span className="bt-pl-bub-bar" style={{ background: '#B5472E' }} />
+                                        <span className="bt-pl-extra-top">
+                                          <span className="bt-pl-extra-name">{x.name}</span>
+                                          <span className="bt-pl-tag" style={{ background: '#F4D9D1', color: '#a8412a' }}>Hors planning</span>
                                         </span>
-                                        <span className="flex items-center gap-0.5 text-[8px] text-green-700/80">
-                                          <UserIcon className="h-2 w-2 shrink-0" /> ajouté par le salarié
-                                        </span>
+                                        <span className="bt-pl-extra-by"><UserIcon className="h-2.5 w-2.5 shrink-0" /> {formatMinutes(x.minutes)} · ajouté par le salarié</span>
                                       </button>
                                     ))}
-                                    <div className="flex flex-1 items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                      <Plus className="h-4 w-4 text-muted-foreground/50" />
-                                    </div>
+                                    {chantiers.length === 0 && extra.length === 0 && <div className="bt-pl-add">+</div>}
                                   </div>
                                 )}
                               </DroppableCell>
@@ -1108,18 +1327,82 @@ export default function AdminPlanning() {
                     })
                   )}
                 </tbody>
-              </table>
+            </table>
+          </div>
+
+          {/* MOBILE — consultation jour par jour (pas de glisser-déposer) */}
+          <div className="bt-pl-mobile">
+            <div className="bt-pl-m-head">
+              <div className="bt-pl-m-headrow">
+                <div>
+                  <div className="bt-pl-kicker">Planning · Sem. {getISOWeek(currentWeekStart)}</div>
+                  <div className="bt-pl-m-date">{format(weekDays[mobileDayIdx], 'EEEE d MMMM', { locale: fr })}</div>
+                </div>
+                <div className="bt-pl-nav">
+                  <button className="bt-pl-m-ibtn" aria-label="Semaine précédente" onClick={() => setCurrentWeekStart(subWeeks(currentWeekStart, 1))}>‹</button>
+                  <button className="bt-pl-m-ibtn" aria-label="Semaine suivante" onClick={() => setCurrentWeekStart(addWeeks(currentWeekStart, 1))}>›</button>
+                  <button className="bt-pl-m-ibtn" aria-label="Déconnexion" title="Déconnexion" onClick={signOut}><LogOut className="h-4 w-4" /></button>
+                </div>
+              </div>
+              <div className="bt-pl-m-days">
+                {weekDays.map((day, i) => (
+                  <button key={day.toISOString()} className={`bt-pl-daypill ${i === mobileDayIdx ? 'on' : ''}`} onClick={() => setMobileDayIdx(i)}>
+                    <div className="bt-pl-daypill-d">{dayShort(day)}</div>
+                    <div className="bt-pl-daypill-n">{format(day, 'd')}</div>
+                  </button>
+                ))}
+              </div>
             </div>
-          </CardContent>
-        </Card>
+            <div className="bt-pl-m-list">
+              {workers.length === 0 ? (
+                <div className="bt-pl-m-empty">Aucun salarié — bouton « Salariés ».</div>
+              ) : workers.map(worker => {
+                const dateStr = format(weekDays[mobileDayIdx], 'yyyy-MM-dd');
+                const absence = absenceForDay(worker.id, dateStr);
+                const chantiers = cellChantiers(worker.id, dateStr);
+                const extra = extraDeclaredForCell(worker.id, dateStr);
+                const av = absence ? (ABSENCE_VISUAL[absence.absence_type!] || ABSENCE_VISUAL.conge) : null;
+                const anyReal = chantiers.some(p => realForPlanning(p));
+                return (
+                  <div key={worker.id} className="bt-pl-m-card">
+                    <div className="bt-pl-m-top">
+                      <span className="bt-pl-avatar" style={absence ? { background: '#c4bdae', color: '#15120F' } : undefined}>{(worker.first_name?.[0] || '')}{(worker.last_name?.[0] || '')}</span>
+                      <span style={{ flex: 1, minWidth: 0 }}><span className="bt-pl-name" style={{ display: 'block' }}>{worker.first_name} {worker.last_name}</span></span>
+                      {absence ? (
+                        <span className="bt-pl-m-badge" style={{ background: '#EFE7DA', color: av!.fg }}>{av!.icon} {(ABSENCE_LABELS[absence.absence_type!] || '').toUpperCase()}</span>
+                      ) : anyReal ? (
+                        <span className="bt-pl-m-badge" style={{ background: '#E4F2E9', color: '#1F7A4D' }}>✓ POINTÉ</span>
+                      ) : null}
+                    </div>
+                    {!absence && (chantiers.length > 0 || extra.length > 0) && (
+                      <div className="bt-pl-m-bubs">
+                        {chantiers.map(p => <BubbleContent key={p.id} p={p} palette={paletteFor(p)} real={realForPlanning(p)} />)}
+                        {extra.map((x, i) => (
+                          <div key={`mx${i}`} className="bt-pl-extra">
+                            <span className="bt-pl-bub-bar" style={{ background: '#B5472E' }} />
+                            <span className="bt-pl-extra-top"><span className="bt-pl-extra-name">{x.name}</span><span className="bt-pl-tag" style={{ background: '#F4D9D1', color: '#a8412a' }}>Hors planning</span></span>
+                            <span className="bt-pl-extra-by"><UserIcon className="h-2.5 w-2.5 shrink-0" /> {formatMinutes(x.minutes)} · ajouté par le salarié</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {!absence && chantiers.length === 0 && extra.length === 0 && <div className="bt-pl-m-empty">Rien de prévu ce jour.</div>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
 
         <DragOverlay>
-          {activeDrag?.type === 'new' && paletteWorksite ? (
-            <div className="rotate-[-2deg] scale-105 shadow-xl"><PaletteChip worksite={paletteWorksite} /></div>
-          ) : activeDrag?.type === 'move' ? (
+          {activeDrag?.type === 'new' ? (() => {
+            const ws = worksites.find((w) => w.id === activeDrag.worksiteId);
+            return ws ? (
+              <div className="bt-pl-dragchip"><span className="bt-pl-pilldot" style={{ background: colorForWorksite(ws.id).bar }} />{ws.client_name}</div>
+            ) : null;
+          })() : activeDrag?.type === 'move' ? (
             (() => {
               const p = planning.find(x => x.id === activeDrag.id);
-              return p ? <div className="rotate-[-2deg] scale-105 shadow-xl"><BubbleContent p={p} palette={paletteFor(p).chip} real={realForPlanning(p)} /></div> : null;
+              return p ? <div className="bt-pl-overlay"><BubbleContent p={p} palette={paletteFor(p)} real={realForPlanning(p)} /></div> : null;
             })()
           ) : null}
         </DragOverlay>
@@ -1127,7 +1410,7 @@ export default function AdminPlanning() {
 
       {/* Disponibilité popup — 5 buttons + fiche link */}
       <Dialog open={!!statusTarget} onOpenChange={(o) => { if (!o) setStatusTarget(null); }}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="bt-skin max-w-sm">
           <DialogHeader>
             <DialogTitle>
               {statusTarget ? `Statut de ${statusTarget.worker.first_name} à partir ${statusTarget.fromStr === todayStr ? "d'aujourd'hui" : `du ${fromLabel(statusTarget.fromStr)}`}` : ''}
@@ -1163,7 +1446,7 @@ export default function AdminPlanning() {
 
       {/* Salariés — administrative management */}
       <Dialog open={salariesOpen} onOpenChange={setSalariesOpen}>
-        <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
+        <DialogContent className="bt-skin max-w-md max-h-[80vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Salariés</DialogTitle></DialogHeader>
           <div className="pt-1">
             <Button variant="outline" size="sm" className="mb-2 w-full" onClick={() => { setSalariesOpen(false); setWorkerOpen(true); }}>
@@ -1198,13 +1481,13 @@ export default function AdminPlanning() {
 
       {/* Attribute a client to a worker-added intervention (clicked from the grid) */}
       <Dialog open={!!attributeTarget && !clientOpen} onOpenChange={(o) => { if (!o) setAttributeTarget(null); }}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="bt-skin max-w-sm">
           <DialogHeader><DialogTitle>Attribuer un client</DialogTitle></DialogHeader>
           <div className="space-y-3 pt-1">
             <p className="text-sm text-muted-foreground">Intervention <strong>« {attributeTarget?.label} »</strong> ajoutée par le salarié. Choisis le bon client, ou crée-le.</p>
             <Select onValueChange={(v) => attributeClient(v)} disabled={attrBusy}>
               <SelectTrigger><SelectValue placeholder="Choisir un client existant…" /></SelectTrigger>
-              <SelectContent>
+              <SelectContent className="bt-skin">
                 {worksites.filter((w) => w.client_name !== 'Autre' && w.id !== attributeTarget?.worksiteId).map((ws) => (
                   <SelectItem key={ws.id} value={ws.id}>{ws.client_name}{ws.city ? ` — ${ws.city}` : ''}</SelectItem>
                 ))}
@@ -1219,7 +1502,7 @@ export default function AdminPlanning() {
 
       {/* Team export */}
       <Dialog open={exportOpen} onOpenChange={(o) => { setExportOpen(o); if (o) setExportRange(null); }}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="bt-skin max-w-sm">
           <DialogHeader><DialogTitle>Exporter les heures de l'équipe</DialogTitle></DialogHeader>
           <div className="space-y-4 pt-2">
             <div className="grid grid-cols-3 gap-2">
@@ -1229,7 +1512,7 @@ export default function AdminPlanning() {
                 <PopoverTrigger asChild>
                   <Button variant="outline" size="sm"><CalendarRange className="h-4 w-4 mr-1" /> Créneau</Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="end">
+                <PopoverContent className="bt-skin w-auto p-0" align="end">
                   <Calendar mode="range" numberOfMonths={1} locale={fr}
                     selected={exportRange ?? undefined}
                     onSelect={(r) => { if (r?.from) setExportRange({ from: r.from, to: r.to ?? r.from }); }} />
@@ -1254,7 +1537,7 @@ export default function AdminPlanning() {
 
       {/* Export one worker — pick a worker, then their fiche (calendar + Excel/PDF, no lock) */}
       <Dialog open={exportWorkerOpen} onOpenChange={setExportWorkerOpen}>
-        <DialogContent className="max-w-sm max-h-[80vh] overflow-y-auto">
+        <DialogContent className="bt-skin max-w-sm max-h-[80vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Exporter un salarié</DialogTitle></DialogHeader>
           <div className="space-y-3 pt-1">
             <p className="text-sm text-muted-foreground">Choisis un salarié : sa fiche s'ouvre avec le calendrier (jour / semaine / période) et le téléchargement Excel / PDF. Cet export ne verrouille pas les heures.</p>
@@ -1280,14 +1563,14 @@ export default function AdminPlanning() {
 
       {/* Cell add — a client on a specific day */}
       <Dialog open={addOpen} onOpenChange={(o) => { setAddOpen(o); if (!o) setAddTarget(null); }}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="bt-skin max-w-sm">
           <DialogHeader><DialogTitle>Ajouter un client</DialogTitle></DialogHeader>
           <form onSubmit={confirmAdd} className="space-y-4 pt-2">
             <div className="space-y-2">
               <Label>Client</Label>
               <Select value={addWorksite} onValueChange={setAddWorksite}>
                 <SelectTrigger><SelectValue placeholder="Choisir un client" /></SelectTrigger>
-                <SelectContent>
+                <SelectContent className="bt-skin">
                   {worksites.map(ws => <SelectItem key={ws.id} value={ws.id}>{ws.client_name}{ws.city ? ` — ${ws.city}` : ''}</SelectItem>)}
                 </SelectContent>
               </Select>
@@ -1305,7 +1588,7 @@ export default function AdminPlanning() {
 
       {/* Absence start — optional end date via calendar */}
       <Dialog open={!!pendingAbsence} onOpenChange={(o) => { if (!o) setPendingAbsence(null); }}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="bt-skin max-w-sm">
           <DialogHeader>
             <DialogTitle>
               {pendingAbsence ? `${ABSENCE_STATUS_LABELS[pendingAbsence.type] || pendingAbsence.type} — ${pendingAbsence.worker.first_name}` : ''}
@@ -1345,7 +1628,7 @@ export default function AdminPlanning() {
 
       {/* Affectation popup — ONLY this day's assignment */}
       <Dialog open={!!editing} onOpenChange={(o) => { if (!o) closeEdit(); }}>
-        <DialogContent className="max-w-md max-h-[88vh] overflow-y-auto">
+        <DialogContent className="bt-skin max-w-md max-h-[88vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editing?.worksite?.client_name || 'Intervention'}</DialogTitle>
           </DialogHeader>
@@ -1408,7 +1691,7 @@ export default function AdminPlanning() {
 
       {/* Client fiche — permanent client data (separate) */}
       <Dialog open={!!clientFiche} onOpenChange={(o) => { if (!o) setClientFiche(null); }}>
-        <DialogContent className="max-w-md max-h-[88vh] overflow-y-auto">
+        <DialogContent className="bt-skin max-w-md max-h-[88vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2"><Building2 className="h-4 w-4" /> Fiche client</DialogTitle>
           </DialogHeader>
@@ -1443,7 +1726,7 @@ export default function AdminPlanning() {
 
       {/* Clients list — open any client fiche */}
       <Dialog open={clientsListOpen} onOpenChange={setClientsListOpen}>
-        <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
+        <DialogContent className="bt-skin max-w-md max-h-[80vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Clients</DialogTitle></DialogHeader>
           <div className="pt-1">
             <Button variant="outline" size="sm" className="mb-2 w-full" onClick={() => { setClientsListOpen(false); setClientOpen(true); }}>
@@ -1474,7 +1757,7 @@ export default function AdminPlanning() {
 
       {/* Nouveau client */}
       <Dialog open={clientOpen} onOpenChange={(o) => { setClientOpen(o); if (!o) resetClient(); }}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="bt-skin max-w-md">
           <DialogHeader><DialogTitle>Nouveau client / chantier</DialogTitle></DialogHeader>
           <form onSubmit={createClient} className="space-y-3 pt-2">
             <div className="space-y-2"><Label>Nom du client *</Label><Input value={cName} onChange={(e) => setCName(e.target.value)} required disabled={cSaving} /></div>
@@ -1497,7 +1780,7 @@ export default function AdminPlanning() {
 
       {/* Nouveau salarié */}
       <Dialog open={workerOpen} onOpenChange={(o) => { setWorkerOpen(o); if (!o) resetWorker(); }}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="bt-skin max-w-md">
           <DialogHeader><DialogTitle>Nouveau salarié</DialogTitle></DialogHeader>
           <form onSubmit={createWorker} className="space-y-4 pt-2">
             <div className="grid grid-cols-2 gap-3">
