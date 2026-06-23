@@ -112,6 +112,9 @@ export default function InscriptionPage() {
         email: email.trim(),
         password,
         options: {
+          // Le lien de confirmation revient sur NOTRE app (prod ou preview selon
+          // l'origine) ; le handler de hash de /connexion pose la session.
+          emailRedirectTo: `${window.location.origin}/connexion`,
           data: {
             company_name: companyName.trim(),
             first_name: firstName.trim(),

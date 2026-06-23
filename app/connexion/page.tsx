@@ -70,6 +70,9 @@ function LoginView() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [needsConfirm, setNeedsConfirm] = useState<string | null>(null); // email en attente de confirmation
+  const [resending, setResending] = useState(false);
+  const [resendMsg, setResendMsg] = useState<string | null>(null);
   const router = useRouter();
 
   // ── Logique d'authentification : INCHANGEE ──
@@ -77,6 +80,8 @@ function LoginView() {
     e.preventDefault();
     setLoading(true);
     setError(null);
+    setNeedsConfirm(null);
+    setResendMsg(null);
 
     try {
       const { data: signInData, error: authError } = await supabase.auth.signInWithPassword({
@@ -85,9 +90,15 @@ function LoginView() {
       });
 
       if (authError) {
-        setError(authError.message === 'Invalid login credentials'
-          ? 'Email ou mot de passe incorrect'
-          : authError.message);
+        const m = authError.message.toLowerCase();
+        if (m.includes('not confirmed')) {
+          setNeedsConfirm(email);
+          setError("Votre email n'est pas encore confirmé. Vérifiez votre boîte mail (et les spams).");
+        } else if (authError.message === 'Invalid login credentials') {
+          setError('Email ou mot de passe incorrect');
+        } else {
+          setError(authError.message);
+        }
         return;
       }
 
@@ -120,6 +131,21 @@ function LoginView() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleResend = async () => {
+    if (!needsConfirm) return;
+    setResending(true);
+    setResendMsg(null);
+    const { error: resendError } = await supabase.auth.resend({
+      type: 'signup',
+      email: needsConfirm,
+      options: { emailRedirectTo: `${window.location.origin}/connexion` },
+    });
+    setResending(false);
+    setResendMsg(resendError
+      ? "Impossible de renvoyer l'email pour le moment. Réessayez dans un instant."
+      : 'Email de confirmation renvoyé ✓ Vérifiez votre boîte mail.');
   };
 
   const isEnt = tab === 'ent';
@@ -180,6 +206,20 @@ function LoginView() {
             />
 
             {error && <div className="bt-err">{error}</div>}
+            {needsConfirm && (
+              <button
+                type="button"
+                onClick={handleResend}
+                disabled={resending}
+                className="bt-forgot"
+                style={{ display: 'block', background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginBottom: '14px' }}
+              >
+                {resending ? 'Envoi…' : "Renvoyer l'email de confirmation"}
+              </button>
+            )}
+            {resendMsg && (
+              <div style={{ fontSize: '13px', fontWeight: 600, color: '#1f7a4d', marginBottom: '14px' }}>{resendMsg}</div>
+            )}
 
             <button className="bt-ybtn" type="submit" disabled={loading}>
               {loading ? 'Connexion…' : isEnt ? 'Accéder au tableau de bord →' : 'Pointer mes heures →'}
