@@ -295,13 +295,13 @@ const PL_CSS = `
 
 /* grille desktop */
 .bt-pl-table{width:100%;border-collapse:collapse;min-width:980px}
-.bt-pl-th{background:#F2EDE3;padding:13px 10px;text-align:center;border-right:1px solid rgba(21,18,15,.09);border-bottom:2px solid rgba(21,18,15,.14)}
+.bt-pl-th{background:#F2EDE3;padding:13px 10px;text-align:center;border-right:1px solid rgba(21,18,15,.16);border-bottom:2px solid rgba(21,18,15,.22)}
 .bt-pl-th-day{font-family:'JetBrains Mono',monospace;font-size:11px;color:#9a948a;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
 .bt-pl-th-num{font-size:19px;font-weight:900}
 .bt-pl-th.today{background:rgba(255,194,26,.14)}
 .bt-pl-th.today .bt-pl-th-day{color:#9a7c14}
-.bt-pl-th-name{position:sticky;left:0;z-index:6;background:#F2EDE3;text-align:left;font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#9a948a;font-weight:700;padding:13px 13px;border-bottom:2px solid rgba(21,18,15,.14)}
-.bt-pl-namecell{position:sticky;left:0;z-index:5;background:#fff;border-right:2px solid rgba(21,18,15,.14);border-bottom:1px solid rgba(21,18,15,.09);padding:0;vertical-align:top}
+.bt-pl-th-name{position:sticky;left:0;z-index:6;background:#F2EDE3;text-align:left;font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#9a948a;font-weight:700;padding:13px 13px;border-right:2px solid rgba(21,18,15,.22);border-bottom:2px solid rgba(21,18,15,.22)}
+.bt-pl-namecell{position:sticky;left:0;z-index:5;background:#fff;border-right:2px solid rgba(21,18,15,.22);border-bottom:1px solid rgba(21,18,15,.12);padding:0;vertical-align:top}
 .bt-pl-namebtn{display:flex;align-items:center;gap:10px;width:100%;height:100%;padding:12px 13px;background:transparent;border:none;cursor:pointer;text-align:left;font-family:inherit}
 .bt-pl-namebtn:hover{background:rgba(21,18,15,.03)}
 .bt-pl-avatar{width:36px;height:36px;border-radius:50%;background:#15120F;color:#FFC21A;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex:none}
@@ -309,7 +309,7 @@ const PL_CSS = `
 .bt-pl-status{display:flex;align-items:center;gap:5px;margin-top:2px}
 .bt-pl-status-dot{width:7px;height:7px;border-radius:50%;background:#E0A21C}
 .bt-pl-status-txt{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700}
-.bt-pl-cell{border-right:1px solid rgba(21,18,15,.09);border-bottom:1px solid rgba(21,18,15,.09);padding:8px;vertical-align:top}
+.bt-pl-cell{border-right:1px solid rgba(21,18,15,.16);border-bottom:1px solid rgba(21,18,15,.12);padding:8px;vertical-align:top}
 .bt-pl-cell-today{background:rgba(255,194,26,.05)}
 .bt-pl-cell-over{background:rgba(255,194,26,.16);outline:2px dashed #FFC21A;outline-offset:-3px}
 .bt-pl-cellinner{position:relative;height:100%;min-height:88px;display:flex;flex-direction:column}
