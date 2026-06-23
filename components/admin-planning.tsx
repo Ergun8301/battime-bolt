@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
 import { PlanningWithWorksite, Worksite, User, Invitation, TimeEntryWithWorksite } from '@/lib/types';
-import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -15,7 +14,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import {
-  ChevronLeft, ChevronRight, Plus, Trash2, Loader2, GripVertical, Check,
+  ChevronLeft, ChevronRight, Plus, Trash2, Loader2, GripVertical,
   UserPlus, Users, Building2, Archive, CalendarRange, Download, FileSpreadsheet, FileText,
   Bell, Clock, Mail, RefreshCw, X, Pencil, User as UserIcon,
 } from 'lucide-react';
@@ -24,7 +23,7 @@ import {
   useDraggable, useDroppable, pointerWithin, rectIntersection,
   type DragEndEvent, type DragStartEvent, type CollisionDetection,
 } from '@dnd-kit/core';
-import { format, startOfWeek, addDays, addWeeks, subWeeks, subDays, parseISO } from 'date-fns';
+import { format, startOfWeek, addDays, addWeeks, subWeeks, subDays, parseISO, getISOWeek } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import type { DateRange } from 'react-day-picker';
 import { toast } from 'sonner';
@@ -42,15 +41,17 @@ function formatMinutes(minutes: number): string {
   return `${h}h${m.toString().padStart(2, '0')}`;
 }
 
-// Colour belongs to the CHANTIER (stable pastel all week), not the poseur.
-const CHANTIER_PALETTES = [
-  { chip: 'bg-blue-100 border-blue-300 text-blue-800',      dot: 'bg-blue-400' },
-  { chip: 'bg-orange-100 border-orange-300 text-orange-700', dot: 'bg-orange-400' },
-  { chip: 'bg-green-100 border-green-300 text-green-700',    dot: 'bg-green-400' },
-  { chip: 'bg-violet-100 border-violet-300 text-violet-700', dot: 'bg-violet-400' },
-  { chip: 'bg-cyan-100 border-cyan-300 text-cyan-700',       dot: 'bg-cyan-400' },
-  { chip: 'bg-pink-100 border-pink-300 text-pink-700',       dot: 'bg-pink-400' },
-  { chip: 'bg-amber-100 border-amber-300 text-amber-800',    dot: 'bg-amber-400' },
+// Colour belongs to the CHANTIER (stable all week), not the poseur.
+// Palette BTP noir/jaune : barre de couleur du chantier + tag « Prévu » assorti.
+interface ChantierPalette { bar: string; tagBg: string; tagText: string }
+const CHANTIER_PALETTES: ChantierPalette[] = [
+  { bar: '#C9821F', tagBg: '#F1E3CB', tagText: '#9a7c14' },
+  { bar: '#3E6E8E', tagBg: '#D7E2EA', tagText: '#356283' },
+  { bar: '#2F8A5B', tagBg: '#D5E8DD', tagText: '#27744c' },
+  { bar: '#B5472E', tagBg: '#F4D9D1', tagText: '#a8412a' },
+  { bar: '#7A5EA8', tagBg: '#E7DEF2', tagText: '#6b4f99' },
+  { bar: '#2C7A8C', tagBg: '#D3E7EB', tagText: '#256673' },
+  { bar: '#A8742A', tagBg: '#EFE2CC', tagText: '#8a5f1e' },
 ];
 
 const ABSENCE_LABELS: Record<string, string> = { conge: 'Congé', maladie: 'Maladie', intemperie: 'Intempérie', repos: 'Repos' };
@@ -109,24 +110,33 @@ const realKey = (userId: string, date: string, worksiteId: string | null) => `${
 
 // ─── compact one-line chantier bubble ──────────────────────────────────────────
 
-function BubbleContent({ p, palette, real }: { p: PlanningWithWorksite; palette: string; real?: RealAgg }) {
+function BubbleContent({ p, palette, real }: { p: PlanningWithWorksite; palette: ChantierPalette; real?: RealAgg }) {
   const hour = fixedHourOf(p);
-  return (
-    <div className={`${palette} border rounded px-2 py-1 text-[11px] leading-tight`}>
-      <div className="flex items-center gap-1">
-        {hour && <span className="shrink-0 rounded border bg-white/70 px-1 font-semibold tabular-nums">{hour}</span>}
-        <span className="font-medium truncate flex-1">{p.worksite?.client_name || 'Chantier'}</span>
-        {real && (
-          <span className="flex items-center gap-0.5 text-green-700 shrink-0">
-            <Check className="h-3 w-3" />{formatMinutes(real.minutes)}
-          </span>
-        )}
-      </div>
-      {(p.worksite?.product_type || p.worksite?.city) && (
-        <div className="truncate text-[10px] opacity-80">
-          {[p.worksite?.product_type, p.worksite?.city].filter(Boolean).join(' · ')}
+  const sub = [p.worksite?.product_type, p.worksite?.city].filter(Boolean).join(' · ');
+  if (real) {
+    // Pointé (réel) — fond noir, heures réelles en mono jaune.
+    return (
+      <div className="bt-pl-bub" style={{ background: '#15120F', color: '#F2EDE3' }}>
+        <span className="bt-pl-bub-bar" style={{ background: palette.bar }} />
+        <div className="bt-pl-bub-name">{p.worksite?.client_name || 'Chantier'}</div>
+        {sub && <div className="bt-pl-bub-sub" style={{ color: '#a59c86' }}>{sub}</div>}
+        <div className="bt-pl-bub-real">
+          <span className="bt-pl-check">✓</span>
+          <span className="bt-pl-real-txt">{real.start.slice(0, 5)}–{real.end.slice(0, 5)} · {formatMinutes(real.minutes)}</span>
         </div>
-      )}
+      </div>
+    );
+  }
+  // Prévu — fond blanc, pointillé couleur chantier.
+  return (
+    <div className="bt-pl-bub" style={{ background: '#fff', border: `1.5px dashed ${palette.bar}`, color: '#15120F' }}>
+      <span className="bt-pl-bub-bar" style={{ background: palette.bar }} />
+      <div className="bt-pl-bub-name">{p.worksite?.client_name || 'Chantier'}</div>
+      {sub && <div className="bt-pl-bub-sub" style={{ color: '#6E6A63' }}>{sub}</div>}
+      <div className="bt-pl-bub-foot">
+        <span className="bt-pl-tag" style={{ background: palette.tagBg, color: palette.tagText }}>Prévu</span>
+        {hour && <span className="bt-pl-hour">{hour}</span>}
+      </div>
     </div>
   );
 }
@@ -136,20 +146,20 @@ function DraggableBubble({
   p, palette, real, onEdit,
 }: {
   p: PlanningWithWorksite;
-  palette: string;
+  palette: ChantierPalette;
   real?: RealAgg;
   onEdit: (p: PlanningWithWorksite) => void;
 }) {
   const drag = useDraggable({ id: p.id, data: { type: 'move' } });
   const drop = useDroppable({ id: `bub|${p.id}` });
   return (
-    <div ref={drop.setNodeRef} className={drop.isOver ? 'rounded ring-2 ring-primary/50' : ''}>
+    <div ref={drop.setNodeRef} className={drop.isOver ? 'bt-pl-bub-over' : ''}>
       <div
         ref={drag.setNodeRef}
         {...drag.attributes}
         {...drag.listeners}
         onClick={(e) => { e.stopPropagation(); onEdit(p); }}
-        className={`cursor-grab active:cursor-grabbing ${drag.isDragging ? 'opacity-40' : ''}`}
+        className={`bt-pl-grab ${drag.isDragging ? 'bt-pl-dragging' : ''}`}
         title="Glisser pour déplacer / réordonner · cliquer pour modifier"
       >
         <BubbleContent p={p} palette={palette} real={real} />
@@ -169,10 +179,10 @@ function PaletteChip({ worksite }: { worksite: Worksite }) {
       ref={setNodeRef}
       {...attributes}
       {...listeners}
-      className={`flex items-center gap-1.5 rounded-md border px-3 h-9 text-sm select-none cursor-grab active:cursor-grabbing bg-primary/5 border-primary/30 text-foreground ${isDragging ? 'opacity-40' : ''}`}
+      className={`bt-pl-chip ${isDragging ? 'bt-pl-dragging' : ''}`}
       title="Glisser sur une case du planning"
     >
-      <GripVertical className="h-4 w-4 text-muted-foreground shrink-0" />
+      <GripVertical className="h-4 w-4 shrink-0" style={{ color: '#FFC21A' }} />
       <span className="truncate max-w-[150px]">{worksite.client_name}</span>
     </div>
   );
@@ -191,16 +201,134 @@ function DroppableCell({
     <td
       ref={setNodeRef}
       style={CELL_HEIGHT_HACK}
-      className={`p-1.5 align-top transition-colors ${
-        isOver
-          ? 'bg-primary/10 outline-dashed outline-2 -outline-offset-2 outline-primary'
-          : isToday ? 'bg-primary/5' : ''
-      }`}
+      className={`bt-pl-cell ${isOver ? 'bt-pl-cell-over' : isToday ? 'bt-pl-cell-today' : ''}`}
     >
-      <div className="h-full min-h-[3.25rem]">{children}</div>
+      <div className="bt-pl-cellinner">
+        {children}
+        {isOver && (
+          <div className="bt-pl-drop"><span className="bt-pl-drop-arrow">↓</span><span>Déposer ici</span></div>
+        )}
+      </div>
     </td>
   );
 }
+
+// Stable colour for a chantier (legend + mobile) — same hash as paletteFor.
+const colorForWorksite = (worksiteId: string | null | undefined): ChantierPalette =>
+  CHANTIER_PALETTES[hashStr(worksiteId || 'x') % CHANTIER_PALETTES.length];
+
+const ABSENCE_VISUAL: Record<string, { icon: string; bg: string; fg: string }> = {
+  conge: { icon: '🌴', bg: 'repeating-linear-gradient(45deg,#E7E1D5 0 8px,#DDD5C6 8px 16px)', fg: '#7c766c' },
+  repos: { icon: '💤', bg: 'repeating-linear-gradient(45deg,#ECE6DA 0 7px,#E4DCCE 7px 14px)', fg: '#9a948a' },
+  intemperie: { icon: '🌧️', bg: 'repeating-linear-gradient(45deg,#E0E4E7 0 8px,#D2D7DB 8px 16px)', fg: '#5e6a72' },
+  maladie: { icon: '🤒', bg: 'repeating-linear-gradient(45deg,#EBE0DC 0 8px,#E0D2CD 8px 16px)', fg: '#8a6a60' },
+};
+
+// Scoped noir/jaune styling for the planning. Logic-free — appearance only.
+const PL_CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
+.bt-pl{font-family:'Archivo',sans-serif;color:#15120F}
+.bt-pl *{box-sizing:border-box}
+.bt-pl .mono{font-family:'JetBrains Mono',monospace}
+.bt-pl-win{background:#F2EDE3;border-radius:14px;overflow:hidden;box-shadow:0 30px 70px -34px rgba(0,0,0,.55)}
+
+/* toolbar noire */
+.bt-pl-toolbar{background:#15120F;color:#F2EDE3;padding:16px 20px;display:flex;flex-direction:column;gap:12px}
+.bt-pl-tb-row{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.bt-pl-kicker{font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:#FFC21A;margin-bottom:3px;font-weight:700}
+.bt-pl-week{font-size:22px;font-weight:900;letter-spacing:-.02em}
+.bt-pl-nav{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.bt-pl-ibtn{border:1px solid rgba(242,237,227,.22);background:transparent;color:#F2EDE3;border-radius:9px;width:38px;height:38px;display:inline-flex;align-items:center;justify-content:center;font-size:17px;cursor:pointer}
+.bt-pl-ibtn:hover{background:rgba(242,237,227,.08)}
+.bt-pl-ybtn{border:none;background:#FFC21A;color:#15120F;border-radius:9px;padding:0 16px;height:38px;font-weight:800;font-size:13.5px;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px}
+.bt-pl-dbtn{border:1px solid rgba(242,237,227,.22);background:#211D19;color:#F2EDE3;border-radius:9px;padding:0 14px;height:38px;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:7px}
+.bt-pl-dbtn:hover{background:#2a2620}
+.bt-pl-tb-sep{width:1px;height:26px;background:rgba(242,237,227,.18);margin:0 2px}
+.bt-pl-tools{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+
+/* légende */
+.bt-pl-legend{background:#E8E1D3;padding:10px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;border-bottom:1px solid rgba(21,18,15,.1)}
+.bt-pl-legend-k{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#6E6A63;font-weight:700}
+.bt-pl-legend-item{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:700}
+.bt-pl-legend-sw{width:11px;height:11px;border-radius:3px}
+.bt-pl-legend-sep{width:1px;height:16px;background:rgba(21,18,15,.18)}
+.bt-pl-legend-key{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:#6E6A63}
+
+/* grille desktop */
+.bt-pl-gridwrap{overflow-x:auto}
+.bt-pl-table{width:100%;border-collapse:collapse;min-width:980px}
+.bt-pl-th{background:#F2EDE3;padding:13px 10px;text-align:center;border-right:1px solid rgba(21,18,15,.09);border-bottom:2px solid rgba(21,18,15,.14)}
+.bt-pl-th-day{font-family:'JetBrains Mono',monospace;font-size:11px;color:#9a948a;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.bt-pl-th-num{font-size:19px;font-weight:900}
+.bt-pl-th.today{background:#15120F;color:#F2EDE3}
+.bt-pl-th.today .bt-pl-th-day{color:#FFC21A}
+.bt-pl-th-name{position:sticky;left:0;z-index:6;background:#F2EDE3;text-align:left;font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#9a948a;font-weight:700;padding:13px 13px;border-bottom:2px solid rgba(21,18,15,.14)}
+.bt-pl-namecell{position:sticky;left:0;z-index:5;background:#fff;border-right:2px solid rgba(21,18,15,.14);border-bottom:1px solid rgba(21,18,15,.09);padding:0;vertical-align:top}
+.bt-pl-namebtn{display:flex;align-items:center;gap:10px;width:100%;height:100%;padding:12px 13px;background:transparent;border:none;cursor:pointer;text-align:left;font-family:inherit}
+.bt-pl-namebtn:hover{background:rgba(21,18,15,.03)}
+.bt-pl-avatar{width:36px;height:36px;border-radius:50%;background:#15120F;color:#FFC21A;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex:none}
+.bt-pl-name{font-size:14.5px;font-weight:800;letter-spacing:-.01em}
+.bt-pl-status{display:flex;align-items:center;gap:5px;margin-top:2px}
+.bt-pl-status-dot{width:7px;height:7px;border-radius:50%;background:#E0A21C}
+.bt-pl-status-txt{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700}
+.bt-pl-cell{border-right:1px solid rgba(21,18,15,.09);border-bottom:1px solid rgba(21,18,15,.09);padding:8px;vertical-align:top}
+.bt-pl-cell-today{background:rgba(255,194,26,.05)}
+.bt-pl-cell-over{background:rgba(255,194,26,.16);outline:2px dashed #FFC21A;outline-offset:-3px}
+.bt-pl-cellinner{position:relative;height:100%;min-height:88px;display:flex;flex-direction:column}
+.bt-pl-cellfill{flex:1;display:flex;flex-direction:column;gap:7px;cursor:pointer;border-radius:6px}
+.bt-pl-drop{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;color:#9a7c14;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;pointer-events:none}
+.bt-pl-drop-arrow{font-size:20px;font-weight:900}
+
+/* bulle */
+.bt-pl-bub{position:relative;overflow:hidden;border-radius:9px;padding:7px 9px 7px 12px;font-family:'Archivo',sans-serif}
+.bt-pl-bub-bar{position:absolute;left:0;top:0;bottom:0;width:4px}
+.bt-pl-bub-name{font-size:12.5px;font-weight:800;letter-spacing:-.01em;line-height:1.15}
+.bt-pl-bub-sub{font-size:10.5px;font-weight:600;margin-bottom:5px;line-height:1.2}
+.bt-pl-bub-real{display:flex;align-items:center;gap:5px}
+.bt-pl-check{width:14px;height:14px;background:#2FA36B;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px;font-weight:900;flex:none}
+.bt-pl-real-txt{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;color:#FFC21A}
+.bt-pl-bub-foot{display:flex;align-items:center;justify-content:space-between;gap:6px}
+.bt-pl-tag{font-family:'JetBrains Mono',monospace;font-size:8.5px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;padding:2px 5px;border-radius:4px;white-space:nowrap}
+.bt-pl-hour{font-family:'JetBrains Mono',monospace;font-size:10px;color:#9a948a;font-weight:700}
+.bt-pl-grab{cursor:grab}
+.bt-pl-grab:active{cursor:grabbing}
+.bt-pl-dragging{opacity:.4}
+.bt-pl-bub-over{border-radius:9px;outline:2px solid rgba(255,194,26,.7);outline-offset:1px}
+
+/* hors-planning (déclaré salarié) */
+.bt-pl-extra{position:relative;overflow:hidden;border-radius:9px;padding:7px 9px 7px 12px;background:#fff;border:1.5px dashed #B5472E;width:100%;text-align:left;cursor:pointer;font-family:inherit}
+.bt-pl-extra-top{display:flex;align-items:center;justify-content:space-between;gap:6px}
+.bt-pl-extra-name{font-size:12px;font-weight:800;color:#15120F;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bt-pl-extra-by{display:flex;align-items:center;gap:4px;font-size:8.5px;color:#9a3b14;margin-top:3px;font-weight:700}
+
+/* case vide */
+.bt-pl-add{flex:1;min-height:60px;border:1.5px dashed rgba(21,18,15,.18);border-radius:9px;display:flex;align-items:center;justify-content:center;color:#b8b1a4;font-size:22px;font-weight:800}
+
+/* absence cell */
+.bt-pl-abs{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;width:100%;height:100%;min-height:88px;border:none;border-radius:6px;cursor:pointer;font-family:inherit}
+.bt-pl-abs-ico{font-size:16px}
+.bt-pl-abs-lbl{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em}
+
+/* mobile */
+.bt-pl-mobile{display:none;flex-direction:column}
+.bt-pl-m-headrow{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+@media (max-width:1023px){.bt-pl-toolbar,.bt-pl-legend,.bt-pl-gridwrap{display:none}.bt-pl-mobile{display:flex}}
+.bt-pl-m-head{background:#15120F;color:#F2EDE3;padding:18px 16px 14px}
+.bt-pl-m-date{font-size:20px;font-weight:900;letter-spacing:-.02em;text-transform:capitalize}
+.bt-pl-m-days{display:flex;gap:6px;margin-top:14px;overflow-x:auto}
+.bt-pl-daypill{flex:none;min-width:46px;border-radius:11px;padding:8px 4px;text-align:center;border:1px solid rgba(242,237,227,.18);cursor:pointer;background:transparent;color:#F2EDE3;font-family:inherit}
+.bt-pl-daypill-d{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#a59c86;font-weight:700;text-transform:uppercase}
+.bt-pl-daypill-n{font-size:15px;font-weight:800}
+.bt-pl-daypill.on{background:#FFC21A;border-color:#FFC21A}
+.bt-pl-daypill.on .bt-pl-daypill-d{color:#7a5e00}
+.bt-pl-daypill.on .bt-pl-daypill-n{color:#15120F}
+.bt-pl-m-list{padding:14px 14px 24px;display:flex;flex-direction:column;gap:11px}
+.bt-pl-m-card{background:#fff;border:1px solid rgba(21,18,15,.1);border-radius:15px;padding:13px 14px}
+.bt-pl-m-top{display:flex;align-items:center;gap:10px}
+.bt-pl-m-badge{display:flex;align-items:center;gap:5px;border-radius:7px;padding:4px 8px;font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700}
+.bt-pl-m-bubs{margin-top:11px;display:flex;flex-direction:column;gap:8px}
+.bt-pl-m-empty{font-size:12.5px;color:#9a948a;font-weight:600;margin-top:8px}
+`;
 
 // ─── main ────────────────────────────────────────────────────────────────────
 
@@ -217,6 +345,8 @@ export default function AdminPlanning() {
   const [loading, setLoading] = useState(true);
   const [currentWeekStart, setCurrentWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [positionWarned, setPositionWarned] = useState(false);
+  // Mobile (consultation only) — which weekday is shown. Default = today (Mon..Sat → 0..5).
+  const [mobileDayIdx, setMobileDayIdx] = useState(() => { const d = new Date().getDay(); return d === 0 ? 0 : Math.min(d - 1, 5); });
 
   // client to place on the planning
   const [paletteWorksiteId, setPaletteWorksiteId] = useState<string>('');
@@ -923,6 +1053,9 @@ export default function AdminPlanning() {
   // ─── derived ──────────────────────────────────────────────────────────────────
 
   const weekDays = Array.from({ length: 6 }, (_, i) => addDays(currentWeekStart, i));
+  // Chantiers présents cette semaine (pour la légende, couleur stable par chantier).
+  const legendWorksites = worksites.filter((ws) => planning.some((p) => p.worksite_id === ws.id && !p.absence_type));
+  const dayShort = (d: Date) => format(d, 'EEE', { locale: fr }).replace('.', '');
 
   const absenceForDay = (workerId: string, dateStr: string) =>
     planning.find(p => p.user_id === workerId && p.work_date === dateStr && p.absence_type);
@@ -938,52 +1071,44 @@ export default function AdminPlanning() {
   }
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h2 className="text-2xl font-bold">Planning</h2>
-        <p className="text-muted-foreground text-sm">Glisse un client sur une case · réordonne les bulles à la main · clique un salarié pour son statut</p>
-      </div>
+    <div className="bt-pl">
+      <style dangerouslySetInnerHTML={{ __html: PL_CSS }} />
 
       <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setActiveDrag(null)}>
-        {/* Action bar */}
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card p-2">
-          <Button variant="outline" size="sm" onClick={() => setSalariesOpen(true)}>
-            <Users className="h-4 w-4 mr-1.5" /> Salariés
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setClientsListOpen(true)}>
-            <Building2 className="h-4 w-4 mr-1.5" /> Clients
-          </Button>
-          <Select value={paletteWorksiteId} onValueChange={setPaletteWorksiteId}>
-            <SelectTrigger className="h-9 w-[190px]"><SelectValue placeholder="Choisir un client" /></SelectTrigger>
-            <SelectContent>
-              {worksites.map(ws => (
-                <SelectItem key={ws.id} value={ws.id}>{ws.client_name}{ws.city ? ` — ${ws.city}` : ''}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {paletteWorksite && <PaletteChip worksite={paletteWorksite} />}
-          <Button variant="outline" size="sm" onClick={() => setExportOpen(true)}>
-            <Download className="h-4 w-4 mr-1.5" /> Export équipe
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setExportWorkerOpen(true)}>
-            <FileText className="h-4 w-4 mr-1.5" /> Export salarié
-          </Button>
-
-          <div className="ml-auto flex items-center gap-2">
-            <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => setCurrentWeekStart(subWeeks(currentWeekStart, 1))}>
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <div className="text-center min-w-[170px] text-sm font-medium">
-              {format(currentWeekStart, 'd MMM', { locale: fr })} – {format(addDays(currentWeekStart, 5), 'd MMM yyyy', { locale: fr })}
+        <div className="bt-pl-win">
+          {/* Toolbar noire */}
+          <div className="bt-pl-toolbar">
+            <div className="bt-pl-tb-row">
+              <div>
+                <div className="bt-pl-kicker">Planning équipe</div>
+                <div className="bt-pl-week">Semaine {getISOWeek(currentWeekStart)} · {format(currentWeekStart, 'd', { locale: fr })}–{format(addDays(currentWeekStart, 5), 'd MMM', { locale: fr })}</div>
+              </div>
+              <div className="bt-pl-nav">
+                <button className="bt-pl-ibtn" aria-label="Semaine précédente" onClick={() => setCurrentWeekStart(subWeeks(currentWeekStart, 1))}>‹</button>
+                <button className="bt-pl-ybtn" onClick={() => setCurrentWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))}>Aujourd'hui</button>
+                <button className="bt-pl-ibtn" aria-label="Semaine suivante" onClick={() => setCurrentWeekStart(addWeeks(currentWeekStart, 1))}>›</button>
+              </div>
             </div>
-            <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => setCurrentWeekStart(addWeeks(currentWeekStart, 1))}>
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-            <Button variant="outline" size="sm" className="h-9" onClick={() => setCurrentWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))}>
-              Aujourd'hui
-            </Button>
+            <div className="bt-pl-tb-row">
+              <div className="bt-pl-tools">
+                <button className="bt-pl-dbtn" onClick={() => setSalariesOpen(true)}><Users className="h-4 w-4" /> Salariés</button>
+                <button className="bt-pl-dbtn" onClick={() => setClientsListOpen(true)}><Building2 className="h-4 w-4" /> Clients</button>
+                <Select value={paletteWorksiteId} onValueChange={setPaletteWorksiteId}>
+                  <SelectTrigger className="h-9 w-[190px] bg-[#F2EDE3] text-[#15120F] border-0"><SelectValue placeholder="Choisir un client" /></SelectTrigger>
+                  <SelectContent>
+                    {worksites.map(ws => (
+                      <SelectItem key={ws.id} value={ws.id}>{ws.client_name}{ws.city ? ` — ${ws.city}` : ''}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {paletteWorksite && <PaletteChip worksite={paletteWorksite} />}
+              </div>
+              <div className="bt-pl-tools">
+                <button className="bt-pl-dbtn" onClick={() => setExportOpen(true)}><Download className="h-4 w-4" /> Export équipe</button>
+                <button className="bt-pl-dbtn" onClick={() => setExportWorkerOpen(true)}><FileText className="h-4 w-4" /> Export salarié</button>
+              </div>
+            </div>
           </div>
-        </div>
 
         {/* Pending invitations */}
         {pendingInvites.length > 0 && (
@@ -1005,26 +1130,36 @@ export default function AdminPlanning() {
           </div>
         )}
 
-        {/* Legend removed — the green grid chip is now explicit on its own */}
+        {/* Légende — couleur stable par chantier + clés Prévu / Pointé */}
+        <div className="bt-pl-legend">
+          <span className="bt-pl-legend-k">Chantiers</span>
+          {legendWorksites.map((ws) => (
+            <span key={ws.id} className="bt-pl-legend-item">
+              <span className="bt-pl-legend-sw" style={{ background: colorForWorksite(ws.id).bar }} />{ws.client_name}
+            </span>
+          ))}
+          {legendWorksites.length > 0 && <span className="bt-pl-legend-sep" />}
+          <span className="bt-pl-legend-key"><span style={{ width: 13, height: 13, border: '1.5px dashed #9a948a', borderRadius: 3, display: 'inline-block' }} />Prévu</span>
+          <span className="bt-pl-legend-key"><span style={{ width: 13, height: 13, background: '#15120F', borderRadius: 3, display: 'inline-block' }} />Pointé (réel)</span>
+        </div>
 
-        <Card className="mt-3">
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr className="border-b bg-muted/50">
-                    <th className="p-3 text-left font-medium w-36 sm:w-44 sticky left-0 bg-muted/50 z-10">Salarié</th>
-                    {weekDays.map(day => {
-                      const isToday = format(day, 'yyyy-MM-dd') === todayStr;
-                      return (
-                        <th key={day.toISOString()} className={`p-2 text-center font-medium min-w-[140px] ${isToday ? 'bg-primary/10' : ''}`}>
-                          <div className="text-xs text-muted-foreground capitalize">{format(day, 'EEEE', { locale: fr })}</div>
-                          <div className={`text-lg tabular ${isToday ? 'font-bold text-primary' : ''}`}>{format(day, 'd')}</div>
-                        </th>
-                      );
-                    })}
-                  </tr>
-                </thead>
+        {/* GRILLE — desktop (glisser-déposer) */}
+        <div className="bt-pl-gridwrap">
+          <table className="bt-pl-table">
+            <thead>
+              <tr>
+                <th className="bt-pl-th-name">Salarié</th>
+                {weekDays.map(day => {
+                  const isToday = format(day, 'yyyy-MM-dd') === todayStr;
+                  return (
+                    <th key={day.toISOString()} className={`bt-pl-th ${isToday ? 'today' : ''}`}>
+                      <div className="bt-pl-th-day">{dayShort(day)}{isToday ? ' · Auj.' : ''}</div>
+                      <div className="bt-pl-th-num">{format(day, 'd')}</div>
+                    </th>
+                  );
+                })}
+              </tr>
+            </thead>
                 <tbody>
                   {workers.length === 0 ? (
                     <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">Aucun salarié — bouton « Salariés »</td></tr>
@@ -1035,22 +1170,26 @@ export default function AdminPlanning() {
                       const fullName = `${worker.first_name} ${worker.last_name}`;
                       return (
                         <tr key={worker.id} className="border-b last:border-b-0">
-                          {/* Left cell: name (bold) + discreet red dot if undeclared days. */}
-                          <td style={absToday ? { ...CELL_HEIGHT_HACK, ...HATCH_STYLE } : CELL_HEIGHT_HACK} className="p-0 align-top sticky left-0 bg-background z-10">
+                          {/* Cellule nom : avatar + nom + statut (en attente / à jour / absence). */}
+                          <td className="bt-pl-namecell" style={absToday ? { ...CELL_HEIGHT_HACK, ...HATCH_STYLE } : CELL_HEIGHT_HACK}>
                             <button
                               onClick={() => setStatusTarget({ worker, fromStr: todayStr })}
-                              className="flex h-full w-full flex-col justify-center gap-0.5 p-3 text-left hover:bg-muted/50 transition-colors"
+                              className="bt-pl-namebtn"
                               title="Cliquer pour le statut / la disponibilité"
                             >
-                              <span className="flex items-center gap-1.5">
-                                <span className="font-bold text-sm truncate">{fullName}</span>
-                                {isLate && <span className="h-2 w-2 rounded-full bg-red-500 shrink-0" title="Jours en attente d'envoi" />}
+                              <span className="bt-pl-avatar" style={absToday ? { background: '#c4bdae', color: '#15120F' } : undefined}>
+                                {(worker.first_name?.[0] || '')}{(worker.last_name?.[0] || '')}
                               </span>
-                              {absToday && (
-                                <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                                  {ABSENCE_LABELS[absToday] || absToday}
-                                </span>
-                              )}
+                              <span style={{ flex: 1, minWidth: 0 }}>
+                                <span className="bt-pl-name" style={{ display: 'block' }}>{fullName}</span>
+                                {absToday ? (
+                                  <span className="bt-pl-status"><span className="bt-pl-status-txt" style={{ color: '#6E6A63' }}>{ABSENCE_LABELS[absToday] || absToday}</span></span>
+                                ) : isLate ? (
+                                  <span className="bt-pl-status"><span className="bt-pl-status-dot" /><span className="bt-pl-status-txt" style={{ color: '#9a7c14' }}>{(missingByWorker.get(worker.id) || []).length} jour{(missingByWorker.get(worker.id) || []).length > 1 ? 's' : ''} en attente</span></span>
+                                ) : (
+                                  <span className="bt-pl-status"><span className="bt-pl-status-txt" style={{ color: '#9a948a' }}>À jour</span></span>
+                                )}
+                              </span>
                             </button>
                           </td>
 
@@ -1058,46 +1197,48 @@ export default function AdminPlanning() {
                             const dateStr = format(day, 'yyyy-MM-dd');
                             const absence = absenceForDay(worker.id, dateStr);
                             const chantiers = cellChantiers(worker.id, dateStr);
+                            const extra = extraDeclaredForCell(worker.id, dateStr);
                             return (
                               <DroppableCell key={dateStr} workerId={worker.id} dateStr={dateStr} isToday={dateStr === todayStr}>
-                                {absence ? (
-                                  <button
-                                    style={HATCH_STYLE}
-                                    onClick={() => setStatusTarget({ worker, fromStr: dateStr })}
-                                    className="flex h-full min-h-[3.25rem] w-full items-center justify-center rounded border border-slate-300 px-1 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-600 hover:border-slate-400"
-                                    title="Absence — cliquer pour changer le statut"
-                                  >
-                                    {ABSENCE_LABELS[absence.absence_type!] || absence.absence_type}
-                                  </button>
-                                ) : (
+                                {absence ? (() => {
+                                  const av = ABSENCE_VISUAL[absence.absence_type!] || ABSENCE_VISUAL.conge;
+                                  return (
+                                    <button
+                                      style={{ background: av.bg, color: av.fg }}
+                                      onClick={() => setStatusTarget({ worker, fromStr: dateStr })}
+                                      className="bt-pl-abs"
+                                      title="Absence — cliquer pour changer le statut"
+                                    >
+                                      <span className="bt-pl-abs-ico">{av.icon}</span>
+                                      <span className="bt-pl-abs-lbl">{ABSENCE_LABELS[absence.absence_type!] || absence.absence_type}</span>
+                                    </button>
+                                  );
+                                })() : (
                                   <div
-                                    className="group flex h-full min-h-[3.25rem] cursor-pointer flex-col gap-1 rounded p-0.5 hover:bg-muted/40 transition-colors"
+                                    className="bt-pl-cellfill"
                                     onClick={() => openAdd(worker.id, dateStr)}
                                     title="Cliquer pour ajouter une intervention"
                                   >
                                     {chantiers.map(p => (
-                                      <DraggableBubble key={p.id} p={p} palette={paletteFor(p).chip} real={realForPlanning(p)} onEdit={openEdit} />
+                                      <DraggableBubble key={p.id} p={p} palette={paletteFor(p)} real={realForPlanning(p)} onEdit={openEdit} />
                                     ))}
-                                    {extraDeclaredForCell(worker.id, dateStr).map((x, i) => (
+                                    {extra.map((x, i) => (
                                       <button
                                         key={`xd${i}`}
                                         type="button"
                                         onClick={(e) => { e.stopPropagation(); setAttributeTarget({ userId: worker.id, dateStr, worksiteId: x.worksiteId, label: x.name }); }}
                                         title="Ajouté par le salarié — cliquer pour attribuer un client"
-                                        className="w-full rounded border border-dashed border-green-400 bg-green-50 px-2 py-1 leading-tight text-left hover:border-green-500 hover:bg-green-100 transition-colors"
+                                        className="bt-pl-extra"
                                       >
-                                        <span className="flex items-center gap-1 text-[12px]">
-                                          <span className="font-semibold truncate flex-1">{x.name}</span>
-                                          <span className="text-green-700 shrink-0 flex items-center gap-0.5"><Check className="h-3 w-3" />{formatMinutes(x.minutes)}</span>
+                                        <span className="bt-pl-bub-bar" style={{ background: '#B5472E' }} />
+                                        <span className="bt-pl-extra-top">
+                                          <span className="bt-pl-extra-name">{x.name}</span>
+                                          <span className="bt-pl-tag" style={{ background: '#F4D9D1', color: '#a8412a' }}>Hors planning</span>
                                         </span>
-                                        <span className="flex items-center gap-0.5 text-[8px] text-green-700/80">
-                                          <UserIcon className="h-2 w-2 shrink-0" /> ajouté par le salarié
-                                        </span>
+                                        <span className="bt-pl-extra-by"><UserIcon className="h-2.5 w-2.5 shrink-0" /> {formatMinutes(x.minutes)} · ajouté par le salarié</span>
                                       </button>
                                     ))}
-                                    <div className="flex flex-1 items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                      <Plus className="h-4 w-4 text-muted-foreground/50" />
-                                    </div>
+                                    {chantiers.length === 0 && extra.length === 0 && <div className="bt-pl-add">+</div>}
                                   </div>
                                 )}
                               </DroppableCell>
@@ -1108,10 +1249,71 @@ export default function AdminPlanning() {
                     })
                   )}
                 </tbody>
-              </table>
+            </table>
+          </div>
+
+          {/* MOBILE — consultation jour par jour (pas de glisser-déposer) */}
+          <div className="bt-pl-mobile">
+            <div className="bt-pl-m-head">
+              <div className="bt-pl-m-headrow">
+                <div>
+                  <div className="bt-pl-kicker">Planning · Sem. {getISOWeek(currentWeekStart)}</div>
+                  <div className="bt-pl-m-date">{format(weekDays[mobileDayIdx], 'EEEE d MMMM', { locale: fr })}</div>
+                </div>
+                <div className="bt-pl-nav">
+                  <button className="bt-pl-ibtn" aria-label="Semaine précédente" onClick={() => setCurrentWeekStart(subWeeks(currentWeekStart, 1))}>‹</button>
+                  <button className="bt-pl-ibtn" aria-label="Semaine suivante" onClick={() => setCurrentWeekStart(addWeeks(currentWeekStart, 1))}>›</button>
+                </div>
+              </div>
+              <div className="bt-pl-m-days">
+                {weekDays.map((day, i) => (
+                  <button key={day.toISOString()} className={`bt-pl-daypill ${i === mobileDayIdx ? 'on' : ''}`} onClick={() => setMobileDayIdx(i)}>
+                    <div className="bt-pl-daypill-d">{dayShort(day)}</div>
+                    <div className="bt-pl-daypill-n">{format(day, 'd')}</div>
+                  </button>
+                ))}
+              </div>
             </div>
-          </CardContent>
-        </Card>
+            <div className="bt-pl-m-list">
+              {workers.length === 0 ? (
+                <div className="bt-pl-m-empty">Aucun salarié — bouton « Salariés ».</div>
+              ) : workers.map(worker => {
+                const dateStr = format(weekDays[mobileDayIdx], 'yyyy-MM-dd');
+                const absence = absenceForDay(worker.id, dateStr);
+                const chantiers = cellChantiers(worker.id, dateStr);
+                const extra = extraDeclaredForCell(worker.id, dateStr);
+                const av = absence ? (ABSENCE_VISUAL[absence.absence_type!] || ABSENCE_VISUAL.conge) : null;
+                const anyReal = chantiers.some(p => realForPlanning(p));
+                return (
+                  <div key={worker.id} className="bt-pl-m-card">
+                    <div className="bt-pl-m-top">
+                      <span className="bt-pl-avatar" style={absence ? { background: '#c4bdae', color: '#15120F' } : undefined}>{(worker.first_name?.[0] || '')}{(worker.last_name?.[0] || '')}</span>
+                      <span style={{ flex: 1, minWidth: 0 }}><span className="bt-pl-name" style={{ display: 'block' }}>{worker.first_name} {worker.last_name}</span></span>
+                      {absence ? (
+                        <span className="bt-pl-m-badge" style={{ background: '#EFE7DA', color: av!.fg }}>{av!.icon} {(ABSENCE_LABELS[absence.absence_type!] || '').toUpperCase()}</span>
+                      ) : anyReal ? (
+                        <span className="bt-pl-m-badge" style={{ background: '#E4F2E9', color: '#1F7A4D' }}>✓ POINTÉ</span>
+                      ) : null}
+                    </div>
+                    {!absence && (chantiers.length > 0 || extra.length > 0) && (
+                      <div className="bt-pl-m-bubs">
+                        {chantiers.map(p => <BubbleContent key={p.id} p={p} palette={paletteFor(p)} real={realForPlanning(p)} />)}
+                        {extra.map((x, i) => (
+                          <div key={`mx${i}`} className="bt-pl-extra">
+                            <span className="bt-pl-bub-bar" style={{ background: '#B5472E' }} />
+                            <span className="bt-pl-extra-top"><span className="bt-pl-extra-name">{x.name}</span><span className="bt-pl-tag" style={{ background: '#F4D9D1', color: '#a8412a' }}>Hors planning</span></span>
+                            <span className="bt-pl-extra-by"><UserIcon className="h-2.5 w-2.5 shrink-0" /> {formatMinutes(x.minutes)} · ajouté par le salarié</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {!absence && chantiers.length === 0 && extra.length === 0 && <div className="bt-pl-m-empty">Rien de prévu ce jour.</div>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
 
         <DragOverlay>
           {activeDrag?.type === 'new' && paletteWorksite ? (
@@ -1119,7 +1321,7 @@ export default function AdminPlanning() {
           ) : activeDrag?.type === 'move' ? (
             (() => {
               const p = planning.find(x => x.id === activeDrag.id);
-              return p ? <div className="rotate-[-2deg] scale-105 shadow-xl"><BubbleContent p={p} palette={paletteFor(p).chip} real={realForPlanning(p)} /></div> : null;
+              return p ? <div className="rotate-[-2deg] scale-105 shadow-xl"><BubbleContent p={p} palette={paletteFor(p)} real={realForPlanning(p)} /></div> : null;
             })()
           ) : null}
         </DragOverlay>
