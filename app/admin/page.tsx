@@ -4,7 +4,7 @@ import AdminPlanning from '@/components/admin-planning';
 
 const ADMIN_CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
-.bt-admin{font-family:'Archivo',sans-serif;min-height:100vh;background:#E7E0D2}
+.bt-admin{font-family:'Archivo',sans-serif;min-height:100vh;background:#15120F;padding:6px}
 .bt-admin *{box-sizing:border-box}
 
 /* ============================================================

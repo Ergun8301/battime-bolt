@@ -237,8 +237,8 @@ const PL_CSS = `
 .bt-pl *{box-sizing:border-box}
 .bt-pl .mono{font-family:'JetBrains Mono',monospace}
 /* ===== BARRE UNIQUE pleine largeur (sticky) — pas de cadre ===== */
-.bt-pl-bar{position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:#F2EDE3;border-bottom:2px solid #15120F;padding:8px 16px}
-.bt-pl-gridwrap{overflow-x:auto;background:#F2EDE3}
+.bt-pl-bar{position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:#F2EDE3;border-bottom:2px solid #15120F;padding:8px 16px;border-radius:16px 16px 0 0}
+.bt-pl-gridwrap{overflow-x:auto;background:#F2EDE3;border-radius:0 0 16px 16px}
 .bt-pl-bar-left{display:flex;align-items:center;gap:11px;flex-wrap:wrap}
 .bt-pl-bar-right{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
 .bt-pl-logo{width:30px;height:30px;background:#15120F;color:#FFC21A;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;flex:none}
@@ -1203,7 +1203,7 @@ export default function AdminPlanning() {
 
         {/* Invitations en attente (sous la barre) */}
         {pendingInvites.length > 0 && (
-          <div className="mt-2 mx-4 space-y-1.5 rounded-lg border border-yellow-200 bg-yellow-50/50 p-2.5">
+          <div className="space-y-1.5 border-b border-yellow-200 bg-yellow-50/60 px-4 py-2.5">
             <p className="text-xs font-semibold text-muted-foreground flex items-center gap-1"><Clock className="h-3.5 w-3.5" /> Invitations en attente</p>
             {pendingInvites.map(inv => (
               <div key={inv.id} className="flex items-center gap-2 text-sm">
