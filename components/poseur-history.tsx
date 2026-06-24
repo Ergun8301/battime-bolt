@@ -103,7 +103,7 @@ export default function PoseurHistory() {
         head: [['Date', 'Client', 'Ville', 'Heures', 'Total', 'Panier', 'Statut']],
         body: rows,
         styles: { fontSize: 8 },
-        headStyles: { fillColor: [30, 64, 175] },
+        headStyles: { fillColor: [21, 18, 15] },
         columnStyles: {
           0: { cellWidth: 25 },
           1: { cellWidth: 45 },
@@ -185,7 +185,7 @@ export default function PoseurHistory() {
                     {format(parseISO(date), 'EEEE d MMMM yyyy', { locale: fr })}
                   </p>
                   <div className="text-right">
-                    <p className="font-bold text-primary">
+                    <p className="font-bold text-[#15120F]">
                       {formatMinutesToHours(dayEntries.reduce((sum, e) => sum + e.total_minutes, 0))}
                     </p>
                     <p className="text-xs text-muted-foreground">
