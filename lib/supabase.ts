@@ -1,7 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = 'https://sdperbcquvneohotjono.supabase.co';
-const supabaseAnonKey = 'sb_publishable_UeU7qzDdQRwEd1qzvrH3Yw_T1Qn8YEO';
+// Prod : valeurs lues depuis les variables d'environnement si présentes,
+// sinon repli sur les valeurs actuelles (aucune régression tant que les
+// variables ne sont pas définies). Pour séparer prod/staging plus tard,
+// il suffira de définir NEXT_PUBLIC_SUPABASE_URL / _ANON_KEY côté hébergeur.
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://sdperbcquvneohotjono.supabase.co';
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_UeU7qzDdQRwEd1qzvrH3Yw_T1Qn8YEO';
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
