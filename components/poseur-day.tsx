@@ -185,6 +185,25 @@ const DAY_CSS = `
 .bt-sheet-dur .k{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#a59c86;font-weight:700}
 .bt-sheet-dur .v{font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700;color:#FFC21A}
 .bt-molette{display:flex;justify-content:center;padding:4px 0 2px}
+
+/* ===== Sélecteur de chantier : bloc unique + feuille (recherche + « Autre » épinglé) ===== */
+.bt-site-chev{font-size:22px;color:#a59c86;font-weight:400;flex:none;margin-left:4px}
+.bt-sheet-site{max-height:82vh;display:flex;flex-direction:column}
+.bt-sheet-stitle{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#FFC21A;font-weight:700;text-align:center;margin-bottom:12px}
+.bt-site-search{width:100%;font-family:inherit;font-size:16px;font-weight:600;padding:13px 15px;border:1.5px solid rgba(242,237,227,.16);border-radius:13px;background:#F2EDE3;color:#15120F;outline:none;margin-bottom:12px}
+.bt-site-search::placeholder{color:#9a948a;font-weight:500}
+.bt-site-search:focus{border-color:#FFC21A}
+.bt-site-list{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;display:flex;flex-direction:column;gap:8px;padding-bottom:2px}
+.bt-site-list::-webkit-scrollbar{display:none}
+.bt-siterow{display:flex;align-items:center;gap:12px;width:100%;text-align:left;border:1px solid rgba(21,18,15,.12);background:#F2EDE3;color:#15120F;border-radius:13px;padding:14px 15px;cursor:pointer;font-family:inherit}
+.bt-siterow.on{background:#FFC21A;border-color:#FFC21A}
+.bt-siterow.other{border:1.5px dashed #C99300;background:#FBF3DC}
+.bt-siterow-name{display:block;font-size:16px;font-weight:800;letter-spacing:-.01em}
+.bt-siterow-city{display:block;font-size:13px;font-weight:600;color:#6E6A63;margin-top:1px}
+.bt-siterow.other .bt-siterow-city{color:#8a6d1a}
+.bt-siterow-plus{width:28px;height:28px;flex:none;background:#FFC21A;color:#15120F;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:17px}
+.bt-siterow-chk{width:26px;height:26px;flex:none;background:#15120F;color:#FFC21A;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:14px}
+.bt-site-empty{text-align:center;color:#a59c86;font-size:13.5px;font-weight:600;padding:20px 0}
 `;
 
 // ─── main ──────────────────────────────────────────────────────────────────────
@@ -219,6 +238,9 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
   const [fWorksiteId, setFWorksiteId] = useState('');
   // Tiroir molette (purement présentation : quelle roue on règle)
   const [drawerField, setDrawerField] = useState<'start' | 'end' | null>(null);
+  // Sélecteur de chantier (feuille) : ouverture + texte de recherche.
+  const [siteSheetOpen, setSiteSheetOpen] = useState(false);
+  const [siteQuery, setSiteQuery] = useState('');
   // Les pauses sont CALCULÉES automatiquement (les trous entre créneaux, via
   // computePauses ; break_minutes reste toujours 0). Plus de sélecteur manuel :
   // le salarié saisit seulement ses heures, la pause se déduit toute seule.
@@ -411,6 +433,8 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
     if (monthLocked) { setLateOpen(true); return; }
     setOpenSlot({ kind: 'new' });
     setFWorksiteId('');
+    setSiteSheetOpen(false);
+    setSiteQuery('');
     // Heure de début pré-remplie à MAINTENANT (heure de Paris) ; fin = début + 1 h
     // (durée 1 h par défaut). Le salarié peut changer début ET fin aussitôt OU après
     // coup (ces possibilités existent déjà et restent inchangées). On ne touche à rien
@@ -424,7 +448,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
     setFEnd(endParis);
     setFObs('');
   };
-  const cancelSlot = () => { setDrawerField(null); setOpenSlot(null); };
+  const cancelSlot = () => { setDrawerField(null); setSiteSheetOpen(false); setSiteQuery(''); setOpenSlot(null); };
 
   // On a sent (frozen) day, any touch — edit a sent entry OR declare a remaining
   // chantier OR the meal — goes through this confirm, then unlocks the day.
@@ -710,11 +734,15 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
   // "Autre" is a real worksite pinned at the top of the picker (created once per
   // company in Supabase) — for work the secretary hasn't listed / the worker can't name.
   const OTHER_NAME = 'Autre';
-  const sortedWorksites = [...worksites].sort((a, b) => {
-    if (a.client_name === OTHER_NAME) return -1;
-    if (b.client_name === OTHER_NAME) return 1;
-    return a.client_name.localeCompare(b.client_name);
-  });
+  // Sélecteur compact : « Autre » épinglé séparément, le reste filtré par la recherche.
+  const otherWs = worksites.find((w) => w.client_name === OTHER_NAME);
+  const selectedWs = worksites.find((w) => w.id === fWorksiteId);
+  const siteQ = siteQuery.trim().toLowerCase();
+  const filteredSites = worksites
+    .filter((w) => w.client_name !== OTHER_NAME)
+    .filter((w) => !siteQ || w.client_name.toLowerCase().includes(siteQ) || (w.city || '').toLowerCase().includes(siteQ))
+    .sort((a, b) => a.client_name.localeCompare(b.client_name));
+  const pickSite = (id: string) => { setFWorksiteId(id); setSiteSheetOpen(false); setSiteQuery(''); };
 
   // Unified list of the day's slots — planned-not-yet-declared, declared entries, and pending
   // (offline) entries — sorted by start time. The card position stays put as soon as the slot
@@ -1000,25 +1028,26 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
               {/* 1 · Chantier */}
               <div className="bt-sec">1 · Chantier</div>
               {openSlot.kind === 'new' ? (
-                sortedWorksites.map((ws) => {
-                  const isOther = ws.client_name === OTHER_NAME;
-                  const on = fWorksiteId === ws.id;
-                  return (
-                    <button
-                      key={ws.id}
-                      type="button"
-                      className={`bt-site${on ? ' on' : ''}${isOther ? ' other' : ''}`}
-                      onClick={() => setFWorksiteId(ws.id)}
-                    >
-                      {isOther && !on ? <span className="bt-rdo-plus">+</span> : null}
-                      <span style={{ flex: 1, minWidth: 0 }}>
-                        <span className="bt-site-name">{isOther ? 'Autre chantier' : ws.client_name}</span>
-                        <span className="bt-site-city">{isOther ? 'Travail non prévu, à préciser' : (ws.city || '')}</span>
-                      </span>
-                      {!(isOther && !on) && <span className="bt-rdo">{on ? '✓' : ''}</span>}
-                    </button>
-                  );
-                })
+                <button
+                  type="button"
+                  className={`bt-site${selectedWs ? ' on' : ''}`}
+                  onClick={() => { setSiteQuery(''); setSiteSheetOpen(true); }}
+                >
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    {selectedWs ? (
+                      <>
+                        <span className="bt-site-name">{selectedWs.client_name === OTHER_NAME ? 'Autre chantier' : selectedWs.client_name}</span>
+                        <span className="bt-site-city">{selectedWs.client_name === OTHER_NAME ? 'Travail non prévu, à préciser' : (selectedWs.city || '')}</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="bt-site-name">Choisir le chantier</span>
+                        <span className="bt-site-city">Client de la liste, ou « Autre » si inconnu</span>
+                      </>
+                    )}
+                  </span>
+                  <span className="bt-site-chev">›</span>
+                </button>
               ) : (
                 <div className="bt-site on">
                   <span style={{ flex: 1, minWidth: 0 }}>
@@ -1106,6 +1135,54 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
                 Valider les heures ✓
               </button>
             </div>
+
+            {/* ===== FEUILLE SÉLECTEUR DE CHANTIER (recherche + « Autre » épinglé en tête) ===== */}
+            {openSlot.kind === 'new' && (
+              <>
+                <div className={`bt-overlay${siteSheetOpen ? ' open' : ''}`} onClick={() => setSiteSheetOpen(false)} />
+                <div className={`bt-sheet bt-sheet-site${siteSheetOpen ? ' open' : ''}`}>
+                  <div className="bt-grip" />
+                  <div className="bt-sheet-stitle">Choisir le chantier</div>
+                  <input
+                    className="bt-site-search"
+                    type="text"
+                    inputMode="search"
+                    placeholder="Rechercher un client…"
+                    value={siteQuery}
+                    onChange={(e) => setSiteQuery(e.target.value)}
+                  />
+                  <div className="bt-site-list">
+                    {otherWs && (
+                      <button type="button" className="bt-siterow other" onClick={() => pickSite(otherWs.id)}>
+                        <span className="bt-siterow-plus">+</span>
+                        <span style={{ flex: 1, minWidth: 0 }}>
+                          <span className="bt-siterow-name">Autre chantier</span>
+                          <span className="bt-siterow-city">Travail non prévu, à préciser</span>
+                        </span>
+                      </button>
+                    )}
+                    {filteredSites.length === 0 ? (
+                      <div className="bt-site-empty">Aucun chantier trouvé</div>
+                    ) : (
+                      filteredSites.map((ws) => (
+                        <button
+                          key={ws.id}
+                          type="button"
+                          className={`bt-siterow${fWorksiteId === ws.id ? ' on' : ''}`}
+                          onClick={() => pickSite(ws.id)}
+                        >
+                          <span style={{ flex: 1, minWidth: 0 }}>
+                            <span className="bt-siterow-name">{ws.client_name}</span>
+                            {ws.city && <span className="bt-siterow-city">{ws.city}</span>}
+                          </span>
+                          {fWorksiteId === ws.id && <span className="bt-siterow-chk">✓</span>}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
 
           </div>
         </div>
