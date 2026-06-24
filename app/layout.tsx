@@ -32,7 +32,7 @@ export default function RootLayout({
     <html lang="fr">
       <head>
         <link rel="apple-touch-icon" href="/icon-192.svg" />
-        <meta name="theme-color" content="#1e40af" />
+        <meta name="theme-color" content="#15120F" />
       </head>
       <body className={inter.className}>
         <AuthProvider>

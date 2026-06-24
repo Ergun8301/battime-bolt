@@ -46,11 +46,11 @@ function formatMinutes(minutes: number): string {
 interface ChantierPalette { bar: string; tagBg: string; tagText: string }
 const CHANTIER_PALETTES: ChantierPalette[] = [
   { bar: '#C9821F', tagBg: '#F1E3CB', tagText: '#9a7c14' },
-  { bar: '#3E6E8E', tagBg: '#D7E2EA', tagText: '#356283' },
+  { bar: '#A23E6B', tagBg: '#EFD9E2', tagText: '#8a3358' },
   { bar: '#2F8A5B', tagBg: '#D5E8DD', tagText: '#27744c' },
   { bar: '#B5472E', tagBg: '#F4D9D1', tagText: '#a8412a' },
   { bar: '#7A5EA8', tagBg: '#E7DEF2', tagText: '#6b4f99' },
-  { bar: '#2C7A8C', tagBg: '#D3E7EB', tagText: '#256673' },
+  { bar: '#5E7A33', tagBg: '#E5E8CF', tagText: '#4f661f' },
   { bar: '#A8742A', tagBg: '#EFE2CC', tagText: '#8a5f1e' },
 ];
 
@@ -69,7 +69,7 @@ const HORIZON_DAYS = 90;
 
 const HATCH_STYLE = {
   backgroundImage:
-    'repeating-linear-gradient(45deg, rgba(100,116,139,0.18) 0, rgba(100,116,139,0.18) 5px, transparent 5px, transparent 10px)',
+    'repeating-linear-gradient(45deg, rgba(110,106,99,0.18) 0, rgba(110,106,99,0.18) 5px, transparent 5px, transparent 10px)',
 };
 // Trick to let a child `h-full` stretch to the table-row height.
 const CELL_HEIGHT_HACK = { height: '1px' } as const;

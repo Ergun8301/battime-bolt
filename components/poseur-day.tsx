@@ -160,10 +160,7 @@ const DAY_CSS = `
 .bt-dur .v{font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:700}
 .bt-times-hint{text-align:center;font-size:12.5px;color:#9a948a;font-weight:600;margin-top:8px}
 
-.bt-pause-row{display:flex;align-items:center;gap:8px;margin-top:16px;flex-wrap:wrap}
-.bt-pause-k{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#9a8a3a;font-weight:700;margin-right:2px}
-.bt-pause{border:1px solid rgba(21,18,15,.2);background:#fff;color:#6E6A63;border-radius:20px;padding:8px 15px;font-weight:700;font-size:13.5px;cursor:pointer;font-family:inherit}
-.bt-pause.on{background:#15120F;color:#FFC21A;border-color:#15120F;font-weight:800}
+.bt-pause-auto{display:flex;align-items:center;gap:8px;margin-top:16px;background:rgba(255,194,26,.12);border:1px solid rgba(255,194,26,.4);border-radius:12px;padding:11px 13px;font-size:12.5px;font-weight:700;color:#7a5e00}
 
 .bt-note{width:100%;font-family:inherit;font-size:15.5px;font-weight:500;color:#15120F;padding:14px 15px;border:1.5px solid rgba(21,18,15,.16);border-radius:13px;background:#fff;outline:none;resize:none}
 
@@ -222,10 +219,9 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
   const [fWorksiteId, setFWorksiteId] = useState('');
   // Tiroir molette (purement présentation : quelle roue on règle)
   const [drawerField, setDrawerField] = useState<'start' | 'end' | null>(null);
-  // Pastilles de pause de la maquette — VISUEL UNIQUEMENT. Le modèle testé calcule
-  // les pauses comme les trous entre créneaux (break_minutes reste 0). On ne touche
-  // donc PAS à la logique : ces pastilles ne modifient ni l'enregistrement ni le total.
-  const [pauseSel, setPauseSel] = useState<'none' | '45' | '60'>('none');
+  // Les pauses sont CALCULÉES automatiquement (les trous entre créneaux, via
+  // computePauses ; break_minutes reste toujours 0). Plus de sélecteur manuel :
+  // le salarié saisit seulement ses heures, la pause se déduit toute seule.
 
   // Coherence confirmation
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -340,10 +336,9 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
     }
   }, [user, date, syncPendingEntries]);
 
-  // Reset the (presentation-only) editor sub-state when the editor opens/closes.
+  // Reset the editor sub-state when the editor closes.
   useEffect(() => {
-    if (openSlot) setPauseSel('none');
-    else setDrawerField(null);
+    if (!openSlot) setDrawerField(null);
   }, [openSlot]);
 
   // ─── Day meal: keep exactly one flagged row per day (no migration) ──────────
@@ -1035,12 +1030,10 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
               </div>
               <div className="bt-times-hint">Touchez une heure pour la régler</div>
 
-              {/* Pause — pastilles fidèles à la maquette (présentation seule, cf. note plus haut) */}
-              <div className="bt-pause-row">
-                <span className="bt-pause-k">Pause</span>
-                <button type="button" className={`bt-pause${pauseSel === 'none' ? ' on' : ''}`} onClick={() => setPauseSel('none')}>Aucune</button>
-                <button type="button" className={`bt-pause${pauseSel === '45' ? ' on' : ''}`} onClick={() => setPauseSel('45')}>45 min</button>
-                <button type="button" className={`bt-pause${pauseSel === '60' ? ' on' : ''}`} onClick={() => setPauseSel('60')}>1h00</button>
+              {/* Pauses calculées automatiquement (trous entre créneaux) — plus de sélecteur manuel */}
+              <div className="bt-pause-auto">
+                <span aria-hidden>☕</span>
+                Les pauses sont calculées automatiquement d&apos;après vos horaires.
               </div>
 
               {/* 3 · Note */}
