@@ -85,7 +85,7 @@ export default function PoseurMonth({ onSelectDay }: { onSelectDay?: (date: stri
                 <div className="flex items-center justify-between gap-2">
                   <p className="font-semibold capitalize text-sm">{format(parseISO(d), 'EEEE d MMMM', { locale: fr })}</p>
                   {dayTotal > 0
-                    ? <span className="text-sm font-semibold text-primary flex items-center gap-1">{declared && <Send className="h-3 w-3 opacity-70" />}{fmt(dayTotal)}</span>
+                    ? <span className="text-sm font-semibold text-[#15120F] flex items-center gap-1">{declared && <Send className="h-3 w-3 opacity-70" />}{fmt(dayTotal)}</span>
                     : <span className="text-xs text-orange-600">À déclarer</span>}
                 </div>
                 <div className="mt-1 space-y-0.5">

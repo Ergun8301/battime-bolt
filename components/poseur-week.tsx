@@ -140,7 +140,7 @@ export default function PoseurWeek({ onSelectDay }: { onSelectDay?: (date: strin
             >
               {/* Day header */}
               <div className="flex items-center gap-2">
-                <p className={`font-semibold capitalize text-sm ${isToday ? 'text-primary' : ''}`}>
+                <p className={`font-semibold capitalize text-sm ${isToday ? 'text-[#15120F]' : ''}`}>
                   {format(day, 'EEEE d MMMM', { locale: fr })}
                 </p>
                 {isToday && (
@@ -152,20 +152,20 @@ export default function PoseurWeek({ onSelectDay }: { onSelectDay?: (date: strin
               {dayPlanning.map((p) => (
                 <div key={p.id}>
                   {p.absence_type ? (
-                    <div className="flex items-center gap-2 text-sm bg-gray-100 rounded p-2 text-gray-700">
+                    <div className="flex items-center gap-2 text-sm bg-[#ECE6D9] rounded p-2 text-[#6E6A63]">
                       <AlertTriangle className="h-4 w-4 text-orange-500 shrink-0" />
                       <span className="font-medium">{ABSENCE_LABELS[p.absence_type] || p.absence_type}</span>
-                      {p.notes && <span className="text-gray-500 text-xs">— {p.notes}</span>}
+                      {p.notes && <span className="text-[#8a8378] text-xs">— {p.notes}</span>}
                     </div>
                   ) : (
-                    <div className="flex items-start gap-2 text-sm bg-blue-50 border border-blue-200 rounded p-2 text-blue-800">
+                    <div className="flex items-start gap-2 text-sm bg-[#FFF6DD] border border-[#EAD9A0] rounded p-2 text-[#15120F]">
                       <MapPin className="h-4 w-4 shrink-0 mt-0.5" />
                       <div className="flex-1 min-w-0">
                         <span className="font-medium truncate block">{p.worksite?.client_name || 'Chantier'}</span>
-                        {p.worksite?.city && <span className="text-blue-600 text-xs">{p.worksite.city}</span>}
+                        {p.worksite?.city && <span className="text-[#9a7c14] text-xs">{p.worksite.city}</span>}
                       </div>
                       {p.estimated_start && p.estimated_end && (
-                        <span className="text-blue-600 text-xs shrink-0">
+                        <span className="text-[#9a7c14] text-xs shrink-0">
                           {slotLabel(p.estimated_start, p.estimated_end)}
                         </span>
                       )}
@@ -177,8 +177,8 @@ export default function PoseurWeek({ onSelectDay }: { onSelectDay?: (date: strin
               {/* Time entries */}
               {dayEntries.map((entry) => {
                 const statusColor =
-                  entry.status === 'submitted' ? 'bg-blue-50 border-blue-200 text-blue-800' :
-                  'bg-gray-50 border-gray-200 text-gray-700';
+                  entry.status === 'submitted' ? 'bg-white border-[rgba(21,18,15,.14)] text-[#15120F]' :
+                  'bg-[#F3EEE3] border-[rgba(21,18,15,.10)] text-[#6E6A63]';
 
                 return (
                   <div key={entry.id} className={`flex items-start gap-2 text-sm border rounded p-2 ${statusColor}`}>
@@ -232,27 +232,27 @@ export default function PoseurWeek({ onSelectDay }: { onSelectDay?: (date: strin
               className={`rounded-lg border p-2 min-h-[140px] flex flex-col transition-colors ${canOpen ? 'cursor-pointer hover:border-primary/60' : ''} ${isToday ? 'border-primary bg-primary/5' : 'bg-card'}`}
             >
               <div className="text-center mb-2 pb-2 border-b">
-                <p className={`text-xs capitalize ${isToday ? 'text-primary font-medium' : 'text-muted-foreground'}`}>
+                <p className={`text-xs capitalize ${isToday ? 'text-[#15120F] font-medium' : 'text-muted-foreground'}`}>
                   {format(day, 'EEEE', { locale: fr })}
                 </p>
-                <p className={`text-lg font-bold ${isToday ? 'text-primary' : ''}`}>{format(day, 'd')}</p>
+                <p className={`text-lg font-bold ${isToday ? 'text-[#15120F]' : ''}`}>{format(day, 'd')}</p>
               </div>
 
               <div className="space-y-1 flex-1">
                 {dayPlanning.map((p) => (
                   p.absence_type ? (
-                    <div key={p.id} className="rounded bg-gray-100 text-gray-700 px-1.5 py-1 text-[11px] flex items-center gap-1">
+                    <div key={p.id} className="rounded bg-[#ECE6D9] text-[#6E6A63] px-1.5 py-1 text-[11px] flex items-center gap-1">
                       <AlertTriangle className="h-3 w-3 text-orange-500 shrink-0" />
                       <span className="truncate">{ABSENCE_LABELS[p.absence_type] || p.absence_type}</span>
                     </div>
                   ) : (
-                    <div key={p.id} className="rounded bg-blue-50 border border-blue-200 text-blue-800 px-1.5 py-1 text-[11px]">
+                    <div key={p.id} className="rounded bg-[#FFF6DD] border border-[#EAD9A0] text-[#15120F] px-1.5 py-1 text-[11px]">
                       <div className="flex items-center gap-1">
                         <MapPin className="h-3 w-3 shrink-0" />
                         <span className="truncate font-medium">{p.worksite?.client_name || 'Chantier'}</span>
                       </div>
                       {p.estimated_start && p.estimated_end && (
-                        <div className="text-blue-600 mt-0.5">{slotLabel(p.estimated_start, p.estimated_end)}</div>
+                        <div className="text-[#9a7c14] mt-0.5">{slotLabel(p.estimated_start, p.estimated_end)}</div>
                       )}
                     </div>
                   )
@@ -260,8 +260,8 @@ export default function PoseurWeek({ onSelectDay }: { onSelectDay?: (date: strin
 
                 {dayEntries.map((entry) => {
                   const statusColor =
-                    entry.status === 'submitted' ? 'bg-blue-50 border-blue-200 text-blue-800' :
-                    'bg-gray-50 border-gray-200 text-gray-700';
+                    entry.status === 'submitted' ? 'bg-white border-[rgba(21,18,15,.14)] text-[#15120F]' :
+                    'bg-[#F3EEE3] border-[rgba(21,18,15,.10)] text-[#6E6A63]';
                   return (
                     <div key={entry.id} className={`rounded border px-1.5 py-1 text-[11px] ${statusColor}`}>
                       <div className="flex items-center gap-1">

@@ -50,6 +50,37 @@ const POSEUR_CSS = `
 /* ===== CORPS ===== */
 .bt-phbody{flex:1;min-height:0;display:flex;flex-direction:column;position:relative}
 .bt-phscroll{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:16px}
+
+/* ============================================================
+   .bt-skin — même thème noir/jaune que le reste du produit (admin,
+   fenêtres). Appliqué aux écrans hérités semaine/mois/historique et aux
+   menus déroulants (portails Radix) : on surcharge les variables shadcn
+   pour que Card/Button/Badge et les couleurs « primaires » deviennent
+   crème + jaune + noir, au lieu du thème bleu par défaut.
+   ============================================================ */
+.bt-skin{
+  --background:40 33% 95%;
+  --foreground:36 16% 7%;
+  --card:0 0% 100%;
+  --card-foreground:36 16% 7%;
+  --popover:40 33% 96%;
+  --popover-foreground:36 16% 7%;
+  --primary:43 100% 55%;
+  --primary-foreground:36 16% 7%;
+  --secondary:40 24% 90%;
+  --secondary-foreground:36 16% 12%;
+  --muted:40 22% 91%;
+  --muted-foreground:40 6% 42%;
+  --accent:42 58% 88%;
+  --accent-foreground:36 16% 12%;
+  --destructive:14 72% 44%;
+  --destructive-foreground:40 33% 97%;
+  --border:38 16% 82%;
+  --input:38 16% 80%;
+  --ring:43 100% 55%;
+  font-family:'Archivo',sans-serif;
+}
+.bt-skin .mono,.bt-skin .tabular{font-variant-numeric:tabular-nums}
 `;
 
 export default function PoseurPage() {
@@ -122,7 +153,7 @@ export default function PoseurPage() {
                   <span /><span /><span />
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-52">
+              <DropdownMenuContent align="end" className="w-52 bt-skin">
                 <DropdownMenuLabel className="truncate">{user?.first_name} {user?.last_name}</DropdownMenuLabel>
                 {TABS.map((t) => (
                   <DropdownMenuItem key={t.value} onClick={() => goTo(t.value)}>
@@ -146,7 +177,7 @@ export default function PoseurPage() {
                   <span className="bt-alert-chev">›</span>
                 </button>
               </PopoverTrigger>
-              <PopoverContent align="center" className="w-72">
+              <PopoverContent align="center" className="w-72 bt-skin">
                 <p className="text-sm font-medium mb-2">Jours à déclarer</p>
                 <div className="space-y-1.5">
                   {pending.map((d) => (
@@ -171,7 +202,7 @@ export default function PoseurPage() {
           ) : view === 'day' ? (
             <PoseurDay />
           ) : (
-            <div className="bt-phscroll">
+            <div className="bt-phscroll bt-skin">
               {view === 'week' ? (
                 <PoseurWeek onSelectDay={openDay} />
               ) : view === 'month' ? (
