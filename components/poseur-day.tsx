@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Calendar } from '@/components/ui/calendar';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Loader2, Copy, AlertTriangle } from 'lucide-react';
+import { Loader2, Copy, AlertTriangle, Trash2 } from 'lucide-react';
 import { format, subDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -135,6 +135,17 @@ const DAY_CSS = `
 .bt-ed-hdr{background:#15120F;color:#F2EDE3;flex:none;padding:calc(env(safe-area-inset-top) + 16px) 18px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px}
 .bt-ed-cancel{border:none;background:transparent;color:#a59c86;font-size:15px;font-weight:700;padding:6px 2px;cursor:pointer;font-family:inherit;flex:none;min-width:54px;text-align:left}
 .bt-ed-title{font-size:17px;font-weight:900;letter-spacing:-.01em;text-align:center;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bt-ed-trash{border:none;background:transparent;color:#C0461F;padding:6px 2px;cursor:pointer;flex:none;min-width:54px;display:flex;align-items:center;justify-content:flex-end}
+.bt-ed-trash:active{opacity:.55}
+.bt-confirm-wrap{position:absolute;inset:0;z-index:14;background:rgba(21,18,15,.55);display:flex;align-items:center;justify-content:center;padding:24px}
+.bt-confirm{background:#F2EDE3;border-radius:20px;padding:24px 22px;max-width:340px;width:100%;text-align:center;box-shadow:0 30px 60px -20px rgba(0,0,0,.55)}
+.bt-confirm-ico{display:flex;justify-content:center;color:#C0461F;margin-bottom:8px}
+.bt-confirm-title{font-size:18px;font-weight:900;color:#15120F;margin-bottom:6px}
+.bt-confirm-msg{font-size:14px;font-weight:500;color:#6E6A63;margin-bottom:18px;line-height:1.45}
+.bt-confirm-acts{display:flex;gap:10px}
+.bt-confirm-cancel{flex:1;border:1.5px solid rgba(21,18,15,.2);background:#fff;border-radius:12px;padding:13px;font-weight:800;font-size:15px;color:#15120F;cursor:pointer;font-family:inherit}
+.bt-confirm-del{flex:1;border:none;background:#C0461F;border-radius:12px;padding:13px;font-weight:800;font-size:15px;color:#fff;cursor:pointer;font-family:inherit}
+.bt-confirm-del:active,.bt-confirm-cancel:active{transform:translateY(1px)}
 .bt-ed-scroll{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 18px 18px}
 .bt-ed-scroll::-webkit-scrollbar{display:none}
 .bt-ed-dock{flex:none;padding:13px 18px calc(env(safe-area-inset-bottom) + 18px);background:#F2EDE3;border-top:1px solid rgba(21,18,15,.12);box-shadow:0 -10px 24px -12px rgba(21,18,15,.18)}
@@ -259,6 +270,8 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
   const [confirmCorrectOpen, setConfirmCorrectOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
   const [lateOpen, setLateOpen] = useState(false);
+  // Confirmation avant suppression d'une intervention (depuis le popup d'édition).
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 
   const date = dateProp || format(new Date(), 'yyyy-MM-dd');
   const yesterday = format(subDays(new Date(`${date}T00:00:00`), 1), 'yyyy-MM-dd');
@@ -369,7 +382,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
 
   // Reset the editor sub-state when the editor closes.
   useEffect(() => {
-    if (!openSlot) setDrawerField(null);
+    if (!openSlot) { setDrawerField(null); setConfirmDeleteOpen(false); }
   }, [openSlot]);
 
   // ─── Day meal: keep exactly one flagged row per day (no migration) ──────────
@@ -581,6 +594,18 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
     setPendingEntries((prev) => prev.filter((e) => e.localId !== localId));
     if (openSlot?.kind === 'pending' && openSlot.localId === localId) setOpenSlot(null);
     toast.success('Intervention supprimée');
+  };
+
+  // Suppression d'une intervention DEPUIS le popup, après confirmation.
+  const confirmDelete = () => {
+    setConfirmDeleteOpen(false);
+    if (!openSlot) return;
+    if (openSlot.kind === 'entry') {
+      const e = entries.find((x) => x.id === openSlot.entryId);
+      if (e) handleRetire(e);
+    } else if (openSlot.kind === 'pending') {
+      handleDeletePending(openSlot.localId);
+    }
   };
 
   // ─── Copy yesterday ──────────────────────────────────────────────────────────
@@ -1010,9 +1035,15 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
         <div className="bt-ed">
           <div className="bt-ed-inner">
             <div className="bt-ed-hdr">
-              <button type="button" className="bt-ed-cancel" onClick={cancelSlot}>Annuler</button>
+              <button type="button" className="bt-ed-cancel" onClick={cancelSlot}>Retour</button>
               <div className="bt-ed-title">{slotTitle}</div>
-              <span style={{ width: 54, flex: 'none' }} aria-hidden />
+              {((openSlot.kind === 'entry' && editorEntry) || openSlot.kind === 'pending') ? (
+                <button type="button" className="bt-ed-trash" onClick={() => setConfirmDeleteOpen(true)} aria-label="Supprimer l'intervention">
+                  <Trash2 className="h-5 w-5" />
+                </button>
+              ) : (
+                <span style={{ width: 54, flex: 'none' }} aria-hidden />
+              )}
             </div>
 
             <div className="bt-ed-scroll">
@@ -1087,21 +1118,26 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
 
             {/* Barre d'action dockée */}
             <div className="bt-ed-dock">
-              {openSlot.kind === 'entry' && editorEntry && (
-                <button type="button" className="bt-retire" disabled={fSaving} onClick={() => handleRetire(editorEntry)}>
-                  Supprimer l&apos;intervention
-                </button>
-              )}
-              {openSlot.kind === 'pending' && (
-                <button type="button" className="bt-retire" onClick={() => handleDeletePending(openSlot.localId)}>
-                  Supprimer l&apos;intervention
-                </button>
-              )}
               <button type="button" className="bt-save" onClick={saveSlot} disabled={fSaving}>
                 {fSaving && <Loader2 className="h-4 w-4 animate-spin" />}
                 Enregistrer l&apos;intervention <span style={{ fontSize: 18 }}>✓</span>
               </button>
             </div>
+
+            {/* ===== CONFIRMATION DE SUPPRESSION (au-dessus du popup) ===== */}
+            {confirmDeleteOpen && (
+              <div className="bt-confirm-wrap" onClick={() => setConfirmDeleteOpen(false)}>
+                <div className="bt-confirm" onClick={(e) => e.stopPropagation()}>
+                  <div className="bt-confirm-ico"><Trash2 className="h-7 w-7" /></div>
+                  <div className="bt-confirm-title">Supprimer l&apos;intervention&nbsp;?</div>
+                  <div className="bt-confirm-msg">Êtes-vous sûr de vouloir supprimer cette intervention&nbsp;? Cette action est définitive.</div>
+                  <div className="bt-confirm-acts">
+                    <button type="button" className="bt-confirm-cancel" onClick={() => setConfirmDeleteOpen(false)}>Annuler</button>
+                    <button type="button" className="bt-confirm-del" onClick={confirmDelete}>Supprimer</button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* ===== TIROIR MOLETTE ===== */}
             <div className={`bt-overlay${drawerField ? ' open' : ''}`} onClick={() => setDrawerField(null)} />
