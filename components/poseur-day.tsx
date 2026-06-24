@@ -106,9 +106,8 @@ const DAY_CSS = `
 .bt-iv-times{display:flex;align-items:center;gap:14px;border-top:1px solid rgba(21,18,15,.08);padding-top:10px;font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700;color:#15120F}
 .bt-iv-times .dot{width:4px;height:4px;background:#c4bdae;border-radius:50%}
 .bt-iv-note{font-size:13px;color:#6E6A63;margin-top:8px}
-.bt-iv-acts{display:flex;gap:8px;margin-top:12px}
-.bt-iv-mod{flex:1;border:1.5px solid #15120F;background:transparent;border-radius:10px;padding:10px;font-weight:800;font-size:13.5px;color:#15120F;cursor:pointer;font-family:inherit}
-.bt-iv-del{flex:none;border:none;background:#15120F;border-radius:10px;padding:10px 13px;font-weight:800;font-size:13.5px;color:#F2EDE3;cursor:pointer;font-family:inherit}
+.bt-iv-edit{margin-left:auto;flex:none;display:inline-flex;align-items:center;gap:5px;border:1px solid rgba(21,18,15,.18);background:#fff;border-radius:9px;padding:6px 11px;font-family:'Archivo',sans-serif;font-size:12.5px;font-weight:800;color:#15120F;cursor:pointer}
+.bt-iv-edit:active{transform:translateY(1px)}
 
 .bt-iv-cancel{background:transparent;border:1px solid rgba(21,18,15,.12);border-radius:16px;padding:13px 15px;margin-bottom:11px;opacity:.55;display:flex;align-items:center;justify-content:space-between;gap:10px}
 .bt-cancel-name{font-size:16px;font-weight:800;color:#6E6A63;text-decoration:line-through}
@@ -900,19 +899,13 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
                   <span>{entry.start_time?.substring(0, 5)} → {entry.end_time?.substring(0, 5)}</span>
                   <span className="dot" />
                   <span>{fmtHM(entry.total_minutes)}</span>
+                  {tappable && (
+                    <button type="button" className="bt-iv-edit" onClick={onTap}>
+                      <span aria-hidden>✏️</span> Modifier
+                    </button>
+                  )}
                 </div>
                 {entry.observation && <div className="bt-iv-note">{entry.observation}</div>}
-                {isDraft && (
-                  <div className="bt-iv-acts">
-                    <button type="button" className="bt-iv-mod" onClick={onTap}>Modifier</button>
-                    <button type="button" className="bt-iv-del" onClick={() => handleRetire(entry)}>Retirer</button>
-                  </div>
-                )}
-                {!isDraft && tappable && (
-                  <div className="bt-iv-acts">
-                    <button type="button" className="bt-iv-mod" onClick={onTap}>Modifier</button>
-                  </div>
-                )}
               </div>
             );
           }
@@ -945,10 +938,9 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
                 <span>{entry.start_time.substring(0, 5)} → {entry.end_time.substring(0, 5)}</span>
                 <span className="dot" />
                 <span>{fmtHM(entry.total_minutes)}</span>
-              </div>
-              <div className="bt-iv-acts">
-                <button type="button" className="bt-iv-mod" onClick={() => openPending(entry)}>Modifier</button>
-                <button type="button" className="bt-iv-del" onClick={() => handleDeletePending(entry.localId)}>Retirer</button>
+                <button type="button" className="bt-iv-edit" onClick={() => openPending(entry)}>
+                  <span aria-hidden>✏️</span> Modifier
+                </button>
               </div>
             </div>
           );
@@ -1097,7 +1089,12 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
             <div className="bt-ed-dock">
               {openSlot.kind === 'entry' && editorEntry && (
                 <button type="button" className="bt-retire" disabled={fSaving} onClick={() => handleRetire(editorEntry)}>
-                  Retirer cette intervention
+                  Supprimer l&apos;intervention
+                </button>
+              )}
+              {openSlot.kind === 'pending' && (
+                <button type="button" className="bt-retire" onClick={() => handleDeletePending(openSlot.localId)}>
+                  Supprimer l&apos;intervention
                 </button>
               )}
               <button type="button" className="bt-save" onClick={saveSlot} disabled={fSaving}>
