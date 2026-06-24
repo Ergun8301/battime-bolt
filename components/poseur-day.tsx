@@ -262,8 +262,18 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
       if (worksitesRes.error) throw worksitesRes.error;
       if (planningRes.error) throw planningRes.error;
 
+      let worksitesData = worksitesRes.data || [];
+      // Filet de sécurité (règle d'or : l'heure n'est jamais bloquée par le client) :
+      // le chantier « Autre / Client inconnu » doit TOUJOURS exister. S'il manque,
+      // on le (re)crée côté serveur (idempotent) puis on recharge la liste.
+      if (!worksitesData.some((w) => w.client_name === 'Autre')) {
+        await supabase.rpc('ensure_other_worksite');
+        const reload = await supabase.from('worksites').select('*').eq('company_id', user.company_id).eq('is_active', true).order('client_name');
+        if (!reload.error && reload.data) worksitesData = reload.data;
+      }
+
       setEntries(entriesRes.data || []);
-      setWorksites(worksitesRes.data || []);
+      setWorksites(worksitesData);
       setPlanning(planningRes.data || []);
 
       const pendForToday = getPendingEntries(user.id).filter((e) => e.work_date === date);
