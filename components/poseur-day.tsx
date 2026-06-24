@@ -411,15 +411,17 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
     if (monthLocked) { setLateOpen(true); return; }
     setOpenSlot({ kind: 'new' });
     setFWorksiteId('');
-    // Heure de début pré-remplie à MAINTENANT (heure de Paris). Le salarié peut la
-    // changer aussitôt OU la corriger après coup (ces possibilités existent déjà et
-    // restent inchangées). L'heure de fin part égale au début (durée 0) jusqu'à ce
-    // qu'il la règle le soir. On ne touche à rien d'autre dans la gestion des heures.
+    // Heure de début pré-remplie à MAINTENANT (heure de Paris) ; fin = début + 1 h
+    // (durée 1 h par défaut). Le salarié peut changer début ET fin aussitôt OU après
+    // coup (ces possibilités existent déjà et restent inchangées). On ne touche à rien
+    // d'autre dans la gestion des heures.
     const nowParis = snapToGrid(
       new Date().toLocaleTimeString('en-GB', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
     );
+    const [sh, sm] = nowParis.split(':').map(Number);
+    const endParis = `${String((sh + 1) % 24).padStart(2, '0')}:${String(sm).padStart(2, '0')}`;
     setFStart(nowParis);
-    setFEnd(nowParis);
+    setFEnd(endParis);
     setFObs('');
   };
   const cancelSlot = () => { setDrawerField(null); setOpenSlot(null); };
