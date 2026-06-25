@@ -76,7 +76,10 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
     setErr(null); setUploading(true);
     try {
       const ext = file.type === 'image/png' ? 'png' : file.type === 'image/svg+xml' ? 'svg' : 'jpg';
-      const path = `${user.company_id}/logo.${ext}`;
+      const cid = user.company_id;
+      // On ne garde qu'UN seul fichier logo par entreprise (pas d'orphelin au remplacement).
+      await supabase.storage.from('company-logos').remove([`${cid}/logo.png`, `${cid}/logo.jpg`, `${cid}/logo.svg`]);
+      const path = `${cid}/logo.${ext}`;
       const { error } = await supabase.storage.from('company-logos').upload(path, file, { upsert: true, contentType: file.type });
       if (error) throw error;
       const { data: pub } = supabase.storage.from('company-logos').getPublicUrl(path);

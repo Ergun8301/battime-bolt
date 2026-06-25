@@ -239,9 +239,9 @@ const PL_CSS = `
 .bt-pl .mono{font-family:'JetBrains Mono',monospace}
 /* ===== BARRE UNIQUE pleine largeur (sticky) — pas de cadre ===== */
 .bt-pl-bar{position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:#F2EDE3;border-bottom:2px solid #15120F;padding:8px 16px;border-radius:16px 16px 0 0}
-.bt-pl-gridwrap{overflow-x:auto;background:#F2EDE3;border-radius:0 0 16px 16px;position:relative}
+.bt-pl-gridwrap{overflow-x:auto;background:#F2EDE3;border-radius:0 0 16px 16px;position:relative;isolation:isolate}
 .bt-pl-watermark{position:absolute;inset:0;z-index:-1;display:flex;align-items:center;justify-content:center;pointer-events:none;overflow:hidden}
-.bt-pl-watermark img{width:min(44%,420px);max-height:62%;object-fit:contain;filter:grayscale(1);opacity:.07}
+.bt-pl-watermark img{width:clamp(200px,46%,440px);max-height:64%;object-fit:contain;filter:grayscale(1);opacity:.09}
 .bt-pl-bar-left{display:flex;align-items:center;gap:11px;flex-wrap:wrap}
 .bt-pl-bar-right{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
 .bt-pl-logo{width:30px;height:30px;background:#15120F;color:#FFC21A;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;flex:none}
