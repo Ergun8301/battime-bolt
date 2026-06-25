@@ -328,7 +328,7 @@ const PL_CSS = `
 /* La grille s'arrête net : bordure de fin franche (2px noir, comme l'en-tête) sous la
    dernière ligne visible (fantôme si présente, sinon dernier salarié). */
 .bt-pl-table tbody:last-of-type tr:last-child td{border-bottom:2px solid #15120F}
-.bt-pl-th{background:#F2EDE3;padding:13px 10px;text-align:center;border-right:1px solid rgba(21,18,15,.6);border-bottom:2px solid #15120F}
+.bt-pl-th{background:#fff;padding:13px 10px;text-align:center;border-right:1px solid rgba(21,18,15,.6);border-bottom:2px solid #15120F}
 .bt-pl-th-day{font-family:'JetBrains Mono',monospace;font-size:11px;color:#9a948a;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
 .bt-pl-th-num{font-size:19px;font-weight:900}
 .bt-pl-th.today{background:#FFFCF2}
@@ -336,13 +336,13 @@ const PL_CSS = `
 /* Coin haut-gauche coupé en diagonale : « Salarié » (bas-gauche) étiquette la colonne
    des noms ; « S-26 » (haut-droite) étiquette la ligne des dates. Trait corner-à-corner
    via SVG (preserveAspectRatio:none + non-scaling-stroke = épaisseur constante). */
-.bt-pl-th-name{position:sticky;left:0;z-index:6;width:200px;padding:0;border-right:2px solid #15120F;border-bottom:2px solid #15120F;background-color:#F2EDE3;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' preserveAspectRatio='none' viewBox='0 0 100 100'%3E%3Cline x1='0' y1='0' x2='100' y2='100' stroke='%2315120F' stroke-opacity='0.4' stroke-width='1.25' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E");background-size:100% 100%;background-repeat:no-repeat}
+.bt-pl-th-name{position:sticky;left:0;z-index:6;width:200px;padding:0;border-right:2px solid #15120F;border-bottom:2px solid #15120F;background-color:#fff;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' preserveAspectRatio='none' viewBox='0 0 100 100'%3E%3Cline x1='0' y1='0' x2='100' y2='100' stroke='%2315120F' stroke-opacity='0.4' stroke-width='1.25' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E");background-size:100% 100%;background-repeat:no-repeat}
 .bt-pl-corner-wk{position:absolute;top:8px;right:11px;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.04em;color:#9a948a;font-weight:700}
 .bt-pl-corner-sal{position:absolute;left:13px;bottom:9px;font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#9a948a;font-weight:700}
 .bt-pl-namecell{position:sticky;left:0;z-index:5;background:#fff;border-right:2px solid #15120F;border-bottom:1px solid rgba(21,18,15,.6);padding:0;vertical-align:top}
-.bt-pl-namebtn{display:flex;flex-direction:column;justify-content:center;gap:7px;width:100%;height:100%;padding:13px;background:transparent;border:none;cursor:pointer;text-align:left;font-family:inherit}
+.bt-pl-namebtn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;width:100%;height:100%;padding:13px;background:transparent;border:none;cursor:pointer;text-align:center;font-family:inherit}
 .bt-pl-namebtn:hover{background:rgba(21,18,15,.03)}
-.bt-pl-nametop{display:flex;align-items:center;gap:10px;min-width:0}
+.bt-pl-nametop{display:flex;align-items:center;justify-content:center;gap:10px;min-width:0;max-width:100%}
 .bt-pl-avatar{width:36px;height:36px;border-radius:50%;background:#15120F;color:#FFC21A;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex:none;overflow:hidden}
 .bt-pl-name{font-size:14.5px;font-weight:800;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .bt-pl-status{display:flex;align-items:center;gap:5px}
@@ -1406,9 +1406,9 @@ export default function AdminPlanning() {
                               {absToday ? (
                                 <span className="bt-pl-status"><span className="bt-pl-status-txt" style={{ color: '#6E6A63' }}>{ABSENCE_LABELS[absToday] || absToday}</span></span>
                               ) : isLate ? (
-                                <span className="bt-pl-status"><span className="bt-pl-status-dot" /><span className="bt-pl-status-txt" style={{ color: '#9a7c14' }}>{(missingByWorker.get(worker.id) || []).length} jour{(missingByWorker.get(worker.id) || []).length > 1 ? 's' : ''} en attente</span></span>
+                                <span className="bt-pl-status"><span className="bt-pl-status-dot" style={{ background: '#D85A30' }} /><span className="bt-pl-status-txt" style={{ color: '#D85A30' }}>{(missingByWorker.get(worker.id) || []).length} jour{(missingByWorker.get(worker.id) || []).length > 1 ? 's' : ''} en attente</span></span>
                               ) : (
-                                <span className="bt-pl-status"><span className="bt-pl-status-txt" style={{ color: '#9a948a' }}>À jour</span></span>
+                                <span className="bt-pl-status"><span className="bt-pl-status-dot" style={{ background: '#1D9E75' }} /><span className="bt-pl-status-txt" style={{ color: '#1D9E75' }}>À jour</span></span>
                               )}
                             </button>
                           </td>
