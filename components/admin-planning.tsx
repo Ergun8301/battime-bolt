@@ -239,10 +239,11 @@ const PL_CSS = `
 .bt-pl .mono{font-family:'JetBrains Mono',monospace}
 /* ===== BARRE UNIQUE pleine largeur (sticky) — pas de cadre ===== */
 .bt-pl-bar{position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:#F2EDE3;border-bottom:2px solid #15120F;padding:8px 16px;border-radius:16px 16px 0 0}
-.bt-pl-gridwrap{overflow-x:auto;background:#F2EDE3;border-radius:0 0 16px 16px;position:relative;isolation:isolate}
-.bt-pl-watermark{position:absolute;inset:0;z-index:-1;display:flex;align-items:center;justify-content:center;pointer-events:none;overflow:hidden}
-.bt-pl-watermark img{width:clamp(200px,46%,440px);max-height:64%;object-fit:contain;filter:grayscale(1);opacity:.09}
-.bt-pl-bar-left{display:flex;align-items:center;gap:11px;flex-wrap:wrap}
+.bt-pl-gridwrap{overflow-x:auto;background:#F2EDE3;border-radius:0 0 16px 16px}
+.bt-pl-bar-left{display:flex;align-items:center;gap:11px;flex-wrap:wrap;flex:none}
+.bt-pl-bar-center{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;min-width:0}
+.bt-pl-weekblock{background:transparent;border:none;font-family:'Archivo',sans-serif;font-size:14px;font-weight:800;letter-spacing:-.01em;color:#15120F;cursor:pointer;white-space:nowrap;padding:6px 12px;border-radius:9px;transition:background .14s ease}
+.bt-pl-weekblock:hover{background:rgba(21,18,15,.06)}
 .bt-pl-bar-right{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
 .bt-pl-logo{width:30px;height:30px;background:#15120F;color:#FFC21A;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;flex:none}
 .bt-pl-nav{display:flex;align-items:center;gap:6px}
@@ -277,14 +278,21 @@ const PL_CSS = `
 .bt-pl-ddname{display:block;font-size:13.5px;font-weight:800;line-height:1.1;color:#15120F}
 .bt-pl-ddsub{display:block;font-size:11px;color:#9a948a;font-weight:600}
 .bt-pl-ddcreate{display:flex;align-items:center;gap:9px;padding:11px 13px;border-top:1px solid rgba(21,18,15,.1);background:#FBF6EA;cursor:pointer;border:none;width:100%;text-align:left;font-family:inherit;color:#15120F;font-size:13.5px;font-weight:800}
+.bt-pl-exitem{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:#fff;border:none;border-top:1px solid rgba(21,18,15,.07);padding:11px 13px;cursor:pointer;font-family:inherit;color:#15120F}
+.bt-pl-exitem:first-of-type{border-top:none}
+.bt-pl-exitem:hover{background:#FBF6EA}
+.bt-pl-exitem-t{display:block;font-size:13.5px;font-weight:800}
+.bt-pl-exitem-s{display:block;font-size:11px;font-weight:600;color:#9a948a}
 .bt-pl-ddcreate-ico{width:22px;height:22px;background:#FFC21A;color:#15120F;border-radius:6px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:14px;flex:none}
 .bt-pl-dragchip{display:inline-flex;align-items:center;gap:9px;background:#fff;border:1px solid rgba(21,18,15,.16);border-radius:11px;padding:8px 13px;box-shadow:0 16px 30px -12px rgba(21,18,15,.55);font-weight:800;font-size:13.5px;color:#15120F}
 
 /* compte entreprise (remplace le bouton Déconnexion) */
 .bt-pl-sep{width:1px;height:24px;background:rgba(21,18,15,.16)}
 .bt-pl-acctwrap{position:relative}
-.bt-pl-acct{display:inline-flex;align-items:center;gap:8px;background:transparent;border:1.5px solid rgba(21,18,15,.18);border-radius:10px;padding:4px 10px 4px 4px;cursor:pointer;font-family:inherit;height:33px;transition:border-color .14s ease,background .14s ease}
-.bt-pl-acct:hover{border-color:#15120F;background:rgba(21,18,15,.04)}
+.bt-pl-acct{width:38px;height:38px;border-radius:50%;border:1.5px solid rgba(21,18,15,.18);background:#fff;cursor:pointer;padding:0;overflow:hidden;display:flex;align-items:center;justify-content:center;flex:none;transition:border-color .14s ease}
+.bt-pl-acct:hover{border-color:#15120F}
+.bt-pl-acct-logo{width:100%;height:100%;object-fit:contain;padding:4px}
+.bt-pl-acct-ini{width:100%;height:100%;border-radius:50%;background:#15120F;color:#FFC21A;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px}
 .bt-pl-acct-av{width:24px;height:24px;border-radius:50%;background:#15120F;color:#FFC21A;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:10px;flex:none}
 .bt-pl-acct-name{font-size:13px;font-weight:800;color:#15120F;max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bt-pl-acct-car{font-size:10px;color:#9a948a}
@@ -411,6 +419,7 @@ export default function AdminPlanning() {
   const [companyName, setCompanyName] = useState('');
   const [companyLogo, setCompanyLogo] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [currentWeekStart, setCurrentWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [positionWarned, setPositionWarned] = useState(false);
@@ -1151,12 +1160,13 @@ export default function AdminPlanning() {
         <div className="bt-pl-bar">
           <div className="bt-pl-bar-left">
             <span className="bt-pl-logo"><Clock className="h-4 w-4" /></span>
-            <div className="bt-pl-nav">
-              <button className="bt-pl-icobtn" aria-label="Semaine précédente" onClick={() => setCurrentWeekStart(subWeeks(currentWeekStart, 1))}>‹</button>
-              <button className="bt-pl-dark" onClick={() => setCurrentWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))}>Aujourd'hui</button>
-              <button className="bt-pl-icobtn" aria-label="Semaine suivante" onClick={() => setCurrentWeekStart(addWeeks(currentWeekStart, 1))}>›</button>
-            </div>
-            <div className="bt-pl-week2"><span className="bt-pl-wk">S.{getISOWeek(currentWeekStart)}</span> {format(currentWeekStart, 'd', { locale: fr })}–{format(addDays(currentWeekStart, 5), 'd MMM', { locale: fr })}</div>
+          </div>
+          <div className="bt-pl-bar-center">
+            <button className="bt-pl-icobtn" aria-label="Semaine précédente" onClick={() => setCurrentWeekStart(subWeeks(currentWeekStart, 1))}>‹</button>
+            <button className="bt-pl-weekblock" onClick={() => setCurrentWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))} title="Revenir à la semaine en cours">
+              Semaine {getISOWeek(currentWeekStart)} · {format(currentWeekStart, 'd', { locale: fr })}–{format(addDays(currentWeekStart, 5), 'd MMM', { locale: fr })}
+            </button>
+            <button className="bt-pl-icobtn" aria-label="Semaine suivante" onClick={() => setCurrentWeekStart(addWeeks(currentWeekStart, 1))}>›</button>
           </div>
           <div className="bt-pl-bar-right">
             <div className="bt-pl-seg">
@@ -1180,14 +1190,31 @@ export default function AdminPlanning() {
                 </>
               )}
             </div>
-            <button className="bt-pl-fill" onClick={() => setExportOpen(true)}><Download className="h-4 w-4" /> Exporter la paie</button>
-            <button className="bt-pl-out" onClick={() => setExportWorkerOpen(true)}><FileText className="h-4 w-4" /> Export salarié</button>
+            <div className="bt-pl-ddwrap">
+              <button className="bt-pl-fill" onClick={() => setExportMenuOpen((o) => !o)}><Download className="h-4 w-4" /> Exporter ▾</button>
+              {exportMenuOpen && (
+                <>
+                  <div className="bt-pl-ddbackdrop" onClick={() => setExportMenuOpen(false)} />
+                  <div className="bt-pl-dd">
+                    <div className="bt-pl-dd-h">Exporter les heures</div>
+                    <button className="bt-pl-exitem" onClick={() => { setExportMenuOpen(false); setExportOpen(true); }}>
+                      <Download className="h-4 w-4" />
+                      <span><span className="bt-pl-exitem-t">Exporter l&apos;équipe</span><span className="bt-pl-exitem-s">Verrouille le mois</span></span>
+                    </button>
+                    <button className="bt-pl-exitem" onClick={() => { setExportMenuOpen(false); setExportWorkerOpen(true); }}>
+                      <FileText className="h-4 w-4" />
+                      <span><span className="bt-pl-exitem-t">Exporter un salarié</span><span className="bt-pl-exitem-s">Sans verrou</span></span>
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
             <span className="bt-pl-sep" />
             <div className="bt-pl-acctwrap">
-              <button className="bt-pl-acct" onClick={() => setAccountMenuOpen((o) => !o)} title="Compte entreprise">
-                <span className="bt-pl-acct-av">{companyInitials}</span>
-                <span className="bt-pl-acct-name">{companyLabel}</span>
-                <span className="bt-pl-acct-car">▾</span>
+              <button className="bt-pl-acct" onClick={() => setAccountMenuOpen((o) => !o)} title="Compte entreprise" aria-label="Compte entreprise">
+                {companyLogo
+                  ? <img className="bt-pl-acct-logo" src={companyLogo} alt="" />
+                  : <span className="bt-pl-acct-ini">{companyInitials}</span>}
               </button>
               {accountMenuOpen && (
                 <>
@@ -1232,9 +1259,6 @@ export default function AdminPlanning() {
 
         {/* GRILLE — desktop (glisser-déposer) */}
         <div className="bt-pl-gridwrap">
-          {companyLogo && (
-            <div className="bt-pl-watermark" aria-hidden><img src={companyLogo} alt="" /></div>
-          )}
           <table className="bt-pl-table">
             <thead>
               <tr>
