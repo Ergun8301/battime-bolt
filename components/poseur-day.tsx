@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Calendar } from '@/components/ui/calendar';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Loader2, Copy, AlertTriangle, FolderOpen } from 'lucide-react';
+import { Loader2, Copy, AlertTriangle, FolderOpen, Trash2 } from 'lucide-react';
 import { format, subDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -99,6 +99,11 @@ const DAY_CSS = `
 .bt-iv-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:10px}
 .bt-iv-name{font-size:17px;font-weight:800;letter-spacing:-.01em;color:#15120F}
 .bt-iv-city{font-size:13px;color:#6E6A63;font-weight:600}
+.bt-iv-tap{cursor:pointer;transition:border-color .14s ease,transform .06s ease}
+.bt-iv-tap:hover{border-color:rgba(21,18,15,.35)}
+.bt-iv-tap:active{transform:scale(.995)}
+.bt-iv-row{display:flex;align-items:center;gap:10px}
+.bt-iv-cta{flex:none;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;color:#a87c1e;white-space:nowrap}
 .bt-badge{flex:none;display:flex;align-items:center;gap:5px;border-radius:7px;padding:4px 9px;font-size:11px;font-weight:800;white-space:nowrap}
 .bt-badge-sent{background:#E4F2E9;border:1px solid #B7DCC4;color:#1F7A4D}
 .bt-badge-sent .dot{width:14px;height:14px;background:#2FA36B;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px;font-weight:900}
@@ -171,6 +176,12 @@ const DAY_CSS = `
 .bt-save{width:100%;border:none;background:#FFC21A;border-radius:13px;padding:15px;font-weight:900;font-size:16px;color:#15120F;box-shadow:0 4px 0 #C99300;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;font-family:inherit}
 .bt-save:disabled{opacity:.6;cursor:default}
 .bt-retire{width:100%;background:transparent;border:none;color:#C0461F;font-weight:800;font-size:14px;padding:10px;cursor:pointer;margin-bottom:8px;font-family:inherit}
+.bt-ed-dock-row{display:flex;gap:8px;margin-bottom:9px}
+.bt-ed-doc{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:7px;border:1.5px solid #15120F;background:#fff;border-radius:12px;padding:12px;font-weight:800;font-size:14px;color:#15120F;cursor:pointer;font-family:inherit}
+.bt-ed-doc:active{transform:translateY(1px)}
+.bt-ed-trash{flex:none;width:50px;display:inline-flex;align-items:center;justify-content:center;border:1.5px solid rgba(192,70,31,.45);background:#fff;color:#C0461F;border-radius:12px;cursor:pointer}
+.bt-ed-trash:hover{background:#F4D9D1}
+.bt-ed-trash:disabled{opacity:.5}
 
 /* ===== TIROIR MOLETTE ===== */
 .bt-overlay{position:absolute;inset:0;background:rgba(21,18,15,.5);z-index:8;opacity:0;pointer-events:none;transition:opacity .25s ease}
@@ -747,6 +758,14 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
     : openSlot.kind === 'entry' ? (entries.find((e) => e.id === openSlot.entryId)?.worksite?.city || '')
     : openSlot.kind === 'pending' ? (pendingEntries.find((e) => e.localId === openSlot.localId)?._worksite_city || '')
     : '';
+  const slotWorksiteId = !openSlot ? null
+    : openSlot.kind === 'new' ? (fWorksiteId || null)
+    : openSlot.kind === 'planned' ? (planning.find((p) => p.id === openSlot.planningId)?.worksite?.id || null)
+    : openSlot.kind === 'entry' ? (entries.find((e) => e.id === openSlot.entryId)?.worksite_id || null)
+    : null;
+  const slotWorksiteName = openSlot?.kind === 'new'
+    ? (worksites.find((w) => w.id === fWorksiteId)?.client_name || OTHER_NAME)
+    : (titleName || OTHER_NAME);
   const slotTitle = !openSlot ? ''
     : openSlot.kind === 'new' ? 'Nouvelle intervention'
     : titleName ? `Chantier ${titleName}` : 'Intervention';
@@ -844,20 +863,17 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
             const p = item.data;
             const onTap = monthLocked ? () => setLateOpen(true) : frozen ? () => askCorrect(() => openPlanned(p)) : () => openPlanned(p);
             return (
-              <div key={item.key} className="bt-iv-plan">
+              <div key={item.key} className="bt-iv-plan bt-iv-tap" onClick={onTap}>
                 <div className="bt-plan-k">
                   {p.estimated_start && p.estimated_end ? `Prévu · ${p.estimated_start.substring(0, 5)}–${p.estimated_end.substring(0, 5)}` : 'Prévu'}
                 </div>
-                <div className="bt-iv-name">{p.worksite?.client_name}</div>
-                {p.worksite?.city && <div className="bt-iv-city">{p.worksite.city}</div>}
-                <button type="button" className="bt-plan-btn" onClick={onTap}>
-                  <span style={{ fontSize: 18 }}>+</span> Déclarer ce chantier
-                </button>
-                {p.worksite?.id && (
-                  <button type="button" className="bt-iv-doc bt-plan-doc" onClick={() => setDocsWs({ id: p.worksite!.id, name: p.worksite?.client_name || OTHER_NAME })}>
-                    <FolderOpen className="h-4 w-4" /> Documents
-                  </button>
-                )}
+                <div className="bt-iv-row">
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="bt-iv-name">{p.worksite?.client_name}</div>
+                    {p.worksite?.city && <div className="bt-iv-city">{p.worksite.city}</div>}
+                  </div>
+                  <span className="bt-iv-cta">À déclarer ›</span>
+                </div>
               </div>
             );
           }
@@ -868,7 +884,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
             const isDraft = entry.status === 'draft' && !entry.locked;
             const onTap = !tappable ? undefined : monthLocked ? () => setLateOpen(true) : frozen ? () => askCorrect(() => openEntry(entry)) : () => openEntry(entry);
             return (
-              <div key={item.key} className={`bt-iv${isDraft ? ' draft' : ''}`}>
+              <div key={item.key} className={`bt-iv${isDraft ? ' draft' : ''}${onTap ? ' bt-iv-tap' : ''}`} onClick={onTap}>
                 <div className="bt-iv-top">
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div className="bt-iv-name">{entry.worksite?.client_name || OTHER_NAME}</div>
@@ -885,17 +901,6 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
                   <span>{fmtHM(entry.total_minutes)}</span>
                 </div>
                 {entry.observation && <div className="bt-iv-note">{entry.observation}</div>}
-                {(isDraft || tappable || entry.worksite_id) && (
-                  <div className="bt-iv-acts">
-                    {(isDraft || tappable) && <button type="button" className="bt-iv-mod" onClick={onTap}>Modifier</button>}
-                    {entry.worksite_id && (
-                      <button type="button" className="bt-iv-doc" onClick={() => setDocsWs({ id: entry.worksite_id as string, name: entry.worksite?.client_name || OTHER_NAME })}>
-                        <FolderOpen className="h-4 w-4" /> Documents
-                      </button>
-                    )}
-                    {isDraft && <button type="button" className="bt-iv-del" onClick={() => handleRetire(entry)}>Retirer</button>}
-                  </div>
-                )}
               </div>
             );
           }
@@ -1077,10 +1082,19 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
 
             {/* Barre d'action dockée */}
             <div className="bt-ed-dock">
-              {openSlot.kind === 'entry' && editorEntry && (
-                <button type="button" className="bt-retire" disabled={fSaving} onClick={() => handleRetire(editorEntry)}>
-                  Retirer cette intervention
-                </button>
+              {(slotWorksiteId || (openSlot.kind === 'entry' && editorEntry)) && (
+                <div className="bt-ed-dock-row">
+                  {slotWorksiteId && (
+                    <button type="button" className="bt-ed-doc" onClick={() => setDocsWs({ id: slotWorksiteId, name: slotWorksiteName })}>
+                      <FolderOpen className="h-4 w-4" /> Documents
+                    </button>
+                  )}
+                  {openSlot.kind === 'entry' && editorEntry && (
+                    <button type="button" className="bt-ed-trash" disabled={fSaving} onClick={() => handleRetire(editorEntry)} aria-label="Retirer cette intervention" title="Retirer cette intervention">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
               )}
               <button type="button" className="bt-save" onClick={saveSlot} disabled={fSaving}>
                 {fSaving && <Loader2 className="h-4 w-4 animate-spin" />}
