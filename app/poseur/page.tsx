@@ -41,6 +41,9 @@ const POSEUR_CSS = `
 .bt-phdr-back-col{display:flex;flex-direction:column;min-width:0}
 .bt-burger{flex:none;width:46px;height:46px;border:none;background:#211D19;border-radius:13px;color:#F2EDE3;display:flex;align-items:center;justify-content:center;gap:3px;flex-direction:column;cursor:pointer}
 .bt-burger span{width:18px;height:2.5px;background:#FFC21A;border-radius:2px;display:block}
+.bt-phdr-right{display:flex;align-items:center;gap:10px;flex:none}
+.bt-co-logo{width:36px;height:36px;border-radius:9px;background:#fff;flex:none;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:3px}
+.bt-co-logo img{max-width:100%;max-height:100%;object-fit:contain}
 
 .bt-alert{display:flex;align-items:center;gap:9px;margin-top:14px;width:100%;background:rgba(255,194,26,.13);border:1px solid rgba(255,194,26,.4);border-radius:11px;padding:10px 13px;cursor:pointer;text-align:left}
 .bt-alert-badge{width:22px;height:22px;flex:none;background:#FFC21A;color:#15120F;border-radius:6px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:13px;font-family:'JetBrains Mono',monospace}
@@ -89,6 +92,7 @@ export default function PoseurPage() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null); // declare a specific day
   const [pending, setPending] = useState<string[]>([]); // days "en attente"
   const [pendingOpen, setPendingOpen] = useState(false); // "jours à déclarer" popover
+  const [companyLogo, setCompanyLogo] = useState(''); // logo entreprise (facultatif)
 
   const fetchPending = useCallback(async () => {
     if (!user) return;
@@ -110,6 +114,13 @@ export default function PoseurPage() {
     const id = setInterval(fetchPending, 60000);
     return () => clearInterval(id);
   }, [fetchPending]);
+
+  // Logo de l'entreprise (facultatif) — petit, discret. Pas de logo = rien.
+  useEffect(() => {
+    if (!user?.company_id) return;
+    supabase.from('companies').select('logo_url').eq('id', user.company_id).maybeSingle()
+      .then(({ data }) => setCompanyLogo((data as { logo_url?: string | null } | null)?.logo_url || ''));
+  }, [user?.company_id]);
 
   const openDay = (d: string) => { setSelectedDate(d); setPendingOpen(false); };
   const goHome = () => { setSelectedDate(null); setView('day'); fetchPending(); };
@@ -147,7 +158,9 @@ export default function PoseurPage() {
               </button>
             )}
 
-            <DropdownMenu>
+            <div className="bt-phdr-right">
+              {companyLogo && <span className="bt-co-logo"><img src={companyLogo} alt="" /></span>}
+              <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button className="bt-burger" aria-label="Menu">
                   <span /><span /><span />
@@ -164,7 +177,8 @@ export default function PoseurPage() {
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={signOut}><LogOut className="h-4 w-4 mr-2" /> Déconnexion</DropdownMenuItem>
               </DropdownMenuContent>
-            </DropdownMenu>
+              </DropdownMenu>
+            </div>
           </div>
 
           {/* alerte discrète : jours à déclarer (uniquement sur « Ma journée » du jour) */}

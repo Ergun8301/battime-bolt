@@ -16,7 +16,7 @@ import { Textarea } from '@/components/ui/textarea';
 import {
   ChevronLeft, ChevronRight, Plus, Trash2, Loader2,
   UserPlus, Users, Building2, Archive, CalendarRange, Download, FileSpreadsheet, FileText,
-  Bell, Clock, Mail, RefreshCw, X, Pencil, LogOut, User as UserIcon,
+  Bell, Clock, Mail, RefreshCw, X, Pencil, LogOut, Settings, User as UserIcon,
 } from 'lucide-react';
 import {
   DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
@@ -30,6 +30,7 @@ import { toast } from 'sonner';
 import { computeMissingDays } from '@/lib/work-status';
 import { exportEntriesToExcel, exportEntriesToPDF } from '@/lib/export-utils';
 import WorkerDetailDialog from '@/components/worker-detail';
+import CompanySettings from '@/components/company-settings';
 
 // ─── helpers / constants ──────────────────────────────────────────────────────
 
@@ -238,7 +239,9 @@ const PL_CSS = `
 .bt-pl .mono{font-family:'JetBrains Mono',monospace}
 /* ===== BARRE UNIQUE pleine largeur (sticky) — pas de cadre ===== */
 .bt-pl-bar{position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:#F2EDE3;border-bottom:2px solid #15120F;padding:8px 16px;border-radius:16px 16px 0 0}
-.bt-pl-gridwrap{overflow-x:auto;background:#F2EDE3;border-radius:0 0 16px 16px}
+.bt-pl-gridwrap{overflow-x:auto;background:#F2EDE3;border-radius:0 0 16px 16px;position:relative}
+.bt-pl-watermark{position:absolute;inset:0;z-index:-1;display:flex;align-items:center;justify-content:center;pointer-events:none;overflow:hidden}
+.bt-pl-watermark img{width:min(44%,420px);max-height:62%;object-fit:contain;filter:grayscale(1);opacity:.07}
 .bt-pl-bar-left{display:flex;align-items:center;gap:11px;flex-wrap:wrap}
 .bt-pl-bar-right{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
 .bt-pl-logo{width:30px;height:30px;background:#15120F;color:#FFC21A;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;flex:none}
@@ -406,6 +409,8 @@ export default function AdminPlanning() {
   const [missingByWorker, setMissingByWorker] = useState<Map<string, string[]>>(new Map());
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [companyName, setCompanyName] = useState('');
+  const [companyLogo, setCompanyLogo] = useState('');
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [currentWeekStart, setCurrentWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [positionWarned, setPositionWarned] = useState(false);
@@ -537,7 +542,7 @@ export default function AdminPlanning() {
     const [planRes, entRes, compRes, invRes] = await Promise.all([
       supabase.from('planning').select('user_id, work_date, absence_type').eq('company_id', user.company_id).gte('work_date', windowStart),
       supabase.from('time_entries').select('user_id, work_date').eq('company_id', user.company_id).neq('status', 'draft').gte('work_date', windowStart),
-      supabase.from('companies').select('name').eq('id', user.company_id).maybeSingle(),
+      supabase.from('companies').select('name, logo_url').eq('id', user.company_id).maybeSingle(),
       supabase.from('invitations').select('*').eq('company_id', user.company_id).is('accepted_at', null).gt('expires_at', new Date().toISOString()).order('created_at', { ascending: false }),
     ]);
 
@@ -568,6 +573,7 @@ export default function AdminPlanning() {
     setTodayAbsence(today);
     setMissingByWorker(miss);
     setCompanyName(compRes.data?.name || '');
+    setCompanyLogo((compRes.data as { logo_url?: string | null } | null)?.logo_url || '');
     setInvitations((invRes.data || []) as Invitation[]);
   }, [user?.company_id]);
 
@@ -1191,6 +1197,9 @@ export default function AdminPlanning() {
                       <div className="bt-pl-acctmenu-co">{companyLabel}</div>
                       <div className="bt-pl-acctmenu-u">{user?.first_name} {user?.last_name}</div>
                     </div>
+                    <button className="bt-pl-acct-item" onClick={() => { setAccountMenuOpen(false); setSettingsOpen(true); }}>
+                      <Settings className="h-4 w-4" /> Réglages de l&apos;entreprise
+                    </button>
                     <button className="bt-pl-acct-item danger" onClick={() => { setAccountMenuOpen(false); signOut(); }}>
                       <LogOut className="h-4 w-4" /> Déconnexion
                     </button>
@@ -1223,6 +1232,9 @@ export default function AdminPlanning() {
 
         {/* GRILLE — desktop (glisser-déposer) */}
         <div className="bt-pl-gridwrap">
+          {companyLogo && (
+            <div className="bt-pl-watermark" aria-hidden><img src={companyLogo} alt="" /></div>
+          )}
           <table className="bt-pl-table">
             <thead>
               <tr>
@@ -1341,6 +1353,7 @@ export default function AdminPlanning() {
                 <div className="bt-pl-nav">
                   <button className="bt-pl-m-ibtn" aria-label="Semaine précédente" onClick={() => setCurrentWeekStart(subWeeks(currentWeekStart, 1))}>‹</button>
                   <button className="bt-pl-m-ibtn" aria-label="Semaine suivante" onClick={() => setCurrentWeekStart(addWeeks(currentWeekStart, 1))}>›</button>
+                  <button className="bt-pl-m-ibtn" aria-label="Réglages de l'entreprise" title="Réglages" onClick={() => setSettingsOpen(true)}><Settings className="h-4 w-4" /></button>
                   <button className="bt-pl-m-ibtn" aria-label="Déconnexion" title="Déconnexion" onClick={signOut}><LogOut className="h-4 w-4" /></button>
                 </div>
               </div>
@@ -1443,6 +1456,8 @@ export default function AdminPlanning() {
         onOpenChange={(open) => { if (!open) setFicheWorker(null); }}
         onChanged={() => { fetchData(); refresh(); }}
       />
+
+      <CompanySettings open={settingsOpen} onOpenChange={setSettingsOpen} onSaved={fetchData} />
 
       {/* Salariés — administrative management */}
       <Dialog open={salariesOpen} onOpenChange={setSalariesOpen}>
