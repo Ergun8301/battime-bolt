@@ -332,7 +332,7 @@ const PL_CSS = `
 .bt-pl-th-cell{display:flex;align-items:baseline;justify-content:center;gap:8px}
 .bt-pl-th-day{font-family:'Archivo',sans-serif;font-size:14px;font-weight:800;color:#15120F;letter-spacing:-.01em}
 .bt-pl-th-num{font-family:'Archivo',sans-serif;font-size:17px;font-weight:900;color:#15120F}
-.bt-pl-th.today{background:#E9F6F0}
+.bt-pl-th.today{background:#FFFCF2}
 .bt-pl-th.today .bt-pl-th-day{color:#15120F}
 /* Coin haut-gauche coupé en diagonale : « Salarié » (bas-gauche) étiquette la colonne
    des noms ; « S-26 » (haut-droite) étiquette la ligne des dates. Trait corner-à-corner
@@ -350,7 +350,7 @@ const PL_CSS = `
 .bt-pl-status-dot{width:7px;height:7px;border-radius:50%;background:#E0A21C}
 .bt-pl-status-txt{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700}
 .bt-pl-cell{border-right:1px solid rgba(21,18,15,.6);border-bottom:1px solid rgba(21,18,15,.6);padding:8px;vertical-align:top}
-.bt-pl-cell-today{background:#E9F6F0}
+.bt-pl-cell-today{background:#FFFCF2}
 /* Lignes vierges de remplissage : même hauteur qu'une ligne salarié vide (105px),
    quadrillage continu, jour J teinté ; « + » discret pour ajouter un salarié. */
 .bt-pl-ghostrow td{height:104px}
