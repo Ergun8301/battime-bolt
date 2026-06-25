@@ -310,7 +310,7 @@ const PL_CSS = `
 .bt-pl-acct:hover{border-color:#15120F;background:rgba(21,18,15,.04)}
 .bt-pl-acct-av{width:24px;height:24px;border-radius:50%;background:#15120F;color:#FFC21A;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:10px;flex:none;overflow:hidden}
 .bt-pl-acct-av-img{width:100%;height:100%;object-fit:cover;display:block}
-.bt-pl-acct-name{font-size:13px;font-weight:800;color:#15120F;max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bt-pl-acct-name{font-size:13px;font-weight:800;color:#15120F;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bt-pl-acct-car{font-size:10px;color:#9a948a}
 .bt-pl-acctmenu{position:absolute;top:42px;right:0;z-index:40;width:232px;background:#fff;border:1px solid rgba(21,18,15,.14);border-radius:13px;box-shadow:0 24px 50px -18px rgba(21,18,15,.45);overflow:hidden}
 .bt-pl-acctmenu-h{padding:11px 13px;border-bottom:1px solid rgba(21,18,15,.08)}
