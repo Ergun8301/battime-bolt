@@ -328,17 +328,18 @@ const PL_CSS = `
 /* La grille s'arrête net : bordure de fin franche (2px noir, comme l'en-tête) sous la
    dernière ligne visible (fantôme si présente, sinon dernier salarié). */
 .bt-pl-table tbody:last-of-type tr:last-child td{border-bottom:2px solid #15120F}
-.bt-pl-th{background:#fff;padding:13px 10px;text-align:center;border-right:1px solid rgba(21,18,15,.6);border-bottom:2px solid #15120F}
-.bt-pl-th-day{font-family:'JetBrains Mono',monospace;font-size:11px;color:#9a948a;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
-.bt-pl-th-num{font-size:19px;font-weight:900}
+.bt-pl-th{background:#fff;padding:11px 12px;text-align:center;border-right:1px solid rgba(21,18,15,.6);border-bottom:2px solid #15120F}
+.bt-pl-th-cell{display:flex;align-items:baseline;justify-content:center;gap:8px}
+.bt-pl-th-day{font-family:'Archivo',sans-serif;font-size:14px;font-weight:800;color:#15120F;letter-spacing:-.01em}
+.bt-pl-th-num{font-family:'Archivo',sans-serif;font-size:17px;font-weight:900;color:#15120F}
 .bt-pl-th.today{background:#FFFCF2}
 .bt-pl-th.today .bt-pl-th-day{color:#15120F}
 /* Coin haut-gauche coupé en diagonale : « Salarié » (bas-gauche) étiquette la colonne
    des noms ; « S-26 » (haut-droite) étiquette la ligne des dates. Trait corner-à-corner
    via SVG (preserveAspectRatio:none + non-scaling-stroke = épaisseur constante). */
-.bt-pl-th-name{position:sticky;left:0;z-index:6;width:200px;padding:0;border-right:2px solid #15120F;border-bottom:2px solid #15120F;background-color:#fff;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' preserveAspectRatio='none' viewBox='0 0 100 100'%3E%3Cline x1='0' y1='0' x2='100' y2='100' stroke='%2315120F' stroke-opacity='0.4' stroke-width='1.25' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E");background-size:100% 100%;background-repeat:no-repeat}
-.bt-pl-corner-wk{position:absolute;top:8px;right:11px;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.04em;color:#9a948a;font-weight:700}
-.bt-pl-corner-sal{position:absolute;left:13px;bottom:9px;font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#9a948a;font-weight:700}
+.bt-pl-th-name{position:sticky;left:0;z-index:6;width:200px;padding:0;border-right:2px solid #15120F;border-bottom:2px solid #15120F;background-color:#fff;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' preserveAspectRatio='none' viewBox='0 0 100 100'%3E%3Cline x1='0' y1='0' x2='100' y2='100' stroke='%2315120F' stroke-width='2' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E");background-size:100% 100%;background-repeat:no-repeat}
+.bt-pl-corner-wk{position:absolute;top:7px;right:12px;font-family:'Archivo',sans-serif;font-size:13px;font-weight:900;letter-spacing:-.01em;color:#15120F}
+.bt-pl-corner-sal{position:absolute;left:13px;bottom:7px;font-family:'Archivo',sans-serif;font-size:15px;font-weight:900;letter-spacing:-.02em;color:#15120F}
 .bt-pl-namecell{position:sticky;left:0;z-index:5;background:#fff;border-right:2px solid #15120F;border-bottom:1px solid rgba(21,18,15,.6);padding:0;vertical-align:top}
 .bt-pl-namebtn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;width:100%;height:100%;padding:13px;background:transparent;border:none;cursor:pointer;text-align:center;font-family:inherit}
 .bt-pl-namebtn:hover{background:rgba(21,18,15,.03)}
@@ -1217,6 +1218,7 @@ export default function AdminPlanning() {
   const thisWeekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
   const isCurrentWeek = format(currentWeekStart, 'yyyy-MM-dd') === format(thisWeekStart, 'yyyy-MM-dd');
   const dayShort = (d: Date) => format(d, 'EEE', { locale: fr }).replace('.', '');
+  const dayFull = (d: Date) => { const s = format(d, 'EEEE', { locale: fr }); return s.charAt(0).toUpperCase() + s.slice(1); };
   // Nom + initiales de l'entreprise connectée (bouton compte).
   const companyLabel = companyName || `${user?.first_name || ''} ${user?.last_name || ''}`.trim() || 'Mon compte';
   const companyInitials = (companyLabel.replace(/[^a-zA-Z0-9 ]/g, ' ').trim().split(/\s+/).map((w) => w[0]).join('') || 'BT').slice(0, 2).toUpperCase();
@@ -1373,8 +1375,10 @@ export default function AdminPlanning() {
                   const isToday = format(day, 'yyyy-MM-dd') === todayStr;
                   return (
                     <th key={day.toISOString()} className={`bt-pl-th ${isToday ? 'today' : ''}`}>
-                      <div className="bt-pl-th-day">{dayShort(day)}</div>
-                      <div className="bt-pl-th-num">{format(day, 'd')}</div>
+                      <div className="bt-pl-th-cell">
+                        <span className="bt-pl-th-day">{dayFull(day)}</span>
+                        <span className="bt-pl-th-num">{format(day, 'd')}</span>
+                      </div>
                     </th>
                   );
                 })}
