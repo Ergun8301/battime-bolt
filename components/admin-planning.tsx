@@ -16,7 +16,7 @@ import { Textarea } from '@/components/ui/textarea';
 import {
   ChevronLeft, ChevronRight, Plus, Trash2, Loader2,
   UserPlus, Users, Building2, Archive, CalendarRange, Download, FileSpreadsheet, FileText,
-  Bell, Clock, Mail, RefreshCw, X, Pencil, LogOut, User as UserIcon,
+  Bell, Clock, Mail, RefreshCw, X, Pencil, LogOut, Settings, User as UserIcon,
 } from 'lucide-react';
 import {
   DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
@@ -30,6 +30,7 @@ import { toast } from 'sonner';
 import { computeMissingDays } from '@/lib/work-status';
 import { exportEntriesToExcel, exportEntriesToPDF } from '@/lib/export-utils';
 import WorkerDetailDialog from '@/components/worker-detail';
+import CompanySettings from '@/components/company-settings';
 
 // ─── helpers / constants ──────────────────────────────────────────────────────
 
@@ -240,6 +241,10 @@ const PL_CSS = `
 .bt-pl-bar{position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:#F2EDE3;border-bottom:2px solid #15120F;padding:8px 16px;border-radius:16px 16px 0 0}
 .bt-pl-gridwrap{overflow-x:auto;background:#F2EDE3;border-radius:0 0 16px 16px}
 .bt-pl-bar-left{display:flex;align-items:center;gap:11px;flex-wrap:wrap}
+.bt-pl-brand{display:inline-flex;align-items:center;gap:8px;flex:none}
+.bt-pl-brand-mark{width:30px;height:30px;background:#15120F;border-radius:7px;display:flex;align-items:center;justify-content:center;flex:none}
+.bt-pl-brand-dot{width:13px;height:13px;border:2.5px solid #FFC21A;border-radius:50%;border-top-color:transparent;transform:rotate(45deg)}
+.bt-pl-brand-name{font-size:17px;font-weight:900;letter-spacing:-.02em;color:#15120F}
 .bt-pl-bar-right{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
 .bt-pl-logo{width:30px;height:30px;background:#15120F;color:#FFC21A;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;flex:none}
 .bt-pl-nav{display:flex;align-items:center;gap:6px}
@@ -275,6 +280,11 @@ const PL_CSS = `
 .bt-pl-ddsub{display:block;font-size:11px;color:#9a948a;font-weight:600}
 .bt-pl-ddcreate{display:flex;align-items:center;gap:9px;padding:11px 13px;border-top:1px solid rgba(21,18,15,.1);background:#FBF6EA;cursor:pointer;border:none;width:100%;text-align:left;font-family:inherit;color:#15120F;font-size:13.5px;font-weight:800}
 .bt-pl-ddcreate-ico{width:22px;height:22px;background:#FFC21A;color:#15120F;border-radius:6px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:14px;flex:none}
+.bt-pl-exitem{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:#fff;border:none;border-top:1px solid rgba(21,18,15,.07);padding:11px 13px;cursor:pointer;font-family:inherit;color:#15120F}
+.bt-pl-exitem:first-of-type{border-top:none}
+.bt-pl-exitem:hover{background:#FBF6EA}
+.bt-pl-exitem-t{display:block;font-size:13.5px;font-weight:800}
+.bt-pl-exitem-s{display:block;font-size:11px;font-weight:600;color:#9a948a}
 .bt-pl-dd-search{padding:9px 10px;border-bottom:1px solid rgba(21,18,15,.08)}
 .bt-pl-dd-input{width:100%;font-family:inherit;font-size:13.5px;font-weight:600;padding:8px 11px;border:1.5px solid rgba(21,18,15,.16);border-radius:9px;background:#F9F5EC;color:#15120F;outline:none}
 .bt-pl-dd-input::placeholder{color:#a89f8d;font-weight:500}
@@ -293,7 +303,8 @@ const PL_CSS = `
 .bt-pl-acctwrap{position:relative}
 .bt-pl-acct{display:inline-flex;align-items:center;gap:8px;background:transparent;border:1.5px solid rgba(21,18,15,.18);border-radius:10px;padding:4px 10px 4px 4px;cursor:pointer;font-family:inherit;height:33px;transition:border-color .14s ease,background .14s ease}
 .bt-pl-acct:hover{border-color:#15120F;background:rgba(21,18,15,.04)}
-.bt-pl-acct-av{width:24px;height:24px;border-radius:50%;background:#15120F;color:#FFC21A;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:10px;flex:none}
+.bt-pl-acct-av{width:24px;height:24px;border-radius:50%;background:#15120F;color:#FFC21A;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:10px;flex:none;overflow:hidden}
+.bt-pl-acct-av-img{width:100%;height:100%;object-fit:cover;display:block}
 .bt-pl-acct-name{font-size:13px;font-weight:800;color:#15120F;max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bt-pl-acct-car{font-size:10px;color:#9a948a}
 .bt-pl-acctmenu{position:absolute;top:42px;right:0;z-index:40;width:232px;background:#fff;border:1px solid rgba(21,18,15,.14);border-radius:13px;box-shadow:0 24px 50px -18px rgba(21,18,15,.45);overflow:hidden}
@@ -436,6 +447,9 @@ export default function AdminPlanning() {
   const [salariesOpen, setSalariesOpen] = useState(false);
   const [clientsQuery, setClientsQuery] = useState('');
   const [salariesQuery, setSalariesQuery] = useState('');
+  const [companyLogo, setCompanyLogo] = useState('');
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
 
   // team export
   const [exportOpen, setExportOpen] = useState(false);
@@ -549,7 +563,7 @@ export default function AdminPlanning() {
     const [planRes, entRes, compRes, invRes] = await Promise.all([
       supabase.from('planning').select('user_id, work_date, absence_type').eq('company_id', user.company_id).gte('work_date', windowStart),
       supabase.from('time_entries').select('user_id, work_date').eq('company_id', user.company_id).neq('status', 'draft').gte('work_date', windowStart),
-      supabase.from('companies').select('name').eq('id', user.company_id).maybeSingle(),
+      supabase.from('companies').select('name, logo_url').eq('id', user.company_id).maybeSingle(),
       supabase.from('invitations').select('*').eq('company_id', user.company_id).is('accepted_at', null).gt('expires_at', new Date().toISOString()).order('created_at', { ascending: false }),
     ]);
 
@@ -580,6 +594,7 @@ export default function AdminPlanning() {
     setTodayAbsence(today);
     setMissingByWorker(miss);
     setCompanyName(compRes.data?.name || '');
+    setCompanyLogo((compRes.data as { logo_url?: string | null } | null)?.logo_url || '');
     setInvitations((invRes.data || []) as Invitation[]);
   }, [user?.company_id]);
 
@@ -1161,7 +1176,10 @@ export default function AdminPlanning() {
         {/* Barre UNIQUE pleine largeur, figée (sticky) — tout aligné sur une ligne */}
         <div className="bt-pl-bar">
           <div className="bt-pl-bar-left">
-            <span className="bt-pl-logo"><Clock className="h-4 w-4" /></span>
+            <span className="bt-pl-brand">
+              <span className="bt-pl-brand-mark"><span className="bt-pl-brand-dot" /></span>
+              <span className="bt-pl-brand-name">Battime</span>
+            </span>
             <div className="bt-pl-nav">
               <button className="bt-pl-icobtn" aria-label="Semaine précédente" onClick={() => setCurrentWeekStart(subWeeks(currentWeekStart, 1))}>‹</button>
               <button className="bt-pl-dark" onClick={() => setCurrentWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))}>Aujourd'hui</button>
@@ -1200,12 +1218,31 @@ export default function AdminPlanning() {
                 </>
               )}
             </div>
-            <button className="bt-pl-fill" onClick={() => setExportOpen(true)}><Download className="h-4 w-4" /> Exporter la paie</button>
-            <button className="bt-pl-out" onClick={() => setExportWorkerOpen(true)}><FileText className="h-4 w-4" /> Export salarié</button>
+            <div className="bt-pl-ddwrap">
+              <button className="bt-pl-fill" onClick={() => setExportMenuOpen((o) => !o)}><Download className="h-4 w-4" /> Exporter ▾</button>
+              {exportMenuOpen && (
+                <>
+                  <div className="bt-pl-ddbackdrop" onClick={() => setExportMenuOpen(false)} />
+                  <div className="bt-pl-dd">
+                    <div className="bt-pl-dd-h">Exporter les heures</div>
+                    <button className="bt-pl-exitem" onClick={() => { setExportMenuOpen(false); setExportOpen(true); }}>
+                      <Download className="h-4 w-4" />
+                      <span><span className="bt-pl-exitem-t">Exporter l&apos;équipe</span><span className="bt-pl-exitem-s">Verrouille le mois</span></span>
+                    </button>
+                    <button className="bt-pl-exitem" onClick={() => { setExportMenuOpen(false); setExportWorkerOpen(true); }}>
+                      <FileText className="h-4 w-4" />
+                      <span><span className="bt-pl-exitem-t">Exporter un salarié</span><span className="bt-pl-exitem-s">Sans verrou</span></span>
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
             <span className="bt-pl-sep" />
             <div className="bt-pl-acctwrap">
               <button className="bt-pl-acct" onClick={() => setAccountMenuOpen((o) => !o)} title="Compte entreprise">
-                <span className="bt-pl-acct-av">{companyInitials}</span>
+                <span className="bt-pl-acct-av">
+                  {companyLogo ? <img className="bt-pl-acct-av-img" src={companyLogo} alt="" /> : companyInitials}
+                </span>
                 <span className="bt-pl-acct-name">{companyLabel}</span>
                 <span className="bt-pl-acct-car">▾</span>
               </button>
@@ -1217,6 +1254,9 @@ export default function AdminPlanning() {
                       <div className="bt-pl-acctmenu-co">{companyLabel}</div>
                       <div className="bt-pl-acctmenu-u">{user?.first_name} {user?.last_name}</div>
                     </div>
+                    <button className="bt-pl-acct-item" onClick={() => { setAccountMenuOpen(false); setSettingsOpen(true); }}>
+                      <Settings className="h-4 w-4" /> Réglages de l&apos;entreprise
+                    </button>
                     <button className="bt-pl-acct-item danger" onClick={() => { setAccountMenuOpen(false); signOut(); }}>
                       <LogOut className="h-4 w-4" /> Déconnexion
                     </button>
@@ -1469,6 +1509,8 @@ export default function AdminPlanning() {
         onOpenChange={(open) => { if (!open) setFicheWorker(null); }}
         onChanged={() => { fetchData(); refresh(); }}
       />
+
+      <CompanySettings open={settingsOpen} onOpenChange={setSettingsOpen} onSaved={fetchData} />
 
       {/* Salariés — administrative management */}
       <Dialog open={salariesOpen} onOpenChange={setSalariesOpen}>
