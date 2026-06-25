@@ -482,6 +482,9 @@ export default function AdminPlanning() {
   const [exportWorkerOpen, setExportWorkerOpen] = useState(false);
   const [exportRange, setExportRange] = useState<{ from: Date; to: Date } | null>(null);
   const [attributeTarget, setAttributeTarget] = useState<{ userId: string; dateStr: string; worksiteId: string | null; label: string } | null>(null);
+  // Intervention ajoutée par le salarié (hors-planning) : popup avec Documents + attribution
+  // (au lieu de forcer directement l'attribution).
+  const [extraTarget, setExtraTarget] = useState<{ userId: string; dateStr: string; worksiteId: string | null; name: string; minutes: number } | null>(null);
   const [attrBusy, setAttrBusy] = useState(false);
   const [exporting, setExporting] = useState(false);
 
@@ -1454,8 +1457,8 @@ export default function AdminPlanning() {
                                       <button
                                         key={`xd${i}`}
                                         type="button"
-                                        onClick={(e) => { e.stopPropagation(); setAttributeTarget({ userId: worker.id, dateStr, worksiteId: x.worksiteId, label: x.name }); }}
-                                        title="Ajouté par le salarié — cliquer pour attribuer un client"
+                                        onClick={(e) => { e.stopPropagation(); setExtraTarget({ userId: worker.id, dateStr, worksiteId: x.worksiteId, name: x.name, minutes: x.minutes }); }}
+                                        title="Ajouté par le salarié — cliquer pour les documents / attribuer un client"
                                         className="bt-pl-extra"
                                       >
                                         <span className="bt-pl-bub-bar" style={{ background: '#B5472E' }} />
@@ -1672,6 +1675,28 @@ export default function AdminPlanning() {
               <Building2 className="h-4 w-4 mr-2" /> Créer un nouveau client…
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Intervention ajoutée par le salarié : popup avec Documents + attribution (au lieu de forcer l'attribution) */}
+      <Dialog open={!!extraTarget} onOpenChange={(o) => { if (!o) setExtraTarget(null); }}>
+        <DialogContent className="bt-skin max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><UserIcon className="h-4 w-4" /> {extraTarget?.name}</DialogTitle>
+          </DialogHeader>
+          {extraTarget && (
+            <div className="space-y-3 pt-1">
+              <p className="text-sm text-muted-foreground">{formatMinutes(extraTarget.minutes)} · ajouté par le salarié.</p>
+              <Button variant="outline" className="w-full justify-start" disabled={!extraTarget.worksiteId}
+                onClick={() => { const ws = worksites.find((w) => w.id === extraTarget.worksiteId); if (ws) { setDocsWorksite(ws); setExtraTarget(null); } }}>
+                <FileText className="h-4 w-4 mr-2" /> Documents du chantier
+              </Button>
+              <Button variant="outline" className="w-full justify-start"
+                onClick={() => { setAttributeTarget({ userId: extraTarget.userId, dateStr: extraTarget.dateStr, worksiteId: extraTarget.worksiteId, label: extraTarget.name }); setExtraTarget(null); }}>
+                <Building2 className="h-4 w-4 mr-2" /> Attribuer / changer le client
+              </Button>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
