@@ -31,6 +31,7 @@ import { computeMissingDays } from '@/lib/work-status';
 import { exportEntriesToExcel, exportEntriesToPDF } from '@/lib/export-utils';
 import WorkerDetailDialog from '@/components/worker-detail';
 import ChantierDocuments from '@/components/chantier-documents';
+import { TimeCylinder } from '@/components/time-cylinder';
 import CompanySettings from '@/components/company-settings';
 
 // ─── helpers / constants ──────────────────────────────────────────────────────
@@ -1835,7 +1836,7 @@ export default function AdminPlanning() {
           {editing && (
             <div className="space-y-3 pt-1">
               {/* Client (read-only) + link to the separate fiche */}
-              <div className="rounded-lg border bg-muted/30 p-2.5 flex items-start justify-between gap-2">
+              <div className="rounded-lg border bg-[#FBF7EF] p-2.5 flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="text-base font-semibold truncate">{editing.worksite?.client_name || 'Client'}</p>
                   {(editing.worksite?.address || editing.worksite?.city) && (
@@ -1856,13 +1857,20 @@ export default function AdminPlanning() {
                 )}
               </div>
 
-              {/* Optional fixed hour (rare RDV) */}
+              {/* Heure de RDV (facultatif) — roulette cylindre, comme côté salarié */}
               <div className="space-y-1.5">
-                <Label>Heure (facultatif)</Label>
-                <div className="flex items-center gap-2">
-                  <Input type="time" value={editHour} onChange={(e) => setEditHour(e.target.value)} className="w-32" />
-                  <span className="text-xs text-muted-foreground">Seulement pour un RDV à heure fixe.</span>
-                </div>
+                <Label>Heure de RDV (facultatif)</Label>
+                {editHour ? (
+                  <div className="rounded-2xl bg-[#15120F] p-2.5 flex flex-col items-center gap-1.5">
+                    <TimeCylinder value={editHour} onChange={setEditHour} />
+                    <button type="button" className="text-xs font-bold text-[#a59c86] hover:text-[#F2EDE3]" onClick={() => setEditHour('')}>Pas d&apos;heure fixe</button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setEditHour('08:00')}>+ Ajouter une heure</Button>
+                    <span className="text-xs text-muted-foreground">Seulement pour un RDV à heure fixe.</span>
+                  </div>
+                )}
               </div>
 
               {/* Note for the poseur */}
@@ -1872,7 +1880,7 @@ export default function AdminPlanning() {
               </div>
 
               {/* Real hours (read-only) */}
-              <div className="rounded-lg border bg-muted/30 p-2.5 text-sm">
+              <div className="rounded-lg border bg-[#FBF7EF] p-2.5 text-sm">
                 <span className="font-medium">Heures déclarées : </span>
                 {editRealAgg ? (
                   <span className="text-green-700">{editRealAgg.start?.substring(0, 5)}–{editRealAgg.end?.substring(0, 5)} · <strong>{formatMinutes(editRealAgg.minutes)} réelles</strong>{editRealAgg.count > 1 ? ` (${editRealAgg.count} saisies)` : ''}</span>
