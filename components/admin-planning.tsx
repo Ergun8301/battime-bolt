@@ -240,25 +240,30 @@ const PL_CSS = `
 /* ===== BARRE UNIQUE pleine largeur (sticky) — pas de cadre ===== */
 .bt-pl-bar{position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:#F2EDE3;border-bottom:2px solid #15120F;padding:8px 16px;border-radius:16px 16px 0 0}
 .bt-pl-gridwrap{overflow-x:auto;background:#F2EDE3;border-radius:0 0 16px 16px}
-.bt-pl-bar-left{display:flex;align-items:center;gap:11px;flex-wrap:wrap}
+.bt-pl-bar-left{flex:1 1 0;min-width:0;display:flex;align-items:center;gap:11px}
 .bt-pl-brand{display:inline-flex;align-items:center;gap:8px;flex:none}
 .bt-pl-brand-mark{width:30px;height:30px;background:#15120F;border-radius:7px;display:flex;align-items:center;justify-content:center;flex:none}
 .bt-pl-brand-dot{width:13px;height:13px;border:2.5px solid #FFC21A;border-radius:50%;border-top-color:transparent;transform:rotate(45deg)}
 .bt-pl-brand-name{font-size:17px;font-weight:900;letter-spacing:-.02em;color:#15120F}
-.bt-pl-bar-right{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.bt-pl-bar-right{flex:1 1 0;min-width:0;display:flex;align-items:center;justify-content:flex-end;gap:9px;flex-wrap:wrap}
 .bt-pl-logo{width:30px;height:30px;background:#15120F;color:#FFC21A;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;flex:none}
 .bt-pl-nav{display:flex;align-items:center;gap:6px}
-.bt-pl-week2{font-size:14px;font-weight:800;letter-spacing:-.01em;white-space:nowrap;color:#15120F;display:inline-flex;align-items:center;gap:8px}
-.bt-pl-wk{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;background:#15120F;color:#FFC21A;border-radius:6px;padding:3px 7px;letter-spacing:.04em}
-.bt-pl-icobtn{width:33px;height:33px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;font-size:15px;cursor:pointer;border:1.5px solid rgba(21,18,15,.18);background:#fff;color:#15120F;font-family:inherit;transition:border-color .14s ease,background .14s ease,transform .08s ease}
-.bt-pl-icobtn:hover{border-color:#15120F;background:rgba(21,18,15,.05)}
-.bt-pl-icobtn:active{transform:translateY(1px)}
-.bt-pl-dark{background:#15120F;color:#F2EDE3;border:none;border-radius:10px;padding:7px 12px;height:33px;font-size:12.5px;font-weight:800;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;transition:background .14s ease,transform .08s ease}
-.bt-pl-dark:hover{background:#2a2620;transform:translateY(-1px)}
-.bt-pl-dark:active{transform:translateY(1px)}
-.bt-pl-seg{display:inline-flex;background:#E3DAC8;border-radius:11px;padding:4px;gap:3px}
-.bt-pl-segbtn{font-family:inherit;font-weight:800;font-size:12.5px;border:none;background:transparent;color:#6E6A63;padding:7px 12px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:background .14s ease,color .14s ease}
-.bt-pl-segbtn:hover{color:#15120F;background:rgba(21,18,15,.05)}
+/* ===== Zone centrale : navigation de date (cadres blanc-crème) ===== */
+.bt-pl-bar-center{flex:0 0 auto;display:flex;align-items:center;justify-content:center}
+.bt-pl-datenav{display:inline-flex;align-items:center;gap:7px}
+.bt-pl-datearr{width:32px;height:34px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;font-size:16px;line-height:1;cursor:pointer;border:1.5px solid rgba(21,18,15,.16);background:#FFFDF8;color:#15120F;font-family:inherit;transition:border-color .14s ease,background .14s ease,transform .08s ease}
+.bt-pl-datearr:hover{border-color:#15120F;background:#fff}
+.bt-pl-datearr:active{transform:translateY(1px)}
+.bt-pl-datebox{display:inline-flex;align-items:center;gap:9px;height:34px;padding:0 13px;border-radius:10px;border:1.5px solid rgba(21,18,15,.16);background:#FFFDF8;cursor:pointer;font-family:inherit;transition:border-color .14s ease,background .14s ease}
+.bt-pl-datebox:hover{border-color:#15120F;background:#fff}
+.bt-pl-datebox-wk{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:#15120F;letter-spacing:.02em}
+.bt-pl-datebox-dot{width:8px;height:8px;border-radius:50%;flex:none}
+.bt-pl-datebox-dot.is-now{background:#1D9E75}
+.bt-pl-datebox-dot.is-away{background:#D85A30}
+.bt-pl-datebox-rg{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:#15120F;white-space:nowrap}
+.bt-pl-seg{display:inline-flex;align-items:center;gap:2px}
+.bt-pl-segbtn{font-family:inherit;font-weight:700;font-size:13px;border:none;background:transparent;color:#3D382F;padding:7px 11px;border-radius:9px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:background .14s ease,color .14s ease}
+.bt-pl-segbtn:hover{color:#15120F;background:rgba(21,18,15,.06)}
 .bt-pl-out{background:transparent;border:1.5px solid rgba(21,18,15,.3);color:#15120F;border-radius:10px;padding:7px 13px;height:33px;font-size:12.5px;font-weight:800;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;transition:border-color .14s ease,background .14s ease,transform .08s ease}
 .bt-pl-out:hover{border-color:#15120F;background:rgba(21,18,15,.04)}
 .bt-pl-out:active{transform:translateY(1px)}
@@ -320,8 +325,9 @@ const PL_CSS = `
 .bt-pl-th{background:#F2EDE3;padding:13px 10px;text-align:center;border-right:1px solid rgba(21,18,15,.6);border-bottom:2px solid #15120F}
 .bt-pl-th-day{font-family:'JetBrains Mono',monospace;font-size:11px;color:#9a948a;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
 .bt-pl-th-num{font-size:19px;font-weight:900}
-.bt-pl-th.today{background:rgba(255,194,26,.14)}
-.bt-pl-th.today .bt-pl-th-day{color:#9a7c14}
+.bt-pl-th.today{background:#FFFDF8;box-shadow:inset 0 3px 0 #15120F}
+.bt-pl-th.today .bt-pl-th-day{color:#15120F}
+.bt-pl-th-auj{display:inline-block;margin-left:6px;background:#15120F;color:#F2EDE3;font-family:'JetBrains Mono',monospace;font-size:8.5px;font-weight:700;letter-spacing:.04em;padding:2px 5px;border-radius:5px;vertical-align:middle;text-transform:none}
 .bt-pl-th-name{position:sticky;left:0;z-index:6;background:#F2EDE3;text-align:left;font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#9a948a;font-weight:700;padding:13px 13px;width:200px;border-right:2px solid #15120F;border-bottom:2px solid #15120F}
 .bt-pl-namecell{position:sticky;left:0;z-index:5;background:#fff;border-right:2px solid #15120F;border-bottom:1px solid rgba(21,18,15,.6);padding:0;vertical-align:top}
 .bt-pl-namebtn{display:flex;align-items:center;gap:10px;width:100%;height:100%;padding:12px 13px;background:transparent;border:none;cursor:pointer;text-align:left;font-family:inherit}
@@ -332,7 +338,7 @@ const PL_CSS = `
 .bt-pl-status-dot{width:7px;height:7px;border-radius:50%;background:#E0A21C}
 .bt-pl-status-txt{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700}
 .bt-pl-cell{border-right:1px solid rgba(21,18,15,.6);border-bottom:1px solid rgba(21,18,15,.6);padding:8px;vertical-align:top}
-.bt-pl-cell-today{background:rgba(255,194,26,.05)}
+.bt-pl-cell-today{background:#FFFDF8}
 .bt-pl-cell-over{background:rgba(255,194,26,.16);outline:2px dashed #FFC21A;outline-offset:-3px}
 .bt-pl-cellinner{position:relative;height:100%;min-height:88px;display:flex;flex-direction:column}
 .bt-pl-cellfill{flex:1;display:flex;flex-direction:column;gap:7px;cursor:pointer;border-radius:6px}
@@ -1146,6 +1152,8 @@ export default function AdminPlanning() {
   // ─── derived ──────────────────────────────────────────────────────────────────
 
   const weekDays = Array.from({ length: 6 }, (_, i) => addDays(currentWeekStart, i));
+  const thisWeekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
+  const isCurrentWeek = format(currentWeekStart, 'yyyy-MM-dd') === format(thisWeekStart, 'yyyy-MM-dd');
   const dayShort = (d: Date) => format(d, 'EEE', { locale: fr }).replace('.', '');
   // Nom + initiales de l'entreprise connectée (bouton compte).
   const companyLabel = companyName || `${user?.first_name || ''} ${user?.last_name || ''}`.trim() || 'Mon compte';
@@ -1180,12 +1188,21 @@ export default function AdminPlanning() {
               <span className="bt-pl-brand-mark"><span className="bt-pl-brand-dot" /></span>
               <span className="bt-pl-brand-name">Battime</span>
             </span>
-            <div className="bt-pl-nav">
-              <button className="bt-pl-icobtn" aria-label="Semaine précédente" onClick={() => setCurrentWeekStart(subWeeks(currentWeekStart, 1))}>‹</button>
-              <button className="bt-pl-dark" onClick={() => setCurrentWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))}>Aujourd'hui</button>
-              <button className="bt-pl-icobtn" aria-label="Semaine suivante" onClick={() => setCurrentWeekStart(addWeeks(currentWeekStart, 1))}>›</button>
+          </div>
+          <div className="bt-pl-bar-center">
+            <div className="bt-pl-datenav">
+              <button className="bt-pl-datearr" aria-label="Semaine précédente" onClick={() => setCurrentWeekStart(subWeeks(currentWeekStart, 1))}>‹</button>
+              <button
+                className="bt-pl-datebox"
+                onClick={() => setCurrentWeekStart(thisWeekStart)}
+                title={isCurrentWeek ? undefined : 'Revenir à la semaine actuelle'}
+              >
+                <span className="bt-pl-datebox-wk">S-{getISOWeek(currentWeekStart)}</span>
+                <span className={`bt-pl-datebox-dot ${isCurrentWeek ? 'is-now' : 'is-away'}`} />
+                <span className="bt-pl-datebox-rg">{format(currentWeekStart, 'd', { locale: fr })}–{format(addDays(currentWeekStart, 5), 'd MMM', { locale: fr })}</span>
+              </button>
+              <button className="bt-pl-datearr" aria-label="Semaine suivante" onClick={() => setCurrentWeekStart(addWeeks(currentWeekStart, 1))}>›</button>
             </div>
-            <div className="bt-pl-week2"><span className="bt-pl-wk">S.{getISOWeek(currentWeekStart)}</span> {format(currentWeekStart, 'd', { locale: fr })}–{format(addDays(currentWeekStart, 5), 'd MMM', { locale: fr })}</div>
           </div>
           <div className="bt-pl-bar-right">
             <div className="bt-pl-ddwrap">
@@ -1297,7 +1314,7 @@ export default function AdminPlanning() {
                   const isToday = format(day, 'yyyy-MM-dd') === todayStr;
                   return (
                     <th key={day.toISOString()} className={`bt-pl-th ${isToday ? 'today' : ''}`}>
-                      <div className="bt-pl-th-day">{dayShort(day)}{isToday ? ' · Auj.' : ''}</div>
+                      <div className="bt-pl-th-day">{dayShort(day)}{isToday && <span className="bt-pl-th-auj">Auj.</span>}</div>
                       <div className="bt-pl-th-num">{format(day, 'd')}</div>
                     </th>
                   );
