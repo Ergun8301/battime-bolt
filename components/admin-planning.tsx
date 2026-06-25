@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
 import { PlanningWithWorksite, Worksite, User, Invitation, TimeEntryWithWorksite } from '@/lib/types';
@@ -74,6 +74,8 @@ const HATCH_STYLE = {
 };
 // Trick to let a child `h-full` stretch to the table-row height.
 const CELL_HEIGHT_HACK = { height: '1px' } as const;
+// Hauteur d'une ligne « fantôme » de remplissage (≈ une ligne salarié vide standard).
+const GHOST_ROW_H = 105;
 
 // Fixed hour (rare RDV) is stored in estimated_start with estimated_end empty.
 const fixedHourOf = (p: PlanningWithWorksite): string | null =>
@@ -240,16 +242,13 @@ const PL_CSS = `
 /* ===== BARRE UNIQUE pleine largeur (sticky) — pas de cadre ===== */
 .bt-pl-bar{position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:#F2EDE3;border-bottom:2px solid #15120F;padding:8px 16px;border-radius:16px 16px 0 0}
 .bt-pl-gridwrap{overflow-x:auto;background:#F2EDE3;border-radius:0 0 16px 16px;flex:1 0 auto}
-.bt-pl-bar-left{flex:1 1 0;min-width:0;display:flex;align-items:center;gap:11px}
 .bt-pl-brand{display:inline-flex;align-items:center;gap:8px;flex:none}
 .bt-pl-brand-mark{width:30px;height:30px;background:#15120F;border-radius:7px;display:flex;align-items:center;justify-content:center;flex:none}
 .bt-pl-brand-dot{width:13px;height:13px;border:2.5px solid #FFC21A;border-radius:50%;border-top-color:transparent;transform:rotate(45deg)}
 .bt-pl-brand-name{font-size:17px;font-weight:900;letter-spacing:-.02em;color:#15120F}
-.bt-pl-bar-right{flex:1 1 0;min-width:0;display:flex;align-items:center;justify-content:flex-end;gap:9px;flex-wrap:wrap}
 .bt-pl-logo{width:30px;height:30px;background:#15120F;color:#FFC21A;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;flex:none}
 .bt-pl-nav{display:flex;align-items:center;gap:6px}
 /* ===== Zone centrale : navigation de date (cadres blanc-crème) ===== */
-.bt-pl-bar-center{flex:0 0 auto;display:flex;align-items:center;justify-content:center}
 .bt-pl-datenav{display:inline-flex;align-items:center;gap:7px}
 .bt-pl-datearr{width:32px;height:34px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;font-size:16px;line-height:1;cursor:pointer;border:1.5px solid rgba(21,18,15,.16);background:#FFFDF8;color:#15120F;font-family:inherit;transition:border-color .14s ease,background .14s ease,transform .08s ease}
 .bt-pl-datearr:hover{border-color:#15120F;background:#fff}
@@ -274,6 +273,8 @@ const PL_CSS = `
 .bt-pl-ddwrap{position:relative}
 .bt-pl-ddbackdrop{position:fixed;inset:0;z-index:35}
 .bt-pl-dd{position:absolute;top:42px;right:0;z-index:40;width:300px;background:#fff;border:1px solid rgba(21,18,15,.14);border-radius:14px;box-shadow:0 24px 50px -18px rgba(21,18,15,.45);overflow:hidden}
+/* Variante ancrée à gauche (menu Clients, désormais à gauche de la barre) */
+.bt-pl-dd.bt-pl-dd--start{left:0;right:auto}
 .bt-pl-dd-h{padding:9px 13px 7px;border-bottom:1px solid rgba(21,18,15,.08);font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:#9a948a;font-weight:700}
 .bt-pl-ddrow{display:flex;align-items:center;gap:10px;padding:10px 13px;cursor:grab;background:#fff;border:none;width:100%;text-align:left;font-family:inherit;transition:background .12s ease}
 .bt-pl-ddrow:hover{background:#FBF6EA}
@@ -322,8 +323,9 @@ const PL_CSS = `
 
 /* grille desktop */
 .bt-pl-table{width:100%;border-collapse:collapse;min-width:980px;table-layout:fixed}
-/* La grille s'arrête net : bordure de fin franche (2px noir, comme l'en-tête) sous le dernier salarié. */
-.bt-pl-table tbody tr:last-child td{border-bottom:2px solid #15120F}
+/* La grille s'arrête net : bordure de fin franche (2px noir, comme l'en-tête) sous la
+   dernière ligne visible (fantôme si présente, sinon dernier salarié). */
+.bt-pl-table tbody:last-of-type tr:last-child td{border-bottom:2px solid #15120F}
 .bt-pl-th{background:#F2EDE3;padding:13px 10px;text-align:center;border-right:1px solid rgba(21,18,15,.6);border-bottom:2px solid #15120F}
 .bt-pl-th-day{font-family:'JetBrains Mono',monospace;font-size:11px;color:#9a948a;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
 .bt-pl-th-num{font-size:19px;font-weight:900}
@@ -339,6 +341,11 @@ const PL_CSS = `
 .bt-pl-status-txt{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700}
 .bt-pl-cell{border-right:1px solid rgba(21,18,15,.6);border-bottom:1px solid rgba(21,18,15,.6);padding:8px;vertical-align:top}
 .bt-pl-cell-today{background:#FBF6EA}
+/* Lignes vierges de remplissage : même hauteur qu'une ligne salarié vide (105px),
+   quadrillage continu, jour J teinté ; « + » discret pour ajouter un salarié. */
+.bt-pl-ghostrow td{height:104px}
+.bt-pl-ghost-add{display:flex;align-items:center;justify-content:center;width:100%;min-height:104px;background:transparent;border:none;cursor:pointer;color:#cdc2ac;font-family:inherit;transition:color .14s ease,background .14s ease}
+.bt-pl-ghost-add:hover{color:#15120F;background:rgba(21,18,15,.03)}
 .bt-pl-cell-over{background:rgba(255,194,26,.16);outline:2px dashed #FFC21A;outline-offset:-3px}
 .bt-pl-cellinner{position:relative;height:100%;min-height:88px;display:flex;flex-direction:column}
 .bt-pl-cellfill{flex:1;display:flex;flex-direction:column;gap:7px;cursor:pointer;border-radius:6px}
@@ -512,6 +519,33 @@ export default function AdminPlanning() {
   const [cSaving, setCSaving] = useState(false);
 
   const [workerOpen, setWorkerOpen] = useState(false);
+
+  // ── Lignes « fantômes » : remplissent l'espace vide sous le dernier salarié avec des
+  //    lignes vierges (quadrillage continu + « + » pour ajouter un salarié). Le nombre
+  //    est calculé sur la hauteur de FENÊTRE (stable) : ajouter de vrais salariés
+  //    agrandit la page normalement, jamais bloqué, et les fantômes ne s'emballent pas.
+  const [ghostCount, setGhostCount] = useState(0);
+  const gridRef = useRef<HTMLDivElement>(null);
+  const theadRef = useRef<HTMLTableSectionElement>(null);
+  const realBodyRef = useRef<HTMLTableSectionElement>(null);
+  useEffect(() => {
+    const recompute = () => {
+      const grid = gridRef.current, head = theadRef.current, body = realBodyRef.current;
+      if (!grid || !head || !body) return;
+      const gridTopDoc = grid.getBoundingClientRect().top + window.scrollY;
+      const avail = window.innerHeight - gridTopDoc - 6; // 6 = padding bas de .bt-admin
+      const real = head.offsetHeight + body.offsetHeight;
+      const n = Math.floor((avail - real) / GHOST_ROW_H);
+      setGhostCount(n > 0 ? n : 0);
+    };
+    recompute();
+    const ro = new ResizeObserver(recompute);
+    if (gridRef.current) ro.observe(gridRef.current);
+    if (realBodyRef.current) ro.observe(realBodyRef.current);
+    window.addEventListener('resize', recompute);
+    return () => { ro.disconnect(); window.removeEventListener('resize', recompute); };
+  }, [loading, workers.length]);
+
   const [wFirst, setWFirst] = useState('');
   const [wLast, setWLast] = useState('');
   const [wEmail, setWEmail] = useState('');
@@ -1183,79 +1217,73 @@ export default function AdminPlanning() {
       <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragStart={handleDragStart} onDragEnd={(e) => { handleDragEnd(e); setChantierMenuOpen(false); }} onDragCancel={() => { setActiveDrag(null); setChantierMenuOpen(false); }}>
         {/* Barre UNIQUE pleine largeur, figée (sticky) — tout aligné sur une ligne */}
         <div className="bt-pl-bar">
-          <div className="bt-pl-bar-left">
-            <span className="bt-pl-brand">
-              <span className="bt-pl-brand-mark"><span className="bt-pl-brand-dot" /></span>
-              <span className="bt-pl-brand-name">Battime</span>
-            </span>
-          </div>
-          <div className="bt-pl-bar-center">
-            <div className="bt-pl-datenav">
-              <button className="bt-pl-datearr" aria-label="Semaine précédente" onClick={() => setCurrentWeekStart(subWeeks(currentWeekStart, 1))}>‹</button>
-              <button
-                className="bt-pl-datebox"
-                onClick={() => setCurrentWeekStart(thisWeekStart)}
-                title={isCurrentWeek ? undefined : 'Revenir à la semaine actuelle'}
-              >
-                <span className="bt-pl-datebox-wk">S-{getISOWeek(currentWeekStart)}</span>
-                <span className={`bt-pl-datebox-dot ${isCurrentWeek ? 'is-now' : 'is-away'}`} />
-                <span className="bt-pl-datebox-rg">{format(currentWeekStart, 'd', { locale: fr })}–{format(addDays(currentWeekStart, 5), 'd MMM', { locale: fr })}</span>
-              </button>
-              <button className="bt-pl-datearr" aria-label="Semaine suivante" onClick={() => setCurrentWeekStart(addWeeks(currentWeekStart, 1))}>›</button>
+          <span className="bt-pl-brand">
+            <span className="bt-pl-brand-mark"><span className="bt-pl-brand-dot" /></span>
+            <span className="bt-pl-brand-name">Battime</span>
+          </span>
+          <div className="bt-pl-ddwrap">
+            <div className="bt-pl-seg">
+              <button className="bt-pl-segbtn" onClick={() => setSalariesOpen(true)}><Users className="h-3.5 w-3.5" /> Salariés</button>
+              <button className="bt-pl-segbtn" onClick={() => { setChantierMenuOpen((o) => !o); setClientsQuery(''); }}><Building2 className="h-3.5 w-3.5" /> Clients</button>
             </div>
-          </div>
-          <div className="bt-pl-bar-right">
-            <div className="bt-pl-ddwrap">
-              <div className="bt-pl-seg">
-                <button className="bt-pl-segbtn" onClick={() => setSalariesOpen(true)}><Users className="h-3.5 w-3.5" /> Salariés</button>
-                <button className="bt-pl-segbtn" onClick={() => { setChantierMenuOpen((o) => !o); setClientsQuery(''); }}><Building2 className="h-3.5 w-3.5" /> Clients</button>
-              </div>
-              {chantierMenuOpen && (
-                <>
-                  <div className="bt-pl-ddbackdrop" onClick={() => setChantierMenuOpen(false)} />
-                  <div className="bt-pl-dd">
-                    <div className="bt-pl-dd-search">
-                      <input className="bt-pl-dd-input" placeholder="Rechercher un client…" value={clientsQuery} onChange={(e) => setClientsQuery(e.target.value)} autoFocus />
-                    </div>
-                    <div className="bt-pl-dd-h">Glissez un client sur le planning ↘</div>
-                    <div className="bt-pl-dd-list">
-                      {filteredClients.length === 0 ? (
-                        <div className="bt-pl-dd-empty">Aucun client</div>
-                      ) : filteredClients.map((ws) => (
-                        <div key={ws.id} className="bt-pl-clientrow">
-                          <PaletteRow worksite={ws} color={colorForWorksite(ws.id).bar} />
-                          <button className="bt-pl-clientedit" title="Modifier la fiche" onClick={() => { setChantierMenuOpen(false); openClientFiche(ws); }}><Pencil className="h-3.5 w-3.5" /></button>
-                        </div>
-                      ))}
-                    </div>
-                    <button className="bt-pl-ddcreate" onClick={() => { setChantierMenuOpen(false); setClientOpen(true); }}>
-                      <span className="bt-pl-ddcreate-ico">＋</span> Nouveau client
-                    </button>
+            {chantierMenuOpen && (
+              <>
+                <div className="bt-pl-ddbackdrop" onClick={() => setChantierMenuOpen(false)} />
+                <div className="bt-pl-dd bt-pl-dd--start">
+                  <div className="bt-pl-dd-search">
+                    <input className="bt-pl-dd-input" placeholder="Rechercher un client…" value={clientsQuery} onChange={(e) => setClientsQuery(e.target.value)} autoFocus />
                   </div>
-                </>
-              )}
-            </div>
-            <div className="bt-pl-ddwrap">
-              <button className="bt-pl-fill" onClick={() => setExportMenuOpen((o) => !o)}><Download className="h-4 w-4" /> Exporter ▾</button>
-              {exportMenuOpen && (
-                <>
-                  <div className="bt-pl-ddbackdrop" onClick={() => setExportMenuOpen(false)} />
-                  <div className="bt-pl-dd">
-                    <div className="bt-pl-dd-h">Exporter les heures</div>
-                    <button className="bt-pl-exitem" onClick={() => { setExportMenuOpen(false); setExportOpen(true); }}>
-                      <Download className="h-4 w-4" />
-                      <span><span className="bt-pl-exitem-t">Exporter l&apos;équipe</span><span className="bt-pl-exitem-s">Verrouille le mois</span></span>
-                    </button>
-                    <button className="bt-pl-exitem" onClick={() => { setExportMenuOpen(false); setExportWorkerOpen(true); }}>
-                      <FileText className="h-4 w-4" />
-                      <span><span className="bt-pl-exitem-t">Exporter un salarié</span><span className="bt-pl-exitem-s">Sans verrou</span></span>
-                    </button>
+                  <div className="bt-pl-dd-h">Glissez un client sur le planning ↘</div>
+                  <div className="bt-pl-dd-list">
+                    {filteredClients.length === 0 ? (
+                      <div className="bt-pl-dd-empty">Aucun client</div>
+                    ) : filteredClients.map((ws) => (
+                      <div key={ws.id} className="bt-pl-clientrow">
+                        <PaletteRow worksite={ws} color={colorForWorksite(ws.id).bar} />
+                        <button className="bt-pl-clientedit" title="Modifier la fiche" onClick={() => { setChantierMenuOpen(false); openClientFiche(ws); }}><Pencil className="h-3.5 w-3.5" /></button>
+                      </div>
+                    ))}
                   </div>
-                </>
-              )}
-            </div>
-            <span className="bt-pl-sep" />
-            <div className="bt-pl-acctwrap">
+                  <button className="bt-pl-ddcreate" onClick={() => { setChantierMenuOpen(false); setClientOpen(true); }}>
+                    <span className="bt-pl-ddcreate-ico">＋</span> Nouveau client
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+          <div className="bt-pl-datenav">
+            <button className="bt-pl-datearr" aria-label="Semaine précédente" onClick={() => setCurrentWeekStart(subWeeks(currentWeekStart, 1))}>‹</button>
+            <button
+              className="bt-pl-datebox"
+              onClick={() => setCurrentWeekStart(thisWeekStart)}
+              title={isCurrentWeek ? undefined : 'Revenir à la semaine actuelle'}
+            >
+              <span className="bt-pl-datebox-wk">S-{getISOWeek(currentWeekStart)}</span>
+              <span className={`bt-pl-datebox-dot ${isCurrentWeek ? 'is-now' : 'is-away'}`} />
+              <span className="bt-pl-datebox-rg">{format(currentWeekStart, 'd', { locale: fr })}–{format(addDays(currentWeekStart, 5), 'd MMM', { locale: fr })}</span>
+            </button>
+            <button className="bt-pl-datearr" aria-label="Semaine suivante" onClick={() => setCurrentWeekStart(addWeeks(currentWeekStart, 1))}>›</button>
+          </div>
+          <div className="bt-pl-ddwrap">
+            <button className="bt-pl-fill" onClick={() => setExportMenuOpen((o) => !o)}><Download className="h-4 w-4" /> Exporter ▾</button>
+            {exportMenuOpen && (
+              <>
+                <div className="bt-pl-ddbackdrop" onClick={() => setExportMenuOpen(false)} />
+                <div className="bt-pl-dd">
+                  <div className="bt-pl-dd-h">Exporter les heures</div>
+                  <button className="bt-pl-exitem" onClick={() => { setExportMenuOpen(false); setExportOpen(true); }}>
+                    <Download className="h-4 w-4" />
+                    <span><span className="bt-pl-exitem-t">Exporter l&apos;équipe</span><span className="bt-pl-exitem-s">Verrouille le mois</span></span>
+                  </button>
+                  <button className="bt-pl-exitem" onClick={() => { setExportMenuOpen(false); setExportWorkerOpen(true); }}>
+                    <FileText className="h-4 w-4" />
+                    <span><span className="bt-pl-exitem-t">Exporter un salarié</span><span className="bt-pl-exitem-s">Sans verrou</span></span>
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+          <div className="bt-pl-acctwrap">
               <button className="bt-pl-acct" onClick={() => setAccountMenuOpen((o) => !o)} title="Compte entreprise">
                 <span className="bt-pl-acct-av">
                   {companyLogo ? <img className="bt-pl-acct-av-img" src={companyLogo} alt="" /> : companyInitials}
@@ -1281,7 +1309,6 @@ export default function AdminPlanning() {
                 </>
               )}
             </div>
-          </div>
         </div>
 
         {/* Invitations en attente (sous la barre) */}
@@ -1305,9 +1332,9 @@ export default function AdminPlanning() {
         )}
 
         {/* GRILLE — desktop (glisser-déposer) */}
-        <div className="bt-pl-gridwrap">
+        <div className="bt-pl-gridwrap" ref={gridRef}>
           <table className="bt-pl-table">
-            <thead>
+            <thead ref={theadRef}>
               <tr>
                 <th className="bt-pl-th-name">Salarié</th>
                 {weekDays.map(day => {
@@ -1321,7 +1348,7 @@ export default function AdminPlanning() {
                 })}
               </tr>
             </thead>
-                <tbody>
+                <tbody ref={realBodyRef}>
                   {workers.length === 0 ? (
                     <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">Aucun salarié — bouton « Salariés »</td></tr>
                   ) : (
@@ -1410,6 +1437,25 @@ export default function AdminPlanning() {
                     })
                   )}
                 </tbody>
+                {/* Lignes vierges de remplissage : prolongent le quadrillage jusqu'en bas,
+                    chacune avec un « + » pour ajouter un salarié. Inertes (pas de dépôt). */}
+                {ghostCount > 0 && (
+                  <tbody className="bt-pl-ghostbody" aria-hidden="true">
+                    {Array.from({ length: ghostCount }).map((_, i) => (
+                      <tr key={`ghost-${i}`} className="bt-pl-ghostrow">
+                        <td className="bt-pl-namecell">
+                          <button className="bt-pl-ghost-add" onClick={() => setWorkerOpen(true)} title="Ajouter un salarié">
+                            <UserPlus className="h-4 w-4" />
+                          </button>
+                        </td>
+                        {weekDays.map((day) => {
+                          const isToday = format(day, 'yyyy-MM-dd') === todayStr;
+                          return <td key={day.toISOString()} className={`bt-pl-cell ${isToday ? 'bt-pl-cell-today' : ''}`} />;
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                )}
             </table>
           </div>
 
