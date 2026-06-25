@@ -227,7 +227,7 @@ export default function PoseurPage() {
               <PopoverTrigger asChild>
                 <button className="bt-alert" aria-label="Jours à déclarer">
                   <span className="bt-alert-badge">{pending.length}</span>
-                  <span className="bt-alert-txt">{pending.length} jour{pending.length > 1 ? 's' : ''} oublié{pending.length > 1 ? 's' : ''} à déclarer</span>
+                  <span className="bt-alert-txt">jour{pending.length > 1 ? 's' : ''} oublié{pending.length > 1 ? 's' : ''} à déclarer</span>
                   <span className="bt-alert-chev">›</span>
                 </button>
               </PopoverTrigger>
