@@ -345,6 +345,7 @@ const PL_CSS = `
 .bt-pl-namebtn:hover{background:rgba(21,18,15,.03)}
 .bt-pl-nametop{display:flex;align-items:center;justify-content:center;gap:10px;min-width:0;max-width:100%}
 .bt-pl-avatar{width:36px;height:36px;border-radius:50%;background:#15120F;color:#FFC21A;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex:none;overflow:hidden}
+.bt-pl-avatar-img{width:100%;height:100%;object-fit:cover;display:block}
 .bt-pl-name{font-size:14.5px;font-weight:800;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .bt-pl-status{display:flex;align-items:center;gap:5px}
 .bt-pl-status-dot{width:7px;height:7px;border-radius:50%;background:#E0A21C}
@@ -1403,7 +1404,7 @@ export default function AdminPlanning() {
                             >
                               <span className="bt-pl-nametop">
                                 <span className="bt-pl-avatar" style={absToday ? { background: '#c4bdae', color: '#15120F' } : undefined}>
-                                  {(worker.first_name?.[0] || '')}{(worker.last_name?.[0] || '')}
+                                  {worker.photo_url ? <img className="bt-pl-avatar-img" src={worker.photo_url} alt="" /> : <>{(worker.first_name?.[0] || '')}{(worker.last_name?.[0] || '')}</>}
                                 </span>
                                 <span className="bt-pl-name">{fullName}</span>
                               </span>
@@ -1531,7 +1532,7 @@ export default function AdminPlanning() {
                 return (
                   <div key={worker.id} className="bt-pl-m-card">
                     <div className="bt-pl-m-top">
-                      <span className="bt-pl-avatar" style={absence ? { background: '#c4bdae', color: '#15120F' } : undefined}>{(worker.first_name?.[0] || '')}{(worker.last_name?.[0] || '')}</span>
+                      <span className="bt-pl-avatar" style={absence ? { background: '#c4bdae', color: '#15120F' } : undefined}>{worker.photo_url ? <img className="bt-pl-avatar-img" src={worker.photo_url} alt="" /> : <>{(worker.first_name?.[0] || '')}{(worker.last_name?.[0] || '')}</>}</span>
                       <span style={{ flex: 1, minWidth: 0 }}><span className="bt-pl-name" style={{ display: 'block' }}>{worker.first_name} {worker.last_name}</span></span>
                       {absence ? (
                         <span className="bt-pl-m-badge" style={{ background: '#EFE7DA', color: av!.fg }}>{av!.icon} {(ABSENCE_LABELS[absence.absence_type!] || '').toUpperCase()}</span>

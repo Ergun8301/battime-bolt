@@ -7,7 +7,8 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Clock, CalendarDays, CalendarRange, History, LogOut, Check, ArrowLeft } from 'lucide-react';
+import { Clock, CalendarDays, CalendarRange, History, LogOut, Check, ArrowLeft, Camera, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { format, subDays, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { computeMissingDays } from '@/lib/work-status';
@@ -44,6 +45,10 @@ const POSEUR_CSS = `
 .bt-phdr-right{display:flex;align-items:center;gap:10px;flex:none}
 .bt-co-logo{width:36px;height:36px;border-radius:9px;background:#fff;flex:none;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:3px}
 .bt-co-logo img{max-width:100%;max-height:100%;object-fit:contain}
+.bt-phdr-avatar{position:relative;width:38px;height:38px;border-radius:50%;flex:none;cursor:pointer;background:#2a2620;border:1.5px solid rgba(242,237,227,.35);display:flex;align-items:center;justify-content:center}
+.bt-phdr-avatar img{width:100%;height:100%;border-radius:50%;object-fit:cover;display:block}
+.bt-phdr-avatar-ini{font-family:'Archivo',sans-serif;font-weight:800;font-size:14px;color:#FFC21A}
+.bt-phdr-avatar-cam{position:absolute;right:-3px;bottom:-3px;width:18px;height:18px;border-radius:50%;background:#FFC21A;color:#15120F;display:flex;align-items:center;justify-content:center;border:2px solid #15120F}
 
 .bt-alert{display:flex;align-items:center;gap:9px;margin-top:14px;width:100%;background:rgba(255,194,26,.13);border:1px solid rgba(255,194,26,.4);border-radius:11px;padding:10px 13px;cursor:pointer;text-align:left}
 .bt-alert-badge{width:22px;height:22px;flex:none;background:#FFC21A;color:#15120F;border-radius:6px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:13px;font-family:'JetBrains Mono',monospace}
@@ -93,6 +98,8 @@ export default function PoseurPage() {
   const [pending, setPending] = useState<string[]>([]); // days "en attente"
   const [pendingOpen, setPendingOpen] = useState(false); // "jours à déclarer" popover
   const [companyLogo, setCompanyLogo] = useState(''); // logo entreprise (facultatif)
+  const [photoUrl, setPhotoUrl] = useState(''); // photo de profil du salarié (facultatif)
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   const fetchPending = useCallback(async () => {
     if (!user) return;
@@ -121,6 +128,37 @@ export default function PoseurPage() {
     supabase.from('companies').select('logo_url').eq('id', user.company_id).maybeSingle()
       .then(({ data }) => setCompanyLogo((data as { logo_url?: string | null } | null)?.logo_url || ''));
   }, [user?.company_id]);
+
+  // Photo de profil du salarié (depuis users.photo_url).
+  useEffect(() => { setPhotoUrl(user?.photo_url || ''); }, [user?.photo_url]);
+
+  // Le salarié change SA propre photo (appareil photo ou galerie sur mobile). Upload
+  // dans SON dossier, puis enregistrement de l'URL via update_my_photo (il ne touche
+  // que sa propre ligne).
+  const onPickPhoto = async (file?: File) => {
+    if (!file || !user?.id) return;
+    if (!file.type.startsWith('image/')) { toast.error('Photo uniquement (JPG ou PNG).'); return; }
+    if (file.size > 6 * 1024 * 1024) { toast.error('Photo trop lourde (6 Mo max).'); return; }
+    setUploadingPhoto(true);
+    try {
+      const ext = file.type === 'image/png' ? 'png' : 'jpg';
+      const uid = user.id;
+      await supabase.storage.from('worker-photos').remove([`${uid}/photo.png`, `${uid}/photo.jpg`]);
+      const path = `${uid}/photo.${ext}`;
+      const { error } = await supabase.storage.from('worker-photos').upload(path, file, { upsert: true, contentType: file.type });
+      if (error) throw error;
+      const { data: pub } = supabase.storage.from('worker-photos').getPublicUrl(path);
+      const url = `${pub.publicUrl}?v=${Date.now()}`;
+      const { error: rpcErr } = await supabase.rpc('update_my_photo', { p_url: url });
+      if (rpcErr) throw rpcErr;
+      setPhotoUrl(url);
+      toast.success('Photo mise à jour');
+    } catch {
+      toast.error("Échec de l'envoi de la photo.");
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
 
   const openDay = (d: string) => { setSelectedDate(d); setPendingOpen(false); };
   const goHome = () => { setSelectedDate(null); setView('day'); fetchPending(); };
@@ -159,6 +197,11 @@ export default function PoseurPage() {
             )}
 
             <div className="bt-phdr-right">
+              <label className="bt-phdr-avatar" title="Changer ma photo">
+                {photoUrl ? <img src={photoUrl} alt="" /> : <span className="bt-phdr-avatar-ini">{(user?.first_name?.[0] || '')}{(user?.last_name?.[0] || '')}</span>}
+                <span className="bt-phdr-avatar-cam">{uploadingPhoto ? <Loader2 className="h-3 w-3 animate-spin" /> : <Camera className="h-3 w-3" />}</span>
+                <input type="file" accept="image/*" hidden onChange={(e) => onPickPhoto(e.target.files?.[0])} />
+              </label>
               {companyLogo && <span className="bt-co-logo"><img src={companyLogo} alt="" /></span>}
               <DropdownMenu>
               <DropdownMenuTrigger asChild>

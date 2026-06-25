@@ -29,6 +29,7 @@ export interface User {
   created_at: string;
   invited_at?: string;
   last_seen_at?: string;
+  photo_url?: string | null;
   // Optional payroll info (secretary-only).
   social_security_number?: string | null;
   hire_date?: string | null;
