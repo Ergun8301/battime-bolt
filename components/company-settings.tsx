@@ -20,25 +20,28 @@ type Form = {
 const EMPTY: Form = { name: '', siret: '', tva_intra: '', address: '', postal_code: '', city: '', phone: '', email: '', logo_url: '' };
 
 const SET_CSS = `
-.bt-set{display:flex;flex-direction:column}
+.bt-set{display:flex;flex-direction:column;gap:9px}
 .bt-set-load{padding:26px;text-align:center;color:#6E6A63;font-weight:600}
-.bt-set-logo{display:flex;align-items:center;gap:14px;margin-bottom:6px}
-.bt-set-logo-prev{width:64px;height:64px;border-radius:13px;background:#fff;border:1px solid rgba(21,18,15,.14);display:flex;align-items:center;justify-content:center;overflow:hidden;flex:none}
+.bt-set-toprow{display:flex;align-items:flex-start;gap:13px}
+.bt-set-logo-prev{width:58px;height:58px;border-radius:12px;background:#fff;border:1px solid rgba(21,18,15,.14);display:flex;align-items:center;justify-content:center;overflow:hidden;flex:none}
 .bt-set-logo-prev img{max-width:100%;max-height:100%;object-fit:contain}
 .bt-set-logo-ph{color:#c4bdae}
-.bt-set-logo-acts{display:flex;flex-direction:column;gap:7px;align-items:flex-start;min-width:0}
-.bt-set-rowbtns{display:flex;gap:7px;flex-wrap:wrap}
-.bt-set-btn{display:inline-flex;align-items:center;gap:6px;border:1.5px solid #15120F;background:#fff;border-radius:10px;padding:8px 12px;font-weight:800;font-size:13px;color:#15120F;cursor:pointer;font-family:inherit}
+.bt-set-namewrap{flex:1;min-width:0}
+.bt-set-rowbtns{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:6px}
+.bt-set-btn{display:inline-flex;align-items:center;gap:6px;border:1.5px solid #15120F;background:#fff;border-radius:9px;padding:6px 10px;font-weight:800;font-size:12.5px;color:#15120F;cursor:pointer;font-family:inherit}
 .bt-set-btn.ghost{border-color:rgba(21,18,15,.2);color:#C0461F}
-.bt-set-hint{font-size:11.5px;color:#9a948a;font-weight:600}
-.bt-set-l{font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:#6E6A63;font-weight:700;margin:11px 0 4px;display:block}
-.bt-set-i{width:100%;font-family:'Archivo',sans-serif;font-size:15px;font-weight:500;padding:11px 13px;border:1.5px solid rgba(21,18,15,.18);border-radius:11px;background:#fff;outline:none;color:#15120F}
+.bt-set-hint{font-size:11px;color:#9a948a;font-weight:600}
+.bt-set-l{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:#6E6A63;font-weight:700;margin:0 0 3px;display:block}
+.bt-set-i{width:100%;font-family:'Archivo',sans-serif;font-size:14px;font-weight:500;padding:9px 11px;border:1.5px solid rgba(21,18,15,.18);border-radius:10px;background:#fff;outline:none;color:#15120F}
 .bt-set-i::placeholder{color:#b3aca0}
 .bt-set-i:focus{border-color:#15120F}
-.bt-set-grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.bt-set-note{font-size:12.5px;color:#9a948a;font-weight:600;margin:13px 0 0}
-.bt-set-err{background:#F4D9D1;border:1px solid #E8B79E;color:#9a3b14;border-radius:10px;padding:9px 12px;font-size:12.5px;font-weight:700;margin-top:10px}
-.bt-set-save{margin-top:14px;width:100%;background:#FFC21A;color:#15120F;border:none;border-radius:12px;padding:14px;font-weight:900;font-size:16px;cursor:pointer;font-family:inherit;box-shadow:0 4px 0 #C99300;display:flex;align-items:center;justify-content:center;gap:8px}
+.bt-set-grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.bt-set-grid-cpv{display:grid;grid-template-columns:1fr 1.6fr;gap:10px}
+.bt-set-field{min-width:0}
+.bt-set-err{background:#F4D9D1;border:1px solid #E8B79E;color:#9a3b14;border-radius:9px;padding:8px 11px;font-size:12px;font-weight:700}
+.bt-set-foot{display:flex;align-items:center;gap:12px;margin-top:3px}
+.bt-set-note{font-size:11.5px;color:#9a948a;font-weight:600;margin:0;flex:1}
+.bt-set-save{flex:none;white-space:nowrap;background:#FFC21A;color:#15120F;border:none;border-radius:11px;padding:11px 22px;font-weight:900;font-size:15px;cursor:pointer;font-family:inherit;box-shadow:0 4px 0 #C99300;display:inline-flex;align-items:center;justify-content:center;gap:8px}
 .bt-set-save:disabled{opacity:.6}
 `;
 
@@ -110,7 +113,7 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bt-skin max-w-lg max-h-[88vh] overflow-y-auto">
+      <DialogContent className="bt-skin max-w-2xl max-h-[92vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><Building2 className="h-5 w-5" /> Réglages de l&apos;entreprise</DialogTitle>
         </DialogHeader>
@@ -119,18 +122,20 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
           <div className="bt-set-load">Chargement…</div>
         ) : (
           <div className="bt-set">
-            {/* Logo */}
-            <div className="bt-set-logo">
+            {/* Logo + nom sur une même ligne (compact, sans scroll) */}
+            <div className="bt-set-toprow">
               <div className="bt-set-logo-prev">
                 {f.logo_url
                   ? <img src={f.logo_url} alt="Logo de l'entreprise" />
                   : <span className="bt-set-logo-ph"><Building2 className="h-6 w-6" /></span>}
               </div>
-              <div className="bt-set-logo-acts">
+              <div className="bt-set-namewrap">
+                <label className="bt-set-l">Nom de l&apos;entreprise</label>
+                <input className="bt-set-i" value={f.name} onChange={(e) => set('name', e.target.value)} placeholder="Ex. K Habitat" />
                 <div className="bt-set-rowbtns">
                   <label className="bt-set-btn">
                     {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                    {f.logo_url ? 'Remplacer' : 'Ajouter un logo'}
+                    {f.logo_url ? 'Remplacer le logo' : 'Ajouter un logo'}
                     <input type="file" accept="image/png,image/jpeg,image/svg+xml" hidden onChange={(e) => onPickLogo(e.target.files?.[0])} />
                   </label>
                   {f.logo_url && (
@@ -138,55 +143,56 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
                       <Trash2 className="h-4 w-4" /> Supprimer
                     </button>
                   )}
+                  <span className="bt-set-hint">PNG, JPG ou SVG · 2 Mo max</span>
                 </div>
-                <div className="bt-set-hint">PNG, JPG ou SVG · 2 Mo max · facultatif</div>
               </div>
             </div>
 
-            <label className="bt-set-l">Nom de l&apos;entreprise</label>
-            <input className="bt-set-i" value={f.name} onChange={(e) => set('name', e.target.value)} placeholder="Ex. K Habitat" />
-
             <div className="bt-set-grid2">
-              <div>
+              <div className="bt-set-field">
                 <label className="bt-set-l">SIRET</label>
                 <input className="bt-set-i" value={f.siret} onChange={(e) => set('siret', e.target.value)} placeholder="123 456 789 00012" />
               </div>
-              <div>
+              <div className="bt-set-field">
                 <label className="bt-set-l">TVA intracom.</label>
                 <input className="bt-set-i" value={f.tva_intra} onChange={(e) => set('tva_intra', e.target.value)} placeholder="FR12 345678901" />
               </div>
             </div>
 
-            <label className="bt-set-l">Adresse</label>
-            <input className="bt-set-i" value={f.address} onChange={(e) => set('address', e.target.value)} placeholder="12 rue des Artisans" />
+            <div className="bt-set-field">
+              <label className="bt-set-l">Adresse</label>
+              <input className="bt-set-i" value={f.address} onChange={(e) => set('address', e.target.value)} placeholder="12 rue des Artisans" />
+            </div>
 
-            <div className="bt-set-grid2">
-              <div>
+            <div className="bt-set-grid-cpv">
+              <div className="bt-set-field">
                 <label className="bt-set-l">Code postal</label>
                 <input className="bt-set-i" value={f.postal_code} onChange={(e) => set('postal_code', e.target.value)} placeholder="13100" />
               </div>
-              <div>
+              <div className="bt-set-field">
                 <label className="bt-set-l">Ville</label>
                 <input className="bt-set-i" value={f.city} onChange={(e) => set('city', e.target.value)} placeholder="Aix-en-Provence" />
               </div>
             </div>
 
             <div className="bt-set-grid2">
-              <div>
+              <div className="bt-set-field">
                 <label className="bt-set-l">Téléphone</label>
                 <input className="bt-set-i" value={f.phone} onChange={(e) => set('phone', e.target.value)} placeholder="06 12 34 56 78" />
               </div>
-              <div>
+              <div className="bt-set-field">
                 <label className="bt-set-l">Email</label>
                 <input className="bt-set-i" type="email" value={f.email} onChange={(e) => set('email', e.target.value)} placeholder="contact@entreprise.fr" />
               </div>
             </div>
 
-            <p className="bt-set-note">Tous les champs sont facultatifs — remplissez ce que vous voulez, quand vous voulez.</p>
             {err && <div className="bt-set-err">{err}</div>}
-            <button type="button" className="bt-set-save" onClick={save} disabled={saving || uploading}>
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Enregistrer
-            </button>
+            <div className="bt-set-foot">
+              <p className="bt-set-note">Tous les champs sont facultatifs.</p>
+              <button type="button" className="bt-set-save" onClick={save} disabled={saving || uploading}>
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Enregistrer
+              </button>
+            </div>
           </div>
         )}
       </DialogContent>

@@ -234,12 +234,12 @@ const ABSENCE_VISUAL: Record<string, { icon: string; bg: string; fg: string }> =
 // Scoped noir/jaune styling for the planning. Logic-free — appearance only.
 const PL_CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
-.bt-pl{font-family:'Archivo',sans-serif;color:#15120F}
+.bt-pl{font-family:'Archivo',sans-serif;color:#15120F;flex:1 0 auto;display:flex;flex-direction:column}
 .bt-pl *{box-sizing:border-box}
 .bt-pl .mono{font-family:'JetBrains Mono',monospace}
 /* ===== BARRE UNIQUE pleine largeur (sticky) — pas de cadre ===== */
 .bt-pl-bar{position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:#F2EDE3;border-bottom:2px solid #15120F;padding:8px 16px;border-radius:16px 16px 0 0}
-.bt-pl-gridwrap{overflow-x:auto;background:#F2EDE3;border-radius:0 0 16px 16px}
+.bt-pl-gridwrap{overflow-x:auto;background:#F2EDE3;border-radius:0 0 16px 16px;flex:1 0 auto}
 .bt-pl-bar-left{flex:1 1 0;min-width:0;display:flex;align-items:center;gap:11px}
 .bt-pl-brand{display:inline-flex;align-items:center;gap:8px;flex:none}
 .bt-pl-brand-mark{width:30px;height:30px;background:#15120F;border-radius:7px;display:flex;align-items:center;justify-content:center;flex:none}
@@ -321,13 +321,11 @@ const PL_CSS = `
 .bt-pl-acct-item.danger{color:#C0461F}
 
 /* grille desktop */
-.bt-pl-table{width:100%;border-collapse:collapse;min-width:980px;table-layout:fixed}
+.bt-pl-table{width:100%;border-collapse:collapse;min-width:980px;table-layout:fixed;height:100%}
 .bt-pl-th{background:#F2EDE3;padding:13px 10px;text-align:center;border-right:1px solid rgba(21,18,15,.6);border-bottom:2px solid #15120F}
 .bt-pl-th-day{font-family:'JetBrains Mono',monospace;font-size:11px;color:#9a948a;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
 .bt-pl-th-num{font-size:19px;font-weight:900}
-.bt-pl-th.today{background:#FFFDF8;box-shadow:inset 0 3px 0 #15120F}
-.bt-pl-th.today .bt-pl-th-day{color:#15120F}
-.bt-pl-th-auj{display:inline-block;margin-left:6px;background:#15120F;color:#F2EDE3;font-family:'JetBrains Mono',monospace;font-size:8.5px;font-weight:700;letter-spacing:.04em;padding:2px 5px;border-radius:5px;vertical-align:middle;text-transform:none}
+.bt-pl-th.today{background:#FBF6EA}
 .bt-pl-th-name{position:sticky;left:0;z-index:6;background:#F2EDE3;text-align:left;font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#9a948a;font-weight:700;padding:13px 13px;width:200px;border-right:2px solid #15120F;border-bottom:2px solid #15120F}
 .bt-pl-namecell{position:sticky;left:0;z-index:5;background:#fff;border-right:2px solid #15120F;border-bottom:1px solid rgba(21,18,15,.6);padding:0;vertical-align:top}
 .bt-pl-namebtn{display:flex;align-items:center;gap:10px;width:100%;height:100%;padding:12px 13px;background:transparent;border:none;cursor:pointer;text-align:left;font-family:inherit}
@@ -338,7 +336,9 @@ const PL_CSS = `
 .bt-pl-status-dot{width:7px;height:7px;border-radius:50%;background:#E0A21C}
 .bt-pl-status-txt{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700}
 .bt-pl-cell{border-right:1px solid rgba(21,18,15,.6);border-bottom:1px solid rgba(21,18,15,.6);padding:8px;vertical-align:top}
-.bt-pl-cell-today{background:#FFFDF8}
+.bt-pl-cell-today{background:#FBF6EA}
+.bt-pl-fillrow{height:100%}
+.bt-pl-fillrow td{border-bottom:none}
 .bt-pl-cell-over{background:rgba(255,194,26,.16);outline:2px dashed #FFC21A;outline-offset:-3px}
 .bt-pl-cellinner{position:relative;height:100%;min-height:88px;display:flex;flex-direction:column}
 .bt-pl-cellfill{flex:1;display:flex;flex-direction:column;gap:7px;cursor:pointer;border-radius:6px}
@@ -1208,7 +1208,7 @@ export default function AdminPlanning() {
             <div className="bt-pl-ddwrap">
               <div className="bt-pl-seg">
                 <button className="bt-pl-segbtn" onClick={() => setSalariesOpen(true)}><Users className="h-3.5 w-3.5" /> Salariés</button>
-                <button className="bt-pl-segbtn" onClick={() => { setChantierMenuOpen((o) => !o); setClientsQuery(''); }}><Building2 className="h-3.5 w-3.5" /> Clients ▾</button>
+                <button className="bt-pl-segbtn" onClick={() => { setChantierMenuOpen((o) => !o); setClientsQuery(''); }}><Building2 className="h-3.5 w-3.5" /> Clients</button>
               </div>
               {chantierMenuOpen && (
                 <>
@@ -1314,7 +1314,7 @@ export default function AdminPlanning() {
                   const isToday = format(day, 'yyyy-MM-dd') === todayStr;
                   return (
                     <th key={day.toISOString()} className={`bt-pl-th ${isToday ? 'today' : ''}`}>
-                      <div className="bt-pl-th-day">{dayShort(day)}{isToday && <span className="bt-pl-th-auj">Auj.</span>}</div>
+                      <div className="bt-pl-th-day">{dayShort(day)}</div>
                       <div className="bt-pl-th-num">{format(day, 'd')}</div>
                     </th>
                   );
@@ -1408,6 +1408,17 @@ export default function AdminPlanning() {
                         </tr>
                       );
                     })
+                  )}
+                  {/* Ligne de remplissage : prolonge les colonnes jusqu'en bas de l'écran
+                      (pas de fond noir vide sous la grille). Inerte — aucun glisser-déposer. */}
+                  {workers.length > 0 && (
+                    <tr className="bt-pl-fillrow" aria-hidden="true">
+                      <td className="bt-pl-namecell" />
+                      {weekDays.map((day) => {
+                        const isToday = format(day, 'yyyy-MM-dd') === todayStr;
+                        return <td key={day.toISOString()} className={`bt-pl-cell ${isToday ? 'bt-pl-cell-today' : ''}`} />;
+                      })}
+                    </tr>
                   )}
                 </tbody>
             </table>
