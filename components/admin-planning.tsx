@@ -260,7 +260,9 @@ const PL_CSS = `
 .bt-pl-datebox-dot.is-now{background:#1D9E75}
 .bt-pl-datebox-dot.is-away{background:#D85A30}
 .bt-pl-datebox-rg{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:#15120F;white-space:nowrap}
-.bt-pl-seg{display:inline-flex;align-items:center;gap:2px}
+.bt-pl-seg{display:inline-flex;align-items:center;gap:8px}
+/* Petit trait vertical flottant entre Salariés et Clients (n'atteint ni le haut ni le bas). */
+.bt-pl-segdiv{width:1.5px;height:18px;background:#15120F;border-radius:2px;flex:none}
 .bt-pl-segbtn{font-family:inherit;font-weight:700;font-size:13px;border:none;background:transparent;color:#3D382F;padding:7px 11px;border-radius:9px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:background .14s ease,color .14s ease}
 .bt-pl-segbtn:hover{color:#15120F;background:rgba(21,18,15,.06)}
 .bt-pl-out{background:transparent;border:1.5px solid rgba(21,18,15,.3);color:#15120F;border-radius:10px;padding:7px 13px;height:33px;font-size:12.5px;font-weight:800;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;transition:border-color .14s ease,background .14s ease,transform .08s ease}
@@ -329,18 +331,25 @@ const PL_CSS = `
 .bt-pl-th{background:#F2EDE3;padding:13px 10px;text-align:center;border-right:1px solid rgba(21,18,15,.6);border-bottom:2px solid #15120F}
 .bt-pl-th-day{font-family:'JetBrains Mono',monospace;font-size:11px;color:#9a948a;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
 .bt-pl-th-num{font-size:19px;font-weight:900}
-.bt-pl-th.today{background:#FBF6EA}
-.bt-pl-th-name{position:sticky;left:0;z-index:6;background:#F2EDE3;text-align:left;font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#9a948a;font-weight:700;padding:13px 13px;width:200px;border-right:2px solid #15120F;border-bottom:2px solid #15120F}
+.bt-pl-th.today{background:#FFFCF2}
+.bt-pl-th.today .bt-pl-th-day{color:#15120F}
+/* Coin haut-gauche coupé en diagonale : « Salarié » (bas-gauche) étiquette la colonne
+   des noms ; « S-26 » (haut-droite) étiquette la ligne des dates. Trait corner-à-corner
+   via SVG (preserveAspectRatio:none + non-scaling-stroke = épaisseur constante). */
+.bt-pl-th-name{position:sticky;left:0;z-index:6;width:200px;padding:0;border-right:2px solid #15120F;border-bottom:2px solid #15120F;background-color:#F2EDE3;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' preserveAspectRatio='none' viewBox='0 0 100 100'%3E%3Cline x1='0' y1='0' x2='100' y2='100' stroke='%2315120F' stroke-opacity='0.4' stroke-width='1.25' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E");background-size:100% 100%;background-repeat:no-repeat}
+.bt-pl-corner-wk{position:absolute;top:8px;right:11px;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.04em;color:#9a948a;font-weight:700}
+.bt-pl-corner-sal{position:absolute;left:13px;bottom:9px;font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#9a948a;font-weight:700}
 .bt-pl-namecell{position:sticky;left:0;z-index:5;background:#fff;border-right:2px solid #15120F;border-bottom:1px solid rgba(21,18,15,.6);padding:0;vertical-align:top}
-.bt-pl-namebtn{display:flex;align-items:center;gap:10px;width:100%;height:100%;padding:12px 13px;background:transparent;border:none;cursor:pointer;text-align:left;font-family:inherit}
+.bt-pl-namebtn{display:flex;flex-direction:column;justify-content:center;gap:7px;width:100%;height:100%;padding:13px;background:transparent;border:none;cursor:pointer;text-align:left;font-family:inherit}
 .bt-pl-namebtn:hover{background:rgba(21,18,15,.03)}
-.bt-pl-avatar{width:36px;height:36px;border-radius:50%;background:#15120F;color:#FFC21A;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex:none}
-.bt-pl-name{font-size:14.5px;font-weight:800;letter-spacing:-.01em}
-.bt-pl-status{display:flex;align-items:center;gap:5px;margin-top:2px}
+.bt-pl-nametop{display:flex;align-items:center;gap:10px;min-width:0}
+.bt-pl-avatar{width:36px;height:36px;border-radius:50%;background:#15120F;color:#FFC21A;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex:none;overflow:hidden}
+.bt-pl-name{font-size:14.5px;font-weight:800;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.bt-pl-status{display:flex;align-items:center;gap:5px}
 .bt-pl-status-dot{width:7px;height:7px;border-radius:50%;background:#E0A21C}
 .bt-pl-status-txt{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700}
 .bt-pl-cell{border-right:1px solid rgba(21,18,15,.6);border-bottom:1px solid rgba(21,18,15,.6);padding:8px;vertical-align:top}
-.bt-pl-cell-today{background:#FBF6EA}
+.bt-pl-cell-today{background:#FFFCF2}
 /* Lignes vierges de remplissage : même hauteur qu'une ligne salarié vide (105px),
    quadrillage continu, jour J teinté ; « + » discret pour ajouter un salarié. */
 .bt-pl-ghostrow td{height:104px}
@@ -545,6 +554,24 @@ export default function AdminPlanning() {
     window.addEventListener('resize', recompute);
     return () => { ro.disconnect(); window.removeEventListener('resize', recompute); };
   }, [loading, workers.length]);
+
+  // Démo (preview UNIQUEMENT) : ?demo=N affiche N salariés fictifs — AUCUNE écriture en
+  // base (prod intacte). Sert juste à visualiser le planning rempli.
+  const demoCount = useMemo(() => {
+    if (typeof window === 'undefined') return 0;
+    if (!window.location.hostname.startsWith('deploy-preview-')) return 0;
+    const n = parseInt(new URLSearchParams(window.location.search).get('demo') || '0', 10);
+    return Number.isFinite(n) ? Math.max(0, Math.min(n, 30)) : 0;
+  }, []);
+  const demoWorkers = useMemo<User[]>(() => {
+    if (demoCount === 0) return [];
+    const FN = ['Lucas', 'Hugo', 'Léo', 'Nathan', 'Enzo', 'Louis', 'Gabriel', 'Jules', 'Adam', 'Raphaël', 'Arthur', 'Maël', 'Sacha', 'Noah', 'Tom', 'Paul'];
+    const LN = ['Martin', 'Bernard', 'Dubois', 'Thomas', 'Robert', 'Petit', 'Durand', 'Leroy', 'Moreau', 'Simon', 'Laurent', 'Lefebvre', 'Garcia', 'Roux'];
+    return Array.from({ length: demoCount }, (_, i) => ({
+      id: `demo-${i}`, company_id: user?.company_id || '', first_name: FN[i % FN.length],
+      last_name: LN[i % LN.length], role: 'worker' as const, email: '', is_active: true, created_at: '',
+    }));
+  }, [demoCount, user?.company_id]);
 
   const [wFirst, setWFirst] = useState('');
   const [wLast, setWLast] = useState('');
@@ -1186,6 +1213,7 @@ export default function AdminPlanning() {
   // ─── derived ──────────────────────────────────────────────────────────────────
 
   const weekDays = Array.from({ length: 6 }, (_, i) => addDays(currentWeekStart, i));
+  const displayWorkers = demoWorkers.length ? [...workers, ...demoWorkers] : workers;
   const thisWeekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
   const isCurrentWeek = format(currentWeekStart, 'yyyy-MM-dd') === format(thisWeekStart, 'yyyy-MM-dd');
   const dayShort = (d: Date) => format(d, 'EEE', { locale: fr }).replace('.', '');
@@ -1224,6 +1252,7 @@ export default function AdminPlanning() {
           <div className="bt-pl-ddwrap">
             <div className="bt-pl-seg">
               <button className="bt-pl-segbtn" onClick={() => setSalariesOpen(true)}><Users className="h-3.5 w-3.5" /> Salariés</button>
+              <span className="bt-pl-segdiv" aria-hidden="true" />
               <button className="bt-pl-segbtn" onClick={() => { setChantierMenuOpen((o) => !o); setClientsQuery(''); }}><Building2 className="h-3.5 w-3.5" /> Clients</button>
             </div>
             {chantierMenuOpen && (
@@ -1336,7 +1365,10 @@ export default function AdminPlanning() {
           <table className="bt-pl-table">
             <thead ref={theadRef}>
               <tr>
-                <th className="bt-pl-th-name">Salarié</th>
+                <th className="bt-pl-th-name">
+                  <span className="bt-pl-corner-wk">S-{getISOWeek(currentWeekStart)}</span>
+                  <span className="bt-pl-corner-sal">Salarié</span>
+                </th>
                 {weekDays.map(day => {
                   const isToday = format(day, 'yyyy-MM-dd') === todayStr;
                   return (
@@ -1349,10 +1381,10 @@ export default function AdminPlanning() {
               </tr>
             </thead>
                 <tbody ref={realBodyRef}>
-                  {workers.length === 0 ? (
+                  {displayWorkers.length === 0 ? (
                     <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">Aucun salarié — bouton « Salariés »</td></tr>
                   ) : (
-                    workers.map(worker => {
+                    displayWorkers.map(worker => {
                       const absToday = todayAbsence.get(worker.id);
                       const isLate = (missingByWorker.get(worker.id) || []).length > 0;
                       const fullName = `${worker.first_name} ${worker.last_name}`;
@@ -1365,19 +1397,19 @@ export default function AdminPlanning() {
                               className="bt-pl-namebtn"
                               title="Cliquer pour le statut / la disponibilité"
                             >
-                              <span className="bt-pl-avatar" style={absToday ? { background: '#c4bdae', color: '#15120F' } : undefined}>
-                                {(worker.first_name?.[0] || '')}{(worker.last_name?.[0] || '')}
+                              <span className="bt-pl-nametop">
+                                <span className="bt-pl-avatar" style={absToday ? { background: '#c4bdae', color: '#15120F' } : undefined}>
+                                  {(worker.first_name?.[0] || '')}{(worker.last_name?.[0] || '')}
+                                </span>
+                                <span className="bt-pl-name">{fullName}</span>
                               </span>
-                              <span style={{ flex: 1, minWidth: 0 }}>
-                                <span className="bt-pl-name" style={{ display: 'block' }}>{fullName}</span>
-                                {absToday ? (
-                                  <span className="bt-pl-status"><span className="bt-pl-status-txt" style={{ color: '#6E6A63' }}>{ABSENCE_LABELS[absToday] || absToday}</span></span>
-                                ) : isLate ? (
-                                  <span className="bt-pl-status"><span className="bt-pl-status-dot" /><span className="bt-pl-status-txt" style={{ color: '#9a7c14' }}>{(missingByWorker.get(worker.id) || []).length} jour{(missingByWorker.get(worker.id) || []).length > 1 ? 's' : ''} en attente</span></span>
-                                ) : (
-                                  <span className="bt-pl-status"><span className="bt-pl-status-txt" style={{ color: '#9a948a' }}>À jour</span></span>
-                                )}
-                              </span>
+                              {absToday ? (
+                                <span className="bt-pl-status"><span className="bt-pl-status-txt" style={{ color: '#6E6A63' }}>{ABSENCE_LABELS[absToday] || absToday}</span></span>
+                              ) : isLate ? (
+                                <span className="bt-pl-status"><span className="bt-pl-status-dot" /><span className="bt-pl-status-txt" style={{ color: '#9a7c14' }}>{(missingByWorker.get(worker.id) || []).length} jour{(missingByWorker.get(worker.id) || []).length > 1 ? 's' : ''} en attente</span></span>
+                              ) : (
+                                <span className="bt-pl-status"><span className="bt-pl-status-txt" style={{ color: '#9a948a' }}>À jour</span></span>
+                              )}
                             </button>
                           </td>
 
@@ -1444,7 +1476,7 @@ export default function AdminPlanning() {
                     {Array.from({ length: ghostCount }).map((_, i) => (
                       <tr key={`ghost-${i}`} className="bt-pl-ghostrow">
                         <td className="bt-pl-namecell">
-                          <button className="bt-pl-ghost-add" onClick={() => setWorkerOpen(true)} title="Ajouter un salarié">
+                          <button className="bt-pl-ghost-add" onClick={() => setSalariesOpen(true)} title="Ajouter un salarié">
                             <UserPlus className="h-4 w-4" />
                           </button>
                         </td>
