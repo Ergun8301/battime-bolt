@@ -30,6 +30,7 @@ import { toast } from 'sonner';
 import { computeMissingDays } from '@/lib/work-status';
 import { exportEntriesToExcel, exportEntriesToPDF } from '@/lib/export-utils';
 import WorkerDetailDialog from '@/components/worker-detail';
+import ChantierDocuments from '@/components/chantier-documents';
 import CompanySettings from '@/components/company-settings';
 
 // ─── helpers / constants ──────────────────────────────────────────────────────
@@ -503,6 +504,7 @@ export default function AdminPlanning() {
 
   // separate client fiche (permanent data)
   const [clientFiche, setClientFiche] = useState<Worksite | null>(null);
+  const [docsOpen, setDocsOpen] = useState(false); // panneau Documents du chantier (fiche)
   const [wsName, setWsName] = useState('');
   const [wsProduct, setWsProduct] = useState('');
   const [wsPhone, setWsPhone] = useState('');
@@ -1883,6 +1885,9 @@ export default function AdminPlanning() {
                 <Button onClick={saveClientFiche} disabled={savingWs}>
                   {savingWs && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer
                 </Button>
+                <Button variant="outline" onClick={() => setDocsOpen(true)}>
+                  <FileText className="h-4 w-4 mr-1" /> Documents
+                </Button>
                 <Button variant="outline" onClick={archiveClientFiche} disabled={wsBusy}>
                   <Archive className="h-4 w-4 mr-1" /> Archiver
                 </Button>
@@ -1894,6 +1899,8 @@ export default function AdminPlanning() {
           )}
         </DialogContent>
       </Dialog>
+
+      <ChantierDocuments worksiteId={clientFiche?.id || null} worksiteName={clientFiche?.client_name} open={docsOpen} onOpenChange={setDocsOpen} />
 
       {/* Clients list — open any client fiche */}
       {/* Panneau « Clients » fusionné dans le menu déroulant de la barre
