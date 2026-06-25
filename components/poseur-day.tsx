@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Calendar } from '@/components/ui/calendar';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Loader2, Copy, AlertTriangle } from 'lucide-react';
+import { Loader2, Copy, AlertTriangle, FolderOpen } from 'lucide-react';
 import { format, subDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -17,6 +17,7 @@ import {
   generateLocalId, PendingEntry,
 } from '@/lib/offline-store';
 import { TimeCylinder, snapToGrid } from '@/components/time-cylinder';
+import ChantierDocuments from '@/components/chantier-documents';
 
 interface TimeEntryWithWorksite extends TimeEntry {
   worksite: Worksite;
@@ -106,8 +107,10 @@ const DAY_CSS = `
 .bt-iv-times{display:flex;align-items:center;gap:14px;border-top:1px solid rgba(21,18,15,.08);padding-top:10px;font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700;color:#15120F}
 .bt-iv-times .dot{width:4px;height:4px;background:#c4bdae;border-radius:50%}
 .bt-iv-note{font-size:13px;color:#6E6A63;margin-top:8px}
-.bt-iv-acts{display:flex;gap:8px;margin-top:12px}
-.bt-iv-mod{flex:1;border:1.5px solid #15120F;background:transparent;border-radius:10px;padding:10px;font-weight:800;font-size:13.5px;color:#15120F;cursor:pointer;font-family:inherit}
+.bt-iv-acts{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.bt-iv-mod{flex:1;min-width:110px;border:1.5px solid #15120F;background:transparent;border-radius:10px;padding:10px;font-weight:800;font-size:13.5px;color:#15120F;cursor:pointer;font-family:inherit}
+.bt-iv-doc{flex:none;border:1.5px solid rgba(21,18,15,.18);background:#fff;border-radius:10px;padding:10px 12px;font-weight:800;font-size:13.5px;color:#15120F;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.bt-iv-doc:hover{border-color:#15120F;background:#FBF6EA}
 .bt-iv-del{flex:none;border:none;background:#15120F;border-radius:10px;padding:10px 13px;font-weight:800;font-size:13.5px;color:#F2EDE3;cursor:pointer;font-family:inherit}
 
 .bt-iv-cancel{background:transparent;border:1px solid rgba(21,18,15,.12);border-radius:16px;padding:13px 15px;margin-bottom:11px;opacity:.55;display:flex;align-items:center;justify-content:space-between;gap:10px}
@@ -238,6 +241,8 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
   const [confirmCorrectOpen, setConfirmCorrectOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
   const [lateOpen, setLateOpen] = useState(false);
+  // Panneau Documents du chantier (photos/fichiers, consultable côté secrétaire aussi).
+  const [docsWs, setDocsWs] = useState<{ id: string; name: string } | null>(null);
 
   const date = dateProp || format(new Date(), 'yyyy-MM-dd');
   const yesterday = format(subDays(new Date(`${date}T00:00:00`), 1), 'yyyy-MM-dd');
@@ -874,15 +879,15 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
                   <span>{fmtHM(entry.total_minutes)}</span>
                 </div>
                 {entry.observation && <div className="bt-iv-note">{entry.observation}</div>}
-                {isDraft && (
+                {(isDraft || tappable || entry.worksite_id) && (
                   <div className="bt-iv-acts">
-                    <button type="button" className="bt-iv-mod" onClick={onTap}>Modifier</button>
-                    <button type="button" className="bt-iv-del" onClick={() => handleRetire(entry)}>Retirer</button>
-                  </div>
-                )}
-                {!isDraft && tappable && (
-                  <div className="bt-iv-acts">
-                    <button type="button" className="bt-iv-mod" onClick={onTap}>Modifier</button>
+                    {(isDraft || tappable) && <button type="button" className="bt-iv-mod" onClick={onTap}>Modifier</button>}
+                    {entry.worksite_id && (
+                      <button type="button" className="bt-iv-doc" onClick={() => setDocsWs({ id: entry.worksite_id as string, name: entry.worksite?.client_name || OTHER_NAME })}>
+                        <FolderOpen className="h-4 w-4" /> Documents
+                      </button>
+                    )}
+                    {isDraft && <button type="button" className="bt-iv-del" onClick={() => handleRetire(entry)}>Retirer</button>}
                   </div>
                 )}
               </div>
@@ -1169,6 +1174,8 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
           </div>
         </DialogContent>
       </Dialog>
+
+      <ChantierDocuments worksiteId={docsWs?.id || null} worksiteName={docsWs?.name} open={!!docsWs} onOpenChange={(o) => { if (!o) setDocsWs(null); }} />
     </div>
   );
 }

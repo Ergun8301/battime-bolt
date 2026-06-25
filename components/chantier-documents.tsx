@@ -21,17 +21,15 @@ interface DocRow {
 interface Props { worksiteId: string | null; worksiteName?: string; open: boolean; onOpenChange: (o: boolean) => void; }
 
 const DOC_CSS = `
-.bt-doc-add{display:flex;gap:8px;align-items:center;margin-top:4px}
-.bt-doc-label{flex:1;min-width:0;font-family:'Archivo',sans-serif;font-size:14px;font-weight:500;padding:9px 11px;border:1.5px solid rgba(21,18,15,.18);border-radius:10px;background:#fff;outline:none;color:#15120F}
-.bt-doc-label::placeholder{color:#b3aca0}
-.bt-doc-label:focus{border-color:#15120F}
-.bt-doc-addbtn{flex:none;display:inline-flex;align-items:center;gap:6px;border:1.5px solid #15120F;background:#fff;border-radius:10px;padding:9px 12px;font-weight:800;font-size:13px;color:#15120F;cursor:pointer;font-family:inherit;white-space:nowrap}
-.bt-doc-addbtn:disabled{opacity:.6}
-.bt-doc-hint{font-size:11.5px;color:#9a948a;font-weight:600;margin:7px 0 2px}
+.bt-doc-addbtn{width:100%;display:inline-flex;align-items:center;justify-content:center;gap:8px;background:#FFC21A;color:#15120F;border:none;border-radius:12px;padding:12px;font-weight:900;font-size:15px;cursor:pointer;font-family:inherit;box-shadow:0 4px 0 #C99300;transition:transform .12s ease,box-shadow .12s ease;margin-top:2px}
+.bt-doc-addbtn:hover{transform:translateY(-1px);box-shadow:0 5px 0 #C99300}
+.bt-doc-addbtn:active{transform:translateY(2px);box-shadow:0 1px 0 #C99300}
+.bt-doc-addbtn:disabled{opacity:.65;transform:none;box-shadow:0 4px 0 #C99300}
+.bt-doc-hint{font-size:11.5px;color:#9a948a;font-weight:600;margin:8px 2px 2px}
 .bt-doc-empty{padding:22px 10px;text-align:center;color:#9a948a;font-weight:600;font-size:13px}
 .bt-doc-list{display:flex;flex-direction:column;gap:8px;margin-top:8px}
 .bt-doc-row{display:flex;align-items:center;gap:11px;padding:8px;border:1px solid rgba(21,18,15,.1);border-radius:12px;background:#fff}
-.bt-doc-thumb{width:42px;height:42px;border-radius:9px;flex:none;background:#F2EDE3;display:flex;align-items:center;justify-content:center;overflow:hidden;color:#6E6A63}
+.bt-doc-thumb{width:44px;height:44px;border-radius:10px;flex:none;background:#FBF6EA;border:1px solid rgba(21,18,15,.08);display:flex;align-items:center;justify-content:center;overflow:hidden;color:#15120F}
 .bt-doc-thumb img{width:100%;height:100%;object-fit:cover;display:block}
 .bt-doc-meta{flex:1;min-width:0}
 .bt-doc-name{display:block;font-size:14px;font-weight:800;color:#15120F;text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -54,7 +52,6 @@ export default function ChantierDocuments({ worksiteId, worksiteName, open, onOp
   const [docs, setDocs] = useState<DocRow[]>([]);
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [uploading, setUploading] = useState(false);
-  const [label, setLabel] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
 
   const fetchDocs = async () => {
@@ -93,10 +90,9 @@ export default function ChantierDocuments({ worksiteId, worksiteName, open, onOp
       if (upErr) throw upErr;
       const { error: insErr } = await supabase.from('documents').insert({
         company_id: user.company_id, worksite_id: worksiteId, uploaded_by: user.id,
-        label: label.trim() || null, file_path: path, file_name: file.name, mime_type: file.type || null, size_bytes: file.size,
+        label: null, file_path: path, file_name: file.name, mime_type: file.type || null, size_bytes: file.size,
       });
       if (insErr) throw insErr;
-      setLabel('');
       toast.success('Document ajouté');
       await fetchDocs();
     } catch {
@@ -129,14 +125,11 @@ export default function ChantierDocuments({ worksiteId, worksiteName, open, onOp
         </DialogHeader>
         <style dangerouslySetInnerHTML={{ __html: DOC_CSS }} />
 
-        <div className="bt-doc-add">
-          <input className="bt-doc-label" placeholder="Nom du document (ex. Devis, Photo réserve…)" value={label} onChange={(e) => setLabel(e.target.value)} />
-          <input ref={fileRef} type="file" hidden onChange={(e) => onPick(e.target.files?.[0])} />
-          <button type="button" className="bt-doc-addbtn" onClick={() => fileRef.current?.click()} disabled={uploading}>
-            {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} Ajouter
-          </button>
-        </div>
-        <div className="bt-doc-hint">Photos, PDF, fichiers… 15 Mo max. Le libellé est facultatif.</div>
+        <input ref={fileRef} type="file" hidden onChange={(e) => onPick(e.target.files?.[0])} />
+        <button type="button" className="bt-doc-addbtn" onClick={() => fileRef.current?.click()} disabled={uploading}>
+          {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} Ajouter un document
+        </button>
+        <div className="bt-doc-hint">Photos, PDF, fichiers… 15 Mo max.</div>
 
         {loading ? (
           <div className="bt-doc-empty">Chargement…</div>
