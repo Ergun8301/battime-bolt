@@ -111,6 +111,7 @@ const DAY_CSS = `
 .bt-iv-mod{flex:1;min-width:110px;border:1.5px solid #15120F;background:transparent;border-radius:10px;padding:10px;font-weight:800;font-size:13.5px;color:#15120F;cursor:pointer;font-family:inherit}
 .bt-iv-doc{flex:none;border:1.5px solid rgba(21,18,15,.18);background:#fff;border-radius:10px;padding:10px 12px;font-weight:800;font-size:13.5px;color:#15120F;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
 .bt-iv-doc:hover{border-color:#15120F;background:#FBF6EA}
+.bt-plan-doc{width:100%;justify-content:center;margin-top:8px}
 .bt-iv-del{flex:none;border:none;background:#15120F;border-radius:10px;padding:10px 13px;font-weight:800;font-size:13.5px;color:#F2EDE3;cursor:pointer;font-family:inherit}
 
 .bt-iv-cancel{background:transparent;border:1px solid rgba(21,18,15,.12);border-radius:16px;padding:13px 15px;margin-bottom:11px;opacity:.55;display:flex;align-items:center;justify-content:space-between;gap:10px}
@@ -852,6 +853,11 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
                 <button type="button" className="bt-plan-btn" onClick={onTap}>
                   <span style={{ fontSize: 18 }}>+</span> Déclarer ce chantier
                 </button>
+                {p.worksite?.id && (
+                  <button type="button" className="bt-iv-doc bt-plan-doc" onClick={() => setDocsWs({ id: p.worksite!.id, name: p.worksite?.client_name || OTHER_NAME })}>
+                    <FolderOpen className="h-4 w-4" /> Documents
+                  </button>
+                )}
               </div>
             );
           }

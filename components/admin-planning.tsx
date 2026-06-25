@@ -504,7 +504,7 @@ export default function AdminPlanning() {
 
   // separate client fiche (permanent data)
   const [clientFiche, setClientFiche] = useState<Worksite | null>(null);
-  const [docsOpen, setDocsOpen] = useState(false); // panneau Documents du chantier (fiche)
+  const [docsWorksite, setDocsWorksite] = useState<Worksite | null>(null); // panneau Documents d'un chantier (fiche OU intervention)
   const [wsName, setWsName] = useState('');
   const [wsProduct, setWsProduct] = useState('');
   const [wsPhone, setWsPhone] = useState('');
@@ -1661,7 +1661,9 @@ export default function AdminPlanning() {
             <Select onValueChange={(v) => attributeClient(v)} disabled={attrBusy}>
               <SelectTrigger><SelectValue placeholder="Choisir un client existant…" /></SelectTrigger>
               <SelectContent className="bt-skin">
-                {worksites.filter((w) => w.client_name !== 'Autre' && w.id !== attributeTarget?.worksiteId).map((ws) => (
+                {worksites.filter((w) => w.id !== attributeTarget?.worksiteId)
+                  .slice().sort((a, b) => (a.client_name === 'Autre' ? -1 : b.client_name === 'Autre' ? 1 : 0))
+                  .map((ws) => (
                   <SelectItem key={ws.id} value={ws.id}>{ws.client_name}{ws.city ? ` — ${ws.city}` : ''}</SelectItem>
                 ))}
               </SelectContent>
@@ -1818,9 +1820,14 @@ export default function AdminPlanning() {
                   )}
                 </div>
                 {editing.worksite && (
-                  <Button variant="ghost" size="sm" className="shrink-0 text-muted-foreground" onClick={() => openClientFiche(editing.worksite)}>
-                    <Pencil className="h-3.5 w-3.5 mr-1" /> Fiche client
-                  </Button>
+                  <div className="flex flex-col items-stretch gap-1 shrink-0">
+                    <Button variant="ghost" size="sm" className="text-muted-foreground justify-start h-7" onClick={() => openClientFiche(editing.worksite)}>
+                      <Pencil className="h-3.5 w-3.5 mr-1" /> Fiche
+                    </Button>
+                    <Button variant="ghost" size="sm" className="text-muted-foreground justify-start h-7" onClick={() => setDocsWorksite(editing.worksite || null)}>
+                      <FileText className="h-3.5 w-3.5 mr-1" /> Documents
+                    </Button>
+                  </div>
                 )}
               </div>
 
@@ -1885,7 +1892,7 @@ export default function AdminPlanning() {
                 <Button onClick={saveClientFiche} disabled={savingWs}>
                   {savingWs && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer
                 </Button>
-                <Button variant="outline" onClick={() => setDocsOpen(true)}>
+                <Button variant="outline" onClick={() => setDocsWorksite(clientFiche)}>
                   <FileText className="h-4 w-4 mr-1" /> Documents
                 </Button>
                 <Button variant="outline" onClick={archiveClientFiche} disabled={wsBusy}>
@@ -1900,7 +1907,7 @@ export default function AdminPlanning() {
         </DialogContent>
       </Dialog>
 
-      <ChantierDocuments worksiteId={clientFiche?.id || null} worksiteName={clientFiche?.client_name} open={docsOpen} onOpenChange={setDocsOpen} />
+      <ChantierDocuments worksiteId={docsWorksite?.id || null} worksiteName={docsWorksite?.client_name} open={!!docsWorksite} onOpenChange={(o) => { if (!o) setDocsWorksite(null); }} />
 
       {/* Clients list — open any client fiche */}
       {/* Panneau « Clients » fusionné dans le menu déroulant de la barre

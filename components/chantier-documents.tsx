@@ -32,7 +32,7 @@ const DOC_CSS = `
 .bt-doc-thumb{width:44px;height:44px;border-radius:10px;flex:none;background:#FBF6EA;border:1px solid rgba(21,18,15,.08);display:flex;align-items:center;justify-content:center;overflow:hidden;color:#15120F}
 .bt-doc-thumb img{width:100%;height:100%;object-fit:cover;display:block}
 .bt-doc-meta{flex:1;min-width:0}
-.bt-doc-name{display:block;font-size:14px;font-weight:800;color:#15120F;text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bt-doc-name{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:14px;font-weight:800;color:#15120F;text-decoration:none;overflow-wrap:anywhere;line-height:1.25}
 .bt-doc-name:hover{text-decoration:underline}
 .bt-doc-sub{font-size:11.5px;color:#9a948a;font-weight:600;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bt-doc-act{flex:none;width:34px;height:34px;border-radius:9px;border:none;background:transparent;color:#6E6A63;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;text-decoration:none}
@@ -117,7 +117,7 @@ export default function ChantierDocuments({ worksiteId, worksiteName, open, onOp
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bt-skin max-w-lg max-h-[88vh] overflow-y-auto">
+      <DialogContent className="bt-skin max-w-lg max-h-[88vh] overflow-y-auto overflow-x-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FolderOpen className="h-5 w-5" /> Documents{worksiteName ? ` — ${worksiteName}` : ''}
