@@ -321,7 +321,9 @@ const PL_CSS = `
 .bt-pl-acct-item.danger{color:#C0461F}
 
 /* grille desktop */
-.bt-pl-table{width:100%;border-collapse:collapse;min-width:980px;table-layout:fixed;height:100%}
+.bt-pl-table{width:100%;border-collapse:collapse;min-width:980px;table-layout:fixed}
+/* La grille s'arrête net : bordure de fin franche (2px noir, comme l'en-tête) sous le dernier salarié. */
+.bt-pl-table tbody tr:last-child td{border-bottom:2px solid #15120F}
 .bt-pl-th{background:#F2EDE3;padding:13px 10px;text-align:center;border-right:1px solid rgba(21,18,15,.6);border-bottom:2px solid #15120F}
 .bt-pl-th-day{font-family:'JetBrains Mono',monospace;font-size:11px;color:#9a948a;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
 .bt-pl-th-num{font-size:19px;font-weight:900}
@@ -337,8 +339,6 @@ const PL_CSS = `
 .bt-pl-status-txt{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700}
 .bt-pl-cell{border-right:1px solid rgba(21,18,15,.6);border-bottom:1px solid rgba(21,18,15,.6);padding:8px;vertical-align:top}
 .bt-pl-cell-today{background:#FBF6EA}
-.bt-pl-fillrow{height:100%}
-.bt-pl-fillrow td{border-bottom:none}
 .bt-pl-cell-over{background:rgba(255,194,26,.16);outline:2px dashed #FFC21A;outline-offset:-3px}
 .bt-pl-cellinner{position:relative;height:100%;min-height:88px;display:flex;flex-direction:column}
 .bt-pl-cellfill{flex:1;display:flex;flex-direction:column;gap:7px;cursor:pointer;border-radius:6px}
@@ -1408,17 +1408,6 @@ export default function AdminPlanning() {
                         </tr>
                       );
                     })
-                  )}
-                  {/* Ligne de remplissage : prolonge les colonnes jusqu'en bas de l'écran
-                      (pas de fond noir vide sous la grille). Inerte — aucun glisser-déposer. */}
-                  {workers.length > 0 && (
-                    <tr className="bt-pl-fillrow" aria-hidden="true">
-                      <td className="bt-pl-namecell" />
-                      {weekDays.map((day) => {
-                        const isToday = format(day, 'yyyy-MM-dd') === todayStr;
-                        return <td key={day.toISOString()} className={`bt-pl-cell ${isToday ? 'bt-pl-cell-today' : ''}`} />;
-                      })}
-                    </tr>
                   )}
                 </tbody>
             </table>
