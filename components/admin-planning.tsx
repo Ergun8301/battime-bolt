@@ -137,10 +137,11 @@ function BubbleContent({ p, palette, real }: { p: PlanningWithWorksite; palette:
       <span className="bt-pl-bub-bar" style={{ background: palette.bar }} />
       <div className="bt-pl-bub-name">{p.worksite?.client_name || 'Chantier'}</div>
       {sub && <div className="bt-pl-bub-sub" style={{ color: '#6E6A63' }}>{sub}</div>}
-      <div className="bt-pl-bub-foot">
-        <span className="bt-pl-tag" style={{ background: palette.tagBg, color: palette.tagText }}>Prévu</span>
-        {hour && <span className="bt-pl-hour">{hour}</span>}
-      </div>
+      {hour && (
+        <div className="bt-pl-bub-foot">
+          <span className="bt-pl-hour">{hour}</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -1460,7 +1461,6 @@ export default function AdminPlanning() {
                                         <span className="bt-pl-bub-bar" style={{ background: '#B5472E' }} />
                                         <span className="bt-pl-extra-top">
                                           <span className="bt-pl-extra-name">{x.name}</span>
-                                          <span className="bt-pl-tag" style={{ background: '#F4D9D1', color: '#a8412a' }}>Hors planning</span>
                                         </span>
                                         <span className="bt-pl-extra-by"><UserIcon className="h-2.5 w-2.5 shrink-0" /> {formatMinutes(x.minutes)} · ajouté par le salarié</span>
                                       </button>
@@ -1548,7 +1548,7 @@ export default function AdminPlanning() {
                         {extra.map((x, i) => (
                           <div key={`mx${i}`} className="bt-pl-extra">
                             <span className="bt-pl-bub-bar" style={{ background: '#B5472E' }} />
-                            <span className="bt-pl-extra-top"><span className="bt-pl-extra-name">{x.name}</span><span className="bt-pl-tag" style={{ background: '#F4D9D1', color: '#a8412a' }}>Hors planning</span></span>
+                            <span className="bt-pl-extra-top"><span className="bt-pl-extra-name">{x.name}</span></span>
                             <span className="bt-pl-extra-by"><UserIcon className="h-2.5 w-2.5 shrink-0" /> {formatMinutes(x.minutes)} · ajouté par le salarié</span>
                           </div>
                         ))}
@@ -1820,12 +1820,12 @@ export default function AdminPlanning() {
                   )}
                 </div>
                 {editing.worksite && (
-                  <div className="flex flex-col items-stretch gap-1 shrink-0">
-                    <Button variant="ghost" size="sm" className="text-muted-foreground justify-start h-7" onClick={() => openClientFiche(editing.worksite)}>
-                      <Pencil className="h-3.5 w-3.5 mr-1" /> Fiche
+                  <div className="flex flex-col items-stretch gap-1.5 shrink-0">
+                    <Button variant="outline" size="sm" className="justify-start h-8" onClick={() => openClientFiche(editing.worksite)}>
+                      <Pencil className="h-3.5 w-3.5 mr-1.5" /> Fiche
                     </Button>
-                    <Button variant="ghost" size="sm" className="text-muted-foreground justify-start h-7" onClick={() => setDocsWorksite(editing.worksite || null)}>
-                      <FileText className="h-3.5 w-3.5 mr-1" /> Documents
+                    <Button variant="outline" size="sm" className="justify-start h-8" onClick={() => setDocsWorksite(editing.worksite || null)}>
+                      <FileText className="h-3.5 w-3.5 mr-1.5" /> Documents
                     </Button>
                   </div>
                 )}
