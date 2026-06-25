@@ -263,7 +263,7 @@ const PL_CSS = `
 /* dropdown « + Chantier » — lignes attrapables */
 .bt-pl-ddwrap{position:relative}
 .bt-pl-ddbackdrop{position:fixed;inset:0;z-index:35}
-.bt-pl-dd{position:absolute;top:42px;right:0;z-index:40;width:266px;background:#fff;border:1px solid rgba(21,18,15,.14);border-radius:14px;box-shadow:0 24px 50px -18px rgba(21,18,15,.45);overflow:hidden}
+.bt-pl-dd{position:absolute;top:42px;right:0;z-index:40;width:300px;background:#fff;border:1px solid rgba(21,18,15,.14);border-radius:14px;box-shadow:0 24px 50px -18px rgba(21,18,15,.45);overflow:hidden}
 .bt-pl-dd-h{padding:9px 13px 7px;border-bottom:1px solid rgba(21,18,15,.08);font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:#9a948a;font-weight:700}
 .bt-pl-ddrow{display:flex;align-items:center;gap:10px;padding:10px 13px;cursor:grab;background:#fff;border:none;width:100%;text-align:left;font-family:inherit;transition:background .12s ease}
 .bt-pl-ddrow:hover{background:#FBF6EA}
@@ -275,6 +275,17 @@ const PL_CSS = `
 .bt-pl-ddsub{display:block;font-size:11px;color:#9a948a;font-weight:600}
 .bt-pl-ddcreate{display:flex;align-items:center;gap:9px;padding:11px 13px;border-top:1px solid rgba(21,18,15,.1);background:#FBF6EA;cursor:pointer;border:none;width:100%;text-align:left;font-family:inherit;color:#15120F;font-size:13.5px;font-weight:800}
 .bt-pl-ddcreate-ico{width:22px;height:22px;background:#FFC21A;color:#15120F;border-radius:6px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:14px;flex:none}
+.bt-pl-dd-search{padding:9px 10px;border-bottom:1px solid rgba(21,18,15,.08)}
+.bt-pl-dd-input{width:100%;font-family:inherit;font-size:13.5px;font-weight:600;padding:8px 11px;border:1.5px solid rgba(21,18,15,.16);border-radius:9px;background:#F9F5EC;color:#15120F;outline:none}
+.bt-pl-dd-input::placeholder{color:#a89f8d;font-weight:500}
+.bt-pl-dd-input:focus{border-color:#15120F}
+.bt-pl-dd-list{max-height:300px;overflow-y:auto}
+.bt-pl-dd-empty{padding:18px 13px;text-align:center;color:#9a948a;font-size:12.5px;font-weight:600}
+.bt-pl-clientrow{display:flex;align-items:center;gap:2px;border-bottom:1px solid rgba(21,18,15,.05)}
+.bt-pl-clientrow:last-child{border-bottom:none}
+.bt-pl-clientrow .bt-pl-ddrow{flex:1;min-width:0;width:auto}
+.bt-pl-clientedit{flex:none;border:none;background:transparent;color:#9a948a;cursor:pointer;padding:8px 11px;display:flex;align-items:center;border-radius:8px}
+.bt-pl-clientedit:hover{background:#F1E8D6;color:#15120F}
 .bt-pl-dragchip{display:inline-flex;align-items:center;gap:9px;background:#fff;border:1px solid rgba(21,18,15,.16);border-radius:11px;padding:8px 13px;box-shadow:0 16px 30px -12px rgba(21,18,15,.55);font-weight:800;font-size:13.5px;color:#15120F}
 
 /* compte entreprise (remplace le bouton Déconnexion) */
@@ -423,7 +434,8 @@ export default function AdminPlanning() {
   const [ficheWorker, setFicheWorker] = useState<User | null>(null);
   const [ficheMode, setFicheMode] = useState<'hours' | 'manage'>('hours');
   const [salariesOpen, setSalariesOpen] = useState(false);
-  const [clientsListOpen, setClientsListOpen] = useState(false);
+  const [clientsQuery, setClientsQuery] = useState('');
+  const [salariesQuery, setSalariesQuery] = useState('');
 
   // team export
   const [exportOpen, setExportOpen] = useState(false);
@@ -1129,6 +1141,11 @@ export default function AdminPlanning() {
 
   const workerEmails = useMemo(() => new Set(workers.map(w => w.email.toLowerCase())), [workers]);
   const pendingInvites = invitations.filter(inv => !workerEmails.has(inv.email.toLowerCase()));
+  // Recherche en direct (panneaux Clients et Salariés).
+  const cq = clientsQuery.trim().toLowerCase();
+  const filteredClients = cq ? worksites.filter((w) => w.client_name.toLowerCase().includes(cq)) : worksites;
+  const sq = salariesQuery.trim().toLowerCase();
+  const filteredWorkers = sq ? workers.filter((w) => `${w.first_name} ${w.last_name}`.toLowerCase().includes(sq)) : workers;
 
   const editRealAgg = editing ? realForPlanning(editing) : undefined;
 
@@ -1153,22 +1170,31 @@ export default function AdminPlanning() {
             <div className="bt-pl-week2"><span className="bt-pl-wk">S.{getISOWeek(currentWeekStart)}</span> {format(currentWeekStart, 'd', { locale: fr })}–{format(addDays(currentWeekStart, 5), 'd MMM', { locale: fr })}</div>
           </div>
           <div className="bt-pl-bar-right">
-            <div className="bt-pl-seg">
-              <button className="bt-pl-segbtn" onClick={() => setSalariesOpen(true)}><Users className="h-3.5 w-3.5" /> Salariés</button>
-              <button className="bt-pl-segbtn" onClick={() => setClientsListOpen(true)}><Building2 className="h-3.5 w-3.5" /> Clients</button>
-            </div>
             <div className="bt-pl-ddwrap">
-              <button className="bt-pl-out" onClick={() => setChantierMenuOpen((o) => !o)}>＋ Chantier ▾</button>
+              <div className="bt-pl-seg">
+                <button className="bt-pl-segbtn" onClick={() => setSalariesOpen(true)}><Users className="h-3.5 w-3.5" /> Salariés</button>
+                <button className="bt-pl-segbtn" onClick={() => { setChantierMenuOpen((o) => !o); setClientsQuery(''); }}><Building2 className="h-3.5 w-3.5" /> Clients ▾</button>
+              </div>
               {chantierMenuOpen && (
                 <>
                   <div className="bt-pl-ddbackdrop" onClick={() => setChantierMenuOpen(false)} />
                   <div className="bt-pl-dd">
-                    <div className="bt-pl-dd-h">Glissez sur le planning ↘</div>
-                    {worksites.map((ws) => (
-                      <PaletteRow key={ws.id} worksite={ws} color={colorForWorksite(ws.id).bar} />
-                    ))}
+                    <div className="bt-pl-dd-search">
+                      <input className="bt-pl-dd-input" placeholder="Rechercher un client…" value={clientsQuery} onChange={(e) => setClientsQuery(e.target.value)} autoFocus />
+                    </div>
+                    <div className="bt-pl-dd-h">Glissez un client sur le planning ↘</div>
+                    <div className="bt-pl-dd-list">
+                      {filteredClients.length === 0 ? (
+                        <div className="bt-pl-dd-empty">Aucun client</div>
+                      ) : filteredClients.map((ws) => (
+                        <div key={ws.id} className="bt-pl-clientrow">
+                          <PaletteRow worksite={ws} color={colorForWorksite(ws.id).bar} />
+                          <button className="bt-pl-clientedit" title="Modifier la fiche" onClick={() => { setChantierMenuOpen(false); openClientFiche(ws); }}><Pencil className="h-3.5 w-3.5" /></button>
+                        </div>
+                      ))}
+                    </div>
                     <button className="bt-pl-ddcreate" onClick={() => { setChantierMenuOpen(false); setClientOpen(true); }}>
-                      <span className="bt-pl-ddcreate-ico">＋</span> Créer un client
+                      <span className="bt-pl-ddcreate-ico">＋</span> Nouveau client
                     </button>
                   </div>
                 </>
@@ -1452,11 +1478,14 @@ export default function AdminPlanning() {
             <Button variant="outline" size="sm" className="mb-2 w-full" onClick={() => { setSalariesOpen(false); setWorkerOpen(true); }}>
               <UserPlus className="h-4 w-4 mr-1.5" /> Nouveau salarié
             </Button>
+            <Input placeholder="Rechercher un salarié…" value={salariesQuery} onChange={(e) => setSalariesQuery(e.target.value)} className="mb-2" />
             <div className="space-y-1">
               {workers.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-6 text-center">Aucun salarié</p>
+              ) : filteredWorkers.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-6 text-center">Aucun résultat</p>
               ) : (
-                workers.map(w => {
+                filteredWorkers.map(w => {
                   const miss = (missingByWorker.get(w.id) || []).length;
                   return (
                     <div key={w.id} className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
@@ -1725,35 +1754,8 @@ export default function AdminPlanning() {
       </Dialog>
 
       {/* Clients list — open any client fiche */}
-      <Dialog open={clientsListOpen} onOpenChange={setClientsListOpen}>
-        <DialogContent className="bt-skin max-w-md max-h-[80vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>Clients</DialogTitle></DialogHeader>
-          <div className="pt-1">
-            <Button variant="outline" size="sm" className="mb-2 w-full" onClick={() => { setClientsListOpen(false); setClientOpen(true); }}>
-              <Plus className="h-4 w-4 mr-1.5" /> Nouveau client
-            </Button>
-            <div className="space-y-1">
-              {worksites.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-6 text-center">Aucun client</p>
-              ) : (
-                worksites.map(ws => (
-                  <button
-                    key={ws.id}
-                    onClick={() => { setClientsListOpen(false); openClientFiche(ws); }}
-                    className="flex w-full items-center justify-between gap-2 rounded-md border px-3 py-2 text-left text-sm hover:bg-muted/50 transition-colors"
-                  >
-                    <span className="min-w-0">
-                      <span className="block truncate font-medium">{ws.client_name}</span>
-                      {(ws.city || ws.product_type) && <span className="block truncate text-xs text-muted-foreground">{[ws.product_type, ws.city].filter(Boolean).join(' · ')}</span>}
-                    </span>
-                    <Pencil className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                  </button>
-                ))
-              )}
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Panneau « Clients » fusionné dans le menu déroulant de la barre
+          (recherche + clients glissables + crayon d'édition + création). */}
 
       {/* Nouveau client */}
       <Dialog open={clientOpen} onOpenChange={(o) => { setClientOpen(o); if (!o) resetClient(); }}>
