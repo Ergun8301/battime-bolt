@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Calendar } from '@/components/ui/calendar';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Loader2, Copy, AlertTriangle } from 'lucide-react';
+import { Loader2, Copy, AlertTriangle, FolderOpen, Trash2, Paperclip, Hammer, CheckCircle2 } from 'lucide-react';
 import { format, subDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -17,6 +17,7 @@ import {
   generateLocalId, PendingEntry,
 } from '@/lib/offline-store';
 import { TimeCylinder, snapToGrid } from '@/components/time-cylinder';
+import ChantierDocuments from '@/components/chantier-documents';
 
 interface TimeEntryWithWorksite extends TimeEntry {
   worksite: Worksite;
@@ -92,22 +93,41 @@ const DAY_CSS = `
 
 .bt-sec{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#9a8a3a;font-weight:700;margin:24px 4px 12px}
 
-.bt-iv{background:#fff;border:1px solid rgba(21,18,15,.1);border-radius:16px;padding:15px;margin-bottom:11px}
-.bt-iv.draft{background:#FFFDF6;border:1.5px dashed #E0AE1C}
+.bt-iv{background:#fff;border:1px solid rgba(21,18,15,.1);border-radius:14px;padding:12px 14px;margin-bottom:9px}
+.bt-iv.draft{box-shadow:inset 4px 0 0 #C0461F}
+.bt-iv.sent{box-shadow:inset 4px 0 0 #2FA36B}
+.bt-iv.ok{box-shadow:inset 4px 0 0 #1F7A4D}
 .bt-iv.off{background:#FFFBF4;border:1.5px dashed #C0461F}
-.bt-iv-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:10px}
-.bt-iv-name{font-size:17px;font-weight:800;letter-spacing:-.01em;color:#15120F}
-.bt-iv-city{font-size:13px;color:#6E6A63;font-weight:600}
+.bt-iv-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:5px}
+.bt-iv-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:16px;font-weight:800;letter-spacing:-.01em;color:#15120F}
+.bt-iv-city{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;color:#6E6A63;font-weight:600}
+.bt-iv-tap{cursor:pointer;transition:border-color .14s ease,transform .06s ease}
+.bt-iv-tap:hover{border-color:rgba(21,18,15,.35)}
+.bt-iv-tap:active{transform:scale(.995)}
+.bt-iv-row{display:flex;align-items:center;gap:10px}
+.bt-iv-cta{flex:none;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;color:#a87c1e;white-space:nowrap}
 .bt-badge{flex:none;display:flex;align-items:center;gap:5px;border-radius:7px;padding:4px 9px;font-size:11px;font-weight:800;white-space:nowrap}
 .bt-badge-sent{background:#E4F2E9;border:1px solid #B7DCC4;color:#1F7A4D}
 .bt-badge-sent .dot{width:14px;height:14px;background:#2FA36B;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px;font-weight:900}
 .bt-badge-draft{background:#FFF1CC;border:1px solid #E8CE7A;color:#8a6d05}
 .bt-badge-off{background:#FBE3D8;border:1px solid #E8B79E;color:#9a3b14}
-.bt-iv-times{display:flex;align-items:center;gap:14px;border-top:1px solid rgba(21,18,15,.08);padding-top:10px;font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700;color:#15120F}
+.bt-badge-wait{background:#FCEADF;border:1px solid #F0C49A;color:#C0461F}
+.bt-badge-ok{background:#1F7A4D;border:1px solid #1A6A43;color:#fff}
+.bt-badge-ok .dot{width:14px;height:14px;background:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#1F7A4D;font-size:9px;font-weight:900}
+.bt-iv-docs{flex:none;display:inline-flex;align-items:center;gap:2px;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;color:#6E6A63}
+.bt-iv-times{display:flex;align-items:center;justify-content:space-between;gap:10px;font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:#15120F}
+.bt-iv-times-v{flex:none;white-space:nowrap}
 .bt-iv-times .dot{width:4px;height:4px;background:#c4bdae;border-radius:50%}
 .bt-iv-note{font-size:13px;color:#6E6A63;margin-top:8px}
-.bt-iv-acts{display:flex;gap:8px;margin-top:12px}
-.bt-iv-mod{flex:1;border:1.5px solid #15120F;background:transparent;border-radius:10px;padding:10px;font-weight:800;font-size:13.5px;color:#15120F;cursor:pointer;font-family:inherit}
+.bt-iv-reserve{display:inline-flex;align-items:center;gap:5px;margin-top:7px;font-size:12px;font-weight:800;border-radius:7px;padding:3px 9px}
+.bt-iv-reserve.avec{background:#FCEADF;border:1px solid #F0C49A;color:#C0461F}
+.bt-iv-reserve.sans{background:#EAF6EF;border:1px solid #BBE0CC;color:#1F7A4D}
+.bt-iv-reserve.encours{background:#FFF6E0;border:1px solid #EAD08A;color:#8a6d05}
+.bt-iv-acts{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.bt-iv-mod{flex:1;min-width:110px;border:1.5px solid #15120F;background:transparent;border-radius:10px;padding:10px;font-weight:800;font-size:13.5px;color:#15120F;cursor:pointer;font-family:inherit}
+.bt-iv-doc{flex:none;border:1.5px solid rgba(21,18,15,.18);background:#fff;border-radius:10px;padding:10px 12px;font-weight:800;font-size:13.5px;color:#15120F;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.bt-iv-doc:hover{border-color:#15120F;background:#FBF6EA}
+.bt-plan-doc{width:100%;justify-content:center;margin-top:8px}
 .bt-iv-del{flex:none;border:none;background:#15120F;border-radius:10px;padding:10px 13px;font-weight:800;font-size:13.5px;color:#F2EDE3;cursor:pointer;font-family:inherit}
 
 .bt-iv-cancel{background:transparent;border:1px solid rgba(21,18,15,.12);border-radius:16px;padding:13px 15px;margin-bottom:11px;opacity:.55;display:flex;align-items:center;justify-content:space-between;gap:10px}
@@ -115,7 +135,7 @@ const DAY_CSS = `
 .bt-cancel-time{font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#9a948a;font-weight:600;text-decoration:line-through}
 .bt-cancel-badge{flex:none;font-size:11px;font-weight:800;color:#9a948a;border:1px solid rgba(21,18,15,.18);border-radius:7px;padding:4px 9px;white-space:nowrap}
 
-.bt-iv-plan{background:transparent;border:1.5px dashed rgba(21,18,15,.28);border-radius:16px;padding:15px;margin-bottom:11px}
+.bt-iv-plan{background:transparent;border:1.5px dashed rgba(21,18,15,.28);border-radius:14px;padding:12px 14px;margin-bottom:9px}
 .bt-plan-k{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#9a8a3a;font-weight:700;margin-bottom:4px}
 .bt-plan-btn{width:100%;border:none;background:#15120F;border-radius:11px;padding:13px;font-weight:800;font-size:14.5px;color:#FFC21A;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;margin-top:12px;font-family:inherit}
 
@@ -131,7 +151,7 @@ const DAY_CSS = `
 .bt-send.done{background:#E4F2E9;color:#1F7A4D;box-shadow:0 4px 0 #b7dcc4}
 
 /* ===== ÉDITEUR PLEIN ÉCRAN ===== */
-.bt-ed{position:fixed;inset:0;z-index:60;display:flex;justify-content:center;background:rgba(21,18,15,.35)}
+.bt-ed{position:fixed;inset:0;z-index:40;display:flex;justify-content:center;background:rgba(21,18,15,.35)}
 .bt-ed-inner{width:100%;max-width:480px;height:100vh;height:100svh;height:100dvh;background:#F2EDE3;display:flex;flex-direction:column;position:relative;overflow:hidden}
 .bt-ed-hdr{background:#15120F;color:#F2EDE3;flex:none;padding:calc(env(safe-area-inset-top) + 16px) 18px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px}
 .bt-ed-cancel{border:none;background:transparent;color:#a59c86;font-size:15px;font-weight:700;padding:6px 2px;cursor:pointer;font-family:inherit;flex:none;min-width:54px;text-align:left}
@@ -140,6 +160,10 @@ const DAY_CSS = `
 .bt-ed-scroll::-webkit-scrollbar{display:none}
 .bt-ed-dock{flex:none;padding:13px 18px calc(env(safe-area-inset-bottom) + 18px);background:#F2EDE3;border-top:1px solid rgba(21,18,15,.12);box-shadow:0 -10px 24px -12px rgba(21,18,15,.18)}
 
+.bt-site-search{width:100%;font-family:'Archivo',sans-serif;font-size:15px;font-weight:500;padding:11px 13px;border:1.5px solid rgba(21,18,15,.18);border-radius:12px;background:#fff;outline:none;color:#15120F;margin-bottom:9px}
+.bt-site-search::placeholder{color:#b3aca0}
+.bt-site-search:focus{border-color:#15120F}
+.bt-site-empty{padding:16px;text-align:center;color:#9a948a;font-weight:600;font-size:13px}
 .bt-site{border:1px solid rgba(21,18,15,.14);text-align:left;background:#fff;color:#15120F;border-radius:13px;padding:14px 15px;display:flex;align-items:center;gap:12px;width:100%;cursor:pointer;margin-bottom:8px;font-family:inherit}
 .bt-site.on{background:#15120F;color:#F2EDE3;border-color:#15120F}
 .bt-site.other{border-style:dashed;border-color:rgba(21,18,15,.3)}
@@ -162,11 +186,26 @@ const DAY_CSS = `
 
 .bt-pause-auto{display:flex;align-items:center;gap:8px;margin-top:16px;background:rgba(255,194,26,.12);border:1px solid rgba(255,194,26,.4);border-radius:12px;padding:11px 13px;font-size:12.5px;font-weight:700;color:#7a5e00}
 
+.bt-recep{display:flex;gap:8px}
+.bt-recep-b{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:5px;border:1.5px solid rgba(21,18,15,.16);background:#fff;border-radius:13px;padding:11px 6px;font-weight:800;font-size:12.5px;color:#6E6A63;cursor:pointer;font-family:inherit;text-align:center;line-height:1.1}
+.bt-recep-b svg{opacity:.65}
+.bt-recep-b.encours.on{border-color:#C98A12;background:#FFF6E0;color:#8a6d05}
+.bt-recep-b.sans.on{border-color:#1F7A4D;background:#EAF6EF;color:#1F7A4D}
+.bt-recep-b.avec.on{border-color:#C0461F;background:#FCEADF;color:#C0461F}
+.bt-recep-b.on svg{opacity:1}
+.bt-recep-hint{margin-top:8px;font-size:12.5px;font-weight:600;color:#C0461F;background:#FCEADF;border:1px solid #F0C49A;border-radius:11px;padding:10px 12px}
+.bt-recep-hint strong{font-weight:900}
 .bt-note{width:100%;font-family:inherit;font-size:15.5px;font-weight:500;color:#15120F;padding:14px 15px;border:1.5px solid rgba(21,18,15,.16);border-radius:13px;background:#fff;outline:none;resize:none}
 
 .bt-save{width:100%;border:none;background:#FFC21A;border-radius:13px;padding:15px;font-weight:900;font-size:16px;color:#15120F;box-shadow:0 4px 0 #C99300;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;font-family:inherit}
 .bt-save:disabled{opacity:.6;cursor:default}
 .bt-retire{width:100%;background:transparent;border:none;color:#C0461F;font-weight:800;font-size:14px;padding:10px;cursor:pointer;margin-bottom:8px;font-family:inherit}
+.bt-ed-dock-row{display:flex;gap:8px;margin-bottom:9px}
+.bt-ed-doc{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:7px;border:1.5px solid #15120F;background:#fff;border-radius:12px;padding:12px;font-weight:800;font-size:14px;color:#15120F;cursor:pointer;font-family:inherit}
+.bt-ed-doc:active{transform:translateY(1px)}
+.bt-ed-trash{flex:none;width:50px;display:inline-flex;align-items:center;justify-content:center;border:1.5px solid rgba(192,70,31,.45);background:#fff;color:#C0461F;border-radius:12px;cursor:pointer}
+.bt-ed-trash:hover{background:#F4D9D1}
+.bt-ed-trash:disabled{opacity:.5}
 
 /* ===== TIROIR MOLETTE ===== */
 .bt-overlay{position:absolute;inset:0;background:rgba(21,18,15,.5);z-index:8;opacity:0;pointer-events:none;transition:opacity .25s ease}
@@ -200,6 +239,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
   const [entries, setEntries] = useState<TimeEntryWithWorksite[]>([]);
   const [pendingEntries, setPendingEntries] = useState<PendingEntry[]>([]);
   const [worksites, setWorksites] = useState<Worksite[]>([]);
+  const [docsByWorksite, setDocsByWorksite] = useState<Map<string, number>>(new Map()); // nb de documents par chantier (pastille 📎)
   const [planning, setPlanning] = useState<(Planning & { worksite: Worksite })[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -214,9 +254,11 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
   const [fStart, setFStart] = useState('');
   const [fEnd, setFEnd] = useState('');
   const [fObs, setFObs] = useState('');
+  const [fReception, setFReception] = useState<'sans' | 'avec' | 'en_cours' | ''>(''); // statut du chantier : en cours / sans / avec réserve (facultatif)
   const [fSaving, setFSaving] = useState(false);
   // Chantier picker (existing chantiers only — workers don't create clients)
   const [fWorksiteId, setFWorksiteId] = useState('');
+  const [chantierQuery, setChantierQuery] = useState(''); // recherche dans la liste des chantiers (nouvelle intervention)
   // Tiroir molette (purement présentation : quelle roue on règle)
   const [drawerField, setDrawerField] = useState<'start' | 'end' | null>(null);
   // Les pauses sont CALCULÉES automatiquement (les trous entre créneaux, via
@@ -238,6 +280,8 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
   const [confirmCorrectOpen, setConfirmCorrectOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
   const [lateOpen, setLateOpen] = useState(false);
+  // Panneau Documents du chantier (photos/fichiers, consultable côté secrétaire aussi).
+  const [docsWs, setDocsWs] = useState<{ id: string; name: string } | null>(null);
 
   const date = dateProp || format(new Date(), 'yyyy-MM-dd');
   const yesterday = format(subDays(new Date(`${date}T00:00:00`), 1), 'yyyy-MM-dd');
@@ -249,14 +293,21 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
   const fetchData = useCallback(async () => {
     if (!user) return;
     try {
-      const [entriesRes, worksitesRes, planningRes] = await Promise.all([
+      const [entriesRes, worksitesRes, planningRes, docsRes] = await Promise.all([
         supabase.from('time_entries').select('*, worksite:worksites(*)').eq('user_id', user.id).eq('work_date', date).order('start_time'),
         supabase.from('worksites').select('*').eq('company_id', user.company_id).eq('is_active', true).order('client_name'),
         supabase.from('planning').select('*, worksite:worksites(*)').eq('user_id', user.id).eq('work_date', date),
+        supabase.from('documents').select('worksite_id').eq('company_id', user.company_id),
       ]);
       if (entriesRes.error) throw entriesRes.error;
       if (worksitesRes.error) throw worksitesRes.error;
       if (planningRes.error) throw planningRes.error;
+
+      const docCounts = new Map<string, number>();
+      for (const d of (docsRes.data || []) as { worksite_id: string | null }[]) {
+        if (d.worksite_id) docCounts.set(d.worksite_id, (docCounts.get(d.worksite_id) || 0) + 1);
+      }
+      setDocsByWorksite(docCounts);
 
       let worksitesData = worksitesRes.data || [];
       // Filet de sécurité (règle d'or : l'heure n'est jamais bloquée par le client) :
@@ -305,6 +356,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
           // total_minutes is a generated column in Postgres — never send it.
           meal_allowance: entry.meal_allowance,
           observation: entry.observation,
+          reception: entry.reception ?? null,
           status: 'draft',
         });
         if (!error) {
@@ -394,23 +446,27 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
     setFStart(snapToGrid(p.estimated_start ? p.estimated_start.substring(0, 5) : '08:00'));
     setFEnd(snapToGrid(p.estimated_end ? p.estimated_end.substring(0, 5) : '17:00'));
     setFObs('');
+    setFReception('');
   };
   const openEntry = (e: TimeEntryWithWorksite) => {
     setOpenSlot({ kind: 'entry', entryId: e.id });
     setFStart(snapToGrid(e.start_time?.substring(0, 5) || '08:00'));
     setFEnd(snapToGrid(e.end_time?.substring(0, 5) || '17:00'));
     setFObs(e.observation || '');
+    setFReception(e.reception || '');
   };
   const openPending = (e: PendingEntry) => {
     setOpenSlot({ kind: 'pending', localId: e.localId });
     setFStart(snapToGrid(e.start_time.substring(0, 5)));
     setFEnd(snapToGrid(e.end_time.substring(0, 5)));
     setFObs(e.observation || '');
+    setFReception(e.reception || '');
   };
   const openNew = () => {
     if (monthLocked) { setLateOpen(true); return; }
     setOpenSlot({ kind: 'new' });
     setFWorksiteId('');
+    setChantierQuery('');
     // Heure de début pré-remplie à MAINTENANT (heure de Paris) ; fin = début + 1 h
     // (durée 1 h par défaut). Le salarié peut changer début ET fin aussitôt OU après
     // coup (ces possibilités existent déjà et restent inchangées). On ne touche à rien
@@ -423,6 +479,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
     setFStart(nowParis);
     setFEnd(endParis);
     setFObs('');
+    setFReception('');
   };
   const cancelSlot = () => { setDrawerField(null); setOpenSlot(null); };
 
@@ -450,6 +507,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
         if (wasSubmitted) savedMsg = 'Modification enregistrée — la secrétaire est prévenue';
         const { error } = await supabase.from('time_entries').update({
           start_time: fStart, end_time: fEnd, break_minutes: 0, observation: fObs.trim() || null,
+          reception: fReception || null,
           // Editing an already-sent entry: flag it so the secretary sees the change.
           ...(wasSubmitted ? { modified_at: new Date().toISOString(), modified_by: user.id } : {}),
         }).eq('id', openSlot.entryId).eq('user_id', user.id);
@@ -458,7 +516,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
         const pend = getPendingEntries(user.id).find((e) => e.localId === openSlot.localId);
         if (pend) {
           removePendingEntry(user.id, openSlot.localId);
-          addPendingEntry(user.id, { ...pend, start_time: fStart, end_time: fEnd, break_minutes: 0, total_minutes: totalMins, observation: fObs.trim() || null });
+          addPendingEntry(user.id, { ...pend, start_time: fStart, end_time: fEnd, break_minutes: 0, total_minutes: totalMins, observation: fObs.trim() || null, reception: fReception || null });
         }
       } else {
         // ── Create a new slot (planned chantier or free intervention) ──
@@ -484,7 +542,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
           const pending: PendingEntry = {
             localId: generateLocalId(), company_id: user.company_id, user_id: user.id, worksite_id: worksiteId,
             planning_id: planningId, work_date: date, start_time: fStart, end_time: fEnd, break_minutes: 0,
-            total_minutes: totalMins, meal_allowance: false, observation: fObs.trim() || null,
+            total_minutes: totalMins, meal_allowance: false, observation: fObs.trim() || null, reception: fReception || null,
             _worksite_name: worksiteName, _worksite_city: worksiteCity, _saved_at: Date.now(),
           };
           addPendingEntry(user.id, pending);
@@ -492,7 +550,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
           const { error } = await supabase.from('time_entries').insert({
             company_id: user.company_id, user_id: user.id, worksite_id: worksiteId, planning_id: planningId,
             work_date: date, start_time: fStart, end_time: fEnd, break_minutes: 0,
-            meal_allowance: false, observation: fObs.trim() || null, status: 'draft',
+            meal_allowance: false, observation: fObs.trim() || null, reception: fReception || null, status: 'draft',
           });
           if (error) throw error;
         }
@@ -715,6 +773,10 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
     if (b.client_name === OTHER_NAME) return 1;
     return a.client_name.localeCompare(b.client_name);
   });
+  const cq = chantierQuery.trim().toLowerCase();
+  const filteredWorksites = cq
+    ? sortedWorksites.filter((w) => w.client_name.toLowerCase().includes(cq) || (w.city || '').toLowerCase().includes(cq))
+    : sortedWorksites;
 
   // Unified list of the day's slots — planned-not-yet-declared, declared entries, and pending
   // (offline) entries — sorted by start time. The card position stays put as soon as the slot
@@ -741,6 +803,14 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
     : openSlot.kind === 'entry' ? (entries.find((e) => e.id === openSlot.entryId)?.worksite?.city || '')
     : openSlot.kind === 'pending' ? (pendingEntries.find((e) => e.localId === openSlot.localId)?._worksite_city || '')
     : '';
+  const slotWorksiteId = !openSlot ? null
+    : openSlot.kind === 'new' ? (fWorksiteId || null)
+    : openSlot.kind === 'planned' ? (planning.find((p) => p.id === openSlot.planningId)?.worksite?.id || null)
+    : openSlot.kind === 'entry' ? (entries.find((e) => e.id === openSlot.entryId)?.worksite_id || null)
+    : null;
+  const slotWorksiteName = openSlot?.kind === 'new'
+    ? (worksites.find((w) => w.id === fWorksiteId)?.client_name || OTHER_NAME)
+    : (titleName || OTHER_NAME);
   const slotTitle = !openSlot ? ''
     : openSlot.kind === 'new' ? 'Nouvelle intervention'
     : titleName ? `Chantier ${titleName}` : 'Intervention';
@@ -838,15 +908,20 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
             const p = item.data;
             const onTap = monthLocked ? () => setLateOpen(true) : frozen ? () => askCorrect(() => openPlanned(p)) : () => openPlanned(p);
             return (
-              <div key={item.key} className="bt-iv-plan">
+              <div key={item.key} className="bt-iv-plan bt-iv-tap" onClick={onTap}>
                 <div className="bt-plan-k">
                   {p.estimated_start && p.estimated_end ? `Prévu · ${p.estimated_start.substring(0, 5)}–${p.estimated_end.substring(0, 5)}` : 'Prévu'}
                 </div>
-                <div className="bt-iv-name">{p.worksite?.client_name}</div>
-                {p.worksite?.city && <div className="bt-iv-city">{p.worksite.city}</div>}
-                <button type="button" className="bt-plan-btn" onClick={onTap}>
-                  <span style={{ fontSize: 18 }}>+</span> Déclarer ce chantier
-                </button>
+                <div className="bt-iv-row">
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="bt-iv-name">{p.worksite?.client_name}</div>
+                    {p.worksite?.city && <div className="bt-iv-city">{p.worksite.city}</div>}
+                  </div>
+                  {p.worksite?.id && (docsByWorksite.get(p.worksite.id) || 0) > 0 && (
+                    <span className="bt-iv-docs"><Paperclip className="h-3 w-3" />{docsByWorksite.get(p.worksite.id)}</span>
+                  )}
+                  <span className="bt-iv-cta">À déclarer ›</span>
+                </div>
               </div>
             );
           }
@@ -857,34 +932,28 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
             const isDraft = entry.status === 'draft' && !entry.locked;
             const onTap = !tappable ? undefined : monthLocked ? () => setLateOpen(true) : frozen ? () => askCorrect(() => openEntry(entry)) : () => openEntry(entry);
             return (
-              <div key={item.key} className={`bt-iv${isDraft ? ' draft' : ''}`}>
+              <div key={item.key} className={`bt-iv${entry.locked ? ' ok' : entry.status === 'submitted' ? ' sent' : isDraft ? ' draft' : ''}${onTap ? ' bt-iv-tap' : ''}`} onClick={onTap}>
                 <div className="bt-iv-top">
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div className="bt-iv-name">{entry.worksite?.client_name || OTHER_NAME}</div>
-                    {entry.worksite?.city && <div className="bt-iv-city">{entry.worksite.city}</div>}
-                  </div>
-                  {entry.status === 'submitted' && (
-                    <div className="bt-badge bt-badge-sent"><span className="dot">✓</span> Envoyé</div>
+                  <span className="bt-iv-name">{entry.worksite?.client_name || OTHER_NAME}</span>
+                  {entry.worksite_id && (docsByWorksite.get(entry.worksite_id) || 0) > 0 && (
+                    <span className="bt-iv-docs"><Paperclip className="h-3 w-3" />{docsByWorksite.get(entry.worksite_id)}</span>
                   )}
-                  {isDraft && <div className="bt-badge bt-badge-draft">● Brouillon</div>}
+                  {entry.locked ? (
+                    <div className="bt-badge bt-badge-ok"><span className="dot">✓</span> Validé</div>
+                  ) : entry.status === 'submitted' ? (
+                    <div className="bt-badge bt-badge-sent"><span className="dot">✓</span> Envoyé</div>
+                  ) : isDraft ? (
+                    <div className="bt-badge bt-badge-wait">● En attente</div>
+                  ) : null}
                 </div>
                 <div className="bt-iv-times">
-                  <span>{entry.start_time?.substring(0, 5)} → {entry.end_time?.substring(0, 5)}</span>
-                  <span className="dot" />
-                  <span>{fmtHM(entry.total_minutes)}</span>
+                  {entry.worksite?.city && <span className="bt-iv-city">{entry.worksite.city}</span>}
+                  <span className="bt-iv-times-v">{entry.start_time?.substring(0, 5)} → {entry.end_time?.substring(0, 5)} · {fmtHM(entry.total_minutes)}</span>
                 </div>
+                {entry.reception === 'avec' && <div className="bt-iv-reserve avec">⚠ Avec réserve</div>}
+                {entry.reception === 'sans' && <div className="bt-iv-reserve sans">✓ Sans réserve</div>}
+                {entry.reception === 'en_cours' && <div className="bt-iv-reserve encours">🔨 Chantier en cours</div>}
                 {entry.observation && <div className="bt-iv-note">{entry.observation}</div>}
-                {isDraft && (
-                  <div className="bt-iv-acts">
-                    <button type="button" className="bt-iv-mod" onClick={onTap}>Modifier</button>
-                    <button type="button" className="bt-iv-del" onClick={() => handleRetire(entry)}>Retirer</button>
-                  </div>
-                )}
-                {!isDraft && tappable && (
-                  <div className="bt-iv-acts">
-                    <button type="button" className="bt-iv-mod" onClick={onTap}>Modifier</button>
-                  </div>
-                )}
               </div>
             );
           }
@@ -1000,7 +1069,10 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
               {/* 1 · Chantier */}
               <div className="bt-sec">1 · Chantier</div>
               {openSlot.kind === 'new' ? (
-                sortedWorksites.map((ws) => {
+                <>
+                <input className="bt-site-search" placeholder="Rechercher un chantier…" value={chantierQuery} onChange={(e) => setChantierQuery(e.target.value)} />
+                {filteredWorksites.length === 0 && <div className="bt-site-empty">Aucun chantier trouvé</div>}
+                {filteredWorksites.map((ws) => {
                   const isOther = ws.client_name === OTHER_NAME;
                   const on = fWorksiteId === ws.id;
                   return (
@@ -1018,7 +1090,8 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
                       {!(isOther && !on) && <span className="bt-rdo">{on ? '✓' : ''}</span>}
                     </button>
                   );
-                })
+                })}
+                </>
               ) : (
                 <div className="bt-site on">
                   <span style={{ flex: 1, minWidth: 0 }}>
@@ -1053,12 +1126,29 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
                 Les pauses sont calculées automatiquement d&apos;après vos horaires.
               </div>
 
-              {/* 3 · Note */}
-              <div className="bt-sec">3 · Note <span style={{ textTransform: 'none', letterSpacing: 0, color: '#a39d92' }}>(facultatif)</span></div>
+              {/* 3 · Statut du chantier — en cours / sans / avec réserve (facultatif) */}
+              <div className="bt-sec">3 · Statut du chantier <span style={{ textTransform: 'none', letterSpacing: 0, color: '#a39d92' }}>(facultatif)</span></div>
+              <div className="bt-recep">
+                <button type="button" className={`bt-recep-b encours${fReception === 'en_cours' ? ' on' : ''}`} onClick={() => setFReception(fReception === 'en_cours' ? '' : 'en_cours')}>
+                  <Hammer className="h-[18px] w-[18px]" /> En cours
+                </button>
+                <button type="button" className={`bt-recep-b sans${fReception === 'sans' ? ' on' : ''}`} onClick={() => setFReception(fReception === 'sans' ? '' : 'sans')}>
+                  <CheckCircle2 className="h-[18px] w-[18px]" /> Sans réserve
+                </button>
+                <button type="button" className={`bt-recep-b avec${fReception === 'avec' ? ' on' : ''}`} onClick={() => setFReception(fReception === 'avec' ? '' : 'avec')}>
+                  <AlertTriangle className="h-[18px] w-[18px]" /> Avec réserve
+                </button>
+              </div>
+              {fReception === 'avec' && (
+                <div className="bt-recep-hint">Décrivez les réserves dans la note ci-dessous et ajoutez des photos via le bouton <strong>Documents</strong>.</div>
+              )}
+
+              {/* 4 · Note (devient « Détail des réserves » si avec réserve) */}
+              <div className="bt-sec">4 · {fReception === 'avec' ? 'Détail des réserves' : 'Note'} {fReception !== 'avec' && <span style={{ textTransform: 'none', letterSpacing: 0, color: '#a39d92' }}>(facultatif)</span>}</div>
               <textarea
                 className="bt-note"
                 rows={2}
-                placeholder="Préciser le travail effectué…"
+                placeholder={fReception === 'avec' ? 'Décrivez les réserves constatées…' : 'Préciser le travail effectué…'}
                 value={fObs}
                 onChange={(e) => setFObs(e.target.value)}
               />
@@ -1066,10 +1156,19 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
 
             {/* Barre d'action dockée */}
             <div className="bt-ed-dock">
-              {openSlot.kind === 'entry' && editorEntry && (
-                <button type="button" className="bt-retire" disabled={fSaving} onClick={() => handleRetire(editorEntry)}>
-                  Retirer cette intervention
-                </button>
+              {(slotWorksiteId || (openSlot.kind === 'entry' && editorEntry)) && (
+                <div className="bt-ed-dock-row">
+                  {slotWorksiteId && (
+                    <button type="button" className="bt-ed-doc" onClick={() => setDocsWs({ id: slotWorksiteId, name: slotWorksiteName })}>
+                      <FolderOpen className="h-4 w-4" /> Documents
+                    </button>
+                  )}
+                  {openSlot.kind === 'entry' && editorEntry && (
+                    <button type="button" className="bt-ed-trash" disabled={fSaving} onClick={() => handleRetire(editorEntry)} aria-label="Retirer cette intervention" title="Retirer cette intervention">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
               )}
               <button type="button" className="bt-save" onClick={saveSlot} disabled={fSaving}>
                 {fSaving && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -1169,6 +1268,8 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
           </div>
         </DialogContent>
       </Dialog>
+
+      <ChantierDocuments worksiteId={docsWs?.id || null} worksiteName={docsWs?.name} open={!!docsWs} onOpenChange={(o) => { if (!o) setDocsWs(null); }} />
     </div>
   );
 }

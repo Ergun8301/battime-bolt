@@ -29,6 +29,7 @@ export interface User {
   created_at: string;
   invited_at?: string;
   last_seen_at?: string;
+  photo_url?: string | null;
   // Optional payroll info (secretary-only).
   social_security_number?: string | null;
   hire_date?: string | null;
@@ -62,6 +63,7 @@ export interface Planning {
   notes?: string;
   absence_type?: 'conge' | 'maladie' | 'intemperie' | 'repos' | null;
   position?: number | null;
+  added_by_worker?: boolean;
   created_at: string;
   created_by: string;
 }
@@ -80,6 +82,10 @@ export interface TimeEntry {
   meal_allowance: boolean;
   observation?: string;
   photos?: string[];
+  // Statut du chantier déclaré par le salarié : null = non renseigné,
+  // 'en_cours' = chantier non fini, 'sans' = réceptionné sans réserve,
+  // 'avec' = réceptionné avec réserve (détail dans observation/photos).
+  reception?: 'sans' | 'avec' | 'en_cours' | null;
   status: 'draft' | 'submitted' | 'validated' | 'cancelled';
   created_at: string;
   submitted_at?: string;

@@ -1,13 +1,14 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Clock, CalendarDays, CalendarRange, History, LogOut, Check, ArrowLeft } from 'lucide-react';
+import { Clock, CalendarDays, CalendarRange, History, LogOut, Check, ArrowLeft, Camera, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { format, subDays, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { computeMissingDays } from '@/lib/work-status';
@@ -33,14 +34,25 @@ const POSEUR_CSS = `
 .bt-phone.wide{max-width:920px}
 
 /* ===== EN-TÊTE NOIR ===== */
-.bt-phdr{background:#15120F;color:#F2EDE3;flex:none;padding:calc(env(safe-area-inset-top) + 16px) 18px 16px;position:relative}
-.bt-phdr-row{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
-.bt-phdr-kicker{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#FFC21A;font-weight:700;margin-bottom:5px}
-.bt-phdr-date{font-size:24px;font-weight:900;letter-spacing:-.02em;line-height:1;text-transform:capitalize}
+.bt-phdr{background:#15120F;color:#F2EDE3;flex:none;padding:calc(env(safe-area-inset-top) + 12px) 16px 12px;position:relative}
+.bt-phdr-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.bt-phdr-date{font-size:22px;font-weight:900;letter-spacing:-.02em;line-height:1.1;text-transform:capitalize;min-width:0}
 .bt-phdr-back{display:flex;align-items:center;gap:10px;background:transparent;border:none;color:#F2EDE3;cursor:pointer;padding:0;text-align:left;min-width:0}
-.bt-phdr-back-col{display:flex;flex-direction:column;min-width:0}
-.bt-burger{flex:none;width:46px;height:46px;border:none;background:#211D19;border-radius:13px;color:#F2EDE3;display:flex;align-items:center;justify-content:center;gap:3px;flex-direction:column;cursor:pointer}
-.bt-burger span{width:18px;height:2.5px;background:#FFC21A;border-radius:2px;display:block}
+/* Bouton identité (nom + rond photo/initiales) = déclencheur du menu */
+.bt-phdr-id{display:inline-flex;align-items:center;gap:9px;flex:none;max-width:62%;background:transparent;border:none;cursor:pointer;font-family:inherit;padding:3px 3px 3px 11px;border-radius:999px;transition:background .14s ease}
+.bt-phdr-id:hover{background:rgba(242,237,227,.08)}
+.bt-phdr-id:active{background:rgba(242,237,227,.15)}
+.bt-phdr-id-name{font-size:14px;font-weight:800;color:#F2EDE3;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.bt-phdr-id-last{display:none}
+.bt-phdr-id-av{width:32px;height:32px;border-radius:50%;flex:none;overflow:hidden;background:#2a2620;border:1.5px solid rgba(242,237,227,.4);display:flex;align-items:center;justify-content:center}
+.bt-phdr-id-av img{width:100%;height:100%;object-fit:cover;display:block}
+.bt-phdr-id-ini{font-family:'Archivo',sans-serif;font-weight:800;font-size:13px;color:#FFC21A;line-height:1}
+@media (min-width:768px){.bt-phdr-id-last{display:inline}}
+/* En-tête du menu : photo/initiales + nom complet */
+.bt-phdr-menuhead{display:flex;align-items:center;gap:10px;padding:9px 8px 11px}
+.bt-phdr-menuhead-av{width:38px;height:38px;border-radius:50%;flex:none;overflow:hidden;background:#15120F;display:flex;align-items:center;justify-content:center}
+.bt-phdr-menuhead-av img{width:100%;height:100%;object-fit:cover;display:block}
+.bt-phdr-menuhead-name{font-size:14.5px;font-weight:800;color:#15120F;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 .bt-alert{display:flex;align-items:center;gap:9px;margin-top:14px;width:100%;background:rgba(255,194,26,.13);border:1px solid rgba(255,194,26,.4);border-radius:11px;padding:10px 13px;cursor:pointer;text-align:left}
 .bt-alert-badge{width:22px;height:22px;flex:none;background:#FFC21A;color:#15120F;border-radius:6px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:13px;font-family:'JetBrains Mono',monospace}
@@ -89,6 +101,9 @@ export default function PoseurPage() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null); // declare a specific day
   const [pending, setPending] = useState<string[]>([]); // days "en attente"
   const [pendingOpen, setPendingOpen] = useState(false); // "jours à déclarer" popover
+  const [photoUrl, setPhotoUrl] = useState(''); // photo de profil du salarié (facultatif)
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
 
   const fetchPending = useCallback(async () => {
     if (!user) return;
@@ -110,6 +125,37 @@ export default function PoseurPage() {
     const id = setInterval(fetchPending, 60000);
     return () => clearInterval(id);
   }, [fetchPending]);
+
+  // Photo de profil du salarié (depuis users.photo_url).
+  useEffect(() => { setPhotoUrl(user?.photo_url || ''); }, [user?.photo_url]);
+
+  // Le salarié change SA propre photo (appareil photo ou galerie sur mobile). Upload
+  // dans SON dossier, puis enregistrement de l'URL via update_my_photo (il ne touche
+  // que sa propre ligne).
+  const onPickPhoto = async (file?: File) => {
+    if (!file || !user?.id) return;
+    if (!file.type.startsWith('image/')) { toast.error('Photo uniquement (JPG ou PNG).'); return; }
+    if (file.size > 6 * 1024 * 1024) { toast.error('Photo trop lourde (6 Mo max).'); return; }
+    setUploadingPhoto(true);
+    try {
+      const ext = file.type === 'image/png' ? 'png' : 'jpg';
+      const uid = user.id;
+      await supabase.storage.from('worker-photos').remove([`${uid}/photo.png`, `${uid}/photo.jpg`]);
+      const path = `${uid}/photo.${ext}`;
+      const { error } = await supabase.storage.from('worker-photos').upload(path, file, { upsert: true, contentType: file.type });
+      if (error) throw error;
+      const { data: pub } = supabase.storage.from('worker-photos').getPublicUrl(path);
+      const url = `${pub.publicUrl}?v=${Date.now()}`;
+      const { error: rpcErr } = await supabase.rpc('update_my_photo', { p_url: url });
+      if (rpcErr) throw rpcErr;
+      setPhotoUrl(url);
+      toast.success('Photo mise à jour');
+    } catch {
+      toast.error("Échec de l'envoi de la photo.");
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
 
   const openDay = (d: string) => { setSelectedDate(d); setPendingOpen(false); };
   const goHome = () => { setSelectedDate(null); setView('day'); fetchPending(); };
@@ -133,28 +179,36 @@ export default function PoseurPage() {
         <header className="bt-phdr">
           <div className="bt-phdr-row">
             {isToday ? (
-              <div>
-                <div className="bt-phdr-kicker">Ma journée</div>
-                <div className="bt-phdr-date">{todayLabel}</div>
-              </div>
+              <div className="bt-phdr-date">{todayLabel}</div>
             ) : (
               <button onClick={goHome} className="bt-phdr-back" aria-label="Retour à ma journée">
                 <ArrowLeft className="h-5 w-5 shrink-0" />
-                <span className="bt-phdr-back-col">
-                  <span className="bt-phdr-kicker">Ma journée</span>
-                  <span className="bt-phdr-date truncate">{headerTitle}</span>
-                </span>
+                <span className="bt-phdr-date truncate">{headerTitle}</span>
               </button>
             )}
 
+            {/* Identité du salarié = déclencheur du menu (nom + rond photo/initiales). */}
+            <input type="file" accept="image/*" hidden ref={photoInputRef} onChange={(e) => onPickPhoto(e.target.files?.[0])} />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="bt-burger" aria-label="Menu">
-                  <span /><span /><span />
+                <button className="bt-phdr-id" aria-label="Mon compte et menu">
+                  <span className="bt-phdr-id-name">{user?.first_name}<span className="bt-phdr-id-last">{user?.last_name ? ` ${user.last_name}` : ''}</span></span>
+                  <span className="bt-phdr-id-av">
+                    {photoUrl ? <img src={photoUrl} alt="" /> : <span className="bt-phdr-id-ini">{(user?.first_name?.[0] || '')}{(user?.last_name?.[0] || '')}</span>}
+                  </span>
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-52 bt-skin">
-                <DropdownMenuLabel className="truncate">{user?.first_name} {user?.last_name}</DropdownMenuLabel>
+              <DropdownMenuContent align="end" className="w-60 bt-skin">
+                <div className="bt-phdr-menuhead">
+                  <span className="bt-phdr-menuhead-av">
+                    {photoUrl ? <img src={photoUrl} alt="" /> : <span className="bt-phdr-id-ini">{(user?.first_name?.[0] || '')}{(user?.last_name?.[0] || '')}</span>}
+                  </span>
+                  <span className="bt-phdr-menuhead-name">{user?.first_name} {user?.last_name}</span>
+                </div>
+                <DropdownMenuItem onSelect={(e) => { e.preventDefault(); photoInputRef.current?.click(); }}>
+                  {uploadingPhoto ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Camera className="h-4 w-4 mr-2" />} Changer ma photo
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
                 {TABS.map((t) => (
                   <DropdownMenuItem key={t.value} onClick={() => goTo(t.value)}>
                     <t.icon className="h-4 w-4 mr-2" /> {t.label}
@@ -173,7 +227,7 @@ export default function PoseurPage() {
               <PopoverTrigger asChild>
                 <button className="bt-alert" aria-label="Jours à déclarer">
                   <span className="bt-alert-badge">{pending.length}</span>
-                  <span className="bt-alert-txt">{pending.length} jour{pending.length > 1 ? 's' : ''} oublié{pending.length > 1 ? 's' : ''} à déclarer</span>
+                  <span className="bt-alert-txt">jour{pending.length > 1 ? 's' : ''} oublié{pending.length > 1 ? 's' : ''} à déclarer</span>
                   <span className="bt-alert-chev">›</span>
                 </button>
               </PopoverTrigger>

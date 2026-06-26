@@ -16,6 +16,7 @@ export interface PendingEntry {
   total_minutes: number;
   meal_allowance: boolean;
   observation?: string | null;
+  reception?: 'sans' | 'avec' | 'en_cours' | null;
   // denormalised for display only
   _worksite_name: string;
   _worksite_city?: string | null;
