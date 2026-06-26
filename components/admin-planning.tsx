@@ -16,7 +16,7 @@ import { Textarea } from '@/components/ui/textarea';
 import {
   ChevronLeft, ChevronRight, Plus, Trash2, Loader2,
   UserPlus, Users, Building2, Archive, CalendarRange, Download, FileSpreadsheet, FileText,
-  Bell, Clock, Mail, RefreshCw, X, Pencil, LogOut, Settings, User as UserIcon,
+  Bell, Clock, Mail, RefreshCw, X, Pencil, LogOut, Settings, User as UserIcon, Paperclip,
 } from 'lucide-react';
 import {
   DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
@@ -115,15 +115,16 @@ const realKey = (userId: string, date: string, worksiteId: string | null) => `${
 
 // ─── compact one-line chantier bubble ──────────────────────────────────────────
 
-function BubbleContent({ p, palette, real }: { p: PlanningWithWorksite; palette: ChantierPalette; real?: RealAgg }) {
+function BubbleContent({ p, palette, real, docCount = 0 }: { p: PlanningWithWorksite; palette: ChantierPalette; real?: RealAgg; docCount?: number }) {
   const hour = fixedHourOf(p);
   const sub = [p.worksite?.product_type, p.worksite?.city].filter(Boolean).join(' · ');
+  const docsBadge = docCount > 0 ? <span className="bt-pl-bub-docs" title={`${docCount} document${docCount > 1 ? 's' : ''}`}><Paperclip className="h-2.5 w-2.5" />{docCount}</span> : null;
   if (real) {
     // Pointé (réel) — fond noir, heures réelles en mono jaune.
     return (
       <div className="bt-pl-bub" style={{ background: '#15120F', color: '#F2EDE3' }}>
         <span className="bt-pl-bub-bar" style={{ background: palette.bar }} />
-        <div className="bt-pl-bub-name">{p.worksite?.client_name || 'Chantier'}{p.added_by_worker && <span className="bt-pl-bub-by">salarié</span>}</div>
+        <div className="bt-pl-bub-name">{p.worksite?.client_name || 'Chantier'}{p.added_by_worker && <span className="bt-pl-bub-by">salarié</span>}{docsBadge}</div>
         {sub && <div className="bt-pl-bub-sub" style={{ color: '#a59c86' }}>{sub}</div>}
         <div className="bt-pl-bub-real">
           <span className="bt-pl-check">✓</span>
@@ -136,7 +137,7 @@ function BubbleContent({ p, palette, real }: { p: PlanningWithWorksite; palette:
   return (
     <div className="bt-pl-bub" style={{ background: '#fff', border: `1.5px dashed ${palette.bar}`, color: '#15120F' }}>
       <span className="bt-pl-bub-bar" style={{ background: palette.bar }} />
-      <div className="bt-pl-bub-name">{p.worksite?.client_name || 'Chantier'}</div>
+      <div className="bt-pl-bub-name">{p.worksite?.client_name || 'Chantier'}{docsBadge}</div>
       {sub && <div className="bt-pl-bub-sub" style={{ color: '#6E6A63' }}>{sub}</div>}
       {hour && (
         <div className="bt-pl-bub-foot">
@@ -149,12 +150,13 @@ function BubbleContent({ p, palette, real }: { p: PlanningWithWorksite; palette:
 
 // A bubble is both draggable (move/reorder) and droppable (reorder target).
 function DraggableBubble({
-  p, palette, real, onEdit,
+  p, palette, real, onEdit, docCount = 0,
 }: {
   p: PlanningWithWorksite;
   palette: ChantierPalette;
   real?: RealAgg;
   onEdit: (p: PlanningWithWorksite) => void;
+  docCount?: number;
 }) {
   const drag = useDraggable({ id: p.id, data: { type: 'move' } });
   const drop = useDroppable({ id: `bub|${p.id}` });
@@ -168,7 +170,7 @@ function DraggableBubble({
         className={`bt-pl-grab ${drag.isDragging ? 'bt-pl-dragging' : ''}`}
         title="Glisser pour déplacer / réordonner · cliquer pour modifier"
       >
-        <BubbleContent p={p} palette={palette} real={real} />
+        <BubbleContent p={p} palette={palette} real={real} docCount={docCount} />
       </div>
     </div>
   );
@@ -371,6 +373,7 @@ const PL_CSS = `
 .bt-pl-bub-bar{position:absolute;left:0;top:0;bottom:0;width:4px}
 .bt-pl-bub-name{font-size:12.5px;font-weight:800;letter-spacing:-.01em;line-height:1.15}
 .bt-pl-bub-by{display:inline-block;margin-left:5px;font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#15120F;background:#FFC21A;padding:1px 4px;border-radius:3px;vertical-align:middle}
+.bt-pl-bub-docs{display:inline-flex;align-items:center;gap:2px;margin-left:6px;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;vertical-align:middle;opacity:.9}
 .bt-pl-bub-sub{font-size:10.5px;font-weight:600;margin-bottom:5px;line-height:1.2}
 .bt-pl-bub-real{display:flex;align-items:center;gap:5px}
 .bt-pl-check{width:14px;height:14px;background:#2FA36B;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px;font-weight:900;flex:none}
@@ -452,6 +455,7 @@ export default function AdminPlanning() {
   const [worksites, setWorksites] = useState<Worksite[]>([]);
   const [planning, setPlanning] = useState<PlanningWithWorksite[]>([]);
   const [realEntries, setRealEntries] = useState<{ user_id: string; work_date: string; worksite_id: string | null; start_time: string; end_time: string; total_minutes: number }[]>([]);
+  const [docsByWorksite, setDocsByWorksite] = useState<Map<string, number>>(new Map()); // nb de documents par chantier (pastille 📎)
   const [todayAbsence, setTodayAbsence] = useState<Map<string, string>>(new Map());
   const [missingByWorker, setMissingByWorker] = useState<Map<string, string[]>>(new Map());
   const [invitations, setInvitations] = useState<Invitation[]>([]);
@@ -658,12 +662,20 @@ export default function AdminPlanning() {
   const fetchExtras = useCallback(async () => {
     if (!user?.company_id) return;
     const windowStart = format(subDays(new Date(), WINDOW_DAYS), 'yyyy-MM-dd');
-    const [planRes, entRes, compRes, invRes] = await Promise.all([
+    const [planRes, entRes, compRes, invRes, docRes] = await Promise.all([
       supabase.from('planning').select('user_id, work_date, absence_type').eq('company_id', user.company_id).gte('work_date', windowStart),
       supabase.from('time_entries').select('user_id, work_date').eq('company_id', user.company_id).neq('status', 'draft').gte('work_date', windowStart),
       supabase.from('companies').select('name, logo_url').eq('id', user.company_id).maybeSingle(),
       supabase.from('invitations').select('*').eq('company_id', user.company_id).is('accepted_at', null).gt('expires_at', new Date().toISOString()).order('created_at', { ascending: false }),
+      supabase.from('documents').select('worksite_id').eq('company_id', user.company_id),
     ]);
+
+    // Pastille 📎 : nombre de documents par chantier.
+    const docCounts = new Map<string, number>();
+    for (const d of (docRes.data || []) as { worksite_id: string | null }[]) {
+      if (d.worksite_id) docCounts.set(d.worksite_id, (docCounts.get(d.worksite_id) || 0) + 1);
+    }
+    setDocsByWorksite(docCounts);
 
     const todayKey = format(new Date(), 'yyyy-MM-dd');
     const planned = new Map<string, Set<string>>();
@@ -1474,7 +1486,7 @@ export default function AdminPlanning() {
                                     title="Cliquer pour ajouter une intervention"
                                   >
                                     {chantiers.map(p => (
-                                      <DraggableBubble key={p.id} p={p} palette={paletteFor(p)} real={realForPlanning(p)} onEdit={openEdit} />
+                                      <DraggableBubble key={p.id} p={p} palette={paletteFor(p)} real={realForPlanning(p)} onEdit={openEdit} docCount={docsByWorksite.get(p.worksite_id || '') || 0} />
                                     ))}
                                     {extra.map((x, i) => (
                                       <button
@@ -1570,7 +1582,7 @@ export default function AdminPlanning() {
                     </div>
                     {!absence && (chantiers.length > 0 || extra.length > 0) && (
                       <div className="bt-pl-m-bubs">
-                        {chantiers.map(p => <BubbleContent key={p.id} p={p} palette={paletteFor(p)} real={realForPlanning(p)} />)}
+                        {chantiers.map(p => <BubbleContent key={p.id} p={p} palette={paletteFor(p)} real={realForPlanning(p)} docCount={docsByWorksite.get(p.worksite_id || '') || 0} />)}
                         {extra.map((x, i) => (
                           <div key={`mx${i}`} className="bt-pl-extra">
                             <span className="bt-pl-bub-bar" style={{ background: '#B5472E' }} />
@@ -1596,7 +1608,7 @@ export default function AdminPlanning() {
           })() : activeDrag?.type === 'move' ? (
             (() => {
               const p = planning.find(x => x.id === activeDrag.id);
-              return p ? <div className="bt-pl-overlay"><BubbleContent p={p} palette={paletteFor(p)} real={realForPlanning(p)} /></div> : null;
+              return p ? <div className="bt-pl-overlay"><BubbleContent p={p} palette={paletteFor(p)} real={realForPlanning(p)} docCount={docsByWorksite.get(p.worksite_id || '') || 0} /></div> : null;
             })()
           ) : null}
         </DragOverlay>
