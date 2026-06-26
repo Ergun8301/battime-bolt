@@ -123,7 +123,7 @@ function BubbleContent({ p, palette, real }: { p: PlanningWithWorksite; palette:
     return (
       <div className="bt-pl-bub" style={{ background: '#15120F', color: '#F2EDE3' }}>
         <span className="bt-pl-bub-bar" style={{ background: palette.bar }} />
-        <div className="bt-pl-bub-name">{p.worksite?.client_name || 'Chantier'}</div>
+        <div className="bt-pl-bub-name">{p.worksite?.client_name || 'Chantier'}{p.added_by_worker && <span className="bt-pl-bub-by">salarié</span>}</div>
         {sub && <div className="bt-pl-bub-sub" style={{ color: '#a59c86' }}>{sub}</div>}
         <div className="bt-pl-bub-real">
           <span className="bt-pl-check">✓</span>
@@ -370,6 +370,7 @@ const PL_CSS = `
 .bt-pl-bub{position:relative;overflow:hidden;border-radius:9px;padding:7px 9px 7px 12px;font-family:'Archivo',sans-serif}
 .bt-pl-bub-bar{position:absolute;left:0;top:0;bottom:0;width:4px}
 .bt-pl-bub-name{font-size:12.5px;font-weight:800;letter-spacing:-.01em;line-height:1.15}
+.bt-pl-bub-by{display:inline-block;margin-left:5px;font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#15120F;background:#FFC21A;padding:1px 4px;border-radius:3px;vertical-align:middle}
 .bt-pl-bub-sub{font-size:10.5px;font-weight:600;margin-bottom:5px;line-height:1.2}
 .bt-pl-bub-real{display:flex;align-items:center;gap:5px}
 .bt-pl-check{width:14px;height:14px;background:#2FA36B;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px;font-weight:900;flex:none}
@@ -626,8 +627,28 @@ export default function AdminPlanning() {
           .eq('company_id', user.company_id).neq('status', 'draft').gte('work_date', from).lte('work_date', to),
       ]);
       if (planRes.error) throw planRes.error;
-      setPlanning(planRes.data || []);
-      if (!realRes.error) setRealEntries(realRes.data || []);
+      const planRows = planRes.data || [];
+      const realRows = realRes.error ? [] : (realRes.data || []);
+      setPlanning(planRows);
+      if (!realRes.error) setRealEntries(realRows);
+
+      // Unification : toute heure déclarée sur un chantier sans créneau planning → on
+      // crée le créneau (idempotent, côté serveur) pour qu'elle devienne une bulle
+      // normale (glissable + même pop-up), repérée « salarié ». Auto-réparé une fois.
+      const planKey = new Set(planRows.filter((p) => p.worksite_id).map((p) => `${p.user_id}|${p.work_date}|${p.worksite_id}`));
+      const missing = new Map<string, { u: string; d: string; w: string }>();
+      for (const e of realRows) {
+        if (!e.worksite_id) continue;
+        const k = `${e.user_id}|${e.work_date}|${e.worksite_id}`;
+        if (!planKey.has(k)) missing.set(k, { u: e.user_id, d: e.work_date, w: e.worksite_id });
+      }
+      if (missing.size > 0) {
+        await Promise.all(Array.from(missing.values()).map((x) =>
+          supabase.rpc('ensure_planning_slot', { p_user_id: x.u, p_work_date: x.d, p_worksite_id: x.w })));
+        const { data: planAgain } = await supabase.from('planning').select('*, worksite:worksites(*), user:users!user_id(*)')
+          .eq('company_id', user.company_id).gte('work_date', from).lte('work_date', to).order('work_date');
+        if (planAgain) setPlanning(planAgain);
+      }
     } catch (err) {
       console.error('Error fetching planning:', err);
     }

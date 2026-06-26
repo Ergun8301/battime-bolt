@@ -63,6 +63,7 @@ export interface Planning {
   notes?: string;
   absence_type?: 'conge' | 'maladie' | 'intemperie' | 'repos' | null;
   position?: number | null;
+  added_by_worker?: boolean;
   created_at: string;
   created_by: string;
 }
