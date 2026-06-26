@@ -119,6 +119,9 @@ const DAY_CSS = `
 .bt-iv-times-v{flex:none;white-space:nowrap}
 .bt-iv-times .dot{width:4px;height:4px;background:#c4bdae;border-radius:50%}
 .bt-iv-note{font-size:13px;color:#6E6A63;margin-top:8px}
+.bt-iv-reserve{display:inline-flex;align-items:center;gap:5px;margin-top:7px;font-size:12px;font-weight:800;border-radius:7px;padding:3px 9px}
+.bt-iv-reserve.avec{background:#FCEADF;border:1px solid #F0C49A;color:#C0461F}
+.bt-iv-reserve.sans{background:#EAF6EF;border:1px solid #BBE0CC;color:#1F7A4D}
 .bt-iv-acts{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
 .bt-iv-mod{flex:1;min-width:110px;border:1.5px solid #15120F;background:transparent;border-radius:10px;padding:10px;font-weight:800;font-size:13.5px;color:#15120F;cursor:pointer;font-family:inherit}
 .bt-iv-doc{flex:none;border:1.5px solid rgba(21,18,15,.18);background:#fff;border-radius:10px;padding:10px 12px;font-weight:800;font-size:13.5px;color:#15120F;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
@@ -182,6 +185,15 @@ const DAY_CSS = `
 
 .bt-pause-auto{display:flex;align-items:center;gap:8px;margin-top:16px;background:rgba(255,194,26,.12);border:1px solid rgba(255,194,26,.4);border-radius:12px;padding:11px 13px;font-size:12.5px;font-weight:700;color:#7a5e00}
 
+.bt-recep{display:flex;gap:9px}
+.bt-recep-b{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:7px;border:1.5px solid rgba(21,18,15,.16);background:#fff;border-radius:13px;padding:13px;font-weight:800;font-size:14px;color:#15120F;cursor:pointer;font-family:inherit}
+.bt-recep-b .ic{flex:none;width:18px;height:18px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;background:rgba(21,18,15,.08);color:#9a948a}
+.bt-recep-b.sans.on{border-color:#1F7A4D;background:#EAF6EF;color:#1F7A4D}
+.bt-recep-b.sans.on .ic{background:#1F7A4D;color:#fff}
+.bt-recep-b.avec.on{border-color:#C0461F;background:#FCEADF;color:#C0461F}
+.bt-recep-b.avec.on .ic{background:#C0461F;color:#fff}
+.bt-recep-hint{margin-top:8px;font-size:12.5px;font-weight:600;color:#C0461F;background:#FCEADF;border:1px solid #F0C49A;border-radius:11px;padding:10px 12px}
+.bt-recep-hint strong{font-weight:900}
 .bt-note{width:100%;font-family:inherit;font-size:15.5px;font-weight:500;color:#15120F;padding:14px 15px;border:1.5px solid rgba(21,18,15,.16);border-radius:13px;background:#fff;outline:none;resize:none}
 
 .bt-save{width:100%;border:none;background:#FFC21A;border-radius:13px;padding:15px;font-weight:900;font-size:16px;color:#15120F;box-shadow:0 4px 0 #C99300;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;font-family:inherit}
@@ -241,6 +253,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
   const [fStart, setFStart] = useState('');
   const [fEnd, setFEnd] = useState('');
   const [fObs, setFObs] = useState('');
+  const [fReception, setFReception] = useState<'sans' | 'avec' | ''>(''); // réception du chantier : sans / avec réserve (facultatif)
   const [fSaving, setFSaving] = useState(false);
   // Chantier picker (existing chantiers only — workers don't create clients)
   const [fWorksiteId, setFWorksiteId] = useState('');
@@ -342,6 +355,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
           // total_minutes is a generated column in Postgres — never send it.
           meal_allowance: entry.meal_allowance,
           observation: entry.observation,
+          reception: entry.reception ?? null,
           status: 'draft',
         });
         if (!error) {
@@ -431,18 +445,21 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
     setFStart(snapToGrid(p.estimated_start ? p.estimated_start.substring(0, 5) : '08:00'));
     setFEnd(snapToGrid(p.estimated_end ? p.estimated_end.substring(0, 5) : '17:00'));
     setFObs('');
+    setFReception('');
   };
   const openEntry = (e: TimeEntryWithWorksite) => {
     setOpenSlot({ kind: 'entry', entryId: e.id });
     setFStart(snapToGrid(e.start_time?.substring(0, 5) || '08:00'));
     setFEnd(snapToGrid(e.end_time?.substring(0, 5) || '17:00'));
     setFObs(e.observation || '');
+    setFReception(e.reception || '');
   };
   const openPending = (e: PendingEntry) => {
     setOpenSlot({ kind: 'pending', localId: e.localId });
     setFStart(snapToGrid(e.start_time.substring(0, 5)));
     setFEnd(snapToGrid(e.end_time.substring(0, 5)));
     setFObs(e.observation || '');
+    setFReception(e.reception || '');
   };
   const openNew = () => {
     if (monthLocked) { setLateOpen(true); return; }
@@ -461,6 +478,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
     setFStart(nowParis);
     setFEnd(endParis);
     setFObs('');
+    setFReception('');
   };
   const cancelSlot = () => { setDrawerField(null); setOpenSlot(null); };
 
@@ -488,6 +506,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
         if (wasSubmitted) savedMsg = 'Modification enregistrée — la secrétaire est prévenue';
         const { error } = await supabase.from('time_entries').update({
           start_time: fStart, end_time: fEnd, break_minutes: 0, observation: fObs.trim() || null,
+          reception: fReception || null,
           // Editing an already-sent entry: flag it so the secretary sees the change.
           ...(wasSubmitted ? { modified_at: new Date().toISOString(), modified_by: user.id } : {}),
         }).eq('id', openSlot.entryId).eq('user_id', user.id);
@@ -496,7 +515,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
         const pend = getPendingEntries(user.id).find((e) => e.localId === openSlot.localId);
         if (pend) {
           removePendingEntry(user.id, openSlot.localId);
-          addPendingEntry(user.id, { ...pend, start_time: fStart, end_time: fEnd, break_minutes: 0, total_minutes: totalMins, observation: fObs.trim() || null });
+          addPendingEntry(user.id, { ...pend, start_time: fStart, end_time: fEnd, break_minutes: 0, total_minutes: totalMins, observation: fObs.trim() || null, reception: fReception || null });
         }
       } else {
         // ── Create a new slot (planned chantier or free intervention) ──
@@ -522,7 +541,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
           const pending: PendingEntry = {
             localId: generateLocalId(), company_id: user.company_id, user_id: user.id, worksite_id: worksiteId,
             planning_id: planningId, work_date: date, start_time: fStart, end_time: fEnd, break_minutes: 0,
-            total_minutes: totalMins, meal_allowance: false, observation: fObs.trim() || null,
+            total_minutes: totalMins, meal_allowance: false, observation: fObs.trim() || null, reception: fReception || null,
             _worksite_name: worksiteName, _worksite_city: worksiteCity, _saved_at: Date.now(),
           };
           addPendingEntry(user.id, pending);
@@ -530,7 +549,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
           const { error } = await supabase.from('time_entries').insert({
             company_id: user.company_id, user_id: user.id, worksite_id: worksiteId, planning_id: planningId,
             work_date: date, start_time: fStart, end_time: fEnd, break_minutes: 0,
-            meal_allowance: false, observation: fObs.trim() || null, status: 'draft',
+            meal_allowance: false, observation: fObs.trim() || null, reception: fReception || null, status: 'draft',
           });
           if (error) throw error;
         }
@@ -930,6 +949,8 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
                   {entry.worksite?.city && <span className="bt-iv-city">{entry.worksite.city}</span>}
                   <span className="bt-iv-times-v">{entry.start_time?.substring(0, 5)} → {entry.end_time?.substring(0, 5)} · {fmtHM(entry.total_minutes)}</span>
                 </div>
+                {entry.reception === 'avec' && <div className="bt-iv-reserve avec">⚠ Avec réserve</div>}
+                {entry.reception === 'sans' && <div className="bt-iv-reserve sans">✓ Sans réserve</div>}
                 {entry.observation && <div className="bt-iv-note">{entry.observation}</div>}
               </div>
             );
@@ -1103,12 +1124,26 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
                 Les pauses sont calculées automatiquement d&apos;après vos horaires.
               </div>
 
-              {/* 3 · Note */}
-              <div className="bt-sec">3 · Note <span style={{ textTransform: 'none', letterSpacing: 0, color: '#a39d92' }}>(facultatif)</span></div>
+              {/* 3 · Réception du chantier — réserves (facultatif) */}
+              <div className="bt-sec">3 · Réception <span style={{ textTransform: 'none', letterSpacing: 0, color: '#a39d92' }}>(facultatif)</span></div>
+              <div className="bt-recep">
+                <button type="button" className={`bt-recep-b sans${fReception === 'sans' ? ' on' : ''}`} onClick={() => setFReception(fReception === 'sans' ? '' : 'sans')}>
+                  <span className="ic">✓</span> Sans réserve
+                </button>
+                <button type="button" className={`bt-recep-b avec${fReception === 'avec' ? ' on' : ''}`} onClick={() => setFReception(fReception === 'avec' ? '' : 'avec')}>
+                  <span className="ic">!</span> Avec réserve
+                </button>
+              </div>
+              {fReception === 'avec' && (
+                <div className="bt-recep-hint">Décrivez les réserves dans la note ci-dessous et ajoutez des photos via le bouton <strong>Documents</strong>.</div>
+              )}
+
+              {/* 4 · Note (devient « Détail des réserves » si avec réserve) */}
+              <div className="bt-sec">4 · {fReception === 'avec' ? 'Détail des réserves' : 'Note'} {fReception !== 'avec' && <span style={{ textTransform: 'none', letterSpacing: 0, color: '#a39d92' }}>(facultatif)</span>}</div>
               <textarea
                 className="bt-note"
                 rows={2}
-                placeholder="Préciser le travail effectué…"
+                placeholder={fReception === 'avec' ? 'Décrivez les réserves constatées…' : 'Préciser le travail effectué…'}
                 value={fObs}
                 onChange={(e) => setFObs(e.target.value)}
               />

@@ -16,7 +16,7 @@ import { Textarea } from '@/components/ui/textarea';
 import {
   ChevronLeft, ChevronRight, Plus, Trash2, Loader2,
   UserPlus, Users, Building2, Archive, CalendarRange, Download, FileSpreadsheet, FileText,
-  Bell, Clock, Mail, RefreshCw, X, Pencil, LogOut, Settings, User as UserIcon, Paperclip,
+  Bell, Clock, Mail, RefreshCw, X, Pencil, LogOut, Settings, User as UserIcon, Paperclip, AlertTriangle,
 } from 'lucide-react';
 import {
   DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
@@ -110,7 +110,7 @@ function hashStr(s: string): number {
 const paletteFor = (p: PlanningWithWorksite) =>
   CHANTIER_PALETTES[hashStr(p.worksite_id || p.id) % CHANTIER_PALETTES.length];
 
-interface RealAgg { minutes: number; start: string; end: string; count: number }
+interface RealAgg { minutes: number; start: string; end: string; count: number; hasReserve: boolean }
 const realKey = (userId: string, date: string, worksiteId: string | null) => `${userId}|${date}|${worksiteId}`;
 
 // ─── compact one-line chantier bubble ──────────────────────────────────────────
@@ -124,7 +124,7 @@ function BubbleContent({ p, palette, real, docCount = 0 }: { p: PlanningWithWork
     return (
       <div className="bt-pl-bub" style={{ background: '#15120F', color: '#F2EDE3' }}>
         <span className="bt-pl-bub-bar" style={{ background: palette.bar }} />
-        <div className="bt-pl-bub-name">{p.worksite?.client_name || 'Chantier'}{p.added_by_worker && <span className="bt-pl-bub-by">salarié</span>}{docsBadge}</div>
+        <div className="bt-pl-bub-name">{p.worksite?.client_name || 'Chantier'}{p.added_by_worker && <span className="bt-pl-bub-by">salarié</span>}{real.hasReserve && <span className="bt-pl-bub-reserve" title="Réception avec réserve">réserve</span>}{docsBadge}</div>
         {sub && <div className="bt-pl-bub-sub" style={{ color: '#a59c86' }}>{sub}</div>}
         <div className="bt-pl-bub-real">
           <span className="bt-pl-check">✓</span>
@@ -373,6 +373,7 @@ const PL_CSS = `
 .bt-pl-bub-bar{position:absolute;left:0;top:0;bottom:0;width:4px}
 .bt-pl-bub-name{font-size:12.5px;font-weight:800;letter-spacing:-.01em;line-height:1.15}
 .bt-pl-bub-by{display:inline-block;margin-left:5px;font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#15120F;background:#FFC21A;padding:1px 4px;border-radius:3px;vertical-align:middle}
+.bt-pl-bub-reserve{display:inline-block;margin-left:5px;font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#fff;background:#C0461F;padding:1px 4px;border-radius:3px;vertical-align:middle}
 .bt-pl-bub-docs{display:inline-flex;align-items:center;gap:2px;margin-left:6px;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;vertical-align:middle;opacity:.9}
 .bt-pl-bub-sub{font-size:10.5px;font-weight:600;margin-bottom:5px;line-height:1.2}
 .bt-pl-bub-real{display:flex;align-items:center;gap:5px}
@@ -454,7 +455,7 @@ export default function AdminPlanning() {
   const [workers, setWorkers] = useState<User[]>([]);
   const [worksites, setWorksites] = useState<Worksite[]>([]);
   const [planning, setPlanning] = useState<PlanningWithWorksite[]>([]);
-  const [realEntries, setRealEntries] = useState<{ user_id: string; work_date: string; worksite_id: string | null; start_time: string; end_time: string; total_minutes: number }[]>([]);
+  const [realEntries, setRealEntries] = useState<{ user_id: string; work_date: string; worksite_id: string | null; start_time: string; end_time: string; total_minutes: number; reception: string | null }[]>([]);
   const [docsByWorksite, setDocsByWorksite] = useState<Map<string, number>>(new Map()); // nb de documents par chantier (pastille 📎)
   const [todayAbsence, setTodayAbsence] = useState<Map<string, string>>(new Map());
   const [missingByWorker, setMissingByWorker] = useState<Map<string, string[]>>(new Map());
@@ -627,7 +628,7 @@ export default function AdminPlanning() {
       const [planRes, realRes] = await Promise.all([
         supabase.from('planning').select('*, worksite:worksites(*), user:users!user_id(*)')
           .eq('company_id', user.company_id).gte('work_date', from).lte('work_date', to).order('work_date'),
-        supabase.from('time_entries').select('user_id, work_date, worksite_id, start_time, end_time, total_minutes')
+        supabase.from('time_entries').select('user_id, work_date, worksite_id, start_time, end_time, total_minutes, reception')
           .eq('company_id', user.company_id).neq('status', 'draft').gte('work_date', from).lte('work_date', to),
       ]);
       if (planRes.error) throw planRes.error;
@@ -723,12 +724,13 @@ export default function AdminPlanning() {
     for (const e of realEntries) {
       const k = realKey(e.user_id, e.work_date, e.worksite_id);
       const cur = m.get(k);
-      if (!cur) m.set(k, { minutes: e.total_minutes, start: e.start_time, end: e.end_time, count: 1 });
+      if (!cur) m.set(k, { minutes: e.total_minutes, start: e.start_time, end: e.end_time, count: 1, hasReserve: e.reception === 'avec' });
       else {
         cur.minutes += e.total_minutes;
         if (e.start_time && e.start_time < cur.start) cur.start = e.start_time;
         if (e.end_time && e.end_time > cur.end) cur.end = e.end_time;
         cur.count += 1;
+        if (e.reception === 'avec') cur.hasReserve = true;
       }
     }
     return m;
@@ -1930,6 +1932,9 @@ export default function AdminPlanning() {
                   <span className="text-green-700">{editRealAgg.start?.substring(0, 5)}–{editRealAgg.end?.substring(0, 5)} · <strong>{formatMinutes(editRealAgg.minutes)} réelles</strong>{editRealAgg.count > 1 ? ` (${editRealAgg.count} saisies)` : ''}</span>
                 ) : (
                   <span className="text-muted-foreground">pas encore déclaré</span>
+                )}
+                {editRealAgg?.hasReserve && (
+                  <div className="mt-1.5 flex items-center gap-1.5 font-semibold text-[#C0461F]"><AlertTriangle className="h-3.5 w-3.5" /> Réception avec réserve — détail sur la fiche du salarié</div>
                 )}
               </div>
 
