@@ -16,7 +16,7 @@ import { Textarea } from '@/components/ui/textarea';
 import {
   ChevronLeft, ChevronRight, Plus, Trash2, Loader2,
   UserPlus, Users, Building2, Archive, CalendarRange, Download, FileSpreadsheet, FileText,
-  Bell, Clock, Mail, RefreshCw, X, Pencil, LogOut, Settings, User as UserIcon, Paperclip, AlertTriangle,
+  Bell, Clock, Mail, RefreshCw, X, Pencil, LogOut, Settings, User as UserIcon, Paperclip, AlertTriangle, Info,
 } from 'lucide-react';
 import {
   DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
@@ -118,13 +118,23 @@ const realKey = (userId: string, date: string, worksiteId: string | null) => `${
 function BubbleContent({ p, palette, real, docCount = 0 }: { p: PlanningWithWorksite; palette: ChantierPalette; real?: RealAgg; docCount?: number }) {
   const hour = fixedHourOf(p);
   const sub = [p.worksite?.product_type, p.worksite?.city].filter(Boolean).join(' · ');
-  const docsBadge = docCount > 0 ? <span className="bt-pl-bub-docs" title={`${docCount} document${docCount > 1 ? 's' : ''}`}><Paperclip className="h-2.5 w-2.5" />{docCount}</span> : null;
+  // Repères compacts (icônes, pas de texte) alignés à droite du nom — voir la légende.
+  const docs = docCount > 0 ? (
+    <span className="bt-pl-bub-docs" title={`${docCount} document${docCount > 1 ? 's' : ''}`}><Paperclip className="h-2.5 w-2.5" />{docCount}</span>
+  ) : null;
   if (real) {
     // Pointé (réel) — fond noir, heures réelles en mono jaune.
     return (
       <div className="bt-pl-bub" style={{ background: '#15120F', color: '#F2EDE3' }}>
         <span className="bt-pl-bub-bar" style={{ background: palette.bar }} />
-        <div className="bt-pl-bub-name">{p.worksite?.client_name || 'Chantier'}{p.added_by_worker && <span className="bt-pl-bub-by">salarié</span>}{real.hasReserve && <span className="bt-pl-bub-reserve" title="Réception avec réserve">réserve</span>}{docsBadge}</div>
+        <div className="bt-pl-bub-name">
+          <span className="bt-pl-bub-title">{p.worksite?.client_name || 'Chantier'}</span>
+          <span className="bt-pl-bub-ic">
+            {p.added_by_worker && <span className="bt-pl-ic" title="Ajouté par le salarié" style={{ color: '#FFC21A' }}><UserIcon className="h-3 w-3" /></span>}
+            {real.hasReserve && <span className="bt-pl-ic" title="Réception avec réserve" style={{ color: '#F0915A' }}><AlertTriangle className="h-3 w-3" /></span>}
+            {docs}
+          </span>
+        </div>
         {sub && <div className="bt-pl-bub-sub" style={{ color: '#a59c86' }}>{sub}</div>}
         <div className="bt-pl-bub-real">
           <span className="bt-pl-check">✓</span>
@@ -137,7 +147,10 @@ function BubbleContent({ p, palette, real, docCount = 0 }: { p: PlanningWithWork
   return (
     <div className="bt-pl-bub" style={{ background: '#fff', border: `1.5px dashed ${palette.bar}`, color: '#15120F' }}>
       <span className="bt-pl-bub-bar" style={{ background: palette.bar }} />
-      <div className="bt-pl-bub-name">{p.worksite?.client_name || 'Chantier'}{docsBadge}</div>
+      <div className="bt-pl-bub-name">
+        <span className="bt-pl-bub-title">{p.worksite?.client_name || 'Chantier'}</span>
+        {docs && <span className="bt-pl-bub-ic">{docs}</span>}
+      </div>
       {sub && <div className="bt-pl-bub-sub" style={{ color: '#6E6A63' }}>{sub}</div>}
       {hour && (
         <div className="bt-pl-bub-foot">
@@ -283,6 +296,9 @@ const PL_CSS = `
 /* Variante ancrée à gauche (menu Clients, désormais à gauche de la barre) */
 .bt-pl-dd.bt-pl-dd--start{left:0;right:auto}
 .bt-pl-dd-h{padding:9px 13px 7px;border-bottom:1px solid rgba(21,18,15,.08);font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:#9a948a;font-weight:700}
+.bt-pl-legrow{display:flex;align-items:center;gap:9px;padding:8px 13px;font-size:12.5px;font-weight:600;color:#15120F}
+.bt-pl-legrow + .bt-pl-legrow{border-top:1px solid rgba(21,18,15,.05)}
+.bt-pl-legic{flex:none;display:inline-flex;align-items:center;justify-content:center;width:18px}
 .bt-pl-ddrow{display:flex;align-items:center;gap:10px;padding:10px 13px;cursor:grab;background:#fff;border:none;width:100%;text-align:left;font-family:inherit;transition:background .12s ease}
 .bt-pl-ddrow:hover{background:#FBF6EA}
 .bt-pl-ddrow:active{cursor:grabbing}
@@ -371,10 +387,11 @@ const PL_CSS = `
 /* bulle */
 .bt-pl-bub{position:relative;overflow:hidden;border-radius:9px;padding:7px 9px 7px 12px;font-family:'Archivo',sans-serif}
 .bt-pl-bub-bar{position:absolute;left:0;top:0;bottom:0;width:4px}
-.bt-pl-bub-name{font-size:12.5px;font-weight:800;letter-spacing:-.01em;line-height:1.15}
-.bt-pl-bub-by{display:inline-block;margin-left:5px;font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#15120F;background:#FFC21A;padding:1px 4px;border-radius:3px;vertical-align:middle}
-.bt-pl-bub-reserve{display:inline-block;margin-left:5px;font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#fff;background:#C0461F;padding:1px 4px;border-radius:3px;vertical-align:middle}
-.bt-pl-bub-docs{display:inline-flex;align-items:center;gap:2px;margin-left:6px;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;vertical-align:middle;opacity:.9}
+.bt-pl-bub-name{display:flex;align-items:flex-start;gap:6px;font-size:12.5px;font-weight:800;letter-spacing:-.01em;line-height:1.15}
+.bt-pl-bub-title{flex:1;min-width:0;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow-wrap:anywhere}
+.bt-pl-bub-ic{flex:none;display:inline-flex;align-items:center;gap:5px;margin-top:1px}
+.bt-pl-ic{display:inline-flex;align-items:center}
+.bt-pl-bub-docs{display:inline-flex;align-items:center;gap:2px;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;opacity:.85}
 .bt-pl-bub-sub{font-size:10.5px;font-weight:600;margin-bottom:5px;line-height:1.2}
 .bt-pl-bub-real{display:flex;align-items:center;gap:5px}
 .bt-pl-check{width:14px;height:14px;background:#2FA36B;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px;font-weight:900;flex:none}
@@ -483,6 +500,7 @@ export default function AdminPlanning() {
   const [companyLogo, setCompanyLogo] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [legendOpen, setLegendOpen] = useState(false); // popover légende des icônes de bulle
 
   // team export
   const [exportOpen, setExportOpen] = useState(false);
@@ -1338,6 +1356,21 @@ export default function AdminPlanning() {
               <span className="bt-pl-datebox-rg">{format(currentWeekStart, 'd', { locale: fr })}–{format(addDays(currentWeekStart, 5), 'd MMM', { locale: fr })}</span>
             </button>
             <button className="bt-pl-datearr" aria-label="Semaine suivante" onClick={() => setCurrentWeekStart(addWeeks(currentWeekStart, 1))}>›</button>
+          </div>
+          <div className="bt-pl-ddwrap">
+            <button className="bt-pl-datearr" onClick={() => setLegendOpen((o) => !o)} title="Légende des icônes" aria-label="Légende des icônes"><Info className="h-4 w-4" /></button>
+            {legendOpen && (
+              <>
+                <div className="bt-pl-ddbackdrop" onClick={() => setLegendOpen(false)} />
+                <div className="bt-pl-dd">
+                  <div className="bt-pl-dd-h">Légende des bulles</div>
+                  <div className="bt-pl-legrow"><span className="bt-pl-check">✓</span> Heures déclarées par le salarié</div>
+                  <div className="bt-pl-legrow"><span className="bt-pl-legic" style={{ color: '#caa01a' }}><UserIcon className="h-3.5 w-3.5" /></span> Intervention ajoutée par le salarié</div>
+                  <div className="bt-pl-legrow"><span className="bt-pl-legic" style={{ color: '#C0461F' }}><AlertTriangle className="h-3.5 w-3.5" /></span> Réception avec réserve</div>
+                  <div className="bt-pl-legrow"><span className="bt-pl-legic"><Paperclip className="h-3.5 w-3.5" /></span> Documents du chantier</div>
+                </div>
+              </>
+            )}
           </div>
           <div className="bt-pl-ddwrap">
             <button className="bt-pl-fill" onClick={() => setExportMenuOpen((o) => !o)}><Download className="h-4 w-4" /> Exporter ▾</button>
