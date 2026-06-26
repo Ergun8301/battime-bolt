@@ -82,9 +82,10 @@ export interface TimeEntry {
   meal_allowance: boolean;
   observation?: string;
   photos?: string[];
-  // Réception du chantier déclarée par le salarié : null = non renseigné,
-  // 'sans' = sans réserve, 'avec' = avec réserve (détail dans observation/photos).
-  reception?: 'sans' | 'avec' | null;
+  // Statut du chantier déclaré par le salarié : null = non renseigné,
+  // 'en_cours' = chantier non fini, 'sans' = réceptionné sans réserve,
+  // 'avec' = réceptionné avec réserve (détail dans observation/photos).
+  reception?: 'sans' | 'avec' | 'en_cours' | null;
   status: 'draft' | 'submitted' | 'validated' | 'cancelled';
   created_at: string;
   submitted_at?: string;

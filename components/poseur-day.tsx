@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Calendar } from '@/components/ui/calendar';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Loader2, Copy, AlertTriangle, FolderOpen, Trash2, Paperclip } from 'lucide-react';
+import { Loader2, Copy, AlertTriangle, FolderOpen, Trash2, Paperclip, Hammer, CheckCircle2 } from 'lucide-react';
 import { format, subDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -122,6 +122,7 @@ const DAY_CSS = `
 .bt-iv-reserve{display:inline-flex;align-items:center;gap:5px;margin-top:7px;font-size:12px;font-weight:800;border-radius:7px;padding:3px 9px}
 .bt-iv-reserve.avec{background:#FCEADF;border:1px solid #F0C49A;color:#C0461F}
 .bt-iv-reserve.sans{background:#EAF6EF;border:1px solid #BBE0CC;color:#1F7A4D}
+.bt-iv-reserve.encours{background:#FFF6E0;border:1px solid #EAD08A;color:#8a6d05}
 .bt-iv-acts{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
 .bt-iv-mod{flex:1;min-width:110px;border:1.5px solid #15120F;background:transparent;border-radius:10px;padding:10px;font-weight:800;font-size:13.5px;color:#15120F;cursor:pointer;font-family:inherit}
 .bt-iv-doc{flex:none;border:1.5px solid rgba(21,18,15,.18);background:#fff;border-radius:10px;padding:10px 12px;font-weight:800;font-size:13.5px;color:#15120F;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
@@ -185,13 +186,13 @@ const DAY_CSS = `
 
 .bt-pause-auto{display:flex;align-items:center;gap:8px;margin-top:16px;background:rgba(255,194,26,.12);border:1px solid rgba(255,194,26,.4);border-radius:12px;padding:11px 13px;font-size:12.5px;font-weight:700;color:#7a5e00}
 
-.bt-recep{display:flex;gap:9px}
-.bt-recep-b{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:7px;border:1.5px solid rgba(21,18,15,.16);background:#fff;border-radius:13px;padding:13px;font-weight:800;font-size:14px;color:#15120F;cursor:pointer;font-family:inherit}
-.bt-recep-b .ic{flex:none;width:18px;height:18px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;background:rgba(21,18,15,.08);color:#9a948a}
+.bt-recep{display:flex;gap:8px}
+.bt-recep-b{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:5px;border:1.5px solid rgba(21,18,15,.16);background:#fff;border-radius:13px;padding:11px 6px;font-weight:800;font-size:12.5px;color:#6E6A63;cursor:pointer;font-family:inherit;text-align:center;line-height:1.1}
+.bt-recep-b svg{opacity:.65}
+.bt-recep-b.encours.on{border-color:#C98A12;background:#FFF6E0;color:#8a6d05}
 .bt-recep-b.sans.on{border-color:#1F7A4D;background:#EAF6EF;color:#1F7A4D}
-.bt-recep-b.sans.on .ic{background:#1F7A4D;color:#fff}
 .bt-recep-b.avec.on{border-color:#C0461F;background:#FCEADF;color:#C0461F}
-.bt-recep-b.avec.on .ic{background:#C0461F;color:#fff}
+.bt-recep-b.on svg{opacity:1}
 .bt-recep-hint{margin-top:8px;font-size:12.5px;font-weight:600;color:#C0461F;background:#FCEADF;border:1px solid #F0C49A;border-radius:11px;padding:10px 12px}
 .bt-recep-hint strong{font-weight:900}
 .bt-note{width:100%;font-family:inherit;font-size:15.5px;font-weight:500;color:#15120F;padding:14px 15px;border:1.5px solid rgba(21,18,15,.16);border-radius:13px;background:#fff;outline:none;resize:none}
@@ -253,7 +254,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
   const [fStart, setFStart] = useState('');
   const [fEnd, setFEnd] = useState('');
   const [fObs, setFObs] = useState('');
-  const [fReception, setFReception] = useState<'sans' | 'avec' | ''>(''); // réception du chantier : sans / avec réserve (facultatif)
+  const [fReception, setFReception] = useState<'sans' | 'avec' | 'en_cours' | ''>(''); // statut du chantier : en cours / sans / avec réserve (facultatif)
   const [fSaving, setFSaving] = useState(false);
   // Chantier picker (existing chantiers only — workers don't create clients)
   const [fWorksiteId, setFWorksiteId] = useState('');
@@ -951,6 +952,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
                 </div>
                 {entry.reception === 'avec' && <div className="bt-iv-reserve avec">⚠ Avec réserve</div>}
                 {entry.reception === 'sans' && <div className="bt-iv-reserve sans">✓ Sans réserve</div>}
+                {entry.reception === 'en_cours' && <div className="bt-iv-reserve encours">🔨 Chantier en cours</div>}
                 {entry.observation && <div className="bt-iv-note">{entry.observation}</div>}
               </div>
             );
@@ -1124,14 +1126,17 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
                 Les pauses sont calculées automatiquement d&apos;après vos horaires.
               </div>
 
-              {/* 3 · Réception du chantier — réserves (facultatif) */}
-              <div className="bt-sec">3 · Réception <span style={{ textTransform: 'none', letterSpacing: 0, color: '#a39d92' }}>(facultatif)</span></div>
+              {/* 3 · Statut du chantier — en cours / sans / avec réserve (facultatif) */}
+              <div className="bt-sec">3 · Statut du chantier <span style={{ textTransform: 'none', letterSpacing: 0, color: '#a39d92' }}>(facultatif)</span></div>
               <div className="bt-recep">
+                <button type="button" className={`bt-recep-b encours${fReception === 'en_cours' ? ' on' : ''}`} onClick={() => setFReception(fReception === 'en_cours' ? '' : 'en_cours')}>
+                  <Hammer className="h-[18px] w-[18px]" /> En cours
+                </button>
                 <button type="button" className={`bt-recep-b sans${fReception === 'sans' ? ' on' : ''}`} onClick={() => setFReception(fReception === 'sans' ? '' : 'sans')}>
-                  <span className="ic">✓</span> Sans réserve
+                  <CheckCircle2 className="h-[18px] w-[18px]" /> Sans réserve
                 </button>
                 <button type="button" className={`bt-recep-b avec${fReception === 'avec' ? ' on' : ''}`} onClick={() => setFReception(fReception === 'avec' ? '' : 'avec')}>
-                  <span className="ic">!</span> Avec réserve
+                  <AlertTriangle className="h-[18px] w-[18px]" /> Avec réserve
                 </button>
               </div>
               {fReception === 'avec' && (

@@ -16,7 +16,7 @@ import { Textarea } from '@/components/ui/textarea';
 import {
   ChevronLeft, ChevronRight, Plus, Trash2, Loader2,
   UserPlus, Users, Building2, Archive, CalendarRange, Download, FileSpreadsheet, FileText,
-  Bell, Clock, Mail, RefreshCw, X, Pencil, LogOut, Settings, User as UserIcon, Paperclip, AlertTriangle, Info,
+  Bell, Clock, Mail, RefreshCw, X, Pencil, LogOut, Settings, User as UserIcon, Paperclip, AlertTriangle, Info, Hammer, CheckCircle2,
 } from 'lucide-react';
 import {
   DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
@@ -110,7 +110,9 @@ function hashStr(s: string): number {
 const paletteFor = (p: PlanningWithWorksite) =>
   CHANTIER_PALETTES[hashStr(p.worksite_id || p.id) % CHANTIER_PALETTES.length];
 
-interface RealAgg { minutes: number; start: string; end: string; count: number; hasReserve: boolean }
+type ReceptionStatus = 'sans' | 'avec' | 'en_cours' | null;
+const RECEPTION_RANK: Record<string, number> = { avec: 3, en_cours: 2, sans: 1 };
+interface RealAgg { minutes: number; start: string; end: string; count: number; reception: ReceptionStatus; note: string }
 const realKey = (userId: string, date: string, worksiteId: string | null) => `${userId}|${date}|${worksiteId}`;
 
 // ─── compact one-line chantier bubble ──────────────────────────────────────────
@@ -131,7 +133,9 @@ function BubbleContent({ p, palette, real, docCount = 0 }: { p: PlanningWithWork
           <span className="bt-pl-bub-title">{p.worksite?.client_name || 'Chantier'}</span>
           <span className="bt-pl-bub-ic">
             {p.added_by_worker && <span className="bt-pl-ic" title="Ajouté par le salarié" style={{ color: '#FFC21A' }}><UserIcon className="h-3 w-3" /></span>}
-            {real.hasReserve && <span className="bt-pl-ic" title="Réception avec réserve" style={{ color: '#F0915A' }}><AlertTriangle className="h-3 w-3" /></span>}
+            {real.reception === 'avec' && <span className="bt-pl-ic" title="Réception avec réserve" style={{ color: '#F0915A' }}><AlertTriangle className="h-3 w-3" /></span>}
+            {real.reception === 'sans' && <span className="bt-pl-ic" title="Réceptionné sans réserve" style={{ color: '#46C281' }}><CheckCircle2 className="h-3 w-3" /></span>}
+            {real.reception === 'en_cours' && <span className="bt-pl-ic" title="Chantier en cours" style={{ color: '#E6B23C' }}><Hammer className="h-3 w-3" /></span>}
             {docs}
           </span>
         </div>
@@ -472,7 +476,7 @@ export default function AdminPlanning() {
   const [workers, setWorkers] = useState<User[]>([]);
   const [worksites, setWorksites] = useState<Worksite[]>([]);
   const [planning, setPlanning] = useState<PlanningWithWorksite[]>([]);
-  const [realEntries, setRealEntries] = useState<{ user_id: string; work_date: string; worksite_id: string | null; start_time: string; end_time: string; total_minutes: number; reception: string | null }[]>([]);
+  const [realEntries, setRealEntries] = useState<{ user_id: string; work_date: string; worksite_id: string | null; start_time: string; end_time: string; total_minutes: number; reception: string | null; observation: string | null }[]>([]);
   const [docsByWorksite, setDocsByWorksite] = useState<Map<string, number>>(new Map()); // nb de documents par chantier (pastille 📎)
   const [todayAbsence, setTodayAbsence] = useState<Map<string, string>>(new Map());
   const [missingByWorker, setMissingByWorker] = useState<Map<string, string[]>>(new Map());
@@ -646,7 +650,7 @@ export default function AdminPlanning() {
       const [planRes, realRes] = await Promise.all([
         supabase.from('planning').select('*, worksite:worksites(*), user:users!user_id(*)')
           .eq('company_id', user.company_id).gte('work_date', from).lte('work_date', to).order('work_date'),
-        supabase.from('time_entries').select('user_id, work_date, worksite_id, start_time, end_time, total_minutes, reception')
+        supabase.from('time_entries').select('user_id, work_date, worksite_id, start_time, end_time, total_minutes, reception, observation')
           .eq('company_id', user.company_id).neq('status', 'draft').gte('work_date', from).lte('work_date', to),
       ]);
       if (planRes.error) throw planRes.error;
@@ -742,13 +746,15 @@ export default function AdminPlanning() {
     for (const e of realEntries) {
       const k = realKey(e.user_id, e.work_date, e.worksite_id);
       const cur = m.get(k);
-      if (!cur) m.set(k, { minutes: e.total_minutes, start: e.start_time, end: e.end_time, count: 1, hasReserve: e.reception === 'avec' });
+      if (!cur) m.set(k, { minutes: e.total_minutes, start: e.start_time, end: e.end_time, count: 1, reception: (e.reception as ReceptionStatus) || null, note: e.observation || '' });
       else {
         cur.minutes += e.total_minutes;
         if (e.start_time && e.start_time < cur.start) cur.start = e.start_time;
         if (e.end_time && e.end_time > cur.end) cur.end = e.end_time;
         cur.count += 1;
-        if (e.reception === 'avec') cur.hasReserve = true;
+        // garde le statut le plus « fort » (avec > en_cours > sans) + cumule les notes
+        if ((RECEPTION_RANK[e.reception || ''] || 0) > (RECEPTION_RANK[cur.reception || ''] || 0)) cur.reception = (e.reception as ReceptionStatus) || cur.reception;
+        if (e.observation) cur.note = cur.note ? `${cur.note} · ${e.observation}` : e.observation;
       }
     }
     return m;
@@ -1365,8 +1371,10 @@ export default function AdminPlanning() {
                 <div className="bt-pl-dd">
                   <div className="bt-pl-dd-h">Légende des bulles</div>
                   <div className="bt-pl-legrow"><span className="bt-pl-check">✓</span> Heures déclarées par le salarié</div>
-                  <div className="bt-pl-legrow"><span className="bt-pl-legic" style={{ color: '#caa01a' }}><UserIcon className="h-3.5 w-3.5" /></span> Intervention ajoutée par le salarié</div>
+                  <div className="bt-pl-legrow"><span className="bt-pl-legic" style={{ color: '#1F7A4D' }}><CheckCircle2 className="h-3.5 w-3.5" /></span> Réceptionné sans réserve</div>
                   <div className="bt-pl-legrow"><span className="bt-pl-legic" style={{ color: '#C0461F' }}><AlertTriangle className="h-3.5 w-3.5" /></span> Réception avec réserve</div>
+                  <div className="bt-pl-legrow"><span className="bt-pl-legic" style={{ color: '#C98A12' }}><Hammer className="h-3.5 w-3.5" /></span> Chantier en cours</div>
+                  <div className="bt-pl-legrow"><span className="bt-pl-legic" style={{ color: '#caa01a' }}><UserIcon className="h-3.5 w-3.5" /></span> Intervention ajoutée par le salarié</div>
                   <div className="bt-pl-legrow"><span className="bt-pl-legic"><Paperclip className="h-3.5 w-3.5" /></span> Documents du chantier</div>
                 </div>
               </>
@@ -1966,8 +1974,22 @@ export default function AdminPlanning() {
                 ) : (
                   <span className="text-muted-foreground">pas encore déclaré</span>
                 )}
-                {editRealAgg?.hasReserve && (
-                  <div className="mt-1.5 flex items-center gap-1.5 font-semibold text-[#C0461F]"><AlertTriangle className="h-3.5 w-3.5" /> Réception avec réserve — détail sur la fiche du salarié</div>
+                {editRealAgg?.reception === 'avec' && (
+                  <div className="mt-1.5 flex items-center gap-1.5 font-semibold text-[#C0461F]"><AlertTriangle className="h-3.5 w-3.5" /> Réception avec réserve</div>
+                )}
+                {editRealAgg?.reception === 'sans' && (
+                  <div className="mt-1.5 flex items-center gap-1.5 font-semibold text-[#1F7A4D]"><CheckCircle2 className="h-3.5 w-3.5" /> Réceptionné sans réserve</div>
+                )}
+                {editRealAgg?.reception === 'en_cours' && (
+                  <div className="mt-1.5 flex items-center gap-1.5 font-semibold text-[#8a6d05]"><Hammer className="h-3.5 w-3.5" /> Chantier en cours</div>
+                )}
+                {editRealAgg?.note && (
+                  <div className="mt-1 text-[13px] text-[#15120F]">« {editRealAgg.note} »</div>
+                )}
+                {editRealAgg?.reception === 'avec' && editing.worksite && (
+                  <button type="button" className="mt-2 inline-flex items-center gap-1.5 text-[12.5px] font-bold text-[#a87c1e] underline" onClick={() => setDocsWorksite(editing.worksite || null)}>
+                    <FileText className="h-3.5 w-3.5" /> Voir les photos / documents
+                  </button>
                 )}
               </div>
 

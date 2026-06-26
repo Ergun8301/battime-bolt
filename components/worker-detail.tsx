@@ -16,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   CalendarRange, Clock, Utensils, MapPin, FileSpreadsheet, FileText, Loader2,
-  Settings2, Archive, ArchiveRestore, Trash2, Link2, User as UserIcon, AlertTriangle,
+  Settings2, Archive, ArchiveRestore, Trash2, Link2, User as UserIcon, AlertTriangle, Hammer,
 } from 'lucide-react';
 import { format, parseISO, isSameDay, subDays, startOfWeek, addDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -406,6 +406,11 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
                     )}
                     {!isCancelled && entry.reception === 'sans' && (
                       <Badge variant="outline" className="text-[10px] py-0 text-[#1F7A4D] border-[#B7DCC4] bg-[#E4F2E9]">Sans réserve</Badge>
+                    )}
+                    {!isCancelled && entry.reception === 'en_cours' && (
+                      <Badge variant="outline" className="text-[10px] py-0 gap-1 text-[#8a6d05] border-[#EAD08A] bg-[#FFF6E0]">
+                        <Hammer className="h-2.5 w-2.5" /> Chantier en cours
+                      </Badge>
                     )}
                   </div>
                   <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
