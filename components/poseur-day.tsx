@@ -93,12 +93,12 @@ const DAY_CSS = `
 
 .bt-sec{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#9a8a3a;font-weight:700;margin:24px 4px 12px}
 
-.bt-iv{background:#fff;border:1px solid rgba(21,18,15,.1);border-radius:16px;padding:15px;margin-bottom:11px}
+.bt-iv{background:#fff;border:1px solid rgba(21,18,15,.1);border-radius:14px;padding:12px 14px;margin-bottom:9px}
 .bt-iv.draft{background:#FFFDF6;border:1.5px dashed #E0AE1C}
 .bt-iv.off{background:#FFFBF4;border:1.5px dashed #C0461F}
-.bt-iv-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:10px}
-.bt-iv-name{font-size:17px;font-weight:800;letter-spacing:-.01em;color:#15120F}
-.bt-iv-city{font-size:13px;color:#6E6A63;font-weight:600}
+.bt-iv-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:5px}
+.bt-iv-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:16px;font-weight:800;letter-spacing:-.01em;color:#15120F}
+.bt-iv-city{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;color:#6E6A63;font-weight:600}
 .bt-iv-tap{cursor:pointer;transition:border-color .14s ease,transform .06s ease}
 .bt-iv-tap:hover{border-color:rgba(21,18,15,.35)}
 .bt-iv-tap:active{transform:scale(.995)}
@@ -109,7 +109,8 @@ const DAY_CSS = `
 .bt-badge-sent .dot{width:14px;height:14px;background:#2FA36B;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px;font-weight:900}
 .bt-badge-draft{background:#FFF1CC;border:1px solid #E8CE7A;color:#8a6d05}
 .bt-badge-off{background:#FBE3D8;border:1px solid #E8B79E;color:#9a3b14}
-.bt-iv-times{display:flex;align-items:center;gap:14px;border-top:1px solid rgba(21,18,15,.08);padding-top:10px;font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700;color:#15120F}
+.bt-iv-times{display:flex;align-items:center;justify-content:space-between;gap:10px;font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:#15120F}
+.bt-iv-times-v{flex:none;white-space:nowrap}
 .bt-iv-times .dot{width:4px;height:4px;background:#c4bdae;border-radius:50%}
 .bt-iv-note{font-size:13px;color:#6E6A63;margin-top:8px}
 .bt-iv-acts{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
@@ -124,7 +125,7 @@ const DAY_CSS = `
 .bt-cancel-time{font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#9a948a;font-weight:600;text-decoration:line-through}
 .bt-cancel-badge{flex:none;font-size:11px;font-weight:800;color:#9a948a;border:1px solid rgba(21,18,15,.18);border-radius:7px;padding:4px 9px;white-space:nowrap}
 
-.bt-iv-plan{background:transparent;border:1.5px dashed rgba(21,18,15,.28);border-radius:16px;padding:15px;margin-bottom:11px}
+.bt-iv-plan{background:transparent;border:1.5px dashed rgba(21,18,15,.28);border-radius:14px;padding:12px 14px;margin-bottom:9px}
 .bt-plan-k{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#9a8a3a;font-weight:700;margin-bottom:4px}
 .bt-plan-btn{width:100%;border:none;background:#15120F;border-radius:11px;padding:13px;font-weight:800;font-size:14.5px;color:#FFC21A;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;margin-top:12px;font-family:inherit}
 
@@ -140,7 +141,7 @@ const DAY_CSS = `
 .bt-send.done{background:#E4F2E9;color:#1F7A4D;box-shadow:0 4px 0 #b7dcc4}
 
 /* ===== ÉDITEUR PLEIN ÉCRAN ===== */
-.bt-ed{position:fixed;inset:0;z-index:60;display:flex;justify-content:center;background:rgba(21,18,15,.35)}
+.bt-ed{position:fixed;inset:0;z-index:40;display:flex;justify-content:center;background:rgba(21,18,15,.35)}
 .bt-ed-inner{width:100%;max-width:480px;height:100vh;height:100svh;height:100dvh;background:#F2EDE3;display:flex;flex-direction:column;position:relative;overflow:hidden}
 .bt-ed-hdr{background:#15120F;color:#F2EDE3;flex:none;padding:calc(env(safe-area-inset-top) + 16px) 18px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px}
 .bt-ed-cancel{border:none;background:transparent;color:#a59c86;font-size:15px;font-weight:700;padding:6px 2px;cursor:pointer;font-family:inherit;flex:none;min-width:54px;text-align:left}
@@ -149,6 +150,10 @@ const DAY_CSS = `
 .bt-ed-scroll::-webkit-scrollbar{display:none}
 .bt-ed-dock{flex:none;padding:13px 18px calc(env(safe-area-inset-bottom) + 18px);background:#F2EDE3;border-top:1px solid rgba(21,18,15,.12);box-shadow:0 -10px 24px -12px rgba(21,18,15,.18)}
 
+.bt-site-search{width:100%;font-family:'Archivo',sans-serif;font-size:15px;font-weight:500;padding:11px 13px;border:1.5px solid rgba(21,18,15,.18);border-radius:12px;background:#fff;outline:none;color:#15120F;margin-bottom:9px}
+.bt-site-search::placeholder{color:#b3aca0}
+.bt-site-search:focus{border-color:#15120F}
+.bt-site-empty{padding:16px;text-align:center;color:#9a948a;font-weight:600;font-size:13px}
 .bt-site{border:1px solid rgba(21,18,15,.14);text-align:left;background:#fff;color:#15120F;border-radius:13px;padding:14px 15px;display:flex;align-items:center;gap:12px;width:100%;cursor:pointer;margin-bottom:8px;font-family:inherit}
 .bt-site.on{background:#15120F;color:#F2EDE3;border-color:#15120F}
 .bt-site.other{border-style:dashed;border-color:rgba(21,18,15,.3)}
@@ -232,6 +237,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
   const [fSaving, setFSaving] = useState(false);
   // Chantier picker (existing chantiers only — workers don't create clients)
   const [fWorksiteId, setFWorksiteId] = useState('');
+  const [chantierQuery, setChantierQuery] = useState(''); // recherche dans la liste des chantiers (nouvelle intervention)
   // Tiroir molette (purement présentation : quelle roue on règle)
   const [drawerField, setDrawerField] = useState<'start' | 'end' | null>(null);
   // Les pauses sont CALCULÉES automatiquement (les trous entre créneaux, via
@@ -428,6 +434,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
     if (monthLocked) { setLateOpen(true); return; }
     setOpenSlot({ kind: 'new' });
     setFWorksiteId('');
+    setChantierQuery('');
     // Heure de début pré-remplie à MAINTENANT (heure de Paris) ; fin = début + 1 h
     // (durée 1 h par défaut). Le salarié peut changer début ET fin aussitôt OU après
     // coup (ces possibilités existent déjà et restent inchangées). On ne touche à rien
@@ -732,6 +739,10 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
     if (b.client_name === OTHER_NAME) return 1;
     return a.client_name.localeCompare(b.client_name);
   });
+  const cq = chantierQuery.trim().toLowerCase();
+  const filteredWorksites = cq
+    ? sortedWorksites.filter((w) => w.client_name.toLowerCase().includes(cq) || (w.city || '').toLowerCase().includes(cq))
+    : sortedWorksites;
 
   // Unified list of the day's slots — planned-not-yet-declared, declared entries, and pending
   // (offline) entries — sorted by start time. The card position stays put as soon as the slot
@@ -886,19 +897,15 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
             return (
               <div key={item.key} className={`bt-iv${isDraft ? ' draft' : ''}${onTap ? ' bt-iv-tap' : ''}`} onClick={onTap}>
                 <div className="bt-iv-top">
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div className="bt-iv-name">{entry.worksite?.client_name || OTHER_NAME}</div>
-                    {entry.worksite?.city && <div className="bt-iv-city">{entry.worksite.city}</div>}
-                  </div>
+                  <span className="bt-iv-name">{entry.worksite?.client_name || OTHER_NAME}</span>
                   {entry.status === 'submitted' && (
                     <div className="bt-badge bt-badge-sent"><span className="dot">✓</span> Envoyé</div>
                   )}
                   {isDraft && <div className="bt-badge bt-badge-draft">● Brouillon</div>}
                 </div>
                 <div className="bt-iv-times">
-                  <span>{entry.start_time?.substring(0, 5)} → {entry.end_time?.substring(0, 5)}</span>
-                  <span className="dot" />
-                  <span>{fmtHM(entry.total_minutes)}</span>
+                  {entry.worksite?.city && <span className="bt-iv-city">{entry.worksite.city}</span>}
+                  <span className="bt-iv-times-v">{entry.start_time?.substring(0, 5)} → {entry.end_time?.substring(0, 5)} · {fmtHM(entry.total_minutes)}</span>
                 </div>
                 {entry.observation && <div className="bt-iv-note">{entry.observation}</div>}
               </div>
@@ -1016,7 +1023,10 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
               {/* 1 · Chantier */}
               <div className="bt-sec">1 · Chantier</div>
               {openSlot.kind === 'new' ? (
-                sortedWorksites.map((ws) => {
+                <>
+                <input className="bt-site-search" placeholder="Rechercher un chantier…" value={chantierQuery} onChange={(e) => setChantierQuery(e.target.value)} />
+                {filteredWorksites.length === 0 && <div className="bt-site-empty">Aucun chantier trouvé</div>}
+                {filteredWorksites.map((ws) => {
                   const isOther = ws.client_name === OTHER_NAME;
                   const on = fWorksiteId === ws.id;
                   return (
@@ -1034,7 +1044,8 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
                       {!(isOther && !on) && <span className="bt-rdo">{on ? '✓' : ''}</span>}
                     </button>
                   );
-                })
+                })}
+                </>
               ) : (
                 <div className="bt-site on">
                   <span style={{ flex: 1, minWidth: 0 }}>

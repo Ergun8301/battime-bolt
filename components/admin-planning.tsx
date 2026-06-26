@@ -503,6 +503,7 @@ export default function AdminPlanning() {
   // affectation (bubble) edit dialog
   const [editing, setEditing] = useState<PlanningWithWorksite | null>(null);
   const [editHour, setEditHour] = useState('');
+  const [hourPickerOpen, setHourPickerOpen] = useState(false); // mini pop-up roulette pour l'heure de RDV
   const [editNote, setEditNote] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
   const [deletingEdit, setDeletingEdit] = useState(false);
@@ -1701,6 +1702,20 @@ export default function AdminPlanning() {
         </DialogContent>
       </Dialog>
 
+      {/* Mini pop-up roulette : heure de RDV (évite le scroll dans le pop-up d'intervention) */}
+      <Dialog open={hourPickerOpen} onOpenChange={setHourPickerOpen}>
+        <DialogContent className="bt-skin max-w-xs">
+          <DialogHeader><DialogTitle>Heure de RDV</DialogTitle></DialogHeader>
+          <div className="rounded-2xl bg-[#15120F] p-3 flex justify-center">
+            <TimeCylinder value={editHour || '08:00'} onChange={setEditHour} />
+          </div>
+          <div className="flex gap-2 pt-1">
+            <Button variant="outline" className="flex-1" onClick={() => { setEditHour(''); setHourPickerOpen(false); }}>Pas d&apos;heure</Button>
+            <Button className="flex-1" onClick={() => { if (!editHour) setEditHour('08:00'); setHourPickerOpen(false); }}>Valider</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Team export */}
       <Dialog open={exportOpen} onOpenChange={(o) => { setExportOpen(o); if (o) setExportRange(null); }}>
         <DialogContent className="bt-skin max-w-sm">
@@ -1857,20 +1872,16 @@ export default function AdminPlanning() {
                 )}
               </div>
 
-              {/* Heure de RDV (facultatif) — roulette cylindre, comme côté salarié */}
+              {/* Heure de RDV (facultatif) — ouvre la roulette cylindre dans un mini pop-up */}
               <div className="space-y-1.5">
                 <Label>Heure de RDV (facultatif)</Label>
-                {editHour ? (
-                  <div className="rounded-2xl bg-[#15120F] p-2.5 flex flex-col items-center gap-1.5">
-                    <TimeCylinder value={editHour} onChange={setEditHour} />
-                    <button type="button" className="text-xs font-bold text-[#a59c86] hover:text-[#F2EDE3]" onClick={() => setEditHour('')}>Pas d&apos;heure fixe</button>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm" onClick={() => setEditHour('08:00')}>+ Ajouter une heure</Button>
-                    <span className="text-xs text-muted-foreground">Seulement pour un RDV à heure fixe.</span>
-                  </div>
-                )}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Button variant="outline" size="sm" onClick={() => setHourPickerOpen(true)}>
+                    <Clock className="h-4 w-4 mr-1.5" /> {editHour || 'Ajouter une heure'}
+                  </Button>
+                  {editHour && <button type="button" className="text-xs font-semibold text-muted-foreground underline hover:text-foreground" onClick={() => setEditHour('')}>retirer</button>}
+                  <span className="text-xs text-muted-foreground">Seulement pour un RDV à heure fixe.</span>
+                </div>
               </div>
 
               {/* Note for the poseur */}
