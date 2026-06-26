@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Calendar } from '@/components/ui/calendar';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Loader2, Copy, AlertTriangle, FolderOpen, Trash2 } from 'lucide-react';
+import { Loader2, Copy, AlertTriangle, FolderOpen, Trash2, Paperclip } from 'lucide-react';
 import { format, subDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -109,6 +109,10 @@ const DAY_CSS = `
 .bt-badge-sent .dot{width:14px;height:14px;background:#2FA36B;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px;font-weight:900}
 .bt-badge-draft{background:#FFF1CC;border:1px solid #E8CE7A;color:#8a6d05}
 .bt-badge-off{background:#FBE3D8;border:1px solid #E8B79E;color:#9a3b14}
+.bt-badge-wait{background:#FCEADF;border:1px solid #F0C49A;color:#C0461F}
+.bt-badge-ok{background:#1F7A4D;border:1px solid #1A6A43;color:#fff}
+.bt-badge-ok .dot{width:14px;height:14px;background:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#1F7A4D;font-size:9px;font-weight:900}
+.bt-iv-docs{flex:none;display:inline-flex;align-items:center;gap:2px;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;color:#6E6A63}
 .bt-iv-times{display:flex;align-items:center;justify-content:space-between;gap:10px;font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:#15120F}
 .bt-iv-times-v{flex:none;white-space:nowrap}
 .bt-iv-times .dot{width:4px;height:4px;background:#c4bdae;border-radius:50%}
@@ -220,6 +224,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
   const [entries, setEntries] = useState<TimeEntryWithWorksite[]>([]);
   const [pendingEntries, setPendingEntries] = useState<PendingEntry[]>([]);
   const [worksites, setWorksites] = useState<Worksite[]>([]);
+  const [docsByWorksite, setDocsByWorksite] = useState<Map<string, number>>(new Map()); // nb de documents par chantier (pastille 📎)
   const [planning, setPlanning] = useState<(Planning & { worksite: Worksite })[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -272,14 +277,21 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
   const fetchData = useCallback(async () => {
     if (!user) return;
     try {
-      const [entriesRes, worksitesRes, planningRes] = await Promise.all([
+      const [entriesRes, worksitesRes, planningRes, docsRes] = await Promise.all([
         supabase.from('time_entries').select('*, worksite:worksites(*)').eq('user_id', user.id).eq('work_date', date).order('start_time'),
         supabase.from('worksites').select('*').eq('company_id', user.company_id).eq('is_active', true).order('client_name'),
         supabase.from('planning').select('*, worksite:worksites(*)').eq('user_id', user.id).eq('work_date', date),
+        supabase.from('documents').select('worksite_id').eq('company_id', user.company_id),
       ]);
       if (entriesRes.error) throw entriesRes.error;
       if (worksitesRes.error) throw worksitesRes.error;
       if (planningRes.error) throw planningRes.error;
+
+      const docCounts = new Map<string, number>();
+      for (const d of (docsRes.data || []) as { worksite_id: string | null }[]) {
+        if (d.worksite_id) docCounts.set(d.worksite_id, (docCounts.get(d.worksite_id) || 0) + 1);
+      }
+      setDocsByWorksite(docCounts);
 
       let worksitesData = worksitesRes.data || [];
       // Filet de sécurité (règle d'or : l'heure n'est jamais bloquée par le client) :
@@ -883,6 +895,9 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
                     <div className="bt-iv-name">{p.worksite?.client_name}</div>
                     {p.worksite?.city && <div className="bt-iv-city">{p.worksite.city}</div>}
                   </div>
+                  {p.worksite?.id && (docsByWorksite.get(p.worksite.id) || 0) > 0 && (
+                    <span className="bt-iv-docs"><Paperclip className="h-3 w-3" />{docsByWorksite.get(p.worksite.id)}</span>
+                  )}
                   <span className="bt-iv-cta">À déclarer ›</span>
                 </div>
               </div>
@@ -898,10 +913,16 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
               <div key={item.key} className={`bt-iv${isDraft ? ' draft' : ''}${onTap ? ' bt-iv-tap' : ''}`} onClick={onTap}>
                 <div className="bt-iv-top">
                   <span className="bt-iv-name">{entry.worksite?.client_name || OTHER_NAME}</span>
-                  {entry.status === 'submitted' && (
-                    <div className="bt-badge bt-badge-sent"><span className="dot">✓</span> Envoyé</div>
+                  {entry.worksite_id && (docsByWorksite.get(entry.worksite_id) || 0) > 0 && (
+                    <span className="bt-iv-docs"><Paperclip className="h-3 w-3" />{docsByWorksite.get(entry.worksite_id)}</span>
                   )}
-                  {isDraft && <div className="bt-badge bt-badge-draft">● Brouillon</div>}
+                  {entry.locked ? (
+                    <div className="bt-badge bt-badge-ok"><span className="dot">✓</span> Validé</div>
+                  ) : entry.status === 'submitted' ? (
+                    <div className="bt-badge bt-badge-sent"><span className="dot">✓</span> Envoyé</div>
+                  ) : isDraft ? (
+                    <div className="bt-badge bt-badge-wait">● En attente</div>
+                  ) : null}
                 </div>
                 <div className="bt-iv-times">
                   {entry.worksite?.city && <span className="bt-iv-city">{entry.worksite.city}</span>}
