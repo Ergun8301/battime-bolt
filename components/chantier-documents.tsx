@@ -68,8 +68,7 @@ export default function ChantierDocuments({ worksiteId, worksiteName, open, onOp
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // ── Envoi au client (étape 4) — secrétaire uniquement, via sa propre messagerie ──
-  const isAdmin = user?.role === 'admin';
+  // ── Envoi au client (étape 4) — salarié OU secrétaire, via sa propre messagerie ──
   const [clientEmail, setClientEmail] = useState<string | null>(null);
   const [companyName, setCompanyName] = useState('');
   const [emailInput, setEmailInput] = useState('');
@@ -102,9 +101,9 @@ export default function ChantierDocuments({ worksiteId, worksiteName, open, onOp
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, worksiteId]);
 
-  // E-mail du client + nom de l'entreprise (pour le message), côté secrétaire.
+  // E-mail du client + nom de l'entreprise (pour le message) — salarié comme secrétaire.
   useEffect(() => {
-    if (!open || !worksiteId || !isAdmin || !user?.company_id) return;
+    if (!open || !worksiteId || !user?.company_id) return;
     const companyId = user.company_id;
     let cancelled = false;
     (async () => {
@@ -118,13 +117,15 @@ export default function ChantierDocuments({ worksiteId, worksiteName, open, onOp
       setEditingEmail(false);
     })();
     return () => { cancelled = true; };
-  }, [open, worksiteId, isAdmin, user?.company_id]);
+  }, [open, worksiteId, user?.company_id]);
 
   const saveClientEmail = async () => {
     const email = emailInput.trim();
     if (!email || !worksiteId) return;
     setSavingEmail(true);
-    const { error } = await supabase.from('worksites').update({ client_email: email }).eq('id', worksiteId);
+    // RPC cloisonnée par entreprise : marche pour la secrétaire ET le salarié
+    // (qui n'a pas le droit d'écrire directement dans worksites).
+    const { error } = await supabase.rpc('set_worksite_client_email', { p_worksite_id: worksiteId, p_email: email });
     setSavingEmail(false);
     if (error) { toast.error("Impossible d'enregistrer l'e-mail."); return; }
     setClientEmail(email);
@@ -218,8 +219,7 @@ export default function ChantierDocuments({ worksiteId, worksiteName, open, onOp
         </button>
         <div className="bt-doc-hint">Photos, PDF, fichiers… 15 Mo max.</div>
 
-        {isAdmin && (
-          <div className="bt-doc-send">
+        <div className="bt-doc-send">
             <div className="bt-doc-send-h"><Mail className="h-4 w-4" /> Envoyer au client</div>
             {clientEmail && !editingEmail && (
               <div className="bt-doc-send-to">
@@ -244,8 +244,7 @@ export default function ChantierDocuments({ worksiteId, worksiteName, open, onOp
               </button>
             </div>
             {docs.length === 0 && <div className="bt-doc-send-note">Ajoutez au moins un document à envoyer.</div>}
-          </div>
-        )}
+        </div>
 
         {loading ? (
           <div className="bt-doc-empty">Chargement…</div>
