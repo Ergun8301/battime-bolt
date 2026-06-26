@@ -9,7 +9,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Loader2, Upload, Trash2, FileText, FolderOpen, Download } from 'lucide-react';
+import { Loader2, Upload, Trash2, FileText, FolderOpen, Download, Mail, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 
 type Uploader = { first_name: string | null; last_name: string | null };
@@ -38,6 +38,20 @@ const DOC_CSS = `
 .bt-doc-act{flex:none;width:34px;height:34px;border-radius:9px;border:none;background:transparent;color:#6E6A63;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;text-decoration:none}
 .bt-doc-act:hover{background:#F1E8D6;color:#15120F}
 .bt-doc-act.danger:hover{background:#F4D9D1;color:#C0461F}
+.bt-doc-send{margin-top:12px;padding:12px;border:1px solid rgba(21,18,15,.12);border-radius:13px;background:#FBF7EF}
+.bt-doc-send-h{display:flex;align-items:center;gap:7px;font-size:13.5px;font-weight:900;color:#15120F;margin-bottom:8px}
+.bt-doc-send-to{font-size:12.5px;font-weight:700;color:#15120F;margin-bottom:9px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.bt-doc-send-edit{border:none;background:transparent;color:#a87c1e;font-weight:800;font-size:11.5px;cursor:pointer;text-decoration:underline;font-family:inherit;padding:0}
+.bt-doc-send-row{display:flex;gap:7px;margin-bottom:9px}
+.bt-doc-send-input{flex:1;min-width:0;font-family:inherit;font-size:14px;padding:9px 11px;border:1.5px solid rgba(21,18,15,.18);border-radius:10px;background:#fff;outline:none;color:#15120F}
+.bt-doc-send-input:focus{border-color:#15120F}
+.bt-doc-send-save{flex:none;border:none;background:#15120F;color:#F2EDE3;border-radius:10px;padding:0 15px;font-weight:800;font-size:13px;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center}
+.bt-doc-send-save:disabled{opacity:.6}
+.bt-doc-send-actions{display:flex;gap:8px}
+.bt-doc-send-btn{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:7px;border:1.5px solid #15120F;background:#15120F;color:#F2EDE3;border-radius:11px;padding:11px;font-weight:800;font-size:13.5px;cursor:pointer;font-family:inherit}
+.bt-doc-send-btn.ghost{background:#fff;color:#15120F}
+.bt-doc-send-btn:disabled{opacity:.5;cursor:default}
+.bt-doc-send-note{font-size:11.5px;color:#9a948a;font-weight:600;margin-top:8px}
 `;
 
 const uploaderName = (d: DocRow) => {
@@ -53,6 +67,15 @@ export default function ChantierDocuments({ worksiteId, worksiteName, open, onOp
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // ── Envoi au client (étape 4) — secrétaire uniquement, via sa propre messagerie ──
+  const isAdmin = user?.role === 'admin';
+  const [clientEmail, setClientEmail] = useState<string | null>(null);
+  const [companyName, setCompanyName] = useState('');
+  const [emailInput, setEmailInput] = useState('');
+  const [editingEmail, setEditingEmail] = useState(false);
+  const [savingEmail, setSavingEmail] = useState(false);
+  const [sending, setSending] = useState(false);
 
   const fetchDocs = async () => {
     if (!worksiteId) return;
@@ -78,6 +101,70 @@ export default function ChantierDocuments({ worksiteId, worksiteName, open, onOp
     if (open && worksiteId) fetchDocs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, worksiteId]);
+
+  // E-mail du client + nom de l'entreprise (pour le message), côté secrétaire.
+  useEffect(() => {
+    if (!open || !worksiteId || !isAdmin || !user?.company_id) return;
+    const companyId = user.company_id;
+    let cancelled = false;
+    (async () => {
+      const [{ data: ws }, { data: co }] = await Promise.all([
+        supabase.from('worksites').select('client_email').eq('id', worksiteId).maybeSingle(),
+        supabase.from('companies').select('name').eq('id', companyId).maybeSingle(),
+      ]);
+      if (cancelled) return;
+      setClientEmail((ws?.client_email as string) || null);
+      setCompanyName((co?.name as string) || '');
+      setEditingEmail(false);
+    })();
+    return () => { cancelled = true; };
+  }, [open, worksiteId, isAdmin, user?.company_id]);
+
+  const saveClientEmail = async () => {
+    const email = emailInput.trim();
+    if (!email || !worksiteId) return;
+    setSavingEmail(true);
+    const { error } = await supabase.from('worksites').update({ client_email: email }).eq('id', worksiteId);
+    setSavingEmail(false);
+    if (error) { toast.error("Impossible d'enregistrer l'e-mail."); return; }
+    setClientEmail(email);
+    setEditingEmail(false);
+    toast.success('E-mail du client enregistré.');
+  };
+
+  // Construit le message (liens valables 7 jours) à envoyer au client.
+  const buildMessage = async (): Promise<{ subject: string; body: string } | null> => {
+    if (!worksiteId || docs.length === 0) { toast.error("Ajoutez d'abord un document."); return null; }
+    const { data: signed } = await supabase.storage.from('chantier-docs').createSignedUrls(docs.map((d) => d.file_path), 60 * 60 * 24 * 7);
+    const link: Record<string, string> = {};
+    (signed || []).forEach((s) => { if (s.path && s.signedUrl) link[s.path] = s.signedUrl; });
+    const lines = docs.map((d) => `- ${d.label || d.file_name || 'Document'} : ${link[d.file_path] || ''}`).join('\n');
+    const chantier = worksiteName ? ` « ${worksiteName} »` : '';
+    const sign = companyName ? `\n\nCordialement,\n${companyName}` : '';
+    const subject = `Documents${chantier ? ` —${chantier}` : ''}`;
+    const body = `Bonjour,\n\nVeuillez trouver les documents de votre chantier${chantier} :\n\n${lines}\n\n(Ces liens restent valables 7 jours.)${sign}`;
+    return { subject, body };
+  };
+
+  const openMail = async () => {
+    if (!clientEmail) { toast.error("Renseignez l'e-mail du client."); return; }
+    setSending(true);
+    const msg = await buildMessage();
+    setSending(false);
+    if (!msg) return;
+    window.location.href = `mailto:${encodeURIComponent(clientEmail)}?subject=${encodeURIComponent(msg.subject)}&body=${encodeURIComponent(msg.body)}`;
+  };
+
+  const copyMessage = async () => {
+    setSending(true);
+    const msg = await buildMessage();
+    setSending(false);
+    if (!msg) return;
+    try {
+      await navigator.clipboard.writeText(`${clientEmail ? `À : ${clientEmail}\n` : ''}${msg.subject}\n\n${msg.body}`);
+      toast.success('Message copié — collez-le dans votre e-mail.');
+    } catch { toast.error('Copie impossible.'); }
+  };
 
   const onPick = async (file?: File) => {
     if (!file || !worksiteId || !user?.company_id || !user?.id) return;
@@ -130,6 +217,35 @@ export default function ChantierDocuments({ worksiteId, worksiteName, open, onOp
           {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} Ajouter un document
         </button>
         <div className="bt-doc-hint">Photos, PDF, fichiers… 15 Mo max.</div>
+
+        {isAdmin && (
+          <div className="bt-doc-send">
+            <div className="bt-doc-send-h"><Mail className="h-4 w-4" /> Envoyer au client</div>
+            {clientEmail && !editingEmail && (
+              <div className="bt-doc-send-to">
+                {clientEmail}
+                <button type="button" className="bt-doc-send-edit" onClick={() => { setEmailInput(clientEmail); setEditingEmail(true); }}>modifier</button>
+              </div>
+            )}
+            {(!clientEmail || editingEmail) && (
+              <div className="bt-doc-send-row">
+                <input className="bt-doc-send-input" type="email" inputMode="email" placeholder="E-mail du client" value={emailInput} onChange={(e) => setEmailInput(e.target.value)} />
+                <button type="button" className="bt-doc-send-save" onClick={saveClientEmail} disabled={savingEmail || !emailInput.trim()}>
+                  {savingEmail ? <Loader2 className="h-4 w-4 animate-spin" /> : 'OK'}
+                </button>
+              </div>
+            )}
+            <div className="bt-doc-send-actions">
+              <button type="button" className="bt-doc-send-btn" onClick={openMail} disabled={sending || !clientEmail || docs.length === 0}>
+                {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />} Ouvrir l&apos;e-mail
+              </button>
+              <button type="button" className="bt-doc-send-btn ghost" onClick={copyMessage} disabled={sending || docs.length === 0}>
+                <Copy className="h-4 w-4" /> Copier
+              </button>
+            </div>
+            {docs.length === 0 && <div className="bt-doc-send-note">Ajoutez au moins un document à envoyer.</div>}
+          </div>
+        )}
 
         {loading ? (
           <div className="bt-doc-empty">Chargement…</div>
