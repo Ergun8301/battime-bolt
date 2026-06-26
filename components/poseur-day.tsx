@@ -94,7 +94,9 @@ const DAY_CSS = `
 .bt-sec{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#9a8a3a;font-weight:700;margin:24px 4px 12px}
 
 .bt-iv{background:#fff;border:1px solid rgba(21,18,15,.1);border-radius:14px;padding:12px 14px;margin-bottom:9px}
-.bt-iv.draft{background:#FFFDF6;border:1.5px dashed #E0AE1C}
+.bt-iv.draft{box-shadow:inset 4px 0 0 #C0461F}
+.bt-iv.sent{box-shadow:inset 4px 0 0 #2FA36B}
+.bt-iv.ok{box-shadow:inset 4px 0 0 #1F7A4D}
 .bt-iv.off{background:#FFFBF4;border:1.5px dashed #C0461F}
 .bt-iv-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:5px}
 .bt-iv-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:16px;font-weight:800;letter-spacing:-.01em;color:#15120F}
@@ -910,7 +912,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
             const isDraft = entry.status === 'draft' && !entry.locked;
             const onTap = !tappable ? undefined : monthLocked ? () => setLateOpen(true) : frozen ? () => askCorrect(() => openEntry(entry)) : () => openEntry(entry);
             return (
-              <div key={item.key} className={`bt-iv${isDraft ? ' draft' : ''}${onTap ? ' bt-iv-tap' : ''}`} onClick={onTap}>
+              <div key={item.key} className={`bt-iv${entry.locked ? ' ok' : entry.status === 'submitted' ? ' sent' : isDraft ? ' draft' : ''}${onTap ? ' bt-iv-tap' : ''}`} onClick={onTap}>
                 <div className="bt-iv-top">
                   <span className="bt-iv-name">{entry.worksite?.client_name || OTHER_NAME}</span>
                   {entry.worksite_id && (docsByWorksite.get(entry.worksite_id) || 0) > 0 && (
