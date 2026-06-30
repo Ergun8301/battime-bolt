@@ -21,13 +21,12 @@ const AUTH_CSS = `
 .bt-mono{font-family:'JetBrains Mono',monospace}
 .bt-split{display:grid;grid-template-columns:1fr 1fr;min-height:100vh;min-height:100svh;position:relative}
 .bt-leftcol{display:flex;flex-direction:column;justify-content:center;padding:32px 7vw;min-width:0}
-.bt-wrap{width:100%;max-width:430px;margin:0 auto}
-.bt-logo{display:flex;align-items:center;justify-content:center;gap:11px;text-decoration:none;margin-bottom:24px;color:inherit}
-.bt-logo-img{height:48px;width:auto;display:block}
+.bt-wrap{width:100%;max-width:480px;margin:0 auto}
+.bt-logo{display:flex;align-items:center;justify-content:center;gap:11px;text-decoration:none;margin-bottom:28px;color:inherit}
+.bt-logo-img{height:auto;width:100%;max-width:383px;display:block}
 .bt-x-sig{position:absolute;bottom:30px;right:30px;width:52px;height:52px;opacity:.9;pointer-events:none;z-index:2}
-.bt-logo-mark{width:34px;height:34px;background:#15120F;border-radius:7px;display:flex;align-items:center;justify-content:center}
-.bt-logo-dot{width:14px;height:14px;border:2.5px solid #FFC21A;border-radius:50%;border-top-color:transparent;transform:rotate(45deg)}
-.bt-h1{font-size:30px;line-height:1.05;font-weight:900;letter-spacing:-.025em;margin:0 0 7px}
+.bt-h1{font-size:25px;line-height:1.15;font-weight:900;letter-spacing:-.02em;margin:0 0 10px;text-align:center}
+.bt-h1-accent{color:#9a7c14}
 .bt-sub{font-size:15px;color:#6E6A63;font-weight:500;margin:0 0 20px}
 .bt-tabs{display:grid;grid-template-columns:1fr 1fr;gap:6px;background:#E4DCCE;border-radius:12px;padding:5px;margin-bottom:20px}
 .bt-tab{cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;border-radius:9px;font-weight:800;font-size:15px;color:#6E6A63;border:none;background:transparent;font-family:'Archivo',sans-serif}
@@ -64,6 +63,7 @@ const AUTH_CSS = `
   .bt-x-sig{display:none}
   .bt-vis-tagline{display:block}
   .bt-ruban-center{display:none}
+  .bt-h1{font-size:23px}
 }
 `;
 
@@ -163,8 +163,9 @@ function LoginView() {
             <img src="/bemexo-wordmark-dark.svg" alt="BEMEXO" className="bt-logo-img" />
           </Link>
 
-          <h1 className="bt-h1">Bon retour sur le chantier.</h1>
-          <p className="bt-sub">Connectez-vous pour pointer ou suivre vos équipes.</p>
+          <h1 className="bt-h1" style={{ marginBottom: '28px' }}>
+            Bon retour sur le <span className="bt-h1-accent">chantier</span>.
+          </h1>
 
           <div className="bt-tabs">
             <button type="button" className={`bt-tab${!isEnt ? ' is-active' : ''}`} onClick={() => setTab('sal')}>
@@ -415,7 +416,7 @@ export default function ConnexionPage() {
               <Link href="/landing" className="bt-logo">
                 <img src="/bemexo-wordmark-dark.svg" alt="BEMEXO" className="bt-logo-img" />
               </Link>
-              <h1 className="bt-h1" style={{ fontSize: '26px' }}>
+              <h1 className="bt-h1">
                 {isRecovery ? 'Réinitialiser le mot de passe' : 'Créer votre mot de passe'}
               </h1>
               <p className="bt-sub">
