@@ -22,8 +22,9 @@ const AUTH_CSS = `
 .bt-split{display:grid;grid-template-columns:1fr 1fr;min-height:100vh;min-height:100svh;position:relative}
 .bt-leftcol{display:flex;flex-direction:column;justify-content:center;padding:32px 7vw;min-width:0}
 .bt-wrap{width:100%;max-width:430px;margin:0 auto}
-.bt-logo{display:inline-flex;align-items:center;gap:11px;text-decoration:none;margin-bottom:24px;color:inherit}
-.bt-logo-img{height:30px;width:auto;display:block}
+.bt-logo{display:flex;align-items:center;justify-content:center;gap:11px;text-decoration:none;margin-bottom:24px;color:inherit}
+.bt-logo-img{height:48px;width:auto;display:block}
+.bt-x-sig{position:absolute;bottom:30px;right:30px;width:52px;height:52px;opacity:.9;pointer-events:none;z-index:2}
 .bt-logo-mark{width:34px;height:34px;background:#15120F;border-radius:7px;display:flex;align-items:center;justify-content:center}
 .bt-logo-dot{width:14px;height:14px;border:2.5px solid #FFC21A;border-radius:50%;border-top-color:transparent;transform:rotate(45deg)}
 .bt-h1{font-size:30px;line-height:1.05;font-weight:900;letter-spacing:-.025em;margin:0 0 7px}
@@ -60,6 +61,7 @@ const AUTH_CSS = `
   .bt-leftcol{order:2;padding:40px 28px}
   .bt-visual{order:1;min-height:0;padding:24px}
   .bt-vis-inner{display:none}
+  .bt-x-sig{display:none}
   .bt-vis-tagline{display:block}
   .bt-ruban-center{display:none}
 }
@@ -238,6 +240,7 @@ function LoginView() {
           <div className="bt-vis-inner" dangerouslySetInnerHTML={{ __html: isEnt ? ENT_ILLUS : SAL_ILLUS }} />
           <div className="bt-vis-tagline">{isEnt ? '🏢 Espace entreprise · le planning' : '👷 Espace salarié · vos heures'}</div>
         </div>
+        <img src="/bemexo-x-light.svg" alt="" aria-hidden="true" className="bt-x-sig" />
       </div>
     </div>
   );

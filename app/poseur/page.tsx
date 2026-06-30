@@ -37,7 +37,7 @@ const POSEUR_CSS = `
 .bt-phdr{background:#15120F;color:#F2EDE3;flex:none;padding:calc(env(safe-area-inset-top) + 12px) 16px 12px;position:relative}
 .bt-phdr-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .bt-phdr-left{display:flex;align-items:center;gap:10px;min-width:0}
-.bt-phdr-logo{width:30px;height:30px;flex:none;display:block}
+.bt-phdr-logo{width:32px;height:32px;flex:none;display:block}
 .bt-phdr-date{font-size:22px;font-weight:900;letter-spacing:-.02em;line-height:1.1;text-transform:capitalize;min-width:0}
 .bt-phdr-back{display:flex;align-items:center;gap:10px;background:transparent;border:none;color:#F2EDE3;cursor:pointer;padding:0;text-align:left;min-width:0}
 /* Bouton identité (nom + rond photo/initiales) = déclencheur du menu */
