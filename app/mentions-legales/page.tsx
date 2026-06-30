@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 export const metadata: Metadata = {
-  title: 'Mentions légales — Battime',
-  description: 'Mentions légales de Battime, édité par K.HABITAT (SAS).',
+  title: 'Mentions légales — BEMEXO',
+  description: 'Mentions légales de BEMEXO, édité par K.HABITAT (SAS).',
 };
 
 // Page légale autonome, dans l'identité noir + jaune chantier de la landing
@@ -46,7 +46,7 @@ export default function MentionsLegalesPage() {
           <div className="ml-header-in">
             <Link href="/landing" className="ml-brand">
               <span className="ml-logo"><i /></span>
-              <span>Battime</span>
+              <span>BEMEXO</span>
             </Link>
             <Link href="/landing" className="ml-back">← Retour</Link>
           </div>
@@ -58,7 +58,7 @@ export default function MentionsLegalesPage() {
 
           <h2>1. Éditeur du site et de l&apos;application</h2>
           <p>
-            L&apos;application <strong>Battime</strong> est éditée par <strong>K.HABITAT</strong>, société par
+            L&apos;application <strong>BEMEXO</strong> est éditée par <strong>K.HABITAT</strong>, société par
             actions simplifiée (SAS) au capital de 10&nbsp;000&nbsp;€, immatriculée sous le numéro{' '}
             <strong>SIRET 840&nbsp;185&nbsp;607&nbsp;00024</strong> (RCS Bourg-en-Bresse 840&nbsp;185&nbsp;607),
             dont le siège est situé <strong>1100 chemin de Champagne, 01440 Viriat</strong>.
@@ -85,14 +85,14 @@ export default function MentionsLegalesPage() {
 
           <h2>3. Propriété intellectuelle</h2>
           <p>
-            L&apos;ensemble des éléments de Battime (code, interface, marques, logos, contenus) est protégé par le
+            L&apos;ensemble des éléments de BEMEXO (code, interface, marques, logos, contenus) est protégé par le
             droit de la propriété intellectuelle et demeure la propriété exclusive de l&apos;éditeur, sauf mentions
             contraires. Toute reproduction ou réutilisation sans autorisation est interdite.
           </p>
 
           <h2>4. Données personnelles</h2>
           <p>
-            Battime traite des données personnelles dans le cadre de son service (gestion des feuilles d&apos;heures
+            BEMEXO traite des données personnelles dans le cadre de son service (gestion des feuilles d&apos;heures
             pour le BTP). Vous disposez de droits sur vos données — accès, rectification, effacement, opposition —
             que vous pouvez exercer en écrivant à{' '}
             <a href="mailto:khabitatcontact@gmail.com">khabitatcontact@gmail.com</a>. Une politique de
@@ -105,7 +105,7 @@ export default function MentionsLegalesPage() {
             <a href="mailto:khabitatcontact@gmail.com">khabitatcontact@gmail.com</a>.
           </p>
 
-          <div className="ml-foot">© 2026 Battime — K.HABITAT (SAS)</div>
+          <div className="ml-foot">© 2026 BEMEXO — K.HABITAT (SAS)</div>
         </main>
       </div>
     </>

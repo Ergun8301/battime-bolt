@@ -76,7 +76,7 @@ export default function PoseurHistory() {
       const doc = new jsPDF();
 
       doc.setFontSize(18);
-      doc.text('Battime - Historique des heures', 14, 20);
+      doc.text('BEMEXO - Historique des heures', 14, 20);
 
       doc.setFontSize(11);
       doc.text(`Poseur : ${user?.first_name} ${user?.last_name}`, 14, 32);
@@ -126,7 +126,7 @@ export default function PoseurHistory() {
         );
       }
 
-      const fileName = `battime-historique-${user?.first_name}-${user?.last_name}.pdf`;
+      const fileName = `bemexo-historique-${user?.first_name}-${user?.last_name}.pdf`;
       doc.save(fileName);
 
       toast.success('PDF telecharge');

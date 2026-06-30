@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 export const metadata: Metadata = {
-  title: 'Politique de confidentialité — Battime',
-  description: 'Politique de confidentialité de Battime, édité par K.HABITAT (SAS) — conforme au RGPD.',
+  title: 'Politique de confidentialité — BEMEXO',
+  description: 'Politique de confidentialité de BEMEXO, édité par K.HABITAT (SAS) — conforme au RGPD.',
 };
 
 // Page légale autonome, dans l'identité noir + jaune chantier de la landing.
@@ -46,7 +46,7 @@ export default function ConfidentialitePage() {
           <div className="ml-header-in">
             <Link href="/landing" className="ml-brand">
               <span className="ml-logo"><i /></span>
-              <span>Battime</span>
+              <span>BEMEXO</span>
             </Link>
             <Link href="/landing" className="ml-back">← Retour</Link>
           </div>
@@ -57,26 +57,26 @@ export default function ConfidentialitePage() {
           <div className="ml-updated">Dernière mise à jour : 17 juin 2026</div>
 
           <p className="ml-intro">
-            La présente politique explique comment Battime traite les données personnelles dans le cadre de son service
+            La présente politique explique comment BEMEXO traite les données personnelles dans le cadre de son service
             de gestion des feuilles d&apos;heures pour le BTP. Elle est rédigée conformément au Règlement (UE) 2016/679
             (RGPD) et à la loi « Informatique et Libertés ».
           </p>
 
           <h2>1. Qui est responsable des données ?</h2>
           <p>
-            Battime est un outil utilisé par des entreprises (l&apos;« <strong>entreprise cliente</strong> »), qui y
+            BEMEXO est un outil utilisé par des entreprises (l&apos;« <strong>entreprise cliente</strong> »), qui y
             gèrent les données de leurs salariés.
           </p>
           <ul>
             <li>
-              Pour les données des <strong>salariés</strong> saisies via Battime (identité, heures, etc.),
+              Pour les données des <strong>salariés</strong> saisies via BEMEXO (identité, heures, etc.),
               l&apos;<strong>entreprise cliente est responsable de traitement</strong> ;{' '}
-              <strong>Battime agit comme sous-traitant</strong> (au sens de l&apos;article 28 du RGPD), pour le compte
+              <strong>BEMEXO agit comme sous-traitant</strong> (au sens de l&apos;article 28 du RGPD), pour le compte
               et sur instruction de l&apos;entreprise cliente.
             </li>
             <li>
               Pour les données du <strong>compte de l&apos;entreprise cliente</strong> elle-même (création de compte,
-              facturation), Battime (édité par K.HABITAT) est responsable de traitement.
+              facturation), BEMEXO (édité par K.HABITAT) est responsable de traitement.
             </li>
           </ul>
 
@@ -104,7 +104,7 @@ export default function ConfidentialitePage() {
           <h2>4. Le numéro de sécurité sociale (NIR)</h2>
           <p>
             Le NIR est une donnée encadrée, mais son utilisation pour la <strong>gestion de la paie et les déclarations
-            sociales</strong> est expressément autorisée. Dans Battime, il est <strong>facultatif</strong> et{' '}
+            sociales</strong> est expressément autorisée. Dans BEMEXO, il est <strong>facultatif</strong> et{' '}
             <strong>accessible uniquement à l&apos;employeur</strong> (secrétaire / administrateur) ; il n&apos;est
             jamais visible par les autres salariés.
           </p>
@@ -112,7 +112,7 @@ export default function ConfidentialitePage() {
           <h2>5. Qui a accès aux données ?</h2>
           <ul>
             <li>L&apos;<strong>entreprise cliente</strong> (employeur), strictement pour ses propres salariés.</li>
-            <li>Les <strong>sous-traitants techniques</strong> de Battime : Netlify (hébergement de l&apos;interface) et Supabase (base de données / authentification).</li>
+            <li>Les <strong>sous-traitants techniques</strong> de BEMEXO : Netlify (hébergement de l&apos;interface) et Supabase (base de données / authentification).</li>
             <li>Le cas échéant, les autorités si la loi l&apos;exige.</li>
           </ul>
 
@@ -143,14 +143,14 @@ export default function ConfidentialitePage() {
           <p>
             Vous disposez des droits d&apos;accès, de rectification, d&apos;effacement, de limitation, d&apos;opposition
             et de portabilité. Pour les données traitées par votre employeur, adressez-vous à lui ; pour les autres,
-            contactez Battime à <a href="mailto:khabitatcontact@gmail.com">khabitatcontact@gmail.com</a>. Vous pouvez
+            contactez BEMEXO à <a href="mailto:khabitatcontact@gmail.com">khabitatcontact@gmail.com</a>. Vous pouvez
             également introduire une réclamation auprès de la <strong>CNIL</strong>{' '}
             (<a href="https://www.cnil.fr" target="_blank" rel="noreferrer">cnil.fr</a>).
           </p>
 
           <h2>10. Cookies</h2>
           <p>
-            Battime n&apos;utilise que des cookies <strong>strictement nécessaires</strong> au fonctionnement
+            BEMEXO n&apos;utilise que des cookies <strong>strictement nécessaires</strong> au fonctionnement
             (authentification / session). Aucun cookie publicitaire ou de traçage tiers n&apos;est utilisé ; aucun
             bandeau de consentement n&apos;est donc requis pour ces cookies essentiels.
           </p>
@@ -161,7 +161,7 @@ export default function ConfidentialitePage() {
             <a href="mailto:khabitatcontact@gmail.com">khabitatcontact@gmail.com</a>.
           </p>
 
-          <div className="ml-foot">© 2026 Battime — K.HABITAT (SAS)</div>
+          <div className="ml-foot">© 2026 BEMEXO — K.HABITAT (SAS)</div>
         </main>
       </div>
     </>

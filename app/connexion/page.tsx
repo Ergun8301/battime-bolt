@@ -23,6 +23,7 @@ const AUTH_CSS = `
 .bt-leftcol{display:flex;flex-direction:column;justify-content:center;padding:32px 7vw;min-width:0}
 .bt-wrap{width:100%;max-width:430px;margin:0 auto}
 .bt-logo{display:inline-flex;align-items:center;gap:11px;text-decoration:none;margin-bottom:24px;color:inherit}
+.bt-logo-img{height:30px;width:auto;display:block}
 .bt-logo-mark{width:34px;height:34px;background:#15120F;border-radius:7px;display:flex;align-items:center;justify-content:center}
 .bt-logo-dot{width:14px;height:14px;border:2.5px solid #FFC21A;border-radius:50%;border-top-color:transparent;transform:rotate(45deg)}
 .bt-h1{font-size:30px;line-height:1.05;font-weight:900;letter-spacing:-.025em;margin:0 0 7px}
@@ -157,8 +158,7 @@ function LoginView() {
       <div className="bt-leftcol">
         <div className="bt-wrap">
           <Link href="/landing" className="bt-logo">
-            <div className="bt-logo-mark"><div className="bt-logo-dot" /></div>
-            <span style={{ fontWeight: 900, fontSize: '22px', letterSpacing: '-.02em' }}>Battime</span>
+            <img src="/bemexo-wordmark-dark.svg" alt="BEMEXO" className="bt-logo-img" />
           </Link>
 
           <h1 className="bt-h1">Bon retour sur le chantier.</h1>
@@ -410,14 +410,13 @@ export default function ConnexionPage() {
           <div className="bt-center">
             <div className="bt-card">
               <Link href="/landing" className="bt-logo">
-                <div className="bt-logo-mark"><div className="bt-logo-dot" /></div>
-                <span style={{ fontWeight: 900, fontSize: '22px', letterSpacing: '-.02em' }}>Battime</span>
+                <img src="/bemexo-wordmark-dark.svg" alt="BEMEXO" className="bt-logo-img" />
               </Link>
               <h1 className="bt-h1" style={{ fontSize: '26px' }}>
                 {isRecovery ? 'Réinitialiser le mot de passe' : 'Créer votre mot de passe'}
               </h1>
               <p className="bt-sub">
-                {isRecovery ? 'Choisissez un nouveau mot de passe.' : 'Définissez votre mot de passe pour accéder à Battime.'}
+                {isRecovery ? 'Choisissez un nouveau mot de passe.' : 'Définissez votre mot de passe pour accéder à BEMEXO.'}
               </p>
               <Suspense>
                 <SetPasswordForm />

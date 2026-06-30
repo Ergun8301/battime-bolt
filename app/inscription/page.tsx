@@ -32,6 +32,8 @@ const SIGNUP_CSS = `
 .bt-ruban-center{position:absolute;top:0;left:calc(50% - 6px);width:12px;height:100%;background:repeating-linear-gradient(45deg,#15120F 0 9px,#FFC21A 9px 18px);z-index:5;pointer-events:none}
 .bt-formcol{display:flex;flex-direction:column;padding:clamp(14px,3vh,34px) 6vw;min-width:0}
 .bt-wrap{width:100%;max-width:480px;margin:auto}
+.bt-logo-ins{display:inline-flex;margin-bottom:18px}
+.bt-logo-img{height:30px;width:auto;display:block}
 .bt-back-m{display:none;align-items:center;gap:7px;text-decoration:none;color:#6E6A63;font-weight:700;font-size:14px;margin-bottom:16px}
 .bt-back-m:hover{color:#15120F}
 .bt-h1{font-size:clamp(24px,4.2vh,30px);line-height:1.05;font-weight:900;letter-spacing:-.025em;margin:0 0 clamp(3px,0.8vh,7px)}
@@ -159,6 +161,9 @@ export default function InscriptionPage() {
           {/* ============ COLONNE FORMULAIRE (notre gestion hauteur/scroll, inchangee) ============ */}
           <div className="bt-formcol">
             <div className="bt-wrap">
+              <Link href="/landing" className="bt-logo-ins" aria-label="BEMEXO — accueil">
+                <img src="/bemexo-wordmark-dark.svg" alt="BEMEXO" className="bt-logo-img" />
+              </Link>
               {/* Retour visible sur telephone (le panneau noir est masque en mobile) */}
               <Link href="/landing" className="bt-back-m">
                 <span style={{ fontSize: '16px' }}>←</span> Retour à l&apos;accueil

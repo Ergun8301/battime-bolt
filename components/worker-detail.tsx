@@ -194,8 +194,8 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
       const name = `${worker.first_name} ${worker.last_name}`;
       const fromStr = range?.from ? format(range.from, 'yyyy-MM-dd') : '';
       const toStr = range?.to ? format(range.to, 'yyyy-MM-dd') : fromStr;
-      const fileName = `battime-${worker.last_name}-${worker.first_name}-${fromStr}_${toStr}`.toLowerCase().replace(/\s+/g, '-');
-      const opts = { fileName, title: 'Battime — Relevé salarié', periodLabel, companyName, singleWorkerName: name };
+      const fileName = `bemexo-${worker.last_name}-${worker.first_name}-${fromStr}_${toStr}`.toLowerCase().replace(/\s+/g, '-');
+      const opts = { fileName, title: 'BEMEXO — Relevé salarié', periodLabel, companyName, singleWorkerName: name };
       if (kind === 'excel') exportEntriesToExcel(liveEntries, opts);
       else exportEntriesToPDF(liveEntries, opts);
       toast.success('Export téléchargé');
