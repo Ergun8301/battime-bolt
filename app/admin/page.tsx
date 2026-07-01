@@ -125,10 +125,15 @@ export default function AdminPage() {
   const expired = inTrial && now > (endsMs as number);
   const daysLeft = endsMs !== null ? Math.ceil(((endsMs as number) - now) / 86400000) : null;
 
-  // VIGILANCE n°2 : le blocage ne s'active QUE sur les previews (deploy-preview-*),
-  // JAMAIS en production, tant que Stripe n'est pas vérifié de bout en bout.
-  const isPreview = typeof window !== 'undefined' && window.location.hostname.startsWith('deploy-preview-');
-  const blocked = expired && isPreview;
+  // Interrupteur paywall : le blocage ne s'active QUE si NEXT_PUBLIC_PAYWALL_ENFORCED
+  // vaut "true" (variable d'environnement, posee cote hebergeur au moment voulu).
+  // Par defaut (variable absente) => false => AUCUN blocage : comportement actuel
+  // preserve, l'acces reste ouvert tant que l'interrupteur n'est pas active (une
+  // fois Stripe verifie en live). N'affecte QUE /admin ; /poseur n'a aucune garde
+  // paywall (les salaries continuent de pointer). Une entreprise sans essai
+  // (trial_ends_at NULL => inTrial=false) n'est JAMAIS bloquee, meme interrupteur ON.
+  const paywallEnforced = process.env.NEXT_PUBLIC_PAYWALL_ENFORCED === 'true';
+  const blocked = expired && paywallEnforced;
 
   return (
     <div className="bt-admin">
@@ -151,7 +156,7 @@ export default function AdminPage() {
             <h1>Votre essai gratuit est terminé</h1>
             <p>Pour continuer à utiliser Battime, choisissez l&apos;abonnement adapté à votre équipe.</p>
             <SubscribePanel />
-            <p className="bt-trial-note">Aperçu : ce blocage n&apos;est actif qu&apos;en preview. En production, l&apos;accès reste ouvert tant que le paiement n&apos;est pas vérifié de bout en bout.</p>
+            <p className="bt-trial-note">Vos données sont conservées. Dès votre abonnement, vous retrouvez immédiatement l&apos;accès complet à votre espace.</p>
           </div>
         </div>
       ) : (
