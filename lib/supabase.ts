@@ -19,3 +19,11 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     detectSessionInUrl: false,
   },
 });
+
+// Indicateur d'environnement (lecture seule — aucun effet sur la connexion).
+// Vrai uniquement quand l'app est reliee a la base de PRODUCTION. Sert au
+// bandeau STAGING (composant purement visuel) pour ne jamais confondre les
+// environnements : si un jour une preview oublie ses variables et retombe sur
+// la prod, IS_PROD_DB reste vrai (pas de faux positif) ; des qu'une base
+// differente est configuree, le bandeau apparait.
+export const IS_PROD_DB = supabaseUrl === 'https://sdperbcquvneohotjono.supabase.co';
