@@ -265,6 +265,7 @@ const PL_CSS = `
 .bt-pl-bar{position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:#F2EDE3;border-bottom:2px solid #15120F;padding:8px 16px;border-radius:16px 16px 0 0}
 .bt-pl-gridwrap{overflow-x:auto;background:#F2EDE3;border-radius:0 0 16px 16px;flex:1 0 auto}
 .bt-pl-brand{display:inline-flex;align-items:center;gap:8px;flex:none}
+.bt-pl-brand-logo{height:30px;width:auto;display:block}
 .bt-pl-brand-mark{width:30px;height:30px;background:#15120F;border-radius:7px;display:flex;align-items:center;justify-content:center;flex:none}
 .bt-pl-brand-dot{width:13px;height:13px;border:2.5px solid #FFC21A;border-radius:50%;border-top-color:transparent;transform:rotate(45deg)}
 .bt-pl-brand-name{font-size:17px;font-weight:900;letter-spacing:-.02em;color:#15120F}
@@ -1009,7 +1010,7 @@ export default function AdminPlanning() {
     const body = encodeURIComponent(
       `Bonjour ${worker.first_name},\n\n`
       + `Il manque l'envoi de tes heures pour : ${jours || 'des journées planifiées'}.\n`
-      + `Merci de les saisir et de les envoyer dès que possible depuis l'application Battime.\n\n`
+      + `Merci de les saisir et de les envoyer dès que possible depuis l'application BEMEXO.\n\n`
       + `— ${companyName || "L'équipe"}`,
     );
     window.location.href = `mailto:${worker.email}?subject=${subject}&body=${body}`;
@@ -1036,8 +1037,8 @@ export default function AdminPlanning() {
       if (entries.length === 0) { toast.error(`Aucune saisie du ${format(exportRange.from, 'dd/MM')} au ${format(exportRange.to, 'dd/MM')}`); return; }
 
       const opts = {
-        fileName: `battime-${kind === 'pdf' ? 'rapport' : 'export'}-${from}`,
-        title: 'Battime - Rapport hebdomadaire',
+        fileName: `bemexo-${kind === 'pdf' ? 'rapport' : 'export'}-${from}`,
+        title: 'BEMEXO - Rapport hebdomadaire',
         periodLabel: `${format(exportRange.from, 'dd/MM/yyyy')} au ${format(exportRange.to, 'dd/MM/yyyy')}`,
         companyName,
       };
@@ -1316,8 +1317,7 @@ export default function AdminPlanning() {
         {/* Barre UNIQUE pleine largeur, figée (sticky) — tout aligné sur une ligne */}
         <div className="bt-pl-bar">
           <span className="bt-pl-brand">
-            <span className="bt-pl-brand-mark"><span className="bt-pl-brand-dot" /></span>
-            <span className="bt-pl-brand-name">Battime</span>
+            <img src="/bemexo-wordmark-dark.svg" alt="BEMEXO" className="bt-pl-brand-logo" />
           </span>
           <div className="bt-pl-ddwrap">
             <div className="bt-pl-seg">

@@ -36,6 +36,8 @@ const POSEUR_CSS = `
 /* ===== EN-TÊTE NOIR ===== */
 .bt-phdr{background:#15120F;color:#F2EDE3;flex:none;padding:calc(env(safe-area-inset-top) + 12px) 16px 12px;position:relative}
 .bt-phdr-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.bt-phdr-left{display:flex;align-items:center;gap:10px;min-width:0}
+.bt-phdr-logo{width:32px;height:32px;flex:none;display:block}
 .bt-phdr-date{font-size:22px;font-weight:900;letter-spacing:-.02em;line-height:1.1;text-transform:capitalize;min-width:0}
 .bt-phdr-back{display:flex;align-items:center;gap:10px;background:transparent;border:none;color:#F2EDE3;cursor:pointer;padding:0;text-align:left;min-width:0}
 /* Bouton identité (nom + rond photo/initiales) = déclencheur du menu */
@@ -178,14 +180,17 @@ export default function PoseurPage() {
         {/* ===== EN-TÊTE NOIR ===== */}
         <header className="bt-phdr">
           <div className="bt-phdr-row">
-            {isToday ? (
-              <div className="bt-phdr-date">{todayLabel}</div>
-            ) : (
-              <button onClick={goHome} className="bt-phdr-back" aria-label="Retour à ma journée">
-                <ArrowLeft className="h-5 w-5 shrink-0" />
-                <span className="bt-phdr-date truncate">{headerTitle}</span>
-              </button>
-            )}
+            <div className="bt-phdr-left">
+              <img src="/favicon.svg" alt="BEMEXO" className="bt-phdr-logo" />
+              {isToday ? (
+                <div className="bt-phdr-date">{todayLabel}</div>
+              ) : (
+                <button onClick={goHome} className="bt-phdr-back" aria-label="Retour à ma journée">
+                  <ArrowLeft className="h-5 w-5 shrink-0" />
+                  <span className="bt-phdr-date truncate">{headerTitle}</span>
+                </button>
+              )}
+            </div>
 
             {/* Identité du salarié = déclencheur du menu (nom + rond photo/initiales). */}
             <input type="file" accept="image/*" hidden ref={photoInputRef} onChange={(e) => onPickPhoto(e.target.files?.[0])} />
