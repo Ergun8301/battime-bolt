@@ -1,0 +1,22 @@
+{
+  "name": "bemexo-video-demo",
+  "private": true,
+  "description": "Vidéo de démo marketing BEMEXO (Remotion) — projet isolé, ne touche pas au site.",
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "render:169": "remotion render src/index.ts Demo169 out/bemexo-demo-16x9.mp4",
+    "render:916": "remotion render src/index.ts Demo916 out/bemexo-demo-9x16.mp4",
+    "still": "remotion still src/index.ts Demo169 out/still.png"
+  },
+  "dependencies": {
+    "@remotion/cli": "^4.0.0",
+    "@remotion/fonts": "^4.0.484",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "remotion": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.0",
+    "typescript": "^5.2.2"
+  }
+}

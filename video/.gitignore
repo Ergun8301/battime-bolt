@@ -1,0 +1,4 @@
+# dépendances et rendus locaux — jamais versionnés
+node_modules/
+out/
+.remotion/
