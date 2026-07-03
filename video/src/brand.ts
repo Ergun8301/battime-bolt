@@ -1,20 +1,11 @@
 // Identité BEMEXO — strictement les couleurs et polices du site.
-// Polices chargées en LOCAL (video/public/fonts) : rendu 100 % hors-réseau,
-// déterministe, aucun aléa proxy/certificat au moment du rendu.
-import { loadFont } from '@remotion/fonts';
-import { staticFile } from 'remotion';
-
-const f = (family: string, file: string, weight: string) =>
-  loadFont({ family, url: staticFile(`fonts/${file}`), weight });
-
-export const fontsReady = Promise.all([
-  f('Archivo', 'Archivo-500.ttf', '500'),
-  f('Archivo', 'Archivo-700.ttf', '700'),
-  f('Archivo', 'Archivo-800.ttf', '800'),
-  f('Archivo', 'Archivo-900.ttf', '900'),
-  f('JetBrains Mono', 'JetBrainsMono-400.ttf', '400'),
-  f('JetBrains Mono', 'JetBrainsMono-700.ttf', '700'),
-]);
+// Polices : installées au NIVEAU SYSTÈME de la machine de rendu (les .ttf
+// sources restent dans video/public/fonts ; installation :
+//   cp video/public/fonts/*.ttf /usr/local/share/fonts/bemexo/ && fc-cache -f).
+// Pourquoi pas @remotion/fonts/loadFont ? Son delayRender se figeait
+// aléatoirement dans certains onglets de rendu (blocage à 178 s constaté),
+// faisant échouer le rendu complet. En polices système : zéro chargement
+// asynchrone, zéro risque de blocage, typographie identique.
 
 export const NOIR = '#15120F';
 export const NOIR_CARD = '#211D19';
