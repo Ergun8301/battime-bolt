@@ -16,7 +16,7 @@ export const FinalCta: React.FC<{ vertical?: boolean }> = ({ vertical = false })
   const btnIn = pop(50);
   const footIn = interpolate(frame, [62, 76], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
 
-  const logoW = vertical ? '72%' : '44%';
+  const logoW = vertical ? '80%' : '44%';
 
   return (
     <AbsoluteFill style={{ background: NOIR, fontFamily: ARCHIVO, alignItems: 'center', justifyContent: 'center' }}>
@@ -45,7 +45,7 @@ export const FinalCta: React.FC<{ vertical?: boolean }> = ({ vertical = false })
           <div
             style={{
               color: CREME, fontWeight: 900, letterSpacing: '-0.02em', lineHeight: 1.08,
-              fontSize: vertical ? 76 : 84,
+              fontSize: vertical ? 84 : 84,
               opacity: sloganIn, transform: `translateY(${(1 - sloganIn) * 30}px)`,
             }}
           >
@@ -54,7 +54,7 @@ export const FinalCta: React.FC<{ vertical?: boolean }> = ({ vertical = false })
           <div
             style={{
               color: JAUNE, fontWeight: 900, letterSpacing: '-0.02em', lineHeight: 1.08,
-              fontSize: vertical ? 76 : 84,
+              fontSize: vertical ? 84 : 84,
               opacity: slogan2In, transform: `translateY(${(1 - slogan2In) * 30}px)`,
             }}
           >
@@ -65,8 +65,8 @@ export const FinalCta: React.FC<{ vertical?: boolean }> = ({ vertical = false })
         <div
           style={{
             background: JAUNE, color: NOIR, fontWeight: 900,
-            fontSize: vertical ? 44 : 40,
-            padding: vertical ? '30px 64px' : '26px 58px',
+            fontSize: vertical ? 48 : 40,
+            padding: vertical ? "34px 70px" : "26px 58px",
             borderRadius: 22, boxShadow: `0 10px 0 ${JAUNE_OMBRE}`,
             opacity: btnIn, transform: `translateY(${(1 - btnIn) * 26}px) scale(${0.94 + btnIn * 0.06})`,
           }}
@@ -74,7 +74,7 @@ export const FinalCta: React.FC<{ vertical?: boolean }> = ({ vertical = false })
           Essayer 30 jours gratuits →
         </div>
 
-        <div style={{ fontFamily: MONO, color: GRIS_TXT, fontWeight: 700, fontSize: vertical ? 28 : 26, letterSpacing: '.06em', opacity: footIn }}>
+        <div style={{ fontFamily: MONO, color: GRIS_TXT, fontWeight: 700, fontSize: vertical ? 31 : 26, letterSpacing: '.06em', opacity: footIn }}>
           Sans carte bancaire · Prêt en 5 min · bemexo.fr
         </div>
       </div>

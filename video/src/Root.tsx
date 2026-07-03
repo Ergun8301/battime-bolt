@@ -2,7 +2,7 @@ import { Composition } from 'remotion';
 import { DemoVideo } from './DemoVideo';
 
 // Deux formats livrés : 16:9 (site / YouTube) et 9:16 (réseaux sociaux).
-// Durée provisoire (squelette) — passera à ~75 s une fois toutes les scènes montées.
+// 2310 images à 30 i/s ≈ 77 s (storyboard validé + beat hors-ligne).
 export const RemotionRoot: React.FC = () => {
   return (
     <>
@@ -12,7 +12,7 @@ export const RemotionRoot: React.FC = () => {
         width={1920}
         height={1080}
         fps={30}
-        durationInFrames={300}
+        durationInFrames={2310}
         defaultProps={{ vertical: false }}
       />
       <Composition
@@ -21,7 +21,7 @@ export const RemotionRoot: React.FC = () => {
         width={1080}
         height={1920}
         fps={30}
-        durationInFrames={300}
+        durationInFrames={2310}
         defaultProps={{ vertical: true }}
       />
     </>
