@@ -34,9 +34,20 @@ export const PhoneMaJournee: React.FC<{ width: number; state: PhoneState }> = ({
         position: 'relative',
       }}
     >
-      <div style={{ background: CREME, borderRadius: 44 * u, overflow: 'hidden', position: 'relative' }}>
-        {/* ===== header noir ===== */}
-        <div style={{ background: NOIR, color: CREME, padding: `${26 * u}px ${24 * u}px ${18 * u}px` }}>
+      <div style={{ background: CREME, borderRadius: 44 * u, overflow: 'hidden', position: 'relative', display: 'flex', flexDirection: 'column', minHeight: 818 * u }}>
+        {/* ===== header noir (avec barre de statut → proportions réelles) ===== */}
+        <div style={{ background: NOIR, color: CREME, padding: `${14 * u}px ${24 * u}px ${18 * u}px` }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 * u }}>
+            <span style={{ fontFamily: MONO, fontSize: 13.5 * u, fontWeight: 700, color: CREME }}>07:42</span>
+            <span style={{ display: 'flex', alignItems: 'flex-end', gap: 4 * u }}>
+              {[4, 6.5, 9, 11.5].map((h, i) => (
+                <span key={i} style={{ width: 3.2 * u, height: h * u, background: CREME, borderRadius: 1, opacity: i < 3 ? 1 : 0.35 }} />
+              ))}
+              <span style={{ width: 23 * u, height: 11.5 * u, border: `1.5px solid rgba(242,237,227,.8)`, borderRadius: 3.5 * u, marginLeft: 5 * u, padding: 1.8 * u, display: 'flex' }}>
+                <span style={{ width: '68%', background: CREME, borderRadius: 1 }} />
+              </span>
+            </span>
+          </div>
           <div style={{ fontFamily: MONO, fontSize: 13 * u, letterSpacing: '.16em', color: JAUNE, fontWeight: 700, marginBottom: 6 * u }}>
             MA JOURNÉE
           </div>
@@ -56,8 +67,8 @@ export const PhoneMaJournee: React.FC<{ width: number; state: PhoneState }> = ({
           Hors-ligne, tout est gardé · 1 en attente
         </div>
 
-        {/* ===== corps ===== */}
-        <div style={{ padding: 18 * u }}>
+        {/* ===== corps (flex → remplit la hauteur réelle du téléphone) ===== */}
+        <div style={{ padding: 18 * u, flex: 1, display: 'flex', flexDirection: 'column' }}>
           {/* carte total */}
           <div style={{ background: NOIR, color: CREME, borderRadius: 20 * u, padding: 18 * u, position: 'relative', overflow: 'hidden' }}>
             <div style={{ position: 'absolute', top: 0, right: 0, width: 74 * u, height: 10 * u, background: `repeating-linear-gradient(45deg, ${NOIR} 0 ${8 * u}px, ${JAUNE} ${8 * u}px ${16 * u}px)` }} />
@@ -153,6 +164,19 @@ export const PhoneMaJournee: React.FC<{ width: number; state: PhoneState }> = ({
             </div>
           </div>
 
+          {/* ajout d'intervention (comme dans l'app) — comble l'espace de l'écran réel */}
+          <div
+            style={{
+              marginTop: 12 * u, border: '2px dashed rgba(21,18,15,.2)', borderRadius: 16 * u,
+              padding: `${13 * u}px`, textAlign: 'center', color: '#9a948a', fontWeight: 800, fontSize: 15 * u,
+            }}
+          >
+            ＋ Ajouter une intervention
+          </div>
+
+          {/* pousse le bouton vers le bas (hauteur réelle du téléphone) */}
+          <div style={{ flex: 1, minHeight: 10 * u }} />
+
           {/* bouton envoyer */}
           <div
             style={{
@@ -164,6 +188,9 @@ export const PhoneMaJournee: React.FC<{ width: number; state: PhoneState }> = ({
           >
             Envoyer ma journée →
           </div>
+
+          {/* indicateur home */}
+          <div style={{ width: 122 * u, height: 5 * u, borderRadius: 4, background: 'rgba(21,18,15,.25)', margin: `${13 * u}px auto 2px` }} />
         </div>
 
         {/* ===== feuille "Chantier" (par-dessus) ===== */}
