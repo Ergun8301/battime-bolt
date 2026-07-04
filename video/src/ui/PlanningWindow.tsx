@@ -34,7 +34,10 @@ const Chip: React.FC<{ p: number; dark?: boolean; bar: string; title: string; su
       background: dark ? NOIR : '#fff',
       border: dashed ? `2px dashed ${bar}` : '1px solid rgba(21,18,15,.1)',
       padding: `${9 * u}px ${10 * u}px ${9 * u}px ${14 * u}px`,
-      opacity: p, transform: `translateY(${(1 - p) * 16}px) scale(${0.92 + p * 0.08})`,
+      // opacité qui SNAPPE (opaque dès p≈0.17) → pas de fondu semi-transparent
+      // boueux par-dessus le placeholder ; l'entrée est portée par l'échelle.
+      opacity: clamp01(p * 6),
+      transform: `translateY(${(1 - p) * 16}px) scale(${0.9 + p * 0.1})`,
     }}
   >
     <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 5 * u, background: bar }} />
@@ -139,7 +142,7 @@ export const PlanningWindow: React.FC<{ width: number; state: PlanningState }> =
           <div style={{ ...cell, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fff', borderRight: '2px solid rgba(21,18,15,.14)' }}>{avatar('KB')}</div>
           <div style={{ ...cell, position: 'relative' }}>
             {/* placeholder lisible tant que la saisie réelle n'est pas arrivée */}
-            <div style={{ position: 'absolute', inset: 8 * u, opacity: Math.max(0, 1 - stagger(fill, 0.05) * 1.6) }}>{plus}</div>
+            <div style={{ position: 'absolute', inset: 8 * u, opacity: stagger(fill, 0.05) < 0.04 ? 1 : 0 }}>{plus}</div>
             <Chip u={u} p={stagger(fill, 0.05)} dark bar="#C9821F" title="Villa Lupin" sub="4h00" />
             {state.ping > 0.02 && (
               <div
@@ -164,7 +167,7 @@ export const PlanningWindow: React.FC<{ width: number; state: PlanningState }> =
           {/* Julien */}
           <div style={{ ...cell, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fff', borderRight: '2px solid rgba(21,18,15,.14)', borderBottom: 'none' }}>{avatar('JM')}</div>
           <div style={{ ...cell, borderBottom: 'none', position: 'relative' }}>
-            <div style={{ position: 'absolute', inset: 8 * u, opacity: Math.max(0, 1 - stagger(fill, 0.25) * 1.6) }}>{plus}</div>
+            <div style={{ position: 'absolute', inset: 8 * u, opacity: stagger(fill, 0.25) < 0.04 ? 1 : 0 }}>{plus}</div>
             <Chip u={u} p={stagger(fill, 0.25)} dark bar="#A23E6B" title="Toiture Pasteur" sub="5h00" />
           </div>
           <div style={{ ...cell, borderBottom: 'none', background: MER_BG }}>
