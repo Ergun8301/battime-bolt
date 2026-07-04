@@ -1,6 +1,7 @@
 import React from 'react';
-import { AbsoluteFill, Img, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig } from 'remotion';
-import { ARCHIVO, CREME, GRIS_TXT, JAUNE, MONO, NOIR, RUBAN, TEXTURE_CHANTIER } from '../brand';
+import { AbsoluteFill, Easing, Img, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig } from 'remotion';
+import { ARCHIVO, CREME, GRIS_TXT, JAUNE, MONO, NOIR, RUBAN } from '../brand';
+import { CineBackdrop } from '../ui/CineBackdrop';
 
 // S1 (0→330) : le problème — papier, WhatsApp, Excel s'empilent de travers.
 // S2 (330→450) : le ruban de chantier balaie tout, le X BEMEXO se pose.
@@ -79,8 +80,8 @@ export const S12Probleme: React.FC<{ vertical?: boolean }> = ({ vertical = false
   const t2In = interpolate(frame, [168, 186], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
 
   // S2 : balayage (335→410), X + texte (395→450)
-  const wipe = interpolate(frame, [335, 408], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
-  const eased = 1 - Math.pow(1 - wipe, 3);
+  const wipe = interpolate(frame, [335, 408], [0, 1], { easing: Easing.inOut(Easing.cubic), extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
+  const eased = wipe;
   const push = eased * (vertical ? height : width) * 1.35;
   const xIn = spring({ frame: frame - 396, fps, config: { damping: 15, stiffness: 120 } });
   const txtIn = spring({ frame: frame - 412, fps, config: { damping: 200 } });
@@ -93,6 +94,8 @@ export const S12Probleme: React.FC<{ vertical?: boolean }> = ({ vertical = false
 
   return (
     <AbsoluteFill style={{ background: CREME, fontFamily: ARCHIVO, overflow: 'hidden' }}>
+      {/* vignettage doux côté crème (cohérence ciné avec le reste du film) */}
+      <AbsoluteFill style={{ background: 'radial-gradient(130% 130% at 50% 45%, rgba(21,18,15,0) 58%, rgba(21,18,15,.14) 100%)', pointerEvents: 'none' }} />
       {/* ===== S1 : titres ===== */}
       <div style={{ position: 'absolute', top: vertical ? '9%' : '10%', left: 0, right: 0, textAlign: 'center', padding: '0 7%' }}>
         <div style={{ position: 'relative', height: vertical ? 220 : 130 }}>
@@ -124,17 +127,24 @@ export const S12Probleme: React.FC<{ vertical?: boolean }> = ({ vertical = false
         </div>
       )}
 
-      {/* ===== S2 : panneau noir + ruban qui balaie ===== */}
+      {/* ===== S2 : panneau noir + ruban qui balaie (le ruban ne sert QUE de transition) ===== */}
       <div
         style={{
           position: 'absolute', top: '-25%', bottom: '-25%', left: '-40%', width: '190%',
           transform: `translateX(${(-1.08 + eased * 1.08) * 100}%) rotate(${vertical ? -4 : -7}deg)`,
-          background: NOIR, backgroundImage: TEXTURE_CHANTIER,
+          background: NOIR,
           boxShadow: '40px 0 120px rgba(0,0,0,.45)',
         }}
       >
         <div style={{ position: 'absolute', top: 0, bottom: 0, right: 0, width: 30, background: RUBAN }} />
       </div>
+
+      {/* une fois couvert : ambiance ciné v2 par-dessus le panneau */}
+      {frame > 392 && (
+        <AbsoluteFill style={{ opacity: interpolate(frame, [396, 424], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' }) }}>
+          <CineBackdrop />
+        </AbsoluteFill>
+      )}
 
       {/* ===== S2 : X + texte ===== */}
       {frame > 390 && (

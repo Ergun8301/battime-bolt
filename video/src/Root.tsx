@@ -13,7 +13,7 @@ export const RemotionRoot: React.FC = () => {
         width={1920}
         height={1080}
         fps={30}
-        durationInFrames={2310}
+        durationInFrames={2430}
         defaultProps={{ vertical: false }}
       />
       <Composition
@@ -22,7 +22,7 @@ export const RemotionRoot: React.FC = () => {
         width={1080}
         height={1920}
         fps={30}
-        durationInFrames={2310}
+        durationInFrames={2430}
         defaultProps={{ vertical: true }}
       />
       {/* Compos de validation (stills variantes téléphone v2) */}

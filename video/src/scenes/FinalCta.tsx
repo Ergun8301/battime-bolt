@@ -1,5 +1,6 @@
 import { AbsoluteFill, Img, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig } from 'remotion';
-import { ARCHIVO, CREME, GRIS_TXT, JAUNE, JAUNE_OMBRE, MONO, NOIR, RUBAN, TEXTURE_CHANTIER } from '../brand';
+import { ARCHIVO, CREME, GRIS_TXT, JAUNE, JAUNE_OMBRE, MONO, NOIR, RUBAN } from '../brand';
+import { CineBackdrop } from '../ui/CineBackdrop';
 
 // Scène finale — CTA. Sert aussi de "preuve de style" (still) avant validation
 // du storyboard : wordmark BEMEXO, slogan, bouton jaune signature, ruban chantier.
@@ -18,9 +19,12 @@ export const FinalCta: React.FC<{ vertical?: boolean }> = ({ vertical = false })
 
   const logoW = vertical ? '80%' : '44%';
 
+  // respiration douce du bouton une fois posé
+  const breath = frame > 62 ? 1 + Math.sin((frame - 62) / 21) * 0.012 : 1;
+
   return (
     <AbsoluteFill style={{ background: NOIR, fontFamily: ARCHIVO, alignItems: 'center', justifyContent: 'center' }}>
-      <AbsoluteFill style={{ backgroundImage: TEXTURE_CHANTIER }} />
+      <CineBackdrop warmth={1.25} />
 
       {/* halo jaune discret, comme le panneau noir de l'inscription */}
       <div
@@ -67,8 +71,8 @@ export const FinalCta: React.FC<{ vertical?: boolean }> = ({ vertical = false })
             background: JAUNE, color: NOIR, fontWeight: 900,
             fontSize: vertical ? 48 : 40,
             padding: vertical ? "34px 70px" : "26px 58px",
-            borderRadius: 22, boxShadow: `0 10px 0 ${JAUNE_OMBRE}`,
-            opacity: btnIn, transform: `translateY(${(1 - btnIn) * 26}px) scale(${0.94 + btnIn * 0.06})`,
+            borderRadius: 22, boxShadow: `0 10px 0 ${JAUNE_OMBRE}, 0 26px 60px -18px rgba(255,194,26,.28)`,
+            opacity: btnIn, transform: `translateY(${(1 - btnIn) * 26}px) scale(${(0.94 + btnIn * 0.06) * breath})`,
           }}
         >
           Essayer 30 jours gratuits →
