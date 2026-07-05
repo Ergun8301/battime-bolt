@@ -111,7 +111,7 @@ export default function LandingDemoVideo() {
       <style dangerouslySetInnerHTML={{ __html: CSS }} />
       <div className="lp-demo-inner">
         <div className="lp-demo-head">
-          <div className="lp-demo-kicker">La démo · 1 min 20</div>
+          <div className="lp-demo-kicker">La démo · 1 min 30</div>
           <h2 className="lp-demo-h2">Comment ça marche</h2>
           <p className="lp-demo-sub">Du pointage sur le chantier à l&apos;export paie — regardez, tout y est.</p>
         </div>
