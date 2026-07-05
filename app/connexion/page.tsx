@@ -25,7 +25,7 @@ const AUTH_CSS = `
 .bt-logo{display:flex;align-items:center;justify-content:center;margin-bottom:28px}
 .bt-logo-badge{display:inline-flex;align-items:center;justify-content:center;background:#15120F;border-radius:16px;padding:16px 30px;box-shadow:0 14px 30px -14px rgba(21,18,15,.5);text-decoration:none;max-width:100%}
 .bt-logo-badge-img{width:clamp(196px,52vw,264px);height:auto;display:block;max-width:100%}
-.bt-vis-brand{position:absolute;bottom:clamp(28px,4.5vh,46px);left:50%;transform:translateX(-50%);width:clamp(220px,26vw,320px);height:auto;opacity:.97;pointer-events:none;z-index:2}
+.bt-vis-brand{position:absolute;bottom:clamp(34px,5vh,52px);left:50%;transform:translateX(-50%);width:clamp(200px,24vw,262px);height:auto;opacity:.97;pointer-events:none;z-index:2}
 .bt-h1{font-size:25px;line-height:1.15;font-weight:900;letter-spacing:-.02em;margin:0 0 10px;text-align:center}
 .bt-h1-accent{color:#9a7c14}
 .bt-sub{font-size:15px;color:#6E6A63;font-weight:500;margin:0 0 20px;text-align:center}
@@ -44,9 +44,15 @@ const AUTH_CSS = `
 .bt-foot{text-align:center;font-size:14.5px;color:#6E6A63;font-weight:500;margin:18px 0 0}
 .bt-foot a{font-weight:800;color:#15120F;text-decoration:none;border-bottom:2px solid #FFC21A}
 .bt-err{background:#fce8e6;border:1px solid #f3b4ad;color:#9a2820;font-size:14px;font-weight:600;border-radius:10px;padding:11px 14px;margin-bottom:16px}
-.bt-visual{position:relative;background:#15120F;overflow:hidden;display:flex;align-items:center;justify-content:center;padding:40px 40px clamp(92px,13vh,124px);min-width:0}
+.bt-visual{position:relative;background:radial-gradient(135% 118% at 50% 43%,rgba(0,0,0,0) 52%,rgba(0,0,0,.5) 100%),radial-gradient(circle at 50% 40%,#211a12 0%,#17130e 46%,#15120F 74%);overflow:hidden;display:flex;align-items:center;justify-content:center;padding:44px 40px clamp(84px,11.5vh,112px);min-width:0}
 .bt-ruban-center{position:absolute;top:0;left:calc(50% - 6px);width:12px;height:100%;background:repeating-linear-gradient(45deg,#15120F 0 9px,#FFC21A 9px 18px);z-index:5;pointer-events:none}
-.bt-vis-inner{display:flex;flex-direction:column;align-items:center}
+.bt-vis-inner{display:flex;flex-direction:column;align-items:center;position:relative;z-index:1;filter:drop-shadow(0 44px 74px rgba(0,0,0,.62));animation:bt-vis-float 7s ease-in-out infinite}
+@keyframes bt-vis-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+.bt-vis-halo{position:absolute;top:43%;left:50%;transform:translate(-50%,-50%);width:min(64vh,620px);height:min(64vh,620px);border-radius:50%;background:radial-gradient(circle,rgba(255,194,26,.16),transparent 62%);filter:blur(22px);z-index:0;pointer-events:none}
+.bt-vis-xbg{position:absolute;z-index:0;pointer-events:none;height:auto}
+.bt-vis-xbg-1{bottom:-56px;right:-72px;width:360px;opacity:.06;transform:rotate(12deg)}
+.bt-vis-xbg-2{top:5%;left:-40px;width:150px;opacity:.05;transform:rotate(-18deg)}
+@media(prefers-reduced-motion:reduce){.bt-vis-inner{animation:none}}
 .bt-vis-tagline{display:none;font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:#FFC21A;text-align:center;font-weight:700}
 .bt-card{width:100%;max-width:420px;background:#fff;border:1px solid rgba(21,18,15,.12);border-radius:18px;padding:34px 30px;box-shadow:0 24px 50px -24px rgba(21,18,15,.4)}
 .bt-center{min-height:100vh;min-height:100svh;display:flex;align-items:center;justify-content:center;padding:24px}
@@ -61,6 +67,8 @@ const AUTH_CSS = `
   .bt-leftcol{order:2;padding:40px 28px}
   .bt-visual{order:1;min-height:0;padding:24px}
   .bt-vis-inner{display:none}
+  .bt-vis-halo{display:none}
+  .bt-vis-xbg{display:none}
   .bt-vis-tagline{display:block}
   .bt-vis-brand{display:none}
   .bt-ruban-center{display:none}
@@ -240,7 +248,11 @@ function LoginView() {
 
       {/* ============ COLONNE VISUELLE (vrais écrans de l'app) ============ */}
       <div className="bt-visual">
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
+        {/* décor de fond subtil : halo + X BEMEXO en biais */}
+        <div className="bt-vis-halo" aria-hidden="true" />
+        <img src="/bemexo-x-light.svg" alt="" aria-hidden="true" className="bt-vis-xbg bt-vis-xbg-1" />
+        <img src="/bemexo-x-light.svg" alt="" aria-hidden="true" className="bt-vis-xbg bt-vis-xbg-2" />
+        <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
           <div className="bt-vis-inner" dangerouslySetInnerHTML={{ __html: isEnt ? ENT_ILLUS : SAL_ILLUS }} />
           <div className="bt-vis-tagline">{isEnt ? '🏢 Espace entreprise · le planning' : '👷 Espace salarié · vos heures'}</div>
         </div>
