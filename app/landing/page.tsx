@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import LandingDemoVideo from '@/components/landing-demo-video';
 
 export const metadata: Metadata = {
   title: 'BEMEXO — Les heures du batiment, pointees sur le chantier',
@@ -167,8 +168,12 @@ const BODY = `<!-- ============ HEADER ============ -->
         </div>
       </div>
     </div>
-  </section>
+  </section>`;
 
+// Suite de la page (inchangée) — la coupure sert uniquement à insérer la
+// section vidéo « Comment ça marche » (composant React) entre #probleme et
+// #etapes, sans toucher une seule ligne du markup existant.
+const BODY_SUITE = `
   <!-- ============ ETAPES ============ -->
   <section id="etapes" style="background:#F2EDE3">
     <div style="max-width:1140px;margin:0 auto;padding:88px 28px 80px">
@@ -452,7 +457,11 @@ export default function LandingPage() {
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: STYLES }} />
-      <div className="lp" dangerouslySetInnerHTML={{ __html: BODY }} />
+      <div className="lp">
+        <div dangerouslySetInnerHTML={{ __html: BODY }} />
+        <LandingDemoVideo />
+        <div dangerouslySetInnerHTML={{ __html: BODY_SUITE }} />
+      </div>
     </>
   );
 }
