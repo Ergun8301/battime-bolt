@@ -28,14 +28,17 @@ const SIGNUP_CSS = `
 .bt-auth .backbtn{transition:background .15s ease,border-color .15s ease,color .15s ease}
 .bt-auth .backbtn:hover{background:rgba(255,194,26,.16);border-color:rgba(255,194,26,.6);color:#FFC21A}
 .bt-split{display:grid;grid-template-columns:1fr 1fr;min-height:100vh;min-height:100svh;position:relative}
-.bt-aside{position:relative;background:#15120F;color:#F2EDE3;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-start;padding:clamp(30px,6vh,72px) clamp(22px,4vw,50px) clamp(20px,3vh,40px);min-width:0}
+.bt-aside{position:relative;background:#15120F;color:#F2EDE3;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-start;padding:clamp(16px,2.2vh,24px) clamp(22px,4vw,50px);min-width:0}
 .bt-ruban-center{position:absolute;top:0;left:calc(50% - 6px);width:12px;height:100%;background:repeating-linear-gradient(45deg,#15120F 0 9px,#FFC21A 9px 18px);z-index:5;pointer-events:none}
 .bt-formcol{display:flex;flex-direction:column;padding:clamp(14px,3vh,34px) 6vw;min-width:0}
 .bt-wrap{width:100%;max-width:480px;margin:auto}
+.bt-logo-ins{display:flex;justify-content:center;margin-bottom:clamp(14px,2.4vh,22px)}
+.bt-logo-badge{display:inline-flex;align-items:center;justify-content:center;background:#15120F;border-radius:16px;padding:16px 30px;box-shadow:0 14px 30px -14px rgba(21,18,15,.5);text-decoration:none;max-width:100%}
+.bt-logo-badge-img{width:clamp(196px,52vw,264px);height:auto;display:block;max-width:100%}
 .bt-back-m{display:none;align-items:center;gap:7px;text-decoration:none;color:#6E6A63;font-weight:700;font-size:14px;margin-bottom:16px}
 .bt-back-m:hover{color:#15120F}
-.bt-h1{font-size:clamp(24px,4.2vh,30px);line-height:1.05;font-weight:900;letter-spacing:-.025em;margin:0 0 clamp(3px,0.8vh,7px)}
-.bt-sub{font-size:15px;color:#6E6A63;font-weight:500;margin:0 0 clamp(9px,2vh,20px)}
+.bt-h1{font-size:clamp(24px,4.2vh,30px);line-height:1.05;font-weight:900;letter-spacing:-.025em;margin:0 0 clamp(3px,0.8vh,7px);text-align:center}
+.bt-sub{font-size:15px;color:#6E6A63;font-weight:500;margin:0 0 clamp(9px,2vh,20px);text-align:center}
 .bt-label{display:block;font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#6E6A63;font-weight:700;margin-bottom:clamp(3px,0.6vh,6px)}
 .bt-opt{font-family:'Archivo',sans-serif;text-transform:none;letter-spacing:0;font-size:11px;color:#a39d92;font-weight:600;margin-left:7px}
 .bt-field{width:100%;font-family:'Archivo',sans-serif;font-size:16px;font-weight:500;padding:clamp(9px,1.5vh,13px) 16px;border:1.5px solid rgba(21,18,15,.18);border-radius:11px;background:#FBF8F2;outline:none;color:#15120F;margin-bottom:clamp(8px,1.7vh,16px)}
@@ -159,10 +162,15 @@ export default function InscriptionPage() {
           {/* ============ COLONNE FORMULAIRE (notre gestion hauteur/scroll, inchangee) ============ */}
           <div className="bt-formcol">
             <div className="bt-wrap">
-              {/* Retour visible sur telephone (le panneau noir est masque en mobile) */}
+              {/* Retour visible sur telephone (le panneau noir est masque en mobile) — tout en haut */}
               <Link href="/landing" className="bt-back-m">
                 <span style={{ fontSize: '16px' }}>←</span> Retour à l&apos;accueil
               </Link>
+              <div className="bt-logo-ins">
+                <Link href="/landing" className="bt-logo-badge" aria-label="BEMEXO — accueil">
+                  <img src="/bemexo-wordmark-light.svg" alt="BEMEXO" className="bt-logo-badge-img" />
+                </Link>
+              </div>
 
               <h1 className="bt-h1">Créez votre compte.</h1>
               <p className="bt-sub">Lancez votre essai gratuit — aucune carte demandée.</p>

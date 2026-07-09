@@ -7,13 +7,13 @@ import { AuthProvider } from '@/components/auth-provider';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'Battime - Feuilles d\'heures BTP',
+  title: 'BEMEXO — Feuilles d\'heures BTP',
   description: 'Gestion simplifiée des feuilles d\'heures pour les entreprises du BTP',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'Battime',
+    title: 'BEMEXO',
   },
   viewport: {
     width: 'device-width',
@@ -31,7 +31,9 @@ export default function RootLayout({
   return (
     <html lang="fr">
       <head>
-        <link rel="apple-touch-icon" href="/icon-192.svg" />
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+        <link rel="icon" type="image/png" href="/favicon.png" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <meta name="theme-color" content="#15120F" />
       </head>
       <body className={inter.className}>

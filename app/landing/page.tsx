@@ -1,9 +1,10 @@
 import type { Metadata } from 'next';
+import LandingDemoVideo from '@/components/landing-demo-video';
 
 export const metadata: Metadata = {
-  title: 'Battime — Les heures du batiment, pointees sur le chantier',
+  title: 'BEMEXO — Les heures du batiment, pointees sur le chantier',
   description:
-    'Vos equipes pointent depuis leur telephone, vous recuperez tout en temps reel — propre, pret pour la paie. Essayez Battime gratuitement pendant 30 jours.',
+    'Vos equipes pointent depuis leur telephone, vous recuperez tout en temps reel — propre, pret pour la paie. Essayez BEMEXO gratuitement pendant 30 jours.',
 };
 
 // Portage fidele de la maquette Claude Design (noir + jaune chantier).
@@ -44,10 +45,7 @@ const BODY = `<!-- ============ HEADER ============ -->
   <header style="position:sticky;top:0;z-index:50;background:rgba(242,237,227,.85);backdrop-filter:blur(10px);border-bottom:1px solid rgba(21,18,15,.12)">
     <div style="max-width:1200px;margin:0 auto;padding:16px 28px;display:flex;align-items:center;justify-content:space-between;gap:24px">
       <div style="display:flex;align-items:center;gap:11px">
-        <div style="width:34px;height:34px;background:#15120F;border-radius:7px;display:flex;align-items:center;justify-content:center;position:relative">
-          <div style="width:14px;height:14px;border:2.5px solid #FFC21A;border-radius:50%;border-top-color:transparent;transform:rotate(45deg)"></div>
-        </div>
-        <span style="font-weight:900;font-size:21px;letter-spacing:-.02em">Battime</span>
+        <img src="/bemexo-wordmark-dark.svg" alt="BEMEXO" style="height:30px;width:auto;display:block" />
       </div>
       <nav class="lp-nav" style="display:flex;align-items:center;gap:26px;font-size:14.5px;font-weight:600;color:#3a352f;white-space:nowrap">
         <a href="#probleme" style="color:inherit;text-decoration:none">Le problème</a>
@@ -148,7 +146,7 @@ const BODY = `<!-- ============ HEADER ============ -->
         <!-- AVANT -->
         <div data-reveal style="background:#211D19;border:1px solid rgba(242,237,227,.12);border-radius:18px;padding:30px">
           <div style="display:inline-block;font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#15120F;background:#8a857c;padding:5px 11px;border-radius:5px;margin-bottom:22px;font-weight:700">Avant</div>
-          <div style="font-size:20px;font-weight:800;margin-bottom:18px;color:#F2EDE3">Sans Battime</div>
+          <div style="font-size:20px;font-weight:800;margin-bottom:18px;color:#F2EDE3">Sans BEMEXO</div>
           <ul style="list-style:none;display:flex;flex-direction:column;gap:14px">
             <li style="display:flex;gap:12px;font-size:15.5px;line-height:1.4;color:#c9c3b8;font-weight:500"><span style="color:#9a948a;flex:none">✕</span> Des feuilles en papier qui se perdent ou reviennent illisibles</li>
             <li style="display:flex;gap:12px;font-size:15.5px;line-height:1.4;color:#c9c3b8;font-weight:500"><span style="color:#9a948a;flex:none">✕</span> Les heures qui arrivent en retard, après la paie</li>
@@ -159,7 +157,7 @@ const BODY = `<!-- ============ HEADER ============ -->
         <!-- APRES -->
         <div data-reveal style="background:#F2EDE3;color:#15120F;border-radius:18px;padding:30px;position:relative;overflow:hidden">
           <div style="position:absolute;top:0;right:0;width:90px;height:12px;background:repeating-linear-gradient(45deg,#15120F 0 8px,#FFC21A 8px 16px)"></div>
-          <div style="display:inline-block;font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#15120F;background:#FFC21A;padding:5px 11px;border-radius:5px;margin-bottom:22px;font-weight:700">Avec Battime</div>
+          <div style="display:inline-block;font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#15120F;background:#FFC21A;padding:5px 11px;border-radius:5px;margin-bottom:22px;font-weight:700">Avec BEMEXO</div>
           <div style="font-size:20px;font-weight:800;margin-bottom:18px">Tout devient simple</div>
           <ul style="list-style:none;display:flex;flex-direction:column;gap:14px">
             <li style="display:flex;gap:12px;font-size:15.5px;line-height:1.4;color:#3a352f;font-weight:600"><span style="color:#2FA36B;flex:none;font-weight:900">✓</span> Le gars pointe sur le chantier, en quelques secondes</li>
@@ -170,8 +168,12 @@ const BODY = `<!-- ============ HEADER ============ -->
         </div>
       </div>
     </div>
-  </section>
+  </section>`;
 
+// Suite de la page (inchangée) — la coupure sert uniquement à insérer la
+// section vidéo « Comment ça marche » (composant React) entre #probleme et
+// #etapes, sans toucher une seule ligne du markup existant.
+const BODY_SUITE = `
   <!-- ============ ETAPES ============ -->
   <section id="etapes" style="background:#F2EDE3">
     <div style="max-width:1140px;margin:0 auto;padding:88px 28px 80px">
@@ -234,7 +236,7 @@ const BODY = `<!-- ============ HEADER ============ -->
             <div style="width:11px;height:11px;border-radius:50%;background:#FF5F57"></div>
             <div style="width:11px;height:11px;border-radius:50%;background:#FEBC2E"></div>
             <div style="width:11px;height:11px;border-radius:50%;background:#28C840"></div>
-            <div style="margin-left:12px;font-family:'JetBrains Mono',monospace;font-size:11px;color:#9a948a">battime.fr/equipe</div>
+            <div style="margin-left:12px;font-family:'JetBrains Mono',monospace;font-size:11px;color:#9a948a">bemexo.fr/equipe</div>
           </div>
           <!-- header row -->
           <div style="padding:18px 20px;border-bottom:1px solid rgba(21,18,15,.08);display:flex;align-items:center;justify-content:space-between">
@@ -410,7 +412,7 @@ const BODY = `<!-- ============ HEADER ============ -->
         </div>
         <div data-reveal style="background:#fff;border:1px solid rgba(21,18,15,.1);border-radius:14px;padding:22px 24px">
           <div style="font-size:17px;font-weight:800;margin-bottom:8px">Mes gars ne sont pas à l'aise avec la technologie.</div>
-          <p style="font-size:15px;line-height:1.5;color:#56514a;font-weight:500">C'est fait pour eux. Un écran, un gros bouton. S'ils savent envoyer un SMS, ils savent pointer sur Battime.</p>
+          <p style="font-size:15px;line-height:1.5;color:#56514a;font-weight:500">C'est fait pour eux. Un écran, un gros bouton. S'ils savent envoyer un SMS, ils savent pointer sur BEMEXO.</p>
         </div>
         <div data-reveal style="background:#fff;border:1px solid rgba(21,18,15,.1);border-radius:14px;padding:22px 24px">
           <div style="font-size:17px;font-weight:800;margin-bottom:8px">Est-ce que ça marche avec mon logiciel de paie ?</div>
@@ -429,7 +431,7 @@ const BODY = `<!-- ============ HEADER ============ -->
     <div style="height:14px;background:repeating-linear-gradient(45deg,#15120F 0 14px,#FFC21A 14px 28px)"></div>
     <div data-reveal style="max-width:760px;margin:0 auto;padding:96px 28px 100px;text-align:center">
       <h2 style="font-size:52px;line-height:1.02;font-weight:900;letter-spacing:-.025em;margin-bottom:22px">Récupérez vos lundis matin.</h2>
-      <p style="font-size:19px;line-height:1.5;color:#c9c3b8;font-weight:500;max-width:520px;margin:0 auto 36px">Essayez Battime gratuitement pendant 30 jours. Vos gars pointent dès demain, vous exportez à la fin du mois.</p>
+      <p style="font-size:19px;line-height:1.5;color:#c9c3b8;font-weight:500;max-width:520px;margin:0 auto 36px">Essayez BEMEXO gratuitement pendant 30 jours. Vos gars pointent dès demain, vous exportez à la fin du mois.</p>
       <a href="/inscription" style="display:inline-flex;align-items:center;gap:11px;background:#FFC21A;color:#15120F;font-weight:900;font-size:19px;padding:19px 32px;border-radius:13px;text-decoration:none;box-shadow:0 4px 0 #C99300">Essayer gratuitement <span style="font-size:22px">→</span></a>
       <div style="margin-top:22px;font-family:'JetBrains Mono',monospace;font-size:13px;color:#9a948a">Sans carte bancaire · sans engagement</div>
     </div>
@@ -439,10 +441,7 @@ const BODY = `<!-- ============ HEADER ============ -->
   <footer style="background:#0e0c0a;color:#9a948a;padding:46px 28px">
     <div class="lp-footer-row" style="max-width:1140px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:24px;flex-wrap:wrap">
       <div style="display:flex;align-items:center;gap:11px">
-        <div style="width:30px;height:30px;background:#FFC21A;border-radius:7px;display:flex;align-items:center;justify-content:center">
-          <div style="width:13px;height:13px;border:2.5px solid #15120F;border-radius:50%;border-top-color:transparent;transform:rotate(45deg)"></div>
-        </div>
-        <span style="font-weight:900;font-size:18px;color:#F2EDE3">Battime</span>
+        <img src="/bemexo-wordmark-light.svg" alt="BEMEXO" style="height:26px;width:auto;display:block" />
       </div>
       <div style="display:flex;gap:26px;font-size:14px;font-weight:600">
         <a href="#etapes" style="color:#9a948a;text-decoration:none">Fonctionnement</a>
@@ -450,7 +449,7 @@ const BODY = `<!-- ============ HEADER ============ -->
         <a href="mailto:khabitatcontact@gmail.com" style="color:#9a948a;text-decoration:none">Contact</a>
         <a href="/connexion" style="color:#9a948a;text-decoration:none">Connexion</a><a href="/mentions-legales" style="color:#9a948a;text-decoration:none">Mentions legales</a><a href="/confidentialite" style="color:#9a948a;text-decoration:none">Confidentialite</a>
       </div>
-      <div style="font-family:'JetBrains Mono',monospace;font-size:12.5px">© 2026 Battime — Les heures du bâtiment.</div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:12.5px">© 2026 BEMEXO — Les heures du bâtiment.</div>
     </div>
   </footer>`;
 
@@ -458,7 +457,11 @@ export default function LandingPage() {
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: STYLES }} />
-      <div className="lp" dangerouslySetInnerHTML={{ __html: BODY }} />
+      <div className="lp">
+        <div dangerouslySetInnerHTML={{ __html: BODY }} />
+        <LandingDemoVideo />
+        <div dangerouslySetInnerHTML={{ __html: BODY_SUITE }} />
+      </div>
     </>
   );
 }

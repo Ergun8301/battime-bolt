@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
 import { PlanningWithWorksite, Worksite, User, Invitation, TimeEntryWithWorksite } from '@/lib/types';
@@ -16,7 +16,7 @@ import { Textarea } from '@/components/ui/textarea';
 import {
   ChevronLeft, ChevronRight, Plus, Trash2, Loader2,
   UserPlus, Users, Building2, Archive, CalendarRange, Download, FileSpreadsheet, FileText,
-  Bell, Clock, Mail, RefreshCw, X, Pencil, LogOut, User as UserIcon,
+  Bell, Clock, Mail, RefreshCw, X, Pencil, LogOut, Settings, User as UserIcon, Paperclip, AlertTriangle, Info, Hammer, CheckCircle2,
 } from 'lucide-react';
 import {
   DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
@@ -30,6 +30,9 @@ import { toast } from 'sonner';
 import { computeMissingDays } from '@/lib/work-status';
 import { exportEntriesToExcel, exportEntriesToPDF } from '@/lib/export-utils';
 import WorkerDetailDialog from '@/components/worker-detail';
+import ChantierDocuments from '@/components/chantier-documents';
+import { TimeCylinder } from '@/components/time-cylinder';
+import CompanySettings from '@/components/company-settings';
 
 // ─── helpers / constants ──────────────────────────────────────────────────────
 
@@ -73,6 +76,8 @@ const HATCH_STYLE = {
 };
 // Trick to let a child `h-full` stretch to the table-row height.
 const CELL_HEIGHT_HACK = { height: '1px' } as const;
+// Hauteur d'une ligne « fantôme » de remplissage (≈ une ligne salarié vide standard).
+const GHOST_ROW_H = 105;
 
 // Fixed hour (rare RDV) is stored in estimated_start with estimated_end empty.
 const fixedHourOf = (p: PlanningWithWorksite): string | null =>
@@ -105,20 +110,35 @@ function hashStr(s: string): number {
 const paletteFor = (p: PlanningWithWorksite) =>
   CHANTIER_PALETTES[hashStr(p.worksite_id || p.id) % CHANTIER_PALETTES.length];
 
-interface RealAgg { minutes: number; start: string; end: string; count: number }
+type ReceptionStatus = 'sans' | 'avec' | 'en_cours' | null;
+const RECEPTION_RANK: Record<string, number> = { avec: 3, en_cours: 2, sans: 1 };
+interface RealAgg { minutes: number; start: string; end: string; count: number; reception: ReceptionStatus; note: string }
 const realKey = (userId: string, date: string, worksiteId: string | null) => `${userId}|${date}|${worksiteId}`;
 
 // ─── compact one-line chantier bubble ──────────────────────────────────────────
 
-function BubbleContent({ p, palette, real }: { p: PlanningWithWorksite; palette: ChantierPalette; real?: RealAgg }) {
+function BubbleContent({ p, palette, real, docCount = 0 }: { p: PlanningWithWorksite; palette: ChantierPalette; real?: RealAgg; docCount?: number }) {
   const hour = fixedHourOf(p);
   const sub = [p.worksite?.product_type, p.worksite?.city].filter(Boolean).join(' · ');
+  // Repères compacts (icônes, pas de texte) alignés à droite du nom — voir la légende.
+  const docs = docCount > 0 ? (
+    <span className="bt-pl-bub-docs" title={`${docCount} document${docCount > 1 ? 's' : ''}`}><Paperclip className="h-2.5 w-2.5" />{docCount}</span>
+  ) : null;
   if (real) {
     // Pointé (réel) — fond noir, heures réelles en mono jaune.
     return (
       <div className="bt-pl-bub" style={{ background: '#15120F', color: '#F2EDE3' }}>
         <span className="bt-pl-bub-bar" style={{ background: palette.bar }} />
-        <div className="bt-pl-bub-name">{p.worksite?.client_name || 'Chantier'}</div>
+        <div className="bt-pl-bub-name">
+          <span className="bt-pl-bub-title">{p.worksite?.client_name || 'Chantier'}</span>
+          <span className="bt-pl-bub-ic">
+            {p.added_by_worker && <span className="bt-pl-ic" title="Ajouté par le salarié" style={{ color: '#FFC21A' }}><UserIcon className="h-3 w-3" /></span>}
+            {real.reception === 'avec' && <span className="bt-pl-ic" title="Réception avec réserve" style={{ color: '#F0915A' }}><AlertTriangle className="h-3 w-3" /></span>}
+            {real.reception === 'sans' && <span className="bt-pl-ic" title="Réceptionné sans réserve" style={{ color: '#46C281' }}><CheckCircle2 className="h-3 w-3" /></span>}
+            {real.reception === 'en_cours' && <span className="bt-pl-ic" title="Chantier en cours" style={{ color: '#E6B23C' }}><Hammer className="h-3 w-3" /></span>}
+            {docs}
+          </span>
+        </div>
         {sub && <div className="bt-pl-bub-sub" style={{ color: '#a59c86' }}>{sub}</div>}
         <div className="bt-pl-bub-real">
           <span className="bt-pl-check">✓</span>
@@ -131,24 +151,29 @@ function BubbleContent({ p, palette, real }: { p: PlanningWithWorksite; palette:
   return (
     <div className="bt-pl-bub" style={{ background: '#fff', border: `1.5px dashed ${palette.bar}`, color: '#15120F' }}>
       <span className="bt-pl-bub-bar" style={{ background: palette.bar }} />
-      <div className="bt-pl-bub-name">{p.worksite?.client_name || 'Chantier'}</div>
-      {sub && <div className="bt-pl-bub-sub" style={{ color: '#6E6A63' }}>{sub}</div>}
-      <div className="bt-pl-bub-foot">
-        <span className="bt-pl-tag" style={{ background: palette.tagBg, color: palette.tagText }}>Prévu</span>
-        {hour && <span className="bt-pl-hour">{hour}</span>}
+      <div className="bt-pl-bub-name">
+        <span className="bt-pl-bub-title">{p.worksite?.client_name || 'Chantier'}</span>
+        {docs && <span className="bt-pl-bub-ic">{docs}</span>}
       </div>
+      {sub && <div className="bt-pl-bub-sub" style={{ color: '#6E6A63' }}>{sub}</div>}
+      {hour && (
+        <div className="bt-pl-bub-foot">
+          <span className="bt-pl-hour">{hour}</span>
+        </div>
+      )}
     </div>
   );
 }
 
 // A bubble is both draggable (move/reorder) and droppable (reorder target).
 function DraggableBubble({
-  p, palette, real, onEdit,
+  p, palette, real, onEdit, docCount = 0,
 }: {
   p: PlanningWithWorksite;
   palette: ChantierPalette;
   real?: RealAgg;
   onEdit: (p: PlanningWithWorksite) => void;
+  docCount?: number;
 }) {
   const drag = useDraggable({ id: p.id, data: { type: 'move' } });
   const drop = useDroppable({ id: `bub|${p.id}` });
@@ -162,7 +187,7 @@ function DraggableBubble({
         className={`bt-pl-grab ${drag.isDragging ? 'bt-pl-dragging' : ''}`}
         title="Glisser pour déplacer / réordonner · cliquer pour modifier"
       >
-        <BubbleContent p={p} palette={palette} real={real} />
+        <BubbleContent p={p} palette={palette} real={real} docCount={docCount} />
       </div>
     </div>
   );
@@ -233,27 +258,36 @@ const ABSENCE_VISUAL: Record<string, { icon: string; bg: string; fg: string }> =
 // Scoped noir/jaune styling for the planning. Logic-free — appearance only.
 const PL_CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
-.bt-pl{font-family:'Archivo',sans-serif;color:#15120F}
+.bt-pl{font-family:'Archivo',sans-serif;color:#15120F;flex:1 0 auto;display:flex;flex-direction:column}
 .bt-pl *{box-sizing:border-box}
 .bt-pl .mono{font-family:'JetBrains Mono',monospace}
 /* ===== BARRE UNIQUE pleine largeur (sticky) — pas de cadre ===== */
 .bt-pl-bar{position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:#F2EDE3;border-bottom:2px solid #15120F;padding:8px 16px;border-radius:16px 16px 0 0}
-.bt-pl-gridwrap{overflow-x:auto;background:#F2EDE3;border-radius:0 0 16px 16px}
-.bt-pl-bar-left{display:flex;align-items:center;gap:11px;flex-wrap:wrap}
-.bt-pl-bar-right{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.bt-pl-gridwrap{overflow-x:auto;background:#F2EDE3;border-radius:0 0 16px 16px;flex:1 0 auto}
+.bt-pl-brand{display:inline-flex;align-items:center;gap:8px;flex:none}
+.bt-pl-brand-logo{height:30px;width:auto;display:block}
+.bt-pl-brand-mark{width:30px;height:30px;background:#15120F;border-radius:7px;display:flex;align-items:center;justify-content:center;flex:none}
+.bt-pl-brand-dot{width:13px;height:13px;border:2.5px solid #FFC21A;border-radius:50%;border-top-color:transparent;transform:rotate(45deg)}
+.bt-pl-brand-name{font-size:17px;font-weight:900;letter-spacing:-.02em;color:#15120F}
 .bt-pl-logo{width:30px;height:30px;background:#15120F;color:#FFC21A;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;flex:none}
 .bt-pl-nav{display:flex;align-items:center;gap:6px}
-.bt-pl-week2{font-size:14px;font-weight:800;letter-spacing:-.01em;white-space:nowrap;color:#15120F;display:inline-flex;align-items:center;gap:8px}
-.bt-pl-wk{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;background:#15120F;color:#FFC21A;border-radius:6px;padding:3px 7px;letter-spacing:.04em}
-.bt-pl-icobtn{width:33px;height:33px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;font-size:15px;cursor:pointer;border:1.5px solid rgba(21,18,15,.18);background:#fff;color:#15120F;font-family:inherit;transition:border-color .14s ease,background .14s ease,transform .08s ease}
-.bt-pl-icobtn:hover{border-color:#15120F;background:rgba(21,18,15,.05)}
-.bt-pl-icobtn:active{transform:translateY(1px)}
-.bt-pl-dark{background:#15120F;color:#F2EDE3;border:none;border-radius:10px;padding:7px 12px;height:33px;font-size:12.5px;font-weight:800;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;transition:background .14s ease,transform .08s ease}
-.bt-pl-dark:hover{background:#2a2620;transform:translateY(-1px)}
-.bt-pl-dark:active{transform:translateY(1px)}
-.bt-pl-seg{display:inline-flex;background:#E3DAC8;border-radius:11px;padding:4px;gap:3px}
-.bt-pl-segbtn{font-family:inherit;font-weight:800;font-size:12.5px;border:none;background:transparent;color:#6E6A63;padding:7px 12px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:background .14s ease,color .14s ease}
-.bt-pl-segbtn:hover{color:#15120F;background:rgba(21,18,15,.05)}
+/* ===== Zone centrale : navigation de date (cadres blanc-crème) ===== */
+.bt-pl-datenav{display:inline-flex;align-items:center;gap:7px}
+.bt-pl-datearr{width:32px;height:34px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;font-size:16px;line-height:1;cursor:pointer;border:1.5px solid rgba(21,18,15,.16);background:#FFFDF8;color:#15120F;font-family:inherit;transition:border-color .14s ease,background .14s ease,transform .08s ease}
+.bt-pl-datearr:hover{border-color:#15120F;background:#fff}
+.bt-pl-datearr:active{transform:translateY(1px)}
+.bt-pl-datebox{display:inline-flex;align-items:center;gap:9px;height:34px;padding:0 13px;border-radius:10px;border:1.5px solid rgba(21,18,15,.16);background:#FFFDF8;cursor:pointer;font-family:inherit;transition:border-color .14s ease,background .14s ease}
+.bt-pl-datebox:hover{border-color:#15120F;background:#fff}
+.bt-pl-datebox-wk{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:#15120F;letter-spacing:.02em}
+.bt-pl-datebox-dot{width:8px;height:8px;border-radius:50%;flex:none}
+.bt-pl-datebox-dot.is-now{background:#1D9E75}
+.bt-pl-datebox-dot.is-away{background:#D85A30}
+.bt-pl-datebox-rg{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:#15120F;white-space:nowrap}
+.bt-pl-seg{display:inline-flex;align-items:center;gap:8px}
+/* Petit trait vertical flottant entre Salariés et Clients (n'atteint ni le haut ni le bas). */
+.bt-pl-segdiv{width:1.5px;height:18px;background:#15120F;border-radius:2px;flex:none}
+.bt-pl-segbtn{font-family:inherit;font-weight:700;font-size:13px;border:none;background:transparent;color:#3D382F;padding:7px 11px;border-radius:9px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:background .14s ease,color .14s ease}
+.bt-pl-segbtn:hover{color:#15120F;background:rgba(21,18,15,.06)}
 .bt-pl-out{background:transparent;border:1.5px solid rgba(21,18,15,.3);color:#15120F;border-radius:10px;padding:7px 13px;height:33px;font-size:12.5px;font-weight:800;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;transition:border-color .14s ease,background .14s ease,transform .08s ease}
 .bt-pl-out:hover{border-color:#15120F;background:rgba(21,18,15,.04)}
 .bt-pl-out:active{transform:translateY(1px)}
@@ -263,8 +297,13 @@ const PL_CSS = `
 /* dropdown « + Chantier » — lignes attrapables */
 .bt-pl-ddwrap{position:relative}
 .bt-pl-ddbackdrop{position:fixed;inset:0;z-index:35}
-.bt-pl-dd{position:absolute;top:42px;right:0;z-index:40;width:266px;background:#fff;border:1px solid rgba(21,18,15,.14);border-radius:14px;box-shadow:0 24px 50px -18px rgba(21,18,15,.45);overflow:hidden}
+.bt-pl-dd{position:absolute;top:42px;right:0;z-index:40;width:300px;background:#fff;border:1px solid rgba(21,18,15,.14);border-radius:14px;box-shadow:0 24px 50px -18px rgba(21,18,15,.45);overflow:hidden}
+/* Variante ancrée à gauche (menu Clients, désormais à gauche de la barre) */
+.bt-pl-dd.bt-pl-dd--start{left:0;right:auto}
 .bt-pl-dd-h{padding:9px 13px 7px;border-bottom:1px solid rgba(21,18,15,.08);font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:#9a948a;font-weight:700}
+.bt-pl-legrow{display:flex;align-items:center;gap:9px;padding:8px 13px;font-size:12.5px;font-weight:600;color:#15120F}
+.bt-pl-legrow + .bt-pl-legrow{border-top:1px solid rgba(21,18,15,.05)}
+.bt-pl-legic{flex:none;display:inline-flex;align-items:center;justify-content:center;width:18px}
 .bt-pl-ddrow{display:flex;align-items:center;gap:10px;padding:10px 13px;cursor:grab;background:#fff;border:none;width:100%;text-align:left;font-family:inherit;transition:background .12s ease}
 .bt-pl-ddrow:hover{background:#FBF6EA}
 .bt-pl-ddrow:active{cursor:grabbing}
@@ -275,6 +314,22 @@ const PL_CSS = `
 .bt-pl-ddsub{display:block;font-size:11px;color:#9a948a;font-weight:600}
 .bt-pl-ddcreate{display:flex;align-items:center;gap:9px;padding:11px 13px;border-top:1px solid rgba(21,18,15,.1);background:#FBF6EA;cursor:pointer;border:none;width:100%;text-align:left;font-family:inherit;color:#15120F;font-size:13.5px;font-weight:800}
 .bt-pl-ddcreate-ico{width:22px;height:22px;background:#FFC21A;color:#15120F;border-radius:6px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:14px;flex:none}
+.bt-pl-exitem{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:#fff;border:none;border-top:1px solid rgba(21,18,15,.07);padding:11px 13px;cursor:pointer;font-family:inherit;color:#15120F}
+.bt-pl-exitem:first-of-type{border-top:none}
+.bt-pl-exitem:hover{background:#FBF6EA}
+.bt-pl-exitem-t{display:block;font-size:13.5px;font-weight:800}
+.bt-pl-exitem-s{display:block;font-size:11px;font-weight:600;color:#9a948a}
+.bt-pl-dd-search{padding:9px 10px;border-bottom:1px solid rgba(21,18,15,.08)}
+.bt-pl-dd-input{width:100%;font-family:inherit;font-size:13.5px;font-weight:600;padding:8px 11px;border:1.5px solid rgba(21,18,15,.16);border-radius:9px;background:#F9F5EC;color:#15120F;outline:none}
+.bt-pl-dd-input::placeholder{color:#a89f8d;font-weight:500}
+.bt-pl-dd-input:focus{border-color:#15120F}
+.bt-pl-dd-list{max-height:300px;overflow-y:auto}
+.bt-pl-dd-empty{padding:18px 13px;text-align:center;color:#9a948a;font-size:12.5px;font-weight:600}
+.bt-pl-clientrow{display:flex;align-items:center;gap:2px;border-bottom:1px solid rgba(21,18,15,.05)}
+.bt-pl-clientrow:last-child{border-bottom:none}
+.bt-pl-clientrow .bt-pl-ddrow{flex:1;min-width:0;width:auto}
+.bt-pl-clientedit{flex:none;border:none;background:transparent;color:#9a948a;cursor:pointer;padding:8px 11px;display:flex;align-items:center;border-radius:8px}
+.bt-pl-clientedit:hover{background:#F1E8D6;color:#15120F}
 .bt-pl-dragchip{display:inline-flex;align-items:center;gap:9px;background:#fff;border:1px solid rgba(21,18,15,.16);border-radius:11px;padding:8px 13px;box-shadow:0 16px 30px -12px rgba(21,18,15,.55);font-weight:800;font-size:13.5px;color:#15120F}
 
 /* compte entreprise (remplace le bouton Déconnexion) */
@@ -282,8 +337,9 @@ const PL_CSS = `
 .bt-pl-acctwrap{position:relative}
 .bt-pl-acct{display:inline-flex;align-items:center;gap:8px;background:transparent;border:1.5px solid rgba(21,18,15,.18);border-radius:10px;padding:4px 10px 4px 4px;cursor:pointer;font-family:inherit;height:33px;transition:border-color .14s ease,background .14s ease}
 .bt-pl-acct:hover{border-color:#15120F;background:rgba(21,18,15,.04)}
-.bt-pl-acct-av{width:24px;height:24px;border-radius:50%;background:#15120F;color:#FFC21A;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:10px;flex:none}
-.bt-pl-acct-name{font-size:13px;font-weight:800;color:#15120F;max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bt-pl-acct-av{width:24px;height:24px;border-radius:50%;background:#15120F;color:#FFC21A;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:10px;flex:none;overflow:hidden}
+.bt-pl-acct-av-img{width:100%;height:100%;object-fit:cover;display:block}
+.bt-pl-acct-name{font-size:13px;font-weight:800;color:#15120F;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bt-pl-acct-car{font-size:10px;color:#9a948a}
 .bt-pl-acctmenu{position:absolute;top:42px;right:0;z-index:40;width:232px;background:#fff;border:1px solid rgba(21,18,15,.14);border-radius:13px;box-shadow:0 24px 50px -18px rgba(21,18,15,.45);overflow:hidden}
 .bt-pl-acctmenu-h{padding:11px 13px;border-bottom:1px solid rgba(21,18,15,.08)}
@@ -295,22 +351,38 @@ const PL_CSS = `
 
 /* grille desktop */
 .bt-pl-table{width:100%;border-collapse:collapse;min-width:980px;table-layout:fixed}
-.bt-pl-th{background:#F2EDE3;padding:13px 10px;text-align:center;border-right:1px solid rgba(21,18,15,.6);border-bottom:2px solid #15120F}
-.bt-pl-th-day{font-family:'JetBrains Mono',monospace;font-size:11px;color:#9a948a;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
-.bt-pl-th-num{font-size:19px;font-weight:900}
-.bt-pl-th.today{background:rgba(255,194,26,.14)}
-.bt-pl-th.today .bt-pl-th-day{color:#9a7c14}
-.bt-pl-th-name{position:sticky;left:0;z-index:6;background:#F2EDE3;text-align:left;font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#9a948a;font-weight:700;padding:13px 13px;width:200px;border-right:2px solid #15120F;border-bottom:2px solid #15120F}
+/* La grille s'arrête net : bordure de fin franche (2px noir, comme l'en-tête) sous la
+   dernière ligne visible (fantôme si présente, sinon dernier salarié). */
+.bt-pl-table tbody:last-of-type tr:last-child td{border-bottom:2px solid #15120F}
+.bt-pl-th{background:#fff;padding:11px 12px;text-align:center;border-right:1px solid rgba(21,18,15,.6);border-bottom:2px solid #15120F}
+.bt-pl-th-cell{display:flex;align-items:baseline;justify-content:center;gap:8px}
+.bt-pl-th-day{font-family:'Archivo',sans-serif;font-size:14px;font-weight:800;color:#15120F;letter-spacing:-.01em}
+.bt-pl-th-num{font-family:'Archivo',sans-serif;font-size:17px;font-weight:900;color:#15120F}
+.bt-pl-th.today{background:#FFFCF2}
+.bt-pl-th.today .bt-pl-th-day{color:#15120F}
+/* Coin haut-gauche coupé en diagonale : « Salarié » (bas-gauche) étiquette la colonne
+   des noms ; « S-26 » (haut-droite) étiquette la ligne des dates. Trait corner-à-corner
+   via SVG (preserveAspectRatio:none + non-scaling-stroke = épaisseur constante). */
+.bt-pl-th-name{position:sticky;left:0;z-index:6;width:200px;padding:0;border-right:2px solid #15120F;border-bottom:2px solid #15120F;background-color:#fff;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' preserveAspectRatio='none' viewBox='0 0 100 100'%3E%3Cline x1='0' y1='0' x2='100' y2='100' stroke='%2315120F' stroke-width='2' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E");background-size:100% 100%;background-repeat:no-repeat}
+.bt-pl-corner-wk{position:absolute;top:7px;right:12px;font-family:'Archivo',sans-serif;font-size:13px;font-weight:900;letter-spacing:-.01em;color:#15120F}
+.bt-pl-corner-sal{position:absolute;left:13px;bottom:7px;font-family:'Archivo',sans-serif;font-size:15px;font-weight:900;letter-spacing:-.02em;color:#15120F}
 .bt-pl-namecell{position:sticky;left:0;z-index:5;background:#fff;border-right:2px solid #15120F;border-bottom:1px solid rgba(21,18,15,.6);padding:0;vertical-align:top}
-.bt-pl-namebtn{display:flex;align-items:center;gap:10px;width:100%;height:100%;padding:12px 13px;background:transparent;border:none;cursor:pointer;text-align:left;font-family:inherit}
+.bt-pl-namebtn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;width:100%;height:100%;padding:13px;background:transparent;border:none;cursor:pointer;text-align:center;font-family:inherit}
 .bt-pl-namebtn:hover{background:rgba(21,18,15,.03)}
-.bt-pl-avatar{width:36px;height:36px;border-radius:50%;background:#15120F;color:#FFC21A;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex:none}
-.bt-pl-name{font-size:14.5px;font-weight:800;letter-spacing:-.01em}
-.bt-pl-status{display:flex;align-items:center;gap:5px;margin-top:2px}
+.bt-pl-nametop{display:flex;align-items:center;justify-content:center;gap:10px;min-width:0;max-width:100%}
+.bt-pl-avatar{width:36px;height:36px;border-radius:50%;background:#15120F;color:#FFC21A;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex:none;overflow:hidden}
+.bt-pl-avatar-img{width:100%;height:100%;object-fit:cover;display:block}
+.bt-pl-name{font-size:14.5px;font-weight:800;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.bt-pl-status{display:flex;align-items:center;gap:5px}
 .bt-pl-status-dot{width:7px;height:7px;border-radius:50%;background:#E0A21C}
 .bt-pl-status-txt{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700}
 .bt-pl-cell{border-right:1px solid rgba(21,18,15,.6);border-bottom:1px solid rgba(21,18,15,.6);padding:8px;vertical-align:top}
-.bt-pl-cell-today{background:rgba(255,194,26,.05)}
+.bt-pl-cell-today{background:#FFFCF2}
+/* Lignes vierges de remplissage : même hauteur qu'une ligne salarié vide (105px),
+   quadrillage continu, jour J teinté ; « + » discret pour ajouter un salarié. */
+.bt-pl-ghostrow td{height:104px}
+.bt-pl-ghost-add{display:flex;align-items:center;justify-content:center;width:100%;min-height:104px;background:transparent;border:none;cursor:pointer;color:#cdc2ac;font-family:inherit;transition:color .14s ease,background .14s ease}
+.bt-pl-ghost-add:hover{color:#15120F;background:rgba(21,18,15,.03)}
 .bt-pl-cell-over{background:rgba(255,194,26,.16);outline:2px dashed #FFC21A;outline-offset:-3px}
 .bt-pl-cellinner{position:relative;height:100%;min-height:88px;display:flex;flex-direction:column}
 .bt-pl-cellfill{flex:1;display:flex;flex-direction:column;gap:7px;cursor:pointer;border-radius:6px}
@@ -320,7 +392,11 @@ const PL_CSS = `
 /* bulle */
 .bt-pl-bub{position:relative;overflow:hidden;border-radius:9px;padding:7px 9px 7px 12px;font-family:'Archivo',sans-serif}
 .bt-pl-bub-bar{position:absolute;left:0;top:0;bottom:0;width:4px}
-.bt-pl-bub-name{font-size:12.5px;font-weight:800;letter-spacing:-.01em;line-height:1.15}
+.bt-pl-bub-name{display:flex;align-items:flex-start;gap:6px;font-size:12.5px;font-weight:800;letter-spacing:-.01em;line-height:1.15}
+.bt-pl-bub-title{flex:1;min-width:0;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow-wrap:anywhere}
+.bt-pl-bub-ic{flex:none;display:inline-flex;align-items:center;gap:5px;margin-top:1px}
+.bt-pl-ic{display:inline-flex;align-items:center}
+.bt-pl-bub-docs{display:inline-flex;align-items:center;gap:2px;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;opacity:.85}
 .bt-pl-bub-sub{font-size:10.5px;font-weight:600;margin-bottom:5px;line-height:1.2}
 .bt-pl-bub-real{display:flex;align-items:center;gap:5px}
 .bt-pl-check{width:14px;height:14px;background:#2FA36B;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px;font-weight:900;flex:none}
@@ -401,7 +477,8 @@ export default function AdminPlanning() {
   const [workers, setWorkers] = useState<User[]>([]);
   const [worksites, setWorksites] = useState<Worksite[]>([]);
   const [planning, setPlanning] = useState<PlanningWithWorksite[]>([]);
-  const [realEntries, setRealEntries] = useState<{ user_id: string; work_date: string; worksite_id: string | null; start_time: string; end_time: string; total_minutes: number }[]>([]);
+  const [realEntries, setRealEntries] = useState<{ user_id: string; work_date: string; worksite_id: string | null; start_time: string; end_time: string; total_minutes: number; reception: string | null; observation: string | null }[]>([]);
+  const [docsByWorksite, setDocsByWorksite] = useState<Map<string, number>>(new Map()); // nb de documents par chantier (pastille 📎)
   const [todayAbsence, setTodayAbsence] = useState<Map<string, string>>(new Map());
   const [missingByWorker, setMissingByWorker] = useState<Map<string, string[]>>(new Map());
   const [invitations, setInvitations] = useState<Invitation[]>([]);
@@ -423,13 +500,21 @@ export default function AdminPlanning() {
   const [ficheWorker, setFicheWorker] = useState<User | null>(null);
   const [ficheMode, setFicheMode] = useState<'hours' | 'manage'>('hours');
   const [salariesOpen, setSalariesOpen] = useState(false);
-  const [clientsListOpen, setClientsListOpen] = useState(false);
+  const [clientsQuery, setClientsQuery] = useState('');
+  const [salariesQuery, setSalariesQuery] = useState('');
+  const [companyLogo, setCompanyLogo] = useState('');
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [legendOpen, setLegendOpen] = useState(false); // popover légende des icônes de bulle
 
   // team export
   const [exportOpen, setExportOpen] = useState(false);
   const [exportWorkerOpen, setExportWorkerOpen] = useState(false);
   const [exportRange, setExportRange] = useState<{ from: Date; to: Date } | null>(null);
   const [attributeTarget, setAttributeTarget] = useState<{ userId: string; dateStr: string; worksiteId: string | null; label: string } | null>(null);
+  // Intervention ajoutée par le salarié (hors-planning) : popup avec Documents + attribution
+  // (au lieu de forcer directement l'attribution).
+  const [extraTarget, setExtraTarget] = useState<{ userId: string; dateStr: string; worksiteId: string | null; name: string; minutes: number } | null>(null);
   const [attrBusy, setAttrBusy] = useState(false);
   const [exporting, setExporting] = useState(false);
 
@@ -447,12 +532,14 @@ export default function AdminPlanning() {
   // affectation (bubble) edit dialog
   const [editing, setEditing] = useState<PlanningWithWorksite | null>(null);
   const [editHour, setEditHour] = useState('');
+  const [hourPickerOpen, setHourPickerOpen] = useState(false); // mini pop-up roulette pour l'heure de RDV
   const [editNote, setEditNote] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
   const [deletingEdit, setDeletingEdit] = useState(false);
 
   // separate client fiche (permanent data)
   const [clientFiche, setClientFiche] = useState<Worksite | null>(null);
+  const [docsWorksite, setDocsWorksite] = useState<Worksite | null>(null); // panneau Documents d'un chantier (fiche OU intervention)
   const [wsName, setWsName] = useState('');
   const [wsProduct, setWsProduct] = useState('');
   const [wsPhone, setWsPhone] = useState('');
@@ -480,6 +567,51 @@ export default function AdminPlanning() {
   const [cSaving, setCSaving] = useState(false);
 
   const [workerOpen, setWorkerOpen] = useState(false);
+
+  // ── Lignes « fantômes » : remplissent l'espace vide sous le dernier salarié avec des
+  //    lignes vierges (quadrillage continu + « + » pour ajouter un salarié). Le nombre
+  //    est calculé sur la hauteur de FENÊTRE (stable) : ajouter de vrais salariés
+  //    agrandit la page normalement, jamais bloqué, et les fantômes ne s'emballent pas.
+  const [ghostCount, setGhostCount] = useState(0);
+  const gridRef = useRef<HTMLDivElement>(null);
+  const theadRef = useRef<HTMLTableSectionElement>(null);
+  const realBodyRef = useRef<HTMLTableSectionElement>(null);
+  useEffect(() => {
+    const recompute = () => {
+      const grid = gridRef.current, head = theadRef.current, body = realBodyRef.current;
+      if (!grid || !head || !body) return;
+      const gridTopDoc = grid.getBoundingClientRect().top + window.scrollY;
+      const avail = window.innerHeight - gridTopDoc - 6; // 6 = padding bas de .bt-admin
+      const real = head.offsetHeight + body.offsetHeight;
+      const n = Math.floor((avail - real) / GHOST_ROW_H);
+      setGhostCount(n > 0 ? n : 0);
+    };
+    recompute();
+    const ro = new ResizeObserver(recompute);
+    if (gridRef.current) ro.observe(gridRef.current);
+    if (realBodyRef.current) ro.observe(realBodyRef.current);
+    window.addEventListener('resize', recompute);
+    return () => { ro.disconnect(); window.removeEventListener('resize', recompute); };
+  }, [loading, workers.length]);
+
+  // Démo (preview UNIQUEMENT) : ?demo=N affiche N salariés fictifs — AUCUNE écriture en
+  // base (prod intacte). Sert juste à visualiser le planning rempli.
+  const demoCount = useMemo(() => {
+    if (typeof window === 'undefined') return 0;
+    if (!window.location.hostname.startsWith('deploy-preview-')) return 0;
+    const n = parseInt(new URLSearchParams(window.location.search).get('demo') || '0', 10);
+    return Number.isFinite(n) ? Math.max(0, Math.min(n, 30)) : 0;
+  }, []);
+  const demoWorkers = useMemo<User[]>(() => {
+    if (demoCount === 0) return [];
+    const FN = ['Lucas', 'Hugo', 'Léo', 'Nathan', 'Enzo', 'Louis', 'Gabriel', 'Jules', 'Adam', 'Raphaël', 'Arthur', 'Maël', 'Sacha', 'Noah', 'Tom', 'Paul'];
+    const LN = ['Martin', 'Bernard', 'Dubois', 'Thomas', 'Robert', 'Petit', 'Durand', 'Leroy', 'Moreau', 'Simon', 'Laurent', 'Lefebvre', 'Garcia', 'Roux'];
+    return Array.from({ length: demoCount }, (_, i) => ({
+      id: `demo-${i}`, company_id: user?.company_id || '', first_name: FN[i % FN.length],
+      last_name: LN[i % LN.length], role: 'worker' as const, email: '', is_active: true, created_at: '',
+    }));
+  }, [demoCount, user?.company_id]);
+
   const [wFirst, setWFirst] = useState('');
   const [wLast, setWLast] = useState('');
   const [wEmail, setWEmail] = useState('');
@@ -519,12 +651,32 @@ export default function AdminPlanning() {
       const [planRes, realRes] = await Promise.all([
         supabase.from('planning').select('*, worksite:worksites(*), user:users!user_id(*)')
           .eq('company_id', user.company_id).gte('work_date', from).lte('work_date', to).order('work_date'),
-        supabase.from('time_entries').select('user_id, work_date, worksite_id, start_time, end_time, total_minutes')
+        supabase.from('time_entries').select('user_id, work_date, worksite_id, start_time, end_time, total_minutes, reception, observation')
           .eq('company_id', user.company_id).neq('status', 'draft').gte('work_date', from).lte('work_date', to),
       ]);
       if (planRes.error) throw planRes.error;
-      setPlanning(planRes.data || []);
-      if (!realRes.error) setRealEntries(realRes.data || []);
+      const planRows = planRes.data || [];
+      const realRows = realRes.error ? [] : (realRes.data || []);
+      setPlanning(planRows);
+      if (!realRes.error) setRealEntries(realRows);
+
+      // Unification : toute heure déclarée sur un chantier sans créneau planning → on
+      // crée le créneau (idempotent, côté serveur) pour qu'elle devienne une bulle
+      // normale (glissable + même pop-up), repérée « salarié ». Auto-réparé une fois.
+      const planKey = new Set(planRows.filter((p) => p.worksite_id).map((p) => `${p.user_id}|${p.work_date}|${p.worksite_id}`));
+      const missing = new Map<string, { u: string; d: string; w: string }>();
+      for (const e of realRows) {
+        if (!e.worksite_id) continue;
+        const k = `${e.user_id}|${e.work_date}|${e.worksite_id}`;
+        if (!planKey.has(k)) missing.set(k, { u: e.user_id, d: e.work_date, w: e.worksite_id });
+      }
+      if (missing.size > 0) {
+        await Promise.all(Array.from(missing.values()).map((x) =>
+          supabase.rpc('ensure_planning_slot', { p_user_id: x.u, p_work_date: x.d, p_worksite_id: x.w })));
+        const { data: planAgain } = await supabase.from('planning').select('*, worksite:worksites(*), user:users!user_id(*)')
+          .eq('company_id', user.company_id).gte('work_date', from).lte('work_date', to).order('work_date');
+        if (planAgain) setPlanning(planAgain);
+      }
     } catch (err) {
       console.error('Error fetching planning:', err);
     }
@@ -534,12 +686,20 @@ export default function AdminPlanning() {
   const fetchExtras = useCallback(async () => {
     if (!user?.company_id) return;
     const windowStart = format(subDays(new Date(), WINDOW_DAYS), 'yyyy-MM-dd');
-    const [planRes, entRes, compRes, invRes] = await Promise.all([
+    const [planRes, entRes, compRes, invRes, docRes] = await Promise.all([
       supabase.from('planning').select('user_id, work_date, absence_type').eq('company_id', user.company_id).gte('work_date', windowStart),
       supabase.from('time_entries').select('user_id, work_date').eq('company_id', user.company_id).neq('status', 'draft').gte('work_date', windowStart),
-      supabase.from('companies').select('name').eq('id', user.company_id).maybeSingle(),
+      supabase.from('companies').select('name, logo_url').eq('id', user.company_id).maybeSingle(),
       supabase.from('invitations').select('*').eq('company_id', user.company_id).is('accepted_at', null).gt('expires_at', new Date().toISOString()).order('created_at', { ascending: false }),
+      supabase.from('documents').select('worksite_id').eq('company_id', user.company_id),
     ]);
+
+    // Pastille 📎 : nombre de documents par chantier.
+    const docCounts = new Map<string, number>();
+    for (const d of (docRes.data || []) as { worksite_id: string | null }[]) {
+      if (d.worksite_id) docCounts.set(d.worksite_id, (docCounts.get(d.worksite_id) || 0) + 1);
+    }
+    setDocsByWorksite(docCounts);
 
     const todayKey = format(new Date(), 'yyyy-MM-dd');
     const planned = new Map<string, Set<string>>();
@@ -568,6 +728,7 @@ export default function AdminPlanning() {
     setTodayAbsence(today);
     setMissingByWorker(miss);
     setCompanyName(compRes.data?.name || '');
+    setCompanyLogo((compRes.data as { logo_url?: string | null } | null)?.logo_url || '');
     setInvitations((invRes.data || []) as Invitation[]);
   }, [user?.company_id]);
 
@@ -586,12 +747,15 @@ export default function AdminPlanning() {
     for (const e of realEntries) {
       const k = realKey(e.user_id, e.work_date, e.worksite_id);
       const cur = m.get(k);
-      if (!cur) m.set(k, { minutes: e.total_minutes, start: e.start_time, end: e.end_time, count: 1 });
+      if (!cur) m.set(k, { minutes: e.total_minutes, start: e.start_time, end: e.end_time, count: 1, reception: (e.reception as ReceptionStatus) || null, note: e.observation || '' });
       else {
         cur.minutes += e.total_minutes;
         if (e.start_time && e.start_time < cur.start) cur.start = e.start_time;
         if (e.end_time && e.end_time > cur.end) cur.end = e.end_time;
         cur.count += 1;
+        // garde le statut le plus « fort » (avec > en_cours > sans) + cumule les notes
+        if ((RECEPTION_RANK[e.reception || ''] || 0) > (RECEPTION_RANK[cur.reception || ''] || 0)) cur.reception = (e.reception as ReceptionStatus) || cur.reception;
+        if (e.observation) cur.note = cur.note ? `${cur.note} · ${e.observation}` : e.observation;
       }
     }
     return m;
@@ -846,7 +1010,7 @@ export default function AdminPlanning() {
     const body = encodeURIComponent(
       `Bonjour ${worker.first_name},\n\n`
       + `Il manque l'envoi de tes heures pour : ${jours || 'des journées planifiées'}.\n`
-      + `Merci de les saisir et de les envoyer dès que possible depuis l'application Battime.\n\n`
+      + `Merci de les saisir et de les envoyer dès que possible depuis l'application BEMEXO.\n\n`
       + `— ${companyName || "L'équipe"}`,
     );
     window.location.href = `mailto:${worker.email}?subject=${subject}&body=${body}`;
@@ -873,8 +1037,8 @@ export default function AdminPlanning() {
       if (entries.length === 0) { toast.error(`Aucune saisie du ${format(exportRange.from, 'dd/MM')} au ${format(exportRange.to, 'dd/MM')}`); return; }
 
       const opts = {
-        fileName: `battime-${kind === 'pdf' ? 'rapport' : 'export'}-${from}`,
-        title: 'Battime - Rapport hebdomadaire',
+        fileName: `bemexo-${kind === 'pdf' ? 'rapport' : 'export'}-${from}`,
+        title: 'BEMEXO - Rapport hebdomadaire',
         periodLabel: `${format(exportRange.from, 'dd/MM/yyyy')} au ${format(exportRange.to, 'dd/MM/yyyy')}`,
         companyName,
       };
@@ -1119,7 +1283,11 @@ export default function AdminPlanning() {
   // ─── derived ──────────────────────────────────────────────────────────────────
 
   const weekDays = Array.from({ length: 6 }, (_, i) => addDays(currentWeekStart, i));
+  const displayWorkers = demoWorkers.length ? [...workers, ...demoWorkers] : workers;
+  const thisWeekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
+  const isCurrentWeek = format(currentWeekStart, 'yyyy-MM-dd') === format(thisWeekStart, 'yyyy-MM-dd');
   const dayShort = (d: Date) => format(d, 'EEE', { locale: fr }).replace('.', '');
+  const dayFull = (d: Date) => { const s = format(d, 'EEEE', { locale: fr }); return s.charAt(0).toUpperCase() + s.slice(1); };
   // Nom + initiales de l'entreprise connectée (bouton compte).
   const companyLabel = companyName || `${user?.first_name || ''} ${user?.last_name || ''}`.trim() || 'Mon compte';
   const companyInitials = (companyLabel.replace(/[^a-zA-Z0-9 ]/g, ' ').trim().split(/\s+/).map((w) => w[0]).join('') || 'BT').slice(0, 2).toUpperCase();
@@ -1129,6 +1297,11 @@ export default function AdminPlanning() {
 
   const workerEmails = useMemo(() => new Set(workers.map(w => w.email.toLowerCase())), [workers]);
   const pendingInvites = invitations.filter(inv => !workerEmails.has(inv.email.toLowerCase()));
+  // Recherche en direct (panneaux Clients et Salariés).
+  const cq = clientsQuery.trim().toLowerCase();
+  const filteredClients = cq ? worksites.filter((w) => w.client_name.toLowerCase().includes(cq)) : worksites;
+  const sq = salariesQuery.trim().toLowerCase();
+  const filteredWorkers = sq ? workers.filter((w) => `${w.first_name} ${w.last_name}`.toLowerCase().includes(sq)) : workers;
 
   const editRealAgg = editing ? realForPlanning(editing) : undefined;
 
@@ -1143,43 +1316,94 @@ export default function AdminPlanning() {
       <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragStart={handleDragStart} onDragEnd={(e) => { handleDragEnd(e); setChantierMenuOpen(false); }} onDragCancel={() => { setActiveDrag(null); setChantierMenuOpen(false); }}>
         {/* Barre UNIQUE pleine largeur, figée (sticky) — tout aligné sur une ligne */}
         <div className="bt-pl-bar">
-          <div className="bt-pl-bar-left">
-            <span className="bt-pl-logo"><Clock className="h-4 w-4" /></span>
-            <div className="bt-pl-nav">
-              <button className="bt-pl-icobtn" aria-label="Semaine précédente" onClick={() => setCurrentWeekStart(subWeeks(currentWeekStart, 1))}>‹</button>
-              <button className="bt-pl-dark" onClick={() => setCurrentWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))}>Aujourd'hui</button>
-              <button className="bt-pl-icobtn" aria-label="Semaine suivante" onClick={() => setCurrentWeekStart(addWeeks(currentWeekStart, 1))}>›</button>
-            </div>
-            <div className="bt-pl-week2"><span className="bt-pl-wk">S.{getISOWeek(currentWeekStart)}</span> {format(currentWeekStart, 'd', { locale: fr })}–{format(addDays(currentWeekStart, 5), 'd MMM', { locale: fr })}</div>
-          </div>
-          <div className="bt-pl-bar-right">
+          <span className="bt-pl-brand">
+            <img src="/bemexo-wordmark-dark.svg" alt="BEMEXO" className="bt-pl-brand-logo" />
+          </span>
+          <div className="bt-pl-ddwrap">
             <div className="bt-pl-seg">
               <button className="bt-pl-segbtn" onClick={() => setSalariesOpen(true)}><Users className="h-3.5 w-3.5" /> Salariés</button>
-              <button className="bt-pl-segbtn" onClick={() => setClientsListOpen(true)}><Building2 className="h-3.5 w-3.5" /> Clients</button>
+              <span className="bt-pl-segdiv" aria-hidden="true" />
+              <button className="bt-pl-segbtn" onClick={() => { setChantierMenuOpen((o) => !o); setClientsQuery(''); }}><Building2 className="h-3.5 w-3.5" /> Clients</button>
             </div>
-            <div className="bt-pl-ddwrap">
-              <button className="bt-pl-out" onClick={() => setChantierMenuOpen((o) => !o)}>＋ Chantier ▾</button>
-              {chantierMenuOpen && (
-                <>
-                  <div className="bt-pl-ddbackdrop" onClick={() => setChantierMenuOpen(false)} />
-                  <div className="bt-pl-dd">
-                    <div className="bt-pl-dd-h">Glissez sur le planning ↘</div>
-                    {worksites.map((ws) => (
-                      <PaletteRow key={ws.id} worksite={ws} color={colorForWorksite(ws.id).bar} />
-                    ))}
-                    <button className="bt-pl-ddcreate" onClick={() => { setChantierMenuOpen(false); setClientOpen(true); }}>
-                      <span className="bt-pl-ddcreate-ico">＋</span> Créer un client
-                    </button>
+            {chantierMenuOpen && (
+              <>
+                <div className="bt-pl-ddbackdrop" onClick={() => setChantierMenuOpen(false)} />
+                <div className="bt-pl-dd bt-pl-dd--start">
+                  <div className="bt-pl-dd-search">
+                    <input className="bt-pl-dd-input" placeholder="Rechercher un client…" value={clientsQuery} onChange={(e) => setClientsQuery(e.target.value)} autoFocus />
                   </div>
-                </>
-              )}
-            </div>
-            <button className="bt-pl-fill" onClick={() => setExportOpen(true)}><Download className="h-4 w-4" /> Exporter la paie</button>
-            <button className="bt-pl-out" onClick={() => setExportWorkerOpen(true)}><FileText className="h-4 w-4" /> Export salarié</button>
-            <span className="bt-pl-sep" />
-            <div className="bt-pl-acctwrap">
+                  <div className="bt-pl-dd-h">Glissez un client sur le planning ↘</div>
+                  <div className="bt-pl-dd-list">
+                    {filteredClients.length === 0 ? (
+                      <div className="bt-pl-dd-empty">Aucun client</div>
+                    ) : filteredClients.map((ws) => (
+                      <div key={ws.id} className="bt-pl-clientrow">
+                        <PaletteRow worksite={ws} color={colorForWorksite(ws.id).bar} />
+                        <button className="bt-pl-clientedit" title="Modifier la fiche" onClick={() => { setChantierMenuOpen(false); openClientFiche(ws); }}><Pencil className="h-3.5 w-3.5" /></button>
+                      </div>
+                    ))}
+                  </div>
+                  <button className="bt-pl-ddcreate" onClick={() => { setChantierMenuOpen(false); setClientOpen(true); }}>
+                    <span className="bt-pl-ddcreate-ico">＋</span> Nouveau client
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+          <div className="bt-pl-datenav">
+            <button className="bt-pl-datearr" aria-label="Semaine précédente" onClick={() => setCurrentWeekStart(subWeeks(currentWeekStart, 1))}>‹</button>
+            <button
+              className="bt-pl-datebox"
+              onClick={() => setCurrentWeekStart(thisWeekStart)}
+              title={isCurrentWeek ? undefined : 'Revenir à la semaine actuelle'}
+            >
+              <span className="bt-pl-datebox-wk">S-{getISOWeek(currentWeekStart)}</span>
+              <span className={`bt-pl-datebox-dot ${isCurrentWeek ? 'is-now' : 'is-away'}`} />
+              <span className="bt-pl-datebox-rg">{format(currentWeekStart, 'd', { locale: fr })}–{format(addDays(currentWeekStart, 5), 'd MMM', { locale: fr })}</span>
+            </button>
+            <button className="bt-pl-datearr" aria-label="Semaine suivante" onClick={() => setCurrentWeekStart(addWeeks(currentWeekStart, 1))}>›</button>
+          </div>
+          <div className="bt-pl-ddwrap">
+            <button className="bt-pl-datearr" onClick={() => setLegendOpen((o) => !o)} title="Légende des icônes" aria-label="Légende des icônes"><Info className="h-4 w-4" /></button>
+            {legendOpen && (
+              <>
+                <div className="bt-pl-ddbackdrop" onClick={() => setLegendOpen(false)} />
+                <div className="bt-pl-dd">
+                  <div className="bt-pl-dd-h">Légende des bulles</div>
+                  <div className="bt-pl-legrow"><span className="bt-pl-check">✓</span> Heures déclarées par le salarié</div>
+                  <div className="bt-pl-legrow"><span className="bt-pl-legic" style={{ color: '#1F7A4D' }}><CheckCircle2 className="h-3.5 w-3.5" /></span> Réceptionné sans réserve</div>
+                  <div className="bt-pl-legrow"><span className="bt-pl-legic" style={{ color: '#C0461F' }}><AlertTriangle className="h-3.5 w-3.5" /></span> Réception avec réserve</div>
+                  <div className="bt-pl-legrow"><span className="bt-pl-legic" style={{ color: '#C98A12' }}><Hammer className="h-3.5 w-3.5" /></span> Chantier en cours</div>
+                  <div className="bt-pl-legrow"><span className="bt-pl-legic" style={{ color: '#caa01a' }}><UserIcon className="h-3.5 w-3.5" /></span> Intervention ajoutée par le salarié</div>
+                  <div className="bt-pl-legrow"><span className="bt-pl-legic"><Paperclip className="h-3.5 w-3.5" /></span> Documents du chantier</div>
+                </div>
+              </>
+            )}
+          </div>
+          <div className="bt-pl-ddwrap">
+            <button className="bt-pl-fill" onClick={() => setExportMenuOpen((o) => !o)}><Download className="h-4 w-4" /> Exporter ▾</button>
+            {exportMenuOpen && (
+              <>
+                <div className="bt-pl-ddbackdrop" onClick={() => setExportMenuOpen(false)} />
+                <div className="bt-pl-dd">
+                  <div className="bt-pl-dd-h">Exporter les heures</div>
+                  <button className="bt-pl-exitem" onClick={() => { setExportMenuOpen(false); setExportOpen(true); }}>
+                    <Download className="h-4 w-4" />
+                    <span><span className="bt-pl-exitem-t">Exporter l&apos;équipe</span><span className="bt-pl-exitem-s">Verrouille le mois</span></span>
+                  </button>
+                  <button className="bt-pl-exitem" onClick={() => { setExportMenuOpen(false); setExportWorkerOpen(true); }}>
+                    <FileText className="h-4 w-4" />
+                    <span><span className="bt-pl-exitem-t">Exporter un salarié</span><span className="bt-pl-exitem-s">Sans verrou</span></span>
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+          <div className="bt-pl-acctwrap">
               <button className="bt-pl-acct" onClick={() => setAccountMenuOpen((o) => !o)} title="Compte entreprise">
-                <span className="bt-pl-acct-av">{companyInitials}</span>
+                <span className="bt-pl-acct-av">
+                  {companyLogo ? <img className="bt-pl-acct-av-img" src={companyLogo} alt="" /> : companyInitials}
+                </span>
                 <span className="bt-pl-acct-name">{companyLabel}</span>
                 <span className="bt-pl-acct-car">▾</span>
               </button>
@@ -1191,6 +1415,9 @@ export default function AdminPlanning() {
                       <div className="bt-pl-acctmenu-co">{companyLabel}</div>
                       <div className="bt-pl-acctmenu-u">{user?.first_name} {user?.last_name}</div>
                     </div>
+                    <button className="bt-pl-acct-item" onClick={() => { setAccountMenuOpen(false); setSettingsOpen(true); }}>
+                      <Settings className="h-4 w-4" /> Réglages de l&apos;entreprise
+                    </button>
                     <button className="bt-pl-acct-item danger" onClick={() => { setAccountMenuOpen(false); signOut(); }}>
                       <LogOut className="h-4 w-4" /> Déconnexion
                     </button>
@@ -1198,7 +1425,6 @@ export default function AdminPlanning() {
                 </>
               )}
             </div>
-          </div>
         </div>
 
         {/* Invitations en attente (sous la barre) */}
@@ -1222,27 +1448,32 @@ export default function AdminPlanning() {
         )}
 
         {/* GRILLE — desktop (glisser-déposer) */}
-        <div className="bt-pl-gridwrap">
+        <div className="bt-pl-gridwrap" ref={gridRef}>
           <table className="bt-pl-table">
-            <thead>
+            <thead ref={theadRef}>
               <tr>
-                <th className="bt-pl-th-name">Salarié</th>
+                <th className="bt-pl-th-name">
+                  <span className="bt-pl-corner-wk">S-{getISOWeek(currentWeekStart)}</span>
+                  <span className="bt-pl-corner-sal">Salarié</span>
+                </th>
                 {weekDays.map(day => {
                   const isToday = format(day, 'yyyy-MM-dd') === todayStr;
                   return (
                     <th key={day.toISOString()} className={`bt-pl-th ${isToday ? 'today' : ''}`}>
-                      <div className="bt-pl-th-day">{dayShort(day)}{isToday ? ' · Auj.' : ''}</div>
-                      <div className="bt-pl-th-num">{format(day, 'd')}</div>
+                      <div className="bt-pl-th-cell">
+                        <span className="bt-pl-th-day">{dayFull(day)}</span>
+                        <span className="bt-pl-th-num">{format(day, 'd')}</span>
+                      </div>
                     </th>
                   );
                 })}
               </tr>
             </thead>
-                <tbody>
-                  {workers.length === 0 ? (
+                <tbody ref={realBodyRef}>
+                  {displayWorkers.length === 0 ? (
                     <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">Aucun salarié — bouton « Salariés »</td></tr>
                   ) : (
-                    workers.map(worker => {
+                    displayWorkers.map(worker => {
                       const absToday = todayAbsence.get(worker.id);
                       const isLate = (missingByWorker.get(worker.id) || []).length > 0;
                       const fullName = `${worker.first_name} ${worker.last_name}`;
@@ -1255,19 +1486,19 @@ export default function AdminPlanning() {
                               className="bt-pl-namebtn"
                               title="Cliquer pour le statut / la disponibilité"
                             >
-                              <span className="bt-pl-avatar" style={absToday ? { background: '#c4bdae', color: '#15120F' } : undefined}>
-                                {(worker.first_name?.[0] || '')}{(worker.last_name?.[0] || '')}
+                              <span className="bt-pl-nametop">
+                                <span className="bt-pl-avatar" style={absToday ? { background: '#c4bdae', color: '#15120F' } : undefined}>
+                                  {worker.photo_url ? <img className="bt-pl-avatar-img" src={worker.photo_url} alt="" /> : <>{(worker.first_name?.[0] || '')}{(worker.last_name?.[0] || '')}</>}
+                                </span>
+                                <span className="bt-pl-name">{fullName}</span>
                               </span>
-                              <span style={{ flex: 1, minWidth: 0 }}>
-                                <span className="bt-pl-name" style={{ display: 'block' }}>{fullName}</span>
-                                {absToday ? (
-                                  <span className="bt-pl-status"><span className="bt-pl-status-txt" style={{ color: '#6E6A63' }}>{ABSENCE_LABELS[absToday] || absToday}</span></span>
-                                ) : isLate ? (
-                                  <span className="bt-pl-status"><span className="bt-pl-status-dot" /><span className="bt-pl-status-txt" style={{ color: '#9a7c14' }}>{(missingByWorker.get(worker.id) || []).length} jour{(missingByWorker.get(worker.id) || []).length > 1 ? 's' : ''} en attente</span></span>
-                                ) : (
-                                  <span className="bt-pl-status"><span className="bt-pl-status-txt" style={{ color: '#9a948a' }}>À jour</span></span>
-                                )}
-                              </span>
+                              {absToday ? (
+                                <span className="bt-pl-status"><span className="bt-pl-status-txt" style={{ color: '#6E6A63' }}>{ABSENCE_LABELS[absToday] || absToday}</span></span>
+                              ) : isLate ? (
+                                <span className="bt-pl-status"><span className="bt-pl-status-dot" style={{ background: '#D85A30' }} /><span className="bt-pl-status-txt" style={{ color: '#D85A30' }}>{(missingByWorker.get(worker.id) || []).length} jour{(missingByWorker.get(worker.id) || []).length > 1 ? 's' : ''} en attente</span></span>
+                              ) : (
+                                <span className="bt-pl-status"><span className="bt-pl-status-dot" style={{ background: '#1D9E75' }} /><span className="bt-pl-status-txt" style={{ color: '#1D9E75' }}>À jour</span></span>
+                              )}
                             </button>
                           </td>
 
@@ -1298,20 +1529,19 @@ export default function AdminPlanning() {
                                     title="Cliquer pour ajouter une intervention"
                                   >
                                     {chantiers.map(p => (
-                                      <DraggableBubble key={p.id} p={p} palette={paletteFor(p)} real={realForPlanning(p)} onEdit={openEdit} />
+                                      <DraggableBubble key={p.id} p={p} palette={paletteFor(p)} real={realForPlanning(p)} onEdit={openEdit} docCount={docsByWorksite.get(p.worksite_id || '') || 0} />
                                     ))}
                                     {extra.map((x, i) => (
                                       <button
                                         key={`xd${i}`}
                                         type="button"
-                                        onClick={(e) => { e.stopPropagation(); setAttributeTarget({ userId: worker.id, dateStr, worksiteId: x.worksiteId, label: x.name }); }}
-                                        title="Ajouté par le salarié — cliquer pour attribuer un client"
+                                        onClick={(e) => { e.stopPropagation(); setExtraTarget({ userId: worker.id, dateStr, worksiteId: x.worksiteId, name: x.name, minutes: x.minutes }); }}
+                                        title="Ajouté par le salarié — cliquer pour les documents / attribuer un client"
                                         className="bt-pl-extra"
                                       >
                                         <span className="bt-pl-bub-bar" style={{ background: '#B5472E' }} />
                                         <span className="bt-pl-extra-top">
                                           <span className="bt-pl-extra-name">{x.name}</span>
-                                          <span className="bt-pl-tag" style={{ background: '#F4D9D1', color: '#a8412a' }}>Hors planning</span>
                                         </span>
                                         <span className="bt-pl-extra-by"><UserIcon className="h-2.5 w-2.5 shrink-0" /> {formatMinutes(x.minutes)} · ajouté par le salarié</span>
                                       </button>
@@ -1327,6 +1557,25 @@ export default function AdminPlanning() {
                     })
                   )}
                 </tbody>
+                {/* Lignes vierges de remplissage : prolongent le quadrillage jusqu'en bas,
+                    chacune avec un « + » pour ajouter un salarié. Inertes (pas de dépôt). */}
+                {ghostCount > 0 && (
+                  <tbody className="bt-pl-ghostbody" aria-hidden="true">
+                    {Array.from({ length: ghostCount }).map((_, i) => (
+                      <tr key={`ghost-${i}`} className="bt-pl-ghostrow">
+                        <td className="bt-pl-namecell">
+                          <button className="bt-pl-ghost-add" onClick={() => setSalariesOpen(true)} title="Ajouter un salarié">
+                            <UserPlus className="h-4 w-4" />
+                          </button>
+                        </td>
+                        {weekDays.map((day) => {
+                          const isToday = format(day, 'yyyy-MM-dd') === todayStr;
+                          return <td key={day.toISOString()} className={`bt-pl-cell ${isToday ? 'bt-pl-cell-today' : ''}`} />;
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                )}
             </table>
           </div>
 
@@ -1366,7 +1615,7 @@ export default function AdminPlanning() {
                 return (
                   <div key={worker.id} className="bt-pl-m-card">
                     <div className="bt-pl-m-top">
-                      <span className="bt-pl-avatar" style={absence ? { background: '#c4bdae', color: '#15120F' } : undefined}>{(worker.first_name?.[0] || '')}{(worker.last_name?.[0] || '')}</span>
+                      <span className="bt-pl-avatar" style={absence ? { background: '#c4bdae', color: '#15120F' } : undefined}>{worker.photo_url ? <img className="bt-pl-avatar-img" src={worker.photo_url} alt="" /> : <>{(worker.first_name?.[0] || '')}{(worker.last_name?.[0] || '')}</>}</span>
                       <span style={{ flex: 1, minWidth: 0 }}><span className="bt-pl-name" style={{ display: 'block' }}>{worker.first_name} {worker.last_name}</span></span>
                       {absence ? (
                         <span className="bt-pl-m-badge" style={{ background: '#EFE7DA', color: av!.fg }}>{av!.icon} {(ABSENCE_LABELS[absence.absence_type!] || '').toUpperCase()}</span>
@@ -1376,11 +1625,11 @@ export default function AdminPlanning() {
                     </div>
                     {!absence && (chantiers.length > 0 || extra.length > 0) && (
                       <div className="bt-pl-m-bubs">
-                        {chantiers.map(p => <BubbleContent key={p.id} p={p} palette={paletteFor(p)} real={realForPlanning(p)} />)}
+                        {chantiers.map(p => <BubbleContent key={p.id} p={p} palette={paletteFor(p)} real={realForPlanning(p)} docCount={docsByWorksite.get(p.worksite_id || '') || 0} />)}
                         {extra.map((x, i) => (
                           <div key={`mx${i}`} className="bt-pl-extra">
                             <span className="bt-pl-bub-bar" style={{ background: '#B5472E' }} />
-                            <span className="bt-pl-extra-top"><span className="bt-pl-extra-name">{x.name}</span><span className="bt-pl-tag" style={{ background: '#F4D9D1', color: '#a8412a' }}>Hors planning</span></span>
+                            <span className="bt-pl-extra-top"><span className="bt-pl-extra-name">{x.name}</span></span>
                             <span className="bt-pl-extra-by"><UserIcon className="h-2.5 w-2.5 shrink-0" /> {formatMinutes(x.minutes)} · ajouté par le salarié</span>
                           </div>
                         ))}
@@ -1402,7 +1651,7 @@ export default function AdminPlanning() {
           })() : activeDrag?.type === 'move' ? (
             (() => {
               const p = planning.find(x => x.id === activeDrag.id);
-              return p ? <div className="bt-pl-overlay"><BubbleContent p={p} palette={paletteFor(p)} real={realForPlanning(p)} /></div> : null;
+              return p ? <div className="bt-pl-overlay"><BubbleContent p={p} palette={paletteFor(p)} real={realForPlanning(p)} docCount={docsByWorksite.get(p.worksite_id || '') || 0} /></div> : null;
             })()
           ) : null}
         </DragOverlay>
@@ -1444,6 +1693,8 @@ export default function AdminPlanning() {
         onChanged={() => { fetchData(); refresh(); }}
       />
 
+      <CompanySettings open={settingsOpen} onOpenChange={setSettingsOpen} onSaved={fetchData} />
+
       {/* Salariés — administrative management */}
       <Dialog open={salariesOpen} onOpenChange={setSalariesOpen}>
         <DialogContent className="bt-skin max-w-md max-h-[80vh] overflow-y-auto">
@@ -1452,11 +1703,14 @@ export default function AdminPlanning() {
             <Button variant="outline" size="sm" className="mb-2 w-full" onClick={() => { setSalariesOpen(false); setWorkerOpen(true); }}>
               <UserPlus className="h-4 w-4 mr-1.5" /> Nouveau salarié
             </Button>
+            <Input placeholder="Rechercher un salarié…" value={salariesQuery} onChange={(e) => setSalariesQuery(e.target.value)} className="mb-2" />
             <div className="space-y-1">
               {workers.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-6 text-center">Aucun salarié</p>
+              ) : filteredWorkers.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-6 text-center">Aucun résultat</p>
               ) : (
-                workers.map(w => {
+                filteredWorkers.map(w => {
                   const miss = (missingByWorker.get(w.id) || []).length;
                   return (
                     <div key={w.id} className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
@@ -1488,7 +1742,9 @@ export default function AdminPlanning() {
             <Select onValueChange={(v) => attributeClient(v)} disabled={attrBusy}>
               <SelectTrigger><SelectValue placeholder="Choisir un client existant…" /></SelectTrigger>
               <SelectContent className="bt-skin">
-                {worksites.filter((w) => w.client_name !== 'Autre' && w.id !== attributeTarget?.worksiteId).map((ws) => (
+                {worksites.filter((w) => w.id !== attributeTarget?.worksiteId)
+                  .slice().sort((a, b) => (a.client_name === 'Autre' ? -1 : b.client_name === 'Autre' ? 1 : 0))
+                  .map((ws) => (
                   <SelectItem key={ws.id} value={ws.id}>{ws.client_name}{ws.city ? ` — ${ws.city}` : ''}</SelectItem>
                 ))}
               </SelectContent>
@@ -1496,6 +1752,42 @@ export default function AdminPlanning() {
             <Button variant="outline" className="w-full" disabled={attrBusy} onClick={() => setClientOpen(true)}>
               <Building2 className="h-4 w-4 mr-2" /> Créer un nouveau client…
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Intervention ajoutée par le salarié : popup avec Documents + attribution (au lieu de forcer l'attribution) */}
+      <Dialog open={!!extraTarget} onOpenChange={(o) => { if (!o) setExtraTarget(null); }}>
+        <DialogContent className="bt-skin max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><UserIcon className="h-4 w-4" /> {extraTarget?.name}</DialogTitle>
+          </DialogHeader>
+          {extraTarget && (
+            <div className="space-y-3 pt-1">
+              <p className="text-sm text-muted-foreground">{formatMinutes(extraTarget.minutes)} · ajouté par le salarié.</p>
+              <Button variant="outline" className="w-full justify-start" disabled={!extraTarget.worksiteId}
+                onClick={() => { const ws = worksites.find((w) => w.id === extraTarget.worksiteId); if (ws) { setDocsWorksite(ws); setExtraTarget(null); } }}>
+                <FileText className="h-4 w-4 mr-2" /> Documents du chantier
+              </Button>
+              <Button variant="outline" className="w-full justify-start"
+                onClick={() => { setAttributeTarget({ userId: extraTarget.userId, dateStr: extraTarget.dateStr, worksiteId: extraTarget.worksiteId, label: extraTarget.name }); setExtraTarget(null); }}>
+                <Building2 className="h-4 w-4 mr-2" /> Attribuer / changer le client
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Mini pop-up roulette : heure de RDV (évite le scroll dans le pop-up d'intervention) */}
+      <Dialog open={hourPickerOpen} onOpenChange={setHourPickerOpen}>
+        <DialogContent className="bt-skin max-w-xs">
+          <DialogHeader><DialogTitle>Heure de RDV</DialogTitle></DialogHeader>
+          <div className="rounded-2xl bg-[#15120F] p-3 flex justify-center">
+            <TimeCylinder value={editHour || '08:00'} onChange={setEditHour} />
+          </div>
+          <div className="flex gap-2 pt-1">
+            <Button variant="outline" className="flex-1" onClick={() => { setEditHour(''); setHourPickerOpen(false); }}>Pas d&apos;heure</Button>
+            <Button className="flex-1" onClick={() => { if (!editHour) setEditHour('08:00'); setHourPickerOpen(false); }}>Valider</Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -1635,7 +1927,7 @@ export default function AdminPlanning() {
           {editing && (
             <div className="space-y-3 pt-1">
               {/* Client (read-only) + link to the separate fiche */}
-              <div className="rounded-lg border bg-muted/30 p-2.5 flex items-start justify-between gap-2">
+              <div className="rounded-lg border bg-[#FBF7EF] p-2.5 flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="text-base font-semibold truncate">{editing.worksite?.client_name || 'Client'}</p>
                   {(editing.worksite?.address || editing.worksite?.city) && (
@@ -1645,17 +1937,25 @@ export default function AdminPlanning() {
                   )}
                 </div>
                 {editing.worksite && (
-                  <Button variant="ghost" size="sm" className="shrink-0 text-muted-foreground" onClick={() => openClientFiche(editing.worksite)}>
-                    <Pencil className="h-3.5 w-3.5 mr-1" /> Fiche client
-                  </Button>
+                  <div className="flex flex-col items-stretch gap-1.5 shrink-0">
+                    <Button variant="outline" size="sm" className="justify-start h-8" onClick={() => openClientFiche(editing.worksite)}>
+                      <Pencil className="h-3.5 w-3.5 mr-1.5" /> Fiche
+                    </Button>
+                    <Button variant="outline" size="sm" className="justify-start h-8" onClick={() => setDocsWorksite(editing.worksite || null)}>
+                      <FileText className="h-3.5 w-3.5 mr-1.5" /> Documents
+                    </Button>
+                  </div>
                 )}
               </div>
 
-              {/* Optional fixed hour (rare RDV) */}
+              {/* Heure de RDV (facultatif) — ouvre la roulette cylindre dans un mini pop-up */}
               <div className="space-y-1.5">
-                <Label>Heure (facultatif)</Label>
-                <div className="flex items-center gap-2">
-                  <Input type="time" value={editHour} onChange={(e) => setEditHour(e.target.value)} className="w-32" />
+                <Label>Heure de RDV (facultatif)</Label>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Button variant="outline" size="sm" onClick={() => setHourPickerOpen(true)}>
+                    <Clock className="h-4 w-4 mr-1.5" /> {editHour || 'Ajouter une heure'}
+                  </Button>
+                  {editHour && <button type="button" className="text-xs font-semibold text-muted-foreground underline hover:text-foreground" onClick={() => setEditHour('')}>retirer</button>}
                   <span className="text-xs text-muted-foreground">Seulement pour un RDV à heure fixe.</span>
                 </div>
               </div>
@@ -1667,12 +1967,29 @@ export default function AdminPlanning() {
               </div>
 
               {/* Real hours (read-only) */}
-              <div className="rounded-lg border bg-muted/30 p-2.5 text-sm">
+              <div className="rounded-lg border bg-[#FBF7EF] p-2.5 text-sm">
                 <span className="font-medium">Heures déclarées : </span>
                 {editRealAgg ? (
                   <span className="text-green-700">{editRealAgg.start?.substring(0, 5)}–{editRealAgg.end?.substring(0, 5)} · <strong>{formatMinutes(editRealAgg.minutes)} réelles</strong>{editRealAgg.count > 1 ? ` (${editRealAgg.count} saisies)` : ''}</span>
                 ) : (
                   <span className="text-muted-foreground">pas encore déclaré</span>
+                )}
+                {editRealAgg?.reception === 'avec' && (
+                  <div className="mt-1.5 flex items-center gap-1.5 font-semibold text-[#C0461F]"><AlertTriangle className="h-3.5 w-3.5" /> Réception avec réserve</div>
+                )}
+                {editRealAgg?.reception === 'sans' && (
+                  <div className="mt-1.5 flex items-center gap-1.5 font-semibold text-[#1F7A4D]"><CheckCircle2 className="h-3.5 w-3.5" /> Réceptionné sans réserve</div>
+                )}
+                {editRealAgg?.reception === 'en_cours' && (
+                  <div className="mt-1.5 flex items-center gap-1.5 font-semibold text-[#8a6d05]"><Hammer className="h-3.5 w-3.5" /> Chantier en cours</div>
+                )}
+                {editRealAgg?.note && (
+                  <div className="mt-1 text-[13px] text-[#15120F]">« {editRealAgg.note} »</div>
+                )}
+                {editRealAgg?.reception === 'avec' && editing.worksite && (
+                  <button type="button" className="mt-2 inline-flex items-center gap-1.5 text-[12.5px] font-bold text-[#a87c1e] underline" onClick={() => setDocsWorksite(editing.worksite || null)}>
+                    <FileText className="h-3.5 w-3.5" /> Voir les photos / documents
+                  </button>
                 )}
               </div>
 
@@ -1691,14 +2008,14 @@ export default function AdminPlanning() {
 
       {/* Client fiche — permanent client data (separate) */}
       <Dialog open={!!clientFiche} onOpenChange={(o) => { if (!o) setClientFiche(null); }}>
-        <DialogContent className="bt-skin max-w-md max-h-[88vh] overflow-y-auto">
+        <DialogContent className="bt-skin max-w-lg max-h-[92vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2"><Building2 className="h-4 w-4" /> Fiche client</DialogTitle>
           </DialogHeader>
           {clientFiche && (
             <div className="space-y-3 pt-1">
               <div className="space-y-2"><Label>Nom du client</Label><Input value={wsName} onChange={(e) => setWsName(e.target.value)} /></div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 <div className="space-y-2"><Label>Type de produit</Label><Input value={wsProduct} onChange={(e) => setWsProduct(e.target.value)} /></div>
                 <div className="space-y-2"><Label>Téléphone</Label><Input type="tel" value={wsPhone} onChange={(e) => setWsPhone(e.target.value)} /></div>
                 <div className="space-y-2"><Label>Email</Label><Input type="email" value={wsEmail} onChange={(e) => setWsEmail(e.target.value)} /></div>
@@ -1712,6 +2029,9 @@ export default function AdminPlanning() {
                 <Button onClick={saveClientFiche} disabled={savingWs}>
                   {savingWs && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer
                 </Button>
+                <Button variant="outline" onClick={() => setDocsWorksite(clientFiche)}>
+                  <FileText className="h-4 w-4 mr-1" /> Documents
+                </Button>
                 <Button variant="outline" onClick={archiveClientFiche} disabled={wsBusy}>
                   <Archive className="h-4 w-4 mr-1" /> Archiver
                 </Button>
@@ -1724,36 +2044,11 @@ export default function AdminPlanning() {
         </DialogContent>
       </Dialog>
 
+      <ChantierDocuments worksiteId={docsWorksite?.id || null} worksiteName={docsWorksite?.client_name} open={!!docsWorksite} onOpenChange={(o) => { if (!o) setDocsWorksite(null); }} />
+
       {/* Clients list — open any client fiche */}
-      <Dialog open={clientsListOpen} onOpenChange={setClientsListOpen}>
-        <DialogContent className="bt-skin max-w-md max-h-[80vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>Clients</DialogTitle></DialogHeader>
-          <div className="pt-1">
-            <Button variant="outline" size="sm" className="mb-2 w-full" onClick={() => { setClientsListOpen(false); setClientOpen(true); }}>
-              <Plus className="h-4 w-4 mr-1.5" /> Nouveau client
-            </Button>
-            <div className="space-y-1">
-              {worksites.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-6 text-center">Aucun client</p>
-              ) : (
-                worksites.map(ws => (
-                  <button
-                    key={ws.id}
-                    onClick={() => { setClientsListOpen(false); openClientFiche(ws); }}
-                    className="flex w-full items-center justify-between gap-2 rounded-md border px-3 py-2 text-left text-sm hover:bg-muted/50 transition-colors"
-                  >
-                    <span className="min-w-0">
-                      <span className="block truncate font-medium">{ws.client_name}</span>
-                      {(ws.city || ws.product_type) && <span className="block truncate text-xs text-muted-foreground">{[ws.product_type, ws.city].filter(Boolean).join(' · ')}</span>}
-                    </span>
-                    <Pencil className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                  </button>
-                ))
-              )}
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Panneau « Clients » fusionné dans le menu déroulant de la barre
+          (recherche + clients glissables + crayon d'édition + création). */}
 
       {/* Nouveau client */}
       <Dialog open={clientOpen} onOpenChange={(o) => { setClientOpen(o); if (!o) resetClient(); }}>

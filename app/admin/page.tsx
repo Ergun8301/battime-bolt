@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 
 const ADMIN_CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
-.bt-admin{font-family:'Archivo',sans-serif;min-height:100vh;background:#15120F;padding:6px}
+.bt-admin{font-family:'Archivo',sans-serif;min-height:100vh;background:#15120F;padding:6px;display:flex;flex-direction:column}
 .bt-admin *{box-sizing:border-box}
 
 /* ============================================================
@@ -149,7 +149,7 @@ export default function AdminPage() {
           <div className="bt-trial-card wide">
             <div className="bt-trial-emoji">⏳</div>
             <h1>Votre essai gratuit est terminé</h1>
-            <p>Pour continuer à utiliser Battime, choisissez l&apos;abonnement adapté à votre équipe.</p>
+            <p>Pour continuer à utiliser BEMEXO, choisissez l&apos;abonnement adapté à votre équipe.</p>
             <SubscribePanel />
             <p className="bt-trial-note">Aperçu : ce blocage n&apos;est actif qu&apos;en preview. En production, l&apos;accès reste ouvert tant que le paiement n&apos;est pas vérifié de bout en bout.</p>
           </div>
