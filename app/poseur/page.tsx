@@ -178,7 +178,7 @@ export default function PoseurPage() {
       acc += dy;
       if (hidden ? acc > 0 : acc < 0) acc = 0;
       if (!hidden) {
-        if (acc >= 56 && y >= phdrH) { setHidden(true); acc = 0; lockUntil = performance.now() + 340; } // cache une fois le contenu descendu SOUS l'en-tête (superposition GPU : jamais de trou)
+        if (acc >= 30 && y >= phdrH) { setHidden(true); acc = 0; lockUntil = performance.now() + 340; } // cache dès un petit geste, une fois le contenu passé SOUS l'en-tête (jamais de trou)
       } else {
         const nearBottom = y >= el.scrollHeight - el.clientHeight - 4; // rebond bas iOS : pas de réapparition parasite
         if (acc <= -16 && !nearBottom) { setHidden(false); acc = 0; lockUntil = performance.now() + 340; } // la moindre remontée volontaire → montrer
