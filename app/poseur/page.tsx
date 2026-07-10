@@ -34,7 +34,7 @@ const POSEUR_CSS = `
 .bt-phone.wide{max-width:920px}
 
 /* ===== EN-TÊTE NOIR ===== */
-.bt-phdr{background:#15120F;color:#F2EDE3;flex:none;padding:calc(env(safe-area-inset-top) + 12px) 16px 12px;position:relative;z-index:20;transition:margin-top .26s cubic-bezier(.22,.61,.36,1);will-change:margin-top}
+.bt-phdr{background:#15120F;color:#F2EDE3;flex:none;padding:calc(env(safe-area-inset-top) + 12px) 16px 12px;position:relative;z-index:20;transition:margin-top .24s cubic-bezier(.2,.8,.2,1);will-change:margin-top}
 .bt-phdr.is-hidden{margin-top:calc(-1 * var(--phdr-h, 132px))}
 @media (prefers-reduced-motion:reduce){.bt-phdr{transition:none}}
 .bt-phdr-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
@@ -169,14 +169,19 @@ export default function PoseurPage() {
       lastY = y;
       if (y <= 8) { acc = 0; setHidden(false); return; }             // tout en haut → toujours visible (prioritaire)
       if (performance.now() < lockUntil) return;                     // on laisse la transition finir
-      if (dy > -1 && dy < 1) return;                                 // sous-pixel → on ignore
-      // seau qui fuit : on cumule le déplacement NET. Les petits soubresauts d'inertie
-      // s'annulent ; seul un geste franc et soutenu fait basculer (pas de reset au moindre
-      // jitter, sinon sur un vrai scroll tactile l'en-tête ne se cacherait jamais).
+      if (el.scrollHeight - el.clientHeight < 160) return;           // petits scrollers internes : on ignore
+      // On ne cumule que le geste UTILE : visible → on guette la descente ; caché → la
+      // remontée. Les à-coups dans l'autre sens remettent juste le compteur à zéro (pas
+      // de « dette » à rembourser — c'est elle qui rendait la réapparition lente). Et on
+      // compte TOUS les deltas, même < 1 px, sinon un scroll très lent ne déclenche rien.
       acc += dy;
-      if (acc > 140) acc = 140; else if (acc < -140) acc = -140;     // borne de sécurité
-      if (acc >= 72 && y > 72) { setHidden(true); acc = 0; lockUntil = performance.now() + 400; }  // descente soutenue → cacher
-      else if (acc <= -48) { setHidden(false); acc = 0; lockUntil = performance.now() + 400; }     // remontée soutenue → montrer
+      if (hidden ? acc > 0 : acc < 0) acc = 0;
+      if (!hidden) {
+        if (acc >= 56 && y > 72) { setHidden(true); acc = 0; lockUntil = performance.now() + 300; }   // descente franche → cacher
+      } else {
+        const nearBottom = y >= el.scrollHeight - el.clientHeight - 4; // rebond bas iOS : pas de réapparition parasite
+        if (acc <= -16 && !nearBottom) { setHidden(false); acc = 0; lockUntil = performance.now() + 300; } // la moindre remontée volontaire → montrer
+      }
     };
 
     const onScroll = (e: Event) => {
