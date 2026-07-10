@@ -405,16 +405,18 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
 
   // ─── Day meal: keep exactly one flagged row per day (no migration) ──────────
 
-  const applyDayMeal = useCallback(async (value: boolean) => {
+  const applyDayMeal = useCallback(async (value: boolean, flagModified = false) => {
     if (!user) return;
     if (navigator.onLine) {
       const { data } = await supabase.from('time_entries').select('id, start_time, meal_allowance').eq('user_id', user.id).eq('work_date', date);
       const rows = [...(data || [])].sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''));
+      // Journée déjà envoyée : corriger le panier prévient la secrétaire (même logique que l'édition d'une intervention).
+      const stamp = flagModified ? { modified_at: new Date().toISOString(), modified_by: user.id } : {};
       const ups = [];
       for (let i = 0; i < rows.length; i++) {
         const target = i === 0 ? value : false;
         if (rows[i].meal_allowance !== target) {
-          ups.push(supabase.from('time_entries').update({ meal_allowance: target }).eq('id', rows[i].id).eq('user_id', user.id));
+          ups.push(supabase.from('time_entries').update({ meal_allowance: target, ...stamp }).eq('id', rows[i].id).eq('user_id', user.id));
         }
       }
       if (ups.length) await Promise.all(ups);
@@ -428,10 +430,10 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
     }
   }, [user, date]);
 
-  const toggleDayMeal = async (value: boolean) => {
+  const toggleDayMeal = async (value: boolean, flagModified = false) => {
     setDayMeal(value);
     try {
-      await applyDayMeal(value);
+      await applyDayMeal(value, flagModified);
       if (navigator.onLine) fetchData();
     } catch (err) {
       console.error('Error setting meal:', err);
@@ -892,7 +894,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
             aria-pressed={dayMeal}
             onClick={() => {
               if (monthLocked) { setLateOpen(true); return; }
-              if (frozen) { askCorrect(null); return; }
+              if (frozen) { askCorrect(() => toggleDayMeal(!dayMeal, true)); return; }
               toggleDayMeal(!dayMeal);
             }}
           >
