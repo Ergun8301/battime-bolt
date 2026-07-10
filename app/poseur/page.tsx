@@ -58,10 +58,13 @@ const POSEUR_CSS = `
 .bt-phdr-menuhead-av img{width:100%;height:100%;object-fit:cover;display:block}
 .bt-phdr-menuhead-name{font-size:14.5px;font-weight:800;color:#15120F;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
-.bt-alert{display:flex;align-items:center;gap:9px;margin-top:14px;width:100%;background:rgba(255,194,26,.13);border:1px solid rgba(255,194,26,.4);border-radius:11px;padding:10px 13px;cursor:pointer;text-align:left}
-.bt-alert-badge{width:22px;height:22px;flex:none;background:#FFC21A;color:#15120F;border-radius:6px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:13px;font-family:'JetBrains Mono',monospace}
-.bt-alert-txt{font-size:13.5px;font-weight:700;color:#FFC21A;flex:1}
-.bt-alert-chev{font-size:16px;color:#FFC21A}
+/* rappel « jours oubliés » : maintenant en tête de liste sur fond crème (plus dans
+   l'en-tête noir) → texte noir lisible + fond ambré ; plus fin qu'avant mais reste
+   pleine largeur pour rester facile à toucher avec des gants. */
+.bt-alert{display:flex;align-items:center;gap:10px;margin:0 0 12px;width:100%;background:rgba(255,194,26,.16);border:1px solid rgba(255,194,26,.55);border-radius:12px;padding:8px 14px;cursor:pointer;text-align:left}
+.bt-alert-badge{width:20px;height:20px;flex:none;background:#FFC21A;color:#15120F;border-radius:6px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:12px;font-family:'JetBrains Mono',monospace}
+.bt-alert-txt{font-size:13.5px;font-weight:800;color:#15120F;flex:1}
+.bt-alert-chev{font-size:17px;color:#15120F}
 
 /* ===== CORPS ===== */
 .bt-phbody{flex:1;min-height:0;display:flex;flex-direction:column;position:relative}
@@ -239,6 +242,34 @@ export default function PoseurPage() {
     ? format(parseISO(selectedDate), 'EEEE d MMMM', { locale: fr })
     : (TABS.find((t) => t.value === view)?.label || 'Ma journée');
 
+  // Rappel « jours oubliés » : désormais rendu EN TÊTE de la liste (il défile avec le
+  // contenu) au lieu d'être collé dans l'en-tête → l'en-tête reste court et se cache tôt.
+  const pendingBanner = pending.length > 0 ? (
+    <Popover open={pendingOpen} onOpenChange={setPendingOpen}>
+      <PopoverTrigger asChild>
+        <button className="bt-alert" aria-label="Jours à déclarer">
+          <span className="bt-alert-badge">{pending.length}</span>
+          <span className="bt-alert-txt">jour{pending.length > 1 ? 's' : ''} oublié{pending.length > 1 ? 's' : ''} à déclarer</span>
+          <span className="bt-alert-chev">›</span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="center" className="w-72 bt-skin">
+        <p className="text-sm font-medium mb-2">Jours à déclarer</p>
+        <div className="space-y-1.5">
+          {pending.map((d) => (
+            <button
+              key={d}
+              onClick={() => openDay(d)}
+              className="w-full truncate rounded-md border px-3 py-2.5 text-left text-sm font-medium capitalize hover:bg-muted/50 transition-colors"
+            >
+              {format(parseISO(d), 'EEEE d MMMM', { locale: fr })}
+            </button>
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
+  ) : null;
+
   return (
     <div className="bt-poseur">
       <style dangerouslySetInnerHTML={{ __html: POSEUR_CSS }} />
@@ -292,33 +323,6 @@ export default function PoseurPage() {
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
-
-          {/* alerte discrète : jours à déclarer (uniquement sur « Ma journée » du jour) */}
-          {isToday && pending.length > 0 && (
-            <Popover open={pendingOpen} onOpenChange={setPendingOpen}>
-              <PopoverTrigger asChild>
-                <button className="bt-alert" aria-label="Jours à déclarer">
-                  <span className="bt-alert-badge">{pending.length}</span>
-                  <span className="bt-alert-txt">jour{pending.length > 1 ? 's' : ''} oublié{pending.length > 1 ? 's' : ''} à déclarer</span>
-                  <span className="bt-alert-chev">›</span>
-                </button>
-              </PopoverTrigger>
-              <PopoverContent align="center" className="w-72 bt-skin">
-                <p className="text-sm font-medium mb-2">Jours à déclarer</p>
-                <div className="space-y-1.5">
-                  {pending.map((d) => (
-                    <button
-                      key={d}
-                      onClick={() => openDay(d)}
-                      className="w-full truncate rounded-md border px-3 py-2.5 text-left text-sm font-medium capitalize hover:bg-muted/50 transition-colors"
-                    >
-                      {format(parseISO(d), 'EEEE d MMMM', { locale: fr })}
-                    </button>
-                  ))}
-                </div>
-              </PopoverContent>
-            </Popover>
-          )}
         </header>
 
         {/* ===== CORPS ===== */}
@@ -326,7 +330,7 @@ export default function PoseurPage() {
           {selectedDate ? (
             <PoseurDay date={selectedDate} />
           ) : view === 'day' ? (
-            <PoseurDay />
+            <PoseurDay topBanner={pendingBanner} />
           ) : (
             <div className="bt-phscroll bt-skin">
               {view === 'week' ? (

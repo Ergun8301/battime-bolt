@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, type ReactNode } from 'react';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
 import { TimeEntry, Worksite, Planning } from '@/lib/types';
@@ -235,7 +235,7 @@ type SlotTarget =
   | { kind: 'pending'; localId: string }
   | { kind: 'new' };
 
-export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
+export default function PoseurDay({ date: dateProp, topBanner }: { date?: string; topBanner?: ReactNode } = {}) {
   const { user } = useAuth();
   const [entries, setEntries] = useState<TimeEntryWithWorksite[]>([]);
   const [pendingEntries, setPendingEntries] = useState<PendingEntry[]>([]);
@@ -855,6 +855,8 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
       {/* ===== ZONE SCROLLABLE ===== */}
       <div className="bt-day-scroll">
 
+        {/* rappel « jours oubliés » (rendu par le parent) — défile avec la liste */}
+        {topBanner}
         {/* ----- TOTAL DU JOUR ----- */}
         <div className="bt-total">
           <div className="bt-total-ruban" />
