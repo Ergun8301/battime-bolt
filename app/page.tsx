@@ -23,13 +23,16 @@ export default function Home() {
 
     if (!loading) {
       if (user) {
+        // Déjà connecté → direct dans son espace (jamais la vitrine).
         if (user.role === 'admin') {
-          router.push('/admin');
+          router.replace('/admin');
         } else {
-          router.push('/poseur');
+          router.replace('/poseur');
         }
       } else {
-        router.push('/connexion');
+        // Visiteur non connecté (prospect, arrivée depuis Google) → la vitrine,
+        // pas le mur de connexion. Il y trouvera « Se connecter » / « Essayer ».
+        router.replace('/landing');
       }
     }
   }, [user, loading, router]);
