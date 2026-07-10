@@ -61,10 +61,11 @@ function computePauses(slots: { start: string; end: string }[]) {
 
 const DAY_CSS = `
 .bt-day{display:flex;flex-direction:column;height:100%;min-height:0;flex:1}
-.bt-day-scroll{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:16px 16px 6px}
+.bt-day-scroll{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:calc(var(--phdr-h, 132px) + 16px) 16px 6px}
+.bt-day:has(.bt-net) .bt-day-scroll{padding-top:12px}
 .bt-day-scroll::-webkit-scrollbar{display:none}
 
-.bt-net{flex:none;color:#fff;padding:7px 18px;display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700}
+.bt-net{flex:none;color:#fff;padding:7px 18px;display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;margin-top:var(--phdr-h, 132px);position:relative;z-index:20}
 .bt-net-off{background:#C0461F}
 .bt-net-sync{background:#2a2620;color:#FFC21A}
 .bt-net-dot{width:7px;height:7px;background:currentColor;border-radius:50%;flex:none}

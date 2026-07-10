@@ -34,8 +34,8 @@ const POSEUR_CSS = `
 .bt-phone.wide{max-width:920px}
 
 /* ===== EN-TÊTE NOIR ===== */
-.bt-phdr{background:#15120F;color:#F2EDE3;flex:none;padding:calc(env(safe-area-inset-top) + 12px) 16px 12px;position:relative;z-index:20;transition:margin-top .24s cubic-bezier(.2,.8,.2,1);will-change:margin-top}
-.bt-phdr.is-hidden{margin-top:calc(-1 * var(--phdr-h, 132px))}
+.bt-phdr{background:#15120F;color:#F2EDE3;flex:none;padding:calc(env(safe-area-inset-top) + 12px) 16px 12px;position:relative;z-index:30;margin-bottom:calc(-1 * var(--phdr-h, 132px));transition:transform .3s cubic-bezier(.33,.72,0,1);will-change:transform}
+.bt-phdr.is-hidden{transform:translateY(-100%)}
 @media (prefers-reduced-motion:reduce){.bt-phdr{transition:none}}
 .bt-phdr-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .bt-phdr-left{display:flex;align-items:center;gap:10px;min-width:0}
@@ -65,7 +65,7 @@ const POSEUR_CSS = `
 
 /* ===== CORPS ===== */
 .bt-phbody{flex:1;min-height:0;display:flex;flex-direction:column;position:relative}
-.bt-phscroll{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:16px}
+.bt-phscroll{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:calc(var(--phdr-h, 132px) + 16px) 16px 16px}
 
 /* ============================================================
    .bt-skin — même thème noir/jaune que le reste du produit (admin,
@@ -144,7 +144,8 @@ export default function PoseurPage() {
     const phone = phoneRef.current;
     const hdr = hdrRef.current;
     if (!phone || !hdr) return;
-    const measure = () => phone.style.setProperty('--phdr-h', `${hdr.offsetHeight}px`);
+    let phdrH = hdr.offsetHeight;
+    const measure = () => { phdrH = hdr.offsetHeight; phone.style.setProperty('--phdr-h', `${phdrH}px`); };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(hdr);
@@ -177,10 +178,10 @@ export default function PoseurPage() {
       acc += dy;
       if (hidden ? acc > 0 : acc < 0) acc = 0;
       if (!hidden) {
-        if (acc >= 56 && y > 72) { setHidden(true); acc = 0; lockUntil = performance.now() + 300; }   // descente franche → cacher
+        if (acc >= 56 && y >= phdrH) { setHidden(true); acc = 0; lockUntil = performance.now() + 340; } // cache une fois le contenu descendu SOUS l'en-tête (superposition GPU : jamais de trou)
       } else {
         const nearBottom = y >= el.scrollHeight - el.clientHeight - 4; // rebond bas iOS : pas de réapparition parasite
-        if (acc <= -16 && !nearBottom) { setHidden(false); acc = 0; lockUntil = performance.now() + 300; } // la moindre remontée volontaire → montrer
+        if (acc <= -16 && !nearBottom) { setHidden(false); acc = 0; lockUntil = performance.now() + 340; } // la moindre remontée volontaire → montrer
       }
     };
 
