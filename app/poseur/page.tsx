@@ -148,18 +148,42 @@ export default function PoseurPage() {
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(hdr);
-    let lastY = 0;
-    let lastTarget: EventTarget | null = null;
+    // Détection robuste : accumulateur de distance (immunise contre l'inertie /
+    // le micro-jitter tactile) + fenêtre d'ignorance après chaque bascule (casse la
+    // boucle « rétraction → reflow → nouvel event scroll → re-bascule » = le clignotement)
+    // + rAF (au plus une fois par frame) + clamp du rebond iOS (scrollTop négatif).
+    let lastY = 0;      // dernière position lue
+    let acc = 0;        // distance cumulée dans le sens courant
+    let lockUntil = 0;  // horodatage jusqu'auquel on ignore le scroll (post-bascule)
+    let hidden = false; // miroir local de l'état (évite les setState redondants)
+    let target: HTMLElement | null = null;
+    let ticking = false;
+
+    const setHidden = (v: boolean) => { if (v !== hidden) { hidden = v; setHdrHidden(v); } };
+
+    const process = (el: HTMLElement) => {
+      ticking = false;
+      const y = el.scrollTop < 0 ? 0 : el.scrollTop;                 // rebond iOS → 0
+      if (el !== target) { target = el; lastY = y; acc = 0; return; } // changement de vue
+      const dy = y - lastY;
+      lastY = y;
+      if (y <= 8) { acc = 0; setHidden(false); return; }             // tout en haut → toujours visible (prioritaire)
+      if (performance.now() < lockUntil) return;                     // on laisse la transition finir
+      if (dy > -1 && dy < 1) return;                                 // sous-pixel → on ignore
+      // seau qui fuit : on cumule le déplacement NET. Les petits soubresauts d'inertie
+      // s'annulent ; seul un geste franc et soutenu fait basculer (pas de reset au moindre
+      // jitter, sinon sur un vrai scroll tactile l'en-tête ne se cacherait jamais).
+      acc += dy;
+      if (acc > 140) acc = 140; else if (acc < -140) acc = -140;     // borne de sécurité
+      if (acc >= 72 && y > 72) { setHidden(true); acc = 0; lockUntil = performance.now() + 400; }  // descente soutenue → cacher
+      else if (acc <= -48) { setHidden(false); acc = 0; lockUntil = performance.now() + 400; }     // remontée soutenue → montrer
+    };
+
     const onScroll = (e: Event) => {
       const el = e.target as HTMLElement | null;
-      if (!el || typeof el.scrollTop !== 'number') return;
-      const y = el.scrollTop;
-      if (el !== lastTarget) { lastTarget = el; lastY = y; return; } // changement de vue : pas de bascule
-      const delta = y - lastY;
-      if (y <= 4) setHdrHidden(false);                  // tout en haut → visible
-      else if (delta > 6 && y > 56) setHdrHidden(true); // on descend → cacher
-      else if (delta < -6) setHdrHidden(false);         // on remonte → montrer
-      lastY = y;
+      if (!el || typeof el.scrollTop !== 'number' || ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => process(el));
     };
     phone.addEventListener('scroll', onScroll, true); // capture : les events scroll ne remontent pas
     return () => { phone.removeEventListener('scroll', onScroll, true); ro.disconnect(); };
