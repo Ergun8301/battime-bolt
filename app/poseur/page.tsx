@@ -34,7 +34,9 @@ const POSEUR_CSS = `
 .bt-phone.wide{max-width:920px}
 
 /* ===== EN-TÊTE NOIR ===== */
-.bt-phdr{background:#15120F;color:#F2EDE3;flex:none;padding:calc(env(safe-area-inset-top) + 12px) 16px 12px;position:relative}
+.bt-phdr{background:#15120F;color:#F2EDE3;flex:none;padding:calc(env(safe-area-inset-top) + 12px) 16px 12px;position:relative;z-index:20;transition:margin-top .26s cubic-bezier(.22,.61,.36,1);will-change:margin-top}
+.bt-phdr.is-hidden{margin-top:calc(-1 * var(--phdr-h, 132px))}
+@media (prefers-reduced-motion:reduce){.bt-phdr{transition:none}}
 .bt-phdr-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .bt-phdr-left{display:flex;align-items:center;gap:10px;min-width:0}
 .bt-phdr-logo{width:32px;height:32px;flex:none;display:block}
@@ -106,6 +108,10 @@ export default function PoseurPage() {
   const [photoUrl, setPhotoUrl] = useState(''); // photo de profil du salarié (facultatif)
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
+  // Smart header (mobile) : refs + état de rétraction. Purement visuel.
+  const phoneRef = useRef<HTMLDivElement>(null);
+  const hdrRef = useRef<HTMLElement>(null);
+  const [hdrHidden, setHdrHidden] = useState(false);
 
   const fetchPending = useCallback(async () => {
     if (!user) return;
@@ -130,6 +136,37 @@ export default function PoseurPage() {
 
   // Photo de profil du salarié (depuis users.photo_url).
   useEffect(() => { setPhotoUrl(user?.photo_url || ''); }, [user?.photo_url]);
+
+  // ===== Smart header : se rétracte quand on descend, revient quand on remonte =====
+  // Purement cosmétique. Écoute le scroll en phase capture → couvre TOUS les scrollers
+  // internes (Ma journée, semaine, mois, historique) sans toucher à leur code.
+  useEffect(() => {
+    const phone = phoneRef.current;
+    const hdr = hdrRef.current;
+    if (!phone || !hdr) return;
+    const measure = () => phone.style.setProperty('--phdr-h', `${hdr.offsetHeight}px`);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(hdr);
+    let lastY = 0;
+    let lastTarget: EventTarget | null = null;
+    const onScroll = (e: Event) => {
+      const el = e.target as HTMLElement | null;
+      if (!el || typeof el.scrollTop !== 'number') return;
+      const y = el.scrollTop;
+      if (el !== lastTarget) { lastTarget = el; lastY = y; return; } // changement de vue : pas de bascule
+      const delta = y - lastY;
+      if (y <= 4) setHdrHidden(false);                  // tout en haut → visible
+      else if (delta > 6 && y > 56) setHdrHidden(true); // on descend → cacher
+      else if (delta < -6) setHdrHidden(false);         // on remonte → montrer
+      lastY = y;
+    };
+    phone.addEventListener('scroll', onScroll, true); // capture : les events scroll ne remontent pas
+    return () => { phone.removeEventListener('scroll', onScroll, true); ro.disconnect(); };
+  }, []);
+
+  // À chaque navigation, l'en-tête repart visible.
+  useEffect(() => { setHdrHidden(false); }, [view, selectedDate]);
 
   // Le salarié change SA propre photo (appareil photo ou galerie sur mobile). Upload
   // dans SON dossier, puis enregistrement de l'URL via update_my_photo (il ne touche
@@ -175,10 +212,10 @@ export default function PoseurPage() {
   return (
     <div className="bt-poseur">
       <style dangerouslySetInnerHTML={{ __html: POSEUR_CSS }} />
-      <div className={`bt-phone${wide ? ' wide' : ''}`}>
+      <div ref={phoneRef} className={`bt-phone${wide ? ' wide' : ''}`}>
 
         {/* ===== EN-TÊTE NOIR ===== */}
-        <header className="bt-phdr">
+        <header ref={hdrRef} className={`bt-phdr${hdrHidden ? ' is-hidden' : ''}`}>
           <div className="bt-phdr-row">
             <div className="bt-phdr-left">
               <img src="/favicon.svg" alt="BEMEXO" className="bt-phdr-logo" />
