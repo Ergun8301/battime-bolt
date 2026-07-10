@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, type ReactNode } from 'react';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
 import { TimeEntry, Worksite, Planning } from '@/lib/types';
@@ -61,10 +61,11 @@ function computePauses(slots: { start: string; end: string }[]) {
 
 const DAY_CSS = `
 .bt-day{display:flex;flex-direction:column;height:100%;min-height:0;flex:1}
-.bt-day-scroll{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:16px 16px 6px}
+.bt-day-scroll{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:calc(var(--phdr-h, 132px) + 16px) 16px 6px}
+.bt-day:has(.bt-net) .bt-day-scroll{padding-top:12px}
 .bt-day-scroll::-webkit-scrollbar{display:none}
 
-.bt-net{flex:none;color:#fff;padding:7px 18px;display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700}
+.bt-net{flex:none;color:#fff;padding:7px 18px;display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;margin-top:var(--phdr-h, 132px);position:relative;z-index:20}
 .bt-net-off{background:#C0461F}
 .bt-net-sync{background:#2a2620;color:#FFC21A}
 .bt-net-dot{width:7px;height:7px;background:currentColor;border-radius:50%;flex:none}
@@ -234,7 +235,7 @@ type SlotTarget =
   | { kind: 'pending'; localId: string }
   | { kind: 'new' };
 
-export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
+export default function PoseurDay({ date: dateProp, topBanner }: { date?: string; topBanner?: ReactNode } = {}) {
   const { user } = useAuth();
   const [entries, setEntries] = useState<TimeEntryWithWorksite[]>([]);
   const [pendingEntries, setPendingEntries] = useState<PendingEntry[]>([]);
@@ -405,16 +406,18 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
 
   // ─── Day meal: keep exactly one flagged row per day (no migration) ──────────
 
-  const applyDayMeal = useCallback(async (value: boolean) => {
+  const applyDayMeal = useCallback(async (value: boolean, flagModified = false) => {
     if (!user) return;
     if (navigator.onLine) {
       const { data } = await supabase.from('time_entries').select('id, start_time, meal_allowance').eq('user_id', user.id).eq('work_date', date);
       const rows = [...(data || [])].sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''));
+      // Journée déjà envoyée : corriger le panier prévient la secrétaire (même logique que l'édition d'une intervention).
+      const stamp = flagModified ? { modified_at: new Date().toISOString(), modified_by: user.id } : {};
       const ups = [];
       for (let i = 0; i < rows.length; i++) {
         const target = i === 0 ? value : false;
         if (rows[i].meal_allowance !== target) {
-          ups.push(supabase.from('time_entries').update({ meal_allowance: target }).eq('id', rows[i].id).eq('user_id', user.id));
+          ups.push(supabase.from('time_entries').update({ meal_allowance: target, ...stamp }).eq('id', rows[i].id).eq('user_id', user.id));
         }
       }
       if (ups.length) await Promise.all(ups);
@@ -428,10 +431,10 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
     }
   }, [user, date]);
 
-  const toggleDayMeal = async (value: boolean) => {
+  const toggleDayMeal = async (value: boolean, flagModified = false) => {
     setDayMeal(value);
     try {
-      await applyDayMeal(value);
+      await applyDayMeal(value, flagModified);
       if (navigator.onLine) fetchData();
     } catch (err) {
       console.error('Error setting meal:', err);
@@ -854,6 +857,8 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
       {/* ===== ZONE SCROLLABLE ===== */}
       <div className="bt-day-scroll">
 
+        {/* rappel « jours oubliés » (rendu par le parent) — défile avec la liste */}
+        {topBanner}
         {/* ----- TOTAL DU JOUR ----- */}
         <div className="bt-total">
           <div className="bt-total-ruban" />
@@ -892,7 +897,7 @@ export default function PoseurDay({ date: dateProp }: { date?: string } = {}) {
             aria-pressed={dayMeal}
             onClick={() => {
               if (monthLocked) { setLateOpen(true); return; }
-              if (frozen) { askCorrect(null); return; }
+              if (frozen) { askCorrect(() => toggleDayMeal(!dayMeal, true)); return; }
               toggleDayMeal(!dayMeal);
             }}
           >

@@ -34,7 +34,9 @@ const POSEUR_CSS = `
 .bt-phone.wide{max-width:920px}
 
 /* ===== EN-TÊTE NOIR ===== */
-.bt-phdr{background:#15120F;color:#F2EDE3;flex:none;padding:calc(env(safe-area-inset-top) + 12px) 16px 12px;position:relative}
+.bt-phdr{background:#15120F;color:#F2EDE3;flex:none;padding:calc(env(safe-area-inset-top) + 12px) 16px 12px;position:relative;z-index:30;margin-bottom:calc(-1 * var(--phdr-h, 132px));transition:transform .3s cubic-bezier(.33,.72,0,1);will-change:transform}
+.bt-phdr.is-hidden{transform:translateY(-100%)}
+@media (prefers-reduced-motion:reduce){.bt-phdr{transition:none}}
 .bt-phdr-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .bt-phdr-left{display:flex;align-items:center;gap:10px;min-width:0}
 .bt-phdr-logo{width:32px;height:32px;flex:none;display:block}
@@ -56,14 +58,17 @@ const POSEUR_CSS = `
 .bt-phdr-menuhead-av img{width:100%;height:100%;object-fit:cover;display:block}
 .bt-phdr-menuhead-name{font-size:14.5px;font-weight:800;color:#15120F;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
-.bt-alert{display:flex;align-items:center;gap:9px;margin-top:14px;width:100%;background:rgba(255,194,26,.13);border:1px solid rgba(255,194,26,.4);border-radius:11px;padding:10px 13px;cursor:pointer;text-align:left}
-.bt-alert-badge{width:22px;height:22px;flex:none;background:#FFC21A;color:#15120F;border-radius:6px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:13px;font-family:'JetBrains Mono',monospace}
-.bt-alert-txt{font-size:13.5px;font-weight:700;color:#FFC21A;flex:1}
-.bt-alert-chev{font-size:16px;color:#FFC21A}
+/* rappel « jours oubliés » : maintenant en tête de liste sur fond crème (plus dans
+   l'en-tête noir) → texte noir lisible + fond ambré ; plus fin qu'avant mais reste
+   pleine largeur pour rester facile à toucher avec des gants. */
+.bt-alert{display:flex;align-items:center;gap:10px;margin:0 0 12px;width:100%;background:rgba(255,194,26,.16);border:1px solid rgba(255,194,26,.55);border-radius:12px;padding:8px 14px;cursor:pointer;text-align:left}
+.bt-alert-badge{width:20px;height:20px;flex:none;background:#FFC21A;color:#15120F;border-radius:6px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:12px;font-family:'JetBrains Mono',monospace}
+.bt-alert-txt{font-size:13.5px;font-weight:800;color:#15120F;flex:1}
+.bt-alert-chev{font-size:17px;color:#15120F}
 
 /* ===== CORPS ===== */
 .bt-phbody{flex:1;min-height:0;display:flex;flex-direction:column;position:relative}
-.bt-phscroll{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:16px}
+.bt-phscroll{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:calc(var(--phdr-h, 132px) + 16px) 16px 16px}
 
 /* ============================================================
    .bt-skin — même thème noir/jaune que le reste du produit (admin,
@@ -106,6 +111,10 @@ export default function PoseurPage() {
   const [photoUrl, setPhotoUrl] = useState(''); // photo de profil du salarié (facultatif)
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
+  // Smart header (mobile) : refs + état de rétraction. Purement visuel.
+  const phoneRef = useRef<HTMLDivElement>(null);
+  const hdrRef = useRef<HTMLElement>(null);
+  const [hdrHidden, setHdrHidden] = useState(false);
 
   const fetchPending = useCallback(async () => {
     if (!user) return;
@@ -130,6 +139,67 @@ export default function PoseurPage() {
 
   // Photo de profil du salarié (depuis users.photo_url).
   useEffect(() => { setPhotoUrl(user?.photo_url || ''); }, [user?.photo_url]);
+
+  // ===== Smart header : se rétracte quand on descend, revient quand on remonte =====
+  // Purement cosmétique. Écoute le scroll en phase capture → couvre TOUS les scrollers
+  // internes (Ma journée, semaine, mois, historique) sans toucher à leur code.
+  useEffect(() => {
+    const phone = phoneRef.current;
+    const hdr = hdrRef.current;
+    if (!phone || !hdr) return;
+    let phdrH = hdr.offsetHeight;
+    const measure = () => { phdrH = hdr.offsetHeight; phone.style.setProperty('--phdr-h', `${phdrH}px`); };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(hdr);
+    // Détection robuste : accumulateur de distance (immunise contre l'inertie /
+    // le micro-jitter tactile) + fenêtre d'ignorance après chaque bascule (casse la
+    // boucle « rétraction → reflow → nouvel event scroll → re-bascule » = le clignotement)
+    // + rAF (au plus une fois par frame) + clamp du rebond iOS (scrollTop négatif).
+    let lastY = 0;      // dernière position lue
+    let acc = 0;        // distance cumulée dans le sens courant
+    let lockUntil = 0;  // horodatage jusqu'auquel on ignore le scroll (post-bascule)
+    let hidden = false; // miroir local de l'état (évite les setState redondants)
+    let target: HTMLElement | null = null;
+    let ticking = false;
+
+    const setHidden = (v: boolean) => { if (v !== hidden) { hidden = v; setHdrHidden(v); } };
+
+    const process = (el: HTMLElement) => {
+      ticking = false;
+      const y = el.scrollTop < 0 ? 0 : el.scrollTop;                 // rebond iOS → 0
+      if (el !== target) { target = el; lastY = y; acc = 0; return; } // changement de vue
+      const dy = y - lastY;
+      lastY = y;
+      if (y <= 8) { acc = 0; setHidden(false); return; }             // tout en haut → toujours visible (prioritaire)
+      if (performance.now() < lockUntil) return;                     // on laisse la transition finir
+      if (el.scrollHeight - el.clientHeight < 160) return;           // petits scrollers internes : on ignore
+      // On ne cumule que le geste UTILE : visible → on guette la descente ; caché → la
+      // remontée. Les à-coups dans l'autre sens remettent juste le compteur à zéro (pas
+      // de « dette » à rembourser — c'est elle qui rendait la réapparition lente). Et on
+      // compte TOUS les deltas, même < 1 px, sinon un scroll très lent ne déclenche rien.
+      acc += dy;
+      if (hidden ? acc > 0 : acc < 0) acc = 0;
+      if (!hidden) {
+        if (acc >= 30 && y >= phdrH) { setHidden(true); acc = 0; lockUntil = performance.now() + 340; } // cache dès un petit geste, une fois le contenu passé SOUS l'en-tête (jamais de trou)
+      } else {
+        const nearBottom = y >= el.scrollHeight - el.clientHeight - 4; // rebond bas iOS : pas de réapparition parasite
+        if (acc <= -16 && !nearBottom) { setHidden(false); acc = 0; lockUntil = performance.now() + 340; } // la moindre remontée volontaire → montrer
+      }
+    };
+
+    const onScroll = (e: Event) => {
+      const el = e.target as HTMLElement | null;
+      if (!el || typeof el.scrollTop !== 'number' || ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => process(el));
+    };
+    phone.addEventListener('scroll', onScroll, true); // capture : les events scroll ne remontent pas
+    return () => { phone.removeEventListener('scroll', onScroll, true); ro.disconnect(); };
+  }, []);
+
+  // À chaque navigation, l'en-tête repart visible.
+  useEffect(() => { setHdrHidden(false); }, [view, selectedDate]);
 
   // Le salarié change SA propre photo (appareil photo ou galerie sur mobile). Upload
   // dans SON dossier, puis enregistrement de l'URL via update_my_photo (il ne touche
@@ -172,13 +242,41 @@ export default function PoseurPage() {
     ? format(parseISO(selectedDate), 'EEEE d MMMM', { locale: fr })
     : (TABS.find((t) => t.value === view)?.label || 'Ma journée');
 
+  // Rappel « jours oubliés » : désormais rendu EN TÊTE de la liste (il défile avec le
+  // contenu) au lieu d'être collé dans l'en-tête → l'en-tête reste court et se cache tôt.
+  const pendingBanner = pending.length > 0 ? (
+    <Popover open={pendingOpen} onOpenChange={setPendingOpen}>
+      <PopoverTrigger asChild>
+        <button className="bt-alert" aria-label="Jours à déclarer">
+          <span className="bt-alert-badge">{pending.length}</span>
+          <span className="bt-alert-txt">jour{pending.length > 1 ? 's' : ''} oublié{pending.length > 1 ? 's' : ''} à déclarer</span>
+          <span className="bt-alert-chev">›</span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="center" className="w-72 bt-skin">
+        <p className="text-sm font-medium mb-2">Jours à déclarer</p>
+        <div className="space-y-1.5">
+          {pending.map((d) => (
+            <button
+              key={d}
+              onClick={() => openDay(d)}
+              className="w-full truncate rounded-md border px-3 py-2.5 text-left text-sm font-medium capitalize hover:bg-muted/50 transition-colors"
+            >
+              {format(parseISO(d), 'EEEE d MMMM', { locale: fr })}
+            </button>
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
+  ) : null;
+
   return (
     <div className="bt-poseur">
       <style dangerouslySetInnerHTML={{ __html: POSEUR_CSS }} />
-      <div className={`bt-phone${wide ? ' wide' : ''}`}>
+      <div ref={phoneRef} className={`bt-phone${wide ? ' wide' : ''}`}>
 
         {/* ===== EN-TÊTE NOIR ===== */}
-        <header className="bt-phdr">
+        <header ref={hdrRef} className={`bt-phdr${hdrHidden ? ' is-hidden' : ''}`}>
           <div className="bt-phdr-row">
             <div className="bt-phdr-left">
               <img src="/favicon.svg" alt="BEMEXO" className="bt-phdr-logo" />
@@ -225,33 +323,6 @@ export default function PoseurPage() {
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
-
-          {/* alerte discrète : jours à déclarer (uniquement sur « Ma journée » du jour) */}
-          {isToday && pending.length > 0 && (
-            <Popover open={pendingOpen} onOpenChange={setPendingOpen}>
-              <PopoverTrigger asChild>
-                <button className="bt-alert" aria-label="Jours à déclarer">
-                  <span className="bt-alert-badge">{pending.length}</span>
-                  <span className="bt-alert-txt">jour{pending.length > 1 ? 's' : ''} oublié{pending.length > 1 ? 's' : ''} à déclarer</span>
-                  <span className="bt-alert-chev">›</span>
-                </button>
-              </PopoverTrigger>
-              <PopoverContent align="center" className="w-72 bt-skin">
-                <p className="text-sm font-medium mb-2">Jours à déclarer</p>
-                <div className="space-y-1.5">
-                  {pending.map((d) => (
-                    <button
-                      key={d}
-                      onClick={() => openDay(d)}
-                      className="w-full truncate rounded-md border px-3 py-2.5 text-left text-sm font-medium capitalize hover:bg-muted/50 transition-colors"
-                    >
-                      {format(parseISO(d), 'EEEE d MMMM', { locale: fr })}
-                    </button>
-                  ))}
-                </div>
-              </PopoverContent>
-            </Popover>
-          )}
         </header>
 
         {/* ===== CORPS ===== */}
@@ -259,7 +330,7 @@ export default function PoseurPage() {
           {selectedDate ? (
             <PoseurDay date={selectedDate} />
           ) : view === 'day' ? (
-            <PoseurDay />
+            <PoseurDay topBanner={pendingBanner} />
           ) : (
             <div className="bt-phscroll bt-skin">
               {view === 'week' ? (
