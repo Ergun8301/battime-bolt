@@ -182,6 +182,48 @@ body{font-family:'Archivo',sans-serif;color:var(--creme);-webkit-font-smoothing:
 .url{position:absolute;left:50%;top:918px;transform:translateX(-50%);font-family:'JetBrains Mono',monospace;font-size:32px;font-weight:700;color:var(--creme);letter-spacing:.14em}
 .url .y{color:var(--jaune)}
 
+/* ---------- fils du chaos, satellites, toasts, X flottants ---------- */
+#strings{position:absolute;inset:0;pointer-events:none}
+#strings path{fill:none;stroke-width:3.5;stroke-linecap:round;stroke-dasharray:100;stroke-dashoffset:100;opacity:0}
+.vocal{background:var(--noir-card);color:var(--creme);width:340px;padding:18px 20px;border:1px solid rgba(242,237,227,.14);display:flex;align-items:center;gap:14px}
+.vocal .pl{width:46px;height:46px;border-radius:50%;background:var(--vert);color:#0d3b25;display:flex;align-items:center;justify-content:center;font-size:19px;flex:none}
+.vocal .bars{display:flex;align-items:flex-end;gap:3px;height:30px;flex:1}
+.vocal .bars i{width:4px;border-radius:2px;background:var(--creme-dim)}
+.vocal small{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--creme-dim)}
+.polaroid{background:#fff;padding:12px 12px 14px;width:255px;box-shadow:0 26px 50px -20px rgba(0,0,0,.6)}
+.polaroid .ph{height:150px;background:linear-gradient(135deg,#d8d1c2 0%,#efe9db 55%,#c9c2b4 100%);position:relative;overflow:hidden}
+.polaroid .ph:after{content:"🏗️";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:54px;opacity:.85}
+.polaroid p{font-size:15px;font-weight:700;color:#3d3a34;margin-top:10px;font-style:italic}
+.tape{position:absolute;top:-13px;left:50%;transform:translateX(-50%) rotate(-4deg);width:112px;height:27px;background:rgba(255,194,26,.78)}
+.sat{position:absolute;background:#fff;border-radius:15px;box-shadow:0 26px 54px -18px rgba(21,18,15,.38);padding:14px 19px;display:flex;align-items:center;gap:12px;color:var(--noir);z-index:6}
+.sat b{font-size:17px;display:block}
+.sat small{display:block;font-size:13px;color:var(--gris);font-weight:600}
+.sat .ic{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:19px;flex:none}
+.ring{position:absolute;border:3px solid rgba(255,194,26,.30);border-radius:50%;pointer-events:none}
+.phbg{position:absolute;border-radius:50%;pointer-events:none;background:radial-gradient(closest-side,rgba(21,18,15,.15),transparent 70%)}
+.xf{position:absolute;pointer-events:none}
+.xf i{position:absolute;left:50%;top:50%;width:26%;height:122%;border-radius:22px;transform:translate(-50%,-50%) rotate(24deg)}
+.xf i+i{transform:translate(-50%,-50%) rotate(-24deg)}
+.mealrow{display:flex;align-items:center;gap:12px;background:#fff;border:2.5px solid rgba(21,18,15,.1);border-radius:15px;padding:12px 16px;margin-bottom:13px}
+.mealrow .em{font-size:25px}
+.mealrow b{font-size:19px;display:block}
+.mealrow small{font-size:14px;color:var(--gris);font-weight:600}
+.mealrow .sw{margin-left:auto;width:58px;height:33px;border-radius:99px;background:var(--jaune);position:relative;flex:none;box-shadow:inset 0 0 0 2px rgba(21,18,15,.08)}
+.mealrow .sw:after{content:"";position:absolute;top:3px;right:3px;width:27px;height:27px;border-radius:50%;background:#fff;box-shadow:0 2px 6px rgba(21,18,15,.25)}
+.toast{position:absolute;background:#fff;border-radius:15px;box-shadow:0 28px 56px -18px rgba(21,18,15,.42);padding:14px 20px 14px 14px;display:flex;align-items:center;gap:13px;color:var(--noir);z-index:7}
+.toast .bar{width:7px;align-self:stretch;border-radius:5px;flex:none}
+.toast .em{font-size:23px}
+.toast b{font-size:17px;display:block}
+.toast small{font-size:13.5px;color:var(--gris);font-weight:600}
+.cardstack{position:relative;padding:0;border:none;background:transparent}
+.cardstack .card{position:absolute;inset:0;margin:0}
+.c-alert{background:#FBE3DC;color:#a03415;border-color:#C0461F}
+.c-alert .rl{display:inline-block;background:var(--jaune);color:var(--noir);font-weight:800;font-size:12.5px;padding:4px 11px;border-radius:7px;box-shadow:0 2px 0 var(--jaune-ombre)}
+.c-dark{background:var(--noir);color:var(--creme);border-color:var(--noir)}
+.c-dark small{font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--creme-dim);letter-spacing:.05em;display:block;margin-top:6px}
+.c-oran{background:#FFE3D1;color:#a34a12;border-color:#FF7A3D}
+.beam{position:absolute;width:2600px;height:360px;left:-2600px;top:330px;pointer-events:none;background:linear-gradient(90deg,transparent,rgba(255,194,26,.11),transparent);transform:rotate(-7deg);z-index:1}
+
 /* ---------- transitions & impacts ---------- */
 #wipe{position:absolute;top:-620px;left:0;width:3400px;height:2400px;z-index:30;background:repeating-linear-gradient(45deg,var(--noir) 0 46px,var(--jaune) 46px 92px);transform:rotate(-12deg);visibility:hidden}
 #iris{position:absolute;left:0;top:0;width:2600px;height:2600px;border-radius:50%;background:var(--jaune);z-index:30;visibility:hidden;box-shadow:0 0 200px rgba(255,194,26,.7)}
@@ -218,6 +260,12 @@ body{font-family:'Archivo',sans-serif;color:var(--creme);-webkit-font-smoothing:
       <span class="w">Et</span> <span class="w">l'info</span> <span class="w"><span class="hl y"><em id="hl2"></em>se perd</span></span><br>
       <span class="w">entre</span> <span class="w">le</span> <span class="w">terrain</span> <span class="w">et</span> <span class="w">le</span> <span class="w">bureau.</span>
     </div>
+    <svg id="strings" viewBox="0 0 1920 1080">
+      <path pathLength="100" d="M330,480 Q560,395 770,505" stroke="#C0461F"/>
+      <path pathLength="100" d="M940,505 Q1200,385 1450,435" stroke="#FFC21A"/>
+      <path pathLength="100" d="M1090,680 Q1160,770 1250,800" stroke="#F25A9B"/>
+      <path pathLength="100" d="M700,745 Q520,835 355,790" stroke="#8B6CF2"/>
+    </svg>
     <div id="chaosWrap"></div>
     <div class="vignette"></div>
   </section>
@@ -243,6 +291,12 @@ body{font-family:'Archivo',sans-serif;color:var(--creme);-webkit-font-smoothing:
       <span class="w">Trois</span> <span class="w">taps.</span><br>
       <span class="w"><span class="hl g"><em id="hl4"></em>C'est envoyé</span>.</span>
     </div>
+    <div class="phbg" id="phbg" style="left:690px;top:-60px;width:1000px;height:1200px"></div>
+    <div class="ring" id="ring1" style="width:860px;height:860px;left:760px;top:80px"></div>
+    <div class="xf" id="xf1" style="width:150px;height:150px;left:300px;top:120px"><i style="background:rgba(21,18,15,.10)"></i><i style="background:rgba(21,18,15,.10)"></i></div>
+    <div class="xf" id="xf2" style="width:96px;height:96px;left:1690px;top:820px"><i style="background:rgba(255,194,26,.65)"></i><i style="background:rgba(255,194,26,.65)"></i></div>
+    <div class="sat" id="sat1"><span class="ic" style="background:#FBD3E4">📍</span><div><b>Villa Lupin</b><small>Aix · 12 km</small></div></div>
+    <div class="sat" id="sat2"><span class="ic" style="background:#D6F4E1">✓</span><div><b>Journée reçue</b><small>bureau · à l'instant</small></div></div>
     <div class="phoneWrap"><div class="phone" id="phone">
       <div class="phone-scr">
         <div class="glare" id="glare"></div>
@@ -259,6 +313,7 @@ body{font-family:'Archivo',sans-serif;color:var(--creme);-webkit-font-smoothing:
             <div class="chip dark" id="chipT"><div class="k">DURÉE</div><div class="v" id="durv">0:00</div></div>
           </div>
           <div class="notice" id="notice">Pause déduite automatiquement</div>
+          <div class="mealrow" id="meal"><span class="em">🥪</span><div><b>Panier repas</b><small>Déclaré pour aujourd'hui</small></div><span class="sw"></span></div>
           <button class="ybtn" id="sendbtn">Envoyer ma journée →</button>
         </div>
       </div>
@@ -292,6 +347,9 @@ body{font-family:'Archivo',sans-serif;color:var(--creme);-webkit-font-smoothing:
         <div id="grows"></div>
       </div>
     </div></div>
+    <div class="toast" id="to1"><span class="bar" style="background:#F25A9B"></span><span class="em">✓</span><div><b>Karim a envoyé 7:15</b><small>Villa Lupin · mer. 8</small></div></div>
+    <div class="toast" id="to2"><span class="bar" style="background:#8B6CF2"></span><span class="em">📸</span><div><b>2 photos ajoutées</b><small>Rés. Les Cèdres · Mehdi</small></div></div>
+    <div class="toast" id="to3"><span class="bar" style="background:#FF7A3D"></span><span class="em">🔔</span><div><b>Lucas a répondu : 6:30</b><small>saisie complétée à l'instant</small></div></div>
     <div class="menu" id="expmenu">
       <div class="mi hl2">Exporter l'équipe<small>verrouille le mois · Excel ou PDF</small></div>
       <div class="mi">Exporter un salarié</div>
@@ -322,6 +380,10 @@ body{font-family:'Archivo',sans-serif;color:var(--creme);-webkit-font-smoothing:
     <div class="glow" id="g5c" style="background:radial-gradient(circle,rgba(139,108,242,.07),transparent 62%)"></div>
     <div class="texchantier"></div>
     <div class="dust" id="dust5"></div>
+    <div class="beam" id="beam"></div>
+    <div class="xf" id="xf5a" style="width:260px;height:260px;left:150px;top:640px"><i style="background:rgba(255,194,26,.10)"></i><i style="background:rgba(255,194,26,.10)"></i></div>
+    <div class="xf" id="xf5b" style="width:150px;height:150px;left:1620px;top:150px"><i style="background:rgba(242,237,227,.09)"></i><i style="background:rgba(242,237,227,.09)"></i></div>
+    <div class="xf" id="xf5c" style="width:110px;height:110px;left:1500px;top:800px"><i style="background:rgba(242,90,155,.13)"></i><i style="background:rgba(242,90,155,.13)"></i></div>
     <div class="h-big" id="s5b" style="top:380px;font-size:96px">
       <span class="w">Moins</span> <span class="w">de</span> <span class="w">temps</span> <span class="w">perdu.</span><br>
       <span class="w">Plus</span> <span class="w">de</span> <span class="w">temps</span> <span class="w">pour</span> <span class="w"><span class="hl y"><em id="hl5"></em>construire</span>.</span>
@@ -466,11 +528,13 @@ function pingAt(el,t,t0,x,y){
 /* ---------- données acte 1 ---------- */
 const CHAOS=[
  {x:120,y:390,r:-7,in:2.4,fx:-900,badge:null, html:`<div class="chaos note"><span class="tag">PAPIER</span><h4>Semaine 28 — heures</h4><div class="l" style="width:82%"></div><div class="l" style="width:65%"></div><div class="l" style="width:74%"></div><div class="scrib">mardi : 7h30… ou 7h ?<br>+ panier ?? à vérifier</div></div>`},
- {x:1430,y:388,r:5,in:3.1,fx:900,badge:2, html:`<div class="chaos sms"><span class="tag">SMS</span>Tu finis à quelle heure sur Lupin ?</div>`},
- {x:1360,y:560,r:-3,in:3.8,fx:900,badge:null, html:`<div class="chaos sms right">jsuis passé sur l'autre chantier là</div>`},
- {x:545,y:660,r:3,in:4.6,fx:-600,badge:null, html:`<div class="chaos xls"><span class="tag">TABLEUR</span><h4>POINTAGES_JUIL_V3_final(2).xlsx</h4><table><tr><td>Karim</td><td>7,5</td><td class="err">#REF!</td></tr><tr><td>Mehdi</td><td class="err">??</td><td>6</td></tr><tr><td>Sofia</td><td>7</td><td class="err">#N/A</td></tr></table></div>`},
- {x:1150,y:730,r:-5,in:5.4,fx:700,badge:3, html:`<div class="chaos tel"><span class="tag">APPELS</span><div class="ic">📞</div><div><b>Bureau</b><span>3 appels manqués</span></div></div>`},
- {x:225,y:700,r:8,in:6.1,fx:-800,badge:null, html:`<div class="postit"><small>À NE PAS OUBLIER</small>Relancer Lucas pour ses heures de mardi !!</div>`},
+ {x:1430,y:388,r:5,in:3.1,fx:900,badge:9, html:`<div class="chaos sms"><span class="tag">SMS</span>Tu finis à quelle heure sur Lupin ?</div>`},
+ {x:770,y:452,r:2,in:3.9,fx:0,badge:2, html:`<div class="chaos vocal"><span class="tag">VOCAL</span><span class="pl">▶</span><div class="bars">${Array.from({length:22},(_,k)=>`<i style="height:${6+Math.round(Math.abs(Math.sin(k*1.7))*22)}px"></i>`).join('')}</div><small>0:47</small></div>`},
+ {x:1330,y:565,r:-3,in:4.5,fx:900,badge:null, html:`<div class="chaos sms right">jsuis passé sur l'autre chantier là</div>`},
+ {x:965,y:598,r:5,in:5.1,fx:300,badge:null, html:`<div class="chaos polaroid"><span class="tape"></span><div class="ph"></div><p>réception ? mardi ?? — à classer</p></div>`},
+ {x:510,y:678,r:3,in:5.7,fx:-600,badge:null, html:`<div class="chaos xls"><span class="tag">TABLEUR</span><h4>POINTAGES_JUIL_V3_final(2).xlsx</h4><table><tr><td>Karim</td><td>7,5</td><td class="err">#REF!</td></tr><tr><td>Mehdi</td><td class="err">??</td><td>6</td></tr><tr><td>Sofia</td><td>7</td><td class="err">#N/A</td></tr></table></div>`},
+ {x:1210,y:762,r:-5,in:6.2,fx:700,badge:9, html:`<div class="chaos tel"><span class="tag">APPELS</span><div class="ic">📞</div><div><b>Bureau</b><span>3 appels manqués</span></div></div>`},
+ {x:212,y:715,r:8,in:6.8,fx:-800,badge:null, html:`<div class="postit"><small>À NE PAS OUBLIER</small>Relancer Lucas pour ses heures de mardi !!</div>`},
 ];
 const wrap=$('chaosWrap');
 CHAOS.forEach((c,i)=>{
@@ -502,14 +566,26 @@ const ROWS=[
    {cls:'c-jaun',b:'Chantier Bellevue',s:'Annecy',h:'08:00',st:'plan'},
    {cls:'c-jaun',b:'Chantier Bellevue',s:'Annecy',h:'07:30',st:'plan'},
    {cls:'plus'}]},
+ {a:'LP',n:'Lucas P.',c:[
+   {cls:'c-oran',b:'Chantier Bellevue',s:'Annecy',h:'08:00',st:'ok',v:'6:30'},
+   {cls:'c-oran',b:'Chantier Bellevue',s:'Annecy',h:'08:00',st:'ok',v:'7:00'},
+   {cls:'stack'},
+   {cls:'c-oran',b:'Chantier Bellevue',s:'Annecy',h:'07:30',st:'plan'},
+   {cls:'plus'}]},
 ];
+const AVCOL={KB:'#F25A9B',MT:'#8B6CF2',SR:'#2FD584',LP:'#FF7A3D'};
 const grows=$('grows');let cardIdx=0;const cardEls=[];
 ROWS.forEach(r=>{
   const row=document.createElement('div');row.className='grow';
-  row.innerHTML=`<div class="who"><div class="a">${r.a}</div><div><b>${r.n}</b><span>● 35 h/sem</span></div></div>`;
+  row.innerHTML=`<div class="who"><div class="a" style="border:3px solid ${AVCOL[r.a]}">${r.a}</div><div><b>${r.n}</b><span>● 35 h/sem</span></div></div>`;
   r.c.forEach(c=>{
     const cell=document.createElement('div');
     if(c.cls==='plus'){cell.className='card c-plus';cell.textContent='+';}
+    else if(c.cls==='stack'){
+      cell.className='card cardstack';
+      cell.innerHTML=`<div class="card c-alert" id="lpA"><b>Saisie manquante</b><span>Chantier Bellevue</span><div class="bot"><span class="rl">Relancer</span><span class="st">MER. 8</span></div></div>
+        <div class="card c-dark" id="lpB"><b>✓ Relancé</b><small>notification envoyée</small></div>`;
+    }
     else if(c.cls==='off'){cell.className='card c-off';cell.textContent='🌴 Congé';}
     else{
       cell.className='card '+c.cls;
@@ -522,7 +598,7 @@ ROWS.forEach(r=>{
   grows.appendChild(row);
 });
 $('docrows').innerHTML=ROWS.map(r=>{
-  const tot={KB:'21:45',MT:'20:15',SR:'22:00'}[r.a];
+  const tot={KB:'21:45',MT:'20:15',SR:'22:00',LP:'19:30'}[r.a];
   return `<div class="row"><b>${r.n}</b><span>${tot} · panier ✓</span></div>`;
 }).join('')+`<div class="row"><b>Mois</b><span>verrouillé 🔒</span></div>`;
 /* heures volantes cartes → document */
@@ -537,7 +613,10 @@ const scenes={s1:[0,19.7],s2:[19.5,36.0],s3:[35.95,79.3],s5:[79.0,DUR+1]};
 function render(t){
   for(const id in scenes){const [a,b]=scenes[id];$(id).style.visibility=(t>=a&&t<b)?'visible':'hidden'}
   ['finger','finger2','ping1','ping2','dotOut','dotIn','doc','expmenu','win',
-   'fly0','fly1','fly2','fly3','fly4','fly5'].forEach(id=>$(id).style.visibility='hidden');
+   'fly0','fly1','fly2','fly3','fly4','fly5','sat1','sat2','to1','to2','to3','meal',
+   'steps','chipD','chipF','chipT','notice','m2a','m2b','s1k','s1h1','s1h2',
+   's3c1','s3c2','s4c1','s4c2','s5b','slog','cta','nocard','url',
+   'ch0','ch1','ch2','ch3','ch4','ch5','ch6','ch7'].forEach(id=>{const e=$(id);if(e)e.style.visibility='hidden'});
 
   /* -------- caméra vivante + secousses -------- */
   let cs=1,cx=0,cy=0;
@@ -580,7 +659,13 @@ function render(t){
       el.style.transform=`translate(${(1-pi)*c.fx*.3}px,${(1-pi)*60+woby+fall*820}px) rotate(${c.r+wob+fall*(i%2?30:-26)}deg) scale(${.8+.2*pi})`;
       el.style.visibility=pi<=0?'hidden':'visible';
       const bd=$('bd'+i);
-      if(bd){const n=Math.min(9,Math.floor(1+Math.max(0,t-c.in)*1.4));bd.textContent=n;bd.style.transform=`scale(${1+.22*Math.abs(Math.sin(t*3+i))})`}
+      if(bd){const n=Math.min(c.badge,Math.floor(1+Math.max(0,t-c.in)*1.4));bd.textContent=n;bd.style.transform=`scale(${1+.22*Math.abs(Math.sin(t*3+i))})`}
+    });
+    /* fils de confusion entre les éléments (tableau d'enquête) */
+    [...$('strings').children].forEach((p,i)=>{
+      const draw=quint(P(t,7.0+i*.55,8.5+i*.55));
+      p.style.strokeDashoffset=100-100*draw;
+      p.style.opacity=(draw>0?.5:0)*(1-P(t,16.1,16.8));
     });
   }
 
@@ -595,9 +680,27 @@ function render(t){
     const ph=$('phone');
     ph.style.opacity=1-pout;
     /* téléphone 3D : arrive incliné, flotte en continu */
-    const tiltY=lerp(-16,-5,pin)+Math.sin(t*.7)*2.4;
-    const tiltX=Math.cos(t*.6)*1.8;
+    const tiltY=lerp(-24,-9,pin)+Math.sin(t*.7)*3.2;
+    const tiltX=Math.cos(t*.6)*2.4;
     ph.style.transform=`translateY(${(1-pin)*640 - pout*60}px) rotateY(${tiltY}deg) rotateX(${tiltX}deg)`;
+    /* ambiance : contraste derrière le téléphone, anneau, X flottants, satellites */
+    $('phbg').style.opacity=pin*(1-pout);
+    $('ring1').style.opacity=.65*pin*(1-pout);
+    $('ring1').style.transform=`rotate(${t*4}deg) scale(${1+.02*Math.sin(t*.9)})`;
+    $('xf1').style.opacity=pin*(1-pout);
+    $('xf1').style.transform=`translateY(${Math.sin(t*.8)*16}px) rotate(${-10+t*2}deg)`;
+    $('xf2').style.opacity=pin*(1-pout);
+    $('xf2').style.transform=`translateY(${Math.cos(t*.7)*12}px) rotate(${8-t*1.6}deg)`;
+    const sp1=expo(P(t,22.8,23.7))*(1-P(t,33.8,34.6));
+    const sa1=$('sat1');
+    sa1.style.opacity=sp1;sa1.style.visibility=sp1<=0.001?'hidden':'visible';
+    sa1.style.left='560px';sa1.style.top=(298+Math.sin(t*.9)*10)+'px';
+    sa1.style.transform=`rotate(-3deg) translateY(${(1-expo(P(t,22.8,23.7)))*30}px)`;
+    const sp2=Math.min(1,back(P(t,33.9,34.5)))*(1-P(t,35.3,35.9));
+    const sa2=$('sat2');
+    sa2.style.opacity=Math.max(0,sp2);sa2.style.visibility=sp2<=0.001?'hidden':'visible';
+    sa2.style.left='1488px';sa2.style.top='716px';
+    sa2.style.transform=`rotate(3deg) scale(${.7+.3*Math.min(1.15,back(P(t,33.9,34.5)))})`;
     $('glare').style.backgroundPosition=`${lerp(120,-40,P(t,21,29))}% 0`;
     io($('steps'),t,20.5,34.6,{dy:40});
     const st1=$('st1'),st2=$('st2'),st3=$('st3');
@@ -610,6 +713,7 @@ function render(t){
     io($('chipT'),t,26.0,34.6,{dy:22,sc:.85,e:back});
     $('durv').textContent=fmtHM(435*expo(P(t,26.4,28.6)));
     io($('notice'),t,28.8,34.6,{dy:16});
+    io($('meal'),t,29.7,34.6,{dy:16});
     const sb=$('sendbtn');
     if(t>=33.45){sb.classList.add('ok');sb.textContent='✓ Journée envoyée';}
     else{sb.classList.remove('ok');sb.textContent='Envoyer ma journée →';}
@@ -677,6 +781,24 @@ function render(t){
     $('rtchip').querySelector('i').style.transform=`scale(${1+.4*Math.abs(Math.sin(t*2.6))})`;
     capIn($('s3c1'),t,38.6,45.2);
     capIn($('s3c2'),t,46.6,52.6);
+    /* notifications temps réel — elles recouvrent le bas du planning */
+    const toast=(el,t0,t1,x,y,rot)=>{
+      const pi=Math.min(1.12,back(P(t,t0,t0+.55))), po=P(t,t1,t1+.45);
+      const o=Math.max(0,Math.min(1,pi))*(1-po);
+      el.style.opacity=o;el.style.visibility=o<=0.001?'hidden':'visible';
+      el.style.left=x+'px';el.style.top=y+'px';
+      el.style.transform=`rotate(${rot}deg) translateX(${(1-Math.min(1,pi))*90+po*70}px)`;
+    };
+    toast($('to1'),44.7,49.6,1298,846,-1);
+    toast($('to2'),47.8,52.8,1352,752,1);
+    toast($('to3'),51.8,56.8,1288,846,-1);
+    /* Lucas : « saisie manquante » → « ✓ relancé » (le post-it de l'acte 1 se boucle) */
+    const lpP=P(t,50.6,51.05);
+    $('lpA').style.opacity=1-lpP;
+    $('lpB').style.opacity=lpP;
+    $('lpB').style.transform=`scale(${.85+.15*back(lpP)})`;
+    const lring=P(t,50.15,51.0);
+    $('lpB').parentElement.style.boxShadow=(lring>0&&lring<1)?`0 0 0 ${lring*16}px rgba(255,122,61,${.5*(1-lring)})`:'none';
     /* ---- acte 4 ---- */
     moveAlong($('finger2'),t,[
       {t:57.6,x:1750,y:1010},{t:58.9,x:1478,y:134},{t:60.4,x:1478,y:134},
@@ -720,6 +842,15 @@ function render(t){
     drift($('g5b'),t,-200,500,70,50,.16,2);
     drift($('g5c'),t,1320,420,60,40,.18,4);
     dust($('dust5'),t);
+    /* faisceau de lumière + X flottants en parallaxe */
+    const bp1=P(t,80.0,85.8), bp2=P(t,94.2,99.6);
+    const bactive=(bp1>0&&bp1<1)||(bp2>0&&bp2<1);
+    $('beam').style.left=lerp(-2600,2100,(bp2>0&&bp2<1)?bp2:bp1)+'px';
+    $('beam').style.opacity=bactive?1:0;
+    $('beam').style.top=(bp2>0?230:330)+'px';
+    $('xf5a').style.transform=`translateY(${Math.sin(t*.55)*22}px) rotate(${-8+t*1.2}deg)`;
+    $('xf5b').style.transform=`translateY(${Math.cos(t*.5)*18}px) rotate(${6-t*.9}deg)`;
+    $('xf5c').style.transform=`translateY(${Math.sin(t*.62+2)*14}px) rotate(${t*1.5}deg)`;
     slam($('s5b'),t,79.9,{step:.13,out:86.2});hlSweep($('hl5'),t,81.3);
     const wm=$('wm');const spans=wm.children;
     let any=0;
