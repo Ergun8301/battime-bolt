@@ -8,11 +8,11 @@
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
 /* ============================================================
-   BEMEXO — VIDÉO 2 « explicative » · édition cinéma
-   Fondations vidéo 1 (noir/jaune/crème, Archivo + Mono, X, ruban)
-   + réalisation studio : caméra vivante, transitions ruban & iris,
-   typo cinétique surlignée, téléphone 3D, particules, confettis
-   couleurs chantier, halos, secousses d'impact, grain.
+   BEMEXO — VIDÉO 2 « explicative » · édition cinéma v3
+   Fondations vidéo 1 + réalisation studio. 6 scènes :
+   chaos → poseur → JONCTION (terrain ✕ bureau) → planning →
+   export → CTA. X = la lettre du logo (Archivo 900), zéro
+   confetti, filigrane BEMEXO sous le planning.
    Timeline déterministe : window.__seek(t).
    ============================================================ */
 :root{
@@ -29,17 +29,14 @@ body{font-family:'Archivo',sans-serif;color:var(--creme);-webkit-font-smoothing:
 #cam{position:absolute;inset:0;will-change:transform}
 .scene{position:absolute;inset:0;visibility:hidden}
 
-/* ---------- couches d'ambiance ---------- */
+/* ---------- ambiance ---------- */
 .texchantier{position:absolute;inset:0;background:repeating-linear-gradient(45deg,rgba(255,255,255,.014) 0 32px,transparent 32px 64px);pointer-events:none}
 .vignette{position:absolute;inset:0;background:radial-gradient(120% 105% at 50% 46%,transparent 55%,rgba(0,0,0,.44) 100%);pointer-events:none}
 .glow{position:absolute;width:900px;height:900px;border-radius:50%;filter:blur(80px);pointer-events:none}
 .dust i{position:absolute;border-radius:50%;pointer-events:none}
 #grain{position:absolute;inset:-40px;z-index:40;pointer-events:none;opacity:.055;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='.9'/%3E%3C/svg%3E")}
-.xmark{position:absolute;width:760px;height:760px;pointer-events:none}
-.xmark i{position:absolute;left:50%;top:50%;width:27%;height:128%;border-radius:26px;transform:translate(-50%,-50%) rotate(24deg)}
-.xmark i+i{transform:translate(-50%,-50%) rotate(-24deg)}
-.x-dark i{background:rgba(255,194,26,.022)}
-.x-cream i{background:rgba(21,18,15,.032)}
+/* X = LA LETTRE DU LOGO (Archivo 900), jamais des barres */
+.xg{position:absolute;font-family:'Archivo',sans-serif;font-weight:900;line-height:.78;pointer-events:none;user-select:none}
 
 /* ---------- typo cinétique ---------- */
 .h-big{position:absolute;left:50%;width:1560px;transform:translateX(-50%);text-align:center;font-weight:900;letter-spacing:-.028em;line-height:1.04;color:var(--creme)}
@@ -54,6 +51,8 @@ body{font-family:'Archivo',sans-serif;color:var(--creme);-webkit-font-smoothing:
 
 /* ---------- ACTE 1 : le chaos ---------- */
 #s1{background:radial-gradient(circle at 50% 42%,#241d14 0%,#1a1510 52%,var(--noir) 82%)}
+#strings{position:absolute;inset:0;pointer-events:none}
+#strings path{fill:none;stroke-width:3.5;stroke-linecap:round;stroke-dasharray:100;stroke-dashoffset:100;opacity:0}
 .chaos{position:absolute;border-radius:14px;box-shadow:0 30px 60px -22px rgba(0,0,0,.65)}
 .badge{position:absolute;top:-16px;left:-14px;min-width:40px;height:40px;border-radius:999px;background:var(--rouille);color:#fff;font-weight:900;font-size:20px;display:flex;align-items:center;justify-content:center;padding:0 10px;box-shadow:0 8px 20px -6px rgba(192,70,31,.7)}
 .note{background:#FBF8F2;color:var(--noir);padding:22px 24px;width:350px}
@@ -62,6 +61,16 @@ body{font-family:'Archivo',sans-serif;color:var(--creme);-webkit-font-smoothing:
 .note .scrib{font-size:16px;color:#6E6A63;font-style:italic;font-weight:600;margin-top:12px;line-height:1.45}
 .sms{background:#fff;color:var(--noir);border-radius:20px 20px 20px 6px;padding:16px 22px;font-size:21px;font-weight:600;max-width:370px;line-height:1.35}
 .sms.right{border-radius:20px 20px 6px 20px;background:#e9e2d2}
+.vocal{background:var(--noir-card);color:var(--creme);width:340px;padding:18px 20px;border:1px solid rgba(242,237,227,.14);display:flex;align-items:center;gap:14px}
+.vocal .pl{width:46px;height:46px;border-radius:50%;background:var(--vert);color:#0d3b25;display:flex;align-items:center;justify-content:center;font-size:19px;flex:none}
+.vocal .bars{display:flex;align-items:flex-end;gap:3px;height:30px;flex:1}
+.vocal .bars i{width:4px;border-radius:2px;background:var(--creme-dim)}
+.vocal small{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--creme-dim)}
+.polaroid{background:#fff;padding:12px 12px 14px;width:255px;box-shadow:0 26px 50px -20px rgba(0,0,0,.6)}
+.polaroid .ph{height:150px;background:linear-gradient(135deg,#d8d1c2 0%,#efe9db 55%,#c9c2b4 100%);position:relative;overflow:hidden}
+.polaroid .ph:after{content:"🏗️";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:54px;opacity:.85}
+.polaroid p{font-size:15px;font-weight:700;color:#3d3a34;margin-top:10px;font-style:italic}
+.tape{position:absolute;top:-13px;left:50%;transform:translateX(-50%) rotate(-4deg);width:112px;height:27px;background:rgba(255,194,26,.78)}
 .xls{background:#fff;color:var(--noir);width:400px;padding:16px}
 .xls h4{font-family:'JetBrains Mono',monospace;font-size:14px;letter-spacing:.1em;color:var(--gris);margin-bottom:10px}
 .xls table{width:100%;border-collapse:collapse}
@@ -75,7 +84,7 @@ body{font-family:'Archivo',sans-serif;color:var(--creme);-webkit-font-smoothing:
 .postit small{display:block;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;letter-spacing:.1em;color:rgba(21,18,15,.55);margin-bottom:8px}
 .tag{position:absolute;top:-16px;right:-14px;background:var(--noir);color:var(--jaune);font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700;letter-spacing:.12em;padding:7px 13px;border-radius:9px;border:1px solid rgba(255,194,26,.4)}
 
-/* ---------- ACTE 2 : le poseur (téléphone 3D) ---------- */
+/* ---------- ACTE 2 : le poseur ---------- */
 #s2{background:radial-gradient(circle at 62% 38%,#FBF8F2 0%,var(--creme) 55%,#e6dfcf 100%);color:var(--noir)}
 .phoneWrap{position:absolute;left:880px;top:52px;width:600px;perspective:1700px}
 .phone{width:600px;background:#0d0b09;border-radius:60px;padding:16px;box-shadow:0 80px 140px -50px rgba(21,18,15,.62),0 40px 90px -40px rgba(139,108,242,.18);transform-style:preserve-3d;position:relative}
@@ -101,6 +110,12 @@ body{font-family:'Archivo',sans-serif;color:var(--creme);-webkit-font-smoothing:
 .chip.dark .k{color:var(--creme-dim)}
 .chip.dark .v{color:var(--jaune)}
 .notice{background:rgba(255,194,26,.18);border:1px solid rgba(255,194,26,.5);color:#7a6110;border-radius:11px;font-size:17px;font-weight:700;padding:11px 16px;margin-bottom:14px}
+.mealrow{display:flex;align-items:center;gap:12px;background:#fff;border:2.5px solid rgba(21,18,15,.1);border-radius:15px;padding:12px 16px;margin-bottom:13px}
+.mealrow .em{font-size:25px}
+.mealrow b{font-size:19px;display:block}
+.mealrow small{font-size:14px;color:var(--gris);font-weight:600}
+.mealrow .sw{margin-left:auto;width:58px;height:33px;border-radius:99px;background:var(--jaune);position:relative;flex:none;box-shadow:inset 0 0 0 2px rgba(21,18,15,.08)}
+.mealrow .sw:after{content:"";position:absolute;top:3px;right:3px;width:27px;height:27px;border-radius:50%;background:#fff;box-shadow:0 2px 6px rgba(21,18,15,.25)}
 .ybtn{width:100%;background:var(--jaune);color:var(--noir);border:none;border-radius:17px;font-family:'Archivo',sans-serif;font-weight:900;font-size:26px;padding:22px;box-shadow:0 6px 0 var(--jaune-ombre);margin-top:auto}
 .ybtn.ok{background:var(--vert);color:#0d3b25;box-shadow:0 6px 0 #1F7A4D}
 .steps{position:absolute;left:140px;top:210px}
@@ -117,9 +132,36 @@ body{font-family:'Archivo',sans-serif;color:var(--creme);-webkit-font-smoothing:
 .ping{position:absolute;width:60px;height:60px;border-radius:50%;border:4px solid var(--jaune);z-index:7}
 .flydot{position:absolute;width:30px;height:30px;border-radius:50%;background:var(--jaune);box-shadow:0 0 0 9px rgba(255,194,26,.28),0 0 44px rgba(255,194,26,.75);z-index:9}
 .trail i{position:absolute;border-radius:50%;background:var(--jaune);z-index:8;pointer-events:none}
+.sat{position:absolute;background:#fff;border-radius:15px;box-shadow:0 26px 54px -18px rgba(21,18,15,.38);padding:14px 19px;display:flex;align-items:center;gap:12px;color:var(--noir);z-index:6}
+.sat b{font-size:17px;display:block}
+.sat small{display:block;font-size:13px;color:var(--gris);font-weight:600}
+.sat .ic{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:19px;flex:none}
+.ring{position:absolute;border:3px solid rgba(255,194,26,.30);border-radius:50%;pointer-events:none}
+.phbg{position:absolute;border-radius:50%;pointer-events:none;background:radial-gradient(closest-side,rgba(21,18,15,.15),transparent 70%)}
 
-/* ---------- ACTES 3-4 : le bureau ---------- */
+/* ---------- SCÈNE JONCTION : terrain ✕ bureau ---------- */
+#sj{background:radial-gradient(circle at 50% 46%,#251d12 0%,#181410 55%,var(--noir) 85%)}
+.jphone{position:absolute;top:280px;width:290px;background:#0d0b09;border-radius:38px;padding:11px;box-shadow:0 60px 110px -40px rgba(0,0,0,.7)}
+.jphone .scr{background:var(--creme);border-radius:29px;height:560px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;color:var(--noir)}
+.jphone .ok{width:88px;height:88px;border-radius:50%;background:var(--vert);color:#fff;font-size:42px;font-weight:900;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 30px -8px rgba(47,213,132,.6)}
+.jphone .h{font-family:'JetBrains Mono',monospace;font-size:40px;font-weight:700}
+.jphone small{font-size:17px;font-weight:700;color:var(--gris)}
+.jwin{position:absolute;top:305px;width:560px;background:#fff;border-radius:18px;overflow:hidden;box-shadow:0 60px 120px -40px rgba(0,0,0,.7);color:var(--noir)}
+.jwin .top{background:var(--noir);display:flex;align-items:center;gap:10px;padding:13px 18px}
+.jwin .top i{width:11px;height:11px;border-radius:50%;background:#3a332b}
+.jwin .top b{color:var(--creme);font-size:16px;margin-left:6px}
+.jwin .top b em{color:var(--jaune);font-style:normal}
+.jwin .bd{padding:16px 18px;display:flex;flex-direction:column;gap:10px}
+.jwin .r{height:52px;border-radius:10px;display:flex;align-items:center;padding:0 14px;font-weight:800;font-size:15px}
+.jlab{position:absolute;font-family:'JetBrains Mono',monospace;font-size:17px;font-weight:700;letter-spacing:.32em;color:var(--creme-dim)}
+.jlink{position:absolute;height:10px;border-radius:6px;background:linear-gradient(90deg,var(--vert),var(--jaune));transform-origin:left center;box-shadow:0 0 26px rgba(255,194,26,.45)}
+.jp{position:absolute;width:16px;height:16px;border-radius:50%;background:var(--jaune);box-shadow:0 0 18px rgba(255,194,26,.85)}
+.jshock{position:absolute;border:5px solid rgba(255,194,26,.6);border-radius:50%}
+
+/* ---------- ACTES 4-5 : le bureau ---------- */
 #s3{background:radial-gradient(circle at 42% 34%,#FBF8F2 0%,var(--creme) 55%,#e4ddcc 100%);color:var(--noir)}
+.bmk{position:absolute;left:50%;top:836px;transform:translateX(-50%);font-weight:900;font-size:230px;letter-spacing:.02em;color:rgba(21,18,15,.055);white-space:nowrap;pointer-events:none;line-height:1}
+.bmk em{font-style:normal;color:rgba(201,147,0,.14)}
 .winWrap{position:absolute;left:50%;top:56px;width:1720px;transform:translateX(-50%);perspective:2100px}
 .win{background:#fff;border-radius:24px;overflow:hidden;box-shadow:0 80px 150px -55px rgba(21,18,15,.55),0 50px 110px -45px rgba(242,90,155,.14),0 60px 120px -50px rgba(139,108,242,.14);transform-style:preserve-3d}
 .win-top{background:var(--noir);display:flex;align-items:center;gap:18px;padding:20px 28px}
@@ -150,13 +192,25 @@ body{font-family:'Archivo',sans-serif;color:var(--creme);-webkit-font-smoothing:
 .c-viol{background:#E6E0FB;color:#4b3d8f;border-color:#8B6CF2}
 .c-vert{background:#D6F4E1;color:#1F7A4D;border-color:#2FD584}
 .c-jaun{background:#FBEDBE;color:#7a6110;border-color:#FFC21A}
+.c-oran{background:#FFE3D1;color:#a34a12;border-color:#FF7A3D}
 .c-off{background:repeating-linear-gradient(45deg,#efe9db 0 10px,#e4dccc 10px 20px);color:#8b8371;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px}
 .c-plus{border:2px dashed #d8d1c2;background:transparent;display:flex;align-items:center;justify-content:center;color:#c4bcaa;font-size:22px}
+.cardstack{position:relative;padding:0;border:none;background:transparent}
+.cardstack .card{position:absolute;inset:0;margin:0}
+.c-alert{background:#FBE3DC;color:#a03415;border-color:#C0461F}
+.c-alert .rl{display:inline-block;background:var(--jaune);color:var(--noir);font-weight:800;font-size:12.5px;padding:4px 11px;border-radius:7px;box-shadow:0 2px 0 var(--jaune-ombre)}
+.c-dark{background:var(--noir);color:var(--creme);border-color:var(--noir)}
+.c-dark small{font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--creme-dim);letter-spacing:.05em;display:block;margin-top:6px}
 .livechip{position:absolute;top:-15px;right:-10px;background:var(--noir);color:var(--jaune);font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;padding:7px 12px;border-radius:9px;white-space:nowrap;box-shadow:0 10px 22px -8px rgba(21,18,15,.5);z-index:3}
 .menu{position:absolute;background:#fff;border-radius:14px;box-shadow:0 30px 60px -20px rgba(21,18,15,.45);border:1px solid rgba(21,18,15,.1);padding:8px;width:360px;z-index:6}
 .menu .mi{padding:14px 17px;border-radius:10px;font-weight:800;font-size:19px;color:var(--noir)}
 .menu .mi small{display:block;font-size:14px;color:var(--gris);font-weight:600}
 .menu .mi.hl2{background:rgba(255,194,26,.22)}
+.toast{position:absolute;background:#fff;border-radius:15px;box-shadow:0 28px 56px -18px rgba(21,18,15,.42);padding:14px 20px 14px 14px;display:flex;align-items:center;gap:13px;color:var(--noir);z-index:7}
+.toast .bar{width:7px;align-self:stretch;border-radius:5px;flex:none}
+.toast .em{font-size:23px}
+.toast b{font-size:17px;display:block}
+.toast small{font-size:13.5px;color:var(--gris);font-weight:600}
 .hourfly{position:absolute;background:var(--noir);color:var(--jaune);font-family:'JetBrains Mono',monospace;font-weight:700;font-size:19px;padding:8px 14px;border-radius:10px;z-index:7;box-shadow:0 12px 26px -8px rgba(21,18,15,.5)}
 .doc{position:absolute;left:50%;top:250px;width:560px;transform:translateX(-50%);background:#fff;border-radius:22px;box-shadow:0 70px 130px -45px rgba(21,18,15,.6),0 40px 90px -40px rgba(47,213,132,.15);padding:30px;color:var(--noir);z-index:8}
 .doc .dh{display:flex;align-items:center;gap:15px;border-bottom:2px solid rgba(21,18,15,.1);padding-bottom:17px;margin-bottom:17px}
@@ -169,8 +223,9 @@ body{font-family:'Archivo',sans-serif;color:var(--creme);-webkit-font-smoothing:
 .stamp small{display:block;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;letter-spacing:.16em}
 .ruban{height:15px;background:repeating-linear-gradient(45deg,var(--noir) 0 14px,var(--jaune) 14px 28px)}
 
-/* ---------- ACTE 5 : CTA ---------- */
+/* ---------- ACTE 6 : CTA ---------- */
 #s5{background:radial-gradient(circle at 50% 40%,#251d12 0%,#181410 55%,var(--noir) 85%)}
+.beam{position:absolute;width:2600px;height:360px;left:-2600px;top:330px;pointer-events:none;background:linear-gradient(90deg,transparent,rgba(255,194,26,.11),transparent);transform:rotate(-7deg);z-index:1}
 .wordmark{position:absolute;left:50%;top:270px;transform:translateX(-50%);font-weight:900;font-size:210px;letter-spacing:.045em;color:var(--creme);white-space:nowrap;line-height:1}
 .wordmark .y{color:var(--jaune)}
 .wordmark span{display:inline-block}
@@ -182,55 +237,9 @@ body{font-family:'Archivo',sans-serif;color:var(--creme);-webkit-font-smoothing:
 .url{position:absolute;left:50%;top:918px;transform:translateX(-50%);font-family:'JetBrains Mono',monospace;font-size:32px;font-weight:700;color:var(--creme);letter-spacing:.14em}
 .url .y{color:var(--jaune)}
 
-/* ---------- fils du chaos, satellites, toasts, X flottants ---------- */
-#strings{position:absolute;inset:0;pointer-events:none}
-#strings path{fill:none;stroke-width:3.5;stroke-linecap:round;stroke-dasharray:100;stroke-dashoffset:100;opacity:0}
-.vocal{background:var(--noir-card);color:var(--creme);width:340px;padding:18px 20px;border:1px solid rgba(242,237,227,.14);display:flex;align-items:center;gap:14px}
-.vocal .pl{width:46px;height:46px;border-radius:50%;background:var(--vert);color:#0d3b25;display:flex;align-items:center;justify-content:center;font-size:19px;flex:none}
-.vocal .bars{display:flex;align-items:flex-end;gap:3px;height:30px;flex:1}
-.vocal .bars i{width:4px;border-radius:2px;background:var(--creme-dim)}
-.vocal small{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--creme-dim)}
-.polaroid{background:#fff;padding:12px 12px 14px;width:255px;box-shadow:0 26px 50px -20px rgba(0,0,0,.6)}
-.polaroid .ph{height:150px;background:linear-gradient(135deg,#d8d1c2 0%,#efe9db 55%,#c9c2b4 100%);position:relative;overflow:hidden}
-.polaroid .ph:after{content:"🏗️";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:54px;opacity:.85}
-.polaroid p{font-size:15px;font-weight:700;color:#3d3a34;margin-top:10px;font-style:italic}
-.tape{position:absolute;top:-13px;left:50%;transform:translateX(-50%) rotate(-4deg);width:112px;height:27px;background:rgba(255,194,26,.78)}
-.sat{position:absolute;background:#fff;border-radius:15px;box-shadow:0 26px 54px -18px rgba(21,18,15,.38);padding:14px 19px;display:flex;align-items:center;gap:12px;color:var(--noir);z-index:6}
-.sat b{font-size:17px;display:block}
-.sat small{display:block;font-size:13px;color:var(--gris);font-weight:600}
-.sat .ic{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:19px;flex:none}
-.ring{position:absolute;border:3px solid rgba(255,194,26,.30);border-radius:50%;pointer-events:none}
-.phbg{position:absolute;border-radius:50%;pointer-events:none;background:radial-gradient(closest-side,rgba(21,18,15,.15),transparent 70%)}
-.xf{position:absolute;pointer-events:none}
-.xf i{position:absolute;left:50%;top:50%;width:26%;height:122%;border-radius:22px;transform:translate(-50%,-50%) rotate(24deg)}
-.xf i+i{transform:translate(-50%,-50%) rotate(-24deg)}
-.mealrow{display:flex;align-items:center;gap:12px;background:#fff;border:2.5px solid rgba(21,18,15,.1);border-radius:15px;padding:12px 16px;margin-bottom:13px}
-.mealrow .em{font-size:25px}
-.mealrow b{font-size:19px;display:block}
-.mealrow small{font-size:14px;color:var(--gris);font-weight:600}
-.mealrow .sw{margin-left:auto;width:58px;height:33px;border-radius:99px;background:var(--jaune);position:relative;flex:none;box-shadow:inset 0 0 0 2px rgba(21,18,15,.08)}
-.mealrow .sw:after{content:"";position:absolute;top:3px;right:3px;width:27px;height:27px;border-radius:50%;background:#fff;box-shadow:0 2px 6px rgba(21,18,15,.25)}
-.toast{position:absolute;background:#fff;border-radius:15px;box-shadow:0 28px 56px -18px rgba(21,18,15,.42);padding:14px 20px 14px 14px;display:flex;align-items:center;gap:13px;color:var(--noir);z-index:7}
-.toast .bar{width:7px;align-self:stretch;border-radius:5px;flex:none}
-.toast .em{font-size:23px}
-.toast b{font-size:17px;display:block}
-.toast small{font-size:13.5px;color:var(--gris);font-weight:600}
-.cardstack{position:relative;padding:0;border:none;background:transparent}
-.cardstack .card{position:absolute;inset:0;margin:0}
-.c-alert{background:#FBE3DC;color:#a03415;border-color:#C0461F}
-.c-alert .rl{display:inline-block;background:var(--jaune);color:var(--noir);font-weight:800;font-size:12.5px;padding:4px 11px;border-radius:7px;box-shadow:0 2px 0 var(--jaune-ombre)}
-.c-dark{background:var(--noir);color:var(--creme);border-color:var(--noir)}
-.c-dark small{font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--creme-dim);letter-spacing:.05em;display:block;margin-top:6px}
-.c-oran{background:#FFE3D1;color:#a34a12;border-color:#FF7A3D}
-.beam{position:absolute;width:2600px;height:360px;left:-2600px;top:330px;pointer-events:none;background:linear-gradient(90deg,transparent,rgba(255,194,26,.11),transparent);transform:rotate(-7deg);z-index:1}
-
-/* ---------- transitions & impacts ---------- */
+/* ---------- transitions & habillage ---------- */
 #wipe{position:absolute;top:-620px;left:0;width:3400px;height:2400px;z-index:30;background:repeating-linear-gradient(45deg,var(--noir) 0 46px,var(--jaune) 46px 92px);transform:rotate(-12deg);visibility:hidden}
-#iris{position:absolute;left:0;top:0;width:2600px;height:2600px;border-radius:50%;background:var(--jaune);z-index:30;visibility:hidden;box-shadow:0 0 200px rgba(255,194,26,.7)}
 #blackout{position:absolute;inset:0;background:#0b0908;z-index:28;visibility:hidden}
-.confetti i{position:absolute;width:16px;height:22px;border-radius:4px;z-index:26;pointer-events:none}
-
-/* ---------- habillage lecteur ---------- */
 #chrome{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);display:flex;align-items:center;gap:16px;background:rgba(21,18,15,.92);border:1px solid rgba(242,237,227,.16);border-radius:16px;padding:12px 18px;z-index:50}
 #chrome button{background:var(--jaune);color:var(--noir);border:none;border-radius:10px;width:44px;height:40px;font-size:18px;font-weight:900;cursor:pointer}
 #chrome .tm{font-family:'JetBrains Mono',monospace;font-size:14px;color:var(--creme);min-width:110px;text-align:center}
@@ -248,13 +257,13 @@ body{font-family:'Archivo',sans-serif;color:var(--creme);-webkit-font-smoothing:
   <section class="scene" id="s1">
     <div class="glow" id="g1a" style="background:radial-gradient(circle,rgba(255,194,26,.13),transparent 62%)"></div>
     <div class="glow" id="g1b" style="background:radial-gradient(circle,rgba(192,70,31,.12),transparent 62%)"></div>
-    <div class="xmark x-dark" id="s1x" style="left:580px;top:160px"><i></i><i></i></div>
+    <div class="xg" id="s1x" style="left:600px;top:70px;font-size:960px;color:rgba(255,194,26,.035)">X</div>
     <div class="texchantier"></div>
     <div class="dust" id="dust1"></div>
     <div class="kicker" id="s1k" style="top:88px">Suivi de chantier · aujourd'hui</div>
     <div class="h-big" id="s1h1" style="top:158px;font-size:92px">
       <span class="w">Suivre</span> <span class="w">un</span> <span class="w">chantier,</span><br>
-      <span class="w">c'est</span> <span class="w">jongler</span> <span class="w">avec</span> <span class="w"><span class="hl y"><em id="hl1"></em>dix outils</span>.</span>
+      <span class="w">c'est</span> <span class="w">jongler</span> <span class="w">avec</span> <span class="w"><span class="hl y"><em id="hl1"></em>dix outils.</span></span>
     </div>
     <div class="h-big" id="s1h2" style="top:190px;font-size:84px">
       <span class="w">Et</span> <span class="w">l'info</span> <span class="w"><span class="hl y"><em id="hl2"></em>se perd</span></span><br>
@@ -275,8 +284,14 @@ body{font-family:'Archivo',sans-serif;color:var(--creme);-webkit-font-smoothing:
     <div class="glow" id="g2a" style="background:radial-gradient(circle,rgba(255,194,26,.2),transparent 62%)"></div>
     <div class="glow" id="g2b" style="background:radial-gradient(circle,rgba(242,90,155,.10),transparent 62%)"></div>
     <div class="glow" id="g2c" style="background:radial-gradient(circle,rgba(139,108,242,.09),transparent 62%)"></div>
-    <div class="xmark x-cream" id="s2x" style="left:1150px;top:60px;width:940px;height:940px"><i></i><i></i></div>
+    <div class="xg" id="s2x" style="left:1180px;top:20px;font-size:900px;color:rgba(21,18,15,.045)">X</div>
     <div class="dust" id="dust2"></div>
+    <div class="phbg" id="phbg" style="left:690px;top:-60px;width:1000px;height:1200px"></div>
+    <div class="ring" id="ring1" style="width:860px;height:860px;left:760px;top:80px"></div>
+    <div class="xg" id="xf1" style="left:290px;top:90px;font-size:170px;color:rgba(21,18,15,.12)">X</div>
+    <div class="xg" id="xf2" style="left:1700px;top:810px;font-size:115px;color:rgba(255,194,26,.6)">X</div>
+    <div class="sat" id="sat1"><span class="ic" style="background:#FBD3E4">📍</span><div><b>Villa Lupin</b><small>Aix · 12 km</small></div></div>
+    <div class="sat" id="sat2"><span class="ic" style="background:#D6F4E1">✓</span><div><b>Journée reçue</b><small>bureau · à l'instant</small></div></div>
     <div class="steps" id="steps">
       <div class="step" id="st1"><div class="n">1</div><div class="t">Le chantier</div></div>
       <div class="step" id="st2"><div class="n">2</div><div class="t">Les heures</div></div>
@@ -285,18 +300,12 @@ body{font-family:'Archivo',sans-serif;color:var(--creme);-webkit-font-smoothing:
     <div class="sideMsg" id="m2a">
       <span class="w">Sur</span> <span class="w">le</span> <span class="w">terrain,</span><br>
       <span class="w">il</span> <span class="w">pointe</span><br>
-      <span class="w"><span class="hl y"><em id="hl3"></em>en un geste</span>.</span>
+      <span class="w"><span class="hl y"><em id="hl3"></em>en un geste.</span></span>
     </div>
     <div class="sideMsg" id="m2b">
       <span class="w">Trois</span> <span class="w">taps.</span><br>
-      <span class="w"><span class="hl g"><em id="hl4"></em>C'est envoyé</span>.</span>
+      <span class="w"><span class="hl g"><em id="hl4"></em>C'est envoyé.</span></span>
     </div>
-    <div class="phbg" id="phbg" style="left:690px;top:-60px;width:1000px;height:1200px"></div>
-    <div class="ring" id="ring1" style="width:860px;height:860px;left:760px;top:80px"></div>
-    <div class="xf" id="xf1" style="width:150px;height:150px;left:300px;top:120px"><i style="background:rgba(21,18,15,.10)"></i><i style="background:rgba(21,18,15,.10)"></i></div>
-    <div class="xf" id="xf2" style="width:96px;height:96px;left:1690px;top:820px"><i style="background:rgba(255,194,26,.65)"></i><i style="background:rgba(255,194,26,.65)"></i></div>
-    <div class="sat" id="sat1"><span class="ic" style="background:#FBD3E4">📍</span><div><b>Villa Lupin</b><small>Aix · 12 km</small></div></div>
-    <div class="sat" id="sat2"><span class="ic" style="background:#D6F4E1">✓</span><div><b>Journée reçue</b><small>bureau · à l'instant</small></div></div>
     <div class="phoneWrap"><div class="phone" id="phone">
       <div class="phone-scr">
         <div class="glare" id="glare"></div>
@@ -324,13 +333,46 @@ body{font-family:'Archivo',sans-serif;color:var(--creme);-webkit-font-smoothing:
     <div class="trail" id="trail"></div>
   </section>
 
-  <!-- ================= ACTES 3-4 · LE BUREAU ================= -->
+  <!-- ================= JONCTION · TERRAIN ✕ BUREAU ================= -->
+  <section class="scene" id="sj">
+    <div class="glow" id="gja" style="background:radial-gradient(circle,rgba(255,194,26,.15),transparent 60%)"></div>
+    <div class="glow" id="gjb" style="background:radial-gradient(circle,rgba(139,108,242,.09),transparent 62%)"></div>
+    <div class="xg" id="sjx" style="left:520px;top:80px;font-size:980px;color:rgba(255,194,26,.04)">X</div>
+    <div class="texchantier"></div>
+    <div class="dust" id="dustJ"></div>
+    <div class="h-big" id="jcap" style="top:96px;font-size:76px">
+      <span class="w">Le</span> <span class="w">terrain</span> <span class="w">et</span> <span class="w">le</span> <span class="w">bureau,</span><br>
+      <span class="w">enfin</span> <span class="w"><span class="hl y"><em id="hlJ"></em>connectés.</span></span>
+    </div>
+    <div class="jphone" id="jphone">
+      <div class="scr"><div class="ok">✓</div><div class="h">7:15</div><small>Journée envoyée</small></div>
+    </div>
+    <div class="jlab" id="jlab1">TERRAIN</div>
+    <div class="jwin" id="jwin">
+      <div class="top"><i></i><i></i><i></i><b>BEME<em>X</em>O<span style="color:var(--creme-dim);font-weight:500"> · planning</span></b></div>
+      <div class="bd">
+        <div class="r" style="background:#FBD3E4;color:#8f2757">Villa Lupin — ✓ 7:15</div>
+        <div class="r" style="background:#E6E0FB;color:#4b3d8f">Rés. Les Cèdres — ✓ 6:45</div>
+        <div class="r" style="background:#D6F4E1;color:#1F7A4D">Maison Dubois — ✓ 7:00</div>
+        <div class="r" style="background:#FBEDBE;color:#7a6110">Chantier Bellevue — planifié</div>
+      </div>
+    </div>
+    <div class="jlab" id="jlab2">BUREAU</div>
+    <div class="jlink" id="jlink"></div>
+    <div class="jp" id="jp0"></div><div class="jp" id="jp1"></div><div class="jp" id="jp2"></div>
+    <div class="jshock" id="jshock"></div>
+    <div class="xg" id="jx" style="font-size:150px;color:var(--jaune);left:895px;top:455px;text-shadow:0 0 60px rgba(255,194,26,.8)">X</div>
+    <div class="vignette"></div>
+  </section>
+
+  <!-- ================= ACTES 4-5 · LE BUREAU ================= -->
   <section class="scene" id="s3">
     <div class="glow" id="g3a" style="background:radial-gradient(circle,rgba(255,194,26,.17),transparent 62%)"></div>
     <div class="glow" id="g3b" style="background:radial-gradient(circle,rgba(47,213,132,.10),transparent 62%)"></div>
     <div class="glow" id="g3c" style="background:radial-gradient(circle,rgba(242,90,155,.09),transparent 62%)"></div>
-    <div class="xmark x-cream" id="s3x" style="left:-180px;top:320px;width:860px;height:860px"><i></i><i></i></div>
+    <div class="xg" id="s3x" style="left:-130px;top:260px;font-size:840px;color:rgba(21,18,15,.04)">X</div>
     <div class="dust" id="dust3"></div>
+    <div class="bmk" id="bmk">BEME<em>X</em>O</div>
     <div class="winWrap"><div class="win" id="win">
       <div class="win-top">
         <span class="wm">BEME<b>X</b>O</span>
@@ -364,7 +406,6 @@ body{font-family:'Archivo',sans-serif;color:var(--creme);-webkit-font-smoothing:
       <div id="docrows"></div>
       <div class="stamp" id="stamp"><small>BEMEXO</small>PRÊT POUR LA PAIE</div>
     </div>
-    <div class="flydot" id="dotIn"></div>
     <div class="finger" id="finger2"></div>
     <div class="ping" id="ping2"></div>
     <div class="cap" id="s3c1">Au bureau, tout remonte <span class="y">automatiquement</span>.</div>
@@ -373,7 +414,7 @@ body{font-family:'Archivo',sans-serif;color:var(--creme);-webkit-font-smoothing:
     <div class="cap" id="s4c2">Des heures propres, <span class="y">prêtes à l'emploi</span>.</div>
   </section>
 
-  <!-- ================= ACTE 5 · CTA ================= -->
+  <!-- ================= ACTE 6 · CTA ================= -->
   <section class="scene" id="s5">
     <div class="glow" id="g5a" style="background:radial-gradient(circle,rgba(255,194,26,.14),transparent 60%)"></div>
     <div class="glow" id="g5b" style="background:radial-gradient(circle,rgba(242,90,155,.07),transparent 62%)"></div>
@@ -381,12 +422,12 @@ body{font-family:'Archivo',sans-serif;color:var(--creme);-webkit-font-smoothing:
     <div class="texchantier"></div>
     <div class="dust" id="dust5"></div>
     <div class="beam" id="beam"></div>
-    <div class="xf" id="xf5a" style="width:260px;height:260px;left:150px;top:640px"><i style="background:rgba(255,194,26,.10)"></i><i style="background:rgba(255,194,26,.10)"></i></div>
-    <div class="xf" id="xf5b" style="width:150px;height:150px;left:1620px;top:150px"><i style="background:rgba(242,237,227,.09)"></i><i style="background:rgba(242,237,227,.09)"></i></div>
-    <div class="xf" id="xf5c" style="width:110px;height:110px;left:1500px;top:800px"><i style="background:rgba(242,90,155,.13)"></i><i style="background:rgba(242,90,155,.13)"></i></div>
+    <div class="xg" id="xf5a" style="left:130px;top:620px;font-size:300px;color:rgba(255,194,26,.10)">X</div>
+    <div class="xg" id="xf5b" style="left:1620px;top:120px;font-size:190px;color:rgba(242,237,227,.09)">X</div>
+    <div class="xg" id="xf5c" style="left:1520px;top:800px;font-size:130px;color:rgba(242,90,155,.13)">X</div>
     <div class="h-big" id="s5b" style="top:380px;font-size:96px">
       <span class="w">Moins</span> <span class="w">de</span> <span class="w">temps</span> <span class="w">perdu.</span><br>
-      <span class="w">Plus</span> <span class="w">de</span> <span class="w">temps</span> <span class="w">pour</span> <span class="w"><span class="hl y"><em id="hl5"></em>construire</span>.</span>
+      <span class="w">Plus</span> <span class="w">de</span> <span class="w">temps</span> <span class="w">pour</span> <span class="w"><span class="hl y"><em id="hl5"></em>construire.</span></span>
     </div>
     <div class="wordmark" id="wm"><span>B</span><span>E</span><span>M</span><span>E</span><span class="y">X</span><span>O</span></div>
     <div class="shine" id="wmshine">BEMEXO</div>
@@ -398,12 +439,8 @@ body{font-family:'Archivo',sans-serif;color:var(--creme);-webkit-font-smoothing:
   </section>
 
 </div><!-- /cam -->
-
-  <!-- transitions + impacts (hors caméra) -->
   <div id="blackout"></div>
-  <div class="confetti" id="conf"></div>
   <div id="wipe"></div>
-  <div id="iris"></div>
   <div id="grain"></div>
 </div>
 
@@ -439,7 +476,6 @@ function io(el,t,tin,tout,{dy=46,din=.8,dout=.5,sc=null,e=expo}={}){
   el.style.visibility=o<=0.001?'hidden':'visible';
   return o;
 }
-/* pilule : révélation au balayage (clip) */
 function capIn(el,t,tin,tout){
   const pi=quint(P(t,tin,tin+.65)), po=P(t,tout,tout+.5);
   const o=(pi>0?1:0)*(1-po);
@@ -448,7 +484,6 @@ function capIn(el,t,tin,tout){
   el.style.transform=`translateX(-50%) translateY(${(1-pi)*22-po*20}px)`;
   el.style.visibility=o<=0.001?'hidden':'visible';
 }
-/* typo cinétique : les mots claquent un à un */
 function slam(el,t,t0,{step=.11,dur=.5,out=null}={}){
   const words=el.querySelectorAll('.w');
   let vis=0;
@@ -464,7 +499,6 @@ function slam(el,t,t0,{step=.11,dur=.5,out=null}={}){
   return vis;
 }
 function hlSweep(em,t,t0,dur=.45){em.style.transform=`scaleX(${quint(P(t,t0,t0+dur))})`}
-/* poussière flottante */
 function makeDust(el,n,dark){
   let h='';
   for(let i=0;i<n;i++){
@@ -474,7 +508,7 @@ function makeDust(el,n,dark){
   }
   el.innerHTML=h;
 }
-['dust1','dust2','dust3','dust5'].forEach((id,k)=>makeDust($(id),22,id==='dust1'||id==='dust5'));
+['dust1','dust2','dustJ','dust3','dust5'].forEach(id=>makeDust($(id),22,id!=='dust2'&&id!=='dust3'));
 function dust(el,t){
   [...el.children].forEach((d,i)=>{
     const spd=8+rnd(i+7)*20;
@@ -484,30 +518,16 @@ function dust(el,t){
     d.style.opacity=.25+.5*Math.abs(Math.sin(t*.8+i*2));
   });
 }
-/* halos dérivants */
 function drift(el,t,x,y,ax,ay,sp,ph){el.style.transform=`translate(${x+Math.sin(t*sp+ph)*ax}px,${y+Math.cos(t*sp*.8+ph)*ay}px)`}
-/* confettis (18 pièces réutilisées par salve) */
-const conf=$('conf');
-for(let i=0;i<18;i++){const p=document.createElement('i');p.style.background=KIT[i%5];conf.appendChild(p)}
-function burst(t,t0,cx,cy,pow=560){
-  const life=1.25;
-  [...conf.children].forEach((p,i)=>{
-    const dt=t-t0-rnd(i+11)*.06;
-    if(dt<=0||dt>life){p.style.visibility='hidden';return}
-    p.style.visibility='visible';
-    const ang=rnd(i)*Math.PI*2, v=pow*(.45+rnd(i+5)*.8);
-    const x=cx+Math.cos(ang)*v*dt, y=cy+Math.sin(ang)*v*dt*.8+520*dt*dt;
-    p.style.transform=`translate(${x}px,${y}px) rotate(${dt*(300+rnd(i+9)*500)*(i%2?1:-1)}deg)`;
-    p.style.opacity=1-P(dt,life*.55,life);
-  });
-}
-const BURSTS=[]; /* remplie par render : {t0,x,y,pow} actifs */
-/* secousses d'impact */
-const SHAKES=[{t0:17.0,a:9},{t0:32.9,a:5},{t0:68.9,a:11},{t0:89.95,a:13}];
+const SHAKES=[{t0:16.1,a:9},{t0:29.75,a:5},{t0:34.78,a:10},{t0:68.9,a:11},{t0:89.95,a:13}];
 function shake(t){
   let dx=0,dy=0;
   for(const s of SHAKES){const dt=t-s.t0;if(dt>0&&dt<.55){const d=s.a*Math.exp(-dt*7);dx+=Math.sin(dt*73)*d;dy+=Math.cos(dt*91)*d*.7}}
   return[dx,dy];
+}
+function press(el,t,t0,base){
+  const p=P(t,t0,t0+.16), q=P(t,t0+.16,t0+.34);
+  el.style.transform=(base||'')+` scale(${1-.05*(p<1?p:(1-q))})`;
 }
 function moveAlong(el,t,pts){
   if(t<pts[0].t||t>pts[pts.length-1].t+2){el.style.visibility='hidden';return}
@@ -528,36 +548,36 @@ function pingAt(el,t,t0,x,y){
 /* ---------- données acte 1 ---------- */
 const CHAOS=[
  {x:120,y:390,r:-7,in:2.4,fx:-900,badge:null, html:`<div class="chaos note"><span class="tag">PAPIER</span><h4>Semaine 28 — heures</h4><div class="l" style="width:82%"></div><div class="l" style="width:65%"></div><div class="l" style="width:74%"></div><div class="scrib">mardi : 7h30… ou 7h ?<br>+ panier ?? à vérifier</div></div>`},
- {x:1430,y:388,r:5,in:3.1,fx:900,badge:9, html:`<div class="chaos sms"><span class="tag">SMS</span>Tu finis à quelle heure sur Lupin ?</div>`},
- {x:770,y:452,r:2,in:3.9,fx:0,badge:2, html:`<div class="chaos vocal"><span class="tag">VOCAL</span><span class="pl">▶</span><div class="bars">${Array.from({length:22},(_,k)=>`<i style="height:${6+Math.round(Math.abs(Math.sin(k*1.7))*22)}px"></i>`).join('')}</div><small>0:47</small></div>`},
- {x:1330,y:565,r:-3,in:4.5,fx:900,badge:null, html:`<div class="chaos sms right">jsuis passé sur l'autre chantier là</div>`},
- {x:965,y:598,r:5,in:5.1,fx:300,badge:null, html:`<div class="chaos polaroid"><span class="tape"></span><div class="ph"></div><p>réception ? mardi ?? — à classer</p></div>`},
- {x:510,y:678,r:3,in:5.7,fx:-600,badge:null, html:`<div class="chaos xls"><span class="tag">TABLEUR</span><h4>POINTAGES_JUIL_V3_final(2).xlsx</h4><table><tr><td>Karim</td><td>7,5</td><td class="err">#REF!</td></tr><tr><td>Mehdi</td><td class="err">??</td><td>6</td></tr><tr><td>Sofia</td><td>7</td><td class="err">#N/A</td></tr></table></div>`},
- {x:1210,y:762,r:-5,in:6.2,fx:700,badge:9, html:`<div class="chaos tel"><span class="tag">APPELS</span><div class="ic">📞</div><div><b>Bureau</b><span>3 appels manqués</span></div></div>`},
- {x:212,y:715,r:8,in:6.8,fx:-800,badge:null, html:`<div class="postit"><small>À NE PAS OUBLIER</small>Relancer Lucas pour ses heures de mardi !!</div>`},
+ {x:1430,y:388,r:5,in:3.0,fx:900,badge:9, html:`<div class="chaos sms"><span class="tag">SMS</span>Tu finis à quelle heure sur Lupin ?</div>`},
+ {x:770,y:452,r:2,in:3.6,fx:0,badge:2, html:`<div class="chaos vocal"><span class="tag">VOCAL</span><span class="pl">▶</span><div class="bars">${Array.from({length:22},(_,k)=>`<i style="height:${6+Math.round(Math.abs(Math.sin(k*1.7))*22)}px"></i>`).join('')}</div><small>0:47</small></div>`},
+ {x:1330,y:565,r:-3,in:4.2,fx:900,badge:null, html:`<div class="chaos sms right">jsuis passé sur l'autre chantier là</div>`},
+ {x:965,y:598,r:5,in:4.8,fx:300,badge:null, html:`<div class="chaos polaroid"><span class="tape"></span><div class="ph"></div><p>réception ? mardi ?? — à classer</p></div>`},
+ {x:510,y:678,r:3,in:5.3,fx:-600,badge:null, html:`<div class="chaos xls"><span class="tag">TABLEUR</span><h4>POINTAGES_JUIL_V3_final(2).xlsx</h4><table><tr><td>Karim</td><td>7,5</td><td class="err">#REF!</td></tr><tr><td>Mehdi</td><td class="err">??</td><td>6</td></tr><tr><td>Sofia</td><td>7</td><td class="err">#N/A</td></tr></table></div>`},
+ {x:1210,y:762,r:-5,in:5.8,fx:700,badge:9, html:`<div class="chaos tel"><span class="tag">APPELS</span><div class="ic">📞</div><div><b>Bureau</b><span>3 appels manqués</span></div></div>`},
+ {x:212,y:715,r:8,in:6.3,fx:-800,badge:null, html:`<div class="postit"><small>À NE PAS OUBLIER</small>Relancer Lucas pour ses heures de mardi !!</div>`},
 ];
 const wrap=$('chaosWrap');
 CHAOS.forEach((c,i)=>{
   const d=document.createElement('div');d.innerHTML=c.html;const el=d.firstChild;
   el.style.left=c.x+'px';el.style.top=c.y+'px';el.style.position='absolute';el.id='ch'+i;
-  if(c.badge){const b=document.createElement('span');b.className='badge';b.id='bd'+i;b.textContent=c.badge;el.appendChild(b)}
+  if(c.badge){const b=document.createElement('span');b.className='badge';b.id='bd'+i;b.textContent='1';el.appendChild(b)}
   wrap.appendChild(el);
 });
 
-/* ---------- données actes 3-4 ---------- */
+/* ---------- données actes 4-5 ---------- */
 const DAYS=[['lun.','6'],['mar.','7'],['mer.','8'],['jeu.','9'],['ven.','10']];
 $('ghead').innerHTML='<div></div>'+DAYS.map(d=>`<div class="gh">${d[0]} ${d[1]}<small>JUIL.</small></div>`).join('');
 const ROWS=[
  {a:'KB',n:'Karim B.',c:[
    {cls:'c-rose',b:'Villa Lupin',s:'Aix',h:'07:30',st:'ok',v:'7:00'},
    {cls:'c-rose',b:'Villa Lupin',s:'Aix',h:'07:30',st:'ok',v:'7:30'},
-   {cls:'c-rose',b:'Villa Lupin',s:'Aix',h:'07:30',st:'plan',flip:44.4,v:'7:15'},
+   {cls:'c-rose',b:'Villa Lupin',s:'Aix',h:'07:30',st:'plan',flip:46.2,v:'7:15'},
    {cls:'c-rose',b:'Villa Lupin',s:'Aix',h:'07:30',st:'plan'},
    {cls:'plus'}]},
  {a:'MT',n:'Mehdi T.',c:[
    {cls:'c-viol',b:'Rés. Les Cèdres',s:'Seynod',h:'08:00',st:'ok',v:'7:30'},
    {cls:'c-vert',b:'Maison Dubois',s:'Argonay',h:'08:00',st:'ok',v:'6:00'},
-   {cls:'c-viol',b:'Rés. Les Cèdres',s:'Seynod',h:'08:00',st:'plan',flip:46.6,v:'6:45'},
+   {cls:'c-viol',b:'Rés. Les Cèdres',s:'Seynod',h:'08:00',st:'plan',flip:48.2,v:'6:45'},
    {cls:'off'},
    {cls:'c-viol',b:'Rés. Les Cèdres',s:'Seynod',h:'07:30',st:'plan'}]},
  {a:'SR',n:'Sofia R.',c:[
@@ -601,59 +621,54 @@ $('docrows').innerHTML=ROWS.map(r=>{
   const tot={KB:'21:45',MT:'20:15',SR:'22:00',LP:'19:30'}[r.a];
   return `<div class="row"><b>${r.n}</b><span>${tot} · panier ✓</span></div>`;
 }).join('')+`<div class="row"><b>Mois</b><span>verrouillé 🔒</span></div>`;
-/* heures volantes cartes → document */
 const FLY=[{x:700,y:250,v:'7:00'},{x:990,y:250,v:'7:30'},{x:1280,y:250,v:'7:15'},{x:700,y:380,v:'7:30'},{x:990,y:380,v:'6:00'},{x:1280,y:380,v:'6:45'}];
 $('flychips').innerHTML=FLY.map((f,i)=>`<span class="hourfly" id="fly${i}">${f.v}</span>`).join('');
-/* traînée du point volant */
 const trail=$('trail');
 for(let i=0;i<9;i++){const s=document.createElement('i');trail.appendChild(s)}
 
 /* ============================================================ RENDER ============================================================ */
-const scenes={s1:[0,19.7],s2:[19.5,36.0],s3:[35.95,79.3],s5:[79.0,DUR+1]};
+const scenes={s1:[0,18.7],s2:[17.9,33.8],sj:[32.8,41.5],s3:[40.3,79.3],s5:[79,DUR+1]};
 function render(t){
   for(const id in scenes){const [a,b]=scenes[id];$(id).style.visibility=(t>=a&&t<b)?'visible':'hidden'}
-  ['finger','finger2','ping1','ping2','dotOut','dotIn','doc','expmenu','win',
+  /* reset par frame de tout élément à visibilité explicite (seek-proof) */
+  ['finger','finger2','ping1','ping2','dotOut','doc','expmenu','win',
    'fly0','fly1','fly2','fly3','fly4','fly5','sat1','sat2','to1','to2','to3','meal',
    'steps','chipD','chipF','chipT','notice','m2a','m2b','s1k','s1h1','s1h2',
-   's3c1','s3c2','s4c1','s4c2','s5b','slog','cta','nocard','url',
+   's3c1','s3c2','s4c1','s4c2','s5b','slog','cta','nocard','url','jcap','jlab1','jlab2',
    'ch0','ch1','ch2','ch3','ch4','ch5','ch6','ch7'].forEach(id=>{const e=$(id);if(e)e.style.visibility='hidden'});
 
-  /* -------- caméra vivante + secousses -------- */
+  /* -------- caméra + secousses -------- */
   let cs=1,cx=0,cy=0;
-  if(t<19.7){cs=lerp(1.0,1.09,P(t,0,19));cx=lerp(0,-26,P(t,0,19))}
-  else if(t<36){cs=lerp(1.05,1.0,expo(P(t,19.5,21)))*lerp(1,1.05,P(t,24,35));cx=lerp(0,20,P(t,21,35))}
-  else if(t<79.3){cs=lerp(1.06,1.0,expo(P(t,36,37.6)))*lerp(1,1.045,P(t,40,57))*lerp(1,1.06,P(t,74,79.2));cy=lerp(0,-12,P(t,40,57))}
+  if(t<18.7){cs=lerp(1.0,1.09,P(t,0,18.4));cx=lerp(0,-26,P(t,0,18.4))}
+  else if(t<33.8){cs=lerp(1.05,1.0,expo(P(t,17.9,19.4)))*lerp(1,1.05,P(t,21,31.5));cx=lerp(0,20,P(t,19.5,32))}
+  else if(t<41.5){cs=lerp(1.0,1.07,P(t,33.8,41.3))}
+  else if(t<79.3){cs=lerp(1.07,1.0,expo(P(t,40.3,41.9)))*lerp(1,1.045,P(t,44,58))*lerp(1,1.06,P(t,74,79.2));cy=lerp(0,-12,P(t,44,58))}
   else{cs=lerp(1.05,1.0,expo(P(t,79.2,80.8)))*lerp(1,1.035,P(t,84,100))}
   const [sx,sy]=shake(t);
   $('cam').style.transform=`translate(${cx+sx}px,${cy+sy}px) scale(${cs})`;
 
-  /* -------- transitions -------- */
+  /* -------- transitions (2 balayages ruban) -------- */
   const wipe=$('wipe');
-  const wp=P(t,18.5,20.3);
-  if(wp>0&&wp<1){wipe.style.visibility='visible';wipe.style.left=`${lerp(-3600,2200,quint(wp))}px`}
+  const w1=P(t,17.2,19.0), w2=P(t,31.9,33.5);
+  const wActive=(w1>0&&w1<1)||(w2>0&&w2<1);
+  if(wActive){wipe.style.visibility='visible';wipe.style.left=`${lerp(-3600,2200,quint((w2>0&&w2<1)?w2:w1))}px`}
   else wipe.style.visibility='hidden';
-  const iris=$('iris'), ip1=P(t,34.6,35.6), ip2=P(t,35.6,36.7);
-  if(ip1>0&&ip2<1){
-    iris.style.visibility='visible';
-    const s=ip1<1?lerp(.012,1.15,quint(ip1)):lerp(1.15,0,quint(ip2));
-    iris.style.transform=`translate(${1180-1300}px,${520-1300}px) scale(${s})`;
-  } else iris.style.visibility='hidden';
   const bo=$('blackout'), bp=P(t,77.9,79.15)*(1-P(t,79.25,80.1));
   bo.style.visibility=bp>0.001?'visible':'hidden';bo.style.opacity=bp;
 
-  /* -------- ACTE 1 -------- */
-  if(t<20.6){
+  /* -------- ACTE 1 (0-18.6) -------- */
+  if(t<19.2){
     drift($('g1a'),t,120,-260,60,40,.25,0);
     drift($('g1b'),t,1150,520,80,50,.2,2);
     dust($('dust1'),t);
-    $('s1x').style.transform=`rotate(${-4+t*.22}deg) scale(${1+t*.004})`;
-    io($('s1k'),t,0.6,17.6,{dy:24});
-    slam($('s1h1'),t,1.2,{out:11.2});hlSweep($('hl1'),t,2.35);
-    if(t>11.6){slam($('s1h2'),t,11.8,{out:17.4});hlSweep($('hl2'),t,12.35)}else{$('s1h2').style.visibility='hidden'}
+    $('s1x').style.transform=`rotate(${-3+t*.2}deg)`;
+    io($('s1k'),t,0.6,16.4,{dy:24});
+    slam($('s1h1'),t,1.2,{out:10.4});hlSweep($('hl1'),t,2.35);
+    if(t>10.7){slam($('s1h2'),t,10.9,{out:16.2});hlSweep($('hl2'),t,11.45)}else{$('s1h2').style.visibility='hidden'}
     CHAOS.forEach((c,i)=>{
       const el=$('ch'+i);
       const pi=back(P(t,c.in,c.in+.8));
-      const fall=P(t,16.2+i*.12,17.2+i*.12);
+      const fall=P(t,15.3+i*.11,16.3+i*.11);
       const wob=Math.sin(t*2.1+i*1.7)*2.6, woby=Math.cos(t*1.7+i)*6;
       el.style.opacity=(pi*(1-fall*.3)).toFixed(3);
       el.style.transform=`translate(${(1-pi)*c.fx*.3}px,${(1-pi)*60+woby+fall*820}px) rotate(${c.r+wob+fall*(i%2?30:-26)}deg) scale(${.8+.2*pi})`;
@@ -661,106 +676,150 @@ function render(t){
       const bd=$('bd'+i);
       if(bd){const n=Math.min(c.badge,Math.floor(1+Math.max(0,t-c.in)*1.4));bd.textContent=n;bd.style.transform=`scale(${1+.22*Math.abs(Math.sin(t*3+i))})`}
     });
-    /* fils de confusion entre les éléments (tableau d'enquête) */
     [...$('strings').children].forEach((p,i)=>{
-      const draw=quint(P(t,7.0+i*.55,8.5+i*.55));
+      const draw=quint(P(t,6.6+i*.5,7.9+i*.5));
       p.style.strokeDashoffset=100-100*draw;
-      p.style.opacity=(draw>0?.5:0)*(1-P(t,16.1,16.8));
+      p.style.opacity=(draw>0?.5:0)*(1-P(t,15.2,15.9));
     });
   }
 
-  /* -------- ACTE 2 -------- */
-  if(t>=19&&t<36.4){
+  /* -------- ACTE 2 (18-33) -------- */
+  if(t>=17.5&&t<34.2){
     drift($('g2a'),t,980,-200,70,40,.22,1);
     drift($('g2b'),t,-180,420,60,60,.18,3);
     drift($('g2c'),t,1300,600,50,40,.2,5);
     dust($('dust2'),t);
-    $('s2x').style.transform=`rotate(${3-(t-20)*.15}deg)`;
-    const pin=expo(P(t,19.9,21.2)), pout=P(t,34.8,35.9);
+    $('s2x').style.transform=`rotate(${2-(t-18)*.14}deg)`;
+    const pin=expo(P(t,18.4,19.6)), pout=P(t,31.8,32.8);
     const ph=$('phone');
     ph.style.opacity=1-pout;
-    /* téléphone 3D : arrive incliné, flotte en continu */
     const tiltY=lerp(-24,-9,pin)+Math.sin(t*.7)*3.2;
     const tiltX=Math.cos(t*.6)*2.4;
     ph.style.transform=`translateY(${(1-pin)*640 - pout*60}px) rotateY(${tiltY}deg) rotateX(${tiltX}deg)`;
-    /* ambiance : contraste derrière le téléphone, anneau, X flottants, satellites */
+    $('glare').style.backgroundPosition=`${lerp(120,-40,P(t,19.4,26.5))}% 0`;
     $('phbg').style.opacity=pin*(1-pout);
     $('ring1').style.opacity=.65*pin*(1-pout);
     $('ring1').style.transform=`rotate(${t*4}deg) scale(${1+.02*Math.sin(t*.9)})`;
-    $('xf1').style.opacity=pin*(1-pout);
-    $('xf1').style.transform=`translateY(${Math.sin(t*.8)*16}px) rotate(${-10+t*2}deg)`;
+    $('xf1').style.opacity=pin*(1-pout)*.9;
+    $('xf1').style.transform=`translateY(${Math.sin(t*.8)*16}px) rotate(${-8+t*1.4}deg)`;
     $('xf2').style.opacity=pin*(1-pout);
-    $('xf2').style.transform=`translateY(${Math.cos(t*.7)*12}px) rotate(${8-t*1.6}deg)`;
-    const sp1=expo(P(t,22.8,23.7))*(1-P(t,33.8,34.6));
+    $('xf2').style.transform=`translateY(${Math.cos(t*.7)*12}px) rotate(${6-t*1.1}deg)`;
+    const sp1=expo(P(t,20.9,21.8))*(1-P(t,31.2,31.9));
     const sa1=$('sat1');
     sa1.style.opacity=sp1;sa1.style.visibility=sp1<=0.001?'hidden':'visible';
     sa1.style.left='560px';sa1.style.top=(298+Math.sin(t*.9)*10)+'px';
-    sa1.style.transform=`rotate(-3deg) translateY(${(1-expo(P(t,22.8,23.7)))*30}px)`;
-    const sp2=Math.min(1,back(P(t,33.9,34.5)))*(1-P(t,35.3,35.9));
+    sa1.style.transform=`rotate(-3deg) translateY(${(1-expo(P(t,20.9,21.8)))*30}px)`;
+    const sp2=Math.min(1,back(P(t,30.35,30.95)))*(1-P(t,31.7,32.3));
     const sa2=$('sat2');
     sa2.style.opacity=Math.max(0,sp2);sa2.style.visibility=sp2<=0.001?'hidden':'visible';
     sa2.style.left='1488px';sa2.style.top='716px';
-    sa2.style.transform=`rotate(3deg) scale(${.7+.3*Math.min(1.15,back(P(t,33.9,34.5)))})`;
-    $('glare').style.backgroundPosition=`${lerp(120,-40,P(t,21,29))}% 0`;
-    io($('steps'),t,20.5,34.6,{dy:40});
+    sa2.style.transform=`rotate(3deg) scale(${.7+.3*Math.min(1.15,back(P(t,30.35,30.95)))})`;
+    io($('steps'),t,18.9,31.6,{dy:40});
     const st1=$('st1'),st2=$('st2'),st3=$('st3');
-    st1.className='step'+(t<24.2?' on':' done');
-    st2.className='step'+(t<24.2?'':(t<30.2?' on':' done'));
-    st3.className='step'+(t<30.2?'':(t<33.4?' on':' done'));
-    $('site1').className='site'+(t>=23.7?' on':'');
-    io($('chipD'),t,25.4,34.6,{dy:22,sc:.85,e:back});
-    io($('chipF'),t,25.7,34.6,{dy:22,sc:.85,e:back});
-    io($('chipT'),t,26.0,34.6,{dy:22,sc:.85,e:back});
-    $('durv').textContent=fmtHM(435*expo(P(t,26.4,28.6)));
-    io($('notice'),t,28.8,34.6,{dy:16});
-    io($('meal'),t,29.7,34.6,{dy:16});
+    st1.className='step'+(t<22.3?' on':' done');
+    st2.className='step'+(t<22.3?'':(t<27.9?' on':' done'));
+    st3.className='step'+(t<27.9?'':(t<30.9?' on':' done'));
+    $('site1').className='site'+(t>=21.9?' on':'');
+    io($('chipD'),t,23.3,31.6,{dy:22,sc:.85,e:back});
+    io($('chipF'),t,23.6,31.6,{dy:22,sc:.85,e:back});
+    io($('chipT'),t,23.9,31.6,{dy:22,sc:.85,e:back});
+    $('durv').textContent=fmtHM(435*expo(P(t,24.2,26.1)));
+    io($('notice'),t,26.3,31.6,{dy:16});
+    io($('meal'),t,26.9,31.6,{dy:16});
     const sb=$('sendbtn');
-    if(t>=33.45){sb.classList.add('ok');sb.textContent='✓ Journée envoyée';}
+    if(t>=29.95){sb.classList.add('ok');sb.textContent='✓ Journée envoyée';}
     else{sb.classList.remove('ok');sb.textContent='Envoyer ma journée →';}
-    /* messages latéraux cinétiques */
-    slam($('m2a'),t,21.4,{out:28.2});hlSweep($('hl3'),t,22.5);
-    if(t>28.6){slam($('m2b'),t,28.9,{out:34.4});hlSweep($('hl4'),t,29.6)}else{$('m2b').style.visibility='hidden'}
-    /* doigt */
+    slam($('m2a'),t,19.8,{out:25.4});hlSweep($('hl3'),t,20.9);
+    if(t>26.3){slam($('m2b'),t,26.6,{out:31.4});hlSweep($('hl4'),t,27.3)}else{$('m2b').style.visibility='hidden'}
     moveAlong($('finger'),t,[
-      {t:22.2,x:1560,y:1160},{t:23.1,x:1395,y:236},{t:24.3,x:1395,y:236},
-      {t:25.2,x:1600,y:1160},{t:31.6,x:1600,y:1160},{t:32.6,x:1185,y:922},{t:33.8,x:1185,y:922},{t:34.5,x:1450,y:1170}]);
-    pingAt($('ping1'),t,23.5,1372,214);
-    pingAt($('ping1'),t,32.9,1160,898);
-    burst(t,33.0,1180,930,470);
-    /* point + traînée vers l'iris */
-    const dp=P(t,33.8,34.9);
+      {t:20.4,x:1560,y:1160},{t:21.3,x:1395,y:236},{t:22.3,x:1395,y:236},
+      {t:23.1,x:1600,y:1160},{t:28.2,x:1600,y:1160},{t:29.1,x:1185,y:922},{t:30.3,x:1185,y:922},{t:31.0,x:1450,y:1170}]);
+    pingAt($('ping1'),t,21.7,1372,214);
+    pingAt($('ping1'),t,29.75,1160,898);
+    const dp=P(t,30.8,31.9);
     const dot=$('dotOut');
-    const dx=p=>lerp(1180,1180,p), dyy=p=>lerp(900,520,p);
     if(dp>0&&dp<1){dot.style.visibility='visible';
-      const px=lerp(1180,1180,quint(dp)), py=lerp(900,520,quint(dp));
-      dot.style.left=px+'px';dot.style.top=py+'px';
-      dot.style.transform=`scale(${1+dp*1.6})`;
+      const q=quint(dp);
+      dot.style.left=lerp(1180,2060,q)+'px';
+      dot.style.top=(900 - Math.sin(dp*Math.PI)*380 - dp*160)+'px';
+      dot.style.transform=`scale(${1+dp*.8})`;
       [...trail.children].forEach((s,i)=>{
         const tp=clamp(dp-(i+1)*.055,0,1);
-        const q=quint(tp);
-        s.style.left=lerp(1180,1180,q)+14+'px';s.style.top=lerp(900,520,q)+14+'px';
+        const q2=quint(tp);
+        s.style.left=lerp(1180,2060,q2)+14+'px';s.style.top=(900 - Math.sin(tp*Math.PI)*380 - tp*160)+14+'px';
         const w=Math.max(0,10-i);s.style.width=w+'px';s.style.height=w+'px';
         s.style.opacity=tp>0?(.5-(i*.05)):0;
       });
     } else {dot.style.visibility='hidden';[...trail.children].forEach(s=>s.style.opacity=0)}
   } else {[...trail.children].forEach(s=>s.style.opacity=0)}
 
-  /* -------- ACTES 3-4 -------- */
-  if(t>=35.5&&t<79.8){
+  /* -------- JONCTION (33-41) : terrain ✕ bureau -------- */
+  if(t>=32.6&&t<41.8){
+    drift($('gja'),t,510,60,70,45,.2,0);
+    drift($('gjb'),t,-180,460,60,50,.17,2);
+    dust($('dustJ'),t);
+    $('sjx').style.transform=`rotate(${-2+(t-33)*.25}deg)`;
+    /* les deux mondes arrivent l'un vers l'autre et SE RENCONTRENT (impact 34.78) */
+    const pIn=back(P(t,33.5,34.85));
+    const exitP=quint(P(t,39.8,41.0));
+    const jp=$('jphone');
+    jp.style.left=lerp(-460,505,Math.min(1.06,pIn))+'px';
+    jp.style.opacity=1-exitP;
+    jp.style.transform=`rotate(${lerp(-9,-3,Math.min(1,pIn))}deg) translateX(${-exitP*300}px)`;
+    const jw=$('jwin');
+    jw.style.left=lerp(2380,1035,Math.min(1.06,pIn))+'px';
+    jw.style.opacity=1-P(t,40.2,41.0);
+    /* à la sortie, la fenêtre GRANDIT vers la caméra → devient le vrai planning */
+    jw.style.transform=`rotate(${lerp(7,2,Math.min(1,pIn))}deg) scale(${1+exitP*2.6}) translateY(${-exitP*60}px)`;
+    jw.style.transformOrigin='42% 40%';
+    /* onde de choc + étincelle X (la lettre du logo) à l'impact */
+    const shp=P(t,34.78,35.7);
+    const js=$('jshock');
+    if(shp>0&&shp<1){js.style.visibility='visible';
+      js.style.left='880px';js.style.top='470px';js.style.width='160px';js.style.height='160px';
+      js.style.transform=`scale(${.3+shp*4.2})`;js.style.opacity=(1-shp)*.9;
+    } else js.style.visibility='hidden';
+    const jxp=P(t,34.78,35.5);
+    const jx=$('jx');
+    jx.style.opacity=(jxp>0&&t<39.8)?Math.min(1,back(jxp)):(t>=39.8?1-exitP:0);
+    jx.style.transform=`scale(${.2+.8*back(jxp)}) rotate(${(1-back(jxp))*90}deg)`;
+    /* lien d'énergie + impulsions qui voyagent terrain → bureau */
+    const lk=$('jlink'), lkp=quint(P(t,35.1,35.7));
+    lk.style.left='800px';lk.style.top='545px';lk.style.width='230px';
+    lk.style.transform=`scaleX(${lkp})`;lk.style.opacity=(lkp>0?1:0)*(1-exitP);
+    for(let i=0;i<3;i++){
+      const el=$('jp'+i);
+      if(t<35.7||t>39.9){el.style.opacity=0;continue}
+      const ph2=((t-35.7)*.9+i*.34)%1;
+      el.style.opacity=(ph2<.85?1:0)*(1-exitP);
+      el.style.left=lerp(795,1020,ph2)+'px';el.style.top='542px';
+    }
+    /* étiquettes + titre */
+    const l1=$('jlab1'), l2=$('jlab2');
+    const lo=P(t,35.2,35.8)*(1-exitP);
+    l1.style.opacity=lo;l1.style.visibility=lo<=0.001?'hidden':'visible';l1.style.left='560px';l1.style.top='912px';
+    l2.style.opacity=lo;l2.style.visibility=lo<=0.001?'hidden':'visible';l2.style.left='1230px';l2.style.top='912px';
+    slam($('jcap'),t,35.6,{step:.12,out:39.6});hlSweep($('hlJ'),t,36.7);
+  }
+
+  /* -------- ACTES 4-5 : LE BUREAU (40-79) -------- */
+  if(t>=39.9&&t<79.8){
     drift($('g3a'),t,900,-220,70,40,.2,0);
     drift($('g3b'),t,-160,300,60,50,.17,2);
     drift($('g3c'),t,1250,560,60,40,.19,4);
     dust($('dust3'),t);
     $('s3x').style.transform=`rotate(${-2+(t-40)*.08}deg)`;
+    /* filigrane BEMEXO sous le planning (remplit le bas, marque omniprésente) */
+    $('bmk').style.transform=`translateX(-50%) translateX(${Math.sin(t*.25)*30}px)`;
     const win=$('win');
-    const win_in=expo(P(t,36.15,37.5)), wout=P(t,77.9,79.1);
+    const win_in=expo(P(t,40.45,41.75)), wout=P(t,77.9,79.1);
     win.style.opacity=(win_in*(1-wout)).toFixed(3);
     win.style.transform=`translateY(${(1-win_in)*130 - wout*30}px) rotateX(${(1-win_in)*9}deg) scale(${.95+.05*win_in})`;
     win.style.visibility=win_in<=0?'hidden':'visible';
     cardEls.forEach(el=>{
       const i=+el.dataset.idx;
-      const t0=37.4+i*.16;
-      const pi=back(P(t,t0,t0+.65));
+      const t0=41.6+i*.13;
+      const pi=back(P(t,t0,t0+.6));
       el.style.opacity=pi.toFixed(3);
       el.style.transform=`translateY(${(1-pi)*30}px) scale(${.88+.12*pi})`;
       const flip=parseFloat(el.dataset.flip||'');
@@ -771,17 +830,16 @@ function render(t){
           if(t>=flip){st.className='ok';st.textContent='✓ '+el.dataset.val;}
           else{st.className='st';st.textContent='PLANIFIÉ';}
         }
-        if(chip){const cp=P(t,flip,flip+.5)*(1-P(t,flip+3.2,flip+3.8));chip.style.opacity=cp.toFixed(3);
+        if(chip){const cp=P(t,flip,flip+.5)*(1-P(t,flip+3.0,flip+3.6));chip.style.opacity=cp.toFixed(3);
           chip.style.transform=`translateY(${(1-back(P(t,flip,flip+.5)))*10}px)`}
         const ring=P(t,flip-.5,flip+.4);
         el.style.boxShadow=(ring>0&&ring<1)?`0 0 0 ${ring*16}px rgba(255,194,26,${.55*(1-ring)})`:'none';
       }
     });
-    $('rtchip').style.opacity=P(t,37.6,38.4);
+    $('rtchip').style.opacity=P(t,41.9,42.7);
     $('rtchip').querySelector('i').style.transform=`scale(${1+.4*Math.abs(Math.sin(t*2.6))})`;
-    capIn($('s3c1'),t,38.6,45.2);
-    capIn($('s3c2'),t,46.6,52.6);
-    /* notifications temps réel — elles recouvrent le bas du planning */
+    capIn($('s3c1'),t,42.8,48.2);
+    capIn($('s3c2'),t,49.0,54.2);
     const toast=(el,t0,t1,x,y,rot)=>{
       const pi=Math.min(1.12,back(P(t,t0,t0+.55))), po=P(t,t1,t1+.45);
       const o=Math.max(0,Math.min(1,pi))*(1-po);
@@ -789,17 +847,16 @@ function render(t){
       el.style.left=x+'px';el.style.top=y+'px';
       el.style.transform=`rotate(${rot}deg) translateX(${(1-Math.min(1,pi))*90+po*70}px)`;
     };
-    toast($('to1'),44.7,49.6,1298,846,-1);
-    toast($('to2'),47.8,52.8,1352,752,1);
-    toast($('to3'),51.8,56.8,1288,846,-1);
-    /* Lucas : « saisie manquante » → « ✓ relancé » (le post-it de l'acte 1 se boucle) */
-    const lpP=P(t,50.6,51.05);
+    toast($('to1'),46.5,50.8,1298,846,-1);
+    toast($('to2'),49.0,53.0,1352,752,1);
+    toast($('to3'),53.0,57.2,1288,846,-1);
+    const lpP=P(t,52.3,52.75);
     $('lpA').style.opacity=1-lpP;
     $('lpB').style.opacity=lpP;
     $('lpB').style.transform=`scale(${.85+.15*back(lpP)})`;
-    const lring=P(t,50.15,51.0);
+    const lring=P(t,51.85,52.7);
     $('lpB').parentElement.style.boxShadow=(lring>0&&lring<1)?`0 0 0 ${lring*16}px rgba(255,122,61,${.5*(1-lring)})`:'none';
-    /* ---- acte 4 ---- */
+    /* ---- export ---- */
     moveAlong($('finger2'),t,[
       {t:57.6,x:1750,y:1010},{t:58.9,x:1478,y:134},{t:60.4,x:1478,y:134},
       {t:60.9,x:1440,y:252},{t:62.4,x:1440,y:252},{t:63.2,x:1650,y:1140}]);
@@ -808,7 +865,6 @@ function render(t){
     io($('expmenu'),t,59.5,62.4,{dy:14,din:.4,dout:.3});
     $('expmenu').style.left='1290px';$('expmenu').style.top='178px';
     if(t>=62.4){win.style.opacity=(win_in*(1-wout)*(1-.55*P(t,62.4,63.4))).toFixed(3)}
-    /* heures qui volent des cartes vers le doc */
     FLY.forEach((f,i)=>{
       const el=$('fly'+i);
       const t0=63.0+i*.16, p=P(t,t0,t0+.85);
@@ -824,33 +880,31 @@ function render(t){
     io(doc,t,63.4,77.6,{dy:90,sc:.84,e:back,din:1,dout:.7});
     doc.dataset.tx='translateX(-50%)';
     [...$('docrows').children].forEach((r,i)=>{
-      const p=expo(P(t,64.2+i*.3,65.0+i*.3));
+      const p=expo(P(t,64.2+i*.28,65.0+i*.28));
       r.style.opacity=p;r.style.transform=`translateX(${(1-p)*26}px)`;
     });
     const sp=back(P(t,68.6,69.25));
     const stamp=$('stamp');
     stamp.style.opacity=P(t,68.6,68.8);
     stamp.style.transform=`rotate(${lerp(16,-7,sp)}deg) scale(${lerp(1.9,1,sp)})`;
-    burst(t,68.95,1180,300,540);
     capIn($('s4c1'),t,64.6,71.2);
     capIn($('s4c2'),t,72.2,77.4);
   }
 
-  /* -------- ACTE 5 -------- */
+  /* -------- ACTE 6 : CTA (79-100) -------- */
   if(t>=79){
     drift($('g5a'),t,510,60,80,50,.2,0);
     drift($('g5b'),t,-200,500,70,50,.16,2);
     drift($('g5c'),t,1320,420,60,40,.18,4);
     dust($('dust5'),t);
-    /* faisceau de lumière + X flottants en parallaxe */
     const bp1=P(t,80.0,85.8), bp2=P(t,94.2,99.6);
     const bactive=(bp1>0&&bp1<1)||(bp2>0&&bp2<1);
     $('beam').style.left=lerp(-2600,2100,(bp2>0&&bp2<1)?bp2:bp1)+'px';
     $('beam').style.opacity=bactive?1:0;
     $('beam').style.top=(bp2>0?230:330)+'px';
-    $('xf5a').style.transform=`translateY(${Math.sin(t*.55)*22}px) rotate(${-8+t*1.2}deg)`;
-    $('xf5b').style.transform=`translateY(${Math.cos(t*.5)*18}px) rotate(${6-t*.9}deg)`;
-    $('xf5c').style.transform=`translateY(${Math.sin(t*.62+2)*14}px) rotate(${t*1.5}deg)`;
+    $('xf5a').style.transform=`translateY(${Math.sin(t*.55)*22}px) rotate(${-6+t*.5}deg)`;
+    $('xf5b').style.transform=`translateY(${Math.cos(t*.5)*18}px) rotate(${4-t*.4}deg)`;
+    $('xf5c').style.transform=`translateY(${Math.sin(t*.62+2)*14}px) rotate(${t*.7}deg)`;
     slam($('s5b'),t,79.9,{step:.13,out:86.2});hlSweep($('hl5'),t,81.3);
     const wm=$('wm');const spans=wm.children;
     let any=0;
@@ -862,20 +916,17 @@ function render(t){
       spans[i].style.transform=isX?`scale(${.3+.7*p}) rotate(${(1-p)*220}deg)`:`translateY(${(1-p)*80}px)`;
     }
     wm.style.visibility=any<=0?'hidden':'visible';wm.style.opacity=1;
-    burst(t,90.1,960,360,600);
-    /* balayage lumineux sur le wordmark */
-    const sh=$('wmshine'), shp=P(t,90.8,92.2);
-    sh.style.visibility=(shp>0&&shp<1)?'visible':'hidden';
-    sh.style.backgroundPosition=`${lerp(130,-30,shp)}% 0`;
+    const sh=$('wmshine'), shp2=P(t,90.8,92.2);
+    sh.style.visibility=(shp2>0&&shp2<1)?'visible':'hidden';
+    sh.style.backgroundPosition=`${lerp(130,-30,shp2)}% 0`;
     io($('slog'),t,91.4,DUR+2,{dy:34});
     io($('cta'),t,92.9,DUR+2,{dy:26,sc:.84,e:back});
-    /* halo pulsant du bouton */
     if(t>93.6){$('cta').style.boxShadow=`0 7px 0 var(--jaune-ombre),0 0 ${100+34*Math.sin(t*2.2)}px rgba(255,194,26,${.3+.14*Math.sin(t*2.2)})`}
     io($('nocard'),t,93.6,DUR+2,{dy:16});
     io($('url'),t,94.8,DUR+2,{dy:18});
   }
 }
-['s1k','s1h1','s1h2','s5b','slog','cta','nocard','url'].forEach(id=>$(id).dataset.tx='translateX(-50%)');
+['s1k','s1h1','s1h2','s5b','slog','cta','nocard','url','jcap'].forEach(id=>$(id).dataset.tx='translateX(-50%)');
 
 /* ============================================================ lecteur ============================================================ */
 let t=0,playing=false,raf=null,last=0;
