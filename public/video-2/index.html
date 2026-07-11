@@ -238,7 +238,6 @@ body{font-family:'Archivo',sans-serif;color:var(--creme);-webkit-font-smoothing:
 .url .y{color:var(--jaune)}
 
 /* ---------- transitions & habillage ---------- */
-#wipe{position:absolute;top:-620px;left:0;width:3400px;height:2400px;z-index:30;background:repeating-linear-gradient(45deg,var(--noir) 0 46px,var(--jaune) 46px 92px);transform:rotate(-12deg);visibility:hidden}
 #blackout{position:absolute;inset:0;background:#0b0908;z-index:28;visibility:hidden}
 #chrome{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);display:flex;align-items:center;gap:16px;background:rgba(21,18,15,.92);border:1px solid rgba(242,237,227,.16);border-radius:16px;padding:12px 18px;z-index:50}
 #chrome button{background:var(--jaune);color:var(--noir);border:none;border-radius:10px;width:44px;height:40px;font-size:18px;font-weight:900;cursor:pointer}
@@ -269,12 +268,6 @@ body{font-family:'Archivo',sans-serif;color:var(--creme);-webkit-font-smoothing:
       <span class="w">Et</span> <span class="w">l'info</span> <span class="w"><span class="hl y"><em id="hl2"></em>se perd</span></span><br>
       <span class="w">entre</span> <span class="w">le</span> <span class="w">terrain</span> <span class="w">et</span> <span class="w">le</span> <span class="w">bureau.</span>
     </div>
-    <svg id="strings" viewBox="0 0 1920 1080">
-      <path pathLength="100" d="M330,480 Q560,395 770,505" stroke="#C0461F"/>
-      <path pathLength="100" d="M940,505 Q1200,385 1450,435" stroke="#FFC21A"/>
-      <path pathLength="100" d="M1090,680 Q1160,770 1250,800" stroke="#F25A9B"/>
-      <path pathLength="100" d="M700,745 Q520,835 355,790" stroke="#8B6CF2"/>
-    </svg>
     <div id="chaosWrap"></div>
     <div class="vignette"></div>
   </section>
@@ -440,21 +433,20 @@ body{font-family:'Archivo',sans-serif;color:var(--creme);-webkit-font-smoothing:
 
 </div><!-- /cam -->
   <div id="blackout"></div>
-  <div id="wipe"></div>
   <div id="grain"></div>
 </div>
 
 <div id="bigplay"><div class="b">▶</div></div>
 <div id="chrome" class="hide">
   <button id="pp">⏸</button>
-  <span class="tm" id="tm">0:00.0 / 1:40</span>
+  <span class="tm" id="tm">0:00.0 / 1:30</span>
   <input type="range" id="scrub" min="0" max="100" step="0.02" value="0">
   <button id="re">↺</button>
 </div>
 
 <script>
 /* ============================================================ moteur ============================================================ */
-const DUR = 100;
+const DUR = 90;
 const $ = id => document.getElementById(id);
 const clamp = (x,a,b)=>Math.max(a,Math.min(b,x));
 const lerp = (a,b,p)=>a+(b-a)*p;
@@ -519,7 +511,7 @@ function dust(el,t){
   });
 }
 function drift(el,t,x,y,ax,ay,sp,ph){el.style.transform=`translate(${x+Math.sin(t*sp+ph)*ax}px,${y+Math.cos(t*sp*.8+ph)*ay}px)`}
-const SHAKES=[{t0:16.1,a:9},{t0:29.75,a:5},{t0:34.78,a:10},{t0:68.9,a:11},{t0:89.95,a:13}];
+const SHAKES=[{t0:11.2,a:9},{t0:24.2,a:5},{t0:29.2,a:10},{t0:62.5,a:11},{t0:79.95,a:13}];
 function shake(t){
   let dx=0,dy=0;
   for(const s of SHAKES){const dt=t-s.t0;if(dt>0&&dt<.55){const d=s.a*Math.exp(-dt*7);dx+=Math.sin(dt*73)*d;dy+=Math.cos(dt*91)*d*.7}}
@@ -571,13 +563,13 @@ const ROWS=[
  {a:'KB',n:'Karim B.',c:[
    {cls:'c-rose',b:'Villa Lupin',s:'Aix',h:'07:30',st:'ok',v:'7:00'},
    {cls:'c-rose',b:'Villa Lupin',s:'Aix',h:'07:30',st:'ok',v:'7:30'},
-   {cls:'c-rose',b:'Villa Lupin',s:'Aix',h:'07:30',st:'plan',flip:46.2,v:'7:15'},
+   {cls:'c-rose',b:'Villa Lupin',s:'Aix',h:'07:30',st:'plan',flip:39.7,v:'7:15'},
    {cls:'c-rose',b:'Villa Lupin',s:'Aix',h:'07:30',st:'plan'},
    {cls:'plus'}]},
  {a:'MT',n:'Mehdi T.',c:[
    {cls:'c-viol',b:'Rés. Les Cèdres',s:'Seynod',h:'08:00',st:'ok',v:'7:30'},
    {cls:'c-vert',b:'Maison Dubois',s:'Argonay',h:'08:00',st:'ok',v:'6:00'},
-   {cls:'c-viol',b:'Rés. Les Cèdres',s:'Seynod',h:'08:00',st:'plan',flip:48.2,v:'6:45'},
+   {cls:'c-viol',b:'Rés. Les Cèdres',s:'Seynod',h:'08:00',st:'plan',flip:41.7,v:'6:45'},
    {cls:'off'},
    {cls:'c-viol',b:'Rés. Les Cèdres',s:'Seynod',h:'07:30',st:'plan'}]},
  {a:'SR',n:'Sofia R.',c:[
@@ -627,7 +619,7 @@ const trail=$('trail');
 for(let i=0;i<9;i++){const s=document.createElement('i');trail.appendChild(s)}
 
 /* ============================================================ RENDER ============================================================ */
-const scenes={s1:[0,18.7],s2:[17.9,33.8],sj:[32.8,41.5],s3:[40.3,79.3],s5:[79,DUR+1]};
+const scenes={s1:[0,13.4],s2:[12.4,28.4],sj:[27.1,35.2],s3:[33.8,69.4],s5:[69,DUR+1]};
 function render(t){
   for(const id in scenes){const [a,b]=scenes[id];$(id).style.visibility=(t>=a&&t<b)?'visible':'hidden'}
   /* reset par frame de tout élément à visibilité explicite (seek-proof) */
@@ -639,64 +631,58 @@ function render(t){
 
   /* -------- caméra + secousses -------- */
   let cs=1,cx=0,cy=0;
-  if(t<18.7){cs=lerp(1.0,1.09,P(t,0,18.4));cx=lerp(0,-26,P(t,0,18.4))}
-  else if(t<33.8){cs=lerp(1.05,1.0,expo(P(t,17.9,19.4)))*lerp(1,1.05,P(t,21,31.5));cx=lerp(0,20,P(t,19.5,32))}
-  else if(t<41.5){cs=lerp(1.0,1.07,P(t,33.8,41.3))}
-  else if(t<79.3){cs=lerp(1.07,1.0,expo(P(t,40.3,41.9)))*lerp(1,1.045,P(t,44,58))*lerp(1,1.06,P(t,74,79.2));cy=lerp(0,-12,P(t,44,58))}
-  else{cs=lerp(1.05,1.0,expo(P(t,79.2,80.8)))*lerp(1,1.035,P(t,84,100))}
+  if(t<13.4){cs=lerp(1.0,1.09,P(t,0,13.1));cx=lerp(0,-26,P(t,0,13.1))}
+  else if(t<28.4){cs=lerp(1.05,1.0,expo(P(t,12.5,13.9)))*lerp(1,1.05,P(t,15.5,26.2));cx=lerp(0,20,P(t,14,26.5))}
+  else if(t<35.2){cs=lerp(1.0,1.07,P(t,27.6,34.9))}
+  else if(t<69.4){cs=lerp(1.07,1.0,expo(P(t,33.9,35.4)))*lerp(1,1.045,P(t,37.5,51))*lerp(1,1.06,P(t,64,69.2));cy=lerp(0,-12,P(t,37.5,51))}
+  else{cs=lerp(1.05,1.0,expo(P(t,69.2,70.8)))*lerp(1,1.035,P(t,74,90))}
   const [sx,sy]=shake(t);
   $('cam').style.transform=`translate(${cx+sx}px,${cy+sy}px) scale(${cs})`;
 
-  /* -------- transitions (2 balayages ruban) -------- */
-  const wipe=$('wipe');
-  const w1=P(t,17.2,19.0), w2=P(t,31.9,33.5);
-  const wActive=(w1>0&&w1<1)||(w2>0&&w2<1);
-  if(wActive){wipe.style.visibility='visible';wipe.style.left=`${lerp(-3600,2200,quint((w2>0&&w2<1)?w2:w1))}px`}
-  else wipe.style.visibility='hidden';
-  const bo=$('blackout'), bp=P(t,77.9,79.15)*(1-P(t,79.25,80.1));
+  /* -------- transitions : fondus au noir propres (aucun flash) -------- */
+  const d1=P(t,11.9,12.45)*(1-P(t,12.6,13.25));
+  const d2=P(t,26.6,27.15)*(1-P(t,27.3,27.95));
+  const d3=P(t,67.9,69.15)*(1-P(t,69.25,70.1));
+  const bo=$('blackout'), bp=Math.max(d1,d2,d3);
   bo.style.visibility=bp>0.001?'visible':'hidden';bo.style.opacity=bp;
 
-  /* -------- ACTE 1 (0-18.6) -------- */
-  if(t<19.2){
+  /* -------- ACTE 1 (0-13.2) -------- */
+  if(t<13.6){
     drift($('g1a'),t,120,-260,60,40,.25,0);
     drift($('g1b'),t,1150,520,80,50,.2,2);
     dust($('dust1'),t);
     $('s1x').style.transform=`rotate(${-3+t*.2}deg)`;
-    io($('s1k'),t,0.6,16.4,{dy:24});
-    slam($('s1h1'),t,1.2,{out:10.4});hlSweep($('hl1'),t,2.35);
-    if(t>10.7){slam($('s1h2'),t,10.9,{out:16.2});hlSweep($('hl2'),t,11.45)}else{$('s1h2').style.visibility='hidden'}
+    io($('s1k'),t,0.6,11.4,{dy:24});
+    slam($('s1h1'),t,1.1,{out:6.6});hlSweep($('hl1'),t,2.2);
+    if(t>6.8){slam($('s1h2'),t,7.0,{out:11.2});hlSweep($('hl2'),t,7.55)}else{$('s1h2').style.visibility='hidden'}
     CHAOS.forEach((c,i)=>{
       const el=$('ch'+i);
-      const pi=back(P(t,c.in,c.in+.8));
-      const fall=P(t,15.3+i*.11,16.3+i*.11);
+      const tin=1.8+i*.45;
+      const pi=back(P(t,tin,tin+.75));
+      const fall=P(t,10.4+i*.10,11.35+i*.10);
       const wob=Math.sin(t*2.1+i*1.7)*2.6, woby=Math.cos(t*1.7+i)*6;
       el.style.opacity=(pi*(1-fall*.3)).toFixed(3);
       el.style.transform=`translate(${(1-pi)*c.fx*.3}px,${(1-pi)*60+woby+fall*820}px) rotate(${c.r+wob+fall*(i%2?30:-26)}deg) scale(${.8+.2*pi})`;
       el.style.visibility=pi<=0?'hidden':'visible';
       const bd=$('bd'+i);
-      if(bd){const n=Math.min(c.badge,Math.floor(1+Math.max(0,t-c.in)*1.4));bd.textContent=n;bd.style.transform=`scale(${1+.22*Math.abs(Math.sin(t*3+i))})`}
-    });
-    [...$('strings').children].forEach((p,i)=>{
-      const draw=quint(P(t,6.6+i*.5,7.9+i*.5));
-      p.style.strokeDashoffset=100-100*draw;
-      p.style.opacity=(draw>0?.5:0)*(1-P(t,15.2,15.9));
+      if(bd){const n=Math.min(c.badge,Math.floor(1+Math.max(0,t-tin)*2.2));bd.textContent=n;bd.style.transform=`scale(${1+.22*Math.abs(Math.sin(t*3+i))})`}
     });
   }
 
-  /* -------- ACTE 2 (18-33) -------- */
-  if(t>=17.5&&t<34.2){
+  /* -------- ACTE 2 (12.5-27.5) -------- */
+  if(t>=12.0&&t<28.8){
     drift($('g2a'),t,980,-200,70,40,.22,1);
     drift($('g2b'),t,-180,420,60,60,.18,3);
     drift($('g2c'),t,1300,600,50,40,.2,5);
     dust($('dust2'),t);
-    $('s2x').style.transform=`rotate(${2-(t-18)*.14}deg)`;
-    const pin=expo(P(t,18.4,19.6)), pout=P(t,31.8,32.8);
+    $('s2x').style.transform=`rotate(${2-(t-13)*.14}deg)`;
+    const pin=expo(P(t,12.6,13.8)), pout=P(t,26.4,27.4);
     const ph=$('phone');
     ph.style.opacity=1-pout;
     const tiltY=lerp(-24,-9,pin)+Math.sin(t*.7)*3.2;
     const tiltX=Math.cos(t*.6)*2.4;
     ph.style.transform=`translateY(${(1-pin)*640 - pout*60}px) rotateY(${tiltY}deg) rotateX(${tiltX}deg)`;
-    $('glare').style.backgroundPosition=`${lerp(120,-40,P(t,19.4,26.5))}% 0`;
+    $('glare').style.backgroundPosition=`${lerp(120,-40,P(t,13.6,20.5))}% 0`;
     $('phbg').style.opacity=pin*(1-pout);
     $('ring1').style.opacity=.65*pin*(1-pout);
     $('ring1').style.transform=`rotate(${t*4}deg) scale(${1+.02*Math.sin(t*.9)})`;
@@ -704,39 +690,39 @@ function render(t){
     $('xf1').style.transform=`translateY(${Math.sin(t*.8)*16}px) rotate(${-8+t*1.4}deg)`;
     $('xf2').style.opacity=pin*(1-pout);
     $('xf2').style.transform=`translateY(${Math.cos(t*.7)*12}px) rotate(${6-t*1.1}deg)`;
-    const sp1=expo(P(t,20.9,21.8))*(1-P(t,31.2,31.9));
+    const sp1=expo(P(t,15.3,16.2))*(1-P(t,25.4,26.1));
     const sa1=$('sat1');
     sa1.style.opacity=sp1;sa1.style.visibility=sp1<=0.001?'hidden':'visible';
     sa1.style.left='560px';sa1.style.top=(298+Math.sin(t*.9)*10)+'px';
-    sa1.style.transform=`rotate(-3deg) translateY(${(1-expo(P(t,20.9,21.8)))*30}px)`;
-    const sp2=Math.min(1,back(P(t,30.35,30.95)))*(1-P(t,31.7,32.3));
+    sa1.style.transform=`rotate(-3deg) translateY(${(1-expo(P(t,15.3,16.2)))*30}px)`;
+    const sp2=Math.min(1,back(P(t,24.9,25.5)))*(1-P(t,26.2,26.8));
     const sa2=$('sat2');
     sa2.style.opacity=Math.max(0,sp2);sa2.style.visibility=sp2<=0.001?'hidden':'visible';
     sa2.style.left='1488px';sa2.style.top='716px';
-    sa2.style.transform=`rotate(3deg) scale(${.7+.3*Math.min(1.15,back(P(t,30.35,30.95)))})`;
-    io($('steps'),t,18.9,31.6,{dy:40});
+    sa2.style.transform=`rotate(3deg) scale(${.7+.3*Math.min(1.15,back(P(t,24.9,25.5)))})`;
+    io($('steps'),t,13.1,26.2,{dy:40});
     const st1=$('st1'),st2=$('st2'),st3=$('st3');
-    st1.className='step'+(t<22.3?' on':' done');
-    st2.className='step'+(t<22.3?'':(t<27.9?' on':' done'));
-    st3.className='step'+(t<27.9?'':(t<30.9?' on':' done'));
-    $('site1').className='site'+(t>=21.9?' on':'');
-    io($('chipD'),t,23.3,31.6,{dy:22,sc:.85,e:back});
-    io($('chipF'),t,23.6,31.6,{dy:22,sc:.85,e:back});
-    io($('chipT'),t,23.9,31.6,{dy:22,sc:.85,e:back});
-    $('durv').textContent=fmtHM(435*expo(P(t,24.2,26.1)));
-    io($('notice'),t,26.3,31.6,{dy:16});
-    io($('meal'),t,26.9,31.6,{dy:16});
+    st1.className='step'+(t<16.7?' on':' done');
+    st2.className='step'+(t<16.7?'':(t<22.2?' on':' done'));
+    st3.className='step'+(t<22.2?'':(t<25.3?' on':' done'));
+    $('site1').className='site'+(t>=16.2?' on':'');
+    io($('chipD'),t,17.6,26.2,{dy:22,sc:.85,e:back});
+    io($('chipF'),t,17.9,26.2,{dy:22,sc:.85,e:back});
+    io($('chipT'),t,18.2,26.2,{dy:22,sc:.85,e:back});
+    $('durv').textContent=fmtHM(435*expo(P(t,18.5,20.2)));
+    io($('notice'),t,20.4,26.2,{dy:16});
+    io($('meal'),t,21.0,26.2,{dy:16});
     const sb=$('sendbtn');
-    if(t>=29.95){sb.classList.add('ok');sb.textContent='✓ Journée envoyée';}
+    if(t>=24.5){sb.classList.add('ok');sb.textContent='✓ Journée envoyée';}
     else{sb.classList.remove('ok');sb.textContent='Envoyer ma journée →';}
-    slam($('m2a'),t,19.8,{out:25.4});hlSweep($('hl3'),t,20.9);
-    if(t>26.3){slam($('m2b'),t,26.6,{out:31.4});hlSweep($('hl4'),t,27.3)}else{$('m2b').style.visibility='hidden'}
+    slam($('m2a'),t,14.2,{out:19.6});hlSweep($('hl3'),t,15.3);
+    if(t>20.8){slam($('m2b'),t,21.0,{out:26.0});hlSweep($('hl4'),t,21.7)}else{$('m2b').style.visibility='hidden'}
     moveAlong($('finger'),t,[
-      {t:20.4,x:1560,y:1160},{t:21.3,x:1395,y:236},{t:22.3,x:1395,y:236},
-      {t:23.1,x:1600,y:1160},{t:28.2,x:1600,y:1160},{t:29.1,x:1185,y:922},{t:30.3,x:1185,y:922},{t:31.0,x:1450,y:1170}]);
-    pingAt($('ping1'),t,21.7,1372,214);
-    pingAt($('ping1'),t,29.75,1160,898);
-    const dp=P(t,30.8,31.9);
+      {t:14.8,x:1560,y:1160},{t:15.7,x:1395,y:236},{t:16.6,x:1395,y:236},
+      {t:17.4,x:1600,y:1160},{t:22.6,x:1600,y:1160},{t:23.5,x:1185,y:922},{t:24.6,x:1185,y:922},{t:25.3,x:1450,y:1170}]);
+    pingAt($('ping1'),t,16.0,1372,214);
+    pingAt($('ping1'),t,24.15,1160,898);
+    const dp=P(t,25.3,26.4);
     const dot=$('dotOut');
     if(dp>0&&dp<1){dot.style.visibility='visible';
       const q=quint(dp);
@@ -753,72 +739,72 @@ function render(t){
     } else {dot.style.visibility='hidden';[...trail.children].forEach(s=>s.style.opacity=0)}
   } else {[...trail.children].forEach(s=>s.style.opacity=0)}
 
-  /* -------- JONCTION (33-41) : terrain ✕ bureau -------- */
-  if(t>=32.6&&t<41.8){
+  /* -------- JONCTION (27.5-34.6) : terrain ✕ bureau -------- */
+  if(t>=26.9&&t<35.5){
     drift($('gja'),t,510,60,70,45,.2,0);
     drift($('gjb'),t,-180,460,60,50,.17,2);
     dust($('dustJ'),t);
-    $('sjx').style.transform=`rotate(${-2+(t-33)*.25}deg)`;
-    /* les deux mondes arrivent l'un vers l'autre et SE RENCONTRENT (impact 34.78) */
-    const pIn=back(P(t,33.5,34.85));
-    const exitP=quint(P(t,39.8,41.0));
+    $('sjx').style.transform=`rotate(${-2+(t-27.5)*.25}deg)`;
+    /* les deux mondes arrivent l'un vers l'autre et SE RENCONTRENT (impact 29.2) */
+    const pIn=back(P(t,27.9,29.25));
+    const exitP=quint(P(t,33.3,34.5));
     const jp=$('jphone');
     jp.style.left=lerp(-460,505,Math.min(1.06,pIn))+'px';
     jp.style.opacity=1-exitP;
     jp.style.transform=`rotate(${lerp(-9,-3,Math.min(1,pIn))}deg) translateX(${-exitP*300}px)`;
     const jw=$('jwin');
     jw.style.left=lerp(2380,1035,Math.min(1.06,pIn))+'px';
-    jw.style.opacity=1-P(t,40.2,41.0);
+    jw.style.opacity=1-P(t,33.7,34.5);
     /* à la sortie, la fenêtre GRANDIT vers la caméra → devient le vrai planning */
     jw.style.transform=`rotate(${lerp(7,2,Math.min(1,pIn))}deg) scale(${1+exitP*2.6}) translateY(${-exitP*60}px)`;
     jw.style.transformOrigin='42% 40%';
     /* onde de choc + étincelle X (la lettre du logo) à l'impact */
-    const shp=P(t,34.78,35.7);
+    const shp=P(t,29.2,30.1);
     const js=$('jshock');
     if(shp>0&&shp<1){js.style.visibility='visible';
       js.style.left='880px';js.style.top='470px';js.style.width='160px';js.style.height='160px';
       js.style.transform=`scale(${.3+shp*4.2})`;js.style.opacity=(1-shp)*.9;
     } else js.style.visibility='hidden';
-    const jxp=P(t,34.78,35.5);
+    const jxp=P(t,29.2,29.9);
     const jx=$('jx');
-    jx.style.opacity=(jxp>0&&t<39.8)?Math.min(1,back(jxp)):(t>=39.8?1-exitP:0);
+    jx.style.opacity=(jxp>0&&t<33.3)?Math.min(1,back(jxp)):(t>=33.3?1-exitP:0);
     jx.style.transform=`scale(${.2+.8*back(jxp)}) rotate(${(1-back(jxp))*90}deg)`;
     /* lien d'énergie + impulsions qui voyagent terrain → bureau */
-    const lk=$('jlink'), lkp=quint(P(t,35.1,35.7));
+    const lk=$('jlink'), lkp=quint(P(t,29.5,30.1));
     lk.style.left='800px';lk.style.top='545px';lk.style.width='230px';
     lk.style.transform=`scaleX(${lkp})`;lk.style.opacity=(lkp>0?1:0)*(1-exitP);
     for(let i=0;i<3;i++){
       const el=$('jp'+i);
-      if(t<35.7||t>39.9){el.style.opacity=0;continue}
-      const ph2=((t-35.7)*.9+i*.34)%1;
+      if(t<30.1||t>33.6){el.style.opacity=0;continue}
+      const ph2=((t-30.1)*.9+i*.34)%1;
       el.style.opacity=(ph2<.85?1:0)*(1-exitP);
       el.style.left=lerp(795,1020,ph2)+'px';el.style.top='542px';
     }
     /* étiquettes + titre */
     const l1=$('jlab1'), l2=$('jlab2');
-    const lo=P(t,35.2,35.8)*(1-exitP);
+    const lo=P(t,29.6,30.2)*(1-exitP);
     l1.style.opacity=lo;l1.style.visibility=lo<=0.001?'hidden':'visible';l1.style.left='560px';l1.style.top='912px';
     l2.style.opacity=lo;l2.style.visibility=lo<=0.001?'hidden':'visible';l2.style.left='1230px';l2.style.top='912px';
-    slam($('jcap'),t,35.6,{step:.12,out:39.6});hlSweep($('hlJ'),t,36.7);
+    slam($('jcap'),t,30.0,{step:.12,out:33.2});hlSweep($('hlJ'),t,31.1);
   }
 
-  /* -------- ACTES 4-5 : LE BUREAU (40-79) -------- */
-  if(t>=39.9&&t<79.8){
+  /* -------- ACTES 4-5 : LE BUREAU (34-69) -------- */
+  if(t>=33.5&&t<69.9){
     drift($('g3a'),t,900,-220,70,40,.2,0);
     drift($('g3b'),t,-160,300,60,50,.17,2);
     drift($('g3c'),t,1250,560,60,40,.19,4);
     dust($('dust3'),t);
-    $('s3x').style.transform=`rotate(${-2+(t-40)*.08}deg)`;
+    $('s3x').style.transform=`rotate(${-2+(t-34)*.08}deg)`;
     /* filigrane BEMEXO sous le planning (remplit le bas, marque omniprésente) */
     $('bmk').style.transform=`translateX(-50%) translateX(${Math.sin(t*.25)*30}px)`;
     const win=$('win');
-    const win_in=expo(P(t,40.45,41.75)), wout=P(t,77.9,79.1);
+    const win_in=expo(P(t,34.0,35.3)), wout=P(t,67.9,69.1);
     win.style.opacity=(win_in*(1-wout)).toFixed(3);
     win.style.transform=`translateY(${(1-win_in)*130 - wout*30}px) rotateX(${(1-win_in)*9}deg) scale(${.95+.05*win_in})`;
     win.style.visibility=win_in<=0?'hidden':'visible';
     cardEls.forEach(el=>{
       const i=+el.dataset.idx;
-      const t0=41.6+i*.13;
+      const t0=35.15+i*.13;
       const pi=back(P(t,t0,t0+.6));
       el.style.opacity=pi.toFixed(3);
       el.style.transform=`translateY(${(1-pi)*30}px) scale(${.88+.12*pi})`;
@@ -836,10 +822,10 @@ function render(t){
         el.style.boxShadow=(ring>0&&ring<1)?`0 0 0 ${ring*16}px rgba(255,194,26,${.55*(1-ring)})`:'none';
       }
     });
-    $('rtchip').style.opacity=P(t,41.9,42.7);
+    $('rtchip').style.opacity=P(t,35.5,36.3);
     $('rtchip').querySelector('i').style.transform=`scale(${1+.4*Math.abs(Math.sin(t*2.6))})`;
-    capIn($('s3c1'),t,42.8,48.2);
-    capIn($('s3c2'),t,49.0,54.2);
+    capIn($('s3c1'),t,36.3,41.7);
+    capIn($('s3c2'),t,42.5,47.7);
     const toast=(el,t0,t1,x,y,rot)=>{
       const pi=Math.min(1.12,back(P(t,t0,t0+.55))), po=P(t,t1,t1+.45);
       const o=Math.max(0,Math.min(1,pi))*(1-po);
@@ -847,27 +833,27 @@ function render(t){
       el.style.left=x+'px';el.style.top=y+'px';
       el.style.transform=`rotate(${rot}deg) translateX(${(1-Math.min(1,pi))*90+po*70}px)`;
     };
-    toast($('to1'),46.5,50.8,1298,846,-1);
-    toast($('to2'),49.0,53.0,1352,752,1);
-    toast($('to3'),53.0,57.2,1288,846,-1);
-    const lpP=P(t,52.3,52.75);
+    toast($('to1'),40.0,44.3,1298,846,-1);
+    toast($('to2'),42.5,46.5,1352,752,1);
+    toast($('to3'),46.5,50.6,1288,846,-1);
+    const lpP=P(t,45.8,46.25);
     $('lpA').style.opacity=1-lpP;
     $('lpB').style.opacity=lpP;
     $('lpB').style.transform=`scale(${.85+.15*back(lpP)})`;
-    const lring=P(t,51.85,52.7);
+    const lring=P(t,45.35,46.2);
     $('lpB').parentElement.style.boxShadow=(lring>0&&lring<1)?`0 0 0 ${lring*16}px rgba(255,122,61,${.5*(1-lring)})`:'none';
     /* ---- export ---- */
     moveAlong($('finger2'),t,[
-      {t:57.6,x:1750,y:1010},{t:58.9,x:1478,y:134},{t:60.4,x:1478,y:134},
-      {t:60.9,x:1440,y:252},{t:62.4,x:1440,y:252},{t:63.2,x:1650,y:1140}]);
-    pingAt($('ping2'),t,59.2,1456,112);
-    pingAt($('ping2'),t,61.9,1418,230);
-    io($('expmenu'),t,59.5,62.4,{dy:14,din:.4,dout:.3});
+      {t:51.2,x:1750,y:1010},{t:52.5,x:1478,y:134},{t:54.0,x:1478,y:134},
+      {t:54.5,x:1440,y:252},{t:56.0,x:1440,y:252},{t:56.8,x:1650,y:1140}]);
+    pingAt($('ping2'),t,52.8,1456,112);
+    pingAt($('ping2'),t,55.5,1418,230);
+    io($('expmenu'),t,53.1,56.0,{dy:14,din:.4,dout:.3});
     $('expmenu').style.left='1290px';$('expmenu').style.top='178px';
-    if(t>=62.4){win.style.opacity=(win_in*(1-wout)*(1-.55*P(t,62.4,63.4))).toFixed(3)}
+    if(t>=56.0){win.style.opacity=(win_in*(1-wout)*(1-.55*P(t,56.0,57.0))).toFixed(3)}
     FLY.forEach((f,i)=>{
       const el=$('fly'+i);
-      const t0=63.0+i*.16, p=P(t,t0,t0+.85);
+      const t0=56.6+i*.16, p=P(t,t0,t0+.85);
       if(p<=0||p>=1){el.style.visibility='hidden';return}
       el.style.visibility='visible';
       const q=quint(p);
@@ -877,27 +863,27 @@ function render(t){
       el.style.transform=`scale(${1-.3*q}) rotate(${(rnd(i)-.5)*30*p}deg)`;
     });
     const doc=$('doc');
-    io(doc,t,63.4,77.6,{dy:90,sc:.84,e:back,din:1,dout:.7});
+    io(doc,t,57.0,67.6,{dy:90,sc:.84,e:back,din:1,dout:.7});
     doc.dataset.tx='translateX(-50%)';
     [...$('docrows').children].forEach((r,i)=>{
-      const p=expo(P(t,64.2+i*.28,65.0+i*.28));
+      const p=expo(P(t,57.8+i*.28,58.6+i*.28));
       r.style.opacity=p;r.style.transform=`translateX(${(1-p)*26}px)`;
     });
-    const sp=back(P(t,68.6,69.25));
+    const sp=back(P(t,62.2,62.85));
     const stamp=$('stamp');
-    stamp.style.opacity=P(t,68.6,68.8);
+    stamp.style.opacity=P(t,62.2,62.4);
     stamp.style.transform=`rotate(${lerp(16,-7,sp)}deg) scale(${lerp(1.9,1,sp)})`;
-    capIn($('s4c1'),t,64.6,71.2);
-    capIn($('s4c2'),t,72.2,77.4);
+    capIn($('s4c1'),t,58.2,61.6);
+    capIn($('s4c2'),t,64.2,67.2);
   }
 
-  /* -------- ACTE 6 : CTA (79-100) -------- */
-  if(t>=79){
+  /* -------- ACTE 6 : CTA (69-90) -------- */
+  if(t>=68.8){
     drift($('g5a'),t,510,60,80,50,.2,0);
     drift($('g5b'),t,-200,500,70,50,.16,2);
     drift($('g5c'),t,1320,420,60,40,.18,4);
     dust($('dust5'),t);
-    const bp1=P(t,80.0,85.8), bp2=P(t,94.2,99.6);
+    const bp1=P(t,70.0,75.8), bp2=P(t,84.2,89.6);
     const bactive=(bp1>0&&bp1<1)||(bp2>0&&bp2<1);
     $('beam').style.left=lerp(-2600,2100,(bp2>0&&bp2<1)?bp2:bp1)+'px';
     $('beam').style.opacity=bactive?1:0;
@@ -905,25 +891,25 @@ function render(t){
     $('xf5a').style.transform=`translateY(${Math.sin(t*.55)*22}px) rotate(${-6+t*.5}deg)`;
     $('xf5b').style.transform=`translateY(${Math.cos(t*.5)*18}px) rotate(${4-t*.4}deg)`;
     $('xf5c').style.transform=`translateY(${Math.sin(t*.62+2)*14}px) rotate(${t*.7}deg)`;
-    slam($('s5b'),t,79.9,{step:.13,out:86.2});hlSweep($('hl5'),t,81.3);
+    slam($('s5b'),t,69.9,{step:.13,out:76.2});hlSweep($('hl5'),t,71.3);
     const wm=$('wm');const spans=wm.children;
     let any=0;
     for(let i=0;i<spans.length;i++){
       const isX=spans[i].classList.contains('y');
-      const t0=isX?89.55:88.35+i*.14;
+      const t0=isX?79.55:78.35+i*.14;
       const p=isX?back(P(t,t0,t0+.7)):expo(P(t,t0,t0+.75));
       spans[i].style.opacity=p;any=Math.max(any,p);
       spans[i].style.transform=isX?`scale(${.3+.7*p}) rotate(${(1-p)*220}deg)`:`translateY(${(1-p)*80}px)`;
     }
     wm.style.visibility=any<=0?'hidden':'visible';wm.style.opacity=1;
-    const sh=$('wmshine'), shp2=P(t,90.8,92.2);
+    const sh=$('wmshine'), shp2=P(t,80.8,82.2);
     sh.style.visibility=(shp2>0&&shp2<1)?'visible':'hidden';
     sh.style.backgroundPosition=`${lerp(130,-30,shp2)}% 0`;
-    io($('slog'),t,91.4,DUR+2,{dy:34});
-    io($('cta'),t,92.9,DUR+2,{dy:26,sc:.84,e:back});
-    if(t>93.6){$('cta').style.boxShadow=`0 7px 0 var(--jaune-ombre),0 0 ${100+34*Math.sin(t*2.2)}px rgba(255,194,26,${.3+.14*Math.sin(t*2.2)})`}
-    io($('nocard'),t,93.6,DUR+2,{dy:16});
-    io($('url'),t,94.8,DUR+2,{dy:18});
+    io($('slog'),t,81.4,DUR+2,{dy:34});
+    io($('cta'),t,82.9,DUR+2,{dy:26,sc:.84,e:back});
+    if(t>83.6){$('cta').style.boxShadow=`0 7px 0 var(--jaune-ombre),0 0 ${100+34*Math.sin(t*2.2)}px rgba(255,194,26,${.3+.14*Math.sin(t*2.2)})`}
+    io($('nocard'),t,83.6,DUR+2,{dy:16});
+    io($('url'),t,84.8,DUR+2,{dy:18});
   }
 }
 ['s1k','s1h1','s1h2','s5b','slog','cta','nocard','url','jcap'].forEach(id=>$(id).dataset.tx='translateX(-50%)');
@@ -939,14 +925,14 @@ function frame(now){
   const dt=Math.min(.05,(now-last)/1000);last=now;t+=dt;
   if(t>=DUR){t=DUR;playing=false;$('pp').textContent='▶'}
   render(t);
-  $('scrub').value=t;$('tm').textContent=fmtT(t)+' / 1:40';
+  $('scrub').value=t;$('tm').textContent=fmtT(t)+' / 1:30';
   if(playing)raf=requestAnimationFrame(frame);
 }
 function play(){if(t>=DUR)t=0;playing=true;last=performance.now();$('pp').textContent='⏸';raf=requestAnimationFrame(frame)}
 function pause(){playing=false;$('pp').textContent='▶'}
 $('pp').onclick=()=>playing?pause():play();
 $('re').onclick=()=>{t=0;render(0);$('scrub').value=0;if(!playing)play()};
-$('scrub').oninput=e=>{pause();t=+e.target.value;render(t);$('tm').textContent=fmtT(t)+' / 1:40'};
+$('scrub').oninput=e=>{pause();t=+e.target.value;render(t);$('tm').textContent=fmtT(t)+' / 1:30'};
 $('scrub').max=DUR;
 $('bigplay').onclick=()=>{$('bigplay').classList.add('hide');$('chrome').classList.remove('hide');play()};
 addEventListener('keydown',e=>{if(e.code==='Space'){e.preventDefault();if(!$('bigplay').classList.contains('hide')){$('bigplay').click()}else{playing?pause():play()}}});
