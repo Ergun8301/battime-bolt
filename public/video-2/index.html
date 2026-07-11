@@ -1,0 +1,604 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BEMEXO — Vidéo 2 (explicative, 100 s)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   BEMEXO — VIDÉO 2 « explicative » (petite sœur de la vidéo 1)
+   Mêmes fondations : palette noir/jaune/crème, Archivo + JetBrains
+   Mono, X filigrane, ruban chantier, captions en pilule noire,
+   signature finale identique. Moteur : timeline JS déterministe
+   (window.__seek(t)) → prévisualisation navigateur + export image
+   par image (tools/capture-video2.js).
+   ============================================================ */
+:root{
+  --noir:#15120F; --noir-card:#211D19; --jaune:#FFC21A; --jaune-ombre:#C99300;
+  --jaune-fonce:#9a7c14; --creme:#F2EDE3; --creme-dim:#a59c86; --gris:#6E6A63;
+  --vert:#2FA36B; --rouille:#C0461F;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;background:#0b0908;overflow:hidden}
+body{font-family:'Archivo',sans-serif;color:var(--creme);-webkit-font-smoothing:antialiased}
+.mono{font-family:'JetBrains Mono',monospace}
+
+/* ---------- scène 1920×1080, mise à l'échelle fenêtre ---------- */
+#stage{position:absolute;left:50%;top:50%;width:1920px;height:1080px;transform-origin:center;overflow:hidden;background:var(--noir)}
+.scene{position:absolute;inset:0;visibility:hidden}
+
+/* ---------- éléments signature ---------- */
+.texchantier{position:absolute;inset:0;background:repeating-linear-gradient(45deg,rgba(255,255,255,.014) 0 32px,transparent 32px 64px);pointer-events:none}
+.vignette{position:absolute;inset:0;background:radial-gradient(120% 105% at 50% 46%,transparent 55%,rgba(0,0,0,.42) 100%);pointer-events:none}
+/* X géant filigrane (deux barres croisées, comme le logo) */
+.xmark{position:absolute;width:760px;height:760px;pointer-events:none}
+.xmark i{position:absolute;left:50%;top:50%;width:27%;height:128%;border-radius:26px;transform:translate(-50%,-50%) rotate(24deg)}
+.xmark i+i{transform:translate(-50%,-50%) rotate(-24deg)}
+.x-dark i{background:rgba(255,194,26,.022)}
+.x-cream i{background:rgba(21,18,15,.032)}
+
+/* titres plein écran (actes 1 et 5) */
+.h-big{position:absolute;left:50%;width:1500px;transform:translateX(-50%);text-align:center;font-weight:900;letter-spacing:-.025em;line-height:1.06;color:var(--creme)}
+.h-big .y{color:var(--jaune)}
+.kicker{position:absolute;left:50%;transform:translateX(-50%);font-family:'JetBrains Mono',monospace;font-size:24px;font-weight:700;letter-spacing:.34em;color:var(--jaune);text-transform:uppercase;white-space:nowrap}
+
+/* caption « pilule noire » (style vidéo 1) */
+.cap{position:absolute;left:50%;bottom:64px;transform:translateX(-50%);background:rgba(21,18,15,.86);border-radius:16px;padding:18px 40px;font-size:44px;font-weight:900;letter-spacing:-.02em;color:var(--creme);white-space:nowrap}
+.cap .y{color:var(--jaune)}
+
+/* ---------- ACTE 1 : le chaos ---------- */
+#s1{background:radial-gradient(circle at 50% 42%,#241d14 0%,#1a1510 52%,var(--noir) 82%)}
+.chaos{position:absolute;border-radius:14px;box-shadow:0 30px 60px -22px rgba(0,0,0,.65)}
+.note{background:#FBF8F2;color:var(--noir);padding:22px 24px;width:340px}
+.note h4{font-size:21px;font-weight:800;border-bottom:2px solid rgba(21,18,15,.14);padding-bottom:8px;margin-bottom:12px}
+.note .l{height:9px;border-radius:5px;background:#c9c2b4;margin:9px 0}
+.note .scrib{font-size:16px;color:#6E6A63;font-style:italic;font-weight:600;margin-top:12px;line-height:1.45}
+.sms{background:#fff;color:var(--noir);border-radius:20px 20px 20px 6px;padding:16px 22px;font-size:21px;font-weight:600;max-width:360px;line-height:1.35}
+.sms.right{border-radius:20px 20px 6px 20px;background:#e9e2d2}
+.xls{background:#fff;color:var(--noir);width:390px;padding:16px}
+.xls h4{font-family:'JetBrains Mono',monospace;font-size:14px;letter-spacing:.12em;color:var(--gris);margin-bottom:10px}
+.xls table{width:100%;border-collapse:collapse}
+.xls td{border:1px solid #d8d1c2;font-family:'JetBrains Mono',monospace;font-size:14px;padding:6px 8px;color:#3d3a34}
+.xls td.err{color:var(--rouille);font-weight:700}
+.tel{background:var(--noir-card);color:var(--creme);width:330px;padding:20px 24px;border:1px solid rgba(242,237,227,.14);display:flex;align-items:center;gap:16px}
+.tel .ic{width:52px;height:52px;border-radius:50%;background:var(--rouille);display:flex;align-items:center;justify-content:center;font-size:24px;flex:none}
+.tel b{font-size:19px;display:block}
+.tel span{font-size:15px;color:var(--creme-dim)}
+.postit{background:var(--jaune);color:var(--noir);width:210px;height:190px;padding:18px;font-weight:800;font-size:20px;line-height:1.3;border-radius:4px;box-shadow:0 24px 44px -18px rgba(0,0,0,.55)}
+.postit small{display:block;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;letter-spacing:.1em;color:rgba(21,18,15,.55);margin-bottom:8px}
+.tag{position:absolute;top:-16px;right:-14px;background:var(--noir);color:var(--jaune);font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700;letter-spacing:.12em;padding:7px 13px;border-radius:9px;border:1px solid rgba(255,194,26,.4)}
+
+/* ---------- ACTE 2 : le poseur pointe ---------- */
+#s2{background:radial-gradient(circle at 50% 40%,#FBF8F2 0%,var(--creme) 58%,#e8e1d1 100%);color:var(--noir)}
+.phone{position:absolute;left:50%;top:90px;width:520px;transform:translateX(-50%);background:#0d0b09;border-radius:54px;padding:15px;box-shadow:0 60px 110px -40px rgba(21,18,15,.6)}
+.phone-scr{background:var(--creme);border-radius:40px;overflow:hidden;display:flex;flex-direction:column;min-height:800px}
+.phone-body{display:flex;flex-direction:column;flex:1}
+.phone-body .ybtn{margin-top:auto}
+.phone-top{background:var(--noir);color:var(--creme);display:flex;align-items:center;justify-content:space-between;padding:20px 24px 16px}
+.phone-top .t{font-weight:900;font-size:22px;letter-spacing:-.01em}
+.phone-top .c{font-size:16px;color:var(--creme-dim)}
+.phone-body{padding:22px 22px 26px}
+.plabel{font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700;letter-spacing:.18em;color:var(--jaune-fonce);margin:6px 0 10px}
+.site{background:#fff;border:2px solid rgba(21,18,15,.1);border-radius:14px;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;transition:none}
+.site b{font-size:20px;display:block}
+.site span{font-size:15px;color:var(--gris);font-weight:600}
+.site .radio{width:26px;height:26px;border-radius:50%;border:2.5px solid #b9b19f;flex:none;position:relative}
+.site.on{border-color:var(--noir)}
+.site.on .radio{border-color:var(--noir)}
+.site.on .radio:after{content:"";position:absolute;inset:4px;border-radius:50%;background:var(--noir)}
+.chips{display:flex;gap:10px;margin-bottom:12px}
+.chip{flex:1;background:#fff;border:2px solid rgba(21,18,15,.1);border-radius:13px;padding:10px 14px}
+.chip .k{font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.14em;color:var(--gris);font-weight:700}
+.chip .v{font-family:'JetBrains Mono',monospace;font-size:27px;font-weight:700;color:var(--noir)}
+.chip.dark{background:var(--noir);border-color:var(--noir)}
+.chip.dark .k{color:var(--creme-dim)}
+.chip.dark .v{color:var(--jaune)}
+.notice{background:rgba(255,194,26,.18);border:1px solid rgba(255,194,26,.5);color:#7a6110;border-radius:10px;font-size:15.5px;font-weight:700;padding:9px 14px;margin-bottom:14px}
+.ybtn{width:100%;background:var(--jaune);color:var(--noir);border:none;border-radius:15px;font-family:'Archivo',sans-serif;font-weight:900;font-size:23px;padding:19px;box-shadow:0 5px 0 var(--jaune-ombre)}
+.ybtn.ok{background:var(--vert);color:#fff;box-shadow:0 5px 0 #1F7A4D}
+.steps{position:absolute;left:150px;top:330px}
+.step{display:flex;align-items:center;gap:16px;margin-bottom:34px}
+.step .n{width:44px;height:44px;border-radius:12px;background:#e4dccc;color:#8b8371;font-weight:900;font-size:20px;display:flex;align-items:center;justify-content:center}
+.step .t{font-size:26px;font-weight:800;color:#a89f8c}
+.step.on .n{background:var(--jaune);color:var(--noir);box-shadow:0 4px 0 var(--jaune-ombre)}
+.step.on .t{color:var(--noir)}
+.step.done .n{background:var(--noir);color:var(--vert)}
+.step.done .t{color:var(--gris)}
+.finger{position:absolute;width:56px;height:56px;border-radius:50%;background:rgba(251,248,242,.92);border:2.5px solid rgba(21,18,15,.55);box-shadow:0 14px 28px -10px rgba(21,18,15,.5);z-index:8}
+.ping{position:absolute;width:56px;height:56px;border-radius:50%;border:3px solid var(--jaune);z-index:7}
+.flydot{position:absolute;width:26px;height:26px;border-radius:50%;background:var(--jaune);box-shadow:0 0 0 7px rgba(255,194,26,.25),0 10px 22px -6px rgba(21,18,15,.5);z-index:9}
+
+/* ---------- ACTES 3-4 : le bureau (fenêtre planning + export) ---------- */
+#s3{background:radial-gradient(circle at 50% 38%,#FBF8F2 0%,var(--creme) 56%,#e6dfcf 100%);color:var(--noir)}
+.win{position:absolute;left:50%;top:74px;width:1600px;transform:translateX(-50%);background:#fff;border-radius:22px;box-shadow:0 70px 130px -50px rgba(21,18,15,.55);overflow:hidden}
+.win-top{background:var(--noir);display:flex;align-items:center;gap:18px;padding:18px 26px}
+.win-top .wm{font-weight:900;font-size:26px;color:var(--creme);letter-spacing:.02em}
+.win-top .wm b{color:var(--jaune)}
+.win-top .pill{font-family:'JetBrains Mono',monospace;font-size:16px;color:var(--creme);background:var(--noir-card);border:1px solid rgba(242,237,227,.16);border-radius:10px;padding:8px 18px}
+.win-top .sp{flex:1}
+.win-top .wbtn{font-size:16px;font-weight:800;color:var(--creme);background:transparent;border:1.5px solid rgba(242,237,227,.3);border-radius:10px;padding:8px 16px}
+.win-top .wbtn.y{background:var(--jaune);color:var(--noir);border:none;box-shadow:0 3px 0 var(--jaune-ombre)}
+.win-top .av{width:40px;height:40px;border-radius:50%;background:var(--noir-card);border:1.5px solid rgba(255,194,26,.5);color:var(--jaune);font-weight:800;font-size:15px;display:flex;align-items:center;justify-content:center}
+.grid{padding:10px 22px 20px}
+.grow{display:grid;grid-template-columns:250px repeat(5,1fr);gap:10px;align-items:stretch;margin-top:10px}
+.gh{font-weight:800;font-size:19px;text-align:center;color:var(--noir);padding:8px 0 2px}
+.gh small{display:block;font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:500;color:var(--gris);letter-spacing:.1em}
+.who{display:flex;align-items:center;gap:12px;padding:8px 4px}
+.who .a{width:46px;height:46px;border-radius:50%;background:var(--noir);color:var(--jaune);font-weight:800;font-size:16px;display:flex;align-items:center;justify-content:center;flex:none}
+.who b{font-size:19px;display:block}
+.who span{font-size:13.5px;color:var(--vert);font-weight:700}
+.card{border-radius:12px;padding:11px 13px;border:1px solid transparent;min-height:86px;position:relative}
+.card b{font-size:16.5px;display:block;letter-spacing:-.01em}
+.card span{font-size:13px;font-weight:600;opacity:.75}
+.card .bot{display:flex;align-items:center;justify-content:space-between;margin-top:9px;font-family:'JetBrains Mono',monospace;font-size:13px}
+.card .st{letter-spacing:.1em;font-weight:700;opacity:.6}
+.card .ok{color:var(--vert);font-weight:700;letter-spacing:0}
+.c-rose{background:#FADBE7;color:#8f2757;border-color:#f0b9cf}
+.c-viol{background:#E9E4F9;color:#4b3d8f;border-color:#cfc6ee}
+.c-vert{background:#DFF3E5;color:#1F7A4D;border-color:#bfe4cc}
+.c-jaun{background:#FBEFC9;color:#7a6110;border-color:#efd98f}
+.c-off{background:repeating-linear-gradient(45deg,#efe9db 0 10px,#e4dccc 10px 20px);color:#8b8371;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px}
+.c-plus{border:2px dashed #d8d1c2;background:transparent;display:flex;align-items:center;justify-content:center;color:#c4bcaa;font-size:22px}
+.livechip{position:absolute;top:-14px;right:-10px;background:var(--noir);color:var(--jaune);font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:700;padding:6px 11px;border-radius:8px;white-space:nowrap;box-shadow:0 10px 22px -8px rgba(21,18,15,.5)}
+.rt{display:inline-flex;align-items:center;gap:8px;font-family:'JetBrains Mono',monospace;font-size:14px;color:var(--creme);letter-spacing:.08em}
+.rt i{width:9px;height:9px;border-radius:50%;background:var(--vert)}
+.menu{position:absolute;background:#fff;border-radius:14px;box-shadow:0 30px 60px -20px rgba(21,18,15,.45);border:1px solid rgba(21,18,15,.1);padding:8px;width:340px}
+.menu .mi{padding:13px 16px;border-radius:10px;font-weight:800;font-size:18px;color:var(--noir)}
+.menu .mi small{display:block;font-size:13.5px;color:var(--gris);font-weight:600}
+.menu .mi.hl{background:rgba(255,194,26,.2)}
+.doc{position:absolute;left:50%;top:300px;width:520px;transform:translateX(-50%);background:#fff;border-radius:20px;box-shadow:0 60px 120px -40px rgba(21,18,15,.6);padding:28px;color:var(--noir)}
+.doc .dh{display:flex;align-items:center;gap:14px;border-bottom:2px solid rgba(21,18,15,.1);padding-bottom:16px;margin-bottom:16px}
+.doc .xlsb{width:56px;height:56px;border-radius:13px;background:var(--noir);color:var(--jaune);font-family:'JetBrains Mono',monospace;font-weight:700;font-size:16px;display:flex;align-items:center;justify-content:center;flex:none}
+.doc .dh b{font-size:19px;display:block}
+.doc .dh span{font-family:'JetBrains Mono',monospace;font-size:13.5px;color:var(--gris)}
+.doc .row{display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:16px;padding:9px 4px;border-bottom:1px dashed rgba(21,18,15,.12);color:#3d3a34}
+.doc .row b{font-family:'Archivo',sans-serif;font-weight:800;color:var(--noir)}
+.stamp{position:absolute;right:-40px;top:-34px;background:var(--jaune);color:var(--noir);font-weight:900;font-size:25px;letter-spacing:.02em;padding:14px 26px;border-radius:14px;border:4px solid var(--noir);box-shadow:0 20px 40px -14px rgba(21,18,15,.5)}
+.stamp small{display:block;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;letter-spacing:.16em}
+.ruban{height:14px;background:repeating-linear-gradient(45deg,var(--noir) 0 14px,var(--jaune) 14px 28px)}
+
+/* ---------- ACTE 5 : CTA ---------- */
+#s5{background:radial-gradient(circle at 50% 42%,#221b12 0%,#181410 55%,var(--noir) 85%)}
+.wordmark{position:absolute;left:50%;top:300px;transform:translateX(-50%);font-weight:900;font-size:190px;letter-spacing:.04em;color:var(--creme);white-space:nowrap}
+.wordmark .y{color:var(--jaune)}
+.wordmark span{display:inline-block}
+.slogan{position:absolute;left:50%;top:560px;transform:translateX(-50%);font-size:58px;font-weight:800;letter-spacing:-.02em;white-space:nowrap}
+.slogan .y{color:var(--jaune)}
+.cta{position:absolute;left:50%;top:688px;transform:translateX(-50%);background:var(--jaune);color:var(--noir);font-weight:900;font-size:31px;padding:24px 46px;border-radius:16px;box-shadow:0 6px 0 var(--jaune-ombre),0 0 90px rgba(255,194,26,.28);white-space:nowrap}
+.nocard{position:absolute;left:50%;top:790px;transform:translateX(-50%);color:var(--creme-dim);font-size:22px;font-weight:600}
+.url{position:absolute;left:50%;top:900px;transform:translateX(-50%);font-family:'JetBrains Mono',monospace;font-size:30px;font-weight:700;color:var(--creme);letter-spacing:.14em}
+.url .y{color:var(--jaune)}
+
+/* ---------- habillage lecteur (masqué en export) ---------- */
+#chrome{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);display:flex;align-items:center;gap:16px;background:rgba(21,18,15,.92);border:1px solid rgba(242,237,227,.16);border-radius:16px;padding:12px 18px;z-index:50}
+#chrome button{background:var(--jaune);color:var(--noir);border:none;border-radius:10px;width:44px;height:40px;font-size:18px;font-weight:900;cursor:pointer}
+#chrome .tm{font-family:'JetBrains Mono',monospace;font-size:14px;color:var(--creme);min-width:110px;text-align:center}
+#chrome input[type=range]{width:420px;accent-color:var(--jaune)}
+#bigplay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(11,9,8,.35);z-index:60;cursor:pointer}
+#bigplay .b{width:130px;height:130px;border-radius:50%;background:var(--jaune);color:var(--noir);display:flex;align-items:center;justify-content:center;font-size:52px;box-shadow:0 8px 0 var(--jaune-ombre),0 0 120px rgba(255,194,26,.4)}
+.hide{display:none!important}
+</style>
+</head>
+<body>
+<div id="stage">
+
+  <!-- ================= ACTE 1 · LE PROBLÈME (0-20 s) ================= -->
+  <section class="scene" id="s1">
+    <div class="xmark x-dark" id="s1x" style="left:580px;top:160px"><i></i><i></i></div>
+    <div class="texchantier"></div>
+    <div class="kicker" id="s1k" style="top:96px">Suivi de chantier · aujourd'hui</div>
+    <div class="h-big" id="s1h1" style="top:170px;font-size:78px">Suivre un chantier,<br>c'est jongler avec <span class="y">dix outils</span>.</div>
+    <div class="h-big" id="s1h2" style="top:200px;font-size:74px">Et l'info <span class="y">se perd</span><br>entre le terrain et le bureau.</div>
+    <div id="chaosWrap"></div>
+    <div class="vignette"></div>
+  </section>
+
+  <!-- ================= ACTE 2 · LE POSEUR POINTE (20-40 s) ================= -->
+  <section class="scene" id="s2">
+    <div class="xmark x-cream" id="s2x" style="left:1050px;top:110px;width:900px;height:900px"><i></i><i></i></div>
+    <div class="steps" id="steps">
+      <div class="step" id="st1"><div class="n">1</div><div class="t">Le chantier</div></div>
+      <div class="step" id="st2"><div class="n">2</div><div class="t">Les heures</div></div>
+      <div class="step" id="st3"><div class="n">3</div><div class="t">Envoyer</div></div>
+    </div>
+    <div class="phone" id="phone">
+      <div class="phone-scr">
+        <div class="phone-top"><span class="c">Annuler</span><span class="t">Pointage</span><span class="c" style="opacity:0">·</span></div>
+        <div class="phone-body">
+          <div class="plabel">CHANTIER</div>
+          <div class="site" id="site1"><div><b>Villa Lupin</b><span>Aix-en-Provence</span></div><div class="radio"></div></div>
+          <div class="site" id="site2"><div><b>Toiture Pasteur</b><span>Marseille 13e</span></div><div class="radio"></div></div>
+          <div class="site" id="site3"><div><b>Maison Dubois</b><span>Argonay</span></div><div class="radio"></div></div>
+          <div class="plabel" style="margin-top:14px">HORAIRES</div>
+          <div class="chips">
+            <div class="chip" id="chipD"><div class="k">DÉBUT</div><div class="v">07:30</div></div>
+            <div class="chip" id="chipF"><div class="k">FIN</div><div class="v">15:30</div></div>
+            <div class="chip dark" id="chipT"><div class="k">DURÉE</div><div class="v" id="durv">0:00</div></div>
+          </div>
+          <div class="notice" id="notice">Pause déduite automatiquement</div>
+          <button class="ybtn" id="sendbtn">Envoyer ma journée →</button>
+        </div>
+      </div>
+    </div>
+    <div class="finger" id="finger"></div>
+    <div class="ping" id="ping1"></div>
+    <div class="flydot" id="dotOut"></div>
+    <div class="cap" id="s2c1">Sur le terrain, il pointe <span class="y">en un geste</span>.</div>
+    <div class="cap" id="s2c2">Trois taps. <span class="y">C'est envoyé.</span></div>
+  </section>
+
+  <!-- ================= ACTES 3-4 · LE BUREAU (40-81 s) ================= -->
+  <section class="scene" id="s3">
+    <div class="xmark x-cream" id="s3x" style="left:-160px;top:340px;width:820px;height:820px"><i></i><i></i></div>
+    <div class="win" id="win">
+      <div class="win-top">
+        <span class="wm">BEME<b>X</b>O</span>
+        <span class="pill mono">S-28 · 6 → 11 juil.</span>
+        <span class="sp"></span>
+        <span class="rt" id="rtchip"><i></i>temps réel</span>
+        <button class="wbtn">Salariés</button>
+        <button class="wbtn">Clients</button>
+        <button class="wbtn y" id="expbtn">Exporter ▾</button>
+        <span class="av">MV</span>
+      </div>
+      <div class="grid">
+        <div class="grow" id="ghead"></div>
+        <div id="grows"></div>
+      </div>
+    </div>
+    <div class="menu" id="expmenu">
+      <div class="mi hl">Exporter l'équipe<small>verrouille le mois · Excel ou PDF</small></div>
+      <div class="mi">Exporter un salarié</div>
+    </div>
+    <div class="doc" id="doc">
+      <div class="ruban" style="border-radius:8px;margin-bottom:18px"></div>
+      <div class="dh">
+        <div class="xlsb">XLS</div>
+        <div><b>Export paie — Juillet</b><span>bemexo-export-juillet.xlsx</span></div>
+      </div>
+      <div id="docrows"></div>
+      <div class="stamp" id="stamp"><small>BEMEXO</small>PRÊT POUR LA PAIE</div>
+    </div>
+    <div class="flydot" id="dotIn"></div>
+    <div class="finger" id="finger2"></div>
+    <div class="cap" id="s3c1">Au bureau, tout remonte <span class="y">automatiquement</span>.</div>
+    <div class="cap" id="s3c2">Chantiers, équipes, heures — <span class="y">d'un coup d'œil</span>.</div>
+    <div class="cap" id="s4c1">La paie se prépare <span class="y">toute seule</span>.</div>
+    <div class="cap" id="s4c2">Des heures propres, <span class="y">prêtes à l'emploi</span>.</div>
+  </section>
+
+  <!-- ================= ACTE 5 · CTA (81-100 s) ================= -->
+  <section class="scene" id="s5">
+    <div class="xmark x-dark" id="s5x" style="left:580px;top:160px"><i></i><i></i></div>
+    <div class="texchantier"></div>
+    <div class="h-big" id="s5b" style="top:400px;font-size:88px">Moins de temps perdu.<br><span class="y">Plus de temps pour construire.</span></div>
+    <div class="wordmark" id="wm"><span>B</span><span>E</span><span>M</span><span>E</span><span class="y">X</span><span>O</span></div>
+    <div class="slogan" id="slog">Une seule saisie. <span class="y">Tout suit.</span></div>
+    <div class="cta" id="cta">Essayer 30 jours gratuits</div>
+    <div class="nocard" id="nocard">Sans carte bancaire</div>
+    <div class="url" id="url">bemexo<span class="y">.com</span></div>
+    <div class="vignette"></div>
+  </section>
+</div>
+
+<!-- habillage lecteur (masqué avec ?export=1) -->
+<div id="bigplay"><div class="b">▶</div></div>
+<div id="chrome" class="hide">
+  <button id="pp">⏸</button>
+  <span class="tm" id="tm">0:00.0 / 1:40</span>
+  <input type="range" id="scrub" min="0" max="100" step="0.02" value="0">
+  <button id="re">↺</button>
+</div>
+
+<script>
+/* ============================================================
+   Moteur : timeline déterministe. render(t) recalcule TOUT l'état
+   depuis t (secondes) → seek exact pour l'export image par image.
+   ============================================================ */
+const DUR = 100;
+const $ = id => document.getElementById(id);
+const clamp = (x,a,b)=>Math.max(a,Math.min(b,x));
+const lerp = (a,b,p)=>a+(b-a)*p;
+const P = (t,a,b)=>clamp((t-a)/(b-a),0,1);
+const expo = p=>p>=1?1:1-Math.pow(2,-10*p);
+const quint = p=>p<.5?16*p*p*p*p*p:1-Math.pow(-2*p+2,5)/2;
+const back = p=>{const c=1.9;return 1+(c+1)*Math.pow(p-1,3)+c*Math.pow(p-1,2)};
+const fmtHM = m=>`${Math.floor(m/60)}:${String(Math.round(m)%60).padStart(2,'0')}`;
+
+/* apparition/disparition standard (pilule, titres, cartes…) */
+function io(el,t,tin,tout,{dy=46,din=.8,dout=.5,sc=null,e=expo}={}){
+  const pi=e(P(t,tin,tin+din)), po=P(t,tout,tout+dout);
+  const o=pi*(1-po);
+  el.style.opacity=o;
+  const y=(1-pi)*dy - po*26;
+  const s=sc==null?1:lerp(sc,1,pi)*(1-po*.04);
+  el.style.transform=(el.dataset.tx||'')+` translateY(${y}px) scale(${s})`;
+  el.style.visibility=o<=0.001?'hidden':'visible';
+  return o;
+}
+function press(el,t,t0,base){ /* écrasement bouton (ombre dure) */
+  const p=P(t,t0,t0+.16), q=P(t,t0+.16,t0+.34);
+  const s=1-.05*Math.sin(Math.min(p,1-q>=0?1-q:0)*Math.PI);
+  el.style.transform=(base||'')+` scale(${1-.05*(p<1?p:(1-q))})`;
+}
+
+/* ---------- ACTE 1 : données du chaos ---------- */
+const CHAOS=[
+ {x:140,y:378,r:-7,in:2.6, html:`<div class="chaos note"><span class="tag">PAPIER</span><h4>Semaine 28 — heures</h4><div class="l" style="width:82%"></div><div class="l" style="width:65%"></div><div class="l" style="width:74%"></div><div class="scrib">mardi : 7h30… ou 7h ?<br>+ panier ?? à vérifier</div></div>`},
+ {x:1420,y:378,r:5,in:3.4, html:`<div class="chaos sms"><span class="tag">SMS</span>Tu finis à quelle heure sur Lupin ?</div>`},
+ {x:1350,y:540,r:-3,in:4.1, html:`<div class="chaos sms right">jsuis passé sur l'autre chantier là</div>`},
+ {x:555,y:645,r:3,in:5.0, html:`<div class="chaos xls"><span class="tag">TABLEUR</span><h4>POINTAGES_JUIL_V3_final(2).xlsx</h4><table><tr><td>Karim</td><td>7,5</td><td class="err">#REF!</td></tr><tr><td>Mehdi</td><td class="err">??</td><td>6</td></tr><tr><td>Sofia</td><td>7</td><td class="err">#N/A</td></tr></table></div>`},
+ {x:1150,y:715,r:-5,in:5.9, html:`<div class="chaos tel"><span class="tag">APPELS</span><div class="ic">📞</div><div><b>Bureau</b><span>3 appels manqués</span></div></div>`},
+ {x:235,y:688,r:8,in:6.7, html:`<div class="postit"><small>À NE PAS OUBLIER</small>Relancer Lucas pour ses heures de mardi !!</div>`},
+];
+const wrap=$('chaosWrap');
+CHAOS.forEach((c,i)=>{const d=document.createElement('div');d.innerHTML=c.html;const el=d.firstChild;el.style.left=c.x+'px';el.style.top=c.y+'px';el.style.position='absolute';el.id='ch'+i;wrap.appendChild(el);});
+
+/* ---------- ACTES 3-4 : données du planning ---------- */
+const DAYS=[['lun.','6'],['mar.','7'],['mer.','8'],['jeu.','9'],['ven.','10']];
+const gh=$('ghead');
+gh.innerHTML='<div></div>'+DAYS.map(d=>`<div class="gh">${d[0]} ${d[1]}<small>JUIL.</small></div>`).join('');
+const ROWS=[
+ {a:'KB',n:'Karim B.',c:[
+   {cls:'c-rose',b:'Villa Lupin',s:'Aix',h:'07:30',st:'ok',v:'7:00'},
+   {cls:'c-rose',b:'Villa Lupin',s:'Aix',h:'07:30',st:'ok',v:'7:30'},
+   {cls:'c-rose',b:'Villa Lupin',s:'Aix',h:'07:30',st:'plan',flip:48.2,v:'7:15'},
+   {cls:'c-rose',b:'Villa Lupin',s:'Aix',h:'07:30',st:'plan'},
+   {cls:'plus'}]},
+ {a:'MT',n:'Mehdi T.',c:[
+   {cls:'c-viol',b:'Rés. Les Cèdres',s:'Seynod',h:'08:00',st:'ok',v:'7:30'},
+   {cls:'c-vert',b:'Maison Dubois',s:'Argonay',h:'08:00',st:'ok',v:'6:00'},
+   {cls:'c-viol',b:'Rés. Les Cèdres',s:'Seynod',h:'08:00',st:'plan',flip:50.6,v:'6:45'},
+   {cls:'off'},
+   {cls:'c-viol',b:'Rés. Les Cèdres',s:'Seynod',h:'07:30',st:'plan'}]},
+ {a:'SR',n:'Sofia R.',c:[
+   {cls:'c-vert',b:'Maison Dubois',s:'Argonay',h:'08:00',st:'ok',v:'7:00'},
+   {cls:'c-vert',b:'Maison Dubois',s:'Argonay',h:'08:00',st:'ok',v:'7:00'},
+   {cls:'c-jaun',b:'Chantier Bellevue',s:'Annecy',h:'08:00',st:'plan'},
+   {cls:'c-jaun',b:'Chantier Bellevue',s:'Annecy',h:'07:30',st:'plan'},
+   {cls:'plus'}]},
+];
+const grows=$('grows');let cardIdx=0;const cardEls=[];
+ROWS.forEach(r=>{
+  const row=document.createElement('div');row.className='grow';
+  row.innerHTML=`<div class="who"><div class="a">${r.a}</div><div><b>${r.n}</b><span>● 35 h/sem</span></div></div>`;
+  r.c.forEach(c=>{
+    const cell=document.createElement('div');
+    if(c.cls==='plus'){cell.className='card c-plus';cell.textContent='+';}
+    else if(c.cls==='off'){cell.className='card c-off';cell.textContent='🌴 Congé';}
+    else{
+      cell.className='card '+c.cls;
+      cell.innerHTML=`<b>${c.b}</b><span>${c.s}</span><div class="bot"><span>${c.h}</span><span class="st" data-st>PLANIFIÉ</span></div><span class="livechip" style="opacity:0">reçu à l'instant</span>`;
+      if(c.st==='ok'){cell.querySelector('[data-st]').outerHTML=`<span class="ok">✓ ${c.v}</span>`;}
+      cell.dataset.flip=c.flip||'';cell.dataset.val=c.v||'';
+    }
+    cell.dataset.idx=cardIdx++;cardEls.push(cell);row.appendChild(cell);
+  });
+  grows.appendChild(row);
+});
+$('docrows').innerHTML=ROWS.map(r=>{
+  const tot={KB:'21:45',MT:'20:15',SR:'22:00'}[r.a];
+  return `<div class="row"><b>${r.n}</b><span>${tot} · panier ✓</span></div>`;
+}).join('')+`<div class="row"><b>Mois</b><span>verrouillé 🔒</span></div>`;
+
+/* ---------- helpers doigt/dot : trajectoires ---------- */
+function moveAlong(el,t,pts){ /* pts:[{t,x,y}] — position interpolée quintInOut */
+  if(t<pts[0].t||t>pts[pts.length-1].t+2){el.style.visibility='hidden';return}
+  el.style.visibility='visible';
+  let a=pts[0],b=pts[pts.length-1];
+  for(let i=0;i<pts.length-1;i++){if(t>=pts[i].t&&t<=pts[i+1].t){a=pts[i];b=pts[i+1];break}
+    if(t>pts[pts.length-1].t){a=b=pts[pts.length-1]}}
+  const p=a===b?1:quint(P(t,a.t,b.t));
+  el.style.left=lerp(a.x,b.x,p)+'px';el.style.top=lerp(a.y,b.y,p)+'px';
+}
+function pingAt(el,t,t0,x,y){
+  const p=P(t,t0,t0+.7);
+  if(p<=0||p>=1){el.style.visibility='hidden';return}
+  el.style.visibility='visible';el.style.left=x+'px';el.style.top=y+'px';
+  el.style.transform=`scale(${1+p*2.1})`;el.style.opacity=1-p;
+}
+
+/* ============================================================ RENDER ============================================================ */
+const scenes={s1:[0,20],s2:[20,40.6],s3:[40,81],s5:[81,DUR+1]};
+function render(t){
+  for(const id in scenes){const [a,b]=scenes[id];$(id).style.visibility=(t>=a&&t<b)?'visible':'hidden'}
+  /* les « flotteurs » (doigt, anneaux, points volants) re-forcent leur propre
+     visibility : on les éteint à CHAQUE frame, les scènes actives les rallument.
+     Indispensable pour un seek déterministe dans n'importe quel ordre. */
+  ['finger','finger2','ping1','dotOut','dotIn'].forEach(id=>$(id).style.visibility='hidden');
+
+  /* ---------------- ACTE 1 ---------------- */
+  if(t<20.6){
+    $('s1x').style.transform=`rotate(${-4+t*.22}deg) scale(${1+t*.004})`;
+    io($('s1k'),t,0.7,18.6,{dy:24});
+    io($('s1h1'),t,1.4,11.6,{dy:50});
+    io($('s1h2'),t,12.5,18.8,{dy:50});
+    CHAOS.forEach((c,i)=>{
+      const el=$('ch'+i);
+      const pi=back(P(t,c.in,c.in+.85));
+      const fall=P(t,16.6+i*.14,17.7+i*.14); /* tout dégringole */
+      const wob=Math.sin(t*1.4+i*1.7)*2.2, woby=Math.cos(t*1.1+i)*5;
+      el.style.opacity=(pi*(1-fall*.25)).toFixed(3);
+      el.style.transform=`translateY(${(1-pi)*90+woby+fall*760}px) rotate(${c.r+wob+fall*(i%2?26:-22)}deg) scale(${.86+.14*pi})`;
+      el.style.visibility=pi<=0?'hidden':'visible';
+    });
+  }
+
+  /* ---------------- ACTE 2 ---------------- */
+  if(t>=19.6&&t<41){
+    $('s2x').style.transform=`rotate(${3-(t-20)*.18}deg)`;
+    const pin=expo(P(t,20.1,21.3)), pout=P(t,39.2,40.2);
+    const ph=$('phone');
+    ph.style.opacity=1-pout;
+    ph.style.transform=`translateX(-50%) translateY(${(1-pin)*560 - pout*60}px)`;
+    io($('steps'),t,20.7,39.2,{dy:40});
+    /* stepper d'état */
+    const st1=$('st1'),st2=$('st2'),st3=$('st3');
+    st1.className='step'+(t<24.4?' on':' done');
+    st2.className='step'+(t<24.4?'':(t<30.9?' on':' done'));
+    st3.className='step'+(t<30.9?'':(t<34.4?' on':' done'));
+    /* étape 1 : choisir le chantier */
+    $('site1').className='site'+(t>=23.9?' on':'');
+    /* étape 2 : heures + durée qui compte */
+    io($('chipD'),t,26.8,39,{dy:22,sc:.9,e:back});
+    io($('chipF'),t,27.15,39,{dy:22,sc:.9,e:back});
+    io($('chipT'),t,27.5,39,{dy:22,sc:.9,e:back});
+    $('durv').textContent=fmtHM(435*expo(P(t,27.9,29.6)));
+    io($('notice'),t,29.8,39,{dy:16});
+    /* étape 3 : envoyer */
+    const sb=$('sendbtn');
+    if(t>=33.85){sb.classList.add('ok');sb.textContent='✓ Journée envoyée';}
+    else{sb.classList.remove('ok');sb.textContent='Envoyer ma journée →';}
+    press(sb,t,33.3);
+    /* doigt : entre, tape le chantier, SORT du cadre, revient presser Envoyer, ressort */
+    moveAlong($('finger'),t,[
+      {t:22.4,x:1420,y:1140},{t:23.3,x:1120,y:262},{t:24.6,x:1120,y:262},
+      {t:25.6,x:1480,y:1160},{t:31.8,x:1480,y:1160},{t:32.9,x:975,y:852},{t:34.3,x:975,y:852},{t:35.1,x:1260,y:1170}]);
+    pingAt($('ping1'),t,23.6,1096,240);
+    pingAt($('ping1'),t,33.3,952,830);
+    /* dot part vers le bureau */
+    const dp=P(t,34.3,35.6);
+    const dot=$('dotOut');
+    if(dp>0&&dp<1){dot.style.visibility='visible';
+      dot.style.left=lerp(950,2010,quint(dp))+'px';
+      dot.style.top=(828 - Math.sin(dp*Math.PI)*520 - dp*260)+'px';
+      dot.style.opacity=1;
+    } else dot.style.visibility='hidden';
+    io($('s2c1'),t,21.6,27.4);
+    io($('s2c2'),t,32.3,38.6);
+  }
+
+  /* ---------------- ACTES 3-4 ---------------- */
+  if(t>=39.6&&t<81.6){
+    $('s3x').style.transform=`rotate(${-2+(t-40)*.1}deg)`;
+    const win=$('win');
+    const win_in=expo(P(t,40.15,41.35)), wout=P(t,79.6,80.8);
+    const zoom=1+.028*P(t,52,62);
+    win.style.opacity=(win_in*(1-wout)).toFixed(3);
+    win.style.transform=`translateX(-50%) translateY(${(1-win_in)*120 - wout*40}px) scale(${(0.96+.04*win_in)*zoom*(1-wout*.03)})`;
+    win.style.visibility=win_in<=0?'hidden':'visible';
+    /* dot arrive du terrain */
+    const da=P(t,40.35,41.45);
+    const din=$('dotIn');
+    if(da>0&&da<1){din.style.visibility='visible';
+      din.style.left=lerp(-70,1210,quint(da))+'px';
+      din.style.top=(120 - Math.sin(da*Math.PI)*70 + da*10)+'px';
+    } else din.style.visibility='hidden';
+    pingAt($('ping1'),t,41.35,1210,128);
+    /* cartes en cascade */
+    cardEls.forEach(el=>{
+      const i=+el.dataset.idx;
+      const t0=42.1+i*.22;
+      const pi=back(P(t,t0,t0+.75));
+      el.style.opacity=pi.toFixed(3);
+      el.style.transform=`translateY(${(1-pi)*34}px) scale(${.9+.1*pi})`;
+      /* bascule temps réel PLANIFIÉ → ✓ h:mm */
+      const flip=parseFloat(el.dataset.flip||'');
+      if(flip){
+        const st=el.querySelector('[data-st]');
+        const chip=el.querySelector('.livechip');
+        if(st){
+          if(t>=flip){st.className='ok';st.removeAttribute('data-st-done');st.textContent='✓ '+el.dataset.val;}
+          else{st.className='st';st.textContent='PLANIFIÉ';}
+        }
+        if(chip){const cp=P(t,flip,flip+.5)*(1-P(t,flip+3.4,flip+4));chip.style.opacity=cp.toFixed(3);
+          chip.style.transform=`translateY(${(1-back(P(t,flip,flip+.5)))*10}px)`;}
+        const ring=P(t,flip-.55,flip+.35);
+        el.style.boxShadow=(ring>0&&ring<1)?`0 0 0 ${ring*14}px rgba(255,194,26,${.5*(1-ring)})`:'none';
+      }
+    });
+    /* chip temps réel qui pulse */
+    $('rtchip').style.opacity=P(t,41.8,42.6);
+    $('rtchip').querySelector('i').style.transform=`scale(${1+.35*Math.abs(Math.sin(t*2.4))})`;
+    /* captions acte 3 */
+    io($('s3c1'),t,42.4,49.2);
+    io($('s3c2'),t,50.4,57.4);
+    /* ---- acte 4 : export ---- */
+    moveAlong($('finger2'),t,[
+      {t:60.6,x:1650,y:1010},{t:61.9,x:1352,y:132},{t:63.4,x:1352,y:132},
+      {t:63.9,x:1330,y:250},{t:65.4,x:1330,y:250},{t:66.2,x:1500,y:1120}]);
+    pingAt($('ping1'),t,62.2,1330,110);
+    pingAt($('ping1'),t,64.9,1308,228);
+    /* menu export */
+    io($('expmenu'),t,62.5,65.4,{dy:14,din:.4,dout:.3});
+    $('expmenu').style.left='1180px';$('expmenu').style.top='176px';$('expmenu').dataset.tx='';
+    /* la fenêtre s'estompe légèrement derrière le doc */
+    if(t>=65.4){win.style.opacity=(win_in*(1-wout)*(1-.55*P(t,65.4,66.4))).toFixed(3)}
+    /* document paie */
+    const doc=$('doc');
+    io(doc,t,65.9,79.2,{dy:90,sc:.86,e:back,din:1,dout:.7});
+    doc.dataset.tx='translateX(-50%)';
+    /* lignes du doc en cascade */
+    [...$('docrows').children].forEach((r,i)=>{
+      const p=expo(P(t,66.6+i*.3,67.4+i*.3));
+      r.style.opacity=p;r.style.transform=`translateX(${(1-p)*26}px)`;
+    });
+    /* tampon */
+    const sp=back(P(t,69.3,69.95));
+    const stamp=$('stamp');
+    stamp.style.opacity=P(t,69.3,69.5);
+    stamp.style.transform=`rotate(${lerp(14,-7,sp)}deg) scale(${lerp(1.7,1,sp)})`;
+    io($('s4c1'),t,66.8,73.4);
+    io($('s4c2'),t,74.4,79.4);
+  }
+
+  /* ---------------- ACTE 5 ---------------- */
+  if(t>=80.6){
+    /* clôture propre comme la vidéo 1 : pas de filigrane derrière le wordmark */
+    $('s5x').style.display='none';
+    io($('s5b'),t,81.6,88.2,{dy:54});
+    /* wordmark : lettres en cascade, X en dernier avec rebond */
+    const wm=$('wm');const spans=wm.children;
+    let any=0;
+    for(let i=0;i<spans.length;i++){
+      const isX=spans[i].classList.contains('y');
+      const t0=isX?90.4:89.3+i*.13;
+      const p=isX?back(P(t,t0,t0+.75)):expo(P(t,t0,t0+.8));
+      spans[i].style.opacity=p;any=Math.max(any,p);
+      spans[i].style.transform=isX?`scale(${.4+.6*p}) rotate(${(1-p)*180}deg)`:`translateY(${(1-p)*70}px)`;
+    }
+    wm.style.visibility=any<=0?'hidden':'visible';wm.style.opacity=1;
+    io($('slog'),t,91.6,DUR+2,{dy:34});
+    io($('cta'),t,93.4,DUR+2,{dy:26,sc:.86,e:back});
+    io($('nocard'),t,94.1,DUR+2,{dy:16});
+    io($('url'),t,95.2,DUR+2,{dy:18});
+    $('slog').dataset.tx='translateX(-50%)';$('cta').dataset.tx='translateX(-50%)';
+    $('nocard').dataset.tx='translateX(-50%)';$('url').dataset.tx='translateX(-50%)';
+  }
+}
+/* dataset.tx pour les éléments centrés (io compose translateX(-50%) + anim) */
+['s1k','s1h1','s1h2','s2c1','s2c2','s3c1','s3c2','s4c1','s4c2','s5b','slog','cta','nocard','url'].forEach(id=>$(id).dataset.tx='translateX(-50%)');
+$('steps').dataset.tx='';$('doc').dataset.tx='translateX(-50%)';
+
+/* ============================================================ lecteur ============================================================ */
+let t=0,playing=false,raf=null,last=0;
+const isExport=/[?&]export=1/.test(location.search);
+function fit(){const s=Math.min(innerWidth/1920,innerHeight/1080);$('stage').style.transform=`translate(-50%,-50%) scale(${s})`}
+addEventListener('resize',fit);fit();
+function fmtT(x){return `${Math.floor(x/60)}:${String(Math.floor(x%60)).padStart(2,'0')}.${Math.floor((x%1)*10)}`}
+function frame(now){
+  if(!playing)return;
+  const dt=Math.min(.05,(now-last)/1000);last=now;t+=dt;
+  if(t>=DUR){t=DUR;playing=false;$('pp').textContent='▶'}
+  render(t);
+  $('scrub').value=t;$('tm').textContent=fmtT(t)+' / 1:40';
+  if(playing)raf=requestAnimationFrame(frame);
+}
+function play(){if(t>=DUR)t=0;playing=true;last=performance.now();$('pp').textContent='⏸';raf=requestAnimationFrame(frame)}
+function pause(){playing=false;$('pp').textContent='▶'}
+$('pp').onclick=()=>playing?pause():play();
+$('re').onclick=()=>{t=0;render(0);$('scrub').value=0;if(!playing)play()};
+$('scrub').oninput=e=>{pause();t=+e.target.value;render(t);$('tm').textContent=fmtT(t)+' / 1:40'};
+$('scrub').max=DUR;
+$('bigplay').onclick=()=>{$('bigplay').classList.add('hide');$('chrome').classList.remove('hide');play()};
+addEventListener('keydown',e=>{if(e.code==='Space'){e.preventDefault();if(!$('bigplay').classList.contains('hide')){$('bigplay').click()}else{playing?pause():play()}}});
+/* export : API déterministe pour la capture image par image */
+window.__DUR=DUR;
+window.__seek=x=>{pause();t=clamp(x,0,DUR);render(t)};
+if(isExport){$('bigplay').classList.add('hide');$('chrome').classList.add('hide')}
+render(0);
+</script>
+</body>
+</html>
