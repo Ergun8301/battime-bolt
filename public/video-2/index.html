@@ -351,9 +351,9 @@ body{font-family:'Archivo',sans-serif;color:var(--creme);-webkit-font-smoothing:
       </div>
     </div>
     <div class="jlab" id="jlab2">BUREAU</div>
-    <div class="jlink" id="jlink"></div>
-    <div class="jp" id="jp0"></div><div class="jp" id="jp1"></div><div class="jp" id="jp2"></div>
     <div class="jshock" id="jshock"></div>
+    <div class="jshock" id="jr0"></div>
+    <div class="jshock" id="jr1"></div>
     <div class="xg" id="jx" style="font-size:150px;color:var(--jaune);left:895px;top:455px;text-shadow:0 0 60px rgba(255,194,26,.8)">X</div>
     <div class="vignette"></div>
   </section>
@@ -476,15 +476,17 @@ function capIn(el,t,tin,tout){
   el.style.transform=`translateX(-50%) translateY(${(1-pi)*22-po*20}px)`;
   el.style.visibility=o<=0.001?'hidden':'visible';
 }
-function slam(el,t,t0,{step=.11,dur=.5,out=null}={}){
+function slam(el,t,t0,{step=.11,dur=.55,out=null}={}){
+  /* arrivée mot à mot PROPRE : montée + fondu. L'opacité suit p² → le mot est
+     quasi invisible tant qu'il n'est pas posé : aucun « fantôme » géant. */
   const words=el.querySelectorAll('.w');
   let vis=0;
   const po=out!=null?P(t,out,out+.45):0;
   words.forEach((w,i)=>{
-    const p=back(P(t,t0+i*step,t0+i*step+dur));
+    const p=expo(P(t,t0+i*step,t0+i*step+dur));
     vis=Math.max(vis,p);
-    w.style.opacity=(p*(1-po)).toFixed(3);
-    w.style.transform=`scale(${1.9-.9*p}) translateY(${(1-p)*14}px)`;
+    w.style.opacity=(p*p*(1-po)).toFixed(3);
+    w.style.transform=`translateY(${(1-p)*30}px) scale(${1.08-.08*p})`;
   });
   el.style.visibility=(vis<=0||po>=1)?'hidden':'visible';
   el.style.opacity=1-po;
@@ -769,16 +771,15 @@ function render(t){
     const jx=$('jx');
     jx.style.opacity=(jxp>0&&t<33.3)?Math.min(1,back(jxp)):(t>=33.3?1-exitP:0);
     jx.style.transform=`scale(${.2+.8*back(jxp)}) rotate(${(1-back(jxp))*90}deg)`;
-    /* lien d'énergie + impulsions qui voyagent terrain → bureau */
-    const lk=$('jlink'), lkp=quint(P(t,29.5,30.1));
-    lk.style.left='800px';lk.style.top='545px';lk.style.width='230px';
-    lk.style.transform=`scaleX(${lkp})`;lk.style.opacity=(lkp>0?1:0)*(1-exitP);
-    for(let i=0;i<3;i++){
-      const el=$('jp'+i);
-      if(t<30.1||t>33.6){el.style.opacity=0;continue}
-      const ph2=((t-30.1)*.9+i*.34)%1;
-      el.style.opacity=(ph2<.85?1:0)*(1-exitP);
-      el.style.left=lerp(795,1020,ph2)+'px';el.style.top='542px';
+    /* le X est le cœur : des anneaux d'énergie en émanent — rien ne le traverse */
+    for(let i=0;i<2;i++){
+      const el=$('jr'+i);
+      if(t<30.0||t>33.4){el.style.opacity=0;continue}
+      const ph2=((t-30.0)*.5+i*.5)%1;
+      el.style.left='880px';el.style.top='470px';el.style.width='160px';el.style.height='160px';
+      el.style.transform=`scale(${.55+ph2*2.5})`;
+      el.style.opacity=((1-ph2)*.4*(1-exitP)).toFixed(3);
+      el.style.borderColor=`rgba(255,194,26,${.55*(1-ph2)})`;
     }
     /* étiquettes + titre */
     const l1=$('jlab1'), l2=$('jlab2');
