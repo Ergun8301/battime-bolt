@@ -17,22 +17,22 @@ import { useEffect, useRef, useState } from 'react';
 //  - contrôle discret play/pause (pastille noir/jaune, coin bas droit).
 
 const CSS = `
-.lp-demo{background:#15120F;color:#F2EDE3;position:relative}
-.lp-demo-inner{max-width:1080px;margin:0 auto;padding:84px 28px 92px}
-.lp-demo-head{text-align:center;max-width:640px;margin:0 auto 46px}
+.lp-demo{background:#15120F;color:#F2EDE3;position:relative;scroll-margin-top:78px}
+.lp-demo-inner{max-width:1080px;margin:0 auto;padding:52px 28px 60px}
+.lp-demo-head{text-align:center;max-width:640px;margin:0 auto 30px}
 .lp-demo-kicker{font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#FFC21A;margin-bottom:16px}
 .lp-demo-h2{font-size:42px;line-height:1.04;font-weight:900;letter-spacing:-.02em;margin:0}
 .lp-demo-sub{font-size:15.5px;line-height:1.5;color:#a59c86;font-weight:500;margin:14px 0 0}
-.lp-demo-frame{position:relative;margin:0 auto;max-width:940px;aspect-ratio:16/9;border-radius:18px;overflow:hidden;background:#0d0b09 center/cover no-repeat;background-image:url('/demo-16x9-poster.jpg');box-shadow:0 46px 100px -34px rgba(0,0,0,.7)}
+.lp-demo-frame{position:relative;margin:0 auto;max-width:940px;aspect-ratio:16/9;max-height:60vh;border-radius:18px;overflow:hidden;background:#0d0b09 center/cover no-repeat;background-image:url('/demo-16x9-poster.jpg');box-shadow:0 46px 100px -34px rgba(0,0,0,.7)}
 .lp-demo-frame video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
 .lp-demo-btn{position:absolute;right:14px;bottom:14px;z-index:3;width:46px;height:46px;border-radius:50%;border:1px solid rgba(242,237,227,.35);background:rgba(21,18,15,.72);color:#FFC21A;display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:.85;transition:opacity .15s ease,transform .12s ease;padding:0}
 .lp-demo-btn:hover{opacity:1;transform:scale(1.06)}
 .lp-demo-btn:active{transform:scale(.96)}
 .lp-demo-btn svg{display:block}
 @media(max-width:880px){
-  .lp-demo-inner{padding:64px 22px 72px}
+  .lp-demo-inner{padding:40px 22px 52px}
   .lp-demo-h2{font-size:32px}
-  .lp-demo-frame{max-width:390px;aspect-ratio:9/16;border-radius:22px;background-image:url('/demo-9x16-poster.jpg')}
+  .lp-demo-frame{max-width:390px;aspect-ratio:9/16;max-height:70vh;border-radius:22px;background-image:url('/demo-9x16-poster.jpg')}
 }
 `;
 
