@@ -351,7 +351,7 @@ const BODY_SUITE = `
         <!-- Offre 1 -->
         <div style="display:flex;flex-direction:column;background:#211D19;border:1px solid rgba(242,237,227,.14);border-radius:18px;padding:26px 24px">
           <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#a59c86;font-weight:700;margin-bottom:12px">Jusqu'à 10 salariés</div>
-          <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:8px"><span style="font-size:46px;font-weight:900;letter-spacing:-.03em;line-height:1">49€</span><span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:#a59c86">/ mois</span></div>
+          <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:8px"><span style="font-size:46px;font-weight:900;letter-spacing:-.03em;line-height:1">49€</span><span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:#a59c86">/ mois HT</span></div>
           <div style="font-size:14px;color:#a59c86;font-weight:500;margin-bottom:20px">Petites équipes et artisans qui démarrent.</div>
           <a href="/inscription" style="margin-top:auto;display:block;text-align:center;background:transparent;color:#F2EDE3;font-weight:800;font-size:15px;padding:13px;border-radius:10px;text-decoration:none;border:2px solid rgba(242,237,227,.4)">Commencer l'essai</a>
         </div>
@@ -362,7 +362,7 @@ const BODY_SUITE = `
             <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#7a5e00;font-weight:700">Jusqu'à 25 salariés</div>
             <div style="font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:#FFC21A;background:#15120F;padding:4px 8px;border-radius:5px;font-weight:700">Le + courant</div>
           </div>
-          <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:8px"><span style="font-size:52px;font-weight:900;letter-spacing:-.03em;line-height:1">89€</span><span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:#7a5e00">/ mois</span></div>
+          <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:8px"><span style="font-size:52px;font-weight:900;letter-spacing:-.03em;line-height:1">89€</span><span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:#7a5e00">/ mois HT</span></div>
           <div style="font-size:14px;color:#5c4a08;font-weight:600;margin-bottom:20px">Le choix de la plupart des entreprises du bâtiment.</div>
           <a href="/inscription" style="margin-top:auto;display:block;text-align:center;background:#15120F;color:#FFC21A;font-weight:900;font-size:15.5px;padding:14px;border-radius:11px;text-decoration:none">Commencer 30 jours gratuits</a>
         </div>
@@ -370,7 +370,7 @@ const BODY_SUITE = `
         <!-- Offre 3 -->
         <div style="display:flex;flex-direction:column;background:#211D19;border:1px solid rgba(242,237,227,.14);border-radius:18px;padding:26px 24px">
           <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#a59c86;font-weight:700;margin-bottom:12px">Jusqu'à 50 salariés</div>
-          <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:8px"><span style="font-size:46px;font-weight:900;letter-spacing:-.03em;line-height:1">149€</span><span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:#a59c86">/ mois</span></div>
+          <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:8px"><span style="font-size:46px;font-weight:900;letter-spacing:-.03em;line-height:1">149€</span><span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:#a59c86">/ mois HT</span></div>
           <div style="font-size:14px;color:#a59c86;font-weight:500;margin-bottom:20px">Structures avec plusieurs équipes sur le terrain.</div>
           <a href="/inscription" style="margin-top:auto;display:block;text-align:center;background:transparent;color:#F2EDE3;font-weight:800;font-size:15px;padding:13px;border-radius:10px;text-decoration:none;border:2px solid rgba(242,237,227,.4)">Commencer l'essai</a>
         </div>

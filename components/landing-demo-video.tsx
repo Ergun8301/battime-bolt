@@ -23,7 +23,10 @@ const CSS = `
 .lp-demo-kicker{font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#FFC21A;margin-bottom:16px}
 .lp-demo-h2{font-size:42px;line-height:1.04;font-weight:900;letter-spacing:-.02em;margin:0}
 .lp-demo-sub{font-size:15.5px;line-height:1.5;color:#a59c86;font-weight:500;margin:14px 0 0}
-.lp-demo-frame{position:relative;margin:0 auto;max-width:940px;aspect-ratio:16/9;max-height:60vh;border-radius:18px;overflow:hidden;background:#0d0b09 center/cover no-repeat;background-image:url('/demo-16x9-poster.jpg');box-shadow:0 46px 100px -34px rgba(0,0,0,.7)}
+/* Cadre net + halo : le lecteur reste toujours détaché du fond sombre de la
+   section, même quand la vidéo elle-même est sombre (scène du début). Bordure
+   crème fine (délimite le bord en toute circonstance) + léger halo chaud. */
+.lp-demo-frame{position:relative;margin:0 auto;max-width:940px;aspect-ratio:16/9;max-height:60vh;border:1px solid rgba(242,237,227,.34);border-radius:18px;overflow:hidden;background:#0d0b09 center/cover no-repeat;background-image:url('/demo-16x9-poster.jpg');box-shadow:0 0 0 6px rgba(242,237,227,.05),0 34px 90px -34px rgba(0,0,0,.65),0 0 70px -14px rgba(255,194,26,.22)}
 .lp-demo-frame video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
 .lp-demo-btn{position:absolute;right:14px;bottom:14px;z-index:3;width:46px;height:46px;border-radius:50%;border:1px solid rgba(242,237,227,.35);background:rgba(21,18,15,.72);color:#FFC21A;display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:.85;transition:opacity .15s ease,transform .12s ease;padding:0}
 .lp-demo-btn:hover{opacity:1;transform:scale(1.06)}
