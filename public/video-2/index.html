@@ -128,8 +128,6 @@ body{font-family:'Archivo',sans-serif;color:var(--creme);-webkit-font-smoothing:
 .step.done .t{color:var(--gris)}
 .sideMsg{position:absolute;left:140px;top:640px;width:620px;font-size:64px;font-weight:900;letter-spacing:-.03em;line-height:1.08;color:var(--noir);text-align:left}
 .sideMsg .w{display:inline-block;transform-origin:50% 80%}
-.finger{position:absolute;width:44px;height:44px;border-radius:50%;background:#fff;border:3px solid var(--noir);box-shadow:0 10px 22px -8px rgba(21,18,15,.45);z-index:8}
-.finger:after{content:"";position:absolute;left:50%;top:50%;width:9px;height:9px;border-radius:50%;background:var(--noir);transform:translate(-50%,-50%)}
 .ping{position:absolute;width:60px;height:60px;border-radius:50%;border:4px solid var(--jaune);z-index:7}
 .flydot{position:absolute;width:30px;height:30px;border-radius:50%;background:var(--jaune);box-shadow:0 0 0 9px rgba(255,194,26,.28),0 0 44px rgba(255,194,26,.75);z-index:9}
 .trail i{position:absolute;border-radius:50%;background:var(--jaune);z-index:8;pointer-events:none}
@@ -321,7 +319,6 @@ body{font-family:'Archivo',sans-serif;color:var(--creme);-webkit-font-smoothing:
         </div>
       </div>
     </div></div>
-    <div class="finger" id="finger"></div>
     <div class="ping" id="ping1"></div>
     <div class="flydot" id="dotOut"></div>
     <div class="trail" id="trail"></div>
@@ -387,7 +384,7 @@ body{font-family:'Archivo',sans-serif;color:var(--creme);-webkit-font-smoothing:
     <div class="toast" id="to2"><span class="bar" style="background:#8B6CF2"></span><span class="em">📸</span><div><b>2 photos ajoutées</b><small>Rés. Les Cèdres · Mehdi</small></div></div>
     <div class="toast" id="to3"><span class="bar" style="background:#FF7A3D"></span><span class="em">🔔</span><div><b>Lucas a répondu : 6:30</b><small>saisie complétée à l'instant</small></div></div>
     <div class="menu" id="expmenu">
-      <div class="mi hl2">Exporter l'équipe<small>verrouille le mois · Excel ou PDF</small></div>
+      <div class="mi hl2" id="mi1">Exporter l'équipe<small>verrouille le mois · Excel ou PDF</small></div>
       <div class="mi">Exporter un salarié</div>
     </div>
     <div id="flychips"></div>
@@ -400,7 +397,6 @@ body{font-family:'Archivo',sans-serif;color:var(--creme);-webkit-font-smoothing:
       <div id="docrows"></div>
       <div class="stamp" id="stamp"><small>BEMEXO</small>PRÊT POUR LA PAIE</div>
     </div>
-    <div class="finger" id="finger2"></div>
     <div class="ping" id="ping2"></div>
     <div class="cap" id="s3c1">Au bureau, tout remonte <span class="y">automatiquement</span>.</div>
     <div class="cap" id="s3c2">Chantiers, équipes, heures — <span class="y">d'un coup d'œil</span>.</div>
@@ -520,18 +516,14 @@ function shake(t){
   for(const s of SHAKES){const dt=t-s.t0;if(dt>0&&dt<.55){const d=s.a*Math.exp(-dt*7);dx+=Math.sin(dt*73)*d;dy+=Math.cos(dt*91)*d*.7}}
   return[dx,dy];
 }
-function press(el,t,t0,base){
-  const p=P(t,t0,t0+.16), q=P(t,t0+.16,t0+.34);
-  el.style.transform=(base||'')+` scale(${1-.05*(p<1?p:(1-q))})`;
-}
-function moveAlong(el,t,pts){
-  if(t<pts[0].t||t>pts[pts.length-1].t+2){el.style.visibility='hidden';return}
-  el.style.visibility='visible';
-  let a=pts[0],b=pts[pts.length-1];
-  for(let i=0;i<pts.length-1;i++){if(t>=pts[i].t&&t<=pts[i+1].t){a=pts[i];b=pts[i+1];break}
-    if(t>pts[pts.length-1].t){a=b=pts[pts.length-1]}}
-  const p=a===b?1:quint(P(t,a.t,b.t));
-  el.style.left=lerp(a.x,b.x,p)+'px';el.style.top=lerp(a.y,b.y,p)+'px';
+function press(el,t,t0){
+  /* tap SANS pointeur : le bouton s'enfonce brièvement (échelle + légère
+     descente vers son ombre), l'onde `ping` synchronisée confirme l'appui.
+     k : 0 → 1 → 0 sur ~0,32 s. Hors fenêtre = identité (transform neutre). */
+  if(!el) return;
+  const p=P(t,t0,t0+.13), q=P(t,t0+.13,t0+.32);
+  const k=p<1?p:(1-q);
+  el.style.transform=(el.dataset.tx||'')+` scale(${(1-.045*k).toFixed(4)}) translateY(${(k*3).toFixed(2)}px)`;
 }
 function pingAt(el,t,t0,x,y){
   const p=P(t,t0,t0+.7);
@@ -627,7 +619,7 @@ const scenes={s1:[0,12.52],s2:[12.5,27.45],sj:[27.4,35.1],s3:[33.8,69.4],s5:[69,
 function render(t){
   for(const id in scenes){const [a,b]=scenes[id];$(id).style.visibility=(t>=a&&t<b)?'visible':'hidden'}
   /* reset par frame de tout élément à visibilité explicite (seek-proof) */
-  ['finger','finger2','ping1','ping2','dotOut','doc','expmenu','win',
+  ['ping1','ping2','dotOut','doc','expmenu','win',
    'fly0','fly1','fly2','fly3','fly4','fly5','sat1','sat2','to1','to2','to3','meal',
    'steps','chipD','chipF','chipT','notice','m2a','m2b','s1k','s1h1','s1h2',
    's3c1','s3c2','s4c1','s4c2','s5b','slog','cta','nocard','url','jcap','jlab1','jlab2',
@@ -695,7 +687,13 @@ function render(t){
     drift($('g2c'),t,1300,600,50,40,.2,5);
     dust($('dust2'),t);
     $('s2x').style.transform=`rotate(${2-(t-13)*.14}deg)`;
-    const pin=expo(P(t,13.05,14.25)), pout=P(t,26.4,27.4);
+    /* Entrée du téléphone — easeOutCubic démarré SOUS le noir plein (12.7).
+       expo(1-2^-10p) partait quasi vertical → le tel bondissait de ~100 px en une
+       image pile quand le noir se levait : c'était le « scintillement » ressenti.
+       En easeOut la vitesse est maximale au tout début (donc cachée par le noir)
+       puis décélère : la partie VISIBLE (après ~13,3 s) n'est qu'un dépôt doux du
+       téléphone, ~20 px/image max. Aucune image ne saute. */
+    const pe=P(t,12.7,14.15), pin=1-(1-pe)*(1-pe)*(1-pe), pout=P(t,26.4,27.4);
     const ph=$('phone');
     ph.style.opacity=1-pout;
     const tiltY=lerp(-24,-9,pin)+Math.sin(t*.7)*3.2;
@@ -736,9 +734,9 @@ function render(t){
     else{sb.classList.remove('ok');sb.textContent='Envoyer ma journée →';}
     slam($('m2a'),t,14.5,{out:19.9});hlSweep($('hl3'),t,15.6);
     if(t>21.0){slam($('m2b'),t,21.2,{out:26.0});hlSweep($('hl4'),t,21.9)}else{$('m2b').style.visibility='hidden'}
-    moveAlong($('finger'),t,[
-      {t:15.2,x:1560,y:1160},{t:16.1,x:1395,y:236},{t:17.0,x:1395,y:236},
-      {t:17.8,x:1600,y:1160},{t:22.6,x:1600,y:1160},{t:23.5,x:1185,y:922},{t:24.6,x:1185,y:922},{t:25.3,x:1450,y:1170}]);
+    /* taps SANS pointeur : le bouton s'enfonce, l'onde `ping` confirme l'appui */
+    press($('site1'),t,16.27);
+    press($('sendbtn'),t,24.02);
     pingAt($('ping1'),t,16.4,1372,214);
     pingAt($('ping1'),t,24.15,1160,898);
     const dp=P(t,25.3,26.4);
@@ -863,9 +861,9 @@ function render(t){
     const lring=P(t,45.35,46.2);
     $('lpB').parentElement.style.boxShadow=(lring>0&&lring<1)?`0 0 0 ${lring*16}px rgba(255,122,61,${.5*(1-lring)})`:'none';
     /* ---- export ---- */
-    moveAlong($('finger2'),t,[
-      {t:51.2,x:1750,y:1010},{t:52.5,x:1478,y:134},{t:54.0,x:1478,y:134},
-      {t:54.5,x:1440,y:252},{t:56.0,x:1440,y:252},{t:56.8,x:1650,y:1140}]);
+    /* taps export SANS pointeur : Exporter ▾ puis « Exporter l'équipe » */
+    press($('expbtn'),t,52.67);
+    press($('mi1'),t,55.37);
     pingAt($('ping2'),t,52.8,1456,112);
     pingAt($('ping2'),t,55.5,1418,230);
     io($('expmenu'),t,53.1,56.0,{dy:14,din:.4,dout:.3});
