@@ -49,7 +49,7 @@ const BODY = `<!-- ============ HEADER ============ -->
       </div>
       <nav class="lp-nav" style="display:flex;align-items:center;gap:26px;font-size:14.5px;font-weight:600;color:#3a352f;white-space:nowrap">
         <a href="#probleme" style="color:inherit;text-decoration:none">Le problème</a>
-        <a href="#etapes" style="color:inherit;text-decoration:none">Comment ça marche</a>
+        <a href="#demo" style="color:inherit;text-decoration:none">Comment ça marche</a>
         <a href="#metiers" style="color:inherit;text-decoration:none">Pour qui</a>
         <a href="#tarif" style="color:inherit;text-decoration:none">Tarif</a>
       </nav>
@@ -81,7 +81,7 @@ const BODY = `<!-- ============ HEADER ============ -->
             Essayer 30 jours gratuits
             <span style="font-size:20px;line-height:1">→</span>
           </a>
-          <a href="#etapes" style="color:#15120F;font-weight:700;font-size:16px;text-decoration:none;border-bottom:2px solid #15120F;padding-bottom:2px">Voir comment ça marche</a>
+          <a href="#demo" style="color:#15120F;font-weight:700;font-size:16px;text-decoration:none;border-bottom:2px solid #15120F;padding-bottom:2px">Voir comment ça marche</a>
         </div>
         <div style="display:flex;align-items:center;gap:18px;font-size:13.5px;font-weight:600;color:#6E6A63;font-family:'JetBrains Mono',monospace">
           <span>Sans carte bancaire</span>
@@ -447,7 +447,7 @@ const BODY_SUITE = `
         <a href="#etapes" style="color:#9a948a;text-decoration:none">Fonctionnement</a>
         <a href="#tarif" style="color:#9a948a;text-decoration:none">Tarif</a>
         <a href="mailto:khabitatcontact@gmail.com" style="color:#9a948a;text-decoration:none">Contact</a>
-        <a href="/connexion" style="color:#9a948a;text-decoration:none">Connexion</a><a href="/mentions-legales" style="color:#9a948a;text-decoration:none">Mentions legales</a><a href="/confidentialite" style="color:#9a948a;text-decoration:none">Confidentialite</a>
+        <a href="/connexion" style="color:#9a948a;text-decoration:none">Connexion</a><a href="/cgv" style="color:#9a948a;text-decoration:none">CGV</a><a href="/cgu" style="color:#9a948a;text-decoration:none">CGU</a><a href="/mentions-legales" style="color:#9a948a;text-decoration:none">Mentions legales</a><a href="/confidentialite" style="color:#9a948a;text-decoration:none">Confidentialite</a>
       </div>
       <div style="font-family:'JetBrains Mono',monospace;font-size:12.5px">© 2026 BEMEXO — Les heures du bâtiment.</div>
     </div>
