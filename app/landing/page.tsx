@@ -446,7 +446,7 @@ const BODY_SUITE = `
       <div style="display:flex;gap:26px;font-size:14px;font-weight:600">
         <a href="#etapes" style="color:#9a948a;text-decoration:none">Fonctionnement</a>
         <a href="#tarif" style="color:#9a948a;text-decoration:none">Tarif</a>
-        <a href="mailto:khabitatcontact@gmail.com" style="color:#9a948a;text-decoration:none">Contact</a>
+        <a href="mailto:contact@bemexo.com" style="color:#9a948a;text-decoration:none">Contact</a>
         <a href="/connexion" style="color:#9a948a;text-decoration:none">Connexion</a><a href="/cgv" style="color:#9a948a;text-decoration:none">CGV</a><a href="/cgu" style="color:#9a948a;text-decoration:none">CGU</a><a href="/mentions-legales" style="color:#9a948a;text-decoration:none">Mentions legales</a><a href="/confidentialite" style="color:#9a948a;text-decoration:none">Confidentialite</a>
       </div>
       <div style="font-family:'JetBrains Mono',monospace;font-size:12.5px">© 2026 BEMEXO — Les heures du bâtiment.</div>
