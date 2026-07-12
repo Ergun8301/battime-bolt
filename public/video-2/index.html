@@ -128,7 +128,8 @@ body{font-family:'Archivo',sans-serif;color:var(--creme);-webkit-font-smoothing:
 .step.done .t{color:var(--gris)}
 .sideMsg{position:absolute;left:140px;top:640px;width:620px;font-size:64px;font-weight:900;letter-spacing:-.03em;line-height:1.08;color:var(--noir);text-align:left}
 .sideMsg .w{display:inline-block;transform-origin:50% 80%}
-.finger{position:absolute;width:60px;height:60px;border-radius:50%;background:rgba(251,248,242,.94);border:3px solid rgba(21,18,15,.6);box-shadow:0 16px 30px -10px rgba(21,18,15,.5);z-index:8}
+.finger{position:absolute;width:44px;height:44px;border-radius:50%;background:#fff;border:3px solid var(--noir);box-shadow:0 10px 22px -8px rgba(21,18,15,.45);z-index:8}
+.finger:after{content:"";position:absolute;left:50%;top:50%;width:9px;height:9px;border-radius:50%;background:var(--noir);transform:translate(-50%,-50%)}
 .ping{position:absolute;width:60px;height:60px;border-radius:50%;border:4px solid var(--jaune);z-index:7}
 .flydot{position:absolute;width:30px;height:30px;border-radius:50%;background:var(--jaune);box-shadow:0 0 0 9px rgba(255,194,26,.28),0 0 44px rgba(255,194,26,.75);z-index:9}
 .trail i{position:absolute;border-radius:50%;background:var(--jaune);z-index:8;pointer-events:none}
@@ -140,7 +141,7 @@ body{font-family:'Archivo',sans-serif;color:var(--creme);-webkit-font-smoothing:
 .phbg{position:absolute;border-radius:50%;pointer-events:none;background:radial-gradient(closest-side,rgba(21,18,15,.15),transparent 70%)}
 
 /* ---------- SCÈNE JONCTION : terrain ✕ bureau ---------- */
-#sj{background:radial-gradient(circle at 50% 46%,#251d12 0%,#181410 55%,var(--noir) 85%)}
+#sj{background:radial-gradient(circle at 50% 46%,#251d12 0%,#181410 55%,var(--noir) 85%);z-index:6}
 .jphone{position:absolute;top:280px;width:290px;background:#0d0b09;border-radius:38px;padding:11px;box-shadow:0 60px 110px -40px rgba(0,0,0,.7)}
 .jphone .scr{background:var(--creme);border-radius:29px;height:560px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;color:var(--noir)}
 .jphone .ok{width:88px;height:88px;border-radius:50%;background:var(--vert);color:#fff;font-size:42px;font-weight:900;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 30px -8px rgba(47,213,132,.6)}
@@ -513,7 +514,7 @@ function dust(el,t){
   });
 }
 function drift(el,t,x,y,ax,ay,sp,ph){el.style.transform=`translate(${x+Math.sin(t*sp+ph)*ax}px,${y+Math.cos(t*sp*.8+ph)*ay}px)`}
-const SHAKES=[{t0:11.2,a:9},{t0:24.2,a:5},{t0:29.2,a:10},{t0:62.5,a:11},{t0:79.95,a:13}];
+const SHAKES=[{t0:11.2,a:9},{t0:24.2,a:5},{t0:29.3,a:10},{t0:62.5,a:11},{t0:79.95,a:13}];
 function shake(t){
   let dx=0,dy=0;
   for(const s of SHAKES){const dt=t-s.t0;if(dt>0&&dt<.55){const d=s.a*Math.exp(-dt*7);dx+=Math.sin(dt*73)*d;dy+=Math.cos(dt*91)*d*.7}}
@@ -621,7 +622,8 @@ const trail=$('trail');
 for(let i=0;i<9;i++){const s=document.createElement('i');trail.appendChild(s)}
 
 /* ============================================================ RENDER ============================================================ */
-const scenes={s1:[0,13.4],s2:[12.4,28.4],sj:[27.1,35.2],s3:[33.8,69.4],s5:[69,DUR+1]};
+/* bascules de scène calées PENDANT le noir complet (aucun flash possible) */
+const scenes={s1:[0,12.52],s2:[12.5,27.45],sj:[27.4,35.1],s3:[33.8,69.4],s5:[69,DUR+1]};
 function render(t){
   for(const id in scenes){const [a,b]=scenes[id];$(id).style.visibility=(t>=a&&t<b)?'visible':'hidden'}
   /* reset par frame de tout élément à visibilité explicite (seek-proof) */
@@ -642,8 +644,8 @@ function render(t){
   $('cam').style.transform=`translate(${cx+sx}px,${cy+sy}px) scale(${cs})`;
 
   /* -------- transitions : fondus au noir propres (aucun flash) -------- */
-  const d1=P(t,11.9,12.45)*(1-P(t,12.6,13.25));
-  const d2=P(t,26.6,27.15)*(1-P(t,27.3,27.95));
+  const d1=P(t,11.9,12.4)*(1-P(t,12.9,13.6));
+  const d2=P(t,26.7,27.2)*(1-P(t,27.7,28.4));
   const d3=P(t,67.9,69.15)*(1-P(t,69.25,70.1));
   const bo=$('blackout'), bp=Math.max(d1,d2,d3);
   bo.style.visibility=bp>0.001?'visible':'hidden';bo.style.opacity=bp;
@@ -678,7 +680,7 @@ function render(t){
     drift($('g2c'),t,1300,600,50,40,.2,5);
     dust($('dust2'),t);
     $('s2x').style.transform=`rotate(${2-(t-13)*.14}deg)`;
-    const pin=expo(P(t,12.6,13.8)), pout=P(t,26.4,27.4);
+    const pin=expo(P(t,13.05,14.25)), pout=P(t,26.4,27.4);
     const ph=$('phone');
     ph.style.opacity=1-pout;
     const tiltY=lerp(-24,-9,pin)+Math.sin(t*.7)*3.2;
@@ -702,27 +704,27 @@ function render(t){
     sa2.style.opacity=Math.max(0,sp2);sa2.style.visibility=sp2<=0.001?'hidden':'visible';
     sa2.style.left='1488px';sa2.style.top='716px';
     sa2.style.transform=`rotate(3deg) scale(${.7+.3*Math.min(1.15,back(P(t,24.9,25.5)))})`;
-    io($('steps'),t,13.1,26.2,{dy:40});
+    io($('steps'),t,13.45,26.2,{dy:40});
     const st1=$('st1'),st2=$('st2'),st3=$('st3');
-    st1.className='step'+(t<16.7?' on':' done');
-    st2.className='step'+(t<16.7?'':(t<22.2?' on':' done'));
+    st1.className='step'+(t<17.1?' on':' done');
+    st2.className='step'+(t<17.1?'':(t<22.2?' on':' done'));
     st3.className='step'+(t<22.2?'':(t<25.3?' on':' done'));
-    $('site1').className='site'+(t>=16.2?' on':'');
-    io($('chipD'),t,17.6,26.2,{dy:22,sc:.85,e:back});
-    io($('chipF'),t,17.9,26.2,{dy:22,sc:.85,e:back});
-    io($('chipT'),t,18.2,26.2,{dy:22,sc:.85,e:back});
-    $('durv').textContent=fmtHM(435*expo(P(t,18.5,20.2)));
-    io($('notice'),t,20.4,26.2,{dy:16});
-    io($('meal'),t,21.0,26.2,{dy:16});
+    $('site1').className='site'+(t>=16.6?' on':'');
+    io($('chipD'),t,17.9,26.2,{dy:22,sc:.85,e:back});
+    io($('chipF'),t,18.2,26.2,{dy:22,sc:.85,e:back});
+    io($('chipT'),t,18.5,26.2,{dy:22,sc:.85,e:back});
+    $('durv').textContent=fmtHM(435*expo(P(t,18.8,20.5)));
+    io($('notice'),t,20.7,26.2,{dy:16});
+    io($('meal'),t,21.3,26.2,{dy:16});
     const sb=$('sendbtn');
     if(t>=24.5){sb.classList.add('ok');sb.textContent='✓ Journée envoyée';}
     else{sb.classList.remove('ok');sb.textContent='Envoyer ma journée →';}
-    slam($('m2a'),t,14.2,{out:19.6});hlSweep($('hl3'),t,15.3);
-    if(t>20.8){slam($('m2b'),t,21.0,{out:26.0});hlSweep($('hl4'),t,21.7)}else{$('m2b').style.visibility='hidden'}
+    slam($('m2a'),t,14.5,{out:19.9});hlSweep($('hl3'),t,15.6);
+    if(t>21.0){slam($('m2b'),t,21.2,{out:26.0});hlSweep($('hl4'),t,21.9)}else{$('m2b').style.visibility='hidden'}
     moveAlong($('finger'),t,[
-      {t:14.8,x:1560,y:1160},{t:15.7,x:1395,y:236},{t:16.6,x:1395,y:236},
-      {t:17.4,x:1600,y:1160},{t:22.6,x:1600,y:1160},{t:23.5,x:1185,y:922},{t:24.6,x:1185,y:922},{t:25.3,x:1450,y:1170}]);
-    pingAt($('ping1'),t,16.0,1372,214);
+      {t:15.2,x:1560,y:1160},{t:16.1,x:1395,y:236},{t:17.0,x:1395,y:236},
+      {t:17.8,x:1600,y:1160},{t:22.6,x:1600,y:1160},{t:23.5,x:1185,y:922},{t:24.6,x:1185,y:922},{t:25.3,x:1450,y:1170}]);
+    pingAt($('ping1'),t,16.4,1372,214);
     pingAt($('ping1'),t,24.15,1160,898);
     const dp=P(t,25.3,26.4);
     const dot=$('dotOut');
@@ -742,13 +744,13 @@ function render(t){
   } else {[...trail.children].forEach(s=>s.style.opacity=0)}
 
   /* -------- JONCTION (27.5-34.6) : terrain ✕ bureau -------- */
-  if(t>=26.9&&t<35.5){
+  if(t>=27.2&&t<35.5){
     drift($('gja'),t,510,60,70,45,.2,0);
     drift($('gjb'),t,-180,460,60,50,.17,2);
     dust($('dustJ'),t);
     $('sjx').style.transform=`rotate(${-2+(t-27.5)*.25}deg)`;
     /* les deux mondes arrivent l'un vers l'autre et SE RENCONTRENT (impact 29.2) */
-    const pIn=back(P(t,27.9,29.25));
+    const pIn=back(P(t,28.0,29.35));
     const exitP=quint(P(t,33.3,34.5));
     const jp=$('jphone');
     jp.style.left=lerp(-460,505,Math.min(1.06,pIn))+'px';
@@ -761,21 +763,21 @@ function render(t){
     jw.style.transform=`rotate(${lerp(7,2,Math.min(1,pIn))}deg) scale(${1+exitP*2.6}) translateY(${-exitP*60}px)`;
     jw.style.transformOrigin='42% 40%';
     /* onde de choc + étincelle X (la lettre du logo) à l'impact */
-    const shp=P(t,29.2,30.1);
+    const shp=P(t,29.3,30.2);
     const js=$('jshock');
     if(shp>0&&shp<1){js.style.visibility='visible';
       js.style.left='880px';js.style.top='470px';js.style.width='160px';js.style.height='160px';
       js.style.transform=`scale(${.3+shp*4.2})`;js.style.opacity=(1-shp)*.9;
     } else js.style.visibility='hidden';
-    const jxp=P(t,29.2,29.9);
+    const jxp=P(t,29.3,30.0);
     const jx=$('jx');
     jx.style.opacity=(jxp>0&&t<33.3)?Math.min(1,back(jxp)):(t>=33.3?1-exitP:0);
     jx.style.transform=`scale(${.2+.8*back(jxp)}) rotate(${(1-back(jxp))*90}deg)`;
     /* le X est le cœur : des anneaux d'énergie en émanent — rien ne le traverse */
     for(let i=0;i<2;i++){
       const el=$('jr'+i);
-      if(t<30.0||t>33.4){el.style.opacity=0;continue}
-      const ph2=((t-30.0)*.5+i*.5)%1;
+      if(t<30.1||t>33.4){el.style.opacity=0;continue}
+      const ph2=((t-30.1)*.5+i*.5)%1;
       el.style.left='880px';el.style.top='470px';el.style.width='160px';el.style.height='160px';
       el.style.transform=`scale(${.55+ph2*2.5})`;
       el.style.opacity=((1-ph2)*.4*(1-exitP)).toFixed(3);
@@ -783,10 +785,12 @@ function render(t){
     }
     /* étiquettes + titre */
     const l1=$('jlab1'), l2=$('jlab2');
-    const lo=P(t,29.6,30.2)*(1-exitP);
+    const lo=P(t,29.75,30.35)*(1-exitP);
     l1.style.opacity=lo;l1.style.visibility=lo<=0.001?'hidden':'visible';l1.style.left='560px';l1.style.top='912px';
     l2.style.opacity=lo;l2.style.visibility=lo<=0.001?'hidden':'visible';l2.style.left='1230px';l2.style.top='912px';
-    slam($('jcap'),t,30.0,{step:.12,out:33.2});hlSweep($('hlJ'),t,31.1);
+    slam($('jcap'),t,30.1,{step:.12,out:33.2});hlSweep($('hlJ'),t,31.2);
+    /* la scène entière fond doucement vers le planning déjà présent dessous */
+    $('sj').style.opacity=(1-P(t,34.0,35.0)).toFixed(3);
   }
 
   /* -------- ACTES 4-5 : LE BUREAU (34-69) -------- */
@@ -799,13 +803,13 @@ function render(t){
     /* filigrane BEMEXO sous le planning (remplit le bas, marque omniprésente) */
     $('bmk').style.transform=`translateX(-50%) translateX(${Math.sin(t*.25)*30}px)`;
     const win=$('win');
-    const win_in=expo(P(t,34.0,35.3)), wout=P(t,67.9,69.1);
+    const win_in=expo(P(t,34.2,35.5)), wout=P(t,67.9,69.1);
     win.style.opacity=(win_in*(1-wout)).toFixed(3);
     win.style.transform=`translateY(${(1-win_in)*130 - wout*30}px) rotateX(${(1-win_in)*9}deg) scale(${.95+.05*win_in})`;
     win.style.visibility=win_in<=0?'hidden':'visible';
     cardEls.forEach(el=>{
       const i=+el.dataset.idx;
-      const t0=35.15+i*.13;
+      const t0=35.35+i*.13;
       const pi=back(P(t,t0,t0+.6));
       el.style.opacity=pi.toFixed(3);
       el.style.transform=`translateY(${(1-pi)*30}px) scale(${.88+.12*pi})`;
@@ -823,9 +827,9 @@ function render(t){
         el.style.boxShadow=(ring>0&&ring<1)?`0 0 0 ${ring*16}px rgba(255,194,26,${.55*(1-ring)})`:'none';
       }
     });
-    $('rtchip').style.opacity=P(t,35.5,36.3);
+    $('rtchip').style.opacity=P(t,35.7,36.5);
     $('rtchip').querySelector('i').style.transform=`scale(${1+.4*Math.abs(Math.sin(t*2.6))})`;
-    capIn($('s3c1'),t,36.3,41.7);
+    capIn($('s3c1'),t,36.5,41.9);
     capIn($('s3c2'),t,42.5,47.7);
     const toast=(el,t0,t1,x,y,rot)=>{
       const pi=Math.min(1.12,back(P(t,t0,t0+.55))), po=P(t,t1,t1+.45);
