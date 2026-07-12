@@ -87,7 +87,7 @@ body{font-family:'Archivo',sans-serif;color:var(--creme);-webkit-font-smoothing:
 /* ---------- ACTE 2 : le poseur ---------- */
 #s2{background:radial-gradient(circle at 62% 38%,#FBF8F2 0%,var(--creme) 55%,#e6dfcf 100%);color:var(--noir)}
 .phoneWrap{position:absolute;left:880px;top:52px;width:600px;perspective:1700px}
-.phone{width:600px;background:#0d0b09;border-radius:60px;padding:16px;box-shadow:0 80px 140px -50px rgba(21,18,15,.62),0 40px 90px -40px rgba(139,108,242,.18);transform-style:preserve-3d;position:relative}
+.phone{width:600px;background:#0d0b09;border-radius:60px;padding:16px;box-shadow:0 80px 140px -50px rgba(21,18,15,.62),0 40px 90px -40px rgba(139,108,242,.18);transform-style:preserve-3d;position:relative;will-change:transform;backface-visibility:hidden;-webkit-backface-visibility:hidden}
 .phone-scr{background:var(--creme);border-radius:46px;overflow:hidden;display:flex;flex-direction:column;min-height:920px;position:relative}
 .glare{position:absolute;inset:0;z-index:5;pointer-events:none;background:linear-gradient(115deg,transparent 42%,rgba(255,255,255,.30) 50%,transparent 58%);background-size:320% 100%;border-radius:46px}
 .phone-top{background:var(--noir);color:var(--creme);display:flex;align-items:center;justify-content:space-between;padding:22px 26px 18px}
@@ -381,7 +381,7 @@ body{font-family:'Archivo',sans-serif;color:var(--creme);-webkit-font-smoothing:
       </div>
     </div></div>
     <div class="toast" id="to1"><span class="bar" style="background:#F25A9B"></span><span class="em">✓</span><div><b>Karim a envoyé 7:15</b><small>Villa Lupin · mer. 8</small></div></div>
-    <div class="toast" id="to2"><span class="bar" style="background:#8B6CF2"></span><span class="em">📸</span><div><b>2 photos ajoutées</b><small>Rés. Les Cèdres · Mehdi</small></div></div>
+    <div class="toast" id="to2"><span class="bar" style="background:#8B6CF2"></span><span class="em">📸</span><div><b>2 photos ajoutées</b><small>Rés. Les Cèdres · Julien</small></div></div>
     <div class="toast" id="to3"><span class="bar" style="background:#FF7A3D"></span><span class="em">🔔</span><div><b>Lucas a répondu : 6:30</b><small>saisie complétée à l'instant</small></div></div>
     <div class="menu" id="expmenu">
       <div class="mi hl2" id="mi1">Exporter l'équipe<small>verrouille le mois · Excel ou PDF</small></div>
@@ -539,7 +539,7 @@ const CHAOS=[
  {x:770,y:452,r:2,in:3.6,fx:0,badge:2, html:`<div class="chaos vocal"><span class="tag">VOCAL</span><span class="pl">▶</span><div class="bars">${Array.from({length:22},(_,k)=>`<i style="height:${6+Math.round(Math.abs(Math.sin(k*1.7))*22)}px"></i>`).join('')}</div><small>0:47</small></div>`},
  {x:1330,y:565,r:-3,in:4.2,fx:900,badge:null, html:`<div class="chaos sms right">jsuis passé sur l'autre chantier là</div>`},
  {x:965,y:598,r:5,in:4.8,fx:300,badge:null, html:`<div class="chaos polaroid"><span class="tape"></span><div class="ph"></div><p>réception ? mardi ?? — à classer</p></div>`},
- {x:510,y:678,r:3,in:5.3,fx:-600,badge:null, html:`<div class="chaos xls"><span class="tag">TABLEUR</span><h4>POINTAGES_JUIL_V3_final(2).xlsx</h4><table><tr><td>Karim</td><td>7,5</td><td class="err">#REF!</td></tr><tr><td>Mehdi</td><td class="err">??</td><td>6</td></tr><tr><td>Sofia</td><td>7</td><td class="err">#N/A</td></tr></table></div>`},
+ {x:510,y:678,r:3,in:5.3,fx:-600,badge:null, html:`<div class="chaos xls"><span class="tag">TABLEUR</span><h4>POINTAGES_JUIL_V3_final(2).xlsx</h4><table><tr><td>Karim</td><td>7,5</td><td class="err">#REF!</td></tr><tr><td>Julien</td><td class="err">??</td><td>6</td></tr><tr><td>Chloé</td><td>7</td><td class="err">#N/A</td></tr></table></div>`},
  {x:1210,y:762,r:-5,in:5.8,fx:700,badge:9, html:`<div class="chaos tel"><span class="tag">APPELS</span><div class="ic">📞</div><div><b>Bureau</b><span>3 appels manqués</span></div></div>`},
  {x:212,y:715,r:8,in:6.3,fx:-800,badge:null, html:`<div class="postit"><small>À NE PAS OUBLIER</small>Relancer Lucas pour ses heures de mardi !!</div>`},
 ];
@@ -561,13 +561,13 @@ const ROWS=[
    {cls:'c-rose',b:'Villa Lupin',s:'Aix',h:'07:30',st:'plan',flip:39.7,v:'7:15'},
    {cls:'c-rose',b:'Villa Lupin',s:'Aix',h:'07:30',st:'plan'},
    {cls:'plus'}]},
- {a:'MT',n:'Mehdi T.',c:[
+ {a:'JM',n:'Julien M.',c:[
    {cls:'c-viol',b:'Rés. Les Cèdres',s:'Seynod',h:'08:00',st:'ok',v:'7:30'},
    {cls:'c-vert',b:'Maison Dubois',s:'Argonay',h:'08:00',st:'ok',v:'6:00'},
    {cls:'c-viol',b:'Rés. Les Cèdres',s:'Seynod',h:'08:00',st:'plan',flip:41.7,v:'6:45'},
    {cls:'off'},
    {cls:'c-viol',b:'Rés. Les Cèdres',s:'Seynod',h:'07:30',st:'plan'}]},
- {a:'SR',n:'Sofia R.',c:[
+ {a:'CR',n:'Chloé R.',c:[
    {cls:'c-vert',b:'Maison Dubois',s:'Argonay',h:'08:00',st:'ok',v:'7:00'},
    {cls:'c-vert',b:'Maison Dubois',s:'Argonay',h:'08:00',st:'ok',v:'7:00'},
    {cls:'c-jaun',b:'Chantier Bellevue',s:'Annecy',h:'08:00',st:'plan'},
@@ -580,7 +580,7 @@ const ROWS=[
    {cls:'c-oran',b:'Chantier Bellevue',s:'Annecy',h:'07:30',st:'plan'},
    {cls:'plus'}]},
 ];
-const AVCOL={KB:'#F25A9B',MT:'#8B6CF2',SR:'#2FD584',LP:'#FF7A3D'};
+const AVCOL={KB:'#F25A9B',JM:'#8B6CF2',CR:'#2FD584',LP:'#FF7A3D'};
 const grows=$('grows');let cardIdx=0;const cardEls=[];
 ROWS.forEach(r=>{
   const row=document.createElement('div');row.className='grow';
@@ -696,9 +696,15 @@ function render(t){
     const pe=P(t,12.7,14.15), pin=1-(1-pe)*(1-pe)*(1-pe), pout=P(t,26.4,27.4);
     const ph=$('phone');
     ph.style.opacity=1-pout;
-    const tiltY=lerp(-24,-9,pin)+Math.sin(t*.7)*3.2;
-    const tiltX=Math.cos(t*.6)*2.4;
-    ph.style.transform=`translateY(${(1-pin)*640 - pout*60}px) rotateY(${tiltY}deg) rotateX(${tiltX}deg)`;
+    /* Inclinaison 3D FIGÉE. Un téléphone à grande ombre douce qui pivote en 3D
+       EN PERMANENCE (l'ancien rotateY+rotateX animés par sin/cos) fait re-rendre
+       son ombre à chaque image → l'ombre scintille : c'était ça, le « flash »
+       persistant qui ne se voyait qu'en lecture réelle (pas sur une image figée).
+       Ici la rotation se termine à 13,5 s (sous le noir) puis NE BOUGE PLUS :
+       l'ombre est rastérisée une fois, stable, zéro scintillement. */
+    const rp=P(t,12.7,13.5), rot=1-(1-rp)*(1-rp);        // easeOut, fini à 13,5 s
+    const tiltY=lerp(-15,-7,rot);                          // -15° → -7° puis FIXE
+    ph.style.transform=`translateY(${((1-pin)*640 - pout*60).toFixed(1)}px) rotateY(${tiltY.toFixed(2)}deg)`;
     $('glare').style.backgroundPosition=`${lerp(120,-40,P(t,13.6,20.5))}% 0`;
     $('phbg').style.opacity=pin*(1-pout);
     $('ring1').style.opacity=.65*pin*(1-pout);
