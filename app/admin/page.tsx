@@ -48,7 +48,7 @@ const ADMIN_CSS = `
 /* Essai 30 j — bandeau (info) + blocage (preview uniquement) */
 /* Essai : fini le grand bandeau — pilule compacte « haut de gamme », alignée à
    droite au-dessus du planning (fond noir profond, filet or, CTA doré). */
-.bt-trial-banner{display:flex;align-items:center;gap:9px;width:fit-content;max-width:100%;margin:0 0 10px auto;background:#1A1613;border:1px solid rgba(255,194,26,.38);color:#F2EDE3;border-radius:999px;padding:7px 8px 7px 15px;font-size:13px;font-weight:600;box-shadow:0 14px 34px -18px rgba(0,0,0,.8)}
+.bt-trial-banner{display:flex;align-items:center;gap:9px;width:fit-content;max-width:100%;margin:0 0 10px auto;background:#211B14;border:1px solid rgba(255,194,26,.38);color:#F2EDE3;border-radius:999px;padding:7px 8px 7px 15px;font-size:13px;font-weight:600;box-shadow:0 14px 34px -18px rgba(0,0,0,.8)}
 .bt-trial-banner strong{color:#FFC21A;font-weight:800}
 .bt-trial-banner.expired{border-color:rgba(216,90,48,.55)}
 .bt-trial-dot{width:7px;height:7px;border-radius:50%;background:#FFC21A;flex:none;box-shadow:0 0 10px rgba(255,194,26,.8)}
@@ -56,6 +56,7 @@ const ADMIN_CSS = `
 .bt-trial-cta{margin-left:8px;background:linear-gradient(180deg,#FFCB3D,#F5B400);color:#15120F;border:none;border-radius:999px;padding:7px 15px;font-family:inherit;font-weight:800;font-size:12.5px;cursor:pointer;flex:none;box-shadow:0 8px 18px -8px rgba(214,158,0,.7);transition:transform .12s ease}
 .bt-trial-cta:hover{transform:translateY(-1px)}
 .bt-trial-banner.expired .bt-trial-cta{background:linear-gradient(180deg,#E8794D,#D85A30);color:#fff;box-shadow:0 8px 18px -8px rgba(216,90,48,.7)}
+@media(max-width:560px){.bt-trial-banner{border-radius:16px}}
 .bt-trial-block{min-height:calc(100vh - 12px);display:flex;align-items:center;justify-content:center;padding:20px}
 .bt-trial-card{background:#F2EDE3;border-radius:18px;padding:40px 32px;max-width:440px;text-align:center;box-shadow:0 30px 70px -28px rgba(0,0,0,.6)}
 .bt-trial-card.wide{max-width:680px}

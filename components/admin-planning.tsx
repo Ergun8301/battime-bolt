@@ -248,13 +248,13 @@ function DroppableCell({
 const colorForWorksite = (worksiteId: string | null | undefined): ChantierPalette =>
   CHANTIER_PALETTES[hashStr(worksiteId || 'x') % CHANTIER_PALETTES.length];
 
-// Avatar « haut de gamme » : teinte douce propre à CHAQUE personne (fond ~12 %,
-// initiales dans le ton plein). Absent = grisé, comme avant. Sans lien avec la
-// couleur des bulles (qui, elle, appartient au CHANTIER).
+// Avatar « haut de gamme » : pastille pastel propre à CHAQUE personne (tagBg,
+// le pastel conçu avec la palette) + initiales noir marque — lisibles sur les
+// 7 teintes (les tons colorés passaient sous le seuil de contraste AA en 13 px).
+// Absent = grisé, comme avant. Sans lien avec la couleur des bulles (chantier).
 const avatarTint = (personId: string, absent: boolean) => {
   if (absent) return { background: '#c4bdae', color: '#15120F' };
-  const c = CHANTIER_PALETTES[hashStr(personId) % CHANTIER_PALETTES.length].bar;
-  return { background: `${c}1F`, color: c };
+  return { background: CHANTIER_PALETTES[hashStr(personId) % CHANTIER_PALETTES.length].tagBg, color: '#15120F' };
 };
 
 const ABSENCE_VISUAL: Record<string, { icon: string; bg: string; fg: string }> = {
