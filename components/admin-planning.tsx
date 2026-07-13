@@ -248,6 +248,15 @@ function DroppableCell({
 const colorForWorksite = (worksiteId: string | null | undefined): ChantierPalette =>
   CHANTIER_PALETTES[hashStr(worksiteId || 'x') % CHANTIER_PALETTES.length];
 
+// Avatar « haut de gamme » : teinte douce propre à CHAQUE personne (fond ~12 %,
+// initiales dans le ton plein). Absent = grisé, comme avant. Sans lien avec la
+// couleur des bulles (qui, elle, appartient au CHANTIER).
+const avatarTint = (personId: string, absent: boolean) => {
+  if (absent) return { background: '#c4bdae', color: '#15120F' };
+  const c = CHANTIER_PALETTES[hashStr(personId) % CHANTIER_PALETTES.length].bar;
+  return { background: `${c}1F`, color: c };
+};
+
 const ABSENCE_VISUAL: Record<string, { icon: string; bg: string; fg: string }> = {
   conge: { icon: '🌴', bg: 'repeating-linear-gradient(45deg,#E7E1D5 0 8px,#DDD5C6 8px 16px)', fg: '#7c766c' },
   repos: { icon: '💤', bg: 'repeating-linear-gradient(45deg,#ECE6DA 0 7px,#E4DCCE 7px 14px)', fg: '#9a948a' },
@@ -291,9 +300,9 @@ const PL_CSS = `
 .bt-pl-out{background:transparent;border:1.5px solid rgba(21,18,15,.3);color:#15120F;border-radius:10px;padding:7px 13px;height:33px;font-size:12.5px;font-weight:800;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;transition:border-color .14s ease,background .14s ease,transform .08s ease}
 .bt-pl-out:hover{border-color:#15120F;background:rgba(21,18,15,.04)}
 .bt-pl-out:active{transform:translateY(1px)}
-.bt-pl-fill{background:#FFC21A;color:#15120F;border:none;box-shadow:0 3px 0 #C99300;border-radius:10px;padding:8px 14px;height:33px;font-size:12.5px;font-weight:800;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;transition:transform .12s ease,box-shadow .12s ease}
-.bt-pl-fill:hover{transform:translateY(-1px);box-shadow:0 5px 0 #C99300}
-.bt-pl-fill:active{transform:translateY(2px);box-shadow:0 1px 0 #C99300}
+.bt-pl-fill{background:linear-gradient(180deg,#FFCB3D,#F5B400);color:#15120F;border:none;box-shadow:0 10px 22px -10px rgba(214,158,0,.65);border-radius:10px;padding:8px 14px;height:33px;font-size:12.5px;font-weight:800;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;transition:transform .12s ease,box-shadow .12s ease}
+.bt-pl-fill:hover{transform:translateY(-1px);box-shadow:0 14px 28px -10px rgba(214,158,0,.75)}
+.bt-pl-fill:active{transform:translateY(1px);box-shadow:0 6px 14px -8px rgba(214,158,0,.6)}
 /* dropdown « + Chantier » — lignes attrapables */
 .bt-pl-ddwrap{position:relative}
 .bt-pl-ddbackdrop{position:fixed;inset:0;z-index:35}
@@ -354,7 +363,7 @@ const PL_CSS = `
 /* La grille s'arrête net : bordure de fin franche (2px noir, comme l'en-tête) sous la
    dernière ligne visible (fantôme si présente, sinon dernier salarié). */
 .bt-pl-table tbody:last-of-type tr:last-child td{border-bottom:2px solid #15120F}
-.bt-pl-th{background:#fff;padding:11px 12px;text-align:center;border-right:1px solid rgba(21,18,15,.6);border-bottom:2px solid #15120F}
+.bt-pl-th{background:#fff;padding:11px 12px;text-align:center;border-right:1px solid rgba(21,18,15,.22);border-bottom:2px solid #15120F}
 .bt-pl-th-cell{display:flex;align-items:baseline;justify-content:center;gap:8px}
 .bt-pl-th-day{font-family:'Archivo',sans-serif;font-size:14px;font-weight:800;color:#15120F;letter-spacing:-.01em}
 .bt-pl-th-num{font-family:'Archivo',sans-serif;font-size:17px;font-weight:900;color:#15120F}
@@ -366,7 +375,7 @@ const PL_CSS = `
 .bt-pl-th-name{position:sticky;left:0;z-index:6;width:200px;padding:0;border-right:2px solid #15120F;border-bottom:2px solid #15120F;background-color:#fff;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' preserveAspectRatio='none' viewBox='0 0 100 100'%3E%3Cline x1='0' y1='0' x2='100' y2='100' stroke='%2315120F' stroke-width='2' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E");background-size:100% 100%;background-repeat:no-repeat}
 .bt-pl-corner-wk{position:absolute;top:7px;right:12px;font-family:'Archivo',sans-serif;font-size:13px;font-weight:900;letter-spacing:-.01em;color:#15120F}
 .bt-pl-corner-sal{position:absolute;left:13px;bottom:7px;font-family:'Archivo',sans-serif;font-size:15px;font-weight:900;letter-spacing:-.02em;color:#15120F}
-.bt-pl-namecell{position:sticky;left:0;z-index:5;background:#fff;border-right:2px solid #15120F;border-bottom:1px solid rgba(21,18,15,.6);padding:0;vertical-align:top}
+.bt-pl-namecell{position:sticky;left:0;z-index:5;background:#fff;border-right:2px solid #15120F;border-bottom:1px solid rgba(21,18,15,.22);padding:0;vertical-align:top}
 .bt-pl-namebtn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;width:100%;height:100%;padding:13px;background:transparent;border:none;cursor:pointer;text-align:center;font-family:inherit}
 .bt-pl-namebtn:hover{background:rgba(21,18,15,.03)}
 .bt-pl-nametop{display:flex;align-items:center;justify-content:center;gap:10px;min-width:0;max-width:100%}
@@ -376,7 +385,7 @@ const PL_CSS = `
 .bt-pl-status{display:flex;align-items:center;gap:5px}
 .bt-pl-status-dot{width:7px;height:7px;border-radius:50%;background:#E0A21C}
 .bt-pl-status-txt{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700}
-.bt-pl-cell{border-right:1px solid rgba(21,18,15,.6);border-bottom:1px solid rgba(21,18,15,.6);padding:8px;vertical-align:top}
+.bt-pl-cell{border-right:1px solid rgba(21,18,15,.22);border-bottom:1px solid rgba(21,18,15,.22);padding:8px;vertical-align:top}
 .bt-pl-cell-today{background:#FFF6DB}
 /* Lignes vierges de remplissage : même hauteur qu'une ligne salarié vide (105px),
    quadrillage continu, jour J teinté ; « + » discret pour ajouter un salarié. */
@@ -440,7 +449,7 @@ const PL_CSS = `
 .bt-pl-daypill{flex:none;min-width:46px;border-radius:11px;padding:8px 4px;text-align:center;border:1px solid rgba(242,237,227,.18);cursor:pointer;background:transparent;color:#F2EDE3;font-family:inherit}
 .bt-pl-daypill-d{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#a59c86;font-weight:700;text-transform:uppercase}
 .bt-pl-daypill-n{font-size:15px;font-weight:800}
-.bt-pl-daypill.on{background:#FFC21A;border-color:#FFC21A}
+.bt-pl-daypill.on{background:linear-gradient(180deg,#FFCB3D,#F5B400);border-color:#F5B400;box-shadow:0 8px 18px -8px rgba(214,158,0,.6)}
 .bt-pl-daypill.on .bt-pl-daypill-d{color:#7a5e00}
 .bt-pl-daypill.on .bt-pl-daypill-n{color:#15120F}
 .bt-pl-m-list{padding:14px 14px 24px;display:flex;flex-direction:column;gap:11px}
@@ -449,26 +458,28 @@ const PL_CSS = `
 .bt-pl-m-badge{display:flex;align-items:center;gap:5px;border-radius:7px;padding:4px 8px;font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700}
 .bt-pl-m-bubs{margin-top:11px;display:flex;flex-direction:column;gap:8px}
 .bt-pl-m-empty{font-size:12.5px;color:#9a948a;font-weight:600;margin-top:8px}
-/* ===== ACCUEIL 0 salarié : carte de bienvenue (desktop = par-dessus la grille vide,
-   mobile = dans la liste). Apparence seule — le CTA ouvre le dialog d'invitation. ===== */
-.bt-pl-welcome{position:absolute;inset:0;z-index:8;display:flex;align-items:center;align-items:safe center;justify-content:center;padding:24px;pointer-events:none}
-.bt-pl-wcard{pointer-events:auto;background:#F2EDE3;border:2px solid #15120F;border-radius:18px;box-shadow:0 30px 70px -28px rgba(21,18,15,.55);max-width:530px;width:100%;max-height:100%;overflow:auto;text-align:center}
-.bt-pl-whazard{height:10px;background:repeating-linear-gradient(45deg,#15120F 0 9px,#FFC21A 9px 18px)}
-.bt-pl-wbody{padding:30px 34px}
-.bt-pl-wemoji{width:54px;height:54px;margin:0 auto 14px;background:#15120F;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:26px}
-.bt-pl-wtitle{font-size:24px;font-weight:900;letter-spacing:-.02em;color:#15120F;margin:0 0 8px}
-.bt-pl-wsub{font-size:14.5px;line-height:1.5;color:#56514a;font-weight:500;margin:0 auto 20px;max-width:400px}
-.bt-pl-wbtn{display:inline-flex;align-items:center;gap:9px;background:#FFC21A;color:#15120F;border:none;border-radius:12px;font-family:inherit;font-weight:900;font-size:16px;padding:14px 24px;cursor:pointer;box-shadow:0 4px 0 #C99300;transition:transform .12s ease,box-shadow .12s ease}
-.bt-pl-wbtn:hover{transform:translateY(-2px);box-shadow:0 6px 0 #C99300}
-.bt-pl-wbtn:active{transform:translateY(2px);box-shadow:0 1px 0 #C99300}
-.bt-pl-wsteps{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:20px;flex-wrap:wrap}
-.bt-pl-wstep{display:inline-flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;color:#6E6A63}
-.bt-pl-wstep b{width:18px;height:18px;flex:none;border-radius:5px;background:#FFC21A;color:#15120F;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:900}
-.bt-pl-wstep-arrow{color:#c4bdae;font-weight:900}
-.bt-pl-wcard--m{max-width:none;border-radius:15px;background:#fff;margin-top:6px}
-.bt-pl-wbody--m{padding:22px 18px}
-.bt-pl-wtitle--m{font-size:19px}
-.bt-pl-wbtn--m{font-size:14.5px;padding:12px 18px}
+/* ===== COACH DE DÉMARRAGE (0 salarié ou 0 client) : checklist discrète, FERMABLE.
+   Esthétique « haut de gamme » : blanc, hairline, filet or, ombre douce — zéro
+   rubalise. Desktop = carte flottante bas-droite ; mobile = carte dans la liste. ===== */
+.bt-pl-coach{position:fixed;right:22px;bottom:22px;z-index:25;width:296px;background:#fff;border:1px solid rgba(21,18,15,.08);border-radius:16px;box-shadow:0 28px 70px -28px rgba(21,18,15,.5);overflow:hidden;font-family:'Archivo',sans-serif;text-align:left}
+.bt-pl-coach--flow{position:static;width:100%;margin-top:6px;box-shadow:0 16px 40px -22px rgba(21,18,15,.35)}
+.bt-pl-coach-gold{height:3px;background:linear-gradient(90deg,#FFC21A,#F5B400 55%,rgba(255,194,26,.15))}
+.bt-pl-coach-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:14px 12px 0 16px}
+.bt-pl-coach-kicker{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:#9a8a3a;font-weight:700;margin:0 0 2px}
+.bt-pl-coach-title{font-size:16px;font-weight:900;letter-spacing:-.015em;color:#15120F;margin:0}
+.bt-pl-coach-x{flex:none;width:28px;height:28px;border-radius:8px;border:none;background:transparent;color:#9a948a;font-size:15px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;font-family:inherit;transition:background .12s ease,color .12s ease}
+.bt-pl-coach-x:hover{background:rgba(21,18,15,.06);color:#15120F}
+.bt-pl-coach-steps{padding:12px 12px 14px;display:flex;flex-direction:column;gap:8px}
+.bt-pl-coach-step{display:flex;align-items:center;gap:11px;padding:11px 12px;border:1px solid rgba(21,18,15,.08);border-radius:12px;background:#FBF8F2;cursor:pointer;text-align:left;font-family:inherit;width:100%;transition:border-color .13s ease,box-shadow .13s ease,background .13s ease}
+.bt-pl-coach-step:hover{border-color:rgba(255,194,26,.65);background:#fff;box-shadow:0 10px 24px -14px rgba(21,18,15,.3)}
+.bt-pl-coach-step.done{cursor:default;background:#fff;border-color:rgba(21,18,15,.06);opacity:.62}
+.bt-pl-coach-step.done:hover{box-shadow:none;border-color:rgba(21,18,15,.06)}
+.bt-pl-coach-n{width:24px;height:24px;flex:none;border-radius:50%;background:#15120F;color:#FFC21A;display:inline-flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:900}
+.bt-pl-coach-step.done .bt-pl-coach-n{background:#1D9E75;color:#fff}
+.bt-pl-coach-t{min-width:0}
+.bt-pl-coach-t b{display:block;font-size:13.5px;font-weight:800;letter-spacing:-.01em;color:#15120F}
+.bt-pl-coach-t small{display:block;font-size:11.5px;color:#8a8378;font-weight:500;margin-top:1px}
+.bt-pl-coach-step.done .bt-pl-coach-t b{text-decoration:line-through;text-decoration-thickness:1.5px;color:#56514a}
 
 /* bandeau « invitations en attente » — ambre BEMEXO (fini le jaune Tailwind pâle) */
 .bt-pl-inv{background:#FFF1CC;border-bottom:1.5px solid #E8CE7A;padding:10px 16px;display:flex;flex-direction:column;gap:6px}
@@ -583,6 +594,18 @@ export default function AdminPlanning() {
   const [pendingAbsence, setPendingAbsence] = useState<{ worker: User; type: string; fromStr: string } | null>(null);
   const [absRange, setAbsRange] = useState<DateRange | undefined>(undefined);
   const [absSaving, setAbsSaving] = useState(false);
+
+  // Coach de démarrage : fermé définitivement via localStorage (clé dédiée,
+  // indépendante de battime_offline_*). Visible tant qu'il manque un salarié
+  // OU un client, et que l'utilisateur ne l'a pas fermé.
+  const [coachHidden, setCoachHidden] = useState(true);
+  useEffect(() => {
+    try { setCoachHidden(localStorage.getItem('bemexo_admin_coach') === 'off'); } catch { setCoachHidden(false); }
+  }, []);
+  const dismissCoach = () => {
+    setCoachHidden(true);
+    try { localStorage.setItem('bemexo_admin_coach', 'off'); } catch { /* stockage indisponible : fermé pour la session */ }
+  };
 
   // create client / worker dialogs
   const [clientOpen, setClientOpen] = useState(false);
@@ -1510,8 +1533,8 @@ export default function AdminPlanning() {
                 <tbody ref={realBodyRef}>
                   {/* 0 salarié : AUCUNE ligne ici — les lignes fantômes dessinent un
                       quadrillage uniforme (fini la bande colSpan qui coupait la colonne
-                      sticky et recevait la bordure noire de fin), et la carte de
-                      bienvenue .bt-pl-welcome s'affiche par-dessus. */}
+                      sticky et recevait la bordure noire de fin) ; le coach .bt-pl-coach
+                      guide en bas à droite, sans jamais bloquer la grille. */}
                   {displayWorkers.map(worker => {
                       const absToday = todayAbsence.get(worker.id);
                       const isLate = (missingByWorker.get(worker.id) || []).length > 0;
@@ -1526,7 +1549,7 @@ export default function AdminPlanning() {
                               title="Cliquer pour le statut / la disponibilité"
                             >
                               <span className="bt-pl-nametop">
-                                <span className="bt-pl-avatar" style={absToday ? { background: '#c4bdae', color: '#15120F' } : undefined}>
+                                <span className="bt-pl-avatar" style={avatarTint(worker.id, !!absToday)}>
                                   {worker.photo_url ? <img className="bt-pl-avatar-img" src={worker.photo_url} alt="" /> : <>{(worker.first_name?.[0] || '')}{(worker.last_name?.[0] || '')}</>}
                                 </span>
                                 <span className="bt-pl-name">{fullName}</span>
@@ -1615,28 +1638,28 @@ export default function AdminPlanning() {
                   </tbody>
                 )}
             </table>
-            {/* Accueil premier lancement : carte de bienvenue par-dessus la grille vide.
-                pointer-events:none sur le voile (les « + » fantômes restent cliquables),
-                auto sur la carte. */}
-            {displayWorkers.length === 0 && (
-              <div className="bt-pl-welcome">
-                <div className="bt-pl-wcard">
-                  <div className="bt-pl-whazard" />
-                  <div className="bt-pl-wbody">
-                    <div className="bt-pl-wemoji">👷</div>
-                    <h2 className="bt-pl-wtitle">Bienvenue ! Votre planning est prêt.</h2>
-                    <p className="bt-pl-wsub">Ajoutez votre premier salarié — il reçoit une invitation par email et pointe depuis son téléphone dès demain.</p>
-                    <button className="bt-pl-wbtn" onClick={() => setWorkerOpen(true)}>
-                      <UserPlus className="h-5 w-5" /> Ajouter mon premier salarié →
-                    </button>
-                    <div className="bt-pl-wsteps">
-                      <span className="bt-pl-wstep"><b>1</b> Invitez</span>
-                      <span className="bt-pl-wstep-arrow">→</span>
-                      <span className="bt-pl-wstep"><b>2</b> Il pointe</span>
-                      <span className="bt-pl-wstep-arrow">→</span>
-                      <span className="bt-pl-wstep"><b>3</b> Vous exportez</span>
-                    </div>
+            {/* Coach de démarrage : checklist discrète et FERMABLE (croix), flottante
+                bas-droite — la grille reste pleinement visible et utilisable. Les
+                étapes se cochent toutes seules ; tout fait → il disparaît. */}
+            {!coachHidden && (workers.length === 0 || worksites.length === 0) && (
+              <div className="bt-pl-coach">
+                <div className="bt-pl-coach-gold" />
+                <div className="bt-pl-coach-head">
+                  <div>
+                    <p className="bt-pl-coach-kicker">Pour démarrer</p>
+                    <h3 className="bt-pl-coach-title">Deux étapes, et tout roule.</h3>
                   </div>
+                  <button className="bt-pl-coach-x" onClick={dismissCoach} aria-label="Fermer le guide" title="Fermer">✕</button>
+                </div>
+                <div className="bt-pl-coach-steps">
+                  <button className={`bt-pl-coach-step${workers.length > 0 ? ' done' : ''}`} onClick={() => { if (workers.length === 0) setWorkerOpen(true); }}>
+                    <span className="bt-pl-coach-n">{workers.length > 0 ? '✓' : '1'}</span>
+                    <span className="bt-pl-coach-t"><b>Ajoutez un salarié</b><small>Il reçoit une invitation par email</small></span>
+                  </button>
+                  <button className={`bt-pl-coach-step${worksites.length > 0 ? ' done' : ''}`} onClick={() => { if (worksites.length === 0) setClientOpen(true); }}>
+                    <span className="bt-pl-coach-n">{worksites.length > 0 ? '✓' : '2'}</span>
+                    <span className="bt-pl-coach-t"><b>Créez un client</b><small>Puis glissez-le sur le planning</small></span>
+                  </button>
                 </div>
               </div>
             )}
@@ -1667,16 +1690,30 @@ export default function AdminPlanning() {
             </div>
             <div className="bt-pl-m-list">
               {workers.length === 0 ? (
-                <div className="bt-pl-wcard bt-pl-wcard--m">
-                  <div className="bt-pl-whazard" />
-                  <div className="bt-pl-wbody bt-pl-wbody--m">
-                    <h2 className="bt-pl-wtitle bt-pl-wtitle--m">Bienvenue ! Votre planning est prêt.</h2>
-                    <p className="bt-pl-wsub">Ajoutez votre premier salarié — il reçoit une invitation par email et pointe depuis son téléphone.</p>
-                    <button className="bt-pl-wbtn bt-pl-wbtn--m" onClick={() => setWorkerOpen(true)}>
-                      <UserPlus className="h-4 w-4" /> Ajouter mon premier salarié
-                    </button>
+                !coachHidden ? (
+                  <div className="bt-pl-coach bt-pl-coach--flow">
+                    <div className="bt-pl-coach-gold" />
+                    <div className="bt-pl-coach-head">
+                      <div>
+                        <p className="bt-pl-coach-kicker">Pour démarrer</p>
+                        <h3 className="bt-pl-coach-title">Deux étapes, et tout roule.</h3>
+                      </div>
+                      <button className="bt-pl-coach-x" onClick={dismissCoach} aria-label="Fermer le guide" title="Fermer">✕</button>
+                    </div>
+                    <div className="bt-pl-coach-steps">
+                      <button className="bt-pl-coach-step" onClick={() => setWorkerOpen(true)}>
+                        <span className="bt-pl-coach-n">1</span>
+                        <span className="bt-pl-coach-t"><b>Ajoutez un salarié</b><small>Il reçoit une invitation par email</small></span>
+                      </button>
+                      <button className={`bt-pl-coach-step${worksites.length > 0 ? ' done' : ''}`} onClick={() => { if (worksites.length === 0) setClientOpen(true); }}>
+                        <span className="bt-pl-coach-n">{worksites.length > 0 ? '✓' : '2'}</span>
+                        <span className="bt-pl-coach-t"><b>Créez un client</b><small>Puis planifiez depuis l'ordinateur</small></span>
+                      </button>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="bt-pl-m-empty">Aucun salarié — bouton « Salariés » sur ordinateur.</div>
+                )
               ) : workers.map(worker => {
                 const dateStr = format(weekDays[mobileDayIdx], 'yyyy-MM-dd');
                 const absence = absenceForDay(worker.id, dateStr);
@@ -1687,7 +1724,7 @@ export default function AdminPlanning() {
                 return (
                   <div key={worker.id} className="bt-pl-m-card">
                     <div className="bt-pl-m-top">
-                      <span className="bt-pl-avatar" style={absence ? { background: '#c4bdae', color: '#15120F' } : undefined}>{worker.photo_url ? <img className="bt-pl-avatar-img" src={worker.photo_url} alt="" /> : <>{(worker.first_name?.[0] || '')}{(worker.last_name?.[0] || '')}</>}</span>
+                      <span className="bt-pl-avatar" style={avatarTint(worker.id, !!absence)}>{worker.photo_url ? <img className="bt-pl-avatar-img" src={worker.photo_url} alt="" /> : <>{(worker.first_name?.[0] || '')}{(worker.last_name?.[0] || '')}</>}</span>
                       <span style={{ flex: 1, minWidth: 0 }}><span className="bt-pl-name" style={{ display: 'block' }}>{worker.first_name} {worker.last_name}</span></span>
                       {absence ? (
                         <span className="bt-pl-m-badge" style={{ background: '#EFE7DA', color: av!.fg }}>{av!.icon} {(ABSENCE_LABELS[absence.absence_type!] || '').toUpperCase()}</span>
@@ -1772,7 +1809,7 @@ export default function AdminPlanning() {
         <DialogContent className="bt-skin max-w-md max-h-[80vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Salariés</DialogTitle></DialogHeader>
           <div className="pt-1">
-            <Button size="sm" className="mb-2 w-full font-bold" style={{ boxShadow: '0 3px 0 #C99300' }} onClick={() => { setSalariesOpen(false); setWorkerOpen(true); }}>
+            <Button size="sm" className="mb-2 w-full font-bold" onClick={() => { setSalariesOpen(false); setWorkerOpen(true); }}>
               <UserPlus className="h-4 w-4 mr-1.5" /> Nouveau salarié
             </Button>
             <Input placeholder="Rechercher un salarié…" value={salariesQuery} onChange={(e) => setSalariesQuery(e.target.value)} className="mb-2" />
@@ -2161,7 +2198,7 @@ export default function AdminPlanning() {
             </div>
             <div className="space-y-2"><Label>Email *</Label><Input type="email" value={wEmail} onChange={(e) => setWEmail(e.target.value)} required disabled={wSaving} /></div>
             <div className="space-y-2"><Label>Téléphone</Label><Input type="tel" value={wPhone} onChange={(e) => setWPhone(e.target.value)} disabled={wSaving} /></div>
-            <Button type="submit" className="w-full font-bold" style={{ boxShadow: '0 3px 0 #C99300' }} disabled={wSaving}>
+            <Button type="submit" className="w-full font-bold" disabled={wSaving}>
               {wSaving && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Envoyer l'invitation
             </Button>
           </form>
