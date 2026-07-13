@@ -48,22 +48,22 @@ const ADMIN_CSS = `
 /* Essai 30 j — bandeau (info) + blocage (preview uniquement) */
 /* Header d'app : bandeau noir fin avec le wordmark BEMEXO à gauche — la bande
    noire n'est plus jamais vide, essai ou pas. */
-.bt-topbar{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:9px 16px 13px;min-height:52px}
-.bt-topbar-logo{height:26px;width:auto;display:block;flex:none}
+.bt-topbar{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:4px 16px 8px;min-height:36px}
+.bt-topbar-logo{height:22px;width:auto;display:block;flex:none}
 
 /* Essai : pilule compacte « haut de gamme » dans le header (fond noir profond,
    filet or, CTA doré). */
-.bt-trial-banner{display:flex;align-items:center;gap:9px;width:fit-content;max-width:100%;background:#211B14;border:1px solid rgba(255,194,26,.38);color:#F2EDE3;border-radius:999px;padding:7px 8px 7px 15px;font-size:13px;font-weight:600;box-shadow:0 14px 34px -18px rgba(0,0,0,.8)}
+.bt-trial-banner{display:flex;align-items:center;gap:9px;width:fit-content;max-width:100%;background:#211B14;border:1px solid rgba(255,194,26,.38);color:#F2EDE3;border-radius:999px;padding:5px 6px 5px 14px;font-size:12.5px;font-weight:600;box-shadow:0 14px 34px -18px rgba(0,0,0,.8)}
 .bt-trial-banner strong{color:#FFC21A;font-weight:800}
 .bt-trial-banner.expired{border-color:rgba(216,90,48,.55)}
 .bt-trial-dot{width:7px;height:7px;border-radius:50%;background:#FFC21A;flex:none;box-shadow:0 0 10px rgba(255,194,26,.8)}
 .bt-trial-banner.expired .bt-trial-dot{background:#D85A30;box-shadow:0 0 10px rgba(216,90,48,.8)}
-.bt-trial-cta{margin-left:8px;background:linear-gradient(180deg,#FFCB3D,#F5B400);color:#15120F;border:none;border-radius:999px;padding:7px 15px;font-family:inherit;font-weight:800;font-size:12.5px;cursor:pointer;flex:none;box-shadow:0 8px 18px -8px rgba(214,158,0,.7);transition:transform .12s ease}
+.bt-trial-cta{margin-left:8px;background:linear-gradient(180deg,#FFCB3D,#F5B400);color:#15120F;border:none;border-radius:999px;padding:6px 13px;font-family:inherit;font-weight:800;font-size:12.5px;cursor:pointer;flex:none;box-shadow:0 8px 18px -8px rgba(214,158,0,.7);transition:transform .12s ease}
 .bt-trial-cta:hover{transform:translateY(-1px)}
 .bt-trial-banner.expired .bt-trial-cta{background:linear-gradient(180deg,#E8794D,#D85A30);color:#fff;box-shadow:0 8px 18px -8px rgba(216,90,48,.7)}
 @media(max-width:560px){
-  .bt-topbar{padding:8px 8px 10px;min-height:0;flex-wrap:wrap}
-  .bt-topbar-logo{height:21px;margin-left:4px}
+  .bt-topbar{padding:5px 8px 7px;min-height:0;flex-wrap:wrap}
+  .bt-topbar-logo{height:19px;margin-left:4px}
   /* la pilule passe en pleine largeur sous le logo : plus d'écrasement */
   .bt-trial-banner{width:100%;justify-content:space-between;border-radius:14px;padding:8px 8px 8px 13px}
   .bt-trial-cta{margin-left:0}
