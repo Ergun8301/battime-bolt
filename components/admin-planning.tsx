@@ -448,8 +448,8 @@ const PL_CSS = `
 .bt-pl-m-empty{font-size:12.5px;color:#9a948a;font-weight:600;margin-top:8px}
 /* ===== ACCUEIL 0 salarié : carte de bienvenue (desktop = par-dessus la grille vide,
    mobile = dans la liste). Apparence seule — le CTA ouvre le dialog d'invitation. ===== */
-.bt-pl-welcome{position:absolute;inset:0;z-index:8;display:flex;align-items:center;justify-content:center;padding:24px;pointer-events:none}
-.bt-pl-wcard{pointer-events:auto;background:#F2EDE3;border:2px solid #15120F;border-radius:18px;box-shadow:0 30px 70px -28px rgba(21,18,15,.55);max-width:530px;width:100%;overflow:hidden;text-align:center}
+.bt-pl-welcome{position:absolute;inset:0;z-index:8;display:flex;align-items:center;align-items:safe center;justify-content:center;padding:24px;pointer-events:none}
+.bt-pl-wcard{pointer-events:auto;background:#F2EDE3;border:2px solid #15120F;border-radius:18px;box-shadow:0 30px 70px -28px rgba(21,18,15,.55);max-width:530px;width:100%;max-height:100%;overflow:auto;text-align:center}
 .bt-pl-whazard{height:10px;background:repeating-linear-gradient(45deg,#15120F 0 9px,#FFC21A 9px 18px)}
 .bt-pl-wbody{padding:30px 34px}
 .bt-pl-wemoji{width:54px;height:54px;margin:0 auto 14px;background:#15120F;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:26px}
