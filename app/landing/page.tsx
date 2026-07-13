@@ -438,7 +438,22 @@ const BODY_SUITE = `
   </section>
 
   <!-- ============ FOOTER ============ -->
-  <footer style="background:#0e0c0a;color:#9a948a;padding:46px 28px">
+  <footer style="background:#0e0c0a;color:#9a948a;padding:44px 28px 40px">
+    <!-- liens de contenu (maillage interne SEO) -->
+    <div style="max-width:1140px;margin:0 auto 28px;display:flex;gap:48px;flex-wrap:wrap;border-bottom:1px solid rgba(242,237,227,.09);padding-bottom:28px">
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:#6E6A63;font-weight:700;margin-bottom:2px">Fonctionnalités</div>
+        <a href="/fonctionnalites/pointage-chantier" style="color:#c9c3b8;text-decoration:none;font-size:14px;font-weight:600">Pointage chantier</a>
+        <a href="/fonctionnalites/planning-equipe" style="color:#c9c3b8;text-decoration:none;font-size:14px;font-weight:600">Planning d'équipe</a>
+        <a href="/fonctionnalites/export-paie" style="color:#c9c3b8;text-decoration:none;font-size:14px;font-weight:600">Export paie</a>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:#6E6A63;font-weight:700;margin-bottom:2px">Suisse romande</div>
+        <a href="/suisse" style="color:#c9c3b8;text-decoration:none;font-size:14px;font-weight:600">BEMEXO en Suisse</a>
+        <a href="/suisse/timbrage-chantier" style="color:#c9c3b8;text-decoration:none;font-size:14px;font-weight:600">Timbrage de chantier</a>
+        <a href="/suisse/enregistrement-temps-de-travail" style="color:#c9c3b8;text-decoration:none;font-size:14px;font-weight:600">Enregistrement du temps de travail</a>
+      </div>
+    </div>
     <div class="lp-footer-row" style="max-width:1140px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:24px;flex-wrap:wrap">
       <div style="display:flex;align-items:center;gap:11px">
         <img src="/bemexo-wordmark-light.svg" alt="BEMEXO" style="height:26px;width:auto;display:block" />
