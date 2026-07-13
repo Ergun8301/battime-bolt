@@ -9,7 +9,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Loader2, Upload, Trash2, Building2 } from 'lucide-react';
+import { Loader2, Upload, Trash2, Building2, CreditCard } from 'lucide-react';
 
 interface Props { open: boolean; onOpenChange: (o: boolean) => void; onSaved?: () => void; }
 
@@ -43,6 +43,9 @@ const SET_CSS = `
 .bt-set-note{font-size:11.5px;color:#9a948a;font-weight:600;margin:0;flex:1}
 .bt-set-save{flex:none;white-space:nowrap;background:#FFC21A;color:#15120F;border:none;border-radius:11px;padding:11px 22px;font-weight:900;font-size:15px;cursor:pointer;font-family:inherit;box-shadow:0 4px 0 #C99300;display:inline-flex;align-items:center;justify-content:center;gap:8px}
 .bt-set-save:disabled{opacity:.6}
+.bt-set-sub{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:#FBF8F2;border:1px solid rgba(21,18,15,.1);border-radius:12px;padding:12px 14px;margin-top:4px}
+.bt-set-subtxt{min-width:0}
+.bt-set-substate{font-size:13px;color:#56514a;font-weight:600;margin:3px 0 0}
 `;
 
 export default function CompanySettings({ open, onOpenChange, onSaved }: Props) {
@@ -52,19 +55,22 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
   const [uploading, setUploading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [f, setF] = useState<Form>(EMPTY);
+  const [subStatus, setSubStatus] = useState<string | null>(null);
+  const [portalBusy, setPortalBusy] = useState(false);
 
   useEffect(() => {
     if (!open || !user?.company_id) return;
     setLoading(true); setErr(null);
     supabase.from('companies')
-      .select('name, siret, tva_intra, address, postal_code, city, phone, email, logo_url')
+      .select('name, siret, tva_intra, address, postal_code, city, phone, email, logo_url, subscription_status')
       .eq('id', user.company_id).maybeSingle()
       .then(({ data }) => {
-        const d = (data || {}) as Partial<Form>;
+        const d = (data || {}) as Partial<Form> & { subscription_status?: string | null };
         setF({
           name: d.name || '', siret: d.siret || '', tva_intra: d.tva_intra || '', address: d.address || '',
           postal_code: d.postal_code || '', city: d.city || '', phone: d.phone || '', email: d.email || '', logo_url: d.logo_url || '',
         });
+        setSubStatus(d.subscription_status ?? null);
         setLoading(false);
       });
   }, [open, user?.company_id]);
@@ -91,6 +97,22 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
       setErr("Échec de l'envoi du logo. Réessayez.");
     } finally {
       setUploading(false);
+    }
+  };
+
+  // Ouvre le portail client Stripe (gérer / résilier l'abonnement, factures,
+  // moyen de paiement) — page hébergée par Stripe, hors de l'app.
+  const openPortal = async () => {
+    setPortalBusy(true); setErr(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('stripe-portal', { body: {} });
+      if (error) throw new Error((data as { error?: string } | null)?.error || error.message);
+      const url = (data as { url?: string } | null)?.url;
+      if (!url) throw new Error((data as { error?: string } | null)?.error || "Impossible d'ouvrir la gestion de l'abonnement.");
+      window.location.href = url;
+    } catch (e) {
+      setErr((e as Error)?.message || 'Réessayez dans un instant.');
+      setPortalBusy(false);
     }
   };
 
@@ -184,6 +206,24 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
                 <label className="bt-set-l">Email</label>
                 <input className="bt-set-i" type="email" value={f.email} onChange={(e) => set('email', e.target.value)} placeholder="contact@entreprise.fr" />
               </div>
+            </div>
+
+            {/* Abonnement — gestion/résiliation en self-service via le portail Stripe */}
+            <div className="bt-set-sub">
+              <div className="bt-set-subtxt">
+                <label className="bt-set-l">Abonnement</label>
+                <p className="bt-set-substate">
+                  {subStatus === 'active' ? 'Abonnement actif — vous pouvez le gérer ou le résilier à tout moment.'
+                    : subStatus === 'trialing' ? "Essai gratuit en cours — aucun abonnement à gérer pour l'instant."
+                    : subStatus === 'canceled' ? 'Abonnement résilié.'
+                    : 'Aucun abonnement actif.'}
+                </p>
+              </div>
+              {(subStatus === 'active' || subStatus === 'canceled') && (
+                <button type="button" className="bt-set-btn" onClick={openPortal} disabled={portalBusy}>
+                  {portalBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />} Gérer mon abonnement
+                </button>
+              )}
             </div>
 
             {err && <div className="bt-set-err">{err}</div>}
