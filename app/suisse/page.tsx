@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import SeoPage, { JsonLd } from '@/components/seo-page';
 
 export const metadata: Metadata = {
-  title: 'Logiciel de timbrage et de suivi des heures pour le chantier — Suisse romande | BEMEXO',
+  title: 'Timbrage de chantier et suivi des heures — Suisse romande | BEMEXO',
   description:
     'BEMEXO : le timbrage de chantier sur mobile pour les entreprises de construction de Suisse romande (Genève, Vaud, Valais, Fribourg, Neuchâtel). Conforme à l’obligation d’enregistrement du temps de travail (LTr / OLT 1 art. 73).',
   alternates: { canonical: 'https://bemexo.com/suisse' },
@@ -93,6 +93,11 @@ export default function Page() {
               <h3>Est-ce conforme si je n’ai pas de connexion sur le chantier ?</h3>
               <p>Oui. Le timbrage est enregistré sur le téléphone et se synchronise dès que le réseau revient. L’horodatage de la saisie est conservé.</p>
             </div>
+          </div>
+          <div className="sp-note">
+            <strong>Information générale.</strong> Les références légales (LTr, OLT 1) sont fournies à titre informatif
+            et ne constituent pas un conseil juridique. Voir le détail de{' '}
+            <a href="/suisse/enregistrement-temps-de-travail">vos obligations d’enregistrement</a>.
           </div>
         </section>
       </SeoPage>

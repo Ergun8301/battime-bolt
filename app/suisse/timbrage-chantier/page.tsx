@@ -64,9 +64,9 @@ export default function Page() {
           <h2 className="sp-h2">Adapté à la construction suisse</h2>
           <p className="sp-p">
             La <strong>Convention nationale du secteur principal de la construction</strong> prévoit une durée du
-            travail répartie sur l’année (autour de 41,75 heures par semaine en moyenne). BEMEXO enregistre les heures
-            réellement travaillées, ce qui vous aide à suivre ce total annualisé et à repérer les écarts, chantier par
-            chantier.
+            travail répartie sur l’année — <strong>environ 40,5 heures par semaine en moyenne</strong>, soit
+            2112 heures par an. BEMEXO enregistre les heures réellement travaillées, ce qui vous aide à suivre ce total
+            annualisé et à repérer les écarts, chantier par chantier.
           </p>
           <div className="sp-related">
             <a href="/suisse/enregistrement-temps-de-travail"><b>Vos obligations légales →</b><span>Enregistrer la durée du travail : LTr / OLT 1 art. 73.</span></a>
@@ -85,6 +85,11 @@ export default function Page() {
               <h3>Le timbrage mobile est-il accepté légalement ?</h3>
               <p>La loi impose d’enregistrer la durée du travail, sans imposer de moyen précis. Un enregistrement électronique daté et conservé — comme celui de BEMEXO — répond à cette exigence. Voir <a href="/suisse/enregistrement-temps-de-travail">vos obligations</a>.</p>
             </div>
+          </div>
+          <div className="sp-note">
+            <strong>Information générale.</strong> Les références au droit suisse (LTr, OLT 1, Convention nationale) sont
+            fournies à titre informatif et ne constituent pas un conseil juridique. Pour votre situation précise,
+            rapprochez-vous de votre fiduciaire ou d’un conseil spécialisé.
           </div>
         </section>
       </SeoPage>

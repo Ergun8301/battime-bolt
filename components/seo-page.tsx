@@ -25,6 +25,7 @@ const CSS = `
 .sp-crumb a{text-decoration:none;border-bottom:1px solid rgba(21,18,15,.2)}
 /* hero */
 .sp-main{max-width:820px;margin:0 auto;padding:20px 24px 10px}
+.sp-hero{padding-bottom:6px;border-bottom:1px solid rgba(21,18,15,.08)}
 .sp-kicker{font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#9a8a3a;font-weight:700;margin-bottom:16px}
 .sp-h1{font-size:clamp(30px,5vw,46px);line-height:1.03;font-weight:900;letter-spacing:-.03em;text-wrap:balance;margin-bottom:18px}
 .sp-h1 em{font-style:normal;color:#15120F;background:#FFC21A;padding:0 8px;box-decoration-break:clone;-webkit-box-decoration-break:clone}

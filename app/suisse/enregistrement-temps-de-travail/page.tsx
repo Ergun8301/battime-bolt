@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import SeoPage, { JsonLd } from '@/components/seo-page';
 
 export const metadata: Metadata = {
-  title: 'Enregistrement de la durée du travail en Suisse : vos obligations (LTr / OLT 1 art. 73) | BEMEXO',
+  title: 'Enregistrement du temps de travail en Suisse : vos obligations | BEMEXO',
   description:
     'Ce que dit la loi suisse sur l’enregistrement du temps de travail : art. 46 LTr, art. 73 OLT 1, et les allègements des art. 73a / 73b. Comment rester conforme sur le chantier avec un timbrage mobile.',
   alternates: { canonical: 'https://bemexo.com/suisse/enregistrement-temps-de-travail' },
@@ -35,7 +35,7 @@ export default function Page() {
             name: 'Existe-t-il des exceptions à l’enregistrement de la durée du travail ?',
             acceptedAnswer: {
               '@type': 'Answer',
-              text: 'Oui, depuis 2016 : l’art. 73a OLT 1 permet une renonciation à l’enregistrement sous conditions strictes (grande autonomie, rémunération annuelle élevée, base dans une convention collective), et l’art. 73b OLT 1 autorise un enregistrement simplifié (durée quotidienne uniquement), notamment par accord écrit dans les entreprises de moins de 50 collaborateurs.',
+              text: 'Oui, depuis 2016 : l’art. 73a OLT 1 permet une renonciation sous conditions strictes (grande autonomie, revenu annuel brut supérieur à 120 000 CHF, renonciation écrite du salarié, base dans une convention collective), et l’art. 73b OLT 1 autorise un enregistrement simplifié (durée quotidienne uniquement) pour les salariés fixant eux-mêmes une partie de leurs horaires, notamment par accord écrit dans les entreprises de moins de 50 collaborateurs.',
             },
           },
           {
@@ -68,7 +68,7 @@ export default function Page() {
             <p>
               La <strong>durée du travail</strong> quotidienne et hebdomadaire effectivement fournie (y compris le
               travail compensatoire et le travail supplémentaire), ainsi que les <strong>pauses de 30 minutes et
-              plus</strong>. Ces informations doivent être conservées et pouvoir être présentées lors d’un contrôle.
+              plus</strong>. Ces informations doivent être conservées cinq ans et pouvoir être présentées lors d’un contrôle.
             </p>
           </div>
         </section>
@@ -80,20 +80,23 @@ export default function Page() {
           </p>
           <ul className="sp-list">
             <li>
-              <strong>Renonciation (art. 73a OLT 1)</strong> — possible uniquement pour des collaborateurs à
-              <strong> grande autonomie</strong> et à rémunération annuelle élevée, sur la base d’une convention
-              collective de travail. C’est une exception étroite.
+              <strong>Renonciation (art. 73a OLT 1)</strong> — réservée à des collaborateurs à
+              <strong> grande autonomie</strong> (qui fixent eux-mêmes leurs horaires), avec un
+              <strong>revenu annuel brut supérieur à 120 000 CHF</strong> (bonus compris), sur la base d’une
+              convention collective le prévoyant et moyennant une <strong>renonciation individuelle écrite</strong>
+              (révocable). C’est une exception étroite.
             </li>
             <li>
               <strong>Enregistrement simplifié (art. 73b OLT 1)</strong> — on ne consigne que la <strong>durée
-              quotidienne</strong> du travail. Dans les entreprises de <strong>moins de 50 collaborateurs</strong>, il
-              peut résulter d’un accord écrit individuel avec le travailleur.
+              quotidienne</strong> du travail. Réservé aux salariés pouvant <strong>fixer eux-mêmes une part
+              significative de leurs horaires</strong> ; dans les entreprises de <strong>moins de 50 collaborateurs</strong>,
+              il peut résulter d’un accord écrit individuel avec le travailleur.
             </li>
           </ul>
           <p className="sp-p">
-            Pour la grande majorité des entreprises de construction — équipes sur le terrain, horaires variables — c’est
-            l’<strong>enregistrement (détaillé ou simplifié) qui s’applique</strong>. D’où l’intérêt d’un outil qui le
-            fait sans effort.
+            Pour les équipes de chantier, dont les horaires sont fixés par l’entreprise, c’est en général
+            l’<strong>enregistrement détaillé de l’art. 73 qui s’applique</strong> (l’enregistrement simplifié suppose
+            que le salarié fixe lui-même une partie de ses horaires). D’où l’intérêt d’un outil qui le fait sans effort.
           </p>
         </section>
 
@@ -115,16 +118,16 @@ export default function Page() {
           <h2 className="sp-h2">Questions fréquentes</h2>
           <div className="sp-faq">
             <div className="sp-faq-item">
-              <h3>Toutes les entreprises sont-elles concernées ?</h3>
-              <p>L’obligation d’enregistrer la durée du travail découle de la loi sur le travail, qui s’applique à la grande majorité des entreprises privées, dont le bâtiment. Des allègements (art. 73a / 73b) existent sous conditions.</p>
+              <h3>Un employeur est-il obligé d’enregistrer le temps de travail en Suisse ?</h3>
+              <p>Oui. L’art. 46 de la loi sur le travail (LTr) et l’art. 73 de l’ordonnance 1 (OLT 1) imposent à l’employeur de tenir à disposition des autorités un enregistrement de la durée du travail quotidienne et hebdomadaire (y compris les heures supplémentaires) et des pauses de 30 minutes et plus.</p>
             </div>
             <div className="sp-faq-item">
-              <h3>Combien de temps faut-il conserver les enregistrements ?</h3>
-              <p>La loi impose de conserver les documents pertinents pour permettre les contrôles (en pratique, plusieurs années). BEMEXO conserve l’historique et vous permet de l’exporter à tout moment.</p>
+              <h3>Existe-t-il des exceptions à l’enregistrement de la durée du travail ?</h3>
+              <p>Oui, depuis 2016 : l’art. 73a OLT 1 permet une renonciation sous conditions strictes (grande autonomie, revenu annuel brut supérieur à 120 000 CHF, renonciation écrite du salarié, base dans une convention collective), et l’art. 73b OLT 1 autorise un enregistrement simplifié (durée quotidienne uniquement) pour les salariés fixant eux-mêmes une partie de leurs horaires, notamment par accord écrit dans les entreprises de moins de 50 collaborateurs.</p>
             </div>
             <div className="sp-faq-item">
-              <h3>Le timbrage mobile est-il reconnu ?</h3>
-              <p>Oui : la loi n’impose pas de moyen technique. Un enregistrement électronique, daté et conservé, satisfait l’exigence — c’est ce que produit BEMEXO à partir du timbrage terrain.</p>
+              <h3>Un timbrage sur téléphone suffit-il à être conforme ?</h3>
+              <p>La loi impose d’enregistrer la durée du travail sans imposer un moyen technique précis. Un enregistrement électronique daté, conservé et consultable par les autorités — comme un timbrage mobile — répond à cette exigence.</p>
             </div>
           </div>
           <div className="sp-note">

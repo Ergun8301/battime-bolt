@@ -22,8 +22,7 @@ export default function Page() {
         '@type': 'BreadcrumbList',
         itemListElement: [
           { '@type': 'ListItem', position: 1, name: 'Accueil', item: 'https://bemexo.com/landing' },
-          { '@type': 'ListItem', position: 2, name: 'Fonctionnalités', item: 'https://bemexo.com/fonctionnalites/pointage-chantier' },
-          { '@type': 'ListItem', position: 3, name: 'Pointage chantier', item: 'https://bemexo.com/fonctionnalites/pointage-chantier' },
+          { '@type': 'ListItem', position: 2, name: 'Pointage chantier', item: 'https://bemexo.com/fonctionnalites/pointage-chantier' },
         ],
       }} />
       <SeoPage
