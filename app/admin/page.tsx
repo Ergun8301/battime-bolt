@@ -9,7 +9,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 
 const ADMIN_CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
-.bt-admin{font-family:'Archivo',sans-serif;min-height:100vh;background:#15120F;padding:6px;display:flex;flex-direction:column}
+/* Canvas de l'app : putty chaud (ni crème jaune, ni noir) — fait ressortir la
+   carte planning : cockpit sombre + planning blanc flottent dessus. */
+.bt-admin{font-family:'Archivo',sans-serif;min-height:100vh;background:#E6E1D5;padding:12px;display:flex;flex-direction:column}
 .bt-admin *{box-sizing:border-box}
 
 /* ============================================================
@@ -45,30 +47,10 @@ const ADMIN_CSS = `
 .bt-skin[role="dialog"]{border-top:3px solid #FFC21A}
 .bt-skin[role="dialog"] h2{font-weight:900;letter-spacing:-.01em}
 
-/* Essai 30 j — bandeau (info) + blocage (preview uniquement) */
-/* Header d'app : bandeau noir fin avec le wordmark BEMEXO à gauche — la bande
-   noire n'est plus jamais vide, essai ou pas. */
-.bt-topbar{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:4px 16px 8px;min-height:36px}
-.bt-topbar-logo{height:22px;width:auto;display:block;flex:none}
-
-/* Essai : pilule compacte « haut de gamme » dans le header (fond noir profond,
-   filet or, CTA doré). */
-.bt-trial-banner{display:flex;align-items:center;gap:9px;width:fit-content;max-width:100%;background:#211B14;border:1px solid rgba(255,194,26,.38);color:#F2EDE3;border-radius:999px;padding:5px 6px 5px 14px;font-size:12.5px;font-weight:600;box-shadow:0 14px 34px -18px rgba(0,0,0,.8)}
-.bt-trial-banner strong{color:#FFC21A;font-weight:800}
-.bt-trial-banner.expired{border-color:rgba(216,90,48,.55)}
-.bt-trial-dot{width:7px;height:7px;border-radius:50%;background:#FFC21A;flex:none;box-shadow:0 0 10px rgba(255,194,26,.8)}
-.bt-trial-banner.expired .bt-trial-dot{background:#D85A30;box-shadow:0 0 10px rgba(216,90,48,.8)}
-.bt-trial-cta{margin-left:8px;background:linear-gradient(180deg,#FFCB3D,#F5B400);color:#15120F;border:none;border-radius:999px;padding:6px 13px;font-family:inherit;font-weight:800;font-size:12.5px;cursor:pointer;flex:none;box-shadow:0 8px 18px -8px rgba(214,158,0,.7);transition:transform .12s ease}
-.bt-trial-cta:hover{transform:translateY(-1px)}
-.bt-trial-banner.expired .bt-trial-cta{background:linear-gradient(180deg,#E8794D,#D85A30);color:#fff;box-shadow:0 8px 18px -8px rgba(216,90,48,.7)}
-@media(max-width:560px){
-  .bt-topbar{padding:5px 8px 7px;min-height:0;flex-wrap:wrap}
-  .bt-topbar-logo{height:19px;margin-left:4px}
-  /* la pilule passe en pleine largeur sous le logo : plus d'écrasement */
-  .bt-trial-banner{width:100%;justify-content:space-between;border-radius:14px;padding:8px 8px 8px 13px}
-  .bt-trial-cta{margin-left:0}
-}
-.bt-trial-block{min-height:calc(100vh - 12px);display:flex;align-items:center;justify-content:center;padding:20px}
+/* Le header/essai vit désormais DANS le cockpit du planning (composant
+   admin-planning) — logo + stats + pilule + compte réunis. Ici on ne garde que
+   l'écran de blocage d'essai (paywall). */
+.bt-trial-block{min-height:calc(100vh - 24px);display:flex;align-items:center;justify-content:center;padding:20px}
 .bt-trial-card{background:#F2EDE3;border-radius:18px;padding:40px 32px;max-width:440px;text-align:center;box-shadow:0 30px 70px -28px rgba(0,0,0,.6)}
 .bt-trial-card.wide{max-width:680px}
 .bt-trial-emoji{font-size:44px;margin-bottom:6px}
@@ -168,25 +150,6 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* Header d'app : le bandeau noir n'est plus une bande vide — logo à gauche
-          (en permanence, abonné ou pas), pilule d'essai à droite tant qu'elle a
-          lieu d'être. Quand l'essai disparaît, le header reste équilibré. */}
-      <div className="bt-topbar">
-        <img src="/bemexo-wordmark-light.svg" alt="BEMEXO" className="bt-topbar-logo" />
-        {inTrial && !expired && daysLeft !== null && (
-          <div className="bt-trial-banner">
-            <span className="bt-trial-dot" /> Essai gratuit — il reste <strong>&nbsp;{daysLeft} jour{daysLeft > 1 ? 's' : ''}</strong>.
-            <button className="bt-trial-cta" onClick={() => setSubOpen(true)}>S&apos;abonner</button>
-          </div>
-        )}
-        {inTrial && expired && (
-          <div className="bt-trial-banner expired">
-            <span className="bt-trial-dot" /> Essai terminé
-            <button className="bt-trial-cta" onClick={() => setSubOpen(true)}>S&apos;abonner</button>
-          </div>
-        )}
-      </div>
-
       {blocked ? (
         <div className="bt-trial-block">
           <div className="bt-trial-card wide">
@@ -200,7 +163,7 @@ export default function AdminPage() {
           </div>
         </div>
       ) : (
-        <AdminPlanning />
+        <AdminPlanning trial={{ inTrial, expired, daysLeft }} onSubscribe={() => setSubOpen(true)} />
       )}
 
       <Dialog open={subOpen} onOpenChange={setSubOpen}>

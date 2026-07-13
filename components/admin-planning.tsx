@@ -43,6 +43,11 @@ function formatMinutes(minutes: number): string {
   const m = minutes % 60;
   return `${h}h${m.toString().padStart(2, '0')}`;
 }
+// Format compact pour les stats du cockpit (30000 -> "30k").
+function fmtStat(n: number): string {
+  if (n >= 10000) return `${(n / 1000).toFixed(n >= 100000 ? 0 : 1).replace(/\.0$/, '').replace('.', ',')}k`;
+  return String(n);
+}
 
 // Colour belongs to the CHANTIER (stable all week), not the poseur.
 // Palette BTP noir/jaune : barre de couleur du chantier + tag « Prévu » assorti.
@@ -267,13 +272,48 @@ const ABSENCE_VISUAL: Record<string, { icon: string; bg: string; fg: string }> =
 // Scoped noir/jaune styling for the planning. Logic-free — appearance only.
 const PL_CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
-.bt-pl{font-family:'Archivo',sans-serif;color:#15120F;flex:1 0 auto;display:flex;flex-direction:column}
+.bt-pl{font-family:'Archivo',sans-serif;color:#15120F;flex:1 0 auto;display:flex;flex-direction:column;border-radius:16px;box-shadow:0 26px 64px -36px rgba(21,18,15,.6)}
 .bt-pl *{box-sizing:border-box}
 .bt-pl .mono{font-family:'JetBrains Mono',monospace}
 /* ===== BARRE UNIQUE pleine largeur (sticky) — pas de cadre ===== */
 /* groupes logiques : [légende·Salariés·Clients]  [semaine]  [Exporter·compte] */
-.bt-pl-bar{position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:#fff;border-bottom:2px solid #15120F;padding:10px 16px;border-radius:16px 16px 0 0}
+.bt-pl-bar{position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:#fff;border-bottom:2px solid #15120F;padding:9px 16px;border-radius:0}
 .bt-pl-group{display:flex;align-items:center;gap:10px}
+/* ===== COCKPIT : tableau de bord sombre ===== */
+.bt-pl-cockpit{display:flex;align-items:center;gap:16px;flex-wrap:wrap;background:#15120F;color:#F2EDE3;padding:9px 16px;border-radius:16px 16px 0 0}
+.bt-pl-logo{font-family:'Archivo',sans-serif;font-weight:900;letter-spacing:-.04em;font-size:19px;color:#fff;white-space:nowrap;flex:none}
+.bt-pl-logo .x{color:#FFC21A}
+.bt-pl-stats{display:flex;align-items:center;gap:2px;flex-wrap:wrap;min-width:0}
+.bt-pl-stat{display:inline-flex;align-items:center;gap:7px;padding:3px 14px;white-space:nowrap;position:relative}
+.bt-pl-stat + .bt-pl-stat::before{content:"";position:absolute;left:0;top:50%;transform:translateY(-50%);width:1px;height:18px;background:rgba(242,237,227,.15)}
+.bt-pl-stat .sd{width:7px;height:7px;border-radius:50%;flex:none}
+.bt-pl-stat .v{font-family:'JetBrains Mono',monospace;font-weight:800;font-size:15px;color:#F2EDE3;font-variant-numeric:tabular-nums}
+.bt-pl-stat .l{font-size:11px;font-weight:600;color:#a59c86}
+.bt-pl-stat.warn .v{color:#FFC21A}
+.bt-pl-cockpit-right{margin-left:auto;display:flex;align-items:center;gap:11px;flex:none}
+.bt-pl-trial{display:inline-flex;align-items:center;gap:8px;background:#211B14;border:1px solid rgba(255,194,26,.4);color:#F2EDE3;border-radius:999px;padding:4px 5px 4px 13px;font-size:12px;font-weight:600;white-space:nowrap}
+.bt-pl-trial .d{width:7px;height:7px;border-radius:50%;background:#FFC21A;box-shadow:0 0 9px rgba(255,194,26,.8);flex:none}
+.bt-pl-trial b{color:#FFC21A;font-weight:800}
+.bt-pl-trial.expired{border-color:rgba(216,90,48,.55)}
+.bt-pl-trial.expired .d{background:#D85A30;box-shadow:0 0 9px rgba(216,90,48,.8)}
+.bt-pl-trial .cta{background:linear-gradient(180deg,#FFCB3D,#F5B400);color:#15120F;border:none;font-family:inherit;font-weight:800;font-size:11.5px;padding:5px 12px;border-radius:999px;cursor:pointer}
+.bt-pl-trial.expired .cta{background:linear-gradient(180deg,#E8794D,#D85A30);color:#fff}
+/* compte, version cockpit sombre */
+.bt-pl-cockpit .bt-pl-acct{border-color:rgba(242,237,227,.22)}
+.bt-pl-cockpit .bt-pl-acct:hover{border-color:rgba(242,237,227,.55);background:rgba(242,237,227,.06)}
+.bt-pl-cockpit .bt-pl-acct-av{background:#FFC21A;color:#15120F}
+.bt-pl-cockpit .bt-pl-acct-name{color:#F2EDE3}
+.bt-pl-cockpit .bt-pl-acct-car{color:#a59c86}
+/* entête mobile : logo + essai */
+.bt-pl-m-brand{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px}
+.bt-pl-m-brand .bt-pl-logo{font-size:18px}
+@media(max-width:620px){
+  .bt-pl-cockpit{gap:10px;padding:8px 12px}
+  .bt-pl-logo{font-size:17px}
+  .bt-pl-stat{padding:3px 9px;gap:5px}
+  .bt-pl-stat .l{display:none}
+  .bt-pl-cockpit-right{width:100%;margin-left:0;justify-content:flex-end}
+}
 .bt-pl-gridwrap{overflow-x:auto;background:#fff;border-radius:0 0 16px 16px;flex:1 0 auto;position:relative}
 .bt-pl-logo{width:30px;height:30px;background:#15120F;color:#FFC21A;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;flex:none}
 .bt-pl-nav{display:flex;align-items:center;gap:6px}
@@ -433,7 +473,7 @@ const PL_CSS = `
 /* mobile */
 .bt-pl-mobile{display:none;flex-direction:column;border:1.5px solid #15120F;border-radius:14px;overflow:hidden;background:#fff}
 .bt-pl-m-headrow{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
-@media (max-width:1023px){.bt-pl-bar,.bt-pl-gridwrap{display:none}.bt-pl-mobile{display:flex}
+@media (max-width:1023px){.bt-pl-cockpit,.bt-pl-bar,.bt-pl-gridwrap{display:none}.bt-pl-mobile{display:flex}
 /* le bandeau invitations reste visible en mobile : on le détache en carte arrondie
    (sinon, bande ambre carrée « orpheline » posée sur le fond noir de la page) */
 .bt-pl-inv{border:1.5px solid #E8CE7A;border-radius:14px;margin-bottom:10px}}
@@ -509,7 +549,11 @@ const PL_CSS = `
 
 // ─── main ────────────────────────────────────────────────────────────────────
 
-export default function AdminPlanning() {
+interface AdminPlanningProps {
+  trial?: { inTrial: boolean; expired: boolean; daysLeft: number | null };
+  onSubscribe?: () => void;
+}
+export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps = {}) {
   const { user, signOut } = useAuth();
   const [workers, setWorkers] = useState<User[]>([]);
   const [worksites, setWorksites] = useState<Worksite[]>([]);
@@ -809,6 +853,15 @@ export default function AdminPlanning() {
     }
     return m;
   }, [realEntries]);
+
+  // Stats du cockpit (tableau de bord). Issues des données déjà chargées ;
+  // affichent 0 quand vide (jamais de trou).
+  const cockpitStats = useMemo(() => {
+    let minutes = 0; realMap.forEach((v) => { minutes += v.minutes; });
+    let waiting = 0; missingByWorker.forEach((arr) => { waiting += arr.length; });
+    let docs = 0; docsByWorksite.forEach((n) => { docs += n; });
+    return { workers: workers.length, hours: Math.round(minutes / 60), waiting, docs };
+  }, [realMap, missingByWorker, docsByWorksite, workers.length]);
 
   const realForPlanning = (p: PlanningWithWorksite): RealAgg | undefined =>
     p.absence_type ? undefined : realMap.get(realKey(p.user_id, p.work_date, p.worksite_id));
@@ -1373,6 +1426,50 @@ export default function AdminPlanning() {
 
       <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragStart={handleDragStart} onDragEnd={(e) => { handleDragEnd(e); setChantierMenuOpen(false); }} onDragCancel={() => { setActiveDrag(null); setChantierMenuOpen(false); }}>
         {/* Barre UNIQUE pleine largeur, figée (sticky) — tout aligné sur une ligne */}
+        {/* COCKPIT : tableau de bord sombre (logo + stats live + essai + compte). */}
+        <div className="bt-pl-cockpit">
+          <span className="bt-pl-logo">BEME<span className="x">X</span>O</span>
+          <div className="bt-pl-stats">
+            <span className="bt-pl-stat"><span className="v">{fmtStat(cockpitStats.workers)}</span><span className="l">salarié{cockpitStats.workers > 1 ? 's' : ''}</span></span>
+            <span className="bt-pl-stat"><span className="sd" style={{ background: '#2FD584' }} /><span className="v">{fmtStat(cockpitStats.hours)} h</span><span className="l">pointées</span></span>
+            <span className={`bt-pl-stat${cockpitStats.waiting > 0 ? ' warn' : ''}`}><span className="sd" style={{ background: cockpitStats.waiting > 0 ? '#E0A21C' : '#4a453d' }} /><span className="v">{fmtStat(cockpitStats.waiting)}</span><span className="l">en attente</span></span>
+            <span className="bt-pl-stat"><Paperclip className="h-3.5 w-3.5" style={{ opacity: 0.75 }} /><span className="v">{fmtStat(cockpitStats.docs)}</span><span className="l">pièces</span></span>
+          </div>
+          <div className="bt-pl-cockpit-right">
+            {trial?.inTrial && !trial.expired && trial.daysLeft !== null && (
+              <div className="bt-pl-trial"><span className="d" /> Essai · <b>{trial.daysLeft} j</b> <button className="cta" onClick={onSubscribe}>S&apos;abonner</button></div>
+            )}
+            {trial?.inTrial && trial.expired && (
+              <div className="bt-pl-trial expired"><span className="d" /> Essai terminé <button className="cta" onClick={onSubscribe}>S&apos;abonner</button></div>
+            )}
+          <div className="bt-pl-acctwrap">
+              <button className="bt-pl-acct" onClick={() => setAccountMenuOpen((o) => !o)} title="Compte entreprise">
+                <span className="bt-pl-acct-av">
+                  {companyLogo ? <img className="bt-pl-acct-av-img" src={companyLogo} alt="" /> : companyInitials}
+                </span>
+                <span className="bt-pl-acct-name">{companyLabel}</span>
+                <span className="bt-pl-acct-car">▾</span>
+              </button>
+              {accountMenuOpen && (
+                <>
+                  <div className="bt-pl-ddbackdrop" onClick={() => setAccountMenuOpen(false)} />
+                  <div className="bt-pl-acctmenu">
+                    <div className="bt-pl-acctmenu-h">
+                      <div className="bt-pl-acctmenu-co">{companyLabel}</div>
+                      <div className="bt-pl-acctmenu-u">{user?.first_name} {user?.last_name}</div>
+                    </div>
+                    <button className="bt-pl-acct-item" onClick={() => { setAccountMenuOpen(false); setSettingsOpen(true); }}>
+                      <Settings className="h-4 w-4" /> Réglages de l&apos;entreprise
+                    </button>
+                    <button className="bt-pl-acct-item danger" onClick={() => { setAccountMenuOpen(false); signOut(); }}>
+                      <LogOut className="h-4 w-4" /> Déconnexion
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
         <div className="bt-pl-bar">
           <div className="bt-pl-group">
           <div className="bt-pl-ddwrap">
@@ -1457,32 +1554,6 @@ export default function AdminPlanning() {
               </>
             )}
           </div>
-          <div className="bt-pl-acctwrap">
-              <button className="bt-pl-acct" onClick={() => setAccountMenuOpen((o) => !o)} title="Compte entreprise">
-                <span className="bt-pl-acct-av">
-                  {companyLogo ? <img className="bt-pl-acct-av-img" src={companyLogo} alt="" /> : companyInitials}
-                </span>
-                <span className="bt-pl-acct-name">{companyLabel}</span>
-                <span className="bt-pl-acct-car">▾</span>
-              </button>
-              {accountMenuOpen && (
-                <>
-                  <div className="bt-pl-ddbackdrop" onClick={() => setAccountMenuOpen(false)} />
-                  <div className="bt-pl-acctmenu">
-                    <div className="bt-pl-acctmenu-h">
-                      <div className="bt-pl-acctmenu-co">{companyLabel}</div>
-                      <div className="bt-pl-acctmenu-u">{user?.first_name} {user?.last_name}</div>
-                    </div>
-                    <button className="bt-pl-acct-item" onClick={() => { setAccountMenuOpen(false); setSettingsOpen(true); }}>
-                      <Settings className="h-4 w-4" /> Réglages de l&apos;entreprise
-                    </button>
-                    <button className="bt-pl-acct-item danger" onClick={() => { setAccountMenuOpen(false); signOut(); }}>
-                      <LogOut className="h-4 w-4" /> Déconnexion
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
           </div>
         </div>
 
@@ -1666,6 +1737,15 @@ export default function AdminPlanning() {
           {/* MOBILE — consultation jour par jour (pas de glisser-déposer) */}
           <div className="bt-pl-mobile">
             <div className="bt-pl-m-head">
+              <div className="bt-pl-m-brand">
+                <span className="bt-pl-logo">BEME<span className="x">X</span>O</span>
+                {trial?.inTrial && !trial.expired && trial.daysLeft !== null && (
+                  <div className="bt-pl-trial"><span className="d" /> <b>{trial.daysLeft} j</b> <button className="cta" onClick={onSubscribe}>S&apos;abonner</button></div>
+                )}
+                {trial?.inTrial && trial.expired && (
+                  <div className="bt-pl-trial expired"><span className="d" /> <button className="cta" onClick={onSubscribe}>S&apos;abonner</button></div>
+                )}
+              </div>
               <div className="bt-pl-m-headrow">
                 <div>
                   <div className="bt-pl-kicker">Planning · Sem. {getISOWeek(currentWeekStart)}</div>
