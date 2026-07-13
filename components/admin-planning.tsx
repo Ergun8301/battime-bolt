@@ -445,6 +445,7 @@ const PL_CSS = `
 .bt-pl-m-top{display:flex;align-items:center;gap:10px}
 .bt-pl-m-badge{display:flex;align-items:center;gap:5px;border-radius:7px;padding:4px 8px;font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700}
 .bt-pl-m-bubs{margin-top:11px;display:flex;flex-direction:column;gap:8px}
+.bt-pl-m-empty{font-size:12.5px;color:#9a948a;font-weight:600;margin-top:8px}
 /* ===== ACCUEIL 0 salarié : carte de bienvenue (desktop = par-dessus la grille vide,
    mobile = dans la liste). Apparence seule — le CTA ouvre le dialog d'invitation. ===== */
 .bt-pl-welcome{position:absolute;inset:0;z-index:8;display:flex;align-items:center;justify-content:center;padding:24px;pointer-events:none}
