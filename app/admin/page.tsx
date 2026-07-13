@@ -50,7 +50,6 @@ const ADMIN_CSS = `
    noire n'est plus jamais vide, essai ou pas. */
 .bt-topbar{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:9px 16px 13px;min-height:52px}
 .bt-topbar-logo{height:26px;width:auto;display:block;flex:none}
-@media(max-width:560px){.bt-topbar{padding:6px 10px 10px;min-height:44px}.bt-topbar-logo{height:21px}}
 
 /* Essai : pilule compacte « haut de gamme » dans le header (fond noir profond,
    filet or, CTA doré). */
@@ -62,7 +61,13 @@ const ADMIN_CSS = `
 .bt-trial-cta{margin-left:8px;background:linear-gradient(180deg,#FFCB3D,#F5B400);color:#15120F;border:none;border-radius:999px;padding:7px 15px;font-family:inherit;font-weight:800;font-size:12.5px;cursor:pointer;flex:none;box-shadow:0 8px 18px -8px rgba(214,158,0,.7);transition:transform .12s ease}
 .bt-trial-cta:hover{transform:translateY(-1px)}
 .bt-trial-banner.expired .bt-trial-cta{background:linear-gradient(180deg,#E8794D,#D85A30);color:#fff;box-shadow:0 8px 18px -8px rgba(216,90,48,.7)}
-@media(max-width:560px){.bt-trial-banner{border-radius:16px}}
+@media(max-width:560px){
+  .bt-topbar{padding:8px 8px 10px;min-height:0;flex-wrap:wrap}
+  .bt-topbar-logo{height:21px;margin-left:4px}
+  /* la pilule passe en pleine largeur sous le logo : plus d'écrasement */
+  .bt-trial-banner{width:100%;justify-content:space-between;border-radius:14px;padding:8px 8px 8px 13px}
+  .bt-trial-cta{margin-left:0}
+}
 .bt-trial-block{min-height:calc(100vh - 12px);display:flex;align-items:center;justify-content:center;padding:20px}
 .bt-trial-card{background:#F2EDE3;border-radius:18px;padding:40px 32px;max-width:440px;text-align:center;box-shadow:0 30px 70px -28px rgba(0,0,0,.6)}
 .bt-trial-card.wide{max-width:680px}

@@ -271,7 +271,9 @@ const PL_CSS = `
 .bt-pl *{box-sizing:border-box}
 .bt-pl .mono{font-family:'JetBrains Mono',monospace}
 /* ===== BARRE UNIQUE pleine largeur (sticky) — pas de cadre ===== */
+/* groupes logiques : [légende·Salariés·Clients]  [semaine]  [Exporter·compte] */
 .bt-pl-bar{position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:#fff;border-bottom:2px solid #15120F;padding:10px 16px;border-radius:16px 16px 0 0}
+.bt-pl-group{display:flex;align-items:center;gap:10px}
 .bt-pl-gridwrap{overflow-x:auto;background:#fff;border-radius:0 0 16px 16px;flex:1 0 auto;position:relative}
 .bt-pl-logo{width:30px;height:30px;background:#15120F;color:#FFC21A;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;flex:none}
 .bt-pl-nav{display:flex;align-items:center;gap:6px}
@@ -436,19 +438,19 @@ const PL_CSS = `
    (sinon, bande ambre carrée « orpheline » posée sur le fond noir de la page) */
 .bt-pl-inv{border:1.5px solid #E8CE7A;border-radius:14px;margin-bottom:10px}}
 .bt-pl-kicker{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#FFC21A;margin-bottom:3px;font-weight:700}
-.bt-pl-m-ibtn{flex:none;width:38px;height:38px;border-radius:9px;border:1px solid rgba(242,237,227,.22);background:transparent;color:#F2EDE3;display:inline-flex;align-items:center;justify-content:center;font-size:17px;cursor:pointer;font-family:inherit}
+.bt-pl-m-ibtn{flex:none;width:40px;height:40px;border-radius:11px;border:1px solid rgba(242,237,227,.25);background:rgba(242,237,227,.06);color:#F2EDE3;display:inline-flex;align-items:center;justify-content:center;font-size:17px;cursor:pointer;font-family:inherit}
 .bt-pl-m-ibtn:hover{background:rgba(242,237,227,.08)}
-.bt-pl-m-head{background:#15120F;color:#F2EDE3;padding:18px 16px 14px}
-.bt-pl-m-date{font-size:20px;font-weight:900;letter-spacing:-.02em;text-transform:capitalize}
-.bt-pl-m-days{display:flex;gap:6px;margin-top:14px;overflow-x:auto}
-.bt-pl-daypill{flex:none;min-width:46px;border-radius:11px;padding:8px 4px;text-align:center;border:1px solid rgba(242,237,227,.18);cursor:pointer;background:transparent;color:#F2EDE3;font-family:inherit}
+.bt-pl-m-head{background:#15120F;color:#F2EDE3;padding:16px 14px 14px}
+.bt-pl-m-date{font-size:21px;font-weight:900;letter-spacing:-.02em;text-transform:capitalize}
+.bt-pl-m-days{display:flex;gap:7px;margin-top:13px}
+.bt-pl-daypill{flex:1;min-width:0;border-radius:12px;padding:9px 2px;text-align:center;border:1px solid rgba(242,237,227,.2);cursor:pointer;background:transparent;color:#F2EDE3;font-family:inherit}
 .bt-pl-daypill-d{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#a59c86;font-weight:700;text-transform:uppercase}
 .bt-pl-daypill-n{font-size:15px;font-weight:800}
 .bt-pl-daypill.on{background:linear-gradient(180deg,#FFCB3D,#F5B400);border-color:#F5B400;box-shadow:0 8px 18px -8px rgba(214,158,0,.6)}
 .bt-pl-daypill.on .bt-pl-daypill-d{color:#7a5e00}
 .bt-pl-daypill.on .bt-pl-daypill-n{color:#15120F}
-.bt-pl-m-list{padding:14px 14px 24px;display:flex;flex-direction:column;gap:11px}
-.bt-pl-m-card{background:#fff;border:1px solid rgba(21,18,15,.1);border-radius:15px;padding:13px 14px}
+.bt-pl-m-list{padding:13px 12px 22px;display:flex;flex-direction:column;gap:10px;background:#F7F4EE;flex:1}
+.bt-pl-m-card{background:#fff;border:1px solid rgba(21,18,15,.07);border-radius:15px;padding:13px 14px;box-shadow:0 10px 26px -18px rgba(21,18,15,.4)}
 .bt-pl-m-top{display:flex;align-items:center;gap:10px}
 .bt-pl-m-badge{display:flex;align-items:center;gap:5px;border-radius:7px;padding:4px 8px;font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700}
 .bt-pl-m-bubs{margin-top:11px;display:flex;flex-direction:column;gap:8px}
@@ -1372,6 +1374,24 @@ export default function AdminPlanning() {
       <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragStart={handleDragStart} onDragEnd={(e) => { handleDragEnd(e); setChantierMenuOpen(false); }} onDragCancel={() => { setActiveDrag(null); setChantierMenuOpen(false); }}>
         {/* Barre UNIQUE pleine largeur, figée (sticky) — tout aligné sur une ligne */}
         <div className="bt-pl-bar">
+          <div className="bt-pl-group">
+          <div className="bt-pl-ddwrap">
+            <button className="bt-pl-datearr" onClick={() => setLegendOpen((o) => !o)} title="Légende des icônes" aria-label="Légende des icônes"><Info className="h-4 w-4" /></button>
+            {legendOpen && (
+              <>
+                <div className="bt-pl-ddbackdrop" onClick={() => setLegendOpen(false)} />
+                <div className="bt-pl-dd bt-pl-dd--start">
+                  <div className="bt-pl-dd-h">Légende des bulles</div>
+                  <div className="bt-pl-legrow"><span className="bt-pl-check">✓</span> Heures déclarées par le salarié</div>
+                  <div className="bt-pl-legrow"><span className="bt-pl-legic" style={{ color: '#1F7A4D' }}><CheckCircle2 className="h-3.5 w-3.5" /></span> Réceptionné sans réserve</div>
+                  <div className="bt-pl-legrow"><span className="bt-pl-legic" style={{ color: '#C0461F' }}><AlertTriangle className="h-3.5 w-3.5" /></span> Réception avec réserve</div>
+                  <div className="bt-pl-legrow"><span className="bt-pl-legic" style={{ color: '#C98A12' }}><Hammer className="h-3.5 w-3.5" /></span> Chantier en cours</div>
+                  <div className="bt-pl-legrow"><span className="bt-pl-legic" style={{ color: '#caa01a' }}><UserIcon className="h-3.5 w-3.5" /></span> Intervention ajoutée par le salarié</div>
+                  <div className="bt-pl-legrow"><span className="bt-pl-legic"><Paperclip className="h-3.5 w-3.5" /></span> Documents du chantier</div>
+                </div>
+              </>
+            )}
+          </div>
           <div className="bt-pl-ddwrap">
             <div className="bt-pl-seg">
               <button className="bt-pl-segbtn" onClick={() => setSalariesOpen(true)}><Users className="h-3.5 w-3.5" /> Salariés</button>
@@ -1403,6 +1423,7 @@ export default function AdminPlanning() {
               </>
             )}
           </div>
+          </div>
           <div className="bt-pl-datenav">
             <button className="bt-pl-datearr" aria-label="Semaine précédente" onClick={() => setCurrentWeekStart(subWeeks(currentWeekStart, 1))}>‹</button>
             <button
@@ -1416,23 +1437,7 @@ export default function AdminPlanning() {
             </button>
             <button className="bt-pl-datearr" aria-label="Semaine suivante" onClick={() => setCurrentWeekStart(addWeeks(currentWeekStart, 1))}>›</button>
           </div>
-          <div className="bt-pl-ddwrap">
-            <button className="bt-pl-datearr" onClick={() => setLegendOpen((o) => !o)} title="Légende des icônes" aria-label="Légende des icônes"><Info className="h-4 w-4" /></button>
-            {legendOpen && (
-              <>
-                <div className="bt-pl-ddbackdrop" onClick={() => setLegendOpen(false)} />
-                <div className="bt-pl-dd">
-                  <div className="bt-pl-dd-h">Légende des bulles</div>
-                  <div className="bt-pl-legrow"><span className="bt-pl-check">✓</span> Heures déclarées par le salarié</div>
-                  <div className="bt-pl-legrow"><span className="bt-pl-legic" style={{ color: '#1F7A4D' }}><CheckCircle2 className="h-3.5 w-3.5" /></span> Réceptionné sans réserve</div>
-                  <div className="bt-pl-legrow"><span className="bt-pl-legic" style={{ color: '#C0461F' }}><AlertTriangle className="h-3.5 w-3.5" /></span> Réception avec réserve</div>
-                  <div className="bt-pl-legrow"><span className="bt-pl-legic" style={{ color: '#C98A12' }}><Hammer className="h-3.5 w-3.5" /></span> Chantier en cours</div>
-                  <div className="bt-pl-legrow"><span className="bt-pl-legic" style={{ color: '#caa01a' }}><UserIcon className="h-3.5 w-3.5" /></span> Intervention ajoutée par le salarié</div>
-                  <div className="bt-pl-legrow"><span className="bt-pl-legic"><Paperclip className="h-3.5 w-3.5" /></span> Documents du chantier</div>
-                </div>
-              </>
-            )}
-          </div>
+          <div className="bt-pl-group">
           <div className="bt-pl-ddwrap">
             <button className="bt-pl-fill" onClick={() => setExportMenuOpen((o) => !o)}><Download className="h-4 w-4" /> Exporter ▾</button>
             {exportMenuOpen && (
@@ -1478,6 +1483,7 @@ export default function AdminPlanning() {
                 </>
               )}
             </div>
+          </div>
         </div>
 
         {/* Invitations en attente (sous la barre) */}
