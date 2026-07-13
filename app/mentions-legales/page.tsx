@@ -65,7 +65,7 @@ export default function MentionsLegalesPage() {
           </p>
           <p>
             Numéro de TVA intracommunautaire : FR96&nbsp;840&nbsp;185&nbsp;607.<br />
-            Contact : <a href="mailto:khabitatcontact@gmail.com">khabitatcontact@gmail.com</a>.
+            Contact : <a href="mailto:contact@bemexo.com">contact@bemexo.com</a>.
           </p>
           <p>Directeur de la publication : <strong>Ergun Kilic</strong>.</p>
 
@@ -95,14 +95,14 @@ export default function MentionsLegalesPage() {
             BEMEXO traite des données personnelles dans le cadre de son service (gestion des feuilles d&apos;heures
             pour le BTP). Vous disposez de droits sur vos données — accès, rectification, effacement, opposition —
             que vous pouvez exercer en écrivant à{' '}
-            <a href="mailto:khabitatcontact@gmail.com">khabitatcontact@gmail.com</a>. Une politique de
+            <a href="mailto:contact@bemexo.com">contact@bemexo.com</a>. Une politique de
             confidentialité détaillée est mise à disposition par l&apos;éditeur.
           </p>
 
           <h2>5. Contact</h2>
           <p>
             Pour toute question relative au site ou à l&apos;application :{' '}
-            <a href="mailto:khabitatcontact@gmail.com">khabitatcontact@gmail.com</a>.
+            <a href="mailto:contact@bemexo.com">contact@bemexo.com</a>.
           </p>
 
           <div className="ml-foot">© 2026 BEMEXO — K.HABITAT (SAS)</div>

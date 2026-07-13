@@ -143,7 +143,7 @@ export default function ConfidentialitePage() {
           <p>
             Vous disposez des droits d&apos;accès, de rectification, d&apos;effacement, de limitation, d&apos;opposition
             et de portabilité. Pour les données traitées par votre employeur, adressez-vous à lui ; pour les autres,
-            contactez BEMEXO à <a href="mailto:khabitatcontact@gmail.com">khabitatcontact@gmail.com</a>. Vous pouvez
+            contactez BEMEXO à <a href="mailto:contact@bemexo.com">contact@bemexo.com</a>. Vous pouvez
             également introduire une réclamation auprès de la <strong>CNIL</strong>{' '}
             (<a href="https://www.cnil.fr" target="_blank" rel="noreferrer">cnil.fr</a>).
           </p>
@@ -158,7 +158,7 @@ export default function ConfidentialitePage() {
           <h2>11. Contact</h2>
           <p>
             Pour toute question sur cette politique :{' '}
-            <a href="mailto:khabitatcontact@gmail.com">khabitatcontact@gmail.com</a>.
+            <a href="mailto:contact@bemexo.com">contact@bemexo.com</a>.
           </p>
 
           <div className="ml-foot">© 2026 BEMEXO — K.HABITAT (SAS)</div>

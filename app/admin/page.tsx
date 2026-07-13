@@ -125,10 +125,17 @@ export default function AdminPage() {
   const expired = inTrial && now > (endsMs as number);
   const daysLeft = endsMs !== null ? Math.ceil(((endsMs as number) - now) / 86400000) : null;
 
-  // VIGILANCE n°2 : le blocage ne s'active QUE sur les previews (deploy-preview-*),
-  // JAMAIS en production, tant que Stripe n'est pas vérifié de bout en bout.
+  // Paywall : bloque l'accès quand l'essai est EXPIRÉ — mais seulement si
+  // l'enforcement est activé via l'env NEXT_PUBLIC_PAYWALL_ENFORCED='true'
+  // (à poser dans Netlify, prend effet au redeploy). Les previews
+  // (deploy-preview-*) forcent toujours le blocage pour pouvoir le tester avant
+  // de l'activer en prod.
+  // IMPORTANT : un compte SANS essai (trial_ends_at NULL — ex. le compte éditeur
+  // K.HABITAT) ou déjà 'active' (client abonné) a expired=false → JAMAIS bloqué,
+  // même paywall activé.
+  const paywallEnforced = process.env.NEXT_PUBLIC_PAYWALL_ENFORCED === 'true';
   const isPreview = typeof window !== 'undefined' && window.location.hostname.startsWith('deploy-preview-');
-  const blocked = expired && isPreview;
+  const blocked = expired && (paywallEnforced || isPreview);
 
   return (
     <div className="bt-admin">
@@ -151,7 +158,9 @@ export default function AdminPage() {
             <h1>Votre essai gratuit est terminé</h1>
             <p>Pour continuer à utiliser BEMEXO, choisissez l&apos;abonnement adapté à votre équipe.</p>
             <SubscribePanel />
-            <p className="bt-trial-note">Aperçu : ce blocage n&apos;est actif qu&apos;en preview. En production, l&apos;accès reste ouvert tant que le paiement n&apos;est pas vérifié de bout en bout.</p>
+            {!paywallEnforced && (
+              <p className="bt-trial-note">Aperçu : ce blocage n&apos;est actif qu&apos;en preview tant que le paywall n&apos;est pas activé en production.</p>
+            )}
           </div>
         </div>
       ) : (
