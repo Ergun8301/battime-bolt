@@ -46,9 +46,15 @@ const ADMIN_CSS = `
 .bt-skin[role="dialog"] h2{font-weight:900;letter-spacing:-.01em}
 
 /* Essai 30 j — bandeau (info) + blocage (preview uniquement) */
-/* Essai : fini le grand bandeau — pilule compacte « haut de gamme », alignée à
-   droite au-dessus du planning (fond noir profond, filet or, CTA doré). */
-.bt-trial-banner{display:flex;align-items:center;gap:9px;width:fit-content;max-width:100%;margin:0 0 10px auto;background:#211B14;border:1px solid rgba(255,194,26,.38);color:#F2EDE3;border-radius:999px;padding:7px 8px 7px 15px;font-size:13px;font-weight:600;box-shadow:0 14px 34px -18px rgba(0,0,0,.8)}
+/* Header d'app : bandeau noir fin avec le wordmark BEMEXO à gauche — la bande
+   noire n'est plus jamais vide, essai ou pas. */
+.bt-topbar{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:9px 16px 13px;min-height:52px}
+.bt-topbar-logo{height:26px;width:auto;display:block;flex:none}
+@media(max-width:560px){.bt-topbar{padding:6px 10px 10px;min-height:44px}.bt-topbar-logo{height:21px}}
+
+/* Essai : pilule compacte « haut de gamme » dans le header (fond noir profond,
+   filet or, CTA doré). */
+.bt-trial-banner{display:flex;align-items:center;gap:9px;width:fit-content;max-width:100%;background:#211B14;border:1px solid rgba(255,194,26,.38);color:#F2EDE3;border-radius:999px;padding:7px 8px 7px 15px;font-size:13px;font-weight:600;box-shadow:0 14px 34px -18px rgba(0,0,0,.8)}
 .bt-trial-banner strong{color:#FFC21A;font-weight:800}
 .bt-trial-banner.expired{border-color:rgba(216,90,48,.55)}
 .bt-trial-dot{width:7px;height:7px;border-radius:50%;background:#FFC21A;flex:none;box-shadow:0 0 10px rgba(255,194,26,.8)}
@@ -157,6 +163,25 @@ export default function AdminPage() {
         </div>
       )}
 
+      {/* Header d'app : le bandeau noir n'est plus une bande vide — logo à gauche
+          (en permanence, abonné ou pas), pilule d'essai à droite tant qu'elle a
+          lieu d'être. Quand l'essai disparaît, le header reste équilibré. */}
+      <div className="bt-topbar">
+        <img src="/bemexo-wordmark-light.svg" alt="BEMEXO" className="bt-topbar-logo" />
+        {inTrial && !expired && daysLeft !== null && (
+          <div className="bt-trial-banner">
+            <span className="bt-trial-dot" /> Essai gratuit — il reste <strong>&nbsp;{daysLeft} jour{daysLeft > 1 ? 's' : ''}</strong>.
+            <button className="bt-trial-cta" onClick={() => setSubOpen(true)}>S&apos;abonner</button>
+          </div>
+        )}
+        {inTrial && expired && (
+          <div className="bt-trial-banner expired">
+            <span className="bt-trial-dot" /> Essai terminé
+            <button className="bt-trial-cta" onClick={() => setSubOpen(true)}>S&apos;abonner</button>
+          </div>
+        )}
+      </div>
+
       {blocked ? (
         <div className="bt-trial-block">
           <div className="bt-trial-card wide">
@@ -170,21 +195,7 @@ export default function AdminPage() {
           </div>
         </div>
       ) : (
-        <>
-          {inTrial && !expired && daysLeft !== null && (
-            <div className="bt-trial-banner">
-              <span className="bt-trial-dot" /> Essai gratuit — il reste <strong>&nbsp;{daysLeft} jour{daysLeft > 1 ? 's' : ''}</strong>.
-              <button className="bt-trial-cta" onClick={() => setSubOpen(true)}>S&apos;abonner</button>
-            </div>
-          )}
-          {inTrial && expired && (
-            <div className="bt-trial-banner expired">
-              <span className="bt-trial-dot" /> Essai terminé — choisissez un abonnement pour continuer.
-              <button className="bt-trial-cta" onClick={() => setSubOpen(true)}>S&apos;abonner</button>
-            </div>
-          )}
-          <AdminPlanning />
-        </>
+        <AdminPlanning />
       )}
 
       <Dialog open={subOpen} onOpenChange={setSubOpen}>

@@ -271,21 +271,16 @@ const PL_CSS = `
 .bt-pl *{box-sizing:border-box}
 .bt-pl .mono{font-family:'JetBrains Mono',monospace}
 /* ===== BARRE UNIQUE pleine largeur (sticky) — pas de cadre ===== */
-.bt-pl-bar{position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:#F2EDE3;border-bottom:2px solid #15120F;padding:8px 16px;border-radius:16px 16px 0 0}
-.bt-pl-gridwrap{overflow-x:auto;background:#F2EDE3;border-radius:0 0 16px 16px;flex:1 0 auto;position:relative}
-.bt-pl-brand{display:inline-flex;align-items:center;gap:8px;flex:none}
-.bt-pl-brand-logo{height:30px;width:auto;display:block}
-.bt-pl-brand-mark{width:30px;height:30px;background:#15120F;border-radius:7px;display:flex;align-items:center;justify-content:center;flex:none}
-.bt-pl-brand-dot{width:13px;height:13px;border:2.5px solid #FFC21A;border-radius:50%;border-top-color:transparent;transform:rotate(45deg)}
-.bt-pl-brand-name{font-size:17px;font-weight:900;letter-spacing:-.02em;color:#15120F}
+.bt-pl-bar{position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:#fff;border-bottom:2px solid #15120F;padding:10px 16px;border-radius:16px 16px 0 0}
+.bt-pl-gridwrap{overflow-x:auto;background:#fff;border-radius:0 0 16px 16px;flex:1 0 auto;position:relative}
 .bt-pl-logo{width:30px;height:30px;background:#15120F;color:#FFC21A;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;flex:none}
 .bt-pl-nav{display:flex;align-items:center;gap:6px}
 /* ===== Zone centrale : navigation de date (cadres blanc-crème) ===== */
 .bt-pl-datenav{display:inline-flex;align-items:center;gap:7px}
-.bt-pl-datearr{width:32px;height:34px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;font-size:16px;line-height:1;cursor:pointer;border:1.5px solid rgba(21,18,15,.16);background:#FFFDF8;color:#15120F;font-family:inherit;transition:border-color .14s ease,background .14s ease,transform .08s ease}
+.bt-pl-datearr{width:32px;height:34px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;font-size:16px;line-height:1;cursor:pointer;border:1.5px solid rgba(21,18,15,.16);background:#FAF7F0;color:#15120F;font-family:inherit;transition:border-color .14s ease,background .14s ease,transform .08s ease}
 .bt-pl-datearr:hover{border-color:#15120F;background:#fff}
 .bt-pl-datearr:active{transform:translateY(1px)}
-.bt-pl-datebox{display:inline-flex;align-items:center;gap:9px;height:34px;padding:0 13px;border-radius:10px;border:1.5px solid rgba(21,18,15,.16);background:#FFFDF8;cursor:pointer;font-family:inherit;transition:border-color .14s ease,background .14s ease}
+.bt-pl-datebox{display:inline-flex;align-items:center;gap:9px;height:34px;padding:0 13px;border-radius:10px;border:1.5px solid rgba(21,18,15,.16);background:#FAF7F0;cursor:pointer;font-family:inherit;transition:border-color .14s ease,background .14s ease}
 .bt-pl-datebox:hover{border-color:#15120F;background:#fff}
 .bt-pl-datebox-wk{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:#15120F;letter-spacing:.02em}
 .bt-pl-datebox-dot{width:8px;height:8px;border-radius:50%;flex:none}
@@ -363,7 +358,7 @@ const PL_CSS = `
 /* La grille s'arrête net : bordure de fin franche (2px noir, comme l'en-tête) sous la
    dernière ligne visible (fantôme si présente, sinon dernier salarié). */
 .bt-pl-table tbody:last-of-type tr:last-child td{border-bottom:2px solid #15120F}
-.bt-pl-th{background:#fff;padding:11px 12px;text-align:center;border-right:1px solid rgba(21,18,15,.22);border-bottom:2px solid #15120F}
+.bt-pl-th{background:#fff;padding:11px 12px;text-align:center;border-right:1px solid rgba(21,18,15,.25);border-bottom:2px solid #15120F}
 .bt-pl-th-cell{display:flex;align-items:baseline;justify-content:center;gap:8px}
 .bt-pl-th-day{font-family:'Archivo',sans-serif;font-size:14px;font-weight:800;color:#15120F;letter-spacing:-.01em}
 .bt-pl-th-num{font-family:'Archivo',sans-serif;font-size:17px;font-weight:900;color:#15120F}
@@ -375,7 +370,7 @@ const PL_CSS = `
 .bt-pl-th-name{position:sticky;left:0;z-index:6;width:200px;padding:0;border-right:2px solid #15120F;border-bottom:2px solid #15120F;background-color:#fff;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' preserveAspectRatio='none' viewBox='0 0 100 100'%3E%3Cline x1='0' y1='0' x2='100' y2='100' stroke='%2315120F' stroke-width='2' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E");background-size:100% 100%;background-repeat:no-repeat}
 .bt-pl-corner-wk{position:absolute;top:7px;right:12px;font-family:'Archivo',sans-serif;font-size:13px;font-weight:900;letter-spacing:-.01em;color:#15120F}
 .bt-pl-corner-sal{position:absolute;left:13px;bottom:7px;font-family:'Archivo',sans-serif;font-size:15px;font-weight:900;letter-spacing:-.02em;color:#15120F}
-.bt-pl-namecell{position:sticky;left:0;z-index:5;background:#fff;border-right:2px solid #15120F;border-bottom:1px solid rgba(21,18,15,.22);padding:0;vertical-align:top}
+.bt-pl-namecell{position:sticky;left:0;z-index:5;background:#fff;border-right:2px solid #15120F;border-bottom:1px solid rgba(21,18,15,.25);padding:0;vertical-align:top}
 .bt-pl-namebtn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;width:100%;height:100%;padding:13px;background:transparent;border:none;cursor:pointer;text-align:center;font-family:inherit}
 .bt-pl-namebtn:hover{background:rgba(21,18,15,.03)}
 .bt-pl-nametop{display:flex;align-items:center;justify-content:center;gap:10px;min-width:0;max-width:100%}
@@ -385,7 +380,7 @@ const PL_CSS = `
 .bt-pl-status{display:flex;align-items:center;gap:5px}
 .bt-pl-status-dot{width:7px;height:7px;border-radius:50%;background:#E0A21C}
 .bt-pl-status-txt{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700}
-.bt-pl-cell{border-right:1px solid rgba(21,18,15,.22);border-bottom:1px solid rgba(21,18,15,.22);padding:8px;vertical-align:top}
+.bt-pl-cell{border-right:1px solid rgba(21,18,15,.25);border-bottom:1px solid rgba(21,18,15,.25);padding:8px;vertical-align:top}
 .bt-pl-cell-today{background:#FFF6DB}
 /* Lignes vierges de remplissage : même hauteur qu'une ligne salarié vide (105px),
    quadrillage continu, jour J teinté ; « + » discret pour ajouter un salarié. */
@@ -434,7 +429,7 @@ const PL_CSS = `
 .bt-pl-abs-lbl{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em}
 
 /* mobile */
-.bt-pl-mobile{display:none;flex-direction:column;border:1.5px solid #15120F;border-radius:14px;overflow:hidden;background:#F2EDE3}
+.bt-pl-mobile{display:none;flex-direction:column;border:1.5px solid #15120F;border-radius:14px;overflow:hidden;background:#fff}
 .bt-pl-m-headrow{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
 @media (max-width:1023px){.bt-pl-bar,.bt-pl-gridwrap{display:none}.bt-pl-mobile{display:flex}
 /* le bandeau invitations reste visible en mobile : on le détache en carte arrondie
@@ -1361,7 +1356,7 @@ export default function AdminPlanning() {
     // Chargement brandé (PL_CSS pas encore injecté ici → styles inline ;
     // .bt-spin vient d'ADMIN_CSS, déjà présent sur la page).
     return (
-      <div style={{ flex: '1 0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F2EDE3', borderRadius: 16, minHeight: 420 }}>
+      <div style={{ flex: '1 0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fff', borderRadius: 16, minHeight: 420 }}>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
           <div className="bt-spin" />
           <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, letterSpacing: '.12em', textTransform: 'uppercase', color: '#6E6A63', fontWeight: 700 }}>Chargement du planning…</div>
@@ -1377,9 +1372,6 @@ export default function AdminPlanning() {
       <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragStart={handleDragStart} onDragEnd={(e) => { handleDragEnd(e); setChantierMenuOpen(false); }} onDragCancel={() => { setActiveDrag(null); setChantierMenuOpen(false); }}>
         {/* Barre UNIQUE pleine largeur, figée (sticky) — tout aligné sur une ligne */}
         <div className="bt-pl-bar">
-          <span className="bt-pl-brand">
-            <img src="/bemexo-wordmark-dark.svg" alt="BEMEXO" className="bt-pl-brand-logo" />
-          </span>
           <div className="bt-pl-ddwrap">
             <div className="bt-pl-seg">
               <button className="bt-pl-segbtn" onClick={() => setSalariesOpen(true)}><Users className="h-3.5 w-3.5" /> Salariés</button>
