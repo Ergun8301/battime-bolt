@@ -307,15 +307,7 @@ const PL_CSS = `
 /* entête mobile : logo + essai */
 .bt-pl-m-brand{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px}
 .bt-pl-m-brand .bt-pl-logo{font-size:18px}
-@media(max-width:620px){
-  .bt-pl-cockpit{gap:10px;padding:8px 12px}
-  .bt-pl-logo{font-size:17px}
-  .bt-pl-stat{padding:3px 9px;gap:5px}
-  .bt-pl-stat .l{display:none}
-  .bt-pl-cockpit-right{width:100%;margin-left:0;justify-content:flex-end}
-}
 .bt-pl-gridwrap{overflow-x:auto;background:#fff;border-radius:0 0 16px 16px;flex:1 0 auto;position:relative}
-.bt-pl-logo{width:30px;height:30px;background:#15120F;color:#FFC21A;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;flex:none}
 .bt-pl-nav{display:flex;align-items:center;gap:6px}
 /* ===== Zone centrale : navigation de date (cadres blanc-crème) ===== */
 .bt-pl-datenav{display:inline-flex;align-items:center;gap:7px}
@@ -1430,7 +1422,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         <div className="bt-pl-cockpit">
           <span className="bt-pl-logo">BEME<span className="x">X</span>O</span>
           <div className="bt-pl-stats">
-            <span className="bt-pl-stat"><span className="v">{fmtStat(cockpitStats.workers)}</span><span className="l">salarié{cockpitStats.workers > 1 ? 's' : ''}</span></span>
+            <span className="bt-pl-stat"><span className="v">{fmtStat(displayWorkers.length)}</span><span className="l">salarié{displayWorkers.length > 1 ? 's' : ''}</span></span>
             <span className="bt-pl-stat"><span className="sd" style={{ background: '#2FD584' }} /><span className="v">{fmtStat(cockpitStats.hours)} h</span><span className="l">pointées</span></span>
             <span className={`bt-pl-stat${cockpitStats.waiting > 0 ? ' warn' : ''}`}><span className="sd" style={{ background: cockpitStats.waiting > 0 ? '#E0A21C' : '#4a453d' }} /><span className="v">{fmtStat(cockpitStats.waiting)}</span><span className="l">en attente</span></span>
             <span className="bt-pl-stat"><Paperclip className="h-3.5 w-3.5" style={{ opacity: 0.75 }} /><span className="v">{fmtStat(cockpitStats.docs)}</span><span className="l">pièces</span></span>

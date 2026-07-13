@@ -9,9 +9,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 
 const ADMIN_CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
-/* Canvas de l'app : putty chaud (ni crème jaune, ni noir) — fait ressortir la
-   carte planning : cockpit sombre + planning blanc flottent dessus. */
-.bt-admin{font-family:'Archivo',sans-serif;min-height:100vh;background:#E6E1D5;padding:12px;display:flex;flex-direction:column}
+/* Canvas de l'app : parchemin chaud (crème plus prononcé, vers le doré sans
+   tomber dans le jaune criard) — le cockpit sombre + le planning blanc
+   ressortent nettement comme une carte posée dessus. */
+.bt-admin{font-family:'Archivo',sans-serif;min-height:100vh;background:#EBE0C6;padding:12px;display:flex;flex-direction:column}
 .bt-admin *{box-sizing:border-box}
 
 /* ============================================================
