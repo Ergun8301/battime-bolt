@@ -54,7 +54,7 @@ export default function MentionsLegalesPage() {
 
         <main className="ml-main">
           <h1>Mentions légales</h1>
-          <div className="ml-updated">Dernière mise à jour : 17 juin 2026</div>
+          <div className="ml-updated">Dernière mise à jour : 13 juillet 2026</div>
 
           <h2>1. Éditeur du site et de l&apos;application</h2>
           <p>
@@ -70,16 +70,19 @@ export default function MentionsLegalesPage() {
           <p>Directeur de la publication : <strong>Ergun Kilic</strong>.</p>
 
           <h2>2. Hébergement</h2>
-          <p>L&apos;application et les données sont hébergées par :</p>
+          <p>Le site et les données sont hébergés par les prestataires suivants :</p>
           <ul>
             <li>
-              <strong>Netlify, Inc.</strong> (interface web) — 512 2nd Street, Suite 200, San Francisco, CA 94107,
-              États-Unis — <a href="https://www.netlify.com" target="_blank" rel="noreferrer">netlify.com</a>.
+              <strong>Netlify, Inc.</strong> (hébergement du site et de l&apos;interface web) —
+              44&nbsp;Montgomery Street, Suite&nbsp;300, San Francisco, CA&nbsp;94104, États-Unis —{' '}
+              <a href="https://www.netlify.com" target="_blank" rel="noreferrer">netlify.com</a>.
             </li>
             <li>
-              <strong>Supabase</strong> (base de données et authentification) — données hébergées dans
-              l&apos;<strong>Union européenne</strong> (région Paris, France) —{' '}
-              <a href="https://supabase.com" target="_blank" rel="noreferrer">supabase.com</a>.
+              <strong>Supabase, Inc.</strong> (base de données et authentification) —
+              548&nbsp;Market Street, San Francisco, CA&nbsp;94104, États-Unis —{' '}
+              <a href="https://supabase.com" target="_blank" rel="noreferrer">supabase.com</a>. Les données
+              de la base sont physiquement hébergées dans l&apos;<strong>Union européenne</strong>{' '}
+              (région de Paris, France).
             </li>
           </ul>
 
@@ -105,7 +108,7 @@ export default function MentionsLegalesPage() {
             <a href="mailto:contact@bemexo.com">contact@bemexo.com</a>.
           </p>
 
-          <div className="ml-foot">© 2026 BEMEXO — K.HABITAT (SAS)</div>
+          <div className="ml-foot">Conception et développement : IPPYX · © 2026 BEMEXO — K.HABITAT (SAS)</div>
         </main>
       </div>
     </>
