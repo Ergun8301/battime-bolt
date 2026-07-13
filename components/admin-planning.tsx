@@ -280,17 +280,17 @@ const PL_CSS = `
 .bt-pl-bar{position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:#fff;border-bottom:2px solid #15120F;padding:9px 16px;border-radius:0}
 .bt-pl-group{display:flex;align-items:center;gap:10px}
 /* ===== COCKPIT : tableau de bord sombre ===== */
-.bt-pl-cockpit{display:flex;align-items:center;gap:16px;flex-wrap:wrap;background:#15120F;color:#F2EDE3;padding:9px 16px;border-radius:16px 16px 0 0}
-.bt-pl-logo{font-family:'Archivo',sans-serif;font-weight:900;letter-spacing:-.04em;font-size:19px;color:#fff;white-space:nowrap;flex:none}
+.bt-pl-cockpit{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:16px;background:#15120F;color:#F2EDE3;padding:9px 16px;border-radius:16px 16px 0 0}
+.bt-pl-logo{font-family:'Archivo',sans-serif;font-weight:900;letter-spacing:-.03em;font-size:22px;color:#fff;white-space:nowrap;flex:none;justify-self:center}
 .bt-pl-logo .x{color:#FFC21A}
-.bt-pl-stats{display:flex;align-items:center;gap:2px;flex-wrap:wrap;min-width:0}
+.bt-pl-stats{display:flex;align-items:center;gap:2px;flex-wrap:wrap;min-width:0;justify-self:start}
 .bt-pl-stat{display:inline-flex;align-items:center;gap:7px;padding:3px 14px;white-space:nowrap;position:relative}
 .bt-pl-stat + .bt-pl-stat::before{content:"";position:absolute;left:0;top:50%;transform:translateY(-50%);width:1px;height:18px;background:rgba(242,237,227,.15)}
 .bt-pl-stat .sd{width:7px;height:7px;border-radius:50%;flex:none}
 .bt-pl-stat .v{font-family:'JetBrains Mono',monospace;font-weight:800;font-size:15px;color:#F2EDE3;font-variant-numeric:tabular-nums}
 .bt-pl-stat .l{font-size:11px;font-weight:600;color:#a59c86}
 .bt-pl-stat.warn .v{color:#FFC21A}
-.bt-pl-cockpit-right{margin-left:auto;display:flex;align-items:center;gap:11px;flex:none}
+.bt-pl-cockpit-right{justify-self:end;display:flex;align-items:center;gap:11px;min-width:0}
 .bt-pl-trial{display:inline-flex;align-items:center;gap:8px;background:#211B14;border:1px solid rgba(255,194,26,.4);color:#F2EDE3;border-radius:999px;padding:4px 5px 4px 13px;font-size:12px;font-weight:600;white-space:nowrap}
 .bt-pl-trial .d{width:7px;height:7px;border-radius:50%;background:#FFC21A;box-shadow:0 0 9px rgba(255,194,26,.8);flex:none}
 .bt-pl-trial b{color:#FFC21A;font-weight:800}
@@ -1420,13 +1420,13 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         {/* Barre UNIQUE pleine largeur, figée (sticky) — tout aligné sur une ligne */}
         {/* COCKPIT : tableau de bord sombre (logo + stats live + essai + compte). */}
         <div className="bt-pl-cockpit">
-          <span className="bt-pl-logo">BEME<span className="x">X</span>O</span>
           <div className="bt-pl-stats">
             <span className="bt-pl-stat"><span className="v">{fmtStat(displayWorkers.length)}</span><span className="l">salarié{displayWorkers.length > 1 ? 's' : ''}</span></span>
             <span className="bt-pl-stat"><span className="sd" style={{ background: '#2FD584' }} /><span className="v">{fmtStat(cockpitStats.hours)} h</span><span className="l">pointées</span></span>
             <span className={`bt-pl-stat${cockpitStats.waiting > 0 ? ' warn' : ''}`}><span className="sd" style={{ background: cockpitStats.waiting > 0 ? '#E0A21C' : '#4a453d' }} /><span className="v">{fmtStat(cockpitStats.waiting)}</span><span className="l">en attente</span></span>
             <span className="bt-pl-stat"><Paperclip className="h-3.5 w-3.5" style={{ opacity: 0.75 }} /><span className="v">{fmtStat(cockpitStats.docs)}</span><span className="l">pièces</span></span>
           </div>
+          <span className="bt-pl-logo">BEME<span className="x">X</span>O</span>
           <div className="bt-pl-cockpit-right">
             {trial?.inTrial && !trial.expired && trial.daysLeft !== null && (
               <div className="bt-pl-trial"><span className="d" /> Essai · <b>{trial.daysLeft} j</b> <button className="cta" onClick={onSubscribe}>S&apos;abonner</button></div>
