@@ -277,11 +277,12 @@ const PL_CSS = `
 .bt-pl .mono{font-family:'JetBrains Mono',monospace}
 /* ===== BARRE UNIQUE pleine largeur (sticky) — pas de cadre ===== */
 /* groupes logiques : [légende·Salariés·Clients]  [semaine]  [Exporter·compte] */
-.bt-pl-bar{position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:#fff;border-bottom:2px solid #15120F;padding:9px 16px;border-radius:0}
+.bt-pl-bar{position:sticky;top:0;z-index:30;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;background:#fff;border-bottom:2px solid #15120F;padding:9px 16px;border-radius:0}
+.bt-pl-bar>.bt-pl-group:last-child{justify-self:end}
 .bt-pl-group{display:flex;align-items:center;gap:10px}
 /* ===== COCKPIT : tableau de bord sombre ===== */
 .bt-pl-cockpit{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:16px;background:#15120F;color:#F2EDE3;padding:9px 16px;border-radius:16px 16px 0 0}
-.bt-pl-logo{font-family:'Archivo',sans-serif;font-weight:900;letter-spacing:-.03em;font-size:22px;color:#fff;white-space:nowrap;flex:none;justify-self:center}
+.bt-pl-logo{font-family:'Archivo',sans-serif;font-weight:900;letter-spacing:-.03em;font-size:25px;line-height:1;color:#fff;white-space:nowrap;flex:none;justify-self:center}
 .bt-pl-logo .x{color:#FFC21A}
 .bt-pl-stats{display:flex;align-items:center;gap:2px;flex-wrap:wrap;min-width:0;justify-self:start}
 .bt-pl-stat{display:inline-flex;align-items:center;gap:7px;padding:3px 14px;white-space:nowrap;position:relative}
