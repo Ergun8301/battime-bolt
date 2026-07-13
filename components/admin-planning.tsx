@@ -383,7 +383,7 @@ const PL_CSS = `
 .bt-pl-ghostrow td{height:104px}
 .bt-pl-ghost-add{display:flex;align-items:center;justify-content:center;width:100%;min-height:104px;background:transparent;border:none;cursor:pointer;color:#b3a88e;font-family:inherit;transition:color .14s ease,background .14s ease}
 .bt-pl-ghost-add:hover{color:#15120F;background:rgba(21,18,15,.03)}
-.bt-pl-cell-over{background:rgba(255,194,26,.16);outline:2px dashed #FFC21A;outline-offset:-3px}
+.bt-pl-cell-over{background:rgba(255,194,26,.28);outline:2px dashed #FFC21A;outline-offset:-3px}
 .bt-pl-cellinner{position:relative;height:100%;min-height:88px;display:flex;flex-direction:column}
 .bt-pl-cellfill{flex:1;display:flex;flex-direction:column;gap:7px;cursor:pointer;border-radius:6px}
 .bt-pl-drop{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;color:#9a7c14;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;pointer-events:none}
@@ -427,7 +427,10 @@ const PL_CSS = `
 /* mobile */
 .bt-pl-mobile{display:none;flex-direction:column;border:1.5px solid #15120F;border-radius:14px;overflow:hidden;background:#F2EDE3}
 .bt-pl-m-headrow{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
-@media (max-width:1023px){.bt-pl-bar,.bt-pl-gridwrap{display:none}.bt-pl-mobile{display:flex}}
+@media (max-width:1023px){.bt-pl-bar,.bt-pl-gridwrap{display:none}.bt-pl-mobile{display:flex}
+/* le bandeau invitations reste visible en mobile : on le détache en carte arrondie
+   (sinon, bande ambre carrée « orpheline » posée sur le fond noir de la page) */
+.bt-pl-inv{border:1.5px solid #E8CE7A;border-radius:14px;margin-bottom:10px}}
 .bt-pl-kicker{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#FFC21A;margin-bottom:3px;font-weight:700}
 .bt-pl-m-ibtn{flex:none;width:38px;height:38px;border-radius:9px;border:1px solid rgba(242,237,227,.22);background:transparent;color:#F2EDE3;display:inline-flex;align-items:center;justify-content:center;font-size:17px;cursor:pointer;font-family:inherit}
 .bt-pl-m-ibtn:hover{background:rgba(242,237,227,.08)}
@@ -1336,7 +1339,7 @@ export default function AdminPlanning() {
     // .bt-spin vient d'ADMIN_CSS, déjà présent sur la page).
     return (
       <div style={{ flex: '1 0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F2EDE3', borderRadius: 16, minHeight: 420 }}>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
           <div className="bt-spin" />
           <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, letterSpacing: '.12em', textTransform: 'uppercase', color: '#6E6A63', fontWeight: 700 }}>Chargement du planning…</div>
         </div>
@@ -1509,8 +1512,7 @@ export default function AdminPlanning() {
                       quadrillage uniforme (fini la bande colSpan qui coupait la colonne
                       sticky et recevait la bordure noire de fin), et la carte de
                       bienvenue .bt-pl-welcome s'affiche par-dessus. */}
-                  {(
-                    displayWorkers.map(worker => {
+                  {displayWorkers.map(worker => {
                       const absToday = todayAbsence.get(worker.id);
                       const isLate = (missingByWorker.get(worker.id) || []).length > 0;
                       const fullName = `${worker.first_name} ${worker.last_name}`;
@@ -1591,8 +1593,7 @@ export default function AdminPlanning() {
                           })}
                         </tr>
                       );
-                    })
-                  )}
+                  })}
                 </tbody>
                 {/* Lignes vierges de remplissage : prolongent le quadrillage jusqu'en bas,
                     chacune avec un « + » pour ajouter un salarié. Inertes (pas de dépôt). */}
@@ -1601,7 +1602,7 @@ export default function AdminPlanning() {
                     {Array.from({ length: ghostCount }).map((_, i) => (
                       <tr key={`ghost-${i}`} className="bt-pl-ghostrow">
                         <td className="bt-pl-namecell">
-                          <button className="bt-pl-ghost-add" onClick={() => setSalariesOpen(true)} title="Ajouter un salarié">
+                          <button className="bt-pl-ghost-add" onClick={() => (workers.length === 0 ? setWorkerOpen(true) : setSalariesOpen(true))} title="Ajouter un salarié">
                             <UserPlus className="h-4 w-4" />
                           </button>
                         </td>
