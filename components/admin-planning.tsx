@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Skeleton } from '@/components/ui/skeleton';
+
 import { Textarea } from '@/components/ui/textarea';
 import {
   ChevronLeft, ChevronRight, Plus, Trash2, Loader2,
@@ -42,6 +42,11 @@ function formatMinutes(minutes: number): string {
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
   return `${h}h${m.toString().padStart(2, '0')}`;
+}
+// Format compact pour les stats du cockpit (30000 -> "30k").
+function fmtStat(n: number): string {
+  if (n >= 10000) return `${(n / 1000).toFixed(n >= 100000 ? 0 : 1).replace(/\.0$/, '').replace('.', ',')}k`;
+  return String(n);
 }
 
 // Colour belongs to the CHANTIER (stable all week), not the poseur.
@@ -248,6 +253,15 @@ function DroppableCell({
 const colorForWorksite = (worksiteId: string | null | undefined): ChantierPalette =>
   CHANTIER_PALETTES[hashStr(worksiteId || 'x') % CHANTIER_PALETTES.length];
 
+// Avatar « haut de gamme » : pastille pastel propre à CHAQUE personne (tagBg,
+// le pastel conçu avec la palette) + initiales noir marque — lisibles sur les
+// 7 teintes (les tons colorés passaient sous le seuil de contraste AA en 13 px).
+// Absent = grisé, comme avant. Sans lien avec la couleur des bulles (chantier).
+const avatarTint = (personId: string, absent: boolean) => {
+  if (absent) return { background: '#c4bdae', color: '#15120F' };
+  return { background: CHANTIER_PALETTES[hashStr(personId) % CHANTIER_PALETTES.length].tagBg, color: '#15120F' };
+};
+
 const ABSENCE_VISUAL: Record<string, { icon: string; bg: string; fg: string }> = {
   conge: { icon: '🌴', bg: 'repeating-linear-gradient(45deg,#E7E1D5 0 8px,#DDD5C6 8px 16px)', fg: '#7c766c' },
   repos: { icon: '💤', bg: 'repeating-linear-gradient(45deg,#ECE6DA 0 7px,#E4DCCE 7px 14px)', fg: '#9a948a' },
@@ -258,25 +272,50 @@ const ABSENCE_VISUAL: Record<string, { icon: string; bg: string; fg: string }> =
 // Scoped noir/jaune styling for the planning. Logic-free — appearance only.
 const PL_CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
-.bt-pl{font-family:'Archivo',sans-serif;color:#15120F;flex:1 0 auto;display:flex;flex-direction:column}
+.bt-pl{font-family:'Archivo',sans-serif;color:#15120F;flex:1 0 auto;display:flex;flex-direction:column;border-radius:16px;box-shadow:0 26px 64px -36px rgba(21,18,15,.6)}
 .bt-pl *{box-sizing:border-box}
 .bt-pl .mono{font-family:'JetBrains Mono',monospace}
 /* ===== BARRE UNIQUE pleine largeur (sticky) — pas de cadre ===== */
-.bt-pl-bar{position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:#F2EDE3;border-bottom:2px solid #15120F;padding:8px 16px;border-radius:16px 16px 0 0}
-.bt-pl-gridwrap{overflow-x:auto;background:#F2EDE3;border-radius:0 0 16px 16px;flex:1 0 auto}
-.bt-pl-brand{display:inline-flex;align-items:center;gap:8px;flex:none}
-.bt-pl-brand-logo{height:30px;width:auto;display:block}
-.bt-pl-brand-mark{width:30px;height:30px;background:#15120F;border-radius:7px;display:flex;align-items:center;justify-content:center;flex:none}
-.bt-pl-brand-dot{width:13px;height:13px;border:2.5px solid #FFC21A;border-radius:50%;border-top-color:transparent;transform:rotate(45deg)}
-.bt-pl-brand-name{font-size:17px;font-weight:900;letter-spacing:-.02em;color:#15120F}
-.bt-pl-logo{width:30px;height:30px;background:#15120F;color:#FFC21A;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;flex:none}
+/* groupes logiques : [légende·Salariés·Clients]  [semaine]  [Exporter·compte] */
+.bt-pl-bar{position:sticky;top:0;z-index:30;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;background:#fff;border-bottom:2px solid #15120F;padding:9px 16px;border-radius:0}
+.bt-pl-bar>.bt-pl-group:last-child{justify-self:end}
+.bt-pl-group{display:flex;align-items:center;gap:10px}
+/* ===== COCKPIT : tableau de bord sombre ===== */
+.bt-pl-cockpit{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:16px;background:#15120F;color:#F2EDE3;padding:9px 16px;border-radius:16px 16px 0 0}
+.bt-pl-logo{font-family:'Archivo',sans-serif;font-weight:900;letter-spacing:-.03em;font-size:25px;line-height:1;color:#fff;white-space:nowrap;flex:none;justify-self:center}
+.bt-pl-logo .x{color:#FFC21A}
+.bt-pl-stats{display:flex;align-items:center;gap:2px;flex-wrap:wrap;min-width:0;justify-self:start}
+.bt-pl-stat{display:inline-flex;align-items:center;gap:7px;padding:3px 14px;white-space:nowrap;position:relative}
+.bt-pl-stat + .bt-pl-stat::before{content:"";position:absolute;left:0;top:50%;transform:translateY(-50%);width:1px;height:18px;background:rgba(242,237,227,.15)}
+.bt-pl-stat .sd{width:7px;height:7px;border-radius:50%;flex:none}
+.bt-pl-stat .v{font-family:'JetBrains Mono',monospace;font-weight:800;font-size:15px;color:#F2EDE3;font-variant-numeric:tabular-nums}
+.bt-pl-stat .l{font-size:11px;font-weight:600;color:#a59c86}
+.bt-pl-stat.warn .v{color:#FFC21A}
+.bt-pl-cockpit-right{justify-self:end;display:flex;align-items:center;gap:11px;min-width:0}
+.bt-pl-trial{display:inline-flex;align-items:center;gap:8px;background:#211B14;border:1px solid rgba(255,194,26,.4);color:#F2EDE3;border-radius:999px;padding:4px 5px 4px 13px;font-size:12px;font-weight:600;white-space:nowrap}
+.bt-pl-trial .d{width:7px;height:7px;border-radius:50%;background:#FFC21A;box-shadow:0 0 9px rgba(255,194,26,.8);flex:none}
+.bt-pl-trial b{color:#FFC21A;font-weight:800}
+.bt-pl-trial.expired{border-color:rgba(216,90,48,.55)}
+.bt-pl-trial.expired .d{background:#D85A30;box-shadow:0 0 9px rgba(216,90,48,.8)}
+.bt-pl-trial .cta{background:linear-gradient(180deg,#FFCB3D,#F5B400);color:#15120F;border:none;font-family:inherit;font-weight:800;font-size:11.5px;padding:5px 12px;border-radius:999px;cursor:pointer}
+.bt-pl-trial.expired .cta{background:linear-gradient(180deg,#E8794D,#D85A30);color:#fff}
+/* compte, version cockpit sombre */
+.bt-pl-cockpit .bt-pl-acct{border-color:rgba(242,237,227,.22)}
+.bt-pl-cockpit .bt-pl-acct:hover{border-color:rgba(242,237,227,.55);background:rgba(242,237,227,.06)}
+.bt-pl-cockpit .bt-pl-acct-av{background:#FFC21A;color:#15120F}
+.bt-pl-cockpit .bt-pl-acct-name{color:#F2EDE3}
+.bt-pl-cockpit .bt-pl-acct-car{color:#a59c86}
+/* entête mobile : logo + essai */
+.bt-pl-m-brand{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px}
+.bt-pl-m-brand .bt-pl-logo{font-size:18px}
+.bt-pl-gridwrap{overflow-x:auto;background:#fff;border-radius:0 0 16px 16px;flex:1 0 auto;position:relative}
 .bt-pl-nav{display:flex;align-items:center;gap:6px}
 /* ===== Zone centrale : navigation de date (cadres blanc-crème) ===== */
 .bt-pl-datenav{display:inline-flex;align-items:center;gap:7px}
-.bt-pl-datearr{width:32px;height:34px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;font-size:16px;line-height:1;cursor:pointer;border:1.5px solid rgba(21,18,15,.16);background:#FFFDF8;color:#15120F;font-family:inherit;transition:border-color .14s ease,background .14s ease,transform .08s ease}
+.bt-pl-datearr{width:32px;height:34px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;font-size:16px;line-height:1;cursor:pointer;border:1.5px solid rgba(21,18,15,.16);background:#FAF7F0;color:#15120F;font-family:inherit;transition:border-color .14s ease,background .14s ease,transform .08s ease}
 .bt-pl-datearr:hover{border-color:#15120F;background:#fff}
 .bt-pl-datearr:active{transform:translateY(1px)}
-.bt-pl-datebox{display:inline-flex;align-items:center;gap:9px;height:34px;padding:0 13px;border-radius:10px;border:1.5px solid rgba(21,18,15,.16);background:#FFFDF8;cursor:pointer;font-family:inherit;transition:border-color .14s ease,background .14s ease}
+.bt-pl-datebox{display:inline-flex;align-items:center;gap:9px;height:34px;padding:0 13px;border-radius:10px;border:1.5px solid rgba(21,18,15,.16);background:#FAF7F0;cursor:pointer;font-family:inherit;transition:border-color .14s ease,background .14s ease}
 .bt-pl-datebox:hover{border-color:#15120F;background:#fff}
 .bt-pl-datebox-wk{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:#15120F;letter-spacing:.02em}
 .bt-pl-datebox-dot{width:8px;height:8px;border-radius:50%;flex:none}
@@ -291,9 +330,9 @@ const PL_CSS = `
 .bt-pl-out{background:transparent;border:1.5px solid rgba(21,18,15,.3);color:#15120F;border-radius:10px;padding:7px 13px;height:33px;font-size:12.5px;font-weight:800;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;transition:border-color .14s ease,background .14s ease,transform .08s ease}
 .bt-pl-out:hover{border-color:#15120F;background:rgba(21,18,15,.04)}
 .bt-pl-out:active{transform:translateY(1px)}
-.bt-pl-fill{background:#FFC21A;color:#15120F;border:none;box-shadow:0 3px 0 #C99300;border-radius:10px;padding:8px 14px;height:33px;font-size:12.5px;font-weight:800;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;transition:transform .12s ease,box-shadow .12s ease}
-.bt-pl-fill:hover{transform:translateY(-1px);box-shadow:0 5px 0 #C99300}
-.bt-pl-fill:active{transform:translateY(2px);box-shadow:0 1px 0 #C99300}
+.bt-pl-fill{background:linear-gradient(180deg,#FFCB3D,#F5B400);color:#15120F;border:none;box-shadow:0 10px 22px -10px rgba(214,158,0,.65);border-radius:10px;padding:8px 14px;height:33px;font-size:12.5px;font-weight:800;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;transition:transform .12s ease,box-shadow .12s ease}
+.bt-pl-fill:hover{transform:translateY(-1px);box-shadow:0 14px 28px -10px rgba(214,158,0,.75)}
+.bt-pl-fill:active{transform:translateY(1px);box-shadow:0 6px 14px -8px rgba(214,158,0,.6)}
 /* dropdown « + Chantier » — lignes attrapables */
 .bt-pl-ddwrap{position:relative}
 .bt-pl-ddbackdrop{position:fixed;inset:0;z-index:35}
@@ -354,11 +393,11 @@ const PL_CSS = `
 /* La grille s'arrête net : bordure de fin franche (2px noir, comme l'en-tête) sous la
    dernière ligne visible (fantôme si présente, sinon dernier salarié). */
 .bt-pl-table tbody:last-of-type tr:last-child td{border-bottom:2px solid #15120F}
-.bt-pl-th{background:#fff;padding:11px 12px;text-align:center;border-right:1px solid rgba(21,18,15,.6);border-bottom:2px solid #15120F}
+.bt-pl-th{background:#fff;padding:11px 12px;text-align:center;border-right:1px solid rgba(21,18,15,.25);border-bottom:2px solid #15120F}
 .bt-pl-th-cell{display:flex;align-items:baseline;justify-content:center;gap:8px}
 .bt-pl-th-day{font-family:'Archivo',sans-serif;font-size:14px;font-weight:800;color:#15120F;letter-spacing:-.01em}
 .bt-pl-th-num{font-family:'Archivo',sans-serif;font-size:17px;font-weight:900;color:#15120F}
-.bt-pl-th.today{background:#FFFCF2}
+.bt-pl-th.today{background:#FFF3CC;box-shadow:inset 0 3px 0 #FFC21A}
 .bt-pl-th.today .bt-pl-th-day{color:#15120F}
 /* Coin haut-gauche coupé en diagonale : « Salarié » (bas-gauche) étiquette la colonne
    des noms ; « S-26 » (haut-droite) étiquette la ligne des dates. Trait corner-à-corner
@@ -366,7 +405,7 @@ const PL_CSS = `
 .bt-pl-th-name{position:sticky;left:0;z-index:6;width:200px;padding:0;border-right:2px solid #15120F;border-bottom:2px solid #15120F;background-color:#fff;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' preserveAspectRatio='none' viewBox='0 0 100 100'%3E%3Cline x1='0' y1='0' x2='100' y2='100' stroke='%2315120F' stroke-width='2' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E");background-size:100% 100%;background-repeat:no-repeat}
 .bt-pl-corner-wk{position:absolute;top:7px;right:12px;font-family:'Archivo',sans-serif;font-size:13px;font-weight:900;letter-spacing:-.01em;color:#15120F}
 .bt-pl-corner-sal{position:absolute;left:13px;bottom:7px;font-family:'Archivo',sans-serif;font-size:15px;font-weight:900;letter-spacing:-.02em;color:#15120F}
-.bt-pl-namecell{position:sticky;left:0;z-index:5;background:#fff;border-right:2px solid #15120F;border-bottom:1px solid rgba(21,18,15,.6);padding:0;vertical-align:top}
+.bt-pl-namecell{position:sticky;left:0;z-index:5;background:#fff;border-right:2px solid #15120F;border-bottom:1px solid rgba(21,18,15,.25);padding:0;vertical-align:top}
 .bt-pl-namebtn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;width:100%;height:100%;padding:13px;background:transparent;border:none;cursor:pointer;text-align:center;font-family:inherit}
 .bt-pl-namebtn:hover{background:rgba(21,18,15,.03)}
 .bt-pl-nametop{display:flex;align-items:center;justify-content:center;gap:10px;min-width:0;max-width:100%}
@@ -376,14 +415,14 @@ const PL_CSS = `
 .bt-pl-status{display:flex;align-items:center;gap:5px}
 .bt-pl-status-dot{width:7px;height:7px;border-radius:50%;background:#E0A21C}
 .bt-pl-status-txt{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700}
-.bt-pl-cell{border-right:1px solid rgba(21,18,15,.6);border-bottom:1px solid rgba(21,18,15,.6);padding:8px;vertical-align:top}
-.bt-pl-cell-today{background:#FFFCF2}
+.bt-pl-cell{border-right:1px solid rgba(21,18,15,.25);border-bottom:1px solid rgba(21,18,15,.25);padding:8px;vertical-align:top}
+.bt-pl-cell-today{background:#FFF6DB}
 /* Lignes vierges de remplissage : même hauteur qu'une ligne salarié vide (105px),
    quadrillage continu, jour J teinté ; « + » discret pour ajouter un salarié. */
 .bt-pl-ghostrow td{height:104px}
-.bt-pl-ghost-add{display:flex;align-items:center;justify-content:center;width:100%;min-height:104px;background:transparent;border:none;cursor:pointer;color:#cdc2ac;font-family:inherit;transition:color .14s ease,background .14s ease}
+.bt-pl-ghost-add{display:flex;align-items:center;justify-content:center;width:100%;min-height:104px;background:transparent;border:none;cursor:pointer;color:#b3a88e;font-family:inherit;transition:color .14s ease,background .14s ease}
 .bt-pl-ghost-add:hover{color:#15120F;background:rgba(21,18,15,.03)}
-.bt-pl-cell-over{background:rgba(255,194,26,.16);outline:2px dashed #FFC21A;outline-offset:-3px}
+.bt-pl-cell-over{background:rgba(255,194,26,.28);outline:2px dashed #FFC21A;outline-offset:-3px}
 .bt-pl-cellinner{position:relative;height:100%;min-height:88px;display:flex;flex-direction:column}
 .bt-pl-cellfill{flex:1;display:flex;flex-direction:column;gap:7px;cursor:pointer;border-radius:6px}
 .bt-pl-drop{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;color:#9a7c14;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;pointer-events:none}
@@ -416,7 +455,8 @@ const PL_CSS = `
 .bt-pl-extra-by{display:flex;align-items:center;gap:4px;font-size:8.5px;color:#9a3b14;margin-top:3px;font-weight:700}
 
 /* case vide */
-.bt-pl-add{flex:1;min-height:60px;border:1.5px dashed rgba(21,18,15,.18);border-radius:9px;display:flex;align-items:center;justify-content:center;color:#b8b1a4;font-size:22px;font-weight:800}
+.bt-pl-add{flex:1;min-height:60px;border:1.5px dashed rgba(21,18,15,.26);border-radius:9px;display:flex;align-items:center;justify-content:center;color:#a89c7f;font-size:22px;font-weight:800;transition:border-color .14s ease,color .14s ease,background .14s ease}
+.bt-pl-add:hover{border-color:rgba(21,18,15,.45);color:#15120F;background:rgba(255,194,26,.08)}
 
 /* absence cell */
 .bt-pl-abs{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;width:100%;height:100%;min-height:88px;border:none;border-radius:6px;cursor:pointer;font-family:inherit}
@@ -424,27 +464,57 @@ const PL_CSS = `
 .bt-pl-abs-lbl{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em}
 
 /* mobile */
-.bt-pl-mobile{display:none;flex-direction:column;border:1.5px solid #15120F;border-radius:14px;overflow:hidden;background:#F2EDE3}
+.bt-pl-mobile{display:none;flex-direction:column;border:1.5px solid #15120F;border-radius:14px;overflow:hidden;background:#fff}
 .bt-pl-m-headrow{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
-@media (max-width:1023px){.bt-pl-bar,.bt-pl-gridwrap{display:none}.bt-pl-mobile{display:flex}}
+@media (max-width:1023px){.bt-pl-cockpit,.bt-pl-bar,.bt-pl-gridwrap{display:none}.bt-pl-mobile{display:flex}
+/* le bandeau invitations reste visible en mobile : on le détache en carte arrondie
+   (sinon, bande ambre carrée « orpheline » posée sur le fond noir de la page) */
+.bt-pl-inv{border:1.5px solid #E8CE7A;border-radius:14px;margin-bottom:10px}}
 .bt-pl-kicker{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#FFC21A;margin-bottom:3px;font-weight:700}
-.bt-pl-m-ibtn{flex:none;width:38px;height:38px;border-radius:9px;border:1px solid rgba(242,237,227,.22);background:transparent;color:#F2EDE3;display:inline-flex;align-items:center;justify-content:center;font-size:17px;cursor:pointer;font-family:inherit}
+.bt-pl-m-ibtn{flex:none;width:40px;height:40px;border-radius:11px;border:1px solid rgba(242,237,227,.25);background:rgba(242,237,227,.06);color:#F2EDE3;display:inline-flex;align-items:center;justify-content:center;font-size:17px;cursor:pointer;font-family:inherit}
 .bt-pl-m-ibtn:hover{background:rgba(242,237,227,.08)}
-.bt-pl-m-head{background:#15120F;color:#F2EDE3;padding:18px 16px 14px}
-.bt-pl-m-date{font-size:20px;font-weight:900;letter-spacing:-.02em;text-transform:capitalize}
-.bt-pl-m-days{display:flex;gap:6px;margin-top:14px;overflow-x:auto}
-.bt-pl-daypill{flex:none;min-width:46px;border-radius:11px;padding:8px 4px;text-align:center;border:1px solid rgba(242,237,227,.18);cursor:pointer;background:transparent;color:#F2EDE3;font-family:inherit}
+.bt-pl-m-head{background:#15120F;color:#F2EDE3;padding:16px 14px 14px}
+.bt-pl-m-date{font-size:21px;font-weight:900;letter-spacing:-.02em;text-transform:capitalize}
+.bt-pl-m-days{display:flex;gap:7px;margin-top:13px}
+.bt-pl-daypill{flex:1;min-width:0;border-radius:12px;padding:9px 2px;text-align:center;border:1px solid rgba(242,237,227,.2);cursor:pointer;background:transparent;color:#F2EDE3;font-family:inherit}
 .bt-pl-daypill-d{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#a59c86;font-weight:700;text-transform:uppercase}
 .bt-pl-daypill-n{font-size:15px;font-weight:800}
-.bt-pl-daypill.on{background:#FFC21A;border-color:#FFC21A}
+.bt-pl-daypill.on{background:linear-gradient(180deg,#FFCB3D,#F5B400);border-color:#F5B400;box-shadow:0 8px 18px -8px rgba(214,158,0,.6)}
 .bt-pl-daypill.on .bt-pl-daypill-d{color:#7a5e00}
 .bt-pl-daypill.on .bt-pl-daypill-n{color:#15120F}
-.bt-pl-m-list{padding:14px 14px 24px;display:flex;flex-direction:column;gap:11px}
-.bt-pl-m-card{background:#fff;border:1px solid rgba(21,18,15,.1);border-radius:15px;padding:13px 14px}
+.bt-pl-m-list{padding:13px 12px 22px;display:flex;flex-direction:column;gap:10px;background:#F7F4EE;flex:1}
+.bt-pl-m-card{background:#fff;border:1px solid rgba(21,18,15,.07);border-radius:15px;padding:13px 14px;box-shadow:0 10px 26px -18px rgba(21,18,15,.4)}
 .bt-pl-m-top{display:flex;align-items:center;gap:10px}
 .bt-pl-m-badge{display:flex;align-items:center;gap:5px;border-radius:7px;padding:4px 8px;font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700}
 .bt-pl-m-bubs{margin-top:11px;display:flex;flex-direction:column;gap:8px}
 .bt-pl-m-empty{font-size:12.5px;color:#9a948a;font-weight:600;margin-top:8px}
+/* ===== COACH DE DÉMARRAGE (0 salarié ou 0 client) : checklist discrète, FERMABLE.
+   Esthétique « haut de gamme » : blanc, hairline, filet or, ombre douce — zéro
+   rubalise. Desktop = carte flottante bas-droite ; mobile = carte dans la liste. ===== */
+.bt-pl-coach{position:fixed;right:22px;bottom:22px;z-index:25;width:296px;background:#fff;border:1px solid rgba(21,18,15,.08);border-radius:16px;box-shadow:0 28px 70px -28px rgba(21,18,15,.5);overflow:hidden;font-family:'Archivo',sans-serif;text-align:left}
+.bt-pl-coach--flow{position:static;width:100%;margin-top:6px;box-shadow:0 16px 40px -22px rgba(21,18,15,.35)}
+.bt-pl-coach-gold{height:3px;background:linear-gradient(90deg,#FFC21A,#F5B400 55%,rgba(255,194,26,.15))}
+.bt-pl-coach-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:14px 12px 0 16px}
+.bt-pl-coach-kicker{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:#9a8a3a;font-weight:700;margin:0 0 2px}
+.bt-pl-coach-title{font-size:16px;font-weight:900;letter-spacing:-.015em;color:#15120F;margin:0}
+.bt-pl-coach-x{flex:none;width:28px;height:28px;border-radius:8px;border:none;background:transparent;color:#9a948a;font-size:15px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;font-family:inherit;transition:background .12s ease,color .12s ease}
+.bt-pl-coach-x:hover{background:rgba(21,18,15,.06);color:#15120F}
+.bt-pl-coach-steps{padding:12px 12px 14px;display:flex;flex-direction:column;gap:8px}
+.bt-pl-coach-step{display:flex;align-items:center;gap:11px;padding:11px 12px;border:1px solid rgba(21,18,15,.08);border-radius:12px;background:#FBF8F2;cursor:pointer;text-align:left;font-family:inherit;width:100%;transition:border-color .13s ease,box-shadow .13s ease,background .13s ease}
+.bt-pl-coach-step:hover{border-color:rgba(255,194,26,.65);background:#fff;box-shadow:0 10px 24px -14px rgba(21,18,15,.3)}
+.bt-pl-coach-step.done{cursor:default;background:#fff;border-color:rgba(21,18,15,.06);opacity:.62}
+.bt-pl-coach-step.done:hover{box-shadow:none;border-color:rgba(21,18,15,.06)}
+.bt-pl-coach-n{width:24px;height:24px;flex:none;border-radius:50%;background:#15120F;color:#FFC21A;display:inline-flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:900}
+.bt-pl-coach-step.done .bt-pl-coach-n{background:#1D9E75;color:#fff}
+.bt-pl-coach-t{min-width:0}
+.bt-pl-coach-t b{display:block;font-size:13.5px;font-weight:800;letter-spacing:-.01em;color:#15120F}
+.bt-pl-coach-t small{display:block;font-size:11.5px;color:#8a8378;font-weight:500;margin-top:1px}
+.bt-pl-coach-step.done .bt-pl-coach-t b{text-decoration:line-through;text-decoration-thickness:1.5px;color:#56514a}
+
+/* bandeau « invitations en attente » — ambre BEMEXO (fini le jaune Tailwind pâle) */
+.bt-pl-inv{background:#FFF1CC;border-bottom:1.5px solid #E8CE7A;padding:10px 16px;display:flex;flex-direction:column;gap:6px}
+.bt-pl-inv-title{display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#7a5e00;margin:0}
+.bt-pl-inv-row{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600;color:#15120F}
 
 /* ===== MOUVEMENT / EFFETS (apparence seulement — dnd-kit non touché) ===== */
 .bt-pl-bub{transition:box-shadow .16s ease, transform .12s ease}
@@ -472,7 +542,11 @@ const PL_CSS = `
 
 // ─── main ────────────────────────────────────────────────────────────────────
 
-export default function AdminPlanning() {
+interface AdminPlanningProps {
+  trial?: { inTrial: boolean; expired: boolean; daysLeft: number | null };
+  onSubscribe?: () => void;
+}
+export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps = {}) {
   const { user, signOut } = useAuth();
   const [workers, setWorkers] = useState<User[]>([]);
   const [worksites, setWorksites] = useState<Worksite[]>([]);
@@ -554,6 +628,18 @@ export default function AdminPlanning() {
   const [pendingAbsence, setPendingAbsence] = useState<{ worker: User; type: string; fromStr: string } | null>(null);
   const [absRange, setAbsRange] = useState<DateRange | undefined>(undefined);
   const [absSaving, setAbsSaving] = useState(false);
+
+  // Coach de démarrage : fermé définitivement via localStorage (clé dédiée,
+  // indépendante de battime_offline_*). Visible tant qu'il manque un salarié
+  // OU un client, et que l'utilisateur ne l'a pas fermé.
+  const [coachHidden, setCoachHidden] = useState(true);
+  useEffect(() => {
+    try { setCoachHidden(localStorage.getItem('bemexo_admin_coach') === 'off'); } catch { setCoachHidden(false); }
+  }, []);
+  const dismissCoach = () => {
+    setCoachHidden(true);
+    try { localStorage.setItem('bemexo_admin_coach', 'off'); } catch { /* stockage indisponible : fermé pour la session */ }
+  };
 
   // create client / worker dialogs
   const [clientOpen, setClientOpen] = useState(false);
@@ -760,6 +846,15 @@ export default function AdminPlanning() {
     }
     return m;
   }, [realEntries]);
+
+  // Stats du cockpit (tableau de bord). Issues des données déjà chargées ;
+  // affichent 0 quand vide (jamais de trou).
+  const cockpitStats = useMemo(() => {
+    let minutes = 0; realMap.forEach((v) => { minutes += v.minutes; });
+    let waiting = 0; missingByWorker.forEach((arr) => { waiting += arr.length; });
+    let docs = 0; docsByWorksite.forEach((n) => { docs += n; });
+    return { workers: workers.length, hours: Math.round(minutes / 60), waiting, docs };
+  }, [realMap, missingByWorker, docsByWorksite, workers.length]);
 
   const realForPlanning = (p: PlanningWithWorksite): RealAgg | undefined =>
     p.absence_type ? undefined : realMap.get(realKey(p.user_id, p.work_date, p.worksite_id));
@@ -1306,7 +1401,16 @@ export default function AdminPlanning() {
   const editRealAgg = editing ? realForPlanning(editing) : undefined;
 
   if (loading) {
-    return <div className="space-y-4"><Skeleton className="h-12 w-full" /><Skeleton className="h-64 w-full" /></div>;
+    // Chargement brandé (PL_CSS pas encore injecté ici → styles inline ;
+    // .bt-spin vient d'ADMIN_CSS, déjà présent sur la page).
+    return (
+      <div style={{ flex: '1 0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fff', borderRadius: 16, minHeight: 420 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <div className="bt-spin" />
+          <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, letterSpacing: '.12em', textTransform: 'uppercase', color: '#6E6A63', fontWeight: 700 }}>Chargement du planning…</div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -1315,10 +1419,69 @@ export default function AdminPlanning() {
 
       <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragStart={handleDragStart} onDragEnd={(e) => { handleDragEnd(e); setChantierMenuOpen(false); }} onDragCancel={() => { setActiveDrag(null); setChantierMenuOpen(false); }}>
         {/* Barre UNIQUE pleine largeur, figée (sticky) — tout aligné sur une ligne */}
+        {/* COCKPIT : tableau de bord sombre (logo + stats live + essai + compte). */}
+        <div className="bt-pl-cockpit">
+          <div className="bt-pl-stats">
+            <span className="bt-pl-stat"><span className="v">{fmtStat(displayWorkers.length)}</span><span className="l">salarié{displayWorkers.length > 1 ? 's' : ''}</span></span>
+            <span className="bt-pl-stat"><span className="sd" style={{ background: '#2FD584' }} /><span className="v">{fmtStat(cockpitStats.hours)} h</span><span className="l">pointées</span></span>
+            <span className={`bt-pl-stat${cockpitStats.waiting > 0 ? ' warn' : ''}`}><span className="sd" style={{ background: cockpitStats.waiting > 0 ? '#E0A21C' : '#4a453d' }} /><span className="v">{fmtStat(cockpitStats.waiting)}</span><span className="l">en attente</span></span>
+            <span className="bt-pl-stat"><Paperclip className="h-3.5 w-3.5" style={{ opacity: 0.75 }} /><span className="v">{fmtStat(cockpitStats.docs)}</span><span className="l">pièces</span></span>
+          </div>
+          <span className="bt-pl-logo">BEME<span className="x">X</span>O</span>
+          <div className="bt-pl-cockpit-right">
+            {trial?.inTrial && !trial.expired && trial.daysLeft !== null && (
+              <div className="bt-pl-trial"><span className="d" /> Essai · <b>{trial.daysLeft} j</b> <button className="cta" onClick={onSubscribe}>S&apos;abonner</button></div>
+            )}
+            {trial?.inTrial && trial.expired && (
+              <div className="bt-pl-trial expired"><span className="d" /> Essai terminé <button className="cta" onClick={onSubscribe}>S&apos;abonner</button></div>
+            )}
+          <div className="bt-pl-acctwrap">
+              <button className="bt-pl-acct" onClick={() => setAccountMenuOpen((o) => !o)} title="Compte entreprise">
+                <span className="bt-pl-acct-av">
+                  {companyLogo ? <img className="bt-pl-acct-av-img" src={companyLogo} alt="" /> : companyInitials}
+                </span>
+                <span className="bt-pl-acct-name">{companyLabel}</span>
+                <span className="bt-pl-acct-car">▾</span>
+              </button>
+              {accountMenuOpen && (
+                <>
+                  <div className="bt-pl-ddbackdrop" onClick={() => setAccountMenuOpen(false)} />
+                  <div className="bt-pl-acctmenu">
+                    <div className="bt-pl-acctmenu-h">
+                      <div className="bt-pl-acctmenu-co">{companyLabel}</div>
+                      <div className="bt-pl-acctmenu-u">{user?.first_name} {user?.last_name}</div>
+                    </div>
+                    <button className="bt-pl-acct-item" onClick={() => { setAccountMenuOpen(false); setSettingsOpen(true); }}>
+                      <Settings className="h-4 w-4" /> Réglages de l&apos;entreprise
+                    </button>
+                    <button className="bt-pl-acct-item danger" onClick={() => { setAccountMenuOpen(false); signOut(); }}>
+                      <LogOut className="h-4 w-4" /> Déconnexion
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
         <div className="bt-pl-bar">
-          <span className="bt-pl-brand">
-            <img src="/bemexo-wordmark-dark.svg" alt="BEMEXO" className="bt-pl-brand-logo" />
-          </span>
+          <div className="bt-pl-group">
+          <div className="bt-pl-ddwrap">
+            <button className="bt-pl-datearr" onClick={() => setLegendOpen((o) => !o)} title="Légende des icônes" aria-label="Légende des icônes"><Info className="h-4 w-4" /></button>
+            {legendOpen && (
+              <>
+                <div className="bt-pl-ddbackdrop" onClick={() => setLegendOpen(false)} />
+                <div className="bt-pl-dd bt-pl-dd--start">
+                  <div className="bt-pl-dd-h">Légende des bulles</div>
+                  <div className="bt-pl-legrow"><span className="bt-pl-check">✓</span> Heures déclarées par le salarié</div>
+                  <div className="bt-pl-legrow"><span className="bt-pl-legic" style={{ color: '#1F7A4D' }}><CheckCircle2 className="h-3.5 w-3.5" /></span> Réceptionné sans réserve</div>
+                  <div className="bt-pl-legrow"><span className="bt-pl-legic" style={{ color: '#C0461F' }}><AlertTriangle className="h-3.5 w-3.5" /></span> Réception avec réserve</div>
+                  <div className="bt-pl-legrow"><span className="bt-pl-legic" style={{ color: '#C98A12' }}><Hammer className="h-3.5 w-3.5" /></span> Chantier en cours</div>
+                  <div className="bt-pl-legrow"><span className="bt-pl-legic" style={{ color: '#caa01a' }}><UserIcon className="h-3.5 w-3.5" /></span> Intervention ajoutée par le salarié</div>
+                  <div className="bt-pl-legrow"><span className="bt-pl-legic"><Paperclip className="h-3.5 w-3.5" /></span> Documents du chantier</div>
+                </div>
+              </>
+            )}
+          </div>
           <div className="bt-pl-ddwrap">
             <div className="bt-pl-seg">
               <button className="bt-pl-segbtn" onClick={() => setSalariesOpen(true)}><Users className="h-3.5 w-3.5" /> Salariés</button>
@@ -1350,6 +1513,7 @@ export default function AdminPlanning() {
               </>
             )}
           </div>
+          </div>
           <div className="bt-pl-datenav">
             <button className="bt-pl-datearr" aria-label="Semaine précédente" onClick={() => setCurrentWeekStart(subWeeks(currentWeekStart, 1))}>‹</button>
             <button
@@ -1363,23 +1527,7 @@ export default function AdminPlanning() {
             </button>
             <button className="bt-pl-datearr" aria-label="Semaine suivante" onClick={() => setCurrentWeekStart(addWeeks(currentWeekStart, 1))}>›</button>
           </div>
-          <div className="bt-pl-ddwrap">
-            <button className="bt-pl-datearr" onClick={() => setLegendOpen((o) => !o)} title="Légende des icônes" aria-label="Légende des icônes"><Info className="h-4 w-4" /></button>
-            {legendOpen && (
-              <>
-                <div className="bt-pl-ddbackdrop" onClick={() => setLegendOpen(false)} />
-                <div className="bt-pl-dd">
-                  <div className="bt-pl-dd-h">Légende des bulles</div>
-                  <div className="bt-pl-legrow"><span className="bt-pl-check">✓</span> Heures déclarées par le salarié</div>
-                  <div className="bt-pl-legrow"><span className="bt-pl-legic" style={{ color: '#1F7A4D' }}><CheckCircle2 className="h-3.5 w-3.5" /></span> Réceptionné sans réserve</div>
-                  <div className="bt-pl-legrow"><span className="bt-pl-legic" style={{ color: '#C0461F' }}><AlertTriangle className="h-3.5 w-3.5" /></span> Réception avec réserve</div>
-                  <div className="bt-pl-legrow"><span className="bt-pl-legic" style={{ color: '#C98A12' }}><Hammer className="h-3.5 w-3.5" /></span> Chantier en cours</div>
-                  <div className="bt-pl-legrow"><span className="bt-pl-legic" style={{ color: '#caa01a' }}><UserIcon className="h-3.5 w-3.5" /></span> Intervention ajoutée par le salarié</div>
-                  <div className="bt-pl-legrow"><span className="bt-pl-legic"><Paperclip className="h-3.5 w-3.5" /></span> Documents du chantier</div>
-                </div>
-              </>
-            )}
-          </div>
+          <div className="bt-pl-group">
           <div className="bt-pl-ddwrap">
             <button className="bt-pl-fill" onClick={() => setExportMenuOpen((o) => !o)}><Download className="h-4 w-4" /> Exporter ▾</button>
             {exportMenuOpen && (
@@ -1399,47 +1547,22 @@ export default function AdminPlanning() {
               </>
             )}
           </div>
-          <div className="bt-pl-acctwrap">
-              <button className="bt-pl-acct" onClick={() => setAccountMenuOpen((o) => !o)} title="Compte entreprise">
-                <span className="bt-pl-acct-av">
-                  {companyLogo ? <img className="bt-pl-acct-av-img" src={companyLogo} alt="" /> : companyInitials}
-                </span>
-                <span className="bt-pl-acct-name">{companyLabel}</span>
-                <span className="bt-pl-acct-car">▾</span>
-              </button>
-              {accountMenuOpen && (
-                <>
-                  <div className="bt-pl-ddbackdrop" onClick={() => setAccountMenuOpen(false)} />
-                  <div className="bt-pl-acctmenu">
-                    <div className="bt-pl-acctmenu-h">
-                      <div className="bt-pl-acctmenu-co">{companyLabel}</div>
-                      <div className="bt-pl-acctmenu-u">{user?.first_name} {user?.last_name}</div>
-                    </div>
-                    <button className="bt-pl-acct-item" onClick={() => { setAccountMenuOpen(false); setSettingsOpen(true); }}>
-                      <Settings className="h-4 w-4" /> Réglages de l&apos;entreprise
-                    </button>
-                    <button className="bt-pl-acct-item danger" onClick={() => { setAccountMenuOpen(false); signOut(); }}>
-                      <LogOut className="h-4 w-4" /> Déconnexion
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
+          </div>
         </div>
 
         {/* Invitations en attente (sous la barre) */}
         {pendingInvites.length > 0 && (
-          <div className="space-y-1.5 border-b border-yellow-200 bg-yellow-50/60 px-4 py-2.5">
-            <p className="text-xs font-semibold text-muted-foreground flex items-center gap-1"><Clock className="h-3.5 w-3.5" /> Invitations en attente</p>
+          <div className="bt-pl-inv">
+            <p className="bt-pl-inv-title"><Clock className="h-3.5 w-3.5" /> Invitations en attente</p>
             {pendingInvites.map(inv => (
-              <div key={inv.id} className="flex items-center gap-2 text-sm">
-                <Mail className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              <div key={inv.id} className="bt-pl-inv-row">
+                <Mail className="h-3.5 w-3.5 shrink-0" style={{ color: '#7a5e00' }} />
                 <span className="min-w-0 flex-1 truncate">{inv.first_name} {inv.last_name} · {inv.email}</span>
-                <Button variant="outline" size="sm" className="h-7" onClick={() => resendInvitation(inv)} disabled={resendingId === inv.id || cancellingId === inv.id}>
+                <Button variant="outline" size="sm" className="h-7 border-[#15120F]/30 bg-white/80 hover:bg-white font-bold" onClick={() => resendInvitation(inv)} disabled={resendingId === inv.id || cancellingId === inv.id}>
                   {resendingId === inv.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
                   <span className="hidden sm:inline ml-1">Relancer</span>
                 </Button>
-                <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => cancelInvitation(inv)} disabled={resendingId === inv.id || cancellingId === inv.id}>
+                <Button variant="ghost" size="icon" className="h-7 w-7" style={{ color: '#B5472E' }} onClick={() => cancelInvitation(inv)} disabled={resendingId === inv.id || cancellingId === inv.id}>
                   {cancellingId === inv.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <X className="h-3.5 w-3.5" />}
                 </Button>
               </div>
@@ -1470,10 +1593,11 @@ export default function AdminPlanning() {
               </tr>
             </thead>
                 <tbody ref={realBodyRef}>
-                  {displayWorkers.length === 0 ? (
-                    <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">Aucun salarié — bouton « Salariés »</td></tr>
-                  ) : (
-                    displayWorkers.map(worker => {
+                  {/* 0 salarié : AUCUNE ligne ici — les lignes fantômes dessinent un
+                      quadrillage uniforme (fini la bande colSpan qui coupait la colonne
+                      sticky et recevait la bordure noire de fin) ; le coach .bt-pl-coach
+                      guide en bas à droite, sans jamais bloquer la grille. */}
+                  {displayWorkers.map(worker => {
                       const absToday = todayAbsence.get(worker.id);
                       const isLate = (missingByWorker.get(worker.id) || []).length > 0;
                       const fullName = `${worker.first_name} ${worker.last_name}`;
@@ -1487,7 +1611,7 @@ export default function AdminPlanning() {
                               title="Cliquer pour le statut / la disponibilité"
                             >
                               <span className="bt-pl-nametop">
-                                <span className="bt-pl-avatar" style={absToday ? { background: '#c4bdae', color: '#15120F' } : undefined}>
+                                <span className="bt-pl-avatar" style={avatarTint(worker.id, !!absToday)}>
                                   {worker.photo_url ? <img className="bt-pl-avatar-img" src={worker.photo_url} alt="" /> : <>{(worker.first_name?.[0] || '')}{(worker.last_name?.[0] || '')}</>}
                                 </span>
                                 <span className="bt-pl-name">{fullName}</span>
@@ -1554,8 +1678,7 @@ export default function AdminPlanning() {
                           })}
                         </tr>
                       );
-                    })
-                  )}
+                  })}
                 </tbody>
                 {/* Lignes vierges de remplissage : prolongent le quadrillage jusqu'en bas,
                     chacune avec un « + » pour ajouter un salarié. Inertes (pas de dépôt). */}
@@ -1564,7 +1687,7 @@ export default function AdminPlanning() {
                     {Array.from({ length: ghostCount }).map((_, i) => (
                       <tr key={`ghost-${i}`} className="bt-pl-ghostrow">
                         <td className="bt-pl-namecell">
-                          <button className="bt-pl-ghost-add" onClick={() => setSalariesOpen(true)} title="Ajouter un salarié">
+                          <button className="bt-pl-ghost-add" onClick={() => (workers.length === 0 ? setWorkerOpen(true) : setSalariesOpen(true))} title="Ajouter un salarié">
                             <UserPlus className="h-4 w-4" />
                           </button>
                         </td>
@@ -1577,11 +1700,45 @@ export default function AdminPlanning() {
                   </tbody>
                 )}
             </table>
+            {/* Coach de démarrage : checklist discrète et FERMABLE (croix), flottante
+                bas-droite — la grille reste pleinement visible et utilisable. Les
+                étapes se cochent toutes seules ; tout fait → il disparaît. */}
+            {!coachHidden && (workers.length === 0 || worksites.length === 0) && (
+              <div className="bt-pl-coach">
+                <div className="bt-pl-coach-gold" />
+                <div className="bt-pl-coach-head">
+                  <div>
+                    <p className="bt-pl-coach-kicker">Pour démarrer</p>
+                    <h3 className="bt-pl-coach-title">Deux étapes, et tout roule.</h3>
+                  </div>
+                  <button className="bt-pl-coach-x" onClick={dismissCoach} aria-label="Fermer le guide" title="Fermer">✕</button>
+                </div>
+                <div className="bt-pl-coach-steps">
+                  <button className={`bt-pl-coach-step${workers.length > 0 ? ' done' : ''}`} onClick={() => { if (workers.length === 0) setWorkerOpen(true); }}>
+                    <span className="bt-pl-coach-n">{workers.length > 0 ? '✓' : '1'}</span>
+                    <span className="bt-pl-coach-t"><b>Ajoutez un salarié</b><small>Il reçoit une invitation par email</small></span>
+                  </button>
+                  <button className={`bt-pl-coach-step${worksites.length > 0 ? ' done' : ''}`} onClick={() => { if (worksites.length === 0) setClientOpen(true); }}>
+                    <span className="bt-pl-coach-n">{worksites.length > 0 ? '✓' : '2'}</span>
+                    <span className="bt-pl-coach-t"><b>Créez un client</b><small>Puis glissez-le sur le planning</small></span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* MOBILE — consultation jour par jour (pas de glisser-déposer) */}
           <div className="bt-pl-mobile">
             <div className="bt-pl-m-head">
+              <div className="bt-pl-m-brand">
+                <span className="bt-pl-logo">BEME<span className="x">X</span>O</span>
+                {trial?.inTrial && !trial.expired && trial.daysLeft !== null && (
+                  <div className="bt-pl-trial"><span className="d" /> <b>{trial.daysLeft} j</b> <button className="cta" onClick={onSubscribe}>S&apos;abonner</button></div>
+                )}
+                {trial?.inTrial && trial.expired && (
+                  <div className="bt-pl-trial expired"><span className="d" /> <button className="cta" onClick={onSubscribe}>S&apos;abonner</button></div>
+                )}
+              </div>
               <div className="bt-pl-m-headrow">
                 <div>
                   <div className="bt-pl-kicker">Planning · Sem. {getISOWeek(currentWeekStart)}</div>
@@ -1604,7 +1761,30 @@ export default function AdminPlanning() {
             </div>
             <div className="bt-pl-m-list">
               {workers.length === 0 ? (
-                <div className="bt-pl-m-empty">Aucun salarié — bouton « Salariés ».</div>
+                !coachHidden ? (
+                  <div className="bt-pl-coach bt-pl-coach--flow">
+                    <div className="bt-pl-coach-gold" />
+                    <div className="bt-pl-coach-head">
+                      <div>
+                        <p className="bt-pl-coach-kicker">Pour démarrer</p>
+                        <h3 className="bt-pl-coach-title">Deux étapes, et tout roule.</h3>
+                      </div>
+                      <button className="bt-pl-coach-x" onClick={dismissCoach} aria-label="Fermer le guide" title="Fermer">✕</button>
+                    </div>
+                    <div className="bt-pl-coach-steps">
+                      <button className="bt-pl-coach-step" onClick={() => setWorkerOpen(true)}>
+                        <span className="bt-pl-coach-n">1</span>
+                        <span className="bt-pl-coach-t"><b>Ajoutez un salarié</b><small>Il reçoit une invitation par email</small></span>
+                      </button>
+                      <button className={`bt-pl-coach-step${worksites.length > 0 ? ' done' : ''}`} onClick={() => { if (worksites.length === 0) setClientOpen(true); }}>
+                        <span className="bt-pl-coach-n">{worksites.length > 0 ? '✓' : '2'}</span>
+                        <span className="bt-pl-coach-t"><b>Créez un client</b><small>Puis planifiez depuis l'ordinateur</small></span>
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bt-pl-m-empty">Aucun salarié — bouton « Salariés » sur ordinateur.</div>
+                )
               ) : workers.map(worker => {
                 const dateStr = format(weekDays[mobileDayIdx], 'yyyy-MM-dd');
                 const absence = absenceForDay(worker.id, dateStr);
@@ -1615,7 +1795,7 @@ export default function AdminPlanning() {
                 return (
                   <div key={worker.id} className="bt-pl-m-card">
                     <div className="bt-pl-m-top">
-                      <span className="bt-pl-avatar" style={absence ? { background: '#c4bdae', color: '#15120F' } : undefined}>{worker.photo_url ? <img className="bt-pl-avatar-img" src={worker.photo_url} alt="" /> : <>{(worker.first_name?.[0] || '')}{(worker.last_name?.[0] || '')}</>}</span>
+                      <span className="bt-pl-avatar" style={avatarTint(worker.id, !!absence)}>{worker.photo_url ? <img className="bt-pl-avatar-img" src={worker.photo_url} alt="" /> : <>{(worker.first_name?.[0] || '')}{(worker.last_name?.[0] || '')}</>}</span>
                       <span style={{ flex: 1, minWidth: 0 }}><span className="bt-pl-name" style={{ display: 'block' }}>{worker.first_name} {worker.last_name}</span></span>
                       {absence ? (
                         <span className="bt-pl-m-badge" style={{ background: '#EFE7DA', color: av!.fg }}>{av!.icon} {(ABSENCE_LABELS[absence.absence_type!] || '').toUpperCase()}</span>
@@ -1668,11 +1848,11 @@ export default function AdminPlanning() {
           {statusTarget && (
             <div className="space-y-2 pt-1">
               <Button variant="outline" className="w-full justify-start h-11 text-[15px]" onClick={() => { setPresentFrom(statusTarget.worker.id, statusTarget.fromStr); setStatusTarget(null); }}>
-                <span className="h-3 w-3 rounded-full bg-green-500 mr-3" /> Présent
+                <span className="h-3 w-3 rounded-full mr-3" style={{ background: '#1D9E75' }} /> Présent
               </Button>
               {ABSENCE_OPTIONS.map(opt => (
                 <Button key={opt.value} variant="outline" className="w-full justify-start h-11 text-[15px]" onClick={() => chooseAbsence(statusTarget.worker, opt.value, statusTarget.fromStr)}>
-                  <span className="h-3 w-3 rounded-full bg-orange-500 mr-3" /> {opt.label}
+                  <span className="h-3 w-3 rounded-full mr-3" style={{ background: '#E0A21C' }} /> {opt.label}
                 </Button>
               ))}
               <div className="border-t pt-2 mt-1">
@@ -1700,13 +1880,13 @@ export default function AdminPlanning() {
         <DialogContent className="bt-skin max-w-md max-h-[80vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Salariés</DialogTitle></DialogHeader>
           <div className="pt-1">
-            <Button variant="outline" size="sm" className="mb-2 w-full" onClick={() => { setSalariesOpen(false); setWorkerOpen(true); }}>
+            <Button size="sm" className="mb-2 w-full font-bold" onClick={() => { setSalariesOpen(false); setWorkerOpen(true); }}>
               <UserPlus className="h-4 w-4 mr-1.5" /> Nouveau salarié
             </Button>
             <Input placeholder="Rechercher un salarié…" value={salariesQuery} onChange={(e) => setSalariesQuery(e.target.value)} className="mb-2" />
             <div className="space-y-1">
               {workers.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-6 text-center">Aucun salarié</p>
+                <p className="text-sm text-muted-foreground py-6 text-center">Aucun salarié pour le moment — cliquez sur « Nouveau salarié » ci-dessus pour envoyer la première invitation.</p>
               ) : filteredWorkers.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-6 text-center">Aucun résultat</p>
               ) : (
@@ -1716,7 +1896,7 @@ export default function AdminPlanning() {
                     <div key={w.id} className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
                       <button className="flex min-w-0 flex-1 items-center gap-1.5 text-left" onClick={() => { setSalariesOpen(false); setFicheMode('manage'); setFicheWorker(w); }}>
                         <span className="font-medium truncate">{w.first_name} {w.last_name}</span>
-                        {miss > 0 && <span className="h-2 w-2 rounded-full bg-red-500 shrink-0" title={`${miss} jour(s) en attente`} />}
+                        {miss > 0 && <span className="h-2 w-2 rounded-full shrink-0" style={{ background: '#B5472E' }} title={`${miss} jour(s) en attente`} />}
                       </button>
                       {miss > 0 && (
                         <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => sendReminder(w)} title="Envoyer un rappel">
@@ -1835,7 +2015,12 @@ export default function AdminPlanning() {
             <p className="text-sm text-muted-foreground">Choisis un salarié : sa fiche s'ouvre avec le calendrier (jour / semaine / période) et le téléchargement Excel / PDF. Cet export ne verrouille pas les heures.</p>
             <div className="space-y-1">
               {workers.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-6 text-center">Aucun salarié</p>
+                <div className="py-5 text-center">
+                  <p className="text-sm text-muted-foreground mb-3">Aucun salarié à exporter pour le moment.</p>
+                  <Button size="sm" variant="outline" onClick={() => { setExportWorkerOpen(false); setWorkerOpen(true); }}>
+                    <UserPlus className="h-4 w-4 mr-1.5" /> Ajouter un salarié
+                  </Button>
+                </div>
               ) : (
                 workers.map(w => (
                   <button
@@ -1970,7 +2155,7 @@ export default function AdminPlanning() {
               <div className="rounded-lg border bg-[#FBF7EF] p-2.5 text-sm">
                 <span className="font-medium">Heures déclarées : </span>
                 {editRealAgg ? (
-                  <span className="text-green-700">{editRealAgg.start?.substring(0, 5)}–{editRealAgg.end?.substring(0, 5)} · <strong>{formatMinutes(editRealAgg.minutes)} réelles</strong>{editRealAgg.count > 1 ? ` (${editRealAgg.count} saisies)` : ''}</span>
+                  <span style={{ color: '#1F7A4D' }}>{editRealAgg.start?.substring(0, 5)}–{editRealAgg.end?.substring(0, 5)} · <strong>{formatMinutes(editRealAgg.minutes)} réelles</strong>{editRealAgg.count > 1 ? ` (${editRealAgg.count} saisies)` : ''}</span>
                 ) : (
                   <span className="text-muted-foreground">pas encore déclaré</span>
                 )}
@@ -2084,7 +2269,7 @@ export default function AdminPlanning() {
             </div>
             <div className="space-y-2"><Label>Email *</Label><Input type="email" value={wEmail} onChange={(e) => setWEmail(e.target.value)} required disabled={wSaving} /></div>
             <div className="space-y-2"><Label>Téléphone</Label><Input type="tel" value={wPhone} onChange={(e) => setWPhone(e.target.value)} disabled={wSaving} /></div>
-            <Button type="submit" className="w-full" disabled={wSaving}>
+            <Button type="submit" className="w-full font-bold" disabled={wSaving}>
               {wSaving && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Envoyer l'invitation
             </Button>
           </form>

@@ -9,7 +9,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 
 const ADMIN_CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
-.bt-admin{font-family:'Archivo',sans-serif;min-height:100vh;background:#15120F;padding:6px;display:flex;flex-direction:column}
+/* Canvas de l'app : parchemin chaud (crème plus prononcé, vers le doré sans
+   tomber dans le jaune criard) — le cockpit sombre + le planning blanc
+   ressortent nettement comme une carte posée dessus. */
+.bt-admin{font-family:'Archivo',sans-serif;min-height:100vh;background:#EBE0C6;padding:12px;display:flex;flex-direction:column}
 .bt-admin *{box-sizing:border-box}
 
 /* ============================================================
@@ -45,13 +48,10 @@ const ADMIN_CSS = `
 .bt-skin[role="dialog"]{border-top:3px solid #FFC21A}
 .bt-skin[role="dialog"] h2{font-weight:900;letter-spacing:-.01em}
 
-/* Essai 30 j — bandeau (info) + blocage (preview uniquement) */
-.bt-trial-banner{display:flex;align-items:center;gap:9px;background:#FFF1CC;border:1px solid #E8CE7A;color:#7a5e00;border-radius:12px;padding:9px 14px;font-size:13.5px;font-weight:700;margin-bottom:6px}
-.bt-trial-banner.expired{background:#F4D9D1;border-color:#E8B79E;color:#9a3b14}
-.bt-trial-dot{width:8px;height:8px;border-radius:50%;background:currentColor;flex:none}
-.bt-trial-cta{margin-left:auto;background:#15120F;color:#fff;border:none;border-radius:9px;padding:7px 14px;font-family:inherit;font-weight:800;font-size:13px;cursor:pointer;flex:none}
-.bt-trial-banner.expired .bt-trial-cta{background:#9a3b14}
-.bt-trial-block{min-height:calc(100vh - 12px);display:flex;align-items:center;justify-content:center;padding:20px}
+/* Le header/essai vit désormais DANS le cockpit du planning (composant
+   admin-planning) — logo + stats + pilule + compte réunis. Ici on ne garde que
+   l'écran de blocage d'essai (paywall). */
+.bt-trial-block{min-height:calc(100vh - 24px);display:flex;align-items:center;justify-content:center;padding:20px}
 .bt-trial-card{background:#F2EDE3;border-radius:18px;padding:40px 32px;max-width:440px;text-align:center;box-shadow:0 30px 70px -28px rgba(0,0,0,.6)}
 .bt-trial-card.wide{max-width:680px}
 .bt-trial-emoji{font-size:44px;margin-bottom:6px}
@@ -164,21 +164,7 @@ export default function AdminPage() {
           </div>
         </div>
       ) : (
-        <>
-          {inTrial && !expired && daysLeft !== null && (
-            <div className="bt-trial-banner">
-              <span className="bt-trial-dot" /> Essai gratuit — il reste <strong>&nbsp;{daysLeft} jour{daysLeft > 1 ? 's' : ''}</strong>.
-              <button className="bt-trial-cta" onClick={() => setSubOpen(true)}>S&apos;abonner</button>
-            </div>
-          )}
-          {inTrial && expired && (
-            <div className="bt-trial-banner expired">
-              <span className="bt-trial-dot" /> Essai terminé — choisissez un abonnement pour continuer.
-              <button className="bt-trial-cta" onClick={() => setSubOpen(true)}>S&apos;abonner</button>
-            </div>
-          )}
-          <AdminPlanning />
-        </>
+        <AdminPlanning trial={{ inTrial, expired, daysLeft }} onSubscribe={() => setSubOpen(true)} />
       )}
 
       <Dialog open={subOpen} onOpenChange={setSubOpen}>
