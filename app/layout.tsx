@@ -7,6 +7,7 @@ import { AuthProvider } from '@/components/auth-provider';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
+  metadataBase: new URL('https://bemexo.com'),
   title: 'BEMEXO — Feuilles d\'heures BTP',
   description: 'Gestion simplifiée des feuilles d\'heures pour les entreprises du BTP',
   manifest: '/manifest.json',

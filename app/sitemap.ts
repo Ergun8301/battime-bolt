@@ -10,6 +10,15 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const entries: { path: string; priority: number; changeFrequency: MetadataRoute.Sitemap[number]['changeFrequency'] }[] = [
     { path: '/landing', priority: 1.0, changeFrequency: 'weekly' },
     { path: '/inscription', priority: 0.8, changeFrequency: 'monthly' },
+    // Pages de contenu (SEO) — France
+    { path: '/fonctionnalites/pointage-chantier', priority: 0.8, changeFrequency: 'monthly' },
+    { path: '/fonctionnalites/planning-equipe', priority: 0.8, changeFrequency: 'monthly' },
+    { path: '/fonctionnalites/export-paie', priority: 0.8, changeFrequency: 'monthly' },
+    // Pages de contenu (SEO) — Suisse romande
+    { path: '/suisse', priority: 0.8, changeFrequency: 'monthly' },
+    { path: '/suisse/timbrage-chantier', priority: 0.7, changeFrequency: 'monthly' },
+    { path: '/suisse/enregistrement-temps-de-travail', priority: 0.7, changeFrequency: 'monthly' },
+    // Légal
     { path: '/cgv', priority: 0.3, changeFrequency: 'yearly' },
     { path: '/cgu', priority: 0.3, changeFrequency: 'yearly' },
     { path: '/mentions-legales', priority: 0.3, changeFrequency: 'yearly' },
