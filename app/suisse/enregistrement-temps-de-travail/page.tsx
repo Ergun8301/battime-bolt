@@ -5,19 +5,35 @@ export const metadata: Metadata = {
   title: 'Enregistrement du temps de travail en Suisse : vos obligations | BEMEXO',
   description:
     'Ce que dit la loi suisse sur l’enregistrement du temps de travail : art. 46 LTr, art. 73 OLT 1, et les allègements des art. 73a / 73b. Comment rester conforme sur le chantier avec un timbrage mobile.',
-  alternates: { canonical: 'https://bemexo.com/suisse/enregistrement-temps-de-travail' },
+  alternates: {
+    canonical: 'https://bemexo.com/suisse/enregistrement-temps-de-travail',
+    languages: {
+      'fr-CH': 'https://bemexo.com/suisse/enregistrement-temps-de-travail',
+      'x-default': 'https://bemexo.com/landing',
+    },
+  },
   openGraph: {
     title: 'Enregistrement de la durée du travail en Suisse — vos obligations | BEMEXO',
     description: 'Art. 46 LTr, art. 73 OLT 1 et allègements 73a / 73b, expliqués pour les entreprises de construction.',
     url: 'https://bemexo.com/suisse/enregistrement-temps-de-travail',
     locale: 'fr_CH',
     type: 'article',
+    images: ['/og-image.png'],
   },
 };
 
 export default function Page() {
   return (
     <>
+      <JsonLd data={{
+        '@context': 'https://schema.org',
+        '@type': 'BreadcrumbList',
+        itemListElement: [
+          { '@type': 'ListItem', position: 1, name: 'Accueil', item: 'https://bemexo.com/landing' },
+          { '@type': 'ListItem', position: 2, name: 'Suisse', item: 'https://bemexo.com/suisse' },
+          { '@type': 'ListItem', position: 3, name: 'Enregistrement du temps de travail', item: 'https://bemexo.com/suisse/enregistrement-temps-de-travail' },
+        ],
+      }} />
       <JsonLd data={{
         '@context': 'https://schema.org',
         '@type': 'FAQPage',

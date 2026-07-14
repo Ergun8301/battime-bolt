@@ -5,12 +5,20 @@ export const metadata: Metadata = {
   title: 'Planning d’équipe chantier en temps réel — BEMEXO',
   description:
     'Affectez vos salariés aux chantiers d’un glisser-déposer, voyez qui est où et combien d’heures, en direct. Le planning BTP qui se met à jour tout seul, sans appeler personne.',
-  alternates: { canonical: 'https://bemexo.com/fonctionnalites/planning-equipe' },
+  alternates: {
+    canonical: 'https://bemexo.com/fonctionnalites/planning-equipe',
+    languages: {
+      'fr-FR': 'https://bemexo.com/fonctionnalites/planning-equipe',
+      'x-default': 'https://bemexo.com/landing',
+    },
+  },
   openGraph: {
     title: 'Planning d’équipe chantier — BEMEXO',
     description: 'Qui est sur quel chantier, combien d’heures, en temps réel. Le planning du BTP, simple et vivant.',
     url: 'https://bemexo.com/fonctionnalites/planning-equipe',
     type: 'website',
+    locale: 'fr_FR',
+    images: ['/og-image.png'],
   },
 };
 
@@ -23,6 +31,22 @@ export default function Page() {
         itemListElement: [
           { '@type': 'ListItem', position: 1, name: 'Accueil', item: 'https://bemexo.com/landing' },
           { '@type': 'ListItem', position: 2, name: 'Planning d’équipe', item: 'https://bemexo.com/fonctionnalites/planning-equipe' },
+        ],
+      }} />
+      <JsonLd data={{
+        '@context': 'https://schema.org',
+        '@type': 'FAQPage',
+        mainEntity: [
+          {
+            '@type': 'Question',
+            name: 'Je gère plusieurs chantiers en même temps, ça suit ?',
+            acceptedAnswer: { '@type': 'Answer', text: 'Oui. Chaque salarié peut être affecté à des chantiers différents selon les jours, et chaque chantier garde sa couleur pour s’y retrouver instantanément.' },
+          },
+          {
+            '@type': 'Question',
+            name: 'Le salarié voit-il tout le planning de l’entreprise ?',
+            acceptedAnswer: { '@type': 'Answer', text: 'Non. Le salarié ne voit que ce qui le concerne pour pointer. La vue d’ensemble du planning reste côté bureau (patron / secrétariat).' },
+          },
         ],
       }} />
       <SeoPage

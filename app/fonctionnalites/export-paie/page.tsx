@@ -5,12 +5,20 @@ export const metadata: Metadata = {
   title: 'Export paie du BTP, prêt en un clic — BEMEXO',
   description:
     'En fin de mois, exportez un récapitulatif d’heures propre, prêt pour votre comptable ou votre logiciel de paie. Heures supplémentaires calculées, mois verrouillé, fini la ressaisie du lundi.',
-  alternates: { canonical: 'https://bemexo.com/fonctionnalites/export-paie' },
+  alternates: {
+    canonical: 'https://bemexo.com/fonctionnalites/export-paie',
+    languages: {
+      'fr-FR': 'https://bemexo.com/fonctionnalites/export-paie',
+      'x-default': 'https://bemexo.com/landing',
+    },
+  },
   openGraph: {
     title: 'Export paie du BTP — BEMEXO',
     description: 'Le récap d’heures du mois, propre et prêt pour la paie. Heures sup calculées, export Excel.',
     url: 'https://bemexo.com/fonctionnalites/export-paie',
     type: 'website',
+    locale: 'fr_FR',
+    images: ['/og-image.png'],
   },
 };
 
@@ -23,6 +31,22 @@ export default function Page() {
         itemListElement: [
           { '@type': 'ListItem', position: 1, name: 'Accueil', item: 'https://bemexo.com/landing' },
           { '@type': 'ListItem', position: 2, name: 'Export paie', item: 'https://bemexo.com/fonctionnalites/export-paie' },
+        ],
+      }} />
+      <JsonLd data={{
+        '@context': 'https://schema.org',
+        '@type': 'FAQPage',
+        mainEntity: [
+          {
+            '@type': 'Question',
+            name: 'Est-ce que ça marche avec mon logiciel de paie ?',
+            acceptedAnswer: { '@type': 'Answer', text: 'L’export se fait en Excel ou au format attendu par votre logiciel. Votre comptable récupère un fichier propre, sans ressaisie.' },
+          },
+          {
+            '@type': 'Question',
+            name: 'Puis-je exporter un seul salarié ?',
+            acceptedAnswer: { '@type': 'Answer', text: 'Oui. Vous pouvez exporter toute l’équipe (ce qui verrouille le mois) ou la feuille d’un salarié précis, sans verrouillage.' },
+          },
         ],
       }} />
       <SeoPage
