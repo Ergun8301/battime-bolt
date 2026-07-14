@@ -5,6 +5,78 @@ export const metadata: Metadata = {
   title: 'BEMEXO — Les heures du batiment, pointees sur le chantier',
   description:
     'Vos equipes pointent depuis leur telephone, vous recuperez tout en temps reel — propre, pret pour la paie. Essayez BEMEXO gratuitement pendant 30 jours.',
+  alternates: {
+    canonical: 'https://bemexo.com/landing',
+    languages: {
+      'fr-FR': 'https://bemexo.com/landing',
+      'x-default': 'https://bemexo.com/landing',
+    },
+  },
+  openGraph: {
+    type: 'website',
+    url: 'https://bemexo.com/landing',
+    siteName: 'BEMEXO',
+    locale: 'fr_FR',
+    title: 'BEMEXO — Les heures du bâtiment, pointées sur le chantier',
+    description:
+      'Vos équipes pointent depuis leur téléphone, vous récupérez tout en temps réel — propre, prêt pour la paie. Une seule saisie. Tout suit.',
+    images: [{ url: '/og-image.png', width: 1200, height: 630, alt: 'BEMEXO — Une seule saisie. Tout suit.' }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'BEMEXO — Les heures du bâtiment, pointées sur le chantier',
+    description: 'Une seule saisie. Tout suit. Essayez BEMEXO gratuitement pendant 30 jours.',
+    images: ['/og-image.png'],
+  },
+};
+
+// Données structurées (JSON-LD). SoftwareApplication décrit le produit ;
+// FAQPage recopie À L'IDENTIQUE les 4 questions/réponses visibles plus bas
+// (règle Google : le balisage doit refléter le texte affiché).
+const LD_SOFTWARE = {
+  '@context': 'https://schema.org',
+  '@type': 'SoftwareApplication',
+  name: 'BEMEXO',
+  applicationCategory: 'BusinessApplication',
+  operatingSystem: 'Web, iOS, Android',
+  url: 'https://bemexo.com',
+  description:
+    'Logiciel de pointage, de planning d’équipe et d’export de paie pour les entreprises du bâtiment et des travaux publics.',
+  offers: {
+    '@type': 'AggregateOffer',
+    priceCurrency: 'EUR',
+    lowPrice: '49',
+    highPrice: '149',
+    offerCount: '3',
+    description: 'À partir de 49 €/mois HT — essai gratuit de 30 jours, sans engagement.',
+  },
+  publisher: { '@type': 'Organization', name: 'BEMEXO', legalName: 'K.HABITAT' },
+};
+const LD_FAQ = {
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  mainEntity: [
+    {
+      '@type': 'Question',
+      name: 'Et s’il n’y a pas de réseau sur le chantier ?',
+      acceptedAnswer: { '@type': 'Answer', text: 'Aucun souci. Le pointage est enregistré sur le téléphone et remonte tout seul dès que le réseau revient.' },
+    },
+    {
+      '@type': 'Question',
+      name: 'Mes gars ne sont pas à l’aise avec la technologie.',
+      acceptedAnswer: { '@type': 'Answer', text: 'C’est fait pour eux. Un écran, un gros bouton. S’ils savent envoyer un SMS, ils savent pointer sur BEMEXO.' },
+    },
+    {
+      '@type': 'Question',
+      name: 'Est-ce que ça marche avec mon logiciel de paie ?',
+      acceptedAnswer: { '@type': 'Answer', text: 'L’export se fait en Excel ou au format de votre logiciel. Votre comptable récupère un fichier propre, sans rien retaper.' },
+    },
+    {
+      '@type': 'Question',
+      name: 'Combien de temps pour démarrer ?',
+      acceptedAnswer: { '@type': 'Answer', text: 'Cinq minutes. Vous ajoutez vos salariés et vos chantiers, ils installent l’appli, et c’est parti dès le lendemain.' },
+    },
+  ],
 };
 
 // Portage fidele de la maquette Claude Design (noir + jaune chantier).
@@ -471,6 +543,8 @@ const BODY_SUITE = `
 export default function LandingPage() {
   return (
     <>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(LD_SOFTWARE) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(LD_FAQ) }} />
       <style dangerouslySetInnerHTML={{ __html: STYLES }} />
       <div className="lp">
         <div dangerouslySetInnerHTML={{ __html: BODY }} />

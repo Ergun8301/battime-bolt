@@ -5,12 +5,20 @@ export const metadata: Metadata = {
   title: 'Pointage sur chantier : la feuille d’heures qui se remplit toute seule — BEMEXO',
   description:
     'Vos salariés pointent leurs heures depuis leur téléphone, directement sur le chantier. Arrivée, pause, départ — tout remonte au bureau en temps réel, prêt pour la paie. Sans papier, sans ressaisie.',
-  alternates: { canonical: 'https://bemexo.com/fonctionnalites/pointage-chantier' },
+  alternates: {
+    canonical: 'https://bemexo.com/fonctionnalites/pointage-chantier',
+    languages: {
+      'fr-FR': 'https://bemexo.com/fonctionnalites/pointage-chantier',
+      'x-default': 'https://bemexo.com/landing',
+    },
+  },
   openGraph: {
     title: 'Pointage sur chantier — BEMEXO',
     description: 'Le pointage mobile du BTP : arrivée, pause, départ en un geste. Tout remonte au bureau, prêt pour la paie.',
     url: 'https://bemexo.com/fonctionnalites/pointage-chantier',
     type: 'website',
+    locale: 'fr_FR',
+    images: ['/og-image.png'],
   },
 };
 
@@ -23,6 +31,27 @@ export default function Page() {
         itemListElement: [
           { '@type': 'ListItem', position: 1, name: 'Accueil', item: 'https://bemexo.com/landing' },
           { '@type': 'ListItem', position: 2, name: 'Pointage chantier', item: 'https://bemexo.com/fonctionnalites/pointage-chantier' },
+        ],
+      }} />
+      <JsonLd data={{
+        '@context': 'https://schema.org',
+        '@type': 'FAQPage',
+        mainEntity: [
+          {
+            '@type': 'Question',
+            name: 'Mes salariés ne sont pas à l’aise avec la technologie.',
+            acceptedAnswer: { '@type': 'Answer', text: 'C’est fait pour eux : un écran, un gros bouton. Aucune formation nécessaire, ça marche du premier coup.' },
+          },
+          {
+            '@type': 'Question',
+            name: 'Et si un salarié oublie de pointer ?',
+            acceptedAnswer: { '@type': 'Answer', text: 'Vous voyez immédiatement les jours en attente au bureau et pouvez le relancer, ou compléter la saisie vous-même.' },
+          },
+          {
+            '@type': 'Question',
+            name: 'Combien de temps pour démarrer ?',
+            acceptedAnswer: { '@type': 'Answer', text: 'Cinq minutes : vous ajoutez vos salariés et vos chantiers, ils installent l’appli, et c’est parti dès le lendemain.' },
+          },
         ],
       }} />
       <SeoPage

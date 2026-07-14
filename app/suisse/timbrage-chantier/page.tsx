@@ -5,13 +5,20 @@ export const metadata: Metadata = {
   title: 'Timbrage de chantier sur mobile — Suisse | BEMEXO',
   description:
     'Le timbrage de chantier sans badgeuse : vos ouvriers timbrent leurs heures depuis leur téléphone. Enregistrement fiable de la durée du travail, conforme au droit suisse, prêt pour la paie.',
-  alternates: { canonical: 'https://bemexo.com/suisse/timbrage-chantier' },
+  alternates: {
+    canonical: 'https://bemexo.com/suisse/timbrage-chantier',
+    languages: {
+      'fr-CH': 'https://bemexo.com/suisse/timbrage-chantier',
+      'x-default': 'https://bemexo.com/landing',
+    },
+  },
   openGraph: {
     title: 'Timbrage de chantier sur mobile — Suisse | BEMEXO',
     description: 'Vos ouvriers timbrent depuis leur téléphone. Enregistrement de la durée du travail conforme au droit suisse.',
     url: 'https://bemexo.com/suisse/timbrage-chantier',
     locale: 'fr_CH',
     type: 'website',
+    images: ['/og-image.png'],
   },
 };
 
@@ -25,6 +32,22 @@ export default function Page() {
           { '@type': 'ListItem', position: 1, name: 'Accueil', item: 'https://bemexo.com/landing' },
           { '@type': 'ListItem', position: 2, name: 'Suisse', item: 'https://bemexo.com/suisse' },
           { '@type': 'ListItem', position: 3, name: 'Timbrage de chantier', item: 'https://bemexo.com/suisse/timbrage-chantier' },
+        ],
+      }} />
+      <JsonLd data={{
+        '@context': 'https://schema.org',
+        '@type': 'FAQPage',
+        mainEntity: [
+          {
+            '@type': 'Question',
+            name: 'Faut-il installer du matériel ?',
+            acceptedAnswer: { '@type': 'Answer', text: 'Non. Aucune badgeuse, aucun boîtier. Vos ouvriers installent l’application sur leur téléphone, et c’est parti.' },
+          },
+          {
+            '@type': 'Question',
+            name: 'Le timbrage mobile est-il accepté légalement ?',
+            acceptedAnswer: { '@type': 'Answer', text: 'La loi impose d’enregistrer la durée du travail, sans imposer de moyen précis. Un enregistrement électronique daté et conservé — comme celui de BEMEXO — répond à cette exigence. Voir vos obligations.' },
+          },
         ],
       }} />
       <SeoPage

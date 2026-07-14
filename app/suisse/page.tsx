@@ -5,13 +5,20 @@ export const metadata: Metadata = {
   title: 'Timbrage de chantier et suivi des heures — Suisse romande | BEMEXO',
   description:
     'BEMEXO : le timbrage de chantier sur mobile pour les entreprises de construction de Suisse romande (Genève, Vaud, Valais, Fribourg, Neuchâtel). Conforme à l’obligation d’enregistrement du temps de travail (LTr / OLT 1 art. 73).',
-  alternates: { canonical: 'https://bemexo.com/suisse' },
+  alternates: {
+    canonical: 'https://bemexo.com/suisse',
+    languages: {
+      'fr-CH': 'https://bemexo.com/suisse',
+      'x-default': 'https://bemexo.com/landing',
+    },
+  },
   openGraph: {
     title: 'BEMEXO pour la Suisse romande — timbrage de chantier',
     description: 'Le suivi des heures sur chantier, conforme au droit suisse du travail. Genève, Vaud, Valais, Fribourg, Neuchâtel.',
     url: 'https://bemexo.com/suisse',
     locale: 'fr_CH',
     type: 'website',
+    images: ['/og-image.png'],
   },
 };
 
@@ -24,6 +31,22 @@ export default function Page() {
         itemListElement: [
           { '@type': 'ListItem', position: 1, name: 'Accueil', item: 'https://bemexo.com/landing' },
           { '@type': 'ListItem', position: 2, name: 'Suisse romande', item: 'https://bemexo.com/suisse' },
+        ],
+      }} />
+      <JsonLd data={{
+        '@context': 'https://schema.org',
+        '@type': 'FAQPage',
+        mainEntity: [
+          {
+            '@type': 'Question',
+            name: '« Timbrer », « pointer » — c’est la même chose ?',
+            acceptedAnswer: { '@type': 'Answer', text: 'Oui. En Suisse romande on parle de timbrage ; en France de pointage. BEMEXO fait exactement ça : enregistrer les heures d’arrivée, de pause et de départ, depuis le téléphone.' },
+          },
+          {
+            '@type': 'Question',
+            name: 'Est-ce conforme si je n’ai pas de connexion sur le chantier ?',
+            acceptedAnswer: { '@type': 'Answer', text: 'Oui. Le timbrage est enregistré sur le téléphone et se synchronise dès que le réseau revient. L’horodatage de la saisie est conservé.' },
+          },
         ],
       }} />
       <SeoPage
