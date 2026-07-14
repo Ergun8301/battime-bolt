@@ -9,7 +9,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const now = new Date();
   const entries: { path: string; priority: number; changeFrequency: MetadataRoute.Sitemap[number]['changeFrequency'] }[] = [
     { path: '/landing', priority: 1.0, changeFrequency: 'weekly' },
-    { path: '/inscription', priority: 0.8, changeFrequency: 'monthly' },
+    // /connexion et /inscription sont volontairement en noindex (écrans applicatifs,
+    // voir leurs layout.tsx) — donc absents du sitemap.
     // Pages de contenu (SEO) — France
     { path: '/fonctionnalites/pointage-chantier', priority: 0.8, changeFrequency: 'monthly' },
     { path: '/fonctionnalites/planning-equipe', priority: 0.8, changeFrequency: 'monthly' },
