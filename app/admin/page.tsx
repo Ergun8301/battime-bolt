@@ -51,13 +51,16 @@ const ADMIN_CSS = `
 /* Le header/essai vit désormais DANS le cockpit du planning (composant
    admin-planning) — logo + stats + pilule + compte réunis. Ici on ne garde que
    l'écran de blocage d'essai (paywall). */
-.bt-trial-block{min-height:calc(100vh - 24px);display:flex;align-items:center;justify-content:center;padding:20px}
-.bt-trial-card{background:#F2EDE3;border-radius:18px;padding:40px 32px;max-width:440px;text-align:center;box-shadow:0 30px 70px -28px rgba(0,0,0,.6)}
-.bt-trial-card.wide{max-width:680px}
-.bt-trial-emoji{font-size:44px;margin-bottom:6px}
-.bt-trial-card h1{font-size:24px;font-weight:900;color:#15120F;margin:0 0 8px}
-.bt-trial-card p{font-size:15px;color:#6E6A63;font-weight:500;margin:0 0 18px}
-.bt-trial-note{font-size:12px;color:#9a948a;margin-top:18px;margin-bottom:0}
+.bt-pw{position:relative;min-height:calc(100vh - 24px);display:flex;align-items:center;justify-content:center;overflow:hidden;border-radius:20px;background:#17140F;padding:48px 22px}
+.bt-pw-grid{position:absolute;inset:0;background-image:repeating-linear-gradient(0deg,transparent 0 47px,rgba(242,237,227,.028) 47px 48px),repeating-linear-gradient(90deg,transparent 0 47px,rgba(242,237,227,.028) 47px 48px);pointer-events:none}
+.bt-pw-glow{position:absolute;top:38%;left:50%;transform:translate(-50%,-50%);width:880px;height:560px;max-width:120%;background:radial-gradient(ellipse at center,rgba(255,194,26,.13),rgba(255,194,26,.04) 45%,transparent 70%);pointer-events:none}
+.bt-pw-inner{position:relative;width:100%;max-width:1000px}
+.bt-pw-head{text-align:center;margin-bottom:32px}
+.bt-pw-kicker{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;letter-spacing:.26em;text-transform:uppercase;color:#FFC21A;margin-bottom:13px}
+.bt-pw-h1{font-size:clamp(25px,4vw,38px);font-weight:900;letter-spacing:-.025em;line-height:1.05;color:#fff;text-wrap:balance;margin:0}
+.bt-pw-sub{font-size:15.5px;color:#c9c3b8;font-weight:500;margin:12px auto 0;max-width:46ch;line-height:1.5}
+.bt-pw-sub b{color:#FFC21A}
+.bt-pw-preview-note{text-align:center;font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#8a8378;margin-top:22px}
 
 /* Activation après retour de paiement Stripe (?subscribed=1) */
 .bt-activating{position:fixed;inset:0;z-index:60;background:rgba(21,18,15,.72);display:flex;align-items:center;justify-content:center;padding:20px}
@@ -73,6 +76,22 @@ export default function AdminPage() {
   const [trial, setTrial] = useState<{ ends: string | null; status: string } | null>(null);
   const [subOpen, setSubOpen] = useState(false);
   const [activating, setActivating] = useState(false);
+  const [workerCount, setWorkerCount] = useState(0); // salariés actifs → forfait adapté (panneau d'abonnement)
+
+  // Nombre de salariés actifs de l'entreprise (pour recommander/verrouiller le
+  // bon forfait dans le panneau d'abonnement). Lecture seule.
+  useEffect(() => {
+    if (!user?.company_id) return;
+    let on = true;
+    supabase
+      .from('users')
+      .select('id', { count: 'exact', head: true })
+      .eq('company_id', user.company_id)
+      .eq('role', 'worker')
+      .eq('is_active', true)
+      .then(({ count }) => { if (on) setWorkerCount(count ?? 0); });
+    return () => { on = false; };
+  }, [user?.company_id]);
 
   const loadCompany = useCallback(async () => {
     if (!user?.company_id) return null;
@@ -152,14 +171,24 @@ export default function AdminPage() {
       )}
 
       {blocked ? (
-        <div className="bt-trial-block">
-          <div className="bt-trial-card wide">
-            <div className="bt-trial-emoji">⏳</div>
-            <h1>Votre essai gratuit est terminé</h1>
-            <p>Pour continuer à utiliser BEMEXO, choisissez l&apos;abonnement adapté à votre équipe.</p>
-            <SubscribePanel />
+        <div className="bt-pw">
+          <div className="bt-pw-grid" />
+          <div className="bt-pw-glow" />
+          <div className="bt-pw-inner">
+            <div className="bt-pw-head">
+              <div className="bt-pw-kicker">BEMEXO · Abonnement</div>
+              <h1 className="bt-pw-h1">Votre essai gratuit est terminé.</h1>
+              <p className="bt-pw-sub">
+                {workerCount > 0 ? (
+                  <>Vous avez <b>{workerCount} salarié{workerCount > 1 ? 's' : ''}</b> enregistré{workerCount > 1 ? 's' : ''} — voici l&apos;offre qui correspond à votre équipe.</>
+                ) : (
+                  <>Choisissez l&apos;offre adaptée à votre équipe pour continuer à utiliser BEMEXO.</>
+                )}
+              </p>
+            </div>
+            <SubscribePanel workerCount={workerCount} dark />
             {!paywallEnforced && (
-              <p className="bt-trial-note">Aperçu : ce blocage n&apos;est actif qu&apos;en preview tant que le paywall n&apos;est pas activé en production.</p>
+              <p className="bt-pw-preview-note">Aperçu : ce blocage n&apos;est actif qu&apos;en preview tant que le paywall n&apos;est pas activé en production.</p>
             )}
           </div>
         </div>
@@ -173,7 +202,7 @@ export default function AdminPage() {
             <DialogTitle>Choisissez votre abonnement</DialogTitle>
           </DialogHeader>
           <div className="pt-1">
-            <SubscribePanel />
+            <SubscribePanel workerCount={workerCount} />
           </div>
         </DialogContent>
       </Dialog>
