@@ -348,11 +348,11 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
               </PopoverContent>
             </Popover>
             <div className="ml-auto flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => doExport('excel')} disabled={exporting || liveEntries.length === 0}>
-                {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}<span className="hidden sm:inline ml-1">Excel</span>
+              <Button size="sm" onClick={() => doExport('excel')} disabled={exporting || liveEntries.length === 0}>
+                {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}<span className="ml-1.5">Excel</span>
               </Button>
               <Button variant="outline" size="sm" onClick={() => doExport('pdf')} disabled={exporting || liveEntries.length === 0}>
-                {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}<span className="hidden sm:inline ml-1">PDF</span>
+                {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}<span className="ml-1.5">PDF</span>
               </Button>
             </div>
           </div>

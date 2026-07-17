@@ -63,10 +63,15 @@ const SIGNUP_CSS = `
 @media(max-width:880px){
   .bt-split{grid-template-columns:1fr}
   .bt-aside{display:none}
-  .bt-formcol{padding:28px 28px}
+  .bt-formcol{padding:14px 24px 20px}
   .bt-ruban-center{display:none}
-  .bt-back-m{display:inline-flex}
+  .bt-back-m{display:inline-flex;margin-bottom:10px}
   .bt-wrap{margin:0 auto}
+  /* compaction mobile (gagne de la hauteur pour remonter « Se connecter ») —
+     purement esthétique, le formulaire et sa logique restent intacts. */
+  .bt-logo-ins{margin-bottom:12px}
+  .bt-logo-badge{padding:11px 22px}
+  .bt-logo-badge-img{width:clamp(148px,42vw,196px)}
 }
 `;
 

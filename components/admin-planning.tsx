@@ -485,10 +485,14 @@ const PL_CSS = `
 .bt-pl-daypill.on .bt-pl-daypill-n{color:#15120F}
 .bt-pl-m-list{padding:13px 12px 22px;display:flex;flex-direction:column;gap:10px;background:#F7F4EE;flex:1}
 .bt-pl-m-card{background:#fff;border:1px solid rgba(21,18,15,.07);border-radius:15px;padding:13px 14px;box-shadow:0 10px 26px -18px rgba(21,18,15,.4)}
-.bt-pl-m-top{display:flex;align-items:center;gap:10px}
+.bt-pl-m-top{display:flex;align-items:center;gap:10px;width:100%;background:none;border:none;padding:0;text-align:left;font-family:inherit;color:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .bt-pl-m-badge{display:flex;align-items:center;gap:5px;border-radius:7px;padding:4px 8px;font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700}
 .bt-pl-m-bubs{margin-top:11px;display:flex;flex-direction:column;gap:8px}
+.bt-pl-m-bubbtn{display:block;width:100%;text-align:left;background:none;border:none;padding:0;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent}
 .bt-pl-m-empty{font-size:12.5px;color:#9a948a;font-weight:600;margin-top:8px}
+.bt-pl-m-add{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;margin-top:11px;padding:9px 10px;border:1.5px dashed rgba(21,18,15,.22);border-radius:11px;background:none;color:#6E6A63;font-family:inherit;font-weight:800;font-size:12.5px;cursor:pointer;transition:border-color .14s ease,color .14s ease}
+.bt-pl-m-add:hover{border-color:rgba(21,18,15,.4);color:#15120F}
+.bt-pl-m-add:active{background:rgba(21,18,15,.04)}
 /* ===== COACH DE DÉMARRAGE (0 salarié ou 0 client) : checklist discrète, FERMABLE.
    Esthétique « haut de gamme » : blanc, hairline, filet or, ombre douce — zéro
    rubalise. Desktop = carte flottante bas-droite ; mobile = carte dans la liste. ===== */
@@ -1800,7 +1804,9 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                 const anyReal = chantiers.some(p => realForPlanning(p));
                 return (
                   <div key={worker.id} className="bt-pl-m-card">
-                    <div className="bt-pl-m-top">
+                    {/* Taper le salarié → présence / absence / fiche (même dialogue que le clic
+                        sur le nom côté desktop : setStatusTarget). */}
+                    <button type="button" className="bt-pl-m-top" onClick={() => setStatusTarget({ worker, fromStr: dateStr })} title="Présence, absence ou fiche">
                       <span className="bt-pl-avatar" style={avatarTint(worker.id, !!absence)}>{worker.photo_url ? <img className="bt-pl-avatar-img" src={worker.photo_url} alt="" /> : <>{(worker.first_name?.[0] || '')}{(worker.last_name?.[0] || '')}</>}</span>
                       <span style={{ flex: 1, minWidth: 0 }}><span className="bt-pl-name" style={{ display: 'block' }}>{worker.first_name} {worker.last_name}</span></span>
                       {absence ? (
@@ -1808,20 +1814,34 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                       ) : anyReal ? (
                         <span className="bt-pl-m-badge" style={{ background: '#E4F2E9', color: '#1F7A4D' }}>✓ POINTÉ</span>
                       ) : null}
-                    </div>
-                    {!absence && (chantiers.length > 0 || extra.length > 0) && (
-                      <div className="bt-pl-m-bubs">
-                        {chantiers.map(p => <BubbleContent key={p.id} p={p} palette={paletteFor(p)} real={realForPlanning(p)} docCount={docsByWorksite.get(p.worksite_id || '') || 0} />)}
-                        {extra.map((x, i) => (
-                          <div key={`mx${i}`} className="bt-pl-extra">
-                            <span className="bt-pl-bub-bar" style={{ background: '#B5472E' }} />
-                            <span className="bt-pl-extra-top"><span className="bt-pl-extra-name">{x.name}</span></span>
-                            <span className="bt-pl-extra-by"><UserIcon className="h-2.5 w-2.5 shrink-0" /> {formatMinutes(x.minutes)} · ajouté par le salarié</span>
+                    </button>
+                    {!absence && (
+                      <>
+                        {(chantiers.length > 0 || extra.length > 0) && (
+                          <div className="bt-pl-m-bubs">
+                            {/* Taper une bulle → modifier l'affectation (openEdit, comme desktop). */}
+                            {chantiers.map(p => (
+                              <div key={p.id} className="bt-pl-m-bubbtn" role="button" tabIndex={0} onClick={() => openEdit(p)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEdit(p); } }}>
+                                <BubbleContent p={p} palette={paletteFor(p)} real={realForPlanning(p)} docCount={docsByWorksite.get(p.worksite_id || '') || 0} />
+                              </div>
+                            ))}
+                            {/* Taper une intervention ajoutée par le salarié → attribution / documents. */}
+                            {extra.map((x, i) => (
+                              <button type="button" key={`mx${i}`} className="bt-pl-extra" onClick={() => setExtraTarget({ userId: worker.id, dateStr, worksiteId: x.worksiteId, name: x.name, minutes: x.minutes })}>
+                                <span className="bt-pl-bub-bar" style={{ background: '#B5472E' }} />
+                                <span className="bt-pl-extra-top"><span className="bt-pl-extra-name">{x.name}</span></span>
+                                <span className="bt-pl-extra-by"><UserIcon className="h-2.5 w-2.5 shrink-0" /> {formatMinutes(x.minutes)} · ajouté par le salarié</span>
+                              </button>
+                            ))}
                           </div>
-                        ))}
-                      </div>
+                        )}
+                        {/* Ajouter un chantier à ce salarié pour ce jour (openAdd → même dialogue que
+                            le glisser-déposer côté desktop, sans le drag). */}
+                        <button type="button" className="bt-pl-m-add" onClick={() => openAdd(worker.id, dateStr)}>
+                          <Plus className="h-3.5 w-3.5" /> Ajouter un chantier
+                        </button>
+                      </>
                     )}
-                    {!absence && chantiers.length === 0 && extra.length === 0 && <div className="bt-pl-m-empty">Rien de prévu ce jour.</div>}
                   </div>
                 );
               })}
@@ -2260,18 +2280,18 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
             <DialogTitle className="flex items-center gap-2"><Building2 className="h-4 w-4" /> Fiche client</DialogTitle>
           </DialogHeader>
           {clientFiche && (
-            <div className="space-y-3 pt-1">
-              <div className="space-y-2"><Label>Nom du client</Label><Input value={wsName} onChange={(e) => setWsName(e.target.value)} /></div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <div className="space-y-2"><Label>Type de produit</Label><Input value={wsProduct} onChange={(e) => setWsProduct(e.target.value)} /></div>
-                <div className="space-y-2"><Label>Téléphone</Label><Input type="tel" value={wsPhone} onChange={(e) => setWsPhone(e.target.value)} /></div>
-                <div className="space-y-2"><Label>Email</Label><Input type="email" value={wsEmail} onChange={(e) => setWsEmail(e.target.value)} /></div>
+            <div className="space-y-2 pt-1">
+              <div className="space-y-1"><Label>Nom du client</Label><Input value={wsName} onChange={(e) => setWsName(e.target.value)} /></div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1"><Label>Type de produit</Label><Input value={wsProduct} onChange={(e) => setWsProduct(e.target.value)} /></div>
+                <div className="space-y-1"><Label>Téléphone</Label><Input type="tel" value={wsPhone} onChange={(e) => setWsPhone(e.target.value)} /></div>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <div className="space-y-2"><Label>Ville</Label><Input value={wsCity} onChange={(e) => setWsCity(e.target.value)} /></div>
-                <div className="space-y-2"><Label>Adresse</Label><Input value={wsAddress} onChange={(e) => setWsAddress(e.target.value)} /></div>
+              <div className="space-y-1"><Label>Email</Label><Input type="email" value={wsEmail} onChange={(e) => setWsEmail(e.target.value)} /></div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1"><Label>Ville</Label><Input value={wsCity} onChange={(e) => setWsCity(e.target.value)} /></div>
+                <div className="space-y-1"><Label>Adresse</Label><Input value={wsAddress} onChange={(e) => setWsAddress(e.target.value)} /></div>
               </div>
-              <div className="space-y-2"><Label>Description</Label><Textarea value={wsDesc} onChange={(e) => setWsDesc(e.target.value)} rows={2} /></div>
+              <div className="space-y-1"><Label>Description</Label><Textarea value={wsDesc} onChange={(e) => setWsDesc(e.target.value)} rows={2} /></div>
               <div className="flex flex-wrap gap-2 pt-1">
                 <Button onClick={saveClientFiche} disabled={savingWs}>
                   {savingWs && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer
