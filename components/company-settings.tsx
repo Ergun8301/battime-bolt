@@ -46,6 +46,10 @@ const SET_CSS = `
 .bt-set-sub{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:#FBF8F2;border:1px solid rgba(21,18,15,.1);border-radius:12px;padding:12px 14px;margin-top:4px}
 .bt-set-subtxt{min-width:0}
 .bt-set-substate{font-size:13px;color:#56514a;font-weight:600;margin:3px 0 0}
+@media(max-width:640px){
+  .bt-set-grid2{grid-template-columns:1fr}
+  .bt-set-grid-cpv{grid-template-columns:1fr}
+}
 `;
 
 export default function CompanySettings({ open, onOpenChange, onSaved }: Props) {

@@ -16,7 +16,7 @@ import { Textarea } from '@/components/ui/textarea';
 import {
   ChevronLeft, ChevronRight, Plus, Trash2, Loader2,
   UserPlus, Users, Building2, Archive, CalendarRange, Download, FileSpreadsheet, FileText,
-  Bell, Clock, Mail, RefreshCw, X, Pencil, LogOut, Settings, User as UserIcon, Paperclip, AlertTriangle, Info, Hammer, CheckCircle2,
+  Bell, Clock, Mail, RefreshCw, X, Pencil, LogOut, Settings, User as UserIcon, Paperclip, AlertTriangle, Info, Hammer, CheckCircle2, Menu,
 } from 'lucide-react';
 import {
   DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
@@ -33,6 +33,7 @@ import WorkerDetailDialog from '@/components/worker-detail';
 import ChantierDocuments from '@/components/chantier-documents';
 import { TimeCylinder } from '@/components/time-cylinder';
 import CompanySettings from '@/components/company-settings';
+import AdminMobileMenu from '@/components/admin-mobile-menu';
 
 // ─── helpers / constants ──────────────────────────────────────────────────────
 
@@ -567,6 +568,8 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const [paletteWorksiteId, setPaletteWorksiteId] = useState<string>('');
   const [chantierMenuOpen, setChantierMenuOpen] = useState(false); // dropdown « + Chantier »
   const [accountMenuOpen, setAccountMenuOpen] = useState(false); // menu compte (entreprise → Déconnexion)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false); // menu hamburger mobile (Sheet)
+  const [mobileChantiersOpen, setMobileChantiersOpen] = useState(false); // liste « Chantiers » mobile (équivalent du dropdown Clients desktop)
   const [activeDrag, setActiveDrag] = useState<{ id: string; type: 'move' | 'new'; worksiteId?: string } | null>(null);
 
   // disponibilité popup + worker fiche + management screens
@@ -1738,6 +1741,9 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                 {trial?.inTrial && trial.expired && (
                   <div className="bt-pl-trial expired"><span className="d" /> <button className="cta" onClick={onSubscribe}>S&apos;abonner</button></div>
                 )}
+                <button className="bt-pl-m-ibtn" aria-label="Menu" title="Menu" onClick={() => setMobileMenuOpen(true)}>
+                  <Menu className="h-4 w-4" />
+                </button>
               </div>
               <div className="bt-pl-m-headrow">
                 <div>
@@ -1875,6 +1881,23 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
 
       <CompanySettings open={settingsOpen} onOpenChange={setSettingsOpen} onSaved={fetchData} />
 
+      <AdminMobileMenu
+        open={mobileMenuOpen}
+        onOpenChange={setMobileMenuOpen}
+        user={user}
+        companyLabel={companyLabel}
+        companyLogo={companyLogo}
+        companyInitials={companyInitials}
+        trial={trial}
+        onSubscribe={onSubscribe}
+        onOpenSalaries={() => setSalariesOpen(true)}
+        onOpenChantiers={() => { setClientsQuery(''); setMobileChantiersOpen(true); }}
+        onOpenExportTeam={() => setExportOpen(true)}
+        onOpenExportWorker={() => setExportWorkerOpen(true)}
+        onOpenSettings={() => setSettingsOpen(true)}
+        onSignOut={signOut}
+      />
+
       {/* Salariés — administrative management */}
       <Dialog open={salariesOpen} onOpenChange={setSalariesOpen}>
         <DialogContent className="bt-skin max-w-md max-h-[80vh] overflow-y-auto">
@@ -1905,6 +1928,45 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                       )}
                       <Pencil className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                     </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Chantiers — mobile equivalent of the desktop "Clients" dropdown (list +
+          search + edit fiche + create). Same data/functions as desktop, no drag
+          (placement on the grid is a desktop-only, mouse-drag interaction). */}
+      <Dialog open={mobileChantiersOpen} onOpenChange={setMobileChantiersOpen}>
+        <DialogContent className="bt-skin max-w-md max-h-[80vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>Chantiers</DialogTitle></DialogHeader>
+          <div className="pt-1">
+            <Button size="sm" className="mb-2 w-full font-bold" onClick={() => { setMobileChantiersOpen(false); setClientOpen(true); }}>
+              <Building2 className="h-4 w-4 mr-1.5" /> Nouveau client
+            </Button>
+            <Input placeholder="Rechercher un client…" value={clientsQuery} onChange={(e) => setClientsQuery(e.target.value)} className="mb-2" />
+            <div className="space-y-1">
+              {worksites.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-6 text-center">Aucun chantier pour le moment — cliquez sur « Nouveau client » ci-dessus.</p>
+              ) : filteredClients.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-6 text-center">Aucun résultat</p>
+              ) : (
+                filteredClients.map((ws) => {
+                  const sub = [ws.product_type, ws.city].filter(Boolean).join(' · ');
+                  return (
+                    <button
+                      key={ws.id}
+                      className="flex w-full items-center gap-2 rounded-md border px-3 py-2 text-sm text-left"
+                      onClick={() => { setMobileChantiersOpen(false); openClientFiche(ws); }}
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="font-medium truncate block">{ws.client_name}</span>
+                        {sub && <span className="text-xs text-muted-foreground truncate block">{sub}</span>}
+                      </span>
+                      <Pencil className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    </button>
                   );
                 })
               )}
@@ -2200,12 +2262,12 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
           {clientFiche && (
             <div className="space-y-3 pt-1">
               <div className="space-y-2"><Label>Nom du client</Label><Input value={wsName} onChange={(e) => setWsName(e.target.value)} /></div>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div className="space-y-2"><Label>Type de produit</Label><Input value={wsProduct} onChange={(e) => setWsProduct(e.target.value)} /></div>
                 <div className="space-y-2"><Label>Téléphone</Label><Input type="tel" value={wsPhone} onChange={(e) => setWsPhone(e.target.value)} /></div>
                 <div className="space-y-2"><Label>Email</Label><Input type="email" value={wsEmail} onChange={(e) => setWsEmail(e.target.value)} /></div>
               </div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div className="space-y-2"><Label>Ville</Label><Input value={wsCity} onChange={(e) => setWsCity(e.target.value)} /></div>
                 <div className="space-y-2"><Label>Adresse</Label><Input value={wsAddress} onChange={(e) => setWsAddress(e.target.value)} /></div>
               </div>
@@ -2241,12 +2303,12 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
           <DialogHeader><DialogTitle>Nouveau client / chantier</DialogTitle></DialogHeader>
           <form onSubmit={createClient} className="space-y-3 pt-2">
             <div className="space-y-2"><Label>Nom du client *</Label><Input value={cName} onChange={(e) => setCName(e.target.value)} required disabled={cSaving} /></div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-2"><Label>Type de produit</Label><Input placeholder="Stores, volets…" value={cProduct} onChange={(e) => setCProduct(e.target.value)} disabled={cSaving} /></div>
               <div className="space-y-2"><Label>Téléphone</Label><Input type="tel" value={cPhone} onChange={(e) => setCPhone(e.target.value)} disabled={cSaving} /></div>
             </div>
             <div className="space-y-2"><Label>Email</Label><Input type="email" value={cEmail} onChange={(e) => setCEmail(e.target.value)} disabled={cSaving} /></div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-2"><Label>Ville</Label><Input value={cCity} onChange={(e) => setCCity(e.target.value)} disabled={cSaving} /></div>
               <div className="space-y-2"><Label>Adresse</Label><Input value={cAddress} onChange={(e) => setCAddress(e.target.value)} disabled={cSaving} /></div>
             </div>
@@ -2263,7 +2325,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         <DialogContent className="bt-skin max-w-md">
           <DialogHeader><DialogTitle>Nouveau salarié</DialogTitle></DialogHeader>
           <form onSubmit={createWorker} className="space-y-4 pt-2">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-2"><Label>Prénom *</Label><Input value={wFirst} onChange={(e) => setWFirst(e.target.value)} required disabled={wSaving} /></div>
               <div className="space-y-2"><Label>Nom *</Label><Input value={wLast} onChange={(e) => setWLast(e.target.value)} required disabled={wSaving} /></div>
             </div>
