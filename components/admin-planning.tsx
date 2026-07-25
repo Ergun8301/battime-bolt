@@ -36,6 +36,7 @@ import CompanySettings from '@/components/company-settings';
 import AdminMobileMenu from '@/components/admin-mobile-menu';
 import ImportDialog from '@/components/import-dialog';
 import CostReport from '@/components/cost-report';
+import ImportWorkersDialog from '@/components/import-workers-dialog';
 
 // ─── helpers / constants ──────────────────────────────────────────────────────
 
@@ -578,6 +579,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const [mobileChantiersOpen, setMobileChantiersOpen] = useState(false); // liste « Chantiers » mobile (équivalent du dropdown Clients desktop)
   const [importOpen, setImportOpen] = useState(false); // import CSV/Excel de clients/chantiers
   const [costOpen, setCostOpen] = useState(false); // rapport coût & heures par chantier
+  const [importWorkersOpen, setImportWorkersOpen] = useState(false); // import CSV/Excel de salariés (invitations en masse)
   const [activeDrag, setActiveDrag] = useState<{ id: string; type: 'move' | 'new'; worksiteId?: string } | null>(null);
 
   // disponibilité popup + worker fiche + management screens
@@ -1935,6 +1937,9 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
             <Button size="sm" className="mb-2 w-full font-bold" onClick={() => { setSalariesOpen(false); setWorkerOpen(true); }}>
               <UserPlus className="h-4 w-4 mr-1.5" /> Nouveau salarié
             </Button>
+            <Button size="sm" variant="outline" className="mb-2 w-full font-bold" onClick={() => { setSalariesOpen(false); setImportWorkersOpen(true); }}>
+              <FileSpreadsheet className="h-4 w-4 mr-1.5" /> Importer (CSV/Excel)
+            </Button>
             <Input placeholder="Rechercher un salarié…" value={salariesQuery} onChange={(e) => setSalariesQuery(e.target.value)} className="mb-2" />
             <div className="space-y-1">
               {workers.length === 0 ? (
@@ -1974,6 +1979,13 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       />
 
       <CostReport open={costOpen} onOpenChange={setCostOpen} companyId={user?.company_id} />
+
+      <ImportWorkersDialog
+        open={importWorkersOpen}
+        onOpenChange={setImportWorkersOpen}
+        existingEmails={[...workers.map((w) => w.email), ...invitations.map((i) => i.email)]}
+        onImported={() => { fetchData(); fetchExtras(); }}
+      />
 
       {/* Chantiers — mobile equivalent of the desktop "Clients" dropdown (list +
           search + edit fiche + create). Same data/functions as desktop, no drag
