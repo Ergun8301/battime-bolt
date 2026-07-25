@@ -98,6 +98,21 @@ export interface TimeEntry {
   modified_at?: string | null;
 }
 
+export type CertificationType = 'caces' | 'carte_btp' | 'habilitation_electrique' | 'visite_medicale' | 'travail_hauteur' | 'autre';
+
+export interface Certification {
+  id: string;
+  company_id: string;
+  user_id: string;
+  type: CertificationType;
+  label?: string | null;
+  expiry_date: string;
+  alert_30_sent_at?: string | null;
+  alert_7_sent_at?: string | null;
+  created_at: string;
+  created_by?: string | null;
+}
+
 export interface Invitation {
   id: string;
   company_id: string;
