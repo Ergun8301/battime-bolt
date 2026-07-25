@@ -65,6 +65,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
   const [mNir, setMNir] = useState('');
   const [mHireDate, setMHireDate] = useState('');
   const [mContract, setMContract] = useState('');
+  const [mRate, setMRate] = useState('');
   const [mSaving, setMSaving] = useState(false);
   const [mBusy, setMBusy] = useState(false);
 
@@ -79,6 +80,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
     setMNir(worker.social_security_number || '');
     setMHireDate(worker.hire_date || '');
     setMContract(worker.contract_type || '');
+    setMRate(worker.hourly_rate != null ? String(worker.hourly_rate) : '');
   }, [worker?.id]);
 
   useEffect(() => {
@@ -212,6 +214,8 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
   const saveWorker = async () => {
     if (!worker) return;
     if (!mFirst.trim() || !mLast.trim()) { toast.error('Prénom et nom requis'); return; }
+    const rate = mRate.trim() ? Number(mRate.trim().replace(',', '.')) : null;
+    if (rate != null && (isNaN(rate) || rate < 0)) { toast.error('Taux horaire invalide'); return; }
     setMSaving(true);
     try {
       const { error } = await supabase.from('users').update({
@@ -219,6 +223,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
         social_security_number: mNir.trim() || null,
         hire_date: mHireDate || null,
         contract_type: mContract.trim() || null,
+        hourly_rate: rate,
       }).eq('id', worker.id).eq('company_id', worker.company_id);
       if (error) throw error;
       toast.success('Salarié modifié');
@@ -300,6 +305,11 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
             {/* Optional payroll info — clearly facultatif */}
             <div className="rounded-md border bg-muted/30 p-2 space-y-2">
               <p className="text-xs font-medium text-muted-foreground">Infos paie — <span className="italic">facultatif</span> (remplis seulement ce que tu as)</p>
+              <div className="space-y-1">
+                <Label className="text-xs">Taux horaire — coût chargé (€/h)</Label>
+                <Input type="text" inputMode="decimal" value={mRate} onChange={(e) => setMRate(e.target.value)} placeholder="ex. 28,50" />
+                <p className="text-[11px] text-muted-foreground">Sert au calcul du <strong>coût main d&apos;œuvre par chantier</strong>. Laissez vide si vous ne l&apos;utilisez pas.</p>
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div className="space-y-1"><Label className="text-xs">N° de sécurité sociale</Label><Input value={mNir} onChange={(e) => setMNir(e.target.value)} placeholder="1 23 45…" /></div>
                 <div className="space-y-1"><Label className="text-xs">Date d'embauche</Label><Input type="date" value={mHireDate} onChange={(e) => setMHireDate(e.target.value)} /></div>
