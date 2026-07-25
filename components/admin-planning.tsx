@@ -34,6 +34,7 @@ import ChantierDocuments from '@/components/chantier-documents';
 import { TimeCylinder } from '@/components/time-cylinder';
 import CompanySettings from '@/components/company-settings';
 import AdminMobileMenu from '@/components/admin-mobile-menu';
+import ImportDialog from '@/components/import-dialog';
 
 // ─── helpers / constants ──────────────────────────────────────────────────────
 
@@ -574,6 +575,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const [accountMenuOpen, setAccountMenuOpen] = useState(false); // menu compte (entreprise → Déconnexion)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false); // menu hamburger mobile (Sheet)
   const [mobileChantiersOpen, setMobileChantiersOpen] = useState(false); // liste « Chantiers » mobile (équivalent du dropdown Clients desktop)
+  const [importOpen, setImportOpen] = useState(false); // import CSV/Excel de clients/chantiers
   const [activeDrag, setActiveDrag] = useState<{ id: string; type: 'move' | 'new'; worksiteId?: string } | null>(null);
 
   // disponibilité popup + worker fiche + management screens
@@ -1516,6 +1518,9 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                   <button className="bt-pl-ddcreate" onClick={() => { setChantierMenuOpen(false); setClientOpen(true); }}>
                     <span className="bt-pl-ddcreate-ico">＋</span> Nouveau client
                   </button>
+                  <button className="bt-pl-ddcreate" onClick={() => { setChantierMenuOpen(false); setImportOpen(true); }}>
+                    <span className="bt-pl-ddcreate-ico"><FileSpreadsheet className="h-3.5 w-3.5" /></span> Importer (CSV/Excel)
+                  </button>
                 </div>
               </>
             )}
@@ -1956,6 +1961,14 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         </DialogContent>
       </Dialog>
 
+      <ImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        companyId={user?.company_id}
+        existingNames={worksites.map((w) => w.client_name)}
+        onImported={fetchData}
+      />
+
       {/* Chantiers — mobile equivalent of the desktop "Clients" dropdown (list +
           search + edit fiche + create). Same data/functions as desktop, no drag
           (placement on the grid is a desktop-only, mouse-drag interaction). */}
@@ -1965,6 +1978,9 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
           <div className="pt-1">
             <Button size="sm" className="mb-2 w-full font-bold" onClick={() => { setMobileChantiersOpen(false); setClientOpen(true); }}>
               <Building2 className="h-4 w-4 mr-1.5" /> Nouveau client
+            </Button>
+            <Button size="sm" variant="outline" className="mb-2 w-full font-bold" onClick={() => { setMobileChantiersOpen(false); setImportOpen(true); }}>
+              <FileSpreadsheet className="h-4 w-4 mr-1.5" /> Importer (CSV/Excel)
             </Button>
             <Input placeholder="Rechercher un client…" value={clientsQuery} onChange={(e) => setClientsQuery(e.target.value)} className="mb-2" />
             <div className="space-y-1">
