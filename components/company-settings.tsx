@@ -9,7 +9,8 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Loader2, Upload, Trash2, Building2, CreditCard } from 'lucide-react';
+import { Loader2, Upload, Trash2, Building2, CreditCard, Mail, ShieldCheck } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface Props { open: boolean; onOpenChange: (o: boolean) => void; onSaved?: () => void; }
 
@@ -61,6 +62,8 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
   const [f, setF] = useState<Form>(EMPTY);
   const [subStatus, setSubStatus] = useState<string | null>(null);
   const [portalBusy, setPortalBusy] = useState(false);
+  const [digestBusy, setDigestBusy] = useState(false);
+  const [certBusy, setCertBusy] = useState(false);
 
   useEffect(() => {
     if (!open || !user?.company_id) return;
@@ -117,6 +120,47 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
     } catch (e) {
       setErr((e as Error)?.message || 'Réessayez dans un instant.');
       setPortalBusy(false);
+    }
+  };
+
+  // Extrait le message d'erreur réel renvoyé par la fonction edge (le body JSON
+  // {error:"..."} n'est pas exposé automatiquement par le client functions.invoke).
+  const extractError = async (e: unknown, fallback: string): Promise<string> => {
+    const err = e as { context?: Response; message?: string };
+    if (err?.context && typeof err.context.json === 'function') {
+      try { const body = await err.context.json(); if (body?.error) return String(body.error); } catch { /* body illisible */ }
+    }
+    return err?.message || fallback;
+  };
+
+  const sendDigestNow = async () => {
+    setDigestBusy(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('weekly-digest', { body: {} });
+      if (error) throw error;
+      const result = (data as { result?: { sent?: number; skipped?: string } } | null)?.result;
+      if (result?.skipped === 'no_admin') toast.error('Aucun admin actif pour recevoir le récap.');
+      else if (result?.skipped === 'no_worker') toast.error('Aucun salarié actif — rien à récapituler.');
+      else toast.success(`Récap envoyé (${result?.sent ?? 0} destinataire${(result?.sent ?? 0) > 1 ? 's' : ''}).`);
+    } catch (e) {
+      toast.error(await extractError(e, "Échec de l'envoi du récap."));
+    } finally {
+      setDigestBusy(false);
+    }
+  };
+
+  const checkCertsNow = async () => {
+    setCertBusy(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('cert-expiry-alerts', { body: {} });
+      if (error) throw error;
+      const result = (data as { result?: { sent?: number; skipped?: string; urgent?: number; upcoming?: number } } | null)?.result;
+      if (result?.skipped) toast.success('Rien à signaler pour le moment.');
+      else toast.success(`Alerte envoyée (${result?.urgent ?? 0} urgente${(result?.urgent ?? 0) > 1 ? 's' : ''}, ${result?.upcoming ?? 0} à anticiper).`);
+    } catch (e) {
+      toast.error(await extractError(e, 'Échec de la vérification.'));
+    } finally {
+      setCertBusy(false);
     }
   };
 
@@ -228,6 +272,24 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
                   {portalBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />} Gérer mon abonnement
                 </button>
               )}
+            </div>
+
+            {/* Notifications email — déclenchement manuel des mêmes fonctions que
+                les crons (récap hebdo du vendredi, alertes habilitations). Utile
+                pour tester sans attendre l'horaire planifié. */}
+            <div className="bt-set-sub">
+              <div className="bt-set-subtxt">
+                <label className="bt-set-l">Notifications par email</label>
+                <p className="bt-set-substate">Récap hebdo (vendredi) et alertes d&apos;habilitations (30 j / 7 j) — envoi automatique, ou à la demande ci-dessous.</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" className="bt-set-btn" onClick={sendDigestNow} disabled={digestBusy}>
+                  {digestBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />} Envoyer le récap maintenant
+                </button>
+                <button type="button" className="bt-set-btn" onClick={checkCertsNow} disabled={certBusy}>
+                  {certBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />} Vérifier les habilitations
+                </button>
+              </div>
             </div>
 
             {err && <div className="bt-set-err">{err}</div>}
