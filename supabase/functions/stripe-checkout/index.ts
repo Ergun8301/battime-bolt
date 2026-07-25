@@ -55,6 +55,10 @@ Deno.serve(async (req) => {
       customer: customerId,
       line_items: [{ price: priceId, quantity: 1 }],
       allow_promotion_codes: true,
+      // Case obligatoire « J'accepte les conditions générales » avec lien cliquable
+      // vers les CGV (l'URL est configurée côté Dashboard Stripe → Public details).
+      // Stripe enregistre l'acceptation sur la session.
+      consent_collection: { terms_of_service: 'required' },
       success_url: `${origin}/admin?subscribed=1`,
       cancel_url: `${origin}/admin`,
       metadata: { company_id: company.id },
