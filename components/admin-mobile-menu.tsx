@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { User } from '@/lib/types';
 import {
-  Users, Building2, Download, ChevronDown, FileSpreadsheet, FileText, Settings, LogOut,
+  Users, Building2, Download, ChevronDown, FileSpreadsheet, FileText, Settings, LogOut, TrendingUp,
 } from 'lucide-react';
 
 // Menu hamburger mobile de l'admin : identité + statut d'abonnement + les mêmes
@@ -55,6 +55,7 @@ interface AdminMobileMenuProps {
   onSubscribe?: () => void;
   onOpenSalaries: () => void;
   onOpenChantiers: () => void;
+  onOpenCost: () => void;
   onOpenExportTeam: () => void;
   onOpenExportWorker: () => void;
   onOpenSettings: () => void;
@@ -64,7 +65,7 @@ interface AdminMobileMenuProps {
 export default function AdminMobileMenu({
   open, onOpenChange, user, companyLabel, companyLogo, companyInitials,
   trial, onSubscribe,
-  onOpenSalaries, onOpenChantiers, onOpenExportTeam, onOpenExportWorker, onOpenSettings, onSignOut,
+  onOpenSalaries, onOpenChantiers, onOpenCost, onOpenExportTeam, onOpenExportWorker, onOpenSettings, onSignOut,
 }: AdminMobileMenuProps) {
   const [exportExpanded, setExportExpanded] = useState(false);
 
@@ -109,6 +110,11 @@ export default function AdminMobileMenu({
           <button className="bt-mm-item" onClick={() => go(onOpenChantiers)}>
             <span className="bt-mm-icon"><Building2 className="h-4 w-4" /></span>
             <span className="bt-mm-label">Chantiers</span>
+          </button>
+
+          <button className="bt-mm-item" onClick={() => go(onOpenCost)}>
+            <span className="bt-mm-icon"><TrendingUp className="h-4 w-4" /></span>
+            <span className="bt-mm-label">Coût chantiers</span>
           </button>
 
           <button className="bt-mm-item" onClick={() => setExportExpanded((v) => !v)}>

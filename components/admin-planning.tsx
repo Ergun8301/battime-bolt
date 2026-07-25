@@ -16,7 +16,7 @@ import { Textarea } from '@/components/ui/textarea';
 import {
   ChevronLeft, ChevronRight, Plus, Trash2, Loader2,
   UserPlus, Users, Building2, Archive, CalendarRange, Download, FileSpreadsheet, FileText,
-  Bell, Clock, Mail, RefreshCw, X, Pencil, LogOut, Settings, User as UserIcon, Paperclip, AlertTriangle, Info, Hammer, CheckCircle2, Menu,
+  Bell, Clock, Mail, RefreshCw, X, Pencil, LogOut, Settings, User as UserIcon, Paperclip, AlertTriangle, Info, Hammer, CheckCircle2, Menu, TrendingUp,
 } from 'lucide-react';
 import {
   DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
@@ -34,6 +34,7 @@ import ChantierDocuments from '@/components/chantier-documents';
 import { TimeCylinder } from '@/components/time-cylinder';
 import CompanySettings from '@/components/company-settings';
 import AdminMobileMenu from '@/components/admin-mobile-menu';
+import CostReport from '@/components/cost-report';
 
 // ─── helpers / constants ──────────────────────────────────────────────────────
 
@@ -574,6 +575,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const [accountMenuOpen, setAccountMenuOpen] = useState(false); // menu compte (entreprise → Déconnexion)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false); // menu hamburger mobile (Sheet)
   const [mobileChantiersOpen, setMobileChantiersOpen] = useState(false); // liste « Chantiers » mobile (équivalent du dropdown Clients desktop)
+  const [costOpen, setCostOpen] = useState(false); // rapport coût & heures par chantier
   const [activeDrag, setActiveDrag] = useState<{ id: string; type: 'move' | 'new'; worksiteId?: string } | null>(null);
 
   // disponibilité popup + worker fiche + management screens
@@ -1535,6 +1537,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
             <button className="bt-pl-datearr" aria-label="Semaine suivante" onClick={() => setCurrentWeekStart(addWeeks(currentWeekStart, 1))}>›</button>
           </div>
           <div className="bt-pl-group">
+          <button className="bt-pl-out" onClick={() => setCostOpen(true)}><TrendingUp className="h-4 w-4" /> Coût chantiers</button>
           <div className="bt-pl-ddwrap">
             <button className="bt-pl-fill" onClick={() => setExportMenuOpen((o) => !o)}><Download className="h-4 w-4" /> Exporter ▾</button>
             {exportMenuOpen && (
@@ -1915,6 +1918,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         onOpenExportTeam={() => setExportOpen(true)}
         onOpenExportWorker={() => setExportWorkerOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
+        onOpenCost={() => setCostOpen(true)}
         onSignOut={signOut}
       />
 
@@ -1959,6 +1963,8 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       {/* Chantiers — mobile equivalent of the desktop "Clients" dropdown (list +
           search + edit fiche + create). Same data/functions as desktop, no drag
           (placement on the grid is a desktop-only, mouse-drag interaction). */}
+      <CostReport open={costOpen} onOpenChange={setCostOpen} companyId={user?.company_id} />
+
       <Dialog open={mobileChantiersOpen} onOpenChange={setMobileChantiersOpen}>
         <DialogContent className="bt-skin max-w-md max-h-[80vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Chantiers</DialogTitle></DialogHeader>

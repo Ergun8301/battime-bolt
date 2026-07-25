@@ -34,6 +34,7 @@ export interface User {
   social_security_number?: string | null;
   hire_date?: string | null;
   contract_type?: string | null;
+  hourly_rate?: number | null; // taux horaire (coût chargé) pour le coût par chantier
 }
 
 export interface Worksite {
