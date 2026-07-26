@@ -263,7 +263,9 @@ export default function ChantierDocuments({ worksiteId, worksiteName, open, onOp
                   </a>
                   <div className="bt-doc-meta">
                     <a className="bt-doc-name" href={url} target="_blank" rel="noopener noreferrer">{d.label || d.file_name || 'Document'}</a>
-                    <div className="bt-doc-sub">{who ? `${who} · ` : ''}{new Date(d.created_at).toLocaleDateString('fr-FR')}</div>
+                    {/* Date + HEURE (horodatage serveur) : sur un chantier, savoir qu'une
+                        photo a été prise à 8h12 ou à 17h45 change tout pour une réserve. */}
+                    <div className="bt-doc-sub">{who ? `${who} · ` : ''}{new Date(d.created_at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
                   </div>
                   {url && (
                     <a className="bt-doc-act" href={url} target="_blank" rel="noopener noreferrer" title="Ouvrir / télécharger"><Download className="h-4 w-4" /></a>

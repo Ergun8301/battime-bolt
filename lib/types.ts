@@ -98,6 +98,24 @@ export interface TimeEntry {
   modified_at?: string | null;
 }
 
+export type LeaveType = 'conge' | 'maladie' | 'intemperie';
+export type LeaveStatus = 'pending' | 'approved' | 'rejected';
+
+export interface LeaveRequest {
+  id: string;
+  company_id: string;
+  user_id: string;
+  type: LeaveType;
+  start_date: string;
+  end_date: string;
+  note?: string | null;
+  status: LeaveStatus;
+  decided_at?: string | null;
+  decided_by?: string | null;
+  decision_note?: string | null;
+  created_at: string;
+}
+
 export type CertificationType = 'caces' | 'carte_btp' | 'habilitation_electrique' | 'visite_medicale' | 'travail_hauteur' | 'autre';
 
 export interface Certification {

@@ -16,7 +16,7 @@ import { Textarea } from '@/components/ui/textarea';
 import {
   ChevronLeft, ChevronRight, Plus, Trash2, Loader2,
   UserPlus, Users, Building2, Archive, CalendarRange, Download, FileSpreadsheet, FileText,
-  Bell, Clock, Mail, RefreshCw, X, Pencil, LogOut, Settings, User as UserIcon, Paperclip, AlertTriangle, Info, Hammer, CheckCircle2, Menu, TrendingUp,
+  Bell, Clock, Mail, RefreshCw, X, Pencil, LogOut, Settings, User as UserIcon, Paperclip, AlertTriangle, Info, Hammer, CheckCircle2, Menu, TrendingUp, Palmtree,
 } from 'lucide-react';
 import {
   DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
@@ -36,6 +36,7 @@ import CompanySettings from '@/components/company-settings';
 import AdminMobileMenu from '@/components/admin-mobile-menu';
 import ImportDialog from '@/components/import-dialog';
 import CostReport from '@/components/cost-report';
+import LeaveAdminDialog from '@/components/leave-admin-dialog';
 
 // ─── helpers / constants ──────────────────────────────────────────────────────
 
@@ -330,6 +331,7 @@ const PL_CSS = `
 .bt-pl-segdiv{width:1.5px;height:18px;background:#15120F;border-radius:2px;flex:none}
 .bt-pl-segbtn{font-family:inherit;font-weight:700;font-size:13px;border:none;background:transparent;color:#3D382F;padding:7px 11px;border-radius:9px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:background .14s ease,color .14s ease}
 .bt-pl-segbtn:hover{color:#15120F;background:rgba(21,18,15,.06)}
+.bt-pl-badge{min-width:17px;height:17px;padding:0 5px;border-radius:99px;background:#B5472E;color:#fff;font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;line-height:1}
 .bt-pl-out{background:transparent;border:1.5px solid rgba(21,18,15,.3);color:#15120F;border-radius:10px;padding:7px 13px;height:33px;font-size:12.5px;font-weight:800;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;transition:border-color .14s ease,background .14s ease,transform .08s ease}
 .bt-pl-out:hover{border-color:#15120F;background:rgba(21,18,15,.04)}
 .bt-pl-out:active{transform:translateY(1px)}
@@ -578,6 +580,8 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const [mobileChantiersOpen, setMobileChantiersOpen] = useState(false); // liste « Chantiers » mobile (équivalent du dropdown Clients desktop)
   const [importOpen, setImportOpen] = useState(false); // import CSV/Excel de clients/chantiers
   const [costOpen, setCostOpen] = useState(false); // rapport coût & heures par chantier
+  const [leaveOpen, setLeaveOpen] = useState(false); // demandes de congé des salariés
+  const [pendingLeaves, setPendingLeaves] = useState(0); // compteur pour la pastille
   const [activeDrag, setActiveDrag] = useState<{ id: string; type: 'move' | 'new'; worksiteId?: string } | null>(null);
 
   // disponibilité popup + worker fiche + management screens
@@ -605,6 +609,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
 
   // invitation row actions
   const [resendingId, setResendingId] = useState<string | null>(null);
+  const [remindingId, setRemindingId] = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
 
   // cell add dialog (a client on a specific day)
@@ -783,13 +788,15 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const fetchExtras = useCallback(async () => {
     if (!user?.company_id) return;
     const windowStart = format(subDays(new Date(), WINDOW_DAYS), 'yyyy-MM-dd');
-    const [planRes, entRes, compRes, invRes, docRes] = await Promise.all([
+    const [planRes, entRes, compRes, invRes, docRes, leaveRes] = await Promise.all([
       supabase.from('planning').select('user_id, work_date, absence_type').eq('company_id', user.company_id).gte('work_date', windowStart),
       supabase.from('time_entries').select('user_id, work_date').eq('company_id', user.company_id).neq('status', 'draft').gte('work_date', windowStart),
       supabase.from('companies').select('name, logo_url').eq('id', user.company_id).maybeSingle(),
       supabase.from('invitations').select('*').eq('company_id', user.company_id).is('accepted_at', null).gt('expires_at', new Date().toISOString()).order('created_at', { ascending: false }),
       supabase.from('documents').select('worksite_id').eq('company_id', user.company_id),
+      supabase.from('leave_requests').select('id', { count: 'exact', head: true }).eq('company_id', user.company_id).eq('status', 'pending'),
     ]);
+    setPendingLeaves(leaveRes.count || 0);
 
     // Pastille 📎 : nombre de documents par chantier.
     const docCounts = new Map<string, number>();
@@ -1108,19 +1115,45 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     }
   };
 
-  const sendReminder = (worker: User) => {
+  // Rappel « heures manquantes » : vraie notification push sur le téléphone du
+  // salarié (avant, ça n'ouvrait qu'un brouillon mailto sur le poste de l'admin —
+  // rien n'était réellement envoyé si l'admin ne cliquait pas « Envoyer »).
+  // Repli mailto conservé si le salarié n'a activé le push sur aucun appareil.
+  const sendReminder = async (worker: User) => {
     const missing = missingByWorker.get(worker.id) || [];
-    if (!worker.email) { toast.error(`Pas d'email pour ${worker.first_name}`); return; }
     const jours = missing.map((d) => format(parseISO(d), 'EEEE d MMMM', { locale: fr })).join(', ');
-    const subject = encodeURIComponent('Rappel : pense à envoyer tes heures');
-    const body = encodeURIComponent(
-      `Bonjour ${worker.first_name},\n\n`
-      + `Il manque l'envoi de tes heures pour : ${jours || 'des journées planifiées'}.\n`
-      + `Merci de les saisir et de les envoyer dès que possible depuis l'application BEMEXO.\n\n`
-      + `— ${companyName || "L'équipe"}`,
-    );
-    window.location.href = `mailto:${worker.email}?subject=${subject}&body=${body}`;
-    toast.success(`Rappel préparé pour ${worker.first_name}`);
+    setRemindingId(worker.id);
+    try {
+      const { data, error } = await supabase.functions.invoke('send-push', {
+        body: {
+          user_ids: [worker.id],
+          title: 'Pense à envoyer tes heures',
+          body: jours ? `Il manque : ${jours}.` : 'Il manque des journées planifiées.',
+          url: '/poseur',
+          tag: 'rappel-heures',
+        },
+      });
+      if (error) throw error;
+      const sent = (data as { sent?: number } | null)?.sent || 0;
+      if (sent > 0) { toast.success(`Rappel envoyé à ${worker.first_name}`); return; }
+
+      // Aucun appareil abonné → on retombe sur l'ancien comportement (mailto).
+      if (!worker.email) { toast.error(`${worker.first_name} n'a pas activé les notifications`); return; }
+      const subject = encodeURIComponent('Rappel : pense à envoyer tes heures');
+      const body = encodeURIComponent(
+        `Bonjour ${worker.first_name},\n\n`
+        + `Il manque l'envoi de tes heures pour : ${jours || 'des journées planifiées'}.\n`
+        + `Merci de les saisir et de les envoyer dès que possible depuis l'application BEMEXO.\n\n`
+        + `— ${companyName || "L'équipe"}`,
+      );
+      window.location.href = `mailto:${worker.email}?subject=${subject}&body=${body}`;
+      toast.success(`${worker.first_name} n'a pas le push : e-mail préparé`);
+    } catch (err) {
+      console.error('Error sending reminder:', err);
+      toast.error("Impossible d'envoyer le rappel");
+    } finally {
+      setRemindingId(null);
+    }
   };
 
   // ─── team export (locks) ──────────────────────────────────────────────────────
@@ -1495,7 +1528,10 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
           </div>
           <div className="bt-pl-ddwrap">
             <div className="bt-pl-seg">
-              <button className="bt-pl-segbtn" onClick={() => setSalariesOpen(true)}><Users className="h-3.5 w-3.5" /> Salariés</button>
+              <button className="bt-pl-segbtn" onClick={() => setSalariesOpen(true)}>
+                <Users className="h-3.5 w-3.5" /> Salariés
+                {pendingLeaves > 0 && <span className="bt-pl-badge" title={`${pendingLeaves} demande(s) de congé en attente`}>{pendingLeaves}</span>}
+              </button>
               <span className="bt-pl-segdiv" aria-hidden="true" />
               <button className="bt-pl-segbtn" onClick={() => { setChantierMenuOpen((o) => !o); setClientsQuery(''); }}><Building2 className="h-3.5 w-3.5" /> Clients</button>
             </div>
@@ -1924,6 +1960,8 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         onOpenExportWorker={() => setExportWorkerOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenCost={() => setCostOpen(true)}
+        onOpenLeaves={() => setLeaveOpen(true)}
+        pendingLeaves={pendingLeaves}
         onSignOut={signOut}
       />
 
@@ -1934,6 +1972,10 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
           <div className="pt-1">
             <Button size="sm" className="mb-2 w-full font-bold" onClick={() => { setSalariesOpen(false); setWorkerOpen(true); }}>
               <UserPlus className="h-4 w-4 mr-1.5" /> Nouveau salarié
+            </Button>
+            <Button size="sm" variant="outline" className="mb-2 w-full font-bold" onClick={() => { setSalariesOpen(false); setLeaveOpen(true); }}>
+              <Palmtree className="h-4 w-4 mr-1.5" /> Demandes de congé
+              {pendingLeaves > 0 && <span className="bt-pl-badge ml-1.5">{pendingLeaves}</span>}
             </Button>
             <Input placeholder="Rechercher un salarié…" value={salariesQuery} onChange={(e) => setSalariesQuery(e.target.value)} className="mb-2" />
             <div className="space-y-1">
@@ -1951,8 +1993,8 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                         {miss > 0 && <span className="h-2 w-2 rounded-full shrink-0" style={{ background: '#B5472E' }} title={`${miss} jour(s) en attente`} />}
                       </button>
                       {miss > 0 && (
-                        <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => sendReminder(w)} title="Envoyer un rappel">
-                          <Bell className="h-3.5 w-3.5" />
+                        <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => sendReminder(w)} title="Envoyer un rappel" disabled={remindingId === w.id}>
+                          {remindingId === w.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Bell className="h-3.5 w-3.5" />}
                         </Button>
                       )}
                       <Pencil className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
@@ -1974,6 +2016,16 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       />
 
       <CostReport open={costOpen} onOpenChange={setCostOpen} companyId={user?.company_id} />
+
+      <LeaveAdminDialog
+        open={leaveOpen}
+        onOpenChange={setLeaveOpen}
+        companyId={user?.company_id}
+        adminId={user?.id}
+        workers={workers}
+        onChanged={() => { fetchExtras(); refresh(); }}
+      />
+
 
       {/* Chantiers — mobile equivalent of the desktop "Clients" dropdown (list +
           search + edit fiche + create). Same data/functions as desktop, no drag
