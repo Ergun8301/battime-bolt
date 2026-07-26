@@ -179,8 +179,12 @@ Deno.serve(async (req) => {
 
       // company_id optionnel : restreint le lot à une seule entreprise (tests
       // ciblés sans envoyer à tout le monde). Absent = toutes les entreprises.
+      // `weekly_digest_enabled` exclut les comptes de démo (domaines fictifs →
+      // rebonds en dur, qui dégradent la réputation d'envoi du domaine). Ce filtre
+      // ne s'applique qu'ici (cron) : le bouton « Envoyer maintenant » d'un admin
+      // reste une action explicite et n'est jamais bloqué.
       const { company_id } = await req.json().catch(() => ({}));
-      const companiesQuery = admin.from('companies').select('id');
+      const companiesQuery = admin.from('companies').select('id').eq('weekly_digest_enabled', true);
       const { data: companies } = company_id ? await companiesQuery.eq('id', company_id) : await companiesQuery;
       const results = [];
       for (const c of (companies || []) as { id: string }[]) {
