@@ -74,18 +74,20 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
   // que des chaînes) — enregistrées par le même bouton « Enregistrer ».
   const [reminderOn, setReminderOn] = useState(true);
   const [reminderHour, setReminderHour] = useState(17);
+  const [budgetAlertsOn, setBudgetAlertsOn] = useState(true);
 
   useEffect(() => {
     if (!open || !user?.company_id) return;
     setLoading(true); setErr(null);
     supabase.from('companies')
-      .select('name, siret, tva_intra, address, postal_code, city, phone, email, logo_url, subscription_status, auto_reminder_enabled, reminder_hour')
+      .select('name, siret, tva_intra, address, postal_code, city, phone, email, logo_url, subscription_status, auto_reminder_enabled, reminder_hour, budget_alerts_enabled')
       .eq('id', user.company_id).maybeSingle()
       .then(({ data }) => {
         const d = (data || {}) as Partial<Form> & {
           subscription_status?: string | null;
           auto_reminder_enabled?: boolean | null;
           reminder_hour?: number | null;
+          budget_alerts_enabled?: boolean | null;
         };
         setF({
           name: d.name || '', siret: d.siret || '', tva_intra: d.tva_intra || '', address: d.address || '',
@@ -94,6 +96,7 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
         setSubStatus(d.subscription_status ?? null);
         setReminderOn(d.auto_reminder_enabled ?? true);
         setReminderHour(d.reminder_hour ?? 17);
+        setBudgetAlertsOn(d.budget_alerts_enabled ?? true);
         setLoading(false);
       });
   }, [open, user?.company_id]);
@@ -187,6 +190,7 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
         p_name: f.name, p_siret: f.siret, p_tva_intra: f.tva_intra, p_address: f.address,
         p_postal_code: f.postal_code, p_city: f.city, p_phone: f.phone, p_email: f.email, p_logo_url: f.logo_url,
         p_auto_reminder_enabled: reminderOn, p_reminder_hour: reminderHour,
+        p_budget_alerts_enabled: budgetAlertsOn,
       });
       if (error) throw error;
       onSaved?.();
@@ -318,6 +322,25 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
                     <option key={h} value={h}>{h}h</option>
                   ))}
                 </select>
+              </div>
+            </div>
+
+            {/* Alertes de budget : main-d'œuvre uniquement, d'où le libellé
+                explicite — comparer un budget total aux seules heures ne
+                déclencherait jamais d'alerte. */}
+            <div className="bt-set-sub bt-set-rem">
+              <div className="bt-set-subtxt">
+                <label className="bt-set-l">Alertes de budget chantier</label>
+                <p className="bt-set-substate">
+                  Prévient quand la <strong>main-d&apos;œuvre</strong> consommée atteint 70 %, 80 % puis 100 % du budget
+                  saisi sur un chantier. Hors matériaux et sous-traitance.
+                </p>
+              </div>
+              <div className="bt-set-remctl">
+                <label className="bt-set-switch">
+                  <input type="checkbox" checked={budgetAlertsOn} onChange={(e) => setBudgetAlertsOn(e.target.checked)} />
+                  <span>{budgetAlertsOn ? 'Activées' : 'Désactivées'}</span>
+                </label>
               </div>
             </div>
 
