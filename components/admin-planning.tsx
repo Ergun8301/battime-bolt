@@ -29,6 +29,7 @@ import type { DateRange } from 'react-day-picker';
 import { toast } from 'sonner';
 import { computeMissingDays } from '@/lib/work-status';
 import { exportEntriesToExcel, exportEntriesToPDF } from '@/lib/export-utils';
+import { fetchAllPaged, chunk } from '@/lib/fetch-all';
 import WorkerDetailDialog from '@/components/worker-detail';
 import ChantierDocuments from '@/components/chantier-documents';
 import { TimeCylinder } from '@/components/time-cylinder';
@@ -1170,14 +1171,18 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       if (!exportRange) { toast.error('Choisis une période'); return; }
       const from = format(exportRange.from, 'yyyy-MM-dd');
       const to = format(exportRange.to, 'yyyy-MM-dd');
-      const { data, error } = await supabase
+      // Lecture PAGINÉE : au-delà du plafond PostgREST (1000 lignes par défaut),
+      // une requête simple renverrait un jeu tronqué SANS erreur → export de paie
+      // silencieusement incomplet. Et `select` réduit aux seuls champs utilisés :
+      // `users(*)` embarquait le n° de sécurité sociale et le taux horaire de
+      // chaque salarié, dupliqués sur chaque ligne et inutiles ici (RGPD).
+      const entries = await fetchAllPaged<TimeEntryWithWorksite & { user: User }>((f, t2) => supabase
         .from('time_entries')
-        .select('*, worksite:worksites(*), user:users!user_id(*)')
+        .select('id, work_date, start_time, end_time, break_minutes, total_minutes, meal_allowance, status, observation, worksite:worksites(client_name, city), user:users!user_id(first_name, last_name)')
         .eq('company_id', user.company_id)
         .gte('work_date', from).lte('work_date', to)
-        .order('work_date', { ascending: false }).order('user_id');
-      if (error) throw error;
-      const entries = (data || []) as (TimeEntryWithWorksite & { user: User })[];
+        .order('work_date', { ascending: false }).order('user_id')
+        .range(f, t2) as unknown as PromiseLike<{ data: (TimeEntryWithWorksite & { user: User })[] | null; error: { message: string } | null }>);
       if (entries.length === 0) { toast.error(`Aucune saisie du ${format(exportRange.from, 'dd/MM')} au ${format(exportRange.to, 'dd/MM')}`); return; }
 
       const opts = {
@@ -1189,8 +1194,17 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       if (kind === 'excel') exportEntriesToExcel(entries, opts);
       else exportEntriesToPDF(entries, opts);
 
-      await supabase.from('time_entries').update({ exported_at: new Date().toISOString(), locked: true })
-        .in('id', entries.map(e => e.id)).eq('company_id', user.company_id);
+      // Verrouillage PAR LOTS : un `.in('id', [...])` avec des centaines d'UUID
+      // dépasse la longueur d'URL admise par la passerelle et échoue. L'erreur
+      // n'était pas vérifiée : le mois s'affichait « clôturé » alors que rien
+      // n'était verrouillé. On découpe, et on remonte toute erreur.
+      const stamp = new Date().toISOString();
+      for (const ids of chunk(entries.map((e) => e.id), 200)) {
+        const { error: lockErr } = await supabase.from('time_entries')
+          .update({ exported_at: stamp, locked: true })
+          .in('id', ids).eq('company_id', user.company_id);
+        if (lockErr) throw lockErr;
+      }
 
       toast.success(`Export téléchargé — ${entries.length} saisie${entries.length > 1 ? 's' : ''} verrouillée${entries.length > 1 ? 's' : ''}`);
     } catch (err) {

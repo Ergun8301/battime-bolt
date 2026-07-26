@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { User, Worksite, Certification, CertificationType } from '@/lib/types';
 import { ExportEntry, exportEntriesToExcel, exportEntriesToPDF } from '@/lib/export-utils';
+import { fetchAllPaged } from '@/lib/fetch-all';
 import { computeMissingDays } from '@/lib/work-status';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -213,17 +214,22 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
     const to = range.to ?? range.from;
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      // Paginé (le plafond PostgREST tronque silencieusement au-delà de 1000
+      // lignes) et réduit aux champs réellement affichés/exportés. La jointure
+      // `user:users(*)` a été retirée : cet écran ne l'utilise nulle part, et
+      // l'export par salarié n'en a pas besoin (le nom vient de singleWorkerName)
+      // — elle ne faisait qu'envoyer n° de sécurité sociale et taux horaire.
+      const rows = await fetchAllPaged<ExportEntry>((f, t2) => supabase
         .from('time_entries')
-        .select('*, worksite:worksites(*), user:users!user_id(*)')
+        .select('id, work_date, start_time, end_time, break_minutes, total_minutes, meal_allowance, status, observation, reception, planning_id, modified_at, worksite:worksites(id, client_name, city)')
         .eq('user_id', worker.id)
         .eq('company_id', worker.company_id)
         .gte('work_date', format(from, 'yyyy-MM-dd'))
         .lte('work_date', format(to, 'yyyy-MM-dd'))
         .order('work_date', { ascending: false })
-        .order('start_time', { ascending: false });
-      if (error) throw error;
-      setEntries(data || []);
+        .order('start_time', { ascending: false })
+        .range(f, t2) as unknown as PromiseLike<{ data: ExportEntry[] | null; error: { message: string } | null }>);
+      setEntries(rows);
     } catch (err) {
       console.error('Error fetching worker entries:', err);
       toast.error('Impossible de charger les saisies');
