@@ -639,6 +639,9 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const [wsCity, setWsCity] = useState('');
   const [wsAddress, setWsAddress] = useState('');
   const [wsDesc, setWsDesc] = useState('');
+  // Budget main-d'œuvre (facultatif) — alertes de dépassement à 70/80/100 %.
+  const [wsBudgetH, setWsBudgetH] = useState('');
+  const [wsBudgetE, setWsBudgetE] = useState('');
   const [savingWs, setSavingWs] = useState(false);
   const [wsBusy, setWsBusy] = useState(false);
 
@@ -1253,6 +1256,8 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     setWsCity(ws.city || '');
     setWsAddress(ws.address || '');
     setWsDesc(ws.description || '');
+    setWsBudgetH(ws.budget_hours != null ? String(ws.budget_hours) : '');
+    setWsBudgetE(ws.budget_amount != null ? String(ws.budget_amount) : '');
     setEditing(null);
     setClientFiche(ws);
   };
@@ -1298,11 +1303,22 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const saveClientFiche = async () => {
     if (!user?.company_id || !clientFiche) return;
     if (!wsName.trim()) { toast.error('Le nom du client est requis'); return; }
+    // Budgets facultatifs : vide = pas de suivi. Virgule acceptée (saisie FR).
+    const parseBudget = (v: string): number | null | 'invalid' => {
+      const t = v.trim();
+      if (!t) return null;
+      const n = Number(t.replace(',', '.'));
+      return isNaN(n) || n < 0 ? 'invalid' : n;
+    };
+    const bH = parseBudget(wsBudgetH);
+    const bE = parseBudget(wsBudgetE);
+    if (bH === 'invalid' || bE === 'invalid') { toast.error('Budget invalide'); return; }
     setSavingWs(true);
     try {
       const { error } = await supabase.from('worksites').update({
         client_name: wsName.trim(), product_type: wsProduct.trim() || null, client_phone: wsPhone.trim() || null, client_email: wsEmail.trim() || null,
         city: wsCity.trim() || null, address: wsAddress.trim() || null, description: wsDesc.trim() || null,
+        budget_hours: bH, budget_amount: bE,
       }).eq('id', clientFiche.id).eq('company_id', user.company_id);
       if (error) throw error;
       toast.success('Fiche client enregistrée');
@@ -2377,6 +2393,30 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                 <div className="space-y-1"><Label>Adresse</Label><Input value={wsAddress} onChange={(e) => setWsAddress(e.target.value)} /></div>
               </div>
               <div className="space-y-1"><Label>Description</Label><Textarea value={wsDesc} onChange={(e) => setWsDesc(e.target.value)} rows={2} /></div>
+
+              {/* Budget MAIN-D'ŒUVRE (hors matériaux) — libellé volontairement
+                  explicite : comparer un budget total aux seules heures ne
+                  déclencherait jamais d'alerte. Heures mises en avant car
+                  toujours exploitables, même sans taux horaire renseigné. */}
+              <div className="rounded-md border bg-muted/30 p-2 space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">
+                  Budget main-d&apos;œuvre — <span className="italic">facultatif</span> · alerte à 70 %, 80 % et 100 %
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Heures prévues</Label>
+                    <Input type="text" inputMode="decimal" value={wsBudgetH} onChange={(e) => setWsBudgetH(e.target.value)} placeholder="ex. 48" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Montant prévu (€)</Label>
+                    <Input type="text" inputMode="decimal" value={wsBudgetE} onChange={(e) => setWsBudgetE(e.target.value)} placeholder="ex. 1500" />
+                  </div>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Main-d&apos;œuvre uniquement (hors matériaux et sous-traitance). Le montant en euros n&apos;est fiable que si tous les salariés ont un taux horaire renseigné — sinon, utilisez les heures.
+                </p>
+              </div>
+
               <div className="flex flex-wrap gap-2 pt-1">
                 <Button onClick={saveClientFiche} disabled={savingWs}>
                   {savingWs && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer

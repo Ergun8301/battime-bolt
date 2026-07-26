@@ -21,6 +21,10 @@ interface Props { open: boolean; onOpenChange: (o: boolean) => void; companyId?:
 
 interface WorkerAgg { name: string; minutes: number; rate: number | null }
 interface SiteAgg { id: string; name: string; city: string | null; minutes: number; workers: Map<string, WorkerAgg> }
+// Avancement budgétaire : calculé sur TOUT l'historique du chantier, jamais sur
+// la période affichée — un budget porte sur la durée totale du chantier, et ces
+// chiffres doivent coïncider avec ceux des emails d'alerte (70/80/100 %).
+interface BudgetAgg { hours: number | null; amount: number | null; usedMinutes: number; usedCost: number }
 
 const CR_CSS = `
 .bt-cr-sum{display:flex;gap:10px;margin:2px 0 4px}
@@ -44,6 +48,18 @@ const CR_CSS = `
 .bt-cr-subname{font-weight:700;color:#3a352f;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bt-cr-submeta{font-family:'JetBrains Mono',monospace;font-size:11px;color:#8a8378;font-weight:600;flex:none}
 .bt-cr-empty{text-align:center;color:#9a948a;font-weight:600;padding:26px 0;font-size:13.5px}
+.bt-cr-bud{margin-top:9px}
+.bt-cr-budhead{display:flex;align-items:baseline;justify-content:space-between;gap:8px;font-size:11.5px;color:#8a8378;font-weight:600;margin-bottom:4px}
+.bt-cr-budhead b{color:#15120F;font-weight:800}
+.bt-cr-budpct{font-family:'JetBrains Mono',monospace;font-weight:800;color:#1F7A4D;flex:none}
+.bt-cr-budpct.soft{color:#8a6d05}
+.bt-cr-budpct.warn{color:#C0461F}
+.bt-cr-budpct.over{color:#B5472E}
+.bt-cr-budbar{height:6px;border-radius:99px;background:rgba(21,18,15,.09);overflow:hidden}
+.bt-cr-budfill{height:100%;background:#1F7A4D;border-radius:99px;transition:width .25s ease}
+.bt-cr-budfill.soft{background:#E0A800}
+.bt-cr-budfill.warn{background:#C0461F}
+.bt-cr-budfill.over{background:#B5472E}
 `;
 
 const fmtH = (min: number) => {
@@ -61,6 +77,7 @@ export default function CostReport({ open, onOpenChange, companyId }: Props) {
   const [sites, setSites] = useState<SiteAgg[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [missingRates, setMissingRates] = useState(false);
+  const [budgets, setBudgets] = useState<Map<string, BudgetAgg>>(new Map());
 
   const effectiveRange = useMemo((): { from: Date; to: Date } => {
     const today = new Date();
@@ -103,7 +120,35 @@ export default function CostReport({ open, onOpenChange, companyId }: Props) {
       site.workers.get(uid)!.minutes += mins;
     }
     const arr = Array.from(map.values()).sort((a, b) => b.minutes - a.minutes);
-    setSites(arr); setMissingRates(anyMissing); setLoading(false);
+    setSites(arr); setMissingRates(anyMissing);
+
+    // Avancement budgétaire — requête séparée, SANS filtre de période : un budget
+    // couvre toute la vie du chantier. Même calcul que la fonction d'alerte pour
+    // que les pourcentages affichés ici et ceux des emails soient identiques.
+    const { data: budgeted } = await supabase.from('worksites')
+      .select('id, budget_hours, budget_amount')
+      .eq('company_id', companyId).eq('is_active', true)
+      .or('budget_hours.gt.0,budget_amount.gt.0');
+    const bmap = new Map<string, BudgetAgg>();
+    const ids = (budgeted || []).map((b: { id: string }) => b.id);
+    if (ids.length) {
+      for (const b of (budgeted || []) as { id: string; budget_hours: number | null; budget_amount: number | null }[]) {
+        bmap.set(b.id, { hours: b.budget_hours, amount: b.budget_amount, usedMinutes: 0, usedCost: 0 });
+      }
+      const { data: all } = await supabase.from('time_entries')
+        .select('worksite_id, total_minutes, owner:users!time_entries_user_id_fkey(hourly_rate)')
+        .eq('company_id', companyId).eq('status', 'validated').in('worksite_id', ids);
+      for (const e of (all || []) as Record<string, unknown>[]) {
+        const agg = bmap.get(String(e.worksite_id || ''));
+        if (!agg) continue;
+        const ow = (Array.isArray(e.owner) ? e.owner[0] : e.owner) as { hourly_rate?: number | null } | null;
+        const mins = Number(e.total_minutes || 0);
+        agg.usedMinutes += mins;
+        if (ow?.hourly_rate != null) agg.usedCost += (mins / 60) * ow.hourly_rate;
+      }
+    }
+    setBudgets(bmap);
+    setLoading(false);
   }, [companyId, effectiveRange]);
 
   useEffect(() => { if (open) load(); }, [open, load]);
@@ -180,6 +225,34 @@ export default function CostReport({ open, onOpenChange, companyId }: Props) {
                         </span>
                         <ChevronDown className={`h-4 w-4 bt-cr-chev${on ? ' on' : ''}`} />
                       </div>
+
+                      {/* Avancement du budget main-d'œuvre — sur TOUT le chantier,
+                          pas seulement la période affichée (cf. calcul plus haut). */}
+                      {(() => {
+                        const b = budgets.get(s.id);
+                        if (!b) return null;
+                        const pcts: number[] = [];
+                        if (b.hours && b.hours > 0) pcts.push((b.usedMinutes / 60) / b.hours * 100);
+                        if (b.amount && b.amount > 0) pcts.push(b.usedCost / b.amount * 100);
+                        if (!pcts.length) return null;
+                        const pct = Math.max(...pcts);
+                        const tone = pct >= 100 ? 'over' : pct >= 80 ? 'warn' : pct >= 70 ? 'soft' : '';
+                        const label = b.hours && b.hours > 0
+                          ? `${fmtH(b.usedMinutes)} / ${b.hours} h`
+                          : `${fmtEur(b.usedCost)} / ${fmtEur(b.amount || 0)}`;
+                        return (
+                          <div className="bt-cr-bud">
+                            <div className="bt-cr-budhead">
+                              <span>Budget main-d&apos;œuvre · <b>{label}</b></span>
+                              <span className={`bt-cr-budpct ${tone}`}>{Math.round(pct)} %</span>
+                            </div>
+                            <div className="bt-cr-budbar">
+                              <div className={`bt-cr-budfill ${tone}`} style={{ width: `${Math.min(pct, 100)}%` }} />
+                            </div>
+                          </div>
+                        );
+                      })()}
+
                       {on && (
                         <div className="bt-cr-sub">
                           {Array.from(s.workers.values()).sort((a, b) => b.minutes - a.minutes).map((w, i) => (

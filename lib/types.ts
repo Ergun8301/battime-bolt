@@ -51,6 +51,11 @@ export interface Worksite {
   is_active: boolean;
   created_at: string;
   completed_at?: string;
+  // Budget de MAIN-D'ŒUVRE (facultatif) : sert aux alertes de dépassement à
+  // 70/80/100 %. Les heures sont toujours exploitables ; les euros ne le sont
+  // que si tous les salariés du chantier ont un taux horaire renseigné.
+  budget_hours?: number | null;
+  budget_amount?: number | null;
 }
 
 export interface Planning {
