@@ -7,7 +7,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Clock, CalendarDays, CalendarRange, History, LogOut, Check, ArrowLeft, Camera, Loader2 } from 'lucide-react';
+import { Clock, CalendarDays, CalendarRange, History, LogOut, Check, ArrowLeft, Camera, Loader2, Palmtree, Bell, BellOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, subDays, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -16,6 +16,8 @@ import PoseurDay from '@/components/poseur-day';
 import PoseurWeek from '@/components/poseur-week';
 import PoseurMonth from '@/components/poseur-month';
 import PoseurHistory from '@/components/poseur-history';
+import LeaveRequestDialog from '@/components/leave-request-dialog';
+import { pushSupported, currentPushState, enablePush, disablePush } from '@/lib/push';
 
 const TABS = [
   { value: 'day', label: 'Ma journée', icon: Clock },
@@ -111,6 +113,11 @@ export default function PoseurPage() {
   const [photoUrl, setPhotoUrl] = useState(''); // photo de profil du salarié (facultatif)
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
+  const [leaveOpen, setLeaveOpen] = useState(false); // demandes de congé
+  // Notifications push : 'unsupported' (navigateur/iOS non compatible), 'denied'
+  // (refusé au niveau navigateur), 'on'/'off'. On n'affiche l'item que si utile.
+  const [pushState, setPushState] = useState<'unsupported' | 'denied' | 'on' | 'off'>('unsupported');
+  const [pushBusy, setPushBusy] = useState(false);
   // Smart header (mobile) : refs + état de rétraction. Purement visuel.
   const phoneRef = useRef<HTMLDivElement>(null);
   const hdrRef = useRef<HTMLElement>(null);
@@ -139,6 +146,26 @@ export default function PoseurPage() {
 
   // Photo de profil du salarié (depuis users.photo_url).
   useEffect(() => { setPhotoUrl(user?.photo_url || ''); }, [user?.photo_url]);
+
+  // État des notifications push à l'ouverture (ne demande AUCUNE permission ici :
+  // la demande du navigateur ne doit surgir qu'après un geste explicite).
+  useEffect(() => { if (pushSupported()) currentPushState().then(setPushState); }, []);
+
+  const togglePush = async () => {
+    setPushBusy(true);
+    try {
+      if (pushState === 'on') {
+        const err = await disablePush();
+        if (err) toast.error(err); else { setPushState('off'); toast.success('Notifications désactivées'); }
+      } else {
+        const err = await enablePush();
+        if (err) { toast.error(err); setPushState(await currentPushState()); }
+        else { setPushState('on'); toast.success('Notifications activées'); }
+      }
+    } finally {
+      setPushBusy(false);
+    }
+  };
 
   // ===== Smart header : se rétracte quand on descend, revient quand on remonte =====
   // Purement cosmétique. Écoute le scroll en phase capture → couvre TOUS les scrollers
@@ -311,6 +338,19 @@ export default function PoseurPage() {
                 <DropdownMenuItem onSelect={(e) => { e.preventDefault(); photoInputRef.current?.click(); }}>
                   {uploadingPhoto ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Camera className="h-4 w-4 mr-2" />} Changer ma photo
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setLeaveOpen(true)}>
+                  <Palmtree className="h-4 w-4 mr-2" /> Mes congés
+                </DropdownMenuItem>
+                {/* Masqué si l'appareil ne gère pas le push (iOS hors écran d'accueil,
+                    navigateur ancien) : inutile d'afficher un bouton qui ne peut rien faire. */}
+                {pushState !== 'unsupported' && (
+                  <DropdownMenuItem onSelect={(e) => { e.preventDefault(); if (!pushBusy) togglePush(); }}>
+                    {pushBusy ? <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      : pushState === 'on' ? <BellOff className="h-4 w-4 mr-2" /> : <Bell className="h-4 w-4 mr-2" />}
+                    {pushState === 'on' ? 'Couper les notifications'
+                      : pushState === 'denied' ? 'Notifications bloquées' : 'Activer les notifications'}
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuSeparator />
                 {TABS.map((t) => (
                   <DropdownMenuItem key={t.value} onClick={() => goTo(t.value)}>
@@ -344,6 +384,7 @@ export default function PoseurPage() {
           )}
         </div>
 
+        <LeaveRequestDialog open={leaveOpen} onOpenChange={setLeaveOpen} userId={user?.id} />
       </div>
     </div>
   );

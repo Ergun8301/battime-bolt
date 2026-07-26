@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
-import { User, Worksite } from '@/lib/types';
+import { User, Worksite, Certification, CertificationType } from '@/lib/types';
 import { ExportEntry, exportEntriesToExcel, exportEntriesToPDF } from '@/lib/export-utils';
 import { computeMissingDays } from '@/lib/work-status';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -17,8 +17,9 @@ import { Skeleton } from '@/components/ui/skeleton';
 import {
   CalendarRange, Clock, Utensils, MapPin, FileSpreadsheet, FileText, Loader2,
   Settings2, Archive, ArchiveRestore, Trash2, Link2, User as UserIcon, AlertTriangle, Hammer,
+  ShieldCheck, Plus,
 } from 'lucide-react';
-import { format, parseISO, isSameDay, subDays, startOfWeek, addDays } from 'date-fns';
+import { format, parseISO, isSameDay, subDays, startOfWeek, addDays, differenceInCalendarDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import type { DateRange } from 'react-day-picker';
@@ -38,6 +39,16 @@ interface WorkerDetailDialogProps {
 
 const MISSING_WINDOW_DAYS = 30;
 const OTHER_NAME = 'Autre';
+
+const CERT_TYPES: { key: CertificationType; label: string }[] = [
+  { key: 'caces', label: 'CACES' },
+  { key: 'carte_btp', label: 'Carte BTP' },
+  { key: 'habilitation_electrique', label: 'Habilitation électrique' },
+  { key: 'visite_medicale', label: 'Visite médicale' },
+  { key: 'travail_hauteur', label: 'Travail en hauteur' },
+  { key: 'autre', label: 'Autre' },
+];
+const CERT_LABEL: Record<CertificationType, string> = Object.fromEntries(CERT_TYPES.map((t) => [t.key, t.label])) as Record<CertificationType, string>;
 
 // Per-employee fiche: opens on today, Booking-style range calendar, interventions
 // + total, planning-based missing-days detail, per-period export (no lock), and
@@ -69,6 +80,14 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
   const [mSaving, setMSaving] = useState(false);
   const [mBusy, setMBusy] = useState(false);
 
+  // habilitations
+  const [certs, setCerts] = useState<Certification[]>([]);
+  const [certAdding, setCertAdding] = useState(false);
+  const [certType, setCertType] = useState<CertificationType>('caces');
+  const [certLabel, setCertLabel] = useState('');
+  const [certExpiry, setCertExpiry] = useState('');
+  const [certSaving, setCertSaving] = useState(false);
+
   // Reset per worker.
   useEffect(() => {
     if (!worker) return;
@@ -90,6 +109,51 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
     supabase.from('worksites').select('*').eq('company_id', worker.company_id).eq('is_active', true).order('client_name')
       .then(({ data }) => setWorksites(data || []));
   }, [worker?.company_id]);
+
+  const fetchCerts = useCallback(async () => {
+    if (!worker) return;
+    const { data } = await supabase.from('certifications').select('*').eq('user_id', worker.id).order('expiry_date');
+    setCerts(data || []);
+  }, [worker?.id]);
+
+  useEffect(() => {
+    setCertAdding(false); setCertType('caces'); setCertLabel(''); setCertExpiry('');
+    fetchCerts();
+  }, [fetchCerts]);
+
+  const addCert = async () => {
+    if (!worker) return;
+    if (!certExpiry) { toast.error("Date d'expiration requise"); return; }
+    if (certType === 'autre' && !certLabel.trim()) { toast.error('Précisez le libellé pour "Autre"'); return; }
+    setCertSaving(true);
+    try {
+      const { error } = await supabase.from('certifications').insert({
+        company_id: worker.company_id, user_id: worker.id, type: certType,
+        label: certLabel.trim() || null, expiry_date: certExpiry,
+      });
+      if (error) throw error;
+      toast.success('Habilitation ajoutée');
+      setCertAdding(false); setCertLabel(''); setCertExpiry('');
+      fetchCerts();
+    } catch (err) {
+      console.error('Error adding certification:', err);
+      toast.error("Impossible d'ajouter l'habilitation");
+    } finally {
+      setCertSaving(false);
+    }
+  };
+
+  const deleteCert = async (id: string) => {
+    if (!worker) return;
+    try {
+      const { error } = await supabase.from('certifications').delete().eq('id', id).eq('company_id', worker.company_id);
+      if (error) throw error;
+      setCerts((prev) => prev.filter((c) => c.id !== id));
+    } catch (err) {
+      console.error('Error deleting certification:', err);
+      toast.error('Impossible de supprimer');
+    }
+  };
 
   // Reassign an "Autre" entry to a real client.
   const reassignEntry = async (entryId: string, newWorksiteId: string) => {
@@ -316,6 +380,68 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
                 <div className="space-y-1"><Label className="text-xs">Type de contrat</Label><Input value={mContract} onChange={(e) => setMContract(e.target.value)} placeholder="CDI, CDD, Intérim…" /></div>
               </div>
             </div>
+
+            {/* Habilitations — liste prédéfinie + "Autre" en texte libre. Alertes
+                email automatiques à 30 j et 7 j avant expiration (Chantier 3B). */}
+            <div className="rounded-md border bg-muted/30 p-2 space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><ShieldCheck className="h-3.5 w-3.5" /> Habilitations</p>
+                <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => setCertAdding((v) => !v)}>
+                  <Plus className="h-3 w-3 mr-1" /> Ajouter
+                </Button>
+              </div>
+
+              {certs.length === 0 && !certAdding && (
+                <p className="text-xs text-muted-foreground">Aucune habilitation enregistrée.</p>
+              )}
+
+              {certs.map((c) => {
+                const days = differenceInCalendarDays(parseISO(c.expiry_date), new Date());
+                const urgent = days <= 30;
+                return (
+                  <div key={c.id} className="flex items-center justify-between gap-2 rounded border bg-background px-2 py-1.5 text-xs">
+                    <span className="min-w-0 truncate">
+                      <span className="font-semibold">{CERT_LABEL[c.type]}</span>
+                      {c.label && <span className="text-muted-foreground"> — {c.label}</span>}
+                      <span className={`ml-2 ${urgent ? 'font-bold' : 'text-muted-foreground'}`} style={urgent ? { color: '#B5472E' } : undefined}>
+                        {days < 0 ? `expirée depuis ${-days} j` : days === 0 ? "expire aujourd'hui" : `expire dans ${days} j`}
+                      </span>
+                    </span>
+                    <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={() => deleteCert(c.id)}>
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                );
+              })}
+
+              {certAdding && (
+                <div className="flex flex-wrap items-end gap-2 pt-1">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Type</Label>
+                    <Select value={certType} onValueChange={(v) => setCertType(v as CertificationType)}>
+                      <SelectTrigger className="h-9 w-[190px] text-sm"><SelectValue /></SelectTrigger>
+                      <SelectContent className="bt-skin">
+                        {CERT_TYPES.map((t) => <SelectItem key={t.key} value={t.key}>{t.label}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {certType === 'autre' && (
+                    <div className="space-y-1">
+                      <Label className="text-xs">Libellé</Label>
+                      <Input className="h-9 w-[160px]" value={certLabel} onChange={(e) => setCertLabel(e.target.value)} placeholder="ex. Permis B" />
+                    </div>
+                  )}
+                  <div className="space-y-1">
+                    <Label className="text-xs">Expire le</Label>
+                    <Input type="date" className="h-9" value={certExpiry} onChange={(e) => setCertExpiry(e.target.value)} />
+                  </div>
+                  <Button size="sm" onClick={addCert} disabled={certSaving}>
+                    {certSaving && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />} Ajouter
+                  </Button>
+                </div>
+              )}
+            </div>
+
             <div className="flex flex-wrap gap-2">
               <Button size="sm" onClick={saveWorker} disabled={mSaving}>
                 {mSaving && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer

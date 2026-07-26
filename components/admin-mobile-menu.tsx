@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { User } from '@/lib/types';
 import {
-  Users, Building2, Download, ChevronDown, FileSpreadsheet, FileText, Settings, LogOut, TrendingUp,
+  Users, Building2, Download, ChevronDown, FileSpreadsheet, FileText, Settings, LogOut, TrendingUp, Palmtree,
 } from 'lucide-react';
 
 // Menu hamburger mobile de l'admin : identité + statut d'abonnement + les mêmes
@@ -42,6 +42,7 @@ const MM_CSS = `
 .bt-mm-subitem small{display:block;font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:600;color:#9a948a;margin-top:1px}
 .bt-mm-sep{height:1px;background:rgba(21,18,15,.1);margin:8px 8px}
 .bt-mm-item.danger .bt-mm-label,.bt-mm-item.danger .bt-mm-icon{color:#B5472E}
+.bt-mm-badge{min-width:19px;height:19px;padding:0 6px;border-radius:99px;background:#B5472E;color:#fff;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex:none;line-height:1}
 `;
 
 interface AdminMobileMenuProps {
@@ -56,6 +57,8 @@ interface AdminMobileMenuProps {
   onOpenSalaries: () => void;
   onOpenChantiers: () => void;
   onOpenCost: () => void;
+  onOpenLeaves: () => void;
+  pendingLeaves?: number;
   onOpenExportTeam: () => void;
   onOpenExportWorker: () => void;
   onOpenSettings: () => void;
@@ -65,7 +68,8 @@ interface AdminMobileMenuProps {
 export default function AdminMobileMenu({
   open, onOpenChange, user, companyLabel, companyLogo, companyInitials,
   trial, onSubscribe,
-  onOpenSalaries, onOpenChantiers, onOpenCost, onOpenExportTeam, onOpenExportWorker, onOpenSettings, onSignOut,
+  onOpenSalaries, onOpenChantiers, onOpenCost, onOpenLeaves, pendingLeaves = 0,
+  onOpenExportTeam, onOpenExportWorker, onOpenSettings, onSignOut,
 }: AdminMobileMenuProps) {
   const [exportExpanded, setExportExpanded] = useState(false);
 
@@ -110,6 +114,12 @@ export default function AdminMobileMenu({
           <button className="bt-mm-item" onClick={() => go(onOpenChantiers)}>
             <span className="bt-mm-icon"><Building2 className="h-4 w-4" /></span>
             <span className="bt-mm-label">Chantiers</span>
+          </button>
+
+          <button className="bt-mm-item" onClick={() => go(onOpenLeaves)}>
+            <span className="bt-mm-icon"><Palmtree className="h-4 w-4" /></span>
+            <span className="bt-mm-label">Demandes de congé</span>
+            {pendingLeaves > 0 && <span className="bt-mm-badge">{pendingLeaves}</span>}
           </button>
 
           <button className="bt-mm-item" onClick={() => go(onOpenCost)}>
