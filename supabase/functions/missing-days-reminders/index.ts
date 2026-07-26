@@ -41,6 +41,19 @@ const MAX_REMINDERS = 3;      // au-delà, ce n'est plus un oubli
 const isoDay = (d: Date) => d.toISOString().slice(0, 10);
 const fmtDateFR = (iso: string) => { const [y, m, dd] = iso.split('-'); return `${dd}/${m}/${y}`; };
 
+// Heure et jour RÉELS à Paris (pas en UTC) : le cron passe toutes les heures, et
+// c'est ici qu'on décide qui est concerné. Conséquence : insensible au changement
+// d'heure — 17h reste 17h été comme hiver.
+function parisNow(): { hour: number; weekday: number } {
+  const f = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Paris', hour: '2-digit', hour12: false, weekday: 'short',
+  }).formatToParts(new Date());
+  const hour = parseInt(f.find((p) => p.type === 'hour')?.value || '0', 10);
+  const wd = (f.find((p) => p.type === 'weekday')?.value || '').toLowerCase();
+  const map: Record<string, number> = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
+  return { hour, weekday: map[wd] ?? 0 };
+}
+
 // « lundi 22 juin » — sans dépendance date-fns (indisponible côté Deno ici).
 const JOURS = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
 const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
@@ -221,10 +234,21 @@ Deno.serve(async (req) => {
 
     // company_id : restreint à une entreprise (tests ciblés).
     // dry_run : calcule et renvoie qui serait relancé, sans rien envoyer ni écrire.
-    const { company_id, dry_run } = await req.json().catch(() => ({}));
+    // ignore_schedule : ignore le filtre heure/jour (tests hors créneau).
+    const { company_id, dry_run, ignore_schedule } = await req.json().catch(() => ({}));
     const dryRun = dry_run === true;
 
-    const q = admin.from('companies').select('id').eq('auto_reminder_enabled', true);
+    // Le cron passe toutes les heures ; on ne retient que les entreprises dont
+    // l'heure de relance correspond à l'heure courante à Paris, du lundi au
+    // vendredi (jour évalué à Paris également).
+    const { hour, weekday } = parisNow();
+    const onSchedule = weekday >= 1 && weekday <= 5;
+    if (!onSchedule && ignore_schedule !== true) {
+      return json({ mode: 'skip', reason: 'week-end', paris: { hour, weekday } });
+    }
+
+    let q = admin.from('companies').select('id').eq('auto_reminder_enabled', true);
+    if (ignore_schedule !== true) q = q.eq('reminder_hour', hour);
     const { data: companies } = company_id ? await q.eq('id', company_id) : await q;
 
     const results = [];
