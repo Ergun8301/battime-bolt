@@ -4,6 +4,7 @@ import Link from 'next/link';
 export const metadata: Metadata = {
   title: 'Mentions légales — BEMEXO',
   description: 'Mentions légales de BEMEXO, édité par K.HABITAT (SAS).',
+  alternates: { canonical: 'https://bemexo.com/mentions-legales' },
 };
 
 // Page légale autonome, dans l'identité noir + jaune chantier de la landing

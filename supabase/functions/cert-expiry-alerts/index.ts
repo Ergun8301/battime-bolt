@@ -32,6 +32,16 @@ const displayLabel = (type: string, label: string | null) => {
   return label && label.trim() ? `${base} — ${label.trim()}` : base;
 };
 
+// Heure réelle à Paris. Le cron déclenche aux deux heures UTC possibles (05:00 et
+// 06:00) et c'est ici qu'on ne retient que la bonne : 7 h Paris, été comme hiver.
+function parisHour(): number {
+  const f = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Paris', hour: '2-digit', hour12: false,
+  }).formatToParts(new Date());
+  return parseInt(f.find((p) => p.type === 'hour')?.value || '0', 10);
+}
+const ALERT_HOUR_PARIS = 7;
+
 function todayISO(): string { return new Date().toISOString().slice(0, 10); }
 function fmtDateFR(iso: string): string { const [y, m, d] = iso.split('-'); return `${d}/${m}/${y}`; }
 function daysUntil(iso: string): number {
@@ -141,7 +151,15 @@ Deno.serve(async (req) => {
 
       // company_id optionnel : restreint le lot à une seule entreprise (tests
       // ciblés sans envoyer à tout le monde). Absent = toutes les entreprises.
-      const { company_id } = await req.json().catch(() => ({}));
+      const { company_id, ignore_schedule } = await req.json().catch(() => ({}));
+
+      // Le cron passe à 05:00 ET 06:00 UTC : on ne travaille qu'au passage qui
+      // correspond réellement à 7 h à Paris (un seul des deux, selon la saison).
+      const hour = parisHour();
+      if (ignore_schedule !== true && !company_id && hour !== ALERT_HOUR_PARIS) {
+        return json({ mode: 'skip', reason: 'hors creneau', paris: { hour } });
+      }
+
       const companiesQuery = admin.from('companies').select('id');
       const { data: companies } = company_id ? await companiesQuery.eq('id', company_id) : await companiesQuery;
       const results = [];

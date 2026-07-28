@@ -16,7 +16,7 @@ import { Textarea } from '@/components/ui/textarea';
 import {
   ChevronLeft, ChevronRight, Plus, Trash2, Loader2,
   UserPlus, Users, Building2, Archive, CalendarRange, Download, FileSpreadsheet, FileText,
-  Bell, Clock, Mail, RefreshCw, X, Pencil, LogOut, Settings, User as UserIcon, Paperclip, AlertTriangle, Info, Hammer, CheckCircle2, Menu, TrendingUp,
+  Bell, Clock, Mail, RefreshCw, X, Pencil, LogOut, Settings, User as UserIcon, Paperclip, AlertTriangle, Info, Hammer, CheckCircle2, Menu, TrendingUp, Palmtree,
 } from 'lucide-react';
 import {
   DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
@@ -29,6 +29,7 @@ import type { DateRange } from 'react-day-picker';
 import { toast } from 'sonner';
 import { computeMissingDays } from '@/lib/work-status';
 import { exportEntriesToExcel, exportEntriesToPDF } from '@/lib/export-utils';
+import { fetchAllPaged, chunk } from '@/lib/fetch-all';
 import WorkerDetailDialog from '@/components/worker-detail';
 import ChantierDocuments from '@/components/chantier-documents';
 import { TimeCylinder } from '@/components/time-cylinder';
@@ -36,6 +37,8 @@ import CompanySettings from '@/components/company-settings';
 import AdminMobileMenu from '@/components/admin-mobile-menu';
 import ImportDialog from '@/components/import-dialog';
 import CostReport from '@/components/cost-report';
+import ImportWorkersDialog from '@/components/import-workers-dialog';
+import LeaveAdminDialog from '@/components/leave-admin-dialog';
 
 // ─── helpers / constants ──────────────────────────────────────────────────────
 
@@ -330,6 +333,7 @@ const PL_CSS = `
 .bt-pl-segdiv{width:1.5px;height:18px;background:#15120F;border-radius:2px;flex:none}
 .bt-pl-segbtn{font-family:inherit;font-weight:700;font-size:13px;border:none;background:transparent;color:#3D382F;padding:7px 11px;border-radius:9px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:background .14s ease,color .14s ease}
 .bt-pl-segbtn:hover{color:#15120F;background:rgba(21,18,15,.06)}
+.bt-pl-badge{min-width:17px;height:17px;padding:0 5px;border-radius:99px;background:#B5472E;color:#fff;font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;line-height:1}
 .bt-pl-out{background:transparent;border:1.5px solid rgba(21,18,15,.3);color:#15120F;border-radius:10px;padding:7px 13px;height:33px;font-size:12.5px;font-weight:800;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;transition:border-color .14s ease,background .14s ease,transform .08s ease}
 .bt-pl-out:hover{border-color:#15120F;background:rgba(21,18,15,.04)}
 .bt-pl-out:active{transform:translateY(1px)}
@@ -578,6 +582,9 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const [mobileChantiersOpen, setMobileChantiersOpen] = useState(false); // liste « Chantiers » mobile (équivalent du dropdown Clients desktop)
   const [importOpen, setImportOpen] = useState(false); // import CSV/Excel de clients/chantiers
   const [costOpen, setCostOpen] = useState(false); // rapport coût & heures par chantier
+  const [importWorkersOpen, setImportWorkersOpen] = useState(false); // import CSV/Excel de salariés (invitations en masse)
+  const [leaveOpen, setLeaveOpen] = useState(false); // demandes de congé des salariés
+  const [pendingLeaves, setPendingLeaves] = useState(0); // compteur pour la pastille
   const [activeDrag, setActiveDrag] = useState<{ id: string; type: 'move' | 'new'; worksiteId?: string } | null>(null);
 
   // disponibilité popup + worker fiche + management screens
@@ -605,6 +612,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
 
   // invitation row actions
   const [resendingId, setResendingId] = useState<string | null>(null);
+  const [remindingId, setRemindingId] = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
 
   // cell add dialog (a client on a specific day)
@@ -632,6 +640,9 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const [wsCity, setWsCity] = useState('');
   const [wsAddress, setWsAddress] = useState('');
   const [wsDesc, setWsDesc] = useState('');
+  // Budget main-d'œuvre (facultatif) — alertes de dépassement à 70/80/100 %.
+  const [wsBudgetH, setWsBudgetH] = useState('');
+  const [wsBudgetE, setWsBudgetE] = useState('');
   const [savingWs, setSavingWs] = useState(false);
   const [wsBusy, setWsBusy] = useState(false);
 
@@ -783,13 +794,15 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const fetchExtras = useCallback(async () => {
     if (!user?.company_id) return;
     const windowStart = format(subDays(new Date(), WINDOW_DAYS), 'yyyy-MM-dd');
-    const [planRes, entRes, compRes, invRes, docRes] = await Promise.all([
+    const [planRes, entRes, compRes, invRes, docRes, leaveRes] = await Promise.all([
       supabase.from('planning').select('user_id, work_date, absence_type').eq('company_id', user.company_id).gte('work_date', windowStart),
       supabase.from('time_entries').select('user_id, work_date').eq('company_id', user.company_id).neq('status', 'draft').gte('work_date', windowStart),
       supabase.from('companies').select('name, logo_url').eq('id', user.company_id).maybeSingle(),
       supabase.from('invitations').select('*').eq('company_id', user.company_id).is('accepted_at', null).gt('expires_at', new Date().toISOString()).order('created_at', { ascending: false }),
       supabase.from('documents').select('worksite_id').eq('company_id', user.company_id),
+      supabase.from('leave_requests').select('id', { count: 'exact', head: true }).eq('company_id', user.company_id).eq('status', 'pending'),
     ]);
+    setPendingLeaves(leaveRes.count || 0);
 
     // Pastille 📎 : nombre de documents par chantier.
     const docCounts = new Map<string, number>();
@@ -1108,19 +1121,45 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     }
   };
 
-  const sendReminder = (worker: User) => {
+  // Rappel « heures manquantes » : vraie notification push sur le téléphone du
+  // salarié (avant, ça n'ouvrait qu'un brouillon mailto sur le poste de l'admin —
+  // rien n'était réellement envoyé si l'admin ne cliquait pas « Envoyer »).
+  // Repli mailto conservé si le salarié n'a activé le push sur aucun appareil.
+  const sendReminder = async (worker: User) => {
     const missing = missingByWorker.get(worker.id) || [];
-    if (!worker.email) { toast.error(`Pas d'email pour ${worker.first_name}`); return; }
     const jours = missing.map((d) => format(parseISO(d), 'EEEE d MMMM', { locale: fr })).join(', ');
-    const subject = encodeURIComponent('Rappel : pense à envoyer tes heures');
-    const body = encodeURIComponent(
-      `Bonjour ${worker.first_name},\n\n`
-      + `Il manque l'envoi de tes heures pour : ${jours || 'des journées planifiées'}.\n`
-      + `Merci de les saisir et de les envoyer dès que possible depuis l'application BEMEXO.\n\n`
-      + `— ${companyName || "L'équipe"}`,
-    );
-    window.location.href = `mailto:${worker.email}?subject=${subject}&body=${body}`;
-    toast.success(`Rappel préparé pour ${worker.first_name}`);
+    setRemindingId(worker.id);
+    try {
+      const { data, error } = await supabase.functions.invoke('send-push', {
+        body: {
+          user_ids: [worker.id],
+          title: 'Pense à envoyer tes heures',
+          body: jours ? `Il manque : ${jours}.` : 'Il manque des journées planifiées.',
+          url: '/poseur',
+          tag: 'rappel-heures',
+        },
+      });
+      if (error) throw error;
+      const sent = (data as { sent?: number } | null)?.sent || 0;
+      if (sent > 0) { toast.success(`Rappel envoyé à ${worker.first_name}`); return; }
+
+      // Aucun appareil abonné → on retombe sur l'ancien comportement (mailto).
+      if (!worker.email) { toast.error(`${worker.first_name} n'a pas activé les notifications`); return; }
+      const subject = encodeURIComponent('Rappel : pense à envoyer tes heures');
+      const body = encodeURIComponent(
+        `Bonjour ${worker.first_name},\n\n`
+        + `Il manque l'envoi de tes heures pour : ${jours || 'des journées planifiées'}.\n`
+        + `Merci de les saisir et de les envoyer dès que possible depuis l'application BEMEXO.\n\n`
+        + `— ${companyName || "L'équipe"}`,
+      );
+      window.location.href = `mailto:${worker.email}?subject=${subject}&body=${body}`;
+      toast.success(`${worker.first_name} n'a pas le push : e-mail préparé`);
+    } catch (err) {
+      console.error('Error sending reminder:', err);
+      toast.error("Impossible d'envoyer le rappel");
+    } finally {
+      setRemindingId(null);
+    }
   };
 
   // ─── team export (locks) ──────────────────────────────────────────────────────
@@ -1132,14 +1171,18 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       if (!exportRange) { toast.error('Choisis une période'); return; }
       const from = format(exportRange.from, 'yyyy-MM-dd');
       const to = format(exportRange.to, 'yyyy-MM-dd');
-      const { data, error } = await supabase
+      // Lecture PAGINÉE : au-delà du plafond PostgREST (1000 lignes par défaut),
+      // une requête simple renverrait un jeu tronqué SANS erreur → export de paie
+      // silencieusement incomplet. Et `select` réduit aux seuls champs utilisés :
+      // `users(*)` embarquait le n° de sécurité sociale et le taux horaire de
+      // chaque salarié, dupliqués sur chaque ligne et inutiles ici (RGPD).
+      const entries = await fetchAllPaged<TimeEntryWithWorksite & { user: User }>((f, t2) => supabase
         .from('time_entries')
-        .select('*, worksite:worksites(*), user:users!user_id(*)')
+        .select('id, work_date, start_time, end_time, break_minutes, total_minutes, meal_allowance, status, observation, worksite:worksites(client_name, city), user:users!user_id(first_name, last_name)')
         .eq('company_id', user.company_id)
         .gte('work_date', from).lte('work_date', to)
-        .order('work_date', { ascending: false }).order('user_id');
-      if (error) throw error;
-      const entries = (data || []) as (TimeEntryWithWorksite & { user: User })[];
+        .order('work_date', { ascending: false }).order('user_id')
+        .range(f, t2) as unknown as PromiseLike<{ data: (TimeEntryWithWorksite & { user: User })[] | null; error: { message: string } | null }>);
       if (entries.length === 0) { toast.error(`Aucune saisie du ${format(exportRange.from, 'dd/MM')} au ${format(exportRange.to, 'dd/MM')}`); return; }
 
       const opts = {
@@ -1151,8 +1194,17 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       if (kind === 'excel') exportEntriesToExcel(entries, opts);
       else exportEntriesToPDF(entries, opts);
 
-      await supabase.from('time_entries').update({ exported_at: new Date().toISOString(), locked: true })
-        .in('id', entries.map(e => e.id)).eq('company_id', user.company_id);
+      // Verrouillage PAR LOTS : un `.in('id', [...])` avec des centaines d'UUID
+      // dépasse la longueur d'URL admise par la passerelle et échoue. L'erreur
+      // n'était pas vérifiée : le mois s'affichait « clôturé » alors que rien
+      // n'était verrouillé. On découpe, et on remonte toute erreur.
+      const stamp = new Date().toISOString();
+      for (const ids of chunk(entries.map((e) => e.id), 200)) {
+        const { error: lockErr } = await supabase.from('time_entries')
+          .update({ exported_at: stamp, locked: true })
+          .in('id', ids).eq('company_id', user.company_id);
+        if (lockErr) throw lockErr;
+      }
 
       toast.success(`Export téléchargé — ${entries.length} saisie${entries.length > 1 ? 's' : ''} verrouillée${entries.length > 1 ? 's' : ''}`);
     } catch (err) {
@@ -1218,6 +1270,8 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     setWsCity(ws.city || '');
     setWsAddress(ws.address || '');
     setWsDesc(ws.description || '');
+    setWsBudgetH(ws.budget_hours != null ? String(ws.budget_hours) : '');
+    setWsBudgetE(ws.budget_amount != null ? String(ws.budget_amount) : '');
     setEditing(null);
     setClientFiche(ws);
   };
@@ -1263,11 +1317,22 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const saveClientFiche = async () => {
     if (!user?.company_id || !clientFiche) return;
     if (!wsName.trim()) { toast.error('Le nom du client est requis'); return; }
+    // Budgets facultatifs : vide = pas de suivi. Virgule acceptée (saisie FR).
+    const parseBudget = (v: string): number | null | 'invalid' => {
+      const t = v.trim();
+      if (!t) return null;
+      const n = Number(t.replace(',', '.'));
+      return isNaN(n) || n < 0 ? 'invalid' : n;
+    };
+    const bH = parseBudget(wsBudgetH);
+    const bE = parseBudget(wsBudgetE);
+    if (bH === 'invalid' || bE === 'invalid') { toast.error('Budget invalide'); return; }
     setSavingWs(true);
     try {
       const { error } = await supabase.from('worksites').update({
         client_name: wsName.trim(), product_type: wsProduct.trim() || null, client_phone: wsPhone.trim() || null, client_email: wsEmail.trim() || null,
         city: wsCity.trim() || null, address: wsAddress.trim() || null, description: wsDesc.trim() || null,
+        budget_hours: bH, budget_amount: bE,
       }).eq('id', clientFiche.id).eq('company_id', user.company_id);
       if (error) throw error;
       toast.success('Fiche client enregistrée');
@@ -1495,7 +1560,10 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
           </div>
           <div className="bt-pl-ddwrap">
             <div className="bt-pl-seg">
-              <button className="bt-pl-segbtn" onClick={() => setSalariesOpen(true)}><Users className="h-3.5 w-3.5" /> Salariés</button>
+              <button className="bt-pl-segbtn" onClick={() => setSalariesOpen(true)}>
+                <Users className="h-3.5 w-3.5" /> Salariés
+                {pendingLeaves > 0 && <span className="bt-pl-badge" title={`${pendingLeaves} demande(s) de congé en attente`}>{pendingLeaves}</span>}
+              </button>
               <span className="bt-pl-segdiv" aria-hidden="true" />
               <button className="bt-pl-segbtn" onClick={() => { setChantierMenuOpen((o) => !o); setClientsQuery(''); }}><Building2 className="h-3.5 w-3.5" /> Clients</button>
             </div>
@@ -1924,6 +1992,8 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         onOpenExportWorker={() => setExportWorkerOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenCost={() => setCostOpen(true)}
+        onOpenLeaves={() => setLeaveOpen(true)}
+        pendingLeaves={pendingLeaves}
         onSignOut={signOut}
       />
 
@@ -1934,6 +2004,13 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
           <div className="pt-1">
             <Button size="sm" className="mb-2 w-full font-bold" onClick={() => { setSalariesOpen(false); setWorkerOpen(true); }}>
               <UserPlus className="h-4 w-4 mr-1.5" /> Nouveau salarié
+            </Button>
+            <Button size="sm" variant="outline" className="mb-2 w-full font-bold" onClick={() => { setSalariesOpen(false); setImportWorkersOpen(true); }}>
+              <FileSpreadsheet className="h-4 w-4 mr-1.5" /> Importer (CSV/Excel)
+            </Button>
+            <Button size="sm" variant="outline" className="mb-2 w-full font-bold" onClick={() => { setSalariesOpen(false); setLeaveOpen(true); }}>
+              <Palmtree className="h-4 w-4 mr-1.5" /> Demandes de congé
+              {pendingLeaves > 0 && <span className="bt-pl-badge ml-1.5">{pendingLeaves}</span>}
             </Button>
             <Input placeholder="Rechercher un salarié…" value={salariesQuery} onChange={(e) => setSalariesQuery(e.target.value)} className="mb-2" />
             <div className="space-y-1">
@@ -1951,8 +2028,8 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                         {miss > 0 && <span className="h-2 w-2 rounded-full shrink-0" style={{ background: '#B5472E' }} title={`${miss} jour(s) en attente`} />}
                       </button>
                       {miss > 0 && (
-                        <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => sendReminder(w)} title="Envoyer un rappel">
-                          <Bell className="h-3.5 w-3.5" />
+                        <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => sendReminder(w)} title="Envoyer un rappel" disabled={remindingId === w.id}>
+                          {remindingId === w.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Bell className="h-3.5 w-3.5" />}
                         </Button>
                       )}
                       <Pencil className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
@@ -1974,6 +2051,22 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       />
 
       <CostReport open={costOpen} onOpenChange={setCostOpen} companyId={user?.company_id} />
+
+      <ImportWorkersDialog
+        open={importWorkersOpen}
+        onOpenChange={setImportWorkersOpen}
+        existingEmails={[...workers.map((w) => w.email), ...invitations.map((i) => i.email)]}
+        onImported={() => { fetchData(); fetchExtras(); }}
+      />
+
+      <LeaveAdminDialog
+        open={leaveOpen}
+        onOpenChange={setLeaveOpen}
+        companyId={user?.company_id}
+        adminId={user?.id}
+        workers={workers}
+        onChanged={() => { fetchExtras(); refresh(); }}
+      />
 
       {/* Chantiers — mobile equivalent of the desktop "Clients" dropdown (list +
           search + edit fiche + create). Same data/functions as desktop, no drag
@@ -2314,6 +2407,30 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                 <div className="space-y-1"><Label>Adresse</Label><Input value={wsAddress} onChange={(e) => setWsAddress(e.target.value)} /></div>
               </div>
               <div className="space-y-1"><Label>Description</Label><Textarea value={wsDesc} onChange={(e) => setWsDesc(e.target.value)} rows={2} /></div>
+
+              {/* Budget MAIN-D'ŒUVRE (hors matériaux) — libellé volontairement
+                  explicite : comparer un budget total aux seules heures ne
+                  déclencherait jamais d'alerte. Heures mises en avant car
+                  toujours exploitables, même sans taux horaire renseigné. */}
+              <div className="rounded-md border bg-muted/30 p-2 space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">
+                  Budget main-d&apos;œuvre — <span className="italic">facultatif</span> · alerte à 70 %, 80 % et 100 %
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Heures prévues</Label>
+                    <Input type="text" inputMode="decimal" value={wsBudgetH} onChange={(e) => setWsBudgetH(e.target.value)} placeholder="ex. 48" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Montant prévu (€)</Label>
+                    <Input type="text" inputMode="decimal" value={wsBudgetE} onChange={(e) => setWsBudgetE(e.target.value)} placeholder="ex. 1500" />
+                  </div>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Main-d&apos;œuvre uniquement (hors matériaux et sous-traitance). Le montant en euros n&apos;est fiable que si tous les salariés ont un taux horaire renseigné — sinon, utilisez les heures.
+                </p>
+              </div>
+
               <div className="flex flex-wrap gap-2 pt-1">
                 <Button onClick={saveClientFiche} disabled={savingWs}>
                   {savingWs && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer

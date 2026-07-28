@@ -51,6 +51,11 @@ export interface Worksite {
   is_active: boolean;
   created_at: string;
   completed_at?: string;
+  // Budget de MAIN-D'ŒUVRE (facultatif) : sert aux alertes de dépassement à
+  // 70/80/100 %. Les heures sont toujours exploitables ; les euros ne le sont
+  // que si tous les salariés du chantier ont un taux horaire renseigné.
+  budget_hours?: number | null;
+  budget_amount?: number | null;
 }
 
 export interface Planning {
@@ -96,6 +101,24 @@ export interface TimeEntry {
   exported_at?: string | null;
   modified_by?: string | null;
   modified_at?: string | null;
+}
+
+export type LeaveType = 'conge' | 'maladie' | 'intemperie';
+export type LeaveStatus = 'pending' | 'approved' | 'rejected';
+
+export interface LeaveRequest {
+  id: string;
+  company_id: string;
+  user_id: string;
+  type: LeaveType;
+  start_date: string;
+  end_date: string;
+  note?: string | null;
+  status: LeaveStatus;
+  decided_at?: string | null;
+  decided_by?: string | null;
+  decision_note?: string | null;
+  created_at: string;
 }
 
 export type CertificationType = 'caces' | 'carte_btp' | 'habilitation_electrique' | 'visite_medicale' | 'travail_hauteur' | 'autre';

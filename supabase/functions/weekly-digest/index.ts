@@ -38,6 +38,21 @@ function fmtDateFR(iso: string): string {
   return `${d}/${m}/${y}`;
 }
 
+// Heure/jour RÉELS à Paris. Le cron déclenche aux deux heures UTC possibles
+// (16:00 et 17:00 le vendredi) et c'est ici qu'on ne retient que la bonne :
+// 18 h Paris, été comme hiver. Sans ça, l'envoi décalait d'1 h en hiver.
+function parisNow(): { hour: number; weekday: number } {
+  const f = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Paris', hour: '2-digit', hour12: false, weekday: 'short',
+  }).formatToParts(new Date());
+  const hour = parseInt(f.find((p) => p.type === 'hour')?.value || '0', 10);
+  const wd = (f.find((p) => p.type === 'weekday')?.value || '').toLowerCase();
+  const map: Record<string, number> = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
+  return { hour, weekday: map[wd] ?? 0 };
+}
+const DIGEST_HOUR_PARIS = 18;
+const DIGEST_WEEKDAY = 5; // vendredi
+
 async function sendEmail(to: string[], subject: string, html: string) {
   const apiKey = Deno.env.get('RESEND_API_KEY');
   if (!apiKey) throw new Error('RESEND_API_KEY manquant (secret Supabase)');
@@ -179,8 +194,22 @@ Deno.serve(async (req) => {
 
       // company_id optionnel : restreint le lot à une seule entreprise (tests
       // ciblés sans envoyer à tout le monde). Absent = toutes les entreprises.
-      const { company_id } = await req.json().catch(() => ({}));
-      const companiesQuery = admin.from('companies').select('id');
+      // `weekly_digest_enabled` exclut les comptes de démo (domaines fictifs →
+      // rebonds en dur, qui dégradent la réputation d'envoi du domaine). Ce filtre
+      // ne s'applique qu'ici (cron) : le bouton « Envoyer maintenant » d'un admin
+      // reste une action explicite et n'est jamais bloqué.
+      const { company_id, ignore_schedule } = await req.json().catch(() => ({}));
+
+      // Le cron passe à 16:00 ET 17:00 UTC : on ne travaille qu'au passage qui
+      // correspond réellement à 18 h à Paris (donc un seul des deux, selon la
+      // saison). `ignore_schedule` sert aux tests ciblés hors créneau.
+      const { hour, weekday } = parisNow();
+      if (ignore_schedule !== true && !company_id
+          && (hour !== DIGEST_HOUR_PARIS || weekday !== DIGEST_WEEKDAY)) {
+        return json({ mode: 'skip', reason: 'hors creneau', paris: { hour, weekday } });
+      }
+
+      const companiesQuery = admin.from('companies').select('id').eq('weekly_digest_enabled', true);
       const { data: companies } = company_id ? await companiesQuery.eq('id', company_id) : await companiesQuery;
       const results = [];
       for (const c of (companies || []) as { id: string }[]) {

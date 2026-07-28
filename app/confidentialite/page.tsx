@@ -4,6 +4,7 @@ import Link from 'next/link';
 export const metadata: Metadata = {
   title: 'Politique de confidentialité — BEMEXO',
   description: 'Politique de confidentialité de BEMEXO, édité par K.HABITAT (SAS) — conforme au RGPD.',
+  alternates: { canonical: 'https://bemexo.com/confidentialite' },
 };
 
 // Page légale autonome, dans l'identité noir + jaune chantier de la landing.
