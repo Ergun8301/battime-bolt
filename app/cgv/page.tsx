@@ -4,6 +4,11 @@ import Link from 'next/link';
 export const metadata: Metadata = {
   title: 'Conditions Générales de Vente — BEMEXO',
   description: "Conditions Générales de Vente de BEMEXO, service édité par K.HABITAT (SAS) : abonnement SaaS B2B, essai gratuit 30 jours, sans engagement.",
+  // Les 4 pages légales partagent une bonne partie de leur formulation juridique
+  // (surtout CGU/CGV). Sans canonique, Google les regroupe comme doublons et
+  // choisit lui-même laquelle indexer — d'où « Page en double sans URL canonique
+  // sélectionnée ». On déclare explicitement l'URL de référence de chacune.
+  alternates: { canonical: 'https://bemexo.com/cgv' },
 };
 
 // Page légale autonome, identité noir + jaune de la landing (même charte que

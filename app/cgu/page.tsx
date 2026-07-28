@@ -4,6 +4,9 @@ import Link from 'next/link';
 export const metadata: Metadata = {
   title: "Conditions Générales d'Utilisation — BEMEXO",
   description: "Conditions Générales d'Utilisation de BEMEXO, service édité par K.HABITAT (SAS) : règles d'accès et d'usage de l'application.",
+  // Voir /cgv : formulation juridique proche, canonique explicite pour éviter
+  // que Google les traite comme des doublons interchangeables.
+  alternates: { canonical: 'https://bemexo.com/cgu' },
 };
 
 // Page légale autonome, identité noir + jaune de la landing (même charte que
