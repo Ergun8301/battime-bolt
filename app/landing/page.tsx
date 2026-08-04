@@ -106,6 +106,12 @@ const STYLES = `@import url('https://fonts.googleapis.com/css2?family=Archivo:wg
  .lp h2{font-size:30px !important}
  .lp-footer-row{flex-direction:column !important;text-align:center;gap:18px !important}
 }
+/* Signature de réalisation (studio). Discrète : même famille mono et même
+   registre de taille que la ligne « © 2026 BEMEXO » juste au-dessus. Ajoutée
+   SOUS la ligne existante, sans toucher à sa mise en page. */
+.lp-sign{max-width:1140px;margin:26px auto 0;text-align:center;font-family:'JetBrains Mono',monospace;font-size:12px;color:#6E6A63;font-weight:600}
+.lp-sign a{color:#9a948a;text-decoration:none;border-bottom:1px solid rgba(154,148,138,.42);padding-bottom:1px;transition:color .15s ease,border-color .15s ease}
+.lp-sign a:hover{color:#FFC21A;border-bottom-color:rgba(255,194,26,.6)}
 @media(max-width:560px){
  .lp-hide-sm{display:none !important}
  .lp h1{font-size:34px !important;line-height:1.05 !important}
@@ -538,6 +544,7 @@ const BODY_SUITE = `
       </div>
       <div style="font-family:'JetBrains Mono',monospace;font-size:12.5px">© 2026 BEMEXO — Les heures du bâtiment.</div>
     </div>
+    <div class="lp-sign">Site réalisé par <a href="https://ippyx.com/?utm_source=bemexo&amp;utm_medium=signature&amp;utm_campaign=footer" target="_blank" rel="noopener">IPPYX</a></div>
   </footer>`;
 
 export default function LandingPage() {
