@@ -106,6 +106,19 @@ const STYLES = `@import url('https://fonts.googleapis.com/css2?family=Archivo:wg
  .lp h2{font-size:30px !important}
  .lp-footer-row{flex-direction:column !important;text-align:center;gap:18px !important}
 }
+/* Signature de réalisation (studio). Discrète : même famille mono et même
+   registre de taille que la ligne « © 2026 BEMEXO » juste au-dessus. Ajoutée
+   SOUS la ligne existante, sans toucher à sa mise en page.
+   Le logo est un SVG en currentColor : il prend la couleur du lien, donc
+   aucune couleur n'est codée en dur dans le SVG lui-même. */
+.lp-sign{max-width:1140px;margin:26px auto 0;text-align:center;font-family:'JetBrains Mono',monospace;font-size:12px;color:#6E6A63;font-weight:600}
+.lp-sign a{display:inline-flex;align-items:center;gap:7px;color:#9a948a;text-decoration:none;transition:color .18s ease}
+.lp-sign a svg{display:block;flex:none}
+/* Le soulignement ne porte que sur le TEXTE : sur toute la zone cliquable, il
+   passerait aussi sous le logo. */
+.lp-sign a span{border-bottom:1px solid rgba(154,148,138,.42);padding-bottom:1px;transition:border-color .18s ease}
+.lp-sign a:hover,.lp-sign a:focus-visible{color:#FFC21A}
+.lp-sign a:hover span,.lp-sign a:focus-visible span{border-bottom-color:rgba(255,194,26,.6)}
 @media(max-width:560px){
  .lp-hide-sm{display:none !important}
  .lp h1{font-size:34px !important;line-height:1.05 !important}
@@ -530,7 +543,7 @@ const BODY_SUITE = `
       <div style="display:flex;align-items:center;gap:11px">
         <img src="/bemexo-wordmark-light.svg" alt="BEMEXO" style="height:26px;width:auto;display:block" />
       </div>
-      <div style="display:flex;gap:26px;font-size:14px;font-weight:600">
+      <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:12px 26px;font-size:14px;font-weight:600">
         <a href="#etapes" style="color:#9a948a;text-decoration:none">Fonctionnement</a>
         <a href="#tarif" style="color:#9a948a;text-decoration:none">Tarif</a>
         <a href="mailto:contact@bemexo.com" style="color:#9a948a;text-decoration:none">Contact</a>
@@ -538,6 +551,7 @@ const BODY_SUITE = `
       </div>
       <div style="font-family:'JetBrains Mono',monospace;font-size:12.5px">© 2026 BEMEXO — Les heures du bâtiment.</div>
     </div>
+    <div class="lp-sign"><a href="https://ippyx.com/?utm_source=bemexo&amp;utm_medium=signature&amp;utm_campaign=footer" target="_blank" rel="noopener" aria-label="Site réalisé par IPPYX"><svg width="13" height="14" viewBox="0 0 26 27" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="0" y="7" width="4" height="4"></rect><rect x="4" y="11" width="4" height="4"></rect><rect x="8" y="15" width="4" height="4"></rect><rect x="12" y="19" width="4" height="4"></rect><rect x="16" y="23" width="4" height="4"></rect><rect x="16" y="7" width="4" height="4"></rect><rect x="12" y="11" width="4" height="4"></rect><rect x="4" y="19" width="4" height="4"></rect><rect x="0" y="23" width="4" height="4"></rect></g><rect x="21.6" y="1.4" width="4" height="4" fill="currentColor"></rect></svg><span>Site réalisé par IPPYX</span></a></div>
   </footer>`;
 
 export default function LandingPage() {
