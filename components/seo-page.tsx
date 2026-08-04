@@ -79,6 +79,12 @@ const CSS = `
 @media(max-width:640px){
   .sp-steps{grid-template-columns:1fr}
   .sp-head-cta{padding:8px 13px;font-size:13px}
+  /* Sur un écran étroit, marge latérale + écart + logo laissaient le bouton
+     « Essayer gratuitement » déborder de quelques pixels (il est en nowrap,
+     donc il ne peut pas se replier) : on resserre le bandeau plutôt que de
+     rogner le bouton. */
+  .sp-head-in{padding:11px 16px;gap:10px}
+  .sp-brand img{height:24px}
 }
 `;
 
