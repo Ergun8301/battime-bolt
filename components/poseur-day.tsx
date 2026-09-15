@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, type ReactNode } from 'react';
+import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
 import { TimeEntry, Worksite, Planning } from '@/lib/types';
@@ -49,12 +49,30 @@ function calculateTotalMinutes(start: string, end: string, breakMins: number): n
 const toMin = (t: string) => { const [h, m] = t.split(':').map(Number); return (h || 0) * 60 + (m || 0); };
 
 // Pauses = the gaps between consecutive (sorted) slots. Computed, never stored.
+// Les créneaux sont replacés sur une ligne de temps absolue : une intervention
+// qui franchit minuit se prolonge sur le jour suivant, exactement comme dans
+// calculateTotalMinutes. Sans ça, un poste de nuit fabriquait une pause fantôme
+// de plusieurs heures. On avance aussi la borne de fin au plus tard rencontré,
+// pour que deux créneaux qui se chevauchent n'inventent pas de trou entre eux.
 function computePauses(slots: { start: string; end: string }[]) {
-  const sorted = slots.filter((s) => s.start && s.end).sort((a, b) => a.start.localeCompare(b.start));
+  const abs = slots
+    .filter((s) => s.start && s.end)
+    .map((s) => {
+      const start = toMin(s.start);
+      let end = toMin(s.end);
+      if (end < start) end += 24 * 60; // franchit minuit
+      return { start, end, endLabel: s.end, startLabel: s.start };
+    })
+    .sort((a, b) => a.start - b.start);
+
   const out: { start: string; end: string; minutes: number }[] = [];
-  for (let i = 1; i < sorted.length; i++) {
-    const gap = toMin(sorted[i].start) - toMin(sorted[i - 1].end);
-    if (gap > 0) out.push({ start: sorted[i - 1].end, end: sorted[i].start, minutes: gap });
+  let prevEnd = -1;
+  let prevEndLabel = '';
+  for (const slot of abs) {
+    if (prevEnd >= 0 && slot.start > prevEnd) {
+      out.push({ start: prevEndLabel, end: slot.startLabel, minutes: slot.start - prevEnd });
+    }
+    if (slot.end > prevEnd) { prevEnd = slot.end; prevEndLabel = slot.endLabel; }
   }
   return out;
 }
@@ -283,6 +301,13 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
   const [lateOpen, setLateOpen] = useState(false);
   // Panneau Documents du chantier (photos/fichiers, consultable côté secrétaire aussi).
   const [docsWs, setDocsWs] = useState<{ id: string; name: string } | null>(null);
+  // Suppression d'une intervention : jamais sans confirmation (gant de chantier,
+  // écran mouillé — un appui involontaire ne doit pas effacer une demi-journée).
+  const [confirmDel, setConfirmDel] = useState<
+    | { kind: 'entry'; entry: TimeEntryWithWorksite; sent: boolean }
+    | { kind: 'pending'; localId: string }
+    | null
+  >(null);
 
   const date = dateProp || format(new Date(), 'yyyy-MM-dd');
   const yesterday = format(subDays(new Date(`${date}T00:00:00`), 1), 'yyyy-MM-dd');
@@ -404,6 +429,44 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
     if (!openSlot) setDrawerField(null);
   }, [openSlot]);
 
+  // ─── Bouton « retour » du téléphone ─────────────────────────────────────────
+  // En PWA installée, le geste retour d'Android quitte l'application si personne
+  // ne consomme l'événement : le salarié se retrouve éjecté au lieu de refermer
+  // son écran. On empile une entrée d'historique tant qu'une couche est ouverte
+  // et on referme celle du dessus à chaque retour.
+  const anyLayerOpen = !!(openSlot || drawerField || docsWs || confirmDel || confirmOpen || confirmCorrectOpen || lateOpen || repeatOpen);
+  const [histTick, setHistTick] = useState(0);
+  const closeTopLayer = useRef<() => void>(() => {});
+  // Réassigné après chaque rendu, de la couche la plus haute à la plus basse.
+  useEffect(() => {
+    closeTopLayer.current = () => {
+      if (drawerField) { setDrawerField(null); return; }
+      if (confirmDel) { setConfirmDel(null); return; }
+      if (confirmOpen) { setConfirmOpen(false); return; }
+      if (confirmCorrectOpen) { setConfirmCorrectOpen(false); setPendingAction(null); return; }
+      if (lateOpen) { setLateOpen(false); return; }
+      if (repeatOpen) { setRepeatOpen(false); return; }
+      if (docsWs) { setDocsWs(null); return; }
+      if (openSlot) { setOpenSlot(null); }
+    };
+  });
+
+  useEffect(() => {
+    if (!anyLayerOpen || typeof window === 'undefined') return;
+    let consumed = false;
+    window.history.pushState({ btLayer: true }, '');
+    const onPop = () => { consumed = true; closeTopLayer.current(); setHistTick((t) => t + 1); };
+    window.addEventListener('popstate', onPop);
+    return () => {
+      window.removeEventListener('popstate', onPop);
+      // Refermé depuis l'interface : on retire l'entrée qu'on avait empilée,
+      // sinon le prochain retour ne ferait rien de visible. On ne le fait que si
+      // cette entrée est toujours la courante : si l'utilisateur a quitté /poseur
+      // entre-temps (déconnexion…), on ne doit surtout pas le renvoyer en arrière.
+      if (!consumed && (window.history.state as { btLayer?: boolean } | null)?.btLayer) window.history.back();
+    };
+  }, [anyLayerOpen, histTick]);
+
   // ─── Day meal: keep exactly one flagged row per day (no migration) ──────────
 
   const applyDayMeal = useCallback(async (value: boolean, flagModified = false) => {
@@ -499,6 +562,9 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
   const saveSlot = async () => {
     if (!user || !openSlot) return;
     if (!fStart || !fEnd) { toast.error("Indique l'heure de début et de fin"); return; }
+    // Une réserve sans description n'a aucune valeur en cas de litige : on exige
+    // le détail dès que « Avec réserve » est coché (l'écran l'annonce déjà).
+    if (fReception === 'avec' && !fObs.trim()) { toast.error('Décris la réserve constatée'); return; }
     setFSaving(true);
     try {
       const totalMins = calculateTotalMinutes(fStart, fEnd, 0);
@@ -994,7 +1060,7 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
               </div>
               <div className="bt-iv-acts">
                 <button type="button" className="bt-iv-mod" onClick={() => openPending(entry)}>Modifier</button>
-                <button type="button" className="bt-iv-del" onClick={() => handleDeletePending(entry.localId)}>Retirer</button>
+                <button type="button" className="bt-iv-del" onClick={() => setConfirmDel({ kind: 'pending', localId: entry.localId })}>Retirer</button>
               </div>
             </div>
           );
@@ -1145,11 +1211,11 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
                 </button>
               </div>
               {fReception === 'avec' && (
-                <div className="bt-recep-hint">Décrivez les réserves dans la note ci-dessous et ajoutez des photos via le bouton <strong>Documents</strong>.</div>
+                <div className="bt-recep-hint">Décrivez les réserves ci-dessous (obligatoire) et ajoutez vos photos ou documents via le bouton <strong>Documents</strong>.</div>
               )}
 
               {/* 4 · Note (devient « Détail des réserves » si avec réserve) */}
-              <div className="bt-sec">4 · {fReception === 'avec' ? 'Détail des réserves' : 'Note'} {fReception !== 'avec' && <span style={{ textTransform: 'none', letterSpacing: 0, color: '#a39d92' }}>(facultatif)</span>}</div>
+              <div className="bt-sec">4 · {fReception === 'avec' ? 'Détail des réserves' : 'Note'} <span style={{ textTransform: 'none', letterSpacing: 0, color: fReception === 'avec' ? '#C0461F' : '#a39d92' }}>{fReception === 'avec' ? '(obligatoire)' : '(facultatif)'}</span></div>
               <textarea
                 className="bt-note"
                 rows={2}
@@ -1169,7 +1235,7 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
                     </button>
                   )}
                   {openSlot.kind === 'entry' && editorEntry && (
-                    <button type="button" className="bt-ed-trash" disabled={fSaving} onClick={() => handleRetire(editorEntry)} aria-label="Retirer cette intervention" title="Retirer cette intervention">
+                    <button type="button" className="bt-ed-trash" disabled={fSaving} onClick={() => setConfirmDel({ kind: 'entry', entry: editorEntry, sent: editorEntry.status === 'submitted' })} aria-label="Retirer cette intervention" title="Retirer cette intervention">
                       <Trash2 className="h-4 w-4" />
                     </button>
                   )}
@@ -1270,6 +1336,34 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
           <div className="flex gap-2 mt-2">
             <Button variant="outline" className="flex-1" onClick={() => setConfirmOpen(false)}>Corriger</Button>
             <Button className="flex-1" onClick={() => { setConfirmOpen(false); doSubmit(); }}>Confirmer l&apos;envoi</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirmation avant de retirer une intervention */}
+      <Dialog open={!!confirmDel} onOpenChange={(o) => { if (!o) setConfirmDel(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-orange-500" /> Retirer cette intervention ?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            {confirmDel?.kind === 'entry' && confirmDel.sent
+              ? 'Elle a déjà été envoyée : elle restera visible comme « Retirée » et la secrétaire en sera informée.'
+              : 'Les heures saisies seront perdues.'}
+          </p>
+          <div className="flex gap-2 mt-2">
+            <Button variant="outline" className="flex-1" onClick={() => setConfirmDel(null)}>Non</Button>
+            <Button
+              className="flex-1"
+              onClick={() => {
+                const c = confirmDel;
+                setConfirmDel(null);
+                if (!c) return;
+                if (c.kind === 'entry') handleRetire(c.entry); else handleDeletePending(c.localId);
+              }}
+            >
+              Oui, retirer
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
