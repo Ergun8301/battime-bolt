@@ -309,11 +309,31 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
     | null
   >(null);
 
-  // Figé au montage : « Ma journée » ne bascule pas au lendemain à minuit pendant
-  // une saisie (la date était recalculée à chaque rendu → heures enregistrées
-  // sur le mauvais jour).
-  const [mountedToday] = useState(() => format(new Date(), 'yyyy-MM-dd'));
+  // « Ma journée » ne bascule pas au lendemain au beau milieu d'une saisie (la
+  // date était recalculée à chaque rendu → heures enregistrées sur le mauvais
+  // jour). Mais une appli laissée ouverte toute la nuit doit bien repasser sur
+  // le nouveau jour : on rafraîchit au retour au premier plan et chaque minute,
+  // seulement quand aucune fiche n'est ouverte.
+  const [mountedToday, setMountedToday] = useState(() => format(new Date(), 'yyyy-MM-dd'));
   const date = dateProp || mountedToday;
+  const editingOpen = openSlot !== null;
+  useEffect(() => {
+    if (dateProp) return;
+    const refresh = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      const today = format(new Date(), 'yyyy-MM-dd');
+      setMountedToday((prev) => (prev === today || editingOpen ? prev : today));
+    };
+    refresh();
+    document.addEventListener('visibilitychange', refresh);
+    window.addEventListener('focus', refresh);
+    const id = window.setInterval(refresh, 60_000);
+    return () => {
+      document.removeEventListener('visibilitychange', refresh);
+      window.removeEventListener('focus', refresh);
+      window.clearInterval(id);
+    };
+  }, [dateProp, editingOpen]);
   const yesterday = format(subDays(new Date(`${date}T00:00:00`), 1), 'yyyy-MM-dd');
   // Payroll cutoff: a day in a past month is locked — corrections go through the secretary.
   const monthLocked = date.slice(0, 7) < format(new Date(), 'yyyy-MM');
@@ -577,13 +597,13 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
     // d'autre dans la gestion des heures.
     const rawParis = new Date().toLocaleTimeString('en-GB', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
     let startParis = snapToGrid(rawParis);
-    // Fin de soirée : on ne propose jamais un créneau qui franchit minuit (la
-    // durée serait négative et la journée fausse). 23:53 s'arrondit à 00:00 →
-    // on le ramène à 23:45 ; la fin est plafonnée à 23:45.
+    // Fin de soirée : 23:53 s'arrondit à 00:00, ce qui serait le début du jour →
+    // on le ramène à 23:45. La fin reste « début + 1 h », quitte à franchir
+    // minuit : une intervention qui déborde sur le lendemain est gérée (durée
+    // calculée sur une ligne de temps absolue, comme les pauses de nuit).
     if (rawParis >= '23:00' && startParis === '00:00') startParis = '23:45';
     const [sh, sm] = startParis.split(':').map(Number);
-    let endMin = Math.min(sh * 60 + sm + 60, 23 * 60 + 45);
-    if (endMin <= sh * 60 + sm) { startParis = '22:45'; endMin = 23 * 60 + 45; }
+    const endMin = (sh * 60 + sm + 60) % (24 * 60);
     const endParis = `${String(Math.floor(endMin / 60)).padStart(2, '0')}:${String(endMin % 60).padStart(2, '0')}`;
     setFStart(startParis);
     setFEnd(endParis);

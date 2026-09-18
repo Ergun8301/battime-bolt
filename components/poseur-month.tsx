@@ -89,7 +89,7 @@ export default function PoseurMonth({ onSelectDay }: { onSelectDay?: (date: stri
                 <div className="flex items-center justify-between gap-2">
                   <p className="font-semibold capitalize text-sm">{format(parseISO(d), 'EEEE d MMMM', { locale: fr })}</p>
                   {dayTotal > 0
-                    ? <span className="text-sm font-semibold text-[#15120F] flex items-center gap-1">{declared && <Send className="h-3 w-3 opacity-70" />}{fmt(dayTotal)}</span>
+                    ? <span className="text-sm font-semibold text-[#15120F] flex items-center gap-1">{declared && <Send className="h-3 w-3 opacity-70" />}{fmt(dayTotal)}{hasDraft && <span className="text-xs font-medium text-orange-600">· À envoyer</span>}</span>
                     : <span className="text-xs text-orange-600">{hasDraft ? 'À envoyer' : 'À déclarer'}</span>}
                 </div>
                 <div className="mt-1 space-y-0.5">
@@ -99,7 +99,7 @@ export default function PoseurMonth({ onSelectDay }: { onSelectDay?: (date: stri
                     </p>
                   ))}
                   {dEnt.map((e) => (
-                    <p key={e.id} className={`text-xs text-muted-foreground flex items-center gap-1 truncate${e.status === 'cancelled' ? ' line-through' : ''}`}><Clock className="h-3 w-3 shrink-0" />{e.worksite?.client_name || 'Chantier'} · {e.start_time?.substring(0, 5)}–{e.end_time?.substring(0, 5)}{e.status === 'cancelled' ? ' · retirée' : ''}</p>
+                    <p key={e.id} className={`text-xs text-muted-foreground flex items-center gap-1 truncate${e.status === 'cancelled' ? ' line-through' : ''}`}><Clock className="h-3 w-3 shrink-0" />{e.worksite?.client_name || 'Chantier'} · {e.start_time?.substring(0, 5)}–{e.end_time?.substring(0, 5)}{e.status === 'cancelled' ? ' · retirée' : e.status === 'draft' ? ' · brouillon' : ''}</p>
                   ))}
                 </div>
               </button>
