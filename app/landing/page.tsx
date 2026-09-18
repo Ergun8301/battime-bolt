@@ -327,7 +327,7 @@ const BODY_SUITE = `
           <div style="padding:18px 20px;border-bottom:1px solid rgba(21,18,15,.08);display:flex;align-items:center;justify-content:space-between">
             <div>
               <div style="font-size:17px;font-weight:800">Aujourd'hui — Lun. 18 juin</div>
-              <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#6E6A63;margin-top:2px;display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;background:#2FA36B;border-radius:50%;animation:blink 1.4s infinite"></span> 4 journées reçues aujourd&rsquo;hui</div>
+              <div style="margin-top:4px;display:flex;align-items:center;gap:6px"><span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;background:#15120F;color:#FFC21A;padding:3px 8px;border-radius:5px">4 journées reçues</span></div>
             </div>
             <div style="background:#FFC21A;color:#15120F;font-weight:800;font-size:13px;padding:9px 14px;border-radius:8px;box-shadow:0 2px 0 #C99300">Exporter la paie</div>
           </div>
