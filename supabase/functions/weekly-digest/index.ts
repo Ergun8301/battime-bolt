@@ -75,7 +75,7 @@ function buildHtml(opts: {
 
   const siteRows = opts.bySite.length
     ? opts.bySite.map((s) => row(s.name, fmtHours(s.minutes))).join('')
-    : `<tr><td colspan="2" style="padding:8px 0;color:#8a8378;font-size:13px;">Aucune heure validée cette semaine</td></tr>`;
+    : `<tr><td colspan="2" style="padding:8px 0;color:#8a8378;font-size:13px;">Aucune heure déclarée cette semaine</td></tr>`;
 
   const pendingList = opts.pending.length
     ? opts.pending.slice(0, 12).map((p) => `<li style="margin:3px 0;">${p.workerName} — ${p.siteName} (${fmtDateFR(p.date)})</li>`).join('')
@@ -100,7 +100,7 @@ function buildHtml(opts: {
       </td></tr>
       <tr><td style="padding:14px 28px;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#FBF8F2;border-radius:10px;padding:14px;">
-          <tr><td style="padding:6px 14px;font-size:13px;color:#3a352f;">Heures validées (total)</td>
+          <tr><td style="padding:6px 14px;font-size:13px;color:#3a352f;">Heures déclarées (total)</td>
               <td style="padding:6px 14px;text-align:right;font-weight:900;font-size:16px;color:#15120F;">${fmtHours(opts.totalMinutes)}</td></tr>
         </table>
       </td></tr>
@@ -109,7 +109,7 @@ function buildHtml(opts: {
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${siteRows}</table>
       </td></tr>
       <tr><td style="padding:6px 28px 18px;border-top:1px solid #eee;">
-        <p style="margin:12px 0 4px;font-size:12px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#8a8378;">Pointages en attente de validation (${opts.pending.length})</p>
+        <p style="margin:12px 0 4px;font-size:12px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#8a8378;">Journées en brouillon, non envoyées (${opts.pending.length})</p>
         <ul style="margin:0;padding-left:18px;font-size:13px;color:#3a352f;">${pendingList}</ul>
       </td></tr>
       <tr><td style="padding:6px 28px 24px;border-top:1px solid #eee;">
@@ -132,17 +132,21 @@ async function runForCompany(admin: ReturnType<typeof createClient>, companyId: 
     admin.from('companies').select('name').eq('id', companyId).maybeSingle(),
     admin.from('users').select('email').eq('company_id', companyId).eq('role', 'admin').eq('is_active', true),
     admin.from('users').select('id, first_name, last_name').eq('company_id', companyId).eq('role', 'worker').eq('is_active', true),
+    // Heures déclarées = envoyées ('submitted', ou 'validated' pour l'historique).
     admin.from('time_entries')
       .select('worksite_id, total_minutes, worksite:worksites(client_name)')
-      .eq('company_id', companyId).eq('status', 'validated')
+      .eq('company_id', companyId).in('status', ['submitted', 'validated'])
       .gte('work_date', monday).lte('work_date', today),
+    // Journées restées en brouillon cette semaine : saisies mais jamais envoyées.
     admin.from('time_entries')
       .select('work_date, user:users!user_id(first_name,last_name), worksite:worksites(client_name)')
-      .eq('company_id', companyId).eq('status', 'submitted')
+      .eq('company_id', companyId).eq('status', 'draft')
+      .gte('work_date', monday).lte('work_date', today)
       .order('work_date', { ascending: true }),
+    // « A pointé » = a envoyé au moins une journée cette semaine.
     admin.from('time_entries')
       .select('user_id')
-      .eq('company_id', companyId).neq('status', 'cancelled')
+      .eq('company_id', companyId).in('status', ['submitted', 'validated'])
       .gte('work_date', monday).lte('work_date', today),
   ]);
 

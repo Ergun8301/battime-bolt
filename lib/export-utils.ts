@@ -28,9 +28,12 @@ function formatMinutesToHours(minutes: number): string {
   return `${h}h${m.toString().padStart(2, '0')}`;
 }
 
-// No validation step anymore: anything not a draft counts as "Envoyé".
+// Les appelants ne passent que des lignes envoyées (voir lib/status.ts) ; si un
+// brouillon ou une ligne retirée arrivait quand même ici, il serait nommé.
 function statusLabel(status: string): string {
-  return status === 'draft' ? 'Brouillon' : 'Envoyé';
+  if (status === 'draft') return 'Brouillon';
+  if (status === 'cancelled') return 'Retirée';
+  return 'Envoyé';
 }
 
 export function exportEntriesToExcel(entries: ExportEntry[], opts: ExportOptions): void {
