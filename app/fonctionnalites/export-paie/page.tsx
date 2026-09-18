@@ -70,7 +70,7 @@ export default function Page() {
           <h2 className="sp-h2">Ce que contient l’export</h2>
           <ul className="sp-list">
             <li>Le <strong>total d’heures par salarié</strong>, détaillé par chantier.</li>
-            <li>Le <strong>panier repas</strong> et les observations de chaque journée.</li>
+            <li>Le <strong>panier repas</strong> de chaque journée, et les observations du salarié dans l’export Excel.</li>
             <li>Un format <strong>Excel</strong> ou <strong>PDF</strong>, lisible par votre comptable.</li>
             <li>Un récap lisible que votre <strong>comptable</strong> récupère sans rien retaper.</li>
           </ul>

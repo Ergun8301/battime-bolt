@@ -479,7 +479,7 @@ const BODY_SUITE = `
               <div style="font-size:13.5px;color:#a59c86;font-weight:500">Écrivez-nous, on regarde ensemble ce qui vous convient.</div>
             </div>
           </div>
-          <a href="/inscription" style="flex:none;background:#FFC21A;color:#15120F;font-weight:800;font-size:14.5px;padding:12px 20px;border-radius:10px;text-decoration:none;box-shadow:0 3px 0 #C99300">Parlons-en →</a>
+          <a href="mailto:contact@bemexo.com" style="flex:none;background:#FFC21A;color:#15120F;font-weight:800;font-size:14.5px;padding:12px 20px;border-radius:10px;text-decoration:none;box-shadow:0 3px 0 #C99300">Parlons-en →</a>
         </div>
       </div>
 
