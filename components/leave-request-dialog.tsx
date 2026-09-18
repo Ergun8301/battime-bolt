@@ -89,8 +89,16 @@ export default function LeaveRequestDialog({ open, onOpenChange, userId }: Props
 
   const cancelRequest = async (id: string) => {
     try {
-      const { error } = await supabase.from('leave_requests').delete().eq('id', id);
+      // `.select('id')` : sans lui, une demande déjà traitée par le bureau
+      // (donc plus annulable) renverrait « 0 ligne » sans erreur et l'écran
+      // afficherait une annulation qui n'a pas eu lieu.
+      const { data, error } = await supabase.from('leave_requests').delete().eq('id', id).select('id');
       if (error) throw error;
+      if (!data || data.length === 0) {
+        toast.error('Cette demande a déjà été traitée par le bureau.');
+        fetchRows();
+        return;
+      }
       setRows((prev) => prev.filter((r) => r.id !== id));
     } catch {
       toast.error("Impossible d'annuler la demande");

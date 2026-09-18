@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
+import { isCounted } from '@/lib/status';
 import { TimeEntry, Worksite, Planning } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -48,7 +49,7 @@ export default function PoseurMonth({ onSelectDay }: { onSelectDay?: (date: stri
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  const totalSent = entries.filter((e) => e.status !== 'draft').reduce((s, e) => s + e.total_minutes, 0);
+  const totalSent = entries.filter((e) => isCounted(e.status)).reduce((s, e) => s + e.total_minutes, 0);
   const dayKeys = Array.from(new Set([...planning.map((p) => p.work_date), ...entries.map((e) => e.work_date)])).sort();
 
   if (loading) {
@@ -73,8 +74,11 @@ export default function PoseurMonth({ onSelectDay }: { onSelectDay?: (date: stri
           {dayKeys.map((d) => {
             const dPlan = planning.filter((p) => p.work_date === d);
             const dEnt = entries.filter((e) => e.work_date === d);
-            const dayTotal = dEnt.reduce((s, e) => s + e.total_minutes, 0);
-            const declared = dEnt.some((e) => e.status !== 'draft');
+            // Le total du jour = heures envoyées ; un brouillon non envoyé est
+            // signalé « À envoyer », une ligne retirée ne compte pas.
+            const dayTotal = dEnt.filter((e) => isCounted(e.status)).reduce((s, e) => s + e.total_minutes, 0);
+            const declared = dEnt.some((e) => isCounted(e.status));
+            const hasDraft = dEnt.some((e) => e.status === 'draft');
             const isToday = d === todayStr;
             return (
               <button
@@ -86,7 +90,7 @@ export default function PoseurMonth({ onSelectDay }: { onSelectDay?: (date: stri
                   <p className="font-semibold capitalize text-sm">{format(parseISO(d), 'EEEE d MMMM', { locale: fr })}</p>
                   {dayTotal > 0
                     ? <span className="text-sm font-semibold text-[#15120F] flex items-center gap-1">{declared && <Send className="h-3 w-3 opacity-70" />}{fmt(dayTotal)}</span>
-                    : <span className="text-xs text-orange-600">À déclarer</span>}
+                    : <span className="text-xs text-orange-600">{hasDraft ? 'À envoyer' : 'À déclarer'}</span>}
                 </div>
                 <div className="mt-1 space-y-0.5">
                   {dPlan.map((p) => (
@@ -95,7 +99,7 @@ export default function PoseurMonth({ onSelectDay }: { onSelectDay?: (date: stri
                     </p>
                   ))}
                   {dEnt.map((e) => (
-                    <p key={e.id} className="text-xs text-muted-foreground flex items-center gap-1 truncate"><Clock className="h-3 w-3 shrink-0" />{e.worksite?.client_name || 'Chantier'} · {e.start_time?.substring(0, 5)}–{e.end_time?.substring(0, 5)}</p>
+                    <p key={e.id} className={`text-xs text-muted-foreground flex items-center gap-1 truncate${e.status === 'cancelled' ? ' line-through' : ''}`}><Clock className="h-3 w-3 shrink-0" />{e.worksite?.client_name || 'Chantier'} · {e.start_time?.substring(0, 5)}–{e.end_time?.substring(0, 5)}{e.status === 'cancelled' ? ' · retirée' : ''}</p>
                   ))}
                 </div>
               </button>
