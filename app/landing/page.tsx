@@ -59,7 +59,7 @@ const LD_FAQ = {
     {
       '@type': 'Question',
       name: 'Et s’il n’y a pas de réseau sur le chantier ?',
-      acceptedAnswer: { '@type': 'Answer', text: 'Aucun souci. Le pointage est enregistré sur le téléphone et remonte tout seul dès que le réseau revient.' },
+      acceptedAnswer: { '@type': 'Answer', text: 'Aucun souci. La saisie est conservée sur le téléphone ; elle part au retour du réseau, dès que la journée est rouverte.' },
     },
     {
       '@type': 'Question',
@@ -69,7 +69,7 @@ const LD_FAQ = {
     {
       '@type': 'Question',
       name: 'Est-ce que ça marche avec mon logiciel de paie ?',
-      acceptedAnswer: { '@type': 'Answer', text: 'L’export se fait en Excel ou au format de votre logiciel. Votre comptable récupère un fichier propre, sans rien retaper.' },
+      acceptedAnswer: { '@type': 'Answer', text: 'L’export se fait en Excel ou en PDF. Votre comptable récupère un fichier propre, prêt à saisir dans son logiciel.' },
     },
     {
       '@type': 'Question',
@@ -204,7 +204,7 @@ const BODY = `<!-- ============ HEADER ============ -->
                 <div style="font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.1em;color:#9a948a;text-transform:uppercase;margin-bottom:2px">Lun. 18 juin</div>
                 <div style="font-family:'JetBrains Mono',monospace;font-size:52px;font-weight:700;letter-spacing:-.02em;line-height:1">07:42</div>
               </div>
-              <button style="background:#FFC21A;border:none;border-radius:16px;padding:20px;font-family:'Archivo',sans-serif;font-weight:900;font-size:18px;color:#15120F;box-shadow:0 4px 0 #C99300;cursor:pointer;letter-spacing:-.01em">POINTER L'ARRIVÉE</button>
+              <button style="background:#FFC21A;border:none;border-radius:16px;padding:20px;font-family:'Archivo',sans-serif;font-weight:900;font-size:18px;color:#15120F;box-shadow:0 4px 0 #C99300;cursor:pointer;letter-spacing:-.01em">ENVOYER MA JOURNÉE</button>
               <div style="margin-top:auto;padding-top:14px;display:flex;align-items:center;justify-content:center;gap:7px;font-size:11px;font-weight:600;color:#6E6A63">
                 <span style="width:6px;height:6px;background:#2FA36B;border-radius:50%"></span>
                 Envoyé direct au bureau
@@ -274,7 +274,7 @@ const BODY_SUITE = `
             <div style="width:44px;height:44px;border-radius:11px;background:#15120F;display:flex;align-items:center;justify-content:center;font-size:22px">📍</div>
           </div>
           <h3 style="font-size:21px;font-weight:800;margin-bottom:10px;letter-spacing:-.01em">Le salarié pointe</h3>
-          <p style="font-size:15px;line-height:1.5;color:#56514a;font-weight:500">Sur le chantier, il ouvre l'appli et tape un gros bouton. Arrivée, pause, départ. Aucune formation, ça marche du premier coup.</p>
+          <p style="font-size:15px;line-height:1.5;color:#56514a;font-weight:500">Sur le chantier, il ouvre l'appli, choisit son chantier, règle l'heure de début et de fin. Aucune formation, ça marche du premier coup.</p>
         </div>
         <!-- step 2 -->
         <div data-reveal style="background:#fff;border:1px solid rgba(21,18,15,.1);border-radius:18px;padding:30px 26px">
@@ -293,7 +293,7 @@ const BODY_SUITE = `
             <div style="width:44px;height:44px;border-radius:11px;background:#FFC21A;display:flex;align-items:center;justify-content:center;font-size:22px">📤</div>
           </div>
           <h3 style="font-size:21px;font-weight:800;margin-bottom:10px;letter-spacing:-.01em">Export paie en un clic</h3>
-          <p style="font-size:15px;line-height:1.5;color:#c9c3b8;font-weight:500">En fin de mois, vous exportez un récap propre, prêt pour votre comptable ou votre logiciel de paie. Fini la ressaisie du lundi.</p>
+          <p style="font-size:15px;line-height:1.5;color:#c9c3b8;font-weight:500">En fin de mois, vous exportez un récap propre, prêt pour votre comptable. Fini la ressaisie du lundi.</p>
         </div>
       </div>
     </div>
@@ -305,11 +305,11 @@ const BODY_SUITE = `
       <div data-reveal style="">
         <div style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#9a8a3a;margin-bottom:16px">Côté bureau</div>
         <h2 style="font-size:38px;line-height:1.05;font-weight:900;letter-spacing:-.02em;margin-bottom:20px">Vous voyez tout, en direct, sans appeler personne.</h2>
-        <p style="font-size:17px;line-height:1.55;color:#46413a;font-weight:500;margin-bottom:26px;max-width:430px">Qui est sur quel chantier, combien d'heures, depuis quand. Tout est classé tout seul. Le vendredi, vous validez — le mois fini, vous exportez.</p>
+        <p style="font-size:17px;line-height:1.55;color:#46413a;font-weight:500;margin-bottom:26px;max-width:430px">Qui est sur quel chantier, combien d'heures, depuis quand. Tout est classé tout seul. Le vendredi, vous vérifiez — le mois fini, vous exportez.</p>
         <div style="display:flex;flex-direction:column;gap:13px">
           <div style="display:flex;gap:12px;align-items:center;font-size:15.5px;font-weight:600;color:#2a2622"><span style="width:26px;height:26px;flex:none;background:#15120F;color:#FFC21A;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900">✓</span> Heures par chantier et par salarié</div>
-          <div style="display:flex;gap:12px;align-items:center;font-size:15.5px;font-weight:600;color:#2a2622"><span style="width:26px;height:26px;flex:none;background:#15120F;color:#FFC21A;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900">✓</span> Heures sup. calculées automatiquement</div>
-          <div style="display:flex;gap:12px;align-items:center;font-size:15.5px;font-weight:600;color:#2a2622"><span style="width:26px;height:26px;flex:none;background:#15120F;color:#FFC21A;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900">✓</span> Export Excel ou logiciel de paie</div>
+          <div style="display:flex;gap:12px;align-items:center;font-size:15.5px;font-weight:600;color:#2a2622"><span style="width:26px;height:26px;flex:none;background:#15120F;color:#FFC21A;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900">✓</span> Jours oubliés repérés, salarié relancé en un clic</div>
+          <div style="display:flex;gap:12px;align-items:center;font-size:15.5px;font-weight:600;color:#2a2622"><span style="width:26px;height:26px;flex:none;background:#15120F;color:#FFC21A;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900">✓</span> Export Excel ou PDF pour la paie</div>
         </div>
       </div>
 
@@ -435,7 +435,7 @@ const BODY_SUITE = `
 
         <!-- Offre 1 -->
         <div style="display:flex;flex-direction:column;background:#211D19;border:1px solid rgba(242,237,227,.14);border-radius:18px;padding:26px 24px">
-          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#a59c86;font-weight:700;margin-bottom:12px">Jusqu'à 10 salariés</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#a59c86;font-weight:700;margin-bottom:12px">Jusqu'à 15 salariés</div>
           <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:8px"><span style="font-size:46px;font-weight:900;letter-spacing:-.03em;line-height:1">49€</span><span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:#a59c86">/ mois HT</span></div>
           <div style="font-size:14px;color:#a59c86;font-weight:500;margin-bottom:20px">Petites équipes et artisans qui démarrent.</div>
           <a href="/inscription" style="margin-top:auto;display:block;text-align:center;background:transparent;color:#F2EDE3;font-weight:800;font-size:15px;padding:13px;border-radius:10px;text-decoration:none;border:2px solid rgba(242,237,227,.4)">Commencer l'essai</a>
@@ -444,7 +444,7 @@ const BODY_SUITE = `
         <!-- Offre 2 — mise en avant -->
         <div style="display:flex;flex-direction:column;background:#FFC21A;color:#15120F;border-radius:18px;padding:26px 24px;position:relative;box-shadow:0 22px 50px -20px rgba(255,194,26,.4)">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-            <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#7a5e00;font-weight:700">Jusqu'à 25 salariés</div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#7a5e00;font-weight:700">De 16 à 30 salariés</div>
             <div style="font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:#FFC21A;background:#15120F;padding:4px 8px;border-radius:5px;font-weight:700">Le + courant</div>
           </div>
           <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:8px"><span style="font-size:52px;font-weight:900;letter-spacing:-.03em;line-height:1">89€</span><span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:#7a5e00">/ mois HT</span></div>
@@ -454,7 +454,7 @@ const BODY_SUITE = `
 
         <!-- Offre 3 -->
         <div style="display:flex;flex-direction:column;background:#211D19;border:1px solid rgba(242,237,227,.14);border-radius:18px;padding:26px 24px">
-          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#a59c86;font-weight:700;margin-bottom:12px">Jusqu'à 50 salariés</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#a59c86;font-weight:700;margin-bottom:12px">31 salariés et plus</div>
           <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:8px"><span style="font-size:46px;font-weight:900;letter-spacing:-.03em;line-height:1">149€</span><span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:#a59c86">/ mois HT</span></div>
           <div style="font-size:14px;color:#a59c86;font-weight:500;margin-bottom:20px">Structures avec plusieurs équipes sur le terrain.</div>
           <a href="/inscription" style="margin-top:auto;display:block;text-align:center;background:transparent;color:#F2EDE3;font-weight:800;font-size:15px;padding:13px;border-radius:10px;text-decoration:none;border:2px solid rgba(242,237,227,.4)">Commencer l'essai</a>
@@ -473,10 +473,10 @@ const BODY_SUITE = `
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap;border:1.5px solid rgba(255,194,26,.4);border-radius:14px;padding:15px 22px">
           <div style="display:flex;align-items:center;gap:14px">
-            <div style="width:44px;height:44px;flex:none;background:rgba(255,194,26,.14);border:1px solid rgba(255,194,26,.4);border-radius:11px;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-weight:700;color:#FFC21A;font-size:15px">50+</div>
+            <div style="width:44px;height:44px;flex:none;background:rgba(255,194,26,.14);border:1px solid rgba(255,194,26,.4);border-radius:11px;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-weight:700;color:#FFC21A;font-size:15px">?</div>
             <div>
-              <div style="font-size:16.5px;font-weight:800;letter-spacing:-.01em;color:#F2EDE3">Au-delà de 50 salariés ?</div>
-              <div style="font-size:13.5px;color:#a59c86;font-weight:500">On construit une offre sur mesure pour votre structure.</div>
+              <div style="font-size:16.5px;font-weight:800;letter-spacing:-.01em;color:#F2EDE3">Plusieurs sociétés, intérim, cas particulier ?</div>
+              <div style="font-size:13.5px;color:#a59c86;font-weight:500">Écrivez-nous, on regarde ensemble ce qui vous convient.</div>
             </div>
           </div>
           <a href="/inscription" style="flex:none;background:#FFC21A;color:#15120F;font-weight:800;font-size:14.5px;padding:12px 20px;border-radius:10px;text-decoration:none;box-shadow:0 3px 0 #C99300">Parlons-en →</a>
@@ -493,7 +493,7 @@ const BODY_SUITE = `
       <div style="display:flex;flex-direction:column;gap:14px">
         <div data-reveal style="background:#fff;border:1px solid rgba(21,18,15,.1);border-radius:14px;padding:22px 24px">
           <div style="font-size:17px;font-weight:800;margin-bottom:8px">Et s'il n'y a pas de réseau sur le chantier ?</div>
-          <p style="font-size:15px;line-height:1.5;color:#56514a;font-weight:500">Aucun souci. Le pointage est enregistré sur le téléphone et remonte tout seul dès que le réseau revient.</p>
+          <p style="font-size:15px;line-height:1.5;color:#56514a;font-weight:500">Aucun souci. La saisie est conservée sur le téléphone ; elle part au retour du réseau, dès que la journée est rouverte.</p>
         </div>
         <div data-reveal style="background:#fff;border:1px solid rgba(21,18,15,.1);border-radius:14px;padding:22px 24px">
           <div style="font-size:17px;font-weight:800;margin-bottom:8px">Mes gars ne sont pas à l'aise avec la technologie.</div>
@@ -501,7 +501,7 @@ const BODY_SUITE = `
         </div>
         <div data-reveal style="background:#fff;border:1px solid rgba(21,18,15,.1);border-radius:14px;padding:22px 24px">
           <div style="font-size:17px;font-weight:800;margin-bottom:8px">Est-ce que ça marche avec mon logiciel de paie ?</div>
-          <p style="font-size:15px;line-height:1.5;color:#56514a;font-weight:500">L'export se fait en Excel ou au format de votre logiciel. Votre comptable récupère un fichier propre, sans rien retaper.</p>
+          <p style="font-size:15px;line-height:1.5;color:#56514a;font-weight:500">L'export se fait en Excel ou en PDF. Votre comptable récupère un fichier propre, prêt à saisir dans son logiciel.</p>
         </div>
         <div data-reveal style="background:#fff;border:1px solid rgba(21,18,15,.1);border-radius:14px;padding:22px 24px">
           <div style="font-size:17px;font-weight:800;margin-bottom:8px">Combien de temps pour démarrer ?</div>

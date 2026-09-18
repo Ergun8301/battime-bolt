@@ -4,7 +4,7 @@ import SeoPage, { JsonLd } from '@/components/seo-page';
 export const metadata: Metadata = {
   title: 'Pointage sur chantier : la feuille d’heures qui se remplit toute seule — BEMEXO',
   description:
-    'Vos salariés pointent leurs heures depuis leur téléphone, directement sur le chantier. Arrivée, pause, départ — tout remonte au bureau en temps réel, prêt pour la paie. Sans papier, sans ressaisie.',
+    'Vos salariés pointent leurs heures depuis leur téléphone, directement sur le chantier. Chantier, début, fin — tout remonte au bureau en temps réel, prêt pour la paie. Sans papier, sans ressaisie.',
   alternates: {
     canonical: 'https://bemexo.com/fonctionnalites/pointage-chantier',
     languages: {
@@ -14,7 +14,7 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: 'Pointage sur chantier — BEMEXO',
-    description: 'Le pointage mobile du BTP : arrivée, pause, départ en un geste. Tout remonte au bureau, prêt pour la paie.',
+    description: 'Le pointage mobile du BTP : chantier, début, fin en quelques gestes. Tout remonte au bureau, prêt pour la paie.',
     url: 'https://bemexo.com/fonctionnalites/pointage-chantier',
     type: 'website',
     locale: 'fr_FR',
@@ -45,7 +45,7 @@ export default function Page() {
           {
             '@type': 'Question',
             name: 'Et si un salarié oublie de pointer ?',
-            acceptedAnswer: { '@type': 'Answer', text: 'Vous voyez immédiatement les jours en attente au bureau et pouvez le relancer, ou compléter la saisie vous-même.' },
+            acceptedAnswer: { '@type': 'Answer', text: 'Vous voyez immédiatement les jours en attente au bureau et pouvez le relancer en un clic.' },
           },
           {
             '@type': 'Question',
@@ -58,7 +58,7 @@ export default function Page() {
         kicker="Fonctionnalité · Pointage"
         crumbs={[{ label: 'Pointage chantier', href: '/fonctionnalites/pointage-chantier' }]}
         title={<>Le pointage chantier, <em>en un geste.</em></>}
-        lede="Fini les feuilles d’heures en papier qui se perdent et la ressaisie du lundi matin. Sur le chantier, vos salariés pointent depuis leur téléphone — arrivée, pause, départ — et tout remonte au bureau en temps réel, propre et prêt pour la paie."
+        lede="Fini les feuilles d’heures en papier qui se perdent et la ressaisie du lundi matin. Sur le chantier, vos salariés pointent depuis leur téléphone — chantier, début, fin — et tout remonte au bureau en temps réel, propre et prêt pour la paie."
         ctaTitle="Le pointage papier, c’est terminé."
         ctaText="Essayez BEMEXO 30 jours : vos gars pointent depuis leur téléphone, vous récupérez des heures fiables sans rien retaper."
       >
@@ -86,7 +86,7 @@ export default function Page() {
             <div className="sp-step">
               <div className="sp-step-n">02</div>
               <h3>Il saisit ses heures</h3>
-              <p>Début, fin, la durée se calcule et la pause est déduite automatiquement. Aucun calcul de tête.</p>
+              <p>Début, fin : la durée se calcule toute seule. Aucun calcul de tête.</p>
             </div>
             <div className="sp-step">
               <div className="sp-step-n">03</div>
@@ -95,8 +95,8 @@ export default function Page() {
             </div>
           </div>
           <div className="sp-note">
-            <strong>Pas de réseau sur le chantier ?</strong> Aucun souci. Le pointage est enregistré sur le téléphone
-            et remonte tout seul dès que la connexion revient — rien n’est perdu.
+            <strong>Pas de réseau sur le chantier ?</strong> Aucun souci. La saisie est conservée sur le téléphone
+            et part au retour de la connexion, dès que la journée est rouverte.
           </div>
         </section>
 
@@ -104,10 +104,10 @@ export default function Page() {
           <h2 className="sp-h2">Ce que ça change pour vous</h2>
           <ul className="sp-list">
             <li>Des heures <strong>fiables et datées</strong>, chantier par chantier, salarié par salarié.</li>
-            <li><strong>Fini la ressaisie</strong> : les heures arrivent déjà classées, prêtes à être validées.</li>
+            <li><strong>Fini la ressaisie</strong> : les heures arrivent déjà classées, prêtes à être vérifiées.</li>
             <li>Vous suivez l’avancement <strong>en temps réel</strong>, sans appeler personne.</li>
-            <li>Les <strong>heures supplémentaires</strong> et la pause déduite sont calculées automatiquement.</li>
-            <li>En fin de mois, un <strong>export propre</strong> pour votre comptable ou votre logiciel de paie.</li>
+            <li>Les <strong>jours oubliés</strong> sont repérés et le salarié relancé en un clic.</li>
+            <li>En fin de mois, un <strong>export propre</strong> pour votre comptable.</li>
           </ul>
         </section>
 
@@ -134,7 +134,7 @@ export default function Page() {
             </div>
             <div className="sp-faq-item">
               <h3>Et si un salarié oublie de pointer ?</h3>
-              <p>Vous voyez immédiatement les jours en attente au bureau et pouvez le relancer, ou compléter la saisie vous-même.</p>
+              <p>Vous voyez immédiatement les jours en attente au bureau et pouvez le relancer en un clic.</p>
             </div>
             <div className="sp-faq-item">
               <h3>Combien de temps pour démarrer ?</h3>

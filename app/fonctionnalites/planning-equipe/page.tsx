@@ -85,7 +85,7 @@ export default function Page() {
         <section className="sp-section">
           <h2 className="sp-h2">Pensé pour le patron et la secrétaire</h2>
           <p className="sp-p">
-            Pas besoin d’être informaticien. Le vendredi, vous validez la semaine ; le mois fini, vous exportez. Entre
+            Pas besoin d’être informaticien. Le vendredi, vous vérifiez la semaine ; le mois fini, vous exportez. Entre
             les deux, le planning se remplit tout seul avec les heures du terrain. La secrétaire garde la main sur tout
             depuis un seul écran, sans jongler entre dix outils.
           </p>

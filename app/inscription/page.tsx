@@ -220,7 +220,7 @@ export default function InscriptionPage() {
                 </button>
 
                 <p className="bt-legal">
-                  En créant un compte, vous acceptez les <Link href="/mentions-legales">conditions d&apos;utilisation</Link> et la <Link href="/confidentialite">politique de confidentialité</Link>.
+                  En créant un compte, vous acceptez les <Link href="/cgu">conditions d&apos;utilisation</Link> et la <Link href="/confidentialite">politique de confidentialité</Link>.
                 </p>
               </form>
 

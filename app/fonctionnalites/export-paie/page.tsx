@@ -4,7 +4,7 @@ import SeoPage, { JsonLd } from '@/components/seo-page';
 export const metadata: Metadata = {
   title: 'Export paie du BTP, prêt en un clic — BEMEXO',
   description:
-    'En fin de mois, exportez un récapitulatif d’heures propre, prêt pour votre comptable ou votre logiciel de paie. Heures supplémentaires calculées, mois verrouillé, fini la ressaisie du lundi.',
+    'En fin de mois, exportez un récapitulatif d’heures propre, prêt pour votre comptable. Heures exportées verrouillées, fini la ressaisie du lundi.',
   alternates: {
     canonical: 'https://bemexo.com/fonctionnalites/export-paie',
     languages: {
@@ -14,7 +14,7 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: 'Export paie du BTP — BEMEXO',
-    description: 'Le récap d’heures du mois, propre et prêt pour la paie. Heures sup calculées, export Excel.',
+    description: 'Le récap d’heures du mois, propre et prêt pour la paie. Export Excel ou PDF.',
     url: 'https://bemexo.com/fonctionnalites/export-paie',
     type: 'website',
     locale: 'fr_FR',
@@ -40,12 +40,12 @@ export default function Page() {
           {
             '@type': 'Question',
             name: 'Est-ce que ça marche avec mon logiciel de paie ?',
-            acceptedAnswer: { '@type': 'Answer', text: 'L’export se fait en Excel ou au format attendu par votre logiciel. Votre comptable récupère un fichier propre, sans ressaisie.' },
+            acceptedAnswer: { '@type': 'Answer', text: 'L’export se fait en Excel ou en PDF. Votre comptable récupère un fichier propre, prêt à saisir dans son logiciel.' },
           },
           {
             '@type': 'Question',
             name: 'Puis-je exporter un seul salarié ?',
-            acceptedAnswer: { '@type': 'Answer', text: 'Oui. Vous pouvez exporter toute l’équipe (ce qui verrouille le mois) ou la feuille d’un salarié précis, sans verrouillage.' },
+            acceptedAnswer: { '@type': 'Answer', text: 'Oui. Vous pouvez exporter toute l’équipe (ce qui verrouille les heures exportées) ou la feuille d’un salarié précis, sans verrouillage.' },
           },
         ],
       }} />
@@ -53,7 +53,7 @@ export default function Page() {
         kicker="Fonctionnalité · Export paie"
         crumbs={[{ label: 'Export paie', href: '/fonctionnalites/export-paie' }]}
         title={<>L’export paie, <em>prêt en un clic.</em></>}
-        lede="En fin de mois, plus besoin de recompiler les heures à la main. BEMEXO produit un récapitulatif propre — par salarié et par chantier — prêt pour votre comptable ou votre logiciel de paie."
+        lede="En fin de mois, plus besoin de recompiler les heures à la main. BEMEXO produit un récapitulatif propre — par salarié et par chantier — prêt pour votre comptable."
         ctaTitle="La paie se prépare toute seule."
         ctaText="Essayez BEMEXO 30 jours : des heures fiables toute l’année, un export propre en fin de mois."
       >
@@ -70,12 +70,12 @@ export default function Page() {
           <h2 className="sp-h2">Ce que contient l’export</h2>
           <ul className="sp-list">
             <li>Le <strong>total d’heures par salarié</strong>, détaillé par chantier.</li>
-            <li>Les <strong>heures supplémentaires</strong> et la pause déduite, déjà calculées.</li>
-            <li>Un format <strong>Excel</strong> exploitable, ou adapté à votre logiciel de paie.</li>
+            <li>Le <strong>panier repas</strong> et les observations de chaque journée.</li>
+            <li>Un format <strong>Excel</strong> ou <strong>PDF</strong>, lisible par votre comptable.</li>
             <li>Un récap lisible que votre <strong>comptable</strong> récupère sans rien retaper.</li>
           </ul>
           <div className="sp-note">
-            <strong>Le mois se verrouille à l’export.</strong> Une fois la paie exportée, les heures du mois sont figées
+            <strong>Les heures exportées sont verrouillées.</strong> Une fois la paie exportée, les heures de la période sont figées
             pour éviter toute modification après coup — vous gardez une base fiable et incontestable.
           </div>
         </section>
@@ -98,11 +98,11 @@ export default function Page() {
           <div className="sp-faq">
             <div className="sp-faq-item">
               <h3>Est-ce que ça marche avec mon logiciel de paie ?</h3>
-              <p>L’export se fait en Excel ou au format attendu par votre logiciel. Votre comptable récupère un fichier propre, sans ressaisie.</p>
+              <p>L’export se fait en Excel ou en PDF. Votre comptable récupère un fichier propre, prêt à saisir dans son logiciel.</p>
             </div>
             <div className="sp-faq-item">
               <h3>Puis-je exporter un seul salarié ?</h3>
-              <p>Oui. Vous pouvez exporter toute l’équipe (ce qui verrouille le mois) ou la feuille d’un salarié précis, sans verrouillage.</p>
+              <p>Oui. Vous pouvez exporter toute l’équipe (ce qui verrouille les heures exportées) ou la feuille d’un salarié précis, sans verrouillage.</p>
             </div>
           </div>
         </section>

@@ -40,12 +40,12 @@ export default function Page() {
           {
             '@type': 'Question',
             name: '« Timbrer », « pointer » — c’est la même chose ?',
-            acceptedAnswer: { '@type': 'Answer', text: 'Oui. En Suisse romande on parle de timbrage ; en France de pointage. BEMEXO fait exactement ça : enregistrer les heures d’arrivée, de pause et de départ, depuis le téléphone.' },
+            acceptedAnswer: { '@type': 'Answer', text: 'Oui. En Suisse romande on parle de timbrage ; en France de pointage. BEMEXO fait exactement ça : enregistrer les heures de début et de fin de chaque intervention, depuis le téléphone.' },
           },
           {
             '@type': 'Question',
             name: 'Est-ce conforme si je n’ai pas de connexion sur le chantier ?',
-            acceptedAnswer: { '@type': 'Answer', text: 'Oui. Le timbrage est enregistré sur le téléphone et se synchronise dès que le réseau revient. L’horodatage de la saisie est conservé.' },
+            acceptedAnswer: { '@type': 'Answer', text: 'Oui. La saisie est conservée sur le téléphone et envoyée au retour du réseau, dès que la journée est rouverte.' },
           },
         ],
       }} />
@@ -61,7 +61,7 @@ export default function Page() {
           <h2 className="sp-h2">Le timbrage, sans badgeuse ni papier</h2>
           <p className="sp-p">
             Sur le chantier, pas de pointeuse murale ni de fiche à remplir : vos ouvriers <strong>timbrent depuis leur
-            téléphone</strong>. Arrivée, pause, départ — la durée du travail est enregistrée, datée, et remonte au
+            téléphone</strong>. Chantier, début, fin — la durée du travail est enregistrée, datée, et remonte au
             bureau en temps réel. Vous obtenez un relevé fiable, exploitable pour la paie et pour d’éventuels contrôles.
           </p>
         </section>
@@ -110,11 +110,11 @@ export default function Page() {
           <div className="sp-faq">
             <div className="sp-faq-item">
               <h3>« Timbrer », « pointer » — c’est la même chose ?</h3>
-              <p>Oui. En Suisse romande on parle de <em>timbrage</em> ; en France de <em>pointage</em>. BEMEXO fait exactement ça : enregistrer les heures d’arrivée, de pause et de départ, depuis le téléphone.</p>
+              <p>Oui. En Suisse romande on parle de <em>timbrage</em> ; en France de <em>pointage</em>. BEMEXO fait exactement ça : enregistrer les heures de début et de fin de chaque intervention, depuis le téléphone.</p>
             </div>
             <div className="sp-faq-item">
               <h3>Est-ce conforme si je n’ai pas de connexion sur le chantier ?</h3>
-              <p>Oui. Le timbrage est enregistré sur le téléphone et se synchronise dès que le réseau revient. L’horodatage de la saisie est conservé.</p>
+              <p>Oui. La saisie est conservée sur le téléphone et envoyée au retour du réseau, dès que la journée est rouverte.</p>
             </div>
           </div>
           <div className="sp-note">
