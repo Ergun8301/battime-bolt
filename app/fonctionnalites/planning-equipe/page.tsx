@@ -2,9 +2,9 @@ import type { Metadata } from 'next';
 import SeoPage, { JsonLd } from '@/components/seo-page';
 
 export const metadata: Metadata = {
-  title: 'Planning d’équipe chantier en temps réel — BEMEXO',
+  title: 'Planning d’équipe chantier, toujours à jour — BEMEXO',
   description:
-    'Affectez vos salariés aux chantiers d’un glisser-déposer, voyez qui est où et combien d’heures, en direct. Le planning BTP qui se met à jour tout seul, sans appeler personne.',
+    'Affectez vos salariés aux chantiers d’un glisser-déposer, voyez qui est où et combien d’heures. Le planning BTP qui se remplit avec les heures du terrain, sans appeler personne.',
   alternates: {
     canonical: 'https://bemexo.com/fonctionnalites/planning-equipe',
     languages: {
@@ -14,7 +14,7 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: 'Planning d’équipe chantier — BEMEXO',
-    description: 'Qui est sur quel chantier, combien d’heures, en temps réel. Le planning du BTP, simple et vivant.',
+    description: 'Qui est sur quel chantier, combien d’heures. Le planning du BTP, simple et vivant.',
     url: 'https://bemexo.com/fonctionnalites/planning-equipe',
     type: 'website',
     locale: 'fr_FR',
@@ -45,15 +45,15 @@ export default function Page() {
           {
             '@type': 'Question',
             name: 'Le salarié voit-il tout le planning de l’entreprise ?',
-            acceptedAnswer: { '@type': 'Answer', text: 'Non. Le salarié ne voit que ce qui le concerne pour pointer. La vue d’ensemble du planning reste côté bureau (patron / secrétariat).' },
+            acceptedAnswer: { '@type': 'Answer', text: 'Non. Le salarié ne voit que ce qui le concerne pour saisir ses heures. La vue d’ensemble du planning reste côté bureau (patron / secrétariat).' },
           },
         ],
       }} />
       <SeoPage
         kicker="Fonctionnalité · Planning"
         crumbs={[{ label: 'Planning d’équipe', href: '/fonctionnalites/planning-equipe' }]}
-        title={<>Le planning d’équipe, <em>en temps réel.</em></>}
-        lede="Qui est sur quel chantier, combien d’heures, depuis quand. Affectez vos équipes d’un simple glisser-déposer et suivez tout depuis l’ordinateur — pendant que les heures remontent du terrain, en direct."
+        title={<>Le planning d’équipe, <em>toujours à jour.</em></>}
+        lede="Qui est sur quel chantier, combien d’heures, depuis quand. Affectez vos équipes d’un simple glisser-déposer et suivez tout depuis l’ordinateur — les heures du terrain s’y ajoutent dès que le salarié envoie sa journée."
         ctaTitle="Voyez toute votre semaine d’un coup d’œil."
         ctaText="Essayez BEMEXO 30 jours : un planning clair, des heures qui remontent toutes seules, zéro coup de fil."
       >
@@ -65,8 +65,8 @@ export default function Page() {
             sa couleur, la même toute la semaine, pour repérer d’un regard qui fait quoi.
           </p>
           <p className="sp-p">
-            Et surtout : ce n’est pas un planning figé. Quand un salarié pointe sur le terrain, sa carte passe
-            <strong> en direct</strong> de « prévu » à « pointé » avec ses heures réelles. Le planning et la réalité ne
+            Et surtout : ce n’est pas un planning figé. Quand un salarié envoie sa journée, sa carte passe
+            de « prévu » à <strong>« réel »</strong> avec ses heures. Le planning et la réalité ne
             font plus qu’un.
           </p>
         </section>
@@ -75,7 +75,7 @@ export default function Page() {
           <h2 className="sp-h2">Ce que vous suivez, sans appeler personne</h2>
           <ul className="sp-list">
             <li><strong>Qui est sur quel chantier</strong>, aujourd’hui et sur toute la semaine.</li>
-            <li>Les <strong>heures réelles</strong> pointées, comparées au prévu.</li>
+            <li>Les <strong>heures réelles</strong> saisies, comparées au prévu.</li>
             <li>Les <strong>absences</strong> (congé, maladie, intempérie) posées en un clic.</li>
             <li>Les <strong>jours en attente de saisie</strong>, pour relancer le bon salarié au bon moment.</li>
             <li>Les <strong>interventions ajoutées par le salarié</strong> lui-même, quand il passe sur un autre chantier.</li>
@@ -90,7 +90,7 @@ export default function Page() {
             depuis un seul écran, sans jongler entre dix outils.
           </p>
           <div className="sp-related">
-            <a href="/fonctionnalites/pointage-chantier"><b>Pointage chantier →</b><span>Comment les salariés pointent depuis leur téléphone.</span></a>
+            <a href="/fonctionnalites/pointage-chantier"><b>Pointage chantier →</b><span>Comment les salariés saisissent leurs heures depuis leur téléphone.</span></a>
             <a href="/fonctionnalites/export-paie"><b>Export paie →</b><span>Le récap du mois, prêt en un clic.</span></a>
           </div>
         </section>
@@ -104,7 +104,7 @@ export default function Page() {
             </div>
             <div className="sp-faq-item">
               <h3>Le salarié voit-il tout le planning de l’entreprise ?</h3>
-              <p>Non. Le salarié ne voit que ce qui le concerne pour pointer. La vue d’ensemble du planning reste côté bureau (patron / secrétariat).</p>
+              <p>Non. Le salarié ne voit que ce qui le concerne pour saisir ses heures. La vue d’ensemble du planning reste côté bureau (patron / secrétariat).</p>
             </div>
           </div>
         </section>

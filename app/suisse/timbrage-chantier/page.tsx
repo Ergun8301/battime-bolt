@@ -78,7 +78,7 @@ export default function Page() {
             <li>La <strong>durée du travail quotidienne et hebdomadaire</strong> est calculée automatiquement.</li>
             <li>Le temps <strong>entre deux interventions</strong> n’est pas compté — vous gardez le net travaillé.</li>
             <li>Chaque timbrage est <strong>daté et rattaché à un chantier</strong>.</li>
-            <li>Le bureau suit tout <strong>en temps réel</strong>, sans téléphoner sur le terrain.</li>
+            <li>Le bureau reçoit les journées <strong>dès leur envoi</strong>, sans téléphoner sur le terrain.</li>
             <li>En fin de mois, un <strong>export propre</strong> pour la comptabilité et la paie.</li>
           </ul>
         </section>

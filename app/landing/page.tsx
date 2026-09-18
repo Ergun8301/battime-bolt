@@ -2,9 +2,9 @@ import type { Metadata } from 'next';
 import LandingDemoVideo from '@/components/landing-demo-video';
 
 export const metadata: Metadata = {
-  title: 'BEMEXO — Les heures du batiment, pointees sur le chantier',
+  title: 'BEMEXO — Les heures du batiment, saisies sur le chantier',
   description:
-    'Vos equipes pointent depuis leur telephone, vous recuperez tout en temps reel — propre, pret pour la paie. Essayez BEMEXO gratuitement pendant 30 jours.',
+    'Vos equipes saisissent leurs heures depuis leur telephone et envoient leur journee ; vous recuperez tout, propre et pret pour la paie. Essayez BEMEXO gratuitement pendant 30 jours.',
   alternates: {
     canonical: 'https://bemexo.com/landing',
     languages: {
@@ -17,14 +17,14 @@ export const metadata: Metadata = {
     url: 'https://bemexo.com/landing',
     siteName: 'BEMEXO',
     locale: 'fr_FR',
-    title: 'BEMEXO — Les heures du bâtiment, pointées sur le chantier',
+    title: 'BEMEXO — Les heures du bâtiment, saisies sur le chantier',
     description:
-      'Vos équipes pointent depuis leur téléphone, vous récupérez tout en temps réel — propre, prêt pour la paie. Une seule saisie. Tout suit.',
+      'Vos équipes saisissent leurs heures depuis leur téléphone et envoient leur journée ; vous récupérez tout, propre et prêt pour la paie. Une seule saisie. Tout suit.',
     images: [{ url: '/og-image.png', width: 1200, height: 630, alt: 'BEMEXO — Une seule saisie. Tout suit.' }],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'BEMEXO — Les heures du bâtiment, pointées sur le chantier',
+    title: 'BEMEXO — Les heures du bâtiment, saisies sur le chantier',
     description: 'Une seule saisie. Tout suit. Essayez BEMEXO gratuitement pendant 30 jours.',
     images: ['/og-image.png'],
   },
@@ -64,7 +64,7 @@ const LD_FAQ = {
     {
       '@type': 'Question',
       name: 'Mes gars ne sont pas à l’aise avec la technologie.',
-      acceptedAnswer: { '@type': 'Answer', text: 'C’est fait pour eux. Un écran, un gros bouton. S’ils savent envoyer un SMS, ils savent pointer sur BEMEXO.' },
+      acceptedAnswer: { '@type': 'Answer', text: 'C’est fait pour eux. Un écran, un gros bouton. S’ils savent envoyer un SMS, ils savent envoyer leur journée sur BEMEXO.' },
     },
     {
       '@type': 'Question',
@@ -156,10 +156,10 @@ const BODY = `<!-- ============ HEADER ============ -->
           BTP · Artisans · Intérim
         </div>
         <h1 style="font-size:60px;line-height:.98;font-weight:900;letter-spacing:-.025em;margin-bottom:22px">
-          Les heures de vos gars,<br>pointées <span style="color:#15120F;background:#FFC21A;padding:0 8px;box-decoration-break:clone;-webkit-box-decoration-break:clone">sur le chantier.</span>
+          Les heures de vos gars,<br>saisies <span style="color:#15120F;background:#FFC21A;padding:0 8px;box-decoration-break:clone;-webkit-box-decoration-break:clone">sur le chantier.</span>
         </h1>
         <p style="font-size:19px;line-height:1.5;color:#46413a;max-width:480px;margin-bottom:34px;font-weight:500">
-          Fini les feuilles en papier qui se perdent et la ressaisie du lundi matin. Vos équipes pointent depuis leur téléphone, vous récupérez tout en temps réel — propre, prêt pour la paie.
+          Fini les feuilles en papier qui se perdent et la ressaisie du lundi matin. Vos équipes saisissent leurs heures depuis leur téléphone et envoient leur journée — propre, prêt pour la paie.
         </p>
         <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:30px">
           <a href="/inscription" style="background:#FFC21A;color:#15120F;font-weight:800;font-size:17px;padding:16px 26px;border-radius:11px;text-decoration:none;box-shadow:0 3px 0 #C99300;display:inline-flex;align-items:center;gap:10px">
@@ -245,8 +245,8 @@ const BODY = `<!-- ============ HEADER ============ -->
           <div style="display:inline-block;font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#15120F;background:#FFC21A;padding:5px 11px;border-radius:5px;margin-bottom:22px;font-weight:700">Avec BEMEXO</div>
           <div style="font-size:20px;font-weight:800;margin-bottom:18px">Tout devient simple</div>
           <ul style="list-style:none;display:flex;flex-direction:column;gap:14px">
-            <li style="display:flex;gap:12px;font-size:15.5px;line-height:1.4;color:#3a352f;font-weight:600"><span style="color:#2FA36B;flex:none;font-weight:900">✓</span> Le gars pointe sur le chantier, en quelques secondes</li>
-            <li style="display:flex;gap:12px;font-size:15.5px;line-height:1.4;color:#3a352f;font-weight:600"><span style="color:#2FA36B;flex:none;font-weight:900">✓</span> Vous voyez les heures arriver en temps réel</li>
+            <li style="display:flex;gap:12px;font-size:15.5px;line-height:1.4;color:#3a352f;font-weight:600"><span style="color:#2FA36B;flex:none;font-weight:900">✓</span> Le gars saisit ses heures sur le chantier, en quelques secondes</li>
+            <li style="display:flex;gap:12px;font-size:15.5px;line-height:1.4;color:#3a352f;font-weight:600"><span style="color:#2FA36B;flex:none;font-weight:900">✓</span> Vous voyez les heures dès que la journée est envoyée</li>
             <li style="display:flex;gap:12px;font-size:15.5px;line-height:1.4;color:#3a352f;font-weight:600"><span style="color:#2FA36B;flex:none;font-weight:900">✓</span> Export pour la paie en un clic, sans rien ressaisir</li>
             <li style="display:flex;gap:12px;font-size:15.5px;line-height:1.4;color:#3a352f;font-weight:600"><span style="color:#2FA36B;flex:none;font-weight:900">✓</span> Zéro papier, zéro oubli, des heures justes</li>
           </ul>
@@ -273,7 +273,7 @@ const BODY_SUITE = `
             <div style="font-family:'JetBrains Mono',monospace;font-size:46px;font-weight:700;line-height:1;color:#FFC21A;-webkit-text-stroke:1px #15120F">01</div>
             <div style="width:44px;height:44px;border-radius:11px;background:#15120F;display:flex;align-items:center;justify-content:center;font-size:22px">📍</div>
           </div>
-          <h3 style="font-size:21px;font-weight:800;margin-bottom:10px;letter-spacing:-.01em">Le salarié pointe</h3>
+          <h3 style="font-size:21px;font-weight:800;margin-bottom:10px;letter-spacing:-.01em">Le salarié saisit ses heures</h3>
           <p style="font-size:15px;line-height:1.5;color:#56514a;font-weight:500">Sur le chantier, il ouvre l'appli, choisit son chantier, règle l'heure de début et de fin. Aucune formation, ça marche du premier coup.</p>
         </div>
         <!-- step 2 -->
@@ -283,7 +283,7 @@ const BODY_SUITE = `
             <div style="width:44px;height:44px;border-radius:11px;background:#15120F;display:flex;align-items:center;justify-content:center;font-size:22px">⚡</div>
           </div>
           <h3 style="font-size:21px;font-weight:800;margin-bottom:10px;letter-spacing:-.01em">Tout remonte au bureau</h3>
-          <p style="font-size:15px;line-height:1.5;color:#56514a;font-weight:500">Les heures arrivent en temps réel, classées par chantier et par salarié. Le patron ou la secrétaire suit tout depuis l'ordinateur.</p>
+          <p style="font-size:15px;line-height:1.5;color:#56514a;font-weight:500">Les heures arrivent dès l'envoi de la journée, classées par chantier et par salarié. Le patron ou la secrétaire suit tout depuis l'ordinateur.</p>
         </div>
         <!-- step 3 -->
         <div data-reveal style="background:#15120F;color:#F2EDE3;border-radius:18px;padding:30px 26px;position:relative;overflow:hidden">
@@ -304,7 +304,7 @@ const BODY_SUITE = `
     <div class="lp-bureau-grid" style="max-width:1140px;margin:0 auto;padding:84px 28px;display:grid;grid-template-columns:.9fr 1.1fr;gap:48px;align-items:center">
       <div data-reveal style="">
         <div style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#9a8a3a;margin-bottom:16px">Côté bureau</div>
-        <h2 style="font-size:38px;line-height:1.05;font-weight:900;letter-spacing:-.02em;margin-bottom:20px">Vous voyez tout, en direct, sans appeler personne.</h2>
+        <h2 style="font-size:38px;line-height:1.05;font-weight:900;letter-spacing:-.02em;margin-bottom:20px">Vous voyez tout, sans appeler personne.</h2>
         <p style="font-size:17px;line-height:1.55;color:#46413a;font-weight:500;margin-bottom:26px;max-width:430px">Qui est sur quel chantier, combien d'heures, depuis quand. Tout est classé tout seul. Le vendredi, vous vérifiez — le mois fini, vous exportez.</p>
         <div style="display:flex;flex-direction:column;gap:13px">
           <div style="display:flex;gap:12px;align-items:center;font-size:15.5px;font-weight:600;color:#2a2622"><span style="width:26px;height:26px;flex:none;background:#15120F;color:#FFC21A;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900">✓</span> Heures par chantier et par salarié</div>
@@ -327,7 +327,7 @@ const BODY_SUITE = `
           <div style="padding:18px 20px;border-bottom:1px solid rgba(21,18,15,.08);display:flex;align-items:center;justify-content:space-between">
             <div>
               <div style="font-size:17px;font-weight:800">Aujourd'hui — Lun. 18 juin</div>
-              <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#6E6A63;margin-top:2px;display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;background:#2FA36B;border-radius:50%;animation:blink 1.4s infinite"></span> 4 en cours · mise à jour en direct</div>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#6E6A63;margin-top:2px;display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;background:#2FA36B;border-radius:50%;animation:blink 1.4s infinite"></span> 4 journées reçues aujourd&rsquo;hui</div>
             </div>
             <div style="background:#FFC21A;color:#15120F;font-weight:800;font-size:13px;padding:9px 14px;border-radius:8px;box-shadow:0 2px 0 #C99300">Exporter la paie</div>
           </div>
@@ -347,7 +347,7 @@ const BODY_SUITE = `
             </div>
             <div style="padding:13px 20px;display:flex;align-items:center;gap:14px;border-bottom:1px solid rgba(21,18,15,.05)">
               <div style="width:38px;height:38px;border-radius:50%;background:#c4bdae;color:#15120F;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;flex:none">TL</div>
-              <div style="flex:1;min-width:0"><div style="font-size:14.5px;font-weight:700">Thomas L.</div><div style="font-size:12px;color:#6E6A63;font-weight:500">En pause · Villa Lupin</div></div>
+              <div style="flex:1;min-width:0"><div style="font-size:14.5px;font-weight:700">Thomas L.</div><div style="font-size:12px;color:#6E6A63;font-weight:500">Villa Lupin — Aix</div></div>
               <div style="font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:700;color:#9a948a">04:55</div>
               <div style="width:9px;height:9px;border-radius:50%;background:#FFC21A;flex:none"></div>
             </div>
@@ -395,20 +395,6 @@ const BODY_SUITE = `
         <span style="font-size:24px;font-weight:800;letter-spacing:-.01em;border:2px solid rgba(242,237,227,.25);border-radius:40px;padding:12px 26px;white-space:nowrap">Charpentiers</span>
         <span style="font-size:24px;font-weight:800;letter-spacing:-.01em;border:2px solid rgba(242,237,227,.25);border-radius:40px;padding:12px 26px;white-space:nowrap">Peintres</span>
         <span style="font-size:24px;font-weight:800;letter-spacing:-.01em;background:#FFC21A;color:#15120F;border-radius:40px;padding:12px 26px;white-space:nowrap">Agences d'intérim</span>
-      </div>
-    </div>
-  </section>
-
-  <!-- ============ TEMOIGNAGE ============ -->
-  <section style="background:#F2EDE3">
-    <div style="max-width:980px;margin:0 auto;padding:90px 28px">
-      <div data-reveal class="lp-temoignage-grid" style="display:grid;grid-template-columns:auto 1fr;gap:36px;align-items:center">
-        <img src="https://images.unsplash.com/photo-1560250097-0b93528c311a?w=400&q=80" alt="Patron d'entreprise du batiment" style="width:160px;height:160px;flex:none;border-radius:20px;object-fit:cover" />
-        <div>
-          <div style="font-size:60px;line-height:.4;color:#FFC21A;font-weight:900;font-family:'JetBrains Mono',monospace">"</div>
-          <p style="font-size:25px;line-height:1.35;font-weight:700;letter-spacing:-.01em;margin-bottom:20px">Avant je passais mon lundi matin à déchiffrer des feuilles. Maintenant tout est déjà là quand j'arrive. J'ai récupéré une demi-journée par semaine.</p>
-          <div style="display:flex;align-items:center;gap:10px;font-size:14.5px"><span style="font-weight:800">Thierry R.</span><span style="color:#9a948a">·</span><span style="color:#6E6A63;font-weight:500">Charpente Rivière, 9 salariés</span></div>
-        </div>
       </div>
     </div>
   </section>
@@ -465,8 +451,8 @@ const BODY_SUITE = `
       <!-- Bas : inclus + au-delà de 50 -->
       <div>
         <div style="display:flex;align-items:center;justify-content:center;gap:9px 22px;flex-wrap:wrap;margin-bottom:16px">
-          <span style="font-size:13.5px;font-weight:600;color:#c9c3b8"><span style="color:#FFC21A;font-weight:900">✓</span> Pointage illimité</span>
-          <span style="font-size:13.5px;font-weight:600;color:#c9c3b8"><span style="color:#FFC21A;font-weight:900">✓</span> Temps réel</span>
+          <span style="font-size:13.5px;font-weight:600;color:#c9c3b8"><span style="color:#FFC21A;font-weight:900">✓</span> Saisies illimitées</span>
+          <span style="font-size:13.5px;font-weight:600;color:#c9c3b8"><span style="color:#FFC21A;font-weight:900">✓</span> Planning d'équipe</span>
           <span style="font-size:13.5px;font-weight:600;color:#c9c3b8"><span style="color:#FFC21A;font-weight:900">✓</span> Export paie</span>
           <span style="font-size:13.5px;font-weight:600;color:#c9c3b8"><span style="color:#FFC21A;font-weight:900">✓</span> Support FR</span>
           <span style="font-size:13.5px;font-weight:600;color:#c9c3b8"><span style="color:#FFC21A;font-weight:900">✓</span> Mises à jour</span>
@@ -497,7 +483,7 @@ const BODY_SUITE = `
         </div>
         <div data-reveal style="background:#fff;border:1px solid rgba(21,18,15,.1);border-radius:14px;padding:22px 24px">
           <div style="font-size:17px;font-weight:800;margin-bottom:8px">Mes gars ne sont pas à l'aise avec la technologie.</div>
-          <p style="font-size:15px;line-height:1.5;color:#56514a;font-weight:500">C'est fait pour eux. Un écran, un gros bouton. S'ils savent envoyer un SMS, ils savent pointer sur BEMEXO.</p>
+          <p style="font-size:15px;line-height:1.5;color:#56514a;font-weight:500">C'est fait pour eux. Un écran, un gros bouton. S'ils savent envoyer un SMS, ils savent envoyer leur journée sur BEMEXO.</p>
         </div>
         <div data-reveal style="background:#fff;border:1px solid rgba(21,18,15,.1);border-radius:14px;padding:22px 24px">
           <div style="font-size:17px;font-weight:800;margin-bottom:8px">Est-ce que ça marche avec mon logiciel de paie ?</div>
@@ -516,7 +502,7 @@ const BODY_SUITE = `
     <div style="height:14px;background:repeating-linear-gradient(45deg,#15120F 0 14px,#FFC21A 14px 28px)"></div>
     <div data-reveal style="max-width:760px;margin:0 auto;padding:96px 28px 100px;text-align:center">
       <h2 style="font-size:52px;line-height:1.02;font-weight:900;letter-spacing:-.025em;margin-bottom:22px">Récupérez vos lundis matin.</h2>
-      <p style="font-size:19px;line-height:1.5;color:#c9c3b8;font-weight:500;max-width:520px;margin:0 auto 36px">Essayez BEMEXO gratuitement pendant 30 jours. Vos gars pointent dès demain, vous exportez à la fin du mois.</p>
+      <p style="font-size:19px;line-height:1.5;color:#c9c3b8;font-weight:500;max-width:520px;margin:0 auto 36px">Essayez BEMEXO gratuitement pendant 30 jours. Vos gars envoient leurs heures dès demain, vous exportez à la fin du mois.</p>
       <a href="/inscription" style="display:inline-flex;align-items:center;gap:11px;background:#FFC21A;color:#15120F;font-weight:900;font-size:19px;padding:19px 32px;border-radius:13px;text-decoration:none;box-shadow:0 4px 0 #C99300">Essayer gratuitement <span style="font-size:22px">→</span></a>
       <div style="margin-top:22px;font-family:'JetBrains Mono',monospace;font-size:13px;color:#9a948a">Sans carte bancaire · sans engagement</div>
     </div>

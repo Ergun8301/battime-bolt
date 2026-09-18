@@ -4,7 +4,7 @@ import SeoPage, { JsonLd } from '@/components/seo-page';
 export const metadata: Metadata = {
   title: 'Pointage sur chantier : la feuille d’heures qui se remplit toute seule — BEMEXO',
   description:
-    'Vos salariés pointent leurs heures depuis leur téléphone, directement sur le chantier. Chantier, début, fin — tout remonte au bureau en temps réel, prêt pour la paie. Sans papier, sans ressaisie.',
+    'Vos salariés saisissent leurs heures depuis leur téléphone, directement sur le chantier. Chantier, début, fin — la journée part au bureau, prête pour la paie. Sans papier, sans ressaisie.',
   alternates: {
     canonical: 'https://bemexo.com/fonctionnalites/pointage-chantier',
     languages: {
@@ -44,7 +44,7 @@ export default function Page() {
           },
           {
             '@type': 'Question',
-            name: 'Et si un salarié oublie de pointer ?',
+            name: 'Et si un salarié oublie sa journée ?',
             acceptedAnswer: { '@type': 'Answer', text: 'Vous voyez immédiatement les jours en attente au bureau et pouvez le relancer en un clic.' },
           },
           {
@@ -58,9 +58,9 @@ export default function Page() {
         kicker="Fonctionnalité · Pointage"
         crumbs={[{ label: 'Pointage chantier', href: '/fonctionnalites/pointage-chantier' }]}
         title={<>Le pointage chantier, <em>en un geste.</em></>}
-        lede="Fini les feuilles d’heures en papier qui se perdent et la ressaisie du lundi matin. Sur le chantier, vos salariés pointent depuis leur téléphone — chantier, début, fin — et tout remonte au bureau en temps réel, propre et prêt pour la paie."
+        lede="Fini les feuilles d’heures en papier qui se perdent et la ressaisie du lundi matin. Sur le chantier, vos salariés saisissent leurs heures depuis leur téléphone — chantier, début, fin — puis envoient leur journée au bureau, propre et prête pour la paie."
         ctaTitle="Le pointage papier, c’est terminé."
-        ctaText="Essayez BEMEXO 30 jours : vos gars pointent depuis leur téléphone, vous récupérez des heures fiables sans rien retaper."
+        ctaText="Essayez BEMEXO 30 jours : vos gars saisissent leurs heures depuis leur téléphone, vous récupérez des heures fiables sans rien retaper."
       >
         <section className="sp-section">
           <h2 className="sp-h2">Le problème des feuilles d’heures papier</h2>
@@ -70,8 +70,8 @@ export default function Page() {
             d’erreurs, et l’information se perd <strong>entre le terrain et le bureau</strong>.
           </p>
           <p className="sp-p">
-            BEMEXO remplace tout ça par un <strong>pointage mobile pensé pour le terrain</strong> : un écran, un gros
-            bouton. Si vos salariés savent envoyer un SMS, ils savent pointer.
+            BEMEXO remplace tout ça par une <strong>saisie mobile pensée pour le terrain</strong> : un écran, un gros
+            bouton. Si vos salariés savent envoyer un SMS, ils savent envoyer leur journée.
           </p>
         </section>
 
@@ -105,7 +105,7 @@ export default function Page() {
           <ul className="sp-list">
             <li>Des heures <strong>fiables et datées</strong>, chantier par chantier, salarié par salarié.</li>
             <li><strong>Fini la ressaisie</strong> : les heures arrivent déjà classées, prêtes à être vérifiées.</li>
-            <li>Vous suivez l’avancement <strong>en temps réel</strong>, sans appeler personne.</li>
+            <li>Vous suivez l’avancement <strong>jour par jour</strong>, sans appeler personne.</li>
             <li>Les <strong>jours oubliés</strong> sont repérés et le salarié relancé en un clic.</li>
             <li>En fin de mois, un <strong>export propre</strong> pour votre comptable.</li>
           </ul>
@@ -116,11 +116,11 @@ export default function Page() {
           <p className="sp-p">
             BEMEXO est fait pour les <strong>entreprises du bâtiment et des travaux publics</strong> — maçons,
             électriciens, plombiers, couvreurs, menuisiers, paysagistes — et pour les <strong>agences d’intérim</strong>
-            qui suivent des équipes sur plusieurs chantiers. Que vous soyez 3 ou 50 sur le terrain, le pointage reste
+            qui suivent des équipes sur plusieurs chantiers. Que vous soyez 3 ou 50 sur le terrain, la saisie reste
             aussi simple.
           </p>
           <div className="sp-related">
-            <a href="/fonctionnalites/planning-equipe"><b>Planning d’équipe →</b><span>Qui est sur quel chantier, en temps réel.</span></a>
+            <a href="/fonctionnalites/planning-equipe"><b>Planning d’équipe →</b><span>Qui est sur quel chantier, jour par jour.</span></a>
             <a href="/fonctionnalites/export-paie"><b>Export paie →</b><span>Le récap du mois, prêt en un clic.</span></a>
           </div>
         </section>
@@ -133,7 +133,7 @@ export default function Page() {
               <p>C’est fait pour eux : un écran, un gros bouton. Aucune formation nécessaire, ça marche du premier coup.</p>
             </div>
             <div className="sp-faq-item">
-              <h3>Et si un salarié oublie de pointer ?</h3>
+              <h3>Et si un salarié oublie sa journée ?</h3>
               <p>Vous voyez immédiatement les jours en attente au bureau et pouvez le relancer en un clic.</p>
             </div>
             <div className="sp-faq-item">

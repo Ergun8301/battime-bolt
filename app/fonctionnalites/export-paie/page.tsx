@@ -60,7 +60,7 @@ export default function Page() {
         <section className="sp-section">
           <h2 className="sp-h2">Fini la ressaisie du lundi</h2>
           <p className="sp-p">
-            Les heures pointées sur le terrain s’accumulent proprement toute l’année, classées par salarié et par
+            Les heures saisies sur le terrain s’accumulent proprement toute l’année, classées par salarié et par
             chantier. En fin de mois, vous cliquez sur <strong>« Exporter »</strong> et vous obtenez un récapitulatif
             net — sans repasser derrière, sans recopier un tableur.
           </p>
@@ -83,13 +83,13 @@ export default function Page() {
         <section className="sp-section">
           <h2 className="sp-h2">De la saisie du terrain à la fiche de paie</h2>
           <p className="sp-p">
-            Tout part d’<strong>une seule saisie</strong> : le salarié pointe sur le chantier, les heures remontent au
+            Tout part d’<strong>une seule saisie</strong> : le salarié saisit ses heures sur le chantier, les heures remontent au
             planning, et l’export les transforme en récap de paie. Une seule saisie, tout suit — c’est toute la logique
             de BEMEXO.
           </p>
           <div className="sp-related">
-            <a href="/fonctionnalites/pointage-chantier"><b>Pointage chantier →</b><span>D’où viennent les heures : le pointage mobile.</span></a>
-            <a href="/fonctionnalites/planning-equipe"><b>Planning d’équipe →</b><span>Le suivi en temps réel avant l’export.</span></a>
+            <a href="/fonctionnalites/pointage-chantier"><b>Pointage chantier →</b><span>D’où viennent les heures : la saisie mobile.</span></a>
+            <a href="/fonctionnalites/planning-equipe"><b>Planning d’équipe →</b><span>Le suivi des heures avant l’export.</span></a>
           </div>
         </section>
 

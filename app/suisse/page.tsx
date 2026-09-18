@@ -61,8 +61,8 @@ export default function Page() {
           <h2 className="sp-h2">Le timbrage, sans badgeuse ni papier</h2>
           <p className="sp-p">
             Sur le chantier, pas de pointeuse murale ni de fiche à remplir : vos ouvriers <strong>timbrent depuis leur
-            téléphone</strong>. Chantier, début, fin — la durée du travail est enregistrée, datée, et remonte au
-            bureau en temps réel. Vous obtenez un relevé fiable, exploitable pour la paie et pour d’éventuels contrôles.
+            téléphone</strong>. Chantier, début, fin — la durée du travail est enregistrée, datée, et part au
+            bureau à l’envoi de la journée. Vous obtenez un relevé fiable, exploitable pour la paie et pour d’éventuels contrôles.
           </p>
         </section>
 
