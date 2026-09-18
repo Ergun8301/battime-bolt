@@ -52,36 +52,36 @@ DECLARE
 BEGIN
   v_first_name := nullif(new.raw_user_meta_data ->> 'first_name', '');
   v_last_name  := nullif(new.raw_user_meta_data ->> 'last_name', '');
+  v_company_name := nullif(new.raw_user_meta_data ->> 'company_name', '');
 
-  -- Une invitation en attente pour cet e-mail ? Elle a été posée par le bureau
-  -- (fonction serveur invite-worker) : c'est la seule preuve acceptée.
-  SELECT i.* INTO v_inv
-  FROM public.invitations i
-  WHERE lower(i.email) = lower(new.email)
-    AND i.accepted_at IS NULL
-    AND (i.expires_at IS NULL OR i.expires_at > now())
-  ORDER BY i.created_at DESC
-  LIMIT 1;
-
-  IF v_inv.id IS NOT NULL THEN
-    v_company_id := v_inv.company_id;
-    -- Un invité est toujours un salarié (étape 11 : rôle porté par l'invitation).
-    v_role := 'worker'::public.battime_role;
-    v_first_name := COALESCE(v_first_name, v_inv.first_name);
-    v_last_name  := COALESCE(v_last_name, v_inv.last_name);
-  ELSE
-    -- Inscription publique : crée TOUJOURS une nouvelle entreprise. Impossible
-    -- de se rattacher à une entreprise existante par ce chemin.
-    v_company_name := nullif(new.raw_user_meta_data ->> 'company_name', '');
-    IF v_company_name IS NULL THEN
-      RAISE EXCEPTION 'handle_new_user: inscription sans invitation ni nom d''entreprise (%)', new.email;
-    END IF;
+  IF v_company_name IS NOT NULL THEN
+    -- Inscription publique (/inscription) : crée TOUJOURS une nouvelle
+    -- entreprise. Impossible de se rattacher à une entreprise existante ici.
     INSERT INTO public.companies (name, trial_ends_at)
     VALUES (v_company_name, now() + interval '30 days')
     RETURNING id INTO v_company_id;
     v_role := 'admin'::public.battime_role;
     INSERT INTO public.worksites (company_id, client_name, city, is_active)
     VALUES (v_company_id, 'Autre', '', true);
+  ELSE
+    -- Pas de nom d'entreprise : seule une invitation en attente, posée par le
+    -- bureau (fonction serveur invite-worker), donne le droit de rejoindre
+    -- une entreprise. Les métadonnées company_id / role sont ignorées.
+    SELECT i.* INTO v_inv
+    FROM public.invitations i
+    WHERE lower(i.email) = lower(new.email)
+      AND i.accepted_at IS NULL
+      AND (i.expires_at IS NULL OR i.expires_at > now())
+    ORDER BY i.created_at DESC
+    LIMIT 1;
+    IF v_inv.id IS NULL THEN
+      RAISE EXCEPTION 'handle_new_user: aucune invitation en attente pour % (et pas de nom d''entreprise)', new.email;
+    END IF;
+    v_company_id := v_inv.company_id;
+    -- Un invité est toujours un salarié (étape 11 : rôle porté par l'invitation).
+    v_role := 'worker'::public.battime_role;
+    v_first_name := COALESCE(v_first_name, v_inv.first_name);
+    v_last_name  := COALESCE(v_last_name, v_inv.last_name);
   END IF;
 
   INSERT INTO public.users (id, company_id, first_name, last_name, role, email, phone)
