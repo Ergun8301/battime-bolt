@@ -30,11 +30,19 @@ export interface User {
   invited_at?: string;
   last_seen_at?: string;
   photo_url?: string | null;
-  // Optional payroll info (secretary-only).
+  // Étape 2 : les données de paie ont été déplacées dans la table `user_payroll`
+  // (lisible uniquement par le bureau). Voir `UserPayroll` ci-dessous.
+}
+
+// Données de paie d'un salarié (table `user_payroll`, admin uniquement).
+export interface UserPayroll {
+  user_id: string;
+  company_id: string;
   social_security_number?: string | null;
   hire_date?: string | null;
   contract_type?: string | null;
   hourly_rate?: number | null; // taux horaire (coût chargé) pour le coût par chantier
+  updated_at?: string;
 }
 
 export interface Worksite {

@@ -97,10 +97,23 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
     setMFirst(worker.first_name || '');
     setMLast(worker.last_name || '');
     setMPhone(worker.phone || '');
-    setMNir(worker.social_security_number || '');
-    setMHireDate(worker.hire_date || '');
-    setMContract(worker.contract_type || '');
-    setMRate(worker.hourly_rate != null ? String(worker.hourly_rate) : '');
+    // Données de paie : table séparée (user_payroll), lisible par le bureau
+    // uniquement — plus jamais dans la ligne users visible de tous les salariés.
+    setMNir(''); setMHireDate(''); setMContract(''); setMRate('');
+    // Si on passe à un autre salarié avant la réponse, celle-ci est ignorée
+    // (sinon la fiche du suivant hériterait du NIR / taux du précédent).
+    let stale = false;
+    supabase.from('user_payroll')
+      .select('social_security_number, hire_date, contract_type, hourly_rate')
+      .eq('user_id', worker.id).maybeSingle()
+      .then(({ data }) => {
+        if (stale || !data) return;
+        setMNir(data.social_security_number || '');
+        setMHireDate(data.hire_date || '');
+        setMContract(data.contract_type || '');
+        setMRate(data.hourly_rate != null ? String(data.hourly_rate) : '');
+      });
+    return () => { stale = true; };
   }, [worker?.id]);
 
   useEffect(() => {
@@ -290,12 +303,17 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
     try {
       const { error } = await supabase.from('users').update({
         first_name: mFirst.trim(), last_name: mLast.trim(), phone: mPhone.trim() || null,
+      }).eq('id', worker.id).eq('company_id', worker.company_id);
+      if (error) throw error;
+      const { error: payErr } = await supabase.from('user_payroll').upsert({
+        user_id: worker.id, company_id: worker.company_id,
         social_security_number: mNir.trim() || null,
         hire_date: mHireDate || null,
         contract_type: mContract.trim() || null,
         hourly_rate: rate,
-      }).eq('id', worker.id).eq('company_id', worker.company_id);
-      if (error) throw error;
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'user_id' });
+      if (payErr) throw payErr;
       toast.success('Salarié modifié');
       onChanged?.();
     } catch (err) {
