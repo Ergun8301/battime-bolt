@@ -239,7 +239,7 @@ function LoginView() {
             )}
 
             <button className="bt-ybtn" type="submit" disabled={loading}>
-              {loading ? 'Connexion…' : isEnt ? 'Accéder au tableau de bord →' : 'Pointer mes heures →'}
+              {loading ? 'Connexion…' : isEnt ? 'Accéder au tableau de bord →' : 'Envoyer mes heures →'}
             </button>
           </form>
 

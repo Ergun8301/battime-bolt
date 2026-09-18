@@ -138,7 +138,7 @@ export default function SeoPage({
 
           <section className="sp-final">
             <h2>{ctaTitle || 'Prêt à ranger les feuilles papier ?'}</h2>
-            <p>{ctaText || 'Vos équipes pointent depuis leur téléphone, vous récupérez tout — propre, prêt pour la paie.'}</p>
+            <p>{ctaText || 'Vos équipes saisissent leurs heures depuis leur téléphone, vous récupérez tout — propre, prêt pour la paie.'}</p>
             <Link href="/inscription" className="sp-ybtn">Démarrer mon essai gratuit <span aria-hidden="true">→</span></Link>
             <div className="sp-final-note">30 jours gratuits · sans carte bancaire · sans engagement</div>
           </section>

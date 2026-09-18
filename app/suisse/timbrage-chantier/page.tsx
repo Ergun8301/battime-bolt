@@ -54,7 +54,7 @@ export default function Page() {
         kicker="Suisse · Timbrage"
         crumbs={[{ label: 'Suisse', href: '/suisse' }, { label: 'Timbrage de chantier', href: '/suisse/timbrage-chantier' }]}
         title={<>Le timbrage de chantier, <em>sur le téléphone.</em></>}
-        lede="Pas de badgeuse murale, pas de carte à passer : sur le chantier, vos ouvriers timbrent depuis leur smartphone. Chaque heure d’arrivée, de pause et de départ est enregistrée et remonte au bureau — un relevé de la durée du travail fiable et conforme au droit suisse."
+        lede="Pas de badgeuse murale, pas de carte à passer : sur le chantier, vos ouvriers timbrent depuis leur smartphone. Chaque intervention — chantier, heure de début, heure de fin — est enregistrée et remonte au bureau — un relevé de la durée du travail fiable et conforme au droit suisse."
         ctaTitle="Un timbrage qui suit vos ouvriers, partout."
         ctaText="30 jours gratuits : équipez vos chantiers d’un timbrage mobile, sans matériel ni installation."
       >
@@ -63,12 +63,12 @@ export default function Page() {
           <p className="sp-p">
             Sur un chantier, une badgeuse fixe n’a pas de sens : les équipes bougent, changent de site, travaillent en
             extérieur. Le <strong>timbrage mobile</strong> résout ça — le téléphone que chaque ouvrier a déjà dans la
-            poche devient l’outil de saisie. Un écran, un gros bouton : il choisit le chantier, timbre son arrivée, sa
-            pause, son départ.
+            poche devient l’outil de saisie. Un écran, quelques gestes : il choisit le chantier, règle son heure de début et
+            de fin, envoie sa journée.
           </p>
           <div className="sp-note">
-            <strong>Hors réseau ?</strong> Le timbrage est enregistré localement et se synchronise dès le retour de la
-            connexion. Rien n’est perdu, l’horodatage est conservé.
+            <strong>Hors réseau ?</strong> La saisie est conservée sur le téléphone et part au retour de la
+            connexion, dès que la journée est rouverte.
           </div>
         </section>
 
@@ -76,9 +76,9 @@ export default function Page() {
           <h2 className="sp-h2">Un relevé exploitable, tout de suite</h2>
           <ul className="sp-list">
             <li>La <strong>durée du travail quotidienne et hebdomadaire</strong> est calculée automatiquement.</li>
-            <li>Les <strong>pauses</strong> sont déduites — vous gardez le net travaillé.</li>
+            <li>Le temps <strong>entre deux interventions</strong> n’est pas compté — vous gardez le net travaillé.</li>
             <li>Chaque timbrage est <strong>daté et rattaché à un chantier</strong>.</li>
-            <li>Le bureau suit tout <strong>en temps réel</strong>, sans téléphoner sur le terrain.</li>
+            <li>Le bureau reçoit les journées <strong>dès leur envoi</strong>, sans téléphoner sur le terrain.</li>
             <li>En fin de mois, un <strong>export propre</strong> pour la comptabilité et la paie.</li>
           </ul>
         </section>
