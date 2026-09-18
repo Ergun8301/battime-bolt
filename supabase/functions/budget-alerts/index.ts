@@ -128,19 +128,21 @@ async function runForCompany(admin: ReturnType<typeof createClient>, companyId: 
   const sites = (sitesRes.data || []) as Site[];
   if (!sites.length) return { companyId, skipped: 'no_budget' };
 
-  // Heures validées + taux horaire, pour les chantiers concernés uniquement.
+  // Heures envoyées + taux horaire (table user_payroll), pour les chantiers concernés uniquement.
   const { data: entries } = await admin.from('time_entries')
-    .select('worksite_id, total_minutes, owner:users!time_entries_user_id_fkey(hourly_rate)')
-    .eq('company_id', companyId).eq('status', 'validated')
+    .select('worksite_id, total_minutes, owner:users!time_entries_user_id_fkey(payroll:user_payroll(hourly_rate))')
+    .eq('company_id', companyId).in('status', ['submitted', 'validated'])
     .in('worksite_id', sites.map((s) => s.id));
 
-  type Entry = { worksite_id: string; total_minutes: number; owner: { hourly_rate: number | null } | { hourly_rate: number | null }[] | null };
+  type Payroll = { hourly_rate: number | null } | { hourly_rate: number | null }[] | null;
+  type Entry = { worksite_id: string; total_minutes: number; owner: { payroll: Payroll } | { payroll: Payroll }[] | null };
   const agg = new Map<string, { minutes: number; cost: number; unpriced: number }>();
   for (const e of ((entries || []) as unknown as Entry[])) {
     const cur = agg.get(e.worksite_id) || { minutes: 0, cost: 0, unpriced: 0 };
     const mins = Number(e.total_minutes || 0);
     const owner = Array.isArray(e.owner) ? e.owner[0] : e.owner;
-    const rate = owner?.hourly_rate ?? null;
+    const payroll = Array.isArray(owner?.payroll) ? owner?.payroll[0] : owner?.payroll;
+    const rate = payroll?.hourly_rate ?? null;
     cur.minutes += mins;
     if (rate != null) cur.cost += (mins / 60) * rate;
     else cur.unpriced += mins;

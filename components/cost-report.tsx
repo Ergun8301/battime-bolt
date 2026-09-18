@@ -62,6 +62,14 @@ const CR_CSS = `
 .bt-cr-budfill.over{background:#B5472E}
 `;
 
+// Le taux horaire vit dans user_payroll (bureau uniquement) ; PostgREST renvoie
+// l'imbrication tantôt en objet, tantôt en tableau à un élément.
+type PayrollEmbed = { hourly_rate?: number | null } | { hourly_rate?: number | null }[] | null;
+const rateOf = (p?: PayrollEmbed): number | null => {
+  const one = Array.isArray(p) ? p[0] : p;
+  return one?.hourly_rate ?? null;
+};
+
 const fmtH = (min: number) => {
   const h = Math.floor(min / 60), m = Math.round(min % 60);
   return m ? `${h} h ${String(m).padStart(2, '0')}` : `${h} h`;
@@ -94,7 +102,7 @@ export default function CostReport({ open, onOpenChange, companyId }: Props) {
     const toStr = format(effectiveRange.to, 'yyyy-MM-dd');
     const { data } = await supabase
       .from('time_entries')
-      .select('total_minutes, user_id, worksite_id, worksites(client_name, city), owner:users!time_entries_user_id_fkey(first_name, last_name, hourly_rate)')
+      .select('total_minutes, user_id, worksite_id, worksites(client_name, city), owner:users!time_entries_user_id_fkey(first_name, last_name, payroll:user_payroll(hourly_rate))')
       .eq('company_id', companyId)
       .eq('status', 'validated')
       .gte('work_date', fromStr)
@@ -106,14 +114,14 @@ export default function CostReport({ open, onOpenChange, companyId }: Props) {
       const wid = String(e.worksite_id || '');
       if (!wid) continue;
       const ws = Array.isArray(e.worksites) ? e.worksites[0] : e.worksites as { client_name?: string; city?: string } | null;
-      const ow = (Array.isArray(e.owner) ? e.owner[0] : e.owner) as { first_name?: string; last_name?: string; hourly_rate?: number | null } | null;
+      const ow = (Array.isArray(e.owner) ? e.owner[0] : e.owner) as { first_name?: string; last_name?: string; payroll?: PayrollEmbed } | null;
       const mins = Number(e.total_minutes || 0);
       if (!map.has(wid)) map.set(wid, { id: wid, name: ws?.client_name || 'Chantier', city: ws?.city || null, minutes: 0, workers: new Map() });
       const site = map.get(wid)!;
       site.minutes += mins;
       const uid = String(e.user_id || '');
       if (!site.workers.has(uid)) {
-        const rate = ow?.hourly_rate ?? null;
+        const rate = rateOf(ow?.payroll);
         if (rate == null) anyMissing = true;
         site.workers.set(uid, { name: `${ow?.first_name || ''} ${ow?.last_name || ''}`.trim() || 'Salarié', minutes: 0, rate });
       }
@@ -136,15 +144,16 @@ export default function CostReport({ open, onOpenChange, companyId }: Props) {
         bmap.set(b.id, { hours: b.budget_hours, amount: b.budget_amount, usedMinutes: 0, usedCost: 0 });
       }
       const { data: all } = await supabase.from('time_entries')
-        .select('worksite_id, total_minutes, owner:users!time_entries_user_id_fkey(hourly_rate)')
+        .select('worksite_id, total_minutes, owner:users!time_entries_user_id_fkey(payroll:user_payroll(hourly_rate))')
         .eq('company_id', companyId).eq('status', 'validated').in('worksite_id', ids);
       for (const e of (all || []) as Record<string, unknown>[]) {
         const agg = bmap.get(String(e.worksite_id || ''));
         if (!agg) continue;
-        const ow = (Array.isArray(e.owner) ? e.owner[0] : e.owner) as { hourly_rate?: number | null } | null;
+        const ow = (Array.isArray(e.owner) ? e.owner[0] : e.owner) as { payroll?: PayrollEmbed } | null;
         const mins = Number(e.total_minutes || 0);
         agg.usedMinutes += mins;
-        if (ow?.hourly_rate != null) agg.usedCost += (mins / 60) * ow.hourly_rate;
+        const rate = rateOf(ow?.payroll);
+        if (rate != null) agg.usedCost += (mins / 60) * rate;
       }
     }
     setBudgets(bmap);
