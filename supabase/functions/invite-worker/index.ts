@@ -4,7 +4,7 @@
 //
 // SÉCURITÉ :
 //   - verify_jwt = true  -> seul un utilisateur CONNECTÉ peut appeler.
-//   - On vérifie EN PLUS que l'appelant est ADMIN.
+//   - On vérifie EN PLUS que l'appelant est ADMIN et ACTIF.
 //   - On rattache l'invité à l'entreprise de l'APPELANT (company_id dérivé du
 //     serveur, jamais pris dans le corps de la requête).
 //   - Le rôle est forcé à 'worker' (impossible de créer un admin par ici).
@@ -58,9 +58,14 @@ Deno.serve(async (req) => {
 
     // ── L'appelant DOIT être admin. On rattache à SON entreprise (pas celle du corps). ──
     const { data: callerProfile, error: profErr } = await supabaseAdmin
-      .from("users").select("role, company_id").eq("id", caller.id).single();
+      .from("users").select("role, company_id, is_active").eq("id", caller.id).single();
     if (profErr || !callerProfile || callerProfile.role !== "admin") {
       return jsonResponse({ error: "Réservé à l'administrateur de l'entreprise" }, { status: 403 });
+    }
+    // Un compte archivé garde un jeton valide quelques minutes : on le refuse
+    // ici aussi (le client service_role ne passe pas par la RLS).
+    if (callerProfile.is_active === false) {
+      return jsonResponse({ error: "Ce compte a été archivé" }, { status: 403 });
     }
     const company_id = callerProfile.company_id as string;
 

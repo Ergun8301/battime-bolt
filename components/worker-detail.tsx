@@ -100,16 +100,20 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
     // Données de paie : table séparée (user_payroll), lisible par le bureau
     // uniquement — plus jamais dans la ligne users visible de tous les salariés.
     setMNir(''); setMHireDate(''); setMContract(''); setMRate('');
+    // Si on passe à un autre salarié avant la réponse, celle-ci est ignorée
+    // (sinon la fiche du suivant hériterait du NIR / taux du précédent).
+    let stale = false;
     supabase.from('user_payroll')
       .select('social_security_number, hire_date, contract_type, hourly_rate')
       .eq('user_id', worker.id).maybeSingle()
       .then(({ data }) => {
-        if (!data) return;
+        if (stale || !data) return;
         setMNir(data.social_security_number || '');
         setMHireDate(data.hire_date || '');
         setMContract(data.contract_type || '');
         setMRate(data.hourly_rate != null ? String(data.hourly_rate) : '');
       });
+    return () => { stale = true; };
   }, [worker?.id]);
 
   useEffect(() => {

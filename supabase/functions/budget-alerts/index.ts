@@ -3,7 +3,7 @@
 // 80 % puis 100 % du budget prévu. Une seule alerte par palier et par chantier.
 //
 // Le calcul reprend STRICTEMENT celui du rapport « Coût chantiers » :
-// uniquement les pointages VALIDÉS, coût = Σ (minutes/60 × taux horaire).
+// les pointages déclarés (envoyés ou validés), coût = Σ (minutes/60 × taux horaire).
 //
 // Deux limites assumées, explicitées dans l'email plutôt que masquées :
 //   1. Budget de MAIN-D'ŒUVRE uniquement — BEMEXO ne connaît ni matériaux, ni
@@ -104,7 +104,7 @@ function buildHtml(companyName: string, hits: Hit[]) {
       </td></tr>
       <tr><td style="background:#FBF8F2;padding:14px 28px;">
         <p style="margin:0;font-size:11px;color:#9a948a;">
-          Calcul sur les heures <b>validées</b> uniquement, main-d'œuvre seule (hors matériaux et sous-traitance).
+          Calcul sur les heures <b>déclarées</b> par les salariés (envoyées ou validées), main-d'œuvre seule (hors matériaux et sous-traitance).
           Chaque seuil n'est signalé qu'une fois par chantier.
         </p>
       </td></tr>

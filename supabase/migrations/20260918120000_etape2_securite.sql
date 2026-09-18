@@ -10,7 +10,8 @@
 -- 3) accepted_at des invitations posé à la première connexion.
 -- 4) Policies salarié sur time_entries cloisonnées par entreprise.
 -- 5) Colonnes de cycle de vie (verrou, export, auteur, date) protégées par
---    trigger : le salarié ne peut plus les réécrire par l'API.
+--    trigger : le salarié ne peut plus les réécrire par l'API ; chantier de
+--    l'entreprise obligatoire ; jamais envoyé → brouillon.
 -- 6) planning / worksites : mêmes gardes ; ensure_planning_slot pour soi-même.
 -- 7) Données de paie (NIR, embauche, contrat, taux) dans user_payroll,
 --    lisible et modifiable par le bureau uniquement.
@@ -157,9 +158,13 @@ CREATE POLICY time_entries_worker_delete_own_draft ON public.time_entries
 
 -- ── 5) Cycle de vie protégé côté serveur ──────────────────────────────────
 -- Pour un salarié : impossible de déplacer une ligne (jour, entreprise, auteur),
--- de toucher au verrou ou à l'export, et la trace « modifié après envoi » est
--- posée par le serveur, jamais par le téléphone.
-CREATE OR REPLACE FUNCTION public.guard_time_entry_update()
+-- de toucher au verrou ou à l'export, de pointer un chantier d'une autre
+-- entreprise, ni de ramener une journée envoyée en brouillon (pour l'effacer).
+-- La trace « modifié après envoi » est posée par le serveur, jamais par le
+-- téléphone.
+DROP TRIGGER IF EXISTS time_entries_guard_update ON public.time_entries;
+DROP FUNCTION IF EXISTS public.guard_time_entry_update();
+CREATE OR REPLACE FUNCTION public.guard_time_entry_write()
  RETURNS trigger
  LANGUAGE plpgsql
  SECURITY DEFINER
@@ -169,40 +174,68 @@ BEGIN
   IF auth.uid() IS NULL OR public.is_admin() THEN
     RETURN new;
   END IF;
-  new.user_id      := old.user_id;
-  new.company_id   := old.company_id;
-  new.work_date    := old.work_date;
-  new.locked       := old.locked;
-  new.exported_at  := old.exported_at;
-  new.validated_at := old.validated_at;
-  new.validated_by := old.validated_by;
 
-  IF old.status = 'submitted' AND (
-       new.status = 'cancelled'
-    OR (new.start_time, new.end_time, new.break_minutes, new.meal_allowance, new.observation, new.reception, new.worksite_id, new.photos)
-       IS DISTINCT FROM
-       (old.start_time, old.end_time, old.break_minutes, old.meal_allowance, old.observation, old.reception, old.worksite_id, old.photos)
-  ) THEN
-    new.modified_at := now();
-    new.modified_by := auth.uid();
+  IF TG_OP = 'INSERT' THEN
+    new.locked       := false;
+    new.exported_at  := NULL;
+    new.validated_at := NULL;
+    new.validated_by := NULL;
+    new.modified_at  := NULL;
+    new.modified_by  := NULL;
+    new.submitted_at := NULL;
   ELSE
-    new.modified_at := old.modified_at;
-    new.modified_by := old.modified_by;
+    new.user_id      := old.user_id;
+    new.company_id   := old.company_id;
+    new.work_date    := old.work_date;
+    new.locked       := old.locked;
+    new.exported_at  := old.exported_at;
+    new.validated_at := old.validated_at;
+    new.validated_by := old.validated_by;
+
+    -- Transitions permises : brouillon → envoyé / retiré ; envoyé → retiré.
+    -- Jamais envoyé → brouillon (ce serait le moyen d'effacer une journée
+    -- déclarée sans trace).
+    IF old.status = 'submitted' AND new.status = 'draft' THEN
+      RAISE EXCEPTION 'time_entries: une journée envoyée ne redevient pas brouillon (retirez-la ou corrigez-la)';
+    END IF;
+    IF old.status = 'cancelled' AND new.status <> 'cancelled' THEN
+      RAISE EXCEPTION 'time_entries: une intervention retirée ne se réactive pas';
+    END IF;
+
+    IF old.status = 'submitted' AND (
+         new.status = 'cancelled'
+      OR (new.start_time, new.end_time, new.break_minutes, new.meal_allowance, new.observation, new.reception, new.worksite_id, new.photos)
+         IS DISTINCT FROM
+         (old.start_time, old.end_time, old.break_minutes, old.meal_allowance, old.observation, old.reception, old.worksite_id, old.photos)
+    ) THEN
+      new.modified_at := now();
+      new.modified_by := auth.uid();
+    ELSE
+      new.modified_at := old.modified_at;
+      new.modified_by := old.modified_by;
+    END IF;
+
+    IF new.status = 'submitted' AND old.status = 'draft' THEN
+      new.submitted_at := now();
+    ELSE
+      new.submitted_at := old.submitted_at;
+    END IF;
   END IF;
 
-  IF new.status = 'submitted' AND old.status = 'draft' THEN
-    new.submitted_at := now();
-  ELSE
-    new.submitted_at := old.submitted_at;
+  -- Le chantier pointé appartient forcément à l'entreprise de la ligne.
+  IF new.worksite_id IS NULL OR NOT EXISTS (
+       SELECT 1 FROM public.worksites w
+       WHERE w.id = new.worksite_id AND w.company_id = new.company_id) THEN
+    RAISE EXCEPTION 'time_entries: chantier hors de votre entreprise';
   END IF;
   RETURN new;
 END;
 $function$;
-REVOKE EXECUTE ON FUNCTION public.guard_time_entry_update() FROM PUBLIC, anon, authenticated;
-DROP TRIGGER IF EXISTS time_entries_guard_update ON public.time_entries;
-CREATE TRIGGER time_entries_guard_update
-  BEFORE UPDATE ON public.time_entries
-  FOR EACH ROW EXECUTE FUNCTION public.guard_time_entry_update();
+REVOKE EXECUTE ON FUNCTION public.guard_time_entry_write() FROM PUBLIC, anon, authenticated;
+DROP TRIGGER IF EXISTS time_entries_guard_write ON public.time_entries;
+CREATE TRIGGER time_entries_guard_write
+  BEFORE INSERT OR UPDATE ON public.time_entries
+  FOR EACH ROW EXECUTE FUNCTION public.guard_time_entry_write();
 
 -- ── 6) planning / worksites / RPC ─────────────────────────────────────────
 DROP POLICY IF EXISTS planning_worker_select_own ON public.planning;
@@ -362,7 +395,13 @@ DROP POLICY IF EXISTS user_payroll_admin_all ON public.user_payroll;
 CREATE POLICY user_payroll_admin_all ON public.user_payroll
   FOR ALL TO authenticated
   USING (company_id = public.get_my_company_id() AND public.is_admin())
-  WITH CHECK (company_id = public.get_my_company_id() AND public.is_admin());
+  WITH CHECK (
+    company_id = public.get_my_company_id() AND public.is_admin()
+    -- Le salarié visé appartient bien à cette entreprise (company_id n'est
+    -- pas une valeur qu'on croit sur parole).
+    AND EXISTS (SELECT 1 FROM public.users u
+                WHERE u.id = user_payroll.user_id AND u.company_id = user_payroll.company_id)
+  );
 
 -- Reprise des valeurs déjà saisies (aucun NIR aujourd'hui, mais on migre proprement).
 INSERT INTO public.user_payroll (user_id, company_id, social_security_number, hire_date, contract_type, hourly_rate)
