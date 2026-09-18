@@ -454,7 +454,9 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
   useEffect(() => {
     if (!anyLayerOpen || typeof window === 'undefined') return;
     let consumed = false;
-    window.history.pushState({ btLayer: true }, '');
+    // On hérite de l'état posé par Next (marqueur __NA + arbre) : une entrée
+    // sans ce marqueur ferait recharger toute la page si le navigateur y revenait.
+    window.history.pushState({ ...(window.history.state || {}), btLayer: true }, '');
     const onPop = () => { consumed = true; closeTopLayer.current(); setHistTick((t) => t + 1); };
     window.addEventListener('popstate', onPop);
     return () => {
