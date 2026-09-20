@@ -350,7 +350,44 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
   }, [dateProp, editingOpen]);
   const yesterday = format(subDays(new Date(`${date}T00:00:00`), 1), 'yyyy-MM-dd');
   // Payroll cutoff: a day in a past month is locked — corrections go through the secretary.
-  const monthLocked = date.slice(0, 7) < format(new Date(), 'yyyy-MM');
+  // Mois clos : c'est le bureau qui le décide, pas le calendrier. Avant, tout
+  // mois passé était déclaré « clôturé » sur le téléphone alors que personne
+  // n'avait rien clôturé et que la base laissait écrire.
+  const [closedMonths, setClosedMonths] = useState<Set<string>>(new Set());
+  const monthLocked = closedMonths.has(date.slice(0, 7));
+
+  /**
+   * Met un refus du serveur en français de chantier.
+   *
+   * Les gardes posés en base parlent technique (« time_entries: le mois est
+   * clôturé… »). Sans ça le salarié voyait « Impossible d'enregistrer » et ne
+   * savait ni pourquoi, ni quoi faire. Le cas le plus fréquent : le bureau a
+   * clôturé le mois pendant que l'application était ouverte.
+   */
+  const explainWriteError = (err: unknown, fallback: string): string => {
+    const msg = err instanceof Error ? err.message : String(err ?? '');
+    if (msg.includes('clôturé')) {
+      setClosedMonths((prev) => new Set(prev).add(date.slice(0, 7)));
+      return 'Le bureau vient de clôturer ce mois. Rapproche-toi de la secrétaire.';
+    }
+    if (msg.includes('ne redevient pas brouillon')) return 'Journée déjà envoyée : tu peux la corriger ou la retirer, pas la remettre en brouillon.';
+    if (msg.includes('ne se réactive pas')) return 'Cette intervention a été retirée : crée-en une nouvelle.';
+    if (msg.includes('chantier hors de votre entreprise')) return "Ce chantier n'existe plus chez vous. Choisis-en un autre.";
+    return fallback;
+  };
+
+  // Mois clôturés de l'entreprise. Lecture seule pour le salarié : il doit
+  // savoir pourquoi c'est fermé plutôt que de se heurter à un refus muet.
+  useEffect(() => {
+    if (!user?.company_id) return;
+    let stale = false;
+    supabase.from('month_closures').select('month').eq('company_id', user.company_id)
+      .then(({ data }) => {
+        if (stale || !data) return;
+        setClosedMonths(new Set((data as { month: string }[]).map((m) => m.month.slice(0, 7))));
+      });
+    return () => { stale = true; };
+  }, [user?.company_id]);
 
   // Le temps de route est-il payé ? Réglage de l'entreprise, pas du logiciel.
   const [travelPaid, setTravelPaid] = useState(false);
@@ -762,7 +799,7 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
       toast.success(savedMsg);
     } catch (err) {
       console.error('Error saving slot:', err);
-      toast.error("Impossible d'enregistrer");
+      toast.error(explainWriteError(err, "Impossible d'enregistrer"));
     } finally {
       setFSaving(false);
     }
@@ -793,7 +830,7 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
       fetchData();
     } catch (err) {
       console.error('Error retiring entry:', err);
-      toast.error('Impossible de retirer');
+      toast.error(explainWriteError(err, 'Impossible de retirer'));
     }
   };
 
@@ -926,7 +963,7 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
       fetchData();
     } catch (err) {
       console.error('Error submitting day:', err);
-      toast.error("Impossible d'envoyer");
+      toast.error(explainWriteError(err, "Impossible d'envoyer"));
     } finally {
       setSubmitting(false);
     }
@@ -1476,7 +1513,7 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-orange-500" /> Mois clôturé</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-muted-foreground">Cette journée appartient à un mois déjà clôturé. Pour toute modification, rapproche-toi de la secrétaire.</p>
+          <p className="text-sm text-muted-foreground">Le bureau a clôturé ce mois : la paie est partie. Pour toute correction, rapproche-toi de la secrétaire — elle peut rouvrir le mois.</p>
           <Button className="w-full mt-2" onClick={() => setLateOpen(false)}>Compris</Button>
         </DialogContent>
       </Dialog>
