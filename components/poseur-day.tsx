@@ -1290,11 +1290,11 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
                       <div className="bt-iv-reserve corrige">
                         ✓ Corrigé sur place — en attente du bureau
                         <button type="button" className="bt-iv-fixundo" disabled={fixingId === entry.id}
-                          onClick={() => markFixed(entry.id, false)}>annuler</button>
+                          onClick={(ev) => { ev.stopPropagation(); markFixed(entry.id, false); }}>annuler</button>
                       </div>
                     ) : (
                       <button type="button" className="bt-iv-fixbtn" disabled={fixingId === entry.id}
-                        onClick={() => markFixed(entry.id, true)}>
+                        onClick={(ev) => { ev.stopPropagation(); markFixed(entry.id, true); }}>
                         {fixingId === entry.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : '✓'} J&apos;ai corrigé sur place
                       </button>
                     )}

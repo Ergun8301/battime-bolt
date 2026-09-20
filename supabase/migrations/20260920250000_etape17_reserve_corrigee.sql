@@ -41,7 +41,13 @@ BEGIN
     RETURN new;
   END IF;
 
-  IF public.is_month_closed(new.company_id, new.work_date) THEN
+  -- Un mois clôturé fige la PAIE, pas le chantier. Déclarer « corrigé sur
+  -- place » ne touche aucune colonne d'heures — c'est le pendant de la levée
+  -- par le bureau, qu'on autorise déjà sur un mois clos depuis l'étape 11. Sans
+  -- cette exception, le bouton s'affichait et échouait sur un message de paie
+  -- qui n'a rien à voir avec le geste.
+  IF public.is_month_closed(new.company_id, new.work_date)
+     AND current_setting('bemexo.allow_reserve_fix', true) IS DISTINCT FROM '1' THEN
     RAISE EXCEPTION 'time_entries: le mois est clôturé par le bureau';
   END IF;
 
@@ -140,6 +146,7 @@ DECLARE
   v_company uuid;
   v_reception text;
   v_resolved timestamptz;
+  v_touched int;
 BEGIN
   SELECT t.user_id, t.company_id, t.reception, t.reserve_resolved_at
     INTO v_owner, v_company, v_reception, v_resolved
@@ -169,13 +176,24 @@ BEGIN
   -- effectivement réussi à faire avant cette correction.
   PERFORM set_config('bemexo.allow_reserve_fix', '1', true);
 
+  -- La condition est RÉPÉTÉE dans le WHERE, pas seulement vérifiée plus haut :
+  -- entre le SELECT et l'UPDATE, le bureau peut avoir levé la réserve. Sans
+  -- elle, la déclaration se poserait sur une réserve déjà close. On vérifie
+  -- ensuite qu'une ligne a bougé — sinon c'est exactement ce qui vient de se
+  -- produire, et il faut le dire plutôt que de laisser croire au salarié que
+  -- son geste est enregistré.
   UPDATE public.time_entries SET
     reserve_fixed_at = CASE WHEN p_fixed THEN now() ELSE NULL END,
     reserve_fixed_by = CASE WHEN p_fixed THEN auth.uid() ELSE NULL END,
     reserve_fix_note = CASE WHEN p_fixed THEN nullif(btrim(p_note), '') ELSE NULL END
-  WHERE id = p_entry_id;
+  WHERE id = p_entry_id AND reserve_resolved_at IS NULL;
 
+  GET DIAGNOSTICS v_touched = ROW_COUNT;
   PERFORM set_config('bemexo.allow_reserve_fix', '0', true);
+
+  IF v_touched = 0 THEN
+    RAISE EXCEPTION 'Cette réserve vient d''être levée par le bureau';
+  END IF;
 END;
 $fn$;
 REVOKE EXECUTE ON FUNCTION public.mark_reserve_fixed(uuid, boolean, text) FROM PUBLIC, anon;
