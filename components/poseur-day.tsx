@@ -753,7 +753,7 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
     setFSaving(true);
     try {
       const totalMins = calculateTotalMinutes(fStart, fEnd, 0);
-      let savedMsg = 'C&apos;est noté';
+      let savedMsg = "C'est noté";
 
       // ── Update an existing entry ──
       if (openSlot.kind === 'entry') {
@@ -1036,14 +1036,29 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
 
     let { data, error } = await supabase.from('time_entries').insert(rows).select('id');
 
-    // 23505 = ces lignes existent déjà : une tentative précédente était passée.
-    // On récupère leurs identifiants au lieu d'en créer d'autres.
+    // 23505 = au moins une de ces lignes existe déjà, d'une tentative
+    // précédente. L'insertion étant une seule instruction, elle est rejetée
+    // EN ENTIER — y compris les lignes qui, elles, n'existaient pas.
+    //
+    // Se contenter de relire les existantes laisserait donc les autres au
+    // bord de la route : le bureau ajoute un chantier entre deux tentatives,
+    // et il ne part jamais. Sans erreur, évidemment. On relit ce qui est là,
+    // puis on insère ce qui manque.
     if (error && error.code === '23505') {
+      const tous = plannedToSend.map((p) => cid(p.planningId));
       const { data: deja, error: readErr } = await supabase.from('time_entries')
-        .select('id').eq('user_id', user.id).eq('work_date', date)
-        .in('client_id', plannedToSend.map((p) => cid(p.planningId)));
+        .select('id, client_id').eq('user_id', user.id).eq('work_date', date).in('client_id', tous);
       if (readErr) throw readErr;
-      return ((deja || []) as { id: string }[]).map((r) => r.id);
+      const presents = (deja || []) as { id: string; client_id: string | null }[];
+      const connus = new Set(presents.map((r) => r.client_id));
+      const manquantes = rows.filter((r) => !connus.has(r.client_id));
+      const ids = presents.map((r) => r.id);
+      if (manquantes.length > 0) {
+        const { data: ajoutees, error: insErr } = await supabase.from('time_entries').insert(manquantes).select('id');
+        if (insErr) throw insErr;
+        ids.push(...((ajoutees || []) as { id: string }[]).map((r) => r.id));
+      }
+      return ids;
     }
     // Base pas encore migrée : on insère sans l'identifiant local (et on perd
     // la protection contre le doublon — c'est le comportement d'avant).
