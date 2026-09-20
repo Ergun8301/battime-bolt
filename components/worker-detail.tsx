@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { User, Worksite, Certification, CertificationType } from '@/lib/types';
 import { ExportEntry, exportEntriesToExcel, exportEntriesToPDF } from '@/lib/export-utils';
 import { fetchAllPaged } from '@/lib/fetch-all';
+import { isCounted } from '@/lib/status';
 import { computeMissingDays } from '@/lib/work-status';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -254,7 +255,10 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
   useEffect(() => { fetchEntries(); }, [fetchEntries]);
 
   const liveEntries = entries.filter((e) => e.status !== 'cancelled');
-  const totalMinutes = liveEntries.reduce((s, e) => s + e.total_minutes, 0);
+  // Total et export : uniquement les heures envoyées (un brouillon reste affiché
+  // mais n'entre ni dans le total de la période ni dans le relevé).
+  const countedEntries = entries.filter((e) => isCounted(e.status));
+  const totalMinutes = countedEntries.reduce((s, e) => s + e.total_minutes, 0);
 
   const periodLabel = (() => {
     if (!range?.from) return '';
@@ -273,7 +277,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
 
   const doExport = (kind: 'excel' | 'pdf') => {
     if (!worker) return;
-    if (liveEntries.length === 0) { toast.error('Aucune saisie sur cette période'); return; }
+    if (countedEntries.length === 0) { toast.error('Aucune heure envoyée sur cette période'); return; }
     setExporting(true);
     try {
       const name = `${worker.first_name} ${worker.last_name}`;
@@ -281,8 +285,8 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
       const toStr = range?.to ? format(range.to, 'yyyy-MM-dd') : fromStr;
       const fileName = `bemexo-${worker.last_name}-${worker.first_name}-${fromStr}_${toStr}`.toLowerCase().replace(/\s+/g, '-');
       const opts = { fileName, title: 'BEMEXO — Relevé salarié', periodLabel, companyName, singleWorkerName: name };
-      if (kind === 'excel') exportEntriesToExcel(liveEntries, opts);
-      else exportEntriesToPDF(liveEntries, opts);
+      if (kind === 'excel') exportEntriesToExcel(countedEntries, opts);
+      else exportEntriesToPDF(countedEntries, opts);
       toast.success('Export téléchargé');
     } catch (err) {
       console.error('Error exporting worker:', err);

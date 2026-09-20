@@ -131,7 +131,7 @@ async function runForCompany(
     admin.from('planning').select('user_id, work_date, absence_type')
       .eq('company_id', companyId).gte('work_date', windowStart).lt('work_date', todayStr),
     admin.from('time_entries').select('user_id, work_date')
-      .eq('company_id', companyId).neq('status', 'draft').gte('work_date', windowStart),
+      .eq('company_id', companyId).in('status', ['submitted', 'validated']).gte('work_date', windowStart),
     admin.from('reminder_log').select('user_id, last_sent_at, sent_count').eq('company_id', companyId),
     admin.from('push_subscriptions').select('user_id').eq('company_id', companyId),
   ]);

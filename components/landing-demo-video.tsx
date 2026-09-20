@@ -116,7 +116,7 @@ export default function LandingDemoVideo() {
         <div className="lp-demo-head">
           <div className="lp-demo-kicker">La démo · 1 min 30</div>
           <h2 className="lp-demo-h2">Comment ça marche</h2>
-          <p className="lp-demo-sub">Du pointage sur le chantier à l&apos;export paie — regardez, tout y est.</p>
+          <p className="lp-demo-sub">De la saisie sur le chantier à l&apos;export paie — regardez, tout y est.</p>
         </div>
 
         <div className="lp-demo-frame" ref={frameRef}>
@@ -133,7 +133,7 @@ export default function LandingDemoVideo() {
               onPlay={() => setPlaying(true)}
               onPause={() => setPlaying(false)}
               onClick={toggle}
-              aria-label="Vidéo de démonstration BEMEXO : pointage sur le chantier, planning en temps réel, export paie"
+              aria-label="Vidéo de démonstration BEMEXO : saisie des heures sur le chantier, planning d'équipe, export paie"
             >
               <source src={`${base}.mp4`} type="video/mp4" />
               <source src={`${base}.webm`} type="video/webm" />

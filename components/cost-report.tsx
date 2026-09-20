@@ -1,7 +1,8 @@
 'use client';
 
 // Rapport « Coût & heures par chantier » (Chantier 2). Lecture seule.
-// - Heures : uniquement les pointages VALIDÉS (status = 'validated') sur la période.
+// - Heures : les pointages ENVOYÉS (status 'submitted', ou 'validated' pour
+//   l'historique) sur la période — voir lib/status.ts.
 // - Coût main d'œuvre : Σ (heures × taux horaire du salarié). Un salarié sans
 //   taux renseigné → ses heures comptent, mais son coût est « à compléter ».
 // Aucune donnée modifiée, aucune logique produit touchée.
@@ -104,7 +105,7 @@ export default function CostReport({ open, onOpenChange, companyId }: Props) {
       .from('time_entries')
       .select('total_minutes, user_id, worksite_id, worksites(client_name, city), owner:users!time_entries_user_id_fkey(first_name, last_name, payroll:user_payroll(hourly_rate))')
       .eq('company_id', companyId)
-      .eq('status', 'validated')
+      .in('status', ['submitted', 'validated'])
       .gte('work_date', fromStr)
       .lte('work_date', toStr);
 
@@ -145,7 +146,7 @@ export default function CostReport({ open, onOpenChange, companyId }: Props) {
       }
       const { data: all } = await supabase.from('time_entries')
         .select('worksite_id, total_minutes, owner:users!time_entries_user_id_fkey(payroll:user_payroll(hourly_rate))')
-        .eq('company_id', companyId).eq('status', 'validated').in('worksite_id', ids);
+        .eq('company_id', companyId).in('status', ['submitted', 'validated']).in('worksite_id', ids);
       for (const e of (all || []) as Record<string, unknown>[]) {
         const agg = bmap.get(String(e.worksite_id || ''));
         if (!agg) continue;

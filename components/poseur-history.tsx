@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
+import { isCounted } from '@/lib/status';
 import { TimeEntry, Worksite, User as CompanyUser } from '@/lib/types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -65,9 +66,12 @@ export default function PoseurHistory() {
     }
   };
 
+  // Le PDF ne reprend que les heures envoyées : ni brouillons, ni retirées.
+  const countedEntries = entries.filter((e) => isCounted(e.status));
+
   const exportToPDF = async () => {
-    if (entries.length === 0) {
-      toast.error('Aucune saisie a exporter');
+    if (countedEntries.length === 0) {
+      toast.error('Aucune heure envoyée a exporter');
       return;
     }
 
@@ -82,20 +86,20 @@ export default function PoseurHistory() {
       doc.text(`Poseur : ${user?.first_name} ${user?.last_name}`, 14, 32);
       doc.text(`Entreprise : ${companyName}`, 14, 38);
 
-      const totalMinutes = entries.reduce((sum, e) => sum + e.total_minutes, 0);
-      const totalMealAllowance = entries.filter(e => e.meal_allowance).length;
+      const totalMinutes = countedEntries.reduce((sum, e) => sum + e.total_minutes, 0);
+      const totalMealAllowance = countedEntries.filter(e => e.meal_allowance).length;
 
       doc.text(`Total : ${formatMinutesToHours(totalMinutes)}`, 14, 44);
       doc.text(`Paniers repas : ${totalMealAllowance}`, 100, 44);
 
-      const rows = entries.map((entry) => [
+      const rows = countedEntries.map((entry) => [
         format(parseISO(entry.work_date), 'dd/MM/yyyy'),
         entry.worksite?.client_name || '-',
         entry.worksite?.city || '-',
         `${entry.start_time?.substring(0, 5) || '-'} - ${entry.end_time?.substring(0, 5) || '-'}`,
         formatMinutesToHours(entry.total_minutes),
         entry.meal_allowance ? 'Oui' : 'Non',
-        entry.status === 'draft' ? 'Brouillon' : 'Envoye',
+        'Envoye',
       ]);
 
       autoTable(doc, {
@@ -186,17 +190,17 @@ export default function PoseurHistory() {
                   </p>
                   <div className="text-right">
                     <p className="font-bold text-[#15120F]">
-                      {formatMinutesToHours(dayEntries.reduce((sum, e) => sum + e.total_minutes, 0))}
+                      {formatMinutesToHours(dayEntries.filter((e) => isCounted(e.status)).reduce((sum, e) => sum + e.total_minutes, 0))}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {dayEntries.filter(e => e.meal_allowance).length} panier{dayEntries.filter(e => e.meal_allowance).length > 1 ? 's' : ''}
+                      {dayEntries.filter((e) => isCounted(e.status) && e.meal_allowance).length} panier{dayEntries.filter((e) => isCounted(e.status) && e.meal_allowance).length > 1 ? 's' : ''}
                     </p>
                   </div>
                 </div>
 
                 <div className="space-y-2">
                   {dayEntries.map((entry) => (
-                    <div key={entry.id} className="flex items-center justify-between py-2 border-t first:border-t-0">
+                    <div key={entry.id} className={`flex items-center justify-between py-2 border-t first:border-t-0${entry.status === 'cancelled' ? ' line-through text-[#9a948a]' : ''}`}>
                       <div className="flex-1">
                         <p className="font-medium">{entry.worksite?.client_name || 'Autre'}</p>
                         {entry.worksite?.city && (
@@ -223,6 +227,12 @@ export default function PoseurHistory() {
                                 <Send className="h-3 w-3 mr-1" />
                                 Envoye
                               </Badge>
+                            )}
+                            {entry.status === 'draft' && (
+                              <Badge variant="secondary" className="text-xs">Brouillon</Badge>
+                            )}
+                            {entry.status === 'cancelled' && (
+                              <Badge variant="secondary" className="text-xs no-underline">Retirée</Badge>
                             )}
                           </div>
                         </div>

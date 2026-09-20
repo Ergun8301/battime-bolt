@@ -120,7 +120,7 @@ export default function Page() {
           <h2 className="sp-h2">Comment BEMEXO vous met en conformité</h2>
           <p className="sp-p">
             Chaque timbrage de vos ouvriers alimente automatiquement un <strong>enregistrement daté</strong> de la durée
-            du travail : heures d’arrivée et de départ, pauses déduites, total quotidien et hebdomadaire. Tout est
+            du travail : heures de début et de fin de chaque intervention, total quotidien et hebdomadaire. Tout est
             conservé et exportable — vous disposez d’un relevé propre, prêt à être présenté en cas de contrôle et prêt
             pour la paie.
           </p>
