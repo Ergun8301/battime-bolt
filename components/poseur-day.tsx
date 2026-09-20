@@ -438,6 +438,19 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
     }
   };
 
+  /**
+   * Répondre reste possible après l'envoi de la journée.
+   *
+   * Sinon une journée envoyée avant d'avoir répondu gardait la question
+   * affichée sans moyen d'y répondre, et la route déjà faite ne pouvait plus
+   * entrer dans la paie. Sur une journée envoyée, ça passe par la même
+   * confirmation qu'un changement d'horaire — la secrétaire voit la retouche.
+   */
+  const askGapKind = (key: string, kind: 'route' | 'pause') => {
+    if (frozen) { askCorrect(() => setGapKind(key, kind)); return; }
+    setGapKind(key, kind);
+  };
+
   // ─── Envoi des saisies faites sans réseau ─────────────────────────────────
   // L'envoi lui-même est dans lib/offline-sync.ts et porte sur TOUS les jours en
   // attente, pas seulement celui affiché : une journée saisie lundi sans réseau
@@ -952,9 +965,10 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
       key: `pe:${e.localId}`, gap: (e.gap_before ?? null) as 'route' | 'pause' | null,
     })),
   ]);
-  // Un trou non qualifié n'est PAS compté comme du travail : tant que le
-  // salarié n'a pas répondu, on ne décide pas à sa place.
-  const pauses = gaps.filter((g) => g.gap !== 'route');
+  // Un trou non qualifié n'est NI une pause NI de la route : tant que le
+  // salarié n'a pas répondu, on ne décide pas à sa place, et on ne le fait pas
+  // entrer dans le total des pauses affiché juste au-dessus de la question.
+  const pauses = gaps.filter((g) => g.gap === 'pause');
   const pauseMinutes = pauses.reduce((s, p) => s + p.minutes, 0);
   const routeMinutes = gaps.filter((g) => g.gap === 'route').reduce((s, p) => s + p.minutes, 0);
   const unansweredGaps = gaps.filter((g) => g.gap === null).length;
@@ -1068,7 +1082,10 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
             </div>
             <div className="bt-stat">
               <div className="bt-stat-n">{fmtHM(pauseMinutes)}</div>
-              <div className="bt-stat-l">pause{pauses.length > 1 ? 's' : ''}</div>
+              <div className="bt-stat-l">
+                pause{pauses.length > 1 ? 's' : ''}
+                {unansweredGaps > 0 && ` · ${unansweredGaps} à préciser`}
+              </div>
             </div>
             {routeMinutes > 0 && (
               <div className="bt-stat">
@@ -1119,10 +1136,10 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
                   ? <span className="bt-gap-ask">c'était quoi ?</span>
                   : g.gap === 'route' ? `route${travelPaid ? ' (payée)' : ' (non payée)'}` : 'pause'}
               </div>
-              {!frozen && !monthLocked && (
+              {!monthLocked && (
                 <div className="bt-gap-btns">
-                  <button type="button" className={`bt-gap-b${g.gap === 'route' ? ' on' : ''}`} onClick={() => setGapKind(g.key, 'route')}>Route</button>
-                  <button type="button" className={`bt-gap-b${g.gap === 'pause' ? ' on' : ''}`} onClick={() => setGapKind(g.key, 'pause')}>Pause</button>
+                  <button type="button" className={`bt-gap-b${g.gap === 'route' ? ' on' : ''}`} onClick={() => askGapKind(g.key, 'route')}>Route</button>
+                  <button type="button" className={`bt-gap-b${g.gap === 'pause' ? ' on' : ''}`} onClick={() => askGapKind(g.key, 'pause')}>Pause</button>
                 </div>
               )}
             </div>

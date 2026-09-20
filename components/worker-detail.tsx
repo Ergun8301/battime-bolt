@@ -248,7 +248,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
       // — elle ne faisait qu'envoyer n° de sécurité sociale et taux horaire.
       const rows = await fetchAllPaged<ExportEntry>((f, t2) => supabase
         .from('time_entries')
-        .select('id, work_date, start_time, end_time, break_minutes, total_minutes, meal_allowance, status, observation, reception, planning_id, modified_at, worksite:worksites(id, client_name, city)')
+        .select('id, user_id, work_date, start_time, end_time, break_minutes, total_minutes, meal_allowance, status, observation, reception, gap_before, planning_id, modified_at, worksite:worksites(id, client_name, city)')
         .eq('user_id', worker.id)
         .eq('company_id', worker.company_id)
         .gte('work_date', format(from, 'yyyy-MM-dd'))
