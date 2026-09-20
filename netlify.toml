@@ -1,6 +1,15 @@
+# Netlify sert désormais le MÊME artefact que Cloudflare : l'export statique
+# produit dans `out/`.
+#
+# POURQUOI CE CHANGEMENT AVANT LA MIGRATION, ET PAS PENDANT. Tant que Netlify
+# publiait `.next` via son greffon Next.js et Cloudflare aurait servi `out/`,
+# les deux hébergeurs auraient servi deux choses différentes : impossible de
+# dire si une différence de comportement vient du site ou de l'hébergeur.
+# En alignant d'abord Netlify sur l'export statique, la bascule ne change plus
+# QUE le DNS — et chaque étape se teste et s'annule séparément.
+#
+# L'application n'a ni route API, ni Server Action, ni rendu serveur : les 22
+# pages sont pré-rendues. Le greffon Next.js n'avait donc plus rien à faire.
 [build]
-command = "npx next build"
-publish = ".next"
-
-[[plugins]]
-package = "@netlify/plugin-nextjs"
+command = "npm run build"
+publish = "out"

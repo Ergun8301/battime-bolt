@@ -5,6 +5,7 @@ import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
 import AdminPlanning from '@/components/admin-planning';
 import SubscribePanel from '@/components/subscribe-panel';
+import { isPreviewHost } from '@/lib/hosting';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 const ADMIN_CSS = `
@@ -148,14 +149,14 @@ export default function AdminPage() {
 
   // Paywall : bloque l'accès quand l'essai est EXPIRÉ — mais seulement si
   // l'enforcement est activé via l'env NEXT_PUBLIC_PAYWALL_ENFORCED='true'
-  // (à poser dans Netlify, prend effet au redeploy). Les previews
-  // (deploy-preview-*) forcent toujours le blocage pour pouvoir le tester avant
-  // de l'activer en prod.
+  // (à poser chez l'hébergeur, prend effet au redeploy). Les previews forcent
+  // toujours le blocage pour pouvoir le tester avant de l'activer en prod —
+  // voir `isPreviewHost`, qui reconnaît les deux hébergeurs.
   // IMPORTANT : un compte SANS essai (trial_ends_at NULL — ex. le compte éditeur
   // K.HABITAT) ou déjà 'active' (client abonné) a expired=false → JAMAIS bloqué,
   // même paywall activé.
   const paywallEnforced = process.env.NEXT_PUBLIC_PAYWALL_ENFORCED === 'true';
-  const isPreview = typeof window !== 'undefined' && window.location.hostname.startsWith('deploy-preview-');
+  const isPreview = isPreviewHost();
   const blocked = expired && (paywallEnforced || isPreview);
 
   return (

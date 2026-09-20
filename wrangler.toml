@@ -1,0 +1,12 @@
+# Cloudflare Pages — configuration du projet.
+#
+# Aucun adaptateur n'est nécessaire : l'application est un export statique
+# (22 pages pré-rendues) qui parle à Supabase depuis le navigateur. Pas de
+# `@cloudflare/next-on-pages`, pas de Worker, pas de runtime edge à gérer.
+#
+# Les variables d'environnement ne sont PAS ici : elles se posent dans le
+# tableau de bord Cloudflare, pour la production et pour les previews. Voir
+# docs/hebergement-cloudflare.md.
+name = "bemexo"
+compatibility_date = "2026-09-20"
+pages_build_output_dir = "out"

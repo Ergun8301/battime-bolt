@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { WEB_HOST } from '@/lib/hosting';
 import Link from 'next/link';
 
 export const metadata: Metadata = {
@@ -73,10 +74,14 @@ export default function MentionsLegalesPage() {
           <h2>2. Hébergement</h2>
           <p>Le site et les données sont hébergés par les prestataires suivants :</p>
           <ul>
+            {/* L'hébergeur vient de `lib/hosting.ts`. Cette page est une
+                déclaration sur le lieu de traitement des données : la laisser
+                périmée après une migration la rendrait fausse. Une seule
+                constante à changer, le jour de la bascule. */}
             <li>
-              <strong>Netlify, Inc.</strong> (hébergement du site et de l&apos;interface web) —
-              44&nbsp;Montgomery Street, Suite&nbsp;300, San Francisco, CA&nbsp;94104, États-Unis —{' '}
-              <a href="https://www.netlify.com" target="_blank" rel="noreferrer">netlify.com</a>.
+              <strong>{WEB_HOST.name}</strong> (hébergement du site et de l&apos;interface web) —
+              {' '}{WEB_HOST.address} —{' '}
+              <a href={WEB_HOST.url} target="_blank" rel="noreferrer">{WEB_HOST.label}</a>.
             </li>
             <li>
               <strong>Supabase, Inc.</strong> (base de données et authentification) —
