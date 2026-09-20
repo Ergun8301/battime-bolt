@@ -468,10 +468,7 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
       fetchData();
     } catch (err) {
       console.error('Error setting gap kind:', err);
-      const msg = err instanceof Error ? err.message : String(err ?? '');
-      toast.error(msg.includes('clôturé')
-        ? 'Le bureau vient de clôturer ce mois. Rapproche-toi de la secrétaire.'
-        : 'Impossible d\'enregistrer');
+      toast.error(explainWriteError(err, "Impossible d'enregistrer"));
     }
   };
 
