@@ -19,6 +19,7 @@ import {
 import { syncAllPending } from '@/lib/offline-sync';
 import { TimeCylinder, snapToGrid } from '@/components/time-cylinder';
 import LiveTimer from '@/components/live-timer';
+import TeamDay from '@/components/team-day';
 import ChantierDocuments from '@/components/chantier-documents';
 
 interface TimeEntryWithWorksite extends TimeEntry {
@@ -1105,6 +1106,22 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
 
         {/* rappel « jours oubliés » (rendu par le parent) — défile avec la liste */}
         {topBanner}
+
+        {/* Feuille d'heures d'équipe — chef d'équipe uniquement, jour courant.
+            La RLS décide seule de qui il voit : cet écran n'ajoute aucun filtre
+            de sécurité, il n'en serait pas un. */}
+        {user?.role === 'lead' && user?.company_id && date === mountedToday && (
+          <TeamDay
+            me={user}
+            date={date}
+            myWorksiteIds={Array.from(new Set([
+              ...planning.map((p) => p.worksite_id).filter(Boolean),
+              ...entries.filter((e) => e.status !== 'cancelled').map((e) => e.worksite_id).filter(Boolean),
+            ])) as string[]}
+            worksiteName={(id) => worksites.find((w) => w.id === id)?.client_name || 'Chantier'}
+            onChanged={() => { fetchData(); }}
+          />
+        )}
 
         {/* Pointage en direct. Affiché SEULEMENT sur le jour courant : pointer
             « en direct » sur une journée passée n'a pas de sens, et la saisie à
