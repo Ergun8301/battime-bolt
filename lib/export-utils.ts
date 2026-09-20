@@ -169,8 +169,15 @@ function buildWorkbook(entries: ExportEntry[], opts: ExportOptions) {
       // Deux colonnes plutôt qu'une : le comptable doit payer les 8 premières
       // heures sup à un taux et les suivantes à un autre. Un total unique
       // l'obligeait à refaire la ventilation à la main, semaine par semaine.
-      row[`Heures sup. ${t1} %`] = r.base == null ? '-' : formatMinutesToHours(r.overtime1Minutes);
-      row[`Heures sup. ${t2} %`] = r.base == null ? '-' : formatMinutesToHours(r.overtime2Minutes);
+      //
+      // Le NUMÉRO du palier fait partie du nom, pas seulement le taux. Une
+      // entreprise a le droit de mettre le même pourcentage aux deux paliers
+      // (25 / 25) : les deux clés seraient alors identiques, la seconde
+      // écraserait la première, et les 8 premières heures supplémentaires
+      // disparaîtraient du tableur envoyé au comptable — sans erreur, sans
+      // trace. Des heures qui s'évaporent d'un fichier de paie.
+      row[`Heures sup. 1 (${t1} %)`] = r.base == null ? '-' : formatMinutesToHours(r.overtime1Minutes);
+      row[`Heures sup. 2 (${t2} %)`] = r.base == null ? '-' : formatMinutesToHours(r.overtime2Minutes);
       row['Total semaine'] = formatMinutesToHours(r.minutes);
       return row;
     });
@@ -265,7 +272,7 @@ export function exportEntriesToPDF(entries: ExportEntry[], opts: ExportOptions):
       head: [[
         ...(includeWorker ? ['Salarié'] : []),
         'Semaine du', 'au', 'Base', 'Heures normales',
-        `Sup. ${pt1} %`, `Sup. ${pt2} %`, 'Total semaine',
+        `Sup. 1 (${pt1} %)`, `Sup. 2 (${pt2} %)`, 'Total semaine',
       ]],
       body: recap.map((r) => [
         ...(includeWorker ? [r.worker] : []),
