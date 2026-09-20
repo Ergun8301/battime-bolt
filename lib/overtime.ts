@@ -14,6 +14,15 @@ import { weekStart, weekEnd } from '@/lib/week';
 /** Horaire hebdomadaire de base quand ni l'entreprise ni le salarié n'en ont fixé. */
 export const DEFAULT_WEEKLY_HOURS = 35;
 
+/**
+ * Les 8 premières heures supplémentaires de la semaine relèvent du palier 1,
+ * les suivantes du palier 2. C'est la règle française, et elle reste juste quel
+ * que soit l'horaire de base : avec une base à 39 h, le palier 1 couvre la 40e
+ * à la 47e heure. Les TAUX, eux, sont réglables par entreprise — voir
+ * `companies.overtime_rate_1` et `overtime_rate_2`.
+ */
+export const TIER_1_MINUTES = 8 * 60;
+
 export type WeekTotal = {
   /** Lundi de la semaine, en yyyy-MM-dd. */
   weekStart: string;
@@ -23,9 +32,33 @@ export type WeekTotal = {
   minutes: number;
   /** Minutes au-delà de l'horaire de base. Jamais négatif. */
   overtimeMinutes: number;
+  /** Heures supplémentaires du 1er palier (les 8 premières). */
+  overtime1Minutes: number;
+  /** Heures supplémentaires du 2e palier (au-delà de la 8e). */
+  overtime2Minutes: number;
   /** Minutes dans la limite de l'horaire de base. */
   normalMinutes: number;
 };
+
+/** Taux de majoration d'une entreprise, en pourcentage. */
+export type OvertimeRates = { tier1: number; tier2: number };
+
+export const DEFAULT_OVERTIME_RATES: OvertimeRates = { tier1: 25, tier2: 50 };
+
+/**
+ * Coût des heures supplémentaires d'une semaine, majoration comprise.
+ * Renvoie le SURCOÛT par rapport à des heures normales, pas le coût total :
+ * c'est ce qui manque au calcul quand on multiplie bêtement toutes les heures
+ * par le taux horaire.
+ */
+export function overtimeSurcharge(
+  week: Pick<WeekTotal, 'overtime1Minutes' | 'overtime2Minutes'>,
+  hourlyRate: number,
+  rates: OvertimeRates,
+): number {
+  return (week.overtime1Minutes / 60) * hourlyRate * (rates.tier1 / 100)
+       + (week.overtime2Minutes / 60) * hourlyRate * (rates.tier2 / 100);
+}
 
 /**
  * L'horaire de base qui s'applique à un salarié : son exception si elle
@@ -65,11 +98,14 @@ export function weeklyTotals(
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([start, minutes]) => {
       const overtimeMinutes = Math.max(0, minutes - base);
+      const overtime1Minutes = Math.min(overtimeMinutes, TIER_1_MINUTES);
       return {
         weekStart: start,
         weekEnd: format(weekEnd(new Date(`${start}T00:00:00`)), 'yyyy-MM-dd'),
         minutes,
         overtimeMinutes,
+        overtime1Minutes,
+        overtime2Minutes: overtimeMinutes - overtime1Minutes,
         normalMinutes: minutes - overtimeMinutes,
       };
     });

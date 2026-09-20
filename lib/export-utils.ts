@@ -7,7 +7,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { format, parseISO } from 'date-fns';
 import { TimeEntryWithWorksite, User } from '@/lib/types';
-import { weeklyTotals, routeMinutesByEntry } from '@/lib/overtime';
+import { weeklyTotals, routeMinutesByEntry, DEFAULT_OVERTIME_RATES, type OvertimeRates } from '@/lib/overtime';
 
 export type ExportEntry = TimeEntryWithWorksite & { user?: User };
 
@@ -42,6 +42,8 @@ export interface ExportOptions {
    * pas de récapitulatif du tout, plutôt qu'un récapitulatif faux.
    */
   recapEntries?: ExportEntry[];
+  /** Taux de majoration de l'entreprise. Absent = taux légaux français. */
+  overtimeRates?: OvertimeRates;
 }
 
 /**
@@ -72,7 +74,8 @@ function weeklyRecap(opts: ExportOptions) {
 
   const out: {
     worker: string; weekStart: string; weekEnd: string;
-    minutes: number; normalMinutes: number; overtimeMinutes: number; base: number | null;
+    minutes: number; normalMinutes: number; overtimeMinutes: number;
+    overtime1Minutes: number; overtime2Minutes: number; base: number | null;
   }[] = [];
   byWorker.forEach((v, id) => {
     const base = opts.weeklyHoursByWorker?.get(id);
@@ -85,6 +88,8 @@ function weeklyRecap(opts: ExportOptions) {
         minutes: w.minutes,
         normalMinutes: base == null ? w.minutes : w.normalMinutes,
         overtimeMinutes: base == null ? 0 : w.overtimeMinutes,
+        overtime1Minutes: base == null ? 0 : w.overtime1Minutes,
+        overtime2Minutes: base == null ? 0 : w.overtime2Minutes,
         base: base ?? null,
       });
     }
@@ -148,6 +153,11 @@ function buildWorkbook(entries: ExportEntry[], opts: ExportOptions) {
   // Le récapitulatif vient EN PREMIER : c'est la feuille que le comptable
   // ouvre et saisit. Le détail derrière sert à justifier une ligne.
   const recap = weeklyRecap(opts);
+  // Les taux de l'entreprise, affichés dans l'en-tête des colonnes : le
+  // comptable lit « Heures sup. 25 % » et sait quoi appliquer, sans avoir à
+  // demander ni à supposer.
+  const t1 = opts.overtimeRates?.tier1 ?? DEFAULT_OVERTIME_RATES.tier1;
+  const t2 = opts.overtimeRates?.tier2 ?? DEFAULT_OVERTIME_RATES.tier2;
   if (recap.length) {
     const recapRows = recap.map((r) => {
       const row: Record<string, string | number> = {};
@@ -156,14 +166,25 @@ function buildWorkbook(entries: ExportEntry[], opts: ExportOptions) {
       row['au'] = format(parseISO(r.weekEnd), 'dd/MM/yyyy');
       row['Base (h/sem.)'] = r.base ?? '-';
       row['Heures normales'] = formatMinutesToHours(r.normalMinutes);
-      row['Heures sup.'] = r.base == null ? '-' : formatMinutesToHours(r.overtimeMinutes);
+      // Deux colonnes plutôt qu'une : le comptable doit payer les 8 premières
+      // heures sup à un taux et les suivantes à un autre. Un total unique
+      // l'obligeait à refaire la ventilation à la main, semaine par semaine.
+      //
+      // Le NUMÉRO du palier fait partie du nom, pas seulement le taux. Une
+      // entreprise a le droit de mettre le même pourcentage aux deux paliers
+      // (25 / 25) : les deux clés seraient alors identiques, la seconde
+      // écraserait la première, et les 8 premières heures supplémentaires
+      // disparaîtraient du tableur envoyé au comptable — sans erreur, sans
+      // trace. Des heures qui s'évaporent d'un fichier de paie.
+      row[`Heures sup. 1 (${t1} %)`] = r.base == null ? '-' : formatMinutesToHours(r.overtime1Minutes);
+      row[`Heures sup. 2 (${t2} %)`] = r.base == null ? '-' : formatMinutesToHours(r.overtime2Minutes);
       row['Total semaine'] = formatMinutesToHours(r.minutes);
       return row;
     });
     const wsRecap = XLSX.utils.json_to_sheet(recapRows);
     wsRecap['!cols'] = [
       ...(includeWorker ? [{ wch: 20 }] : []),
-      { wch: 13 }, { wch: 13 }, { wch: 14 }, { wch: 16 }, { wch: 13 }, { wch: 14 },
+      { wch: 13 }, { wch: 13 }, { wch: 14 }, { wch: 16 }, { wch: 17 }, { wch: 17 }, { wch: 14 },
     ];
     XLSX.utils.book_append_sheet(wb, wsRecap, 'Récapitulatif');
   }
@@ -238,12 +259,20 @@ export function exportEntriesToPDF(entries: ExportEntry[], opts: ExportOptions):
   // Récapitulatif d'abord : c'est ce que le comptable saisit. Le détail suit,
   // pour justifier une ligne si on la lui conteste.
   const recap = weeklyRecap(opts);
+  const pt1 = opts.overtimeRates?.tier1 ?? DEFAULT_OVERTIME_RATES.tier1;
+  const pt2 = opts.overtimeRates?.tier2 ?? DEFAULT_OVERTIME_RATES.tier2;
+  // Les taux de l'entreprise, affichés dans l'en-tête des colonnes : le
+  // comptable lit « Heures sup. 25 % » et sait quoi appliquer, sans avoir à
+  // demander ni à supposer.
+  const t1 = opts.overtimeRates?.tier1 ?? DEFAULT_OVERTIME_RATES.tier1;
+  const t2 = opts.overtimeRates?.tier2 ?? DEFAULT_OVERTIME_RATES.tier2;
   if (recap.length) {
     autoTable(doc, {
       startY: y,
       head: [[
         ...(includeWorker ? ['Salarié'] : []),
-        'Semaine du', 'au', 'Base', 'Heures normales', 'Heures sup.', 'Total semaine',
+        'Semaine du', 'au', 'Base', 'Heures normales',
+        `Sup. 1 (${pt1} %)`, `Sup. 2 (${pt2} %)`, 'Total semaine',
       ]],
       body: recap.map((r) => [
         ...(includeWorker ? [r.worker] : []),
@@ -251,7 +280,8 @@ export function exportEntriesToPDF(entries: ExportEntry[], opts: ExportOptions):
         format(parseISO(r.weekEnd), 'dd/MM/yyyy'),
         r.base == null ? '-' : `${r.base} h`,
         formatMinutesToHours(r.normalMinutes),
-        r.base == null ? '-' : formatMinutesToHours(r.overtimeMinutes),
+        r.base == null ? '-' : formatMinutesToHours(r.overtime1Minutes),
+        r.base == null ? '-' : formatMinutesToHours(r.overtime2Minutes),
         formatMinutesToHours(r.minutes),
       ]),
       styles: { fontSize: 9 },

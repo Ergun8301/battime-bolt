@@ -6,7 +6,7 @@ import { User, Worksite, Certification, CertificationType } from '@/lib/types';
 import { ExportEntry, exportEntriesToExcel, exportEntriesToPDF } from '@/lib/export-utils';
 import { fetchAllPaged } from '@/lib/fetch-all';
 import { isCounted } from '@/lib/status';
-import { DEFAULT_WEEKLY_HOURS, weeklyHoursFor, weeklyTotals, routeMinutesByEntry, type RouteEntry } from '@/lib/overtime';
+import { DEFAULT_WEEKLY_HOURS, DEFAULT_OVERTIME_RATES, weeklyHoursFor, weeklyTotals, routeMinutesByEntry, type RouteEntry } from '@/lib/overtime';
 import { weekStart as weekStartOf, weekEnd as weekEndOf } from '@/lib/week';
 import { computeMissingDays } from '@/lib/work-status';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -73,6 +73,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
   // Réglage entreprise : la route entre deux chantiers est-elle payée ?
   const [travelPaid, setTravelPaid] = useState(false);
   const [companyWeeklyHours, setCompanyWeeklyHours] = useState(DEFAULT_WEEKLY_HOURS);
+  const [overtimeRates, setOvertimeRates] = useState(DEFAULT_OVERTIME_RATES);
   const [worksites, setWorksites] = useState<Worksite[]>([]);
   const [reassigningId, setReassigningId] = useState<string | null>(null);
   const [creatingFor, setCreatingFor] = useState<string | null>(null);
@@ -133,12 +134,16 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
 
   useEffect(() => {
     if (!worker?.company_id) return;
-    supabase.from('companies').select('name, travel_paid, weekly_hours').eq('id', worker.company_id).maybeSingle()
+    supabase.from('companies').select('name, travel_paid, weekly_hours, overtime_rate_1, overtime_rate_2').eq('id', worker.company_id).maybeSingle()
       .then(({ data }) => {
         setCompanyName(data?.name || '');
-        const c = data as { travel_paid?: boolean; weekly_hours?: number | null } | null;
+        const c = data as { travel_paid?: boolean; weekly_hours?: number | null; overtime_rate_1?: number | null; overtime_rate_2?: number | null } | null;
         setTravelPaid(!!c?.travel_paid);
         setCompanyWeeklyHours(c?.weekly_hours ?? DEFAULT_WEEKLY_HOURS);
+        setOvertimeRates({
+          tier1: c?.overtime_rate_1 ?? DEFAULT_OVERTIME_RATES.tier1,
+          tier2: c?.overtime_rate_2 ?? DEFAULT_OVERTIME_RATES.tier2,
+        });
       });
     supabase.from('worksites').select('*').eq('company_id', worker.company_id).eq('is_active', true).order('client_name')
       .then(({ data }) => setWorksites(data || []));
@@ -338,6 +343,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
         singleWorkerName: name, travelPaid,
         weeklyHoursByWorker: new Map([[worker.id, effectiveWeeklyHours]]),
         recapEntries: weekCounted as unknown as ExportEntry[],
+        overtimeRates,
       };
       if (kind === 'excel') exportEntriesToExcel(countedEntries, opts);
       else exportEntriesToPDF(countedEntries, opts);

@@ -26,7 +26,7 @@ import {
 } from '@dnd-kit/core';
 import { format, addDays, addWeeks, subWeeks, subDays, subMonths, endOfMonth, parseISO, getISOWeek } from 'date-fns';
 import { DAYS_IN_WEEK, weekDays as buildWeekDays, weekDayIndex, weekStart } from '@/lib/week';
-import { DEFAULT_WEEKLY_HOURS, weeklyHoursFor } from '@/lib/overtime';
+import { DEFAULT_WEEKLY_HOURS, DEFAULT_OVERTIME_RATES, weeklyHoursFor } from '@/lib/overtime';
 import { weekStart as weekStartOf, weekEnd as weekEndOf } from '@/lib/week';
 import { fr } from 'date-fns/locale';
 import type { DateRange } from 'react-day-picker';
@@ -641,6 +641,9 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   // Réglage entreprise : la route entre deux chantiers est-elle payée ?
   const [travelPaid, setTravelPaid] = useState(false);
   const [companyWeeklyHours, setCompanyWeeklyHours] = useState(DEFAULT_WEEKLY_HOURS);
+  // Taux de majoration de l'entreprise — ils partent dans l'export, en en-tête
+  // des colonnes, pour que le comptable sache quoi appliquer sans demander.
+  const [overtimeRates, setOvertimeRates] = useState(DEFAULT_OVERTIME_RATES);
   const [accountantEmail, setAccountantEmail] = useState('');
   const [loading, setLoading] = useState(true);
   const [currentWeekStart, setCurrentWeekStart] = useState(weekStart());
@@ -888,7 +891,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     const [planRes, entRes, compRes, invRes, docRes, leaveRes, resRes, liveRes] = await Promise.all([
       supabase.from('planning').select('user_id, work_date, absence_type').eq('company_id', user.company_id).gte('work_date', windowStart),
       supabase.from('time_entries').select('user_id, work_date').eq('company_id', user.company_id).in('status', ['submitted', 'validated']).gte('work_date', windowStart),
-      supabase.from('companies').select('name, logo_url, travel_paid, weekly_hours, accountant_email').eq('id', user.company_id).maybeSingle(),
+      supabase.from('companies').select('name, logo_url, travel_paid, weekly_hours, accountant_email, overtime_rate_1, overtime_rate_2').eq('id', user.company_id).maybeSingle(),
       supabase.from('invitations').select('*').eq('company_id', user.company_id).is('accepted_at', null).gt('expires_at', new Date().toISOString()).order('created_at', { ascending: false }),
       supabase.from('documents').select('worksite_id').eq('company_id', user.company_id),
       supabase.from('leave_requests').select('id', { count: 'exact', head: true }).eq('company_id', user.company_id).eq('status', 'pending'),
@@ -939,9 +942,13 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     setTodayAbsence(today);
     setMissingByWorker(miss);
     setCompanyName(compRes.data?.name || '');
-    const comp = compRes.data as { travel_paid?: boolean; weekly_hours?: number | null; accountant_email?: string | null } | null;
+    const comp = compRes.data as { travel_paid?: boolean; weekly_hours?: number | null; accountant_email?: string | null; overtime_rate_1?: number | null; overtime_rate_2?: number | null } | null;
     setTravelPaid(!!comp?.travel_paid);
     setCompanyWeeklyHours(comp?.weekly_hours ?? DEFAULT_WEEKLY_HOURS);
+    setOvertimeRates({
+      tier1: comp?.overtime_rate_1 ?? DEFAULT_OVERTIME_RATES.tier1,
+      tier2: comp?.overtime_rate_2 ?? DEFAULT_OVERTIME_RATES.tier2,
+    });
     setAccountantEmail((comp?.accountant_email || '').trim());
     setCompanyLogo((compRes.data as { logo_url?: string | null } | null)?.logo_url || '');
     setInvitations((invRes.data || []) as Invitation[]);
@@ -1458,6 +1465,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         travelPaid,
         weeklyHoursByWorker,
         recapEntries,
+        overtimeRates,
       };
       // Message final : dépend de ce que le serveur répond (envoyé / déjà parti).
       let sentNote = '';
