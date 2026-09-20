@@ -599,10 +599,6 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   // Réglage entreprise : la route entre deux chantiers est-elle payée ?
   const [travelPaid, setTravelPaid] = useState(false);
   const [companyWeeklyHours, setCompanyWeeklyHours] = useState(DEFAULT_WEEKLY_HOURS);
-  // Horaire hebdomadaire propre à certains salariés (exception). Données de
-  // paie : lisibles par le bureau seul, donc chargées ici et nulle part côté
-  // salarié.
-  const [workerWeeklyHours, setWorkerWeeklyHours] = useState<Map<string, number>>(new Map());
   const [loading, setLoading] = useState(true);
   const [currentWeekStart, setCurrentWeekStart] = useState(weekStart());
   const [positionWarned, setPositionWarned] = useState(false);
@@ -879,13 +875,6 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     const comp = compRes.data as { travel_paid?: boolean; weekly_hours?: number | null } | null;
     setTravelPaid(!!comp?.travel_paid);
     setCompanyWeeklyHours(comp?.weekly_hours ?? DEFAULT_WEEKLY_HOURS);
-    const { data: payroll } = await supabase.from('user_payroll')
-      .select('user_id, weekly_hours').eq('company_id', user.company_id);
-    setWorkerWeeklyHours(new Map(
-      ((payroll || []) as { user_id: string; weekly_hours: number | null }[])
-        .filter((r) => r.weekly_hours != null)
-        .map((r) => [r.user_id, r.weekly_hours as number]),
-    ));
     setCompanyLogo((compRes.data as { logo_url?: string | null } | null)?.logo_url || '');
     setInvitations((invRes.data || []) as Invitation[]);
   }, [user?.company_id]);
@@ -1245,11 +1234,20 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       // chaque salarié, dupliqués sur chaque ligne et inutiles ici (RGPD).
       // Seules les heures ENVOYÉES partent en paie et sont verrouillées : un
       // brouillon ou une intervention retirée n'entre jamais dans l'export.
-      // L'horaire de base de chaque salarié : son exception s'il en a une,
-      // sinon celui de l'entreprise. Sans ça le récapitulatif ne saurait pas
-      // ce qui dépasse.
-      const weeklyHoursByWorker = new Map<string, number>(
-        workers.map((w) => [w.id, weeklyHoursFor(workerWeeklyHours.get(w.id) ?? null, companyWeeklyHours)]),
+      // Les horaires de base sont relus MAINTENANT, pas au chargement de la
+      // page : une lecture ratée doit arrêter l'export, pas le laisser
+      // appliquer l'horaire de l'entreprise à tout le monde et annoncer des
+      // heures supplémentaires fausses pour ceux qui ont une exception.
+      const { data: payroll, error: payErr } = await supabase.from('user_payroll')
+        .select('user_id, weekly_hours').eq('company_id', user.company_id);
+      if (payErr) {
+        toast.error("Horaires de base illisibles : export annulé plutôt que d'annoncer des heures supplémentaires fausses.");
+        return;
+      }
+      const overrides = new Map(
+        ((payroll || []) as { user_id: string; weekly_hours: number | null }[])
+          .filter((r) => r.weekly_hours != null)
+          .map((r) => [r.user_id, r.weekly_hours as number]),
       );
 
       // Semaines ENTIÈRES recouvrant la période, pour le récapitulatif seul :
@@ -1264,6 +1262,14 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         .lte('work_date', format(weekEndOf(exportRange.to), 'yyyy-MM-dd'))
         .order('work_date').order('user_id')
         .range(f, t2) as unknown as PromiseLike<{ data: (TimeEntryWithWorksite & { user: User })[] | null; error: { message: string } | null }>);
+
+      // La table est construite sur les salariés PRÉSENTS dans la période, pas
+      // sur la liste des actifs : un salarié archivé depuis garde ses heures
+      // dans un export d'un mois passé, et doit garder son horaire de base.
+      const weeklyHoursByWorker = new Map<string, number>(
+        Array.from(new Set(recapEntries.map((e) => e.user_id)))
+          .map((id) => [id, weeklyHoursFor(overrides.get(id) ?? null, companyWeeklyHours)]),
+      );
 
       const entries = await fetchAllPaged<TimeEntryWithWorksite & { user: User }>((f, t2) => supabase
         .from('time_entries')
