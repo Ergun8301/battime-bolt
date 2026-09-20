@@ -56,19 +56,46 @@ Dépôt `Ergun8301/battime-bolt`, branche de production `main`.
 
 | Réglage | Valeur |
 |---|---|
+| Nom du projet | `bemexo` |
+| Framework preset | aucun / `None` |
 | Build command | `npm run build` |
 | Output directory | `out` |
-| Node version | 20 |
+| Root directory | la racine du dépôt |
+| Branche de production | `main` |
+| `NODE_VERSION` | `22` |
 
-**Variables d'environnement** — à poser en production **et** en preview, avec
-les mêmes valeurs qu'aujourd'hui sur Netlify. Elles sont toutes `NEXT_PUBLIC_`,
-donc lues au moment du build : un oubli ne produit pas d'erreur de build, il
-produit une application qui ne se connecte à rien.
+`NODE_VERSION` se pose comme une variable d'environnement. **22** et pas une
+autre : c'est la version sous laquelle cet export est construit et vérifié. Le
+dépôt ne contient ni `.nvmrc` ni `engines`, donc chaque hébergeur choisit sa
+propre version par défaut — exactement le genre d'écart qui rend un bug
+« présent chez l'un, absent chez l'autre » et impossible à expliquer.
 
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `NEXT_PUBLIC_VAPID_PUBLIC_KEY`
-- `NEXT_PUBLIC_PAYWALL_ENFORCED`
+### Les quatre variables `NEXT_PUBLIC_`, et ce que chacune fait si on l'oublie
+
+Elles sont lues **au moment du build**. Un oubli ne casse jamais le build.
+
+J'avais d'abord écrit ici qu'un oubli « produit une application qui ne se
+connecte à rien ». **C'est faux**, et le code le dit : `lib/supabase.ts` porte
+des valeurs de repli codées en dur. Les quatre ne se comportent pas pareil, et
+la différence est tout ce qui compte :
+
+| Variable | Si elle manque | Ça se voit ? |
+|---|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | repli sur le projet de production (`lib/supabase.ts`) | sans objet — ça marche |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | repli sur la clé publiable du même fichier | sans objet — ça marche |
+| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | notifications push coupées | **oui** : « Notifications non configurées » |
+| `NEXT_PUBLIC_PAYWALL_ENFORCED` | **le paywall s'éteint** | **non. Rien.** |
+
+**La dernière ligne est la seule qui soit dangereuse.** `paywallEnforced` vaut
+`process.env.NEXT_PUBLIC_PAYWALL_ENFORCED === 'true'` : toute autre valeur, y
+compris l'absence, vaut *non*. Si elle est à `true` sur Netlify aujourd'hui et
+qu'on l'oublie sur Cloudflare, **les essais expirés cessent d'être bloqués** —
+sans erreur, sans trace, sans que personne ne s'en aperçoive avant de regarder
+les encaissements.
+
+Donc : relever sa valeur actuelle sur Netlify *(Site configuration →
+Environment variables)* et la reporter telle quelle, en production **et** en
+preview.
 
 ### 3 · Tester sur l'adresse `*.pages.dev`, DNS inchangé
 
@@ -77,8 +104,19 @@ sert l'adresse de test. Rien n'est engagé.
 
 À vérifier, en plus de l'étape 1 :
 
-- **Supabase** accepte l'origine `*.pages.dev` — sinon l'authentification
-  échoue et c'est le premier symptôme qu'on verra.
+- **Supabase doit accepter la nouvelle origine.** Ce n'est pas une précaution
+  générique : les trois parcours qui envoient un e-mail — inscription
+  (`app/inscription`), renvoi de confirmation (`app/connexion`) et mot de passe
+  oublié (`app/mot-de-passe-oublie`) — construisent leur lien de retour avec
+  `${window.location.origin}/connexion`. Depuis une adresse `*.pages.dev`, ce
+  lien n'est pas dans la liste blanche, et Supabase le remplace par la *Site
+  URL*. L'utilisateur clique et atterrit ailleurs.
+
+  → *Authentication → URL Configuration → Redirect URLs* du projet
+  `sdperbcquvneohotjono` : ajouter `https://bemexo.pages.dev/**` et
+  `https://*.bemexo.pages.dev/**` (les previews). **Ne pas toucher à la *Site
+  URL*** avant l'étape 4 : c'est elle qui protège la production.
+
 - **Stripe** : les URL de retour de paiement pointent vers `bemexo.com`, pas
   vers l'adresse de test.
 - Les **previews** : `?demo=3` sur `/admin` doit afficher le planning de

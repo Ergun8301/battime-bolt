@@ -49,6 +49,13 @@ export const WEB_HOST = {
  * Et le domaine propre (bemexo.com) n'est jamais une preview, ce qui est le bon
  * défaut : en cas de doute, on traite comme de la production. Se tromper dans
  * ce sens n'affiche rien de faux à personne.
+ *
+ * UN CAS CONNU, ASSUMÉ. Netlify publie aussi la branche `main` sous son alias
+ * `main--battime.netlify.app`, qui porte donc `--` et passe ici pour une
+ * preview alors qu'il sert le même contenu que la production. Personne n'y va :
+ * les clients arrivent par bemexo.com. Je le note pour que le prochain qui lit
+ * cette fonction ne croie pas avoir trouvé un oubli — et parce que resserrer la
+ * règle (nommer `main` en dur) casserait la détection sur toute autre branche.
  */
 export function isPreviewHost(): boolean {
   if (typeof window === 'undefined') return false;
