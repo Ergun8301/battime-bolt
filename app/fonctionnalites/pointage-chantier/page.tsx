@@ -96,7 +96,7 @@ export default function Page() {
           </div>
           <div className="sp-note">
             <strong>Pas de réseau sur le chantier ?</strong> Aucun souci. La saisie est conservée sur le téléphone
-            et part au retour de la connexion, dès que la journée est rouverte.
+            et part toute seule au retour de la connexion, même plusieurs jours après.
           </div>
         </section>
 

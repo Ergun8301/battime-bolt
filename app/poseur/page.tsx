@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/components/auth-provider';
+import { useOfflineSync } from '@/lib/use-offline-sync';
 import { supabase } from '@/lib/supabase';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
@@ -106,6 +107,9 @@ const POSEUR_CSS = `
 
 export default function PoseurPage() {
   const { user, signOut } = useAuth();
+  // Envoi différé des saisies faites sans réseau : tourne pour TOUS les jours en
+  // attente, dès que l'application est ouverte et qu'il y a du réseau.
+  const { pendingCount: offlineCount, blockedCount: offlineBlocked, syncing: offlineSyncing, syncNow } = useOfflineSync(user?.id);
   const [view, setView] = useState('day');
   const [selectedDate, setSelectedDate] = useState<string | null>(null); // declare a specific day
   const [pending, setPending] = useState<string[]>([]); // days "en attente"
@@ -271,6 +275,27 @@ export default function PoseurPage() {
 
   // Rappel « jours oubliés » : désormais rendu EN TÊTE de la liste (il défile avec le
   // contenu) au lieu d'être collé dans l'en-tête → l'en-tête reste court et se cache tôt.
+  // Saisies qui n'ont pas encore atteint le serveur (réseau coupé au moment de
+  // la saisie). Même habillage que le rappel des jours oubliés.
+  const offlineBanner = offlineCount > 0 ? (
+    <button
+      className="bt-alert"
+      onClick={() => syncNow(true)}
+      disabled={offlineSyncing}
+      aria-label="Saisies en attente d'envoi"
+    >
+      <span className="bt-alert-badge">{offlineCount}</span>
+      <span className="bt-alert-txt">
+        {offlineSyncing
+          ? 'Envoi en cours…'
+          : offlineBlocked > 0
+            ? `intervention${offlineCount > 1 ? 's' : ''} qui ne part${offlineCount > 1 ? 'ent' : ''} pas — appuyer pour réessayer`
+            : `intervention${offlineCount > 1 ? 's' : ''} en attente d'envoi`}
+      </span>
+      <span className="bt-alert-chev">↻</span>
+    </button>
+  ) : null;
+
   const pendingBanner = pending.length > 0 ? (
     <Popover open={pendingOpen} onOpenChange={setPendingOpen}>
       <PopoverTrigger asChild>
@@ -368,9 +393,9 @@ export default function PoseurPage() {
         {/* ===== CORPS ===== */}
         <div className="bt-phbody">
           {selectedDate ? (
-            <PoseurDay date={selectedDate} />
+            <PoseurDay date={selectedDate} topBanner={offlineBanner} />
           ) : view === 'day' ? (
-            <PoseurDay topBanner={pendingBanner} />
+            <PoseurDay topBanner={<>{offlineBanner}{pendingBanner}</>} />
           ) : (
             <div className="bt-phscroll bt-skin">
               {view === 'week' ? (
