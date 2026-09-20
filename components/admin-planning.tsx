@@ -1097,9 +1097,11 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       let guard = 0;
       while (d <= endD && guard < 400) { dates.push(format(d, 'yyyy-MM-dd')); d = addDays(d, 1); guard++; }
 
+      // Borné à la période posée : sans le `.lte`, poser deux jours de maladie
+      // effaçait toutes les absences déjà prévues après (congés du mois suivant).
       const { error: delErr } = await supabase.from('planning').delete()
         .eq('company_id', user.company_id).eq('user_id', worker.id)
-        .gte('work_date', fromStr).not('absence_type', 'is', null);
+        .gte('work_date', fromStr).lte('work_date', endStr).not('absence_type', 'is', null);
       if (delErr) throw delErr;
 
       const rows = dates.map((dt) => ({
@@ -1238,13 +1240,22 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     }
   };
 
+  // Annuler = révoquer : la fonction serveur supprime le compte de l'invité s'il
+  // ne s'est jamais connecté (avant, seule la ligne d'invitation disparaissait
+  // et l'invité restait membre actif de l'entreprise).
   const cancelInvitation = async (inv: Invitation) => {
     if (!user?.company_id) return;
     setCancellingId(inv.id);
     try {
-      const { error } = await supabase.from('invitations').delete().eq('id', inv.id).eq('company_id', user.company_id);
-      if (error) throw error;
+      const { error } = await supabase.functions.invoke('invite-worker', { body: { action: 'revoke', email: inv.email } });
+      if (error) {
+        let msg = "Impossible d'annuler l'invitation";
+        try { const body = await (error as { context?: Response }).context?.json(); if (body?.error) msg = body.error; } catch { /* message générique */ }
+        toast.error(msg);
+        return;
+      }
       toast.success('Invitation annulée');
+      fetchData();
       fetchExtras();
     } catch (err) {
       console.error('Error cancelling invitation:', err);
@@ -1469,8 +1480,10 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const absenceForDay = (workerId: string, dateStr: string) =>
     planning.find(p => p.user_id === workerId && p.work_date === dateStr && p.absence_type);
 
-  const workerEmails = useMemo(() => new Set(workers.map(w => w.email.toLowerCase())), [workers]);
-  const pendingInvites = invitations.filter(inv => !workerEmails.has(inv.email.toLowerCase()));
+  // Une invitation reste « en attente » tant que l'invité ne s'est pas connecté
+  // (accepted_at est posé par la base à sa première connexion). Le compte, lui,
+  // existe dès l'invitation : filtrer sur la liste des salariés cachait tout.
+  const pendingInvites = invitations;
   // Recherche en direct (panneaux Clients et Salariés).
   const cq = clientsQuery.trim().toLowerCase();
   const filteredClients = cq ? worksites.filter((w) => w.client_name.toLowerCase().includes(cq)) : worksites;

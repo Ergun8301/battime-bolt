@@ -4,20 +4,30 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/auth-provider';
 import { Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 
 export default function AdminLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const { user, loading } = useAuth();
+  const { user, loading, signOut } = useAuth();
   const router = useRouter();
 
+  // Un compte archivé n'a plus accès : on le déconnecte.
+  const archived = !!user && user.is_active === false;
+
   useEffect(() => {
-    if (!loading && (!user || user.role !== 'admin')) {
+    if (loading) return;
+    if (archived) {
+      toast.error('Ce compte a été archivé.');
+      signOut();
+      return;
+    }
+    if (!user || user.role !== 'admin') {
       router.push('/connexion');
     }
-  }, [user, loading, router]);
+  }, [user, loading, archived, router, signOut]);
 
   if (loading) {
     return (
@@ -27,7 +37,7 @@ export default function AdminLayout({
     );
   }
 
-  if (!user || user.role !== 'admin') {
+  if (!user || user.role !== 'admin' || archived) {
     return null;
   }
 
