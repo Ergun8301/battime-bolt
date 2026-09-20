@@ -1,0 +1,42 @@
+-- Durcissement : fermer les deux avertissements Supabase qui restaient
+-- actionnables. Ni l'un ni l'autre n'était exploitable aujourd'hui — je l'ai
+-- vérifié avant de toucher quoi que ce soit, pas après.
+--
+-- CE QUE JE NE FAIS PAS, ET POURQUOI. Le linter signale aussi :
+--
+--   · `reminder_log` et `stripe_events` : RLS activé, aucune policy. C'est
+--     l'état le PLUS fermé qui existe — seul `service_role` y accède, ce qui
+--     est exactement le but. Ajouter une policy ne ferait qu'ouvrir.
+--
+--   · 17 fonctions `SECURITY DEFINER` appelables par `authenticated`. C'est
+--     l'API du produit. Les signaler est normal ; les révoquer casserait tout.
+--
+--   · `pg_net` dans le schéma `public`. Le déplacer romprait les tâches
+--     planifiées qui appellent `net.http_post`. Le gain ne vaut pas le risque.
+
+-- 1 · `update_my_photo` était appelable sans être connecté.
+--
+-- Vérifié en transaction annulée : un appel `anon` est ACCEPTÉ sans erreur et
+-- n'écrit RIEN, parce que `auth.uid()` vaut NULL et que le `WHERE id = NULL`
+-- ne trouve personne. Donc pas de faille aujourd'hui.
+--
+-- Je le révoque quand même, et c'est le point important : « accepté, mais
+-- n'écrit rien » est EXACTEMENT la forme du défaut trouvé à l'étape 17. La
+-- fonction ne tient que parce que son `WHERE` dépend de `auth.uid()`. Le jour
+-- où quelqu'un lui ajoutera un paramètre `p_user_id`, la porte ouverte à
+-- `anon` deviendra un trou — sans que personne ne repense à ce grant.
+--
+-- L'application appelle cette fonction depuis /poseur, donc toujours en tant
+-- qu'utilisateur connecté (`authenticated`) : rien ne change pour elle.
+REVOKE EXECUTE ON FUNCTION public.update_my_photo(text) FROM anon;
+
+-- 2 · `reset_budget_alerts` n'avait pas de `search_path` figé.
+--
+-- Beaucoup moins grave que ce que le libellé laisse croire : cette fonction
+-- est `SECURITY INVOKER` (vérifié : `prosecdef = false`), elle s'exécute donc
+-- avec les droits de l'appelant et n'offre aucune élévation de privilège.
+--
+-- Mais c'est un déclencheur sur `worksites`, et le figer coûte une ligne. Son
+-- corps ne référence aucun objet par son nom — uniquement `NEW` et `OLD` —
+-- donc `search_path = ''` ne peut rien casser.
+ALTER FUNCTION public.reset_budget_alerts() SET search_path = '';
