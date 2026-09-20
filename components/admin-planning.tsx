@@ -25,6 +25,8 @@ import {
 } from '@dnd-kit/core';
 import { format, addDays, addWeeks, subWeeks, subDays, subMonths, endOfMonth, parseISO, getISOWeek } from 'date-fns';
 import { DAYS_IN_WEEK, weekDays as buildWeekDays, weekDayIndex, weekStart } from '@/lib/week';
+import { DEFAULT_WEEKLY_HOURS, weeklyHoursFor } from '@/lib/overtime';
+import { weekStart as weekStartOf, weekEnd as weekEndOf } from '@/lib/week';
 import { fr } from 'date-fns/locale';
 import type { DateRange } from 'react-day-picker';
 import { toast } from 'sonner';
@@ -596,6 +598,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const [companyName, setCompanyName] = useState('');
   // Réglage entreprise : la route entre deux chantiers est-elle payée ?
   const [travelPaid, setTravelPaid] = useState(false);
+  const [companyWeeklyHours, setCompanyWeeklyHours] = useState(DEFAULT_WEEKLY_HOURS);
   const [loading, setLoading] = useState(true);
   const [currentWeekStart, setCurrentWeekStart] = useState(weekStart());
   const [positionWarned, setPositionWarned] = useState(false);
@@ -832,7 +835,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     const [planRes, entRes, compRes, invRes, docRes, leaveRes] = await Promise.all([
       supabase.from('planning').select('user_id, work_date, absence_type').eq('company_id', user.company_id).gte('work_date', windowStart),
       supabase.from('time_entries').select('user_id, work_date').eq('company_id', user.company_id).in('status', ['submitted', 'validated']).gte('work_date', windowStart),
-      supabase.from('companies').select('name, logo_url, travel_paid').eq('id', user.company_id).maybeSingle(),
+      supabase.from('companies').select('name, logo_url, travel_paid, weekly_hours').eq('id', user.company_id).maybeSingle(),
       supabase.from('invitations').select('*').eq('company_id', user.company_id).is('accepted_at', null).gt('expires_at', new Date().toISOString()).order('created_at', { ascending: false }),
       supabase.from('documents').select('worksite_id').eq('company_id', user.company_id),
       supabase.from('leave_requests').select('id', { count: 'exact', head: true }).eq('company_id', user.company_id).eq('status', 'pending'),
@@ -873,7 +876,9 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     setTodayAbsence(today);
     setMissingByWorker(miss);
     setCompanyName(compRes.data?.name || '');
-    setTravelPaid(!!(compRes.data as { travel_paid?: boolean } | null)?.travel_paid);
+    const comp = compRes.data as { travel_paid?: boolean; weekly_hours?: number | null } | null;
+    setTravelPaid(!!comp?.travel_paid);
+    setCompanyWeeklyHours(comp?.weekly_hours ?? DEFAULT_WEEKLY_HOURS);
     setCompanyLogo((compRes.data as { logo_url?: string | null } | null)?.logo_url || '');
     setInvitations((invRes.data || []) as Invitation[]);
   }, [user?.company_id]);
@@ -1294,6 +1299,43 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       // chaque salarié, dupliqués sur chaque ligne et inutiles ici (RGPD).
       // Seules les heures ENVOYÉES partent en paie et sont verrouillées : un
       // brouillon ou une intervention retirée n'entre jamais dans l'export.
+      // Les horaires de base sont relus MAINTENANT, pas au chargement de la
+      // page : une lecture ratée doit arrêter l'export, pas le laisser
+      // appliquer l'horaire de l'entreprise à tout le monde et annoncer des
+      // heures supplémentaires fausses pour ceux qui ont une exception.
+      const { data: payroll, error: payErr } = await supabase.from('user_payroll')
+        .select('user_id, weekly_hours').eq('company_id', user.company_id);
+      if (payErr) {
+        toast.error("Horaires de base illisibles : export annulé plutôt que d'annoncer des heures supplémentaires fausses.");
+        return;
+      }
+      const overrides = new Map(
+        ((payroll || []) as { user_id: string; weekly_hours: number | null }[])
+          .filter((r) => r.weekly_hours != null)
+          .map((r) => [r.user_id, r.weekly_hours as number]),
+      );
+
+      // Semaines ENTIÈRES recouvrant la période, pour le récapitulatif seul :
+      // une période commençant en milieu de semaine sous-estimerait les heures
+      // supplémentaires si on ne comptait que les jours exportés.
+      const recapEntries = await fetchAllPaged<TimeEntryWithWorksite & { user: User }>((f, t2) => supabase
+        .from('time_entries')
+        .select('id, user_id, work_date, start_time, end_time, total_minutes, status, gap_before, user:users!user_id(first_name, last_name)')
+        .eq('company_id', user.company_id)
+        .in('status', ['submitted', 'validated'])
+        .gte('work_date', format(weekStartOf(exportRange.from), 'yyyy-MM-dd'))
+        .lte('work_date', format(weekEndOf(exportRange.to), 'yyyy-MM-dd'))
+        .order('work_date').order('user_id')
+        .range(f, t2) as unknown as PromiseLike<{ data: (TimeEntryWithWorksite & { user: User })[] | null; error: { message: string } | null }>);
+
+      // La table est construite sur les salariés PRÉSENTS dans la période, pas
+      // sur la liste des actifs : un salarié archivé depuis garde ses heures
+      // dans un export d'un mois passé, et doit garder son horaire de base.
+      const weeklyHoursByWorker = new Map<string, number>(
+        Array.from(new Set(recapEntries.map((e) => e.user_id)))
+          .map((id) => [id, weeklyHoursFor(overrides.get(id) ?? null, companyWeeklyHours)]),
+      );
+
       const entries = await fetchAllPaged<TimeEntryWithWorksite & { user: User }>((f, t2) => supabase
         .from('time_entries')
         .select('id, user_id, work_date, start_time, end_time, break_minutes, total_minutes, meal_allowance, status, observation, gap_before, worksite:worksites(client_name, city), user:users!user_id(first_name, last_name)')
@@ -1310,6 +1352,8 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         periodLabel: `${format(exportRange.from, 'dd/MM/yyyy')} au ${format(exportRange.to, 'dd/MM/yyyy')}`,
         companyName,
         travelPaid,
+        weeklyHoursByWorker,
+        recapEntries,
       };
       if (kind === 'excel') exportEntriesToExcel(entries, opts);
       else exportEntriesToPDF(entries, opts);
