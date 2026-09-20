@@ -1,0 +1,101 @@
+-- ⚠️ CETTE MIGRATION N'EST PAS APPLIQUÉE. Elle est livrée pour relecture à part,
+-- comme demandé. L'extension `.NOT_APPLIED` la tient hors du dossier de
+-- migrations actif : rien ne la passera par inadvertance. La renommer en
+-- `.sql` suffira, le jour où elle sera validée.
+--
+-- ─────────────────────────────────────────────────────────────────────────────
+-- POURQUOI ELLE EXISTE
+--
+-- `stop_active_session` refuse de fermer un pointage quand le début et la fin
+-- tombent sur le même quart d'heure. Le refus est JUSTE : on ne fabrique pas
+-- des heures qui n'ont pas été travaillées. Mais il est levé par un
+-- `RAISE EXCEPTION` sans code, donc avec le SQLSTATE générique `P0001`
+-- (`raise_exception`) — le même que tous les autres refus métier de la base.
+--
+-- Le navigateur ne peut donc distinguer « tu viens de démarrer » d'une vraie
+-- panne QU'EN LISANT LA PHRASE FRANÇAISE. C'est ce qu'il fait aujourd'hui
+-- (`isTooShort` dans components/live-timer.tsx), et ça marche — jusqu'au jour
+-- où quelqu'un corrigera une faute d'orthographe dans le message.
+--
+-- Avec un code propre, le test devient un test de code. Si le message change,
+-- rien ne casse.
+--
+-- CE QUE CETTE MIGRATION NE CHANGE PAS : le comportement. Même refus, mêmes
+-- arrondis, même transaction, même message affiché. Seul le SQLSTATE change.
+-- Le correctif d'ergonomie (bouton « Annuler », message avec une sortie) vit
+-- entièrement côté client et ne dépend PAS de cette migration.
+--
+-- POURQUOI `BT001` ET PAS `P0002`. `P0002` est `no_data_found`, un code
+-- standard de PostgreSQL qui peut remonter d'ailleurs ; s'en servir ferait
+-- proposer « annule ton pointage » sur une panne sans rapport. La classe `BT`
+-- n'est définie par aucune norme : elle est libre, et elle nous appartient.
+--
+-- ─────────────────────────────────────────────────────────────────────────────
+
+CREATE OR REPLACE FUNCTION public.stop_active_session(p_end time without time zone DEFAULT NULL::time without time zone)
+ RETURNS TABLE(entry_id uuid, work_date date, start_time time without time zone, end_time time without time zone)
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $fn$
+DECLARE
+  s record;
+  v_local timestamp;
+  v_start time;
+  v_end time;
+  v_id uuid;
+BEGIN
+  SELECT * INTO s FROM public.active_sessions a WHERE a.user_id = auth.uid();
+  IF s IS NULL THEN
+    RAISE EXCEPTION 'Aucun pointage en cours';
+  END IF;
+
+  v_local := s.started_at AT TIME ZONE 'Europe/Paris';
+  v_start := (date_trunc('hour', v_local)
+              + (round(extract(minute FROM v_local) / 15.0) * interval '15 minutes'))::time;
+
+  IF p_end IS NULL THEN
+    v_local := now() AT TIME ZONE 'Europe/Paris';
+    v_end := (date_trunc('hour', v_local)
+              + (round(extract(minute FROM v_local) / 15.0) * interval '15 minutes'))::time;
+  ELSE
+    v_end := (date_trunc('hour', p_end::time)
+              + (round(extract(minute FROM p_end::time) / 15.0) * interval '15 minutes'))::time;
+  END IF;
+
+  -- SEULE LIGNE MODIFIÉE : le refus porte désormais un code à lui.
+  -- Le message reste mot pour mot le même, pour que le client actuel — qui le
+  -- reconnaît au texte — continue de fonctionner pendant la transition.
+  IF v_start = v_end THEN
+    RAISE EXCEPTION 'Début et fin tombent sur le même quart d''heure : rien à enregistrer.'
+      USING ERRCODE = 'BT001';
+  END IF;
+
+  INSERT INTO public.time_entries
+    (company_id, user_id, worksite_id, planning_id, work_date,
+     start_time, end_time, break_minutes, meal_allowance, status)
+  VALUES
+    (s.company_id, s.user_id, s.worksite_id, s.planning_id, s.work_date,
+     v_start, v_end, 0, false, 'draft')
+  RETURNING id INTO v_id;
+
+  DELETE FROM public.active_sessions a WHERE a.user_id = s.user_id;
+
+  RETURN QUERY SELECT v_id, s.work_date, v_start, v_end;
+END;
+$fn$;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- CE QUE J'AI ENVISAGÉ ET ÉCARTÉ
+--
+-- Faire que la fonction EFFACE la session au lieu de lever, quand il n'y a
+-- rien à compter. Tentant : le salarié appuie sur « J'ai fini », le chrono
+-- disparaît, aucune ligne n'est créée. Mais alors un appui malheureux à la
+-- trente-septième seconde efface un pointage sans rien demander, et le salarié
+-- qui voulait vraiment fermer croit avoir enregistré. Effacer est un geste qui
+-- se demande — c'est le bouton « Annuler » côté client, avec sa confirmation.
+--
+-- Imposer une durée minimum de quinze minutes. Écarté sans hésiter : ce serait
+-- créer des heures non travaillées. La règle de ce dépôt est constante — on ne
+-- fabrique jamais une valeur plausible à la place d'une valeur absente.
+-- ─────────────────────────────────────────────────────────────────────────────
