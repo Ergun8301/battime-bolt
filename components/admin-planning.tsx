@@ -128,7 +128,7 @@ const realKey = (userId: string, date: string, worksiteId: string | null) => `${
 
 // ─── compact one-line chantier bubble ──────────────────────────────────────────
 
-function BubbleContent({ p, palette, real, docCount = 0 }: { p: PlanningWithWorksite; palette: ChantierPalette; real?: RealAgg; docCount?: number }) {
+function BubbleContent({ p, palette, real, draft, docCount = 0 }: { p: PlanningWithWorksite; palette: ChantierPalette; real?: RealAgg; draft?: RealAgg; docCount?: number }) {
   const hour = fixedHourOf(p);
   const sub = [p.worksite?.product_type, p.worksite?.city].filter(Boolean).join(' · ');
   // Repères compacts (icônes, pas de texte) alignés à droite du nom — voir la légende.
@@ -158,6 +158,27 @@ function BubbleContent({ p, palette, real, docCount = 0 }: { p: PlanningWithWork
       </div>
     );
   }
+  // Saisi mais pas encore envoyé — le bureau doit le voir, sinon des heures
+  // existent sans que personne le sache (elles ne comptent nulle part tant
+  // qu'elles ne sont pas envoyées : ni total, ni export).
+  if (draft) {
+    return (
+      <div className="bt-pl-bub" style={{ background: '#fff', border: `1.5px dashed ${palette.bar}`, color: '#15120F' }}>
+        <span className="bt-pl-bub-bar" style={{ background: palette.bar }} />
+        <div className="bt-pl-bub-name">
+          <span className="bt-pl-bub-title">{p.worksite?.client_name || 'Chantier'}</span>
+          <span className="bt-pl-bub-ic">
+            {p.added_by_worker && <span className="bt-pl-ic" title="Ajouté par le salarié" style={{ color: '#caa01a' }}><UserIcon className="h-3 w-3" /></span>}
+            {docs}
+          </span>
+        </div>
+        {sub && <div className="bt-pl-bub-sub" style={{ color: '#6E6A63' }}>{sub}</div>}
+        <div className="bt-pl-bub-draft" title="Le salarié a saisi ses heures mais ne les a pas encore envoyées">
+          {draft.start.slice(0, 5)}–{draft.end.slice(0, 5)} · {formatMinutes(draft.minutes)} · à envoyer
+        </div>
+      </div>
+    );
+  }
   // Prévu — fond blanc, pointillé couleur chantier.
   return (
     <div className="bt-pl-bub" style={{ background: '#fff', border: `1.5px dashed ${palette.bar}`, color: '#15120F' }}>
@@ -178,11 +199,12 @@ function BubbleContent({ p, palette, real, docCount = 0 }: { p: PlanningWithWork
 
 // A bubble is both draggable (move/reorder) and droppable (reorder target).
 function DraggableBubble({
-  p, palette, real, onEdit, docCount = 0,
+  p, palette, real, draft, onEdit, docCount = 0,
 }: {
   p: PlanningWithWorksite;
   palette: ChantierPalette;
   real?: RealAgg;
+  draft?: RealAgg;
   onEdit: (p: PlanningWithWorksite) => void;
   docCount?: number;
 }) {
@@ -198,7 +220,7 @@ function DraggableBubble({
         className={`bt-pl-grab ${drag.isDragging ? 'bt-pl-dragging' : ''}`}
         title="Glisser pour déplacer / réordonner · cliquer pour modifier"
       >
-        <BubbleContent p={p} palette={palette} real={real} docCount={docCount} />
+        <BubbleContent p={p} palette={palette} real={real} draft={draft} docCount={docCount} />
       </div>
     </div>
   );
@@ -447,6 +469,7 @@ const PL_CSS = `
 .bt-pl-bub-real{display:flex;align-items:center;gap:5px}
 .bt-pl-check{width:14px;height:14px;background:#2FA36B;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px;font-weight:900;flex:none}
 .bt-pl-real-txt{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;color:#FFC21A}
+.bt-pl-bub-draft{margin-top:4px;font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;color:#8a8378}
 .bt-pl-bub-foot{display:flex;align-items:center;justify-content:space-between;gap:6px}
 .bt-pl-tag{font-family:'JetBrains Mono',monospace;font-size:8.5px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;padding:2px 5px;border-radius:4px;white-space:nowrap}
 .bt-pl-hour{font-family:'JetBrains Mono',monospace;font-size:10px;color:#9a948a;font-weight:700}
@@ -563,6 +586,8 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const [worksites, setWorksites] = useState<Worksite[]>([]);
   const [planning, setPlanning] = useState<PlanningWithWorksite[]>([]);
   const [realEntries, setRealEntries] = useState<{ user_id: string; work_date: string; worksite_id: string | null; start_time: string; end_time: string; total_minutes: number; reception: string | null; observation: string | null }[]>([]);
+  // Saisies pas encore envoyées : affichées en pointillé, jamais comptées.
+  const [draftEntries, setDraftEntries] = useState<{ user_id: string; work_date: string; worksite_id: string | null; start_time: string; end_time: string; total_minutes: number; reception: string | null; observation: string | null }[]>([]);
   const [docsByWorksite, setDocsByWorksite] = useState<Map<string, number>>(new Map()); // nb de documents par chantier (pastille 📎)
   const [todayAbsence, setTodayAbsence] = useState<Map<string, string>>(new Map());
   const [missingByWorker, setMissingByWorker] = useState<Map<string, string[]>>(new Map());
@@ -756,17 +781,20 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     const from = format(currentWeekStart, 'yyyy-MM-dd');
     const to = format(weekEnd, 'yyyy-MM-dd');
     try {
-      const [planRes, realRes] = await Promise.all([
+      const [planRes, realRes, draftRes] = await Promise.all([
         supabase.from('planning').select('*, worksite:worksites(*), user:users!user_id(*)')
           .eq('company_id', user.company_id).gte('work_date', from).lte('work_date', to).order('work_date'),
         supabase.from('time_entries').select('user_id, work_date, worksite_id, start_time, end_time, total_minutes, reception, observation')
           .eq('company_id', user.company_id).in('status', ['submitted', 'validated']).gte('work_date', from).lte('work_date', to),
+        supabase.from('time_entries').select('user_id, work_date, worksite_id, start_time, end_time, total_minutes, reception, observation')
+          .eq('company_id', user.company_id).eq('status', 'draft').gte('work_date', from).lte('work_date', to),
       ]);
       if (planRes.error) throw planRes.error;
       const planRows = planRes.data || [];
       const realRows = realRes.error ? [] : (realRes.data || []);
       setPlanning(planRows);
       if (!realRes.error) setRealEntries(realRows);
+      if (!draftRes.error) setDraftEntries(draftRes.data || []);
 
       // Unification : toute heure déclarée sur un chantier sans créneau planning → on
       // crée le créneau (idempotent, côté serveur) pour qu'elle devienne une bulle
@@ -852,9 +880,9 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
 
   const refresh = () => { fetchPlanning(); fetchExtras(); };
 
-  const realMap = useMemo(() => {
+  const aggregate = (rows: typeof realEntries) => {
     const m = new Map<string, RealAgg>();
-    for (const e of realEntries) {
+    for (const e of rows) {
       const k = realKey(e.user_id, e.work_date, e.worksite_id);
       const cur = m.get(k);
       if (!cur) m.set(k, { minutes: e.total_minutes, start: e.start_time, end: e.end_time, count: 1, reception: (e.reception as ReceptionStatus) || null, note: e.observation || '' });
@@ -869,7 +897,13 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       }
     }
     return m;
-  }, [realEntries]);
+  };
+
+  const realMap = useMemo(() => aggregate(realEntries), [realEntries]);
+  // Les brouillons ne sont JAMAIS mélangés aux heures déclarées : ils ne
+  // comptent ni dans le total du cockpit, ni dans l'export. On les montre
+  // seulement pour que le bureau sache qu'une saisie existe.
+  const draftMap = useMemo(() => aggregate(draftEntries), [draftEntries]);
 
   // Stats du cockpit (tableau de bord). Issues des données déjà chargées ;
   // affichent 0 quand vide (jamais de trou).
@@ -883,6 +917,13 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const realForPlanning = (p: PlanningWithWorksite): RealAgg | undefined =>
     p.absence_type ? undefined : realMap.get(realKey(p.user_id, p.work_date, p.worksite_id));
 
+  // Brouillon affiché seulement s'il n'y a pas déjà des heures envoyées.
+  const draftForPlanning = (p: PlanningWithWorksite): RealAgg | undefined => {
+    if (p.absence_type) return undefined;
+    const k = realKey(p.user_id, p.work_date, p.worksite_id);
+    return realMap.has(k) ? undefined : draftMap.get(k);
+  };
+
   // Declared hours that DON'T match a planned chantier of the cell (hors-planning) —
   // shown as a distinct "déclaré par le salarié" chip on the grid.
   const worksiteNameById = useMemo(() => {
@@ -894,16 +935,20 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     const plannedWs = new Set(
       planning.filter((p) => p.user_id === workerId && p.work_date === dateStr && !p.absence_type).map((p) => p.worksite_id),
     );
-    const agg = new Map<string, { worksiteId: string | null; name: string; minutes: number }>();
-    for (const e of realEntries) {
-      if (e.user_id !== workerId || e.work_date !== dateStr) continue;
-      if (e.worksite_id && plannedWs.has(e.worksite_id)) continue; // already shown on its bubble
-      const key = e.worksite_id || 'none';
-      const name = (e.worksite_id && worksiteNameById.get(e.worksite_id)) || 'Autre';
-      const cur = agg.get(key);
-      if (cur) cur.minutes += e.total_minutes;
-      else agg.set(key, { worksiteId: e.worksite_id, name, minutes: e.total_minutes });
-    }
+    const agg = new Map<string, { worksiteId: string | null; name: string; minutes: number; pending: boolean }>();
+    const add = (rows: typeof realEntries, pending: boolean) => {
+      for (const e of rows) {
+        if (e.user_id !== workerId || e.work_date !== dateStr) continue;
+        if (e.worksite_id && plannedWs.has(e.worksite_id)) continue; // déjà porté par sa bulle
+        const key = `${e.worksite_id || 'none'}|${pending ? 'd' : 'r'}`;
+        const name = (e.worksite_id && worksiteNameById.get(e.worksite_id)) || 'Autre';
+        const cur = agg.get(key);
+        if (cur) cur.minutes += e.total_minutes;
+        else agg.set(key, { worksiteId: e.worksite_id, name, minutes: e.total_minutes, pending });
+      }
+    };
+    add(realEntries, false);
+    add(draftEntries, true);
     return Array.from(agg.values());
   };
 
@@ -1565,6 +1610,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                 <div className="bt-pl-dd bt-pl-dd--start">
                   <div className="bt-pl-dd-h">Légende des bulles</div>
                   <div className="bt-pl-legrow"><span className="bt-pl-check">✓</span> Heures déclarées par le salarié</div>
+                  <div className="bt-pl-legrow"><span className="bt-pl-legic" style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, fontWeight: 800, color: '#8a8378' }}>⋯</span> Saisi, pas encore envoyé — ne compte pas</div>
                   <div className="bt-pl-legrow"><span className="bt-pl-legic" style={{ color: '#1F7A4D' }}><CheckCircle2 className="h-3.5 w-3.5" /></span> Réceptionné sans réserve</div>
                   <div className="bt-pl-legrow"><span className="bt-pl-legic" style={{ color: '#C0461F' }}><AlertTriangle className="h-3.5 w-3.5" /></span> Réception avec réserve</div>
                   <div className="bt-pl-legrow"><span className="bt-pl-legic" style={{ color: '#C98A12' }}><Hammer className="h-3.5 w-3.5" /></span> Chantier en cours</div>
@@ -1752,7 +1798,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                                     title="Cliquer pour ajouter une intervention"
                                   >
                                     {chantiers.map(p => (
-                                      <DraggableBubble key={p.id} p={p} palette={paletteFor(p)} real={realForPlanning(p)} onEdit={openEdit} docCount={docsByWorksite.get(p.worksite_id || '') || 0} />
+                                      <DraggableBubble key={p.id} p={p} palette={paletteFor(p)} real={realForPlanning(p)} draft={draftForPlanning(p)} onEdit={openEdit} docCount={docsByWorksite.get(p.worksite_id || '') || 0} />
                                     ))}
                                     {extra.map((x, i) => (
                                       <button
@@ -1762,11 +1808,11 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                                         title="Ajouté par le salarié — cliquer pour les documents / attribuer un client"
                                         className="bt-pl-extra"
                                       >
-                                        <span className="bt-pl-bub-bar" style={{ background: '#B5472E' }} />
+                                        <span className="bt-pl-bub-bar" style={{ background: x.pending ? '#8a8378' : '#B5472E' }} />
                                         <span className="bt-pl-extra-top">
                                           <span className="bt-pl-extra-name">{x.name}</span>
                                         </span>
-                                        <span className="bt-pl-extra-by"><UserIcon className="h-2.5 w-2.5 shrink-0" /> {formatMinutes(x.minutes)} · ajouté par le salarié</span>
+                                        <span className="bt-pl-extra-by" style={x.pending ? { color: '#6E6A63' } : undefined}><UserIcon className="h-2.5 w-2.5 shrink-0" /> {formatMinutes(x.minutes)} · {x.pending ? 'saisi, à envoyer' : 'ajouté par le salarié'}</span>
                                       </button>
                                     ))}
                                     {chantiers.length === 0 && extra.length === 0 && <div className="bt-pl-add">+</div>}
@@ -1914,15 +1960,15 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                             {/* Taper une bulle → modifier l'affectation (openEdit, comme desktop). */}
                             {chantiers.map(p => (
                               <div key={p.id} className="bt-pl-m-bubbtn" role="button" tabIndex={0} onClick={() => openEdit(p)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEdit(p); } }}>
-                                <BubbleContent p={p} palette={paletteFor(p)} real={realForPlanning(p)} docCount={docsByWorksite.get(p.worksite_id || '') || 0} />
+                                <BubbleContent p={p} palette={paletteFor(p)} real={realForPlanning(p)} draft={draftForPlanning(p)} docCount={docsByWorksite.get(p.worksite_id || '') || 0} />
                               </div>
                             ))}
                             {/* Taper une intervention ajoutée par le salarié → attribution / documents. */}
                             {extra.map((x, i) => (
                               <button type="button" key={`mx${i}`} className="bt-pl-extra" onClick={() => setExtraTarget({ userId: worker.id, dateStr, worksiteId: x.worksiteId, name: x.name, minutes: x.minutes })}>
-                                <span className="bt-pl-bub-bar" style={{ background: '#B5472E' }} />
+                                <span className="bt-pl-bub-bar" style={{ background: x.pending ? '#8a8378' : '#B5472E' }} />
                                 <span className="bt-pl-extra-top"><span className="bt-pl-extra-name">{x.name}</span></span>
-                                <span className="bt-pl-extra-by"><UserIcon className="h-2.5 w-2.5 shrink-0" /> {formatMinutes(x.minutes)} · ajouté par le salarié</span>
+                                <span className="bt-pl-extra-by" style={x.pending ? { color: '#6E6A63' } : undefined}><UserIcon className="h-2.5 w-2.5 shrink-0" /> {formatMinutes(x.minutes)} · {x.pending ? 'saisi, à envoyer' : 'ajouté par le salarié'}</span>
                               </button>
                             ))}
                           </div>
