@@ -14,6 +14,18 @@
 //
 // Le contenu du fichier vient du navigateur : c'est le même tableur que celui
 // que le bureau vient de télécharger, donc exactement ce qu'il a vu.
+//
+// ENVOYÉ UNE SEULE FOIS — une erreur de transport ne prouve pas qu'aucun e-mail
+// n'est parti. Si Resend accepte le message et que la réponse se perd en route,
+// le navigateur voit un échec et le bureau reclique. Trois protections :
+//   1. la clé d'idempotence (empreinte du fichier + période) est cherchée dans
+//      `payroll_sends` AVANT d'envoyer : déjà là = on ne renvoie pas, et on le
+//      dit au bureau au lieu de le laisser croire que rien n'est parti ;
+//   2. la même clé part chez Resend en en-tête `Idempotency-Key`, pour le cas
+//      où c'est notre propre appel sortant qui a été coupé après acceptation ;
+//   3. un envoi abouti pour la MÊME période mais un fichier DIFFÉRENT est
+//      accepté (les heures ont été corrigées, c'est légitime) mais signalé :
+//      le bureau doit savoir que son comptable a déjà reçu une autre version.
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -95,9 +107,14 @@ Deno.serve(async (req) => {
     }
     if (profile.is_active === false) return json({ error: "Ce compte a été archivé" }, 403);
 
-    const { fileName, contentBase64, periodLabel } = await req.json().catch(() => ({}));
+    const { fileName, contentBase64, periodLabel, idempotencyKey } = await req.json().catch(() => ({}));
     if (!fileName || !contentBase64) return json({ error: "Fichier manquant" }, 400);
     if (typeof contentBase64 !== "string") return json({ error: "Fichier illisible" }, 400);
+    if (typeof idempotencyKey !== "string" || idempotencyKey.length < 8 || idempotencyKey.length > 200) {
+      // Sans clé, impossible de garantir l'envoi unique : on refuse plutôt que
+      // d'expédier une paie qu'on ne saura pas reconnaître au prochain essai.
+      return json({ error: "Envoi impossible : identifiant d'envoi manquant." }, 400);
+    }
 
     // Taille réelle après décodage base64, pas la taille de la chaîne.
     const approxBytes = Math.floor((contentBase64.length * 3) / 4);
@@ -119,9 +136,42 @@ Deno.serve(async (req) => {
     const companyName = company.name || "Votre entreprise";
     const period = String(periodLabel || "").slice(0, 120) || "la période demandée";
 
+    // ── Ce fichier est-il DÉJÀ parti ? ──
+    // La question est posée avant d'envoyer, pas après : c'est le seul moment
+    // où la réponse peut encore éviter un doublon chez le comptable.
+    const { data: already, error: lookErr } = await admin
+      .from("payroll_sends").select("sent_at, recipient")
+      .eq("company_id", profile.company_id).eq("idempotency_key", idempotencyKey)
+      .maybeSingle();
+    if (lookErr) {
+      // On ne peut pas vérifier → on n'envoie pas. Un doublon de paie coûte
+      // plus cher qu'un envoi à refaire.
+      console.error("[send-payroll-export] lookup", lookErr);
+      return json({ error: "Vérification impossible pour le moment. Réessayez dans un instant." }, 503);
+    }
+    if (already) {
+      return json({
+        success: true, duplicate: true,
+        to: already.recipient || to, alreadySentAt: already.sent_at,
+      });
+    }
+
+    // Un autre export de la MÊME période est-il déjà parti ? On n'empêche rien
+    // — les heures ont pu être corrigées — mais le bureau doit le savoir.
+    const { data: samePeriod } = await admin
+      .from("payroll_sends").select("sent_at")
+      .eq("company_id", profile.company_id).eq("period_label", period)
+      .order("sent_at", { ascending: false }).limit(1).maybeSingle();
+
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
-      headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+        // Filet de sécurité chez le prestataire : si c'est NOTRE appel sortant
+        // qui a été coupé après acceptation, il ne réexpédiera pas.
+        "Idempotency-Key": idempotencyKey,
+      },
       body: JSON.stringify({
         from: FROM,
         to: [to],
@@ -140,7 +190,20 @@ Deno.serve(async (req) => {
       return json({ error: "L'envoi a été refusé par le service d'e-mail." }, 502);
     }
 
-    return json({ success: true, to });
+    // La trace est posée APRÈS l'acceptation : une ligne écrite avant ferait
+    // croire à un envoi qui n'a pas eu lieu. Si cette écriture échoue, l'e-mail
+    // est quand même parti — on le journalise, et c'est l'en-tête Resend qui
+    // évitera le doublon au prochain essai.
+    const { error: traceErr } = await admin.from("payroll_sends").insert({
+      company_id: profile.company_id,
+      idempotency_key: idempotencyKey,
+      period_label: period,
+      recipient: to,
+      sent_by: caller.id,
+    });
+    if (traceErr) console.error("[send-payroll-export] trace", traceErr);
+
+    return json({ success: true, to, previousSendAt: samePeriod?.sent_at ?? null });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     console.error("[send-payroll-export] error:", e);

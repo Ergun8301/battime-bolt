@@ -52,6 +52,32 @@ function formatMinutes(minutes: number): string {
   const m = minutes % 60;
   return `${h}h${m.toString().padStart(2, '0')}`;
 }
+/**
+ * Empreinte de l'envoi au comptable : entreprise + période + contenu exact du
+ * tableur. Deux clics sur le MÊME export donnent la même clé — le serveur
+ * reconnaît alors un envoi déjà parti plutôt que d'en expédier un second. Un
+ * export refait après correction des heures donne une clé différente, et part.
+ *
+ * Ce n'est pas un usage cryptographique : sur un navigateur sans `crypto.subtle`
+ * (contexte non sécurisé), on retombe sur un condensé maison. Deux fichiers
+ * distincts de la même entreprise et de la même période auraient alors une
+ * chance négligeable de se confondre, et le pire serait un envoi non répété.
+ */
+async function sendKey(companyId: string, from: string, to: string, content: string): Promise<string> {
+  const seed = `${companyId}|${from}|${to}|${content.length}|${content}`;
+  try {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(seed));
+    return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('');
+  } catch {
+    let h1 = 0x811c9dc5, h2 = 0x01000193;
+    for (let i = 0; i < seed.length; i++) {
+      h1 = Math.imul(h1 ^ seed.charCodeAt(i), 0x01000193) >>> 0;
+      h2 = Math.imul(h2 + seed.charCodeAt(i), 0x85ebca6b) >>> 0;
+    }
+    return `f${h1.toString(16).padStart(8, '0')}${h2.toString(16).padStart(8, '0')}${companyId.slice(0, 8)}${from}${to}`;
+  }
+}
+
 // Format compact pour les stats du cockpit (30000 -> "30k").
 function fmtStat(n: number): string {
   if (n >= 10000) return `${(n / 1000).toFixed(n >= 100000 ? 0 : 1).replace(/\.0$/, '').replace('.', ',')}k`;
@@ -1357,15 +1383,25 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         weeklyHoursByWorker,
         recapEntries,
       };
+      // Message final : dépend de ce que le serveur répond (envoyé / déjà parti).
+      let sentNote = '';
       if (kind === 'comptable') {
         // Le fichier part en pièce jointe, pas en lien : le comptable ne doit
         // rien avoir à ouvrir ni à installer. Le destinataire n'est pas
         // transmis — la fonction le relit dans les réglages de l'entreprise.
-        const { error: sendErr } = await supabase.functions.invoke('send-payroll-export', {
+        //
+        // La clé d'idempotence est l'empreinte du fichier RÉELLEMENT expédié :
+        // recliquer après une coupure renvoie la même clé, donc le serveur
+        // reconnaît l'envoi au lieu d'en faire un second. Un export refait
+        // après correction des heures donne une autre clé, et part bien.
+        const content = excelAsBase64(entries, opts);
+        const idempotencyKey = await sendKey(user.company_id, from, to, content);
+        const { data: sendData, error: sendErr } = await supabase.functions.invoke('send-payroll-export', {
           body: {
             fileName: `${opts.fileName}.xlsx`,
-            contentBase64: excelAsBase64(entries, opts),
+            contentBase64: content,
             periodLabel: opts.periodLabel,
+            idempotencyKey,
           },
         });
         if (sendErr) {
@@ -1379,10 +1415,22 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
               detail = typeof body?.error === 'string' ? body.error : '';
             }
           } catch { /* corps illisible : on garde le message générique */ }
-          toast.error(detail || "L'envoi au comptable a échoué. Les heures restent modifiables.");
-          // Pas d'envoi, donc pas de verrouillage : sans ça le bureau croirait
-          // la paie partie et ne pourrait plus rien corriger.
+          toast.error(detail || "L'envoi au comptable a échoué. Les heures restent modifiables. Recliquez : si l'e-mail était déjà parti, il ne partira pas deux fois.");
+          // Pas d'envoi confirmé, donc pas de verrouillage : sans ça le bureau
+          // croirait la paie partie et ne pourrait plus rien corriger.
           return;
+        }
+        const r = (sendData || {}) as { duplicate?: boolean; alreadySentAt?: string | null; previousSendAt?: string | null };
+        if (r.duplicate) {
+          // Le fichier était déjà parti — la fois d'avant, la réponse s'était
+          // perdue. On ne renvoie pas, et on verrouille ce qui aurait dû l'être.
+          sentNote = r.alreadySentAt
+            ? `Déjà envoyé le ${format(new Date(r.alreadySentAt), 'dd/MM \'à\' HH:mm')} — non renvoyé`
+            : 'Déjà envoyé — non renvoyé';
+        } else if (r.previousSendAt) {
+          sentNote = `Envoyé à ${accountantEmail} — attention, un export de cette période était déjà parti le ${format(new Date(r.previousSendAt), 'dd/MM \'à\' HH:mm')}`;
+        } else {
+          sentNote = `Envoyé à ${accountantEmail}`;
         }
       } else if (kind === 'excel') {
         exportEntriesToExcel(entries, opts);
@@ -1404,7 +1452,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
 
       const lockLabel = `${entries.length} saisie${entries.length > 1 ? 's' : ''} verrouillée${entries.length > 1 ? 's' : ''}`;
       toast.success(kind === 'comptable'
-        ? `Envoyé à ${accountantEmail} — ${lockLabel}`
+        ? `${sentNote} — ${lockLabel}`
         : `Export téléchargé — ${lockLabel}`);
     } catch (err) {
       console.error('Error exporting team:', err);
