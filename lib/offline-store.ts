@@ -1,5 +1,7 @@
-// Offline entry storage — localStorage, scoped per user_id to prevent cross-user leaks.
-// Entries added while offline are persisted here and auto-synced on reconnect.
+// Saisies faites sans réseau — conservées dans le stockage du navigateur, une
+// clé par salarié (jamais de fuite d'un compte à l'autre sur un téléphone
+// partagé). L'envoi différé est dans lib/offline-sync.ts : il part tout seul au
+// retour du réseau, quel que soit le jour de la saisie.
 
 const KEY_PREFIX = 'battime_offline_';
 
@@ -21,6 +23,10 @@ export interface PendingEntry {
   _worksite_name: string;
   _worksite_city?: string | null;
   _saved_at: number;
+  /** Nombre de tentatives d'envoi déjà faites (voir lib/offline-sync.ts). */
+  attempts?: number;
+  /** Dernier refus du serveur, pour pouvoir l'expliquer au salarié. */
+  lastError?: string | null;
 }
 
 export function generateLocalId(): string {
@@ -68,4 +74,19 @@ export function removePendingEntry(userId: string, localId: string): void {
 export function clearPendingEntriesForDate(userId: string, date: string): void {
   const entries = safeRead(userId).filter(e => e.work_date !== date);
   safeWrite(userId, entries);
+}
+
+/** Met à jour une saisie en attente sur place (compteur de tentatives, erreur). */
+export function updatePendingEntry(
+  userId: string,
+  localId: string,
+  patch: Partial<PendingEntry>,
+): void {
+  const entries = safeRead(userId).map(e => (e.localId === localId ? { ...e, ...patch } : e));
+  safeWrite(userId, entries);
+}
+
+/** Nombre total de saisies en attente, tous jours confondus. */
+export function countPendingEntries(userId: string): number {
+  return safeRead(userId).length;
 }

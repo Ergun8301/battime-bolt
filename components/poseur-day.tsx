@@ -16,6 +16,7 @@ import {
   addPendingEntry, getPendingEntries, removePendingEntry, clearPendingEntriesForDate,
   generateLocalId, PendingEntry,
 } from '@/lib/offline-store';
+import { syncAllPending } from '@/lib/offline-sync';
 import { TimeCylinder, snapToGrid } from '@/components/time-cylinder';
 import ChantierDocuments from '@/components/chantier-documents';
 
@@ -383,56 +384,26 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
     }
   }, [user, date]);
 
-  // ─── Sync pending offline entries ─────────────────────────────────────────
+  // ─── Envoi des saisies faites sans réseau ─────────────────────────────────
+  // L'envoi lui-même est dans lib/offline-sync.ts et porte sur TOUS les jours en
+  // attente, pas seulement celui affiché : une journée saisie lundi sans réseau
+  // ne partait autrefois que si le salarié rouvrait ce lundi-là.
 
   const syncPendingEntries = useCallback(async () => {
     if (!user || !navigator.onLine) return;
-    const pending = getPendingEntries(user.id).filter((e) => e.work_date === date);
-    if (pending.length === 0) return;
+    if (getPendingEntries(user.id).length === 0) return;
 
     setSyncing(true);
-    let synced = 0;
-    let failed = 0;
-    for (const entry of pending) {
-      try {
-        const row = {
-          company_id: entry.company_id,
-          user_id: entry.user_id,
-          worksite_id: entry.worksite_id,
-          planning_id: entry.planning_id,
-          work_date: entry.work_date,
-          start_time: entry.start_time,
-          end_time: entry.end_time,
-          break_minutes: 0,
-          // total_minutes is a generated column in Postgres — never send it.
-          meal_allowance: entry.meal_allowance,
-          observation: entry.observation,
-          reception: entry.reception ?? null,
-          status: 'draft' as const,
-        };
-        let { error } = await supabase.from('time_entries').insert(row);
-        if (error && error.code === '23505') {
-          // Un panier existe déjà ce jour-là côté serveur (index unique) : on
-          // garde celui du serveur et on rejoue l'insertion sans panier.
-          ({ error } = await supabase.from('time_entries').insert({ ...row, meal_allowance: false }));
-        }
-        if (!error) {
-          removePendingEntry(user.id, entry.localId);
-          synced++;
-        } else {
-          failed++;
-        }
-      } catch { failed++; }
-    }
+    const { synced, blocked } = await syncAllPending(user.id);
     setSyncing(false);
 
-    // Un échec restait muet : l'entrée « en attente » ne partait jamais et
-    // personne n'en savait rien.
-    if (failed > 0) toast.error(`${failed} intervention${failed > 1 ? 's' : ''} non synchronisée${failed > 1 ? 's' : ''} — réessaie plus tard`);
-
+    setPendingEntries(getPendingEntries(user.id).filter((e) => e.work_date === date));
+    if (blocked.length > 0) {
+      const jours = Array.from(new Set(blocked.map((b) => b.work_date.split('-').reverse().join('/')))).join(', ');
+      toast.error(`${blocked.length} intervention${blocked.length > 1 ? 's' : ''} du ${jours} ne part${blocked.length > 1 ? 'ent' : ''} pas. Préviens le bureau.`, { duration: 10000 });
+    }
     if (synced > 0) {
-      toast.success(`${synced} intervention${synced > 1 ? 's' : ''} synchronisée${synced > 1 ? 's' : ''}`);
-      setPendingEntries(getPendingEntries(user.id).filter((e) => e.work_date === date));
+      toast.success(`${synced} intervention${synced > 1 ? 's' : ''} envoyée${synced > 1 ? 's' : ''}`);
       fetchData();
     }
   }, [user, date, fetchData]);
@@ -672,21 +643,34 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
 
         const planningId = planning.find((p) => p.worksite_id === worksiteId)?.id || null;
 
+        // Un identifiant est posé dès la saisie, en ligne comme hors ligne : si la
+        // réponse du serveur se perd, la même saisie ne peut pas entrer deux fois.
+        const localId = generateLocalId();
+        const pending: PendingEntry = {
+          localId, company_id: user.company_id, user_id: user.id, worksite_id: worksiteId,
+          planning_id: planningId, work_date: date, start_time: fStart, end_time: fEnd, break_minutes: 0,
+          total_minutes: totalMins, meal_allowance: false, observation: fObs.trim() || null, reception: fReception || null,
+          _worksite_name: worksiteName, _worksite_city: worksiteCity, _saved_at: Date.now(),
+        };
+
         if (!navigator.onLine) {
-          const pending: PendingEntry = {
-            localId: generateLocalId(), company_id: user.company_id, user_id: user.id, worksite_id: worksiteId,
-            planning_id: planningId, work_date: date, start_time: fStart, end_time: fEnd, break_minutes: 0,
-            total_minutes: totalMins, meal_allowance: false, observation: fObs.trim() || null, reception: fReception || null,
-            _worksite_name: worksiteName, _worksite_city: worksiteCity, _saved_at: Date.now(),
-          };
           addPendingEntry(user.id, pending);
         } else {
-          const { error } = await supabase.from('time_entries').insert({
+          const row = {
             company_id: user.company_id, user_id: user.id, worksite_id: worksiteId, planning_id: planningId,
             work_date: date, start_time: fStart, end_time: fEnd, break_minutes: 0,
-            meal_allowance: false, observation: fObs.trim() || null, reception: fReception || null, status: 'draft',
-          });
-          if (error) throw error;
+            meal_allowance: false, observation: fObs.trim() || null, reception: fReception || null, status: 'draft' as const,
+          };
+          let { error } = await supabase.from('time_entries').insert({ ...row, client_id: localId });
+          if (error && error.code === 'PGRST204' && error.message?.includes('client_id')) {
+            ({ error } = await supabase.from('time_entries').insert(row));
+          }
+          if (error) {
+            // Le réseau a lâché en plein envoi : on garde la saisie sur le
+            // téléphone plutôt que de la perdre, elle partira toute seule.
+            addPendingEntry(user.id, pending);
+            toast.message('Réseau instable — la saisie partira toute seule.');
+          }
         }
       }
 

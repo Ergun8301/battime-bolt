@@ -59,7 +59,7 @@ const LD_FAQ = {
     {
       '@type': 'Question',
       name: 'Et s’il n’y a pas de réseau sur le chantier ?',
-      acceptedAnswer: { '@type': 'Answer', text: 'Aucun souci. La saisie est conservée sur le téléphone ; elle part au retour du réseau, dès que la journée est rouverte.' },
+      acceptedAnswer: { '@type': 'Answer', text: 'Aucun souci. La saisie est conservée sur le téléphone et part toute seule au retour du réseau, même plusieurs jours après.' },
     },
     {
       '@type': 'Question',
@@ -479,7 +479,7 @@ const BODY_SUITE = `
       <div style="display:flex;flex-direction:column;gap:14px">
         <div data-reveal style="background:#fff;border:1px solid rgba(21,18,15,.1);border-radius:14px;padding:22px 24px">
           <div style="font-size:17px;font-weight:800;margin-bottom:8px">Et s'il n'y a pas de réseau sur le chantier ?</div>
-          <p style="font-size:15px;line-height:1.5;color:#56514a;font-weight:500">Aucun souci. La saisie est conservée sur le téléphone ; elle part au retour du réseau, dès que la journée est rouverte.</p>
+          <p style="font-size:15px;line-height:1.5;color:#56514a;font-weight:500">Aucun souci. La saisie est conservée sur le téléphone et part toute seule au retour du réseau, même plusieurs jours après.</p>
         </div>
         <div data-reveal style="background:#fff;border:1px solid rgba(21,18,15,.1);border-radius:14px;padding:22px 24px">
           <div style="font-size:17px;font-weight:800;margin-bottom:8px">Mes gars ne sont pas à l'aise avec la technologie.</div>

@@ -45,7 +45,7 @@ export default function Page() {
           {
             '@type': 'Question',
             name: 'Est-ce conforme si je n’ai pas de connexion sur le chantier ?',
-            acceptedAnswer: { '@type': 'Answer', text: 'Oui. La saisie est conservée sur le téléphone et envoyée au retour du réseau, dès que la journée est rouverte.' },
+            acceptedAnswer: { '@type': 'Answer', text: 'Oui. La saisie est conservée sur le téléphone et envoyée toute seule au retour du réseau, même plusieurs jours après.' },
           },
         ],
       }} />
@@ -114,7 +114,7 @@ export default function Page() {
             </div>
             <div className="sp-faq-item">
               <h3>Est-ce conforme si je n’ai pas de connexion sur le chantier ?</h3>
-              <p>Oui. La saisie est conservée sur le téléphone et envoyée au retour du réseau, dès que la journée est rouverte.</p>
+              <p>Oui. La saisie est conservée sur le téléphone et envoyée toute seule au retour du réseau, même plusieurs jours après.</p>
             </div>
           </div>
           <div className="sp-note">

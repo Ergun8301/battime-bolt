@@ -67,8 +67,8 @@ export default function Page() {
             de fin, envoie sa journée.
           </p>
           <div className="sp-note">
-            <strong>Hors réseau ?</strong> La saisie est conservée sur le téléphone et part au retour de la
-            connexion, dès que la journée est rouverte.
+            <strong>Hors réseau ?</strong> La saisie est conservée sur le téléphone et part toute seule au retour
+            de la connexion, même plusieurs jours après.
           </div>
         </section>
 
