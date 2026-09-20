@@ -7,6 +7,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { format, parseISO } from 'date-fns';
 import { TimeEntryWithWorksite, User } from '@/lib/types';
+import { weeklyTotals, routeMinutesByEntry } from '@/lib/overtime';
 
 export type ExportEntry = TimeEntryWithWorksite & { user?: User };
 
@@ -26,48 +27,6 @@ export interface ExportOptions {
    * déclaré — mais elle n'entre dans le total que si l'entreprise le paie.
    */
   travelPaid?: boolean;
-}
-
-const toMin = (hhmm: string) => {
-  const [h, m] = hhmm.split(':').map(Number);
-  return (h || 0) * 60 + (m || 0);
-};
-
-/**
- * Minutes de route attribuées à chaque intervention.
- *
- * Le salarié qualifie le temps écoulé depuis l'intervention précédente du même
- * jour (`gap_before`). Ici on retrouve la durée de ce trou, par salarié et par
- * jour, et on ne retient que ce qui a été appelé « route ». Une pause, ou un
- * trou dont personne n'a rien dit, vaut zéro : jamais de temps payé en douce.
- */
-function routeMinutesByEntry(entries: ExportEntry[]): Map<string, number> {
-  const out = new Map<string, number>();
-  const groups = new Map<string, ExportEntry[]>();
-  for (const e of entries) {
-    const k = `${e.user_id}|${e.work_date}`;
-    const arr = groups.get(k);
-    if (arr) arr.push(e); else groups.set(k, [e]);
-  }
-  groups.forEach((arr) => {
-    const sorted = [...arr]
-      .filter((e) => e.start_time && e.end_time)
-      .map((e) => {
-        const start = toMin(e.start_time.slice(0, 5));
-        let end = toMin(e.end_time.slice(0, 5));
-        if (end < start) end += 24 * 60; // franchit minuit
-        return { e, start, end };
-      })
-      .sort((a, b) => a.start - b.start);
-    let prevEnd = -1;
-    for (const s of sorted) {
-      if (prevEnd >= 0 && s.start > prevEnd && s.e.gap_before === 'route') {
-        out.set(s.e.id, s.start - prevEnd);
-      }
-      if (s.end > prevEnd) prevEnd = s.end;
-    }
-  });
-  return out;
 }
 
 function formatMinutesToHours(minutes: number): string {

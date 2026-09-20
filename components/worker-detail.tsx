@@ -6,7 +6,8 @@ import { User, Worksite, Certification, CertificationType } from '@/lib/types';
 import { ExportEntry, exportEntriesToExcel, exportEntriesToPDF } from '@/lib/export-utils';
 import { fetchAllPaged } from '@/lib/fetch-all';
 import { isCounted } from '@/lib/status';
-import { DEFAULT_WEEKLY_HOURS, weeklyHoursFor, weeklyTotals } from '@/lib/overtime';
+import { DEFAULT_WEEKLY_HOURS, weeklyHoursFor, weeklyTotals, routeMinutesByEntry, type RouteEntry } from '@/lib/overtime';
+import { weekStart as weekStartOf, weekEnd as weekEndOf } from '@/lib/week';
 import { computeMissingDays } from '@/lib/work-status';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -63,6 +64,11 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
     return { from: t, to: t };
   });
   const [entries, setEntries] = useState<ExportEntry[]>([]);
+  // Semaines ENTIÈRES qui recouvrent la période choisie. Les heures
+  // supplémentaires se comptent sur la semaine complète : si la période
+  // commence un vendredi, les 35 h du lundi au jeudi comptent quand même, sinon
+  // les 8 h du vendredi passeraient pour des heures normales.
+  const [weekRows, setWeekRows] = useState<(RouteEntry & { total_minutes: number; status: string })[]>([]);
   const [companyName, setCompanyName] = useState('');
   // Réglage entreprise : la route entre deux chantiers est-elle payée ?
   const [travelPaid, setTravelPaid] = useState(false);
@@ -246,6 +252,16 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
       // `user:users(*)` a été retirée : cet écran ne l'utilise nulle part, et
       // l'export par salarié n'en a pas besoin (le nom vient de singleWorkerName)
       // — elle ne faisait qu'envoyer n° de sécurité sociale et taux horaire.
+      // Les semaines entières qui recouvrent la période, pour le décompte des
+      // heures supplémentaires uniquement — l'affichage détaillé reste borné à
+      // la période choisie.
+      const { data: wk } = await supabase.from('time_entries')
+        .select('id, user_id, work_date, start_time, end_time, total_minutes, status, gap_before')
+        .eq('user_id', worker.id).eq('company_id', worker.company_id)
+        .gte('work_date', format(weekStartOf(from), 'yyyy-MM-dd'))
+        .lte('work_date', format(weekEndOf(to), 'yyyy-MM-dd'));
+      setWeekRows((wk || []) as (RouteEntry & { total_minutes: number; status: string })[]);
+
       const rows = await fetchAllPaged<ExportEntry>((f, t2) => supabase
         .from('time_entries')
         .select('id, user_id, work_date, start_time, end_time, break_minutes, total_minutes, meal_allowance, status, observation, reception, gap_before, planning_id, modified_at, worksite:worksites(id, client_name, city)')
@@ -281,8 +297,14 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
     mWeekly.trim() ? Number(mWeekly.trim().replace(',', '.')) : null,
     companyWeeklyHours,
   );
+  const weekCounted = weekRows.filter((e) => isCounted(e.status));
+  const weekRoute = routeMinutesByEntry(weekCounted);
   const weeks = weeklyTotals(
-    countedEntries.map((e) => ({ work_date: e.work_date, minutes: e.total_minutes })),
+    weekCounted.map((e) => ({
+      work_date: e.work_date,
+      // La route payée est du temps payé : elle compte pour franchir le seuil.
+      minutes: e.total_minutes + (travelPaid ? (weekRoute.get(e.id) || 0) : 0),
+    })),
     effectiveWeeklyHours,
   );
   const overtimeMinutes = weeks.reduce((s, w) => s + w.overtimeMinutes, 0);
@@ -598,7 +620,8 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
               </p>
             )}
             <p className="text-xs text-muted-foreground">
-              Une semaine à cheval sur les bornes de la période n&apos;est comptée que sur les jours affichés.
+              Comptées sur la semaine entière, même si la période commence en milieu de semaine.
+              {travelPaid && ' Le temps de route payé est compris.'}
             </p>
           </div>
         )}
