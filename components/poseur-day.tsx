@@ -55,23 +55,28 @@ const toMin = (t: string) => { const [h, m] = t.split(':').map(Number); return (
 // calculateTotalMinutes. Sans ça, un poste de nuit fabriquait une pause fantôme
 // de plusieurs heures. On avance aussi la borne de fin au plus tard rencontré,
 // pour que deux créneaux qui se chevauchent n'inventent pas de trou entre eux.
-function computePauses(slots: { start: string; end: string }[]) {
+type GapSlot = { start: string; end: string; key: string; gap: 'route' | 'pause' | null };
+type Gap = { start: string; end: string; minutes: number; key: string; gap: 'route' | 'pause' | null };
+
+function computePauses(slots: GapSlot[]): Gap[] {
   const abs = slots
     .filter((s) => s.start && s.end)
     .map((s) => {
       const start = toMin(s.start);
       let end = toMin(s.end);
       if (end < start) end += 24 * 60; // franchit minuit
-      return { start, end, endLabel: s.end, startLabel: s.start };
+      return { start, end, endLabel: s.end, startLabel: s.start, key: s.key, gap: s.gap };
     })
     .sort((a, b) => a.start - b.start);
 
-  const out: { start: string; end: string; minutes: number }[] = [];
+  const out: Gap[] = [];
   let prevEnd = -1;
   let prevEndLabel = '';
   for (const slot of abs) {
     if (prevEnd >= 0 && slot.start > prevEnd) {
-      out.push({ start: prevEndLabel, end: slot.startLabel, minutes: slot.start - prevEnd });
+      // `key` désigne le créneau QUI SUIT le trou : c'est sur lui que la
+      // réponse « route ou pause » est enregistrée.
+      out.push({ start: prevEndLabel, end: slot.startLabel, minutes: slot.start - prevEnd, key: slot.key, gap: slot.gap });
     }
     if (slot.end > prevEnd) { prevEnd = slot.end; prevEndLabel = slot.endLabel; }
   }
@@ -158,6 +163,14 @@ const DAY_CSS = `
 .bt-iv-plan{background:transparent;border:1.5px dashed rgba(21,18,15,.28);border-radius:14px;padding:12px 14px;margin-bottom:9px}
 .bt-plan-k{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#9a8a3a;font-weight:700;margin-bottom:4px}
 .bt-plan-btn{width:100%;border:none;background:#15120F;border-radius:11px;padding:13px;font-weight:800;font-size:14.5px;color:#FFC21A;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;margin-top:12px;font-family:inherit}
+
+.bt-gap{display:flex;align-items:center;gap:10px;padding:8px 12px;margin:6px 0;border-left:2px dashed rgba(21,18,15,.22);background:rgba(21,18,15,.03);border-radius:0 10px 10px 0}
+.bt-gap-t{flex:1;min-width:0;font-size:12.5px;font-weight:600;color:#56514a}
+.bt-gap-d{font-family:'JetBrains Mono',monospace;font-weight:700;color:#15120F}
+.bt-gap-btns{display:flex;gap:6px;flex:none}
+.bt-gap-b{border:1.5px solid rgba(21,18,15,.2);background:#fff;border-radius:8px;padding:6px 10px;font-family:inherit;font-size:12px;font-weight:800;color:#15120F;cursor:pointer}
+.bt-gap-b.on{background:#15120F;color:#FFC21A;border-color:#15120F}
+.bt-gap-ask{color:#9a3b14;font-weight:800}
 
 .bt-empty{text-align:center;font-size:13.5px;color:#6E6A63;font-weight:600;padding:18px 0 4px}
 .bt-ghostbtn{display:inline-flex;align-items:center;gap:8px;margin-top:12px;background:transparent;border:1.5px solid rgba(21,18,15,.2);color:#15120F;border-radius:11px;padding:11px 16px;font-weight:800;font-size:13.5px;cursor:pointer;font-family:inherit}
@@ -376,6 +389,16 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
     return () => { stale = true; };
   }, [user?.company_id]);
 
+  // Le temps de route est-il payé ? Réglage de l'entreprise, pas du logiciel.
+  const [travelPaid, setTravelPaid] = useState(false);
+  useEffect(() => {
+    if (!user?.company_id) return;
+    let stale = false;
+    supabase.from('companies').select('travel_paid').eq('id', user.company_id).maybeSingle()
+      .then(({ data }) => { if (!stale && data) setTravelPaid(!!(data as { travel_paid?: boolean }).travel_paid); });
+    return () => { stale = true; };
+  }, [user?.company_id]);
+
   // ─── Fetch server data ─────────────────────────────────────────────────────
 
   const fetchData = useCallback(async () => {
@@ -420,6 +443,47 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
       setLoading(false);
     }
   }, [user, date]);
+
+  /**
+   * Le salarié dit ce qu'était le trou : route entre deux chantiers, ou pause.
+   * Enregistré sur l'intervention QUI SUIT le trou. Tant qu'il n'a pas répondu,
+   * rien n'est compté comme travail — on ne décide pas à sa place.
+   */
+  const setGapKind = async (key: string, kind: 'route' | 'pause') => {
+    if (!user) return;
+    const [sort, id] = [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)];
+    try {
+      if (sort === 'pe') {
+        const pend = getPendingEntries(user.id).find((e) => e.localId === id);
+        if (!pend) return;
+        removePendingEntry(user.id, id);
+        addPendingEntry(user.id, { ...pend, gap_before: kind });
+        setPendingEntries(getPendingEntries(user.id).filter((e) => e.work_date === date));
+        return;
+      }
+      const { data: upd, error } = await supabase.from('time_entries')
+        .update({ gap_before: kind }).eq('id', id).eq('user_id', user.id).select('id');
+      if (error) throw error;
+      if (!upd || upd.length === 0) { toast.error('Journée verrouillée : impossible de changer.'); return; }
+      fetchData();
+    } catch (err) {
+      console.error('Error setting gap kind:', err);
+      toast.error(explainWriteError(err, "Impossible d'enregistrer"));
+    }
+  };
+
+  /**
+   * Répondre reste possible après l'envoi de la journée.
+   *
+   * Sinon une journée envoyée avant d'avoir répondu gardait la question
+   * affichée sans moyen d'y répondre, et la route déjà faite ne pouvait plus
+   * entrer dans la paie. Sur une journée envoyée, ça passe par la même
+   * confirmation qu'un changement d'horaire — la secrétaire voit la retouche.
+   */
+  const askGapKind = (key: string, kind: 'route' | 'pause') => {
+    if (frozen) { askCorrect(() => setGapKind(key, kind)); return; }
+    setGapKind(key, kind);
+  };
 
   // ─── Envoi des saisies faites sans réseau ─────────────────────────────────
   // L'envoi lui-même est dans lib/offline-sync.ts et porte sur TOUS les jours en
@@ -925,10 +989,23 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
   ]);
   const plannedTodo = planning.filter((p) => p.worksite_id && !declaredWorksiteIds.has(p.worksite_id));
 
-  const pauses = computePauses(
-    [...liveEntries, ...pendingEntries].map((e) => ({ start: (e.start_time || '').slice(0, 5), end: (e.end_time || '').slice(0, 5) })),
-  );
+  const gaps = computePauses([
+    ...liveEntries.map((e) => ({
+      start: (e.start_time || '').slice(0, 5), end: (e.end_time || '').slice(0, 5),
+      key: `e:${e.id}`, gap: (e.gap_before ?? null) as 'route' | 'pause' | null,
+    })),
+    ...pendingEntries.map((e) => ({
+      start: (e.start_time || '').slice(0, 5), end: (e.end_time || '').slice(0, 5),
+      key: `pe:${e.localId}`, gap: (e.gap_before ?? null) as 'route' | 'pause' | null,
+    })),
+  ]);
+  // Un trou non qualifié n'est NI une pause NI de la route : tant que le
+  // salarié n'a pas répondu, on ne décide pas à sa place, et on ne le fait pas
+  // entrer dans le total des pauses affiché juste au-dessus de la question.
+  const pauses = gaps.filter((g) => g.gap === 'pause');
   const pauseMinutes = pauses.reduce((s, p) => s + p.minutes, 0);
+  const routeMinutes = gaps.filter((g) => g.gap === 'route').reduce((s, p) => s + p.minutes, 0);
+  const unansweredGaps = gaps.filter((g) => g.gap === null).length;
 
   // "Autre" is a real worksite pinned at the top of the picker (created once per
   // company in Supabase) — for work the secretary hasn't listed / the worker can't name.
@@ -957,6 +1034,9 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
     ...pendingEntries.map((pe): DayItem => ({ kind: 'pending', sort: (pe.start_time || '99:99').slice(0, 5), key: `pe:${pe.localId}`, data: pe })),
     ...cancelledEntries.map((e): DayItem => ({ kind: 'cancelled', sort: (e.start_time || '99:99').slice(0, 5), key: `c:${e.id}`, data: e })),
   ].sort((a, b) => a.sort.localeCompare(b.sort));
+
+  // Le trou se dessine juste avant l'intervention qui le suit.
+  const gapByKey = new Map(gaps.map((g) => [g.key, g]));
 
   const titleName = !openSlot ? ''
     : openSlot.kind === 'planned' ? (planning.find((p) => p.id === openSlot.planningId)?.worksite?.client_name || '')
@@ -1036,8 +1116,17 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
             </div>
             <div className="bt-stat">
               <div className="bt-stat-n">{fmtHM(pauseMinutes)}</div>
-              <div className="bt-stat-l">pause{pauses.length > 1 ? 's' : ''}</div>
+              <div className="bt-stat-l">
+                pause{pauses.length > 1 ? 's' : ''}
+                {unansweredGaps > 0 && ` · ${unansweredGaps} à préciser`}
+              </div>
             </div>
+            {routeMinutes > 0 && (
+              <div className="bt-stat">
+                <div className="bt-stat-n">{fmtHM(routeMinutes)}</div>
+                <div className="bt-stat-l">route{travelPaid ? ' · payée' : ''}</div>
+              </div>
+            )}
             <div className={`bt-stat${dayMeal ? ' on' : ''}`}>
               <div className="bt-stat-n">{dayMeal ? 'Panier ✓' : 'Panier'}</div>
               <div className="bt-stat-l">{dayMeal ? 'repas pris' : 'non pris'}</div>
@@ -1071,6 +1160,27 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
         <div className="bt-sec">Interventions du jour</div>
 
         {items.map((item) => {
+          const g = gapByKey.get(item.key);
+          const gapRow = g ? (
+            <div className="bt-gap" key={`${item.key}:gap`}>
+              <div className="bt-gap-t">
+                <span className="bt-gap-d">{fmtHM(g.minutes)}</span>{' '}
+                entre {g.start} et {g.end} —{' '}
+                {g.gap === null
+                  ? <span className="bt-gap-ask">c'était quoi ?</span>
+                  : g.gap === 'route' ? `route${travelPaid ? ' (payée)' : ' (non payée)'}` : 'pause'}
+              </div>
+              {!monthLocked && (
+                <div className="bt-gap-btns">
+                  <button type="button" className={`bt-gap-b${g.gap === 'route' ? ' on' : ''}`} onClick={() => askGapKind(g.key, 'route')}>Route</button>
+                  <button type="button" className={`bt-gap-b${g.gap === 'pause' ? ' on' : ''}`} onClick={() => askGapKind(g.key, 'pause')}>Pause</button>
+                </div>
+              )}
+            </div>
+          ) : null;
+
+          const withGap = (node: ReactNode) => gapRow ? <div key={item.key}>{gapRow}{node}</div> : node;
+
           if (item.kind === 'planned') {
             const p = item.data;
             const onTap = monthLocked ? () => setLateOpen(true) : frozen ? () => askCorrect(() => openPlanned(p)) : () => openPlanned(p);
@@ -1098,7 +1208,7 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
             const tappable = isEditable(entry);
             const isDraft = entry.status === 'draft' && !entry.locked;
             const onTap = !tappable ? undefined : monthLocked ? () => setLateOpen(true) : frozen ? () => askCorrect(() => openEntry(entry)) : () => openEntry(entry);
-            return (
+            return withGap(
               <div key={item.key} className={`bt-iv${entry.locked ? ' ok' : entry.status === 'submitted' ? ' sent' : isDraft ? ' draft' : ''}${onTap ? ' bt-iv-tap' : ''}`} onClick={onTap}>
                 <div className="bt-iv-top">
                   <span className="bt-iv-name">{entry.worksite?.client_name || OTHER_NAME}</span>
@@ -1140,7 +1250,7 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
 
           // pending (offline)
           const entry = item.data;
-          return (
+          return withGap(
             <div key={item.key} className="bt-iv off">
               <div className="bt-iv-top">
                 <div style={{ flex: 1, minWidth: 0 }}>

@@ -594,6 +594,8 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const [missingByWorker, setMissingByWorker] = useState<Map<string, string[]>>(new Map());
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [companyName, setCompanyName] = useState('');
+  // Réglage entreprise : la route entre deux chantiers est-elle payée ?
+  const [travelPaid, setTravelPaid] = useState(false);
   const [loading, setLoading] = useState(true);
   const [currentWeekStart, setCurrentWeekStart] = useState(weekStart());
   const [positionWarned, setPositionWarned] = useState(false);
@@ -830,7 +832,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     const [planRes, entRes, compRes, invRes, docRes, leaveRes] = await Promise.all([
       supabase.from('planning').select('user_id, work_date, absence_type').eq('company_id', user.company_id).gte('work_date', windowStart),
       supabase.from('time_entries').select('user_id, work_date').eq('company_id', user.company_id).in('status', ['submitted', 'validated']).gte('work_date', windowStart),
-      supabase.from('companies').select('name, logo_url').eq('id', user.company_id).maybeSingle(),
+      supabase.from('companies').select('name, logo_url, travel_paid').eq('id', user.company_id).maybeSingle(),
       supabase.from('invitations').select('*').eq('company_id', user.company_id).is('accepted_at', null).gt('expires_at', new Date().toISOString()).order('created_at', { ascending: false }),
       supabase.from('documents').select('worksite_id').eq('company_id', user.company_id),
       supabase.from('leave_requests').select('id', { count: 'exact', head: true }).eq('company_id', user.company_id).eq('status', 'pending'),
@@ -871,6 +873,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     setTodayAbsence(today);
     setMissingByWorker(miss);
     setCompanyName(compRes.data?.name || '');
+    setTravelPaid(!!(compRes.data as { travel_paid?: boolean } | null)?.travel_paid);
     setCompanyLogo((compRes.data as { logo_url?: string | null } | null)?.logo_url || '');
     setInvitations((invRes.data || []) as Invitation[]);
   }, [user?.company_id]);
@@ -1293,7 +1296,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       // brouillon ou une intervention retirée n'entre jamais dans l'export.
       const entries = await fetchAllPaged<TimeEntryWithWorksite & { user: User }>((f, t2) => supabase
         .from('time_entries')
-        .select('id, work_date, start_time, end_time, break_minutes, total_minutes, meal_allowance, status, observation, worksite:worksites(client_name, city), user:users!user_id(first_name, last_name)')
+        .select('id, user_id, work_date, start_time, end_time, break_minutes, total_minutes, meal_allowance, status, observation, gap_before, worksite:worksites(client_name, city), user:users!user_id(first_name, last_name)')
         .eq('company_id', user.company_id)
         .in('status', ['submitted', 'validated'])
         .gte('work_date', from).lte('work_date', to)
@@ -1306,6 +1309,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         title: 'BEMEXO - Rapport hebdomadaire',
         periodLabel: `${format(exportRange.from, 'dd/MM/yyyy')} au ${format(exportRange.to, 'dd/MM/yyyy')}`,
         companyName,
+        travelPaid,
       };
       if (kind === 'excel') exportEntriesToExcel(entries, opts);
       else exportEntriesToPDF(entries, opts);

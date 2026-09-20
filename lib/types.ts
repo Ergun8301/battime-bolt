@@ -100,6 +100,12 @@ export interface TimeEntry {
   // 'en_cours' = chantier non fini, 'sans' = réceptionné sans réserve,
   // 'avec' = réceptionné avec réserve (détail dans observation/photos).
   reception?: 'sans' | 'avec' | 'en_cours' | null;
+  /**
+   * Nature du temps écoulé depuis l'intervention précédente du même jour,
+   * dite par le salarié : trajet entre chantiers ou vraie pause.
+   * NULL tant que la question n'a pas été posée (aucune déduction cachée).
+   */
+  gap_before?: 'route' | 'pause' | null;
   status: 'draft' | 'submitted' | 'validated' | 'cancelled';
   created_at: string;
   submitted_at?: string;

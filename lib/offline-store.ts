@@ -36,6 +36,8 @@ export interface PendingEntry {
   meal_allowance: boolean;
   observation?: string | null;
   reception?: 'sans' | 'avec' | 'en_cours' | null;
+  /** Route ou pause depuis l'intervention précédente (voir lib/types.ts). */
+  gap_before?: 'route' | 'pause' | null;
   // denormalised for display only
   _worksite_name: string;
   _worksite_city?: string | null;

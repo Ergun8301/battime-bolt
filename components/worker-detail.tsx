@@ -63,6 +63,8 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
   });
   const [entries, setEntries] = useState<ExportEntry[]>([]);
   const [companyName, setCompanyName] = useState('');
+  // Réglage entreprise : la route entre deux chantiers est-elle payée ?
+  const [travelPaid, setTravelPaid] = useState(false);
   const [worksites, setWorksites] = useState<Worksite[]>([]);
   const [reassigningId, setReassigningId] = useState<string | null>(null);
   const [creatingFor, setCreatingFor] = useState<string | null>(null);
@@ -120,8 +122,11 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
 
   useEffect(() => {
     if (!worker?.company_id) return;
-    supabase.from('companies').select('name').eq('id', worker.company_id).maybeSingle()
-      .then(({ data }) => setCompanyName(data?.name || ''));
+    supabase.from('companies').select('name, travel_paid').eq('id', worker.company_id).maybeSingle()
+      .then(({ data }) => {
+        setCompanyName(data?.name || '');
+        setTravelPaid(!!(data as { travel_paid?: boolean } | null)?.travel_paid);
+      });
     supabase.from('worksites').select('*').eq('company_id', worker.company_id).eq('is_active', true).order('client_name')
       .then(({ data }) => setWorksites(data || []));
   }, [worker?.company_id]);
@@ -236,7 +241,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
       // — elle ne faisait qu'envoyer n° de sécurité sociale et taux horaire.
       const rows = await fetchAllPaged<ExportEntry>((f, t2) => supabase
         .from('time_entries')
-        .select('id, work_date, start_time, end_time, break_minutes, total_minutes, meal_allowance, status, observation, reception, planning_id, modified_at, worksite:worksites(id, client_name, city)')
+        .select('id, user_id, work_date, start_time, end_time, break_minutes, total_minutes, meal_allowance, status, observation, reception, gap_before, planning_id, modified_at, worksite:worksites(id, client_name, city)')
         .eq('user_id', worker.id)
         .eq('company_id', worker.company_id)
         .gte('work_date', format(from, 'yyyy-MM-dd'))
@@ -285,7 +290,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
       const fromStr = range?.from ? format(range.from, 'yyyy-MM-dd') : '';
       const toStr = range?.to ? format(range.to, 'yyyy-MM-dd') : fromStr;
       const fileName = `bemexo-${worker.last_name}-${worker.first_name}-${fromStr}_${toStr}`.toLowerCase().replace(/\s+/g, '-');
-      const opts = { fileName, title: 'BEMEXO — Relevé salarié', periodLabel, companyName, singleWorkerName: name };
+      const opts = { fileName, title: 'BEMEXO — Relevé salarié', periodLabel, companyName, singleWorkerName: name, travelPaid };
       if (kind === 'excel') exportEntriesToExcel(countedEntries, opts);
       else exportEntriesToPDF(countedEntries, opts);
       toast.success('Export téléchargé');
