@@ -15,9 +15,16 @@
 //   façon : on feuillette les unes, on cherche les autres par leur nom.
 //
 //   Un nom automatique. Personne ne tape de libellé sur un chantier. Une photo
-//   reçoit « Photo N — JJ/MM/AAAA » ; un fichier garde le nom que la personne a
-//   déjà choisi en l'enregistrant — le remplacer par « Fichier 3 » perdrait
-//   l'information la plus utile, y compris dans l'e-mail au client.
+//   reçoit « Photo 08:12 — 20/09/2026 », composé par la BASE à son heure à elle ;
+//   un fichier garde le nom que la personne a déjà choisi en l'enregistrant — le
+//   remplacer par « Fichier 3 » perdrait l'information la plus utile, y compris
+//   dans l'e-mail au client.
+//
+//   L'heure plutôt qu'un numéro : un compteur recule après une suppression
+//   (effacer « Photo 2 » et garder « Photo 3 » fabrique un second « Photo 3 »)
+//   et deux téléphones qui envoient en même temps lisent le même compte. Une
+//   heure ne recule jamais, et sur un chantier elle dit quelque chose : une
+//   réserve photographiée à 08:12 n'est pas la même qu'à 17:45.
 //
 //   Une pièce appartient à un JOUR, et à l'INTERVENTION quand elle a été prise
 //   depuis une intervention ouverte. Les pièces déposées depuis la fiche
@@ -227,40 +234,26 @@ export default function ChantierDocuments({
     } catch { toast.error('Copie impossible.'); }
   };
 
-  /**
-   * Le nom, composé sans rien demander à personne.
-   *
-   * Une photo n'a pas de nom utile (`IMG_20260920_081234.jpg`) : on la numérote
-   * dans sa journée. Le compte est relu en base juste avant, pas déduit de
-   * l'écran — deux téléphones sur le même chantier ne doivent pas produire
-   * deux « Photo 3 ».
-   *
-   * Un fichier garde le nom que la personne lui a donné : c'est déjà un nom
-   * automatique, et c'est celui qui parlera au client dans l'e-mail.
-   */
-  const autoLabel = async (file: File, photo: boolean, day: string | null): Promise<string> => {
-    if (!photo) return file.name;
-    let q = supabase.from('documents').select('id', { count: 'exact', head: true })
-      .eq('worksite_id', worksiteId as string).like('mime_type', 'image/%');
-    q = day ? q.eq('work_date', day) : q.is('work_date', null);
-    const { count, error } = await q;
-    const n = (error ? docs.filter((d) => isPhoto(d) && d.work_date === day).length : (count ?? 0)) + 1;
-    return day ? `Photo ${n} — ${format(parseISO(day), 'dd/MM/yyyy')}` : `Photo ${n}`;
-  };
-
-  const onPick = async (file: File | undefined, photo: boolean) => {
+  const onPick = async (file: File | undefined) => {
     if (!file || !worksiteId || !user?.company_id || !user?.id) return;
     if (file.size > 15 * 1024 * 1024) { toast.error('Fichier trop lourd (15 Mo max).'); return; }
+    // Le classement suit le TYPE du fichier, jamais le bouton cliqué. Une image
+    // choisie via « Fichier » est rangée dans Photos par la liste ; basculer sur
+    // l'onglet Fichiers la ferait disparaître sous les yeux de la personne qui
+    // vient de l'envoyer.
+    const image = (file.type || '').startsWith('image/');
     setUploading(true);
     try {
       const ext = (file.name.split('.').pop() || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '') || 'bin';
       const path = `${user.company_id}/${worksiteId}/${crypto.randomUUID()}.${ext}`;
-      const label = await autoLabel(file, photo, workDate);
       const { error: upErr } = await supabase.storage.from('chantier-docs').upload(path, file, { contentType: file.type || undefined });
       if (upErr) throw upErr;
       const { error: insErr } = await supabase.from('documents').insert({
         company_id: user.company_id, worksite_id: worksiteId, uploaded_by: user.id,
-        label, file_path: path, file_name: file.name, mime_type: file.type || null, size_bytes: file.size,
+        // Nom : celui du fichier pour un document choisi, RIEN pour une photo —
+        // la base le compose alors elle-même, à son heure à elle.
+        label: image ? null : file.name,
+        file_path: path, file_name: file.name, mime_type: file.type || null, size_bytes: file.size,
         // Le jour et l'intervention : la base revérifie et rectifie la date
         // d'après l'intervention, elle ne fait pas confiance au navigateur.
         work_date: workDate, time_entry_id: timeEntryId,
@@ -271,8 +264,8 @@ export default function ChantierDocuments({
         await supabase.storage.from('chantier-docs').remove([path]);
         throw insErr;
       }
-      setTab(photo ? 'photos' : 'files');
-      toast.success(photo ? 'Photo ajoutée' : 'Fichier ajouté');
+      setTab(image ? 'photos' : 'files');
+      toast.success(image ? 'Photo ajoutée' : 'Fichier ajouté');
       await fetchDocs();
     } catch (e) {
       toast.error((e as { message?: string })?.message || "Échec de l'envoi du document.");
@@ -291,8 +284,19 @@ export default function ChantierDocuments({
       const { data: gone, error } = await supabase.from('documents').delete().eq('id', d.id).select('id');
       if (error) throw error;
       if (!gone || gone.length === 0) { toast.error('Suppression refusée : cette pièce ne vous appartient pas.'); return; }
-      await supabase.storage.from('chantier-docs').remove([d.file_path]);
       setDocs((p) => p.filter((x) => x.id !== d.id));
+
+      // Le stockage rend son échec dans `error`, il ne le LÈVE pas : sans ce
+      // test, un refus passait inaperçu et le fichier restait dans le bucket
+      // sans plus aucune ligne pour le désigner. Une seconde tentative suffit
+      // dans le cas courant (coupure passagère) ; si elle échoue aussi, on le
+      // dit au lieu de laisser croire que tout est propre.
+      let rmErr = (await supabase.storage.from('chantier-docs').remove([d.file_path])).error;
+      if (rmErr) rmErr = (await supabase.storage.from('chantier-docs').remove([d.file_path])).error;
+      if (rmErr) {
+        console.error('[documents] fichier non supprimé', d.file_path, rmErr);
+        toast.warning("Pièce retirée de la liste, mais le fichier n'a pas pu être effacé du stockage.");
+      }
     } catch {
       toast.error('Suppression impossible.');
     }
@@ -328,9 +332,9 @@ export default function ChantierDocuments({
             un téléphone ; sur ordinateur il est ignoré et le sélecteur s'ouvre
             filtré sur les images, ce qui reste le bon comportement. */}
         <input ref={photoRef} type="file" accept="image/*" capture="environment" hidden
-          onChange={(e) => onPick(e.target.files?.[0], true)} />
+          onChange={(e) => onPick(e.target.files?.[0])} />
         <input ref={fileRef} type="file" hidden
-          onChange={(e) => onPick(e.target.files?.[0], false)} />
+          onChange={(e) => onPick(e.target.files?.[0])} />
 
         <div className="bt-doc-addrow">
           <button type="button" className="bt-doc-addbtn" onClick={() => photoRef.current?.click()} disabled={uploading}>
