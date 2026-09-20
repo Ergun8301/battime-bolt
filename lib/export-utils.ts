@@ -7,7 +7,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { format, parseISO } from 'date-fns';
 import { TimeEntryWithWorksite, User } from '@/lib/types';
-import { weeklyTotals } from '@/lib/overtime';
+import { weeklyTotals, routeMinutesByEntry } from '@/lib/overtime';
 
 export type ExportEntry = TimeEntryWithWorksite & { user?: User };
 
@@ -33,48 +33,15 @@ export interface ExportOptions {
    * préfère une colonne manquante à un chiffre inventé.
    */
   weeklyHoursByWorker?: Map<string, number>;
-}
-
-const toMin = (hhmm: string) => {
-  const [h, m] = hhmm.split(':').map(Number);
-  return (h || 0) * 60 + (m || 0);
-};
-
-/**
- * Minutes de route attribuées à chaque intervention.
- *
- * Le salarié qualifie le temps écoulé depuis l'intervention précédente du même
- * jour (`gap_before`). Ici on retrouve la durée de ce trou, par salarié et par
- * jour, et on ne retient que ce qui a été appelé « route ». Une pause, ou un
- * trou dont personne n'a rien dit, vaut zéro : jamais de temps payé en douce.
- */
-function routeMinutesByEntry(entries: ExportEntry[]): Map<string, number> {
-  const out = new Map<string, number>();
-  const groups = new Map<string, ExportEntry[]>();
-  for (const e of entries) {
-    const k = `${e.user_id}|${e.work_date}`;
-    const arr = groups.get(k);
-    if (arr) arr.push(e); else groups.set(k, [e]);
-  }
-  groups.forEach((arr) => {
-    const sorted = [...arr]
-      .filter((e) => e.start_time && e.end_time)
-      .map((e) => {
-        const start = toMin(e.start_time.slice(0, 5));
-        let end = toMin(e.end_time.slice(0, 5));
-        if (end < start) end += 24 * 60; // franchit minuit
-        return { e, start, end };
-      })
-      .sort((a, b) => a.start - b.start);
-    let prevEnd = -1;
-    for (const s of sorted) {
-      if (prevEnd >= 0 && s.start > prevEnd && s.e.gap_before === 'route') {
-        out.set(s.e.id, s.start - prevEnd);
-      }
-      if (s.end > prevEnd) prevEnd = s.end;
-    }
-  });
-  return out;
+  /**
+   * Les SEMAINES ENTIÈRES qui recouvrent la période, pour le récapitulatif.
+   *
+   * Sans ça, une période commençant un vendredi sous-estime les heures
+   * supplémentaires : les 35 h déjà faites du lundi au jeudi manquent au
+   * décompte et les 8 h du vendredi passent pour des heures normales. Absent =
+   * pas de récapitulatif du tout, plutôt qu'un récapitulatif faux.
+   */
+  recapEntries?: ExportEntry[];
 }
 
 /**
@@ -83,12 +50,14 @@ function routeMinutesByEntry(entries: ExportEntry[]): Map<string, number> {
  *
  * C'est ce que le comptable saisit réellement — le détail ligne à ligne sert
  * à justifier, pas à recopier. Les heures supplémentaires se comptent à la
- * semaine (lib/overtime.ts) : une somme mensuelle en dirait autre chose.
+ * semaine (lib/overtime.ts), sur des semaines ENTIÈRES.
  */
-function weeklyRecap(entries: ExportEntry[], opts: ExportOptions) {
-  const route = routeMinutesByEntry(entries);
+function weeklyRecap(opts: ExportOptions) {
+  const source = opts.recapEntries;
+  if (!source || source.length === 0) return [];
+  const route = routeMinutesByEntry(source);
   const byWorker = new Map<string, { name: string; rows: { work_date: string; minutes: number }[] }>();
-  for (const e of entries) {
+  for (const e of source) {
     const id = e.user_id;
     const name = opts.singleWorkerName
       || `${e.user?.first_name ?? ''} ${e.user?.last_name ?? ''}`.trim()
@@ -173,7 +142,7 @@ export function exportEntriesToExcel(entries: ExportEntry[], opts: ExportOptions
 
   // Le récapitulatif vient EN PREMIER : c'est la feuille que le comptable
   // ouvre et saisit. Le détail derrière sert à justifier une ligne.
-  const recap = weeklyRecap(entries, opts);
+  const recap = weeklyRecap(opts);
   if (recap.length) {
     const recapRows = recap.map((r) => {
       const row: Record<string, string | number> = {};
@@ -254,7 +223,7 @@ export function exportEntriesToPDF(entries: ExportEntry[], opts: ExportOptions):
 
   // Récapitulatif d'abord : c'est ce que le comptable saisit. Le détail suit,
   // pour justifier une ligne si on la lui conteste.
-  const recap = weeklyRecap(entries, opts);
+  const recap = weeklyRecap(opts);
   if (recap.length) {
     autoTable(doc, {
       startY: y,

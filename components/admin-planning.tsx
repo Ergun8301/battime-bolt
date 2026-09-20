@@ -26,6 +26,7 @@ import {
 import { format, addDays, addWeeks, subWeeks, subDays, parseISO, getISOWeek } from 'date-fns';
 import { DAYS_IN_WEEK, weekDays as buildWeekDays, weekDayIndex, weekStart } from '@/lib/week';
 import { DEFAULT_WEEKLY_HOURS, weeklyHoursFor } from '@/lib/overtime';
+import { weekStart as weekStartOf, weekEnd as weekEndOf } from '@/lib/week';
 import { fr } from 'date-fns/locale';
 import type { DateRange } from 'react-day-picker';
 import { toast } from 'sonner';
@@ -1251,6 +1252,19 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         workers.map((w) => [w.id, weeklyHoursFor(workerWeeklyHours.get(w.id) ?? null, companyWeeklyHours)]),
       );
 
+      // Semaines ENTIÈRES recouvrant la période, pour le récapitulatif seul :
+      // une période commençant en milieu de semaine sous-estimerait les heures
+      // supplémentaires si on ne comptait que les jours exportés.
+      const recapEntries = await fetchAllPaged<TimeEntryWithWorksite & { user: User }>((f, t2) => supabase
+        .from('time_entries')
+        .select('id, user_id, work_date, start_time, end_time, total_minutes, status, gap_before, user:users!user_id(first_name, last_name)')
+        .eq('company_id', user.company_id)
+        .in('status', ['submitted', 'validated'])
+        .gte('work_date', format(weekStartOf(exportRange.from), 'yyyy-MM-dd'))
+        .lte('work_date', format(weekEndOf(exportRange.to), 'yyyy-MM-dd'))
+        .order('work_date').order('user_id')
+        .range(f, t2) as unknown as PromiseLike<{ data: (TimeEntryWithWorksite & { user: User })[] | null; error: { message: string } | null }>);
+
       const entries = await fetchAllPaged<TimeEntryWithWorksite & { user: User }>((f, t2) => supabase
         .from('time_entries')
         .select('id, user_id, work_date, start_time, end_time, break_minutes, total_minutes, meal_allowance, status, observation, gap_before, worksite:worksites(client_name, city), user:users!user_id(first_name, last_name)')
@@ -1268,6 +1282,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         companyName,
         travelPaid,
         weeklyHoursByWorker,
+        recapEntries,
       };
       if (kind === 'excel') exportEntriesToExcel(entries, opts);
       else exportEntriesToPDF(entries, opts);
