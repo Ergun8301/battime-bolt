@@ -3,8 +3,15 @@
 // déclarées. Remplace la relance manuelle (le bureau devait repérer la pastille
 // et cliquer la cloche, salarié par salarié).
 //
-// Règle « jour manquant » : jour passé + affectation chantier + aucune journée
-// envoyée. Une absence (congé/maladie/intempérie) n'est jamais manquante.
+// Deux rappels distincts :
+//   1. JOUR MANQUANT — jour passé + affectation chantier + aucune journée
+//      envoyée. Une absence (congé/maladie/intempérie) n'est jamais manquante.
+//   2. HEURES SAISIES, PAS ENVOYÉES — le salarié a rempli sa journée du jour
+//      mais n'a pas appuyé sur « Envoyer ». Le travail est fait, le bureau ne
+//      voit rien et la paie ne compte rien. C'est le piège le plus fréquent.
+//      Ce second rappel ne consomme pas le quota du premier : l'heure de
+//      relance de l'entreprise ne correspond qu'une fois par jour, ce qui
+//      suffit à ne pas le répéter.
 //
 // Garde-fous (portés par la table reminder_log) :
 //   - une notification par salarié et par exécution, tous jours regroupés ;
@@ -75,6 +82,41 @@ async function sendEmail(to: string, subject: string, html: string) {
 // Le nom de l'entreprise est mis EN AVANT (objet + bandeau + corps) : le salarié
 // doit reconnaître son employeur au premier coup d'œil, sinon l'email est pris
 // pour du spam d'un service inconnu.
+function buildUnsentHtml(companyName: string, firstName: string, jourFR: string) {
+  return `
+<div style="font-family:Arial,Helvetica,sans-serif;background:#F2EDE3;padding:24px 0;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
+    <table role="presentation" width="520" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:14px;overflow:hidden;">
+      <tr><td style="background:#15120F;padding:20px 26px;">
+        <div style="color:#FFC21A;font-weight:900;font-size:17px;">${companyName}</div>
+        <div style="color:#a59c86;font-size:11.5px;margin-top:3px;">Vos heures ne sont pas parties · via BEMEXO</div>
+      </td></tr>
+      <tr><td style="padding:22px 26px 8px;">
+        <p style="margin:0 0 10px;font-size:15px;color:#15120F;">Bonjour ${firstName},</p>
+        <p style="margin:0;font-size:14px;color:#3a352f;line-height:1.5;">
+          Vos heures du <b>${jourFR}</b> sont bien saisies, mais elles n'ont pas été envoyées.
+          Tant qu'elles ne le sont pas, le bureau ne les voit pas et elles ne comptent pas pour la paie.
+        </p>
+      </td></tr>
+      <tr><td style="padding:14px 26px 24px;">
+        <p style="margin:0 0 16px;font-size:13.5px;color:#3a352f;line-height:1.5;">
+          Ouvrez votre journée et appuyez sur « Envoyer ma journée ». C'est tout.
+        </p>
+        <a href="https://bemexo.com/poseur"
+           style="display:inline-block;background:#FFC21A;color:#15120F;text-decoration:none;font-weight:800;font-size:14.5px;padding:12px 22px;border-radius:10px;">
+          Envoyer mes heures
+        </a>
+      </td></tr>
+      <tr><td style="background:#FBF8F2;padding:13px 26px;">
+        <p style="margin:0;font-size:11px;color:#9a948a;">
+          Message automatique envoyé pour le compte de ${companyName}. Si vous venez de les envoyer, ignorez cet email.
+        </p>
+      </td></tr>
+    </table>
+  </td></tr></table>
+</div>`;
+}
+
 function buildHtml(companyName: string, firstName: string, days: string[]) {
   const list = days.map((d) => `<li style="margin:4px 0;font-size:14px;color:#15120F;">${longDateFR(d)}</li>`).join('');
   return `
@@ -123,7 +165,7 @@ async function runForCompany(
   const todayStr = isoDay(today);
   const windowStart = isoDay(new Date(today.getTime() - WINDOW_DAYS * 86400000));
 
-  const [companyRes, workersRes, planRes, entRes, logRes, subsRes] = await Promise.all([
+  const [companyRes, workersRes, planRes, entRes, logRes, subsRes, draftRes] = await Promise.all([
     admin.from('companies').select('name').eq('id', companyId).maybeSingle(),
     admin.from('users').select('id, first_name, last_name, email')
       .eq('company_id', companyId).eq('role', 'worker').eq('is_active', true),
@@ -133,6 +175,9 @@ async function runForCompany(
       .eq('company_id', companyId).in('status', ['submitted', 'validated']).gte('work_date', windowStart),
     admin.from('reminder_log').select('user_id, last_sent_at, sent_count').eq('company_id', companyId),
     admin.from('push_subscriptions').select('user_id').eq('company_id', companyId),
+    // Heures saisies aujourd'hui mais jamais envoyées.
+    admin.from('time_entries').select('user_id')
+      .eq('company_id', companyId).eq('status', 'draft').eq('work_date', todayStr),
   ]);
 
   const companyName = (companyRes.data as { name: string } | null)?.name || 'Votre entreprise';
@@ -218,7 +263,55 @@ async function runForCompany(
   // Remise à zéro : le salarié s'est mis à jour, il repart avec 3 relances.
   if (toReset.length && !dryRun) await admin.from('reminder_log').delete().in('user_id', toReset);
 
-  return { companyId, company: companyName, reminded: results.filter((r) => r.channel).length, results, reset: toReset.length };
+  // ── Rappel « saisi mais pas envoyé » pour la journée du jour ──
+  // Pas de reminder_log : l'heure de relance de l'entreprise ne tombe qu'une
+  // fois par jour, donc ce rappel part au plus une fois par jour. On saute les
+  // salariés qui viennent de recevoir la relance ci-dessus : un seul message.
+  const dejaPrevenu = new Set(results.filter((r) => r.channel).map((r) => r.worker));
+  const withDraftToday = new Set(((draftRes.data || []) as { user_id: string }[]).map((d) => d.user_id));
+  const unsent: { worker: string; channel?: string; skipped?: string }[] = [];
+
+  for (const w of workers) {
+    if (!withDraftToday.has(w.id) || dejaPrevenu.has(w.id)) continue;
+    if (dryRun) { unsent.push({ worker: w.id, channel: withPush.has(w.id) ? 'push' : 'email' }); continue; }
+
+    let channel = '';
+    try {
+      if (withPush.has(w.id) && cronSecret) {
+        const res = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/send-push`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-cron-secret': cronSecret },
+          body: JSON.stringify({
+            user_ids: [w.id],
+            title: companyName,
+            body: "Vos heures d'aujourd'hui sont saisies mais pas envoyées.",
+            url: '/poseur',
+            tag: 'heures-non-envoyees',
+          }),
+        });
+        const out = await res.json().catch(() => ({}));
+        if ((out?.sent || 0) > 0) channel = 'push';
+      }
+      if (!channel) {
+        if (!w.email) { unsent.push({ worker: w.id, skipped: 'no_email' }); continue; }
+        await sendEmail(
+          w.email,
+          `[${companyName}] — Vos heures du jour ne sont pas envoyées`,
+          buildUnsentHtml(companyName, w.first_name, longDateFR(todayStr)),
+        );
+        channel = 'email';
+      }
+      unsent.push({ worker: w.id, channel });
+    } catch (e) {
+      unsent.push({ worker: w.id, skipped: `error: ${(e as Error).message}` });
+    }
+  }
+
+  return {
+    companyId, company: companyName,
+    reminded: results.filter((r) => r.channel).length, results, reset: toReset.length,
+    unsent_today: unsent.filter((u) => u.channel).length, unsent,
+  };
 }
 
 Deno.serve(async (req) => {

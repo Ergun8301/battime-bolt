@@ -50,8 +50,8 @@ function fmtDateFR(iso: string): string {
 }
 
 // Heure/jour RÉELS à Paris. Le cron déclenche aux deux heures UTC possibles
-// (16:00 et 17:00 le vendredi) et c'est ici qu'on ne retient que la bonne :
-// 18 h Paris, été comme hiver. Sans ça, l'envoi décalait d'1 h en hiver.
+// (05:00 et 06:00 le lundi) et c'est ici qu'on ne retient que la bonne :
+// 7 h Paris, été comme hiver. Sans ça, l'envoi décalait d'1 h en hiver.
 function parisNow(): { hour: number; weekday: number } {
   const f = new Intl.DateTimeFormat('en-GB', {
     timeZone: 'Europe/Paris', hour: '2-digit', hour12: false, weekday: 'short',
