@@ -112,12 +112,12 @@ export default function PoseurPage() {
   const { pendingCount: offlineCount, blockedCount: offlineBlocked, syncing: offlineSyncing, syncNow } = useOfflineSync(user?.id);
   const [view, setView] = useState('day');
   const [selectedDate, setSelectedDate] = useState<string | null>(null); // declare a specific day
-  const [pending, setPending] = useState<string[]>([]); // days "en attente"
-  // Jours dont les heures sont SAISIES mais pas ENVOYÉES. Ce n'est pas un oubli
-  // de saisie : le travail est fait, il manque le geste d'envoi. C'est le piège
-  // le plus fréquent — celui qui a fait disparaître 11 h un dimanche.
+  const [pending, setPending] = useState<string[]>([]); // jours planifiés sans heures envoyées
+  // Jours qui portent des heures jamais parties. Le travail est fait, il manque
+  // le geste d'envoi. C'est le piège le plus fréquent — celui qui a fait
+  // disparaître 11 h un dimanche. Fusionné avec `pending` dans un seul bandeau.
   const [unsentDays, setUnsentDays] = useState<string[]>([]);
-  const [pendingOpen, setPendingOpen] = useState(false); // "jours à déclarer" popover
+  const [pendingOpen, setPendingOpen] = useState(false); // liste « journées à envoyer »
   const [photoUrl, setPhotoUrl] = useState(''); // photo de profil du salarié (facultatif)
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
@@ -288,60 +288,43 @@ export default function PoseurPage() {
     ? format(parseISO(selectedDate), 'EEEE d MMMM', { locale: fr })
     : (TABS.find((t) => t.value === view)?.label || 'Ma journée');
 
-  // Rappel « jours oubliés » : désormais rendu EN TÊTE de la liste (il défile avec le
-  // contenu) au lieu d'être collé dans l'en-tête → l'en-tête reste court et se cache tôt.
-  // Heures saisies mais pas envoyées : le bureau ne les voit pas, elles ne
-  // comptent pas pour la paie. Le bandeau ouvre directement le jour concerné.
-  const unsentBanner = unsentDays.length > 0 ? (
-    <button
-      className="bt-alert"
-      onClick={() => openDay(unsentDays[0])}
-      aria-label="Journées saisies mais pas envoyées"
-    >
-      <span className="bt-alert-badge">{unsentDays.length}</span>
-      <span className="bt-alert-txt">
-        {unsentDays.length > 1
-          ? 'journées saisies mais pas envoyées'
-          : `journée du ${format(parseISO(unsentDays[0]), 'd MMMM', { locale: fr })} saisie mais pas envoyée`}
-      </span>
-      <span className="bt-alert-chev">›</span>
-    </button>
-  ) : null;
+  /**
+   * UN SEUL BANDEAU : « à envoyer ».
+   *
+   * Il y en avait deux, et un même jour pouvait être dans les DEUX : une journée
+   * planifiée portant des heures non envoyées était comptée une fois comme
+   * « saisie mais pas envoyée » et une fois comme « oubliée à déclarer », parce
+   * que `computeMissingDays` ne considère « déclaré » que `submitted` /
+   * `validated`. Vérifié en base avant d'y toucher : pour un salarié réel,
+   * 4 journées d'un côté, 1 de l'autre, et le 18/09 dans les deux.
+   *
+   * Pour le salarié la distinction n'existait pas de toute façon : dans les deux
+   * cas il lui reste le même geste à faire, et c'est celui écrit sur le bouton.
+   * Le bandeau emploie donc EXACTEMENT le mot du bouton — envoyer — et l'union
+   * des deux ensembles, dédoublonnée par date.
+   *
+   * Les plus récentes d'abord : c'est aujourd'hui et hier qu'on rattrape, pas un
+   * jour d'il y a six semaines.
+   */
+  const toSend = Array.from(new Set([...unsentDays, ...pending])).sort((a, b) => b.localeCompare(a));
 
-  // Saisies qui n'ont pas encore atteint le serveur (réseau coupé au moment de
-  // la saisie). Même habillage que le rappel des jours oubliés.
-  const offlineBanner = offlineCount > 0 ? (
-    <button
-      className="bt-alert"
-      onClick={() => syncNow(true)}
-      disabled={offlineSyncing}
-      aria-label="Saisies en attente d'envoi"
-    >
-      <span className="bt-alert-badge">{offlineCount}</span>
-      <span className="bt-alert-txt">
-        {offlineSyncing
-          ? 'Envoi en cours…'
-          : offlineBlocked > 0
-            ? `intervention${offlineCount > 1 ? 's' : ''} qui ne part${offlineCount > 1 ? 'ent' : ''} pas — appuyer pour réessayer`
-            : `intervention${offlineCount > 1 ? 's' : ''} en attente d'envoi`}
-      </span>
-      <span className="bt-alert-chev">↻</span>
-    </button>
-  ) : null;
-
-  const pendingBanner = pending.length > 0 ? (
+  const toSendBanner = toSend.length > 0 ? (
     <Popover open={pendingOpen} onOpenChange={setPendingOpen}>
       <PopoverTrigger asChild>
-        <button className="bt-alert" aria-label="Jours à déclarer">
-          <span className="bt-alert-badge">{pending.length}</span>
-          <span className="bt-alert-txt">jour{pending.length > 1 ? 's' : ''} oublié{pending.length > 1 ? 's' : ''} à déclarer</span>
+        <button className="bt-alert" aria-label="Journées à envoyer">
+          <span className="bt-alert-badge">{toSend.length}</span>
+          <span className="bt-alert-txt">
+            {toSend.length > 1
+              ? 'journées à envoyer'
+              : `journée du ${format(parseISO(toSend[0]), 'd MMMM', { locale: fr })} à envoyer`}
+          </span>
           <span className="bt-alert-chev">›</span>
         </button>
       </PopoverTrigger>
       <PopoverContent align="center" className="w-72 bt-skin">
-        <p className="text-sm font-medium mb-2">Jours à déclarer</p>
+        <p className="text-sm font-medium mb-2">Journées à envoyer</p>
         <div className="space-y-1.5">
-          {pending.map((d) => (
+          {toSend.map((d) => (
             <button
               key={d}
               onClick={() => openDay(d)}
@@ -353,6 +336,27 @@ export default function PoseurPage() {
         </div>
       </PopoverContent>
     </Popover>
+  ) : null;
+
+  // Lignes qui n'ont pas encore atteint le serveur (réseau coupé au moment de
+  // l'ajout). Même habillage que le bandeau « à envoyer ».
+  const offlineBanner = offlineCount > 0 ? (
+    <button
+      className="bt-alert"
+      onClick={() => syncNow(true)}
+      disabled={offlineSyncing}
+      aria-label="Chantiers pas encore partis"
+    >
+      <span className="bt-alert-badge">{offlineCount}</span>
+      <span className="bt-alert-txt">
+        {offlineSyncing
+          ? 'Envoi en cours…'
+          : offlineBlocked > 0
+            ? `chantier${offlineCount > 1 ? 's' : ''} qui ne part${offlineCount > 1 ? 'ent' : ''} pas — appuyer pour réessayer`
+            : `chantier${offlineCount > 1 ? 's' : ''} pas encore parti${offlineCount > 1 ? 's' : ''} — appuyer pour envoyer`}
+      </span>
+      <span className="bt-alert-chev">↻</span>
+    </button>
   ) : null;
 
   return (
@@ -428,7 +432,7 @@ export default function PoseurPage() {
           {selectedDate ? (
             <PoseurDay date={selectedDate} topBanner={offlineBanner} />
           ) : view === 'day' ? (
-            <PoseurDay topBanner={<>{offlineBanner}{unsentBanner}{pendingBanner}</>} />
+            <PoseurDay topBanner={<>{offlineBanner}{toSendBanner}</>} />
           ) : (
             <div className="bt-phscroll bt-skin">
               {view === 'week' ? (

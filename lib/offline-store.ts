@@ -48,6 +48,20 @@ export interface PendingEntry {
   lastError?: string | null;
   /** Refus définitif : on arrête de réessayer tout seul (voir lib/offline-sync.ts). */
   blocked?: boolean;
+  /**
+   * Le salarié a appuyé sur « Envoyer ma journée » alors qu'il n'avait pas de
+   * réseau. La ligne doit donc partir ENVOYÉE, pas en attente d'un second geste.
+   *
+   * POURQUOI UN DRAPEAU ET PAS UN `status`. La politique RLS
+   * `time_entries_worker_insert` impose `status = 'draft'` : un salarié ne peut
+   * PAS insérer une ligne déjà envoyée — vérifié en base, l'insert est rejeté.
+   * La file insère donc en brouillon comme avant, puis bascule la ligne en
+   * envoyée juste après (voir lib/offline-sync.ts). C'est aussi ce chemin qui
+   * fait poser `submitted_at` par le garde en base.
+   *
+   * Absent sur les lignes déjà en file : elles gardent le comportement d'avant.
+   */
+  submit_after_sync?: boolean;
 }
 
 export function generateLocalId(): string {

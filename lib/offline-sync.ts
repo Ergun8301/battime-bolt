@@ -63,6 +63,32 @@ function isPermanent(e: PgError): boolean {
 }
 
 /**
+ * La ligne vient d'arriver en base, en BROUILLON. Le salarié, lui, avait déjà
+ * appuyé sur « Envoyer ma journée » — sans réseau. On termine donc son geste.
+ *
+ * POURQUOI EN DEUX TEMPS. La politique RLS `time_entries_worker_insert` impose
+ * `status = 'draft'` : insérer directement une ligne envoyée est REFUSÉ (vérifié
+ * en base, pas supposé). C'est aussi la seule façon d'obtenir un `submitted_at`
+ * correct — le garde en base l'efface à l'insertion et ne le pose que sur la
+ * bascule brouillon → envoyée.
+ *
+ * On vise la ligne par son `client_id` : il vaut le `localId` et couvre aussi le
+ * cas « elle était déjà arrivée ». Sur une base trop ancienne pour avoir cette
+ * colonne, l'insertion s'est faite sans elle : la bascule ne trouve rien et la
+ * ligne reste en brouillon — visible dans le bandeau, donc jamais perdue.
+ */
+async function markSubmittedAfterSync(userId: string, localId: string): Promise<void> {
+  try {
+    await supabase.from('time_entries')
+      .update({ status: 'submitted' })
+      .eq('client_id', localId).eq('user_id', userId).eq('status', 'draft');
+  } catch {
+    // Jamais bloquant : la ligne est en base, c'est l'essentiel. Au pire elle
+    // reste à envoyer et le salarié le voit dans son bandeau.
+  }
+}
+
+/**
  * Envoie TOUTES les saisies en attente de ce salarié, quel que soit leur jour.
  * Ne lève jamais : les échecs sont comptés et rendus à l'appelant.
  */
@@ -107,6 +133,7 @@ export async function syncAllPending(userId: string): Promise<SyncResult> {
         }
         if (error && isAlreadySent(error)) {
           // Déjà arrivée : la tentative précédente avait réussi sans qu'on le sache.
+          if (entry.submit_after_sync) await markSubmittedAfterSync(userId, entry.localId);
           removePendingEntry(userId, entry.localId);
           synced++;
           continue;
@@ -121,6 +148,7 @@ export async function syncAllPending(userId: string): Promise<SyncResult> {
         }
 
         if (!error) {
+          if (entry.submit_after_sync) await markSubmittedAfterSync(userId, entry.localId);
           removePendingEntry(userId, entry.localId);
           synced++;
           continue;

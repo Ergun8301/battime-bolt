@@ -13,10 +13,11 @@ import { format, subDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import {
-  addPendingEntry, getPendingEntries, removePendingEntry, clearPendingEntriesForDate,
+  addPendingEntry, getPendingEntries, removePendingEntry, updatePendingEntry, clearPendingEntriesForDate,
   generateLocalId, OFFLINE_CHANGED_EVENT, OFFLINE_SYNCED_EVENT, PendingEntry,
 } from '@/lib/offline-store';
 import { syncAllPending } from '@/lib/offline-sync';
+import { planningsToMaterialise } from '@/lib/work-status';
 import { TimeCylinder, snapToGrid } from '@/components/time-cylinder';
 import LiveTimer from '@/components/live-timer';
 import TeamDay from '@/components/team-day';
@@ -381,9 +382,9 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
       setClosedMonths((prev) => new Set(prev).add(date.slice(0, 7)));
       return 'Le bureau vient de clôturer ce mois. Rapproche-toi de la secrétaire.';
     }
-    if (msg.includes('ne redevient pas brouillon')) return 'Journée déjà envoyée : tu peux la corriger ou la retirer, pas la remettre en brouillon.';
-    if (msg.includes('ne se réactive pas')) return 'Cette intervention a été retirée : crée-en une nouvelle.';
-    if (msg.includes('chantier hors de votre entreprise')) return "Ce chantier n'existe plus chez vous. Choisis-en un autre.";
+    if (msg.includes('ne redevient pas brouillon')) return 'Journée déjà envoyée : tu peux la corriger ou la retirer.';
+    if (msg.includes('ne se réactive pas')) return 'Ce chantier a été retiré : ajoute-le à nouveau.';
+    if (msg.includes('chantier hors de votre entreprise')) return "Ce chantier n'existe plus dans ton entreprise. Choisis-en un autre.";
     return fallback;
   };
 
@@ -449,7 +450,7 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
       setDayMeal((entriesRes.data || []).some((e: TimeEntryWithWorksite) => e.meal_allowance) || pendForToday.some((e) => e.meal_allowance));
     } catch (err) {
       console.error('Error fetching data:', err);
-      toast.error('Impossible de charger vos données');
+      toast.error('Impossible de charger tes données');
     } finally {
       setLoading(false);
     }
@@ -479,7 +480,7 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
       fetchData();
     } catch (err) {
       console.error('Error setting gap kind:', err);
-      toast.error(explainWriteError(err, "Impossible d'enregistrer"));
+      toast.error(explainWriteError(err, 'Impossible de garder ta réponse'));
     }
   };
 
@@ -512,10 +513,10 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
     setPendingEntries(getPendingEntries(user.id).filter((e) => e.work_date === date));
     if (blocked.length > 0) {
       const jours = Array.from(new Set(blocked.map((b) => b.work_date.split('-').reverse().join('/')))).join(', ');
-      toast.error(`${blocked.length} intervention${blocked.length > 1 ? 's' : ''} du ${jours} ne part${blocked.length > 1 ? 'ent' : ''} pas. Préviens le bureau.`, { duration: 10000 });
+      toast.error(`${blocked.length} chantier${blocked.length > 1 ? 's' : ''} du ${jours} ne part${blocked.length > 1 ? 'ent' : ''} pas. Préviens le bureau.`, { duration: 10000 });
     }
     if (synced > 0) {
-      toast.success(`${synced} intervention${synced > 1 ? 's' : ''} envoyée${synced > 1 ? 's' : ''}`);
+      toast.success(`${synced} chantier${synced > 1 ? 's' : ''} envoyé${synced > 1 ? 's' : ''}`);
       fetchData();
     }
   }, [user, date, fetchData]);
@@ -648,13 +649,13 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
       const ok = await applyDayMeal(value, flagModified);
       if (!ok) {
         setDayMeal(!value);
-        toast.error("Panier non enregistré (journée verrouillée ou hors-ligne)");
+        toast.error("Panier non pris en compte (journée verrouillée ou hors-ligne)");
       }
       if (navigator.onLine) fetchData();
     } catch (err) {
       console.error('Error setting meal:', err);
       setDayMeal(!value);
-      toast.error('Panier non enregistré');
+      toast.error('Panier non pris en compte');
     }
   };
 
@@ -737,7 +738,7 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
         : 'Signalement retiré');
       await fetchData();
     } catch (e) {
-      toast.error((e as { message?: string })?.message || "Impossible d'enregistrer.");
+      toast.error((e as { message?: string })?.message || "Impossible de signaler.");
     } finally {
       setFixingId(null);
     }
@@ -752,12 +753,12 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
     setFSaving(true);
     try {
       const totalMins = calculateTotalMinutes(fStart, fEnd, 0);
-      let savedMsg = 'Heures enregistrées';
+      let savedMsg = 'C&apos;est noté';
 
       // ── Update an existing entry ──
       if (openSlot.kind === 'entry') {
         const wasSubmitted = entries.find((e) => e.id === openSlot.entryId)?.status === 'submitted';
-        if (wasSubmitted) savedMsg = 'Modification enregistrée — la secrétaire est prévenue';
+        if (wasSubmitted) savedMsg = 'Correction envoyée — la secrétaire est prévenue';
         const { data: upd, error } = await supabase.from('time_entries').update({
           start_time: fStart, end_time: fEnd, break_minutes: 0, observation: fObs.trim() || null,
           reception: fReception || null,
@@ -766,7 +767,7 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
         }).eq('id', openSlot.entryId).eq('user_id', user.id).select('id');
         if (error) throw error;
         // 0 ligne = la RLS a refusé (verrouillée, exportée…) : ce n'est pas un succès.
-        if (!upd || upd.length === 0) { toast.error('Intervention non modifiée : elle est verrouillée ou déjà exportée.'); return; }
+        if (!upd || upd.length === 0) { toast.error('Chantier non modifié : il est verrouillé par le bureau.'); return; }
       } else if (openSlot.kind === 'pending') {
         const pend = getPendingEntries(user.id).find((e) => e.localId === openSlot.localId);
         if (pend) {
@@ -819,7 +820,7 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
             // Le réseau a lâché en plein envoi : on garde la saisie sur le
             // téléphone plutôt que de la perdre, elle partira toute seule.
             addPendingEntry(user.id, pending);
-            toast.message('Réseau instable — la saisie partira toute seule.');
+            toast.message('Réseau instable — ça partira tout seul.');
           }
         }
       }
@@ -832,7 +833,7 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
       toast.success(savedMsg);
     } catch (err) {
       console.error('Error saving slot:', err);
-      toast.error(explainWriteError(err, "Impossible d'enregistrer"));
+      toast.error(explainWriteError(err, "Impossible d'ajouter ce chantier"));
     } finally {
       setFSaving(false);
     }
@@ -850,13 +851,13 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
           .update({ status: 'cancelled', modified_at: new Date().toISOString(), modified_by: user.id })
           .eq('id', entry.id).eq('user_id', user.id).select('id');
         if (error) throw error;
-        if (!upd || upd.length === 0) { toast.error('Impossible de retirer : intervention verrouillée ou déjà exportée.'); return; }
-        toast.success('Intervention retirée — la secrétaire est prévenue');
+        if (!upd || upd.length === 0) { toast.error('Impossible de retirer : chantier verrouillé par le bureau.'); return; }
+        toast.success('Chantier retiré — la secrétaire est prévenue');
       } else {
         const { data: del, error } = await supabase.from('time_entries').delete().eq('id', entry.id).eq('user_id', user.id).select('id');
         if (error) throw error;
-        if (!del || del.length === 0) { toast.error('Impossible de retirer : intervention verrouillée ou déjà envoyée.'); fetchData(); return; }
-        toast.success('Intervention retirée');
+        if (!del || del.length === 0) { toast.error('Impossible de retirer : chantier verrouillé par le bureau.'); fetchData(); return; }
+        toast.success('Chantier retiré');
       }
       setOpenSlot(null);
       await applyDayMeal(dayMeal);
@@ -872,7 +873,7 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
     removePendingEntry(user.id, localId);
     setPendingEntries((prev) => prev.filter((e) => e.localId !== localId));
     if (openSlot?.kind === 'pending' && openSlot.localId === localId) setOpenSlot(null);
-    toast.success('Intervention supprimée');
+    toast.success('Chantier supprimé');
   };
 
   // ─── Copy yesterday ──────────────────────────────────────────────────────────
@@ -885,7 +886,7 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
       // Une intervention retirée hier ne se recopie pas.
       const { data: yEntries, error } = await supabase.from('time_entries').select('*').eq('user_id', user.id).eq('work_date', yesterday).neq('status', 'cancelled').order('start_time');
       if (error) throw error;
-      if (!yEntries || yEntries.length === 0) { toast.error('Aucune intervention hier à copier'); return; }
+      if (!yEntries || yEntries.length === 0) { toast.error('Aucun chantier hier à copier'); return; }
 
       const rows = yEntries.map((e) => ({
         company_id: user.company_id, user_id: user.id, worksite_id: e.worksite_id,
@@ -897,7 +898,7 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
       const { error: insErr } = await supabase.from('time_entries').insert(rows);
       if (insErr) throw insErr;
 
-      toast.success(`${rows.length} intervention${rows.length > 1 ? 's' : ''} copiée${rows.length > 1 ? 's' : ''} depuis hier`);
+      toast.success(`${rows.length} chantier${rows.length > 1 ? 's' : ''} copié${rows.length > 1 ? 's' : ''} depuis hier`);
       await applyDayMeal(dayMeal);
       fetchData();
     } catch (err) {
@@ -922,7 +923,7 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
       ...liveEntries.map((e) => ({ worksite_id: e.worksite_id, start_time: e.start_time, end_time: e.end_time, meal_allowance: false, observation: e.observation })),
       ...pendingEntries.map((e) => ({ worksite_id: e.worksite_id, start_time: e.start_time, end_time: e.end_time, meal_allowance: false, observation: e.observation })),
     ];
-    if (sources.length === 0) { toast.error('Aucune intervention à copier'); return; }
+    if (sources.length === 0) { toast.error('Aucun chantier à copier'); return; }
     if (targets.length === 0) { toast.error('Aucun jour à remplir'); return; }
     setCopying(true);
     try {
@@ -954,44 +955,124 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
 
   const checkCoherenceWarnings = (): string[] => {
     const drafts = entries.filter((e) => e.status === 'draft' && !e.locked);
-    if (drafts.length === 0) return [];
+    // Les chantiers prévus non ouverts partent maintenant eux aussi. Les laisser
+    // hors des contrôles aurait rouvert le trou que ces contrôles bouchent :
+    // deux plannings 08:00–17:00 le même jour, c'est 18 h envoyées sans un mot.
+    if (drafts.length === 0 && plannedToSend.length === 0) return [];
     const warnings: string[] = [];
-    if (plannedTodo.length > 0) {
-      warnings.push(`Il reste ${plannedTodo.length} chantier${plannedTodo.length > 1 ? 's' : ''} prévu${plannedTodo.length > 1 ? 's' : ''} sans heures.`);
-    }
-    const totalMins = drafts.reduce((s, e) => s + e.total_minutes, 0);
+
+    // L'ancien avertissement « il reste N chantiers prévus sans heures » a
+    // disparu : il ne reste plus rien, ces chantiers partent avec la feuille.
+    // Le garder aurait fait surgir une fenêtre de confirmation à chaque envoi
+    // d'une journée conforme au planning — exactement le geste qu'on supprime.
+    const plannedMins = plannedToSend.reduce((s, p) => s + calculateTotalMinutes(p.start, p.end, 0), 0);
+    const totalMins = drafts.reduce((s, e) => s + e.total_minutes, 0) + plannedMins;
     if (totalMins > 600) warnings.push(`Total : ${formatMinutesToHours(totalMins)} (dépasse 10h). Vérifie tes horaires.`);
-    const slots = [...liveEntries, ...pendingEntries]
-      .map((e) => ({ s: (e.start_time || '').slice(0, 5), e: (e.end_time || '').slice(0, 5) }))
+
+    const slots = [
+      ...liveEntries.map((e) => ({ s: (e.start_time || '').slice(0, 5), e: (e.end_time || '').slice(0, 5) })),
+      ...pendingEntries.map((e) => ({ s: (e.start_time || '').slice(0, 5), e: (e.end_time || '').slice(0, 5) })),
+      ...plannedToSend.map((p) => ({ s: p.start, e: p.end })),
+    ]
       .filter((x) => x.s && x.e)
       .sort((a, b) => a.s.localeCompare(b.s));
     if (slots.some((x, i) => i > 0 && toMin(x.s) < toMin(slots[i - 1].e))) {
-      warnings.push('Certaines interventions se chevauchent. Vérifie tes heures.');
+      warnings.push('Certains chantiers se chevauchent. Vérifie tes heures.');
     }
     return warnings;
   };
 
   const handleSubmitDay = () => {
     const draftIds = entries.filter((e) => e.status === 'draft' && !e.locked).map((e) => e.id);
-    if (draftIds.length === 0) { toast.error('Ajoute au moins une intervention'); return; }
+    // Un chantier prévu par le bureau EST une ligne de la feuille : il n'a pas
+    // besoin d'être ouvert pour compter. On ne refuse que si la journée est
+    // réellement vide — aucune ligne d'aucune sorte.
+    if (draftIds.length === 0 && plannedToSend.length === 0 && pendingEntries.length === 0) {
+      toast.error('Ajoute un chantier');
+      return;
+    }
     const warnings = checkCoherenceWarnings();
     if (warnings.length > 0) { setCoherenceWarnings(warnings); setConfirmOpen(true); } else { doSubmit(); }
+  };
+
+  /**
+   * Matérialise les chantiers prévus non ouverts, et rend les identifiants des
+   * lignes créées pour qu'elles partent avec les autres.
+   *
+   * EN DEUX TEMPS, ET CE N'EST PAS UN CHOIX. La politique RLS
+   * `time_entries_worker_insert` impose `status = 'draft'` : un salarié ne peut
+   * pas insérer une ligne déjà envoyée. Rejoué en base avant d'écrire cette
+   * fonction — l'insert direct en « envoyée » est refusé. On insère donc en
+   * brouillon, puis la bascule se fait avec le reste. C'est d'ailleurs ce
+   * chemin qui fait poser `submitted_at` par le garde en base, lequel efface
+   * cette colonne à toute insertion.
+   */
+  const materialisePlanned = async (): Promise<string[]> => {
+    if (!user || plannedToSend.length === 0) return [];
+    const rows = plannedToSend.map((p) => ({
+      company_id: user.company_id, user_id: user.id, worksite_id: p.worksiteId,
+      planning_id: p.planningId, work_date: date,
+      start_time: p.start, end_time: p.end, break_minutes: 0,
+      meal_allowance: false, observation: null, reception: null,
+      status: 'draft' as const,
+      // Même protection que la saisie à la main : si la réponse se perd, la
+      // même ligne ne peut pas entrer deux fois.
+      client_id: generateLocalId(),
+    }));
+    let { data, error } = await supabase.from('time_entries').insert(rows).select('id');
+    if (error && error.code === 'PGRST204' && error.message?.includes('client_id')) {
+      ({ data, error } = await supabase.from('time_entries')
+        .insert(rows.map(({ client_id, ...r }) => r)).select('id'));
+    }
+    if (error) throw error;
+    return ((data || []) as { id: string }[]).map((r) => r.id);
   };
 
   const doSubmit = async () => {
     if (!user) return;
     const draftIds = entries.filter((e) => e.status === 'draft' && !e.locked).map((e) => e.id);
-    if (draftIds.length === 0) return;
+
+    // ── Sans réseau ──────────────────────────────────────────────────────────
+    // On ne peut rien écrire, mais le geste du salarié ne doit pas se perdre.
+    // Les chantiers prévus rejoignent la file du téléphone, et TOUTES les lignes
+    // du jour déjà en file sont marquées « à envoyer dès qu'il y a du réseau ».
+    // Sans ça, un salarié qui envoie sa journée depuis un sous-sol la retrouve
+    // en brouillon le lendemain — son geste effacé sans un mot.
+    if (!navigator.onLine) {
+      for (const p of plannedToSend) {
+        const ws = worksites.find((w) => w.id === p.worksiteId);
+        addPendingEntry(user.id, {
+          localId: generateLocalId(), company_id: user.company_id, user_id: user.id,
+          worksite_id: p.worksiteId, planning_id: p.planningId, work_date: date,
+          start_time: p.start, end_time: p.end, break_minutes: 0,
+          total_minutes: calculateTotalMinutes(p.start, p.end, 0),
+          meal_allowance: false, observation: null, reception: null,
+          _worksite_name: ws?.client_name || '', _worksite_city: ws?.city || null,
+          _saved_at: Date.now(), submit_after_sync: true,
+        });
+      }
+      for (const pe of getPendingEntries(user.id).filter((e) => e.work_date === date)) {
+        updatePendingEntry(user.id, pe.localId, { submit_after_sync: true });
+      }
+      setPendingEntries(getPendingEntries(user.id).filter((e) => e.work_date === date));
+      toast.success('Journée gardée sur le téléphone — elle partira dès que tu auras du réseau.');
+      return;
+    }
+
     setSubmitting(true);
     try {
+      const newIds = await materialisePlanned();
+      const allIds = [...draftIds, ...newIds];
+      if (allIds.length === 0) { toast.error('Ajoute un chantier'); return; }
+
       const { data: sent, error } = await supabase.from('time_entries').update({ status: 'submitted', submitted_at: new Date().toISOString() })
-        .in('id', draftIds).eq('user_id', user.id).eq('status', 'draft').select('id');
+        .in('id', allIds).eq('user_id', user.id).eq('status', 'draft').select('id');
       if (error) throw error;
       // On compare au nombre attendu : une ligne verrouillée entre-temps est
       // silencieusement ignorée par la RLS.
       const n = sent?.length ?? 0;
       if (n === 0) toast.error("Rien n'a été envoyé : la journée est verrouillée ou a changé. Recharge.");
-      else if (n < draftIds.length) toast.error(`${n} intervention${n > 1 ? 's' : ''} envoyée${n > 1 ? 's' : ''} sur ${draftIds.length} — les autres sont verrouillées.`);
+      else if (n < allIds.length) toast.error(`${n} chantier${n > 1 ? 's' : ''} envoyé${n > 1 ? 's' : ''} sur ${allIds.length} — les autres sont verrouillés.`);
       else toast.success('Journée envoyée');
       fetchData();
     } catch (err) {
@@ -1009,7 +1090,7 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
   const serverTotal = liveEntries.reduce((s, e) => s + e.total_minutes, 0);
   const pendingTotal = pendingEntries.reduce((s, e) => s + e.total_minutes, 0);
   const totalMinutes = serverTotal + pendingTotal;
-  const nbInterventions = liveEntries.length + pendingEntries.length;
+  const nbChantiers = liveEntries.length + pendingEntries.length;
   const hasDrafts = liveEntries.some((e) => e.status === 'draft') || pendingEntries.length > 0;
   const hasRealDrafts = liveEntries.some((e) => e.status === 'draft' && !e.locked);
   const allSubmitted = liveEntries.length > 0 && liveEntries.every((e) => e.status !== 'draft') && pendingEntries.length === 0;
@@ -1024,6 +1105,28 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
     ...pendingEntries.map((e) => e.worksite_id),
   ]);
   const plannedTodo = planning.filter((p) => p.worksite_id && !declaredWorksiteIds.has(p.worksite_id));
+
+  /**
+   * Les chantiers prévus par le bureau que le salarié n'a pas ouverts : ils
+   * partent AVEC le reste de la feuille.
+   *
+   * La règle (absence exclue, doublons fondus, horaires du bureau) vit dans
+   * `lib/work-status.ts` — elle décide de ce qui part en paie, donc elle doit
+   * pouvoir être mise au banc plutôt que se cacher dans un rendu.
+   */
+  const plannedToSend = planningsToMaterialise(plannedTodo);
+
+  /**
+   * Y a-t-il quelque chose à envoyer ?
+   *
+   * LE PIÈGE, et il m'a eu : corriger `handleSubmitDay` ne sert à rien si le
+   * bouton reste grisé. Il ne s'activait que sur `hasRealDrafts` — donc une
+   * journée uniquement planifiée le laissait désactivé et le nouveau code
+   * n'était JAMAIS atteint. Tout compilait, tout se testait vert, et le salarié
+   * voyait exactement ce qu'il voyait avant. La même porte oubliée que dans
+   * `app/poseur/layout.tsx` : on répare la serrure et on laisse le verrou.
+   */
+  const canSend = hasRealDrafts || plannedToSend.length > 0;
 
   const gaps = computePauses([
     ...liveEntries.map((e) => ({
@@ -1093,8 +1196,8 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
     ? (worksites.find((w) => w.id === fWorksiteId)?.client_name || OTHER_NAME)
     : (titleName || OTHER_NAME);
   const slotTitle = !openSlot ? ''
-    : openSlot.kind === 'new' ? 'Nouvelle intervention'
-    : titleName ? `Chantier ${titleName}` : 'Intervention';
+    : openSlot.kind === 'new' ? 'Nouveau chantier'
+    : titleName ? `Chantier ${titleName}` : 'Chantier';
 
   const editorEntry = openSlot?.kind === 'entry' ? entries.find((x) => x.id === openSlot.entryId) : undefined;
   const durMin = (fStart && fEnd) ? calculateTotalMinutes(fStart, fEnd, 0) : 0;
@@ -1128,7 +1231,7 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
       {isOnline && syncing && (
         <div className="bt-net bt-net-sync">
           <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
-          <span>Synchronisation…</span>
+          <span>Envoi en cours…</span>
         </div>
       )}
 
@@ -1179,8 +1282,8 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
           </div>
           <div className="bt-stats">
             <div className="bt-stat">
-              <div className="bt-stat-n">{nbInterventions}</div>
-              <div className="bt-stat-l">intervention{nbInterventions > 1 ? 's' : ''}</div>
+              <div className="bt-stat-n">{nbChantiers}</div>
+              <div className="bt-stat-l">chantier{nbChantiers > 1 ? 's' : ''}</div>
             </div>
             <div className="bt-stat">
               <div className="bt-stat-n">{fmtHM(pauseMinutes)}</div>
@@ -1207,7 +1310,7 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
           <span className="bt-meal-emoji">🥪</span>
           <div style={{ flex: 1 }}>
             <div className="bt-meal-t">Panier repas</div>
-            <div className="bt-meal-s">{dayMeal ? "Déclaré pour aujourd'hui" : 'Pour la journée'}</div>
+            <div className="bt-meal-s">{dayMeal ? "Compté pour aujourd'hui" : 'Pour la journée'}</div>
           </div>
           <button
             type="button"
@@ -1225,7 +1328,7 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
         </div>
 
         {/* ----- INTERVENTIONS ----- */}
-        <div className="bt-sec">Interventions du jour</div>
+        <div className="bt-sec">Chantiers du jour</div>
 
         {items.map((item) => {
           const g = gapByKey.get(item.key);
@@ -1265,7 +1368,7 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
                   {p.worksite?.id && (docsByWorksite.get(p.worksite.id) || 0) > 0 && (
                     <span className="bt-iv-docs"><Paperclip className="h-3 w-3" />{docsByWorksite.get(p.worksite.id)}</span>
                   )}
-                  <span className="bt-iv-cta">À déclarer ›</span>
+                  <span className="bt-iv-cta">Mes heures ›</span>
                 </div>
               </div>
             );
@@ -1288,7 +1391,7 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
                   ) : entry.status === 'submitted' ? (
                     <div className="bt-badge bt-badge-sent"><span className="dot">✓</span> Envoyé</div>
                   ) : isDraft ? (
-                    <div className="bt-badge bt-badge-wait">● En attente</div>
+                    <div className="bt-badge bt-badge-wait">● À envoyer</div>
                   ) : null}
                 </div>
                 <div className="bt-iv-times">
@@ -1332,7 +1435,7 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
                   <div className="bt-cancel-name">{entry.worksite?.client_name || OTHER_NAME}</div>
                   <div className="bt-cancel-time">{entry.start_time?.substring(0, 5)} → {entry.end_time?.substring(0, 5)} · {fmtHM(entry.total_minutes)}</div>
                 </div>
-                <div className="bt-cancel-badge">Retirée</div>
+                <div className="bt-cancel-badge">Retiré</div>
               </div>
             );
           }
@@ -1346,7 +1449,7 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
                   <div className="bt-iv-name">{entry._worksite_name}</div>
                   {entry._worksite_city && <div className="bt-iv-city">{entry._worksite_city}</div>}
                 </div>
-                <div className="bt-badge bt-badge-off">● En attente</div>
+                <div className="bt-badge bt-badge-off">● Sur le téléphone</div>
               </div>
               <div className="bt-iv-times">
                 <span>{entry.start_time.substring(0, 5)} → {entry.end_time.substring(0, 5)}</span>
@@ -1364,7 +1467,7 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
         {/* Vide → astuce + copier hier */}
         {isEmpty && plannedTodo.length === 0 && (
           <div className="bt-empty">
-            <div>Aucune intervention aujourd&apos;hui.</div>
+            <div>Aucun chantier aujourd&apos;hui.</div>
             {isOnline && !monthLocked && (
               <button type="button" className="bt-ghostbtn" onClick={handleCopyYesterday} disabled={copyingYesterday}>
                 {copyingYesterday ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />} Copier la journée d&apos;hier
@@ -1387,7 +1490,7 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
           <div className="bt-sentnote">
             {monthLocked
               ? 'Mois clôturé — vois avec la secrétaire pour modifier.'
-              : 'Touche une intervention pour la corriger (la secrétaire sera prévenue).'}
+              : 'Touche un chantier pour le corriger (la secrétaire sera prévenue).'}
           </div>
         )}
       </div>
@@ -1397,7 +1500,7 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
         <button
           type="button"
           className="bt-fab"
-          aria-label="Ajouter une intervention"
+          aria-label="Ajouter un chantier"
           onClick={frozen && !monthLocked ? () => askCorrect(openNew) : openNew}
         >
           +
@@ -1411,7 +1514,7 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
           </button>
         ) : allSubmitted ? (
           <button type="button" className="bt-send done" disabled>Journée envoyée ✓</button>
-        ) : hasRealDrafts ? (
+        ) : canSend ? (
           <button type="button" className="bt-send" onClick={handleSubmitDay} disabled={submitting}>
             {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Envoyer ma journée <span style={{ fontSize: 19 }}>→</span>
           </button>
@@ -1484,7 +1587,7 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
                   <span className="v">{formatMinutesToHours(durMin)}</span>
                 </div>
               </div>
-              <div className="bt-times-hint">Touchez une heure pour la régler</div>
+              <div className="bt-times-hint">Touche une heure pour la régler</div>
 
               {/* Pauses calculées automatiquement (trous entre créneaux) — plus de sélecteur manuel */}
               <div className="bt-pause-auto">
@@ -1506,7 +1609,7 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
                 </button>
               </div>
               {fReception === 'avec' && (
-                <div className="bt-recep-hint">Décrivez les réserves ci-dessous (obligatoire) et ajoutez vos photos ou documents via le bouton <strong>Documents</strong>.</div>
+                <div className="bt-recep-hint">Décris les réserves ci-dessous (obligatoire) et ajoute tes photos ou documents via le bouton <strong>Documents</strong>.</div>
               )}
 
               {/* 4 · Note (devient « Détail des réserves » si avec réserve) */}
@@ -1530,7 +1633,7 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
                     </button>
                   )}
                   {openSlot.kind === 'entry' && editorEntry && (
-                    <button type="button" className="bt-ed-trash" disabled={fSaving} onClick={() => setConfirmDel({ kind: 'entry', entry: editorEntry, sent: editorEntry.status === 'submitted' })} aria-label="Retirer cette intervention" title="Retirer cette intervention">
+                    <button type="button" className="bt-ed-trash" disabled={fSaving} onClick={() => setConfirmDel({ kind: 'entry', entry: editorEntry, sent: editorEntry.status === 'submitted' })} aria-label="Retirer ce chantier" title="Retirer ce chantier">
                       <Trash2 className="h-4 w-4" />
                     </button>
                   )}
@@ -1538,7 +1641,7 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
               )}
               <button type="button" className="bt-save" onClick={saveSlot} disabled={fSaving}>
                 {fSaving && <Loader2 className="h-4 w-4 animate-spin" />}
-                Enregistrer l&apos;intervention <span style={{ fontSize: 18 }}>✓</span>
+                OK <span style={{ fontSize: 18 }}>✓</span>
               </button>
             </div>
 
@@ -1639,12 +1742,12 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
       <Dialog open={!!confirmDel} onOpenChange={(o) => { if (!o) setConfirmDel(null); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-orange-500" /> Retirer cette intervention ?</DialogTitle>
+            <DialogTitle className="flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-orange-500" /> Retirer ce chantier ?</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
             {confirmDel?.kind === 'entry' && confirmDel.sent
-              ? 'Elle a déjà été envoyée : elle restera visible comme « Retirée » et la secrétaire en sera informée.'
-              : 'Les heures saisies seront perdues.'}
+              ? 'Il a déjà été envoyé : il restera visible comme « Retiré » et la secrétaire en sera informée.'
+              : 'Les heures seront perdues.'}
           </p>
           <div className="flex gap-2 mt-2">
             <Button variant="outline" className="flex-1" onClick={() => setConfirmDel(null)}>Non</Button>
