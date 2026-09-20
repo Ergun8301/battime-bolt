@@ -109,7 +109,7 @@ export default function PoseurPage() {
   const { user, signOut } = useAuth();
   // Envoi différé des saisies faites sans réseau : tourne pour TOUS les jours en
   // attente, dès que l'application est ouverte et qu'il y a du réseau.
-  const { pendingCount: offlineCount, syncing: offlineSyncing, syncNow } = useOfflineSync(user?.id);
+  const { pendingCount: offlineCount, blockedCount: offlineBlocked, syncing: offlineSyncing, syncNow } = useOfflineSync(user?.id);
   const [view, setView] = useState('day');
   const [selectedDate, setSelectedDate] = useState<string | null>(null); // declare a specific day
   const [pending, setPending] = useState<string[]>([]); // days "en attente"
@@ -280,7 +280,7 @@ export default function PoseurPage() {
   const offlineBanner = offlineCount > 0 ? (
     <button
       className="bt-alert"
-      onClick={() => syncNow()}
+      onClick={() => syncNow(true)}
       disabled={offlineSyncing}
       aria-label="Saisies en attente d'envoi"
     >
@@ -288,7 +288,9 @@ export default function PoseurPage() {
       <span className="bt-alert-txt">
         {offlineSyncing
           ? 'Envoi en cours…'
-          : `intervention${offlineCount > 1 ? 's' : ''} en attente d'envoi`}
+          : offlineBlocked > 0
+            ? `intervention${offlineCount > 1 ? 's' : ''} qui ne part${offlineCount > 1 ? 'ent' : ''} pas — appuyer pour réessayer`
+            : `intervention${offlineCount > 1 ? 's' : ''} en attente d'envoi`}
       </span>
       <span className="bt-alert-chev">↻</span>
     </button>

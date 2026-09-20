@@ -5,6 +5,23 @@
 
 const KEY_PREFIX = 'battime_offline_';
 
+/**
+ * Émis à chaque écriture, dans l'onglet qui écrit.
+ *
+ * L'événement `storage` du navigateur ne se déclenche QUE dans les autres
+ * onglets : sans ce signal, le compteur « en attente d'envoi » et la liste
+ * affichée dans « Ma journée » restaient figés après un ajout ou un envoi.
+ */
+export const OFFLINE_CHANGED_EVENT = 'bemexo:offline-changed';
+
+/** Émis quand au moins une saisie vient d'atteindre le serveur. */
+export const OFFLINE_SYNCED_EVENT = 'bemexo:offline-synced';
+
+function notifyChanged(): void {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new Event(OFFLINE_CHANGED_EVENT));
+}
+
 export interface PendingEntry {
   localId: string;
   company_id: string;
@@ -27,6 +44,8 @@ export interface PendingEntry {
   attempts?: number;
   /** Dernier refus du serveur, pour pouvoir l'expliquer au salarié. */
   lastError?: string | null;
+  /** Refus définitif : on arrête de réessayer tout seul (voir lib/offline-sync.ts). */
+  blocked?: boolean;
 }
 
 export function generateLocalId(): string {
@@ -54,6 +73,7 @@ function safeWrite(userId: string, entries: PendingEntry[]): void {
   } catch {
     // Ignore quota errors silently
   }
+  notifyChanged();
 }
 
 export function getPendingEntries(userId: string): PendingEntry[] {
@@ -89,4 +109,19 @@ export function updatePendingEntry(
 /** Nombre total de saisies en attente, tous jours confondus. */
 export function countPendingEntries(userId: string): number {
   return safeRead(userId).length;
+}
+
+/** Saisies que le serveur a refusées définitivement : elles n'iront pas plus loin seules. */
+export function countBlockedEntries(userId: string): number {
+  return safeRead(userId).filter(e => e.blocked).length;
+}
+
+/**
+ * Remet les compteurs à zéro pour forcer une nouvelle tentative.
+ * Utilisé par le bouton d'envoi manuel : le salarié a le droit de réessayer
+ * même quand l'envoi automatique a renoncé.
+ */
+export function unblockPendingEntries(userId: string): void {
+  const entries = safeRead(userId).map(e => (e.blocked ? { ...e, blocked: false, attempts: 0 } : e));
+  safeWrite(userId, entries);
 }

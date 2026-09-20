@@ -14,7 +14,7 @@ import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import {
   addPendingEntry, getPendingEntries, removePendingEntry, clearPendingEntriesForDate,
-  generateLocalId, PendingEntry,
+  generateLocalId, OFFLINE_CHANGED_EVENT, OFFLINE_SYNCED_EVENT, PendingEntry,
 } from '@/lib/offline-store';
 import { syncAllPending } from '@/lib/offline-sync';
 import { TimeCylinder, snapToGrid } from '@/components/time-cylinder';
@@ -414,13 +414,26 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
     setIsOnline(navigator.onLine);
     const handleOnline = () => { setIsOnline(true); syncPendingEntries(); };
     const handleOffline = () => setIsOnline(false);
+    // La synchronisation peut partir d'ailleurs (le compte à rebours de la page
+    // salarié, le retour au premier plan). Sans ces deux écoutes, la carte
+    // « en attente » restait affichée et comptée alors que la ligne était déjà
+    // partie, et le bouton d'envoi ne faisait plus rien.
+    const handleChanged = () => {
+      if (!user) return;
+      setPendingEntries(getPendingEntries(user.id).filter((e) => e.work_date === date));
+    };
+    const handleSynced = () => { handleChanged(); fetchData(); };
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+    window.addEventListener(OFFLINE_CHANGED_EVENT, handleChanged);
+    window.addEventListener(OFFLINE_SYNCED_EVENT, handleSynced);
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      window.removeEventListener(OFFLINE_CHANGED_EVENT, handleChanged);
+      window.removeEventListener(OFFLINE_SYNCED_EVENT, handleSynced);
     };
-  }, [syncPendingEntries]);
+  }, [syncPendingEntries, user, date, fetchData]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 

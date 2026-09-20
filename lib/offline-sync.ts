@@ -16,7 +16,8 @@
 
 import { supabase } from '@/lib/supabase';
 import {
-  getPendingEntries, removePendingEntry, updatePendingEntry, type PendingEntry,
+  getPendingEntries, removePendingEntry, updatePendingEntry,
+  OFFLINE_SYNCED_EVENT, type PendingEntry,
 } from '@/lib/offline-store';
 
 /** Au-delà, on arrête de réessayer en silence et on le dit au salarié. */
@@ -77,6 +78,9 @@ export async function syncAllPending(userId: string): Promise<SyncResult> {
 
   try {
     for (const entry of pending) {
+      // Refus définitif déjà constaté : on n'insiste pas tout seul. Le salarié
+      // peut forcer une nouvelle tentative depuis le bandeau (unblockPendingEntries).
+      if (entry.blocked) { blocked.push(entry); continue; }
       const base = {
         company_id: entry.company_id,
         user_id: entry.user_id,
@@ -122,19 +126,28 @@ export async function syncAllPending(userId: string): Promise<SyncResult> {
         }
 
         const attempts = (entry.attempts || 0) + 1;
-        updatePendingEntry(userId, entry.localId, { attempts, lastError: error.message });
-        if (isPermanent(error) || attempts >= MAX_ATTEMPTS) blocked.push({ ...entry, attempts });
+        const stop = isPermanent(error) || attempts >= MAX_ATTEMPTS;
+        updatePendingEntry(userId, entry.localId, { attempts, lastError: error.message, blocked: stop });
+        if (stop) blocked.push({ ...entry, attempts, blocked: true });
         else retrying++;
       } catch (e) {
         // Coupure en plein envoi : temporaire, on retentera.
         const attempts = (entry.attempts || 0) + 1;
-        updatePendingEntry(userId, entry.localId, { attempts, lastError: String(e) });
-        if (attempts >= MAX_ATTEMPTS) blocked.push({ ...entry, attempts });
+        const stop = attempts >= MAX_ATTEMPTS;
+        updatePendingEntry(userId, entry.localId, { attempts, lastError: String(e), blocked: stop });
+        if (stop) blocked.push({ ...entry, attempts, blocked: true });
         else retrying++;
       }
     }
   } finally {
     running = false;
+  }
+
+  // Prévient les écrans montés (« Ma journée » notamment) : sans ce signal, la
+  // carte « en attente » restait affichée et comptée alors que la ligne était
+  // déjà partie, et le bouton d'envoi ne faisait plus rien.
+  if (synced > 0 && typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(OFFLINE_SYNCED_EVENT));
   }
 
   return { synced, retrying, blocked };
