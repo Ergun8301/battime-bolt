@@ -760,7 +760,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         supabase.from('planning').select('*, worksite:worksites(*), user:users!user_id(*)')
           .eq('company_id', user.company_id).gte('work_date', from).lte('work_date', to).order('work_date'),
         supabase.from('time_entries').select('user_id, work_date, worksite_id, start_time, end_time, total_minutes, reception, observation')
-          .eq('company_id', user.company_id).neq('status', 'draft').gte('work_date', from).lte('work_date', to),
+          .eq('company_id', user.company_id).in('status', ['submitted', 'validated']).gte('work_date', from).lte('work_date', to),
       ]);
       if (planRes.error) throw planRes.error;
       const planRows = planRes.data || [];
@@ -796,7 +796,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     const windowStart = format(subDays(new Date(), WINDOW_DAYS), 'yyyy-MM-dd');
     const [planRes, entRes, compRes, invRes, docRes, leaveRes] = await Promise.all([
       supabase.from('planning').select('user_id, work_date, absence_type').eq('company_id', user.company_id).gte('work_date', windowStart),
-      supabase.from('time_entries').select('user_id, work_date').eq('company_id', user.company_id).neq('status', 'draft').gte('work_date', windowStart),
+      supabase.from('time_entries').select('user_id, work_date').eq('company_id', user.company_id).in('status', ['submitted', 'validated']).gte('work_date', windowStart),
       supabase.from('companies').select('name, logo_url').eq('id', user.company_id).maybeSingle(),
       supabase.from('invitations').select('*').eq('company_id', user.company_id).is('accepted_at', null).gt('expires_at', new Date().toISOString()).order('created_at', { ascending: false }),
       supabase.from('documents').select('worksite_id').eq('company_id', user.company_id),
@@ -1176,10 +1176,13 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       // silencieusement incomplet. Et `select` réduit aux seuls champs utilisés :
       // `users(*)` embarquait le n° de sécurité sociale et le taux horaire de
       // chaque salarié, dupliqués sur chaque ligne et inutiles ici (RGPD).
+      // Seules les heures ENVOYÉES partent en paie et sont verrouillées : un
+      // brouillon ou une intervention retirée n'entre jamais dans l'export.
       const entries = await fetchAllPaged<TimeEntryWithWorksite & { user: User }>((f, t2) => supabase
         .from('time_entries')
         .select('id, work_date, start_time, end_time, break_minutes, total_minutes, meal_allowance, status, observation, worksite:worksites(client_name, city), user:users!user_id(first_name, last_name)')
         .eq('company_id', user.company_id)
+        .in('status', ['submitted', 'validated'])
         .gte('work_date', from).lte('work_date', to)
         .order('work_date', { ascending: false }).order('user_id')
         .range(f, t2) as unknown as PromiseLike<{ data: (TimeEntryWithWorksite & { user: User })[] | null; error: { message: string } | null }>);

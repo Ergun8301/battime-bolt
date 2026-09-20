@@ -309,7 +309,31 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
     | null
   >(null);
 
-  const date = dateProp || format(new Date(), 'yyyy-MM-dd');
+  // « Ma journée » ne bascule pas au lendemain au beau milieu d'une saisie (la
+  // date était recalculée à chaque rendu → heures enregistrées sur le mauvais
+  // jour). Mais une appli laissée ouverte toute la nuit doit bien repasser sur
+  // le nouveau jour : on rafraîchit au retour au premier plan et chaque minute,
+  // seulement quand aucune fiche n'est ouverte.
+  const [mountedToday, setMountedToday] = useState(() => format(new Date(), 'yyyy-MM-dd'));
+  const date = dateProp || mountedToday;
+  const editingOpen = openSlot !== null;
+  useEffect(() => {
+    if (dateProp) return;
+    const refresh = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      const today = format(new Date(), 'yyyy-MM-dd');
+      setMountedToday((prev) => (prev === today || editingOpen ? prev : today));
+    };
+    refresh();
+    document.addEventListener('visibilitychange', refresh);
+    window.addEventListener('focus', refresh);
+    const id = window.setInterval(refresh, 60_000);
+    return () => {
+      document.removeEventListener('visibilitychange', refresh);
+      window.removeEventListener('focus', refresh);
+      window.clearInterval(id);
+    };
+  }, [dateProp, editingOpen]);
   const yesterday = format(subDays(new Date(`${date}T00:00:00`), 1), 'yyyy-MM-dd');
   // Payroll cutoff: a day in a past month is locked — corrections go through the secretary.
   const monthLocked = date.slice(0, 7) < format(new Date(), 'yyyy-MM');
@@ -368,9 +392,10 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
 
     setSyncing(true);
     let synced = 0;
+    let failed = 0;
     for (const entry of pending) {
       try {
-        const { error } = await supabase.from('time_entries').insert({
+        const row = {
           company_id: entry.company_id,
           user_id: entry.user_id,
           worksite_id: entry.worksite_id,
@@ -383,15 +408,27 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
           meal_allowance: entry.meal_allowance,
           observation: entry.observation,
           reception: entry.reception ?? null,
-          status: 'draft',
-        });
+          status: 'draft' as const,
+        };
+        let { error } = await supabase.from('time_entries').insert(row);
+        if (error && error.code === '23505') {
+          // Un panier existe déjà ce jour-là côté serveur (index unique) : on
+          // garde celui du serveur et on rejoue l'insertion sans panier.
+          ({ error } = await supabase.from('time_entries').insert({ ...row, meal_allowance: false }));
+        }
         if (!error) {
           removePendingEntry(user.id, entry.localId);
           synced++;
+        } else {
+          failed++;
         }
-      } catch { /* continue */ }
+      } catch { failed++; }
     }
     setSyncing(false);
+
+    // Un échec restait muet : l'entrée « en attente » ne partait jamais et
+    // personne n'en savait rien.
+    if (failed > 0) toast.error(`${failed} intervention${failed > 1 ? 's' : ''} non synchronisée${failed > 1 ? 's' : ''} — réessaie plus tard`);
 
     if (synced > 0) {
       toast.success(`${synced} intervention${synced > 1 ? 's' : ''} synchronisée${synced > 1 ? 's' : ''}`);
@@ -471,21 +508,33 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
 
   // ─── Day meal: keep exactly one flagged row per day (no migration) ──────────
 
-  const applyDayMeal = useCallback(async (value: boolean, flagModified = false) => {
-    if (!user) return;
+  // Renvoie false si le panier n'a pas pu être écrit (ligne verrouillée, réseau…).
+  const applyDayMeal = useCallback(async (value: boolean, flagModified = false): Promise<boolean> => {
+    if (!user) return false;
+    let ok = true;
     if (navigator.onLine) {
-      const { data } = await supabase.from('time_entries').select('id, start_time, meal_allowance').eq('user_id', user.id).eq('work_date', date);
+      // Le panier ne se pose que sur une ligne vivante et modifiable : jamais sur
+      // une intervention retirée (elle ne compte plus) ni verrouillée (exportée).
+      const { data, error: readErr } = await supabase.from('time_entries')
+        .select('id, start_time, meal_allowance')
+        .eq('user_id', user.id).eq('work_date', date)
+        .neq('status', 'cancelled').eq('locked', false);
+      if (readErr) return false;
       const rows = [...(data || [])].sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''));
       // Journée déjà envoyée : corriger le panier prévient la secrétaire (même logique que l'édition d'une intervention).
       const stamp = flagModified ? { modified_at: new Date().toISOString(), modified_by: user.id } : {};
-      const ups = [];
-      for (let i = 0; i < rows.length; i++) {
-        const target = i === 0 ? value : false;
-        if (rows[i].meal_allowance !== target) {
-          ups.push(supabase.from('time_entries').update({ meal_allowance: target, ...stamp }).eq('id', rows[i].id).eq('user_id', user.id));
-        }
-      }
-      if (ups.length) await Promise.all(ups);
+      const setMeal = async (id: string, target: boolean) => {
+        // `.select('id')` : une mise à jour filtrée par la RLS renvoie 0 ligne
+        // SANS erreur ; on le détecte au lieu d'afficher un succès.
+        const { data: upd, error } = await supabase.from('time_entries')
+          .update({ meal_allowance: target, ...stamp }).eq('id', id).eq('user_id', user.id).select('id');
+        if (error || !upd || upd.length === 0) ok = false;
+      };
+      // D'abord retirer le panier des autres lignes, PUIS le poser sur la
+      // première : dans cet ordre, jamais deux paniers en même temps (index
+      // unique en base).
+      for (const r of rows.slice(1)) if (r.meal_allowance) await setMeal(r.id, false);
+      if (rows[0] && rows[0].meal_allowance !== value) await setMeal(rows[0].id, value);
     }
     const pend = getPendingEntries(user.id).filter((e) => e.work_date === date);
     if (pend.length > 0) {
@@ -494,15 +543,22 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
       sorted.forEach((e, i) => addPendingEntry(user.id, { ...e, meal_allowance: i === 0 ? value : false }));
       setPendingEntries(getPendingEntries(user.id).filter((e) => e.work_date === date));
     }
+    return ok;
   }, [user, date]);
 
   const toggleDayMeal = async (value: boolean, flagModified = false) => {
     setDayMeal(value);
     try {
-      await applyDayMeal(value, flagModified);
+      const ok = await applyDayMeal(value, flagModified);
+      if (!ok) {
+        setDayMeal(!value);
+        toast.error("Panier non enregistré (journée verrouillée ou hors-ligne)");
+      }
       if (navigator.onLine) fetchData();
     } catch (err) {
       console.error('Error setting meal:', err);
+      setDayMeal(!value);
+      toast.error('Panier non enregistré');
     }
   };
 
@@ -539,12 +595,17 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
     // (durée 1 h par défaut). Le salarié peut changer début ET fin aussitôt OU après
     // coup (ces possibilités existent déjà et restent inchangées). On ne touche à rien
     // d'autre dans la gestion des heures.
-    const nowParis = snapToGrid(
-      new Date().toLocaleTimeString('en-GB', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
-    );
-    const [sh, sm] = nowParis.split(':').map(Number);
-    const endParis = `${String((sh + 1) % 24).padStart(2, '0')}:${String(sm).padStart(2, '0')}`;
-    setFStart(nowParis);
+    const rawParis = new Date().toLocaleTimeString('en-GB', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+    let startParis = snapToGrid(rawParis);
+    // Fin de soirée : 23:53 s'arrondit à 00:00, ce qui serait le début du jour →
+    // on le ramène à 23:45. La fin reste « début + 1 h », quitte à franchir
+    // minuit : une intervention qui déborde sur le lendemain est gérée (durée
+    // calculée sur une ligne de temps absolue, comme les pauses de nuit).
+    if (rawParis >= '23:00' && startParis === '00:00') startParis = '23:45';
+    const [sh, sm] = startParis.split(':').map(Number);
+    const endMin = (sh * 60 + sm + 60) % (24 * 60);
+    const endParis = `${String(Math.floor(endMin / 60)).padStart(2, '0')}:${String(endMin % 60).padStart(2, '0')}`;
+    setFStart(startParis);
     setFEnd(endParis);
     setFObs('');
     setFReception('');
@@ -576,13 +637,15 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
       if (openSlot.kind === 'entry') {
         const wasSubmitted = entries.find((e) => e.id === openSlot.entryId)?.status === 'submitted';
         if (wasSubmitted) savedMsg = 'Modification enregistrée — la secrétaire est prévenue';
-        const { error } = await supabase.from('time_entries').update({
+        const { data: upd, error } = await supabase.from('time_entries').update({
           start_time: fStart, end_time: fEnd, break_minutes: 0, observation: fObs.trim() || null,
           reception: fReception || null,
           // Editing an already-sent entry: flag it so the secretary sees the change.
           ...(wasSubmitted ? { modified_at: new Date().toISOString(), modified_by: user.id } : {}),
-        }).eq('id', openSlot.entryId).eq('user_id', user.id);
+        }).eq('id', openSlot.entryId).eq('user_id', user.id).select('id');
         if (error) throw error;
+        // 0 ligne = la RLS a refusé (verrouillée, exportée…) : ce n'est pas un succès.
+        if (!upd || upd.length === 0) { toast.error('Intervention non modifiée : elle est verrouillée ou déjà exportée.'); return; }
       } else if (openSlot.kind === 'pending') {
         const pend = getPendingEntries(user.id).find((e) => e.localId === openSlot.localId);
         if (pend) {
@@ -641,35 +704,24 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
     }
   };
 
-  const handleDeleteEntry = async (entryId: string) => {
-    if (!user) return;
-    try {
-      const { error } = await supabase.from('time_entries').delete().eq('id', entryId).eq('user_id', user.id);
-      if (error) throw error;
-      toast.success('Intervention supprimée');
-      if (openSlot?.kind === 'entry' && openSlot.entryId === entryId) setOpenSlot(null);
-      await applyDayMeal(dayMeal);
-      fetchData();
-    } catch (err) {
-      console.error('Error deleting entry:', err);
-      toast.error('Impossible de supprimer');
-    }
-  };
-
   // Remove a wrong intervention. Draft → delete. Sent → soft-cancel (stays
   // visible "Retirée", excluded from the total, secretary informed).
+  // `.select('id')` sur chaque écriture : 0 ligne = refus RLS (verrouillée), pas
+  // un succès.
   const handleRetire = async (entry: TimeEntryWithWorksite) => {
     if (!user) return;
     try {
       if (entry.status === 'submitted') {
-        const { error } = await supabase.from('time_entries')
+        const { data: upd, error } = await supabase.from('time_entries')
           .update({ status: 'cancelled', modified_at: new Date().toISOString(), modified_by: user.id })
-          .eq('id', entry.id).eq('user_id', user.id);
+          .eq('id', entry.id).eq('user_id', user.id).select('id');
         if (error) throw error;
+        if (!upd || upd.length === 0) { toast.error('Impossible de retirer : intervention verrouillée ou déjà exportée.'); return; }
         toast.success('Intervention retirée — la secrétaire est prévenue');
       } else {
-        const { error } = await supabase.from('time_entries').delete().eq('id', entry.id).eq('user_id', user.id);
+        const { data: del, error } = await supabase.from('time_entries').delete().eq('id', entry.id).eq('user_id', user.id).select('id');
         if (error) throw error;
+        if (!del || del.length === 0) { toast.error('Impossible de retirer : intervention verrouillée ou déjà envoyée.'); fetchData(); return; }
         toast.success('Intervention retirée');
       }
       setOpenSlot(null);
@@ -696,7 +748,8 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
     if (!navigator.onLine) { toast.error('Copie indisponible hors-ligne'); return; }
     setCopyingYesterday(true);
     try {
-      const { data: yEntries, error } = await supabase.from('time_entries').select('*').eq('user_id', user.id).eq('work_date', yesterday).order('start_time');
+      // Une intervention retirée hier ne se recopie pas.
+      const { data: yEntries, error } = await supabase.from('time_entries').select('*').eq('user_id', user.id).eq('work_date', yesterday).neq('status', 'cancelled').order('start_time');
       if (error) throw error;
       if (!yEntries || yEntries.length === 0) { toast.error('Aucune intervention hier à copier'); return; }
 
@@ -729,9 +782,11 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
     if (!user) return;
     if (!navigator.onLine) { toast.error('Copie indisponible hors-ligne'); return; }
     const targets = Array.from(new Set(targetStrs)).filter((d) => d !== date);
+    // Les interventions retirées ne se copient pas ; le panier non plus (il se
+    // coche jour par jour, et un seul par jour est accepté en base).
     const sources = [
-      ...entries.map((e) => ({ worksite_id: e.worksite_id, start_time: e.start_time, end_time: e.end_time, meal_allowance: e.meal_allowance, observation: e.observation })),
-      ...pendingEntries.map((e) => ({ worksite_id: e.worksite_id, start_time: e.start_time, end_time: e.end_time, meal_allowance: e.meal_allowance, observation: e.observation })),
+      ...liveEntries.map((e) => ({ worksite_id: e.worksite_id, start_time: e.start_time, end_time: e.end_time, meal_allowance: false, observation: e.observation })),
+      ...pendingEntries.map((e) => ({ worksite_id: e.worksite_id, start_time: e.start_time, end_time: e.end_time, meal_allowance: false, observation: e.observation })),
     ];
     if (sources.length === 0) { toast.error('Aucune intervention à copier'); return; }
     if (targets.length === 0) { toast.error('Aucun jour à remplir'); return; }
@@ -772,7 +827,7 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
     }
     const totalMins = drafts.reduce((s, e) => s + e.total_minutes, 0);
     if (totalMins > 600) warnings.push(`Total : ${formatMinutesToHours(totalMins)} (dépasse 10h). Vérifie tes horaires.`);
-    const slots = [...entries, ...pendingEntries]
+    const slots = [...liveEntries, ...pendingEntries]
       .map((e) => ({ s: (e.start_time || '').slice(0, 5), e: (e.end_time || '').slice(0, 5) }))
       .filter((x) => x.s && x.e)
       .sort((a, b) => a.s.localeCompare(b.s));
@@ -795,10 +850,15 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
     if (draftIds.length === 0) return;
     setSubmitting(true);
     try {
-      const { error } = await supabase.from('time_entries').update({ status: 'submitted', submitted_at: new Date().toISOString() })
-        .in('id', draftIds).eq('user_id', user.id).eq('status', 'draft');
+      const { data: sent, error } = await supabase.from('time_entries').update({ status: 'submitted', submitted_at: new Date().toISOString() })
+        .in('id', draftIds).eq('user_id', user.id).eq('status', 'draft').select('id');
       if (error) throw error;
-      toast.success('Journée envoyée');
+      // On compare au nombre attendu : une ligne verrouillée entre-temps est
+      // silencieusement ignorée par la RLS.
+      const n = sent?.length ?? 0;
+      if (n === 0) toast.error("Rien n'a été envoyé : la journée est verrouillée ou a changé. Recharge.");
+      else if (n < draftIds.length) toast.error(`${n} intervention${n > 1 ? 's' : ''} envoyée${n > 1 ? 's' : ''} sur ${draftIds.length} — les autres sont verrouillées.`);
+      else toast.success('Journée envoyée');
       fetchData();
     } catch (err) {
       console.error('Error submitting day:', err);
@@ -1012,7 +1072,7 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
                     <span className="bt-iv-docs"><Paperclip className="h-3 w-3" />{docsByWorksite.get(entry.worksite_id)}</span>
                   )}
                   {entry.locked ? (
-                    <div className="bt-badge bt-badge-ok"><span className="dot">✓</span> Validé</div>
+                    <div className="bt-badge bt-badge-ok"><span className="dot">✓</span> Exporté</div>
                   ) : entry.status === 'submitted' ? (
                     <div className="bt-badge bt-badge-sent"><span className="dot">✓</span> Envoyé</div>
                   ) : isDraft ? (

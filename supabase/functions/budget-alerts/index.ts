@@ -128,10 +128,10 @@ async function runForCompany(admin: ReturnType<typeof createClient>, companyId: 
   const sites = (sitesRes.data || []) as Site[];
   if (!sites.length) return { companyId, skipped: 'no_budget' };
 
-  // Heures validées + taux horaire, pour les chantiers concernés uniquement.
+  // Heures envoyées + taux horaire, pour les chantiers concernés uniquement.
   const { data: entries } = await admin.from('time_entries')
     .select('worksite_id, total_minutes, owner:users!time_entries_user_id_fkey(hourly_rate)')
-    .eq('company_id', companyId).eq('status', 'validated')
+    .eq('company_id', companyId).in('status', ['submitted', 'validated'])
     .in('worksite_id', sites.map((s) => s.id));
 
   type Entry = { worksite_id: string; total_minutes: number; owner: { hourly_rate: number | null } | { hourly_rate: number | null }[] | null };

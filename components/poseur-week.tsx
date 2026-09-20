@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
+import { isCounted } from '@/lib/status';
 import { TimeEntry, Worksite, Planning } from '@/lib/types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -85,8 +86,10 @@ export default function PoseurWeek({ onSelectDay }: { onSelectDay?: (date: strin
   const weekDays = Array.from({ length: 6 }, (_, i) => addDays(weekStart, i));
   const todayStr = format(new Date(), 'yyyy-MM-dd');
 
+  // Seules les heures envoyées comptent : une intervention retirée n'est plus
+  // additionnée (elle reste visible, barrée).
   const totalSent = entries
-    .filter(e => e.status !== 'draft')
+    .filter((e) => isCounted(e.status))
     .reduce((s, e) => s + e.total_minutes, 0);
 
   if (loading) {
@@ -176,7 +179,9 @@ export default function PoseurWeek({ onSelectDay }: { onSelectDay?: (date: strin
 
               {/* Time entries */}
               {dayEntries.map((entry) => {
+                const isCancelled = entry.status === 'cancelled';
                 const statusColor =
+                  isCancelled ? 'bg-[#F3EEE3] border-[rgba(21,18,15,.10)] text-[#9a948a] line-through' :
                   entry.status === 'submitted' ? 'bg-white border-[rgba(21,18,15,.14)] text-[#15120F]' :
                   'bg-[#F3EEE3] border-[rgba(21,18,15,.10)] text-[#6E6A63]';
 
@@ -193,7 +198,8 @@ export default function PoseurWeek({ onSelectDay }: { onSelectDay?: (date: strin
                     <div className="flex flex-col items-end gap-1 shrink-0">
                       <span className="font-semibold">{formatMinutes(entry.total_minutes)}</span>
                       <div className="flex items-center gap-1">
-                        {entry.meal_allowance && (
+                        {isCancelled && <span className="text-[10px] font-semibold no-underline">Retirée</span>}
+                        {!isCancelled && entry.meal_allowance && (
                           <Utensils className="h-3 w-3 opacity-60" aria-label="Panier repas" />
                         )}
                         {entry.status === 'submitted' && (
@@ -259,7 +265,9 @@ export default function PoseurWeek({ onSelectDay }: { onSelectDay?: (date: strin
                 ))}
 
                 {dayEntries.map((entry) => {
+                  const isCancelled = entry.status === 'cancelled';
                   const statusColor =
+                    isCancelled ? 'bg-[#F3EEE3] border-[rgba(21,18,15,.10)] text-[#9a948a] line-through' :
                     entry.status === 'submitted' ? 'bg-white border-[rgba(21,18,15,.14)] text-[#15120F]' :
                     'bg-[#F3EEE3] border-[rgba(21,18,15,.10)] text-[#6E6A63]';
                   return (
@@ -273,7 +281,8 @@ export default function PoseurWeek({ onSelectDay }: { onSelectDay?: (date: strin
                         <span className="font-semibold">{formatMinutes(entry.total_minutes)}</span>
                       </div>
                       <div className="flex items-center gap-1 mt-0.5">
-                        {entry.meal_allowance && <Utensils className="h-3 w-3 opacity-60" aria-label="Panier repas" />}
+                        {isCancelled && <span className="text-[10px] font-semibold no-underline">Retirée</span>}
+                        {!isCancelled && entry.meal_allowance && <Utensils className="h-3 w-3 opacity-60" aria-label="Panier repas" />}
                         {entry.status === 'submitted' && <Send className="h-3 w-3 opacity-70" aria-label="Envoyé" />}
                       </div>
                     </div>
