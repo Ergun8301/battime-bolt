@@ -83,12 +83,17 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
   // Destinataire de l'export de paie. Enregistré une fois, modifiable ici : la
   // fonction serveur ne lit QUE cette adresse, jamais celle du navigateur.
   const [accountantEmail, setAccountantEmail] = useState('');
+  // Majoration des heures supplémentaires. Réglable parce que le taux légal
+  // (25 / 50) n'est qu'un défaut : une convention peut dire autrement, et
+  // l'écrire en dur produirait un bulletin faux en silence.
+  const [rate1, setRate1] = useState('25');
+  const [rate2, setRate2] = useState('50');
 
   useEffect(() => {
     if (!open || !user?.company_id) return;
     setLoading(true); setErr(null);
     supabase.from('companies')
-      .select('name, siret, tva_intra, address, postal_code, city, phone, email, logo_url, subscription_status, auto_reminder_enabled, reminder_hour, budget_alerts_enabled, travel_paid, weekly_hours, accountant_email')
+      .select('name, siret, tva_intra, address, postal_code, city, phone, email, logo_url, subscription_status, auto_reminder_enabled, reminder_hour, budget_alerts_enabled, travel_paid, weekly_hours, accountant_email, overtime_rate_1, overtime_rate_2')
       .eq('id', user.company_id).maybeSingle()
       .then(({ data }) => {
         const d = (data || {}) as Partial<Form> & {
@@ -99,6 +104,8 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
           travel_paid?: boolean | null;
           weekly_hours?: number | null;
           accountant_email?: string | null;
+          overtime_rate_1?: number | null;
+          overtime_rate_2?: number | null;
         };
         setF({
           name: d.name || '', siret: d.siret || '', tva_intra: d.tva_intra || '', address: d.address || '',
@@ -111,6 +118,8 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
         setTravelPaid(d.travel_paid ?? false);
         setWeeklyHours(String(d.weekly_hours ?? 35));
         setAccountantEmail(d.accountant_email || '');
+        setRate1(String(d.overtime_rate_1 ?? 25));
+        setRate2(String(d.overtime_rate_2 ?? 50));
         setLoading(false);
       });
   }, [open, user?.company_id]);
@@ -205,6 +214,12 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
       setErr("Adresse du comptable invalide.");
       return;
     }
+    const r1 = Number(rate1.replace(',', '.'));
+    const r2 = Number(rate2.replace(',', '.'));
+    if (![r1, r2].every((v) => Number.isFinite(v) && v >= 0 && v <= 200)) {
+      setErr('Taux de majoration invalide (0 à 200 %).');
+      return;
+    }
     setSaving(true); setErr(null);
     try {
       const { error } = await supabase.rpc('update_company_info', {
@@ -215,6 +230,8 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
         p_travel_paid: travelPaid,
         p_weekly_hours: Number(weeklyHours.replace(',', '.')) || 0,
         p_accountant_email: mail,
+        p_overtime_rate_1: r1,
+        p_overtime_rate_2: r2,
       });
       if (error) throw error;
       onSaved?.();
@@ -387,6 +404,37 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
                     onChange={(e) => setWeeklyHours(e.target.value)}
                   />
                   <span>h / semaine</span>
+                </label>
+              </div>
+            </div>
+
+            {/* Majoration des heures supplémentaires. Les TAUX sont à
+                l'entreprise ; le seuil entre les deux paliers (8 h) est la
+                règle française et n'est pas réglable — un réglage de plus
+                qu'on ne saurait pas remplir est un piège. */}
+            <div className="bt-set-sub">
+              <div className="bt-set-subtxt">
+                <label className="bt-set-l">Majoration des heures supplémentaires</label>
+                <p className="bt-set-substate">
+                  Les <strong>8 premières</strong> heures supplémentaires de la semaine sont majorées au 1<sup>er</sup> taux,
+                  les suivantes au 2<sup>e</sup>. Les valeurs de départ sont les taux légaux français ;
+                  remplacez-les par ceux de votre convention si elle diffère.
+                </p>
+              </div>
+              <div className="bt-set-remctl">
+                <label className="bt-set-switch" style={{ gap: 6 }}>
+                  <span style={{ fontWeight: 700, color: '#6E6A63' }}>1<sup>er</sup></span>
+                  <input type="number" min={0} max={200} step={1} inputMode="decimal"
+                    className="bt-field" style={{ width: 72, textAlign: 'right' }}
+                    value={rate1} onChange={(e) => setRate1(e.target.value)} />
+                  <span>%</span>
+                </label>
+                <label className="bt-set-switch" style={{ gap: 6 }}>
+                  <span style={{ fontWeight: 700, color: '#6E6A63' }}>2<sup>e</sup></span>
+                  <input type="number" min={0} max={200} step={1} inputMode="decimal"
+                    className="bt-field" style={{ width: 72, textAlign: 'right' }}
+                    value={rate2} onChange={(e) => setRate2(e.target.value)} />
+                  <span>%</span>
                 </label>
               </div>
             </div>
