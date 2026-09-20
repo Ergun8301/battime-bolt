@@ -106,7 +106,12 @@ function statusLabel(status: string): string {
   return 'Envoyé';
 }
 
-export function exportEntriesToExcel(entries: ExportEntry[], opts: ExportOptions): void {
+/**
+ * Construit le classeur. Séparé de l'écriture du fichier : le même classeur
+ * part en téléchargement ET en pièce jointe au comptable, sans risque que les
+ * deux divergent.
+ */
+function buildWorkbook(entries: ExportEntry[], opts: ExportOptions) {
   const includeWorker = !opts.singleWorkerName;
 
   const route = routeMinutesByEntry(entries);
@@ -164,7 +169,16 @@ export function exportEntriesToExcel(entries: ExportEntry[], opts: ExportOptions
   }
 
   XLSX.utils.book_append_sheet(wb, ws, 'Détail');
-  XLSX.writeFile(wb, `${opts.fileName}.xlsx`);
+  return wb;
+}
+
+export function exportEntriesToExcel(entries: ExportEntry[], opts: ExportOptions): void {
+  XLSX.writeFile(buildWorkbook(entries, opts), `${opts.fileName}.xlsx`);
+}
+
+/** Le même classeur, encodé pour être joint à un e-mail. */
+export function excelAsBase64(entries: ExportEntry[], opts: ExportOptions): string {
+  return XLSX.write(buildWorkbook(entries, opts), { type: 'base64', bookType: 'xlsx' });
 }
 
 export function exportEntriesToPDF(entries: ExportEntry[], opts: ExportOptions): void {

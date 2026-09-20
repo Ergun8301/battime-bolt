@@ -31,7 +31,7 @@ import { fr } from 'date-fns/locale';
 import type { DateRange } from 'react-day-picker';
 import { toast } from 'sonner';
 import { computeMissingDays } from '@/lib/work-status';
-import { exportEntriesToExcel, exportEntriesToPDF } from '@/lib/export-utils';
+import { exportEntriesToExcel, exportEntriesToPDF, excelAsBase64 } from '@/lib/export-utils';
 import { fetchAllPaged, chunk } from '@/lib/fetch-all';
 import WorkerDetailDialog from '@/components/worker-detail';
 import ChantierDocuments from '@/components/chantier-documents';
@@ -52,6 +52,32 @@ function formatMinutes(minutes: number): string {
   const m = minutes % 60;
   return `${h}h${m.toString().padStart(2, '0')}`;
 }
+/**
+ * Empreinte de l'envoi au comptable : entreprise + période + contenu exact du
+ * tableur. Deux clics sur le MÊME export donnent la même clé — le serveur
+ * reconnaît alors un envoi déjà parti plutôt que d'en expédier un second. Un
+ * export refait après correction des heures donne une clé différente, et part.
+ *
+ * Ce n'est pas un usage cryptographique : sur un navigateur sans `crypto.subtle`
+ * (contexte non sécurisé), on retombe sur un condensé maison. Deux fichiers
+ * distincts de la même entreprise et de la même période auraient alors une
+ * chance négligeable de se confondre, et le pire serait un envoi non répété.
+ */
+async function sendKey(companyId: string, from: string, to: string, content: string): Promise<string> {
+  const seed = `${companyId}|${from}|${to}|${content.length}|${content}`;
+  try {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(seed));
+    return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('');
+  } catch {
+    let h1 = 0x811c9dc5, h2 = 0x01000193;
+    for (let i = 0; i < seed.length; i++) {
+      h1 = Math.imul(h1 ^ seed.charCodeAt(i), 0x01000193) >>> 0;
+      h2 = Math.imul(h2 + seed.charCodeAt(i), 0x85ebca6b) >>> 0;
+    }
+    return `f${h1.toString(16).padStart(8, '0')}${h2.toString(16).padStart(8, '0')}${companyId.slice(0, 8)}${from}${to}`;
+  }
+}
+
 // Format compact pour les stats du cockpit (30000 -> "30k").
 function fmtStat(n: number): string {
   if (n >= 10000) return `${(n / 1000).toFixed(n >= 100000 ? 0 : 1).replace(/\.0$/, '').replace('.', ',')}k`;
@@ -599,6 +625,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   // Réglage entreprise : la route entre deux chantiers est-elle payée ?
   const [travelPaid, setTravelPaid] = useState(false);
   const [companyWeeklyHours, setCompanyWeeklyHours] = useState(DEFAULT_WEEKLY_HOURS);
+  const [accountantEmail, setAccountantEmail] = useState('');
   const [loading, setLoading] = useState(true);
   const [currentWeekStart, setCurrentWeekStart] = useState(weekStart());
   const [positionWarned, setPositionWarned] = useState(false);
@@ -835,7 +862,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     const [planRes, entRes, compRes, invRes, docRes, leaveRes] = await Promise.all([
       supabase.from('planning').select('user_id, work_date, absence_type').eq('company_id', user.company_id).gte('work_date', windowStart),
       supabase.from('time_entries').select('user_id, work_date').eq('company_id', user.company_id).in('status', ['submitted', 'validated']).gte('work_date', windowStart),
-      supabase.from('companies').select('name, logo_url, travel_paid, weekly_hours').eq('id', user.company_id).maybeSingle(),
+      supabase.from('companies').select('name, logo_url, travel_paid, weekly_hours, accountant_email').eq('id', user.company_id).maybeSingle(),
       supabase.from('invitations').select('*').eq('company_id', user.company_id).is('accepted_at', null).gt('expires_at', new Date().toISOString()).order('created_at', { ascending: false }),
       supabase.from('documents').select('worksite_id').eq('company_id', user.company_id),
       supabase.from('leave_requests').select('id', { count: 'exact', head: true }).eq('company_id', user.company_id).eq('status', 'pending'),
@@ -876,9 +903,10 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     setTodayAbsence(today);
     setMissingByWorker(miss);
     setCompanyName(compRes.data?.name || '');
-    const comp = compRes.data as { travel_paid?: boolean; weekly_hours?: number | null } | null;
+    const comp = compRes.data as { travel_paid?: boolean; weekly_hours?: number | null; accountant_email?: string | null } | null;
     setTravelPaid(!!comp?.travel_paid);
     setCompanyWeeklyHours(comp?.weekly_hours ?? DEFAULT_WEEKLY_HOURS);
+    setAccountantEmail((comp?.accountant_email || '').trim());
     setCompanyLogo((compRes.data as { logo_url?: string | null } | null)?.logo_url || '');
     setInvitations((invRes.data || []) as Invitation[]);
   }, [user?.company_id]);
@@ -1285,7 +1313,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
 
   // ─── team export (locks) ──────────────────────────────────────────────────────
 
-  const runExport = async (kind: 'excel' | 'pdf') => {
+  const runExport = async (kind: 'excel' | 'pdf' | 'comptable') => {
     if (!user?.company_id) { toast.error('Profil non chargé'); return; }
     setExporting(true);
     try {
@@ -1355,8 +1383,60 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         weeklyHoursByWorker,
         recapEntries,
       };
-      if (kind === 'excel') exportEntriesToExcel(entries, opts);
-      else exportEntriesToPDF(entries, opts);
+      // Message final : dépend de ce que le serveur répond (envoyé / déjà parti).
+      let sentNote = '';
+      if (kind === 'comptable') {
+        // Le fichier part en pièce jointe, pas en lien : le comptable ne doit
+        // rien avoir à ouvrir ni à installer. Le destinataire n'est pas
+        // transmis — la fonction le relit dans les réglages de l'entreprise.
+        //
+        // La clé d'idempotence est l'empreinte du fichier RÉELLEMENT expédié :
+        // recliquer après une coupure renvoie la même clé, donc le serveur
+        // reconnaît l'envoi au lieu d'en faire un second. Un export refait
+        // après correction des heures donne une autre clé, et part bien.
+        const content = excelAsBase64(entries, opts);
+        const idempotencyKey = await sendKey(user.company_id, from, to, content);
+        const { data: sendData, error: sendErr } = await supabase.functions.invoke('send-payroll-export', {
+          body: {
+            fileName: `${opts.fileName}.xlsx`,
+            contentBase64: content,
+            periodLabel: opts.periodLabel,
+            idempotencyKey,
+          },
+        });
+        if (sendErr) {
+          // Le message utile est dans le corps de la réponse, pas dans
+          // `sendErr.message` qui dit seulement « non-2xx ».
+          let detail = '';
+          try {
+            const ctx = (sendErr as { context?: Response }).context;
+            if (ctx && typeof ctx.json === 'function') {
+              const body = await ctx.json();
+              detail = typeof body?.error === 'string' ? body.error : '';
+            }
+          } catch { /* corps illisible : on garde le message générique */ }
+          toast.error(detail || "L'envoi au comptable a échoué. Les heures restent modifiables. Recliquez : si l'e-mail était déjà parti, il ne partira pas deux fois.");
+          // Pas d'envoi confirmé, donc pas de verrouillage : sans ça le bureau
+          // croirait la paie partie et ne pourrait plus rien corriger.
+          return;
+        }
+        const r = (sendData || {}) as { duplicate?: boolean; alreadySentAt?: string | null; previousSendAt?: string | null };
+        if (r.duplicate) {
+          // Le fichier était déjà parti — la fois d'avant, la réponse s'était
+          // perdue. On ne renvoie pas, et on verrouille ce qui aurait dû l'être.
+          sentNote = r.alreadySentAt
+            ? `Déjà envoyé le ${format(new Date(r.alreadySentAt), 'dd/MM \'à\' HH:mm')} — non renvoyé`
+            : 'Déjà envoyé — non renvoyé';
+        } else if (r.previousSendAt) {
+          sentNote = `Envoyé à ${accountantEmail} — attention, un export de cette période était déjà parti le ${format(new Date(r.previousSendAt), 'dd/MM \'à\' HH:mm')}`;
+        } else {
+          sentNote = `Envoyé à ${accountantEmail}`;
+        }
+      } else if (kind === 'excel') {
+        exportEntriesToExcel(entries, opts);
+      } else {
+        exportEntriesToPDF(entries, opts);
+      }
 
       // Verrouillage PAR LOTS : un `.in('id', [...])` avec des centaines d'UUID
       // dépasse la longueur d'URL admise par la passerelle et échoue. L'erreur
@@ -1370,7 +1450,10 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         if (lockErr) throw lockErr;
       }
 
-      toast.success(`Export téléchargé — ${entries.length} saisie${entries.length > 1 ? 's' : ''} verrouillée${entries.length > 1 ? 's' : ''}`);
+      const lockLabel = `${entries.length} saisie${entries.length > 1 ? 's' : ''} verrouillée${entries.length > 1 ? 's' : ''}`;
+      toast.success(kind === 'comptable'
+        ? `${sentNote} — ${lockLabel}`
+        : `Export téléchargé — ${lockLabel}`);
     } catch (err) {
       console.error('Error exporting team:', err);
       toast.error("Erreur lors de l'export");
@@ -2375,6 +2458,23 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                 {exporting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <FileText className="h-4 w-4 mr-2" />} PDF
               </Button>
             </div>
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => runExport('comptable')}
+              disabled={exporting || !exportRange || !accountantEmail}
+              title={accountantEmail
+                ? `Envoyer le tableur à ${accountantEmail}`
+                : "Enregistrez l'adresse de votre comptable dans les réglages"}
+            >
+              {exporting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Mail className="h-4 w-4 mr-2" />}
+              {accountantEmail ? `Envoyer à ${accountantEmail}` : 'Envoyer au comptable'}
+            </Button>
+            {!accountantEmail && (
+              <p className="text-xs text-muted-foreground">
+                Aucune adresse de comptable enregistrée. Ajoutez-la dans les réglages de l&apos;entreprise.
+              </p>
+            )}
             <p className="text-xs text-muted-foreground">Verrouille les saisies exportées (paie).</p>
 
             {/* Clôture du mois — après l'export, on ferme. Un salarié ne peut
