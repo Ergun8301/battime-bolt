@@ -40,6 +40,7 @@ import CompanySettings from '@/components/company-settings';
 import AdminMobileMenu from '@/components/admin-mobile-menu';
 import ImportDialog from '@/components/import-dialog';
 import CostReport from '@/components/cost-report';
+import ReservesReport from '@/components/reserves-report';
 import ImportWorkersDialog from '@/components/import-workers-dialog';
 import LeaveAdminDialog from '@/components/leave-admin-dialog';
 
@@ -152,7 +153,9 @@ const paletteFor = (p: PlanningWithWorksite) =>
 
 type ReceptionStatus = 'sans' | 'avec' | 'en_cours' | null;
 const RECEPTION_RANK: Record<string, number> = { avec: 3, en_cours: 2, sans: 1 };
-interface RealAgg { minutes: number; start: string; end: string; count: number; reception: ReceptionStatus; note: string }
+interface RealAgg { minutes: number; start: string; end: string; count: number; reception: ReceptionStatus;
+  /** Au moins une réserve de cette case n'a pas encore été levée par le bureau. */
+  reserveOpen: boolean; note: string }
 const realKey = (userId: string, date: string, worksiteId: string | null) => `${userId}|${date}|${worksiteId}`;
 
 // ─── compact one-line chantier bubble ──────────────────────────────────────────
@@ -173,7 +176,11 @@ function BubbleContent({ p, palette, real, draft, docCount = 0 }: { p: PlanningW
           <span className="bt-pl-bub-title">{p.worksite?.client_name || 'Chantier'}</span>
           <span className="bt-pl-bub-ic">
             {p.added_by_worker && <span className="bt-pl-ic" title="Ajouté par le salarié" style={{ color: '#FFC21A' }}><UserIcon className="h-3 w-3" /></span>}
-            {real.reception === 'avec' && <span className="bt-pl-ic" title="Réception avec réserve" style={{ color: '#F0915A' }}><AlertTriangle className="h-3 w-3" /></span>}
+            {real.reception === 'avec' && (
+              real.reserveOpen
+                ? <span className="bt-pl-ic" title="Réception avec réserve — à traiter" style={{ color: '#F0915A' }}><AlertTriangle className="h-3 w-3" /></span>
+                : <span className="bt-pl-ic" title="Réception avec réserve — levée" style={{ color: '#8a8378' }}><AlertTriangle className="h-3 w-3" /></span>
+            )}
             {real.reception === 'sans' && <span className="bt-pl-ic" title="Réceptionné sans réserve" style={{ color: '#46C281' }}><CheckCircle2 className="h-3 w-3" /></span>}
             {real.reception === 'en_cours' && <span className="bt-pl-ic" title="Chantier en cours" style={{ color: '#E6B23C' }}><Hammer className="h-3 w-3" /></span>}
             {docs}
@@ -388,6 +395,8 @@ const PL_CSS = `
 .bt-pl-out{background:transparent;border:1.5px solid rgba(21,18,15,.3);color:#15120F;border-radius:10px;padding:7px 13px;height:33px;font-size:12.5px;font-weight:800;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;transition:border-color .14s ease,background .14s ease,transform .08s ease}
 .bt-pl-out:hover{border-color:#15120F;background:rgba(21,18,15,.04)}
 .bt-pl-out:active{transform:translateY(1px)}
+/* pastille de comptage (réserves à traiter) — même code couleur que l'alerte */
+.bt-pl-outbadge{min-width:18px;height:18px;padding:0 5px;border-radius:99px;background:#B5472E;color:#fff;font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;line-height:1;flex:none}
 .bt-pl-fill{background:linear-gradient(180deg,#FFCB3D,#F5B400);color:#15120F;border:none;box-shadow:0 10px 22px -10px rgba(214,158,0,.65);border-radius:10px;padding:8px 14px;height:33px;font-size:12.5px;font-weight:800;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;transition:transform .12s ease,box-shadow .12s ease}
 .bt-pl-fill:hover{transform:translateY(-1px);box-shadow:0 14px 28px -10px rgba(214,158,0,.75)}
 .bt-pl-fill:active{transform:translateY(1px);box-shadow:0 6px 14px -8px rgba(214,158,0,.6)}
@@ -614,9 +623,9 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const [workers, setWorkers] = useState<User[]>([]);
   const [worksites, setWorksites] = useState<Worksite[]>([]);
   const [planning, setPlanning] = useState<PlanningWithWorksite[]>([]);
-  const [realEntries, setRealEntries] = useState<{ user_id: string; work_date: string; worksite_id: string | null; start_time: string; end_time: string; total_minutes: number; reception: string | null; observation: string | null }[]>([]);
+  const [realEntries, setRealEntries] = useState<{ user_id: string; work_date: string; worksite_id: string | null; start_time: string; end_time: string; total_minutes: number; reception: string | null; reserve_resolved_at: string | null; observation: string | null }[]>([]);
   // Saisies pas encore envoyées : affichées en pointillé, jamais comptées.
-  const [draftEntries, setDraftEntries] = useState<{ user_id: string; work_date: string; worksite_id: string | null; start_time: string; end_time: string; total_minutes: number; reception: string | null; observation: string | null }[]>([]);
+  const [draftEntries, setDraftEntries] = useState<{ user_id: string; work_date: string; worksite_id: string | null; start_time: string; end_time: string; total_minutes: number; reception: string | null; reserve_resolved_at: string | null; observation: string | null }[]>([]);
   const [docsByWorksite, setDocsByWorksite] = useState<Map<string, number>>(new Map()); // nb de documents par chantier (pastille 📎)
   const [todayAbsence, setTodayAbsence] = useState<Map<string, string>>(new Map());
   const [missingByWorker, setMissingByWorker] = useState<Map<string, string[]>>(new Map());
@@ -640,6 +649,8 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const [mobileChantiersOpen, setMobileChantiersOpen] = useState(false); // liste « Chantiers » mobile (équivalent du dropdown Clients desktop)
   const [importOpen, setImportOpen] = useState(false); // import CSV/Excel de clients/chantiers
   const [costOpen, setCostOpen] = useState(false); // rapport coût & heures par chantier
+  const [reservesOpen, setReservesOpen] = useState(false); // registre des réserves de chantier
+  const [openReserves, setOpenReserves] = useState(0); // compteur pour la pastille
   const [importWorkersOpen, setImportWorkersOpen] = useState(false); // import CSV/Excel de salariés (invitations en masse)
   const [leaveOpen, setLeaveOpen] = useState(false); // demandes de congé des salariés
   const [pendingLeaves, setPendingLeaves] = useState(0); // compteur pour la pastille
@@ -821,9 +832,9 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       const [planRes, realRes, draftRes] = await Promise.all([
         supabase.from('planning').select('*, worksite:worksites(*), user:users!user_id(*)')
           .eq('company_id', user.company_id).gte('work_date', from).lte('work_date', to).order('work_date'),
-        supabase.from('time_entries').select('user_id, work_date, worksite_id, start_time, end_time, total_minutes, reception, observation')
+        supabase.from('time_entries').select('user_id, work_date, worksite_id, start_time, end_time, total_minutes, reception, reserve_resolved_at, observation')
           .eq('company_id', user.company_id).in('status', ['submitted', 'validated']).gte('work_date', from).lte('work_date', to),
-        supabase.from('time_entries').select('user_id, work_date, worksite_id, start_time, end_time, total_minutes, reception, observation')
+        supabase.from('time_entries').select('user_id, work_date, worksite_id, start_time, end_time, total_minutes, reception, reserve_resolved_at, observation')
           .eq('company_id', user.company_id).eq('status', 'draft').gte('work_date', from).lte('work_date', to),
       ]);
       if (planRes.error) throw planRes.error;
@@ -859,15 +870,23 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const fetchExtras = useCallback(async () => {
     if (!user?.company_id) return;
     const windowStart = format(subDays(new Date(), WINDOW_DAYS), 'yyyy-MM-dd');
-    const [planRes, entRes, compRes, invRes, docRes, leaveRes] = await Promise.all([
+    const [planRes, entRes, compRes, invRes, docRes, leaveRes, resRes] = await Promise.all([
       supabase.from('planning').select('user_id, work_date, absence_type').eq('company_id', user.company_id).gte('work_date', windowStart),
       supabase.from('time_entries').select('user_id, work_date').eq('company_id', user.company_id).in('status', ['submitted', 'validated']).gte('work_date', windowStart),
       supabase.from('companies').select('name, logo_url, travel_paid, weekly_hours, accountant_email').eq('id', user.company_id).maybeSingle(),
       supabase.from('invitations').select('*').eq('company_id', user.company_id).is('accepted_at', null).gt('expires_at', new Date().toISOString()).order('created_at', { ascending: false }),
       supabase.from('documents').select('worksite_id').eq('company_id', user.company_id),
       supabase.from('leave_requests').select('id', { count: 'exact', head: true }).eq('company_id', user.company_id).eq('status', 'pending'),
+      // Réserves encore à traiter. Mêmes statuts que partout : un brouillon ou
+      // une intervention retirée ne crée pas une réserve à poursuivre.
+      supabase.from('time_entries').select('id', { count: 'exact', head: true })
+        .eq('company_id', user.company_id).eq('reception', 'avec')
+        .in('status', ['submitted', 'validated']).is('reserve_resolved_at', null),
     ]);
     setPendingLeaves(leaveRes.count || 0);
+    // Une erreur de lecture laisse la pastille inchangée : afficher 0 dirait
+    // « aucune réserve », ce qui est précisément le message à ne pas donner.
+    if (!resRes.error) setOpenReserves(resRes.count || 0);
 
     // Pastille 📎 : nombre de documents par chantier.
     const docCounts = new Map<string, number>();
@@ -987,7 +1006,11 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     for (const e of rows) {
       const k = realKey(e.user_id, e.work_date, e.worksite_id);
       const cur = m.get(k);
-      if (!cur) m.set(k, { minutes: e.total_minutes, start: e.start_time, end: e.end_time, count: 1, reception: (e.reception as ReceptionStatus) || null, note: e.observation || '' });
+      // Une réserve « ouverte » = déclarée ET pas encore levée par le bureau.
+      // Sans cette distinction, le triangle d'alerte resterait allumé à vie sur
+      // la case, même une fois le problème réglé.
+      const stillOpen = e.reception === 'avec' && !e.reserve_resolved_at;
+      if (!cur) m.set(k, { minutes: e.total_minutes, start: e.start_time, end: e.end_time, count: 1, reception: (e.reception as ReceptionStatus) || null, reserveOpen: stillOpen, note: e.observation || '' });
       else {
         cur.minutes += e.total_minutes;
         if (e.start_time && e.start_time < cur.start) cur.start = e.start_time;
@@ -995,6 +1018,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         cur.count += 1;
         // garde le statut le plus « fort » (avec > en_cours > sans) + cumule les notes
         if ((RECEPTION_RANK[e.reception || ''] || 0) > (RECEPTION_RANK[cur.reception || ''] || 0)) cur.reception = (e.reception as ReceptionStatus) || cur.reception;
+        if (stillOpen) cur.reserveOpen = true;
         if (e.observation) cur.note = cur.note ? `${cur.note} · ${e.observation}` : e.observation;
       }
     }
@@ -1869,6 +1893,10 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
             <button className="bt-pl-datearr" aria-label="Semaine suivante" onClick={() => setCurrentWeekStart(addWeeks(currentWeekStart, 1))}>›</button>
           </div>
           <div className="bt-pl-group">
+          <button className="bt-pl-out" onClick={() => setReservesOpen(true)} title="Réserves de chantier à traiter">
+            <AlertTriangle className="h-4 w-4" /> Réserves
+            {openReserves > 0 && <span className="bt-pl-outbadge">{openReserves}</span>}
+          </button>
           <button className="bt-pl-out" onClick={() => setCostOpen(true)}><TrendingUp className="h-4 w-4" /> Coût chantiers</button>
           <div className="bt-pl-ddwrap">
             <button className="bt-pl-fill" onClick={() => setExportMenuOpen((o) => !o)}><Download className="h-4 w-4" /> Exporter ▾</button>
@@ -2253,6 +2281,8 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         onOpenCost={() => setCostOpen(true)}
         onOpenLeaves={() => setLeaveOpen(true)}
         pendingLeaves={pendingLeaves}
+        onOpenReserves={() => setReservesOpen(true)}
+        openReserves={openReserves}
         onSignOut={signOut}
       />
 
@@ -2310,6 +2340,21 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       />
 
       <CostReport open={costOpen} onOpenChange={setCostOpen} companyId={user?.company_id} />
+
+      {/* Registre des réserves — ouvre le module Documents du chantier pour les
+          photos. Après une levée, `refresh` recharge le planning ET les extras :
+          sans le premier, le triangle de la case garderait sa couleur d'alerte ;
+          sans le second, la pastille resterait fausse jusqu'au prochain sondage. */}
+      <ReservesReport
+        open={reservesOpen}
+        onOpenChange={setReservesOpen}
+        companyId={user?.company_id}
+        onOpenDocs={(id, name) => {
+          const ws = worksites.find((w) => w.id === id);
+          setDocsWorksite(ws || ({ id, client_name: name } as Worksite));
+        }}
+        onChanged={refresh}
+      />
 
       <ImportWorkersDialog
         open={importWorkersOpen}
@@ -2687,7 +2732,11 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                   <span className="text-muted-foreground">pas encore déclaré</span>
                 )}
                 {editRealAgg?.reception === 'avec' && (
-                  <div className="mt-1.5 flex items-center gap-1.5 font-semibold text-[#C0461F]"><AlertTriangle className="h-3.5 w-3.5" /> Réception avec réserve</div>
+                  editRealAgg.reserveOpen ? (
+                    <div className="mt-1.5 flex items-center gap-1.5 font-semibold text-[#C0461F]"><AlertTriangle className="h-3.5 w-3.5" /> Réception avec réserve — à traiter</div>
+                  ) : (
+                    <div className="mt-1.5 flex items-center gap-1.5 font-semibold text-[#1F7A4D]"><CheckCircle2 className="h-3.5 w-3.5" /> Réception avec réserve — levée</div>
+                  )
                 )}
                 {editRealAgg?.reception === 'sans' && (
                   <div className="mt-1.5 flex items-center gap-1.5 font-semibold text-[#1F7A4D]"><CheckCircle2 className="h-3.5 w-3.5" /> Réceptionné sans réserve</div>
