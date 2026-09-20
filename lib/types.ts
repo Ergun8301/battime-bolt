@@ -115,6 +115,20 @@ export interface TimeEntry {
   exported_at?: string | null;
   modified_by?: string | null;
   modified_at?: string | null;
+  /**
+   * Réserve de réception — DEUX gestes distincts, à ne pas confondre.
+   *
+   * `reserve_fixed_*`    : le SALARIÉ déclare avoir corrigé sur place. La
+   *                        réserve reste ouverte ; c'est une information pour
+   *                        le bureau, pas un quitus qu'on se donne à soi-même.
+   * `reserve_resolved_*` : le BUREAU lève la réserve. Seul geste qui la ferme.
+   */
+  reserve_fixed_at?: string | null;
+  reserve_fixed_by?: string | null;
+  reserve_fix_note?: string | null;
+  reserve_resolved_at?: string | null;
+  reserve_resolved_by?: string | null;
+  reserve_resolution?: string | null;
 }
 
 export type LeaveType = 'conge' | 'maladie' | 'intemperie';

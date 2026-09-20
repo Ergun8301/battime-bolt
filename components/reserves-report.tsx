@@ -41,6 +41,8 @@ export interface ReserveRow {
   resolved_at: string | null;
   resolution: string | null;
   resolved_by_name: string | null;
+  /** Le salarié a déclaré avoir corrigé. N'a PAS levé la réserve. */
+  fixed_at: string | null;
 }
 
 interface Props {
@@ -66,6 +68,8 @@ const RR_CSS = `
 .bt-rr-docs{margin-left:auto;flex:none;display:inline-flex;align-items:center;gap:5px;background:none;border:none;cursor:pointer;font-family:inherit;font-size:12px;font-weight:800;color:#a87c1e;text-decoration:underline}
 .bt-rr-card{background:#fff;border:1px solid rgba(21,18,15,.1);border-left:3px solid #C0461F;border-radius:12px;padding:11px 13px;margin-bottom:7px}
 .bt-rr-card.done{border-left-color:#1F7A4D;background:#FBFAF7}
+.bt-rr-card.fixed{border-left-color:#1F7A4D}
+.bt-rr-fixed{margin-top:6px;display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:800;color:#1F7A4D;background:#EAF6EF;border:1px solid #BBE0CC;border-radius:7px;padding:3px 9px}
 .bt-rr-meta{display:flex;align-items:baseline;gap:8px;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;color:#8a8378}
 .bt-rr-date{color:#15120F}
 .bt-rr-obs{font-size:13.5px;color:#15120F;font-weight:600;margin-top:5px;line-height:1.45;white-space:pre-wrap}
@@ -106,7 +110,7 @@ export default function ReservesReport({ open, onOpenChange, companyId, onOpenDo
     try {
       raw = await fetchAllPaged<Record<string, unknown>>((f, t) => supabase
         .from('time_entries')
-        .select('id, work_date, observation, worksite_id, reserve_resolved_at, reserve_resolved_by, reserve_resolution, '
+        .select('id, work_date, observation, worksite_id, reserve_resolved_at, reserve_resolved_by, reserve_resolution, reserve_fixed_at, '
           + 'worksite:worksites(client_name, city), '
           + 'owner:users!time_entries_user_id_fkey(first_name, last_name)')
         .eq('company_id', companyId)
@@ -151,6 +155,7 @@ export default function ReservesReport({ open, onOpenChange, companyId, onOpenDo
         resolved_at: (e.reserve_resolved_at as string) || null,
         resolution: (e.reserve_resolution as string) || null,
         resolved_by_name: names.get((e.reserve_resolved_by as string) || '') || null,
+        fixed_at: (e.reserve_fixed_at as string) || null,
       };
     }));
     setLoading(false);
@@ -229,7 +234,7 @@ export default function ReservesReport({ open, onOpenChange, companyId, onOpenDo
               </div>
 
               {site.items.map((r) => (
-                <div key={r.id} className={`bt-rr-card${r.resolved_at ? ' done' : ''}`}>
+                <div key={r.id} className={`bt-rr-card${r.resolved_at ? ' done' : r.fixed_at ? ' fixed' : ''}`}>
                   <div className="bt-rr-meta">
                     <span className="bt-rr-date">{format(parseISO(r.work_date), 'EEE d MMM yyyy', { locale: fr })}</span>
                     <span>· {r.worker}</span>
@@ -238,6 +243,14 @@ export default function ReservesReport({ open, onOpenChange, companyId, onOpenDo
                   {r.observation
                     ? <div className="bt-rr-obs">{r.observation}</div>
                     : <div className="bt-rr-noobs">Réserve signalée sans détail écrit — voir les photos du chantier.</div>}
+
+                  {/* Le salarié dit avoir corrigé : le bureau sait quoi aller
+                      vérifier avant de lever. Ce n'est PAS une levée. */}
+                  {!r.resolved_at && r.fixed_at && (
+                    <div className="bt-rr-fixed">
+                      ✓ Le salarié a corrigé sur place le {format(parseISO(r.fixed_at), 'd MMM', { locale: fr })} — à vérifier
+                    </div>
+                  )}
 
                   {r.resolved_at && (
                     <div className="bt-rr-done">
@@ -254,7 +267,9 @@ export default function ReservesReport({ open, onOpenChange, companyId, onOpenDo
                     <div className="mt-2">
                       <Textarea
                         rows={2} value={note} onChange={(e) => setNote(e.target.value)}
-                        placeholder="Ce qui a été fait (facultatif) — ex : vis posée le 22/09"
+                        placeholder={r.fixed_at
+                          ? 'Ce que vous avez constaté (facultatif)'
+                          : 'Ce qui a été fait (facultatif) — ex : vis posée le 22/09'}
                       />
                       <div className="bt-rr-acts">
                         <Button size="sm" className="flex-1" disabled={busy} onClick={() => apply(r.id, true, note)}>
