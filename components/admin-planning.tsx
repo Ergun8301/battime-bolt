@@ -17,6 +17,7 @@ import {
   ChevronLeft, ChevronRight, Plus, Trash2, Loader2,
   UserPlus, Users, Building2, Archive, CalendarRange, Download, FileSpreadsheet, FileText,
   Bell, Clock, Mail, RefreshCw, X, Pencil, LogOut, Settings, User as UserIcon, Paperclip, AlertTriangle, Info, Hammer, CheckCircle2, Menu, TrendingUp, Palmtree,
+  ShieldCheck,
 } from 'lucide-react';
 import {
   DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
@@ -586,6 +587,12 @@ interface AdminPlanningProps {
 export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps = {}) {
   const { user, signOut } = useAuth();
   const [workers, setWorkers] = useState<User[]>([]);
+  // Les personnes du BUREAU (rôle admin). Séparées des salariés : elles ne
+  // pointent pas sur le planning, mais elles doivent rester visibles quelque
+  // part — sinon quelqu'un qu'on vient de nommer disparaît de l'écran et plus
+  // personne ne peut le rétrograder.
+  const [officeUsers, setOfficeUsers] = useState<User[]>([]);
+  const [roleBusyId, setRoleBusyId] = useState<string | null>(null);
   const [worksites, setWorksites] = useState<Worksite[]>([]);
   const [planning, setPlanning] = useState<PlanningWithWorksite[]>([]);
   const [realEntries, setRealEntries] = useState<{ user_id: string; work_date: string; worksite_id: string | null; start_time: string; end_time: string; total_minutes: number; reception: string | null; observation: string | null }[]>([]);
@@ -769,13 +776,15 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const fetchData = useCallback(async () => {
     if (!user?.company_id) return;
     try {
-      const [workersRes, worksitesRes] = await Promise.all([
+      const [workersRes, worksitesRes, officeRes] = await Promise.all([
         supabase.from('users').select('*').eq('company_id', user.company_id).eq('role', 'worker').eq('is_active', true).order('first_name'),
         supabase.from('worksites').select('*').eq('company_id', user.company_id).eq('is_active', true).order('client_name'),
+        supabase.from('users').select('*').eq('company_id', user.company_id).eq('role', 'admin').eq('is_active', true).order('first_name'),
       ]);
       if (workersRes.error) throw workersRes.error;
       if (worksitesRes.error) throw worksitesRes.error;
       setWorkers(workersRes.data || []);
+      if (!officeRes.error) setOfficeUsers((officeRes.data || []) as User[]);
       setWorksites(worksitesRes.data || []);
     } catch (err) {
       console.error('Error fetching data:', err);
@@ -1246,6 +1255,41 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   // salarié (avant, ça n'ouvrait qu'un brouillon mailto sur le poste de l'admin —
   // rien n'était réellement envoyé si l'admin ne cliquait pas « Envoyer »).
   // Repli mailto conservé si le salarié n'a activé le push sur aucun appareil.
+  /**
+   * Nommer quelqu'un au bureau, ou l'en retirer.
+   *
+   * La base tient l'invariant : une entreprise garde toujours au moins un
+   * administrateur ACTIF. On ne le revérifie pas ici pour « faire joli » — on
+   * affiche le message que le serveur renvoie, parce que c'est lui qui sait,
+   * y compris quand deux personnes cliquent en même temps.
+   */
+  const changeRole = async (target: User, role: 'admin' | 'worker') => {
+    const label = `${target.first_name || ''} ${target.last_name || ''}`.trim() || 'cette personne';
+    if (typeof window !== 'undefined') {
+      const q = role === 'admin'
+        ? `Donner à ${label} l'accès complet au bureau ? Cette personne pourra voir les taux horaires, sortir la paie et modifier les réglages.`
+        : `Retirer à ${label} l'accès au bureau ? Elle redeviendra un salarié qui ne voit que ses propres heures.`;
+      if (!window.confirm(q)) return;
+    }
+    setRoleBusyId(target.id);
+    try {
+      const { error } = await supabase.rpc('set_user_role', { p_user_id: target.id, p_role: role });
+      if (error) throw error;
+      toast.success(role === 'admin' ? `${label} a rejoint le bureau` : `${label} est redevenu salarié`);
+      await fetchData();
+      // Se retirer soi-même du bureau change ce que l'on a le droit de voir :
+      // laisser l'écran d'administration ouvert montrerait des boutons qui ne
+      // marchent plus. On recharge pour repartir sur la bonne interface.
+      if (role === 'worker' && target.id === user?.id && typeof window !== 'undefined') {
+        window.location.reload();
+      }
+    } catch (e) {
+      toast.error((e as { message?: string })?.message || 'Changement de rôle impossible.');
+    } finally {
+      setRoleBusyId(null);
+    }
+  };
+
   const sendReminder = async (worker: User) => {
     const missing = missingByWorker.get(worker.id) || [];
     const jours = missing.map((d) => format(parseISO(d), 'EEEE d MMMM', { locale: fr })).join(', ');
@@ -2188,6 +2232,44 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
               <Palmtree className="h-4 w-4 mr-1.5" /> Demandes de congé
               {pendingLeaves > 0 && <span className="bt-pl-badge ml-1.5">{pendingLeaves}</span>}
             </Button>
+
+            {/* LE BUREAU. Une entreprise n'avait qu'un seul administrateur, celui
+                qui a créé le compte : si le patron est sur un toit, personne ne
+                sort la paie. On peut maintenant en nommer d'autres — et surtout
+                les revoir ici, alors qu'une personne promue disparaissait de la
+                liste des salariés et ne pouvait plus être rétrogradée. */}
+            <div className="mb-3">
+              <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[.12em] text-muted-foreground">
+                <ShieldCheck className="h-3.5 w-3.5" /> Bureau · accès complet
+              </div>
+              <div className="space-y-1">
+                {officeUsers.map((o) => (
+                  <div key={o.id} className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm" style={{ background: '#FBF7EF' }}>
+                    <span className="min-w-0 flex-1 truncate font-medium">
+                      {o.first_name} {o.last_name}
+                      {o.id === user?.id && <span className="ml-1.5 text-xs text-muted-foreground">(vous)</span>}
+                    </span>
+                    <Button
+                      variant="outline" size="sm" className="h-7 text-xs"
+                      disabled={roleBusyId === o.id || officeUsers.length <= 1}
+                      title={officeUsers.length <= 1
+                        ? "Dernier accès bureau : nommez quelqu'un d'autre avant de le retirer"
+                        : 'Retirer du bureau'}
+                      onClick={() => changeRole(o, 'worker')}
+                    >
+                      {roleBusyId === o.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Retirer'}
+                    </Button>
+                  </div>
+                ))}
+                {officeUsers.length <= 1 && (
+                  <p className="px-1 pt-1 text-[11.5px] font-semibold text-muted-foreground">
+                    Une seule personne a l&apos;accès bureau. Si elle est indisponible, plus personne ne sort la paie —
+                    nommez un second depuis la liste ci-dessous.
+                  </p>
+                )}
+              </div>
+            </div>
+
             <Input placeholder="Rechercher un salarié…" value={salariesQuery} onChange={(e) => setSalariesQuery(e.target.value)} className="mb-2" />
             <div className="space-y-1">
               {workers.length === 0 ? (
@@ -2208,6 +2290,13 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                           {remindingId === w.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Bell className="h-3.5 w-3.5" />}
                         </Button>
                       )}
+                      <Button
+                        variant="outline" size="icon" className="h-7 w-7"
+                        title="Donner l'accès bureau" disabled={roleBusyId === w.id}
+                        onClick={() => changeRole(w, 'admin')}
+                      >
+                        {roleBusyId === w.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+                      </Button>
                       <Pencil className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                     </div>
                   );
