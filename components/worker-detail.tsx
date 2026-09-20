@@ -311,7 +311,11 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
       const fromStr = range?.from ? format(range.from, 'yyyy-MM-dd') : '';
       const toStr = range?.to ? format(range.to, 'yyyy-MM-dd') : fromStr;
       const fileName = `bemexo-${worker.last_name}-${worker.first_name}-${fromStr}_${toStr}`.toLowerCase().replace(/\s+/g, '-');
-      const opts = { fileName, title: 'BEMEXO — Relevé salarié', periodLabel, companyName, singleWorkerName: name, travelPaid };
+      const opts = {
+        fileName, title: 'BEMEXO — Relevé salarié', periodLabel, companyName,
+        singleWorkerName: name, travelPaid,
+        weeklyHoursByWorker: new Map([[worker.id, effectiveWeeklyHours]]),
+      };
       if (kind === 'excel') exportEntriesToExcel(countedEntries, opts);
       else exportEntriesToPDF(countedEntries, opts);
       toast.success('Export téléchargé');

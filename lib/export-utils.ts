@@ -7,6 +7,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { format, parseISO } from 'date-fns';
 import { TimeEntryWithWorksite, User } from '@/lib/types';
+import { weeklyTotals } from '@/lib/overtime';
 
 export type ExportEntry = TimeEntryWithWorksite & { user?: User };
 
@@ -26,6 +27,12 @@ export interface ExportOptions {
    * déclaré — mais elle n'entre dans le total que si l'entreprise le paie.
    */
   travelPaid?: boolean;
+  /**
+   * Horaire hebdomadaire de base, salarié par salarié (voir lib/overtime.ts).
+   * Absent = pas de récapitulatif des heures supplémentaires : le comptable
+   * préfère une colonne manquante à un chiffre inventé.
+   */
+  weeklyHoursByWorker?: Map<string, number>;
 }
 
 const toMin = (hhmm: string) => {
@@ -68,6 +75,52 @@ function routeMinutesByEntry(entries: ExportEntry[]): Map<string, number> {
     }
   });
   return out;
+}
+
+/**
+ * Récapitulatif par salarié et par semaine : total, dont route payée, et
+ * heures supplémentaires.
+ *
+ * C'est ce que le comptable saisit réellement — le détail ligne à ligne sert
+ * à justifier, pas à recopier. Les heures supplémentaires se comptent à la
+ * semaine (lib/overtime.ts) : une somme mensuelle en dirait autre chose.
+ */
+function weeklyRecap(entries: ExportEntry[], opts: ExportOptions) {
+  const route = routeMinutesByEntry(entries);
+  const byWorker = new Map<string, { name: string; rows: { work_date: string; minutes: number }[] }>();
+  for (const e of entries) {
+    const id = e.user_id;
+    const name = opts.singleWorkerName
+      || `${e.user?.first_name ?? ''} ${e.user?.last_name ?? ''}`.trim()
+      || 'Salarié';
+    const cur = byWorker.get(id) || { name, rows: [] };
+    cur.rows.push({
+      work_date: e.work_date,
+      minutes: e.total_minutes + (opts.travelPaid ? (route.get(e.id) || 0) : 0),
+    });
+    byWorker.set(id, cur);
+  }
+
+  const out: {
+    worker: string; weekStart: string; weekEnd: string;
+    minutes: number; normalMinutes: number; overtimeMinutes: number; base: number | null;
+  }[] = [];
+  byWorker.forEach((v, id) => {
+    const base = opts.weeklyHoursByWorker?.get(id);
+    // Sans horaire de base connu, on additionne sans prétendre savoir ce qui
+    // dépasse : la colonne reste vide plutôt que fausse.
+    const weeks = weeklyTotals(v.rows, base ?? Number.MAX_SAFE_INTEGER / 60);
+    for (const w of weeks) {
+      out.push({
+        worker: v.name, weekStart: w.weekStart, weekEnd: w.weekEnd,
+        minutes: w.minutes,
+        normalMinutes: base == null ? w.minutes : w.normalMinutes,
+        overtimeMinutes: base == null ? 0 : w.overtimeMinutes,
+        base: base ?? null,
+      });
+    }
+  });
+  return out.sort((a, b) => a.worker.localeCompare(b.worker) || a.weekStart.localeCompare(b.weekStart));
 }
 
 function formatMinutesToHours(minutes: number): string {
@@ -117,7 +170,31 @@ export function exportEntriesToExcel(entries: ExportEntry[], opts: ExportOptions
   ];
 
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Saisies');
+
+  // Le récapitulatif vient EN PREMIER : c'est la feuille que le comptable
+  // ouvre et saisit. Le détail derrière sert à justifier une ligne.
+  const recap = weeklyRecap(entries, opts);
+  if (recap.length) {
+    const recapRows = recap.map((r) => {
+      const row: Record<string, string | number> = {};
+      if (includeWorker) row['Salarié'] = r.worker;
+      row['Semaine du'] = format(parseISO(r.weekStart), 'dd/MM/yyyy');
+      row['au'] = format(parseISO(r.weekEnd), 'dd/MM/yyyy');
+      row['Base (h/sem.)'] = r.base ?? '-';
+      row['Heures normales'] = formatMinutesToHours(r.normalMinutes);
+      row['Heures sup.'] = r.base == null ? '-' : formatMinutesToHours(r.overtimeMinutes);
+      row['Total semaine'] = formatMinutesToHours(r.minutes);
+      return row;
+    });
+    const wsRecap = XLSX.utils.json_to_sheet(recapRows);
+    wsRecap['!cols'] = [
+      ...(includeWorker ? [{ wch: 20 }] : []),
+      { wch: 13 }, { wch: 13 }, { wch: 14 }, { wch: 16 }, { wch: 13 }, { wch: 14 },
+    ];
+    XLSX.utils.book_append_sheet(wb, wsRecap, 'Récapitulatif');
+  }
+
+  XLSX.utils.book_append_sheet(wb, ws, 'Détail');
   XLSX.writeFile(wb, `${opts.fileName}.xlsx`);
 }
 
@@ -174,6 +251,35 @@ export function exportEntriesToPDF(entries: ExportEntry[], opts: ExportOptions):
     );
     return cols;
   });
+
+  // Récapitulatif d'abord : c'est ce que le comptable saisit. Le détail suit,
+  // pour justifier une ligne si on la lui conteste.
+  const recap = weeklyRecap(entries, opts);
+  if (recap.length) {
+    autoTable(doc, {
+      startY: y,
+      head: [[
+        ...(includeWorker ? ['Salarié'] : []),
+        'Semaine du', 'au', 'Base', 'Heures normales', 'Heures sup.', 'Total semaine',
+      ]],
+      body: recap.map((r) => [
+        ...(includeWorker ? [r.worker] : []),
+        format(parseISO(r.weekStart), 'dd/MM/yyyy'),
+        format(parseISO(r.weekEnd), 'dd/MM/yyyy'),
+        r.base == null ? '-' : `${r.base} h`,
+        formatMinutesToHours(r.normalMinutes),
+        r.base == null ? '-' : formatMinutesToHours(r.overtimeMinutes),
+        formatMinutesToHours(r.minutes),
+      ]),
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [21, 18, 15] },
+    });
+    // @ts-expect-error — lastAutoTable est posé par jspdf-autotable sur le document.
+    y = (doc.lastAutoTable?.finalY ?? y) + 10;
+    doc.setFontSize(11);
+    doc.text('Détail des interventions', 14, y);
+    y += 4;
+  }
 
   autoTable(doc, {
     startY: y,
