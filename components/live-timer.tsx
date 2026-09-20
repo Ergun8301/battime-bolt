@@ -243,17 +243,31 @@ export default function LiveTimer({
    * `.select('user_id')` : une suppression filtrée par la RLS renvoie zéro
    * ligne SANS erreur. Zéro ligne effacée n'est pas une réussite — et ici le
    * dire compte double, puisque le but du geste est précisément de sortir.
+   *
+   * ON VISE LA SESSION AFFICHÉE, PAS « la session de ce salarié ». La clé
+   * primaire d'`active_sessions` est le seul `user_id` : un nouveau pointage
+   * REMPLACE l'ancien. Un effacement filtré sur le seul `user_id` supprime donc
+   * ce qui tourne à l'instant, pas ce que l'écran montrait.
+   *
+   * Le scénario : le salarié ouvre la confirmation sur son téléphone, ferme ce
+   * pointage depuis la tablette, en démarre un autre, travaille deux heures,
+   * puis revient au téléphone et appuie sur « Oui, annuler ». Les deux heures
+   * disparaissent, sans un mot. `started_at` est immuable : l'ajouter au filtre
+   * fait que la confirmation périmée ne touche rien, et on le dit.
    */
   const cancel = async () => {
     if (!session) return;
     setBusy(true);
     try {
       const { data, error } = await supabase.from('active_sessions')
-        .delete().eq('user_id', userId).select('user_id');
+        .delete().eq('user_id', userId).eq('started_at', session.started_at).select('user_id');
       if (error) throw error;
       if (!data || data.length === 0) {
+        // Zéro ligne : ce n'est pas ce pointage-là qui tourne. On recharge pour
+        // montrer la vérité plutôt que d'insister sur une vue périmée.
         await load();
-        toast.error("Le pointage n'a pas pu être annulé. Réessaie.");
+        setConfirmCancel(false);
+        toast.error("Ce pointage n'est plus celui en cours — l'écran vient d'être remis à jour.");
         return;
       }
       setSession(null);
