@@ -2353,8 +2353,11 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         onOpenChange={setReservesOpen}
         companyId={user?.company_id}
         onOpenDocs={(id, name) => {
+          // Depuis le registre des réserves on ouvre le dossier DU CHANTIER,
+          // sans jour : une réserve porte sa propre date, et coller ici celle
+          // d'aujourd'hui rangerait la pièce au mauvais endroit.
           const ws = worksites.find((w) => w.id === id);
-          setDocsWorksite(ws || ({ id, client_name: name } as Worksite));
+          setDocsWorksite({ ws: ws || ({ id, client_name: name } as Worksite), day: null });
         }}
         onChanged={refresh}
       />

@@ -15,16 +15,15 @@
 //   façon : on feuillette les unes, on cherche les autres par leur nom.
 //
 //   Un nom automatique. Personne ne tape de libellé sur un chantier. Une photo
-//   reçoit « Photo 08:12 — 20/09/2026 », composé par la BASE à son heure à elle ;
-//   un fichier garde le nom que la personne a déjà choisi en l'enregistrant — le
-//   remplacer par « Fichier 3 » perdrait l'information la plus utile, y compris
-//   dans l'e-mail au client.
+//   reçoit « Photo 3 — 20/09/2026 », numéroté par la BASE ; un fichier garde le
+//   nom que la personne a déjà choisi en l'enregistrant — le remplacer par
+//   « Fichier 3 » perdrait l'information la plus utile, y compris dans l'e-mail
+//   au client.
 //
-//   L'heure plutôt qu'un numéro : un compteur recule après une suppression
-//   (effacer « Photo 2 » et garder « Photo 3 » fabrique un second « Photo 3 »)
-//   et deux téléphones qui envoient en même temps lisent le même compte. Une
-//   heure ne recule jamais, et sur un chantier elle dit quelque chose : une
-//   réserve photographiée à 08:12 n'est pas la même qu'à 17:45.
+//   Le numéro vaut MAX + 1 et ne recule donc jamais après une suppression, et un
+//   index unique par chantier et par journée interdit physiquement deux « Photo
+//   3 ». Un simple comptage aurait produit des doublons ; l'heure d'ajout aussi,
+//   dès que deux photos tombent dans la même minute.
 //
 //   Une pièce appartient à un JOUR, et à l'INTERVENTION quand elle a été prise
 //   depuis une intervention ouverte. Les pièces déposées depuis la fiche
