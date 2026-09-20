@@ -41,7 +41,11 @@ export default function PoseurLayout({
     );
   }
 
-  if (!user || user.role !== 'worker' || archived) {
+  // Le même test qu'au-dessus, et il DOIT rester le même. Ne corriger que la
+  // redirection laissait le chef d'équipe sur une page entièrement blanche :
+  // pas de redirection (le test du dessus le laisse passer), pas de contenu
+  // (celui-ci le refusait). Aucune erreur, aucun message — le pire des états.
+  if (!user || (user.role !== 'worker' && user.role !== 'lead') || archived) {
     return null;
   }
 

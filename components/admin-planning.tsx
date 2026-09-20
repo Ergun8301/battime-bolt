@@ -1349,7 +1349,11 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     try {
       const { error } = await supabase.rpc('set_user_role', { p_user_id: target.id, p_role: role });
       if (error) throw error;
-      toast.success(role === 'admin' ? `${label} a rejoint le bureau` : `${label} est redevenu salarié`);
+      toast.success(
+        role === 'admin' ? `${label} a rejoint le bureau`
+        : role === 'lead' ? `${label} est chef d'équipe`
+        : `${label} est redevenu salarié`
+      );
       await fetchData();
       // Se retirer soi-même du bureau change ce que l'on a le droit de voir :
       // laisser l'écran d'administration ouvert montrerait des boutons qui ne
