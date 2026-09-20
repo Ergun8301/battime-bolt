@@ -616,6 +616,9 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const [importWorkersOpen, setImportWorkersOpen] = useState(false); // import CSV/Excel de salariés (invitations en masse)
   const [leaveOpen, setLeaveOpen] = useState(false); // demandes de congé des salariés
   const [pendingLeaves, setPendingLeaves] = useState(0); // compteur pour la pastille
+  // Qui pointe EN CE MOMENT. Purement informatif : un chrono en cours n'est
+  // pas une heure travaillée, il n'entre dans aucun total ni dans la paie.
+  const [liveNow, setLiveNow] = useState<{ user_id: string; worksite_id: string; started_at: string }[]>([]);
   const [activeDrag, setActiveDrag] = useState<{ id: string; type: 'move' | 'new'; worksiteId?: string } | null>(null);
 
   // disponibilité popup + worker fiche + management screens
@@ -832,15 +835,17 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const fetchExtras = useCallback(async () => {
     if (!user?.company_id) return;
     const windowStart = format(subDays(new Date(), WINDOW_DAYS), 'yyyy-MM-dd');
-    const [planRes, entRes, compRes, invRes, docRes, leaveRes] = await Promise.all([
+    const [planRes, entRes, compRes, invRes, docRes, leaveRes, liveRes] = await Promise.all([
       supabase.from('planning').select('user_id, work_date, absence_type').eq('company_id', user.company_id).gte('work_date', windowStart),
       supabase.from('time_entries').select('user_id, work_date').eq('company_id', user.company_id).in('status', ['submitted', 'validated']).gte('work_date', windowStart),
       supabase.from('companies').select('name, logo_url, travel_paid, weekly_hours').eq('id', user.company_id).maybeSingle(),
       supabase.from('invitations').select('*').eq('company_id', user.company_id).is('accepted_at', null).gt('expires_at', new Date().toISOString()).order('created_at', { ascending: false }),
       supabase.from('documents').select('worksite_id').eq('company_id', user.company_id),
       supabase.from('leave_requests').select('id', { count: 'exact', head: true }).eq('company_id', user.company_id).eq('status', 'pending'),
+      supabase.from('active_sessions').select('user_id, worksite_id, started_at').eq('company_id', user.company_id),
     ]);
     setPendingLeaves(leaveRes.count || 0);
+    if (!liveRes.error) setLiveNow(liveRes.data || []);
 
     // Pastille 📎 : nombre de documents par chantier.
     const docCounts = new Map<string, number>();
@@ -1677,6 +1682,19 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
             <span className="bt-pl-stat"><span className="sd" style={{ background: '#2FD584' }} /><span className="v">{fmtStat(cockpitStats.hours)} h</span><span className="l">pointées</span></span>
             <span className={`bt-pl-stat${cockpitStats.waiting > 0 ? ' warn' : ''}`}><span className="sd" style={{ background: cockpitStats.waiting > 0 ? '#E0A21C' : '#4a453d' }} /><span className="v">{fmtStat(cockpitStats.waiting)}</span><span className="l">en attente</span></span>
             <span className="bt-pl-stat"><Paperclip className="h-3.5 w-3.5" style={{ opacity: 0.75 }} /><span className="v">{fmtStat(cockpitStats.docs)}</span><span className="l">pièces</span></span>
+            {/* En direct. Informatif : ces minutes ne sont comptées nulle part
+                tant que le salarié n'a pas fermé sa journée. */}
+            {liveNow.length > 0 && (
+              <span className="bt-pl-stat" title={liveNow.map((l) => {
+                const w = workers.find((x) => x.id === l.user_id);
+                const ws = worksites.find((x) => x.id === l.worksite_id);
+                const h = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(l.started_at));
+                return `${w ? `${w.first_name} ${w.last_name}` : 'Salarié'} — ${ws?.client_name || 'chantier'} depuis ${h}`;
+              }).join('\n')}>
+                <span className="sd" style={{ background: '#2FD584' }} />
+                <span className="v">{fmtStat(liveNow.length)}</span><span className="l">en direct</span>
+              </span>
+            )}
           </div>
           <span className="bt-pl-logo">BEME<span className="x">X</span>O</span>
           <div className="bt-pl-cockpit-right">
