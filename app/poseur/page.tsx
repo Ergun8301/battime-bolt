@@ -147,9 +147,13 @@ export default function PoseurPage() {
 
     // Heures saisies, jamais envoyées. On les cherche sur toute la fenêtre :
     // un brouillon d'avant-hier est aussi perdu que celui d'aujourd'hui.
+    // Borné à aujourd'hui : « Dupliquer cette journée » prépare des brouillons
+    // sur des jours à venir, ce n'est pas un oubli et ça n'a rien à faire ici.
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
     const { data: drafts } = await supabase.from('time_entries')
       .select('work_date').eq('user_id', user.id).eq('status', 'draft')
-      .gte('work_date', windowStart).order('work_date', { ascending: false });
+      .gte('work_date', windowStart).lte('work_date', todayStr)
+      .order('work_date', { ascending: false });
     setUnsentDays(Array.from(new Set(((drafts || []) as { work_date: string }[]).map((d) => d.work_date))));
   }, [user]);
 

@@ -45,6 +45,16 @@ const MIN_HOURS_BETWEEN = 48; // une relance tous les 2 jours maximum
 const MAX_REMINDERS = 3;      // au-delà, ce n'est plus un oubli
 
 const isoDay = (d: Date) => d.toISOString().slice(0, 10);
+
+// Le jour courant À PARIS. `toISOString()` donne la date UTC : pour une
+// entreprise qui relance à minuit (1 h en été), elle renvoyait la veille, donc
+// le rappel parlait d'« aujourd'hui » en montrant les brouillons de la veille
+// et ignorait ceux du jour. Le format en-CA est déjà aaaa-mm-jj.
+function parisToday(): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date());
+}
 const fmtDateFR = (iso: string) => { const [y, m, dd] = iso.split('-'); return `${dd}/${m}/${y}`; };
 
 // Heure et jour RÉELS à Paris (pas en UTC) : le cron passe toutes les heures, et
@@ -161,9 +171,8 @@ async function runForCompany(
   cronSecret: string | null,
   dryRun: boolean,
 ) {
-  const today = new Date();
-  const todayStr = isoDay(today);
-  const windowStart = isoDay(new Date(today.getTime() - WINDOW_DAYS * 86400000));
+  const todayStr = parisToday();
+  const windowStart = isoDay(new Date(new Date(`${todayStr}T00:00:00Z`).getTime() - WINDOW_DAYS * 86400000));
 
   const [companyRes, workersRes, planRes, entRes, logRes, subsRes, draftRes] = await Promise.all([
     admin.from('companies').select('name').eq('id', companyId).maybeSingle(),
