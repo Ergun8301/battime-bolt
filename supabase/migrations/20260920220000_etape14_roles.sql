@@ -68,6 +68,20 @@ BEGIN
     RETURN new;
   END IF;
 
+  -- UN SEUL retrait à la fois pour cette entreprise.
+  --
+  -- Sans ce verrou, deux retraits simultanés se croisent : en lecture validée,
+  -- chaque transaction voit encore l'administrateur que l'AUTRE est en train de
+  -- retirer. Les deux comptent « il en reste un », les deux passent, et
+  -- l'entreprise se retrouve sans personne — précisément l'état irrécupérable
+  -- que ce garde existe pour empêcher. Le compte ci-dessous n'a de valeur que
+  -- pris sous le verrou.
+  --
+  -- 4314 est un numéro de famille arbitraire mais fixe : il évite de se
+  -- disputer inutilement un verrou avec une autre partie du code qui hacherait
+  -- un identifiant différent vers la même valeur.
+  PERFORM pg_advisory_xact_lock(4314, hashtext(old.company_id::text));
+
   SELECT count(*) INTO v_others
   FROM public.users u
   WHERE u.company_id = old.company_id
