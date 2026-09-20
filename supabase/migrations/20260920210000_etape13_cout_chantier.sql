@@ -108,12 +108,20 @@ AS $function$
   FROM priced p
   GROUP BY p.worksite_id, p.user_id;
 $function$;
-REVOKE EXECUTE ON FUNCTION public.worksite_labour(uuid, date, date) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.worksite_labour(uuid, date, date) TO authenticated, service_role;
+-- ELLE N'EST PAS OUVERTE AU RÔLE CONNECTÉ, ET C'EST ESSENTIEL.
+-- Elle prend l'entreprise EN PARAMÈTRE et ne vérifie pas qui appelle : ouverte
+-- à `authenticated`, n'importe quel salarié l'appellerait avec l'identifiant de
+-- son entreprise — ou de n'importe quelle autre — et lirait les minutes et le
+-- coût par salarié, donc les taux horaires de ses collègues par division. Le
+-- contrôle d'accès vit dans `my_worksite_labour` ci-dessous, et un portier ne
+-- sert à rien si la porte de service reste ouverte.
+-- `budget-alerts` l'appelle en service_role, hors RLS, et c'est le seul.
+REVOKE EXECUTE ON FUNCTION public.worksite_labour(uuid, date, date) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.worksite_labour(uuid, date, date) TO service_role;
 
--- La fonction est SECURITY DEFINER (elle lit user_payroll, réservé au bureau) :
--- sans ce contrôle, un salarié pourrait lire les taux horaires de ses collègues
--- en appelant la fonction avec l'identifiant de sa propre entreprise.
+-- La porte d'entrée du bureau : elle ne prend pas d'entreprise en paramètre,
+-- elle la déduit de la session, et elle exige d'être admin. SECURITY DEFINER
+-- lui permet d'appeler la fonction interne malgré le retrait ci-dessus.
 CREATE OR REPLACE FUNCTION public.my_worksite_labour(
   p_from date DEFAULT NULL,
   p_to date DEFAULT NULL

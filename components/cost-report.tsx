@@ -38,7 +38,7 @@ import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { Loader2, CalendarRange, ChevronDown, Building2, Plus, Trash2, Truck } from 'lucide-react';
-import { format, startOfMonth, endOfMonth } from 'date-fns';
+import { format, parseISO, startOfMonth, endOfMonth } from 'date-fns';
 import { weekStart, weekEnd } from '@/lib/week';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -100,10 +100,17 @@ const CR_CSS = `
 .bt-cr-expamt{font-family:'JetBrains Mono',monospace;font-weight:800;color:#15120F;flex:none}
 .bt-cr-expdel{flex:none;border:none;background:transparent;color:#9a948a;cursor:pointer;padding:2px;border-radius:6px;display:inline-flex}
 .bt-cr-expdel:hover{background:#F4D9D1;color:#C0461F}
-.bt-cr-form{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.bt-cr-addwrap{margin:6px 0 2px}
+.bt-cr-addbtn{width:100%;display:inline-flex;align-items:center;justify-content:center;gap:7px;border:1.5px dashed rgba(21,18,15,.28);background:#fff;color:#15120F;border-radius:12px;padding:10px;font-family:inherit;font-weight:800;font-size:13.5px;cursor:pointer}
+.bt-cr-addbtn:hover{border-color:#15120F;background:rgba(21,18,15,.03)}
+.bt-cr-addbtn:disabled{opacity:.5;cursor:default}
+.bt-cr-addnote{font-size:11.5px;color:#9a948a;font-weight:600;margin-top:6px;text-align:center}
+.bt-cr-form{display:flex;flex-wrap:wrap;gap:6px;padding:10px;border:1px solid rgba(21,18,15,.12);border-radius:12px;background:#FBF7EF}
 .bt-cr-form select,.bt-cr-form input{font-family:inherit;font-size:13px;padding:7px 9px;border:1.5px solid rgba(21,18,15,.18);border-radius:9px;background:#fff;color:#15120F;min-width:0}
 .bt-cr-form select{flex:0 0 118px}
-.bt-cr-form .lbl{flex:1 1 120px}
+.bt-cr-form .site{flex:1 1 150px}
+.bt-cr-form .dt{flex:0 0 132px}
+.bt-cr-form .lbl{flex:1 1 130px}
 .bt-cr-form .amt{flex:0 0 92px;text-align:right}
 .bt-cr-empty{text-align:center;color:#9a948a;font-weight:600;padding:26px 0;font-size:13.5px}
 .bt-cr-bud{margin-top:9px}
@@ -147,10 +154,15 @@ export default function CostReport({ open, onOpenChange, companyId }: Props) {
   const [failed, setFailed] = useState(false);
 
   // Saisie d'une dépense, pour le chantier déplié.
+  const [newSite, setNewSite] = useState('');
   const [newCat, setNewCat] = useState<CategoryKey>('materiaux');
   const [newLabel, setNewLabel] = useState('');
   const [newAmount, setNewAmount] = useState('');
+  const [newDate, setNewDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
   const [saving, setSaving] = useState(false);
+  const [formOpen, setFormOpen] = useState(false);
+  /** Chantiers ouverts, pour le sélecteur — indépendants des heures et des dépenses. */
+  const [activeSites, setActiveSites] = useState<{ id: string; name: string }[]>([]);
 
   const effectiveRange = useMemo((): { from: Date; to: Date } => {
     const today = new Date();
@@ -169,24 +181,34 @@ export default function CostReport({ open, onOpenChange, companyId }: Props) {
     // Heures et coût : une seule source, partagée avec les alertes de budget.
     const [labourRes, siteRes, workerRes, expRes] = await Promise.all([
       supabase.rpc('my_worksite_labour', { p_from: fromStr, p_to: toStr }),
-      supabase.from('worksites').select('id, client_name, city').eq('company_id', companyId),
+      supabase.from('worksites').select('id, client_name, city, is_active').eq('company_id', companyId),
       supabase.from('users').select('id, first_name, last_name').eq('company_id', companyId),
       supabase.from('worksite_expenses').select('id, worksite_id, spent_on, category, label, supplier, amount')
         .eq('company_id', companyId).gte('spent_on', fromStr).lte('spent_on', toStr)
         .order('spent_on', { ascending: false }),
     ]);
 
-    if (labourRes.error) {
-      // Zéro heure et zéro euro seraient une réponse plausible et fausse : on
-      // préfère ne rien afficher et le dire.
-      setFailed(true); setSites([]); setExpenses([]); setLoading(false);
+    // Les DEUX lectures doivent réussir. Depuis que les dépenses entrent dans le
+    // total annoncé, une liste de dépenses vide par erreur produit un total
+    // plausible et sous-estimé — exactement ce qu'on refuse pour les heures.
+    if (labourRes.error || expRes.error || siteRes.error) {
+      setFailed(true); setSites([]); setExpenses([]); setActiveSites([]); setLoading(false);
       return;
     }
 
+    const siteRows = (siteRes.data || []) as { id: string; client_name: string | null; city: string | null; is_active: boolean | null }[];
     const siteName = new Map<string, { name: string; city: string | null }>(
-      ((siteRes.data || []) as { id: string; client_name: string | null; city: string | null }[])
-        .map((w) => [w.id, { name: w.client_name || 'Chantier', city: w.city }]),
+      siteRows.map((w) => [w.id, { name: w.client_name || 'Chantier', city: w.city }]),
     );
+    // Le sélecteur du formulaire vit à part de la liste affichée : sans ça, on ne
+    // pourrait pas enregistrer la livraison de matériaux d'un chantier qui n'a
+    // encore ni heure ni dépense — soit exactement le cas d'une livraison avant
+    // le premier jour de pose.
+    const actives = siteRows.filter((w) => w.is_active !== false)
+      .map((w) => ({ id: w.id, name: w.client_name || 'Chantier' }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+    setActiveSites(actives);
+    setNewSite((cur) => (cur && actives.some((a) => a.id === cur) ? cur : (actives[0]?.id || '')));
     const workerName = new Map<string, string>(
       ((workerRes.data || []) as { id: string; first_name: string | null; last_name: string | null }[])
         .map((u) => [u.id, `${u.first_name || ''} ${u.last_name || ''}`.trim() || 'Salarié']),
@@ -284,25 +306,36 @@ export default function CostReport({ open, onOpenChange, companyId }: Props) {
     return { min, cost, exp, all: cost + exp };
   }, [sites, expenses]);
 
-  const addExpense = async (worksiteId: string) => {
+  const addExpense = async () => {
     const amount = Number(newAmount.replace(',', '.'));
-    if (!companyId || !Number.isFinite(amount) || amount === 0) {
-      toast.error('Indiquez un montant.'); return;
-    }
+    if (!companyId) return;
+    if (!newSite) { toast.error('Choisissez un chantier.'); return; }
+    if (!Number.isFinite(amount) || amount === 0) { toast.error('Indiquez un montant.'); return; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(newDate)) { toast.error('Date invalide.'); return; }
     setSaving(true);
     const { data: me } = await supabase.auth.getUser();
     const { error } = await supabase.from('worksite_expenses').insert({
-      company_id: companyId, worksite_id: worksiteId,
-      spent_on: format(new Date(), 'yyyy-MM-dd'),
+      company_id: companyId, worksite_id: newSite,
+      // La date est CHOISIE, plus « aujourd'hui » d'office : une facture saisie
+      // en retard appartient au mois où l'argent est sorti, pas au jour de la
+      // frappe. C'est aussi ce qui la rendait invisible quand le bureau
+      // consultait une période passée.
+      spent_on: newDate,
       category: newCat, label: newLabel.trim() || null, amount,
       created_by: me?.user?.id ?? null,
     });
     setSaving(false);
     if (error) { toast.error(error.message || "La dépense n'a pas pu être enregistrée."); return; }
     setNewLabel(''); setNewAmount('');
-    toast.success('Dépense enregistrée');
     await load();
-    setExpanded(worksiteId);
+    setExpanded(newSite);
+    // Hors de la période affichée, elle n'apparaîtra pas dans la liste : le dire
+    // vaut mieux que de laisser croire que l'enregistrement a échoué.
+    const inRange = newDate >= format(effectiveRange.from, 'yyyy-MM-dd')
+                 && newDate <= format(effectiveRange.to, 'yyyy-MM-dd');
+    toast.success(inRange
+      ? 'Dépense enregistrée'
+      : `Dépense enregistrée au ${format(parseISO(newDate), 'dd/MM/yyyy')} — hors de la période affichée.`);
   };
 
   const delExpense = async (e: Expense) => {
@@ -363,6 +396,38 @@ export default function CostReport({ open, onOpenChange, companyId }: Props) {
             {missingRates && (
               <div className="bt-cr-note">Certains salariés n&apos;ont pas de <strong>taux horaire</strong> : leurs heures sont comptées, mais pas leur coût. Renseignez-le dans la fiche du salarié.</div>
             )}
+
+            {/* Saisie d'une dépense, EN TÊTE et avec son propre sélecteur de
+                chantier. Le formulaire vivait dans la ligne du chantier, donc il
+                n'existait pas tant que le chantier n'avait ni heure ni dépense :
+                impossible d'enregistrer la livraison de matériaux arrivée avant
+                le premier jour de pose — le cas que cet écran doit couvrir. */}
+            <div className="bt-cr-addwrap">
+              {!formOpen ? (
+                <button type="button" className="bt-cr-addbtn" onClick={() => setFormOpen(true)} disabled={activeSites.length === 0}>
+                  <Plus className="h-4 w-4" /> Ajouter une dépense
+                </button>
+              ) : (
+                <div className="bt-cr-form">
+                  <select className="site" value={newSite} onChange={(ev) => setNewSite(ev.target.value)}>
+                    {activeSites.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+                  </select>
+                  <select value={newCat} onChange={(ev) => setNewCat(ev.target.value as CategoryKey)}>
+                    {CATEGORIES.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+                  </select>
+                  <input className="dt" type="date" value={newDate} onChange={(ev) => setNewDate(ev.target.value)} />
+                  <Input className="lbl" placeholder="Ex : plaques de plâtre" value={newLabel} onChange={(ev) => setNewLabel(ev.target.value)} />
+                  <input className="amt" inputMode="decimal" placeholder="0 €" value={newAmount} onChange={(ev) => setNewAmount(ev.target.value)} />
+                  <Button size="sm" disabled={saving} onClick={addExpense}>
+                    {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                  </Button>
+                  <Button size="sm" variant="outline" disabled={saving} onClick={() => setFormOpen(false)}>Fermer</Button>
+                </div>
+              )}
+              {activeSites.length === 0 && (
+                <div className="bt-cr-addnote">Aucun chantier ouvert — créez-en un pour y rattacher une dépense.</div>
+              )}
+            </div>
 
             {sites.length === 0 && expenses.length === 0 ? (
               <div className="bt-cr-empty">Aucune heure déclarée ni dépense sur cette période.</div>
@@ -451,17 +516,6 @@ export default function CostReport({ open, onOpenChange, companyId }: Props) {
                           {(expensesBySite.get(s.id) || []).length === 0 && (
                             <div className="bt-cr-subrow"><span className="bt-cr-submeta">Aucune dépense sur cette période.</span></div>
                           )}
-
-                          <div className="bt-cr-form">
-                            <select value={newCat} onChange={(ev) => setNewCat(ev.target.value as CategoryKey)}>
-                              {CATEGORIES.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
-                            </select>
-                            <Input className="lbl" placeholder="Ex : plaques de plâtre" value={newLabel} onChange={(ev) => setNewLabel(ev.target.value)} />
-                            <input className="amt" inputMode="decimal" placeholder="0 €" value={newAmount} onChange={(ev) => setNewAmount(ev.target.value)} />
-                            <Button size="sm" disabled={saving} onClick={() => addExpense(s.id)}>
-                              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                            </Button>
-                          </div>
                         </div>
                       )}
                     </div>
