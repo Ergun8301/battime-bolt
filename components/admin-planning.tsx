@@ -1231,7 +1231,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       // brouillon ou une intervention retirée n'entre jamais dans l'export.
       const entries = await fetchAllPaged<TimeEntryWithWorksite & { user: User }>((f, t2) => supabase
         .from('time_entries')
-        .select('id, work_date, start_time, end_time, break_minutes, total_minutes, meal_allowance, status, observation, worksite:worksites(client_name, city), user:users!user_id(first_name, last_name)')
+        .select('id, user_id, work_date, start_time, end_time, break_minutes, total_minutes, meal_allowance, status, observation, gap_before, worksite:worksites(client_name, city), user:users!user_id(first_name, last_name)')
         .eq('company_id', user.company_id)
         .in('status', ['submitted', 'validated'])
         .gte('work_date', from).lte('work_date', to)
