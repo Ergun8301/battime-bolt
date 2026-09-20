@@ -160,6 +160,12 @@ BEGIN
 END;
 $function$;
 REVOKE EXECUTE ON FUNCTION public.set_reserve_resolution(uuid, boolean, text) FROM PUBLIC, anon;
+-- Droit rendu EXPLICITE au rôle connecté. Supabase l'accorde déjà par défaut à
+-- la création (`authenticated=X` dans l'ACL, vérifié en production), mais ce
+-- fichier ne doit pas dépendre d'un réglage d'environnement : rejoué sur un
+-- projet configuré autrement, le retrait à PUBLIC suffirait à rendre le bouton
+-- « Lever la réserve » inutilisable, avec une erreur de permission.
+GRANT EXECUTE ON FUNCTION public.set_reserve_resolution(uuid, boolean, text) TO authenticated;
 
 -- Contrôle :
 -- SELECT

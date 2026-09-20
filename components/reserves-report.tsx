@@ -27,6 +27,7 @@ import { Loader2, AlertTriangle, CheckCircle2, Building2, FileText, RotateCcw } 
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { COUNTED_STATUSES } from '@/lib/status';
+import { fetchAllPaged } from '@/lib/fetch-all';
 import { toast } from 'sonner';
 
 export interface ReserveRow {
@@ -95,17 +96,25 @@ export default function ReservesReport({ open, onOpenChange, companyId, onOpenDo
   const load = useCallback(async () => {
     if (!companyId) return;
     setLoading(true);
-    const { data, error } = await supabase
-      .from('time_entries')
-      .select('id, work_date, observation, worksite_id, reserve_resolved_at, reserve_resolved_by, reserve_resolution, '
-        + 'worksite:worksites(client_name, city), '
-        + 'owner:users!time_entries_user_id_fkey(first_name, last_name)')
-      .eq('company_id', companyId)
-      .eq('reception', 'avec')
-      .in('status', COUNTED_STATUSES as unknown as string[])
-      .order('work_date', { ascending: false });
-
-    if (error) {
+    // Lecture PAGINÉE. Le registre couvre toute la vie de l'entreprise, pas une
+    // période : une requête simple s'arrêterait au plafond PostgREST (1000
+    // lignes par défaut) SANS erreur. Les réserves les plus anciennes
+    // disparaîtraient en silence, et la pastille compterait une réserve
+    // introuvable dans la liste. `id` départage les ex æquo de date, sinon deux
+    // pages peuvent se recouvrir ou sauter une ligne.
+    let raw: Record<string, unknown>[];
+    try {
+      raw = await fetchAllPaged<Record<string, unknown>>((f, t) => supabase
+        .from('time_entries')
+        .select('id, work_date, observation, worksite_id, reserve_resolved_at, reserve_resolved_by, reserve_resolution, '
+          + 'worksite:worksites(client_name, city), '
+          + 'owner:users!time_entries_user_id_fkey(first_name, last_name)')
+        .eq('company_id', companyId)
+        .eq('reception', 'avec')
+        .in('status', COUNTED_STATUSES as unknown as string[])
+        .order('work_date', { ascending: false }).order('id')
+        .range(f, t) as unknown as PromiseLike<{ data: Record<string, unknown>[] | null; error: { message: string } | null }>);
+    } catch {
       // Une liste vide voudrait dire « aucune réserve » : c'est le mensonge à
       // éviter ici. On le dit, et on ne montre rien plutôt que rien à tort.
       toast.error('Réserves illisibles pour le moment. Réessayez.');
@@ -116,7 +125,6 @@ export default function ReservesReport({ open, onOpenChange, companyId, onOpenDo
     // Le nom de celui qui a levé la réserve est cherché à part, PAS en
     // imbriquant la clé étrangère : le nom manquant n'a alors aucun moyen de
     // faire échouer la lecture des réserves elles-mêmes.
-    const raw = (data || []) as unknown as Record<string, unknown>[];
     const resolverIds = Array.from(new Set(
       raw.map((e) => (e.reserve_resolved_by as string) || '').filter(Boolean),
     ));

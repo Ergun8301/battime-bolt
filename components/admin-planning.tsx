@@ -2259,7 +2259,9 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       <CostReport open={costOpen} onOpenChange={setCostOpen} companyId={user?.company_id} />
 
       {/* Registre des réserves — ouvre le module Documents du chantier pour les
-          photos, et rafraîchit la pastille dès qu'une réserve est levée. */}
+          photos. Après une levée, `refresh` recharge le planning ET les extras :
+          sans le premier, le triangle de la case garderait sa couleur d'alerte ;
+          sans le second, la pastille resterait fausse jusqu'au prochain sondage. */}
       <ReservesReport
         open={reservesOpen}
         onOpenChange={setReservesOpen}
@@ -2268,7 +2270,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
           const ws = worksites.find((w) => w.id === id);
           setDocsWorksite(ws || ({ id, client_name: name } as Worksite));
         }}
-        onChanged={fetchData}
+        onChanged={refresh}
       />
 
       <ImportWorkersDialog
