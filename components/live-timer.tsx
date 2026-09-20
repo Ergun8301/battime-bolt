@@ -20,7 +20,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { TimeCylinder, snapToGrid } from '@/components/time-cylinder';
+import { TimeCylinder } from '@/components/time-cylinder';
 import { Play, Square, Clock, AlertTriangle, Loader2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -75,14 +75,6 @@ function parisHHmm(iso: string): string {
     timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit', hour12: false,
   }).format(new Date(iso)).replace('h', ':');
 }
-
-const minutesBetween = (a: string, b: string) => {
-  const [ah, am] = a.split(':').map(Number);
-  const [bh, bm] = b.split(':').map(Number);
-  let d = (bh * 60 + bm) - (ah * 60 + am);
-  if (d < 0) d += 24 * 60; // franchit minuit
-  return d;
-};
 
 const fmtElapsed = (ms: number) => {
   const total = Math.max(0, Math.floor(ms / 1000));
@@ -153,37 +145,37 @@ export default function LiveTimer({
   };
 
   /**
-   * Ferme le chrono et crée l'intervention.
-   * `endTime` est fourni quand le salarié répond à « à quelle heure as-tu
-   * fini ? » ; sinon c'est maintenant.
+   * Ferme le chrono et crée l'intervention, EN UNE SEULE ÉCRITURE.
+   *
+   * Le navigateur écrivait l'intervention puis effaçait le chrono. Si la
+   * seconde requête échouait — un salarié qui perd le réseau sur un chantier,
+   * c'est le quotidien — l'intervention existait et le chrono aussi : à la
+   * réouverture il le fermait à nouveau et créait une SECONDE intervention pour
+   * la même période. Deux fois les mêmes heures, envoyées en paie.
+   *
+   * Les deux écritures vivent maintenant dans une seule transaction côté
+   * serveur : soit les deux, soit aucune. Et l'heure de début y est recalculée
+   * à partir de `started_at`, pour que le fuseau et l'arrondi au quart d'heure
+   * soient faits au même endroit pour tout le monde.
    */
   const stop = async (endTime?: string) => {
     if (!session) return;
-    const startHHmm = snapToGrid(parisHHmm(session.started_at));
-    const endHHmm = snapToGrid(endTime || parisHHmm(new Date().toISOString()));
-    const mins = minutesBetween(startHHmm, endHHmm);
-    if (mins < 5) {
-      toast.error('Moins de 5 minutes : rien à enregistrer. Le pointage reste ouvert.');
-      return;
-    }
     setBusy(true);
     try {
-      const { error } = await supabase.from('time_entries').insert({
-        company_id: companyId, user_id: userId, worksite_id: session.worksite_id,
-        planning_id: session.planning_id, work_date: session.work_date,
-        start_time: startHHmm, end_time: endHHmm, break_minutes: 0,
-        meal_allowance: false, status: 'draft' as const,
+      const { data, error } = await supabase.rpc('stop_active_session', {
+        p_end: endTime ? `${endTime}:00` : null,
       });
       if (error) throw error;
-      // Le chrono ne disparaît qu'une fois l'intervention écrite. Dans l'autre
-      // ordre, une erreur d'écriture effacerait la seule trace de l'heure
-      // d'arrivée — et le salarié n'aurait plus aucun moyen de la retrouver.
-      const { error: delErr } = await supabase.from('active_sessions').delete().eq('user_id', userId);
-      if (delErr) console.error('[live-timer] chrono non fermé', delErr);
+      const row = (Array.isArray(data) ? data[0] : data) as
+        { start_time: string; end_time: string } | null;
       setSession(null);
       onSaved();
-      toast.success(`Pointage enregistré — ${startHHmm} à ${endHHmm}`);
+      toast.success(row
+        ? `Pointage enregistré — ${row.start_time.slice(0, 5)} à ${row.end_time.slice(0, 5)}`
+        : 'Pointage enregistré');
     } catch (e) {
+      // Le chrono reste ouvert et reste affiché : rien n'a été écrit.
+      await load();
       toast.error((e as { message?: string })?.message || "L'enregistrement a échoué. Le pointage reste ouvert.");
     } finally {
       setBusy(false);
