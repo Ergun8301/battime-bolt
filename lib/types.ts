@@ -1,4 +1,12 @@
-export type UserRole = 'admin' | 'worker';
+/**
+ * `admin`  — le bureau : paie, coûts, réglages, facturation.
+ * `lead`   — chef d'équipe : saisit et corrige les heures des salariés présents
+ *            sur SON chantier, le jour même. Aucun accès aux taux horaires, au
+ *            coût des chantiers, à la paie ni aux réglages. Ce n'est PAS un
+ *            administrateur au rabais : `is_admin()` le renvoie faux.
+ * `worker` — salarié : ses propres heures, rien d'autre.
+ */
+export type UserRole = 'admin' | 'lead' | 'worker';
 
 export interface Company {
   id: string;

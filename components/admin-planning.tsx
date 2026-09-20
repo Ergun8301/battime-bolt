@@ -824,7 +824,11 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     if (!user?.company_id) return;
     try {
       const [workersRes, worksitesRes, officeRes] = await Promise.all([
-        supabase.from('users').select('*').eq('company_id', user.company_id).eq('role', 'worker').eq('is_active', true).order('first_name'),
+        // Les chefs d'équipe travaillent sur le chantier comme les autres : ils
+        // restent dans le planning et dans la liste. Les exclure les aurait fait
+        // disparaître de l'écran, sans moyen de les rétrograder — le piège déjà
+        // rencontré avec les comptes passés au bureau.
+        supabase.from('users').select('*').eq('company_id', user.company_id).in('role', ['worker', 'lead']).eq('is_active', true).order('first_name'),
         supabase.from('worksites').select('*').eq('company_id', user.company_id).eq('is_active', true).order('client_name'),
         supabase.from('users').select('*').eq('company_id', user.company_id).eq('role', 'admin').eq('is_active', true).order('first_name'),
       ]);
@@ -1330,12 +1334,14 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
    * affiche le message que le serveur renvoie, parce que c'est lui qui sait,
    * y compris quand deux personnes cliquent en même temps.
    */
-  const changeRole = async (target: User, role: 'admin' | 'worker') => {
+  const changeRole = async (target: User, role: 'admin' | 'lead' | 'worker') => {
     const label = `${target.first_name || ''} ${target.last_name || ''}`.trim() || 'cette personne';
     if (typeof window !== 'undefined') {
       const q = role === 'admin'
         ? `Donner à ${label} l'accès complet au bureau ? Cette personne pourra voir les taux horaires, sortir la paie et modifier les réglages.`
-        : `Retirer à ${label} l'accès au bureau ? Elle redeviendra un salarié qui ne voit que ses propres heures.`;
+        : role === 'lead'
+        ? `Faire de ${label} un chef d'équipe ? Il pourra saisir et corriger les heures des salariés présents sur SON chantier, le jour même. Il ne verra ni les taux horaires, ni le coût des chantiers, ni la paie, ni les réglages.`
+        : `Repasser ${label} en simple salarié ? Il ne verra plus que ses propres heures.`;
       if (!window.confirm(q)) return;
     }
     setRoleBusyId(target.id);
@@ -2425,6 +2431,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                     <div key={w.id} className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
                       <button className="flex min-w-0 flex-1 items-center gap-1.5 text-left" onClick={() => { setSalariesOpen(false); setFicheMode('manage'); setFicheWorker(w); }}>
                         <span className="font-medium truncate">{w.first_name} {w.last_name}</span>
+                        {w.role === 'lead' && <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold" style={{ background: '#F1E8D6', color: '#6b5a2e' }}>CHEF</span>}
                         {miss > 0 && <span className="h-2 w-2 rounded-full shrink-0" style={{ background: '#B5472E' }} title={`${miss} jour(s) en attente`} />}
                       </button>
                       {miss > 0 && (
@@ -2432,13 +2439,19 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                           {remindingId === w.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Bell className="h-3.5 w-3.5" />}
                         </Button>
                       )}
-                      <Button
-                        variant="outline" size="icon" className="h-7 w-7"
-                        title="Donner l'accès bureau" disabled={roleBusyId === w.id}
-                        onClick={() => changeRole(w, 'admin')}
+                      {/* Trois rôles, un seul endroit pour en changer. Le chef
+                          d'équipe n'est PAS un bureau au rabais : il saisit les
+                          heures de son équipe du jour, rien de plus. */}
+                      <select
+                        className="h-7 rounded-md border px-1.5 text-xs font-bold"
+                        value={w.role === 'lead' ? 'lead' : 'worker'}
+                        disabled={roleBusyId === w.id}
+                        onChange={(e) => changeRole(w, e.target.value as 'admin' | 'lead' | 'worker')}
                       >
-                        {roleBusyId === w.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
-                      </Button>
+                        <option value="worker">Salarié</option>
+                        <option value="lead">Chef d&apos;équipe</option>
+                        <option value="admin">Bureau</option>
+                      </select>
                       <Pencil className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                     </div>
                   );
