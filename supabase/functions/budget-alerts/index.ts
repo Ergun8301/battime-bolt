@@ -2,8 +2,12 @@
 // Alerte l'admin quand la main-d'œuvre consommée sur un chantier atteint 70 %,
 // 80 % puis 100 % du budget prévu. Une seule alerte par palier et par chantier.
 //
-// Le calcul reprend STRICTEMENT celui du rapport « Coût chantiers » :
-// les pointages déclarés (envoyés ou validés), coût = Σ (minutes/60 × taux horaire).
+// Le calcul n'est PAS repris du rapport « Coût par chantier » : c'est le même,
+// littéralement. Les deux appellent la fonction SQL `worksite_labour`, qui
+// compte les pointages déclarés, y ajoute le temps de route quand l'entreprise
+// le paie, et applique le taux horaire. Deux implémentations finissaient
+// toujours par diverger — celle-ci oubliait la route, donc sous-estimait un
+// chantier lointain.
 //
 // Deux limites assumées, explicitées dans l'email plutôt que masquées :
 //   1. Budget de MAIN-D'ŒUVRE uniquement — BEMEXO ne connaît ni matériaux, ni
@@ -104,7 +108,8 @@ function buildHtml(companyName: string, hits: Hit[]) {
       </td></tr>
       <tr><td style="background:#FBF8F2;padding:14px 28px;">
         <p style="margin:0;font-size:11px;color:#9a948a;">
-          Calcul sur les heures <b>déclarées</b> par les salariés (envoyées ou validées), main-d'œuvre seule (hors matériaux et sous-traitance).
+          Calcul sur les heures <b>déclarées</b> par les salariés (envoyées ou validées), temps de route compris si votre entreprise le paie.
+          Budget de main-d'œuvre seule : les dépenses de chantier (matériaux, sous-traitance, location) se suivent dans « Coût par chantier ».
           Chaque seuil n'est signalé qu'une fois par chantier.
         </p>
       </td></tr>
@@ -128,25 +133,32 @@ async function runForCompany(admin: ReturnType<typeof createClient>, companyId: 
   const sites = (sitesRes.data || []) as Site[];
   if (!sites.length) return { companyId, skipped: 'no_budget' };
 
-  // Heures envoyées + taux horaire (table user_payroll), pour les chantiers concernés uniquement.
-  const { data: entries } = await admin.from('time_entries')
-    .select('worksite_id, total_minutes, owner:users!time_entries_user_id_fkey(payroll:user_payroll(hourly_rate))')
-    .eq('company_id', companyId).in('status', ['submitted', 'validated'])
-    .in('worksite_id', sites.map((s) => s.id));
+  // Heures et coût : la MÊME fonction SQL que le rapport « Coût par chantier ».
+  // Avant, ce bloc refaisait le calcul à la main et ne lisait que
+  // `total_minutes` : le temps de route payé, bien présent en paie, n'entrait ni
+  // dans l'alerte ni dans le rapport. Deux implémentations, c'était deux
+  // chiffres possibles pour le même chantier. Il n'y en a plus qu'une.
+  const { data: labour, error: labourErr } = await admin
+    .rpc('worksite_labour', { p_company: companyId, p_from: null, p_to: null });
+  if (labourErr) {
+    // Ne rien envoyer vaut mieux qu'une alerte fondée sur un coût inconnu :
+    // marquer un palier « signalé » sur un chiffre faux le rendrait définitif.
+    console.error('[budget-alerts] worksite_labour', labourErr);
+    return { companyId, skipped: 'labour_unavailable' };
+  }
 
-  type Payroll = { hourly_rate: number | null } | { hourly_rate: number | null }[] | null;
-  type Entry = { worksite_id: string; total_minutes: number; owner: { payroll: Payroll } | { payroll: Payroll }[] | null };
+  type LabourRow = {
+    worksite_id: string; user_id: string;
+    worked_minutes: number; route_minutes: number; paid_minutes: number;
+    cost: number; unpriced_minutes: number;
+  };
   const agg = new Map<string, { minutes: number; cost: number; unpriced: number }>();
-  for (const e of ((entries || []) as unknown as Entry[])) {
-    const cur = agg.get(e.worksite_id) || { minutes: 0, cost: 0, unpriced: 0 };
-    const mins = Number(e.total_minutes || 0);
-    const owner = Array.isArray(e.owner) ? e.owner[0] : e.owner;
-    const payroll = Array.isArray(owner?.payroll) ? owner?.payroll[0] : owner?.payroll;
-    const rate = payroll?.hourly_rate ?? null;
-    cur.minutes += mins;
-    if (rate != null) cur.cost += (mins / 60) * rate;
-    else cur.unpriced += mins;
-    agg.set(e.worksite_id, cur);
+  for (const r of ((labour || []) as unknown as LabourRow[])) {
+    const cur = agg.get(r.worksite_id) || { minutes: 0, cost: 0, unpriced: 0 };
+    cur.minutes += Number(r.paid_minutes || 0);
+    cur.cost += Number(r.cost || 0);
+    cur.unpriced += Number(r.unpriced_minutes || 0);
+    agg.set(r.worksite_id, cur);
   }
 
   const hits: Hit[] = [];
