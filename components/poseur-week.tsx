@@ -13,7 +13,8 @@ import {
   ChevronLeft, ChevronRight, MapPin, Clock, Utensils,
   Send, AlertTriangle,
 } from 'lucide-react';
-import { format, addDays, startOfWeek, addWeeks, subWeeks, parseISO } from 'date-fns';
+import { format, addDays, addWeeks, subWeeks, parseISO } from 'date-fns';
+import { DAYS_IN_WEEK, weekDays as buildWeekDays, weekStart as startOfWorkWeek } from '@/lib/week';
 import { fr } from 'date-fns/locale';
 import { slotLabel } from '@/lib/slot';
 
@@ -39,12 +40,12 @@ const ABSENCE_LABELS: Record<string, string> = {
 
 export default function PoseurWeek({ onSelectDay }: { onSelectDay?: (date: string) => void } = {}) {
   const { user } = useAuth();
-  const [weekStart, setWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }));
+  const [weekStart, setWeekStart] = useState(startOfWorkWeek());
   const [planning, setPlanning] = useState<PlanningWithWorksite[]>([]);
   const [entries, setEntries] = useState<TimeEntryWithWorksite[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const weekEnd = addDays(weekStart, 5); // Mon–Sat
+  const weekEnd = addDays(weekStart, DAYS_IN_WEEK - 1); // lundi → dimanche
 
   const fetchData = useCallback(async () => {
     if (!user) return;
@@ -83,7 +84,7 @@ export default function PoseurWeek({ onSelectDay }: { onSelectDay?: (date: strin
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  const weekDays = Array.from({ length: 6 }, (_, i) => addDays(weekStart, i));
+  const weekDays = buildWeekDays(weekStart);
   const todayStr = format(new Date(), 'yyyy-MM-dd');
 
   // Seules les heures envoyées comptent : une intervention retirée n'est plus

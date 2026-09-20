@@ -14,7 +14,8 @@ import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { Loader2, CalendarRange, ChevronDown, Building2 } from 'lucide-react';
-import { format, startOfMonth, endOfMonth, startOfWeek, addDays } from 'date-fns';
+import { format, startOfMonth, endOfMonth } from 'date-fns';
+import { weekStart, weekEnd } from '@/lib/week';
 import { fr } from 'date-fns/locale';
 import type { DateRange } from 'react-day-picker';
 
@@ -91,7 +92,7 @@ export default function CostReport({ open, onOpenChange, companyId }: Props) {
   const effectiveRange = useMemo((): { from: Date; to: Date } => {
     const today = new Date();
     if (preset === 'month') return { from: startOfMonth(today), to: endOfMonth(today) };
-    if (preset === 'week') { const m = startOfWeek(today, { weekStartsOn: 1 }); return { from: m, to: addDays(m, 6) }; }
+    if (preset === 'week') return { from: weekStart(today), to: weekEnd(today) };
     if (range?.from) return { from: range.from, to: range.to ?? range.from };
     return { from: startOfMonth(today), to: endOfMonth(today) };
   }, [preset, range]);

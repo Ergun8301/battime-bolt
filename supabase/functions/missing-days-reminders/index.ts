@@ -3,9 +3,8 @@
 // déclarées. Remplace la relance manuelle (le bureau devait repérer la pastille
 // et cliquer la cloche, salarié par salarié).
 //
-// Règle « jour manquant » : STRICTEMENT celle déjà en production
-// (lib/work-status.ts) — jour passé + affectation chantier + aucune saisie
-// non-brouillon. Une absence (congé/maladie/intempérie) n'est jamais manquante.
+// Règle « jour manquant » : jour passé + affectation chantier + aucune journée
+// envoyée. Une absence (congé/maladie/intempérie) n'est jamais manquante.
 //
 // Garde-fous (portés par la table reminder_log) :
 //   - une notification par salarié et par exécution, tous jours regroupés ;
@@ -234,18 +233,15 @@ Deno.serve(async (req) => {
 
     // company_id : restreint à une entreprise (tests ciblés).
     // dry_run : calcule et renvoie qui serait relancé, sans rien envoyer ni écrire.
-    // ignore_schedule : ignore le filtre heure/jour (tests hors créneau).
+    // ignore_schedule : ignore le filtre heure (tests hors créneau).
     const { company_id, dry_run, ignore_schedule } = await req.json().catch(() => ({}));
     const dryRun = dry_run === true;
 
     // Le cron passe toutes les heures ; on ne retient que les entreprises dont
-    // l'heure de relance correspond à l'heure courante à Paris, du lundi au
-    // vendredi (jour évalué à Paris également).
-    const { hour, weekday } = parisNow();
-    const onSchedule = weekday >= 1 && weekday <= 5;
-    if (!onSchedule && ignore_schedule !== true) {
-      return json({ mode: 'skip', reason: 'week-end', paris: { hour, weekday } });
-    }
+    // l'heure de relance correspond à l'heure courante à Paris. La relance tourne
+    // TOUS LES JOURS, dimanche compris : des métiers travaillent le week-end, et
+    // la règle ne relance que sur une journée réellement planifiée.
+    const { hour } = parisNow();
 
     let q = admin.from('companies').select('id').eq('auto_reminder_enabled', true);
     if (ignore_schedule !== true) q = q.eq('reminder_hour', hour);

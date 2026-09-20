@@ -302,7 +302,7 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
               <div className="bt-set-subtxt">
                 <label className="bt-set-l">Relance automatique des heures</label>
                 <p className="bt-set-substate">
-                  Prévient chaque salarié qui a des journées planifiées non déclarées, du lundi au vendredi.
+                  Prévient chaque salarié qui a des journées planifiées non déclarées, tous les jours de la semaine.
                   Au maximum une relance tous les 2 jours, et 3 au total — ensuite on n&apos;insiste plus.
                 </p>
               </div>

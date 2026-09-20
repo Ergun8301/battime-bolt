@@ -21,7 +21,8 @@ import {
   Settings2, Archive, ArchiveRestore, Trash2, Link2, User as UserIcon, AlertTriangle, Hammer,
   ShieldCheck, Plus,
 } from 'lucide-react';
-import { format, parseISO, isSameDay, subDays, startOfWeek, addDays, differenceInCalendarDays } from 'date-fns';
+import { format, parseISO, isSameDay, subDays, addDays, differenceInCalendarDays } from 'date-fns';
+import { weekStart, weekEnd } from '@/lib/week';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import type { DateRange } from 'react-day-picker';
@@ -502,7 +503,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="outline" size="sm" onClick={() => { const t = new Date(); setRange({ from: t, to: t }); }}>Aujourd'hui</Button>
-            <Button variant="outline" size="sm" onClick={() => { const m = startOfWeek(new Date(), { weekStartsOn: 1 }); setRange({ from: m, to: addDays(m, 5) }); }}>Cette semaine</Button>
+            <Button variant="outline" size="sm" onClick={() => setRange({ from: weekStart(), to: weekEnd() })}>Cette semaine</Button>
             <Popover>
               <PopoverTrigger asChild>
                 <Button variant="outline" size="sm"><CalendarRange className="h-4 w-4 mr-1" /> Créneau</Button>

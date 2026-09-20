@@ -1,7 +1,7 @@
 // Edge Function : weekly-digest
-// Récap hebdomadaire envoyé aux admins d'une entreprise (heures validées de la
-// semaine, répartition par chantier, pointages en attente de validation,
-// salariés n'ayant rien pointé). Deux façons de la déclencher :
+// Récap hebdomadaire envoyé aux admins d'une entreprise (heures déclarées de la
+// semaine, répartition par chantier, journées restées en brouillon,
+// salariés n'ayant rien envoyé). Deux façons de la déclencher :
 //   - pg_cron (header x-cron-secret, vérifié via RPC public.verify_cron_secret)
 //     -> MODE LOT : une entreprise à la fois, pour toutes les entreprises actives.
 //   - un admin connecté, bouton « Envoyer maintenant » (Réglages)
@@ -21,13 +21,24 @@ const json = (body: unknown, status = 200) =>
 
 const FROM = 'BEMEXO <contact@bemexo.com>';
 
+// Une seule définition de la semaine, la même que l'application : LUNDI → DIMANCHE
+// (voir lib/week.ts).
+//
+// Le récap porte sur la semaine ÉCOULÉE et part le lundi matin. Il partait avant
+// le vendredi soir : les heures du samedi et du dimanche n'entraient donc dans
+// aucun récap, ce qui ne se voyait pas tant que personne ne travaillait le
+// week-end. Envoyé le lundi, le compte est complet et définitif.
 function mondayISO(): string {
   const now = new Date();
-  const day = now.getUTCDay();
-  const diff = day === 0 ? -6 : 1 - day;
+  const day = now.getUTCDay(); // 0 = dimanche
+  const diff = (day === 0 ? -6 : 1 - day) - 7; // lundi de la semaine précédente
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + diff)).toISOString().slice(0, 10);
 }
-const todayISO = () => new Date().toISOString().slice(0, 10);
+function sundayISO(): string {
+  const monday = new Date(mondayISO() + 'T00:00:00Z');
+  monday.setUTCDate(monday.getUTCDate() + 6);
+  return monday.toISOString().slice(0, 10);
+}
 
 function fmtHours(minutes: number): string {
   const h = Math.floor(minutes / 60), m = minutes % 60;
@@ -50,8 +61,8 @@ function parisNow(): { hour: number; weekday: number } {
   const map: Record<string, number> = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
   return { hour, weekday: map[wd] ?? 0 };
 }
-const DIGEST_HOUR_PARIS = 18;
-const DIGEST_WEEKDAY = 5; // vendredi
+const DIGEST_HOUR_PARIS = 7;
+const DIGEST_WEEKDAY = 1; // lundi — la semaine précédente est close
 
 async function sendEmail(to: string[], subject: string, html: string) {
   const apiKey = Deno.env.get('RESEND_API_KEY');
@@ -84,7 +95,7 @@ function buildHtml(opts: {
 
   const noEntryList = opts.noEntry.length
     ? `<p style="margin:4px 0 0;font-size:13px;color:#3a352f;">${opts.noEntry.join(', ')}</p>`
-    : '<p style="margin:4px 0 0;font-size:13px;color:#8a8378;">Tout le monde a pointé cette semaine</p>';
+    : '<p style="margin:4px 0 0;font-size:13px;color:#8a8378;">Tout le monde a envoyé ses heures cette semaine</p>';
 
   return `
 <div style="font-family:Arial,Helvetica,sans-serif;background:#F2EDE3;padding:24px 0;">
@@ -113,11 +124,11 @@ function buildHtml(opts: {
         <ul style="margin:0;padding-left:18px;font-size:13px;color:#3a352f;">${pendingList}</ul>
       </td></tr>
       <tr><td style="padding:6px 28px 24px;border-top:1px solid #eee;">
-        <p style="margin:12px 0 0;font-size:12px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#8a8378;">N'ont rien pointé cette semaine</p>
+        <p style="margin:12px 0 0;font-size:12px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#8a8378;">N'ont rien envoyé cette semaine</p>
         ${noEntryList}
       </td></tr>
       <tr><td style="background:#FBF8F2;padding:14px 28px;">
-        <p style="margin:0;font-size:11px;color:#9a948a;">Récap automatique BEMEXO — généré chaque vendredi.</p>
+        <p style="margin:0;font-size:11px;color:#9a948a;">Récap automatique BEMEXO — envoyé chaque lundi matin, sur la semaine écoulée.</p>
       </td></tr>
     </table>
   </td></tr></table>
@@ -126,7 +137,7 @@ function buildHtml(opts: {
 
 async function runForCompany(admin: ReturnType<typeof createClient>, companyId: string) {
   const monday = mondayISO();
-  const today = todayISO();
+  const sunday = sundayISO();
 
   const [companyRes, adminsRes, workersRes, validatedRes, pendingRes, activityRes] = await Promise.all([
     admin.from('companies').select('name').eq('id', companyId).maybeSingle(),
@@ -136,18 +147,18 @@ async function runForCompany(admin: ReturnType<typeof createClient>, companyId: 
     admin.from('time_entries')
       .select('worksite_id, total_minutes, worksite:worksites(client_name)')
       .eq('company_id', companyId).in('status', ['submitted', 'validated'])
-      .gte('work_date', monday).lte('work_date', today),
+      .gte('work_date', monday).lte('work_date', sunday),
     // Journées restées en brouillon cette semaine : saisies mais jamais envoyées.
     admin.from('time_entries')
       .select('work_date, user:users!user_id(first_name,last_name), worksite:worksites(client_name)')
       .eq('company_id', companyId).eq('status', 'draft')
-      .gte('work_date', monday).lte('work_date', today)
+      .gte('work_date', monday).lte('work_date', sunday)
       .order('work_date', { ascending: true }),
-    // « A pointé » = a envoyé au moins une journée cette semaine.
+    // « A envoyé » = au moins une journée envoyée cette semaine.
     admin.from('time_entries')
       .select('user_id')
       .eq('company_id', companyId).in('status', ['submitted', 'validated'])
-      .gte('work_date', monday).lte('work_date', today),
+      .gte('work_date', monday).lte('work_date', sunday),
   ]);
 
   const adminEmails = (adminsRes.data || []).map((a: { email: string }) => a.email).filter(Boolean);
@@ -178,11 +189,11 @@ async function runForCompany(admin: ReturnType<typeof createClient>, companyId: 
 
   const html = buildHtml({
     companyName: (companyRes.data as { name: string } | null)?.name || 'Votre entreprise',
-    periodLabel: `${fmtDateFR(monday)} au ${fmtDateFR(today)}`,
+    periodLabel: `${fmtDateFR(monday)} au ${fmtDateFR(sunday)}`,
     totalMinutes, bySite, pending, noEntry,
   });
 
-  await sendEmail(adminEmails, `BEMEXO — Récap hebdomadaire (${fmtDateFR(monday)} au ${fmtDateFR(today)})`, html);
+  await sendEmail(adminEmails, `BEMEXO — Récap hebdomadaire (${fmtDateFR(monday)} au ${fmtDateFR(sunday)})`, html);
   return { companyId, sent: adminEmails.length };
 }
 
@@ -204,8 +215,8 @@ Deno.serve(async (req) => {
       // reste une action explicite et n'est jamais bloqué.
       const { company_id, ignore_schedule } = await req.json().catch(() => ({}));
 
-      // Le cron passe à 16:00 ET 17:00 UTC : on ne travaille qu'au passage qui
-      // correspond réellement à 18 h à Paris (donc un seul des deux, selon la
+      // Le cron passe à 05:00 ET 06:00 UTC : on ne travaille qu'au passage qui
+      // correspond réellement à 7 h à Paris (donc un seul des deux, selon la
       // saison). `ignore_schedule` sert aux tests ciblés hors créneau.
       const { hour, weekday } = parisNow();
       if (ignore_schedule !== true && !company_id
