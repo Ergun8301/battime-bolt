@@ -78,12 +78,14 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
   // Le temps de route entre deux chantiers est-il payé ? Décision de
   // l'entreprise : le logiciel ne tranche pas à sa place.
   const [travelPaid, setTravelPaid] = useState(false);
+  // Horaire hebdomadaire de base : au-delà, les heures sont supplémentaires.
+  const [weeklyHours, setWeeklyHours] = useState('35');
 
   useEffect(() => {
     if (!open || !user?.company_id) return;
     setLoading(true); setErr(null);
     supabase.from('companies')
-      .select('name, siret, tva_intra, address, postal_code, city, phone, email, logo_url, subscription_status, auto_reminder_enabled, reminder_hour, budget_alerts_enabled, travel_paid')
+      .select('name, siret, tva_intra, address, postal_code, city, phone, email, logo_url, subscription_status, auto_reminder_enabled, reminder_hour, budget_alerts_enabled, travel_paid, weekly_hours')
       .eq('id', user.company_id).maybeSingle()
       .then(({ data }) => {
         const d = (data || {}) as Partial<Form> & {
@@ -92,6 +94,7 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
           reminder_hour?: number | null;
           budget_alerts_enabled?: boolean | null;
           travel_paid?: boolean | null;
+          weekly_hours?: number | null;
         };
         setF({
           name: d.name || '', siret: d.siret || '', tva_intra: d.tva_intra || '', address: d.address || '',
@@ -102,6 +105,7 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
         setReminderHour(d.reminder_hour ?? 17);
         setBudgetAlertsOn(d.budget_alerts_enabled ?? true);
         setTravelPaid(d.travel_paid ?? false);
+        setWeeklyHours(String(d.weekly_hours ?? 35));
         setLoading(false);
       });
   }, [open, user?.company_id]);
@@ -197,6 +201,7 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
         p_auto_reminder_enabled: reminderOn, p_reminder_hour: reminderHour,
         p_budget_alerts_enabled: budgetAlertsOn,
         p_travel_paid: travelPaid,
+        p_weekly_hours: Number(weeklyHours.replace(',', '.')) || 0,
       });
       if (error) throw error;
       onSaved?.();
@@ -346,6 +351,29 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
                 <label className="bt-set-switch">
                   <input type="checkbox" checked={budgetAlertsOn} onChange={(e) => setBudgetAlertsOn(e.target.checked)} />
                   <span>{budgetAlertsOn ? 'Activées' : 'Désactivées'}</span>
+                </label>
+              </div>
+            </div>
+
+            {/* Horaire hebdomadaire de base — la seule référence qui décide
+                ce qui est une heure supplémentaire. Calcul à la semaine. */}
+            <div className="bt-set-sub">
+              <div className="bt-set-subtxt">
+                <label className="bt-set-l">Horaire hebdomadaire de base</label>
+                <p className="bt-set-substate">
+                  Au-delà de cet horaire, les heures d&apos;une semaine sont comptées comme <strong>supplémentaires</strong>.
+                  Le calcul se fait à la semaine, du lundi au dimanche. Un salarié peut avoir son propre horaire, depuis sa fiche.
+                </p>
+              </div>
+              <div className="bt-set-remctl">
+                <label className="bt-set-switch" style={{ gap: 8 }}>
+                  <input
+                    type="number" min={0} max={80} step={0.5} inputMode="decimal"
+                    className="bt-field" style={{ width: 88, textAlign: 'right' }}
+                    value={weeklyHours}
+                    onChange={(e) => setWeeklyHours(e.target.value)}
+                  />
+                  <span>h / semaine</span>
                 </label>
               </div>
             </div>

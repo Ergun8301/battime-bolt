@@ -6,6 +6,7 @@ import { User, Worksite, Certification, CertificationType } from '@/lib/types';
 import { ExportEntry, exportEntriesToExcel, exportEntriesToPDF } from '@/lib/export-utils';
 import { fetchAllPaged } from '@/lib/fetch-all';
 import { isCounted } from '@/lib/status';
+import { DEFAULT_WEEKLY_HOURS, weeklyHoursFor, weeklyTotals } from '@/lib/overtime';
 import { computeMissingDays } from '@/lib/work-status';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -65,6 +66,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
   const [companyName, setCompanyName] = useState('');
   // Réglage entreprise : la route entre deux chantiers est-elle payée ?
   const [travelPaid, setTravelPaid] = useState(false);
+  const [companyWeeklyHours, setCompanyWeeklyHours] = useState(DEFAULT_WEEKLY_HOURS);
   const [worksites, setWorksites] = useState<Worksite[]>([]);
   const [reassigningId, setReassigningId] = useState<string | null>(null);
   const [creatingFor, setCreatingFor] = useState<string | null>(null);
@@ -82,6 +84,8 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
   const [mHireDate, setMHireDate] = useState('');
   const [mContract, setMContract] = useState('');
   const [mRate, setMRate] = useState('');
+  // Horaire hebdomadaire propre à ce salarié. Vide = celui de l'entreprise.
+  const [mWeekly, setMWeekly] = useState('');
   const [mSaving, setMSaving] = useState(false);
   const [mBusy, setMBusy] = useState(false);
 
@@ -103,12 +107,12 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
     setMPhone(worker.phone || '');
     // Données de paie : table séparée (user_payroll), lisible par le bureau
     // uniquement — plus jamais dans la ligne users visible de tous les salariés.
-    setMNir(''); setMHireDate(''); setMContract(''); setMRate('');
+    setMNir(''); setMHireDate(''); setMContract(''); setMRate(''); setMWeekly('');
     // Si on passe à un autre salarié avant la réponse, celle-ci est ignorée
     // (sinon la fiche du suivant hériterait du NIR / taux du précédent).
     let stale = false;
     supabase.from('user_payroll')
-      .select('social_security_number, hire_date, contract_type, hourly_rate')
+      .select('social_security_number, hire_date, contract_type, hourly_rate, weekly_hours')
       .eq('user_id', worker.id).maybeSingle()
       .then(({ data }) => {
         if (stale || !data) return;
@@ -116,16 +120,19 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
         setMHireDate(data.hire_date || '');
         setMContract(data.contract_type || '');
         setMRate(data.hourly_rate != null ? String(data.hourly_rate) : '');
+        setMWeekly(data.weekly_hours != null ? String(data.weekly_hours) : '');
       });
     return () => { stale = true; };
   }, [worker?.id]);
 
   useEffect(() => {
     if (!worker?.company_id) return;
-    supabase.from('companies').select('name, travel_paid').eq('id', worker.company_id).maybeSingle()
+    supabase.from('companies').select('name, travel_paid, weekly_hours').eq('id', worker.company_id).maybeSingle()
       .then(({ data }) => {
         setCompanyName(data?.name || '');
-        setTravelPaid(!!(data as { travel_paid?: boolean } | null)?.travel_paid);
+        const c = data as { travel_paid?: boolean; weekly_hours?: number | null } | null;
+        setTravelPaid(!!c?.travel_paid);
+        setCompanyWeeklyHours(c?.weekly_hours ?? DEFAULT_WEEKLY_HOURS);
       });
     supabase.from('worksites').select('*').eq('company_id', worker.company_id).eq('is_active', true).order('client_name')
       .then(({ data }) => setWorksites(data || []));
@@ -266,6 +273,20 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
   const countedEntries = entries.filter((e) => isCounted(e.status));
   const totalMinutes = countedEntries.reduce((s, e) => s + e.total_minutes, 0);
 
+  // Heures supplémentaires : calcul à la semaine (lundi → dimanche), sur
+  // l'horaire de base du salarié s'il en a un, sinon celui de l'entreprise.
+  // Une semaine coupée par les bornes de la période choisie n'est pas complète :
+  // on le dit plutôt que d'annoncer des heures supplémentaires fausses.
+  const effectiveWeeklyHours = weeklyHoursFor(
+    mWeekly.trim() ? Number(mWeekly.trim().replace(',', '.')) : null,
+    companyWeeklyHours,
+  );
+  const weeks = weeklyTotals(
+    countedEntries.map((e) => ({ work_date: e.work_date, minutes: e.total_minutes })),
+    effectiveWeeklyHours,
+  );
+  const overtimeMinutes = weeks.reduce((s, w) => s + w.overtimeMinutes, 0);
+
   const periodLabel = (() => {
     if (!range?.from) return '';
     const to = range.to ?? range.from;
@@ -309,6 +330,8 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
     if (!mFirst.trim() || !mLast.trim()) { toast.error('Prénom et nom requis'); return; }
     const rate = mRate.trim() ? Number(mRate.trim().replace(',', '.')) : null;
     if (rate != null && (isNaN(rate) || rate < 0)) { toast.error('Taux horaire invalide'); return; }
+    const weekly = mWeekly.trim() ? Number(mWeekly.trim().replace(',', '.')) : null;
+    if (weekly != null && (isNaN(weekly) || weekly < 0 || weekly > 80)) { toast.error('Horaire hebdomadaire invalide'); return; }
     setMSaving(true);
     try {
       const { error } = await supabase.from('users').update({
@@ -321,6 +344,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
         hire_date: mHireDate || null,
         contract_type: mContract.trim() || null,
         hourly_rate: rate,
+        weekly_hours: weekly,
         updated_at: new Date().toISOString(),
       }, { onConflict: 'user_id' });
       if (payErr) throw payErr;
@@ -406,6 +430,14 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
               <div className="space-y-1">
                 <Label className="text-xs">Taux horaire — coût chargé (€/h)</Label>
                 <Input type="text" inputMode="decimal" value={mRate} onChange={(e) => setMRate(e.target.value)} placeholder="ex. 28,50" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Horaire hebdomadaire — laisser vide pour celui de l&apos;entreprise</Label>
+                <Input
+                  type="text" inputMode="decimal" value={mWeekly}
+                  onChange={(e) => setMWeekly(e.target.value)}
+                  placeholder={`ex. 39 — par défaut ${companyWeeklyHours} h`}
+                />
                 <p className="text-[11px] text-muted-foreground">Sert au calcul du <strong>coût main d&apos;œuvre par chantier</strong>. Laissez vide si vous ne l&apos;utilisez pas.</p>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -534,6 +566,42 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
           <span className="text-sm text-muted-foreground">Total de la période</span>
           <span className="text-xl font-bold">{formatMinutesToHours(totalMinutes)}</span>
         </div>
+
+        {/* Semaine par semaine — les heures supplémentaires se comptent à la
+            semaine, jamais au jour ni au mois. */}
+        {weeks.length > 0 && (
+          <div className="rounded-lg border px-4 py-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">Semaine par semaine</span>
+              <span className="text-xs text-muted-foreground">
+                base {effectiveWeeklyHours} h{mWeekly.trim() ? ' (propre à ce salarié)' : ''}
+              </span>
+            </div>
+            {weeks.map((w) => (
+              <div key={w.weekStart} className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">
+                  {format(parseISO(w.weekStart), 'd MMM', { locale: fr })} → {format(parseISO(w.weekEnd), 'd MMM', { locale: fr })}
+                </span>
+                <span className="flex items-center gap-2">
+                  <span className="font-medium">{formatMinutesToHours(w.minutes)}</span>
+                  {w.overtimeMinutes > 0 && (
+                    <span className="rounded bg-orange-100 px-1.5 py-0.5 text-xs font-semibold text-orange-900">
+                      +{formatMinutesToHours(w.overtimeMinutes)} sup.
+                    </span>
+                  )}
+                </span>
+              </div>
+            ))}
+            {overtimeMinutes > 0 && (
+              <p className="border-t pt-2 text-sm font-semibold">
+                Heures supplémentaires sur la période : {formatMinutesToHours(overtimeMinutes)}
+              </p>
+            )}
+            <p className="text-xs text-muted-foreground">
+              Une semaine à cheval sur les bornes de la période n&apos;est comptée que sur les jours affichés.
+            </p>
+          </div>
+        )}
 
         {/* Entries */}
         {loading ? (
