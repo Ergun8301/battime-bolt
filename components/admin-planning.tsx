@@ -23,7 +23,8 @@ import {
   useDraggable, useDroppable, pointerWithin, rectIntersection,
   type DragEndEvent, type DragStartEvent, type CollisionDetection,
 } from '@dnd-kit/core';
-import { format, startOfWeek, addDays, addWeeks, subWeeks, subDays, parseISO, getISOWeek } from 'date-fns';
+import { format, addDays, addWeeks, subWeeks, subDays, parseISO, getISOWeek } from 'date-fns';
+import { DAYS_IN_WEEK, weekDays as buildWeekDays, weekDayIndex, weekStart } from '@/lib/week';
 import { fr } from 'date-fns/locale';
 import type { DateRange } from 'react-day-picker';
 import { toast } from 'sonner';
@@ -396,7 +397,7 @@ const PL_CSS = `
 .bt-pl-acct-item.danger{color:#C0461F}
 
 /* grille desktop */
-.bt-pl-table{width:100%;border-collapse:collapse;min-width:980px;table-layout:fixed}
+.bt-pl-table{width:100%;border-collapse:collapse;min-width:1110px;table-layout:fixed}
 /* La grille s'arrête net : bordure de fin franche (2px noir, comme l'en-tête) sous la
    dernière ligne visible (fantôme si présente, sinon dernier salarié). */
 .bt-pl-table tbody:last-of-type tr:last-child td{border-bottom:2px solid #15120F}
@@ -569,10 +570,10 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [companyName, setCompanyName] = useState('');
   const [loading, setLoading] = useState(true);
-  const [currentWeekStart, setCurrentWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }));
+  const [currentWeekStart, setCurrentWeekStart] = useState(weekStart());
   const [positionWarned, setPositionWarned] = useState(false);
-  // Mobile (consultation only) — which weekday is shown. Default = today (Mon..Sat → 0..5).
-  const [mobileDayIdx, setMobileDayIdx] = useState(() => { const d = new Date().getDay(); return d === 0 ? 0 : Math.min(d - 1, 5); });
+  // Mobile (consultation seule) — jour affiché. Par défaut aujourd'hui (lundi = 0 … dimanche = 6).
+  const [mobileDayIdx, setMobileDayIdx] = useState(() => weekDayIndex());
 
   // client to place on the planning
   const [paletteWorksiteId, setPaletteWorksiteId] = useState<string>('');
@@ -752,7 +753,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
 
   const fetchPlanning = useCallback(async () => {
     if (!user?.company_id) return;
-    const weekEnd = addDays(currentWeekStart, 6);
+    const weekEnd = addDays(currentWeekStart, DAYS_IN_WEEK - 1);
     const from = format(currentWeekStart, 'yyyy-MM-dd');
     const to = format(weekEnd, 'yyyy-MM-dd');
     try {
@@ -1467,9 +1468,9 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
 
   // ─── derived ──────────────────────────────────────────────────────────────────
 
-  const weekDays = Array.from({ length: 6 }, (_, i) => addDays(currentWeekStart, i));
+  const weekDays = buildWeekDays(currentWeekStart);
   const displayWorkers = demoWorkers.length ? [...workers, ...demoWorkers] : workers;
-  const thisWeekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
+  const thisWeekStart = weekStart();
   const isCurrentWeek = format(currentWeekStart, 'yyyy-MM-dd') === format(thisWeekStart, 'yyyy-MM-dd');
   const dayShort = (d: Date) => format(d, 'EEE', { locale: fr }).replace('.', '');
   const dayFull = (d: Date) => { const s = format(d, 'EEEE', { locale: fr }); return s.charAt(0).toUpperCase() + s.slice(1); };
@@ -1621,7 +1622,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
             >
               <span className="bt-pl-datebox-wk">S-{getISOWeek(currentWeekStart)}</span>
               <span className={`bt-pl-datebox-dot ${isCurrentWeek ? 'is-now' : 'is-away'}`} />
-              <span className="bt-pl-datebox-rg">{format(currentWeekStart, 'd', { locale: fr })}–{format(addDays(currentWeekStart, 5), 'd MMM', { locale: fr })}</span>
+              <span className="bt-pl-datebox-rg">{format(currentWeekStart, 'd', { locale: fr })}–{format(addDays(currentWeekStart, DAYS_IN_WEEK - 1), 'd MMM', { locale: fr })}</span>
             </button>
             <button className="bt-pl-datearr" aria-label="Semaine suivante" onClick={() => setCurrentWeekStart(addWeeks(currentWeekStart, 1))}>›</button>
           </div>
@@ -2192,7 +2193,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
           <div className="space-y-4 pt-2">
             <div className="grid grid-cols-3 gap-2">
               <Button variant="outline" size="sm" onClick={() => { const t = new Date(); setExportRange({ from: t, to: t }); }}>Aujourd'hui</Button>
-              <Button variant="outline" size="sm" onClick={() => setExportRange({ from: currentWeekStart, to: addDays(currentWeekStart, 5) })}>Cette semaine</Button>
+              <Button variant="outline" size="sm" onClick={() => setExportRange({ from: currentWeekStart, to: addDays(currentWeekStart, DAYS_IN_WEEK - 1) })}>Cette semaine</Button>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button variant="outline" size="sm"><CalendarRange className="h-4 w-4 mr-1" /> Créneau</Button>
