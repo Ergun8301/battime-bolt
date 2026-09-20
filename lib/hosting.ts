@@ -29,26 +29,33 @@ export const WEB_HOST = {
 /**
  * Sommes-nous sur une PREVIEW plutôt qu'en production ?
  *
- * Reconnaît les deux hébergeurs, parce que la bascule ne se fait pas en un
- * instant : pendant la transition, des previews des deux côtés doivent
- * fonctionner. Et un développement local compte aussi comme une preview —
- * sinon il faut déployer pour tester un écran de preview.
+ * ATTENTION AU PIÈGE, qui m'a eu : chez les deux hébergeurs, la PRODUCTION est
+ * elle aussi servie sur une adresse du fournisseur. Se contenter du suffixe
+ * traite donc le site réel comme une preview — et alors `?demo=5` mélange cinq
+ * salariés fictifs au planning d'un vrai client, et un essai expiré est bloqué
+ * alors que le paywall n'est pas activé.
  *
- *   Netlify     deploy-preview-42--battime.netlify.app
- *   Cloudflare  <branche|hash>.<projet>.pages.dev
- *   Local       localhost / 127.0.0.1
+ *   PRODUCTION            PREVIEW
+ *   battime.netlify.app   deploy-preview-42--battime.netlify.app
+ *                         une-branche--battime.netlify.app
+ *   bemexo.pages.dev      a1b2c3d4.bemexo.pages.dev
+ *                         une-branche.bemexo.pages.dev
  *
- * La production, elle, est le domaine propre (bemexo.com) : tout ce qui n'est
- * reconnu ici est traité comme de la production, ce qui est le bon défaut —
- * une preview prise pour la production affiche des données de démonstration à
- * un vrai client.
+ * Ce qui distingue vraiment les deux :
+ *   - Netlify    : une preview porte `--` dans son nom d'hôte, la production non.
+ *   - Cloudflare : une preview est un SOUS-domaine de `<projet>.pages.dev`, donc
+ *                  au moins quatre étiquettes ; la production en a trois.
+ *
+ * Et le domaine propre (bemexo.com) n'est jamais une preview, ce qui est le bon
+ * défaut : en cas de doute, on traite comme de la production. Se tromper dans
+ * ce sens n'affiche rien de faux à personne.
  */
 export function isPreviewHost(): boolean {
   if (typeof window === 'undefined') return false;
   const h = window.location.hostname;
-  return h.startsWith('deploy-preview-')
-      || h.endsWith('.netlify.app')
-      || h.endsWith('.pages.dev')
-      || h === 'localhost'
-      || h === '127.0.0.1';
+
+  if (h === 'localhost' || h === '127.0.0.1') return true;
+  if (h.endsWith('.netlify.app')) return h.includes('--');
+  if (h.endsWith('.pages.dev')) return h.split('.').length > 3;
+  return false;
 }
