@@ -308,16 +308,36 @@ export default function PoseurPage() {
    */
   const toSend = Array.from(new Set([...unsentDays, ...pending])).sort((a, b) => b.localeCompare(a));
 
-  const toSendBanner = toSend.length > 0 ? (
+  /**
+   * UNE SEULE JOURNÉE → on l'ouvre. Pas de liste.
+   *
+   * Une liste d'un seul élément demande deux gestes pour arriver au même
+   * endroit, et c'est exactement le geste que cette étape supprime. La date est
+   * nommée dans le bandeau, donc il n'y a rien à découvrir en l'ouvrant : le
+   * salarié sait déjà de quel jour on parle avant de toucher l'écran.
+   *
+   * La forme au singulier n'est pas nouvelle — l'ancien bandeau disait déjà
+   * « journée du 18 septembre saisie mais pas envoyée ». On garde la phrase,
+   * on change le vocabulaire.
+   */
+  const toSendBanner = toSend.length === 1 ? (
+    <button
+      className="bt-alert"
+      onClick={() => openDay(toSend[0])}
+      aria-label={`Journée du ${format(parseISO(toSend[0]), 'd MMMM', { locale: fr })} à envoyer`}
+    >
+      <span className="bt-alert-badge">1</span>
+      <span className="bt-alert-txt">
+        journée du {format(parseISO(toSend[0]), 'd MMMM', { locale: fr })} à envoyer
+      </span>
+      <span className="bt-alert-chev">›</span>
+    </button>
+  ) : toSend.length > 1 ? (
     <Popover open={pendingOpen} onOpenChange={setPendingOpen}>
       <PopoverTrigger asChild>
         <button className="bt-alert" aria-label="Journées à envoyer">
           <span className="bt-alert-badge">{toSend.length}</span>
-          <span className="bt-alert-txt">
-            {toSend.length > 1
-              ? 'journées à envoyer'
-              : `journée du ${format(parseISO(toSend[0]), 'd MMMM', { locale: fr })} à envoyer`}
-          </span>
+          <span className="bt-alert-txt">journées à envoyer</span>
           <span className="bt-alert-chev">›</span>
         </button>
       </PopoverTrigger>
