@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { passwordProblem, PASSWORD_PLACEHOLDER, PASSWORD_RULE } from '@/lib/password';
 import Link from 'next/link';
 import { ASIDE_FULL } from './_illustrations';
 
@@ -82,7 +83,7 @@ function translateAuthError(message: string): string {
     return 'Un compte existe deja avec cet email. Connectez-vous plutot.';
   }
   if (m.includes('password')) {
-    return 'Mot de passe trop court (6 caracteres minimum).';
+    return PASSWORD_RULE;
   }
   if (m.includes('valid email') || m.includes('invalid email') || m.includes('email address')) {
     return 'Adresse email invalide.';
@@ -109,8 +110,9 @@ export default function InscriptionPage() {
     setError(null);
     setInfo(null);
 
-    if (password.length < 6) {
-      setError('Le mot de passe doit contenir au moins 6 caracteres.');
+    const probleme = passwordProblem(password);
+    if (probleme) {
+      setError(probleme);
       return;
     }
 
@@ -199,7 +201,7 @@ export default function InscriptionPage() {
                 <input id="signup-email" className="bt-field" type="email" required disabled={loading} placeholder="bureau@entreprise.fr" value={email} onChange={(e) => setEmail(e.target.value)} />
 
                 <label className="bt-label" htmlFor="signup-password">Mot de passe</label>
-                <input id="signup-password" className="bt-field" type="password" required disabled={loading} placeholder="6 caractères minimum" value={password} onChange={(e) => setPassword(e.target.value)} />
+                <input id="signup-password" className="bt-field" type="password" required disabled={loading} placeholder={PASSWORD_PLACEHOLDER} value={password} onChange={(e) => setPassword(e.target.value)} />
 
                 <div className="bt-grid2">
                   <div>

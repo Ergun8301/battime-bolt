@@ -3,6 +3,7 @@
 import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { passwordProblem, PASSWORD_PLACEHOLDER, PASSWORD_RULE } from '@/lib/password';
 import Link from 'next/link';
 import { SAL_ILLUS, ENT_ILLUS } from './_illustrations';
 
@@ -291,8 +292,9 @@ function SetPasswordForm() {
       return;
     }
 
-    if (password.length < 6) {
-      setError('Le mot de passe doit contenir au moins 6 caracteres');
+    const probleme = passwordProblem(password);
+    if (probleme) {
+      setError(probleme);
       setLoading(false);
       return;
     }
@@ -302,7 +304,13 @@ function SetPasswordForm() {
     });
 
     if (updateError) {
-      setError(updateError.message);
+      // Le serveur applique sa propre règle (réglage Supabase). Si elle est un
+      // jour plus stricte que la nôtre, son refus arrive ici EN ANGLAIS, devant
+      // un salarié qui vient de cliquer sur un lien d'invitation. On réaffiche
+      // alors la règle en français plutôt que « Password should contain… ».
+      setError(
+        /password/i.test(updateError.message) ? PASSWORD_RULE : updateError.message
+      );
       setLoading(false);
       return;
     }
@@ -339,7 +347,7 @@ function SetPasswordForm() {
         type="password"
         required
         disabled={loading}
-        placeholder="6 caractères minimum"
+        placeholder={PASSWORD_PLACEHOLDER}
         value={password}
         onChange={(e) => setPassword(e.target.value)}
         style={{ marginBottom: '18px' }}
