@@ -22,12 +22,16 @@ const json = (body: unknown, status = 200) =>
 const FROM = 'BEMEXO <contact@bemexo.com>';
 
 // Une seule définition de la semaine, la même que l'application : LUNDI → DIMANCHE
-// (voir lib/week.ts). Le récap couvre la semaine entière, dimanche compris, pour
-// qu'aucun jour travaillé ne sorte du compte.
+// (voir lib/week.ts).
+//
+// Le récap porte sur la semaine ÉCOULÉE et part le lundi matin. Il partait avant
+// le vendredi soir : les heures du samedi et du dimanche n'entraient donc dans
+// aucun récap, ce qui ne se voyait pas tant que personne ne travaillait le
+// week-end. Envoyé le lundi, le compte est complet et définitif.
 function mondayISO(): string {
   const now = new Date();
-  const day = now.getUTCDay();
-  const diff = day === 0 ? -6 : 1 - day;
+  const day = now.getUTCDay(); // 0 = dimanche
+  const diff = (day === 0 ? -6 : 1 - day) - 7; // lundi de la semaine précédente
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + diff)).toISOString().slice(0, 10);
 }
 function sundayISO(): string {
@@ -57,8 +61,8 @@ function parisNow(): { hour: number; weekday: number } {
   const map: Record<string, number> = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
   return { hour, weekday: map[wd] ?? 0 };
 }
-const DIGEST_HOUR_PARIS = 18;
-const DIGEST_WEEKDAY = 5; // vendredi
+const DIGEST_HOUR_PARIS = 7;
+const DIGEST_WEEKDAY = 1; // lundi — la semaine précédente est close
 
 async function sendEmail(to: string[], subject: string, html: string) {
   const apiKey = Deno.env.get('RESEND_API_KEY');
@@ -124,7 +128,7 @@ function buildHtml(opts: {
         ${noEntryList}
       </td></tr>
       <tr><td style="background:#FBF8F2;padding:14px 28px;">
-        <p style="margin:0;font-size:11px;color:#9a948a;">Récap automatique BEMEXO — généré chaque vendredi.</p>
+        <p style="margin:0;font-size:11px;color:#9a948a;">Récap automatique BEMEXO — envoyé chaque lundi matin, sur la semaine écoulée.</p>
       </td></tr>
     </table>
   </td></tr></table>
@@ -211,8 +215,8 @@ Deno.serve(async (req) => {
       // reste une action explicite et n'est jamais bloqué.
       const { company_id, ignore_schedule } = await req.json().catch(() => ({}));
 
-      // Le cron passe à 16:00 ET 17:00 UTC : on ne travaille qu'au passage qui
-      // correspond réellement à 18 h à Paris (donc un seul des deux, selon la
+      // Le cron passe à 05:00 ET 06:00 UTC : on ne travaille qu'au passage qui
+      // correspond réellement à 7 h à Paris (donc un seul des deux, selon la
       // saison). `ignore_schedule` sert aux tests ciblés hors créneau.
       const { hour, weekday } = parisNow();
       if (ignore_schedule !== true && !company_id
