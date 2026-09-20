@@ -667,7 +667,10 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
 
   // separate client fiche (permanent data)
   const [clientFiche, setClientFiche] = useState<Worksite | null>(null);
-  const [docsWorksite, setDocsWorksite] = useState<Worksite | null>(null); // panneau Documents d'un chantier (fiche OU intervention)
+  // Panneau Documents : le chantier, et le JOUR quand on l'ouvre depuis une
+  // case du planning. Depuis la fiche client, il n'y a pas de jour — et lui
+  // coller la date d'aujourd'hui inventerait une information.
+  const [docsWorksite, setDocsWorksite] = useState<{ ws: Worksite; day: string | null } | null>(null);
   const [wsName, setWsName] = useState('');
   const [wsProduct, setWsProduct] = useState('');
   const [wsPhone, setWsPhone] = useState('');
@@ -2319,7 +2322,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
             <div className="space-y-3 pt-1">
               <p className="text-sm text-muted-foreground">{formatMinutes(extraTarget.minutes)} · ajouté par le salarié.</p>
               <Button variant="outline" className="w-full justify-start" disabled={!extraTarget.worksiteId}
-                onClick={() => { const ws = worksites.find((w) => w.id === extraTarget.worksiteId); if (ws) { setDocsWorksite(ws); setExtraTarget(null); } }}>
+                onClick={() => { const ws = worksites.find((w) => w.id === extraTarget.worksiteId); if (ws) { setDocsWorksite({ ws, day: extraTarget.dateStr }); setExtraTarget(null); } }}>
                 <FileText className="h-4 w-4 mr-2" /> Documents du chantier
               </Button>
               <Button variant="outline" className="w-full justify-start"
@@ -2553,7 +2556,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                     <Button variant="outline" size="sm" className="justify-start h-8" onClick={() => openClientFiche(editing.worksite)}>
                       <Pencil className="h-3.5 w-3.5 mr-1.5" /> Fiche
                     </Button>
-                    <Button variant="outline" size="sm" className="justify-start h-8" onClick={() => setDocsWorksite(editing.worksite || null)}>
+                    <Button variant="outline" size="sm" className="justify-start h-8" onClick={() => { if (editing.worksite) setDocsWorksite({ ws: editing.worksite, day: editing.work_date }); }}>
                       <FileText className="h-3.5 w-3.5 mr-1.5" /> Documents
                     </Button>
                   </div>
@@ -2599,7 +2602,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                   <div className="mt-1 text-[13px] text-[#15120F]">« {editRealAgg.note} »</div>
                 )}
                 {editRealAgg?.reception === 'avec' && editing.worksite && (
-                  <button type="button" className="mt-2 inline-flex items-center gap-1.5 text-[12.5px] font-bold text-[#a87c1e] underline" onClick={() => setDocsWorksite(editing.worksite || null)}>
+                  <button type="button" className="mt-2 inline-flex items-center gap-1.5 text-[12.5px] font-bold text-[#a87c1e] underline" onClick={() => { if (editing.worksite) setDocsWorksite({ ws: editing.worksite, day: editing.work_date }); }}>
                     <FileText className="h-3.5 w-3.5" /> Voir les photos / documents
                   </button>
                 )}
@@ -2665,7 +2668,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                 <Button onClick={saveClientFiche} disabled={savingWs}>
                   {savingWs && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer
                 </Button>
-                <Button variant="outline" onClick={() => setDocsWorksite(clientFiche)}>
+                <Button variant="outline" onClick={() => setDocsWorksite({ ws: clientFiche, day: null })}>
                   <FileText className="h-4 w-4 mr-1" /> Documents
                 </Button>
                 <Button variant="outline" onClick={archiveClientFiche} disabled={wsBusy}>
@@ -2680,7 +2683,13 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         </DialogContent>
       </Dialog>
 
-      <ChantierDocuments worksiteId={docsWorksite?.id || null} worksiteName={docsWorksite?.client_name} open={!!docsWorksite} onOpenChange={(o) => { if (!o) setDocsWorksite(null); }} />
+      <ChantierDocuments
+        worksiteId={docsWorksite?.ws.id || null}
+        worksiteName={docsWorksite?.ws.client_name}
+        workDate={docsWorksite?.day || null}
+        open={!!docsWorksite}
+        onOpenChange={(o) => { if (!o) setDocsWorksite(null); }}
+      />
 
       {/* Clients list — open any client fiche */}
       {/* Panneau « Clients » fusionné dans le menu déroulant de la barre
