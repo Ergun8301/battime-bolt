@@ -18,6 +18,7 @@ import {
 } from '@/lib/offline-store';
 import { syncAllPending } from '@/lib/offline-sync';
 import { TimeCylinder, snapToGrid } from '@/components/time-cylinder';
+import LiveTimer from '@/components/live-timer';
 import ChantierDocuments from '@/components/chantier-documents';
 
 interface TimeEntryWithWorksite extends TimeEntry {
@@ -1104,6 +1105,22 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
 
         {/* rappel « jours oubliés » (rendu par le parent) — défile avec la liste */}
         {topBanner}
+
+        {/* Pointage en direct. Affiché SEULEMENT sur le jour courant : pointer
+            « en direct » sur une journée passée n'a pas de sens, et la saisie à
+            la main reste là pour ça. Un chrono resté ouvert d'un autre jour
+            s'affiche quand même, pour qu'on puisse le fermer. */}
+        {user?.id && user?.company_id && date === mountedToday && (
+          <LiveTimer
+            userId={user.id}
+            companyId={user.company_id}
+            today={date}
+            worksites={sortedWorksites}
+            planningIdFor={(wid) => planning.find((p) => p.worksite_id === wid)?.id || null}
+            frozen={monthLocked}
+            onSaved={() => { fetchData(); }}
+          />
+        )}
         {/* ----- TOTAL DU JOUR ----- */}
         <div className="bt-total">
           <div className="bt-total-ruban" />
