@@ -94,6 +94,7 @@ export async function syncAllPending(userId: string): Promise<SyncResult> {
         meal_allowance: entry.meal_allowance,
         observation: entry.observation,
         reception: entry.reception ?? null,
+        gap_before: entry.gap_before ?? null,
         status: 'draft' as const,
       };
 
