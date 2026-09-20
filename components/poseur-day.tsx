@@ -1146,10 +1146,20 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
   //
   // Les lignes RETIRÉES comptent toujours : un chantier prévu puis retiré ne
   // doit pas resurgir comme s'il restait à faire (il s'affiche « Retiré »).
-  const plannedTodo = remainingPlannings(planning, [
-    ...entries.map((e) => ({ worksite_id: e.worksite_id, planning_id: e.planning_id })),
-    ...pendingEntries.map((e) => ({ worksite_id: e.worksite_id, planning_id: e.planning_id })),
-  ]);
+  //
+  // ON FILTRE AVANT D'APPARIER. `remainingPlannings` ne juge que « ce planning
+  // a-t-il déjà sa ligne » ; il ne sait pas ce qu'est une absence. Lui donner
+  // le planning brut faisait remonter les congés et les lignes sans chantier
+  // comme des cartes « prévu » vides, qu'on ne pouvait qu'ouvrir pour se faire
+  // répondre « Choisis un chantier ». C'est moi qui l'avais cassé en passant
+  // de l'ancien filtre `p.worksite_id && …` à l'appariement.
+  const plannedTodo = remainingPlannings(
+    planning.filter((p) => p.worksite_id && !p.absence_type),
+    [
+      ...entries.map((e) => ({ worksite_id: e.worksite_id, planning_id: e.planning_id })),
+      ...pendingEntries.map((e) => ({ worksite_id: e.worksite_id, planning_id: e.planning_id })),
+    ],
+  );
 
   /**
    * Les chantiers prévus par le bureau que le salarié n'a pas ouverts : ils
