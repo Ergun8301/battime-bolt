@@ -25,7 +25,10 @@ export default function PoseurLayout({
       signOut();
       return;
     }
-    if (!user || user.role !== 'worker') {
+    // Le chef d'équipe travaille sur le chantier comme les autres : c'est son
+    // écran aussi. Ne laisser passer que `worker` l'aurait éjecté vers la page
+    // de connexion dès sa nomination — sans accès même à ses propres heures.
+    if (!user || (user.role !== 'worker' && user.role !== 'lead')) {
       router.push('/connexion');
     }
   }, [user, loading, archived, router, signOut]);

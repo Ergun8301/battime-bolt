@@ -81,6 +81,7 @@ const fmtHM = (min: number) => {
 
 export default function TeamDay({ me, date, myWorksiteIds, worksiteName, onChanged }: Props) {
   const [rows, setRows] = useState<Row[]>([]);
+  const [planned, setPlanned] = useState<{ user_id: string; worksite_id: string | null }[]>([]);
   const [people, setPeople] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<{ userId: string; rowId: string | null } | null>(null);
@@ -93,32 +94,43 @@ export default function TeamDay({ me, date, myWorksiteIds, worksiteName, onChang
     // La RLS fait le tri : seules remontent les lignes des salariés qui
     // partagent un chantier avec le chef ce jour-là. On ne refiltre pas ici —
     // un filtre côté écran laisserait croire que la protection est là.
-    const [entRes, usrRes] = await Promise.all([
+    const [entRes, planRes, usrRes] = await Promise.all([
       supabase.from('time_entries')
         .select('id, user_id, worksite_id, start_time, end_time, total_minutes, status, locked')
         .eq('work_date', date).neq('status', 'cancelled').order('start_time'),
+      // Le PLANNING aussi : un collègue affecté au chantier qui n'a encore rien
+      // saisi n'apparaissait pas — donc le chef ne pouvait pas lui créer sa
+      // première ligne, qui est précisément l'usage principal de cet écran.
+      supabase.from('planning').select('user_id, worksite_id').eq('work_date', date),
       supabase.from('users').select('*').eq('company_id', me.company_id).eq('is_active', true).order('first_name'),
     ]);
     if (!entRes.error) setRows((entRes.data || []) as Row[]);
+    if (!planRes.error) setPlanned((planRes.data || []) as { user_id: string; worksite_id: string | null }[]);
     if (!usrRes.error) setPeople((usrRes.data || []) as User[]);
     setLoading(false);
   }, [date, me.company_id]);
 
   useEffect(() => { load(); }, [load]);
 
-  /** Les salariés visibles sur MES chantiers du jour, moi excepté. */
+  /** Les salariés présents sur MES chantiers du jour, moi excepté. */
   const team = useMemo(() => {
-    const ids = new Set(
-      rows.filter((r) => r.user_id !== me.id && r.worksite_id && myWorksiteIds.includes(r.worksite_id))
-        .map((r) => r.user_id),
-    );
+    const onMySites = (w: string | null | undefined) => !!w && myWorksiteIds.includes(w);
+    const ids = new Set<string>();
+    for (const r of rows) if (r.user_id !== me.id && onMySites(r.worksite_id)) ids.add(r.user_id);
+    for (const p of planned) if (p.user_id !== me.id && onMySites(p.worksite_id)) ids.add(p.user_id);
     return people.filter((p) => ids.has(p.id));
-  }, [rows, people, me.id, myWorksiteIds]);
+  }, [rows, planned, people, me.id, myWorksiteIds]);
 
-  const rowFor = (userId: string) => rows.find((r) => r.user_id === userId) || null;
+  /**
+   * TOUTES les interventions du collègue sur mes chantiers, pas la première.
+   * Un collègue peut avoir deux passages dans la journée ; n'en montrer qu'un
+   * cachait l'autre, et pouvait faire corriger une ligne d'un chantier qui
+   * n'est pas le mien.
+   */
+  const rowsFor = (userId: string) =>
+    rows.filter((r) => r.user_id === userId && r.worksite_id && myWorksiteIds.includes(r.worksite_id));
 
-  const openEditor = (userId: string) => {
-    const r = rowFor(userId);
+  const openEditor = (userId: string, r: Row | null) => {
     setStart(snapToGrid(r?.start_time?.slice(0, 5) || '08:00'));
     setEnd(snapToGrid(r?.end_time?.slice(0, 5) || '17:00'));
     setEditing({ userId, rowId: r?.id ?? null });
@@ -127,7 +139,7 @@ export default function TeamDay({ me, date, myWorksiteIds, worksiteName, onChang
   const save = async () => {
     if (!editing) return;
     if (start === end) { toast.error('Début et fin identiques : rien à enregistrer.'); return; }
-    const worksiteId = rowFor(editing.userId)?.worksite_id || myWorksiteIds[0];
+    const worksiteId = rows.find((r) => r.id === editing.rowId)?.worksite_id || myWorksiteIds[0];
     if (!worksiteId) { toast.error('Aucun chantier pour aujourd’hui.'); return; }
     setSaving(true);
     try {
@@ -182,26 +194,34 @@ export default function TeamDay({ me, date, myWorksiteIds, worksiteName, onChang
         </div>
       ) : (
         team.map((p) => {
-          const r = rowFor(p.id);
-          const frozen = !!r?.locked;
-          return (
-            <div key={p.id} className="bt-td-row">
-              <span className="bt-td-name">{p.first_name} {p.last_name}</span>
-              {r ? (
-                <>
-                  <span className="bt-td-h2">{r.start_time.slice(0, 5)}–{r.end_time.slice(0, 5)} · {fmtHM(r.total_minutes)}</span>
-                  <span className={`bt-td-tag ${frozen ? 'verrou' : r.status === 'submitted' ? 'envoye' : 'brouillon'}`}>
-                    {frozen ? 'exporté' : r.status === 'submitted' ? 'envoyé' : 'brouillon'}
-                  </span>
-                </>
-              ) : (
+          const rs = rowsFor(p.id);
+          if (rs.length === 0) {
+            return (
+              <div key={p.id} className="bt-td-row">
+                <span className="bt-td-name">{p.first_name} {p.last_name}</span>
                 <span className="bt-td-h2" style={{ color: '#9a948a' }}>rien saisi</span>
-              )}
-              <button type="button" className="bt-td-edit" disabled={frozen} onClick={() => openEditor(p.id)}>
-                {r ? 'Corriger' : <><Plus className="inline h-3 w-3" /> Saisir</>}
+                <button type="button" className="bt-td-edit" onClick={() => openEditor(p.id, null)}>
+                  <Plus className="inline h-3 w-3" /> Saisir
+                </button>
+              </div>
+            );
+          }
+          // Une ligne par intervention : deux passages dans la journée sont deux
+          // lignes, et chacune se corrige pour elle-même.
+          return rs.map((r, i) => (
+            <div key={r.id} className="bt-td-row">
+              <span className="bt-td-name">
+                {i === 0 ? `${p.first_name} ${p.last_name}` : ''}
+              </span>
+              <span className="bt-td-h2">{r.start_time.slice(0, 5)}–{r.end_time.slice(0, 5)} · {fmtHM(r.total_minutes)}</span>
+              <span className={`bt-td-tag ${r.locked ? 'verrou' : r.status === 'submitted' ? 'envoye' : 'brouillon'}`}>
+                {r.locked ? 'exporté' : r.status === 'submitted' ? 'envoyé' : 'brouillon'}
+              </span>
+              <button type="button" className="bt-td-edit" disabled={r.locked} onClick={() => openEditor(p.id, r)}>
+                Corriger
               </button>
             </div>
-          );
+          ));
         })
       )}
 

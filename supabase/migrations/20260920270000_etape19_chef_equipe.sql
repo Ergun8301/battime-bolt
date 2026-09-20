@@ -51,7 +51,11 @@ CREATE OR REPLACE FUNCTION public.is_my_team_member(p_user uuid, p_date date)
 AS $fn$
   SELECT public.is_lead()
      AND p_user IS NOT NULL
-     AND p_date IS NOT NULL
+     -- LE JOUR MÊME, et rien d'autre. Sans cette borne, un chef pouvait lire et
+     -- modifier n'importe quelle journée passée ou future partagée avec un
+     -- collègue, via l'API — alors que le rôle et l'écran ne parlent que
+     -- d'aujourd'hui. Une promesse tenue par l'interface seule n'en est pas une.
+     AND p_date = (now() AT TIME ZONE 'Europe/Paris')::date
      AND EXISTS (
        SELECT 1 FROM public.users u
         WHERE u.id = p_user AND u.company_id = public.get_my_company_id()
@@ -101,8 +105,105 @@ CREATE POLICY time_entries_lead_update ON public.time_entries
      AND locked = false AND status IN ('draft', 'submitted')
      AND public.is_my_team_member(user_id, work_date))
   WITH CHECK (company_id = public.get_my_company_id()
-     AND locked = false AND status IN ('draft', 'submitted', 'cancelled')
+     AND locked = false AND status IN ('draft', 'submitted')
      AND public.is_my_team_member(user_id, work_date));
+
+-- Un chef ne change JAMAIS le statut d'une ligne qui n'est pas la sienne.
+-- La RLS ne voit que la NOUVELLE ligne : elle ne peut pas interdire la
+-- transition brouillon → envoyé. C'est donc le garde qui la tient. Sans lui, un
+-- chef pouvait envoyer les heures de son équipe par un simple appel à l'API,
+-- alors que l'écran, la documentation et cette PR affirment le contraire.
+-- Corriger les heures d'un autre, oui ; décider de leur sort — envoyer, retirer
+-- — non : ces deux gestes appartiennent au salarié.
+CREATE OR REPLACE FUNCTION public.guard_time_entry_write()
+ RETURNS trigger
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path TO ''
+AS $fn$
+BEGIN
+  IF auth.uid() IS NULL OR public.is_admin() THEN
+    RETURN new;
+  END IF;
+
+  IF public.is_month_closed(new.company_id, new.work_date)
+     AND current_setting('bemexo.allow_reserve_fix', true) IS DISTINCT FROM '1' THEN
+    RAISE EXCEPTION 'time_entries: le mois est clôturé par le bureau';
+  END IF;
+
+  IF TG_OP = 'INSERT' THEN
+    new.locked       := false;
+    new.exported_at  := NULL;
+    new.validated_at := NULL;
+    new.validated_by := NULL;
+    new.modified_at  := NULL;
+    new.modified_by  := NULL;
+    new.submitted_at := NULL;
+    new.reserve_resolved_at := NULL;
+    new.reserve_resolved_by := NULL;
+    new.reserve_resolution  := NULL;
+    new.reserve_fixed_at := NULL;
+    new.reserve_fixed_by := NULL;
+    new.reserve_fix_note := NULL;
+    IF new.user_id IS DISTINCT FROM auth.uid() THEN
+      new.status := 'draft';
+    END IF;
+  ELSE
+    new.user_id      := old.user_id;
+    new.company_id   := old.company_id;
+    new.work_date    := old.work_date;
+    new.locked       := old.locked;
+    new.exported_at  := old.exported_at;
+    new.validated_at := old.validated_at;
+    new.validated_by := old.validated_by;
+    new.client_id    := old.client_id;
+    new.reserve_resolved_at := old.reserve_resolved_at;
+    new.reserve_resolved_by := old.reserve_resolved_by;
+    new.reserve_resolution  := old.reserve_resolution;
+
+    IF current_setting('bemexo.allow_reserve_fix', true) IS DISTINCT FROM '1' THEN
+      new.reserve_fixed_at := old.reserve_fixed_at;
+      new.reserve_fixed_by := old.reserve_fixed_by;
+      new.reserve_fix_note := old.reserve_fix_note;
+    END IF;
+
+    IF old.user_id IS DISTINCT FROM auth.uid() THEN
+      new.status := old.status;
+    END IF;
+
+    IF old.status = 'submitted' AND new.status = 'draft' THEN
+      RAISE EXCEPTION 'time_entries: une journée envoyée ne redevient pas brouillon (retirez-la ou corrigez-la)';
+    END IF;
+    IF old.status = 'cancelled' AND new.status <> 'cancelled' THEN
+      RAISE EXCEPTION 'time_entries: une intervention retirée ne se réactive pas';
+    END IF;
+
+    IF old.status = 'submitted' AND (
+         new.status = 'cancelled'
+      OR (new.start_time, new.end_time, new.break_minutes, new.meal_allowance, new.observation, new.reception, new.worksite_id, new.photos, new.gap_before)
+         IS DISTINCT FROM
+         (old.start_time, old.end_time, old.break_minutes, old.meal_allowance, old.observation, old.reception, old.worksite_id, old.photos, old.gap_before)
+    ) THEN
+      new.modified_at := now();
+      new.modified_by := auth.uid();
+    ELSE
+      new.modified_at := old.modified_at;
+      new.modified_by := old.modified_by;
+    END IF;
+
+    IF new.status = 'submitted' AND old.status = 'draft' THEN
+      new.submitted_at := now();
+    ELSE
+      new.submitted_at := old.submitted_at;
+    END IF;
+  END IF;
+
+  IF new.worksite_id IS NULL OR NOT EXISTS (
+       SELECT 1 FROM public.worksites w
+       WHERE w.id = new.worksite_id AND w.company_id = new.company_id) THEN
+    RAISE EXCEPTION 'time_entries: chantier hors de votre entreprise';
+  END IF;
+  RETURN new;
+END;
+$fn$;
 
 DROP POLICY IF EXISTS planning_worker_select_own ON public.planning;
 CREATE POLICY planning_worker_select_own ON public.planning

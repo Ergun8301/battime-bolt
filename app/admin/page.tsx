@@ -87,7 +87,9 @@ export default function AdminPage() {
       .from('users')
       .select('id', { count: 'exact', head: true })
       .eq('company_id', user.company_id)
-      .eq('role', 'worker')
+      // Chefs d'équipe COMPRIS : ce sont des salariés de l'entreprise. Les
+      // oublier ferait proposer — et vendre — un forfait trop petit.
+      .in('role', ['worker', 'lead'])
       .eq('is_active', true)
       .then(({ count }) => { if (on) setWorkerCount(count ?? 0); });
     return () => { on = false; };
