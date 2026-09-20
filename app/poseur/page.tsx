@@ -113,6 +113,10 @@ export default function PoseurPage() {
   const [view, setView] = useState('day');
   const [selectedDate, setSelectedDate] = useState<string | null>(null); // declare a specific day
   const [pending, setPending] = useState<string[]>([]); // days "en attente"
+  // Jours dont les heures sont SAISIES mais pas ENVOYÉES. Ce n'est pas un oubli
+  // de saisie : le travail est fait, il manque le geste d'envoi. C'est le piège
+  // le plus fréquent — celui qui a fait disparaître 11 h un dimanche.
+  const [unsentDays, setUnsentDays] = useState<string[]>([]);
   const [pendingOpen, setPendingOpen] = useState(false); // "jours à déclarer" popover
   const [photoUrl, setPhotoUrl] = useState(''); // photo de profil du salarié (facultatif)
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
@@ -140,6 +144,17 @@ export default function PoseurPage() {
     const planned = rows.filter((p) => !p.absence_type && !absenceDays.has(p.work_date)).map((p) => p.work_date);
     const declared = new Set<string>((entRes.data || []).map((e: { work_date: string }) => e.work_date));
     setPending(computeMissingDays(planned, declared));
+
+    // Heures saisies, jamais envoyées. On les cherche sur toute la fenêtre :
+    // un brouillon d'avant-hier est aussi perdu que celui d'aujourd'hui.
+    // Borné à aujourd'hui : « Dupliquer cette journée » prépare des brouillons
+    // sur des jours à venir, ce n'est pas un oubli et ça n'a rien à faire ici.
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
+    const { data: drafts } = await supabase.from('time_entries')
+      .select('work_date').eq('user_id', user.id).eq('status', 'draft')
+      .gte('work_date', windowStart).lte('work_date', todayStr)
+      .order('work_date', { ascending: false });
+    setUnsentDays(Array.from(new Set(((drafts || []) as { work_date: string }[]).map((d) => d.work_date))));
   }, [user]);
 
   useEffect(() => {
@@ -275,6 +290,24 @@ export default function PoseurPage() {
 
   // Rappel « jours oubliés » : désormais rendu EN TÊTE de la liste (il défile avec le
   // contenu) au lieu d'être collé dans l'en-tête → l'en-tête reste court et se cache tôt.
+  // Heures saisies mais pas envoyées : le bureau ne les voit pas, elles ne
+  // comptent pas pour la paie. Le bandeau ouvre directement le jour concerné.
+  const unsentBanner = unsentDays.length > 0 ? (
+    <button
+      className="bt-alert"
+      onClick={() => openDay(unsentDays[0])}
+      aria-label="Journées saisies mais pas envoyées"
+    >
+      <span className="bt-alert-badge">{unsentDays.length}</span>
+      <span className="bt-alert-txt">
+        {unsentDays.length > 1
+          ? 'journées saisies mais pas envoyées'
+          : `journée du ${format(parseISO(unsentDays[0]), 'd MMMM', { locale: fr })} saisie mais pas envoyée`}
+      </span>
+      <span className="bt-alert-chev">›</span>
+    </button>
+  ) : null;
+
   // Saisies qui n'ont pas encore atteint le serveur (réseau coupé au moment de
   // la saisie). Même habillage que le rappel des jours oubliés.
   const offlineBanner = offlineCount > 0 ? (
@@ -395,7 +428,7 @@ export default function PoseurPage() {
           {selectedDate ? (
             <PoseurDay date={selectedDate} topBanner={offlineBanner} />
           ) : view === 'day' ? (
-            <PoseurDay topBanner={<>{offlineBanner}{pendingBanner}</>} />
+            <PoseurDay topBanner={<>{offlineBanner}{unsentBanner}{pendingBanner}</>} />
           ) : (
             <div className="bt-phscroll bt-skin">
               {view === 'week' ? (
