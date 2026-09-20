@@ -23,7 +23,7 @@ import {
   useDraggable, useDroppable, pointerWithin, rectIntersection,
   type DragEndEvent, type DragStartEvent, type CollisionDetection,
 } from '@dnd-kit/core';
-import { format, addDays, addWeeks, subWeeks, subDays, parseISO, getISOWeek } from 'date-fns';
+import { format, addDays, addWeeks, subWeeks, subDays, subMonths, endOfMonth, parseISO, getISOWeek } from 'date-fns';
 import { DAYS_IN_WEEK, weekDays as buildWeekDays, weekDayIndex, weekStart } from '@/lib/week';
 import { fr } from 'date-fns/locale';
 import type { DateRange } from 'react-day-picker';
@@ -627,6 +627,10 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
 
   // team export
   const [exportOpen, setExportOpen] = useState(false);
+  // Clôture du mois : décision explicite du bureau, refusée en base aux salariés.
+  const [closedMonths, setClosedMonths] = useState<Set<string>>(new Set());
+  const [closureBusy, setClosureBusy] = useState(false);
+  const [closureTarget, setClosureTarget] = useState<{ month: string; drafts: number } | null>(null);
   const [exportWorkerOpen, setExportWorkerOpen] = useState(false);
   const [exportRange, setExportRange] = useState<{ from: Date; to: Date } | null>(null);
   const [attributeTarget, setAttributeTarget] = useState<{ userId: string; dateStr: string; worksiteId: string | null; label: string } | null>(null);
@@ -879,7 +883,68 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     return () => clearInterval(id);
   }, [fetchExtras]);
 
-  const refresh = () => { fetchPlanning(); fetchExtras(); };
+  const fetchClosures = useCallback(async () => {
+    if (!user?.company_id) return;
+    const { data } = await supabase.from('month_closures').select('month').eq('company_id', user.company_id);
+    setClosedMonths(new Set(((data || []) as { month: string }[]).map((m) => m.month.slice(0, 7))));
+  }, [user?.company_id]);
+
+  useEffect(() => { fetchClosures(); }, [fetchClosures]);
+
+  const refresh = () => { fetchPlanning(); fetchExtras(); fetchClosures(); };
+
+  // Les deux mois que le bureau est susceptible de clôturer : celui qui vient
+  // de finir et celui en cours. Au-delà, ça relève de l'historique.
+  const closableMonths = useMemo(() => {
+    const now = new Date();
+    return [subMonths(now, 1), now].map((d) => format(d, 'yyyy-MM'));
+  }, []);
+
+  // Avant de clôturer : compter ce qui resterait bloqué. Une journée en
+  // brouillon dans un mois clos ne pourra plus jamais être envoyée par le
+  // salarié — il faut le dire avant, pas après.
+  const askClosure = async (month: string) => {
+    if (!user?.company_id) return;
+    const from = `${month}-01`;
+    const to = format(endOfMonth(new Date(`${from}T00:00:00`)), 'yyyy-MM-dd');
+    const { count } = await supabase.from('time_entries')
+      .select('id', { count: 'exact', head: true })
+      .eq('company_id', user.company_id).eq('status', 'draft')
+      .gte('work_date', from).lte('work_date', to);
+    setClosureTarget({ month, drafts: count || 0 });
+  };
+
+  const closeMonth = async (month: string) => {
+    if (!user?.company_id) return;
+    setClosureBusy(true);
+    try {
+      const { error } = await supabase.from('month_closures')
+        .insert({ company_id: user.company_id, month: `${month}-01`, closed_by: user.id });
+      if (error) throw error;
+      toast.success(`${format(new Date(`${month}-01T00:00:00`), 'MMMM yyyy', { locale: fr })} clôturé`);
+      setClosureTarget(null);
+      fetchClosures();
+    } catch (err) {
+      console.error('Error closing month:', err);
+      toast.error('Impossible de clôturer ce mois');
+    } finally { setClosureBusy(false); }
+  };
+
+  const reopenMonth = async (month: string) => {
+    if (!user?.company_id) return;
+    setClosureBusy(true);
+    try {
+      const { data, error } = await supabase.from('month_closures').delete()
+        .eq('company_id', user.company_id).eq('month', `${month}-01`).select('month');
+      if (error) throw error;
+      if (!data || data.length === 0) { toast.error('Mois déjà rouvert'); fetchClosures(); return; }
+      toast.success(`${format(new Date(`${month}-01T00:00:00`), 'MMMM yyyy', { locale: fr })} rouvert`);
+      fetchClosures();
+    } catch (err) {
+      console.error('Error reopening month:', err);
+      toast.error('Impossible de rouvrir ce mois');
+    } finally { setClosureBusy(false); }
+  };
 
   const aggregate = (rows: typeof realEntries) => {
     const m = new Map<string, RealAgg>();
@@ -2263,6 +2328,60 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
               </Button>
             </div>
             <p className="text-xs text-muted-foreground">Verrouille les saisies exportées (paie).</p>
+
+            {/* Clôture du mois — après l'export, on ferme. Un salarié ne peut
+                alors plus rien écrire sur ce mois ; le bureau, si. */}
+            <div className="border-t pt-3 space-y-2">
+              <p className="text-sm font-semibold">Clôture du mois</p>
+              <p className="text-xs text-muted-foreground">
+                Une fois le mois clôturé, les salariés ne peuvent plus rien y changer. Vous, si — et vous pouvez rouvrir.
+              </p>
+              {closableMonths.map((m) => {
+                const label = format(new Date(`${m}-01T00:00:00`), 'MMMM yyyy', { locale: fr });
+                const closed = closedMonths.has(m);
+                return (
+                  <div key={m} className="flex items-center justify-between gap-2">
+                    <span className="text-sm capitalize">{label}{closed ? ' · clos' : ''}</span>
+                    <Button
+                      variant={closed ? 'outline' : 'default'}
+                      size="sm"
+                      disabled={closureBusy}
+                      onClick={() => (closed ? reopenMonth(m) : askClosure(m))}
+                    >
+                      {closed ? 'Rouvrir' : 'Clôturer'}
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirmation de clôture : on annonce ce qui restera bloqué. */}
+      <Dialog open={!!closureTarget} onOpenChange={(o) => { if (!o) setClosureTarget(null); }}>
+        <DialogContent className="bt-skin max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="capitalize">
+              Clôturer {closureTarget ? format(new Date(`${closureTarget.month}-01T00:00:00`), 'MMMM yyyy', { locale: fr }) : ''} ?
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 pt-1">
+            <p className="text-sm text-muted-foreground">
+              Les salariés ne pourront plus rien saisir, modifier ni envoyer sur ce mois. Vous gardez la main et pouvez rouvrir à tout moment.
+            </p>
+            {closureTarget && closureTarget.drafts > 0 && (
+              <div className="rounded-md border border-orange-300 bg-orange-50 p-3 text-sm text-orange-900">
+                <b>{closureTarget.drafts} journée{closureTarget.drafts > 1 ? 's' : ''} en brouillon</b> dans ce mois.
+                Elles ne sont pas envoyées, donc pas dans l'export — et après la clôture, le salarié ne pourra plus les envoyer.
+              </div>
+            )}
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => setClosureTarget(null)}>Annuler</Button>
+              <Button className="flex-1" disabled={closureBusy} onClick={() => closureTarget && closeMonth(closureTarget.month)}>
+                {closureBusy ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null} Clôturer
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
