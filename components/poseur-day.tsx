@@ -315,7 +315,10 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
   const [lateOpen, setLateOpen] = useState(false);
   // Panneau Documents du chantier (photos/fichiers, consultable côté secrétaire aussi).
-  const [docsWs, setDocsWs] = useState<{ id: string; name: string } | null>(null);
+  // Le panneau Documents garde le contexte du moment où il a été ouvert :
+  // l'éditeur d'intervention peut se refermer derrière lui, la pièce doit
+  // rester rattachée à l'intervention depuis laquelle on l'a prise.
+  const [docsWs, setDocsWs] = useState<{ id: string; name: string; entryId: string | null } | null>(null);
   // Suppression d'une intervention : jamais sans confirmation (gant de chantier,
   // écran mouillé — un appui involontaire ne doit pas effacer une demi-journée).
   const [confirmDel, setConfirmDel] = useState<
@@ -1453,7 +1456,7 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
               {(slotWorksiteId || (openSlot.kind === 'entry' && editorEntry)) && (
                 <div className="bt-ed-dock-row">
                   {slotWorksiteId && (
-                    <button type="button" className="bt-ed-doc" onClick={() => setDocsWs({ id: slotWorksiteId, name: slotWorksiteName })}>
+                    <button type="button" className="bt-ed-doc" onClick={() => setDocsWs({ id: slotWorksiteId, name: slotWorksiteName, entryId: openSlot.kind === 'entry' ? openSlot.entryId : null })}>
                       <FolderOpen className="h-4 w-4" /> Documents
                     </button>
                   )}
@@ -1591,7 +1594,17 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
         </DialogContent>
       </Dialog>
 
-      <ChantierDocuments worksiteId={docsWs?.id || null} worksiteName={docsWs?.name} open={!!docsWs} onOpenChange={(o) => { if (!o) setDocsWs(null); }} />
+      {/* La pièce est rattachée au jour affiché, et à l'intervention quand elle
+          existe déjà en base. Un créneau prévu ou une saisie encore hors ligne
+          n'ont pas d'identifiant : la pièce reste alors rattachée au jour. */}
+      <ChantierDocuments
+        worksiteId={docsWs?.id || null}
+        worksiteName={docsWs?.name}
+        workDate={date}
+        timeEntryId={docsWs?.entryId || null}
+        open={!!docsWs}
+        onOpenChange={(o) => { if (!o) setDocsWs(null); }}
+      />
     </div>
   );
 }

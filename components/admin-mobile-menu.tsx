@@ -5,6 +5,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { User } from '@/lib/types';
 import {
   Users, Building2, Download, ChevronDown, FileSpreadsheet, FileText, Settings, LogOut, TrendingUp, Palmtree,
+  AlertTriangle,
 } from 'lucide-react';
 
 // Menu hamburger mobile de l'admin : identité + statut d'abonnement + les mêmes
@@ -59,6 +60,8 @@ interface AdminMobileMenuProps {
   onOpenCost: () => void;
   onOpenLeaves: () => void;
   pendingLeaves?: number;
+  onOpenReserves: () => void;
+  openReserves?: number;
   onOpenExportTeam: () => void;
   onOpenExportWorker: () => void;
   onOpenSettings: () => void;
@@ -69,6 +72,7 @@ export default function AdminMobileMenu({
   open, onOpenChange, user, companyLabel, companyLogo, companyInitials,
   trial, onSubscribe,
   onOpenSalaries, onOpenChantiers, onOpenCost, onOpenLeaves, pendingLeaves = 0,
+  onOpenReserves, openReserves = 0,
   onOpenExportTeam, onOpenExportWorker, onOpenSettings, onSignOut,
 }: AdminMobileMenuProps) {
   const [exportExpanded, setExportExpanded] = useState(false);
@@ -120,6 +124,12 @@ export default function AdminMobileMenu({
             <span className="bt-mm-icon"><Palmtree className="h-4 w-4" /></span>
             <span className="bt-mm-label">Demandes de congé</span>
             {pendingLeaves > 0 && <span className="bt-mm-badge">{pendingLeaves}</span>}
+          </button>
+
+          <button className="bt-mm-item" onClick={() => go(onOpenReserves)}>
+            <span className="bt-mm-icon"><AlertTriangle className="h-4 w-4" /></span>
+            <span className="bt-mm-label">Réserves de chantier</span>
+            {openReserves > 0 && <span className="bt-mm-badge">{openReserves}</span>}
           </button>
 
           <button className="bt-mm-item" onClick={() => go(onOpenCost)}>

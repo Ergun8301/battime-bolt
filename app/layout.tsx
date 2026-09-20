@@ -1,5 +1,5 @@
 import './globals.css';
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import { Toaster } from '@/components/ui/sonner';
 import { AuthProvider } from '@/components/auth-provider';
@@ -33,12 +33,16 @@ export const metadata: Metadata = {
     description: 'Gestion simplifiée des feuilles d\'heures pour les entreprises du BTP',
     images: ['/og-image.png'],
   },
-  viewport: {
-    width: 'device-width',
-    initialScale: 1,
-    maximumScale: 1,
-    userScalable: false,
-  },
+};
+
+// Next 14 sépare le viewport des métadonnées, et Next 15 en fera une erreur.
+// Le comportement est identique : zoom bloqué, pour que l'appui sur un champ de
+// saisie ne fasse pas sauter l'écran d'un salarié avec des gants.
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
 };
 
 // Donnée structurée globale : identité de l'éditeur (Organization).

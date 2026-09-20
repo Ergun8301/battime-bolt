@@ -17,6 +17,7 @@ import {
   ChevronLeft, ChevronRight, Plus, Trash2, Loader2,
   UserPlus, Users, Building2, Archive, CalendarRange, Download, FileSpreadsheet, FileText,
   Bell, Clock, Mail, RefreshCw, X, Pencil, LogOut, Settings, User as UserIcon, Paperclip, AlertTriangle, Info, Hammer, CheckCircle2, Menu, TrendingUp, Palmtree,
+  ShieldCheck,
 } from 'lucide-react';
 import {
   DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
@@ -31,7 +32,7 @@ import { fr } from 'date-fns/locale';
 import type { DateRange } from 'react-day-picker';
 import { toast } from 'sonner';
 import { computeMissingDays } from '@/lib/work-status';
-import { exportEntriesToExcel, exportEntriesToPDF } from '@/lib/export-utils';
+import { exportEntriesToExcel, exportEntriesToPDF, excelAsBase64 } from '@/lib/export-utils';
 import { fetchAllPaged, chunk } from '@/lib/fetch-all';
 import WorkerDetailDialog from '@/components/worker-detail';
 import ChantierDocuments from '@/components/chantier-documents';
@@ -40,6 +41,7 @@ import CompanySettings from '@/components/company-settings';
 import AdminMobileMenu from '@/components/admin-mobile-menu';
 import ImportDialog from '@/components/import-dialog';
 import CostReport from '@/components/cost-report';
+import ReservesReport from '@/components/reserves-report';
 import ImportWorkersDialog from '@/components/import-workers-dialog';
 import LeaveAdminDialog from '@/components/leave-admin-dialog';
 
@@ -52,6 +54,32 @@ function formatMinutes(minutes: number): string {
   const m = minutes % 60;
   return `${h}h${m.toString().padStart(2, '0')}`;
 }
+/**
+ * Empreinte de l'envoi au comptable : entreprise + période + contenu exact du
+ * tableur. Deux clics sur le MÊME export donnent la même clé — le serveur
+ * reconnaît alors un envoi déjà parti plutôt que d'en expédier un second. Un
+ * export refait après correction des heures donne une clé différente, et part.
+ *
+ * Ce n'est pas un usage cryptographique : sur un navigateur sans `crypto.subtle`
+ * (contexte non sécurisé), on retombe sur un condensé maison. Deux fichiers
+ * distincts de la même entreprise et de la même période auraient alors une
+ * chance négligeable de se confondre, et le pire serait un envoi non répété.
+ */
+async function sendKey(companyId: string, from: string, to: string, content: string): Promise<string> {
+  const seed = `${companyId}|${from}|${to}|${content.length}|${content}`;
+  try {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(seed));
+    return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('');
+  } catch {
+    let h1 = 0x811c9dc5, h2 = 0x01000193;
+    for (let i = 0; i < seed.length; i++) {
+      h1 = Math.imul(h1 ^ seed.charCodeAt(i), 0x01000193) >>> 0;
+      h2 = Math.imul(h2 + seed.charCodeAt(i), 0x85ebca6b) >>> 0;
+    }
+    return `f${h1.toString(16).padStart(8, '0')}${h2.toString(16).padStart(8, '0')}${companyId.slice(0, 8)}${from}${to}`;
+  }
+}
+
 // Format compact pour les stats du cockpit (30000 -> "30k").
 function fmtStat(n: number): string {
   if (n >= 10000) return `${(n / 1000).toFixed(n >= 100000 ? 0 : 1).replace(/\.0$/, '').replace('.', ',')}k`;
@@ -126,7 +154,9 @@ const paletteFor = (p: PlanningWithWorksite) =>
 
 type ReceptionStatus = 'sans' | 'avec' | 'en_cours' | null;
 const RECEPTION_RANK: Record<string, number> = { avec: 3, en_cours: 2, sans: 1 };
-interface RealAgg { minutes: number; start: string; end: string; count: number; reception: ReceptionStatus; note: string }
+interface RealAgg { minutes: number; start: string; end: string; count: number; reception: ReceptionStatus;
+  /** Au moins une réserve de cette case n'a pas encore été levée par le bureau. */
+  reserveOpen: boolean; note: string }
 const realKey = (userId: string, date: string, worksiteId: string | null) => `${userId}|${date}|${worksiteId}`;
 
 // ─── compact one-line chantier bubble ──────────────────────────────────────────
@@ -147,7 +177,11 @@ function BubbleContent({ p, palette, real, draft, docCount = 0 }: { p: PlanningW
           <span className="bt-pl-bub-title">{p.worksite?.client_name || 'Chantier'}</span>
           <span className="bt-pl-bub-ic">
             {p.added_by_worker && <span className="bt-pl-ic" title="Ajouté par le salarié" style={{ color: '#FFC21A' }}><UserIcon className="h-3 w-3" /></span>}
-            {real.reception === 'avec' && <span className="bt-pl-ic" title="Réception avec réserve" style={{ color: '#F0915A' }}><AlertTriangle className="h-3 w-3" /></span>}
+            {real.reception === 'avec' && (
+              real.reserveOpen
+                ? <span className="bt-pl-ic" title="Réception avec réserve — à traiter" style={{ color: '#F0915A' }}><AlertTriangle className="h-3 w-3" /></span>
+                : <span className="bt-pl-ic" title="Réception avec réserve — levée" style={{ color: '#8a8378' }}><AlertTriangle className="h-3 w-3" /></span>
+            )}
             {real.reception === 'sans' && <span className="bt-pl-ic" title="Réceptionné sans réserve" style={{ color: '#46C281' }}><CheckCircle2 className="h-3 w-3" /></span>}
             {real.reception === 'en_cours' && <span className="bt-pl-ic" title="Chantier en cours" style={{ color: '#E6B23C' }}><Hammer className="h-3 w-3" /></span>}
             {docs}
@@ -362,6 +396,8 @@ const PL_CSS = `
 .bt-pl-out{background:transparent;border:1.5px solid rgba(21,18,15,.3);color:#15120F;border-radius:10px;padding:7px 13px;height:33px;font-size:12.5px;font-weight:800;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;transition:border-color .14s ease,background .14s ease,transform .08s ease}
 .bt-pl-out:hover{border-color:#15120F;background:rgba(21,18,15,.04)}
 .bt-pl-out:active{transform:translateY(1px)}
+/* pastille de comptage (réserves à traiter) — même code couleur que l'alerte */
+.bt-pl-outbadge{min-width:18px;height:18px;padding:0 5px;border-radius:99px;background:#B5472E;color:#fff;font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;line-height:1;flex:none}
 .bt-pl-fill{background:linear-gradient(180deg,#FFCB3D,#F5B400);color:#15120F;border:none;box-shadow:0 10px 22px -10px rgba(214,158,0,.65);border-radius:10px;padding:8px 14px;height:33px;font-size:12.5px;font-weight:800;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;transition:transform .12s ease,box-shadow .12s ease}
 .bt-pl-fill:hover{transform:translateY(-1px);box-shadow:0 14px 28px -10px rgba(214,158,0,.75)}
 .bt-pl-fill:active{transform:translateY(1px);box-shadow:0 6px 14px -8px rgba(214,158,0,.6)}
@@ -586,11 +622,17 @@ interface AdminPlanningProps {
 export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps = {}) {
   const { user, signOut } = useAuth();
   const [workers, setWorkers] = useState<User[]>([]);
+  // Les personnes du BUREAU (rôle admin). Séparées des salariés : elles ne
+  // pointent pas sur le planning, mais elles doivent rester visibles quelque
+  // part — sinon quelqu'un qu'on vient de nommer disparaît de l'écran et plus
+  // personne ne peut le rétrograder.
+  const [officeUsers, setOfficeUsers] = useState<User[]>([]);
+  const [roleBusyId, setRoleBusyId] = useState<string | null>(null);
   const [worksites, setWorksites] = useState<Worksite[]>([]);
   const [planning, setPlanning] = useState<PlanningWithWorksite[]>([]);
-  const [realEntries, setRealEntries] = useState<{ user_id: string; work_date: string; worksite_id: string | null; start_time: string; end_time: string; total_minutes: number; reception: string | null; observation: string | null }[]>([]);
+  const [realEntries, setRealEntries] = useState<{ user_id: string; work_date: string; worksite_id: string | null; start_time: string; end_time: string; total_minutes: number; reception: string | null; reserve_resolved_at: string | null; observation: string | null }[]>([]);
   // Saisies pas encore envoyées : affichées en pointillé, jamais comptées.
-  const [draftEntries, setDraftEntries] = useState<{ user_id: string; work_date: string; worksite_id: string | null; start_time: string; end_time: string; total_minutes: number; reception: string | null; observation: string | null }[]>([]);
+  const [draftEntries, setDraftEntries] = useState<{ user_id: string; work_date: string; worksite_id: string | null; start_time: string; end_time: string; total_minutes: number; reception: string | null; reserve_resolved_at: string | null; observation: string | null }[]>([]);
   const [docsByWorksite, setDocsByWorksite] = useState<Map<string, number>>(new Map()); // nb de documents par chantier (pastille 📎)
   const [todayAbsence, setTodayAbsence] = useState<Map<string, string>>(new Map());
   const [missingByWorker, setMissingByWorker] = useState<Map<string, string[]>>(new Map());
@@ -599,6 +641,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   // Réglage entreprise : la route entre deux chantiers est-elle payée ?
   const [travelPaid, setTravelPaid] = useState(false);
   const [companyWeeklyHours, setCompanyWeeklyHours] = useState(DEFAULT_WEEKLY_HOURS);
+  const [accountantEmail, setAccountantEmail] = useState('');
   const [loading, setLoading] = useState(true);
   const [currentWeekStart, setCurrentWeekStart] = useState(weekStart());
   const [positionWarned, setPositionWarned] = useState(false);
@@ -613,6 +656,8 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const [mobileChantiersOpen, setMobileChantiersOpen] = useState(false); // liste « Chantiers » mobile (équivalent du dropdown Clients desktop)
   const [importOpen, setImportOpen] = useState(false); // import CSV/Excel de clients/chantiers
   const [costOpen, setCostOpen] = useState(false); // rapport coût & heures par chantier
+  const [reservesOpen, setReservesOpen] = useState(false); // registre des réserves de chantier
+  const [openReserves, setOpenReserves] = useState(0); // compteur pour la pastille
   const [importWorkersOpen, setImportWorkersOpen] = useState(false); // import CSV/Excel de salariés (invitations en masse)
   const [leaveOpen, setLeaveOpen] = useState(false); // demandes de congé des salariés
   const [pendingLeaves, setPendingLeaves] = useState(0); // compteur pour la pastille
@@ -670,7 +715,10 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
 
   // separate client fiche (permanent data)
   const [clientFiche, setClientFiche] = useState<Worksite | null>(null);
-  const [docsWorksite, setDocsWorksite] = useState<Worksite | null>(null); // panneau Documents d'un chantier (fiche OU intervention)
+  // Panneau Documents : le chantier, et le JOUR quand on l'ouvre depuis une
+  // case du planning. Depuis la fiche client, il n'y a pas de jour — et lui
+  // coller la date d'aujourd'hui inventerait une information.
+  const [docsWorksite, setDocsWorksite] = useState<{ ws: Worksite; day: string | null } | null>(null);
   const [wsName, setWsName] = useState('');
   const [wsProduct, setWsProduct] = useState('');
   const [wsPhone, setWsPhone] = useState('');
@@ -772,13 +820,15 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const fetchData = useCallback(async () => {
     if (!user?.company_id) return;
     try {
-      const [workersRes, worksitesRes] = await Promise.all([
+      const [workersRes, worksitesRes, officeRes] = await Promise.all([
         supabase.from('users').select('*').eq('company_id', user.company_id).eq('role', 'worker').eq('is_active', true).order('first_name'),
         supabase.from('worksites').select('*').eq('company_id', user.company_id).eq('is_active', true).order('client_name'),
+        supabase.from('users').select('*').eq('company_id', user.company_id).eq('role', 'admin').eq('is_active', true).order('first_name'),
       ]);
       if (workersRes.error) throw workersRes.error;
       if (worksitesRes.error) throw worksitesRes.error;
       setWorkers(workersRes.data || []);
+      if (!officeRes.error) setOfficeUsers((officeRes.data || []) as User[]);
       setWorksites(worksitesRes.data || []);
     } catch (err) {
       console.error('Error fetching data:', err);
@@ -797,9 +847,9 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       const [planRes, realRes, draftRes] = await Promise.all([
         supabase.from('planning').select('*, worksite:worksites(*), user:users!user_id(*)')
           .eq('company_id', user.company_id).gte('work_date', from).lte('work_date', to).order('work_date'),
-        supabase.from('time_entries').select('user_id, work_date, worksite_id, start_time, end_time, total_minutes, reception, observation')
+        supabase.from('time_entries').select('user_id, work_date, worksite_id, start_time, end_time, total_minutes, reception, reserve_resolved_at, observation')
           .eq('company_id', user.company_id).in('status', ['submitted', 'validated']).gte('work_date', from).lte('work_date', to),
-        supabase.from('time_entries').select('user_id, work_date, worksite_id, start_time, end_time, total_minutes, reception, observation')
+        supabase.from('time_entries').select('user_id, work_date, worksite_id, start_time, end_time, total_minutes, reception, reserve_resolved_at, observation')
           .eq('company_id', user.company_id).eq('status', 'draft').gte('work_date', from).lte('work_date', to),
       ]);
       if (planRes.error) throw planRes.error;
@@ -835,16 +885,24 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const fetchExtras = useCallback(async () => {
     if (!user?.company_id) return;
     const windowStart = format(subDays(new Date(), WINDOW_DAYS), 'yyyy-MM-dd');
-    const [planRes, entRes, compRes, invRes, docRes, leaveRes, liveRes] = await Promise.all([
+    const [planRes, entRes, compRes, invRes, docRes, leaveRes, resRes, liveRes] = await Promise.all([
       supabase.from('planning').select('user_id, work_date, absence_type').eq('company_id', user.company_id).gte('work_date', windowStart),
       supabase.from('time_entries').select('user_id, work_date').eq('company_id', user.company_id).in('status', ['submitted', 'validated']).gte('work_date', windowStart),
-      supabase.from('companies').select('name, logo_url, travel_paid, weekly_hours').eq('id', user.company_id).maybeSingle(),
+      supabase.from('companies').select('name, logo_url, travel_paid, weekly_hours, accountant_email').eq('id', user.company_id).maybeSingle(),
       supabase.from('invitations').select('*').eq('company_id', user.company_id).is('accepted_at', null).gt('expires_at', new Date().toISOString()).order('created_at', { ascending: false }),
       supabase.from('documents').select('worksite_id').eq('company_id', user.company_id),
       supabase.from('leave_requests').select('id', { count: 'exact', head: true }).eq('company_id', user.company_id).eq('status', 'pending'),
+      // Réserves encore à traiter. Mêmes statuts que partout : un brouillon ou
+      // une intervention retirée ne crée pas une réserve à poursuivre.
+      supabase.from('time_entries').select('id', { count: 'exact', head: true })
+        .eq('company_id', user.company_id).eq('reception', 'avec')
+        .in('status', ['submitted', 'validated']).is('reserve_resolved_at', null),
       supabase.from('active_sessions').select('user_id, worksite_id, started_at').eq('company_id', user.company_id),
     ]);
     setPendingLeaves(leaveRes.count || 0);
+    // Une erreur de lecture laisse la pastille inchangée : afficher 0 dirait
+    // « aucune réserve », ce qui est précisément le message à ne pas donner.
+    if (!resRes.error) setOpenReserves(resRes.count || 0);
     if (!liveRes.error) setLiveNow(liveRes.data || []);
 
     // Pastille 📎 : nombre de documents par chantier.
@@ -881,9 +939,10 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     setTodayAbsence(today);
     setMissingByWorker(miss);
     setCompanyName(compRes.data?.name || '');
-    const comp = compRes.data as { travel_paid?: boolean; weekly_hours?: number | null } | null;
+    const comp = compRes.data as { travel_paid?: boolean; weekly_hours?: number | null; accountant_email?: string | null } | null;
     setTravelPaid(!!comp?.travel_paid);
     setCompanyWeeklyHours(comp?.weekly_hours ?? DEFAULT_WEEKLY_HOURS);
+    setAccountantEmail((comp?.accountant_email || '').trim());
     setCompanyLogo((compRes.data as { logo_url?: string | null } | null)?.logo_url || '');
     setInvitations((invRes.data || []) as Invitation[]);
   }, [user?.company_id]);
@@ -964,7 +1023,11 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     for (const e of rows) {
       const k = realKey(e.user_id, e.work_date, e.worksite_id);
       const cur = m.get(k);
-      if (!cur) m.set(k, { minutes: e.total_minutes, start: e.start_time, end: e.end_time, count: 1, reception: (e.reception as ReceptionStatus) || null, note: e.observation || '' });
+      // Une réserve « ouverte » = déclarée ET pas encore levée par le bureau.
+      // Sans cette distinction, le triangle d'alerte resterait allumé à vie sur
+      // la case, même une fois le problème réglé.
+      const stillOpen = e.reception === 'avec' && !e.reserve_resolved_at;
+      if (!cur) m.set(k, { minutes: e.total_minutes, start: e.start_time, end: e.end_time, count: 1, reception: (e.reception as ReceptionStatus) || null, reserveOpen: stillOpen, note: e.observation || '' });
       else {
         cur.minutes += e.total_minutes;
         if (e.start_time && e.start_time < cur.start) cur.start = e.start_time;
@@ -972,6 +1035,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         cur.count += 1;
         // garde le statut le plus « fort » (avec > en_cours > sans) + cumule les notes
         if ((RECEPTION_RANK[e.reception || ''] || 0) > (RECEPTION_RANK[cur.reception || ''] || 0)) cur.reception = (e.reception as ReceptionStatus) || cur.reception;
+        if (stillOpen) cur.reserveOpen = true;
         if (e.observation) cur.note = cur.note ? `${cur.note} · ${e.observation}` : e.observation;
       }
     }
@@ -1251,6 +1315,41 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   // salarié (avant, ça n'ouvrait qu'un brouillon mailto sur le poste de l'admin —
   // rien n'était réellement envoyé si l'admin ne cliquait pas « Envoyer »).
   // Repli mailto conservé si le salarié n'a activé le push sur aucun appareil.
+  /**
+   * Nommer quelqu'un au bureau, ou l'en retirer.
+   *
+   * La base tient l'invariant : une entreprise garde toujours au moins un
+   * administrateur ACTIF. On ne le revérifie pas ici pour « faire joli » — on
+   * affiche le message que le serveur renvoie, parce que c'est lui qui sait,
+   * y compris quand deux personnes cliquent en même temps.
+   */
+  const changeRole = async (target: User, role: 'admin' | 'worker') => {
+    const label = `${target.first_name || ''} ${target.last_name || ''}`.trim() || 'cette personne';
+    if (typeof window !== 'undefined') {
+      const q = role === 'admin'
+        ? `Donner à ${label} l'accès complet au bureau ? Cette personne pourra voir les taux horaires, sortir la paie et modifier les réglages.`
+        : `Retirer à ${label} l'accès au bureau ? Elle redeviendra un salarié qui ne voit que ses propres heures.`;
+      if (!window.confirm(q)) return;
+    }
+    setRoleBusyId(target.id);
+    try {
+      const { error } = await supabase.rpc('set_user_role', { p_user_id: target.id, p_role: role });
+      if (error) throw error;
+      toast.success(role === 'admin' ? `${label} a rejoint le bureau` : `${label} est redevenu salarié`);
+      await fetchData();
+      // Se retirer soi-même du bureau change ce que l'on a le droit de voir :
+      // laisser l'écran d'administration ouvert montrerait des boutons qui ne
+      // marchent plus. On recharge pour repartir sur la bonne interface.
+      if (role === 'worker' && target.id === user?.id && typeof window !== 'undefined') {
+        window.location.reload();
+      }
+    } catch (e) {
+      toast.error((e as { message?: string })?.message || 'Changement de rôle impossible.');
+    } finally {
+      setRoleBusyId(null);
+    }
+  };
+
   const sendReminder = async (worker: User) => {
     const missing = missingByWorker.get(worker.id) || [];
     const jours = missing.map((d) => format(parseISO(d), 'EEEE d MMMM', { locale: fr })).join(', ');
@@ -1290,7 +1389,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
 
   // ─── team export (locks) ──────────────────────────────────────────────────────
 
-  const runExport = async (kind: 'excel' | 'pdf') => {
+  const runExport = async (kind: 'excel' | 'pdf' | 'comptable') => {
     if (!user?.company_id) { toast.error('Profil non chargé'); return; }
     setExporting(true);
     try {
@@ -1360,8 +1459,60 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         weeklyHoursByWorker,
         recapEntries,
       };
-      if (kind === 'excel') exportEntriesToExcel(entries, opts);
-      else exportEntriesToPDF(entries, opts);
+      // Message final : dépend de ce que le serveur répond (envoyé / déjà parti).
+      let sentNote = '';
+      if (kind === 'comptable') {
+        // Le fichier part en pièce jointe, pas en lien : le comptable ne doit
+        // rien avoir à ouvrir ni à installer. Le destinataire n'est pas
+        // transmis — la fonction le relit dans les réglages de l'entreprise.
+        //
+        // La clé d'idempotence est l'empreinte du fichier RÉELLEMENT expédié :
+        // recliquer après une coupure renvoie la même clé, donc le serveur
+        // reconnaît l'envoi au lieu d'en faire un second. Un export refait
+        // après correction des heures donne une autre clé, et part bien.
+        const content = excelAsBase64(entries, opts);
+        const idempotencyKey = await sendKey(user.company_id, from, to, content);
+        const { data: sendData, error: sendErr } = await supabase.functions.invoke('send-payroll-export', {
+          body: {
+            fileName: `${opts.fileName}.xlsx`,
+            contentBase64: content,
+            periodLabel: opts.periodLabel,
+            idempotencyKey,
+          },
+        });
+        if (sendErr) {
+          // Le message utile est dans le corps de la réponse, pas dans
+          // `sendErr.message` qui dit seulement « non-2xx ».
+          let detail = '';
+          try {
+            const ctx = (sendErr as { context?: Response }).context;
+            if (ctx && typeof ctx.json === 'function') {
+              const body = await ctx.json();
+              detail = typeof body?.error === 'string' ? body.error : '';
+            }
+          } catch { /* corps illisible : on garde le message générique */ }
+          toast.error(detail || "L'envoi au comptable a échoué. Les heures restent modifiables. Recliquez : si l'e-mail était déjà parti, il ne partira pas deux fois.");
+          // Pas d'envoi confirmé, donc pas de verrouillage : sans ça le bureau
+          // croirait la paie partie et ne pourrait plus rien corriger.
+          return;
+        }
+        const r = (sendData || {}) as { duplicate?: boolean; alreadySentAt?: string | null; previousSendAt?: string | null };
+        if (r.duplicate) {
+          // Le fichier était déjà parti — la fois d'avant, la réponse s'était
+          // perdue. On ne renvoie pas, et on verrouille ce qui aurait dû l'être.
+          sentNote = r.alreadySentAt
+            ? `Déjà envoyé le ${format(new Date(r.alreadySentAt), 'dd/MM \'à\' HH:mm')} — non renvoyé`
+            : 'Déjà envoyé — non renvoyé';
+        } else if (r.previousSendAt) {
+          sentNote = `Envoyé à ${accountantEmail} — attention, un export de cette période était déjà parti le ${format(new Date(r.previousSendAt), 'dd/MM \'à\' HH:mm')}`;
+        } else {
+          sentNote = `Envoyé à ${accountantEmail}`;
+        }
+      } else if (kind === 'excel') {
+        exportEntriesToExcel(entries, opts);
+      } else {
+        exportEntriesToPDF(entries, opts);
+      }
 
       // Verrouillage PAR LOTS : un `.in('id', [...])` avec des centaines d'UUID
       // dépasse la longueur d'URL admise par la passerelle et échoue. L'erreur
@@ -1375,7 +1526,10 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         if (lockErr) throw lockErr;
       }
 
-      toast.success(`Export téléchargé — ${entries.length} saisie${entries.length > 1 ? 's' : ''} verrouillée${entries.length > 1 ? 's' : ''}`);
+      const lockLabel = `${entries.length} saisie${entries.length > 1 ? 's' : ''} verrouillée${entries.length > 1 ? 's' : ''}`;
+      toast.success(kind === 'comptable'
+        ? `${sentNote} — ${lockLabel}`
+        : `Export téléchargé — ${lockLabel}`);
     } catch (err) {
       console.error('Error exporting team:', err);
       toast.error("Erreur lors de l'export");
@@ -1804,6 +1958,10 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
             <button className="bt-pl-datearr" aria-label="Semaine suivante" onClick={() => setCurrentWeekStart(addWeeks(currentWeekStart, 1))}>›</button>
           </div>
           <div className="bt-pl-group">
+          <button className="bt-pl-out" onClick={() => setReservesOpen(true)} title="Réserves de chantier à traiter">
+            <AlertTriangle className="h-4 w-4" /> Réserves
+            {openReserves > 0 && <span className="bt-pl-outbadge">{openReserves}</span>}
+          </button>
           <button className="bt-pl-out" onClick={() => setCostOpen(true)}><TrendingUp className="h-4 w-4" /> Coût chantiers</button>
           <div className="bt-pl-ddwrap">
             <button className="bt-pl-fill" onClick={() => setExportMenuOpen((o) => !o)}><Download className="h-4 w-4" /> Exporter ▾</button>
@@ -2188,6 +2346,8 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         onOpenCost={() => setCostOpen(true)}
         onOpenLeaves={() => setLeaveOpen(true)}
         pendingLeaves={pendingLeaves}
+        onOpenReserves={() => setReservesOpen(true)}
+        openReserves={openReserves}
         onSignOut={signOut}
       />
 
@@ -2206,6 +2366,44 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
               <Palmtree className="h-4 w-4 mr-1.5" /> Demandes de congé
               {pendingLeaves > 0 && <span className="bt-pl-badge ml-1.5">{pendingLeaves}</span>}
             </Button>
+
+            {/* LE BUREAU. Une entreprise n'avait qu'un seul administrateur, celui
+                qui a créé le compte : si le patron est sur un toit, personne ne
+                sort la paie. On peut maintenant en nommer d'autres — et surtout
+                les revoir ici, alors qu'une personne promue disparaissait de la
+                liste des salariés et ne pouvait plus être rétrogradée. */}
+            <div className="mb-3">
+              <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[.12em] text-muted-foreground">
+                <ShieldCheck className="h-3.5 w-3.5" /> Bureau · accès complet
+              </div>
+              <div className="space-y-1">
+                {officeUsers.map((o) => (
+                  <div key={o.id} className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm" style={{ background: '#FBF7EF' }}>
+                    <span className="min-w-0 flex-1 truncate font-medium">
+                      {o.first_name} {o.last_name}
+                      {o.id === user?.id && <span className="ml-1.5 text-xs text-muted-foreground">(vous)</span>}
+                    </span>
+                    <Button
+                      variant="outline" size="sm" className="h-7 text-xs"
+                      disabled={roleBusyId === o.id || officeUsers.length <= 1}
+                      title={officeUsers.length <= 1
+                        ? "Dernier accès bureau : nommez quelqu'un d'autre avant de le retirer"
+                        : 'Retirer du bureau'}
+                      onClick={() => changeRole(o, 'worker')}
+                    >
+                      {roleBusyId === o.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Retirer'}
+                    </Button>
+                  </div>
+                ))}
+                {officeUsers.length <= 1 && (
+                  <p className="px-1 pt-1 text-[11.5px] font-semibold text-muted-foreground">
+                    Une seule personne a l&apos;accès bureau. Si elle est indisponible, plus personne ne sort la paie —
+                    nommez un second depuis la liste ci-dessous.
+                  </p>
+                )}
+              </div>
+            </div>
+
             <Input placeholder="Rechercher un salarié…" value={salariesQuery} onChange={(e) => setSalariesQuery(e.target.value)} className="mb-2" />
             <div className="space-y-1">
               {workers.length === 0 ? (
@@ -2226,6 +2424,13 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                           {remindingId === w.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Bell className="h-3.5 w-3.5" />}
                         </Button>
                       )}
+                      <Button
+                        variant="outline" size="icon" className="h-7 w-7"
+                        title="Donner l'accès bureau" disabled={roleBusyId === w.id}
+                        onClick={() => changeRole(w, 'admin')}
+                      >
+                        {roleBusyId === w.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+                      </Button>
                       <Pencil className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                     </div>
                   );
@@ -2245,6 +2450,24 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       />
 
       <CostReport open={costOpen} onOpenChange={setCostOpen} companyId={user?.company_id} />
+
+      {/* Registre des réserves — ouvre le module Documents du chantier pour les
+          photos. Après une levée, `refresh` recharge le planning ET les extras :
+          sans le premier, le triangle de la case garderait sa couleur d'alerte ;
+          sans le second, la pastille resterait fausse jusqu'au prochain sondage. */}
+      <ReservesReport
+        open={reservesOpen}
+        onOpenChange={setReservesOpen}
+        companyId={user?.company_id}
+        onOpenDocs={(id, name) => {
+          // Depuis le registre des réserves on ouvre le dossier DU CHANTIER,
+          // sans jour : une réserve porte sa propre date, et coller ici celle
+          // d'aujourd'hui rangerait la pièce au mauvais endroit.
+          const ws = worksites.find((w) => w.id === id);
+          setDocsWorksite({ ws: ws || ({ id, client_name: name } as Worksite), day: null });
+        }}
+        onChanged={refresh}
+      />
 
       <ImportWorkersDialog
         open={importWorkersOpen}
@@ -2337,7 +2560,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
             <div className="space-y-3 pt-1">
               <p className="text-sm text-muted-foreground">{formatMinutes(extraTarget.minutes)} · ajouté par le salarié.</p>
               <Button variant="outline" className="w-full justify-start" disabled={!extraTarget.worksiteId}
-                onClick={() => { const ws = worksites.find((w) => w.id === extraTarget.worksiteId); if (ws) { setDocsWorksite(ws); setExtraTarget(null); } }}>
+                onClick={() => { const ws = worksites.find((w) => w.id === extraTarget.worksiteId); if (ws) { setDocsWorksite({ ws, day: extraTarget.dateStr }); setExtraTarget(null); } }}>
                 <FileText className="h-4 w-4 mr-2" /> Documents du chantier
               </Button>
               <Button variant="outline" className="w-full justify-start"
@@ -2393,6 +2616,23 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                 {exporting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <FileText className="h-4 w-4 mr-2" />} PDF
               </Button>
             </div>
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => runExport('comptable')}
+              disabled={exporting || !exportRange || !accountantEmail}
+              title={accountantEmail
+                ? `Envoyer le tableur à ${accountantEmail}`
+                : "Enregistrez l'adresse de votre comptable dans les réglages"}
+            >
+              {exporting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Mail className="h-4 w-4 mr-2" />}
+              {accountantEmail ? `Envoyer à ${accountantEmail}` : 'Envoyer au comptable'}
+            </Button>
+            {!accountantEmail && (
+              <p className="text-xs text-muted-foreground">
+                Aucune adresse de comptable enregistrée. Ajoutez-la dans les réglages de l&apos;entreprise.
+              </p>
+            )}
             <p className="text-xs text-muted-foreground">Verrouille les saisies exportées (paie).</p>
 
             {/* Clôture du mois — après l'export, on ferme. Un salarié ne peut
@@ -2571,7 +2811,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                     <Button variant="outline" size="sm" className="justify-start h-8" onClick={() => openClientFiche(editing.worksite)}>
                       <Pencil className="h-3.5 w-3.5 mr-1.5" /> Fiche
                     </Button>
-                    <Button variant="outline" size="sm" className="justify-start h-8" onClick={() => setDocsWorksite(editing.worksite || null)}>
+                    <Button variant="outline" size="sm" className="justify-start h-8" onClick={() => { if (editing.worksite) setDocsWorksite({ ws: editing.worksite, day: editing.work_date }); }}>
                       <FileText className="h-3.5 w-3.5 mr-1.5" /> Documents
                     </Button>
                   </div>
@@ -2605,7 +2845,11 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                   <span className="text-muted-foreground">pas encore déclaré</span>
                 )}
                 {editRealAgg?.reception === 'avec' && (
-                  <div className="mt-1.5 flex items-center gap-1.5 font-semibold text-[#C0461F]"><AlertTriangle className="h-3.5 w-3.5" /> Réception avec réserve</div>
+                  editRealAgg.reserveOpen ? (
+                    <div className="mt-1.5 flex items-center gap-1.5 font-semibold text-[#C0461F]"><AlertTriangle className="h-3.5 w-3.5" /> Réception avec réserve — à traiter</div>
+                  ) : (
+                    <div className="mt-1.5 flex items-center gap-1.5 font-semibold text-[#1F7A4D]"><CheckCircle2 className="h-3.5 w-3.5" /> Réception avec réserve — levée</div>
+                  )
                 )}
                 {editRealAgg?.reception === 'sans' && (
                   <div className="mt-1.5 flex items-center gap-1.5 font-semibold text-[#1F7A4D]"><CheckCircle2 className="h-3.5 w-3.5" /> Réceptionné sans réserve</div>
@@ -2617,7 +2861,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                   <div className="mt-1 text-[13px] text-[#15120F]">« {editRealAgg.note} »</div>
                 )}
                 {editRealAgg?.reception === 'avec' && editing.worksite && (
-                  <button type="button" className="mt-2 inline-flex items-center gap-1.5 text-[12.5px] font-bold text-[#a87c1e] underline" onClick={() => setDocsWorksite(editing.worksite || null)}>
+                  <button type="button" className="mt-2 inline-flex items-center gap-1.5 text-[12.5px] font-bold text-[#a87c1e] underline" onClick={() => { if (editing.worksite) setDocsWorksite({ ws: editing.worksite, day: editing.work_date }); }}>
                     <FileText className="h-3.5 w-3.5" /> Voir les photos / documents
                   </button>
                 )}
@@ -2683,7 +2927,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                 <Button onClick={saveClientFiche} disabled={savingWs}>
                   {savingWs && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer
                 </Button>
-                <Button variant="outline" onClick={() => setDocsWorksite(clientFiche)}>
+                <Button variant="outline" onClick={() => setDocsWorksite({ ws: clientFiche, day: null })}>
                   <FileText className="h-4 w-4 mr-1" /> Documents
                 </Button>
                 <Button variant="outline" onClick={archiveClientFiche} disabled={wsBusy}>
@@ -2698,7 +2942,13 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         </DialogContent>
       </Dialog>
 
-      <ChantierDocuments worksiteId={docsWorksite?.id || null} worksiteName={docsWorksite?.client_name} open={!!docsWorksite} onOpenChange={(o) => { if (!o) setDocsWorksite(null); }} />
+      <ChantierDocuments
+        worksiteId={docsWorksite?.ws.id || null}
+        worksiteName={docsWorksite?.ws.client_name}
+        workDate={docsWorksite?.day || null}
+        open={!!docsWorksite}
+        onOpenChange={(o) => { if (!o) setDocsWorksite(null); }}
+      />
 
       {/* Clients list — open any client fiche */}
       {/* Panneau « Clients » fusionné dans le menu déroulant de la barre

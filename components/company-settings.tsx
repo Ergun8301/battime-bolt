@@ -80,12 +80,15 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
   const [travelPaid, setTravelPaid] = useState(false);
   // Horaire hebdomadaire de base : au-delà, les heures sont supplémentaires.
   const [weeklyHours, setWeeklyHours] = useState('35');
+  // Destinataire de l'export de paie. Enregistré une fois, modifiable ici : la
+  // fonction serveur ne lit QUE cette adresse, jamais celle du navigateur.
+  const [accountantEmail, setAccountantEmail] = useState('');
 
   useEffect(() => {
     if (!open || !user?.company_id) return;
     setLoading(true); setErr(null);
     supabase.from('companies')
-      .select('name, siret, tva_intra, address, postal_code, city, phone, email, logo_url, subscription_status, auto_reminder_enabled, reminder_hour, budget_alerts_enabled, travel_paid, weekly_hours')
+      .select('name, siret, tva_intra, address, postal_code, city, phone, email, logo_url, subscription_status, auto_reminder_enabled, reminder_hour, budget_alerts_enabled, travel_paid, weekly_hours, accountant_email')
       .eq('id', user.company_id).maybeSingle()
       .then(({ data }) => {
         const d = (data || {}) as Partial<Form> & {
@@ -95,6 +98,7 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
           budget_alerts_enabled?: boolean | null;
           travel_paid?: boolean | null;
           weekly_hours?: number | null;
+          accountant_email?: string | null;
         };
         setF({
           name: d.name || '', siret: d.siret || '', tva_intra: d.tva_intra || '', address: d.address || '',
@@ -106,6 +110,7 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
         setBudgetAlertsOn(d.budget_alerts_enabled ?? true);
         setTravelPaid(d.travel_paid ?? false);
         setWeeklyHours(String(d.weekly_hours ?? 35));
+        setAccountantEmail(d.accountant_email || '');
         setLoading(false);
       });
   }, [open, user?.company_id]);
@@ -193,6 +198,13 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
   };
 
   const save = async () => {
+    // Vérifié ici AUSSI, pas seulement en base : une adresse fautive ferait
+    // échouer l'envoi de la paie plus tard, loin de l'écran où on l'a tapée.
+    const mail = accountantEmail.trim();
+    if (mail && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(mail)) {
+      setErr("Adresse du comptable invalide.");
+      return;
+    }
     setSaving(true); setErr(null);
     try {
       const { error } = await supabase.rpc('update_company_info', {
@@ -202,6 +214,7 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
         p_budget_alerts_enabled: budgetAlertsOn,
         p_travel_paid: travelPaid,
         p_weekly_hours: Number(weeklyHours.replace(',', '.')) || 0,
+        p_accountant_email: mail,
       });
       if (error) throw error;
       onSaved?.();
@@ -394,6 +407,27 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
                   <input type="checkbox" checked={travelPaid} onChange={(e) => setTravelPaid(e.target.checked)} />
                   <span>{travelPaid ? 'Payée' : 'Non payée'}</span>
                 </label>
+              </div>
+            </div>
+
+            {/* Comptable — destinataire de l'export de paie. L'adresse vit ici,
+                pas dans l'écran d'export : rien ne part vers une adresse tapée
+                au moment de l'envoi, et le bureau garde la main dessus. */}
+            <div className="bt-set-sub">
+              <div className="bt-set-subtxt">
+                <label className="bt-set-l">Adresse de votre comptable</label>
+                <p className="bt-set-substate">
+                  Depuis le planning, le bouton <strong>Envoyer au comptable</strong> expédie le tableur des heures
+                  à cette adresse, <strong>en pièce jointe</strong>. Vous recevez une copie. Laissez vide pour désactiver l&apos;envoi.
+                </p>
+              </div>
+              <div className="bt-set-remctl">
+                <input
+                  type="email" inputMode="email" autoComplete="off" placeholder="comptable@cabinet.fr"
+                  className="bt-field" style={{ minWidth: 220 }}
+                  value={accountantEmail}
+                  onChange={(e) => setAccountantEmail(e.target.value)}
+                />
               </div>
             </div>
 
