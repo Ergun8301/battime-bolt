@@ -71,6 +71,63 @@ export interface MaterialisedLine {
  *  3. Les horaires du bureau font foi, avec les mêmes défauts que l'ouverture
  *     manuelle : le salarié retrouve ce qu'il aurait vu en ouvrant la fiche.
  */
+/** Une ligne déjà posée sur la feuille (envoyée, brouillon, retirée ou en file). */
+export interface LineLike {
+  worksite_id?: string | null;
+  planning_id?: string | null;
+}
+
+/**
+ * Quels plannings n'ont ENCORE aucune ligne en face d'eux.
+ *
+ * LE PIÈGE, ET IL M'A EU. La version précédente comparait les `worksite_id` en
+ * bloc : dès qu'une ligne existait pour un chantier, TOUS les plannings de ce
+ * chantier disparaissaient. Le bureau prévoit « Dupont 08:00–12:00 » et
+ * « Dupont 13:00–17:00 », le salarié remplit le matin — et l'après-midi
+ * s'évapore, sans erreur, sans trace, sans paie.
+ *
+ * Mes onze cas de banc ne l'avaient pas vu parce qu'ils testaient
+ * `planningsToMaterialise` sur une liste écrite à la main : la fonction gérait
+ * bien deux créneaux sur un même chantier, mais on ne lui en donnait plus
+ * qu'un. Tester l'unité et pas le chemin qui l'alimente, c'est prouver que la
+ * serrure ferme sans regarder si la porte est posée.
+ *
+ * L'APPARIEMENT SE FAIT DONC LIGNE À LIGNE, en deux passes :
+ *
+ *  1. Par `planning_id` quand la ligne en désigne un — c'est le lien exact.
+ *  2. Sinon au compteur, par chantier : deux plannings sur le même chantier
+ *     demandent DEUX lignes pour disparaître tous les deux.
+ *
+ * La deuxième passe n'est pas un filet de confort : jusqu'ici le `planning_id`
+ * posé à la création pointait systématiquement sur le PREMIER planning du
+ * chantier, donc les données existantes ne sont pas fiables. Deux lignes
+ * portant le même `planning_id` ne couvrent qu'un planning ; la seconde
+ * retombe au compteur, où elle compte quand même.
+ */
+export function remainingPlannings<T extends PlanningLike>(plannings: T[], lines: LineLike[]): T[] {
+  const planIds = new Set(plannings.map((p) => p.id));
+  const named = new Set<string>();
+  const loose = new Map<string, number>();
+
+  for (const l of lines) {
+    if (l.planning_id && planIds.has(l.planning_id) && !named.has(l.planning_id)) {
+      named.add(l.planning_id);
+      continue;
+    }
+    if (l.worksite_id) loose.set(l.worksite_id, (loose.get(l.worksite_id) || 0) + 1);
+  }
+
+  const out: T[] = [];
+  for (const p of plannings) {
+    if (named.has(p.id)) continue;
+    const ws = p.worksite_id || '';
+    const n = loose.get(ws) || 0;
+    if (n > 0) { loose.set(ws, n - 1); continue; }
+    out.push(p);
+  }
+  return out;
+}
+
 export function planningsToMaterialise(plannings: PlanningLike[]): MaterialisedLine[] {
   const out: MaterialisedLine[] = [];
   for (const p of plannings) {

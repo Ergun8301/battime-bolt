@@ -17,7 +17,7 @@ import {
   generateLocalId, OFFLINE_CHANGED_EVENT, OFFLINE_SYNCED_EVENT, PendingEntry,
 } from '@/lib/offline-store';
 import { syncAllPending } from '@/lib/offline-sync';
-import { planningsToMaterialise } from '@/lib/work-status';
+import { planningsToMaterialise, remainingPlannings } from '@/lib/work-status';
 import { TimeCylinder, snapToGrid } from '@/components/time-cylinder';
 import LiveTimer from '@/components/live-timer';
 import TeamDay from '@/components/team-day';
@@ -792,7 +792,12 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
         }
         if (!worksiteId) { toast.error('Choisis un chantier'); return; }
 
-        const planningId = planning.find((p) => p.worksite_id === worksiteId)?.id || null;
+        // Le planning EXACT qu'on a ouvert, pas « le premier de ce chantier » :
+        // avec deux créneaux prévus sur le même chantier, l'ancien code liait les
+        // deux lignes au premier, et l'appariement ne s'y retrouvait plus.
+        const planningId = openSlot.kind === 'planned'
+          ? openSlot.planningId
+          : (planning.find((p) => p.worksite_id === worksiteId)?.id || null);
 
         // Un identifiant est posé dès la saisie, en ligne comme hors ligne : si la
         // réponse du serveur se perd, la même saisie ne peut pas entrer deux fois.
@@ -1009,17 +1014,39 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
    */
   const materialisePlanned = async (): Promise<string[]> => {
     if (!user || plannedToSend.length === 0) return [];
+    // IDENTIFIANT STABLE, dérivé du planning — pas un identifiant tiré au sort.
+    //
+    // Si l'insertion réussit mais que la bascule qui suit échoue (réseau qui
+    // lâche entre les deux), le salarié réessaie. Avec un identifiant neuf à
+    // chaque tentative, l'index unique `(user_id, client_id)` ne reconnaît pas
+    // la première insertion : on fabrique un doublon de brouillon, puis un
+    // doublon d'heures payées. Dérivé du planning, il est le même à la seconde
+    // tentative, et la base refuse elle-même l'entrée en double.
+    const cid = (planningId: string) => `plan_${planningId}`;
     const rows = plannedToSend.map((p) => ({
       company_id: user.company_id, user_id: user.id, worksite_id: p.worksiteId,
       planning_id: p.planningId, work_date: date,
       start_time: p.start, end_time: p.end, break_minutes: 0,
+      // Le panier est posé juste après, par `applyDayMeal`, qui sait le placer
+      // sur une seule ligne du jour. Le poser ici doublerait la logique.
       meal_allowance: false, observation: null, reception: null,
       status: 'draft' as const,
-      // Même protection que la saisie à la main : si la réponse se perd, la
-      // même ligne ne peut pas entrer deux fois.
-      client_id: generateLocalId(),
+      client_id: cid(p.planningId),
     }));
+
     let { data, error } = await supabase.from('time_entries').insert(rows).select('id');
+
+    // 23505 = ces lignes existent déjà : une tentative précédente était passée.
+    // On récupère leurs identifiants au lieu d'en créer d'autres.
+    if (error && error.code === '23505') {
+      const { data: deja, error: readErr } = await supabase.from('time_entries')
+        .select('id').eq('user_id', user.id).eq('work_date', date)
+        .in('client_id', plannedToSend.map((p) => cid(p.planningId)));
+      if (readErr) throw readErr;
+      return ((deja || []) as { id: string }[]).map((r) => r.id);
+    }
+    // Base pas encore migrée : on insère sans l'identifiant local (et on perd
+    // la protection contre le doublon — c'est le comportement d'avant).
     if (error && error.code === 'PGRST204' && error.message?.includes('client_id')) {
       ({ data, error } = await supabase.from('time_entries')
         .insert(rows.map(({ client_id, ...r }) => r)).select('id'));
@@ -1065,6 +1092,16 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
       const allIds = [...draftIds, ...newIds];
       if (allIds.length === 0) { toast.error('Ajoute un chantier'); return; }
 
+      // LE PANIER, une fois les lignes créées et pas avant.
+      //
+      // Sur une journée sans aucune ligne, `applyDayMeal` n'a rien sur quoi
+      // écrire : il ne trouve aucune ligne, n'écrit rien — et renvoie `ok`.
+      // Le salarié cochait le panier, ne voyait aucune erreur, et le panier
+      // n'existait nulle part. Encore « pas d'erreur, donc c'est passé ».
+      // Maintenant que les lignes existent, on le pose pour de bon, avant la
+      // bascule (sur une ligne envoyée, il préviendrait la secrétaire).
+      if (newIds.length > 0 && dayMeal) await applyDayMeal(true);
+
       const { data: sent, error } = await supabase.from('time_entries').update({ status: 'submitted', submitted_at: new Date().toISOString() })
         .in('id', allIds).eq('user_id', user.id).eq('status', 'draft').select('id');
       if (error) throw error;
@@ -1078,6 +1115,11 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
     } catch (err) {
       console.error('Error submitting day:', err);
       toast.error(explainWriteError(err, "Impossible d'envoyer"));
+      // On recharge même en cas d'échec : la matérialisation a pu passer avant
+      // que la bascule n'échoue. Sans ça l'écran garde des cartes « prévu »
+      // pour des lignes qui existent déjà en base, et la tentative suivante
+      // travaille sur une vue périmée.
+      fetchData();
     } finally {
       setSubmitting(false);
     }
@@ -1098,13 +1140,16 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
   const isEmpty = liveEntries.length === 0 && pendingEntries.length === 0;
   const isEditable = (e: TimeEntryWithWorksite) => !e.locked && !e.exported_at;
 
-  // Keep cancelled worksites in the set too, so a removed planned chantier doesn't
-  // pop back as "à déclarer" (it shows only as "Retirée").
-  const declaredWorksiteIds = new Set<string>([
-    ...(entries.map((e) => e.worksite_id).filter(Boolean) as string[]),
-    ...pendingEntries.map((e) => e.worksite_id),
+  // Appariement LIGNE À LIGNE, et pas « ce chantier a déjà une ligne » : deux
+  // créneaux prévus sur le même chantier demandent deux lignes pour disparaître
+  // tous les deux. Voir `remainingPlannings`.
+  //
+  // Les lignes RETIRÉES comptent toujours : un chantier prévu puis retiré ne
+  // doit pas resurgir comme s'il restait à faire (il s'affiche « Retiré »).
+  const plannedTodo = remainingPlannings(planning, [
+    ...entries.map((e) => ({ worksite_id: e.worksite_id, planning_id: e.planning_id })),
+    ...pendingEntries.map((e) => ({ worksite_id: e.worksite_id, planning_id: e.planning_id })),
   ]);
-  const plannedTodo = planning.filter((p) => p.worksite_id && !declaredWorksiteIds.has(p.worksite_id));
 
   /**
    * Les chantiers prévus par le bureau que le salarié n'a pas ouverts : ils
@@ -1127,6 +1172,18 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
    * `app/poseur/layout.tsx` : on répare la serrure et on laisse le verrou.
    */
   const canSend = hasRealDrafts || plannedToSend.length > 0;
+
+  /**
+   * Le total affiché doit être celui qu'on s'apprête à envoyer.
+   *
+   * Il n'y a pas d'écran de confirmation : le total posé juste au-dessus du
+   * bouton EST la confirmation. Sur une journée uniquement planifiée il
+   * annonçait « 0:00 » et « 0 chantier » alors qu'un appui allait envoyer neuf
+   * heures. Le seul endroit où le salarié pouvait vérifier lui mentait.
+   */
+  const plannedMinutes = plannedToSend.reduce((s, p) => s + calculateTotalMinutes(p.start, p.end, 0), 0);
+  const shownMinutes = totalMinutes + plannedMinutes;
+  const shownChantiers = nbChantiers + plannedToSend.length;
 
   const gaps = computePauses([
     ...liveEntries.map((e) => ({
@@ -1277,13 +1334,13 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
           <div className="bt-total-ruban" />
           <div className="bt-total-k">Total aujourd&apos;hui</div>
           <div style={{ display: 'flex', alignItems: 'baseline' }}>
-            <span className="bt-total-big">{fmtHM(totalMinutes)}</span>
+            <span className="bt-total-big">{fmtHM(shownMinutes)}</span>
             <span className="bt-total-unit">travaillées</span>
           </div>
           <div className="bt-stats">
             <div className="bt-stat">
-              <div className="bt-stat-n">{nbChantiers}</div>
-              <div className="bt-stat-l">chantier{nbChantiers > 1 ? 's' : ''}</div>
+              <div className="bt-stat-n">{shownChantiers}</div>
+              <div className="bt-stat-l">chantier{shownChantiers > 1 ? 's' : ''}</div>
             </div>
             <div className="bt-stat">
               <div className="bt-stat-n">{fmtHM(pauseMinutes)}</div>
@@ -1510,14 +1567,14 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
           <button type="button" className="bt-send" disabled>Envoyer ma journée</button>
         ) : pendingEntries.length > 0 ? (
           <button type="button" className="bt-send" onClick={syncPendingEntries} disabled={syncing}>
-            {syncing && <Loader2 className="h-4 w-4 animate-spin" />} Synchroniser ({pendingEntries.length})
+            {syncing && <Loader2 className="h-4 w-4 animate-spin" />} Envoyer ce qui reste ({pendingEntries.length})
+          </button>
+        ) : canSend ? (
+          <button type="button" className="bt-send" onClick={frozen ? () => askCorrect(handleSubmitDay) : handleSubmitDay} disabled={submitting}>
+            {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Envoyer ma journée <span style={{ fontSize: 19 }}>→</span>
           </button>
         ) : allSubmitted ? (
           <button type="button" className="bt-send done" disabled>Journée envoyée ✓</button>
-        ) : canSend ? (
-          <button type="button" className="bt-send" onClick={handleSubmitDay} disabled={submitting}>
-            {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Envoyer ma journée <span style={{ fontSize: 19 }}>→</span>
-          </button>
         ) : (
           <button type="button" className="bt-send" disabled>Envoyer ma journée <span style={{ fontSize: 19 }}>→</span></button>
         )}

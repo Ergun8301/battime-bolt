@@ -77,14 +77,23 @@ function isPermanent(e: PgError): boolean {
  * colonne, l'insertion s'est faite sans elle : la bascule ne trouve rien et la
  * ligne reste en brouillon — visible dans le bandeau, donc jamais perdue.
  */
-async function markSubmittedAfterSync(userId: string, localId: string): Promise<void> {
+async function markSubmittedAfterSync(userId: string, localId: string): Promise<boolean> {
   try {
-    await supabase.from('time_entries')
+    // ON REGARDE `error`, ET C'EST TOUT LE SUJET. Supabase ne LÈVE pas quand le
+    // serveur refuse : il RETOURNE l'erreur dans l'objet. Un `await` dans un
+    // try/catch sans regarder `error` prend donc un refus pour une réussite —
+    // le piège que je traque dans ce dépôt depuis le début, et que je venais
+    // de reproduire dans mon propre code.
+    //
+    // `.select('id')` en plus : une mise à jour filtrée par la RLS renvoie zéro
+    // ligne SANS erreur. Zéro ligne touchée n'est pas un succès.
+    const { data, error } = await supabase.from('time_entries')
       .update({ status: 'submitted' })
-      .eq('client_id', localId).eq('user_id', userId).eq('status', 'draft');
+      .eq('client_id', localId).eq('user_id', userId).eq('status', 'draft')
+      .select('id');
+    return !error && !!data && data.length > 0;
   } catch {
-    // Jamais bloquant : la ligne est en base, c'est l'essentiel. Au pire elle
-    // reste à envoyer et le salarié le voit dans son bandeau.
+    return false;
   }
 }
 
@@ -148,7 +157,19 @@ export async function syncAllPending(userId: string): Promise<SyncResult> {
         }
 
         if (!error) {
-          if (entry.submit_after_sync) await markSubmittedAfterSync(userId, entry.localId);
+          // La ligne EST en base. On la retire donc de la file dans tous les cas :
+          // l'y laisser la ferait entrer une deuxième fois au prochain envoi.
+          //
+          // Si la bascule en « envoyée » échoue, la ligne reste un brouillon —
+          // et c'est un état VISIBLE : le jour réapparaît dans le bandeau
+          // « journées à envoyer ». Le salarié refait un geste, il ne perd
+          // rien. On ne le compte simplement pas comme parti.
+          const basculee = entry.submit_after_sync
+            ? await markSubmittedAfterSync(userId, entry.localId)
+            : true;
+          if (!basculee) {
+            console.warn('offline-sync: ligne insérée mais restée en brouillon', entry.localId);
+          }
           removePendingEntry(userId, entry.localId);
           synced++;
           continue;
