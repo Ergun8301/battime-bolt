@@ -34,6 +34,7 @@ import { toast } from 'sonner';
 import { computeMissingDays } from '@/lib/work-status';
 import { exportEntriesToExcel, exportEntriesToPDF, excelAsBase64 } from '@/lib/export-utils';
 import { fetchAllPaged, chunk } from '@/lib/fetch-all';
+import { isPreviewHost } from '@/lib/hosting';
 import WorkerDetailDialog from '@/components/worker-detail';
 import ChantierDocuments from '@/components/chantier-documents';
 import { TimeCylinder } from '@/components/time-cylinder';
@@ -792,7 +793,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   // base (prod intacte). Sert juste à visualiser le planning rempli.
   const demoCount = useMemo(() => {
     if (typeof window === 'undefined') return 0;
-    if (!window.location.hostname.startsWith('deploy-preview-')) return 0;
+    if (!isPreviewHost()) return 0;
     const n = parseInt(new URLSearchParams(window.location.search).get('demo') || '0', 10);
     return Number.isFinite(n) ? Math.max(0, Math.min(n, 30)) : 0;
   }, []);

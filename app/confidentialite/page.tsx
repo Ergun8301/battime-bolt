@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { WEB_HOST } from '@/lib/hosting';
 import Link from 'next/link';
 
 export const metadata: Metadata = {
@@ -113,14 +114,14 @@ export default function ConfidentialitePage() {
           <h2>5. Qui a accès aux données ?</h2>
           <ul>
             <li>L&apos;<strong>entreprise cliente</strong> (employeur), strictement pour ses propres salariés.</li>
-            <li>Les <strong>sous-traitants techniques</strong> de BEMEXO : Netlify (hébergement de l&apos;interface) et Supabase (base de données / authentification).</li>
+            <li>Les <strong>sous-traitants techniques</strong> de BEMEXO : {WEB_HOST.name} (hébergement de l&apos;interface) et Supabase (base de données / authentification).</li>
             <li>Le cas échéant, les autorités si la loi l&apos;exige.</li>
           </ul>
 
           <h2>6. Hébergement et localisation</h2>
           <p>
             Les données sont stockées dans l&apos;<strong>Union européenne</strong> (Supabase, région Paris).
-            L&apos;interface est distribuée via Netlify, ce qui peut impliquer des transferts hors UE encadrés par des
+            L&apos;interface est distribuée via {WEB_HOST.name}, ce qui peut impliquer des transferts hors UE encadrés par des
             garanties appropriées (clauses contractuelles types de la Commission européenne).
           </p>
 
