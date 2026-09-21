@@ -1,0 +1,517 @@
+-- APPLIQUÉE EN PRODUCTION LE 21/09/2026, et vérifiée objet par objet :
+-- `position_tracking_enabled` présente et ÉTEINTE partout (K Habitat comprise),
+-- `time_entry_positions` créée avec RLS active et ZÉRO policy d'écriture,
+-- trigger `active_sessions_position_guard` en place, `stop_active_session` avec
+-- UNE seule signature (p_end, p_lat, p_lng, p_accuracy) et son `BT001` intact,
+-- tâche `bemexo-purge-positions` programmée à `15 3 * * *`, 46 pointages et 0
+-- position au moment de la bascule.
+--
+-- pg_cron 1.6.4 était déjà installé, avec deux tâches en place ; celle-ci s'y
+-- ajoute sans les déranger.
+--
+-- ═════════════════════════════════════════════════════════════════════════════
+-- ÉTAPE 26 — Où était le salarié quand il a démarré, et quand il a fermé
+-- ═════════════════════════════════════════════════════════════════════════════
+--
+-- CE QUE CETTE ÉTAPE EST, ET CE QU'ELLE N'EST PAS. Deux points par pointage :
+-- au démarrage, à la fermeture. Rien entre les deux. Ce n'est pas du suivi, ce
+-- n'est pas une alerte, ce n'est pas une comparaison avec le chantier prévu.
+--
+-- LA FINALITÉ EST UNE SEULE, ET ELLE EST ÉCRITE ICI PARCE QU'ELLE ENGAGE.
+--
+--   « Prouver qu'un salarié était sur un chantier, à une heure donnée, face à
+--     un CLIENT qui conteste une facture. »
+--
+-- Et surtout, ce qu'elle N'EST PAS : un moyen de contrôler la durée du travail.
+-- Ce n'est pas une nuance de rédaction, c'est la condition de licéité.
+--
+--   Cass. soc. 3 novembre 2011, n° 10-18.036, puis 19 décembre 2018,
+--   n° 17-14.631 : la géolocalisation ne peut servir à contrôler la durée du
+--   travail QUE si ce contrôle ne peut pas être fait par un autre moyen,
+--   « fût-il moins efficace ».
+--
+-- BEMEXO *EST* CET AUTRE MOYEN. L'application entière existe pour déclarer des
+-- heures. Adosser la position à la vérification de ces heures reviendrait donc
+-- à faire exactement l'usage que ces arrêts interdisent, dans le seul logiciel
+-- où la condition ne peut structurellement pas être remplie.
+--
+-- CONSÉQUENCE POUR CELUI QUI LIRA CE FICHIER DANS SIX MOIS : la demande
+-- suivante sera « affiche un avertissement quand la position ne colle pas aux
+-- heures », ou « filtre les journées sans position ». Les deux transforment
+-- cette table en outil de contrôle du temps de travail, et les deux sont à
+-- refuser. Ce n'est pas de la prudence excessive : c'est la raison pour
+-- laquelle cette table a le droit d'exister.
+--
+-- ─────────────────────────────────────────────────────────────────────────────
+-- CE QUE CETTE DONNÉE NE PROUVE PAS, ET IL FAUT LE DIRE EN FACE
+-- ─────────────────────────────────────────────────────────────────────────────
+--
+-- La position vient de `navigator.geolocation`, c'est-à-dire du téléphone du
+-- salarié. Rien ne l'authentifie. Quelqu'un qui VEUT tricher le peut, et
+-- aucune colonne de cette table ne l'en empêchera.
+--
+-- Ce qu'on fabrique ici n'est donc pas une preuve opposable à un fraudeur :
+-- c'est la trace ordinaire d'une journée ordinaire, celle qui permet de
+-- répondre « voilà où il a démarré » à un client de bonne foi. Confondre les
+-- deux, c'est promettre au bureau une certitude qu'il n'a pas — et c'est
+-- exactement le genre de demi-vérité que ce projet passe son temps à traquer.
+--
+-- ═════════════════════════════════════════════════════════════════════════════
+-- 1 · L'INTERRUPTEUR — ÉTEINT, ET PAR ENTREPRISE
+-- ═════════════════════════════════════════════════════════════════════════════
+--
+-- BEMEXO N'EST PAS LE RESPONSABLE DE TRAITEMENT : l'entreprise cliente l'est.
+-- Livrer cette fonction allumée rendrait chaque client silencieusement en
+-- faute, parce que chacun doit d'abord :
+--
+--   · INFORMER INDIVIDUELLEMENT chaque salarié, avant toute collecte
+--     (art. L1222-4 du code du travail). Sans cette information préalable, la
+--     donnée est INUTILISABLE comme preuve — c'est-à-dire que la fonction ne
+--     sert plus à rien, ce qui est le vrai argument ;
+--   · informer et consulter le CSE là où il existe (art. L2312-38) ;
+--   · inscrire le traitement à son registre (art. 30 RGPD).
+--
+-- La base légale ne peut pas être le CONSENTEMENT du salarié : dans une
+-- relation de travail il n'est pas libre, doctrine constante de la CNIL et du
+-- CEPD. C'est l'intérêt légitime, et il se défend — ce qui suppose que le
+-- refus reste réellement sans conséquence (voir § 3).
+--
+-- Le défaut est donc `false`, y compris pour les entreprises existantes.
+
+ALTER TABLE public.companies
+  ADD COLUMN IF NOT EXISTS position_tracking_enabled boolean NOT NULL DEFAULT false;
+
+COMMENT ON COLUMN public.companies.position_tracking_enabled IS
+  'Enregistrer la position au démarrage et à la fermeture d''un pointage en direct. '
+  'Éteint par défaut : le responsable de traitement est l''entreprise, et elle doit '
+  'avoir informé ses salariés avant que la première position soit collectée.';
+
+-- ═════════════════════════════════════════════════════════════════════════════
+-- 2 · OÙ VIT LA POSITION DE DÉPART
+-- ═════════════════════════════════════════════════════════════════════════════
+--
+-- POURQUOI SUR `active_sessions` ET PAS DIRECTEMENT DANS LA TABLE FINALE.
+-- Parce qu'au démarrage, la ligne d'heures N'EXISTE PAS ENCORE : elle est
+-- créée par `stop_active_session()` à la fermeture. Écrire la position de
+-- départ dans la table finale supposerait une ligne sans `entry_id`, à
+-- rattacher plus tard — donc deux écritures séparées, donc un moment où l'une
+-- a réussi et l'autre pas. C'est précisément le défaut que l'étape 25 a passé
+-- une PR entière à supprimer ailleurs.
+--
+-- Ici, le chrono porte ce qu'il sait — comme il porte déjà `started_at` — et
+-- `stop_active_session()` transforme le tout en une seule transaction. Si la
+-- fermeture échoue, rien n'est écrit. Si le salarié ANNULE son pointage, la
+-- ligne `active_sessions` disparaît et la position avec elle : pas d'heures,
+-- pas de position. C'est la bonne règle, et elle est gratuite.
+
+ALTER TABLE public.active_sessions
+  ADD COLUMN IF NOT EXISTS start_lat         numeric(9,6),
+  ADD COLUMN IF NOT EXISTS start_lng         numeric(9,6),
+  -- La précision ANNONCÉE par le navigateur, en mètres. Elle n'est pas
+  -- cosmétique : un point Wi-Fi en intérieur annonce couramment 1 à 3 km, avec
+  -- six décimales qui ont l'air d'une adresse. Sans ce nombre à côté, on
+  -- afficherait un mensonge bien formaté.
+  ADD COLUMN IF NOT EXISTS start_accuracy_m  integer,
+  ADD COLUMN IF NOT EXISTS start_located_at  timestamptz;
+
+-- ── LE GARDE : L'INTERRUPTEUR EST DANS LA BASE, PAS DANS L'ÉCRAN ───────────
+-- Un test côté navigateur n'est pas une garantie, c'est une intention. Pour une
+-- donnée personnelle, l'écart entre les deux est la seule chose qui compte : si
+-- l'interrupteur est éteint, la base REFUSE la position, quoi qu'envoie le
+-- client. Elle ne lève pas d'erreur — elle efface le champ et laisse le
+-- pointage se faire. Bloquer un pointage parce qu'une option est éteinte serait
+-- casser l'outil pour protéger une donnée qu'on ne voulait justement pas.
+CREATE OR REPLACE FUNCTION public.guard_session_position()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $fn$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM public.companies c
+     WHERE c.id = new.company_id AND c.position_tracking_enabled
+  ) THEN
+    new.start_lat        := NULL;
+    new.start_lng        := NULL;
+    new.start_accuracy_m := NULL;
+    new.start_located_at := NULL;
+    RETURN new;
+  END IF;
+
+  -- ── L'HEURE DE LA PRISE EST CELLE DU SERVEUR, JAMAIS CELLE DU TÉLÉPHONE ───
+  --
+  -- Le navigateur l'envoyait — `new Date()`. Deux conséquences, et la seconde
+  -- est la grave :
+  --
+  --   · une horloge fausse affichait une heure de prise fausse, au salarié
+  --     comme au bureau ;
+  --   · une horloge AVANCÉE de cinq ans produisait un `captured_at` en 2031,
+  --     et la purge des douze mois — qui compare à `now()` — ne l'aurait pas
+  --     effacée avant. On ne promet pas une durée de conservation en la
+  --     laissant fixer par l'appareil dont on conserve les données.
+  --
+  -- Le client n'envoie donc plus ce champ ; s'il l'envoyait quand même, cette
+  -- ligne l'écraserait. Et pas d'heure de prise sans coordonnées : un
+  -- horodatage orphelin laisserait croire qu'une position a été captée.
+  IF new.start_lat IS NOT NULL AND new.start_lng IS NOT NULL THEN
+    new.start_located_at := now();
+  ELSE
+    new.start_located_at := NULL;
+  END IF;
+
+  RETURN new;
+END;
+$fn$;
+
+DROP TRIGGER IF EXISTS active_sessions_position_guard ON public.active_sessions;
+CREATE TRIGGER active_sessions_position_guard
+  BEFORE INSERT OR UPDATE ON public.active_sessions
+  FOR EACH ROW EXECUTE FUNCTION public.guard_session_position();
+
+-- ═════════════════════════════════════════════════════════════════════════════
+-- 3 · LA TABLE DES POSITIONS
+-- ═════════════════════════════════════════════════════════════════════════════
+--
+-- POURQUOI UNE TABLE SÉPARÉE, ET PAS QUATRE COLONNES SUR `time_entries` :
+--
+--   · LA PURGE. Douze mois, automatique. Sur une table à part, purger est un
+--     DELETE qui ne touche jamais une ligne de paie. Sur `time_entries`, ce
+--     serait un UPDATE de masse sur la table la plus chaude de l'application,
+--     qui réveillerait `guard_time_entry_write()` sur chaque ligne.
+--   · LA CLOISON DE LECTURE. Une position se lit plus étroitement que des
+--     heures : le bureau et le salarié concerné, personne d'autre. Une policy
+--     sur une table dédiée dit ça en trois lignes ; des colonnes sur
+--     `time_entries` obligeraient à masquer des colonnes, ce que la RLS ne
+--     fait pas.
+--   · L'EFFACEMENT. Un client coupe l'interrupteur, ou un salarié exerce son
+--     droit d'effacement : on supprime des lignes, sans approcher les heures.
+
+CREATE TABLE IF NOT EXISTS public.time_entry_positions (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id  uuid NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+  -- La ligne d'heures concernée. CASCADE : une journée effacée emporte ses
+  -- positions — elles n'ont d'existence que rattachées à des heures.
+  entry_id    uuid NOT NULL REFERENCES public.time_entries(id) ON DELETE CASCADE,
+  user_id     uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  work_date   date NOT NULL,
+
+  -- Le départ, ou la fermeture. Et rien d'autre : le CHECK et l'unicité
+  -- ci-dessous font de « deux points par journée, jamais plus » une règle de
+  -- la base, pas une promesse de l'écran.
+  moment      text NOT NULL CHECK (moment IN ('start', 'end')),
+
+  latitude    numeric(9,6) NOT NULL,
+  longitude   numeric(9,6) NOT NULL,
+  accuracy_m  integer,
+  captured_at timestamptz NOT NULL,
+
+  CONSTRAINT time_entry_positions_deux_points UNIQUE (entry_id, moment)
+);
+
+-- Lecture d'un écran : les positions de CETTE journée.
+CREATE INDEX IF NOT EXISTS time_entry_positions_entry_idx
+  ON public.time_entry_positions (entry_id);
+-- La purge, et elle seule. Sans cet index elle balaie la table entière chaque
+-- nuit — supportable aujourd'hui, plus du tout à quelques milliers de salariés.
+CREATE INDEX IF NOT EXISTS time_entry_positions_purge_idx
+  ON public.time_entry_positions (captured_at);
+
+ALTER TABLE public.time_entry_positions ENABLE ROW LEVEL SECURITY;
+
+-- ── LECTURE : LE BUREAU, ET LE SALARIÉ CONCERNÉ. PERSONNE D'AUTRE ──────────
+--
+-- LE CHEF D'ÉQUIPE EST VOLONTAIREMENT ABSENT DE CETTE POLICY, et ce n'est pas
+-- un oubli à réparer. Il lit déjà les heures de ses équipiers (`is_my_team_member`)
+-- et on aurait pu réutiliser le même prédicat par symétrie. Mais un salarié qui
+-- voit où était son collègue n'est pas la même chose qu'un employeur qui le
+-- voit : c'est de la surveillance entre pairs, sans aucun des garde-fous qui
+-- encadrent la première — ni information préalable, ni finalité déclarée, ni
+-- responsable identifié.
+--
+-- Le salarié, lui, voit ce qui a été enregistré SUR LUI. C'est une exigence, pas
+-- une politesse : une donnée personnelle collectée en silence est une donnée
+-- collectée illégalement.
+CREATE POLICY time_entry_positions_select ON public.time_entry_positions
+  FOR SELECT USING (
+    company_id = public.get_my_company_id()
+    AND (public.is_admin() OR user_id = auth.uid())
+  );
+
+-- ── AUCUNE POLICY D'ÉCRITURE. C'EST LE POINT LE PLUS IMPORTANT DU FICHIER ──
+--
+-- Ni INSERT, ni UPDATE, ni DELETE. Cette table n'a qu'UN SEUL chemin d'entrée :
+-- `stop_active_session()`, qui est SECURITY DEFINER et franchit donc la RLS.
+--
+-- Ce que ça garantit, et qu'aucune validation d'écran ne garantirait : on ne
+-- peut pas fabriquer une position à la main, ni en ajouter une troisième à une
+-- journée, ni retoucher celle d'hier. Une position existe si et seulement si un
+-- pointage en direct a été fermé. Le reste est impossible, pas découragé.
+
+-- ═════════════════════════════════════════════════════════════════════════════
+-- 4 · LA FERMETURE ÉCRIT LES DEUX POINTS
+-- ═════════════════════════════════════════════════════════════════════════════
+--
+-- ⚠️ LE `DROP` CI-DESSOUS N'EST PAS OPTIONNEL. `CREATE OR REPLACE` ne remplace
+-- une fonction QUE si la signature est identique. En ajoutant des paramètres,
+-- on créerait une SECONDE fonction, surchargée — et l'appel existant du
+-- navigateur, `stop_active_session(p_end := …)`, deviendrait AMBIGU : les deux
+-- candidates correspondent, PostgreSQL refuse, et la fermeture des pointages
+-- casse pour tout le monde. On supprime donc l'ancienne d'abord, dans la même
+-- transaction que la migration : il n'existe aucun instant sans fonction.
+DROP FUNCTION IF EXISTS public.stop_active_session(time);
+
+CREATE OR REPLACE FUNCTION public.stop_active_session(
+  p_end      time    DEFAULT NULL,
+  p_lat      numeric DEFAULT NULL,
+  p_lng      numeric DEFAULT NULL,
+  p_accuracy integer DEFAULT NULL
+)
+ RETURNS TABLE (entry_id uuid, work_date date, start_time time, end_time time)
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $fn$
+DECLARE
+  s record;
+  v_local timestamp;
+  v_start time;
+  v_end time;
+  v_id uuid;
+  v_actif boolean;
+  v_duree interval;
+BEGIN
+  SELECT * INTO s FROM public.active_sessions a WHERE a.user_id = auth.uid();
+  IF s IS NULL THEN
+    RAISE EXCEPTION 'Aucun pointage en cours';
+  END IF;
+
+  -- ── Le corps historique, mot pour mot. Rien n'y est retiré. ──────────────
+  -- Arrondi au quart d'heure, comme la molette de saisie : une heure affichée
+  -- et une heure enregistrée qui diffèrent seraient incompréhensibles.
+  v_local := s.started_at AT TIME ZONE 'Europe/Paris';
+  v_start := (date_trunc('hour', v_local)
+              + (round(extract(minute FROM v_local) / 15.0) * interval '15 minutes'))::time;
+
+  IF p_end IS NULL THEN
+    v_local := now() AT TIME ZONE 'Europe/Paris';
+    v_end := (date_trunc('hour', v_local)
+              + (round(extract(minute FROM v_local) / 15.0) * interval '15 minutes'))::time;
+  ELSE
+    v_end := (date_trunc('hour', p_end::time)
+              + (round(extract(minute FROM p_end::time) / 15.0) * interval '15 minutes'))::time;
+  END IF;
+
+  -- ⚠️ `USING ERRCODE = 'BT001'` N'EST PAS DÉCORATIF, ET J'AVAIS FAILLI LE
+  -- PERDRE. Ce code vient de l'étape 21. Sans lui, `live-timer.tsx` ne
+  -- reconnaît ce refus qu'à sa PHRASE FRANÇAISE — et le jour où quelqu'un
+  -- reformule ce message, le salarié qui vient de démarrer se retrouve devant
+  -- un compteur qu'il ne peut ni arrêter ni effacer, sans que rien ne signale
+  -- la panne.
+  --
+  -- POURQUOI JE L'AVAIS PERDU, PARCE QUE ÇA SE REPRODUIRA SINON : j'ai recopié
+  -- le corps de cette fonction depuis `20260920240500_etape16b_chrono_fiable.sql`,
+  -- qui l'a créée — et qui PRÉCÈDE l'étape 21. Le fichier de migration disait
+  -- la vérité de son époque, pas celle d'aujourd'hui. Un `CREATE OR REPLACE`
+  -- réécrit tout, y compris ce qu'il ignore.
+  --
+  -- LA RÈGLE : avant de remplacer une fonction existante, on relit sa
+  -- définition EN BASE (`pg_get_functiondef`), jamais le fichier qui l'a créée.
+  -- Ce corps-ci vient de la production, vérifié le 21/09/2026.
+  IF v_start = v_end THEN
+    RAISE EXCEPTION 'Début et fin tombent sur le même quart d''heure : rien à enregistrer.'
+      USING ERRCODE = 'BT001';
+  END IF;
+
+  INSERT INTO public.time_entries
+    (company_id, user_id, worksite_id, planning_id, work_date,
+     start_time, end_time, break_minutes, meal_allowance, status)
+  VALUES
+    (s.company_id, s.user_id, s.worksite_id, s.planning_id, s.work_date,
+     v_start, v_end, 0, false, 'draft')
+  RETURNING id INTO v_id;
+
+  -- ── Nouveau : les deux positions, dans CETTE transaction ─────────────────
+  SELECT c.position_tracking_enabled INTO v_actif
+    FROM public.companies c WHERE c.id = s.company_id;
+
+  IF coalesce(v_actif, false) THEN
+    -- Le départ : ce que le chrono portait déjà. Absent si le salarié a refusé
+    -- la permission, ou si l'interrupteur était éteint au démarrage — dans les
+    -- deux cas, on ferme normalement, sans position.
+    IF s.start_lat IS NOT NULL AND s.start_lng IS NOT NULL THEN
+      INSERT INTO public.time_entry_positions
+        (company_id, entry_id, user_id, work_date, moment,
+         latitude, longitude, accuracy_m, captured_at)
+      VALUES
+        (s.company_id, v_id, s.user_id, s.work_date, 'start',
+         s.start_lat, s.start_lng, s.start_accuracy_m,
+         coalesce(s.start_located_at, s.started_at));
+    END IF;
+
+    -- ── LA FERMETURE, ET LA GARDE QUI ÉVITE D'ENREGISTRER UN DOMICILE ──────
+    --
+    -- LE SCÉNARIO, QUI N'EST PAS THÉORIQUE : le salarié oublie de fermer son
+    -- pointage. Il s'en aperçoit le soir, chez lui, et ferme à 22 h. Sans cette
+    -- garde, BEMEXO enregistre les COORDONNÉES DE SON DOMICILE — une donnée
+    -- personnelle sans le moindre rapport avec le travail, conservée un an, et
+    -- visible du bureau. C'est le reproche le plus légitime qu'un salarié
+    -- pourrait faire à cette fonction.
+    --
+    -- QUATORZE HEURES, et pas « le même jour ». Une journée de chantier de
+    -- douze heures existe ; un poste de nuit qui finit le lendemain matin
+    -- aussi, et une règle calendaire lui supprimerait sa position de fermeture
+    -- sans raison. L'écart au démarrage attrape les trois cas correctement :
+    -- 7 h → 18 h passe, 22 h → 6 h passe, 7 h → 23 h ne passe pas.
+    --
+    -- Le pointage se ferme quand même, et les heures comptent. On perd un point
+    -- sur deux, ce qui est très exactement le but.
+    v_duree := now() - s.started_at;
+
+    IF p_lat IS NOT NULL AND p_lng IS NOT NULL AND v_duree <= interval '14 hours' THEN
+      INSERT INTO public.time_entry_positions
+        (company_id, entry_id, user_id, work_date, moment,
+         latitude, longitude, accuracy_m, captured_at)
+      VALUES
+        (s.company_id, v_id, s.user_id, s.work_date, 'end',
+         p_lat, p_lng, p_accuracy, now());
+    END IF;
+  END IF;
+
+  DELETE FROM public.active_sessions a WHERE a.user_id = s.user_id;
+
+  RETURN QUERY SELECT v_id, s.work_date, v_start, v_end;
+END;
+$fn$;
+
+REVOKE EXECUTE ON FUNCTION public.stop_active_session(time, numeric, numeric, integer) FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.stop_active_session(time, numeric, numeric, integer) TO authenticated;
+
+-- ═════════════════════════════════════════════════════════════════════════════
+-- 5 · DOUZE MOIS, ET LA PURGE TOURNE VRAIMENT
+-- ═════════════════════════════════════════════════════════════════════════════
+--
+-- POURQUOI DOUZE MOIS. La doctrine CNIL sur la géolocalisation des véhicules
+-- des salariés — le cadre publié le plus proche — retient deux mois par
+-- défaut, UN AN « à des fins de preuve des interventions effectuées », et cinq
+-- ans pour le suivi du temps de travail. La tranche d'un an est celle qui
+-- correspond exactement à la finalité déclarée en tête de ce fichier ; celle de
+-- cinq ans correspond à l'usage qu'on a explicitement refusé.
+--
+-- POURQUOI PAS « À LA CLÔTURE DE LA PAIE », qui était la première piste. Parce
+-- que la finalité retenue est le litige CLIENT, et qu'un client conteste une
+-- facture bien après que la paie du mois est close. Purger à la clôture aurait
+-- effacé la preuve précisément pour l'usage qui justifie de la collecter — et
+-- aurait accessoirement adossé une règle de donnée personnelle à un flux de
+-- paie qui peut être retardé, ou rouvert.
+--
+-- UNE RÈGLE DE CONSERVATION QUI NE S'EXÉCUTE PAS EST PIRE QUE PAS DE RÈGLE :
+-- c'est une promesse écrite qu'on ne tient pas. D'où `pg_cron`, qui est déjà
+-- installé sur ce projet (vérifié, pas supposé), et non « on nettoiera ».
+
+CREATE OR REPLACE FUNCTION public.purge_old_positions()
+ RETURNS integer
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $fn$
+DECLARE
+  n integer;
+BEGIN
+  DELETE FROM public.time_entry_positions
+   WHERE captured_at < now() - interval '12 months';
+  GET DIAGNOSTICS n = ROW_COUNT;
+  RETURN n;
+END;
+$fn$;
+
+REVOKE EXECUTE ON FUNCTION public.purge_old_positions() FROM PUBLIC, anon, authenticated;
+
+-- Tous les jours à 03:15 UTC. Le nom est stable : re-planifier ne crée pas un
+-- second travail, il remplace le premier.
+SELECT cron.unschedule('bemexo-purge-positions')
+ WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'bemexo-purge-positions');
+
+SELECT cron.schedule(
+  'bemexo-purge-positions',
+  '15 3 * * *',
+  $cron$ SELECT public.purge_old_positions(); $cron$
+);
+
+-- ═════════════════════════════════════════════════════════════════════════════
+-- 6 · ALLUMER OU ÉTEINDRE L'INTERRUPTEUR
+-- ═════════════════════════════════════════════════════════════════════════════
+--
+-- `companies` n'a qu'une policy, et c'est une policy de LECTURE (vérifié en
+-- base). Tout réglage passe donc par une fonction. Il en existe déjà une,
+-- `update_company_info`, qui écrit quinze champs d'un coup — et c'est
+-- précisément pourquoi on ne s'en sert pas ici :
+--
+--   · LUI AJOUTER UN PARAMÈTRE CASSERAIT LES RÉGLAGES. Même piège qu'au § 4 :
+--     l'appel existant deviendrait ambigu entre l'ancienne et la nouvelle
+--     signature, et plus personne ne pourrait enregistrer ses réglages tant que
+--     le navigateur n'est pas redéployé en même temps que la base.
+--
+--   · ET SURTOUT : « j'autorise l'enregistrement de l'endroit où sont mes
+--     salariés » n'est pas un champ de formulaire parmi quinze. C'est une
+--     décision qui engage l'entreprise vis-à-vis de ses salariés. Elle mérite
+--     son propre geste, et donc sa propre fonction.
+CREATE OR REPLACE FUNCTION public.set_position_tracking(p_enabled boolean)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $fn$
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Réservé à l''administrateur.';
+  END IF;
+
+  UPDATE public.companies
+     SET position_tracking_enabled = coalesce(p_enabled, false)
+   WHERE id = public.get_my_company_id();
+
+  RETURN coalesce(p_enabled, false);
+END;
+$fn$;
+
+REVOKE EXECUTE ON FUNCTION public.set_position_tracking(boolean) FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.set_position_tracking(boolean) TO authenticated;
+
+-- ÉTEINDRE N'EFFACE PAS LE PASSÉ, ET C'EST VOLONTAIRE. Une entreprise qui coupe
+-- l'interrupteur arrête la collecte ; elle ne supprime pas les positions déjà
+-- enregistrées, qui restent la preuve des chantiers déjà facturés et
+-- disparaîtront d'elles-mêmes à douze mois. Effacer sur un clic transformerait
+-- un réglage en destruction de preuve — y compris de la preuve qui protège le
+-- salarié. Un effacement immédiat existe, mais il se demande, et il se fait à
+-- la main.
+
+-- ═════════════════════════════════════════════════════════════════════════════
+-- CE QUE J'AI ENVISAGÉ ET ÉCARTÉ
+-- ═════════════════════════════════════════════════════════════════════════════
+--
+-- COMPARER LA POSITION AU CHANTIER, pour signaler un écart. Écarté par Ergun,
+-- et la base confirme que c'était sage : `worksites.address` est du TEXTE, rien
+-- n'est géocodé. Il faudrait donc géocoder toutes les adresses avant même de
+-- pouvoir comparer — et on aurait alors un outil qui accuse un salarié sur la
+-- foi d'un point Wi-Fi à 2 km et d'une adresse approximative.
+--
+-- ARRONDIR LES COORDONNÉES pour « protéger » le salarié. Séduisant, et faux :
+-- ça détruirait la valeur de preuve qui est la seule justification de la
+-- collecte. Une donnée qu'on dégrade jusqu'à l'inutilité ne devrait pas être
+-- collectée du tout. Ce qui protège ici, c'est la purge, la cloison de lecture
+-- et l'absence de chemin d'écriture — pas un flou décoratif.
+--
+-- UN POINT PÉRIODIQUE PENDANT LE POINTAGE, même espacé. C'est la définition du
+-- suivi, et le basculement vers « surveillance constante de l'activité des
+-- employés » — qui déclenche l'analyse d'impact obligatoire, et change la
+-- nature du produit. Deux points, c'est deux points.
+--
+-- Contrôle après application :
+-- SELECT
+--   (SELECT count(*) FROM information_schema.columns
+--     WHERE table_name='companies' AND column_name='position_tracking_enabled') AS interrupteur,
+--   (SELECT count(*) FROM pg_policy WHERE polrelid='public.time_entry_positions'::regclass) AS policies_attendu_1,
+--   (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+--     WHERE n.nspname='public' AND p.proname='stop_active_session') AS fermeture_attendu_1,
+--   (SELECT count(*) FROM cron.job WHERE jobname='bemexo-purge-positions') AS purge_attendu_1;
