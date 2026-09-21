@@ -20,8 +20,10 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { demanderPosition } from '@/lib/position';
+import { parisHHmm } from '@/lib/utils';
 import { TimeCylinder } from '@/components/time-cylinder';
-import { Play, Square, Clock, AlertTriangle, Loader2, Trash2 } from 'lucide-react';
+import { Play, Square, Clock, AlertTriangle, Loader2, Trash2, MapPin } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -45,6 +47,17 @@ interface Props {
   planningIdFor: (worksiteId: string) => string | null;
   /** Le jour est verrouillé (mois clos) : on n'ouvre pas de chrono. */
   frozen?: boolean;
+  /**
+   * L'entreprise a activé l'enregistrement de l'endroit (étape 26).
+   *
+   * CE DRAPEAU N'EST PAS LA PROTECTION, il en est la façade. La vraie barrière
+   * est en base : un trigger efface la position si l'entreprise ne l'a pas
+   * activée, et `stop_active_session` n'écrit rien dans ce cas. Ici, il sert à
+   * ne pas déclencher une demande d'autorisation du navigateur pour une donnée
+   * que la base jettera — demander pour rien est la meilleure façon de faire
+   * refuser quelqu'un.
+   */
+  positionActive?: boolean;
   onSaved: () => void;
 }
 
@@ -73,14 +86,12 @@ const LT_CSS = `
 .bt-lt-note.warn{color:#F0915A}
 .bt-lt-ask{margin-top:11px;background:rgba(242,237,227,.06);border-radius:12px;padding:10px}
 .bt-lt-asklab{font-size:13.5px;font-weight:800;margin-bottom:6px}
+/* L'endroit : dit clairement, sans dramatiser. Ni rouge (ce n'est pas une
+   alerte), ni invisible (une donnée personnelle collectée en silence est une
+   donnée collectée illégalement). */
+.bt-lt-geo{display:flex;align-items:flex-start;gap:7px;margin-top:9px;font-size:12px;color:#a59c86;font-weight:600;line-height:1.45}
+.bt-lt-geo svg{flex:none;margin-top:1px}
 `;
-
-/** Heure locale (Europe/Paris) d'un instant, au format HH:mm. */
-function parisHHmm(iso: string): string {
-  return new Intl.DateTimeFormat('fr-FR', {
-    timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit', hour12: false,
-  }).format(new Date(iso)).replace('h', ':');
-}
 
 const fmtElapsed = (ms: number) => {
   const total = Math.max(0, Math.floor(ms / 1000));
@@ -91,7 +102,7 @@ const fmtElapsed = (ms: number) => {
 };
 
 export default function LiveTimer({
-  userId, companyId, today, worksites, planningIdFor, frozen, onSaved,
+  userId, companyId, today, worksites, planningIdFor, frozen, positionActive, onSaved,
 }: Props) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
@@ -142,9 +153,33 @@ export default function LiveTimer({
     setTooShort(false);
     setConfirmCancel(false);
     try {
+      // L'ENDROIT, AVANT L'ÉCRITURE, ET JAMAIS AU PRIX DU POINTAGE.
+      // `demanderPosition` rend toujours la main — refus, sous-sol, vieux
+      // téléphone donnent `null`. Un salarié qui refuse pointe exactement comme
+      // avant : c'est ce qui rend son refus réellement libre.
+      const p = positionActive ? await demanderPosition() : null;
+
+      // ── LES COLONNES NE SONT AJOUTÉES QUE S'IL Y A QUELQUE CHOSE À METTRE ──
+      //
+      // CE N'EST PAS UNE COQUETTERIE. Tant que la migration de l'étape 26 n'est
+      // pas appliquée, ces colonnes n'existent pas : les nommer ferait échouer
+      // l'insertion avec un PGRST204, et PLUS PERSONNE NE POURRAIT DÉMARRER UN
+      // POINTAGE. L'étape 25 pouvait se permettre d'échouer en avance parce
+      // qu'elle ajoutait une fonction neuve ; ici on touche un geste qui marche
+      // déjà, et casser un geste qui marche n'est jamais un compromis
+      // acceptable.
+      //
+      // Quand la position est absente — interrupteur éteint, refus, colonnes
+      // pas encore là — l'écriture est identique au mot près à celle d'hier.
       const { error } = await supabase.from('active_sessions').insert({
         user_id: userId, company_id: companyId, worksite_id: pick,
         planning_id: planningIdFor(pick), work_date: today,
+        ...(p ? {
+          start_lat: p.lat,
+          start_lng: p.lng,
+          start_accuracy_m: p.accuracy == null ? null : Math.round(p.accuracy),
+          start_located_at: new Date().toISOString(),
+        } : {}),
       });
       if (error) {
         // 23505 = un chrono tourne déjà. Le dire, et le montrer.
@@ -205,8 +240,23 @@ export default function LiveTimer({
     setBusy(true);
     setTooShort(false);
     try {
+      // L'endroit à la fermeture. Même règle qu'au départ : on ne passe les
+      // paramètres que si on a une position. Sans eux, l'appel est exactement
+      // celui d'hier et résout la fonction à un seul argument — donc fermer un
+      // pointage continue de marcher même si la migration n'est pas passée.
+      //
+      // Ce que le salarié ne voit pas d'ici : au-delà de quatorze heures de
+      // pointage, le serveur ÉCARTE ce point. Un pointage oublié et fermé le
+      // soir chez soi enregistrerait sinon un domicile.
+      const p = positionActive ? await demanderPosition() : null;
+
       const { data, error } = await supabase.rpc('stop_active_session', {
         p_end: endTime ? `${endTime}:00` : null,
+        ...(p ? {
+          p_lat: p.lat,
+          p_lng: p.lng,
+          p_accuracy: p.accuracy == null ? null : Math.round(p.accuracy),
+        } : {}),
       });
       if (error) throw error;
       const row = (Array.isArray(data) ? data[0] : data) as
@@ -370,6 +420,12 @@ export default function LiveTimer({
             ) : (
               <div className="bt-lt-note">Rien n&apos;est compté tant que tu n&apos;as pas fermé.</div>
             )}
+            {positionActive && (
+              <div className="bt-lt-geo">
+                <MapPin className="h-3.5 w-3.5" />
+                <span>L&apos;endroit sera noté au moment où tu fermeras.</span>
+              </div>
+            )}
           </>
         )}
       </div>
@@ -396,6 +452,19 @@ export default function LiveTimer({
         Tu peux aussi noter tes heures à la main, comme avant. Le pointage en direct évite juste
         d&apos;avoir à s&apos;en souvenir le soir.
       </div>
+      {/* DIT AVANT, PAS APRÈS. Le salarié doit savoir ce qui est enregistré
+          avant d'appuyer, et savoir qu'il peut refuser sans conséquence — sinon
+          son accord n'en est pas un. Les trois phrases disent les trois choses
+          qui comptent : quoi, quand, et que ça ne l'engage à rien. */}
+      {positionActive && (
+        <div className="bt-lt-geo">
+          <MapPin className="h-3.5 w-3.5" />
+          <span>
+            Ton entreprise note <b style={{ color: '#F2EDE3' }}>l&apos;endroit</b> au départ et à la fin.
+            Jamais entre les deux. Si tu refuses, ton pointage marche pareil.
+          </span>
+        </div>
+      )}
     </div>
   );
 }

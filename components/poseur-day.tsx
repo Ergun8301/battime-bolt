@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Calendar } from '@/components/ui/calendar';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Loader2, Copy, AlertTriangle, FolderOpen, Trash2, Paperclip, Hammer, CheckCircle2 } from 'lucide-react';
+import { Loader2, Copy, AlertTriangle, FolderOpen, Trash2, Paperclip, Hammer, CheckCircle2, MapPin } from 'lucide-react';
 import { format, subDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -19,6 +19,8 @@ import {
 import { syncAllPending } from '@/lib/offline-sync';
 import { planningsToMaterialise, remainingPlannings } from '@/lib/work-status';
 import { fmtHeure } from '@/lib/corrections';
+import { positionUtile, fmtPrecision } from '@/lib/position';
+import { parisHHmm } from '@/lib/utils';
 import { TimeCylinder, snapToGrid } from '@/components/time-cylinder';
 import LiveTimer from '@/components/live-timer';
 import TeamDay from '@/components/team-day';
@@ -41,6 +43,23 @@ interface CorrectionVue {
    * exactement le doute que cette étape existe pour lever.
    */
   corrected_by_role: 'admin' | 'lead';
+}
+
+/**
+ * Un endroit enregistré sur MA journée (étape 26).
+ *
+ * Le salarié voit ce qui a été collecté sur lui, sans avoir à le demander.
+ * Ce n'est pas une politesse : une donnée personnelle collectée en silence est
+ * une donnée collectée illégalement, et elle ne prouverait plus rien.
+ */
+interface PositionVue {
+  id: string;
+  entry_id: string;
+  moment: 'start' | 'end';
+  latitude: string;
+  longitude: string;
+  accuracy_m: number | null;
+  captured_at: string;
 }
 
 interface TimeEntryWithWorksite extends TimeEntry {
@@ -196,6 +215,11 @@ const DAY_CSS = `
 .bt-iv-corr{margin-top:8px;display:flex;align-items:center;gap:7px;background:#FFF6E0;border:1px solid #EAD08A;border-radius:9px;padding:6px 9px}
 .bt-iv-corr-t{font-size:12.5px;font-weight:800;color:#6b5a2e;line-height:1.35}
 .bt-iv-corr-v{font-family:'JetBrains Mono',monospace;font-weight:700}
+/* L'endroit enregistré. Gris, discret, factuel : ce n'est ni une alerte ni une
+   récompense, c'est le compte-rendu de ce qui a été gardé sur lui. */
+.bt-iv-geo{margin-top:8px;display:flex;align-items:flex-start;gap:7px;font-size:12px;color:#6E6A63;font-weight:600;line-height:1.45}
+.bt-iv-geo svg{flex:none;margin-top:1px;color:#9a948a}
+.bt-iv-geo-v{font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#3a352f}
 .bt-iv-note{font-size:13px;color:#6E6A63;margin-top:8px}
 .bt-iv-reserve{display:inline-flex;align-items:center;gap:5px;margin-top:7px;font-size:12px;font-weight:800;border-radius:7px;padding:3px 9px}
 .bt-iv-reserve.avec{background:#FCEADF;border:1px solid #F0C49A;color:#C0461F}
@@ -332,6 +356,9 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
   // voir sur sa journée, même s'il n'a pas activé les notifications — une
   // correction qu'on ne découvre qu'en fin de mois est un litige en préparation.
   const [mesCorrections, setMesCorrections] = useState<Map<string, CorrectionVue[]>>(new Map());
+  // Les endroits enregistrés sur mes journées (étape 26). Vide tant que
+  // l'entreprise n'a pas activé le réglage — et c'est le cas par défaut.
+  const [mesPositions, setMesPositions] = useState<Map<string, PositionVue[]>>(new Map());
   const [pendingEntries, setPendingEntries] = useState<PendingEntry[]>([]);
   const [worksites, setWorksites] = useState<Worksite[]>([]);
   const [docsByWorksite, setDocsByWorksite] = useState<Map<string, number>>(new Map()); // nb de documents par chantier (pastille 📎)
@@ -465,6 +492,27 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
     return () => { stale = true; };
   }, [user?.company_id]);
 
+  /**
+   * L'entreprise enregistre-t-elle l'endroit au pointage ? (étape 26)
+   *
+   * REQUÊTE SÉPARÉE, ET C'EST VOLONTAIRE. L'ajouter au `select` ci-dessus
+   * aurait été plus économique — et aurait fait échouer la requête ENTIÈRE tant
+   * que la colonne n'existe pas, emportant avec elle `travel_paid`, donc le
+   * temps de route. Un réglage neuf ne doit pas pouvoir casser un réglage qui
+   * marche. Ici, si la colonne manque, cette requête seule échoue, `false`
+   * reste, et l'application se comporte exactement comme avant.
+   */
+  const [positionActive, setPositionActive] = useState(false);
+  useEffect(() => {
+    if (!user?.company_id) return;
+    let stale = false;
+    supabase.from('companies').select('position_tracking_enabled').eq('id', user.company_id).maybeSingle()
+      .then(({ data }) => {
+        if (!stale && data) setPositionActive(!!(data as { position_tracking_enabled?: boolean }).position_tracking_enabled);
+      });
+    return () => { stale = true; };
+  }, [user?.company_id]);
+
   // ─── Fetch server data ─────────────────────────────────────────────────────
 
   const fetchData = useCallback(async () => {
@@ -513,8 +561,23 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
           m.set(c.entry_id, l);
         }
         setMesCorrections(m);
+
+        // Les endroits enregistrés sur ces mêmes journées. Requête à part de
+        // la précédente : tant que la table n'existe pas, celle-ci échoue
+        // seule, la carte reste vide, et la journée s'affiche normalement.
+        const { data: pos } = await supabase.from('time_entry_positions')
+          .select('id, entry_id, moment, latitude, longitude, accuracy_m, captured_at')
+          .in('entry_id', idsDuJour);
+        const mp = new Map<string, PositionVue[]>();
+        for (const p of (pos || []) as PositionVue[]) {
+          const l = mp.get(p.entry_id) || [];
+          l.push(p);
+          mp.set(p.entry_id, l);
+        }
+        setMesPositions(mp);
       } else {
         setMesCorrections(new Map());
+        setMesPositions(new Map());
       }
       setWorksites(worksitesData);
       setPlanning(planningRes.data || []);
@@ -1433,6 +1496,7 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
             worksites={sortedWorksites}
             planningIdFor={(wid) => planning.find((p) => p.worksite_id === wid)?.id || null}
             frozen={monthLocked}
+            positionActive={positionActive}
             onSaved={() => { fetchData(); }}
           />
         )}
@@ -1578,6 +1642,33 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
                     </div>
                   </div>
                 ))}
+                {/* CE QUI A ÉTÉ GARDÉ SUR LUI, ET OÙ IL PEUT LE VOIR.
+                    Les deux moments sur une seule ligne quand ils existent tous
+                    les deux. Une journée sans endroit n'affiche RIEN : pas de
+                    « aucune position », qui ferait du refus une absence à
+                    justifier. */}
+                {(() => {
+                  const ps = mesPositions.get(entry.id) || [];
+                  if (ps.length === 0) return null;
+                  const dep = ps.find((p) => p.moment === 'start');
+                  const fin = ps.find((p) => p.moment === 'end');
+                  const dire = (p: PositionVue) =>
+                    positionUtile(p.accuracy_m)
+                      ? `${parisHHmm(p.captured_at)} (${fmtPrecision(p.accuracy_m)})`
+                      : `${parisHHmm(p.captured_at)} (trop imprécis)`;
+                  return (
+                    <div className="bt-iv-geo">
+                      <MapPin className="h-3.5 w-3.5" />
+                      <span>
+                        Endroit noté{' '}
+                        {dep && <>au départ <span className="bt-iv-geo-v">{dire(dep)}</span></>}
+                        {dep && fin && ' et '}
+                        {fin && <>à la fin <span className="bt-iv-geo-v">{dire(fin)}</span></>}
+                        .
+                      </span>
+                    </div>
+                  );
+                })()}
                 {entry.reception === 'avec' && (
                   <>
                     <div className="bt-iv-reserve avec">⚠ Avec réserve</div>

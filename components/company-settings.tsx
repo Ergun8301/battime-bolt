@@ -78,6 +78,18 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
   // Le temps de route entre deux chantiers est-il payé ? Décision de
   // l'entreprise : le logiciel ne tranche pas à sa place.
   const [travelPaid, setTravelPaid] = useState(false);
+  // ── L'endroit au pointage (étape 26) ───────────────────────────────────────
+  // Ce réglage ne passe PAS par le bouton « Enregistrer » du bas : il a son
+  // propre geste et sa propre écriture. Deux raisons, la seconde étant celle
+  // qui tranche : il faudrait sinon élargir `update_company_info`, ce qui
+  // casserait l'enregistrement des réglages tant que la base n'a pas suivi ; et
+  // surtout, « j'autorise l'enregistrement de l'endroit où sont mes salariés »
+  // ne se décide pas au milieu de quinze champs, d'un bouton qu'on presse par
+  // habitude.
+  const [posTracking, setPosTracking] = useState(false);
+  const [posSaving, setPosSaving] = useState(false);
+  const [posConfirm, setPosConfirm] = useState(false);
+  const [posErr, setPosErr] = useState<string | null>(null);
   // Horaire hebdomadaire de base : au-delà, les heures sont supplémentaires.
   const [weeklyHours, setWeeklyHours] = useState('35');
   // Destinataire de l'export de paie. Enregistré une fois, modifiable ici : la
@@ -123,6 +135,44 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
         setLoading(false);
       });
   }, [open, user?.company_id]);
+
+  // Lecture SÉPARÉE, comme sur l'écran du salarié : tant que la colonne
+  // n'existe pas, cette requête échoue seule et les quinze autres réglages
+  // s'affichent normalement. Un réglage neuf ne casse pas ceux qui marchent.
+  useEffect(() => {
+    if (!open || !user?.company_id) return;
+    let stale = false;
+    setPosConfirm(false); setPosErr(null);
+    supabase.from('companies').select('position_tracking_enabled').eq('id', user.company_id).maybeSingle()
+      .then(({ data }) => {
+        if (!stale && data) setPosTracking(!!(data as { position_tracking_enabled?: boolean }).position_tracking_enabled);
+      });
+    return () => { stale = true; };
+  }, [open, user?.company_id]);
+
+  /**
+   * Allumer ou éteindre l'enregistrement de l'endroit.
+   *
+   * ÉTEINDRE EST IMMÉDIAT, ALLUMER DEMANDE UN SECOND GESTE. Ce n'est pas une
+   * symétrie ratée : réduire une collecte de données personnelles ne mérite
+   * aucun frein, l'augmenter si.
+   */
+  const basculerPosition = async (valeur: boolean) => {
+    setPosSaving(true); setPosErr(null);
+    try {
+      const { error } = await supabase.rpc('set_position_tracking', { p_enabled: valeur });
+      if (error) throw error;
+      setPosTracking(valeur);
+      setPosConfirm(false);
+    } catch (e) {
+      // On ne touche PAS à `posTracking` : l'interrupteur continue d'afficher
+      // l'état réel de la base, pas celui qu'on a voulu. Un interrupteur qui
+      // ment sur une donnée personnelle est pire que pas d'interrupteur.
+      setPosErr((e as { message?: string })?.message || 'Réglage impossible.');
+    } finally {
+      setPosSaving(false);
+    }
+  };
 
   const set = (k: keyof Form, v: string) => setF((p) => ({ ...p, [k]: v }));
 
@@ -456,6 +506,70 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
                   <span>{travelPaid ? 'Payée' : 'Non payée'}</span>
                 </label>
               </div>
+            </div>
+
+            {/* ── L'ENDROIT AU POINTAGE ───────────────────────────────────────
+                CE QUE CE BLOC DIT À L'EMPLOYEUR, ET POURQUOI IL LE DIT.
+                BEMEXO n'est pas responsable de ce traitement : l'entreprise
+                l'est. Allumer sans l'avoir dit à ses salariés la met en faute —
+                et rend la donnée inutilisable comme preuve, donc inutile. Le
+                logiciel n'a pas à donner de conseil juridique, mais il a à ne
+                pas laisser quelqu'un allumer ça en croyant que c'est un
+                réglage d'affichage. */}
+            <div className="bt-set-sub" style={{ display: 'block' }}>
+              <div className="bt-set-subtxt">
+                <label className="bt-set-l">Endroit au pointage en direct</label>
+                <p className="bt-set-substate">
+                  Enregistre <strong>où se trouve le salarié</strong> au moment où il démarre un pointage
+                  en direct, et au moment où il le ferme. <strong>Deux points par journée, jamais
+                  entre les deux.</strong> Sert à répondre à un client qui conteste une facture.
+                  Les salariés peuvent refuser : leur pointage fonctionne à l&apos;identique.
+                  Les positions s&apos;effacent automatiquement au bout de douze mois.
+                </p>
+              </div>
+
+              {posErr && (
+                <p className="bt-set-substate" style={{ color: '#8a2a1c', fontWeight: 700 }}>{posErr}</p>
+              )}
+
+              {posConfirm ? (
+                <div style={{
+                  marginTop: 8, border: '1px solid #E8B79E', background: '#FBE3D8',
+                  borderRadius: 10, padding: '10px 12px', fontSize: 13, color: '#8a2a1c', lineHeight: 1.5,
+                }}>
+                  <b>Avant d&apos;activer, vous devez avoir&nbsp;:</b>
+                  <ul style={{ margin: '6px 0 0 16px', listStyle: 'disc' }}>
+                    <li>informé <b>chacun de vos salariés</b>, individuellement et par écrit&nbsp;;</li>
+                    <li>informé et consulté le <b>CSE</b>, si votre entreprise en a un&nbsp;;</li>
+                    <li>inscrit ce traitement à votre <b>registre</b>.</li>
+                  </ul>
+                  <p style={{ margin: '8px 0 0' }}>
+                    Sans cette information préalable, les positions enregistrées <b>ne vaudront rien
+                    comme preuve</b> — et c&apos;est la seule raison de les collecter.
+                  </p>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                    <button type="button" className="bt-set-btn" disabled={posSaving} onClick={() => basculerPosition(true)}>
+                      {posSaving && <Loader2 className="h-3.5 w-3.5 animate-spin" />} C&apos;est fait, activer
+                    </button>
+                    <button type="button" className="bt-set-btn ghost" disabled={posSaving} onClick={() => setPosConfirm(false)}>
+                      Annuler
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="bt-set-rowbtns" style={{ marginTop: 8 }}>
+                  <button
+                    type="button"
+                    className={`bt-set-btn${posTracking ? ' ghost' : ''}`}
+                    disabled={posSaving}
+                    onClick={() => (posTracking ? basculerPosition(false) : setPosConfirm(true))}
+                  >
+                    {posSaving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                    {posTracking ? 'Désactiver' : 'Activer'}
+                  </button>
+                  <span className="bt-set-hint">{posTracking ? 'Activé' : 'Désactivé'}</span>
+                </div>
+              )}
             </div>
 
             {/* Comptable — destinataire de l'export de paie. L'adresse vit ici,

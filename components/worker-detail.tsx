@@ -8,6 +8,8 @@ import { User, Worksite, Certification, CertificationType } from '@/lib/types';
 import { ExportEntry, exportEntriesToExcel, exportEntriesToPDF } from '@/lib/export-utils';
 import { fetchAllPaged } from '@/lib/fetch-all';
 import { isCounted } from '@/lib/status';
+import { positionUtile, fmtPrecision, fmtCoord } from '@/lib/position';
+import { parisHHmm } from '@/lib/utils';
 import { DEFAULT_WEEKLY_HOURS, DEFAULT_OVERTIME_RATES, weeklyHoursFor, weeklyTotals, routeMinutesByEntry, type RouteEntry } from '@/lib/overtime';
 import { weekStart as weekStartOf, weekEnd as weekEndOf } from '@/lib/week';
 import { computeMissingDays } from '@/lib/work-status';
@@ -74,6 +76,27 @@ interface CorrectionRow {
   notify_error: string | null;
 }
 
+/**
+ * Un endroit enregistré au pointage (étape 26).
+ *
+ * CE QU'IL NE FAUT PAS EN FAIRE, ET C'EST ÉCRIT ICI POUR QUE ÇA SURVIVE :
+ * la finalité déclarée est de répondre à un CLIENT qui conteste une facture.
+ * Pas de vérifier les heures d'un salarié — Cass. soc. 3 nov. 2011 n° 10-18.036
+ * et 19 déc. 2018 n° 17-14.631 : la géolocalisation ne peut contrôler la durée
+ * du travail que si aucun autre moyen n'existe, et BEMEXO *est* cet autre
+ * moyen. D'où, dans cet écran : aucun avertissement, aucun tri, aucun compte
+ * des journées sans endroit.
+ */
+interface PositionRow {
+  id: string;
+  entry_id: string;
+  moment: 'start' | 'end';
+  latitude: string;
+  longitude: string;
+  accuracy_m: number | null;
+  captured_at: string;
+}
+
 export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChange, onChanged }: WorkerDetailDialogProps) {
   const { user: me } = useAuth();
   const [range, setRange] = useState<DateRange | undefined>(() => {
@@ -102,6 +125,9 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
   const [cSaving, setCSaving] = useState(false);
   // L'historique des corrections, par ligne d'heures.
   const [corrections, setCorrections] = useState<Map<string, CorrectionRow[]>>(new Map());
+  // Les endroits enregistrés au pointage. Vide par défaut : le réglage est
+  // éteint tant qu'une entreprise ne l'a pas explicitement allumé.
+  const [positions, setPositions] = useState<Map<string, PositionRow[]>>(new Map());
   const [creatingFor, setCreatingFor] = useState<string | null>(null);
   const [newClientName, setNewClientName] = useState('');
   const [loading, setLoading] = useState(false);
@@ -349,8 +375,24 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
           map.set(c.entry_id, list);
         }
         setCorrections(map);
+
+        // Les endroits enregistrés sur ces journées (étape 26). Requête à
+        // part : tant que la table n'existe pas — ou tant que l'entreprise n'a
+        // pas activé le réglage — celle-ci échoue ou revient vide toute seule,
+        // sans emporter l'historique des corrections avec elle.
+        const { data: pos } = await supabase.from('time_entry_positions')
+          .select('id, entry_id, moment, latitude, longitude, accuracy_m, captured_at')
+          .in('entry_id', ids);
+        const pmap = new Map<string, PositionRow[]>();
+        for (const p of (pos || []) as PositionRow[]) {
+          const list = pmap.get(p.entry_id) || [];
+          list.push(p);
+          pmap.set(p.entry_id, list);
+        }
+        setPositions(pmap);
       } else {
         setCorrections(new Map());
+        setPositions(new Map());
       }
     } catch (err) {
       console.error('Error fetching worker entries:', err);
@@ -792,6 +834,42 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
                         <Link2 className="h-3 w-3 mr-1" /> Attribuer un client
                       </Button>
                     )
+                  )}
+
+                  {/* ── OÙ IL A DÉMARRÉ, OÙ IL A FERMÉ ───────────────────────
+                      Là où le bureau lit déjà les heures, et juste au-dessus de
+                      l'historique des corrections.
+
+                      LA PRÉCISION NE SE SÉPARE JAMAIS DES COORDONNÉES. Un point
+                      calculé sur le Wi-Fi annonce couramment 1 à 3 km avec six
+                      décimales qui ressemblent à une adresse. Affiché seul, ce
+                      nombre se lirait « il était là » alors qu'il dit « il
+                      était dans ce quartier ». Au-delà du seuil, on ne le
+                      présente donc plus comme un endroit du tout. */}
+                  {(positions.get(entry.id) || []).length > 0 && (
+                    <div className="mt-2 space-y-1 rounded-md border border-[#E4E0D8] bg-[#F7F5F0] px-2.5 py-1.5 text-xs">
+                      {(positions.get(entry.id) || [])
+                        .slice()
+                        .sort((a, b) => (a.moment === 'start' ? -1 : 1) - (b.moment === 'start' ? -1 : 1))
+                        .map((p) => (
+                          <div key={p.id} className="flex flex-wrap items-center gap-2">
+                            <MapPin className="h-3 w-3 shrink-0 text-muted-foreground" />
+                            <span className="font-semibold">{p.moment === 'start' ? 'Départ' : 'Fin'}</span>
+                            <span className="text-muted-foreground">{parisHHmm(p.captured_at)}</span>
+                            {positionUtile(p.accuracy_m) ? (
+                              <>
+                                <span className="font-mono">{fmtCoord(p.latitude, p.longitude)}</span>
+                                <span className="text-muted-foreground">{fmtPrecision(p.accuracy_m)}</span>
+                              </>
+                            ) : (
+                              <span className="text-muted-foreground">
+                                <span className="font-mono">{fmtCoord(p.latitude, p.longitude)}</span>
+                                {' — '}{fmtPrecision(p.accuracy_m)}, <b>trop imprécis pour situer un chantier</b>
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                    </div>
                   )}
 
                   {/* ── L'HISTORIQUE DES CORRECTIONS ──────────────────────────
