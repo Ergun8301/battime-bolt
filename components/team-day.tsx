@@ -23,6 +23,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { corrigerHeures } from '@/lib/corrections';
 import { TimeCylinder, snapToGrid } from '@/components/time-cylinder';
 import { Loader2, Users, Plus, X } from 'lucide-react';
 import { toast } from 'sonner';
@@ -138,12 +139,41 @@ export default function TeamDay({ me, date, myWorksiteIds, worksiteName, onChang
 
   const save = async () => {
     if (!editing) return;
-    if (start === end) { toast.error('Début et fin identiques : rien à enregistrer.'); return; }
+    if (start === end) { toast.error('Début et fin identiques : rien à compter.'); return; }
     const worksiteId = rows.find((r) => r.id === editing.rowId)?.worksite_id || myWorksiteIds[0];
     if (!worksiteId) { toast.error('Aucun chantier pour aujourd’hui.'); return; }
     setSaving(true);
     try {
       if (editing.rowId) {
+        const existante = rows.find((r) => r.id === editing.rowId);
+
+        // CORRIGER LES HEURES DE QUELQU'UN D'AUTRE, C'EST LE PRÉVENIR.
+        //
+        // La trace existait déjà pour le chef (vérifié en base : `modified_at`
+        // et `modified_by` sont bien posés). Ce qui manquait, c'est la
+        // notification — et le salarié s'en moque de savoir qui a corrigé : de
+        // son point de vue, ses heures ont changé sans lui. On passe donc par
+        // le MÊME chemin que le bureau.
+        //
+        // Sur ses PROPRES heures, le chef reste un salarié ordinaire : pas de
+        // journal, pas de notification à soi-même.
+        if (existante && existante.user_id !== me.id) {
+          const r = await corrigerHeures({
+            entry: {
+              id: existante.id, user_id: existante.user_id, company_id: me.company_id,
+              work_date: date, start_time: existante.start_time, end_time: existante.end_time,
+            },
+            newStart: start, newEnd: end,
+            correctorId: me.id, auteur: 'chef', companyName: '',
+          });
+          if (!r.ok) throw new Error(r.message);
+          setEditing(null);
+          await load();
+          onChanged();
+          if (r.notified) toast.success(r.message); else toast.warning(r.message);
+          return;
+        }
+
         // `.select('id')` : une modification refusée par la RLS renvoie 0 ligne
         // SANS erreur, et le chef croirait avoir corrigé.
         const { data, error } = await supabase.from('time_entries')
@@ -161,7 +191,7 @@ export default function TeamDay({ me, date, myWorksiteIds, worksiteName, onChang
       setEditing(null);
       await load();
       onChanged();
-      toast.success('Enregistré en brouillon — le salarié devra l’envoyer');
+      toast.success('C’est noté — le salarié devra l’envoyer lui-même');
     } catch (e) {
       toast.error((e as { message?: string })?.message || "Impossible d'enregistrer.");
     } finally {

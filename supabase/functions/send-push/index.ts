@@ -185,8 +185,10 @@ Deno.serve(async (req) => {
   try {
     const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
     const payload = await req.json().catch(() => ({}));
-    const { user_ids, title, body, url, tag } = payload as {
+    const { user_ids, title, body, url, tag, work_date } = payload as {
       user_ids?: string[]; title?: string; body?: string; url?: string; tag?: string;
+      /** Requis quand l'appelant est un chef d'équipe : la journée concernée. */
+      work_date?: string;
     };
     if (!title || !body) return json({ error: 'title et body requis' }, 400);
 
@@ -198,20 +200,69 @@ Deno.serve(async (req) => {
       return json({ mode: 'server', ...result });
     }
 
-    // Mode admin connecté : ne peut viser QUE des salariés de sa propre entreprise
-    // (on re-filtre côté serveur, jamais confiance à la liste reçue).
+    // ── Mode utilisateur connecté ────────────────────────────────────────────
+    //
+    // ON BORNE PAR L'AUTORITÉ SUR LA CIBLE, PAS PAR LE RÔLE. La question posée
+    // pour chaque destinataire est : « cet appelant avait-il le droit de
+    // modifier les heures de cette personne ce jour-là ? » — la même question
+    // que celle qui autorise l'écriture.
+    //
+    // POURQUOI LE CHEF D'ÉQUIPE EST ICI. Il peut corriger les heures de ses
+    // équipiers (vérifié en base : accepté, et tracé). Le rejeter en 403 ferait
+    // que le salarié est prévenu quand c'est le bureau et jamais quand c'est
+    // son chef — alors que de son point de vue, c'est la même chose qui lui
+    // arrive. La notification ne doit pas dépendre de QUI corrige.
+    //
+    // On re-filtre TOUJOURS côté serveur : la liste reçue n'est jamais crue.
     const token = (req.headers.get('Authorization') || '').replace('Bearer ', '');
     if (!token) return json({ error: 'Non authentifié' }, 401);
     const { data: { user }, error: uErr } = await admin.auth.getUser(token);
     if (uErr || !user) return json({ error: 'Session invalide' }, 401);
     const { data: profile } = await admin.from('users').select('company_id, role').eq('id', user.id).single();
-    if (!profile || profile.role !== 'admin') return json({ error: "Réservé à l'administrateur" }, 403);
+    if (!profile || (profile.role !== 'admin' && profile.role !== 'lead')) {
+      return json({ error: "Réservé au bureau et aux chefs d'équipe" }, 403);
+    }
 
-    const { data: allowed } = await admin.from('users')
+    // D'abord la société, pour tout le monde : un appelant ne sort jamais de
+    // chez lui, quel que soit son rôle.
+    const { data: sameCompany } = await admin.from('users')
       .select('id').eq('company_id', profile.company_id).in('id', user_ids || []);
-    const allowedIds = (allowed || []).map((u: { id: string }) => u.id);
+    let allowedIds = (sameCompany || []).map((u: { id: string }) => u.id);
+
+    if (profile.role === 'lead') {
+      // LE CHEF EST BORNÉ PLUS ÉTROITEMENT, et par le prédicat que la RLS
+      // utilise déjà : `is_my_team_member`. On ne réécrit pas la règle, on
+      // l'appelle — AVEC LE JETON DE L'APPELANT, sans quoi `auth.uid()` serait
+      // nul côté service_role et la fonction répondrait faux pour tout le monde.
+      //
+      // Conséquence heureuse : `is_my_team_member` n'autorise que LE JOUR MÊME.
+      // Un chef ne peut donc notifier ni sur une journée passée, ni sur un
+      // équipier qu'il ne partage pas. Et toute évolution future de ce prédicat
+      // s'appliquera ici sans qu'on y touche.
+      if (!work_date) return json({ error: 'work_date requis pour un chef d’équipe' }, 400);
+      const asCaller = createClient(
+        Deno.env.get('SUPABASE_URL')!,
+        Deno.env.get('SUPABASE_ANON_KEY')!,
+        { global: { headers: { Authorization: `Bearer ${token}` } } },
+      );
+      const checked: string[] = [];
+      for (const id of allowedIds) {
+        // On interroge une cible à la fois : une erreur sur l'une ne doit pas
+        // faire passer les autres pour autorisées.
+        const { data: ok, error } = await asCaller.rpc('is_my_team_member', { p_user: id, p_date: work_date });
+        if (!error && ok === true) checked.push(id);
+      }
+      allowedIds = checked;
+    }
+
+    // Zéro destinataire retenu n'est pas une réussite silencieuse : on le dit,
+    // pour que l'appelant puisse l'inscrire au lieu de croire avoir prévenu.
+    if (allowedIds.length === 0) {
+      return json({ mode: profile.role, sent: 0, failed: 0, purged: 0, rejected: (user_ids || []).length }, 200);
+    }
+
     const result = await sendToUsers(admin, allowedIds, { title, body, url, tag });
-    return json({ mode: 'admin', ...result });
+    return json({ mode: profile.role, ...result });
   } catch (e) {
     return json({ error: String((e as Error)?.message || e) }, 500);
   }

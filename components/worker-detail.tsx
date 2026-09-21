@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/components/auth-provider';
+import { corrigerHeures, fmtHeure } from '@/lib/corrections';
 import { User, Worksite, Certification, CertificationType } from '@/lib/types';
 import { ExportEntry, exportEntriesToExcel, exportEntriesToPDF } from '@/lib/export-utils';
 import { fetchAllPaged } from '@/lib/fetch-all';
@@ -20,7 +22,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   CalendarRange, Clock, Utensils, MapPin, FileSpreadsheet, FileText, Loader2,
-  Settings2, Archive, ArchiveRestore, Trash2, Link2, User as UserIcon, AlertTriangle, Hammer,
+  Settings2, Archive, ArchiveRestore, Trash2, Link2, User as UserIcon, AlertTriangle, Hammer, PencilLine, BellOff,
   ShieldCheck, Plus,
 } from 'lucide-react';
 import { format, parseISO, isSameDay, subDays, addDays, differenceInCalendarDays } from 'date-fns';
@@ -58,7 +60,20 @@ const CERT_LABEL: Record<CertificationType, string> = Object.fromEntries(CERT_TY
 // Per-employee fiche: opens on today, Booking-style range calendar, interventions
 // + total, planning-based missing-days detail, per-period export (no lock), and
 // worker management (modify / archive / reactivate / delete-if-empty).
+/** Une correction inscrite au journal, telle que l'écran la lit. */
+interface CorrectionRow {
+  id: string;
+  entry_id: string;
+  corrected_by: string;
+  corrected_at: string;
+  old_start: string; old_end: string;
+  new_start: string; new_end: string;
+  notified_at: string | null;
+  notify_error: string | null;
+}
+
 export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChange, onChanged }: WorkerDetailDialogProps) {
+  const { user: me } = useAuth();
   const [range, setRange] = useState<DateRange | undefined>(() => {
     const t = new Date();
     return { from: t, to: t };
@@ -76,6 +91,15 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
   const [overtimeRates, setOvertimeRates] = useState(DEFAULT_OVERTIME_RATES);
   const [worksites, setWorksites] = useState<Worksite[]>([]);
   const [reassigningId, setReassigningId] = useState<string | null>(null);
+  // Correction des heures par le bureau. Même motif d'édition en place que la
+  // réattribution de chantier juste au-dessus : la secrétaire connaît déjà ce
+  // geste, il n'y a rien de nouveau à apprendre.
+  const [correctingId, setCorrectingId] = useState<string | null>(null);
+  const [cStart, setCStart] = useState('08:00');
+  const [cEnd, setCEnd] = useState('17:00');
+  const [cSaving, setCSaving] = useState(false);
+  // L'historique des corrections, par ligne d'heures.
+  const [corrections, setCorrections] = useState<Map<string, CorrectionRow[]>>(new Map());
   const [creatingFor, setCreatingFor] = useState<string | null>(null);
   const [newClientName, setNewClientName] = useState('');
   const [loading, setLoading] = useState(false);
@@ -194,6 +218,42 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
     }
   };
 
+  /**
+   * Le bureau corrige les heures d'une ligne, et le salarié en est prévenu.
+   *
+   * La séquence complète — écrire, inscrire au journal, notifier, inscrire
+   * l'issue — vit dans `lib/corrections.ts`, partagée avec l'écran du chef
+   * d'équipe. Deux copies auraient fini par diverger, et l'une des deux aurait
+   * corrigé en silence.
+   */
+  const doCorrection = async (entry: ExportEntry) => {
+    if (!worker || !me) return;
+    setCSaving(true);
+    try {
+      const r = await corrigerHeures({
+        entry: {
+          id: entry.id, user_id: entry.user_id, company_id: entry.company_id,
+          work_date: entry.work_date, start_time: entry.start_time, end_time: entry.end_time,
+          exported_at: entry.exported_at,
+        },
+        newStart: cStart, newEnd: cEnd,
+        correctorId: me.id, auteur: 'bureau', companyName,
+      });
+      // `notified` faux n'est PAS une erreur : la correction a eu lieu. On le
+      // dit avec le bon ton plutôt que d'annoncer un succès complet.
+      if (!r.ok) { toast.error(r.message); return; }
+      if (r.notified) toast.success(r.message); else toast.warning(r.message);
+      setCorrectingId(null);
+      fetchEntries();
+      onChanged?.();
+    } catch (err) {
+      console.error('Error correcting hours:', err);
+      toast.error((err as { message?: string })?.message || 'Correction impossible');
+    } finally {
+      setCSaving(false);
+    }
+  };
+
   // Reassign an "Autre" entry to a real client.
   const reassignEntry = async (entryId: string, newWorksiteId: string) => {
     if (!worker) return;
@@ -269,7 +329,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
 
       const rows = await fetchAllPaged<ExportEntry>((f, t2) => supabase
         .from('time_entries')
-        .select('id, user_id, work_date, start_time, end_time, break_minutes, total_minutes, meal_allowance, status, observation, reception, gap_before, planning_id, modified_at, worksite:worksites(id, client_name, city)')
+        .select('id, user_id, company_id, work_date, start_time, end_time, break_minutes, total_minutes, meal_allowance, status, observation, reception, gap_before, planning_id, modified_at, exported_at, locked, worksite:worksites(id, client_name, city)')
         .eq('user_id', worker.id)
         .eq('company_id', worker.company_id)
         .gte('work_date', format(from, 'yyyy-MM-dd'))
@@ -278,6 +338,26 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
         .order('start_time', { ascending: false })
         .range(f, t2) as unknown as PromiseLike<{ data: ExportEntry[] | null; error: { message: string } | null }>);
       setEntries(rows);
+
+      // L'historique des corrections des lignes affichées. Une requête, pas une
+      // par ligne : la fiche d'un salarié peut porter plusieurs dizaines de
+      // journées.
+      const ids = rows.map((r) => r.id);
+      if (ids.length > 0) {
+        const { data: corr } = await supabase.from('time_entry_corrections')
+          .select('id, entry_id, corrected_by, corrected_at, old_start, old_end, new_start, new_end, notified_at, notify_error')
+          .in('entry_id', ids)
+          .order('corrected_at', { ascending: true });
+        const map = new Map<string, CorrectionRow[]>();
+        for (const c of (corr || []) as CorrectionRow[]) {
+          const list = map.get(c.entry_id) || [];
+          list.push(c);
+          map.set(c.entry_id, list);
+        }
+        setCorrections(map);
+      } else {
+        setCorrections(new Map());
+      }
     } catch (err) {
       console.error('Error fetching worker entries:', err);
       toast.error('Impossible de charger les saisies');
@@ -716,6 +796,88 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
                     ) : (
                       <Button variant="outline" size="sm" className="mt-2 h-8 text-xs" onClick={() => setReassigningId(entry.id)}>
                         <Link2 className="h-3 w-3 mr-1" /> Attribuer un client
+                      </Button>
+                    )
+                  )}
+
+                  {/* ── L'HISTORIQUE DES CORRECTIONS ──────────────────────────
+                      Affiché sous la ligne, dans l'ordre. Plusieurs corrections
+                      successives se lisent donc comme une suite, et pas comme
+                      un état final qui aurait effacé son propre passé. */}
+                  {(corrections.get(entry.id) || []).map((c) => (
+                    <div key={c.id} className="mt-2 flex flex-wrap items-center gap-2 rounded-md border border-amber-200 bg-amber-50/70 px-2.5 py-1.5 text-xs">
+                      <PencilLine className="h-3 w-3 shrink-0 text-amber-700" />
+                      <span className="font-semibold text-amber-900">
+                        {fmtHeure(c.old_start)}–{fmtHeure(c.old_end)} → {fmtHeure(c.new_start)}–{fmtHeure(c.new_end)}
+                      </span>
+                      <span className="text-amber-800">
+                        {c.corrected_by === worker?.id ? 'par le salarié' : c.corrected_by === me?.id ? 'par toi' : 'par le bureau'}
+                        {' · '}
+                        {format(parseISO(c.corrected_at), 'd MMM à HH:mm', { locale: fr })}
+                      </span>
+                      {/* Pas prévenu, c'est un FAIT à montrer : la secrétaire
+                          doit pouvoir décider d'appeler le salarié. */}
+                      {!c.notified_at && (
+                        <span className="flex items-center gap-1 rounded bg-white px-1.5 py-0.5 font-semibold text-[#8a2a1c]">
+                          <BellOff className="h-3 w-3" /> pas prévenu
+                          {c.notify_error ? ` (${c.notify_error})` : ''}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+
+                  {/* ── CORRIGER LES HEURES ───────────────────────────────────
+                      Une ligne retirée ou verrouillée ne se corrige pas : la
+                      première ne compte plus, la seconde est close côté base. */}
+                  {!isCancelled && !entry.locked && (
+                    correctingId === entry.id ? (
+                      <div className="mt-3 space-y-2 rounded-md border bg-background p-2">
+                        <p className="text-xs font-medium">Corriger les heures de cette journée</p>
+
+                        {/* La paie est déjà partie. On n'interdit pas — c'est le
+                            bureau qui décide — mais on ne le laisse pas le
+                            découvrir après coup. */}
+                        {entry.exported_at && (
+                          <div className="flex items-start gap-2 rounded-md border border-[#E8B79E] bg-[#FBE3D8] px-2.5 py-2 text-xs text-[#8a2a1c]">
+                            <AlertTriangle className="h-4 w-4 shrink-0" />
+                            <span>
+                              <b>Cette journée est déjà partie chez le comptable</b> le{' '}
+                              {format(parseISO(entry.exported_at), 'd MMMM', { locale: fr })}. La corriger ici ne
+                              corrige pas le fichier qu&apos;il a reçu : il faudra le lui renvoyer.
+                            </span>
+                          </div>
+                        )}
+
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Input type="time" step={900} value={cStart} onChange={(e) => setCStart(e.target.value)} className="h-9 w-28" aria-label="Heure de début" />
+                          <span className="text-muted-foreground">→</span>
+                          <Input type="time" step={900} value={cEnd} onChange={(e) => setCEnd(e.target.value)} className="h-9 w-28" aria-label="Heure de fin" />
+                          <span className="text-xs text-muted-foreground">
+                            était {fmtHeure(entry.start_time)}–{fmtHeure(entry.end_time)}
+                          </span>
+                        </div>
+
+                        <p className="text-xs text-muted-foreground">
+                          Le salarié recevra une notification et verra la correction sur sa journée.
+                        </p>
+
+                        <div className="flex items-center gap-2">
+                          <Button size="sm" onClick={() => doCorrection(entry)} disabled={cSaving}>
+                            {cSaving && <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />} Corriger et prévenir
+                          </Button>
+                          <Button variant="ghost" size="sm" disabled={cSaving} onClick={() => setCorrectingId(null)}>Annuler</Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <Button
+                        variant="outline" size="sm" className="mt-2 ml-2 h-8 text-xs"
+                        onClick={() => {
+                          setCorrectingId(entry.id);
+                          setCStart(entry.start_time?.slice(0, 5) || '08:00');
+                          setCEnd(entry.end_time?.slice(0, 5) || '17:00');
+                        }}
+                      >
+                        <PencilLine className="h-3 w-3 mr-1" /> Corriger les heures
                       </Button>
                     )
                   )}

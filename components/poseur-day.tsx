@@ -18,10 +18,21 @@ import {
 } from '@/lib/offline-store';
 import { syncAllPending } from '@/lib/offline-sync';
 import { planningsToMaterialise, remainingPlannings } from '@/lib/work-status';
+import { fmtHeure } from '@/lib/corrections';
 import { TimeCylinder, snapToGrid } from '@/components/time-cylinder';
 import LiveTimer from '@/components/live-timer';
 import TeamDay from '@/components/team-day';
 import ChantierDocuments from '@/components/chantier-documents';
+
+/** Une correction reçue du bureau, telle que la journée du salarié l'affiche. */
+interface CorrectionVue {
+  id: string;
+  entry_id: string;
+  old_start: string; old_end: string;
+  new_start: string; new_end: string;
+  corrected_at: string;
+  corrected_by: string;
+}
 
 interface TimeEntryWithWorksite extends TimeEntry {
   worksite: Worksite;
@@ -171,6 +182,11 @@ const DAY_CSS = `
 .bt-iv-times{display:flex;align-items:center;justify-content:space-between;gap:10px;font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:#15120F}
 .bt-iv-times-v{flex:none;white-space:nowrap}
 .bt-iv-times .dot{width:4px;height:4px;background:#c4bdae;border-radius:50%}
+/* Correction reçue du bureau : visible sans être alarmante. Le salarié doit la
+   REMARQUER, pas croire qu'il a fait une faute. */
+.bt-iv-corr{margin-top:8px;display:flex;align-items:center;gap:7px;background:#FFF6E0;border:1px solid #EAD08A;border-radius:9px;padding:6px 9px}
+.bt-iv-corr-t{font-size:12.5px;font-weight:800;color:#6b5a2e;line-height:1.35}
+.bt-iv-corr-v{font-family:'JetBrains Mono',monospace;font-weight:700}
 .bt-iv-note{font-size:13px;color:#6E6A63;margin-top:8px}
 .bt-iv-reserve{display:inline-flex;align-items:center;gap:5px;margin-top:7px;font-size:12px;font-weight:800;border-radius:7px;padding:3px 9px}
 .bt-iv-reserve.avec{background:#FCEADF;border:1px solid #F0C49A;color:#C0461F}
@@ -303,6 +319,10 @@ type SlotTarget =
 export default function PoseurDay({ date: dateProp, topBanner }: { date?: string; topBanner?: ReactNode } = {}) {
   const { user } = useAuth();
   const [entries, setEntries] = useState<TimeEntryWithWorksite[]>([]);
+  // Ce que le bureau (ou le chef) a corrigé sur MES heures. Le salarié doit le
+  // voir sur sa journée, même s'il n'a pas activé les notifications — une
+  // correction qu'on ne découvre qu'en fin de mois est un litige en préparation.
+  const [mesCorrections, setMesCorrections] = useState<Map<string, CorrectionVue[]>>(new Map());
   const [pendingEntries, setPendingEntries] = useState<PendingEntry[]>([]);
   const [worksites, setWorksites] = useState<Worksite[]>([]);
   const [docsByWorksite, setDocsByWorksite] = useState<Map<string, number>>(new Map()); // nb de documents par chantier (pastille 📎)
@@ -468,6 +488,25 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
       }
 
       setEntries(entriesRes.data || []);
+
+      // Les corrections des lignes du jour. La RLS ne me montre que les
+      // miennes : pas besoin de filtrer par salarié ici.
+      const idsDuJour = ((entriesRes.data || []) as TimeEntryWithWorksite[]).map((e) => e.id);
+      if (idsDuJour.length > 0) {
+        const { data: corr } = await supabase.from('time_entry_corrections')
+          .select('id, entry_id, old_start, old_end, new_start, new_end, corrected_at, corrected_by')
+          .in('entry_id', idsDuJour)
+          .order('corrected_at', { ascending: true });
+        const m = new Map<string, CorrectionVue[]>();
+        for (const c of (corr || []) as CorrectionVue[]) {
+          const l = m.get(c.entry_id) || [];
+          l.push(c);
+          m.set(c.entry_id, l);
+        }
+        setMesCorrections(m);
+      } else {
+        setMesCorrections(new Map());
+      }
       setWorksites(worksitesData);
       setPlanning(planningRes.data || []);
 
@@ -792,7 +831,7 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
         }).eq('id', openSlot.entryId).eq('user_id', user.id).select('id');
         if (error) throw error;
         // 0 ligne = la RLS a refusé (verrouillée, exportée…) : ce n'est pas un succès.
-        if (!upd || upd.length === 0) { toast.error('Chantier non modifié : il est verrouillé par le bureau.'); return; }
+        if (!upd || upd.length === 0) { toast.error('Ce chantier n’a pas changé : il est verrouillé par le bureau.'); return; }
       } else if (openSlot.kind === 'pending') {
         const pend = getPendingEntries(user.id).find((e) => e.localId === openSlot.localId);
         if (pend) {
@@ -1514,6 +1553,22 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
                   {entry.worksite?.city && <span className="bt-iv-city">{entry.worksite.city}</span>}
                   <span className="bt-iv-times-v">{entry.start_time?.substring(0, 5)} → {entry.end_time?.substring(0, 5)} · {fmtHM(entry.total_minutes)}</span>
                 </div>
+                {/* CE QUE LE BUREAU A CORRIGÉ. Affiché ici même, et pas
+                    seulement envoyé en notification : le salarié qui n'a pas
+                    activé les notifications doit le voir quand même. Chaque
+                    correction garde sa ligne — deux corrections successives se
+                    lisent comme une suite, pas comme un état final. */}
+                {(mesCorrections.get(entry.id) || []).map((c) => (
+                  <div key={c.id} className="bt-iv-corr">
+                    <Hammer className="h-3.5 w-3.5 shrink-0" style={{ color: '#8a6d05' }} />
+                    <div className="bt-iv-corr-t">
+                      {c.corrected_by === user?.id ? 'Tu as corrigé' : 'Le bureau a corrigé'} :{' '}
+                      <span className="bt-iv-corr-v">{fmtHeure(c.old_start)}–{fmtHeure(c.old_end)}</span>
+                      {' → '}
+                      <span className="bt-iv-corr-v">{fmtHeure(c.new_start)}–{fmtHeure(c.new_end)}</span>
+                    </div>
+                  </div>
+                ))}
                 {entry.reception === 'avec' && (
                   <>
                     <div className="bt-iv-reserve avec">⚠ Avec réserve</div>
