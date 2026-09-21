@@ -19,6 +19,7 @@
 // on lui demande déjà si un trou était de la route ou une pause.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { demanderPosition, FENETRE_POSITION_MS } from '@/lib/position';
 import { parisHHmm } from '@/lib/utils';
@@ -485,7 +486,18 @@ export default function LiveTimer({
           <span>
             Ton entreprise note <b style={{ color: '#F2EDE3' }}>l&apos;endroit</b> au départ et à la
             fin du pointage — rien entre les deux, et tu peux refuser.{' '}
-            <a href="/confidentialite" className="bt-lt-geo-a">En savoir plus</a>
+            {/* `Link` ET PAS `<a>`, ET UNE ANCRE.
+                Un `<a>` brut recharge la page entière : le salarié quitte
+                l'application pour lire une page légale, et doit la relancer
+                pour pointer. C'est la friction qu'on vient de retirer, remise
+                par la petite porte. `Link` reste dans l'application, et le
+                retour arrière le ramène là où il en était — c'est d'ailleurs
+                ce que font déjà les autres écrans du dépôt.
+
+                L'ancre l'amène à la section qui le concerne, pas en haut de
+                douze sections. Elle existe : `id="endroit"` sur le titre, et
+                le contrôle mécanique est dans `out/confidentialite.html`. */}
+            <Link href="/confidentialite#endroit" className="bt-lt-geo-a">En savoir plus</Link>
           </span>
         </div>
       )}

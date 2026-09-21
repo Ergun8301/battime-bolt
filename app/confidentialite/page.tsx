@@ -116,7 +116,10 @@ export default function ConfidentialitePage() {
               une phrase, ici tout. Il est écrit pour être lu par un salarié qui
               se demande ce qu'on sait de lui, pas par un juriste — d'où les
               sous-titres en question. */}
-          <h2>5. L&apos;endroit, quand votre entreprise l&apos;a activé</h2>
+          {/* `id` LU PAR LE LIEN DE L'ÉCRAN DE POINTAGE (`live-timer.tsx`).
+              Le renommer casserait ce lien sans rien signaler : il tomberait
+              en haut de la page, et le salarié devrait chercher. */}
+          <h2 id="endroit">5. L&apos;endroit, quand votre entreprise l&apos;a activé</h2>
           <p>
             Cette fonction est <strong>désactivée par défaut</strong>. Votre employeur peut l&apos;activer ; tant
             qu&apos;il ne l&apos;a pas fait, <strong>aucune position n&apos;est enregistrée</strong>, et rien de

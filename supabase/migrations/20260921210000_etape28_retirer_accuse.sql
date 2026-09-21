@@ -1,5 +1,19 @@
--- ⚠️ CETTE MIGRATION N'EST PAS APPLIQUÉE. Le suffixe `.NOT_APPLIED` la tient
--- hors du dossier actif. La renommer en `.sql` suffira.
+-- APPLIQUÉE EN PRODUCTION LE 21/09/2026, et vérifiée sur la STRUCTURE puis sur
+-- le COMPORTEMENT :
+--
+--   table 0, prédicat 0, départ false, fermeture false, BT001 true ;
+--   une seule signature pour `stop_active_session`, droits
+--   {postgres, authenticated, service_role} inchangés ; trigger
+--   `active_sessions_position_guard` en place ; la policy unique de
+--   `time_entry_positions` toujours là ; 1 société allumée, 46 pointages,
+--   0 position.
+--
+-- Puis le contrôle qui compte, SOUS `authenticated` et non sous `postgres` :
+-- avec le vrai salarié de K Habitat et un vrai chantier de sa société, jwt
+-- posé, bloc terminé par une exception donc entièrement annulé — réglage = t,
+-- `lat = 46.205000`, `located_at` posé par le serveur. LA POSITION EST
+-- CONSERVÉE : exactement ce que l'absence d'accusé empêchait une heure plus
+-- tôt. Après coup : 0 session, 46 pointages, 0 position, 1 société allumée.
 --
 -- ═════════════════════════════════════════════════════════════════════════════
 -- ÉTAPE 28 — on démonte l'accusé de réception, parce que l'écran s'en va
