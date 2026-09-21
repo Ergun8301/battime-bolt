@@ -48,6 +48,29 @@ EXCEPTION WHEN others THEN … END;
 20 : on testait la fonction, pas le chemin qui l'appelle. Une fonction juste,
 appelée autrement qu'en vrai, ne prouve rien sur l'application.
 
+### Le RÔLE fait partie du scénario, au même titre
+
+Même racine, autre axe, et il a coûté deux fois le même jour.
+
+Une répétition qui tourne en `postgres` ne prouve rien sur ce que fera un
+salarié. `postgres` conserve tous les droits : il traverse la RLS, il exécute
+les fonctions qu'on vient de révoquer, il ignore les policies qu'on est
+précisément en train de vérifier. Deux preuves peuvent afficher les bonnes
+valeurs et ne rien démontrer.
+
+Toute assertion qui porte sur un droit, une policy ou une visibilité se joue
+sous le rôle de l'application :
+
+```sql
+PERFORM set_config('request.jwt.claims',
+                   json_build_object('sub', '<uuid réel>', 'role', 'authenticated')::text,
+                   true);
+EXECUTE 'set local role authenticated';   -- ou 'anon' pour un visiteur
+```
+
+et on revient en `postgres` (`RESET ROLE`) uniquement pour poser les fixtures et
+écrire le rapport.
+
 ---
 
 ## 2 · On relit la fonction EN BASE, jamais le fichier qui l'a créée
@@ -96,6 +119,80 @@ SELECT (SELECT count(*) FROM public.time_entries)              AS pointages,
 Ce contrôle a déjà servi : lors d'un appel où le `rollback` final manquait, il a
 prouvé en une requête que rien n'avait été écrit, au lieu de laisser la question
 ouverte.
+
+---
+
+## 4 · On contrôle ce qui est NEUF, pas seulement ce qu'on sait fragile
+
+**Le défaut, à l'étape 27.** La migration créait une fonction `SECURITY DEFINER`
+et en remplaçait une autre. La relecture avant application a été sérieuse : elle
+a même vérifié les droits de la fonction *remplacée*, parce qu'un
+`DROP FUNCTION` les remet à zéro et que c'était le piège connu.
+
+Elle n'a pas vérifié les droits de la fonction *créée*. Or les default
+privileges du schéma `public` accordent `anon`, `authenticated` et
+`service_role` à toute fonction nouvelle, et PostgreSQL y ajoute PUBLIC. Le
+prédicat est donc parti en production appelable **sans compte**, avec des UUID
+arbitraires, contournant la policy que la même migration venait d'écrire.
+
+L'attention était là. Elle était pointée sur ce qu'on savait dangereux, et le
+danger était ailleurs — sur l'objet neuf, celui qui n'avait pas encore
+d'histoire et donc pas encore de soupçon.
+
+**La règle.** La liste de contrôle d'une migration se construit sur ce qu'elle
+FAIT, pas sur ce qu'on redoute. Pour toute fonction qu'elle **crée** autant que
+pour celles qu'elle remplace :
+
+```sql
+SELECT p.proname,
+       p.prosecdef                                               AS security_definer,
+       has_function_privilege('anon',          p.oid, 'EXECUTE') AS anon_peut,
+       has_function_privilege('authenticated', p.oid, 'EXECUTE') AS connecte_peut,
+       array_to_string(p.proacl::text[], ' | ')                  AS droits
+  FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+ WHERE n.nspname = 'public' AND p.proname IN (…);
+```
+
+Toute fonction `SECURITY DEFINER` du schéma `public` est révoquée
+explicitement, puis re-accordée à qui en a besoin. Sans exception pour les
+petites : **c'est la taille de ce qu'une fonction lit qui compte, pas la
+sienne.**
+
+**Et on pose la question à PostgreSQL, pas à une chaîne de caractères.**
+`has_function_privilege(rôle, oid, 'EXECUTE')` répond à la question elle-même.
+Chercher `=X/` dans `proacl` a produit un « KO » sur un état correct, parce que
+`postgres=X/postgres` contient cette sous-chaîne — l'entrée de PUBLIC est celle
+dont le bénéficiaire est vide, donc qui **commence** par `=`.
+
+### Deux pièges du balayage lui-même, payés tous les deux
+
+**Ne pas exclure la classe qu'on vient de toucher.** La requête qui a conclu
+« `correct_time_entry` est la seule encore ouverte » portait
+`and p.prorettype <> 'trigger'::regtype` — donc elle écartait exactement les
+fonctions de trigger, celles qu'on venait d'aligner à la main une heure plus
+tôt. Deux fonctions ouvertes ont survécu à un balayage qui se croyait complet,
+et une règle annoncée « sans exception » est partie avec deux contre-exemples
+vivants. Un balayage de droits n'a pas de `WHERE` sur le type de retour.
+
+**Le balayage compte son propre instrument.** La même requête, rejouée dans une
+répétition, a annoncé « 2 fonctions encore ouvertes » après avoir tout révoqué.
+Les deux étaient `_as` et `_rec` — les fonctions d'aide créées par le test
+lui-même, dans le schéma `public`, donc dotées des mêmes default privileges que
+le code qu'elles mesurent. Avant de croire un balayage qui trouve quelque
+chose : **lire les noms**.
+
+### `EXECUTE` sur une fonction de trigger : vérifié au `CREATE TRIGGER`
+
+Révoquer `EXECUTE` sur une fonction de trigger n'empêche aucun trigger de
+partir : PostgreSQL vérifie ce droit à la création du trigger, pas à chaque
+déclenchement. Mesuré sous `authenticated`, deux fois et indépendamment.
+
+**La dépendance que ça crée, et elle est pour plus tard :** une migration qui
+RECRÉE un de ces triggers doit tourner avec un rôle qui a gardé `EXECUTE` —
+`postgres`. Toutes les migrations de ce dépôt y tournent déjà, donc il n'y a
+rien à faire aujourd'hui. C'est écrit ici parce que c'est le genre de
+dépendance invisible qu'on redécouvre trois ans plus tard, un soir, en se
+demandant pourquoi un `CREATE TRIGGER` échoue.
 
 ---
 

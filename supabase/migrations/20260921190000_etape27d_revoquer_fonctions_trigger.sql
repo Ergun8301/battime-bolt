@@ -1,0 +1,111 @@
+-- APPLIQUÉE EN PRODUCTION LE 21/09/2026, et vérifiée avec la requête de
+-- contrôle du bas de ce fichier — celle SANS filtre sur le type de retour :
+-- ZÉRO ligne. Le schéma `public` n'a plus une seule fonction ouverte à PUBLIC
+-- ou à `anon`.
+--
+-- Et le contrôle qui compte, sous `authenticated` et non sous `postgres` :
+--
+--   · `reset_budget_alerts` — budget d'un chantier porté de 100 à 150 par un
+--     vrai admin, jwt posé, transaction annulée : `budget = 150`,
+--     `alert_70_sent_at = NULL`. Le trigger part après le REVOKE.
+--   · `guard_correction_immutable` — mesuré lors de la répétition qui a produit
+--     ce fichier : une correction créée par `correct_time_entry`, puis une
+--     tentative de réécriture qui ressort `new_start = 09:00`, `corrected_by_role`
+--     figé à `admin`, seul `notify_error` modifié.
+--
+-- Les deux triggers sont donc éprouvés sous le rôle de l'application. Le jour
+-- où une vraie correction d'heures sera faite en production, ce chemin le sera
+-- en conditions réelles.
+--
+-- ═════════════════════════════════════════════════════════════════════════════
+-- ÉTAPE 27 quater — les deux dernières fonctions ouvertes du schéma
+-- ═════════════════════════════════════════════════════════════════════════════
+--
+-- POURQUOI CE FICHIER EXISTE : PARCE QUE MA RÈGLE ÉTAIT FAUSSE.
+--
+-- L'étape 27 ter a posé une règle absolue — « toute fonction SECURITY DEFINER
+-- du schéma public est révoquée explicitement, aucune exception » — en
+-- affirmant que `correct_time_entry` était la seule encore ouverte. Elle ne
+-- l'était pas. Ma requête de balayage portait :
+--
+--     and p.prorettype <> 'trigger'::regtype
+--
+-- c'est-à-dire qu'elle excluait EXACTEMENT la classe de fonctions que je venais
+-- d'aligner à la main une heure plus tôt (`guard_session_position`, étape
+-- 27 bis). J'ai répondu à « quelles fonctions NON-TRIGGER sont ouvertes ? » et
+-- je l'ai rapporté comme « quelles fonctions sont ouvertes ? ».
+--
+-- Restaient donc deux contre-exemples vivants à une règle annoncée sans
+-- exception, dont un `SECURITY DEFINER`. Une règle absolue qu'on peut
+-- contredire en une requête n'est plus une règle : c'est une ligne que le
+-- prochain lecteur devra vérifier avant de s'y fier.
+--
+-- ─────────────────────────────────────────────────────────────────────────────
+-- NI L'UNE NI L'AUTRE N'ÉTAIT EXPLOITABLE, ET IL FAUT LE DIRE EN PREMIER
+-- ─────────────────────────────────────────────────────────────────────────────
+--
+-- Les deux retournent `trigger` : PostgREST n'expose pas ces fonctions, et un
+-- appel SQL direct est refusé par PostgreSQL lui-même. Ce fichier ne ferme
+-- aucune porte ouverte — il supprime deux lignes de droits qui RESSEMBLENT à
+-- la fuite de l'étape 27 bis, et qui obligeraient le prochain à refaire tout le
+-- raisonnement pour se rassurer. C'est exactement le bruit que 27 ter voulait
+-- supprimer.
+--
+--   guard_correction_immutable   SECURITY DEFINER   fige le journal des
+--                                                   corrections (étape 25)
+--   reset_budget_alerts          invoker            remet à zéro les alertes
+--                                                   quand un budget change
+--
+-- ─────────────────────────────────────────────────────────────────────────────
+-- CE QUE ÇA NE CASSE PAS, ET COMMENT ON LE SAIT
+-- ─────────────────────────────────────────────────────────────────────────────
+--
+-- PostgreSQL vérifie `EXECUTE` sur une fonction de trigger au moment du
+-- `CREATE TRIGGER`, PAS à chaque déclenchement. Révoquer n'empêche donc aucun
+-- trigger de partir.
+--
+-- Ce n'est pas une déduction : c'est mesuré, deux fois et indépendamment, SOUS
+-- LE RÔLE `authenticated` — pas sous `postgres`, qui garde EXECUTE et ne
+-- prouverait rien.
+--
+--   · le journal reste immuable : une tentative de réécrire `new_start`
+--     ressort à `09:00`, le rôle figé à `admin`, et seul `notify_error` bouge ;
+--   · les alertes budget repartent à NULL quand `budget_hours` passe de 100 à
+--     150 ;
+--   · un appel direct reste refusé — `permission denied`, comme avant.
+--
+-- ⚠️ LA SEULE DÉPENDANCE QUE ÇA CRÉE, ET ELLE EST POUR PLUS TARD : une
+-- migration qui RECRÉE l'un de ces triggers devra tourner avec un rôle qui a
+-- gardé `EXECUTE` — `postgres`. C'est déjà le cas de toutes les migrations de
+-- ce dépôt, donc rien à changer aujourd'hui. C'est écrit ici parce que c'est le
+-- genre de dépendance invisible qu'on redécouvre trois ans plus tard, un soir,
+-- en se demandant pourquoi un `CREATE TRIGGER` échoue.
+
+REVOKE EXECUTE ON FUNCTION public.guard_correction_immutable()
+  FROM PUBLIC, anon, authenticated;
+
+REVOKE EXECUTE ON FUNCTION public.reset_budget_alerts()
+  FROM PUBLIC, anon, authenticated;
+
+-- ═════════════════════════════════════════════════════════════════════════════
+-- CONTRÔLE APRÈS APPLICATION
+-- ═════════════════════════════════════════════════════════════════════════════
+--
+-- LA REQUÊTE CI-DESSOUS N'A PAS DE FILTRE SUR LE TYPE DE RETOUR. C'est le
+-- filtre qui a produit ce fichier ; ne le remettez pas. Elle doit rendre ZÉRO
+-- ligne — et si elle en rend, lisez d'abord les noms : une répétition qui crée
+-- ses propres fonctions d'aide dans le schéma `public` les verra apparaître
+-- ici, parce qu'elles reçoivent les mêmes default privileges. Le balayage
+-- compte alors son propre instrument.
+--
+-- SELECT p.proname,
+--        has_function_privilege('anon', p.oid, 'EXECUTE') AS anon_peut,
+--        array_to_string(p.proacl::text[], ' | ')         AS droits
+--   FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+--  WHERE n.nspname = 'public' AND p.prokind = 'f'
+--    AND (EXISTS (SELECT 1 FROM unnest(p.proacl) g WHERE g::text LIKE '=%')
+--         OR has_function_privilege('anon', p.oid, 'EXECUTE'));
+--
+-- Et le contrôle qui compte, SOUS `authenticated` : une correction d'heures
+-- reste impossible à retoucher, et changer le budget d'un chantier remet ses
+-- alertes à zéro.
