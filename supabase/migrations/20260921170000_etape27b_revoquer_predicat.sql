@@ -1,5 +1,14 @@
--- ⚠️ CETTE MIGRATION N'EST PAS APPLIQUÉE. Le suffixe `.NOT_APPLIED` la tient
--- hors du dossier actif. La renommer en `.sql` suffira.
+-- APPLIQUÉE EN PRODUCTION LE 21/09/2026. Vérifiée sans se fier à une
+-- sous-chaîne : `has_function_privilege` répond `false` pour `anon` et pour
+-- `authenticated` sur les deux fonctions, `true` pour `postgres`. Droits
+-- finaux `{postgres, service_role}`. `stop_active_session` garde
+-- `{postgres, authenticated, service_role}` — le navigateur l'appelle.
+--
+-- Et le vrai contrôle, celui que réclame le bas de ce fichier : la preuve par
+-- le comportement a été rejouée APRÈS le REVOKE, en production, dans un bloc
+-- terminé par une exception donc entièrement annulé. Sans accusé, `lat` et
+-- `located` à NULL ; avec accusé, `lat = 46.205000` et l'heure posée par le
+-- serveur. La révocation ne casse aucun des deux chemins.
 --
 -- ═════════════════════════════════════════════════════════════════════════════
 -- ÉTAPE 27 bis — `has_position_notice` était appelable par n'importe qui

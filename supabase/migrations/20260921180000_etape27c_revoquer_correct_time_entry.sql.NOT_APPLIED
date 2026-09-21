@@ -1,0 +1,59 @@
+-- ⚠️ CETTE MIGRATION N'EST PAS APPLIQUÉE. Le suffixe `.NOT_APPLIED` la tient
+-- hors du dossier actif. La renommer en `.sql` suffira.
+--
+-- AUCUN CODE NE DÉPEND DE CE FICHIER. Il ne change que des droits : la
+-- fusionner avant de l'appliquer ne casse rien et ne laisse rien en suspens
+-- côté navigateur. C'est la différence avec les migrations des étapes 25 à 27,
+-- qui créaient ce que le client appelait.
+--
+-- ═════════════════════════════════════════════════════════════════════════════
+-- ÉTAPE 27 ter — `correct_time_entry` était atteignable sans compte
+-- ═════════════════════════════════════════════════════════════════════════════
+--
+-- CE N'EST PAS UNE FUITE, ET IL FAUT LE DIRE AVANT LE RESTE. `correct_time_entry`
+-- est `SECURITY INVOKER` : elle s'exécute avec les droits de l'appelant, donc la
+-- RLS la protège réellement. Un visiteur non connecté qui l'appelait
+-- n'obtenait rien — `get_my_company_id()` rend NULL pour `anon`, aucune ligne
+-- ne lui est visible, et la fonction s'arrêtait sur son propre message.
+--
+-- CE QUI CHANGE QUAND MÊME, ET POURQUOI ÇA VAUT UNE LIGNE :
+--
+--   AVANT   [P0001] Cette ligne n'existe pas, ou vous n'y avez pas accès.
+--   APRÈS   [42501] permission denied for function correct_time_entry
+--
+-- Avant, un appelant sans compte FRANCHISSAIT la porte et était arrêté à
+-- l'intérieur. Après, il est arrêté à la porte. La différence est mince en
+-- conséquence et nette en principe : une fonction qui écrit des heures de paie
+-- n'a aucune raison d'être atteignable par quelqu'un qui n'a pas de compte,
+-- même pour lui répondre non.
+--
+-- ET SURTOUT, LE BRUIT. `=X/` et `anon` dans la liste des droits, ça ressemble
+-- à la fuite de l'étape 27 bis. La prochaine relecture s'arrêtera dessus, et
+-- devra refaire le raisonnement pour conclure que celle-ci était inoffensive.
+-- Une ligne de droits qui oblige à enquêter pour être rassuré est une ligne
+-- qu'il vaut mieux corriger.
+--
+-- POURQUOI CETTE PR ET PAS UN BALAYAGE À PART. Parce que le balayage a été
+-- fait, et qu'il n'a trouvé QU'ELLE : une requête sur toutes les fonctions du
+-- schéma `public` ne retourne aucune autre entrée ouverte à PUBLIC ou à `anon`.
+-- Un « balayage à part » pour un seul élément déjà identifié n'est pas un
+-- balayage, c'est une promesse.
+--
+-- `authenticated` GARDE SON DROIT : c'est le navigateur connecté, et c'est tout
+-- le chemin de correction de l'étape 25 (`worker-detail.tsx`, `team-day.tsx`).
+-- Le lui retirer casserait la fonctionnalité livrée hier.
+REVOKE EXECUTE ON FUNCTION public.correct_time_entry(uuid, time, time)
+  FROM PUBLIC, anon;
+
+-- Contrôle après application — `=X/` et `anon` doivent disparaître,
+-- `authenticated` doit rester :
+--
+-- SELECT array_to_string(p.proacl::text[], ' | ')                AS droits,
+--        has_function_privilege('anon', p.oid, 'EXECUTE')        AS anon_peut,
+--        has_function_privilege('authenticated', p.oid, 'EXECUTE') AS bureau_peut
+--   FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+--  WHERE n.nspname = 'public' AND p.proname = 'correct_time_entry';
+--
+-- Attendu : {postgres, authenticated, service_role}, anon false, bureau true.
+-- Et le contrôle qui compte : une correction depuis la fiche salarié passe
+-- toujours, avec sa ligne de journal et sa notification.

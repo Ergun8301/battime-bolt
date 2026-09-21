@@ -99,6 +99,50 @@ ouverte.
 
 ---
 
+## 4 · On contrôle ce qui est NEUF, pas seulement ce qu'on sait fragile
+
+**Le défaut, à l'étape 27.** La migration créait une fonction `SECURITY DEFINER`
+et en remplaçait une autre. La relecture avant application a été sérieuse : elle
+a même vérifié les droits de la fonction *remplacée*, parce qu'un
+`DROP FUNCTION` les remet à zéro et que c'était le piège connu.
+
+Elle n'a pas vérifié les droits de la fonction *créée*. Or les default
+privileges du schéma `public` accordent `anon`, `authenticated` et
+`service_role` à toute fonction nouvelle, et PostgreSQL y ajoute PUBLIC. Le
+prédicat est donc parti en production appelable **sans compte**, avec des UUID
+arbitraires, contournant la policy que la même migration venait d'écrire.
+
+L'attention était là. Elle était pointée sur ce qu'on savait dangereux, et le
+danger était ailleurs — sur l'objet neuf, celui qui n'avait pas encore
+d'histoire et donc pas encore de soupçon.
+
+**La règle.** La liste de contrôle d'une migration se construit sur ce qu'elle
+FAIT, pas sur ce qu'on redoute. Pour toute fonction qu'elle **crée** autant que
+pour celles qu'elle remplace :
+
+```sql
+SELECT p.proname,
+       p.prosecdef                                               AS security_definer,
+       has_function_privilege('anon',          p.oid, 'EXECUTE') AS anon_peut,
+       has_function_privilege('authenticated', p.oid, 'EXECUTE') AS connecte_peut,
+       array_to_string(p.proacl::text[], ' | ')                  AS droits
+  FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+ WHERE n.nspname = 'public' AND p.proname IN (…);
+```
+
+Toute fonction `SECURITY DEFINER` du schéma `public` est révoquée
+explicitement, puis re-accordée à qui en a besoin. Sans exception pour les
+petites : **c'est la taille de ce qu'une fonction lit qui compte, pas la
+sienne.**
+
+**Et on pose la question à PostgreSQL, pas à une chaîne de caractères.**
+`has_function_privilege(rôle, oid, 'EXECUTE')` répond à la question elle-même.
+Chercher `=X/` dans `proacl` a produit un « KO » sur un état correct, parce que
+`postgres=X/postgres` contient cette sous-chaîne — l'entrée de PUBLIC est celle
+dont le bénéficiaire est vide, donc qui **commence** par `=`.
+
+---
+
 ## Ce que le rapport doit contenir
 
 Un scénario qui passe doit afficher **la valeur observée**, pas seulement
