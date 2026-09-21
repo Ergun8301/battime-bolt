@@ -1,6 +1,13 @@
--- ⚠️ CETTE MIGRATION N'EST PAS APPLIQUÉE. Le suffixe `.NOT_APPLIED` la tient
--- hors du dossier actif : rien ne la passera par inadvertance. La renommer en
--- `.sql` suffira, le jour où elle sera validée.
+-- APPLIQUÉE EN PRODUCTION LE 21/09/2026, et vérifiée objet par objet :
+-- `position_tracking_enabled` présente et ÉTEINTE partout (K Habitat comprise),
+-- `time_entry_positions` créée avec RLS active et ZÉRO policy d'écriture,
+-- trigger `active_sessions_position_guard` en place, `stop_active_session` avec
+-- UNE seule signature (p_end, p_lat, p_lng, p_accuracy) et son `BT001` intact,
+-- tâche `bemexo-purge-positions` programmée à `15 3 * * *`, 46 pointages et 0
+-- position au moment de la bascule.
+--
+-- pg_cron 1.6.4 était déjà installé, avec deux tâches en place ; celle-ci s'y
+-- ajoute sans les déranger.
 --
 -- ═════════════════════════════════════════════════════════════════════════════
 -- ÉTAPE 26 — Où était le salarié quand il a démarré, et quand il a fermé
