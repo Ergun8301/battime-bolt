@@ -827,8 +827,24 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
                   ))}
 
                   {/* ── CORRIGER LES HEURES ───────────────────────────────────
-                      Seule une ligne RETIRÉE échappe à la correction : elle ne
-                      compte plus, changer ses heures ne changerait rien.
+                      ON NE CORRIGE QUE CE QUI COMPTE. `isCounted` est la règle
+                      unique de `lib/status.ts` : envoyée, ou l'ancien
+                      « validated » qui traîne encore en base. Écrire
+                      `status === 'submitted'` ici aurait laissé tomber ce
+                      reliquat historique et créé une deuxième définition de
+                      « ça compte » — il y en a déjà une, elle suffit.
+
+                      CE QUE ÇA ÉCARTE, ET POURQUOI :
+
+                        · LE BROUILLON. Il ne compte nulle part — ni dans le
+                          total, ni dans l'export, ni en paie — et le salarié
+                          peut encore le changer lui-même. Il n'y a donc rien à
+                          corriger. Et annoncer « le bureau a corrigé tes
+                          heures » sur une journée qu'il n'a pas fini de
+                          remplir est incompréhensible pour lui.
+
+                        · LA LIGNE RETIRÉE. Elle ne compte plus ; changer ses
+                          heures ne changerait rien.
 
                       LE VERROU N'EN FAIT PAS PARTIE, ET C'EST UNE CORRECTION.
                       Ce test disait `!entry.locked`, ce qui paraissait prudent
@@ -846,7 +862,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
                       ce que la base autorise — il doit AVERTIR, et laisser
                       décider. C'est l'autorité de la secrétaire, et la
                       correction reste tracée et notifiée comme les autres. */}
-                  {!isCancelled && (
+                  {isCounted(entry.status) && (
                     correctingId === entry.id ? (
                       <div className="mt-3 space-y-2 rounded-md border bg-background p-2">
                         <p className="text-xs font-medium">Corriger les heures de cette journée</p>

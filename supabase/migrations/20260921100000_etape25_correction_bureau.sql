@@ -1,6 +1,7 @@
--- ⚠️ CETTE MIGRATION N'EST PAS APPLIQUÉE. Le suffixe `.NOT_APPLIED` la tient
--- hors du dossier actif : rien ne la passera par inadvertance. La renommer en
--- `.sql` suffira, le jour où elle sera validée.
+-- APPLIQUÉE EN PRODUCTION LE 21/09/2026, et vérifiée objet par objet : table +
+-- RLS active + 3 policies, trigger d'immuabilité, `correct_time_entry` présente
+-- et SECURITY INVOKER, admin désormais horodaté, garde « mois clôturé » du
+-- salarié intacte, 46 pointages et 0 correction au moment de la bascule.
 --
 -- ═════════════════════════════════════════════════════════════════════════════
 -- ÉTAPE 25 — Le bureau corrige les heures, et le salarié le sait
@@ -382,6 +383,13 @@ BEGIN
 
   -- L'écriture passe par la RLS : c'est elle qui tranche vraiment. Zéro ligne
   -- touchée n'est pas un succès.
+  --
+  -- ON N'ÉCRIT PAS `total_minutes`, ET CE N'EST PAS UN OUBLI. La colonne est
+  -- GENERATED ALWAYS — Postgres la recalcule depuis end_time - start_time, avec
+  -- le cas de la nuit (+1440) et le retrait de break_minutes. Y toucher serait
+  -- refusé, et la recopier ailleurs créerait un deuxième calcul à maintenir.
+  -- Vérifié en base plutôt que supposé : c'est la seule raison pour laquelle
+  -- corriger deux heures suffit à corriger le total.
   UPDATE public.time_entries
      SET start_time = p_start, end_time = p_end
    WHERE id = p_entry_id;
