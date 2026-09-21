@@ -272,8 +272,25 @@ BEGIN
               + (round(extract(minute FROM p_end::time) / 15.0) * interval '15 minutes'))::time;
   END IF;
 
+  -- ⚠️ `USING ERRCODE = 'BT001'` N'EST PAS DÉCORATIF, ET J'AVAIS FAILLI LE
+  -- PERDRE. Ce code vient de l'étape 21. Sans lui, `live-timer.tsx` ne
+  -- reconnaît ce refus qu'à sa PHRASE FRANÇAISE — et le jour où quelqu'un
+  -- reformule ce message, le salarié qui vient de démarrer se retrouve devant
+  -- un compteur qu'il ne peut ni arrêter ni effacer, sans que rien ne signale
+  -- la panne.
+  --
+  -- POURQUOI JE L'AVAIS PERDU, PARCE QUE ÇA SE REPRODUIRA SINON : j'ai recopié
+  -- le corps de cette fonction depuis `20260920240500_etape16b_chrono_fiable.sql`,
+  -- qui l'a créée — et qui PRÉCÈDE l'étape 21. Le fichier de migration disait
+  -- la vérité de son époque, pas celle d'aujourd'hui. Un `CREATE OR REPLACE`
+  -- réécrit tout, y compris ce qu'il ignore.
+  --
+  -- LA RÈGLE : avant de remplacer une fonction existante, on relit sa
+  -- définition EN BASE (`pg_get_functiondef`), jamais le fichier qui l'a créée.
+  -- Ce corps-ci vient de la production, vérifié le 21/09/2026.
   IF v_start = v_end THEN
-    RAISE EXCEPTION 'Début et fin tombent sur le même quart d''heure : rien à enregistrer.';
+    RAISE EXCEPTION 'Début et fin tombent sur le même quart d''heure : rien à enregistrer.'
+      USING ERRCODE = 'BT001';
   END IF;
 
   INSERT INTO public.time_entries
