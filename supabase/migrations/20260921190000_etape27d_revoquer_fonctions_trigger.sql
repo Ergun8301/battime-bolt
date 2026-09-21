@@ -1,7 +1,21 @@
--- ⚠️ CETTE MIGRATION N'EST PAS APPLIQUÉE. Le suffixe `.NOT_APPLIED` la tient
--- hors du dossier actif. La renommer en `.sql` suffira.
+-- APPLIQUÉE EN PRODUCTION LE 21/09/2026, et vérifiée avec la requête de
+-- contrôle du bas de ce fichier — celle SANS filtre sur le type de retour :
+-- ZÉRO ligne. Le schéma `public` n'a plus une seule fonction ouverte à PUBLIC
+-- ou à `anon`.
 --
--- AUCUN CODE NE DÉPEND DE CE FICHIER : il ne change que des droits.
+-- Et le contrôle qui compte, sous `authenticated` et non sous `postgres` :
+--
+--   · `reset_budget_alerts` — budget d'un chantier porté de 100 à 150 par un
+--     vrai admin, jwt posé, transaction annulée : `budget = 150`,
+--     `alert_70_sent_at = NULL`. Le trigger part après le REVOKE.
+--   · `guard_correction_immutable` — mesuré lors de la répétition qui a produit
+--     ce fichier : une correction créée par `correct_time_entry`, puis une
+--     tentative de réécriture qui ressort `new_start = 09:00`, `corrected_by_role`
+--     figé à `admin`, seul `notify_error` modifié.
+--
+-- Les deux triggers sont donc éprouvés sous le rôle de l'application. Le jour
+-- où une vraie correction d'heures sera faite en production, ce chemin le sera
+-- en conditions réelles.
 --
 -- ═════════════════════════════════════════════════════════════════════════════
 -- ÉTAPE 27 quater — les deux dernières fonctions ouvertes du schéma

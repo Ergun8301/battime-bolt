@@ -1,10 +1,14 @@
--- ⚠️ CETTE MIGRATION N'EST PAS APPLIQUÉE. Le suffixe `.NOT_APPLIED` la tient
--- hors du dossier actif. La renommer en `.sql` suffira.
+-- APPLIQUÉE EN PRODUCTION LE 21/09/2026. `correct_time_entry` porte désormais
+-- `{postgres, authenticated, service_role}` — `has_function_privilege` rend
+-- false pour `anon`, true pour `authenticated`. La porte est fermée, le bureau
+-- garde sa clé.
 --
--- AUCUN CODE NE DÉPEND DE CE FICHIER. Il ne change que des droits : la
--- fusionner avant de l'appliquer ne casse rien et ne laisse rien en suspens
--- côté navigateur. C'est la différence avec les migrations des étapes 25 à 27,
--- qui créaient ce que le client appelait.
+-- ⚠️ LE BALAYAGE QUI A JUSTIFIÉ CE FICHIER ÉTAIT INCOMPLET, et la suite le
+-- corrige : voir `20260921190000_etape27d_revoquer_fonctions_trigger.sql`.
+-- L'affirmation « `correct_time_entry` est la seule encore ouverte » venait
+-- d'une requête qui excluait les fonctions à retour `trigger` — il en restait
+-- deux. Le correctif ci-dessous reste juste ; c'est sa portée qui était
+-- surestimée.
 --
 -- ═════════════════════════════════════════════════════════════════════════════
 -- ÉTAPE 27 ter — `correct_time_entry` était atteignable sans compte
