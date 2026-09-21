@@ -18,12 +18,39 @@
 // Les deux vivent donc ici, à un seul endroit, pour que le changement soit une
 // ligne et non une chasse.
 
-/** L'hébergeur de l'interface web, tel que les pages légales le déclarent. */
+/**
+ * L'hébergeur de l'interface web, tel que les pages légales le déclarent.
+ *
+ * POURQUOI CLOUDFLARE DÈS MAINTENANT, AVANT LA BASCULE DNS. Parce que c'est
+ * l'ordre qui rend la déclaration VRAIE, et non l'inverse.
+ *
+ * Netlify ne construit plus depuis le 4 août 2026 : sa mise en ligne de
+ * production sert encore le commit 66724fe — vérifié auprès de son API, pas
+ * supposé (`published_at` 2026-08-04, `commit_ref` 66724fe…, 45 commits sur
+ * `main` depuis). Ce changement n'atteindra donc jamais bemexo.com tant que le
+ * DNS pointe sur Netlify.
+ *
+ * La seule adresse qui affichera ce texte est `bemexo.pages.dev`, servie par
+ * Cloudflare. La déclaration devient donc exacte là où elle s'affiche.
+ *
+ * L'ordre inverse — basculer le DNS puis corriger le texte — ouvrirait une
+ * fenêtre pendant laquelle les mentions légales et la politique de
+ * confidentialité mentiraient sur le lieu de traitement des données
+ * personnelles. Une page légale fausse pendant une heure est une page légale
+ * fausse.
+ *
+ * L'adresse est reprise des données structurées publiées par Cloudflare
+ * (schema.org PostalAddress : « 101 Townsend St, San Francisco, CA 94107,
+ * US »), pas d'un souvenir. La forme juridique « Cloudflare, Inc. » n'a PAS pu
+ * être vérifiée à une source primaire depuis cet environnement : leur site
+ * principal y est injoignable. Elle suit la convention de l'entrée précédente
+ * et reste à confirmer si un jour ces pages sont relues par un juriste.
+ */
 export const WEB_HOST = {
-  name: 'Netlify, Inc.',
-  address: '44 Montgomery Street, Suite 300, San Francisco, CA 94104, États-Unis',
-  url: 'https://www.netlify.com',
-  label: 'netlify.com',
+  name: 'Cloudflare, Inc.',
+  address: '101 Townsend Street, San Francisco, CA 94107, États-Unis',
+  url: 'https://www.cloudflare.com',
+  label: 'cloudflare.com',
 } as const;
 
 /**
