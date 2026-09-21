@@ -52,6 +52,31 @@ function calculateTotalMinutes(start: string, end: string, breakMins: number): n
 
 const toMin = (t: string) => { const [h, m] = t.split(':').map(Number); return (h || 0) * 60 + (m || 0); };
 
+/**
+ * Au-delà de ce trou, on ne demande plus « Route ou Pause ? ».
+ *
+ * CE QUI A ÉTÉ VU EN VRAI : « 5:00 entre 17:00 et 22:00 — c'était quoi ? »
+ * Personne ne fait cinq heures de route entre deux chantiers. Un trou de cette
+ * taille ne raconte pas un trajet ni une pause : il raconte que la journée
+ * s'est arrêtée puis a repris.
+ *
+ * POURQUOI 2 h ET PAS 1 h 30. Une pause déjeuner de deux heures existe
+ * réellement dans le bâtiment, et un trajet vers un chantier éloigné peut
+ * friser les deux heures. Couper à 1 h 30 ferait disparaître la question sur
+ * des trous que le salarié aurait légitimement qualifiés — et, chez une
+ * entreprise qui paie le trajet, ce trajet cesserait d'être payable sans que
+ * personne ne s'en aperçoive. À 2 h, on ne supprime que l'absurde.
+ *
+ * C'est un seuil de PRODUIT, pas une vérité : une ligne à changer si tu veux
+ * 1 h 30 ou 3 h.
+ *
+ * CE QUE LE PLAFOND NE FAIT PAS : effacer une réponse déjà donnée. Un trou
+ * qu'un salarié a qualifié reste affiché et reste compté, même au-dessus du
+ * seuil. On arrête de poser des questions absurdes ; on ne réécrit pas
+ * silencieusement ce qu'un humain a répondu.
+ */
+const GAP_ASK_MAX_MINUTES = 120;
+
 // Pauses = the gaps between consecutive (sorted) slots. Computed, never stored.
 // Les créneaux sont replacés sur une ligne de temps absolue : une intervention
 // qui franchit minuit se prolonge sur le jour suivant, exactement comme dans
@@ -1226,7 +1251,16 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
   const pauses = gaps.filter((g) => g.gap === 'pause');
   const pauseMinutes = pauses.reduce((s, p) => s + p.minutes, 0);
   const routeMinutes = gaps.filter((g) => g.gap === 'route').reduce((s, p) => s + p.minutes, 0);
-  const unansweredGaps = gaps.filter((g) => g.gap === null).length;
+  /**
+   * Les trous sur lesquels on pose encore la question.
+   *
+   * Un trou déjà qualifié reste dans la liste quelle que soit sa taille : le
+   * salarié a répondu, on ne lui reprend pas sa réponse. Seul le trou SANS
+   * réponse et plus long que le seuil disparaît — c'est la question qu'on
+   * supprime, pas le temps.
+   */
+  const askableGaps = gaps.filter((g) => g.gap !== null || g.minutes <= GAP_ASK_MAX_MINUTES);
+  const unansweredGaps = askableGaps.filter((g) => g.gap === null).length;
 
   // "Autre" is a real worksite pinned at the top of the picker (created once per
   // company in Supabase) — for work the secretary hasn't listed / the worker can't name.
@@ -1257,7 +1291,7 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
   ].sort((a, b) => a.sort.localeCompare(b.sort));
 
   // Le trou se dessine juste avant l'intervention qui le suit.
-  const gapByKey = new Map(gaps.map((g) => [g.key, g]));
+  const gapByKey = new Map(askableGaps.map((g) => [g.key, g]));
 
   const titleName = !openSlot ? ''
     : openSlot.kind === 'planned' ? (planning.find((p) => p.id === openSlot.planningId)?.worksite?.client_name || '')
