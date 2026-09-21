@@ -694,7 +694,17 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
 
   useEffect(() => {
     setIsOnline(navigator.onLine);
-    const handleOnline = () => { setIsOnline(true); syncPendingEntries(); };
+    // `rejouerAccuse` PART D'ICI AUSSI, et pas seulement au montage.
+    //
+    // CE QUI SE PASSAIT SANS ÇA : un salarié presse « J'ai compris » hors
+    // réseau, l'accusé va en file, l'écran se ferme — c'est voulu. Le réseau
+    // revient, mais il laisse la page ouverte. Rien ne rejoue la file : l'écran
+    // ne revient pas (il a bien compris), le téléphone demande sa position à
+    // chaque pointage, l'envoie — ET LA BASE LA JETTE, puisqu'il n'y a toujours
+    // pas de ligne d'accusé. Une donnée reçue puis jetée est déjà une donnée
+    // traitée : c'est le défaut que l'étape 26 a corrigé sur la fenêtre des
+    // quatorze heures, et il était revenu ici par une autre porte.
+    const handleOnline = () => { setIsOnline(true); rejouerAccuse(); syncPendingEntries(); };
     const handleOffline = () => setIsOnline(false);
     // La synchronisation peut partir d'ailleurs (le compte à rebours de la page
     // salarié, le retour au premier plan). Sans ces deux écoutes, la carte

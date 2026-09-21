@@ -1,0 +1,66 @@
+-- ⚠️ CETTE MIGRATION N'EST PAS APPLIQUÉE. Le suffixe `.NOT_APPLIED` la tient
+-- hors du dossier actif. La renommer en `.sql` suffira.
+--
+-- ═════════════════════════════════════════════════════════════════════════════
+-- ÉTAPE 27 bis — `has_position_notice` était appelable par n'importe qui
+-- ═════════════════════════════════════════════════════════════════════════════
+--
+-- CORRECTIF D'UNE MIGRATION DÉJÀ APPLIQUÉE. Trouvé par Codex après coup, et
+-- vérifié en production avant d'écrire cette ligne :
+--
+--   has_position_notice   =X/postgres | postgres | anon | authenticated | service_role
+--
+-- Le premier jeton, `=X/postgres`, est le bénéficiaire VIDE : c'est PUBLIC.
+-- Ajouté à `anon`, cela veut dire que la fonction est appelable par RPC
+-- PostgREST **sans être connecté**, avec des UUID arbitraires — et comme elle
+-- est `SECURITY DEFINER`, elle répond en contournant la RLS.
+--
+-- CE QUE ÇA DIVULGUAIT : « tel salarié de telle société a-t-il accusé
+-- réception ? » à quiconque connaît les deux identifiants. C'est exactement ce
+-- que la policy de lecture, écrite trois lignes plus haut dans la même
+-- migration, interdit au chef d'équipe et à un tiers. Une fonction
+-- `SECURITY DEFINER` laissée ouverte annule la policy qu'elle sert.
+--
+-- POURQUOI C'EST ARRIVÉ, ET CE N'EST PAS UNE SURPRISE TECHNIQUE. Les default
+-- privileges du schéma `public` accordent `anon`, `authenticated` et
+-- `service_role` à TOUTE fonction créée, et PostgreSQL y ajoute PUBLIC. Les
+-- trois autres fonctions de cette série portent leur `REVOKE` — c'est le
+-- prédicat, ajouté en dernier, qui ne l'a pas eu. La discipline existait ;
+-- elle n'a pas été appliquée à la fonction la plus petite, parce qu'elle
+-- avait l'air inoffensive.
+--
+-- LA RÈGLE : toute fonction `SECURITY DEFINER` du schéma `public` est révoquée
+-- explicitement, puis re-accordée à qui en a besoin. Aucune exception pour les
+-- « petites » fonctions : c'est la taille de ce qu'elles lisent qui compte, pas
+-- la leur.
+
+-- ── LE PRÉDICAT ────────────────────────────────────────────────────────────
+-- Personne ne l'appelle depuis l'extérieur. Ses deux seuls appelants —
+-- `guard_session_position()` et `stop_active_session()` — sont eux-mêmes
+-- `SECURITY DEFINER` et appartiennent à `postgres` : ils s'exécutent donc AVEC
+-- LES DROITS DE postgres, qui conserve `EXECUTE`. Cette révocation ne casse
+-- aucun des deux chemins. (Vérifié en base, transaction annulée, avant d'être
+-- écrit ici — la garantie de l'étape 27 continue de fonctionner des deux
+-- côtés après le REVOKE.)
+REVOKE EXECUTE ON FUNCTION public.has_position_notice(uuid, uuid)
+  FROM PUBLIC, anon, authenticated;
+
+-- ── LE TRIGGER, PAR HYGIÈNE ────────────────────────────────────────────────
+-- Celui-ci n'était PAS exploitable, et il faut le dire plutôt que de gonfler
+-- le correctif : `guard_session_position()` retourne `trigger`, et PostgREST
+-- n'expose pas les fonctions de ce type ; un appel SQL direct est refusé par
+-- PostgreSQL lui-même. On l'aligne quand même, pour qu'une lecture rapide des
+-- droits ne laisse pas croire à une seconde ouverture.
+REVOKE EXECUTE ON FUNCTION public.guard_session_position()
+  FROM PUBLIC, anon, authenticated;
+
+-- Contrôle après application — les deux lignes doivent perdre `=X/` (PUBLIC),
+-- `anon` et `authenticated`, et ne garder que postgres et service_role :
+--
+-- SELECT p.proname, array_to_string(p.proacl::text[], ' | ') AS droits
+--   FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+--  WHERE n.nspname = 'public'
+--    AND p.proname IN ('has_position_notice', 'guard_session_position');
+--
+-- Et la garantie doit continuer de tenir : un pointage sans accusé pose NULL,
+-- un pointage avec accusé garde la position. C'est le vrai contrôle.

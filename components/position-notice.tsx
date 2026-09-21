@@ -58,7 +58,12 @@ const PN_CSS = `
  */
 const LIGNES = [
   'Où tu es quand tu démarres et quand tu fermes.',
-  'Deux fois par journée. Jamais entre, jamais quand BEMEXO est fermé.',
+  // « Jamais entre, jamais quand BEMEXO est fermé » se coupait mal sur un petit
+  // écran : « Jamais entre » seul sur sa ligne ressemblait à une phrase
+  // tronquée. « Rien hors pointage » tient sur un souffle — et dit plus juste,
+  // puisque rien n'est noté non plus quand l'application est OUVERTE sans
+  // pointage en cours, ce que la version précédente laissait en suspens.
+  'Deux fois par journée. Rien entre les deux, rien hors pointage.',
   'Le bureau le voit. Ton chef d’équipe, non.',
   'Si tu refuses, ton pointage et ta paie ne changent pas.',
 ];

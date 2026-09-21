@@ -1,6 +1,19 @@
--- ⚠️ CETTE MIGRATION N'EST PAS APPLIQUÉE. Le suffixe `.NOT_APPLIED` la tient
--- hors du dossier actif : rien ne la passera par inadvertance. La renommer en
--- `.sql` suffira, le jour où elle sera validée.
+-- APPLIQUÉE EN PRODUCTION LE 21/09/2026, et vérifiée deux fois : sur la
+-- STRUCTURE (table + RLS + exactement 2 policies, aucune UPDATE ni DELETE ;
+-- `has_position_notice` présent ; `stop_active_session` à une seule signature
+-- avec son `BT001` ; les DEUX chemins appellent bien le prédicat, relu dans
+-- `pg_get_functiondef` et non dans ce fichier ; trigger en place ; 0 société
+-- activée, 46 pointages, 0 position, 0 accusé) — puis sur le COMPORTEMENT, en
+-- production, dans un bloc terminé par une exception donc entièrement annulé :
+-- sans accusé le pointage démarre et la position est refusée, avec accusé la
+-- même insertion garde la position et l'heure posée par le serveur. Contrôle
+-- après coup : rien n'a survécu.
+--
+-- ⚠️ UN CORRECTIF SUIT : `20260921170000_etape27b_revoquer_predicat.sql`.
+-- `has_position_notice` a été créée SANS `REVOKE`, donc accessible à PUBLIC et
+-- à `anon` par les default privileges du schéma — c'est-à-dire appelable sans
+-- compte, avec des UUID arbitraires, en contournant la policy écrite ici même.
+-- Trouvé par Codex après l'application. Voir ce fichier.
 --
 -- ═════════════════════════════════════════════════════════════════════════════
 -- ÉTAPE 27 — L'information préalable devient une garantie technique
