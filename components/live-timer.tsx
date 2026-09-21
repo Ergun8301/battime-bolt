@@ -19,6 +19,7 @@
 // on lui demande déjà si un trou était de la route ou une pause.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { demanderPosition, FENETRE_POSITION_MS } from '@/lib/position';
 import { parisHHmm } from '@/lib/utils';
@@ -91,6 +92,9 @@ const LT_CSS = `
    donnée collectée illégalement). */
 .bt-lt-geo{display:flex;align-items:flex-start;gap:7px;margin-top:9px;font-size:12px;color:#a59c86;font-weight:600;line-height:1.45}
 .bt-lt-geo svg{flex:none;margin-top:1px}
+/* Le lien est lisible sans attirer l'œil : celui qui veut savoir le trouve,
+   celui qui vient pointer ne le remarque même pas. */
+.bt-lt-geo-a{color:#F2EDE3;text-decoration:underline;text-underline-offset:2px;white-space:nowrap}
 `;
 
 const fmtElapsed = (ms: number) => {
@@ -438,12 +442,11 @@ export default function LiveTimer({
             ) : (
               <div className="bt-lt-note">Rien n&apos;est compté tant que tu n&apos;as pas fermé.</div>
             )}
-            {positionActive && (
-              <div className="bt-lt-geo">
-                <MapPin className="h-3.5 w-3.5" />
-                <span>L&apos;endroit sera noté au moment où tu fermeras.</span>
-              </div>
-            )}
+            {/* La mention de l'endroit ne figure QUE sur la carte de départ
+                (plus bas), pas ici. Une information se donne AVANT la collecte,
+                pas pendant : redire la même chose sur le chrono en marche
+                n'apprend rien à quelqu'un qui l'a déjà lue, et deux rappels
+                pour un seul fait finissent par ressembler à une alerte. */}
           </>
         )}
       </div>
@@ -470,16 +473,31 @@ export default function LiveTimer({
         Tu peux aussi noter tes heures à la main, comme avant. Le pointage en direct évite juste
         d&apos;avoir à s&apos;en souvenir le soir.
       </div>
-      {/* DIT AVANT, PAS APRÈS. Le salarié doit savoir ce qui est enregistré
-          avant d'appuyer, et savoir qu'il peut refuser sans conséquence — sinon
-          son accord n'en est pas un. Les trois phrases disent les trois choses
-          qui comptent : quoi, quand, et que ça ne l'engage à rien. */}
+      {/* UNE PHRASE, À L'ENDROIT DU POINTAGE, AVANT LE PREMIER APPUI.
+          C'est tout ce qui reste de l'écran plein écran de l'étape 27 — et
+          c'est suffisant : l'obligation est que l'information soit portée à la
+          connaissance du salarié avant la collecte, pas qu'elle lui barre la
+          route. Elle dit les trois choses qui comptent pour lui — quoi, quelle
+          étendue, et qu'il peut refuser — et le lien mène au détail complet
+          pour ceux qui veulent vraiment savoir. */}
       {positionActive && (
         <div className="bt-lt-geo">
           <MapPin className="h-3.5 w-3.5" />
           <span>
-            Ton entreprise note <b style={{ color: '#F2EDE3' }}>l&apos;endroit</b> au départ et à la fin.
-            Jamais entre les deux. Si tu refuses, ton pointage marche pareil.
+            Ton entreprise note <b style={{ color: '#F2EDE3' }}>l&apos;endroit</b> au départ et à la
+            fin du pointage — rien entre les deux, et tu peux refuser.{' '}
+            {/* `Link` ET PAS `<a>`, ET UNE ANCRE.
+                Un `<a>` brut recharge la page entière : le salarié quitte
+                l'application pour lire une page légale, et doit la relancer
+                pour pointer. C'est la friction qu'on vient de retirer, remise
+                par la petite porte. `Link` reste dans l'application, et le
+                retour arrière le ramène là où il en était — c'est d'ailleurs
+                ce que font déjà les autres écrans du dépôt.
+
+                L'ancre l'amène à la section qui le concerne, pas en haut de
+                douze sections. Elle existe : `id="endroit"` sur le titre, et
+                le contrôle mécanique est dans `out/confidentialite.html`. */}
+            <Link href="/confidentialite#endroit" className="bt-lt-geo-a">En savoir plus</Link>
           </span>
         </div>
       )}
