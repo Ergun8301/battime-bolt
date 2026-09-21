@@ -56,7 +56,7 @@ export default function ConfidentialitePage() {
 
         <main className="ml-main">
           <h1>Politique de confidentialité</h1>
-          <div className="ml-updated">Dernière mise à jour : 17 juin 2026</div>
+          <div className="ml-updated">Dernière mise à jour : 21 septembre 2026</div>
 
           <p className="ml-intro">
             La présente politique explique comment BEMEXO traite les données personnelles dans le cadre de son service
@@ -111,21 +111,75 @@ export default function ConfidentialitePage() {
             jamais visible par les autres salariés.
           </p>
 
-          <h2>5. Qui a accès aux données ?</h2>
+          {/* L'ENDROIT DU POINTAGE — ÉTAPE 28.
+              Ce bloc est le détail que l'écran de pointage ne porte plus : là-bas
+              une phrase, ici tout. Il est écrit pour être lu par un salarié qui
+              se demande ce qu'on sait de lui, pas par un juriste — d'où les
+              sous-titres en question. */}
+          <h2>5. L&apos;endroit, quand votre entreprise l&apos;a activé</h2>
+          <p>
+            Cette fonction est <strong>désactivée par défaut</strong>. Votre employeur peut l&apos;activer ; tant
+            qu&apos;il ne l&apos;a pas fait, <strong>aucune position n&apos;est enregistrée</strong>, et rien de
+            ce paragraphe ne s&apos;applique à vous.
+          </p>
+          <p><strong>Ce qui est enregistré, et quand.</strong></p>
+          <ul>
+            <li>
+              <strong>Deux points par pointage en direct</strong> : au moment où vous le démarrez, et au moment où
+              vous le fermez. <strong>Rien entre les deux</strong>, rien quand l&apos;application est fermée, rien
+              quand vous ne pointez pas. Cinq pointages dans la journée donnent donc cinq départs et cinq fermetures,
+              pas un suivi continu.
+            </li>
+            <li>
+              Les coordonnées, et la <strong>précision annoncée par votre téléphone</strong> — souvent quelques
+              mètres dehors, mais couramment un à trois kilomètres à l&apos;intérieur d&apos;un bâtiment. Cette
+              précision est toujours affichée à côté du point, parce qu&apos;un point imprécis ne prouve rien.
+            </li>
+            <li>
+              <strong>Rien du tout si vous refusez</strong> l&apos;autorisation que demande votre téléphone, ou si
+              celui-ci ne trouve pas la position. Votre pointage fonctionne à l&apos;identique, vos heures et votre
+              paie ne changent pas. Une journée saisie à la main n&apos;a jamais de position.
+            </li>
+            <li>
+              Un pointage oublié et fermé <strong>plus de quatorze heures</strong> après son début
+              n&apos;enregistre <strong>pas</strong> de point de fermeture : c&apos;est ce qui évite d&apos;enregistrer
+              votre domicile au lieu d&apos;un chantier.
+            </li>
+          </ul>
+          <p>
+            <strong>Pourquoi.</strong> Pour pouvoir répondre à un <strong>client qui conteste une facture</strong> :
+            montrer que quelqu&apos;un était bien sur le chantier à telle heure. <strong>Ce n&apos;est pas un moyen
+            de contrôler vos heures de travail</strong>, et ce n&apos;est utilisé ni pour vérifier ni pour contester
+            ce que vous déclarez. Base légale : l&apos;<strong>intérêt légitime</strong> de l&apos;entreprise
+            (article 6.1.f du RGPD).
+          </p>
+          <p>
+            <strong>Qui les voit.</strong> Uniquement <strong>votre employeur</strong> (secrétaire / administrateur)
+            et <strong>vous-même</strong> : chaque position est affichée sur votre propre journée, à côté des heures
+            concernées. <strong>Votre chef d&apos;équipe ne les voit pas</strong>, même pour les personnes de son
+            chantier. Personne ne peut les modifier ni les effacer à la main, pas même l&apos;employeur.
+          </p>
+          <p>
+            <strong>Combien de temps.</strong> <strong>Douze mois</strong>, puis suppression automatique. Ce délai
+            correspond au temps pendant lequel une facture peut être discutée ; il ne sert pas à constituer un
+            historique de déplacements.
+          </p>
+
+          <h2>6. Qui a accès aux données ?</h2>
           <ul>
             <li>L&apos;<strong>entreprise cliente</strong> (employeur), strictement pour ses propres salariés.</li>
             <li>Les <strong>sous-traitants techniques</strong> de BEMEXO : {WEB_HOST.name} (hébergement de l&apos;interface) et Supabase (base de données / authentification).</li>
             <li>Le cas échéant, les autorités si la loi l&apos;exige.</li>
           </ul>
 
-          <h2>6. Hébergement et localisation</h2>
+          <h2>7. Hébergement et localisation</h2>
           <p>
             Les données sont stockées dans l&apos;<strong>Union européenne</strong> (Supabase, région Paris).
             L&apos;interface est distribuée via {WEB_HOST.name}, ce qui peut impliquer des transferts hors UE encadrés par des
             garanties appropriées (clauses contractuelles types de la Commission européenne).
           </p>
 
-          <h2>7. Durée de conservation</h2>
+          <h2>8. Durée de conservation</h2>
           <p>
             Les données sont conservées pendant la durée de la relation contractuelle, puis archivées ou supprimées
             selon les durées légales applicables. Les éléments liés à la paie sont conservés conformément aux
@@ -133,7 +187,7 @@ export default function ConfidentialitePage() {
             responsable de traitement.
           </p>
 
-          <h2>8. Sécurité</h2>
+          <h2>9. Sécurité</h2>
           <ul>
             <li>Chiffrement des communications (HTTPS / TLS) et des données au repos.</li>
             <li><strong>Cloisonnement par entreprise et par rôle</strong> (politiques d&apos;accès au niveau base de données).</li>
@@ -141,7 +195,7 @@ export default function ConfidentialitePage() {
             <li>Accès limité au strict nécessaire.</li>
           </ul>
 
-          <h2>9. Vos droits</h2>
+          <h2>10. Vos droits</h2>
           <p>
             Vous disposez des droits d&apos;accès, de rectification, d&apos;effacement, de limitation, d&apos;opposition
             et de portabilité. Pour les données traitées par votre employeur, adressez-vous à lui ; pour les autres,
@@ -150,14 +204,14 @@ export default function ConfidentialitePage() {
             (<a href="https://www.cnil.fr" target="_blank" rel="noreferrer">cnil.fr</a>).
           </p>
 
-          <h2>10. Cookies</h2>
+          <h2>11. Cookies</h2>
           <p>
             BEMEXO n&apos;utilise que des cookies <strong>strictement nécessaires</strong> au fonctionnement
             (authentification / session). Aucun cookie publicitaire ou de traçage tiers n&apos;est utilisé ; aucun
             bandeau de consentement n&apos;est donc requis pour ces cookies essentiels.
           </p>
 
-          <h2>11. Contact</h2>
+          <h2>12. Contact</h2>
           <p>
             Pour toute question sur cette politique :{' '}
             <a href="mailto:contact@bemexo.com">contact@bemexo.com</a>.

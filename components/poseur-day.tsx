@@ -20,8 +20,6 @@ import { syncAllPending } from '@/lib/offline-sync';
 import { planningsToMaterialise, remainingPlannings } from '@/lib/work-status';
 import { fmtHeure } from '@/lib/corrections';
 import { positionUtile, fmtPrecision, fmtCoord } from '@/lib/position';
-import { aAccuse, inscrireAccuse, accuseEnAttente, rejouerAccuse } from '@/lib/position-notice';
-import PositionNotice from '@/components/position-notice';
 import { parisHHmm } from '@/lib/utils';
 import { TimeCylinder, snapToGrid } from '@/components/time-cylinder';
 import LiveTimer from '@/components/live-timer';
@@ -515,36 +513,11 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
     return () => { stale = true; };
   }, [user?.company_id]);
 
-  /**
-   * L'ÉCRAN D'INFORMATION PRÉALABLE (étape 27).
-   *
-   * `null` = on ne sait pas encore, ou la requête a échoué. On ne montre RIEN
-   * dans ce cas : traiter « je ne sais pas » comme « il n'a pas lu » afficherait
-   * l'écran à chaque perte de réseau, à quelqu'un qui l'a déjà lu. Et ça ne
-   * protégerait personne — c'est la base qui refuse la position, pas cet écran.
-   */
-  const [aVuLaNotice, setAVuLaNotice] = useState<boolean | null>(null);
-  useEffect(() => {
-    if (!user?.id || !user?.company_id || !positionActive) return;
-    let stale = false;
-    // Ce qui attend de partir repart d'abord : un salarié qui a pressé
-    // « J'ai compris » hors réseau ne doit pas revoir l'écran.
-    rejouerAccuse().then(() => aAccuse(user.id, user.company_id)).then((r) => {
-      if (stale) return;
-      setAVuLaNotice(r === null ? (accuseEnAttente(user.id, user.company_id) ? true : null) : r);
-    });
-    return () => { stale = true; };
-  }, [user?.id, user?.company_id, positionActive]);
-
-  /**
-   * LA POSITION NE SE CAPTE QU'APRÈS L'ÉCRAN.
-   *
-   * Ce booléen ne protège rien par lui-même — la base pose NULL des deux côtés
-   * tant que l'accusé manque. Il évite que le téléphone pose sa demande
-   * d'autorisation à quelqu'un qui n'a pas encore lu pourquoi : demander avant
-   * d'expliquer est la meilleure façon de se faire refuser.
-   */
-  const capterPosition = positionActive && aVuLaNotice === true;
+  // L'ÉCRAN PLEIN ÉCRAN D'INFORMATION A ÉTÉ RETIRÉ (étape 28). Un mur noir
+  // avant de pouvoir pointer faisait peur et freinait, pour une obligation qui
+  // se tient très bien en une phrase à l'endroit du pointage plus le détail
+  // dans la politique de confidentialité. `positionActive` redevient la seule
+  // condition côté écran, comme `position_tracking_enabled` l'est côté base.
 
   // ─── Fetch server data ─────────────────────────────────────────────────────
 
@@ -694,17 +667,7 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
 
   useEffect(() => {
     setIsOnline(navigator.onLine);
-    // `rejouerAccuse` PART D'ICI AUSSI, et pas seulement au montage.
-    //
-    // CE QUI SE PASSAIT SANS ÇA : un salarié presse « J'ai compris » hors
-    // réseau, l'accusé va en file, l'écran se ferme — c'est voulu. Le réseau
-    // revient, mais il laisse la page ouverte. Rien ne rejoue la file : l'écran
-    // ne revient pas (il a bien compris), le téléphone demande sa position à
-    // chaque pointage, l'envoie — ET LA BASE LA JETTE, puisqu'il n'y a toujours
-    // pas de ligne d'accusé. Une donnée reçue puis jetée est déjà une donnée
-    // traitée : c'est le défaut que l'étape 26 a corrigé sur la fenêtre des
-    // quatorze heures, et il était revenu ici par une autre porte.
-    const handleOnline = () => { setIsOnline(true); rejouerAccuse(); syncPendingEntries(); };
+    const handleOnline = () => { setIsOnline(true); syncPendingEntries(); };
     const handleOffline = () => setIsOnline(false);
     // La synchronisation peut partir d'ailleurs (le compte à rebours de la page
     // salarié, le retour au premier plan). Sans ces deux écoutes, la carte
@@ -1489,24 +1452,6 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
     <div className="bt-day">
       <style dangerouslySetInnerHTML={{ __html: DAY_CSS }} />
 
-      {/* ===== L'INFORMATION PRÉALABLE (étape 27) =====
-          Plein écran, une seule fois, avant que le téléphone pose sa propre
-          question. Montré uniquement quand la société a allumé le réglage ET
-          qu'on SAIT que ce salarié n'a pas encore accusé réception — `null`
-          (hors réseau, requête en échec) ne montre rien.
-
-          IL NE BARRE PAS LA JOURNÉE. La sortie ne dépend d'aucune écriture
-          réseau : « J'ai compris » ferme toujours, et l'accusé repart tout
-          seul ensuite. Tant qu'il n'est pas en base, la base refuse la
-          position — départ ET fermeture — donc laisser passer quelqu'un ne
-          collecte rien sur lui. L'écran barre la position, jamais les heures. */}
-      {positionActive && aVuLaNotice === false && user?.id && user?.company_id && (
-        <PositionNotice
-          onAck={() => inscrireAccuse(user.id, user.company_id)}
-          onClose={() => setAVuLaNotice(true)}
-        />
-      )}
-
       {/* ===== BANDEAU RÉSEAU ===== */}
       {!isOnline && (
         <div className="bt-net bt-net-off">
@@ -1557,7 +1502,7 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
             worksites={sortedWorksites}
             planningIdFor={(wid) => planning.find((p) => p.worksite_id === wid)?.id || null}
             frozen={monthLocked}
-            positionActive={capterPosition}
+            positionActive={positionActive}
             onSaved={() => { fetchData(); }}
           />
         )}

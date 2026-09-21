@@ -547,6 +547,17 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
                     Sans cette information préalable, les positions enregistrées <b>ne vaudront rien
                     comme preuve</b> — et c&apos;est la seule raison de les collecter.
                   </p>
+                  {/* CE QUE L'APPLICATION FAIT, ET CE QU'ELLE NE FAIT PAS.
+                      L'étape 27 montrait un écran d'information à chaque salarié ;
+                      l'étape 28 l'a retiré. Sans cette précision, un employeur
+                      pourrait croire que BEMEXO informe ses salariés à sa place —
+                      ce qui ne l'a jamais dispensé de le faire, mais qui devient
+                      bien plus facile à croire maintenant que l'écran a disparu. */}
+                  <p style={{ margin: '8px 0 0' }}>
+                    Ce que l&apos;application affiche de son côté : <b>une phrase</b> sur l&apos;écran de
+                    pointage, et le détail dans la <b>politique de confidentialité</b>. C&apos;est utile,
+                    mais <b>ça ne remplace pas votre information individuelle</b>.
+                  </p>
                   <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
                     <button type="button" className="bt-set-btn" disabled={posSaving} onClick={() => basculerPosition(true)}>
                       {posSaving && <Loader2 className="h-3.5 w-3.5 animate-spin" />} C&apos;est fait, activer
