@@ -12,7 +12,7 @@
 // titre que /poseur. Un seul verbe, ENVOYER ; et les mots du bureau — saisir,
 // déclarer, brouillon, enregistrer, valider, intervention, en attente — n'y
 // ont pas leur place. Les trois états affichés sont MOT POUR MOT ceux que le
-// salarié voit sur sa propre journée : exporté, envoyé, à envoyer. Deux
+// salarié voit sur sa propre journée : chez le comptable, envoyé, à envoyer. Deux
 // vocabulaires pour les mêmes trois états, c'est deux personnes qui ne parlent
 // pas de la même chose en se croyant d'accord.
 //
@@ -262,7 +262,7 @@ export default function TeamDay({ me, date, myWorksiteIds, worksiteName, onChang
                   `isCounted` plutôt qu'un test sur 'submitted' : l'ancien
                   statut 'validated' traîne encore en base, et il compte. */}
               <span className={`bt-td-tag ${r.locked ? 'verrou' : isCounted(r.status) ? 'envoye' : 'aenvoyer'}`}>
-                {r.locked ? 'exporté' : isCounted(r.status) ? 'envoyé' : 'à envoyer'}
+                {r.locked ? 'chez le comptable' : isCounted(r.status) ? 'envoyé' : 'à envoyer'}
               </span>
               <button type="button" className="bt-td-edit" disabled={r.locked} onClick={() => openEditor(p.id, r)}>
                 Corriger
