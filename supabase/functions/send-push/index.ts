@@ -185,10 +185,12 @@ Deno.serve(async (req) => {
   try {
     const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
     const payload = await req.json().catch(() => ({}));
-    const { user_ids, title, body, url, tag } = payload as {
+    const { user_ids, title, body, url, tag, correction_id } = payload as {
       user_ids?: string[]; title?: string; body?: string; url?: string; tag?: string;
+      /** Prévenir d'une correction d'heures : le serveur écrit le message. */
+      correction_id?: string;
     };
-    if (!title || !body) return json({ error: 'title et body requis' }, 400);
+    if (!correction_id && (!title || !body)) return json({ error: 'title et body requis' }, 400);
 
     const cronSecret = req.headers.get('x-cron-secret');
     if (cronSecret) {
@@ -198,14 +200,66 @@ Deno.serve(async (req) => {
       return json({ mode: 'server', ...result });
     }
 
-    // Mode admin connecté : ne peut viser QUE des salariés de sa propre entreprise
-    // (on re-filtre côté serveur, jamais confiance à la liste reçue).
+    // ── Appelant connecté ────────────────────────────────────────────────────
     const token = (req.headers.get('Authorization') || '').replace('Bearer ', '');
     if (!token) return json({ error: 'Non authentifié' }, 401);
     const { data: { user }, error: uErr } = await admin.auth.getUser(token);
     if (uErr || !user) return json({ error: 'Session invalide' }, 401);
     const { data: profile } = await admin.from('users').select('company_id, role').eq('id', user.id).single();
-    if (!profile || profile.role !== 'admin') return json({ error: "Réservé à l'administrateur" }, 403);
+    if (!profile) return json({ error: 'Profil introuvable' }, 403);
+
+    // ── Prévenir d'une correction d'heures ───────────────────────────────────
+    //
+    // ICI, L'APPELANT NE DICTE RIEN. Il donne l'identifiant d'une correction ;
+    // le serveur relit le journal et écrit lui-même le destinataire, le titre
+    // et le texte.
+    //
+    // POURQUOI CE DÉTOUR. La version précédente autorisait le chef d'équipe à
+    // appeler ce point d'entrée avec un `title` et un `body` de son choix, en
+    // se contentant de vérifier QUI il pouvait viser. Un chef pouvait donc
+    // envoyer à ses équipiers n'importe quel message, sous le nom de
+    // l'entreprise. Borner le destinataire ne suffisait pas : il fallait aussi
+    // borner le contenu.
+    //
+    // La ligne de journal EST la preuve d'autorité : elle n'a pu être écrite
+    // que par quelqu'un qui avait le droit de corriger cette personne — c'est
+    // la policy `time_entry_corrections_insert` qui l'a vérifié. On se contente
+    // donc de s'assurer qu'elle appartient bien à l'appelant.
+    if (correction_id) {
+      const { data: c } = await admin.from('time_entry_corrections')
+        .select('id, company_id, worker_id, work_date, corrected_by, corrected_by_role, old_start, old_end, new_start, new_end, corrected_at')
+        .eq('id', correction_id).maybeSingle();
+      if (!c) return json({ error: 'Correction introuvable' }, 404);
+      if (c.corrected_by !== user.id || c.company_id !== profile.company_id) {
+        return json({ error: "Cette correction n'est pas la vôtre" }, 403);
+      }
+      // Fenêtre courte : ce point d'entrée sert à annoncer une correction qui
+      // vient d'avoir lieu, pas à en rejouer une d'hier.
+      if (Date.now() - new Date(c.corrected_at as string).getTime() > 10 * 60 * 1000) {
+        return json({ error: 'Correction trop ancienne pour être annoncée' }, 409);
+      }
+
+      const { data: comp } = await admin.from('companies')
+        .select('name').eq('id', c.company_id).maybeSingle();
+      const hhmm = (t: string) => {
+        const [h, m] = String(t).slice(0, 5).split(':');
+        return `${Number(h)}h${m ?? '00'}`;
+      };
+      const jour = new Date(`${c.work_date}T00:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
+      const qui = c.corrected_by_role === 'lead' ? 'Ton chef a corrigé' : 'Le bureau a corrigé';
+      const result = await sendToUsers(admin, [c.worker_id as string], {
+        title: (comp?.name as string) || 'BEMEXO',
+        body: `${qui} tes heures du ${jour} : ${hhmm(c.old_start as string)}–${hhmm(c.old_end as string)} → ${hhmm(c.new_start as string)}–${hhmm(c.new_end as string)}`,
+        url: '/poseur',
+        tag: `correction-${c.work_date}`,
+      });
+      return json({ mode: 'correction', ...result });
+    }
+
+    // ── Message libre : RÉSERVÉ AU BUREAU, comme avant ───────────────────────
+    // Le chef d'équipe n'a AUCUN accès générique à ce point d'entrée : sans
+    // `correction_id`, il est refusé exactement comme avant cette étape.
+    if (profile.role !== 'admin') return json({ error: "Réservé à l'administrateur" }, 403);
 
     const { data: allowed } = await admin.from('users')
       .select('id').eq('company_id', profile.company_id).in('id', user_ids || []);

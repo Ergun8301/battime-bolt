@@ -3,9 +3,18 @@
 // « Mon équipe aujourd'hui » — visible du seul CHEF D'ÉQUIPE (étape 19).
 //
 // CE QU'IL FAIT. Le chef voit les salariés présents sur SON chantier le jour
-// même, avec leurs heures, et peut saisir ou corriger un brouillon pour eux.
-// C'est la feuille d'heures d'équipe, celle que le chef remplit le soir dans la
+// même, avec leurs heures, et peut préparer ou corriger les leurs. C'est la
+// feuille d'heures d'équipe, celle que le chef remplit le soir dans la
 // camionnette.
+//
+// SON VOCABULAIRE EST CELUI DU SALARIÉ (étape 20). Cet écran y avait échappé —
+// un oubli, pas une décision : il est lu par un homme de chantier, au même
+// titre que /poseur. Un seul verbe, ENVOYER ; et les mots du bureau — saisir,
+// déclarer, brouillon, enregistrer, valider, intervention, en attente — n'y
+// ont pas leur place. Les trois états affichés sont MOT POUR MOT ceux que le
+// salarié voit sur sa propre journée : exporté, envoyé, à envoyer. Deux
+// vocabulaires pour les mêmes trois états, c'est deux personnes qui ne parlent
+// pas de la même chose en se croyant d'accord.
 //
 // CE QU'IL NE FAIT PAS, ET C'EST DÉLIBÉRÉ.
 //
@@ -23,6 +32,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { corrigerHeures } from '@/lib/corrections';
+import { isCounted } from '@/lib/status';
 import { TimeCylinder, snapToGrid } from '@/components/time-cylinder';
 import { Loader2, Users, Plus, X } from 'lucide-react';
 import { toast } from 'sonner';
@@ -59,7 +70,7 @@ const TD_CSS = `
 .bt-td-h2{font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:700;color:#3a352f;flex:none}
 .bt-td-tag{font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:800;text-transform:uppercase;border-radius:6px;padding:2px 6px;flex:none}
 .bt-td-tag.envoye{background:#EAF6EF;color:#1F7A4D}
-.bt-td-tag.brouillon{background:#FFF6E0;color:#8a6d05}
+.bt-td-tag.aenvoyer{background:#FFF6E0;color:#8a6d05}
 .bt-td-tag.verrou{background:#EFEDE8;color:#5c574f}
 .bt-td-edit{flex:none;border:1.5px solid rgba(21,18,15,.2);background:#fff;border-radius:8px;padding:5px 9px;font-family:inherit;font-weight:800;font-size:12px;color:#15120F;cursor:pointer}
 .bt-td-edit:disabled{opacity:.45}
@@ -122,10 +133,10 @@ export default function TeamDay({ me, date, myWorksiteIds, worksiteName, onChang
   }, [rows, planned, people, me.id, myWorksiteIds]);
 
   /**
-   * TOUTES les interventions du collègue sur mes chantiers, pas la première.
-   * Un collègue peut avoir deux passages dans la journée ; n'en montrer qu'un
-   * cachait l'autre, et pouvait faire corriger une ligne d'un chantier qui
-   * n'est pas le mien.
+   * TOUS les passages du collègue sur mes chantiers, pas le premier. Un
+   * collègue peut venir deux fois dans la journée ; n'en montrer qu'un cachait
+   * l'autre, et pouvait faire corriger les heures d'un chantier qui n'est pas
+   * le mien.
    */
   const rowsFor = (userId: string) =>
     rows.filter((r) => r.user_id === userId && r.worksite_id && myWorksiteIds.includes(r.worksite_id));
@@ -138,18 +149,51 @@ export default function TeamDay({ me, date, myWorksiteIds, worksiteName, onChang
 
   const save = async () => {
     if (!editing) return;
-    if (start === end) { toast.error('Début et fin identiques : rien à enregistrer.'); return; }
+    if (start === end) { toast.error('Début et fin identiques : rien à compter.'); return; }
     const worksiteId = rows.find((r) => r.id === editing.rowId)?.worksite_id || myWorksiteIds[0];
     if (!worksiteId) { toast.error('Aucun chantier pour aujourd’hui.'); return; }
     setSaving(true);
     try {
       if (editing.rowId) {
+        const existante = rows.find((r) => r.id === editing.rowId);
+
+        // CORRIGER LES HEURES DE QUELQU'UN D'AUTRE, C'EST LE PRÉVENIR.
+        //
+        // La trace existait déjà pour le chef (vérifié en base : `modified_at`
+        // et `modified_by` sont bien posés). Ce qui manquait, c'est la
+        // notification — et le salarié s'en moque de savoir qui a corrigé : de
+        // son point de vue, ses heures ont changé sans lui. On passe donc par
+        // le MÊME chemin que le bureau.
+        //
+        // DEUX CAS QUI N'EN SONT PAS, ET IL FAUT LES ÉCARTER TOUS LES DEUX :
+        //
+        //   · SES PROPRES HEURES. Le chef y reste un salarié ordinaire : pas
+        //     de journal, pas de notification à soi-même.
+        //
+        //   · LES HEURES QUI NE COMPTENT PAS ENCORE. `isCounted` — la règle
+        //     unique de `lib/status.ts`. Préparer les heures d'un collègue qui
+        //     n'a encore rien envoyé, c'est justement LE travail de cet écran,
+        //     pas une correction. Sans ce test, chaque préparation du soir
+        //     aurait notifié « tes heures ont été corrigées » sur une journée
+        //     que le salarié n'a pas encore envoyée — et il n'aurait rien
+        //     compris. Ce qu'il voit alors est juste : ses heures l'attendent,
+        //     à lui de les envoyer.
+        if (existante && existante.user_id !== me.id && isCounted(existante.status)) {
+          const r = await corrigerHeures({ entryId: existante.id, newStart: start, newEnd: end });
+          if (!r.ok) throw new Error(r.message);
+          setEditing(null);
+          await load();
+          onChanged();
+          if (r.notified) toast.success(r.message); else toast.warning(r.message);
+          return;
+        }
+
         // `.select('id')` : une modification refusée par la RLS renvoie 0 ligne
         // SANS erreur, et le chef croirait avoir corrigé.
         const { data, error } = await supabase.from('time_entries')
           .update({ start_time: start, end_time: end }).eq('id', editing.rowId).select('id');
         if (error) throw error;
-        if (!data || data.length === 0) throw new Error("Cette ligne n'est plus modifiable.");
+        if (!data || data.length === 0) throw new Error('Ces heures ne se corrigent plus.');
       } else {
         const { error } = await supabase.from('time_entries').insert({
           company_id: me.company_id, user_id: editing.userId, worksite_id: worksiteId,
@@ -161,9 +205,9 @@ export default function TeamDay({ me, date, myWorksiteIds, worksiteName, onChang
       setEditing(null);
       await load();
       onChanged();
-      toast.success('Enregistré en brouillon — le salarié devra l’envoyer');
+      toast.success('C’est noté — le salarié devra l’envoyer lui-même');
     } catch (e) {
-      toast.error((e as { message?: string })?.message || "Impossible d'enregistrer.");
+      toast.error((e as { message?: string })?.message || 'Ça n’a pas pu être noté.');
     } finally {
       setSaving(false);
     }
@@ -190,7 +234,7 @@ export default function TeamDay({ me, date, myWorksiteIds, worksiteName, onChang
       {team.length === 0 ? (
         <div className="bt-td-empty">
           Personne d&apos;autre sur ton chantier pour l&apos;instant.<br />
-          Dès qu&apos;un collègue y pointe, il apparaît ici.
+          Dès qu&apos;un collègue y est attendu ou y travaille, il apparaît ici.
         </div>
       ) : (
         team.map((p) => {
@@ -199,14 +243,14 @@ export default function TeamDay({ me, date, myWorksiteIds, worksiteName, onChang
             return (
               <div key={p.id} className="bt-td-row">
                 <span className="bt-td-name">{p.first_name} {p.last_name}</span>
-                <span className="bt-td-h2" style={{ color: '#9a948a' }}>rien saisi</span>
+                <span className="bt-td-h2" style={{ color: '#9a948a' }}>pas d&apos;heures</span>
                 <button type="button" className="bt-td-edit" onClick={() => openEditor(p.id, null)}>
-                  <Plus className="inline h-3 w-3" /> Saisir
+                  <Plus className="inline h-3 w-3" /> Ajouter
                 </button>
               </div>
             );
           }
-          // Une ligne par intervention : deux passages dans la journée sont deux
+          // Une ligne par passage : deux passages dans la journée sont deux
           // lignes, et chacune se corrige pour elle-même.
           return rs.map((r, i) => (
             <div key={r.id} className="bt-td-row">
@@ -214,8 +258,11 @@ export default function TeamDay({ me, date, myWorksiteIds, worksiteName, onChang
                 {i === 0 ? `${p.first_name} ${p.last_name}` : ''}
               </span>
               <span className="bt-td-h2">{r.start_time.slice(0, 5)}–{r.end_time.slice(0, 5)} · {fmtHM(r.total_minutes)}</span>
-              <span className={`bt-td-tag ${r.locked ? 'verrou' : r.status === 'submitted' ? 'envoye' : 'brouillon'}`}>
-                {r.locked ? 'exporté' : r.status === 'submitted' ? 'envoyé' : 'brouillon'}
+              {/* MOT POUR MOT les trois états de la journée du salarié.
+                  `isCounted` plutôt qu'un test sur 'submitted' : l'ancien
+                  statut 'validated' traîne encore en base, et il compte. */}
+              <span className={`bt-td-tag ${r.locked ? 'verrou' : isCounted(r.status) ? 'envoye' : 'aenvoyer'}`}>
+                {r.locked ? 'exporté' : isCounted(r.status) ? 'envoyé' : 'à envoyer'}
               </span>
               <button type="button" className="bt-td-edit" disabled={r.locked} onClick={() => openEditor(p.id, r)}>
                 Corriger
@@ -242,7 +289,7 @@ export default function TeamDay({ me, date, myWorksiteIds, worksiteName, onChang
             </div>
           </div>
           <button type="button" className="bt-td-save" disabled={saving} onClick={save}>
-            {saving ? <Loader2 className="inline h-4 w-4 animate-spin" /> : 'Enregistrer en brouillon'}
+            {saving ? <Loader2 className="inline h-4 w-4 animate-spin" /> : 'OK'}
           </button>
         </div>
       )}
