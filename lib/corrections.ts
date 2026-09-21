@@ -29,16 +29,6 @@ export function fmtHeure(hhmm: string): string {
   return `${Number(h)}h${m ?? '00'}`;
 }
 
-export interface CorrigeableEntry {
-  id: string;
-  user_id: string;
-  company_id: string;
-  work_date: string;
-  start_time: string;
-  end_time: string;
-  exported_at?: string | null;
-}
-
 export interface CorrectionResult {
   /** Les heures ont-elles réellement changé en base ? */
   ok: boolean;
@@ -52,31 +42,33 @@ export interface CorrectionResult {
  * Corrige les heures d'une ligne, inscrit la correction au journal, et prévient
  * le salarié.
  *
+ * ON N'ENVOIE QUE L'IDENTIFIANT DE LA LIGNE, ET DEUX HEURES. Ni le salarié
+ * concerné, ni la société, ni le rôle de celui qui corrige : le serveur lit
+ * tout ça lui-même, dans la ligne et dans la session. Les faire transiter par
+ * ici aurait laissé croire qu'ils comptent — et un appelant qui se trompe de
+ * `company_id` aurait fabriqué une trace fausse au lieu d'échouer.
+ *
  * L'ORDRE N'EST PAS ARBITRAIRE :
  *
- *   1. On corrige. `.select('id')` : une écriture refusée par la RLS renvoie
- *      zéro ligne SANS erreur, et on croirait avoir corrigé.
- *   2. On inscrit au journal AVANT de notifier — la ligne d'historique est
- *      l'endroit où l'issue de l'envoi va s'écrire ; elle doit exister d'abord.
- *   3. On notifie.
- *   4. On inscrit l'issue.
+ *   1. On corrige ET on inscrit au journal, en une seule transaction.
+ *   2. On notifie.
+ *   3. On inscrit l'issue de l'envoi sur la ligne de journal.
  *
- * Si l'étape 3 ou 4 échoue, les étapes 1 et 2 tiennent : la correction est
- * faite et tracée, et `notified_at` reste NULL. C'est exactement ce qu'on veut
- * savoir.
+ * Si l'étape 2 ou 3 échoue, l'étape 1 tient : la correction est faite et
+ * tracée, et `notified_at` reste NULL. C'est exactement ce qu'on veut savoir.
  */
 export async function corrigerHeures(params: {
-  entry: CorrigeableEntry;
+  entryId: string;
   newStart: string;
   newEnd: string;
 }): Promise<CorrectionResult> {
-  const { entry, newStart, newEnd } = params;
+  const { entryId, newStart, newEnd } = params;
 
   // ── 1 · Corriger ET inscrire, en un seul geste ─────────────────────────────
   // Le serveur vérifie lui-même qui a le droit de corriger qui : on ne lui
   // envoie ni rôle ni identité, il les lit dans la session.
   const { data, error } = await supabase.rpc('correct_time_entry', {
-    p_entry_id: entry.id,
+    p_entry_id: entryId,
     p_start: newStart,
     p_end: newEnd,
   });

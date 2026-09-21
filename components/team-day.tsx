@@ -158,13 +158,7 @@ export default function TeamDay({ me, date, myWorksiteIds, worksiteName, onChang
         // Sur ses PROPRES heures, le chef reste un salarié ordinaire : pas de
         // journal, pas de notification à soi-même.
         if (existante && existante.user_id !== me.id) {
-          const r = await corrigerHeures({
-            entry: {
-              id: existante.id, user_id: existante.user_id, company_id: me.company_id,
-              work_date: date, start_time: existante.start_time, end_time: existante.end_time,
-            },
-            newStart: start, newEnd: end,
-          });
+          const r = await corrigerHeures({ entryId: existante.id, newStart: start, newEnd: end });
           if (!r.ok) throw new Error(r.message);
           setEditing(null);
           await load();

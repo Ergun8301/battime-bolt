@@ -232,14 +232,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
     if (!worker || !me) return;
     setCSaving(true);
     try {
-      const r = await corrigerHeures({
-        entry: {
-          id: entry.id, user_id: entry.user_id, company_id: entry.company_id,
-          work_date: entry.work_date, start_time: entry.start_time, end_time: entry.end_time,
-          exported_at: entry.exported_at,
-        },
-        newStart: cStart, newEnd: cEnd,
-      });
+      const r = await corrigerHeures({ entryId: entry.id, newStart: cStart, newEnd: cEnd });
       // `notified` faux n'est PAS une erreur : la correction a eu lieu. On le
       // dit avec le bon ton plutôt que d'annoncer un succès complet.
       if (!r.ok) { toast.error(r.message); return; }
