@@ -6,11 +6,20 @@
 // deux oubliera d'inscrire l'historique ou de notifier — et ce jour-là, un
 // salarié verra ses heures changer sans explication.
 //
-// LA RÈGLE QUI COMMANDE TOUT : LA CORRECTION PASSE, MÊME SI LA NOTIFICATION
-// ÉCHOUE. Une correction juste ne doit pas dépendre de l'état du téléphone du
-// salarié. Mais un échec d'envoi ne doit jamais se taire : il s'inscrit dans
-// `time_entry_corrections.notify_error`, et `notified_at` reste NULL — un état
-// lisible, qui dit « on ne l'a pas prévenu » au lieu de faire semblant.
+// DEUX RÈGLES, ET IL FAUT LES DISTINGUER :
+//
+//   · PAS DE TRACE, PAS DE CORRECTION. Les heures et le journal s'écrivent dans
+//     la MÊME transaction, par `correct_time_entry`. Deux appels séparés
+//     n'auraient pas été une opération : entre les deux, le journal peut
+//     échouer — réseau coupé, ou migration pas encore appliquée — et les heures
+//     changeraient sans trace ni notification, soit exactement l'état que cette
+//     étape existe pour supprimer. Tant que la migration n'est pas passée, la
+//     fonction n'existe pas, l'appel échoue, et RIEN ne bouge.
+//
+//   · LA CORRECTION TIENT MÊME SI LA NOTIFICATION ÉCHOUE. Elle, en revanche,
+//     ne doit pas dépendre de l'état du téléphone du salarié. Mais l'échec ne
+//     se tait pas : il s'inscrit dans `notify_error`, `notified_at` reste NULL,
+//     et les deux écrans le montrent.
 
 import { supabase } from '@/lib/supabase';
 
@@ -60,102 +69,62 @@ export async function corrigerHeures(params: {
   entry: CorrigeableEntry;
   newStart: string;
   newEnd: string;
-  /** Qui corrige — son identifiant, pour le journal. */
-  correctorId: string;
-  /** « bureau » ou « chef » : change la phrase lue par le salarié. */
-  auteur: 'bureau' | 'chef';
-  /** Titre de la notification (le nom de l'entreprise, comme les autres). */
-  companyName: string;
 }): Promise<CorrectionResult> {
-  const { entry, newStart, newEnd, correctorId, auteur, companyName } = params;
+  const { entry, newStart, newEnd } = params;
 
-  const oldStart = entry.start_time.slice(0, 5);
-  const oldEnd = entry.end_time.slice(0, 5);
-  if (oldStart === newStart && oldEnd === newEnd) {
-    return { ok: false, notified: false, message: 'Ces heures sont déjà celles-là.' };
-  }
-
-  // ── 1 · La correction ──────────────────────────────────────────────────────
-  const { data: upd, error: updErr } = await supabase.from('time_entries')
-    .update({ start_time: newStart, end_time: newEnd })
-    .eq('id', entry.id).select('id');
-  if (updErr) throw updErr;
-  if (!upd || upd.length === 0) {
-    return { ok: false, notified: false, message: "Cette ligne n'a pas pu être corrigée. Recharge." };
-  }
-
-  // ── 2 · Le journal, avant l'envoi ──────────────────────────────────────────
-  // Un échec ici n'annule PAS la correction : les heures sont justes, et c'est
-  // ce qui compte pour la paie. On le dit, sans prétendre que tout va bien.
-  const { data: corr, error: corrErr } = await supabase.from('time_entry_corrections')
-    .insert({
-      company_id: entry.company_id,
-      entry_id: entry.id,
-      worker_id: entry.user_id,
-      work_date: entry.work_date,
-      corrected_by: correctorId,
-      old_start: oldStart, old_end: oldEnd,
-      new_start: newStart, new_end: newEnd,
-      was_exported: !!entry.exported_at,
-    })
-    .select('id').maybeSingle();
-  if (corrErr || !corr) {
-    return {
-      ok: true, notified: false,
-      message: 'Heures corrigées, mais la correction n’a pas pu être inscrite — préviens le salarié toi-même.',
-    };
-  }
-
-  // ── 3 · La notification ────────────────────────────────────────────────────
-  const jour = new Date(`${entry.work_date}T00:00:00`).toLocaleDateString('fr-FR', {
-    day: 'numeric', month: 'long',
+  // ── 1 · Corriger ET inscrire, en un seul geste ─────────────────────────────
+  // Le serveur vérifie lui-même qui a le droit de corriger qui : on ne lui
+  // envoie ni rôle ni identité, il les lit dans la session.
+  const { data, error } = await supabase.rpc('correct_time_entry', {
+    p_entry_id: entry.id,
+    p_start: newStart,
+    p_end: newEnd,
   });
-  const qui = auteur === 'bureau' ? 'Le bureau a corrigé' : 'Ton chef a corrigé';
-  const texte = `${qui} tes heures du ${jour} : ${fmtHeure(oldStart)}–${fmtHeure(oldEnd)} → ${fmtHeure(newStart)}–${fmtHeure(newEnd)}`;
+  if (error) {
+    // Message du serveur tel quel : il est déjà écrit pour être lu.
+    return { ok: false, notified: false, message: error.message || 'Correction impossible.' };
+  }
+  const corr = (Array.isArray(data) ? data[0] : data) as {
+    correction_id: string; old_start: string; old_end: string;
+    new_start: string; new_end: string; corrected_by_role: 'admin' | 'lead';
+  } | null;
+  if (!corr) {
+    return { ok: false, notified: false, message: 'Correction impossible.' };
+  }
 
+  // ── 2 · Prévenir ───────────────────────────────────────────────────────────
+  // On n'envoie QUE l'identifiant de la correction. Le texte, le destinataire
+  // et le titre sont construits par le serveur à partir du journal : un
+  // appelant ne peut donc pas se servir de ce chemin pour envoyer un message
+  // de son choix à un collègue.
   let notified = false;
   let notifyError: string | null = null;
   try {
-    const { data: sess } = await supabase.auth.getSession();
-    const jeton = sess?.session?.access_token;
-    if (!jeton) throw new Error('session absente');
     const { data: fn, error: fnErr } = await supabase.functions.invoke('send-push', {
-      body: {
-        user_ids: [entry.user_id],
-        // JAMAIS VIDE. `send-push` refuse un titre vide en 400, et l'écran du
-        // chef d'équipe n'a pas le nom de l'entreprise sous la main : sans ce
-        // repli, sa notification échouerait à tous les coups — silencieusement
-        // du point de vue du salarié, qui ne recevrait simplement rien.
-        title: companyName || 'BEMEXO',
-        body: texte,
-        url: '/poseur',
-        tag: `correction-${entry.work_date}`,
-        // Requis quand l'appelant est un chef d'équipe ; inoffensif sinon.
-        work_date: entry.work_date,
-      },
+      body: { correction_id: corr.correction_id },
     });
     if (fnErr) throw fnErr;
-    // `sent: 0` n'est PAS une réussite : le salarié n'a aucun appareil abonné,
-    // ou aucun n'a répondu. On refuse de compter ça comme « prévenu ».
+    // `sent: 0` n'est PAS une réussite : aucun appareil abonné, ou aucun n'a
+    // répondu. On refuse de compter ça comme « prévenu ».
     notified = ((fn as { sent?: number } | null)?.sent ?? 0) > 0;
     if (!notified) notifyError = 'aucun appareil joignable';
   } catch (e) {
     notifyError = (e as { message?: string })?.message || 'envoi impossible';
   }
 
-  // ── 4 · L'issue, inscrite au journal ───────────────────────────────────────
+  // ── 3 · L'issue, inscrite au journal ───────────────────────────────────────
   // Elle ne se réécrit qu'une fois (policy `notified_at IS NULL`). Si cette
   // écriture échoue, `notified_at` reste NULL : lisible comme « pas prévenu »,
-  // ce qui est le plus prudent des deux malentendus possibles.
+  // le plus prudent des deux malentendus possibles.
   await supabase.from('time_entry_corrections')
     .update(notified ? { notified_at: new Date().toISOString() } : { notify_error: notifyError })
-    .eq('id', corr.id);
+    .eq('id', corr.correction_id);
 
   return {
     ok: true,
     notified,
     message: notified
       ? 'Heures corrigées — le salarié est prévenu'
-      : `Heures corrigées, mais le salarié n’a pas été prévenu (${notifyError}). Il le verra sur sa journée.`,
+      : `Heures corrigées, mais le salarié n\u2019a pas été prévenu (${notifyError}). Il le verra sur sa journée.`,
   };
 }

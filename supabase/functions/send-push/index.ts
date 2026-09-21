@@ -185,12 +185,12 @@ Deno.serve(async (req) => {
   try {
     const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
     const payload = await req.json().catch(() => ({}));
-    const { user_ids, title, body, url, tag, work_date } = payload as {
+    const { user_ids, title, body, url, tag, correction_id } = payload as {
       user_ids?: string[]; title?: string; body?: string; url?: string; tag?: string;
-      /** Requis quand l'appelant est un chef d'équipe : la journée concernée. */
-      work_date?: string;
+      /** Prévenir d'une correction d'heures : le serveur écrit le message. */
+      correction_id?: string;
     };
-    if (!title || !body) return json({ error: 'title et body requis' }, 400);
+    if (!correction_id && (!title || !body)) return json({ error: 'title et body requis' }, 400);
 
     const cronSecret = req.headers.get('x-cron-secret');
     if (cronSecret) {
@@ -200,69 +200,72 @@ Deno.serve(async (req) => {
       return json({ mode: 'server', ...result });
     }
 
-    // ── Mode utilisateur connecté ────────────────────────────────────────────
-    //
-    // ON BORNE PAR L'AUTORITÉ SUR LA CIBLE, PAS PAR LE RÔLE. La question posée
-    // pour chaque destinataire est : « cet appelant avait-il le droit de
-    // modifier les heures de cette personne ce jour-là ? » — la même question
-    // que celle qui autorise l'écriture.
-    //
-    // POURQUOI LE CHEF D'ÉQUIPE EST ICI. Il peut corriger les heures de ses
-    // équipiers (vérifié en base : accepté, et tracé). Le rejeter en 403 ferait
-    // que le salarié est prévenu quand c'est le bureau et jamais quand c'est
-    // son chef — alors que de son point de vue, c'est la même chose qui lui
-    // arrive. La notification ne doit pas dépendre de QUI corrige.
-    //
-    // On re-filtre TOUJOURS côté serveur : la liste reçue n'est jamais crue.
+    // ── Appelant connecté ────────────────────────────────────────────────────
     const token = (req.headers.get('Authorization') || '').replace('Bearer ', '');
     if (!token) return json({ error: 'Non authentifié' }, 401);
     const { data: { user }, error: uErr } = await admin.auth.getUser(token);
     if (uErr || !user) return json({ error: 'Session invalide' }, 401);
     const { data: profile } = await admin.from('users').select('company_id, role').eq('id', user.id).single();
-    if (!profile || (profile.role !== 'admin' && profile.role !== 'lead')) {
-      return json({ error: "Réservé au bureau et aux chefs d'équipe" }, 403);
-    }
+    if (!profile) return json({ error: 'Profil introuvable' }, 403);
 
-    // D'abord la société, pour tout le monde : un appelant ne sort jamais de
-    // chez lui, quel que soit son rôle.
-    const { data: sameCompany } = await admin.from('users')
-      .select('id').eq('company_id', profile.company_id).in('id', user_ids || []);
-    let allowedIds = (sameCompany || []).map((u: { id: string }) => u.id);
-
-    if (profile.role === 'lead') {
-      // LE CHEF EST BORNÉ PLUS ÉTROITEMENT, et par le prédicat que la RLS
-      // utilise déjà : `is_my_team_member`. On ne réécrit pas la règle, on
-      // l'appelle — AVEC LE JETON DE L'APPELANT, sans quoi `auth.uid()` serait
-      // nul côté service_role et la fonction répondrait faux pour tout le monde.
-      //
-      // Conséquence heureuse : `is_my_team_member` n'autorise que LE JOUR MÊME.
-      // Un chef ne peut donc notifier ni sur une journée passée, ni sur un
-      // équipier qu'il ne partage pas. Et toute évolution future de ce prédicat
-      // s'appliquera ici sans qu'on y touche.
-      if (!work_date) return json({ error: 'work_date requis pour un chef d’équipe' }, 400);
-      const asCaller = createClient(
-        Deno.env.get('SUPABASE_URL')!,
-        Deno.env.get('SUPABASE_ANON_KEY')!,
-        { global: { headers: { Authorization: `Bearer ${token}` } } },
-      );
-      const checked: string[] = [];
-      for (const id of allowedIds) {
-        // On interroge une cible à la fois : une erreur sur l'une ne doit pas
-        // faire passer les autres pour autorisées.
-        const { data: ok, error } = await asCaller.rpc('is_my_team_member', { p_user: id, p_date: work_date });
-        if (!error && ok === true) checked.push(id);
+    // ── Prévenir d'une correction d'heures ───────────────────────────────────
+    //
+    // ICI, L'APPELANT NE DICTE RIEN. Il donne l'identifiant d'une correction ;
+    // le serveur relit le journal et écrit lui-même le destinataire, le titre
+    // et le texte.
+    //
+    // POURQUOI CE DÉTOUR. La version précédente autorisait le chef d'équipe à
+    // appeler ce point d'entrée avec un `title` et un `body` de son choix, en
+    // se contentant de vérifier QUI il pouvait viser. Un chef pouvait donc
+    // envoyer à ses équipiers n'importe quel message, sous le nom de
+    // l'entreprise. Borner le destinataire ne suffisait pas : il fallait aussi
+    // borner le contenu.
+    //
+    // La ligne de journal EST la preuve d'autorité : elle n'a pu être écrite
+    // que par quelqu'un qui avait le droit de corriger cette personne — c'est
+    // la policy `time_entry_corrections_insert` qui l'a vérifié. On se contente
+    // donc de s'assurer qu'elle appartient bien à l'appelant.
+    if (correction_id) {
+      const { data: c } = await admin.from('time_entry_corrections')
+        .select('id, company_id, worker_id, work_date, corrected_by, corrected_by_role, old_start, old_end, new_start, new_end, corrected_at')
+        .eq('id', correction_id).maybeSingle();
+      if (!c) return json({ error: 'Correction introuvable' }, 404);
+      if (c.corrected_by !== user.id || c.company_id !== profile.company_id) {
+        return json({ error: "Cette correction n'est pas la vôtre" }, 403);
       }
-      allowedIds = checked;
+      // Fenêtre courte : ce point d'entrée sert à annoncer une correction qui
+      // vient d'avoir lieu, pas à en rejouer une d'hier.
+      if (Date.now() - new Date(c.corrected_at as string).getTime() > 10 * 60 * 1000) {
+        return json({ error: 'Correction trop ancienne pour être annoncée' }, 409);
+      }
+
+      const { data: comp } = await admin.from('companies')
+        .select('name').eq('id', c.company_id).maybeSingle();
+      const hhmm = (t: string) => {
+        const [h, m] = String(t).slice(0, 5).split(':');
+        return `${Number(h)}h${m ?? '00'}`;
+      };
+      const jour = new Date(`${c.work_date}T00:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
+      const qui = c.corrected_by_role === 'lead' ? 'Ton chef a corrigé' : 'Le bureau a corrigé';
+      const result = await sendToUsers(admin, [c.worker_id as string], {
+        title: (comp?.name as string) || 'BEMEXO',
+        body: `${qui} tes heures du ${jour} : ${hhmm(c.old_start as string)}–${hhmm(c.old_end as string)} → ${hhmm(c.new_start as string)}–${hhmm(c.new_end as string)}`,
+        url: '/poseur',
+        tag: `correction-${c.work_date}`,
+      });
+      return json({ mode: 'correction', ...result });
     }
 
-    // Zéro destinataire retenu n'est pas une réussite silencieuse : on le dit,
-    // pour que l'appelant puisse l'inscrire au lieu de croire avoir prévenu.
-    if (allowedIds.length === 0) {
-      return json({ mode: profile.role, sent: 0, failed: 0, purged: 0, rejected: (user_ids || []).length }, 200);
-    }
+    // ── Message libre : RÉSERVÉ AU BUREAU, comme avant ───────────────────────
+    // Le chef d'équipe n'a AUCUN accès générique à ce point d'entrée : sans
+    // `correction_id`, il est refusé exactement comme avant cette étape.
+    if (profile.role !== 'admin') return json({ error: "Réservé à l'administrateur" }, 403);
 
+    const { data: allowed } = await admin.from('users')
+      .select('id').eq('company_id', profile.company_id).in('id', user_ids || []);
+    const allowedIds = (allowed || []).map((u: { id: string }) => u.id);
     const result = await sendToUsers(admin, allowedIds, { title, body, url, tag });
-    return json({ mode: profile.role, ...result });
+    return json({ mode: 'admin', ...result });
   } catch (e) {
     return json({ error: String((e as Error)?.message || e) }, 500);
   }

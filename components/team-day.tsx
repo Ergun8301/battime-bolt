@@ -164,7 +164,6 @@ export default function TeamDay({ me, date, myWorksiteIds, worksiteName, onChang
               work_date: date, start_time: existante.start_time, end_time: existante.end_time,
             },
             newStart: start, newEnd: end,
-            correctorId: me.id, auteur: 'chef', companyName: '',
           });
           if (!r.ok) throw new Error(r.message);
           setEditing(null);

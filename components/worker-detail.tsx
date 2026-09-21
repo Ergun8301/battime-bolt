@@ -65,6 +65,8 @@ interface CorrectionRow {
   id: string;
   entry_id: string;
   corrected_by: string;
+  /** Le bureau, ou le chef d'équipe. Lu au journal, pas déduit de l'identifiant. */
+  corrected_by_role: 'admin' | 'lead';
   corrected_at: string;
   old_start: string; old_end: string;
   new_start: string; new_end: string;
@@ -237,7 +239,6 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
           exported_at: entry.exported_at,
         },
         newStart: cStart, newEnd: cEnd,
-        correctorId: me.id, auteur: 'bureau', companyName,
       });
       // `notified` faux n'est PAS une erreur : la correction a eu lieu. On le
       // dit avec le bon ton plutôt que d'annoncer un succès complet.
@@ -345,7 +346,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
       const ids = rows.map((r) => r.id);
       if (ids.length > 0) {
         const { data: corr } = await supabase.from('time_entry_corrections')
-          .select('id, entry_id, corrected_by, corrected_at, old_start, old_end, new_start, new_end, notified_at, notify_error')
+          .select('id, entry_id, corrected_by, corrected_by_role, corrected_at, old_start, old_end, new_start, new_end, notified_at, notify_error')
           .in('entry_id', ids)
           .order('corrected_at', { ascending: true });
         const map = new Map<string, CorrectionRow[]>();
@@ -811,7 +812,13 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
                         {fmtHeure(c.old_start)}–{fmtHeure(c.old_end)} → {fmtHeure(c.new_start)}–{fmtHeure(c.new_end)}
                       </span>
                       <span className="text-amber-800">
-                        {c.corrected_by === worker?.id ? 'par le salarié' : c.corrected_by === me?.id ? 'par toi' : 'par le bureau'}
+                        {/* « par le salarié » n'existe pas : `correct_time_entry`
+                            refuse qu'on se corrige soi-même. Le reste se lit au
+                            rôle inscrit au journal, et pas en comparant des
+                            identifiants — sinon la correction d'un chef
+                            s'afficherait « par le bureau » ici alors que le
+                            salarié, lui, a reçu « ton chef a corrigé ». */}
+                        {c.corrected_by === me?.id ? 'par toi' : c.corrected_by_role === 'lead' ? 'par le chef d’équipe' : 'par le bureau'}
                         {' · '}
                         {format(parseISO(c.corrected_at), 'd MMM à HH:mm', { locale: fr })}
                       </span>
@@ -827,9 +834,26 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
                   ))}
 
                   {/* ── CORRIGER LES HEURES ───────────────────────────────────
-                      Une ligne retirée ou verrouillée ne se corrige pas : la
-                      première ne compte plus, la seconde est close côté base. */}
-                  {!isCancelled && !entry.locked && (
+                      Seule une ligne RETIRÉE échappe à la correction : elle ne
+                      compte plus, changer ses heures ne changerait rien.
+
+                      LE VERROU N'EN FAIT PAS PARTIE, ET C'EST UNE CORRECTION.
+                      Ce test disait `!entry.locked`, ce qui paraissait prudent
+                      — sauf que l'export pose `exported_at` ET `locked` dans la
+                      MÊME écriture (`admin-planning.tsx`). Le bandeau rouge
+                      « déjà partie chez le comptable », écrit précisément pour
+                      ne pas bloquer une journée exportée, ne s'affichait donc
+                      jamais : le bouton qui l'aurait ouvert était caché juste
+                      avant. Deux règles pour la même situation, et la plus
+                      brutale gagnait en silence.
+
+                      Côté base, le verrou n'est pas un refus pour le bureau :
+                      `time_entries_admin_all_mutations` ne porte aucune
+                      condition sur `locked`. L'écran ne doit donc pas interdire
+                      ce que la base autorise — il doit AVERTIR, et laisser
+                      décider. C'est l'autorité de la secrétaire, et la
+                      correction reste tracée et notifiée comme les autres. */}
+                  {!isCancelled && (
                     correctingId === entry.id ? (
                       <div className="mt-3 space-y-2 rounded-md border bg-background p-2">
                         <p className="text-xs font-medium">Corriger les heures de cette journée</p>
@@ -837,14 +861,26 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
                         {/* La paie est déjà partie. On n'interdit pas — c'est le
                             bureau qui décide — mais on ne le laisse pas le
                             découvrir après coup. */}
-                        {entry.exported_at && (
+                        {(entry.exported_at || entry.locked) && (
                           <div className="flex items-start gap-2 rounded-md border border-[#E8B79E] bg-[#FBE3D8] px-2.5 py-2 text-xs text-[#8a2a1c]">
                             <AlertTriangle className="h-4 w-4 shrink-0" />
-                            <span>
-                              <b>Cette journée est déjà partie chez le comptable</b> le{' '}
-                              {format(parseISO(entry.exported_at), 'd MMMM', { locale: fr })}. La corriger ici ne
-                              corrige pas le fichier qu&apos;il a reçu : il faudra le lui renvoyer.
-                            </span>
+                            {entry.exported_at ? (
+                              <span>
+                                <b>Cette journée est déjà partie chez le comptable</b> le{' '}
+                                {format(parseISO(entry.exported_at), 'd MMMM', { locale: fr })}. La corriger ici ne
+                                corrige pas le fichier qu&apos;il a reçu : il faudra le lui renvoyer.
+                              </span>
+                            ) : (
+                              /* Aujourd'hui, seul l'export verrouille, et il pose
+                                 toujours la date en même temps. Ce cas ne devrait
+                                 donc pas se produire — mais si un jour un autre
+                                 verrou apparaît, mieux vaut le dire que laisser la
+                                 correction partir sans un mot. */
+                              <span>
+                                <b>Cette journée est verrouillée</b>, sans date d&apos;export connue. La correction
+                                reste possible, mais mieux vaut savoir ce qui l&apos;a verrouillée avant.
+                              </span>
+                            )}
                           </div>
                         )}
 

@@ -59,6 +59,12 @@ CREATE TABLE IF NOT EXISTS public.time_entry_corrections (
   -- QUI a corrigé. Pas de ON DELETE CASCADE : un compte supprimé ne doit pas
   -- effacer la preuve de ce qu'il a fait.
   corrected_by  uuid NOT NULL REFERENCES public.users(id),
+  -- LE RÔLE AU MOMENT DES FAITS, figé. Un chef d'équipe redevenu simple
+  -- salarié ne doit pas transformer rétroactivement « ton chef a corrigé » en
+  -- autre chose : un journal raconte ce qui s'est passé, pas ce qui est vrai
+  -- aujourd'hui. C'est aussi ce qui permet à l'écran du salarié de dire la même
+  -- chose que la notification qu'il a reçue.
+  corrected_by_role text NOT NULL CHECK (corrected_by_role IN ('admin','lead')),
   corrected_at  timestamptz NOT NULL DEFAULT now(),
 
   -- AVANT et APRÈS. C'est ce qui permet d'écrire « 9h00 → 7h00 » au salarié.
@@ -165,6 +171,7 @@ BEGIN
   new.worker_id    := old.worker_id;
   new.work_date    := old.work_date;
   new.corrected_by := old.corrected_by;
+  new.corrected_by_role := old.corrected_by_role;
   new.corrected_at := old.corrected_at;
   new.old_start    := old.old_start;
   new.old_end      := old.old_end;
@@ -307,6 +314,91 @@ BEGIN
     RAISE EXCEPTION 'time_entries: chantier hors de votre entreprise';
   END IF;
   RETURN new;
+END;
+$fn$;
+
+-- ═════════════════════════════════════════════════════════════════════════════
+-- 3 · CORRIGER ET INSCRIRE, EN UN SEUL GESTE
+-- ═════════════════════════════════════════════════════════════════════════════
+--
+-- POURQUOI UNE FONCTION, ET PAS DEUX APPELS DEPUIS LE NAVIGATEUR. Parce que
+-- deux appels ne sont pas une opération : entre les deux, tout peut arriver.
+-- Si l'écriture des heures passe et que le journal échoue — réseau coupé, ou
+-- simplement cette migration pas encore appliquée — les heures changent SANS
+-- trace et SANS notification. C'est-à-dire exactement l'état que cette étape
+-- existe pour supprimer.
+--
+-- Ici, les deux écritures vivent dans la même transaction : soit les deux, soit
+-- aucune. Tant que cette migration n'est pas passée, la fonction n'existe pas,
+-- l'appel échoue, et RIEN N'EST MODIFIÉ. Le code client qui l'appelle est donc
+-- sûr même livré en avance — il refuse de corriger plutôt que de corriger en
+-- silence.
+--
+-- SECURITY INVOKER, volontairement. La fonction n'ajoute AUCUN droit : les deux
+-- écritures passent par les policies existantes, qui décident déjà qui peut
+-- corriger quoi. Une fonction SECURITY DEFINER aurait créé une seconde autorité
+-- à maintenir en accord avec la première.
+CREATE OR REPLACE FUNCTION public.correct_time_entry(
+  p_entry_id uuid,
+  p_start    time,
+  p_end      time
+)
+ RETURNS TABLE(correction_id uuid, worker_id uuid, work_date date,
+               old_start time, old_end time, new_start time, new_end time,
+               corrected_by_role text)
+ LANGUAGE plpgsql
+ SECURITY INVOKER
+ SET search_path TO ''
+AS $fn$
+DECLARE
+  e     record;
+  v_role text;
+  v_id  uuid;
+BEGIN
+  SELECT t.id, t.user_id, t.company_id, t.work_date, t.start_time, t.end_time, t.exported_at
+    INTO e
+    FROM public.time_entries t
+   WHERE t.id = p_entry_id;
+  IF e IS NULL THEN
+    RAISE EXCEPTION 'Cette ligne n''existe pas, ou vous n''y avez pas accès.';
+  END IF;
+
+  IF (e.start_time, e.end_time) IS NOT DISTINCT FROM (p_start, p_end) THEN
+    RAISE EXCEPTION 'Ces heures sont déjà celles-là.';
+  END IF;
+
+  -- On ne corrige pas ses propres heures par ce chemin : le salarié a son
+  -- écran, et se notifier soi-même n'a pas de sens.
+  IF e.user_id = auth.uid() THEN
+    RAISE EXCEPTION 'Ce chemin sert à corriger les heures de quelqu''un d''autre.';
+  END IF;
+
+  v_role := CASE WHEN public.is_admin() THEN 'admin'
+                 WHEN public.is_my_team_member(e.user_id, e.work_date) THEN 'lead'
+                 ELSE NULL END;
+  IF v_role IS NULL THEN
+    RAISE EXCEPTION 'Vous n''avez pas le droit de corriger les heures de cette personne.';
+  END IF;
+
+  -- L'écriture passe par la RLS : c'est elle qui tranche vraiment. Zéro ligne
+  -- touchée n'est pas un succès.
+  UPDATE public.time_entries
+     SET start_time = p_start, end_time = p_end
+   WHERE id = p_entry_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Cette ligne n''a pas pu être corrigée.';
+  END IF;
+
+  INSERT INTO public.time_entry_corrections
+    (company_id, entry_id, worker_id, work_date, corrected_by, corrected_by_role,
+     old_start, old_end, new_start, new_end, was_exported)
+  VALUES
+    (e.company_id, e.id, e.user_id, e.work_date, auth.uid(), v_role,
+     e.start_time, e.end_time, p_start, p_end, e.exported_at IS NOT NULL)
+  RETURNING id INTO v_id;
+
+  RETURN QUERY SELECT v_id, e.user_id, e.work_date,
+                      e.start_time, e.end_time, p_start, p_end, v_role;
 END;
 $fn$;
 

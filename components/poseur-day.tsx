@@ -31,7 +31,16 @@ interface CorrectionVue {
   old_start: string; old_end: string;
   new_start: string; new_end: string;
   corrected_at: string;
-  corrected_by: string;
+  /**
+   * QUI A CORRIGÉ, AU SENS DU SALARIÉ : le bureau, ou son chef d'équipe.
+   *
+   * On lit le RÔLE, pas l'identifiant. Lire `corrected_by` et le comparer à
+   * l'admin connu aurait affiché « le bureau » pour une correction faite par
+   * le chef — et la notification reçue sur le téléphone, elle, disait « ton
+   * chef ». Deux messages contradictoires sur la même correction, c'est
+   * exactement le doute que cette étape existe pour lever.
+   */
+  corrected_by_role: 'admin' | 'lead';
 }
 
 interface TimeEntryWithWorksite extends TimeEntry {
@@ -494,7 +503,7 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
       const idsDuJour = ((entriesRes.data || []) as TimeEntryWithWorksite[]).map((e) => e.id);
       if (idsDuJour.length > 0) {
         const { data: corr } = await supabase.from('time_entry_corrections')
-          .select('id, entry_id, old_start, old_end, new_start, new_end, corrected_at, corrected_by')
+          .select('id, entry_id, old_start, old_end, new_start, new_end, corrected_at, corrected_by_role')
           .in('entry_id', idsDuJour)
           .order('corrected_at', { ascending: true });
         const m = new Map<string, CorrectionVue[]>();
@@ -1562,7 +1571,7 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
                   <div key={c.id} className="bt-iv-corr">
                     <Hammer className="h-3.5 w-3.5 shrink-0" style={{ color: '#8a6d05' }} />
                     <div className="bt-iv-corr-t">
-                      {c.corrected_by === user?.id ? 'Tu as corrigé' : 'Le bureau a corrigé'} :{' '}
+                      {c.corrected_by_role === 'lead' ? 'Ton chef a corrigé' : 'Le bureau a corrigé'} :{' '}
                       <span className="bt-iv-corr-v">{fmtHeure(c.old_start)}–{fmtHeure(c.old_end)}</span>
                       {' → '}
                       <span className="bt-iv-corr-v">{fmtHeure(c.new_start)}–{fmtHeure(c.new_end)}</span>
