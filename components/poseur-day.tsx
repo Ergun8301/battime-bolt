@@ -19,7 +19,7 @@ import {
 import { syncAllPending } from '@/lib/offline-sync';
 import { planningsToMaterialise, remainingPlannings } from '@/lib/work-status';
 import { fmtHeure } from '@/lib/corrections';
-import { positionUtile, fmtPrecision } from '@/lib/position';
+import { positionUtile, fmtPrecision, fmtCoord } from '@/lib/position';
 import { parisHHmm } from '@/lib/utils';
 import { TimeCylinder, snapToGrid } from '@/components/time-cylinder';
 import LiveTimer from '@/components/live-timer';
@@ -1642,33 +1642,39 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
                     </div>
                   </div>
                 ))}
-                {/* CE QUI A ÉTÉ GARDÉ SUR LUI, ET OÙ IL PEUT LE VOIR.
-                    Les deux moments sur une seule ligne quand ils existent tous
-                    les deux. Une journée sans endroit n'affiche RIEN : pas de
-                    « aucune position », qui ferait du refus une absence à
-                    justifier. */}
-                {(() => {
-                  const ps = mesPositions.get(entry.id) || [];
-                  if (ps.length === 0) return null;
-                  const dep = ps.find((p) => p.moment === 'start');
-                  const fin = ps.find((p) => p.moment === 'end');
-                  const dire = (p: PositionVue) =>
-                    positionUtile(p.accuracy_m)
-                      ? `${parisHHmm(p.captured_at)} (${fmtPrecision(p.accuracy_m)})`
-                      : `${parisHHmm(p.captured_at)} (trop imprécis)`;
-                  return (
-                    <div className="bt-iv-geo">
-                      <MapPin className="h-3.5 w-3.5" />
-                      <span>
-                        Endroit noté{' '}
-                        {dep && <>au départ <span className="bt-iv-geo-v">{dire(dep)}</span></>}
-                        {dep && fin && ' et '}
-                        {fin && <>à la fin <span className="bt-iv-geo-v">{dire(fin)}</span></>}
-                        .
-                      </span>
+                {/* CE QUI A ÉTÉ GARDÉ SUR LUI — LES MÊMES CHIFFRES QUE LE BUREAU.
+                    Je n'affichais d'abord que l'heure et la précision : le
+                    salarié savait qu'un endroit avait été noté, sans savoir
+                    LEQUEL. C'était une demi-mesure, et la pire des deux — il ne
+                    pouvait ni reconnaître son chantier, ni contester un point
+                    faux, alors que le bureau, lui, voyait les coordonnées.
+                    Cette asymétrie était exactement ce que « le salarié voit ce
+                    qui est enregistré sur lui » devait empêcher.
+
+                    Une journée sans endroit n'affiche RIEN : pas de « aucune
+                    position », qui ferait du refus une absence à justifier. */}
+                {(mesPositions.get(entry.id) || []).length > 0 && (
+                  <div className="bt-iv-geo">
+                    <MapPin className="h-3.5 w-3.5" />
+                    <div>
+                      <div>Endroit noté :</div>
+                      {(mesPositions.get(entry.id) || [])
+                        .slice()
+                        .sort((a, b) => (a.moment === 'start' ? -1 : 1) - (b.moment === 'start' ? -1 : 1))
+                        .map((p) => (
+                          <div key={p.id}>
+                            {p.moment === 'start' ? 'départ' : 'fin'} {parisHHmm(p.captured_at)}
+                            {' · '}
+                            <span className="bt-iv-geo-v">{fmtCoord(p.latitude, p.longitude)}</span>
+                            {' '}
+                            {positionUtile(p.accuracy_m)
+                              ? fmtPrecision(p.accuracy_m)
+                              : `${fmtPrecision(p.accuracy_m)} — trop imprécis`}
+                          </div>
+                        ))}
                     </div>
-                  );
-                })()}
+                  </div>
+                )}
                 {entry.reception === 'avec' && (
                   <>
                     <div className="bt-iv-reserve avec">⚠ Avec réserve</div>

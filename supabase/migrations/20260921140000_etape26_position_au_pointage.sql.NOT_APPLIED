@@ -129,7 +129,30 @@ BEGIN
     new.start_lng        := NULL;
     new.start_accuracy_m := NULL;
     new.start_located_at := NULL;
+    RETURN new;
   END IF;
+
+  -- ── L'HEURE DE LA PRISE EST CELLE DU SERVEUR, JAMAIS CELLE DU TÉLÉPHONE ───
+  --
+  -- Le navigateur l'envoyait — `new Date()`. Deux conséquences, et la seconde
+  -- est la grave :
+  --
+  --   · une horloge fausse affichait une heure de prise fausse, au salarié
+  --     comme au bureau ;
+  --   · une horloge AVANCÉE de cinq ans produisait un `captured_at` en 2031,
+  --     et la purge des douze mois — qui compare à `now()` — ne l'aurait pas
+  --     effacée avant. On ne promet pas une durée de conservation en la
+  --     laissant fixer par l'appareil dont on conserve les données.
+  --
+  -- Le client n'envoie donc plus ce champ ; s'il l'envoyait quand même, cette
+  -- ligne l'écraserait. Et pas d'heure de prise sans coordonnées : un
+  -- horodatage orphelin laisserait croire qu'une position a été captée.
+  IF new.start_lat IS NOT NULL AND new.start_lng IS NOT NULL THEN
+    new.start_located_at := now();
+  ELSE
+    new.start_located_at := NULL;
+  END IF;
+
   RETURN new;
 END;
 $fn$;

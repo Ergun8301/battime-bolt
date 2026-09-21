@@ -20,7 +20,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { demanderPosition } from '@/lib/position';
+import { demanderPosition, FENETRE_POSITION_MS } from '@/lib/position';
 import { parisHHmm } from '@/lib/utils';
 import { TimeCylinder } from '@/components/time-cylinder';
 import { Play, Square, Clock, AlertTriangle, Loader2, Trash2, MapPin } from 'lucide-react';
@@ -174,11 +174,17 @@ export default function LiveTimer({
       const { error } = await supabase.from('active_sessions').insert({
         user_id: userId, company_id: companyId, worksite_id: pick,
         planning_id: planningIdFor(pick), work_date: today,
+        // L'HEURE DE LA PRISE N'EST PAS ENVOYÉE D'ICI, ET C'EST DÉLIBÉRÉ.
+        // Elle l'était — `new Date()` — c'est-à-dire l'horloge du téléphone.
+        // Une horloge fausse affichait une heure fausse ; une horloge avancée
+        // de cinq ans produisait une ligne que la purge des douze mois
+        // n'aurait pas effacée avant 2031. On ne promet pas une durée de
+        // conservation en la laissant fixer par l'appareil qu'on conserve.
+        // C'est le trigger qui pose `now()`, côté serveur.
         ...(p ? {
           start_lat: p.lat,
           start_lng: p.lng,
           start_accuracy_m: p.accuracy == null ? null : Math.round(p.accuracy),
-          start_located_at: new Date().toISOString(),
         } : {}),
       });
       if (error) {
@@ -240,15 +246,27 @@ export default function LiveTimer({
     setBusy(true);
     setTooShort(false);
     try {
-      // L'endroit à la fermeture. Même règle qu'au départ : on ne passe les
-      // paramètres que si on a une position. Sans eux, l'appel est exactement
-      // celui d'hier et résout la fonction à un seul argument — donc fermer un
-      // pointage continue de marcher même si la migration n'est pas passée.
+      // ── ON NE DEMANDE MÊME PAS L'ENDROIT SUR UN POINTAGE OUBLIÉ ────────────
       //
-      // Ce que le salarié ne voit pas d'ici : au-delà de quatorze heures de
-      // pointage, le serveur ÉCARTE ce point. Un pointage oublié et fermé le
-      // soir chez soi enregistrerait sinon un domicile.
-      const p = positionActive ? await demanderPosition() : null;
+      // Le serveur écarte déjà ce point au-delà de quatorze heures. Mais il
+      // l'écarte APRÈS l'avoir reçu — et pour un salarié qui ferme son pointage
+      // le soir chez lui, ce qu'il a reçu est son DOMICILE. Le refuser à
+      // l'arrivée ne le défait pas : la donnée a quitté le téléphone, traversé
+      // le réseau, et il a vu une demande d'autorisation au pire moment.
+      //
+      // `session.started_at` vient du serveur, pas du navigateur : c'est la
+      // seule valeur du calcul qui ne dépende pas de l'horloge du téléphone.
+      // L'autre — `Date.now()` — peut mentir, et c'est exactement pourquoi le
+      // garde SQL reste en place derrière celui-ci. Deux tests, deux rôles :
+      // ici on évite la demande, là-bas on garantit le refus.
+      const ecoule = Date.now() - new Date(session.started_at).getTime();
+      const tropVieux = ecoule > FENETRE_POSITION_MS;
+
+      // Même règle qu'au départ : on ne passe les paramètres que si on a une
+      // position. Sans eux, l'appel est exactement celui d'hier et résout la
+      // fonction à un seul argument — donc fermer un pointage continue de
+      // marcher même si la migration n'est pas passée.
+      const p = positionActive && !tropVieux ? await demanderPosition() : null;
 
       const { data, error } = await supabase.rpc('stop_active_session', {
         p_end: endTime ? `${endTime}:00` : null,

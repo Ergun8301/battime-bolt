@@ -39,6 +39,26 @@ export function positionUtile(accuracy: number | null | undefined): boolean {
 }
 
 /**
+ * Au-delà de cette durée depuis le démarrage, on ne demande PLUS l'endroit à la
+ * fermeture.
+ *
+ * LE SCÉNARIO : le salarié oublie de fermer son pointage, s'en aperçoit le soir
+ * chez lui, et ferme à 22 h. Sans ce test, le téléphone demande l'autorisation
+ * et envoie les coordonnées de son DOMICILE au serveur.
+ *
+ * LE SERVEUR REFUSE DÉJÀ DE LES ENREGISTRER — mais il les a reçues, et les
+ * avoir reçues est déjà un traitement. Le seul endroit où une donnée ne fuit
+ * pas est celui où on ne l'a pas demandée. D'où ce second test, du côté où la
+ * demande est faite.
+ *
+ * LES DEUX TESTS RESTENT, ET C'EST VOULU. Celui-ci évite la demande inutile
+ * dans le cas normal ; celui du serveur est la garantie, parce qu'une horloge
+ * de téléphone peut mentir et qu'un test côté navigateur n'engage personne.
+ * Même valeur des deux côtés : quatorze heures.
+ */
+export const FENETRE_POSITION_MS = 14 * 60 * 60 * 1000;
+
+/**
  * Coordonnées lisibles par un humain. Six décimales, c'est environ dix
  * centimètres — bien au-delà de ce que le meilleur GPS de téléphone sait
  * faire, mais c'est la valeur brute et on ne la maquille pas.
