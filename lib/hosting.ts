@@ -21,36 +21,36 @@
 /**
  * L'hébergeur de l'interface web, tel que les pages légales le déclarent.
  *
- * POURQUOI CLOUDFLARE DÈS MAINTENANT, AVANT LA BASCULE DNS. Parce que c'est
- * l'ordre qui rend la déclaration VRAIE, et non l'inverse.
+ * CE CHAMP SUIT LE DNS, IL NE LE PRÉCÈDE PAS. Il doit nommer qui sert
+ * réellement bemexo.com, et il se change LE JOUR de la bascule — pas avant.
  *
- * Netlify ne construit plus depuis le 4 août 2026 : sa mise en ligne de
- * production sert encore le commit 66724fe — vérifié auprès de son API, pas
- * supposé (`published_at` 2026-08-04, `commit_ref` 66724fe…, 45 commits sur
- * `main` depuis). Ce changement n'atteindra donc jamais bemexo.com tant que le
- * DNS pointe sur Netlify.
+ * ──────────────────────────────────────────────────────────────────────────
+ * POURQUOI CETTE RÈGLE EST ÉCRITE ICI : ON A ESSAYÉ L'INVERSE, ET ÇA A RATÉ.
  *
- * La seule adresse qui affichera ce texte est `bemexo.pages.dev`, servie par
- * Cloudflare. La déclaration devient donc exacte là où elle s'affiche.
+ * À l'étape 23, on a déclaré Cloudflare en avance. Le raisonnement semblait
+ * solide, et il était étayé : la production Netlify était gelée depuis le
+ * 4 août, vérifié auprès de son API (`published_at` 2026-08-04, `commit_ref`
+ * 66724fe, 45 commits sur `main` depuis). Le changement ne pouvait donc pas
+ * atteindre bemexo.com, et la seule adresse qui l'afficherait —
+ * bemexo.pages.dev — est bien servie par Cloudflare.
  *
- * L'ordre inverse — basculer le DNS puis corriger le texte — ouvrirait une
- * fenêtre pendant laquelle les mentions légales et la politique de
- * confidentialité mentiraient sur le lieu de traitement des données
- * personnelles. Une page légale fausse pendant une heure est une page légale
- * fausse.
+ * TREIZE MINUTES APRÈS LA FUSION, un abonnement Netlify a été payé. Le
+ * blocage a sauté, la production a repris, et elle a publié ce commit sur
+ * bemexo.com. Résultat : une page légale servie par Netlify qui déclarait
+ * Cloudflare — exactement ce que l'ordre choisi prétendait éviter.
  *
- * L'adresse est reprise des données structurées publiées par Cloudflare
- * (schema.org PostalAddress : « 101 Townsend St, San Francisco, CA 94107,
- * US »), pas d'un souvenir. La forme juridique « Cloudflare, Inc. » n'a PAS pu
- * être vérifiée à une source primaire depuis cet environnement : leur site
- * principal y est injoignable. Elle suit la convention de l'entrée précédente
- * et reste à confirmer si un jour ces pages sont relues par un juriste.
+ * LA LEÇON N'EST PAS « il fallait mieux vérifier ». La vérification était
+ * juste au moment où elle a été faite. La leçon est qu'une prémisse qu'un
+ * TIERS PEUT RETOURNER À TOUT MOMENT — un hébergeur, un paiement, un réglage
+ * de compte — ne porte pas un ordre d'opérations. Ce qui rend la déclaration
+ * vraie, c'est le DNS ; alors ce champ suit le DNS, et rien d'autre.
+ * ──────────────────────────────────────────────────────────────────────────
  */
 export const WEB_HOST = {
-  name: 'Cloudflare, Inc.',
-  address: '101 Townsend Street, San Francisco, CA 94107, États-Unis',
-  url: 'https://www.cloudflare.com',
-  label: 'cloudflare.com',
+  name: 'Netlify, Inc.',
+  address: '44 Montgomery Street, Suite 300, San Francisco, CA 94104, États-Unis',
+  url: 'https://www.netlify.com',
+  label: 'netlify.com',
 } as const;
 
 /**

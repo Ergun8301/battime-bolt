@@ -125,13 +125,41 @@ sert l'adresse de test. Rien n'est engagé.
 
 ### 4 · Bascule DNS *(décision d'Ergun, pas la mienne)*
 
-**`WEB_HOST` est déjà fait**, et volontairement en avance. Netlify ne construit
-plus depuis le 4 août 2026 : sa mise en ligne de production sert encore le
-commit `66724fe` — relevé auprès de son API, pas supposé. Le changement
-n'atteint donc pas `bemexo.com`, et la seule adresse qui l'affiche,
-`bemexo.pages.dev`, est bel et bien servie par Cloudflare. Faire l'inverse
-aurait ouvert une fenêtre pendant laquelle les pages légales auraient menti sur
-le lieu de traitement des données.
+**Changer `WEB_HOST` dans `lib/hosting.ts` — le jour même, pas avant.** Les
+mentions légales déclarent le lieu de traitement des données personnelles :
+elles doivent nommer qui sert réellement le domaine.
+
+#### On a essayé de l'anticiper, et ça a raté
+
+L'étape 23 a déclaré Cloudflare **en avance**, sur un raisonnement étayé : la
+production Netlify était gelée depuis le 4 août, vérifié auprès de son API
+(`published_at` 2026-08-04, `commit_ref` `66724fe`, 45 commits sur `main`
+depuis). Le changement ne pouvait donc pas atteindre `bemexo.com`.
+
+**Treize minutes après la fusion, un abonnement Netlify a été payé.** Le blocage
+a sauté, la production a repris, et elle a publié ce commit sur `bemexo.com` :
+
+```
+deploy        6ab0d74325c49c0008aa5913
+published_at  2026-09-21T07:06:49Z
+commit_ref    0651aa7…   (l'étape 23)
+context       production
+```
+
+Une page légale servie par Netlify déclarait Cloudflare — exactement ce que
+l'ordre choisi prétendait éviter. L'étape 24 l'a remise droite.
+
+**La leçon n'est pas « il fallait mieux vérifier ».** La vérification était
+juste au moment où elle a été faite. La leçon est qu'une prémisse qu'un **tiers
+peut retourner à tout moment** — un hébergeur, un paiement, un réglage de
+compte — ne porte pas un ordre d'opérations. Ce qui rend cette déclaration
+vraie, c'est le DNS. Le champ suit donc le DNS, et rien d'autre.
+
+Corollaire pratique : **tant que les deux hébergeurs peuvent servir le domaine,
+il n'existe aucun instant où une valeur unique est vraie partout.** On accepte
+donc que `bemexo.pages.dev` affiche « Netlify » pendant la phase de test — une
+adresse de test n'est pas une mention légale publiée — et on bascule les deux
+ensemble, le jour J.
 
 #### La zone DNS n'est pas chez Cloudflare, et ça change l'opération
 
