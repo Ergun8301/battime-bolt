@@ -125,13 +125,46 @@ sert l'adresse de test. Rien n'est engagé.
 
 ### 4 · Bascule DNS *(décision d'Ergun, pas la mienne)*
 
-`bemexo.com` vers Cloudflare, puis :
+**`WEB_HOST` est déjà fait**, et volontairement en avance. Netlify ne construit
+plus depuis le 4 août 2026 : sa mise en ligne de production sert encore le
+commit `66724fe` — relevé auprès de son API, pas supposé. Le changement
+n'atteint donc pas `bemexo.com`, et la seule adresse qui l'affiche,
+`bemexo.pages.dev`, est bel et bien servie par Cloudflare. Faire l'inverse
+aurait ouvert une fenêtre pendant laquelle les pages légales auraient menti sur
+le lieu de traitement des données.
 
-- changer `WEB_HOST` dans `lib/hosting.ts` — **les mentions légales déclarent
-  l'hébergeur, elles doivent devenir vraies le jour même** ;
-- vérifier le certificat et la redirection `www` ;
-- garder Netlify en place quelques jours : le retour arrière est un simple
-  changement de DNS tant que le projet existe encore.
+#### La zone DNS n'est pas chez Cloudflare, et ça change l'opération
+
+Relevé sur le domaine réel :
+
+| | |
+|---|---|
+| Serveurs de noms | `ns11.infomaniak.ch` / `ns12.infomaniak.ch` |
+| `A` (racine) | `75.2.60.5` — Netlify |
+| `www` | `apex-loadbalancer.netlify.com` |
+| `MX` | `mta-gw.infomaniak.ch` |
+| `TXT` | `v=spf1 include:spf.infomaniak.ch -all` + 2 vérifications Google |
+
+**Le domaine porte la messagerie professionnelle.** Servir la racine depuis
+Cloudflare Pages impose de déplacer la zone entière chez Cloudflare, parce que
+Cloudflare exige ses propres serveurs de noms pour un domaine apex. Ce
+déplacement recopie les enregistrements — et un `MX` ou un `SPF` oublié coupe
+le courrier de l'entreprise, pas seulement le site.
+
+C'est donc une opération à part, avec sa propre vérification :
+
+1. Relever la zone complète chez Infomaniak, enregistrement par enregistrement.
+2. Créer la zone chez Cloudflare et **comparer les deux listes ligne à ligne**
+   avant de changer les serveurs de noms — surtout `MX`, `SPF`, `DKIM`, `DMARC`
+   et les vérifications de propriété.
+3. Seulement ensuite, changer les serveurs de noms chez le registraire.
+4. Vérifier le certificat, la redirection `www`, **et l'envoi comme la
+   réception d'un courriel réel**.
+
+Le retour arrière reste un changement de serveurs de noms tant que la zone
+Infomaniak existe encore : ne pas la supprimer avant plusieurs jours.
+
+Et garder le projet Netlify en place aussi longtemps.
 
 ## Ce que la migration ne touche pas
 

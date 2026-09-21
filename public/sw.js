@@ -2,7 +2,7 @@
 // Volontairement SANS mise en cache / stratégie offline : l'app gère déjà son
 // propre hors-ligne (localStorage `battime_offline_`), et un cache de service
 // worker mal réglé casserait ce mécanisme ou servirait du HTML périmé après un
-// déploiement Netlify. Ce fichier ne fait donc QUE recevoir et afficher les push.
+// déploiement. Ce fichier ne fait donc QUE recevoir et afficher les push.
 
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
