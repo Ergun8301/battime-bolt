@@ -1,7 +1,13 @@
--- ⚠️ CETTE MIGRATION N'EST PAS APPLIQUÉE. Elle est livrée pour relecture à part,
--- comme demandé. L'extension `.NOT_APPLIED` la tient hors du dossier de
--- migrations actif : rien ne la passera par inadvertance. La renommer en
--- `.sql` suffira, le jour où elle sera validée.
+-- Appliquée et vérifiée en production (projet sdperbcquvneohotjono) le
+-- 2026-09-21 par Ergun. Contrôlé après coup, pas sur parole :
+--
+--   SQLSTATE levé                        BT001 — reconnaissable au CODE
+--   message                              inchangé, mot pour mot
+--   search_path de la fonction           search_path="" — toujours verrouillé
+--   SECURITY DEFINER                     conservé
+--   lignes d'heures créées par le refus  0
+--   pointages en base                    46, intacts
+--   chronos restés ouverts               0
 --
 -- ─────────────────────────────────────────────────────────────────────────────
 -- POURQUOI ELLE EXISTE
