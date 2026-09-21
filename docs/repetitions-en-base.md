@@ -48,6 +48,29 @@ EXCEPTION WHEN others THEN … END;
 20 : on testait la fonction, pas le chemin qui l'appelle. Une fonction juste,
 appelée autrement qu'en vrai, ne prouve rien sur l'application.
 
+### Le RÔLE fait partie du scénario, au même titre
+
+Même racine, autre axe, et il a coûté deux fois le même jour.
+
+Une répétition qui tourne en `postgres` ne prouve rien sur ce que fera un
+salarié. `postgres` conserve tous les droits : il traverse la RLS, il exécute
+les fonctions qu'on vient de révoquer, il ignore les policies qu'on est
+précisément en train de vérifier. Deux preuves peuvent afficher les bonnes
+valeurs et ne rien démontrer.
+
+Toute assertion qui porte sur un droit, une policy ou une visibilité se joue
+sous le rôle de l'application :
+
+```sql
+PERFORM set_config('request.jwt.claims',
+                   json_build_object('sub', '<uuid réel>', 'role', 'authenticated')::text,
+                   true);
+EXECUTE 'set local role authenticated';   -- ou 'anon' pour un visiteur
+```
+
+et on revient en `postgres` (`RESET ROLE`) uniquement pour poser les fixtures et
+écrire le rapport.
+
 ---
 
 ## 2 · On relit la fonction EN BASE, jamais le fichier qui l'a créée
@@ -140,6 +163,36 @@ sienne.**
 Chercher `=X/` dans `proacl` a produit un « KO » sur un état correct, parce que
 `postgres=X/postgres` contient cette sous-chaîne — l'entrée de PUBLIC est celle
 dont le bénéficiaire est vide, donc qui **commence** par `=`.
+
+### Deux pièges du balayage lui-même, payés tous les deux
+
+**Ne pas exclure la classe qu'on vient de toucher.** La requête qui a conclu
+« `correct_time_entry` est la seule encore ouverte » portait
+`and p.prorettype <> 'trigger'::regtype` — donc elle écartait exactement les
+fonctions de trigger, celles qu'on venait d'aligner à la main une heure plus
+tôt. Deux fonctions ouvertes ont survécu à un balayage qui se croyait complet,
+et une règle annoncée « sans exception » est partie avec deux contre-exemples
+vivants. Un balayage de droits n'a pas de `WHERE` sur le type de retour.
+
+**Le balayage compte son propre instrument.** La même requête, rejouée dans une
+répétition, a annoncé « 2 fonctions encore ouvertes » après avoir tout révoqué.
+Les deux étaient `_as` et `_rec` — les fonctions d'aide créées par le test
+lui-même, dans le schéma `public`, donc dotées des mêmes default privileges que
+le code qu'elles mesurent. Avant de croire un balayage qui trouve quelque
+chose : **lire les noms**.
+
+### `EXECUTE` sur une fonction de trigger : vérifié au `CREATE TRIGGER`
+
+Révoquer `EXECUTE` sur une fonction de trigger n'empêche aucun trigger de
+partir : PostgreSQL vérifie ce droit à la création du trigger, pas à chaque
+déclenchement. Mesuré sous `authenticated`, deux fois et indépendamment.
+
+**La dépendance que ça crée, et elle est pour plus tard :** une migration qui
+RECRÉE un de ces triggers doit tourner avec un rôle qui a gardé `EXECUTE` —
+`postgres`. Toutes les migrations de ce dépôt y tournent déjà, donc il n'y a
+rien à faire aujourd'hui. C'est écrit ici parce que c'est le genre de
+dépendance invisible qu'on redécouvre trois ans plus tard, un soir, en se
+demandant pourquoi un `CREATE TRIGGER` échoue.
 
 ---
 
