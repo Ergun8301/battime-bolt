@@ -5,10 +5,14 @@ entier dans une transaction que l'on n'achève jamais. On y crée les fixtures, 
 y applique le DDL, on y joue les scénarios — y compris ceux qui doivent échouer
 — on lit le compte-rendu, et on laisse la transaction tomber.
 
-Ce document ne décrit pas la mécanique. Il décrit les trois façons dont ces
+Ce document ne décrit pas la mécanique. Il décrit les façons dont ces
 répétitions ont MENTI, parce que chacune a coûté, et qu'aucune n'était visible
 sur le moment : un harnais faux produit un rapport vert, ou un rapport rouge qui
-accuse le mauvais coupable.
+accuse le mauvais coupable. Les sections 1 à 4 traitent de ces mensonges.
+
+La section 5 traite du cas inverse, et c'est le plus dangereux : l'opération
+qui ne peut PAS se répéter. Une suppression n'a pas de transaction annulée où
+se tromper — d'où une obligation que les quatre autres sections n'ont pas.
 
 ---
 
@@ -193,6 +197,40 @@ RECRÉE un de ces triggers doit tourner avec un rôle qui a gardé `EXECUTE` —
 rien à faire aujourd'hui. C'est écrit ici parce que c'est le genre de
 dépendance invisible qu'on redécouvre trois ans plus tard, un soir, en se
 demandant pourquoi un `CREATE TRIGGER` échoue.
+
+---
+
+## 5 · Une suppression ne se répète pas : on exporte AVANT
+
+Tout ce document repose sur un privilège : on peut se tromper dans une
+transaction annulée, et il n'en reste rien. **Une purge n'a pas ce filet.**
+`DELETE … COMMIT`, et la donnée n'existe plus — ni dans une transaction
+ouverte, ni dans une sauvegarde qu'on aurait pensé à prendre.
+
+**Le défaut, le 23/09.** Purge de la base demandée, et légitimement : Ergun
+préparait des démos et voulait repartir propre. Elle a été exécutée telle
+quelle, contrôlée avant et après, garde par garde. Le rapport était exact.
+
+Ce qui manquait n'était pas dans le rapport, c'était avant : ces 46 pointages
+étaient les **seules vraies données de test du produit**. Celles du 17/09 sur
+cinq chantiers avaient servi à prouver le double comptage du bandeau, à
+vérifier le multi-chantier, à mesurer les corrections. Rien n'en a été exporté.
+Elles sont irrécupérables.
+
+**La règle.** Une demande de suppression n'est pas une demande de destruction
+sans trace. Avant tout `DELETE` non annulable, on propose un export — même
+court, même un CSV collé dans la réponse. On ne demande pas l'autorisation
+d'exporter : on exporte, on montre, puis on supprime.
+
+Le calcul n'est pas discutable : proposer coûte trente secondes, effacer est
+définitif. Et c'est précisément quand la demande est claire et qu'on a raison
+d'obéir qu'on oublie de le faire — il n'y a aucun doute à lever, donc aucune
+alarme ne se déclenche.
+
+Le symétrique vaut aussi : ne jamais annoncer comme réglé ce qu'on n'a pas pu
+vérifier soi-même. Un abonnement Stripe signalé sur un compte qu'on n'atteint
+pas reste **ouvert** dans le rapport, nommément, jusqu'à ce que son
+propriétaire dise le contraire.
 
 ---
 
