@@ -227,6 +227,16 @@ définitif. Et c'est précisément quand la demande est claire et qu'on a raison
 d'obéir qu'on oublie de le faire — il n'y a aucun doute à lever, donc aucune
 alarme ne se déclenche.
 
+**Et sur ce projet, il n'y a aucun filet derrière.** Vérifié le 23/09 :
+l'organisation Supabase `Battime` est en plan **`free`**. Pas de sauvegarde
+automatique, pas de restauration à un instant donné. Ce qui est supprimé ici
+n'est pas « difficile à récupérer », il n'existe plus nulle part.
+
+L'export avant suppression n'est donc pas une précaution de confort : c'est la
+**seule** sauvegarde que ce projet possède. Tant que le plan ne change pas,
+cette règle n'a pas d'exception — y compris pour une donnée qu'on croit sans
+valeur, puisqu'on ne découvre ce qu'elle valait qu'en la cherchant plus tard.
+
 Le symétrique vaut aussi : ne jamais annoncer comme réglé ce qu'on n'a pas pu
 vérifier soi-même. Un abonnement Stripe signalé sur un compte qu'on n'atteint
 pas reste **ouvert** dans le rapport, nommément, jusqu'à ce que son
