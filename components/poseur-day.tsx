@@ -2002,8 +2002,15 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
                   )}
                 </div>
               )}
-              <button type="button" className="bt-save" onClick={saveSlot} disabled={fSaving}>
-                {fSaving && <Loader2 className="h-4 w-4 animate-spin" />}
+              {/* Bloqué aussi pendant la création d'un chantier : sur une
+                  connexion lente, le salarié pouvait taper « Ajouter ce
+                  chantier » puis « OK » avant la réponse. fWorksiteId valait
+                  encore « Autre » — les heures partaient sur « Autre » et le
+                  chantier créé restait orphelin, les deux messages de succès
+                  s'affichant côte à côte. Trouvé par Codex sur la PR 104. */}
+              <button type="button" className="bt-save" onClick={saveSlot} disabled={fSaving || creationChantier}
+                title={creationChantier ? 'Ajout du chantier en cours…' : undefined}>
+                {(fSaving || creationChantier) && <Loader2 className="h-4 w-4 animate-spin" />}
                 OK <span style={{ fontSize: 18 }}>✓</span>
               </button>
             </div>

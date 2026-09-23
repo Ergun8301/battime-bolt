@@ -7,8 +7,8 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { format, parseISO } from 'date-fns';
 import { TimeEntryWithWorksite, User } from '@/lib/types';
-import { weeklyTotals, routeMinutesByEntry, DEFAULT_OVERTIME_RATES, type OvertimeRates } from '@/lib/overtime';
-import { weekStart } from '@/lib/week';
+import { routeMinutesByEntry, DEFAULT_OVERTIME_RATES, TIER_1_MINUTES, type OvertimeRates } from '@/lib/overtime';
+import { weekStart, weekEnd } from '@/lib/week';
 
 export type ExportEntry = TimeEntryWithWorksite & { user?: User };
 
@@ -62,6 +62,26 @@ export interface ExportOptions {
    * un numéro inventé.
    */
   payrollIdByWorker?: Map<string, string>;
+  /**
+   * LES JOURS RÉELLEMENT PAYÉS, quand ils ne couvrent pas des semaines entières.
+   *
+   * `recapEntries` porte des SEMAINES ENTIÈRES, et c'est voulu : sans la
+   * semaine complète, les heures supplémentaires sont sous-comptées. Mais une
+   * semaine entière déborde de la période choisie — un export du 01/09 au
+   * 30/09 traîne le lundi 31/08 avec lui.
+   *
+   * Tant que ce débordement n'apparaissait que dans un onglet de récapitulatif
+   * à côté du détail, il informait. Dans le CSV, le récapitulatif EST le
+   * fichier : ce qui y figure est payé. Le 31/08 serait donc payé en
+   * septembre, puis repayé à l'export d'août.
+   *
+   * Avec ce champ, la semaine reste entière pour CLASSER les heures (normales,
+   * 25 %, 50 %) mais seuls les jours de la période sont COMPTÉS. Deux périodes
+   * qui se suivent ne partagent alors plus un seul jour.
+   *
+   * Absent = tous les jours comptent (comportement de l'onglet Excel, inchangé).
+   */
+  payPeriod?: { from: string; to: string };
 }
 
 /**
@@ -78,46 +98,80 @@ function weeklyRecap(opts: ExportOptions) {
   const route = routeMinutesByEntry(source);
   const byWorker = new Map<string, {
     name: string; first: string; last: string;
-    rows: { work_date: string; minutes: number }[];
-    /** Route payée, semaine par semaine — pour la colonne « dont route » du CSV. */
-    routeByWeek: Map<string, number>;
+    /** Minutes travaillées (route payée comprise) et route, JOUR par jour. */
+    byDay: Map<string, { minutes: number; route: number }>;
   }>();
   for (const e of source) {
     const id = e.user_id;
     const first = e.user?.first_name ?? '';
     const last = e.user?.last_name ?? '';
     const name = opts.singleWorkerName || `${first} ${last}`.trim() || 'Salarié';
-    const cur = byWorker.get(id) || { name, first, last, rows: [], routeByWeek: new Map<string, number>() };
+    const cur = byWorker.get(id) || { name, first, last, byDay: new Map<string, { minutes: number; route: number }>() };
     const r = opts.travelPaid ? (route.get(e.id) || 0) : 0;
-    cur.rows.push({ work_date: e.work_date, minutes: e.total_minutes + r });
-    if (r > 0) {
-      // Même découpage que weeklyTotals : la semaine ISO du jour travaillé.
-      // S'en écarter ferait tomber la route dans une autre semaine que ses heures.
-      const k = format(weekStart(new Date(`${e.work_date}T00:00:00`)), 'yyyy-MM-dd');
-      cur.routeByWeek.set(k, (cur.routeByWeek.get(k) || 0) + r);
-    }
+    const d = cur.byDay.get(e.work_date) || { minutes: 0, route: 0 };
+    d.minutes += e.total_minutes + r;
+    d.route += r;
+    cur.byDay.set(e.work_date, d);
     byWorker.set(id, cur);
   }
+
+  const dansLaPeriode = (jour: string) =>
+    !opts.payPeriod || (jour >= opts.payPeriod.from && jour <= opts.payPeriod.to);
 
   const out: RecapRow[] = [];
   byWorker.forEach((v, id) => {
     const base = opts.weeklyHoursByWorker?.get(id);
-    // Sans horaire de base connu, on additionne sans prétendre savoir ce qui
-    // dépasse : la colonne reste vide plutôt que fausse.
-    const weeks = weeklyTotals(v.rows, base ?? Number.MAX_SAFE_INTEGER / 60);
-    for (const w of weeks) {
+    // Sans horaire de base connu, on n'annonce aucune heure supplémentaire :
+    // une colonne vide vaut mieux qu'un chiffre faux.
+    const seuil = base == null ? Number.MAX_SAFE_INTEGER : Math.max(0, Math.round(base * 60));
+
+    // Les jours groupés par semaine ISO — le même découpage que weeklyTotals.
+    const semaines = new Map<string, string[]>();
+    // Array.from : la cible TypeScript du projet n'itère pas un Map directement.
+    for (const jour of Array.from(v.byDay.keys())) {
+      const k = format(weekStart(new Date(`${jour}T00:00:00`)), 'yyyy-MM-dd');
+      const arr = semaines.get(k); if (arr) arr.push(jour); else semaines.set(k, [jour]);
+    }
+
+    Array.from(semaines.entries()).sort((a, b) => a[0].localeCompare(b[0])).forEach(([debut, jours]) => {
+      jours.sort();
+      // La SEMAINE ENTIÈRE sert à classer : on la parcourt dans l'ordre, et
+      // chaque jour hérite de la tranche où il tombe (les premières `seuil`
+      // minutes sont normales, les 8 h suivantes à 25 %, le reste à 50 %).
+      // Puis on ne GARDE que les jours de la période payée. Un jour ne peut
+      // donc jamais être compté dans deux exports qui se suivent.
+      let cumul = 0;
+      let minutes = 0, normal = 0, t1 = 0, t2 = 0, routeM = 0;
+      let auMoinsUnJourPaye = false;
+      for (const jour of jours) {
+        const j = v.byDay.get(jour)!;
+        const debutJ = cumul;
+        const finJ = cumul + j.minutes;
+        cumul = finJ;
+        if (!dansLaPeriode(jour)) continue;
+        auMoinsUnJourPaye = true;
+        const tranche = (lo: number, hi: number) => Math.max(0, Math.min(finJ, hi) - Math.max(debutJ, lo));
+        minutes += j.minutes;
+        routeM += j.route;
+        normal += tranche(0, seuil);
+        t1 += tranche(seuil, seuil + TIER_1_MINUTES);
+        t2 += tranche(seuil + TIER_1_MINUTES, Number.MAX_SAFE_INTEGER);
+      }
+      // Une semaine dont aucun jour n'est payé ne produit pas de ligne vide.
+      if (!auMoinsUnJourPaye) return;
       out.push({
         userId: id, worker: v.name, firstName: v.first, lastName: v.last,
-        weekStart: w.weekStart, weekEnd: w.weekEnd,
-        minutes: w.minutes,
-        normalMinutes: base == null ? w.minutes : w.normalMinutes,
-        overtimeMinutes: base == null ? 0 : w.overtimeMinutes,
-        overtime1Minutes: base == null ? 0 : w.overtime1Minutes,
-        overtime2Minutes: base == null ? 0 : w.overtime2Minutes,
-        routeMinutes: v.routeByWeek.get(w.weekStart) || 0,
+        weekStart: debut,
+        weekEnd: format(weekEnd(new Date(`${debut}T00:00:00`)), 'yyyy-MM-dd'),
+        minutes,
+        normalMinutes: normal,
+        overtimeMinutes: t1 + t2,
+        overtime1Minutes: t1,
+        overtime2Minutes: t2,
+        routeMinutes: routeM,
         base: base ?? null,
       });
-    }
+    });
   });
   return out.sort((a, b) => a.worker.localeCompare(b.worker) || a.weekStart.localeCompare(b.weekStart));
 }

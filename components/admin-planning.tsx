@@ -972,7 +972,15 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       supabase.from('time_entries').select('user_id, work_date').eq('company_id', user.company_id).in('status', ['submitted', 'validated']).gte('work_date', windowStart),
       supabase.from('companies').select('name, logo_url, travel_paid, weekly_hours, accountant_email, overtime_rate_1, overtime_rate_2').eq('id', user.company_id).maybeSingle(),
       supabase.from('invitations').select('*').eq('company_id', user.company_id).is('accepted_at', null).gt('expires_at', new Date().toISOString()).order('created_at', { ascending: false }),
-      supabase.from('documents').select('worksite_id').eq('company_id', user.company_id),
+      // Paginé, pour la même raison que la liste détaillée : au-delà de 1000
+      // documents, la pastille 📎 et le total « pièces » se figeaient à 1000
+      // sans rien signaler. Une lecture en échec propage l'erreur plutôt que
+      // d'annoncer zéro pièce.
+      fetchAllPaged<{ worksite_id: string | null }>((f, t) => supabase.from('documents')
+        .select('worksite_id').eq('company_id', user.company_id)
+        .range(f, t) as unknown as PromiseLike<{ data: { worksite_id: string | null }[] | null; error: { message: string } | null }>)
+        .then((data) => ({ data, error: null as { message: string } | null }))
+        .catch((error: { message: string }) => ({ data: null as { worksite_id: string | null }[] | null, error })),
       supabase.from('leave_requests').select('id', { count: 'exact', head: true }).eq('company_id', user.company_id).eq('status', 'pending'),
       // Réserves encore à traiter. Mêmes statuts que partout : un brouillon ou
       // une intervention retirée ne crée pas une réserve à poursuivre.
@@ -987,12 +995,16 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     if (!resRes.error) setOpenReserves(resRes.count || 0);
     if (!liveRes.error) setLiveNow(liveRes.data || []);
 
-    // Pastille 📎 : nombre de documents par chantier.
-    const docCounts = new Map<string, number>();
-    for (const d of (docRes.data || []) as { worksite_id: string | null }[]) {
-      if (d.worksite_id) docCounts.set(d.worksite_id, (docCounts.get(d.worksite_id) || 0) + 1);
+    // Pastille 📎 : nombre de documents par chantier. Comme pour les réserves,
+    // une erreur de lecture laisse la pastille inchangée — afficher 0 dirait
+    // « aucune pièce », le message exactement inverse de la vérité.
+    if (!docRes.error) {
+      const docCounts = new Map<string, number>();
+      for (const d of (docRes.data || []) as { worksite_id: string | null }[]) {
+        if (d.worksite_id) docCounts.set(d.worksite_id, (docCounts.get(d.worksite_id) || 0) + 1);
+      }
+      setDocsByWorksite(docCounts);
     }
-    setDocsByWorksite(docCounts);
 
     const todayKey = format(new Date(), 'yyyy-MM-dd');
     const planned = new Map<string, Set<string>>();
@@ -1189,16 +1201,25 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     let cancelled = false;
     setDocListState('loading');
     (async () => {
-      const { data, error } = await supabase.from('documents')
-        .select('id,worksite_id,label,file_name,mime_type,work_date,created_at')
-        .eq('company_id', user.company_id)
-        .order('created_at', { ascending: false });
-      if (cancelled) return;
-      // Une erreur de lecture ne doit pas se lire « aucune pièce » : c'est le
-      // contresens exact qu'on veut éviter dans un dossier de litige.
-      if (error) { setDocListState('ko'); return; }
-      setDocList((data || []) as DocLine[]);
-      setDocListState('ok');
+      try {
+        // PAGINÉ. Au-delà du plafond PostgREST (1000 lignes), une requête
+        // simple RÉUSSIT en renvoyant un jeu tronqué, sans la moindre erreur :
+        // le panneau aurait présenté une liste incomplète comme complète, et
+        // les photos les plus anciennes — celles d'un litige — auraient
+        // disparu les premières. Trouvé par Codex sur la PR 104.
+        const rows = await fetchAllPaged<DocLine>((f, t) => supabase.from('documents')
+          .select('id,worksite_id,label,file_name,mime_type,work_date,created_at')
+          .eq('company_id', user.company_id)
+          .order('created_at', { ascending: false })
+          .range(f, t) as unknown as PromiseLike<{ data: DocLine[] | null; error: { message: string } | null }>);
+        if (cancelled) return;
+        setDocList(rows);
+        setDocListState('ok');
+      } catch {
+        // Une erreur de lecture ne doit pas se lire « aucune pièce » : c'est le
+        // contresens exact qu'on veut éviter dans un dossier de litige.
+        if (!cancelled) setDocListState('ko');
+      }
     })();
     return () => { cancelled = true; };
   }, [statPanel, user?.company_id]);
@@ -1687,7 +1708,12 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
           toast.error('Aucune heure envoyée sur ces semaines : rien à importer en paie.');
           return;
         }
-        exportEntriesToCSV(opts);
+        // `payPeriod` borne ce qui est PAYÉ aux jours choisis, alors que la
+        // semaine entière continue de servir à classer les heures. Sans ça, le
+        // CSV de septembre paierait le lundi 31/08 — que l'export d'août
+        // paierait une seconde fois, et que le verrou ci-dessous ne couvre pas
+        // puisqu'il ne porte que sur la période. Trouvé par Codex sur la PR 104.
+        exportEntriesToCSV({ ...opts, payPeriod: { from, to } });
       } else {
         exportEntriesToPDF(entries, opts);
       }
