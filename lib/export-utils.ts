@@ -8,8 +8,18 @@ import autoTable from 'jspdf-autotable';
 import { format, parseISO } from 'date-fns';
 import { TimeEntryWithWorksite, User } from '@/lib/types';
 import { weeklyTotals, routeMinutesByEntry, DEFAULT_OVERTIME_RATES, type OvertimeRates } from '@/lib/overtime';
+import { weekStart } from '@/lib/week';
 
 export type ExportEntry = TimeEntryWithWorksite & { user?: User };
+
+/** Une ligne du récapitulatif : un salarié, une semaine. */
+interface RecapRow {
+  userId: string; worker: string; firstName: string; lastName: string;
+  weekStart: string; weekEnd: string;
+  minutes: number; normalMinutes: number; overtimeMinutes: number;
+  overtime1Minutes: number; overtime2Minutes: number;
+  routeMinutes: number; base: number | null;
+}
 
 export interface ExportOptions {
   /** File name without extension. */
@@ -44,6 +54,14 @@ export interface ExportOptions {
   recapEntries?: ExportEntry[];
   /** Taux de majoration de l'entreprise. Absent = taux légaux français. */
   overtimeRates?: OvertimeRates;
+  /**
+   * Le matricule de paie, salarié par salarié — la clé que le logiciel du
+   * comptable utilise pour rattacher une ligne à un bulletin. Sans lui, le
+   * fichier se lit mais ne s'importe pas : c'est le nom qui sert de clé, et
+   * deux homonymes suffisent à tout fausser. Absent = colonne vide, jamais
+   * un numéro inventé.
+   */
+  payrollIdByWorker?: Map<string, string>;
 }
 
 /**
@@ -58,25 +76,30 @@ function weeklyRecap(opts: ExportOptions) {
   const source = opts.recapEntries;
   if (!source || source.length === 0) return [];
   const route = routeMinutesByEntry(source);
-  const byWorker = new Map<string, { name: string; rows: { work_date: string; minutes: number }[] }>();
+  const byWorker = new Map<string, {
+    name: string; first: string; last: string;
+    rows: { work_date: string; minutes: number }[];
+    /** Route payée, semaine par semaine — pour la colonne « dont route » du CSV. */
+    routeByWeek: Map<string, number>;
+  }>();
   for (const e of source) {
     const id = e.user_id;
-    const name = opts.singleWorkerName
-      || `${e.user?.first_name ?? ''} ${e.user?.last_name ?? ''}`.trim()
-      || 'Salarié';
-    const cur = byWorker.get(id) || { name, rows: [] };
-    cur.rows.push({
-      work_date: e.work_date,
-      minutes: e.total_minutes + (opts.travelPaid ? (route.get(e.id) || 0) : 0),
-    });
+    const first = e.user?.first_name ?? '';
+    const last = e.user?.last_name ?? '';
+    const name = opts.singleWorkerName || `${first} ${last}`.trim() || 'Salarié';
+    const cur = byWorker.get(id) || { name, first, last, rows: [], routeByWeek: new Map<string, number>() };
+    const r = opts.travelPaid ? (route.get(e.id) || 0) : 0;
+    cur.rows.push({ work_date: e.work_date, minutes: e.total_minutes + r });
+    if (r > 0) {
+      // Même découpage que weeklyTotals : la semaine ISO du jour travaillé.
+      // S'en écarter ferait tomber la route dans une autre semaine que ses heures.
+      const k = format(weekStart(new Date(`${e.work_date}T00:00:00`)), 'yyyy-MM-dd');
+      cur.routeByWeek.set(k, (cur.routeByWeek.get(k) || 0) + r);
+    }
     byWorker.set(id, cur);
   }
 
-  const out: {
-    worker: string; weekStart: string; weekEnd: string;
-    minutes: number; normalMinutes: number; overtimeMinutes: number;
-    overtime1Minutes: number; overtime2Minutes: number; base: number | null;
-  }[] = [];
+  const out: RecapRow[] = [];
   byWorker.forEach((v, id) => {
     const base = opts.weeklyHoursByWorker?.get(id);
     // Sans horaire de base connu, on additionne sans prétendre savoir ce qui
@@ -84,12 +107,14 @@ function weeklyRecap(opts: ExportOptions) {
     const weeks = weeklyTotals(v.rows, base ?? Number.MAX_SAFE_INTEGER / 60);
     for (const w of weeks) {
       out.push({
-        worker: v.name, weekStart: w.weekStart, weekEnd: w.weekEnd,
+        userId: id, worker: v.name, firstName: v.first, lastName: v.last,
+        weekStart: w.weekStart, weekEnd: w.weekEnd,
         minutes: w.minutes,
         normalMinutes: base == null ? w.minutes : w.normalMinutes,
         overtimeMinutes: base == null ? 0 : w.overtimeMinutes,
         overtime1Minutes: base == null ? 0 : w.overtime1Minutes,
         overtime2Minutes: base == null ? 0 : w.overtime2Minutes,
+        routeMinutes: v.routeByWeek.get(w.weekStart) || 0,
         base: base ?? null,
       });
     }
@@ -200,6 +225,88 @@ export function exportEntriesToExcel(entries: ExportEntry[], opts: ExportOptions
 /** Le même classeur, encodé pour être joint à un e-mail. */
 export function excelAsBase64(entries: ExportEntry[], opts: ExportOptions): string {
   return XLSX.write(buildWorkbook(entries, opts), { type: 'base64', bookType: 'xlsx' });
+}
+
+// ─── CSV pour le logiciel de paie ────────────────────────────────────────────
+//
+// Le PDF se lit, l'Excel se relit, le CSV s'IMPORTE. Ce n'est pas le même
+// fichier et ce n'est pas le même lecteur : celui-ci s'adresse à un programme.
+// D'où trois choix qui n'en sont pas :
+//
+//  · le point-virgule, parce qu'Excel français coupe là et pas sur la virgule ;
+//  · la virgule décimale, pour la même raison (7.5 devient une date en France) ;
+//  · le BOM UTF-8, sans lequel « Rénovation » s'affiche « RÃ©novation ».
+//
+// UNE LIGNE = UN SALARIÉ × UNE SEMAINE. C'est la maille de la paie : les
+// heures supplémentaires se comptent à la semaine, jamais au jour. Le détail
+// pointage par pointage reste dans l'Excel — il justifie, il ne se saisit pas.
+//
+// Les noms de colonnes et les codes de rubrique (HN, HS25…) se règlent cabinet
+// par cabinet dans Silae, Sage ou Cegid : aucun format universel n'existe. Ce
+// fichier donne les BONNES VALEURS dans des colonnes nommées en clair ; le
+// comptable fait correspondre les colonnes une fois, à son premier import.
+
+/** Échappement CSV : guillemets doublés, et on cite dès qu'un séparateur traîne. */
+function csvCell(v: string | number): string {
+  const s = String(v ?? '');
+  return /[";\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+/** Des minutes en centièmes d'heure, virgule française : 450 → « 7,50 ». */
+function centiemes(minutes: number): string {
+  return (minutes / 60).toFixed(2).replace('.', ',');
+}
+
+/**
+ * Le récapitulatif de paie, en CSV importable.
+ *
+ * Renvoie le texte du fichier — l'écriture est séparée pour que la même chaîne
+ * puisse partir en téléchargement comme en pièce jointe, sans diverger.
+ */
+export function payrollCsv(opts: ExportOptions): string {
+  const recap = weeklyRecap(opts);
+  const rates = opts.overtimeRates || DEFAULT_OVERTIME_RATES;
+  const head = [
+    'Matricule', 'Nom', 'Prenom',
+    'Semaine du', 'Semaine au',
+    'Heures normales', `Heures sup ${rates.tier1}%`, `Heures sup ${rates.tier2}%`,
+    'Dont route payee', 'Total heures',
+    'Base hebdo', 'Controle h:min',
+  ];
+  const lines = [head.map(csvCell).join(';')];
+  for (const r of recap) {
+    lines.push([
+      opts.payrollIdByWorker?.get(r.userId) || '',
+      r.lastName || r.worker,
+      r.firstName,
+      format(parseISO(r.weekStart), 'dd/MM/yyyy'),
+      format(parseISO(r.weekEnd), 'dd/MM/yyyy'),
+      centiemes(r.normalMinutes),
+      centiemes(r.overtime1Minutes),
+      centiemes(r.overtime2Minutes),
+      centiemes(r.routeMinutes),
+      centiemes(r.minutes),
+      // Sans horaire de base connu, rien n'est réparti : on laisse vide plutôt
+      // que d'écrire 35 et de faire passer des heures sup pour des normales.
+      r.base == null ? '' : String(r.base).replace('.', ','),
+      formatMinutesToHours(r.minutes),
+    ].map(csvCell).join(';'));
+  }
+  // CRLF : c'est ce qu'attendent Excel et la plupart des imports de paie.
+  return lines.join('\r\n') + '\r\n';
+}
+
+export function exportEntriesToCSV(opts: ExportOptions): void {
+  // Le BOM en tête du Blob, pas dans la chaîne : la chaîne sert aussi ailleurs.
+  const blob = new Blob(['﻿', payrollCsv(opts)], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${opts.fileName}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 export function exportEntriesToPDF(entries: ExportEntry[], opts: ExportOptions): void {

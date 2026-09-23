@@ -140,6 +140,12 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
   const [mLast, setMLast] = useState('');
   const [mPhone, setMPhone] = useState('');
   const [mNir, setMNir] = useState('');
+  // Matricule de paie : le numéro du cabinet comptable, clé du CSV de paie.
+  // `matriculeDispo` retient si la colonne existe VRAIMENT en base — tant que
+  // la migration du matricule n'est pas appliquée, on n'affiche pas un champ
+  // qui perdrait ce qu'on y tape.
+  const [mMatricule, setMMatricule] = useState('');
+  const [matriculeDispo, setMatriculeDispo] = useState(false);
   const [mHireDate, setMHireDate] = useState('');
   const [mContract, setMContract] = useState('');
   const [mRate, setMRate] = useState('');
@@ -166,21 +172,35 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
     setMPhone(worker.phone || '');
     // Données de paie : table séparée (user_payroll), lisible par le bureau
     // uniquement — plus jamais dans la ligne users visible de tous les salariés.
-    setMNir(''); setMHireDate(''); setMContract(''); setMRate(''); setMWeekly('');
+    setMNir(''); setMMatricule(''); setMHireDate(''); setMContract(''); setMRate(''); setMWeekly('');
     // Si on passe à un autre salarié avant la réponse, celle-ci est ignorée
     // (sinon la fiche du suivant hériterait du NIR / taux du précédent).
     let stale = false;
-    supabase.from('user_payroll')
-      .select('social_security_number, hire_date, contract_type, hourly_rate, weekly_hours')
-      .eq('user_id', worker.id).maybeSingle()
-      .then(({ data }) => {
-        if (stale || !data) return;
-        setMNir(data.social_security_number || '');
-        setMHireDate(data.hire_date || '');
-        setMContract(data.contract_type || '');
-        setMRate(data.hourly_rate != null ? String(data.hourly_rate) : '');
-        setMWeekly(data.weekly_hours != null ? String(data.weekly_hours) : '');
-      });
+    (async () => {
+      const COLS = 'social_security_number, hire_date, contract_type, hourly_rate, weekly_hours';
+      // Première lecture AVEC le matricule. Si la migration n'est pas encore
+      // appliquée, PostgREST refuse la colonne : on relit sans elle et on
+      // masque le champ, plutôt que d'offrir une case qui n'enregistre rien.
+      const avec = await supabase.from('user_payroll').select(`${COLS}, payroll_id`)
+        .eq('user_id', worker.id).maybeSingle();
+      if (stale) return;
+      const dispo = !avec.error;
+      setMatriculeDispo(dispo);
+      const { data } = dispo ? avec : await supabase.from('user_payroll').select(COLS)
+        .eq('user_id', worker.id).maybeSingle();
+      if (stale || !data) return;
+      const d = data as {
+        social_security_number: string | null; hire_date: string | null;
+        contract_type: string | null; hourly_rate: number | null;
+        weekly_hours: number | null; payroll_id?: string | null;
+      };
+      setMNir(d.social_security_number || '');
+      setMMatricule(d.payroll_id || '');
+      setMHireDate(d.hire_date || '');
+      setMContract(d.contract_type || '');
+      setMRate(d.hourly_rate != null ? String(d.hourly_rate) : '');
+      setMWeekly(d.weekly_hours != null ? String(d.weekly_hours) : '');
+    })();
     return () => { stale = true; };
   }, [worker?.id]);
 
@@ -487,6 +507,8 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
         first_name: mFirst.trim(), last_name: mLast.trim(), phone: mPhone.trim() || null,
       }).eq('id', worker.id).eq('company_id', worker.company_id);
       if (error) throw error;
+      // Le matricule n'entre dans l'écriture que si la colonne existe : sinon
+      // TOUT l'enregistrement échouerait, y compris le taux horaire.
       const { error: payErr } = await supabase.from('user_payroll').upsert({
         user_id: worker.id, company_id: worker.company_id,
         social_security_number: mNir.trim() || null,
@@ -495,7 +517,15 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
         hourly_rate: rate,
         weekly_hours: weekly,
         updated_at: new Date().toISOString(),
+        ...(matriculeDispo ? { payroll_id: mMatricule.trim() || null } : {}),
       }, { onConflict: 'user_id' });
+      // 23505 : ce matricule est déjà pris par un autre salarié de la boîte.
+      // Le dire précisément — « impossible de modifier » enverrait chercher
+      // l'erreur dans le nom ou le taux.
+      if (payErr && (payErr as { code?: string }).code === '23505') {
+        toast.error(`Le matricule « ${mMatricule.trim()} » est déjà attribué à un autre salarié.`);
+        return;
+      }
       if (payErr) throw payErr;
       toast.success('Salarié modifié');
       onChanged?.();
@@ -594,6 +624,19 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
                 <div className="space-y-1"><Label className="text-xs">Date d'embauche</Label><Input type="date" value={mHireDate} onChange={(e) => setMHireDate(e.target.value)} /></div>
                 <div className="space-y-1"><Label className="text-xs">Type de contrat</Label><Input value={mContract} onChange={(e) => setMContract(e.target.value)} placeholder="CDI, CDD, Intérim…" /></div>
               </div>
+              {/* Matricule de paie — la clé du CSV importé par le comptable.
+                  Recopié tel quel : « 00042 » n'est pas « 42 ». Le champ
+                  n'apparaît que si la colonne existe en base. */}
+              {matriculeDispo && (
+                <div className="space-y-1">
+                  <Label className="text-xs">Matricule de paie</Label>
+                  <Input value={mMatricule} onChange={(e) => setMMatricule(e.target.value)} placeholder="ex. 00042" maxLength={32} />
+                  <p className="text-[11px] text-muted-foreground">
+                    Le numéro donné par votre <strong>cabinet comptable</strong>. Recopiez-le tel quel, zéros compris.
+                    C&apos;est la colonne qui permet au logiciel de paie de rattacher les heures au bon bulletin.
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Habilitations — liste prédéfinie + "Autre" en texte libre. Alertes

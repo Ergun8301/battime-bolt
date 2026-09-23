@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, Fragment, type ReactNode } from 'react';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
 import { PlanningWithWorksite, Worksite, User, Invitation, TimeEntryWithWorksite } from '@/lib/types';
@@ -17,6 +17,7 @@ import {
   ChevronLeft, ChevronRight, Plus, Trash2, Loader2,
   UserPlus, Users, Building2, Archive, CalendarRange, Download, FileSpreadsheet, FileText,
   Bell, Clock, Mail, RefreshCw, X, Pencil, LogOut, Settings, User as UserIcon, Paperclip, AlertTriangle, Info, Hammer, CheckCircle2, Menu, TrendingUp, Palmtree,
+  Image as ImageIcon,
   ShieldCheck,
 } from 'lucide-react';
 import {
@@ -32,7 +33,7 @@ import { fr } from 'date-fns/locale';
 import type { DateRange } from 'react-day-picker';
 import { toast } from 'sonner';
 import { computeMissingDays } from '@/lib/work-status';
-import { exportEntriesToExcel, exportEntriesToPDF, excelAsBase64 } from '@/lib/export-utils';
+import { exportEntriesToExcel, exportEntriesToPDF, exportEntriesToCSV, excelAsBase64 } from '@/lib/export-utils';
 import { fetchAllPaged, chunk } from '@/lib/fetch-all';
 import { isPreviewHost } from '@/lib/hosting';
 import WorkerDetailDialog from '@/components/worker-detail';
@@ -85,6 +86,14 @@ async function sendKey(companyId: string, from: string, to: string, content: str
 function fmtStat(n: number): string {
   if (n >= 10000) return `${(n / 1000).toFixed(n >= 100000 ? 0 : 1).replace(/\.0$/, '').replace('.', ',')}k`;
   return String(n);
+}
+
+// Des minutes en « 7 h 30 » — la façon dont un conducteur de travaux lit des
+// heures. Jamais « 7,5 h » : la décimale se confond avec un tarif.
+function fmtHours(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m === 0 ? `${h} h` : `${h} h ${String(m).padStart(2, '0')}`;
 }
 
 // Colour belongs to the CHANTIER (stable all week), not the poseur.
@@ -159,6 +168,17 @@ interface RealAgg { minutes: number; start: string; end: string; count: number; 
   /** Au moins une réserve de cette case n'a pas encore été levée par le bureau. */
   reserveOpen: boolean; note: string }
 const realKey = (userId: string, date: string, worksiteId: string | null) => `${userId}|${date}|${worksiteId}`;
+
+/** Une pièce jointe telle que le panneau « pièces » du cockpit la montre. */
+interface DocLine {
+  id: string;
+  worksite_id: string | null;
+  label: string | null;
+  file_name: string | null;
+  mime_type: string | null;
+  work_date: string | null;
+  created_at: string;
+}
 
 // ─── compact one-line chantier bubble ──────────────────────────────────────────
 
@@ -271,7 +291,14 @@ function PaletteRow({ worksite, color }: { worksite: Worksite; color: string }) 
     id: `palette-new-${worksite.id}`,
     data: { type: 'new', worksiteId: worksite.id },
   });
-  const sub = [worksite.product_type, worksite.city].filter(Boolean).join(' · ');
+  // « Autre » est le fourre-tout créé par la base pour chaque entreprise : il
+  // n'a pas de ville, et il ne doit pas en afficher une. S'il en porte une,
+  // c'est qu'elle a été saisie à la main — elle ne décrit alors plus rien, et
+  // on ne la montre pas. Le salarié qui le choisit peut, lui, le nommer.
+  const isOther = worksite.client_name === 'Autre';
+  const sub = isOther
+    ? 'Chantier non listé — le salarié le nomme'
+    : [worksite.product_type, worksite.city].filter(Boolean).join(' · ');
   return (
     <div
       ref={setNodeRef}
@@ -352,11 +379,49 @@ const PL_CSS = `
 .bt-pl-logo .x{color:#FFC21A}
 .bt-pl-stats{display:flex;align-items:center;gap:2px;flex-wrap:wrap;min-width:0;justify-self:start}
 .bt-pl-stat{display:inline-flex;align-items:center;gap:7px;padding:3px 14px;white-space:nowrap;position:relative}
-.bt-pl-stat + .bt-pl-stat::before{content:"";position:absolute;left:0;top:50%;transform:translateY(-50%);width:1px;height:18px;background:rgba(242,237,227,.15)}
+/* Le trait vertical se trace entre deux CONTENEURS : depuis que le panneau est
+   le frère du bouton, c'est le conteneur qui se répète, plus le chiffre. */
+.bt-pl-statwrap{position:relative}
+.bt-pl-statwrap + .bt-pl-statwrap::before{content:"";position:absolute;left:0;top:50%;transform:translateY(-50%);width:1px;height:18px;background:rgba(242,237,227,.15)}
 .bt-pl-stat .sd{width:7px;height:7px;border-radius:50%;flex:none}
 .bt-pl-stat .v{font-family:'JetBrains Mono',monospace;font-weight:800;font-size:15px;color:#F2EDE3;font-variant-numeric:tabular-nums}
 .bt-pl-stat .l{font-size:11px;font-weight:600;color:#a59c86}
 .bt-pl-stat.warn .v{color:#FFC21A}
+
+/* Un chiffre du cockpit qui s'ouvre. Le bouton EST le .bt-pl-stat, pour ne pas
+   casser le séparateur « .bt-pl-stat + .bt-pl-stat::before » : un conteneur
+   intermédiaire aurait supprimé les traits verticaux entre les chiffres. */
+button.bt-pl-stat{font:inherit;background:none;border:0;border-radius:9px;cursor:pointer;-webkit-appearance:none}
+button.bt-pl-stat:hover{background:rgba(242,237,227,.09)}
+button.bt-pl-stat[aria-expanded="true"]{background:rgba(242,237,227,.14)}
+button.bt-pl-stat:focus-visible{outline:2px solid #FFC21A;outline-offset:1px}
+button.bt-pl-stat .ch{opacity:0;font-size:9px;color:#a59c86;margin-left:-3px;transition:opacity .12s}
+button.bt-pl-stat:hover .ch,button.bt-pl-stat[aria-expanded="true"] .ch{opacity:1}
+
+/* Le panneau d'un chiffre. Aligné à gauche sous son chiffre, jamais au-delà
+   du bord de l'écran sur un portable posé en paysage. */
+.bt-pl-sp{position:absolute;top:calc(100% + 9px);left:0;z-index:45;width:330px;max-width:min(330px,92vw);white-space:normal;text-align:left;background:#fff;color:#15120F;border:1px solid rgba(21,18,15,.14);border-radius:14px;box-shadow:0 24px 50px -18px rgba(21,18,15,.45);overflow:hidden;cursor:default}
+.bt-pl-sp-h{display:flex;align-items:baseline;gap:6px;padding:9px 13px 7px;border-bottom:1px solid rgba(21,18,15,.08);font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:#9a948a;font-weight:700}
+.bt-pl-sp-h .n{font-size:11px;color:#15120F}
+.bt-pl-sp-list{max-height:330px;overflow-y:auto}
+.bt-pl-sp-empty{padding:20px 13px;text-align:center;color:#9a948a;font-size:12.5px;font-weight:600;line-height:1.45}
+.bt-pl-sp-row{display:flex;align-items:center;gap:9px;width:100%;padding:8px 13px;border:0;background:none;font:inherit;text-align:left;border-top:1px solid rgba(21,18,15,.05)}
+.bt-pl-sp-list > *:first-child{border-top:0}
+button.bt-pl-sp-row{cursor:pointer}
+button.bt-pl-sp-row:hover{background:#F9F5EC}
+.bt-pl-sp-row .nm{flex:1;min-width:0;font-size:13.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bt-pl-sp-row .sub{display:block;font-size:11px;font-weight:500;color:#8a8378;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bt-pl-sp-row .amt{font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:800;color:#15120F;flex:none;font-variant-numeric:tabular-nums}
+.bt-pl-sp-row .amt.warn{color:#B5472E}
+.bt-pl-sp-grp{display:flex;align-items:center;gap:7px;width:100%;padding:7px 13px 5px;border:0;background:#FBF8F1;font:inherit;text-align:left;cursor:pointer;border-top:1px solid rgba(21,18,15,.05)}
+.bt-pl-sp-grp:hover{background:#F4EEE1}
+.bt-pl-sp-grp .nm{flex:1;min-width:0;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;color:#6b6459;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bt-pl-sp-grp .amt{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:800;color:#9a948a}
+.bt-pl-sp-doc{display:flex;align-items:center;gap:8px;padding:6px 13px 6px 22px;font-size:12.5px}
+.bt-pl-sp-doc .nm{flex:1;min-width:0;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bt-pl-sp-doc .dt{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#9a948a;flex:none}
+.bt-pl-sp-foot{padding:7px 13px;border-top:1px solid rgba(21,18,15,.08);background:#FBF8F1;font-size:11px;color:#8a8378;font-weight:600;line-height:1.4}
+
 .bt-pl-cockpit-right{justify-self:end;display:flex;align-items:center;gap:11px;min-width:0}
 .bt-pl-trial{display:inline-flex;align-items:center;gap:8px;background:#211B14;border:1px solid rgba(255,194,26,.4);color:#F2EDE3;border-radius:999px;padding:4px 5px 4px 13px;font-size:12px;font-weight:600;white-space:nowrap}
 .bt-pl-trial .d{width:7px;height:7px;border-radius:50%;background:#FFC21A;box-shadow:0 0 9px rgba(255,194,26,.8);flex:none}
@@ -635,6 +700,15 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   // Saisies pas encore envoyées : affichées en pointillé, jamais comptées.
   const [draftEntries, setDraftEntries] = useState<{ user_id: string; work_date: string; worksite_id: string | null; start_time: string; end_time: string; total_minutes: number; reception: string | null; reserve_resolved_at: string | null; observation: string | null }[]>([]);
   const [docsByWorksite, setDocsByWorksite] = useState<Map<string, number>>(new Map()); // nb de documents par chantier (pastille 📎)
+  // Le chiffre du cockpit ouvert, s'il y en a un. Les quatre chiffres se lisent
+  // tous de la même façon : un clic, un panneau, la liste qui compose le total.
+  const [statPanel, setStatPanel] = useState<null | 'workers' | 'hours' | 'waiting' | 'docs'>(null);
+  // Le détail des pièces jointes — chargé seulement à l'ouverture du panneau.
+  // Le compte par chantier (docsByWorksite) reste une requête légère : une
+  // entreprise avec des milliers de photos ne doit pas les charger pour une
+  // pastille. null = pas encore lu ; 'ko' = lecture en échec (on le dit).
+  const [docList, setDocList] = useState<DocLine[] | null>(null);
+  const [docListState, setDocListState] = useState<'idle' | 'loading' | 'ok' | 'ko'>('idle');
   const [todayAbsence, setTodayAbsence] = useState<Map<string, string>>(new Map());
   const [missingByWorker, setMissingByWorker] = useState<Map<string, string[]>>(new Map());
   const [invitations, setInvitations] = useState<Invitation[]>([]);
@@ -1069,6 +1143,66 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     return { workers: workers.length, hours: Math.round(minutes / 60), waiting, docs };
   }, [realMap, missingByWorker, docsByWorksite, workers.length]);
 
+  // ─── Ce qui compose chaque chiffre du cockpit ───────────────────────────────
+  // Un chiffre sans sa décomposition ne sert qu'à inquiéter : « 3 en attente »
+  // ne dit ni qui, ni quels jours. Ces trois listes répondent à la question que
+  // le chiffre pose. Elles ne relisent rien : tout est déjà chargé.
+
+  /** Les heures de la semaine affichée, chantier par chantier, la plus grosse d'abord. */
+  const hoursByWorksite = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const e of realEntries) m.set(e.worksite_id || '', (m.get(e.worksite_id || '') || 0) + (e.total_minutes || 0));
+    return Array.from(m.entries())
+      .map(([id, minutes]) => ({ id, minutes, name: id ? (worksites.find((w) => w.id === id)?.client_name || 'Chantier supprimé') : 'Sans chantier' }))
+      .sort((a, b) => b.minutes - a.minutes);
+  }, [realEntries, worksites]);
+
+  /** Qui doit encore des heures, et pour quels jours. */
+  const waitingByWorker = useMemo(() => {
+    const out: { id: string; name: string; days: string[] }[] = [];
+    for (const w of workers) {
+      const days = missingByWorker.get(w.id) || [];
+      if (days.length) out.push({ id: w.id, name: `${w.first_name} ${w.last_name}`, days: [...days].sort() });
+    }
+    return out.sort((a, b) => b.days.length - a.days.length);
+  }, [workers, missingByWorker]);
+
+  /** Les pièces jointes rangées par chantier — le classement qu'on n'avait pas. */
+  const docsByChantier = useMemo(() => {
+    if (!docList) return [];
+    const m = new Map<string, DocLine[]>();
+    for (const d of docList) {
+      const k = d.worksite_id || '';
+      const arr = m.get(k); if (arr) arr.push(d); else m.set(k, [d]);
+    }
+    return Array.from(m.entries())
+      .map(([id, docs]) => ({ id, docs, name: id ? (worksites.find((w) => w.id === id)?.client_name || 'Chantier supprimé') : 'Sans chantier' }))
+      .sort((a, b) => b.docs.length - a.docs.length);
+  }, [docList, worksites]);
+
+  // Le détail des pièces se lit à l'ouverture du panneau, à chaque ouverture :
+  // une liste gardée en mémoire aurait fini par montrer un document supprimé
+  // ailleurs. Une ouverture est un geste volontaire, une requête indexée par
+  // company_id la paie sans effort.
+  useEffect(() => {
+    if (statPanel !== 'docs' || !user?.company_id) return;
+    let cancelled = false;
+    setDocListState('loading');
+    (async () => {
+      const { data, error } = await supabase.from('documents')
+        .select('id,worksite_id,label,file_name,mime_type,work_date,created_at')
+        .eq('company_id', user.company_id)
+        .order('created_at', { ascending: false });
+      if (cancelled) return;
+      // Une erreur de lecture ne doit pas se lire « aucune pièce » : c'est le
+      // contresens exact qu'on veut éviter dans un dossier de litige.
+      if (error) { setDocListState('ko'); return; }
+      setDocList((data || []) as DocLine[]);
+      setDocListState('ok');
+    })();
+    return () => { cancelled = true; };
+  }, [statPanel, user?.company_id]);
+
   const realForPlanning = (p: PlanningWithWorksite): RealAgg | undefined =>
     p.absence_type ? undefined : realMap.get(realKey(p.user_id, p.work_date, p.worksite_id));
 
@@ -1407,7 +1541,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
 
   // ─── team export (locks) ──────────────────────────────────────────────────────
 
-  const runExport = async (kind: 'excel' | 'pdf' | 'comptable') => {
+  const runExport = async (kind: 'excel' | 'pdf' | 'csv' | 'comptable') => {
     if (!user?.company_id) { toast.error('Profil non chargé'); return; }
     setExporting(true);
     try {
@@ -1425,16 +1559,29 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       // page : une lecture ratée doit arrêter l'export, pas le laisser
       // appliquer l'horaire de l'entreprise à tout le monde et annoncer des
       // heures supplémentaires fausses pour ceux qui ont une exception.
-      const { data: payroll, error: payErr } = await supabase.from('user_payroll')
-        .select('user_id, weekly_hours').eq('company_id', user.company_id);
+      //
+      // Le matricule (payroll_id) vient d'une migration qui peut ne pas encore
+      // être appliquée : PostgREST répond alors « colonne inconnue » et
+      // ferait échouer TOUT l'export. On relit sans lui, et la colonne
+      // Matricule du CSV reste vide. Une vraie erreur de lecture, elle, fait
+      // toujours échouer la seconde tentative et arrête l'export.
+      const avecMatricule = await supabase.from('user_payroll')
+        .select('user_id, weekly_hours, payroll_id').eq('company_id', user.company_id);
+      const { data: payroll, error: payErr } = avecMatricule.error
+        ? await supabase.from('user_payroll').select('user_id, weekly_hours').eq('company_id', user.company_id)
+        : avecMatricule;
       if (payErr) {
         toast.error("Horaires de base illisibles : export annulé plutôt que d'annoncer des heures supplémentaires fausses.");
         return;
       }
+      const payRows = (payroll || []) as { user_id: string; weekly_hours: number | null; payroll_id?: string | null }[];
       const overrides = new Map(
-        ((payroll || []) as { user_id: string; weekly_hours: number | null }[])
-          .filter((r) => r.weekly_hours != null)
-          .map((r) => [r.user_id, r.weekly_hours as number]),
+        payRows.filter((r) => r.weekly_hours != null).map((r) => [r.user_id, r.weekly_hours as number]),
+      );
+      // Un matricule vide ne doit pas devenir la chaîne « null » dans le CSV.
+      const payrollIdByWorker = new Map(
+        payRows.filter((r) => (r.payroll_id || '').trim() !== '')
+          .map((r) => [r.user_id, (r.payroll_id as string).trim()]),
       );
 
       // Semaines ENTIÈRES recouvrant la période, pour le récapitulatif seul :
@@ -1469,7 +1616,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       if (entries.length === 0) { toast.error(`Aucune saisie du ${format(exportRange.from, 'dd/MM')} au ${format(exportRange.to, 'dd/MM')}`); return; }
 
       const opts = {
-        fileName: `bemexo-${kind === 'pdf' ? 'rapport' : 'export'}-${from}`,
+        fileName: `bemexo-${kind === 'pdf' ? 'rapport' : kind === 'csv' ? 'paie' : 'export'}-${from}`,
         title: 'BEMEXO - Rapport hebdomadaire',
         periodLabel: `${format(exportRange.from, 'dd/MM/yyyy')} au ${format(exportRange.to, 'dd/MM/yyyy')}`,
         companyName,
@@ -1477,6 +1624,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         weeklyHoursByWorker,
         recapEntries,
         overtimeRates,
+        payrollIdByWorker,
       };
       // Message final : dépend de ce que le serveur répond (envoyé / déjà parti).
       let sentNote = '';
@@ -1529,6 +1677,17 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         }
       } else if (kind === 'excel') {
         exportEntriesToExcel(entries, opts);
+      } else if (kind === 'csv') {
+        // Le CSV se construit sur les SEMAINES ENTIÈRES (recapEntries), pas sur
+        // les jours de la période : sans ça, une période qui commence un jeudi
+        // ferait passer pour normales des heures déjà supplémentaires.
+        // Sans récapitulatif, il n'y a rien à importer — et un fichier à
+        // en-têtes seuls, le comptable l'importerait sans rien voir.
+        if (recapEntries.length === 0) {
+          toast.error('Aucune heure envoyée sur ces semaines : rien à importer en paie.');
+          return;
+        }
+        exportEntriesToCSV(opts);
       } else {
         exportEntriesToPDF(entries, opts);
       }
@@ -1548,7 +1707,9 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       const lockLabel = `${entries.length} saisie${entries.length > 1 ? 's' : ''} verrouillée${entries.length > 1 ? 's' : ''}`;
       toast.success(kind === 'comptable'
         ? `${sentNote} — ${lockLabel}`
-        : `Export téléchargé — ${lockLabel}`);
+        : kind === 'csv'
+          ? `CSV de paie téléchargé — ${lockLabel}`
+          : `Export téléchargé — ${lockLabel}`);
     } catch (err) {
       console.error('Error exporting team:', err);
       toast.error("Erreur lors de l'export");
@@ -1850,24 +2011,165 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         {/* Barre UNIQUE pleine largeur, figée (sticky) — tout aligné sur une ligne */}
         {/* COCKPIT : tableau de bord sombre (logo + stats live + essai + compte). */}
         <div className="bt-pl-cockpit">
+          {/* Les chiffres du cockpit s'ouvrent. Chacun montre ce qui le compose :
+              un total seul pose une question sans y répondre. Le survol donne la
+              phrase, le clic donne la liste.
+
+              Chaque chiffre vit dans un .bt-pl-statwrap et le panneau est son
+              FRÈRE, pas son enfant : un <button> dans un <button> est du HTML
+              invalide, et les lignes cliquables du panneau sont des boutons. */}
           <div className="bt-pl-stats">
-            <span className="bt-pl-stat"><span className="v">{fmtStat(displayWorkers.length)}</span><span className="l">salarié{displayWorkers.length > 1 ? 's' : ''}</span></span>
-            <span className="bt-pl-stat"><span className="sd" style={{ background: '#2FD584' }} /><span className="v">{fmtStat(cockpitStats.hours)} h</span><span className="l">pointées</span></span>
-            <span className={`bt-pl-stat${cockpitStats.waiting > 0 ? ' warn' : ''}`}><span className="sd" style={{ background: cockpitStats.waiting > 0 ? '#E0A21C' : '#4a453d' }} /><span className="v">{fmtStat(cockpitStats.waiting)}</span><span className="l">en attente</span></span>
-            <span className="bt-pl-stat"><Paperclip className="h-3.5 w-3.5" style={{ opacity: 0.75 }} /><span className="v">{fmtStat(cockpitStats.docs)}</span><span className="l">pièces</span></span>
+            <div className="bt-pl-statwrap">
+              <button className="bt-pl-stat" aria-expanded={statPanel === 'workers'}
+                title={`${displayWorkers.length} salarié${displayWorkers.length > 1 ? 's' : ''} — cliquez pour la liste`}
+                onClick={() => setStatPanel((p) => (p === 'workers' ? null : 'workers'))}>
+                <span className="v">{fmtStat(displayWorkers.length)}</span><span className="l">salarié{displayWorkers.length > 1 ? 's' : ''}</span><span className="ch">▾</span>
+              </button>
+              {statPanel === 'workers' && (
+                <div className="bt-pl-sp">
+                  <div className="bt-pl-sp-h">L&apos;équipe <span className="n">{displayWorkers.length}</span></div>
+                  <div className="bt-pl-sp-list">
+                    {displayWorkers.length === 0 ? (
+                      <div className="bt-pl-sp-empty">Personne pour l&apos;instant.<br />Invitez un salarié depuis « Salariés ».</div>
+                    ) : displayWorkers.map((w) => {
+                      const miss = (missingByWorker.get(w.id) || []).length;
+                      const abs = todayAbsence.get(w.id);
+                      return (
+                        <button key={w.id} className="bt-pl-sp-row"
+                          onClick={() => { setStatPanel(null); setFicheMode('manage'); setFicheWorker(w); }}>
+                          <span className="nm">{w.first_name} {w.last_name}
+                            <span className="sub">{w.role === 'lead' ? 'Chef d’équipe' : w.role === 'admin' ? 'Bureau' : 'Salarié'}{abs ? ` · ${ABSENCE_LABELS[abs] || abs}` : ''}</span>
+                          </span>
+                          <span className={`amt${miss > 0 ? ' warn' : ''}`}>{miss > 0 ? `${miss} j` : '✓'}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {displayWorkers.length > 0 && <div className="bt-pl-sp-foot">Un chiffre en rouge = des jours d&apos;heures encore à envoyer.</div>}
+                </div>
+              )}
+            </div>
+
+            <div className="bt-pl-statwrap">
+              <button className="bt-pl-stat" aria-expanded={statPanel === 'hours'}
+                title={`${cockpitStats.hours} h envoyées sur la semaine affichée — cliquez pour le détail par chantier`}
+                onClick={() => setStatPanel((p) => (p === 'hours' ? null : 'hours'))}>
+                <span className="sd" style={{ background: '#2FD584' }} /><span className="v">{fmtStat(cockpitStats.hours)} h</span><span className="l">pointées</span><span className="ch">▾</span>
+              </button>
+              {statPanel === 'hours' && (
+                <div className="bt-pl-sp">
+                  <div className="bt-pl-sp-h">Heures par chantier <span className="n">S-{getISOWeek(currentWeekStart)}</span></div>
+                  <div className="bt-pl-sp-list">
+                    {hoursByWorksite.length === 0 ? (
+                      <div className="bt-pl-sp-empty">Aucune heure envoyée<br />sur cette semaine.</div>
+                    ) : hoursByWorksite.map((r) => (
+                      <div key={r.id || 'sans'} className="bt-pl-sp-row">
+                        <span className="nm">{r.name}</span>
+                        <span className="amt">{fmtHours(r.minutes)}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="bt-pl-sp-foot">Seules les heures envoyées comptent. Les saisies en pointillé n&apos;y sont pas.</div>
+                </div>
+              )}
+            </div>
+
+            <div className="bt-pl-statwrap">
+              <button className={`bt-pl-stat${cockpitStats.waiting > 0 ? ' warn' : ''}`} aria-expanded={statPanel === 'waiting'}
+                title={cockpitStats.waiting === 0 ? 'Tout le monde est à jour' : `${cockpitStats.waiting} jour(s) d'heures manquantes — cliquez pour savoir qui`}
+                onClick={() => setStatPanel((p) => (p === 'waiting' ? null : 'waiting'))}>
+                <span className="sd" style={{ background: cockpitStats.waiting > 0 ? '#E0A21C' : '#4a453d' }} /><span className="v">{fmtStat(cockpitStats.waiting)}</span><span className="l">en attente</span><span className="ch">▾</span>
+              </button>
+              {statPanel === 'waiting' && (
+                <div className="bt-pl-sp">
+                  <div className="bt-pl-sp-h">Heures manquantes <span className="n">{cockpitStats.waiting} j</span></div>
+                  <div className="bt-pl-sp-list">
+                    {waitingByWorker.length === 0 ? (
+                      <div className="bt-pl-sp-empty">Tout le monde est à jour.</div>
+                    ) : waitingByWorker.map((r) => (
+                      <button key={r.id} className="bt-pl-sp-row"
+                        title="Ouvrir la fiche pour relancer"
+                        onClick={() => {
+                          const w = workers.find((x) => x.id === r.id);
+                          if (!w) return;
+                          setStatPanel(null); setFicheMode('manage'); setFicheWorker(w);
+                        }}>
+                        <span className="nm">{r.name}
+                          <span className="sub">{r.days.map((d) => format(parseISO(d), 'EEE d MMM', { locale: fr })).join(' · ')}</span>
+                        </span>
+                        <span className="amt warn">{r.days.length} j</span>
+                      </button>
+                    ))}
+                  </div>
+                  {waitingByWorker.length > 0 && <div className="bt-pl-sp-foot">Cliquez un nom pour ouvrir sa fiche et lui envoyer un rappel.</div>}
+                </div>
+              )}
+            </div>
+
+            <div className="bt-pl-statwrap">
+              <button className="bt-pl-stat" aria-expanded={statPanel === 'docs'}
+                title={`${cockpitStats.docs} pièce(s) jointe(s) — cliquez pour voir lesquelles, et sur quel chantier`}
+                onClick={() => setStatPanel((p) => (p === 'docs' ? null : 'docs'))}>
+                <Paperclip className="h-3.5 w-3.5" style={{ opacity: 0.75 }} /><span className="v">{fmtStat(cockpitStats.docs)}</span><span className="l">pièces</span><span className="ch">▾</span>
+              </button>
+              {statPanel === 'docs' && (
+                <div className="bt-pl-sp">
+                  <div className="bt-pl-sp-h">Pièces jointes <span className="n">{cockpitStats.docs}</span></div>
+                  <div className="bt-pl-sp-list">
+                    {docListState === 'loading' ? (
+                      <div className="bt-pl-sp-empty">Lecture…</div>
+                    ) : docListState === 'ko' ? (
+                      <div className="bt-pl-sp-empty">La liste n&apos;a pas pu être lue.<br />Refermez et rouvrez pour réessayer.</div>
+                    ) : docsByChantier.length === 0 ? (
+                      <div className="bt-pl-sp-empty">Aucune pièce jointe.<br />Photos et documents se déposent depuis le chantier.</div>
+                    ) : docsByChantier.map((g) => (
+                      <Fragment key={g.id || 'sans'}>
+                        <button className="bt-pl-sp-grp"
+                          title={g.id ? 'Ouvrir les documents de ce chantier' : 'Chantier inconnu'}
+                          disabled={!worksites.some((w) => w.id === g.id)}
+                          onClick={() => {
+                            const ws = worksites.find((w) => w.id === g.id);
+                            if (!ws) return;
+                            setStatPanel(null);
+                            setDocsWorksite({ ws, day: null });
+                          }}>
+                          <Building2 className="h-3 w-3" style={{ opacity: 0.6, flex: 'none' }} />
+                          <span className="nm">{g.name}</span>
+                          <span className="amt">{g.docs.length}</span>
+                        </button>
+                        {g.docs.map((d) => (
+                          <div key={d.id} className="bt-pl-sp-doc">
+                            {(d.mime_type || '').startsWith('image/')
+                              ? <ImageIcon className="h-3.5 w-3.5" style={{ opacity: 0.55, flex: 'none' }} />
+                              : <FileText className="h-3.5 w-3.5" style={{ opacity: 0.55, flex: 'none' }} />}
+                            <span className="nm">{d.label || d.file_name || 'Document'}</span>
+                            <span className="dt">{format(parseISO((d.work_date || d.created_at).slice(0, 10)), 'dd/MM')}</span>
+                          </div>
+                        ))}
+                      </Fragment>
+                    ))}
+                  </div>
+                  {docsByChantier.length > 0 && <div className="bt-pl-sp-foot">Cliquez le nom d&apos;un chantier pour ouvrir, télécharger ou envoyer ses pièces.</div>}
+                </div>
+              )}
+            </div>
+
             {/* En direct. Informatif : ces minutes ne sont comptées nulle part
                 tant que le salarié n'a pas fermé sa journée. */}
             {liveNow.length > 0 && (
-              <span className="bt-pl-stat" title={liveNow.map((l) => {
-                const w = workers.find((x) => x.id === l.user_id);
-                const ws = worksites.find((x) => x.id === l.worksite_id);
-                const h = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(l.started_at));
-                return `${w ? `${w.first_name} ${w.last_name}` : 'Salarié'} — ${ws?.client_name || 'chantier'} depuis ${h}`;
-              }).join('\n')}>
-                <span className="sd" style={{ background: '#2FD584' }} />
-                <span className="v">{fmtStat(liveNow.length)}</span><span className="l">en direct</span>
-              </span>
+              <div className="bt-pl-statwrap">
+                <span className="bt-pl-stat" title={liveNow.map((l) => {
+                  const w = workers.find((x) => x.id === l.user_id);
+                  const ws = worksites.find((x) => x.id === l.worksite_id);
+                  const h = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(l.started_at));
+                  return `${w ? `${w.first_name} ${w.last_name}` : 'Salarié'} — ${ws?.client_name || 'chantier'} depuis ${h}`;
+                }).join('\n')}>
+                  <span className="sd" style={{ background: '#2FD584' }} />
+                  <span className="v">{fmtStat(liveNow.length)}</span><span className="l">en direct</span>
+                </span>
+              </div>
             )}
+            {statPanel && <div className="bt-pl-ddbackdrop" onClick={() => setStatPanel(null)} />}
           </div>
           <span className="bt-pl-logo">BEME<span className="x">X</span>O</span>
           <div className="bt-pl-cockpit-right">
@@ -2642,6 +2944,13 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                 {exporting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <FileText className="h-4 w-4 mr-2" />} PDF
               </Button>
             </div>
+            {/* Le CSV s'adresse au logiciel de paie, pas à un lecteur : une ligne
+                par salarié et par semaine, heures en centièmes. Il verrouille
+                comme l'Excel — c'est le même acte, envoyer les heures à la paie. */}
+            <Button className="w-full" variant="outline" onClick={() => runExport('csv')} disabled={exporting || !exportRange}
+              title="Récapitulatif par salarié et par semaine, à importer dans le logiciel de paie (Silae, Sage, Cegid…)">
+              {exporting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <FileSpreadsheet className="h-4 w-4 mr-2" />} CSV pour la paie
+            </Button>
             <Button
               variant="outline"
               className="w-full"
