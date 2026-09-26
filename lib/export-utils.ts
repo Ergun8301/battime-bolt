@@ -7,9 +7,19 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { format, parseISO } from 'date-fns';
 import { TimeEntryWithWorksite, User } from '@/lib/types';
-import { weeklyTotals, routeMinutesByEntry, DEFAULT_OVERTIME_RATES, type OvertimeRates } from '@/lib/overtime';
+import { routeMinutesByEntry, DEFAULT_OVERTIME_RATES, TIER_1_MINUTES, type OvertimeRates } from '@/lib/overtime';
+import { weekStart, weekEnd } from '@/lib/week';
 
 export type ExportEntry = TimeEntryWithWorksite & { user?: User };
+
+/** Une ligne du récapitulatif : un salarié, une semaine. */
+interface RecapRow {
+  userId: string; worker: string; firstName: string; lastName: string;
+  weekStart: string; weekEnd: string;
+  minutes: number; normalMinutes: number; overtimeMinutes: number;
+  overtime1Minutes: number; overtime2Minutes: number;
+  routeMinutes: number; base: number | null;
+}
 
 export interface ExportOptions {
   /** File name without extension. */
@@ -44,6 +54,34 @@ export interface ExportOptions {
   recapEntries?: ExportEntry[];
   /** Taux de majoration de l'entreprise. Absent = taux légaux français. */
   overtimeRates?: OvertimeRates;
+  /**
+   * Le matricule de paie, salarié par salarié — la clé que le logiciel du
+   * comptable utilise pour rattacher une ligne à un bulletin. Sans lui, le
+   * fichier se lit mais ne s'importe pas : c'est le nom qui sert de clé, et
+   * deux homonymes suffisent à tout fausser. Absent = colonne vide, jamais
+   * un numéro inventé.
+   */
+  payrollIdByWorker?: Map<string, string>;
+  /**
+   * LES JOURS RÉELLEMENT PAYÉS, quand ils ne couvrent pas des semaines entières.
+   *
+   * `recapEntries` porte des SEMAINES ENTIÈRES, et c'est voulu : sans la
+   * semaine complète, les heures supplémentaires sont sous-comptées. Mais une
+   * semaine entière déborde de la période choisie — un export du 01/09 au
+   * 30/09 traîne le lundi 31/08 avec lui.
+   *
+   * Tant que ce débordement n'apparaissait que dans un onglet de récapitulatif
+   * à côté du détail, il informait. Dans le CSV, le récapitulatif EST le
+   * fichier : ce qui y figure est payé. Le 31/08 serait donc payé en
+   * septembre, puis repayé à l'export d'août.
+   *
+   * Avec ce champ, la semaine reste entière pour CLASSER les heures (normales,
+   * 25 %, 50 %) mais seuls les jours de la période sont COMPTÉS. Deux périodes
+   * qui se suivent ne partagent alors plus un seul jour.
+   *
+   * Absent = tous les jours comptent (comportement de l'onglet Excel, inchangé).
+   */
+  payPeriod?: { from: string; to: string };
 }
 
 /**
@@ -58,41 +96,82 @@ function weeklyRecap(opts: ExportOptions) {
   const source = opts.recapEntries;
   if (!source || source.length === 0) return [];
   const route = routeMinutesByEntry(source);
-  const byWorker = new Map<string, { name: string; rows: { work_date: string; minutes: number }[] }>();
+  const byWorker = new Map<string, {
+    name: string; first: string; last: string;
+    /** Minutes travaillées (route payée comprise) et route, JOUR par jour. */
+    byDay: Map<string, { minutes: number; route: number }>;
+  }>();
   for (const e of source) {
     const id = e.user_id;
-    const name = opts.singleWorkerName
-      || `${e.user?.first_name ?? ''} ${e.user?.last_name ?? ''}`.trim()
-      || 'Salarié';
-    const cur = byWorker.get(id) || { name, rows: [] };
-    cur.rows.push({
-      work_date: e.work_date,
-      minutes: e.total_minutes + (opts.travelPaid ? (route.get(e.id) || 0) : 0),
-    });
+    const first = e.user?.first_name ?? '';
+    const last = e.user?.last_name ?? '';
+    const name = opts.singleWorkerName || `${first} ${last}`.trim() || 'Salarié';
+    const cur = byWorker.get(id) || { name, first, last, byDay: new Map<string, { minutes: number; route: number }>() };
+    const r = opts.travelPaid ? (route.get(e.id) || 0) : 0;
+    const d = cur.byDay.get(e.work_date) || { minutes: 0, route: 0 };
+    d.minutes += e.total_minutes + r;
+    d.route += r;
+    cur.byDay.set(e.work_date, d);
     byWorker.set(id, cur);
   }
 
-  const out: {
-    worker: string; weekStart: string; weekEnd: string;
-    minutes: number; normalMinutes: number; overtimeMinutes: number;
-    overtime1Minutes: number; overtime2Minutes: number; base: number | null;
-  }[] = [];
+  const dansLaPeriode = (jour: string) =>
+    !opts.payPeriod || (jour >= opts.payPeriod.from && jour <= opts.payPeriod.to);
+
+  const out: RecapRow[] = [];
   byWorker.forEach((v, id) => {
     const base = opts.weeklyHoursByWorker?.get(id);
-    // Sans horaire de base connu, on additionne sans prétendre savoir ce qui
-    // dépasse : la colonne reste vide plutôt que fausse.
-    const weeks = weeklyTotals(v.rows, base ?? Number.MAX_SAFE_INTEGER / 60);
-    for (const w of weeks) {
+    // Sans horaire de base connu, on n'annonce aucune heure supplémentaire :
+    // une colonne vide vaut mieux qu'un chiffre faux.
+    const seuil = base == null ? Number.MAX_SAFE_INTEGER : Math.max(0, Math.round(base * 60));
+
+    // Les jours groupés par semaine ISO — le même découpage que weeklyTotals.
+    const semaines = new Map<string, string[]>();
+    // Array.from : la cible TypeScript du projet n'itère pas un Map directement.
+    for (const jour of Array.from(v.byDay.keys())) {
+      const k = format(weekStart(new Date(`${jour}T00:00:00`)), 'yyyy-MM-dd');
+      const arr = semaines.get(k); if (arr) arr.push(jour); else semaines.set(k, [jour]);
+    }
+
+    Array.from(semaines.entries()).sort((a, b) => a[0].localeCompare(b[0])).forEach(([debut, jours]) => {
+      jours.sort();
+      // La SEMAINE ENTIÈRE sert à classer : on la parcourt dans l'ordre, et
+      // chaque jour hérite de la tranche où il tombe (les premières `seuil`
+      // minutes sont normales, les 8 h suivantes à 25 %, le reste à 50 %).
+      // Puis on ne GARDE que les jours de la période payée. Un jour ne peut
+      // donc jamais être compté dans deux exports qui se suivent.
+      let cumul = 0;
+      let minutes = 0, normal = 0, t1 = 0, t2 = 0, routeM = 0;
+      let auMoinsUnJourPaye = false;
+      for (const jour of jours) {
+        const j = v.byDay.get(jour)!;
+        const debutJ = cumul;
+        const finJ = cumul + j.minutes;
+        cumul = finJ;
+        if (!dansLaPeriode(jour)) continue;
+        auMoinsUnJourPaye = true;
+        const tranche = (lo: number, hi: number) => Math.max(0, Math.min(finJ, hi) - Math.max(debutJ, lo));
+        minutes += j.minutes;
+        routeM += j.route;
+        normal += tranche(0, seuil);
+        t1 += tranche(seuil, seuil + TIER_1_MINUTES);
+        t2 += tranche(seuil + TIER_1_MINUTES, Number.MAX_SAFE_INTEGER);
+      }
+      // Une semaine dont aucun jour n'est payé ne produit pas de ligne vide.
+      if (!auMoinsUnJourPaye) return;
       out.push({
-        worker: v.name, weekStart: w.weekStart, weekEnd: w.weekEnd,
-        minutes: w.minutes,
-        normalMinutes: base == null ? w.minutes : w.normalMinutes,
-        overtimeMinutes: base == null ? 0 : w.overtimeMinutes,
-        overtime1Minutes: base == null ? 0 : w.overtime1Minutes,
-        overtime2Minutes: base == null ? 0 : w.overtime2Minutes,
+        userId: id, worker: v.name, firstName: v.first, lastName: v.last,
+        weekStart: debut,
+        weekEnd: format(weekEnd(new Date(`${debut}T00:00:00`)), 'yyyy-MM-dd'),
+        minutes,
+        normalMinutes: normal,
+        overtimeMinutes: t1 + t2,
+        overtime1Minutes: t1,
+        overtime2Minutes: t2,
+        routeMinutes: routeM,
         base: base ?? null,
       });
-    }
+    });
   });
   return out.sort((a, b) => a.worker.localeCompare(b.worker) || a.weekStart.localeCompare(b.weekStart));
 }
@@ -200,6 +279,88 @@ export function exportEntriesToExcel(entries: ExportEntry[], opts: ExportOptions
 /** Le même classeur, encodé pour être joint à un e-mail. */
 export function excelAsBase64(entries: ExportEntry[], opts: ExportOptions): string {
   return XLSX.write(buildWorkbook(entries, opts), { type: 'base64', bookType: 'xlsx' });
+}
+
+// ─── CSV pour le logiciel de paie ────────────────────────────────────────────
+//
+// Le PDF se lit, l'Excel se relit, le CSV s'IMPORTE. Ce n'est pas le même
+// fichier et ce n'est pas le même lecteur : celui-ci s'adresse à un programme.
+// D'où trois choix qui n'en sont pas :
+//
+//  · le point-virgule, parce qu'Excel français coupe là et pas sur la virgule ;
+//  · la virgule décimale, pour la même raison (7.5 devient une date en France) ;
+//  · le BOM UTF-8, sans lequel « Rénovation » s'affiche « RÃ©novation ».
+//
+// UNE LIGNE = UN SALARIÉ × UNE SEMAINE. C'est la maille de la paie : les
+// heures supplémentaires se comptent à la semaine, jamais au jour. Le détail
+// pointage par pointage reste dans l'Excel — il justifie, il ne se saisit pas.
+//
+// Les noms de colonnes et les codes de rubrique (HN, HS25…) se règlent cabinet
+// par cabinet dans Silae, Sage ou Cegid : aucun format universel n'existe. Ce
+// fichier donne les BONNES VALEURS dans des colonnes nommées en clair ; le
+// comptable fait correspondre les colonnes une fois, à son premier import.
+
+/** Échappement CSV : guillemets doublés, et on cite dès qu'un séparateur traîne. */
+function csvCell(v: string | number): string {
+  const s = String(v ?? '');
+  return /[";\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+/** Des minutes en centièmes d'heure, virgule française : 450 → « 7,50 ». */
+function centiemes(minutes: number): string {
+  return (minutes / 60).toFixed(2).replace('.', ',');
+}
+
+/**
+ * Le récapitulatif de paie, en CSV importable.
+ *
+ * Renvoie le texte du fichier — l'écriture est séparée pour que la même chaîne
+ * puisse partir en téléchargement comme en pièce jointe, sans diverger.
+ */
+export function payrollCsv(opts: ExportOptions): string {
+  const recap = weeklyRecap(opts);
+  const rates = opts.overtimeRates || DEFAULT_OVERTIME_RATES;
+  const head = [
+    'Matricule', 'Nom', 'Prenom',
+    'Semaine du', 'Semaine au',
+    'Heures normales', `Heures sup ${rates.tier1}%`, `Heures sup ${rates.tier2}%`,
+    'Dont route payee', 'Total heures',
+    'Base hebdo', 'Controle h:min',
+  ];
+  const lines = [head.map(csvCell).join(';')];
+  for (const r of recap) {
+    lines.push([
+      opts.payrollIdByWorker?.get(r.userId) || '',
+      r.lastName || r.worker,
+      r.firstName,
+      format(parseISO(r.weekStart), 'dd/MM/yyyy'),
+      format(parseISO(r.weekEnd), 'dd/MM/yyyy'),
+      centiemes(r.normalMinutes),
+      centiemes(r.overtime1Minutes),
+      centiemes(r.overtime2Minutes),
+      centiemes(r.routeMinutes),
+      centiemes(r.minutes),
+      // Sans horaire de base connu, rien n'est réparti : on laisse vide plutôt
+      // que d'écrire 35 et de faire passer des heures sup pour des normales.
+      r.base == null ? '' : String(r.base).replace('.', ','),
+      formatMinutesToHours(r.minutes),
+    ].map(csvCell).join(';'));
+  }
+  // CRLF : c'est ce qu'attendent Excel et la plupart des imports de paie.
+  return lines.join('\r\n') + '\r\n';
+}
+
+export function exportEntriesToCSV(opts: ExportOptions): void {
+  // Le BOM en tête du Blob, pas dans la chaîne : la chaîne sert aussi ailleurs.
+  const blob = new Blob(['﻿', payrollCsv(opts)], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${opts.fileName}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 export function exportEntriesToPDF(entries: ExportEntry[], opts: ExportOptions): void {

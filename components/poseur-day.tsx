@@ -289,6 +289,18 @@ const DAY_CSS = `
 .bt-site.on .bt-rdo{width:26px;height:26px;border:none;background:#FFC21A;color:#15120F;font-weight:900;font-size:14px;border-radius:50%}
 .bt-rdo-plus{flex:none;width:26px;height:26px;background:#15120F;color:#FFC21A;border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:17px}
 
+/* « Autre » choisi : on demande de quoi il s'agit. Facultatif — un nom qui
+   manque ne doit jamais retenir des heures. Rempli, il devient un vrai
+   chantier, visible du bureau comme les autres. */
+.bt-nommer{margin:-2px 0 10px;padding:13px 14px;border:1.5px dashed rgba(21,18,15,.3);border-radius:13px;background:#FBF8F1}
+.bt-nommer-t{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#6E6A63;font-weight:700;margin-bottom:9px}
+.bt-nommer-in{width:100%;font-family:'Archivo',sans-serif;font-size:15px;font-weight:600;padding:11px 13px;border:1.5px solid rgba(21,18,15,.18);border-radius:11px;background:#fff;outline:none;color:#15120F;margin-bottom:8px}
+.bt-nommer-in::placeholder{color:#b3aca0;font-weight:500}
+.bt-nommer-in:focus{border-color:#15120F}
+.bt-nommer-go{width:100%;border:0;background:#15120F;color:#FFC21A;border-radius:11px;padding:12px;font-family:inherit;font-size:14.5px;font-weight:800;cursor:pointer}
+.bt-nommer-go:disabled{background:#d9d3c7;color:#8a8378;cursor:default}
+.bt-nommer-s{display:block;font-size:12px;font-weight:500;color:#8a8378;margin-top:8px;line-height:1.4}
+
 .bt-times{display:flex;gap:9px;align-items:stretch}
 .bt-timecard{flex:1;border:1.5px solid rgba(21,18,15,.16);background:#fff;border-radius:13px;padding:11px 14px;display:flex;flex-direction:column;gap:3px;cursor:pointer;text-align:left;font-family:inherit}
 .bt-timecard:active{border-color:#15120F}
@@ -378,8 +390,14 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
   const [fObs, setFObs] = useState('');
   const [fReception, setFReception] = useState<'sans' | 'avec' | 'en_cours' | ''>(''); // statut du chantier : en cours / sans / avec réserve (facultatif)
   const [fSaving, setFSaving] = useState(false);
-  // Chantier picker (existing chantiers only — workers don't create clients)
+  // Chantier picker. « Autre » choisi, le salarié peut dire de quoi il s'agit :
+  // le nom qu'il tape devient un vrai chantier de l'entreprise (la policy
+  // worksites_worker_insert_own_company l'autorise depuis l'étape 2). Laissé
+  // vide, on reste sur « Autre » — un nom qui manque ne retient pas des heures.
   const [fWorksiteId, setFWorksiteId] = useState('');
+  const [nomLibre, setNomLibre] = useState('');
+  const [villeLibre, setVilleLibre] = useState('');
+  const [creationChantier, setCreationChantier] = useState(false);
   const [chantierQuery, setChantierQuery] = useState(''); // recherche dans la liste des chantiers (nouvelle intervention)
   // Tiroir molette (purement présentation : quelle roue on règle)
   const [drawerField, setDrawerField] = useState<'start' | 'end' | null>(null);
@@ -1391,6 +1409,34 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
   const filteredWorksites = cq
     ? sortedWorksites.filter((w) => w.client_name.toLowerCase().includes(cq) || (w.city || '').toLowerCase().includes(cq))
     : sortedWorksites;
+  const autreId = worksites.find((w) => w.client_name === OTHER_NAME)?.id || '';
+
+  /**
+   * « Autre » nommé : on en fait un vrai chantier.
+   *
+   * Hors ligne, l'insertion échouerait et on perdrait le nom tapé : dans ce cas
+   * on ne bloque pas, on garde « Autre » et on le dit. Les heures partent quand
+   * même — c'est la règle d'or, le chantier ne retient jamais l'heure.
+   */
+  const creerChantierLibre = async () => {
+    const nom = nomLibre.trim();
+    if (!nom || !user?.company_id || creationChantier) return;
+    setCreationChantier(true);
+    try {
+      const { data, error } = await supabase.from('worksites')
+        .insert({ company_id: user.company_id, client_name: nom, city: villeLibre.trim(), is_active: true })
+        .select('*').single();
+      if (error) throw error;
+      setWorksites((prev) => [...prev, data as Worksite]);
+      setFWorksiteId((data as Worksite).id);
+      setNomLibre(''); setVilleLibre('');
+      toast.success(`Chantier « ${nom} » ajouté`);
+    } catch {
+      toast.error('Le chantier n’a pas pu être ajouté. Vos heures partiront sur « Autre ».');
+    } finally {
+      setCreationChantier(false);
+    }
+  };
 
   // Unified list of the day's slots — planned-not-yet-declared, declared entries, and pending
   // (offline) entries — sorted by start time. The card position stays put as soon as the slot
@@ -1846,6 +1892,37 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
                     </button>
                   );
                 })}
+                {/* « Autre » coché : de quoi s'agissait-il ? Un restaurant, un
+                    dépôt, une adresse que le bureau n'a pas listée. Le nom tapé
+                    crée le chantier ; laissé vide, on reste sur « Autre ». */}
+                {fWorksiteId && fWorksiteId === autreId && (
+                  <div className="bt-nommer">
+                    <div className="bt-nommer-t">C&apos;était quoi ?</div>
+                    <input
+                      className="bt-nommer-in"
+                      placeholder="Restaurant Le Central, dépôt, Villa Martin…"
+                      value={nomLibre}
+                      maxLength={80}
+                      onChange={(e) => setNomLibre(e.target.value)}
+                    />
+                    <input
+                      className="bt-nommer-in"
+                      placeholder="Ville (facultatif)"
+                      value={villeLibre}
+                      maxLength={60}
+                      onChange={(e) => setVilleLibre(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="bt-nommer-go"
+                      disabled={!nomLibre.trim() || creationChantier}
+                      onClick={creerChantierLibre}
+                    >
+                      {creationChantier ? 'Ajout…' : 'Ajouter ce chantier'}
+                    </button>
+                    <span className="bt-nommer-s">Le bureau le verra sous ce nom. Vous pouvez aussi ne rien mettre et rester sur « Autre ».</span>
+                  </div>
+                )}
                 </>
               ) : (
                 <div className="bt-site on">
@@ -1925,8 +2002,15 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
                   )}
                 </div>
               )}
-              <button type="button" className="bt-save" onClick={saveSlot} disabled={fSaving}>
-                {fSaving && <Loader2 className="h-4 w-4 animate-spin" />}
+              {/* Bloqué aussi pendant la création d'un chantier : sur une
+                  connexion lente, le salarié pouvait taper « Ajouter ce
+                  chantier » puis « OK » avant la réponse. fWorksiteId valait
+                  encore « Autre » — les heures partaient sur « Autre » et le
+                  chantier créé restait orphelin, les deux messages de succès
+                  s'affichant côte à côte. Trouvé par Codex sur la PR 104. */}
+              <button type="button" className="bt-save" onClick={saveSlot} disabled={fSaving || creationChantier}
+                title={creationChantier ? 'Ajout du chantier en cours…' : undefined}>
+                {(fSaving || creationChantier) && <Loader2 className="h-4 w-4 animate-spin" />}
                 OK <span style={{ fontSize: 18 }}>✓</span>
               </button>
             </div>
