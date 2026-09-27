@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import { WEB_HOST } from '@/lib/hosting';
 import Link from 'next/link';
+import VitrineFonts from '@/components/vitrine-fonts';
+import VitrineAnalytics from '@/components/vitrine-analytics';
 
 export const metadata: Metadata = {
   title: 'Politique de confidentialité — BEMEXO',
@@ -10,7 +12,6 @@ export const metadata: Metadata = {
 
 // Page légale autonome, dans l'identité noir + jaune chantier de la landing.
 const STYLES = `
-@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
 .ml{font-family:'Archivo',sans-serif;background:#15120F;color:#c9c3b8;min-height:100vh;-webkit-font-smoothing:antialiased;overflow-x:hidden}
 .ml *{box-sizing:border-box;margin:0;padding:0}
 .ml ::selection{background:#FFC21A;color:#15120F}
@@ -41,6 +42,7 @@ const STYLES = `
 export default function ConfidentialitePage() {
   return (
     <>
+      <VitrineFonts />
       <style dangerouslySetInnerHTML={{ __html: STYLES }} />
       <div className="ml">
         <div className="ml-hazard" />
@@ -222,6 +224,7 @@ export default function ConfidentialitePage() {
 
           <div className="ml-foot">© 2026 BEMEXO — K.HABITAT (SAS)</div>
         </main>
+        <VitrineAnalytics />
       </div>
     </>
   );

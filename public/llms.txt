@@ -1,0 +1,43 @@
+# BEMEXO
+
+> Logiciel de pointage, de planning d’équipe et d’export de paie pour les entreprises du bâtiment et des travaux publics. Vos équipes saisissent leurs heures depuis leur téléphone et envoient leur journée ; vous récupérez tout, propre et prêt pour la paie. Une seule saisie. Tout suit.
+
+- Pour qui : BTP, artisans, intérim (menuisiers, couvreurs, paysagistes, plombiers, maçons, poseurs, électriciens, carreleurs, charpentiers, peintres, agences d’intérim).
+- Le salarié saisit ses heures sur le chantier (chantier, début, fin) et envoie sa journée. Sans réseau, la saisie est conservée sur le téléphone et part toute seule au retour du réseau.
+- Le bureau voit les heures par chantier et par salarié dès l’envoi de la journée ; les jours oubliés sont repérés.
+- En fin de mois : export Excel ou PDF pour la paie, prêt pour le comptable.
+- Démarrage en cinq minutes : vous ajoutez vos salariés et vos chantiers, ils installent l’appli.
+- Disponible en France et en Suisse romande.
+
+## Pages principales
+
+- [Accueil](https://bemexo.com/landing) : présentation, fonctionnement, tarif, questions fréquentes
+- [Pointage chantier](https://bemexo.com/fonctionnalites/pointage-chantier) : la saisie des heures depuis le téléphone, sur le chantier
+- [Planning d’équipe](https://bemexo.com/fonctionnalites/planning-equipe) : affecter les salariés aux chantiers, voir qui est où et combien d’heures
+- [Export paie](https://bemexo.com/fonctionnalites/export-paie) : récapitulatif d’heures de fin de mois, prêt pour le comptable
+- [BEMEXO en Suisse romande](https://bemexo.com/suisse) : timbrage de chantier sur mobile, tarifs indicatifs en CHF
+- [Timbrage de chantier (Suisse)](https://bemexo.com/suisse/timbrage-chantier)
+- [Enregistrement du temps de travail en Suisse](https://bemexo.com/suisse/enregistrement-temps-de-travail) : art. 46 LTr, art. 73 OLT 1, art. 73a / 73b
+
+## Tarifs
+
+Essai gratuit de 30 jours, sans carte bancaire, sans engagement. Prix selon la taille de l’équipe :
+
+- Jusqu’à 15 salariés : 49 € / mois HT
+- De 16 à 30 salariés : 89 € / mois HT
+- 31 salariés et plus : 149 € / mois HT
+
+Inclus : saisies illimitées, planning d’équipe, export paie, support en français, mises à jour.
+
+Suisse : ≈ 49 / 89 / 149 CHF par mois, montants indicatifs ; la facturation est actuellement libellée en euros.
+
+Plusieurs sociétés, intérim ou cas particulier : écrire à contact@bemexo.com.
+
+## Contact et éditeur
+
+- Contact : contact@bemexo.com
+- Éditeur : K.HABITAT (SAS), 1100 chemin de Champagne, 01440 Viriat, France
+- [Mentions légales](https://bemexo.com/mentions-legales)
+- [CGV](https://bemexo.com/cgv)
+- [CGU](https://bemexo.com/cgu)
+- [Confidentialité](https://bemexo.com/confidentialite)

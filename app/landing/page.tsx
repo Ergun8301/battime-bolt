@@ -1,5 +1,7 @@
 import type { Metadata } from 'next';
 import LandingDemoVideo from '@/components/landing-demo-video';
+import VitrineFonts from '@/components/vitrine-fonts';
+import VitrineAnalytics from '@/components/vitrine-analytics';
 
 export const metadata: Metadata = {
   title: 'BEMEXO — Les heures du batiment, saisies sur le chantier',
@@ -83,8 +85,7 @@ const LD_FAQ = {
 // Le markup provient de la maquette HTML/CSS ; styles inline conserves a
 // l'identique pour la fidelite, + quelques classes lp-* pour le responsive
 // mobile (defini dans STYLES). Pourra etre decoupe en composants plus tard.
-const STYLES = `@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
-.lp{font-family:'Archivo',sans-serif;background:#F2EDE3;color:#15120F;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;overflow-x:hidden;width:100%;min-height:100vh}
+const STYLES = `.lp{font-family:'Archivo',sans-serif;background:#F2EDE3;color:#15120F;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;overflow-x:hidden;width:100%;min-height:100vh}
 .lp *{box-sizing:border-box;margin:0;padding:0}
 .lp ::selection{background:#FFC21A;color:#15120F}
 .lp img{display:block;max-width:100%}
@@ -545,11 +546,13 @@ export default function LandingPage() {
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(LD_SOFTWARE) }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(LD_FAQ) }} />
+      <VitrineFonts />
       <style dangerouslySetInnerHTML={{ __html: STYLES }} />
       <div className="lp">
         <div dangerouslySetInnerHTML={{ __html: BODY }} />
         <LandingDemoVideo />
         <div dangerouslySetInnerHTML={{ __html: BODY_SUITE }} />
+        <VitrineAnalytics tone="dark" />
       </div>
     </>
   );

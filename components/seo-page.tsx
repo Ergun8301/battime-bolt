@@ -1,5 +1,7 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
+import VitrineFonts from '@/components/vitrine-fonts';
+import VitrineAnalytics from '@/components/vitrine-analytics';
 
 // Coquille de page de contenu SEO (charte BEMEXO : noir #15120F / jaune #FFC21A /
 // crème #F2EDE3, Archivo + JetBrains Mono). Réutilisée par toutes les pages
@@ -9,7 +11,6 @@ import type { ReactNode } from 'react';
 // `children`, en utilisant les classes utilitaires .sp-* ci-dessous.
 
 const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
 .sp{font-family:'Archivo',sans-serif;background:#F2EDE3;color:#15120F;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;overflow-x:hidden;min-height:100vh}
 .sp *{box-sizing:border-box;margin:0;padding:0}
 .sp ::selection{background:#FFC21A;color:#15120F}
@@ -103,6 +104,7 @@ export default function SeoPage({
 }) {
   return (
     <>
+      <VitrineFonts />
       <style dangerouslySetInnerHTML={{ __html: CSS }} />
       <div className="sp">
         <header className="sp-head">
@@ -157,6 +159,7 @@ export default function SeoPage({
             </nav>
           </div>
         </footer>
+        <VitrineAnalytics />
       </div>
     </>
   );
