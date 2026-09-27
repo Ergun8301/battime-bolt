@@ -1,13 +1,11 @@
 /*
- * Module IPPYX « Google Analytics 4 + bandeau cookies » — vitrine BEMEXO.
- *
- * Chargé UNIQUEMENT si la variable d'environnement PUBLIC_GA_ID est définie au
- * build (voir components/vitrine-analytics.tsx). Sans elle : ni ce fichier, ni
- * le bandeau, ni gtag ne sont servis.
+ * Module IPPYX « Google Analytics 4 + bandeau cookies » — BEMEXO.
+ * Inclus sur tout le site par components/site-analytics.tsx.
  *
  * 1. Consent Mode v2 : tout est « denied » par défaut, avant tout le reste.
  * 2. CookieConsent v3 (servi depuis le site) affiche le bandeau.
  * 3. gtag.js n'est téléchargé qu'APRÈS acceptation de la mesure d'audience.
+ *    Durée des cookies _ga / _ga_* : 13 mois (recommandation CNIL).
  */
 (function () {
   var script = document.currentScript;
@@ -38,7 +36,7 @@
     s.src = 'https://www.googletagmanager.com/gtag/js?id=' + encodeURIComponent(GA_ID);
     document.head.appendChild(s);
     gtag('js', new Date());
-    gtag('config', GA_ID);
+    gtag('config', GA_ID, { cookie_expires: 13 * 30 * 24 * 60 * 60 });
   }
 
   function applyConsent() {
@@ -56,6 +54,8 @@
   });
 
   window.CookieConsent.run({
+    // Choix mémorisé 6 mois (cookie cc_cookie), puis redemandé.
+    cookie: { name: 'cc_cookie', expiresAfterDays: 182 },
     guiOptions: {
       consentModal: { layout: 'box', position: 'bottom left', equalWeightButtons: true, flipButtons: false },
       preferencesModal: { layout: 'box', equalWeightButtons: true, flipButtons: false },
@@ -63,7 +63,7 @@
     categories: {
       necessary: { enabled: true, readOnly: true },
       analytics: {
-        autoClear: { cookies: [{ name: /^_ga/ }, { name: '_gid' }] },
+        autoClear: { cookies: [{ name: /^_ga/ }] },
       },
     },
     onConsent: applyConsent,
@@ -95,12 +95,12 @@
               },
               {
                 title: 'Mesure d’audience',
-                description: 'Google Analytics : statistiques de visite anonymisées. Désactivé tant que vous ne l’acceptez pas.',
+                description: 'Google Analytics 4 : statistiques de visite (pages vues, provenance, appareil). Cookies _ga et _ga_*, conservés 13 mois. Désactivé tant que vous ne l’acceptez pas.',
                 linkedCategory: 'analytics',
               },
               {
                 title: 'En savoir plus',
-                description: 'Voir notre <a href="/confidentialite">politique de confidentialité</a>.',
+                description: 'Voir notre <a href="/confidentialite#cookies">politique de confidentialité</a>.',
               },
             ],
           },

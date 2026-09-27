@@ -2,7 +2,6 @@ import type { Metadata } from 'next';
 import { WEB_HOST } from '@/lib/hosting';
 import Link from 'next/link';
 import VitrineFonts from '@/components/vitrine-fonts';
-import VitrineAnalytics from '@/components/vitrine-analytics';
 
 export const metadata: Metadata = {
   title: 'Politique de confidentialité — BEMEXO',
@@ -36,6 +35,7 @@ const STYLES = `
 .ml li{font-size:15px;line-height:1.55;color:#c9c3b8;padding-left:20px;position:relative}
 .ml li:before{content:"";position:absolute;left:0;top:9px;width:7px;height:7px;background:#FFC21A;border-radius:2px}
 .ml-foot{border-top:1px solid rgba(242,237,227,.1);margin-top:46px;padding-top:22px;font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#6E6A63}
+.ml-foot button{background:none;border:0;padding:0;font:inherit;color:#9a948a;cursor:pointer;text-decoration:underline}
 @media(max-width:560px){ .ml h1{font-size:30px} .ml-main{padding:32px 20px 64px} }
 `;
 
@@ -58,7 +58,7 @@ export default function ConfidentialitePage() {
 
         <main className="ml-main">
           <h1>Politique de confidentialité</h1>
-          <div className="ml-updated">Dernière mise à jour : 21 septembre 2026</div>
+          <div className="ml-updated">Dernière mise à jour : 27 septembre 2026</div>
 
           <p className="ml-intro">
             La présente politique explique comment BEMEXO traite les données personnelles dans le cadre de son service
@@ -173,7 +173,7 @@ export default function ConfidentialitePage() {
           <h2>6. Qui a accès aux données ?</h2>
           <ul>
             <li>L&apos;<strong>entreprise cliente</strong> (employeur), strictement pour ses propres salariés.</li>
-            <li>Les <strong>sous-traitants techniques</strong> de BEMEXO : {WEB_HOST.name} (hébergement de l&apos;interface) et Supabase (base de données / authentification).</li>
+            <li>Les <strong>sous-traitants techniques</strong> de BEMEXO : {WEB_HOST.name} (hébergement de l&apos;interface) et Supabase (base de données / authentification) ; pour la mesure d&apos;audience du site, Google (uniquement avec votre accord, voir section 11) et Cloudflare (statistiques sans cookie).</li>
             <li>Le cas échéant, les autorités si la loi l&apos;exige.</li>
           </ul>
 
@@ -209,22 +209,57 @@ export default function ConfidentialitePage() {
             (<a href="https://www.cnil.fr" target="_blank" rel="noreferrer">cnil.fr</a>).
           </p>
 
-          <h2>11. Cookies</h2>
+          <h2 id="audience">11. Mesure d&apos;audience (Google Analytics 4)</h2>
           <p>
-            BEMEXO n&apos;utilise que des cookies <strong>strictement nécessaires</strong> au fonctionnement
-            (authentification / session). Aucun cookie publicitaire ou de traçage tiers n&apos;est utilisé ; aucun
-            bandeau de consentement n&apos;est donc requis pour ces cookies essentiels.
+            Sur le site bemexo.com, nous utilisons <strong>Google Analytics 4</strong> pour mesurer la fréquentation
+            du site et l&apos;efficacité de nos campagnes publicitaires (pages vues, provenance des visites, type
+            d&apos;appareil et de navigateur).
+          </p>
+          <ul>
+            <li><strong>Consentement</strong> : Google Analytics n&apos;est chargé qu&apos;après votre accord, donné
+              dans le bandeau cookies (« Tout accepter » ou catégorie « Mesure d&apos;audience »). Sans accord, aucun
+              script Google n&apos;est chargé et aucun cookie Google n&apos;est déposé. Base légale : votre consentement
+              (art. 6.1.a du RGPD et art. 82 de la loi « Informatique et Libertés »).</li>
+            <li><strong>Cookies</strong> : <strong>_ga</strong> et <strong>_ga_C76Q47N9KN</strong>, conservés
+              <strong> 13 mois</strong> au maximum.</li>
+            <li><strong>Destinataire</strong> : Google Ireland Limited. Des données peuvent être transférées à Google
+              LLC (États-Unis), transfert encadré par le cadre de protection des données UE–États-Unis (Data Privacy
+              Framework).</li>
+            <li><strong>Retrait</strong> : vous pouvez retirer votre accord à tout moment via le lien{' '}
+              <strong>« Gérer les cookies »</strong> en bas de page. Les cookies _ga et _ga_* sont alors supprimés.</li>
+          </ul>
+          <p>
+            Nous utilisons aussi <strong>Cloudflare Web Analytics</strong>, qui compte les visites de façon agrégée,
+            <strong> sans cookie</strong> ni stockage sur votre appareil ; il ne nécessite donc pas de consentement.
           </p>
 
-          <h2>12. Contact</h2>
+          <h2 id="cookies">12. Cookies et stockage local</h2>
+          <p>Liste complète de ce qui est déposé sur votre appareil :</p>
+          <ul>
+            <li><strong>cc_cookie</strong> — mémorise votre choix dans le bandeau cookies. Nécessaire. Durée :
+              6 mois.</li>
+            <li><strong>_ga</strong> — Google Analytics 4, distingue les visiteurs. Uniquement avec votre accord.
+              Durée : 13 mois.</li>
+            <li><strong>_ga_C76Q47N9KN</strong> — Google Analytics 4, conserve l&apos;état de la visite. Uniquement
+              avec votre accord. Durée : 13 mois.</li>
+            <li><strong>Stockage local de l&apos;application</strong> (utilisateurs connectés uniquement) — nécessaire
+              au fonctionnement : session de connexion (<strong>sb-…-auth-token</strong>, jusqu&apos;à la
+              déconnexion), heures saisies hors réseau en attente d&apos;envoi (<strong>battime_offline_…</strong>,
+              jusqu&apos;à leur envoi) et préférence d&apos;affichage du tableau de bord
+              (<strong>bemexo_admin_coach</strong>).</li>
+          </ul>
+          <p>
+            Aucun autre cookie publicitaire ou de traçage n&apos;est utilisé.
+          </p>
+
+          <h2>13. Contact</h2>
           <p>
             Pour toute question sur cette politique :{' '}
             <a href="mailto:contact@bemexo.com">contact@bemexo.com</a>.
           </p>
 
-          <div className="ml-foot">© 2026 BEMEXO — K.HABITAT (SAS)</div>
+          <div className="ml-foot">© 2026 BEMEXO — K.HABITAT (SAS) · <button type="button" data-bx-cookies="">Gérer les cookies</button></div>
         </main>
-        <VitrineAnalytics />
       </div>
     </>
   );

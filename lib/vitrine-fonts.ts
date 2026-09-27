@@ -7,8 +7,9 @@
 // public/fonts/). Même fichier, mêmes plages Unicode, mêmes graisses → rendu
 // strictement identique.
 //
-// Utilisé UNIQUEMENT par les pages de la vitrine (accueil, pages de contenu,
-// pages légales). Les écrans de l'application ne sont pas concernés.
+// Utilisé par les pages de la vitrine (accueil, pages de contenu, pages
+// légales). Les écrans de l'application chargent les mêmes règles via
+// public/fonts/fonts.css (à régénérer si ce fichier change).
 
 export const VITRINE_FONT_FACES = [
   `@font-face {font-family: 'Archivo'; font-style: normal; font-weight: 400; font-stretch: 100%; font-display: swap; src: url(/fonts/archivo-vietnamese.woff2) format('woff2'); unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;}`,

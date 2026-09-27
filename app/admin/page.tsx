@@ -9,7 +9,7 @@ import { isPreviewHost } from '@/lib/hosting';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 const ADMIN_CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import url('/fonts/fonts.css');
 /* Canvas de l'app : parchemin chaud (crème plus prononcé, vers le doré sans
    tomber dans le jaune criard) — le cockpit sombre + le planning blanc
    ressortent nettement comme une carte posée dessus. */

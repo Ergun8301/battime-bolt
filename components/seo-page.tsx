@@ -1,7 +1,6 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import VitrineFonts from '@/components/vitrine-fonts';
-import VitrineAnalytics from '@/components/vitrine-analytics';
 
 // Coquille de page de contenu SEO (charte BEMEXO : noir #15120F / jaune #FFC21A /
 // crème #F2EDE3, Archivo + JetBrains Mono). Réutilisée par toutes les pages
@@ -77,6 +76,8 @@ const CSS = `
 .sp-foot-in nav{display:flex;gap:20px;flex-wrap:wrap}
 .sp-foot-in a{text-decoration:none}
 .sp-foot-in a:hover{color:#15120F}
+.sp-foot-in button{background:none;border:0;padding:0;font:inherit;color:inherit;cursor:pointer}
+.sp-foot-in button:hover{color:#15120F}
 @media(max-width:640px){
   .sp-steps{grid-template-columns:1fr}
   .sp-head-cta{padding:8px 13px;font-size:13px}
@@ -156,10 +157,10 @@ export default function SeoPage({
               <Link href="/cgu">CGU</Link>
               <Link href="/mentions-legales">Mentions légales</Link>
               <Link href="/confidentialite">Confidentialité</Link>
+              <button type="button" data-bx-cookies="">Gérer les cookies</button>
             </nav>
           </div>
         </footer>
-        <VitrineAnalytics />
       </div>
     </>
   );

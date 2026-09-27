@@ -1,7 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import VitrineFonts from '@/components/vitrine-fonts';
-import VitrineAnalytics from '@/components/vitrine-analytics';
 
 export const metadata: Metadata = {
   title: 'Conditions Générales de Vente — BEMEXO',
@@ -40,6 +39,7 @@ const STYLES = `
 .ml li{font-size:15px;line-height:1.55;color:#c9c3b8;padding-left:20px;position:relative}
 .ml li:before{content:"";position:absolute;left:0;top:9px;width:7px;height:7px;background:#FFC21A;border-radius:2px}
 .ml-foot{border-top:1px solid rgba(242,237,227,.1);margin-top:46px;padding-top:22px;font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#6E6A63}
+.ml-foot button{background:none;border:0;padding:0;font:inherit;color:#9a948a;cursor:pointer;text-decoration:underline}
 @media(max-width:560px){ .ml h1{font-size:32px} .ml-main{padding:32px 20px 64px} }
 `;
 
@@ -186,9 +186,8 @@ export default function CGVPage() {
             <a href="mailto:contact@bemexo.com">contact@bemexo.com</a>.
           </p>
 
-          <div className="ml-foot">© 2026 BEMEXO — K.HABITAT (SAS)</div>
+          <div className="ml-foot">© 2026 BEMEXO — K.HABITAT (SAS) · <button type="button" data-bx-cookies="">Gérer les cookies</button></div>
         </main>
-        <VitrineAnalytics />
       </div>
     </>
   );
