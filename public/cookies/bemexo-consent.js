@@ -57,13 +57,17 @@
       ad_personalization: ads,
     });
     gtag('set', 'ads_data_redaction', ads === 'denied');
+    // Retrait en cours de visite : gtag.js reste en mémoire, on le coupe
+    // (désactivation officielle GA) pour qu'il n'envoie plus rien.
+    window['ga-disable-' + GA_ID] = !ok;
     if (ok) loadGtag();
   }
 
-  // Événement GA4. Ne part que si gtag.js est chargé (= mesure acceptée) :
-  // sans accord, rien n'est envoyé ni mis en file d'attente.
+  // Événement GA4. Ne part qu'avec l'accord « Mesure d'audience » EN COURS
+  // (pas seulement « gtag.js a été chargé un jour ») : sans accord, rien
+  // n'est envoyé ni mis en file d'attente.
   window.bxTrack = function (name, params) {
-    if (!gtagLoaded) return;
+    if (!gtagLoaded || !window.CookieConsent.acceptedCategory('analytics')) return;
     gtag('event', name, params || {});
   };
 
