@@ -15,7 +15,7 @@ import { SAL_ILLUS, ENT_ILLUS } from './_illustrations';
 // Les illustrations des panneaux noirs (vrais ecrans Ma journee / Planning) sont
 // du HTML statique decoratif injecte tel quel (_illustrations.ts).
 const AUTH_CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import url('/fonts/fonts.css');
 .bt-auth{font-family:'Archivo',sans-serif;background:#F2EDE3;color:#15120F;-webkit-font-smoothing:antialiased;min-height:100vh;min-height:100svh}
 .bt-auth *{box-sizing:border-box}
 .bt-auth .mono{font-family:'JetBrains Mono',monospace}

@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import { Toaster } from '@/components/ui/sonner';
 import { AuthProvider } from '@/components/auth-provider';
+import SiteAnalytics from '@/components/site-analytics';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -77,6 +78,7 @@ export default function RootLayout({
           {children}
         </AuthProvider>
         <Toaster position="top-center" />
+        <SiteAnalytics />
       </body>
     </html>
   );

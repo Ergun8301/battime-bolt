@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import LandingDemoVideo from '@/components/landing-demo-video';
+import VitrineFonts from '@/components/vitrine-fonts';
 
 export const metadata: Metadata = {
   title: 'BEMEXO — Les heures du batiment, saisies sur le chantier',
@@ -83,8 +84,7 @@ const LD_FAQ = {
 // Le markup provient de la maquette HTML/CSS ; styles inline conserves a
 // l'identique pour la fidelite, + quelques classes lp-* pour le responsive
 // mobile (defini dans STYLES). Pourra etre decoupe en composants plus tard.
-const STYLES = `@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
-.lp{font-family:'Archivo',sans-serif;background:#F2EDE3;color:#15120F;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;overflow-x:hidden;width:100%;min-height:100vh}
+const STYLES = `.lp{font-family:'Archivo',sans-serif;background:#F2EDE3;color:#15120F;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;overflow-x:hidden;width:100%;min-height:100vh}
 .lp *{box-sizing:border-box;margin:0;padding:0}
 .lp ::selection{background:#FFC21A;color:#15120F}
 .lp img{display:block;max-width:100%}
@@ -533,7 +533,7 @@ const BODY_SUITE = `
         <a href="#etapes" style="color:#9a948a;text-decoration:none">Fonctionnement</a>
         <a href="#tarif" style="color:#9a948a;text-decoration:none">Tarif</a>
         <a href="mailto:contact@bemexo.com" style="color:#9a948a;text-decoration:none">Contact</a>
-        <a href="/connexion" style="color:#9a948a;text-decoration:none">Connexion</a><a href="/cgv" style="color:#9a948a;text-decoration:none">CGV</a><a href="/cgu" style="color:#9a948a;text-decoration:none">CGU</a><a href="/mentions-legales" style="color:#9a948a;text-decoration:none">Mentions legales</a><a href="/confidentialite" style="color:#9a948a;text-decoration:none">Confidentialite</a>
+        <a href="/connexion" style="color:#9a948a;text-decoration:none">Connexion</a><a href="/cgv" style="color:#9a948a;text-decoration:none">CGV</a><a href="/cgu" style="color:#9a948a;text-decoration:none">CGU</a><a href="/mentions-legales" style="color:#9a948a;text-decoration:none">Mentions legales</a><a href="/confidentialite" style="color:#9a948a;text-decoration:none">Confidentialite</a><button type="button" data-bx-cookies style="background:none;border:0;padding:0;margin:0;font:inherit;color:#9a948a;cursor:pointer">Gérer les cookies</button>
       </div>
       <div style="font-family:'JetBrains Mono',monospace;font-size:12.5px">© 2026 BEMEXO — Les heures du bâtiment.</div>
     </div>
@@ -545,6 +545,7 @@ export default function LandingPage() {
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(LD_SOFTWARE) }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(LD_FAQ) }} />
+      <VitrineFonts />
       <style dangerouslySetInnerHTML={{ __html: STYLES }} />
       <div className="lp">
         <div dangerouslySetInnerHTML={{ __html: BODY }} />
