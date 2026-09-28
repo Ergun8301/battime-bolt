@@ -113,7 +113,7 @@ export default function SeoPage({
             <Link href="/landing" className="sp-brand" aria-label="BEMEXO — accueil">
               <img src="/bemexo-wordmark-dark.svg" alt="BEMEXO" />
             </Link>
-            <Link href="/inscription" className="sp-head-cta">Essayer gratuitement</Link>
+            <Link href="/inscription" data-cta-position="header" className="sp-head-cta">Essayer gratuitement</Link>
           </div>
         </header>
 
@@ -132,7 +132,7 @@ export default function SeoPage({
             <h1 className="sp-h1">{title}</h1>
             <p className="sp-lede">{lede}</p>
             <div className="sp-hero-cta">
-              <Link href="/inscription" className="sp-ybtn">Essayer 30 jours gratuits <span aria-hidden="true">→</span></Link>
+              <Link href="/inscription" data-cta-position="hero" className="sp-ybtn">Essayer 30 jours gratuits <span aria-hidden="true">→</span></Link>
               <span className="sp-hero-note">Sans carte bancaire · prêt en 5 min</span>
             </div>
           </div>
@@ -142,7 +142,7 @@ export default function SeoPage({
           <section className="sp-final">
             <h2>{ctaTitle || 'Prêt à ranger les feuilles papier ?'}</h2>
             <p>{ctaText || 'Vos équipes saisissent leurs heures depuis leur téléphone, vous récupérez tout — propre, prêt pour la paie.'}</p>
-            <Link href="/inscription" className="sp-ybtn">Démarrer mon essai gratuit <span aria-hidden="true">→</span></Link>
+            <Link href="/inscription" data-cta-position="bas" className="sp-ybtn">Démarrer mon essai gratuit <span aria-hidden="true">→</span></Link>
             <div className="sp-final-note">30 jours gratuits · sans carte bancaire · sans engagement</div>
           </section>
         </main>

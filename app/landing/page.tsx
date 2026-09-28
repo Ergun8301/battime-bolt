@@ -140,7 +140,7 @@ const BODY = `<!-- ============ HEADER ============ -->
       </nav>
       <div style="display:flex;align-items:center;gap:14px">
         <a href="/connexion" class="lp-hide-sm" style="font-size:14.5px;font-weight:700;color:#15120F;text-decoration:none">Se connecter</a>
-        <a href="/inscription" style="background:#FFC21A;color:#15120F;font-weight:800;font-size:14.5px;padding:11px 18px;border-radius:9px;text-decoration:none;box-shadow:0 2px 0 #C99300">Essayer gratuitement</a>
+        <a href="/inscription" data-cta-position="header" style="background:#FFC21A;color:#15120F;font-weight:800;font-size:14.5px;padding:11px 18px;border-radius:9px;text-decoration:none;box-shadow:0 2px 0 #C99300">Essayer gratuitement</a>
       </div>
     </div>
   </header>
@@ -162,7 +162,7 @@ const BODY = `<!-- ============ HEADER ============ -->
           Fini les feuilles en papier qui se perdent et la ressaisie du lundi matin. Vos équipes saisissent leurs heures depuis leur téléphone et envoient leur journée — propre, prêt pour la paie.
         </p>
         <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:30px">
-          <a href="/inscription" style="background:#FFC21A;color:#15120F;font-weight:800;font-size:17px;padding:16px 26px;border-radius:11px;text-decoration:none;box-shadow:0 3px 0 #C99300;display:inline-flex;align-items:center;gap:10px">
+          <a href="/inscription" data-cta-position="hero" style="background:#FFC21A;color:#15120F;font-weight:800;font-size:17px;padding:16px 26px;border-radius:11px;text-decoration:none;box-shadow:0 3px 0 #C99300;display:inline-flex;align-items:center;gap:10px">
             Essayer 30 jours gratuits
             <span style="font-size:20px;line-height:1">→</span>
           </a>
@@ -424,7 +424,7 @@ const BODY_SUITE = `
           <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#a59c86;font-weight:700;margin-bottom:12px">Jusqu'à 15 salariés</div>
           <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:8px"><span style="font-size:46px;font-weight:900;letter-spacing:-.03em;line-height:1">49€</span><span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:#a59c86">/ mois HT</span></div>
           <div style="font-size:14px;color:#a59c86;font-weight:500;margin-bottom:20px">Petites équipes et artisans qui démarrent.</div>
-          <a href="/inscription" style="margin-top:auto;display:block;text-align:center;background:transparent;color:#F2EDE3;font-weight:800;font-size:15px;padding:13px;border-radius:10px;text-decoration:none;border:2px solid rgba(242,237,227,.4)">Commencer l'essai</a>
+          <a href="/inscription" data-cta-position="tarif" style="margin-top:auto;display:block;text-align:center;background:transparent;color:#F2EDE3;font-weight:800;font-size:15px;padding:13px;border-radius:10px;text-decoration:none;border:2px solid rgba(242,237,227,.4)">Commencer l'essai</a>
         </div>
 
         <!-- Offre 2 — mise en avant -->
@@ -435,7 +435,7 @@ const BODY_SUITE = `
           </div>
           <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:8px"><span style="font-size:52px;font-weight:900;letter-spacing:-.03em;line-height:1">89€</span><span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:#7a5e00">/ mois HT</span></div>
           <div style="font-size:14px;color:#5c4a08;font-weight:600;margin-bottom:20px">Le choix de la plupart des entreprises du bâtiment.</div>
-          <a href="/inscription" style="margin-top:auto;display:block;text-align:center;background:#15120F;color:#FFC21A;font-weight:900;font-size:15.5px;padding:14px;border-radius:11px;text-decoration:none">Commencer 30 jours gratuits</a>
+          <a href="/inscription" data-cta-position="tarif" style="margin-top:auto;display:block;text-align:center;background:#15120F;color:#FFC21A;font-weight:900;font-size:15.5px;padding:14px;border-radius:11px;text-decoration:none">Commencer 30 jours gratuits</a>
         </div>
 
         <!-- Offre 3 -->
@@ -443,7 +443,7 @@ const BODY_SUITE = `
           <div style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#a59c86;font-weight:700;margin-bottom:12px">31 salariés et plus</div>
           <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:8px"><span style="font-size:46px;font-weight:900;letter-spacing:-.03em;line-height:1">149€</span><span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:#a59c86">/ mois HT</span></div>
           <div style="font-size:14px;color:#a59c86;font-weight:500;margin-bottom:20px">Structures avec plusieurs équipes sur le terrain.</div>
-          <a href="/inscription" style="margin-top:auto;display:block;text-align:center;background:transparent;color:#F2EDE3;font-weight:800;font-size:15px;padding:13px;border-radius:10px;text-decoration:none;border:2px solid rgba(242,237,227,.4)">Commencer l'essai</a>
+          <a href="/inscription" data-cta-position="tarif" style="margin-top:auto;display:block;text-align:center;background:transparent;color:#F2EDE3;font-weight:800;font-size:15px;padding:13px;border-radius:10px;text-decoration:none;border:2px solid rgba(242,237,227,.4)">Commencer l'essai</a>
         </div>
 
       </div>
@@ -503,7 +503,7 @@ const BODY_SUITE = `
     <div data-reveal style="max-width:760px;margin:0 auto;padding:96px 28px 100px;text-align:center">
       <h2 style="font-size:52px;line-height:1.02;font-weight:900;letter-spacing:-.025em;margin-bottom:22px">Récupérez vos lundis matin.</h2>
       <p style="font-size:19px;line-height:1.5;color:#c9c3b8;font-weight:500;max-width:520px;margin:0 auto 36px">Essayez BEMEXO gratuitement pendant 30 jours. Vos gars envoient leurs heures dès demain, vous exportez à la fin du mois.</p>
-      <a href="/inscription" style="display:inline-flex;align-items:center;gap:11px;background:#FFC21A;color:#15120F;font-weight:900;font-size:19px;padding:19px 32px;border-radius:13px;text-decoration:none;box-shadow:0 4px 0 #C99300">Essayer gratuitement <span style="font-size:22px">→</span></a>
+      <a href="/inscription" data-cta-position="bas" style="display:inline-flex;align-items:center;gap:11px;background:#FFC21A;color:#15120F;font-weight:900;font-size:19px;padding:19px 32px;border-radius:13px;text-decoration:none;box-shadow:0 4px 0 #C99300">Essayer gratuitement <span style="font-size:22px">→</span></a>
       <div style="margin-top:22px;font-family:'JetBrains Mono',monospace;font-size:13px;color:#9a948a">Sans carte bancaire · sans engagement</div>
     </div>
   </section>
