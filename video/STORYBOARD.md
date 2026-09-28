@@ -151,7 +151,7 @@ Transition : le téléphone sort à droite, le bureau revient.
 |---|---|---|---|
 | 1:20 | Bouton « Réserves » (pastille rouge « 2 ») → registre « À traiter » → « Lever la réserve » → « Confirmer la levée » → toast « Réserve levée » | Zoom ×1,6 | `05 · PILOTER` — **Chaque réserve suivie jusqu'à sa levée.** |
 | 1:24 | « Coût chantiers » : cartes « Main d'œuvre · Dépenses · Total » (Total en jaune), barres de budget verte / jaune / rouge | Zoom ×1,7 | **Le vrai coût de chaque chantier.** |
-| 1:28 | Dépli d'un chantier : détail par salarié, « dont 1 h 20 de route », dépense « Matériaux · 640 € » | — | **Budget suivi, alertes à 70, 80 et 100 %.** |
+| 1:28 | Dépli d'un chantier : détail par salarié, « dont 1 h 20 de route », dépense « Matériaux · 640 € » | — | **Budget suivi, alerte e-mail à 70, 80 et 100 %.** |
 
 Transition : ruban hachuré + surtitre `30 SEPTEMBRE — FIN DU MOIS`.
 
@@ -162,8 +162,9 @@ Transition : ruban hachuré + surtitre `30 SEPTEMBRE — FIN DU MOIS`.
 | Temps | Écran réel | Action / zoom | Texte |
 |---|---|---|---|
 | 1:31 | « Exporter ▾ » → « Exporter l'équipe » → « Créneau » : 1 sept. → 30 sept. 2026 | Zoom ×1,8 sur la fenêtre | `06 · PAYER` — **La paie du mois, en un clic.** |
-| 1:35 | Boutons « Excel · PDF · CSV pour la paie · Envoyer à compta@cabinet-demo.fr » → clic sur l'envoi → toast « Envoyé à compta@cabinet-demo.fr — 186 saisies verrouillées » | Onde de clic | **Direct chez le comptable.** |
-| 1:39 | Le vrai CSV généré par BEMEXO, affiché en tableau : Matricule `00042`, Heures normales `35,00`, Heures sup 25% `4,50`, Heures sup 50% `0,00`, Dont route payee `1,33` | Défilement lent | **Prêt à importer : Silae, Sage, Cegid…** |
+| 1:35 | Boutons « Excel · PDF · CSV pour la paie · Envoyer à compta@cabinet-demo.fr » → clic « CSV pour la paie » → toast « CSV de paie téléchargé — 186 saisies verrouillées » | Onde de clic | **Excel, PDF ou CSV de paie.** |
+| 1:37 | Le vrai CSV généré par BEMEXO, affiché en tableau : Matricule `00042`, Heures normales `35,00`, Heures sup 25% `4,50`, Heures sup 50% `0,00`, Dont route payee `1,33` | Défilement lent | **Prêt à importer : Silae, Sage, Cegid…** |
+| 1:41 | Retour sur la fenêtre, le bouton « Envoyer à compta@cabinet-demo.fr » s'allume (survol) | Zoom ×2 sur le bouton | **Ou l'Excel, envoyé direct au comptable.** |
 | 1:43 | « Clôture du mois » → « Clôturer Septembre 2026 ? » → toast « septembre 2026 clôturé » → « Septembre 2026 · Clos » | Zoom ×1,6 | **Mois clôturé, heures verrouillées.** |
 | 1:46 | Téléphone de Karim : ses cartes passent en vert plein « ✓ Chez le comptable » | Téléphone glisse depuis la droite | **Et le salarié le sait.** |
 
@@ -202,6 +203,8 @@ Quatre vignettes rapides (1,5 s chacune), vrais écrans :
 | Export du coût chantier ou des réserves | Écrans uniquement, sans export |
 | Galerie photo en grille | Liste avec vignettes |
 | Chrono qui défile côté bureau | Le bureau voit un compteur « en direct », pas le chrono |
+| CSV envoyé au comptable | « Envoyer au comptable » joint l'Excel. Le CSV se télécharge. |
+| Appli qui s'ouvre sans réseau | L'appli déjà ouverte garde les saisies hors réseau et les envoie au retour du réseau |
 | Dupliquer une semaine côté bureau | Seul le salarié peut « Dupliquer cette journée » |
 
 ---
