@@ -119,8 +119,15 @@ Deno.serve(async (req) => {
 
     // 2) Le compte + l'e-mail d'invitation. Pour un invité pas encore connecté,
     //    GoTrue renvoie simplement l'invitation.
+    //    `employer_name` sert UNIQUEMENT au modèle d'e-mail (« Martin Menuiserie
+    //    vous invite… ») : un salarié reconnaît son employeur, l'e-mail n'est
+    //    pas pris pour du spam. ⚠ Ne JAMAIS l'appeler `company_name` : cette
+    //    clé-là fait CRÉER une nouvelle entreprise au trigger d'inscription.
+    const { data: company } = await supabaseAdmin
+      .from("companies").select("name").eq("id", company_id).maybeSingle();
+    const employer_name = (company?.name as string | undefined)?.trim() || null;
     const { error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
-      data: { first_name, last_name, company_id, role, phone },
+      data: { first_name, last_name, company_id, role, phone, employer_name },
     });
     if (inviteError) {
       await supabaseAdmin.from("invitations").delete().eq("id", inv.id);

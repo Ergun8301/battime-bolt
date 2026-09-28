@@ -10,6 +10,7 @@
 // ce n'est pas un email d'authentification.
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { loadUnsubscribed, sendResend } from '../_shared/email.ts';
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -18,8 +19,6 @@ const cors = {
 };
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
-
-const FROM = 'BEMEXO <contact@bemexo.com>';
 
 // Une seule définition de la semaine, la même que l'application : LUNDI → DIMANCHE
 // (voir lib/week.ts).
@@ -63,17 +62,6 @@ function parisNow(): { hour: number; weekday: number } {
 }
 const DIGEST_HOUR_PARIS = 7;
 const DIGEST_WEEKDAY = 1; // lundi — la semaine précédente est close
-
-async function sendEmail(to: string[], subject: string, html: string) {
-  const apiKey = Deno.env.get('RESEND_API_KEY');
-  if (!apiKey) throw new Error('RESEND_API_KEY manquant (secret Supabase)');
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: FROM, to, subject, html }),
-  });
-  if (!res.ok) throw new Error(`Resend ${res.status}: ${await res.text().catch(() => '')}`);
-}
 
 function buildHtml(opts: {
   companyName: string; periodLabel: string; totalMinutes: number;
@@ -135,7 +123,9 @@ function buildHtml(opts: {
 </div>`;
 }
 
-async function runForCompany(admin: ReturnType<typeof createClient>, companyId: string) {
+// respectOptOut : le cron écarte les adresses désabonnées ; le bouton
+// « Envoyer maintenant » reste une demande explicite de l'admin.
+async function runForCompany(admin: ReturnType<typeof createClient>, companyId: string, respectOptOut = true) {
   const monday = mondayISO();
   const sunday = sundayISO();
 
@@ -193,8 +183,14 @@ async function runForCompany(admin: ReturnType<typeof createClient>, companyId: 
     totalMinutes, bySite, pending, noEntry,
   });
 
-  await sendEmail(adminEmails, `BEMEXO — Récap hebdomadaire (${fmtDateFR(monday)} au ${fmtDateFR(sunday)})`, html);
-  return { companyId, sent: adminEmails.length };
+  const optedOut = respectOptOut ? await loadUnsubscribed(admin, 'weekly-digest') : new Set<string>();
+  const recipients = adminEmails.filter((e: string) => !optedOut.has(e.trim().toLowerCase()));
+  if (!recipients.length) return { companyId, skipped: 'unsubscribed' };
+  // Un envoi par destinataire : le lien de désabonnement est personnel.
+  for (const to of recipients) {
+    await sendResend({ to, subject: `BEMEXO — Récap hebdomadaire (${fmtDateFR(monday)} au ${fmtDateFR(sunday)})`, html, kind: 'weekly-digest' });
+  }
+  return { companyId, sent: recipients.length };
 }
 
 Deno.serve(async (req) => {
@@ -242,7 +238,7 @@ Deno.serve(async (req) => {
     const { data: profile } = await admin.from('users').select('company_id, role').eq('id', user.id).single();
     if (!profile || profile.role !== 'admin') return json({ error: "Réservé à l'administrateur" }, 403);
 
-    const result = await runForCompany(admin, profile.company_id);
+    const result = await runForCompany(admin, profile.company_id, false);
     return json({ mode: 'single', result });
   } catch (e) {
     return json({ error: String((e as Error)?.message || e) }, 500);
