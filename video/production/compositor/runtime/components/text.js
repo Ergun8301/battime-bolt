@@ -167,6 +167,8 @@
       if (props.dim !== undefined) dim.style.background = 'rgba(21,18,15,' + props.dim + ')';
       const card = R.h('div', 'jump-card', el, '<span class="rib"></span><div class="big">' + R.esc(props.text || '') + '</div>' + (props.sub ? '<div class="lbl">' + R.esc(props.sub) + '</div>' : ''));
       if (props.size) card.querySelector('.big').style.fontSize = props.size + 'px';
+      if (props.cardX !== undefined) card.style.left = props.cardX + 'px';
+      if (props.cardY !== undefined) card.style.top = props.cardY + 'px';
       return {
         update(lf, dur) {
           const p = E.easeOutCubic(E.clamp01(lf / 12));

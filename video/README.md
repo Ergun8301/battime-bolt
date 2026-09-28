@@ -3,7 +3,8 @@
 | | |
 |---|---|
 | **Fichier** | `bemexo-presentation-16x9.mp4` · 1920×1080 · 30 i/s · H.264 |
-| **Durée** | ≈ 2 min 10 |
+| **Affiche** | `bemexo-presentation-poster.jpg` (carte de fin) |
+| **Durée** | ≈ 2 min 18 |
 | **Conclusion** | BEMEXO — Du chantier à la paie, sans ressaisie. |
 | **Coût de production** | 0 € |
 
@@ -35,6 +36,8 @@ L'app a été compilée telle quelle, puis filmée avec des **données fictives*
 2. Lancer le faux serveur : `DEMO_PORT=4601 node production/demo-backend/server.js`.
 3. Filmer : `node production/capture/takes.js all`.
 4. Monter : `node production/compositor/render.js production/final/main.js --out bemexo.mp4`.
+5. Vérifier : `node production/compositor/render.js production/final/main.js --stills $(node production/final/keyframes.js) --stills-dir stills`
+   produit une image par texte à l'écran, pour relire chaque légende et chaque cadrage.
 
 Les chemins de travail sont codés en dur dans les scripts. Il faut les adapter
 (constante `SP`) avant de relancer.

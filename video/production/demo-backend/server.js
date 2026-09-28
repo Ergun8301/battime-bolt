@@ -111,7 +111,9 @@ function handleRest(req, res, u, body, c, e) {
     const impl = FNS[fn];
     if (!impl) return unsupported(res, e, `rpc ${fn}`);
     let args = {};
-    if (req.method === 'POST') { if (body.length) args = JSON.parse(body.toString('utf8')); } else if (req.method === 'GET') args = Object.fromEntries(u.searchParams);
+    if (req.method === 'POST') {
+      if (body.length) { try { args = JSON.parse(body.toString('utf8')); } catch { throw new db.PgError('PGRST102', 'Empty or invalid json'); } }
+    } else if (req.method === 'GET') args = Object.fromEntries(u.searchParams);
     else return unsupported(res, e, `rpc ${fn} with ${req.method}`);
     if (SELF_HEAL.has(fn)) { e.flag = 'self-heal'; e.note = JSON.stringify(args); }
     const out = impl(args, c);
@@ -206,15 +208,26 @@ function handleStorage(req, res, u, body, c, e) {
     const [, bucket, key] = m;
     if (!c.user) { e.status = 400; return sendJson(res, 400, { statusCode: '403', error: 'Unauthorized', message: 'new row violates row-level security policy' }); }
     let bytes = body; let ctype = req.headers['content-type'] || 'application/octet-stream';
+    let fileName = null;
     if (/multipart\/form-data/i.test(ctype)) {
       const part = storage.parseMultipart(body, ctype);
       if (!part) return unsupported(res, e, 'unparsable multipart upload');
-      bytes = part.body; ctype = part.contentType || 'application/octet-stream';
+      bytes = part.body; ctype = part.contentType || 'application/octet-stream'; fileName = part.filename || null;
+    }
+    // A DISK file given to Playwright's setInputFiles reaches a route.fetch() proxy
+    // with its multipart part EMPTY (Chromium does not expose file-backed bodies to
+    // interception). When the part still names a file that exists in ../assets
+    // (e.g. chantier-01.jpg), store those bytes instead of a 0-byte object.
+    let substituted = null;
+    if (!bytes.length && fileName) {
+      const a = storage.assetByName(fileName);
+      if (a) { bytes = a.bytes; substituted = a.rel; if (ctype === 'application/octet-stream') ctype = a.contentType; }
     }
     const upsert = req.method === 'PUT' || String(req.headers['x-upsert'] || '') === 'true';
     const r = storage.writeObject(bucket, key, bytes, ctype, { upsert });
     if (r.error) { e.status = 400; return sendJson(res, 400, { statusCode: '409', error: 'Duplicate', message: 'The resource already exists' }); }
-    e.status = 200; e.note = `stored ${bytes.length} bytes (${ctype})`;
+    e.status = 200; e.note = `stored ${bytes.length} bytes (${ctype})${substituted ? ` — empty part "${fileName}" (proxied disk file) → ${substituted}` : ''}`;
+    if (!bytes.length) e.flag = 'empty-upload';
     return sendJson(res, 200, { Key: `${bucket}/${key}`, Id: db.uuid() });
   }
   if ((m = /^object\/([^/]+)\/(.+)$/.exec(p)) && (req.method === 'GET' || req.method === 'HEAD')) return serveObj(m[1], m[2]);
@@ -284,7 +297,7 @@ function handleDemo(req, res, u, body, e) {
   }
   if (p === '/__demo/scenes') return sendJson(res, 200, Object.fromEntries(Object.entries(fixtures.SCENES).map(([k, v]) => [k, { now: T.parisIso(...v.now), title: v.title }])));
   if (p === '/__demo/users') return sendJson(res, 200, fixtures.DEMO_USERS);
-  if (p === '/__demo/health') return sendJson(res, 200, { ok: true, scene: SCENE, clock: T.clock.nowIso(), out: OUT, outExists: fs.existsSync(path.join(OUT, 'index.html')) });
+  if (p === '/__demo/health') return sendJson(res, 200, { ok: true, instance: process.env.DEMO_INSTANCE || null, pid: process.pid, port: PORT, scene: SCENE, clock: T.clock.nowIso(), out: OUT, outExists: fs.existsSync(path.join(OUT, 'index.html')) });
   e.status = 404;
   return sendJson(res, 404, { error: 'unknown control route', routes: ['POST /__demo/reset {scene, now?}', 'POST /__demo/clock {now}', 'GET /__demo/log', 'GET /__demo/state?table=x', 'GET /__demo/session?email=|user=', 'GET /__demo/scenes', 'GET /__demo/users', 'GET /__demo/health'] });
 }

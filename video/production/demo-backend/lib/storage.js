@@ -106,4 +106,20 @@ function parseMultipart(buf, contentType) {
   return parts.find((x) => x.filename !== undefined) || parts.find((x) => x.name === '') || parts[parts.length - 1] || null;
 }
 
-module.exports = { reset, readObject, writeObject, removeObjects, parseMultipart, tinyPdf, objects, LOGO_SVG, ASSETS };
+/** A file of ../assets (photos/, docs/, brand/, or the root) by its bare file name, or null. */
+function assetByName(fileName) {
+  const base = path.basename(String(fileName || ''));
+  if (!base || base.startsWith('.') || base !== String(fileName).split(/[\\/]/).pop()) return null;
+  const types = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.pdf': 'application/pdf', '.svg': 'image/svg+xml', '.csv': 'text/csv' };
+  for (const dir of ['photos', 'docs', 'brand', '.']) {
+    const f = path.join(ASSETS, dir, base);
+    try {
+      if (fs.statSync(f).isFile()) {
+        return { bytes: fs.readFileSync(f), rel: `assets/${dir === '.' ? '' : `${dir}/`}${base}`, contentType: types[path.extname(base).toLowerCase()] || 'application/octet-stream' };
+      }
+    } catch { /* next */ }
+  }
+  return null;
+}
+
+module.exports = { assetByName, reset, readObject, writeObject, removeObjects, parseMultipart, tinyPdf, objects, LOGO_SVG, ASSETS };

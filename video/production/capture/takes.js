@@ -39,6 +39,20 @@ async function wheelTo(t, colIndex, targetLabel, sec = 0.9) {
   await t.hold(0.3);
 }
 
+// Scroll the dialog so that `text` sits at `frac` of its scroll container's height.
+async function scrollTextTo(t, dialogSel, text, frac = 0.45, sec = 0.9) {
+  const dy = await t.page.evaluate(([q, txt, f]) => {
+    const root = document.querySelector(q);
+    if (!root) return 0;
+    const sc = [root, ...root.querySelectorAll('*')].find((e) => /(auto|scroll)/.test(getComputedStyle(e).overflowY) && e.scrollHeight > e.clientHeight + 2);
+    const el = [...root.querySelectorAll('*')].filter((e) => (e.innerText || '').trim() === txt).pop(); // deepest match
+    if (!sc || !el) return 0;
+    const a = sc.getBoundingClientRect(), b = el.getBoundingClientRect();
+    return Math.round(b.top - a.top - a.height * f);
+  }, [dialogSel, text, frac]);
+  if (dy > 4) await t.scrollIn(dialogSel, dy, sec);
+}
+
 const TAKES = {
   // ── Scène 1 · PLANIFIER ────────────────────────────────────────────────
   async planning() {
@@ -126,7 +140,7 @@ const TAKES = {
   async preuve() {
     const t = await new Take({ name: 'preuve', kind: 'mobile', scene: 's3b', now: at('16:44:00'), url: '/poseur', session: 'karim' }).open();
     await t.hold(0.8);
-    await t.tap('text=Villa Martin', { after: 0.9 });
+    await t.tap('text=Résidence Les Cèdres', { after: 0.9 });
     t.mark('reserve');
     await t.tap('button:has-text("Avec réserve")', { after: 0.8 });
     await t.tap('textarea', { after: 0.3 });
@@ -159,7 +173,7 @@ const TAKES = {
     t.mark('arrived');
     await t.hold(1.6);
     t.mark('popup');
-    await t.click(`${cell('Karim Benali', 3)} .bt-pl-bub`, { moveSec: 0.8 });
+    await t.click(`${cell('Karim Benali', 3)} .bt-pl-bub:has-text("Cèdres")`, { moveSec: 0.8 });
     await t.hold(2.6);
     await t.page.keyboard.press('Escape');
     await t.hold(0.4);
@@ -172,7 +186,7 @@ const TAKES = {
     t.mark('correct');
     await t.click('button:has-text("Corriger les heures")', { after: 0.6 });
     await t.click('input[aria-label="Heure de fin"]', { dx: 0.22, after: 0.2 });
-    await t.typeText('1600', 8, { after: 0.5 });
+    await t.typeText('1645', 8, { after: 0.5 });
     t.mark('prevenir');
     await t.click('button:has-text("Corriger et prévenir")', { after: 2.8 });
     await t.close();
@@ -193,6 +207,7 @@ const TAKES = {
     t.mark('reserves');
     await t.click('role=button[name=/^Réserves/]', { moveSec: 0.8, after: 1.0 });
     await t.click('button:has-text("Lever la réserve") >> nth=1', { after: 0.4 });
+    await t.click('[role=dialog] textarea', { moveSec: 0.4, after: 0.2 });
     await t.typeText('Vérifié le 24/09 — seuil repris', 18);
     await t.click('button:has-text("Confirmer la levée")', { after: 1.8 });
     await t.page.keyboard.press('Escape');
@@ -258,6 +273,11 @@ const TAKES = {
     const t = await new Take({ name: 'habil', kind: 'desktop', scene: 's7', now: at('17:31:00'), url: '/admin', session: 'admin', cursorStart: [900, 500] }).open();
     await t.click('role=button[name=/^Salariés/]', { moveSec: 0.6, after: 0.8 });
     await t.click('[role=dialog] >> text=Sofia Rossi', { moveSec: 0.6, after: 1.0 });
+    await t.page.evaluate(() => document.activeElement && document.activeElement.blur()); // no autofocus highlight on « Prénom »
+    t.mark('fiche');
+    await scrollTextTo(t, '[role=dialog]', 'Habilitations', 0.3, 1.0);
+    t.mark('habil');
+    await t.moveTo('[role=dialog] button:has-text("Ajouter")', 0.6, { dx: 0.9, dy: 1.4 }); // cursor off the expiry labels
     await t.box('text=Habilitations');
     await t.hold(2.6);
     await t.close();

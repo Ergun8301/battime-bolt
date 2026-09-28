@@ -176,7 +176,6 @@
     const url = R.h('div', 'o-url', Cc, '<b>' + R.esc(props.url || 'bemexo.com') + '</b> <span class="sep">·</span> ' + R.esc(props.offer || 'Essai gratuit 30 jours, sans engagement'));
     url.style.top = wmY + 236 + 'px';
     const legal = R.h('div', 'o-legal', Cc, R.esc(props.legal || 'Données de démonstration fictives'));
-    const rib = R.h('div', '', Cc); R.css(rib, { position: 'absolute', right: '0', top: '0', width: '240px', height: '12px', background: 'repeating-linear-gradient(45deg,#15120F 0 8px,#FFC21A 8px 16px)' });
     return {
       update(lf) {
         const inA = lf < cut;
@@ -201,7 +200,6 @@
           const pu = eo(C((l2 - 44) / 14));
           R.set(url, 'opacity', pu.toFixed(4)); R.set(url, 'transform', 'translateY(' + ((1 - pu) * 18).toFixed(2) + 'px)');
           R.set(legal, 'opacity', eo(C((l2 - 56) / 12)).toFixed(4));
-          R.set(rib, 'transform', 'scaleX(' + eio(C((l2 - 10) / 20)).toFixed(4) + ')'); rib.style.transformOrigin = '100% 50%';
         }
         wipe.update(lf);
       },

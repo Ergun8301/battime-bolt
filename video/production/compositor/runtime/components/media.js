@@ -222,9 +222,11 @@
       const st = R.h('div', 'phone-status', scr);
       R.css(st, { height: sbh + 'px', color: sb.color, background: sb.bg });
       const c = sb.color;
+      // statusBar.offline: no bars, no Wi-Fi (the « sans réseau » cue of the offline beat)
+      const bo = sb.offline ? '.25' : '1', b4 = sb.offline ? '.25' : '.35';
       st.innerHTML = '<span>' + R.esc(sb.time) + '</span><span class="icons">' +
-        '<svg width="17" height="12" viewBox="0 0 17 12"><rect x="0" y="8" width="3" height="4" rx="1" fill="' + c + '"/><rect x="4.5" y="5.5" width="3" height="6.5" rx="1" fill="' + c + '"/><rect x="9" y="3" width="3" height="9" rx="1" fill="' + c + '"/><rect x="13.5" y="0" width="3" height="12" rx="1" fill="' + c + '" opacity=".35"/></svg>' +
-        '<svg width="16" height="12" viewBox="0 0 16 12"><path d="M8 11.5 1 4.2a10 10 0 0 1 14 0Z" fill="' + c + '"/></svg>' +
+        '<svg width="17" height="12" viewBox="0 0 17 12"><rect x="0" y="8" width="3" height="4" rx="1" fill="' + c + '" opacity="' + bo + '"/><rect x="4.5" y="5.5" width="3" height="6.5" rx="1" fill="' + c + '" opacity="' + bo + '"/><rect x="9" y="3" width="3" height="9" rx="1" fill="' + c + '" opacity="' + bo + '"/><rect x="13.5" y="0" width="3" height="12" rx="1" fill="' + c + '" opacity="' + b4 + '"/></svg>' +
+        (sb.offline ? '' : '<svg width="16" height="12" viewBox="0 0 16 12"><path d="M8 11.5 1 4.2a10 10 0 0 1 14 0Z" fill="' + c + '"/></svg>') +
         '<svg width="26" height="13" viewBox="0 0 26 13"><rect x=".75" y=".75" width="21.5" height="11.5" rx="3.2" fill="none" stroke="' + c + '" stroke-opacity=".5" stroke-width="1.2"/><rect x="2.6" y="2.6" width="14.5" height="7.8" rx="1.8" fill="' + c + '"/><rect x="23.4" y="4.3" width="1.8" height="4.4" rx=".9" fill="' + c + '" opacity=".5"/></svg></span>';
     }
     const punch = R.h('div', 'phone-punch', ph);

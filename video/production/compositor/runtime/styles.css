@@ -164,7 +164,7 @@ img { display: block; user-select: none; -webkit-user-drag: none; }
   font: 700 17px/1 var(--f-mono); letter-spacing: .14em; color: var(--yellow); text-transform: uppercase; }
 .o-card .lbl .n { color: var(--cream); }
 .o-line { position: absolute; left: 0; right: 0; text-align: center; font: 900 64px/1.1 var(--f-title); letter-spacing: -.03em; word-spacing: .06em; color: var(--cream); white-space: nowrap; }
-.o-url { position: absolute; left: 0; right: 0; text-align: center; font: 600 27px/1 var(--f-mono); letter-spacing: .06em; color: #BDB4A2; white-space: nowrap; }
+.o-url { position: absolute; left: 0; right: 0; text-align: center; font: 600 34px/1 var(--f-mono); letter-spacing: .06em; color: #BDB4A2; white-space: nowrap; }
 .o-url b { color: var(--yellow); font-weight: 700; }
 .o-url .sep { color: #6E6A63; margin: 0 .1em; } /* real spaces around the dot: the text reads « bemexo.com · Essai… » */
 .o-legal { position: absolute; right: 40px; bottom: 30px; font: 500 16px/1 var(--f-mono); letter-spacing: .08em; color: #8C857A; } /* ≥ 4.5:1 on the ink background: the "fictitious data" notice must survive video compression */

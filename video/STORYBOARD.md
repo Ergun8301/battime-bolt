@@ -226,17 +226,18 @@ Relance automatique des heures · rappel manuel (cloche) · « Autre chantier »
 
 ## 7. Version produite — écarts avec le storyboard
 
-La vidéo finale (`bemexo-presentation-16x9.mp4`, ≈ 2 min 10) suit ce storyboard.
+La vidéo finale (`bemexo-presentation-16x9.mp4`, ≈ 2 min 18) suit ce storyboard.
 Quelques ajustements ont été faits, dictés par le vrai comportement de l'app :
 
 | Point | Storyboard | Vidéo finale | Pourquoi |
 |---|---|---|---|
 | Phrase de géolocalisation | Après le démarrage | Avant « Je commence » | L'app ne l'affiche que sur la carte de départ, avant la collecte |
 | Hors-ligne, route et panier | Scène 3 | Fin de scène 2 (16:30, au sous-sol) | Enchaînement plus naturel : l'après-midi est saisi hors réseau, puis la route et le panier |
-| Chiffres de la fiche | 41h30, +6h30 sup | 35h30, +1h15 sup (jeudi soir) | Chiffres réellement calculés par l'app sur les données fictives |
-| Correction | 8h00–17h00 → 8h00–16h30 | 12h45–16h30 → 12h45–16h00 | Correction faite en direct sur le chantier de l'après-midi |
+| Chiffres de la fiche | 41h30, +6h30 sup | 36h15, +1h15 sup (jeudi soir), puis 36h30, +1h30 après correction | Chiffres réellement calculés par l'app sur les données fictives (route payée comprise) |
+| Réserve et photo | Chantier du matin | Résidence Les Cèdres, où Karim est encore à 16:44 | Cohérent avec son après-midi : il signale la réserve sur place |
+| Correction | 8h00–17h00 → 8h00–16h30 | 12h45–16h30 → 12h45–16h45 | La photo de 16:44 prouve qu'il était encore là : le bureau corrige en sa faveur, le salarié est prévenu |
 | Envoi au comptable | Clic | Bouton mis en avant (survol) | Le CSV de paie est téléchargé à l'image. L'Excel part au comptable via le même écran. |
-| « Et aussi » | Import Excel | Import Excel des clients | L'import des salariés envoie de vraies invitations : il n'est pas filmé |
+| « Et aussi » | Import Excel | Import Excel des clients (12 importés) | L'import des salariés envoie de vraies invitations : il n'est pas filmé |
 | Conclusion | — | Ajout discret : « Données de démonstration fictives » | Honnêteté sur la démo |
 
 ### Défaut réel repéré pendant le tournage
@@ -245,3 +246,13 @@ Sur un téléphone de 390 px de large, dans « Documents », une photo rattaché
 « cette intervention » fait déborder la ligne (`.bt-doc-sub`). La fenêtre se
 coupe alors à droite. À l'image, le cadrage rapproché le masque. L'app n'a pas
 été modifiée pour la vidéo.
+
+### Point de libellé repéré pendant le tournage
+
+Sur « Ma journée », la carte « Total aujourd'hui » additionne les heures déjà
+saisies et les heures **prévues** encore à envoyer (`poseur-day.tsx` :
+`shownMinutes = totalMinutes + plannedMinutes`). Avant de pointer, elle affiche
+donc « 4:30 travaillées » pour un créneau prévu de 07:30 à 12:00. Sans horaire
+prévu, elle compte 07:30–16:30 par défaut, soit « 9:00 ». Le calcul est voulu
+(le prévu part avec la feuille), mais le mot « travaillées » prête à confusion.
+Dans la vidéo, les zooms laissent cette carte hors champ pendant le pointage.
