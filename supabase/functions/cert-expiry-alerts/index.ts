@@ -8,6 +8,7 @@
 //   - admin connecté, bouton « Vérifier maintenant » -> MODE UNITAIRE.
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { loadUnsubscribed, sendToEach } from '../_shared/email.ts';
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -16,8 +17,6 @@ const cors = {
 };
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
-
-const FROM = 'BEMEXO <no-reply@bemexo.com>';
 
 const TYPE_LABELS: Record<string, string> = {
   caces: 'CACES',
@@ -48,17 +47,6 @@ function daysUntil(iso: string): number {
   const today = new Date(todayISO() + 'T00:00:00Z').getTime();
   const target = new Date(iso + 'T00:00:00Z').getTime();
   return Math.round((target - today) / 86400000);
-}
-
-async function sendEmail(to: string[], subject: string, html: string) {
-  const apiKey = Deno.env.get('RESEND_API_KEY');
-  if (!apiKey) throw new Error('RESEND_API_KEY manquant (secret Supabase)');
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: FROM, to, subject, html }),
-  });
-  if (!res.ok) throw new Error(`Resend ${res.status}: ${await res.text().catch(() => '')}`);
 }
 
 type CertRow = {
@@ -103,7 +91,9 @@ function buildHtml(companyName: string, urgent: CertRow[], upcoming: CertRow[]) 
 </div>`;
 }
 
-async function runForCompany(admin: ReturnType<typeof createClient>, companyId: string) {
+// respectOptOut : le cron écarte les adresses désabonnées ; le déclenchement
+// manuel par un admin reste une demande explicite.
+async function runForCompany(admin: ReturnType<typeof createClient>, companyId: string, respectOptOut = true) {
   const { data: adminsData } = await admin.from('users').select('email').eq('company_id', companyId).eq('role', 'admin').eq('is_active', true);
   const adminEmails = (adminsData || []).map((a: { email: string }) => a.email).filter(Boolean);
   if (!adminEmails.length) return { companyId, skipped: 'no_admin' };
@@ -126,7 +116,15 @@ async function runForCompany(admin: ReturnType<typeof createClient>, companyId: 
   const subject = urgent.length
     ? `BEMEXO — ${urgent.length} habilitation${urgent.length > 1 ? 's' : ''} à renouveler sous 7 jours`
     : `BEMEXO — habilitations à anticiper (30 jours)`;
-  await sendEmail(adminEmails, subject, html);
+  const optedOut = respectOptOut ? await loadUnsubscribed(admin, 'cert-expiry') : new Set<string>();
+  const recipients = adminEmails.filter((e: string) => !optedOut.has(e.trim().toLowerCase()));
+  // Personne à prévenir : on ne marque rien, l'alerte reste due.
+  if (!recipients.length) return { companyId, skipped: 'unsubscribed' };
+  const dedupe = `${companyId}:${[...urgent.map((r) => `${r.id}@7`), ...upcoming.map((r) => `${r.id}@30`)].sort().join(',')}`;
+  const { sent, failed } = await sendToEach(recipients, { subject, html, kind: 'cert-expiry' }, dedupe);
+  // Personne ne l'a reçue : on ne marque rien, l'alerte repartira au prochain passage.
+  if (!sent.length) throw new Error(`Aucun envoi réussi : ${failed[0]?.error}`);
+  // Au moins un admin l'a reçue : on marque, sinon il la recevrait de nouveau.
 
   const now = new Date().toISOString();
   const urgentIds = urgent.map((r) => r.id);
@@ -136,7 +134,7 @@ async function runForCompany(admin: ReturnType<typeof createClient>, companyId: 
     upcomingIds.length ? admin.from('certifications').update({ alert_30_sent_at: now }).in('id', upcomingIds) : Promise.resolve(),
   ]);
 
-  return { companyId, sent: adminEmails.length, urgent: urgent.length, upcoming: upcoming.length };
+  return { companyId, sent: sent.length, failed: failed.length ? failed : undefined, urgent: urgent.length, upcoming: upcoming.length };
 }
 
 Deno.serve(async (req) => {
@@ -177,7 +175,7 @@ Deno.serve(async (req) => {
     const { data: profile } = await admin.from('users').select('company_id, role').eq('id', user.id).single();
     if (!profile || profile.role !== 'admin') return json({ error: "Réservé à l'administrateur" }, 403);
 
-    const result = await runForCompany(admin, profile.company_id);
+    const result = await runForCompany(admin, profile.company_id, false);
     return json({ mode: 'single', result });
   } catch (e) {
     return json({ error: String((e as Error)?.message || e) }, 500);
