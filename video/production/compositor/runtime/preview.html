@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Compositor preview</title>
+<link rel="stylesheet" href="/assets/fonts/fonts.css">
+<link rel="stylesheet" href="/runtime/styles.css">
+<script src="/lib/easing.js"></script>
+<script src="/runtime/brand.js"></script>
+<script src="/runtime/core.js"></script>
+<script src="/runtime/components/media.js"></script>
+<script src="/runtime/components/text.js"></script>
+<script src="/runtime/components/data.js"></script>
+<script src="/runtime/components/brand.js"></script>
+<style>
+  html, body { overflow: auto; background: #0b0a09; }
+  #wrap { position: relative; margin: 16px auto 0; transform-origin: 0 0; }
+  #stage { position: absolute; }
+  #bar { position: fixed; left: 0; right: 0; bottom: 0; display: flex; gap: 12px; align-items: center; padding: 10px 16px; background: #15120F; color: #F2EDE3; font: 600 13px 'JetBrains Mono', monospace; }
+  #bar input[type=range] { flex: 1; accent-color: #FFC21A; }
+  #bar button { font: inherit; background: #FFC21A; border: 0; border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+</style>
+</head>
+<body>
+<div id="wrap"><div id="stage"></div></div>
+<div id="bar"><button id="play">▶︎</button><input id="scrub" type="range" min="0" value="0"><span id="lbl">0</span></div>
+<script>
+(async () => {
+  const q = new URLSearchParams(location.search);
+  const res = await fetch('/api/comp?path=' + encodeURIComponent(q.get('comp') || ''));
+  if (!res.ok) { document.body.innerHTML = '<pre style="color:#f88;padding:20px">' + (await res.text()) + '</pre>'; return; }
+  const comp = await res.json();
+  const info = await R.load(comp);
+  const wrap = document.getElementById('wrap'), scrub = document.getElementById('scrub'), lbl = document.getElementById('lbl');
+  const fit = () => { const s = Math.min((innerWidth - 32) / info.width, (innerHeight - 90) / info.height); wrap.style.width = info.width + 'px'; wrap.style.height = info.height + 'px'; wrap.style.transform = 'scale(' + s + ')'; wrap.style.marginLeft = Math.max(16, (innerWidth - info.width * s) / 2) + 'px'; };
+  fit(); addEventListener('resize', fit);
+  scrub.max = info.durationInFrames - 1;
+  let f = Number(q.get('f') || 0), playing = false, busy = false;
+  const show = async (n) => { if (busy) return; busy = true; f = n; scrub.value = n; lbl.textContent = n + ' / ' + (n / info.fps).toFixed(2) + ' s'; await renderFrame(n); busy = false; };
+  scrub.oninput = () => show(Number(scrub.value));
+  document.getElementById('play').onclick = () => { playing = !playing; const t0 = performance.now(), f0 = f; const tick = () => { if (!playing) return; const n = Math.min(info.durationInFrames - 1, f0 + Math.floor((performance.now() - t0) / 1000 * info.fps)); show(n); if (n >= info.durationInFrames - 1) playing = false; else requestAnimationFrame(tick); }; tick(); };
+  show(f);
+})();
+</script>
+</body>
+</html>
