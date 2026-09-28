@@ -21,6 +21,7 @@
 // déclenche — on alerte sur le premier signal de dérive, pas sur le plus flatteur.
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { loadUnsubscribed, sendToEach } from '../_shared/email.ts';
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -30,7 +31,6 @@ const cors = {
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
 
-const FROM = 'BEMEXO <no-reply@bemexo.com>';
 const ALERT_HOUR_PARIS = 7;
 
 function parisHour(): number {
@@ -42,17 +42,6 @@ function parisHour(): number {
 
 const fmtH = (min: number) => `${Math.floor(min / 60)}h${String(Math.round(min % 60)).padStart(2, '0')}`;
 const fmtEur = (n: number) => `${n.toLocaleString('fr-FR', { maximumFractionDigits: 0 })} €`;
-
-async function sendEmail(to: string[], subject: string, html: string) {
-  const apiKey = Deno.env.get('RESEND_API_KEY');
-  if (!apiKey) throw new Error('RESEND_API_KEY manquant (secret Supabase)');
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: FROM, to, subject, html }),
-  });
-  if (!res.ok) throw new Error(`Resend ${res.status}: ${await res.text().catch(() => '')}`);
-}
 
 type Site = {
   id: string; client_name: string; city: string | null;
@@ -199,7 +188,16 @@ async function runForCompany(admin: ReturnType<typeof createClient>, companyId: 
   const subject = worst >= 100
     ? `BEMEXO — Budget dépassé sur ${hits.length > 1 ? `${hits.length} chantiers` : hits[0].site.client_name}`
     : `BEMEXO — Budget à ${worst} % sur ${hits.length > 1 ? `${hits.length} chantiers` : hits[0].site.client_name}`;
-  await sendEmail(adminEmails, subject, buildHtml(companyName, hits));
+  const optedOut = await loadUnsubscribed(admin, 'budget-alerts');
+  const recipients = adminEmails.filter((e: string) => !optedOut.has(e.trim().toLowerCase()));
+  // Personne à prévenir : on ne marque aucun palier, l'alerte reste due.
+  if (!recipients.length) return { companyId, company: companyName, skipped: 'unsubscribed' };
+  const html = buildHtml(companyName, hits);
+  const dedupe = `${companyId}:${hits.map((h) => `${h.site.id}@${h.level}`).sort().join(',')}`;
+  const { sent, failed } = await sendToEach(recipients, { subject, html, kind: 'budget-alerts' }, dedupe);
+  // Personne ne l'a reçue : on ne marque rien, l'alerte repartira au prochain passage.
+  if (!sent.length) throw new Error(`Aucun envoi réussi : ${failed[0]?.error}`);
+  // Au moins un admin l'a reçue : on marque, sinon il la recevrait de nouveau.
 
   // Marquer le palier atteint ET tous les paliers inférieurs : franchir 80 %
   // rend l'alerte « 70 % » caduque, il ne faut pas l'envoyer après coup.
@@ -211,7 +209,7 @@ async function runForCompany(admin: ReturnType<typeof createClient>, companyId: 
     await admin.from('worksites').update(patch).eq('id', h.site.id);
   }
 
-  return { companyId, company: companyName, sent: adminEmails.length, sites: hits.length };
+  return { companyId, company: companyName, sent: sent.length, failed: failed.length ? failed : undefined, sites: hits.length };
 }
 
 Deno.serve(async (req) => {

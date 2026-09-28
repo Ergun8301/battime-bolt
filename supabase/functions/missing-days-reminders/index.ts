@@ -30,6 +30,7 @@
 // bouton côté interface, il sera ajouté avec le réglage frontend.
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { loadUnsubscribed, sendResend } from '../_shared/email.ts';
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -39,7 +40,6 @@ const cors = {
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
 
-const FROM = 'BEMEXO <contact@bemexo.com>';
 const WINDOW_DAYS = 14;      // au-delà, le jour sort du périmètre
 const MIN_HOURS_BETWEEN = 48; // une relance tous les 2 jours maximum
 const MAX_REMINDERS = 3;      // au-delà, ce n'est plus un oubli
@@ -76,17 +76,6 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 
 function longDateFR(iso: string): string {
   const d = new Date(iso + 'T00:00:00Z');
   return `${JOURS[d.getUTCDay()]} ${d.getUTCDate()} ${MOIS[d.getUTCMonth()]}`;
-}
-
-async function sendEmail(to: string, subject: string, html: string) {
-  const apiKey = Deno.env.get('RESEND_API_KEY');
-  if (!apiKey) throw new Error('RESEND_API_KEY manquant (secret Supabase)');
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: FROM, to, subject, html }),
-  });
-  if (!res.ok) throw new Error(`Resend ${res.status}: ${await res.text().catch(() => '')}`);
 }
 
 // Le nom de l'entreprise est mis EN AVANT (objet + bandeau + corps) : le salarié
@@ -192,6 +181,9 @@ async function runForCompany(
   const companyName = (companyRes.data as { name: string } | null)?.name || 'Votre entreprise';
   const workers = (workersRes.data || []) as Worker[];
   if (!workers.length) return { companyId, skipped: 'no_worker' };
+  // Salariés désabonnés des rappels PAR E-MAIL (la notification push, elle,
+  // se règle sur le téléphone).
+  const optedOut = await loadUnsubscribed(admin, 'missing-days');
 
   // Jours d'absence : on les exclut, même si une ligne chantier existe le même jour.
   const planRows = (planRes.data || []) as { user_id: string; work_date: string; absence_type: string | null }[];
@@ -252,8 +244,9 @@ async function runForCompany(
       // Repli email : soit pas d'abonnement push, soit le push n'a atteint aucun appareil.
       if (!channel) {
         if (!w.email) { results.push({ worker: w.id, days: days.length, skipped: 'no_email' }); continue; }
+        if (optedOut.has(w.email.trim().toLowerCase())) { results.push({ worker: w.id, days: days.length, skipped: 'unsubscribed' }); continue; }
         const subject = `[${companyName}] — Il vous manque ${days.length > 1 ? `${days.length} journées` : 'une journée'} à déclarer`;
-        await sendEmail(w.email, subject, buildHtml(companyName, w.first_name, days));
+        await sendResend({ to: w.email, subject, html: buildHtml(companyName, w.first_name, days), kind: 'missing-days' });
         channel = 'email';
       }
 
@@ -303,11 +296,13 @@ async function runForCompany(
       }
       if (!channel) {
         if (!w.email) { unsent.push({ worker: w.id, skipped: 'no_email' }); continue; }
-        await sendEmail(
-          w.email,
-          `[${companyName}] — Vos heures du jour ne sont pas envoyées`,
-          buildUnsentHtml(companyName, w.first_name, longDateFR(todayStr)),
-        );
+        if (optedOut.has(w.email.trim().toLowerCase())) { unsent.push({ worker: w.id, skipped: 'unsubscribed' }); continue; }
+        await sendResend({
+          to: w.email,
+          subject: `[${companyName}] — Vos heures du jour ne sont pas envoyées`,
+          html: buildUnsentHtml(companyName, w.first_name, longDateFR(todayStr)),
+          kind: 'missing-days',
+        });
         channel = 'email';
       }
       unsent.push({ worker: w.id, channel });

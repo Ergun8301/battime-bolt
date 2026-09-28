@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { passwordProblem, PASSWORD_PLACEHOLDER, PASSWORD_RULE } from '@/lib/password';
@@ -21,7 +21,7 @@ import { ASIDE_FULL } from './_illustrations';
 //    formulaire fluide (clamp/vh) qui s'adapte a la hauteur, + 100svh pour eviter
 //    le bug de scroll mobile du 100vh.
 const SIGNUP_CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import url('/fonts/fonts.css');
 .bt-auth{font-family:'Archivo',sans-serif;background:#F2EDE3;color:#15120F;-webkit-font-smoothing:antialiased;min-height:100vh;min-height:100svh}
 .bt-auth *{box-sizing:border-box}
 .bt-auth .mono{font-family:'JetBrains Mono',monospace}
@@ -103,6 +103,8 @@ export default function InscriptionPage() {
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const router = useRouter();
+  // Événement GA4 « sign_up » : une seule fois par compte créé.
+  const signUpTracked = useRef(false);
 
   // ── Creation de compte : INCHANGEE ──
   const handleSignup = async (e: React.FormEvent) => {
@@ -138,6 +140,16 @@ export default function InscriptionPage() {
       if (authError) {
         setError(translateAuthError(authError.message));
         return;
+      }
+
+      // Mesure GA4 (ne part que si la mesure d'audience est acceptée).
+      // Aucune donnée personnelle : seulement la méthode d'inscription.
+      // identities vide = e-mail déjà inscrit (Supabase répond « OK » sans
+      // créer de compte) : pas de sign_up dans ce cas.
+      const compteCree = !!data.user && (data.user.identities?.length ?? 1) > 0;
+      if (compteCree && !signUpTracked.current) {
+        signUpTracked.current = true;
+        (window as unknown as { bxTrack?: (n: string, p: object) => void }).bxTrack?.('sign_up', { method: 'email' });
       }
 
       if (data.session) {

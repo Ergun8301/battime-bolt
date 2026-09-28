@@ -27,6 +27,7 @@
 //      accepté (les heures ont été corrigées, c'est légitime) mais signalé :
 //      le bureau doit savoir que son comptable a déjà reçu une autre version.
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { FROM_CONTACT, REPLY_TO, htmlToText } from "../_shared/email.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -43,7 +44,6 @@ const json = (body: unknown, status = 200) =>
 /** Au-delà, l'envoi échoue chez le prestataire : autant le dire tout de suite. */
 const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024;
 
-const FROM = "BEMEXO <contact@bemexo.com>";
 
 function buildHtml(companyName: string, periodLabel: string, fileName: string) {
   return `
@@ -163,6 +163,7 @@ Deno.serve(async (req) => {
       .eq("company_id", profile.company_id).eq("period_label", period)
       .order("sent_at", { ascending: false }).limit(1).maybeSingle();
 
+    const payrollHtml = buildHtml(companyName, period, String(fileName));
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
@@ -173,13 +174,14 @@ Deno.serve(async (req) => {
         "Idempotency-Key": idempotencyKey,
       },
       body: JSON.stringify({
-        from: FROM,
+        from: FROM_CONTACT,
         to: [to],
         // Le bureau reçoit une copie : il doit pouvoir prouver l'envoi.
         cc: caller.email ? [caller.email] : undefined,
-        reply_to: caller.email || undefined,
+        reply_to: caller.email || REPLY_TO,
         subject: `[${companyName}] — Heures du ${period}`,
-        html: buildHtml(companyName, period, String(fileName)),
+        html: payrollHtml,
+        text: htmlToText(payrollHtml),
         attachments: [{ filename: String(fileName), content: contentBase64 }],
       }),
     });

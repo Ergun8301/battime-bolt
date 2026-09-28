@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import VitrineFonts from '@/components/vitrine-fonts';
 
 export const metadata: Metadata = {
   title: "Conditions Générales d'Utilisation — BEMEXO",
@@ -13,7 +14,6 @@ export const metadata: Metadata = {
 // mentions-legales / confidentialite). Contenu générique B2B SaaS — À FAIRE
 // VALIDER PAR UN CONSEIL JURIDIQUE avant mise en production commerciale.
 const STYLES = `
-@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
 .ml{font-family:'Archivo',sans-serif;background:#15120F;color:#c9c3b8;min-height:100vh;-webkit-font-smoothing:antialiased;overflow-x:hidden}
 .ml *{box-sizing:border-box;margin:0;padding:0}
 .ml ::selection{background:#FFC21A;color:#15120F}
@@ -37,12 +37,14 @@ const STYLES = `
 .ml li{font-size:15px;line-height:1.55;color:#c9c3b8;padding-left:20px;position:relative}
 .ml li:before{content:"";position:absolute;left:0;top:9px;width:7px;height:7px;background:#FFC21A;border-radius:2px}
 .ml-foot{border-top:1px solid rgba(242,237,227,.1);margin-top:46px;padding-top:22px;font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#6E6A63}
+.ml-foot button{background:none;border:0;padding:0;font:inherit;color:#9a948a;cursor:pointer;text-decoration:underline}
 @media(max-width:560px){ .ml h1{font-size:32px} .ml-main{padding:32px 20px 64px} }
 `;
 
 export default function CGUPage() {
   return (
     <>
+      <VitrineFonts />
       <style dangerouslySetInnerHTML={{ __html: STYLES }} />
       <div className="ml">
         <div className="ml-hazard" />
@@ -151,7 +153,7 @@ export default function CGUPage() {
             <a href="mailto:contact@bemexo.com">contact@bemexo.com</a>.
           </p>
 
-          <div className="ml-foot">© 2026 BEMEXO — K.HABITAT (SAS)</div>
+          <div className="ml-foot">© 2026 BEMEXO — K.HABITAT (SAS) · <button type="button" data-bx-cookies="">Gérer les cookies</button></div>
         </main>
       </div>
     </>
