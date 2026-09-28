@@ -204,3 +204,44 @@ export async function sendResend(opts: SendOptions): Promise<void> {
   });
   if (!res.ok) throw new Error(`Resend ${res.status}: ${await res.text().catch(() => '')}`);
 }
+
+async function sha256Hex(s: string): Promise<string> {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+  return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+export type SendReport = { sent: string[]; failed: { to: string; error: string }[] };
+
+/**
+ * Un envoi par destinataire, SANS s'arrêter au premier échec.
+ *
+ * Pourquoi : les alertes (budget, habilitations) ne sont marquées « envoyées »
+ * qu'APRÈS l'envoi. Si le 2e envoi lançait une erreur, le 1er admin aurait
+ * déjà l'e-mail, rien ne serait marqué, et il le recevrait de nouveau au
+ * passage suivant. Ici chaque résultat est rendu : l'appelant marque l'alerte
+ * dès qu'au moins un destinataire l'a reçue.
+ *
+ * `dedupe` (facultatif) décrit le CONTENU envoyé (entreprise + alertes) : on
+ * en tire une clé d'idempotence Resend par destinataire. Une relance de la
+ * fonction dans les 24 h ne renvoie pas un e-mail déjà parti.
+ */
+export async function sendToEach(
+  recipients: string[],
+  opts: Omit<SendOptions, 'to' | 'idempotencyKey'>,
+  dedupe?: string,
+): Promise<SendReport> {
+  const report: SendReport = { sent: [], failed: [] };
+  for (const to of recipients) {
+    try {
+      const idempotencyKey = dedupe
+        ? `${opts.kind || 'email'}-${await sha256Hex(`${dedupe}|${to.trim().toLowerCase()}`)}`
+        : undefined;
+      await sendResend({ ...opts, to, idempotencyKey });
+      report.sent.push(to);
+    } catch (e) {
+      console.error('[email] envoi échoué pour un destinataire :', e);
+      report.failed.push({ to, error: (e as Error).message });
+    }
+  }
+  return report;
+}

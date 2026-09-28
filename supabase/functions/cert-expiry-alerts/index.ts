@@ -8,7 +8,7 @@
 //   - admin connecté, bouton « Vérifier maintenant » -> MODE UNITAIRE.
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import { loadUnsubscribed, sendResend } from '../_shared/email.ts';
+import { loadUnsubscribed, sendToEach } from '../_shared/email.ts';
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -120,7 +120,11 @@ async function runForCompany(admin: ReturnType<typeof createClient>, companyId: 
   const recipients = adminEmails.filter((e: string) => !optedOut.has(e.trim().toLowerCase()));
   // Personne à prévenir : on ne marque rien, l'alerte reste due.
   if (!recipients.length) return { companyId, skipped: 'unsubscribed' };
-  for (const to of recipients) await sendResend({ to, subject, html, kind: 'cert-expiry' });
+  const dedupe = `${companyId}:${[...urgent.map((r) => `${r.id}@7`), ...upcoming.map((r) => `${r.id}@30`)].sort().join(',')}`;
+  const { sent, failed } = await sendToEach(recipients, { subject, html, kind: 'cert-expiry' }, dedupe);
+  // Personne ne l'a reçue : on ne marque rien, l'alerte repartira au prochain passage.
+  if (!sent.length) throw new Error(`Aucun envoi réussi : ${failed[0]?.error}`);
+  // Au moins un admin l'a reçue : on marque, sinon il la recevrait de nouveau.
 
   const now = new Date().toISOString();
   const urgentIds = urgent.map((r) => r.id);
@@ -130,7 +134,7 @@ async function runForCompany(admin: ReturnType<typeof createClient>, companyId: 
     upcomingIds.length ? admin.from('certifications').update({ alert_30_sent_at: now }).in('id', upcomingIds) : Promise.resolve(),
   ]);
 
-  return { companyId, sent: adminEmails.length, urgent: urgent.length, upcoming: upcoming.length };
+  return { companyId, sent: sent.length, failed: failed.length ? failed : undefined, urgent: urgent.length, upcoming: upcoming.length };
 }
 
 Deno.serve(async (req) => {

@@ -10,7 +10,7 @@
 // ce n'est pas un email d'authentification.
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import { loadUnsubscribed, sendResend } from '../_shared/email.ts';
+import { loadUnsubscribed, sendToEach } from '../_shared/email.ts';
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -187,10 +187,13 @@ async function runForCompany(admin: ReturnType<typeof createClient>, companyId: 
   const recipients = adminEmails.filter((e: string) => !optedOut.has(e.trim().toLowerCase()));
   if (!recipients.length) return { companyId, skipped: 'unsubscribed' };
   // Un envoi par destinataire : le lien de désabonnement est personnel.
-  for (const to of recipients) {
-    await sendResend({ to, subject: `BEMEXO — Récap hebdomadaire (${fmtDateFR(monday)} au ${fmtDateFR(sunday)})`, html, kind: 'weekly-digest' });
-  }
-  return { companyId, sent: recipients.length };
+  // Un échec n'empêche pas les autres admins de recevoir le leur. Pas de clé
+  // d'idempotence : « Envoyer maintenant » doit pouvoir renvoyer un récap.
+  const { sent, failed } = await sendToEach(recipients, {
+    subject: `BEMEXO — Récap hebdomadaire (${fmtDateFR(monday)} au ${fmtDateFR(sunday)})`, html, kind: 'weekly-digest',
+  });
+  if (!sent.length) throw new Error(`Aucun envoi réussi : ${failed[0]?.error}`);
+  return { companyId, sent: sent.length, failed: failed.length ? failed : undefined };
 }
 
 Deno.serve(async (req) => {

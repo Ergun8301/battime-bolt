@@ -21,7 +21,7 @@
 // déclenche — on alerte sur le premier signal de dérive, pas sur le plus flatteur.
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import { loadUnsubscribed, sendResend } from '../_shared/email.ts';
+import { loadUnsubscribed, sendToEach } from '../_shared/email.ts';
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -193,7 +193,11 @@ async function runForCompany(admin: ReturnType<typeof createClient>, companyId: 
   // Personne à prévenir : on ne marque aucun palier, l'alerte reste due.
   if (!recipients.length) return { companyId, company: companyName, skipped: 'unsubscribed' };
   const html = buildHtml(companyName, hits);
-  for (const to of recipients) await sendResend({ to, subject, html, kind: 'budget-alerts' });
+  const dedupe = `${companyId}:${hits.map((h) => `${h.site.id}@${h.level}`).sort().join(',')}`;
+  const { sent, failed } = await sendToEach(recipients, { subject, html, kind: 'budget-alerts' }, dedupe);
+  // Personne ne l'a reçue : on ne marque rien, l'alerte repartira au prochain passage.
+  if (!sent.length) throw new Error(`Aucun envoi réussi : ${failed[0]?.error}`);
+  // Au moins un admin l'a reçue : on marque, sinon il la recevrait de nouveau.
 
   // Marquer le palier atteint ET tous les paliers inférieurs : franchir 80 %
   // rend l'alerte « 70 % » caduque, il ne faut pas l'envoyer après coup.
@@ -205,7 +209,7 @@ async function runForCompany(admin: ReturnType<typeof createClient>, companyId: 
     await admin.from('worksites').update(patch).eq('id', h.site.id);
   }
 
-  return { companyId, company: companyName, sent: recipients.length, sites: hits.length };
+  return { companyId, company: companyName, sent: sent.length, failed: failed.length ? failed : undefined, sites: hits.length };
 }
 
 Deno.serve(async (req) => {
