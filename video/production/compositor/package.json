@@ -1,0 +1,1 @@
+{"name":"bemexo-compositor","private":true,"version":"1.0.0","description":"Deterministic frame compositor (Playwright + ffmpeg)","license":"UNLICENSED","dependencies":{"playwright-core":"^1.56.1"}}

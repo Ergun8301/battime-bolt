@@ -221,3 +221,27 @@ Quatre vignettes rapides (1,5 s chacune), vrais écrans :
 ## 6. Fonctions réelles non retenues (peuvent remplacer une scène)
 
 Relance automatique des heures · rappel manuel (cloche) · « Autre chantier » nommé par le salarié · « Copier la journée d'hier » · « J'ai corrigé sur place » · contrôle avant envoi (> 10 h, chevauchement) · réglage des taux 25 % / 50 % · plusieurs accès bureau · récap hebdo par e-mail · alertes d'expiration par e-mail · installation sur l'écran d'accueil (PWA) · planning bureau sur téléphone.
+
+---
+
+## 7. Version produite — écarts avec le storyboard
+
+La vidéo finale (`bemexo-presentation-16x9.mp4`, ≈ 2 min 10) suit ce storyboard.
+Quelques ajustements ont été faits, dictés par le vrai comportement de l'app :
+
+| Point | Storyboard | Vidéo finale | Pourquoi |
+|---|---|---|---|
+| Phrase de géolocalisation | Après le démarrage | Avant « Je commence » | L'app ne l'affiche que sur la carte de départ, avant la collecte |
+| Hors-ligne, route et panier | Scène 3 | Fin de scène 2 (16:30, au sous-sol) | Enchaînement plus naturel : l'après-midi est saisi hors réseau, puis la route et le panier |
+| Chiffres de la fiche | 41h30, +6h30 sup | 35h30, +1h15 sup (jeudi soir) | Chiffres réellement calculés par l'app sur les données fictives |
+| Correction | 8h00–17h00 → 8h00–16h30 | 12h45–16h30 → 12h45–16h00 | Correction faite en direct sur le chantier de l'après-midi |
+| Envoi au comptable | Clic | Bouton mis en avant (survol) | Le CSV de paie est téléchargé à l'image. L'Excel part au comptable via le même écran. |
+| « Et aussi » | Import Excel | Import Excel des clients | L'import des salariés envoie de vraies invitations : il n'est pas filmé |
+| Conclusion | — | Ajout discret : « Données de démonstration fictives » | Honnêteté sur la démo |
+
+### Défaut réel repéré pendant le tournage
+
+Sur un téléphone de 390 px de large, dans « Documents », une photo rattachée à
+« cette intervention » fait déborder la ligne (`.bt-doc-sub`). La fenêtre se
+coupe alors à droite. À l'image, le cadrage rapproché le masque. L'app n'a pas
+été modifiée pour la vidéo.
