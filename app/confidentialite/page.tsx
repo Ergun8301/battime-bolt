@@ -58,7 +58,7 @@ export default function ConfidentialitePage() {
 
         <main className="ml-main">
           <h1>Politique de confidentialité</h1>
-          <div className="ml-updated">Dernière mise à jour : 27 septembre 2026</div>
+          <div className="ml-updated">Dernière mise à jour : 28 septembre 2026</div>
 
           <p className="ml-intro">
             La présente politique explique comment BEMEXO traite les données personnelles dans le cadre de son service
@@ -173,7 +173,7 @@ export default function ConfidentialitePage() {
           <h2>6. Qui a accès aux données ?</h2>
           <ul>
             <li>L&apos;<strong>entreprise cliente</strong> (employeur), strictement pour ses propres salariés.</li>
-            <li>Les <strong>sous-traitants techniques</strong> de BEMEXO : {WEB_HOST.name} (hébergement de l&apos;interface) et Supabase (base de données / authentification) ; pour la mesure d&apos;audience du site, Google (uniquement avec votre accord, voir section 11) et Cloudflare (statistiques sans cookie).</li>
+            <li>Les <strong>sous-traitants techniques</strong> de BEMEXO : {WEB_HOST.name} (hébergement de l&apos;interface) et Supabase (base de données / authentification) ; pour la mesure d&apos;audience et la mesure des conversions publicitaires du site, Google (uniquement avec votre accord, voir sections 11 et 12) et Cloudflare (statistiques sans cookie).</li>
             <li>Le cas échéant, les autorités si la loi l&apos;exige.</li>
           </ul>
 
@@ -233,7 +233,28 @@ export default function ConfidentialitePage() {
             <strong> sans cookie</strong> ni stockage sur votre appareil ; il ne nécessite donc pas de consentement.
           </p>
 
-          <h2 id="cookies">12. Cookies et stockage local</h2>
+          <h2 id="publicite">12. Publicité (Google Ads — mesure des conversions)</h2>
+          <p>
+            Nous diffusons des annonces <strong>Google Ads</strong>. Si vous l&apos;acceptez, nous mesurons si une
+            visite venue de l&apos;une de nos annonces aboutit à une action sur le site (clic sur « Essayer
+            gratuitement », création d&apos;un compte d&apos;essai). Cette mesure ne contient ni votre nom, ni votre
+            e-mail, ni votre téléphone.
+          </p>
+          <ul>
+            <li><strong>Consentement</strong> : catégorie « Publicité » du bandeau cookies, <strong>décochée par
+              défaut</strong> (ou « Tout accepter »). Sans cet accord, les signaux publicitaires de Google
+              (ad_storage, ad_user_data, ad_personalization) restent refusés et aucun cookie publicitaire n&apos;est
+              déposé. Base légale : votre consentement (art. 6.1.a du RGPD et art. 82 de la loi « Informatique et
+              Libertés »).</li>
+            <li><strong>Cookie</strong> : <strong>_gcl_au</strong> (Google Ads, mesure des conversions), conservé
+              <strong> 90 jours</strong>.</li>
+            <li><strong>Destinataire</strong> : Google Ireland Limited, avec les mêmes garanties de transfert que
+              ci-dessus (Data Privacy Framework).</li>
+            <li><strong>Retrait</strong> : à tout moment via le lien <strong>« Gérer les cookies »</strong> en bas de
+              page. Le cookie _gcl_au est alors supprimé et les signaux publicitaires repassent à « refusé ».</li>
+          </ul>
+
+          <h2 id="cookies">13. Cookies et stockage local</h2>
           <p>Liste complète de ce qui est déposé sur votre appareil :</p>
           <ul>
             <li><strong>cc_cookie</strong> — mémorise votre choix dans le bandeau cookies. Nécessaire. Durée :
@@ -242,6 +263,8 @@ export default function ConfidentialitePage() {
               Durée : 13 mois.</li>
             <li><strong>_ga_C76Q47N9KN</strong> — Google Analytics 4, conserve l&apos;état de la visite. Uniquement
               avec votre accord. Durée : 13 mois.</li>
+            <li><strong>_gcl_au</strong> — Google Ads, mesure des conversions publicitaires. Uniquement avec votre
+              accord (catégorie « Publicité »). Durée : 90 jours.</li>
             <li><strong>Stockage local de l&apos;application</strong> (utilisateurs connectés uniquement) — nécessaire
               au fonctionnement : session de connexion (<strong>sb-…-auth-token</strong>, jusqu&apos;à la
               déconnexion), heures saisies hors réseau en attente d&apos;envoi (<strong>battime_offline_…</strong>,
@@ -252,7 +275,7 @@ export default function ConfidentialitePage() {
             Aucun autre cookie publicitaire ou de traçage n&apos;est utilisé.
           </p>
 
-          <h2>13. Contact</h2>
+          <h2>14. Contact</h2>
           <p>
             Pour toute question sur cette politique :{' '}
             <a href="mailto:contact@bemexo.com">contact@bemexo.com</a>.

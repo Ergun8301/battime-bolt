@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { passwordProblem, PASSWORD_PLACEHOLDER, PASSWORD_RULE } from '@/lib/password';
@@ -103,6 +103,8 @@ export default function InscriptionPage() {
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const router = useRouter();
+  // Événement GA4 « sign_up » : une seule fois par compte créé.
+  const signUpTracked = useRef(false);
 
   // ── Creation de compte : INCHANGEE ──
   const handleSignup = async (e: React.FormEvent) => {
@@ -138,6 +140,16 @@ export default function InscriptionPage() {
       if (authError) {
         setError(translateAuthError(authError.message));
         return;
+      }
+
+      // Mesure GA4 (ne part que si la mesure d'audience est acceptée).
+      // Aucune donnée personnelle : seulement la méthode d'inscription.
+      // identities vide = e-mail déjà inscrit (Supabase répond « OK » sans
+      // créer de compte) : pas de sign_up dans ce cas.
+      const compteCree = !!data.user && (data.user.identities?.length ?? 1) > 0;
+      if (compteCree && !signUpTracked.current) {
+        signUpTracked.current = true;
+        (window as unknown as { bxTrack?: (n: string, p: object) => void }).bxTrack?.('sign_up', { method: 'email' });
       }
 
       if (data.session) {
