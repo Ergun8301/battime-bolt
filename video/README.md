@@ -4,6 +4,7 @@
 |---|---|
 | **Fichier** | `bemexo-presentation-16x9.mp4` · 1920×1080 · 30 i/s · H.264 |
 | **Affiche** | `bemexo-presentation-poster.jpg` (carte de fin) |
+| **Sur le site** | `public/demo-16x9.mp4` (17 Mo) et `.webm` (15 Mo, secours) : versions allégées de la même vidéo, lues dans « Comment ça marche » |
 | **Durée** | ≈ 2 min 18 |
 | **Conclusion** | BEMEXO — Du chantier à la paie, sans ressaisie. |
 | **Coût de production** | 0 € |
