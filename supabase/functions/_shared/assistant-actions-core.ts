@@ -772,12 +772,14 @@ export function prepare(type: string, raw: Record<string, unknown>, ctx: ActionC
       // « Rajoute-MOI » : la personne qui parle.
       const moi = /^(moi|me|m'|moi-meme|moi meme|je)$/i.test(norm(s).trim());
       // « Mister Grill Mâcon » : le client + la ville départagent deux chantiers du même client.
-      // Un LIEU seul (« à Lyon ») n'est jamais pris pour le client situé dans cette ville.
-      let worksite = c ? resolveChantier(c, ctx) ?? (lieu ? resolveChantier(`${c} ${lieu}`, ctx) : null)
-        : lieu ? resolve(lieu, ctx.chantiers, (x) => x.nom) : null;
+      // Un LIEU seul (« à Lyon ») n'est jamais pris pour le client situé dans cette
+      // ville : il faut au moins un mot du NOM du client (la ville ne fait que départager).
+      const named = !!c && matchesSomeChantier(c, ctx);
+      let worksite = named ? resolveChantier(c, ctx) ?? (lieu ? resolveChantier(`${c} ${lieu}`, ctx) : null)
+        : lieu && matchesSomeChantier(lieu, ctx) ? resolveChantier(lieu, ctx) : null;
       // Lieu sans client connu (« une intervention à Lyon ») → « Autre », le lieu dans le titre.
       // Un client connu mais ambigu n'y va jamais : la carte demande lequel.
-      if (!worksite && (lieu || c) && !(c && matchesSomeChantier(c, ctx))) {
+      if (!worksite && (lieu || c) && !named) {
         const autre = ctx.chantiers.find((x) => norm(x.nom) === 'autre');
         if (autre) { worksite = autre.id; objet = objet ? `${objet} · ${lieu || cleanName(c)}` : `Intervention à ${lieu || cleanName(c)}`; }
       }
@@ -1285,8 +1287,9 @@ Règles :
 - Réponds toujours en appelant UNE fonction.
 - Une action demandée → la fonction correspondante, avec ce qui a été dit, sans rien inventer. « Intervention », « rendez-vous », « mets X chez Y » = affecter_planning.
 - Noms propres et titres PROPRES : jamais de « euh », « alors », « du coup » ; l'objet d'une intervention est court (2 à 6 mots) et ne répète ni le client, ni la date, ni le salarié.
-- Dates : utilise le CALENDRIER ci-dessous (« jeudi » = le prochain jeudi, « jeudi prochain » = celui de la semaine prochaine). Heures au format HH:MM (« 14h » → 14:00, « 8h30 » → 08:30).
-- Un chantier, un salarié : reprends le nom tel que dans CHANTIERS / SALARIÉS. S'il n'existe pas, laisse le texte dit : l'écran demandera.
+- Dates : recopie la date du CALENDRIER ci-dessous (« jeudi » = le prochain jeudi, aujourd'hui compris ; « jeudi prochain » = la ligne marquée « (jeudi prochain) »). Heures au format HH:MM (« 14h » → 14:00, « 8h30 » → 08:30).
+- Un chantier, un salarié : reprends le nom tel que dans CHANTIERS / SALARIÉS. Deux chantiers du même client → ajoute la ville dite (« Mister Grill Kebab Mâcon »). S'il n'existe pas, laisse le texte dit : l'écran demandera.
+- Une VILLE seule n'est pas un client : « une intervention à Lyon » → lieu = Lyon, chantier vide.
 - Tu te comportes comme un vrai assistant : tu FAIS le travail complet du premier coup (pas le minimum), tu ne poses de question qu'en dernier recours.
 - « Comment faire », « à quoi sert », « où je trouve », « explique-moi » → « repondre » avec 3 étapes au plus, d'après le GUIDE, et le lien de l'écran.
 - Question chiffrée → « repondre » d'après les DONNÉES, en 1 à 3 phrases.

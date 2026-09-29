@@ -83,7 +83,8 @@ const pad = (n: number) => String(n).padStart(2, '0');
 /**
  * Une date dite → « aaaa-mm-jj » (ou '' si rien de clair). Règles :
  * « jeudi » = le PROCHAIN jeudi (aujourd'hui compris s'il est jeudi) ;
- * « jeudi prochain » = celui de la semaine prochaine ; « le 12 » = le 12 à venir.
+ * « lundi prochain » = le prochain lundi, jamais aujourd'hui ni demain (dit un
+ * jeudi : « jeudi prochain » = dans 7 jours) ; « le 12 » = le 12 à venir.
  */
 export function parseDateFr(text: string, today: string): string {
   const n = low(text);
@@ -98,8 +99,9 @@ export function parseDateFr(text: string, today: string): string {
   if (j) {
     const target = JOURS.indexOf(j[1]);
     let delta = (target - dow(today) + 7) % 7;
-    if (j[2] || /\bsemaine prochaine\b/.test(n)) delta = (target - dow(today) + 7) % 7 + (delta === 0 || /\bsemaine prochaine\b/.test(n) || j[2] ? 7 : 0);
-    if (/\bsemaine prochaine\b/.test(n) && !j[2]) delta = 7 - dow(today) + target;
+    // « lundi prochain » (dit un jeudi) = ce lundi-là ; jamais aujourd'hui ni demain.
+    if (j[2]) delta = delta <= 1 ? delta + 7 : delta;
+    else if (/\bsemaine prochaine\b/.test(n)) delta = 7 - dow(today) + target;
     return addDaysIso(today, delta);
   }
   if (/\bsemaine prochaine\b/.test(n)) return addDaysIso(today, 7 - dow(today));
@@ -183,7 +185,8 @@ export function calendarForPrompt(today: string, before = 7, after = 21): string
   const out: string[] = [];
   for (let i = -before; i <= after; i++) {
     const d = addDaysIso(today, i);
-    const tag = i === 0 ? " (aujourd'hui)" : i === 1 ? ' (demain)' : i === -1 ? ' (hier)' : '';
+    const prochain = i > 1 && i <= 8 && parseDateFr(`${JOURS[dow(d)]} prochain`, today) === d ? ` (${JOURS[dow(d)]} prochain)` : '';
+    const tag = i === 0 ? " (aujourd'hui)" : i === 1 ? ' (demain)' : i === -1 ? ' (hier)' : prochain;
     out.push(`${JOURS[dow(d)]} ${Number(d.slice(8))} ${MOIS[Number(d.slice(5, 7)) - 1]} = ${d}${tag}`);
   }
   return out.join('\n');

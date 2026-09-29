@@ -14,6 +14,8 @@ Deno.test('Dates relatives', () => {
   eq(parseDateFr('hier', T), '2026-09-30', 'hier');
   eq(parseDateFr('jeudi 14h', T), '2026-10-01', 'jeudi = aujourd’hui (on est jeudi)');
   eq(parseDateFr('jeudi prochain', T), '2026-10-08', 'jeudi prochain');
+  eq(parseDateFr('lundi prochain', T), '2026-10-05', 'lundi prochain = ce lundi-là');
+  eq(parseDateFr('vendredi prochain', T), '2026-10-09', 'vendredi prochain ≠ demain');
   eq(parseDateFr('vendredi', T), '2026-10-02', 'vendredi');
   eq(parseDateFr('lundi', T), '2026-10-05', 'lundi');
   eq(parseDateFr('mardi de la semaine prochaine', T), '2026-10-06', 'mardi semaine prochaine');
