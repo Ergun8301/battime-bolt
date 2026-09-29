@@ -8,7 +8,7 @@ branche, fusionnée seulement après validation de la préview.
 
 | Lot | Sujet | Branche | État |
 |---|---|---|---|
-| 1 | Borne de pointage QR | `feat/borne-qr` | PR ouverte — en attente de validation de la préview ([détail](borne-pointage.md)) |
+| 1 | Borne de pointage QR | `feat/borne-qr` (PR 110) / `feat/borne-qr-v2` | 2 versions, choix d'Ergun — en attente de validation de la préview ([détail](borne-pointage.md)) |
 | 2 | — | — | — |
 | 3 | — | — | — |
 | 4 | — | — | — |

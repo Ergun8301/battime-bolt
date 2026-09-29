@@ -20,6 +20,13 @@ scanne avec l'appareil photo de son téléphone : arrivée ou départ, sur son c
 - Tables `kiosk_*` : RLS active, **aucune policy**, accès par l'Edge Function uniquement.
 - Aucune position du salarié n'est enregistrée (comparée, puis oubliée).
 
+## Préview (sans base)
+
+- `/borne?demo=1` : borne fictive, QR réel, planning démo
+- `/pointer?demo=in` / `?demo=out` : écran de confirmation
+
+Actif **uniquement** sur les préviews (`isPreviewHost()`), jamais sur bemexo.com.
+
 ## Mise en service (après validation)
 
 1. Migration `supabase/migrations/20260929120000_borne_pointage_qr.sql`

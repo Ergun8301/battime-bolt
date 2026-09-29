@@ -14,6 +14,7 @@ import { Maximize, WifiOff, Loader2 } from 'lucide-react';
 import {
   callKiosk, codeForStep, deriveTotpKey, getPosition, isAsleep, qrSvgPath, scanUrl, stepAt,
 } from '@/lib/kiosk';
+import { isPreviewHost } from '@/lib/hosting';
 
 const STORE = 'bemexo.kiosk.device';
 const SYNC_MS = 5 * 60_000;
@@ -108,7 +109,28 @@ export default function BornePage() {
   const devRef = useRef<Stored | null>(null);
   devRef.current = dev;
 
-  useEffect(() => { setDev(load()); setReady(true); }, []);
+  // `?demo=1`, SUR UNE PREVIEW SEULEMENT : une borne fictive, sans serveur, pour
+  // vérifier l'écran avant que la migration et la fonction soient en place.
+  const [demo, setDemo] = useState(false);
+  useEffect(() => {
+    if (isPreviewHost() && new URLSearchParams(window.location.search).has('demo')) {
+      setDemo(true);
+      deriveTotpKey('demo').then((k) => {
+        setDev({
+          device_id: '00000000-0000-4000-8000-000000000000', secret: 'demo', totp_key: k, name: 'Entrée (démo)',
+          company_name: 'Restaurant Le Comptoir', settings: { show_planning: true, awake_from: null, awake_until: null },
+          planning: [
+            { first_name: 'Karim', start: '08:00', end: '16:00' }, { first_name: 'Sofia', start: '09:00', end: '17:00' },
+            { first_name: 'Lucas', start: '11:00', end: '15:00' }, { first_name: 'Inès', start: '17:00', end: '23:00' },
+          ],
+          planning_date: today(), offset: 0,
+        });
+        setReady(true);
+      });
+      return;
+    }
+    setDev(load()); setReady(true);
+  }, []);
 
   // ── Horloge : chaque seconde. Le QR, seulement quand la minute change. ──
   useEffect(() => {
@@ -152,7 +174,7 @@ export default function BornePage() {
       if (p) await callKiosk({ action: 'sync', secret: cur.secret, lat: p.lat, lng: p.lng, accuracy: p.accuracy });
     }
   }, []);
-  const paired = !!dev;
+  const paired = !!dev && !demo;
   useEffect(() => {
     if (!paired) return;
     sync();

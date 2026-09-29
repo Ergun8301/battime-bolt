@@ -11,6 +11,7 @@ import { useRouter } from 'next/navigation';
 import { CheckCircle2, AlertTriangle, Loader2, MapPin } from 'lucide-react';
 import { useAuth } from '@/components/auth-provider';
 import { callKiosk, getPosition, PENDING_SCAN_KEY, readPendingScan } from '@/lib/kiosk';
+import { isPreviewHost } from '@/lib/hosting';
 
 type ScanOk = { status: 'ok' | 'duplicate'; direction: 'in' | 'out'; time: string; first_name?: string };
 type View =
@@ -42,6 +43,13 @@ export default function PointerPage() {
   // Le scan arrive dans l'adresse ; on le met de côté AVANT toute redirection.
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
+    // `?demo=in` ou `?demo=out`, SUR UNE PREVIEW SEULEMENT : l'écran de confirmation.
+    const d = q.get('demo');
+    if (isPreviewHost() && (d === 'in' || d === 'out')) {
+      started.current = true;
+      setView({ k: 'done', r: { status: 'ok', direction: d, time: d === 'in' ? '08:02' : '16:04', first_name: 'Karim' } });
+      return;
+    }
     const b = q.get('b'), c = q.get('c');
     if (b && c) {
       try { sessionStorage.setItem(PENDING_SCAN_KEY, JSON.stringify({ b, c, at: Date.now() })); } catch { /* privé */ }
