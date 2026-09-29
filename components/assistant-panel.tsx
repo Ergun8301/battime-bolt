@@ -7,11 +7,11 @@
 // Rien n'est conservé : la conversation vit dans cet écran et disparaît quand
 // on recharge la page.
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Sparkles, X, Mic, ArrowUp, Loader2, ArrowRight } from 'lucide-react';
 import { ASSISTANT_SUGGESTIONS, type AssistantLink, type AssistantSource } from '@/lib/assistant';
 
-type Msg = { who: 'me' | 'bot'; text: string; links?: AssistantLink[]; notice?: boolean };
+type Msg = { who: 'me' | 'bot'; text: string; links?: AssistantLink[]; notice?: boolean; extra?: unknown };
 
 interface SpeechRec {
   lang: string; interimResults: boolean; continuous: boolean;
@@ -61,9 +61,21 @@ const CSS = `
 @media(max-width:640px){.as-fab{right:14px;bottom:14px}}
 `;
 
-interface Props { source: AssistantSource; onNavigate: (action: string) => void; defaultOpen?: boolean }
+interface Props {
+  source: AssistantSource;
+  onNavigate: (action: string) => void;
+  defaultOpen?: boolean;
+  /** Lot 4 : questions de départ propres à l'écran (défaut : celles du bureau). */
+  suggestions?: string[];
+  /** Lot 4 : phrase d'accueil. */
+  intro?: string;
+  /** Lot 4 : contenu en plus sous une réponse (ex. brouillon de pointage à confirmer). */
+  renderExtra?: (extra: unknown) => ReactNode;
+  /** Lot 4 : mention sous la zone de saisie. */
+  footNote?: string;
+}
 
-export default function AssistantPanel({ source, onNavigate, defaultOpen = false }: Props) {
+export default function AssistantPanel({ source, onNavigate, defaultOpen = false, suggestions = ASSISTANT_SUGGESTIONS, intro, renderExtra, footNote = 'Lecture seule · rien n’est conservé' }: Props) {
   const [open, setOpen] = useState(defaultOpen);
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [text, setText] = useState('');
@@ -85,7 +97,7 @@ export default function AssistantPanel({ source, onNavigate, defaultOpen = false
     setBusy(true);
     const r = await source.ask(question);
     setBusy(false);
-    setMsgs((m) => [...m, { who: 'bot', text: r.answer, links: r.links, notice: r.notice }]);
+    setMsgs((m) => [...m, { who: 'bot', text: r.answer, links: r.links, notice: r.notice, extra: r.extra }]);
     if (typeof r.remaining === 'number') setRemaining(r.remaining);
   }, [busy, source]);
 
@@ -135,9 +147,9 @@ export default function AssistantPanel({ source, onNavigate, defaultOpen = false
             {msgs.length === 0 && (
               <>
                 <p className="as-hello">Bonjour 👋</p>
-                <p className="as-sub">Posez une question sur vos équipes, vos heures ou vos chantiers{canSpeak ? ' — à l’écrit ou à voix haute' : ''}.</p>
+                <p className="as-sub">{intro ?? 'Posez une question sur vos équipes, vos heures ou vos chantiers'}{canSpeak ? ' — à l’écrit ou à voix haute' : ''}.</p>
                 <div className="as-sugg">
-                  {ASSISTANT_SUGGESTIONS.map((s) => (
+                  {suggestions.map((s) => (
                     <button type="button" key={s} onClick={() => ask(s)}>{s}<ArrowRight className="h-4 w-4 text-neutral-400" /></button>
                   ))}
                 </div>
@@ -153,6 +165,7 @@ export default function AssistantPanel({ source, onNavigate, defaultOpen = false
                       {m.links.map((l) => <button type="button" key={l.action} onClick={() => go(l.action)}>{l.label} <ArrowRight className="h-3 w-3" /></button>)}
                     </div>
                   )}
+                  {m.extra != null && renderExtra ? renderExtra(m.extra) : null}
                 </div>
               )))}
             {busy && <div className="as-typing"><Loader2 className="h-4 w-4 animate-spin" /> Je regarde…</div>}
@@ -173,7 +186,7 @@ export default function AssistantPanel({ source, onNavigate, defaultOpen = false
               <button type="submit" className="as-btn as-send" disabled={!text.trim() || busy} aria-label="Envoyer"><ArrowUp className="h-4 w-4" /></button>
             </form>
             <div className="as-meta">
-              <span>Lecture seule · rien n’est conservé</span>
+              <span>{footNote}</span>
               {remaining != null && <span>{remaining} question{remaining > 1 ? 's' : ''} restante{remaining > 1 ? 's' : ''} aujourd’hui</span>}
             </div>
           </div>

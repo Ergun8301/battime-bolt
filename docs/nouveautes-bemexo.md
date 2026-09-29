@@ -10,8 +10,8 @@ branche, fusionnée seulement après validation de la préview.
 |---|---|---|---|
 | 1 | Borne de pointage QR | `feat/borne-qr` | fusionné dans l'intégration (PR 110) — migration non appliquée |
 | 2 | Coût réel d'un salarié (bulletin de paie) | `feat/cout-salarie` | fusionné dans l'intégration (PR 112) — migration non appliquée |
-| 3 | Assistant BEMEXO (bureau) | `feat/assistant-bureau` | PR ouverte — [détail](assistant-bureau.md) |
-| 4 | — | — | — |
+| 3 | Assistant BEMEXO (bureau) | `feat/assistant-bureau` | fusionné dans l'intégration (PR 114) — migration non appliquée |
+| 4 | Assistant BEMEXO (salarié) | `feat/assistant-salarie` | PR ouverte — [détail](assistant-salarie.md) |
 | 5 | — | — | — |
 
 ## Règles communes

@@ -17,6 +17,7 @@ import {
   generateLocalId, OFFLINE_CHANGED_EVENT, OFFLINE_SYNCED_EVENT, PendingEntry,
 } from '@/lib/offline-store';
 import { syncAllPending } from '@/lib/offline-sync';
+import { insertWorkerEntry } from '@/lib/worker-entry';
 import { planningsToMaterialise, remainingPlannings } from '@/lib/work-status';
 import { fmtHeure } from '@/lib/corrections';
 import { positionUtile, fmtPrecision, fmtCoord } from '@/lib/position';
@@ -969,25 +970,12 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
           _worksite_name: worksiteName, _worksite_city: worksiteCity, _saved_at: Date.now(),
         };
 
-        if (!navigator.onLine) {
-          addPendingEntry(user.id, pending);
-        } else {
-          const row = {
-            company_id: user.company_id, user_id: user.id, worksite_id: worksiteId, planning_id: planningId,
-            work_date: date, start_time: fStart, end_time: fEnd, break_minutes: 0,
-            meal_allowance: false, observation: fObs.trim() || null, reception: fReception || null, status: 'draft' as const,
-          };
-          let { error } = await supabase.from('time_entries').insert({ ...row, client_id: localId });
-          if (error && error.code === 'PGRST204' && error.message?.includes('client_id')) {
-            ({ error } = await supabase.from('time_entries').insert(row));
-          }
-          if (error) {
-            // Le réseau a lâché en plein envoi : on garde la saisie sur le
-            // téléphone plutôt que de la perdre, elle partira toute seule.
-            addPendingEntry(user.id, pending);
-            toast.message('Réseau instable — ça partira tout seul.');
-          }
-        }
+        // Le chemin d'enregistrement vit dans lib/worker-entry.ts, partagé avec
+        // l'Assistant BEMEXO : même insertion, même repli hors ligne.
+        const sent = await insertWorkerEntry(pending);
+        // Le réseau a lâché en plein envoi : la saisie reste sur le téléphone
+        // plutôt que d'être perdue, elle partira toute seule.
+        if (sent === 'queued') toast.message('Réseau instable — ça partira tout seul.');
       }
 
       setDrawerField(null);
