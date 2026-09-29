@@ -6,7 +6,7 @@
 // secret « cron » de la base (en-tête x-cron-secret, vérifié par
 // public.verify_cron_secret), c'est-à-dire depuis la base elle-même (pg_net).
 //   body : { version: 'v1' | 'v2', ids?: string[] }
-import { callFunction } from '../_shared/ai-provider.ts';
+import { callFunction, DEFAULT_ACTION_MODEL } from '../_shared/ai-provider.ts';
 import { runEval } from './run.ts';
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -62,11 +62,16 @@ Deno.serve(async (req) => {
   };
   // La clé est partagée avec la prod : on va doucement et on réessaie après un
   // refus « trop de requêtes » (le banc d'essai ne doit pas mesurer le quota).
+  // Mesure honnête : une action part TOUJOURS sur le modèle fort (pas de repli
+  // silencieux sur le léger quand le quota refuse), une question sur le léger.
+  const pinned = (m: string) => ({ get: (k: string) => (k === 'AI_MODEL' || k === 'AI_ACTION_MODEL' ? m : env.get(k)) });
+  const strongEnv = pinned(env.get('AI_ACTION_MODEL') || DEFAULT_ACTION_MODEL), lightEnv = pinned(light);
   const call = async (r: Parameters<typeof callFunction>[0]) => {
-    let res = await callFunction(r, env);
-    for (let i = 1; i <= 3 && !res.ok && res.reason === 'provider_error'; i++) {
-      await new Promise((ok) => setTimeout(ok, 10_000 * i));
-      res = await callFunction(r, env);
+    const e = r.kind === 'action' && version === 'v2' ? strongEnv : lightEnv;
+    let res = await callFunction(r, e);
+    for (let i = 1; i <= 4 && !res.ok && res.reason === 'provider_error'; i++) {
+      await new Promise((ok) => setTimeout(ok, 8_000 * i));
+      res = await callFunction(r, e);
     }
     return res;
   };
