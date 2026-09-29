@@ -4,6 +4,7 @@ import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { passwordProblem, PASSWORD_PLACEHOLDER, PASSWORD_RULE } from '@/lib/password';
+import { readPendingScan } from '@/lib/kiosk-pending';
 import Link from 'next/link';
 import { SAL_ILLUS, ENT_ILLUS } from './_illustrations';
 
@@ -140,6 +141,9 @@ function LoginView() {
         return;
       }
 
+      // Arrivé ici depuis le QR d'une borne : on y retourne, le pointage se
+      // termine tout seul. Sans scan en attente, rien ne change.
+      if (readPendingScan()) { router.push('/pointer'); return; }
       router.push(profile.role === 'admin' ? '/admin' : '/poseur');
     } catch (err) {
       console.error('Login error:', err);

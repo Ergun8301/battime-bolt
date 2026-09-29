@@ -9,8 +9,9 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Loader2, Upload, Trash2, Building2, CreditCard, Mail, ShieldCheck } from 'lucide-react';
+import { Loader2, Upload, Trash2, Building2, CreditCard, Mail, ShieldCheck, Tablet } from 'lucide-react';
 import { toast } from 'sonner';
+import KioskSettings from '@/components/kiosk-settings';
 
 interface Props { open: boolean; onOpenChange: (o: boolean) => void; onSaved?: () => void; }
 
@@ -68,6 +69,9 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
   const [f, setF] = useState<Form>(EMPTY);
   const [subStatus, setSubStatus] = useState<string | null>(null);
   const [portalBusy, setPortalBusy] = useState(false);
+  // Borne de pointage QR : invisible tant que `kiosk_enabled` n'est pas vrai.
+  const [kioskOn, setKioskOn] = useState(false);
+  const [kioskOpen, setKioskOpen] = useState(false);
   const [digestBusy, setDigestBusy] = useState(false);
   const [certBusy, setCertBusy] = useState(false);
   // Relance automatique des pointages manquants (hors du type Form, qui n'accepte
@@ -146,6 +150,18 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
     supabase.from('companies').select('position_tracking_enabled').eq('id', user.company_id).maybeSingle()
       .then(({ data }) => {
         if (!stale && data) setPosTracking(!!(data as { position_tracking_enabled?: boolean }).position_tracking_enabled);
+      });
+    return () => { stale = true; };
+  }, [open, user?.company_id]);
+
+  // Même principe : lecture séparée. Colonne absente (migration pas encore
+  // appliquée) ou interrupteur éteint → la section n'existe simplement pas.
+  useEffect(() => {
+    if (!open || !user?.company_id) return;
+    let stale = false;
+    supabase.from('companies').select('kiosk_enabled').eq('id', user.company_id).maybeSingle()
+      .then(({ data, error }) => {
+        if (!stale) setKioskOn(!error && !!(data as { kiosk_enabled?: boolean } | null)?.kiosk_enabled);
       });
     return () => { stale = true; };
   }, [open, user?.company_id]);
@@ -603,6 +619,19 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
                 />
               </div>
             </div>
+
+            {kioskOn && (
+              <div className="bt-set-sub">
+                <div className="bt-set-subtxt">
+                  <label className="bt-set-l">Borne de pointage</label>
+                  <p className="bt-set-substate">Une tablette à l&apos;entrée, un QR à scanner : arrivée ou départ en une seconde.</p>
+                </div>
+                <button type="button" className="bt-set-btn" onClick={() => setKioskOpen(true)}>
+                  <Tablet className="h-4 w-4" /> Gérer les bornes
+                </button>
+                <KioskSettings open={kioskOpen} onOpenChange={setKioskOpen} />
+              </div>
+            )}
 
             {/* Notifications email — déclenchement manuel des mêmes fonctions que
                 les crons (récap hebdo du vendredi, alertes habilitations). Utile
