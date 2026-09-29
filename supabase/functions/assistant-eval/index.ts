@@ -87,7 +87,7 @@ Deno.serve(async (req) => {
   if (!secret) return json({ error: 'Non autorisé' }, 401);
   if (!(await secretOk(secret))) return json({ error: 'Non autorisé' }, 401);
   const body = await req.json().catch(() => ({})) as {
-    version?: string; ids?: string[]; parallel?: number; gapMs?: number; probe?: boolean; bench?: string[]; models?: string[]; actionModel?: string; lightModel?: string;
+    version?: string; ids?: string[]; parallel?: number; gapMs?: number; probe?: boolean; bench?: string[]; prodPath?: boolean; models?: string[]; actionModel?: string; lightModel?: string;
   };
   if (Array.isArray(body.bench)) return json(await bench((body.models ?? []).slice(0, 4), body.bench.slice(0, 4)));
   if (body.probe) return json(await probe(Array.isArray(body.models) ? body.models.slice(0, 6) : undefined));
@@ -111,6 +111,11 @@ Deno.serve(async (req) => {
     get: (k: string) => (k === 'AI_MODEL' || k === 'AI_ACTION_MODEL' ? m : k === 'AI_FALLBACK_MODEL' ? '' : k === 'AI_TIMEOUT_MS' ? '30000' : env.get(k)),
   });
   const strongEnv = pinned(env.get('AI_ACTION_MODEL') || DEFAULT_ACTION_MODEL), lightEnv = pinned(light);
+  // prodPath : EXACTEMENT le chemin des clients (réglages de prod, plafond, relais), sans nouvel essai.
+  if (body.prodPath) {
+    return json(await runEval('v2', (r) => callFunction(r, Deno.env), Array.isArray(body.ids) ? body.ids.slice(0, 80) : undefined, 1,
+      Math.min(Math.max(Number(body.gapMs) || 0, 0), 20_000)));
+  }
   const call = async (r: Parameters<typeof callFunction>[0]) => {
     const e = r.kind === 'action' && version === 'v2' ? strongEnv : lightEnv;
     let res = await callFunction(r, e);
