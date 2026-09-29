@@ -1,20 +1,34 @@
-// Assistant BEMEXO qui AGIT (lot 3 bis) — l'EXÉCUTION, côté navigateur.
+// Assistant BEMEXO qui AGIT — l'EXÉCUTION, côté navigateur (lot 3 bis, lot 7).
 //
-// Rien ne part d'ici sans le clic « Confirmer » sur la carte. Chaque action
-// passe par le code de l'interface (lib/planning-writes.ts, lib/corrections.ts),
-// avec la session du patron connecté : ses droits, sa RLS, rien de plus.
-// Après réussite, une ligne est ajoutée au journal `assistant_actions`.
+// Chaque action passe par le code de l'interface (lib/planning-writes.ts,
+// lib/admin-writes.ts, lib/corrections.ts, lib/chantier-docs.ts,
+// lib/real-cost.ts), avec la session de la personne connectée : ses droits,
+// sa RLS, rien de plus.
+//
+// Lot 7 : les actions directes (clair, complet, réversible) sont lancées par
+// l'écran sans clic « Confirmer » ; chacune rend une VRAIE annulation (`undo`)
+// qui défait exactement ce qui a été écrit. Tout est noté dans le journal
+// `assistant_journal` (qui, quoi, quand — annulations comprises).
 import { supabase } from '@/lib/supabase';
-import { addPlanningSlot, createWorksite, invitedUserId, inviteWorker, savePayrollBasics, setAbsence, setWorksiteBudget } from '@/lib/planning-writes';
-import { uploadWorksiteDocument } from '@/lib/chantier-docs';
+import {
+  addPlanningSlot, createWorksite, invitedUserId, inviteWorker, savePayrollBasics, setAbsence, setWorksiteBudget, undoAbsence,
+} from '@/lib/planning-writes';
+import {
+  addCertification, addExpense, approveLeave, attributeEntries, closeMonth, readCompanySettings, rejectLeave, resendInvitation,
+  saveCompanySettings, sendHoursReminder, setReserveResolution, setUserRole, setWorkerActive, setWorksiteActive,
+  updatePlanningSlot, updateWorkerIdentity, updateWorksite, type Role,
+} from '@/lib/admin-writes';
+import { removeWorksiteDocument, uploadWorksiteDocument } from '@/lib/chantier-docs';
 import { sanitizeExtraction, supabaseCostSource } from '@/lib/real-cost';
 import { corrigerHeures } from '@/lib/corrections';
-import type { ActionDraft } from '@/supabase/functions/_shared/assistant-actions-core';
+import type { ActionDraft, ActionQuestion } from '@/supabase/functions/_shared/assistant-actions-core';
 
 export type {
-  ActionDraft, AssistantAction, EntryChoice,
+  ActionDraft, AssistantAction, EntryChoice, ActionQuestion,
 } from '@/supabase/functions/_shared/assistant-actions-core';
-export { ABSENCE_KINDS, ABSENCE_LABEL, checkAction, frDate, summarize } from '@/supabase/functions/_shared/assistant-actions-core';
+export {
+  ABSENCE_KINDS, ABSENCE_LABEL, CERT_LABEL, EXPENSE_LABEL, ROLE_LABEL, actionMode, applyAnswer, checkAction, frDate, questionFor, summarize,
+} from '@/supabase/functions/_shared/assistant-actions-core';
 
 export interface ActionOptions {
   salaries: { id: string; nom: string }[];
@@ -22,24 +36,22 @@ export interface ActionOptions {
 }
 /** Ce que la réponse de l'assistant transporte jusqu'à la carte. */
 export interface ActionExtra {
-  action: { draft: ActionDraft; problems: string[]; summary: string };
+  action: { draft: ActionDraft; problems: string[]; summary: string; question?: ActionQuestion | null };
   options: ActionOptions;
-  /** 📎 Le fichier joint, resté dans l'écran jusqu'à « Confirmer ». */
+  /** 📎 Le fichier joint, resté dans l'écran jusqu'à l'exécution. */
   attachment?: File;
+  /** Lot 7 : la question posée s'il manque une info (le panneau garde la demande). */
+  pendingQuestion?: string;
 }
 
-export interface ActionResult { ok: boolean; message: string }
+export interface ActionResult { ok: boolean; message: string; undo?: () => Promise<ActionResult> }
 export type ActionExecutor = (d: ActionDraft, summary: string, attachment?: File) => Promise<ActionResult>;
 
-const LOG_NAME: Record<ActionDraft['type'], string> = {
-  inviter_salarie: 'inviter_salarie', creer_chantier: 'creer_chantier', poser_absence: 'poser_absence',
-  affecter_planning: 'affecter_planning', planning_semaine: 'appliquer_planning_semaine', corriger_pointage: 'corriger_pointage',
-  ranger_document: 'ranger_document',
-};
 const n = (v?: string) => (v && Number(v) > 0 ? Number(v) : null);
+const yes = (v: string, fallback: boolean) => (v === 'oui' ? true : v === 'non' ? false : fallback);
 
 /** Chiffres du bulletin → coût réel (lot 2), avec LES MÊMES contrôles que l'écran. */
-export function bulletinFigures(b: NonNullable<Extract<ActionDraft, { type: 'inviter_salarie' }>['bulletin']>) {
+export function bulletinFigures(b: { mois: string; brut: string; cout_employeur: string; heures_payees: string }) {
   const { figures, doubts } = sanitizeExtraction({ month: b.mois, gross: n(b.brut), employer_total: n(b.cout_employeur), paid_hours: n(b.heures_payees) });
   const complete = !!(figures.month && figures.gross && figures.employer_total && figures.paid_hours) && doubts.length === 0;
   return { figures, complete };
@@ -47,59 +59,85 @@ export function bulletinFigures(b: NonNullable<Extract<ActionDraft, { type: 'inv
 
 const errText = (e: unknown, fallback: string) => (e as { message?: string } | null)?.message || fallback;
 
-/** Exécuteur réel : le patron connecté, son entreprise. */
+/** Journal : qui, quoi, quand. L'action est faite même si la trace échoue ; on le dit. */
+async function journal(action: string, summary: string, undone = false): Promise<boolean> {
+  const { error } = await supabase.rpc('assistant_journal_log', { p_action: action, p_summary: summary, p_undone: undone });
+  return !error;
+}
+
+/** Exécuteur réel : la personne du bureau connectée, son entreprise. */
 export function makeActionExecutor(user: { id: string; company_id: string }): ActionExecutor {
-  const base = { companyId: user.company_id, createdBy: user.id };
+  const cid = user.company_id;
+  const base = { companyId: cid, createdBy: user.id };
   return async (d, summary, attachment) => {
     let message = '';
+    let undo: (() => Promise<void>) | undefined;
     try {
       switch (d.type) {
         case 'inviter_salarie': {
-          await inviteWorker({ companyId: user.company_id, email: d.email, firstName: d.prenom, lastName: d.nom, phone: d.telephone });
+          await inviteWorker({ companyId: cid, email: d.email, firstName: d.prenom, lastName: d.nom, phone: d.telephone });
           message = `Invitation envoyée à ${d.email}.`;
           // Bulletin joint : infos paie non sensibles + coût réel. Le bulletin
           // lui-même n'est PAS conservé (règle du lot 2), le n° de sécu jamais lu.
           const hasPay = !!(d.date_entree || d.contrat || n(d.taux_horaire) || n(d.heures_hebdo));
           const slip = d.bulletin ? bulletinFigures(d.bulletin) : null;
           if (hasPay || slip?.complete) {
-            const uid = await invitedUserId(user.company_id, d.email);
+            const uid = await invitedUserId(cid, d.email);
             if (!uid) { message += ' Infos de paie à saisir sur sa fiche (compte pas encore visible).'; break; }
-            if (hasPay) await savePayrollBasics({ companyId: user.company_id, userId: uid, hireDate: d.date_entree, contract: d.contrat, hourlyRate: n(d.taux_horaire), weeklyHours: n(d.heures_hebdo) });
+            if (hasPay) await savePayrollBasics({ companyId: cid, userId: uid, hireDate: d.date_entree, contract: d.contrat, hourlyRate: n(d.taux_horaire), weeklyHours: n(d.heures_hebdo) });
             if (slip?.complete) {
-              const err = await supabaseCostSource.save(user.company_id, uid, slip.figures, 'ai');
+              const err = await supabaseCostSource.save(cid, uid, slip.figures, 'ai');
               message += err ? ` Coût réel non enregistré : ${err}` : ' Infos de paie et coût réel enregistrés.';
             } else message += ' Infos de paie enregistrées.';
           }
           break;
         }
         case 'creer_chantier': {
-          const ws = await createWorksite(user.company_id, {
+          const ws = await createWorksite(cid, {
             client_name: d.nom_client, city: d.ville, address: d.adresse, client_phone: d.telephone, client_email: d.email, description: d.description,
           });
           message = `Client « ${d.nom_client} » créé.`;
           if (n(d.budget_heures) || n(d.budget_montant)) {
-            await setWorksiteBudget(user.company_id, ws.id, n(d.budget_heures), n(d.budget_montant));
+            await setWorksiteBudget(cid, ws.id, n(d.budget_heures), n(d.budget_montant));
             message += ' Budget enregistré.';
           }
+          let doc: { id: string; path: string } | null = null;
           if (attachment) {
-            await uploadWorksiteDocument({ companyId: user.company_id, userId: user.id, worksiteId: ws.id, file: attachment });
+            doc = await uploadWorksiteDocument({ companyId: cid, userId: user.id, worksiteId: ws.id, file: attachment });
             message += ' Devis rangé dans ses documents.';
           }
+          // Annuler : le client vient d'être créé, rien d'autre ne s'y rattache —
+          // on le retire ; si la base refuse (il a déjà servi), on l'archive.
+          undo = async () => {
+            if (doc) await removeWorksiteDocument(doc.id, doc.path);
+            const { error } = await supabase.from('worksites').delete().eq('id', ws.id).eq('company_id', cid);
+            if (error) await setWorksiteActive(cid, ws.id, false);
+          };
           break;
         }
-        case 'ranger_document':
+        case 'ranger_document': {
           if (!attachment) return { ok: false, message: 'Aucun fichier joint.' };
-          await uploadWorksiteDocument({ companyId: user.company_id, userId: user.id, worksiteId: d.worksite_id!, file: attachment });
+          const doc = await uploadWorksiteDocument({ companyId: cid, userId: user.id, worksiteId: d.worksite_id!, file: attachment });
           message = 'Document rangé dans le chantier.';
+          undo = () => removeWorksiteDocument(doc.id, doc.path);
           break;
-        case 'poser_absence':
-          await setAbsence({ ...base, userId: d.user_id!, type: d.absence_type, from: d.du, to: d.au });
+        }
+        case 'poser_absence': {
+          const r = await setAbsence({ ...base, userId: d.user_id!, type: d.absence_type, from: d.du, to: d.au });
           message = 'Absence enregistrée au planning.';
+          undo = () => undoAbsence({ companyId: cid, userId: d.user_id!, ids: r.ids, replaced: r.replaced });
           break;
-        case 'affecter_planning':
-          for (const day of d.dates) await addPlanningSlot({ ...base, userId: d.user_id!, worksiteId: d.worksite_id!, workDate: day, notes: d.note });
+        }
+        case 'affecter_planning': {
+          const ids: string[] = [];
+          for (const day of d.dates) ids.push(await addPlanningSlot({ ...base, userId: d.user_id!, worksiteId: d.worksite_id!, workDate: day, notes: d.note, estimatedStart: d.debut || null }));
           message = `${d.dates.length} jour${d.dates.length > 1 ? 's' : ''} ajouté${d.dates.length > 1 ? 's' : ''} au planning.`;
+          undo = async () => {
+            const { error } = await supabase.from('planning').delete().eq('company_id', cid).in('id', ids);
+            if (error) throw error;
+          };
           break;
+        }
         case 'planning_semaine': {
           const rows = d.lignes.filter((l) => l.worksite_id);
           for (const l of rows) await addPlanningSlot({ ...base, userId: l.user_id, worksiteId: l.worksite_id!, workDate: l.date });
@@ -112,20 +150,147 @@ export function makeActionExecutor(user: { id: string; company_id: string }): Ac
           message = r.message;
           break;
         }
+        // ── Lot 7 ──
+        case 'modifier_intervention': {
+          // L'état d'avant, pour « Annuler ».
+          const { data: prev, error: readErr } = await supabase.from('planning').select('user_id, work_date, estimated_start, notes')
+            .eq('id', d.planning_id!).eq('company_id', cid).single();
+          if (readErr) throw readErr;
+          const p0 = prev as { user_id: string; work_date: string; estimated_start: string | null; notes: string | null };
+          await updatePlanningSlot(cid, d.planning_id!, {
+            ...(d.nouvelle_date ? { workDate: d.nouvelle_date } : {}), ...(d.nouveau_user_id ? { userId: d.nouveau_user_id } : {}),
+            ...(d.debut ? { estimatedStart: d.debut } : {}), ...(d.note !== null ? { notes: d.note } : {}),
+          });
+          message = 'Intervention modifiée.';
+          undo = () => updatePlanningSlot(cid, d.planning_id!, {
+            userId: p0.user_id, workDate: p0.work_date, estimatedStart: p0.estimated_start, notes: p0.notes,
+          });
+          break;
+        }
+        case 'repondre_conge': {
+          const c = d.choix.find((x) => x.id === d.leave_id)!;
+          const row = { id: c.id, user_id: c.user_id, type: c.type, start_date: c.du, end_date: c.au };
+          if (d.decision === 'refuser') { await rejectLeave(user.id, row, d.motif); message = 'Demande refusée, le salarié est prévenu.'; }
+          else { await approveLeave(cid, user.id, row); message = 'Demande acceptée, absence posée au planning, le salarié est prévenu.'; }
+          break;
+        }
+        case 'lever_reserve':
+          await setReserveResolution(d.entry_id!, true, d.note || null);
+          message = 'Réserve levée.';
+          break;
+        case 'ajouter_depense':
+          await addExpense(cid, user.id, { worksiteId: d.worksite_id!, spentOn: d.date, category: d.categorie, label: d.libelle, amount: Number(d.montant) });
+          message = 'Dépense ajoutée au coût du chantier.';
+          break;
+        case 'modifier_client':
+          await updateWorksite(cid, d.worksite_id!, {
+            ...(d.nom ? { client_name: d.nom } : {}), ...(d.ville ? { city: d.ville } : {}), ...(d.adresse ? { address: d.adresse } : {}),
+            ...(d.telephone ? { client_phone: d.telephone } : {}), ...(d.email ? { client_email: d.email } : {}),
+            ...(d.description ? { description: d.description } : {}),
+            ...(d.budget_heures ? { budget_hours: Number(d.budget_heures) } : {}), ...(d.budget_montant ? { budget_amount: Number(d.budget_montant) } : {}),
+          });
+          message = 'Fiche client enregistrée.';
+          break;
+        case 'archiver_client':
+          await setWorksiteActive(cid, d.worksite_id!, false);
+          message = 'Client archivé.';
+          break;
+        case 'changer_role':
+          await setUserRole(d.user_id!, d.role as Role);
+          message = 'Rôle changé.';
+          break;
+        case 'relancer_invitation': {
+          const { data: inv } = await supabase.from('invitations').select('email, first_name, last_name, phone').eq('company_id', cid).eq('email', d.email).is('accepted_at', null).maybeSingle();
+          if (!inv) return { ok: false, message: 'Invitation introuvable (déjà acceptée ?).' };
+          await resendInvitation(cid, inv as { email: string; first_name: string | null; last_name: string | null; phone: string | null });
+          message = 'Invitation renvoyée.';
+          break;
+        }
+        case 'envoyer_rappel': {
+          const sent = await sendHoursReminder(d.user_id!, '');
+          message = sent > 0 ? 'Rappel envoyé sur son téléphone.' : 'Il n’a pas activé les notifications : rappel non envoyé. Utilisez la cloche du planning (email).';
+          if (!sent) return { ok: false, message };
+          break;
+        }
+        case 'cloturer_mois':
+          await closeMonth(cid, user.id, d.mois);
+          message = 'Mois clôturé.';
+          break;
+        case 'attribuer_client': {
+          // Les heures notées sur « Autre » (ou sans chantier) ce jour-là.
+          const { data: autre } = await supabase.from('worksites').select('id').eq('company_id', cid).eq('client_name', 'Autre').limit(1).maybeSingle();
+          const from = (autre as { id: string } | null)?.id ?? null;
+          await attributeEntries(cid, { userId: d.user_id!, date: d.date, fromWorksiteId: from, toWorksiteId: d.worksite_id! });
+          message = 'Client attribué.';
+          break;
+        }
+        case 'ajouter_habilitation':
+          await addCertification(cid, d.user_id!, { type: d.categorie, label: d.libelle, expiry: d.expiration });
+          message = 'Habilitation ajoutée.';
+          break;
+        case 'modifier_salarie': {
+          const { data: u } = await supabase.from('users').select('first_name, last_name, phone').eq('id', d.user_id!).eq('company_id', cid).single();
+          const w = u as { first_name: string | null; last_name: string | null; phone: string | null };
+          await updateWorkerIdentity(cid, d.user_id!, { firstName: d.prenom || w.first_name || '', lastName: d.nom || w.last_name || '', phone: d.telephone || w.phone });
+          message = 'Fiche du salarié enregistrée.';
+          break;
+        }
+        case 'archiver_salarie':
+          await setWorkerActive(cid, d.user_id!, false);
+          message = 'Salarié archivé.';
+          break;
+        case 'cout_reel': {
+          const slip = bulletinFigures({ mois: d.mois, brut: d.brut, cout_employeur: d.cout_employeur, heures_payees: d.heures_payees });
+          if (!slip.complete) return { ok: false, message: 'Chiffres du bulletin incomplets ou incohérents.' };
+          const err = await supabaseCostSource.save(cid, d.user_id!, slip.figures, 'ai');
+          if (err) return { ok: false, message: err };
+          message = 'Coût réel enregistré. Le bulletin n’est pas conservé.';
+          break;
+        }
+        case 'modifier_reglages': {
+          const cur = await readCompanySettings(cid);
+          await saveCompanySettings({
+            ...cur,
+            weekly_hours: n(d.heures_hebdo) ?? cur.weekly_hours,
+            accountant_email: d.email_comptable || cur.accountant_email,
+            auto_reminder_enabled: yes(d.relance_auto, cur.auto_reminder_enabled),
+            reminder_hour: d.heure_relance ? Number(d.heure_relance) : cur.reminder_hour,
+            budget_alerts_enabled: yes(d.alertes_budget, cur.budget_alerts_enabled),
+            travel_paid: yes(d.trajet_paye, cur.travel_paid),
+            overtime_rate_1: d.majoration_1 ? Number(d.majoration_1) : cur.overtime_rate_1,
+            overtime_rate_2: d.majoration_2 ? Number(d.majoration_2) : cur.overtime_rate_2,
+            phone: d.telephone || cur.phone, email: d.email || cur.email, address: d.adresse || cur.address,
+            postal_code: d.code_postal || cur.postal_code, city: d.ville || cur.city,
+          });
+          message = 'Réglages enregistrés.';
+          break;
+        }
       }
     } catch (e) {
       return { ok: false, message: errText(e, 'Action impossible.') };
     }
-    // Trace : qui, quoi, quand. L'action est faite même si la trace échoue ;
-    // on le dit plutôt que de le cacher.
-    const { error } = await supabase.rpc('assistant_log_action', { p_action: LOG_NAME[d.type], p_summary: summary });
-    return { ok: true, message: error ? `${message} (journal non mis à jour)` : message };
+    const logged = await journal(d.type, summary);
+    const result: ActionResult = { ok: true, message: logged ? message : `${message} (journal non mis à jour)` };
+    if (undo) {
+      const run = undo;
+      result.undo = async () => {
+        try { await run(); } catch (e) { return { ok: false, message: errText(e, 'Annulation impossible.') }; }
+        await journal(d.type, summary, true);
+        return { ok: true, message: 'Annulé : c’est comme avant.' };
+      };
+    }
+    return result;
   };
 }
 
-/** Démo (préviews) : rien n'est écrit. */
+/** Démo (préviews) : rien n'est écrit, l'annulation non plus. */
 export const demoActionExecutor: ActionExecutor = async (d) => {
   await new Promise((r) => setTimeout(r, 450));
-  const n = d.type === 'planning_semaine' ? d.lignes.filter((l) => l.worksite_id).length : 1;
-  return { ok: true, message: d.type === 'planning_semaine' ? `Planning appliqué : ${n} affectations (démo, rien n’est écrit).` : 'Fait (démo, rien n’est écrit).' };
+  const k = d.type === 'planning_semaine' ? d.lignes.filter((l) => l.worksite_id).length : 1;
+  const direct = ['affecter_planning', 'poser_absence', 'ranger_document', 'modifier_intervention', 'creer_chantier'].includes(d.type);
+  return {
+    ok: true,
+    message: d.type === 'planning_semaine' ? `Planning appliqué : ${k} affectations (démo, rien n’est écrit).` : 'Fait (démo, rien n’est écrit).',
+    ...(direct ? { undo: async () => { await new Promise((r) => setTimeout(r, 300)); return { ok: true, message: 'Annulé (démo).' }; } } : {}),
+  };
 };

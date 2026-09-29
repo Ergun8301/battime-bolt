@@ -50,3 +50,17 @@ export async function markEntryReserve(p: { userId: string; entryId: string; det
   if (error) throw error;
   return !!data && data.length > 0;
 }
+
+/**
+ * Nouveaux horaires d'une de SES lignes (tiroir « OK ✓ » sur une ligne
+ * existante), même marquage qu'à l'écran si la journée est déjà envoyée.
+ * Renvoie false si la RLS a refusé (ligne verrouillée par le bureau).
+ */
+export async function updateEntryTimes(p: { userId: string; entryId: string; start: string; end: string; wasSubmitted: boolean }): Promise<boolean> {
+  const { data, error } = await supabase.from('time_entries').update({
+    start_time: p.start, end_time: p.end,
+    ...(p.wasSubmitted ? { modified_at: new Date().toISOString(), modified_by: p.userId } : {}),
+  }).eq('id', p.entryId).eq('user_id', p.userId).select('id');
+  if (error) throw error;
+  return !!data && data.length > 0;
+}

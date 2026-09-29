@@ -8,6 +8,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
+import { saveCompanySettings } from '@/lib/admin-writes';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Loader2, Upload, Trash2, Building2, CreditCard, Mail, ShieldCheck, MonitorSmartphone } from 'lucide-react';
 import LeaveFundSetting from '@/components/leave-fund-setting';
@@ -308,18 +309,14 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
     }
     setSaving(true); setErr(null);
     try {
-      const { error } = await supabase.rpc('update_company_info', {
-        p_name: f.name, p_siret: f.siret, p_tva_intra: f.tva_intra, p_address: f.address,
-        p_postal_code: f.postal_code, p_city: f.city, p_phone: f.phone, p_email: f.email, p_logo_url: f.logo_url,
-        p_auto_reminder_enabled: reminderOn, p_reminder_hour: reminderHour,
-        p_budget_alerts_enabled: budgetAlertsOn,
-        p_travel_paid: travelPaid,
-        p_weekly_hours: Number(weeklyHours.replace(',', '.')) || 0,
-        p_accountant_email: mail,
-        p_overtime_rate_1: r1,
-        p_overtime_rate_2: r2,
+      // lib/admin-writes.ts : même écriture que l'Assistant BEMEXO.
+      await saveCompanySettings({
+        ...f,
+        auto_reminder_enabled: reminderOn, reminder_hour: reminderHour,
+        budget_alerts_enabled: budgetAlertsOn, travel_paid: travelPaid,
+        weekly_hours: Number(weeklyHours.replace(',', '.')) || 0,
+        accountant_email: mail, overtime_rate_1: r1, overtime_rate_2: r2,
       });
-      if (error) throw error;
       onSaved?.();
       onOpenChange(false);
     } catch {

@@ -82,7 +82,7 @@ interface Props {
   launcher?: boolean;
 }
 
-export default function AssistantPanel({ source, onNavigate, defaultOpen = false, suggestions = ASSISTANT_SUGGESTIONS, intro, renderExtra, footNote = 'Rien n’est fait sans votre confirmation', attachments = false, open: openProp, onOpenChange, launcher = true }: Props) {
+export default function AssistantPanel({ source, onNavigate, defaultOpen = false, suggestions = ASSISTANT_SUGGESTIONS, intro, renderExtra, footNote = 'Actions simples faites tout de suite · « Annuler » en un clic', attachments = false, open: openProp, onOpenChange, launcher = true }: Props) {
   const [innerOpen, setInnerOpen] = useState(defaultOpen);
   const open = openProp ?? innerOpen;
   const setOpen = (v: boolean) => { if (onOpenChange) onOpenChange(v); else setInnerOpen(v); };
@@ -93,6 +93,9 @@ export default function AssistantPanel({ source, onNavigate, defaultOpen = false
   const [remaining, setRemaining] = useState<number | null>(null);
   const [canSpeak, setCanSpeak] = useState(false);
   const dictRef = useRef<Dictation | null>(null);
+  // Lot 7 : une question vient d'être posée (« Sur quel chantier ? ») — la
+  // prochaine réponse complète la MÊME demande au lieu d'en ouvrir une autre.
+  const pendingRef = useRef<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -109,7 +112,9 @@ export default function AssistantPanel({ source, onNavigate, defaultOpen = false
     setText(''); setFile(null);
     setMsgs((m) => [...m, { who: 'me', text: question, file: sent?.name }]);
     setBusy(true);
-    const r = await source.ask(question, sent ?? undefined);
+    const full = pendingRef.current && !sent ? `${pendingRef.current}, ${question}` : question;
+    const r = await source.ask(full, sent ?? undefined);
+    pendingRef.current = r.followUp ? full : null;
     setBusy(false);
     // Le fichier reste DANS L'ÉCRAN, joint à la carte : il ne sera rangé
     // (documents du chantier) qu'après « Confirmer ».

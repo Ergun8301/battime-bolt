@@ -38,7 +38,7 @@ export default function WorkerAssistant({ onSaved, onNavigate, defaultOpen = fal
       launcher={open === undefined}
       onNavigate={onNavigate ?? (() => {})}
       suggestions={WORKER_ACTION_SUGGESTIONS}
-      footNote="Rien n’est enregistré sans votre confirmation"
+      footNote="Fait tout de suite · « Annuler » en un clic"
       intro="Dites-moi vos heures, ce que vous voulez faire, ou comment faire"
       renderExtra={(extra) => {
         if ((extra as WorkerActionExtra).workerAction) {

@@ -2,14 +2,15 @@
 //
 // Deux sources derrière la même interface : la vraie fonction `assistant`, et
 // une démo en mémoire (préviews uniquement, `?demo=assistant`), sans requête.
-// Une réponse peut porter une ACTION préparée (`extra`) : la carte de
-// confirmation l'affiche, rien n'est fait avant « Confirmer ».
+// Une réponse peut porter une ACTION (`extra`). Lot 7 : action simple et
+// complète → faite tout de suite (« ✅ Fait », Annuler, Modifier) ; sinon carte
+// de confirmation ; s'il manque une info, UNE question (`followUp`).
 import { supabase } from '@/lib/supabase';
 import { isPreviewHost } from '@/lib/hosting';
 import { attachmentPayload } from '@/lib/attachment';
 import type { AssistantLink } from '@/supabase/functions/_shared/assistant-core';
 import {
-  addDays, fromFunctionCall, handleActionLocally, mondayOf, summarize, findGuide, guideAnswer, NAV_ACTIONS,
+  addDays, fromFunctionCall, handleActionLocally, mondayOf, questionFor, summarize, findGuide, guideAnswer, NAV_ACTIONS,
   type ActionContext, type LocalReply,
 } from '@/supabase/functions/_shared/assistant-actions-core';
 
@@ -18,7 +19,11 @@ import type { ActionExtra } from '@/lib/assistant-actions';
 export { ACTION_SUGGESTIONS as ASSISTANT_SUGGESTIONS } from '@/supabase/functions/_shared/assistant-actions-core';
 export type { AssistantLink } from '@/supabase/functions/_shared/assistant-core';
 
-export interface AssistantReply { answer: string; links: AssistantLink[]; remaining?: number; notice?: boolean; extra?: unknown }
+export interface AssistantReply {
+  answer: string; links: AssistantLink[]; remaining?: number; notice?: boolean; extra?: unknown;
+  /** Lot 7 : une question a été posée — la prochaine réponse complète la MÊME demande. */
+  followUp?: boolean;
+}
 export interface AssistantSource { demo: boolean; ask(question: string, file?: File): Promise<AssistantReply> }
 
 /** Démo : uniquement sur une preview, jamais sur bemexo.com. */
@@ -34,6 +39,7 @@ type ServerReply = {
 const toReply = (d: ServerReply): AssistantReply => ({
   answer: d.answer || '…', links: d.links || [], remaining: d.remaining, notice: !!(d.quota || d.unavailable),
   extra: d.action && d.options ? ({ action: d.action, options: d.options } as ActionExtra) : undefined,
+  followUp: !!d.action?.question,
 });
 
 export const supabaseAssistantSource: AssistantSource = {
@@ -87,10 +93,11 @@ export function demoActionContext(): ActionContext {
 }
 
 function withSummary(r: LocalReply, ctx: ActionContext): AssistantReply {
+  const question = r.action ? questionFor(r.action.draft, r.action.problems, ctx) : null;
   return {
-    answer: r.answer, links: r.links,
+    answer: r.answer, links: r.links, followUp: !!question,
     extra: r.action ? ({
-      action: { ...r.action, summary: summarize(r.action.draft, ctx) },
+      action: { ...r.action, summary: summarize(r.action.draft, ctx), question },
       options: {
         salaries: ctx.salaries.map((s) => ({ id: s.id, nom: `${s.prenom} ${s.nom}` })),
         chantiers: ctx.chantiers,
@@ -129,6 +136,19 @@ export function demoAssistantSource(): AssistantSource {
       const local = handleActionLocally(q, ctx);
       if (local) return done(withSummary(local, ctx));
       // Phrases détaillées : l'IA est SIMULÉE (même contrôle que la vraie).
+      // Lot 7 : « ajoute une intervention… » → titre propre, date relative, heure.
+      if (/intervention|rendez-vous|rdv/.test(t)) {
+        return done(withSummary(fromFunctionCall('affecter_planning', {
+          salarie: /karim/.test(t) ? 'Karim' : '', chantier: /dupont/.test(t) ? 'Villa Dupont' : '',
+          dates: /jeudi/.test(t) ? ['jeudi'] : /demain/.test(t) ? ['demain'] : [],
+          objet: /chauffe/.test(t) ? 'euh alors le remplacement du chauffe-eau.' : '', debut: /14 ?h/.test(t) ? '14h' : '', moment: /matin/.test(t) ? 'matin' : '',
+        }, ctx), ctx));
+      }
+      if (/\b(deplace|decale|bouge)\b/.test(t)) {
+        return done(withSummary(fromFunctionCall('modifier_intervention', {
+          salarie: 'Karim', date: addDays(mondayOf(ctx.today), 1), nouvelle_date: addDays(mondayOf(ctx.today), 3),
+        }, { ...ctx, planning: ctx.planning.map((p, i) => ({ ...p, id: `demo-p${i}`, notes: null, debut: null })) }), ctx));
+      }
       if (/\b(mets|met|affecte|place)\b/.test(t)) {
         return done(withSummary(fromFunctionCall('affecter_planning', { salarie: 'Lucas', chantier: 'Villa Dupont', dates: [addDays(ctx.today, 1)] }, ctx), ctx));
       }

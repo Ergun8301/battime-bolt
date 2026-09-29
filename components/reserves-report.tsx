@@ -20,6 +20,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { setReserveResolution } from '@/lib/admin-writes';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -181,10 +182,7 @@ export default function ReservesReport({ open, onOpenChange, companyId, onOpenDo
   const apply = async (id: string, resolved: boolean, text?: string) => {
     setBusy(true);
     try {
-      const { error } = await supabase.rpc('set_reserve_resolution', {
-        p_entry_id: id, p_resolved: resolved, p_note: text ?? null,
-      });
-      if (error) throw error;
+      await setReserveResolution(id, resolved, text ?? null);
       setResolving(null); setNote('');
       await load();
       onChanged?.();

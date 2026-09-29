@@ -32,6 +32,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { addExpense as addExpenseWrite } from '@/lib/admin-writes';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -329,16 +330,11 @@ export default function CostReport({ open, onOpenChange, companyId }: Props) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(newDate)) { toast.error('Date invalide.'); return; }
     setSaving(true);
     const { data: me } = await supabase.auth.getUser();
-    const { error } = await supabase.from('worksite_expenses').insert({
-      company_id: companyId, worksite_id: newSite,
-      // La date est CHOISIE, plus « aujourd'hui » d'office : une facture saisie
-      // en retard appartient au mois où l'argent est sorti, pas au jour de la
-      // frappe. C'est aussi ce qui la rendait invisible quand le bureau
-      // consultait une période passée.
-      spent_on: newDate,
-      category: newCat, label: newLabel.trim() || null, amount,
-      created_by: me?.user?.id ?? null,
-    });
+    // La date est CHOISIE, plus « aujourd'hui » d'office : une facture saisie
+    // en retard appartient au mois où l'argent est sorti, pas au jour de la
+    // frappe. lib/admin-writes.ts : même chemin que l'Assistant BEMEXO.
+    const error = await addExpenseWrite(companyId, me?.user?.id ?? null, { worksiteId: newSite, spentOn: newDate, category: newCat, label: newLabel, amount })
+      .then(() => null, (e: { message?: string }) => e);
     setSaving(false);
     if (error) { toast.error(error.message || "La dépense n'a pas pu être enregistrée."); return; }
     setNewLabel(''); setNewAmount('');

@@ -1,15 +1,23 @@
 'use client';
 
-// Carte de confirmation d'une action préparée par l'Assistant BEMEXO (lot 3 bis).
-// Tout est MODIFIABLE ; rien ne s'exécute avant « Confirmer ». Les contrôles
-// sont les mêmes que côté serveur (checkAction), à chaque modification.
+// Carte d'une action de l'Assistant BEMEXO (lot 3 bis, lot 7).
+//
+// Lot 7 — MOINS DE VALIDATIONS : action simple, claire, réversible → faite
+// tout de suite, puis « ✅ Fait » + Annuler (vraie annulation) + Modifier.
+// Info indispensable manquante → UNE question avec ses choix. Sinon (écritures
+// multiples, message envoyé, correction passée, coût / paie / droits) : la
+// fiche modifiable et « Confirmer ». Les contrôles sont ceux du serveur.
 
-import { useMemo, useState } from 'react';
-import { CheckCircle2, Loader2, UserPlus, Building2, CalendarOff, CalendarPlus, CalendarRange, Clock, FolderInput, Paperclip } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ABSENCE_KINDS, ABSENCE_LABEL, bulletinFigures, checkAction, frDate, summarize,
-  type ActionDraft, type ActionExecutor, type ActionExtra,
+  CheckCircle2, Loader2, UserPlus, Building2, CalendarOff, CalendarPlus, CalendarRange, Clock, FolderInput, Paperclip,
+  CalendarClock, Check, ShieldCheck, Receipt, Archive, UserCog, Send, BellRing, Lock, Link2, BadgeCheck, UserPen, UserX, Wallet, Settings,
+} from 'lucide-react';
+import {
+  ABSENCE_KINDS, ABSENCE_LABEL, CERT_LABEL, EXPENSE_LABEL, ROLE_LABEL, actionMode, applyAnswer, bulletinFigures, checkAction, frDate, questionFor, summarize,
+  type ActionDraft, type ActionExecutor, type ActionExtra, type ActionResult,
 } from '@/lib/assistant-actions';
+import { ActionAsk, ActionDone } from '@/components/action-done';
 
 const CSS = `
 .ac{margin-top:10px;border:1px solid rgba(21,18,15,.14);border-radius:14px;background:#FBF8F2;padding:11px}
@@ -49,20 +57,44 @@ const TITLES: Record<ActionDraft['type'], [string, typeof UserPlus]> = {
   planning_semaine: ['Planning proposé', CalendarRange],
   corriger_pointage: ['Corriger un pointage', Clock],
   ranger_document: ['Ranger dans les documents', FolderInput],
+  modifier_intervention: ['Modifier une intervention', CalendarClock],
+  repondre_conge: ['Demande de congé', Check],
+  lever_reserve: ['Lever une réserve', ShieldCheck],
+  ajouter_depense: ['Ajouter une dépense', Receipt],
+  modifier_client: ['Fiche client', Building2],
+  archiver_client: ['Archiver un client', Archive],
+  changer_role: ['Changer le rôle', UserCog],
+  relancer_invitation: ['Relancer une invitation', Send],
+  envoyer_rappel: ['Envoyer un rappel', BellRing],
+  cloturer_mois: ['Clôturer le mois', Lock],
+  attribuer_client: ['Attribuer un client', Link2],
+  ajouter_habilitation: ['Ajouter une habilitation', BadgeCheck],
+  modifier_salarie: ['Fiche salarié', UserPen],
+  archiver_salarie: ['Archiver un salarié', UserX],
+  cout_reel: ['Coût réel du salarié', Wallet],
+  modifier_reglages: ['Réglages de l’entreprise', Settings],
 };
 const CONFIRM: Record<ActionDraft['type'], string> = {
-  inviter_salarie: 'Confirmer et envoyer', creer_chantier: 'Confirmer', poser_absence: 'Confirmer',
-  affecter_planning: 'Confirmer', planning_semaine: 'Appliquer', corriger_pointage: 'Corriger et prévenir',
-  ranger_document: 'Ranger',
+  inviter_salarie: 'Confirmer et envoyer', creer_chantier: 'Confirmer', poser_absence: 'Enregistrer',
+  affecter_planning: 'Enregistrer', planning_semaine: 'Appliquer', corriger_pointage: 'Corriger et prévenir',
+  ranger_document: 'Ranger', modifier_intervention: 'Enregistrer', repondre_conge: 'Confirmer et prévenir',
+  lever_reserve: 'Lever la réserve', ajouter_depense: 'Ajouter', modifier_client: 'Enregistrer', archiver_client: 'Archiver',
+  changer_role: 'Changer le rôle', relancer_invitation: 'Renvoyer', envoyer_rappel: 'Envoyer', cloturer_mois: 'Clôturer',
+  attribuer_client: 'Attribuer', ajouter_habilitation: 'Ajouter', modifier_salarie: 'Enregistrer', archiver_salarie: 'Archiver',
+  cout_reel: 'Enregistrer', modifier_reglages: 'Enregistrer',
 };
 
 interface Props { extra: ActionExtra; execute: ActionExecutor; onDone?: () => void }
+
+// Une action directe n'est lancée qu'UNE fois, même si l'écran se redessine.
+const launched = new WeakSet<object>();
+
+type Phase = 'auto' | 'question' | 'form' | 'done';
 
 export default function AssistantActionCard({ extra, execute, onDone }: Props) {
   const { options } = extra;
   const [d, setD] = useState<ActionDraft>(extra.action.draft);
   const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState<string | null>(null);
   const [cancelled, setCancelled] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
@@ -74,8 +106,61 @@ export default function AssistantActionCard({ extra, execute, onDone }: Props) {
   const problems = useMemo(() => checkAction(d, ctx), [d, ctx]);
   const set = (patch: Partial<ActionDraft>) => setD((x) => ({ ...x, ...patch } as ActionDraft));
 
-  if (done) return <div className="ac-done"><style>{CSS}</style><CheckCircle2 className="h-5 w-5" /> {done}</div>;
+  const direct = actionMode(extra.action.draft) === 'direct';
+  const [phase, setPhase] = useState<Phase>(() => {
+    if (!direct) return 'form';
+    if (!extra.action.problems.length) return 'auto';
+    return questionFor(extra.action.draft, extra.action.problems, ctx) ? 'question' : 'form';
+  });
+  const [result, setResult] = useState<ActionResult | null>(null);
+  const [doneSummary, setDoneSummary] = useState('');
+  // « Modifier » après coup : l'ancienne action est défaite AU MOMENT d'enregistrer.
+  const editOf = useRef<(() => Promise<{ ok: boolean; message: string }>) | null>(null);
+  const [question, setQuestion] = useState(() => questionFor(extra.action.draft, extra.action.problems, ctx));
+
+  const run = async (draft: ActionDraft) => {
+    setBusy(true); setErr(null);
+    if (editOf.current) {
+      const u = await editOf.current();
+      if (!u.ok) { setBusy(false); setErr(u.message); return; }
+      editOf.current = null;
+    }
+    const summary = summarize(draft, ctx);
+    const r = await execute(draft, summary, extra.attachment);
+    setBusy(false);
+    if (r.ok) { setResult(r); setDoneSummary(summary); setD(draft); setPhase('done'); onDone?.(); }
+    else { setErr(r.message); setD(draft); setPhase('form'); }
+  };
+
+  useEffect(() => {
+    if (phase !== 'auto' || launched.has(extra)) return;
+    launched.add(extra);
+    run(extra.action.draft);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   if (cancelled) return <p className="ac-hint">Action annulée : rien n’a été fait.</p>;
+  if (phase === 'auto') return <p className="ac-hint" style={{ display: 'flex', gap: 6, alignItems: 'center' }}><style>{CSS}</style><Loader2 className="h-4 w-4 animate-spin" /> Je le fais…</p>;
+  if (phase === 'done' && result) {
+    return (
+      <ActionDone
+        message={result.message} summary={doneSummary} undo={result.undo}
+        onEdit={result.undo ? () => { editOf.current = result.undo!; setPhase('form'); } : undefined}
+      />
+    );
+  }
+  if (phase === 'question' && question) {
+    return (
+      <ActionAsk text={question.text} chips={question.chips} onPick={(value) => {
+        const nd = applyAnswer(d, question.field, value);
+        const p2 = checkAction(nd, ctx);
+        setD(nd);
+        if (!p2.length) { launched.add(extra); run(nd); setPhase('auto'); return; }
+        const q2 = questionFor(nd, p2, ctx);
+        if (q2) setQuestion(q2); else setPhase('form');
+      }} />
+    );
+  }
 
   const [title, Icon] = TITLES[d.type];
   const salSelect = (value: string | null, onChange: (v: string | null) => void, said = '') => (
@@ -171,7 +256,10 @@ export default function AssistantActionCard({ extra, execute, onDone }: Props) {
           <input type="date" value={d.dates[0] ?? ''} onChange={(e) => set({ dates: e.target.value ? [e.target.value, ...d.dates.slice(1).filter((x) => x !== e.target.value)] : d.dates.slice(1) })} />
           {d.dates.length > 1 && <p className="ac-hint">+ {d.dates.slice(1).map(frDate).join(', ')}</p>}
         </div>
-        <div><label>Note pour le poseur (facultatif)</label><input value={d.note} onChange={(e) => set({ note: e.target.value })} /></div>
+        <div className="ac-row">
+          <div><label>Objet (facultatif)</label><input value={d.note} placeholder="Ex. : Remplacement chauffe-eau" onChange={(e) => set({ note: e.target.value })} /></div>
+          <div style={{ maxWidth: 110 }}><label>Heure</label><input type="time" value={d.debut ?? ''} onChange={(e) => set({ debut: e.target.value })} /></div>
+        </div>
       </>);
       break;
     case 'planning_semaine': {
@@ -235,6 +323,204 @@ export default function AssistantActionCard({ extra, execute, onDone }: Props) {
         <p className="ac-hint">Même règle que « Corriger les heures » : c’est tracé et le salarié est prévenu.</p>
       </>);
       break;
+    // ── Lot 7 ──
+    case 'modifier_intervention':
+      body = (<>
+        <div className="ac-row">
+          <div><label>Salarié</label>{salSelect(d.user_id, (v) => set({ user_id: v }), d.salarie_texte)}</div>
+          <div><label>Jour actuel</label><input type="date" value={d.date} disabled /></div>
+        </div>
+        {d.choix.length > 1 && (
+          <div><label>Intervention</label>
+            <select value={d.planning_id ?? ''} className={d.planning_id ? '' : 'todo'} onChange={(e) => set({ planning_id: e.target.value || null })}>
+              <option value="">Choisir…</option>
+              {d.choix.map((c) => <option key={c.id} value={c.id}>{c.chantier}{c.debut ? ` · ${c.debut}` : ''}{c.note ? ` · ${c.note}` : ''}</option>)}
+            </select>
+          </div>
+        )}
+        <div className="ac-row">
+          <div><label>Nouveau jour</label><input type="date" value={d.nouvelle_date} onChange={(e) => set({ nouvelle_date: e.target.value })} /></div>
+          <div><label>Nouvelle heure</label><input type="time" value={d.debut} onChange={(e) => set({ debut: e.target.value })} /></div>
+        </div>
+        <div className="ac-row">
+          <div><label>Autre salarié</label>{salSelect(d.nouveau_user_id, (v) => set({ nouveau_user_id: v }), '')}</div>
+          <div><label>Note</label><input value={d.note ?? ''} onChange={(e) => set({ note: e.target.value })} /></div>
+        </div>
+      </>);
+      break;
+    case 'repondre_conge':
+      body = (<>
+        {d.choix.length > 1 ? (
+          <div><label>Demande</label>
+            <select value={d.leave_id ?? ''} className={d.leave_id ? '' : 'todo'} onChange={(e) => set({ leave_id: e.target.value || null })}>
+              <option value="">Choisir…</option>
+              {d.choix.map((c) => <option key={c.id} value={c.id}>{c.nom} · {ABSENCE_LABEL[c.type] ?? c.type} · {frDate(c.du)} → {frDate(c.au)}</option>)}
+            </select>
+          </div>
+        ) : d.choix[0] ? <p className="ac-hint" style={{ fontSize: 13, color: '#15120F', fontWeight: 700 }}>{d.choix[0].nom} · {ABSENCE_LABEL[d.choix[0].type] ?? d.choix[0].type} · {frDate(d.choix[0].du)} → {frDate(d.choix[0].au)}</p> : null}
+        <div><label>Décision</label>
+          <select value={d.decision} onChange={(e) => set({ decision: e.target.value as 'accepter' | 'refuser' })}>
+            <option value="accepter">Accepter (posé au planning)</option><option value="refuser">Refuser</option>
+          </select>
+        </div>
+        {d.decision === 'refuser' && <div><label>Motif (facultatif)</label><input value={d.motif} onChange={(e) => set({ motif: e.target.value })} /></div>}
+        <p className="ac-hint">Le salarié est prévenu sur son téléphone.</p>
+      </>);
+      break;
+    case 'lever_reserve':
+      body = (<>
+        <div><label>Réserve</label>
+          <select value={d.entry_id ?? ''} className={d.entry_id ? '' : 'todo'} onChange={(e) => set({ entry_id: e.target.value || null })}>
+            <option value="">Choisir…</option>
+            {d.choix.map((c) => <option key={c.id} value={c.id}>{c.chantier} · {c.nom} · {frDate(c.date)}{c.detail ? ` · ${c.detail.slice(0, 40)}` : ''}</option>)}
+          </select>
+        </div>
+        <div><label>Comment elle a été réglée (facultatif)</label><input value={d.note} onChange={(e) => set({ note: e.target.value })} /></div>
+      </>);
+      break;
+    case 'ajouter_depense':
+      body = (<>
+        <div><label>Chantier</label>{chSelect(d.worksite_id, (v) => set({ worksite_id: v }), d.chantier_texte)}</div>
+        <div className="ac-row">
+          <div><label>Montant (€)</label><input inputMode="decimal" value={d.montant} className={d.montant ? '' : 'todo'} onChange={(e) => set({ montant: e.target.value.replace(',', '.') })} /></div>
+          <div><label>Date</label><input type="date" value={d.date} onChange={(e) => set({ date: e.target.value })} /></div>
+        </div>
+        <div className="ac-row">
+          <div><label>Catégorie</label>
+            <select value={d.categorie} onChange={(e) => set({ categorie: e.target.value })}>{Object.entries(EXPENSE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
+          </div>
+          <div><label>Libellé</label><input value={d.libelle} onChange={(e) => set({ libelle: e.target.value })} /></div>
+        </div>
+      </>);
+      break;
+    case 'modifier_client':
+      body = (<>
+        <div><label>Client</label>{chSelect(d.worksite_id, (v) => set({ worksite_id: v }), d.chantier_texte)}</div>
+        <p className="ac-hint">Seuls les champs remplis changent.</p>
+        <div className="ac-row">
+          <div><label>Nouveau nom</label><input value={d.nom} onChange={(e) => set({ nom: e.target.value })} /></div>
+          <div><label>Ville</label><input value={d.ville} onChange={(e) => set({ ville: e.target.value })} /></div>
+        </div>
+        <div><label>Adresse</label><input value={d.adresse} onChange={(e) => set({ adresse: e.target.value })} /></div>
+        <div className="ac-row">
+          <div><label>Téléphone</label><input value={d.telephone} onChange={(e) => set({ telephone: e.target.value })} /></div>
+          <div><label>Email</label><input value={d.email} onChange={(e) => set({ email: e.target.value.trim() })} /></div>
+        </div>
+        <div className="ac-row">
+          <div><label>Heures prévues</label><input inputMode="decimal" value={d.budget_heures} onChange={(e) => set({ budget_heures: e.target.value.replace(',', '.') })} /></div>
+          <div><label>Montant prévu (€)</label><input inputMode="decimal" value={d.budget_montant} onChange={(e) => set({ budget_montant: e.target.value.replace(',', '.') })} /></div>
+        </div>
+      </>);
+      break;
+    case 'archiver_client':
+      body = (<>
+        <div><label>Client</label>{chSelect(d.worksite_id, (v) => set({ worksite_id: v }), d.chantier_texte)}</div>
+        <p className="ac-hint">Il disparaît des listes ; ses heures et documents restent. Réactivable depuis sa fiche.</p>
+      </>);
+      break;
+    case 'changer_role':
+      body = (
+        <div className="ac-row">
+          <div><label>Personne</label>{salSelect(d.user_id, (v) => set({ user_id: v }), d.salarie_texte)}</div>
+          <div><label>Rôle</label>
+            <select value={d.role} onChange={(e) => set({ role: e.target.value })}>{Object.entries(ROLE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
+          </div>
+        </div>
+      );
+      break;
+    case 'relancer_invitation':
+      body = (
+        <div><label>Invitation</label>
+          <select value={d.email} className={d.email ? '' : 'todo'} onChange={(e) => set({ email: e.target.value })}>
+            <option value="">Choisir…</option>
+            {d.choix.map((c) => <option key={c.email} value={c.email}>{c.nom} · {c.email}</option>)}
+          </select>
+        </div>
+      );
+      break;
+    case 'envoyer_rappel':
+    case 'archiver_salarie':
+      body = (<>
+        <div><label>Salarié</label>{salSelect(d.user_id, (v) => set({ user_id: v }), d.salarie_texte)}</div>
+        {d.type === 'archiver_salarie' && <p className="ac-hint">Il ne peut plus se connecter ; ses heures restent. Réactivable depuis sa fiche.</p>}
+      </>);
+      break;
+    case 'cloturer_mois':
+      body = (<>
+        <div><label>Mois</label><input type="month" value={d.mois} onChange={(e) => set({ mois: e.target.value })} /></div>
+        <p className="ac-hint">Plus aucune heure de ce mois ne pourra être modifiée. « Rouvrir » reste possible depuis « Exporter ».</p>
+      </>);
+      break;
+    case 'attribuer_client':
+      body = (<>
+        <div className="ac-row">
+          <div><label>Salarié</label>{salSelect(d.user_id, (v) => set({ user_id: v }), d.salarie_texte)}</div>
+          <div><label>Jour</label><input type="date" value={d.date} onChange={(e) => set({ date: e.target.value })} /></div>
+        </div>
+        <div><label>Client</label>{chSelect(d.worksite_id, (v) => set({ worksite_id: v }), d.chantier_texte)}</div>
+      </>);
+      break;
+    case 'ajouter_habilitation':
+      body = (<>
+        <div className="ac-row">
+          <div><label>Salarié</label>{salSelect(d.user_id, (v) => set({ user_id: v }), d.salarie_texte)}</div>
+          <div><label>Type</label>
+            <select value={d.categorie} onChange={(e) => set({ categorie: e.target.value })}>{Object.entries(CERT_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
+          </div>
+        </div>
+        <div className="ac-row">
+          <div><label>Précision</label><input value={d.libelle} onChange={(e) => set({ libelle: e.target.value })} /></div>
+          <div><label>Expire le</label><input type="date" value={d.expiration} className={d.expiration ? '' : 'todo'} onChange={(e) => set({ expiration: e.target.value })} /></div>
+        </div>
+      </>);
+      break;
+    case 'modifier_salarie':
+      body = (<>
+        <div><label>Salarié</label>{salSelect(d.user_id, (v) => set({ user_id: v }), d.salarie_texte)}</div>
+        <div className="ac-row">
+          <div><label>Prénom</label><input value={d.prenom} onChange={(e) => set({ prenom: e.target.value })} /></div>
+          <div><label>Nom</label><input value={d.nom} onChange={(e) => set({ nom: e.target.value })} /></div>
+        </div>
+        <div><label>Téléphone</label><input value={d.telephone} onChange={(e) => set({ telephone: e.target.value })} /></div>
+        <p className="ac-hint">Vide = inchangé. Le n° de sécurité sociale ne se modifie que sur sa fiche.</p>
+      </>);
+      break;
+    case 'cout_reel':
+      body = (<>
+        <div className="ac-row">
+          <div><label>Salarié</label>{salSelect(d.user_id, (v) => set({ user_id: v }), d.salarie_texte)}</div>
+          <div><label>Mois</label><input type="month" value={d.mois} onChange={(e) => set({ mois: e.target.value })} /></div>
+        </div>
+        <div className="ac-row">
+          <div><label>Brut</label><input inputMode="decimal" value={d.brut} onChange={(e) => set({ brut: e.target.value.replace(',', '.') })} /></div>
+          <div><label>Coût employeur</label><input inputMode="decimal" value={d.cout_employeur} onChange={(e) => set({ cout_employeur: e.target.value.replace(',', '.') })} /></div>
+          <div><label>Heures payées</label><input inputMode="decimal" value={d.heures_payees} onChange={(e) => set({ heures_payees: e.target.value.replace(',', '.') })} /></div>
+        </div>
+        <p className="ac-hint">Le bulletin n’est pas conservé ; le n° de sécurité sociale n’est jamais lu.</p>
+      </>);
+      break;
+    case 'modifier_reglages': {
+      const yn = (k: 'relance_auto' | 'alertes_budget' | 'trajet_paye', label: string) => (
+        <div><label>{label}</label>
+          <select value={d[k]} onChange={(e) => set({ [k]: e.target.value } as Partial<ActionDraft>)}>
+            <option value="">Inchangé</option><option value="oui">Oui</option><option value="non">Non</option>
+          </select>
+        </div>
+      );
+      const txt = (k: 'heures_hebdo' | 'email_comptable' | 'heure_relance' | 'majoration_1' | 'majoration_2' | 'telephone' | 'email' | 'adresse' | 'code_postal' | 'ville', label: string) => (
+        <div><label>{label}</label><input value={d[k]} onChange={(e) => set({ [k]: e.target.value } as Partial<ActionDraft>)} /></div>
+      );
+      body = (<>
+        <p className="ac-hint">Seuls les champs remplis changent.</p>
+        <div className="ac-row">{txt('heures_hebdo', 'Heures / semaine')}{txt('email_comptable', 'Email du comptable')}</div>
+        <div className="ac-row">{yn('relance_auto', 'Relance auto')}{txt('heure_relance', 'Heure relance')}</div>
+        <div className="ac-row">{yn('alertes_budget', 'Alertes budget')}{yn('trajet_paye', 'Trajet payé')}</div>
+        <div className="ac-row">{txt('majoration_1', 'Heures sup 1 (%)')}{txt('majoration_2', 'Heures sup 2 (%)')}</div>
+        <div className="ac-row">{txt('telephone', 'Téléphone')}{txt('email', 'Email')}</div>
+        <div className="ac-row">{txt('adresse', 'Adresse')}{txt('code_postal', 'CP')}{txt('ville', 'Ville')}</div>
+      </>);
+      break;
+    }
   }
 
   return (
@@ -246,15 +532,13 @@ export default function AssistantActionCard({ extra, execute, onDone }: Props) {
       {problems.map((p) => <p key={p} className="ac-p">{p}</p>)}
       {err && <p className="ac-err">{err}</p>}
       <div className="ac-foot">
-        <button type="button" className="ac-b no" onClick={() => setCancelled(true)} disabled={busy}>Annuler</button>
+        <button
+          type="button" className="ac-b no" disabled={busy}
+          onClick={() => { if (editOf.current && result) { editOf.current = null; setPhase('done'); } else setCancelled(true); }}
+        >{editOf.current ? 'Garder comme avant' : 'Annuler'}</button>
         <button
           type="button" className="ac-b ok" disabled={busy || problems.length > 0} data-testid="action-confirm"
-          onClick={async () => {
-            setBusy(true); setErr(null);
-            const r = await execute(d, summarize(d, ctx), extra.attachment);
-            setBusy(false);
-            if (r.ok) { setDone(r.message); onDone?.(); } else setErr(r.message);
-          }}
+          onClick={() => run(d)}
         >
           {busy && <Loader2 className="h-4 w-4 animate-spin" />} {CONFIRM[d.type]}
         </button>

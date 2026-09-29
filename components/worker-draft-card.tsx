@@ -1,9 +1,12 @@
 'use client';
 
-// Brouillon de pointage proposé par l'Assistant BEMEXO → le salarié vérifie,
-// corrige, puis « Enregistrer ». RIEN n'est écrit avant ce clic.
+// Heures dites à l'Assistant BEMEXO (lot 4, lot 7).
+// Lot 7 : phrase claire et complète → enregistrée TOUT DE SUITE (« ✅ Fait »,
+// Annuler, Modifier) ; chantier manquant → UNE question avec les chantiers ;
+// horaires incohérents → la fiche à corriger, puis « Enregistrer ».
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ActionAsk, ActionDone } from '@/components/action-done';
 import { Loader2, Plus, Trash2, CheckCircle2 } from 'lucide-react';
 import { checkDraft, fmtMin, shiftMinutes, type DraftExtra, type DraftLine, type SaveLines } from '@/lib/worker-assistant';
 
@@ -30,6 +33,7 @@ const CSS = `
 `;
 
 interface Props { extra: DraftExtra; save: SaveLines; onSaved?: () => void }
+const launched = new WeakSet<object>();
 
 export default function WorkerDraftCard({ extra, save, onSaved }: Props) {
   const { chantiers } = extra;
@@ -38,6 +42,11 @@ export default function WorkerDraftCard({ extra, save, onSaved }: Props) {
     : [{ worksite_id: null, worksite_text: '', start: '08:00', end: '12:00', break_minutes: 0 }]);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<string | null>(null);
+  const [undo, setUndo] = useState<(() => Promise<{ ok: boolean; message: string }>) | undefined>(undefined);
+  const editOf = useRef<(() => Promise<{ ok: boolean; message: string }>) | null>(null);
+  const complete = !extra.draft.errors.length && extra.draft.lines.length > 0;
+  const onlyChantier = complete && extra.draft.lines.some((l) => !l.worksite_id);
+  const [phase, setPhase] = useState<'auto' | 'question' | 'form' | 'done'>(complete ? (onlyChantier ? 'question' : 'auto') : 'form');
 
   const [edited, setEdited] = useState(false);
   // Les mêmes contrôles que le serveur, à chaque modification. Avant toute
@@ -51,7 +60,41 @@ export default function WorkerDraftCard({ extra, save, onSaved }: Props) {
   const dateLabel = date === today ? 'Aujourd’hui'
     : new Date(`${date}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
 
-  if (done) return <div className="wd-done"><style>{CSS}</style><CheckCircle2 className="h-5 w-5" /> {done}</div>;
+  const doSave = async (ls: DraftLine[]) => {
+    setBusy(true);
+    if (editOf.current) {
+      const u = await editOf.current();
+      if (!u.ok) { setBusy(false); setDone(null); setPhase('form'); return; }
+      editOf.current = null;
+    }
+    const r = await save(date, ls);
+    setBusy(false);
+    setLines(ls);
+    setUndo(() => r.undo);
+    setDone(r.queued ? `enregistré sur le téléphone — ${r.queued} créneau(x) partiront dès que le réseau revient.` : `${r.ok} créneau${r.ok > 1 ? 'x' : ''} noté${r.ok > 1 ? 's' : ''} (${fmtMin(ls.reduce((s2, l) => s2 + Math.max(0, shiftMinutes(l.start, l.end, l.break_minutes) || 0), 0))}).`);
+    setPhase('done');
+    onSaved?.();
+  };
+  useEffect(() => {
+    if (phase !== 'auto' || launched.has(extra)) return;
+    launched.add(extra);
+    doSave(lines);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (phase === 'done' && done) {
+    return <ActionDone message={done} undo={undo} onEdit={undo ? () => { editOf.current = undo; setPhase('form'); } : undefined} />;
+  }
+  if (phase === 'auto') return <p className="wd-lbl" style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 10 }}><Loader2 className="h-4 w-4 animate-spin" /> Je note vos heures…</p>;
+  if (phase === 'question') {
+    return (
+      <ActionAsk
+        text="Sur quel chantier ?"
+        chips={chantiers.map((c) => ({ label: `${c.nom}${c.ville ? ` · ${c.ville}` : ''}`, value: c.id }))}
+        onPick={(id) => { launched.add(extra); setPhase('auto'); doSave(lines.map((l) => (l.worksite_id ? l : { ...l, worksite_id: id }))); }}
+      />
+    );
+  }
 
   return (
     <div className="wd" data-testid="draft-card">
@@ -85,13 +128,7 @@ export default function WorkerDraftCard({ extra, save, onSaved }: Props) {
         <span className="wd-total">Total {fmtMin(total)}</span>
         <button
           type="button" className="wd-save" disabled={busy || missing || errors.length > 0}
-          onClick={async () => {
-            setBusy(true);
-            const r = await save(date, lines);
-            setBusy(false);
-            setDone(r.queued ? `Enregistré sur le téléphone — ${r.queued} créneau(x) partiront dès que le réseau revient.` : `Enregistré — ${r.ok} créneau${r.ok > 1 ? 'x' : ''}.`);
-            onSaved?.();
-          }}
+          onClick={() => doSave(lines)}
         >
           {busy && <Loader2 className="h-4 w-4 animate-spin" />} Enregistrer
         </button>

@@ -1,16 +1,19 @@
 'use client';
 
-// Carte de confirmation d'une action salarié préparée par l'Assistant BEMEXO
-// (lot 3 bis) : congé, début / fin de pointage, réserve. Modifiable ; rien ne
-// s'exécute avant « Confirmer ».
+// Carte d'une action salarié de l'Assistant BEMEXO (lot 3 bis, lot 7).
+// Lot 7 : geste simple et complet → fait tout de suite, « ✅ Fait » + Annuler +
+// Modifier ; info manquante → UNE question ; envoi de la journée, nouveau
+// chantier, email client, correction d'une ligne envoyée → à confirmer.
 
-import { useMemo, useState } from 'react';
-import { CheckCircle2, Loader2, CalendarOff, Play, Square, AlertTriangle, FolderInput, Paperclip } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { CheckCircle2, Loader2, CalendarOff, Play, Square, AlertTriangle, FolderInput, Paperclip, Send, Clock, UtensilsCrossed, Copy, Wrench, MapPin, Mail } from 'lucide-react';
 import {
-  checkWorkerAction, LEAVE_KINDS, LEAVE_LABEL, type WorkerActionDraft, type WorkerLive, type WorkerSnapshot,
+  applyWorkerAnswer, checkWorkerAction, DOC_CATEGORY_LABEL, LEAVE_KINDS, LEAVE_LABEL, workerActionMode, workerQuestionFor,
+  type WorkerActionDraft, type WorkerLive, type WorkerSnapshot,
 } from '@/supabase/functions/_shared/worker-assistant-core';
 import type { WorkerActionExtra } from '@/lib/worker-assistant';
-import type { WorkerActionExecutor } from '@/lib/worker-actions';
+import type { WorkerActionExecutor, WorkerActionResult } from '@/lib/worker-actions';
+import { ActionAsk, ActionDone } from '@/components/action-done';
 import GeoInfoDialog from '@/components/geo-info-dialog';
 import { markGeoInfoSeen } from '@/lib/position-info';
 
@@ -40,8 +43,17 @@ const HEAD: Record<WorkerActionDraft['type'], [string, typeof Play, string]> = {
   commencer_pointage: ['Commencer le pointage', Play, 'Je commence'],
   terminer_pointage: ['Terminer le pointage', Square, 'J’ai fini'],
   signaler_reserve: ['Signaler une réserve', AlertTriangle, 'Confirmer'],
-  ranger_photo: ['Ranger sur le chantier', FolderInput, 'Confirmer'],
+  ranger_photo: ['Ranger sur le chantier', FolderInput, 'Ranger'],
+  envoyer_journee: ['Envoyer ma journée', Send, 'Envoyer au bureau'],
+  modifier_heures: ['Changer mes horaires', Clock, 'Enregistrer'],
+  panier_repas: ['Panier repas', UtensilsCrossed, 'Enregistrer'],
+  copier_journee: ['Copier une journée', Copy, 'Copier'],
+  reserve_corrigee: ['Réserve corrigée sur place', Wrench, 'Confirmer'],
+  nouveau_chantier: ['Nouveau chantier', MapPin, 'Ajouter'],
+  email_client: ['Email du client', Mail, 'Enregistrer'],
 };
+const launched = new WeakSet<object>();
+type Phase = 'auto' | 'question' | 'form' | 'done';
 const hhmm = (iso: string) => (iso ? new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' }) : '');
 
 interface Props { extra: WorkerActionExtra; execute: WorkerActionExecutor; onDone?: () => void }
@@ -53,29 +65,67 @@ export default function WorkerActionCard({ extra, execute, onDone }: Props) {
   const [cancelled, setCancelled] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [geoFor, setGeoFor] = useState<string | null>(null);
-  const snap: WorkerSnapshot = useMemo(() => ({ aujourdhui: '', chantiers: extra.chantiers, semaine: [], planning: [] }), [extra.chantiers]);
+  const snap: WorkerSnapshot = useMemo(() => ({ aujourdhui: new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' }), chantiers: extra.chantiers, semaine: [], planning: [] }), [extra.chantiers]);
   const live: WorkerLive = useMemo(() => ({
     enCours: extra.workerAction.draft.type === 'terminer_pointage' && extra.workerAction.draft.depuis
       ? { chantier_id: '', chantier: extra.workerAction.draft.chantier, depuis: extra.workerAction.draft.depuis } : null,
-    lignes: extra.workerAction.draft.type === 'signaler_reserve' ? extra.workerAction.draft.choix
+    lignes: extra.workerAction.draft.type === 'signaler_reserve' || extra.workerAction.draft.type === 'modifier_heures' || extra.workerAction.draft.type === 'reserve_corrigee' ? extra.workerAction.draft.choix
       : extra.workerAction.draft.type === 'ranger_photo' ? extra.workerAction.draft.lignes : [],
+    // Contrôles « serveur » déjà faits (rien hier, rien aujourd'hui) : on ne les rejoue pas ici.
+    hier: undefined,
   }), [extra.workerAction.draft]);
   // Un « déjà en cours » vu par le serveur reste un blocage ici.
   const problems = useMemo(() => {
-    const p = checkWorkerAction(d, snap, live);
-    return d.type === 'commencer_pointage' ? Array.from(new Set([...p, ...extra.workerAction.problems.filter((x) => x.startsWith('Un pointage'))])) : p;
-  }, [d, snap, live, extra.workerAction.problems]);
+    const p = checkWorkerAction(d, snap, live).filter((x) => !(d.type === 'panier_repas' && x.startsWith('Aucune ligne')));
+    const serverOnly = extra.workerAction.problems.filter((x) => x.startsWith('Un pointage') || x.startsWith('Rien à') || x.startsWith('Aucune ligne'));
+    return Array.from(new Set([...p, ...(d === extra.workerAction.draft ? serverOnly : serverOnly.filter((x) => x.startsWith('Un pointage')))]));
+  }, [d, snap, live, extra.workerAction.draft, extra.workerAction.problems]);
   const set = (patch: Partial<WorkerActionDraft>) => setD((x) => ({ ...x, ...patch } as WorkerActionDraft));
-  const run = async () => {
+  const direct = workerActionMode(extra.workerAction.draft) === 'direct';
+  const [question, setQuestion] = useState(() => workerQuestionFor(extra.workerAction.draft, extra.workerAction.problems, snap));
+  const [phase, setPhase] = useState<Phase>(() => (!direct ? 'form' : !extra.workerAction.problems.length ? 'auto' : question ? 'question' : 'form'));
+  const [result, setResult] = useState<WorkerActionResult | null>(null);
+  const editOf = useRef<WorkerActionResult['undo'] | null>(null);
+
+  const run = async (draft: WorkerActionDraft = d) => {
     setBusy(true); setErr(null);
-    const r = await execute(d, extra.attachment);
+    if (editOf.current) {
+      const u = await editOf.current();
+      if (!u.ok) { setBusy(false); setErr(u.message); return; }
+      editOf.current = null;
+    }
+    const r = await execute(draft, extra.attachment);
     setBusy(false);
-    if (r.geoInfoFor) { setGeoFor(r.geoInfoFor); return; }
-    if (r.ok) { setDone(r.message); onDone?.(); } else setErr(r.message);
+    setD(draft);
+    if (r.geoInfoFor) { setGeoFor(r.geoInfoFor); setPhase('form'); return; }
+    if (r.ok) { setResult(r); setDone(r.message); setPhase('done'); onDone?.(); } else { setErr(r.message); setPhase('form'); }
   };
 
-  if (done) return <div className="wa-done"><style>{CSS}</style><CheckCircle2 className="h-5 w-5" /> {done}</div>;
+  useEffect(() => {
+    if (phase !== 'auto' || launched.has(extra)) return;
+    launched.add(extra);
+    run(extra.workerAction.draft);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (phase === 'done' && result) {
+    return <ActionDone message={result.message} undo={result.undo} onEdit={result.undo ? () => { editOf.current = result.undo!; setPhase('form'); } : undefined} />;
+  }
+  if (done && phase !== 'form') return <div className="wa-done"><style>{CSS}</style><CheckCircle2 className="h-5 w-5" /> {done}</div>;
   if (cancelled) return <p className="wa-info" style={{ fontWeight: 600, color: '#6E6A63', fontSize: 12.5 }}>Annulé : rien n’a été fait.</p>;
+  if (phase === 'auto') return <p className="wa-info" style={{ display: 'flex', gap: 6, alignItems: 'center', fontWeight: 600 }}><Loader2 className="h-4 w-4 animate-spin" /> Je le fais…</p>;
+  if (phase === 'question' && question) {
+    return (
+      <ActionAsk text={question.text} chips={question.chips} onPick={(value) => {
+        const nd = applyWorkerAnswer(d, question.field, value);
+        const p2 = checkWorkerAction(nd, snap, live);
+        setD(nd);
+        if (!p2.length) { launched.add(extra); setPhase('auto'); run(nd); return; }
+        const q2 = workerQuestionFor(nd, p2, snap);
+        if (q2) setQuestion(q2); else setPhase('form');
+      }} />
+    );
+  }
   const [title, Icon, confirm] = HEAD[d.type];
 
   let body: React.ReactNode = null;
@@ -133,12 +183,74 @@ export default function WorkerActionCard({ extra, execute, onDone }: Props) {
             {extra.chantiers.map((c) => <option key={c.id} value={c.id}>{c.nom}{c.ville ? ` · ${c.ville}` : ''}</option>)}
           </select>
         </div>
+        {d.categorie && <p className="wa-info">Catégorie : {DOC_CATEGORY_LABEL[d.categorie] ?? d.categorie}</p>}
         <label className="wa-check"><input type="checkbox" checked={d.reserve} onChange={(e) => set({ reserve: e.target.checked })} /> Avec réserve</label>
         {d.reserve && (
           <div><label>Détail des réserves (facultatif)</label>
             <textarea rows={2} value={d.detail} placeholder="Ex. : fissure mur sud" onChange={(e) => set({ detail: e.target.value })} />
           </div>
         )}
+      </>);
+      break;
+    // ── Lot 7 ──
+    case 'envoyer_journee':
+      body = <p className="wa-info">{d.lignes} chantier{d.lignes > 1 ? 's' : ''} aujourd’hui (prévus compris) partent au bureau.</p>;
+      break;
+    case 'modifier_heures':
+      body = (<>
+        {d.choix.length > 1 && (
+          <div><label>Ligne</label>
+            <select value={d.entry_id ?? ''} className={d.entry_id ? '' : 'todo'} onChange={(e) => set({ entry_id: e.target.value || null })}>
+              <option value="">Choisir…</option>
+              {d.choix.map((c) => <option key={c.id} value={c.id}>{c.chantier} · {c.debut}–{c.fin}</option>)}
+            </select>
+          </div>
+        )}
+        <div className="wa-row">
+          <div><label>Début</label><input type="time" value={d.debut} onChange={(e) => set({ debut: e.target.value })} /></div>
+          <div><label>Fin</label><input type="time" value={d.fin} onChange={(e) => set({ fin: e.target.value })} /></div>
+        </div>
+        {d.choix.find((c) => c.id === d.entry_id)?.envoyee && <p className="wa-p" style={{ color: '#6E6A63' }}>Journée déjà envoyée : le bureau sera prévenu de la modification.</p>}
+      </>);
+      break;
+    case 'panier_repas':
+      body = <label className="wa-check"><input type="checkbox" checked={d.valeur} onChange={(e) => set({ valeur: e.target.checked })} /> Panier repas aujourd’hui</label>;
+      break;
+    case 'copier_journee':
+      body = (
+        <div className="wa-row">
+          <div><label>Copier le</label><input type="date" value={d.depuis} onChange={(e) => set({ depuis: e.target.value })} /></div>
+          <div><label>Sur le</label><input type="date" value={d.vers[0] ?? ''} onChange={(e) => set({ vers: e.target.value ? [e.target.value] : [] })} /></div>
+        </div>
+      );
+      break;
+    case 'reserve_corrigee':
+      body = (
+        <div><label>Chantier</label>
+          <select value={d.entry_id ?? ''} className={d.entry_id ? '' : 'todo'} onChange={(e) => set({ entry_id: e.target.value || null })}>
+            <option value="">Choisir…</option>
+            {d.choix.map((c) => <option key={c.id} value={c.id}>{c.chantier} · {c.debut}–{c.fin}</option>)}
+          </select>
+        </div>
+      );
+      break;
+    case 'nouveau_chantier':
+      body = (
+        <div className="wa-row">
+          <div><label>Nom</label><input value={d.nom} className={d.nom ? '' : 'todo'} onChange={(e) => set({ nom: e.target.value })} /></div>
+          <div><label>Ville</label><input value={d.ville} onChange={(e) => set({ ville: e.target.value })} /></div>
+        </div>
+      );
+      break;
+    case 'email_client':
+      body = (<>
+        <div><label>Chantier</label>
+          <select value={d.worksite_id ?? ''} className={d.worksite_id ? '' : 'todo'} onChange={(e) => set({ worksite_id: e.target.value || null })}>
+            <option value="">{d.chantier_texte ? `« ${d.chantier_texte} » → choisir…` : 'Choisir le chantier…'}</option>
+            {extra.chantiers.map((c) => <option key={c.id} value={c.id}>{c.nom}{c.ville ? ` · ${c.ville}` : ''}</option>)}
+          </select>
+        </div>
+        <div><label>Email du client</label><input type="email" value={d.email} onChange={(e) => set({ email: e.target.value.trim() })} /></div>
       </>);
       break;
   }
@@ -150,10 +262,10 @@ export default function WorkerActionCard({ extra, execute, onDone }: Props) {
       {extra.attachment && <p className="wa-att"><Paperclip className="h-3.5 w-3.5" /> {extra.attachment.name}</p>}
       <div className="wa-f">{body}</div>
       {problems.map((p) => <p key={p} className="wa-p">{p}</p>)}
-      {geoFor && <GeoInfoDialog onOk={() => { markGeoInfoSeen(geoFor); setGeoFor(null); run(); }} />}
+      {geoFor && <GeoInfoDialog onOk={() => { markGeoInfoSeen(geoFor); setGeoFor(null); run(d); }} />}
       {err && <p className="wa-p">{err}</p>}
       <div className="wa-foot">
-        <button type="button" className="wa-b no" disabled={busy} onClick={() => setCancelled(true)}>Annuler</button>
+        <button type="button" className="wa-b no" disabled={busy} onClick={() => { if (editOf.current && result) { editOf.current = null; setPhase('done'); } else setCancelled(true); }}>{editOf.current ? 'Garder comme avant' : 'Annuler'}</button>
         <button
           type="button" className="wa-b ok" disabled={busy || problems.length > 0} data-testid="worker-action-confirm"
           onClick={() => run()}

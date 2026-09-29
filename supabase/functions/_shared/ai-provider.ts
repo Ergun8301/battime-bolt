@@ -10,6 +10,13 @@
 // réponse. En cas d'erreur, seul le code HTTP sort dans les logs.
 
 export const DEFAULT_AI_MODEL = 'gemini-3.1-flash-lite';
+/**
+ * Lot 7 : un modèle PLUS FORT pour les ACTIONS (titres, dates relatives,
+ * choix de la bonne fonction) ; Flash-Lite reste pour les simples questions.
+ * Réglable par le secret AI_ACTION_MODEL. S'il est indisponible (nom inconnu,
+ * quota…), on retombe tout seul sur le modèle léger : l'assistant répond quand même.
+ */
+export const DEFAULT_ACTION_MODEL = 'gemini-3.5-flash';
 
 export interface AiFile { mime: string; base64: string }
 export interface ExtractRequest { prompt: string; schema: Record<string, unknown>; file?: AiFile }
@@ -33,14 +40,30 @@ export async function extractJson(req: ExtractRequest, env: Env, fetchImpl: Fetc
 // (mode ANY) : répondre, guider, ou PRÉPARER une action. Il n'exécute jamais
 // rien : c'est l'écran qui exécute, après confirmation de l'utilisateur.
 export interface FunctionDecl { name: string; description: string; parameters: Record<string, unknown> }
-export interface ToolsRequest { prompt: string; functions: FunctionDecl[]; file?: AiFile }
+export interface ToolsRequest {
+  prompt: string; functions: FunctionDecl[]; file?: AiFile;
+  /** 'action' → modèle fort (AI_ACTION_MODEL), repli automatique sur le léger. */
+  kind?: 'action' | 'question';
+}
 export type ToolsResult =
   | { ok: true; call: { name: string; args: Record<string, unknown> } }
   | { ok: false; reason: 'not_configured' | 'provider_error' | 'bad_response' };
 
 export async function callFunction(req: ToolsRequest, env: Env, fetchImpl: FetchLike = fetch): Promise<ToolsResult> {
+  const light = env.get('AI_MODEL') || DEFAULT_AI_MODEL;
+  if (req.kind === 'action') {
+    const strong = env.get('AI_ACTION_MODEL') || DEFAULT_ACTION_MODEL;
+    if (strong !== light) {
+      const r = await callFunctionWith(strong, req, env, fetchImpl);
+      if (r.ok || r.reason !== 'provider_error') return r;
+      console.error('[ai] modèle actions indisponible : repli sur le modèle léger');
+    }
+  }
+  return callFunctionWith(light, req, env, fetchImpl);
+}
+
+async function callFunctionWith(model: string, req: ToolsRequest, env: Env, fetchImpl: FetchLike): Promise<ToolsResult> {
   const provider = (env.get('AI_PROVIDER') || 'gemini').toLowerCase();
-  const model = env.get('AI_MODEL') || DEFAULT_AI_MODEL;
   const key = env.get('GEMINI_API_KEY');
   if (provider !== 'gemini' || !key) return { ok: false, reason: 'not_configured' };
   let res: Response;

@@ -57,7 +57,10 @@ Deno.test('Appel de fonctions : liste blanche, mode ANY, clé en en-tête', asyn
   const body = JSON.parse(String(seen.init!.body));
   eq(body.toolConfig.functionCallingConfig.mode, 'ANY', 'le modèle doit appeler une fonction');
   eq(body.tools[0].functionDeclarations.map((f: { name: string }) => f.name),
-    ['repondre', 'inviter_salarie', 'creer_chantier', 'ranger_document', 'poser_absence', 'affecter_planning', 'planning_semaine', 'corriger_pointage'], 'liste blanche exacte');
+    ['repondre', 'inviter_salarie', 'creer_chantier', 'ranger_document', 'poser_absence', 'affecter_planning', 'planning_semaine', 'corriger_pointage',
+      'modifier_intervention', 'repondre_conge', 'lever_reserve', 'ajouter_depense', 'modifier_client', 'archiver_client', 'changer_role',
+      'relancer_invitation', 'envoyer_rappel', 'cloturer_mois', 'attribuer_client', 'ajouter_habilitation', 'modifier_salarie', 'archiver_salarie',
+      'cout_reel', 'modifier_reglages'], 'liste blanche exacte (lot 7 : tous les boutons, sans suppression ni paiement)');
   if (JSON.stringify(body).match(/supprim|delete/i) && !JSON.stringify(body).includes('Jamais de suppression')) throw new Error('fonction de suppression exposée');
   eq((seen.init!.headers as Record<string, string>)['x-goog-api-key'], 'AQ.test', 'clé en en-tête');
   const bad = await callFunction({ prompt: '', functions: ASSISTANT_FUNCTIONS }, env, fakeGemini('supprimer_salarie', {}).fetchImpl);
@@ -77,7 +80,7 @@ Deno.test('2. Créer un client / chantier', async () => {
   const { reply } = await viaAi('creer_chantier', { nom_client: 'Maison Garnier', ville: 'Caluire' });
   eq(reply.action!.problems, [], 'prêt');
   const dup = prepare('creer_chantier', { nom_client: 'villa dupont' }, CTX)!;
-  eq(dup.problems, ['« villa dupont » existe déjà.'], 'doublon signalé');
+  eq(dup.problems, ['« Villa Dupont » existe déjà.'], 'doublon signalé (nom nettoyé : majuscules)');
 });
 
 Deno.test('3. Poser une absence', async () => {
