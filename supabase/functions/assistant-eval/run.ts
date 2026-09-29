@@ -11,7 +11,7 @@ import * as W1 from './v1/worker-assistant-core.ts';
 import { ADMIN_RAW, CASES, FILES, LIVE_EN_COURS, ME, WORKER_LIVE, WORKER_RAW, type EvalCase, type Outcome } from './cases.ts';
 
 export type Call = (req: ToolsRequest) => Promise<ToolsResult>;
-export interface CaseResult { id: string; cote: string; categorie: string; phrase: string; ok: boolean; why: string | null; via: 'local' | 'ia' | 'erreur' }
+export interface CaseResult { id: string; cote: string; categorie: string; phrase: string; ok: boolean; why: string | null; via: 'local' | 'ia' | 'erreur'; ms?: number }
 
 type AnyReply = { answer?: string; links?: { action: string }[]; action?: { draft: { type: string }; problems: string[] } };
 function fromAdmin(r: AnyReply | null): Outcome {
@@ -30,6 +30,7 @@ function fromWorker(r: AnyWorker | null): Outcome {
 
 async function runOne(c: EvalCase, version: 'v1' | 'v2', call: Call): Promise<CaseResult> {
   const base = { id: c.id, cote: c.cote, categorie: c.categorie, phrase: c.phrase };
+  const t0 = Date.now();
   const file = c.file ? FILES[c.file] : undefined;
   const kind = version === 'v2' && W2.looksLikeAction(c.phrase, !!file) ? 'action' : 'question';
   try {
@@ -60,7 +61,7 @@ async function runOne(c: EvalCase, version: 'v1' | 'v2', call: Call): Promise<Ca
       }
     }
     const why = c.check(out);
-    return { ...base, ok: !why, why, via };
+    return { ...base, ok: !why, why, via, ms: Date.now() - t0 };
   } catch (e) {
     return { ...base, ok: false, why: `erreur : ${(e as Error).message}`, via: 'erreur' };
   }
@@ -85,5 +86,7 @@ export async function runEval(version: 'v1' | 'v2', call: Call, ids?: string[], 
     version, total: results.length, ok, pct: Math.round((ok / Math.max(1, results.length)) * 1000) / 10,
     categories: Array.from(byCat.entries()).map(([categorie, v]) => ({ categorie, ...v, pct: Math.round((v.ok / v.n) * 100) })),
     echecs: results.filter((r) => !r.ok).map((r) => ({ id: r.id, phrase: r.phrase, why: r.why, via: r.via })),
+    // Lot 7 (lenteur) : temps par phrase passée par l'IA.
+    temps: results.filter((r) => r.via === 'ia').map((r) => ({ id: r.id, ms: r.ms })),
   };
 }

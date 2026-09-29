@@ -6,11 +6,13 @@
 // Lot 7 : la dictée ne s'arrête JAMAIS seule (lib/dictation.ts) ; le texte
 // s'écrit en direct dans le champ, on le corrige, puis « Envoyer ».
 //
-// Rien n'est conservé : la conversation vit dans cet écran et disparaît quand
-// on recharge la page. 📎 (lot 3 bis) : photo ou PDF joint, compressé ici,
-// rangé seulement après « Confirmer ».
+// Rien n'est conservé sur l'appareil : la conversation disparaît quand on
+// recharge la page. Lot 7 : elle vit HORS de l'écran (en mémoire), pour qu'un
+// redessin (session rafraîchie, planning rechargé) ne ferme pas le panneau et
+// ne perde ni les messages, ni la réponse en cours. 📎 (lot 3 bis) : photo ou
+// PDF joint, compressé ici, rangé seulement après « Confirmer ».
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useReducer, useRef, useState, type ReactNode } from 'react';
 import { Sparkles, X, Mic, Square, ArrowUp, Loader2, ArrowRight, Paperclip, FileText } from 'lucide-react';
 import { Dictation, speechCtor } from '@/lib/dictation';
 import { ATTACH_ACCEPT, ATTACH_MAX_BYTES, attachmentError, compressAttachment } from '@/lib/attachment';
@@ -24,6 +26,16 @@ export interface ExtraControl {
   settle: (text?: string | null) => void;
 }
 type Msg = { who: 'me' | 'bot'; text: string; links?: AssistantLink[]; notice?: boolean; extra?: unknown; file?: string };
+
+// Lot 7 : une conversation par écran (bureau, salarié…), gardée en mémoire.
+interface Convo { msgs: Msg[]; busy: boolean; pending: string | null; open: boolean; remaining: number | null; listeners: Set<() => void> }
+const CONVOS = new Map<string, Convo>();
+function convoOf(key: string): Convo {
+  let c = CONVOS.get(key);
+  if (!c) { c = { msgs: [], busy: false, pending: null, open: false, remaining: null, listeners: new Set() }; CONVOS.set(key, c); }
+  return c;
+}
+function changed(c: Convo) { c.listeners.forEach((f) => f()); }
 
 
 const CSS = `
@@ -88,22 +100,34 @@ interface Props {
   onOpenChange?: (open: boolean) => void;
   /** Lot 6 : false = pas de bouton flottant (il recouvrait du contenu). */
   launcher?: boolean;
+  /** Lot 7 : nom de la conversation gardée en mémoire (une par écran). */
+  memoryKey?: string;
 }
 
-export default function AssistantPanel({ source, onNavigate, defaultOpen = false, suggestions = ASSISTANT_SUGGESTIONS, intro, renderExtra, footNote = 'Actions simples faites tout de suite · « Annuler » en un clic', attachments = false, open: openProp, onOpenChange, launcher = true }: Props) {
-  const [innerOpen, setInnerOpen] = useState(defaultOpen);
+export default function AssistantPanel({ source, onNavigate, defaultOpen = false, suggestions = ASSISTANT_SUGGESTIONS, intro, renderExtra, footNote = 'Actions simples faites tout de suite · « Annuler » en un clic', attachments = false, open: openProp, onOpenChange, launcher = true, memoryKey = 'assistant' }: Props) {
+  const convo = convoOf(memoryKey);
+  const [, redraw] = useReducer((x: number) => x + 1, 0);
+  useEffect(() => { convo.listeners.add(redraw); return () => { convo.listeners.delete(redraw); }; }, [convo]);
+  const [innerOpen, setInnerOpen] = useState(defaultOpen || convo.open);
   const open = openProp ?? innerOpen;
   const setOpen = (v: boolean) => { if (onOpenChange) onOpenChange(v); else setInnerOpen(v); };
-  const [msgs, setMsgs] = useState<Msg[]>([]);
+  // Redessiné alors qu'il était ouvert : il se rouvre tout seul, conversation comprise.
+  useEffect(() => { if (convo.open && !open) setOpen(true); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const firstOpen = useRef(true);
+  useEffect(() => { if (firstOpen.current) { firstOpen.current = false; return; } convo.open = open; }, [open, convo]);
+  const msgs = convo.msgs;
+  const setMsgs = useCallback((f: (m: Msg[]) => Msg[]) => { convo.msgs = f(convo.msgs); changed(convo); }, [convo]);
+  const busy = convo.busy;
+  const setBusy = useCallback((v: boolean) => { convo.busy = v; changed(convo); }, [convo]);
+  const remaining = convo.remaining;
+  const setRemaining = (v: number) => { convo.remaining = v; changed(convo); };
   const [text, setText] = useState('');
-  const [busy, setBusy] = useState(false);
   const [listening, setListening] = useState(false);
-  const [remaining, setRemaining] = useState<number | null>(null);
   const [canSpeak, setCanSpeak] = useState(false);
   const dictRef = useRef<Dictation | null>(null);
   // Lot 7 : une question vient d'être posée (« Sur quel chantier ? ») — la
   // prochaine réponse complète la MÊME demande au lieu d'en ouvrir une autre.
-  const pendingRef = useRef<string | null>(null);
+  const pendingRef = { get current() { return convo.pending; }, set current(v: string | null) { convo.pending = v; } };
   const [file, setFile] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);

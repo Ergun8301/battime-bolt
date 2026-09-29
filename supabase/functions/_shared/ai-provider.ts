@@ -49,29 +49,60 @@ export type ToolsResult =
   | { ok: true; call: { name: string; args: Record<string, unknown> } }
   | { ok: false; reason: 'not_configured' | 'provider_error' | 'bad_response' };
 
-export async function callFunction(req: ToolsRequest, env: Env, fetchImpl: FetchLike = fetch): Promise<ToolsResult> {
-  const light = env.get('AI_MODEL') || DEFAULT_AI_MODEL;
-  if (req.kind === 'action') {
-    const strong = env.get('AI_ACTION_MODEL') || DEFAULT_ACTION_MODEL;
-    if (strong !== light) {
-      const r = await callFunctionWith(strong, req, env, fetchImpl);
-      if (r.ok || r.reason !== 'provider_error') return r;
-      console.error('[ai] modèle actions indisponible : repli sur le modèle léger');
-    }
-  }
-  return callFunctionWith(light, req, env, fetchImpl);
-}
+// Lot 7 (lenteur) : un plafond de temps GLOBAL. Le modèle fort n'a que
+// AI_ACTION_WAIT_MS pour répondre ; le léger part EN MÊME TEMPS et prend le
+// relais sans attendre. Un modèle qui refuse (quota) est mis de côté quelques
+// minutes au lieu d'être rappelé à chaque demande. Si le léger est surchargé,
+// un second modèle léger (AI_FALLBACK_MODEL) est essayé tant qu'il reste du temps.
+export const DEFAULT_TIMEOUT_MS = 8000;
+export const DEFAULT_ACTION_WAIT_MS = 3500;
+export const DEFAULT_FALLBACK_MODEL = 'gemini-3.5-flash-lite';
+const COOLDOWN_MS = 10 * 60_000;
+const resting = new Map<string, number>(); // modèle → au repos jusqu'à (ms)
+const isResting = (m: string) => (resting.get(m) ?? 0) > Date.now();
+const num = (v: string | undefined, d: number) => (Number(v) > 0 ? Number(v) : d);
 
-async function callFunctionWith(model: string, req: ToolsRequest, env: Env, fetchImpl: FetchLike): Promise<ToolsResult> {
+export async function callFunction(req: ToolsRequest, env: Env, fetchImpl: FetchLike = fetch): Promise<ToolsResult> {
+  const deadline = Date.now() + num(env.get('AI_TIMEOUT_MS'), DEFAULT_TIMEOUT_MS);
+  const light = env.get('AI_MODEL') || DEFAULT_AI_MODEL;
+  const backup = env.get('AI_FALLBACK_MODEL') ?? DEFAULT_FALLBACK_MODEL;
+  const strong = req.kind === 'action' ? env.get('AI_ACTION_MODEL') || DEFAULT_ACTION_MODEL : light;
+  const left = () => deadline - Date.now();
+
+  // Le léger part tout de suite ; le fort, s'il n'est pas au repos, en même temps.
+  const lightP = callFunctionWith(light, req, env, fetchImpl, left());
+  if (strong !== light && !isResting(strong)) {
+    const s = await callFunctionWith(strong, req, env, fetchImpl, Math.min(num(env.get('AI_ACTION_WAIT_MS'), DEFAULT_ACTION_WAIT_MS), left()));
+    if (s.ok || s.reason === 'not_configured') return s;
+    if (s.reason === 'provider_error' && s.rest) resting.set(strong, Date.now() + COOLDOWN_MS);
+    console.error('[ai] modèle actions trop lent ou indisponible : le modèle léger répond');
+  }
+  const l = await lightP;
+  if (l.ok || l.reason !== 'provider_error' || !backup || backup === light || left() < 1500) return strip(l);
+  console.error('[ai] modèle léger indisponible : modèle de secours');
+  return strip(await callFunctionWith(backup, req, env, fetchImpl, left()));
+}
+const strip = (r: ToolsResult & { rest?: boolean }): ToolsResult => {
+  if (!r.ok && 'rest' in r) { const { rest: _r, ...x } = r; return x as ToolsResult; }
+  return r;
+};
+
+type Attempt = ToolsResult & { rest?: boolean };
+async function callFunctionWith(model: string, req: ToolsRequest, env: Env, fetchImpl: FetchLike, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<Attempt> {
   const provider = (env.get('AI_PROVIDER') || 'gemini').toLowerCase();
   const key = env.get('GEMINI_API_KEY');
   if (provider !== 'gemini' || !key) return { ok: false, reason: 'not_configured' };
+  if (timeoutMs < 100) return { ok: false, reason: 'provider_error' };
+  // Plafond de temps : au-delà, on abandonne cet appel (le suivant prend le relais).
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), timeoutMs);
   let res: Response;
   try {
     res = await fetchImpl(
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
       {
         method: 'POST',
+        signal: ctl.signal,
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
         body: JSON.stringify({
           contents: [{ role: 'user', parts: [{ text: req.prompt }, ...(req.file ? [{ inline_data: { mime_type: req.file.mime, data: req.file.base64 } }] : [])] }],
@@ -82,12 +113,14 @@ async function callFunctionWith(model: string, req: ToolsRequest, env: Env, fetc
       },
     );
   } catch {
-    console.error('[ai] fournisseur injoignable');
-    return { ok: false, reason: 'provider_error' };
+    clearTimeout(timer);
+    console.error(ctl.signal.aborted ? `[ai] ${model} : plus de ${timeoutMs} ms, abandon` : '[ai] fournisseur injoignable');
+    return { ok: false, reason: 'provider_error', rest: ctl.signal.aborted };
   }
   if (!res.ok) {
+    clearTimeout(timer);
     console.error(`[ai] fournisseur : HTTP ${res.status}`);
-    return { ok: false, reason: 'provider_error' };
+    return { ok: false, reason: 'provider_error', rest: res.status === 429 || res.status === 404 };
   }
   try {
     const body = await res.json() as { candidates?: { content?: { parts?: { functionCall?: { name?: string; args?: unknown } }[] } }[] };
@@ -97,7 +130,9 @@ async function callFunctionWith(model: string, req: ToolsRequest, env: Env, fetc
     const args = fc.args && typeof fc.args === 'object' ? fc.args as Record<string, unknown> : {};
     return { ok: true, call: { name: fc.name, args } };
   } catch {
-    return { ok: false, reason: 'bad_response' };
+    return { ok: false, reason: ctl.signal.aborted ? 'provider_error' : 'bad_response' };
+  } finally {
+    clearTimeout(timer);
   }
 }
 

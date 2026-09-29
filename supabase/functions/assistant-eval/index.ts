@@ -8,6 +8,48 @@
 //   body : { version: 'v1' | 'v2', ids?: string[] }
 import { callFunction, DEFAULT_ACTION_MODEL } from '../_shared/ai-provider.ts';
 import { runEval } from './run.ts';
+import * as A2 from '../_shared/assistant-actions-core.ts';
+import { ADMIN_RAW, ME } from './cases.ts';
+
+// Chronomètre (lot 7, lenteur) : la VRAIE consigne bureau d'une phrase, par
+// modèle et par réglage de réflexion. Rend le code HTTP et le temps, rien d'autre.
+async function bench(models: string[], variants: string[]) {
+  const key = Deno.env.get('GEMINI_API_KEY') ?? '';
+  const ctx = A2.buildActionContext(ADMIN_RAW as Parameters<typeof A2.buildActionContext>[0]);
+  ctx.me = ME;
+  const phrase = 'Ajoute une intervention à Lyon pour Kevin jeudi de 14h à 18h';
+  const prompt = A2.actionPrompt(ctx, '{}', A2.guideForPrompt(), phrase);
+  const THINK: Record<string, unknown> = {
+    defaut: undefined, minimal: { thinkingLevel: 'minimal' }, low: { thinkingLevel: 'low' }, budget0: { thinkingBudget: 0 },
+  };
+  const out = [];
+  for (const m of models) {
+    for (const v of variants.filter((x) => x in THINK)) {
+      const t0 = Date.now();
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), 60_000);
+      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent`, {
+        method: 'POST', signal: ctl.signal, headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          tools: [{ functionDeclarations: A2.ASSISTANT_FUNCTIONS }],
+          toolConfig: { functionCallingConfig: { mode: 'ANY', allowedFunctionNames: A2.ASSISTANT_FUNCTIONS.map((f) => f.name) } },
+          generationConfig: { temperature: 0, ...(THINK[v] ? { thinkingConfig: THINK[v] } : {}) },
+        }),
+      }).catch((e) => ({ ok: false, status: 0, json: async () => ({ error: { message: String(e) } }) }) as unknown as Response);
+      clearTimeout(timer);
+      const ms = Date.now() - t0;
+      const b = await r.json().catch(() => ({})) as { error?: { status?: string; message?: string }; candidates?: { content?: { parts?: { functionCall?: { name?: string } }[] } }[]; usageMetadata?: Record<string, number> };
+      out.push({
+        model: m, thinking: v, status: r.status, ms,
+        fn: b.candidates?.[0]?.content?.parts?.find((x) => x.functionCall)?.functionCall?.name ?? null,
+        tokens: b.usageMetadata ? { prompt: b.usageMetadata.promptTokenCount, thoughts: b.usageMetadata.thoughtsTokenCount ?? 0, out: b.usageMetadata.candidatesTokenCount } : null,
+        err: b.error ? `${b.error.status ?? ''} ${(b.error.message ?? '').slice(0, 160)}` : '',
+      });
+    }
+  }
+  return { bench: out };
+}
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 // Vérifie le secret auprès de la base (fonction publique verify_cron_secret).
@@ -45,8 +87,9 @@ Deno.serve(async (req) => {
   if (!secret) return json({ error: 'Non autorisé' }, 401);
   if (!(await secretOk(secret))) return json({ error: 'Non autorisé' }, 401);
   const body = await req.json().catch(() => ({})) as {
-    version?: string; ids?: string[]; parallel?: number; gapMs?: number; probe?: boolean; models?: string[]; actionModel?: string; lightModel?: string;
+    version?: string; ids?: string[]; parallel?: number; gapMs?: number; probe?: boolean; bench?: string[]; prodPath?: boolean; models?: string[]; actionModel?: string; lightModel?: string;
   };
+  if (Array.isArray(body.bench)) return json(await bench((body.models ?? []).slice(0, 4), body.bench.slice(0, 4)));
   if (body.probe) return json(await probe(Array.isArray(body.models) ? body.models.slice(0, 6) : undefined));
   const version = body.version === 'v1' ? 'v1' : 'v2';
   const model = (m?: string) => (m && /^[a-z0-9.-]{3,60}$/.test(m) ? m : '');
@@ -64,8 +107,15 @@ Deno.serve(async (req) => {
   // refus « trop de requêtes » (le banc d'essai ne doit pas mesurer le quota).
   // Mesure honnête : une action part TOUJOURS sur le modèle fort (pas de repli
   // silencieux sur le léger quand le quota refuse), une question sur le léger.
-  const pinned = (m: string) => ({ get: (k: string) => (k === 'AI_MODEL' || k === 'AI_ACTION_MODEL' ? m : env.get(k)) });
+  const pinned = (m: string) => ({
+    get: (k: string) => (k === 'AI_MODEL' || k === 'AI_ACTION_MODEL' ? m : k === 'AI_FALLBACK_MODEL' ? '' : k === 'AI_TIMEOUT_MS' ? '30000' : env.get(k)),
+  });
   const strongEnv = pinned(env.get('AI_ACTION_MODEL') || DEFAULT_ACTION_MODEL), lightEnv = pinned(light);
+  // prodPath : EXACTEMENT le chemin des clients (réglages de prod, plafond, relais), sans nouvel essai.
+  if (body.prodPath) {
+    return json(await runEval('v2', (r) => callFunction(r, Deno.env), Array.isArray(body.ids) ? body.ids.slice(0, 80) : undefined, 1,
+      Math.min(Math.max(Number(body.gapMs) || 0, 0), 20_000)));
+  }
   const call = async (r: Parameters<typeof callFunction>[0]) => {
     const e = r.kind === 'action' && version === 'v2' ? strongEnv : lightEnv;
     let res = await callFunction(r, e);

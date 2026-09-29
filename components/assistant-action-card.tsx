@@ -9,6 +9,7 @@
 // fiche modifiable et « Confirmer ». Les contrôles sont ceux du serveur.
 
 import type { ExtraControl } from '@/components/assistant-panel';
+import { readCard, useCardMemory, writeCard } from '@/lib/card-memory';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   CheckCircle2, Loader2, UserPlus, Building2, CalendarOff, CalendarPlus, CalendarRange, Clock, FolderInput, Paperclip,
@@ -98,9 +99,11 @@ type Phase = 'auto' | 'question' | 'form' | 'done';
 
 export default function AssistantActionCard({ extra, execute, onDone, ctl }: Props) {
   const { options } = extra;
-  const [d, setD] = useState<ActionDraft>(extra.action.draft);
+  // Lot 7 : ce qui a déjà été fait survit à un redessin du panneau.
+  const mem = readCard<{ phase: Phase; result: ActionResult; doneSummary: string; cancelled: boolean; d: ActionDraft }>(extra);
+  const [d, setD] = useState<ActionDraft>(mem.d ?? extra.action.draft);
   const [busy, setBusy] = useState(false);
-  const [cancelled, setCancelled] = useState(false);
+  const [cancelled, setCancelled] = useState(mem.cancelled ?? false);
   const [err, setErr] = useState<string | null>(null);
   const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
   const ctx = useMemo(() => ({
@@ -113,12 +116,24 @@ export default function AssistantActionCard({ extra, execute, onDone, ctl }: Pro
 
   const direct = actionMode(extra.action.draft) === 'direct';
   const [phase, setPhase] = useState<Phase>(() => {
+    if (mem.phase) return mem.phase;
     if (!direct) return 'form';
     if (!extra.action.problems.length) return 'auto';
     return questionFor(extra.action.draft, extra.action.problems, ctx) ? 'question' : 'form';
   });
-  const [result, setResult] = useState<ActionResult | null>(null);
-  const [doneSummary, setDoneSummary] = useState('');
+  const [result, setResult] = useState<ActionResult | null>(mem.result ?? null);
+  const [doneSummary, setDoneSummary] = useState(mem.doneSummary ?? '');
+  useCardMemory<typeof mem>(extra, (m) => {
+    if (m.result) setResult(m.result);
+    if (m.doneSummary) setDoneSummary(m.doneSummary);
+    if (m.d) setD(m.d);
+    if (m.phase) setPhase(m.phase);
+  });
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) { first.current = false; return; }
+    writeCard(extra, { phase, cancelled });
+  }, [phase, cancelled]); // eslint-disable-line react-hooks/exhaustive-deps
   // « Modifier » après coup : l'ancienne action est défaite AU MOMENT d'enregistrer.
   const editOf = useRef<(() => Promise<{ ok: boolean; message: string }>) | null>(null);
   const [question, setQuestion] = useState(() => questionFor(extra.action.draft, extra.action.problems, ctx));
@@ -137,8 +152,10 @@ export default function AssistantActionCard({ extra, execute, onDone, ctl }: Pro
     const summary = summarize(draft, ctx);
     const r = await execute(draft, summary, extra.attachment);
     setBusy(false);
-    if (r.ok) { setResult(r); setDoneSummary(summary); setD(draft); setPhase('done'); onDone?.(); }
-    else { setErr(r.message); setD(draft); setPhase('form'); }
+    // Noté AVANT l'affichage : si le panneau a été redessiné entre-temps, la
+    // nouvelle carte reprend ce résultat.
+    if (r.ok) { writeCard(extra, { phase: 'done', result: r, doneSummary: summary, d: draft }); setResult(r); setDoneSummary(summary); setD(draft); setPhase('done'); onDone?.(); }
+    else { writeCard(extra, { phase: 'form', d: draft }); setErr(r.message); setD(draft); setPhase('form'); }
   };
 
   useEffect(() => {
