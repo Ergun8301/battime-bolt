@@ -31,6 +31,7 @@ export default function WorkerAssistant({ onSaved, onNavigate, defaultOpen = fal
   return (
     <AssistantPanel
       source={source}
+      memoryKey={`salarie:${user?.id ?? 'demo'}`}
       attachments
       defaultOpen={defaultOpen}
       open={open}

@@ -6,6 +6,7 @@
 // horaires incohérents → la fiche à corriger, puis « Enregistrer ».
 
 import type { ExtraControl } from '@/components/assistant-panel';
+import { readCard, useCardMemory, writeCard } from '@/lib/card-memory';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActionAsk, ActionDone } from '@/components/action-done';
 import { Loader2, Plus, Trash2, CheckCircle2 } from 'lucide-react';
@@ -43,15 +44,29 @@ const launched = new WeakSet<object>();
 export default function WorkerDraftCard({ extra, save, onSaved, ctl }: Props) {
   const { chantiers } = extra;
   const [date] = useState(extra.draft.date);
-  const [lines, setLines] = useState<DraftLine[]>(extra.draft.lines.length ? extra.draft.lines
-    : [{ worksite_id: null, worksite_text: '', start: '08:00', end: '12:00', break_minutes: 0 }]);
+  // Lot 7 : ce qui a déjà été noté survit à un redessin du panneau.
+  type Undo = () => Promise<{ ok: boolean; message: string }>;
+  const mem = readCard<{ phase: 'auto' | 'question' | 'form' | 'done'; done: string; undo: Undo; lines: DraftLine[] }>(extra);
+  const [lines, setLines] = useState<DraftLine[]>(mem.lines ?? (extra.draft.lines.length ? extra.draft.lines
+    : [{ worksite_id: null, worksite_text: '', start: '08:00', end: '12:00', break_minutes: 0 }]));
   const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState<string | null>(null);
-  const [undo, setUndo] = useState<(() => Promise<{ ok: boolean; message: string }>) | undefined>(undefined);
+  const [done, setDone] = useState<string | null>(mem.done ?? null);
+  const [undo, setUndo] = useState<Undo | undefined>(() => mem.undo);
   const editOf = useRef<(() => Promise<{ ok: boolean; message: string }>) | null>(null);
   const complete = !extra.draft.errors.length && extra.draft.lines.length > 0;
   const onlyChantier = complete && extra.draft.lines.some((l) => !l.worksite_id);
-  const [phase, setPhase] = useState<'auto' | 'question' | 'form' | 'done'>(complete ? (onlyChantier ? 'question' : 'auto') : 'form');
+  const [phase, setPhase] = useState<'auto' | 'question' | 'form' | 'done'>(mem.phase ?? (complete ? (onlyChantier ? 'question' : 'auto') : 'form'));
+  useCardMemory<typeof mem>(extra, (m) => {
+    if (m.lines) setLines(m.lines);
+    if (m.done) setDone(m.done);
+    if (m.undo) setUndo(() => m.undo);
+    if (m.phase) setPhase(m.phase);
+  });
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) { first.current = false; return; }
+    writeCard(extra, { phase });
+  }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [edited, setEdited] = useState(false);
   // Enregistré : plus de « Vérifiez, puis enregistrez. » au-dessus de « Fait ».
@@ -77,9 +92,11 @@ export default function WorkerDraftCard({ extra, save, onSaved, ctl }: Props) {
     }
     const r = await save(date, ls);
     setBusy(false);
+    const msg = r.queued ? `enregistré sur le téléphone — ${r.queued} créneau(x) partiront dès que le réseau revient.` : `${r.ok} créneau${r.ok > 1 ? 'x' : ''} noté${r.ok > 1 ? 's' : ''} (${fmtMin(ls.reduce((s2, l) => s2 + Math.max(0, shiftMinutes(l.start, l.end, l.break_minutes) || 0), 0))}).`;
+    writeCard(extra, { phase: 'done', done: msg, undo: r.undo, lines: ls });
     setLines(ls);
     setUndo(() => r.undo);
-    setDone(r.queued ? `enregistré sur le téléphone — ${r.queued} créneau(x) partiront dès que le réseau revient.` : `${r.ok} créneau${r.ok > 1 ? 'x' : ''} noté${r.ok > 1 ? 's' : ''} (${fmtMin(ls.reduce((s2, l) => s2 + Math.max(0, shiftMinutes(l.start, l.end, l.break_minutes) || 0), 0))}).`);
+    setDone(msg);
     setPhase('done');
     onSaved?.();
   };

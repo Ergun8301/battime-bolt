@@ -6,6 +6,7 @@
 // manquait une info, UNE question courte avec ses choix. Partagé bureau / salarié.
 
 import { useState } from 'react';
+import { undoneMemory } from '@/lib/card-memory';
 import { CheckCircle2, Loader2, Undo2, Pencil, HelpCircle } from 'lucide-react';
 
 const CSS = `
@@ -32,7 +33,7 @@ export function ActionDone({ message, summary, undo, onEdit }: {
   message: string; summary?: string; undo?: () => Promise<UndoResult>; onEdit?: () => void;
 }) {
   const [busy, setBusy] = useState(false);
-  const [undone, setUndone] = useState<string | null>(null);
+  const [undone, setUndone] = useState<string | null>(() => (undo && undoneMemory.get(undo)) || null);
   const [err, setErr] = useState<string | null>(null);
   if (undone) return <div className="ad-u" data-testid="action-undone"><style>{CSS}</style><Undo2 className="h-4 w-4" /> {undone}</div>;
   return (
@@ -48,7 +49,7 @@ export function ActionDone({ message, summary, undo, onEdit }: {
               setBusy(true); setErr(null);
               const r = await undo();
               setBusy(false);
-              if (r.ok) setUndone(r.message); else setErr(r.message);
+              if (r.ok) { undoneMemory.set(undo, r.message); setUndone(r.message); } else setErr(r.message);
             }}>
               {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Undo2 className="h-3.5 w-3.5" />} Annuler
             </button>

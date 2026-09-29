@@ -142,6 +142,12 @@ const GHOST_ROW_H = 105;
 // Fixed hour (rare RDV) is stored in estimated_start with estimated_end empty.
 const fixedHourOf = (p: PlanningWithWorksite): string | null =>
   p.estimated_start && !p.estimated_end ? p.estimated_start.slice(0, 5) : null;
+// Lot 7 : horaire prévu affiché sur la bulle — « 14:00 » (RDV) ou « 14:00–18:00 ».
+const plannedHoursOf = (p: PlanningWithWorksite): string | null =>
+  p.estimated_start ? `${p.estimated_start.slice(0, 5)}${p.estimated_end ? `–${p.estimated_end.slice(0, 5)}` : ''}` : null;
+// « Autre » (intervention hors client, ajoutée par l'assistant) : son titre est la note.
+const bubbleTitleOf = (p: PlanningWithWorksite): string =>
+  (p.worksite?.client_name === 'Autre' && p.notes?.trim()) || p.worksite?.client_name || 'Chantier';
 
 // Display order inside a cell: manual position first (asc), then creation order.
 const orderCmp = (a: PlanningWithWorksite, b: PlanningWithWorksite) => {
@@ -191,8 +197,9 @@ interface DocLine {
 // ─── compact one-line chantier bubble ──────────────────────────────────────────
 
 function BubbleContent({ p, palette, real, draft, docCount = 0 }: { p: PlanningWithWorksite; palette: ChantierPalette; real?: RealAgg; draft?: RealAgg; docCount?: number }) {
-  const hour = fixedHourOf(p);
-  const sub = [p.worksite?.product_type, p.worksite?.city].filter(Boolean).join(' · ');
+  const hour = plannedHoursOf(p);
+  const isOther = p.worksite?.client_name === 'Autre' && !!p.notes?.trim();
+  const sub = isOther ? 'Autre' : [p.worksite?.product_type, p.worksite?.city].filter(Boolean).join(' · ');
   // Repères compacts (icônes, pas de texte) alignés à droite du nom — voir la légende.
   const docs = docCount > 0 ? (
     <span className="bt-pl-bub-docs" title={`${docCount} document${docCount > 1 ? 's' : ''}`}><Paperclip className="h-2.5 w-2.5" />{docCount}</span>
@@ -250,13 +257,13 @@ function BubbleContent({ p, palette, real, draft, docCount = 0 }: { p: PlanningW
     <div className="bt-pl-bub" style={{ background: '#fff', border: `1.5px dashed ${palette.bar}`, color: '#15120F' }}>
       <span className="bt-pl-bub-bar" style={{ background: palette.bar }} />
       <div className="bt-pl-bub-name">
-        <span className="bt-pl-bub-title">{p.worksite?.client_name || 'Chantier'}</span>
+        <span className="bt-pl-bub-title" data-testid="bubble-title">{bubbleTitleOf(p)}</span>
         {docs && <span className="bt-pl-bub-ic">{docs}</span>}
       </div>
       {sub && <div className="bt-pl-bub-sub" style={{ color: '#6E6A63' }}>{sub}</div>}
       {hour && (
         <div className="bt-pl-bub-foot">
-          <span className="bt-pl-hour">{hour}</span>
+          <span className="bt-pl-hour" data-testid="bubble-hours">{hour}</span>
         </div>
       )}
     </div>
@@ -2777,6 +2784,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       {aiOn && user?.role === 'admin' && (
         <AssistantPanel
           source={supabaseAssistantSource}
+          memoryKey={`bureau:${user.id}`}
           attachments
           open={assistantOpen}
           onOpenChange={setAssistantOpen}

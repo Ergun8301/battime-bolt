@@ -6,6 +6,7 @@
 // chantier, email client, correction d'une ligne envoyée → à confirmer.
 
 import type { ExtraControl } from '@/components/assistant-panel';
+import { readCard, useCardMemory, writeCard } from '@/lib/card-memory';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CheckCircle2, Loader2, CalendarOff, Play, Square, AlertTriangle, FolderInput, Paperclip, Send, Clock, UtensilsCrossed, Copy, Wrench, MapPin, Mail } from 'lucide-react';
 import {
@@ -64,10 +65,12 @@ interface Props {
 }
 
 export default function WorkerActionCard({ extra, execute, onDone, ctl }: Props) {
-  const [d, setD] = useState<WorkerActionDraft>(extra.workerAction.draft);
+  // Lot 7 : ce qui a déjà été fait survit à un redessin du panneau.
+  const mem = readCard<{ phase: Phase; result: WorkerActionResult; done: string; cancelled: boolean; d: WorkerActionDraft }>(extra);
+  const [d, setD] = useState<WorkerActionDraft>(mem.d ?? extra.workerAction.draft);
   const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState<string | null>(null);
-  const [cancelled, setCancelled] = useState(false);
+  const [done, setDone] = useState<string | null>(mem.done ?? null);
+  const [cancelled, setCancelled] = useState(mem.cancelled ?? false);
   const [err, setErr] = useState<string | null>(null);
   const [geoFor, setGeoFor] = useState<string | null>(null);
   const snap: WorkerSnapshot = useMemo(() => ({ aujourdhui: new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' }), chantiers: extra.chantiers, semaine: [], planning: [] }), [extra.chantiers]);
@@ -88,8 +91,19 @@ export default function WorkerActionCard({ extra, execute, onDone, ctl }: Props)
   const set = (patch: Partial<WorkerActionDraft>) => setD((x) => ({ ...x, ...patch } as WorkerActionDraft));
   const direct = workerActionMode(extra.workerAction.draft) === 'direct';
   const [question, setQuestion] = useState(() => workerQuestionFor(extra.workerAction.draft, extra.workerAction.problems, snap));
-  const [phase, setPhase] = useState<Phase>(() => (!direct ? 'form' : !extra.workerAction.problems.length ? 'auto' : question ? 'question' : 'form'));
-  const [result, setResult] = useState<WorkerActionResult | null>(null);
+  const [phase, setPhase] = useState<Phase>(() => mem.phase ?? (!direct ? 'form' : !extra.workerAction.problems.length ? 'auto' : question ? 'question' : 'form'));
+  const [result, setResult] = useState<WorkerActionResult | null>(mem.result ?? null);
+  useCardMemory<typeof mem>(extra, (m) => {
+    if (m.result) setResult(m.result);
+    if (m.done) setDone(m.done);
+    if (m.d) setD(m.d);
+    if (m.phase) setPhase(m.phase);
+  });
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) { first.current = false; return; }
+    writeCard(extra, { phase, cancelled });
+  }, [phase, cancelled]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (phase === 'question') ctl?.text(null); }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (phase === 'done') ctl?.settle('C’est fait.'); }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (cancelled) ctl?.settle(); }, [cancelled]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -106,7 +120,8 @@ export default function WorkerActionCard({ extra, execute, onDone, ctl }: Props)
     setBusy(false);
     setD(draft);
     if (r.geoInfoFor) { setGeoFor(r.geoInfoFor); setPhase('form'); return; }
-    if (r.ok) { setResult(r); setDone(r.message); setPhase('done'); onDone?.(); } else { setErr(r.message); setPhase('form'); }
+    if (r.ok) { writeCard(extra, { phase: 'done', result: r, done: r.message, d: draft }); setResult(r); setDone(r.message); setPhase('done'); onDone?.(); }
+    else { writeCard(extra, { phase: 'form', d: draft }); setErr(r.message); setPhase('form'); }
   };
 
   useEffect(() => {

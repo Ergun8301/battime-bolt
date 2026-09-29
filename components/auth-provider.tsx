@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, ReactNode } from 'react';
 import { User as SupabaseUser, Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { User } from '@/lib/types';
@@ -52,6 +52,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+  // Qui est connecté en ce moment : Supabase renvoie « SIGNED_IN » à chaque
+  // retour sur l'onglet (session revalidée). Pour la MÊME personne, ce n'est pas
+  // une nouvelle connexion : pas d'écran de chargement, sinon tout l'écran est
+  // démonté (planning, assistant ouvert, conversation…).
+  const signedInId = useRef<string | null>(null);
 
   const refreshUser = async () => {
     try {
@@ -83,6 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (initialSession?.user) {
           setSession(initialSession);
           setSupabaseUser(initialSession.user);
+          signedInId.current = initialSession.user.id;
           const profile = await fetchUserProfile(initialSession.user.id);
           if (!isMounted) return;
           setUser(withSupportCompany(profile));
@@ -114,6 +120,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSupabaseUser(newSession?.user ?? null);
 
       if (event === 'SIGNED_OUT' || !newSession?.user) {
+        signedInId.current = null;
         setUser(null);
         setLoading(false);
         if (event === 'SIGNED_OUT') {
@@ -124,9 +131,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // Nouvelle connexion : on remet l'ecran de chargement le temps de
       // recuperer le profil, pour eviter une redirection prematuree des layouts.
-      if (event === 'SIGNED_IN') {
+      if (event === 'SIGNED_IN' && signedInId.current !== newSession.user.id) {
         setLoading(true);
       }
+      signedInId.current = newSession.user.id;
 
       const signedInUser = newSession.user;
       setTimeout(() => {
