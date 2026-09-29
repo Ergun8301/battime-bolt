@@ -43,5 +43,21 @@ Deno.test('Aide : couverture — au moins 45 fiches bureau, 25 salarié, 3 étap
   if (WORKER_GUIDE.length < 25) throw new Error(`salarié : ${WORKER_GUIDE.length} fiches`);
   for (const g of [...GUIDE, ...WORKER_GUIDE]) if (g.etapes.length > 3 || !g.etapes.length) throw new Error(`${g.titre} : ${g.etapes.length} étapes`);
   for (const g of GUIDE) if (g.lien && !(g.lien in NAV_ACTIONS)) throw new Error(`${g.titre} : lien inconnu ${g.lien}`);
-  for (const g of WORKER_GUIDE) if (g.lien && !(g.lien in WORKER_NAV)) throw new Error(`${g.titre} : lien inconnu ${g.lien}`);
+  for (const g of WORKER_GUIDE) if (!g.lien.startsWith('ask:') && !(g.lien in WORKER_NAV)) throw new Error(`${g.titre} : lien inconnu ${g.lien}`);
+});
+
+Deno.test('Lot 7 (retour préview) : bonne fiche, et toujours un bouton raccourci', async () => {
+  const { findGuide } = await import('./assistant-actions-core.ts');
+  const { workerGuideLink } = await import('./worker-assistant-core.ts');
+  // « corriger / pointage / heures » prime sur « salarié » (même collé à une autre demande).
+  for (const q of ['Comment je corrige le pointage d’un salarié ?', 'comment je rectifie le pointage d un salarié',
+    'ajoute une intervention demain à 8h, Comment je corrige le pointage d’un salarié ?', 'Comment je modifie les heures pointées par Karim lundi ?']) {
+    const g = findGuide(q);
+    if (g?.id !== 'corriger') throw new Error(`« ${q} » → ${g?.titre ?? 'aucune fiche'}`);
+  }
+  for (const g of GUIDE) if (!(g.lien in NAV_ACTIONS)) throw new Error(`Fiche sans bouton : ${g.titre}`);
+  for (const g of WORKER_GUIDE) {
+    const l = workerGuideLink(g.lien);
+    if (!l.label || (!l.action.startsWith('ask:') && !(l.action in WORKER_NAV))) throw new Error(`Fiche salarié sans bouton : ${g.titre}`);
+  }
 });

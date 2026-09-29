@@ -2791,14 +2791,19 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
             else if (action === 'reserves') setReservesOpen(true);
             else if (action === 'export') setExportOpen(true);
             else if (action === 'reglages') setSettingsOpen(true);
+            else if (action === 'planning') setAssistantOpen(false);
+            else if (action === 'clients') {
+              if (window.matchMedia('(max-width: 640px)').matches) setMobileChantiersOpen(true); else setChantierMenuOpen(true);
+            }
             else if (action.startsWith('salarie:')) {
               const w = workers.find((x) => x.id === action.slice(8));
               if (w) { setFicheMode('hours'); setFicheWorker(w); }
             }
           }}
-          renderExtra={(extra) => (
+          renderExtra={(extra, ctl) => (
             <AssistantActionCard
               extra={extra as ActionExtra}
+              ctl={ctl}
               execute={makeActionExecutor({ id: user.id, company_id: user.company_id })}
               onDone={() => { fetchData(); fetchExtras(); }}
             />

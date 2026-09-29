@@ -173,7 +173,7 @@ export function demoAssistantSource(): AssistantSource {
         return done({ answer: '1 chantier dépasse son budget : Villa Dupont, 110 % (110 h pour 100 h prévues).', links: [{ label: NAV_ACTIONS.couts, action: 'couts' }] });
       }
       const g = findGuide(t);
-      if (g) return done({ answer: guideAnswer(g), links: g.lien ? [{ label: NAV_ACTIONS[g.lien], action: g.lien }] : [] });
+      if (g) return done({ answer: guideAnswer(g), links: [{ label: NAV_ACTIONS[g.lien], action: g.lien }] });
       return done({ answer: 'Mode démo : essayez une suggestion, « Mets Lucas sur Villa Dupont demain » ou « Comment je clôture le mois ? ».', links: [] });
     },
   };

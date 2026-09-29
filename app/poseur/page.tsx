@@ -533,6 +533,10 @@ export default function PoseurPage() {
             else if (a === 'mois') goTo('month');
             else if (a === 'historique') goTo('history');
             else if (a === 'conges') setLeaveOpen(true);
+            else if (a === 'notifications') { if (pushState !== 'on' && pushState !== 'unsupported' && !pushBusy) togglePush(); }
+            else if (a === 'photo') photoInputRef.current?.click();
+            else if (a === 'borne') setScanOpen(true);
+            else if (a === 'infos') setInfoOpen(true);
           }}
         />
       </div>

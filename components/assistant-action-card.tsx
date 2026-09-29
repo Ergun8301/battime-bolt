@@ -8,6 +8,7 @@
 // multiples, message envoyé, correction passée, coût / paie / droits) : la
 // fiche modifiable et « Confirmer ». Les contrôles sont ceux du serveur.
 
+import type { ExtraControl } from '@/components/assistant-panel';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   CheckCircle2, Loader2, UserPlus, Building2, CalendarOff, CalendarPlus, CalendarRange, Clock, FolderInput, Paperclip,
@@ -84,14 +85,18 @@ const CONFIRM: Record<ActionDraft['type'], string> = {
   cout_reel: 'Enregistrer', modifier_reglages: 'Enregistrer',
 };
 
-interface Props { extra: ActionExtra; execute: ActionExecutor; onDone?: () => void }
+interface Props {
+  extra: ActionExtra; execute: ActionExecutor; onDone?: () => void;
+  /** Lot 7 : la carte pilote le texte de sa bulle (voir ExtraControl). */
+  ctl?: ExtraControl;
+}
 
 // Une action directe n'est lancée qu'UNE fois, même si l'écran se redessine.
 const launched = new WeakSet<object>();
 
 type Phase = 'auto' | 'question' | 'form' | 'done';
 
-export default function AssistantActionCard({ extra, execute, onDone }: Props) {
+export default function AssistantActionCard({ extra, execute, onDone, ctl }: Props) {
   const { options } = extra;
   const [d, setD] = useState<ActionDraft>(extra.action.draft);
   const [busy, setBusy] = useState(false);
@@ -117,6 +122,10 @@ export default function AssistantActionCard({ extra, execute, onDone }: Props) {
   // « Modifier » après coup : l'ancienne action est défaite AU MOMENT d'enregistrer.
   const editOf = useRef<(() => Promise<{ ok: boolean; message: string }>) | null>(null);
   const [question, setQuestion] = useState(() => questionFor(extra.action.draft, extra.action.problems, ctx));
+  // Fait : la bulle ne garde pas la question (« Pour quel salarié ? ») au-dessus du résultat.
+  useEffect(() => { if (phase === 'question') ctl?.text(null); }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (phase === 'done') ctl?.settle('C’est fait.'); }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (cancelled) ctl?.settle(); }, [cancelled]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const run = async (draft: ActionDraft) => {
     setBusy(true); setErr(null);

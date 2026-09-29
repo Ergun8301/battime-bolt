@@ -5,6 +5,7 @@
 // Modifier ; info manquante → UNE question ; envoi de la journée, nouveau
 // chantier, email client, correction d'une ligne envoyée → à confirmer.
 
+import type { ExtraControl } from '@/components/assistant-panel';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CheckCircle2, Loader2, CalendarOff, Play, Square, AlertTriangle, FolderInput, Paperclip, Send, Clock, UtensilsCrossed, Copy, Wrench, MapPin, Mail } from 'lucide-react';
 import {
@@ -56,9 +57,13 @@ const launched = new WeakSet<object>();
 type Phase = 'auto' | 'question' | 'form' | 'done';
 const hhmm = (iso: string) => (iso ? new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' }) : '');
 
-interface Props { extra: WorkerActionExtra; execute: WorkerActionExecutor; onDone?: () => void }
+interface Props {
+  extra: WorkerActionExtra; execute: WorkerActionExecutor; onDone?: () => void;
+  /** Lot 7 : la carte pilote le texte de sa bulle (voir ExtraControl). */
+  ctl?: ExtraControl;
+}
 
-export default function WorkerActionCard({ extra, execute, onDone }: Props) {
+export default function WorkerActionCard({ extra, execute, onDone, ctl }: Props) {
   const [d, setD] = useState<WorkerActionDraft>(extra.workerAction.draft);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<string | null>(null);
@@ -85,6 +90,9 @@ export default function WorkerActionCard({ extra, execute, onDone }: Props) {
   const [question, setQuestion] = useState(() => workerQuestionFor(extra.workerAction.draft, extra.workerAction.problems, snap));
   const [phase, setPhase] = useState<Phase>(() => (!direct ? 'form' : !extra.workerAction.problems.length ? 'auto' : question ? 'question' : 'form'));
   const [result, setResult] = useState<WorkerActionResult | null>(null);
+  useEffect(() => { if (phase === 'question') ctl?.text(null); }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (phase === 'done') ctl?.settle('C’est fait.'); }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (cancelled) ctl?.settle(); }, [cancelled]); // eslint-disable-line react-hooks/exhaustive-deps
   const editOf = useRef<WorkerActionResult['undo'] | null>(null);
 
   const run = async (draft: WorkerActionDraft = d) => {

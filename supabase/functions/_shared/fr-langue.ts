@@ -195,6 +195,17 @@ export function calendarForPrompt(today: string, before = 7, after = 21): string
 // ── Demande d'action, ou simple question ? ──────────────────────────────────
 const ACTION_VERBS = /\b(ajout\w*|rajout\w*|cree\w*|creer|mets?|mettre|met|pose\w*|planifi\w*|programm\w*|affect\w*|place\w*|invit\w*|embauch\w*|corrig\w*|modifi\w*|chang\w*|decal\w*|deplac\w*|rang\w*|class\w*|enregistr\w*|note\w*|commenc\w*|demarr\w*|fini\w*|termin\w*|arret\w*|demand\w*|signal\w*|envoi\w*|envoy\w*|valid\w*|accept\w*|refus\w*|clotur\w*|renomm\w*|archiv\w*|relanc\w*|fais|faire|fait|prepar\w*|remplis|duplique\w*|copie\w*|budget\w*|pointe\w*|j'?ai (?:bosse|travaille|fait))\b/;
 
+/**
+ * Une question en attente (« Pour quel salarié ? ») : la réponse tapée la complète,
+ * SAUF si c'est clairement une nouvelle demande (question, ou phrase d'action complète).
+ */
+export function isNewRequest(text: string): boolean {
+  const n = low(text).trim();
+  if (/\?\s*$/.test(text.trim())) return true;
+  if (/^(comment|pourquoi|combien|quand|ou |ou est|qui |quel|quelle|est-ce|a quoi|c'?est quoi|explique|aide|montre)/.test(n)) return true;
+  return n.split(/\s+/).length >= 6 && ACTION_VERBS.test(n);
+}
+
 /** true → modèle « actions » (plus fort) ; false → modèle léger pour une question. */
 export function looksLikeAction(text: string, hasFile = false): boolean {
   if (hasFile) return true;

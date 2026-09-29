@@ -35,6 +35,9 @@ export const NAV_ACTIONS = {
   reserves: 'Réserves',
   export: 'Exporter / clôturer',
   reglages: 'Réglages',
+  // Lot 7 : chaque fiche d'aide a son bouton raccourci.
+  planning: 'Voir le planning',
+  clients: 'Clients',
 } as const;
 export type NavAction = keyof typeof NAV_ACTIONS;
 
@@ -44,7 +47,8 @@ export interface GuideEntry {
   mots: string[];
   titre: string;
   etapes: string[];
-  lien?: NavAction;
+  /** Bouton raccourci : obligatoire, chaque réponse d'aide mène quelque part. */
+  lien: NavAction;
 }
 
 export const GUIDE: GuideEntry[] = [
@@ -75,12 +79,12 @@ export const GUIDE: GuideEntry[] = [
   {
     id: 'affecter', mots: ['affecter', 'planning', 'mettre sur un chantier', 'placer', 'glisser', 'ajouter au planning', 'intervention'],
     titre: 'Mettre quelqu’un sur un chantier',
-    etapes: ['Sur le planning, cliquez la case du salarié et du jour.', 'Choisissez le client (note pour le poseur si besoin).', '« Ajouter au planning ». Vous pouvez aussi glisser un client depuis « Clients ».'],
+    etapes: ['Sur le planning, cliquez la case du salarié et du jour.', 'Choisissez le client (note pour le poseur si besoin).', '« Ajouter au planning ». Vous pouvez aussi glisser un client depuis « Clients ».'], lien: 'planning'
   },
   {
     id: 'absence', mots: ['absence', 'conge', 'maladie', 'arret', 'intemperie', 'repos', 'poser un conge', 'vacances'],
     titre: 'Poser un congé ou une absence',
-    etapes: ['Sur le planning, cliquez le nom du salarié.', 'Choisissez Congé, Arrêt maladie, Intempérie ou Repos.', 'Choisissez les dates, puis « Enregistrer ».'],
+    etapes: ['Sur le planning, cliquez le nom du salarié.', 'Choisissez Congé, Arrêt maladie, Intempérie ou Repos.', 'Choisissez les dates, puis « Enregistrer ».'], lien: 'planning'
   },
   {
     id: 'demandes_conge', mots: ['demande de conge', 'accepter conge', 'refuser conge', 'valider conge'],
@@ -89,9 +93,9 @@ export const GUIDE: GuideEntry[] = [
     lien: 'conges',
   },
   {
-    id: 'corriger', mots: ['corriger', 'correction', 'modifier les heures', 'erreur de pointage', 'mauvaise heure'],
+    id: 'corriger', mots: ['corriger', 'correction', 'modifier les heures', 'erreur de pointage', 'mauvaise heure', 'corriger pointage', 'modifier pointage', 'changer pointage', 'rectifier', 'heures pointees'],
     titre: 'Corriger les heures d’un salarié',
-    etapes: ['Ouvrez sa feuille d’heures (clic sur son nom → « Feuille d’heures »).', 'Sur la journée envoyée : « Corriger les heures ».', 'Nouvelles heures → « Corriger et prévenir » : il est averti.'],
+    etapes: ['Ouvrez sa feuille d’heures (clic sur son nom → « Feuille d’heures »).', 'Sur la journée envoyée : « Corriger les heures ».', 'Nouvelles heures → « Corriger et prévenir » : il est averti.'], lien: 'salaries'
   },
   {
     id: 'export', mots: ['export', 'exporter', 'paie', 'comptable', 'excel', 'pdf', 'csv', 'envoyer au comptable'],
@@ -114,7 +118,7 @@ export const GUIDE: GuideEntry[] = [
   {
     id: 'budget', mots: ['budget chantier', 'heures prevues', 'montant prevu', 'alerte budget'],
     titre: 'Donner un budget à un chantier',
-    etapes: ['Ouvrez la fiche du client (crayon dans « Clients »).', 'Remplissez « Heures prévues » et/ou « Montant prévu ».', '« Enregistrer » : alertes à 70, 80 et 100 %.'],
+    etapes: ['Ouvrez la fiche du client (crayon dans « Clients »).', 'Remplissez « Heures prévues » et/ou « Montant prévu ».', '« Enregistrer » : alertes à 70, 80 et 100 %.'], lien: 'clients'
   },
   {
     id: 'reserves', mots: ['reserve', 'reserves', 'lever la reserve'],
@@ -137,47 +141,47 @@ export const GUIDE: GuideEntry[] = [
   {
     id: 'documents', mots: ['document', 'photo', 'fichier', 'plan', 'devis'],
     titre: 'Ajouter des photos ou documents à un chantier',
-    etapes: ['Cliquez une bulle du planning → « Documents ».', '« Photo » ou « Fichier ».', '« Envoyer au client » pour les partager.'],
+    etapes: ['Cliquez une bulle du planning → « Documents ».', '« Photo » ou « Fichier ».', '« Envoyer au client » pour les partager.'], lien: 'planning'
   },
   {
     id: 'relancer', mots: ['relancer invitation', 'invitation', 'pas recu', 'renvoyer'],
     titre: 'Relancer une invitation',
-    etapes: ['Sous le planning : « Invitations en attente ».', '« Relancer » sur la bonne ligne.', 'Vérifiez l’adresse email si rien n’arrive.'],
+    etapes: ['Sous le planning : « Invitations en attente ».', '« Relancer » sur la bonne ligne.', 'Vérifiez l’adresse email si rien n’arrive.'], lien: 'salaries'
   },
   {
     id: 'semaine', mots: ['semaine prochaine', 'changer de semaine', 'semaine suivante'],
     titre: 'Changer de semaine',
-    etapes: ['Flèches ‹ et › à côté de la date.', 'Le cadre « S-NN » revient à la semaine en cours.'],
+    etapes: ['Flèches ‹ et › à côté de la date.', 'Le cadre « S-NN » revient à la semaine en cours.'], lien: 'planning'
   },  // ── Lot 7 : TOUT l'écran du bureau (libellés vérifiés par assistant-aide.test.ts) ──
   {
     id: 'deplacer', mots: ['deplacer intervention', 'deplacer', 'decaler', 'bouger', 'changer de jour', 'autre jour'],
     titre: 'Déplacer une intervention',
-    etapes: ['Sur le planning, attrapez la bulle de l’intervention.', 'Glissez-la sur la case du bon jour (ou d’un autre salarié).', 'C’est enregistré tout de suite.'],
+    etapes: ['Sur le planning, attrapez la bulle de l’intervention.', 'Glissez-la sur la case du bon jour (ou d’un autre salarié).', 'C’est enregistré tout de suite.'], lien: 'planning'
   },
   {
     id: 'heure_note', mots: ['heure fixe', 'changer l heure', 'note intervention', 'modifier intervention', 'horaire intervention'],
     titre: 'Mettre une heure ou une note sur une intervention',
-    etapes: ['Cliquez la bulle de l’intervention sur le planning.', 'Choisissez l’« Heure fixe » et/ou écrivez une note.', '« Enregistrer ».'],
+    etapes: ['Cliquez la bulle de l’intervention sur le planning.', 'Choisissez l’« Heure fixe » et/ou écrivez une note.', '« Enregistrer ».'], lien: 'planning'
   },
   {
     id: 'retirer', mots: ['retirer intervention', 'enlever du planning', 'supprimer intervention', 'annuler intervention'],
     titre: 'Retirer une intervention du planning',
-    etapes: ['Cliquez la bulle de l’intervention.', '« Retirer ».', 'Elle disparaît du planning du salarié.'],
+    etapes: ['Cliquez la bulle de l’intervention.', '« Retirer ».', 'Elle disparaît du planning du salarié.'], lien: 'planning'
   },
   {
     id: 'present', mots: ['present', 'enlever absence', 'annuler conge', 'finalement la', 'revient'],
     titre: 'Remettre quelqu’un présent (enlever une absence)',
-    etapes: ['Sur le planning, cliquez le nom du salarié.', '« Présent », à partir du jour choisi.', 'Les absences suivantes sont retirées.'],
+    etapes: ['Sur le planning, cliquez le nom du salarié.', '« Présent », à partir du jour choisi.', 'Les absences suivantes sont retirées.'], lien: 'planning'
   },
   {
     id: 'attribuer', mots: ['attribuer client', 'chantier autre', 'intervention ajoutee par le salarie', 'heures sur autre'],
     titre: 'Attribuer un client à des heures notées sur « Autre »',
-    etapes: ['Sur le planning, la case marquée « Autre » (ajoutée par le salarié).', '« Attribuer un client », puis choisissez-le.', 'Les heures passent sur ce client.'],
+    etapes: ['Sur le planning, la case marquée « Autre » (ajoutée par le salarié).', '« Attribuer un client », puis choisissez-le.', 'Les heures passent sur ce client.'], lien: 'planning'
   },
   {
     id: 'annuler_invitation', mots: ['annuler invitation', 'supprimer invitation', 'retirer invitation'],
     titre: 'Annuler une invitation',
-    etapes: ['Sous le planning : « Invitations en attente ».', 'La croix sur la bonne ligne.', 'Le compte jamais utilisé est retiré.'],
+    etapes: ['Sous le planning : « Invitations en attente ».', 'La croix sur la bonne ligne.', 'Le compte jamais utilisé est retiré.'], lien: 'salaries'
   },
   {
     id: 'rappel', mots: ['rappel', 'relancer salarie', 'oublie d envoyer', 'pas envoye ses heures', 'cloche'],
@@ -188,42 +192,42 @@ export const GUIDE: GuideEntry[] = [
   {
     id: 'fiche_client', mots: ['fiche client', 'modifier client', 'adresse client', 'telephone client', 'email client'],
     titre: 'Modifier la fiche d’un client',
-    etapes: ['« Clients », puis le crayon sur le client.', 'Changez nom, adresse, contact, description ou budget.', '« Enregistrer ».'],
+    etapes: ['« Clients », puis le crayon sur le client.', 'Changez nom, adresse, contact, description ou budget.', '« Enregistrer ».'], lien: 'clients'
   },
   {
     id: 'archiver_client', mots: ['archiver client', 'chantier termine', 'cacher un client', 'client fini'],
     titre: 'Archiver un client (chantier terminé)',
-    etapes: ['« Clients », crayon sur le client.', '« Archiver ».', 'Il disparaît des listes ; ses heures et documents restent.'],
+    etapes: ['« Clients », crayon sur le client.', '« Archiver ».', 'Il disparaît des listes ; ses heures et documents restent.'], lien: 'clients'
   },
   {
     id: 'supprimer_client', mots: ['supprimer client', 'effacer client'],
     titre: 'Supprimer un client',
-    etapes: ['« Clients », crayon sur le client.', '« Supprimer » (seulement s’il n’a aucune heure ni planning).', 'Sinon, « Archiver ».'],
+    etapes: ['« Clients », crayon sur le client.', '« Supprimer » (seulement s’il n’a aucune heure ni planning).', 'Sinon, « Archiver ».'], lien: 'clients'
   },
   {
     id: 'fiche_salarie', mots: ['fiche salarie', 'modifier salarie', 'telephone salarie', 'nom du salarie', 'taux horaire', 'contrat'],
     titre: 'Modifier la fiche d’un salarié',
-    etapes: ['Cliquez son nom sur le planning.', 'Onglet des infos : nom, téléphone, contrat, taux horaire.', '« Enregistrer ».'],
+    etapes: ['Cliquez son nom sur le planning.', 'Onglet des infos : nom, téléphone, contrat, taux horaire.', '« Enregistrer ».'], lien: 'salaries'
   },
   {
     id: 'archiver_salarie', mots: ['archiver salarie', 'salarie parti', 'depart salarie', 'desactiver salarie', 'reactiver'],
     titre: 'Archiver un salarié parti',
-    etapes: ['Cliquez son nom sur le planning.', '« Archiver » en bas de sa fiche.', 'Ses heures restent ; il ne peut plus se connecter.'],
+    etapes: ['Cliquez son nom sur le planning.', '« Archiver » en bas de sa fiche.', 'Ses heures restent ; il ne peut plus se connecter.'], lien: 'salaries'
   },
   {
     id: 'feuille', mots: ['feuille d heures', 'voir les heures', 'heures d un salarie', 'releve'],
     titre: 'Voir la feuille d’heures d’un salarié',
-    etapes: ['Cliquez son nom sur le planning.', '« Feuille d’heures ».', 'Choisissez la période ; export possible.'],
+    etapes: ['Cliquez son nom sur le planning.', '« Feuille d’heures ».', 'Choisissez la période ; export possible.'], lien: 'salaries'
   },
   {
     id: 'habilitations', mots: ['habilitation', 'caces', 'carte btp', 'visite medicale', 'travail en hauteur', 'expiration'],
     titre: 'Suivre les habilitations (CACES, carte BTP…)',
-    etapes: ['Fiche du salarié → « Habilitations ».', '« Ajouter » : type et date d’expiration.', 'Vous êtes prévenu avant l’échéance.'],
+    etapes: ['Fiche du salarié → « Habilitations ».', '« Ajouter » : type et date d’expiration.', 'Vous êtes prévenu avant l’échéance.'], lien: 'salaries'
   },
   {
     id: 'cout_reel', mots: ['cout reel', 'bulletin de paie', 'cout employeur', 'salaire charge'],
     titre: 'Renseigner le coût réel d’un salarié',
-    etapes: ['Fiche du salarié → « Coût réel ».', '« Déposer un bulletin » (lu automatiquement) ou « Saisir à la main ».', '« Valider ». Le bulletin n’est pas conservé.'],
+    etapes: ['Fiche du salarié → « Coût réel ».', '« Déposer un bulletin » (lu automatiquement) ou « Saisir à la main ».', '« Valider ». Le bulletin n’est pas conservé.'], lien: 'salaries'
   },
   {
     id: 'reouvrir', mots: ['rouvrir le mois', 'reouvrir', 'decloturer'],
@@ -252,7 +256,7 @@ export const GUIDE: GuideEntry[] = [
   {
     id: 'envoyer_client', mots: ['envoyer au client', 'partager photos', 'envoyer documents client'],
     titre: 'Envoyer des documents au client',
-    etapes: ['Bulle du planning → « Documents ».', '« Envoyer au client » (son email une fois pour toutes).', 'Un email s’ouvre avec les liens.'],
+    etapes: ['Bulle du planning → « Documents ».', '« Envoyer au client » (son email une fois pour toutes).', 'Un email s’ouvre avec les liens.'], lien: 'planning'
   },
   {
     id: 'borne', mots: ['borne', 'tablette', 'qr code', 'pointeuse'],
@@ -299,12 +303,15 @@ export const GUIDE: GuideEntry[] = [
   {
     id: 'assistant', mots: ['assistant', 'dicter', 'micro', 'trombone', 'joindre un fichier', 'comment tu marches'],
     titre: 'Se servir de l’Assistant',
-    etapes: ['Bouton ✨ en haut du planning.', 'Écrivez, ou 🎤 pour dicter (appui = démarre, appui = arrête), 📎 pour une photo ou un PDF.', 'Les actions simples sont faites tout de suite, avec « Annuler ».'],
+    etapes: ['Bouton ✨ en haut du planning.', 'Écrivez, ou 🎤 pour dicter (appui = démarre, appui = arrête), 📎 pour une photo ou un PDF.', 'Les actions simples sont faites tout de suite, avec « Annuler ».'], lien: 'planning'
   },
 ];
 
 
 /** Meilleure fiche pour une question « comment… », ou null. */
+// Mots trop généraux pour choisir une fiche : « salarié » ne doit jamais
+// l'emporter sur ce qu'on veut FAIRE (corriger, pointer, heures…).
+const GENERIC_WORDS = new Set(['salarie', 'salaries', 'client', 'clients', 'chantier', 'chantiers', 'un', 'une', 'le', 'la', 'les', 'de', 'd', 'du', 'des']);
 export function findGuide(question: string): GuideEntry | null {
   const q = norm(question);
   let best: GuideEntry | null = null, score = 0;
@@ -312,7 +319,9 @@ export function findGuide(question: string): GuideEntry | null {
     for (const m of g.mots) {
       // Racine du mot : « ajoute », « ajouter », « ajoutez » se valent.
       const words = m.split(' ').map((w) => (w.length > 5 ? w.slice(0, w.length - 2) : w));
-      if (words.every((w) => q.includes(w)) && m.length > score) { best = g; score = m.length; }
+      if (!words.every((w) => q.includes(w))) continue;
+      const sc = m.split(' ').reduce((n, w) => n + (GENERIC_WORDS.has(w) ? 1 : w.length), 0);
+      if (sc > score) { best = g; score = sc; }
     }
   }
   return best;
@@ -1241,7 +1250,7 @@ export function handleActionLocally(text: string, ctx: ActionContext): LocalRepl
   }
   if (/\b(comment|ou |ou est|je veux|je voudrais|aide|expliqu|montre|a quoi sert|quoi sert|c est quoi|ca sert)/.test(n)) {
     const g = findGuide(n);
-    if (g) return { answer: guideAnswer(g), links: g.lien ? [navLink(g.lien)] : [] };
+    if (g) return { answer: guideAnswer(g), links: [navLink(g.lien)] };
   }
   return null;
 }
@@ -1264,6 +1273,11 @@ export function fromFunctionCall(name: string, args: Record<string, unknown>, ct
         links.push({ label: `Fiche de ${s.prenom}`, action: `salarie:${s.id}` });
       }
       if (links.length >= 3) break;
+    }
+    // Pas de lien donné par l'IA : celui de la fiche d'aide qui correspond.
+    if (!links.length) {
+      const g = findGuide(ctx.demande ?? '') ?? findGuide(answer);
+      if (g) links.push(navLink(g.lien));
     }
     return { answer, links: links.filter((l, i) => links.findIndex((x) => x.action === l.action) === i) };
   }

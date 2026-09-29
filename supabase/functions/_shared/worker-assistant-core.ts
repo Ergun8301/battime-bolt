@@ -396,10 +396,20 @@ export const WORKER_NAV = {
   mois: 'Mon mois',
   historique: 'Historique',
   conges: 'Mes congés',
+  // Lot 7 : chaque fiche d'aide a son bouton raccourci.
+  notifications: 'Activer les notifications',
+  photo: 'Changer ma photo',
+  borne: 'Scanner la borne',
+  infos: 'Informations',
 } as const;
 export type WorkerNav = keyof typeof WORKER_NAV;
 
-export interface WorkerGuideEntry { mots: string[]; titre: string; etapes: string[]; lien?: WorkerNav }
+/** Bouton raccourci : un écran, ou « ask:… » = une question toute prête posée à l'assistant. */
+export type WorkerGuideLink = WorkerNav | `ask:${string}`;
+export interface WorkerGuideEntry { mots: string[]; titre: string; etapes: string[]; lien: WorkerGuideLink }
+export function workerGuideLink(l: WorkerGuideLink): { label: string; action: string } {
+  return l.startsWith('ask:') ? { label: l.slice(4), action: l } : { label: WORKER_NAV[l as WorkerNav], action: l };
+}
 
 /** Écrit à partir de app/poseur/page.tsx et components/poseur-*.tsx. */
 export const WORKER_GUIDE: WorkerGuideEntry[] = [
@@ -422,9 +432,10 @@ export const WORKER_GUIDE: WorkerGuideEntry[] = [
   { mots: ['copier', 'dupliquer', 'meme que hier'], titre: 'Copier une journée',
     etapes: ['« Ma journée ».', '« Copier la journée d’hier » ou « Dupliquer cette journée ».'], lien: 'journee' },
   { mots: ['notification', 'rappel', 'alerte'], titre: 'Activer les notifications',
-    etapes: ['Menu (votre nom en haut à droite).', '« Activer les notifications ».'] },
+    etapes: ['Menu (votre nom en haut à droite).', '« Activer les notifications ».'], lien: 'notifications' },
   { mots: ['photo de profil', 'avatar', 'changer ma photo'], titre: 'Changer sa photo',
-    etapes: ['Menu (votre nom en haut à droite).', '« Changer ma photo ».'] },  // ── Lot 7 : tout l'écran du salarié (libellés vérifiés par assistant-aide.test.ts) ──
+    etapes: ['Menu (votre nom en haut à droite).', '« Changer ma photo ».'], lien: 'photo' },
+  // ── Lot 7 : tout l'écran du salarié (libellés vérifiés par assistant-aide.test.ts) ──
   { mots: ['panier', 'panier repas', 'repas', 'indemnite repas'], titre: 'Cocher le panier repas',
     etapes: ['« Ma journée ».', 'Case « Panier » du jour.', 'Un seul panier par jour.'], lien: 'journee' },
   { mots: ['modifier mes heures', 'changer horaire', 'erreur d heure', 'corriger mes heures'], titre: 'Changer ses horaires',
@@ -444,15 +455,15 @@ export const WORKER_GUIDE: WorkerGuideEntry[] = [
   { mots: ['envoyer au client', 'email du client', 'partager photo client'], titre: 'Envoyer les photos au client',
     etapes: ['« Documents » du chantier.', '« Envoyer au client » (son email la première fois).', 'Un email s’ouvre avec les liens.'], lien: 'journee' },
   { mots: ['scanner', 'borne', 'qr code', 'pointer avec le qr'], titre: 'Pointer avec la borne (QR code)',
-    etapes: ['Icône scanner en haut de l’écran.', 'Visez le QR code de la borne.', 'Le pointage démarre (ou s’arrête).'] },
+    etapes: ['Icône scanner en haut de l’écran.', 'Visez le QR code de la borne.', 'Le pointage démarre (ou s’arrête).'], lien: 'borne' },
   { mots: ['mon equipe', 'chef d equipe', 'heures de l equipe'], titre: 'Chef d’équipe : noter les heures de l’équipe',
-    etapes: ['« Mon équipe » (chef d’équipe seulement).', 'Touchez un salarié présent sur votre chantier.', 'Ses heures du jour, puis « OK ».'] },
+    etapes: ['« Mon équipe » (chef d’équipe seulement).', 'Touchez un salarié présent sur votre chantier.', 'Ses heures du jour, puis « OK ».'], lien: 'journee' },
   { mots: ['informations', 'confidentialite', 'donnees', 'position gps'], titre: 'Informations sur vos données',
-    etapes: ['Menu (votre nom en haut à droite).', '« Informations ».'] },
+    etapes: ['Menu (votre nom en haut à droite).', '« Informations ».'], lien: 'infos' },
   { mots: ['collegues', 'ou sont les autres', 'planning des collegues'], titre: 'Savoir où sont ses collègues',
-    etapes: ['Bouton ✨ de la barre du bas.', 'Demandez « Où sont mes collègues ? » ou « Où est Paul demain ? ».', 'Prénom, chantier et horaires (si le bureau l’a autorisé).'] },
+    etapes: ['Bouton ✨ de la barre du bas.', 'Demandez « Où sont mes collègues ? » ou « Où est Paul demain ? ».', 'Prénom, chantier et horaires (si le bureau l’a autorisé).'], lien: 'ask:Où sont mes collègues aujourd’hui ?' },
   { mots: ['assistant', 'dicter', 'micro', 'comment tu marches'], titre: 'Se servir de l’Assistant',
-    etapes: ['Bouton ✨ de la barre du bas.', '🎤 pour dicter (appui = démarre, appui = arrête), 📎 pour une photo.', 'C’est fait tout de suite, avec « Annuler ».'] },
+    etapes: ['Bouton ✨ de la barre du bas.', '🎤 pour dicter (appui = démarre, appui = arrête), 📎 pour une photo.', 'C’est fait tout de suite, avec « Annuler ».'], lien: 'ask:Combien d’heures cette semaine ?' },
 ];
 
 export function findWorkerGuide(text: string): WorkerGuideEntry | null {
@@ -766,7 +777,7 @@ export function handleWorkerLocally(text: string, snapshot: WorkerSnapshot, live
     }
     if (/\b(comment|ou |ou est|je veux|je voudrais|aide|expliqu|montre|a quoi sert|quoi sert|c'?est quoi|ca sert)/.test(n)) {
       const g = findWorkerGuide(n);
-      if (g) return { kind: 'guide', answer: workerGuideAnswer(g), links: g.lien ? [{ label: WORKER_NAV[g.lien], action: g.lien }] : [] };
+      if (g) return { kind: 'guide', answer: workerGuideAnswer(g), links: [workerGuideLink(g.lien)] };
     }
   }
   return handleLocally(text, snapshot);
@@ -860,7 +871,9 @@ export function fromWorkerCall(name: string, args: Record<string, unknown>, snap
       answer = g ? workerGuideAnswer(g) : 'Dites-moi ce que vous voulez faire : je vous guide, ou je le prépare.';
     }
     const l = typeof args.lien === 'string' && args.lien in WORKER_NAV ? args.lien as WorkerNav : null;
-    return { kind: 'guide', answer, links: l ? [{ label: WORKER_NAV[l], action: l }] : [] };
+    // Pas de lien donné par l'IA : celui de la fiche d'aide qui correspond.
+    const g = l ? null : findWorkerGuide(snapshot.demande ?? '') ?? findWorkerGuide(answer);
+    return { kind: 'guide', answer, links: l ? [workerGuideLink(l)] : g ? [workerGuideLink(g.lien)] : [] };
   }
   if (name === 'declarer_heures') {
     const date = typeof args.date === 'string' ? (/^\d{4}-\d{2}-\d{2}$/.test(args.date) ? args.date : parseDateFr(args.date, snapshot.aujourdhui)) : '';

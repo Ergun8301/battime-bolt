@@ -5,6 +5,7 @@
 // Annuler, Modifier) ; chantier manquant → UNE question avec les chantiers ;
 // horaires incohérents → la fiche à corriger, puis « Enregistrer ».
 
+import type { ExtraControl } from '@/components/assistant-panel';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActionAsk, ActionDone } from '@/components/action-done';
 import { Loader2, Plus, Trash2, CheckCircle2 } from 'lucide-react';
@@ -32,10 +33,14 @@ const CSS = `
 .wd-done{display:flex;align-items:center;gap:8px;color:#0F7A43;font-weight:800;font-size:14px;margin-top:10px}
 `;
 
-interface Props { extra: DraftExtra; save: SaveLines; onSaved?: () => void }
+interface Props {
+  extra: DraftExtra; save: SaveLines; onSaved?: () => void;
+  /** Lot 7 : la carte pilote le texte de sa bulle (voir ExtraControl). */
+  ctl?: ExtraControl;
+}
 const launched = new WeakSet<object>();
 
-export default function WorkerDraftCard({ extra, save, onSaved }: Props) {
+export default function WorkerDraftCard({ extra, save, onSaved, ctl }: Props) {
   const { chantiers } = extra;
   const [date] = useState(extra.draft.date);
   const [lines, setLines] = useState<DraftLine[]>(extra.draft.lines.length ? extra.draft.lines
@@ -49,6 +54,9 @@ export default function WorkerDraftCard({ extra, save, onSaved }: Props) {
   const [phase, setPhase] = useState<'auto' | 'question' | 'form' | 'done'>(complete ? (onlyChantier ? 'question' : 'auto') : 'form');
 
   const [edited, setEdited] = useState(false);
+  // Enregistré : plus de « Vérifiez, puis enregistrez. » au-dessus de « Fait ».
+  useEffect(() => { if (phase === 'question') ctl?.text(null); }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (phase === 'done') ctl?.settle(null); }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
   // Les mêmes contrôles que le serveur, à chaque modification. Avant toute
   // retouche, on montre aussi ce que le serveur n'a pas pu lire.
   const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });

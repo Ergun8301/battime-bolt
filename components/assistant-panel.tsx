@@ -15,7 +15,14 @@ import { Sparkles, X, Mic, Square, ArrowUp, Loader2, ArrowRight, Paperclip, File
 import { Dictation, speechCtor } from '@/lib/dictation';
 import { ATTACH_ACCEPT, ATTACH_MAX_BYTES, attachmentError, compressAttachment } from '@/lib/attachment';
 import { ASSISTANT_SUGGESTIONS, type AssistantLink, type AssistantSource } from '@/lib/assistant';
+import { isNewRequest } from '@/supabase/functions/_shared/fr-langue';
 
+export interface ExtraControl {
+  /** Change le texte de la bulle (null = l'efface), la question en attente reste ouverte. */
+  text: (text: string | null) => void;
+  /** Action finie : texte de la bulle (facultatif) et fin de la question en attente. */
+  settle: (text?: string | null) => void;
+}
 type Msg = { who: 'me' | 'bot'; text: string; links?: AssistantLink[]; notice?: boolean; extra?: unknown; file?: string };
 
 
@@ -70,7 +77,8 @@ interface Props {
   /** Lot 4 : phrase d'accueil. */
   intro?: string;
   /** Lot 4 : contenu en plus sous une réponse (ex. brouillon de pointage à confirmer). */
-  renderExtra?: (extra: unknown) => ReactNode;
+  /** `ctl.settle(texte)` : la carte remplace le texte de sa bulle (null = l'efface) une fois faite. */
+  renderExtra?: (extra: unknown, ctl: ExtraControl) => ReactNode;
   /** Lot 4 : mention sous la zone de saisie. */
   footNote?: string;
   /** Lot 3 bis : 📎 photo ou PDF joint à la demande. */
@@ -112,7 +120,7 @@ export default function AssistantPanel({ source, onNavigate, defaultOpen = false
     setText(''); setFile(null);
     setMsgs((m) => [...m, { who: 'me', text: question, file: sent?.name }]);
     setBusy(true);
-    const full = pendingRef.current && !sent ? `${pendingRef.current}, ${question}` : question;
+    const full = pendingRef.current && !sent && !isNewRequest(question) ? `${pendingRef.current}, ${question}` : question;
     const r = await source.ask(full, sent ?? undefined);
     pendingRef.current = r.followUp ? full : null;
     setBusy(false);
@@ -148,6 +156,8 @@ export default function AssistantPanel({ source, onNavigate, defaultOpen = false
   };
 
   const go = (action: string) => {
+    // « ask:… » : une question toute prête, posée ici même.
+    if (action.startsWith('ask:')) { ask(action.slice(4)); return; }
     onNavigate(action);
     if (window.matchMedia('(max-width: 640px)').matches) setOpen(false);
   };
@@ -189,7 +199,13 @@ export default function AssistantPanel({ source, onNavigate, defaultOpen = false
                       {m.links.map((l) => <button type="button" key={l.action} onClick={() => go(l.action)}>{l.label} <ArrowRight className="h-3 w-3" /></button>)}
                     </div>
                   )}
-                  {m.extra != null && renderExtra ? renderExtra(m.extra) : null}
+                  {m.extra != null && renderExtra ? renderExtra(m.extra, {
+                    text: (t) => setMsgs((all) => all.map((x, j) => (j === i ? { ...x, text: t ?? '' } : x))),
+                    settle: (t) => {
+                      pendingRef.current = null;
+                      if (t !== undefined) setMsgs((all) => all.map((x, j) => (j === i ? { ...x, text: t ?? '' } : x)));
+                    },
+                  }) : null}
                 </div>
               )))}
             {busy && <div className="as-typing"><Loader2 className="h-4 w-4 animate-spin" /> Je regarde…</div>}

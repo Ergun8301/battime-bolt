@@ -167,6 +167,8 @@ export const CASES: EvalCase[] = [
   { id: 'b30', cote: 'bureau', categorie: 'Aide', phrase: 'à quoi sert le bouton réserves', check: answer('reserves') },
   { id: 'b31', cote: 'bureau', categorie: 'Aide', phrase: 'explique moi comment déplacer une intervention', check: answer() },
   { id: 'b32', cote: 'bureau', categorie: 'Aide', phrase: 'rédige un petit message pour dire au client que le chantier est décalé à lundi', check: answer() },
+  // Retour Cowork (préview) : « corriger / pointage » prime sur « salarié », et toujours un bouton.
+  { id: 'b33', cote: 'bureau', categorie: 'Aide', phrase: 'Comment je corrige le pointage d’un salarié ?', check: answer('salaries') },
   // ════ SALARIÉ ════
   { id: 's01', cote: 'salarie', categorie: 'Heures', phrase: 'ce matin 7h30 12h villa dupont et aprem 13h 16h30 bureau martin',
     check: draft((l) => (l.length === 2 && l[0].worksite_id === W.dupont && l[1].worksite_id === W.martin && l[0].start === '07:30' && l[1].end === '16:30' ? null : `lignes : ${JSON.stringify(l.map((x) => [x.worksite_id, x.start, x.end]))}`)) },
@@ -203,4 +205,5 @@ export const CASES: EvalCase[] = [
     check: act('email_client', (d) => all(eq(d, 'worksite_id', W.dupont), eq(d, 'email', 'jean.dupont@gmail.com'))) },
   { id: 's24', cote: 'salarie', categorie: 'Ma journée', phrase: 'je bosse sur un nouveau chantier, la boulangerie petit à tassin',
     check: act('nouveau_chantier', (d) => all(has(d, 'nom', /boulangerie petit/i), has(d, 'ville', /tassin/i))) },
+  { id: 's25', cote: 'salarie', categorie: 'Aide', phrase: 'comment je change ma photo', check: answer('photo') },
 ];

@@ -148,7 +148,7 @@ Deno.serve(async (req) => {
     if (!Deno.env.get('GEMINI_API_KEY')) {
       if (att.file) return json({ unavailable: true, answer: 'Lecture de fichier indisponible pour le moment.', links: [] });
       const g = findGuide(question);
-      return reply(g ? { answer: guideAnswer(g), links: g.lien ? [{ label: NAV_ACTIONS[g.lien], action: g.lien }] : [] }
+      return reply(g ? { answer: guideAnswer(g), links: [{ label: NAV_ACTIONS[g.lien], action: g.lien }] }
         : { answer: 'L’assistant est indisponible pour le moment.', links: [] }, ctx, remaining);
     }
 

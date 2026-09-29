@@ -1,6 +1,6 @@
 // Lot 7 — le français parlé : dates relatives, heures, titres propres.
 //   npm run test:fr-langue
-import { calendarForPrompt, cleanName, cleanSpoken, cleanTitle, dayPart, looksLikeAction, parseDateFr, parseDateRangeFr, parseTimeFr } from './fr-langue.ts';
+import { calendarForPrompt, cleanName, cleanSpoken, cleanTitle, dayPart, isNewRequest, looksLikeAction, parseDateFr, parseDateRangeFr, parseTimeFr } from './fr-langue.ts';
 import { placeOf } from './worker-assistant-core.ts';
 
 function eq(a: unknown, b: unknown, msg: string) {
@@ -56,4 +56,13 @@ Deno.test('Action ou simple question', () => {
   eq(looksLikeAction('combien d’heures cette semaine'), false, 'question chiffrée');
   eq(looksLikeAction('karim demain chez dupont 8h'), true, 'phrase courte avec heure');
   eq(looksLikeAction('x', true), true, 'fichier joint');
+});
+
+Deno.test('Question en attente : réponse courte ou nouvelle demande ?', () => {
+  eq(isNewRequest('Karim'), false, 'pastille / prénom');
+  eq(isNewRequest('Villa Dupont à Lyon de 8h à 12h'), false, 'complément sans verbe');
+  eq(isNewRequest('demain'), false, 'date');
+  eq(isNewRequest('Comment je corrige le pointage d’un salarié ?'), true, 'question d’aide');
+  eq(isNewRequest('qui n’a pas pointé hier'), true, 'question chiffrée');
+  eq(isNewRequest('mets Lucas sur Bureau Martin toute la semaine prochaine'), true, 'nouvelle action complète');
 });
