@@ -95,8 +95,9 @@ Deno.test('Horaires incohérents refusés', () => {
 Deno.test('Questions sur SES données uniquement', () => {
   eq(answerSimpleQuestion('Combien d’heures cette semaine ?', BTP), 'Cette semaine : 12 h 30 déclarées sur 2 jours.', 'semaine');
   eq(answerSimpleQuestion('Mon planning demain ?', BTP), 'Demain : Villa Dupont de 07:30 à 16:30.', 'planning demain');
-  eq(answerSimpleQuestion('combien je gagne de l’heure ?', BTP), 'Je ne peux répondre que sur vos propres heures et votre planning.', 'coût refusé');
-  eq(answerSimpleQuestion('les heures de mes collègues ?', BTP), 'Je ne peux répondre que sur vos propres heures et votre planning.', 'collègues refusés');
+  const REFUS = 'Je ne peux répondre que sur vos propres heures ; pour vos collègues, seulement où ils sont au planning.';
+  eq(answerSimpleQuestion('combien je gagne de l’heure ?', BTP), REFUS, 'coût refusé');
+  eq(answerSimpleQuestion('les heures de mes collègues ?', BTP), REFUS, 'heures des collègues refusées (lot 7 : seulement où ils sont)');
   eq(handleLocally('raconte une blague', BTP), null, 'hors sujet → IA');
   if (JSON.stringify(BTP).match(/cost|taux|rate/i)) throw new Error('instantané avec un coût');
 });
@@ -191,7 +192,7 @@ Deno.test('📎 Salarié : photo → documents du bon chantier + « Avec réserv
   const SNAP = { ...BTP, chantiers: [...BTP.chantiers, { id: 'w-dupont-viriat', nom: 'Dupont', ville: 'Viriat' }] };
   const LIVE: WorkerLive = { enCours: null, lignes: [{ id: 'e9', chantier: 'Dupont', chantier_id: 'w-dupont-viriat', debut: '07:30', fin: '16:00', envoyee: false }] };
   const r = fromWorkerCall('ranger_photo', { chantier: 'Dupont à Viriat', reserve: true, detail: 'joint à reprendre' }, SNAP, LIVE);
-  eq([act(r).draft.worksite_id, act(r).draft.reserve, act(r).draft.detail, act(r).problems], ['w-dupont-viriat', true, 'joint à reprendre', []], 'bon chantier, réserve, détail modifiable');
+  eq([act(r).draft.worksite_id, act(r).draft.reserve, act(r).draft.detail, act(r).problems], ['w-dupont-viriat', true, 'Joint à reprendre', []], 'bon chantier, réserve, détail modifiable (nettoyé)');
   eq(act(fromWorkerCall('ranger_photo', { chantier: 'Dupont', reserve: false }, SNAP, LIVE)).problems, ['Choisissez le chantier.'], '« Dupont » ambigu → liste');
   eq(act(fromWorkerCall('ranger_photo', { chantier: 'Bureau Martin', reserve: true }, SNAP, LIVE)).problems.length, 1, 'réserve sans heures ce jour-là → signalé');
   eq(checkWorkerAction({ type: 'ranger_photo', worksite_id: 'w-dupont-viriat', chantier_texte: '', reserve: true, detail: '', lignes: LIVE.lignes }, SNAP, LIVE), [], 'détail de réserve FACULTATIF');

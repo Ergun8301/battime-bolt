@@ -32,22 +32,29 @@ export async function createWorksite(companyId: string, w: NewWorksite) {
   const t = (v?: string | null) => (v ?? '').trim() || null;
   const { data, error } = await supabase.from('worksites').insert({
     company_id: companyId, client_name: w.client_name.trim(), product_type: t(w.product_type),
-    client_phone: t(w.client_phone), client_email: t(w.client_email), city: t(w.city), address: t(w.address),
+    // `city` est NOT NULL en base (comme l'import et « Ajouter ce chantier ») :
+    // sans ville, une chaîne vide — `null` faisait échouer la création.
+    client_phone: t(w.client_phone), client_email: t(w.client_email), city: (w.city ?? '').trim(), address: t(w.address),
     description: t(w.description), is_active: true,
   }).select().single();
   if (error) throw error;
   return data as { id: string; client_name: string };
 }
 
-/** « Ajouter au planning » / glisser un client sur une case. */
-export async function addPlanningSlot(p: { companyId: string; createdBy: string; userId: string; worksiteId: string; workDate: string; notes?: string | null }) {
-  const { error } = await supabase.from('planning').insert({
+/**
+ * « Ajouter au planning » / glisser un client sur une case. Renvoie l'id créé
+ * (lot 7 : « Annuler » de l'assistant). `estimatedStart` : heure prévue, comme
+ * « Heure fixe » dans la bulle.
+ */
+export async function addPlanningSlot(p: { companyId: string; createdBy: string; userId: string; worksiteId: string; workDate: string; notes?: string | null; estimatedStart?: string | null; estimatedEnd?: string | null }): Promise<string> {
+  const { data, error } = await supabase.from('planning').insert({
     company_id: p.companyId, created_by: p.createdBy, user_id: p.userId,
     worksite_id: p.worksiteId, work_date: p.workDate,
-    estimated_start: null, estimated_end: null,
+    estimated_start: p.estimatedStart ? `${p.estimatedStart.slice(0, 5)}:00` : null, estimated_end: p.estimatedEnd ? `${p.estimatedEnd.slice(0, 5)}:00` : null,
     notes: (p.notes ?? '').trim() || null, absence_type: null,
-  });
+  }).select('id').single();
   if (error) throw error;
+  return (data as { id: string }).id;
 }
 
 /** Les jours « aaaa-mm-jj » de `from` à `to` inclus (400 au plus, comme l'écran). */
@@ -65,8 +72,16 @@ export function daysBetween(from: string, to: string): string[] {
  * Borné à la période posée : sans le `.lte`, poser deux jours de maladie
  * effaçait toutes les absences déjà prévues après (congés du mois suivant).
  */
-export async function setAbsence(p: { companyId: string; createdBy: string; userId: string; type: string; from: string; to: string }) {
+export interface AbsenceRow { work_date: string; absence_type: string; created_by: string | null }
+/**
+ * Renvoie ce qu'il faut pour ANNULER (lot 7) : les lignes créées, et les
+ * absences qu'elles ont remplacées sur la période.
+ */
+export async function setAbsence(p: { companyId: string; createdBy: string; userId: string; type: string; from: string; to: string }): Promise<{ ids: string[]; replaced: AbsenceRow[] }> {
   const dates = daysBetween(p.from, p.to);
+  const { data: before } = await supabase.from('planning').select('work_date, absence_type, created_by')
+    .eq('company_id', p.companyId).eq('user_id', p.userId)
+    .gte('work_date', p.from).lte('work_date', p.to).not('absence_type', 'is', null);
   const { error: delErr } = await supabase.from('planning').delete()
     .eq('company_id', p.companyId).eq('user_id', p.userId)
     .gte('work_date', p.from).lte('work_date', p.to).not('absence_type', 'is', null);
@@ -76,8 +91,24 @@ export async function setAbsence(p: { companyId: string; createdBy: string; user
     worksite_id: null, work_date: dt, estimated_start: null, estimated_end: null,
     notes: null, absence_type: p.type,
   }));
-  const { error } = await supabase.from('planning').insert(rows);
+  const { data, error } = await supabase.from('planning').insert(rows).select('id');
   if (error) throw error;
+  return { ids: ((data || []) as { id: string }[]).map((r) => r.id), replaced: (before || []) as AbsenceRow[] };
+}
+
+/** Annule un `setAbsence` : retire les lignes posées, remet les absences remplacées. */
+export async function undoAbsence(p: { companyId: string; userId: string; ids: string[]; replaced: AbsenceRow[] }) {
+  if (p.ids.length) {
+    const { error } = await supabase.from('planning').delete().eq('company_id', p.companyId).in('id', p.ids);
+    if (error) throw error;
+  }
+  if (p.replaced.length) {
+    const { error } = await supabase.from('planning').insert(p.replaced.map((r) => ({
+      company_id: p.companyId, created_by: r.created_by, user_id: p.userId, worksite_id: null, work_date: r.work_date,
+      estimated_start: null, estimated_end: null, notes: null, absence_type: r.absence_type,
+    })));
+    if (error) throw error;
+  }
 }
 
 /** Budget main-d'œuvre d'un client (mêmes colonnes que la « Fiche client »). */

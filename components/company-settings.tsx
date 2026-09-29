@@ -8,6 +8,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
+import { saveCompanySettings } from '@/lib/admin-writes';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Loader2, Upload, Trash2, Building2, CreditCard, Mail, ShieldCheck, MonitorSmartphone } from 'lucide-react';
 import LeaveFundSetting from '@/components/leave-fund-setting';
@@ -92,6 +93,10 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
   // ne se décide pas au milieu de quinze champs, d'un bouton qu'on presse par
   // habitude.
   const [posTracking, setPosTracking] = useState(false);
+  // Lot 7 : « Les salariés voient le planning de leurs collègues » (prénom,
+  // chantier, horaires — rien d'autre). null = colonne absente : bloc masqué.
+  const [colleagues, setColleagues] = useState<boolean | null>(null);
+  const [colSaving, setColSaving] = useState(false);
   const [posSaving, setPosSaving] = useState(false);
   const [posConfirm, setPosConfirm] = useState(false);
   const [posErr, setPosErr] = useState<string | null>(null);
@@ -155,6 +160,24 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
   // Lecture SÉPARÉE, comme sur l'écran du salarié : tant que la colonne
   // n'existe pas, cette requête échoue seule et les quinze autres réglages
   // s'affichent normalement. Un réglage neuf ne casse pas ceux qui marchent.
+  // Lecture séparée : tant que la migration du lot 7 n'est pas appliquée, la
+  // requête échoue seule et le bloc ne s'affiche pas.
+  useEffect(() => {
+    if (!open || !user?.company_id) return;
+    let stale = false;
+    supabase.from('companies').select('colleagues_planning_visible').eq('id', user.company_id).maybeSingle()
+      .then(({ data, error }) => {
+        if (!stale) setColleagues(error || !data ? null : !!(data as { colleagues_planning_visible?: boolean }).colleagues_planning_visible);
+      });
+    return () => { stale = true; };
+  }, [open, user?.company_id]);
+  const toggleColleagues = async (v: boolean) => {
+    setColSaving(true);
+    const { error } = await supabase.rpc('set_colleagues_planning', { p_enabled: v });
+    setColSaving(false);
+    if (!error) setColleagues(v);
+  };
+
   useEffect(() => {
     if (!open || !user?.company_id) return;
     let stale = false;
@@ -308,18 +331,14 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
     }
     setSaving(true); setErr(null);
     try {
-      const { error } = await supabase.rpc('update_company_info', {
-        p_name: f.name, p_siret: f.siret, p_tva_intra: f.tva_intra, p_address: f.address,
-        p_postal_code: f.postal_code, p_city: f.city, p_phone: f.phone, p_email: f.email, p_logo_url: f.logo_url,
-        p_auto_reminder_enabled: reminderOn, p_reminder_hour: reminderHour,
-        p_budget_alerts_enabled: budgetAlertsOn,
-        p_travel_paid: travelPaid,
-        p_weekly_hours: Number(weeklyHours.replace(',', '.')) || 0,
-        p_accountant_email: mail,
-        p_overtime_rate_1: r1,
-        p_overtime_rate_2: r2,
+      // lib/admin-writes.ts : même écriture que l'Assistant BEMEXO.
+      await saveCompanySettings({
+        ...f,
+        auto_reminder_enabled: reminderOn, reminder_hour: reminderHour,
+        budget_alerts_enabled: budgetAlertsOn, travel_paid: travelPaid,
+        weekly_hours: Number(weeklyHours.replace(',', '.')) || 0,
+        accountant_email: mail, overtime_rate_1: r1, overtime_rate_2: r2,
       });
-      if (error) throw error;
       onSaved?.();
       onOpenChange(false);
     } catch {
@@ -631,6 +650,24 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
                 </div>
               )}
             </div>
+
+            {colleagues !== null && (
+              <div className="bt-set-sub" data-testid="setting-colleagues">
+                <div className="bt-set-subtxt">
+                  <label className="bt-set-l">Les salariés voient le planning de leurs collègues</label>
+                  <p className="bt-set-substate">
+                    Dans l&apos;Assistant : « Où est Paul ? » → prénom, chantier et horaires prévus. Jamais leurs heures pointées, ni leurs congés en détail (seulement « absent »).
+                  </p>
+                </div>
+                <div className="bt-set-rowbtns" style={{ marginTop: 8 }}>
+                  <button type="button" className={`bt-set-btn${colleagues ? ' ghost' : ''}`} disabled={colSaving} onClick={() => toggleColleagues(!colleagues)}>
+                    {colSaving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                    {colleagues ? 'Désactiver' : 'Activer'}
+                  </button>
+                  <span className="bt-set-hint">{colleagues ? 'Activé' : 'Désactivé'}</span>
+                </div>
+              </div>
+            )}
 
             {/* Comptable — destinataire de l'export de paie. L'adresse vit ici,
                 pas dans l'écran d'export : rien ne part vers une adresse tapée

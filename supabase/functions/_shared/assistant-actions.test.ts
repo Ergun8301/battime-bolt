@@ -57,7 +57,10 @@ Deno.test('Appel de fonctions : liste blanche, mode ANY, clé en en-tête', asyn
   const body = JSON.parse(String(seen.init!.body));
   eq(body.toolConfig.functionCallingConfig.mode, 'ANY', 'le modèle doit appeler une fonction');
   eq(body.tools[0].functionDeclarations.map((f: { name: string }) => f.name),
-    ['repondre', 'inviter_salarie', 'creer_chantier', 'ranger_document', 'poser_absence', 'affecter_planning', 'planning_semaine', 'corriger_pointage'], 'liste blanche exacte');
+    ['repondre', 'inviter_salarie', 'creer_chantier', 'ranger_document', 'poser_absence', 'affecter_planning', 'planning_semaine', 'corriger_pointage',
+      'modifier_intervention', 'repondre_conge', 'lever_reserve', 'ajouter_depense', 'modifier_client', 'archiver_client', 'changer_role',
+      'relancer_invitation', 'envoyer_rappel', 'cloturer_mois', 'attribuer_client', 'ajouter_habilitation', 'modifier_salarie', 'archiver_salarie',
+      'cout_reel', 'modifier_reglages'], 'liste blanche exacte (lot 7 : tous les boutons, sans suppression ni paiement)');
   if (JSON.stringify(body).match(/supprim|delete/i) && !JSON.stringify(body).includes('Jamais de suppression')) throw new Error('fonction de suppression exposée');
   eq((seen.init!.headers as Record<string, string>)['x-goog-api-key'], 'AQ.test', 'clé en en-tête');
   const bad = await callFunction({ prompt: '', functions: ASSISTANT_FUNCTIONS }, env, fakeGemini('supprimer_salarie', {}).fetchImpl);
@@ -77,7 +80,7 @@ Deno.test('2. Créer un client / chantier', async () => {
   const { reply } = await viaAi('creer_chantier', { nom_client: 'Maison Garnier', ville: 'Caluire' });
   eq(reply.action!.problems, [], 'prêt');
   const dup = prepare('creer_chantier', { nom_client: 'villa dupont' }, CTX)!;
-  eq(dup.problems, ['« villa dupont » existe déjà.'], 'doublon signalé');
+  eq(dup.problems, ['« Villa Dupont » existe déjà.'], 'doublon signalé (nom nettoyé : majuscules)');
 });
 
 Deno.test('3. Poser une absence', async () => {
@@ -272,4 +275,20 @@ Deno.test('Contexte : pointages de l’entreprise seulement, pointage en cours c
     sessions: [{ user_id: 'a', company_id: 'c1', worksite_id: 'w1', started_at: '2026-09-30T06:00:00Z' }],
   });
   eq(c.pointages, [{ user_id: 'a', date: '2026-09-28', worksite_id: 'w1' }, { user_id: 'a', date: TODAY, worksite_id: 'w1' }], 'filtré');
+});
+
+Deno.test('Lot 7 : un client doit être NOMMÉ — « à Lyon » reste un lieu', async () => {
+  const { ADMIN_RAW, ME } = await import('../assistant-eval/cases.ts');
+  const ctx = buildActionContext(ADMIN_RAW as Parameters<typeof buildActionContext>[0]);
+  ctx.me = ME;
+  const plan = (demande: string, args: Record<string, unknown>) => {
+    ctx.demande = demande;
+    const r = fromFunctionCall('affecter_planning', args, ctx);
+    return r.action!.draft as { worksite_id: string | null; note: string };
+  };
+  const lyon = plan('Rajoute-moi une intervention à Lyon aujourd’hui de 14h à 18h', { salarie: 'moi', chantier: 'Villa Dupont', dates: ['2026-10-01'] });
+  eq([lyon.worksite_id, lyon.note], ['w-autre', 'Intervention à Lyon'], 'le modèle a traduit Lyon en client : on revient au lieu');
+  eq(plan('mets kevin sur mister grill macon lundi', { salarie: 'Kevin', chantier: 'Mister Grill Kebab', lieu: 'Mâcon', dates: ['lundi'] }).worksite_id, 'w-mgk-macon', 'client + ville départagent');
+  eq(plan('mets kevin sur mister grill lundi', { salarie: 'Kevin', chantier: 'Mister Grill Kebab', dates: ['lundi'] }).worksite_id, null, 'ambigu : on demande, jamais « Autre »');
+  eq(plan('Karim demain chez Martin', { salarie: 'Karim', chantier: 'Bureau Martin', dates: ['demain'] }).worksite_id, 'w-martin', 'client nommé');
 });

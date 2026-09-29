@@ -2,14 +2,15 @@
 //
 // Deux sources derrière la même interface : la vraie fonction `assistant`, et
 // une démo en mémoire (préviews uniquement, `?demo=assistant`), sans requête.
-// Une réponse peut porter une ACTION préparée (`extra`) : la carte de
-// confirmation l'affiche, rien n'est fait avant « Confirmer ».
+// Une réponse peut porter une ACTION (`extra`). Lot 7 : action simple et
+// complète → faite tout de suite (« ✅ Fait », Annuler, Modifier) ; sinon carte
+// de confirmation ; s'il manque une info, UNE question (`followUp`).
 import { supabase } from '@/lib/supabase';
 import { isPreviewHost } from '@/lib/hosting';
 import { attachmentPayload } from '@/lib/attachment';
 import type { AssistantLink } from '@/supabase/functions/_shared/assistant-core';
 import {
-  addDays, fromFunctionCall, handleActionLocally, mondayOf, summarize, findGuide, guideAnswer, NAV_ACTIONS,
+  addDays, fromFunctionCall, handleActionLocally, mondayOf, questionFor, summarize, findGuide, guideAnswer, NAV_ACTIONS,
   type ActionContext, type LocalReply,
 } from '@/supabase/functions/_shared/assistant-actions-core';
 
@@ -18,7 +19,11 @@ import type { ActionExtra } from '@/lib/assistant-actions';
 export { ACTION_SUGGESTIONS as ASSISTANT_SUGGESTIONS } from '@/supabase/functions/_shared/assistant-actions-core';
 export type { AssistantLink } from '@/supabase/functions/_shared/assistant-core';
 
-export interface AssistantReply { answer: string; links: AssistantLink[]; remaining?: number; notice?: boolean; extra?: unknown }
+export interface AssistantReply {
+  answer: string; links: AssistantLink[]; remaining?: number; notice?: boolean; extra?: unknown;
+  /** Lot 7 : une question a été posée — la prochaine réponse complète la MÊME demande. */
+  followUp?: boolean;
+}
 export interface AssistantSource { demo: boolean; ask(question: string, file?: File): Promise<AssistantReply> }
 
 /** Démo : uniquement sur une preview, jamais sur bemexo.com. */
@@ -34,6 +39,7 @@ type ServerReply = {
 const toReply = (d: ServerReply): AssistantReply => ({
   answer: d.answer || '…', links: d.links || [], remaining: d.remaining, notice: !!(d.quota || d.unavailable),
   extra: d.action && d.options ? ({ action: d.action, options: d.options } as ActionExtra) : undefined,
+  followUp: !!d.action?.question,
 });
 
 export const supabaseAssistantSource: AssistantSource = {
@@ -62,7 +68,9 @@ export function demoActionContext(): ActionContext {
   const next = week.map((d) => addDays(d, 7));
   return {
     today,
+    me: 'demo-moi',
     salaries: [
+      { id: 'demo-moi', prenom: 'Ergun', nom: 'K.', role: 'admin' },
       { id: 'demo-karim', prenom: 'Karim', nom: 'Benali', role: 'worker' },
       { id: 'demo-sofia', prenom: 'Sofia', nom: 'Rossi', role: 'lead' },
       { id: 'demo-lucas', prenom: 'Lucas', nom: 'Petit', role: 'worker' },
@@ -73,6 +81,7 @@ export function demoActionContext(): ActionContext {
       { id: 'demo-martin', nom: 'Bureau Martin', ville: 'Villeurbanne' },
       { id: 'demo-leclerc', nom: 'Résidence Leclerc', ville: 'Bron' },
       { id: 'demo-dupont-viriat', nom: 'Dupont', ville: 'Viriat' },
+      { id: 'demo-autre', nom: 'Autre', ville: null },
     ],
     planning: [
       ...week.map((d) => ({ user_id: 'demo-karim', date: d, worksite_id: 'demo-dupont', absence: null })),
@@ -87,10 +96,11 @@ export function demoActionContext(): ActionContext {
 }
 
 function withSummary(r: LocalReply, ctx: ActionContext): AssistantReply {
+  const question = r.action ? questionFor(r.action.draft, r.action.problems, ctx) : null;
   return {
-    answer: r.answer, links: r.links,
+    answer: r.answer, links: r.links, followUp: !!question,
     extra: r.action ? ({
-      action: { ...r.action, summary: summarize(r.action.draft, ctx) },
+      action: { ...r.action, summary: summarize(r.action.draft, ctx), question },
       options: {
         salaries: ctx.salaries.map((s) => ({ id: s.id, nom: `${s.prenom} ${s.nom}` })),
         chantiers: ctx.chantiers,
@@ -124,11 +134,28 @@ export function demoAssistantSource(): AssistantSource {
             nom_client: 'Maison Garnier', ville: 'Caluire', adresse: '12 rue des Lilas', telephone: '06 12 34 56 78', budget_montant: 18400, budget_heures: 160,
           }, ctx), ctx));
         }
-        return done(withSummary(fromFunctionCall('ranger_document', { chantier: /viriat/.test(t) ? 'Dupont Viriat' : 'Dupont' }, ctx), ctx));
+        const categorie = /factur/.test(t) ? (/pay|acquit|regl/.test(t) ? 'facture_payee' : 'facture') : /devis/.test(t) ? 'devis' : /reserve/.test(t) ? 'reserve' : '';
+        return done(withSummary(fromFunctionCall('ranger_document', { chantier: /viriat/.test(t) ? 'Dupont Viriat' : 'Dupont', categorie }, ctx), ctx));
       }
       const local = handleActionLocally(q, ctx);
       if (local) return done(withSummary(local, ctx));
       // Phrases détaillées : l'IA est SIMULÉE (même contrôle que la vraie).
+      // Lot 7 : « ajoute une intervention… » → titre propre, date relative, heure.
+      if (/intervention|rendez-vous|rdv/.test(t)) {
+        const h = /de (\d{1,2} ?h ?\d{0,2}) a (\d{1,2} ?h ?\d{0,2})/.exec(t);
+        const lieu = /dupont/.test(t) ? '' : (/\ba ([a-z-]{3,})/.exec(t)?.[1] ?? '');
+        return done(withSummary(fromFunctionCall('affecter_planning', {
+          salarie: /karim/.test(t) ? 'Karim' : /\bmoi\b/.test(t) ? 'moi' : '', chantier: /dupont/.test(t) ? 'Villa Dupont' : '', lieu,
+          dates: /jeudi/.test(t) ? ['jeudi'] : /demain/.test(t) ? ['demain'] : /aujourd/.test(t) ? ['aujourd’hui'] : [],
+          objet: /chauffe/.test(t) ? 'euh alors le remplacement du chauffe-eau.' : '',
+          debut: h ? h[1] : /14 ?h/.test(t) ? '14h' : '', fin: h ? h[2] : '', moment: /matin/.test(t) ? 'matin' : '',
+        }, ctx), ctx));
+      }
+      if (/\b(deplace|decale|bouge)\b/.test(t)) {
+        return done(withSummary(fromFunctionCall('modifier_intervention', {
+          salarie: 'Karim', date: addDays(mondayOf(ctx.today), 1), nouvelle_date: addDays(mondayOf(ctx.today), 3),
+        }, { ...ctx, planning: ctx.planning.map((p, i) => ({ ...p, id: `demo-p${i}`, notes: null, debut: null })) }), ctx));
+      }
       if (/\b(mets|met|affecte|place)\b/.test(t)) {
         return done(withSummary(fromFunctionCall('affecter_planning', { salarie: 'Lucas', chantier: 'Villa Dupont', dates: [addDays(ctx.today, 1)] }, ctx), ctx));
       }
@@ -146,7 +173,7 @@ export function demoAssistantSource(): AssistantSource {
         return done({ answer: '1 chantier dépasse son budget : Villa Dupont, 110 % (110 h pour 100 h prévues).', links: [{ label: NAV_ACTIONS.couts, action: 'couts' }] });
       }
       const g = findGuide(t);
-      if (g) return done({ answer: guideAnswer(g), links: g.lien ? [{ label: NAV_ACTIONS[g.lien], action: g.lien }] : [] });
+      if (g) return done({ answer: guideAnswer(g), links: [{ label: NAV_ACTIONS[g.lien], action: g.lien }] });
       return done({ answer: 'Mode démo : essayez une suggestion, « Mets Lucas sur Villa Dupont demain » ou « Comment je clôture le mois ? ».', links: [] });
     },
   };

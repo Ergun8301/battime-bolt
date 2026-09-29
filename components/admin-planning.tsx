@@ -42,6 +42,7 @@ import ChantierDocuments from '@/components/chantier-documents';
 import { TimeCylinder } from '@/components/time-cylinder';
 import CompanySettings from '@/components/company-settings';
 import AssistantPanel from '@/components/assistant-panel';
+import { attributeEntries, closeMonth as closeMonthWrite, resendInvitation as resendInvitationWrite, sendHoursReminder, setUserRole, setWorksiteActive, updatePlanningSlot, updateWorksite } from '@/lib/admin-writes';
 import { addPlanningSlot, createWorksite, inviteWorker, setAbsence } from '@/lib/planning-writes';
 import { supabaseAssistantSource } from '@/lib/assistant';
 import AssistantActionCard from '@/components/assistant-action-card';
@@ -1099,9 +1100,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     if (!user?.company_id) return;
     setClosureBusy(true);
     try {
-      const { error } = await supabase.from('month_closures')
-        .insert({ company_id: user.company_id, month: `${month}-01`, closed_by: user.id });
-      if (error) throw error;
+      await closeMonthWrite(user.company_id, user.id, month);
       toast.success(`${format(new Date(`${month}-01T00:00:00`), 'MMMM yyyy', { locale: fr })} clôturé`);
       setClosureTarget(null);
       fetchClosures();
@@ -1278,10 +1277,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     if (!user?.company_id || !attributeTarget) return;
     setAttrBusy(true);
     try {
-      const base = supabase.from('time_entries').update({ worksite_id: newWorksiteId })
-        .eq('company_id', user.company_id).eq('user_id', attributeTarget.userId).eq('work_date', attributeTarget.dateStr);
-      const { error } = await (attributeTarget.worksiteId ? base.eq('worksite_id', attributeTarget.worksiteId) : base.is('worksite_id', null));
-      if (error) throw error;
+      await attributeEntries(user.company_id, { userId: attributeTarget.userId, date: attributeTarget.dateStr, fromWorksiteId: attributeTarget.worksiteId ?? null, toWorksiteId: newWorksiteId });
       toast.success('Client attribué');
       setAttributeTarget(null);
       fetchPlanning();
@@ -1360,8 +1356,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
 
     // 1) The move itself (user_id/date) must work even without the position column.
     if (!sameCell) {
-      const { error } = await supabase.from('planning').update({ user_id: tWorker, work_date: tDate })
-        .eq('id', draggedId).eq('company_id', user.company_id);
+      const error = await updatePlanningSlot(user.company_id, draggedId, { userId: tWorker, workDate: tDate }).then(() => null, (e: unknown) => e);
       if (error) {
         console.error('Error moving planning:', error);
         toast.error('Impossible de déplacer');
@@ -1488,8 +1483,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     }
     setRoleBusyId(target.id);
     try {
-      const { error } = await supabase.rpc('set_user_role', { p_user_id: target.id, p_role: role });
-      if (error) throw error;
+      await setUserRole(target.id, role);
       toast.success(
         role === 'admin' ? `${label} a rejoint le bureau`
         : role === 'lead' ? `${label} est chef d'équipe`
@@ -1514,17 +1508,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     const jours = missing.map((d) => format(parseISO(d), 'EEEE d MMMM', { locale: fr })).join(', ');
     setRemindingId(worker.id);
     try {
-      const { data, error } = await supabase.functions.invoke('send-push', {
-        body: {
-          user_ids: [worker.id],
-          title: 'Pense à envoyer tes heures',
-          body: jours ? `Il manque : ${jours}.` : 'Il manque des journées planifiées.',
-          url: '/poseur',
-          tag: 'rappel-heures',
-        },
-      });
-      if (error) throw error;
-      const sent = (data as { sent?: number } | null)?.sent || 0;
+      const sent = await sendHoursReminder(worker.id, jours);
       if (sent > 0) { toast.success(`Rappel envoyé à ${worker.first_name}`); return; }
 
       // Aucun appareil abonné → on retombe sur l'ancien comportement (mailto).
@@ -1736,10 +1720,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     if (!user?.company_id) return;
     setResendingId(inv.id);
     try {
-      const { error } = await supabase.functions.invoke('invite-worker', {
-        body: { email: inv.email, first_name: inv.first_name, last_name: inv.last_name, phone: inv.phone || null, company_id: user.company_id, role: 'worker' },
-      });
-      if (error) throw error;
+      await resendInvitationWrite(user.company_id, inv);
       toast.success('Invitation renvoyée');
       fetchExtras();
     } catch (err) {
@@ -1804,10 +1785,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     if (!user?.company_id || !editing) return;
     setSavingEdit(true);
     try {
-      const { error } = await supabase.from('planning').update({
-        estimated_start: editHour ? `${editHour}:00` : null, estimated_end: null, notes: editNote.trim() || null,
-      }).eq('id', editing.id).eq('company_id', user.company_id);
-      if (error) throw error;
+      await updatePlanningSlot(user.company_id, editing.id, { estimatedStart: editHour || null, notes: editNote });
       toast.success('Enregistré');
       closeEdit();
       refresh();
@@ -1853,12 +1831,11 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     if (bH === 'invalid' || bE === 'invalid') { toast.error('Budget invalide'); return; }
     setSavingWs(true);
     try {
-      const { error } = await supabase.from('worksites').update({
-        client_name: wsName.trim(), product_type: wsProduct.trim() || null, client_phone: wsPhone.trim() || null, client_email: wsEmail.trim() || null,
-        city: wsCity.trim() || null, address: wsAddress.trim() || null, description: wsDesc.trim() || null,
-        budget_hours: bH, budget_amount: bE,
-      }).eq('id', clientFiche.id).eq('company_id', user.company_id);
-      if (error) throw error;
+      // lib/admin-writes.ts (même chemin que l'Assistant BEMEXO ; ville vide = '' car NOT NULL).
+      await updateWorksite(user.company_id, clientFiche.id, {
+        client_name: wsName, product_type: wsProduct, client_phone: wsPhone, client_email: wsEmail,
+        city: wsCity, address: wsAddress, description: wsDesc, budget_hours: bH, budget_amount: bE,
+      });
       toast.success('Fiche client enregistrée');
       fetchData();
       fetchPlanning();
@@ -1874,9 +1851,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     if (!user?.company_id || !clientFiche) return;
     setWsBusy(true);
     try {
-      const { error } = await supabase.from('worksites').update({ is_active: false })
-        .eq('id', clientFiche.id).eq('company_id', user.company_id);
-      if (error) throw error;
+      await setWorksiteActive(user.company_id, clientFiche.id, false);
       toast.success('Client archivé');
       setClientFiche(null);
       fetchData();
@@ -2816,14 +2791,19 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
             else if (action === 'reserves') setReservesOpen(true);
             else if (action === 'export') setExportOpen(true);
             else if (action === 'reglages') setSettingsOpen(true);
+            else if (action === 'planning') setAssistantOpen(false);
+            else if (action === 'clients') {
+              if (window.matchMedia('(max-width: 640px)').matches) setMobileChantiersOpen(true); else setChantierMenuOpen(true);
+            }
             else if (action.startsWith('salarie:')) {
               const w = workers.find((x) => x.id === action.slice(8));
               if (w) { setFicheMode('hours'); setFicheWorker(w); }
             }
           }}
-          renderExtra={(extra) => (
+          renderExtra={(extra, ctl) => (
             <AssistantActionCard
               extra={extra as ActionExtra}
+              ctl={ctl}
               execute={makeActionExecutor({ id: user.id, company_id: user.company_id })}
               onDone={() => { fetchData(); fetchExtras(); }}
             />

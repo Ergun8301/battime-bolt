@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
+import { addCertification, setWorkerActive, updateWorkerIdentity } from '@/lib/admin-writes';
 import { useAuth } from '@/components/auth-provider';
 import { corrigerHeures, fmtHeure } from '@/lib/corrections';
 import { User, Worksite, Certification, CertificationType } from '@/lib/types';
@@ -239,11 +240,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
     if (certType === 'autre' && !certLabel.trim()) { toast.error('Précisez le libellé pour "Autre"'); return; }
     setCertSaving(true);
     try {
-      const { error } = await supabase.from('certifications').insert({
-        company_id: worker.company_id, user_id: worker.id, type: certType,
-        label: certLabel.trim() || null, expiry_date: certExpiry,
-      });
-      if (error) throw error;
+      await addCertification(worker.company_id, worker.id, { type: certType, label: certLabel, expiry: certExpiry });
       toast.success('Habilitation ajoutée');
       setCertAdding(false); setCertLabel(''); setCertExpiry('');
       fetchCerts();
@@ -504,10 +501,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
     if (weekly != null && (isNaN(weekly) || weekly < 0 || weekly > 80)) { toast.error('Horaire hebdomadaire invalide'); return; }
     setMSaving(true);
     try {
-      const { error } = await supabase.from('users').update({
-        first_name: mFirst.trim(), last_name: mLast.trim(), phone: mPhone.trim() || null,
-      }).eq('id', worker.id).eq('company_id', worker.company_id);
-      if (error) throw error;
+      await updateWorkerIdentity(worker.company_id, worker.id, { firstName: mFirst, lastName: mLast, phone: mPhone });
       // Le matricule n'entre dans l'écriture que si la colonne existe : sinon
       // TOUT l'enregistrement échouerait, y compris le taux horaire.
       const { error: payErr } = await supabase.from('user_payroll').upsert({
@@ -542,9 +536,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
     if (!worker) return;
     setMBusy(true);
     try {
-      const { error } = await supabase.from('users').update({ is_active: !worker.is_active })
-        .eq('id', worker.id).eq('company_id', worker.company_id);
-      if (error) throw error;
+      await setWorkerActive(worker.company_id, worker.id, !worker.is_active);
       toast.success(worker.is_active ? 'Salarié archivé' : 'Salarié réactivé');
       onChanged?.();
       onOpenChange(false);

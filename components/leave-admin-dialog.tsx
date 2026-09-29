@@ -12,6 +12,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { approveLeave, rejectLeave } from '@/lib/admin-writes';
 import { LeaveRequest, LeaveType, User } from '@/lib/types';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -81,36 +82,10 @@ export default function LeaveAdminDialog({ open, onOpenChange, companyId, adminI
     if (!companyId || !adminId) return;
     setBusyId(r.id);
     try {
-      // Mêmes opérations que confirmAbsence() côté planning : on purge d'abord les
-      // absences existantes sur la période, puis on insère une ligne par jour.
-      const dates: string[] = [];
-      let d = parseISO(r.start_date);
-      const endD = parseISO(r.end_date);
-      let guard = 0;
-      while (d <= endD && guard < 400) { dates.push(format(d, 'yyyy-MM-dd')); d = addDays(d, 1); guard++; }
-
-      const { error: delErr } = await supabase.from('planning').delete()
-        .eq('company_id', companyId).eq('user_id', r.user_id)
-        .gte('work_date', r.start_date).lte('work_date', r.end_date)
-        .not('absence_type', 'is', null);
-      if (delErr) throw delErr;
-
-      const planRows = dates.map((dt) => ({
-        company_id: companyId, created_by: adminId, user_id: r.user_id,
-        worksite_id: null, work_date: dt, estimated_start: null, estimated_end: null,
-        notes: null, absence_type: r.type,
-      }));
-      const { error: insErr } = await supabase.from('planning').insert(planRows);
-      if (insErr) throw insErr;
-
-      const { error } = await supabase.from('leave_requests')
-        .update({ status: 'approved', decided_at: new Date().toISOString(), decided_by: adminId })
-        .eq('id', r.id);
-      if (error) throw error;
-
+      // lib/admin-writes.ts : mêmes opérations que « Statut » sur le planning
+      // (setAbsence), puis le statut, puis la notification — même chemin que l'Assistant.
+      await approveLeave(companyId, adminId, r);
       toast.success('Demande acceptée — absence posée sur le planning');
-      notifyWorker(r.user_id, 'Congé accepté',
-        `Ta demande du ${format(parseISO(r.start_date), 'd MMM', { locale: fr })} au ${format(parseISO(r.end_date), 'd MMM', { locale: fr })} a été acceptée.`);
       fetchRows();
       onChanged?.();
     } catch (e) {
@@ -125,16 +100,8 @@ export default function LeaveAdminDialog({ open, onOpenChange, companyId, adminI
     if (!adminId) return;
     setBusyId(r.id);
     try {
-      const { error } = await supabase.from('leave_requests')
-        .update({
-          status: 'rejected', decided_at: new Date().toISOString(), decided_by: adminId,
-          decision_note: rejectNote.trim() || null,
-        })
-        .eq('id', r.id);
-      if (error) throw error;
+      await rejectLeave(adminId, r, rejectNote);
       toast.success('Demande refusée');
-      notifyWorker(r.user_id, 'Congé refusé',
-        rejectNote.trim() || `Ta demande du ${format(parseISO(r.start_date), 'd MMM', { locale: fr })} n'a pas été retenue.`);
       setRejectingId(null); setRejectNote('');
       fetchRows();
     } catch {

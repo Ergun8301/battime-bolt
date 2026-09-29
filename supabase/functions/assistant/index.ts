@@ -1,8 +1,12 @@
 // Edge Function : assistant — l'Assistant BEMEXO du bureau (lots 3 et 3 bis).
 //
 // DÉPLOIEMENT : `supabase functions deploy assistant` (JWT vérifié).
-// Secrets : GEMINI_API_KEY, AI_MODEL (facultatif), ASSISTANT_DAILY_LIMIT
-// (facultatif, 50 par défaut : demandes par entreprise et par jour).
+// Secrets : GEMINI_API_KEY, AI_MODEL (facultatif, questions), AI_ACTION_MODEL
+// (facultatif, actions — lot 7), ASSISTANT_DAILY_LIMIT (facultatif, 50 par
+// défaut : demandes par entreprise et par jour).
+//
+// Lot 7 : la réponse porte aussi `question` (UNE question s'il manque une info
+// à une action directe) ; l'écran exécute les actions simples tout de suite.
 //
 // CE QU'ELLE FAIT : répondre (chiffres de l'entreprise), GUIDER (où cliquer,
 // 3 étapes au plus) et PRÉPARER une action de la liste blanche (inviter,
@@ -19,9 +23,10 @@
 // Réservé à un ADMIN actif d'une entreprise dont `ai_enabled` est vrai.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { callFunction, readAttachment } from '../_shared/ai-provider.ts';
+import { looksLikeAction } from '../_shared/fr-langue.ts';
 import { DEFAULT_DAILY_LIMIT, MAX_QUESTION_CHARS, buildSnapshot, previousDay, type RawData } from '../_shared/assistant-core.ts';
 import {
-  ASSISTANT_FUNCTIONS, actionPrompt, addDays, buildActionContext, fromFunctionCall, handleActionLocally, mondayOf,
+  ASSISTANT_FUNCTIONS, actionPrompt, addDays, buildActionContext, fromFunctionCall, handleActionLocally, mondayOf, questionFor,
   resolveSalarie, summarize, findGuide, guideAnswer, guideForPrompt, NAV_ACTIONS, type EntryChoice, type LocalReply, type ActionContext,
 } from '../_shared/assistant-actions-core.ts';
 
@@ -45,7 +50,7 @@ const parisToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Pa
 function reply(r: LocalReply, ctx: ActionContext, remaining: number) {
   return json({
     answer: r.answer, links: r.links, remaining,
-    action: r.action ? { ...r.action, summary: summarize(r.action.draft, ctx) } : undefined,
+    action: r.action ? { ...r.action, summary: summarize(r.action.draft, ctx), question: questionFor(r.action.draft, r.action.problems, ctx) } : undefined,
     options: r.action ? {
       salaries: ctx.salaries.filter((s) => s.role !== 'admin' || r.action!.draft.type === 'poser_absence')
         .map((s) => ({ id: s.id, nom: `${s.prenom} ${s.nom}`.trim() })),
@@ -91,7 +96,7 @@ Deno.serve(async (req) => {
     const hier = previousDay(today);
     const cid = me.company_id as string;
     const planFrom = addDays(mondayOf(today), -14), planTo = addDays(mondayOf(today), 13);
-    const [workers, sites, all, month, entries, planY, planT, sessions, leaves, plan, recent] = await Promise.all([
+    const [workers, sites, all, month, entries, planY, planT, sessions, leaves, plan, recent, invits, reserves, closures] = await Promise.all([
       db.from('users').select('id, company_id, first_name, last_name, role, is_active').eq('company_id', cid),
       db.from('worksites').select('id, company_id, client_name, city, budget_hours, budget_amount').eq('company_id', cid).eq('is_active', true),
       db.rpc('my_worksite_labour', { p_from: null, p_to: null }),
@@ -100,10 +105,15 @@ Deno.serve(async (req) => {
       db.from('planning').select('user_id, company_id, worksite_id, absence_type').eq('company_id', cid).eq('work_date', hier),
       db.from('planning').select('user_id, company_id, worksite_id, absence_type').eq('company_id', cid).eq('work_date', today),
       db.from('active_sessions').select('user_id, company_id, worksite_id, started_at').eq('company_id', cid),
-      db.from('leave_requests').select('user_id, company_id, type, start_date, end_date').eq('company_id', cid).eq('status', 'pending'),
-      db.from('planning').select('user_id, company_id, work_date, worksite_id, absence_type').eq('company_id', cid).gte('work_date', planFrom).lte('work_date', planTo),
+      db.from('leave_requests').select('id, user_id, company_id, type, start_date, end_date').eq('company_id', cid).eq('status', 'pending'),
+      db.from('planning').select('id, user_id, company_id, work_date, worksite_id, absence_type, notes, estimated_start').eq('company_id', cid).gte('work_date', planFrom).lte('work_date', planTo),
       db.from('time_entries').select('user_id, company_id, work_date, worksite_id').eq('company_id', cid).neq('status', 'cancelled')
         .gte('work_date', addDays(today, -56)).lte('work_date', today).order('work_date', { ascending: false }).limit(2000),
+      // Lot 7 : invitations en attente, réserves ouvertes, mois clôturés (lecture, jeton du patron).
+      db.from('invitations').select('company_id, email, first_name, last_name, phone').eq('company_id', cid).is('accepted_at', null).gt('expires_at', new Date().toISOString()),
+      db.from('time_entries').select('id, company_id, user_id, work_date, worksite_id, observation').eq('company_id', cid).eq('reception', 'avec')
+        .is('reserve_resolved_at', null).neq('status', 'cancelled').order('work_date', { ascending: false }).limit(50),
+      db.from('month_closures').select('company_id, month').eq('company_id', cid),
     ]);
     const raw: RawData = {
       companyId: cid, today,
@@ -123,7 +133,12 @@ Deno.serve(async (req) => {
       leaves: raw.pendingLeaves,
       entries: (recent.data ?? []) as Parameters<typeof buildActionContext>[0]['entries'],
       sessions: raw.activeSessions,
+      invitations: (invits.data ?? []) as Parameters<typeof buildActionContext>[0]['invitations'],
+      reserves: (reserves.data ?? []) as Parameters<typeof buildActionContext>[0]['reserves'],
+      closures: (closures.data ?? []) as Parameters<typeof buildActionContext>[0]['closures'],
     });
+    ctx.me = user.id;
+    ctx.demande = question;
 
     // 1. Les demandes courantes se règlent sans IA (sauf s'il y a un fichier à lire).
     const local = att.file ? null : handleActionLocally(question, ctx);
@@ -133,13 +148,16 @@ Deno.serve(async (req) => {
     if (!Deno.env.get('GEMINI_API_KEY')) {
       if (att.file) return json({ unavailable: true, answer: 'Lecture de fichier indisponible pour le moment.', links: [] });
       const g = findGuide(question);
-      return reply(g ? { answer: guideAnswer(g), links: g.lien ? [{ label: NAV_ACTIONS[g.lien], action: g.lien }] : [] }
+      return reply(g ? { answer: guideAnswer(g), links: [{ label: NAV_ACTIONS[g.lien], action: g.lien }] }
         : { answer: 'L’assistant est indisponible pour le moment.', links: [] }, ctx, remaining);
     }
 
     // 3. L'IA choisit UNE fonction de la liste blanche.
     const snapshot = buildSnapshot(raw);
-    const r = await callFunction({ prompt: actionPrompt(ctx, JSON.stringify(snapshot), guideForPrompt(), question), functions: ASSISTANT_FUNCTIONS, file: att.file }, Deno.env);
+    const r = await callFunction({
+      prompt: actionPrompt(ctx, JSON.stringify(snapshot), guideForPrompt(), question), functions: ASSISTANT_FUNCTIONS, file: att.file,
+      kind: looksLikeAction(question, !!att.file) ? 'action' : 'question',
+    }, Deno.env);
     if (!r.ok) return json({ unavailable: true, answer: 'L’assistant n’a pas pu répondre. Réessayez dans un instant.', links: [] });
 
     // Correction : on lit SES lignes envoyées ce jour-là (jeton du patron).

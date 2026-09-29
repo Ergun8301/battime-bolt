@@ -19,6 +19,7 @@ import {
 import { syncAllPending } from '@/lib/offline-sync';
 import { insertWorkerEntry } from '@/lib/worker-entry';
 import { planningsToMaterialise, remainingPlannings } from '@/lib/work-status';
+import { copyLinesTo, materialisePlanned as materialiseDay, setDayMealOnline, submitDrafts } from '@/lib/worker-day';
 import { fmtHeure } from '@/lib/corrections';
 import { positionUtile, fmtPrecision, fmtCoord } from '@/lib/position';
 import { parisHHmm } from '@/lib/utils';
@@ -772,30 +773,8 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
   const applyDayMeal = useCallback(async (value: boolean, flagModified = false): Promise<boolean> => {
     if (!user) return false;
     let ok = true;
-    if (navigator.onLine) {
-      // Le panier ne se pose que sur une ligne vivante et modifiable : jamais sur
-      // une intervention retirée (elle ne compte plus) ni verrouillée (exportée).
-      const { data, error: readErr } = await supabase.from('time_entries')
-        .select('id, start_time, meal_allowance')
-        .eq('user_id', user.id).eq('work_date', date)
-        .neq('status', 'cancelled').eq('locked', false);
-      if (readErr) return false;
-      const rows = [...(data || [])].sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''));
-      // Journée déjà envoyée : corriger le panier prévient la secrétaire (même logique que l'édition d'une intervention).
-      const stamp = flagModified ? { modified_at: new Date().toISOString(), modified_by: user.id } : {};
-      const setMeal = async (id: string, target: boolean) => {
-        // `.select('id')` : une mise à jour filtrée par la RLS renvoie 0 ligne
-        // SANS erreur ; on le détecte au lieu d'afficher un succès.
-        const { data: upd, error } = await supabase.from('time_entries')
-          .update({ meal_allowance: target, ...stamp }).eq('id', id).eq('user_id', user.id).select('id');
-        if (error || !upd || upd.length === 0) ok = false;
-      };
-      // D'abord retirer le panier des autres lignes, PUIS le poser sur la
-      // première : dans cet ordre, jamais deux paniers en même temps (index
-      // unique en base).
-      for (const r of rows.slice(1)) if (r.meal_allowance) await setMeal(r.id, false);
-      if (rows[0] && rows[0].meal_allowance !== value) await setMeal(rows[0].id, value);
-    }
+    // En ligne : lib/worker-day.ts (même chemin que l'Assistant BEMEXO).
+    if (navigator.onLine) ok = await setDayMealOnline(user, date, value, flagModified);
     const pend = getPendingEntries(user.id).filter((e) => e.work_date === date);
     if (pend.length > 0) {
       const sorted = [...pend].sort((a, b) => a.start_time.localeCompare(b.start_time));
@@ -1042,15 +1021,8 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
       if (error) throw error;
       if (!yEntries || yEntries.length === 0) { toast.error('Aucun chantier hier à copier'); return; }
 
-      const rows = yEntries.map((e) => ({
-        company_id: user.company_id, user_id: user.id, worksite_id: e.worksite_id,
-        planning_id: planning.find((p) => p.worksite_id === e.worksite_id)?.id || null,
-        work_date: date, start_time: e.start_time, end_time: e.end_time, break_minutes: 0,
-        // total_minutes is a generated column in Postgres — never send it.
-        meal_allowance: false, observation: e.observation, status: 'draft' as const,
-      }));
-      const { error: insErr } = await supabase.from('time_entries').insert(rows);
-      if (insErr) throw insErr;
+      // lib/worker-day.ts : même chemin que l'Assistant BEMEXO (planning du jour rattaché).
+      const rows = await copyLinesTo(user, yEntries.map((e) => ({ worksite_id: e.worksite_id, start_time: e.start_time, end_time: e.end_time, observation: e.observation })), [date]);
 
       toast.success(`${rows.length} chantier${rows.length > 1 ? 's' : ''} copié${rows.length > 1 ? 's' : ''} depuis hier`);
       await applyDayMeal(dayMeal);
@@ -1081,20 +1053,8 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
     if (targets.length === 0) { toast.error('Aucun jour à remplir'); return; }
     setCopying(true);
     try {
-      // Link planning_id where the target day already has that chantier planned.
-      const { data: plan } = await supabase.from('planning').select('id, work_date, worksite_id').eq('user_id', user.id).in('work_date', targets);
-      const planMap = new Map<string, string>();
-      (plan || []).forEach((p: { id: string; work_date: string; worksite_id: string | null }) => {
-        if (p.worksite_id) planMap.set(`${p.work_date}|${p.worksite_id}`, p.id);
-      });
-      const rows = targets.flatMap((td) => sources.map((s) => ({
-        company_id: user.company_id, user_id: user.id, worksite_id: s.worksite_id,
-        planning_id: planMap.get(`${td}|${s.worksite_id}`) || null,
-        work_date: td, start_time: s.start_time, end_time: s.end_time, break_minutes: 0,
-        meal_allowance: s.meal_allowance, observation: s.observation || null, status: 'draft' as const,
-      })));
-      const { error } = await supabase.from('time_entries').insert(rows);
-      if (error) throw error;
+      // lib/worker-day.ts : planning du jour cible rattaché, panier non copié.
+      await copyLinesTo(user, sources, targets);
       toast.success(`Copié sur ${targets.length} jour${targets.length > 1 ? 's' : ''}`);
       setRepeatOpen(false);
     } catch (err) {
@@ -1163,60 +1123,8 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
    */
   const materialisePlanned = async (): Promise<string[]> => {
     if (!user || plannedToSend.length === 0) return [];
-    // IDENTIFIANT STABLE, dérivé du planning — pas un identifiant tiré au sort.
-    //
-    // Si l'insertion réussit mais que la bascule qui suit échoue (réseau qui
-    // lâche entre les deux), le salarié réessaie. Avec un identifiant neuf à
-    // chaque tentative, l'index unique `(user_id, client_id)` ne reconnaît pas
-    // la première insertion : on fabrique un doublon de brouillon, puis un
-    // doublon d'heures payées. Dérivé du planning, il est le même à la seconde
-    // tentative, et la base refuse elle-même l'entrée en double.
-    const cid = (planningId: string) => `plan_${planningId}`;
-    const rows = plannedToSend.map((p) => ({
-      company_id: user.company_id, user_id: user.id, worksite_id: p.worksiteId,
-      planning_id: p.planningId, work_date: date,
-      start_time: p.start, end_time: p.end, break_minutes: 0,
-      // Le panier est posé juste après, par `applyDayMeal`, qui sait le placer
-      // sur une seule ligne du jour. Le poser ici doublerait la logique.
-      meal_allowance: false, observation: null, reception: null,
-      status: 'draft' as const,
-      client_id: cid(p.planningId),
-    }));
-
-    let { data, error } = await supabase.from('time_entries').insert(rows).select('id');
-
-    // 23505 = au moins une de ces lignes existe déjà, d'une tentative
-    // précédente. L'insertion étant une seule instruction, elle est rejetée
-    // EN ENTIER — y compris les lignes qui, elles, n'existaient pas.
-    //
-    // Se contenter de relire les existantes laisserait donc les autres au
-    // bord de la route : le bureau ajoute un chantier entre deux tentatives,
-    // et il ne part jamais. Sans erreur, évidemment. On relit ce qui est là,
-    // puis on insère ce qui manque.
-    if (error && error.code === '23505') {
-      const tous = plannedToSend.map((p) => cid(p.planningId));
-      const { data: deja, error: readErr } = await supabase.from('time_entries')
-        .select('id, client_id').eq('user_id', user.id).eq('work_date', date).in('client_id', tous);
-      if (readErr) throw readErr;
-      const presents = (deja || []) as { id: string; client_id: string | null }[];
-      const connus = new Set(presents.map((r) => r.client_id));
-      const manquantes = rows.filter((r) => !connus.has(r.client_id));
-      const ids = presents.map((r) => r.id);
-      if (manquantes.length > 0) {
-        const { data: ajoutees, error: insErr } = await supabase.from('time_entries').insert(manquantes).select('id');
-        if (insErr) throw insErr;
-        ids.push(...((ajoutees || []) as { id: string }[]).map((r) => r.id));
-      }
-      return ids;
-    }
-    // Base pas encore migrée : on insère sans l'identifiant local (et on perd
-    // la protection contre le doublon — c'est le comportement d'avant).
-    if (error && error.code === 'PGRST204' && error.message?.includes('client_id')) {
-      ({ data, error } = await supabase.from('time_entries')
-        .insert(rows.map(({ client_id, ...r }) => r)).select('id'));
-    }
-    if (error) throw error;
-    return ((data || []) as { id: string }[]).map((r) => r.id);
+    // lib/worker-day.ts : identifiant stable dérivé du planning, reprise sur 23505.
+    return materialiseDay(user, date, plannedToSend);
   };
 
   const doSubmit = async () => {
@@ -1266,12 +1174,9 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
       // bascule (sur une ligne envoyée, il préviendrait la secrétaire).
       if (newIds.length > 0 && dayMeal) await applyDayMeal(true);
 
-      const { data: sent, error } = await supabase.from('time_entries').update({ status: 'submitted', submitted_at: new Date().toISOString() })
-        .in('id', allIds).eq('user_id', user.id).eq('status', 'draft').select('id');
-      if (error) throw error;
       // On compare au nombre attendu : une ligne verrouillée entre-temps est
       // silencieusement ignorée par la RLS.
-      const n = sent?.length ?? 0;
+      const n = await submitDrafts(user, allIds);
       if (n === 0) toast.error("Rien n'a été envoyé : la journée est verrouillée ou a changé. Recharge.");
       else if (n < allIds.length) toast.error(`${n} chantier${n > 1 ? 's' : ''} envoyé${n > 1 ? 's' : ''} sur ${allIds.length} — les autres sont verrouillés.`);
       else toast.success('Journée envoyée');

@@ -38,16 +38,16 @@ export default function WorkerAssistant({ onSaved, onNavigate, defaultOpen = fal
       launcher={open === undefined}
       onNavigate={onNavigate ?? (() => {})}
       suggestions={WORKER_ACTION_SUGGESTIONS}
-      footNote="Rien n’est enregistré sans votre confirmation"
+      footNote="Fait tout de suite · « Annuler » en un clic"
       intro="Dites-moi vos heures, ce que vous voulez faire, ou comment faire"
-      renderExtra={(extra) => {
+      renderExtra={(extra, ctl) => {
         if ((extra as WorkerActionExtra).workerAction) {
           const exec = demo || !user ? demoWorkerExecutor : makeWorkerExecutor({ id: user.id, company_id: user.company_id });
-          return <WorkerActionCard extra={extra as WorkerActionExtra} execute={exec} onDone={onSaved} />;
+          return <WorkerActionCard extra={extra as WorkerActionExtra} execute={exec} onDone={onSaved} ctl={ctl} />;
         }
         const x = extra as DraftExtra;
         const save = demo || !user ? demoSaver : makeWorkerSaver({ id: user.id, company_id: user.company_id }, x.chantiers);
-        return <WorkerDraftCard extra={x} save={save} onSaved={onSaved} />;
+        return <WorkerDraftCard extra={x} save={save} onSaved={onSaved} ctl={ctl} />;
       }}
     />
   );
