@@ -82,6 +82,9 @@ Mesure du 29/09, **même modèle avant / après** (`gemini-3.5-flash-lite`, quot
 « à Lyon » pris pour le client situé à Lyon, « jeudi prochain » dit un jeudi,
 « Mister Grill Mâcon » (même client, 2 villes) côté bureau et « le kebab de Bourg » côté salarié.
 
+Retours préview (Cowork) : 2 cas ajoutés (« Comment je corrige le pointage d’un salarié ? »,
+« comment je change ma photo ») → **58/58** au nouveau passage.
+
 Relancer : `POST /functions/v1/assistant-eval` avec l'en-tête `x-cron-secret`,
 body `{ "version": "v2", "ids": [...], "parallel": 1, "gapMs": 4000, "lightModel": "…", "actionModel": "…" }`.
 
