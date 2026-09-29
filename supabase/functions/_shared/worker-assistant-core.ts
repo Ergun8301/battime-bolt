@@ -16,7 +16,7 @@ export interface WorkerSnapshot {
   chantiers: { id: string; nom: string; ville: string | null }[];
   /** Ses heures déclarées, par jour, sur la semaine en cours (lundi → aujourd'hui). */
   semaine: { date: string; minutes: number }[];
-  planning: { date: string; chantier: string | null; debut: string | null; fin: string | null; absence: string | null }[];
+  planning: { date: string; chantier_id: string | null; chantier: string | null; debut: string | null; fin: string | null; absence: string | null }[];
 }
 
 export interface DraftLine {
@@ -25,6 +25,8 @@ export interface DraftLine {
   start: string;
   end: string;
   break_minutes: number;
+  /** Chantier non dit, repris du planning : pré-sélectionné, toujours modifiable. */
+  from_planning?: boolean;
 }
 export interface Draft { date: string; lines: DraftLine[]; errors: string[] }
 
@@ -71,6 +73,39 @@ export function resolveWorksite(text: string, list: WorkerSnapshot['chantiers'])
   if (!scored.length) return null;
   if (scored.length > 1 && scored[1].hits === scored[0].hits) return null;
   return scored[0].id;
+}
+
+/**
+ * Aucun chantier dit → celui que SON planning prévoit pour ce créneau, sinon null.
+ * Un seul chantier prévu ce jour-là → celui-là ; plusieurs → celui dont les
+ * horaires recouvrent le plus le créneau (égalité ou aucun recouvrement : null).
+ */
+export function plannedWorksite(date: string, start: string, end: string, snapshot: WorkerSnapshot): string | null {
+  const ids = new Set(snapshot.chantiers.map((c) => c.id));
+  const rows = snapshot.planning.filter((p) => p.date === date && !p.absence && p.chantier_id && ids.has(p.chantier_id));
+  const distinct = Array.from(new Set(rows.map((p) => p.chantier_id!)));
+  if (distinct.length <= 1) return distinct[0] ?? null;
+  if (!validHHMM(start) || !validHHMM(end)) return null;
+  const s = toMin(start); const e = s + shiftMinutes(start, end);
+  const best = new Map<string, number>();
+  for (const p of rows) {
+    if (!p.debut || !p.fin) continue;
+    const ps = toMin(p.debut.slice(0, 5)); const pe = ps + shiftMinutes(p.debut.slice(0, 5), p.fin.slice(0, 5));
+    const ov = Math.min(e, pe) - Math.max(s, ps);
+    if (ov > 0) best.set(p.chantier_id!, (best.get(p.chantier_id!) || 0) + ov);
+  }
+  const ranked = Array.from(best.entries()).sort((a, b) => b[1] - a[1]);
+  if (!ranked.length || (ranked.length > 1 && ranked[1][1] === ranked[0][1])) return null;
+  return ranked[0][0];
+}
+
+/** Ligne sans chantier dit : planning d'abord, puis le chantier unique (restaurant, dépôt). */
+function fillUnsaid(line: DraftLine, date: string, snapshot: WorkerSnapshot): DraftLine {
+  if (line.worksite_id || line.worksite_text) return line;
+  const planned = plannedWorksite(date, line.start, line.end, snapshot);
+  if (planned) return { ...line, worksite_id: planned, from_planning: true };
+  if (snapshot.chantiers.length === 1) return { ...line, worksite_id: snapshot.chantiers[0].id };
+  return line;
 }
 
 // ── Contrôles d'un brouillon (lecteur ET IA passent par ici) ────────────────
@@ -149,13 +184,11 @@ export function parseHoursText(text: string, snapshot: WorkerSnapshot): Draft | 
     rest = rest.replace(FILLER, ' ').replace(/\s+/g, ' ').trim();
     // Le nom tel que dicté (casse d'origine) pour l'afficher au salarié.
     const worksite_text = rest;
-    let worksite_id = resolveWorksite(rest, snapshot.chantiers);
-    // Rien de dit : un seul chantier possible (restaurant, dépôt) → celui-là.
-    if (!rest && snapshot.chantiers.length === 1) worksite_id = snapshot.chantiers[0].id;
+    const worksite_id = resolveWorksite(rest, snapshot.chantiers);
     lines.push({ worksite_id, worksite_text, start, end, break_minutes: pendingPause });
     pendingPause = 0;
   }
-  return checkDraft(date, lines, snapshot);
+  return checkDraft(date, lines.map((l) => fillUnsaid(l, date, snapshot)), snapshot);
 }
 
 // ── Questions simples sur SES données ───────────────────────────────────────
@@ -197,6 +230,7 @@ export function handleLocally(text: string, snapshot: WorkerSnapshot): WorkerRep
 export function draftSummary(d: Draft): string {
   if (d.errors.length) return 'Je n’ai pas pu tout comprendre : corrigez ci-dessous avant d’enregistrer.';
   if (d.lines.some((l) => !l.worksite_id)) return 'Choisissez le chantier, puis vérifiez avant d’enregistrer.';
+  if (d.lines.some((l) => l.from_planning)) return 'Chantier repris de votre planning : vérifiez, puis enregistrez.';
   return 'Vérifiez, puis enregistrez.';
 }
 
@@ -234,17 +268,18 @@ export const WORKER_SCHEMA = {
 export function sanitizeWorkerAi(raw: unknown, snapshot: WorkerSnapshot): WorkerReply {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   if (r.kind === 'draft' && Array.isArray(r.lines) && r.lines.length) {
+    const date = typeof r.date === 'string' ? r.date : snapshot.aujourdhui;
     const lines: DraftLine[] = (r.lines as Record<string, unknown>[]).slice(0, 6).map((l) => {
-      const text = String(l.chantier ?? '').slice(0, 80);
-      return {
-        worksite_id: resolveWorksite(text, snapshot.chantiers) ?? (!text && snapshot.chantiers.length === 1 ? snapshot.chantiers[0].id : null),
+      const text = String(l.chantier ?? '').trim().slice(0, 80);
+      return fillUnsaid({
+        worksite_id: resolveWorksite(text, snapshot.chantiers),
         worksite_text: text,
         start: parseTime(String(l.debut ?? '')) ?? String(l.debut ?? ''),
         end: parseTime(String(l.fin ?? '')) ?? String(l.fin ?? ''),
         break_minutes: Number(l.pause) || 0,
-      };
+      }, date, snapshot);
     });
-    const draft = checkDraft(typeof r.date === 'string' ? r.date : snapshot.aujourdhui, lines, snapshot);
+    const draft = checkDraft(date, lines, snapshot);
     return { kind: 'draft', draft, answer: draftSummary(draft) };
   }
   const answer = typeof r.answer === 'string' && r.answer.trim() ? r.answer.trim().slice(0, 500) : 'Je n’ai pas compris. Essayez : « 7h30-12h Villa Dupont ».';
@@ -294,7 +329,8 @@ export function buildWorkerSnapshot(raw: WorkerRaw): WorkerSnapshot {
     chantiers: sites.map((s) => ({ id: s.id, nom: s.client_name || 'Chantier', ville: s.city })),
     semaine: Array.from(byDay.entries()).sort().map(([date, minutes]) => ({ date, minutes })),
     planning: raw.planning.filter((p) => p.user_id === raw.userId).map((p) => ({
-      date: p.work_date, chantier: p.worksite_id ? name.get(p.worksite_id) ?? null : null,
+      date: p.work_date, chantier_id: p.worksite_id && name.has(p.worksite_id) ? p.worksite_id : null,
+      chantier: p.worksite_id ? name.get(p.worksite_id) ?? null : null,
       debut: p.estimated_start, fin: p.estimated_end, absence: p.absence_type,
     })),
   };

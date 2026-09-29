@@ -6,6 +6,7 @@ Le même bouton que le bureau, dans l'app salarié. On dicte ou on écrit ses he
 |---|---|
 | Lecture des phrases | Lecteur local d'abord (« 7h30-12h Villa Dupont, 13h-16h30 Bureau Martin », « de 8h à midi », « hier… pause 30 min », « 8h/12h », service resto après minuit) ; IA seulement en secours |
 | Chantier | Résolu dans la liste des chantiers du salarié. Inconnu ou ambigu → à choisir, jamais inventé |
+| Chantier non dit | Pré-sélectionné depuis SON planning pour ce créneau (📅 « D’après votre planning — modifiable »). Rien au planning → « Choisir le chantier… » |
 | Contrôles | Horaires illisibles, début = fin, > 14 h, pause trop longue, chevauchements, date hors période → refusé |
 | Enregistrement | Uniquement après « Enregistrer », via `lib/worker-entry.ts` = le chemin de la saisie manuelle (sorti tel quel de `poseur-day.tsx`) : statut `draft`, anti-doublon, hors ligne, même RLS |
 | Questions | Ses heures (semaine, hier, aujourd'hui) et son planning. Coût et collègues refusés |

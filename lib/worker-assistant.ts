@@ -53,7 +53,10 @@ export const DEMO_SNAPSHOT: WorkerSnapshot = {
     { id: 'demo-leclerc2', nom: 'Leclerc Drive', ville: 'Bron' },
   ],
   semaine: [{ date: new Date().toLocaleDateString('sv-SE'), minutes: 8 * 60 + 30 }],
-  planning: [],
+  planning: [
+    { date: new Date().toLocaleDateString('sv-SE'), chantier_id: 'demo-dupont', chantier: 'Villa Dupont', debut: '07:30', fin: '12:00', absence: null },
+    { date: new Date().toLocaleDateString('sv-SE'), chantier_id: 'demo-martin', chantier: 'Bureau Martin', debut: '13:00', fin: '16:30', absence: null },
+  ],
 };
 
 export function demoWorkerSource(): AssistantSource {

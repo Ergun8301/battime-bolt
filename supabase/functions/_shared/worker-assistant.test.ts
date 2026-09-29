@@ -19,8 +19,8 @@ const BTP: WorkerSnapshot = {
   ],
   semaine: [{ date: '2026-09-28', minutes: 480 }, { date: '2026-09-29', minutes: 270 }],
   planning: [
-    { date: '2026-09-30', chantier: 'Villa Dupont', debut: '07:30:00', fin: '16:30:00', absence: null },
-    { date: '2026-09-29', chantier: 'Bureau Martin', debut: '08:00:00', fin: '17:00:00', absence: null },
+    { date: '2026-09-30', chantier_id: 'w-dupont', chantier: 'Villa Dupont', debut: '07:30:00', fin: '16:30:00', absence: null },
+    { date: '2026-09-29', chantier_id: 'w-martin', chantier: 'Bureau Martin', debut: '08:00:00', fin: '17:00:00', absence: null },
   ],
 };
 const RESTO: WorkerSnapshot = { ...BTP, chantiers: [{ id: 'r-comptoir', nom: 'Le Comptoir', ville: 'Lyon' }] };
@@ -57,7 +57,29 @@ Deno.test('Chantier ambigu ou inconnu : aucun choix inventé', () => {
   eq(resolveWorksite('chantier Moreau', BTP.chantiers), null, 'inconnu');
   const d = parseHoursText('8h-12h leclerc', BTP)!;
   eq([d.lines[0].worksite_id, d.lines[0].worksite_text], [null, 'leclerc'], 'brouillon sans chantier, texte gardé pour la liste');
-  eq(parseHoursText('8h-12h', BTP)!.lines[0].worksite_id, null, 'rien dit + plusieurs chantiers → à choisir');
+  eq(parseHoursText('8h-12h', { ...BTP, planning: [] })!.lines[0].worksite_id, null, 'rien dit, rien au planning + plusieurs chantiers → à choisir');
+});
+
+Deno.test('Chantier non dit : pré-sélection depuis SON planning, modifiable', () => {
+  const JOUR: WorkerSnapshot = { ...BTP, planning: [
+    { date: '2026-09-29', chantier_id: 'w-dupont', chantier: 'Villa Dupont', debut: '07:30:00', fin: '12:00:00', absence: null },
+    { date: '2026-09-29', chantier_id: 'w-martin', chantier: 'Bureau Martin', debut: '13:00:00', fin: '16:30:00', absence: null },
+  ] };
+  const d = parseHoursText('Ce matin 7h30-12h, après-midi 13h-16h30', JOUR)!;
+  eq(d.lines.map((l) => [l.worksite_id, l.from_planning ?? false]), [['w-dupont', true], ['w-martin', true]], '1. chaque créneau → le chantier prévu à cette heure');
+  eq(handleLocally('Ce matin 7h30-12h, après-midi 13h-16h30', JOUR)!.answer, 'Chantier repris de votre planning : vérifiez, puis enregistrez.', '1b. message clair');
+  eq(parseHoursText('8h-12h', BTP)!.lines[0].worksite_id, 'w-martin', '2. un seul chantier prévu ce jour → celui-là');
+  eq(parseHoursText('8h-12h bureau martin', JOUR)!.lines[0].from_planning ?? false, false, '3. chantier dit → le planning ne l’écrase pas');
+  eq(parseHoursText('8h-12h leclerc', JOUR)!.lines[0].worksite_id, null, '4. chantier dit mais ambigu → liste, pas le planning');
+  eq(parseHoursText('hier 8h-12h', JOUR)!.lines[0].worksite_id, null, '5. rien au planning ce jour-là → « Choisir le chantier… »');
+  eq(parseHoursText('18h-20h', JOUR)!.lines[0].worksite_id, null, '6. créneau hors des horaires prévus (2 chantiers) → à choisir');
+  const absent: WorkerSnapshot = { ...BTP, planning: [{ date: '2026-09-29', chantier_id: 'w-dupont', chantier: 'Villa Dupont', debut: null, fin: null, absence: 'conge' }] };
+  eq(parseHoursText('8h-12h', absent)!.lines[0].worksite_id, null, '7. jour d’absence : aucun chantier pré-rempli');
+  const ailleurs: WorkerSnapshot = { ...BTP, planning: [{ date: '2026-09-29', chantier_id: 'w-archive', chantier: null, debut: null, fin: null, absence: null }] };
+  eq(parseHoursText('8h-12h', ailleurs)!.lines[0].worksite_id, null, '8. chantier du planning hors de sa liste → rien');
+  const ai = sanitizeWorkerAi({ kind: 'draft', answer: '', date: '2026-09-29', lines: [{ chantier: '', debut: '13:00', fin: '16:30', pause: 0 }] }, JOUR);
+  if (ai.kind !== 'draft') throw new Error('brouillon attendu');
+  eq([ai.draft.lines[0].worksite_id, ai.draft.lines[0].from_planning], ['w-martin', true], '9. même règle pour la voie IA');
 });
 
 Deno.test('Horaires incohérents refusés', () => {

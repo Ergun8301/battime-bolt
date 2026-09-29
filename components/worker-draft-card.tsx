@@ -18,6 +18,7 @@ const CSS = `
 .wd input[type=time]{flex:1;width:auto;min-width:96px}
 .wd .pause{width:64px}
 .wd-lbl{font-size:11px;color:#6E6A63;font-weight:700}
+.wd-plan{font-size:11.5px;color:#0F7A43;font-weight:700;margin:-2px 0 6px 2px}
 .wd-x{border:none;background:transparent;color:#9a948a;padding:4px;cursor:pointer}
 .wd-err{font-size:12.5px;color:#9a3b14;font-weight:700;margin:4px 0 8px}
 .wd-foot{display:flex;align-items:center;gap:8px;margin-top:4px}
@@ -59,12 +60,13 @@ export default function WorkerDraftCard({ extra, save, onSaved }: Props) {
       {lines.map((l, i) => (
         <div key={i} className={`wd-line${l.worksite_id ? '' : ' todo'}`}>
           <div className="wd-row" style={{ marginBottom: 6 }}>
-            <select value={l.worksite_id ?? ''} onChange={(e) => upd(i, { worksite_id: e.target.value || null })} aria-label="Chantier">
+            <select value={l.worksite_id ?? ''} onChange={(e) => upd(i, { worksite_id: e.target.value || null, from_planning: false })} aria-label="Chantier">
               <option value="">{l.worksite_text ? `« ${l.worksite_text} » → choisir…` : 'Choisir le chantier…'}</option>
               {chantiers.map((c) => <option key={c.id} value={c.id}>{c.nom}{c.ville ? ` · ${c.ville}` : ''}</option>)}
             </select>
             {lines.length > 1 && <button type="button" className="wd-x" onClick={() => setLines((ls) => ls.filter((_, j) => j !== i))} aria-label="Retirer"><Trash2 className="h-4 w-4" /></button>}
           </div>
+          {l.from_planning && l.worksite_id && <p className="wd-plan" data-testid="from-planning">📅 D’après votre planning — modifiable</p>}
           <div className="wd-row">
             <input type="time" value={l.start} onChange={(e) => upd(i, { start: e.target.value })} aria-label="Début" />
             <span className="wd-lbl">→</span>

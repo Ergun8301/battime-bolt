@@ -62,7 +62,7 @@ Deno.serve(async (req) => {
     const [sites, entries, plan] = await Promise.all([
       db.from('worksites').select('id, company_id, client_name, city').eq('company_id', me.company_id).eq('is_active', true).order('client_name'),
       db.from('time_entries').select('user_id, work_date, start_time, end_time, break_minutes, status').eq('user_id', user.id).gte('work_date', mondayOf(today)).lte('work_date', today),
-      db.from('planning').select('user_id, work_date, estimated_start, estimated_end, absence_type, worksite_id').eq('user_id', user.id).gte('work_date', today).lte('work_date', plusDays(today, 1)),
+      db.from('planning').select('user_id, work_date, estimated_start, estimated_end, absence_type, worksite_id').eq('user_id', user.id).gte('work_date', plusDays(today, -2)).lte('work_date', plusDays(today, 1)),
     ]);
     const snapshot = buildWorkerSnapshot({
       userId: user.id, companyId: me.company_id, today,
