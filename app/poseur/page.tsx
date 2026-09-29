@@ -18,6 +18,7 @@ import PoseurWeek from '@/components/poseur-week';
 import PoseurMonth from '@/components/poseur-month';
 import PoseurHistory from '@/components/poseur-history';
 import LeaveRequestDialog from '@/components/leave-request-dialog';
+import WorkerAssistant from '@/components/worker-assistant';
 import { pushSupported, currentPushState, enablePush, disablePush } from '@/lib/push';
 
 const TABS = [
@@ -107,6 +108,8 @@ const POSEUR_CSS = `
 
 export default function PoseurPage() {
   const { user, signOut } = useAuth();
+  // Assistant BEMEXO (lot 4) : après un enregistrement, la journée se recharge.
+  const [dayKey, setDayKey] = useState(0);
   // Envoi différé des saisies faites sans réseau : tourne pour TOUS les jours en
   // attente, dès que l'application est ouverte et qu'il y a du réseau.
   const { pendingCount: offlineCount, blockedCount: offlineBlocked, syncing: offlineSyncing, syncNow } = useOfflineSync(user?.id);
@@ -450,9 +453,9 @@ export default function PoseurPage() {
         {/* ===== CORPS ===== */}
         <div className="bt-phbody">
           {selectedDate ? (
-            <PoseurDay date={selectedDate} topBanner={offlineBanner} />
+            <PoseurDay key={dayKey} date={selectedDate} topBanner={offlineBanner} />
           ) : view === 'day' ? (
-            <PoseurDay topBanner={<>{offlineBanner}{toSendBanner}</>} />
+            <PoseurDay key={dayKey} topBanner={<>{offlineBanner}{toSendBanner}</>} />
           ) : (
             <div className="bt-phscroll bt-skin">
               {view === 'week' ? (
@@ -467,6 +470,7 @@ export default function PoseurPage() {
         </div>
 
         <LeaveRequestDialog open={leaveOpen} onOpenChange={setLeaveOpen} userId={user?.id} />
+        <WorkerAssistant onSaved={() => setDayKey((k) => k + 1)} />
       </div>
     </div>
   );

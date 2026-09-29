@@ -9,7 +9,7 @@ import type { AssistantLink } from '@/supabase/functions/_shared/assistant-core'
 export { ASSISTANT_SUGGESTIONS } from '@/supabase/functions/_shared/assistant-core';
 export type { AssistantLink } from '@/supabase/functions/_shared/assistant-core';
 
-export interface AssistantReply { answer: string; links: AssistantLink[]; remaining?: number; notice?: boolean }
+export interface AssistantReply { answer: string; links: AssistantLink[]; remaining?: number; notice?: boolean; extra?: unknown }
 export interface AssistantSource { demo: boolean; ask(question: string): Promise<AssistantReply> }
 
 /** Démo : uniquement sur une preview, jamais sur bemexo.com. */
