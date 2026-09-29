@@ -12,7 +12,7 @@
 export const DEFAULT_AI_MODEL = 'gemini-3.1-flash-lite';
 
 export interface AiFile { mime: string; base64: string }
-export interface ExtractRequest { prompt: string; schema: Record<string, unknown>; file: AiFile }
+export interface ExtractRequest { prompt: string; schema: Record<string, unknown>; file?: AiFile }
 export type AiResult =
   | { ok: true; data: unknown }
   | { ok: false; reason: 'not_configured' | 'provider_error' | 'bad_response' };
@@ -20,7 +20,7 @@ export type AiResult =
 type Env = { get(key: string): string | undefined };
 type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
 
-/** Extrait un objet JSON d'un document, selon une consigne et un schéma. */
+/** Produit un objet JSON selon une consigne et un schéma, à partir d'un document s'il y en a un. */
 export async function extractJson(req: ExtractRequest, env: Env, fetchImpl: FetchLike = fetch): Promise<AiResult> {
   const provider = (env.get('AI_PROVIDER') || 'gemini').toLowerCase();
   const model = env.get('AI_MODEL') || DEFAULT_AI_MODEL;
@@ -42,7 +42,7 @@ async function gemini(req: ExtractRequest, key: string | undefined, model: strin
             role: 'user',
             parts: [
               { text: req.prompt },
-              { inline_data: { mime_type: req.file.mime, data: req.file.base64 } },
+              ...(req.file ? [{ inline_data: { mime_type: req.file.mime, data: req.file.base64 } }] : []),
             ],
           }],
           generationConfig: {
