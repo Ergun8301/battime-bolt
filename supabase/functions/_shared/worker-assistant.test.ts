@@ -137,3 +137,52 @@ Deno.test('Instantané : jamais les heures ni le planning d’un collègue', () 
   if (JSON.stringify(s).includes('collegue') || JSON.stringify(s).includes('Secret')) throw new Error('fuite');
   eq(mondayOf('2026-10-04'), '2026-09-28', 'lundi d’un dimanche');
 });
+
+// ═══ Lot 3 bis — guide et actions du salarié ════════════════════════════════
+import {
+  checkWorkerAction, fromWorkerCall, handleWorkerLocally, prepareWorkerAction, WORKER_FUNCTIONS, type WorkerLive,
+} from './worker-assistant-core.ts';
+import { callFunction } from './ai-provider.ts';
+
+const IDLE: WorkerLive = { enCours: null, lignes: [{ id: 'e1', chantier: 'Villa Dupont', debut: '07:30', fin: '12:00', envoyee: false }, { id: 'e2', chantier: 'Bureau Martin', debut: '13:00', fin: '16:30', envoyee: true }] };
+const RUNNING: WorkerLive = { enCours: { chantier_id: 'w-martin', chantier: 'Bureau Martin', depuis: '2026-09-29T06:02:00Z' }, lignes: [] };
+const kindOf = (r: unknown) => (r as { kind: string }).kind;
+const act = (r: unknown) => (r as { action: { draft: Record<string, unknown>; problems: string[] } }).action;
+
+Deno.test('3 bis salarié — actions locales : pointage, congé, réserve, guide', () => {
+  const start = handleWorkerLocally('Je commence sur villa dupont', BTP, IDLE);
+  eq([kindOf(start), act(start).draft.type, act(start).draft.worksite_id, act(start).problems], ['action', 'commencer_pointage', 'w-dupont', []], 'début de pointage, chantier résolu');
+  eq(act(handleWorkerLocally('Je commence mon pointage', BTP, IDLE)).draft.worksite_id, 'w-martin', 'rien dit → chantier du planning du jour');
+  eq(act(handleWorkerLocally('je commence', BTP, RUNNING)).problems, ['Un pointage est déjà en cours (Bureau Martin).'], 'déjà en cours → bloqué');
+  const stop = handleWorkerLocally("J'ai fini", BTP, RUNNING);
+  eq([act(stop).draft.type, act(stop).problems], ['terminer_pointage', []], 'fin de pointage');
+  eq(act(handleWorkerLocally('termine mon pointage', BTP, IDLE)).problems, ['Aucun pointage en cours.'], 'rien à terminer');
+  const leave = handleWorkerLocally('Demander un congé', BTP, IDLE);
+  eq([act(leave).draft.type, act(leave).problems], ['demander_conge', ['Choisissez les dates.']], 'carte de congé à remplir');
+  const res = handleWorkerLocally('Signaler une réserve sur villa dupont : fissure mur sud', BTP, IDLE);
+  eq([act(res).draft.entry_id, act(res).draft.detail, act(res).problems], ['e1', 'fissure mur sud', []], 'réserve : chantier et détail');
+  eq(act(handleWorkerLocally('signaler une réserve', BTP, IDLE)).problems, ['Choisissez le chantier.'], 'deux chantiers → à choisir');
+  eq(checkWorkerAction({ type: 'signaler_reserve', entry_id: 'e1', detail: '', choix: IDLE.lignes }, BTP, IDLE), [], 'détail FACULTATIF');
+  const g = handleWorkerLocally('Comment je signale une réserve ?', BTP, IDLE) as { kind: string; links: { action: string }[]; answer: string };
+  eq([g.kind, g.links[0].action], ['guide', 'journee'], 'guide + M’y emmener');
+  eq(g.answer.split('\n').length, 4, '3 étapes');
+  eq((handleWorkerLocally('comment j’ajoute une photo', BTP, IDLE) as { links: { action: string }[] }).links[0].action, 'journee', 'photo → Ma journée');
+  eq(kindOf(handleWorkerLocally('7h30-12h villa dupont', BTP, IDLE)), 'draft', 'les heures (lot 4) marchent toujours');
+  eq(kindOf(handleWorkerLocally('les heures de mes collègues ?', BTP, IDLE)), 'answer', 'collègues toujours refusés');
+});
+
+Deno.test('3 bis salarié — IA simulée (appel de fonctions)', async () => {
+  const fake = (name: string, args: Record<string, unknown>) => () =>
+    Promise.resolve(new Response(JSON.stringify({ candidates: [{ content: { parts: [{ functionCall: { name, args } }] } }] })));
+  const env = { get: (k: string) => (k === 'GEMINI_API_KEY' ? 'AQ.k' : undefined) };
+  const r = await callFunction({ prompt: 'x', functions: WORKER_FUNCTIONS }, env, fake('demander_conge', { type: 'conge', du: '2026-10-12', au: '2026-10-16', note: 'mariage' }));
+  if (!r.ok) throw new Error('appel refusé');
+  const leave = fromWorkerCall(r.call.name, r.call.args, BTP, IDLE);
+  eq([act(leave).draft.du, act(leave).draft.au, act(leave).problems], ['2026-10-12', '2026-10-16', []], 'congé prêt');
+  const hours = fromWorkerCall('declarer_heures', { date: '2026-09-29', lignes: [{ chantier: 'Villa Dupont', debut: '7:30', fin: '12:00' }] }, BTP, IDLE);
+  eq(kindOf(hours), 'draft', 'heures → brouillon du lot 4');
+  const refus = fromWorkerCall('repondre', { reponse: 'Je n’ai pas accès à ça.' }, BTP, IDLE) as { answer: string };
+  if (/pas acc[eè]s/.test(refus.answer)) throw new Error('refus non remplacé');
+  eq(prepareWorkerAction('supprimer_heures', {}, BTP, IDLE), null, 'action hors liste → rien');
+  if (JSON.stringify(WORKER_FUNCTIONS).match(/cout|salaire|supprim/i) && !JSON.stringify(WORKER_FUNCTIONS).includes('jamais')) throw new Error('fonction interdite exposée');
+});

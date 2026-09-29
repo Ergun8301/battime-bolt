@@ -470,7 +470,16 @@ export default function PoseurPage() {
         </div>
 
         <LeaveRequestDialog open={leaveOpen} onOpenChange={setLeaveOpen} userId={user?.id} />
-        <WorkerAssistant onSaved={() => setDayKey((k) => k + 1)} />
+        <WorkerAssistant
+          onSaved={() => setDayKey((k) => k + 1)}
+          onNavigate={(a) => {
+            if (a === 'journee') goHome();
+            else if (a === 'semaine') goTo('week');
+            else if (a === 'mois') goTo('month');
+            else if (a === 'historique') goTo('history');
+            else if (a === 'conges') setLeaveOpen(true);
+          }}
+        />
       </div>
     </div>
   );

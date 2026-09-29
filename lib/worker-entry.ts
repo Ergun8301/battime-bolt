@@ -32,3 +32,21 @@ export async function insertWorkerEntry(pending: PendingEntry): Promise<'online'
   }
   return 'online';
 }
+
+/**
+ * « Avec réserve » sur une de SES lignes (Assistant BEMEXO, lot 3 bis). Mêmes
+ * colonnes que l'éditeur de journée (`reception`, `observation`) et même
+ * marquage qu'une modification d'une journée déjà envoyée. Le détail est
+ * FACULTATIF : sans texte, la note existante n'est pas touchée.
+ * Renvoie false si la RLS a refusé (ligne verrouillée par le bureau).
+ */
+export async function markEntryReserve(p: { userId: string; entryId: string; detail?: string | null; wasSubmitted: boolean }): Promise<boolean> {
+  const detail = (p.detail ?? '').trim();
+  const { data, error } = await supabase.from('time_entries').update({
+    reception: 'avec',
+    ...(detail ? { observation: detail } : {}),
+    ...(p.wasSubmitted ? { modified_at: new Date().toISOString(), modified_by: p.userId } : {}),
+  }).eq('id', p.entryId).eq('user_id', p.userId).select('id');
+  if (error) throw error;
+  return !!data && data.length > 0;
+}

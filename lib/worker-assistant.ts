@@ -9,7 +9,7 @@ import { generateLocalId } from '@/lib/offline-store';
 import { insertWorkerEntry } from '@/lib/worker-entry';
 import type { AssistantReply, AssistantSource } from '@/lib/assistant';
 import {
-  handleLocally, shiftMinutes, type Draft, type DraftLine, type WorkerSnapshot,
+  handleWorkerLocally, shiftMinutes, type Draft, type DraftLine, type WorkerAction, type WorkerLive, type WorkerSnapshot,
 } from '@/supabase/functions/_shared/worker-assistant-core';
 
 export * from '@/supabase/functions/_shared/worker-assistant-core';
@@ -21,10 +21,18 @@ export function isWorkerAssistantDemo(): boolean {
   return new URLSearchParams(window.location.search).get('demo') === 'salarie';
 }
 
-type ServerReply = { kind?: string; answer?: string; draft?: Draft; chantiers?: WorkerSnapshot['chantiers']; remaining?: number; notice?: boolean; error?: string };
+/** Lot 3 bis : une action préparée (congé, pointage, réserve) à confirmer. */
+export interface WorkerActionExtra { workerAction: WorkerAction; chantiers: WorkerSnapshot['chantiers'] }
+
+type ServerReply = {
+  kind?: string; answer?: string; draft?: Draft; action?: WorkerAction; links?: { label: string; action: string }[];
+  chantiers?: WorkerSnapshot['chantiers']; remaining?: number; notice?: boolean; error?: string;
+};
 const toReply = (d: ServerReply): AssistantReply => ({
-  answer: d.answer || d.error || '…', links: [], remaining: d.remaining, notice: !!d.notice || !!d.error,
-  extra: d.kind === 'draft' && d.draft ? ({ draft: d.draft, chantiers: d.chantiers || [] } as DraftExtra) : undefined,
+  answer: d.answer || d.error || '…', links: d.links || [], remaining: d.remaining, notice: !!d.notice || !!d.error,
+  extra: d.kind === 'draft' && d.draft ? ({ draft: d.draft, chantiers: d.chantiers || [] } as DraftExtra)
+    : d.kind === 'action' && d.action ? ({ workerAction: d.action, chantiers: d.chantiers || [] } as WorkerActionExtra)
+    : undefined,
 });
 
 export const supabaseWorkerSource: AssistantSource = {
@@ -59,6 +67,15 @@ export const DEMO_SNAPSHOT: WorkerSnapshot = {
   ],
 };
 
+/** Démo : rien en cours, deux lignes notées aujourd'hui. */
+export const DEMO_LIVE: WorkerLive = {
+  enCours: null,
+  lignes: [
+    { id: 'demo-e1', chantier: 'Villa Dupont', debut: '07:30', fin: '12:00', envoyee: false },
+    { id: 'demo-e2', chantier: 'Bureau Martin', debut: '13:00', fin: '16:30', envoyee: false },
+  ],
+};
+
 export function demoWorkerSource(): AssistantSource {
   let left = 20;
   return {
@@ -66,7 +83,7 @@ export function demoWorkerSource(): AssistantSource {
     async ask(text) {
       await new Promise((r) => setTimeout(r, 500));
       left = Math.max(0, left - 1);
-      const local = handleLocally(text, DEMO_SNAPSHOT);
+      const local = handleWorkerLocally(text, DEMO_SNAPSHOT, DEMO_LIVE);
       if (!local) return { answer: 'Mode démo : essayez « Ce matin 7h30-12h Villa Dupont, après-midi 13h-16h30 Bureau Martin ».', links: [], remaining: left };
       return toReply({ ...local, chantiers: DEMO_SNAPSHOT.chantiers, remaining: left } as ServerReply);
     },

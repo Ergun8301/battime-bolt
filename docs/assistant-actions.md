@@ -19,6 +19,20 @@ Toujours derrière **`companies.ai_enabled`**. Il remplace « lecture seule » p
 `lib/planning-writes.ts` : les écritures de `admin-planning.tsx` sorties **telles
 quelles** ; l'écran et l'assistant appellent les mêmes fonctions.
 
+## Côté salarié (même moteur, actions du salarié)
+
+| Demande | Carte | Exécuté par (code de l'écran salarié) |
+|---|---|---|
+| « 7h30-12h Villa Dupont… » | Brouillon d'heures (lot 4) | `insertWorkerEntry` |
+| « Je commence (sur Villa Dupont) » | Début de pointage (chantier du planning si rien n'est dit) | `startLiveSession` (= « Je commence ») |
+| « J'ai fini » | Fin de pointage (heure de fin facultative) | `stopLiveSession` → `stop_active_session` |
+| « Demander un congé » / « congé du 12 au 16 » | Demande de congé | `requestLeave` → RPC `request_leave` |
+| « Signaler une réserve sur Villa Dupont : fissure » | Réserve, **détail facultatif** | `markEntryReserve` (SA ligne du jour) |
+| « Comment je signale une réserve ? » | 3 étapes + **M'y emmener** | Ma journée / Ma semaine / Mon mois / Historique / Mes congés |
+
+Jamais les données d'un collègue ni les coûts. `lib/live-session.ts` et
+`lib/leave.ts` = code de `live-timer.tsx` et de « Mes congés », sortis tels quels.
+
 ## Garde-fous
 
 - Rien sans **Confirmer** (Annuler = rien n'est fait). Chaque carte est modifiable
@@ -38,9 +52,11 @@ quelles** ; l'écran et l'assistant appellent les mêmes fonctions.
 
 1. Migration `supabase/migrations/20260930120000_lot3bis_assistant_actions.sql`
 2. Redéployer la fonction `assistant` (déjà en prod en version lot 3)
+3. Déployer `worker-assistant` (avec le lot 4)
 
 ## Contrôles
 
-- `npm run test:assistant-actions` — 10 séries, IA simulée
+- `npm run test:assistant-actions` — 10 séries, IA simulée (bureau)
+- `npm run test:assistant-salarie` — 9 séries (lot 4 + actions salarié)
 - `npm run test:assistant-actions-rls` — 17 vérifications
 - Captures : `docs/captures-assistant-actions/`

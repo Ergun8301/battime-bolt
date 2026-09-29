@@ -21,7 +21,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
-import { demanderPosition, FENETRE_POSITION_MS } from '@/lib/position';
+import { startLiveSession, stopLiveSession, LIVE_CHANGED } from '@/lib/live-session';
 import { parisHHmm } from '@/lib/utils';
 import { TimeCylinder } from '@/components/time-cylinder';
 import { Play, Square, Clock, AlertTriangle, Loader2, Trash2, MapPin } from 'lucide-react';
@@ -140,6 +140,12 @@ export default function LiveTimer({
     return () => { mounted.current = false; };
   }, [load]);
 
+  // L'Assistant BEMEXO peut démarrer ou fermer un pointage : on se met à jour.
+  useEffect(() => {
+    window.addEventListener(LIVE_CHANGED, load);
+    return () => window.removeEventListener(LIVE_CHANGED, load);
+  }, [load]);
+
   // La pendule ne tourne que s'il y a quelque chose à compter.
   useEffect(() => {
     if (!session) return;
@@ -157,45 +163,12 @@ export default function LiveTimer({
     setTooShort(false);
     setConfirmCancel(false);
     try {
-      // L'ENDROIT, AVANT L'ÉCRITURE, ET JAMAIS AU PRIX DU POINTAGE.
-      // `demanderPosition` rend toujours la main — refus, sous-sol, vieux
-      // téléphone donnent `null`. Un salarié qui refuse pointe exactement comme
-      // avant : c'est ce qui rend son refus réellement libre.
-      const p = positionActive ? await demanderPosition() : null;
-
-      // ── LES COLONNES NE SONT AJOUTÉES QUE S'IL Y A QUELQUE CHOSE À METTRE ──
-      //
-      // CE N'EST PAS UNE COQUETTERIE. Tant que la migration de l'étape 26 n'est
-      // pas appliquée, ces colonnes n'existent pas : les nommer ferait échouer
-      // l'insertion avec un PGRST204, et PLUS PERSONNE NE POURRAIT DÉMARRER UN
-      // POINTAGE. L'étape 25 pouvait se permettre d'échouer en avance parce
-      // qu'elle ajoutait une fonction neuve ; ici on touche un geste qui marche
-      // déjà, et casser un geste qui marche n'est jamais un compromis
-      // acceptable.
-      //
-      // Quand la position est absente — interrupteur éteint, refus, colonnes
-      // pas encore là — l'écriture est identique au mot près à celle d'hier.
-      const { error } = await supabase.from('active_sessions').insert({
-        user_id: userId, company_id: companyId, worksite_id: pick,
-        planning_id: planningIdFor(pick), work_date: today,
-        // L'HEURE DE LA PRISE N'EST PAS ENVOYÉE D'ICI, ET C'EST DÉLIBÉRÉ.
-        // Elle l'était — `new Date()` — c'est-à-dire l'horloge du téléphone.
-        // Une horloge fausse affichait une heure fausse ; une horloge avancée
-        // de cinq ans produisait une ligne que la purge des douze mois
-        // n'aurait pas effacée avant 2031. On ne promet pas une durée de
-        // conservation en la laissant fixer par l'appareil qu'on conserve.
-        // C'est le trigger qui pose `now()`, côté serveur.
-        ...(p ? {
-          start_lat: p.lat,
-          start_lng: p.lng,
-          start_accuracy_m: p.accuracy == null ? null : Math.round(p.accuracy),
-        } : {}),
+      // Même geste que l'Assistant BEMEXO : lib/live-session.ts (commentaires là-bas).
+      const r = await startLiveSession({
+        userId, companyId, worksiteId: pick, planningId: planningIdFor(pick), workDate: today, positionActive: !!positionActive,
       });
-      if (error) {
-        // 23505 = un chrono tourne déjà. Le dire, et le montrer.
-        if (error.code === '23505') { await load(); toast.error('Un pointage est déjà en cours.'); return; }
-        throw error;
-      }
+      // Un chrono tourne déjà. Le dire, et le montrer.
+      if (r.running) { await load(); toast.error('Un pointage est déjà en cours.'); return; }
       await load();
       toast.success('Pointage démarré');
     } catch (e) {
@@ -250,39 +223,9 @@ export default function LiveTimer({
     setBusy(true);
     setTooShort(false);
     try {
-      // ── ON NE DEMANDE MÊME PAS L'ENDROIT SUR UN POINTAGE OUBLIÉ ────────────
-      //
-      // Le serveur écarte déjà ce point au-delà de quatorze heures. Mais il
-      // l'écarte APRÈS l'avoir reçu — et pour un salarié qui ferme son pointage
-      // le soir chez lui, ce qu'il a reçu est son DOMICILE. Le refuser à
-      // l'arrivée ne le défait pas : la donnée a quitté le téléphone, traversé
-      // le réseau, et il a vu une demande d'autorisation au pire moment.
-      //
-      // `session.started_at` vient du serveur, pas du navigateur : c'est la
-      // seule valeur du calcul qui ne dépende pas de l'horloge du téléphone.
-      // L'autre — `Date.now()` — peut mentir, et c'est exactement pourquoi le
-      // garde SQL reste en place derrière celui-ci. Deux tests, deux rôles :
-      // ici on évite la demande, là-bas on garantit le refus.
-      const ecoule = Date.now() - new Date(session.started_at).getTime();
-      const tropVieux = ecoule > FENETRE_POSITION_MS;
-
-      // Même règle qu'au départ : on ne passe les paramètres que si on a une
-      // position. Sans eux, l'appel est exactement celui d'hier et résout la
-      // fonction à un seul argument — donc fermer un pointage continue de
-      // marcher même si la migration n'est pas passée.
-      const p = positionActive && !tropVieux ? await demanderPosition() : null;
-
-      const { data, error } = await supabase.rpc('stop_active_session', {
-        p_end: endTime ? `${endTime}:00` : null,
-        ...(p ? {
-          p_lat: p.lat,
-          p_lng: p.lng,
-          p_accuracy: p.accuracy == null ? null : Math.round(p.accuracy),
-        } : {}),
-      });
-      if (error) throw error;
-      const row = (Array.isArray(data) ? data[0] : data) as
-        { start_time: string; end_time: string } | null;
+      // Même geste que l'Assistant BEMEXO : lib/live-session.ts. On ne demande
+      // pas l'endroit sur un pointage oublié (domicile) ; `started_at` vient du serveur.
+      const row = await stopLiveSession({ startedAt: session.started_at, positionActive: !!positionActive, endTime });
       setSession(null);
       onSaved();
       toast.success(row
