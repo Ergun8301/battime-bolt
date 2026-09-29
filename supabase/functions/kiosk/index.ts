@@ -360,6 +360,8 @@ async function punch(admin: SupabaseClient, req: Request, body: Record<string, u
     if (error) {
       if (error.code === 'BT001' || /m[êe]me quart d/i.test(error.message)) return refuse('too_short', 409);
       if (/clôturé/i.test(error.message)) return refuse('month_closed', 409);
+      // Deux scans simultanés : le premier a déjà fermé le pointage.
+      if (/aucun pointage en cours/i.test(error.message)) return refuse('double_scan', 409);
       console.error('[kiosk] departure', error);
       return json({ error: 'Départ non enregistré. Réessayez.' }, 500);
     }
