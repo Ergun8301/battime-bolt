@@ -49,6 +49,7 @@ async function runOne(c: EvalCase, version: 'v1' | 'v2', call: Call): Promise<Ca
     } else {
       const W = version === 'v2' ? W2 : W1;
       const snap = W.buildWorkerSnapshot(WORKER_RAW as never) as W2.WorkerSnapshot;
+      if (version === 'v2') snap.demande = c.phrase;
       const live = { ...WORKER_LIVE, enCours: c.enCours ? LIVE_EN_COURS : null } as W2.WorkerLive;
       const local = file ? null : W.handleWorkerLocally(c.phrase, snap as never, live as never);
       if (local) out = fromWorker(local as AnyWorker);

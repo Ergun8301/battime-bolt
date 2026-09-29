@@ -82,6 +82,7 @@ Deno.serve(async (req) => {
       entries: (entries.data ?? []) as WorkerRaw['entries'],
       planning: (plan.data ?? []) as WorkerRaw['planning'],
     });
+    snapshot.demande = text;
     const remaining = Math.max(0, limit - Number(used));
     // Lot 3 bis : ce qu'il faut pour préparer un pointage ou une réserve (SES lignes).
     const siteName = (id: string | null) => snapshot.chantiers.find((c) => c.id === id)?.nom ?? 'Chantier';
