@@ -106,3 +106,30 @@ Deno.test('IA simulée : AI_MODEL change le modèle, erreur fournisseur propre',
     () => Promise.resolve(new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: 'pas du json' }] } }] }))));
   eq(r2, { ok: false, reason: 'bad_response' }, 'réponse non JSON');
 });
+
+Deno.test('Clé « AQ. » (auth key AI Studio) : en-tête x-goog-api-key, telle quelle, jamais dans l’URL ni les logs', async () => {
+  // Depuis le 28/05/2026, AI Studio délivre des clés « AQ.… » et plus « AIza… ».
+  // Aucun préfixe n'est supposé : la clé part telle quelle, en en-tête.
+  const KEY = 'AQ.Ab8RN6-test_fausse-cle.0123456789';
+  const logs: string[] = [];
+  const orig = { error: console.error, log: console.log, warn: console.warn, info: console.info };
+  const grab = (...a: unknown[]) => { logs.push(a.map(String).join(' ')); };
+  console.error = grab; console.log = grab; console.warn = grab; console.info = grab;
+  try {
+    let url = '', init: RequestInit = {};
+    const ok = await extractJson({ prompt: 'p', schema: {} }, env({ GEMINI_API_KEY: KEY }), (u: string, i: RequestInit) => {
+      url = u; init = i;
+      return Promise.resolve(new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: '{}' }] } }] })));
+    });
+    eq(ok.ok, true, 'clé AQ. acceptée');
+    eq((init.headers as Record<string, string>)['x-goog-api-key'], KEY, 'clé AQ. transmise intacte en en-tête');
+    if (url.includes('key=') || url.includes(KEY)) throw new Error('clé dans l’URL');
+    // Chemins d'erreur : seul le code HTTP sort, jamais la clé.
+    await extractJson({ prompt: 'p', schema: {} }, env({ GEMINI_API_KEY: KEY }), () => Promise.resolve(new Response(`bad key ${KEY}`, { status: 401 })));
+    await extractJson({ prompt: 'p', schema: {} }, env({ GEMINI_API_KEY: KEY }), () => Promise.reject(new Error(`réseau ${KEY}`)));
+  } finally {
+    Object.assign(console, orig);
+  }
+  eq(logs.length, 2, 'deux erreurs journalisées');
+  if (logs.some((l) => l.includes(KEY) || l.includes('AQ.'))) throw new Error(`clé dans les logs : ${logs.join(' | ')}`);
+});

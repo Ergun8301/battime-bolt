@@ -28,6 +28,7 @@ connaît le **vrai coût horaire** du salarié et la **vraie rentabilité** des 
 
 - `supabase/functions/_shared/ai-provider.ts` : seul fichier à changer pour un autre fournisseur.
 - Modèle via `AI_MODEL` (défaut `gemini-3.1-flash-lite`), clé `GEMINI_API_KEY`.
+- Clé AI Studio : format « AQ.… » (auth key, depuis le 28/05/2026) ou ancien « AIza… » — les deux marchent. Envoyée dans l'en-tête `x-goog-api-key`, jamais dans l'URL, jamais dans les logs (test dédié).
 - Réponse JSON imposée + contrôle : total employeur > brut, heures entre 1 et 250 ; sinon champ vide « à vérifier ».
 - Sans clé : « Lecture automatique indisponible, saisissez les chiffres » — la saisie manuelle marche.
 
