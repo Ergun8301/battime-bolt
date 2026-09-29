@@ -772,7 +772,9 @@ export function prepare(type: string, raw: Record<string, unknown>, ctx: ActionC
       // « Rajoute-MOI » : la personne qui parle.
       const moi = /^(moi|me|m'|moi-meme|moi meme|je)$/i.test(norm(s).trim());
       // « Mister Grill Mâcon » : le client + la ville départagent deux chantiers du même client.
-      let worksite = resolveChantier(c || lieu, ctx) ?? (c && lieu ? resolveChantier(`${c} ${lieu}`, ctx) : null);
+      // Un LIEU seul (« à Lyon ») n'est jamais pris pour le client situé dans cette ville.
+      let worksite = c ? resolveChantier(c, ctx) ?? (lieu ? resolveChantier(`${c} ${lieu}`, ctx) : null)
+        : lieu ? resolve(lieu, ctx.chantiers, (x) => x.nom) : null;
       // Lieu sans client connu (« une intervention à Lyon ») → « Autre », le lieu dans le titre.
       // Un client connu mais ambigu n'y va jamais : la carte demande lequel.
       if (!worksite && (lieu || c) && !(c && matchesSomeChantier(c, ctx))) {
@@ -1011,7 +1013,7 @@ export function summarize(d: ActionDraft, ctx: ActionContext): string {
     }
     case 'planning_semaine': return `Planning de la semaine du ${frDate(d.semaine_du)} : ${d.lignes.filter((l) => l.worksite_id).length} affectation(s)`;
     case 'corriger_pointage': return `Corriger ${sal(d.user_id, d.salarie_texte)} le ${frDate(d.date)} : ${d.debut || '?'} → ${d.fin || '?'}`;
-    case 'ranger_document': return `${d.categorie ? `${DOC_CATEGORY_LABEL[d.categorie]}` : 'Document'}${d.libelle ? ` « ${d.libelle} »` : ''} rangé sur ${ch(d.worksite_id, d.chantier_texte)}`;
+    case 'ranger_document': return `Rangé sur ${ch(d.worksite_id, d.chantier_texte)} · ${d.categorie ? DOC_CATEGORY_LABEL[d.categorie] : 'Document'}${d.libelle ? ` « ${d.libelle} »` : ''}`;
     case 'modifier_intervention': {
       const c = d.choix.find((x) => x.id === d.planning_id);
       const what = [

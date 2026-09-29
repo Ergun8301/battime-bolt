@@ -297,7 +297,7 @@ export const demoActionExecutor: ActionExecutor = async (d) => {
   const direct = ['affecter_planning', 'poser_absence', 'ranger_document', 'modifier_intervention', 'creer_chantier'].includes(d.type);
   return {
     ok: true,
-    message: d.type === 'planning_semaine' ? `Planning appliqué : ${k} affectations (démo, rien n’est écrit).` : 'Fait (démo, rien n’est écrit).',
+    message: d.type === 'planning_semaine' ? `Planning appliqué : ${k} affectations (démo, rien n’est écrit).` : 'démo, rien n’est écrit.',
     ...(direct ? { undo: async () => { await new Promise((r) => setTimeout(r, 300)); return { ok: true, message: 'Annulé (démo).' }; } } : {}),
   };
 };

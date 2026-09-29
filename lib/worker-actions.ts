@@ -228,7 +228,7 @@ export const demoWorkerExecutor: WorkerActionExecutor = async (d) => {
   await new Promise((r) => setTimeout(r, 400));
   const confirmOnly = ['envoyer_journee', 'nouveau_chantier', 'email_client'].includes(d.type);
   return {
-    ok: true, message: 'Fait (démo, rien n’est écrit).',
+    ok: true, message: `${SUMMARY[d.type]} (démo, rien n’est écrit).`,
     ...(confirmOnly ? {} : { undo: async () => { await new Promise((r) => setTimeout(r, 300)); return { ok: true, message: 'Annulé (démo).' }; } }),
   };
 };

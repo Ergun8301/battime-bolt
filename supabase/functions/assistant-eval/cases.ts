@@ -111,7 +111,7 @@ export const CASES: EvalCase[] = [
   // ════ BUREAU ════
   // Planning / interventions
   { id: 'b01', cote: 'bureau', categorie: 'Interventions', phrase: 'Rajoute-moi une intervention à Lyon aujourd’hui de 14h à 18h',
-    check: act('affecter_planning', (d) => all(eq(d, 'user_id', ME), eq(d, 'worksite_id', W.dupont), eq(d, 'dates', [TODAY]), eq(d, 'debut', '14:00'), eq(d, 'fin', '18:00'))) },
+    check: act('affecter_planning', (d) => all(eq(d, 'user_id', ME), eq(d, 'worksite_id', W.autre), eq(d, 'dates', [TODAY]), eq(d, 'debut', '14:00'), eq(d, 'fin', '18:00'), has(d, 'note', /lyon/i))) },
   { id: 'b02', cote: 'bureau', categorie: 'Interventions', phrase: 'rajoute moi une intervention a annecy demain de 8h a 12h',
     check: act('affecter_planning', (d) => all(eq(d, 'user_id', ME), eq(d, 'worksite_id', W.autre), eq(d, 'dates', ['2026-10-02']), eq(d, 'debut', '08:00'), eq(d, 'fin', '12:00'), has(d, 'note', /annecy/i))) },
   { id: 'b03', cote: 'bureau', categorie: 'Interventions', phrase: 'euh ajoute une intervention chez dupont jeudi prochain à 14h pour karim, c’est pour le remplacement du chauffe-eau',

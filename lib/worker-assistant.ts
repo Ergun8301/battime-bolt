@@ -10,7 +10,7 @@ import { generateLocalId } from '@/lib/offline-store';
 import { insertWorkerEntry } from '@/lib/worker-entry';
 import type { AssistantReply, AssistantSource } from '@/lib/assistant';
 import {
-  fromWorkerCall, handleWorkerLocally, shiftMinutes, type Draft, type DraftLine, type WorkerAction, type WorkerLive, type WorkerSnapshot,
+  formatColleagues, fromWorkerCall, handleWorkerLocally, shiftMinutes, type ColleagueRow, type Draft, type DraftLine, type WorkerAction, type WorkerLive, type WorkerSnapshot,
 } from '@/supabase/functions/_shared/worker-assistant-core';
 
 export * from '@/supabase/functions/_shared/worker-assistant-core';
@@ -99,6 +99,14 @@ export function demoWorkerSource(): AssistantSource {
         return toReply({ ...reply, chantiers: DEMO_SNAPSHOT.chantiers, remaining: left } as ServerReply);
       }
       const local = handleWorkerLocally(text, DEMO_SNAPSHOT, DEMO_LIVE);
+      if (local?.kind === 'collegues') {
+        const rows: ColleagueRow[] = [
+          { prenom: 'Sofia', date: local.date, chantier: 'Bureau Martin', ville: 'Villeurbanne', debut: '08:00', fin: '12:00', absent: false },
+          { prenom: 'Lucas', date: local.date, chantier: 'Résidence Leclerc', ville: 'Bron', debut: '07:30', fin: '16:30', absent: false },
+          { prenom: 'Inès', date: local.date, chantier: null, ville: null, debut: null, fin: null, absent: true },
+        ];
+        return { answer: formatColleagues(rows, local.qui, local.date, DEMO_SNAPSHOT.aujourdhui), links: [], remaining: left };
+      }
       if (!local) return { answer: 'Mode démo : essayez « Ce matin 7h30-12h Villa Dupont, après-midi 13h-16h30 Bureau Martin ».', links: [], remaining: left };
       return toReply({ ...local, chantiers: DEMO_SNAPSHOT.chantiers, remaining: left } as ServerReply);
     },
