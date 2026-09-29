@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test:kiosk": "npx -y deno@2 test --allow-env supabase/functions/_shared/kiosk.test.ts"
+    "test:kiosk": "npx -y deno@2 test --allow-env supabase/functions/_shared/kiosk.test.ts",
+    "test:cout": "npx -y deno@2 test --allow-env supabase/functions/_shared/payslip.test.ts",
+    "test:cout-rls": "bash supabase/tests/run-rls.sh supabase/tests/lot2_cout_salarie_rls.sql"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

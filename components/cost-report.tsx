@@ -43,6 +43,8 @@ import { weekStart, weekEnd } from '@/lib/week';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import type { DateRange } from 'react-day-picker';
+import { RealCostLine, REAL_COST_CSS } from '@/components/real-cost-card';
+import { ratesByUser, realLabourCost, supabaseCostSource, useAiEnabled } from '@/lib/real-cost';
 
 interface Props { open: boolean; onOpenChange: (o: boolean) => void; companyId?: string }
 
@@ -55,7 +57,7 @@ interface SiteAgg {
 // Avancement budgétaire : calculé sur TOUT l'historique du chantier, jamais sur
 // la période affichée — un budget porte sur la durée totale du chantier, et ces
 // chiffres doivent coïncider avec ceux des emails d'alerte (70/80/100 %).
-interface BudgetAgg { hours: number | null; amount: number | null; usedMinutes: number; usedCost: number }
+interface BudgetAgg { hours: number | null; amount: number | null; usedMinutes: number; usedCost: number; usedByUser?: Map<string, number> }
 
 const CATEGORIES = [
   { key: 'materiaux', label: 'Matériaux' },
@@ -150,6 +152,17 @@ export default function CostReport({ open, onOpenChange, companyId }: Props) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [missingRates, setMissingRates] = useState(false);
   const [budgets, setBudgets] = useState<Map<string, BudgetAgg>>(new Map());
+  // Coût réel (lot 2) — AJOUTÉ à côté des chiffres existants, qui ne changent pas.
+  // Rien ne s'affiche tant que `ai_enabled` est faux ou qu'aucun bulletin n'est validé.
+  const aiOn = useAiEnabled(open ? companyId : null);
+  const [realRates, setRealRates] = useState<Map<string, number>>(new Map());
+  useEffect(() => {
+    if (!aiOn || !companyId) { setRealRates(new Map()); return; }
+    let stale = false;
+    Promise.all([supabaseCostSource.slips(companyId), supabaseCostSource.fund(companyId)])
+      .then(([slips, fund]) => { if (!stale) setRealRates(ratesByUser(slips, fund)); });
+    return () => { stale = true; };
+  }, [aiOn, companyId]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [failed, setFailed] = useState(false);
 
@@ -275,6 +288,8 @@ export default function CostReport({ open, onOpenChange, companyId }: Props) {
           if (!agg) continue;
           agg.usedMinutes += Number(r.paid_minutes || 0);
           agg.usedCost += Number(r.cost || 0);
+          if (!agg.usedByUser) agg.usedByUser = new Map();
+          agg.usedByUser.set(r.user_id, (agg.usedByUser.get(r.user_id) || 0) + Number(r.paid_minutes || 0));
         }
       } else {
         // Pas de barre plutôt qu'une barre fausse.
@@ -351,7 +366,7 @@ export default function CostReport({ open, onOpenChange, companyId }: Props) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bt-skin max-w-lg max-h-[86vh] overflow-y-auto">
-        <style dangerouslySetInnerHTML={{ __html: CR_CSS }} />
+        <style dangerouslySetInnerHTML={{ __html: CR_CSS + REAL_COST_CSS }} />
         <DialogHeader><DialogTitle>Coût par chantier</DialogTitle></DialogHeader>
 
         {/* période */}
@@ -485,6 +500,18 @@ export default function CostReport({ open, onOpenChange, companyId }: Props) {
                               <div className={`bt-cr-budfill ${tone}`} style={{ width: `${Math.min(pct, 100)}%` }} />
                             </div>
                           </div>
+                        );
+                      })()}
+
+                      {realRates.size > 0 && s.minutes > 0 && (() => {
+                        const period = realLabourCost(Array.from(s.workers.entries()).map(([uid, w]) => [uid, w.minutes] as [string, number]), realRates);
+                        const b = budgets.get(s.id);
+                        const whole = b?.usedByUser ? realLabourCost(Array.from(b.usedByUser.entries()), realRates) : null;
+                        return (
+                          <>
+                            <RealCostLine cost={period.cost} unpricedUsers={period.unpricedUsers} scope="période" />
+                            {whole && <RealCostLine cost={whole.cost} unpricedUsers={whole.unpricedUsers} scope={`tout le chantier${b?.amount ? ` · budget ${fmtEur(b.amount)}` : ''}`} />}
+                          </>
                         );
                       })()}
 

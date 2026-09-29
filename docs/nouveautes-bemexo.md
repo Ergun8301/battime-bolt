@@ -8,8 +8,8 @@ branche, fusionnée seulement après validation de la préview.
 
 | Lot | Sujet | Branche | État |
 |---|---|---|---|
-| 1 | Borne de pointage QR | `feat/borne-qr` | en cours |
-| 2 | — | — | — |
+| 1 | Borne de pointage QR | `feat/borne-qr` | fusionné dans l'intégration (PR 110) — migration non appliquée |
+| 2 | Coût réel d'un salarié (bulletin de paie) | `feat/cout-salarie` | PR ouverte — [détail](cout-salarie.md) |
 | 3 | — | — | — |
 | 4 | — | — | — |
 | 5 | — | — | — |
