@@ -10,6 +10,8 @@ import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Loader2, Upload, Trash2, Building2, CreditCard, Mail, ShieldCheck, MonitorSmartphone } from 'lucide-react';
+import LeaveFundSetting from '@/components/leave-fund-setting';
+import { supabaseCostSource, useAiEnabled } from '@/lib/real-cost';
 import KioskAdmin from '@/components/kiosk-admin';
 import { toast } from 'sonner';
 
@@ -21,7 +23,7 @@ type Form = {
 };
 const EMPTY: Form = { name: '', siret: '', tva_intra: '', address: '', postal_code: '', city: '', phone: '', email: '', logo_url: '' };
 
-const SET_CSS = `
+export const SET_CSS = `
 .bt-set{display:flex;flex-direction:column;gap:9px}
 .bt-set-load{padding:26px;text-align:center;color:#6E6A63;font-weight:600}
 .bt-set-toprow{display:flex;align-items:flex-start;gap:13px}
@@ -96,6 +98,9 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
   // base, la requête échoue seule et rien ne s'affiche.
   const [kioskEnabled, setKioskEnabled] = useState(false);
   const [kioskOpen, setKioskOpen] = useState(false);
+  // Coût réel (lot 2) : réglage « Caisse de congés BTP », seulement si `ai_enabled`.
+  const aiOn = useAiEnabled(open ? user?.company_id : null);
+  const costSource = supabaseCostSource;
   // Horaire hebdomadaire de base : au-delà, les heures sont supplémentaires.
   const [weeklyHours, setWeeklyHours] = useState('35');
   // Destinataire de l'export de paie. Enregistré une fois, modifiable ici : la
@@ -632,6 +637,8 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
                 />
               </div>
             </div>
+
+            {aiOn && user?.company_id && <LeaveFundSetting source={costSource} companyId={user.company_id} />}
 
             {/* Notifications email — déclenchement manuel des mêmes fonctions que
                 les crons (récap hebdo du vendredi, alertes habilitations). Utile

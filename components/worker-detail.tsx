@@ -32,6 +32,7 @@ import { weekStart, weekEnd } from '@/lib/week';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import type { DateRange } from 'react-day-picker';
+import { RealCostSection } from '@/components/real-cost-card';
 
 function formatMinutesToHours(minutes: number): string {
   const h = Math.floor(minutes / 60);
@@ -592,6 +593,9 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
             {worker && !worker.is_active && <Badge variant="secondary" className="text-xs">Archivé</Badge>}
           </DialogTitle>
         </DialogHeader>
+
+        {/* Coût réel (lot 2) : n'apparaît que si l'entreprise a `ai_enabled`, pour l'admin. */}
+        {worker && <RealCostSection companyId={worker.company_id} userId={worker.id} firstName={worker.first_name} />}
 
         {/* Management — only in "manage" mode (settings) */}
         {mode === 'manage' && worker && (
