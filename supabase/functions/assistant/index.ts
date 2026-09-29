@@ -137,6 +137,7 @@ Deno.serve(async (req) => {
       reserves: (reserves.data ?? []) as Parameters<typeof buildActionContext>[0]['reserves'],
       closures: (closures.data ?? []) as Parameters<typeof buildActionContext>[0]['closures'],
     });
+    ctx.me = user.id;
 
     // 1. Les demandes courantes se règlent sans IA (sauf s'il y a un fichier à lire).
     const local = att.file ? null : handleActionLocally(question, ctx);

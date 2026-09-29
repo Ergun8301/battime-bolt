@@ -46,11 +46,11 @@ export async function createWorksite(companyId: string, w: NewWorksite) {
  * (lot 7 : « Annuler » de l'assistant). `estimatedStart` : heure prévue, comme
  * « Heure fixe » dans la bulle.
  */
-export async function addPlanningSlot(p: { companyId: string; createdBy: string; userId: string; worksiteId: string; workDate: string; notes?: string | null; estimatedStart?: string | null }): Promise<string> {
+export async function addPlanningSlot(p: { companyId: string; createdBy: string; userId: string; worksiteId: string; workDate: string; notes?: string | null; estimatedStart?: string | null; estimatedEnd?: string | null }): Promise<string> {
   const { data, error } = await supabase.from('planning').insert({
     company_id: p.companyId, created_by: p.createdBy, user_id: p.userId,
     worksite_id: p.worksiteId, work_date: p.workDate,
-    estimated_start: p.estimatedStart ? `${p.estimatedStart.slice(0, 5)}:00` : null, estimated_end: null,
+    estimated_start: p.estimatedStart ? `${p.estimatedStart.slice(0, 5)}:00` : null, estimated_end: p.estimatedEnd ? `${p.estimatedEnd.slice(0, 5)}:00` : null,
     notes: (p.notes ?? '').trim() || null, absence_type: null,
   }).select('id').single();
   if (error) throw error;

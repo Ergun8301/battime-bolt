@@ -21,13 +21,13 @@ import {
 import { removeWorksiteDocument, uploadWorksiteDocument } from '@/lib/chantier-docs';
 import { sanitizeExtraction, supabaseCostSource } from '@/lib/real-cost';
 import { corrigerHeures } from '@/lib/corrections';
-import type { ActionDraft, ActionQuestion } from '@/supabase/functions/_shared/assistant-actions-core';
+import { DOC_CATEGORY_LABEL, type ActionDraft, type ActionQuestion } from '@/supabase/functions/_shared/assistant-actions-core';
 
 export type {
   ActionDraft, AssistantAction, EntryChoice, ActionQuestion,
 } from '@/supabase/functions/_shared/assistant-actions-core';
 export {
-  ABSENCE_KINDS, ABSENCE_LABEL, CERT_LABEL, EXPENSE_LABEL, ROLE_LABEL, actionMode, applyAnswer, checkAction, frDate, questionFor, summarize,
+  ABSENCE_KINDS, ABSENCE_LABEL, CERT_LABEL, DOC_CATEGORY_LABEL, EXPENSE_LABEL, ROLE_LABEL, actionMode, applyAnswer, checkAction, frDate, questionFor, summarize,
 } from '@/supabase/functions/_shared/assistant-actions-core';
 
 export interface ActionOptions {
@@ -117,8 +117,11 @@ export function makeActionExecutor(user: { id: string; company_id: string }): Ac
         }
         case 'ranger_document': {
           if (!attachment) return { ok: false, message: 'Aucun fichier joint.' };
-          const doc = await uploadWorksiteDocument({ companyId: cid, userId: user.id, worksiteId: d.worksite_id!, file: attachment });
-          message = 'Document rangé dans le chantier.';
+          const doc = await uploadWorksiteDocument({
+            companyId: cid, userId: user.id, worksiteId: d.worksite_id!, file: attachment,
+            ...(d.categorie ? { category: d.categorie } : {}), ...(d.libelle ? { label: d.libelle } : {}),
+          });
+          message = d.categorie ? `Rangé dans le chantier (${DOC_CATEGORY_LABEL[d.categorie]}).` : 'Document rangé dans le chantier.';
           undo = () => removeWorksiteDocument(doc.id, doc.path);
           break;
         }
@@ -130,7 +133,7 @@ export function makeActionExecutor(user: { id: string; company_id: string }): Ac
         }
         case 'affecter_planning': {
           const ids: string[] = [];
-          for (const day of d.dates) ids.push(await addPlanningSlot({ ...base, userId: d.user_id!, worksiteId: d.worksite_id!, workDate: day, notes: d.note, estimatedStart: d.debut || null }));
+          for (const day of d.dates) ids.push(await addPlanningSlot({ ...base, userId: d.user_id!, worksiteId: d.worksite_id!, workDate: day, notes: d.note, estimatedStart: d.debut || null, estimatedEnd: d.fin || null }));
           message = `${d.dates.length} jour${d.dates.length > 1 ? 's' : ''} ajouté${d.dates.length > 1 ? 's' : ''} au planning.`;
           undo = async () => {
             const { error } = await supabase.from('planning').delete().eq('company_id', cid).in('id', ids);
@@ -262,6 +265,10 @@ export function makeActionExecutor(user: { id: string; company_id: string }): Ac
             phone: d.telephone || cur.phone, email: d.email || cur.email, address: d.adresse || cur.address,
             postal_code: d.code_postal || cur.postal_code, city: d.ville || cur.city,
           });
+          if (d.planning_collegues) {
+            const { error } = await supabase.rpc('set_colleagues_planning', { p_enabled: d.planning_collegues === 'oui' });
+            if (error) throw error;
+          }
           message = 'Réglages enregistrés.';
           break;
         }

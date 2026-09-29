@@ -7,7 +7,7 @@
 //
 // Sans réseau ni base : testable, identique côté serveur et navigateur.
 
-const deaccent = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '');
+const deaccent = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 export const low = (s: string) => deaccent(s.toLowerCase()).replace(/[’']/g, "'");
 
 // ── Nettoyage de l'oral ─────────────────────────────────────────────────────
@@ -31,7 +31,7 @@ export function cleanSpoken(s: string): string {
   }
   t = out + t.slice(last);
   return t.replace(/\s+([,;.!?])/g, '$1').replace(/([,;])\1+/g, '$1').replace(/\s{2,}/g, ' ')
-    .replace(/^[\s,;.:!?-]+|[\s,;:!?-]+$/g, '').trim();
+    .replace(/^[\s,;.:!?-]+|[\s,;.:!?-]+$/g, '').trim();
 }
 
 export const capitalize = (s: string) => (s ? s.charAt(0).toLocaleUpperCase('fr-FR') + s.slice(1) : s);
@@ -132,6 +132,27 @@ export function parseDateFr(text: string, today: string): string {
 function validIso(iso: string): boolean {
   const d = new Date(`${iso}T12:00:00Z`);
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === iso;
+}
+
+/**
+ * Une période dite : « du 20 au 24 octobre », « du 12/10 au 16/10 », « du lundi
+ * au mercredi », « demain et après-demain ». null si rien de clair.
+ */
+export function parseDateRangeFr(text: string, today: string): { du: string; au: string } | null {
+  const n = low(text);
+  const m = /\bdu\s+(.+?)\s+(?:au|jusqu'?au|a)\s+(.+?)(?:[,.;]|$)/.exec(n);
+  if (m) {
+    const moisFin = new RegExp(`\\b(${MOIS.join('|')})\\b`).exec(m[2])?.[1] ?? '';
+    const debut = /^\d{1,2}(?:er)?$/.test(m[1].trim()) && moisFin ? `${m[1].trim()} ${moisFin}` : m[1];
+    const du = parseDateFr(/^\d{1,2}(?:er)?$/.test(debut.trim()) ? `le ${debut}` : debut, today);
+    const au = parseDateFr(/^\d{1,2}(?:er)?$/.test(m[2].trim()) ? `le ${m[2]}` : m[2], today);
+    if (du && au && au >= du) return { du, au };
+  }
+  // « aujourd'hui et demain », « lundi et mardi » : les deux bouts.
+  const parts = n.split(/\bet\b/).map((x) => parseDateFr(x, today)).filter(Boolean).sort();
+  if (parts.length >= 2) return { du: parts[0], au: parts[parts.length - 1] };
+  const one = parseDateFr(n, today);
+  return one ? { du: one, au: one } : null;
 }
 
 /** Une heure dite → « HH:MM » (ou ''). « 14h », « 8h30 », « 8 heures », « midi ». */

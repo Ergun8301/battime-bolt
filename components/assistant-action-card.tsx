@@ -14,7 +14,7 @@ import {
   CalendarClock, Check, ShieldCheck, Receipt, Archive, UserCog, Send, BellRing, Lock, Link2, BadgeCheck, UserPen, UserX, Wallet, Settings,
 } from 'lucide-react';
 import {
-  ABSENCE_KINDS, ABSENCE_LABEL, CERT_LABEL, EXPENSE_LABEL, ROLE_LABEL, actionMode, applyAnswer, bulletinFigures, checkAction, frDate, questionFor, summarize,
+  ABSENCE_KINDS, ABSENCE_LABEL, CERT_LABEL, DOC_CATEGORY_LABEL, EXPENSE_LABEL, ROLE_LABEL, actionMode, applyAnswer, bulletinFigures, checkAction, frDate, questionFor, summarize,
   type ActionDraft, type ActionExecutor, type ActionExtra, type ActionResult,
 } from '@/lib/assistant-actions';
 import { ActionAsk, ActionDone } from '@/components/action-done';
@@ -258,7 +258,10 @@ export default function AssistantActionCard({ extra, execute, onDone }: Props) {
         </div>
         <div className="ac-row">
           <div><label>Objet (facultatif)</label><input value={d.note} placeholder="Ex. : Remplacement chauffe-eau" onChange={(e) => set({ note: e.target.value })} /></div>
-          <div style={{ maxWidth: 110 }}><label>Heure</label><input type="time" value={d.debut ?? ''} onChange={(e) => set({ debut: e.target.value })} /></div>
+        </div>
+        <div className="ac-row">
+          <div><label>Début</label><input type="time" value={d.debut ?? ''} onChange={(e) => set({ debut: e.target.value })} /></div>
+          <div><label>Fin</label><input type="time" value={d.fin ?? ''} onChange={(e) => set({ fin: e.target.value })} /></div>
         </div>
       </>);
       break;
@@ -297,9 +300,18 @@ export default function AssistantActionCard({ extra, execute, onDone }: Props) {
       break;
     }
     case 'ranger_document':
-      body = (
+      body = (<>
         <div><label>Chantier</label>{chSelect(d.worksite_id, (v) => set({ worksite_id: v }), d.chantier_texte)}</div>
-      );
+        <div className="ac-row">
+          <div><label>Catégorie</label>
+            <select value={d.categorie ?? ''} onChange={(e) => set({ categorie: e.target.value || undefined })}>
+              <option value="">Sans catégorie</option>
+              {Object.entries(DOC_CATEGORY_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+          </div>
+          <div><label>Nom</label><input value={d.libelle ?? ''} onChange={(e) => set({ libelle: e.target.value })} /></div>
+        </div>
+      </>);
       break;
     case 'corriger_pointage':
       body = (<>

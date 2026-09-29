@@ -20,7 +20,10 @@
     "test:assistant-actions": "npx -y deno@2 test --allow-env supabase/functions/_shared/assistant-actions.test.ts",
     "test:assistant-actions-rls": "bash supabase/tests/run-rls.sh supabase/tests/lot3bis_assistant_actions.sql",
     "test:assistant-journal": "bash supabase/tests/run-rls.sh supabase/tests/lot7_assistant_journal.sql",
-    "test:collegues": "bash supabase/tests/run-rls.sh supabase/tests/lot7_collegues_documents.sql"
+    "test:collegues": "bash supabase/tests/run-rls.sh supabase/tests/lot7_collegues_documents.sql",
+    "test:assistant-aide": "npx -y deno@2 test --allow-read supabase/functions/_shared/assistant-aide.test.ts",
+    "test:assistant-eval": "npx -y deno@2 test --allow-env supabase/functions/assistant-eval/eval.test.ts",
+    "test:fr-langue": "npx -y deno@2 test --allow-env supabase/functions/_shared/fr-langue.test.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

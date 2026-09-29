@@ -33,6 +33,7 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
+import { DOC_CATEGORY_LABEL } from '@/supabase/functions/_shared/worker-assistant-core';
 import { DOC_MAX_BYTES, uploadWorksiteDocument } from '@/lib/chantier-docs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
@@ -45,6 +46,8 @@ import { toast } from 'sonner';
 type Uploader = { first_name: string | null; last_name: string | null };
 interface DocRow {
   id: string; label: string | null; file_path: string; file_name: string | null;
+  /** Lot 7 : catégorie (posée par l'Assistant) — absente tant que la migration n'est pas là. */
+  category?: string | null;
   mime_type: string | null; size_bytes: number | null; created_at: string;
   uploaded_by: string | null; uploader?: Uploader | Uploader[] | null;
   work_date: string | null; time_entry_id: string | null;
@@ -144,11 +147,15 @@ export default function ChantierDocuments({
   const fetchDocs = async () => {
     if (!worksiteId) return;
     setLoading(true);
-    const { data } = await supabase.from('documents')
-      .select('id,label,file_path,file_name,mime_type,size_bytes,created_at,uploaded_by,work_date,time_entry_id,uploader:users!uploaded_by(first_name,last_name)')
+    const cols = 'id,label,file_path,file_name,mime_type,size_bytes,created_at,uploaded_by,work_date,time_entry_id,uploader:users!uploaded_by(first_name,last_name)';
+    const read = (withCategory: boolean) => supabase.from('documents')
+      .select(withCategory ? `${cols},category` : cols)
       .eq('worksite_id', worksiteId)
       .order('work_date', { ascending: false, nullsFirst: false })
       .order('created_at', { ascending: false });
+    // Avec la catégorie (lot 7) ; sans, si la colonne n'existe pas encore.
+    let { data, error } = await read(true);
+    if (error) ({ data } = await read(false));
     const rows = (data || []) as unknown as DocRow[];
     setDocs(rows);
     const paths = rows.map((r) => r.file_path);
@@ -364,6 +371,11 @@ export default function ChantierDocuments({
                       </a>
                       <div className="bt-doc-meta">
                         <a className="bt-doc-name" href={url} target="_blank" rel="noopener noreferrer">{d.label || d.file_name || 'Document'}</a>
+                        {d.category && d.category !== 'photo' && (
+                          <span style={{ display: 'inline-block', marginLeft: 6, fontSize: 10.5, fontWeight: 800, padding: '1px 7px', borderRadius: 999, background: d.category === 'facture_payee' ? '#E3F5EA' : '#FFF2CC', color: '#15120F' }}>
+                            {DOC_CATEGORY_LABEL[d.category] ?? d.category}
+                          </span>
+                        )}
                         {/* Date + HEURE (horodatage serveur) : sur un chantier, savoir qu'une
                             photo a été prise à 8h12 ou à 17h45 change tout pour une réserve. */}
                         <div className="bt-doc-sub">
