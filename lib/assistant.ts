@@ -81,6 +81,7 @@ export function demoActionContext(): ActionContext {
       { id: 'demo-martin', nom: 'Bureau Martin', ville: 'Villeurbanne' },
       { id: 'demo-leclerc', nom: 'Résidence Leclerc', ville: 'Bron' },
       { id: 'demo-dupont-viriat', nom: 'Dupont', ville: 'Viriat' },
+      { id: 'demo-autre', nom: 'Autre', ville: null },
     ],
     planning: [
       ...week.map((d) => ({ user_id: 'demo-karim', date: d, worksite_id: 'demo-dupont', absence: null })),
