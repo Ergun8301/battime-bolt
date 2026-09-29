@@ -9,6 +9,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { requestLeave } from '@/lib/leave';
 import { LeaveRequest, LeaveType } from '@/lib/types';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -73,10 +74,7 @@ export default function LeaveRequestDialog({ open, onOpenChange, userId }: Props
     if (end < start) { toast.error('La date de fin est avant le début'); return; }
     setSaving(true);
     try {
-      const { error } = await supabase.rpc('request_leave', {
-        p_type: type, p_start_date: start, p_end_date: end, p_note: note.trim() || null,
-      });
-      if (error) throw error;
+      await requestLeave({ type, start, end, note });
       toast.success('Demande envoyée');
       setStart(''); setEnd(''); setNote(''); setType('conge'); setAdding(false);
       fetchRows();

@@ -4,6 +4,7 @@
 // mais le VRAI lecteur de phrases. Préviews uniquement (`?demo=salarie`).
 
 import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
 import WorkerAssistant from '@/components/worker-assistant';
 import { isWorkerAssistantDemo } from '@/lib/worker-assistant';
 
@@ -29,7 +30,7 @@ export default function ApercuAssistantSalarie() {
           ))}
         </div>
       </div>
-      <WorkerAssistant />
+      <WorkerAssistant onNavigate={(a) => toast.success(`Ouverture : ${a}`)} />
     </main>
   );
 }

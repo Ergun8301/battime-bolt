@@ -41,7 +41,10 @@ import ChantierDocuments from '@/components/chantier-documents';
 import { TimeCylinder } from '@/components/time-cylinder';
 import CompanySettings from '@/components/company-settings';
 import AssistantPanel from '@/components/assistant-panel';
+import { addPlanningSlot, createWorksite, inviteWorker, setAbsence } from '@/lib/planning-writes';
 import { supabaseAssistantSource } from '@/lib/assistant';
+import AssistantActionCard from '@/components/assistant-action-card';
+import { makeActionExecutor, type ActionExtra } from '@/lib/assistant-actions';
 import { useAiEnabled } from '@/lib/real-cost';
 import AdminMobileMenu from '@/components/admin-mobile-menu';
 import ImportDialog from '@/components/import-dialog';
@@ -1321,11 +1324,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       if (!drag.worksiteId) return;
       const ws = worksites.find(w => w.id === drag.worksiteId);
       try {
-        const { error } = await supabase.from('planning').insert({
-          company_id: user.company_id, created_by: user.id, user_id: tWorker, worksite_id: drag.worksiteId,
-          work_date: tDate, estimated_start: null, estimated_end: null, notes: null, absence_type: null,
-        });
-        if (error) throw error;
+        await addPlanningSlot({ companyId: user.company_id, createdBy: user.id, userId: tWorker, worksiteId: drag.worksiteId, workDate: tDate });
         toast.success(`${ws?.client_name || 'Client'} ajouté au planning`);
         fetchPlanning();
       } catch (err) {
@@ -1397,13 +1396,10 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     if (!addWorksite) { toast.error('Choisissez un client'); return; }
     setAddSaving(true);
     try {
-      const { error } = await supabase.from('planning').insert({
-        company_id: user.company_id, created_by: user.id, user_id: addTarget.workerId,
-        worksite_id: addWorksite, work_date: addTarget.date,
-        estimated_start: null, estimated_end: null,
-        notes: addNote.trim() || null, absence_type: null,
+      await addPlanningSlot({
+        companyId: user.company_id, createdBy: user.id, userId: addTarget.workerId,
+        worksiteId: addWorksite, workDate: addTarget.date, notes: addNote,
       });
-      if (error) throw error;
       toast.success('Ajouté au planning');
       setAddOpen(false);
       setAddTarget(null);
@@ -1451,26 +1447,8 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     if (endStr < fromStr) { toast.error('La date de fin est avant le début'); return; }
     setAbsSaving(true);
     try {
-      const dates: string[] = [];
-      let d = new Date(`${fromStr}T00:00:00`);
-      const endD = new Date(`${endStr}T00:00:00`);
-      let guard = 0;
-      while (d <= endD && guard < 400) { dates.push(format(d, 'yyyy-MM-dd')); d = addDays(d, 1); guard++; }
-
-      // Borné à la période posée : sans le `.lte`, poser deux jours de maladie
-      // effaçait toutes les absences déjà prévues après (congés du mois suivant).
-      const { error: delErr } = await supabase.from('planning').delete()
-        .eq('company_id', user.company_id).eq('user_id', worker.id)
-        .gte('work_date', fromStr).lte('work_date', endStr).not('absence_type', 'is', null);
-      if (delErr) throw delErr;
-
-      const rows = dates.map((dt) => ({
-        company_id: user.company_id, created_by: user.id, user_id: worker.id,
-        worksite_id: null, work_date: dt, estimated_start: null, estimated_end: null,
-        notes: null, absence_type: type,
-      }));
-      const { error } = await supabase.from('planning').insert(rows);
-      if (error) throw error;
+      // Même geste que l'Assistant BEMEXO : lib/planning-writes.ts.
+      await setAbsence({ companyId: user.company_id, createdBy: user.id, userId: worker.id, type, from: fromStr, to: endStr });
 
       toast.success(absRange?.to ? "Absence enregistrée jusqu'à la date de fin" : 'Absence enregistrée (jusqu\'au retour « Présent »)');
       setPendingAbsence(null);
@@ -1947,12 +1925,10 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     if (!cName.trim()) { toast.error('Le nom du client est requis'); return; }
     setCSaving(true);
     try {
-      const { data, error } = await supabase.from('worksites').insert({
-        company_id: user.company_id, client_name: cName.trim(), product_type: cProduct.trim() || null,
-        client_phone: cPhone.trim() || null, client_email: cEmail.trim() || null, city: cCity.trim() || null, address: cAddress.trim() || null,
-        description: cDesc.trim() || null, is_active: true,
-      }).select().single();
-      if (error) throw error;
+      const data = await createWorksite(user.company_id, {
+        client_name: cName, product_type: cProduct, client_phone: cPhone, client_email: cEmail,
+        city: cCity, address: cAddress, description: cDesc,
+      });
       setClientOpen(false);
       resetClient();
       await fetchData();
@@ -1977,10 +1953,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     if (!user?.company_id) return;
     setWSaving(true);
     try {
-      const { error } = await supabase.functions.invoke('invite-worker', {
-        body: { email: wEmail, first_name: wFirst, last_name: wLast, phone: wPhone || null, company_id: user.company_id, role: 'worker' },
-      });
-      if (error) throw error;
+      await inviteWorker({ companyId: user.company_id, email: wEmail, firstName: wFirst, lastName: wLast, phone: wPhone });
       toast.success('Invitation envoyée');
       setWorkerOpen(false);
       resetWorker();
@@ -2813,14 +2786,29 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       {aiOn && user?.role === 'admin' && (
         <AssistantPanel
           source={supabaseAssistantSource}
+          attachments
           onNavigate={(action) => {
             if (action === 'couts') setCostOpen(true);
             else if (action === 'conges') setLeaveOpen(true);
+            else if (action === 'salaries') setSalariesOpen(true);
+            else if (action === 'nouveau_salarie') setWorkerOpen(true);
+            else if (action === 'nouveau_client') setClientOpen(true);
+            else if (action === 'import_clients') setImportOpen(true);
+            else if (action === 'reserves') setReservesOpen(true);
+            else if (action === 'export') setExportOpen(true);
+            else if (action === 'reglages') setSettingsOpen(true);
             else if (action.startsWith('salarie:')) {
               const w = workers.find((x) => x.id === action.slice(8));
               if (w) { setFicheMode('hours'); setFicheWorker(w); }
             }
           }}
+          renderExtra={(extra) => (
+            <AssistantActionCard
+              extra={extra as ActionExtra}
+              execute={makeActionExecutor({ id: user.id, company_id: user.company_id })}
+              onDone={() => { fetchData(); fetchExtras(); }}
+            />
+          )}
         />
       )}
 

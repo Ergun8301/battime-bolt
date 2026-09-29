@@ -33,6 +33,7 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
+import { DOC_MAX_BYTES, uploadWorksiteDocument } from '@/lib/chantier-docs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
   Loader2, Trash2, FileText, FolderOpen, Download, Mail, Copy, Camera, Paperclip, Link2,
@@ -235,34 +236,13 @@ export default function ChantierDocuments({
 
   const onPick = async (file: File | undefined) => {
     if (!file || !worksiteId || !user?.company_id || !user?.id) return;
-    if (file.size > 15 * 1024 * 1024) { toast.error('Fichier trop lourd (15 Mo max).'); return; }
-    // Le classement suit le TYPE du fichier, jamais le bouton cliqué. Une image
-    // choisie via « Fichier » est rangée dans Photos par la liste ; basculer sur
-    // l'onglet Fichiers la ferait disparaître sous les yeux de la personne qui
-    // vient de l'envoyer.
-    const image = (file.type || '').startsWith('image/');
+    if (file.size > DOC_MAX_BYTES) { toast.error('Fichier trop lourd (15 Mo max).'); return; }
     setUploading(true);
     try {
-      const ext = (file.name.split('.').pop() || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '') || 'bin';
-      const path = `${user.company_id}/${worksiteId}/${crypto.randomUUID()}.${ext}`;
-      const { error: upErr } = await supabase.storage.from('chantier-docs').upload(path, file, { contentType: file.type || undefined });
-      if (upErr) throw upErr;
-      const { error: insErr } = await supabase.from('documents').insert({
-        company_id: user.company_id, worksite_id: worksiteId, uploaded_by: user.id,
-        // Nom : celui du fichier pour un document choisi, RIEN pour une photo —
-        // la base le compose alors elle-même, à son heure à elle.
-        label: image ? null : file.name,
-        file_path: path, file_name: file.name, mime_type: file.type || null, size_bytes: file.size,
-        // Le jour et l'intervention : la base revérifie et rectifie la date
-        // d'après l'intervention, elle ne fait pas confiance au navigateur.
-        work_date: workDate, time_entry_id: timeEntryId,
+      // Même geste que l'Assistant BEMEXO : lib/chantier-docs.ts.
+      const { image } = await uploadWorksiteDocument({
+        companyId: user.company_id, userId: user.id, worksiteId, file, workDate, timeEntryId,
       });
-      if (insErr) {
-        // Le fichier est déjà dans le bucket : sans ce nettoyage, il y resterait
-        // sans aucune ligne pour le retrouver ni le supprimer.
-        await supabase.storage.from('chantier-docs').remove([path]);
-        throw insErr;
-      }
       setTab(image ? 'photos' : 'files');
       toast.success(image ? 'Photo ajoutée' : 'Fichier ajouté');
       await fetchDocs();
