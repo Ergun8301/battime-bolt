@@ -91,7 +91,7 @@ Deno.serve(async (req) => {
     const hier = previousDay(today);
     const cid = me.company_id as string;
     const planFrom = addDays(mondayOf(today), -14), planTo = addDays(mondayOf(today), 13);
-    const [workers, sites, all, month, entries, planY, planT, sessions, leaves, plan] = await Promise.all([
+    const [workers, sites, all, month, entries, planY, planT, sessions, leaves, plan, recent] = await Promise.all([
       db.from('users').select('id, company_id, first_name, last_name, role, is_active').eq('company_id', cid),
       db.from('worksites').select('id, company_id, client_name, city, budget_hours, budget_amount').eq('company_id', cid).eq('is_active', true),
       db.rpc('my_worksite_labour', { p_from: null, p_to: null }),
@@ -102,6 +102,8 @@ Deno.serve(async (req) => {
       db.from('active_sessions').select('user_id, company_id, worksite_id, started_at').eq('company_id', cid),
       db.from('leave_requests').select('user_id, company_id, type, start_date, end_date').eq('company_id', cid).eq('status', 'pending'),
       db.from('planning').select('user_id, company_id, work_date, worksite_id, absence_type').eq('company_id', cid).gte('work_date', planFrom).lte('work_date', planTo),
+      db.from('time_entries').select('user_id, company_id, work_date, worksite_id').eq('company_id', cid).neq('status', 'cancelled')
+        .gte('work_date', addDays(today, -56)).lte('work_date', today).order('work_date', { ascending: false }).limit(2000),
     ]);
     const raw: RawData = {
       companyId: cid, today,
@@ -119,6 +121,8 @@ Deno.serve(async (req) => {
       companyId: cid, today, users: raw.workers, worksites: raw.worksites,
       planning: (plan.data ?? []) as Parameters<typeof buildActionContext>[0]['planning'],
       leaves: raw.pendingLeaves,
+      entries: (recent.data ?? []) as Parameters<typeof buildActionContext>[0]['entries'],
+      sessions: raw.activeSessions,
     });
 
     // 1. Les demandes courantes se règlent sans IA (sauf s'il y a un fichier à lire).

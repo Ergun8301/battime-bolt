@@ -11,7 +11,7 @@ Toujours derrière **`companies.ai_enabled`**. Il remplace « lecture seule » p
 | « Crée le client Garnier à Caluire » | Carte client | `createWorksite` → `worksites` |
 | « Poser un congé » / « Karim malade du 1er au 3 » | Carte d'absence | `setAbsence` (même règle que « Statut ») |
 | « Mets Lucas sur Villa Dupont demain » | Carte d'affectation | `addPlanningSlot` → `planning` |
-| « Fais le planning de la semaine prochaine » | **Brouillon** : chantier habituel de chacun, congés et jours déjà planifiés respectés, congés en attente signalés | `addPlanningSlot`, ligne par ligne, après « Appliquer » |
+| « Fais le planning de la semaine prochaine » | **Brouillon** : chantier habituel de chacun (sinon, dans l’ordre : planning de la semaine en cours → dernier chantier pointé → chantier actif le plus utilisé ; chaque repli expliqué, « Pas de chantier » en dernier recours), congés et jours déjà planifiés respectés, congés en attente signalés | `addPlanningSlot`, ligne par ligne, après « Appliquer » |
 | « Corrige Karim hier 7h30-16h » | Carte de correction (choix de la ligne si plusieurs) | `corrigerHeures` → RPC `correct_time_entry` + le salarié est prévenu |
 | « Comment je clôture le mois ? » | 3 étapes + **M'y emmener** | Ouvre l'écran (Exporter, Réglages, Salariés…) |
 | « Qui n'a pas pointé hier ? » | Réponse chiffrée, comme avant | — |

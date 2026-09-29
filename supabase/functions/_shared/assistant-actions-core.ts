@@ -186,6 +186,8 @@ export interface ActionContext {
   planning: { user_id: string; date: string; worksite_id: string | null; absence: string | null }[];
   /** Demandes de congé en attente (pas encore au planning). */
   congesEnAttente: { user_id: string; du: string; au: string }[];
+  /** Pointages récents (8 semaines) + pointage en cours : chantier seulement, jamais les heures. */
+  pointages?: { user_id: string; date: string; worksite_id: string }[];
 }
 
 export interface EntryChoice { id: string; chantier: string; debut: string; fin: string }
@@ -217,6 +219,8 @@ export function buildActionContext(raw: {
   worksites: { id: string; company_id: string; client_name: string | null; city: string | null }[];
   planning: { user_id: string; company_id: string; work_date: string; worksite_id: string | null; absence_type: string | null }[];
   leaves: { user_id: string; company_id: string; start_date: string; end_date: string }[];
+  entries?: { user_id: string; company_id: string; work_date: string; worksite_id: string | null }[];
+  sessions?: { user_id: string; company_id: string; worksite_id: string; started_at: string }[];
 }): ActionContext {
   const mine = <T extends { company_id: string }>(r: T[]) => r.filter((x) => x.company_id === raw.companyId);
   const salaries = mine(raw.users).filter((u) => u.is_active !== false)
@@ -229,6 +233,12 @@ export function buildActionContext(raw: {
     planning: mine(raw.planning).filter((p) => ids.has(p.user_id))
       .map((p) => ({ user_id: p.user_id, date: p.work_date, worksite_id: p.worksite_id, absence: p.absence_type })),
     congesEnAttente: mine(raw.leaves).filter((l) => ids.has(l.user_id)).map((l) => ({ user_id: l.user_id, du: l.start_date, au: l.end_date })),
+    pointages: [
+      ...mine(raw.entries ?? []).filter((e) => ids.has(e.user_id) && e.worksite_id)
+        .map((e) => ({ user_id: e.user_id, date: e.work_date, worksite_id: e.worksite_id! })),
+      ...mine(raw.sessions ?? []).filter((x) => ids.has(x.user_id))
+        .map((x) => ({ user_id: x.user_id, date: raw.today, worksite_id: x.worksite_id })),
+    ],
   };
 }
 
@@ -383,8 +393,10 @@ export function prepare(type: string, raw: Record<string, unknown>, ctx: ActionC
       break;
     }
     case 'planning_semaine': {
+      // Semaine mal comprise (passée, année fausse, trop loin) → semaine prochaine.
       const want = isoDate(raw.semaine_du);
-      return proposeWeek(ctx, want ? mondayOf(want) : addDays(mondayOf(ctx.today), 7));
+      const ok = want && want >= mondayOf(ctx.today) && want <= addDays(ctx.today, 90);
+      return proposeWeek(ctx, ok ? mondayOf(want) : addDays(mondayOf(ctx.today), 7));
     }
     case 'corriger_pointage': {
       const s = str(raw.salarie, 80);
@@ -406,7 +418,10 @@ export function prepare(type: string, raw: Record<string, unknown>, ctx: ActionC
  *   • du lundi au vendredi ; rien les jours de congé / absence déjà posés,
  *     ni les jours de congé demandés (en attente) — signalés ;
  *   • les jours déjà planifiés ne sont pas touchés (pas de doublon) ;
- *   • sans chantier habituel : ligne « à choisir » dans la carte.
+ *   • sans chantier habituel, dans cet ordre : chantier du planning de la
+ *     semaine en cours → dernier chantier pointé → chantier actif le plus
+ *     utilisé de l'entreprise ; chaque repli est expliqué en une ligne ;
+ *   • « Pas de chantier » seulement en dernier recours, expliqué aussi.
  */
 export function proposeWeek(ctx: ActionContext, weekStart: string): AssistantAction {
   const days = [0, 1, 2, 3, 4].map((i) => addDays(weekStart, i));
@@ -415,13 +430,35 @@ export function proposeWeek(ctx: ActionContext, weekStart: string): AssistantAct
   const lignes: { user_id: string; date: string; worksite_id: string | null }[] = [];
   const notes: string[] = [];
   const nameOf = new Map(ctx.salaries.map((s) => [s.id, fullName(s)]));
+  const siteLabel = (id: string) => { const c = ctx.chantiers.find((x) => x.id === id); return c ? `${c.nom}${c.ville ? ` · ${c.ville}` : ''}` : 'Chantier'; };
+  const top = (ids: string[]) => {
+    const n = new Map<string, number>();
+    ids.filter((id) => active.has(id)).forEach((id) => n.set(id, (n.get(id) || 0) + 1));
+    return Array.from(n.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+  };
+  const pointages = (ctx.pointages ?? []).filter((p) => active.has(p.worksite_id) && p.date < weekStart);
+  const companyTop = top([
+    ...ctx.planning.filter((r) => r.worksite_id && !r.absence && r.date >= histFrom && r.date < weekStart).map((r) => r.worksite_id!),
+    ...pointages.map((p) => p.worksite_id),
+  ]);
+  const thisWeek = mondayOf(ctx.today);
   for (const s of ctx.salaries.filter((x) => x.role !== 'admin')) {
     const count = new Map<string, number>();
     for (const r of ctx.planning) {
       if (r.user_id !== s.id || !r.worksite_id || r.absence || r.date < histFrom || r.date >= weekStart || !active.has(r.worksite_id)) continue;
       count.set(r.worksite_id, (count.get(r.worksite_id) || 0) + 1);
     }
-    const habit = Array.from(count.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+    let habit = Array.from(count.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+    let why = '';
+    if (!habit) {
+      habit = top(ctx.planning.filter((r) => r.user_id === s.id && r.worksite_id && !r.absence && r.date >= thisWeek && r.date < addDays(thisWeek, 7)).map((r) => r.worksite_id!));
+      if (habit) why = 'chantier du planning de cette semaine';
+    }
+    if (!habit) {
+      habit = pointages.filter((p) => p.user_id === s.id).sort((a, b) => (a.date < b.date ? 1 : -1))[0]?.worksite_id ?? null;
+      if (habit) why = 'dernier chantier pointé';
+    }
+    if (!habit && companyTop) { habit = companyTop; why = 'chantier le plus utilisé de l’entreprise'; }
     let off = 0, already = 0, pending = 0;
     for (const day of days) {
       const rows = ctx.planning.filter((r) => r.user_id === s.id && r.date === day);
@@ -434,7 +471,9 @@ export function proposeWeek(ctx: ActionContext, weekStart: string): AssistantAct
     if (off) notes.push(`${who} : ${off} jour${off > 1 ? 's' : ''} d’absence déjà posé${off > 1 ? 's' : ''}, laissé${off > 1 ? 's' : ''} libre${off > 1 ? 's' : ''}.`);
     if (already) notes.push(`${who} : ${already} jour${already > 1 ? 's' : ''} déjà planifié${already > 1 ? 's' : ''}, pas touché${already > 1 ? 's' : ''}.`);
     if (pending) notes.push(`${who} : congé demandé en attente, jours laissés libres. Répondez à la demande.`);
-    if (!habit && days.length > off + already + pending) notes.push(`${who} : pas de chantier habituel, à choisir.`);
+    const free = days.length > off + already + pending;
+    if (free && habit && why) notes.push(`${who} : ${siteLabel(habit)} (${why}), à vérifier.`);
+    if (free && !habit) notes.push(`${who} : aucun chantier trouvé (ni planning, ni pointage récent) : « Pas de chantier », à choisir.`);
   }
   const d: ActionDraft = { type: 'planning_semaine', semaine_du: weekStart, lignes, notes };
   return { draft: d, problems: checkAction(d, ctx) };
