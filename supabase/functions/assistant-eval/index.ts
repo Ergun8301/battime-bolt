@@ -107,7 +107,9 @@ Deno.serve(async (req) => {
   // refus « trop de requêtes » (le banc d'essai ne doit pas mesurer le quota).
   // Mesure honnête : une action part TOUJOURS sur le modèle fort (pas de repli
   // silencieux sur le léger quand le quota refuse), une question sur le léger.
-  const pinned = (m: string) => ({ get: (k: string) => (k === 'AI_MODEL' || k === 'AI_ACTION_MODEL' ? m : env.get(k)) });
+  const pinned = (m: string) => ({
+    get: (k: string) => (k === 'AI_MODEL' || k === 'AI_ACTION_MODEL' ? m : k === 'AI_FALLBACK_MODEL' ? '' : k === 'AI_TIMEOUT_MS' ? '30000' : env.get(k)),
+  });
   const strongEnv = pinned(env.get('AI_ACTION_MODEL') || DEFAULT_ACTION_MODEL), lightEnv = pinned(light);
   const call = async (r: Parameters<typeof callFunction>[0]) => {
     const e = r.kind === 'action' && version === 'v2' ? strongEnv : lightEnv;

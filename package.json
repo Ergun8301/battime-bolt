@@ -23,7 +23,8 @@
     "test:collegues": "bash supabase/tests/run-rls.sh supabase/tests/lot7_collegues_documents.sql",
     "test:assistant-aide": "npx -y deno@2 test --allow-read supabase/functions/_shared/assistant-aide.test.ts",
     "test:assistant-eval": "npx -y deno@2 test --allow-env supabase/functions/assistant-eval/eval.test.ts",
-    "test:fr-langue": "npx -y deno@2 test --allow-env supabase/functions/_shared/fr-langue.test.ts"
+    "test:fr-langue": "npx -y deno@2 test --allow-env supabase/functions/_shared/fr-langue.test.ts",
+    "test:ai-provider": "npx -y deno@2 test --allow-env supabase/functions/_shared/ai-provider.test.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
