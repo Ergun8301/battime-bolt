@@ -13,6 +13,8 @@ import { Loader2, Upload, Trash2, Building2, CreditCard, Mail, ShieldCheck, Moni
 import LeaveFundSetting from '@/components/leave-fund-setting';
 import { supabaseCostSource, useAiEnabled } from '@/lib/real-cost';
 import KioskAdmin from '@/components/kiosk-admin';
+import SupportAccess from '@/components/support-access';
+import { readSupportSession, supabaseSupportSource } from '@/lib/support';
 import { toast } from 'sonner';
 
 interface Props { open: boolean; onOpenChange: (o: boolean) => void; onSaved?: () => void; }
@@ -98,6 +100,9 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
   // base, la requête échoue seule et rien ne s'affiche.
   const [kioskEnabled, setKioskEnabled] = useState(false);
   const [kioskOpen, setKioskOpen] = useState(false);
+  // Accès support (lot 5) : le bloc n'existe que si BEMEXO a activé
+  // `support_enabled`, et jamais pour le support lui-même (mode support).
+  const [supportEnabled, setSupportEnabled] = useState(false);
   // Coût réel (lot 2) : réglage « Caisse de congés BTP », seulement si `ai_enabled`.
   const aiOn = useAiEnabled(open ? user?.company_id : null);
   const costSource = supabaseCostSource;
@@ -167,6 +172,16 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
     supabase.from('companies').select('kiosk_enabled').eq('id', user.company_id).maybeSingle()
       .then(({ data }) => {
         if (!stale) setKioskEnabled(!!(data as { kiosk_enabled?: boolean } | null)?.kiosk_enabled);
+      });
+    return () => { stale = true; };
+  }, [open, user?.company_id]);
+
+  useEffect(() => {
+    if (!open || !user?.company_id || readSupportSession()) return;
+    let stale = false;
+    supabase.from('companies').select('support_enabled').eq('id', user.company_id).maybeSingle()
+      .then(({ data }) => {
+        if (!stale) setSupportEnabled(!!(data as { support_enabled?: boolean } | null)?.support_enabled);
       });
     return () => { stale = true; };
   }, [open, user?.company_id]);
@@ -639,6 +654,8 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
             </div>
 
             {aiOn && user?.company_id && <LeaveFundSetting source={costSource} companyId={user.company_id} />}
+
+            {supportEnabled && <SupportAccess source={supabaseSupportSource} />}
 
             {/* Notifications email — déclenchement manuel des mêmes fonctions que
                 les crons (récap hebdo du vendredi, alertes habilitations). Utile

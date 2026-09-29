@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { User as SupabaseUser, Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { User } from '@/lib/types';
+import { withSupportCompany } from '@/lib/support';
 import { useRouter } from 'next/navigation';
 
 interface AuthContextType {
@@ -22,6 +23,9 @@ const PROFILE_FETCH_TIMEOUT = 8000;
 // Garde-fou global : on ne reste jamais coince sur l'ecran de chargement.
 const AUTH_INIT_TIMEOUT = 10000;
 
+// Mode support (lot 5) : `withSupportCompany` renvoie le profil TEL QUEL pour
+// tout le monde, sauf pour un compte support entré chez un client (voir
+// lib/support.ts). Les droits restent ceux que la base accorde.
 async function fetchUserProfile(userId: string): Promise<User | null> {
   try {
     const response: any = await Promise.race([
@@ -54,7 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { data: { session: currentSession } } = await supabase.auth.getSession();
       if (currentSession?.user) {
         const profile = await fetchUserProfile(currentSession.user.id);
-        setUser(profile);
+        setUser(withSupportCompany(profile));
         setSupabaseUser(currentSession.user);
         setSession(currentSession);
       }
@@ -81,7 +85,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setSupabaseUser(initialSession.user);
           const profile = await fetchUserProfile(initialSession.user.id);
           if (!isMounted) return;
-          setUser(profile);
+          setUser(withSupportCompany(profile));
         }
       } catch (err) {
         console.error('Error initializing auth:', err);
@@ -129,7 +133,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!isMounted) return;
         fetchUserProfile(signedInUser.id)
           .then((profile) => {
-            if (isMounted) setUser(profile);
+            if (isMounted) setUser(withSupportCompany(profile));
           })
           .finally(() => {
             if (isMounted) setLoading(false);

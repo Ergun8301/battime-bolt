@@ -8,11 +8,11 @@ branche, fusionnée seulement après validation de la préview.
 
 | Lot | Sujet | Branche | État |
 |---|---|---|---|
-| 1 | Borne de pointage QR | `feat/borne-qr` | fusionné dans l'intégration (PR 110) — migration non appliquée |
-| 2 | Coût réel d'un salarié (bulletin de paie) | `feat/cout-salarie` | fusionné dans l'intégration (PR 112) — migration non appliquée |
-| 3 | Assistant BEMEXO (bureau) | `feat/assistant-bureau` | fusionné dans l'intégration (PR 114) — migration non appliquée |
-| 4 | Assistant BEMEXO (salarié) | `feat/assistant-salarie` | PR ouverte — [détail](assistant-salarie.md) |
-| 5 | — | — | — |
+| 1 | Borne de pointage QR | `feat/borne-qr` | fusionné (PR 110) — **en production** (migration + fonction `kiosk`) |
+| 2 | Coût réel d'un salarié (bulletin de paie) | `feat/cout-salarie` | fusionné (PR 112) — **en production** (migrations + `payslip-read`) |
+| 3 | Assistant BEMEXO (bureau) | `feat/assistant-bureau` | fusionné (PR 114) — **en production** (migration + `assistant`) |
+| 4 | Assistant BEMEXO (salarié) | `feat/assistant-salarie` | fusionné (PR 115) — pas en production — [détail](assistant-salarie.md) |
+| 5 | Accès support BEMEXO | `feat/acces-support` | PR ouverte — [détail](acces-support.md) |
 
 ## Règles communes
 
