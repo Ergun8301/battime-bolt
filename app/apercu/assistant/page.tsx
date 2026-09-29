@@ -6,9 +6,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import AssistantPanel from '@/components/assistant-panel';
+import AssistantActionCard from '@/components/assistant-action-card';
+import { demoActionExecutor, type ActionExtra } from '@/lib/assistant-actions';
 import { demoAssistantSource, isAssistantDemo } from '@/lib/assistant';
 
-const LABELS: Record<string, string> = { couts: 'Coûts des chantiers', conges: 'Demandes de congés', 'salarie:demo-karim': 'Fiche de Karim' };
+const LABELS: Record<string, string> = {
+  couts: 'Coûts des chantiers', conges: 'Demandes de congés', 'salarie:demo-karim': 'Fiche de Karim', salaries: 'Salariés',
+  nouveau_salarie: 'Nouveau salarié', nouveau_client: 'Nouveau client', export: 'Exporter', reglages: 'Réglages', reserves: 'Réserves',
+};
 
 export default function ApercuAssistant() {
   const [allowed, setAllowed] = useState<boolean | null>(null);
@@ -41,7 +46,11 @@ export default function ApercuAssistant() {
           ))}
         </div>
       </div>
-      <AssistantPanel source={source} onNavigate={(a) => toast.success(`Ouverture : ${LABELS[a] ?? a}`)} />
+      <AssistantPanel
+        source={source}
+        onNavigate={(a) => toast.success(`Ouverture : ${LABELS[a] ?? a}`)}
+        renderExtra={(extra) => <AssistantActionCard extra={extra as ActionExtra} execute={demoActionExecutor} />}
+      />
     </main>
   );
 }

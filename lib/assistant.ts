@@ -1,12 +1,20 @@
-// Assistant BEMEXO (lot 3) — côté navigateur.
+// Assistant BEMEXO (lots 3 et 3 bis) — côté navigateur.
 //
 // Deux sources derrière la même interface : la vraie fonction `assistant`, et
 // une démo en mémoire (préviews uniquement, `?demo=assistant`), sans requête.
+// Une réponse peut porter une ACTION préparée (`extra`) : la carte de
+// confirmation l'affiche, rien n'est fait avant « Confirmer ».
 import { supabase } from '@/lib/supabase';
 import { isPreviewHost } from '@/lib/hosting';
 import type { AssistantLink } from '@/supabase/functions/_shared/assistant-core';
+import {
+  addDays, fromFunctionCall, handleActionLocally, mondayOf, summarize, findGuide, guideAnswer, NAV_ACTIONS,
+  type ActionContext, type LocalReply,
+} from '@/supabase/functions/_shared/assistant-actions-core';
 
-export { ASSISTANT_SUGGESTIONS } from '@/supabase/functions/_shared/assistant-core';
+import type { ActionExtra } from '@/lib/assistant-actions';
+
+export { ACTION_SUGGESTIONS as ASSISTANT_SUGGESTIONS } from '@/supabase/functions/_shared/assistant-actions-core';
 export type { AssistantLink } from '@/supabase/functions/_shared/assistant-core';
 
 export interface AssistantReply { answer: string; links: AssistantLink[]; remaining?: number; notice?: boolean; extra?: unknown }
@@ -18,6 +26,15 @@ export function isAssistantDemo(): boolean {
   return new URLSearchParams(window.location.search).get('demo') === 'assistant';
 }
 
+type ServerReply = {
+  answer?: string; links?: AssistantLink[]; remaining?: number; quota?: boolean; unavailable?: boolean;
+  action?: ActionExtra['action']; options?: ActionExtra['options'];
+};
+const toReply = (d: ServerReply): AssistantReply => ({
+  answer: d.answer || '…', links: d.links || [], remaining: d.remaining, notice: !!(d.quota || d.unavailable),
+  extra: d.action && d.options ? ({ action: d.action, options: d.options } as ActionExtra) : undefined,
+});
+
 export const supabaseAssistantSource: AssistantSource = {
   demo: false,
   async ask(question) {
@@ -28,40 +45,89 @@ export const supabaseAssistantSource: AssistantSource = {
         const body = ctx && typeof ctx.json === 'function' ? await ctx.json().catch(() => ({})) : {};
         return { answer: (body as { error?: string }).error || 'Connexion impossible. Réessayez.', links: [], notice: true };
       }
-      const d = data as { answer?: string; links?: AssistantLink[]; remaining?: number; quota?: boolean; unavailable?: boolean };
-      return { answer: d.answer || '…', links: d.links || [], remaining: d.remaining, notice: !!(d.quota || d.unavailable) };
+      return toReply(data as ServerReply);
     } catch {
       return { answer: 'Connexion impossible. Réessayez.', links: [], notice: true };
     }
   },
 };
 
+// ── Démo : une petite entreprise fictive, le MÊME cœur que le serveur ───────
+export function demoActionContext(): ActionContext {
+  const today = new Date().toLocaleDateString('sv-SE');
+  const mon = mondayOf(today);
+  const week = [0, 1, 2, 3, 4].map((i) => addDays(mon, i));
+  const next = week.map((d) => addDays(d, 7));
+  return {
+    today,
+    salaries: [
+      { id: 'demo-karim', prenom: 'Karim', nom: 'Benali', role: 'worker' },
+      { id: 'demo-sofia', prenom: 'Sofia', nom: 'Rossi', role: 'lead' },
+      { id: 'demo-lucas', prenom: 'Lucas', nom: 'Petit', role: 'worker' },
+      { id: 'demo-ines', prenom: 'Inès', nom: 'Martin', role: 'worker' },
+    ],
+    chantiers: [
+      { id: 'demo-dupont', nom: 'Villa Dupont', ville: 'Lyon' },
+      { id: 'demo-martin', nom: 'Bureau Martin', ville: 'Villeurbanne' },
+      { id: 'demo-leclerc', nom: 'Résidence Leclerc', ville: 'Bron' },
+    ],
+    planning: [
+      ...week.map((d) => ({ user_id: 'demo-karim', date: d, worksite_id: 'demo-dupont', absence: null })),
+      ...week.map((d) => ({ user_id: 'demo-sofia', date: d, worksite_id: 'demo-martin', absence: null })),
+      ...week.slice(0, 3).map((d) => ({ user_id: 'demo-ines', date: d, worksite_id: 'demo-leclerc', absence: null })),
+      ...next.slice(0, 2).map((d) => ({ user_id: 'demo-sofia', date: d, worksite_id: null, absence: 'conge' })),
+    ],
+    congesEnAttente: [{ user_id: 'demo-ines', du: next[4], au: next[4] }],
+  };
+}
+
+function withSummary(r: LocalReply, ctx: ActionContext): AssistantReply {
+  return {
+    answer: r.answer, links: r.links,
+    extra: r.action ? ({
+      action: { ...r.action, summary: summarize(r.action.draft, ctx) },
+      options: {
+        salaries: ctx.salaries.map((s) => ({ id: s.id, nom: `${s.prenom} ${s.nom}` })),
+        chantiers: ctx.chantiers,
+      },
+    } as ActionExtra) : undefined,
+  };
+}
+
 /** Réponses fictives pour vérifier l'écran sans base (préviews). */
 export function demoAssistantSource(): AssistantSource {
   let left = 50;
+  const ctx = demoActionContext();
   const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
   return {
     demo: true,
     async ask(q) {
-      await wait(700);
+      await wait(600);
       left = Math.max(0, left - 1);
-      const t = q.toLowerCase();
-      if (/point|déclar|oubli/.test(t)) {
-        return { answer: 'Hier, 1 salarié prévu n’a rien déclaré : Karim B. (prévu sur Villa Dupont). Les 4 autres ont pointé.', links: [{ label: 'Fiche de Karim', action: 'salarie:demo-karim' }], remaining: left };
+      const t = q.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+      const done = (r: AssistantReply) => ({ ...r, remaining: left });
+      const local = handleActionLocally(q, ctx);
+      if (local) return done(withSummary(local, ctx));
+      // Phrases détaillées : l'IA est SIMULÉE (même contrôle que la vraie).
+      if (/\b(mets|met|affecte|place)\b/.test(t)) {
+        return done(withSummary(fromFunctionCall('affecter_planning', { salarie: 'Lucas', chantier: 'Villa Dupont', dates: [addDays(ctx.today, 1)] }, ctx), ctx));
       }
-      if (/budget|dépass|rentab/.test(t)) {
-        return { answer: '1 chantier dépasse son budget : Villa Dupont, 110 % (110 h pour 100 h prévues). Bureau Martin est à 45 %.', links: [{ label: 'Voir les coûts', action: 'couts' }], remaining: left };
+      if (/corrig/.test(t)) {
+        return done(withSummary(fromFunctionCall('corriger_pointage', { salarie: 'Karim', date: addDays(ctx.today, -1), debut: '7:30', fin: '16:00' }, ctx,
+          [{ id: 'demo-e1', chantier: 'Villa Dupont', debut: '07:30', fin: '17:00' }]), ctx));
       }
-      if (/moment|en cours|maintenant|où/.test(t)) {
-        return { answer: '2 personnes pointent en ce moment : Karim B. sur Villa Dupont (depuis 08:02) et Sofia R. sur Bureau Martin (depuis 08:15).', links: [], remaining: left };
+      if (/\b(client|chantier)\b/.test(t) && /\b(cree|nouveau|ajoute)/.test(t)) {
+        return done(withSummary(fromFunctionCall('creer_chantier', { nom_client: 'Maison Garnier', ville: 'Caluire' }, ctx), ctx));
       }
-      if (/cong|absen|vacance/.test(t)) {
-        return { answer: '1 demande en attente : Sofia R., congé du 12 au 16 octobre.', links: [{ label: 'Répondre', action: 'conges' }], remaining: left };
+      if (/point|declar|oubli/.test(t)) {
+        return done({ answer: 'Hier, 1 salarié prévu n’a rien déclaré : Karim B. (prévu sur Villa Dupont). Les 3 autres ont pointé.', links: [{ label: 'Fiche de Karim', action: 'salarie:demo-karim' }] });
       }
-      if (/heure|mois/.test(t)) {
-        return { answer: 'Ce mois-ci : Karim B. 142 h, Sofia R. 128 h, Lucas P. 96 h.', links: [], remaining: left };
+      if (/budget|depass|rentab/.test(t)) {
+        return done({ answer: '1 chantier dépasse son budget : Villa Dupont, 110 % (110 h pour 100 h prévues).', links: [{ label: NAV_ACTIONS.couts, action: 'couts' }] });
       }
-      return { answer: 'Mode démo : essayez une des questions proposées.', links: [], remaining: left };
+      const g = findGuide(t);
+      if (g) return done({ answer: guideAnswer(g), links: g.lien ? [{ label: NAV_ACTIONS[g.lien], action: g.lien }] : [] });
+      return done({ answer: 'Mode démo : essayez une suggestion, « Mets Lucas sur Villa Dupont demain » ou « Comment je clôture le mois ? ».', links: [] });
     },
   };
 }

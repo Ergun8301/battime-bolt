@@ -11,6 +11,7 @@ branche, fusionnée seulement après validation de la préview.
 | 1 | Borne de pointage QR | `feat/borne-qr` | fusionné (PR 110) — **en production** (migration + fonction `kiosk`) |
 | 2 | Coût réel d'un salarié (bulletin de paie) | `feat/cout-salarie` | fusionné (PR 112) — **en production** (migrations + `payslip-read`) |
 | 3 | Assistant BEMEXO (bureau) | `feat/assistant-bureau` | fusionné (PR 114) — **en production** (migration + `assistant`) |
+| 3 bis | Assistant qui agit et qui forme (bureau, puis salarié) | `feat/assistant-actions` | PR ouverte — [détail](assistant-actions.md) |
 | 4 | Assistant BEMEXO (salarié) | `feat/assistant-salarie` | fusionné (PR 115) — pas en production — [détail](assistant-salarie.md) |
 | 5 | Accès support BEMEXO | `feat/acces-support` | PR ouverte — [détail](acces-support.md) |
 

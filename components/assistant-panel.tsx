@@ -75,7 +75,7 @@ interface Props {
   footNote?: string;
 }
 
-export default function AssistantPanel({ source, onNavigate, defaultOpen = false, suggestions = ASSISTANT_SUGGESTIONS, intro, renderExtra, footNote = 'Lecture seule · rien n’est conservé' }: Props) {
+export default function AssistantPanel({ source, onNavigate, defaultOpen = false, suggestions = ASSISTANT_SUGGESTIONS, intro, renderExtra, footNote = 'Rien n’est fait sans votre confirmation' }: Props) {
   const [open, setOpen] = useState(defaultOpen);
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [text, setText] = useState('');
@@ -147,7 +147,7 @@ export default function AssistantPanel({ source, onNavigate, defaultOpen = false
             {msgs.length === 0 && (
               <>
                 <p className="as-hello">Bonjour 👋</p>
-                <p className="as-sub">{intro ?? 'Posez une question sur vos équipes, vos heures ou vos chantiers'}{canSpeak ? ' — à l’écrit ou à voix haute' : ''}.</p>
+                <p className="as-sub">{intro ?? 'Demandez-moi de faire quelque chose, comment faire, ou un chiffre sur vos équipes'}{canSpeak ? ' — à l’écrit ou à voix haute' : ''}.</p>
                 <div className="as-sugg">
                   {suggestions.map((s) => (
                     <button type="button" key={s} onClick={() => ask(s)}>{s}<ArrowRight className="h-4 w-4 text-neutral-400" /></button>
