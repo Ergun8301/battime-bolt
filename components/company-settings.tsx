@@ -9,7 +9,8 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Loader2, Upload, Trash2, Building2, CreditCard, Mail, ShieldCheck } from 'lucide-react';
+import { Loader2, Upload, Trash2, Building2, CreditCard, Mail, ShieldCheck, MonitorSmartphone } from 'lucide-react';
+import KioskAdmin from '@/components/kiosk-admin';
 import { toast } from 'sonner';
 
 interface Props { open: boolean; onOpenChange: (o: boolean) => void; onSaved?: () => void; }
@@ -90,6 +91,11 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
   const [posSaving, setPosSaving] = useState(false);
   const [posConfirm, setPosConfirm] = useState(false);
   const [posErr, setPosErr] = useState<string | null>(null);
+  // Borne de pointage QR (lot 1) : le bloc n'existe que si l'entreprise a
+  // `kiosk_enabled`. Lecture séparée : tant que la colonne n'existe pas en
+  // base, la requête échoue seule et rien ne s'affiche.
+  const [kioskEnabled, setKioskEnabled] = useState(false);
+  const [kioskOpen, setKioskOpen] = useState(false);
   // Horaire hebdomadaire de base : au-delà, les heures sont supplémentaires.
   const [weeklyHours, setWeeklyHours] = useState('35');
   // Destinataire de l'export de paie. Enregistré une fois, modifiable ici : la
@@ -146,6 +152,16 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
     supabase.from('companies').select('position_tracking_enabled').eq('id', user.company_id).maybeSingle()
       .then(({ data }) => {
         if (!stale && data) setPosTracking(!!(data as { position_tracking_enabled?: boolean }).position_tracking_enabled);
+      });
+    return () => { stale = true; };
+  }, [open, user?.company_id]);
+
+  useEffect(() => {
+    if (!open || !user?.company_id) return;
+    let stale = false;
+    supabase.from('companies').select('kiosk_enabled').eq('id', user.company_id).maybeSingle()
+      .then(({ data }) => {
+        if (!stale) setKioskEnabled(!!(data as { kiosk_enabled?: boolean } | null)?.kiosk_enabled);
       });
     return () => { stale = true; };
   }, [open, user?.company_id]);
@@ -508,6 +524,19 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
               </div>
             </div>
 
+            {/* Borne de pointage QR (lot 1) — seulement si l'entreprise l'a. */}
+            {kioskEnabled && (
+              <div className="bt-set-sub">
+                <div className="bt-set-subtxt">
+                  <label className="bt-set-l">Borne de pointage</label>
+                  <p className="bt-set-substate">Une tablette à l&apos;entrée affiche un QR : vos salariés le scannent pour pointer.</p>
+                </div>
+                <button type="button" className="bt-set-btn" onClick={() => setKioskOpen(true)}>
+                  <MonitorSmartphone className="h-4 w-4" /> Gérer les bornes
+                </button>
+              </div>
+            )}
+
             {/* ── L'ENDROIT AU POINTAGE ───────────────────────────────────────
                 CE QUE CE BLOC DIT À L'EMPLOYEUR, ET POURQUOI IL LE DIT.
                 BEMEXO n'est pas responsable de ce traitement : l'entreprise
@@ -632,6 +661,9 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
           </div>
         )}
       </DialogContent>
+      {kioskEnabled && user?.company_id && (
+        <KioskAdmin open={kioskOpen} onOpenChange={setKioskOpen} companyId={user.company_id} />
+      )}
     </Dialog>
   );
 }
