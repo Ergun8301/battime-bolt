@@ -26,12 +26,24 @@ Deno.serve(async (req) => {
   const secret = req.headers.get('x-cron-secret') ?? '';
   if (!secret) return json({ error: 'Non autorisé' }, 401);
   if (!(await secretOk(secret))) return json({ error: 'Non autorisé' }, 401);
-  const body = await req.json().catch(() => ({})) as { version?: string; ids?: string[] };
+  const body = await req.json().catch(() => ({})) as { version?: string; ids?: string[]; parallel?: number; gapMs?: number };
   const version = body.version === 'v1' ? 'v1' : 'v2';
   // v1 = modèle léger seul (comme avant le lot 7) ; v2 = modèle fort pour les actions.
   const env = version === 'v1'
     ? { get: (k: string) => (k === 'AI_ACTION_MODEL' ? (Deno.env.get('AI_MODEL') || 'gemini-3.1-flash-lite') : Deno.env.get(k)) }
     : Deno.env;
-  const result = await runEval(version, (r) => callFunction(r, env), Array.isArray(body.ids) ? body.ids.slice(0, 80) : undefined);
+  // La clé est partagée avec la prod : on va doucement et on réessaie après un
+  // refus « trop de requêtes » (le banc d'essai ne doit pas mesurer le quota).
+  const call = async (r: Parameters<typeof callFunction>[0]) => {
+    let res = await callFunction(r, env);
+    for (let i = 1; i <= 3 && !res.ok && res.reason === 'provider_error'; i++) {
+      await new Promise((ok) => setTimeout(ok, 10_000 * i));
+      res = await callFunction(r, env);
+    }
+    return res;
+  };
+  const parallel = Math.min(Math.max(Number(body.parallel) || 1, 1), 6);
+  const gapMs = Math.min(Math.max(Number(body.gapMs) || 0, 0), 20_000);
+  const result = await runEval(version, call, Array.isArray(body.ids) ? body.ids.slice(0, 80) : undefined, parallel, gapMs);
   return json(result);
 });

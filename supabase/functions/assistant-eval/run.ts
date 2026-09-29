@@ -65,10 +65,11 @@ async function runOne(c: EvalCase, version: 'v1' | 'v2', call: Call): Promise<Ca
   }
 }
 
-export async function runEval(version: 'v1' | 'v2', call: Call, ids?: string[], parallel = 6) {
+export async function runEval(version: 'v1' | 'v2', call: Call, ids?: string[], parallel = 6, gapMs = 0) {
   const cases = CASES.filter((c) => !ids?.length || ids.includes(c.id));
   const results: CaseResult[] = [];
   for (let i = 0; i < cases.length; i += parallel) {
+    if (i && gapMs) await new Promise((r) => setTimeout(r, gapMs));
     results.push(...await Promise.all(cases.slice(i, i + parallel).map((c) => runOne(c, version, call))));
   }
   const byCat = new Map<string, { ok: number; n: number }>();
