@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Calendar } from '@/components/ui/calendar';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Loader2, Copy, AlertTriangle, FolderOpen, Trash2, Paperclip, Hammer, CheckCircle2, MapPin } from 'lucide-react';
+import { Loader2, Copy, AlertTriangle, FolderOpen, Trash2, Paperclip, Hammer, CheckCircle2, MapPin, Sparkles } from 'lucide-react';
 import { format, subDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -262,7 +262,9 @@ const DAY_CSS = `
 
 .bt-day-dock{flex:none;padding:14px 16px calc(env(safe-area-inset-bottom) + 16px);background:#F2EDE3;border-top:1px solid rgba(21,18,15,.1);display:flex;gap:10px}
 .bt-fab{flex:none;width:58px;border:2px solid #15120F;background:#F2EDE3;border-radius:15px;font-weight:900;font-size:26px;color:#15120F;display:flex;align-items:center;justify-content:center;cursor:pointer;font-family:inherit}
-.bt-send{flex:1;border:none;background:#FFC21A;border-radius:15px;padding:17px;font-weight:900;font-size:17px;color:#15120F;box-shadow:0 4px 0 #C99300;display:flex;align-items:center;justify-content:center;gap:9px;cursor:pointer;font-family:inherit}
+.bt-day-dock.with-ai .bt-send{font-size:15px;padding:17px 10px;white-space:nowrap;gap:6px}
+.bt-ai{flex:none;width:58px;height:58px;align-self:center;border:none;background:#15120F;color:#FFC21A;border-radius:999px;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 0 #000}
+.bt-send{flex:1;min-width:0;border:none;background:#FFC21A;border-radius:15px;padding:17px;font-weight:900;font-size:17px;color:#15120F;box-shadow:0 4px 0 #C99300;display:flex;align-items:center;justify-content:center;gap:9px;cursor:pointer;font-family:inherit}
 .bt-send:disabled{background:#e7ddc4;color:#9a948a;box-shadow:0 4px 0 #cfc4a5;cursor:default}
 .bt-send.done{background:#E4F2E9;color:#1F7A4D;box-shadow:0 4px 0 #b7dcc4}
 
@@ -362,7 +364,7 @@ type SlotTarget =
   | { kind: 'pending'; localId: string }
   | { kind: 'new' };
 
-export default function PoseurDay({ date: dateProp, topBanner }: { date?: string; topBanner?: ReactNode } = {}) {
+export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { date?: string; topBanner?: ReactNode; /** Lot 6 : bouton ✨ dans la barre (si l'assistant est activé). */ onAssistant?: () => void } = {}) {
   const { user } = useAuth();
   const [entries, setEntries] = useState<TimeEntryWithWorksite[]>([]);
   // Ce que le bureau (ou le chef) a corrigé sur MES heures. Le salarié doit le
@@ -908,9 +910,8 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
   const saveSlot = async () => {
     if (!user || !openSlot) return;
     if (!fStart || !fEnd) { toast.error("Indique l'heure de début et de fin"); return; }
-    // Une réserve sans description n'a aucune valeur en cas de litige : on exige
-    // le détail dès que « Avec réserve » est coché (l'écran l'annonce déjà).
-    if (fReception === 'avec' && !fObs.trim()) { toast.error('Décris la réserve constatée'); return; }
+    // Lot 6 (règle d'Ergun) : le détail des réserves est FACULTATIF. « Avec
+    // réserve » suffit ; le détail et les photos aident, sans jamais bloquer « OK ».
     setFSaving(true);
     try {
       const totalMins = calculateTotalMinutes(fStart, fEnd, 0);
@@ -1816,7 +1817,7 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
       </div>
 
       {/* ===== BARRE D'ACTION DOCKÉE (bas) ===== */}
-      <div className="bt-day-dock">
+      <div className={`bt-day-dock${onAssistant ? ' with-ai' : ''}`}>
         <button
           type="button"
           className="bt-fab"
@@ -1840,6 +1841,15 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
           <button type="button" className="bt-send done" disabled>Journée envoyée ✓</button>
         ) : (
           <button type="button" className="bt-send" disabled>Envoyer ma journée <span style={{ fontSize: 19 }}>→</span></button>
+        )}
+
+        {/* Lot 6 : l'assistant vit DANS la barre, plus de bouton flottant qui
+            recouvre « Envoyer ma journée ». Absent si l'assistant est coupé :
+            « Envoyer » reprend alors toute la largeur (flex:1). */}
+        {onAssistant && (
+          <button type="button" className="bt-ai" aria-label="Assistant BEMEXO" onClick={onAssistant} data-testid="dock-assistant">
+            <Sparkles className="h-6 w-6" />
+          </button>
         )}
       </div>
 
@@ -1959,16 +1969,13 @@ export default function PoseurDay({ date: dateProp, topBanner }: { date?: string
                   <AlertTriangle className="h-[18px] w-[18px]" /> Avec réserve
                 </button>
               </div>
-              {fReception === 'avec' && (
-                <div className="bt-recep-hint">Décris les réserves ci-dessous (obligatoire) et ajoute tes photos ou documents via le bouton <strong>Documents</strong>.</div>
-              )}
 
               {/* 4 · Note (devient « Détail des réserves » si avec réserve) */}
-              <div className="bt-sec">4 · {fReception === 'avec' ? 'Détail des réserves' : 'Note'} <span style={{ textTransform: 'none', letterSpacing: 0, color: fReception === 'avec' ? '#C0461F' : '#a39d92' }}>{fReception === 'avec' ? '(obligatoire)' : '(facultatif)'}</span></div>
+              <div className="bt-sec">4 · {fReception === 'avec' ? 'Détail des réserves' : 'Note'} <span style={{ textTransform: 'none', letterSpacing: 0, color: '#a39d92' }}>(facultatif)</span></div>
               <textarea
                 className="bt-note"
                 rows={2}
-                placeholder={fReception === 'avec' ? 'Décrivez les réserves constatées…' : 'Préciser le travail effectué…'}
+                placeholder={fReception === 'avec' ? 'Ex. : fissure mur sud' : 'Préciser le travail effectué…'}
                 value={fObs}
                 onChange={(e) => setFObs(e.target.value)}
               />

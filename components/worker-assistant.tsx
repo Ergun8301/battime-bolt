@@ -16,7 +16,11 @@ import {
   WORKER_ACTION_SUGGESTIONS, type DraftExtra, type WorkerActionExtra,
 } from '@/lib/worker-assistant';
 
-export default function WorkerAssistant({ onSaved, onNavigate, defaultOpen = false }: { onSaved?: () => void; onNavigate?: (action: string) => void; defaultOpen?: boolean }) {
+export default function WorkerAssistant({ onSaved, onNavigate, defaultOpen = false, open, onOpenChange }: {
+  onSaved?: () => void; onNavigate?: (action: string) => void; defaultOpen?: boolean;
+  /** Lot 6 : ouvert par le bouton ✨ de la barre du bas (plus de bouton flottant). */
+  open?: boolean; onOpenChange?: (open: boolean) => void;
+}) {
   const { user } = useAuth();
   const demo = useMemo(() => isWorkerAssistantDemo(), []);
   const ai = useAiEnabled(demo ? null : user?.company_id);
@@ -29,6 +33,9 @@ export default function WorkerAssistant({ onSaved, onNavigate, defaultOpen = fal
       source={source}
       attachments
       defaultOpen={defaultOpen}
+      open={open}
+      onOpenChange={onOpenChange}
+      launcher={open === undefined}
       onNavigate={onNavigate ?? (() => {})}
       suggestions={WORKER_ACTION_SUGGESTIONS}
       footNote="Rien n’est enregistré sans votre confirmation"

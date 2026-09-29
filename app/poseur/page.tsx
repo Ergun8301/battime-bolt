@@ -8,7 +8,11 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Clock, CalendarDays, CalendarRange, History, LogOut, Check, ArrowLeft, Camera, Loader2, Palmtree, Bell, BellOff } from 'lucide-react';
+import { Clock, CalendarDays, CalendarRange, History, LogOut, Check, ArrowLeft, Camera, Loader2, Palmtree, Bell, BellOff, Sparkles, Info, ScanLine } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { useAiEnabled } from '@/lib/real-cost';
+import QrScanner from '@/components/qr-scanner';
+import { GEO_INFO_LINK, GEO_INFO_TEXT, GEO_INFO_TITLE } from '@/lib/position-info';
 import { toast } from 'sonner';
 import { format, subDays, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -47,6 +51,14 @@ const POSEUR_CSS = `
 .bt-phdr-date{font-size:22px;font-weight:900;letter-spacing:-.02em;line-height:1.1;text-transform:capitalize;min-width:0}
 .bt-phdr-back{display:flex;align-items:center;gap:10px;background:transparent;border:none;color:#F2EDE3;cursor:pointer;padding:0;text-align:left;min-width:0}
 /* Bouton identité (nom + rond photo/initiales) = déclencheur du menu */
+.bt-phdr-scan{flex:none;width:40px;height:40px;border-radius:999px;border:1.5px solid rgba(242,237,227,.25);background:transparent;color:#F2EDE3;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;margin-left:auto}
+.bt-info-bg{position:fixed;inset:0;z-index:95;background:rgba(21,18,15,.45);display:flex;align-items:flex-end;justify-content:center;padding:16px}
+.bt-info{width:100%;max-width:420px;background:#FBF8F2;border-radius:18px;padding:18px;margin-bottom:env(safe-area-inset-bottom)}
+.bt-info h2{display:flex;align-items:center;gap:8px;font-size:16px;font-weight:900;margin:0 0 10px;color:#15120F}
+.bt-info h3{font-size:13.5px;font-weight:900;margin:0 0 4px;color:#15120F}
+.bt-info p{font-size:14px;line-height:1.5;color:#3d3833;margin:0 0 8px}
+.bt-info a{font-size:13px;font-weight:700;color:#6E6A63;text-decoration:underline}
+.bt-info button{width:100%;margin-top:14px;border:none;background:#15120F;color:#FBF8F2;border-radius:13px;padding:13px;font-weight:900;font-size:15px;cursor:pointer;font-family:inherit}
 .bt-phdr-id{display:inline-flex;align-items:center;gap:9px;flex:none;max-width:62%;background:transparent;border:none;cursor:pointer;font-family:inherit;padding:3px 3px 3px 11px;border-radius:999px;transition:background .14s ease}
 .bt-phdr-id:hover{background:rgba(242,237,227,.08)}
 .bt-phdr-id:active{background:rgba(242,237,227,.15)}
@@ -125,6 +137,22 @@ export default function PoseurPage() {
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const [leaveOpen, setLeaveOpen] = useState(false); // demandes de congé
+  // Lot 6 : assistant ouvert par ✨ (barre du bas / menu), scanner 📷 (en-tête),
+  // « ℹ️ Informations » (menu). Chacun n'existe que si l'interrupteur de
+  // l'entreprise est allumé (ai_enabled / kiosk_enabled).
+  const router = useRouter();
+  const aiOn = useAiEnabled(user?.company_id);
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  const [kioskOn, setKioskOn] = useState(false);
+  const [scanOpen, setScanOpen] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
+  useEffect(() => {
+    if (!user?.company_id) return;
+    let stale = false;
+    supabase.from('companies').select('kiosk_enabled').eq('id', user.company_id).maybeSingle()
+      .then(({ data }) => { if (!stale) setKioskOn(!!(data as { kiosk_enabled?: boolean } | null)?.kiosk_enabled); });
+    return () => { stale = true; };
+  }, [user?.company_id]);
   // Notifications push : 'unsupported' (navigateur/iOS non compatible), 'denied'
   // (refusé au niveau navigateur), 'on'/'off'. On n'affiche l'item que si utile.
   const [pushState, setPushState] = useState<'unsupported' | 'denied' | 'on' | 'off'>('unsupported');
@@ -402,6 +430,11 @@ export default function PoseurPage() {
               )}
             </div>
 
+            {kioskOn && (
+              <button type="button" className="bt-phdr-scan" onClick={() => setScanOpen(true)} aria-label="Scanner la borne" data-testid="scan-open">
+                <ScanLine className="h-5 w-5" />
+              </button>
+            )}
             {/* Identité du salarié = déclencheur du menu (nom + rond photo/initiales). */}
             <input type="file" accept="image/*" hidden ref={photoInputRef} onChange={(e) => onPickPhoto(e.target.files?.[0])} />
             <DropdownMenu>
@@ -425,6 +458,14 @@ export default function PoseurPage() {
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setLeaveOpen(true)}>
                   <Palmtree className="h-4 w-4 mr-2" /> Mes congés
+                </DropdownMenuItem>
+                {aiOn && (
+                  <DropdownMenuItem onClick={() => setAssistantOpen(true)}>
+                    <Sparkles className="h-4 w-4 mr-2" /> Assistant BEMEXO
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem onClick={() => setInfoOpen(true)}>
+                  <Info className="h-4 w-4 mr-2" /> Informations
                 </DropdownMenuItem>
                 {/* Masqué si l'appareil ne gère pas le push (iOS hors écran d'accueil,
                     navigateur ancien) : inutile d'afficher un bouton qui ne peut rien faire. */}
@@ -453,9 +494,9 @@ export default function PoseurPage() {
         {/* ===== CORPS ===== */}
         <div className="bt-phbody">
           {selectedDate ? (
-            <PoseurDay key={dayKey} date={selectedDate} topBanner={offlineBanner} />
+            <PoseurDay key={dayKey} date={selectedDate} topBanner={offlineBanner} onAssistant={aiOn ? () => setAssistantOpen(true) : undefined} />
           ) : view === 'day' ? (
-            <PoseurDay key={dayKey} topBanner={<>{offlineBanner}{toSendBanner}</>} />
+            <PoseurDay key={dayKey} topBanner={<>{offlineBanner}{toSendBanner}</>} onAssistant={aiOn ? () => setAssistantOpen(true) : undefined} />
           ) : (
             <div className="bt-phscroll bt-skin">
               {view === 'week' ? (
@@ -470,7 +511,21 @@ export default function PoseurPage() {
         </div>
 
         <LeaveRequestDialog open={leaveOpen} onOpenChange={setLeaveOpen} userId={user?.id} />
+        {scanOpen && <QrScanner onClose={() => setScanOpen(false)} onPath={(path) => { setScanOpen(false); router.push(path); }} />}
+        {infoOpen && (
+          <div className="bt-info-bg" role="dialog" aria-modal="true" aria-label="Informations" onClick={() => setInfoOpen(false)}>
+            <div className="bt-info" onClick={(e) => e.stopPropagation()}>
+              <h2><Info className="h-4 w-4" /> Informations</h2>
+              <h3>{GEO_INFO_TITLE}</h3>
+              <p>{GEO_INFO_TEXT}</p>
+              <a href={GEO_INFO_LINK}>Politique de confidentialité</a>
+              <button type="button" onClick={() => setInfoOpen(false)}>Fermer</button>
+            </div>
+          </div>
+        )}
         <WorkerAssistant
+          open={assistantOpen}
+          onOpenChange={setAssistantOpen}
           onSaved={() => setDayKey((k) => k + 1)}
           onNavigate={(a) => {
             if (a === 'journee') goHome();

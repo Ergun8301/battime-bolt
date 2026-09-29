@@ -19,6 +19,7 @@ import {
   Bell, Clock, Mail, RefreshCw, X, Pencil, LogOut, Settings, User as UserIcon, Paperclip, AlertTriangle, Info, Hammer, CheckCircle2, Menu, TrendingUp, Palmtree,
   Image as ImageIcon,
   ShieldCheck,
+  Sparkles,
 } from 'lucide-react';
 import {
   DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
@@ -376,6 +377,7 @@ const PL_CSS = `
 .bt-pl .mono{font-family:'JetBrains Mono',monospace}
 /* ===== BARRE UNIQUE pleine largeur (sticky) — pas de cadre ===== */
 /* groupes logiques : [légende·Salariés·Clients]  [semaine]  [Exporter·compte] */
+.bt-pl-ai{color:#15120F}.bt-pl-ai svg{color:#C99300}
 .bt-pl-bar{position:sticky;top:0;z-index:30;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;background:#fff;border-bottom:2px solid #15120F;padding:9px 16px;border-radius:0}
 .bt-pl-bar>.bt-pl-group:last-child{justify-self:end}
 .bt-pl-group{display:flex;align-items:center;gap:10px}
@@ -737,6 +739,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const [chantierMenuOpen, setChantierMenuOpen] = useState(false); // dropdown « + Chantier »
   const [accountMenuOpen, setAccountMenuOpen] = useState(false); // menu compte (entreprise → Déconnexion)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false); // menu hamburger mobile (Sheet)
+  const [assistantOpen, setAssistantOpen] = useState(false); // lot 6 : ✨ dans la barre / l'en-tête
   const [mobileChantiersOpen, setMobileChantiersOpen] = useState(false); // liste « Chantiers » mobile (équivalent du dropdown Clients desktop)
   const [importOpen, setImportOpen] = useState(false); // import CSV/Excel de clients/chantiers
   const [costOpen, setCostOpen] = useState(false); // rapport coût & heures par chantier
@@ -2283,6 +2286,12 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
             <button className="bt-pl-datearr" aria-label="Semaine suivante" onClick={() => setCurrentWeekStart(addWeeks(currentWeekStart, 1))}>›</button>
           </div>
           <div className="bt-pl-group">
+          {/* Lot 6 : l'assistant est ICI, dans la barre — plus de bouton flottant sur le planning. */}
+          {aiOn && user?.role === 'admin' && (
+            <button className="bt-pl-out bt-pl-ai" onClick={() => setAssistantOpen(true)} title="Assistant BEMEXO" aria-label="Assistant BEMEXO" data-testid="bar-assistant">
+              <Sparkles className="h-4 w-4" />
+            </button>
+          )}
           <button className="bt-pl-out" onClick={() => setReservesOpen(true)} title="Réserves de chantier à traiter">
             <AlertTriangle className="h-4 w-4" /> Réserves
             {openReserves > 0 && <span className="bt-pl-outbadge">{openReserves}</span>}
@@ -2498,9 +2507,16 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                 {trial?.inTrial && trial.expired && (
                   <div className="bt-pl-trial expired"><span className="d" /> <button className="cta" onClick={onSubscribe}>S&apos;abonner</button></div>
                 )}
-                <button className="bt-pl-m-ibtn" aria-label="Menu" title="Menu" onClick={() => setMobileMenuOpen(true)}>
-                  <Menu className="h-4 w-4" />
-                </button>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {aiOn && user?.role === 'admin' && (
+                    <button className="bt-pl-m-ibtn bt-pl-ai" aria-label="Assistant BEMEXO" title="Assistant BEMEXO" onClick={() => setAssistantOpen(true)} data-testid="m-assistant">
+                      <Sparkles className="h-4 w-4" />
+                    </button>
+                  )}
+                  <button className="bt-pl-m-ibtn" aria-label="Menu" title="Menu" onClick={() => setMobileMenuOpen(true)}>
+                    <Menu className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
               <div className="bt-pl-m-headrow">
                 <div>
@@ -2787,6 +2803,9 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         <AssistantPanel
           source={supabaseAssistantSource}
           attachments
+          open={assistantOpen}
+          onOpenChange={setAssistantOpen}
+          launcher={false}
           onNavigate={(action) => {
             if (action === 'couts') setCostOpen(true);
             else if (action === 'conges') setLeaveOpen(true);

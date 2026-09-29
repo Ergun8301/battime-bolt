@@ -81,10 +81,17 @@ interface Props {
   footNote?: string;
   /** Lot 3 bis : 📎 photo ou PDF joint à la demande. */
   attachments?: boolean;
+  /** Lot 6 : ouverture pilotée par l'écran (bouton ✨ dans une barre), sans bouton flottant. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** Lot 6 : false = pas de bouton flottant (il recouvrait du contenu). */
+  launcher?: boolean;
 }
 
-export default function AssistantPanel({ source, onNavigate, defaultOpen = false, suggestions = ASSISTANT_SUGGESTIONS, intro, renderExtra, footNote = 'Rien n’est fait sans votre confirmation', attachments = false }: Props) {
-  const [open, setOpen] = useState(defaultOpen);
+export default function AssistantPanel({ source, onNavigate, defaultOpen = false, suggestions = ASSISTANT_SUGGESTIONS, intro, renderExtra, footNote = 'Rien n’est fait sans votre confirmation', attachments = false, open: openProp, onOpenChange, launcher = true }: Props) {
+  const [innerOpen, setInnerOpen] = useState(defaultOpen);
+  const open = openProp ?? innerOpen;
+  const setOpen = (v: boolean) => { if (onOpenChange) onOpenChange(v); else setInnerOpen(v); };
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
@@ -155,7 +162,7 @@ export default function AssistantPanel({ source, onNavigate, defaultOpen = false
   return (
     <>
       <style>{CSS}</style>
-      {!open && (
+      {!open && launcher && (
         <button type="button" className="as-fab" onClick={() => setOpen(true)} data-testid="assistant-open">
           <Sparkles className="h-4 w-4" /> Assistant BEMEXO
         </button>
