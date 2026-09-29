@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/auth-provider';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import SupportBanner from '@/components/support-banner';
 
 export default function AdminLayout({
   children,
@@ -41,5 +42,5 @@ export default function AdminLayout({
     return null;
   }
 
-  return <>{children}</>;
+  return <><SupportBanner />{children}</>;
 }
