@@ -40,6 +40,9 @@ import WorkerDetailDialog from '@/components/worker-detail';
 import ChantierDocuments from '@/components/chantier-documents';
 import { TimeCylinder } from '@/components/time-cylinder';
 import CompanySettings from '@/components/company-settings';
+import AssistantPanel from '@/components/assistant-panel';
+import { supabaseAssistantSource } from '@/lib/assistant';
+import { useAiEnabled } from '@/lib/real-cost';
 import AdminMobileMenu from '@/components/admin-mobile-menu';
 import ImportDialog from '@/components/import-dialog';
 import CostReport from '@/components/cost-report';
@@ -748,6 +751,8 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const [statusTarget, setStatusTarget] = useState<{ worker: User; fromStr: string } | null>(null);
   const [ficheWorker, setFicheWorker] = useState<User | null>(null);
   const [ficheMode, setFicheMode] = useState<'hours' | 'manage'>('hours');
+  // Assistant BEMEXO (lot 3) : n'existe que si l'entreprise a `ai_enabled`.
+  const aiOn = useAiEnabled(user?.company_id);
   const [salariesOpen, setSalariesOpen] = useState(false);
   const [clientsQuery, setClientsQuery] = useState('');
   const [salariesQuery, setSalariesQuery] = useState('');
@@ -2804,6 +2809,20 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       />
 
       <CostReport open={costOpen} onOpenChange={setCostOpen} companyId={user?.company_id} />
+
+      {aiOn && user?.role === 'admin' && (
+        <AssistantPanel
+          source={supabaseAssistantSource}
+          onNavigate={(action) => {
+            if (action === 'couts') setCostOpen(true);
+            else if (action === 'conges') setLeaveOpen(true);
+            else if (action.startsWith('salarie:')) {
+              const w = workers.find((x) => x.id === action.slice(8));
+              if (w) { setFicheMode('hours'); setFicheWorker(w); }
+            }
+          }}
+        />
+      )}
 
       {/* Registre des réserves — ouvre le module Documents du chantier pour les
           photos. Après une levée, `refresh` recharge le planning ET les extras :
