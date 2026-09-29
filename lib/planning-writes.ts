@@ -32,7 +32,9 @@ export async function createWorksite(companyId: string, w: NewWorksite) {
   const t = (v?: string | null) => (v ?? '').trim() || null;
   const { data, error } = await supabase.from('worksites').insert({
     company_id: companyId, client_name: w.client_name.trim(), product_type: t(w.product_type),
-    client_phone: t(w.client_phone), client_email: t(w.client_email), city: t(w.city), address: t(w.address),
+    // `city` est NOT NULL en base (comme l'import et « Ajouter ce chantier ») :
+    // sans ville, une chaîne vide — `null` faisait échouer la création.
+    client_phone: t(w.client_phone), client_email: t(w.client_email), city: (w.city ?? '').trim(), address: t(w.address),
     description: t(w.description), is_active: true,
   }).select().single();
   if (error) throw error;

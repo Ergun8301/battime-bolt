@@ -3,31 +3,21 @@
 // Assistant BEMEXO — UN bouton, UN panneau. On écrit, ou on appuie sur 🎤 et
 // on parle : la dictée (fr-FR) vient du navigateur / téléphone. Si l'appareil
 // ne sait pas la faire, le micro n'apparaît simplement pas.
+// Lot 7 : la dictée ne s'arrête JAMAIS seule (lib/dictation.ts) ; le texte
+// s'écrit en direct dans le champ, on le corrige, puis « Envoyer ».
 //
 // Rien n'est conservé : la conversation vit dans cet écran et disparaît quand
 // on recharge la page. 📎 (lot 3 bis) : photo ou PDF joint, compressé ici,
 // rangé seulement après « Confirmer ».
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Sparkles, X, Mic, ArrowUp, Loader2, ArrowRight, Paperclip, FileText } from 'lucide-react';
+import { Sparkles, X, Mic, Square, ArrowUp, Loader2, ArrowRight, Paperclip, FileText } from 'lucide-react';
+import { Dictation, speechCtor } from '@/lib/dictation';
 import { ATTACH_ACCEPT, ATTACH_MAX_BYTES, attachmentError, compressAttachment } from '@/lib/attachment';
 import { ASSISTANT_SUGGESTIONS, type AssistantLink, type AssistantSource } from '@/lib/assistant';
 
 type Msg = { who: 'me' | 'bot'; text: string; links?: AssistantLink[]; notice?: boolean; extra?: unknown; file?: string };
 
-interface SpeechRec {
-  lang: string; interimResults: boolean; continuous: boolean;
-  onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }> }) => void) | null;
-  onend: (() => void) | null; onerror: (() => void) | null;
-  start(): void; stop(): void;
-}
-type SpeechCtor = new () => SpeechRec;
-
-function speechCtor(): SpeechCtor | null {
-  if (typeof window === 'undefined') return null;
-  const w = window as unknown as { SpeechRecognition?: SpeechCtor; webkitSpeechRecognition?: SpeechCtor };
-  return w.SpeechRecognition || w.webkitSpeechRecognition || null;
-}
 
 const CSS = `
 .as-fab{position:fixed;right:20px;bottom:20px;z-index:60;display:inline-flex;align-items:center;gap:8px;background:#15120F;color:#FBF8F2;border:none;border-radius:999px;padding:12px 18px 12px 14px;font-weight:800;font-size:14px;cursor:pointer;box-shadow:0 10px 30px rgba(21,18,15,.28);font-family:inherit}
@@ -63,7 +53,11 @@ const CSS = `
 .as-chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:230px}
 .as-chip button{border:none;background:#F1ECE2;border-radius:999px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#56514a}
 .as-file{display:flex;align-items:center;gap:5px;font-size:12px;opacity:.85;margin-bottom:4px}
-.as-meta{font-size:11px;color:#9a948a;margin:7px 4px 0;display:flex;justify-content:space-between}
+.as-meta{font-size:11px;color:#9a948a;margin:7px 4px 0;display:flex;justify-content:space-between;gap:8px}
+.as-rec{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:800;color:#B42318;margin:0 4px 8px}
+.as-rec i{width:8px;height:8px;border-radius:50%;background:#E5484D;animation:as-blink 1s infinite}
+@keyframes as-blink{50%{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.as-mic.on,.as-rec i{animation:none}}
 @media(max-width:640px){.as-fab{right:14px;bottom:14px}}
 `;
 
@@ -98,17 +92,19 @@ export default function AssistantPanel({ source, onNavigate, defaultOpen = false
   const [listening, setListening] = useState(false);
   const [remaining, setRemaining] = useState<number | null>(null);
   const [canSpeak, setCanSpeak] = useState(false);
-  const recRef = useRef<SpeechRec | null>(null);
+  const dictRef = useRef<Dictation | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { setCanSpeak(!!speechCtor()); }, []);
+  useEffect(() => { setCanSpeak(!!speechCtor()); return () => dictRef.current?.abort(); }, []);
   useEffect(() => { bodyRef.current?.scrollTo({ top: bodyRef.current.scrollHeight, behavior: 'smooth' }); }, [msgs, busy]);
 
   const ask = useCallback(async (q: string) => {
     const question = q.trim() || (file ? 'Regarde ce fichier.' : '');
     if (!question || busy) return;
+    // « Envoyer » pendant la dictée : on coupe net, le texte affiché part tel quel.
+    dictRef.current?.abort();
     const sent = file;
     setText(''); setFile(null);
     setMsgs((m) => [...m, { who: 'me', text: question, file: sent?.name }]);
@@ -132,26 +128,18 @@ export default function AssistantPanel({ source, onNavigate, defaultOpen = false
     setFile(small);
   };
 
+  // Un appui : on écoute (sans jamais s'arrêter seul). Un appui : on arrête.
+  // Rien ne part tout seul : le texte reste dans le champ jusqu'à « Envoyer ».
   const toggleMic = () => {
-    if (listening) { recRef.current?.stop(); return; }
+    if (dictRef.current?.listening) { dictRef.current.stop(); return; }
     const Ctor = speechCtor();
     if (!Ctor) return;
-    const rec = new Ctor();
-    rec.lang = 'fr-FR'; rec.interimResults = true; rec.continuous = false;
-    let finalText = '';
-    rec.onresult = (e) => {
-      let interim = '';
-      for (let i = 0; i < e.results.length; i++) {
-        const r = e.results[i];
-        if (r.isFinal) finalText += r[0].transcript; else interim += r[0].transcript;
-      }
-      setText((finalText + interim).trim());
-    };
-    rec.onend = () => { setListening(false); recRef.current = null; if (finalText.trim()) ask(finalText); };
-    rec.onerror = () => { setListening(false); recRef.current = null; };
-    recRef.current = rec;
-    setListening(true);
-    try { rec.start(); } catch { setListening(false); }
+    dictRef.current = new Dictation(Ctor, {
+      onText: (t) => setText(t.slice(0, 500)),
+      onState: setListening,
+      onError: (m) => setMsgs((x) => [...x, { who: 'bot', text: m, notice: true }]),
+    });
+    dictRef.current.start(text);
   };
 
   const go = (action: string) => {
@@ -172,7 +160,7 @@ export default function AssistantPanel({ source, onNavigate, defaultOpen = false
           <div className="as-head">
             <span className="ico"><Sparkles className="h-4 w-4" /></span>
             <b>Assistant BEMEXO</b>
-            <button type="button" className="as-x" onClick={() => { recRef.current?.stop(); setOpen(false); }} aria-label="Fermer"><X className="h-5 w-5" /></button>
+            <button type="button" className="as-x" onClick={() => { dictRef.current?.abort(); setOpen(false); }} aria-label="Fermer"><X className="h-5 w-5" /></button>
           </div>
           <div className="as-body" ref={bodyRef}>
             {msgs.length === 0 && (
@@ -208,10 +196,13 @@ export default function AssistantPanel({ source, onNavigate, defaultOpen = false
                 <button type="button" onClick={() => setFile(null)} aria-label="Retirer le fichier"><X className="h-3.5 w-3.5" /></button>
               </div>
             )}
+            {listening && (
+              <div className="as-rec" role="status" data-testid="assistant-listening"><i /> J’écoute… appuyez sur ■ pour arrêter, ou Envoyer</div>
+            )}
             <form className="as-bar" onSubmit={(e) => { e.preventDefault(); ask(text); }}>
               <textarea
-                rows={1} value={text} placeholder={listening ? 'Je vous écoute…' : 'Votre question…'} maxLength={500}
-                onChange={(e) => setText(e.target.value)}
+                rows={listening || text.length > 60 ? 3 : 1} value={text} placeholder={listening ? 'Parlez, le texte s’écrit ici…' : 'Votre question…'} maxLength={500}
+                onChange={(e) => { setText(e.target.value); dictRef.current?.edit(e.target.value); }}
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ask(text); } }}
                 aria-label="Votre question"
               />
@@ -222,8 +213,8 @@ export default function AssistantPanel({ source, onNavigate, defaultOpen = false
                 </button>
               </>)}
               {canSpeak && (
-                <button type="button" className={`as-btn as-mic${listening ? ' on' : ''}`} onClick={toggleMic} aria-label={listening ? 'Arrêter la dictée' : 'Dicter'} data-testid="assistant-mic">
-                  <Mic className="h-4 w-4" />
+                <button type="button" className={`as-btn as-mic${listening ? ' on' : ''}`} onClick={toggleMic} aria-label={listening ? 'Arrêter la dictée' : 'Dicter'} aria-pressed={listening} data-testid="assistant-mic">
+                  {listening ? <Square className="h-3.5 w-3.5" fill="currentColor" /> : <Mic className="h-4 w-4" />}
                 </button>
               )}
               <button type="submit" className="as-btn as-send" disabled={(!text.trim() && !file) || busy} aria-label="Envoyer"><ArrowUp className="h-4 w-4" /></button>
