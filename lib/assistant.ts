@@ -81,6 +81,8 @@ export function demoActionContext(): ActionContext {
       ...next.slice(0, 2).map((d) => ({ user_id: 'demo-sofia', date: d, worksite_id: null, absence: 'conge' })),
     ],
     congesEnAttente: [{ user_id: 'demo-ines', du: next[4], au: next[4] }],
+    // Lucas n'est pas au planning, mais il a pointé sur Bureau Martin.
+    pointages: [{ user_id: 'demo-lucas', date: addDays(today, -1), worksite_id: 'demo-martin' }],
   };
 }
 

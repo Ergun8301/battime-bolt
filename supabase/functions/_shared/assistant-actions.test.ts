@@ -105,7 +105,8 @@ Deno.test('5. Planning de la semaine prochaine : congés, déjà planifié, chan
   if (of('u-karim').some((l) => l.date === addDays(NEXT, 1))) throw new Error('jour déjà planifié touché');
   eq(of('u-sofia').map((l) => l.date), [addDays(NEXT, 1), addDays(NEXT, 2), addDays(NEXT, 3)], 'Sofia : ni son congé, ni le congé demandé');
   eq(of('u-sofia').every((l) => l.worksite_id === 'w-martin'), true, 'Sofia : Bureau Martin');
-  eq(of('u-lucas').every((l) => l.worksite_id === null), true, 'Lucas : pas d’habitude → à choisir');
+  eq(of('u-lucas').every((l) => l.worksite_id === 'w-dupont'), true, 'Lucas : sans habitude ni pointage → chantier le plus utilisé');
+  if (!d.notes.some((n) => n.startsWith('Lucas Petit : Villa Dupont · Lyon (chantier le plus utilisé'))) throw new Error('repli non expliqué');
   eq(of('u-boss').length, 0, 'le bureau n’est pas planifié');
   if (!d.notes.some((n) => n.includes('congé demandé en attente'))) throw new Error('congé en attente non signalé');
   eq(a.problems, [], 'applicable');
@@ -210,4 +211,65 @@ Deno.test('📎 Fichier reçu par le serveur : types refusés, taille, rien dans
     await callFunction({ prompt: 'x', functions: ASSISTANT_FUNCTIONS, file: PDF }, env, () => Promise.resolve(new Response('err', { status: 500 })));
   } finally { console.error = orig; }
   if (logs.some((l) => l.includes(PDF.base64) || l.includes('bulletin'))) throw new Error('contenu du fichier dans les logs');
+});
+
+Deno.test('5 bis. Planning proposé sans habitude : ordre des replis, « Pas de chantier » en dernier', () => {
+  const base: ActionContext = {
+    today: TODAY,
+    salaries: [
+      { id: 'a', prenom: 'Ali', nom: 'A', role: 'worker' },
+      { id: 'b', prenom: 'Bea', nom: 'B', role: 'worker' },
+      { id: 'c', prenom: 'Cyr', nom: 'C', role: 'worker' },
+    ],
+    chantiers: [
+      { id: 'w-macon', nom: 'Mister Grill Kebab', ville: 'Mâcon' },
+      { id: 'w-bourg', nom: 'Mister Grill Kebab', ville: 'Bourg-en-Bresse' },
+      { id: 'w-autre', nom: 'Autre', ville: null },
+    ],
+    planning: [], congesEnAttente: [], pointages: [],
+  };
+  const site = (ctx: ActionContext, u: string) => {
+    const l = (proposeWeek(ctx, NEXT).draft as { lignes: { user_id: string; worksite_id: string | null }[] }).lignes.filter((x) => x.user_id === u);
+    return Array.from(new Set(l.map((x) => x.worksite_id)));
+  };
+  // 2) dernier chantier pointé (cas réel : pointé aujourd'hui sur Mâcon, rien au planning)
+  const p2 = { ...base, pointages: [
+    { user_id: 'a', date: addDays(TODAY, -8), worksite_id: 'w-bourg' },
+    { user_id: 'a', date: addDays(TODAY, -1), worksite_id: 'w-macon' },
+    { user_id: 'a', date: TODAY, worksite_id: 'w-macon' },
+  ] };
+  eq(site(p2, 'a'), ['w-macon'], 'dernier pointage (le plus récent)');
+  const notes2 = (proposeWeek(p2, NEXT).draft as { notes: string[] }).notes;
+  if (!notes2.includes('Ali A : Mister Grill Kebab · Mâcon (dernier chantier pointé), à vérifier.')) throw new Error(`note : ${notes2}`);
+  // 3) sans rien pour Bea : chantier le plus utilisé de l'entreprise
+  eq(site(p2, 'b'), ['w-macon'], 'chantier le plus utilisé');
+  // 1) le planning de la semaine en cours passe avant le pointage
+  const p1 = { ...p2, planning: [{ user_id: 'a', date: addDays(MON, 1), worksite_id: 'w-bourg', absence: null }] };
+  eq(site(p1, 'a'), ['w-bourg'], 'planning de la semaine avant le pointage');
+  // chantier archivé : jamais proposé
+  const archived = { ...base, chantiers: base.chantiers.filter((c) => c.id !== 'w-macon'), pointages: [{ user_id: 'a', date: TODAY, worksite_id: 'w-macon' }] };
+  eq(site(archived, 'a'), [null], 'chantier archivé ignoré');
+  // dernier recours : rien nulle part → « Pas de chantier » + explication
+  const none = proposeWeek(base, NEXT).draft as { lignes: { worksite_id: string | null }[]; notes: string[] };
+  eq(none.lignes.every((l) => l.worksite_id === null), true, 'rien de connu → à choisir');
+  if (!none.notes.every((n) => n.includes('aucun chantier trouvé'))) throw new Error('dernier recours non expliqué');
+  // l'IA donne une semaine fausse (année passée) → semaine prochaine
+  eq((prepare('planning_semaine', { semaine_du: '2025-10-06' }, p2)!.draft as { semaine_du: string }).semaine_du, NEXT, 'semaine fausse corrigée');
+  eq((prepare('planning_semaine', { semaine_du: addDays(NEXT, 7) }, p2)!.draft as { semaine_du: string }).semaine_du, addDays(NEXT, 7), 'semaine demandée gardée');
+});
+
+Deno.test('Contexte : pointages de l’entreprise seulement, pointage en cours compté', () => {
+  const c = buildActionContext({
+    companyId: 'c1', today: TODAY,
+    users: [{ id: 'a', company_id: 'c1', first_name: 'A', last_name: 'A', role: 'worker', is_active: true }],
+    worksites: [{ id: 'w1', company_id: 'c1', client_name: 'X', city: null }],
+    planning: [], leaves: [],
+    entries: [
+      { user_id: 'a', company_id: 'c1', work_date: '2026-09-28', worksite_id: 'w1' },
+      { user_id: 'b', company_id: 'c2', work_date: '2026-09-28', worksite_id: 'w2' },
+      { user_id: 'a', company_id: 'c1', work_date: '2026-09-27', worksite_id: null },
+    ],
+    sessions: [{ user_id: 'a', company_id: 'c1', worksite_id: 'w1', started_at: '2026-09-30T06:00:00Z' }],
+  });
+  eq(c.pointages, [{ user_id: 'a', date: '2026-09-28', worksite_id: 'w1' }, { user_id: 'a', date: TODAY, worksite_id: 'w1' }], 'filtré');
 });
