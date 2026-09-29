@@ -36,7 +36,7 @@ function referenceCode(seed: Uint8Array, nowMs: number): string {
   const step = Math.floor(nowMs / 1000 / 60);
   const counter = Buffer.alloc(8);
   counter.writeBigUInt64BE(BigInt(step));
-  const mac = createHmac('sha256', Buffer.from(seed)).update(counter).digest();
+  const mac = createHmac('sha256', new Uint8Array(Buffer.from(seed))).update(new Uint8Array(counter)).digest();
   const o = mac[mac.length - 1] & 0x0f;
   const bin = ((mac[o] & 0x7f) << 24) | (mac[o + 1] << 16) | (mac[o + 2] << 8) | mac[o + 3];
   return String(bin % 10 ** 8).padStart(8, '0');
@@ -130,4 +130,20 @@ Deno.test('Veille hors des horaires d’ouverture', () => {
   eq(isAsleep('23:00', '22:00', '06:00'), false, 'plage de nuit');
   eq(isAsleep('12:00', '22:00', '06:00'), true, 'plage de nuit, en journée');
   eq(isAsleep('03:00', null, null), false, 'sans horaires : jamais');
+});
+
+Deno.test('Mode démo : seulement sur une preview, jamais sur bemexo.com', async () => {
+  const { isPreviewHost } = await import('../../../lib/hosting.ts');
+  const g = globalThis as unknown as { window?: unknown };
+  const at = (hostname: string) => { g.window = { location: { hostname } }; return isPreviewHost(); };
+  try {
+    eq(at('bemexo.com'), false, 'production');
+    eq(at('www.bemexo.com'), false, 'production www');
+    eq(at('bemexo.pages.dev'), false, 'production Cloudflare');
+    eq(at('battime.netlify.app'), false, 'production Netlify');
+    eq(at('feat-borne-qr.bemexo.pages.dev'), true, 'preview Cloudflare');
+    eq(at('deploy-preview-110--battime.netlify.app'), true, 'preview Netlify');
+  } finally {
+    delete g.window;
+  }
 });

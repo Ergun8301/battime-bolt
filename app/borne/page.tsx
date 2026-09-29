@@ -25,6 +25,7 @@ import { codeAt, fromBase64Url, scanUrl, stepAt } from '../../supabase/functions
 import { isAsleep, parisTime } from '../../supabase/functions/_shared/kiosk-rules';
 import { callKiosk, type KioskPlanningRow, type KioskSettings } from '@/lib/kiosk-client';
 import { demanderPosition } from '@/lib/position';
+import { isPreviewHost } from '@/lib/hosting';
 
 const STORE_KEY = 'bx_kiosk_v1';
 const SYNC_EVERY_MS = 5 * 60 * 1000;
@@ -305,7 +306,8 @@ export default function BornePage() {
   const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
-    const demo = new URLSearchParams(window.location.search).get('demo') === '1';
+    // Le mode démo n'existe QUE sur une preview : sur bemexo.com, `?demo=1` est ignoré.
+    const demo = isPreviewHost() && new URLSearchParams(window.location.search).get('demo') === '1';
     setPaired(demo ? DEMO : readStore());
     setReady(true);
   }, []);
