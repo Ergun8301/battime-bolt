@@ -21,17 +21,45 @@ async function secretOk(candidate: string): Promise<boolean> {
   return !!res?.ok && (await res.json().catch(() => false)) === true;
 }
 
+// Quels modèles « flash » la clé voit-elle, et répondent-ils ? (noms + codes seulement)
+async function probe() {
+  const key = Deno.env.get('GEMINI_API_KEY') ?? '';
+  const base = 'https://generativelanguage.googleapis.com/v1beta/models';
+  const list = await fetch(`${base}?pageSize=200`, { headers: { 'x-goog-api-key': key } }).then((r) => r.json()).catch(() => ({})) as { models?: { name: string }[] };
+  const names = (list.models ?? []).map((m) => m.name.replace('models/', '')).filter((n) => /flash|pro/.test(n) && !/tts|image|audio|live|embedding/.test(n));
+  const tries = [];
+  for (const m of names.filter((n) => /^gemini-(2\.5|3)/.test(n)).slice(0, 12)) {
+    const r = await fetch(`${base}/${m}:generateContent`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'Réponds juste OK.' }] }] }),
+    }).catch(() => null);
+    const err = r && !r.ok ? await r.json().then((b: { error?: { status?: string; message?: string } }) => `${b.error?.status ?? ''} ${(b.error?.message ?? '').slice(0, 160)}`).catch(() => '') : '';
+    tries.push({ model: m, status: r?.status ?? 0, err });
+  }
+  return { models: names, tries, env: { AI_MODEL: Deno.env.get('AI_MODEL') ?? null, AI_ACTION_MODEL: Deno.env.get('AI_ACTION_MODEL') ?? null } };
+}
+
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
   const secret = req.headers.get('x-cron-secret') ?? '';
   if (!secret) return json({ error: 'Non autorisé' }, 401);
   if (!(await secretOk(secret))) return json({ error: 'Non autorisé' }, 401);
-  const body = await req.json().catch(() => ({})) as { version?: string; ids?: string[]; parallel?: number; gapMs?: number };
+  const body = await req.json().catch(() => ({})) as {
+    version?: string; ids?: string[]; parallel?: number; gapMs?: number; probe?: boolean; actionModel?: string; lightModel?: string;
+  };
+  if (body.probe) return json(await probe());
   const version = body.version === 'v1' ? 'v1' : 'v2';
+  const model = (m?: string) => (m && /^[a-z0-9.-]{3,60}$/.test(m) ? m : '');
+  const light = model(body.lightModel) || Deno.env.get('AI_MODEL') || 'gemini-3.1-flash-lite';
+  const strong = model(body.actionModel) || Deno.env.get('AI_ACTION_MODEL') || '';
   // v1 = modèle léger seul (comme avant le lot 7) ; v2 = modèle fort pour les actions.
-  const env = version === 'v1'
-    ? { get: (k: string) => (k === 'AI_ACTION_MODEL' ? (Deno.env.get('AI_MODEL') || 'gemini-3.1-flash-lite') : Deno.env.get(k)) }
-    : Deno.env;
+  const env = {
+    get: (k: string) => {
+      if (k === 'AI_MODEL') return light;
+      if (k === 'AI_ACTION_MODEL') return version === 'v1' ? light : (strong || undefined);
+      return Deno.env.get(k);
+    },
+  };
   // La clé est partagée avec la prod : on va doucement et on réessaie après un
   // refus « trop de requêtes » (le banc d'essai ne doit pas mesurer le quota).
   const call = async (r: Parameters<typeof callFunction>[0]) => {

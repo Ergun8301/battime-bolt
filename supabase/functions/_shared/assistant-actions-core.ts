@@ -579,6 +579,11 @@ function resolve<T extends { id: string }>(text: string, list: T[], label: (x: T
 }
 export const resolveSalarie = (t: string, ctx: ActionContext) => resolve(t, ctx.salaries, fullName);
 export const resolveChantier = (t: string, ctx: ActionContext) => resolve(t, ctx.chantiers, (c) => `${c.nom} ${c.ville ?? ''}`);
+/** Le nom dit ressemble-t-il à AU MOINS un client connu (même s'il y en a plusieurs) ? */
+function matchesSomeChantier(t: string, ctx: ActionContext): boolean {
+  const q = norm(t).split(/[^a-z0-9]+/).filter((w) => w.length > 2);
+  return ctx.chantiers.some((c) => norm(c.nom) !== 'autre' && norm(c.nom).split(/[^a-z0-9]+/).some((n) => n.length > 2 && q.includes(n)));
+}
 
 // ── Contrôles, communs à l'IA, au lecteur simple ET à la carte modifiée ─────
 export function checkAction(d: ActionDraft, ctx: ActionContext): string[] {
@@ -766,9 +771,11 @@ export function prepare(type: string, raw: Record<string, unknown>, ctx: ActionC
       const fin = hhmm(raw.fin) || parseTimeFr(str(raw.fin, 20)) || (!hhmm(raw.debut) && moment ? moment.fin : '');
       // « Rajoute-MOI » : la personne qui parle.
       const moi = /^(moi|me|m'|moi-meme|moi meme|je)$/i.test(norm(s).trim());
-      let worksite = resolveChantier(c || lieu, ctx);
+      // « Mister Grill Mâcon » : le client + la ville départagent deux chantiers du même client.
+      let worksite = resolveChantier(c || lieu, ctx) ?? (c && lieu ? resolveChantier(`${c} ${lieu}`, ctx) : null);
       // Lieu sans client connu (« une intervention à Lyon ») → « Autre », le lieu dans le titre.
-      if (!worksite && (lieu || c)) {
+      // Un client connu mais ambigu n'y va jamais : la carte demande lequel.
+      if (!worksite && (lieu || c) && !(c && matchesSomeChantier(c, ctx))) {
         const autre = ctx.chantiers.find((x) => norm(x.nom) === 'autre');
         if (autre) { worksite = autre.id; objet = objet ? `${objet} · ${lieu || cleanName(c)}` : `Intervention à ${lieu || cleanName(c)}`; }
       }
