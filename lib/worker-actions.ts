@@ -7,9 +7,10 @@ import { requestLeave } from '@/lib/leave';
 import { announceLiveChange, startLiveSession, stopLiveSession } from '@/lib/live-session';
 import { markEntryReserve } from '@/lib/worker-entry';
 import { uploadWorksiteDocument } from '@/lib/chantier-docs';
+import { geoInfoSeen } from '@/lib/position-info';
 import type { WorkerActionDraft } from '@/supabase/functions/_shared/worker-assistant-core';
 
-export interface WorkerActionResult { ok: boolean; message: string }
+export interface WorkerActionResult { ok: boolean; message: string; /** Lot 6 : l'info « endroit » doit d'abord être montrée (CNIL). */ geoInfoFor?: string }
 export type WorkerActionExecutor = (d: WorkerActionDraft, attachment?: File) => Promise<WorkerActionResult>;
 
 const today = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
@@ -31,8 +32,11 @@ export function makeWorkerExecutor(user: { id: string; company_id: string }): Wo
           const day = today();
           const { data: plans } = await supabase.from('planning').select('id, worksite_id').eq('user_id', user.id).eq('work_date', day);
           const planningId = ((plans || []) as { id: string; worksite_id: string | null }[]).find((p) => p.worksite_id === d.worksite_id)?.id ?? null;
+          const pos = await positionActive();
+          // Même règle que « Je commence » : l'information AVANT la première collecte.
+          if (pos && !geoInfoSeen(user.id)) return { ok: false, message: '', geoInfoFor: user.id };
           const r = await startLiveSession({
-            userId: user.id, companyId: user.company_id, worksiteId: d.worksite_id!, planningId, workDate: day, positionActive: await positionActive(),
+            userId: user.id, companyId: user.company_id, worksiteId: d.worksite_id!, planningId, workDate: day, positionActive: pos,
           });
           announceLiveChange();
           return r.running ? { ok: false, message: 'Un pointage est déjà en cours.' } : { ok: true, message: 'Pointage démarré.' };

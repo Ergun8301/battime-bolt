@@ -11,6 +11,8 @@ import {
 } from '@/supabase/functions/_shared/worker-assistant-core';
 import type { WorkerActionExtra } from '@/lib/worker-assistant';
 import type { WorkerActionExecutor } from '@/lib/worker-actions';
+import GeoInfoDialog from '@/components/geo-info-dialog';
+import { markGeoInfoSeen } from '@/lib/position-info';
 
 const CSS = `
 .wa{margin-top:10px;border:1px solid rgba(21,18,15,.14);border-radius:14px;background:#FBF8F2;padding:11px}
@@ -50,6 +52,7 @@ export default function WorkerActionCard({ extra, execute, onDone }: Props) {
   const [done, setDone] = useState<string | null>(null);
   const [cancelled, setCancelled] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [geoFor, setGeoFor] = useState<string | null>(null);
   const snap: WorkerSnapshot = useMemo(() => ({ aujourdhui: '', chantiers: extra.chantiers, semaine: [], planning: [] }), [extra.chantiers]);
   const live: WorkerLive = useMemo(() => ({
     enCours: extra.workerAction.draft.type === 'terminer_pointage' && extra.workerAction.draft.depuis
@@ -63,6 +66,13 @@ export default function WorkerActionCard({ extra, execute, onDone }: Props) {
     return d.type === 'commencer_pointage' ? Array.from(new Set([...p, ...extra.workerAction.problems.filter((x) => x.startsWith('Un pointage'))])) : p;
   }, [d, snap, live, extra.workerAction.problems]);
   const set = (patch: Partial<WorkerActionDraft>) => setD((x) => ({ ...x, ...patch } as WorkerActionDraft));
+  const run = async () => {
+    setBusy(true); setErr(null);
+    const r = await execute(d, extra.attachment);
+    setBusy(false);
+    if (r.geoInfoFor) { setGeoFor(r.geoInfoFor); return; }
+    if (r.ok) { setDone(r.message); onDone?.(); } else setErr(r.message);
+  };
 
   if (done) return <div className="wa-done"><style>{CSS}</style><CheckCircle2 className="h-5 w-5" /> {done}</div>;
   if (cancelled) return <p className="wa-info" style={{ fontWeight: 600, color: '#6E6A63', fontSize: 12.5 }}>Annulé : rien n’a été fait.</p>;
@@ -140,17 +150,13 @@ export default function WorkerActionCard({ extra, execute, onDone }: Props) {
       {extra.attachment && <p className="wa-att"><Paperclip className="h-3.5 w-3.5" /> {extra.attachment.name}</p>}
       <div className="wa-f">{body}</div>
       {problems.map((p) => <p key={p} className="wa-p">{p}</p>)}
+      {geoFor && <GeoInfoDialog onOk={() => { markGeoInfoSeen(geoFor); setGeoFor(null); run(); }} />}
       {err && <p className="wa-p">{err}</p>}
       <div className="wa-foot">
         <button type="button" className="wa-b no" disabled={busy} onClick={() => setCancelled(true)}>Annuler</button>
         <button
           type="button" className="wa-b ok" disabled={busy || problems.length > 0} data-testid="worker-action-confirm"
-          onClick={async () => {
-            setBusy(true); setErr(null);
-            const r = await execute(d, extra.attachment);
-            setBusy(false);
-            if (r.ok) { setDone(r.message); onDone?.(); } else setErr(r.message);
-          }}
+          onClick={() => run()}
         >
           {busy && <Loader2 className="h-4 w-4 animate-spin" />} {confirm}
         </button>

@@ -19,12 +19,13 @@
 // on lui demande déjà si un trou était de la route ou une pause.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { startLiveSession, stopLiveSession, LIVE_CHANGED } from '@/lib/live-session';
+import { geoInfoSeen, markGeoInfoSeen } from '@/lib/position-info';
+import GeoInfoDialog from '@/components/geo-info-dialog';
 import { parisHHmm } from '@/lib/utils';
 import { TimeCylinder } from '@/components/time-cylinder';
-import { Play, Square, Clock, AlertTriangle, Loader2, Trash2, MapPin } from 'lucide-react';
+import { Play, Square, Clock, AlertTriangle, Loader2, Trash2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -121,6 +122,7 @@ export default function LiveTimer({
   const [tooShort, setTooShort] = useState(false);
   // Demande de confirmation avant d'effacer un pointage en cours.
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [geoAsk, setGeoAsk] = useState(false);
   const mounted = useRef(true);
 
   const load = useCallback(async () => {
@@ -157,6 +159,8 @@ export default function LiveTimer({
 
   const start = async () => {
     if (!pick) { toast.error('Choisis un chantier.'); return; }
+    // L'information AVANT la première collecte, une seule fois (lot 6).
+    if (positionActive && !geoInfoSeen(userId)) { setGeoAsk(true); return; }
     setBusy(true);
     // On repart propre : sinon l'avertissement du pointage précédent s'affiche
     // sur le nouveau, et la confirmation d'annulation resterait armée.
@@ -412,38 +416,11 @@ export default function LiveTimer({
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />} Je commence
         </button>
       </div>
-      <div className="bt-lt-note">
-        Tu peux aussi noter tes heures à la main, comme avant. Le pointage en direct évite juste
-        d&apos;avoir à s&apos;en souvenir le soir.
-      </div>
-      {/* UNE PHRASE, À L'ENDROIT DU POINTAGE, AVANT LE PREMIER APPUI.
-          C'est tout ce qui reste de l'écran plein écran de l'étape 27 — et
-          c'est suffisant : l'obligation est que l'information soit portée à la
-          connaissance du salarié avant la collecte, pas qu'elle lui barre la
-          route. Elle dit les trois choses qui comptent pour lui — quoi, quelle
-          étendue, et qu'il peut refuser — et le lien mène au détail complet
-          pour ceux qui veulent vraiment savoir. */}
-      {positionActive && (
-        <div className="bt-lt-geo">
-          <MapPin className="h-3.5 w-3.5" />
-          <span>
-            Ton entreprise note <b style={{ color: '#F2EDE3' }}>l&apos;endroit</b> au départ et à la
-            fin du pointage — rien entre les deux, et tu peux refuser.{' '}
-            {/* `Link` ET PAS `<a>`, ET UNE ANCRE.
-                Un `<a>` brut recharge la page entière : le salarié quitte
-                l'application pour lire une page légale, et doit la relancer
-                pour pointer. C'est la friction qu'on vient de retirer, remise
-                par la petite porte. `Link` reste dans l'application, et le
-                retour arrière le ramène là où il en était — c'est d'ailleurs
-                ce que font déjà les autres écrans du dépôt.
-
-                L'ancre l'amène à la section qui le concerne, pas en haut de
-                douze sections. Elle existe : `id="endroit"` sur le titre, et
-                le contrôle mécanique est dans `out/confidentialite.html`. */}
-            <Link href="/confidentialite#endroit" className="bt-lt-geo-a">En savoir plus</Link>
-          </span>
-        </div>
-      )}
+      {/* Lot 6 : écran épuré — sélecteur + « Je commence », rien d'autre.
+          L'information sur l'endroit (CNIL) n'est PAS supprimée : elle s'affiche
+          UNE fois, avant le premier pointage (GeoInfoDialog), et reste dans le
+          menu → « ℹ️ Informations ». Voir lib/position-info.ts. */}
+      {geoAsk && <GeoInfoDialog onOk={() => { markGeoInfoSeen(userId); setGeoAsk(false); start(); }} />}
     </div>
   );
 }
