@@ -25,6 +25,7 @@ Chaque action est notée dans `assistant_journal` (qui, quoi, quand, annulée ou
 - Dates relatives (« jeudi prochain », « du lundi au mercredi », « le 12 ») et heures (« 3h de l'après-midi ») : `supabase/functions/_shared/fr-langue.ts`.
 - Un **lieu seul** (« à Lyon ») n'est jamais pris pour le client situé dans cette ville : intervention « Autre », titre « Intervention à Lyon ».
 - Modèle : **actions → `AI_ACTION_MODEL`** (défaut `gemini-3.5-flash`), questions → `AI_MODEL` (Flash-Lite). Repli automatique sur le léger si le fort refuse.
+- ⚠️ La clé Gemini actuelle est en **niveau gratuit** : `gemini-3.5-flash` = **20 requêtes / jour** (constaté le 29/09). Au-delà, repli sur le léger (sans erreur visible). Pour profiter du modèle fort : activer la facturation sur la clé (Google AI Studio → Billing). Le niveau payant évite aussi que Google utilise les échanges pour améliorer ses produits.
 
 ## 4. Couverture
 
