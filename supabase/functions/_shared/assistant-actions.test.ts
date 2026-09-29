@@ -276,3 +276,19 @@ Deno.test('Contexte : pointages de l’entreprise seulement, pointage en cours c
   });
   eq(c.pointages, [{ user_id: 'a', date: '2026-09-28', worksite_id: 'w1' }, { user_id: 'a', date: TODAY, worksite_id: 'w1' }], 'filtré');
 });
+
+Deno.test('Lot 7 : un client doit être NOMMÉ — « à Lyon » reste un lieu', async () => {
+  const { ADMIN_RAW, ME } = await import('../assistant-eval/cases.ts');
+  const ctx = buildActionContext(ADMIN_RAW as Parameters<typeof buildActionContext>[0]);
+  ctx.me = ME;
+  const plan = (demande: string, args: Record<string, unknown>) => {
+    ctx.demande = demande;
+    const r = fromFunctionCall('affecter_planning', args, ctx);
+    return r.action!.draft as { worksite_id: string | null; note: string };
+  };
+  const lyon = plan('Rajoute-moi une intervention à Lyon aujourd’hui de 14h à 18h', { salarie: 'moi', chantier: 'Villa Dupont', dates: ['2026-10-01'] });
+  eq([lyon.worksite_id, lyon.note], ['w-autre', 'Intervention à Lyon'], 'le modèle a traduit Lyon en client : on revient au lieu');
+  eq(plan('mets kevin sur mister grill macon lundi', { salarie: 'Kevin', chantier: 'Mister Grill Kebab', lieu: 'Mâcon', dates: ['lundi'] }).worksite_id, 'w-mgk-macon', 'client + ville départagent');
+  eq(plan('mets kevin sur mister grill lundi', { salarie: 'Kevin', chantier: 'Mister Grill Kebab', dates: ['lundi'] }).worksite_id, null, 'ambigu : on demande, jamais « Autre »');
+  eq(plan('Karim demain chez Martin', { salarie: 'Karim', chantier: 'Bureau Martin', dates: ['demain'] }).worksite_id, 'w-martin', 'client nommé');
+});

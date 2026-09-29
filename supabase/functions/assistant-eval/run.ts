@@ -38,7 +38,7 @@ async function runOne(c: EvalCase, version: 'v1' | 'v2', call: Call): Promise<Ca
     if (c.cote === 'bureau') {
       const A = version === 'v2' ? A2 : A1;
       const ctx = A.buildActionContext(ADMIN_RAW as Parameters<typeof A2.buildActionContext>[0]) as A2.ActionContext;
-      if (version === 'v2') ctx.me = ME;
+      if (version === 'v2') { ctx.me = ME; ctx.demande = c.phrase; }
       const local = file ? null : A.handleActionLocally(c.phrase, ctx as never);
       if (local) out = fromAdmin(local as AnyReply);
       else {

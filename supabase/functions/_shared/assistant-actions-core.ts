@@ -362,6 +362,8 @@ export interface ActionContext {
   moisClotures?: string[];
   /** Lot 7 : la personne qui parle (« rajoute-MOI une intervention »). */
   me?: string;
+  /** Lot 7 : la phrase dite, pour vérifier que le client a bien été NOMMÉ. */
+  demande?: string;
 }
 
 export interface EntryChoice { id: string; chantier: string; debut: string; fin: string }
@@ -777,11 +779,19 @@ export function prepare(type: string, raw: Record<string, unknown>, ctx: ActionC
       const named = !!c && matchesSomeChantier(c, ctx);
       let worksite = named ? resolveChantier(c, ctx) ?? (lieu ? resolveChantier(`${c} ${lieu}`, ctx) : null)
         : lieu && matchesSomeChantier(lieu, ctx) ? resolveChantier(lieu, ctx) : null;
+      // Garde-fou : le client doit avoir été DIT. « à Lyon » que le modèle traduit
+      // en « Villa Dupont (Lyon) » redevient un lieu.
+      let place = lieu || cleanName(c);
+      const w = worksite ? ctx.chantiers.find((x) => x.id === worksite) : undefined;
+      if (w && ctx.demande && !matchesSomeChantier(ctx.demande, { ...ctx, chantiers: [w] })) {
+        place = lieu || w.ville || '';
+        worksite = null;
+      }
       // Lieu sans client connu (« une intervention à Lyon ») → « Autre », le lieu dans le titre.
       // Un client connu mais ambigu n'y va jamais : la carte demande lequel.
-      if (!worksite && (lieu || c) && !named) {
+      if (!worksite && place && !(named && !w)) {
         const autre = ctx.chantiers.find((x) => norm(x.nom) === 'autre');
-        if (autre) { worksite = autre.id; objet = objet ? `${objet} · ${lieu || cleanName(c)}` : `Intervention à ${lieu || cleanName(c)}`; }
+        if (autre) { worksite = autre.id; objet = objet ? `${objet} · ${place}` : `Intervention à ${place}`; }
       }
       d = {
         type, user_id: moi && ctx.me ? ctx.me : resolveSalarie(s, ctx), salarie_texte: moi ? 'moi' : s, worksite_id: worksite, chantier_texte: cleanName(c || lieu),
