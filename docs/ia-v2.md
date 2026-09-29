@@ -56,7 +56,34 @@ Toutes les actions d'écran (bureau + salarié) passent par le même code que l'
 
 `supabase/functions/assistant-eval` : 56 phrases réelles (fautes, oral), aucune
 donnée d'entreprise, appelable seulement avec le secret de la base.
-Résultats : voir le rapport du lot.
+
+Mesure du 29/09, **même modèle avant / après** (`gemini-3.5-flash-lite`, quota séparé de la prod) :
+
+| | Avant (v1) | Lot 7 (v2) |
+|---|---|---|
+| Bureau · Interventions | 2/7 | 7/7 |
+| Bureau · Congés | 2/4 | 4/4 |
+| Bureau · Clients | 1/5 | 5/5 |
+| Bureau · Documents | 1/3 | 3/3 |
+| Bureau · Salariés | 1/6 | 6/6 |
+| Bureau · Réglages | 0/3 | 3/3 |
+| Bureau · Aide | 4/4 | 4/4 |
+| Salarié · Heures | 1/4 | 4/4 |
+| Salarié · Pointage | 2/3 | 3/3 |
+| Salarié · Congés | 1/2 | 2/2 |
+| Salarié · Ma journée | 0/7 | 7/7 |
+| Salarié · Réserves | 0/1 | 1/1 |
+| Salarié · Documents | 1/2 | 2/2 |
+| Salarié · Collègues | 0/3 | 3/3 |
+| Salarié · Aide | 2/2 | 2/2 |
+| **Total** | **18/56 (32 %)** | **56/56 (100 %)** |
+
+1ᵉʳ passage v2 : 52/56 (93 %). Les 4 échecs, corrigés dans le code (pas au cas par cas) :
+« à Lyon » pris pour le client situé à Lyon, « jeudi prochain » dit un jeudi,
+« Mister Grill Mâcon » (même client, 2 villes) côté bureau et « le kebab de Bourg » côté salarié.
+
+Relancer : `POST /functions/v1/assistant-eval` avec l'en-tête `x-cron-secret`,
+body `{ "version": "v2", "ids": [...], "parallel": 1, "gapMs": 4000, "lightModel": "…", "actionModel": "…" }`.
 
 ## Prod (un seul déploiement, avec le feu vert d'Ergun)
 
