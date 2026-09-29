@@ -18,7 +18,7 @@
 // compteur du quota ; aucune question ni réponse dans les logs.
 // Réservé à un ADMIN actif d'une entreprise dont `ai_enabled` est vrai.
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { callFunction } from '../_shared/ai-provider.ts';
+import { callFunction, readAttachment } from '../_shared/ai-provider.ts';
 import { DEFAULT_DAILY_LIMIT, MAX_QUESTION_CHARS, buildSnapshot, previousDay, type RawData } from '../_shared/assistant-core.ts';
 import {
   ASSISTANT_FUNCTIONS, actionPrompt, addDays, buildActionContext, fromFunctionCall, handleActionLocally, mondayOf,
@@ -66,9 +66,12 @@ Deno.serve(async (req) => {
     const { data: co } = await admin.from('companies').select('ai_enabled').eq('id', me.company_id).maybeSingle();
     if (!(co as { ai_enabled?: boolean } | null)?.ai_enabled) return json({ error: 'Assistant non activé' }, 403);
 
-    const body = await req.json().catch(() => ({})) as { question?: string };
+    const body = await req.json().catch(() => ({})) as { question?: string; file?: unknown };
     const question = String(body.question ?? '').trim().slice(0, MAX_QUESTION_CHARS);
     if (!question) return json({ error: 'Posez une question.' }, 400);
+    // 📎 Photo ou PDF : lu par le modèle, jamais journalisé ni stocké ici.
+    const att = readAttachment(body.file);
+    if (!att.ok) return json({ error: att.error }, 400);
 
     // Quota AVANT tout travail (même quota que le lot 3).
     const limit = Number(Deno.env.get('ASSISTANT_DAILY_LIMIT')) || DEFAULT_DAILY_LIMIT;
@@ -118,12 +121,13 @@ Deno.serve(async (req) => {
       leaves: raw.pendingLeaves,
     });
 
-    // 1. Les demandes courantes se règlent sans IA.
-    const local = handleActionLocally(question, ctx);
+    // 1. Les demandes courantes se règlent sans IA (sauf s'il y a un fichier à lire).
+    const local = att.file ? null : handleActionLocally(question, ctx);
     if (local) return reply(local, ctx, remaining);
 
     // 2. Sans clé : on guide quand même.
     if (!Deno.env.get('GEMINI_API_KEY')) {
+      if (att.file) return json({ unavailable: true, answer: 'Lecture de fichier indisponible pour le moment.', links: [] });
       const g = findGuide(question);
       return reply(g ? { answer: guideAnswer(g), links: g.lien ? [{ label: NAV_ACTIONS[g.lien], action: g.lien }] : [] }
         : { answer: 'L’assistant est indisponible pour le moment.', links: [] }, ctx, remaining);
@@ -131,7 +135,7 @@ Deno.serve(async (req) => {
 
     // 3. L'IA choisit UNE fonction de la liste blanche.
     const snapshot = buildSnapshot(raw);
-    const r = await callFunction({ prompt: actionPrompt(ctx, JSON.stringify(snapshot), guideForPrompt(), question), functions: ASSISTANT_FUNCTIONS }, Deno.env);
+    const r = await callFunction({ prompt: actionPrompt(ctx, JSON.stringify(snapshot), guideForPrompt(), question), functions: ASSISTANT_FUNCTIONS, file: att.file }, Deno.env);
     if (!r.ok) return json({ unavailable: true, answer: 'L’assistant n’a pas pu répondre. Réessayez dans un instant.', links: [] });
 
     // Correction : on lit SES lignes envoyées ce jour-là (jeton du patron).

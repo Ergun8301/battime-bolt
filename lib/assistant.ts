@@ -6,6 +6,7 @@
 // confirmation l'affiche, rien n'est fait avant « Confirmer ».
 import { supabase } from '@/lib/supabase';
 import { isPreviewHost } from '@/lib/hosting';
+import { attachmentPayload } from '@/lib/attachment';
 import type { AssistantLink } from '@/supabase/functions/_shared/assistant-core';
 import {
   addDays, fromFunctionCall, handleActionLocally, mondayOf, summarize, findGuide, guideAnswer, NAV_ACTIONS,
@@ -18,7 +19,7 @@ export { ACTION_SUGGESTIONS as ASSISTANT_SUGGESTIONS } from '@/supabase/function
 export type { AssistantLink } from '@/supabase/functions/_shared/assistant-core';
 
 export interface AssistantReply { answer: string; links: AssistantLink[]; remaining?: number; notice?: boolean; extra?: unknown }
-export interface AssistantSource { demo: boolean; ask(question: string): Promise<AssistantReply> }
+export interface AssistantSource { demo: boolean; ask(question: string, file?: File): Promise<AssistantReply> }
 
 /** Démo : uniquement sur une preview, jamais sur bemexo.com. */
 export function isAssistantDemo(): boolean {
@@ -37,9 +38,10 @@ const toReply = (d: ServerReply): AssistantReply => ({
 
 export const supabaseAssistantSource: AssistantSource = {
   demo: false,
-  async ask(question) {
+  async ask(question, file) {
     try {
-      const { data, error } = await supabase.functions.invoke('assistant', { body: { question } });
+      const body = file ? { question, file: await attachmentPayload(file) } : { question };
+      const { data, error } = await supabase.functions.invoke('assistant', { body });
       if (error) {
         const ctx = (error as { context?: Response }).context;
         const body = ctx && typeof ctx.json === 'function' ? await ctx.json().catch(() => ({})) : {};
@@ -70,6 +72,7 @@ export function demoActionContext(): ActionContext {
       { id: 'demo-dupont', nom: 'Villa Dupont', ville: 'Lyon' },
       { id: 'demo-martin', nom: 'Bureau Martin', ville: 'Villeurbanne' },
       { id: 'demo-leclerc', nom: 'Résidence Leclerc', ville: 'Bron' },
+      { id: 'demo-dupont-viriat', nom: 'Dupont', ville: 'Viriat' },
     ],
     planning: [
       ...week.map((d) => ({ user_id: 'demo-karim', date: d, worksite_id: 'demo-dupont', absence: null })),
@@ -101,11 +104,26 @@ export function demoAssistantSource(): AssistantSource {
   const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
   return {
     demo: true,
-    async ask(q) {
+    async ask(q, file) {
       await wait(600);
       left = Math.max(0, left - 1);
       const t = q.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
       const done = (r: AssistantReply) => ({ ...r, remaining: left });
+      // 📎 Fichier joint : l'IA est SIMULÉE (lecture fictive), le contrôle est le vrai.
+      if (file) {
+        if (/paie|bulletin|salari|embauch/.test(t + file.name.toLowerCase())) {
+          return done(withSummary(fromFunctionCall('inviter_salarie', {
+            prenom: 'Marc', nom: 'Durand', date_entree: '2026-09-01', contrat: 'CDI', taux_horaire: 14.5, heures_hebdo: 35,
+            bulletin_mois: '2026-09', bulletin_brut: 2450, bulletin_cout_employeur: 3480, bulletin_heures_payees: 151.67,
+          }, ctx), ctx));
+        }
+        if (/devis|client|valide/.test(t + file.name.toLowerCase())) {
+          return done(withSummary(fromFunctionCall('creer_chantier', {
+            nom_client: 'Maison Garnier', ville: 'Caluire', adresse: '12 rue des Lilas', telephone: '06 12 34 56 78', budget_montant: 18400, budget_heures: 160,
+          }, ctx), ctx));
+        }
+        return done(withSummary(fromFunctionCall('ranger_document', { chantier: /viriat/.test(t) ? 'Dupont Viriat' : 'Dupont' }, ctx), ctx));
+      }
       const local = handleActionLocally(q, ctx);
       if (local) return done(withSummary(local, ctx));
       // Phrases détaillées : l'IA est SIMULÉE (même contrôle que la vraie).

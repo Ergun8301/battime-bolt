@@ -27,6 +27,7 @@ export default function WorkerAssistant({ onSaved, onNavigate, defaultOpen = fal
   return (
     <AssistantPanel
       source={source}
+      attachments
       defaultOpen={defaultOpen}
       onNavigate={onNavigate ?? (() => {})}
       suggestions={WORKER_ACTION_SUGGESTIONS}

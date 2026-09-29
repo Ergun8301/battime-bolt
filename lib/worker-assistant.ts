@@ -5,11 +5,12 @@
 // MÊME lecteur de phrases que le serveur, sur des chantiers fictifs.
 import { supabase } from '@/lib/supabase';
 import { isPreviewHost } from '@/lib/hosting';
+import { attachmentPayload } from '@/lib/attachment';
 import { generateLocalId } from '@/lib/offline-store';
 import { insertWorkerEntry } from '@/lib/worker-entry';
 import type { AssistantReply, AssistantSource } from '@/lib/assistant';
 import {
-  handleWorkerLocally, shiftMinutes, type Draft, type DraftLine, type WorkerAction, type WorkerLive, type WorkerSnapshot,
+  fromWorkerCall, handleWorkerLocally, shiftMinutes, type Draft, type DraftLine, type WorkerAction, type WorkerLive, type WorkerSnapshot,
 } from '@/supabase/functions/_shared/worker-assistant-core';
 
 export * from '@/supabase/functions/_shared/worker-assistant-core';
@@ -22,7 +23,7 @@ export function isWorkerAssistantDemo(): boolean {
 }
 
 /** Lot 3 bis : une action préparée (congé, pointage, réserve) à confirmer. */
-export interface WorkerActionExtra { workerAction: WorkerAction; chantiers: WorkerSnapshot['chantiers'] }
+export interface WorkerActionExtra { workerAction: WorkerAction; chantiers: WorkerSnapshot['chantiers']; attachment?: File }
 
 type ServerReply = {
   kind?: string; answer?: string; draft?: Draft; action?: WorkerAction; links?: { label: string; action: string }[];
@@ -37,9 +38,10 @@ const toReply = (d: ServerReply): AssistantReply => ({
 
 export const supabaseWorkerSource: AssistantSource = {
   demo: false,
-  async ask(text) {
+  async ask(text, file) {
     try {
-      const { data, error } = await supabase.functions.invoke('worker-assistant', { body: { text } });
+      const body = file ? { text, file: await attachmentPayload(file) } : { text };
+      const { data, error } = await supabase.functions.invoke('worker-assistant', { body });
       if (error) {
         const ctx = (error as { context?: Response }).context;
         const body = ctx && typeof ctx.json === 'function' ? await ctx.json().catch(() => ({})) : {};
@@ -59,6 +61,7 @@ export const DEMO_SNAPSHOT: WorkerSnapshot = {
     { id: 'demo-martin', nom: 'Bureau Martin', ville: 'Villeurbanne' },
     { id: 'demo-leclerc', nom: 'Résidence Leclerc', ville: 'Bron' },
     { id: 'demo-leclerc2', nom: 'Leclerc Drive', ville: 'Bron' },
+    { id: 'demo-dupont-viriat', nom: 'Dupont', ville: 'Viriat' },
   ],
   semaine: [{ date: new Date().toLocaleDateString('sv-SE'), minutes: 8 * 60 + 30 }],
   planning: [
@@ -71,8 +74,8 @@ export const DEMO_SNAPSHOT: WorkerSnapshot = {
 export const DEMO_LIVE: WorkerLive = {
   enCours: null,
   lignes: [
-    { id: 'demo-e1', chantier: 'Villa Dupont', debut: '07:30', fin: '12:00', envoyee: false },
-    { id: 'demo-e2', chantier: 'Bureau Martin', debut: '13:00', fin: '16:30', envoyee: false },
+    { id: 'demo-e1', chantier: 'Dupont', chantier_id: 'demo-dupont-viriat', debut: '07:30', fin: '12:00', envoyee: false },
+    { id: 'demo-e2', chantier: 'Bureau Martin', chantier_id: 'demo-martin', debut: '13:00', fin: '16:30', envoyee: false },
   ],
 };
 
@@ -80,9 +83,18 @@ export function demoWorkerSource(): AssistantSource {
   let left = 20;
   return {
     demo: true,
-    async ask(text) {
+    async ask(text, file) {
       await new Promise((r) => setTimeout(r, 500));
       left = Math.max(0, left - 1);
+      // 📎 Photo jointe : l'IA est SIMULÉE, le contrôle est le vrai.
+      if (file) {
+        const t = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const reply = fromWorkerCall('ranger_photo', {
+          chantier: /viriat/.test(t) ? 'Dupont à Viriat' : /dupont/.test(t) ? 'Dupont' : '',
+          reserve: /reserve/.test(t), detail: /reserve/.test(t) ? 'Joint silicone à reprendre (d’après la photo)' : '',
+        }, DEMO_SNAPSHOT, DEMO_LIVE);
+        return toReply({ ...reply, chantiers: DEMO_SNAPSHOT.chantiers, remaining: left } as ServerReply);
+      }
       const local = handleWorkerLocally(text, DEMO_SNAPSHOT, DEMO_LIVE);
       if (!local) return { answer: 'Mode démo : essayez « Ce matin 7h30-12h Villa Dupont, après-midi 13h-16h30 Bureau Martin ».', links: [], remaining: left };
       return toReply({ ...local, chantiers: DEMO_SNAPSHOT.chantiers, remaining: left } as ServerReply);

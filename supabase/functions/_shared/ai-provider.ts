@@ -33,7 +33,7 @@ export async function extractJson(req: ExtractRequest, env: Env, fetchImpl: Fetc
 // (mode ANY) : répondre, guider, ou PRÉPARER une action. Il n'exécute jamais
 // rien : c'est l'écran qui exécute, après confirmation de l'utilisateur.
 export interface FunctionDecl { name: string; description: string; parameters: Record<string, unknown> }
-export interface ToolsRequest { prompt: string; functions: FunctionDecl[] }
+export interface ToolsRequest { prompt: string; functions: FunctionDecl[]; file?: AiFile }
 export type ToolsResult =
   | { ok: true; call: { name: string; args: Record<string, unknown> } }
   | { ok: false; reason: 'not_configured' | 'provider_error' | 'bad_response' };
@@ -51,7 +51,7 @@ export async function callFunction(req: ToolsRequest, env: Env, fetchImpl: Fetch
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
         body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: req.prompt }] }],
+          contents: [{ role: 'user', parts: [{ text: req.prompt }, ...(req.file ? [{ inline_data: { mime_type: req.file.mime, data: req.file.base64 } }] : [])] }],
           tools: [{ functionDeclarations: req.functions }],
           toolConfig: { functionCallingConfig: { mode: 'ANY', allowedFunctionNames: req.functions.map((f) => f.name) } },
           generationConfig: { temperature: 0 },
@@ -118,4 +118,20 @@ async function gemini(req: ExtractRequest, key: string | undefined, model: strin
   } catch {
     return { ok: false, reason: 'bad_response' };
   }
+}
+
+// ── Pièce jointe reçue de l'écran (lot 3 bis) ──────────────────────────────
+// Photo ou PDF, 8 Mo au plus. JAMAIS journalisée, JAMAIS stockée ici : elle
+// part au modèle pour être lue, puis est oubliée.
+export const ATTACH_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'application/pdf']);
+export const ATTACH_MAX_BYTES = 8 * 1024 * 1024;
+export function readAttachment(raw: unknown): { ok: true; file: AiFile | undefined } | { ok: false; error: string } {
+  if (raw == null) return { ok: true, file: undefined };
+  const f = raw as { mime?: unknown; base64?: unknown };
+  const mime = String(f.mime ?? '').toLowerCase();
+  const base64 = String(f.base64 ?? '');
+  if (!ATTACH_MIMES.has(mime)) return { ok: false, error: 'Format non accepté : photo (JPG, PNG, HEIC) ou PDF.' };
+  if (!base64 || base64.length * 0.75 > ATTACH_MAX_BYTES) return { ok: false, error: 'Fichier trop lourd (8 Mo maximum).' };
+  if (!/^[A-Za-z0-9+/=]+$/.test(base64.slice(0, 200))) return { ok: false, error: 'Fichier illisible.' };
+  return { ok: true, file: { mime, base64 } };
 }

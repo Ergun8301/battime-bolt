@@ -6,10 +6,11 @@ import { supabase } from '@/lib/supabase';
 import { requestLeave } from '@/lib/leave';
 import { announceLiveChange, startLiveSession, stopLiveSession } from '@/lib/live-session';
 import { markEntryReserve } from '@/lib/worker-entry';
+import { uploadWorksiteDocument } from '@/lib/chantier-docs';
 import type { WorkerActionDraft } from '@/supabase/functions/_shared/worker-assistant-core';
 
 export interface WorkerActionResult { ok: boolean; message: string }
-export type WorkerActionExecutor = (d: WorkerActionDraft) => Promise<WorkerActionResult>;
+export type WorkerActionExecutor = (d: WorkerActionDraft, attachment?: File) => Promise<WorkerActionResult>;
 
 const today = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
 const errText = (e: unknown, fallback: string) => (e as { message?: string } | null)?.message || fallback;
@@ -20,7 +21,7 @@ export function makeWorkerExecutor(user: { id: string; company_id: string }): Wo
     const { data } = await supabase.from('companies').select('position_tracking_enabled').eq('id', user.company_id).maybeSingle();
     return !!(data as { position_tracking_enabled?: boolean } | null)?.position_tracking_enabled;
   };
-  return async (d) => {
+  return async (d, attachment) => {
     try {
       switch (d.type) {
         case 'demander_conge':
@@ -47,10 +48,22 @@ export function makeWorkerExecutor(user: { id: string; company_id: string }): Wo
           return ok ? { ok: true, message: 'Réserve notée. Ajoutez des photos via « Documents » si besoin.' }
             : { ok: false, message: 'Ce chantier est verrouillé par le bureau.' };
         }
+        case 'ranger_photo': {
+          if (!attachment) return { ok: false, message: 'Aucun fichier joint.' };
+          const line = d.lignes.find((l) => l.chantier_id === d.worksite_id);
+          // Même envoi que le bouton « Documents » : rattaché au jour et à SA ligne s'il y en a une.
+          await uploadWorksiteDocument({ companyId: user.company_id, userId: user.id, worksiteId: d.worksite_id!, file: attachment, workDate: today(), timeEntryId: line?.id ?? null });
+          if (d.reserve && line) {
+            const ok = await markEntryReserve({ userId: user.id, entryId: line.id, detail: d.detail, wasSubmitted: line.envoyee });
+            return ok ? { ok: true, message: 'Photo rangée et réserve notée.' } : { ok: true, message: 'Photo rangée. Réserve refusée : chantier verrouillé par le bureau.' };
+          }
+          return { ok: true, message: 'Photo rangée dans les documents du chantier.' };
+        }
       }
     } catch (e) {
       return { ok: false, message: errText(e, 'Action impossible.') };
     }
+    return { ok: false, message: 'Action inconnue.' };
   };
 }
 

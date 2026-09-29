@@ -5,13 +5,15 @@
 // ne sait pas la faire, le micro n'apparaît simplement pas.
 //
 // Rien n'est conservé : la conversation vit dans cet écran et disparaît quand
-// on recharge la page.
+// on recharge la page. 📎 (lot 3 bis) : photo ou PDF joint, compressé ici,
+// rangé seulement après « Confirmer ».
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Sparkles, X, Mic, ArrowUp, Loader2, ArrowRight } from 'lucide-react';
+import { Sparkles, X, Mic, ArrowUp, Loader2, ArrowRight, Paperclip, FileText } from 'lucide-react';
+import { ATTACH_ACCEPT, ATTACH_MAX_BYTES, attachmentError, compressAttachment } from '@/lib/attachment';
 import { ASSISTANT_SUGGESTIONS, type AssistantLink, type AssistantSource } from '@/lib/assistant';
 
-type Msg = { who: 'me' | 'bot'; text: string; links?: AssistantLink[]; notice?: boolean; extra?: unknown };
+type Msg = { who: 'me' | 'bot'; text: string; links?: AssistantLink[]; notice?: boolean; extra?: unknown; file?: string };
 
 interface SpeechRec {
   lang: string; interimResults: boolean; continuous: boolean;
@@ -57,6 +59,10 @@ const CSS = `
 .as-mic{background:#F1ECE2;color:#15120F}
 .as-mic.on{background:#E5484D;color:#fff;animation:as-pulse 1.2s infinite}
 @keyframes as-pulse{0%,100%{box-shadow:0 0 0 0 rgba(229,72,77,.45)}50%{box-shadow:0 0 0 7px rgba(229,72,77,0)}}
+.as-chip{display:inline-flex;align-items:center;gap:6px;max-width:100%;background:#fff;border:1px solid rgba(21,18,15,.14);border-radius:999px;padding:4px 6px 4px 10px;font-size:12.5px;font-weight:700;color:#15120F;margin:0 0 8px}
+.as-chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:230px}
+.as-chip button{border:none;background:#F1ECE2;border-radius:999px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#56514a}
+.as-file{display:flex;align-items:center;gap:5px;font-size:12px;opacity:.85;margin-bottom:4px}
 .as-meta{font-size:11px;color:#9a948a;margin:7px 4px 0;display:flex;justify-content:space-between}
 @media(max-width:640px){.as-fab{right:14px;bottom:14px}}
 `;
@@ -73,9 +79,11 @@ interface Props {
   renderExtra?: (extra: unknown) => ReactNode;
   /** Lot 4 : mention sous la zone de saisie. */
   footNote?: string;
+  /** Lot 3 bis : 📎 photo ou PDF joint à la demande. */
+  attachments?: boolean;
 }
 
-export default function AssistantPanel({ source, onNavigate, defaultOpen = false, suggestions = ASSISTANT_SUGGESTIONS, intro, renderExtra, footNote = 'Rien n’est fait sans votre confirmation' }: Props) {
+export default function AssistantPanel({ source, onNavigate, defaultOpen = false, suggestions = ASSISTANT_SUGGESTIONS, intro, renderExtra, footNote = 'Rien n’est fait sans votre confirmation', attachments = false }: Props) {
   const [open, setOpen] = useState(defaultOpen);
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [text, setText] = useState('');
@@ -84,22 +92,38 @@ export default function AssistantPanel({ source, onNavigate, defaultOpen = false
   const [remaining, setRemaining] = useState<number | null>(null);
   const [canSpeak, setCanSpeak] = useState(false);
   const recRef = useRef<SpeechRec | null>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { setCanSpeak(!!speechCtor()); }, []);
   useEffect(() => { bodyRef.current?.scrollTo({ top: bodyRef.current.scrollHeight, behavior: 'smooth' }); }, [msgs, busy]);
 
   const ask = useCallback(async (q: string) => {
-    const question = q.trim();
+    const question = q.trim() || (file ? 'Regarde ce fichier.' : '');
     if (!question || busy) return;
-    setText('');
-    setMsgs((m) => [...m, { who: 'me', text: question }]);
+    const sent = file;
+    setText(''); setFile(null);
+    setMsgs((m) => [...m, { who: 'me', text: question, file: sent?.name }]);
     setBusy(true);
-    const r = await source.ask(question);
+    const r = await source.ask(question, sent ?? undefined);
     setBusy(false);
-    setMsgs((m) => [...m, { who: 'bot', text: r.answer, links: r.links, notice: r.notice, extra: r.extra }]);
+    // Le fichier reste DANS L'ÉCRAN, joint à la carte : il ne sera rangé
+    // (documents du chantier) qu'après « Confirmer ».
+    const extra = r.extra && sent && typeof r.extra === 'object' ? { ...(r.extra as object), attachment: sent } : r.extra;
+    setMsgs((m) => [...m, { who: 'bot', text: r.answer, links: r.links, notice: r.notice, extra }]);
     if (typeof r.remaining === 'number') setRemaining(r.remaining);
-  }, [busy, source]);
+  }, [busy, source, file]);
+
+  const pickFile = async (f: File | undefined) => {
+    if (fileRef.current) fileRef.current.value = '';
+    if (!f) return;
+    const bad = attachmentError(f);
+    if (bad) { setMsgs((m) => [...m, { who: 'bot', text: bad, notice: true }]); return; }
+    const small = await compressAttachment(f);
+    if (small.size > ATTACH_MAX_BYTES) { setMsgs((m) => [...m, { who: 'bot', text: 'Fichier trop lourd (8 Mo maximum).', notice: true }]); return; }
+    setFile(small);
+  };
 
   const toggleMic = () => {
     if (listening) { recRef.current?.stop(); return; }
@@ -156,7 +180,7 @@ export default function AssistantPanel({ source, onNavigate, defaultOpen = false
               </>
             )}
             {msgs.map((m, i) => (m.who === 'me'
-              ? <div key={i} className="as-me">{m.text}</div>
+              ? <div key={i} className="as-me">{m.file && <span className="as-file"><FileText className="h-3.5 w-3.5" /> {m.file}</span>}{m.text}</div>
               : (
                 <div key={i} className={`as-bot${m.notice ? ' notice' : ''}`}>
                   {m.text}
@@ -171,6 +195,12 @@ export default function AssistantPanel({ source, onNavigate, defaultOpen = false
             {busy && <div className="as-typing"><Loader2 className="h-4 w-4 animate-spin" /> Je regarde…</div>}
           </div>
           <div className="as-foot">
+            {file && (
+              <div className="as-chip" data-testid="assistant-file">
+                <FileText className="h-3.5 w-3.5" /> <span>{file.name}</span>
+                <button type="button" onClick={() => setFile(null)} aria-label="Retirer le fichier"><X className="h-3.5 w-3.5" /></button>
+              </div>
+            )}
             <form className="as-bar" onSubmit={(e) => { e.preventDefault(); ask(text); }}>
               <textarea
                 rows={1} value={text} placeholder={listening ? 'Je vous écoute…' : 'Votre question…'} maxLength={500}
@@ -178,12 +208,18 @@ export default function AssistantPanel({ source, onNavigate, defaultOpen = false
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ask(text); } }}
                 aria-label="Votre question"
               />
+              {attachments && (<>
+                <input ref={fileRef} type="file" accept={ATTACH_ACCEPT} hidden onChange={(e) => pickFile(e.target.files?.[0])} data-testid="assistant-file-input" />
+                <button type="button" className="as-btn as-mic" onClick={() => fileRef.current?.click()} aria-label="Joindre une photo ou un PDF" data-testid="assistant-attach">
+                  <Paperclip className="h-4 w-4" />
+                </button>
+              </>)}
               {canSpeak && (
                 <button type="button" className={`as-btn as-mic${listening ? ' on' : ''}`} onClick={toggleMic} aria-label={listening ? 'Arrêter la dictée' : 'Dicter'} data-testid="assistant-mic">
                   <Mic className="h-4 w-4" />
                 </button>
               )}
-              <button type="submit" className="as-btn as-send" disabled={!text.trim() || busy} aria-label="Envoyer"><ArrowUp className="h-4 w-4" /></button>
+              <button type="submit" className="as-btn as-send" disabled={(!text.trim() && !file) || busy} aria-label="Envoyer"><ArrowUp className="h-4 w-4" /></button>
             </form>
             <div className="as-meta">
               <span>{footNote}</span>

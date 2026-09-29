@@ -33,6 +33,19 @@ quelles** ; l'écran et l'assistant appellent les mêmes fonctions.
 Jamais les données d'un collègue ni les coûts. `lib/live-session.ts` et
 `lib/leave.ts` = code de `live-timer.tsx` et de « Mes congés », sortis tels quels.
 
+## 📎 Pièces jointes (photo JPG/PNG/HEIC, PDF — 8 Mo, photos compressées sur le téléphone)
+
+| Rôle | Fichier + phrase | Carte | Exécuté par |
+|---|---|---|---|
+| Salarié | photo + « mets-la sur Dupont à Viriat, il y a une réserve » | Chantier, ☑ Avec réserve, détail pré-rempli **facultatif** | `uploadWorksiteDocument` (= bouton Documents) + `markEntryReserve` |
+| Patron | bulletin + « enregistre ce nouveau salarié » | Invitation pré-remplie + entrée, contrat, taux, heures + coût réel (lot 2) | `inviteWorker` + `savePayrollBasics` (sans n° de sécu) + `supabaseCostSource.save` |
+| Patron | devis + « c'est validé, nouveau client » | Client + adresse + montant et heures prévus | `createWorksite` + `setWorksiteBudget` + devis rangé dans ses documents |
+| Patron | photo/PDF + « range ça sur Dupont » | Chantier à choisir si plusieurs « Dupont » | `uploadWorksiteDocument` |
+
+- Le fichier reste dans l'écran jusqu'à « Confirmer » ; rien n'est rangé avant.
+- Le bulletin n'est **jamais conservé** ; le n° de sécurité sociale n'est **ni demandé au modèle, ni gardé** (effacé s'il apparaît).
+- Types refusés → message clair. Aucun contenu de fichier dans les logs.
+
 ## Garde-fous
 
 - Rien sans **Confirmer** (Annuler = rien n'est fait). Chaque carte est modifiable

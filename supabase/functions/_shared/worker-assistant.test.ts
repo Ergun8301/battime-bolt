@@ -186,3 +186,13 @@ Deno.test('3 bis salarié — IA simulée (appel de fonctions)', async () => {
   eq(prepareWorkerAction('supprimer_heures', {}, BTP, IDLE), null, 'action hors liste → rien');
   if (JSON.stringify(WORKER_FUNCTIONS).match(/cout|salaire|supprim/i) && !JSON.stringify(WORKER_FUNCTIONS).includes('jamais')) throw new Error('fonction interdite exposée');
 });
+
+Deno.test('📎 Salarié : photo → documents du bon chantier + « Avec réserve » pré-rempli', () => {
+  const SNAP = { ...BTP, chantiers: [...BTP.chantiers, { id: 'w-dupont-viriat', nom: 'Dupont', ville: 'Viriat' }] };
+  const LIVE: WorkerLive = { enCours: null, lignes: [{ id: 'e9', chantier: 'Dupont', chantier_id: 'w-dupont-viriat', debut: '07:30', fin: '16:00', envoyee: false }] };
+  const r = fromWorkerCall('ranger_photo', { chantier: 'Dupont à Viriat', reserve: true, detail: 'joint à reprendre' }, SNAP, LIVE);
+  eq([act(r).draft.worksite_id, act(r).draft.reserve, act(r).draft.detail, act(r).problems], ['w-dupont-viriat', true, 'joint à reprendre', []], 'bon chantier, réserve, détail modifiable');
+  eq(act(fromWorkerCall('ranger_photo', { chantier: 'Dupont', reserve: false }, SNAP, LIVE)).problems, ['Choisissez le chantier.'], '« Dupont » ambigu → liste');
+  eq(act(fromWorkerCall('ranger_photo', { chantier: 'Bureau Martin', reserve: true }, SNAP, LIVE)).problems.length, 1, 'réserve sans heures ce jour-là → signalé');
+  eq(checkWorkerAction({ type: 'ranger_photo', worksite_id: 'w-dupont-viriat', chantier_texte: '', reserve: true, detail: '', lignes: LIVE.lignes }, SNAP, LIVE), [], 'détail de réserve FACULTATIF');
+});

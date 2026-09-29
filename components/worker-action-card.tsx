@@ -5,7 +5,7 @@
 // s'exécute avant « Confirmer ».
 
 import { useMemo, useState } from 'react';
-import { CheckCircle2, Loader2, CalendarOff, Play, Square, AlertTriangle } from 'lucide-react';
+import { CheckCircle2, Loader2, CalendarOff, Play, Square, AlertTriangle, FolderInput, Paperclip } from 'lucide-react';
 import {
   checkWorkerAction, LEAVE_KINDS, LEAVE_LABEL, type WorkerActionDraft, type WorkerLive, type WorkerSnapshot,
 } from '@/supabase/functions/_shared/worker-assistant-core';
@@ -21,6 +21,9 @@ const CSS = `
 .wa label{font-size:10.5px;font-weight:800;color:#6E6A63;text-transform:uppercase;letter-spacing:.05em;display:block;margin:0 0 2px}
 .wa input,.wa select,.wa textarea{width:100%;font-family:inherit;font-size:14px;border:1.5px solid rgba(21,18,15,.16);border-radius:8px;padding:7px 8px;background:#fff;color:#15120F;box-sizing:border-box}
 .wa .todo{border-color:#F1B84A;background:#FFFBF0}
+.wa-att{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:#56514a;margin:-4px 0 8px}
+.wa .wa-check{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:800;color:#15120F;text-transform:none;letter-spacing:0}
+.wa .wa-check input{width:18px;height:18px}
 .wa-info{font-size:13px;color:#15120F;font-weight:700}
 .wa-p{font-size:12.5px;color:#9a3b14;font-weight:700;margin:6px 0 0}
 .wa-foot{display:flex;gap:8px;justify-content:flex-end;margin-top:9px}
@@ -35,6 +38,7 @@ const HEAD: Record<WorkerActionDraft['type'], [string, typeof Play, string]> = {
   commencer_pointage: ['Commencer le pointage', Play, 'Je commence'],
   terminer_pointage: ['Terminer le pointage', Square, 'J’ai fini'],
   signaler_reserve: ['Signaler une réserve', AlertTriangle, 'Confirmer'],
+  ranger_photo: ['Ranger sur le chantier', FolderInput, 'Confirmer'],
 };
 const hhmm = (iso: string) => (iso ? new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' }) : '');
 
@@ -50,7 +54,8 @@ export default function WorkerActionCard({ extra, execute, onDone }: Props) {
   const live: WorkerLive = useMemo(() => ({
     enCours: extra.workerAction.draft.type === 'terminer_pointage' && extra.workerAction.draft.depuis
       ? { chantier_id: '', chantier: extra.workerAction.draft.chantier, depuis: extra.workerAction.draft.depuis } : null,
-    lignes: extra.workerAction.draft.type === 'signaler_reserve' ? extra.workerAction.draft.choix : [],
+    lignes: extra.workerAction.draft.type === 'signaler_reserve' ? extra.workerAction.draft.choix
+      : extra.workerAction.draft.type === 'ranger_photo' ? extra.workerAction.draft.lignes : [],
   }), [extra.workerAction.draft]);
   // Un « déjà en cours » vu par le serveur reste un blocage ici.
   const problems = useMemo(() => {
@@ -110,12 +115,29 @@ export default function WorkerActionCard({ extra, execute, onDone }: Props) {
         </div>
       </>);
       break;
+ case 'ranger_photo':
+      body = (<>
+        <div><label>Chantier</label>
+          <select value={d.worksite_id ?? ''} className={d.worksite_id ? '' : 'todo'} onChange={(e) => set({ worksite_id: e.target.value || null })} aria-label="Chantier">
+            <option value="">{d.chantier_texte ? `« ${d.chantier_texte} » → choisir…` : 'Choisir le chantier…'}</option>
+            {extra.chantiers.map((c) => <option key={c.id} value={c.id}>{c.nom}{c.ville ? ` · ${c.ville}` : ''}</option>)}
+          </select>
+        </div>
+        <label className="wa-check"><input type="checkbox" checked={d.reserve} onChange={(e) => set({ reserve: e.target.checked })} /> Avec réserve</label>
+        {d.reserve && (
+          <div><label>Détail des réserves (facultatif)</label>
+            <textarea rows={2} value={d.detail} placeholder="Ex. : fissure mur sud" onChange={(e) => set({ detail: e.target.value })} />
+          </div>
+        )}
+      </>);
+      break;
   }
 
   return (
     <div className="wa" data-testid="worker-action-card" data-type={d.type}>
       <style>{CSS}</style>
       <p className="wa-h"><span className="i"><Icon className="h-3.5 w-3.5" /></span>{title}</p>
+      {extra.attachment && <p className="wa-att"><Paperclip className="h-3.5 w-3.5" /> {extra.attachment.name}</p>}
       <div className="wa-f">{body}</div>
       {problems.map((p) => <p key={p} className="wa-p">{p}</p>)}
       {err && <p className="wa-p">{err}</p>}
@@ -125,7 +147,7 @@ export default function WorkerActionCard({ extra, execute, onDone }: Props) {
           type="button" className="wa-b ok" disabled={busy || problems.length > 0} data-testid="worker-action-confirm"
           onClick={async () => {
             setBusy(true); setErr(null);
-            const r = await execute(d);
+            const r = await execute(d, extra.attachment);
             setBusy(false);
             if (r.ok) { setDone(r.message); onDone?.(); } else setErr(r.message);
           }}

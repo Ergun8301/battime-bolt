@@ -48,6 +48,7 @@ export default function ApercuAssistant() {
       </div>
       <AssistantPanel
         source={source}
+        attachments
         onNavigate={(a) => toast.success(`Ouverture : ${LABELS[a] ?? a}`)}
         renderExtra={(extra) => <AssistantActionCard extra={extra as ActionExtra} execute={demoActionExecutor} />}
       />

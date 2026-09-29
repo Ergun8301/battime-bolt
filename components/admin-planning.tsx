@@ -2786,6 +2786,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       {aiOn && user?.role === 'admin' && (
         <AssistantPanel
           source={supabaseAssistantSource}
+          attachments
           onNavigate={(action) => {
             if (action === 'couts') setCostOpen(true);
             else if (action === 'conges') setLeaveOpen(true);

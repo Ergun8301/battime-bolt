@@ -5,7 +5,9 @@
 // avec la session du patron connecté : ses droits, sa RLS, rien de plus.
 // Après réussite, une ligne est ajoutée au journal `assistant_actions`.
 import { supabase } from '@/lib/supabase';
-import { addPlanningSlot, createWorksite, inviteWorker, setAbsence } from '@/lib/planning-writes';
+import { addPlanningSlot, createWorksite, invitedUserId, inviteWorker, savePayrollBasics, setAbsence, setWorksiteBudget } from '@/lib/planning-writes';
+import { uploadWorksiteDocument } from '@/lib/chantier-docs';
+import { sanitizeExtraction, supabaseCostSource } from '@/lib/real-cost';
 import { corrigerHeures } from '@/lib/corrections';
 import type { ActionDraft } from '@/supabase/functions/_shared/assistant-actions-core';
 
@@ -22,34 +24,73 @@ export interface ActionOptions {
 export interface ActionExtra {
   action: { draft: ActionDraft; problems: string[]; summary: string };
   options: ActionOptions;
+  /** 📎 Le fichier joint, resté dans l'écran jusqu'à « Confirmer ». */
+  attachment?: File;
 }
 
 export interface ActionResult { ok: boolean; message: string }
-export type ActionExecutor = (d: ActionDraft, summary: string) => Promise<ActionResult>;
+export type ActionExecutor = (d: ActionDraft, summary: string, attachment?: File) => Promise<ActionResult>;
 
 const LOG_NAME: Record<ActionDraft['type'], string> = {
   inviter_salarie: 'inviter_salarie', creer_chantier: 'creer_chantier', poser_absence: 'poser_absence',
   affecter_planning: 'affecter_planning', planning_semaine: 'appliquer_planning_semaine', corriger_pointage: 'corriger_pointage',
+  ranger_document: 'ranger_document',
 };
+const n = (v?: string) => (v && Number(v) > 0 ? Number(v) : null);
+
+/** Chiffres du bulletin → coût réel (lot 2), avec LES MÊMES contrôles que l'écran. */
+export function bulletinFigures(b: NonNullable<Extract<ActionDraft, { type: 'inviter_salarie' }>['bulletin']>) {
+  const { figures, doubts } = sanitizeExtraction({ month: b.mois, gross: n(b.brut), employer_total: n(b.cout_employeur), paid_hours: n(b.heures_payees) });
+  const complete = !!(figures.month && figures.gross && figures.employer_total && figures.paid_hours) && doubts.length === 0;
+  return { figures, complete };
+}
 
 const errText = (e: unknown, fallback: string) => (e as { message?: string } | null)?.message || fallback;
 
 /** Exécuteur réel : le patron connecté, son entreprise. */
 export function makeActionExecutor(user: { id: string; company_id: string }): ActionExecutor {
   const base = { companyId: user.company_id, createdBy: user.id };
-  return async (d, summary) => {
+  return async (d, summary, attachment) => {
     let message = '';
     try {
       switch (d.type) {
-        case 'inviter_salarie':
+        case 'inviter_salarie': {
           await inviteWorker({ companyId: user.company_id, email: d.email, firstName: d.prenom, lastName: d.nom, phone: d.telephone });
           message = `Invitation envoyée à ${d.email}.`;
+          // Bulletin joint : infos paie non sensibles + coût réel. Le bulletin
+          // lui-même n'est PAS conservé (règle du lot 2), le n° de sécu jamais lu.
+          const hasPay = !!(d.date_entree || d.contrat || n(d.taux_horaire) || n(d.heures_hebdo));
+          const slip = d.bulletin ? bulletinFigures(d.bulletin) : null;
+          if (hasPay || slip?.complete) {
+            const uid = await invitedUserId(user.company_id, d.email);
+            if (!uid) { message += ' Infos de paie à saisir sur sa fiche (compte pas encore visible).'; break; }
+            if (hasPay) await savePayrollBasics({ companyId: user.company_id, userId: uid, hireDate: d.date_entree, contract: d.contrat, hourlyRate: n(d.taux_horaire), weeklyHours: n(d.heures_hebdo) });
+            if (slip?.complete) {
+              const err = await supabaseCostSource.save(user.company_id, uid, slip.figures, 'ai');
+              message += err ? ` Coût réel non enregistré : ${err}` : ' Infos de paie et coût réel enregistrés.';
+            } else message += ' Infos de paie enregistrées.';
+          }
           break;
-        case 'creer_chantier':
-          await createWorksite(user.company_id, {
+        }
+        case 'creer_chantier': {
+          const ws = await createWorksite(user.company_id, {
             client_name: d.nom_client, city: d.ville, address: d.adresse, client_phone: d.telephone, client_email: d.email, description: d.description,
           });
           message = `Client « ${d.nom_client} » créé.`;
+          if (n(d.budget_heures) || n(d.budget_montant)) {
+            await setWorksiteBudget(user.company_id, ws.id, n(d.budget_heures), n(d.budget_montant));
+            message += ' Budget enregistré.';
+          }
+          if (attachment) {
+            await uploadWorksiteDocument({ companyId: user.company_id, userId: user.id, worksiteId: ws.id, file: attachment });
+            message += ' Devis rangé dans ses documents.';
+          }
+          break;
+        }
+        case 'ranger_document':
+          if (!attachment) return { ok: false, message: 'Aucun fichier joint.' };
+          await uploadWorksiteDocument({ companyId: user.company_id, userId: user.id, worksiteId: d.worksite_id!, file: attachment });
+          message = 'Document rangé dans le chantier.';
           break;
         case 'poser_absence':
           await setAbsence({ ...base, userId: d.user_id!, type: d.absence_type, from: d.du, to: d.au });

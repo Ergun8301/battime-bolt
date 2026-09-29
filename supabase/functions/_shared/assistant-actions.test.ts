@@ -57,7 +57,7 @@ Deno.test('Appel de fonctions : liste blanche, mode ANY, clé en en-tête', asyn
   const body = JSON.parse(String(seen.init!.body));
   eq(body.toolConfig.functionCallingConfig.mode, 'ANY', 'le modèle doit appeler une fonction');
   eq(body.tools[0].functionDeclarations.map((f: { name: string }) => f.name),
-    ['repondre', 'inviter_salarie', 'creer_chantier', 'poser_absence', 'affecter_planning', 'planning_semaine', 'corriger_pointage'], 'liste blanche exacte');
+    ['repondre', 'inviter_salarie', 'creer_chantier', 'ranger_document', 'poser_absence', 'affecter_planning', 'planning_semaine', 'corriger_pointage'], 'liste blanche exacte');
   if (JSON.stringify(body).match(/supprim|delete/i) && !JSON.stringify(body).includes('Jamais de suppression')) throw new Error('fonction de suppression exposée');
   eq((seen.init!.headers as Record<string, string>)['x-goog-api-key'], 'AQ.test', 'clé en en-tête');
   const bad = await callFunction({ prompt: '', functions: ASSISTANT_FUNCTIONS }, env, fakeGemini('supprimer_salarie', {}).fetchImpl);
@@ -156,4 +156,58 @@ Deno.test('Contexte : jamais une autre entreprise, jamais un salarié archivé',
   });
   eq([c.salaries.map((s) => s.id), c.chantiers.map((w) => w.id), c.planning.length], [['a'], ['w1'], 0], 'filtré');
   if (JSON.stringify(c).match(/secu|social|payroll|bulletin|taux/i)) throw new Error('paie dans le contexte');
+});
+
+// ═══ 📎 Pièces jointes (bureau) ═════════════════════════════════════════════
+import { readAttachment } from './ai-provider.ts';
+
+const CTX2: ActionContext = { ...CTX, chantiers: [...CTX.chantiers, { id: 'w-dupont2', nom: 'Dupont', ville: 'Viriat' }] };
+const PDF = { mime: 'application/pdf', base64: btoa('%PDF-1.4 faux bulletin') };
+
+Deno.test('📎 Bulletin → invitation pré-remplie + paie, JAMAIS le n° de sécu', async () => {
+  const f = fakeGemini('inviter_salarie', {
+    prenom: 'Marc', nom: 'Durand 1 85 05 78 006 084 36', email: 'marc@exemple.fr', date_entree: '2026-09-01', contrat: 'CDI',
+    taux_horaire: 14.5, heures_hebdo: 35, bulletin_mois: '2026-09', bulletin_brut: 2450, bulletin_cout_employeur: 3480, bulletin_heures_payees: 151.67,
+    numero_secu: '185057800608436',
+  });
+  const r = await callFunction({ prompt: 'x', functions: ASSISTANT_FUNCTIONS, file: PDF }, env, f.fetchImpl);
+  const sent = JSON.parse(String(f.seen.init!.body));
+  eq(sent.contents[0].parts[1].inline_data.mime_type, 'application/pdf', 'le fichier part au modèle');
+  if (!r.ok) throw new Error('appel refusé');
+  const a = fromFunctionCall(r.call.name, r.call.args, CTX).action!;
+  const d = a.draft as Record<string, unknown>;
+  eq([d.nom, d.date_entree, d.contrat, d.taux_horaire, d.heures_hebdo], ['Durand', '2026-09-01', 'CDI', '14.5', '35'], 'champs de paie repris');
+  eq(d.bulletin, { mois: '2026-09', brut: '2450', cout_employeur: '3480', heures_payees: '151.67' }, 'chiffres du coût réel proposés');
+  if (/185057800608436|1 85 05|secu/i.test(JSON.stringify(d))) throw new Error('n° de sécu dans le brouillon');
+  if (JSON.stringify(ASSISTANT_FUNCTIONS).match(/"(numero_)?secu|nir"/i)) throw new Error('champ n° de sécu exposé au modèle');
+  eq(a.problems, [], 'prêt à confirmer');
+});
+
+Deno.test('📎 Devis → client + budget', async () => {
+  const { reply } = await viaAi('creer_chantier', { nom_client: 'Maison Garnier', ville: 'Caluire', adresse: '12 rue des Lilas', budget_montant: 18400, budget_heures: 160 });
+  const d = reply.action!.draft as Record<string, unknown>;
+  eq([d.nom_client, d.adresse, d.budget_montant, d.budget_heures, reply.action!.problems], ['Maison Garnier', '12 rue des Lilas', '18400', '160', []], 'client et budget');
+});
+
+Deno.test('📎 Ranger un document : chantier ambigu → liste, jamais d’invention', () => {
+  const amb = fromFunctionCall('ranger_document', { chantier: 'Dupont' }, CTX2).action!;
+  eq([(amb.draft as { worksite_id: null }).worksite_id, amb.problems], [null, ['Choisissez le chantier.']], '« Dupont » : 2 chantiers');
+  const ok = fromFunctionCall('ranger_document', { chantier: 'Dupont Viriat' }, CTX2).action!;
+  eq([(ok.draft as { worksite_id: string }).worksite_id, ok.problems], ['w-dupont2', []], '« Dupont Viriat » : trouvé');
+  eq(fromFunctionCall('ranger_document', { chantier: 'Chantier Inconnu' }, CTX2).action!.problems, ['Choisissez le chantier.'], 'inconnu → à choisir');
+});
+
+Deno.test('📎 Fichier reçu par le serveur : types refusés, taille, rien dans les logs', async () => {
+  eq(readAttachment(undefined), { ok: true, file: undefined }, 'pas de fichier : normal');
+  eq(readAttachment({ mime: 'text/plain', base64: 'aGVsbG8=' }).ok, false, 'texte refusé');
+  eq(readAttachment({ mime: 'application/zip', base64: 'aGVsbG8=' }).ok, false, 'zip refusé');
+  eq(readAttachment({ mime: 'image/heic', base64: 'aGVsbG8=' }).ok, true, 'HEIC accepté');
+  eq(readAttachment({ mime: 'image/jpeg', base64: 'A'.repeat(12 * 1024 * 1024) }).ok, false, 'trop lourd refusé');
+  const logs: string[] = [];
+  const orig = console.error;
+  console.error = (...x: unknown[]) => { logs.push(x.map(String).join(' ')); };
+  try {
+    await callFunction({ prompt: 'x', functions: ASSISTANT_FUNCTIONS, file: PDF }, env, () => Promise.resolve(new Response('err', { status: 500 })));
+  } finally { console.error = orig; }
+  if (logs.some((l) => l.includes(PDF.base64) || l.includes('bulletin'))) throw new Error('contenu du fichier dans les logs');
 });

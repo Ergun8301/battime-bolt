@@ -79,3 +79,30 @@ export async function setAbsence(p: { companyId: string; createdBy: string; user
   const { error } = await supabase.from('planning').insert(rows);
   if (error) throw error;
 }
+
+/** Budget main-d'œuvre d'un client (mêmes colonnes que la « Fiche client »). */
+export async function setWorksiteBudget(companyId: string, worksiteId: string, hours: number | null, amount: number | null) {
+  const { error } = await supabase.from('worksites').update({ budget_hours: hours, budget_amount: amount })
+    .eq('id', worksiteId).eq('company_id', companyId);
+  if (error) throw error;
+}
+
+/** Après une invitation : le compte est créé tout de suite (handle_new_user) → son id. */
+export async function invitedUserId(companyId: string, email: string): Promise<string | null> {
+  const { data } = await supabase.from('users').select('id').eq('company_id', companyId).ilike('email', email).maybeSingle();
+  return (data as { id: string } | null)?.id ?? null;
+}
+
+/**
+ * Infos paie NON sensibles (mêmes colonnes que « Infos paie » de la fiche
+ * salarié). Le n° de sécurité sociale n'est JAMAIS écrit d'ici.
+ */
+export async function savePayrollBasics(p: { companyId: string; userId: string; hireDate?: string | null; contract?: string | null; hourlyRate?: number | null; weeklyHours?: number | null }) {
+  const { error } = await supabase.from('user_payroll').upsert({
+    user_id: p.userId, company_id: p.companyId,
+    hire_date: p.hireDate || null, contract_type: (p.contract ?? '').trim() || null,
+    hourly_rate: p.hourlyRate ?? null, weekly_hours: p.weeklyHours ?? null,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'user_id' });
+  if (error) throw error;
+}

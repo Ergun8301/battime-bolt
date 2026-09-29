@@ -5,9 +5,9 @@
 // sont les mêmes que côté serveur (checkAction), à chaque modification.
 
 import { useMemo, useState } from 'react';
-import { CheckCircle2, Loader2, UserPlus, Building2, CalendarOff, CalendarPlus, CalendarRange, Clock } from 'lucide-react';
+import { CheckCircle2, Loader2, UserPlus, Building2, CalendarOff, CalendarPlus, CalendarRange, Clock, FolderInput, Paperclip } from 'lucide-react';
 import {
-  ABSENCE_KINDS, ABSENCE_LABEL, checkAction, frDate, summarize,
+  ABSENCE_KINDS, ABSENCE_LABEL, bulletinFigures, checkAction, frDate, summarize,
   type ActionDraft, type ActionExecutor, type ActionExtra,
 } from '@/lib/assistant-actions';
 
@@ -36,6 +36,8 @@ const CSS = `
 .ac-b.no{background:transparent;color:#6E6A63}
 .ac-done{display:flex;align-items:center;gap:8px;color:#0F7A43;font-weight:800;font-size:13.5px;margin-top:10px}
 .ac-err{font-size:12.5px;color:#9a3b14;font-weight:700;margin:6px 0 0}
+.ac-sub{font-size:11.5px;font-weight:900;color:#15120F;margin:6px 0 0}
+.ac-att{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:#56514a;margin:-4px 0 8px}
 .ac-hint{font-size:11.5px;color:#6E6A63;margin:4px 0 0}
 `;
 
@@ -46,10 +48,12 @@ const TITLES: Record<ActionDraft['type'], [string, typeof UserPlus]> = {
   affecter_planning: ['Ajouter au planning', CalendarPlus],
   planning_semaine: ['Planning proposé', CalendarRange],
   corriger_pointage: ['Corriger un pointage', Clock],
+  ranger_document: ['Ranger dans les documents', FolderInput],
 };
 const CONFIRM: Record<ActionDraft['type'], string> = {
   inviter_salarie: 'Confirmer et envoyer', creer_chantier: 'Confirmer', poser_absence: 'Confirmer',
   affecter_planning: 'Confirmer', planning_semaine: 'Appliquer', corriger_pointage: 'Corriger et prévenir',
+  ranger_document: 'Ranger',
 };
 
 interface Props { extra: ActionExtra; execute: ActionExecutor; onDone?: () => void }
@@ -97,7 +101,31 @@ export default function AssistantActionCard({ extra, execute, onDone }: Props) {
         </div>
         <div><label>Email</label><input type="email" inputMode="email" value={d.email} onChange={(e) => set({ email: e.target.value.trim() })} className={d.email ? '' : 'todo'} /></div>
         <div><label>Téléphone (facultatif)</label><input type="tel" value={d.telephone} onChange={(e) => set({ telephone: e.target.value })} /></div>
-        <p className="ac-hint">Il recevra un email pour créer son accès.</p>
+        {(d.date_entree || d.contrat || d.taux_horaire || d.heures_hebdo || d.bulletin) && (<>
+          <p className="ac-sub">Infos paie (lues sur le bulletin)</p>
+          <div className="ac-row">
+            <div><label>Entrée</label><input type="date" value={d.date_entree ?? ''} onChange={(e) => set({ date_entree: e.target.value })} /></div>
+            <div><label>Contrat</label><input value={d.contrat ?? ''} onChange={(e) => set({ contrat: e.target.value })} /></div>
+          </div>
+          <div className="ac-row">
+            <div><label>Taux horaire (€)</label><input inputMode="decimal" value={d.taux_horaire ?? ''} onChange={(e) => set({ taux_horaire: e.target.value.replace(',', '.') })} /></div>
+            <div><label>Heures / semaine</label><input inputMode="decimal" value={d.heures_hebdo ?? ''} onChange={(e) => set({ heures_hebdo: e.target.value.replace(',', '.') })} /></div>
+          </div>
+          {d.bulletin && (() => {
+            const b = d.bulletin!;
+            const setB = (patch: Partial<typeof b>) => set({ bulletin: { ...b, ...patch } });
+            const ok = bulletinFigures(b).complete;
+            return (<>
+              <p className="ac-sub">Coût réel ({b.mois || 'mois ?'})</p>
+              <div className="ac-row">
+                <div><label>Brut</label><input inputMode="decimal" value={b.brut} onChange={(e) => setB({ brut: e.target.value.replace(',', '.') })} /></div>
+                <div><label>Coût employeur</label><input inputMode="decimal" value={b.cout_employeur} onChange={(e) => setB({ cout_employeur: e.target.value.replace(',', '.') })} /></div>
+                <div><label>Heures payées</label><input inputMode="decimal" value={b.heures_payees} onChange={(e) => setB({ heures_payees: e.target.value.replace(',', '.') })} /></div>
+              </div>
+              <p className="ac-hint">{ok ? 'Enregistré avec l’invitation. Le bulletin n’est pas conservé.' : 'Chiffres incomplets : le coût réel ne sera pas enregistré.'}</p>
+            </>);
+          })()}
+        </>)}
       </>);
       break;
     case 'creer_chantier':
@@ -108,6 +136,12 @@ export default function AssistantActionCard({ extra, execute, onDone }: Props) {
           <div><label>Téléphone</label><input value={d.telephone} onChange={(e) => set({ telephone: e.target.value })} /></div>
         </div>
         <div><label>Adresse</label><input value={d.adresse} onChange={(e) => set({ adresse: e.target.value })} /></div>
+        {(d.budget_heures || d.budget_montant || extra.attachment) && (
+          <div className="ac-row">
+            <div><label>Montant prévu (€)</label><input inputMode="decimal" value={d.budget_montant ?? ''} onChange={(e) => set({ budget_montant: e.target.value.replace(',', '.') })} /></div>
+            <div><label>Heures prévues</label><input inputMode="decimal" value={d.budget_heures ?? ''} onChange={(e) => set({ budget_heures: e.target.value.replace(',', '.') })} /></div>
+          </div>
+        )}
       </>);
       break;
     case 'poser_absence':
@@ -174,6 +208,11 @@ export default function AssistantActionCard({ extra, execute, onDone }: Props) {
       </>);
       break;
     }
+    case 'ranger_document':
+      body = (
+        <div><label>Chantier</label>{chSelect(d.worksite_id, (v) => set({ worksite_id: v }), d.chantier_texte)}</div>
+      );
+      break;
     case 'corriger_pointage':
       body = (<>
         <div className="ac-row">
@@ -202,6 +241,7 @@ export default function AssistantActionCard({ extra, execute, onDone }: Props) {
     <div className="ac" data-testid="action-card" data-type={d.type}>
       <style>{CSS}</style>
       <p className="ac-h"><span className="i"><Icon className="h-3.5 w-3.5" /></span>{title}</p>
+      {extra.attachment && <p className="ac-att"><Paperclip className="h-3.5 w-3.5" /> {extra.attachment.name}</p>}
       <div className="ac-f">{body}</div>
       {problems.map((p) => <p key={p} className="ac-p">{p}</p>)}
       {err && <p className="ac-err">{err}</p>}
@@ -211,7 +251,7 @@ export default function AssistantActionCard({ extra, execute, onDone }: Props) {
           type="button" className="ac-b ok" disabled={busy || problems.length > 0} data-testid="action-confirm"
           onClick={async () => {
             setBusy(true); setErr(null);
-            const r = await execute(d, summarize(d, ctx));
+            const r = await execute(d, summarize(d, ctx), extra.attachment);
             setBusy(false);
             if (r.ok) { setDone(r.message); onDone?.(); } else setErr(r.message);
           }}

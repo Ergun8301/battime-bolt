@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS public.assistant_actions (
   at         timestamptz NOT NULL DEFAULT now(),
   action     text NOT NULL CHECK (action IN (
                'inviter_salarie', 'creer_chantier', 'poser_absence',
-               'affecter_planning', 'appliquer_planning_semaine', 'corriger_pointage')),
+               'affecter_planning', 'appliquer_planning_semaine', 'corriger_pointage',
+               'ranger_document')),
   summary    text NOT NULL CHECK (char_length(summary) BETWEEN 1 AND 400)
 );
 CREATE INDEX IF NOT EXISTS assistant_actions_company ON public.assistant_actions (company_id, at DESC);
