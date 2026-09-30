@@ -210,6 +210,11 @@ export const CASES: EvalCase[] = [
   { id: 'b44', cote: 'bureau', categorie: 'Effacer', phrase: 'retire karim du planning demain', check: act('supprimer_intervention', (d) => eq(d, 'planning_id', 'p-karim-4')) },
   { id: 'b45', cote: 'bureau', categorie: 'Effacer', phrase: 'le devis cuisine de villa dupont, en fait c’est une facture',
     check: act('modifier_document', (d) => all(eq(d, 'document_id', 'd-devis'), eq(d, 'categorie', 'facture'))) },
+  // Retour Cowork : un salarié nommé → SEULEMENT ses cases ; rien ce jour-là → on le dit.
+  { id: 'b46', cote: 'bureau', categorie: 'Effacer', phrase: 'Enlève Karim de la Villa Dupont vendredi', check: act('supprimer_intervention', (d) => all(eq(d, 'user_id', 'u-karim'), eq(d, 'planning_id', 'p-karim-4'))) },
+  { id: 'b47', cote: 'bureau', categorie: 'Effacer', phrase: 'retire Kevin de la Villa Dupont vendredi',
+    check: act('supprimer_intervention', (d) => all(eq(d, 'user_id', 'u-kevin'), eq(d, 'planning_id', null),
+      (d.choix as { nom: string }[]).length && (d.choix as { nom: string }[]).every((c) => c.nom === 'Kevin') ? null : `choix : ${JSON.stringify(d.choix)}`)) },
   // ════ SALARIÉ ════
   { id: 's01', cote: 'salarie', categorie: 'Heures', phrase: 'ce matin 7h30 12h villa dupont et aprem 13h 16h30 bureau martin',
     check: draft((l) => (l.length === 2 && l[0].worksite_id === W.dupont && l[1].worksite_id === W.martin && l[0].start === '07:30' && l[1].end === '16:30' ? null : `lignes : ${JSON.stringify(l.map((x) => [x.worksite_id, x.start, x.end]))}`)) },
