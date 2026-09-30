@@ -21,6 +21,7 @@ import {
 import { removeWorksiteDocument, uploadWorksiteDocument } from '@/lib/chantier-docs';
 import { sanitizeExtraction, supabaseCostSource } from '@/lib/real-cost';
 import { corrigerHeures } from '@/lib/corrections';
+import { casesLabel, eraseOne, erasePlanning, restoreRows } from '@/lib/erase';
 import { DOC_CATEGORY_LABEL, type ActionDraft, type ActionQuestion } from '@/supabase/functions/_shared/assistant-actions-core';
 
 export type {
@@ -44,7 +45,11 @@ export interface ActionExtra {
   pendingQuestion?: string;
 }
 
-export interface ActionResult { ok: boolean; message: string; undo?: () => Promise<ActionResult> }
+export interface ActionResult {
+  ok: boolean; message: string; undo?: () => Promise<ActionResult>;
+  /** Lot 8 : nombre d'éléments effacés (au-delà de 10, « Annuler » est mis en avant). */
+  count?: number;
+}
 export type ActionExecutor = (d: ActionDraft, summary: string, attachment?: File) => Promise<ActionResult>;
 
 const n = (v?: string) => (v && Number(v) > 0 ? Number(v) : null);
@@ -71,7 +76,9 @@ export function makeActionExecutor(user: { id: string; company_id: string }): Ac
   const base = { companyId: cid, createdBy: user.id };
   return async (d, summary, attachment) => {
     let message = '';
-    let undo: (() => Promise<void>) | undefined;
+    // Lot 8 : l'annulation peut rendre son propre message (« 27 cases remises »).
+    let undo: (() => Promise<void | string>) | undefined;
+    let count: number | undefined;
     try {
       switch (d.type) {
         case 'inviter_salarie': {
@@ -250,6 +257,99 @@ export function makeActionExecutor(user: { id: string; company_id: string }): Ac
           message = 'Coût réel enregistré. Le bulletin n’est pas conservé.';
           break;
         }
+        // ── Lot 8 : revenir en arrière. Tout est lu AVANT d'être effacé : « Annuler » remet à l'identique. ──
+        case 'supprimer_intervention':
+        case 'effacer_planning':
+        case 'supprimer_absence': {
+          const r = d.type === 'supprimer_intervention'
+            ? await erasePlanning(cid, { ids: [d.planning_id!] })
+            : await erasePlanning(cid, { userId: d.user_id, from: d.du, to: d.au, absences: d.type === 'supprimer_absence' });
+          if (!r.deleted.length) {
+            return { ok: false, message: r.skipped ? `Rien n’a été retiré : ${r.reason}.` : d.type === 'supprimer_absence' ? 'Aucune absence sur ces jours.' : 'Aucune case à effacer sur cette période.' };
+          }
+          const k = r.deleted.length;
+          count = k;
+          message = d.type === 'supprimer_intervention' ? 'Retiré du planning.'
+            : d.type === 'supprimer_absence' ? `${k} jour${k > 1 ? 's' : ''} d’absence retiré${k > 1 ? 's' : ''}.`
+            : `${casesLabel(k)}.`;
+          if (r.skipped) message += ` ${r.skipped} gardée${r.skipped > 1 ? 's' : ''} (${r.reason}).`;
+          undo = async () => { await restoreRows('planning', r.deleted); return k > 1 ? `Annulé : ${casesLabel(k, 'remise')} au planning.` : 'Annulé : c’est comme avant.'; };
+          break;
+        }
+        case 'supprimer_document': {
+          const { data: doc, error: readErr } = await supabase.from('documents').select('*').eq('id', d.document_id!).eq('company_id', cid).single();
+          if (readErr) throw readErr;
+          const row = doc as Record<string, unknown> & { id: string; file_path: string; label: string | null; file_name: string | null };
+          // Le fichier est gardé EN MÉMOIRE : « Annuler » le remet tel quel.
+          const { data: blob, error: dlErr } = await supabase.storage.from('chantier-docs').download(row.file_path);
+          if (dlErr || !blob) return { ok: false, message: 'Le fichier n’a pas pu être lu : rien n’a été supprimé.' };
+          const { data: gone, error: delErr } = await supabase.from('documents').delete().eq('id', row.id).select('id');
+          if (delErr) throw delErr;
+          if (!gone || gone.length === 0) return { ok: false, message: 'Suppression refusée : ce document ne vous appartient pas.' };
+          await supabase.storage.from('chantier-docs').remove([row.file_path]);
+          message = `Document « ${row.label || row.file_name || 'sans nom'} » supprimé.`;
+          undo = async () => {
+            const up = await supabase.storage.from('chantier-docs').upload(row.file_path, blob, { upsert: true, contentType: blob.type || undefined });
+            if (up.error) throw up.error;
+            // La base exige que la personne qui (re)dépose soit l'auteur.
+            const { error } = await supabase.from('documents').insert({ ...row, uploaded_by: user.id });
+            if (error) throw error;
+          };
+          break;
+        }
+        case 'modifier_document': {
+          const { data: prev, error: readErr } = await supabase.from('documents').select('category, label').eq('id', d.document_id!).eq('company_id', cid).single();
+          if (readErr) throw readErr;
+          const patch = { ...(d.categorie ? { category: d.categorie } : {}), ...(d.libelle ? { label: d.libelle } : {}) };
+          const { data: upd, error } = await supabase.from('documents').update(patch).eq('id', d.document_id!).eq('company_id', cid).select('id');
+          if (error) throw error;
+          if (!upd || upd.length === 0) return { ok: false, message: 'Modification refusée : ce document ne vous appartient pas.' };
+          message = 'Document modifié.';
+          undo = async () => { const { error: e } = await supabase.from('documents').update(prev as Record<string, unknown>).eq('id', d.document_id!).eq('company_id', cid); if (e) throw e; };
+          break;
+        }
+        case 'supprimer_depense': {
+          const row = await eraseOne('worksite_expenses', cid, d.expense_id!);
+          message = 'Dépense supprimée.';
+          undo = () => restoreRows('worksite_expenses', [row]);
+          break;
+        }
+        case 'modifier_depense': {
+          const { data: prev, error: readErr } = await supabase.from('worksite_expenses').select('amount, label, category').eq('id', d.expense_id!).eq('company_id', cid).single();
+          if (readErr) throw readErr;
+          const patch = { ...(d.montant ? { amount: Number(d.montant) } : {}), ...(d.libelle ? { label: d.libelle } : {}), ...(d.categorie ? { category: d.categorie } : {}) };
+          const { error } = await supabase.from('worksite_expenses').update(patch).eq('id', d.expense_id!).eq('company_id', cid);
+          if (error) throw error;
+          message = 'Dépense corrigée.';
+          undo = async () => { const { error: e } = await supabase.from('worksite_expenses').update(prev as Record<string, unknown>).eq('id', d.expense_id!).eq('company_id', cid); if (e) throw e; };
+          break;
+        }
+        case 'supprimer_habilitation': {
+          const row = await eraseOne('certifications', cid, d.cert_id!);
+          message = 'Habilitation supprimée.';
+          undo = () => restoreRows('certifications', [row]);
+          break;
+        }
+        case 'modifier_habilitation': {
+          const { data: prev, error: readErr } = await supabase.from('certifications').select('expiry_date, label, alert_30_sent_at, alert_7_sent_at').eq('id', d.cert_id!).eq('company_id', cid).single();
+          if (readErr) throw readErr;
+          // Nouvelle date → les alertes d'expiration repartent de zéro.
+          const patch = { ...(d.expiration ? { expiry_date: d.expiration, alert_30_sent_at: null, alert_7_sent_at: null } : {}), ...(d.libelle ? { label: d.libelle } : {}) };
+          const { error } = await supabase.from('certifications').update(patch).eq('id', d.cert_id!).eq('company_id', cid);
+          if (error) throw error;
+          message = 'Habilitation modifiée.';
+          undo = async () => { const { error: e } = await supabase.from('certifications').update(prev as Record<string, unknown>).eq('id', d.cert_id!).eq('company_id', cid); if (e) throw e; };
+          break;
+        }
+        case 'annuler_invitation': {
+          const { data: inv } = await supabase.from('invitations').select('email, first_name, last_name, phone').eq('company_id', cid).eq('email', d.email).is('accepted_at', null).maybeSingle();
+          // Même chemin que la croix de « Invitations en attente ».
+          const { error } = await supabase.functions.invoke('invite-worker', { body: { action: 'revoke', email: d.email } });
+          if (error) throw new Error('Impossible d’annuler l’invitation.');
+          message = `Invitation de ${d.email} annulée.`;
+          if (inv) undo = async () => { await resendInvitation(cid, inv as { email: string; first_name: string | null; last_name: string | null; phone: string | null }); return 'Annulé : l’invitation est renvoyée.'; };
+          break;
+        }
         case 'modifier_reglages': {
           const cur = await readCompanySettings(cid);
           await saveCompanySettings({
@@ -277,13 +377,14 @@ export function makeActionExecutor(user: { id: string; company_id: string }): Ac
       return { ok: false, message: errText(e, 'Action impossible.') };
     }
     const logged = await journal(d.type, summary);
-    const result: ActionResult = { ok: true, message: logged ? message : `${message} (journal non mis à jour)` };
+    const result: ActionResult = { ok: true, message: logged ? message : `${message} (journal non mis à jour)`, ...(count ? { count } : {}) };
     if (undo) {
       const run = undo;
       result.undo = async () => {
-        try { await run(); } catch (e) { return { ok: false, message: errText(e, 'Annulation impossible.') }; }
+        let said: void | string;
+        try { said = await run(); } catch (e) { return { ok: false, message: errText(e, 'Annulation impossible.') }; }
         await journal(d.type, summary, true);
-        return { ok: true, message: 'Annulé : c’est comme avant.' };
+        return { ok: true, message: typeof said === 'string' ? said : 'Annulé : c’est comme avant.' };
       };
     }
     return result;
@@ -294,7 +395,13 @@ export function makeActionExecutor(user: { id: string; company_id: string }): Ac
 export const demoActionExecutor: ActionExecutor = async (d) => {
   await new Promise((r) => setTimeout(r, 450));
   const k = d.type === 'planning_semaine' ? d.lignes.filter((l) => l.worksite_id).length : 1;
-  const direct = ['affecter_planning', 'poser_absence', 'ranger_document', 'modifier_intervention', 'creer_chantier'].includes(d.type);
+  const direct = ['affecter_planning', 'poser_absence', 'ranger_document', 'modifier_intervention', 'creer_chantier',
+    'supprimer_intervention', 'effacer_planning', 'supprimer_absence', 'supprimer_document', 'modifier_document',
+    'supprimer_depense', 'modifier_depense', 'supprimer_habilitation', 'modifier_habilitation'].includes(d.type);
+  if (d.type === 'effacer_planning') {
+    const k = 27;
+    return { ok: true, count: k, message: `${casesLabel(k)} (démo, rien n’est écrit).`, undo: async () => { await new Promise((r) => setTimeout(r, 300)); return { ok: true, message: `Annulé : ${casesLabel(k, 'remise')} au planning (démo).` }; } };
+  }
   return {
     ok: true,
     message: d.type === 'planning_semaine' ? `Planning appliqué : ${k} affectations (démo, rien n’est écrit).` : 'démo, rien n’est écrit.',

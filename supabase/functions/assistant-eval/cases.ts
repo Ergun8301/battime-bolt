@@ -39,11 +39,26 @@ export const ADMIN_RAW = {
       id: `p-karim-${i}`, user_id: 'u-karim', company_id: C, work_date: d, worksite_id: W.dupont, absence_type: null, notes: null, estimated_start: '08:00:00',
     })),
     { id: 'p-kevin-1', user_id: 'u-kevin', company_id: C, work_date: '2026-10-01', worksite_id: W.macon, absence_type: null, notes: null, estimated_start: null },
+    // Lot 8 : l'intervention de test de Cowork, et un congé posé (à retirer).
+    { id: 'p-kevin-lyon', user_id: 'u-kevin', company_id: C, work_date: '2026-10-01', worksite_id: W.autre, absence_type: null, notes: 'Intervention à Lyon', estimated_start: '14:00:00' },
+    { id: 'p-sof-c1', user_id: 'u-sofiane', company_id: C, work_date: '2026-10-12', worksite_id: null, absence_type: 'conge', notes: null, estimated_start: null },
+    { id: 'p-sof-c2', user_id: 'u-sofiane', company_id: C, work_date: '2026-10-13', worksite_id: null, absence_type: 'conge', notes: null, estimated_start: null },
   ],
   leaves: [{ id: 'l-kevin', user_id: 'u-kevin', company_id: C, type: 'conge', start_date: '2026-10-12', end_date: '2026-10-16' }],
   invitations: [{ company_id: C, email: 'marc.durand@gmail.com', first_name: 'Marc', last_name: 'Durand', phone: null }],
   reserves: [{ id: 'r-karim', company_id: C, user_id: 'u-karim', work_date: '2026-09-30', worksite_id: W.dupont, observation: 'Joint silicone à reprendre' }],
   closures: [],
+  // Lot 8 : ce qui peut être retiré ou corrigé.
+  documents: [
+    { id: 'd-fact', company_id: C, worksite_id: W.ppj, label: 'Facture plomberie', file_name: 'facture.pdf', category: 'facture_payee', created_at: '2026-09-28T10:00:00Z' },
+    { id: 'd-photo', company_id: C, worksite_id: W.dupont, label: null, file_name: 'photo-1.jpg', category: 'photo', created_at: '2026-09-30T08:00:00Z' },
+    { id: 'd-devis', company_id: C, worksite_id: W.dupont, label: 'Devis cuisine', file_name: 'devis.pdf', category: 'devis', created_at: '2026-09-20T09:00:00Z' },
+  ],
+  expenses: [
+    { id: 'x-placo', company_id: C, worksite_id: W.dupont, label: 'Placo', amount: 450, category: 'materiaux', spent_on: '2026-09-29' },
+    { id: 'x-loc', company_id: C, worksite_id: W.dupont, label: 'Location nacelle', amount: 300, category: 'location', spent_on: '2026-09-25' },
+  ],
+  certifications: [{ id: 'c-caces', company_id: C, user_id: 'u-karim', type: 'caces', label: null, expiry_date: '2027-03-15' }],
 };
 
 export const WORKER_RAW = {
@@ -63,6 +78,12 @@ export const WORKER_LIVE = {
     { id: 'e2', chantier: 'Bureau Martin', chantier_id: W.martin, debut: '13:00', fin: '16:30', envoyee: false, panier: false, reserve: true, corrigee: false },
   ],
   hier: 1,
+  // Lot 8 : SES demandes en attente, SES documents récents.
+  conges: [{ id: 'lv1', type: 'conge', du: '2026-10-20', au: '2026-10-24' }],
+  documents: [
+    { id: 'dw1', nom: 'photo-2.jpg', chantier: 'Villa Dupont', date: '2026-10-01' },
+    { id: 'dw2', nom: 'photo-1.jpg', chantier: 'Bureau Martin', date: '2026-09-29' },
+  ],
 };
 export const LIVE_EN_COURS = { chantier_id: W.macon, chantier: 'Mister Grill Kebab', depuis: '2026-10-01T06:30:00Z' };
 
@@ -102,6 +123,8 @@ const draft = (f: (lines: Record<string, unknown>[], date: string) => string | n
   if (d.lines.some((l) => !l.worksite_id)) return 'chantier non trouvé';
   return f(d.lines, d.date);
 };
+/** Lot 8 : l'effacement interdit est dit en une phrase. */
+const refus = (): Check => (o) => (o.kind === 'answer' && /ne s.efface|impossible|pas possible/i.test(o.answer ?? '') ? null : `attendu un refus en une phrase, obtenu ${o.kind} ${o.type ?? ''} « ${(o.answer ?? '').slice(0, 60)} »`);
 const coll = (qui: string, date: string): Check => (o) => (o.kind !== 'collegues' ? `attendu le planning des collègues, obtenu ${o.kind} ${o.type ?? ''}`
   : (o.qui ?? '').toLowerCase() !== qui ? `qui = « ${o.qui} » (attendu « ${qui} »)` : o.date !== date ? `date = ${o.date} (attendu ${date})` : null);
 
@@ -169,6 +192,24 @@ export const CASES: EvalCase[] = [
   { id: 'b32', cote: 'bureau', categorie: 'Aide', phrase: 'rédige un petit message pour dire au client que le chantier est décalé à lundi', check: answer() },
   // Retour Cowork (préview) : « corriger / pointage » prime sur « salarié », et toujours un bouton.
   { id: 'b33', cote: 'bureau', categorie: 'Aide', phrase: 'Comment je corrige le pointage d’un salarié ?', check: answer('salaries') },
+  // ── Lot 8 : effacer, retirer, annuler ──
+  { id: 'b34', cote: 'bureau', categorie: 'Effacer', phrase: 'Enlève l’intervention à Lyon de Kevin jeudi', check: act('supprimer_intervention', (d) => eq(d, 'planning_id', 'p-kevin-lyon')) },
+  { id: 'b35', cote: 'bureau', categorie: 'Effacer', phrase: 'efface le planning de la semaine prochaine',
+    check: act('effacer_planning', (d) => all(eq(d, 'user_id', null), eq(d, 'du', '2026-10-05'), eq(d, 'au', '2026-10-11'))) },
+  { id: 'b36', cote: 'bureau', categorie: 'Effacer', phrase: 'vide le planning de karim de lundi à mercredi',
+    check: act('effacer_planning', (d) => all(eq(d, 'user_id', 'u-karim'), eq(d, 'du', '2026-10-05'), eq(d, 'au', '2026-10-07'))) },
+  { id: 'b37', cote: 'bureau', categorie: 'Effacer', phrase: 'enlève le congé de Sofiane du 12 au 13 octobre',
+    check: act('supprimer_absence', (d) => all(eq(d, 'user_id', 'u-sofiane'), eq(d, 'du', '2026-10-12'), eq(d, 'au', '2026-10-13'))) },
+  { id: 'b38', cote: 'bureau', categorie: 'Effacer', phrase: 'supprime la facture du chantier de viriat', check: act('supprimer_document', (d) => eq(d, 'document_id', 'd-fact')) },
+  { id: 'b39', cote: 'bureau', categorie: 'Effacer', phrase: 'efface la dépense de placo sur villa dupont', check: act('supprimer_depense', (d) => eq(d, 'expense_id', 'x-placo')) },
+  { id: 'b40', cote: 'bureau', categorie: 'Effacer', phrase: 'la location sur villa dupont c’était 350 euros pas 300, corrige',
+    check: act('modifier_depense', (d) => all(eq(d, 'expense_id', 'x-loc'), eq(d, 'montant', '350'))) },
+  { id: 'b41', cote: 'bureau', categorie: 'Effacer', phrase: 'supprime le caces de karim', check: act('supprimer_habilitation', (d) => eq(d, 'cert_id', 'c-caces')) },
+  { id: 'b42', cote: 'bureau', categorie: 'Effacer', phrase: 'annule l’invitation de marc', check: act('annuler_invitation', (d) => eq(d, 'email', 'marc.durand@gmail.com')) },
+  { id: 'b43', cote: 'bureau', categorie: 'Effacer', phrase: 'supprime les heures de karim d’hier', check: refus() },
+  { id: 'b44', cote: 'bureau', categorie: 'Effacer', phrase: 'retire karim du planning demain', check: act('supprimer_intervention', (d) => eq(d, 'planning_id', 'p-karim-4')) },
+  { id: 'b45', cote: 'bureau', categorie: 'Effacer', phrase: 'le devis cuisine de villa dupont, en fait c’est une facture',
+    check: act('modifier_document', (d) => all(eq(d, 'document_id', 'd-devis'), eq(d, 'categorie', 'facture'))) },
   // ════ SALARIÉ ════
   { id: 's01', cote: 'salarie', categorie: 'Heures', phrase: 'ce matin 7h30 12h villa dupont et aprem 13h 16h30 bureau martin',
     check: draft((l) => (l.length === 2 && l[0].worksite_id === W.dupont && l[1].worksite_id === W.martin && l[0].start === '07:30' && l[1].end === '16:30' ? null : `lignes : ${JSON.stringify(l.map((x) => [x.worksite_id, x.start, x.end]))}`)) },
@@ -206,4 +247,14 @@ export const CASES: EvalCase[] = [
   { id: 's24', cote: 'salarie', categorie: 'Ma journée', phrase: 'je bosse sur un nouveau chantier, la boulangerie petit à tassin',
     check: act('nouveau_chantier', (d) => all(has(d, 'nom', /boulangerie petit/i), has(d, 'ville', /tassin/i))) },
   { id: 's25', cote: 'salarie', categorie: 'Aide', phrase: 'comment je change ma photo', check: answer('photo') },
+  // ── Lot 8 : effacer ce qu'il a saisi (pas envoyé) ──
+  { id: 's26', cote: 'salarie', categorie: 'Effacer', phrase: 'efface ma journée', check: act('effacer_heures', (d) => all(eq(d, 'tout', true), eq(d, 'date', '2026-10-01'))) },
+  { id: 's27', cote: 'salarie', categorie: 'Effacer', phrase: 'supprime la ligne de bureau martin', check: act('effacer_heures', (d) => all(eq(d, 'tout', false), eq(d, 'entry_id', 'e2'))) },
+  { id: 's28', cote: 'salarie', categorie: 'Effacer', phrase: 'annule mon pointage je me suis trompé', enCours: true, check: act('annuler_pointage') },
+  { id: 's29', cote: 'salarie', categorie: 'Effacer', phrase: 'annule ma demande de congé', check: act('annuler_conge', (d) => eq(d, 'leave_id', 'lv1')) },
+  { id: 's30', cote: 'salarie', categorie: 'Effacer', phrase: 'finalement mes vacances ce sera du 21 au 25 octobre',
+    check: act('modifier_conge', (d) => all(eq(d, 'leave_id', 'lv1'), eq(d, 'du', '2026-10-21'), eq(d, 'au', '2026-10-25'))) },
+  { id: 's31', cote: 'salarie', categorie: 'Effacer', phrase: 'enlève la réserve sur bureau martin', check: act('retirer_reserve', (d) => eq(d, 'entry_id', 'e2')) },
+  { id: 's32', cote: 'salarie', categorie: 'Effacer', phrase: 'retire la dernière photo que j’ai mise', check: act('retirer_photo', (d) => eq(d, 'document_id', 'dw1')) },
+  { id: 's33', cote: 'salarie', categorie: 'Effacer', phrase: 'efface mes heures d’hier', check: act('effacer_heures', (d) => all(eq(d, 'tout', true), eq(d, 'date', '2026-09-30'))) },
 ];

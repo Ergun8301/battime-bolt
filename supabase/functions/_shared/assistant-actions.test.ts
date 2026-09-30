@@ -60,8 +60,12 @@ Deno.test('Appel de fonctions : liste blanche, mode ANY, clé en en-tête', asyn
     ['repondre', 'inviter_salarie', 'creer_chantier', 'ranger_document', 'poser_absence', 'affecter_planning', 'planning_semaine', 'corriger_pointage',
       'modifier_intervention', 'repondre_conge', 'lever_reserve', 'ajouter_depense', 'modifier_client', 'archiver_client', 'changer_role',
       'relancer_invitation', 'envoyer_rappel', 'cloturer_mois', 'attribuer_client', 'ajouter_habilitation', 'modifier_salarie', 'archiver_salarie',
-      'cout_reel', 'modifier_reglages'], 'liste blanche exacte (lot 7 : tous les boutons, sans suppression ni paiement)');
-  if (JSON.stringify(body).match(/supprim|delete/i) && !JSON.stringify(body).includes('Jamais de suppression')) throw new Error('fonction de suppression exposée');
+      'cout_reel', 'modifier_reglages',
+      // Lot 8 : revenir en arrière — jamais un client, un chantier ni un salarié (ils s'archivent).
+      'supprimer_intervention', 'effacer_planning', 'supprimer_absence', 'supprimer_document', 'modifier_document',
+      'supprimer_depense', 'modifier_depense', 'supprimer_habilitation', 'modifier_habilitation', 'annuler_invitation'], 'liste blanche exacte (lot 8 : effacer, sans client/chantier/salarié ni paiement)');
+  const names = body.tools[0].functionDeclarations.map((f: { name: string }) => f.name).join(' ');
+  if (/supprimer_(client|chantier|salarie)|delete|paiement|stripe|abonnement/i.test(names)) throw new Error('fonction interdite exposée');
   eq((seen.init!.headers as Record<string, string>)['x-goog-api-key'], 'AQ.test', 'clé en en-tête');
   const bad = await callFunction({ prompt: '', functions: ASSISTANT_FUNCTIONS }, env, fakeGemini('supprimer_salarie', {}).fetchImpl);
   eq(bad, { ok: false, reason: 'bad_response' }, 'fonction hors liste → refusée');

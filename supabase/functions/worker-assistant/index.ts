@@ -68,13 +68,16 @@ Deno.serve(async (req) => {
       global: { headers: { Authorization: `Bearer ${jwt}` } },
     });
     const today = parisToday();
-    const [sites, entries, plan, sess, todayRows, yRows] = await Promise.all([
+    const [sites, entries, plan, sess, todayRows, yRows, myLeaves, myDocs] = await Promise.all([
       db.from('worksites').select('id, company_id, client_name, city').eq('company_id', me.company_id).eq('is_active', true).order('client_name'),
       db.from('time_entries').select('user_id, work_date, start_time, end_time, break_minutes, status').eq('user_id', user.id).gte('work_date', mondayOf(today)).lte('work_date', today),
       db.from('planning').select('user_id, work_date, estimated_start, estimated_end, absence_type, worksite_id').eq('user_id', user.id).gte('work_date', plusDays(today, -2)).lte('work_date', plusDays(today, 1)),
       db.from('active_sessions').select('worksite_id, started_at').eq('user_id', user.id).maybeSingle(),
       db.from('time_entries').select('id, start_time, end_time, status, worksite_id, meal_allowance, reception, reserve_fixed_at').eq('user_id', user.id).eq('work_date', today).neq('status', 'cancelled').order('start_time'),
       db.from('time_entries').select('id', { count: 'exact', head: true }).eq('user_id', user.id).eq('work_date', plusDays(today, -1)).neq('status', 'cancelled'),
+      // Lot 8 : SES demandes en attente et SES documents récents (pour les retirer).
+      db.from('leave_requests').select('id, type, start_date, end_date').eq('user_id', user.id).eq('status', 'pending').order('start_date'),
+      db.from('documents').select('id, label, file_name, worksite_id, created_at').eq('uploaded_by', user.id).gte('created_at', `${plusDays(today, -14)}T00:00:00Z`).order('created_at', { ascending: false }).limit(20),
     ]);
     const snapshot = buildWorkerSnapshot({
       userId: user.id, companyId: me.company_id, today,
@@ -91,10 +94,13 @@ Deno.serve(async (req) => {
       enCours: s0 ? { chantier_id: s0.worksite_id, chantier: siteName(s0.worksite_id), depuis: s0.started_at } : null,
       lignes: ((todayRows.data ?? []) as { id: string; start_time: string; end_time: string; status: string; worksite_id: string | null; meal_allowance: boolean | null; reception: string | null; reserve_fixed_at: string | null }[])
         .map((e) => ({
-          id: e.id, chantier: siteName(e.worksite_id), chantier_id: e.worksite_id, debut: e.start_time.slice(0, 5), fin: e.end_time.slice(0, 5), envoyee: e.status === 'submitted',
+          id: e.id, chantier: siteName(e.worksite_id), chantier_id: e.worksite_id, debut: e.start_time.slice(0, 5), fin: e.end_time.slice(0, 5), envoyee: e.status !== 'draft',
           panier: !!e.meal_allowance, reserve: e.reception === 'avec', corrigee: !!e.reserve_fixed_at,
         })),
       hier: yRows.count ?? 0,
+      conges: ((myLeaves.data ?? []) as { id: string; type: string; start_date: string; end_date: string }[]).map((l) => ({ id: l.id, type: l.type, du: l.start_date, au: l.end_date })),
+      documents: ((myDocs.data ?? []) as { id: string; label: string | null; file_name: string | null; worksite_id: string; created_at: string }[])
+        .map((x) => ({ id: x.id, nom: (x.label || x.file_name || 'Document').slice(0, 60), chantier: siteName(x.worksite_id), date: x.created_at.slice(0, 10) })),
     };
     // Réponse : l'action (et la question s'il manque une info), ou le planning des collègues.
     const send = async (r: WorkerFullReply) => {

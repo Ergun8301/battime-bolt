@@ -17,6 +17,7 @@ const CSS = `
 .ad-b{display:flex;gap:8px;margin:9px 0 0 26px;flex-wrap:wrap}
 .ad-b button{display:inline-flex;align-items:center;gap:5px;border:1px solid rgba(21,18,15,.16);background:#fff;color:#15120F;border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:800;cursor:pointer;font-family:inherit}
 .ad-b button:disabled{opacity:.45;cursor:default}
+.ad-b button.strong{background:#15120F;color:#FFF;border-color:#15120F;padding:8px 16px;font-size:13.5px}
 .ad-u{display:flex;align-items:center;gap:8px;color:#56514a;font-weight:800;font-size:13px;margin-top:10px}
 .ad-e{font-size:12.5px;color:#9a3b14;font-weight:700;margin:6px 0 0 26px}
 .aq{margin-top:10px;border:1px solid rgba(21,18,15,.12);border-radius:14px;background:#FBF8F2;padding:10px 11px}
@@ -29,8 +30,10 @@ const CSS = `
 
 export interface UndoResult { ok: boolean; message: string }
 
-export function ActionDone({ message, summary, undo, onEdit }: {
+export function ActionDone({ message, summary, undo, onEdit, strongUndo = false }: {
   message: string; summary?: string; undo?: () => Promise<UndoResult>; onEdit?: () => void;
+  /** Lot 8 : beaucoup d'éléments effacés → « Annuler » bien visible. */
+  strongUndo?: boolean;
 }) {
   const [busy, setBusy] = useState(false);
   const [undone, setUndone] = useState<string | null>(() => (undo && undoneMemory.get(undo)) || null);
@@ -45,13 +48,13 @@ export function ActionDone({ message, summary, undo, onEdit }: {
       {(undo || onEdit) && (
         <div className="ad-b">
           {undo && (
-            <button type="button" disabled={busy} data-testid="action-undo" onClick={async () => {
+            <button type="button" disabled={busy} data-testid="action-undo" className={strongUndo ? 'strong' : undefined} onClick={async () => {
               setBusy(true); setErr(null);
               const r = await undo();
               setBusy(false);
               if (r.ok) { undoneMemory.set(undo, r.message); setUndone(r.message); } else setErr(r.message);
             }}>
-              {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Undo2 className="h-3.5 w-3.5" />} Annuler
+              {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Undo2 className="h-3.5 w-3.5" />} {strongUndo ? 'Annuler : tout remettre' : 'Annuler'}
             </button>
           )}
           {onEdit && <button type="button" disabled={busy} data-testid="action-edit" onClick={onEdit}><Pencil className="h-3.5 w-3.5" /> Modifier</button>}

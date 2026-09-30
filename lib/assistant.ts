@@ -139,6 +139,16 @@ export function demoAssistantSource(): AssistantSource {
       }
       const local = handleActionLocally(q, ctx);
       if (local) return done(withSummary(local, ctx));
+      // Lot 8 : « enlève / retire / supprime… » (l'IA est SIMULÉE, les contrôles sont les vrais).
+      if (/\b(enleve|enlever|retire|retirer|supprime|supprimer|efface|effacer|annule|vide)\b/.test(t)) {
+        const withIds = { ...ctx, planning: ctx.planning.map((p, i) => ({ ...p, id: `demo-p${i}`, notes: null, debut: null })) };
+        const who = ctx.salaries.find((w) => t.includes(w.prenom.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')));
+        const day = /\bdemain\b/.test(t) ? addDays(ctx.today, 1) : /\baujourd/.test(t) ? ctx.today : '';
+        if (/\bplanning\b/.test(t)) {
+          return done(withSummary(fromFunctionCall('effacer_planning', { salarie: who?.prenom ?? '', semaine: /prochaine/.test(t) ? 'prochaine' : 'en cours' }, withIds), withIds));
+        }
+        return done(withSummary(fromFunctionCall('supprimer_intervention', { salarie: who?.prenom ?? 'Karim', date: day || addDays(mondayOf(ctx.today), 1) }, withIds), withIds));
+      }
       // Phrases détaillées : l'IA est SIMULÉE (même contrôle que la vraie).
       // Lot 7 : « ajoute une intervention… » → titre propre, date relative, heure.
       if (/intervention|rendez-vous|rdv/.test(t)) {

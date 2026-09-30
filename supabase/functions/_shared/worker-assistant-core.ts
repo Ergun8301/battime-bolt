@@ -494,6 +494,9 @@ export interface WorkerLive {
   }[];
   /** Lot 7 : nombre de lignes d'hier (« copie ma journée d'hier »). */
   hier?: number;
+  /** Lot 8 : SES demandes de congé en attente, et SES documents récents (pour les retirer). */
+  conges?: { id: string; type: string; du: string; au: string }[];
+  documents?: { id: string; nom: string; chantier: string; date: string }[];
 }
 
 export type WorkerActionDraft =
@@ -510,7 +513,15 @@ export type WorkerActionDraft =
   | { type: 'copier_journee'; depuis: string; vers: string[] }
   | { type: 'reserve_corrigee'; entry_id: string | null; choix: WorkerLive['lignes'] }
   | { type: 'nouveau_chantier'; nom: string; ville: string }
-  | { type: 'email_client'; worksite_id: string | null; chantier_texte: string; email: string };
+  | { type: 'email_client'; worksite_id: string | null; chantier_texte: string; email: string }
+  // ── Lot 8 : effacer ce qu'il a saisi, tant que ce n'est pas envoyé ──
+  /** tout = toutes SES lignes non envoyées du jour ; sinon la ligne choisie. */
+  | { type: 'effacer_heures'; date: string; entry_id: string | null; tout: boolean; choix: WorkerLive['lignes'] }
+  | { type: 'annuler_conge'; leave_id: string | null; choix: NonNullable<WorkerLive['conges']> }
+  | { type: 'modifier_conge'; leave_id: string | null; choix: NonNullable<WorkerLive['conges']>; du: string; au: string }
+  | { type: 'annuler_pointage'; chantier: string; depuis: string }
+  | { type: 'retirer_photo'; document_id: string | null; choix: NonNullable<WorkerLive['documents']> }
+  | { type: 'retirer_reserve'; entry_id: string | null; choix: WorkerLive['lignes'] };
 
 /**
  * Lot 7 — fait tout de suite (simple, réversible) ou carte de confirmation :
@@ -537,7 +548,15 @@ export function workerQuestionFor(d: WorkerActionDraft, problems: string[], snap
     if (d.type === 'signaler_reserve' || d.type === 'reserve_corrigee') return { text: 'Sur quel chantier ?', field: 'entry_id', chips: lines(d.choix) };
     return { text: 'Sur quel chantier ?', field: 'worksite_id', chips: chan.slice(0, 12) };
   }
-  if (p === 'Choisissez la ligne.' && d.type === 'modifier_heures') return { text: 'Quelle ligne ?', field: 'entry_id', chips: lines(d.choix) };
+  if (p === 'Choisissez la ligne.' && (d.type === 'modifier_heures' || d.type === 'effacer_heures' || d.type === 'retirer_reserve')) {
+    return { text: 'Quelle ligne ?', field: 'entry_id', chips: lines(d.choix.filter((l) => !l.envoyee)) };
+  }
+  if (p === 'Choisissez la demande.' && (d.type === 'annuler_conge' || d.type === 'modifier_conge')) {
+    return { text: 'Quelle demande ?', field: 'leave_id', chips: d.choix.map((c) => ({ label: `${c.du} → ${c.au}`, value: c.id })) };
+  }
+  if (p === 'Choisissez le document.' && d.type === 'retirer_photo') {
+    return { text: 'Lequel ?', field: 'document_id', chips: d.choix.map((c) => ({ label: `${c.nom} · ${c.chantier}`, value: c.id })) };
+  }
   if (p === 'Choisissez les dates.') return { text: 'Quelles dates ? (ex. « du 12 au 16 octobre »)', field: 'texte', chips: [] };
   if (p === 'Nouveaux horaires nécessaires.') return { text: 'Quels horaires ? (ex. « 7h30–16h »)', field: 'texte', chips: [] };
   return null;
@@ -600,6 +619,38 @@ export function checkWorkerAction(d: WorkerActionDraft, snapshot: WorkerSnapshot
       if (!d.worksite_id || !snapshot.chantiers.some((c) => c.id === d.worksite_id)) p.push('Choisissez le chantier.');
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(d.email)) p.push('Email invalide.');
       break;
+    // ── Lot 8 ──
+    case 'effacer_heures': {
+      if (d.date !== snapshot.aujourdhui) break; // autre jour : l'écran lit SES brouillons de ce jour-là
+      const open = d.choix.filter((l) => !l.envoyee);
+      if (d.tout) { if (!open.length) p.push(d.choix.length ? 'Tout est déjà envoyé : les heures envoyées ne s’effacent plus (demandez au bureau de les corriger).' : 'Aucune heure notée aujourd’hui.'); break; }
+      const c = d.choix.find((l) => l.id === d.entry_id);
+      if (!c) p.push(open.length ? 'Choisissez la ligne.' : 'Aucune ligne à effacer.');
+      else if (c.envoyee) p.push('Cette ligne est déjà envoyée : elle ne s’efface plus (demandez au bureau de la corriger).');
+      break;
+    }
+    case 'annuler_conge':
+    case 'modifier_conge':
+      if (!d.leave_id) p.push(d.choix.length ? 'Choisissez la demande.' : 'Aucune demande de congé en attente (une demande acceptée se voit avec le bureau).');
+      else if (!d.choix.some((c) => c.id === d.leave_id)) p.push('Demande introuvable (déjà traitée ?).');
+      if (d.type === 'modifier_conge') {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(d.du) || !/^\d{4}-\d{2}-\d{2}$/.test(d.au)) p.push('Choisissez les dates.');
+        else if (d.au < d.du) p.push('La date de fin est avant le début.');
+      }
+      break;
+    case 'annuler_pointage':
+      if (!live.enCours) p.push('Aucun pointage en cours.');
+      break;
+    case 'retirer_photo':
+      if (!d.document_id) p.push(d.choix.length ? 'Choisissez le document.' : 'Aucun document ajouté par vous récemment.');
+      else if (!d.choix.some((c) => c.id === d.document_id)) p.push('Document introuvable.');
+      break;
+    case 'retirer_reserve': {
+      const c = d.choix.find((l) => l.id === d.entry_id);
+      if (!c) p.push(d.choix.some((l) => l.reserve && !l.envoyee) ? 'Choisissez la ligne.' : 'Aucune réserve à retirer aujourd’hui.');
+      else if (c.envoyee) p.push('Cette journée est envoyée : la réserve se voit avec le bureau.');
+      break;
+    }
   }
   return p;
 }
@@ -701,6 +752,52 @@ export function prepareWorkerAction(type: string, raw: Record<string, unknown>, 
       d = { type, worksite_id: t ? resolveWorksite(t, snapshot.chantiers) : planned(snapshot), chantier_texte: t, email: s(raw.email, 120).toLowerCase() };
       break;
     }
+    // ── Lot 8 ──
+    case 'effacer_heures': {
+      const date = iso(raw.date) || (typeof raw.date === 'string' && raw.date ? parseDateFr(raw.date, snapshot.aujourdhui) : '') || snapshot.aujourdhui;
+      const t = s(raw.chantier, 80);
+      const today = date === snapshot.aujourdhui;
+      const byName = t && today ? live.lignes.filter((l) => !l.envoyee && (norm(l.chantier).includes(norm(t)) || norm(t).includes(norm(l.chantier)))) : [];
+      const tout = !today || raw.tout === true || !t;
+      d = { type, date, tout: tout && !byName.length ? true : false, entry_id: byName.length === 1 ? byName[0].id : null, choix: today ? live.lignes : [] };
+      if (byName.length) d = { ...d, tout: false };
+      break;
+    }
+    case 'annuler_conge':
+    case 'modifier_conge': {
+      const choix = live.conges ?? [];
+      const du0 = iso(raw.ancienne_date) || (typeof raw.ancienne_date === 'string' ? parseDateFr(raw.ancienne_date, snapshot.aujourdhui) : '');
+      const hit = du0 ? choix.filter((c) => c.du <= du0 && du0 <= c.au) : choix;
+      const base = { leave_id: hit.length === 1 ? hit[0].id : null, choix };
+      if (type === 'annuler_conge') d = { type, ...base };
+      else {
+        const du = iso(raw.du) || (typeof raw.du === 'string' ? parseDateFr(raw.du, snapshot.aujourdhui) : '');
+        const au = iso(raw.au) || (typeof raw.au === 'string' ? parseDateFr(raw.au, snapshot.aujourdhui) : '');
+        d = { type: 'modifier_conge', ...base, du, au: au || du };
+      }
+      break;
+    }
+    case 'annuler_pointage':
+      d = { type, chantier: live.enCours?.chantier ?? '', depuis: live.enCours?.depuis ?? '' };
+      break;
+    case 'retirer_photo': {
+      const choix = live.documents ?? [];
+      const t = norm(`${s(raw.chantier, 80)} ${s(raw.quoi, 80)}`);
+      const q = t.split(/[^a-z0-9]+/).filter((w) => w.length > 2 && !/^(photo|photos|document|derniere|dernier|fichier)$/.test(w));
+      let hit = q.length ? choix.filter((c) => q.some((w) => norm(`${c.nom} ${c.chantier}`).includes(w))) : choix;
+      if (!hit.length) hit = choix;
+      if (/\bderni/.test(t) || hit.length > 1 && /\b(la|cette) photo\b/.test(t)) hit = hit.slice(0, 1);
+      d = { type, document_id: hit.length === 1 ? hit[0].id : null, choix };
+      break;
+    }
+    case 'retirer_reserve': {
+      const t = s(raw.chantier, 80);
+      const open = live.lignes.filter((l) => l.reserve && !l.envoyee);
+      const byName = t ? open.filter((l) => norm(l.chantier).includes(norm(t)) || norm(t).includes(norm(l.chantier))) : [];
+      const pick = byName.length === 1 ? byName[0] : open.length === 1 ? open[0] : null;
+      d = { type, entry_id: pick?.id ?? null, choix: live.lignes.filter((l) => l.reserve) };
+      break;
+    }
     default:
       return null;
   }
@@ -717,6 +814,8 @@ function actionAnswer(a: WorkerAction, snapshot?: WorkerSnapshot): string {
     if (q) return q.text;
     if (!a.problems.length) return 'C’est fait.';
   }
+  // Lot 8 : ce qui ne s'efface pas est dit tel quel, en une phrase.
+  if (a.problems.some((x) => /ne s’efface plus|Tout est déjà envoyé/.test(x))) return a.problems.find((x) => /ne s’efface plus|Tout est déjà envoyé/.test(x))!;
   return a.problems.length ? 'Complétez ce qui manque, puis confirmez.' : 'Vérifiez, puis confirmez.';
 }
 
@@ -731,6 +830,21 @@ export function handleWorkerLocally(text: string, snapshot: WorkerSnapshot, live
   // Lot 7 : « Où sont mes collègues ? » — lu côté serveur (fonction limitée).
   const cq = asks ? null : colleaguesQuestion(text, snapshot.aujourdhui);
   if (cq) return { kind: 'collegues', ...cq, answer: '' };
+  // Lot 8 : effacer / annuler ce qu'il a saisi — AVANT le reste.
+  const efface = !asks && /\b(efface|effacer|supprime|supprimer|enleve|enlever|retire|retirer|annule|annuler|vire|virer)\w*/.test(n);
+  if (efface) {
+    const go = (type: string, raw: Record<string, unknown> = {}): WorkerFullReply => { const a = prepareWorkerAction(type, raw, snapshot, live)!; return { kind: 'action', action: a, answer: actionAnswer(a, snapshot) }; };
+    if (/\b(pointage|chrono)\b/.test(n)) return go('annuler_pointage');
+    if (/\b(conges?|vacances|demande)\b/.test(n)) return go('annuler_conge', { ancienne_date: parseDateFr(text, snapshot.aujourdhui) || '' });
+    if (/\breserve\b/.test(n)) return go('retirer_reserve', { chantier: n.replace(/^.*\breserve\w*\s*(de|sur|a|au|chez)?\s*/, '') });
+    if (/\b(photo|document|fichier)\b/.test(n)) return go('retirer_photo', { quoi: text });
+    if (/\b(heures?|journee|ligne|saisie|creneau)\b/.test(n) && !/\bpanier\b/.test(n)) {
+      const day = /\bhier\b/.test(n) ? addDays(snapshot.aujourdhui, -1) : parseDateFr(text, snapshot.aujourdhui) || snapshot.aujourdhui;
+      const m = /\b(de|sur|chez|a|au)\s+([a-z][\w' -]{2,40})$/.exec(n.replace(/\b(ma|mes|la|les|ce|cette|d'?)\s+(journee|heures?|ligne)\b/g, ' ').trim());
+      const ch = m && !/^(hier|aujourd|ce matin|cet apres)/.test(m[2]) ? m[2] : '';
+      return go('effacer_heures', { date: day, chantier: ch });
+    }
+  }
   if (!hasRange && !asks) {
     // Lot 7 : les boutons de « Ma journée », sans IA quand c'est clair.
     if (/\b(envoie|envoyer|envoi|valide|valider)\b.*\b(journee|heures|feuille)\b/.test(n)) {
@@ -786,6 +900,18 @@ export function handleWorkerLocally(text: string, snapshot: WorkerSnapshot, live
 // ── IA : appel de fonctions (liste blanche du salarié) ─────────────────────
 const S = (description: string) => ({ type: 'string', description });
 export const WORKER_FUNCTIONS = [
+  // ── Lot 8 : effacer ce qu'il a saisi (jamais ce qui est envoyé) ──
+  { name: 'effacer_heures', description: 'Effacer SES heures NON envoyées : toute sa journée, ou la ligne d’un chantier.',
+    parameters: { type: 'object', properties: { date: S('Jour, aaaa-mm-jj (défaut : aujourd’hui)'), chantier: S('Chantier de la ligne à effacer ; vide = toute la journée') }, required: [] } },
+  { name: 'annuler_conge', description: 'Annuler SA demande de congé encore EN ATTENTE.',
+    parameters: { type: 'object', properties: { ancienne_date: S('Un jour de la demande, s’il y en a plusieurs') }, required: [] } },
+  { name: 'modifier_conge', description: 'Changer les dates de SA demande de congé encore en attente.',
+    parameters: { type: 'object', properties: { ancienne_date: S('Un jour de la demande actuelle'), du: S('Nouveau début, aaaa-mm-jj'), au: S('Nouvelle fin, aaaa-mm-jj') }, required: ['du'] } },
+  { name: 'annuler_pointage', description: 'Annuler le pointage EN COURS (lancé par erreur).', parameters: { type: 'object', properties: {}, required: [] } },
+  { name: 'retirer_photo', description: 'Retirer une photo ou un document qu’il a ajouté.',
+    parameters: { type: 'object', properties: { chantier: S('Chantier'), quoi: S('Laquelle (« la dernière photo », son nom)') }, required: [] } },
+  { name: 'retirer_reserve', description: 'Retirer la réserve qu’il a signalée aujourd’hui (journée pas encore envoyée).',
+    parameters: { type: 'object', properties: { chantier: S('Chantier') }, required: [] } },
   { name: 'repondre', description: 'Répondre sur SES heures / SON planning, ou expliquer comment faire dans l’appli (3 étapes au plus).',
     parameters: { type: 'object', properties: { reponse: S('Réponse courte en français'), lien: { type: 'string', enum: Object.keys(WORKER_NAV) } }, required: ['reponse'] } },
   { name: 'declarer_heures', description: 'Préparer la déclaration de SES heures.',
@@ -850,6 +976,7 @@ export function workerFunctionPrompt(snapshot: WorkerSnapshot, live: WorkerLive,
 Tu te comportes comme un vrai assistant : tu FAIS le travail complet du premier coup, tu ne poses une question qu'en dernier recours. Réponds en appelant UNE fonction.
 - Heures travaillées, « rajoute-moi une intervention à Lyon de 14h à 18h » → declarer_heures (chantier = le nom ou le LIEU dit). Congé → demander_conge. « Je commence » → commencer_pointage. « J'ai fini » → terminer_pointage. Réserve → signaler_reserve. « Envoie ma journée » → envoyer_journee. Panier → panier_repas. « Pareil qu'hier » → copier_journee.
 - « Où sont mes collègues ? », « Où est Paul ? », « Que fait Jacques demain ? » → planning_collegues.
+- Effacer / enlever / annuler ce qu'il a saisi → effacer_heures, annuler_conge, modifier_conge, annuler_pointage, retirer_photo, retirer_reserve. Les heures ENVOYÉES ne s'effacent jamais : dis-le en une phrase (repondre) et propose de demander au bureau.
 - « Comment… », « à quoi sert… », « où je trouve… » → repondre avec 3 étapes au plus d'après le GUIDE, et le lien de l'écran. Question générale (métier, calcul, rédiger un message) → repondre, en 1 à 4 phrases.
 - Un FICHIER (photo, PDF) est joint → ranger_photo (chantier, catégorie dite ou devinée d'après le contenu, réserve éventuelle).
 - Dates : recopie la date du CALENDRIER (« jeudi » = le prochain jeudi, aujourd’hui compris ; « jeudi prochain » = la ligne marquée « (jeudi prochain) »). Heures HH:MM (« 14h » → 14:00).

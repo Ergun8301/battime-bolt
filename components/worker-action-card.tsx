@@ -8,7 +8,7 @@
 import type { ExtraControl } from '@/components/assistant-panel';
 import { readCard, useCardMemory, writeCard } from '@/lib/card-memory';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CheckCircle2, Loader2, CalendarOff, Play, Square, AlertTriangle, FolderInput, Paperclip, Send, Clock, UtensilsCrossed, Copy, Wrench, MapPin, Mail } from 'lucide-react';
+import { CheckCircle2, Loader2, CalendarOff, Play, Square, AlertTriangle, FolderInput, Paperclip, Send, Clock, UtensilsCrossed, Copy, Wrench, MapPin, Mail, Eraser, CalendarX, CircleX, FileX } from 'lucide-react';
 import {
   applyWorkerAnswer, checkWorkerAction, DOC_CATEGORY_LABEL, LEAVE_KINDS, LEAVE_LABEL, workerActionMode, workerQuestionFor,
   type WorkerActionDraft, type WorkerLive, type WorkerSnapshot,
@@ -53,6 +53,12 @@ const HEAD: Record<WorkerActionDraft['type'], [string, typeof Play, string]> = {
   reserve_corrigee: ['Réserve corrigée sur place', Wrench, 'Confirmer'],
   nouveau_chantier: ['Nouveau chantier', MapPin, 'Ajouter'],
   email_client: ['Email du client', Mail, 'Enregistrer'],
+  effacer_heures: ['Effacer mes heures', Eraser, 'Effacer'],
+  annuler_conge: ['Annuler ma demande', CalendarX, 'Annuler la demande'],
+  modifier_conge: ['Changer ma demande', CalendarOff, 'Envoyer'],
+  annuler_pointage: ['Annuler le pointage', CircleX, 'Annuler le pointage'],
+  retirer_photo: ['Retirer un document', FileX, 'Retirer'],
+  retirer_reserve: ['Retirer la réserve', AlertTriangle, 'Retirer'],
 };
 const launched = new WeakSet<object>();
 type Phase = 'auto' | 'question' | 'form' | 'done';
@@ -275,6 +281,59 @@ export default function WorkerActionCard({ extra, execute, onDone, ctl }: Props)
         </div>
         <div><label>Email du client</label><input type="email" value={d.email} onChange={(e) => set({ email: e.target.value.trim() })} /></div>
       </>);
+      break;
+    // ── Lot 8 ──
+    case 'effacer_heures':
+      body = d.tout || d.date !== snap.aujourdhui
+        ? <p className="wa-info">Toutes vos lignes NON envoyées du {d.date === snap.aujourdhui ? 'jour' : d.date} seront effacées. Les lignes envoyées restent.</p>
+        : (
+          <div><label>Ligne</label>
+            <select value={d.entry_id ?? ''} className={d.entry_id ? '' : 'todo'} onChange={(e) => set({ entry_id: e.target.value || null })}>
+              <option value="">Choisir…</option>
+              {d.choix.filter((l) => !l.envoyee).map((l) => <option key={l.id} value={l.id}>{l.chantier} · {l.debut}–{l.fin}</option>)}
+            </select>
+          </div>
+        );
+      break;
+    case 'annuler_conge':
+    case 'modifier_conge':
+      body = (<>
+        <div><label>Demande</label>
+          <select value={d.leave_id ?? ''} className={d.leave_id ? '' : 'todo'} onChange={(e) => set({ leave_id: e.target.value || null })}>
+            <option value="">{d.choix.length ? 'Choisir…' : 'Aucune demande en attente'}</option>
+            {d.choix.map((c) => <option key={c.id} value={c.id}>{c.du} → {c.au}</option>)}
+          </select>
+        </div>
+        {d.type === 'modifier_conge' && (
+          <div className="wa-row">
+            <div><label>Nouveau début</label><input type="date" value={d.du} onChange={(e) => set({ du: e.target.value })} /></div>
+            <div><label>Nouvelle fin</label><input type="date" value={d.au} onChange={(e) => set({ au: e.target.value })} /></div>
+          </div>
+        )}
+      </>);
+      break;
+    case 'annuler_pointage':
+      body = <p className="wa-info">{d.chantier ? `Pointage en cours sur ${d.chantier} : il sera annulé, rien ne sera noté.` : 'Aucun pointage en cours.'}</p>;
+      break;
+    case 'retirer_photo':
+      body = (
+        <div><label>Document</label>
+          <select value={d.document_id ?? ''} className={d.document_id ? '' : 'todo'} onChange={(e) => set({ document_id: e.target.value || null })}>
+            <option value="">{d.choix.length ? 'Choisir…' : 'Aucun document ajouté par vous récemment'}</option>
+            {d.choix.map((c) => <option key={c.id} value={c.id}>{c.nom} · {c.chantier}</option>)}
+          </select>
+        </div>
+      );
+      break;
+    case 'retirer_reserve':
+      body = (
+        <div><label>Ligne</label>
+          <select value={d.entry_id ?? ''} className={d.entry_id ? '' : 'todo'} onChange={(e) => set({ entry_id: e.target.value || null })}>
+            <option value="">Choisir…</option>
+            {d.choix.filter((l) => !l.envoyee).map((l) => <option key={l.id} value={l.id}>{l.chantier} · {l.debut}–{l.fin}</option>)}
+          </select>
+        </div>
+      );
       break;
   }
 
