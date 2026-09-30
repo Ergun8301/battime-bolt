@@ -33,6 +33,8 @@ const SUMMARY: Record<WorkerActionDraft['type'], string> = {
   signaler_reserve: 'Réserve signalée', ranger_photo: 'Document rangé', envoyer_journee: 'Journée envoyée',
   modifier_heures: 'Horaires modifiés', panier_repas: 'Panier repas', copier_journee: 'Journée copiée',
   reserve_corrigee: 'Réserve corrigée sur place', nouveau_chantier: 'Nouveau chantier', email_client: 'Email du client',
+  effacer_heures: 'Heures effacées', annuler_conge: 'Demande de congé annulée', modifier_conge: 'Demande de congé modifiée',
+  annuler_pointage: 'Pointage annulé', retirer_photo: 'Document retiré', retirer_reserve: 'Réserve retirée',
 };
 async function journal(action: string, summary: string, undone = false) {
   const { error } = await supabase.rpc('assistant_journal_log', { p_action: action, p_summary: summary, p_undone: undone });
@@ -52,7 +54,8 @@ export function makeWorkerExecutor(user: { id: string; company_id: string }): Wo
   };
   return async (d, attachment) => {
     let message = '';
-    let undo: (() => Promise<void>) | undefined;
+    // Lot 8 : l'annulation peut rendre son propre message.
+    let undo: (() => Promise<void | string>) | undefined;
     try {
       switch (d.type) {
         case 'demander_conge': {
@@ -199,6 +202,99 @@ export function makeWorkerExecutor(user: { id: string; company_id: string }): Wo
           await createWorksite(user.company_id, { client_name: d.nom, city: d.ville });
           message = `Chantier « ${d.nom} » ajouté.`;
           break;
+        // ── Lot 8 : effacer ce qu'il a saisi. Tout est LU avant : « Annuler » remet à l'identique. ──
+        case 'effacer_heures': {
+          let q = supabase.from('time_entries').select('*').eq('user_id', user.id).eq('work_date', d.date).eq('status', 'draft').eq('locked', false);
+          if (!d.tout && d.entry_id) q = q.eq('id', d.entry_id);
+          const { data: rows, error: readErr } = await q;
+          if (readErr) throw readErr;
+          const list = (rows ?? []) as (Record<string, unknown> & { id: string })[];
+          if (!list.length) return { ok: false, message: 'Rien à effacer : les heures envoyées ne s’effacent plus (demandez au bureau de les corriger).' };
+          const { data: gone, error } = await supabase.from('time_entries').delete().in('id', list.map((r) => r.id)).eq('user_id', user.id).eq('status', 'draft').select('id');
+          if (error) throw error;
+          const ids = new Set(((gone ?? []) as { id: string }[]).map((x) => x.id));
+          const deleted = list.filter((r) => ids.has(r.id));
+          if (!deleted.length) return { ok: false, message: 'Rien n’a été effacé : ces heures sont verrouillées par le bureau.' };
+          message = `${deleted.length} ligne${deleted.length > 1 ? 's' : ''} effacée${deleted.length > 1 ? 's' : ''}.`;
+          undo = async () => {
+            // total_minutes est calculé par la base : on ne le renvoie pas.
+            const back = deleted.map(({ total_minutes: _t, ...r }) => r);
+            const { error: e } = await supabase.from('time_entries').insert(back);
+            if (e) throw e;
+          };
+          break;
+        }
+        case 'annuler_conge':
+        case 'modifier_conge': {
+          const { data: prev, error: readErr } = await supabase.from('leave_requests').select('id, type, start_date, end_date, note').eq('id', d.leave_id!).eq('user_id', user.id).eq('status', 'pending').maybeSingle();
+          if (readErr) throw readErr;
+          const p0 = prev as { id: string; type: string; start_date: string; end_date: string; note: string | null } | null;
+          if (!p0) return { ok: false, message: 'Demande déjà traitée par le bureau : elle ne peut plus être changée d’ici.' };
+          const { data: gone, error } = await supabase.from('leave_requests').delete().eq('id', p0.id).select('id');
+          if (error) throw error;
+          if (!gone || gone.length === 0) return { ok: false, message: 'Demande déjà traitée par le bureau.' };
+          if (d.type === 'modifier_conge') await requestLeave({ type: p0.type, start: d.du, end: d.au, note: p0.note });
+          message = d.type === 'annuler_conge' ? 'Demande de congé annulée.' : 'Nouvelles dates envoyées au bureau.';
+          undo = async () => {
+            if (d.type === 'modifier_conge') {
+              const { data } = await supabase.from('leave_requests').select('id').eq('user_id', user.id).eq('status', 'pending')
+                .eq('start_date', d.du).eq('end_date', d.au).order('created_at', { ascending: false }).limit(1);
+              const id = (data as { id: string }[] | null)?.[0]?.id;
+              if (id) await supabase.from('leave_requests').delete().eq('id', id);
+            }
+            // Même demande qu'avant (mêmes dates, même motif), par le même chemin que « Mes congés ».
+            await requestLeave({ type: p0.type, start: p0.start_date, end: p0.end_date, note: p0.note });
+          };
+          break;
+        }
+        case 'annuler_pointage': {
+          const { data: sess, error: readErr } = await supabase.from('active_sessions').select('*').eq('user_id', user.id).maybeSingle();
+          if (readErr) throw readErr;
+          if (!sess) return { ok: false, message: 'Aucun pointage en cours.' };
+          const { error } = await supabase.from('active_sessions').delete().eq('user_id', user.id);
+          if (error) throw error;
+          announceLiveChange();
+          message = 'Pointage annulé : rien n’est noté.';
+          undo = async () => {
+            const { error: e } = await supabase.from('active_sessions').insert(sess as Record<string, unknown>);
+            if (e) throw e;
+            announceLiveChange();
+          };
+          break;
+        }
+        case 'retirer_photo': {
+          const { data: doc, error: readErr } = await supabase.from('documents').select('*').eq('id', d.document_id!).eq('uploaded_by', user.id).single();
+          if (readErr) throw readErr;
+          const row = doc as Record<string, unknown> & { id: string; file_path: string; label: string | null; file_name: string | null };
+          const { data: blob, error: dlErr } = await supabase.storage.from('chantier-docs').download(row.file_path);
+          if (dlErr || !blob) return { ok: false, message: 'Le fichier n’a pas pu être lu : rien n’a été retiré.' };
+          const { data: gone, error } = await supabase.from('documents').delete().eq('id', row.id).select('id');
+          if (error) throw error;
+          if (!gone || gone.length === 0) return { ok: false, message: 'Retrait refusé : ce document n’est pas à vous.' };
+          await supabase.storage.from('chantier-docs').remove([row.file_path]);
+          message = `« ${row.label || row.file_name || 'Document'} » retiré.`;
+          undo = async () => {
+            const up = await supabase.storage.from('chantier-docs').upload(row.file_path, blob, { upsert: true, contentType: blob.type || undefined });
+            if (up.error) throw up.error;
+            const { error: e } = await supabase.from('documents').insert(row);
+            if (e) throw e;
+          };
+          break;
+        }
+        case 'retirer_reserve': {
+          const { data: prev } = await supabase.from('time_entries').select('reception, observation').eq('id', d.entry_id!).eq('user_id', user.id).eq('status', 'draft').maybeSingle();
+          const p0 = prev as { reception: string | null; observation: string | null } | null;
+          if (!p0) return { ok: false, message: 'Cette journée est envoyée : la réserve se voit avec le bureau.' };
+          const { data: upd, error } = await supabase.from('time_entries').update({ reception: null }).eq('id', d.entry_id!).eq('user_id', user.id).eq('status', 'draft').select('id');
+          if (error) throw error;
+          if (!upd || upd.length === 0) return { ok: false, message: 'Ce chantier est verrouillé par le bureau.' };
+          message = 'Réserve retirée.';
+          undo = async () => {
+            const { error: e } = await supabase.from('time_entries').update({ reception: p0.reception, observation: p0.observation }).eq('id', d.entry_id!).eq('user_id', user.id);
+            if (e) throw e;
+          };
+          break;
+        }
         case 'email_client': {
           const { error } = await supabase.rpc('set_worksite_client_email', { p_worksite_id: d.worksite_id, p_email: d.email });
           if (error) throw error;
@@ -215,9 +311,10 @@ export function makeWorkerExecutor(user: { id: string; company_id: string }): Wo
     if (undo) {
       const run = undo;
       result.undo = async () => {
-        try { await run(); } catch (e) { return { ok: false, message: errText(e, 'Annulation impossible.') }; }
+        let said: void | string;
+        try { said = await run(); } catch (e) { return { ok: false, message: errText(e, 'Annulation impossible.') }; }
         await journal(d.type, summary, true);
-        return { ok: true, message: 'Annulé : c’est comme avant.' };
+        return { ok: true, message: typeof said === 'string' ? said : 'Annulé : c’est comme avant.' };
       };
     }
     return result;

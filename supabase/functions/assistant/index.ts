@@ -96,7 +96,7 @@ Deno.serve(async (req) => {
     const hier = previousDay(today);
     const cid = me.company_id as string;
     const planFrom = addDays(mondayOf(today), -14), planTo = addDays(mondayOf(today), 13);
-    const [workers, sites, all, month, entries, planY, planT, sessions, leaves, plan, recent, invits, reserves, closures] = await Promise.all([
+    const [workers, sites, all, month, entries, planY, planT, sessions, leaves, plan, recent, invits, reserves, closures, docs, expenses, certs] = await Promise.all([
       db.from('users').select('id, company_id, first_name, last_name, role, is_active').eq('company_id', cid),
       db.from('worksites').select('id, company_id, client_name, city, budget_hours, budget_amount').eq('company_id', cid).eq('is_active', true),
       db.rpc('my_worksite_labour', { p_from: null, p_to: null }),
@@ -114,6 +114,10 @@ Deno.serve(async (req) => {
       db.from('time_entries').select('id, company_id, user_id, work_date, worksite_id, observation').eq('company_id', cid).eq('reception', 'avec')
         .is('reserve_resolved_at', null).neq('status', 'cancelled').order('work_date', { ascending: false }).limit(50),
       db.from('month_closures').select('company_id, month').eq('company_id', cid),
+      // Lot 8 : ce qu'on peut retirer ou corriger (documents, dépenses, habilitations).
+      db.from('documents').select('id, company_id, worksite_id, label, file_name, category, created_at').eq('company_id', cid).order('created_at', { ascending: false }).limit(150),
+      db.from('worksite_expenses').select('id, company_id, worksite_id, label, amount, category, spent_on').eq('company_id', cid).order('spent_on', { ascending: false }).limit(150),
+      db.from('certifications').select('id, company_id, user_id, type, label, expiry_date').eq('company_id', cid).limit(300),
     ]);
     const raw: RawData = {
       companyId: cid, today,
@@ -136,6 +140,9 @@ Deno.serve(async (req) => {
       invitations: (invits.data ?? []) as Parameters<typeof buildActionContext>[0]['invitations'],
       reserves: (reserves.data ?? []) as Parameters<typeof buildActionContext>[0]['reserves'],
       closures: (closures.data ?? []) as Parameters<typeof buildActionContext>[0]['closures'],
+      documents: (docs.data ?? []) as Parameters<typeof buildActionContext>[0]['documents'],
+      expenses: (expenses.data ?? []) as Parameters<typeof buildActionContext>[0]['expenses'],
+      certifications: (certs.data ?? []) as Parameters<typeof buildActionContext>[0]['certifications'],
     });
     ctx.me = user.id;
     ctx.demande = question;

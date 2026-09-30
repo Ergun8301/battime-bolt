@@ -14,6 +14,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   CheckCircle2, Loader2, UserPlus, Building2, CalendarOff, CalendarPlus, CalendarRange, Clock, FolderInput, Paperclip,
   CalendarClock, Check, ShieldCheck, Receipt, Archive, UserCog, Send, BellRing, Lock, Link2, BadgeCheck, UserPen, UserX, Wallet, Settings,
+  CalendarX, Eraser, FileX, FilePen, Trash2, MailX,
 } from 'lucide-react';
 import {
   ABSENCE_KINDS, ABSENCE_LABEL, CERT_LABEL, DOC_CATEGORY_LABEL, EXPENSE_LABEL, ROLE_LABEL, actionMode, applyAnswer, bulletinFigures, checkAction, frDate, questionFor, summarize,
@@ -75,6 +76,16 @@ const TITLES: Record<ActionDraft['type'], [string, typeof UserPlus]> = {
   archiver_salarie: ['Archiver un salarié', UserX],
   cout_reel: ['Coût réel du salarié', Wallet],
   modifier_reglages: ['Réglages de l’entreprise', Settings],
+  supprimer_intervention: ['Retirer du planning', CalendarX],
+  effacer_planning: ['Effacer le planning', Eraser],
+  supprimer_absence: ['Retirer une absence', CalendarX],
+  supprimer_document: ['Supprimer un document', FileX],
+  modifier_document: ['Modifier un document', FilePen],
+  supprimer_depense: ['Supprimer une dépense', Trash2],
+  modifier_depense: ['Corriger une dépense', Receipt],
+  supprimer_habilitation: ['Supprimer une habilitation', Trash2],
+  modifier_habilitation: ['Modifier une habilitation', BadgeCheck],
+  annuler_invitation: ['Annuler une invitation', MailX],
 };
 const CONFIRM: Record<ActionDraft['type'], string> = {
   inviter_salarie: 'Confirmer et envoyer', creer_chantier: 'Confirmer', poser_absence: 'Enregistrer',
@@ -84,6 +95,9 @@ const CONFIRM: Record<ActionDraft['type'], string> = {
   changer_role: 'Changer le rôle', relancer_invitation: 'Renvoyer', envoyer_rappel: 'Envoyer', cloturer_mois: 'Clôturer',
   attribuer_client: 'Attribuer', ajouter_habilitation: 'Ajouter', modifier_salarie: 'Enregistrer', archiver_salarie: 'Archiver',
   cout_reel: 'Enregistrer', modifier_reglages: 'Enregistrer',
+  supprimer_intervention: 'Retirer', effacer_planning: 'Effacer', supprimer_absence: 'Retirer', supprimer_document: 'Supprimer',
+  modifier_document: 'Enregistrer', supprimer_depense: 'Supprimer', modifier_depense: 'Enregistrer', supprimer_habilitation: 'Supprimer',
+  modifier_habilitation: 'Enregistrer', annuler_invitation: 'Annuler l’invitation',
 };
 
 interface Props {
@@ -170,7 +184,7 @@ export default function AssistantActionCard({ extra, execute, onDone, ctl }: Pro
   if (phase === 'done' && result) {
     return (
       <ActionDone
-        message={result.message} summary={doneSummary} undo={result.undo}
+        message={result.message} summary={doneSummary} undo={result.undo} strongUndo={(result.count ?? 0) > 10}
         onEdit={result.undo ? () => { editOf.current = result.undo!; setPhase('form'); } : undefined}
       />
     );
@@ -536,6 +550,101 @@ export default function AssistantActionCard({ extra, execute, onDone, ctl }: Pro
         </div>
         <p className="ac-hint">Le bulletin n’est pas conservé ; le n° de sécurité sociale n’est jamais lu.</p>
       </>);
+      break;
+    // ── Lot 8 ──
+    case 'supprimer_intervention':
+      body = (
+        <div><label>Intervention</label>
+          <select value={d.planning_id ?? ''} className={d.planning_id ? '' : 'todo'} onChange={(e) => set({ planning_id: e.target.value || null })}>
+            <option value="">{d.choix.length ? 'Choisir…' : 'Aucune intervention trouvée'}</option>
+            {d.choix.map((c) => <option key={c.id} value={c.id}>{[c.nom, c.date ? frDate(c.date) : '', c.chantier, c.debut, c.note].filter(Boolean).join(' · ')}</option>)}
+          </select>
+        </div>
+      );
+      break;
+    case 'effacer_planning':
+    case 'supprimer_absence':
+      body = (<>
+        <div><label>{d.type === 'effacer_planning' ? 'Planning de' : 'Salarié'}</label>
+          {d.type === 'effacer_planning'
+            ? <select value={d.user_id ?? ''} onChange={(e) => set({ user_id: e.target.value || null, salarie_texte: '' })}>
+                <option value="">Toute l’équipe</option>
+                {options.salaries.map((s2) => <option key={s2.id} value={s2.id}>{s2.nom}</option>)}
+              </select>
+            : salSelect(d.user_id, (v) => set({ user_id: v }), d.salarie_texte)}
+        </div>
+        <div className="ac-row">
+          <div><label>Du</label><input type="date" value={d.du} onChange={(e) => set({ du: e.target.value })} /></div>
+          <div><label>Au</label><input type="date" value={d.au} onChange={(e) => set({ au: e.target.value })} /></div>
+        </div>
+        <p className="ac-hint">{d.type === 'effacer_planning' ? 'Les absences restent. Les cases avec des heures notées ou envoyées, et les mois clôturés, ne sont jamais effacés.' : 'Le salarié redevient présent ces jours-là.'}</p>
+      </>);
+      break;
+    case 'supprimer_document':
+    case 'modifier_document':
+      body = (<>
+        <div><label>Document</label>
+          <select value={d.document_id ?? ''} className={d.document_id ? '' : 'todo'} onChange={(e) => set({ document_id: e.target.value || null })}>
+            <option value="">{d.choix.length ? 'Choisir…' : 'Aucun document trouvé'}</option>
+            {d.choix.map((c) => <option key={c.id} value={c.id}>{c.nom} · {c.chantier} · {frDate(c.date)}</option>)}
+          </select>
+        </div>
+        {d.type === 'modifier_document' && (
+          <div className="ac-row">
+            <div><label>Catégorie</label>
+              <select value={d.categorie} onChange={(e) => set({ categorie: e.target.value })}>
+                <option value="">(inchangée)</option>
+                {Object.entries(DOC_CATEGORY_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+            </div>
+            <div><label>Nom</label><input value={d.libelle} onChange={(e) => set({ libelle: e.target.value })} /></div>
+          </div>
+        )}
+      </>);
+      break;
+    case 'supprimer_depense':
+    case 'modifier_depense':
+      body = (<>
+        <div><label>Dépense</label>
+          <select value={d.expense_id ?? ''} className={d.expense_id ? '' : 'todo'} onChange={(e) => set({ expense_id: e.target.value || null })}>
+            <option value="">{d.choix.length ? 'Choisir…' : 'Aucune dépense trouvée'}</option>
+            {d.choix.map((c) => <option key={c.id} value={c.id}>{c.libelle} · {c.montant.toLocaleString('fr-FR')} € · {c.chantier} · {frDate(c.date)}</option>)}
+          </select>
+        </div>
+        {d.type === 'modifier_depense' && (
+          <div className="ac-row">
+            <div><label>Montant (€)</label><input inputMode="decimal" value={d.montant} onChange={(e) => set({ montant: e.target.value.replace(',', '.') })} /></div>
+            <div><label>Libellé</label><input value={d.libelle} onChange={(e) => set({ libelle: e.target.value })} /></div>
+          </div>
+        )}
+      </>);
+      break;
+    case 'supprimer_habilitation':
+    case 'modifier_habilitation':
+      body = (<>
+        <div><label>Habilitation</label>
+          <select value={d.cert_id ?? ''} className={d.cert_id ? '' : 'todo'} onChange={(e) => set({ cert_id: e.target.value || null })}>
+            <option value="">{d.choix.length ? 'Choisir…' : 'Aucune habilitation trouvée'}</option>
+            {d.choix.map((c) => <option key={c.id} value={c.id}>{c.nom} · {c.libelle || CERT_LABEL[c.categorie] || c.categorie} · expire le {frDate(c.expiration)}</option>)}
+          </select>
+        </div>
+        {d.type === 'modifier_habilitation' && (
+          <div className="ac-row">
+            <div><label>Nouvelle expiration</label><input type="date" value={d.expiration} onChange={(e) => set({ expiration: e.target.value })} /></div>
+            <div><label>Libellé</label><input value={d.libelle} onChange={(e) => set({ libelle: e.target.value })} /></div>
+          </div>
+        )}
+      </>);
+      break;
+    case 'annuler_invitation':
+      body = (
+        <div><label>Invitation</label>
+          <select value={d.email} className={d.email ? '' : 'todo'} onChange={(e) => set({ email: e.target.value })}>
+            <option value="">{d.choix.length ? 'Choisir…' : 'Aucune invitation en attente'}</option>
+            {d.choix.map((c) => <option key={c.email} value={c.email}>{c.nom} · {c.email}</option>)}
+          </select>
+        </div>
+      );
       break;
     case 'modifier_reglages': {
       const yn = (k: 'relance_auto' | 'alertes_budget' | 'trajet_paye', label: string) => (
