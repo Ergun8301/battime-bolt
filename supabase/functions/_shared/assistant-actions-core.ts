@@ -495,6 +495,9 @@ export function questionFor(d: ActionDraft, problems: string[], ctx: ActionConte
   if (p === 'Choisissez au moins un jour.') return { text: 'Quel jour ?', field: 'dates', chips: days };
   if (p === 'Nom du client manquant.') return { text: 'Quel est le nom du client ?', field: 'nom_client', chips: [] };
   if (p === 'Dates manquantes.') return { text: 'À partir de quand, et jusqu’à quand ?', field: 'du', chips: days };
+  if (p === 'Choisissez l’intervention.' && d.type === 'supprimer_intervention' && d.salarie_texte && d.date && !d.choix.some((c) => c.date === d.date)) {
+    return { text: `${rienLe(d, ctx)}. Ses cases les plus proches :`, field: 'planning_id', chips: d.choix.map((c) => ({ label: slotLabel(c), value: c.id })) };
+  }
   if (p === 'Choisissez l’intervention.' && (d.type === 'modifier_intervention' || d.type === 'supprimer_intervention')) {
     return { text: 'Laquelle ?', field: 'planning_id', chips: d.choix.map((c) => ({ label: slotLabel(c), value: c.id })) };
   }
@@ -585,18 +588,35 @@ export function buildActionContext(raw: {
 // ── Lot 8 : retrouver CE qu'on veut retirer ou modifier ─────────────────────
 const euros = (v: number) => `${v.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} €`;
 const slotLabel = (c: SlotChoice) => [c.nom, c.date ? frDate(c.date) : '', c.chantier, c.debut, c.note].filter(Boolean).join(' · ');
+/** « Karim n’a rien jeudi 1 octobre » */
+function rienLe(d: { user_id: string | null; salarie_texte: string; date: string }, ctx: ActionContext): string {
+  const w = ctx.salaries.find((x) => x.id === d.user_id);
+  const jour = new Date(`${d.date}T12:00:00Z`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' });
+  return `${w?.prenom || d.salarie_texte} n’a rien ${jour}`;
+}
 const WEAK = new Set(['intervention', 'interventions', 'chantier', 'chez', 'client', 'planning', 'case', 'bulle', 'rendez', 'vous']);
 const words3 = (t: string) => norm(t).split(/[^a-z0-9]+/).filter((w) => w.length > 2 && !WEAK.has(w));
 /** Les cases du planning (hors absences) qui correspondent : salarié, jour, texte (client, ville ou note). */
-export function slotsMatching(ctx: ActionContext, uid: string | null, date: string, texte: string): SlotChoice[] {
+export function slotsMatching(ctx: ActionContext, uid: string | string[] | null, date: string, texte: string, proches = false): SlotChoice[] {
+  const uids = uid == null ? null : Array.isArray(uid) ? uid : [uid];
   const ch = (id: string | null) => ctx.chantiers.find((c) => c.id === id);
   const nameOf = (id: string) => { const x = ctx.salaries.find((w) => w.id === id); return x ? x.prenom || fullName(x) : ''; };
-  const base = ctx.planning.filter((r) => r.id && !r.absence && r.worksite_id && (!uid || r.user_id === uid) && (!date || r.date === date));
+  const all = ctx.planning.filter((r) => r.id && !r.absence && r.worksite_id && (!uids || uids.includes(r.user_id)));
   const q = words3(texte);
-  const hit = (r: typeof base[number]) => { const c = ch(r.worksite_id); const hay = norm(`${c?.nom ?? ''} ${c?.ville ?? ''} ${r.notes ?? ''}`); return q.some((w) => hay.includes(w)); };
-  const found = q.length ? base.filter(hit) : base;
-  const rows = found.length ? found : base.length <= 8 ? base : [];
-  return rows.slice(0, 12).map((r) => ({ id: r.id!, chantier: ch(r.worksite_id)?.nom ?? 'Chantier', debut: r.debut ?? '', note: r.notes ?? '', date: r.date, nom: nameOf(r.user_id) }));
+  const hit = (r: typeof all[number]) => { const c = ch(r.worksite_id); const hay = norm(`${c?.nom ?? ''} ${c?.ville ?? ''} ${r.notes ?? ''}`); return q.some((w) => hay.includes(w)); };
+  const pick = (base: typeof all) => { const found = q.length ? base.filter(hit) : base; return found.length ? found : base.length <= 8 ? base : []; };
+  const toChoice = (r: typeof all[number]) => ({ id: r.id!, chantier: ch(r.worksite_id)?.nom ?? 'Chantier', debut: r.debut ?? '', note: r.notes ?? '', date: r.date, nom: nameOf(r.user_id) });
+  const rows = pick(all.filter((r) => !date || r.date === date));
+  if (rows.length || !proches || !date) return rows.slice(0, 12).map(toChoice);
+  // Rien ce jour-là : SES cases les plus proches (avant ou après), le chantier dit en premier.
+  const gap = (d: string) => Math.abs(new Date(`${d}T12:00:00Z`).getTime() - new Date(`${date}T12:00:00Z`).getTime());
+  const near = [...all].sort((a, b) => Number(q.length > 0 && !hit(a)) - Number(q.length > 0 && !hit(b)) || gap(a.date) - gap(b.date));
+  return near.slice(0, 4).map(toChoice);
+}
+/** Les salariés dont le nom ressemble au texte (deux « Karim » → les deux). */
+function salariesNamed(t: string, ctx: ActionContext): string[] {
+  const q = norm(t).split(/[^a-z0-9]+/).filter((w) => w.length > 2);
+  return ctx.salaries.filter((x) => norm(fullName(x)).split(/[^a-z0-9]+/).some((n) => n.length > 2 && q.includes(n))).map((x) => x.id);
 }
 /** « le dernier », « la dernière » : le plus récent seulement. */
 const lastOne = (t: string) => /\b(dernier|derniere|recent)/.test(norm(t));
@@ -679,8 +699,9 @@ function resolve<T extends { id: string }>(text: string, list: T[], label: (x: T
   if (!q.length) return null;
   const scored = list.map((x) => {
     const name = norm(label(x)).split(/[^a-z0-9]+/).filter(Boolean);
-    const hits = q.filter((w) => name.some((n) => n === w || (w.length >= 4 && (n.startsWith(w) || w.startsWith(n))))).length;
-    return { id: x.id, hits, all: hits === q.length };
+    // Exact = 2 points, début de mot = 1 (jamais sur une initiale : « Ergun K. » n'est pas « Karim »).
+    const hits = q.reduce((t, w) => t + (name.includes(w) ? 2 : name.some((n) => (w.length >= 4 && n.startsWith(w)) || (n.length >= 3 && w.length >= 4 && w.startsWith(n))) ? 1 : 0), 0);
+    return { id: x.id, hits };
   }).filter((x) => x.hits > 0).sort((a, b) => b.hits - a.hits);
   if (!scored.length) return null;
   if (scored.length > 1 && scored[1].hits === scored[0].hits) return null;
@@ -823,7 +844,13 @@ export function checkAction(d: ActionDraft, ctx: ActionContext): string[] {
       break;
     // ── Lot 8 ──
     case 'supprimer_intervention': {
-      if (!d.planning_id) { p.push(d.choix.length ? 'Choisissez l’intervention.' : 'Aucune intervention trouvée au planning.'); break; }
+      if (!d.planning_id) {
+        const rien = d.salarie_texte && d.date && !d.choix.some((c) => c.date === d.date);
+        if (rien && !d.choix.length) p.push(`${rienLe(d, ctx)}, ni aucun autre jour au planning.`);
+        else if (!d.choix.length) p.push('Aucune intervention trouvée au planning.');
+        else p.push('Choisissez l’intervention.');
+        break;
+      }
       const c = d.choix.find((x) => x.id === d.planning_id);
       if (!c) p.push('Intervention introuvable.');
       else if (closedMonth(ctx, c.date ?? d.date)) p.push('Ce mois est clôturé : son planning ne s’efface plus.');
@@ -1085,8 +1112,11 @@ export function prepare(type: string, raw: Record<string, unknown>, ctx: ActionC
       const moi = /^(moi|me|je)$/.test(norm(s).trim());
       const uid = moi && ctx.me ? ctx.me : s ? resolveSalarie(s, ctx) : null;
       const date = dateOf(raw.date, ctx);
-      const choix = slotsMatching(ctx, uid, date, `${str(raw.chantier, 120)} ${str(raw.lieu, 80)}`);
-      d = { type, user_id: uid, salarie_texte: s, date: date || (choix.length === 1 ? choix[0].date ?? '' : ''), planning_id: choix.length === 1 ? choix[0].id : null, choix };
+      // Un salarié nommé : SEULEMENT ses cases (jamais celles des collègues).
+      const who = uid ?? (s ? salariesNamed(s, ctx) : null);
+      const choix = slotsMatching(ctx, who, date, `${str(raw.chantier, 120)} ${str(raw.lieu, 80)}`, who != null);
+      const rienCeJour = !!date && choix.length > 0 && !choix.some((c) => c.date === date);
+      d = { type, user_id: uid, salarie_texte: s, date: date || (choix.length === 1 ? choix[0].date ?? '' : ''), planning_id: choix.length === 1 && !rienCeJour ? choix[0].id : null, choix };
       break;
     }
     case 'effacer_planning':

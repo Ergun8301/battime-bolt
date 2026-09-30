@@ -4,7 +4,7 @@
 import { callFunction } from './ai-provider.ts';
 import {
   ASSISTANT_FUNCTIONS, actionPrompt, addDays, buildActionContext, checkAction, findGuide, fromFunctionCall,
-  guideForPrompt, handleActionLocally, mondayOf, prepare, proposeWeek, summarize, type ActionContext,
+  guideForPrompt, handleActionLocally, mondayOf, prepare, proposeWeek, questionFor, summarize, type ActionContext,
 } from './assistant-actions-core.ts';
 
 function eq(a: unknown, b: unknown, msg: string) {
@@ -295,4 +295,31 @@ Deno.test('Lot 7 : un client doit être NOMMÉ — « à Lyon » reste un lieu',
   eq(plan('mets kevin sur mister grill macon lundi', { salarie: 'Kevin', chantier: 'Mister Grill Kebab', lieu: 'Mâcon', dates: ['lundi'] }).worksite_id, 'w-mgk-macon', 'client + ville départagent');
   eq(plan('mets kevin sur mister grill lundi', { salarie: 'Kevin', chantier: 'Mister Grill Kebab', dates: ['lundi'] }).worksite_id, null, 'ambigu : on demande, jamais « Autre »');
   eq(plan('Karim demain chez Martin', { salarie: 'Karim', chantier: 'Bureau Martin', dates: ['demain'] }).worksite_id, 'w-martin', 'client nommé');
+});
+
+Deno.test('Lot 8 : un salarié nommé → SEULEMENT ses cases ; rien ce jour-là → on le dit + ses cases proches', () => {
+  // « Ergun K. » : l'initiale K ne doit plus voler « Karim ».
+  const ctx: ActionContext = {
+    ...CTX,
+    salaries: [...CTX.salaries, { id: 'u-ergun', prenom: 'Ergun', nom: 'K.', role: 'admin' }],
+    planning: [
+      ...[0, 1, 2].map((i) => ({ id: `k${i}`, user_id: 'u-karim', date: addDays(MON, i), worksite_id: 'w-dupont', absence: null })),
+      ...[0, 1, 2, 3].map((i) => ({ id: `s${i}`, user_id: 'u-sofia', date: addDays(MON, i), worksite_id: 'w-dupont', absence: null })),
+    ],
+  };
+  const jeudi = addDays(MON, 3);
+  const r = fromFunctionCall('supprimer_intervention', { salarie: 'Karim', chantier: 'Villa Dupont', date: jeudi }, ctx);
+  const d = r.action!.draft as Extract<NonNullable<typeof r.action>['draft'], { type: 'supprimer_intervention' }>;
+  eq(d.user_id, 'u-karim', 'Karim reconnu malgré « Ergun K. »');
+  eq(d.planning_id, null, 'rien ce jeudi : on ne retire rien tout seul');
+  eq(d.choix.map((c) => c.nom), ['Karim', 'Karim', 'Karim'], 'jamais les cases de Sofia');
+  eq(d.choix[0].date, addDays(MON, 2), 'la plus proche en premier');
+  const q = questionFor(d, r.action!.problems, ctx)!;
+  if (!/^Karim n’a rien jeudi 1 octobre\. Ses cases les plus proches/.test(q.text)) throw new Error(q.text);
+  // Rien du tout au planning : une phrase.
+  const r2 = fromFunctionCall('supprimer_intervention', { salarie: 'Lucas', date: jeudi }, ctx);
+  eq(r2.action!.problems, ['Lucas n’a rien jeudi 1 octobre, ni aucun autre jour au planning.'], 'Lucas sans aucune case');
+  // Le jour dit existe : retiré directement.
+  const r3 = fromFunctionCall('supprimer_intervention', { salarie: 'Karim', date: addDays(MON, 1) }, ctx);
+  eq((r3.action!.draft as typeof d).planning_id, 'k1', 'la case de Karim ce jour-là');
 });
