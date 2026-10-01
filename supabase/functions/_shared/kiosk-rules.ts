@@ -31,7 +31,9 @@ export const REFUSAL_MESSAGES: Record<ScanRefusal | 'code_invalid' | 'ticket_inv
   code_invalid: 'Ce QR a expiré. Scannez à nouveau la borne.',
   ticket_invalid: 'Ce lien a expiré. Scannez à nouveau la borne.',
   stale_session: 'Un pointage d’un autre jour est resté ouvert. Fermez-le dans l’appli BEMEXO.',
-  too_short: 'Moins d’un quart d’heure depuis votre arrivée : rien à enregistrer.',
+  // Ancien chemin seulement (fonction finish_active_session pas encore en base) :
+  // ton neutre, ce n'est pas une faute du salarié.
+  too_short: 'Départ trop proche de l’arrivée : rien à enregistrer pour l’instant. Votre pointage reste en cours.',
   month_closed: 'Ce mois est clôturé par le bureau.',
 };
 
@@ -114,6 +116,16 @@ export function decideAction(
 ): 'arrival' | 'departure' | 'stale_session' {
   if (!session) return 'arrival';
   return session.work_date === todayParis ? 'departure' : 'stale_session';
+}
+
+/**
+ * Lot 9 — le départ passe par `finish_active_session` (la même fermeture que
+ * l'appli). Tant que la migration n'est pas passée, la fonction n'existe pas :
+ * PostgREST répond PGRST202 (absente du cache de schéma), PostgreSQL 42883
+ * (fonction inconnue). On retombe alors sur l'ancien `stop_active_session`.
+ */
+export function rpcMissing(err: { code?: string | null } | null | undefined): boolean {
+  return !!err && (err.code === 'PGRST202' || err.code === '42883');
 }
 
 /** La date du jour à Paris (aaaa-mm-jj), quelle que soit l'horloge du serveur. */

@@ -5,7 +5,7 @@ import {
   toBase64Url, verifyCode, KIOSK_DIGITS,
 } from './kiosk-code.ts';
 import {
-  checkScan, decideAction, distanceM, isAsleep, parisDate, withinRadius, type ScanContext,
+  checkScan, decideAction, distanceM, isAsleep, parisDate, rpcMissing, withinRadius, REFUSAL_MESSAGES, type ScanContext,
 } from './kiosk-rules.ts';
 
 function eq(a: unknown, b: unknown, msg: string) {
@@ -121,6 +121,15 @@ Deno.test('Arrivée ou départ : même règle que l’appli', () => {
   eq(decideAction({ work_date: '2026-09-29' }, '2026-09-29'), 'departure', 'en cours aujourd’hui → départ');
   eq(decideAction({ work_date: '2026-09-28' }, '2026-09-29'), 'stale_session', 'oublié d’hier → pas de fermeture à l’aveugle');
   eq(parisDate(Date.UTC(2026, 8, 28, 22, 30)), '2026-09-29', 'minuit et demi à Paris = le 29');
+});
+
+Deno.test('Lot 9 : départ par finish_active_session, ancien chemin si la fonction manque', () => {
+  eq(rpcMissing({ code: 'PGRST202' }), true, 'PostgREST : fonction absente du cache de schéma');
+  eq(rpcMissing({ code: '42883' }), true, 'PostgreSQL : fonction inconnue');
+  eq(rpcMissing({ code: 'BT001' }), false, 'un vrai refus n’est pas une fonction manquante');
+  eq(rpcMissing({ code: 'P0001' }), false, 'mois clôturé, etc.');
+  eq(rpcMissing(null), false, 'pas d’erreur');
+  if (/quart d/i.test(REFUSAL_MESSAGES.too_short)) throw new Error(`message trop court non neutre : ${REFUSAL_MESSAGES.too_short}`);
 });
 
 Deno.test('Veille hors des horaires d’ouverture', () => {

@@ -6,7 +6,13 @@
 // Trois choses, rien de plus :
 //   · ajouter une borne → un code à 6 chiffres, valable 10 minutes ;
 //   · la liste des bornes, avec « Retirer » (effet immédiat) ;
-//   · deux options (planning, GPS) et des horaires d'ouverture facultatifs.
+//   · une option (GPS) et des horaires d'ouverture facultatifs.
+//
+// Lot 9 : la borne affiche TOUJOURS le planning de la semaine (lecture seule) ;
+// la case « Afficher le planning du jour » a disparu. `show_planning` est
+// pourtant toujours LU puis RENVOYÉ tel quel à l'enregistrement : l'ancienne
+// fonction, tant qu'elle tourne en production, écrirait sinon « faux » à la
+// place d'un « vrai » (la nouvelle ne l'écrit plus du tout).
 //
 // Toutes les écritures passent par la fonction `kiosk` (qui revérifie le rôle
 // admin et l'interrupteur) ; ici on ne fait que LIRE, sous RLS.
@@ -212,13 +218,9 @@ export default function KioskAdmin({ open, onOpenChange, companyId }: Props) {
 
             <div className="ka-sec">
               <span className="ka-l">Options</span>
-              <label className="ka-sw">
-                <span>
-                  <b>Afficher le planning du jour</b>
-                  <span className="ka-p">Prénom et horaire prévus, rien d&apos;autre.</span>
-                </span>
-                <input type="checkbox" checked={settings.show_planning} onChange={(e) => setSettings({ ...settings, show_planning: e.target.checked })} />
-              </label>
+              <p className="ka-p" style={{ margin: '0 0 10px' }}>
+                La borne affiche le planning de la semaine (prénom, nom, chantier, ville, horaires prévus et « en cours depuis »). Aucune heure pointée, aucun coût.
+              </p>
               <label className="ka-sw">
                 <span>
                   <b>Vérifier que le salarié est sur place (GPS)</b>

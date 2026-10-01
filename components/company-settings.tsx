@@ -568,7 +568,7 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
               <div className="bt-set-sub">
                 <div className="bt-set-subtxt">
                   <label className="bt-set-l">Borne de pointage</label>
-                  <p className="bt-set-substate">Une tablette à l&apos;entrée affiche un QR : vos salariés le scannent pour pointer.</p>
+                  <p className="bt-set-substate">Une tablette à l&apos;entrée affiche le planning de la semaine et un QR : vos salariés le scannent pour pointer. Aucune heure pointée, aucun coût.</p>
                 </div>
                 <button type="button" className="bt-set-btn" onClick={() => setKioskOpen(true)}>
                   <MonitorSmartphone className="h-4 w-4" /> Gérer les bornes
