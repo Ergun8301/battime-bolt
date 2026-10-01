@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { demanderPosition, FENETRE_POSITION_MS } from '@/lib/position';
+import { geoInfoSeen } from '@/lib/position-info';
 
 /** Le chrono ouvert d'un salarié (au plus un : la clé primaire est `user_id`). */
 export interface OwnLiveSession {
@@ -92,14 +93,18 @@ const noSession = (e: { message?: string } | null) => /Aucun pointage en cours/i
 /**
  * « J'ai fini », À N'IMPORTE QUEL MOMENT, et l'heure réelle est gardée.
  *
- *   · Moins d'une minute : on efface le chrono, sans message d'erreur — ça
- *     marche même avant la migration (chemin « Annuler » ci-dessus).
- *   · Sinon `finish_active_session` (lot 9, une seule transaction côté
- *     serveur) : début tronqué à la minute, fin arrondie au-dessus — jamais une
- *     minute contre le salarié.
- *   · Fonction pas encore déployée (PGRST202 / 42883) : on retombe sur
- *     `stop_active_session`, exactement comme hier (quart d'heure) ; son refus
- *     BT001 devient `too_short`, que l'écran dit en UNE ligne neutre.
+ *   · `finish_active_session` (lot 9, une seule transaction côté serveur)
+ *     décide TOUT, avec l'horloge du SERVEUR : moins d'une minute → chrono
+ *     effacé sans erreur (`cancelled`) ; sinon début tronqué à la minute, fin
+ *     arrondie au-dessus — jamais une minute contre le salarié. (L'horloge du
+ *     téléphone peut retarder : s'y fier effacerait de vraies minutes.)
+ *   · Fonction pas encore déployée (PGRST202 / 42883) : moins d'une minute à
+ *     l'horloge du téléphone (et seulement si elle est plausible) → on efface
+ *     le chrono comme « Annuler » ; sinon on retombe sur `stop_active_session`,
+ *     exactement comme hier (quart d'heure) ; son refus BT001 devient
+ *     `too_short`, que l'écran dit en UNE ligne neutre.
+ *   · L'endroit de fin n'est demandé que si le salarié a vu l'information
+ *     (CNIL) sur cet appareil — un chrono lancé à la borne ne la montre pas.
  *
  * `endTime` = heure de fin donnée par le salarié (pointage oublié).
  */
@@ -107,15 +112,12 @@ export async function finishLiveSession(p: {
   userId: string; startedAt: string; positionActive: boolean; endTime?: string;
 }): Promise<FinishResult> {
   const ecoule = Date.now() - new Date(p.startedAt).getTime();
-  if (!p.endTime && ecoule < MIN_LIVE_MS) {
-    return (await cancelLiveSession({ userId: p.userId, startedAt: p.startedAt })) ? { kind: 'cancelled' } : { kind: 'stale' };
-  }
   // ON NE DEMANDE MÊME PAS L'ENDROIT SUR UN POINTAGE OUBLIÉ : au-delà de la
   // fenêtre, la position serait celle du domicile. `startedAt` vient du serveur.
   const tropVieux = ecoule > FENETRE_POSITION_MS;
   // Même règle qu'au départ : on ne passe les paramètres que si on a une
   // position. Sans eux, l'appel est exactement celui d'hier.
-  const pos = p.positionActive && !tropVieux ? await demanderPosition() : null;
+  const pos = p.positionActive && !tropVieux && geoInfoSeen(p.userId) ? await demanderPosition() : null;
   const args = {
     p_end: p.endTime ? `${p.endTime}:00` : null,
     ...(pos ? {
@@ -135,6 +137,9 @@ export async function finishLiveSession(p: {
   if (!missingFunction(first.error)) throw first.error;
 
   // Repli : la migration du lot 9 n'est pas encore passée.
+  if (!p.endTime && ecoule >= 0 && ecoule < MIN_LIVE_MS) {
+    return (await cancelLiveSession({ userId: p.userId, startedAt: p.startedAt })) ? { kind: 'cancelled' } : { kind: 'stale' };
+  }
   const { data, error } = await supabase.rpc('stop_active_session', args);
   if (error) {
     if (error.code === 'BT001') return { kind: 'too_short' };
@@ -195,7 +200,8 @@ export function useOwnLiveSession(userId: string | undefined, onGone?: () => voi
   useEffect(() => {
     mounted.current = true;
     reload();
-    const id = window.setInterval(reload, 30_000);
+    // Onglet caché : on ne relit pas (relecture au retour, via visibilitychange).
+    const id = window.setInterval(() => { if (document.visibilityState !== 'hidden') reload(); }, 30_000);
     const onVisible = () => { if (document.visibilityState !== 'hidden') reload(); };
     window.addEventListener(LIVE_CHANGED, reload);
     window.addEventListener('focus', reload);

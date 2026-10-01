@@ -89,7 +89,10 @@ function sixDigits(): string {
 }
 
 async function companyEnabled(admin: SupabaseClient, companyId: string): Promise<boolean> {
-  const { data } = await admin.from('companies').select('kiosk_enabled').eq('id', companyId).maybeSingle();
+  // Une panne de lecture n'est PAS « borne désactivée » : on la fait remonter
+  // (500), sinon la tablette effacerait son appairage sur un simple incident.
+  const { data, error } = await admin.from('companies').select('kiosk_enabled').eq('id', companyId).maybeSingle();
+  if (error) throw error;
   return !!(data as { kiosk_enabled?: boolean } | null)?.kiosk_enabled;
 }
 
@@ -236,9 +239,12 @@ async function pair(admin: SupabaseClient, req: Request, body: Record<string, un
 }
 
 async function kioskFromToken(admin: SupabaseClient, body: Record<string, unknown>) {
-  const { data } = await admin.from('kiosks')
+  // Même règle : une panne n'est pas « borne retirée » (seul un id mal formé,
+  // 22P02, veut dire « borne inconnue »).
+  const { data, error } = await admin.from('kiosks')
     .select('id, company_id, name, token_hash, revoked_at')
     .eq('id', String(body.kiosk_id || '')).maybeSingle();
+  if (error && error.code !== '22P02') throw error;
   const k = data as { id: string; company_id: string; name: string; token_hash: string; revoked_at: string | null } | null;
   if (!k || k.token_hash !== await sha256Hex(String(body.token || ''))) return null;
   return k;

@@ -113,7 +113,7 @@ export default function PointerPage() {
     if (data) { setPhase({ s: 'done', r: data }); return; }
     if (code === 'auth') { setPhase({ s: 'login', t }); return; }
     // Arrivée et départ trop proches (ancien chemin) : rien de grave, ton neutre.
-    setPhase({ s: 'error', msg: error || 'Pointage impossible.', neutral: code === 'too_short' });
+    setPhase({ s: 'error', msg: error || 'Pointage impossible.', neutral: code === 'too_short' || code === 'double_scan' });
   }, []);
 
   useEffect(() => {

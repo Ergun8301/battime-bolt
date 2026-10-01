@@ -104,6 +104,11 @@ export function makeWorkerExecutor(user: { id: string; company_id: string }): Wo
           // la NUIT À CHEVAL : chrono ouvert un jour précédent, fin avant le
           // début = fin le lendemain (même règle que finish_active_session).
           const jourChrono = parisDayOf(d.depuis);
+          // Chrono resté ouvert depuis un jour précédent, sans heure de fin : on
+          // ne devine pas (ce serait une ligne de presque 24 h) — on demande.
+          if (!d.fin && jourChrono < today()) {
+            return { ok: false, message: `Pointage resté ouvert depuis le ${jourChrono} à ${parisHHmm(d.depuis)} : indiquez l’heure de fin.` };
+          }
           const lendemain = !!d.fin && d.fin < parisHHmm(d.depuis) && jourChrono < today();
           if (d.fin && d.fin <= parisHHmm(d.depuis) && !lendemain) {
             return { ok: false, message: `Heure de fin avant le début (${parisHHmm(d.depuis)}) : indiquez une heure après.` };

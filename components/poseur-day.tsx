@@ -884,10 +884,14 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
     if (!user || loading) return;
     const intent = readMealIntent(user.id, date);
     if (intent === null) return;
-    const vivantes = entries.filter((e) => e.status !== 'cancelled');
-    if (!vivantes.some((e) => !e.locked && !e.exported_at) && pendingEntries.length === 0) return;
+    // Seulement les lignes DE CE JOUR : juste après un changement de jour,
+    // l'état contient encore celles du jour précédent (l'intention serait
+    // effacée ou appliquée à tort).
+    const vivantes = entries.filter((e) => e.work_date === date && e.status !== 'cancelled');
+    const pend = pendingEntries.filter((e) => e.work_date === date);
+    if (!vivantes.some((e) => !e.locked && !e.exported_at) && pend.length === 0) return;
     clearMealIntent(user.id, date);
-    const actuel = vivantes.some((e) => e.meal_allowance) || pendingEntries.some((e) => e.meal_allowance);
+    const actuel = vivantes.some((e) => e.meal_allowance) || pend.some((e) => e.meal_allowance);
     if (actuel === intent) { setDayMeal(intent); return; }
     applyDayMeal(intent).then((ok) => {
       if (!ok) toast.error('Panier non pris en compte (journée verrouillée ou hors-ligne)');
@@ -1911,11 +1915,13 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
           </div>
         )}
 
-        {/* Aucune carte pour ce chantier (pas de planning, chantier non prévu,
-            journée vide) : le chrono se lance quand même, SANS écrire d'heures
-            à la main (« + » puis « Je commence » ferait deux lignes pour le
-            même travail). Même chemin et mêmes garde-fous que sur une carte. */}
-        {canStartLive && (
+        {/* Journée SANS AUCUNE carte (pas de planning, rien de saisi) : le
+            chrono se lance quand même, SANS écrire d'heures à la main (« + »
+            puis « Je commence » ferait deux lignes pour le même travail). Même
+            chemin et mêmes garde-fous que sur une carte. Dès qu'il y a une
+            carte, « Je commence » est sur la carte (demande d'Ergun : pas de
+            liste de chantiers sous les cartes). */}
+        {canStartLive && isEmpty && plannedTodo.length === 0 && (
           <div style={{ textAlign: 'center' }}>
             <button type="button" className="bt-ghostbtn" data-testid="start-other" disabled={starting !== null}
               onClick={() => { setPickQuery(''); setPickStart(true); }}>

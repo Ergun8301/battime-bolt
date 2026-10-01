@@ -25,7 +25,7 @@ export const REFUSAL_MESSAGES: Record<ScanRefusal | 'code_invalid' | 'ticket_inv
   kiosk_disabled: 'La borne de pointage n’est pas activée pour cette entreprise.',
   wrong_company: 'Cette borne appartient à une autre entreprise.',
   user_inactive: 'Votre compte n’est pas actif.',
-  double_scan: 'Déjà enregistré il y a moins d’une minute.',
+  double_scan: 'Déjà enregistré il y a moins d’une minute : votre pointage est bien pris en compte.',
   gps_missing: 'Autorisez la localisation pour pointer sur cette borne.',
   gps_too_far: 'Vous êtes trop loin de la borne pour pointer.',
   code_invalid: 'Ce QR a expiré. Scannez à nouveau la borne.',

@@ -11,7 +11,7 @@ Règle : **aucun texte d'explication sur les écrans** ; l'aide passe par ✨ et
 | Bouton flottant | Salarié et patron | **Supprimé** partout dans l'app (reste seulement sur les pages de démo) |
 | 📷 Scanner | — | Icône dans l'en-tête, à gauche de l'avatar, **si `kiosk_enabled`**. Caméra dans l'appli : BarcodeDetector, sinon **jsQR** (chargé à la demande). Le QR ouvre `/pointer?k=…&c=…` : même flux que le lot 1 |
 | Pointer en direct | Sélecteur + « Je commence » + 2 textes | Sélecteur + « Je commence », rien d'autre |
-| Pointer en direct (lot 9) | Sélecteur + « Je commence » | **Bloc supprimé** : « ▶ Je commence » sur chaque carte de « Chantiers du jour » (+ « Je commence sur un autre chantier » sans carte) — voir [lot 9](lot9-borne-encours.md) |
+| Pointer en direct (lot 9) | Sélecteur + « Je commence » | **Bloc supprimé** : « ▶ Je commence » sur chaque carte de « Chantiers du jour » (+ « Je commence sur un autre chantier » seulement les jours sans aucune carte) — voir [lot 9](lot9-borne-encours.md) |
 | Info « l'endroit au pointage » (CNIL) | Encadré permanent | **Déplacée**, pas supprimée : menu → « ℹ️ Informations », et petite fenêtre **une seule fois** au premier pointage (« J'ai compris », mémorisé par salarié sur l'appareil), **avant** toute collecte — aussi quand c'est l'assistant qui démarre le pointage |
 | Détail des réserves | « (obligatoire) », bandeau rouge, OK bloqué | **« Détail des réserves (facultatif) »**, placeholder « Ex. : fissure mur sud », rien ne bloque OK |
 | Menu salarié | — | + « ✨ Assistant BEMEXO » (si `ai_enabled`) et « ℹ️ Informations » |

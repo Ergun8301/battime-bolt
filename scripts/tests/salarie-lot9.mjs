@@ -81,6 +81,10 @@ await ctx.route('**/*.supabase.co/**', async (r) => {
     if (finishMode !== 'ok') return r.fulfill({ status: 404, json: { code: 'PGRST202', message: 'Could not find the function public.finish_active_session(p_end) in the schema cache', details: null, hint: null } });
     const s = D.active_sessions[0];
     D.active_sessions = [];
+    // Comme la vraie fonction : moins d'une minute À L'HORLOGE DU SERVEUR → annulé, sans ligne.
+    if (!body?.p_end && Date.now() - Date.parse(s.started_at) < 60000) {
+      return r.fulfill({ json: [{ entry_id: null, work_date: today, start_time: null, end_time: null, cancelled: true }] });
+    }
     const e = entry('e-fini', W1, parisHHmm(s.started_at), parisHHmm(new Date(Date.now() + 60000).toISOString()));
     D.time_entries.push(e);
     return r.fulfill({ json: [{ entry_id: e.id, work_date: today, start_time: e.start_time, end_time: e.end_time, cancelled: false }] });
@@ -171,20 +175,31 @@ const synth = await p.locator('[data-testid=card-live]').innerText().catch(() =>
 check(synth.includes('Dépôt Gerland') && synth.includes('en cours depuis'), `3) chantier sans carte → carte verte à part : ${synth.replace(/\s+/g, ' ').slice(0, 70)}`);
 check(await p.locator('[data-testid=card-planned]').count() === 1, '3) la carte prévue (autre chantier) reste normale, jamais « la première carte »');
 
-// ═════ 4 · « J'ai fini » après 30 s : annulé sans erreur (DELETE ciblé), pas d'appel serveur ═════
+// ═════ 4 · « J'ai fini » après 30 s : annulé sans erreur — le SERVEUR décide (son horloge) ═════
+finishMode = 'ok';
+D.active_sessions = [{ user_id: ME, company_id: CO, worksite_id: 'w1', planning_id: 'p1', work_date: today, started_at: new Date(Date.now() - 25000).toISOString() }];
+await open(); reset();
+await p.locator('button:has-text("J\'ai fini")').click();
+await p.waitForTimeout(1500);
+check(callsTo('POST', '/rest/v1/rpc/finish_active_session').length === 1 && callsTo('POST', '/rest/v1/rpc/stop_active_session').length === 0, '4) moins d’une minute : finish_active_session décide (horloge du serveur, pas du téléphone)');
+check(callsTo('POST', '/rest/v1/time_entries').length === 0, '4) aucune ligne d’heures créée');
+check(await errorToasts() === 0, '4) aucun message d’erreur');
+const t4 = await bodyText();
+check(!/quart d/i.test(t4), '4) jamais « pas encore un quart d’heure »');
+check(t4.includes('Pointage annulé (moins d’une minute)'), '4) message neutre « Pointage annulé (moins d’une minute) »');
+check(await p.locator('button:has-text("J\'ai fini")').count() === 0 && await p.locator('[data-testid=card-start]').count() === 2, '4) chrono parti, « Je commence » revenu sur les cartes');
+
+// 4 bis · avant la migration (fonction absente) : annulation par le téléphone, DELETE ciblé.
+finishMode = 'missing';
 D.active_sessions = [{ user_id: ME, company_id: CO, worksite_id: 'w1', planning_id: 'p1', work_date: today, started_at: new Date(Date.now() - 25000).toISOString() }];
 await open(); reset();
 const startedShort = D.active_sessions[0].started_at;
 await p.locator('button:has-text("J\'ai fini")').click();
 await p.waitForTimeout(1500);
 const del = callsTo('DELETE', '/rest/v1/active_sessions');
-check(del.length === 1 && new URLSearchParams(del[0].search).get('started_at') === `eq.${startedShort}`, `4) DELETE active_sessions ciblé sur started_at : ${del.map((c) => decodeURIComponent(c.search)).join(' | ')}`);
-check(callsTo('POST', '/rest/v1/rpc/').length === 0, '4) aucun appel finish/stop pour moins d’une minute');
-check(await errorToasts() === 0, '4) aucun message d’erreur');
-const t4 = await bodyText();
-check(!/quart d/i.test(t4), '4) jamais « pas encore un quart d’heure »');
-check(t4.includes('Pointage annulé (moins d’une minute)'), '4) message neutre « Pointage annulé (moins d’une minute) »');
-check(await p.locator('button:has-text("J\'ai fini")').count() === 0 && await p.locator('[data-testid=card-start]').count() === 2, '4) chrono parti, « Je commence » revenu sur les cartes');
+check(del.length === 1 && new URLSearchParams(del[0].search).get('started_at') === `eq.${startedShort}`, `4 bis) repli : DELETE active_sessions ciblé sur started_at : ${del.map((c) => decodeURIComponent(c.search)).join(' | ')}`);
+check(callsTo('POST', '/rest/v1/rpc/stop_active_session').length === 0, '4 bis) repli : pas de stop_active_session pour moins d’une minute');
+check(await errorToasts() === 0 && (await bodyText()).includes('Pointage annulé (moins d’une minute)'), '4 bis) repli : message neutre, aucune erreur');
 
 // ═════ 5 · « J'ai fini » après plus d'une minute : finish_active_session ═════
 finishMode = 'ok';
@@ -318,7 +333,7 @@ check(await p.locator('[data-testid=start-other]').count() === 0, '11) bouton re
 D.active_sessions = [];
 D.planning = [{ id: 'p1', company_id: CO, user_id: ME, worksite_id: 'w1', work_date: today, absence_type: null, estimated_start: '08:00:00', estimated_end: '12:00:00', notes: null, worksite: W1 }];
 await open();
-check(await p.locator('[data-testid=card-start]').count() === 1 && await p.locator('[data-testid=start-other]').count() === 1, '11) journée avec carte : « Je commence » sur la carte ET « sur un autre chantier »');
+check(await p.locator('[data-testid=card-start]').count() === 1 && await p.locator('[data-testid=start-other]').count() === 0, '11) journée avec carte : « Je commence » sur la carte, pas de liste de chantiers dessous');
 
 // ═════ 12 · Nuit à cheval : chrono ouvert la veille, fin avant le début = le lendemain (plus de refus) ═════
 const yesterday = new Date(Date.now() - 86400000).toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
