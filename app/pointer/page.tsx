@@ -13,25 +13,24 @@
 //
 // La position n'est demandée QUE si l'entreprise a activé le contrôle « sur
 // place » — et elle n'est que comparée à celle de la borne, jamais enregistrée.
+//
+// Lot 9 : un départ moins d'une minute après l'arrivée annule le pointage
+// (rien n'est enregistré). Écran neutre : ce n'est pas une erreur.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { demanderPosition } from '@/lib/position';
-import { callKiosk } from '@/lib/kiosk-client';
+import { callKiosk, type KioskPunchResult as PunchResp } from '@/lib/kiosk-client';
 
 interface TicketResp { ticket: string; kiosk_name: string; company_name: string; needs_gps: boolean }
-interface PunchResp {
-  kind: 'arrival' | 'departure'; time: string; first_name: string;
-  kiosk_name: string; worksite_name: string | null; range: { start: string; end: string } | null;
-}
 
 type Phase =
   | { s: 'checking' }
   | { s: 'login'; t: TicketResp }
   | { s: 'punching'; t: TicketResp }
   | { s: 'done'; r: PunchResp }
-  | { s: 'error'; msg: string; retry?: boolean };
+  | { s: 'error'; msg: string; retry?: boolean; neutral?: boolean };
 
 const CSS = `
 @import url('/fonts/fonts.css');
@@ -113,7 +112,8 @@ export default function PointerPage() {
     });
     if (data) { setPhase({ s: 'done', r: data }); return; }
     if (code === 'auth') { setPhase({ s: 'login', t }); return; }
-    setPhase({ s: 'error', msg: error || 'Pointage impossible.' });
+    // Arrivée et départ trop proches (ancien chemin) : rien de grave, ton neutre.
+    setPhase({ s: 'error', msg: error || 'Pointage impossible.', neutral: code === 'too_short' || code === 'double_scan' });
   }, []);
 
   useEffect(() => {
@@ -145,6 +145,18 @@ export default function PointerPage() {
     );
   } else if (phase.s === 'login') {
     body = <Login t={phase.t} onDone={() => punch(phase.t)} />;
+  } else if (phase.s === 'done' && phase.r.cancelled) {
+    // Neutre : même fond que l'accueil, aucun rouge, aucun pictogramme d'alerte.
+    body = (
+      <div className="kx-wrap" data-testid="punch-cancelled">
+        <div className="kx-icon" aria-hidden="true">↩️</div>
+        <h1 className="kx-title">Pointage annulé (moins d&apos;une minute)</h1>
+        <p className="kx-sub" style={{ marginTop: 12 }}>
+          Départ scanné juste après l&apos;arrivée : rien n&apos;est enregistré{phase.r.first_name ? `, ${phase.r.first_name}` : ''}.
+        </p>
+        <Link className="kx-btn" href="/poseur">Ouvrir mon espace</Link>
+      </div>
+    );
   } else if (phase.s === 'done') {
     const r = phase.r;
     const arrival = r.kind === 'arrival';
@@ -159,6 +171,14 @@ export default function PointerPage() {
         </p>
         {arrival && r.worksite_name && <div className="kx-chip">{r.worksite_name}</div>}
         {!arrival && r.range && <div className="kx-chip">Heures enregistrées : {r.range.start} → {r.range.end}</div>}
+        <Link className="kx-btn" href="/poseur">Ouvrir mon espace</Link>
+      </div>
+    );
+  } else if (phase.neutral) {
+    body = (
+      <div className="kx-wrap">
+        <h1 className="kx-title" style={{ fontSize: 'clamp(24px,7vw,32px)' }}>Rien à enregistrer</h1>
+        <p className="kx-sub" style={{ marginTop: 12 }}>{phase.msg}</p>
         <Link className="kx-btn" href="/poseur">Ouvrir mon espace</Link>
       </div>
     );

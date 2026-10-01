@@ -83,6 +83,9 @@ const TD_CSS = `
 .bt-td-lab{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#6E6A63;font-weight:700;margin-bottom:3px}
 .bt-td-save{width:100%;margin-top:10px;border:none;border-radius:11px;padding:11px;background:#FFC21A;color:#15120F;font-family:inherit;font-weight:900;font-size:15px;cursor:pointer;box-shadow:0 3px 0 #C99300}
 .bt-td-save:disabled{opacity:.6}
+/* Heure pointée à la minute, que la molette (quarts d'heure) ne montre pas. */
+.bt-td-exact{text-align:center;font-size:11.5px;font-weight:700;color:#6E6A63;margin-top:3px}
+.bt-td-exact b{font-family:'JetBrains Mono',monospace;color:#15120F}
 `;
 
 const fmtHM = (min: number) => {
@@ -95,7 +98,7 @@ export default function TeamDay({ me, date, myWorksiteIds, worksiteName, onChang
   const [planned, setPlanned] = useState<{ user_id: string; worksite_id: string | null }[]>([]);
   const [people, setPeople] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState<{ userId: string; rowId: string | null } | null>(null);
+  const [editing, setEditing] = useState<{ userId: string; rowId: string | null; start0: string; end0: string } | null>(null);
   const [start, setStart] = useState('08:00');
   const [end, setEnd] = useState('17:00');
   const [saving, setSaving] = useState(false);
@@ -141,15 +144,24 @@ export default function TeamDay({ me, date, myWorksiteIds, worksiteName, onChang
   const rowsFor = (userId: string) =>
     rows.filter((r) => r.user_id === userId && r.worksite_id && myWorksiteIds.includes(r.worksite_id));
 
+  // L'ARRONDI NE PÉNALISE JAMAIS (lot 9) : la fiche s'ouvre sur l'heure
+  // ENREGISTRÉE, à la minute. Avant, une ligne pointée 08:07–16:52 ouverte puis
+  // validée repartait en 08:00–16:45. La molette n'affiche que les quarts
+  // d'heure ; l'heure exacte est rappelée dessous, et ne bouge que si on la tourne.
   const openEditor = (userId: string, r: Row | null) => {
-    setStart(snapToGrid(r?.start_time?.slice(0, 5) || '08:00'));
-    setEnd(snapToGrid(r?.end_time?.slice(0, 5) || '17:00'));
-    setEditing({ userId, rowId: r?.id ?? null });
+    const s0 = r?.start_time?.slice(0, 5) || '08:00';
+    const e0 = r?.end_time?.slice(0, 5) || '17:00';
+    setStart(s0);
+    setEnd(e0);
+    setEditing({ userId, rowId: r?.id ?? null, start0: s0, end0: e0 });
   };
 
   const save = async () => {
     if (!editing) return;
     if (start === end) { toast.error('Début et fin identiques : rien à compter.'); return; }
+    // Rien n'a changé sur une ligne existante : rien à écrire (et surtout pas
+    // une correction notifiée au salarié pour des heures identiques).
+    if (editing.rowId && start === editing.start0 && end === editing.end0) { setEditing(null); return; }
     const worksiteId = rows.find((r) => r.id === editing.rowId)?.worksite_id || myWorksiteIds[0];
     if (!worksiteId) { toast.error('Aucun chantier pour aujourd’hui.'); return; }
     setSaving(true);
@@ -190,8 +202,12 @@ export default function TeamDay({ me, date, myWorksiteIds, worksiteName, onChang
 
         // `.select('id')` : une modification refusée par la RLS renvoie 0 ligne
         // SANS erreur, et le chef croirait avoir corrigé.
+        // Seulement l'heure qui a changé : l'autre garde sa minute.
         const { data, error } = await supabase.from('time_entries')
-          .update({ start_time: start, end_time: end }).eq('id', editing.rowId).select('id');
+          .update({
+            ...(start !== editing.start0 ? { start_time: start } : {}),
+            ...(end !== editing.end0 ? { end_time: end } : {}),
+          }).eq('id', editing.rowId).select('id');
         if (error) throw error;
         if (!data || data.length === 0) throw new Error('Ces heures ne se corrigent plus.');
       } else {
@@ -282,10 +298,12 @@ export default function TeamDay({ me, date, myWorksiteIds, worksiteName, onChang
             <div>
               <div className="bt-td-lab">Début</div>
               <TimeCylinder value={start} onChange={setStart} />
+              {snapToGrid(start) !== start && <div className="bt-td-exact">exacte : <b>{start}</b></div>}
             </div>
             <div>
               <div className="bt-td-lab">Fin</div>
               <TimeCylinder value={end} onChange={setEnd} />
+              {snapToGrid(end) !== end && <div className="bt-td-exact">exacte : <b>{end}</b></div>}
             </div>
           </div>
           <button type="button" className="bt-td-save" disabled={saving} onClick={save}>

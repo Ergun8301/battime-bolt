@@ -14,6 +14,7 @@ branche, fusionnée seulement après validation de la préview.
 | 3 bis | Assistant qui agit et qui forme (bureau, puis salarié) | `feat/assistant-actions` | PR ouverte — [détail](assistant-actions.md) |
 | 4 | Assistant BEMEXO (salarié) | `feat/assistant-salarie` | fusionné (PR 115) — pas en production — [détail](assistant-salarie.md) |
 | 5 | Accès support BEMEXO | `feat/acces-support` | PR ouverte — [détail](acces-support.md) |
+| 9 | Borne en planning, « en cours » partout, une seule logique salarié | `feat/lot9-borne-encours` | PR ouverte — [détail](lot9-borne-encours.md) |
 
 ## Règles communes
 
@@ -22,5 +23,8 @@ branche, fusionnée seulement après validation de la préview.
   modifiée.
 - Chaque nouveauté est cachée derrière un interrupteur par entreprise,
   désactivé par défaut : rien ne change pour les utilisateurs actuels.
+  **Exception demandée par Ergun : le lot 9** (retours de terrain) change
+  l'écran pour tous — borne, carte salarié, bandeau du bureau. Voir
+  [lot 9](lot9-borne-encours.md).
 - Les migrations et les fonctions Supabase sont listées dans la PR de chaque
   lot, et appliquées à la main, après validation.

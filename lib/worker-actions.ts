@@ -8,7 +8,8 @@
 // rend une VRAIE annulation (`undo`). Tout est noté dans `assistant_journal`.
 import { supabase } from '@/lib/supabase';
 import { requestLeave } from '@/lib/leave';
-import { announceLiveChange, startLiveSession, stopLiveSession } from '@/lib/live-session';
+import { announceLiveChange, finishLiveSession, startLiveSession } from '@/lib/live-session';
+import { parisHHmm } from '@/lib/utils';
 import { markEntryReserve, updateEntryTimes } from '@/lib/worker-entry';
 import { removeWorksiteDocument, uploadWorksiteDocument } from '@/lib/chantier-docs';
 import { copyLinesTo, sendWorkerDay, setDayMealOnline } from '@/lib/worker-day';
@@ -26,6 +27,8 @@ export interface WorkerActionResult {
 export type WorkerActionExecutor = (d: WorkerActionDraft, attachment?: File) => Promise<WorkerActionResult>;
 
 const today = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
+/** Jour (Paris) d'un horodatage : le jour où le chrono a été ouvert. */
+const parisDayOf = (iso: string) => new Date(iso).toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
 const errText = (e: unknown, fallback: string) => (e as { message?: string } | null)?.message || fallback;
 
 const SUMMARY: Record<WorkerActionDraft['type'], string> = {
@@ -42,7 +45,7 @@ async function journal(action: string, summary: string, undone = false) {
 }
 
 export function makeWorkerExecutor(user: { id: string; company_id: string }): WorkerActionExecutor {
-  // Même interrupteur que l'écran « Pointer en direct » (réglage de l'entreprise).
+  // Même interrupteur que « Je commence » sur l'écran (réglage de l'entreprise).
   const positionActive = async () => {
     const { data } = await supabase.from('companies').select('position_tracking_enabled').eq('id', user.company_id).maybeSingle();
     return !!(data as { position_tracking_enabled?: boolean } | null)?.position_tracking_enabled;
@@ -94,22 +97,50 @@ export function makeWorkerExecutor(user: { id: string; company_id: string }): Wo
           break;
         }
         case 'terminer_pointage': {
-          const row = await stopLiveSession({ startedAt: d.depuis, positionActive: await positionActive(), endTime: d.fin || undefined });
+          // Lot 9 : même geste que « J'ai fini » (lib/live-session.ts) — à tout
+          // moment, à la minute ; moins d'une minute = annulé, sans erreur.
+          // Une fin donnée AVANT le début serait annulée sans un mot par le
+          // serveur : on le dit d'abord, pour que l'heure soit corrigée. Sauf
+          // la NUIT À CHEVAL : chrono ouvert un jour précédent, fin avant le
+          // début = fin le lendemain (même règle que finish_active_session).
+          const jourChrono = parisDayOf(d.depuis);
+          // Chrono resté ouvert depuis un jour précédent, sans heure de fin : on
+          // ne devine pas (ce serait une ligne de presque 24 h) — on demande.
+          if (!d.fin && jourChrono < today()) {
+            return { ok: false, message: `Pointage resté ouvert depuis le ${jourChrono} à ${parisHHmm(d.depuis)} : indiquez l’heure de fin.` };
+          }
+          const lendemain = !!d.fin && d.fin < parisHHmm(d.depuis) && jourChrono < today();
+          if (d.fin && d.fin <= parisHHmm(d.depuis) && !lendemain) {
+            return { ok: false, message: `Heure de fin avant le début (${parisHHmm(d.depuis)}) : indiquez une heure après.` };
+          }
+          const r = await finishLiveSession({ userId: user.id, startedAt: d.depuis, positionActive: await positionActive(), endTime: d.fin || undefined });
           announceLiveChange();
-          message = row ? `Pointage fermé — ${row.start_time.slice(0, 5)} à ${row.end_time.slice(0, 5)}.` : 'Pointage fermé.';
+          if (r.kind === 'stale') return { ok: false, message: 'Ce pointage était déjà fermé (borne ou autre appareil).' };
+          if (r.kind === 'too_short') return { ok: false, message: 'Rien à compter pour l’instant : réessayez dans quelques minutes, ou annulez le pointage.' };
+          // Rien n'a été écrit : « Annuler » remet simplement le chrono en route.
+          const relancer = async () => {
+            const { error } = await supabase.from('active_sessions').insert({
+              user_id: user.id, company_id: user.company_id, worksite_id: d.worksite_id, planning_id: null, work_date: jourChrono, started_at: d.depuis,
+            });
+            if (error) throw error;
+            announceLiveChange();
+          };
+          if (r.kind === 'cancelled') {
+            message = d.fin ? 'Pointage annulé : rien n’est noté.' : 'Pointage annulé (moins d’une minute) : rien n’est noté.';
+            if (d.worksite_id) undo = relancer;
+            break;
+          }
+          const row = r;
+          message = `Pointage fermé — ${row.start_time.slice(0, 5)} à ${row.end_time.slice(0, 5)}${row.end_time.slice(0, 5) < row.start_time.slice(0, 5) ? ' (le lendemain)' : ''}.`;
           // Annuler : on retire la ligne créée et le chrono repart de l'heure d'origine.
-          if (row && d.worksite_id) {
+          if (d.worksite_id) {
             undo = async () => {
-              const { data } = await supabase.from('time_entries').select('id').eq('user_id', user.id).eq('work_date', today())
+              const { data } = await supabase.from('time_entries').select('id').eq('user_id', user.id).eq('work_date', jourChrono)
                 .eq('start_time', row.start_time).eq('end_time', row.end_time).eq('status', 'draft').order('created_at', { ascending: false }).limit(1);
               const id = (data as { id: string }[] | null)?.[0]?.id;
               if (!id) throw new Error('La ligne a déjà été envoyée : corrigez-la dans « Ma journée ».');
               await deleteDrafts([id]);
-              const { error } = await supabase.from('active_sessions').insert({
-                user_id: user.id, company_id: user.company_id, worksite_id: d.worksite_id, planning_id: null, work_date: today(), started_at: d.depuis,
-              });
-              if (error) throw error;
-              announceLiveChange();
+              await relancer();
             };
           }
           break;

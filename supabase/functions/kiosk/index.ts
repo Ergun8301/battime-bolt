@@ -5,11 +5,16 @@
 //   BUREAU (jeton d'un admin connecté)
 //     create_pairing  → code à 6 chiffres, valable 10 minutes
 //     revoke          → retire une borne, immédiatement
-//     settings        → options (planning, GPS) et horaires d'ouverture
+//     settings        → options (GPS) et horaires d'ouverture
 //
 //   TABLETTE (aucun compte : le code d'appairage, puis son jeton de borne)
 //     pair            → échange le code contre un jeton + la graine du QR
-//     sync            → « je suis toujours là » ; relit réglages et planning
+//     sync            → « je suis toujours là » ; relit les réglages (et
+//                       l'ancien planning du jour, pour les tablettes qui ont
+//                       encore l'ancienne page en cache)
+//     board           → lot 9 : le planning de la SEMAINE, lecture seule —
+//                       prénom, nom, chantier, ville, horaires prévus, « en
+//                       cours depuis » (voir _shared/kiosk-board.ts)
 //
 //   SALARIÉ (le QR, puis son propre jeton)
 //     ticket          → vérifie le code du QR, rend un ticket de 5 minutes
@@ -17,9 +22,10 @@
 //     punch           → arrivée ou départ, AU NOM DU SALARIÉ
 //
 // LE POINTAGE N'EST PAS RÉÉCRIT. L'arrivée est une insertion dans
-// `active_sessions`, le départ un appel à `stop_active_session`, tous deux faits
-// avec le jeton du salarié — donc ses policies, ses triggers, l'arrondi au
-// quart d'heure, le mois clôturé : exactement le chemin de l'appli.
+// `active_sessions`, le départ un appel à `finish_active_session` (lot 9 : la
+// même fermeture que l'appli ; à défaut, l'ancien `stop_active_session`), tous
+// deux faits avec le jeton du salarié — donc ses policies, ses triggers,
+// l'arrondi, le mois clôturé : exactement le chemin de l'appli.
 //
 // L'interrupteur `companies.kiosk_enabled` est vérifié à CHAQUE action : une
 // entreprise qui ne l'a pas n'obtient rien, pas même un code.
@@ -37,8 +43,12 @@ import {
   KIOSK_DIGITS, KIOSK_STEP_SECONDS,
 } from '../_shared/kiosk-code.ts';
 import {
-  checkScan, decideAction, parisDate, parisTime, REFUSAL_MESSAGES,
+  checkScan, decideAction, parisDate, parisTime, rpcMissing, REFUSAL_MESSAGES,
 } from '../_shared/kiosk-rules.ts';
+import {
+  buildBoard, parisWeek,
+  type BoardPlanning, type BoardSession, type BoardUser, type BoardWorksite,
+} from '../_shared/kiosk-board.ts';
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -79,7 +89,10 @@ function sixDigits(): string {
 }
 
 async function companyEnabled(admin: SupabaseClient, companyId: string): Promise<boolean> {
-  const { data } = await admin.from('companies').select('kiosk_enabled').eq('id', companyId).maybeSingle();
+  // Une panne de lecture n'est PAS « borne désactivée » : on la fait remonter
+  // (500), sinon la tablette effacerait son appairage sur un simple incident.
+  const { data, error } = await admin.from('companies').select('kiosk_enabled').eq('id', companyId).maybeSingle();
+  if (error) throw error;
   return !!(data as { kiosk_enabled?: boolean } | null)?.kiosk_enabled;
 }
 
@@ -153,9 +166,11 @@ async function adminAction(admin: SupabaseClient, req: Request, action: string, 
 
   if (action === 'settings') {
     const hhmm = (v: unknown) => (typeof v === 'string' && /^\d{2}:\d{2}$/.test(v) ? v : null);
+    // Lot 9 : `show_planning` n'est plus écrit (la borne affiche toujours la
+    // semaine). La colonne reste ; une ligne existante garde sa valeur, une
+    // nouvelle prend celle par défaut de la base.
     const row = {
       company_id: profile.company_id,
-      show_planning: body.show_planning === true,
       require_gps: body.require_gps === true,
       active_from: hhmm(body.active_from),
       active_until: hhmm(body.active_until),
@@ -224,9 +239,12 @@ async function pair(admin: SupabaseClient, req: Request, body: Record<string, un
 }
 
 async function kioskFromToken(admin: SupabaseClient, body: Record<string, unknown>) {
-  const { data } = await admin.from('kiosks')
+  // Même règle : une panne n'est pas « borne retirée » (seul un id mal formé,
+  // 22P02, veut dire « borne inconnue »).
+  const { data, error } = await admin.from('kiosks')
     .select('id, company_id, name, token_hash, revoked_at')
     .eq('id', String(body.kiosk_id || '')).maybeSingle();
+  if (error && error.code !== '22P02') throw error;
   const k = data as { id: string; company_id: string; name: string; token_hash: string; revoked_at: string | null } | null;
   if (!k || k.token_hash !== await sha256Hex(String(body.token || ''))) return null;
   return k;
@@ -243,7 +261,9 @@ async function sync(admin: SupabaseClient, body: Record<string, unknown>) {
   const { data: c } = await admin.from('companies').select('name').eq('id', k.company_id).maybeSingle();
 
   // Planning du jour : prénom + horaire, RIEN D'AUTRE (ni heures faites, ni
-  // chantier, ni paie). Seulement si l'entreprise l'a demandé.
+  // chantier, ni paie). Seulement si l'entreprise l'a demandé. Lot 9 : la
+  // nouvelle borne ne le lit plus (action `board`) ; gardé tel quel pour les
+  // tablettes qui ont encore l'ancienne page en cache.
   let planning: { first_name: string; start: string | null; end: string | null }[] = [];
   if (settings.show_planning) {
     const { data: rows } = await admin.from('planning')
@@ -258,6 +278,50 @@ async function sync(admin: SupabaseClient, body: Record<string, unknown>) {
       .sort((a, b) => (a.start || '99').localeCompare(b.start || '99') || a.first_name.localeCompare(b.first_name));
   }
   return json({ revoked: false, kiosk_name: k.name, company_name: (c as { name?: string } | null)?.name || '', settings, planning });
+}
+
+// Lot 9 — le planning de la semaine, en lecture seule. Mêmes contrôles que
+// `sync` (jeton → 401, borne retirée → 410, interrupteur → 403), mais AUCUNE
+// écriture : la tablette l'appelle toutes les 30 secondes.
+//
+// Rien ne vient du corps de la requête à part le jeton : ni entreprise, ni
+// salarié, ni date. Chaque lecture porte `company_id` = celle de la borne, avec
+// des colonnes explicites ; `buildBoard` ne garde ensuite que la liste blanche.
+async function board(admin: SupabaseClient, body: Record<string, unknown>) {
+  const k = await kioskFromToken(admin, body);
+  if (!k) return json({ error: 'Borne inconnue', revoked: true }, 401);
+  if (k.revoked_at) return json({ error: REFUSAL_MESSAGES.kiosk_revoked, revoked: true }, 410);
+  if (!(await companyEnabled(admin, k.company_id))) return json({ error: REFUSAL_MESSAGES.kiosk_disabled, disabled: true }, 403);
+
+  const nowMs = Date.now();
+  const week = parisWeek(nowMs);
+  const [u, p, s] = await Promise.all([
+    // Les mêmes salariés que la grille du bureau (admin-planning.tsx) : poseurs
+    // et chefs d'équipe actifs, par prénom.
+    admin.from('users').select('id, first_name, last_name')
+      .eq('company_id', k.company_id).in('role', ['worker', 'lead']).eq('is_active', true).order('first_name'),
+    admin.from('planning')
+      .select('id, user_id, worksite_id, work_date, estimated_start, estimated_end, absence_type, position, created_at')
+      .eq('company_id', k.company_id).gte('work_date', week.days[0]).lte('work_date', week.days[6]),
+    admin.from('active_sessions').select('user_id, worksite_id, planning_id, work_date, started_at')
+      .eq('company_id', k.company_id),
+  ]);
+  if (u.error || p.error || s.error) {
+    console.error('[kiosk] board', u.error || p.error || s.error);
+    return json({ error: 'Planning indisponible' }, 500);
+  }
+  const planning = (p.data || []) as BoardPlanning[];
+  const sessions = (s.data || []) as BoardSession[];
+  // Seulement les chantiers cités cette semaine, et seulement ceux de l'entreprise.
+  const siteIds = [...new Set([...planning, ...sessions].map((r) => r.worksite_id).filter((id): id is string => !!id))];
+  let worksites: BoardWorksite[] = [];
+  if (siteIds.length) {
+    const { data, error } = await admin.from('worksites').select('id, client_name, city')
+      .eq('company_id', k.company_id).in('id', siteIds);
+    if (error) { console.error('[kiosk] board worksites', error); return json({ error: 'Planning indisponible' }, 500); }
+    worksites = (data || []) as BoardWorksite[];
+  }
+  return json(buildBoard({ users: (u.data || []) as BoardUser[], planning, worksites, sessions, nowMs }));
 }
 
 // ── SALARIÉ ─────────────────────────────────────────────────────────────────
@@ -334,6 +398,7 @@ async function punch(admin: SupabaseClient, req: Request, body: Record<string, u
 
   let worksiteName: string | null = null;
   let range: { start: string; end: string } | null = null;
+  let cancelled = false;
 
   if (action === 'arrival') {
     const { data: plans } = await admin.from('planning').select('id, worksite_id')
@@ -356,17 +421,35 @@ async function punch(admin: SupabaseClient, req: Request, body: Record<string, u
     const { data: w } = await admin.from('worksites').select('client_name').eq('id', worksiteId).maybeSingle();
     worksiteName = (w as { client_name?: string } | null)?.client_name ?? null;
   } else {
-    const { data, error } = await asUser.rpc('stop_active_session', { p_end: null });
-    if (error) {
-      if (error.code === 'BT001' || /m[êe]me quart d/i.test(error.message)) return refuse('too_short', 409);
-      if (/clôturé/i.test(error.message)) return refuse('month_closed', 409);
-      // Deux scans simultanés : le premier a déjà fermé le pointage.
-      if (/aucun pointage en cours/i.test(error.message)) return refuse('double_scan', 409);
-      console.error('[kiosk] departure', error);
+    // Lot 9 : « une seule logique » de fermeture, celle de l'appli. Moins d'une
+    // minute → le chrono est supprimé et rien n'est enregistré (cancelled).
+    // La position n'est PAS transmise : à la borne, elle n'est que comparée,
+    // jamais enregistrée (même appel qu'aujourd'hui, positions nulles).
+    const fin = await asUser.rpc('finish_active_session', { p_end: null, p_lat: null, p_lng: null, p_accuracy: null });
+    if (rpcMissing(fin.error)) {
+      // Migration pas encore passée : l'ancien chemin, inchangé.
+      const { data, error } = await asUser.rpc('stop_active_session', { p_end: null });
+      if (error) {
+        if (error.code === 'BT001' || /m[êe]me quart d/i.test(error.message)) return refuse('too_short', 409);
+        if (/clôturé/i.test(error.message)) return refuse('month_closed', 409);
+        // Deux scans simultanés : le premier a déjà fermé le pointage.
+        if (/aucun pointage en cours/i.test(error.message)) return refuse('double_scan', 409);
+        console.error('[kiosk] departure', error);
+        return json({ error: 'Départ non enregistré. Réessayez.' }, 500);
+      }
+      const row = (Array.isArray(data) ? data[0] : data) as { start_time: string; end_time: string } | null;
+      if (row) range = { start: row.start_time.slice(0, 5), end: row.end_time.slice(0, 5) };
+    } else if (fin.error) {
+      if (/clôturé/i.test(fin.error.message)) return refuse('month_closed', 409);
+      if (/aucun pointage en cours/i.test(fin.error.message)) return refuse('double_scan', 409);
+      console.error('[kiosk] departure', fin.error);
       return json({ error: 'Départ non enregistré. Réessayez.' }, 500);
+    } else {
+      const row = (Array.isArray(fin.data) ? fin.data[0] : fin.data) as
+        { start_time: string | null; end_time: string | null; cancelled: boolean | null } | null;
+      if (row?.cancelled) cancelled = true;
+      else if (row?.start_time && row?.end_time) range = { start: row.start_time.slice(0, 5), end: row.end_time.slice(0, 5) };
     }
-    const row = (Array.isArray(data) ? data[0] : data) as { start_time: string; end_time: string } | null;
-    if (row) range = { start: row.start_time.slice(0, 5), end: row.end_time.slice(0, 5) };
   }
 
   await admin.from('kiosk_punches').insert({ company_id: kiosk!.company_id, kiosk_id: kiosk!.id, user_id: profile.id, kind: action });
@@ -375,6 +458,8 @@ async function punch(admin: SupabaseClient, req: Request, body: Record<string, u
   return json({
     kind: action, time: parisTime(now), first_name: profile.first_name || '',
     kiosk_name: kiosk!.name, worksite_name: worksiteName, range,
+    // Lot 9 : départ moins d'une minute après l'arrivée → rien d'enregistré.
+    ...(cancelled ? { cancelled: true } : {}),
   });
 }
 
@@ -390,6 +475,7 @@ Deno.serve(async (req) => {
         return await adminAction(admin, req, action, body);
       case 'pair': return await pair(admin, req, body);
       case 'sync': return await sync(admin, body);
+      case 'board': return await board(admin, body);
       case 'ticket': return await ticket(admin, body);
       case 'punch': return await punch(admin, req, body);
       default: return json({ error: 'Action inconnue' }, 400);

@@ -7,6 +7,7 @@
 // hors-ligne (file du téléphone) reste dans l'écran.
 import { supabase } from '@/lib/supabase';
 import { planningsToMaterialise, remainingPlannings } from '@/lib/work-status';
+import { cellKey, placeLive, type LiveSessionLike } from '@/supabase/functions/_shared/live-place';
 
 export interface DayUser { id: string; company_id: string }
 export interface PlannedLine { planningId: string; worksiteId: string; start: string; end: string }
@@ -132,9 +133,11 @@ export async function copyLinesTo(user: DayUser, sources: CopySource[], targets:
  * puis bascule. Le hors-ligne reste l'affaire de l'écran.
  */
 export async function sendWorkerDay(user: DayUser, date: string): Promise<{ sent: number; expected: number }> {
-  const [{ data: entries, error: e1 }, { data: plans, error: e2 }] = await Promise.all([
+  const [{ data: entries, error: e1 }, { data: plans, error: e2 }, { data: sess }] = await Promise.all([
     supabase.from('time_entries').select('id, status, locked, worksite_id, planning_id').eq('user_id', user.id).eq('work_date', date),
     supabase.from('planning').select('id, worksite_id, absence_type, estimated_start, estimated_end').eq('user_id', user.id).eq('work_date', date),
+    // Lot 9 : le chrono ouvert. Une lecture qui échoue ne bloque pas l'envoi.
+    supabase.from('active_sessions').select('user_id, worksite_id, planning_id, work_date, started_at').eq('user_id', user.id).maybeSingle(),
   ]);
   if (e1) throw e1;
   if (e2) throw e2;
@@ -142,7 +145,14 @@ export async function sendWorkerDay(user: DayUser, date: string): Promise<{ sent
   const planning = (plans || []) as { id: string; worksite_id: string | null; absence_type: string | null; estimated_start: string | null; estimated_end: string | null }[];
   const todo = remainingPlannings(planning.filter((p) => p.worksite_id && !p.absence_type),
     rows.map((e) => ({ worksite_id: e.worksite_id, planning_id: e.planning_id })));
-  const planned = planningsToMaterialise(todo);
+  // Le prévu où le chrono TOURNE ne part pas : « J'ai fini » écrira ses heures,
+  // le matérialiser les compterait deux fois. Même règle que l'écran
+  // (placeLive : planning du chrono, sinon même chantier — jamais le premier).
+  const live = sess as LiveSessionLike | null;
+  const liveSlot = live && live.work_date === date
+    ? placeLive([live], todo.map((p) => ({ id: p.id, user_id: user.id, worksite_id: p.worksite_id ?? null, work_date: date }))).get(cellKey(user.id, date))?.slotId ?? null
+    : null;
+  const planned = planningsToMaterialise(todo.filter((p) => p.id !== liveSlot));
   const draftIds = rows.filter((e) => e.status === 'draft' && !e.locked).map((e) => e.id);
   const newIds = await materialisePlanned(user, date, planned);
   const all = [...draftIds, ...newIds];

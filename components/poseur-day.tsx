@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Calendar } from '@/components/ui/calendar';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Loader2, Copy, AlertTriangle, FolderOpen, Trash2, Paperclip, Hammer, CheckCircle2, MapPin, Sparkles } from 'lucide-react';
+import { Loader2, Copy, AlertTriangle, FolderOpen, Trash2, Paperclip, Hammer, CheckCircle2, MapPin, Sparkles, Play } from 'lucide-react';
 import { format, subDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -25,6 +25,11 @@ import { positionUtile, fmtPrecision, fmtCoord } from '@/lib/position';
 import { parisHHmm } from '@/lib/utils';
 import { TimeCylinder, snapToGrid } from '@/components/time-cylinder';
 import LiveTimer from '@/components/live-timer';
+import { useOwnLiveSession, startLiveSession, announceLiveChange } from '@/lib/live-session';
+import { geoInfoSeen, markGeoInfoSeen } from '@/lib/position-info';
+import GeoInfoDialog from '@/components/geo-info-dialog';
+import { LiveLine } from '@/components/planning-bubble';
+import { placeLive, cellKey } from '@/supabase/functions/_shared/live-place';
 import TeamDay from '@/components/team-day';
 import ChantierDocuments from '@/components/chantier-documents';
 
@@ -118,6 +123,29 @@ const toMin = (t: string) => { const [h, m] = t.split(':').map(Number); return (
  */
 const GAP_ASK_MAX_MINUTES = 120;
 
+/**
+ * Le panier coché sur une journée ENCORE VIDE (lot 9).
+ *
+ * Le panier vit sur une ligne d'heures (`meal_allowance`, une seule par jour).
+ * Sans ligne, il n'y avait rien sur quoi l'écrire : le salarié cochait, aucune
+ * erreur, et la relecture suivante le décochait sans un mot. L'intention est
+ * maintenant gardée (à l'écran, et sur le téléphone par commodité) et posée
+ * sur la première ligne qui apparaît : « J'ai fini », « OK », envoi du prévu.
+ */
+const mealIntentKey = (userId: string, date: string) => `bemexo-panier-v1:${userId}:${date}`;
+function readMealIntent(userId: string, date: string): boolean | null {
+  try {
+    const v = window.localStorage.getItem(mealIntentKey(userId, date));
+    return v === '1' ? true : v === '0' ? false : null;
+  } catch { return null; }
+}
+function writeMealIntent(userId: string, date: string, value: boolean) {
+  try { window.localStorage.setItem(mealIntentKey(userId, date), value ? '1' : '0'); } catch { /* stockage indisponible : l'écran garde l'intention */ }
+}
+function clearMealIntent(userId: string, date: string) {
+  try { window.localStorage.removeItem(mealIntentKey(userId, date)); } catch { /* rien à faire */ }
+}
+
 // Pauses = the gaps between consecutive (sorted) slots. Computed, never stored.
 // Les créneaux sont replacés sur une ligne de temps absolue : une intervention
 // qui franchit minuit se prolonge sur le jour suivant, exactement comme dans
@@ -175,15 +203,13 @@ const DAY_CSS = `
 .bt-stat.on{background:#FFC21A}
 .bt-stat.on .bt-stat-n{color:#15120F;font-family:'Archivo',sans-serif;font-size:16px;font-weight:900;line-height:1.1}
 .bt-stat.on .bt-stat-l{color:#7a5e00;font-weight:700}
-
-.bt-meal{display:flex;align-items:center;gap:12px;background:#fff;border:1px solid rgba(21,18,15,.1);border-radius:14px;padding:13px 15px;margin-top:12px}
-.bt-meal-emoji{font-size:22px}
-.bt-meal-t{font-size:15px;font-weight:800;color:#15120F}
-.bt-meal-s{font-size:12.5px;color:#6E6A63;font-weight:500}
-.bt-switch{width:54px;height:31px;background:#cfc8b8;border-radius:30px;position:relative;flex:none;border:none;cursor:pointer;transition:background .15s;padding:0}
-.bt-switch.on{background:#15120F}
-.bt-switch i{position:absolute;top:3px;left:3px;width:25px;height:25px;background:#fff;border-radius:50%;transition:left .15s,background .15s}
-.bt-switch.on i{left:26px;background:#FFC21A}
+/* Lot 9 : la case « Panier » du bloc noir EST l'interrupteur (la ligne blanche
+   « Panier repas » a disparu). Un vrai bouton : grande cible, gants compris. */
+button.bt-stat{border:none;text-align:left;font-family:inherit;cursor:pointer;color:inherit;transition:background .15s,transform .06s}
+button.bt-stat span{display:block}
+button.bt-stat:active{transform:scale(.97)}
+button.bt-stat:disabled{cursor:default;opacity:.55}
+button.bt-stat:focus-visible{outline:2px solid #FFC21A;outline-offset:2px}
 
 .bt-sec{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#9a8a3a;font-weight:700;margin:24px 4px 12px}
 
@@ -247,6 +273,20 @@ const DAY_CSS = `
 .bt-iv-plan{background:transparent;border:1.5px dashed rgba(21,18,15,.28);border-radius:14px;padding:12px 14px;margin-bottom:9px}
 .bt-plan-k{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#9a8a3a;font-weight:700;margin-bottom:4px}
 .bt-plan-btn{width:100%;border:none;background:#15120F;border-radius:11px;padding:13px;font-weight:800;font-size:14.5px;color:#FFC21A;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;margin-top:12px;font-family:inherit}
+
+/* Lot 9 : « Je commence » sur la carte du chantier. Le chantier est celui
+   qu'on touche : plus de liste déroulante à part. */
+.bt-iv-go{display:inline-flex;align-items:center;gap:7px;margin-top:10px;border:none;background:#FFC21A;color:#15120F;border-radius:10px;padding:9px 15px;font-family:inherit;font-weight:900;font-size:14px;cursor:pointer;box-shadow:0 3px 0 #C99300}
+.bt-iv-go:active{transform:translateY(2px);box-shadow:none}
+.bt-iv-go:disabled{opacity:.6;cursor:default}
+/* Le chantier où le chrono tourne : vert, « ● en cours depuis 07:45 ». Pas
+   d'éditeur dessus — les heures s'écrivent à « J'ai fini », pas deux fois. */
+.bt-iv.live,.bt-iv-plan.live{background:#E7F6EE;border:1.5px solid #2FA36B;box-shadow:none}
+.bt-iv-live-k{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#1F7A4D;font-weight:700;margin-bottom:4px}
+.bt-pl-bub-live{display:flex;align-items:center;gap:6px;margin-top:6px;font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:800;color:#1F7A4D}
+.bt-pl-live-dot{width:8px;height:8px;border-radius:50%;background:#2FA36B;flex:none;animation:bt-pl-pulse 1.6s ease-in-out infinite}
+@keyframes bt-pl-pulse{0%,100%{opacity:1}50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.bt-pl-live-dot{animation:none}}
 
 .bt-gap{display:flex;align-items:center;gap:10px;padding:8px 12px;margin:6px 0;border-left:2px dashed rgba(21,18,15,.22);background:rgba(21,18,15,.03);border-radius:0 10px 10px 0}
 .bt-gap-t{flex:1;min-width:0;font-size:12.5px;font-weight:600;color:#56514a}
@@ -355,6 +395,10 @@ const DAY_CSS = `
 .bt-sheet-dur .k{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#a59c86;font-weight:700}
 .bt-sheet-dur .v{font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700;color:#FFC21A}
 .bt-molette{display:flex;justify-content:center;padding:4px 0 2px}
+/* L'heure exacte (pointage à la minute) quand la molette, elle, n'affiche que
+   les quarts d'heure. Tant qu'on ne tourne pas la molette, c'est elle qui reste. */
+.bt-molette-exact{text-align:center;font-size:12px;font-weight:700;color:#a59c86;margin-top:4px}
+.bt-molette-exact b{font-family:'JetBrains Mono',monospace;color:#FFC21A}
 `;
 
 // ─── main ──────────────────────────────────────────────────────────────────────
@@ -394,6 +438,10 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
   const [fObs, setFObs] = useState('');
   const [fReception, setFReception] = useState<'sans' | 'avec' | 'en_cours' | ''>(''); // statut du chantier : en cours / sans / avec réserve (facultatif)
   const [fSaving, setFSaving] = useState(false);
+  // Les heures telles qu'elles étaient à l'ouverture de la fiche (lot 9). Une
+  // ligne pointée à la minute (08:07–16:52) ne doit pas revenir 08:00–16:45
+  // parce qu'on l'a ouverte puis validée : on n'envoie que ce qui a changé.
+  const [fInit, setFInit] = useState<{ start: string; end: string } | null>(null);
   // Chantier picker. « Autre » choisi, le salarié peut dire de quoi il s'agit :
   // le nom qu'il tape devient un vrai chantier de l'entreprise (la policy
   // worksites_worker_insert_own_company l'autorise depuis l'étape 2). Laissé
@@ -430,6 +478,14 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
   // rester rattachée à l'intervention depuis laquelle on l'a prise.
   const [docsWs, setDocsWs] = useState<{ id: string; name: string; entryId: string | null } | null>(null);
   const [fixingId, setFixingId] = useState<string | null>(null);
+  // « Je commence » sur une carte (lot 9) : la carte en cours de démarrage, et
+  // le départ mis en attente derrière l'information sur l'endroit (CNIL).
+  const [starting, setStarting] = useState<string | null>(null);
+  const [geoAsk, setGeoAsk] = useState<{ worksiteId: string; planningId: string | null; key: string } | null>(null);
+  // « Je commence sur un autre chantier » : le choix du chantier quand aucune
+  // carte ne convient (journée vide, chantier non prévu, pas de planning).
+  const [pickStart, setPickStart] = useState(false);
+  const [pickQuery, setPickQuery] = useState('');
   // Suppression d'une intervention : jamais sans confirmation (gant de chantier,
   // écran mouillé — un appui involontaire ne doit pas effacer une demi-journée).
   const [confirmDel, setConfirmDel] = useState<
@@ -611,7 +667,11 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
       setPlanning(planningRes.data || []);
 
       const pendForToday = getPendingEntries(user.id).filter((e) => e.work_date === date);
-      setDayMeal((entriesRes.data || []).some((e: TimeEntryWithWorksite) => e.meal_allowance) || pendForToday.some((e) => e.meal_allowance));
+      const serverMeal = (entriesRes.data || []).some((e: TimeEntryWithWorksite) => e.meal_allowance) || pendForToday.some((e) => e.meal_allowance);
+      // Un panier coché sur une journée vide reste coché à l'écran : il sera
+      // posé sur la première ligne (effet plus bas), jamais décoché en silence.
+      const intent = readMealIntent(user.id, date);
+      setDayMeal(intent ?? serverMeal);
     } catch (err) {
       console.error('Error fetching data:', err);
       toast.error('Impossible de charger tes données');
@@ -714,6 +774,12 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  // Le chrono du salarié, tenu à jour sans recharger (lot 9) : toutes les
+  // 30 s, au retour au premier plan, et quand un autre écran annonce un
+  // changement. Fermé ailleurs (borne, tablette, Assistant) → la journée est
+  // relue : la ligne créée par la fermeture y apparaît.
+  const live = useOwnLiveSession(user?.id, () => { fetchData(); });
+
   useEffect(() => {
     if (user) {
       const pending = getPendingEntries(user.id).filter((e) => e.work_date === date);
@@ -786,7 +852,17 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
   }, [user, date]);
 
   const toggleDayMeal = async (value: boolean, flagModified = false) => {
+    if (!user) return;
     setDayMeal(value);
+    // Journée encore vide : rien sur quoi écrire. On GARDE l'intention, posée
+    // sur la première ligne qui apparaîtra (effet ci-dessous) — jamais perdue.
+    const writable = liveEntries.some((e) => !e.locked && !e.exported_at) || pendingEntries.length > 0;
+    if (!writable) {
+      writeMealIntent(user.id, date, value);
+      toast.message(value ? 'Panier noté — il sera compté avec ta première ligne d’heures.' : 'Panier retiré.');
+      return;
+    }
+    clearMealIntent(user.id, date);
     try {
       const ok = await applyDayMeal(value, flagModified);
       if (!ok) {
@@ -801,27 +877,54 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
     }
   };
 
+  // La première ligne du jour vient d'apparaître (« J'ai fini », « OK », envoi
+  // du prévu, borne…) et un panier attendait : on le pose, UNE fois. Échec →
+  // on le dit (journée verrouillée) plutôt que de le décocher en silence.
+  useEffect(() => {
+    if (!user || loading) return;
+    const intent = readMealIntent(user.id, date);
+    if (intent === null) return;
+    // Seulement les lignes DE CE JOUR : juste après un changement de jour,
+    // l'état contient encore celles du jour précédent (l'intention serait
+    // effacée ou appliquée à tort).
+    const vivantes = entries.filter((e) => e.work_date === date && e.status !== 'cancelled');
+    const pend = pendingEntries.filter((e) => e.work_date === date);
+    if (!vivantes.some((e) => !e.locked && !e.exported_at) && pend.length === 0) return;
+    clearMealIntent(user.id, date);
+    const actuel = vivantes.some((e) => e.meal_allowance) || pend.some((e) => e.meal_allowance);
+    if (actuel === intent) { setDayMeal(intent); return; }
+    applyDayMeal(intent).then((ok) => {
+      if (!ok) toast.error('Panier non pris en compte (journée verrouillée ou hors-ligne)');
+      else setDayMeal(intent);
+      if (navigator.onLine) fetchData();
+    }).catch(() => { toast.error('Panier non pris en compte'); });
+  }, [user, date, loading, entries, pendingEntries, applyDayMeal, fetchData]);
+
   // ─── Inline editor open / save / delete ─────────────────────────────────────
 
+  // L'ARRONDI NE PÉNALISE JAMAIS (lot 9). Les fiches s'ouvrent sur l'heure
+  // ENREGISTRÉE, à la minute — plus de `snapToGrid` à l'ouverture. Avant, une
+  // ligne pointée 08:07–16:52, simplement ouverte puis validée, repartait en
+  // 08:00–16:45 : un quart d'heure perdu sans que personne n'ait rien changé.
+  // La molette n'affiche que les quarts d'heure ; l'heure exacte est rappelée
+  // dessous, et elle ne bouge que si on tourne la molette.
+  const setTimes = (start: string, end: string) => { setFStart(start); setFEnd(end); setFInit({ start, end }); };
   const openPlanned = (p: Planning & { worksite: Worksite }) => {
     if (monthLocked) { setLateOpen(true); return; }
     setOpenSlot({ kind: 'planned', planningId: p.id });
-    setFStart(snapToGrid(p.estimated_start ? p.estimated_start.substring(0, 5) : '08:00'));
-    setFEnd(snapToGrid(p.estimated_end ? p.estimated_end.substring(0, 5) : '17:00'));
+    setTimes(p.estimated_start ? p.estimated_start.substring(0, 5) : '08:00', p.estimated_end ? p.estimated_end.substring(0, 5) : '17:00');
     setFObs('');
     setFReception('');
   };
   const openEntry = (e: TimeEntryWithWorksite) => {
     setOpenSlot({ kind: 'entry', entryId: e.id });
-    setFStart(snapToGrid(e.start_time?.substring(0, 5) || '08:00'));
-    setFEnd(snapToGrid(e.end_time?.substring(0, 5) || '17:00'));
+    setTimes(e.start_time?.substring(0, 5) || '08:00', e.end_time?.substring(0, 5) || '17:00');
     setFObs(e.observation || '');
     setFReception(e.reception || '');
   };
   const openPending = (e: PendingEntry) => {
     setOpenSlot({ kind: 'pending', localId: e.localId });
-    setFStart(snapToGrid(e.start_time.substring(0, 5)));
-    setFEnd(snapToGrid(e.end_time.substring(0, 5)));
+    setTimes(e.start_time.substring(0, 5), e.end_time.substring(0, 5));
     setFObs(e.observation || '');
     setFReception(e.reception || '');
   };
@@ -846,6 +949,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
     const endParis = `${String(Math.floor(endMin / 60)).padStart(2, '0')}:${String(endMin % 60).padStart(2, '0')}`;
     setFStart(startParis);
     setFEnd(endParis);
+    setFInit(null);
     setFObs('');
     setFReception('');
   };
@@ -900,8 +1004,12 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
       if (openSlot.kind === 'entry') {
         const wasSubmitted = entries.find((e) => e.id === openSlot.entryId)?.status === 'submitted';
         if (wasSubmitted) savedMsg = 'Correction envoyée — la secrétaire est prévenue';
+        // On n'envoie une heure que si elle a CHANGÉ : la ligne pointée à la
+        // minute garde sa minute (voir `setTimes`).
         const { data: upd, error } = await supabase.from('time_entries').update({
-          start_time: fStart, end_time: fEnd, break_minutes: 0, observation: fObs.trim() || null,
+          ...(!fInit || fStart !== fInit.start ? { start_time: fStart } : {}),
+          ...(!fInit || fEnd !== fInit.end ? { end_time: fEnd } : {}),
+          break_minutes: 0, observation: fObs.trim() || null,
           reception: fReception || null,
           // Editing an already-sent entry: flag it so the secretary sees the change.
           ...(wasSubmitted ? { modified_at: new Date().toISOString(), modified_by: user.id } : {}),
@@ -1090,7 +1198,10 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
     ]
       .filter((x) => x.s && x.e)
       .sort((a, b) => a.s.localeCompare(b.s));
-    if (slots.some((x, i) => i > 0 && toMin(x.s) < toMin(slots[i - 1].e))) {
+    // Une minute de recouvrement est tolérée (lot 9) : deux pointages qui se
+    // suivent, fermé à 10:15 (fin arrondie au-dessus) et repris à 10:14:50
+    // (début tronqué, 10:14), se touchent d'une minute sans se chevaucher.
+    if (slots.some((x, i) => i > 0 && toMin(x.s) < toMin(slots[i - 1].e) - 1)) {
       warnings.push('Certains chantiers se chevauchent. Vérifie tes heures.');
     }
     return warnings;
@@ -1208,6 +1319,8 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
   const frozen = allSubmitted; // a sent day stays frozen; every change re-asks to confirm
   const isEmpty = liveEntries.length === 0 && pendingEntries.length === 0;
   const isEditable = (e: TimeEntryWithWorksite) => !e.locked && !e.exported_at;
+  // Toutes les lignes du jour sont chez le comptable : le panier ne se pose plus nulle part.
+  const mealLocked = liveEntries.length > 0 && pendingEntries.length === 0 && liveEntries.every((e) => !isEditable(e));
 
   // Appariement LIGNE À LIGNE, et pas « ce chantier a déjà une ligne » : deux
   // créneaux prévus sur le même chantier demandent deux lignes pour disparaître
@@ -1231,14 +1344,38 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
   );
 
   /**
+   * Le chrono ouvert, placé sur SA carte (lot 9) — même règle que le bureau et
+   * la borne (`placeLive`, supabase/functions/_shared/live-place.ts) : le
+   * planning du chrono, sinon le même chantier, JAMAIS « la première carte ».
+   * Seules les cartes « prévu » sont candidates : une ligne déjà notée est du
+   * travail fini, pas ce qui tourne. Chantier pointé sans carte (borne,
+   * « Autre ») → une carte verte à part. Même jour seulement.
+   */
+  const liveSession = live.session;
+  const liveHere = !!user && !!liveSession && liveSession.work_date === date;
+  const livePlace = liveHere && user && liveSession
+    ? placeLive([liveSession], plannedTodo.map((p) => ({ id: p.id, user_id: user.id, worksite_id: p.worksite_id, work_date: date })))
+      .get(cellKey(user.id, date))
+    : undefined;
+  const liveSlotId = livePlace?.slotId ?? null;
+  const liveSince = livePlace?.since ?? '';
+  const liveSynthetic = !!livePlace && !liveSlotId;
+  // Un seul chrono par salarié : « Je commence » n'apparaît que sur le jour
+  // courant, en ligne, mois ouvert, et quand on SAIT qu'aucun chrono ne tourne.
+  const canStartLive = date === mountedToday && isOnline && !monthLocked && live.known && !liveSession;
+
+  /**
    * Les chantiers prévus par le bureau que le salarié n'a pas ouverts : ils
    * partent AVEC le reste de la feuille.
    *
    * La règle (absence exclue, doublons fondus, horaires du bureau) vit dans
    * `lib/work-status.ts` — elle décide de ce qui part en paie, donc elle doit
    * pouvoir être mise au banc plutôt que se cacher dans un rendu.
+   *
+   * La carte « en cours » ne part PAS (lot 9) : ses heures seront écrites par
+   * « J'ai fini ». La matérialiser les compterait deux fois.
    */
-  const plannedToSend = planningsToMaterialise(plannedTodo);
+  const plannedToSend = planningsToMaterialise(plannedTodo.filter((p) => p.id !== liveSlotId));
 
   /**
    * Y a-t-il quelque chose à envoyer ?
@@ -1304,6 +1441,10 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
     ? sortedWorksites.filter((w) => w.client_name.toLowerCase().includes(cq) || (w.city || '').toLowerCase().includes(cq))
     : sortedWorksites;
   const autreId = worksites.find((w) => w.client_name === OTHER_NAME)?.id || '';
+  const pq = pickQuery.trim().toLowerCase();
+  const pickWorksites = pq
+    ? sortedWorksites.filter((w) => w.client_name.toLowerCase().includes(pq) || (w.city || '').toLowerCase().includes(pq))
+    : sortedWorksites;
 
   /**
    * « Autre » nommé : on en fait un vrai chantier.
@@ -1332,15 +1473,71 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
     }
   };
 
+  /**
+   * « Je commence » sur la carte d'un chantier (lot 9).
+   *
+   * Remplace le bloc « Pointer en direct » (liste déroulante + bouton) : le
+   * chantier est celui qu'on touche. Le chrono passe par lib/live-session.ts,
+   * exactement comme l'Assistant BEMEXO et comme avant.
+   *
+   * L'INFORMATION SUR L'ENDROIT RESTE AVANT LA PREMIÈRE COLLECTE (lot 6, CNIL) :
+   * elle est attachée au chrono, et au chrono seulement. « + » (heures à la
+   * main, sans chrono) ne demande jamais l'endroit, donc ne l'affiche pas.
+   *
+   * Sans réseau, pas de chrono : l'heure de départ est posée par le serveur,
+   * jamais par l'horloge du téléphone. On renvoie vers « + ».
+   */
+  const startOnCard = async (worksiteId: string, planningId: string | null, key: string, infoVue = false) => {
+    if (!user?.company_id) return;
+    const sansReseau = 'Pas de réseau : le pointage en direct en a besoin. Note tes heures avec le bouton +.';
+    if (!navigator.onLine) { toast.error(sansReseau); return; }
+    if (positionActive && !infoVue && !geoInfoSeen(user.id)) { setGeoAsk({ worksiteId, planningId, key }); return; }
+    setStarting(key);
+    try {
+      const r = await startLiveSession({
+        userId: user.id, companyId: user.company_id, worksiteId, planningId, workDate: date, positionActive,
+      });
+      // Relu dans tous les cas : un chrono déjà ouvert (23505) doit se montrer.
+      announceLiveChange();
+      if (r.running) { toast.error('Un pointage est déjà en cours.'); return; }
+      toast.success('Pointage démarré');
+    } catch (e) {
+      const msg = (e as { message?: string })?.message || '';
+      toast.error(!navigator.onLine || /failed to fetch|network/i.test(msg) ? sansReseau : msg || 'Impossible de démarrer le pointage.');
+    } finally {
+      setStarting(null);
+    }
+  };
+
+  /** Le bouton « Je commence » d'une carte. `stopPropagation` : la carte, elle, ouvre la fiche. */
+  const startButton = (worksiteId: string | null | undefined, planningId: string | null, key: string) => (
+    canStartLive && worksiteId ? (
+      <button
+        type="button"
+        className="bt-iv-go"
+        data-testid="card-start"
+        disabled={starting !== null}
+        onClick={(ev) => { ev.stopPropagation(); startOnCard(worksiteId, planningId, key); }}
+      >
+        {starting === key ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" fill="currentColor" />} Je commence
+      </button>
+    ) : null
+  );
+
+  /** La carte où le chrono tourne n'ouvre pas de fiche : ses heures s'écrivent à « J'ai fini ». */
+  const tapLive = () => toast.message('Pointage en cours : touche « J’ai fini » en haut quand tu as terminé.');
+
   // Unified list of the day's slots — planned-not-yet-declared, declared entries, and pending
   // (offline) entries — sorted by start time. The card position stays put as soon as the slot
   // has a start time, so filling a planned card no longer makes it jump to the bottom.
   type DayItem =
+    | { kind: 'live'; sort: string; key: string; data: { worksiteId: string | null; since: string } }
     | { kind: 'planned'; sort: string; key: string; data: Planning & { worksite: Worksite } }
     | { kind: 'entry'; sort: string; key: string; data: TimeEntryWithWorksite }
     | { kind: 'pending'; sort: string; key: string; data: PendingEntry }
     | { kind: 'cancelled'; sort: string; key: string; data: TimeEntryWithWorksite };
   const items: DayItem[] = [
+    ...(liveSynthetic ? [{ kind: 'live', sort: liveSince || '99:99', key: 'live', data: { worksiteId: livePlace?.worksite_id ?? null, since: liveSince } } as DayItem] : []),
     ...plannedTodo.map((p): DayItem => ({ kind: 'planned', sort: (p.estimated_start || '99:99').slice(0, 5), key: `p:${p.id}`, data: p })),
     ...liveEntries.map((e): DayItem => ({ kind: 'entry', sort: (e.start_time || '99:99').slice(0, 5), key: `e:${e.id}`, data: e })),
     ...pendingEntries.map((pe): DayItem => ({ kind: 'pending', sort: (pe.start_time || '99:99').slice(0, 5), key: `pe:${pe.localId}`, data: pe })),
@@ -1430,20 +1627,18 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
           />
         )}
 
-        {/* Pointage en direct. Affiché SEULEMENT sur le jour courant : pointer
-            « en direct » sur une journée passée n'a pas de sens, et la saisie à
-            la main reste là pour ça. Un chrono resté ouvert d'un autre jour
-            s'affiche quand même, pour qu'on puisse le fermer. */}
-        {user?.id && user?.company_id && date === mountedToday && (
+        {/* Le chrono qui tourne (« J'ai fini », « Annuler »), SEULEMENT sur le
+            jour courant. Lot 9 : plus de bloc « Pointer en direct » — on
+            démarre depuis la carte du chantier (« Je commence »). Un chrono
+            resté ouvert d'un autre jour s'affiche quand même, pour qu'on
+            puisse le fermer. */}
+        {user?.id && date === mountedToday && (
           <LiveTimer
             userId={user.id}
-            companyId={user.company_id}
+            session={live.session}
             today={date}
             worksites={sortedWorksites}
-            planningIdFor={(wid) => planning.find((p) => p.worksite_id === wid)?.id || null}
-            frozen={monthLocked}
             positionActive={positionActive}
-            onSaved={() => { fetchData(); }}
           />
         )}
         {/* ----- TOTAL DU JOUR ----- */}
@@ -1472,33 +1667,29 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
                 <div className="bt-stat-l">route{travelPaid ? ' · payée' : ''}</div>
               </div>
             )}
-            <div className={`bt-stat${dayMeal ? ' on' : ''}`}>
-              <div className="bt-stat-n">{dayMeal ? 'Panier ✓' : 'Panier'}</div>
-              <div className="bt-stat-l">{dayMeal ? 'repas pris' : 'non pris'}</div>
-            </div>
+            {/* PANIER REPAS — la case EST l'interrupteur (lot 9) : un appui,
+                pris / non pris. Mêmes données qu'avant (meal_allowance, une
+                ligne par jour), mêmes garde-fous : mois clos → fenêtre « Mois
+                clôturé », journée envoyée → confirmation, lignes chez le
+                comptable → grisée. La ligne blanche « Panier repas » a disparu. */}
+            <button
+              type="button"
+              className={`bt-stat${dayMeal ? ' on' : ''}`}
+              aria-label="Panier repas"
+              aria-pressed={dayMeal}
+              data-testid="panier"
+              disabled={mealLocked}
+              title={mealLocked ? 'Journée chez le comptable : vois avec la secrétaire.' : undefined}
+              onClick={() => {
+                if (monthLocked) { setLateOpen(true); return; }
+                if (frozen) { askCorrect(() => toggleDayMeal(!dayMeal, true)); return; }
+                toggleDayMeal(!dayMeal);
+              }}
+            >
+              <span className="bt-stat-n">{dayMeal ? 'Panier ✓' : 'Panier'}</span>
+              <span className="bt-stat-l">{dayMeal ? 'repas pris' : 'non pris'}</span>
+            </button>
           </div>
-        </div>
-
-        {/* ----- PANIER REPAS (toggle, une fois/jour) ----- */}
-        <div className="bt-meal">
-          <span className="bt-meal-emoji">🥪</span>
-          <div style={{ flex: 1 }}>
-            <div className="bt-meal-t">Panier repas</div>
-            <div className="bt-meal-s">{dayMeal ? "Compté pour aujourd'hui" : 'Pour la journée'}</div>
-          </div>
-          <button
-            type="button"
-            className={`bt-switch${dayMeal ? ' on' : ''}`}
-            aria-label="Panier repas"
-            aria-pressed={dayMeal}
-            onClick={() => {
-              if (monthLocked) { setLateOpen(true); return; }
-              if (frozen) { askCorrect(() => toggleDayMeal(!dayMeal, true)); return; }
-              toggleDayMeal(!dayMeal);
-            }}
-          >
-            <i />
-          </button>
         </div>
 
         {/* ----- INTERVENTIONS ----- */}
@@ -1526,12 +1717,29 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
 
           const withGap = (node: ReactNode) => gapRow ? <div key={item.key}>{gapRow}{node}</div> : node;
 
+          // Chantier pointé qui n'a pas de carte ce jour-là (scan de la borne,
+          // « Autre », planning d'un autre chantier) : il se voit quand même.
+          if (item.kind === 'live') {
+            const ws = worksites.find((w) => w.id === item.data.worksiteId);
+            return (
+              <div key={item.key} className="bt-iv live bt-iv-tap" onClick={tapLive} data-testid="card-live">
+                <div className="bt-iv-live-k">Pointage en cours</div>
+                <div className="bt-iv-top">
+                  <span className="bt-iv-name">{ws?.client_name || 'Chantier'}</span>
+                </div>
+                {ws?.city && <div className="bt-iv-city">{ws.city}</div>}
+                <LiveLine since={item.data.since} />
+              </div>
+            );
+          }
+
           if (item.kind === 'planned') {
             const p = item.data;
-            const onTap = monthLocked ? () => setLateOpen(true) : frozen ? () => askCorrect(() => openPlanned(p)) : () => openPlanned(p);
+            const isLive = p.id === liveSlotId;
+            const onTap = isLive ? tapLive : monthLocked ? () => setLateOpen(true) : frozen ? () => askCorrect(() => openPlanned(p)) : () => openPlanned(p);
             return (
-              <div key={item.key} className="bt-iv-plan bt-iv-tap" onClick={onTap}>
-                <div className="bt-plan-k">
+              <div key={item.key} className={`bt-iv-plan bt-iv-tap${isLive ? ' live' : ''}`} onClick={onTap} data-testid={isLive ? 'card-live' : 'card-planned'}>
+                <div className="bt-plan-k" style={isLive ? { color: '#1F7A4D' } : undefined}>
                   {p.estimated_start && p.estimated_end ? `Prévu · ${p.estimated_start.substring(0, 5)}–${p.estimated_end.substring(0, 5)}` : 'Prévu'}
                 </div>
                 <div className="bt-iv-row">
@@ -1542,8 +1750,9 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
                   {p.worksite?.id && (docsByWorksite.get(p.worksite.id) || 0) > 0 && (
                     <span className="bt-iv-docs"><Paperclip className="h-3 w-3" />{docsByWorksite.get(p.worksite.id)}</span>
                   )}
-                  <span className="bt-iv-cta">Mes heures ›</span>
+                  {!isLive && <span className="bt-iv-cta">Mes heures ›</span>}
                 </div>
+                {isLive ? <LiveLine since={liveSince} /> : startButton(p.worksite_id, p.id, item.key)}
               </div>
             );
           }
@@ -1554,7 +1763,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
             const isDraft = entry.status === 'draft' && !entry.locked;
             const onTap = !tappable ? undefined : monthLocked ? () => setLateOpen(true) : frozen ? () => askCorrect(() => openEntry(entry)) : () => openEntry(entry);
             return withGap(
-              <div key={item.key} className={`bt-iv${entry.locked ? ' ok' : entry.status === 'submitted' ? ' sent' : isDraft ? ' draft' : ''}${onTap ? ' bt-iv-tap' : ''}`} onClick={onTap}>
+              <div key={item.key} className={`bt-iv${entry.locked ? ' ok' : entry.status === 'submitted' ? ' sent' : isDraft ? ' draft' : ''}${onTap ? ' bt-iv-tap' : ''}`} onClick={onTap} data-testid="card-entry">
                 <div className="bt-iv-top">
                   <span className="bt-iv-name">{entry.worksite?.client_name || OTHER_NAME}</span>
                   {entry.worksite_id && (docsByWorksite.get(entry.worksite_id) || 0) > 0 && (
@@ -1649,6 +1858,10 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
                 {entry.reception === 'sans' && <div className="bt-iv-reserve sans">✓ Sans réserve</div>}
                 {entry.reception === 'en_cours' && <div className="bt-iv-reserve encours">🔨 Chantier en cours</div>}
                 {entry.observation && <div className="bt-iv-note">{entry.observation}</div>}
+                {/* Reprendre ce chantier (l'après-midi, après la pause) : un
+                    nouveau chrono, rattaché au prévu restant de ce chantier s'il
+                    y en a un. La ligne déjà notée, elle, ne bouge pas. */}
+                {startButton(entry.worksite_id, plannedTodo.find((p) => p.worksite_id === entry.worksite_id)?.id ?? entry.planning_id ?? null, item.key)}
               </div>
             );
           }
@@ -1691,7 +1904,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
         })}
 
         {/* Vide → astuce + copier hier */}
-        {isEmpty && plannedTodo.length === 0 && (
+        {isEmpty && plannedTodo.length === 0 && !liveSynthetic && (
           <div className="bt-empty">
             <div>Aucun chantier aujourd&apos;hui.</div>
             {isOnline && !monthLocked && (
@@ -1699,6 +1912,21 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
                 {copyingYesterday ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />} Copier la journée d&apos;hier
               </button>
             )}
+          </div>
+        )}
+
+        {/* Journée SANS AUCUNE carte (pas de planning, rien de saisi) : le
+            chrono se lance quand même, SANS écrire d'heures à la main (« + »
+            puis « Je commence » ferait deux lignes pour le même travail). Même
+            chemin et mêmes garde-fous que sur une carte. Dès qu'il y a une
+            carte, « Je commence » est sur la carte (demande d'Ergun : pas de
+            liste de chantiers sous les cartes). */}
+        {canStartLive && isEmpty && plannedTodo.length === 0 && (
+          <div style={{ textAlign: 'center' }}>
+            <button type="button" className="bt-ghostbtn" data-testid="start-other" disabled={starting !== null}
+              onClick={() => { setPickQuery(''); setPickStart(true); }}>
+              {starting?.startsWith('o:') ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" fill="currentColor" />} Je commence sur un autre chantier
+            </button>
           </div>
         )}
 
@@ -1940,6 +2168,14 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
                   onChange={(v) => (drawerField === 'end' ? setFEnd(v) : setFStart(v))}
                 />
               </div>
+              {(() => {
+                const cur = drawerField === 'end' ? fEnd : fStart;
+                return cur && snapToGrid(cur) !== cur ? (
+                  <div className="bt-molette-exact" data-testid="heure-exacte">
+                    Heure exacte gardée : <b>{cur}</b> — la molette ne montre que les quarts d&apos;heure.
+                  </div>
+                ) : null;
+              })()}
               <button type="button" className="bt-save" style={{ marginTop: 14 }} onClick={() => setDrawerField(null)}>
                 Valider les heures ✓
               </button>
@@ -2035,6 +2271,47 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Le chantier du chrono, quand aucune carte ne convient. Le planning du
+          jour sur ce chantier est rattaché s'il existe (même règle que les
+          cartes), sinon aucun : la carte verte « à part » le montrera. */}
+      <Dialog open={pickStart} onOpenChange={setPickStart}>
+        <DialogContent className="max-w-sm" data-testid="start-other-sheet">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Play className="h-5 w-5" /> Sur quel chantier&nbsp;?</DialogTitle>
+          </DialogHeader>
+          <input className="bt-site-search" placeholder="Rechercher un chantier…" value={pickQuery} onChange={(e) => setPickQuery(e.target.value)} />
+          <div style={{ maxHeight: '52vh', overflowY: 'auto' }}>
+            {pickWorksites.length === 0 && <div className="bt-site-empty">Aucun chantier trouvé</div>}
+            {pickWorksites.map((ws) => {
+              const isOther = ws.client_name === OTHER_NAME;
+              const planningId = plannedTodo.find((p) => p.worksite_id === ws.id)?.id
+                ?? planning.find((p) => p.worksite_id === ws.id && !p.absence_type)?.id ?? null;
+              return (
+                <button key={ws.id} type="button" className={`bt-site${isOther ? ' other' : ''}`}
+                  onClick={() => { setPickStart(false); startOnCard(ws.id, planningId, `o:${ws.id}`); }}>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span className="bt-site-name">{isOther ? 'Autre chantier' : ws.client_name}</span>
+                    <span className="bt-site-city">{isOther ? 'Travail non prévu, à préciser' : (ws.city || '')}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-xs text-muted-foreground">Le chrono démarre tout de suite&nbsp;; rien n&apos;est compté avant « J&apos;ai fini ».</p>
+        </DialogContent>
+      </Dialog>
+
+      {/* L'information sur l'endroit, UNE fois, avant le premier chrono (lot 6) :
+          le départ attend « J'ai compris », puis repart tout seul. */}
+      {geoAsk && user && (
+        <GeoInfoDialog onOk={() => {
+          markGeoInfoSeen(user.id);
+          const g = geoAsk;
+          setGeoAsk(null);
+          startOnCard(g.worksiteId, g.planningId, g.key, true);
+        }} />
+      )}
 
       {/* La pièce est rattachée au jour affiché, et à l'intervention quand elle
           existe déjà en base. Un créneau prévu ou une saisie encore hors ligne

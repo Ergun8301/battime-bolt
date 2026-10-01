@@ -28,14 +28,38 @@ export async function callKiosk<T>(body: Record<string, unknown>): Promise<Kiosk
 }
 
 export interface KioskSettings {
-  show_planning: boolean;
+  /**
+   * Lot 9 : la borne ne s'en sert plus (elle affiche toujours la semaine). Le
+   * bureau le relit et le RENVOIE tel quel : l'ancienne fonction, tant qu'elle
+   * est en production, écrirait sinon « faux » à la place d'un « vrai ».
+   */
+  show_planning?: boolean;
   require_gps: boolean;
   active_from: string | null;
   active_until: string | null;
 }
 
+/** Ancien planning du jour (`sync`) : gardé pour lire les caches des tablettes d'avant le lot 9. */
 export interface KioskPlanningRow {
   first_name: string;
   start: string | null;
   end: string | null;
+}
+
+// Lot 9 — le planning de la semaine (`board`) : une seule définition, celle du
+// constructeur partagé avec la fonction kiosk.
+export type {
+  KioskBoard, KioskBoardWorker, KioskBoardSlot, KioskBoardAbsence, KioskBoardLiveExtra,
+} from '@/supabase/functions/_shared/kiosk-board';
+
+/** Réponse de `punch` (page /pointer). */
+export interface KioskPunchResult {
+  kind: 'arrival' | 'departure';
+  time: string;
+  first_name: string;
+  kiosk_name: string;
+  worksite_name: string | null;
+  range: { start: string; end: string } | null;
+  /** Lot 9 : départ moins d'une minute après l'arrivée → rien n'est enregistré. */
+  cancelled?: boolean;
 }

@@ -419,8 +419,9 @@ export const WORKER_GUIDE: WorkerGuideEntry[] = [
     etapes: ['Ouvrez le chantier du jour.', 'Bouton « Documents ».', '« Photo » ou « Fichier ».'], lien: 'journee' },
   { mots: ['demander conge', 'conge', 'vacances', 'absence', 'maladie', 'arret'], titre: 'Demander un congé',
     etapes: ['Menu (votre nom en haut à droite) → « Mes congés ».', '« Faire une demande » : type et dates.', '« Envoyer la demande » : le bureau répond.'], lien: 'conges' },
+  // Lot 9 : plus de liste déroulante — on démarre depuis la carte du chantier.
   { mots: ['pointer', 'commencer', 'chrono', 'en direct', 'je commence'], titre: 'Pointer en direct',
-    etapes: ['« Ma journée » → choisissez le chantier.', '« Je commence ».', '« J’ai fini » en partant.'], lien: 'journee' },
+    etapes: ['« Ma journée » → la carte du chantier (pas de carte : « Je commence sur un autre chantier »).', '« Je commence » sur la carte (elle passe au vert).', '« J’ai fini » en partant : l’heure exacte est notée.'], lien: 'journee' },
   { mots: ['envoyer journee', 'envoyer ma journee', 'valider journee', 'envoyer'], titre: 'Envoyer sa journée',
     etapes: ['« Ma journée ».', 'Vérifiez vos chantiers et horaires.', '« Envoyer ma journée → ».'], lien: 'journee' },
   { mots: ['ajouter heure', 'noter heure', 'saisir heure', 'ajouter chantier', 'oublie'], titre: 'Noter ses heures à la main',
@@ -437,7 +438,7 @@ export const WORKER_GUIDE: WorkerGuideEntry[] = [
     etapes: ['Menu (votre nom en haut à droite).', '« Changer ma photo ».'], lien: 'photo' },
   // ── Lot 7 : tout l'écran du salarié (libellés vérifiés par assistant-aide.test.ts) ──
   { mots: ['panier', 'panier repas', 'repas', 'indemnite repas'], titre: 'Cocher le panier repas',
-    etapes: ['« Ma journée ».', 'Case « Panier » du jour.', 'Un seul panier par jour.'], lien: 'journee' },
+    etapes: ['« Ma journée ».', 'Touchez la case « Panier » du bloc noir (pris / non pris).', 'Un seul panier par jour.'], lien: 'journee' },
   { mots: ['modifier mes heures', 'changer horaire', 'erreur d heure', 'corriger mes heures'], titre: 'Changer ses horaires',
     etapes: ['« Ma journée » → touchez la ligne.', 'Changez début et fin.', 'Validez ; si la journée est envoyée, le bureau est prévenu.'], lien: 'journee' },
   { mots: ['retirer', 'enlever un chantier', 'supprimer une ligne', 'pas travaille'], titre: 'Retirer un chantier de sa journée',
@@ -449,7 +450,7 @@ export const WORKER_GUIDE: WorkerGuideEntry[] = [
   { mots: ['annuler ma demande', 'annuler conge', 'retirer ma demande'], titre: 'Annuler une demande de congé',
     etapes: ['Menu → « Mes congés ».', '« Annuler ma demande » (tant qu’elle attend).'], lien: 'conges' },
   { mots: ['annuler pointage', 'je me suis trompe de chantier', 'pointage par erreur'], titre: 'Annuler un pointage en cours',
-    etapes: ['« Pointer en direct ».', 'Annuler le pointage, puis confirmer.', 'Recommencez sur le bon chantier.'], lien: 'journee' },
+    etapes: ['« Ma journée » : le pointage en cours, en haut.', '« Annuler » puis « Oui, annuler ».', '« Je commence » sur la carte du bon chantier.'], lien: 'journee' },
   { mots: ['nouveau chantier', 'chantier pas dans la liste', 'ajouter un chantier', 'autre chantier'], titre: 'Travailler sur un chantier qui n’est pas dans la liste',
     etapes: ['« Ma journée » → « + » → « Autre ».', 'Écrivez le nom : « Ajouter ce chantier ».', 'Le bureau le verra.'], lien: 'journee' },
   { mots: ['envoyer au client', 'email du client', 'partager photo client'], titre: 'Envoyer les photos au client',
