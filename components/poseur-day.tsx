@@ -482,6 +482,10 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
   // le départ mis en attente derrière l'information sur l'endroit (CNIL).
   const [starting, setStarting] = useState<string | null>(null);
   const [geoAsk, setGeoAsk] = useState<{ worksiteId: string; planningId: string | null; key: string } | null>(null);
+  // « Je commence sur un autre chantier » : le choix du chantier quand aucune
+  // carte ne convient (journée vide, chantier non prévu, pas de planning).
+  const [pickStart, setPickStart] = useState(false);
+  const [pickQuery, setPickQuery] = useState('');
   // Suppression d'une intervention : jamais sans confirmation (gant de chantier,
   // écran mouillé — un appui involontaire ne doit pas effacer une demi-journée).
   const [confirmDel, setConfirmDel] = useState<
@@ -1433,6 +1437,10 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
     ? sortedWorksites.filter((w) => w.client_name.toLowerCase().includes(cq) || (w.city || '').toLowerCase().includes(cq))
     : sortedWorksites;
   const autreId = worksites.find((w) => w.client_name === OTHER_NAME)?.id || '';
+  const pq = pickQuery.trim().toLowerCase();
+  const pickWorksites = pq
+    ? sortedWorksites.filter((w) => w.client_name.toLowerCase().includes(pq) || (w.city || '').toLowerCase().includes(pq))
+    : sortedWorksites;
 
   /**
    * « Autre » nommé : on en fait un vrai chantier.
@@ -1903,6 +1911,19 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
           </div>
         )}
 
+        {/* Aucune carte pour ce chantier (pas de planning, chantier non prévu,
+            journée vide) : le chrono se lance quand même, SANS écrire d'heures
+            à la main (« + » puis « Je commence » ferait deux lignes pour le
+            même travail). Même chemin et mêmes garde-fous que sur une carte. */}
+        {canStartLive && (
+          <div style={{ textAlign: 'center' }}>
+            <button type="button" className="bt-ghostbtn" data-testid="start-other" disabled={starting !== null}
+              onClick={() => { setPickQuery(''); setPickStart(true); }}>
+              {starting?.startsWith('o:') ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" fill="currentColor" />} Je commence sur un autre chantier
+            </button>
+          </div>
+        )}
+
         {/* Dupliquer cette journée */}
         {!isEmpty && !monthLocked && (
           <div style={{ textAlign: 'center' }}>
@@ -2242,6 +2263,36 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
               Oui, retirer
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Le chantier du chrono, quand aucune carte ne convient. Le planning du
+          jour sur ce chantier est rattaché s'il existe (même règle que les
+          cartes), sinon aucun : la carte verte « à part » le montrera. */}
+      <Dialog open={pickStart} onOpenChange={setPickStart}>
+        <DialogContent className="max-w-sm" data-testid="start-other-sheet">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Play className="h-5 w-5" /> Sur quel chantier&nbsp;?</DialogTitle>
+          </DialogHeader>
+          <input className="bt-site-search" placeholder="Rechercher un chantier…" value={pickQuery} onChange={(e) => setPickQuery(e.target.value)} />
+          <div style={{ maxHeight: '52vh', overflowY: 'auto' }}>
+            {pickWorksites.length === 0 && <div className="bt-site-empty">Aucun chantier trouvé</div>}
+            {pickWorksites.map((ws) => {
+              const isOther = ws.client_name === OTHER_NAME;
+              const planningId = plannedTodo.find((p) => p.worksite_id === ws.id)?.id
+                ?? planning.find((p) => p.worksite_id === ws.id && !p.absence_type)?.id ?? null;
+              return (
+                <button key={ws.id} type="button" className={`bt-site${isOther ? ' other' : ''}`}
+                  onClick={() => { setPickStart(false); startOnCard(ws.id, planningId, `o:${ws.id}`); }}>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span className="bt-site-name">{isOther ? 'Autre chantier' : ws.client_name}</span>
+                    <span className="bt-site-city">{isOther ? 'Travail non prévu, à préciser' : (ws.city || '')}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-xs text-muted-foreground">Le chrono démarre tout de suite&nbsp;; rien n&apos;est compté avant « J&apos;ai fini ».</p>
         </DialogContent>
       </Dialog>
 

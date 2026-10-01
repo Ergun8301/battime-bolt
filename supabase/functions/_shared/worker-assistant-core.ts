@@ -421,7 +421,7 @@ export const WORKER_GUIDE: WorkerGuideEntry[] = [
     etapes: ['Menu (votre nom en haut à droite) → « Mes congés ».', '« Faire une demande » : type et dates.', '« Envoyer la demande » : le bureau répond.'], lien: 'conges' },
   // Lot 9 : plus de liste déroulante — on démarre depuis la carte du chantier.
   { mots: ['pointer', 'commencer', 'chrono', 'en direct', 'je commence'], titre: 'Pointer en direct',
-    etapes: ['« Ma journée » → la carte du chantier.', '« Je commence » sur la carte (elle passe au vert).', '« J’ai fini » en partant : l’heure exacte est notée.'], lien: 'journee' },
+    etapes: ['« Ma journée » → la carte du chantier (pas de carte : « Je commence sur un autre chantier »).', '« Je commence » sur la carte (elle passe au vert).', '« J’ai fini » en partant : l’heure exacte est notée.'], lien: 'journee' },
   { mots: ['envoyer journee', 'envoyer ma journee', 'valider journee', 'envoyer'], titre: 'Envoyer sa journée',
     etapes: ['« Ma journée ».', 'Vérifiez vos chantiers et horaires.', '« Envoyer ma journée → ».'], lien: 'journee' },
   { mots: ['ajouter heure', 'noter heure', 'saisir heure', 'ajouter chantier', 'oublie'], titre: 'Noter ses heures à la main',

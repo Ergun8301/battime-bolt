@@ -27,6 +27,8 @@ export interface WorkerActionResult {
 export type WorkerActionExecutor = (d: WorkerActionDraft, attachment?: File) => Promise<WorkerActionResult>;
 
 const today = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
+/** Jour (Paris) d'un horodatage : le jour où le chrono a été ouvert. */
+const parisDayOf = (iso: string) => new Date(iso).toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
 const errText = (e: unknown, fallback: string) => (e as { message?: string } | null)?.message || fallback;
 
 const SUMMARY: Record<WorkerActionDraft['type'], string> = {
@@ -98,8 +100,12 @@ export function makeWorkerExecutor(user: { id: string; company_id: string }): Wo
           // Lot 9 : même geste que « J'ai fini » (lib/live-session.ts) — à tout
           // moment, à la minute ; moins d'une minute = annulé, sans erreur.
           // Une fin donnée AVANT le début serait annulée sans un mot par le
-          // serveur : on le dit d'abord, pour que l'heure soit corrigée.
-          if (d.fin && d.fin <= parisHHmm(d.depuis)) {
+          // serveur : on le dit d'abord, pour que l'heure soit corrigée. Sauf
+          // la NUIT À CHEVAL : chrono ouvert un jour précédent, fin avant le
+          // début = fin le lendemain (même règle que finish_active_session).
+          const jourChrono = parisDayOf(d.depuis);
+          const lendemain = !!d.fin && d.fin < parisHHmm(d.depuis) && jourChrono < today();
+          if (d.fin && d.fin <= parisHHmm(d.depuis) && !lendemain) {
             return { ok: false, message: `Heure de fin avant le début (${parisHHmm(d.depuis)}) : indiquez une heure après.` };
           }
           const r = await finishLiveSession({ userId: user.id, startedAt: d.depuis, positionActive: await positionActive(), endTime: d.fin || undefined });
@@ -109,7 +115,7 @@ export function makeWorkerExecutor(user: { id: string; company_id: string }): Wo
           // Rien n'a été écrit : « Annuler » remet simplement le chrono en route.
           const relancer = async () => {
             const { error } = await supabase.from('active_sessions').insert({
-              user_id: user.id, company_id: user.company_id, worksite_id: d.worksite_id, planning_id: null, work_date: today(), started_at: d.depuis,
+              user_id: user.id, company_id: user.company_id, worksite_id: d.worksite_id, planning_id: null, work_date: jourChrono, started_at: d.depuis,
             });
             if (error) throw error;
             announceLiveChange();
@@ -120,11 +126,11 @@ export function makeWorkerExecutor(user: { id: string; company_id: string }): Wo
             break;
           }
           const row = r;
-          message = `Pointage fermé — ${row.start_time.slice(0, 5)} à ${row.end_time.slice(0, 5)}.`;
+          message = `Pointage fermé — ${row.start_time.slice(0, 5)} à ${row.end_time.slice(0, 5)}${row.end_time.slice(0, 5) < row.start_time.slice(0, 5) ? ' (le lendemain)' : ''}.`;
           // Annuler : on retire la ligne créée et le chrono repart de l'heure d'origine.
           if (d.worksite_id) {
             undo = async () => {
-              const { data } = await supabase.from('time_entries').select('id').eq('user_id', user.id).eq('work_date', today())
+              const { data } = await supabase.from('time_entries').select('id').eq('user_id', user.id).eq('work_date', jourChrono)
                 .eq('start_time', row.start_time).eq('end_time', row.end_time).eq('status', 'draft').order('created_at', { ascending: false }).limit(1);
               const id = (data as { id: string }[] | null)?.[0]?.id;
               if (!id) throw new Error('La ligne a déjà été envoyée : corrigez-la dans « Ma journée ».');

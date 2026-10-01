@@ -40,9 +40,15 @@
 --     trop. Le pointage est ANNULÉ SANS ERREUR (aucune ligne d'heures, chrono
 --     effacé) et la fonction le dit : `cancelled = true`.
 --   · Pointage oublié (heure de fin donnée par le salarié, `p_end`) : on prend
---     SON heure, à la minute, telle quelle. Fin ≤ début : rien à compter, même
---     annulation silencieuse (l'écran vérifie avant d'appeler, pour que le
---     salarié corrige plutôt que de perdre son pointage).
+--     SON heure, à la minute, telle quelle. Fin ≤ début LE MÊME JOUR : rien à
+--     compter, même annulation silencieuse (l'écran vérifie avant d'appeler,
+--     pour que le salarié corrige plutôt que de perdre son pointage).
+--   · NUIT À CHEVAL : chrono ouvert un jour PRÉCÉDENT (18:00) et fin donnée
+--     avant le début (00:30) = fin LE LENDEMAIN. La ligne est écrite comme
+--     `stop_active_session` l'a toujours fait (début 18:00, fin 00:30, sur le
+--     jour du début) : `time_entries.total_minutes`, calculé par Postgres,
+--     compte la nuit (+1440). Sans ça, un poste du soir (restauration) ne
+--     pouvait plus être fermé passé minuit. Fin = début : annulé, comme avant.
 --
 -- Le reste est la COPIE de `stop_active_session` (étape 28) : même insertion
 -- (brouillon, panier non coché), même bloc de positions (interrupteur de
@@ -72,6 +78,7 @@ DECLARE
   v_id uuid;
   v_actif boolean;
   v_duree interval;
+  v_nuit boolean;
 BEGIN
   SELECT * INTO s FROM public.active_sessions a WHERE a.user_id = auth.uid() FOR UPDATE;
   IF NOT FOUND THEN
@@ -111,7 +118,10 @@ BEGIN
   ELSE
     -- Pointage oublié : l'heure du salarié, à la minute, telle quelle.
     v_end := date_trunc('minute', p_end)::time;
-    IF v_end <= v_start THEN
+    -- Chrono d'un jour PRÉCÉDENT et fin avant le début : fini le lendemain
+    -- (nuit à cheval), ligne écrite telle quelle, comme stop_active_session.
+    v_nuit := v_end < v_start AND s.work_date < (now() AT TIME ZONE 'Europe/Paris')::date;
+    IF v_end <= v_start AND NOT v_nuit THEN
       DELETE FROM public.active_sessions a
        WHERE a.user_id = s.user_id AND a.started_at = s.started_at;
       RETURN QUERY SELECT NULL::uuid, s.work_date, NULL::time, NULL::time, true;

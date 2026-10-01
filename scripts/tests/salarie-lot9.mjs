@@ -294,6 +294,58 @@ await p.waitForTimeout(1800);
 const post10 = callsTo('POST', '/rest/v1/active_sessions');
 check(post10.length === 1 && typeof post10[0].body?.start_lat === 'number', '10) « J’ai compris » → le pointage démarre (avec l’endroit)');
 
+// ═════ 11 · Journée sans carte : « Je commence sur un autre chantier » (chrono, pas d'heures à la main) ═════
+D.companies[0].position_tracking_enabled = false;
+D.planning = []; D.time_entries = []; D.active_sessions = [];
+await open(); reset();
+check(await p.locator('[data-testid=card-start]').count() === 0, '11) journée vide : aucune carte, donc aucun « Je commence » de carte');
+const other = p.locator('[data-testid=start-other]');
+check(await other.count() === 1 && (await other.innerText()).includes('Je commence sur un autre chantier'), '11) « Je commence sur un autre chantier » proposé');
+await other.click();
+await p.waitForSelector('[data-testid=start-other-sheet]');
+check(await p.locator('[data-testid=start-other-sheet] .bt-site').count() === 4, '11) tous les chantiers actifs au choix (« Autre » compris)');
+await p.waitForTimeout(500); // fin de l'ouverture animée de la fenêtre
+await p.screenshot({ path: `${SH}/salarie-autre-chantier.png` });
+await p.locator('[data-testid=start-other-sheet] .bt-site', { hasText: 'Dépôt Gerland' }).click();
+await p.waitForTimeout(1500);
+const post11 = callsTo('POST', '/rest/v1/active_sessions');
+check(post11.length === 1 && post11[0].body?.worksite_id === 'w3' && post11[0].body?.planning_id === null && post11[0].body?.work_date === today,
+  `11) POST active_sessions (chantier w3, sans planning) : ${JSON.stringify(post11.map((c) => c.body))}`);
+check(callsTo('POST', '/rest/v1/time_entries').length === 0, '11) aucune ligne d’heures écrite à la main');
+check((await p.locator('[data-testid=card-live]').innerText().catch(() => '')).includes('Dépôt Gerland'), '11) carte verte à part « Dépôt Gerland »');
+check(await p.locator('[data-testid=start-other]').count() === 0, '11) bouton retiré une fois le chrono lancé (un seul chrono)');
+// Avec des cartes aussi : un chantier non prévu reste possible.
+D.active_sessions = [];
+D.planning = [{ id: 'p1', company_id: CO, user_id: ME, worksite_id: 'w1', work_date: today, absence_type: null, estimated_start: '08:00:00', estimated_end: '12:00:00', notes: null, worksite: W1 }];
+await open();
+check(await p.locator('[data-testid=card-start]').count() === 1 && await p.locator('[data-testid=start-other]').count() === 1, '11) journée avec carte : « Je commence » sur la carte ET « sur un autre chantier »');
+
+// ═════ 12 · Nuit à cheval : chrono ouvert la veille, fin avant le début = le lendemain (plus de refus) ═════
+const yesterday = new Date(Date.now() - 86400000).toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
+const parisIso = (day, hms) => { // heure de Paris → ISO
+  const guess = Date.parse(`${day}T${hms}Z`);
+  const wall = Date.parse(`${new Date(guess).toLocaleString('sv-SE', { timeZone: 'Europe/Paris' }).replace(' ', 'T')}Z`);
+  return new Date(guess - (wall - guess)).toISOString();
+};
+D.planning = []; D.time_entries = [];
+D.active_sessions = [{ user_id: ME, company_id: CO, worksite_id: 'w1', planning_id: null, work_date: yesterday, started_at: parisIso(yesterday, '22:15:20') }];
+await open(); reset();
+check(/pointage resté ouvert/i.test(await p.locator('[data-testid=live-timer]').innerText().catch(() => '')), '12) chrono de la veille : « Pointage resté ouvert »');
+// Molette par défaut sur 17:00, avant 22:15 : fin le lendemain, DITE avant d'écrire.
+check((await p.locator('[data-testid=fin-lendemain]').innerText().catch(() => '')).includes('le lendemain'), '12) « Fin le lendemain … » affiché sous la molette');
+await p.locator('button:has-text("Fermer ce pointage")').click();
+await p.waitForTimeout(1800);
+const fin12 = callsTo('POST', '/rest/v1/rpc/finish_active_session');
+check(fin12.length === 1 && fin12[0].body?.p_end === '17:00:00', `12) finish_active_session appelée avec p_end=17:00:00 : ${JSON.stringify(fin12.map((c) => c.body))}`);
+const t12 = await bodyText();
+check(!t12.includes('Nuit à cheval') && !t12.includes('Indique une heure') && await errorToasts() === 0, '12) plus de refus « nuit à cheval », aucune erreur');
+// Fin = début la veille : toujours bloqué AVANT l'appel (rien à compter).
+D.active_sessions = [{ user_id: ME, company_id: CO, worksite_id: 'w1', planning_id: null, work_date: yesterday, started_at: parisIso(yesterday, '17:00:20') }];
+await open(); reset();
+await p.locator('button:has-text("Fermer ce pointage")').click();
+await p.waitForTimeout(800);
+check(callsTo('POST', '/rest/v1/rpc/').length === 0 && (await bodyText()).includes('rien à compter'), '12) fin = début : bloqué avant l’appel, message clair');
+
 console.log(`\n${ok} ✅ / ${ko} ❌`);
 await b.close(); srv.close();
 process.exit(ko ? 1 : 0);

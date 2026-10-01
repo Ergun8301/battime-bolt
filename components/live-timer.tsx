@@ -29,7 +29,7 @@ import { finishLiveSession, cancelLiveSession, announceLiveChange, type OwnLiveS
 import { parisHHmm } from '@/lib/utils';
 import { TimeCylinder } from '@/components/time-cylinder';
 import { Square, Clock, AlertTriangle, Loader2, Trash2 } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
+import { addDays, format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import type { Worksite } from '@/lib/types';
@@ -124,6 +124,10 @@ export default function LiveTimer({ userId, session, today, worksites, positionA
   // Fermé d'ici : on le cache tout de suite, et la journée relit (LIVE_CHANGED).
   const done = (startedAt: string) => { setClosed(startedAt); setConfirmCancel(false); announceLiveChange(); };
 
+  // Ouvert un jour PRÉCÉDENT : une fin avant le début est une fin le lendemain
+  // (nuit à cheval, même règle que finish_active_session). Fin = début : rien.
+  const finLendemain = (end: string) => !!session && session.work_date < today && end < parisHHmm(session.started_at);
+
   /**
    * « J'ai fini » — À N'IMPORTE QUEL MOMENT (lot 9).
    *
@@ -140,7 +144,9 @@ export default function LiveTimer({ userId, session, today, worksites, positionA
     if (!session) return;
     // Pointage oublié : une fin avant le début n'a rien à compter, et le serveur
     // l'annulerait sans un mot. On le dit AVANT, pour qu'il corrige l'heure.
-    if (endTime && endTime <= parisHHmm(session.started_at)) { setEndBeforeStart(true); return; }
+    // Sauf la NUIT À CHEVAL : chrono d'un jour précédent, fin avant le début =
+    // fin le lendemain (18:00 → 00:30), écrite comme une ligne de nuit.
+    if (endTime && endTime <= parisHHmm(session.started_at) && !finLendemain(endTime)) { setEndBeforeStart(true); return; }
     setEndBeforeStart(false);
     setBusy(true);
     try {
@@ -149,7 +155,8 @@ export default function LiveTimer({ userId, session, today, worksites, positionA
       const r = await finishLiveSession({ userId, startedAt: session.started_at, positionActive: !!positionActive, endTime });
       if (r.kind === 'saved') {
         done(session.started_at);
-        toast.success(`Pointage fermé — ${r.start_time.slice(0, 5)} à ${r.end_time.slice(0, 5)}`);
+        const nuit = r.end_time.slice(0, 5) < r.start_time.slice(0, 5) ? ' (le lendemain)' : '';
+        toast.success(`Pointage fermé — ${r.start_time.slice(0, 5)} à ${r.end_time.slice(0, 5)}${nuit}`);
       } else if (r.kind === 'cancelled') {
         done(session.started_at);
         toast.message(endTime ? 'Pointage annulé — rien n’a été compté' : 'Pointage annulé (moins d’une minute)');
@@ -251,6 +258,14 @@ export default function LiveTimer({ userId, session, today, worksites, positionA
           <div className="bt-lt-ask">
             <div className="bt-lt-asklab">Tu as fini à quelle heure&nbsp;?</div>
             <TimeCylinder value={endGuess} onChange={(v) => { setEndGuess(v); setEndBeforeStart(false); }} />
+            {/* Fin avant le début sur un chrono de la veille : la nuit compte,
+                et on le DIT avant d'écrire (18:00 → 06:30 = douze heures et demie). */}
+            {finLendemain(endGuess) && (
+              <div className="bt-lt-note" data-testid="fin-lendemain">
+                Fin <b>le lendemain</b> ({format(addDays(parseISO(session.work_date), 1), 'EEEE d MMMM', { locale: fr })}) à {endGuess} :
+                la nuit est comptée sur la journée du début.
+              </div>
+            )}
           </div>
           <div className="bt-lt-row">
             <button type="button" className="bt-lt-btn stop" disabled={busy} onClick={() => stop(endGuess)}>
@@ -260,13 +275,13 @@ export default function LiveTimer({ userId, session, today, worksites, positionA
               Annuler
             </button>
           </div>
-          {/* Fin avant le début : rien à compter. On le dit plutôt que de
-              laisser le serveur annuler sans un mot. Une nuit à cheval sur
-              deux jours se note à la main (« + »). */}
+          {/* Fin = début (ou avant, le même jour) : rien à compter. On le dit
+              plutôt que de laisser le serveur annuler sans un mot. */}
           {endBeforeStart && (
             <div className="bt-lt-note warn">
-              Indique une heure <b>après {startedHHmm}</b>. Nuit à cheval sur deux jours&nbsp;? Annule ce
-              pointage et note tes heures avec le bouton +.
+              {session.work_date < today
+                ? <>Fin et début à la même heure ({startedHHmm})&nbsp;: rien à compter. Indique l&apos;heure où tu as fini.</>
+                : <>Indique une heure <b>après {startedHHmm}</b>.</>}
             </div>
           )}
         </>

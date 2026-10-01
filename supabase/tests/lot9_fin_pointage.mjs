@@ -243,6 +243,32 @@ const count = async (db, sql, params = []) => Number((await db.query(sql, params
   const b6 = (await finish(db)).rows[0];
   check(b6.s === '22:10' && b6.e === '23:59' && b6.work_date === '2026-10-01', `plafond de minuit : 23:59:30 donne ${b6.e} sur le ${b6.work_date}`);
 
+  // Nuit à cheval : chrono ouvert la veille à 22:15, fin donnée 06:30 → ligne
+  // 22:15–06:30 sur le jour du début, 8 h 15 comptées (+1440 du calcul).
+  await reset(db); await asUser(db, U1);
+  await openSession(db, U1, `timestamptz '2026-09-30 22:15:20 Europe/Paris'`);
+  await at('2026-10-01 07:00:00');
+  const n1 = (await finish(db, { end: '06:30' })).rows[0];
+  check(n1.cancelled === false && n1.s === '22:15' && n1.e === '06:30' && n1.work_date === '2026-09-30',
+    `nuit à cheval : veille 22:15 → 06:30 donne ${n1.s}–${n1.e} le ${n1.work_date}, cancelled=${n1.cancelled}`);
+  check(await count(db, `SELECT count(*) n FROM public.time_entries WHERE total_minutes = 495`) === 1, 'nuit à cheval : 8 h 15 comptées (495 min)');
+  check(await count(db, `SELECT count(*) n FROM public.active_sessions`) === 0, 'nuit à cheval : le chrono est fermé');
+
+  // Même jour, fin avant le début : toujours l'annulation silencieuse.
+  await reset(db); await asUser(db, U1);
+  await openSession(db, U1, `timestamptz '2026-10-01 14:00:00 Europe/Paris'`);
+  await at('2026-10-01 18:00:00');
+  const n2 = (await finish(db, { end: '09:00' })).rows[0];
+  check(n2.cancelled === true && await count(db, `SELECT count(*) n FROM public.time_entries`) === 0
+    && await count(db, `SELECT count(*) n FROM public.active_sessions`) === 0, 'même jour, fin avant le début : annulé, ni ligne ni chrono');
+
+  // La veille, fin = début : rien à compter (pas une « nuit » de 0 minute).
+  await reset(db); await asUser(db, U1);
+  await openSession(db, U1, `timestamptz '2026-09-30 17:00:20 Europe/Paris'`);
+  await at('2026-10-01 08:00:00');
+  const n3 = (await finish(db, { end: '17:00' })).rows[0];
+  check(n3.cancelled === true && await count(db, `SELECT count(*) n FROM public.time_entries`) === 0, 'la veille, fin = début : annulé');
+
   // Serveur réglé sur un autre fuseau : les heures restent celles de Paris.
   await reset(db); await asUser(db, U1);
   await db.exec(`SET TimeZone = 'America/New_York'`);
