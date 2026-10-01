@@ -55,10 +55,16 @@ import ReservesReport from '@/components/reserves-report';
 import ImportWorkersDialog from '@/components/import-workers-dialog';
 import LeaveAdminDialog from '@/components/leave-admin-dialog';
 import { CHANTIER_PALETTES, hashStr, LiveLine, PL_GRID_CSS, PlannedBubbleView, type ChantierPalette } from '@/components/planning-bubble';
+import { cellKey, parisDay, parisHHmm, placeLive, type LivePlace, type LiveSessionLike } from '@/supabase/functions/_shared/live-place';
 
 // ─── helpers / constants ──────────────────────────────────────────────────────
 
 const WINDOW_DAYS = 21; // how far back the "planned but not declared" dot looks
+// Lot 9 : « en cours depuis » relu toutes les 30 s (en pause quand l'onglet est caché).
+const LIVE_POLL_MS = 30000;
+
+// « 1 journée non envoyée » / « 8 journées non envoyées » ; « 1 h validée » / « 2 h validées ».
+const plural = (n: number, one: string, many: string) => (n > 1 ? many : one);
 
 function formatMinutes(minutes: number): string {
   const h = Math.floor(minutes / 60);
@@ -249,7 +255,7 @@ function BubbleContent({ p, palette, real, draft, docCount = 0, live }: { p: Pla
 
 // A bubble is both draggable (move/reorder) and droppable (reorder target).
 function DraggableBubble({
-  p, palette, real, draft, onEdit, docCount = 0,
+  p, palette, real, draft, onEdit, docCount = 0, live,
 }: {
   p: PlanningWithWorksite;
   palette: ChantierPalette;
@@ -257,6 +263,8 @@ function DraggableBubble({
   draft?: RealAgg;
   onEdit: (p: PlanningWithWorksite) => void;
   docCount?: number;
+  /** Lot 9 : bulle désignée par placeLive → « en cours depuis HH:MM ». */
+  live?: string;
 }) {
   const drag = useDraggable({ id: p.id, data: { type: 'move' } });
   const drop = useDroppable({ id: `bub|${p.id}` });
@@ -270,8 +278,25 @@ function DraggableBubble({
         className={`bt-pl-grab ${drag.isDragging ? 'bt-pl-dragging' : ''}`}
         title="Glisser pour déplacer / réordonner · cliquer pour modifier"
       >
-        <BubbleContent p={p} palette={palette} real={real} draft={draft} docCount={docCount} />
+        <BubbleContent p={p} palette={palette} real={real} draft={draft} docCount={docCount} live={live} />
       </div>
+    </div>
+  );
+}
+
+// Lot 9 : pointage en direct sur un chantier ABSENT du planning de ce jour
+// (scan de la borne, « Autre »…). La case passe en vert et on dit où il est —
+// sans l'accrocher à une bulle qui n'est pas la sienne.
+function LiveChip({ since, name }: { since: string; name: string }) {
+  return (
+    <div className="bt-pl-livechip" data-testid="live-chip"
+      title="Pointage en direct — compté nulle part tant que la journée n'est pas fermée"
+      onClick={(e) => e.stopPropagation()}>
+      <span className="bt-pl-live-dot" aria-hidden />
+      <span style={{ minWidth: 0 }}>
+        <span className="t">en cours depuis <span style={{ whiteSpace: 'nowrap' }}>{since}</span></span>
+        <span className="sep"> · </span><span className="nm">{name}</span>
+      </span>
     </div>
   );
 }
@@ -310,11 +335,13 @@ function PaletteRow({ worksite, color }: { worksite: Worksite; color: string }) 
 }
 
 function DroppableCell({
-  workerId, dateStr, isToday, children,
+  workerId, dateStr, isToday, live = false, children,
 }: {
   workerId: string;
   dateStr: string;
   isToday: boolean;
+  /** Lot 9 : le salarié a un pointage en direct ouvert ce jour-là → case verte. */
+  live?: boolean;
   children: ReactNode;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: `${workerId}|${dateStr}` });
@@ -322,7 +349,8 @@ function DroppableCell({
     <td
       ref={setNodeRef}
       style={CELL_HEIGHT_HACK}
-      className={`bt-pl-cell ${isOver ? 'bt-pl-cell-over' : isToday ? 'bt-pl-cell-today' : ''}`}
+      className={`bt-pl-cell ${isOver ? 'bt-pl-cell-over' : live ? 'bt-pl-cell-live' : isToday ? 'bt-pl-cell-today' : ''}`}
+      data-live={live ? '1' : undefined}
     >
       <div className="bt-pl-cellinner">
         {children}
@@ -367,11 +395,14 @@ const PL_CSS = `
 .bt-pl-bar>.bt-pl-group:last-child{justify-self:end}
 .bt-pl-group{display:flex;align-items:center;gap:10px}
 /* ===== COCKPIT : tableau de bord sombre ===== */
-.bt-pl-cockpit{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:16px;background:#15120F;color:#F2EDE3;padding:9px 16px;border-radius:16px 16px 0 0}
+/* Lot 9 : « journées non envoyées » / « h validées » + « en direct » allongent les
+   chiffres : la 1re colonne garde au moins leur largeur (logo un peu décalé si besoin)
+   plutôt que de renvoyer « en direct » seul sur une 2e ligne. */
+.bt-pl-cockpit{display:grid;grid-template-columns:minmax(max-content,1fr) auto minmax(0,1fr);align-items:center;gap:16px;background:#15120F;color:#F2EDE3;padding:9px 16px;border-radius:16px 16px 0 0}
 .bt-pl-logo{font-family:'Archivo',sans-serif;font-weight:900;letter-spacing:-.03em;font-size:25px;line-height:1;color:#fff;white-space:nowrap;flex:none;justify-self:center}
 .bt-pl-logo .x{color:#FFC21A}
 .bt-pl-stats{display:flex;align-items:center;gap:2px;flex-wrap:wrap;min-width:0;justify-self:start}
-.bt-pl-stat{display:inline-flex;align-items:center;gap:7px;padding:3px 14px;white-space:nowrap;position:relative}
+.bt-pl-stat{display:inline-flex;align-items:center;gap:7px;padding:3px 11px;white-space:nowrap;position:relative}
 /* Le trait vertical se trace entre deux CONTENEURS : depuis que le panneau est
    le frère du bouton, c'est le conteneur qui se répète, plus le chiffre. */
 .bt-pl-statwrap{position:relative}
@@ -516,6 +547,13 @@ button.bt-pl-sp-row:hover{background:#F9F5EC}
 .bt-pl-acct-item.danger{color:#C0461F}
 
 ${PL_GRID_CSS}
+/* Lot 9 : pastille « en cours » — dans une case étroite de la grille, le chantier
+   passe sous « en cours depuis HH:MM » au lieu de déborder ; en ligne sur mobile. */
+.bt-pl-livechip{align-items:flex-start}
+.bt-pl-livechip .bt-pl-live-dot{margin-top:3px}
+.bt-pl-livechip .t{white-space:normal}
+.bt-pl-cellinner .bt-pl-livechip .sep{display:none}
+.bt-pl-cellinner .bt-pl-livechip .nm{display:block;margin-top:2px}
 
 /* mobile */
 .bt-pl-mobile{display:none;flex-direction:column;border:1.5px solid #15120F;border-radius:14px;overflow:hidden;background:#fff}
@@ -538,6 +576,8 @@ ${PL_GRID_CSS}
 .bt-pl-daypill.on .bt-pl-daypill-n{color:#15120F}
 .bt-pl-m-list{padding:13px 12px 22px;display:flex;flex-direction:column;gap:10px;background:#F7F4EE;flex:1}
 .bt-pl-m-card{background:#fff;border:1px solid rgba(21,18,15,.07);border-radius:15px;padding:13px 14px;box-shadow:0 10px 26px -18px rgba(21,18,15,.4)}
+/* Lot 9 : la carte du jour = la case (salarié × jour) — verte quand il pointe en direct */
+.bt-pl-m-card.bt-pl-cell-live{background:#EEF9F2;border-color:rgba(47,163,107,.45)}
 .bt-pl-m-top{display:flex;align-items:center;gap:10px;width:100%;background:none;border:none;padding:0;text-align:left;font-family:inherit;color:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .bt-pl-m-badge{display:flex;align-items:center;gap:5px;border-radius:7px;padding:4px 8px;font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:700}
 .bt-pl-m-bubs{margin-top:11px;display:flex;flex-direction:column;gap:8px}
@@ -661,7 +701,8 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const [pendingLeaves, setPendingLeaves] = useState(0); // compteur pour la pastille
   // Qui pointe EN CE MOMENT. Purement informatif : un chrono en cours n'est
   // pas une heure travaillée, il n'entre dans aucun total ni dans la paie.
-  const [liveNow, setLiveNow] = useState<{ user_id: string; worksite_id: string; started_at: string }[]>([]);
+  // Lot 9 : relu par son propre sondage (30 s), plus par fetchExtras.
+  const [liveNow, setLiveNow] = useState<LiveSessionLike[]>([]);
   const [activeDrag, setActiveDrag] = useState<{ id: string; type: 'move' | 'new'; worksiteId?: string } | null>(null);
 
   // disponibilité popup + worker fiche + management screens
@@ -889,7 +930,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const fetchExtras = useCallback(async () => {
     if (!user?.company_id) return;
     const windowStart = format(subDays(new Date(), WINDOW_DAYS), 'yyyy-MM-dd');
-    const [planRes, entRes, compRes, invRes, docRes, leaveRes, resRes, liveRes] = await Promise.all([
+    const [planRes, entRes, compRes, invRes, docRes, leaveRes, resRes] = await Promise.all([
       supabase.from('planning').select('user_id, work_date, absence_type').eq('company_id', user.company_id).gte('work_date', windowStart),
       supabase.from('time_entries').select('user_id, work_date').eq('company_id', user.company_id).in('status', ['submitted', 'validated']).gte('work_date', windowStart),
       supabase.from('companies').select('name, logo_url, travel_paid, weekly_hours, accountant_email, overtime_rate_1, overtime_rate_2').eq('id', user.company_id).maybeSingle(),
@@ -909,13 +950,12 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       supabase.from('time_entries').select('id', { count: 'exact', head: true })
         .eq('company_id', user.company_id).eq('reception', 'avec')
         .in('status', ['submitted', 'validated']).is('reserve_resolved_at', null),
-      supabase.from('active_sessions').select('user_id, worksite_id, started_at').eq('company_id', user.company_id),
+      // (active_sessions : lu par son propre sondage de 30 s, voir fetchLive.)
     ]);
     setPendingLeaves(leaveRes.count || 0);
     // Une erreur de lecture laisse la pastille inchangée : afficher 0 dirait
     // « aucune réserve », ce qui est précisément le message à ne pas donner.
     if (!resRes.error) setOpenReserves(resRes.count || 0);
-    if (!liveRes.error) setLiveNow(liveRes.data || []);
 
     // Pastille 📎 : nombre de documents par chantier. Comme pour les réserves,
     // une erreur de lecture laisse la pastille inchangée — afficher 0 dirait
@@ -974,6 +1014,48 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     const id = setInterval(fetchExtras, 60000);
     return () => clearInterval(id);
   }, [fetchExtras]);
+
+  // ─── Lot 9 : « en cours depuis » — sondage dédié des chronos ouverts ─────────
+  // Toutes les 30 s, en pause quand l'onglet est caché, relu tout de suite au
+  // retour. Colonnes STRICTEMENT utiles : jamais `positions` (une position est
+  // une donnée personnelle — le planning n'en a pas besoin pour dire « depuis »).
+  // Quand un chrono connu disparaît, le salarié a fermé : sa journée existe
+  // maintenant en brouillon → on relit le planning pour qu'elle apparaisse
+  // sans recharger la page.
+  const fetchPlanningRef = useRef(fetchPlanning);
+  useEffect(() => { fetchPlanningRef.current = fetchPlanning; }, [fetchPlanning]);
+  const liveKeysRef = useRef<Set<string> | null>(null);
+  const fetchLive = useCallback(async () => {
+    if (!user?.company_id) return;
+    const { data, error } = await supabase.from('active_sessions')
+      .select('user_id, worksite_id, planning_id, work_date, started_at')
+      .eq('company_id', user.company_id);
+    // Lecture en échec : on garde l'état connu (dire « personne » serait faux).
+    if (error) return;
+    const rows = (data || []) as LiveSessionLike[];
+    // Clé = salarié + départ : fermer A puis ouvrir B entre deux lectures est
+    // aussi une fermeture (un brouillon est né pour A).
+    const next = new Set(rows.map((r) => `${r.user_id}|${r.started_at}`));
+    const prev = liveKeysRef.current;
+    liveKeysRef.current = next;
+    setLiveNow(rows);
+    if (prev && Array.from(prev).some((k) => !next.has(k))) fetchPlanningRef.current();
+  }, [user?.company_id]);
+  useEffect(() => {
+    if (!user?.company_id) return;
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const start = () => { if (timer === null) timer = setInterval(fetchLive, LIVE_POLL_MS); };
+    const stop = () => { if (timer !== null) { clearInterval(timer); timer = null; } };
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') { stop(); return; }
+      fetchLive();
+      start();
+    };
+    fetchLive();
+    if (document.visibilityState !== 'hidden') start();
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => { stop(); document.removeEventListener('visibilitychange', onVisibility); };
+  }, [fetchLive, user?.company_id]);
 
   const fetchClosures = useCallback(async () => {
     if (!user?.company_id) return;
@@ -1066,19 +1148,36 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   // seulement pour que le bureau sache qu'une saisie existe.
   const draftMap = useMemo(() => aggregate(draftEntries), [draftEntries]);
 
+  /** Qui doit encore des heures, et pour quels jours. */
+  // Lot 9 : calculé sur `workers` — EXACTEMENT les lignes de la grille. fetchExtras
+  // lit le planning de toute l'entreprise (comptes désactivés, bureau compris) :
+  // compter tout missingByWorker donnait un bandeau plus gros que la somme des
+  // pastilles « X jours en attente », sans que personne puisse savoir pourquoi.
+  const waitingByWorker = useMemo(() => {
+    const out: { id: string; name: string; days: string[] }[] = [];
+    for (const w of workers) {
+      const days = missingByWorker.get(w.id) || [];
+      if (days.length) out.push({ id: w.id, name: `${w.first_name} ${w.last_name}`, days: [...days].sort() });
+    }
+    return out.sort((a, b) => b.days.length - a.days.length);
+  }, [workers, missingByWorker]);
+
   // Stats du cockpit (tableau de bord). Issues des données déjà chargées ;
   // affichent 0 quand vide (jamais de trou).
+  // « h validée(s) » = heures envoyées par les salariés (submitted + validated,
+  // 'validated' n'étant qu'un reliquat — lib/status.ts) de la semaine affichée.
+  // « journée(s) non envoyée(s) » = somme des pastilles des lignes (21 derniers jours).
   const cockpitStats = useMemo(() => {
     let minutes = 0; realMap.forEach((v) => { minutes += v.minutes; });
-    let waiting = 0; missingByWorker.forEach((arr) => { waiting += arr.length; });
+    const waiting = waitingByWorker.reduce((n, r) => n + r.days.length, 0);
     let docs = 0; docsByWorksite.forEach((n) => { docs += n; });
     return { workers: workers.length, hours: Math.round(minutes / 60), waiting, docs };
-  }, [realMap, missingByWorker, docsByWorksite, workers.length]);
+  }, [realMap, waitingByWorker, docsByWorksite, workers.length]);
 
   // ─── Ce qui compose chaque chiffre du cockpit ───────────────────────────────
-  // Un chiffre sans sa décomposition ne sert qu'à inquiéter : « 3 en attente »
-  // ne dit ni qui, ni quels jours. Ces trois listes répondent à la question que
-  // le chiffre pose. Elles ne relisent rien : tout est déjà chargé.
+  // Un chiffre sans sa décomposition ne sert qu'à inquiéter : « 3 journées non
+  // envoyées » ne dit ni qui, ni quels jours. Ces trois listes répondent à la
+  // question que le chiffre pose. Elles ne relisent rien : tout est déjà chargé.
 
   /** Les heures de la semaine affichée, chantier par chantier, la plus grosse d'abord. */
   const hoursByWorksite = useMemo(() => {
@@ -1088,16 +1187,6 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       .map(([id, minutes]) => ({ id, minutes, name: id ? (worksites.find((w) => w.id === id)?.client_name || 'Chantier supprimé') : 'Sans chantier' }))
       .sort((a, b) => b.minutes - a.minutes);
   }, [realEntries, worksites]);
-
-  /** Qui doit encore des heures, et pour quels jours. */
-  const waitingByWorker = useMemo(() => {
-    const out: { id: string; name: string; days: string[] }[] = [];
-    for (const w of workers) {
-      const days = missingByWorker.get(w.id) || [];
-      if (days.length) out.push({ id: w.id, name: `${w.first_name} ${w.last_name}`, days: [...days].sort() });
-    }
-    return out.sort((a, b) => b.days.length - a.days.length);
-  }, [workers, missingByWorker]);
 
   /** Les pièces jointes rangées par chantier — le classement qu'on n'avait pas. */
   const docsByChantier = useMemo(() => {
@@ -1180,6 +1269,31 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     add(realEntries, false);
     add(draftEntries, true);
     return Array.from(agg.values());
+  };
+
+  // ─── Lot 9 : où afficher « en cours depuis » ─────────────────────────────────
+  // UNE règle, partagée avec la borne et le salarié (placeLive) : la case
+  // salarié × jour passe en vert ; la bulle désignée est celle du planning_id
+  // du chrono, sinon celle du même chantier — jamais « la première » par défaut.
+  // L'état en direct n'entre dans AUCUN total ni export : il ne sert qu'ici.
+  const livePlaces = useMemo(() => placeLive(
+    liveNow,
+    planning.map((p) => ({ id: p.id, user_id: p.user_id, worksite_id: p.worksite_id, work_date: p.work_date, absence: !!p.absence_type })),
+  ), [liveNow, planning]);
+  const liveForCell = (workerId: string, dateStr: string): LivePlace | undefined => livePlaces.get(cellKey(workerId, dateStr));
+  // « 07:45 », ou « lun. 07:45 » quand le chrono date d'un jour passé (oubli de
+  // fermeture) : « depuis 07:45 » laisserait croire qu'il a commencé ce matin.
+  const liveSinceLabel = (workDate: string, since: string): string =>
+    workDate < parisDay(Date.now()) ? `${format(parseISO(workDate), 'EEE', { locale: fr })} ${since}` : since;
+  const liveForBubble = (p: PlanningWithWorksite): string | undefined => {
+    const lp = liveForCell(p.user_id, p.work_date);
+    return lp && lp.slotId === p.id ? liveSinceLabel(lp.work_date, lp.since) : undefined;
+  };
+  // Chantier pointé hors planning de ce jour → pastille verte dans la case.
+  const liveChipFor = (workerId: string, dateStr: string) => {
+    const lp = liveForCell(workerId, dateStr);
+    if (!lp || lp.slotId) return null;
+    return <LiveChip since={liveSinceLabel(lp.work_date, lp.since)} name={(lp.worksite_id && worksiteNameById.get(lp.worksite_id)) || 'chantier'} />;
   };
 
   // Attribute a real client to a worker-added intervention (from the grid).
@@ -1937,23 +2051,23 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                       );
                     })}
                   </div>
-                  {displayWorkers.length > 0 && <div className="bt-pl-sp-foot">Un chiffre en rouge = des jours d&apos;heures encore à envoyer.</div>}
+                  {displayWorkers.length > 0 && <div className="bt-pl-sp-foot">Un chiffre en rouge = des journées non envoyées sur les {WINDOW_DAYS} derniers jours.</div>}
                 </div>
               )}
             </div>
 
             <div className="bt-pl-statwrap">
-              <button className="bt-pl-stat" aria-expanded={statPanel === 'hours'}
-                title={`${cockpitStats.hours} h envoyées sur la semaine affichée — cliquez pour le détail par chantier`}
+              <button className="bt-pl-stat" aria-expanded={statPanel === 'hours'} data-testid="stat-hours"
+                title={`${cockpitStats.hours} h ${plural(cockpitStats.hours, 'validée', 'validées')} sur la semaine affichée (validée(s) = envoyée(s) par les salariés) — cliquez pour le détail par chantier`}
                 onClick={() => setStatPanel((p) => (p === 'hours' ? null : 'hours'))}>
-                <span className="sd" style={{ background: '#2FD584' }} /><span className="v">{fmtStat(cockpitStats.hours)} h</span><span className="l">pointées</span><span className="ch">▾</span>
+                <span className="sd" style={{ background: '#2FD584' }} /><span className="v">{fmtStat(cockpitStats.hours)} h</span><span className="l">{plural(cockpitStats.hours, 'validée', 'validées')}</span><span className="ch">▾</span>
               </button>
               {statPanel === 'hours' && (
                 <div className="bt-pl-sp">
-                  <div className="bt-pl-sp-h">Heures par chantier <span className="n">S-{getISOWeek(currentWeekStart)}</span></div>
+                  <div className="bt-pl-sp-h">Heures validées par chantier <span className="n">S-{getISOWeek(currentWeekStart)}</span></div>
                   <div className="bt-pl-sp-list">
                     {hoursByWorksite.length === 0 ? (
-                      <div className="bt-pl-sp-empty">Aucune heure envoyée<br />sur cette semaine.</div>
+                      <div className="bt-pl-sp-empty">Aucune heure validée<br />sur cette semaine.</div>
                     ) : hoursByWorksite.map((r) => (
                       <div key={r.id || 'sans'} className="bt-pl-sp-row">
                         <span className="nm">{r.name}</span>
@@ -1961,20 +2075,20 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                       </div>
                     ))}
                   </div>
-                  <div className="bt-pl-sp-foot">Seules les heures envoyées comptent. Les saisies en pointillé n&apos;y sont pas.</div>
+                  <div className="bt-pl-sp-foot">Validée(s) = envoyée(s) par les salariés : seules celles-là comptent. Les saisies en pointillé et les pointages en cours n&apos;y sont pas.</div>
                 </div>
               )}
             </div>
 
             <div className="bt-pl-statwrap">
-              <button className={`bt-pl-stat${cockpitStats.waiting > 0 ? ' warn' : ''}`} aria-expanded={statPanel === 'waiting'}
-                title={cockpitStats.waiting === 0 ? 'Tout le monde est à jour' : `${cockpitStats.waiting} jour(s) d'heures manquantes — cliquez pour savoir qui`}
+              <button className={`bt-pl-stat${cockpitStats.waiting > 0 ? ' warn' : ''}`} aria-expanded={statPanel === 'waiting'} data-testid="stat-waiting"
+                title={cockpitStats.waiting === 0 ? `Tout le monde est à jour sur les ${WINDOW_DAYS} derniers jours` : `${cockpitStats.waiting} ${plural(cockpitStats.waiting, 'journée planifiée non envoyée', 'journées planifiées non envoyées')} sur les ${WINDOW_DAYS} derniers jours — cliquez pour savoir qui`}
                 onClick={() => setStatPanel((p) => (p === 'waiting' ? null : 'waiting'))}>
-                <span className="sd" style={{ background: cockpitStats.waiting > 0 ? '#E0A21C' : '#4a453d' }} /><span className="v">{fmtStat(cockpitStats.waiting)}</span><span className="l">en attente</span><span className="ch">▾</span>
+                <span className="sd" style={{ background: cockpitStats.waiting > 0 ? '#E0A21C' : '#4a453d' }} /><span className="v">{fmtStat(cockpitStats.waiting)}</span><span className="l">{plural(cockpitStats.waiting, 'journée non envoyée', 'journées non envoyées')}</span><span className="ch">▾</span>
               </button>
               {statPanel === 'waiting' && (
                 <div className="bt-pl-sp">
-                  <div className="bt-pl-sp-h">Heures manquantes <span className="n">{cockpitStats.waiting} j</span></div>
+                  <div className="bt-pl-sp-h">Journées non envoyées <span className="n">{cockpitStats.waiting} j</span></div>
                   <div className="bt-pl-sp-list">
                     {waitingByWorker.length === 0 ? (
                       <div className="bt-pl-sp-empty">Tout le monde est à jour.</div>
@@ -1993,7 +2107,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                       </button>
                     ))}
                   </div>
-                  {waitingByWorker.length > 0 && <div className="bt-pl-sp-foot">Cliquez un nom pour ouvrir sa fiche et lui envoyer un rappel.</div>}
+                  <div className="bt-pl-sp-foot">Journées planifiées sur les {WINDOW_DAYS} derniers jours, sans heures envoyées.{waitingByWorker.length > 0 && ' Cliquez un nom pour ouvrir sa fiche et lui envoyer un rappel.'}</div>
                 </div>
               )}
             </div>
@@ -2047,13 +2161,14 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
             </div>
 
             {/* En direct. Informatif : ces minutes ne sont comptées nulle part
-                tant que le salarié n'a pas fermé sa journée. */}
+                tant que le salarié n'a pas fermé sa journée. Lot 9 : nourri par
+                le sondage de 30 s (fetchLive), plus par fetchExtras. */}
             {liveNow.length > 0 && (
               <div className="bt-pl-statwrap">
-                <span className="bt-pl-stat" title={liveNow.map((l) => {
+                <span className="bt-pl-stat" data-testid="stat-live" title={liveNow.map((l) => {
                   const w = workers.find((x) => x.id === l.user_id);
                   const ws = worksites.find((x) => x.id === l.worksite_id);
-                  const h = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(l.started_at));
+                  const h = liveSinceLabel(l.work_date, parisHHmm(l.started_at));
                   return `${w ? `${w.first_name} ${w.last_name}` : 'Salarié'} — ${ws?.client_name || 'chantier'} depuis ${h}`;
                 }).join('\n')}>
                   <span className="sd" style={{ background: '#2FD584' }} />
@@ -2115,6 +2230,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                   <div className="bt-pl-legrow"><span className="bt-pl-legic" style={{ color: '#C98A12' }}><Hammer className="h-3.5 w-3.5" /></span> Chantier en cours</div>
                   <div className="bt-pl-legrow"><span className="bt-pl-legic" style={{ color: '#caa01a' }}><UserIcon className="h-3.5 w-3.5" /></span> Intervention ajoutée par le salarié</div>
                   <div className="bt-pl-legrow"><span className="bt-pl-legic"><Paperclip className="h-3.5 w-3.5" /></span> Documents du chantier</div>
+                  <div className="bt-pl-legrow"><span className="bt-pl-legic"><span className="bt-pl-live-dot" /></span> En cours (pointage en direct)</div>
                 </div>
               </>
             )}
@@ -2253,7 +2369,8 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                       guide en bas à droite, sans jamais bloquer la grille. */}
                   {displayWorkers.map(worker => {
                       const absToday = todayAbsence.get(worker.id);
-                      const isLate = (missingByWorker.get(worker.id) || []).length > 0;
+                      const missCount = (missingByWorker.get(worker.id) || []).length;
+                      const isLate = missCount > 0;
                       const fullName = `${worker.first_name} ${worker.last_name}`;
                       return (
                         <tr key={worker.id}>
@@ -2270,11 +2387,15 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                                 </span>
                                 <span className="bt-pl-name">{fullName}</span>
                               </span>
-                              {absToday ? (
+                              {/* Lot 9 : absent aujourd'hui ET des journées dues → les deux, sur
+                                  deux lignes. Masquer la pastille sous l'absence rendait le
+                                  bandeau « N journées non envoyées » impossible à retrouver. */}
+                              {absToday && (
                                 <span className="bt-pl-status"><span className="bt-pl-status-txt" style={{ color: '#6E6A63' }}>{ABSENCE_LABELS[absToday] || absToday}</span></span>
-                              ) : isLate ? (
-                                <span className="bt-pl-status"><span className="bt-pl-status-dot" style={{ background: '#D85A30' }} /><span className="bt-pl-status-txt" style={{ color: '#D85A30' }}>{(missingByWorker.get(worker.id) || []).length} jour{(missingByWorker.get(worker.id) || []).length > 1 ? 's' : ''} en attente</span></span>
-                              ) : (
+                              )}
+                              {isLate ? (
+                                <span className="bt-pl-status" data-testid="row-waiting" data-days={missCount}><span className="bt-pl-status-dot" style={{ background: '#D85A30' }} /><span className="bt-pl-status-txt" style={{ color: '#D85A30' }}>{missCount} jour{missCount > 1 ? 's' : ''} en attente</span></span>
+                              ) : !absToday && (
                                 <span className="bt-pl-status"><span className="bt-pl-status-dot" style={{ background: '#1D9E75' }} /><span className="bt-pl-status-txt" style={{ color: '#1D9E75' }}>À jour</span></span>
                               )}
                             </button>
@@ -2285,20 +2406,26 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                             const absence = absenceForDay(worker.id, dateStr);
                             const chantiers = cellChantiers(worker.id, dateStr);
                             const extra = extraDeclaredForCell(worker.id, dateStr);
+                            const liveHere = !!liveForCell(worker.id, dateStr);
+                            const liveChip = liveChipFor(worker.id, dateStr);
                             return (
-                              <DroppableCell key={dateStr} workerId={worker.id} dateStr={dateStr} isToday={dateStr === todayStr}>
+                              <DroppableCell key={dateStr} workerId={worker.id} dateStr={dateStr} isToday={dateStr === todayStr} live={liveHere}>
                                 {absence ? (() => {
                                   const av = ABSENCE_VISUAL[absence.absence_type!] || ABSENCE_VISUAL.conge;
                                   return (
-                                    <button
-                                      style={{ background: av.bg, color: av.fg }}
-                                      onClick={() => setStatusTarget({ worker, fromStr: dateStr })}
-                                      className="bt-pl-abs"
-                                      title="Absence — cliquer pour changer le statut"
-                                    >
-                                      <span className="bt-pl-abs-ico">{av.icon}</span>
-                                      <span className="bt-pl-abs-lbl">{ABSENCE_LABELS[absence.absence_type!] || absence.absence_type}</span>
-                                    </button>
+                                    <>
+                                      <button
+                                        style={{ background: av.bg, color: av.fg, ...(liveChip ? { height: 'auto', flex: 1, minHeight: 56, marginBottom: 7 } : null) }}
+                                        onClick={() => setStatusTarget({ worker, fromStr: dateStr })}
+                                        className="bt-pl-abs"
+                                        title="Absence — cliquer pour changer le statut"
+                                      >
+                                        <span className="bt-pl-abs-ico">{av.icon}</span>
+                                        <span className="bt-pl-abs-lbl">{ABSENCE_LABELS[absence.absence_type!] || absence.absence_type}</span>
+                                      </button>
+                                      {/* Absent mais pointe quand même : on le dit, sans trancher. */}
+                                      {liveChip}
+                                    </>
                                   );
                                 })() : (
                                   <div
@@ -2307,7 +2434,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                                     title="Cliquer pour ajouter une intervention"
                                   >
                                     {chantiers.map(p => (
-                                      <DraggableBubble key={p.id} p={p} palette={paletteFor(p)} real={realForPlanning(p)} draft={draftForPlanning(p)} onEdit={openEdit} docCount={docsByWorksite.get(p.worksite_id || '') || 0} />
+                                      <DraggableBubble key={p.id} p={p} palette={paletteFor(p)} real={realForPlanning(p)} draft={draftForPlanning(p)} onEdit={openEdit} docCount={docsByWorksite.get(p.worksite_id || '') || 0} live={liveForBubble(p)} />
                                     ))}
                                     {extra.map((x, i) => (
                                       <button
@@ -2324,7 +2451,8 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                                         <span className="bt-pl-extra-by" style={x.pending ? { color: '#6E6A63' } : undefined}><UserIcon className="h-2.5 w-2.5 shrink-0" /> {formatMinutes(x.minutes)} · {x.pending ? 'saisi, à envoyer' : 'ajouté par le salarié'}</span>
                                       </button>
                                     ))}
-                                    {chantiers.length === 0 && extra.length === 0 && <div className="bt-pl-add">+</div>}
+                                    {liveChip}
+                                    {chantiers.length === 0 && extra.length === 0 && !liveChip && <div className="bt-pl-add">+</div>}
                                   </div>
                                 )}
                               </DroppableCell>
@@ -2456,8 +2584,11 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                 const extra = extraDeclaredForCell(worker.id, dateStr);
                 const av = absence ? (ABSENCE_VISUAL[absence.absence_type!] || ABSENCE_VISUAL.conge) : null;
                 const anyReal = chantiers.some(p => realForPlanning(p));
+                // Lot 9 : la carte du jour est la case salarié × jour — même règle que la grille.
+                const liveHere = !!liveForCell(worker.id, dateStr);
+                const liveChip = liveChipFor(worker.id, dateStr);
                 return (
-                  <div key={worker.id} className="bt-pl-m-card">
+                  <div key={worker.id} className={`bt-pl-m-card${liveHere ? ' bt-pl-cell-live' : ''}`} data-live={liveHere ? '1' : undefined}>
                     {/* Taper le salarié → présence / absence / fiche (même dialogue que le clic
                         sur le nom côté desktop : setStatusTarget). */}
                     <button type="button" className="bt-pl-m-top" onClick={() => setStatusTarget({ worker, fromStr: dateStr })} title="Présence, absence ou fiche">
@@ -2465,18 +2596,22 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                       <span style={{ flex: 1, minWidth: 0 }}><span className="bt-pl-name" style={{ display: 'block' }}>{worker.first_name} {worker.last_name}</span></span>
                       {absence ? (
                         <span className="bt-pl-m-badge" style={{ background: '#EFE7DA', color: av!.fg }}>{av!.icon} {(ABSENCE_LABELS[absence.absence_type!] || '').toUpperCase()}</span>
+                      ) : liveHere ? (
+                        // « EN COURS » passe avant « ✓ POINTÉ » : la journée n'est pas finie.
+                        <span className="bt-pl-m-badge" data-testid="m-badge-live" style={{ background: '#2FA36B', color: '#fff' }}><span className="bt-pl-live-dot" style={{ background: '#fff' }} aria-hidden />EN COURS</span>
                       ) : anyReal ? (
                         <span className="bt-pl-m-badge" style={{ background: '#E4F2E9', color: '#1F7A4D' }}>✓ POINTÉ</span>
                       ) : null}
                     </button>
+                    {absence && liveChip && <div className="bt-pl-m-bubs">{liveChip}</div>}
                     {!absence && (
                       <>
-                        {(chantiers.length > 0 || extra.length > 0) && (
+                        {(chantiers.length > 0 || extra.length > 0 || liveChip) && (
                           <div className="bt-pl-m-bubs">
                             {/* Taper une bulle → modifier l'affectation (openEdit, comme desktop). */}
                             {chantiers.map(p => (
                               <div key={p.id} className="bt-pl-m-bubbtn" role="button" tabIndex={0} onClick={() => openEdit(p)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEdit(p); } }}>
-                                <BubbleContent p={p} palette={paletteFor(p)} real={realForPlanning(p)} draft={draftForPlanning(p)} docCount={docsByWorksite.get(p.worksite_id || '') || 0} />
+                                <BubbleContent p={p} palette={paletteFor(p)} real={realForPlanning(p)} draft={draftForPlanning(p)} docCount={docsByWorksite.get(p.worksite_id || '') || 0} live={liveForBubble(p)} />
                               </div>
                             ))}
                             {/* Taper une intervention ajoutée par le salarié → attribution / documents. */}
@@ -2487,6 +2622,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                                 <span className="bt-pl-extra-by" style={x.pending ? { color: '#6E6A63' } : undefined}><UserIcon className="h-2.5 w-2.5 shrink-0" /> {formatMinutes(x.minutes)} · {x.pending ? 'saisi, à envoyer' : 'ajouté par le salarié'}</span>
                               </button>
                             ))}
+                            {liveChip}
                           </div>
                         )}
                         {/* Ajouter un chantier à ce salarié pour ce jour (openAdd → même dialogue que
@@ -2511,7 +2647,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
           })() : activeDrag?.type === 'move' ? (
             (() => {
               const p = planning.find(x => x.id === activeDrag.id);
-              return p ? <div className="bt-pl-overlay"><BubbleContent p={p} palette={paletteFor(p)} real={realForPlanning(p)} docCount={docsByWorksite.get(p.worksite_id || '') || 0} /></div> : null;
+              return p ? <div className="bt-pl-overlay"><BubbleContent p={p} palette={paletteFor(p)} real={realForPlanning(p)} docCount={docsByWorksite.get(p.worksite_id || '') || 0} live={liveForBubble(p)} /></div> : null;
             })()
           ) : null}
         </DragOverlay>
