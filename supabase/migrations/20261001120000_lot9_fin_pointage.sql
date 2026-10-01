@@ -5,11 +5,12 @@
 -- NON appliquée : feu vert d'Ergun.
 --
 -- 100 % ADDITIVE. Une fonction NOUVELLE, `finish_active_session`. Rien d'autre :
--- `stop_active_session` reste telle quelle (la borne et les anciennes versions
--- de l'application continuent de l'appeler), aucune table, aucune policy,
--- aucune colonne n'est touchée. Tant que cette migration n'est pas passée,
--- l'application retombe sur `stop_active_session` (PGRST202 / 42883) : rien
--- ne casse, on garde seulement l'ancien comportement.
+-- `stop_active_session` reste telle quelle (les anciennes versions de
+-- l'application en cache, et la borne tant que la fonction `kiosk` n'est pas
+-- redéployée, continuent de l'appeler), aucune table, aucune policy, aucune
+-- colonne n'est touchée. Tant que cette migration n'est pas passée,
+-- l'application ET la borne retombent sur `stop_active_session`
+-- (PGRST202 / 42883) : rien ne casse, on garde seulement l'ancien comportement.
 --
 -- ─────────────────────────────────────────────────────────────────────────────
 -- POURQUOI
@@ -54,8 +55,8 @@
 -- (brouillon, panier non coché), même bloc de positions (interrupteur de
 -- l'entreprise, 14 heures au plus pour la fin), même suppression du chrono,
 -- dans la même transaction. `FOR UPDATE` en plus : deux « J'ai fini » partis
--- en même temps (téléphone + borne) ne créent pas deux lignes — le second
--- attend le premier, puis ne trouve plus de chrono.
+-- en même temps (téléphone + borne, une fois `kiosk` redéployée) ne créent pas
+-- deux lignes — le second attend le premier, puis ne trouve plus de chrono.
 -- ─────────────────────────────────────────────────────────────────────────────
 
 CREATE FUNCTION public.finish_active_session(

@@ -12,7 +12,7 @@
 // Les données arrivent déjà réduites à la liste blanche par la fonction kiosk
 // (supabase/functions/_shared/kiosk-board.ts) : ce composant ne lit rien.
 
-import { memo } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import { format, getISOWeek, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { PL_GRID_CSS, PlannedBubbleView, paletteAt } from '@/components/planning-bubble';
@@ -43,6 +43,7 @@ ${PL_GRID_CSS}
 .kb-week .bt-pl-livechip{flex-wrap:wrap;row-gap:3px}
 .kb-week .bt-pl-livechip .kb-lx-title{flex:1;min-width:0;overflow-wrap:anywhere}
 .kb-week .bt-pl-livechip .t{flex-basis:100%;white-space:normal}
+.kb-week .bt-pl-name{white-space:normal;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.15}
 .kb-week-empty{padding:28px 16px;text-align:center;color:#6E6A63;font-weight:700;font-size:15px}
 @media (max-width:1180px){
   .kb-week .bt-pl-th-name{width:168px}
@@ -73,8 +74,19 @@ function KioskWeekGrid({ board, today, showLive }: {
   for (const s of board.slots) { const k = `${s.w}|${s.date}`; slotsOf.set(k, [...(slotsOf.get(k) || []), s]); }
   const extrasOf = new Map<string, KioskBoardLiveExtra[]>();
   for (const x of board.live_extra) { const k = `${x.w}|${x.date}`; extrasOf.set(k, [...(extrasOf.get(k) || []), x]); }
+  // Écran mural : après une minute sans toucher, la grille revient en haut
+  // pour la personne suivante (sinon les premières lignes restent cachées).
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    let t: ReturnType<typeof setTimeout> | null = null;
+    const arm = () => { if (t) clearTimeout(t); t = setTimeout(() => el.scrollTo({ top: 0, behavior: 'smooth' }), 60 * 1000); };
+    el.addEventListener('scroll', arm, { passive: true });
+    return () => { el.removeEventListener('scroll', arm); if (t) clearTimeout(t); };
+  }, []);
   return (
-    <div className="kb-week" data-testid="kb-week">
+    <div className="kb-week" data-testid="kb-week" ref={ref}>
       <style dangerouslySetInnerHTML={{ __html: KIOSK_WEEK_CSS }} />
       <table className="bt-pl-table">
         <thead>

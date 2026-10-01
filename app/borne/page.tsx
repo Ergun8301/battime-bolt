@@ -92,7 +92,7 @@ function demoBoard(nowMs: number): KioskBoard {
     { id: 'demo-karim', first_name: 'Karim', last_name: 'Haddad' },
     { id: 'demo-lucas', first_name: 'Lucas', last_name: 'Petit' },
     { id: 'demo-sofia', first_name: 'Sofia', last_name: 'Moreau' },
-    { id: 'demo-thomas', first_name: 'Thomas', last_name: 'Lefèvre' },
+    { id: 'demo-thomas', first_name: 'Bastien', last_name: 'Lefèvre' },
   ];
   const worksites = [
     { id: 'demo-w-dupont', client_name: 'Villa Dupont', city: 'Lyon 6e' },
@@ -125,7 +125,8 @@ function demoBoard(nowMs: number): KioskBoard {
   const sessions: BoardSession[] = [
     // Karim a scanné à 07:42 sur son chantier prévu → bulle verte.
     { user_id: 'demo-karim', worksite_id: 'demo-w-dupont', planning_id: karimToday?.id ?? null, work_date: today, started_at: parisIso(today, '07:42') },
-    // Thomas est passé au dépôt, qui n'est pas à son planning → ligne à part.
+    // Bastien est passé au dépôt, qui n'est pas à son planning → ligne à part
+    // (en haut de la liste : visible sans faire défiler sur la capture).
     { user_id: 'demo-thomas', worksite_id: 'demo-w-depot', planning_id: null, work_date: today, started_at: parisIso(today, '06:58') },
   ];
   return buildBoard({ users, planning, worksites, sessions, nowMs });

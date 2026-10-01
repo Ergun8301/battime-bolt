@@ -230,7 +230,7 @@ export default function KioskAdmin({ open, onOpenChange, companyId }: Props) {
               </label>
               <div className="ka-sw" style={{ display: 'block' }}>
                 <b>Horaires d&apos;ouverture <span style={{ fontWeight: 600, color: '#9a948a' }}>(facultatif)</span></b>
-                <span className="ka-p">En dehors, l&apos;écran est noir ; un toucher le rallume.</span>
+                <span className="ka-p">En dehors, l&apos;écran est noir ; un toucher ouvre le QR pour pointer.</span>
                 <div className="ka-hours">
                   <input className="ka-i" type="time" aria-label="Ouverture" value={settings.active_from || ''} onChange={(e) => setSettings({ ...settings, active_from: e.target.value || null })} />
                   <span className="ka-p">à</span>
