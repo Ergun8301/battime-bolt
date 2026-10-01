@@ -222,6 +222,27 @@ check((await lCard.innerText()).includes('✓ POINTÉ') && await lCard.locator('
 await pm.screenshot({ path: `${SH}/admin-mobile-390x844.png` });
 await mob.close();
 
+// ─── Cockpit, entreprise en essai (pastille « Essai · S'abonner ») : iPad paysage 1024×768
+//     (encore en mise en page bureau) et 1280×800, avec et sans « en direct » : chiffres, logo
+//     et colonne de droite ne se chevauchent jamais et restent dans le cockpit. ─────────────
+D.companies[0].subscription_status = 'trialing'; D.companies[0].trial_ends_at = day(12);
+const overlap = (a, c) => a.x < c.x + c.width - 0.5 && c.x < a.x + a.width - 0.5 && a.y < c.y + c.height - 0.5 && c.y < a.y + a.height - 0.5;
+for (const [width, height] of [[1024, 768], [1280, 800]]) for (const live of [false, true]) {
+  D.active_sessions = live ? [sKevin, sMarc, sNina] : [];
+  const c = await b.newContext({ viewport: { width, height }, locale: 'fr-FR', timezoneId: 'Europe/Paris' });
+  await setup(c); const pg = await c.newPage();
+  await pg.goto(`http://localhost:${PORT}/admin`); await pg.waitForSelector('[data-testid=stat-waiting]', { timeout: 20000 }); await pg.waitForTimeout(1500);
+  const [ck, st, lg, rt] = await Promise.all(['.bt-pl-cockpit', '.bt-pl-stats', '.bt-pl-cockpit .bt-pl-logo', '.bt-pl-cockpit-right'].map((s) => vis(pg, s).first().boundingBox()));
+  const trialOn = await vis(pg, '.bt-pl-cockpit .bt-pl-trial').count() === 1;
+  const liveOn = await vis(pg, '[data-testid=stat-live]').count() === 1;
+  const inside = [st, lg, rt].every((x) => x && x.x >= ck.x - 0.5 && x.x + x.width <= ck.x + ck.width + 0.5);
+  const fmt = (x) => `${Math.round(x.x)}–${Math.round(x.x + x.width)}`;
+  check(trialOn && liveOn === live && st && lg && rt && !overlap(st, lg) && !overlap(lg, rt) && !overlap(st, rt) && inside,
+    `${width}×${height} essai${live ? ' + 3 en direct' : ''} : chiffres ${fmt(st)}, logo ${fmt(lg)}, droite ${fmt(rt)} — aucun chevauchement`);
+  if (width === 1024 && live) { await pg.mouse.move(512, 300); await pg.waitForTimeout(150); await pg.screenshot({ path: `${SH}/admin-planning-1024x768-essai.png` }); }
+  await c.close();
+}
+
 console.log(`\n${ok} ✅ / ${ko} ❌`);
 await b.close(); srv.close();
 process.exit(ko ? 1 : 0);

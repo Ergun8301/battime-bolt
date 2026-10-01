@@ -396,9 +396,13 @@ const PL_CSS = `
 .bt-pl-group{display:flex;align-items:center;gap:10px}
 /* ===== COCKPIT : tableau de bord sombre ===== */
 /* Lot 9 : « journées non envoyées » / « h validées » + « en direct » allongent les
-   chiffres : la 1re colonne garde au moins leur largeur (logo un peu décalé si besoin)
-   plutôt que de renvoyer « en direct » seul sur une 2e ligne. */
-.bt-pl-cockpit{display:grid;grid-template-columns:minmax(max-content,1fr) auto minmax(0,1fr);align-items:center;gap:16px;background:#15120F;color:#F2EDE3;padding:9px 16px;border-radius:16px 16px 0 0}
+   chiffres. Sous 1280 px (iPad paysage 1024, toujours en mise en page bureau), les
+   chiffres passent sur deux lignes : forcer leur largeur poussait la colonne de droite
+   (essai + compte) par-dessus le logo. Dès 1280 px, la 1re colonne garde leur largeur
+   (logo un peu décalé si besoin) plutôt que de renvoyer « en direct » seul sur une
+   2e ligne ; la colonne de droite reste en 1fr (jamais sous la largeur de son contenu). */
+.bt-pl-cockpit{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:16px;background:#15120F;color:#F2EDE3;padding:9px 16px;border-radius:16px 16px 0 0}
+@media (min-width:1280px){.bt-pl-cockpit{grid-template-columns:minmax(max-content,1fr) auto 1fr}}
 .bt-pl-logo{font-family:'Archivo',sans-serif;font-weight:900;letter-spacing:-.03em;font-size:25px;line-height:1;color:#fff;white-space:nowrap;flex:none;justify-self:center}
 .bt-pl-logo .x{color:#FFC21A}
 .bt-pl-stats{display:flex;align-items:center;gap:2px;flex-wrap:wrap;min-width:0;justify-self:start}
