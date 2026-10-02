@@ -1,11 +1,10 @@
 'use client';
 
-import { useState } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { User } from '@/lib/types';
 import {
-  Users, Building2, Download, ChevronDown, FileSpreadsheet, FileText, Settings, LogOut, TrendingUp, Palmtree,
-  AlertTriangle,
+  Users, Building2, Download, Settings, LogOut, TrendingUp, Palmtree,
+  AlertTriangle, CheckSquare,
 } from 'lucide-react';
 
 // Menu hamburger mobile de l'admin : identité + statut d'abonnement + les mêmes
@@ -35,12 +34,6 @@ const MM_CSS = `
 .bt-mm-item:hover{background:rgba(21,18,15,.05)}
 .bt-mm-icon{width:30px;height:30px;border-radius:9px;background:#fff;border:1px solid rgba(21,18,15,.1);display:flex;align-items:center;justify-content:center;flex:none;color:#15120F}
 .bt-mm-label{font-weight:800;font-size:13.5px;letter-spacing:-.005em;flex:1}
-.bt-mm-chev{color:#9a948a;transition:transform .18s ease;flex:none}
-.bt-mm-chev.open{transform:rotate(180deg)}
-.bt-mm-sub{display:flex;flex-direction:column;gap:2px;padding:2px 0 6px 47px}
-.bt-mm-subitem{display:flex;align-items:center;gap:9px;padding:9px 10px;border-radius:9px;background:none;border:none;cursor:pointer;font-family:'Archivo',sans-serif;font-size:12.5px;font-weight:700;color:#3a352f;text-align:left}
-.bt-mm-subitem:hover{background:rgba(21,18,15,.06)}
-.bt-mm-subitem small{display:block;font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:600;color:#9a948a;margin-top:1px}
 .bt-mm-sep{height:1px;background:rgba(21,18,15,.1);margin:8px 8px}
 .bt-mm-item.danger .bt-mm-label,.bt-mm-item.danger .bt-mm-icon{color:#B5472E}
 .bt-mm-badge{min-width:19px;height:19px;padding:0 6px;border-radius:99px;background:#B5472E;color:#fff;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex:none;line-height:1}
@@ -64,8 +57,10 @@ interface AdminMobileMenuProps {
   openReserves?: number;
   /** Lot 10 : bornes de pointage (seulement si l'entreprise a la borne). */
   onOpenKiosk?: () => void;
+  /** Lot 11 : « Exporter » ouvre directement l'export de l'équipe (un seul salarié : lien dans la fenêtre). */
   onOpenExportTeam: () => void;
-  onOpenExportWorker: () => void;
+  /** Lot 11 : mode « Sélectionner » du jour affiché (supprimer plusieurs interventions). */
+  onOpenSelect?: () => void;
   onOpenSettings: () => void;
   onSignOut: () => void;
 }
@@ -75,14 +70,12 @@ export default function AdminMobileMenu({
   trial, onSubscribe,
   onOpenSalaries, onOpenChantiers, onOpenCost, onOpenLeaves, pendingLeaves = 0,
   onOpenReserves, openReserves = 0, onOpenKiosk,
-  onOpenExportTeam, onOpenExportWorker, onOpenSettings, onSignOut,
+  onOpenExportTeam, onOpenSelect, onOpenSettings, onSignOut,
 }: AdminMobileMenuProps) {
-  const [exportExpanded, setExportExpanded] = useState(false);
-
   const go = (fn: () => void) => { onOpenChange(false); fn(); };
 
   return (
-    <Sheet open={open} onOpenChange={(o) => { onOpenChange(o); if (!o) setExportExpanded(false); }}>
+    <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="bt-skin bt-mm-sheet">
         <style dangerouslySetInnerHTML={MM_CSS_HTML} />
         <SheetHeader className="sr-only"><SheetTitle>Menu</SheetTitle></SheetHeader>
@@ -146,22 +139,16 @@ export default function AdminMobileMenu({
             <span className="bt-mm-label">Coût chantiers</span>
           </button>
 
-          <button className="bt-mm-item" onClick={() => setExportExpanded((v) => !v)}>
+          <button className="bt-mm-item" onClick={() => go(onOpenExportTeam)} data-testid="mm-export">
             <span className="bt-mm-icon"><Download className="h-4 w-4" /></span>
             <span className="bt-mm-label">Exporter</span>
-            <span className={`bt-mm-chev${exportExpanded ? ' open' : ''}`}><ChevronDown className="h-4 w-4" /></span>
           </button>
-          {exportExpanded && (
-            <div className="bt-mm-sub">
-              <button className="bt-mm-subitem" onClick={() => go(onOpenExportTeam)}>
-                <FileSpreadsheet className="h-3.5 w-3.5" />
-                <span>Exporter l&apos;équipe<small>Verrouille le mois</small></span>
-              </button>
-              <button className="bt-mm-subitem" onClick={() => go(onOpenExportWorker)}>
-                <FileText className="h-3.5 w-3.5" />
-                <span>Exporter un salarié<small>Sans verrou</small></span>
-              </button>
-            </div>
+
+          {onOpenSelect && (
+            <button className="bt-mm-item" onClick={() => go(onOpenSelect)} data-testid="mm-select">
+              <span className="bt-mm-icon"><CheckSquare className="h-4 w-4" /></span>
+              <span className="bt-mm-label">Sélectionner des interventions</span>
+            </button>
           )}
 
           <button className="bt-mm-item" onClick={() => go(onOpenSettings)}>

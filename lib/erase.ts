@@ -5,7 +5,8 @@
 // coup. Tout passe par la session de la personne connectée (ses droits, sa RLS).
 //
 // Jamais effacé : une case sur laquelle des heures sont notées ou envoyées (la
-// base le refuse d'ailleurs), ni rien dans un mois clôturé. Ces cases sont
+// base le refuse d'ailleurs), une case que le salarié a retirée (sa ligne
+// 'cancelled' la désigne encore), ni rien dans un mois clôturé. Ces cases sont
 // GARDÉES et on le dit.
 import { supabase } from '@/lib/supabase';
 
@@ -31,19 +32,51 @@ export async function erasePlanning(companyId: string, o: { ids?: string[]; user
 
   const { data: cl } = await supabase.from('month_closures').select('month').eq('company_id', companyId);
   const closed = new Set(((cl ?? []) as { month: string }[]).map((c) => String(c.month).slice(0, 7)));
+  // Lot 11 : les lignes RETIRÉES par le salarié (status 'cancelled') sont lues
+  // aussi. Elles gardent leur planning_id (time_entries_planning_id_fkey, sans
+  // ON DELETE) : effacer leur case échouait sur la clé étrangère et faisait
+  // échouer TOUT le lot de 100 (« Impossible »). Ces cases sont gardées, et on
+  // dit pourquoi. Rang : envoyée > notée > retirée.
+  const RANK: Record<string, number> = { sent: 3, draft: 2, cancelled: 1 };
   const linked = new Map<string, string>();
+  const mark = (id: string, st: string) => { if ((RANK[st] || 0) > (RANK[linked.get(id) || ''] || 0)) linked.set(id, st); };
   for (const ids of chunks(rows.map((r) => r.id))) {
-    const { data: te, error: teErr } = await supabase.from('time_entries').select('planning_id, status').in('planning_id', ids).neq('status', 'cancelled');
+    const { data: te, error: teErr } = await supabase.from('time_entries').select('planning_id, status').in('planning_id', ids);
     if (teErr) throw teErr;
     for (const t of (te ?? []) as { planning_id: string; status: string }[]) {
-      if (linked.get(t.planning_id) !== 'sent') linked.set(t.planning_id, t.status === 'draft' ? 'draft' : 'sent');
+      mark(t.planning_id, t.status === 'cancelled' ? 'cancelled' : t.status === 'draft' ? 'draft' : 'sent');
     }
+  }
+  // Filet de sécurité : des heures notées SANS planning_id (saisies avant le
+  // lien, ou ajoutées par le salarié) sur le même salarié, jour et chantier
+  // appartiennent aussi à la case. L'écran ne les propose déjà pas ; l'Assistant
+  // (effacer par période) ne doit pas non plus les rendre orphelines.
+  const users = Array.from(new Set(rows.map((r) => String(r.user_id))));
+  const dates = rows.map((r) => String(r.work_date)).sort();
+  const byKey = new Map<string, string>();
+  for (const part of chunks(users)) {
+    const { data: loose, error: lErr } = await supabase.from('time_entries').select('user_id, work_date, worksite_id, status')
+      .eq('company_id', companyId).in('user_id', part).gte('work_date', dates[0]).lte('work_date', dates[dates.length - 1])
+      .is('planning_id', null).neq('status', 'cancelled');
+    if (lErr) throw lErr;
+    for (const t of (loose ?? []) as { user_id: string; work_date: string; worksite_id: string | null; status: string }[]) {
+      if (!t.worksite_id || !t.work_date) continue;
+      const k = `${t.user_id}|${t.work_date}|${t.worksite_id}`;
+      if (byKey.get(k) !== 'sent') byKey.set(k, t.status === 'draft' ? 'draft' : 'sent');
+    }
+  }
+  for (const r of rows) {
+    const st = r.worksite_id ? byKey.get(`${r.user_id}|${r.work_date}|${r.worksite_id}`) : undefined;
+    if (st) mark(r.id, st);
   }
   const reasons = new Set<string>();
   const toDelete = rows.filter((r) => {
     if (closed.has(String(r.work_date).slice(0, 7))) { reasons.add('mois clôturé'); return false; }
     const st = linked.get(r.id);
-    if (st) { reasons.add(st === 'sent' ? 'heures déjà envoyées' : 'heures déjà notées par le salarié'); return false; }
+    if (st) {
+      reasons.add(st === 'sent' ? 'heures déjà envoyées' : st === 'draft' ? 'heures déjà notées par le salarié' : 'retirée par le salarié');
+      return false;
+    }
     return true;
   });
   const gone = new Set<string>();

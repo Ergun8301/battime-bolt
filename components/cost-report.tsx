@@ -45,6 +45,7 @@ import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import type { DateRange } from 'react-day-picker';
 import { RealCostLine, REAL_COST_CSS } from '@/components/real-cost-card';
+import { InfoTip } from '@/components/ui/info-tip';
 import { ratesByUser, realLabourCost, supabaseCostSource, useAiEnabled } from '@/lib/real-cost';
 
 interface Props { open: boolean; onOpenChange: (o: boolean) => void; companyId?: string }
@@ -75,14 +76,17 @@ interface Expense {
 }
 
 const CR_CSS = `
-.bt-cr-sum{display:flex;gap:8px;margin:2px 0 4px}
-.bt-cr-sumcard{flex:1;min-width:0;background:#15120F;color:#F2EDE3;border-radius:14px;padding:12px 13px}
+.bt-cr-sum{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:2px 0 4px}
+@media (max-width:480px){.bt-cr-sum{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.bt-cr-sumcard{min-width:0;background:#15120F;color:#F2EDE3;border-radius:14px;padding:12px 11px}
 .bt-cr-sumcard.gold{background:#FFC21A;color:#15120F}
-.bt-cr-suml{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;opacity:.75;font-weight:700}
-.bt-cr-sumv{font-size:21px;font-weight:900;letter-spacing:-.02em;margin-top:3px;line-height:1}
-.bt-cr-note{background:#FBF3DC;border:1px solid #EAD9A2;color:#7a5e00;border-radius:10px;padding:9px 12px;font-size:12px;font-weight:600;margin:2px 0}
+.bt-cr-sumcard.light{background:#fff;color:#15120F;border:1.5px solid rgba(21,18,15,.14)}
+.bt-cr-suml{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;opacity:.75;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bt-cr-sumv{font-size:clamp(15px,4.6vw,20px);font-weight:900;letter-spacing:-.02em;margin-top:3px;line-height:1.05;overflow-wrap:anywhere}
+.bt-cr-sums{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;color:#a87c1e;margin-top:4px;line-height:1.2}
+.bt-cr-note{display:flex;align-items:center;gap:6px;background:#FBF3DC;border:1px solid #EAD9A2;color:#7a5e00;border-radius:10px;padding:9px 12px;font-size:12px;font-weight:600;margin:2px 0}
 .bt-cr-row{width:100%;text-align:left;background:#fff;border:1px solid rgba(21,18,15,.1);border-radius:13px;padding:12px 14px;font-family:inherit;color:#15120F}
-.bt-cr-rowtop{display:flex;align-items:center;gap:10px;cursor:pointer}
+.bt-cr-rowtop{display:flex;align-items:center;gap:10px;cursor:pointer;min-width:0}
 .bt-cr-name{font-weight:800;font-size:14.5px;letter-spacing:-.01em;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bt-cr-city{font-family:'JetBrains Mono',monospace;font-size:11px;color:#9a948a;font-weight:600}
 .bt-cr-vals{text-align:right;flex:none}
@@ -129,6 +133,10 @@ const CR_CSS = `
 .bt-cr-budfill.warn{background:#C0461F}
 .bt-cr-budfill.over{background:#B5472E}
 `;
+
+// Lot 10 (règle anti-flash) : objet FIXE au niveau du module — un `{ __html }`
+// neuf à chaque rendu fait réécrire la feuille de style par React.
+const CR_HTML = { __html: CR_CSS + REAL_COST_CSS };
 
 const fmtH = (min: number) => {
   const h = Math.floor(min / 60), m = Math.round(min % 60);
@@ -316,10 +324,10 @@ export default function CostReport({ open, onOpenChange, companyId }: Props) {
     (expensesBySite.get(id) || []).reduce((s, e) => s + e.amount, 0);
 
   const totals = useMemo(() => {
-    let min = 0, cost = 0;
-    for (const s of sites) { min += s.minutes; cost += s.cost; }
+    let min = 0, cost = 0, route = 0;
+    for (const s of sites) { min += s.minutes; cost += s.cost; route += s.routeMinutes; }
     const exp = expenses.reduce((s, e) => s + e.amount, 0);
-    return { min, cost, exp, all: cost + exp };
+    return { min, route, cost, exp, all: cost + exp };
   }, [sites, expenses]);
 
   const addExpense = async () => {
@@ -362,7 +370,7 @@ export default function CostReport({ open, onOpenChange, companyId }: Props) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bt-skin max-w-lg max-h-[86vh] overflow-y-auto">
-        <style dangerouslySetInnerHTML={{ __html: CR_CSS + REAL_COST_CSS }} />
+        <style dangerouslySetInnerHTML={CR_HTML} />
         <DialogHeader><DialogTitle>Coût par chantier</DialogTitle></DialogHeader>
 
         {/* période */}
@@ -390,6 +398,12 @@ export default function CostReport({ open, onOpenChange, companyId }: Props) {
         ) : (
           <>
             <div className="bt-cr-sum">
+              {/* Lot 11 : les heures (déplacées du cockpit) — même source que les lignes. */}
+              <div className="bt-cr-sumcard light" data-testid="cr-hours">
+                <div className="bt-cr-suml">Heures</div>
+                <div className="bt-cr-sumv">{totals.min > 0 ? fmtH(totals.min) : '—'}</div>
+                {totals.route > 0 && <div className="bt-cr-sums">dont {fmtH(totals.route)} de route</div>}
+              </div>
               <div className="bt-cr-sumcard">
                 <div className="bt-cr-suml">Main d&apos;œuvre</div>
                 <div className="bt-cr-sumv">{totals.cost > 0 ? fmtEur(totals.cost) : '—'}</div>
@@ -405,7 +419,10 @@ export default function CostReport({ open, onOpenChange, companyId }: Props) {
             </div>
 
             {missingRates && (
-              <div className="bt-cr-note">Certains salariés n&apos;ont pas de <strong>taux horaire</strong> : leurs heures sont comptées, mais pas leur coût. Renseignez-le dans la fiche du salarié.</div>
+              <div className="bt-cr-note">
+                <span className="min-w-0">Taux horaire manquant pour certains salariés : coût incomplet.</span>
+                <InfoTip text="Leurs heures sont comptées, pas leur coût. Renseignez le taux dans la fiche du salarié." />
+              </div>
             )}
 
             {/* Saisie d'une dépense, EN TÊTE et avec son propre sélecteur de

@@ -5,11 +5,12 @@
 //       · sondage des chronos (30 s), sondage des compteurs (60 s),
 //       · retour sur l'onglet (caché → visible, Supabase renvoie « SIGNED_IN » → profil relu).
 //     Cible : 0 mutation. Exceptions autorisées : AUCUNE (il n'y a pas d'horloge à l'écran).
-//     Puis un vrai changement (nouveau chrono, chrono fermé) ne touche QUE la case concernée
-//     et le chiffre « en direct ».
+//     Puis un vrai changement (nouveau chrono, chrono fermé) ne touche QUE la case concernée.
+//     (Lot 11 : le compteur « en direct » a quitté le cockpit — le cockpit ne bouge plus DU TOUT
+//      quand un chrono démarre ou s'arrête ; la case verte reste.)
 //  2) Cockpit : plus fin, logo à gauche, chiffres au centre, entreprise à droite ; aucun saut
-//     quand « N en direct » apparaît/disparaît ; aucun chevauchement à 1024/1280/1440 (essai
-//     + 3 en direct compris) ; en-tête mobile rangé, sans défilement horizontal.
+//     quand les pointages commencent/s'arrêtent ; aucun chevauchement à 1024/1280/1440 (essai
+//     + 3 pointages en cours compris) ; en-tête mobile rangé, sans défilement horizontal.
 //  3) « 📟 Borne » à côté de « Réserves » (seulement si kiosk_enabled) → fenêtre des bornes.
 import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path'; import { chromium } from 'playwright-core';
 const [,, OUT, SH, PORT = '4310'] = process.argv; fs.mkdirSync(SH, { recursive: true });
@@ -19,9 +20,12 @@ await new Promise((r) => srv.listen(Number(PORT), r));
 const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
 
 // ─── Dates relatives (jour de Paris) ───────────────────────────────────────────
-const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
+// Lot 11 : horloge FIGÉE (mercredi 21 octobre 2026, 10:00) — « À relancer » regarde le mois en
+// cours : les jours J-2…J-6 doivent rester dans le mois, quel que soit le jour où le test tourne.
+const NOW = new Date('2026-10-21T10:00:00+02:00');
+const today = '2026-10-21';
 const day = (n) => { const x = new Date(`${today}T12:00:00Z`); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
-const ago = (h) => new Date(Date.now() - h * 3600e3).toISOString();
+const ago = (h) => new Date(NOW.getTime() - h * 3600e3).toISOString();
 
 // ─── Base simulée (celle du lot 9) ─────────────────────────────────────────────
 const CO = 'c0000000-0000-0000-0000-000000000001';
@@ -63,7 +67,7 @@ const D = {
 };
 
 // ─── Session simulée + routes Supabase (celles du lot 9) ───────────────────────
-const now = Math.floor(Date.now() / 1000); const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+const now = Math.floor(NOW.getTime() / 1000); const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
 const jwt = `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64({ sub: 'u-admin', role: 'authenticated', exp: now + 36000, aal: 'aal1' })}.sig`;
 const session = { access_token: jwt, refresh_token: 'r', expires_at: now + 36000, expires_in: 36000, token_type: 'bearer', user: { id: 'u-admin', email: 'paul@exemple.fr', aud: 'authenticated', role: 'authenticated' } };
 const SKIP = new Set(['select', 'order', 'limit', 'offset', 'on_conflict', 'columns']);
@@ -87,6 +91,7 @@ const filterRows = (rows, params) => {
 };
 const log = { liveGets: 0, planningGets: 0, extrasGets: 0, profileGets: 0, writes: 0 };
 const setup = async (ctx) => {
+  await ctx.clock.install({ time: NOW }); // lot 11 : horloge du contexte (page.clock la pilote)
   await ctx.addInitScript(([k, v]) => { localStorage.setItem(k, v); }, ['sb-sdperbcquvneohotjono-auth-token', JSON.stringify(session)]);
   await ctx.route('**/*.supabase.co/**', async (r) => {
     const url = new URL(r.request().url());
@@ -179,7 +184,6 @@ const setVis = (pg, state) => pg.evaluate((s) => {
   const ctx = await b.newContext({ viewport: { width: 1440, height: 900 }, locale: 'fr-FR', timezoneId: 'Europe/Paris' });
   await setup(ctx);
   const p = await ctx.newPage();
-  await p.clock.install();
   await p.goto(`http://localhost:${PORT}/admin`); await p.waitForSelector('[data-testid=stat-waiting]', { timeout: 20000 }); await p.waitForTimeout(2500);
   await p.mouse.move(5, 895);
   await startObs(p);
@@ -221,8 +225,8 @@ const setVis = (pg, state) => pg.evaluate((s) => {
   report('1d) Kevin ferme son chrono', m);
   // (La vue mobile est dans la page, masquée : sa carte et son chiffre « en direct » suivent.)
   const zones1d = [...new Set(m.map((x) => x.zone))];
-  check(m.length > 0 && zones1d.every((z) => ['ligne Kevin Roussel', 'carte Kevin Roussel', 'cockpit', 'en-tête mobile', 'remplissage'].includes(z)), `1d) seules la case de Kevin et « en direct » changent (${zones1d.join(', ')})`);
-  check(m.filter((x) => x.zone === 'cockpit' || x.zone === 'en-tête mobile').every((x) => /stat-live/.test(x.target)), '1d) dans le cockpit, seul « en direct » change');
+  check(m.length > 0 && zones1d.every((z) => ['ligne Kevin Roussel', 'carte Kevin Roussel', 'remplissage'].includes(z)), `1d) seule la case de Kevin change (${zones1d.join(', ')})`);
+  check(m.filter((x) => x.zone === 'cockpit' || x.zone === 'en-tête mobile').length === 0, '1d) lot 11 : le cockpit ne change pas du tout (plus de compteur « en direct »)');
   const kevinRow = p.locator('tr', { has: p.locator('.bt-pl-name', { hasText: 'Kevin Roussel' }) }).first();
   check(await kevinRow.locator('[data-testid=bubble-live]').count() === 0, '1d) Kevin n’est plus « en cours »');
 
@@ -232,8 +236,8 @@ const setVis = (pg, state) => pg.evaluate((s) => {
   m = await takeMuts(p); RESULTS['nouveau chrono'] = m.length;
   report('1e) Léa démarre un chrono', m);
   const zones1e = [...new Set(m.map((x) => x.zone))];
-  check(m.length > 0 && zones1e.every((z) => ['ligne Léa Petit', 'carte Léa Petit', 'cockpit', 'en-tête mobile', 'remplissage'].includes(z)), `1e) seules la case de Léa et « en direct » changent (${zones1e.join(', ')})`);
-  check(m.filter((x) => x.zone === 'cockpit' || x.zone === 'en-tête mobile').every((x) => /stat-live/.test(x.target)), '1e) dans le cockpit, seul « en direct » change');
+  check(m.length > 0 && zones1e.every((z) => ['ligne Léa Petit', 'carte Léa Petit', 'remplissage'].includes(z)), `1e) seule la case de Léa change (${zones1e.join(', ')})`);
+  check(m.filter((x) => x.zone === 'cockpit' || x.zone === 'en-tête mobile').length === 0, '1e) lot 11 : le cockpit ne change pas du tout');
   const leaRow = p.locator('tr', { has: p.locator('.bt-pl-name', { hasText: 'Léa Petit' }) }).first();
   check(await leaRow.locator('[data-testid=bubble-live]').count() === 1, '1e) la bulle de Léa passe « en cours »');
 
@@ -251,7 +255,7 @@ const setVis = (pg, state) => pg.evaluate((s) => {
   D.active_sessions = [sKevin, sMarc, sNina];
   const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, locale: 'fr-FR', timezoneId: 'Europe/Paris' });
   await setup(ctx);
-  const p = await ctx.newPage(); await p.clock.install();
+  const p = await ctx.newPage();
   await p.goto(`http://localhost:${PORT}/admin`); await p.waitForSelector('.bt-pl-m-card', { timeout: 20000 }); await p.waitForTimeout(2500);
   await startObs(p);
   await p.clock.fastForward(62000); await p.waitForTimeout(1500);
@@ -270,14 +274,14 @@ const geo = (pg) => Promise.all(['.bt-pl-cockpit', '.bt-pl-cockpit .bt-pl-logo',
 for (const [width, height] of [[1024, 768], [1280, 800], [1440, 900]]) {
   D.active_sessions = [sKevin, sMarc, sNina];
   const c = await b.newContext({ viewport: { width, height }, locale: 'fr-FR', timezoneId: 'Europe/Paris' });
-  await setup(c); const pg = await c.newPage(); await pg.clock.install();
+  await setup(c); const pg = await c.newPage();
   await pg.goto(`http://localhost:${PORT}/admin`); await pg.waitForSelector('[data-testid=stat-waiting]', { timeout: 20000 }); await pg.waitForTimeout(1800);
   const [ck, lg, st, rt, bar] = await geo(pg);
   const trialOn = await vis(pg, '.bt-pl-cockpit .bt-pl-trial').count() === 1;
-  const liveOn = await vis(pg, '[data-testid=stat-live]').count() === 1;
+  const liveOn = await vis(pg, '[data-testid=bubble-live], [data-testid=live-chip]').count() > 0 && await vis(pg, '[data-testid=stat-live]').count() === 0;
   const inside = [st, lg, rt].every((x) => x && x.x >= ck.x - 0.5 && x.x + x.width <= ck.x + ck.width + 0.5 && x.y >= ck.y - 0.5 && x.y + x.height <= ck.y + ck.height + 0.5);
   check(trialOn && liveOn && !overlap(st, lg) && !overlap(lg, rt) && !overlap(st, rt) && inside,
-    `${width}×${height} essai + 3 en direct : logo ${fmt(lg)}, chiffres ${fmt(st)}, droite ${fmt(rt)} — aucun chevauchement, tout dans le cockpit`);
+    `${width}×${height} essai + 3 pointages en cours (cases vertes, sans compteur) : logo ${fmt(lg)}, chiffres ${fmt(st)}, droite ${fmt(rt)} — aucun chevauchement, tout dans le cockpit`);
   check(lg.x < st.x && st.x + st.width <= rt.x + 0.5, `${width}×${height} : logo à gauche, chiffres au centre, entreprise à droite`);
   const stCenter = st.x + st.width / 2, ckCenter = ck.x + ck.width / 2;
   console.log(`   ${width}×${height} : cockpit ${Math.round(ck.height)} px de haut, centre des chiffres ${Math.round(stCenter)} / centre du cockpit ${Math.round(ckCenter)}`);
@@ -285,17 +289,17 @@ for (const [width, height] of [[1024, 768], [1280, 800], [1440, 900]]) {
   // Une ligne = tous les chiffres centrés à la même hauteur (à 2 px près).
   const mids = await pg.evaluate(() => [...document.querySelectorAll('.bt-pl-cockpit .bt-pl-stat')].map((e) => { const r = e.getBoundingClientRect(); return Math.round(r.top + r.height / 2); }));
   check(Math.max(...mids) - Math.min(...mids) <= 2, `${width}×${height} : les chiffres tiennent sur une ligne (${mids.join(', ')})`);
-  // Sans saut : les chronos s'arrêtent tous → « en direct » disparaît ; rien ne bouge.
+  // Sans saut : les chronos s'arrêtent tous → les cases vertes s'éteignent ; le cockpit ne bouge pas.
   D.active_sessions = [];
   await pg.clock.fastForward(31000); await pg.waitForTimeout(1500);
   const [ck2, lg2, st2, rt2, bar2] = await geo(pg);
-  const liveOff = await vis(pg, '[data-testid=stat-live]').count() === 0;
+  const liveOff = await vis(pg, '[data-testid=bubble-live], [data-testid=live-chip]').count() === 0;
   const still = (a, z) => Math.abs(a.x - z.x) < 0.5 && Math.abs(a.y - z.y) < 0.5 && Math.abs(a.width - z.width) < 0.5 && Math.abs(a.height - z.height) < 0.5;
-  check(liveOff && still(ck, ck2) && still(lg, lg2) && still(st, st2) && still(rt, rt2) && still(bar, bar2), `${width}×${height} : « en direct » disparaît sans que le cockpit ni la barre ne bougent`);
+  check(liveOff && still(ck, ck2) && still(lg, lg2) && still(st, st2) && still(rt, rt2) && still(bar, bar2), `${width}×${height} : plus aucun pointage en cours, ni le cockpit ni la barre ne bougent`);
   D.active_sessions = [sKevin, sMarc, sNina];
   await pg.clock.fastForward(31000); await pg.waitForTimeout(1500);
   const [ck3, lg3, st3, rt3] = await geo(pg);
-  check(await vis(pg, '[data-testid=stat-live]').count() === 1 && still(ck, ck3) && still(lg, lg3) && still(st, st3) && still(rt, rt3), `${width}×${height} : « 3 en direct » réapparaît, toujours sans saut`);
+  check(await vis(pg, '[data-testid=bubble-live]').count() > 0 && await vis(pg, '[data-testid=stat-live]').count() === 0 && still(ck, ck3) && still(lg, lg3) && still(st, st3) && still(rt, rt3), `${width}×${height} : les pointages reprennent (cases vertes), toujours sans saut ni compteur`);
   // Les panneaux des chiffres s'ouvrent toujours.
   await pg.click('[data-testid=stat-waiting]'); await pg.waitForTimeout(200);
   check(await vis(pg, '.bt-pl-sp').count() === 1, `${width}×${height} : un clic sur un chiffre ouvre son panneau`);
@@ -317,8 +321,8 @@ for (const [width, height] of [[1024, 768], [1280, 800], [1440, 900]]) {
   check(await head.locator('.bt-pl-logo').count() === 1, 'mobile : logo dans l’en-tête');
   check(headTxt.includes('Mister Grill Kebab'), 'mobile : nom de l’entreprise dans l’en-tête');
   check(await head.locator('.bt-pl-trial').count() === 1, 'mobile : pastille d’essai conservée');
-  check(await head.locator('[data-testid=m-stat-waiting]').count() === 1 && /6/.test(await head.locator('[data-testid=m-stat-waiting]').innerText()), 'mobile : chiffre « journées non envoyées » compact');
-  check(/3/.test(await head.locator('[data-testid=m-stat-live]').innerText().catch(() => '')), 'mobile : « 3 en direct » compact');
+  check(await head.locator('[data-testid=m-stat-waiting]').count() === 1 && /6 j/.test(await head.locator('[data-testid=m-stat-waiting]').innerText()), 'mobile : chiffre « À relancer » compact (6 j)');
+  check(await head.locator('[data-testid=m-stat-live]').count() === 0 && await head.locator('.bt-pl-m-stat').count() === 2, 'mobile (lot 11) : 2 puces, plus de « en direct »');
   check(await head.locator('button[aria-label=Menu]').count() === 1 && await head.locator('button[aria-label="Semaine précédente"]').count() === 1 && await head.locator('button[aria-label=Déconnexion]').count() === 1 && await head.locator('.bt-pl-daypill').count() === 7, 'mobile : menu, semaines, déconnexion et jours toujours là');
   const boxes = await head.locator('button:visible, .bt-pl-logo, .bt-pl-trial').evaluateAll((els) => els.map((e) => { const r = e.getBoundingClientRect(); return { x: r.left, r: r.right, y: r.top, b: r.bottom }; }));
   check(boxes.every((x) => x.x >= -0.5 && x.r <= 390.5), 'mobile : rien ne dépasse de l’écran dans l’en-tête');

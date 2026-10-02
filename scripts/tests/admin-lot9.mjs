@@ -1,8 +1,9 @@
 // Lancer : node scripts/tests/admin-lot9.mjs out docs/captures-lot9 (après npm run build).
 // Lot 9 — bureau, sur la VRAIE page planning (base simulée, aucune écriture) :
-//  1) bandeau « N journée(s) non envoyée(s) » = somme EXACTE des pastilles « X jours en attente »
-//     des lignes (salariée absente aujourd'hui comprise ; compte désactivé et bureau exclus des deux) ;
-//     « N h validée(s) » = heures envoyées (submitted + validated), jamais les brouillons ni le direct ;
+//  1) bandeau (lot 11 : « N j à relancer », mois en cours) = somme EXACTE des pastilles « X jours en
+//     attente » des lignes (salariée absente aujourd'hui comprise ; compte désactivé et bureau exclus) ;
+//     (lot 11 : « N h validée(s) » et « N en direct » ont quitté le cockpit — demande du gérant ;
+//      les heures par chantier sont dans « Coût chantiers », la case verte reste la seule trace du direct) ;
 //  2) « en cours depuis » : bulle désignée par planning_id, pastille verte quand le chantier pointé
 //     n'est pas au planning, jour préfixé pour un chrono oublié, case verte, badge mobile « EN COURS » ;
 //  3) sondage active_sessions (30 s, colonnes strictes, en pause onglet caché, relu au retour) :
@@ -15,12 +16,15 @@ await new Promise((r) => srv.listen(Number(PORT), r));
 const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
 
 // ─── Dates relatives (jour de Paris) ───────────────────────────────────────────
-const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
+// Lot 11 : horloge FIGÉE (mercredi 21 octobre 2026, 10:00) — « À relancer » regarde le mois
+// en cours ; sans horloge fixe, les jours J-2…J-6 tomberaient le mois d'avant en début de mois.
+const NOW = new Date('2026-10-21T10:00:00+02:00');
+const today = '2026-10-21';
 const day = (n) => { const x = new Date(`${today}T12:00:00Z`); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
 const monday = day(-((new Date(`${today}T12:00:00Z`).getUTCDay() + 6) % 7));
 const inWeek = (d) => d >= monday && d <= day(-((new Date(`${today}T12:00:00Z`).getUTCDay() + 6) % 7) + 6);
 const hhmm = (iso) => new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(iso));
-const ago = (h) => new Date(Date.now() - h * 3600e3).toISOString();
+const ago = (h) => new Date(NOW.getTime() - h * 3600e3).toISOString();
 
 // ─── Base simulée ──────────────────────────────────────────────────────────────
 const CO = 'c0000000-0000-0000-0000-000000000001';
@@ -60,7 +64,7 @@ const D = {
 const EXPECTED_WAITING = 2 + 3 + 1; // Kevin + Sara (absente) + Nina ; u-old et u-admin exclus
 
 // ─── Session simulée + routes Supabase ─────────────────────────────────────────
-const now = Math.floor(Date.now() / 1000); const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+const now = Math.floor(NOW.getTime() / 1000); const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
 const jwt = `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64({ sub: 'u-admin', role: 'authenticated', exp: now + 36000, aal: 'aal1' })}.sig`;
 const session = { access_token: jwt, refresh_token: 'r', expires_at: now + 36000, expires_in: 36000, token_type: 'bearer', user: { id: 'u-admin', email: 'paul@exemple.fr', aud: 'authenticated', role: 'authenticated' } };
 const SKIP = new Set(['select', 'order', 'limit', 'offset', 'on_conflict', 'columns']);
@@ -84,6 +88,7 @@ const filterRows = (rows, params) => {
 };
 const log = { liveSelects: [], liveGets: 0, planningGets: 0, writes: 0 };
 const setup = async (ctx) => {
+  await ctx.clock.install({ time: NOW });
   await ctx.addInitScript(([k, v]) => { localStorage.setItem(k, v); }, ['sb-sdperbcquvneohotjono-auth-token', JSON.stringify(session)]);
   await ctx.route('**/*.supabase.co/**', async (r) => {
     const url = new URL(r.request().url());
@@ -109,8 +114,7 @@ const vis = (p, sel) => p.locator(`${sel}:visible`);
 const ctx = await b.newContext({ viewport: { width: 1440, height: 900 }, locale: 'fr-FR', timezoneId: 'Europe/Paris' });
 await setup(ctx);
 const p = await ctx.newPage();
-let clockOk = true;
-try { await p.clock.install(); } catch { clockOk = false; }
+const clockOk = true; // horloge installée sur le contexte (setup)
 await p.goto(`http://localhost:${PORT}/admin`); await p.waitForSelector('[data-testid=stat-waiting]', { timeout: 20000 }); await p.waitForTimeout(1500);
 
 // 1) Bandeau = somme des pastilles
@@ -119,23 +123,21 @@ const waitN = Number((waitTxt.match(/^(\d+)/) || [])[1]);
 const pastilles = await vis(p, '[data-testid=row-waiting]').evaluateAll((els) => els.map((e) => Number(e.getAttribute('data-days'))));
 const pastilleTexts = await vis(p, '[data-testid=row-waiting]').allInnerTexts();
 const sum = pastilles.reduce((a, n) => a + n, 0);
-check(/journées non envoyées$/.test(waitTxt), `1) libellé du bandeau : « ${waitTxt} »`);
+check(/^\d+ j à relancer$/.test(waitTxt), `1) libellé du bandeau (lot 11) : « ${waitTxt} »`);
 check(waitN === sum, `1) bandeau (${waitN}) = somme des pastilles (${pastilleTexts.join(' + ')} = ${sum})`);
 check(waitN === EXPECTED_WAITING, `1) ${EXPECTED_WAITING} attendues (compte désactivé et bureau exclus) : ${waitN}`);
 const saraRow = p.locator('tr', { has: p.locator('.bt-pl-name', { hasText: 'Sara Benali' }) }).first();
 const saraStatus = (await saraRow.locator('.bt-pl-namebtn').innerText()).replace(/\s+/g, ' ');
 check(/Congé/.test(saraStatus) && /3 jours en attente/.test(saraStatus), `1) Sara absente aujourd'hui garde sa pastille : « ${saraStatus.trim()} »`);
 check(await p.locator('.bt-pl-name', { hasText: 'Ancien Compte' }).count() === 0, '1) le compte désactivé n’a pas de ligne');
-const hoursTxt = (await p.locator('[data-testid=stat-hours]').innerText()).replace(/\s+/g, ' ').replace('▾', '').trim();
-check(hoursTxt === '2 h validées', `1) heures : « ${hoursTxt} » (submitted + validated, sans le brouillon ni le direct)`);
-const hoursTitle = await p.locator('[data-testid=stat-hours]').getAttribute('title');
-check(/validée\(s\) = envoyée\(s\) par les salariés/.test(hoursTitle || ''), '1) infobulle : « validée(s) = envoyée(s) par les salariés »');
+// Lot 11 : « h validées » a quitté le cockpit (détail par chantier dans « Coût chantiers »).
+check(await p.locator('[data-testid=stat-hours]').count() === 0, '1) lot 11 : plus de « h validées » dans le cockpit');
 const waitTitle = await p.locator('[data-testid=stat-waiting]').getAttribute('title');
-check(/sur les 21 derniers jours/.test(waitTitle || ''), '1) infobulle : « sur les 21 derniers jours »');
+check(/en octobre/.test(waitTitle || ''), `1) infobulle : le mois en toutes lettres (« ${waitTitle} »)`);
 await p.click('[data-testid=stat-waiting]'); await p.waitForTimeout(200);
 // textContent (pas innerText) : l'en-tête du panneau est en capitales par CSS.
 const panelTxt = await p.locator('.bt-pl-sp').textContent();
-check(/Journées non envoyées/.test(panelTxt) && /21 derniers jours/.test(panelTxt) && !/Ancien/.test(panelTxt), '1) panneau : journées non envoyées, 21 derniers jours, sans le compte désactivé');
+check(/À relancer · octobre/.test(panelTxt) && /ce mois-ci/.test(panelTxt) && !/Ancien/.test(panelTxt), '1) panneau : « À relancer · octobre », mois en cours, sans le compte désactivé');
 await p.locator('.bt-pl-sp').screenshot({ path: `${SH}/admin-panneau-journees.png` });
 await p.locator('.bt-pl-ddbackdrop').first().click(); await p.waitForTimeout(200);
 
@@ -156,13 +158,13 @@ if (inWeek(day(-1))) {
   const t = (await ninaLive.innerText().catch(() => '')).trim();
   check(new RegExp(`^en cours depuis [a-zéû]+\\. ${hhmm(sNina.started_at)}$`).test(t), `2) chrono oublié : jour préfixé « ${t} »`);
 } else console.log('   (hier n’est pas dans la semaine affichée : préfixe du jour non vérifié)');
-check((await p.locator('[data-testid=stat-live]').innerText()).includes('3'), '2) cockpit « 3 en direct » nourri par le sondage');
+check(await p.locator('[data-testid=stat-live]').count() === 0, '2) lot 11 : plus de compteur « en direct » (la case verte suffit)');
 await p.click('button[aria-label="Légende des icônes"]'); await p.waitForTimeout(200);
 check(await p.locator('.bt-pl-legrow', { hasText: 'En cours (pointage en direct)' }).count() === 1, '2) légende : « En cours (pointage en direct) »');
 await p.locator('.bt-pl-dd').first().screenshot({ path: `${SH}/admin-legende.png` });
 await p.locator('.bt-pl-ddbackdrop').first().click(); await p.waitForTimeout(200);
-const sameLine = async (pg) => { const a = await pg.locator('[data-testid=stat-hours]').boundingBox(); const l = await pg.locator('[data-testid=stat-live]').boundingBox(); return !!a && !!l && Math.abs(a.y - l.y) < 4; };
-check(await sameLine(p), '1440×900 : les chiffres du cockpit tiennent sur une ligne (« en direct » compris)');
+const sameLine = async (pg) => { const a = await pg.locator('[data-testid=stat-waiting]').boundingBox(); const l = await pg.locator('[data-testid=stat-docs]').boundingBox(); return !!a && !!l && Math.abs(a.y - l.y) < 4; };
+check(await sameLine(p), '1440×900 : les 2 indicateurs du cockpit tiennent sur une ligne');
 await p.mouse.move(720, 50); await p.waitForTimeout(150);
 await p.screenshot({ path: `${SH}/admin-planning-1440x900.png` });
 
@@ -180,8 +182,8 @@ check(log.planningGets > pl0, '3) chrono disparu → planning relu (fetchPlannin
 check(await kevinRow.locator('[data-testid=bubble-live]').count() === 0 && await kevinRow.locator('td.bt-pl-cell-live').count() === 0, '3) Kevin n’est plus « en cours »');
 check((await kevinRow.locator('.bt-pl-bub-draft').innerText().catch(() => '')).includes('à envoyer'), '3) son brouillon apparaît (« à envoyer »)');
 check(await p.evaluate(() => window.__sansRecharge === 1), '3) sans rechargement de la page');
-check((await p.locator('[data-testid=stat-live]').innerText()).includes('2'), '3) cockpit « 2 en direct »');
-check((await p.locator('[data-testid=stat-hours]').innerText()).replace(/\s+/g, ' ').includes('2 h validées'), '3) le brouillon ne compte pas dans les heures validées');
+check(await p.locator('[data-testid=stat-live]').count() === 0, '3) toujours aucun compteur « en direct » dans le cockpit');
+check(Number(((await p.locator('[data-testid=stat-waiting]').innerText()).match(/\d+/) || [])[0]) === EXPECTED_WAITING, '3) le brouillon de Kevin ne change pas « À relancer » (un brouillon n’est pas envoyé, et c’est aujourd’hui)');
 
 // 3 bis) Onglet caché : sondage en pause ; retour → relu tout de suite
 const setVis = (state) => p.evaluate((s) => { Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => s }); document.dispatchEvent(new Event('visibilitychange')); }, state);
@@ -218,12 +220,13 @@ const lCard = pm.locator('.bt-pl-m-card', { hasText: 'Léa Petit' }).first();
 const mCard = pm.locator('.bt-pl-m-card', { hasText: 'Marc Durand' }).first();
 check(await kCard.locator('[data-testid=m-badge-live]').count() === 1 && await kCard.locator('[data-testid=bubble-live]').count() === 1, 'mobile : Kevin « EN COURS » + bulle « en cours depuis »');
 check(await mCard.locator('[data-testid=m-badge-live]').count() === 1 && await mCard.locator('[data-testid=live-chip]').count() === 1, 'mobile : Marc « EN COURS » + pastille verte');
-check((await lCard.innerText()).includes('✓ POINTÉ') && await lCard.locator('[data-testid=m-badge-live]').count() === 0, 'mobile : Léa (pas en direct) garde « ✓ POINTÉ »');
+// Lot 11 (item 8) : le vert est réservé au vrai pointage — « ✓ POINTÉ » vert devient « ✓ ENVOYÉ » neutre.
+check((await lCard.innerText()).includes('✓ ENVOYÉ') && await lCard.locator('[data-testid=m-badge-live]').count() === 0, 'mobile : Léa (pas en direct) : « ✓ ENVOYÉ » (lot 11)');
 await pm.screenshot({ path: `${SH}/admin-mobile-390x844.png` });
 await mob.close();
 
 // ─── Cockpit, entreprise en essai (pastille « Essai · S'abonner ») : iPad paysage 1024×768
-//     (encore en mise en page bureau) et 1280×800, avec et sans « en direct » : chiffres, logo
+//     (encore en mise en page bureau) et 1280×800, avec et sans pointage en cours : chiffres, logo
 //     et colonne de droite ne se chevauchent jamais et restent dans le cockpit. ─────────────
 D.companies[0].subscription_status = 'trialing'; D.companies[0].trial_ends_at = day(12);
 const overlap = (a, c) => a.x < c.x + c.width - 0.5 && c.x < a.x + a.width - 0.5 && a.y < c.y + c.height - 0.5 && c.y < a.y + a.height - 0.5;
@@ -234,11 +237,11 @@ for (const [width, height] of [[1024, 768], [1280, 800]]) for (const live of [fa
   await pg.goto(`http://localhost:${PORT}/admin`); await pg.waitForSelector('[data-testid=stat-waiting]', { timeout: 20000 }); await pg.waitForTimeout(1500);
   const [ck, st, lg, rt] = await Promise.all(['.bt-pl-cockpit', '.bt-pl-stats', '.bt-pl-cockpit .bt-pl-logo', '.bt-pl-cockpit-right'].map((s) => vis(pg, s).first().boundingBox()));
   const trialOn = await vis(pg, '.bt-pl-cockpit .bt-pl-trial').count() === 1;
-  const liveOn = await vis(pg, '[data-testid=stat-live]').count() === 1;
+  const liveOn = await vis(pg, '[data-testid=bubble-live]').count() > 0; // la case verte, pas un compteur
   const inside = [st, lg, rt].every((x) => x && x.x >= ck.x - 0.5 && x.x + x.width <= ck.x + ck.width + 0.5);
   const fmt = (x) => `${Math.round(x.x)}–${Math.round(x.x + x.width)}`;
-  check(trialOn && liveOn === live && st && lg && rt && !overlap(st, lg) && !overlap(lg, rt) && !overlap(st, rt) && inside,
-    `${width}×${height} essai${live ? ' + 3 en direct' : ''} : chiffres ${fmt(st)}, logo ${fmt(lg)}, droite ${fmt(rt)} — aucun chevauchement`);
+  check(trialOn && liveOn === live && await vis(pg, '[data-testid=stat-live]').count() === 0 && st && lg && rt && !overlap(st, lg) && !overlap(lg, rt) && !overlap(st, rt) && inside,
+    `${width}×${height} essai${live ? ' + 3 pointages en cours' : ''} : chiffres ${fmt(st)}, logo ${fmt(lg)}, droite ${fmt(rt)} — aucun chevauchement`);
   if (width === 1024 && live) { await pg.mouse.move(512, 300); await pg.waitForTimeout(150); await pg.screenshot({ path: `${SH}/admin-planning-1024x768-essai.png` }); }
   await c.close();
 }
