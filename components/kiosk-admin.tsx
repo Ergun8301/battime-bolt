@@ -147,7 +147,7 @@ export default function KioskAdmin({ open, onOpenChange, companyId }: Props) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bt-skin max-w-xl max-h-[92vh] overflow-y-auto">
-        <style dangerouslySetInnerHTML={{ __html: CSS }} />
+        <style dangerouslySetInnerHTML={CSS_HTML} />
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><MonitorSmartphone className="h-5 w-5" /> Borne de pointage</DialogTitle>
         </DialogHeader>
@@ -252,3 +252,7 @@ export default function KioskAdmin({ open, onOpenChange, companyId }: Props) {
     </Dialog>
   );
 }
+
+// Objet FIXE : un `{ __html }` neuf à chaque rendu fait réécrire la feuille
+// de style par React (re-calcul de la page, polices rechargées → flash).
+const CSS_HTML = { __html: CSS };

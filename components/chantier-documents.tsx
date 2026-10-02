@@ -311,7 +311,7 @@ export default function ChantierDocuments({
             <FolderOpen className="h-5 w-5" /> Documents{worksiteName ? ` — ${worksiteName}` : ''}
           </DialogTitle>
         </DialogHeader>
-        <style dangerouslySetInnerHTML={{ __html: DOC_CSS }} />
+        <style dangerouslySetInnerHTML={DOC_CSS_HTML} />
 
         {/* Deux entrées distinctes : l'appareil photo d'un côté, le sélecteur de
             fichiers de l'autre. `capture` fait ouvrir directement la caméra sur
@@ -430,3 +430,7 @@ export default function ChantierDocuments({
     </Dialog>
   );
 }
+
+// Objet FIXE : un `{ __html }` neuf à chaque rendu fait réécrire la feuille
+// de style par React (re-calcul de la page, polices rechargées → flash).
+const DOC_CSS_HTML = { __html: DOC_CSS };

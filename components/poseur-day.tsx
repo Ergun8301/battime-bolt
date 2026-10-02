@@ -401,6 +401,25 @@ button.bt-stat:focus-visible{outline:2px solid #FFC21A;outline-offset:2px}
 .bt-molette-exact b{font-family:'JetBrains Mono',monospace;color:#FFC21A}
 `;
 
+// Toujours le MÊME objet (lot 10) : React réécrit le contenu d'un <style> dès que
+// l'objet `dangerouslySetInnerHTML` change — la feuille entière était reparsée à
+// chaque rendu de la journée (relectures, chrono…), d'où des saccades.
+const DAY_CSS_HTML = { __html: DAY_CSS };
+
+/**
+ * Même contenu ? (lot 10) Les relectures automatiques (chrono, retour sur
+ * l'onglet) rendent presque toujours les mêmes lignes : on garde alors l'objet
+ * déjà affiché, React n'a rien à redessiner. Données JSON simples (Supabase) ;
+ * les Map sont comparées par leurs entrées.
+ */
+function sameData(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  const plain = (v: unknown) => (v instanceof Map ? Array.from(v.entries()) : v);
+  try { return JSON.stringify(plain(a)) === JSON.stringify(plain(b)); } catch { return false; }
+}
+/** `setX(keep(next))` : garde l'état précédent s'il est identique (aucun rendu pour rien). */
+const keep = <T,>(next: T) => (prev: T): T => (sameData(prev, next) ? prev : next);
+
 // ─── main ──────────────────────────────────────────────────────────────────────
 
 type SlotTarget =
@@ -616,7 +635,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
       for (const d of (docsRes.data || []) as { worksite_id: string | null }[]) {
         if (d.worksite_id) docCounts.set(d.worksite_id, (docCounts.get(d.worksite_id) || 0) + 1);
       }
-      setDocsByWorksite(docCounts);
+      setDocsByWorksite(keep(docCounts));
 
       let worksitesData = worksitesRes.data || [];
       // Filet de sécurité (règle d'or : l'heure n'est jamais bloquée par le client) :
@@ -628,7 +647,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
         if (!reload.error && reload.data) worksitesData = reload.data;
       }
 
-      setEntries(entriesRes.data || []);
+      setEntries(keep<TimeEntryWithWorksite[]>(entriesRes.data || []));
 
       // Les corrections des lignes du jour. La RLS ne me montre que les
       // miennes : pas besoin de filtrer par salarié ici.
@@ -644,7 +663,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
           l.push(c);
           m.set(c.entry_id, l);
         }
-        setMesCorrections(m);
+        setMesCorrections(keep(m));
 
         // Les endroits enregistrés sur ces mêmes journées. Requête à part de
         // la précédente : tant que la table n'existe pas, celle-ci échoue
@@ -658,13 +677,13 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
           l.push(p);
           mp.set(p.entry_id, l);
         }
-        setMesPositions(mp);
+        setMesPositions(keep(mp));
       } else {
-        setMesCorrections(new Map());
-        setMesPositions(new Map());
+        setMesCorrections(keep(new Map<string, CorrectionVue[]>()));
+        setMesPositions(keep(new Map<string, PositionVue[]>()));
       }
-      setWorksites(worksitesData);
-      setPlanning(planningRes.data || []);
+      setWorksites(keep<Worksite[]>(worksitesData));
+      setPlanning(keep<(Planning & { worksite: Worksite })[]>(planningRes.data || []));
 
       const pendForToday = getPendingEntries(user.id).filter((e) => e.work_date === date);
       const serverMeal = (entriesRes.data || []).some((e: TimeEntryWithWorksite) => e.meal_allowance) || pendForToday.some((e) => e.meal_allowance);
@@ -734,7 +753,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
     const { synced, blocked } = await syncAllPending(user.id);
     setSyncing(false);
 
-    setPendingEntries(getPendingEntries(user.id).filter((e) => e.work_date === date));
+    setPendingEntries(keep(getPendingEntries(user.id).filter((e) => e.work_date === date)));
     if (blocked.length > 0) {
       const jours = Array.from(new Set(blocked.map((b) => b.work_date.split('-').reverse().join('/')))).join(', ');
       toast.error(`${blocked.length} chantier${blocked.length > 1 ? 's' : ''} du ${jours} ne part${blocked.length > 1 ? 'ent' : ''} pas. Préviens le bureau.`, { duration: 10000 });
@@ -757,7 +776,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
     // partie, et le bouton d'envoi ne faisait plus rien.
     const handleChanged = () => {
       if (!user) return;
-      setPendingEntries(getPendingEntries(user.id).filter((e) => e.work_date === date));
+      setPendingEntries(keep(getPendingEntries(user.id).filter((e) => e.work_date === date)));
     };
     const handleSynced = () => { handleChanged(); fetchData(); };
     window.addEventListener('online', handleOnline);
@@ -783,7 +802,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
   useEffect(() => {
     if (user) {
       const pending = getPendingEntries(user.id).filter((e) => e.work_date === date);
-      setPendingEntries(pending);
+      setPendingEntries(keep(pending));
       if (navigator.onLine && pending.length > 0) syncPendingEntries();
     }
   }, [user, date, syncPendingEntries]);
@@ -1575,7 +1594,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
   if (loading) {
     return (
       <div className="bt-day">
-        <style dangerouslySetInnerHTML={{ __html: DAY_CSS }} />
+        <style dangerouslySetInnerHTML={DAY_CSS_HTML} />
         <div className="bt-day-scroll space-y-3">
           <Skeleton className="h-28 w-full rounded-2xl" />
           <Skeleton className="h-16 w-full rounded-2xl" />
@@ -1587,7 +1606,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
 
   return (
     <div className="bt-day">
-      <style dangerouslySetInnerHTML={{ __html: DAY_CSS }} />
+      <style dangerouslySetInnerHTML={DAY_CSS_HTML} />
 
       {/* ===== BANDEAU RÉSEAU ===== */}
       {!isOnline && (

@@ -118,6 +118,14 @@ const POSEUR_CSS = `
 .bt-skin .mono,.bt-skin .tabular{font-variant-numeric:tabular-nums}
 `;
 
+// Toujours le MÊME objet (lot 10) : un nouvel objet `dangerouslySetInnerHTML`
+// à chaque rendu faisait réécrire la feuille par React, qui rechargeait alors son
+// `@import` des polices — le texte clignotait à chaque relecture automatique.
+const POSEUR_CSS_HTML = { __html: POSEUR_CSS };
+
+/** Même liste qu'avant ? On garde l'ancienne (aucun rendu pour rien, toutes les minutes). */
+const sameList = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
+
 export default function PoseurPage() {
   const { user, signOut } = useAuth();
   // Assistant BEMEXO (lot 4) : après un enregistrement, la journée se recharge.
@@ -174,7 +182,8 @@ export default function PoseurPage() {
     const absenceDays = new Set(rows.filter((p) => p.absence_type).map((p) => p.work_date));
     const planned = rows.filter((p) => !p.absence_type && !absenceDays.has(p.work_date)).map((p) => p.work_date);
     const declared = new Set<string>((entRes.data || []).map((e: { work_date: string }) => e.work_date));
-    setPending(computeMissingDays(planned, declared));
+    const missing = computeMissingDays(planned, declared);
+    setPending((prev) => (sameList(prev, missing) ? prev : missing));
 
     // Heures saisies, jamais envoyées. On les cherche sur toute la fenêtre :
     // un brouillon d'avant-hier est aussi perdu que celui d'aujourd'hui.
@@ -185,7 +194,8 @@ export default function PoseurPage() {
       .select('work_date').eq('user_id', user.id).eq('status', 'draft')
       .gte('work_date', windowStart).lte('work_date', todayStr)
       .order('work_date', { ascending: false });
-    setUnsentDays(Array.from(new Set(((drafts || []) as { work_date: string }[]).map((d) => d.work_date))));
+    const unsent = Array.from(new Set(((drafts || []) as { work_date: string }[]).map((d) => d.work_date)));
+    setUnsentDays((prev) => (sameList(prev, unsent) ? prev : unsent));
   }, [user]);
 
   useEffect(() => {
@@ -225,7 +235,11 @@ export default function PoseurPage() {
     const hdr = hdrRef.current;
     if (!phone || !hdr) return;
     let phdrH = hdr.offsetHeight;
-    const measure = () => { phdrH = hdr.offsetHeight; phone.style.setProperty('--phdr-h', `${phdrH}px`); };
+    // Réécrit seulement si la hauteur a vraiment changé (pas de mutation pour rien).
+    const measure = () => {
+      phdrH = hdr.offsetHeight;
+      if (phone.style.getPropertyValue('--phdr-h') !== `${phdrH}px`) phone.style.setProperty('--phdr-h', `${phdrH}px`);
+    };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(hdr);
@@ -412,7 +426,7 @@ export default function PoseurPage() {
 
   return (
     <div className="bt-poseur">
-      <style dangerouslySetInnerHTML={{ __html: POSEUR_CSS }} />
+      <style dangerouslySetInnerHTML={POSEUR_CSS_HTML} />
       <div ref={phoneRef} className={`bt-phone${wide ? ' wide' : ''}`}>
 
         {/* ===== EN-TÊTE NOIR ===== */}

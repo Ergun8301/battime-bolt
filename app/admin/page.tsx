@@ -161,7 +161,7 @@ export default function AdminPage() {
 
   return (
     <div className="bt-admin">
-      <style dangerouslySetInnerHTML={{ __html: ADMIN_CSS }} />
+      <style dangerouslySetInnerHTML={ADMIN_CSS_HTML} />
 
       {activating && (
         <div className="bt-activating">
@@ -212,3 +212,7 @@ export default function AdminPage() {
     </div>
   );
 }
+
+// Objet FIXE : un `{ __html }` neuf à chaque rendu fait réécrire la feuille
+// de style par React (re-calcul de la page, polices rechargées → flash).
+const ADMIN_CSS_HTML = { __html: ADMIN_CSS };

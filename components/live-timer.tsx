@@ -88,6 +88,11 @@ const LT_CSS = `
 .bt-lt-geo-a{color:#F2EDE3;text-decoration:underline;text-underline-offset:2px;white-space:nowrap}
 `;
 
+// Toujours le MÊME objet (lot 10) : le chrono se redessine chaque seconde, et un
+// nouvel objet `dangerouslySetInnerHTML` faisait réécrire cette feuille de style
+// à chaque seconde. Seul le texte des secondes doit bouger.
+const LT_CSS_HTML = { __html: LT_CSS };
+
 const fmtElapsed = (ms: number) => {
   const total = Math.max(0, Math.floor(ms / 1000));
   const h = Math.floor(total / 3600);
@@ -221,7 +226,7 @@ export default function LiveTimer({ userId, session, today, worksites, positionA
 
   return (
     <div className={`bt-lt ${stale ? 'late' : 'on'}`} data-testid="live-timer">
-      <style dangerouslySetInnerHTML={{ __html: LT_CSS }} />
+      <style dangerouslySetInnerHTML={LT_CSS_HTML} />
       <div className="bt-lt-k">
         {stale ? <><AlertTriangle className="h-3.5 w-3.5" /> Pointage resté ouvert</> : <><Clock className="h-3.5 w-3.5" /> Pointage en cours</>}
       </div>

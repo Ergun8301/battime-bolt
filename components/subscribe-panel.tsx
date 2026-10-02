@@ -113,7 +113,7 @@ export default function SubscribePanel({ workerCount, dark }: Props = {}) {
 
   return (
     <div className={`bt-sub${dark ? ' bt-sub--dark' : ''}`}>
-      <style dangerouslySetInnerHTML={{ __html: SUB_CSS }} />
+      <style dangerouslySetInnerHTML={SUB_CSS_HTML} />
       {loading ? (
         <div className="bt-sub-skel">Chargement des offres…</div>
       ) : (
@@ -159,3 +159,7 @@ export default function SubscribePanel({ workerCount, dark }: Props = {}) {
     </div>
   );
 }
+
+// Objet FIXE : un `{ __html }` neuf à chaque rendu fait réécrire la feuille
+// de style par React (re-calcul de la page, polices rechargées → flash).
+const SUB_CSS_HTML = { __html: SUB_CSS };

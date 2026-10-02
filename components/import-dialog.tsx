@@ -235,7 +235,7 @@ export default function ImportDialog({ open, onOpenChange, companyId, existingNa
   return (
     <Dialog open={open} onOpenChange={(o) => { onOpenChange(o); if (!o) reset(); }}>
       <DialogContent className="bt-skin max-w-xl max-h-[88vh] overflow-y-auto">
-        <style dangerouslySetInnerHTML={{ __html: IMP_CSS }} />
+        <style dangerouslySetInnerHTML={IMP_CSS_HTML} />
         <DialogHeader><DialogTitle>Importer des clients / chantiers</DialogTitle></DialogHeader>
 
         {/* ÉTAPE 1 — fichier */}
@@ -330,3 +330,7 @@ export default function ImportDialog({ open, onOpenChange, companyId, existingNa
     </Dialog>
   );
 }
+
+// Objet FIXE : un `{ __html }` neuf à chaque rendu fait réécrire la feuille
+// de style par React (re-calcul de la page, polices rechargées → flash).
+const IMP_CSS_HTML = { __html: IMP_CSS };

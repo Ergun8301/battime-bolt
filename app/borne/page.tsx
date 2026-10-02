@@ -30,11 +30,15 @@
 // appui long de 5 s sur le nom de la borne, puis confirmation. Le bureau peut
 // aussi la retirer à distance.
 //
+// Lot 10 : en-tête discret (petit logo BEMEXO + nom de l'entreprise, en gris) ;
+// les relectures automatiques ne redessinent rien quand le planning n'a pas
+// changé (même objet gardé, feuilles de style jamais réécrites).
+//
 // ?demo=1 : aperçu sans appairage (graine fictive, QR non valable, semaine
 // fictive construite par le même `buildBoard` que la fonction), seulement sur
 // une preview.
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import qrcode from 'qrcode-generator';
 import { codeAt, fromBase64Url, scanUrl, stepAt } from '../../supabase/functions/_shared/kiosk-code';
 import { isAsleep, parisTime } from '../../supabase/functions/_shared/kiosk-rules';
@@ -139,6 +143,16 @@ const DEMO: Paired = {
   board: null, boardAt: null, syncedAt: null, demo: true,
 };
 
+/**
+ * Même contenu ? (lot 10) Les relectures automatiques rendent presque toujours
+ * le même planning : on garde alors l'objet déjà affiché, et la grille (memo)
+ * ne se redessine pas. Objets JSON simples, rendus par la fonction kiosk.
+ */
+function sameData<T>(a: T, b: T): boolean {
+  if (a === b) return true;
+  try { return JSON.stringify(a) === JSON.stringify(b); } catch { return false; }
+}
+
 function readStore(): Paired | null {
   try {
     const raw = localStorage.getItem(STORE_KEY);
@@ -180,11 +194,16 @@ const CSS = `
 .kb *{box-sizing:border-box}
 .kb-grid{height:100%;display:grid;grid-template-rows:auto minmax(0,1fr) auto;padding:clamp(12px,2vmin,22px) 16px clamp(8px,1.2vmin,12px);gap:clamp(10px,1.6vmin,16px)}
 .kb-top{display:flex;align-items:center;gap:clamp(12px,2.2vmin,26px);min-width:0}
-.kb-brand{display:flex;align-items:center;gap:12px;min-width:0;flex:1}
-.kb-brand img{height:clamp(22px,3.4vmin,32px);width:auto;flex:none}
-.kb-place{min-width:0}
+/* En-tête discret (lot 10) : petit logo BEMEXO + nom de l'entreprise, en gris.
+   Le nom de la borne reste dessous, tout petit : c'est lui qui porte l'appui
+   long de 5 s (déconnexion, geste du bureau). */
+.kb-brand{display:flex;flex-direction:column;justify-content:center;gap:4px;min-width:0;flex:1}
+.kb-brand-row{display:flex;align-items:center;gap:10px;min-width:0}
+.kb-logo{height:clamp(13px,1.9vmin,16px);width:auto;flex:none;display:block;opacity:.72}
+.kb-sep{width:1px;height:14px;background:rgba(242,237,227,.18);flex:none}
 .kb-company{font-weight:900;font-size:clamp(18px,2.8vmin,26px);letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.kb-kname{display:inline-block;max-width:100%;font-family:'JetBrains Mono',monospace;font-size:clamp(11px,1.5vmin,13px);color:#a59c86;letter-spacing:.08em;text-transform:uppercase;margin-top:2px;padding:3px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:default}
+.kb-top .kb-company{font-weight:700;font-size:clamp(13px,1.8vmin,15px);letter-spacing:0;color:#a59c86;min-width:0}
+.kb-kname{display:inline-block;align-self:flex-start;max-width:100%;font-family:'JetBrains Mono',monospace;font-size:clamp(10px,1.3vmin,11px);color:#6f6757;letter-spacing:.08em;text-transform:uppercase;padding:3px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:default}
 .kb-clock{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:clamp(28px,5vmin,52px);letter-spacing:-.03em;line-height:1;color:#FFC21A;flex:none}
 .kb-go{display:inline-flex;align-items:center;gap:12px;flex:none;border:none;cursor:pointer;background:#FFC21A;color:#15120F;font-family:inherit;font-weight:900;font-size:clamp(18px,2.8vmin,26px);letter-spacing:-.01em;line-height:1;padding:clamp(13px,2vmin,20px) clamp(20px,3.2vmin,34px);border-radius:16px;box-shadow:0 5px 0 #C99300}
 .kb-go:active{transform:translateY(3px);box-shadow:0 2px 0 #C99300}
@@ -244,6 +263,11 @@ const CSS = `
 .kp-err{background:#fce8e6;border:1px solid #f3b4ad;color:#9a2820;font-size:14px;font-weight:700;border-radius:12px;padding:11px 14px;margin:0 0 14px;text-align:left}
 .kp-note{font-size:13px;color:#9a948a;font-weight:600;margin:16px 0 0;line-height:1.45}
 `;
+
+// Toujours le MÊME objet : React réécrit le contenu d'un <style> dès que l'objet
+// `dangerouslySetInnerHTML` change, et une feuille réécrite recharge son
+// `@import` des polices → texte qui clignote à chaque relecture du planning.
+const CSS_HTML = { __html: CSS };
 
 function useWakeLock(active: boolean) {
   useEffect(() => {
@@ -374,6 +398,10 @@ function Display({ paired, online, boardErr, awakeUntil, onWake, onUnpair }: {
   const startPress = () => { cancelPress(); press.current = setTimeout(() => { press.current = null; setConfirmUnpair(true); }, UNPAIR_PRESS_MS); };
   useEffect(() => () => { if (press.current) clearTimeout(press.current); }, []);
 
+  // Même objet tant que le QR ne change pas : la borne se redessine chaque
+  // seconde (horloge), le QR, lui, seulement à chaque nouvelle minute.
+  const qrHtml = useMemo(() => ({ __html: svg }), [svg]);
+
   const hhmm = parisTime(now);
   const qrOpen = qrUntil > 0;
   const asleep = !qrOpen && isAsleep(hhmm, paired.settings.active_from, paired.settings.active_until) && now > awakeUntil;
@@ -393,20 +421,21 @@ function Display({ paired, online, boardErr, awakeUntil, onWake, onUnpair }: {
       <div className="kb-grid">
         <header className="kb-top">
           <div className="kb-brand">
-            <img src="/bemexo-x-light.svg" alt="" aria-hidden="true" />
-            <div className="kb-place">
-              <div className="kb-company">{paired.companyName || 'BEMEXO'}</div>
-              <div
-                className="kb-kname"
-                data-testid="kb-kname"
-                onPointerDown={startPress}
-                onPointerUp={cancelPress}
-                onPointerLeave={cancelPress}
-                onPointerCancel={cancelPress}
-                onContextMenu={(e) => e.preventDefault()}
-              >
-                {paired.kioskName}
-              </div>
+            <div className="kb-brand-row">
+              <img className="kb-logo" data-testid="kb-logo" src="/bemexo-wordmark-light.svg" alt="BEMEXO" />
+              {paired.companyName && <span className="kb-sep" aria-hidden="true" />}
+              {paired.companyName && <span className="kb-company" data-testid="kb-company">{paired.companyName}</span>}
+            </div>
+            <div
+              className="kb-kname"
+              data-testid="kb-kname"
+              onPointerDown={startPress}
+              onPointerUp={cancelPress}
+              onPointerLeave={cancelPress}
+              onPointerCancel={cancelPress}
+              onContextMenu={(e) => e.preventDefault()}
+            >
+              {paired.kioskName}
             </div>
           </div>
           <div className="kb-clock" aria-label={`Il est ${hhmm}`}>{hhmm}</div>
@@ -445,7 +474,7 @@ function Display({ paired, online, boardErr, awakeUntil, onWake, onUnpair }: {
           </div>
           <div className="kb-qrmain">
             <div className="kb-qrcard">
-              <div className="kb-qr" aria-label="QR de pointage" dangerouslySetInnerHTML={{ __html: svg }} />
+              <div className="kb-qr" aria-label="QR de pointage" dangerouslySetInnerHTML={qrHtml} />
               <div className="kb-hint">Scannez avec l&apos;appareil photo de votre téléphone</div>
               <div className="kb-bar" aria-hidden="true"><i style={{ width: `${(secondsLeft / 60) * 100}%` }} /></div>
             </div>
@@ -561,7 +590,9 @@ export default function BornePage() {
       // L'ancien planning du jour (`planning`) n'est plus gardé.
       const { planning: _old, ...rest } = cur;
       void _old;
-      commit({ ...rest, kioskName: data.kiosk_name, companyName: data.company_name, settings: data.settings, syncedAt: Date.now() });
+      // Réglages identiques : on garde le même objet (rien à redessiner).
+      const settings = sameData(rest.settings, data.settings) ? rest.settings : data.settings;
+      commit({ ...rest, kioskName: data.kiosk_name, companyName: data.company_name, settings, syncedAt: Date.now() });
       setOnline(true);
       return;
     }
@@ -575,7 +606,8 @@ export default function BornePage() {
     const cur = pairedRef.current;
     if (!cur || cur.kioskId !== p.kioskId) return;
     if (data && isKioskBoard(data)) {
-      commit({ ...cur, board: data, boardAt: Date.now() });
+      // Planning identique : on garde l'objet affiché (seule l'heure de fraîcheur avance).
+      commit({ ...cur, board: cur.board && sameData(cur.board, data) ? cur.board : data, boardAt: Date.now() });
       setBoardErr(false); setOnline(true);
       return;
     }
@@ -633,11 +665,11 @@ export default function BornePage() {
     if (p && !p.demo && (!p.boardAt || Date.now() - p.boardAt >= BOARD_EVERY_MS)) tickBoard.current();
   }, []);
 
-  if (!ready) return <style dangerouslySetInnerHTML={{ __html: CSS }} />;
+  if (!ready) return <style dangerouslySetInnerHTML={CSS_HTML} />;
 
   return (
     <>
-      <style dangerouslySetInnerHTML={{ __html: CSS }} />
+      <style dangerouslySetInnerHTML={CSS_HTML} />
       {paired ? (
         <Display
           paired={paired}

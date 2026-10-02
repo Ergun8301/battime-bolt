@@ -40,6 +40,11 @@ ${PL_GRID_CSS}
 .kb-week .bt-pl-namebtn{cursor:default}
 .kb-week .bt-pl-namebtn:hover{background:transparent}
 .kb-week .bt-pl-cellfill,.kb-week .bt-pl-abs{cursor:default}
+/* Lot 10 : LECTURE SEULE, et ça se voit. Rien n'a l'air cliquable : curseur
+   par défaut partout, aucun effet au survol ni à l'appui, pas de surbrillance
+   au toucher. (Aucun bouton, aucun lien, aucun tabindex dans la grille.) */
+.kb-week,.kb-week *{cursor:default!important;-webkit-tap-highlight-color:transparent}
+.kb-week .bt-pl-namebtn:hover,.kb-week .bt-pl-namebtn:active{background:transparent!important}
 .kb-week .bt-pl-livechip{flex-wrap:wrap;row-gap:3px}
 .kb-week .bt-pl-livechip .kb-lx-title{flex:1;min-width:0;overflow-wrap:anywhere}
 .kb-week .bt-pl-livechip .t{flex-basis:100%;white-space:normal}
@@ -58,6 +63,10 @@ ${PL_GRID_CSS}
   .kb-week .bt-pl-name{font-size:13.5px}
 }
 `;
+
+// Toujours le MÊME objet : un nouvel objet ferait réécrire la feuille de style
+// par React à chaque nouveau planning (clignotement).
+const KIOSK_WEEK_HTML = { __html: KIOSK_WEEK_CSS };
 
 const dayFull = (iso: string) => { const s = format(parseISO(iso), 'EEEE', { locale: fr }); return s.charAt(0).toUpperCase() + s.slice(1); };
 
@@ -87,7 +96,7 @@ function KioskWeekGrid({ board, today, showLive }: {
   }, []);
   return (
     <div className="kb-week" data-testid="kb-week" ref={ref}>
-      <style dangerouslySetInnerHTML={{ __html: KIOSK_WEEK_CSS }} />
+      <style dangerouslySetInnerHTML={KIOSK_WEEK_HTML} />
       <table className="bt-pl-table">
         <thead>
           <tr>
