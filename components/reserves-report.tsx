@@ -68,7 +68,7 @@ const RR_CSS = `
 .bt-rr-site{margin-top:12px;min-width:0}
 .bt-rr-sitehead{display:flex;align-items:center;gap:8px;margin-bottom:6px;min-width:0}
 .bt-rr-sitename{font-weight:900;font-size:14px;letter-spacing:-.01em;color:#15120F;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.bt-rr-sitecity{font-family:'JetBrains Mono',monospace;font-size:11px;color:#9a948a;font-weight:600;flex:none}
+.bt-rr-sitecity{font-family:'JetBrains Mono',monospace;font-size:11px;color:#9a948a;font-weight:600;flex:0 1 auto;min-width:0;max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bt-rr-docs{margin-left:auto;flex:none;display:inline-flex;align-items:center;gap:5px;background:none;border:none;cursor:pointer;font-family:inherit;font-size:12px;font-weight:800;color:#a87c1e;text-decoration:underline}
 .bt-rr-list{margin-top:12px;min-width:0}
 .bt-rr-card{background:#fff;border:1px solid rgba(21,18,15,.1);border-left:3px solid #C0461F;border-radius:12px;padding:11px 13px;margin-bottom:7px;min-width:0}
@@ -85,7 +85,7 @@ const RR_CSS = `
 .bt-rr-photos{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .bt-rr-ph{display:block;width:72px;height:72px;border-radius:9px;overflow:hidden;border:1px solid rgba(21,18,15,.15);background:#ECE6D9}
 .bt-rr-ph img{width:100%;height:100%;object-fit:cover;display:block}
-.bt-rr-acts{display:flex;gap:7px;margin-top:9px}
+.bt-rr-acts{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin-top:9px}
 .bt-rr-empty{text-align:center;color:#9a948a;font-weight:600;padding:30px 10px;font-size:13.5px;line-height:1.5}
 `;
 
@@ -257,7 +257,11 @@ export default function ReservesReport({ open, onOpenChange, companyId, onOpenDo
     }
   };
 
+  const [confirmReopen, setConfirmReopen] = useState<string | null>(null);
   const reopen = async (r: ReserveRow) => {
+    // Un clic de trop ne doit pas défaire une levée : on demande une fois.
+    if (confirmReopen !== r.id) { setConfirmReopen(r.id); return; }
+    setConfirmReopen(null);
     setBusy(true);
     try {
       await reopenReserve(r.id);
@@ -297,8 +301,8 @@ export default function ReservesReport({ open, onOpenChange, companyId, onOpenDo
             <div key={site.worksiteId || site.name} className="bt-rr-site">
               <div className="bt-rr-sitehead">
                 <Building2 className="h-4 w-4 shrink-0" style={{ color: '#9a948a' }} />
-                <span className="bt-rr-sitename">{site.name}</span>
-                {site.city && <span className="bt-rr-sitecity">{site.city}</span>}
+                <span className="bt-rr-sitename" title={site.name}>{site.name}</span>
+                {site.city && <span className="bt-rr-sitecity" title={site.city}>{site.city}</span>}
                 {site.worksiteId && onOpenDocs && (
                   <button className="bt-rr-docs" onClick={() => onOpenDocs(site.worksiteId!, site.name)}>
                     <FileText className="h-3.5 w-3.5" /> Photos
@@ -365,9 +369,24 @@ export default function ReservesReport({ open, onOpenChange, companyId, onOpenDo
                   </div>
                 )}
                 <div className="bt-rr-acts">
-                  <Button size="sm" variant="outline" disabled={busy} onClick={() => reopen(r)}>
-                    <RotateCcw className="h-3.5 w-3.5 mr-1.5" /> Rouvrir
-                  </Button>
+                  {confirmReopen === r.id ? (
+                    <>
+                      <span className="text-[12.5px] font-bold">Remettre cette réserve « à traiter » ?</span>
+                      <Button size="sm" disabled={busy} onClick={() => reopen(r)} data-testid="rr-reopen-yes">Oui, rouvrir</Button>
+                      <Button size="sm" variant="outline" disabled={busy} onClick={() => setConfirmReopen(null)}>Non</Button>
+                    </>
+                  ) : (
+                    <>
+                      {r.worksite_id && onOpenDocs && (
+                        <button className="bt-rr-docs" onClick={() => onOpenDocs(r.worksite_id!, r.worksite_name)} data-testid="rr-done-docs">
+                          <FileText className="h-3.5 w-3.5" /> Photos
+                        </button>
+                      )}
+                      <Button size="sm" variant="outline" disabled={busy} onClick={() => reopen(r)}>
+                        <RotateCcw className="h-3.5 w-3.5 mr-1.5" /> Rouvrir
+                      </Button>
+                    </>
+                  )}
                 </div>
               </div>
             ))}

@@ -46,8 +46,14 @@ export async function markEntryReserve(p: { userId: string; entryId: string; det
     reception: 'avec',
     ...(detail ? { observation: detail } : {}),
     ...(p.wasSubmitted ? { modified_at: new Date().toISOString(), modified_by: p.userId } : {}),
-  }).eq('id', p.entryId).eq('user_id', p.userId).select('id');
+  }).eq('id', p.entryId).eq('user_id', p.userId).select('id, reserve_fixed_at, reserve_resolved_at');
   if (error) throw error;
+  const row = (data as { reserve_fixed_at: string | null; reserve_resolved_at: string | null }[] | null)?.[0];
+  // Lot 11 : un nouveau problème signalé sur une ligne que le salarié avait
+  // levée repart « à traiter » (sinon la réserve naîtrait déjà levée).
+  if (row?.reserve_fixed_at && !row.reserve_resolved_at) {
+    await supabase.rpc('mark_reserve_fixed', { p_entry_id: p.entryId, p_fixed: false, p_note: null });
+  }
   return !!data && data.length > 0;
 }
 

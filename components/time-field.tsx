@@ -9,7 +9,7 @@ import { ChevronDown } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { filterQuarterHours, parseTimeInput } from '@/lib/time-input';
 
-export function TimeField({ value, onChange, placeholder = '--:--', ariaLabel, testId, invalid = false }: {
+export function TimeField({ value, onChange, placeholder = '--:--', ariaLabel, testId, invalid = false, onBadChange }: {
   /** 'HH:MM' ou '' */
   value: string;
   onChange: (v: string) => void;
@@ -17,12 +17,19 @@ export function TimeField({ value, onChange, placeholder = '--:--', ariaLabel, t
   ariaLabel: string;
   testId?: string;
   invalid?: boolean;
+  /** Saisie illisible (« 7h75 ») : le parent bloque l'enregistrement au lieu de garder l'ancienne heure en silence. */
+  onBadChange?: (bad: boolean) => void;
 }) {
   const [text, setText] = useState(value);
-  const [bad, setBad] = useState(false);
+  const [bad, setBadState] = useState(false);
   const [open, setOpen] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
-  useEffect(() => { setText(value); setBad(false); }, [value]);
+  const badCb = useRef(onBadChange);
+  badCb.current = onBadChange;
+  const setBad = (b: boolean) => { setBadState(b); badCb.current?.(b); };
+  useEffect(() => { setText(value); setBad(false); }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Champ retiré de l'écran (fenêtre fermée) : plus rien de bloquant.
+  useEffect(() => () => badCb.current?.(false), []);
 
   const commit = (raw: string) => {
     const v = parseTimeInput(raw);

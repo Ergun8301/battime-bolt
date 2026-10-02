@@ -21,7 +21,11 @@ await new Promise((r) => srv.listen(Number(PORT), r));
 const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
 
 // ─── Dates relatives (jour de Paris) ───────────────────────────────────────────
-const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
+// Horloge FIXÉE au 20 du mois en cours (lot 11 : « jours en attente » = mois en
+// cours) : les jours relatifs du jeu de données restent dans le mois, quel que
+// soit le jour où le test tourne.
+const today = `${new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' }).slice(0, 8)}20`;
+const FIXED_NOW = new Date(`${today}T10:00:00+02:00`);
 const day = (n, from = today) => { const x = new Date(`${from}T12:00:00Z`); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
 const first = `${today.slice(0, 8)}01`;
 const prevLast = day(-1, first); // dernier jour du mois précédent : HORS période
@@ -86,7 +90,7 @@ const freshDb = () => ({
 });
 
 // ─── Session simulée + routes Supabase ─────────────────────────────────────────
-const now = Math.floor(Date.now() / 1000); const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+const now = Math.floor(Math.max(Date.now(), FIXED_NOW.getTime()) / 1000); const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
 const jwt = `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64({ sub: 'u-admin', role: 'authenticated', exp: now + 36000, aal: 'aal1' })}.sig`;
 const session = { access_token: jwt, refresh_token: 'r', expires_at: now + 36000, expires_in: 36000, token_type: 'bearer', user: { id: 'u-admin', email: 'paul@exemple.fr', aud: 'authenticated', role: 'authenticated' } };
 const SKIP = new Set(['select', 'order', 'limit', 'offset', 'on_conflict', 'columns']);
@@ -115,6 +119,7 @@ const setup = async (ctx, { closures = 'ok' } = {}) => {
   const db = freshDb();
   const writes = [];
   await ctx.addInitScript(([k, v]) => { localStorage.setItem(k, v); }, ['sb-sdperbcquvneohotjono-auth-token', JSON.stringify(session)]);
+  await ctx.clock.setFixedTime(FIXED_NOW);
   await ctx.route('**/*.supabase.co/**', async (r) => {
     const req = r.request();
     const url = new URL(req.url());
@@ -312,19 +317,15 @@ const centi = (min) => (min / 60).toFixed(2).replace('.', ',');
   await pg.locator('.bt-pl-fill:visible', { hasText: 'Exporter' }).first().click();
   const teamItem = pg.getByRole('button', { name: /Exporter l.équipe/ });
   if (await teamItem.count()) await teamItem.first().click();
-  const team = pg.locator('[role=dialog]').filter({ has: pg.locator('h2', { hasText: /Exporter les heures de l.équipe/ }) });
+  const team = pg.locator('[role=dialog]').filter({ has: pg.locator('h2', { hasText: /Exporter l.équipe/ }) });
   await team.waitFor();
   await team.getByRole('button', { name: "Aujourd'hui", exact: true }).click();
-  let csvTeam;
-  if (await team.locator('[data-testid=export-menu]').count()) {
-    await team.locator('[data-testid=export-menu]').click();
-    const itemsTeam = await menuItems(pg);
-    check(JSON.stringify(itemsTeam) === JSON.stringify(itemsFiche), `A) équipe : le MÊME menu que la fiche (${itemsTeam.join(', ')})`);
-    csvTeam = await download(pg, () => pg.locator('[data-testid=export-menu-csv]').click());
-  } else {
-    console.log('   (équipe : « Exporter ▾ » pas encore dans ce build — zone planning ; ancien bouton CSV utilisé pour la comparaison)');
-    csvTeam = await download(pg, () => team.getByRole('button', { name: /CSV pour la paie/ }).click());
-  }
+  const teamMenu = team.locator('[data-testid=team-export-menu]');
+  check(await teamMenu.count() === 1, 'A) équipe : un seul bouton « Exporter ▾ »');
+  await teamMenu.click();
+  const itemsTeam = await menuItems(pg);
+  check(JSON.stringify(itemsTeam) === JSON.stringify(itemsFiche), `A) équipe : le MÊME menu que la fiche (${itemsTeam.join(', ')})`);
+  const csvTeam = await download(pg, () => pg.locator('[data-testid=team-export-menu-csv]').click());
   const teamLucas = parseCsv(csvTeam.text).filter((r) => r[0] === '00042');
   check(parseCsv(csvTeam.text)[0].join(';') === HEAD, 'A) équipe : même en-tête');
   check(JSON.stringify(teamLucas) === JSON.stringify(rowsT.slice(1)),

@@ -97,6 +97,13 @@ const setup = async (ctx) => {
     const url = new URL(r.request().url());
     if (url.pathname.startsWith('/auth/v1/user')) return r.fulfill({ json: session.user });
     if (url.pathname.startsWith('/auth/v1/')) return r.fulfill({ json: {} });
+    // Lot 11 : ouvrir « 📟 Borne » crée tout de suite un code (create_pairing) — ce
+    // n'est pas une écriture de données ; tout autre appel de fonction en est une.
+    if (url.pathname === '/functions/v1/kiosk') {
+      const body = JSON.parse(r.request().postData() || '{}');
+      if (body.action === 'create_pairing') { log.kioskCodes = (log.kioskCodes || 0) + 1; return r.fulfill({ json: { code: '123456', expires_at: new Date(Date.now() + 600000).toISOString(), pairing_id: 'pp-1' } }); }
+      if (body.action === 'cancel_pairing') return r.fulfill({ json: { success: true } });
+    }
     if (url.pathname.startsWith('/functions/v1/')) { log.writes++; return r.fulfill({ json: {} }); }
     if (url.pathname.startsWith('/rest/v1/rpc/')) return r.fulfill({ json: [] });
     const t = url.pathname.replace('/rest/v1/', '');
@@ -351,11 +358,12 @@ for (const [width, height] of [[1024, 768], [1280, 800], [1440, 900]]) {
   await btn.click(); await p1.waitForTimeout(800);
   const dlg = p1.locator('[role=dialog]');
   check(await dlg.count() === 1 && (await dlg.innerText()).includes('Borne de pointage'), '3) la fenêtre « Borne de pointage » s’ouvre');
-  const add = dlg.locator('button', { hasText: 'Ajouter une borne' });
-  check(await add.count() === 1, '3) avec « Ajouter une borne »');
-  await add.click(); await p1.waitForTimeout(300);
+  // Lot 11 : une seule tablette — le code s'affiche tout de suite, plus de liste ni d'« Ajouter une borne ».
+  check(/123\s?456/.test(await dlg.innerText()) && (log.kioskCodes || 0) >= 1, '3) le code à 6 chiffres s’affiche tout de suite');
+  check((await dlg.innerText()).includes('Aucune tablette reliée'), '3) état « Aucune tablette reliée »');
+  check(await dlg.locator('button', { hasText: 'Ajouter une borne' }).count() === 0, '3) plus de « Ajouter une borne »');
   await p1.screenshot({ path: `${SH}/admin-borne-dialog.png` });
-  check(log.writes === w0, '3) ouvrir la fenêtre n’écrit rien');
+  check(log.writes === w0, '3) ouvrir la fenêtre n’écrit rien en base');
   await p1.keyboard.press('Escape'); await p1.waitForTimeout(300);
   check(await p1.locator('[role=dialog]').count() === 0, '3) la fenêtre se referme');
   await c1.close();

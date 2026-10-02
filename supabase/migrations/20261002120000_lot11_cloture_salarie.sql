@@ -30,17 +30,16 @@
 -- (kiosk, /clôturé/i → month_closed) refuse proprement (409) ; SQLSTATE P0001
 -- → la file hors ligne arrête de réessayer.
 --
--- ⚠ PORTE DE SORTIE — NE PAS APPLIQUER CETTE MIGRATION SANS LE CORRECTIF
--- poseur-day (téléphone du salarié / du chef d'équipe). Aujourd'hui
--- explainWriteError y teste « clôturé » : ce refus y serait lu comme « Le
--- bureau vient de clôturer ce mois » et TOUT le mois serait verrouillé à
--- l'écran (closedMonths), y compris les jours APRÈS closed_until que la base
--- laisse écrire (CDD qui devient CDI, contrat qui continue). Le correctif :
--- lire fetchMyClosure (lib/worker-closure.ts), monthLocked = mois clos OU
--- date <= ma date de clôture, et tester « jusqu'au » AVANT « clôturé » avec un
--- message par jour qui ne touche pas closedMonths. La borne affiche alors
--- « Ce mois est clôturé par le bureau. » : refus juste, libellé approximatif
--- (à affiner côté kiosk, sans urgence).
+-- ⚠ ÉCRAN DU SALARIÉ : le correctif poseur-day fait partie du MÊME lot (11).
+-- Il lit fetchMyClosure (lib/worker-closure.ts), verrouille seulement les
+-- jours <= la date de clôture (pas tout le mois) et teste « jusqu'au » AVANT
+-- « clôturé ». Une clôture ne peut être créée que depuis le nouvel écran du
+-- bureau (« Clôturer jusqu'au… ») : appliquer la migration avant la mise en
+-- ligne de l'application ne change rien tant que personne ne clôture. Ne pas
+-- clôturer un VRAI salarié depuis une préview avant que bemexo.com ait le
+-- lot 11 (l'ancien écran du salarié lirait le refus comme « mois clôturé »).
+-- La borne affiche « Heures clôturées par le bureau. » une fois `kiosk`
+-- redéployée (avant : « Ce mois est clôturé par le bureau. », refus juste).
 --
 -- Tant que cette migration n'est pas appliquée, l'écran du bureau masque
 -- « Clôturer jusqu'au… » (lecture de la table en échec) : rien ne casse.

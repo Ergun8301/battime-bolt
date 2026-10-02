@@ -10,7 +10,7 @@
 //     « Levée le … par Paul Martin », la puce « par le bureau », le
 //     commentaire et la vignette (adresse signée). Levée refusée → la photo
 //     envoyée est retirée. Réserve levée par le salarié → « par le salarié ».
-//     « Rouvrir » efface les SIX colonnes (bureau + salarié) en une écriture.
+//     « Rouvrir » (après confirmation) retire les 4 marques de levée en une écriture ; les commentaires restent.
 //  B) SALARIÉ (/poseur) : carte « ⚠ Avec réserve » → « Lever la réserve » →
 //     même formulaire → mark_reserve_fixed(note), carte « ✓ Réserve levée le … »,
 //     « Annuler » 10 s (mark_reserve_fixed false + photo retirée), refus
@@ -284,14 +284,19 @@ async function makePng(ctx) {
   const h1280 = await noHScroll(p, '[data-testid=reserves-report]');
   check(h1280.ok, `C) 1280 : fenêtre « Réserves » sans défilement horizontal ${JSON.stringify(h1280)}`);
 
-  // A4 · « Rouvrir » une réserve levée par le SALARIÉ : les six colonnes effacées.
+  // A4 · « Rouvrir » une réserve levée par le SALARIÉ : confirmation, puis les 4 marques de levée
+  // retirées en UNE écriture ; les commentaires (bureau et salarié) restent en base.
   S.seq.length = 0;
+  const nPatch0 = S.writes.filter((w) => w.method === 'PATCH' && w.t === 'time_entries').length;
   await done.nth(1).getByRole('button', { name: 'Rouvrir' }).click();
+  await p.waitForTimeout(400);
+  check(S.writes.filter((w) => w.method === 'PATCH' && w.t === 'time_entries').length === nPatch0, 'A4) un clic sur « Rouvrir » ne rouvre pas encore (confirmation demandée)');
+  await p.locator('[data-testid=rr-reopen-yes]').click();
   await p.waitForTimeout(1200);
   const patch = S.writes.filter((w) => w.method === 'PATCH' && w.t === 'time_entries').at(-1);
-  const six = ['reserve_resolved_at', 'reserve_resolved_by', 'reserve_resolution', 'reserve_fixed_at', 'reserve_fixed_by', 'reserve_fix_note'];
-  check(patch && new URLSearchParams(patch.search).get('id') === 'eq.r2' && six.every((k) => k in patch.body && patch.body[k] === null) && Object.keys(patch.body).length === 6,
-    `A4) « Rouvrir » : UNE écriture qui efface les 6 colonnes (bureau + salarié) : ${JSON.stringify(patch?.body)}`);
+  const four = ['reserve_resolved_at', 'reserve_resolved_by', 'reserve_fixed_at', 'reserve_fixed_by'];
+  check(patch && new URLSearchParams(patch.search).get('id') === 'eq.r2' && four.every((k) => k in patch.body && patch.body[k] === null) && Object.keys(patch.body).length === 4,
+    `A4) « Rouvrir » : UNE écriture qui retire les 4 marques de levée, commentaires gardés : ${JSON.stringify(patch?.body)}`);
   check(!S.calls.some((c) => c.fn === 'set_reserve_resolution' && c.body.p_resolved === false), 'A4) pas de set_reserve_resolution(false) (laisserait la levée du salarié)');
   check(await tabN('rr-tab-open') === 2 && await tabN('rr-tab-done') === 2, 'A4) la réserve revient dans « À traiter » (2 / 2)');
 

@@ -278,9 +278,16 @@ const openSection = async (p, key) => {
 };
 const openSalaries = async (p, L) => (L === 'desk' ? step(p, ['.bt-pl-segbtn', 'Salariés']) : (await mobMenu(p)) && step(p, ['.bt-mm-item', 'Salariés']));
 const openClients = async (p, L) => (L === 'desk' ? step(p, ['.bt-pl-segbtn', 'Clients']) : (await mobMenu(p)) && step(p, ['.bt-mm-item', 'Chantiers']));
+// Lot 11 : « Exporter » ouvre DIRECTEMENT « Exporter l'équipe » (un seul salarié : lien dans la fenêtre).
 const openExportMenu = async (p, L) => (L === 'desk'
-  ? step(p, ['.bt-pl-fill', 'Exporter'], ['[data-testid=bar-export]'], ['button', 'Exporter'])
-  : (await mobMenu(p)) && step(p, ['.bt-mm-item', 'Export'], ['.bt-mm-item', 'Exporter']));
+  ? step(p, ['[data-testid=bar-export]'], ['.bt-pl-fill', 'Exporter'], ['button', 'Exporter'])
+  : (await mobMenu(p)) && step(p, ['[data-testid=mm-export]'], ['.bt-mm-item', 'Export'], ['.bt-mm-item', 'Exporter']));
+const teamExportOpen = (p) => p.locator('[role=dialog] h2', { hasText: /Exporter l.équipe/ }).filter({ visible: true }).count().then((n) => n > 0);
+const openTeamExport = async (p, L) => {
+  if (!(await openExportMenu(p, L))) return false;
+  if (await teamExportOpen(p)) return true;
+  return step(p, ['.bt-pl-exitem', 'équipe'], ['[role=menuitem]', 'équipe'], ['.bt-mm-subitem', 'équipe'], ['.bt-mm-item', 'équipe'], ['button', "Exporter l'équipe"]);
+};
 const openGrid = (p, L) => Promise.resolve(true); // le planning est déjà à l'écran
 const ADMIN = [
   { id: 'reglages', name: "Réglages de l'entreprise (4 rubriques ouvertes)", shot: true, open: async (p, L) => {
@@ -325,19 +332,12 @@ const ADMIN = [
     && step(p, ['[role=dialog] button', 'Documents'], ['[role=dialog] button', 'Pièces']) },
   { id: 'reserves', name: 'Réserves', open: async (p, L) => (L === 'desk' ? step(p, ['.bt-pl-out', 'Réserves']) : (await mobMenu(p)) && step(p, ['.bt-mm-item', 'Réserves'])) },
   { id: 'cout', name: 'Coût chantiers', open: async (p, L) => (L === 'desk' ? step(p, ['.bt-pl-out', 'Coût chantiers']) : (await mobMenu(p)) && step(p, ['.bt-mm-item', /Co[uû]t/])) },
-  { id: 'export-equipe', name: "Exporter l'équipe", shot: true, open: async (p, L) => {
-    if (!(await openExportMenu(p, L))) return false;
-    return step(p, ['.bt-pl-exitem', 'équipe'], ['[role=menuitem]', 'équipe'], ['.bt-mm-subitem', 'équipe'], ['.bt-mm-item', 'équipe'], ['button', "Exporter l'équipe"]);
-  } },
+  { id: 'export-equipe', name: "Exporter l'équipe", shot: true, open: openTeamExport },
   { id: 'export-salarie', name: 'Exporter un salarié', open: async (p, L) => {
     if (!(await openExportMenu(p, L))) return false;
-    return step(p, ['.bt-pl-exitem', 'salarié'], ['[role=menuitem]', 'salarié'], ['.bt-mm-subitem', 'salarié'], ['.bt-mm-item', 'Exporter un salarié'], ['button', 'Exporter un salarié']);
+    return step(p, ['[data-testid=export-one-worker]'], ['.bt-pl-exitem', 'salarié'], ['[role=menuitem]', 'salarié'], ['.bt-mm-subitem', 'salarié'], ['.bt-mm-item', 'Exporter un salarié'], ['button', 'Exporter un salarié']);
   } },
-  { id: 'cloture', name: 'Clôture du mois', open: async (p, L) => {
-    if (!(await openExportMenu(p, L))) return false;
-    if (!(await step(p, ['.bt-pl-exitem', 'équipe'], ['[role=menuitem]', 'équipe'], ['.bt-mm-subitem', 'équipe'], ['.bt-mm-item', 'équipe']))) return false;
-    return step(p, ['[role=dialog] button', /^Clôturer/]);
-  } },
+  { id: 'cloture', name: 'Clôture du mois', open: async (p, L) => (await openTeamExport(p, L)) && step(p, ['[role=dialog] button', /^Clôturer/]) },
   { id: 'intervention', name: 'Intervention (bulle du planning)', open: async (p, L) => (await openGrid(p, L)) && step(p, ['.bt-pl-grab', 'Jardins Suspendus'], ['.bt-pl-m-bubbtn', 'Jardins Suspendus'], ['.bt-pl-grab'], ['.bt-pl-m-bubbtn']) },
   { id: 'presence', name: 'Présence / absence', open: async (p) => step(p, ['.bt-pl-namebtn', LONG.last], ['.bt-pl-m-top', LONG.last], ['.bt-pl-namebtn'], ['.bt-pl-m-top']) },
   { id: 'absence', name: "Confirmation d'absence", open: async (p) => (await step(p, ['.bt-pl-namebtn', LONG.last], ['.bt-pl-m-top', LONG.last], ['.bt-pl-namebtn'], ['.bt-pl-m-top']))

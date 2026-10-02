@@ -415,7 +415,14 @@ const settle = async (pg) => { await pg.clock.fastForward(8000); await pg.waitFo
   check((await p.locator('[data-testid=edit-time-error]').innerText().catch(() => '')).includes('Indiquez aussi le début'), '4) fin sans début : « Indiquez aussi le début »');
   await p.locator('[role=dialog] button', { hasText: 'Enregistrer' }).click(); await p.waitForTimeout(400);
   check(writesSince(w6).length === 0, '4) … et rien n’est enregistré');
+  // Heure illisible : refusée et BLOQUANTE (avant : l'ancienne heure partait en silence).
+  await p.locator('[data-testid=edit-time-preset]', { hasText: 'Matin' }).click(); await p.waitForTimeout(100);
+  await p.fill('[data-testid=edit-time-start]', '7h75'); await p.keyboard.press('Tab'); await p.waitForTimeout(100);
+  check((await p.locator('[data-testid=edit-time-error]').innerText().catch(() => '')).includes('Heure non comprise'), '4) « 7h75 » : « Heure non comprise »');
+  await p.locator('[role=dialog] button', { hasText: 'Enregistrer' }).click(); await p.waitForTimeout(400);
+  check(writesSince(w6).length === 0, '4) … et rien n’est enregistré (l’ancienne heure ne part pas en silence)');
   await p.locator('[data-testid=edit-time-preset]', { hasText: 'Après-midi' }).click(); await p.waitForTimeout(100);
+  check(!(await p.locator('[data-testid=edit-time-error]').count()), '4) préréglage : le refus disparaît');
   check(await p.inputValue('[data-testid=edit-time-start]') === '13:30' && await p.inputValue('[data-testid=edit-time-end]') === '17:00', '4) préréglage « Après-midi » → 13:30 – 17:00');
   await p.click('[data-testid=edit-time-start-list]'); await p.waitForTimeout(250);
   await p.locator('[role=option][data-v="09:15"]').click(); await p.waitForTimeout(150);

@@ -327,8 +327,10 @@ export default function KioskAdmin({ open, onOpenChange, companyId }: Props) {
   const late = !!latest && seenAgo > LATE_MS;
   const alwaysOn = !!hours && !hours.from && !hours.until;
 
+  // Fermer (Échap, ✕, clic à côté) quitte d'abord le champ d'heure en cours :
+  // l'heure tapée est enregistrée, pas perdue.
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(o) => { if (!o) (document.activeElement as HTMLElement | null)?.blur?.(); onOpenChange(o); }}>
       <DialogContent className="bt-skin max-w-md">
         <style dangerouslySetInnerHTML={CSS_HTML} />
         <DialogHeader>
@@ -375,7 +377,7 @@ export default function KioskAdmin({ open, onOpenChange, companyId }: Props) {
                   <b className={`ka-digits${code ? '' : ' wait'}`} data-testid="ka-code" aria-live="polite" aria-busy={!code}>
                     {code ? `${code.slice(0, 3)} ${code.slice(3)}` : '··· ···'}
                   </b>
-                  <p className="ka-how">Sur la tablette, ouvrez <b>bemexo.com/borne</b> et tapez ce code.</p>
+                  <p className="ka-how">Sur la tablette, ouvrez <b>bemexo.com/borne</b> et tapez ce code, fenêtre ouverte.</p>
                 </>
               )}
             </div>

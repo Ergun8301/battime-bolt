@@ -91,9 +91,13 @@ export async function undoWorkerLift(entryId: string, photo: LiftedPhoto | null)
  * restent dans les documents du chantier (rien n'est supprimé).
  */
 export async function reopenReserve(entryId: string): Promise<void> {
+  // Seules les DATES de levée sont retirées : le commentaire du salarié et
+  // celui du bureau restent en base (aucune donnée effacée). Les écrans ne les
+  // montrent que pour une réserve levée (lib/reserves liftedNote), et une
+  // nouvelle levée les remplace.
   const { data, error } = await supabase.from('time_entries').update({
-    reserve_resolved_at: null, reserve_resolved_by: null, reserve_resolution: null,
-    reserve_fixed_at: null, reserve_fixed_by: null, reserve_fix_note: null,
+    reserve_resolved_at: null, reserve_resolved_by: null,
+    reserve_fixed_at: null, reserve_fixed_by: null,
   }).eq('id', entryId).select('id');
   if (error) throw error;
   if (!data || !data.length) throw new Error('Réserve introuvable.');

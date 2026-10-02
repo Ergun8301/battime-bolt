@@ -14,7 +14,7 @@ import { positionUtile, fmtPrecision, fmtCoord } from '@/lib/position';
 import { parisHHmm } from '@/lib/utils';
 import { DEFAULT_WEEKLY_HOURS, DEFAULT_OVERTIME_RATES, weeklyHoursFor, weeklyTotals, routeMinutesByEntry, type RouteEntry } from '@/lib/overtime';
 import { weekStart as weekStartOf, weekEnd as weekEndOf } from '@/lib/week';
-import { computeMissingDays } from '@/lib/work-status';
+import { computeMissingDays, missingWindowStart } from '@/lib/work-status';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -26,13 +26,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 import { ExportMenu, type ExportKind } from '@/components/export-menu';
 import { InfoTip } from '@/components/ui/info-tip';
-import { TimeField } from '@/components/time-field';
+import { TimeField, TIME_HINT } from '@/components/time-field';
 import {
   CalendarRange, Clock, Utensils, MapPin, Loader2,
   Settings2, Archive, ArchiveRestore, Trash2, Link2, User as UserIcon, AlertTriangle, Hammer, PencilLine, BellOff,
   ShieldCheck, Plus, Lock,
 } from 'lucide-react';
-import { format, parseISO, isSameDay, subDays, differenceInCalendarDays, startOfMonth, startOfDay } from 'date-fns';
+import { format, parseISO, isSameDay, differenceInCalendarDays, startOfMonth, startOfDay } from 'date-fns';
 import { weekStart, weekEnd } from '@/lib/week';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -52,7 +52,6 @@ interface WorkerDetailDialogProps {
   onChanged?: () => void;
 }
 
-const MISSING_WINDOW_DAYS = 30;
 const OTHER_NAME = 'Autre';
 
 const CERT_TYPES: { key: CertificationType; label: string }[] = [
@@ -127,6 +126,8 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
   // geste, il n'y a rien de nouveau à apprendre.
   const [correctingId, setCorrectingId] = useState<string | null>(null);
   const [cStart, setCStart] = useState('08:00');
+  const [cBadStart, setCBadStart] = useState(false);
+  const [cBadEnd, setCBadEnd] = useState(false);
   const [cEnd, setCEnd] = useState('17:00');
   const [cSaving, setCSaving] = useState(false);
   // L'historique des corrections, par ligne d'heures.
@@ -303,6 +304,8 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
    */
   const doCorrection = async (entry: ExportEntry) => {
     if (!worker || !me) return;
+    // Heure tapée mais illisible (« 7h75 ») : on bloque, sinon l'ancienne heure partirait en silence.
+    if (cBadStart || cBadEnd) { toast.error(`Heure non comprise. ${TIME_HINT}`); return; }
     setCSaving(true);
     try {
       const r = await corrigerHeures({ entryId: entry.id, newStart: cStart, newEnd: cEnd });
@@ -356,17 +359,20 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
     }
   };
 
-  // Planning-based missing days (recent window).
+  // Jours planifiés non envoyés — MÊME règle que la pastille du planning et
+  // « À relancer » (lot 11) : mois en cours, cases retirées par le salarié exclues.
   const fetchMissing = useCallback(async () => {
     if (!worker) return;
-    const windowStart = format(subDays(new Date(), MISSING_WINDOW_DAYS), 'yyyy-MM-dd');
-    const [planRes, entRes] = await Promise.all([
-      supabase.from('planning').select('work_date, absence_type').eq('user_id', worker.id).gte('work_date', windowStart),
+    const windowStart = missingWindowStart();
+    const [planRes, entRes, cancelledRes] = await Promise.all([
+      supabase.from('planning').select('id, work_date, absence_type').eq('user_id', worker.id).gte('work_date', windowStart),
       supabase.from('time_entries').select('work_date, status').eq('user_id', worker.id).in('status', ['submitted', 'validated']).gte('work_date', windowStart),
+      supabase.from('time_entries').select('planning_id').eq('user_id', worker.id).eq('status', 'cancelled').not('planning_id', 'is', null).gte('work_date', windowStart),
     ]);
-    const rows = (planRes.data || []) as { work_date: string; absence_type: string | null }[];
+    const rows = (planRes.data || []) as { id: string; work_date: string; absence_type: string | null }[];
+    const withdrawn = new Set<string>(cancelledRes.error ? [] : ((cancelledRes.data || []) as { planning_id: string }[]).map((r) => r.planning_id));
     const absenceDays = new Set<string>(rows.filter((p) => p.absence_type).map((p) => p.work_date));
-    const planned = rows.filter((p) => !p.absence_type && !absenceDays.has(p.work_date)).map((p) => p.work_date);
+    const planned = rows.filter((p) => !p.absence_type && !absenceDays.has(p.work_date) && !withdrawn.has(p.id)).map((p) => p.work_date);
     const declared = new Set<string>((entRes.data || []).map((e: { work_date: string }) => e.work_date));
     setMissing(computeMissingDays(planned, declared));
   }, [worker?.id]);
@@ -788,7 +794,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
               <div className="space-y-1">
                 <div className="flex items-center gap-1">
                   <Label className="text-xs">Horaire hebdomadaire</Label>
-                  <InfoTip text={`Laissez vide pour garder celui de l'entreprise (${companyWeeklyHours} h). Sert au calcul des heures supplémentaires et du coût main d'œuvre par chantier.`} />
+                  <InfoTip text={`Laissez vide pour garder celui de l'entreprise (${companyWeeklyHours} h). Sert au calcul des heures supplémentaires.`} />
                 </div>
                 <Input
                   type="text" inputMode="decimal" value={mWeekly}
@@ -1193,9 +1199,9 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
                         )}
 
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="w-32"><TimeField value={cStart} onChange={setCStart} ariaLabel="Heure de début" /></span>
+                          <span className="w-32"><TimeField value={cStart} onChange={setCStart} ariaLabel="Heure de début" onBadChange={setCBadStart} /></span>
                           <span className="text-muted-foreground">→</span>
-                          <span className="w-32"><TimeField value={cEnd} onChange={setCEnd} ariaLabel="Heure de fin" /></span>
+                          <span className="w-32"><TimeField value={cEnd} onChange={setCEnd} ariaLabel="Heure de fin" onBadChange={setCBadEnd} /></span>
                           <span className="text-xs text-muted-foreground">
                             était {fmtHeure(entry.start_time)}–{fmtHeure(entry.end_time)}
                           </span>

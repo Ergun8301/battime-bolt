@@ -40,7 +40,7 @@ import { fetchAllPaged, chunk } from '@/lib/fetch-all';
 import { isPreviewHost } from '@/lib/hosting';
 import WorkerDetailDialog from '@/components/worker-detail';
 import ChantierDocuments from '@/components/chantier-documents';
-import { TimeField } from '@/components/time-field';
+import { TimeField, TIME_HINT } from '@/components/time-field';
 import { TIME_PRESETS } from '@/lib/time-input';
 import { InfoTip } from '@/components/ui/info-tip';
 import { ExportMenu } from '@/components/export-menu';
@@ -314,10 +314,18 @@ function DraggableBubble({
 
 // Lot 11 : « Horaire prévu : début – fin » — saisie simple (« 14h », « 14:30 » ou
 // liste au quart d'heure), plus de roulette. Préréglages en un toucher.
-function ScheduleRow({ start, end, onStart, onEnd, testId }: {
+function ScheduleRow({ start, end, onStart, onEnd, testId, onBadChange }: {
   start: string; end: string; onStart: (v: string) => void; onEnd: (v: string) => void; testId: string;
+  /** Une heure tapée mais illisible : l'enregistrement est bloqué (sinon l'ancienne heure partirait en silence). */
+  onBadChange?: (bad: boolean) => void;
 }) {
-  const err = scheduleError(start, end);
+  const [badStart, setBadStart] = useState(false);
+  const [badEnd, setBadEnd] = useState(false);
+  // Préréglage / « Effacer » : les champs repartent de zéro, même si la valeur ne change pas (« 7h75 » tapé sur 08:00).
+  const [rev, setRev] = useState(0);
+  const bad = badStart || badEnd;
+  useEffect(() => { onBadChange?.(bad); }, [bad]); // eslint-disable-line react-hooks/exhaustive-deps
+  const err = bad ? `Heure non comprise. ${TIME_HINT}` : scheduleError(start, end);
   return (
     <div className="space-y-1.5" data-testid={testId}>
       <div className="flex items-center gap-1.5">
@@ -326,21 +334,21 @@ function ScheduleRow({ start, end, onStart, onEnd, testId }: {
         <InfoTip testId={`${testId}-info`} text="Tapez « 14h » ou « 14:30 », ou choisissez dans la liste. Rendez-vous à heure fixe : mettez aussi une fin, sinon le salarié ne voit pas l'heure." />
       </div>
       <div className="flex items-center gap-2">
-        <div className="min-w-0 flex-1"><TimeField value={start} onChange={onStart} ariaLabel="Début" placeholder="début" testId={`${testId}-start`} /></div>
+        <div className="min-w-0 flex-1"><TimeField key={`s${rev}`} value={start} onChange={onStart} ariaLabel="Début" placeholder="début" testId={`${testId}-start`} onBadChange={setBadStart} /></div>
         <span aria-hidden="true" className="font-bold text-muted-foreground">–</span>
-        <div className="min-w-0 flex-1"><TimeField value={end} onChange={onEnd} ariaLabel="Fin" placeholder="fin" testId={`${testId}-end`} invalid={!!err} /></div>
+        <div className="min-w-0 flex-1"><TimeField key={`e${rev}`} value={end} onChange={onEnd} ariaLabel="Fin" placeholder="fin" testId={`${testId}-end`} invalid={!bad && !!err} onBadChange={setBadEnd} /></div>
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
         {TIME_PRESETS.map((t) => (
           <button key={t.label} type="button" data-testid={`${testId}-preset`}
-            onClick={() => { onStart(t.debut); onEnd(t.fin); }}
+            onClick={() => { onStart(t.debut); onEnd(t.fin); setRev((r) => r + 1); }}
             className={`rounded-full border px-2.5 py-1 text-[12px] font-bold ${start === t.debut && end === t.fin ? 'border-[#15120F] bg-[#FFC21A] text-[#15120F]' : 'border-[#15120F]/20 bg-white hover:border-[#15120F]/60'}`}>
             {t.label} <span className="font-mono text-[11px] font-semibold opacity-70">{t.debut}–{t.fin}</span>
           </button>
         ))}
-        {(start || end) && (
+        {(start || end || bad) && (
           <button type="button" className="px-1 text-[12px] font-semibold text-muted-foreground underline hover:text-foreground"
-            onClick={() => { onStart(''); onEnd(''); }}>Effacer</button>
+            onClick={() => { onStart(''); onEnd(''); setRev((r) => r + 1); }}>Effacer</button>
         )}
       </div>
       {err && <p className="text-[12.5px] font-semibold text-[#C0461F]" role="alert" data-testid={`${testId}-error`}>{err}</p>}
@@ -776,8 +784,8 @@ ${PL_GRID_CSS}
 .bt-pl--select .bt-pl-abs::after{content:"🔒";position:absolute;top:4px;right:5px;font-size:11px;line-height:1}
 .bt-pl--select .bt-pl-th{cursor:pointer}
 .bt-pl--select .bt-pl-th:hover{background:#FFF8E1}
-.bt-pl--select .bt-pl-gridwrap{padding-bottom:84px}
-.bt-pl--select .bt-pl-m-list{padding-bottom:150px}
+.bt-pl--select .bt-pl-gridwrap,.bt-pl--undo .bt-pl-gridwrap{padding-bottom:84px}
+.bt-pl--select .bt-pl-m-list,.bt-pl--undo .bt-pl-m-list{padding-bottom:150px}
 .bt-pl-sel{position:relative;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .bt-pl-sel .bt-pl-grab{cursor:pointer}
 .bt-pl-sel .bt-pl-grab:hover .bt-pl-bub{transform:none}
@@ -933,12 +941,14 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const [addWorksite, setAddWorksite] = useState('');
   const [addNote, setAddNote] = useState('');
   const [addStart, setAddStart] = useState('');
+  const [addTimeBad, setAddTimeBad] = useState(false);
   const [addEnd, setAddEnd] = useState('');
   const [addSaving, setAddSaving] = useState(false);
 
   // affectation (bubble) edit dialog
   const [editing, setEditing] = useState<PlanningWithWorksite | null>(null);
   const [editStart, setEditStart] = useState('');
+  const [editTimeBad, setEditTimeBad] = useState(false);
   const [editEnd, setEditEnd] = useState('');
   const [editNote, setEditNote] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
@@ -1424,7 +1434,8 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     return { waiting, docs };
   }, [waitingByWorker, docsByWorksite]);
   // « octobre » : le mois regardé par « À relancer », écrit en toutes lettres.
-  const monthLabel = useMemo(() => format(new Date(), 'MMMM', { locale: fr }), []);
+  // Recalculé à chaque rendu : un onglet resté ouvert au changement de mois suit les données (relues toutes les 60 s).
+  const monthLabel = format(new Date(), 'MMMM', { locale: fr });
 
   /** Les pièces jointes rangées par chantier — le classement qu'on n'avait pas. */
   const docsByChantier = useMemo(() => {
@@ -1763,7 +1774,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     e.preventDefault();
     if (!user?.company_id || !addTarget) return;
     if (!addWorksite) { toast.error('Choisissez un client'); return; }
-    const timeErr = scheduleError(addStart, addEnd);
+    const timeErr = addTimeBad ? `Heure non comprise. ${TIME_HINT}` : scheduleError(addStart, addEnd);
     if (timeErr) { toast.error(timeErr); return; }
     setAddSaving(true);
     try {
@@ -2163,7 +2174,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
 
   const saveAffectation = async () => {
     if (!user?.company_id || !editing) return;
-    const timeErr = scheduleError(editStart, editEnd);
+    const timeErr = editTimeBad ? `Heure non comprise. ${TIME_HINT}` : scheduleError(editStart, editEnd);
     if (timeErr) { toast.error(timeErr); return; }
     setSavingEdit(true);
     try {
@@ -2403,7 +2414,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   }
 
   return (
-    <div className={`bt-pl${selectMode ? ' bt-pl--select' : ''}`}>
+    <div className={`bt-pl${selectMode ? ' bt-pl--select' : ''}${undoCard ? ' bt-pl--undo' : ''}`}>
       <style dangerouslySetInnerHTML={PL_STYLE} />
 
       <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragStart={handleDragStart} onDragEnd={(e) => { handleDragEnd(e); setChantierMenuOpen(false); }} onDragCancel={() => { setActiveDrag(null); setChantierMenuOpen(false); }}>
@@ -2611,7 +2622,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
             {openReserves > 0 && <span className="bt-pl-outbadge">{openReserves}</span>}
           </button>
           {kioskOn && user?.company_id && (
-            <button className="bt-pl-out" onClick={() => setKioskOpen(true)} title="Bornes de pointage : ajouter une borne, voir la liste" data-testid="bar-kiosk">
+            <button className="bt-pl-out" onClick={() => setKioskOpen(true)} title="Tablette de pointage : code pour la relier, état" data-testid="bar-kiosk">
               <span aria-hidden="true">📟</span> Borne
             </button>
           )}
@@ -3372,7 +3383,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       <Dialog open={!!extraTarget} onOpenChange={(o) => { if (!o) setExtraTarget(null); }}>
         <DialogContent className="bt-skin max-w-sm">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><UserIcon className="h-4 w-4" /> {extraTarget?.name}</DialogTitle>
+            <DialogTitle className="flex items-start gap-2"><UserIcon className="h-4 w-4 mt-1 shrink-0" /> <span className="min-w-0 break-words">{extraTarget?.name}</span></DialogTitle>
           </DialogHeader>
           {extraTarget && (
             <div className="space-y-3 pt-1">
@@ -3546,7 +3557,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                 </SelectContent>
               </Select>
             </div>
-            <ScheduleRow start={addStart} end={addEnd} onStart={setAddStart} onEnd={setAddEnd} testId="add-time" />
+            <ScheduleRow start={addStart} end={addEnd} onStart={setAddStart} onEnd={setAddEnd} testId="add-time" onBadChange={setAddTimeBad} />
             <div className="space-y-2">
               <Label>Note pour le poseur (optionnel)</Label>
               <Textarea value={addNote} onChange={(e) => setAddNote(e.target.value)} rows={2} placeholder="Ex : code portail 1234…" />
@@ -3632,7 +3643,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
               </div>
 
               {/* Lot 11 : « Horaire prévu : début – fin » (facultatifs), plus de roulette. */}
-              <ScheduleRow start={editStart} end={editEnd} onStart={setEditStart} onEnd={setEditEnd} testId="edit-time" />
+              <ScheduleRow start={editStart} end={editEnd} onStart={setEditStart} onEnd={setEditEnd} testId="edit-time" onBadChange={setEditTimeBad} />
 
               {/* Note for the poseur */}
               <div className="space-y-1.5">

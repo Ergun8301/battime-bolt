@@ -26,6 +26,8 @@
     "test:fr-langue": "npx -y deno@2 test --allow-env supabase/functions/_shared/fr-langue.test.ts",
     "test:ai-provider": "npx -y deno@2 test --allow-env supabase/functions/_shared/ai-provider.test.ts",
     "test:kiosk-board": "npx -y deno@2 test --allow-env --allow-read supabase/functions/_shared/kiosk-board.test.ts",
+    "test:kiosk-fonction": "npx -y deno@2 test -A supabase/functions/_shared/kiosk-function.test.ts",
+    "test:reserves-lot11": "node scripts/tests/reserves-lot11.mjs out docs/captures-lot11",
     "test:fin-pointage": "node supabase/tests/lot9_fin_pointage.mjs",
     "test:cloture-salarie": "node supabase/tests/lot11_cloture_salarie.mjs",
     "test:salarie-lot9": "node scripts/tests/salarie-lot9.mjs out docs/captures-lot9"

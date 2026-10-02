@@ -611,7 +611,7 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
                   au moment de l'envoi, et le bureau garde la main dessus. */}
               <div className="bt-set-sub">
                 <div className="bt-set-subtxt">
-                  <SetLabel tipId="comptable" tip={<>Envoi depuis « Exporter » → « Envoyer au comptable ». Vous recevez une copie. Laissez vide pour ne rien envoyer.</>}>Adresse de votre comptable</SetLabel>
+                  <SetLabel tipId="comptable" tip={<>Dans « Exporter », le bouton « Envoyer à … » lui envoie la paie du mois. Vous recevez une copie. Laissez vide pour ne rien envoyer.</>}>Adresse de votre comptable</SetLabel>
                   <p className="bt-set-substate">Reçoit le tableur des heures en pièce jointe.</p>
                 </div>
                 <div className="bt-set-remctl">
