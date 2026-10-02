@@ -110,9 +110,10 @@ Deno.serve(async (req) => {
       db.from('time_entries').select('user_id, company_id, work_date, worksite_id').eq('company_id', cid).neq('status', 'cancelled')
         .gte('work_date', addDays(today, -56)).lte('work_date', today).order('work_date', { ascending: false }).limit(2000),
       // Lot 7 : invitations en attente, réserves ouvertes, mois clôturés (lecture, jeton du patron).
+      // Lot 11 : « ouverte » = levée ni par le bureau ni par le salarié (lib/reserves.ts).
       db.from('invitations').select('company_id, email, first_name, last_name, phone').eq('company_id', cid).is('accepted_at', null).gt('expires_at', new Date().toISOString()),
       db.from('time_entries').select('id, company_id, user_id, work_date, worksite_id, observation').eq('company_id', cid).eq('reception', 'avec')
-        .is('reserve_resolved_at', null).neq('status', 'cancelled').order('work_date', { ascending: false }).limit(50),
+        .is('reserve_resolved_at', null).is('reserve_fixed_at', null).neq('status', 'cancelled').order('work_date', { ascending: false }).limit(50),
       db.from('month_closures').select('company_id, month').eq('company_id', cid),
       // Lot 8 : ce qu'on peut retirer ou corriger (documents, dépenses, habilitations).
       db.from('documents').select('id, company_id, worksite_id, label, file_name, category, created_at').eq('company_id', cid).order('created_at', { ascending: false }).limit(150),

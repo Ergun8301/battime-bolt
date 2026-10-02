@@ -35,7 +35,7 @@ const SUMMARY: Record<WorkerActionDraft['type'], string> = {
   demander_conge: 'Demande de congé', commencer_pointage: 'Début de pointage', terminer_pointage: 'Fin de pointage',
   signaler_reserve: 'Réserve signalée', ranger_photo: 'Document rangé', envoyer_journee: 'Journée envoyée',
   modifier_heures: 'Horaires modifiés', panier_repas: 'Panier repas', copier_journee: 'Journée copiée',
-  reserve_corrigee: 'Réserve corrigée sur place', nouveau_chantier: 'Nouveau chantier', email_client: 'Email du client',
+  reserve_corrigee: 'Réserve levée', nouveau_chantier: 'Nouveau chantier', email_client: 'Email du client',
   effacer_heures: 'Heures effacées', annuler_conge: 'Demande de congé annulée', modifier_conge: 'Demande de congé modifiée',
   annuler_pointage: 'Pointage annulé', retirer_photo: 'Document retiré', retirer_reserve: 'Réserve retirée',
 };
@@ -220,9 +220,12 @@ export function makeWorkerExecutor(user: { id: string; company_id: string }): Wo
           break;
         }
         case 'reserve_corrigee': {
-          const { error } = await supabase.rpc('mark_reserve_fixed', { p_entry_id: d.entry_id, p_fixed: true, p_note: null });
+          // Lot 11 : « Lever la réserve » — même fonction serveur que le bouton de
+          // « Ma journée » (mark_reserve_fixed), avec le commentaire s'il est dit.
+          // La réserve passe dans « Levées » côté bureau.
+          const { error } = await supabase.rpc('mark_reserve_fixed', { p_entry_id: d.entry_id, p_fixed: true, p_note: (d.note ?? '').trim() || null });
           if (error) throw error;
-          message = 'Réserve marquée « corrigée sur place ».';
+          message = 'Réserve levée.';
           undo = async () => {
             const { error: e2 } = await supabase.rpc('mark_reserve_fixed', { p_entry_id: d.entry_id, p_fixed: false, p_note: null });
             if (e2) throw e2;

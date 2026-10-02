@@ -445,8 +445,9 @@ export const WORKER_GUIDE: WorkerGuideEntry[] = [
     etapes: ['« Ma journée » → touchez la ligne.', '« Retirer ».', 'Confirmez.'], lien: 'journee' },
   { mots: ['route', 'trajet', 'pause entre'], titre: 'Dire si un trou est de la route ou une pause',
     etapes: ['« Ma journée » : la question apparaît entre deux chantiers.', '« Route » ou « Pause ».'], lien: 'journee' },
-  { mots: ['corrige sur place', 'reserve reglee', 'j ai corrige'], titre: 'Dire qu’une réserve est corrigée sur place',
-    etapes: ['« Ma journée » → le chantier avec la réserve.', '« J’ai corrigé sur place ».'], lien: 'journee' },
+  // Lot 11 : le salarié LÈVE la réserve lui-même (même formulaire que le bureau).
+  { mots: ['leve reserve', 'leve la reserve', 'leve une reserve', 'corrige sur place', 'reserve reglee', 'j ai corrige', 'reserves a lever'], titre: 'Lever une réserve',
+    etapes: ['« Ma journée » → le chantier avec la réserve (ou le bandeau jaune des réserves à lever).', '« Lever la réserve » : commentaire et photo facultatifs.', 'Le bureau la voit dans « Levées ».'], lien: 'journee' },
   { mots: ['annuler ma demande', 'annuler conge', 'retirer ma demande'], titre: 'Annuler une demande de congé',
     etapes: ['Menu → « Mes congés ».', '« Annuler ma demande » (tant qu’elle attend).'], lien: 'conges' },
   { mots: ['annuler pointage', 'je me suis trompe de chantier', 'pointage par erreur'], titre: 'Annuler un pointage en cours',
@@ -512,7 +513,8 @@ export type WorkerActionDraft =
   | { type: 'modifier_heures'; entry_id: string | null; debut: string; fin: string; choix: WorkerLive['lignes'] }
   | { type: 'panier_repas'; valeur: boolean }
   | { type: 'copier_journee'; depuis: string; vers: string[] }
-  | { type: 'reserve_corrigee'; entry_id: string | null; choix: WorkerLive['lignes'] }
+  /** Lot 11 : « Lever la réserve » (l'identifiant reste reserve_corrigee), commentaire facultatif. */
+  | { type: 'reserve_corrigee'; entry_id: string | null; choix: WorkerLive['lignes']; note?: string }
   | { type: 'nouveau_chantier'; nom: string; ville: string }
   | { type: 'email_client'; worksite_id: string | null; chantier_texte: string; email: string }
   // ── Lot 8 : effacer ce qu'il a saisi, tant que ce n'est pas envoyé ──
@@ -610,7 +612,7 @@ export function checkWorkerAction(d: WorkerActionDraft, snapshot: WorkerSnapshot
       if (!d.vers.length || d.vers.some((v) => !/^\d{4}-\d{2}-\d{2}$/.test(v) || v > addDays(snapshot.aujourdhui, 1) || v < addDays(snapshot.aujourdhui, -31))) p.push('Jour cible hors période.');
       break;
     case 'reserve_corrigee':
-      if (!d.entry_id) p.push(d.choix.length ? 'Choisissez le chantier.' : 'Aucune réserve à marquer corrigée aujourd’hui.');
+      if (!d.entry_id) p.push(d.choix.length ? 'Choisissez le chantier.' : 'Aucune réserve à lever aujourd’hui.');
       break;
     case 'nouveau_chantier':
       if (!d.nom) p.push('Nom du chantier manquant.');
@@ -742,7 +744,8 @@ export function prepareWorkerAction(type: string, raw: Record<string, unknown>, 
       const open = live.lignes.filter((l) => l.reserve && !l.corrigee);
       const byName = t ? open.filter((l) => norm(l.chantier).includes(norm(t)) || norm(t).includes(norm(l.chantier))) : [];
       const pick = byName.length === 1 ? byName[0] : open.length === 1 ? open[0] : null;
-      d = { type, entry_id: pick?.id ?? null, choix: open };
+      const note = s(raw.commentaire ?? raw.note, 500).trim();
+      d = { type, entry_id: pick?.id ?? null, choix: open, ...(note ? { note } : {}) };
       break;
     }
     case 'nouveau_chantier':
@@ -861,7 +864,11 @@ export function handleWorkerLocally(text: string, snapshot: WorkerSnapshot, live
       return { kind: 'action', action: a, answer: actionAnswer(a, snapshot) };
     }
     if (/\b(corrige|repare|regle|leve)\w*\b.*\b(sur place|reserve)\b/.test(n) && !/\bsignal/.test(n)) {
-      const a = prepareWorkerAction('reserve_corrigee', {}, snapshot, live)!;
+      // Lot 11 : « lève la réserve de Bureau Martin : joint refait » → le
+      // chantier cité (s'il est dans la phrase) et le commentaire après « : ».
+      const cut = text.search(/\s[:—-]\s|:\s/);
+      const commentaire = cut >= 0 ? text.slice(cut).replace(/^\s*[:—-]\s*/, '').trim() : '';
+      const a = prepareWorkerAction('reserve_corrigee', { chantier: cut >= 0 ? text.slice(0, cut) : text, commentaire }, snapshot, live)!;
       return { kind: 'action', action: a, answer: actionAnswer(a, snapshot) };
     }
   }
@@ -938,7 +945,7 @@ export const WORKER_FUNCTIONS = [
   { name: 'panier_repas', description: 'Cocher (ou retirer) le panier repas du jour.', parameters: { type: 'object', properties: { valeur: { type: 'boolean' } }, required: ['valeur'] } },
   { name: 'copier_journee', description: 'Copier une journée (par défaut hier) sur un ou plusieurs jours (par défaut aujourd’hui).',
     parameters: { type: 'object', properties: { depuis: S('Jour à copier aaaa-mm-jj'), vers: { type: 'array', items: S('aaaa-mm-jj') } }, required: [] } },
-  { name: 'reserve_corrigee', description: '« J’ai corrigé sur place » une réserve du jour.', parameters: { type: 'object', properties: { chantier: S('Chantier') }, required: [] } },
+  { name: 'reserve_corrigee', description: '« Lever la réserve » d’un chantier du jour (réglée sur place), avec un commentaire facultatif.', parameters: { type: 'object', properties: { chantier: S('Chantier'), commentaire: S('Ce qui a été fait (facultatif)') }, required: [] } },
   { name: 'nouveau_chantier', description: 'Ajouter un chantier qui n’est pas dans la liste.', parameters: { type: 'object', properties: { nom: S('Nom du client / chantier'), ville: S('Ville') }, required: ['nom'] } },
   { name: 'email_client', description: 'Enregistrer l’email du client d’un chantier (pour lui envoyer les documents).',
     parameters: { type: 'object', properties: { chantier: S('Chantier'), email: S('Email') }, required: ['email'] } },
@@ -975,7 +982,7 @@ export function colleaguesQuestion(text: string, today: string): { qui: string; 
 export function workerFunctionPrompt(snapshot: WorkerSnapshot, live: WorkerLive, text: string): string {
   return `Tu es l'Assistant BEMEXO d'un salarié (bâtiment, restauration…), dans son appli de pointage. Aujourd'hui : ${snapshot.aujourdhui}.
 Tu te comportes comme un vrai assistant : tu FAIS le travail complet du premier coup, tu ne poses une question qu'en dernier recours. Réponds en appelant UNE fonction.
-- Heures travaillées, « rajoute-moi une intervention à Lyon de 14h à 18h » → declarer_heures (chantier = le nom ou le LIEU dit). Congé → demander_conge. « Je commence » → commencer_pointage. « J'ai fini » → terminer_pointage. Réserve → signaler_reserve. « Envoie ma journée » → envoyer_journee. Panier → panier_repas. « Pareil qu'hier » → copier_journee.
+- Heures travaillées, « rajoute-moi une intervention à Lyon de 14h à 18h » → declarer_heures (chantier = le nom ou le LIEU dit). Congé → demander_conge. « Je commence » → commencer_pointage. « J'ai fini » → terminer_pointage. Réserve → signaler_reserve ; « j'ai réglé la réserve », « lève la réserve » → reserve_corrigee (commentaire si dit). « Envoie ma journée » → envoyer_journee. Panier → panier_repas. « Pareil qu'hier » → copier_journee.
 - « Où sont mes collègues ? », « Où est Paul ? », « Que fait Jacques demain ? » → planning_collegues.
 - Effacer / enlever / annuler ce qu'il a saisi → effacer_heures, annuler_conge, modifier_conge, annuler_pointage, retirer_photo, retirer_reserve. Les heures ENVOYÉES ne s'effacent jamais : dis-le en une phrase (repondre) et propose de demander au bureau.
 - « Comment… », « à quoi sert… », « où je trouve… » → repondre avec 3 étapes au plus d'après le GUIDE, et le lien de l'écran. Question générale (métier, calcul, rédiger un message) → repondre, en 1 à 4 phrases.

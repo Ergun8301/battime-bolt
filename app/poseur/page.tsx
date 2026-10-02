@@ -24,6 +24,10 @@ import PoseurHistory from '@/components/poseur-history';
 import LeaveRequestDialog from '@/components/leave-request-dialog';
 import WorkerAssistant from '@/components/worker-assistant';
 import { pushSupported, currentPushState, enablePush, disablePush } from '@/lib/push';
+import WorkerReserves, { type WorkerReserve } from '@/components/worker-reserves';
+import { COUNTED_STATUSES } from '@/lib/status';
+import { keep } from '@/lib/same';
+import { RESERVES_CHANGED_EVENT } from '@/lib/reserve-lift';
 
 const TABS = [
   { value: 'day', label: 'Ma journée', icon: Clock },
@@ -141,6 +145,8 @@ export default function PoseurPage() {
   // disparaître 11 h un dimanche. Fusionné avec `pending` dans un seul bandeau.
   const [unsentDays, setUnsentDays] = useState<string[]>([]);
   const [pendingOpen, setPendingOpen] = useState(false); // liste « journées à envoyer »
+  // Lot 11 : mes réserves encore à lever (tous jours confondus) → bandeau.
+  const [reserves, setReserves] = useState<WorkerReserve[]>([]);
   const [photoUrl, setPhotoUrl] = useState(''); // photo de profil du salarié (facultatif)
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
@@ -196,12 +202,34 @@ export default function PoseurPage() {
       .order('work_date', { ascending: false });
     const unsent = Array.from(new Set(((drafts || []) as { work_date: string }[]).map((d) => d.work_date)));
     setUnsentDays((prev) => (sameList(prev, unsent) ? prev : unsent));
+
+    // Lot 11 : réserves à lever — envoyées (comme le registre du bureau), ni
+    // levées par le bureau ni par moi (définition partagée : lib/reserves.ts).
+    // Une lecture en échec garde le bandeau tel quel (pas de « 0 » à tort).
+    const { data: res, error: resErr } = await supabase.from('time_entries')
+      .select('id, work_date, observation, worksite_id, worksite:worksites(client_name, city)')
+      .eq('user_id', user.id).eq('reception', 'avec')
+      .in('status', COUNTED_STATUSES as unknown as string[])
+      .is('reserve_resolved_at', null).is('reserve_fixed_at', null)
+      .order('work_date', { ascending: false }).limit(50);
+    if (!resErr) {
+      const one = <T,>(v: T | T[] | null | undefined): T | null => (Array.isArray(v) ? v[0] ?? null : v ?? null);
+      const next = ((res || []) as { id: string; work_date: string; observation: string | null; worksite_id: string | null; worksite?: unknown }[])
+        .map((r): WorkerReserve => {
+          const ws = one(r.worksite as { client_name?: string; city?: string } | null);
+          return { id: r.id, work_date: r.work_date, observation: r.observation || null, worksite_id: r.worksite_id, chantier: ws?.client_name || 'Chantier', city: ws?.city || null };
+        });
+      // keep() : même liste → même objet, aucun redessin (relu toutes les minutes).
+      setReserves((prev) => keep(prev, next));
+    }
   }, [user]);
 
   useEffect(() => {
     fetchPending();
     const id = setInterval(fetchPending, 60000);
-    return () => clearInterval(id);
+    // Une réserve levée depuis une carte de « Ma journée » : le bandeau suit.
+    window.addEventListener(RESERVES_CHANGED_EVENT, fetchPending);
+    return () => { clearInterval(id); window.removeEventListener(RESERVES_CHANGED_EVENT, fetchPending); };
   }, [fetchPending]);
 
   // Photo de profil du salarié (depuis users.photo_url).
@@ -403,6 +431,10 @@ export default function PoseurPage() {
     </Popover>
   ) : null;
 
+  // Lot 11 : « ⚠ N réserves à lever › » — même habillage, liste + formulaire.
+  // (Rien à l'écran tant qu'il n'y en a pas : le composant ne rend rien.)
+  const reservesBanner = <WorkerReserves items={reserves} onChanged={fetchPending} />;
+
   // Lignes qui n'ont pas encore atteint le serveur (réseau coupé au moment de
   // l'ajout). Même habillage que le bandeau « à envoyer ».
   const offlineBanner = offlineCount > 0 ? (
@@ -510,7 +542,7 @@ export default function PoseurPage() {
           {selectedDate ? (
             <PoseurDay key={dayKey} date={selectedDate} topBanner={offlineBanner} onAssistant={aiOn ? () => setAssistantOpen(true) : undefined} />
           ) : view === 'day' ? (
-            <PoseurDay key={dayKey} topBanner={<>{offlineBanner}{toSendBanner}</>} onAssistant={aiOn ? () => setAssistantOpen(true) : undefined} />
+            <PoseurDay key={dayKey} topBanner={<>{offlineBanner}{toSendBanner}{reservesBanner}</>} onAssistant={aiOn ? () => setAssistantOpen(true) : undefined} />
           ) : (
             <div className="bt-phscroll bt-skin">
               {view === 'week' ? (
@@ -540,7 +572,7 @@ export default function PoseurPage() {
         <WorkerAssistant
           open={assistantOpen}
           onOpenChange={setAssistantOpen}
-          onSaved={() => setDayKey((k) => k + 1)}
+          onSaved={() => { setDayKey((k) => k + 1); fetchPending(); }}
           onNavigate={(a) => {
             if (a === 'journee') goHome();
             else if (a === 'semaine') goTo('week');
