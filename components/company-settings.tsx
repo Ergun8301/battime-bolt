@@ -15,6 +15,7 @@ import LeaveFundSetting from '@/components/leave-fund-setting';
 import { supabaseCostSource, useAiEnabled } from '@/lib/real-cost';
 import KioskAdmin from '@/components/kiosk-admin';
 import SupportAccess from '@/components/support-access';
+import { InfoTip } from '@/components/ui/info-tip';
 import { readSupportSession, supabaseSupportSource } from '@/lib/support';
 import { toast } from 'sonner';
 
@@ -39,6 +40,8 @@ export const SET_CSS = `
 .bt-set-btn.ghost{border-color:rgba(21,18,15,.2);color:#C0461F}
 .bt-set-hint{font-size:11px;color:#9a948a;font-weight:600}
 .bt-set-l{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:#6E6A63;font-weight:700;margin:0 0 3px;display:block}
+.bt-set-lrow{display:flex;align-items:center;gap:5px;min-width:0;margin:0 0 3px}
+.bt-set-lrow .bt-set-l{margin:0;min-width:0}
 .bt-set-i{width:100%;font-family:'Archivo',sans-serif;font-size:14px;font-weight:500;padding:9px 11px;border:1.5px solid rgba(21,18,15,.18);border-radius:10px;background:#fff;outline:none;color:#15120F}
 .bt-set-i::placeholder{color:#b3aca0}
 .bt-set-i:focus{border-color:#15120F}
@@ -83,6 +86,24 @@ const SEC_CSS = `
 .bt-set-sec-panel{display:flex;flex-direction:column;gap:9px;padding:2px 13px 13px}
 .bt-set-sec-panel[hidden]{display:none}
 `;
+
+// Objet FIXE (lot 10) : un `{ __html }` neuf à chaque rendu fait réécrire la
+// feuille de style par React (re-calcul de la page, polices rechargées → flash).
+const SET_HTML = { __html: SET_CSS + SEC_CSS };
+
+/**
+ * Lot 11 — le libellé d'un réglage et, À CÔTÉ (jamais dedans), son ⓘ.
+ * Sous le réglage : une ligne courte au plus ; le détail est dans l'infobulle,
+ * qui s'ouvre au survol à l'ordinateur et au toucher sur tablette / téléphone.
+ */
+function SetLabel({ children, tip, tipId }: { children: string; tip?: ReactNode; tipId?: string }) {
+  return (
+    <div className="bt-set-lrow">
+      <label className="bt-set-l">{children}</label>
+      {tip ? <InfoTip text={tip} label={`Plus d’infos : ${children}`} testId={tipId ? `set-tip-${tipId}` : undefined} /> : null}
+    </div>
+  );
+}
 
 type SecKey = 'entreprise' | 'paie' | 'borne' | 'notif';
 // Fermées par défaut, sauf la première.
@@ -411,9 +432,9 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bt-skin max-w-2xl max-h-[92vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><Building2 className="h-5 w-5" /> Réglages de l&apos;entreprise</DialogTitle>
+          <DialogTitle className="flex items-center gap-2"><Building2 className="h-5 w-5 shrink-0" /> Réglages de l&apos;entreprise</DialogTitle>
         </DialogHeader>
-        <style dangerouslySetInnerHTML={{ __html: SET_CSS + SEC_CSS }} />
+        <style dangerouslySetInnerHTML={SET_HTML} />
         {loading ? (
           <div className="bt-set-load">Chargement…</div>
         ) : (
@@ -495,10 +516,15 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
               {/* Abonnement — gestion/résiliation en self-service via le portail Stripe */}
               <div className="bt-set-sub">
                 <div className="bt-set-subtxt">
-                  <label className="bt-set-l">Abonnement</label>
+                  <SetLabel
+                    tipId="abonnement"
+                    tip={subStatus === 'active' ? <>Gérez-le ou résiliez-le à tout moment avec « Gérer mon abonnement ».</>
+                      : subStatus === 'trialing' ? <>Aucun abonnement à gérer pour l&apos;instant.</>
+                      : undefined}
+                  >Abonnement</SetLabel>
                   <p className="bt-set-substate">
-                    {subStatus === 'active' ? 'Abonnement actif — vous pouvez le gérer ou le résilier à tout moment.'
-                      : subStatus === 'trialing' ? "Essai gratuit en cours — aucun abonnement à gérer pour l'instant."
+                    {subStatus === 'active' ? 'Abonnement actif.'
+                      : subStatus === 'trialing' ? 'Essai gratuit en cours.'
                       : subStatus === 'canceled' ? 'Abonnement résilié.'
                       : 'Aucun abonnement actif.'}
                   </p>
@@ -521,11 +547,8 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
                   ce qui est une heure supplémentaire. Calcul à la semaine. */}
               <div className="bt-set-sub">
                 <div className="bt-set-subtxt">
-                  <label className="bt-set-l">Horaire hebdomadaire de base</label>
-                  <p className="bt-set-substate">
-                    Au-delà de cet horaire, les heures d&apos;une semaine sont comptées comme <strong>supplémentaires</strong>.
-                    Le calcul se fait à la semaine, du lundi au dimanche. Un salarié peut avoir son propre horaire, depuis sa fiche.
-                  </p>
+                  <SetLabel tipId="horaire" tip={<>Calcul à la semaine, du lundi au dimanche. Un salarié peut avoir son propre horaire, depuis sa fiche.</>}>Horaire hebdomadaire de base</SetLabel>
+                  <p className="bt-set-substate">Au-delà : heures supplémentaires.</p>
                 </div>
                 <div className="bt-set-remctl">
                   <label className="bt-set-switch" style={{ gap: 8 }}>
@@ -546,12 +569,8 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
                   qu'on ne saurait pas remplir est un piège. */}
               <div className="bt-set-sub">
                 <div className="bt-set-subtxt">
-                  <label className="bt-set-l">Majoration des heures supplémentaires</label>
-                  <p className="bt-set-substate">
-                    Les <strong>8 premières</strong> heures supplémentaires de la semaine sont majorées au 1<sup>er</sup> taux,
-                    les suivantes au 2<sup>e</sup>. Les valeurs de départ sont les taux légaux français ;
-                    remplacez-les par ceux de votre convention si elle diffère.
-                  </p>
+                  <SetLabel tipId="majoration" tip={<>Les valeurs de départ (25 % et 50 %) sont les taux légaux. Remplacez-les par ceux de votre convention si elle diffère.</>}>Majoration des heures supplémentaires</SetLabel>
+                  <p className="bt-set-substate">1<sup>er</sup> taux : les 8 premières h sup. 2<sup>e</sup> taux : au-delà.</p>
                 </div>
                 <div className="bt-set-remctl">
                   <label className="bt-set-switch" style={{ gap: 6 }}>
@@ -576,11 +595,8 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
                   payée. Rien n'est déduit ni ajouté en silence. */}
               <div className="bt-set-sub">
                 <div className="bt-set-subtxt">
-                  <label className="bt-set-l">Temps de route entre deux chantiers</label>
-                  <p className="bt-set-substate">
-                    Le salarié indique lui-même si le temps entre deux interventions était de la <strong>route</strong> ou une <strong>pause</strong>.
-                    Ici, vous décidez si la route est payée. Les pauses ne sont jamais comptées.
-                  </p>
+                  <SetLabel tipId="route" tip={<>Le salarié indique lui-même si le temps entre deux interventions était de la route ou une pause. Ici, vous décidez si la route est payée.</>}>Temps de route entre deux chantiers</SetLabel>
+                  <p className="bt-set-substate">Les pauses ne sont jamais payées.</p>
                 </div>
                 <div className="bt-set-remctl">
                   <label className="bt-set-switch">
@@ -595,11 +611,8 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
                   au moment de l'envoi, et le bureau garde la main dessus. */}
               <div className="bt-set-sub">
                 <div className="bt-set-subtxt">
-                  <label className="bt-set-l">Adresse de votre comptable</label>
-                  <p className="bt-set-substate">
-                    Depuis le planning, le bouton <strong>Envoyer au comptable</strong> expédie le tableur des heures
-                    à cette adresse, <strong>en pièce jointe</strong>. Vous recevez une copie. Laissez vide pour désactiver l&apos;envoi.
-                  </p>
+                  <SetLabel tipId="comptable" tip={<>Envoi depuis « Exporter » → « Envoyer au comptable ». Vous recevez une copie. Laissez vide pour ne rien envoyer.</>}>Adresse de votre comptable</SetLabel>
+                  <p className="bt-set-substate">Reçoit le tableur des heures en pièce jointe.</p>
                 </div>
                 <div className="bt-set-remctl">
                   <input
@@ -624,11 +637,12 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
               {kioskEnabled && (
                 <div className="bt-set-sub">
                   <div className="bt-set-subtxt">
-                    <label className="bt-set-l">Borne de pointage</label>
-                    <p className="bt-set-substate">Une tablette à l&apos;entrée affiche le planning de la semaine et un QR : vos salariés le scannent pour pointer. Aucune heure pointée, aucun coût.</p>
+                    <SetLabel tipId="borne" tip={<>Vos salariés scannent le QR avec leur téléphone. La borne n&apos;affiche ni heures pointées ni coûts.</>}>Borne de pointage</SetLabel>
+                    <p className="bt-set-substate">Tablette à l&apos;entrée : planning de la semaine et QR pour pointer.</p>
                   </div>
-                  <button type="button" className="bt-set-btn" onClick={() => setKioskOpen(true)}>
-                    <MonitorSmartphone className="h-4 w-4" /> Gérer les bornes
+                  {/* Lot 11 : « Gérer les bornes » devient « Relier la tablette » (même fenêtre). */}
+                  <button type="button" className="bt-set-btn" onClick={() => setKioskOpen(true)} data-testid="set-kiosk-open">
+                    <MonitorSmartphone className="h-4 w-4" /> Relier la tablette
                   </button>
                 </div>
               )}
@@ -643,22 +657,18 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
                   réglage d'affichage. */}
               <div className="bt-set-sub" style={{ display: 'block' }}>
                 <div className="bt-set-subtxt">
-                  <label className="bt-set-l">Endroit au pointage en direct</label>
-                  <p className="bt-set-substate">
-                    Enregistre <strong>où se trouve le salarié</strong> au moment où il démarre un pointage
-                    en direct, et au moment où il le ferme. <strong>Deux points par journée, jamais
-                    entre les deux.</strong> Sert à répondre à un client qui conteste une facture.
-                    Les salariés peuvent refuser : leur pointage fonctionne à l&apos;identique.
-                    Les positions s&apos;effacent automatiquement au bout de douze mois.
-                  </p>
+                  <SetLabel tipId="endroit" tip={<>Deux points par journée, jamais entre les deux. Sert à répondre à un client qui conteste une facture. Le salarié peut refuser : son pointage marche pareil. Effacé au bout de 12 mois.</>}>Endroit au pointage en direct</SetLabel>
+                  <p className="bt-set-substate">Enregistre où est le salarié au début et à la fin d&apos;un pointage.</p>
                 </div>
 
                 {posErr && (
                   <p className="bt-set-substate" style={{ color: '#8a2a1c', fontWeight: 700 }}>{posErr}</p>
                 )}
 
+                {/* Lot 11 : ce bloc reste ENTIER à l'écran — c'est une obligation avant
+                    d'activer, pas une explication (il ne passe pas dans une infobulle). */}
                 {posConfirm ? (
-                  <div style={{
+                  <div data-testid="set-legal" style={{
                     marginTop: 8, border: '1px solid #E8B79E', background: '#FBE3D8',
                     borderRadius: 10, padding: '10px 12px', fontSize: 13, color: '#8a2a1c', lineHeight: 1.5,
                   }}>
@@ -711,10 +721,8 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
               {colleagues !== null && (
                 <div className="bt-set-sub" data-testid="setting-colleagues">
                   <div className="bt-set-subtxt">
-                    <label className="bt-set-l">Les salariés voient le planning de leurs collègues</label>
-                    <p className="bt-set-substate">
-                      Dans l&apos;Assistant : « Où est Paul ? » → prénom, chantier et horaires prévus. Jamais leurs heures pointées, ni leurs congés en détail (seulement « absent »).
-                    </p>
+                    <SetLabel tipId="collegues" tip={<>Visible dans l&apos;Assistant (« Où est Paul ? »). Jamais leurs heures pointées, ni le détail de leurs congés (seulement « absent »).</>}>Les salariés voient le planning de leurs collègues</SetLabel>
+                    <p className="bt-set-substate">Prénom, chantier et horaires prévus — rien d&apos;autre.</p>
                   </div>
                   <div className="bt-set-rowbtns" style={{ marginTop: 8 }}>
                     <button type="button" className={`bt-set-btn${colleagues ? ' ghost' : ''}`} disabled={colSaving} onClick={() => toggleColleagues(!colleagues)}>
@@ -738,11 +746,8 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
                   le bureau n'a plus à courir après chacun. */}
               <div className="bt-set-sub bt-set-rem">
                 <div className="bt-set-subtxt">
-                  <label className="bt-set-l">Relance automatique des heures</label>
-                  <p className="bt-set-substate">
-                    Prévient chaque salarié qui a des journées planifiées non déclarées, tous les jours de la semaine.
-                    Au maximum une relance tous les 2 jours, et 3 au total — ensuite on n&apos;insiste plus.
-                  </p>
+                  <SetLabel tipId="relance" tip={<>Par notification, sinon par e-mail. Une relance tous les 2 jours au plus, 3 au total. Regarde les 2 dernières semaines.</>}>Relance automatique des heures</SetLabel>
+                  <p className="bt-set-substate">Prévient chaque jour les salariés qui ont des journées non envoyées.</p>
                 </div>
                 <div className="bt-set-remctl">
                   <label className="bt-set-switch">
@@ -768,11 +773,8 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
                   déclencherait jamais d'alerte. */}
               <div className="bt-set-sub bt-set-rem">
                 <div className="bt-set-subtxt">
-                  <label className="bt-set-l">Alertes de budget chantier</label>
-                  <p className="bt-set-substate">
-                    Prévient quand la <strong>main-d&apos;œuvre</strong> consommée atteint 70 %, 80 % puis 100 % du budget
-                    saisi sur un chantier. Hors matériaux et sous-traitance.
-                  </p>
+                  <SetLabel tipId="budget" tip={<>Hors matériaux et sous-traitance. Le budget se saisit dans la fiche du client.</>}>Alertes de budget chantier</SetLabel>
+                  <p className="bt-set-substate">E-mail à 70 %, 80 % et 100 % du budget main-d&apos;œuvre.</p>
                 </div>
                 <div className="bt-set-remctl">
                   <label className="bt-set-switch">
@@ -787,8 +789,8 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
                   pour tester sans attendre l'horaire planifié. */}
               <div className="bt-set-sub">
                 <div className="bt-set-subtxt">
-                  <label className="bt-set-l">Notifications par email</label>
-                  <p className="bt-set-substate">Récap hebdo (vendredi) et alertes d&apos;habilitations (30 j / 7 j) — envoi automatique, ou à la demande ci-dessous.</p>
+                  <SetLabel tipId="emails" tip={<>Envoi automatique. Les boutons ci-dessous l&apos;envoient tout de suite.</>}>Notifications par email</SetLabel>
+                  <p className="bt-set-substate">Récap le vendredi, habilitations à 30 j et 7 j.</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button type="button" className="bt-set-btn" onClick={sendDigestNow} disabled={digestBusy}>

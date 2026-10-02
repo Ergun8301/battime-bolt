@@ -200,11 +200,13 @@ export default function AdminPage() {
       )}
 
       <Dialog open={subOpen} onOpenChange={setSubOpen}>
-        <DialogContent className="bt-skin max-w-2xl">
+        {/* Lot 11 : tient en largeur ET en hauteur (défile au téléphone) ; marge du
+            haut pour le badge « Recommandé », posé 12 px au-dessus de sa carte. */}
+        <DialogContent className="bt-skin max-w-2xl max-h-[92vh] overflow-y-auto" data-testid="subscribe-dialog">
           <DialogHeader>
             <DialogTitle>Choisissez votre abonnement</DialogTitle>
           </DialogHeader>
-          <div className="pt-1">
+          <div className="pt-5">
             <SubscribePanel workerCount={workerCount} />
           </div>
         </DialogContent>

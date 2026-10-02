@@ -9,6 +9,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { FileUp, Keyboard, Loader2, Trash2, ShieldCheck, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/components/auth-provider';
+import { InfoTip } from '@/components/ui/info-tip';
 import {
   demoCostSource, isCostDemo, supabaseCostSource, useAiEnabled,
   parseAmount, realHourlyCost, slipHourlyCost, validateFigures,
@@ -106,7 +107,7 @@ export default function RealCostCard({ source, companyId, userId, firstName, onC
 
   return (
     <div className="rounded-lg border p-3 space-y-3" data-testid="real-cost">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-semibold">Coût réel</p>
         <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground"><ShieldCheck className="h-3.5 w-3.5" /> Visible par le bureau uniquement</span>
       </div>
@@ -128,9 +129,9 @@ export default function RealCostCard({ source, companyId, userId, firstName, onC
       {slips && slips.length > 0 && !draft && (
         <ul className="divide-y rounded-md border text-sm">
           {slips.slice(0, 6).map((s) => (
-            <li key={s.id} className="flex items-center gap-2 px-3 py-2">
-              <span className="font-medium capitalize w-32 shrink-0">{monthLabel(s.month)}</span>
-              <span className="flex-1 text-muted-foreground text-xs">
+            <li key={s.id} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 px-3 py-2">
+              <span className="font-medium capitalize shrink-0 sm:w-32">{monthLabel(s.month)}</span>
+              <span className="flex-1 min-w-[7.5rem] text-muted-foreground text-xs">
                 {eur(s.employer_total)} employeur · {num(s.paid_hours)} h
               </span>
               <span className="font-semibold tabular-nums">{eur(slipHourlyCost(s, fund))}/h</span>
@@ -148,7 +149,11 @@ export default function RealCostCard({ source, companyId, userId, firstName, onC
         </div>
       ) : draft ? (
         <div className="rounded-md border bg-muted/20 p-3 space-y-3">
-          <p className="text-sm font-semibold">{draftSource === 'ai' ? 'Vérifiez les chiffres lus' : 'Saisie des chiffres du bulletin'}</p>
+          {/* Lot 11 : la phrase sous les champs devient une infobulle ⓘ, à côté du titre. */}
+          <div className="flex items-center gap-1.5">
+            <p className="text-sm font-semibold">{draftSource === 'ai' ? 'Vérifiez les chiffres lus' : 'Saisie des chiffres du bulletin'}</p>
+            <InfoTip testId="real-cost-tip" label="Plus d’infos : bulletin" text={<>Le bulletin n’est pas conservé : seuls ces 4 chiffres le seront, après validation.</>} />
+          </div>
           {notice && (
             <p className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
               <AlertTriangle className="h-4 w-4 shrink-0" /> {notice}
@@ -160,7 +165,6 @@ export default function RealCostCard({ source, companyId, userId, firstName, onC
             {field('gross', 'Salaire brut (€)', { inputMode: 'decimal', placeholder: 'ex. 2 450,00' })}
             {field('employer_total', 'Total versé par l’employeur (€)', { inputMode: 'decimal', placeholder: 'ex. 3 528,40' })}
           </div>
-          <p className="text-[11px] text-muted-foreground">Le bulletin n’est pas conservé : seuls ces 4 chiffres le seront, après validation.</p>
           <div className="flex gap-2">
             <button type="button" onClick={validate} disabled={saving}
               className="inline-flex items-center gap-2 rounded-md bg-foreground px-4 py-2 text-sm font-semibold text-background disabled:opacity-60">

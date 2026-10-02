@@ -8,6 +8,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Loader2, LifeBuoy, ShieldCheck } from 'lucide-react';
+import { InfoTip } from '@/components/ui/info-tip';
 import {
   describeEvent, fmtDateTime, SUPPORT_DURATIONS, type SupportAdminSource, type SupportHours, type SupportState,
 } from '@/lib/support';
@@ -15,8 +16,11 @@ import {
 const CSS = `
 .sa{background:#FBF8F2;border:1px solid rgba(21,18,15,.1);border-radius:12px;padding:12px 14px;margin-top:4px}
 .sa-top{display:flex;gap:10px;align-items:flex-start}
+.sa-main{flex:1;min-width:0}
 .sa-ico{width:30px;height:30px;flex:none;border-radius:9px;background:#15120F;color:#FFC21A;display:flex;align-items:center;justify-content:center}
 .sa-l{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:#6E6A63;font-weight:700;margin:0 0 3px;display:block}
+.sa-lrow{display:flex;align-items:center;gap:5px;margin:0 0 3px}
+.sa-lrow .sa-l{margin:0}
 .sa-txt{font-size:13px;color:#56514a;font-weight:600;margin:0;line-height:1.45;max-width:52ch}
 .sa-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
 .sa select{font-family:inherit;font-size:13.5px;font-weight:700;border:1.5px solid rgba(21,18,15,.16);border-radius:9px;padding:7px 9px;background:#fff;color:#15120F}
@@ -28,6 +32,7 @@ const CSS = `
 .sa-log{margin:12px 0 0;padding:10px 0 0;border-top:1px solid rgba(21,18,15,.08)}
 .sa-log ul{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:5px;max-height:180px;overflow-y:auto}
 .sa-log li{display:flex;gap:10px;font-size:12.5px;color:#15120F;line-height:1.35}
+.sa-log li span{min-width:0;overflow-wrap:anywhere}
 .sa-log time{flex:none;width:112px;color:#6E6A63;font-weight:700}
 .sa-empty{font-size:12.5px;color:#9a948a;margin:6px 0 0}
 `;
@@ -62,12 +67,16 @@ export default function SupportAccess({ source }: Props) {
       <style>{CSS}</style>
       <div className="sa-top">
         <span className="sa-ico"><LifeBuoy className="h-4 w-4" /></span>
-        <div>
-          <label className="sa-l">Support BEMEXO</label>
-          <p className="sa-txt">
-            Autorisez l’équipe BEMEXO à consulter votre espace pour vous aider. <strong>Lecture seule</strong> :
-            rien ne peut être modifié. L’accès s’arrête tout seul, et vous pouvez le retirer à tout moment.
-          </p>
+        <div className="sa-main">
+          {/* Lot 11 : une ligne courte ; le détail dans l'ⓘ, À CÔTÉ du libellé (jamais dedans). */}
+          <div className="sa-lrow">
+            <label className="sa-l">Support BEMEXO</label>
+            <InfoTip
+              label="Plus d’infos : Support BEMEXO" testId="set-tip-support"
+              text={<>L’équipe BEMEXO consulte votre espace pour vous aider, sans rien pouvoir modifier. Vous pouvez retirer l’accès à tout moment.</>}
+            />
+          </div>
+          <p className="sa-txt">Lecture seule, l’accès s’arrête tout seul.</p>
         </div>
       </div>
 

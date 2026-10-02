@@ -12,6 +12,7 @@ import { supabase } from '@/lib/supabase';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { InfoTip } from '@/components/ui/info-tip';
 import { Loader2, UploadCloud, FileSpreadsheet, CheckCircle2, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -114,7 +115,9 @@ const IMP_CSS = `
 .bt-imp-drop-ic{width:46px;height:46px;border-radius:12px;background:#15120F;color:#FFC21A;display:flex;align-items:center;justify-content:center;margin:0 auto 12px}
 .bt-imp-drop-t{font-size:15px;font-weight:800;color:#15120F}
 .bt-imp-drop-s{font-family:'JetBrains Mono',monospace;font-size:12px;color:#8a8378;font-weight:600;margin-top:6px}
-.bt-imp-row{display:grid;grid-template-columns:130px 1fr;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid rgba(21,18,15,.07)}
+.bt-imp-row{display:grid;grid-template-columns:130px minmax(0,1fr);gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid rgba(21,18,15,.07)}
+.bt-imp-row > *{min-width:0}
+.bt-imp-lead{display:flex;align-items:center;gap:4px;margin-top:12px;font-size:12px;color:hsl(var(--muted-foreground));font-weight:600}
 .bt-imp-flabel{font-size:13px;font-weight:800;color:#15120F}
 .bt-imp-flabel .req{color:#B5472E;margin-left:2px}
 .bt-imp-sample{font-family:'JetBrains Mono',monospace;font-size:11px;color:#8a8378;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -254,9 +257,11 @@ export default function ImportDialog({ open, onOpenChange, companyId, existingNa
             </div>
             <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden
               onChange={(e) => parseFile(e.target.files?.[0])} />
-            <p className="text-xs text-muted-foreground mt-3">
-              Une ligne = un client. La première ligne doit contenir les <strong>titres de colonnes</strong> (Nom, Ville, Téléphone…). On vous demandera de confirmer la correspondance avant d&apos;importer.
-            </p>
+            {/* Lot 11 : une ligne courte ; le détail dans l'ⓘ. */}
+            <div className="bt-imp-lead">
+              <span>Une ligne = un client, titres des colonnes en 1re ligne.</span>
+              <InfoTip testId="import-tip" label="Plus d’infos : fichier" text={<>La première ligne doit contenir les titres de colonnes (Nom, Ville, Téléphone…). Vous confirmez la correspondance des colonnes avant d&apos;importer.</>} />
+            </div>
           </div>
         )}
 
@@ -264,7 +269,7 @@ export default function ImportDialog({ open, onOpenChange, companyId, existingNa
         {step === 'map' && (
           <div className="pt-1">
             <p className="text-sm text-muted-foreground mb-2 flex items-center gap-2">
-              <FileSpreadsheet className="h-4 w-4 shrink-0" /> <span className="truncate">{fileName}</span> · {rows.length} ligne{rows.length > 1 ? 's' : ''}
+              <FileSpreadsheet className="h-4 w-4 shrink-0" /> <span className="truncate">{fileName}</span> <span className="shrink-0 whitespace-nowrap">· {rows.length} ligne{rows.length > 1 ? 's' : ''}</span>
             </p>
             <p className="text-sm font-medium mb-1">Faites correspondre vos colonnes :</p>
             <div>
@@ -278,7 +283,7 @@ export default function ImportDialog({ open, onOpenChange, companyId, existingNa
                       {sample && <div className="bt-imp-sample">ex. {sample}</div>}
                     </div>
                     <Select value={String(col ?? -1)} onValueChange={(v) => setMapping((m) => ({ ...m, [f.key]: parseInt(v, 10) }))}>
-                      <SelectTrigger><SelectValue placeholder="— ignorer —" /></SelectTrigger>
+                      <SelectTrigger className="gap-1.5 [&>svg]:shrink-0"><SelectValue placeholder="— ignorer —" /></SelectTrigger>
                       <SelectContent className="bt-skin">
                         <SelectItem value="-1">— ignorer —</SelectItem>
                         {headers.map((h, i) => (
@@ -302,11 +307,11 @@ export default function ImportDialog({ open, onOpenChange, companyId, existingNa
               {prepared.dupes > 0 && <> · {prepared.dupes} doublon{prepared.dupes > 1 ? 's' : ''} {skipDupes ? '(ignoré' + (prepared.dupes > 1 ? 's' : '') + ')' : '(importé' + (prepared.dupes > 1 ? 's' : '') + ')'}</>}
             </div>
 
-            <div className="flex gap-2 pt-3">
+            <div className="flex flex-wrap gap-2 pt-3">
               <Button variant="outline" onClick={() => { reset(); }} disabled={busy}>
                 <ArrowLeft className="h-4 w-4 mr-1" /> Changer de fichier
               </Button>
-              <Button className="flex-1 font-bold" onClick={doImport} disabled={busy || !prepared.valid.length}>
+              <Button className="flex-1 min-w-[11rem] font-bold" onClick={doImport} disabled={busy || !prepared.valid.length}>
                 {busy ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
                 Importer {prepared.valid.length} client{prepared.valid.length > 1 ? 's' : ''}
               </Button>
