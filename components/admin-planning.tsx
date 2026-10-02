@@ -147,6 +147,9 @@ const scheduleError = (start: string, end: string): string | null => {
   return null;
 };
 const EMPTY_SET: Set<string> = new Set();
+/** Lot 11 : identifiants des cases retirées par le salarié, triés (keep() compare le contenu ET l'ordre). */
+const withdrawnSet = (rows: { planning_id: string | null }[] | null): Set<string> =>
+  new Set((rows || []).map((r) => r.planning_id).filter((id): id is string => !!id).sort());
 // Lot 7 : horaire prévu affiché sur la bulle — « 14:00 » (RDV) ou « 14:00–18:00 ».
 const plannedHoursOf = (p: PlanningWithWorksite): string | null =>
   p.estimated_start ? `${p.estimated_start.slice(0, 5)}${p.estimated_end ? `–${p.estimated_end.slice(0, 5)}` : ''}` : null;
@@ -320,7 +323,7 @@ function ScheduleRow({ start, end, onStart, onEnd, testId }: {
       <div className="flex items-center gap-1.5">
         <Label>Horaire prévu</Label>
         <span className="text-xs text-muted-foreground">facultatif</span>
-        <InfoTip testId={`${testId}-info`} text="Tapez « 14h » ou « 14:30 », ou choisissez dans la liste. Pour un rendez-vous à heure fixe, remplissez seulement le début." />
+        <InfoTip testId={`${testId}-info`} text="Tapez « 14h » ou « 14:30 », ou choisissez dans la liste. Rendez-vous à heure fixe : mettez aussi une fin, sinon le salarié ne voit pas l'heure." />
       </div>
       <div className="flex items-center gap-2">
         <div className="min-w-0 flex-1"><TimeField value={start} onChange={onStart} ariaLabel="Début" placeholder="début" testId={`${testId}-start`} /></div>
@@ -760,6 +763,10 @@ ${PL_GRID_CSS}
   .bt-pl-bar .bt-pl-fill{padding:8px 9px}
   .bt-pl-bar .bt-pl-datenav{gap:5px}
   .bt-pl-bar .bt-pl-datebox{padding:0 8px;gap:6px}
+  /* Les compteurs (congés en attente, réserves) passent en pastille d'angle : la
+     barre garde la même largeur quel que soit le nombre — elle ne déborde plus. */
+  .bt-pl-bar .bt-pl-segbtn,.bt-pl-bar .bt-pl-out{position:relative}
+  .bt-pl-bar .bt-pl-badge,.bt-pl-bar .bt-pl-outbadge{position:absolute;top:-8px;right:-7px;z-index:1;box-shadow:0 0 0 2px #fff;pointer-events:none}
 }
 .bt-pl--select .bt-pl-cellfill{cursor:default}
 .bt-pl--select .bt-pl-cellfill:hover{background:transparent}
@@ -826,6 +833,9 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const [realEntries, setRealEntries] = useState<{ user_id: string; work_date: string; worksite_id: string | null; start_time: string; end_time: string; total_minutes: number; reception: string | null; reserve_resolved_at: string | null; reserve_fixed_at?: string | null; observation: string | null }[]>([]);
   // Saisies pas encore envoyées : affichées en pointillé, jamais comptées.
   const [draftEntries, setDraftEntries] = useState<{ user_id: string; work_date: string; worksite_id: string | null; start_time: string; end_time: string; total_minutes: number; reception: string | null; reserve_resolved_at: string | null; reserve_fixed_at?: string | null; observation: string | null }[]>([]);
+  // Lot 11 : cases de la semaine que le salarié a RETIRÉES (sa ligne 'cancelled' la
+  // désigne encore, la base refuse donc de l'effacer) → 🔒 en mode « Sélectionner ».
+  const [withdrawnIds, setWithdrawnIds] = useState<Set<string>>(EMPTY_SET);
   const [docsByWorksite, setDocsByWorksite] = useState<Map<string, number>>(new Map()); // nb de documents par chantier (pastille 📎)
   // Le chiffre du cockpit ouvert, s'il y en a un. Les quatre chiffres se lisent
   // tous de la même façon : un clic, un panneau, la liste qui compose le total.
@@ -1079,13 +1089,15 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     const from = format(currentWeekStart, 'yyyy-MM-dd');
     const to = format(weekEnd, 'yyyy-MM-dd');
     try {
-      const [planRes, realRes, draftRes] = await Promise.all([
+      const [planRes, realRes, draftRes, cancelledRes] = await Promise.all([
         supabase.from('planning').select('*, worksite:worksites(*), user:users!user_id(*)')
           .eq('company_id', user.company_id).gte('work_date', from).lte('work_date', to).order('work_date'),
         supabase.from('time_entries').select('user_id, work_date, worksite_id, start_time, end_time, total_minutes, reception, reserve_resolved_at, reserve_fixed_at, observation')
           .eq('company_id', user.company_id).in('status', ['submitted', 'validated']).gte('work_date', from).lte('work_date', to),
         supabase.from('time_entries').select('user_id, work_date, worksite_id, start_time, end_time, total_minutes, reception, reserve_resolved_at, reserve_fixed_at, observation')
           .eq('company_id', user.company_id).eq('status', 'draft').gte('work_date', from).lte('work_date', to),
+        supabase.from('time_entries').select('planning_id')
+          .eq('company_id', user.company_id).eq('status', 'cancelled').not('planning_id', 'is', null).gte('work_date', from).lte('work_date', to),
       ]);
       if (planRes.error) throw planRes.error;
       const planRows = planRes.data || [];
@@ -1093,6 +1105,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       setPlanning((prev) => keep(prev, planRows));
       if (!realRes.error) setRealEntries((prev) => keep(prev, realRows));
       if (!draftRes.error) setDraftEntries((prev) => keep(prev, draftRes.data || []));
+      if (!cancelledRes.error) setWithdrawnIds((prev) => keep(prev, withdrawnSet(cancelledRes.data)));
 
       // Unification : toute heure déclarée sur un chantier sans créneau planning → on
       // crée le créneau (idempotent, côté serveur) pour qu'elle devienne une bulle
@@ -1124,8 +1137,8 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     // posées 90 jours à l'avance et auraient rempli la lecture pour rien.
     const windowStart = missingWindowStart();
     const todayKey = format(new Date(), 'yyyy-MM-dd');
-    const [planRes, entRes, compRes, invRes, docRes, leaveRes, resRes, closures] = await Promise.all([
-      supabase.from('planning').select('user_id, work_date, absence_type').eq('company_id', user.company_id).gte('work_date', windowStart).lte('work_date', todayKey),
+    const [planRes, entRes, compRes, invRes, docRes, leaveRes, resRes, closures, cancelledRes] = await Promise.all([
+      supabase.from('planning').select('id, user_id, work_date, absence_type').eq('company_id', user.company_id).gte('work_date', windowStart).lte('work_date', todayKey),
       supabase.from('time_entries').select('user_id, work_date').eq('company_id', user.company_id).in('status', ['submitted', 'validated']).gte('work_date', windowStart).lte('work_date', todayKey),
       supabase.from('companies').select('name, logo_url, travel_paid, weekly_hours, accountant_email, overtime_rate_1, overtime_rate_2').eq('id', user.company_id).maybeSingle(),
       supabase.from('invitations').select('*').eq('company_id', user.company_id).is('accepted_at', null).gt('expires_at', new Date().toISOString()).order('created_at', { ascending: false }),
@@ -1147,6 +1160,10 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         .in('status', ['submitted', 'validated']).is('reserve_resolved_at', null).is('reserve_fixed_at', null),
       // Lot 11 : clôtures par salarié (null = table pas encore en base → aucune).
       fetchCompanyClosures(user.company_id),
+      // Lot 11 : cases RETIRÉES par le salarié (« je n'y suis pas allé ») : rien à
+      // lui réclamer pour elles.
+      supabase.from('time_entries').select('planning_id').eq('company_id', user.company_id).eq('status', 'cancelled')
+        .not('planning_id', 'is', null).gte('work_date', windowStart).lte('work_date', todayKey),
       // (active_sessions : lu par son propre sondage de 30 s, voir fetchLive.)
     ]);
     if (closures) setWorkerClosures((prev) => keep(prev, closures));
@@ -1169,12 +1186,16 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     const planned = new Map<string, Set<string>>();
     const absence = new Map<string, Set<string>>();
     const today = new Map<string, string>();
+    // Lecture en échec : comme avant (aucune case comptée comme retirée).
+    const withdrawn = cancelledRes.error ? EMPTY_SET : withdrawnSet(cancelledRes.data);
     for (const p of planRes.data || []) {
       if (p.absence_type) {
         if (!absence.has(p.user_id)) absence.set(p.user_id, new Set());
         absence.get(p.user_id)!.add(p.work_date);
         if (p.work_date === todayKey) today.set(p.user_id, p.absence_type);
-      } else {
+      } else if (!withdrawn.has(p.id)) {
+        // Une case retirée par le salarié ne réclame rien ; une autre case du
+        // même jour, elle, réclame toujours ses heures.
         if (!planned.has(p.user_id)) planned.set(p.user_id, new Set());
         planned.get(p.user_id)!.add(p.work_date);
       }
@@ -1515,11 +1536,13 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
 
   // ─── Lot 11 : « Sélectionner » → « Supprimer (N) » → « Annuler » ───────────────
   // Ce qui ne s'efface JAMAIS d'ici (et le dit) : des heures envoyées ou notées,
-  // un pointage en cours, un mois clôturé (ou un salarié clôturé à cette date).
+  // un pointage en cours, une case retirée par le salarié (sa ligne la désigne
+  // encore), un mois clôturé (ou un salarié clôturé à cette date).
   const hardLock = (p: PlanningWithWorksite): string | null => {
     if (realForPlanning(p)) return 'Heures envoyées — non supprimable';
     if (draftForPlanning(p)) return 'Heures notées par le salarié — non supprimable';
     if (liveForBubble(p)) return 'Pointage en cours — non supprimable';
+    if (withdrawnIds.has(p.id)) return 'Retirée par le salarié — non supprimable';
     if (closedMonths.has(p.work_date.slice(0, 7))) return 'Mois clôturé — non supprimable';
     if (closedFor(workerClosures, p.user_id, p.work_date)) return 'Heures clôturées pour ce salarié — non supprimable';
     return null;

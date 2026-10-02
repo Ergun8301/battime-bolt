@@ -8,14 +8,15 @@
 //  3) « Sélectionner » : bulles envoyées / brouillon / en cours / absences / ajoutées par le
 //     salarié NON cochables (🔒) ; « Tout sélectionner » = la semaine ; clic jour / nom ;
 //     « Supprimer (N) » → DELETE ; carte « Annuler » (reste jusqu'à ✕) → upsert des MÊMES lignes ;
-//     une case retirée par le salarié (ligne 'cancelled') est gardée et c'est dit.
+//     une case retirée par le salarié (ligne 'cancelled') : 🔒, jamais « à relancer » ; retirée
+//     PENDANT la sélection, elle est gardée à l'effacement et c'est dit.
 //  4) fenêtre d'intervention : « Supprimer » + « Annuler » ; « Horaire prévu » début – fin
 //     (« 14h » → 14:00, liste au quart d'heure, préréglages, fin sans début refusée, fin avant
 //     début refusée, enregistrement début + fin), plus aucune roulette ; même chose à l'ajout.
 //  5) « Exporter » ouvre directement l'export de l'équipe (menu PDF / Excel / CSV, lien
 //     « Un seul salarié ? ») ; « Coût chantiers » : carte « Heures » = somme des lignes.
 //  6) aucune fenêtre de cette zone ne défile en largeur (1280, 1024, 390) ; la barre tient sur
-//     une ligne à 1024 avec « Sélectionner » ; mobile : 2 puces, liste « À relancer », sélection
+//     une ligne à 1024 avec « Sélectionner », même avec des congés en attente et 12 réserves ; mobile : 2 puces, liste « À relancer », sélection
 //     du jour ; zéro mutation sur un sondage de 30 s / 60 s (mode normal ET mode sélection).
 import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path'; import { chromium } from 'playwright-core';
 const [,, OUT, SH, PORT = '4411'] = process.argv; fs.mkdirSync(SH, { recursive: true });
@@ -50,8 +51,8 @@ const PLANNING0 = [
   // Sara : absente lun.→mer., ven. cochable ; 1 jour dû
   ...[19, 20, 21].map((d) => slot(`ps-abs${d}`, 'u-sara', D_(d), null, { absence_type: 'maladie' })),
   slot('ps-fri', 'u-sara', D_(23), W2), slot('ps-o8', 'u-sara', D_(8), W2),
-  // Marc : jeu. cochable ; ven. retiré par le salarié (ligne 'cancelled' → gardé à l'effacement) ; à jour
-  slot('pm-thu', 'u-marc', D_(22), W1), slot('pm-fri', 'u-marc', D_(23), W1),
+  // Marc : jeu. cochable ; LUNDI (passé) retiré par le salarié (ligne 'cancelled') → 🔒, rien de dû : à jour
+  slot('pm-thu', 'u-marc', D_(22), W1), slot('pm-mon', 'u-marc', D_(19), W1),
   // Léa : mer. envoyé ; mar. ajouté par le salarié (brouillon) → 1 jour dû
   slot('pl-wed', 'u-lea', TODAY, W1), slot('pl-tue', 'u-lea', D_(20), W2, { added_by_worker: true }),
   // Nina : lun. + mar. sans heures → 2 jours dus, cochables
@@ -63,8 +64,8 @@ const PLANNING0 = [
 ];
 const EXPECTED = { 'Kevin Roussel': 3, 'Sara Benali': 1, 'Léa Petit': 1, 'Nina Morel': 2, 'Tom Garcia': 1 };
 const EXPECTED_WAITING = Object.values(EXPECTED).reduce((a, n) => a + n, 0); // 8
-const SELECTABLE = ['pk-mon', 'pk-thu', 'ps-fri', 'pm-thu', 'pm-fri', 'pn-mon', 'pn-tue', 'pt-mon', 'pt-fri'];
-const LOCKED = ['pk-mon2', 'pk-tue', 'pk-wed', 'pl-wed', 'pl-tue'];
+const SELECTABLE = ['pk-mon', 'pk-thu', 'ps-fri', 'pm-thu', 'pn-mon', 'pn-tue', 'pt-mon', 'pt-fri'];
+const LOCKED = ['pk-mon2', 'pk-tue', 'pk-wed', 'pl-wed', 'pl-tue', 'pm-mon'];
 const fresh = () => ({
   users: [u('u-admin', 'Paul', 'Martin', 'admin'), u('u-kevin', 'Kevin', 'Roussel'), u('u-sara', 'Sara', 'Benali'), u('u-marc', 'Marc', 'Durand'), u('u-lea', 'Léa', 'Petit'), u('u-nina', 'Nina', 'Morel'), u('u-tom', 'Tom', 'Garcia'), u('u-old', 'Ancien', 'Compte', 'worker', false)],
   companies: [{ ...COMPANY }],
@@ -75,7 +76,7 @@ const fresh = () => ({
     entry('e2', 'u-kevin', D_(19), W2, 'draft', 120, { planning_id: 'pk-mon2' }),
     entry('e3', 'u-lea', TODAY, W1, 'submitted', 180, { planning_id: 'pl-wed' }),
     entry('e4', 'u-lea', D_(20), W2, 'draft', 240, { planning_id: 'pl-tue' }),
-    entry('e5', 'u-marc', D_(23), W1, 'cancelled', 0, { planning_id: 'pm-fri' }),
+    entry('e5', 'u-marc', D_(19), W1, 'cancelled', 0, { planning_id: 'pm-mon' }), // retirée par le salarié
     entry('e6', 'u-marc', TODAY, W2, 'submitted', 120), // ajouté par le salarié (sans planning)
     entry('e7', 'u-lea', D_(14), W1, 'submitted', 60, { reception: 'avec', reserve_fixed_at: '2026-10-15T09:00:00Z' }), // réserve levée par le salarié
     entry('e8', 'u-nina', D_(13), W2, 'submitted', 60, { reception: 'avec' }), // réserve ouverte
@@ -231,7 +232,7 @@ const settle = async (pg) => { await pg.clock.fastForward(8000); await pg.waitFo
     const t = (await row(p, name).locator('.bt-pl-namebtn').innerText()).replace(/\s+/g, ' ');
     check(t.includes(`${n} jour${n > 1 ? 's' : ''} en attente`), `1) ${name} : « ${n} jour${n > 1 ? 's' : ''} en attente » (${t.trim()})`);
   }
-  check((await row(p, 'Marc Durand').locator('.bt-pl-namebtn').innerText()).includes('À jour'), '1) Marc (retiré par lui-même, rien de dû) : « À jour »');
+  check((await row(p, 'Marc Durand').locator('.bt-pl-namebtn').innerText()).includes('À jour'), '1) Marc (lundi 19, passé, retiré par lui-même : rien de dû) : « À jour »');
   const title = await p.locator('[data-testid=stat-waiting]').getAttribute('title');
   check(/en octobre/.test(title || ''), `1) infobulle avec le mois : « ${title} »`);
   check((await p.locator('[data-testid=stat-docs]').innerText()).replace(/\s+/g, ' ').includes('1 pièces'), '1) 📎 « Pièces » inchangé');
@@ -284,10 +285,10 @@ const settle = async (pg) => { await pg.clock.fastForward(8000); await pg.waitFo
   check(await p.locator('[data-testid=sel-bar]').isVisible() && await selCount(p) === 0, '3) « Sélectionner » : barre du bas « 0 sélectionnée »');
   const lockedOk = [];
   for (const id of LOCKED) lockedOk.push(await bub(p, id).getAttribute('data-sel') === 'lock');
-  check(lockedOk.every(Boolean), `3) envoyée, brouillon, en cours, ajoutée par le salarié : 🔒 (${LOCKED.map((id, i) => `${id}:${lockedOk[i] ? 'lock' : '?'}`).join(' ')})`);
+  check(lockedOk.every(Boolean), `3) envoyée, brouillon, en cours, ajoutée ou retirée par le salarié : 🔒 (${LOCKED.map((id, i) => `${id}:${lockedOk[i] ? 'lock' : '?'}`).join(' ')})`);
   check(await row(p, 'Marc Durand').locator('.bt-pl-sel.lock .bt-pl-extra').count() === 1, '3) heures ajoutées par le salarié (sans planning) : 🔒');
   const why = (id) => bub(p, id).locator('.bt-pl-grab').getAttribute('title');
-  check(await why('pk-tue') === 'Heures envoyées — non supprimable' && await why('pk-wed') === 'Pointage en cours — non supprimable' && await why('pk-mon2') === 'Heures notées par le salarié — non supprimable', '3) le 🔒 dit pourquoi (« Heures envoyées », « Pointage en cours », « Heures notées »)');
+  check(await why('pk-tue') === 'Heures envoyées — non supprimable' && await why('pk-wed') === 'Pointage en cours — non supprimable' && await why('pk-mon2') === 'Heures notées par le salarié — non supprimable' && await why('pm-mon') === 'Retirée par le salarié — non supprimable', '3) le 🔒 dit pourquoi (« Heures envoyées », « Pointage en cours », « Heures notées », « Retirée par le salarié »)');
   const selectableOk = [];
   for (const id of SELECTABLE) selectableOk.push(await bub(p, id).getAttribute('data-sel') === 'off');
   check(selectableOk.every(Boolean), `3) ${SELECTABLE.length} bulles cochables`);
@@ -306,11 +307,13 @@ const settle = async (pg) => { await pg.clock.fastForward(8000); await pg.waitFo
   check(await selCount(p) === 2 && await bub(p, 'pk-thu').getAttribute('data-sel') === 'on' && await bub(p, 'pm-thu').getAttribute('data-sel') === 'on', '3) clic sur « Jeudi » : ses 2 interventions cochées');
   await row(p, 'Nina Morel').locator('.bt-pl-namebtn').click(); await p.waitForTimeout(200);
   check(await selCount(p) === 4 && await p.locator('[role=dialog]').count() === 0, '3) clic sur « Nina Morel » : sa semaine cochée (pas de fenêtre de statut)');
-  await bub(p, 'pm-fri').click(); await p.waitForTimeout(150);
+  await bub(p, 'pm-mon').click(); await p.waitForTimeout(150);
+  check(await selCount(p) === 4, '3) clic sur la case retirée par le salarié : rien de coché');
+  await bub(p, 'pt-mon').click(); await p.waitForTimeout(150);
   check(await selCount(p) === 5, '3) clic sur une bulle : cochée');
-  await bub(p, 'pm-fri').click(); await p.waitForTimeout(150);
+  await bub(p, 'pt-mon').click(); await p.waitForTimeout(150);
   check(await selCount(p) === 4, '3) re-clic : décochée');
-  await bub(p, 'pm-fri').click(); await p.waitForTimeout(150);
+  await bub(p, 'pt-mon').click(); await p.waitForTimeout(150);
   check((await p.locator('[data-testid=sel-delete]').innerText()).includes('Supprimer (5)'), '3) bouton « Supprimer (5) »');
   // Zéro mutation pendant un sondage, en mode sélection aussi
   await settle(p);
@@ -323,11 +326,14 @@ const settle = async (pg) => { await pg.clock.fastForward(8000); await pg.waitFo
   await p.screenshot({ path: `${SH}/admin-selection-1440x900.png` }); // (après settle : sans toast)
 
   const snap = JSON.parse(JSON.stringify(D.planning.filter((x) => ['pk-thu', 'pm-thu', 'pn-mon', 'pn-tue'].includes(x.id))));
+  // Course : Tom retire sa journée du lundi (envoyée puis retirée) PENDANT que le bureau
+  // coche — l'écran ne le sait pas encore ; l'effacement relit et garde la case.
+  D.time_entries.push(entry('e9', 'u-tom', D_(19), W1, 'cancelled', 0, { planning_id: 'pt-mon' }));
   const w1 = log.writes.length;
   await p.click('[data-testid=sel-delete]'); await p.waitForSelector('[data-testid=undo-card]', { timeout: 8000 }).catch(() => {});
   const dels = writesSince(w1).filter((x) => x.m === 'DELETE' && x.t === 'planning');
   const delIds = dels.flatMap((x) => x.ids).sort();
-  check(dels.length === 1 && JSON.stringify(delIds) === JSON.stringify(['pk-thu', 'pm-thu', 'pn-mon', 'pn-tue']), `3) « Supprimer (5) » → DELETE de 4 cases (${delIds.join(', ')}) — la case retirée par le salarié est gardée`);
+  check(dels.length === 1 && JSON.stringify(delIds) === JSON.stringify(['pk-thu', 'pm-thu', 'pn-mon', 'pn-tue']), `3) « Supprimer (5) » → DELETE de 4 cases (${delIds.join(', ')}) — la case retirée entre-temps par le salarié est gardée`);
   const card = (await p.locator('[data-testid=undo-card]').innerText().catch(() => '')).replace(/\s+/g, ' ');
   check(/4 interventions supprimées/.test(card) && /1 gardée \(retirée par le salarié\)/.test(card), `3) carte : « ${card.trim()} »`);
   check(await p.locator('[data-testid=sel-bar]').count() === 0 && await p.locator('[data-pid]').count() === 0, '3) fin du mode sélection (plus aucune case à cocher)');
@@ -389,6 +395,12 @@ const settle = async (pg) => { await pg.clock.fastForward(8000); await pg.waitFo
   await p.click('[data-testid=edit-delete]'); await p.waitForTimeout(600);
   check(writesSince(w5).filter((x) => x.m === 'DELETE').length === 0 && await p.locator('[data-testid=undo-card]').count() === 0, '4) heures envoyées : « Supprimer » refusé, rien d’effacé');
   await p.keyboard.press('Escape'); await p.waitForTimeout(300);
+  // Case retirée par le salarié : refus dit tout de suite, rien d'effacé
+  await row(p, 'Marc Durand').locator('td').nth(1).locator('.bt-pl-grab').first().click(); await p.waitForTimeout(400);
+  await p.click('[data-testid=edit-delete]'); await p.waitForTimeout(400);
+  const toastTxt = await p.locator('[data-sonner-toast]').allInnerTexts().catch(() => []);
+  check(writesSince(w5).filter((x) => x.m === 'DELETE').length === 0 && await p.locator('[data-testid=undo-card]').count() === 0 && toastTxt.some((t) => t.includes('Retirée par le salarié')), `4) case retirée par le salarié : « Supprimer » refusé avec la raison (${toastTxt.join(' | ').replace(/\s+/g, ' ').slice(0, 120)})`);
+  await p.keyboard.press('Escape'); await p.waitForTimeout(300);
 
   // 4) « Horaire prévu » : saisie simple, préréglages, refus
   await row(p, 'Tom Garcia').locator('td').nth(5).locator('.bt-pl-grab').first().click(); await p.waitForTimeout(400);
@@ -415,7 +427,7 @@ const settle = async (pg) => { await pg.clock.fastForward(8000); await pg.waitFo
   check(pt.length === 1 && pt[0].ids[0] === 'pt-fri' && pt[0].body.estimated_start === '14:30:00' && pt[0].body.estimated_end === '18:00:00', `4) enregistré : début 14:30 et fin 18:00 (${pt[0] ? JSON.stringify(pt[0].body) : 'rien'})`);
 
   // 4) Ajout : même « Horaire prévu »
-  await row(p, 'Marc Durand').locator('td').nth(1).locator('.bt-pl-cellfill').click(); await p.waitForTimeout(400);
+  await row(p, 'Marc Durand').locator('td').nth(2).locator('.bt-pl-cellfill').click(); await p.waitForTimeout(400);
   const add = p.locator('[role=dialog]');
   check((await add.innerText()).includes('Ajouter une intervention') && await add.locator('[data-testid=add-time-start]').count() === 1, '4) « Ajouter une intervention » avec « Horaire prévu »');
   await add.locator('button[role=combobox]').click(); await p.waitForTimeout(250);
@@ -469,7 +481,13 @@ function bub0(p, name) { return row(p, name).locator('.bt-pl-grab').first(); }
 // ═══ 6–7) 1280 et 1024 : barre sur une ligne, fenêtres sans défilement ═════════════
 for (const [width, height] of [[1280, 800], [1024, 768]]) {
   D = fresh(); D.companies[0] = { ...COMPANY, kiosk_enabled: true, ai_enabled: true, subscription_status: 'trialing', trial_ends_at: '2026-11-02' };
+  // Cas chargés de tous les jours : 3 congés en attente (pastille sur « Salariés ») et
+  // 12 réserves ouvertes (2 chiffres sur « Réserves ») — la barre ne doit pas s'élargir.
+  for (let i = 0; i < 3; i++) D.leave_requests.push({ id: `lr${i}`, company_id: CO, user_id: 'u-kevin', status: 'pending', start_date: D_(26), end_date: D_(27), created_at: '2026-10-10T08:00:00Z' });
+  for (let i = 0; i < 11; i++) D.time_entries.push(entry(`rsv${i}`, 'u-nina', D_(1 + (i % 9)), W2, 'submitted', 60, { reception: 'avec' }));
   const { ctx, p } = await newPage(width, height);
+  const badges = (await p.locator('.bt-pl-bar').innerText()).replace(/\s+/g, ' ');
+  check(/Salariés 3/.test(badges) && /Réserves 12/.test(badges), `6) ${width} : pastilles « Salariés 3 » et « Réserves 12 » affichées`);
   const res = await p.evaluate(() => {
     const bar = document.querySelector('.bt-pl-bar'); const br = bar.getBoundingClientRect();
     const kids = [...bar.children].map((e) => e.getBoundingClientRect());
@@ -477,11 +495,13 @@ for (const [width, height] of [[1280, 800], [1024, 768]]) {
     const ov = (a, c) => a.left < c.right - 0.5 && c.left < a.right - 0.5 && a.top < c.bottom - 0.5 && c.top < a.bottom - 0.5;
     let overlaps = 0; for (let i = 0; i < kids.length; i++) for (let j = i + 1; j < kids.length; j++) if (ov(kids[i], kids[j])) overlaps++;
     for (let i = 0; i < btns.length; i++) for (let j = i + 1; j < btns.length; j++) if (ov(btns[i], btns[j])) overlaps++;
-    const inside = btns.every((r) => r.left >= br.left - 0.5 && r.right <= br.right + 0.5);
+    // Tout ce qui se voit (pastilles comprises) reste dans la barre, et la page ne défile pas en largeur.
+    const all = [...bar.querySelectorAll('*')].filter((e) => e.getClientRects().length).map((e) => e.getBoundingClientRect()).filter((r) => r.width > 0);
+    const inside = all.every((r) => r.left >= br.left - 0.5 && r.right <= br.right + 0.5) && document.documentElement.scrollWidth <= innerWidth;
     const mids = btns.map((r) => r.top + r.height / 2);
-    return { overlaps, inside, oneLine: Math.max(...mids) - Math.min(...mids) < 6, h: Math.round(br.height), n: btns.length };
+    return { overlaps, inside, oneLine: Math.max(...mids) - Math.min(...mids) < 6, h: Math.round(br.height), n: btns.length, spare: Math.round(br.right - Math.max(...btns.map((r) => r.right))) };
   });
-  check(res.overlaps === 0 && res.inside && res.oneLine, `6) ${width}×${height} : barre avec « Sélectionner », « Borne » et l’assistant sur une ligne (${res.n} boutons, ${res.h} px${res.overlaps ? `, ${res.overlaps} chevauchement(s)` : ''}${res.inside ? '' : ', déborde'})`);
+  check(res.overlaps === 0 && res.inside && res.oneLine, `6) ${width}×${height} : barre avec « Sélectionner », « Borne », l’assistant, 3 congés et 12 réserves sur une ligne (${res.n} boutons, ${res.h} px, ${res.spare} px de marge à droite${res.overlaps ? `, ${res.overlaps} chevauchement(s)` : ''}${res.inside ? '' : ', déborde'})`);
   const costLbl = (await p.locator('[data-testid=bar-cost]').innerText()).trim();
   // Sous 1280 px seulement (à 1280 la barre tient avec le libellé entier).
   check(costLbl === (width < 1280 ? 'Coûts' : 'Coût chantiers'), `6) ${width} : libellé « ${costLbl} »`);
@@ -504,7 +524,7 @@ for (const [width, height] of [[1280, 800], [1024, 768]]) {
     ['export équipe', async () => { await p.click('[data-testid=bar-export]'); }],
     ['intervention', async () => { await bub0(p, 'Nina Morel').click(); }],
     ['fiche client', async () => { await bub0(p, 'Nina Morel').click(); await p.waitForTimeout(300); await p.locator('[role=dialog] button', { hasText: 'Fiche' }).click(); }],
-    ['ajout', async () => { await row(p, 'Marc Durand').locator('td').nth(1).locator('.bt-pl-cellfill').click(); }],
+    ['ajout', async () => { await row(p, 'Marc Durand').locator('td').nth(2).locator('.bt-pl-cellfill').click(); }],
     ['salariés', async () => { await p.locator('.bt-pl-bar button', { hasText: 'Salariés' }).click(); }],
     ['coût chantiers', async () => { await p.click('[data-testid=bar-cost]'); await p.waitForSelector('[data-testid=cr-hours]', { timeout: 8000 }).catch(() => {}); }],
   ];
