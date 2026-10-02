@@ -62,6 +62,8 @@ interface AdminMobileMenuProps {
   pendingLeaves?: number;
   onOpenReserves: () => void;
   openReserves?: number;
+  /** Lot 10 : bornes de pointage (seulement si l'entreprise a la borne). */
+  onOpenKiosk?: () => void;
   onOpenExportTeam: () => void;
   onOpenExportWorker: () => void;
   onOpenSettings: () => void;
@@ -72,7 +74,7 @@ export default function AdminMobileMenu({
   open, onOpenChange, user, companyLabel, companyLogo, companyInitials,
   trial, onSubscribe,
   onOpenSalaries, onOpenChantiers, onOpenCost, onOpenLeaves, pendingLeaves = 0,
-  onOpenReserves, openReserves = 0,
+  onOpenReserves, openReserves = 0, onOpenKiosk,
   onOpenExportTeam, onOpenExportWorker, onOpenSettings, onSignOut,
 }: AdminMobileMenuProps) {
   const [exportExpanded, setExportExpanded] = useState(false);
@@ -82,7 +84,7 @@ export default function AdminMobileMenu({
   return (
     <Sheet open={open} onOpenChange={(o) => { onOpenChange(o); if (!o) setExportExpanded(false); }}>
       <SheetContent side="right" className="bt-skin bt-mm-sheet">
-        <style dangerouslySetInnerHTML={{ __html: MM_CSS }} />
+        <style dangerouslySetInnerHTML={MM_CSS_HTML} />
         <SheetHeader className="sr-only"><SheetTitle>Menu</SheetTitle></SheetHeader>
 
         <div className="bt-mm-head">
@@ -132,6 +134,13 @@ export default function AdminMobileMenu({
             {openReserves > 0 && <span className="bt-mm-badge">{openReserves}</span>}
           </button>
 
+          {onOpenKiosk && (
+            <button className="bt-mm-item" onClick={() => go(onOpenKiosk)} data-testid="mm-kiosk">
+              <span className="bt-mm-icon" aria-hidden>📟</span>
+              <span className="bt-mm-label">Borne</span>
+            </button>
+          )}
+
           <button className="bt-mm-item" onClick={() => go(onOpenCost)}>
             <span className="bt-mm-icon"><TrendingUp className="h-4 w-4" /></span>
             <span className="bt-mm-label">Coût chantiers</span>
@@ -170,3 +179,7 @@ export default function AdminMobileMenu({
     </Sheet>
   );
 }
+
+// Objet FIXE : un `{ __html }` neuf à chaque rendu fait réécrire la feuille
+// de style par React (re-calcul de la page, polices rechargées → flash).
+const MM_CSS_HTML = { __html: MM_CSS };

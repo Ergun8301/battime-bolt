@@ -168,7 +168,7 @@ export default function InscriptionPage() {
 
   return (
     <>
-      <style dangerouslySetInnerHTML={{ __html: SIGNUP_CSS }} />
+      <style dangerouslySetInnerHTML={SIGNUP_CSS_HTML} />
       <div className="bt-auth">
         <div className="bt-split">
           <div className="bt-ruban-center" />
@@ -249,3 +249,7 @@ export default function InscriptionPage() {
     </>
   );
 }
+
+// Objet FIXE : un `{ __html }` neuf à chaque rendu fait réécrire la feuille
+// de style par React (re-calcul de la page, polices rechargées → flash).
+const SIGNUP_CSS_HTML = { __html: SIGNUP_CSS };

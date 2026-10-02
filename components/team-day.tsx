@@ -239,7 +239,7 @@ export default function TeamDay({ me, date, myWorksiteIds, worksiteName, onChang
 
   return (
     <div className="bt-td">
-      <style dangerouslySetInnerHTML={{ __html: TD_CSS }} />
+      <style dangerouslySetInnerHTML={TD_CSS_HTML} />
       <div className="bt-td-h"><Users className="h-3.5 w-3.5" /> Mon équipe aujourd&apos;hui</div>
       <div className="bt-td-sub">
         Les salariés présents sur {myWorksiteIds.length > 1 ? 'tes chantiers' : 'ton chantier'} aujourd&apos;hui
@@ -314,3 +314,7 @@ export default function TeamDay({ me, date, myWorksiteIds, worksiteName, onChang
     </div>
   );
 }
+
+// Objet FIXE : un `{ __html }` neuf à chaque rendu fait réécrire la feuille
+// de style par React (re-calcul de la page, polices rechargées → flash).
+const TD_CSS_HTML = { __html: TD_CSS };

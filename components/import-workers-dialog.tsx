@@ -251,7 +251,7 @@ export default function ImportWorkersDialog({ open, onOpenChange, existingEmails
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!busy) { onOpenChange(o); if (!o) reset(); } }}>
       <DialogContent className="bt-skin max-w-xl max-h-[88vh] overflow-y-auto" onInteractOutside={(e) => { if (busy) e.preventDefault(); }}>
-        <style dangerouslySetInnerHTML={{ __html: IMPW_CSS }} />
+        <style dangerouslySetInnerHTML={IMPW_CSS_HTML} />
         <DialogHeader><DialogTitle>Importer des salariés</DialogTitle></DialogHeader>
 
         {/* ÉTAPE 1 — fichier */}
@@ -373,3 +373,7 @@ export default function ImportWorkersDialog({ open, onOpenChange, existingEmails
     </Dialog>
   );
 }
+
+// Objet FIXE : un `{ __html }` neuf à chaque rendu fait réécrire la feuille
+// de style par React (re-calcul de la page, polices rechargées → flash).
+const IMPW_CSS_HTML = { __html: IMPW_CSS };

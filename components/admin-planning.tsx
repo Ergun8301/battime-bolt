@@ -2815,6 +2815,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         pendingLeaves={pendingLeaves}
         onOpenReserves={() => setReservesOpen(true)}
         openReserves={openReserves}
+        onOpenKiosk={kioskOn && user?.company_id ? () => setKioskOpen(true) : undefined}
         onSignOut={signOut}
       />
 

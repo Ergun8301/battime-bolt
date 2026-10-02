@@ -121,7 +121,7 @@ export default function LeaveAdminDialog({ open, onOpenChange, companyId, adminI
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bt-skin max-w-lg max-h-[85vh] overflow-y-auto">
-        <style dangerouslySetInnerHTML={{ __html: LA_CSS }} />
+        <style dangerouslySetInnerHTML={LA_CSS_HTML} />
         <DialogHeader><DialogTitle>Demandes de congé</DialogTitle></DialogHeader>
 
         {rows.length === 0 && <p className="bt-la-empty">Aucune demande pour le moment.</p>}
@@ -177,3 +177,7 @@ export default function LeaveAdminDialog({ open, onOpenChange, companyId, adminI
     </Dialog>
   );
 }
+
+// Objet FIXE : un `{ __html }` neuf à chaque rendu fait réécrire la feuille
+// de style par React (re-calcul de la page, polices rechargées → flash).
+const LA_CSS_HTML = { __html: LA_CSS };

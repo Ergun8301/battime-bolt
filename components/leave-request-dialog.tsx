@@ -112,7 +112,7 @@ export default function LeaveRequestDialog({ open, onOpenChange, userId }: Props
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bt-skin max-w-md max-h-[88vh] overflow-y-auto">
-        <style dangerouslySetInnerHTML={{ __html: LR_CSS }} />
+        <style dangerouslySetInnerHTML={LR_CSS_HTML} />
         <DialogHeader><DialogTitle>Mes congés</DialogTitle></DialogHeader>
 
         {!adding && (
@@ -180,3 +180,7 @@ export default function LeaveRequestDialog({ open, onOpenChange, userId }: Props
     </Dialog>
   );
 }
+
+// Objet FIXE : un `{ __html }` neuf à chaque rendu fait réécrire la feuille
+// de style par React (re-calcul de la page, polices rechargées → flash).
+const LR_CSS_HTML = { __html: LR_CSS };

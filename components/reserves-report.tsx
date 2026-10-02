@@ -197,7 +197,7 @@ export default function ReservesReport({ open, onOpenChange, companyId, onOpenDo
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bt-skin max-w-lg max-h-[86vh] overflow-y-auto">
-        <style dangerouslySetInnerHTML={{ __html: RR_CSS }} />
+        <style dangerouslySetInnerHTML={RR_CSS_HTML} />
         <DialogHeader><DialogTitle>Réserves de chantier</DialogTitle></DialogHeader>
 
         <div className="bt-rr-tabs">
@@ -300,3 +300,7 @@ export default function ReservesReport({ open, onOpenChange, companyId, onOpenDo
     </Dialog>
   );
 }
+
+// Objet FIXE : un `{ __html }` neuf à chaque rendu fait réécrire la feuille
+// de style par React (re-calcul de la page, polices rechargées → flash).
+const RR_CSS_HTML = { __html: RR_CSS };

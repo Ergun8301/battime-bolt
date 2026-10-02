@@ -196,8 +196,12 @@ export default function PointerPage() {
 
   return (
     <>
-      <style dangerouslySetInnerHTML={{ __html: CSS }} />
+      <style dangerouslySetInnerHTML={CSS_HTML} />
       <main className={`kx ${tone}`}>{body}</main>
     </>
   );
 }
+
+// Objet FIXE : un `{ __html }` neuf à chaque rendu fait réécrire la feuille
+// de style par React (re-calcul de la page, polices rechargées → flash).
+const CSS_HTML = { __html: CSS };
