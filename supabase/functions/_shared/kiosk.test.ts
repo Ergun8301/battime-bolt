@@ -5,7 +5,8 @@ import {
   toBase64Url, verifyCode, KIOSK_DIGITS,
 } from './kiosk-code.ts';
 import {
-  checkScan, decideAction, distanceM, isAsleep, parisDate, rpcMissing, withinRadius, REFUSAL_MESSAGES, type ScanContext,
+  arrivalPlace, checkScan, decideAction, isAsleep, isClosedError, pairThrottled, parisDate, parisLongDate, rpcMissing,
+  MAX_PAIR_FAILURES_GLOBAL, MAX_PAIR_FAILURES_PER_IP, REFUSAL_MESSAGES, type ScanContext,
 } from './kiosk-rules.ts';
 
 function eq(a: unknown, b: unknown, msg: string) {
@@ -83,12 +84,10 @@ Deno.test('Empreinte et adresse du QR', async () => {
 });
 
 const base = (): ScanContext => ({
-  kiosk: { id: 'k1', company_id: 'c1', revoked_at: null, latitude: 48.8566, longitude: 2.3522 },
+  kiosk: { id: 'k1', company_id: 'c1', revoked_at: null },
   companyKioskEnabled: true,
   user: { company_id: 'c1', is_active: true },
   lastPunchAt: null,
-  requireGps: false,
-  position: null,
   nowMs: Date.UTC(2026, 8, 29, 7, 0),
 });
 
@@ -103,17 +102,52 @@ Deno.test('Contrôles avant pointage', () => {
   eq(checkScan({ ...base(), lastPunchAt: new Date(base().nowMs - 61_000).toISOString() }), null, 'scan après 1 min accepté');
 });
 
-Deno.test('Contrôle GPS (option)', () => {
-  const g = { ...base(), requireGps: true };
-  eq(checkScan(g), 'gps_missing', 'option active sans position');
-  eq(checkScan({ ...g, position: { lat: 48.8570, lng: 2.3525, accuracy: 20 } }), null, '~50 m : accepté');
-  eq(checkScan({ ...g, position: { lat: 48.8620, lng: 2.3522, accuracy: 20 } }), 'gps_too_far', '~600 m : refusé');
-  eq(checkScan({ ...g, position: { lat: 48.8590, lng: 2.3522, accuracy: 100 } }), null, '~270 m annoncé à ±100 m : accepté');
-  eq(checkScan({ ...g, kiosk: { ...g.kiosk!, latitude: null, longitude: null } }), null, 'borne sans position : pas de contrôle');
-  eq(checkScan({ ...base(), position: null }), null, 'option éteinte : aucune position demandée');
-  const d = distanceM(48.8566, 2.3522, 48.8584, 2.2945);
-  if (d < 4000 || d > 4400) throw new Error(`distance Paris centre → tour Eiffel ≈ 4,2 km, obtenu ${d}`);
-  eq(withinRadius({ latitude: 48.8566, longitude: 2.3522 }, { lat: 48.8566, lng: 2.3522, accuracy: null }), true, 'même point');
+Deno.test('Lot 11 : plus aucun contrôle GPS', async () => {
+  // Une ancienne page peut encore envoyer une position ou l'option : sans effet.
+  const legacy = { ...base(), requireGps: true, position: { lat: 43.3, lng: 5.4, accuracy: 5 } } as unknown as ScanContext;
+  eq(checkScan(legacy), null, 'option GPS d’une ancienne page ignorée : scan accepté');
+  const codes = Object.keys(REFUSAL_MESSAGES);
+  eq(codes.filter((c) => /gps/i.test(c)), [], 'aucun refus « GPS » possible');
+  const rules = await import('./kiosk-rules.ts') as Record<string, unknown>;
+  eq(['withinRadius', 'distanceM', 'GPS_RADIUS_M'].filter((k) => k in rules), [], 'plus de calcul de distance');
+});
+
+Deno.test('Lot 11 : essais de code d’appairage — 10 par adresse, plus de 60 en tout', () => {
+  eq([MAX_PAIR_FAILURES_PER_IP, MAX_PAIR_FAILURES_GLOBAL], [10, 60], 'plafonds');
+  eq(pairThrottled(0, 0), false, 'aucun échec');
+  eq(pairThrottled(9, 9), false, '9 échecs depuis cette adresse : encore permis');
+  eq(pairThrottled(10, 10), true, '10 échecs depuis cette adresse : refusé');
+  eq(pairThrottled(0, 60), false, '60 échecs en tout : encore permis');
+  eq(pairThrottled(0, 61), true, 'plus de 60 échecs en tout : refusé, quelle que soit l’adresse');
+});
+
+Deno.test('Lot 11 : l’arrivée va sur le chantier prévu quand il est unique', () => {
+  const AUTRE = 'w-autre', VILLA = 'w-villa', ECOLE = 'w-ecole';
+  eq(arrivalPlace(AUTRE, true, [{ id: 'p1', worksite_id: VILLA, estimated_start: '08:00' }]),
+    { worksiteId: VILLA, planningId: 'p1' }, 'tablette « Autre », un chantier prévu → ce chantier');
+  eq(arrivalPlace(AUTRE, true, [{ id: 'pm', worksite_id: VILLA, estimated_start: '13:30' }, { id: 'am', worksite_id: VILLA, estimated_start: '08:00' }]),
+    { worksiteId: VILLA, planningId: 'am' }, 'deux créneaux sur le même chantier = un chantier → le premier créneau');
+  eq(arrivalPlace(AUTRE, true, [{ id: 'p1', worksite_id: VILLA }, { id: 'p2', worksite_id: ECOLE }]),
+    { worksiteId: AUTRE, planningId: null }, 'deux chantiers prévus → « Autre » (comme avant)');
+  eq(arrivalPlace(AUTRE, true, []), { worksiteId: AUTRE, planningId: null }, 'rien de prévu → « Autre »');
+  eq(arrivalPlace(AUTRE, true, [{ id: 'pa', worksite_id: AUTRE }]), { worksiteId: AUTRE, planningId: 'pa' }, 'prévu sur « Autre » → « Autre », avec son créneau');
+  eq(arrivalPlace(ECOLE, false, [{ id: 'p1', worksite_id: VILLA }]), { worksiteId: ECOLE, planningId: null }, 'ancienne borne sur un chantier → ce chantier');
+  eq(arrivalPlace(ECOLE, false, [{ id: 'p1', worksite_id: ECOLE }]), { worksiteId: ECOLE, planningId: 'p1' }, 'borne sur le chantier prévu → avec le créneau');
+  eq(arrivalPlace(null, true, [{ id: 'p1', worksite_id: VILLA }]), { worksiteId: VILLA, planningId: 'p1' }, 'borne sans lieu → le chantier prévu');
+  eq(arrivalPlace(null, true, [{ id: 'p1', worksite_id: VILLA, estimated_start: '13:00' }, { id: 'p2', worksite_id: ECOLE, estimated_start: '08:00' }]),
+    { worksiteId: ECOLE, planningId: 'p2' }, 'borne sans lieu, deux chantiers → le premier de la journée (règle d’avant)');
+  eq(arrivalPlace(null, true, [{ id: 'abs', worksite_id: null }]), null, 'aucun lieu possible → null (« Prévenez le bureau »)');
+});
+
+Deno.test('Lot 11 : heures clôturées (mois ou salarié), date longue de l’en-tête', () => {
+  eq(REFUSAL_MESSAGES.month_closed, 'Heures clôturées par le bureau.', 'message');
+  eq(isClosedError('Ce mois est clôturé'), true, 'mois clôturé');
+  eq(isClosedError('Heures clôturées jusqu’au 15/10 pour ce salarié'), true, 'clôture du salarié');
+  eq(isClosedError('Mois cloture'), true, 'sans accent');
+  eq(isClosedError('duplicate key'), false, 'autre erreur');
+  eq(isClosedError(null), false, 'pas de message');
+  eq(parisLongDate(Date.UTC(2026, 9, 1, 7, 30)), 'Jeudi 1 octobre', 'jeudi 1er octobre 2026');
+  eq(parisLongDate(Date.UTC(2026, 9, 1, 22, 30)), 'Vendredi 2 octobre', 'minuit et demi à Paris = le lendemain');
 });
 
 Deno.test('Arrivée ou départ : même règle que l’appli', () => {

@@ -11,8 +11,7 @@
 //   3. le pointage part : arrivée ou départ, décidé par le serveur avec la même
 //      règle que l'appli. Grand écran de confirmation.
 //
-// La position n'est demandée QUE si l'entreprise a activé le contrôle « sur
-// place » — et elle n'est que comparée à celle de la borne, jamais enregistrée.
+// Lot 11 : la position n'est JAMAIS demandée (plus de contrôle « sur place »).
 //
 // Lot 9 : un départ moins d'une minute après l'arrivée annule le pointage
 // (rien n'est enregistré). Écran neutre : ce n'est pas une erreur.
@@ -20,10 +19,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
-import { demanderPosition } from '@/lib/position';
 import { callKiosk, type KioskPunchResult as PunchResp } from '@/lib/kiosk-client';
 
-interface TicketResp { ticket: string; kiosk_name: string; company_name: string; needs_gps: boolean }
+/** `needs_gps` : renvoyé (toujours faux) par la fonction, ignoré ici. */
+interface TicketResp { ticket: string; kiosk_name: string; company_name: string; needs_gps?: boolean }
 
 type Phase =
   | { s: 'checking' }
@@ -85,7 +84,7 @@ function Login({ t, onDone }: { t: TicketResp; onDone: () => void }) {
       <div className="kx-logo"><img src="/bemexo-wordmark-light.svg" alt="BEMEXO" /></div>
       <form className="kx-card" onSubmit={submit}>
         <h1 className="kx-h2">Connectez-vous pour pointer</h1>
-        <p className="kx-p">{t.company_name} · {t.kiosk_name}</p>
+        {t.company_name && <p className="kx-p" data-testid="pointer-company">{t.company_name}</p>}
         {err && <div className="kx-err" role="alert">{err}</div>}
         <label className="kx-l" htmlFor="kx-email">E-mail</label>
         <input id="kx-email" className="kx-i" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
@@ -106,10 +105,7 @@ export default function PointerPage() {
 
   const punch = useCallback(async (t: TicketResp) => {
     setPhase({ s: 'punching', t });
-    const pos = t.needs_gps ? await demanderPosition() : null;
-    const { data, error, code } = await callKiosk<PunchResp>({
-      action: 'punch', ticket: t.ticket, lat: pos?.lat, lng: pos?.lng, accuracy: pos?.accuracy,
-    });
+    const { data, error, code } = await callKiosk<PunchResp>({ action: 'punch', ticket: t.ticket });
     if (data) { setPhase({ s: 'done', r: data }); return; }
     if (code === 'auth') { setPhase({ s: 'login', t }); return; }
     // Arrivée et départ trop proches (ancien chemin) : rien de grave, ton neutre.

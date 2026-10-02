@@ -2,12 +2,21 @@
 //
 // La fonction Edge `kiosk` lit la base puis confie la DÉCISION à ces fonctions
 // pures. Elles sont testées seules (kiosk.test.ts) : code expiré, borne
-// retirée, autre entreprise, double scan, distance.
+// retirée, autre entreprise, double scan, essais de code, lieu de l'arrivée.
+//
+// Lot 11 : plus de contrôle « le salarié est sur place » (GPS). La position du
+// téléphone n'est plus demandée, celle de la tablette n'est plus relevée.
 
 export const DOUBLE_SCAN_MS = 60 * 1000;
-export const GPS_RADIUS_M = 200;
-/** Au-delà, on ne tient compte que de 150 m d'imprécision annoncée. */
-export const GPS_ACCURACY_CAP_M = 150;
+/** Essais de code d'appairage ratés tolérés en 10 minutes, depuis une même adresse. */
+export const MAX_PAIR_FAILURES_PER_IP = 10;
+/**
+ * Lot 11 — et en tout, toutes adresses confondues. Relier une tablette
+ * DÉCONNECTE l'ancienne : un code deviné ne s'ajouterait plus à côté, il
+ * prendrait la place de la vraie. L'adresse IP pouvant être falsifiée, ce
+ * plafond global borne le nombre d'essais quoi qu'il arrive.
+ */
+export const MAX_PAIR_FAILURES_GLOBAL = 60;
 
 export type ScanRefusal =
   | 'kiosk_unknown'
@@ -15,9 +24,7 @@ export type ScanRefusal =
   | 'kiosk_disabled'
   | 'wrong_company'
   | 'user_inactive'
-  | 'double_scan'
-  | 'gps_missing'
-  | 'gps_too_far';
+  | 'double_scan';
 
 export const REFUSAL_MESSAGES: Record<ScanRefusal | 'code_invalid' | 'ticket_invalid' | 'stale_session' | 'too_short' | 'month_closed', string> = {
   kiosk_unknown: 'Cette borne n’existe pas.',
@@ -26,23 +33,26 @@ export const REFUSAL_MESSAGES: Record<ScanRefusal | 'code_invalid' | 'ticket_inv
   wrong_company: 'Cette borne appartient à une autre entreprise.',
   user_inactive: 'Votre compte n’est pas actif.',
   double_scan: 'Déjà enregistré il y a moins d’une minute : votre pointage est bien pris en compte.',
-  gps_missing: 'Autorisez la localisation pour pointer sur cette borne.',
-  gps_too_far: 'Vous êtes trop loin de la borne pour pointer.',
   code_invalid: 'Ce QR a expiré. Scannez à nouveau la borne.',
   ticket_invalid: 'Ce lien a expiré. Scannez à nouveau la borne.',
   stale_session: 'Un pointage d’un autre jour est resté ouvert. Fermez-le dans l’appli BEMEXO.',
   // Ancien chemin seulement (fonction finish_active_session pas encore en base) :
   // ton neutre, ce n'est pas une faute du salarié.
   too_short: 'Départ trop proche de l’arrivée : rien à enregistrer pour l’instant. Votre pointage reste en cours.',
-  month_closed: 'Ce mois est clôturé par le bureau.',
+  // Lot 11 : le mois clôturé pour l'équipe ET la clôture d'un seul salarié
+  // (« Clôturer jusqu'au… ») — dans les deux cas, ses heures sont fermées.
+  month_closed: 'Heures clôturées par le bureau.',
 };
+
+/** Une erreur de la base qui veut dire « heures clôturées » (mois ou salarié). */
+export function isClosedError(message: string | null | undefined): boolean {
+  return /cl[ôo]tur/i.test(message || '');
+}
 
 export interface KioskRow {
   id: string;
   company_id: string;
   revoked_at: string | null;
-  latitude: number | null;
-  longitude: number | null;
 }
 
 export interface ScanContext {
@@ -50,43 +60,12 @@ export interface ScanContext {
   companyKioskEnabled: boolean;
   user: { company_id: string; is_active: boolean | null } | null;
   lastPunchAt: string | null;
-  requireGps: boolean;
-  position: { lat: number; lng: number; accuracy: number | null } | null;
   nowMs: number;
-}
-
-/** Distance à vol d'oiseau, en mètres (formule de haversine). */
-export function distanceM(aLat: number, aLng: number, bLat: number, bLng: number): number {
-  const R = 6371000;
-  const rad = (x: number) => (x * Math.PI) / 180;
-  const dLat = rad(bLat - aLat);
-  const dLng = rad(bLng - aLng);
-  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(aLat)) * Math.cos(rad(bLat)) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
-}
-
-/**
- * Le salarié est-il à moins de 200 m de la borne ?
- * On retire de la distance l'imprécision annoncée par le téléphone (plafonnée à
- * 150 m) : à l'intérieur d'un bâtiment le GPS annonce souvent 50 à 100 m, et
- * refuser quelqu'un qui est devant la borne serait pire qu'inutile.
- */
-export function withinRadius(
-  kiosk: { latitude: number | null; longitude: number | null },
-  pos: { lat: number; lng: number; accuracy: number | null },
-): boolean {
-  if (kiosk.latitude == null || kiosk.longitude == null) return true;
-  const d = distanceM(Number(kiosk.latitude), Number(kiosk.longitude), pos.lat, pos.lng);
-  const slack = Math.min(Math.max(pos.accuracy ?? 0, 0), GPS_ACCURACY_CAP_M);
-  return d - slack <= GPS_RADIUS_M;
 }
 
 /**
  * Tous les refus possibles avant d'écrire quoi que ce soit, dans l'ordre où on
  * veut les annoncer. `null` = le scan peut être enregistré.
- *
- * Une borne sans position enregistrée ne peut pas contrôler la distance : on
- * laisse passer (l'admin voit « position non relevée » dans ses réglages).
  */
 export function checkScan(ctx: ScanContext): ScanRefusal | null {
   const { kiosk, user } = ctx;
@@ -97,11 +76,52 @@ export function checkScan(ctx: ScanContext): ScanRefusal | null {
   if (user.company_id !== kiosk.company_id) return 'wrong_company';
   if (user.is_active === false) return 'user_inactive';
   if (ctx.lastPunchAt && ctx.nowMs - new Date(ctx.lastPunchAt).getTime() < DOUBLE_SCAN_MS) return 'double_scan';
-  if (ctx.requireGps && kiosk.latitude != null && kiosk.longitude != null) {
-    if (!ctx.position) return 'gps_missing';
-    if (!withinRadius(kiosk, ctx.position)) return 'gps_too_far';
-  }
   return null;
+}
+
+/**
+ * Lot 11 — trop d'essais de code d'appairage ratés ces 10 dernières minutes ?
+ * 10 depuis la même adresse, ou plus de 60 en tout.
+ */
+export function pairThrottled(failuresFromIp: number, failuresEverywhere: number): boolean {
+  return failuresFromIp >= MAX_PAIR_FAILURES_PER_IP || failuresEverywhere > MAX_PAIR_FAILURES_GLOBAL;
+}
+
+export interface PlannedSlot {
+  id: string;
+  worksite_id: string | null;
+  estimated_start?: string | null;
+}
+
+/**
+ * Lot 11 — sur quel chantier enregistrer l'arrivée scannée à la borne ?
+ *
+ * La tablette n'a plus de « lieu » choisi : elle est rattachée au lieu
+ * « Autre » de l'entreprise. Si le salarié a EXACTEMENT UN chantier prévu
+ * aujourd'hui, l'arrivée va sur ce chantier (sa bulle passe au vert, les
+ * heures et les coûts tombent au bon endroit). Sinon (aucun, ou plusieurs
+ * chantiers), on garde la règle d'avant : le lieu de la borne, à défaut le
+ * premier chantier prévu. Une borne rattachée à un vrai chantier (anciennes
+ * bornes) garde ce chantier.
+ *
+ * `null` = aucun lieu possible (la fonction répond « Prévenez le bureau »).
+ */
+export function arrivalPlace(
+  kioskWorksiteId: string | null,
+  kioskIsOther: boolean,
+  plans: PlannedSlot[],
+): { worksiteId: string; planningId: string | null } | null {
+  const planned = plans
+    .filter((p) => !!p.worksite_id)
+    .slice()
+    .sort((a, b) => (a.estimated_start || '99').localeCompare(b.estimated_start || '99'));
+  const sites = new Set(planned.map((p) => p.worksite_id));
+  const generic = !kioskWorksiteId || kioskIsOther;
+  const worksiteId = generic && sites.size === 1
+    ? planned[0].worksite_id
+    : kioskWorksiteId || planned[0]?.worksite_id || null;
+  if (!worksiteId) return null;
+  return { worksiteId, planningId: planned.find((p) => p.worksite_id === worksiteId)?.id ?? null };
 }
 
 /**
@@ -140,6 +160,14 @@ export function parisTime(nowMs: number): string {
   return new Intl.DateTimeFormat('fr-FR', {
     timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit', hour12: false,
   }).format(new Date(nowMs));
+}
+
+/** Lot 11 — « Jeudi 1 octobre » (heure de Paris), pour l'en-tête de la tablette. */
+export function parisLongDate(nowMs: number): string {
+  const s = new Intl.DateTimeFormat('fr-FR', {
+    timeZone: 'Europe/Paris', weekday: 'long', day: 'numeric', month: 'long',
+  }).format(new Date(nowMs));
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 /**

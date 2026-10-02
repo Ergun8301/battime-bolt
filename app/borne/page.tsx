@@ -3,11 +3,16 @@
 // Borne de pointage — l'écran de la tablette posée à l'entrée (lot 1, lot 9).
 //
 // DEUX ÉTATS SEULEMENT :
-//   1. pas encore appairée → un champ pour le code à 6 chiffres donné par le
-//      bureau (Réglages → Borne de pointage) ;
-//   2. appairée → le PLANNING DE LA SEMAINE, en lecture seule (la même grille
-//      que le bureau), et un gros bouton jaune « Pointer (QR) » qui ouvre le QR
-//      en plein écran. Retour au planning tout seul après 60 s, ou au toucher.
+//   1. pas encore reliée → un champ pour le code à 6 chiffres affiché par le
+//      bureau (bouton 📟 Borne). Lot 11 : le QR du bureau ouvre /borne?code=…
+//      → code déjà rempli, un toucher sur « Relier ». UNE tablette par
+//      entreprise : en relier une nouvelle déconnecte l'ancienne ;
+//   2. reliée → le PLANNING DE LA SEMAINE, en lecture seule (la même grille
+//      que le bureau), sous UNE barre fine (lot 11) : à gauche le logo BEMEXO
+//      et le nom de l'entreprise (même taille) avec un petit point de
+//      connexion, au centre la date et l'heure, à droite « QR » et l'icône
+//      plein écran. Le QR s'affiche en grand ; retour au planning tout seul
+//      après 30 s, ou au toucher.
 //
 // LE QR NE DÉPEND JAMAIS D'INTERNET. Il est recalculé ici, chaque minute, à
 // partir de la graine reçue à l'appairage (supabase/functions/_shared/
@@ -23,16 +28,19 @@
 // cache a plus de 2 minutes : une information « en direct » périmée serait
 // fausse. Si la fonction répond une erreur (ancienne version pas encore
 // redéployée…), on garde le dernier planning, sinon « Planning indisponible » —
-// le bouton « Pointer (QR) » marche dans tous les cas.
+// le bouton « QR » marche dans tous les cas.
 //
-// Plein écran : un bouton toujours visible dans le coin, au-dessus du QR et de
-// la veille. « Déconnecter » n'est plus affiché (c'est un geste du bureau) :
-// appui long de 5 s sur le nom de la borne, puis confirmation. Le bureau peut
-// aussi la retirer à distance.
+// Plein écran : une petite icône toujours visible en haut à droite, au-dessus
+// du QR et de la veille. « Déconnecter » n'est pas affiché (c'est un geste du
+// bureau) : appui long de 5 s sur le logo / le nom de l'entreprise, puis
+// confirmation ; la tablette prévient alors le serveur (action `unpair`) pour
+// que le bureau la voie « Aucune tablette reliée ». Le bureau peut aussi la
+// déconnecter à distance.
 //
-// Lot 10 : en-tête discret (petit logo BEMEXO + nom de l'entreprise, en gris) ;
-// les relectures automatiques ne redessinent rien quand le planning n'a pas
-// changé (même objet gardé, feuilles de style jamais réécrites).
+// Lot 10 : les relectures automatiques ne redessinent rien quand le planning
+// n'a pas changé (même objet gardé, feuilles de style jamais réécrites). Lot 11 :
+// la date et l'heure sont toutes deux dans `.kb-clock` (seule zone de la barre
+// qui change avec le temps).
 //
 // ?demo=1 : aperçu sans appairage (graine fictive, QR non valable, semaine
 // fictive construite par le même `buildBoard` que la fonction), seulement sur
@@ -41,12 +49,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import qrcode from 'qrcode-generator';
 import { codeAt, fromBase64Url, scanUrl, stepAt } from '../../supabase/functions/_shared/kiosk-code';
-import { isAsleep, parisTime } from '../../supabase/functions/_shared/kiosk-rules';
+import { isAsleep, parisLongDate, parisTime } from '../../supabase/functions/_shared/kiosk-rules';
 import { buildBoard, isKioskBoard, parisWeek, type BoardPlanning, type BoardSession } from '../../supabase/functions/_shared/kiosk-board';
 import { parisDay, parisHHmm } from '../../supabase/functions/_shared/live-place';
 import { callKiosk, type KioskBoard, type KioskPlanningRow, type KioskSettings } from '@/lib/kiosk-client';
 import KioskWeekGrid from '@/components/kiosk-week-grid';
-import { demanderPosition } from '@/lib/position';
 import { isPreviewHost } from '@/lib/hosting';
 
 const STORE_KEY = 'bx_kiosk_v1';
@@ -54,10 +61,10 @@ const SYNC_EVERY_MS = 5 * 60 * 1000;
 const BOARD_EVERY_MS = 30 * 1000;
 /** Au-delà, les « en cours depuis » du cache ne sont plus montrés. */
 const LIVE_FRESH_MS = 2 * 60 * 1000;
-/** Le QR reste affiché 60 s, puis la borne revient au planning. */
-const QR_SHOW_MS = 60 * 1000;
+/** Lot 11 : le QR reste affiché 30 s, puis la tablette revient au planning. */
+const QR_SHOW_MS = 30 * 1000;
 const WAKE_ON_TOUCH_MS = 60 * 1000;
-/** Appui long sur le nom de la borne pour la déconnecter (geste du bureau). */
+/** Appui long sur le logo / le nom de l'entreprise pour déconnecter (geste du bureau). */
 const UNPAIR_PRESS_MS = 5 * 1000;
 
 interface Paired {
@@ -192,38 +199,41 @@ const CSS = `
 @import url('/fonts/fonts.css');
 .kb{position:fixed;inset:0;background:#15120F;color:#F2EDE3;font-family:'Archivo',system-ui,sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 .kb *{box-sizing:border-box}
-.kb-grid{height:100%;display:grid;grid-template-rows:auto minmax(0,1fr) auto;padding:clamp(12px,2vmin,22px) 16px clamp(8px,1.2vmin,12px);gap:clamp(10px,1.6vmin,16px)}
-.kb-top{display:flex;align-items:center;gap:clamp(12px,2.2vmin,26px);min-width:0}
-/* En-tête discret (lot 10) : petit logo BEMEXO + nom de l'entreprise, en gris.
-   Le nom de la borne reste dessous, tout petit : c'est lui qui porte l'appui
-   long de 5 s (déconnexion, geste du bureau). */
-.kb-brand{display:flex;flex-direction:column;justify-content:center;gap:4px;min-width:0;flex:1}
-.kb-brand-row{display:flex;align-items:center;gap:10px;min-width:0}
-.kb-logo{height:clamp(13px,1.9vmin,16px);width:auto;flex:none;display:block;opacity:.72}
-.kb-sep{width:1px;height:14px;background:rgba(242,237,227,.18);flex:none}
-.kb-company{font-weight:900;font-size:clamp(18px,2.8vmin,26px);letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.kb-top .kb-company{font-weight:700;font-size:clamp(13px,1.8vmin,15px);letter-spacing:0;color:#a59c86;min-width:0}
-.kb-kname{display:inline-block;align-self:flex-start;max-width:100%;font-family:'JetBrains Mono',monospace;font-size:clamp(10px,1.3vmin,11px);color:#6f6757;letter-spacing:.08em;text-transform:uppercase;padding:3px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:default}
-.kb-clock{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:clamp(28px,5vmin,52px);letter-spacing:-.03em;line-height:1;color:#FFC21A;flex:none}
-.kb-go{display:inline-flex;align-items:center;gap:12px;flex:none;border:none;cursor:pointer;background:#FFC21A;color:#15120F;font-family:inherit;font-weight:900;font-size:clamp(18px,2.8vmin,26px);letter-spacing:-.01em;line-height:1;padding:clamp(13px,2vmin,20px) clamp(20px,3.2vmin,34px);border-radius:16px;box-shadow:0 5px 0 #C99300}
-.kb-go:active{transform:translateY(3px);box-shadow:0 2px 0 #C99300}
-.kb-go svg{width:1.25em;height:1.25em;flex:none}
+/* Lot 11 — UNE barre fine en haut, le planning prend tout le reste.
+   --kb-logo : hauteur du logo BEMEXO ; le nom de l'entreprise est réglé pour
+   paraître de la même taille (les lettres du logo occupent ~83 % de sa hauteur). */
+:root{--kb-bar-h:clamp(48px,7vmin,64px);--kb-pad-top:8px;--kb-logo:clamp(15px,2.4vmin,22px)}
+.kb-grid{height:100%;display:grid;grid-template-rows:auto minmax(0,1fr);padding:var(--kb-pad-top) 12px 10px;gap:8px}
+.kb-top{height:var(--kb-bar-h);display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:16px;min-width:0}
+/* Gauche : logo + entreprise + point de connexion. Porte l'appui long de 5 s
+   (déconnexion, geste du bureau). */
+.kb-brand{display:flex;align-items:center;gap:calc(var(--kb-logo) * .55);min-width:0;height:100%;overflow:hidden;padding-left:4px;margin-left:-4px;cursor:default;-webkit-tap-highlight-color:transparent}
+.kb-logo{height:var(--kb-logo);width:auto;flex:none;display:block}
+.kb-company{font-weight:800;font-size:calc(var(--kb-logo) * 1.15);line-height:1.1;letter-spacing:-.01em;color:#F2EDE3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.kb-dot{width:8px;height:8px;border-radius:50%;background:#2FD584;box-shadow:0 0 0 3px rgba(47,213,132,.18);flex:none}
+.kb-dot.off{background:#F0915A;box-shadow:0 0 0 3px rgba(240,145,90,.2)}
+/* Planning affiché ancien (hors ligne) : son heure passe avant la fin du nom. */
+.kb-stamp{font-size:12px;font-weight:700;color:#F0915A;white-space:nowrap;flex:none}
+/* Centre : la date et l'heure, bien lisibles (toutes deux dans .kb-clock). */
+.kb-clock{display:flex;align-items:baseline;justify-content:center;gap:.55em;white-space:nowrap;line-height:1}
+.kb-date{font-weight:700;font-size:calc(var(--kb-logo) * 1.1);color:#e2dacb;letter-spacing:-.005em}
+.kb-time{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:clamp(24px,4.6vmin,40px);letter-spacing:-.03em;color:#FFC21A}
+/* Droite : « QR ». La place de l'icône plein écran (fixe) est réservée. */
+.kb-right{display:flex;justify-content:flex-end;align-items:center;min-width:0}
+.kb-has-fs .kb-right{padding-right:46px}
+.kb-go{display:inline-flex;align-items:center;gap:.5em;flex:none;border:none;cursor:pointer;background:#FFC21A;color:#15120F;font-family:inherit;font-weight:900;font-size:calc(var(--kb-logo) * 1.1);letter-spacing:.02em;line-height:1;padding:calc(var(--kb-bar-h) * .2) calc(var(--kb-bar-h) * .34);border-radius:12px;box-shadow:0 4px 0 #C99300}
+.kb-go:active{transform:translateY(3px);box-shadow:0 1px 0 #C99300}
+.kb-go svg{width:1.2em;height:1.2em;flex:none}
 .kb-main{min-height:0;display:flex;flex-direction:column}
 .kb-main>.kb-week{flex:1}
 .kb-unavail{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;border:1.5px dashed rgba(242,237,227,.2);border-radius:16px;text-align:center;padding:24px;font-weight:900;font-size:clamp(20px,3vmin,30px)}
 .kb-unavail small{font-weight:600;font-size:clamp(13px,1.8vmin,16px);color:#a59c86}
-.kb-foot{display:flex;align-items:center;gap:14px;min-height:34px;padding-right:230px;font-size:clamp(12px,1.6vmin,14px);color:#a59c86;font-weight:600;min-width:0}
-.kb-status{display:inline-flex;align-items:center;gap:8px;white-space:nowrap}
-.kb-dot{width:9px;height:9px;border-radius:50%;background:#2FD584;box-shadow:0 0 0 4px rgba(47,213,132,.15);flex:none}
-.kb-dot.off{background:#F0915A;box-shadow:0 0 0 4px rgba(240,145,90,.15)}
-.kb-stamp{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .kb-btn{border:1.5px solid rgba(242,237,227,.25);background:transparent;color:#F2EDE3;border-radius:10px;padding:10px 16px;font:inherit;font-weight:800;cursor:pointer}
 .kb-btn.yes{background:#15120F;border-color:#15120F;color:#F2EDE3}
 .kb-btn.no{color:#15120F;border-color:rgba(21,18,15,.3)}
 .kb-demo{position:absolute;top:8px;left:50%;transform:translateX(-50%);z-index:35;background:#FFC21A;color:#15120F;font-weight:900;font-size:12px;letter-spacing:.08em;text-transform:uppercase;border-radius:99px;padding:5px 12px;pointer-events:none}
 /* Le QR, en plein écran, par-dessus le planning */
-.kb-qrview{position:absolute;inset:0;z-index:30;background:#15120F;display:grid;grid-template-rows:auto minmax(0,1fr) auto;padding:clamp(14px,2.4vmin,28px) 16px clamp(12px,2vmin,22px);gap:clamp(10px,1.8vmin,18px);cursor:pointer}
-.kb-qrhead{display:flex;align-items:center;justify-content:space-between;gap:16px;min-width:0}
+.kb-qrview{position:absolute;inset:0;z-index:30;background:#15120F;display:grid;grid-template-rows:auto minmax(0,1fr) auto;padding:var(--kb-pad-top) 12px clamp(12px,2vmin,22px);gap:clamp(10px,1.8vmin,18px);cursor:pointer}
 .kb-qrmain{display:flex;align-items:center;justify-content:center;min-height:0}
 .kb-qrcard{background:#fff;border-radius:clamp(18px,3vmin,32px);padding:clamp(14px,2.2vmin,24px);box-shadow:0 30px 80px -30px rgba(0,0,0,.8),0 0 0 6px rgba(255,194,26,.9);display:flex;flex-direction:column;align-items:center;gap:clamp(8px,1.4vmin,14px);max-height:100%}
 .kb-qr{width:min(56vmin,540px);aspect-ratio:1/1}
@@ -239,15 +249,22 @@ const CSS = `
 .kb-confirm-card h2{margin:0 0 8px;font-size:22px;font-weight:900;letter-spacing:-.02em}
 .kb-confirm-card p{margin:0 0 18px;color:#56514a;font-weight:600;line-height:1.45}
 .kb-confirm-card div{display:flex;gap:10px;justify-content:center}
-/* Plein écran : toujours visible, au-dessus du QR, de la veille et de l'appairage */
-.kb-fs{position:fixed;right:16px;bottom:10px;z-index:60;display:inline-flex;align-items:center;gap:8px;border:1.5px solid rgba(242,237,227,.3);background:rgba(21,18,15,.9);color:#F2EDE3;border-radius:10px;padding:7px 12px;font-family:'Archivo',system-ui,sans-serif;font-weight:800;font-size:13px;line-height:1.2;cursor:pointer;-webkit-tap-highlight-color:transparent}
-.kb-fs svg{width:15px;height:15px;flex:none}
-/* Portrait : le planning garde ses 7 jours, plus serrés. */
+/* Plein écran : petite icône, toujours visible en haut à droite (centrée sur
+   la barre), au-dessus du QR, de la veille et de l'appairage. */
+.kb-fs{position:fixed;right:12px;top:calc(var(--kb-pad-top) + (var(--kb-bar-h) - 36px) / 2);z-index:60;width:36px;height:36px;display:inline-flex;align-items:center;justify-content:center;border:1.5px solid rgba(242,237,227,.28);background:rgba(21,18,15,.9);color:#F2EDE3;border-radius:10px;padding:0;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.kb-fs svg{width:16px;height:16px;flex:none}
+/* Portrait : date au-dessus de l'heure (plus de place pour le nom). */
 @media (orientation:portrait){
-  .kb-top{flex-wrap:wrap}
-  .kb-brand{flex-basis:100%}
-  .kb-go{flex:1;justify-content:center}
+  :root{--kb-logo:clamp(13px,2.1vmin,18px)}
+  .kb-clock{flex-direction:column;align-items:center;gap:3px}
+  .kb-date{font-size:calc(var(--kb-logo) * 1.05)}
+  .kb-time{font-size:clamp(22px,3.6vmin,32px)}
   .kb-qr{width:min(80vw,560px)}
+}
+/* Téléphone : l'heure seule au centre. */
+@media (max-width:600px){
+  .kb-date,.kb-stamp{display:none}
+  .kb-top{gap:10px}
 }
 /* Appairage */
 .kp{position:fixed;inset:0;background:#F2EDE3;color:#15120F;font-family:'Archivo',system-ui,sans-serif;display:flex;align-items:center;justify-content:center;padding:24px}
@@ -284,8 +301,10 @@ function useWakeLock(active: boolean) {
   }, [active]);
 }
 
-function Pairing({ onPaired, notice }: { onPaired: (p: Paired) => void; notice: string | null }) {
-  const [code, setCode] = useState('');
+function Pairing({ onPaired, notice, initialCode }: { onPaired: (p: Paired) => void; notice: string | null; initialCode: string }) {
+  // Lot 11 : ouverte depuis le QR du bureau (/borne?code=123456), le code est
+  // déjà rempli : un seul toucher sur « Relier ».
+  const [code, setCode] = useState(initialCode);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(notice);
 
@@ -293,14 +312,12 @@ function Pairing({ onPaired, notice }: { onPaired: (p: Paired) => void; notice: 
     e.preventDefault();
     if (code.length !== 6) { setErr('Le code fait 6 chiffres.'); return; }
     setBusy(true); setErr(null);
-    // La position de la tablette sert au contrôle « sur place » (si le bureau
-    // l'active). Facultative : un refus n'empêche pas l'appairage.
-    const pos = await demanderPosition(6000);
+    // Lot 11 : plus de position (plus de contrôle « sur place »).
     const { data, error } = await callKiosk<{
       kiosk_id: string; token: string; seed: string; kiosk_name: string; company_name: string; settings: KioskSettings;
-    }>({ action: 'pair', code, lat: pos?.lat, lng: pos?.lng, accuracy: pos?.accuracy });
+    }>({ action: 'pair', code });
     setBusy(false);
-    if (!data) { setErr(error || 'Appairage impossible.'); return; }
+    if (!data) { setErr(error || 'Liaison impossible.'); return; }
     onPaired({
       kioskId: data.kiosk_id, token: data.token, seed: data.seed,
       companyName: data.company_name, kioskName: data.kiosk_name,
@@ -310,18 +327,18 @@ function Pairing({ onPaired, notice }: { onPaired: (p: Paired) => void; notice: 
 
   return (
     <div className="kp">
-      <form className="kp-card" onSubmit={submit}>
+      <form className="kp-card" onSubmit={submit} data-testid="kb-pairing">
         <div className="kp-logo"><img src="/bemexo-wordmark-light.svg" alt="BEMEXO" /></div>
-        <h1 className="kp-h1">Installer la borne</h1>
-        <p className="kp-p">Saisissez le code à 6 chiffres affiché dans BEMEXO,<br />Réglages → Borne de pointage.</p>
+        <h1 className="kp-h1">Relier cette tablette</h1>
+        <p className="kp-p">Tapez le code à 6 chiffres affiché dans BEMEXO (bouton 📟 Borne).</p>
         {err && <div className="kp-err" role="alert">{err}</div>}
         <input
-          className="kp-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} autoFocus
-          aria-label="Code d'appairage" placeholder="000000"
+          className="kp-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} autoFocus={!initialCode}
+          aria-label="Code à 6 chiffres" placeholder="000000"
           value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
         />
-        <button className="kp-btn" type="submit" disabled={busy || code.length !== 6}>{busy ? 'Appairage…' : 'Appairer cette tablette'}</button>
-        <p className="kp-note">Aucun compte ni mot de passe sur la tablette. Le bureau peut retirer la borne à tout moment.</p>
+        <button className="kp-btn" type="submit" autoFocus={!!initialCode} disabled={busy || code.length !== 6}>{busy ? 'Liaison…' : 'Relier'}</button>
+        <p className="kp-note">Une seule tablette par entreprise : en relier une nouvelle déconnecte l&apos;ancienne.</p>
       </form>
     </div>
   );
@@ -333,6 +350,49 @@ const QrIcon = () => (
     <path d="M14 14h3v3M21 14v.01M14 21h.01M17 21h4v-4" />
   </svg>
 );
+
+type PressHandlers = Pick<React.HTMLAttributes<HTMLDivElement>, 'onPointerDown' | 'onPointerUp' | 'onPointerLeave' | 'onPointerCancel' | 'onContextMenu'>;
+
+/**
+ * Lot 11 — la seule barre de la tablette. Gauche : logo + entreprise + point
+ * de connexion (et, si le planning affiché est ancien, son heure). Centre :
+ * date + heure. Droite : « QR » (absent sur l'écran du QR lui-même).
+ * `main` : la barre du planning (repères de test, appui long).
+ */
+function TopBar({ main, companyName, online, stamp, dateText, hhmm, onQr, press }: {
+  main: boolean;
+  companyName: string;
+  online: boolean;
+  stamp: string | null;
+  dateText: string;
+  hhmm: string;
+  onQr?: () => void;
+  press?: PressHandlers;
+}) {
+  const tid = (id: string) => (main ? id : undefined);
+  const dotLabel = online ? 'Connectée' : 'Hors ligne — le QR reste valable';
+  return (
+    <header className="kb-top" data-testid={tid('kb-top')}>
+      <div className="kb-brand" data-testid={tid('kb-brand')} {...press}>
+        <img className="kb-logo" data-testid={tid('kb-logo')} src="/bemexo-wordmark-light.svg" alt="BEMEXO" draggable={false} />
+        {companyName && <span className="kb-company" data-testid={tid('kb-company')}>{companyName}</span>}
+        <span className={`kb-dot${online ? '' : ' off'}`} data-testid={tid('kb-online')} role="img" aria-label={dotLabel} title={dotLabel} />
+        {stamp && <span className="kb-stamp">{stamp}</span>}
+      </div>
+      <div className="kb-clock" aria-label={`${dateText}, il est ${hhmm}`}>
+        <span className="kb-date" data-testid={tid('kb-date')}>{dateText}</span>
+        <span className="kb-time" data-testid={tid('kb-time')}>{hhmm}</span>
+      </div>
+      <div className="kb-right">
+        {onQr && (
+          <button type="button" className="kb-go" data-testid="kb-pointer" onClick={onQr} aria-label="Afficher le QR pour pointer">
+            <QrIcon />QR
+          </button>
+        )}
+      </div>
+    </header>
+  );
+}
 
 function Display({ paired, online, boardErr, awakeUntil, onWake, onUnpair }: {
   paired: Paired;
@@ -373,7 +433,7 @@ function Display({ paired, online, boardErr, awakeUntil, onWake, onUnpair }: {
     return () => { stale = true; };
   }, [now, paired.kioskId]);
 
-  // Retour au planning 60 s après l'ouverture du QR.
+  // Retour au planning 30 s après l'ouverture du QR (ou au toucher).
   useEffect(() => {
     if (!qrUntil) return;
     const t = setTimeout(() => setQrUntil(0), Math.max(0, qrUntil - Date.now()));
@@ -414,35 +474,21 @@ function Display({ paired, online, boardErr, awakeUntil, onWake, onUnpair }: {
   const fresh = !!paired.demo || (!!paired.boardAt && now - paired.boardAt < LIVE_FRESH_MS);
   const showLive = !!board && fresh && board.days.includes(today);
   const stale = !!board && !paired.demo && !!paired.boardAt && now - paired.boardAt >= LIVE_FRESH_MS;
+  const stamp = stale && paired.boardAt
+    ? `Planning du ${new Date(paired.boardAt).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris', day: 'numeric', month: 'short' })} à ${parisTime(paired.boardAt)}`
+    : null;
+  // La date ne change qu'à minuit : recalculée seulement quand le jour change.
+  const dateText = useMemo(() => parisLongDate(Date.parse(`${today}T12:00:00Z`)), [today]);
+  const pressHandlers: PressHandlers = {
+    onPointerDown: startPress, onPointerUp: cancelPress, onPointerLeave: cancelPress, onPointerCancel: cancelPress,
+    onContextMenu: (e) => e.preventDefault(),
+  };
 
   return (
     <div className="kb">
       {paired.demo && <div className="kb-demo">Mode démo · QR non valable</div>}
       <div className="kb-grid">
-        <header className="kb-top">
-          <div className="kb-brand">
-            <div className="kb-brand-row">
-              <img className="kb-logo" data-testid="kb-logo" src="/bemexo-wordmark-light.svg" alt="BEMEXO" />
-              {paired.companyName && <span className="kb-sep" aria-hidden="true" />}
-              {paired.companyName && <span className="kb-company" data-testid="kb-company">{paired.companyName}</span>}
-            </div>
-            <div
-              className="kb-kname"
-              data-testid="kb-kname"
-              onPointerDown={startPress}
-              onPointerUp={cancelPress}
-              onPointerLeave={cancelPress}
-              onPointerCancel={cancelPress}
-              onContextMenu={(e) => e.preventDefault()}
-            >
-              {paired.kioskName}
-            </div>
-          </div>
-          <div className="kb-clock" aria-label={`Il est ${hhmm}`}>{hhmm}</div>
-          <button type="button" className="kb-go" data-testid="kb-pointer" onClick={openQr}>
-            <QrIcon />Pointer (QR)
-          </button>
-        </header>
+        <TopBar main companyName={paired.companyName} online={online} stamp={stamp} dateText={dateText} hhmm={hhmm} onQr={openQr} press={pressHandlers} />
 
         <main className="kb-main">
           {board ? (
@@ -450,28 +496,15 @@ function Display({ paired, online, boardErr, awakeUntil, onWake, onUnpair }: {
           ) : (
             <div className="kb-unavail" data-testid="kb-unavailable">
               {boardErr || !online ? 'Planning indisponible' : 'Chargement du planning…'}
-              <small>Pour pointer, touchez « Pointer (QR) ».</small>
+              <small>Pour pointer, touchez « QR ».</small>
             </div>
           )}
         </main>
-
-        <footer className="kb-foot">
-          <span className="kb-status">
-            <span className={`kb-dot${online ? '' : ' off'}`} />
-            {online ? 'Borne active' : 'Hors ligne — le QR reste valable'}
-          </span>
-          {stale && paired.boardAt && (
-            <span className="kb-stamp">Planning du {new Date(paired.boardAt).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris', day: 'numeric', month: 'short' })} à {parisTime(paired.boardAt)}</span>
-          )}
-        </footer>
       </div>
 
       {qrOpen && (
         <div className="kb-qrview" data-testid="kb-qr-overlay" onClick={closeQr} role="dialog" aria-label="QR de pointage">
-          <div className="kb-qrhead">
-            <div className="kb-company">{paired.companyName || 'BEMEXO'}</div>
-            <div className="kb-clock">{hhmm}</div>
-          </div>
+          <TopBar main={false} companyName={paired.companyName} online={online} stamp={null} dateText={dateText} hhmm={hhmm} />
           <div className="kb-qrmain">
             <div className="kb-qrcard">
               <div className="kb-qr" aria-label="QR de pointage" dangerouslySetInnerHTML={qrHtml} />
@@ -490,10 +523,10 @@ function Display({ paired, online, boardErr, awakeUntil, onWake, onUnpair }: {
       )}
 
       {confirmUnpair && (
-        <div className="kb-confirm" role="dialog" aria-label="Déconnecter la borne">
+        <div className="kb-confirm" role="dialog" aria-label="Déconnecter la tablette">
           <div className="kb-confirm-card" data-testid="kb-unpair-confirm">
             <h2>Déconnecter cette tablette ?</h2>
-            <p>Il faudra un nouveau code du bureau pour la réinstaller. Le bureau peut aussi la retirer à distance.</p>
+            <p>Il faudra un nouveau code du bureau pour la relier. Le bureau peut aussi la déconnecter à distance.</p>
             <div>
               <button type="button" className="kb-btn yes" onClick={onUnpair}>Oui, déconnecter</button>
               <button type="button" className="kb-btn no" onClick={() => setConfirmUnpair(false)}>Annuler</button>
@@ -513,31 +546,41 @@ const FsIcon = ({ out }: { out: boolean }) => (
   </svg>
 );
 
-/** Toujours visible (sauf navigateur sans plein écran). Échap marche aussi, nativement. */
+/**
+ * Lot 11 : petite icône seule, toujours visible (sauf navigateur sans plein
+ * écran, ex. iPhone). Échap marche aussi, nativement. Quand elle existe, la
+ * barre lui réserve sa place à droite (classe `kb-has-fs` sur <html>).
+ */
 function FullscreenToggle() {
   const [supported, setSupported] = useState(false);
   const [full, setFull] = useState(false);
   useEffect(() => {
-    setSupported(fsSupported());
+    const ok = fsSupported();
+    setSupported(ok);
+    document.documentElement.classList.toggle('kb-has-fs', ok);
     const on = () => setFull(isFullscreen());
     document.addEventListener('fullscreenchange', on);
     document.addEventListener('webkitfullscreenchange', on);
     on();
     return () => {
+      document.documentElement.classList.remove('kb-has-fs');
       document.removeEventListener('fullscreenchange', on);
       document.removeEventListener('webkitfullscreenchange', on);
     };
   }, []);
   if (!supported) return null;
+  const label = full ? 'Quitter le plein écran' : 'Plein écran';
   return (
     <button
       type="button"
       className="kb-fs"
       data-testid="kb-fullscreen"
       aria-pressed={full}
+      aria-label={label}
+      title={label}
       onClick={(e) => { e.stopPropagation(); if (isFullscreen()) exitFullscreen(); else enterFullscreen(); }}
     >
-      <FsIcon out={full} />{full ? 'Quitter le plein écran' : 'Plein écran'}
+      <FsIcon out={full} />
     </button>
   );
 }
@@ -549,6 +592,8 @@ export default function BornePage() {
   const [boardErr, setBoardErr] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [awakeUntil, setAwakeUntil] = useState(0);
+  /** Lot 11 : code arrivé par le QR du bureau (/borne?code=…), pré-rempli. */
+  const [urlCode, setUrlCode] = useState('');
   // Les boucles lisent toujours la DERNIÈRE version (le stockage peut être indisponible).
   const pairedRef = useRef<Paired | null>(null);
   const awakeRef = useRef(0);
@@ -563,7 +608,18 @@ export default function BornePage() {
 
   useEffect(() => {
     // Le mode démo n'existe QUE sur une preview : sur bemexo.com, `?demo=1` est ignoré.
-    const demo = isPreviewHost() && new URLSearchParams(window.location.search).get('demo') === '1';
+    const q = new URLSearchParams(window.location.search);
+    const demo = isPreviewHost() && q.get('demo') === '1';
+    // Lot 11 : le QR de la fenêtre « Borne » du bureau ouvre /borne?code=123456.
+    // Le code ne doit pas rester dans l'adresse (historique, retour arrière) :
+    // on l'en retire tout de suite, comme /pointer le fait pour le QR de pointage.
+    if (q.has('code')) {
+      const c = (q.get('code') || '').replace(/\D/g, '').slice(0, 6);
+      if (c.length === 6) setUrlCode(c);
+      q.delete('code');
+      const rest = q.toString();
+      window.history.replaceState(null, '', window.location.pathname + (rest ? `?${rest}` : ''));
+    }
     const p = demo ? { ...DEMO, board: demoBoard(Date.now()), boardAt: Date.now() } : readStore();
     pairedRef.current = p;
     setPaired(p);
@@ -572,11 +628,21 @@ export default function BornePage() {
 
   useWakeLock(!!paired);
 
-  // Retirée par le bureau (ou activation coupée) : on oublie tout, tout de
-  // suite. Une panne réseau, elle, ne fait rien perdre.
+  // Déconnectée par le bureau ou remplacée par une autre tablette (ou
+  // activation coupée) : on oublie tout, tout de suite. Une panne réseau, elle,
+  // ne fait rien perdre.
   const forget = useCallback((status: number) => {
     commit(null);
-    setNotice(status === 403 ? 'La borne de pointage a été désactivée pour cette entreprise.' : 'Cette borne a été retirée par le bureau. Saisissez un nouveau code pour la réinstaller.');
+    setNotice(status === 403 ? 'La borne de pointage a été désactivée pour cette entreprise.' : 'Tablette déconnectée par le bureau (ou remplacée par une autre). Tapez un nouveau code pour la relier.');
+  }, [commit]);
+
+  // Lot 11 : « Oui, déconnecter » sur la tablette. On prévient le serveur
+  // (avec le jeton de la tablette) pour que le bureau voie « Aucune tablette
+  // reliée », puis on oublie tout ici, sans attendre (hors ligne aussi).
+  const unpairHere = useCallback(() => {
+    const p = pairedRef.current;
+    if (p && !p.demo) void callKiosk({ action: 'unpair', kiosk_id: p.kioskId, token: p.token });
+    commit(null); setNotice(null); setBoardErr(false);
   }, [commit]);
 
   const sync = useCallback(async (p: Paired) => {
@@ -677,10 +743,15 @@ export default function BornePage() {
           boardErr={boardErr}
           awakeUntil={awakeUntil}
           onWake={onWake}
-          onUnpair={() => { commit(null); setNotice(null); setBoardErr(false); }}
+          onUnpair={unpairHere}
         />
       ) : (
-        <Pairing onPaired={(p) => { commit(p); setNotice(null); setBoardErr(false); }} notice={notice} />
+        <Pairing
+          key={urlCode}
+          initialCode={urlCode}
+          onPaired={(p) => { commit(p); setNotice(null); setBoardErr(false); setUrlCode(''); }}
+          notice={notice}
+        />
       )}
       <FullscreenToggle />
     </>
