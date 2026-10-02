@@ -15,7 +15,9 @@
 //     même formulaire → mark_reserve_fixed(note), carte « ✓ Réserve levée le … »,
 //     « Annuler » 10 s (mark_reserve_fixed false + photo retirée), refus
 //     « déjà levée par le bureau », bandeau « ⚠ N réserves à lever › » et sa
-//     liste, aucune mutation pendant les relectures, clôture « jusqu'au … »,
+//     liste (refermée après chaque levée : « Annuler » doit rester touchable,
+//     y compris quand une autre réserve reste à lever), aucune mutation
+//     pendant les relectures, clôture « jusqu'au … »,
 //     « Prévu · 14:00 » (journée et semaine).
 //  C) Aucun défilement horizontal des fenêtres à 390, 1024 et 1280 px.
 import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path';
@@ -471,7 +473,38 @@ async function makePng(ctx) {
   const c6 = S.calls.filter((c) => c.fn === 'mark_reserve_fixed').at(-1);
   check(JSON.stringify(S.seq.filter((x) => ['upload', 'doc'].includes(x) || x.startsWith('rpc:'))) === JSON.stringify(['upload', 'doc', 'rpc:mark_reserve_fixed:true']) && c6.body.p_entry_id === 'e-old' && c6.body.p_note === 'Joints refaits',
     `B6) depuis la liste : photo → document → mark_reserve_fixed(e-old, note) (${JSON.stringify(c6?.body)})`);
-  check(await items.count() === 1 && (await banner().innerText()).replace(/\s+/g, ' ').includes('1 réserve à lever'), 'B6) la réserve quitte la liste, bandeau « 1 réserve à lever »');
+  // Une fenêtre ouverte rend inerte tout ce qui est derrière, message compris :
+  // la liste se referme après chaque levée pour que « Annuler » reste touchable.
+  check(await p.locator('[data-testid=reserves-dialog]').count() === 0 && (await banner().innerText()).replace(/\s+/g, ' ').includes('1 réserve à lever'),
+    'B6) après la levée, la liste se referme (message « Annuler » touchable), bandeau « 1 réserve à lever »');
+
+  // B6b · « Annuler » après une levée depuis la liste (il restait une autre réserve).
+  S.seq.length = 0;
+  const toast6 = p.locator('[data-sonner-toast]', { hasText: 'Réserve levée' }).last();
+  const undoClicked = await toast6.getByRole('button', { name: 'Annuler' }).click({ timeout: 3000 }).then(() => true, () => false);
+  await p.waitForTimeout(1500);
+  const c6u = S.calls.filter((c) => c.fn === 'mark_reserve_fixed').at(-1);
+  check(undoClicked && S.seq.includes('rpc:mark_reserve_fixed:false') && c6u?.body.p_entry_id === 'e-old' && S.seq.includes('delete:documents') && S.seq.includes('storage-delete'),
+    `B6b) « Annuler » depuis la liste : mark_reserve_fixed(e-old, false) + photo retirée (clic ${undoClicked ? 'ok' : 'IMPOSSIBLE'} ; ${S.seq.join(' → ')})`);
+  check((await banner().innerText()).replace(/\s+/g, ' ').includes('2 réserves à lever'), 'B6b) bandeau revenu à « 2 réserves à lever »');
+
+  // Relever : commentaire seul (sans photo), puis la dernière sans rien du tout.
+  await clearToasts();
+  await banner().click();
+  await p.waitForSelector('[data-testid=reserves-dialog]', { timeout: 5000 }); await p.waitForTimeout(500);
+  check(await items.count() === 2, 'B6b) la réserve remise à lever est de nouveau dans la liste');
+  await items.nth(1).locator('[data-testid=wr-lift]').click();
+  await items.nth(1).locator('textarea').fill('Joints refaits');
+  S.seq.length = 0;
+  await items.nth(1).locator('[data-testid=reserve-lift-submit]').click();
+  await p.waitForTimeout(1600);
+  const c6b = S.calls.filter((c) => c.fn === 'mark_reserve_fixed').at(-1);
+  check(!S.seq.includes('upload') && c6b.body.p_entry_id === 'e-old' && c6b.body.p_fixed === true && c6b.body.p_note === 'Joints refaits', `B6) commentaire seul : mark_reserve_fixed(e-old, note), sans photo (${JSON.stringify(c6b?.body)})`);
+  check(await p.locator('[data-testid=reserves-dialog]').count() === 0 && (await banner().innerText()).replace(/\s+/g, ' ').includes('1 réserve à lever'), 'B6) la réserve quitte la liste, bandeau « 1 réserve à lever »');
+  await clearToasts();
+  await banner().click();
+  await p.waitForSelector('[data-testid=reserves-dialog]', { timeout: 5000 }); await p.waitForTimeout(500);
+  check(await items.count() === 1, 'B6) la liste rouverte ne montre plus que la dernière réserve');
   await items.nth(0).locator('[data-testid=wr-lift]').click();
   await items.nth(0).locator('[data-testid=reserve-lift-submit]').click();
   await p.waitForTimeout(1600);

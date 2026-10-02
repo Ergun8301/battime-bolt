@@ -32,7 +32,7 @@ export default function WorkerReserves({ items, onChanged }: { items: WorkerRese
   const [open, setOpen] = useState(false);
   const [liftingId, setLiftingId] = useState<string | null>(null);
 
-  // La dernière levée : la liste se referme d'elle-même.
+  // Liste vidée (relecture, levée ailleurs) : elle se referme d'elle-même.
   useEffect(() => { if (open && items.length === 0) { setOpen(false); setLiftingId(null); } }, [open, items.length]);
 
   const lift = async (r: WorkerReserve, note: string, photo: File | null) => {
@@ -43,6 +43,10 @@ export default function WorkerReserves({ items, onChanged }: { items: WorkerRese
         entryId: r.id, worksiteId: r.worksite_id, note, photo,
       });
       setLiftingId(null);
+      // La liste se referme après CHAQUE levée (le bandeau reste, avec une de
+      // moins) : une fenêtre ouverte rend inerte tout ce qui est derrière elle,
+      // y compris le message ci-dessous — son « Annuler » serait intouchable.
+      setOpen(false);
       toast.success('Réserve levée', {
         duration: 10_000,
         action: {
