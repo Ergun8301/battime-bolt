@@ -10,6 +10,8 @@
 //      Rouvrir », période passée au 1er du mois → date, « Rouvrir » = PATCH reopened_at (rien
 //      n'est supprimé). « Archiver » propose d'abord la clôture. Table absente (404 PGRST205) :
 //      le bouton est caché, le reste marche.
+//      La ligne rouge « N jours en attente » de la fiche ne réclame plus les jours clôturés
+//      (seuls ceux APRÈS la date restent) et revient après « Rouvrir ».
 //  7)  aucun défilement horizontal (fiche, menu, calendrier, confirmation) à 390 / 768 / 1024 / 1280.
 import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path'; import { chromium } from 'playwright-core';
 const [,, OUT, SH, PORT = '4331'] = process.argv; fs.mkdirSync(SH, { recursive: true });
@@ -47,6 +49,17 @@ const ENTRIES = [
   entry('n-today', 'u-nina', today, 'submitted', 6 * 60),
   entry('l-today', 'u-long', today, 'submitted', 8 * 60),
 ];
+// Planning sans heures envoyées (→ « jours en attente » de la fiche). Lucas : 3 jours passés
+// (ceux qui tombent sur un jour où il a envoyé ses heures ne comptent pas — calculé plus bas).
+// u-long (clôturé jusqu'à J-3) : J-4 (clôturé → plus réclamé) et J-2 (après la date → réclamé).
+const slot = (id, user_id, work_date) => ({ id, company_id: CO, user_id, worksite_id: 'w1', work_date, absence_type: null, estimated_start: '08:00:00', estimated_end: '17:00:00', notes: null, created_at: `${work_date}T06:00:00Z`, worksite: W1 });
+const PLANNING = [
+  slot('p-l4', 'u-lucas', day(-4)), slot('p-l5', 'u-lucas', day(-5)), slot('p-l6', 'u-lucas', day(-6)),
+  slot('p-g4', 'u-long', day(-4)), slot('p-g2', 'u-long', day(-2)),
+];
+const lucasSent = new Set(ENTRIES.filter((e) => e.user_id === 'u-lucas' && e.status !== 'draft').map((e) => e.work_date));
+const lucasMissing = PLANNING.filter((p) => p.user_id === 'u-lucas' && !lucasSent.has(p.work_date)).length; // ≥ 1
+const enAttente = (n) => `${n} jour${n > 1 ? 's' : ''} en attente`;
 // Les heures de Lucas réellement PAYÉES après « clôturer jusqu'à aujourd'hui » (1er → aujourd'hui).
 const paidAfterClose = ENTRIES.filter((e) => e.user_id === 'u-lucas' && e.status === 'submitted' && e.work_date >= first && e.work_date <= today)
   .reduce((s, e) => s + e.total_minutes, 0);
@@ -57,15 +70,15 @@ const freshDb = () => ({
   users: USERS.map((x) => ({ ...x })),
   companies: [{ ...COMPANY }],
   worksites: [W1],
-  planning: [],
+  planning: PLANNING.map((p) => ({ ...p })),
   time_entries: ENTRIES.map((e) => ({ ...e })),
   user_payroll: [
     { user_id: 'u-lucas', company_id: CO, payroll_id: '00042', weekly_hours: null, hourly_rate: null, social_security_number: null, hire_date: null, contract_type: null },
     { user_id: 'u-nina', company_id: CO, payroll_id: '00077', weekly_hours: null, hourly_rate: null, social_security_number: null, hire_date: null, contract_type: null },
   ],
-  // u-long : déjà clôturé jusqu'à hier (pastille), u-nina : une ancienne clôture ROUVERTE (sans effet).
+  // u-long : déjà clôturé jusqu'à J-3 (pastille), u-nina : une ancienne clôture ROUVERTE (sans effet).
   user_closures: [
-    { user_id: 'u-long', company_id: CO, closed_until: day(-1), closed_at: `${day(-1)}T17:00:00Z`, closed_by: 'u-admin', reopened_at: null },
+    { user_id: 'u-long', company_id: CO, closed_until: day(-3), closed_at: `${day(-3)}T17:00:00Z`, closed_by: 'u-admin', reopened_at: null },
     { user_id: 'u-nina', company_id: CO, closed_until: day(-3), closed_at: `${day(-3)}T17:00:00Z`, closed_by: 'u-admin', reopened_at: `${day(-2)}T08:00:00Z` },
   ],
   active_sessions: [], month_closures: [], leave_requests: [], invitations: [], documents: [], certifications: [], push_subscriptions: [],
@@ -230,6 +243,10 @@ const centi = (min) => (min / 60).toFixed(2).replace('.', ',');
   check(/-paie\.csv$/.test(csvToday.name), `A) fichier nommé …-paie.csv (${csvToday.name})`);
   check(!writes.slice(w0).some((w) => w.t === 'time_entries'), 'A) export de la fiche : aucune écriture (sans verrou)');
 
+  // « Jours en attente » AVANT la clôture : le planning sans heures envoyées.
+  const missingTxt = async () => (await dlg.locator('[data-testid=fiche-missing]').count()) ? (await dlg.locator('[data-testid=fiche-missing]').innerText()) : '';
+  check((await missingTxt()).includes(enAttente(lucasMissing)), `A) avant clôture : « ${enAttente(lucasMissing)} » (« ${(await missingTxt()).replace(/\s+/g, ' ')} »)`);
+
   // 13) « Clôturer jusqu'au… »
   check(await dlg.locator('[data-testid=closure-open]').isVisible(), 'A) « Clôturer jusqu’au… » à côté d’« Exporter »');
   await dlg.locator('[data-testid=closure-open]').click();
@@ -267,6 +284,7 @@ const centi = (min) => (min / 60).toFixed(2).replace('.', ',');
   const period = await dlg.getByText(/^Période :/).innerText();
   const expectPeriod = first === today ? /Aujourd/ : new RegExp(`1 ${new Date(`${today}T12:00:00Z`).toLocaleDateString('fr-FR', { month: 'short', timeZone: 'UTC' }).replace('.', '\\.?')}`, 'i');
   check(expectPeriod.test(period), `A) la période passe au 1er du mois → ${ddmm(today)} (« ${period} »)`);
+  check(await dlg.locator('[data-testid=fiche-missing]').count() === 0, `A) après clôture : plus aucun jour clôturé réclamé (« ${(await missingTxt()).replace(/\s+/g, ' ')} »)`);
   await pg.waitForTimeout(600);
   await shot(pg, 'fiche-cloturee-1280x800.png');
 
@@ -287,6 +305,7 @@ const centi = (min) => (min / 60).toFixed(2).replace('.', ',');
     `A) « Rouvrir » : PATCH reopened_at (rien n’est supprimé) ${patch ? patch.q : ''}`);
   check(!writes.some((w) => w.t === 'user_closures' && w.m === 'DELETE'), 'A) aucune suppression sur user_closures');
   check(db.user_closures.find((x) => x.user_id === 'u-lucas')?.reopened_at != null, 'A) la ligne reste, datée « rouverte »');
+  check((await missingTxt()).includes(enAttente(lucasMissing)), `A) après « Rouvrir » : les jours en attente reviennent (« ${(await missingTxt()).replace(/\s+/g, ' ')} »)`);
 
   // Le CSV de l'équipe, réduit à Lucas, est IDENTIQUE au CSV de la fiche (même période : aujourd'hui).
   await pg.keyboard.press('Escape'); await pg.waitForTimeout(400);
@@ -364,6 +383,10 @@ for (const [w, h, name] of [[390, 844, '390x844'], [768, 1024, '768x1024'], [102
   // Le nom le plus long, avec sa pastille « Heures clôturées jusqu'au … · Rouvrir ».
   let dlg = await openHours(pg, LONG[0]);
   check(await dlg.locator('[data-testid=closure-chip]').isVisible(), `D) ${name} : pastille de clôture affichée`);
+  {
+    const ms = (await dlg.locator('[data-testid=fiche-missing]').count()) ? (await dlg.locator('[data-testid=fiche-missing]').innerText()).replace(/\s+/g, ' ') : '';
+    check(ms.includes(enAttente(1)), `D) ${name} : clôturé jusqu'au ${ddmm(day(-3))} → seul le ${ddmm(day(-2))} reste réclamé, plus le ${ddmm(day(-4))} (« ${ms} »)`);
+  }
   let hs = await hScroll(pg);
   check(hs.length === 0, `D) ${name} : fiche (nom long + pastille) sans défilement horizontal ${JSON.stringify(hs)}`);
   if (w !== 1280) await shot(pg, `fiche-cloturee-${name}.png`);

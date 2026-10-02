@@ -27,9 +27,20 @@
 --     Une ligne rouverte n'a plus aucun effet. Aucune policy DELETE.
 --
 -- Messages : contiennent « clôturé » (« clôturées ») et « jusqu'au » → la borne
--- (kiosk, /clôturé/i → month_closed) et l'appli (poseur-day) les reconnaissent ;
--- SQLSTATE P0001 → la file hors ligne arrête de réessayer. Aucune fonction
--- Edge à redéployer pour ça.
+-- (kiosk, /clôturé/i → month_closed) refuse proprement (409) ; SQLSTATE P0001
+-- → la file hors ligne arrête de réessayer.
+--
+-- ⚠ PORTE DE SORTIE — NE PAS APPLIQUER CETTE MIGRATION SANS LE CORRECTIF
+-- poseur-day (téléphone du salarié / du chef d'équipe). Aujourd'hui
+-- explainWriteError y teste « clôturé » : ce refus y serait lu comme « Le
+-- bureau vient de clôturer ce mois » et TOUT le mois serait verrouillé à
+-- l'écran (closedMonths), y compris les jours APRÈS closed_until que la base
+-- laisse écrire (CDD qui devient CDI, contrat qui continue). Le correctif :
+-- lire fetchMyClosure (lib/worker-closure.ts), monthLocked = mois clos OU
+-- date <= ma date de clôture, et tester « jusqu'au » AVANT « clôturé » avec un
+-- message par jour qui ne touche pas closedMonths. La borne affiche alors
+-- « Ce mois est clôturé par le bureau. » : refus juste, libellé approximatif
+-- (à affiner côté kiosk, sans urgence).
 --
 -- Tant que cette migration n'est pas appliquée, l'écran du bureau masque
 -- « Clôturer jusqu'au… » (lecture de la table en échec) : rien ne casse.
