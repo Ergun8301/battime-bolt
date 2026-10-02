@@ -56,6 +56,8 @@ import ImportWorkersDialog from '@/components/import-workers-dialog';
 import LeaveAdminDialog from '@/components/leave-admin-dialog';
 import { CHANTIER_PALETTES, hashStr, LiveLine, PL_GRID_CSS, PlannedBubbleView, type ChantierPalette } from '@/components/planning-bubble';
 import { cellKey, parisDay, parisHHmm, placeLive, type LivePlace, type LiveSessionLike } from '@/supabase/functions/_shared/live-place';
+import KioskAdmin from '@/components/kiosk-admin';
+import { keep } from '@/lib/same';
 
 // ─── helpers / constants ──────────────────────────────────────────────────────
 
@@ -401,12 +403,37 @@ const PL_CSS = `
    (essai + compte) par-dessus le logo. Dès 1280 px, la 1re colonne garde leur largeur
    (logo un peu décalé si besoin) plutôt que de renvoyer « en direct » seul sur une
    2e ligne ; la colonne de droite reste en 1fr (jamais sous la largeur de son contenu). */
-.bt-pl-cockpit{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:16px;background:#15120F;color:#F2EDE3;padding:9px 16px;border-radius:16px 16px 0 0}
-@media (min-width:1280px){.bt-pl-cockpit{grid-template-columns:minmax(max-content,1fr) auto 1fr}}
-.bt-pl-logo{font-family:'Archivo',sans-serif;font-weight:900;letter-spacing:-.03em;font-size:25px;line-height:1;color:#fff;white-space:nowrap;flex:none;justify-self:center}
+.bt-pl-cockpit{display:grid;grid-template-columns:minmax(max-content,1fr) auto minmax(max-content,1fr);align-items:center;gap:14px;background:#15120F;color:#F2EDE3;padding:5px 14px 5px 18px;min-height:44px;border-radius:16px 16px 0 0}
+/* Lot 10 : barre plus fine et rangée — logo à gauche, chiffres au centre, entreprise
+   à droite. Les chiffres restent sur UNE ligne (nowrap) ; sous 1280 px (iPad paysage
+   1024) tout se resserre un peu au lieu de passer sur deux lignes. */
+.bt-pl-logo{font-family:'Archivo',sans-serif;font-weight:900;letter-spacing:-.03em;font-size:25px;line-height:1;color:#fff;white-space:nowrap;flex:none}
+.bt-pl-cockpit .bt-pl-logo{font-size:21px;justify-self:start}
 .bt-pl-logo .x{color:#FFC21A}
-.bt-pl-stats{display:flex;align-items:center;gap:2px;flex-wrap:wrap;min-width:0;justify-self:start}
+.bt-pl-stats{display:flex;align-items:center;gap:2px;flex-wrap:nowrap;min-width:0;justify-self:center}
 .bt-pl-stat{display:inline-flex;align-items:center;gap:7px;padding:3px 11px;white-space:nowrap;position:relative}
+/* « en direct » à 0 : place gardée, rien d'affiché (pas de saut quand il apparaît). */
+.bt-pl-statwrap--idle{visibility:hidden}
+@media (max-width:1279px){
+  .bt-pl-cockpit{gap:10px;padding:5px 10px 5px 14px}
+  .bt-pl-cockpit .bt-pl-logo{font-size:18px}
+  .bt-pl-cockpit .bt-pl-stat{gap:5px;padding:3px 6px}
+  .bt-pl-cockpit .bt-pl-stat .v{font-size:13.5px}
+  .bt-pl-cockpit .bt-pl-stat .l{font-size:10.5px}
+  .bt-pl-cockpit button.bt-pl-stat .ch{display:none}
+  .bt-pl-cockpit .bt-pl-trial{gap:6px;padding:3px 4px 3px 10px;font-size:11px}
+  .bt-pl-cockpit .bt-pl-trial .cta{padding:4px 10px;font-size:11px}
+  .bt-pl-cockpit .bt-pl-acct-name{max-width:96px}
+  .bt-pl-cockpit-right{gap:8px}
+  /* Barre d'actions : mêmes boutons, un peu resserrés (place pour « Borne »). */
+  .bt-pl-bar{grid-template-columns:minmax(max-content,1fr) auto minmax(max-content,1fr);gap:8px;padding:9px 10px}
+  .bt-pl-bar .bt-pl-group{gap:6px}
+  .bt-pl-bar .bt-pl-out{padding:7px 9px}
+  .bt-pl-bar .bt-pl-fill{padding:8px 10px}
+  .bt-pl-bar .bt-pl-segbtn{padding:7px 8px}
+  .bt-pl-bar .bt-pl-seg{gap:4px}
+  .bt-pl-bar .bt-pl-datebox{padding:0 10px;gap:7px}
+}
 /* Le trait vertical se trace entre deux CONTENEURS : depuis que le panneau est
    le frère du bouton, c'est le conteneur qui se répète, plus le chiffre. */
 .bt-pl-statwrap{position:relative}
@@ -450,7 +477,7 @@ button.bt-pl-sp-row:hover{background:#F9F5EC}
 .bt-pl-sp-doc .dt{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#9a948a;flex:none}
 .bt-pl-sp-foot{padding:7px 13px;border-top:1px solid rgba(21,18,15,.08);background:#FBF8F1;font-size:11px;color:#8a8378;font-weight:600;line-height:1.4}
 
-.bt-pl-cockpit-right{justify-self:end;display:flex;align-items:center;gap:11px;min-width:0}
+.bt-pl-cockpit-right{justify-self:end;display:flex;align-items:center;gap:11px;min-width:max-content}
 .bt-pl-trial{display:inline-flex;align-items:center;gap:8px;background:#211B14;border:1px solid rgba(255,194,26,.4);color:#F2EDE3;border-radius:999px;padding:4px 5px 4px 13px;font-size:12px;font-weight:600;white-space:nowrap}
 .bt-pl-trial .d{width:7px;height:7px;border-radius:50%;background:#FFC21A;box-shadow:0 0 9px rgba(255,194,26,.8);flex:none}
 .bt-pl-trial b{color:#FFC21A;font-weight:800}
@@ -459,14 +486,27 @@ button.bt-pl-sp-row:hover{background:#F9F5EC}
 .bt-pl-trial .cta{background:linear-gradient(180deg,#FFCB3D,#F5B400);color:#15120F;border:none;font-family:inherit;font-weight:800;font-size:11.5px;padding:5px 12px;border-radius:999px;cursor:pointer}
 .bt-pl-trial.expired .cta{background:linear-gradient(180deg,#E8794D,#D85A30);color:#fff}
 /* compte, version cockpit sombre */
-.bt-pl-cockpit .bt-pl-acct{border-color:rgba(242,237,227,.22)}
+.bt-pl-cockpit .bt-pl-acct{border-color:rgba(242,237,227,.22);height:31px}
+.bt-pl-cockpit .bt-pl-acctmenu{top:39px}
 .bt-pl-cockpit .bt-pl-acct:hover{border-color:rgba(242,237,227,.55);background:rgba(242,237,227,.06)}
 .bt-pl-cockpit .bt-pl-acct-av{background:#FFC21A;color:#15120F}
 .bt-pl-cockpit .bt-pl-acct-name{color:#F2EDE3}
 .bt-pl-cockpit .bt-pl-acct-car{color:#a59c86}
 /* entête mobile : logo + essai */
-.bt-pl-m-brand{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px}
+.bt-pl-m-brand{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
 .bt-pl-m-brand .bt-pl-logo{font-size:18px}
+/* Lot 10 : en-tête mobile rangé — logo + entreprise à gauche, essai, actions à droite,
+   puis les chiffres du cockpit en version compacte (une ligne, cinq colonnes). */
+.bt-pl-m-id{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}
+.bt-pl-m-co{font-size:11.5px;font-weight:700;color:#a59c86;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.bt-pl-m-actions{display:flex;gap:8px;flex:none}
+.bt-pl-m-stats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:2px;margin:0 0 12px;padding:7px 2px;border:1px solid rgba(242,237,227,.12);border-radius:12px;background:rgba(242,237,227,.04)}
+.bt-pl-m-stat{display:flex;flex-direction:column;align-items:center;gap:1px;min-width:0;text-align:center}
+.bt-pl-m-stat b{display:inline-flex;align-items:center;gap:4px;font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:800;color:#F2EDE3;font-variant-numeric:tabular-nums;white-space:nowrap}
+.bt-pl-m-stat small{font-size:9.5px;font-weight:600;color:#a59c86;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.bt-pl-m-stat.warn b{color:#FFC21A}
+.bt-pl-m-stat.idle{visibility:hidden}
+.bt-pl-m-stat .dot{width:6px;height:6px;border-radius:50%;background:#2FD584;flex:none}
 .bt-pl-gridwrap{overflow-x:auto;background:#fff;border-radius:0 0 16px 16px;flex:1 0 auto;position:relative}
 .bt-pl-nav{display:flex;align-items:center;gap:6px}
 /* ===== Zone centrale : navigation de date (cadres blanc-crème) ===== */
@@ -569,7 +609,7 @@ ${PL_GRID_CSS}
 .bt-pl-kicker{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#FFC21A;margin-bottom:3px;font-weight:700}
 .bt-pl-m-ibtn{flex:none;width:40px;height:40px;border-radius:11px;border:1px solid rgba(242,237,227,.25);background:rgba(242,237,227,.06);color:#F2EDE3;display:inline-flex;align-items:center;justify-content:center;font-size:17px;cursor:pointer;font-family:inherit}
 .bt-pl-m-ibtn:hover{background:rgba(242,237,227,.08)}
-.bt-pl-m-head{background:#15120F;color:#F2EDE3;padding:16px 14px 14px}
+.bt-pl-m-head{background:#15120F;color:#F2EDE3;padding:12px 14px 12px}
 .bt-pl-m-date{font-size:21px;font-weight:900;letter-spacing:-.02em;text-transform:capitalize}
 .bt-pl-m-days{display:flex;gap:7px;margin-top:13px}
 .bt-pl-daypill{flex:1;min-width:0;border-radius:12px;padding:9px 2px;text-align:center;border:1px solid rgba(242,237,227,.2);cursor:pointer;background:transparent;color:#F2EDE3;font-family:inherit}
@@ -642,6 +682,12 @@ ${PL_GRID_CSS}
 .bt-pl-daypill:active{transform:translateY(1px)}
 `;
 
+// Lot 10 : objet FIXE. React (canari de Next 14) réécrit le contenu d'un <style>
+// dès que l'objet `dangerouslySetInnerHTML` change d'identité — à chaque rendu
+// avec `{{ __html: … }}` en ligne. Le navigateur recalculait alors toute la page
+// (et relisait les polices de l'@import) à chaque sondage : le « flash ».
+const PL_STYLE = { __html: PL_CSS };
+
 // ─── main ────────────────────────────────────────────────────────────────────
 
 interface AdminPlanningProps {
@@ -700,6 +746,10 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const [costOpen, setCostOpen] = useState(false); // rapport coût & heures par chantier
   const [reservesOpen, setReservesOpen] = useState(false); // registre des réserves de chantier
   const [openReserves, setOpenReserves] = useState(0); // compteur pour la pastille
+  // Lot 10 : « 📟 Borne » dans la barre — même condition que les réglages
+  // (company-settings.tsx) : le bouton n'existe que si l'entreprise a `kiosk_enabled`.
+  const [kioskOn, setKioskOn] = useState(false);
+  const [kioskOpen, setKioskOpen] = useState(false);
   const [importWorkersOpen, setImportWorkersOpen] = useState(false); // import CSV/Excel de salariés (invitations en masse)
   const [leaveOpen, setLeaveOpen] = useState(false); // demandes de congé des salariés
   const [pendingLeaves, setPendingLeaves] = useState(0); // compteur pour la pastille
@@ -876,9 +926,10 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       ]);
       if (workersRes.error) throw workersRes.error;
       if (worksitesRes.error) throw worksitesRes.error;
-      setWorkers(workersRes.data || []);
-      if (!officeRes.error) setOfficeUsers((officeRes.data || []) as User[]);
-      setWorksites(worksitesRes.data || []);
+      // Lot 10 : keep() garde l'objet déjà affiché quand rien n'a changé (aucun redessin).
+      setWorkers((prev) => keep(prev, (workersRes.data || []) as User[]));
+      if (!officeRes.error) setOfficeUsers((prev) => keep(prev, (officeRes.data || []) as User[]));
+      setWorksites((prev) => keep(prev, (worksitesRes.data || []) as Worksite[]));
     } catch (err) {
       console.error('Error fetching data:', err);
       toast.error('Impossible de charger les données');
@@ -904,9 +955,9 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       if (planRes.error) throw planRes.error;
       const planRows = planRes.data || [];
       const realRows = realRes.error ? [] : (realRes.data || []);
-      setPlanning(planRows);
-      if (!realRes.error) setRealEntries(realRows);
-      if (!draftRes.error) setDraftEntries(draftRes.data || []);
+      setPlanning((prev) => keep(prev, planRows));
+      if (!realRes.error) setRealEntries((prev) => keep(prev, realRows));
+      if (!draftRes.error) setDraftEntries((prev) => keep(prev, draftRes.data || []));
 
       // Unification : toute heure déclarée sur un chantier sans créneau planning → on
       // crée le créneau (idempotent, côté serveur) pour qu'elle devienne une bulle
@@ -923,7 +974,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
           supabase.rpc('ensure_planning_slot', { p_user_id: x.u, p_work_date: x.d, p_worksite_id: x.w })));
         const { data: planAgain } = await supabase.from('planning').select('*, worksite:worksites(*), user:users!user_id(*)')
           .eq('company_id', user.company_id).gte('work_date', from).lte('work_date', to).order('work_date');
-        if (planAgain) setPlanning(planAgain);
+        if (planAgain) setPlanning((prev) => keep(prev, planAgain));
       }
     } catch (err) {
       console.error('Error fetching planning:', err);
@@ -956,7 +1007,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         .in('status', ['submitted', 'validated']).is('reserve_resolved_at', null),
       // (active_sessions : lu par son propre sondage de 30 s, voir fetchLive.)
     ]);
-    setPendingLeaves(leaveRes.count || 0);
+    setPendingLeaves(leaveRes.count || 0); // nombre : React ne redessine pas une valeur égale
     // Une erreur de lecture laisse la pastille inchangée : afficher 0 dirait
     // « aucune réserve », ce qui est précisément le message à ne pas donner.
     if (!resRes.error) setOpenReserves(resRes.count || 0);
@@ -969,7 +1020,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       for (const d of (docRes.data || []) as { worksite_id: string | null }[]) {
         if (d.worksite_id) docCounts.set(d.worksite_id, (docCounts.get(d.worksite_id) || 0) + 1);
       }
-      setDocsByWorksite(docCounts);
+      setDocsByWorksite((prev) => keep(prev, docCounts));
     }
 
     const todayKey = format(new Date(), 'yyyy-MM-dd');
@@ -996,19 +1047,19 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       const m = computeMissingDays(Array.from(days).filter((d) => !absence.get(uid)?.has(d)), declared.get(uid) || new Set<string>());
       if (m.length) miss.set(uid, m);
     });
-    setTodayAbsence(today);
-    setMissingByWorker(miss);
+    setTodayAbsence((prev) => keep(prev, today));
+    setMissingByWorker((prev) => keep(prev, miss));
     setCompanyName(compRes.data?.name || '');
     const comp = compRes.data as { travel_paid?: boolean; weekly_hours?: number | null; accountant_email?: string | null; overtime_rate_1?: number | null; overtime_rate_2?: number | null } | null;
     setTravelPaid(!!comp?.travel_paid);
     setCompanyWeeklyHours(comp?.weekly_hours ?? DEFAULT_WEEKLY_HOURS);
-    setOvertimeRates({
+    setOvertimeRates((prev) => keep(prev, {
       tier1: comp?.overtime_rate_1 ?? DEFAULT_OVERTIME_RATES.tier1,
       tier2: comp?.overtime_rate_2 ?? DEFAULT_OVERTIME_RATES.tier2,
-    });
+    }));
     setAccountantEmail((comp?.accountant_email || '').trim());
     setCompanyLogo((compRes.data as { logo_url?: string | null } | null)?.logo_url || '');
-    setInvitations((invRes.data || []) as Invitation[]);
+    setInvitations((prev) => keep(prev, (invRes.data || []) as Invitation[]));
   }, [user?.company_id]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
@@ -1042,7 +1093,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     const next = new Set(rows.map((r) => `${r.user_id}|${r.started_at}`));
     const prev = liveKeysRef.current;
     liveKeysRef.current = next;
-    setLiveNow(rows);
+    setLiveNow((prev) => keep(prev, rows));
     if (prev && Array.from(prev).some((k) => !next.has(k))) fetchPlanningRef.current();
   }, [user?.company_id]);
   useEffect(() => {
@@ -1064,10 +1115,23 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const fetchClosures = useCallback(async () => {
     if (!user?.company_id) return;
     const { data } = await supabase.from('month_closures').select('month').eq('company_id', user.company_id);
-    setClosedMonths(new Set(((data || []) as { month: string }[]).map((m) => m.month.slice(0, 7))));
+    const next = new Set(((data || []) as { month: string }[]).map((m) => m.month.slice(0, 7)));
+    setClosedMonths((prev) => keep(prev, next));
   }, [user?.company_id]);
 
   useEffect(() => { fetchClosures(); }, [fetchClosures]);
+
+  // Interrupteur de la borne : lecture SÉPARÉE, comme dans les réglages — tant que
+  // la colonne n'existe pas en base, la requête échoue seule et rien ne s'affiche.
+  useEffect(() => {
+    if (!user?.company_id) return;
+    let stale = false;
+    supabase.from('companies').select('kiosk_enabled').eq('id', user.company_id).maybeSingle()
+      .then(({ data }) => {
+        if (!stale) setKioskOn(!!(data as { kiosk_enabled?: boolean } | null)?.kiosk_enabled);
+      });
+    return () => { stale = true; };
+  }, [user?.company_id]);
 
   const refresh = () => { fetchPlanning(); fetchExtras(); fetchClosures(); };
 
@@ -2015,12 +2079,14 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
 
   return (
     <div className="bt-pl">
-      <style dangerouslySetInnerHTML={{ __html: PL_CSS }} />
+      <style dangerouslySetInnerHTML={PL_STYLE} />
 
       <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragStart={handleDragStart} onDragEnd={(e) => { handleDragEnd(e); setChantierMenuOpen(false); }} onDragCancel={() => { setActiveDrag(null); setChantierMenuOpen(false); }}>
         {/* Barre UNIQUE pleine largeur, figée (sticky) — tout aligné sur une ligne */}
-        {/* COCKPIT : tableau de bord sombre (logo + stats live + essai + compte). */}
+        {/* COCKPIT : tableau de bord sombre. Lot 10 : rangé de gauche à droite —
+            logo · chiffres (au centre) · essai + entreprise. Mêmes informations. */}
         <div className="bt-pl-cockpit">
+          <span className="bt-pl-logo">BEME<span className="x">X</span>O</span>
           {/* Les chiffres du cockpit s'ouvrent. Chacun montre ce qui le compose :
               un total seul pose une question sans y répondre. Le survol donne la
               phrase, le clic donne la liste.
@@ -2167,7 +2233,13 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
             {/* En direct. Informatif : ces minutes ne sont comptées nulle part
                 tant que le salarié n'a pas fermé sa journée. Lot 9 : nourri par
                 le sondage de 30 s (fetchLive), plus par fetchExtras. */}
-            {liveNow.length > 0 && (
+            {/* Lot 10 : la place est TOUJOURS réservée (invisible à 0) : « N en direct »
+                qui apparaît ou disparaît ne fait plus bouger les chiffres ni le logo. */}
+            {liveNow.length === 0 ? (
+              <div className="bt-pl-statwrap bt-pl-statwrap--idle" aria-hidden="true">
+                <span className="bt-pl-stat"><span className="sd" /><span className="v">0</span><span className="l">en direct</span></span>
+              </div>
+            ) : (
               <div className="bt-pl-statwrap">
                 <span className="bt-pl-stat" data-testid="stat-live" title={liveNow.map((l) => {
                   const w = workers.find((x) => x.id === l.user_id);
@@ -2182,7 +2254,6 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
             )}
             {statPanel && <div className="bt-pl-ddbackdrop" onClick={() => setStatPanel(null)} />}
           </div>
-          <span className="bt-pl-logo">BEME<span className="x">X</span>O</span>
           <div className="bt-pl-cockpit-right">
             {trial?.inTrial && !trial.expired && trial.daysLeft !== null && (
               <div className="bt-pl-trial"><span className="d" /> Essai · <b>{trial.daysLeft} j</b> <button className="cta" onClick={onSubscribe}>S&apos;abonner</button></div>
@@ -2301,6 +2372,11 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
             <AlertTriangle className="h-4 w-4" /> Réserves
             {openReserves > 0 && <span className="bt-pl-outbadge">{openReserves}</span>}
           </button>
+          {kioskOn && user?.company_id && (
+            <button className="bt-pl-out" onClick={() => setKioskOpen(true)} title="Bornes de pointage : ajouter une borne, voir la liste" data-testid="bar-kiosk">
+              <span aria-hidden="true">📟</span> Borne
+            </button>
+          )}
           <button className="bt-pl-out" onClick={() => setCostOpen(true)}><TrendingUp className="h-4 w-4" /> Coût chantiers</button>
           <div className="bt-pl-ddwrap">
             <button className="bt-pl-fill" onClick={() => setExportMenuOpen((o) => !o)}><Download className="h-4 w-4" /> Exporter ▾</button>
@@ -2517,14 +2593,17 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
           <div className="bt-pl-mobile">
             <div className="bt-pl-m-head">
               <div className="bt-pl-m-brand">
-                <span className="bt-pl-logo">BEME<span className="x">X</span>O</span>
+                <div className="bt-pl-m-id">
+                  <span className="bt-pl-logo">BEME<span className="x">X</span>O</span>
+                  <span className="bt-pl-m-co" title={companyLabel}>{companyLabel}</span>
+                </div>
                 {trial?.inTrial && !trial.expired && trial.daysLeft !== null && (
                   <div className="bt-pl-trial"><span className="d" /> <b>{trial.daysLeft} j</b> <button className="cta" onClick={onSubscribe}>S&apos;abonner</button></div>
                 )}
                 {trial?.inTrial && trial.expired && (
                   <div className="bt-pl-trial expired"><span className="d" /> <button className="cta" onClick={onSubscribe}>S&apos;abonner</button></div>
                 )}
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div className="bt-pl-m-actions">
                   {aiOn && user?.role === 'admin' && (
                     <button className="bt-pl-m-ibtn bt-pl-ai" aria-label="Assistant BEMEXO" title="Assistant BEMEXO" onClick={() => setAssistantOpen(true)} data-testid="m-assistant">
                       <Sparkles className="h-4 w-4" />
@@ -2534,6 +2613,28 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                     <Menu className="h-4 w-4" />
                   </button>
                 </div>
+              </div>
+              {/* Les chiffres du cockpit, compacts (lecture seule : le détail est sur ordinateur). */}
+              <div className="bt-pl-m-stats">
+                <span className="bt-pl-m-stat" title={`${displayWorkers.length} salarié${displayWorkers.length > 1 ? 's' : ''}`}>
+                  <b>{fmtStat(displayWorkers.length)}</b><small>salarié{displayWorkers.length > 1 ? 's' : ''}</small>
+                </span>
+                <span className="bt-pl-m-stat" data-testid="m-stat-hours" title={`${cockpitStats.hours} h ${plural(cockpitStats.hours, 'validée', 'validées')} sur la semaine affichée (envoyées par les salariés)`}>
+                  <b>{fmtStat(cockpitStats.hours)} h</b><small>{plural(cockpitStats.hours, 'validée', 'validées')}</small>
+                </span>
+                <span className={`bt-pl-m-stat${cockpitStats.waiting > 0 ? ' warn' : ''}`} data-testid="m-stat-waiting" title={`${cockpitStats.waiting} ${plural(cockpitStats.waiting, 'journée non envoyée', 'journées non envoyées')} sur les ${WINDOW_DAYS} derniers jours`}>
+                  <b>{fmtStat(cockpitStats.waiting)} j</b><small>non {plural(cockpitStats.waiting, 'envoyée', 'envoyées')}</small>
+                </span>
+                <span className="bt-pl-m-stat" title={`${cockpitStats.docs} pièce(s) jointe(s)`}>
+                  <b>{fmtStat(cockpitStats.docs)}</b><small>pièces</small>
+                </span>
+                {liveNow.length === 0 ? (
+                  <span className="bt-pl-m-stat idle" aria-hidden="true"><b><span className="dot" />0</b><small>en direct</small></span>
+                ) : (
+                  <span className="bt-pl-m-stat" data-testid="m-stat-live" title={`${liveNow.length} pointage${liveNow.length > 1 ? 's' : ''} en cours`}>
+                    <b><span className="dot" />{fmtStat(liveNow.length)}</b><small>en direct</small>
+                  </span>
+                )}
               </div>
               <div className="bt-pl-m-headrow">
                 <div>
@@ -2716,6 +2817,12 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         openReserves={openReserves}
         onSignOut={signOut}
       />
+
+      {/* Lot 10 : la gestion des bornes, ouverte directement depuis la barre — le MÊME
+          composant que dans les réglages (KioskAdmin est lui-même la fenêtre). */}
+      {kioskOn && user?.company_id && (
+        <KioskAdmin open={kioskOpen} onOpenChange={setKioskOpen} companyId={user.company_id} />
+      )}
 
       {/* Salariés — administrative management */}
       <Dialog open={salariesOpen} onOpenChange={setSalariesOpen}>

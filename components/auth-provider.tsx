@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { User } from '@/lib/types';
 import { withSupportCompany } from '@/lib/support';
 import { useRouter } from 'next/navigation';
+import { keep } from '@/lib/same';
 
 interface AuthContextType {
   user: User | null;
@@ -63,9 +64,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { data: { session: currentSession } } = await supabase.auth.getSession();
       if (currentSession?.user) {
         const profile = await fetchUserProfile(currentSession.user.id);
-        setUser(withSupportCompany(profile));
-        setSupabaseUser(currentSession.user);
-        setSession(currentSession);
+        setUser((prev) => keep(prev, withSupportCompany(profile)));
+        setSupabaseUser((prev) => keep(prev, currentSession.user));
+        setSession((prev) => keep(prev, currentSession));
       }
     } catch (err) {
       console.error('Error refreshing user:', err);
@@ -91,7 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           signedInId.current = initialSession.user.id;
           const profile = await fetchUserProfile(initialSession.user.id);
           if (!isMounted) return;
-          setUser(withSupportCompany(profile));
+          setUser((prev) => keep(prev, withSupportCompany(profile)));
         }
       } catch (err) {
         console.error('Error initializing auth:', err);
@@ -116,8 +117,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Supabase attendu ici peut provoquer un deadlock (spinner infini).
       // On met a jour la session de maniere synchrone et on diffère la lecture
       // du profil hors du callback (setTimeout).
-      setSession(newSession);
-      setSupabaseUser(newSession?.user ?? null);
+      //
+      // Lot 10 : au retour sur l'onglet, Supabase renvoie la MÊME session (et le
+      // même profil). keep() garde alors les objets déjà en mémoire : aucun écran
+      // abonné à useAuth() n'est redessiné pour rien.
+      setSession((prev) => keep(prev, newSession));
+      setSupabaseUser((prev) => keep(prev, newSession?.user ?? null));
 
       if (event === 'SIGNED_OUT' || !newSession?.user) {
         signedInId.current = null;
@@ -141,7 +146,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!isMounted) return;
         fetchUserProfile(signedInUser.id)
           .then((profile) => {
-            if (isMounted) setUser(withSupportCompany(profile));
+            if (isMounted) setUser((prev) => keep(prev, withSupportCompany(profile)));
           })
           .finally(() => {
             if (isMounted) setLoading(false);
