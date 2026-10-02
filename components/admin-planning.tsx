@@ -17,6 +17,7 @@ import {
   ChevronLeft, ChevronRight, Plus, Trash2, Loader2,
   UserPlus, Users, Building2, Archive, CalendarRange, Download, FileSpreadsheet, FileText,
   Bell, Clock, Mail, RefreshCw, X, Pencil, LogOut, Settings, User as UserIcon, Paperclip, AlertTriangle, Info, Hammer, CheckCircle2, Menu, TrendingUp, Palmtree,
+  Check, CheckSquare,
   Image as ImageIcon,
   ShieldCheck,
   Sparkles,
@@ -26,20 +27,27 @@ import {
   useDraggable, useDroppable, pointerWithin, rectIntersection,
   type DragEndEvent, type DragStartEvent, type CollisionDetection,
 } from '@dnd-kit/core';
-import { format, addDays, addWeeks, subWeeks, subDays, subMonths, endOfMonth, parseISO, getISOWeek } from 'date-fns';
+import { format, addDays, addWeeks, subWeeks, subMonths, endOfMonth, parseISO, getISOWeek } from 'date-fns';
 import { DAYS_IN_WEEK, weekDays as buildWeekDays, weekDayIndex, weekStart } from '@/lib/week';
 import { DEFAULT_WEEKLY_HOURS, DEFAULT_OVERTIME_RATES, weeklyHoursFor } from '@/lib/overtime';
 import { weekStart as weekStartOf, weekEnd as weekEndOf } from '@/lib/week';
 import { fr } from 'date-fns/locale';
 import type { DateRange } from 'react-day-picker';
 import { toast } from 'sonner';
-import { computeMissingDays } from '@/lib/work-status';
+import { computeMissingDays, missingWindowStart } from '@/lib/work-status';
 import { exportEntriesToExcel, exportEntriesToPDF, exportEntriesToCSV, excelAsBase64 } from '@/lib/export-utils';
 import { fetchAllPaged, chunk } from '@/lib/fetch-all';
 import { isPreviewHost } from '@/lib/hosting';
 import WorkerDetailDialog from '@/components/worker-detail';
 import ChantierDocuments from '@/components/chantier-documents';
-import { TimeCylinder } from '@/components/time-cylinder';
+import { TimeField, TIME_HINT } from '@/components/time-field';
+import { TIME_PRESETS } from '@/lib/time-input';
+import { InfoTip } from '@/components/ui/info-tip';
+import { ExportMenu } from '@/components/export-menu';
+import { ActionDone, type UndoResult } from '@/components/action-done';
+import { erasePlanning, restoreRows, type EraseResult } from '@/lib/erase';
+import { fetchCompanyClosures, closedFor } from '@/lib/worker-closure';
+import { isReserveLifted } from '@/lib/reserves';
 import CompanySettings from '@/components/company-settings';
 import AssistantPanel from '@/components/assistant-panel';
 import { attributeEntries, closeMonth as closeMonthWrite, resendInvitation as resendInvitationWrite, sendHoursReminder, setUserRole, setWorksiteActive, updatePlanningSlot, updateWorksite } from '@/lib/admin-writes';
@@ -55,17 +63,17 @@ import ReservesReport from '@/components/reserves-report';
 import ImportWorkersDialog from '@/components/import-workers-dialog';
 import LeaveAdminDialog from '@/components/leave-admin-dialog';
 import { CHANTIER_PALETTES, hashStr, LiveLine, PL_GRID_CSS, PlannedBubbleView, type ChantierPalette } from '@/components/planning-bubble';
-import { cellKey, parisDay, parisHHmm, placeLive, type LivePlace, type LiveSessionLike } from '@/supabase/functions/_shared/live-place';
+import { cellKey, parisDay, placeLive, type LivePlace, type LiveSessionLike } from '@/supabase/functions/_shared/live-place';
 import KioskAdmin from '@/components/kiosk-admin';
 import { keep } from '@/lib/same';
 
 // ─── helpers / constants ──────────────────────────────────────────────────────
 
-const WINDOW_DAYS = 21; // how far back the "planned but not declared" dot looks
+// Lot 11 : « À relancer » regarde le mois en cours (lib/work-status missingWindowStart).
 // Lot 9 : « en cours depuis » relu toutes les 30 s (en pause quand l'onglet est caché).
 const LIVE_POLL_MS = 30000;
 
-// « 1 journée non envoyée » / « 8 journées non envoyées » ; « 1 h validée » / « 2 h validées ».
+// « 1 journée non envoyée » / « 8 journées non envoyées ».
 const plural = (n: number, one: string, many: string) => (n > 1 ? many : one);
 
 function formatMinutes(minutes: number): string {
@@ -105,14 +113,6 @@ function fmtStat(n: number): string {
   return String(n);
 }
 
-// Des minutes en « 7 h 30 » — la façon dont un conducteur de travaux lit des
-// heures. Jamais « 7,5 h » : la décimale se confond avec un tarif.
-function fmtHours(minutes: number): string {
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  return m === 0 ? `${h} h` : `${h} h ${String(m).padStart(2, '0')}`;
-}
-
 // Colour belongs to the CHANTIER (stable all week), not the poseur.
 // Palette BTP noir/jaune : barre de couleur du chantier + tag « Prévu » assorti.
 // (palette et empreinte partagées avec la borne : components/planning-bubble.tsx)
@@ -139,9 +139,17 @@ const CELL_HEIGHT_HACK = { height: '1px' } as const;
 // Hauteur d'une ligne « fantôme » de remplissage (≈ une ligne salarié vide standard).
 const GHOST_ROW_H = 105;
 
-// Fixed hour (rare RDV) is stored in estimated_start with estimated_end empty.
-const fixedHourOf = (p: PlanningWithWorksite): string | null =>
-  p.estimated_start && !p.estimated_end ? p.estimated_start.slice(0, 5) : null;
+// Lot 11 : « Horaire prévu : début – fin », les deux facultatifs. Une fin sans
+// début est refusée (la borne et l'écran du salarié lisent le début d'abord).
+const scheduleError = (start: string, end: string): string | null => {
+  if (end && !start) return 'Indiquez aussi le début';
+  if (start && end && end <= start) return 'La fin doit être après le début';
+  return null;
+};
+const EMPTY_SET: Set<string> = new Set();
+/** Lot 11 : identifiants des cases retirées par le salarié, triés (keep() compare le contenu ET l'ordre). */
+const withdrawnSet = (rows: { planning_id: string | null }[] | null): Set<string> =>
+  new Set((rows || []).map((r) => r.planning_id).filter((id): id is string => !!id).sort());
 // Lot 7 : horaire prévu affiché sur la bulle — « 14:00 » (RDV) ou « 14:00–18:00 ».
 const plannedHoursOf = (p: PlanningWithWorksite): string | null =>
   p.estimated_start ? `${p.estimated_start.slice(0, 5)}${p.estimated_end ? `–${p.estimated_end.slice(0, 5)}` : ''}` : null;
@@ -255,9 +263,23 @@ function BubbleContent({ p, palette, real, draft, docCount = 0, live }: { p: Pla
   return <PlannedBubbleView title={bubbleTitleOf(p)} sub={sub} hours={hour} palette={palette} docs={docs} live={live} />;
 }
 
+/** Lot 11 : état d'une bulle en mode « Sélectionner » (absent hors de ce mode). */
+interface SelState { on: boolean; lock: string | null }
+
+/** La case à cocher (ou le 🔒 et sa raison) posée sur une bulle en mode « Sélectionner ». */
+function SelMark({ sel }: { sel: SelState }) {
+  return sel.lock
+    ? <span className="bt-pl-sellock" aria-hidden="true">🔒</span>
+    : <span className="bt-pl-selbox" aria-hidden="true">{sel.on && <Check className="h-3 w-3" strokeWidth={3.5} />}</span>;
+}
+const selClass = (sel: SelState) => `bt-pl-sel${sel.lock ? ' lock' : sel.on ? ' on' : ''}`;
+const selAttr = (sel: SelState) => (sel.lock ? 'lock' : sel.on ? 'on' : 'off');
+
 // A bubble is both draggable (move/reorder) and droppable (reorder target).
+// Lot 11 : en mode « Sélectionner » (sel défini), le clic coche au lieu d'ouvrir,
+// et le glisser est coupé. Hors de ce mode, le rendu est EXACTEMENT celui d'avant.
 function DraggableBubble({
-  p, palette, real, draft, onEdit, docCount = 0, live,
+  p, palette, real, draft, onEdit, docCount = 0, live, sel, onToggle,
 }: {
   p: PlanningWithWorksite;
   palette: ChantierPalette;
@@ -267,21 +289,69 @@ function DraggableBubble({
   docCount?: number;
   /** Lot 9 : bulle désignée par placeLive → « en cours depuis HH:MM ». */
   live?: string;
+  sel?: SelState;
+  onToggle?: (p: PlanningWithWorksite, lock: string | null) => void;
 }) {
-  const drag = useDraggable({ id: p.id, data: { type: 'move' } });
+  const drag = useDraggable({ id: p.id, data: { type: 'move' }, disabled: !!sel });
   const drop = useDroppable({ id: `bub|${p.id}` });
   return (
-    <div ref={drop.setNodeRef} className={drop.isOver ? 'bt-pl-bub-over' : ''}>
+    <div ref={drop.setNodeRef} className={sel ? selClass(sel) : drop.isOver ? 'bt-pl-bub-over' : ''}
+      data-sel={sel ? selAttr(sel) : undefined} data-pid={sel ? p.id : undefined}>
       <div
         ref={drag.setNodeRef}
         {...drag.attributes}
         {...drag.listeners}
-        onClick={(e) => { e.stopPropagation(); onEdit(p); }}
+        onClick={(e) => { e.stopPropagation(); if (sel) onToggle?.(p, sel.lock); else onEdit(p); }}
         className={`bt-pl-grab ${drag.isDragging ? 'bt-pl-dragging' : ''}`}
-        title="Glisser pour déplacer / réordonner · cliquer pour modifier"
+        title={sel ? (sel.lock || (sel.on ? 'Cliquer pour décocher' : 'Cliquer pour cocher')) : 'Glisser pour déplacer / réordonner · cliquer pour modifier'}
       >
         <BubbleContent p={p} palette={palette} real={real} draft={draft} docCount={docCount} live={live} />
       </div>
+      {sel && <SelMark sel={sel} />}
+    </div>
+  );
+}
+
+// Lot 11 : « Horaire prévu : début – fin » — saisie simple (« 14h », « 14:30 » ou
+// liste au quart d'heure), plus de roulette. Préréglages en un toucher.
+function ScheduleRow({ start, end, onStart, onEnd, testId, onBadChange }: {
+  start: string; end: string; onStart: (v: string) => void; onEnd: (v: string) => void; testId: string;
+  /** Une heure tapée mais illisible : l'enregistrement est bloqué (sinon l'ancienne heure partirait en silence). */
+  onBadChange?: (bad: boolean) => void;
+}) {
+  const [badStart, setBadStart] = useState(false);
+  const [badEnd, setBadEnd] = useState(false);
+  // Préréglage / « Effacer » : les champs repartent de zéro, même si la valeur ne change pas (« 7h75 » tapé sur 08:00).
+  const [rev, setRev] = useState(0);
+  const bad = badStart || badEnd;
+  useEffect(() => { onBadChange?.(bad); }, [bad]); // eslint-disable-line react-hooks/exhaustive-deps
+  const err = bad ? `Heure non comprise. ${TIME_HINT}` : scheduleError(start, end);
+  return (
+    <div className="space-y-1.5" data-testid={testId}>
+      <div className="flex items-center gap-1.5">
+        <Label>Horaire prévu</Label>
+        <span className="text-xs text-muted-foreground">facultatif</span>
+        <InfoTip testId={`${testId}-info`} text="Tapez « 14h » ou « 14:30 », ou choisissez dans la liste. Rendez-vous à heure fixe : mettez aussi une fin, sinon le salarié ne voit pas l'heure." />
+      </div>
+      <div className="flex items-center gap-2">
+        <div className="min-w-0 flex-1"><TimeField key={`s${rev}`} value={start} onChange={onStart} ariaLabel="Début" placeholder="début" testId={`${testId}-start`} onBadChange={setBadStart} /></div>
+        <span aria-hidden="true" className="font-bold text-muted-foreground">–</span>
+        <div className="min-w-0 flex-1"><TimeField key={`e${rev}`} value={end} onChange={onEnd} ariaLabel="Fin" placeholder="fin" testId={`${testId}-end`} invalid={!bad && !!err} onBadChange={setBadEnd} /></div>
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {TIME_PRESETS.map((t) => (
+          <button key={t.label} type="button" data-testid={`${testId}-preset`}
+            onClick={() => { onStart(t.debut); onEnd(t.fin); setRev((r) => r + 1); }}
+            className={`rounded-full border px-2.5 py-1 text-[12px] font-bold ${start === t.debut && end === t.fin ? 'border-[#15120F] bg-[#FFC21A] text-[#15120F]' : 'border-[#15120F]/20 bg-white hover:border-[#15120F]/60'}`}>
+            {t.label} <span className="font-mono text-[11px] font-semibold opacity-70">{t.debut}–{t.fin}</span>
+          </button>
+        ))}
+        {(start || end || bad) && (
+          <button type="button" className="px-1 text-[12px] font-semibold text-muted-foreground underline hover:text-foreground"
+            onClick={() => { onStart(''); onEnd(''); setRev((r) => r + 1); }}>Effacer</button>
+        )}
+      </div>
+      {err && <p className="text-[12.5px] font-semibold text-[#C0461F]" role="alert" data-testid={`${testId}-error`}>{err}</p>}
     </div>
   );
 }
@@ -412,8 +482,6 @@ const PL_CSS = `
 .bt-pl-logo .x{color:#FFC21A}
 .bt-pl-stats{display:flex;align-items:center;gap:2px;flex-wrap:nowrap;min-width:0;justify-self:center}
 .bt-pl-stat{display:inline-flex;align-items:center;gap:7px;padding:3px 11px;white-space:nowrap;position:relative}
-/* « en direct » à 0 : place gardée, rien d'affiché (pas de saut quand il apparaît). */
-.bt-pl-statwrap--idle{visibility:hidden}
 @media (max-width:1279px){
   .bt-pl-cockpit{gap:10px;padding:5px 10px 5px 14px}
   .bt-pl-cockpit .bt-pl-logo{font-size:18px}
@@ -468,6 +536,13 @@ button.bt-pl-sp-row:hover{background:#F9F5EC}
 .bt-pl-sp-row .sub{display:block;font-size:11px;font-weight:500;color:#8a8378;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bt-pl-sp-row .amt{font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:800;color:#15120F;flex:none;font-variant-numeric:tabular-nums}
 .bt-pl-sp-row .amt.warn{color:#B5472E}
+/* Lot 11 : « À relancer » — une ligne = le nom (ouvre la fiche), ses jours, « Relancer ». */
+.bt-pl-sp-who{flex:1;min-width:0;display:flex;align-items:center;background:none;border:0;padding:0;font:inherit;text-align:left;cursor:pointer;color:inherit}
+.bt-pl-sp-who:hover .nm{text-decoration:underline}
+.bt-pl-sp-act{flex:none;display:inline-flex;align-items:center;gap:5px;border:1.5px solid rgba(21,18,15,.18);background:#fff;color:#15120F;border-radius:8px;padding:4px 9px;font:inherit;font-size:12px;font-weight:800;cursor:pointer}
+.bt-pl-sp-act:hover{border-color:#15120F}
+.bt-pl-sp-act:disabled{opacity:.5;cursor:default}
+.bt-pl-sp-done{flex:none;font-size:12px;font-weight:800;color:#1F7A4D;white-space:nowrap}
 .bt-pl-sp-grp{display:flex;align-items:center;gap:7px;width:100%;padding:7px 13px 5px;border:0;background:#FBF8F1;font:inherit;text-align:left;cursor:pointer;border-top:1px solid rgba(21,18,15,.05)}
 .bt-pl-sp-grp:hover{background:#F4EEE1}
 .bt-pl-sp-grp .nm{flex:1;min-width:0;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;color:#6b6459;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -500,13 +575,14 @@ button.bt-pl-sp-row:hover{background:#F9F5EC}
 .bt-pl-m-id{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}
 .bt-pl-m-co{font-size:11.5px;font-weight:700;color:#a59c86;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .bt-pl-m-actions{display:flex;gap:8px;flex:none}
-.bt-pl-m-stats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:2px;margin:0 0 12px;padding:7px 2px;border:1px solid rgba(242,237,227,.12);border-radius:12px;background:rgba(242,237,227,.04)}
+.bt-pl-m-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px;margin:0 0 12px;padding:7px 2px;border:1px solid rgba(242,237,227,.12);border-radius:12px;background:rgba(242,237,227,.04)}
 .bt-pl-m-stat{display:flex;flex-direction:column;align-items:center;gap:1px;min-width:0;text-align:center}
+button.bt-pl-m-stat{font:inherit;background:none;border:0;padding:0;color:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.bt-pl-m-stat + .bt-pl-m-stat{border-left:1px solid rgba(242,237,227,.12)}
 .bt-pl-m-stat b{display:inline-flex;align-items:center;gap:4px;font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:800;color:#F2EDE3;font-variant-numeric:tabular-nums;white-space:nowrap}
 .bt-pl-m-stat small{font-size:9.5px;font-weight:600;color:#a59c86;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .bt-pl-m-stat.warn b{color:#FFC21A}
-.bt-pl-m-stat.idle{visibility:hidden}
-.bt-pl-m-stat .dot{width:6px;height:6px;border-radius:50%;background:#2FD584;flex:none}
+.bt-pl-m-stat .dot{width:7px;height:7px;border-radius:50%;flex:none}
 .bt-pl-gridwrap{overflow-x:auto;background:#fff;border-radius:0 0 16px 16px;flex:1 0 auto;position:relative}
 .bt-pl-nav{display:flex;align-items:center;gap:6px}
 /* ===== Zone centrale : navigation de date (cadres blanc-crème) ===== */
@@ -680,6 +756,63 @@ ${PL_GRID_CSS}
 .bt-pl-abs:hover{filter:brightness(.97)}
 .bt-pl-daypill{transition:background .14s ease, border-color .14s ease, transform .08s ease}
 .bt-pl-daypill:active{transform:translateY(1px)}
+
+/* ===== Lot 11 : « Sélectionner » → « Supprimer (N) » → « Annuler » ===== */
+.bt-pl-segbtn[aria-pressed="true"]{background:#FFC21A;color:#15120F}
+.bt-pl-lbl-short{display:none}
+.bt-pl-datebox-wk,.bt-pl-datebox-rg{white-space:nowrap}
+/* Sous 1280 px (iPad paysage 1024) : « Coûts » et des marges resserrées, pour que la
+   barre garde UNE ligne avec « Sélectionner » — pastilles « Réserves » comprises. */
+@media (max-width:1279px){
+  .bt-pl-lbl-long{display:none}.bt-pl-lbl-short{display:inline}
+  .bt-pl-bar .bt-pl-seg{gap:2px}
+  .bt-pl-bar .bt-pl-segbtn{padding:7px 6px;gap:5px}
+  .bt-pl-bar .bt-pl-out{padding:7px 8px}
+  .bt-pl-bar .bt-pl-fill{padding:8px 9px}
+  .bt-pl-bar .bt-pl-datenav{gap:5px}
+  .bt-pl-bar .bt-pl-datebox{padding:0 8px;gap:6px}
+  /* Les compteurs (congés en attente, réserves) passent en pastille d'angle : la
+     barre garde la même largeur quel que soit le nombre — elle ne déborde plus. */
+  .bt-pl-bar .bt-pl-segbtn,.bt-pl-bar .bt-pl-out{position:relative}
+  .bt-pl-bar .bt-pl-badge,.bt-pl-bar .bt-pl-outbadge{position:absolute;top:-8px;right:-7px;z-index:1;box-shadow:0 0 0 2px #fff;pointer-events:none}
+}
+.bt-pl--select .bt-pl-cellfill{cursor:default}
+.bt-pl--select .bt-pl-cellfill:hover{background:transparent}
+.bt-pl--select .bt-pl-add{visibility:hidden}
+.bt-pl--select .bt-pl-m-add{display:none}
+.bt-pl--select .bt-pl-abs{position:relative;opacity:.42;cursor:not-allowed}
+.bt-pl--select .bt-pl-abs::after{content:"🔒";position:absolute;top:4px;right:5px;font-size:11px;line-height:1}
+.bt-pl--select .bt-pl-th{cursor:pointer}
+.bt-pl--select .bt-pl-th:hover{background:#FFF8E1}
+.bt-pl--select .bt-pl-gridwrap,.bt-pl--undo .bt-pl-gridwrap{padding-bottom:84px}
+.bt-pl--select .bt-pl-m-list,.bt-pl--undo .bt-pl-m-list{padding-bottom:150px}
+.bt-pl-sel{position:relative;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.bt-pl-sel .bt-pl-grab{cursor:pointer}
+.bt-pl-sel .bt-pl-grab:hover .bt-pl-bub{transform:none}
+.bt-pl-sel.on .bt-pl-bub,.bt-pl-sel.on .bt-pl-extra{box-shadow:0 0 0 2.5px #FFC21A,0 8px 18px -10px rgba(21,18,15,.5)}
+.bt-pl-sel.lock{opacity:.42;cursor:not-allowed}
+.bt-pl-sel.lock .bt-pl-grab,.bt-pl-sel.lock .bt-pl-extra{cursor:not-allowed}
+.bt-pl-selbox{position:absolute;top:5px;right:5px;z-index:2;width:18px;height:18px;border-radius:5px;border:2px solid #15120F;background:#fff;display:flex;align-items:center;justify-content:center;color:#15120F;pointer-events:none}
+.bt-pl-sel.on .bt-pl-selbox{background:#FFC21A}
+.bt-pl-sellock{position:absolute;top:4px;right:5px;z-index:2;font-size:11px;line-height:1;pointer-events:none}
+.bt-pl-sel .bt-pl-bub-ic{margin-right:18px}
+.bt-pl-dock{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:45;display:flex;flex-direction:column;align-items:center;gap:8px;width:max-content;max-width:calc(100vw - 24px);font-family:'Archivo',sans-serif}
+.bt-pl-selbar{display:flex;align-items:center;flex-wrap:wrap;justify-content:center;gap:8px;background:#15120F;color:#F2EDE3;border-radius:14px;padding:9px 10px 9px 16px;box-shadow:0 22px 50px -18px rgba(21,18,15,.75);max-width:100%}
+.bt-pl-selbar-n{font-weight:800;font-size:13.5px;white-space:nowrap;margin-right:4px;font-variant-numeric:tabular-nums}
+.bt-pl-selbar-btn{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 12px;border-radius:10px;border:1.5px solid rgba(242,237,227,.28);background:transparent;color:#F2EDE3;font:inherit;font-size:13px;font-weight:800;cursor:pointer;white-space:nowrap}
+.bt-pl-selbar-btn:hover{border-color:#F2EDE3}
+.bt-pl-selbar-del{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;border-radius:10px;border:0;background:#C0461F;color:#fff;font:inherit;font-size:13px;font-weight:800;cursor:pointer;white-space:nowrap}
+.bt-pl-selbar-del:hover{background:#A63A17}
+.bt-pl-selbar-del:disabled{opacity:.4;cursor:default}
+.bt-pl-selbar-ok{background:#FFC21A;color:#15120F;border-color:#FFC21A}
+.bt-pl-selbar-ok:hover{border-color:#fff}
+.bt-pl-selbar .dy{display:none}
+@media (max-width:1023px){.bt-pl-selbar .wk{display:none}.bt-pl-selbar .dy{display:inline-flex}.bt-pl-selbar{padding:9px 10px}}
+.bt-pl-undo{position:relative;width:380px;max-width:100%;background:#fff;border-radius:16px;padding:0 36px 10px 10px;box-shadow:0 22px 50px -18px rgba(21,18,15,.6);border:1px solid rgba(21,18,15,.1)}
+.bt-pl-undo-x{position:absolute;top:8px;right:8px;width:26px;height:26px;border-radius:8px;border:0;background:transparent;color:#6E6A63;font-size:14px;line-height:1;cursor:pointer;font-family:inherit}
+.bt-pl-undo-x:hover{background:rgba(21,18,15,.06);color:#15120F}
+.bt-pl-m-tools{display:flex;justify-content:flex-end;margin:-3px 0 -2px}
+.bt-pl-m-selbtn{display:inline-flex;align-items:center;gap:6px;border:1.5px solid rgba(21,18,15,.2);background:#fff;color:#15120F;border-radius:10px;padding:6px 11px;font-family:inherit;font-size:12.5px;font-weight:800;cursor:pointer}
 `;
 
 // Lot 10 : objet FIXE. React (canari de Next 14) réécrit le contenu d'un <style>
@@ -705,13 +838,17 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const [roleBusyId, setRoleBusyId] = useState<string | null>(null);
   const [worksites, setWorksites] = useState<Worksite[]>([]);
   const [planning, setPlanning] = useState<PlanningWithWorksite[]>([]);
-  const [realEntries, setRealEntries] = useState<{ user_id: string; work_date: string; worksite_id: string | null; start_time: string; end_time: string; total_minutes: number; reception: string | null; reserve_resolved_at: string | null; observation: string | null }[]>([]);
+  const [realEntries, setRealEntries] = useState<{ user_id: string; work_date: string; worksite_id: string | null; start_time: string; end_time: string; total_minutes: number; reception: string | null; reserve_resolved_at: string | null; reserve_fixed_at?: string | null; observation: string | null }[]>([]);
   // Saisies pas encore envoyées : affichées en pointillé, jamais comptées.
-  const [draftEntries, setDraftEntries] = useState<{ user_id: string; work_date: string; worksite_id: string | null; start_time: string; end_time: string; total_minutes: number; reception: string | null; reserve_resolved_at: string | null; observation: string | null }[]>([]);
+  const [draftEntries, setDraftEntries] = useState<{ user_id: string; work_date: string; worksite_id: string | null; start_time: string; end_time: string; total_minutes: number; reception: string | null; reserve_resolved_at: string | null; reserve_fixed_at?: string | null; observation: string | null }[]>([]);
+  // Lot 11 : cases de la semaine que le salarié a RETIRÉES (sa ligne 'cancelled' la
+  // désigne encore, la base refuse donc de l'effacer) → 🔒 en mode « Sélectionner ».
+  const [withdrawnIds, setWithdrawnIds] = useState<Set<string>>(EMPTY_SET);
   const [docsByWorksite, setDocsByWorksite] = useState<Map<string, number>>(new Map()); // nb de documents par chantier (pastille 📎)
   // Le chiffre du cockpit ouvert, s'il y en a un. Les quatre chiffres se lisent
   // tous de la même façon : un clic, un panneau, la liste qui compose le total.
-  const [statPanel, setStatPanel] = useState<null | 'workers' | 'hours' | 'waiting' | 'docs'>(null);
+  // Lot 11 : deux indicateurs seulement — 🟠 « À relancer » et 📎 « Pièces ».
+  const [statPanel, setStatPanel] = useState<null | 'waiting' | 'docs'>(null);
   // Le détail des pièces jointes — chargé seulement à l'ouverture du panneau.
   // Le compte par chantier (docsByWorksite) reste une requête légère : une
   // entreprise avec des milliers de photos ne doit pas les charger pour une
@@ -720,6 +857,12 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const [docListState, setDocListState] = useState<'idle' | 'loading' | 'ok' | 'ko'>('idle');
   const [todayAbsence, setTodayAbsence] = useState<Map<string, string>>(new Map());
   const [missingByWorker, setMissingByWorker] = useState<Map<string, string[]>>(new Map());
+  // Lot 11 : « Clôturer jusqu'au… » par salarié (user_closures) — ses jours clôturés
+  // ne peuvent plus être envoyés, donc on ne les lui réclame plus.
+  const [workerClosures, setWorkerClosures] = useState<Map<string, string>>(new Map());
+  // « À relancer » : qui a déjà reçu un rappel pendant cette session.
+  const [remindedIds, setRemindedIds] = useState<Set<string>>(new Set());
+  const [relanceOpen, setRelanceOpen] = useState(false); // mobile : la liste « À relancer »
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [companyName, setCompanyName] = useState('');
   // Réglage entreprise : la route entre deux chantiers est-elle payée ?
@@ -770,7 +913,6 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const [salariesQuery, setSalariesQuery] = useState('');
   const [companyLogo, setCompanyLogo] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [legendOpen, setLegendOpen] = useState(false); // popover légende des icônes de bulle
 
   // team export
@@ -798,15 +940,28 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const [addTarget, setAddTarget] = useState<{ workerId: string; date: string } | null>(null);
   const [addWorksite, setAddWorksite] = useState('');
   const [addNote, setAddNote] = useState('');
+  const [addStart, setAddStart] = useState('');
+  const [addTimeBad, setAddTimeBad] = useState(false);
+  const [addEnd, setAddEnd] = useState('');
   const [addSaving, setAddSaving] = useState(false);
 
   // affectation (bubble) edit dialog
   const [editing, setEditing] = useState<PlanningWithWorksite | null>(null);
-  const [editHour, setEditHour] = useState('');
-  const [hourPickerOpen, setHourPickerOpen] = useState(false); // mini pop-up roulette pour l'heure de RDV
+  const [editStart, setEditStart] = useState('');
+  const [editTimeBad, setEditTimeBad] = useState(false);
+  const [editEnd, setEditEnd] = useState('');
   const [editNote, setEditNote] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
   const [deletingEdit, setDeletingEdit] = useState(false);
+
+  // Lot 11 : « Sélectionner » → cocher des bulles → « Supprimer (N) » → « Annuler ».
+  // La sélection n'existe qu'en mode sélection ; elle n'est jamais « nettoyée » par
+  // un setState au fil des sondages (lot 10 : zéro redessin) — on la croise au rendu.
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(EMPTY_SET);
+  const [eraseBusy, setEraseBusy] = useState(false);
+  // La carte « N intervention(s) supprimée(s) · Annuler » reste jusqu'à sa croix.
+  const [undoCard, setUndoCard] = useState<{ key: number; message: string; strong: boolean; undo: () => Promise<UndoResult> } | null>(null);
 
   // separate client fiche (permanent data)
   const [clientFiche, setClientFiche] = useState<Worksite | null>(null);
@@ -944,13 +1099,15 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     const from = format(currentWeekStart, 'yyyy-MM-dd');
     const to = format(weekEnd, 'yyyy-MM-dd');
     try {
-      const [planRes, realRes, draftRes] = await Promise.all([
+      const [planRes, realRes, draftRes, cancelledRes] = await Promise.all([
         supabase.from('planning').select('*, worksite:worksites(*), user:users!user_id(*)')
           .eq('company_id', user.company_id).gte('work_date', from).lte('work_date', to).order('work_date'),
-        supabase.from('time_entries').select('user_id, work_date, worksite_id, start_time, end_time, total_minutes, reception, reserve_resolved_at, observation')
+        supabase.from('time_entries').select('user_id, work_date, worksite_id, start_time, end_time, total_minutes, reception, reserve_resolved_at, reserve_fixed_at, observation')
           .eq('company_id', user.company_id).in('status', ['submitted', 'validated']).gte('work_date', from).lte('work_date', to),
-        supabase.from('time_entries').select('user_id, work_date, worksite_id, start_time, end_time, total_minutes, reception, reserve_resolved_at, observation')
+        supabase.from('time_entries').select('user_id, work_date, worksite_id, start_time, end_time, total_minutes, reception, reserve_resolved_at, reserve_fixed_at, observation')
           .eq('company_id', user.company_id).eq('status', 'draft').gte('work_date', from).lte('work_date', to),
+        supabase.from('time_entries').select('planning_id')
+          .eq('company_id', user.company_id).eq('status', 'cancelled').not('planning_id', 'is', null).gte('work_date', from).lte('work_date', to),
       ]);
       if (planRes.error) throw planRes.error;
       const planRows = planRes.data || [];
@@ -958,6 +1115,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       setPlanning((prev) => keep(prev, planRows));
       if (!realRes.error) setRealEntries((prev) => keep(prev, realRows));
       if (!draftRes.error) setDraftEntries((prev) => keep(prev, draftRes.data || []));
+      if (!cancelledRes.error) setWithdrawnIds((prev) => keep(prev, withdrawnSet(cancelledRes.data)));
 
       // Unification : toute heure déclarée sur un chantier sans créneau planning → on
       // crée le créneau (idempotent, côté serveur) pour qu'elle devienne une bulle
@@ -984,10 +1142,14 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   // Today's absence (cell tint) + planned-but-undeclared dots + company + invitations.
   const fetchExtras = useCallback(async () => {
     if (!user?.company_id) return;
-    const windowStart = format(subDays(new Date(), WINDOW_DAYS), 'yyyy-MM-dd');
-    const [planRes, entRes, compRes, invRes, docRes, leaveRes, resRes] = await Promise.all([
-      supabase.from('planning').select('user_id, work_date, absence_type').eq('company_id', user.company_id).gte('work_date', windowStart),
-      supabase.from('time_entries').select('user_id, work_date').eq('company_id', user.company_id).in('status', ['submitted', 'validated']).gte('work_date', windowStart),
+    // Lot 11 : le mois en cours (du 1er à aujourd'hui inclus : l'absence du jour
+    // en a besoin). Borné des deux côtés : les absences « jusqu'au retour » sont
+    // posées 90 jours à l'avance et auraient rempli la lecture pour rien.
+    const windowStart = missingWindowStart();
+    const todayKey = format(new Date(), 'yyyy-MM-dd');
+    const [planRes, entRes, compRes, invRes, docRes, leaveRes, resRes, closures, cancelledRes] = await Promise.all([
+      supabase.from('planning').select('id, user_id, work_date, absence_type').eq('company_id', user.company_id).gte('work_date', windowStart).lte('work_date', todayKey),
+      supabase.from('time_entries').select('user_id, work_date').eq('company_id', user.company_id).in('status', ['submitted', 'validated']).gte('work_date', windowStart).lte('work_date', todayKey),
       supabase.from('companies').select('name, logo_url, travel_paid, weekly_hours, accountant_email, overtime_rate_1, overtime_rate_2').eq('id', user.company_id).maybeSingle(),
       supabase.from('invitations').select('*').eq('company_id', user.company_id).is('accepted_at', null).gt('expires_at', new Date().toISOString()).order('created_at', { ascending: false }),
       // Paginé, pour la même raison que la liste détaillée : au-delà de 1000
@@ -1002,11 +1164,19 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       supabase.from('leave_requests').select('id', { count: 'exact', head: true }).eq('company_id', user.company_id).eq('status', 'pending'),
       // Réserves encore à traiter. Mêmes statuts que partout : un brouillon ou
       // une intervention retirée ne crée pas une réserve à poursuivre.
+      // Lot 11 (lib/reserves isReserveLifted) : levée par le bureau OU par le salarié.
       supabase.from('time_entries').select('id', { count: 'exact', head: true })
         .eq('company_id', user.company_id).eq('reception', 'avec')
-        .in('status', ['submitted', 'validated']).is('reserve_resolved_at', null),
+        .in('status', ['submitted', 'validated']).is('reserve_resolved_at', null).is('reserve_fixed_at', null),
+      // Lot 11 : clôtures par salarié (null = table pas encore en base → aucune).
+      fetchCompanyClosures(user.company_id),
+      // Lot 11 : cases RETIRÉES par le salarié (« je n'y suis pas allé ») : rien à
+      // lui réclamer pour elles.
+      supabase.from('time_entries').select('planning_id').eq('company_id', user.company_id).eq('status', 'cancelled')
+        .not('planning_id', 'is', null).gte('work_date', windowStart).lte('work_date', todayKey),
       // (active_sessions : lu par son propre sondage de 30 s, voir fetchLive.)
     ]);
+    if (closures) setWorkerClosures((prev) => keep(prev, closures));
     setPendingLeaves(leaveRes.count || 0); // nombre : React ne redessine pas une valeur égale
     // Une erreur de lecture laisse la pastille inchangée : afficher 0 dirait
     // « aucune réserve », ce qui est précisément le message à ne pas donner.
@@ -1023,16 +1193,19 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       setDocsByWorksite((prev) => keep(prev, docCounts));
     }
 
-    const todayKey = format(new Date(), 'yyyy-MM-dd');
     const planned = new Map<string, Set<string>>();
     const absence = new Map<string, Set<string>>();
     const today = new Map<string, string>();
+    // Lecture en échec : comme avant (aucune case comptée comme retirée).
+    const withdrawn = cancelledRes.error ? EMPTY_SET : withdrawnSet(cancelledRes.data);
     for (const p of planRes.data || []) {
       if (p.absence_type) {
         if (!absence.has(p.user_id)) absence.set(p.user_id, new Set());
         absence.get(p.user_id)!.add(p.work_date);
         if (p.work_date === todayKey) today.set(p.user_id, p.absence_type);
-      } else {
+      } else if (!withdrawn.has(p.id)) {
+        // Une case retirée par le salarié ne réclame rien ; une autre case du
+        // même jour, elle, réclame toujours ses heures.
         if (!planned.has(p.user_id)) planned.set(p.user_id, new Set());
         planned.get(p.user_id)!.add(p.work_date);
       }
@@ -1134,6 +1307,10 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   }, [user?.company_id]);
 
   const refresh = () => { fetchPlanning(); fetchExtras(); fetchClosures(); };
+  // Lot 11 : « Annuler » peut être cliqué bien après (la carte reste) — peut-être sur
+  // une autre semaine : il relit alors la semaine AFFICHÉE, pas celle de la suppression.
+  const refreshRef = useRef(refresh);
+  useEffect(() => { refreshRef.current = refresh; });
 
   // Les deux mois que le bureau est susceptible de clôturer : celui qui vient
   // de finir et celui en cours. Au-delà, ça relève de l'historique.
@@ -1191,10 +1368,10 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     for (const e of rows) {
       const k = realKey(e.user_id, e.work_date, e.worksite_id);
       const cur = m.get(k);
-      // Une réserve « ouverte » = déclarée ET pas encore levée par le bureau.
-      // Sans cette distinction, le triangle d'alerte resterait allumé à vie sur
-      // la case, même une fois le problème réglé.
-      const stillOpen = e.reception === 'avec' && !e.reserve_resolved_at;
+      // Une réserve « ouverte » = déclarée ET pas encore levée (par le bureau ou,
+      // lot 11, par le salarié : lib/reserves isReserveLifted). Sans cette
+      // distinction, le triangle d'alerte resterait allumé à vie sur la case.
+      const stillOpen = e.reception === 'avec' && !isReserveLifted(e);
       if (!cur) m.set(k, { minutes: e.total_minutes, start: e.start_time, end: e.end_time, count: 1, reception: (e.reception as ReceptionStatus) || null, reserveOpen: stillOpen, note: e.observation || '' });
       else {
         cur.minutes += e.total_minutes;
@@ -1216,6 +1393,22 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   // seulement pour que le bureau sache qu'une saisie existe.
   const draftMap = useMemo(() => aggregate(draftEntries), [draftEntries]);
 
+  /**
+   * Lot 11 : les jours qu'on peut ENCORE réclamer. Un jour d'un mois clôturé, ou
+   * d'un salarié clôturé jusqu'à cette date (« Clôturer jusqu'au… »), ne peut plus
+   * être envoyé : le compter le laisserait « à relancer » pour toujours. Même
+   * Map pour les pastilles des lignes, le bandeau et la liste « Salariés ».
+   */
+  const missingEffective = useMemo(() => {
+    if (closedMonths.size === 0 && workerClosures.size === 0) return missingByWorker;
+    const out = new Map<string, string[]>();
+    missingByWorker.forEach((days, uid) => {
+      const open = days.filter((d) => !closedMonths.has(d.slice(0, 7)) && !closedFor(workerClosures, uid, d));
+      if (open.length) out.set(uid, open);
+    });
+    return out;
+  }, [missingByWorker, closedMonths, workerClosures]);
+
   /** Qui doit encore des heures, et pour quels jours. */
   // Lot 9 : calculé sur `workers` — EXACTEMENT les lignes de la grille. fetchExtras
   // lit le planning de toute l'entreprise (comptes désactivés, bureau compris) :
@@ -1224,37 +1417,25 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const waitingByWorker = useMemo(() => {
     const out: { id: string; name: string; days: string[] }[] = [];
     for (const w of workers) {
-      const days = missingByWorker.get(w.id) || [];
+      const days = missingEffective.get(w.id) || [];
       if (days.length) out.push({ id: w.id, name: `${w.first_name} ${w.last_name}`, days: [...days].sort() });
     }
     return out.sort((a, b) => b.days.length - a.days.length);
-  }, [workers, missingByWorker]);
+  }, [workers, missingEffective]);
 
-  // Stats du cockpit (tableau de bord). Issues des données déjà chargées ;
-  // affichent 0 quand vide (jamais de trou).
-  // « h validée(s) » = heures envoyées par les salariés (submitted + validated,
-  // 'validated' n'étant qu'un reliquat — lib/status.ts) de la semaine affichée.
-  // « journée(s) non envoyée(s) » = somme des pastilles des lignes (21 derniers jours).
+  // Stats du cockpit (tableau de bord). Lot 11 : deux indicateurs seulement.
+  // « À relancer » = somme des pastilles des lignes (journées planifiées du mois
+  // en cours, sans heures envoyées) ; « Pièces » = pièces jointes de l'entreprise.
+  // (« X salariés » : le bouton « Salariés » existe ; les heures par chantier
+  // sont dans « Coût chantiers ».)
   const cockpitStats = useMemo(() => {
-    let minutes = 0; realMap.forEach((v) => { minutes += v.minutes; });
     const waiting = waitingByWorker.reduce((n, r) => n + r.days.length, 0);
     let docs = 0; docsByWorksite.forEach((n) => { docs += n; });
-    return { workers: workers.length, hours: Math.round(minutes / 60), waiting, docs };
-  }, [realMap, waitingByWorker, docsByWorksite, workers.length]);
-
-  // ─── Ce qui compose chaque chiffre du cockpit ───────────────────────────────
-  // Un chiffre sans sa décomposition ne sert qu'à inquiéter : « 3 journées non
-  // envoyées » ne dit ni qui, ni quels jours. Ces trois listes répondent à la
-  // question que le chiffre pose. Elles ne relisent rien : tout est déjà chargé.
-
-  /** Les heures de la semaine affichée, chantier par chantier, la plus grosse d'abord. */
-  const hoursByWorksite = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const e of realEntries) m.set(e.worksite_id || '', (m.get(e.worksite_id || '') || 0) + (e.total_minutes || 0));
-    return Array.from(m.entries())
-      .map(([id, minutes]) => ({ id, minutes, name: id ? (worksites.find((w) => w.id === id)?.client_name || 'Chantier supprimé') : 'Sans chantier' }))
-      .sort((a, b) => b.minutes - a.minutes);
-  }, [realEntries, worksites]);
+    return { waiting, docs };
+  }, [waitingByWorker, docsByWorksite]);
+  // « octobre » : le mois regardé par « À relancer », écrit en toutes lettres.
+  // Recalculé à chaque rendu : un onglet resté ouvert au changement de mois suit les données (relues toutes les 60 s).
+  const monthLabel = format(new Date(), 'MMMM', { locale: fr });
 
   /** Les pièces jointes rangées par chantier — le classement qu'on n'avait pas. */
   const docsByChantier = useMemo(() => {
@@ -1364,6 +1545,114 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     return <LiveChip since={liveSinceLabel(lp.work_date, lp.since)} name={(lp.worksite_id && worksiteNameById.get(lp.worksite_id)) || 'chantier'} />;
   };
 
+  // ─── Lot 11 : « Sélectionner » → « Supprimer (N) » → « Annuler » ───────────────
+  // Ce qui ne s'efface JAMAIS d'ici (et le dit) : des heures envoyées ou notées,
+  // un pointage en cours, une case retirée par le salarié (sa ligne la désigne
+  // encore), un mois clôturé (ou un salarié clôturé à cette date).
+  const hardLock = (p: PlanningWithWorksite): string | null => {
+    if (realForPlanning(p)) return 'Heures envoyées — non supprimable';
+    if (draftForPlanning(p)) return 'Heures notées par le salarié — non supprimable';
+    if (liveForBubble(p)) return 'Pointage en cours — non supprimable';
+    if (withdrawnIds.has(p.id)) return 'Retirée par le salarié — non supprimable';
+    if (closedMonths.has(p.work_date.slice(0, 7))) return 'Mois clôturé — non supprimable';
+    if (closedFor(workerClosures, p.user_id, p.work_date)) return 'Heures clôturées pour ce salarié — non supprimable';
+    return null;
+  };
+  // En sélection, on garde aussi les absences (elles se gèrent par « Présent » :
+  // « Tout sélectionner » ne doit jamais effacer un arrêt maladie) et les
+  // interventions ajoutées par le salarié.
+  const lockReason = (p: PlanningWithWorksite): string | null => {
+    if (p.absence_type) return 'Absence — à changer avec « Présent »';
+    if (p.added_by_worker) return 'Ajoutée par le salarié — non supprimable';
+    return hardLock(p);
+  };
+  // La sélection affichée = la sélection ∩ ce qui est encore au planning et
+  // supprimable. Calculée au rendu : aucun setState quand un sondage relit.
+  const selIds: string[] = selectMode
+    ? planning.filter((p) => selected.has(p.id) && !lockReason(p)).map((p) => p.id)
+    : [];
+  const selOn = selectMode ? new Set(selIds) : EMPTY_SET;
+  const selFor = (p: PlanningWithWorksite): SelState | undefined => {
+    if (!selectMode) return undefined;
+    const lock = lockReason(p);
+    return { on: !lock && selOn.has(p.id), lock };
+  };
+  const selectableIn = (pred: (p: PlanningWithWorksite) => boolean) =>
+    planning.filter((p) => !p.absence_type && pred(p) && !lockReason(p)).map((p) => p.id);
+  /** Coche tout le groupe ; s'il est déjà entièrement coché, le décoche. */
+  const toggleGroup = (ids: string[]) => {
+    if (!ids.length) { toast('Rien à cocher ici : aucune intervention supprimable.'); return; }
+    const allOn = ids.every((id) => selOn.has(id));
+    setSelected(() => {
+      const next = new Set(selIds);
+      for (const id of ids) { if (allOn) next.delete(id); else next.add(id); }
+      return next;
+    });
+  };
+  const toggleOne = (p: PlanningWithWorksite, lock: string | null) => {
+    if (lock) { toast(lock); return; }
+    toggleGroup([p.id]);
+  };
+  const enterSelect = () => {
+    setStatPanel(null); setChantierMenuOpen(false); setLegendOpen(false);
+    setSelected(EMPTY_SET); setSelectMode(true);
+  };
+  const exitSelect = () => { setSelectMode(false); setSelected(EMPTY_SET); };
+  // Changer de semaine vide la sélection (« Tout sélectionner » = la semaine affichée).
+  const changeWeek = (d: Date) => {
+    setCurrentWeekStart(d);
+    if (selected.size) setSelected(EMPTY_SET);
+  };
+  useEffect(() => {
+    if (!selectMode) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { setSelectMode(false); setSelected(EMPTY_SET); } };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selectMode]);
+
+  /** La carte « N intervention(s) supprimée(s) · Annuler » : elle reste jusqu'à sa croix. */
+  const showUndo = (r: EraseResult) => {
+    const k = r.deleted.length;
+    const rows = r.deleted;
+    setUndoCard({
+      key: Date.now(),
+      message: `${k} intervention${k > 1 ? 's' : ''} supprimée${k > 1 ? 's' : ''}`
+        + (r.skipped ? ` · ${r.skipped} gardée${r.skipped > 1 ? 's' : ''} (${r.reason})` : ''),
+      strong: k > 1,
+      undo: async () => {
+        try {
+          await restoreRows('planning', rows);
+          refreshRef.current();
+          return { ok: true, message: k > 1 ? 'Annulé : tout est remis au planning.' : 'Annulé : l’intervention est remise au planning.' };
+        } catch (err) {
+          console.error('Error restoring planning:', err);
+          return { ok: false, message: 'Impossible de tout remettre pour le moment. Réessayez.' };
+        }
+      },
+    });
+  };
+  const deleteSelected = async () => {
+    if (!user?.company_id) return;
+    // Recalculé AU MOMENT du clic : des heures ont pu être envoyées entre-temps.
+    const ids = planning.filter((p) => selOn.has(p.id) && !lockReason(p)).map((p) => p.id);
+    if (!ids.length) return;
+    setEraseBusy(true);
+    try {
+      const r = await erasePlanning(user.company_id, { ids });
+      if (!r.deleted.length) { toast.error(`Rien n’a été supprimé${r.reason ? ` (${r.reason})` : ''}.`); return; }
+      const gone = new Set(r.deleted.map((x) => x.id));
+      setPlanning((ps) => ps.filter((p) => !gone.has(p.id)));
+      exitSelect();
+      showUndo(r);
+      refresh();
+    } catch (err) {
+      console.error('Error erasing planning:', err);
+      toast.error('Impossible de supprimer pour le moment. Rien n’a été effacé.');
+    } finally {
+      setEraseBusy(false);
+    }
+  };
+
   // Attribute a real client to a worker-added intervention (from the grid).
   const attributeClient = async (newWorksiteId: string) => {
     if (!user?.company_id || !attributeTarget) return;
@@ -1465,7 +1754,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     } catch (err) {
       console.warn('Order not persisted (run the SQL migration?):', err);
       if (!positionWarned) {
-        toast('Astuce : exécute le SQL « position » pour mémoriser l\'ordre des chantiers.');
+        toast('Astuce : exécutez le SQL « position » pour mémoriser l\'ordre des chantiers.');
         setPositionWarned(true);
       }
     }
@@ -1477,6 +1766,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     setAddTarget({ workerId, date: dateStr });
     setAddWorksite(paletteWorksiteId || '');
     setAddNote('');
+    setAddStart(''); setAddEnd('');
     setAddOpen(true);
   };
 
@@ -1484,11 +1774,14 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     e.preventDefault();
     if (!user?.company_id || !addTarget) return;
     if (!addWorksite) { toast.error('Choisissez un client'); return; }
+    const timeErr = addTimeBad ? `Heure non comprise. ${TIME_HINT}` : scheduleError(addStart, addEnd);
+    if (timeErr) { toast.error(timeErr); return; }
     setAddSaving(true);
     try {
       await addPlanningSlot({
         companyId: user.company_id, createdBy: user.id, userId: addTarget.workerId,
         worksiteId: addWorksite, workDate: addTarget.date, notes: addNote,
+        estimatedStart: addStart || null, estimatedEnd: addEnd || null,
       });
       toast.success('Ajouté au planning');
       setAddOpen(false);
@@ -1545,7 +1838,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       refresh();
     } catch (err) {
       console.error('Error saving absence:', err);
-      toast.error("Impossible d'enregistrer l'absence (si « Repos », ta base la refuse peut-être encore)");
+      toast.error("Impossible d'enregistrer l'absence (si « Repos », votre base la refuse peut-être encore)");
     } finally {
       setAbsSaving(false);
     }
@@ -1595,16 +1888,19 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     }
   };
 
-  const sendReminder = async (worker: User) => {
-    const missing = missingByWorker.get(worker.id) || [];
+  // Lot 11 : renvoie vrai quand le rappel est parti (notification, ou e-mail
+  // préparé) — la ligne « À relancer » affiche alors « ✓ relancé ».
+  const sendReminder = async (worker: User): Promise<boolean> => {
+    const missing = [...(missingEffective.get(worker.id) || [])].sort();
     const jours = missing.map((d) => format(parseISO(d), 'EEEE d MMMM', { locale: fr })).join(', ');
     setRemindingId(worker.id);
+    const done = () => { setRemindedIds((prev) => new Set(prev).add(worker.id)); return true; };
     try {
       const sent = await sendHoursReminder(worker.id, jours);
-      if (sent > 0) { toast.success(`Rappel envoyé à ${worker.first_name}`); return; }
+      if (sent > 0) { toast.success(`Rappel envoyé à ${worker.first_name}`); return done(); }
 
       // Aucun appareil abonné → on retombe sur l'ancien comportement (mailto).
-      if (!worker.email) { toast.error(`${worker.first_name} n'a pas activé les notifications`); return; }
+      if (!worker.email) { toast.error(`${worker.first_name} n'a pas activé les notifications`); return false; }
       const subject = encodeURIComponent('Rappel : pense à envoyer tes heures');
       const body = encodeURIComponent(
         `Bonjour ${worker.first_name},\n\n`
@@ -1614,9 +1910,11 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       );
       window.location.href = `mailto:${worker.email}?subject=${subject}&body=${body}`;
       toast.success(`${worker.first_name} n'a pas le push : e-mail préparé`);
+      return done();
     } catch (err) {
       console.error('Error sending reminder:', err);
       toast.error("Impossible d'envoyer le rappel");
+      return false;
     } finally {
       setRemindingId(null);
     }
@@ -1628,7 +1926,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     if (!user?.company_id) { toast.error('Profil non chargé'); return; }
     setExporting(true);
     try {
-      if (!exportRange) { toast.error('Choisis une période'); return; }
+      if (!exportRange) { toast.error('Choisissez une période'); return; }
       const from = format(exportRange.from, 'yyyy-MM-dd');
       const to = format(exportRange.to, 'yyyy-MM-dd');
       // Lecture PAGINÉE : au-delà du plafond PostgREST (1000 lignes par défaut),
@@ -1852,7 +2150,8 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
 
   const openEdit = (p: PlanningWithWorksite) => {
     setEditing(p);
-    setEditHour(fixedHourOf(p) || '');
+    setEditStart(p.estimated_start ? p.estimated_start.slice(0, 5) : '');
+    setEditEnd(p.estimated_start && p.estimated_end ? p.estimated_end.slice(0, 5) : '');
     setEditNote(p.notes || '');
   };
 
@@ -1875,9 +2174,11 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
 
   const saveAffectation = async () => {
     if (!user?.company_id || !editing) return;
+    const timeErr = editTimeBad ? `Heure non comprise. ${TIME_HINT}` : scheduleError(editStart, editEnd);
+    if (timeErr) { toast.error(timeErr); return; }
     setSavingEdit(true);
     try {
-      await updatePlanningSlot(user.company_id, editing.id, { estimatedStart: editHour || null, notes: editNote });
+      await updatePlanningSlot(user.company_id, editing.id, { estimatedStart: editStart || null, estimatedEnd: editEnd || null, notes: editNote });
       toast.success('Enregistré');
       closeEdit();
       refresh();
@@ -1889,18 +2190,25 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     }
   };
 
+  // Lot 11 : « Supprimer » (une seule intervention) = même chemin que « Supprimer (N) » :
+  // la ligne est lue en entier avant d'être effacée, et la carte « Annuler » la
+  // remet à l'identique. Plus d'effacement immédiat et définitif.
   const deleteAffectation = async () => {
     if (!user?.company_id || !editing) return;
+    const why = hardLock(editing);
+    if (why) { toast.error(why); return; }
+    const id = editing.id;
     setDeletingEdit(true);
     try {
-      const { error } = await supabase.from('planning').delete().eq('id', editing.id).eq('company_id', user.company_id);
-      if (error) throw error;
-      toast.success('Retiré du planning');
+      const r = await erasePlanning(user.company_id, { ids: [id] });
+      if (!r.deleted.length) { toast.error(`Impossible de supprimer${r.reason ? ` : ${r.reason}` : ''}.`); return; }
+      setPlanning((ps) => ps.filter((p) => p.id !== id));
       closeEdit();
+      showUndo(r);
       refresh();
     } catch (err) {
       console.error('Error deleting affectation:', err);
-      toast.error('Impossible de retirer du planning');
+      toast.error('Impossible de supprimer pour le moment. Rien n’a été effacé.');
     } finally {
       setDeletingEdit(false);
     }
@@ -2005,7 +2313,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       if (attributeTarget && data?.id) {
         await attributeClient(data.id);
       } else {
-        toast.success('Client créé — glisse-le sur le planning');
+        toast.success('Client créé — glissez-le sur le planning');
         if (data?.id) setPaletteWorksiteId(data.id);
       }
     } catch (err) {
@@ -2064,6 +2372,34 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
 
   const editRealAgg = editing ? realForPlanning(editing) : undefined;
 
+  /** Lot 11 : les lignes « À relancer » (panneau du cockpit ET fenêtre mobile). */
+  const renderRelanceRows = (onOpen: () => void) => (
+    waitingByWorker.length === 0 ? (
+      <div className="bt-pl-sp-empty">Tout le monde est à jour ce mois-ci.</div>
+    ) : waitingByWorker.map((r) => {
+      const w = workers.find((x) => x.id === r.id);
+      return (
+        <div key={r.id} className="bt-pl-sp-row" data-testid="relance-row">
+          <button type="button" className="bt-pl-sp-who" title="Ouvrir sa fiche"
+            onClick={() => { if (!w) return; onOpen(); setFicheMode('manage'); setFicheWorker(w); }}>
+            <span className="nm">{r.name}
+              <span className="sub">{r.days.map((d) => format(parseISO(d), 'EEE d', { locale: fr })).join(' · ')}</span>
+            </span>
+          </button>
+          <span className="amt warn">{r.days.length} j</span>
+          {remindedIds.has(r.id) ? (
+            <span className="bt-pl-sp-done" data-testid="relance-done">✓ relancé</span>
+          ) : (
+            <button type="button" className="bt-pl-sp-act" data-testid="relance-btn" disabled={!w || remindingId === r.id}
+              title={`Envoyer un rappel à ${r.name}`} onClick={() => { if (w) sendReminder(w); }}>
+              {remindingId === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Bell className="h-3.5 w-3.5" />} Relancer
+            </button>
+          )}
+        </div>
+      );
+    })
+  );
+
   if (loading) {
     // Chargement brandé (PL_CSS pas encore injecté ici → styles inline ;
     // .bt-spin vient d'ADMIN_CSS, déjà présent sur la page).
@@ -2078,7 +2414,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   }
 
   return (
-    <div className="bt-pl">
+    <div className={`bt-pl${selectMode ? ' bt-pl--select' : ''}${undoCard ? ' bt-pl--undo' : ''}`}>
       <style dangerouslySetInnerHTML={PL_STYLE} />
 
       <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragStart={handleDragStart} onDragEnd={(e) => { handleDragEnd(e); setChantierMenuOpen(false); }} onDragCancel={() => { setActiveDrag(null); setChantierMenuOpen(false); }}>
@@ -2087,103 +2423,30 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
             logo · chiffres (au centre) · essai + entreprise. Mêmes informations. */}
         <div className="bt-pl-cockpit">
           <span className="bt-pl-logo">BEME<span className="x">X</span>O</span>
-          {/* Les chiffres du cockpit s'ouvrent. Chacun montre ce qui le compose :
-              un total seul pose une question sans y répondre. Le survol donne la
-              phrase, le clic donne la liste.
-
-              Chaque chiffre vit dans un .bt-pl-statwrap et le panneau est son
-              FRÈRE, pas son enfant : un <button> dans un <button> est du HTML
-              invalide, et les lignes cliquables du panneau sont des boutons. */}
+          {/* Lot 11 : DEUX indicateurs seulement — 🟠 « À relancer » et 📎 « Pièces ».
+              Un clic ouvre la liste qui compose le chiffre. Chaque chiffre vit dans
+              un .bt-pl-statwrap et le panneau est son FRÈRE, pas son enfant : un
+              <button> dans un <button> est du HTML invalide.
+              (Lot 11, item 8 : plus de compteur « en direct » — la case verte et
+              « en cours depuis » restent, nourries par le seul vrai pointage.) */}
           <div className="bt-pl-stats">
             <div className="bt-pl-statwrap">
-              <button className="bt-pl-stat" aria-expanded={statPanel === 'workers'}
-                title={`${displayWorkers.length} salarié${displayWorkers.length > 1 ? 's' : ''} — cliquez pour la liste`}
-                onClick={() => setStatPanel((p) => (p === 'workers' ? null : 'workers'))}>
-                <span className="v">{fmtStat(displayWorkers.length)}</span><span className="l">salarié{displayWorkers.length > 1 ? 's' : ''}</span><span className="ch">▾</span>
-              </button>
-              {statPanel === 'workers' && (
-                <div className="bt-pl-sp">
-                  <div className="bt-pl-sp-h">L&apos;équipe <span className="n">{displayWorkers.length}</span></div>
-                  <div className="bt-pl-sp-list">
-                    {displayWorkers.length === 0 ? (
-                      <div className="bt-pl-sp-empty">Personne pour l&apos;instant.<br />Invitez un salarié depuis « Salariés ».</div>
-                    ) : displayWorkers.map((w) => {
-                      const miss = (missingByWorker.get(w.id) || []).length;
-                      const abs = todayAbsence.get(w.id);
-                      return (
-                        <button key={w.id} className="bt-pl-sp-row"
-                          onClick={() => { setStatPanel(null); setFicheMode('manage'); setFicheWorker(w); }}>
-                          <span className="nm">{w.first_name} {w.last_name}
-                            <span className="sub">{w.role === 'lead' ? 'Chef d’équipe' : w.role === 'admin' ? 'Bureau' : 'Salarié'}{abs ? ` · ${ABSENCE_LABELS[abs] || abs}` : ''}</span>
-                          </span>
-                          <span className={`amt${miss > 0 ? ' warn' : ''}`}>{miss > 0 ? `${miss} j` : '✓'}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {displayWorkers.length > 0 && <div className="bt-pl-sp-foot">Un chiffre en rouge = des journées non envoyées sur les {WINDOW_DAYS} derniers jours.</div>}
-                </div>
-              )}
-            </div>
-
-            <div className="bt-pl-statwrap">
-              <button className="bt-pl-stat" aria-expanded={statPanel === 'hours'} data-testid="stat-hours"
-                title={`${cockpitStats.hours} h ${plural(cockpitStats.hours, 'validée', 'validées')} sur la semaine affichée (validée(s) = envoyée(s) par les salariés) — cliquez pour le détail par chantier`}
-                onClick={() => setStatPanel((p) => (p === 'hours' ? null : 'hours'))}>
-                <span className="sd" style={{ background: '#2FD584' }} /><span className="v">{fmtStat(cockpitStats.hours)} h</span><span className="l">{plural(cockpitStats.hours, 'validée', 'validées')}</span><span className="ch">▾</span>
-              </button>
-              {statPanel === 'hours' && (
-                <div className="bt-pl-sp">
-                  <div className="bt-pl-sp-h">Heures validées par chantier <span className="n">S-{getISOWeek(currentWeekStart)}</span></div>
-                  <div className="bt-pl-sp-list">
-                    {hoursByWorksite.length === 0 ? (
-                      <div className="bt-pl-sp-empty">Aucune heure validée<br />sur cette semaine.</div>
-                    ) : hoursByWorksite.map((r) => (
-                      <div key={r.id || 'sans'} className="bt-pl-sp-row">
-                        <span className="nm">{r.name}</span>
-                        <span className="amt">{fmtHours(r.minutes)}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="bt-pl-sp-foot">Validée(s) = envoyée(s) par les salariés : seules celles-là comptent. Les saisies en pointillé et les pointages en cours n&apos;y sont pas.</div>
-                </div>
-              )}
-            </div>
-
-            <div className="bt-pl-statwrap">
               <button className={`bt-pl-stat${cockpitStats.waiting > 0 ? ' warn' : ''}`} aria-expanded={statPanel === 'waiting'} data-testid="stat-waiting"
-                title={cockpitStats.waiting === 0 ? `Tout le monde est à jour sur les ${WINDOW_DAYS} derniers jours` : `${cockpitStats.waiting} ${plural(cockpitStats.waiting, 'journée planifiée non envoyée', 'journées planifiées non envoyées')} sur les ${WINDOW_DAYS} derniers jours — cliquez pour savoir qui`}
+                title={cockpitStats.waiting === 0 ? `Tout est envoyé en ${monthLabel}` : `${cockpitStats.waiting} ${plural(cockpitStats.waiting, 'journée planifiée non envoyée', 'journées planifiées non envoyées')} en ${monthLabel} — cliquez pour savoir qui`}
                 onClick={() => setStatPanel((p) => (p === 'waiting' ? null : 'waiting'))}>
-                <span className="sd" style={{ background: cockpitStats.waiting > 0 ? '#E0A21C' : '#4a453d' }} /><span className="v">{fmtStat(cockpitStats.waiting)}</span><span className="l">{plural(cockpitStats.waiting, 'journée non envoyée', 'journées non envoyées')}</span><span className="ch">▾</span>
+                <span className="sd" style={{ background: cockpitStats.waiting > 0 ? '#E0A21C' : '#4a453d' }} /><span className="v">{fmtStat(cockpitStats.waiting)} j</span><span className="l">à relancer</span><span className="ch">▾</span>
               </button>
               {statPanel === 'waiting' && (
-                <div className="bt-pl-sp">
-                  <div className="bt-pl-sp-h">Journées non envoyées <span className="n">{cockpitStats.waiting} j</span></div>
-                  <div className="bt-pl-sp-list">
-                    {waitingByWorker.length === 0 ? (
-                      <div className="bt-pl-sp-empty">Tout le monde est à jour.</div>
-                    ) : waitingByWorker.map((r) => (
-                      <button key={r.id} className="bt-pl-sp-row"
-                        title="Ouvrir la fiche pour relancer"
-                        onClick={() => {
-                          const w = workers.find((x) => x.id === r.id);
-                          if (!w) return;
-                          setStatPanel(null); setFicheMode('manage'); setFicheWorker(w);
-                        }}>
-                        <span className="nm">{r.name}
-                          <span className="sub">{r.days.map((d) => format(parseISO(d), 'EEE d MMM', { locale: fr })).join(' · ')}</span>
-                        </span>
-                        <span className="amt warn">{r.days.length} j</span>
-                      </button>
-                    ))}
-                  </div>
-                  <div className="bt-pl-sp-foot">Journées planifiées sur les {WINDOW_DAYS} derniers jours, sans heures envoyées.{waitingByWorker.length > 0 && ' Cliquez un nom pour ouvrir sa fiche et lui envoyer un rappel.'}</div>
+                <div className="bt-pl-sp" data-testid="relance-panel">
+                  <div className="bt-pl-sp-h">À relancer · {monthLabel} <span className="n">{cockpitStats.waiting} j</span></div>
+                  <div className="bt-pl-sp-list">{renderRelanceRows(() => setStatPanel(null))}</div>
+                  <div className="bt-pl-sp-foot">Journées planifiées ce mois-ci, sans heures envoyées.</div>
                 </div>
               )}
             </div>
 
             <div className="bt-pl-statwrap">
-              <button className="bt-pl-stat" aria-expanded={statPanel === 'docs'}
+              <button className="bt-pl-stat" aria-expanded={statPanel === 'docs'} data-testid="stat-docs"
                 title={`${cockpitStats.docs} pièce(s) jointe(s) — cliquez pour voir lesquelles, et sur quel chantier`}
                 onClick={() => setStatPanel((p) => (p === 'docs' ? null : 'docs'))}>
                 <Paperclip className="h-3.5 w-3.5" style={{ opacity: 0.75 }} /><span className="v">{fmtStat(cockpitStats.docs)}</span><span className="l">pièces</span><span className="ch">▾</span>
@@ -2225,33 +2488,11 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                       </Fragment>
                     ))}
                   </div>
-                  {docsByChantier.length > 0 && <div className="bt-pl-sp-foot">Cliquez le nom d&apos;un chantier pour ouvrir, télécharger ou envoyer ses pièces.</div>}
+                  {docsByChantier.length > 0 && <div className="bt-pl-sp-foot">Cliquez un chantier pour ouvrir ses pièces.</div>}
                 </div>
               )}
             </div>
 
-            {/* En direct. Informatif : ces minutes ne sont comptées nulle part
-                tant que le salarié n'a pas fermé sa journée. Lot 9 : nourri par
-                le sondage de 30 s (fetchLive), plus par fetchExtras. */}
-            {/* Lot 10 : la place est TOUJOURS réservée (invisible à 0) : « N en direct »
-                qui apparaît ou disparaît ne fait plus bouger les chiffres ni le logo. */}
-            {liveNow.length === 0 ? (
-              <div className="bt-pl-statwrap bt-pl-statwrap--idle" aria-hidden="true">
-                <span className="bt-pl-stat"><span className="sd" /><span className="v">0</span><span className="l">en direct</span></span>
-              </div>
-            ) : (
-              <div className="bt-pl-statwrap">
-                <span className="bt-pl-stat" data-testid="stat-live" title={liveNow.map((l) => {
-                  const w = workers.find((x) => x.id === l.user_id);
-                  const ws = worksites.find((x) => x.id === l.worksite_id);
-                  const h = liveSinceLabel(l.work_date, parisHHmm(l.started_at));
-                  return `${w ? `${w.first_name} ${w.last_name}` : 'Salarié'} — ${ws?.client_name || 'chantier'} depuis ${h}`;
-                }).join('\n')}>
-                  <span className="sd" style={{ background: '#2FD584' }} />
-                  <span className="v">{fmtStat(liveNow.length)}</span><span className="l">en direct</span>
-                </span>
-              </div>
-            )}
             {statPanel && <div className="bt-pl-ddbackdrop" onClick={() => setStatPanel(null)} />}
           </div>
           <div className="bt-pl-cockpit-right">
@@ -2318,6 +2559,14 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
               </button>
               <span className="bt-pl-segdiv" aria-hidden="true" />
               <button className="bt-pl-segbtn" onClick={() => { setChantierMenuOpen((o) => !o); setClientsQuery(''); }}><Building2 className="h-3.5 w-3.5" /> Clients</button>
+              <span className="bt-pl-segdiv" aria-hidden="true" />
+              {/* Lot 11 : cocher des interventions une par une (ou « Tout sélectionner »),
+                  puis « Supprimer (N) » — « Annuler » remet tout. */}
+              <button className="bt-pl-segbtn" aria-pressed={selectMode} data-testid="bar-select"
+                title={selectMode ? 'Terminer la sélection' : 'Cocher des interventions pour les supprimer'}
+                onClick={() => (selectMode ? exitSelect() : enterSelect())}>
+                <CheckSquare className="h-3.5 w-3.5" /> Sélectionner
+              </button>
             </div>
             {chantierMenuOpen && (
               <>
@@ -2349,17 +2598,17 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
           </div>
           </div>
           <div className="bt-pl-datenav">
-            <button className="bt-pl-datearr" aria-label="Semaine précédente" onClick={() => setCurrentWeekStart(subWeeks(currentWeekStart, 1))}>‹</button>
+            <button className="bt-pl-datearr" aria-label="Semaine précédente" onClick={() => changeWeek(subWeeks(currentWeekStart, 1))}>‹</button>
             <button
               className="bt-pl-datebox"
-              onClick={() => setCurrentWeekStart(thisWeekStart)}
+              onClick={() => changeWeek(thisWeekStart)}
               title={isCurrentWeek ? undefined : 'Revenir à la semaine actuelle'}
             >
               <span className="bt-pl-datebox-wk">S-{getISOWeek(currentWeekStart)}</span>
               <span className={`bt-pl-datebox-dot ${isCurrentWeek ? 'is-now' : 'is-away'}`} />
               <span className="bt-pl-datebox-rg">{format(currentWeekStart, 'd', { locale: fr })}–{format(addDays(currentWeekStart, DAYS_IN_WEEK - 1), 'd MMM', { locale: fr })}</span>
             </button>
-            <button className="bt-pl-datearr" aria-label="Semaine suivante" onClick={() => setCurrentWeekStart(addWeeks(currentWeekStart, 1))}>›</button>
+            <button className="bt-pl-datearr" aria-label="Semaine suivante" onClick={() => changeWeek(addWeeks(currentWeekStart, 1))}>›</button>
           </div>
           <div className="bt-pl-group">
           {/* Lot 6 : l'assistant est ICI, dans la barre — plus de bouton flottant sur le planning. */}
@@ -2373,30 +2622,16 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
             {openReserves > 0 && <span className="bt-pl-outbadge">{openReserves}</span>}
           </button>
           {kioskOn && user?.company_id && (
-            <button className="bt-pl-out" onClick={() => setKioskOpen(true)} title="Bornes de pointage : ajouter une borne, voir la liste" data-testid="bar-kiosk">
+            <button className="bt-pl-out" onClick={() => setKioskOpen(true)} title="Tablette de pointage : code pour la relier, état" data-testid="bar-kiosk">
               <span aria-hidden="true">📟</span> Borne
             </button>
           )}
-          <button className="bt-pl-out" onClick={() => setCostOpen(true)}><TrendingUp className="h-4 w-4" /> Coût chantiers</button>
-          <div className="bt-pl-ddwrap">
-            <button className="bt-pl-fill" onClick={() => setExportMenuOpen((o) => !o)}><Download className="h-4 w-4" /> Exporter ▾</button>
-            {exportMenuOpen && (
-              <>
-                <div className="bt-pl-ddbackdrop" onClick={() => setExportMenuOpen(false)} />
-                <div className="bt-pl-dd">
-                  <div className="bt-pl-dd-h">Exporter les heures</div>
-                  <button className="bt-pl-exitem" onClick={() => { setExportMenuOpen(false); setExportOpen(true); }}>
-                    <Download className="h-4 w-4" />
-                    <span><span className="bt-pl-exitem-t">Exporter l&apos;équipe</span><span className="bt-pl-exitem-s">Verrouille le mois</span></span>
-                  </button>
-                  <button className="bt-pl-exitem" onClick={() => { setExportMenuOpen(false); setExportWorkerOpen(true); }}>
-                    <FileText className="h-4 w-4" />
-                    <span><span className="bt-pl-exitem-t">Exporter un salarié</span><span className="bt-pl-exitem-s">Sans verrou</span></span>
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
+          {/* « Coût chantiers » (« Coûts » sous 1280 px) : les heures par chantier y sont. */}
+          <button className="bt-pl-out" onClick={() => setCostOpen(true)} title="Heures et coût par chantier" data-testid="bar-cost"><TrendingUp className="h-4 w-4" /> <span className="bt-pl-lbl-long">Coût chantiers</span><span className="bt-pl-lbl-short">Coûts</span></button>
+          {/* Lot 11 : « Exporter » ouvre directement l'export de l'équipe (un seul
+              menu « Exporter ▾ » ensuite : PDF, Excel, CSV). Un seul salarié : lien
+              discret dans la fenêtre. */}
+          <button className="bt-pl-fill" onClick={() => setExportOpen(true)} data-testid="bar-export"><Download className="h-4 w-4" /> Exporter</button>
           </div>
         </div>
 
@@ -2431,8 +2666,12 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                 </th>
                 {weekDays.map(day => {
                   const isToday = format(day, 'yyyy-MM-dd') === todayStr;
+                  const dStr = format(day, 'yyyy-MM-dd');
                   return (
-                    <th key={day.toISOString()} className={`bt-pl-th ${isToday ? 'today' : ''}`}>
+                    <th key={day.toISOString()} className={`bt-pl-th ${isToday ? 'today' : ''}`}
+                      onClick={selectMode ? () => toggleGroup(selectableIn((p) => p.work_date === dStr && displayWorkers.some((w) => w.id === p.user_id))) : undefined}
+                      title={selectMode ? 'Cocher toute cette journée' : undefined}
+                      data-testid={selectMode ? 'sel-day' : undefined}>
                       <div className="bt-pl-th-cell">
                         <span className="bt-pl-th-day">{dayFull(day)}</span>
                         <span className="bt-pl-th-num">{format(day, 'd')}</span>
@@ -2449,7 +2688,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                       guide en bas à droite, sans jamais bloquer la grille. */}
                   {displayWorkers.map(worker => {
                       const absToday = todayAbsence.get(worker.id);
-                      const missCount = (missingByWorker.get(worker.id) || []).length;
+                      const missCount = (missingEffective.get(worker.id) || []).length;
                       const isLate = missCount > 0;
                       const fullName = `${worker.first_name} ${worker.last_name}`;
                       return (
@@ -2457,9 +2696,11 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                           {/* Cellule nom : avatar + nom + statut (en attente / à jour / absence). */}
                           <td className="bt-pl-namecell" style={absToday ? { ...CELL_HEIGHT_HACK, ...HATCH_STYLE } : CELL_HEIGHT_HACK}>
                             <button
-                              onClick={() => setStatusTarget({ worker, fromStr: todayStr })}
+                              onClick={() => (selectMode
+                                ? toggleGroup(selectableIn((p) => p.user_id === worker.id))
+                                : setStatusTarget({ worker, fromStr: todayStr }))}
                               className="bt-pl-namebtn"
-                              title="Cliquer pour le statut / la disponibilité"
+                              title={selectMode ? 'Cocher toute sa semaine' : 'Cliquer pour le statut / la disponibilité'}
                             >
                               <span className="bt-pl-nametop">
                                 <span className="bt-pl-avatar" style={avatarTint(worker.id, !!absToday)}>
@@ -2496,9 +2737,9 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                                     <>
                                       <button
                                         style={{ background: av.bg, color: av.fg, ...(liveChip ? { height: 'auto', flex: 1, minHeight: 56, marginBottom: 7 } : null) }}
-                                        onClick={() => setStatusTarget({ worker, fromStr: dateStr })}
+                                        onClick={() => (selectMode ? toast('Absence — à changer avec « Présent »') : setStatusTarget({ worker, fromStr: dateStr }))}
                                         className="bt-pl-abs"
-                                        title="Absence — cliquer pour changer le statut"
+                                        title={selectMode ? 'Absence — à changer avec « Présent » (non supprimable ici)' : 'Absence — cliquer pour changer le statut'}
                                       >
                                         <span className="bt-pl-abs-ico">{av.icon}</span>
                                         <span className="bt-pl-abs-lbl">{ABSENCE_LABELS[absence.absence_type!] || absence.absence_type}</span>
@@ -2510,27 +2751,32 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                                 })() : (
                                   <div
                                     className="bt-pl-cellfill"
-                                    onClick={() => openAdd(worker.id, dateStr)}
-                                    title="Cliquer pour ajouter une intervention"
+                                    onClick={selectMode ? undefined : () => openAdd(worker.id, dateStr)}
+                                    title={selectMode ? undefined : 'Cliquer pour ajouter une intervention'}
                                   >
                                     {chantiers.map(p => (
-                                      <DraggableBubble key={p.id} p={p} palette={paletteFor(p)} real={realForPlanning(p)} draft={draftForPlanning(p)} onEdit={openEdit} docCount={docsByWorksite.get(p.worksite_id || '') || 0} live={liveForBubble(p)} />
+                                      <DraggableBubble key={p.id} p={p} palette={paletteFor(p)} real={realForPlanning(p)} draft={draftForPlanning(p)} onEdit={openEdit} docCount={docsByWorksite.get(p.worksite_id || '') || 0} live={liveForBubble(p)} sel={selFor(p)} onToggle={toggleOne} />
                                     ))}
-                                    {extra.map((x, i) => (
-                                      <button
-                                        key={`xd${i}`}
-                                        type="button"
-                                        onClick={(e) => { e.stopPropagation(); setExtraTarget({ userId: worker.id, dateStr, worksiteId: x.worksiteId, name: x.name, minutes: x.minutes }); }}
-                                        title="Ajouté par le salarié — cliquer pour les documents / attribuer un client"
-                                        className="bt-pl-extra"
-                                      >
-                                        <span className="bt-pl-bub-bar" style={{ background: x.pending ? '#8a8378' : '#B5472E' }} />
-                                        <span className="bt-pl-extra-top">
-                                          <span className="bt-pl-extra-name">{x.name}</span>
-                                        </span>
-                                        <span className="bt-pl-extra-by" style={x.pending ? { color: '#6E6A63' } : undefined}><UserIcon className="h-2.5 w-2.5 shrink-0" /> {formatMinutes(x.minutes)} · {x.pending ? 'saisi, à envoyer' : 'ajouté par le salarié'}</span>
-                                      </button>
-                                    ))}
+                                    {extra.map((x, i) => {
+                                      const chip = (
+                                        <button
+                                          key={`xd${i}`}
+                                          type="button"
+                                          onClick={(e) => { e.stopPropagation(); if (selectMode) { toast('Heures ajoutées par le salarié — non supprimable'); return; } setExtraTarget({ userId: worker.id, dateStr, worksiteId: x.worksiteId, name: x.name, minutes: x.minutes }); }}
+                                          title={selectMode ? 'Heures ajoutées par le salarié — non supprimable' : 'Ajouté par le salarié — cliquer pour les documents / attribuer un client'}
+                                          className="bt-pl-extra"
+                                        >
+                                          <span className="bt-pl-bub-bar" style={{ background: x.pending ? '#8a8378' : '#B5472E' }} />
+                                          <span className="bt-pl-extra-top">
+                                            <span className="bt-pl-extra-name">{x.name}</span>
+                                          </span>
+                                          <span className="bt-pl-extra-by" style={x.pending ? { color: '#6E6A63' } : undefined}><UserIcon className="h-2.5 w-2.5 shrink-0" /> {formatMinutes(x.minutes)} · {x.pending ? 'saisi, à envoyer' : 'ajouté par le salarié'}</span>
+                                        </button>
+                                      );
+                                      return selectMode
+                                        ? <div key={`xd${i}`} className="bt-pl-sel lock" data-sel="lock">{chip}<SelMark sel={{ on: false, lock: 'Heures ajoutées par le salarié' }} /></div>
+                                        : chip;
+                                    })}
                                     {liveChip}
                                     {chantiers.length === 0 && extra.length === 0 && !liveChip && <div className="bt-pl-add">+</div>}
                                   </div>
@@ -2565,7 +2811,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
             {/* Coach de démarrage : checklist discrète et FERMABLE (croix), flottante
                 bas-droite — la grille reste pleinement visible et utilisable. Les
                 étapes se cochent toutes seules ; tout fait → il disparaît. */}
-            {!coachHidden && (workers.length === 0 || worksites.length === 0) && (
+            {!coachHidden && !selectMode && (workers.length === 0 || worksites.length === 0) && (
               <div className="bt-pl-coach">
                 <div className="bt-pl-coach-gold" />
                 <div className="bt-pl-coach-head">
@@ -2614,27 +2860,17 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                   </button>
                 </div>
               </div>
-              {/* Les chiffres du cockpit, compacts (lecture seule : le détail est sur ordinateur). */}
+              {/* Lot 11 : les deux indicateurs, compacts. « À relancer » ouvre la même
+                  liste que sur ordinateur, avec « Relancer » sur chaque ligne. */}
               <div className="bt-pl-m-stats">
-                <span className="bt-pl-m-stat" title={`${displayWorkers.length} salarié${displayWorkers.length > 1 ? 's' : ''}`}>
-                  <b>{fmtStat(displayWorkers.length)}</b><small>salarié{displayWorkers.length > 1 ? 's' : ''}</small>
+                <button type="button" className={`bt-pl-m-stat${cockpitStats.waiting > 0 ? ' warn' : ''}`} data-testid="m-stat-waiting"
+                  title={cockpitStats.waiting === 0 ? `Tout est envoyé en ${monthLabel}` : `${cockpitStats.waiting} ${plural(cockpitStats.waiting, 'journée planifiée non envoyée', 'journées planifiées non envoyées')} en ${monthLabel}`}
+                  onClick={() => setRelanceOpen(true)}>
+                  <b><span className="dot" style={{ background: cockpitStats.waiting > 0 ? '#E0A21C' : '#4a453d' }} />{fmtStat(cockpitStats.waiting)} j</b><small>à relancer</small>
+                </button>
+                <span className="bt-pl-m-stat" data-testid="m-stat-docs" title={`${cockpitStats.docs} pièce(s) jointe(s)`}>
+                  <b><Paperclip className="h-3 w-3" style={{ opacity: 0.75 }} />{fmtStat(cockpitStats.docs)}</b><small>pièces</small>
                 </span>
-                <span className="bt-pl-m-stat" data-testid="m-stat-hours" title={`${cockpitStats.hours} h ${plural(cockpitStats.hours, 'validée', 'validées')} sur la semaine affichée (envoyées par les salariés)`}>
-                  <b>{fmtStat(cockpitStats.hours)} h</b><small>{plural(cockpitStats.hours, 'validée', 'validées')}</small>
-                </span>
-                <span className={`bt-pl-m-stat${cockpitStats.waiting > 0 ? ' warn' : ''}`} data-testid="m-stat-waiting" title={`${cockpitStats.waiting} ${plural(cockpitStats.waiting, 'journée non envoyée', 'journées non envoyées')} sur les ${WINDOW_DAYS} derniers jours`}>
-                  <b>{fmtStat(cockpitStats.waiting)} j</b><small>non {plural(cockpitStats.waiting, 'envoyée', 'envoyées')}</small>
-                </span>
-                <span className="bt-pl-m-stat" title={`${cockpitStats.docs} pièce(s) jointe(s)`}>
-                  <b>{fmtStat(cockpitStats.docs)}</b><small>pièces</small>
-                </span>
-                {liveNow.length === 0 ? (
-                  <span className="bt-pl-m-stat idle" aria-hidden="true"><b><span className="dot" />0</b><small>en direct</small></span>
-                ) : (
-                  <span className="bt-pl-m-stat" data-testid="m-stat-live" title={`${liveNow.length} pointage${liveNow.length > 1 ? 's' : ''} en cours`}>
-                    <b><span className="dot" />{fmtStat(liveNow.length)}</b><small>en direct</small>
-                  </span>
-                )}
               </div>
               <div className="bt-pl-m-headrow">
                 <div>
@@ -2642,8 +2878,8 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                   <div className="bt-pl-m-date">{format(weekDays[mobileDayIdx], 'EEEE d MMMM', { locale: fr })}</div>
                 </div>
                 <div className="bt-pl-nav">
-                  <button className="bt-pl-m-ibtn" aria-label="Semaine précédente" onClick={() => setCurrentWeekStart(subWeeks(currentWeekStart, 1))}>‹</button>
-                  <button className="bt-pl-m-ibtn" aria-label="Semaine suivante" onClick={() => setCurrentWeekStart(addWeeks(currentWeekStart, 1))}>›</button>
+                  <button className="bt-pl-m-ibtn" aria-label="Semaine précédente" onClick={() => changeWeek(subWeeks(currentWeekStart, 1))}>‹</button>
+                  <button className="bt-pl-m-ibtn" aria-label="Semaine suivante" onClick={() => changeWeek(addWeeks(currentWeekStart, 1))}>›</button>
                   <button className="bt-pl-m-ibtn" aria-label="Déconnexion" title="Déconnexion" onClick={signOut}><LogOut className="h-4 w-4" /></button>
                 </div>
               </div>
@@ -2657,6 +2893,14 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
               </div>
             </div>
             <div className="bt-pl-m-list">
+              {/* Lot 11 : « Sélectionner » aussi sur téléphone (« Tout sélectionner » = le jour affiché). */}
+              {workers.length > 0 && !selectMode && (
+                <div className="bt-pl-m-tools">
+                  <button type="button" className="bt-pl-m-selbtn" onClick={enterSelect} data-testid="m-select">
+                    <CheckSquare className="h-3.5 w-3.5" /> Sélectionner
+                  </button>
+                </div>
+              )}
               {workers.length === 0 ? (
                 !coachHidden ? (
                   <div className="bt-pl-coach bt-pl-coach--flow">
@@ -2696,16 +2940,22 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                   <div key={worker.id} className={`bt-pl-m-card${liveHere ? ' bt-pl-cell-live' : ''}`} data-live={liveHere ? '1' : undefined}>
                     {/* Taper le salarié → présence / absence / fiche (même dialogue que le clic
                         sur le nom côté desktop : setStatusTarget). */}
-                    <button type="button" className="bt-pl-m-top" onClick={() => setStatusTarget({ worker, fromStr: dateStr })} title="Présence, absence ou fiche">
+                    <button type="button" className="bt-pl-m-top"
+                      onClick={() => (selectMode
+                        ? toggleGroup(selectableIn((p) => p.user_id === worker.id && p.work_date === dateStr))
+                        : setStatusTarget({ worker, fromStr: dateStr }))}
+                      title={selectMode ? 'Cocher ses interventions du jour' : 'Présence, absence ou fiche'}>
                       <span className="bt-pl-avatar" style={avatarTint(worker.id, !!absence)}>{worker.photo_url ? <img className="bt-pl-avatar-img" src={worker.photo_url} alt="" /> : <>{(worker.first_name?.[0] || '')}{(worker.last_name?.[0] || '')}</>}</span>
                       <span style={{ flex: 1, minWidth: 0 }}><span className="bt-pl-name" style={{ display: 'block' }}>{worker.first_name} {worker.last_name}</span></span>
                       {absence ? (
                         <span className="bt-pl-m-badge" style={{ background: '#EFE7DA', color: av!.fg }}>{av!.icon} {(ABSENCE_LABELS[absence.absence_type!] || '').toUpperCase()}</span>
                       ) : liveHere ? (
-                        // « EN COURS » passe avant « ✓ POINTÉ » : la journée n'est pas finie.
+                        // « EN COURS » passe avant « ✓ ENVOYÉ » : la journée n'est pas finie.
                         <span className="bt-pl-m-badge" data-testid="m-badge-live" style={{ background: '#2FA36B', color: '#fff' }}><span className="bt-pl-live-dot" style={{ background: '#fff' }} aria-hidden />EN COURS</span>
                       ) : anyReal ? (
-                        <span className="bt-pl-m-badge" style={{ background: '#E4F2E9', color: '#1F7A4D' }}>✓ POINTÉ</span>
+                        // Lot 11 : le vert est réservé au vrai pointage en cours ; des heures
+                        // envoyées gardent une couleur neutre et disent ce qu'elles sont.
+                        <span className="bt-pl-m-badge" data-testid="m-badge-sent" style={{ background: '#EFEAE0', color: '#3D382F' }}>✓ ENVOYÉ</span>
                       ) : null}
                     </button>
                     {absence && liveChip && <div className="bt-pl-m-bubs">{liveChip}</div>}
@@ -2714,19 +2964,32 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                         {(chantiers.length > 0 || extra.length > 0 || liveChip) && (
                           <div className="bt-pl-m-bubs">
                             {/* Taper une bulle → modifier l'affectation (openEdit, comme desktop). */}
-                            {chantiers.map(p => (
-                              <div key={p.id} className="bt-pl-m-bubbtn" role="button" tabIndex={0} onClick={() => openEdit(p)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEdit(p); } }}>
-                                <BubbleContent p={p} palette={paletteFor(p)} real={realForPlanning(p)} draft={draftForPlanning(p)} docCount={docsByWorksite.get(p.worksite_id || '') || 0} live={liveForBubble(p)} />
-                              </div>
-                            ))}
+                            {chantiers.map(p => {
+                              // Lot 11 : en mode « Sélectionner », taper coche (ou dit pourquoi c'est verrouillé).
+                              const sel = selFor(p);
+                              const act = () => (sel ? toggleOne(p, sel.lock) : openEdit(p));
+                              return (
+                                <div key={p.id} className={`bt-pl-m-bubbtn${sel ? ` ${selClass(sel)}` : ''}`} role="button" tabIndex={0}
+                                  data-sel={sel ? selAttr(sel) : undefined} data-pid={sel ? p.id : undefined}
+                                  onClick={act} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); act(); } }}>
+                                  <BubbleContent p={p} palette={paletteFor(p)} real={realForPlanning(p)} draft={draftForPlanning(p)} docCount={docsByWorksite.get(p.worksite_id || '') || 0} live={liveForBubble(p)} />
+                                  {sel && <SelMark sel={sel} />}
+                                </div>
+                              );
+                            })}
                             {/* Taper une intervention ajoutée par le salarié → attribution / documents. */}
-                            {extra.map((x, i) => (
-                              <button type="button" key={`mx${i}`} className="bt-pl-extra" onClick={() => setExtraTarget({ userId: worker.id, dateStr, worksiteId: x.worksiteId, name: x.name, minutes: x.minutes })}>
-                                <span className="bt-pl-bub-bar" style={{ background: x.pending ? '#8a8378' : '#B5472E' }} />
-                                <span className="bt-pl-extra-top"><span className="bt-pl-extra-name">{x.name}</span></span>
-                                <span className="bt-pl-extra-by" style={x.pending ? { color: '#6E6A63' } : undefined}><UserIcon className="h-2.5 w-2.5 shrink-0" /> {formatMinutes(x.minutes)} · {x.pending ? 'saisi, à envoyer' : 'ajouté par le salarié'}</span>
-                              </button>
-                            ))}
+                            {extra.map((x, i) => {
+                              const chip = (
+                                <button type="button" key={`mx${i}`} className="bt-pl-extra" onClick={() => (selectMode ? toast('Heures ajoutées par le salarié — non supprimable') : setExtraTarget({ userId: worker.id, dateStr, worksiteId: x.worksiteId, name: x.name, minutes: x.minutes }))}>
+                                  <span className="bt-pl-bub-bar" style={{ background: x.pending ? '#8a8378' : '#B5472E' }} />
+                                  <span className="bt-pl-extra-top"><span className="bt-pl-extra-name">{x.name}</span></span>
+                                  <span className="bt-pl-extra-by" style={x.pending ? { color: '#6E6A63' } : undefined}><UserIcon className="h-2.5 w-2.5 shrink-0" /> {formatMinutes(x.minutes)} · {x.pending ? 'saisi, à envoyer' : 'ajouté par le salarié'}</span>
+                                </button>
+                              );
+                              return selectMode
+                                ? <div key={`mx${i}`} className="bt-pl-sel lock" data-sel="lock">{chip}<SelMark sel={{ on: false, lock: 'Heures ajoutées par le salarié' }} /></div>
+                                : chip;
+                            })}
                             {liveChip}
                           </div>
                         )}
@@ -2757,6 +3020,50 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
           ) : null}
         </DragOverlay>
       </DndContext>
+
+      {/* Lot 11 : en bas de l'écran — la barre de sélection (mode « Sélectionner »)
+          et la carte « N intervention(s) supprimée(s) · Annuler » (jusqu'à sa croix). */}
+      {(selectMode || undoCard) && (() => {
+        const n = selIds.length;
+        const weekIds = selectMode ? selectableIn((p) => displayWorkers.some((w) => w.id === p.user_id)) : [];
+        const dayStr = format(weekDays[mobileDayIdx], 'yyyy-MM-dd');
+        const dayIds = selectMode ? selectableIn((p) => p.work_date === dayStr && workers.some((w) => w.id === p.user_id)) : [];
+        const allOn = (ids: string[]) => ids.length > 0 && ids.every((id) => selOn.has(id));
+        return (
+          <div className="bt-pl-dock">
+            {undoCard && (
+              <div className="bt-pl-undo" data-testid="undo-card" key={undoCard.key}>
+                <ActionDone message={undoCard.message} strongUndo={undoCard.strong} undo={undoCard.undo} />
+                <button type="button" className="bt-pl-undo-x" aria-label="Fermer" title="Fermer" data-testid="undo-close" onClick={() => setUndoCard(null)}>✕</button>
+              </div>
+            )}
+            {selectMode && (
+              <div className="bt-pl-selbar" role="toolbar" aria-label="Sélection" data-testid="sel-bar">
+                <span className="bt-pl-selbar-n" data-testid="sel-count">{n} sélectionnée{n > 1 ? 's' : ''}</span>
+                <button type="button" className="bt-pl-selbar-btn wk" data-testid="sel-all" onClick={() => toggleGroup(weekIds)}>
+                  {allOn(weekIds) ? 'Tout désélectionner' : 'Tout sélectionner'}
+                </button>
+                <button type="button" className="bt-pl-selbar-btn dy" data-testid="sel-all-day" onClick={() => toggleGroup(dayIds)}>
+                  {allOn(dayIds) ? 'Tout désélectionner' : 'Tout sélectionner'}
+                </button>
+                <button type="button" className="bt-pl-selbar-del" data-testid="sel-delete" disabled={n === 0 || eraseBusy} onClick={deleteSelected}>
+                  {eraseBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />} Supprimer ({n})
+                </button>
+                <button type="button" className="bt-pl-selbar-btn bt-pl-selbar-ok" data-testid="sel-done" onClick={exitSelect}>Terminer</button>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* Lot 11 : « À relancer » sur téléphone — la même liste que sur ordinateur. */}
+      <Dialog open={relanceOpen} onOpenChange={setRelanceOpen}>
+        <DialogContent className="bt-skin max-w-sm">
+          <DialogHeader><DialogTitle>À relancer · {monthLabel}</DialogTitle></DialogHeader>
+          <div className="bt-pl-sp-list overflow-hidden rounded-lg border" data-testid="relance-list">{renderRelanceRows(() => setRelanceOpen(false))}</div>
+          <p className="text-xs text-muted-foreground">Journées planifiées ce mois-ci, sans heures envoyées.</p>
+        </DialogContent>
+      </Dialog>
 
       {/* Disponibilité popup — 5 buttons + fiche link */}
       <Dialog open={!!statusTarget} onOpenChange={(o) => { if (!o) setStatusTarget(null); }}>
@@ -2808,7 +3115,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         onOpenSalaries={() => setSalariesOpen(true)}
         onOpenChantiers={() => { setClientsQuery(''); setMobileChantiersOpen(true); }}
         onOpenExportTeam={() => setExportOpen(true)}
-        onOpenExportWorker={() => setExportWorkerOpen(true)}
+        onOpenSelect={workers.length > 0 ? enterSelect : undefined}
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenCost={() => setCostOpen(true)}
         onOpenLeaves={() => setLeaveOpen(true)}
@@ -2870,10 +3177,10 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                   </div>
                 ))}
                 {officeUsers.length <= 1 && (
-                  <p className="px-1 pt-1 text-[11.5px] font-semibold text-muted-foreground">
-                    Une seule personne a l&apos;accès bureau. Si elle est indisponible, plus personne ne sort la paie —
-                    nommez un second depuis la liste ci-dessous.
-                  </p>
+                  <div className="flex items-center gap-1.5 px-1 pt-1 text-[11.5px] font-semibold text-muted-foreground">
+                    <span>Un seul accès bureau.</span>
+                    <InfoTip text="Si cette personne est indisponible, plus personne ne sort la paie. Nommez un second « Bureau » dans la liste ci-dessous." />
+                  </div>
                 )}
               </div>
             </div>
@@ -2886,12 +3193,15 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                 <p className="text-sm text-muted-foreground py-6 text-center">Aucun résultat</p>
               ) : (
                 filteredWorkers.map(w => {
-                  const miss = (missingByWorker.get(w.id) || []).length;
+                  const miss = (missingEffective.get(w.id) || []).length;
+                  const closedUntil = workerClosures.get(w.id);
                   return (
                     <div key={w.id} className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
                       <button className="flex min-w-0 flex-1 items-center gap-1.5 text-left" onClick={() => { setSalariesOpen(false); setFicheMode('manage'); setFicheWorker(w); }}>
                         <span className="font-medium truncate">{w.first_name} {w.last_name}</span>
                         {w.role === 'lead' && <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold" style={{ background: '#F1E8D6', color: '#6b5a2e' }}>CHEF</span>}
+                        {/* Lot 11 : « Clôturer jusqu'au… » — on voit d'un coup d'œil qui est parti. */}
+                        {closedUntil && <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold" style={{ background: '#ECE8E1', color: '#6E6A63' }} data-testid="closure-chip" title="Heures clôturées jusqu'à cette date">clôturé au {format(parseISO(closedUntil), 'dd/MM')}</span>}
                         {miss > 0 && <span className="h-2 w-2 rounded-full shrink-0" style={{ background: '#B5472E' }} title={`${miss} jour(s) en attente`} />}
                       </button>
                       {miss > 0 && (
@@ -3051,7 +3361,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         <DialogContent className="bt-skin max-w-sm">
           <DialogHeader><DialogTitle>Attribuer un client</DialogTitle></DialogHeader>
           <div className="space-y-3 pt-1">
-            <p className="text-sm text-muted-foreground">Intervention <strong>« {attributeTarget?.label} »</strong> ajoutée par le salarié. Choisis le bon client, ou crée-le.</p>
+            <p className="text-sm text-muted-foreground">Intervention <strong>« {attributeTarget?.label} »</strong> ajoutée par le salarié. Choisissez le client.</p>
             <Select onValueChange={(v) => attributeClient(v)} disabled={attrBusy}>
               <SelectTrigger><SelectValue placeholder="Choisir un client existant…" /></SelectTrigger>
               <SelectContent className="bt-skin">
@@ -3073,7 +3383,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       <Dialog open={!!extraTarget} onOpenChange={(o) => { if (!o) setExtraTarget(null); }}>
         <DialogContent className="bt-skin max-w-sm">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><UserIcon className="h-4 w-4" /> {extraTarget?.name}</DialogTitle>
+            <DialogTitle className="flex items-start gap-2"><UserIcon className="h-4 w-4 mt-1 shrink-0" /> <span className="min-w-0 break-words">{extraTarget?.name}</span></DialogTitle>
           </DialogHeader>
           {extraTarget && (
             <div className="space-y-3 pt-1">
@@ -3091,26 +3401,13 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         </DialogContent>
       </Dialog>
 
-      {/* Mini pop-up roulette : heure de RDV (évite le scroll dans le pop-up d'intervention) */}
-      <Dialog open={hourPickerOpen} onOpenChange={setHourPickerOpen}>
-        <DialogContent className="bt-skin max-w-xs">
-          <DialogHeader><DialogTitle>Heure de RDV</DialogTitle></DialogHeader>
-          <div className="rounded-2xl bg-[#15120F] p-3 flex justify-center">
-            <TimeCylinder value={editHour || '08:00'} onChange={setEditHour} />
-          </div>
-          <div className="flex gap-2 pt-1">
-            <Button variant="outline" className="flex-1" onClick={() => { setEditHour(''); setHourPickerOpen(false); }}>Pas d&apos;heure</Button>
-            <Button className="flex-1" onClick={() => { if (!editHour) setEditHour('08:00'); setHourPickerOpen(false); }}>Valider</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Team export */}
+      {/* Team export — lot 11 : « Exporter » de la barre ouvre directement cette fenêtre ;
+          un seul menu « Exporter ▾ » (PDF, Excel, CSV), le même que dans la fiche. */}
       <Dialog open={exportOpen} onOpenChange={(o) => { setExportOpen(o); if (o) setExportRange(null); }}>
-        <DialogContent className="bt-skin max-w-sm">
-          <DialogHeader><DialogTitle>Exporter les heures de l'équipe</DialogTitle></DialogHeader>
-          <div className="space-y-4 pt-2">
-            <div className="grid grid-cols-3 gap-2">
+        <DialogContent className="bt-skin max-w-sm" data-testid="team-export">
+          <DialogHeader><DialogTitle>Exporter l&apos;équipe</DialogTitle></DialogHeader>
+          <div className="space-y-4 pt-1">
+            <div className="flex flex-wrap gap-2">
               <Button variant="outline" size="sm" onClick={() => { const t = new Date(); setExportRange({ from: t, to: t }); }}>Aujourd'hui</Button>
               <Button variant="outline" size="sm" onClick={() => setExportRange({ from: currentWeekStart, to: addDays(currentWeekStart, DAYS_IN_WEEK - 1) })}>Cette semaine</Button>
               <Popover>
@@ -3126,48 +3423,39 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
             </div>
             {exportRange
               ? <p className="text-center text-sm font-medium capitalize">{format(exportRange.from, 'd MMM', { locale: fr })} → {format(exportRange.to, 'd MMM yyyy', { locale: fr })}</p>
-              : <p className="text-center text-sm text-muted-foreground">Choisis une période à exporter.</p>}
-            <div className="flex gap-2">
-              <Button className="flex-1" onClick={() => runExport('excel')} disabled={exporting || !exportRange}>
-                {exporting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <FileSpreadsheet className="h-4 w-4 mr-2" />} Excel
-              </Button>
-              <Button className="flex-1" variant="outline" onClick={() => runExport('pdf')} disabled={exporting || !exportRange}>
-                {exporting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <FileText className="h-4 w-4 mr-2" />} PDF
-              </Button>
+              : <p className="text-center text-sm text-muted-foreground">Choisissez une période.</p>}
+            <div className="flex">
+              <ExportMenu onPick={(k) => runExport(k)} disabled={exporting || !exportRange} busy={exporting} align="start" testId="team-export-menu" />
             </div>
-            {/* Le CSV s'adresse au logiciel de paie, pas à un lecteur : une ligne
-                par salarié et par semaine, heures en centièmes. Il verrouille
-                comme l'Excel — c'est le même acte, envoyer les heures à la paie. */}
-            <Button className="w-full" variant="outline" onClick={() => runExport('csv')} disabled={exporting || !exportRange}
-              title="Récapitulatif par salarié et par semaine, à importer dans le logiciel de paie (Silae, Sage, Cegid…)">
-              {exporting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <FileSpreadsheet className="h-4 w-4 mr-2" />} CSV pour la paie
-            </Button>
             <Button
               variant="outline"
-              className="w-full"
+              className="w-full min-w-0 justify-start"
               onClick={() => runExport('comptable')}
               disabled={exporting || !exportRange || !accountantEmail}
+              data-testid="send-accountant"
               title={accountantEmail
                 ? `Envoyer le tableur à ${accountantEmail}`
                 : "Enregistrez l'adresse de votre comptable dans les réglages"}
             >
-              {exporting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Mail className="h-4 w-4 mr-2" />}
-              {accountantEmail ? `Envoyer à ${accountantEmail}` : 'Envoyer au comptable'}
+              {exporting ? <Loader2 className="h-4 w-4 shrink-0 animate-spin mr-2" /> : <Mail className="h-4 w-4 shrink-0 mr-2" />}
+              <span className="min-w-0 truncate">{accountantEmail ? `Envoyer à ${accountantEmail}` : 'Envoyer au comptable'}</span>
             </Button>
             {!accountantEmail && (
-              <p className="text-xs text-muted-foreground">
-                Aucune adresse de comptable enregistrée. Ajoutez-la dans les réglages de l&apos;entreprise.
-              </p>
+              <p className="text-xs text-muted-foreground">Ajoutez l&apos;adresse du comptable dans les réglages.</p>
             )}
-            <p className="text-xs text-muted-foreground">Verrouille les saisies exportées (paie).</p>
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span>Exporter verrouille les heures de la période.</span>
+              <InfoTip text="Excel, PDF ou CSV pour la paie : les heures exportées sont verrouillées, les salariés ne peuvent plus les modifier. Vous gardez la main." />
+            </div>
 
             {/* Clôture du mois — après l'export, on ferme. Un salarié ne peut
                 alors plus rien écrire sur ce mois ; le bureau, si. */}
             <div className="border-t pt-3 space-y-2">
               <p className="text-sm font-semibold">Clôture du mois</p>
-              <p className="text-xs text-muted-foreground">
-                Une fois le mois clôturé, les salariés ne peuvent plus rien y changer. Vous, si — et vous pouvez rouvrir.
-              </p>
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span>Les salariés ne pourront plus rien y changer.</span>
+                <InfoTip text="Vous gardez la main et pouvez rouvrir à tout moment." />
+              </div>
               {closableMonths.map((m) => {
                 const label = format(new Date(`${m}-01T00:00:00`), 'MMMM yyyy', { locale: fr });
                 const closed = closedMonths.has(m);
@@ -3185,6 +3473,12 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                   </div>
                 );
               })}
+            </div>
+            <div className="text-center">
+              <button type="button" className="text-xs font-semibold text-muted-foreground underline hover:text-foreground" data-testid="export-one-worker"
+                onClick={() => { setExportOpen(false); setExportWorkerOpen(true); }}>
+                Un seul salarié ?
+              </button>
             </div>
           </div>
         </DialogContent>
@@ -3223,7 +3517,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         <DialogContent className="bt-skin max-w-sm max-h-[80vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Exporter un salarié</DialogTitle></DialogHeader>
           <div className="space-y-3 pt-1">
-            <p className="text-sm text-muted-foreground">Choisis un salarié : sa fiche s'ouvre avec le calendrier (jour / semaine / période) et le téléchargement Excel / PDF. Cet export ne verrouille pas les heures.</p>
+            <p className="text-sm text-muted-foreground">Choisissez un salarié. Cet export ne verrouille rien.</p>
             <div className="space-y-1">
               {workers.length === 0 ? (
                 <div className="py-5 text-center">
@@ -3252,8 +3546,8 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       {/* Cell add — a client on a specific day */}
       <Dialog open={addOpen} onOpenChange={(o) => { setAddOpen(o); if (!o) setAddTarget(null); }}>
         <DialogContent className="bt-skin max-w-sm">
-          <DialogHeader><DialogTitle>Ajouter un client</DialogTitle></DialogHeader>
-          <form onSubmit={confirmAdd} className="space-y-4 pt-2">
+          <DialogHeader><DialogTitle>Ajouter une intervention</DialogTitle></DialogHeader>
+          <form onSubmit={confirmAdd} className="space-y-4 pt-2" data-testid="add-form">
             <div className="space-y-2">
               <Label>Client</Label>
               <Select value={addWorksite} onValueChange={setAddWorksite}>
@@ -3263,6 +3557,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                 </SelectContent>
               </Select>
             </div>
+            <ScheduleRow start={addStart} end={addEnd} onStart={setAddStart} onEnd={setAddEnd} testId="add-time" onBadChange={setAddTimeBad} />
             <div className="space-y-2">
               <Label>Note pour le poseur (optionnel)</Label>
               <Textarea value={addNote} onChange={(e) => setAddNote(e.target.value)} rows={2} placeholder="Ex : code portail 1234…" />
@@ -3284,7 +3579,10 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
           </DialogHeader>
           {pendingAbsence && (
             <div className="space-y-3 pt-2">
-              <p className="text-sm text-muted-foreground">Choisis la période (clique le 1er jour puis le dernier). Dernier jour vide = jusqu'au retour « Présent ».</p>
+              <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                <span>Touchez le 1er jour, puis le dernier.</span>
+                <InfoTip text="Sans dernier jour : jusqu'au retour « Présent »." />
+              </div>
               <div className="flex justify-center">
                 <Calendar
                   mode="range"
@@ -3344,17 +3642,8 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                 )}
               </div>
 
-              {/* Heure de RDV (facultatif) — ouvre la roulette cylindre dans un mini pop-up */}
-              <div className="space-y-1.5">
-                <Label>Heure de RDV (facultatif)</Label>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <Button variant="outline" size="sm" onClick={() => setHourPickerOpen(true)}>
-                    <Clock className="h-4 w-4 mr-1.5" /> {editHour || 'Ajouter une heure'}
-                  </Button>
-                  {editHour && <button type="button" className="text-xs font-semibold text-muted-foreground underline hover:text-foreground" onClick={() => setEditHour('')}>retirer</button>}
-                  <span className="text-xs text-muted-foreground">Seulement pour un RDV à heure fixe.</span>
-                </div>
-              </div>
+              {/* Lot 11 : « Horaire prévu : début – fin » (facultatifs), plus de roulette. */}
+              <ScheduleRow start={editStart} end={editEnd} onStart={setEditStart} onEnd={setEditEnd} testId="edit-time" onBadChange={setEditTimeBad} />
 
               {/* Note for the poseur */}
               <div className="space-y-1.5">
@@ -3397,8 +3686,8 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                 <Button className="flex-1" onClick={saveAffectation} disabled={savingEdit}>
                   {savingEdit && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer
                 </Button>
-                <Button variant="outline" className="text-destructive" onClick={deleteAffectation} disabled={deletingEdit}>
-                  {deletingEdit ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Trash2 className="h-4 w-4 mr-2" />} Retirer
+                <Button variant="outline" className="text-destructive" onClick={deleteAffectation} disabled={deletingEdit} data-testid="edit-delete">
+                  {deletingEdit ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Trash2 className="h-4 w-4 mr-2" />} Supprimer
                 </Button>
               </div>
             </div>
@@ -3415,12 +3704,12 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
           {clientFiche && (
             <div className="space-y-2 pt-1">
               <div className="space-y-1"><Label>Nom du client</Label><Input value={wsName} onChange={(e) => setWsName(e.target.value)} /></div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div className="space-y-1"><Label>Type de produit</Label><Input value={wsProduct} onChange={(e) => setWsProduct(e.target.value)} /></div>
                 <div className="space-y-1"><Label>Téléphone</Label><Input type="tel" value={wsPhone} onChange={(e) => setWsPhone(e.target.value)} /></div>
               </div>
               <div className="space-y-1"><Label>Email</Label><Input type="email" value={wsEmail} onChange={(e) => setWsEmail(e.target.value)} /></div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div className="space-y-1"><Label>Ville</Label><Input value={wsCity} onChange={(e) => setWsCity(e.target.value)} /></div>
                 <div className="space-y-1"><Label>Adresse</Label><Input value={wsAddress} onChange={(e) => setWsAddress(e.target.value)} /></div>
               </div>
@@ -3431,10 +3720,11 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                   déclencherait jamais d'alerte. Heures mises en avant car
                   toujours exploitables, même sans taux horaire renseigné. */}
               <div className="rounded-md border bg-muted/30 p-2 space-y-2">
-                <p className="text-xs font-medium text-muted-foreground">
-                  Budget main-d&apos;œuvre — <span className="italic">facultatif</span> · alerte à 70 %, 80 % et 100 %
-                </p>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                  <span>Budget main-d&apos;œuvre — <span className="italic">facultatif</span> · alerte à 70 %, 80 % et 100 %</span>
+                  <InfoTip text="Hors matériaux et sous-traitance. Le montant en € n'est juste que si tous les salariés ont un taux horaire — sinon, utilisez les heures." />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <div className="space-y-1">
                     <Label className="text-xs">Heures prévues</Label>
                     <Input type="text" inputMode="decimal" value={wsBudgetH} onChange={(e) => setWsBudgetH(e.target.value)} placeholder="ex. 48" />
@@ -3444,9 +3734,6 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                     <Input type="text" inputMode="decimal" value={wsBudgetE} onChange={(e) => setWsBudgetE(e.target.value)} placeholder="ex. 1500" />
                   </div>
                 </div>
-                <p className="text-[11px] text-muted-foreground">
-                  Main-d&apos;œuvre uniquement (hors matériaux et sous-traitance). Le montant en euros n&apos;est fiable que si tous les salariés ont un taux horaire renseigné — sinon, utilisez les heures.
-                </p>
               </div>
 
               <div className="flex flex-wrap gap-2 pt-1">

@@ -50,7 +50,7 @@ const HEAD: Record<WorkerActionDraft['type'], [string, typeof Play, string]> = {
   modifier_heures: ['Changer mes horaires', Clock, 'Enregistrer'],
   panier_repas: ['Panier repas', UtensilsCrossed, 'Enregistrer'],
   copier_journee: ['Copier une journée', Copy, 'Copier'],
-  reserve_corrigee: ['Réserve corrigée sur place', Wrench, 'Confirmer'],
+  reserve_corrigee: ['Lever la réserve', Wrench, 'Lever la réserve'],
   nouveau_chantier: ['Nouveau chantier', MapPin, 'Ajouter'],
   email_client: ['Email du client', Mail, 'Enregistrer'],
   effacer_heures: ['Effacer mes heures', Eraser, 'Effacer'],
@@ -254,14 +254,17 @@ export default function WorkerActionCard({ extra, execute, onDone, ctl }: Props)
       );
       break;
     case 'reserve_corrigee':
-      body = (
+      body = (<>
         <div><label>Chantier</label>
           <select value={d.entry_id ?? ''} className={d.entry_id ? '' : 'todo'} onChange={(e) => set({ entry_id: e.target.value || null })}>
             <option value="">Choisir…</option>
             {d.choix.map((c) => <option key={c.id} value={c.id}>{c.chantier} · {c.debut}–{c.fin}</option>)}
           </select>
         </div>
-      );
+        <div><label>Commentaire (facultatif)</label>
+          <textarea rows={2} value={d.note ?? ''} onChange={(e) => set({ note: e.target.value })} />
+        </div>
+      </>);
       break;
     case 'nouveau_chantier':
       body = (

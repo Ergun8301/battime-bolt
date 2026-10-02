@@ -197,3 +197,21 @@ Deno.test('📎 Salarié : photo → documents du bon chantier + « Avec réserv
   eq(act(fromWorkerCall('ranger_photo', { chantier: 'Bureau Martin', reserve: true }, SNAP, LIVE)).problems.length, 1, 'réserve sans heures ce jour-là → signalé');
   eq(checkWorkerAction({ type: 'ranger_photo', worksite_id: 'w-dupont-viriat', chantier_texte: '', reserve: true, detail: '', lignes: LIVE.lignes }, SNAP, LIVE), [], 'détail de réserve FACULTATIF');
 });
+
+Deno.test('Lot 11 — « Lever la réserve » : chantier cité, commentaire facultatif, levées exclues', () => {
+  const LIVE: WorkerLive = { enCours: null, lignes: [
+    { id: 'e1', chantier: 'Villa Dupont', debut: '07:30', fin: '12:00', envoyee: true, reserve: true },
+    { id: 'e2', chantier: 'Bureau Martin', debut: '13:00', fin: '16:30', envoyee: true, reserve: true },
+    { id: 'e3', chantier: 'Maison Roux', debut: '16:30', fin: '18:00', envoyee: true, reserve: true, corrigee: true },
+  ] };
+  const r = handleWorkerLocally('je lève la réserve de bureau martin : joint refait', BTP, LIVE);
+  eq([act(r).draft.type, act(r).draft.entry_id, act(r).draft.note, act(r).problems], ['reserve_corrigee', 'e2', 'joint refait', []], 'chantier de la phrase + commentaire après « : »');
+  const plain = handleWorkerLocally("j'ai réglé la réserve", BTP, LIVE);
+  eq([act(plain).draft.entry_id, act(plain).draft.note, act(plain).problems], [null, undefined, ['Choisissez le chantier.']], 'deux réserves ouvertes → à choisir, sans commentaire');
+  eq((act(plain).draft.choix as { id: string }[]).map((c) => c.id), ['e1', 'e2'], 'une réserve déjà levée (bureau ou salarié) n’est pas proposée');
+  const ia = fromWorkerCall('reserve_corrigee', { chantier: 'Villa Dupont', commentaire: '  vis posée ' }, BTP, LIVE);
+  eq([act(ia).draft.entry_id, act(ia).draft.note], ['e1', 'vis posée'], 'IA : commentaire nettoyé');
+  eq(checkWorkerAction({ type: 'reserve_corrigee', entry_id: null, choix: [] }, BTP, LIVE), ['Aucune réserve à lever aujourd’hui.'], 'rien à lever');
+  const g = handleWorkerLocally('comment je lève une réserve ?', BTP, LIVE) as { kind: string; answer: string };
+  eq([g.kind, /Lever la réserve/.test(g.answer)], ['guide', true], 'aide : « Lever la réserve »');
+});

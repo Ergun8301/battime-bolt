@@ -6,14 +6,15 @@ import { addCertification, setWorkerActive, updateWorkerIdentity } from '@/lib/a
 import { useAuth } from '@/components/auth-provider';
 import { corrigerHeures, fmtHeure } from '@/lib/corrections';
 import { User, Worksite, Certification, CertificationType } from '@/lib/types';
-import { ExportEntry, exportEntriesToExcel, exportEntriesToPDF } from '@/lib/export-utils';
+import { ExportEntry, exportEntriesToExcel, exportEntriesToPDF, exportEntriesToCSV } from '@/lib/export-utils';
+import { fetchCompanyClosures, closeWorkerUntil, reopenWorker } from '@/lib/worker-closure';
 import { fetchAllPaged } from '@/lib/fetch-all';
 import { isCounted } from '@/lib/status';
 import { positionUtile, fmtPrecision, fmtCoord } from '@/lib/position';
 import { parisHHmm } from '@/lib/utils';
 import { DEFAULT_WEEKLY_HOURS, DEFAULT_OVERTIME_RATES, weeklyHoursFor, weeklyTotals, routeMinutesByEntry, type RouteEntry } from '@/lib/overtime';
 import { weekStart as weekStartOf, weekEnd as weekEndOf } from '@/lib/week';
-import { computeMissingDays } from '@/lib/work-status';
+import { computeMissingDays, missingWindowStart } from '@/lib/work-status';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,12 +24,15 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ExportMenu, type ExportKind } from '@/components/export-menu';
+import { InfoTip } from '@/components/ui/info-tip';
+import { TimeField, TIME_HINT } from '@/components/time-field';
 import {
-  CalendarRange, Clock, Utensils, MapPin, FileSpreadsheet, FileText, Loader2,
+  CalendarRange, Clock, Utensils, MapPin, Loader2,
   Settings2, Archive, ArchiveRestore, Trash2, Link2, User as UserIcon, AlertTriangle, Hammer, PencilLine, BellOff,
-  ShieldCheck, Plus,
+  ShieldCheck, Plus, Lock,
 } from 'lucide-react';
-import { format, parseISO, isSameDay, subDays, addDays, differenceInCalendarDays } from 'date-fns';
+import { format, parseISO, isSameDay, differenceInCalendarDays, startOfMonth, startOfDay } from 'date-fns';
 import { weekStart, weekEnd } from '@/lib/week';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -48,7 +52,6 @@ interface WorkerDetailDialogProps {
   onChanged?: () => void;
 }
 
-const MISSING_WINDOW_DAYS = 30;
 const OTHER_NAME = 'Autre';
 
 const CERT_TYPES: { key: CertificationType; label: string }[] = [
@@ -123,6 +126,8 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
   // geste, il n'y a rien de nouveau à apprendre.
   const [correctingId, setCorrectingId] = useState<string | null>(null);
   const [cStart, setCStart] = useState('08:00');
+  const [cBadStart, setCBadStart] = useState(false);
+  const [cBadEnd, setCBadEnd] = useState(false);
   const [cEnd, setCEnd] = useState('17:00');
   const [cSaving, setCSaving] = useState(false);
   // L'historique des corrections, par ligne d'heures.
@@ -134,6 +139,18 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
   const [newClientName, setNewClientName] = useState('');
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
+
+  // « Clôturer jusqu'au… » (lot 11) : fin de contrat en cours de mois.
+  // `closureDispo` = la table user_closures se lit VRAIMENT (migration
+  // appliquée) ; sinon le bouton reste caché, comme le matricule plus bas.
+  const [closureDispo, setClosureDispo] = useState(false);
+  const [closedUntil, setClosedUntil] = useState<string | null>(null);
+  const [closePickOpen, setClosePickOpen] = useState(false);
+  const [closeTarget, setCloseTarget] = useState<{ date: Date; drafts: number; thenArchive: boolean } | null>(null);
+  const [closeBusy, setCloseBusy] = useState(false);
+  // « Archiver » d'un salarié dont les heures ne sont pas clôturées : on lui
+  // propose d'abord de les clôturer (le geste naturel d'une fin de contrat).
+  const [archiveAsk, setArchiveAsk] = useState(false);
 
   const [missing, setMissing] = useState<string[]>([]);
 
@@ -147,6 +164,9 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
   // la migration du matricule n'est pas appliquée, on n'affiche pas un champ
   // qui perdrait ce qu'on y tape.
   const [mMatricule, setMMatricule] = useState('');
+  // Le matricule ENREGISTRÉ (pas la case en cours de frappe) : c'est lui qui
+  // part dans le CSV de paie, comme à l'export de l'équipe.
+  const [savedMatricule, setSavedMatricule] = useState('');
   const [matriculeDispo, setMatriculeDispo] = useState(false);
   const [mHireDate, setMHireDate] = useState('');
   const [mContract, setMContract] = useState('');
@@ -174,7 +194,8 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
     setMPhone(worker.phone || '');
     // Données de paie : table séparée (user_payroll), lisible par le bureau
     // uniquement — plus jamais dans la ligne users visible de tous les salariés.
-    setMNir(''); setMMatricule(''); setMHireDate(''); setMContract(''); setMRate(''); setMWeekly('');
+    setMNir(''); setMMatricule(''); setSavedMatricule(''); setMHireDate(''); setMContract(''); setMRate(''); setMWeekly('');
+    setClosedUntil(null); setClosureDispo(false); setCloseTarget(null); setClosePickOpen(false); setArchiveAsk(false);
     // Si on passe à un autre salarié avant la réponse, celle-ci est ignorée
     // (sinon la fiche du suivant hériterait du NIR / taux du précédent).
     let stale = false;
@@ -198,11 +219,20 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
       };
       setMNir(d.social_security_number || '');
       setMMatricule(d.payroll_id || '');
+      setSavedMatricule((d.payroll_id || '').trim());
       setMHireDate(d.hire_date || '');
       setMContract(d.contract_type || '');
       setMRate(d.hourly_rate != null ? String(d.hourly_rate) : '');
       setMWeekly(d.weekly_hours != null ? String(d.weekly_hours) : '');
     })();
+    // La clôture de ses heures. Table absente (migration pas encore passée)
+    // ou illisible → `null` : on cache le bouton plutôt que d'offrir un geste
+    // qui échouerait.
+    fetchCompanyClosures(worker.company_id).then((m) => {
+      if (stale) return;
+      setClosureDispo(m !== null);
+      setClosedUntil(m?.get(worker.id) ?? null);
+    });
     return () => { stale = true; };
   }, [worker?.id]);
 
@@ -274,6 +304,8 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
    */
   const doCorrection = async (entry: ExportEntry) => {
     if (!worker || !me) return;
+    // Heure tapée mais illisible (« 7h75 ») : on bloque, sinon l'ancienne heure partirait en silence.
+    if (cBadStart || cBadEnd) { toast.error(`Heure non comprise. ${TIME_HINT}`); return; }
     setCSaving(true);
     try {
       const r = await corrigerHeures({ entryId: entry.id, newStart: cStart, newEnd: cEnd });
@@ -327,22 +359,29 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
     }
   };
 
-  // Planning-based missing days (recent window).
+  // Jours planifiés non envoyés — MÊME règle que la pastille du planning et
+  // « À relancer » (lot 11) : mois en cours, cases retirées par le salarié exclues.
   const fetchMissing = useCallback(async () => {
     if (!worker) return;
-    const windowStart = format(subDays(new Date(), MISSING_WINDOW_DAYS), 'yyyy-MM-dd');
-    const [planRes, entRes] = await Promise.all([
-      supabase.from('planning').select('work_date, absence_type').eq('user_id', worker.id).gte('work_date', windowStart),
+    const windowStart = missingWindowStart();
+    const [planRes, entRes, cancelledRes] = await Promise.all([
+      supabase.from('planning').select('id, work_date, absence_type').eq('user_id', worker.id).gte('work_date', windowStart),
       supabase.from('time_entries').select('work_date, status').eq('user_id', worker.id).in('status', ['submitted', 'validated']).gte('work_date', windowStart),
+      supabase.from('time_entries').select('planning_id').eq('user_id', worker.id).eq('status', 'cancelled').not('planning_id', 'is', null).gte('work_date', windowStart),
     ]);
-    const rows = (planRes.data || []) as { work_date: string; absence_type: string | null }[];
+    const rows = (planRes.data || []) as { id: string; work_date: string; absence_type: string | null }[];
+    const withdrawn = new Set<string>(cancelledRes.error ? [] : ((cancelledRes.data || []) as { planning_id: string }[]).map((r) => r.planning_id));
     const absenceDays = new Set<string>(rows.filter((p) => p.absence_type).map((p) => p.work_date));
-    const planned = rows.filter((p) => !p.absence_type && !absenceDays.has(p.work_date)).map((p) => p.work_date);
+    const planned = rows.filter((p) => !p.absence_type && !absenceDays.has(p.work_date) && !withdrawn.has(p.id)).map((p) => p.work_date);
     const declared = new Set<string>((entRes.data || []).map((e: { work_date: string }) => e.work_date));
     setMissing(computeMissingDays(planned, declared));
   }, [worker?.id]);
 
   useEffect(() => { fetchMissing(); }, [fetchMissing]);
+  // Jours clôturés (« Clôturer jusqu'au… ») : la base les refuse au salarié,
+  // inutile de les lui réclamer. Seuls les jours APRÈS la date restent « en
+  // attente » ; la ligne suit d'elle-même la clôture et « Rouvrir ».
+  const missingOpen = closedUntil ? missing.filter((d) => d > closedUntil) : missing;
 
   const fetchEntries = useCallback(async () => {
     if (!worker || !range?.from) return;
@@ -358,12 +397,17 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
       // Les semaines entières qui recouvrent la période, pour le décompte des
       // heures supplémentaires uniquement — l'affichage détaillé reste borné à
       // la période choisie.
-      const { data: wk } = await supabase.from('time_entries')
+      // Paginé lui aussi (lot 11) : il nourrit maintenant le CSV de paie, qui
+      // ne doit jamais être tronqué en silence sur une longue période.
+      type WeekRow = RouteEntry & { total_minutes: number; status: string };
+      const wk = await fetchAllPaged<WeekRow>((f, t2) => supabase.from('time_entries')
         .select('id, user_id, work_date, start_time, end_time, total_minutes, status, gap_before')
         .eq('user_id', worker.id).eq('company_id', worker.company_id)
         .gte('work_date', format(weekStartOf(from), 'yyyy-MM-dd'))
-        .lte('work_date', format(weekEndOf(to), 'yyyy-MM-dd'));
-      setWeekRows((wk || []) as (RouteEntry & { total_minutes: number; status: string })[]);
+        .lte('work_date', format(weekEndOf(to), 'yyyy-MM-dd'))
+        .order('work_date').order('id')
+        .range(f, t2) as unknown as PromiseLike<{ data: WeekRow[] | null; error: { message: string } | null }>);
+      setWeekRows(wk);
 
       const rows = await fetchAllPaged<ExportEntry>((f, t2) => supabase
         .from('time_entries')
@@ -460,10 +504,12 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
     if (isSameDay(range.from, to)) {
       return isSameDay(range.from, new Date()) ? "Aujourd'hui" : format(range.from, 'EEE d MMM yyyy', { locale: fr });
     }
-    return `${format(range.from, 'd MMM')} – ${format(to, 'd MMM yyyy', { locale: fr })}`;
+    return `${format(range.from, 'd MMM', { locale: fr })} – ${format(to, 'd MMM yyyy', { locale: fr })}`;
   })();
 
-  const doExport = (kind: 'excel' | 'pdf') => {
+  // Le MÊME menu « Exporter ▾ » que l'équipe : PDF, Excel, CSV. Ici, jamais de
+  // verrou (« Sans verrou ») : c'est un relevé, pas l'envoi de la paie.
+  const doExport = (kind: ExportKind) => {
     if (!worker) return;
     if (countedEntries.length === 0) { toast.error('Aucune heure envoyée sur cette période'); return; }
     setExporting(true);
@@ -472,16 +518,29 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
       const fromStr = range?.from ? format(range.from, 'yyyy-MM-dd') : '';
       const toStr = range?.to ? format(range.to, 'yyyy-MM-dd') : fromStr;
       const fileName = `bemexo-${worker.last_name}-${worker.first_name}-${fromStr}_${toStr}`.toLowerCase().replace(/\s+/g, '-');
+      // Le récapitulatif porte le prénom et le nom SÉPARÉS : sans eux, le CSV
+      // écrirait « Lucas Petit » dans Nom et laisserait Prénom vide.
+      const recap = weekCounted.map((e) => ({
+        ...e, user: { first_name: worker.first_name, last_name: worker.last_name },
+      })) as unknown as ExportEntry[];
       const opts = {
         fileName, title: 'BEMEXO — Relevé salarié', periodLabel, companyName,
         singleWorkerName: name, travelPaid,
         weeklyHoursByWorker: new Map([[worker.id, effectiveWeeklyHours]]),
-        recapEntries: weekCounted as unknown as ExportEntry[],
+        recapEntries: recap,
         overtimeRates,
+        // Le matricule ENREGISTRÉ, comme à l'export de l'équipe.
+        payrollIdByWorker: savedMatricule ? new Map([[worker.id, savedMatricule]]) : undefined,
       };
       if (kind === 'excel') exportEntriesToExcel(countedEntries, opts);
-      else exportEntriesToPDF(countedEntries, opts);
-      toast.success('Export téléchargé');
+      else if (kind === 'csv') {
+        // Exactement le CSV de l'équipe, réduit à ce salarié : semaines
+        // entières pour CLASSER les heures (normales / sup.), mais seuls les
+        // jours de la période sont PAYÉS (payPeriod) — deux exports qui se
+        // suivent ne paient jamais deux fois le même jour.
+        exportEntriesToCSV({ ...opts, fileName: `${fileName}-paie`, payPeriod: { from: fromStr, to: toStr } });
+      } else exportEntriesToPDF(countedEntries, opts);
+      toast.success(kind === 'csv' ? 'CSV de paie téléchargé (sans verrou)' : 'Export téléchargé');
     } catch (err) {
       console.error('Error exporting worker:', err);
       toast.error("Erreur lors de l'export");
@@ -522,6 +581,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
         return;
       }
       if (payErr) throw payErr;
+      if (matriculeDispo) setSavedMatricule(mMatricule.trim());
       toast.success('Salarié modifié');
       onChanged?.();
     } catch (err) {
@@ -532,8 +592,75 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
     }
   };
 
+  // ─── « Clôturer jusqu'au… » (fin de contrat en cours de mois) ─────────────
+  // Avant de clôturer : compter ses brouillons jusqu'à cette date. Il ne
+  // pourra plus les envoyer ensuite — il faut le dire avant, pas après
+  // (même avertissement que la clôture du mois de l'équipe).
+  const askCloseUntil = async (d: Date, thenArchive = false) => {
+    if (!worker) return;
+    setClosePickOpen(false);
+    setArchiveAsk(false);
+    const { count } = await supabase.from('time_entries')
+      .select('id', { count: 'exact', head: true })
+      .eq('company_id', worker.company_id).eq('user_id', worker.id).eq('status', 'draft')
+      .lte('work_date', format(d, 'yyyy-MM-dd'));
+    setCloseTarget({ date: d, drafts: count || 0, thenArchive });
+  };
+
+  const confirmCloseUntil = async () => {
+    if (!worker || !me || !closeTarget) return;
+    const d = closeTarget.date;
+    const until = format(d, 'yyyy-MM-dd');
+    setCloseBusy(true);
+    try {
+      await closeWorkerUntil(worker.company_id, worker.id, me.id, until);
+      setClosedUntil(until);
+      // La période de la fiche passe au 1er du mois → cette date : « Exporter »
+      // juste à côté donne le relevé final (solde de tout compte).
+      setRange({ from: startOfMonth(d), to: d });
+      const then = closeTarget.thenArchive;
+      setCloseTarget(null);
+      toast.success(`Heures de ${worker.first_name} clôturées jusqu'au ${format(d, 'dd/MM')}`);
+      onChanged?.();
+      if (then) await toggleArchive();
+    } catch (err) {
+      console.error('Error closing worker hours:', err);
+      // Le message du serveur est écrit pour être lu tel quel (« pointage
+      // encore ouvert », « après aujourd'hui ») ; un refus de droits, non.
+      const msg = (err as { message?: string })?.message || '';
+      toast.error(/clôturer|pointage|aujourd/i.test(msg) ? msg : 'Impossible de clôturer ses heures');
+    } finally {
+      setCloseBusy(false);
+    }
+  };
+
+  const doReopen = async () => {
+    if (!worker) return;
+    setCloseBusy(true);
+    try {
+      const done = await reopenWorker(worker.company_id, worker.id);
+      setClosedUntil(null);
+      toast.success(done ? `Heures de ${worker.first_name} rouvertes` : 'Déjà rouvertes');
+      onChanged?.();
+    } catch (err) {
+      console.error('Error reopening worker hours:', err);
+      toast.error('Impossible de rouvrir ses heures');
+    } finally {
+      setCloseBusy(false);
+    }
+  };
+
+  // « Archiver » : si ses heures ne sont pas clôturées, on propose d'abord de
+  // le faire (fin de contrat en une fois). Réactiver, lui, passe directement.
+  const onArchiveClick = () => {
+    if (!worker) return;
+    if (worker.is_active && closureDispo && !closedUntil) { setArchiveAsk(true); return; }
+    toggleArchive();
+  };
+
   const toggleArchive = async () => {
     if (!worker) return;
+    setArchiveAsk(false);
     setMBusy(true);
     try {
       await setWorkerActive(worker.company_id, worker.id, !worker.is_active);
@@ -576,6 +703,61 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
     }
   };
 
+  // ─── « Clôturer jusqu'au… » : le bouton, ou la pastille une fois clôturé ──
+  // Même contrôle dans les deux modes (heures : à côté d'« Exporter » ;
+  // gérer : à côté d'« Archiver »). Caché tant que la table n'existe pas.
+  const today = startOfDay(new Date());
+  const closurePicker = (onPick: (d: Date) => void) => (
+    <div data-testid="closure-calendar">
+      <p className="px-3 pt-3 text-xs font-semibold">Son dernier jour travaillé</p>
+      <Calendar
+        mode="single" numberOfMonths={1} locale={fr}
+        selected={closedUntil ? parseISO(closedUntil) : undefined}
+        defaultMonth={closedUntil ? parseISO(closedUntil) : today}
+        disabled={{ after: today }}
+        onSelect={(d) => { if (d) onPick(d); }}
+      />
+    </div>
+  );
+  const closureTip = (
+    <InfoTip
+      testId="closure-info"
+      text={<>Fin de contrat en cours de mois : ses heures sont closes jusqu&apos;à cette date incluse. Il ne peut plus rien saisir ni envoyer sur ces jours ; vous gardez la main et pouvez rouvrir. Pas de date dans le futur : clôturez le jour de son départ ou après.</>}
+    />
+  );
+  const closureControl = worker && closureDispo ? (
+    closedUntil ? (
+      <span data-testid="closure-chip" className="inline-flex max-w-full items-center gap-1 rounded-full border border-[#E8B79E] bg-[#FBE3D8] py-0.5 pl-2.5 pr-1 text-xs font-semibold text-[#8a2a1c]">
+        <Lock className="h-3.5 w-3.5 flex-none" />
+        <Popover open={closePickOpen} onOpenChange={setClosePickOpen}>
+          <PopoverTrigger asChild>
+            <button type="button" className="min-w-0 truncate text-left hover:underline" title="Changer la date">
+              Heures clôturées jusqu&apos;au {format(parseISO(closedUntil), 'dd/MM')}
+            </button>
+          </PopoverTrigger>
+          <PopoverContent className="bt-skin w-auto p-0" align="end">{closurePicker((d) => askCloseUntil(d))}</PopoverContent>
+        </Popover>
+        <span aria-hidden="true">·</span>
+        <button type="button" data-testid="closure-reopen" onClick={doReopen} disabled={closeBusy}
+          className="flex-none rounded-full px-2 py-0.5 hover:bg-white disabled:opacity-50">
+          Rouvrir
+        </button>
+      </span>
+    ) : (
+      <span className="inline-flex items-center gap-1">
+        <Popover open={closePickOpen} onOpenChange={setClosePickOpen}>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="sm" data-testid="closure-open" disabled={closeBusy}>
+              <Lock className="h-4 w-4 mr-1" /> Clôturer jusqu&apos;au…
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="bt-skin w-auto p-0" align="end">{closurePicker((d) => askCloseUntil(d))}</PopoverContent>
+        </Popover>
+        {closureTip}
+      </span>
+    )
+  ) : null;
+
   return (
     <Dialog open={!!worker} onOpenChange={onOpenChange}>
       <DialogContent className="bt-skin max-w-3xl max-h-[88vh] overflow-y-auto">
@@ -601,19 +783,24 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
             <div className="space-y-1"><Label className="text-xs">Email (identifiant de connexion)</Label><Input value={worker.email || ''} readOnly className="bg-muted/50" /></div>
             {/* Optional payroll info — clearly facultatif */}
             <div className="rounded-md border bg-muted/30 p-2 space-y-2">
-              <p className="text-xs font-medium text-muted-foreground">Infos paie — <span className="italic">facultatif</span> (remplis seulement ce que tu as)</p>
+              <div className="flex items-center gap-1">
+                <p className="text-xs font-medium text-muted-foreground">Infos paie — <span className="italic">facultatif</span></p>
+                <InfoTip text="Remplissez seulement ce que vous avez. Tout reste modifiable." />
+              </div>
               <div className="space-y-1">
                 <Label className="text-xs">Taux horaire — coût chargé (€/h)</Label>
                 <Input type="text" inputMode="decimal" value={mRate} onChange={(e) => setMRate(e.target.value)} placeholder="ex. 28,50" />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">Horaire hebdomadaire — laisser vide pour celui de l&apos;entreprise</Label>
+                <div className="flex items-center gap-1">
+                  <Label className="text-xs">Horaire hebdomadaire</Label>
+                  <InfoTip text={`Laissez vide pour garder celui de l'entreprise (${companyWeeklyHours} h). Sert au calcul des heures supplémentaires.`} />
+                </div>
                 <Input
                   type="text" inputMode="decimal" value={mWeekly}
                   onChange={(e) => setMWeekly(e.target.value)}
                   placeholder={`ex. 39 — par défaut ${companyWeeklyHours} h`}
                 />
-                <p className="text-[11px] text-muted-foreground">Sert au calcul du <strong>coût main d&apos;œuvre par chantier</strong>. Laissez vide si vous ne l&apos;utilisez pas.</p>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div className="space-y-1"><Label className="text-xs">N° de sécurité sociale</Label><Input value={mNir} onChange={(e) => setMNir(e.target.value)} placeholder="1 23 45…" /></div>
@@ -625,12 +812,11 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
                   n'apparaît que si la colonne existe en base. */}
               {matriculeDispo && (
                 <div className="space-y-1">
-                  <Label className="text-xs">Matricule de paie</Label>
+                  <div className="flex items-center gap-1">
+                    <Label className="text-xs">Matricule de paie</Label>
+                    <InfoTip text="Le numéro donné par votre cabinet comptable. Recopiez-le tel quel, zéros compris : c'est la colonne qui rattache les heures au bon bulletin dans le logiciel de paie." />
+                  </div>
                   <Input value={mMatricule} onChange={(e) => setMMatricule(e.target.value)} placeholder="ex. 00042" maxLength={32} />
-                  <p className="text-[11px] text-muted-foreground">
-                    Le numéro donné par votre <strong>cabinet comptable</strong>. Recopiez-le tel quel, zéros compris.
-                    C&apos;est la colonne qui permet au logiciel de paie de rattacher les heures au bon bulletin.
-                  </p>
                 </div>
               )}
             </div>
@@ -700,10 +886,11 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
               <Button size="sm" onClick={saveWorker} disabled={mSaving}>
                 {mSaving && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer
               </Button>
-              <Button size="sm" variant="outline" onClick={toggleArchive} disabled={mBusy}>
+              <Button size="sm" variant="outline" onClick={onArchiveClick} disabled={mBusy} data-testid="worker-archive">
                 {worker.is_active ? <Archive className="h-4 w-4 mr-1" /> : <ArchiveRestore className="h-4 w-4 mr-1" />}
                 {worker.is_active ? 'Archiver' : 'Réactiver'}
               </Button>
+              {closureControl}
               <Button size="sm" variant="ghost" className="text-destructive" onClick={deleteWorker} disabled={mBusy} title="Supprimer (seulement si aucune donnée)">
                 <Trash2 className="h-4 w-4 mr-1" /> Supprimer
               </Button>
@@ -712,12 +899,12 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
         )}
 
         {/* Missing days — discreet inline line */}
-        {missing.length > 0 && (
-          <p className="flex items-start gap-2 text-sm">
+        {missingOpen.length > 0 && (
+          <p className="flex items-start gap-2 text-sm" data-testid="fiche-missing">
             <span className="mt-1.5 h-2 w-2 rounded-full bg-red-500 shrink-0" />
             <span>
-              <span className="font-medium">{missing.length} jour{missing.length > 1 ? 's' : ''} en attente</span>
-              <span className="text-muted-foreground"> · {missing.map((d) => format(parseISO(d), 'EEE d MMM', { locale: fr })).join(', ')}</span>
+              <span className="font-medium">{missingOpen.length} jour{missingOpen.length > 1 ? 's' : ''} en attente</span>
+              <span className="text-muted-foreground"> · {missingOpen.map((d) => format(parseISO(d), 'EEE d MMM', { locale: fr })).join(', ')}</span>
             </span>
           </p>
         )}
@@ -737,16 +924,18 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
                 <Calendar mode="range" selected={range} onSelect={setRange} numberOfMonths={1} locale={fr} defaultMonth={range?.from} />
               </PopoverContent>
             </Popover>
-            <div className="ml-auto flex items-center gap-2">
-              <Button size="sm" onClick={() => doExport('excel')} disabled={exporting || liveEntries.length === 0}>
-                {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}<span className="ml-1.5">Excel</span>
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => doExport('pdf')} disabled={exporting || liveEntries.length === 0}>
-                {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}<span className="ml-1.5">PDF</span>
-              </Button>
+            <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-2">
+              {closureControl}
+              <ExportMenu onPick={doExport} disabled={liveEntries.length === 0} busy={exporting} />
             </div>
           </div>
-          <p className="text-sm text-muted-foreground">Période : <span className="font-medium text-foreground capitalize">{triggerLabel}</span></p>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
+            <span>Période : <span className="font-medium text-foreground capitalize">{triggerLabel}</span></span>
+            <span className="inline-flex items-center gap-1" data-testid="fiche-sans-verrou">
+              · Sans verrou
+              <InfoTip text="Cet export (PDF, Excel ou CSV) ne verrouille pas les heures. Le verrou de paie se pose à l'export de l'équipe." />
+            </span>
+          </div>
         </div>
 
         {/* Total */}
@@ -760,7 +949,10 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
         {weeks.length > 0 && (
           <div className="rounded-lg border px-4 py-3 space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">Semaine par semaine</span>
+              <span className="flex items-center gap-1 text-sm font-medium">
+                Semaine par semaine
+                <InfoTip text={`Heures supplémentaires comptées sur la semaine entière, même si la période commence en milieu de semaine.${travelPaid ? ' Le temps de route payé est compris.' : ''}`} />
+              </span>
               <span className="text-xs text-muted-foreground">
                 base {effectiveWeeklyHours} h{mWeekly.trim() ? ' (propre à ce salarié)' : ''}
               </span>
@@ -785,10 +977,6 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
                 Heures supplémentaires sur la période : {formatMinutesToHours(overtimeMinutes)}
               </p>
             )}
-            <p className="text-xs text-muted-foreground">
-              Comptées sur la semaine entière, même si la période commence en milieu de semaine.
-              {travelPaid && ' Le temps de route payé est compris.'}
-            </p>
           </div>
         )}
 
@@ -928,7 +1116,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
                             identifiants — sinon la correction d'un chef
                             s'afficherait « par le bureau » ici alors que le
                             salarié, lui, a reçu « ton chef a corrigé ». */}
-                        {c.corrected_by === me?.id ? 'par toi' : c.corrected_by_role === 'lead' ? 'par le chef d’équipe' : 'par le bureau'}
+                        {c.corrected_by === me?.id ? 'par vous' : c.corrected_by_role === 'lead' ? 'par le chef d’équipe' : 'par le bureau'}
                         {' · '}
                         {format(parseISO(c.corrected_at), 'd MMM à HH:mm', { locale: fr })}
                       </span>
@@ -1011,17 +1199,18 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
                         )}
 
                         <div className="flex flex-wrap items-center gap-2">
-                          <Input type="time" step={900} value={cStart} onChange={(e) => setCStart(e.target.value)} className="h-9 w-28" aria-label="Heure de début" />
+                          <span className="w-32"><TimeField value={cStart} onChange={setCStart} ariaLabel="Heure de début" onBadChange={setCBadStart} /></span>
                           <span className="text-muted-foreground">→</span>
-                          <Input type="time" step={900} value={cEnd} onChange={(e) => setCEnd(e.target.value)} className="h-9 w-28" aria-label="Heure de fin" />
+                          <span className="w-32"><TimeField value={cEnd} onChange={setCEnd} ariaLabel="Heure de fin" onBadChange={setCBadEnd} /></span>
                           <span className="text-xs text-muted-foreground">
                             était {fmtHeure(entry.start_time)}–{fmtHeure(entry.end_time)}
                           </span>
                         </div>
 
-                        <p className="text-xs text-muted-foreground">
-                          Le salarié recevra une notification et verra la correction sur sa journée.
-                        </p>
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <span>Le salarié est prévenu.</span>
+                          <InfoTip text="Il reçoit une notification et voit la correction sur sa journée." />
+                        </div>
 
                         <div className="flex items-center gap-2">
                           <Button size="sm" onClick={() => doCorrection(entry)} disabled={cSaving}>
@@ -1055,6 +1244,50 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
           </p>
         )}
         </>)}
+
+        {/* « Archiver » sans clôture : fin de contrat ? On clôture d'abord. */}
+        <Dialog open={archiveAsk} onOpenChange={setArchiveAsk}>
+          <DialogContent className="bt-skin max-w-sm" data-testid="archive-ask">
+            <DialogHeader><DialogTitle>Archiver {worker?.first_name} ?</DialogTitle></DialogHeader>
+            <div className="space-y-3 pt-1">
+              <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                <span>Fin de contrat ? Clôturez d&apos;abord ses heures jusqu&apos;à son dernier jour.</span>
+                {closureTip}
+              </div>
+              <div className="flex justify-center rounded-md border">{closurePicker((d) => askCloseUntil(d, true))}</div>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => setArchiveAsk(false)}>Annuler</Button>
+                <Button variant="outline" className="flex-1" disabled={mBusy} onClick={toggleArchive}>Archiver sans clôturer</Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Confirmation de « Clôturer jusqu'au… » : on annonce ce qui restera bloqué. */}
+        <Dialog open={!!closeTarget} onOpenChange={(o) => { if (!o) setCloseTarget(null); }}>
+          <DialogContent className="bt-skin max-w-sm" data-testid="closure-confirm">
+            <DialogHeader>
+              <DialogTitle>
+                Clôturer les heures de {worker?.first_name} jusqu&apos;au {closeTarget ? format(closeTarget.date, 'd MMMM', { locale: fr }) : ''} ?
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3 pt-1">
+              <p className="text-sm text-muted-foreground">Il ne pourra plus rien saisir ni envoyer jusqu&apos;à cette date. Vous gardez la main.</p>
+              {closeTarget && closeTarget.drafts > 0 && (
+                <div className="rounded-md border border-orange-300 bg-orange-50 p-3 text-sm text-orange-900" data-testid="closure-drafts">
+                  <b>{closeTarget.drafts} journée{closeTarget.drafts > 1 ? 's' : ''} en brouillon</b> jusqu&apos;à cette date : pas envoyée{closeTarget.drafts > 1 ? 's' : ''}, donc pas dans l&apos;export, et il ne pourra plus les envoyer.
+                </div>
+              )}
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => setCloseTarget(null)}>Annuler</Button>
+                <Button className="flex-1" disabled={closeBusy} onClick={confirmCloseUntil} data-testid="closure-confirm-btn">
+                  {closeBusy ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                  {closeTarget?.thenArchive ? 'Clôturer et archiver' : 'Clôturer'}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </DialogContent>
     </Dialog>
   );

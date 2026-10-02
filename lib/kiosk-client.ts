@@ -34,9 +34,18 @@ export interface KioskSettings {
    * est en production, écrirait sinon « faux » à la place d'un « vrai ».
    */
   show_planning?: boolean;
-  require_gps: boolean;
+  /** Lot 11 : plus de contrôle GPS. La fonction renvoie toujours `false` ; personne ne le lit plus. */
+  require_gps?: boolean;
   active_from: string | null;
   active_until: string | null;
+}
+
+/** Réponse de `create_pairing` (fenêtre « Borne » du bureau). */
+export interface KioskPairingCode {
+  code: string;
+  expires_at: string;
+  /** Lot 11 : pour périmer ce code (`cancel_pairing`). Absent avec l'ancienne fonction. */
+  pairing_id?: string | null;
 }
 
 /** Ancien planning du jour (`sync`) : gardé pour lire les caches des tablettes d'avant le lot 9. */

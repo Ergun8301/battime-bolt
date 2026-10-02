@@ -36,6 +36,7 @@ import { supabase } from '@/lib/supabase';
 import { DOC_CATEGORY_LABEL } from '@/supabase/functions/_shared/worker-assistant-core';
 import { DOC_MAX_BYTES, uploadWorksiteDocument } from '@/lib/chantier-docs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { InfoTip } from '@/components/ui/info-tip';
 import {
   Loader2, Trash2, FileText, FolderOpen, Download, Mail, Copy, Camera, Paperclip, Link2,
 } from 'lucide-react';
@@ -71,7 +72,8 @@ const DOC_CSS = `
 .bt-doc-addbtn:active{transform:translateY(2px);box-shadow:0 1px 0 #C99300}
 .bt-doc-addbtn.ghost:active{box-shadow:0 1px 0 rgba(21,18,15,.22)}
 .bt-doc-addbtn:disabled{opacity:.65;transform:none}
-.bt-doc-hint{font-size:11.5px;color:#9a948a;font-weight:600;margin:8px 2px 2px}
+.bt-doc-hint{display:flex;align-items:center;gap:4px;font-size:11.5px;color:#9a948a;font-weight:600;margin:8px 2px 2px}
+.bt-doc-hint-t{min-width:0}
 .bt-doc-hint b{color:#6E6A63}
 .bt-doc-tabs{display:flex;gap:7px;margin-top:11px}
 .bt-doc-tab{flex:1;border:1.5px solid rgba(21,18,15,.16);background:#fff;border-radius:11px;padding:9px 8px;font-family:inherit;font-weight:800;font-size:13px;color:#6E6A63;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:7px}
@@ -96,8 +98,9 @@ const DOC_CSS = `
 .bt-doc-act.danger:hover{background:#F4D9D1;color:#C0461F}
 .bt-doc-send{margin-top:12px;padding:12px;border:1px solid rgba(21,18,15,.12);border-radius:13px;background:#FBF7EF}
 .bt-doc-send-h{display:flex;align-items:center;gap:7px;font-size:13.5px;font-weight:900;color:#15120F;margin-bottom:8px}
-.bt-doc-send-to{font-size:12.5px;font-weight:700;color:#15120F;margin-bottom:9px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.bt-doc-send-edit{border:none;background:transparent;color:#a87c1e;font-weight:800;font-size:11.5px;cursor:pointer;text-decoration:underline;font-family:inherit;padding:0}
+.bt-doc-send-to{font-size:12.5px;font-weight:700;color:#15120F;margin-bottom:9px;display:flex;align-items:center;gap:8px;min-width:0}
+.bt-doc-send-mail{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bt-doc-send-edit{flex:none;border:none;background:transparent;color:#a87c1e;font-weight:800;font-size:11.5px;cursor:pointer;text-decoration:underline;font-family:inherit;padding:0}
 .bt-doc-send-row{display:flex;gap:7px;margin-bottom:9px}
 .bt-doc-send-input{flex:1;min-width:0;font-family:inherit;font-size:14px;padding:9px 11px;border:1.5px solid rgba(21,18,15,.18);border-radius:10px;background:#fff;outline:none;color:#15120F}
 .bt-doc-send-input:focus{border-color:#15120F}
@@ -305,10 +308,10 @@ export default function ChantierDocuments({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bt-skin max-w-lg max-h-[88vh] overflow-y-auto overflow-x-hidden">
+      <DialogContent className="bt-skin max-w-lg max-h-[88vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <FolderOpen className="h-5 w-5" /> Documents{worksiteName ? ` — ${worksiteName}` : ''}
+            <FolderOpen className="h-5 w-5 shrink-0" /> <span className="min-w-0">Documents{worksiteName ? ` — ${worksiteName}` : ''}</span>
           </DialogTitle>
         </DialogHeader>
         <style dangerouslySetInnerHTML={DOC_CSS_HTML} />
@@ -330,11 +333,14 @@ export default function ChantierDocuments({
             <Paperclip className="h-4 w-4" /> Fichier
           </button>
         </div>
+        {/* Lot 11 : une ligne courte ; le reste dans l'ⓘ. */}
         <div className="bt-doc-hint">
-          15 Mo max. Le nom est automatique.{' '}
-          {workDate
-            ? <>Rattaché au <b>{format(parseISO(workDate), 'EEEE d MMMM', { locale: fr })}</b>{timeEntryId ? <> et à <b>cette intervention</b></> : null}.</>
-            : <>Rattaché au chantier, sans jour précis.</>}
+          <span className="bt-doc-hint-t">
+            {workDate
+              ? <>Rattaché au <b>{format(parseISO(workDate), 'EEEE d MMMM', { locale: fr })}</b>{timeEntryId ? <> et à <b>cette intervention</b></> : null}.</>
+              : <>Rattaché au chantier, sans jour précis.</>}
+          </span>
+          <InfoTip testId="doc-tip" label="Plus d’infos : pièces" text={<>15 Mo maximum par pièce. Une photo est nommée automatiquement (« Photo 3 — 20/09/2026 ») ; un fichier garde son nom.</>} />
         </div>
 
         <div className="bt-doc-tabs">
@@ -400,7 +406,7 @@ export default function ChantierDocuments({
           <div className="bt-doc-send-h"><Mail className="h-4 w-4" /> Envoyer au client</div>
           {clientEmail && !editingEmail && (
             <div className="bt-doc-send-to">
-              {clientEmail}
+              <span className="bt-doc-send-mail" title={clientEmail}>{clientEmail}</span>
               <button type="button" className="bt-doc-send-edit" onClick={() => { setEmailInput(clientEmail); setEditingEmail(true); }}>modifier</button>
             </div>
           )}

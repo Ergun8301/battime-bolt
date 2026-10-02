@@ -3,12 +3,18 @@
 // UNE SEULE FONCTION, QUATRE PUBLICS, CHACUN SON CONTRÔLE :
 //
 //   BUREAU (jeton d'un admin connecté)
-//     create_pairing  → code à 6 chiffres, valable 10 minutes
-//     revoke          → retire une borne, immédiatement
-//     settings        → options (GPS) et horaires d'ouverture
+//     create_pairing  → code à 6 chiffres, valable 10 minutes (+ son id)
+//     cancel_pairing  → lot 11 : périme ce code tout de suite (la fenêtre
+//                       « Borne » se ferme ou affiche un code neuf)
+//     revoke          → déconnecte une tablette, immédiatement
+//     settings        → horaires d'ouverture (écran noir la nuit), facultatifs
 //
 //   TABLETTE (aucun compte : le code d'appairage, puis son jeton de borne)
-//     pair            → échange le code contre un jeton + la graine du QR
+//     pair            → échange le code contre un jeton + la graine du QR.
+//                       Lot 11 : UNE tablette par entreprise — relier une
+//                       nouvelle tablette déconnecte les précédentes
+//     unpair          → lot 11 : la tablette se déconnecte elle-même (appui
+//                       long sur le logo, puis « Oui, déconnecter »)
 //     sync            → « je suis toujours là » ; relit les réglages (et
 //                       l'ancien planning du jour, pour les tablettes qui ont
 //                       encore l'ancienne page en cache)
@@ -20,6 +26,10 @@
 //     ticket          → vérifie le code du QR, rend un ticket de 5 minutes
 //                       (le temps de se connecter si besoin)
 //     punch           → arrivée ou départ, AU NOM DU SALARIÉ
+//
+// Lot 11 : plus aucun contrôle de position (GPS). La tablette n'envoie plus la
+// sienne, le téléphone non plus ; les colonnes `require_gps`, `latitude`,
+// `longitude`, `accuracy_m` restent en base mais ne sont plus ni écrites ni lues.
 //
 // LE POINTAGE N'EST PAS RÉÉCRIT. L'arrivée est une insertion dans
 // `active_sessions`, le départ un appel à `finish_active_session` (lot 9 : la
@@ -43,7 +53,8 @@ import {
   KIOSK_DIGITS, KIOSK_STEP_SECONDS,
 } from '../_shared/kiosk-code.ts';
 import {
-  checkScan, decideAction, parisDate, parisTime, rpcMissing, REFUSAL_MESSAGES,
+  arrivalPlace, checkScan, decideAction, isClosedError, pairThrottled, parisDate, parisTime, rpcMissing,
+  REFUSAL_MESSAGES, type PlannedSlot,
 } from '../_shared/kiosk-rules.ts';
 import {
   buildBoard, parisWeek,
@@ -62,7 +73,6 @@ const refuse = (code: keyof typeof REFUSAL_MESSAGES | string, status = 400, extr
 
 const PAIRING_TTL_MS = 10 * 60 * 1000;
 const TICKET_TTL_MS = 5 * 60 * 1000;
-const MAX_PAIR_FAILURES = 10;
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -109,11 +119,13 @@ async function callerFromJwt(admin: SupabaseClient, req: Request) {
 
 async function loadSettings(admin: SupabaseClient, companyId: string) {
   const { data } = await admin.from('kiosk_settings')
-    .select('show_planning, require_gps, active_from, active_until').eq('company_id', companyId).maybeSingle();
-  const s = (data || {}) as { show_planning?: boolean; require_gps?: boolean; active_from?: string | null; active_until?: string | null };
+    .select('show_planning, active_from, active_until').eq('company_id', companyId).maybeSingle();
+  const s = (data || {}) as { show_planning?: boolean; active_from?: string | null; active_until?: string | null };
   return {
     show_planning: !!s.show_planning,
-    require_gps: !!s.require_gps,
+    // Lot 11 : le contrôle GPS n'existe plus. La clé reste (toujours fausse)
+    // pour les pages déjà en cache qui la lisent.
+    require_gps: false,
     active_from: s.active_from ? s.active_from.slice(0, 5) : null,
     active_until: s.active_until ? s.active_until.slice(0, 5) : null,
   };
@@ -129,6 +141,10 @@ async function adminAction(admin: SupabaseClient, req: Request, action: string, 
   if (!(await companyEnabled(admin, profile.company_id))) return refuse('kiosk_disabled', 403);
 
   if (action === 'create_pairing') {
+    // Lot 11 : la fenêtre « Borne » n'envoie plus ni nom ni lieu (une seule
+    // tablette par entreprise, rattachée au lieu « Autre » ; l'arrivée va sur le
+    // chantier prévu du salarié, voir `arrivalPlace`). Nom et lieu restent
+    // acceptés pour une ancienne page encore ouverte.
     const name = String(body.name || '').trim().slice(0, 60) || 'Borne';
     let worksiteId = body.worksite_id ? String(body.worksite_id) : null;
     if (worksiteId) {
@@ -149,12 +165,27 @@ async function adminAction(admin: SupabaseClient, req: Request, action: string, 
       if (!count) break;
     }
     const expiresAt = new Date(Date.now() + PAIRING_TTL_MS).toISOString();
-    const { error } = await admin.from('kiosk_pairings').insert({
+    // Les codes encore valables d'un autre admin ne sont PAS périmés : le patron
+    // et la secrétaire peuvent avoir la fenêtre ouverte en même temps.
+    const { data: row, error } = await admin.from('kiosk_pairings').insert({
       company_id: profile.company_id, code_hash: await sha256Hex(code), name,
       worksite_id: worksiteId, created_by: profile.id, expires_at: expiresAt,
-    });
+    }).select('id').single();
     if (error) { console.error('[kiosk] pairing', error); return json({ error: 'Création impossible' }, 500); }
-    return json({ code, expires_at: expiresAt });
+    return json({ code, expires_at: expiresAt, pairing_id: (row as { id: string } | null)?.id ?? null });
+  }
+
+  if (action === 'cancel_pairing') {
+    // Lot 11 : un code n'est valable que tant qu'il est affiché. Fermer la
+    // fenêtre (ou passer au code suivant) le périme tout de suite : moins de
+    // codes valables en circulation, moins de chances d'en deviner un.
+    const nowIso = new Date().toISOString();
+    const { data, error } = await admin.from('kiosk_pairings').update({ expires_at: nowIso })
+      .eq('id', String(body.pairing_id || '')).eq('company_id', profile.company_id)
+      .is('used_at', null).gt('expires_at', nowIso).select('id');
+    // Un id mal formé (22P02) : rien à périmer.
+    if (error && error.code !== '22P02') { console.error('[kiosk] cancel_pairing', error); return json({ error: 'Annulation impossible' }, 500); }
+    return json({ success: true, cancelled: (data || []).length });
   }
 
   if (action === 'revoke') {
@@ -167,11 +198,11 @@ async function adminAction(admin: SupabaseClient, req: Request, action: string, 
   if (action === 'settings') {
     const hhmm = (v: unknown) => (typeof v === 'string' && /^\d{2}:\d{2}$/.test(v) ? v : null);
     // Lot 9 : `show_planning` n'est plus écrit (la borne affiche toujours la
-    // semaine). La colonne reste ; une ligne existante garde sa valeur, une
-    // nouvelle prend celle par défaut de la base.
+    // semaine). Lot 11 : `require_gps` non plus (plus de contrôle GPS). Les
+    // colonnes restent ; une ligne existante garde ses valeurs, une nouvelle
+    // prend celles par défaut de la base (faux).
     const row = {
       company_id: profile.company_id,
-      require_gps: body.require_gps === true,
       active_from: hhmm(body.active_from),
       active_until: hhmm(body.active_until),
       updated_at: new Date().toISOString(),
@@ -189,9 +220,13 @@ async function adminAction(admin: SupabaseClient, req: Request, action: string, 
 async function pair(admin: SupabaseClient, req: Request, body: Record<string, unknown>) {
   const ip = (req.headers.get('x-forwarded-for') || '').split(',')[0].trim() || 'inconnue';
   const since = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-  const { count: fails } = await admin.from('kiosk_pair_failures').select('id', { count: 'exact', head: true })
-    .eq('ip', ip).gt('created_at', since);
-  if ((fails || 0) >= MAX_PAIR_FAILURES) return json({ error: 'Trop d’essais. Réessayez dans quelques minutes.' }, 429);
+  // Lot 11 : en plus du plafond par adresse, un plafond toutes adresses
+  // confondues (un code deviné remplacerait désormais la vraie tablette).
+  const [fromIp, everywhere] = await Promise.all([
+    admin.from('kiosk_pair_failures').select('id', { count: 'exact', head: true }).eq('ip', ip).gt('created_at', since),
+    admin.from('kiosk_pair_failures').select('id', { count: 'exact', head: true }).gt('created_at', since),
+  ]);
+  if (pairThrottled(fromIp.count || 0, everywhere.count || 0)) return json({ error: 'Trop d’essais. Réessayez dans quelques minutes.' }, 429);
 
   const code = String(body.code || '').replace(/\D/g, '');
   const { data: p } = code.length === 6
@@ -212,21 +247,28 @@ async function pair(admin: SupabaseClient, req: Request, body: Record<string, un
     .eq('id', pairing.id).is('used_at', null).select('id');
   if (!claimed || claimed.length === 0) return json({ error: 'Code déjà utilisé.' }, 409);
 
-  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
-  const lat = num(body.lat), lng = num(body.lng), acc = num(body.accuracy);
+  // Lot 11 : la position de la tablette n'est plus relevée (plus de contrôle GPS).
   const token = randomToken();
   const salt = randomToken(16);
   const { data: k, error } = await admin.from('kiosks').insert({
     company_id: pairing.company_id, name: pairing.name, worksite_id: pairing.worksite_id,
     token_hash: await sha256Hex(token), seed_salt: salt,
-    latitude: lat != null && lng != null ? lat : null,
-    longitude: lat != null && lng != null ? lng : null,
-    accuracy_m: lat != null && lng != null && acc != null ? Math.round(acc) : null,
+    latitude: null, longitude: null, accuracy_m: null,
     created_by: pairing.created_by, last_seen_at: new Date().toISOString(),
-  }).select('id').single();
+  }).select('id, created_at').single();
   if (error || !k) { console.error('[kiosk] pair', error); return json({ error: 'Appairage impossible' }, 500); }
-  const kioskId = (k as { id: string }).id;
+  const { id: kioskId, created_at: createdAt } = k as { id: string; created_at: string };
   await admin.from('kiosk_pairings').update({ kiosk_id: kioskId }).eq('id', pairing.id);
+
+  // Lot 11 — UNE tablette par entreprise : la dernière reliée gagne. Les
+  // autres tablettes encore actives de CETTE entreprise sont déconnectées
+  // (revoked_at, jamais supprimées : leurs scans restent). Seulement celles
+  // reliées AVANT celle-ci : deux tablettes reliées au même instant ne se
+  // déconnectent pas l'une l'autre. Un échec ici ne fait pas échouer
+  // l'appairage (le bureau garde « Déconnecter la tablette »).
+  const { error: replaceErr } = await admin.from('kiosks').update({ revoked_at: new Date().toISOString() })
+    .eq('company_id', pairing.company_id).is('revoked_at', null).neq('id', kioskId).lt('created_at', createdAt);
+  if (replaceErr) console.error('[kiosk] pair: anciennes tablettes', replaceErr);
 
   const seed = await deriveSeed(SERVER_KEY, kioskId, salt);
   const { data: c } = await admin.from('companies').select('name').eq('id', pairing.company_id).maybeSingle();
@@ -248,6 +290,20 @@ async function kioskFromToken(admin: SupabaseClient, body: Record<string, unknow
   const k = data as { id: string; company_id: string; name: string; token_hash: string; revoked_at: string | null } | null;
   if (!k || k.token_hash !== await sha256Hex(String(body.token || ''))) return null;
   return k;
+}
+
+// Lot 11 — la tablette se déconnecte elle-même (« Oui, déconnecter » après
+// l'appui long). Avec son propre jeton : elle ne peut déconnecter qu'elle.
+// Sans cet appel, le bureau la verrait encore « reliée ». Rejouable.
+async function unpair(admin: SupabaseClient, body: Record<string, unknown>) {
+  const k = await kioskFromToken(admin, body);
+  if (!k) return json({ error: 'Borne inconnue', revoked: true }, 401);
+  if (!k.revoked_at) {
+    const { error } = await admin.from('kiosks').update({ revoked_at: new Date().toISOString() })
+      .eq('id', k.id).is('revoked_at', null);
+    if (error) { console.error('[kiosk] unpair', error); return json({ error: 'Déconnexion impossible' }, 500); }
+  }
+  return json({ success: true, revoked: true });
 }
 
 async function sync(admin: SupabaseClient, body: Record<string, unknown>) {
@@ -330,8 +386,8 @@ async function ticket(admin: SupabaseClient, body: Record<string, unknown>) {
   const kioskId = String(body.k || '');
   const code = String(body.c || '');
   const { data } = await admin.from('kiosks')
-    .select('id, company_id, name, seed_salt, revoked_at, latitude, longitude').eq('id', kioskId).maybeSingle();
-  const k = data as { id: string; company_id: string; name: string; seed_salt: string; revoked_at: string | null; latitude: number | null; longitude: number | null } | null;
+    .select('id, company_id, name, seed_salt, revoked_at').eq('id', kioskId).maybeSingle();
+  const k = data as { id: string; company_id: string; name: string; seed_salt: string; revoked_at: string | null } | null;
   if (!k) return refuse('kiosk_unknown', 404);
   if (k.revoked_at) return refuse('kiosk_revoked', 410);
   if (!(await companyEnabled(admin, k.company_id))) return refuse('kiosk_disabled', 403);
@@ -339,14 +395,14 @@ async function ticket(admin: SupabaseClient, body: Record<string, unknown>) {
   if ((await verifyCode(seed, code, Date.now())) === null) return refuse('code_invalid', 400);
 
   const payload = toBase64Url(enc.encode(JSON.stringify({ k: k.id, exp: Date.now() + TICKET_TTL_MS })));
-  const settings = await loadSettings(admin, k.company_id);
   const { data: c } = await admin.from('companies').select('name').eq('id', k.company_id).maybeSingle();
   return json({
     ticket: `${payload}.${await hmacB64(`kiosk-ticket|${payload}`)}`,
     kiosk_name: k.name,
     company_name: (c as { name?: string } | null)?.name || '',
-    // Le téléphone ne demande la position QUE si elle sera réellement contrôlée.
-    needs_gps: settings.require_gps && k.latitude != null && k.longitude != null,
+    // Lot 11 : plus de contrôle GPS. Toujours faux (une page /pointer encore
+    // en cache lit ce champ : elle ne demandera donc jamais la position).
+    needs_gps: false,
   });
 }
 
@@ -364,22 +420,18 @@ async function punch(admin: SupabaseClient, req: Request, body: Record<string, u
   const { profile, token } = caller;
 
   const { data: kd } = await admin.from('kiosks')
-    .select('id, company_id, name, worksite_id, revoked_at, latitude, longitude').eq('id', t.k).maybeSingle();
-  const kiosk = kd as { id: string; company_id: string; name: string; worksite_id: string | null; revoked_at: string | null; latitude: number | null; longitude: number | null } | null;
-  const settings = kiosk ? await loadSettings(admin, kiosk.company_id) : { require_gps: false };
+    .select('id, company_id, name, worksite_id, revoked_at').eq('id', t.k).maybeSingle();
+  const kiosk = kd as { id: string; company_id: string; name: string; worksite_id: string | null; revoked_at: string | null } | null;
   const { data: last } = await admin.from('kiosk_punches').select('created_at')
     .eq('user_id', profile.id).order('created_at', { ascending: false }).limit(1).maybeSingle();
 
-  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
-  const lat = num(body.lat), lng = num(body.lng);
+  // Lot 11 : plus de contrôle de position. Une position envoyée par une
+  // ancienne page est ignorée (ni comparée, ni enregistrée).
   const now = Date.now();
   const refusal = checkScan({
     kiosk, user: { company_id: profile.company_id, is_active: profile.is_active },
     companyKioskEnabled: kiosk ? await companyEnabled(admin, kiosk.company_id) : false,
     lastPunchAt: (last as { created_at: string } | null)?.created_at ?? null,
-    requireGps: settings.require_gps,
-    // La position n'est QUE comparée, jamais enregistrée.
-    position: lat != null && lng != null ? { lat, lng, accuracy: num(body.accuracy) } : null,
     nowMs: now,
   });
   if (refusal) return refuse(refusal, refusal === 'double_scan' ? 409 : 403);
@@ -401,20 +453,28 @@ async function punch(admin: SupabaseClient, req: Request, body: Record<string, u
   let cancelled = false;
 
   if (action === 'arrival') {
-    const { data: plans } = await admin.from('planning').select('id, worksite_id')
+    const { data: plans } = await admin.from('planning').select('id, worksite_id, estimated_start')
       .eq('user_id', profile.id).eq('work_date', today).is('absence_type', null);
-    const planRows = (plans || []) as { id: string; worksite_id: string | null }[];
-    // Le lieu de la borne ; à défaut (lieu supprimé), le chantier prévu du jour.
-    const worksiteId = kiosk!.worksite_id || planRows.find((p) => p.worksite_id)?.worksite_id || null;
-    if (!worksiteId) return json({ error: 'Aucun lieu rattaché à cette borne. Prévenez le bureau.', code: 'no_worksite' }, 409);
-    const planningId = planRows.find((p) => p.worksite_id === worksiteId)?.id ?? null;
+    // Lot 11 : la tablette est rattachée au lieu « Autre » (plus de choix du
+    // lieu). Est-ce le cas de celle-ci ? (Les anciennes bornes gardent leur chantier.)
+    let kioskIsOther = !kiosk!.worksite_id;
+    if (kiosk!.worksite_id) {
+      const { data: kw } = await admin.from('worksites').select('client_name')
+        .eq('id', kiosk!.worksite_id).eq('company_id', kiosk!.company_id).maybeSingle();
+      kioskIsOther = !kw || (kw as { client_name?: string | null }).client_name === 'Autre';
+    }
+    // Un seul chantier prévu aujourd'hui → l'arrivée va dessus ; sinon le lieu
+    // de la borne, à défaut le premier chantier prévu (règle d'avant).
+    const place = arrivalPlace(kiosk!.worksite_id, kioskIsOther, (plans || []) as PlannedSlot[]);
+    if (!place) return json({ error: 'Aucun lieu rattaché à cette borne. Prévenez le bureau.', code: 'no_worksite' }, 409);
+    const worksiteId = place.worksiteId;
     const { error } = await asUser.from('active_sessions').insert({
       user_id: profile.id, company_id: profile.company_id, worksite_id: worksiteId,
-      planning_id: planningId, work_date: today,
+      planning_id: place.planningId, work_date: today,
     });
     if (error) {
       if (error.code === '23505') return refuse('double_scan', 409);
-      if (/clôturé/i.test(error.message)) return refuse('month_closed', 409);
+      if (isClosedError(error.message)) return refuse('month_closed', 409);
       console.error('[kiosk] arrival', error);
       return json({ error: 'Arrivée non enregistrée. Réessayez.' }, 500);
     }
@@ -423,15 +483,14 @@ async function punch(admin: SupabaseClient, req: Request, body: Record<string, u
   } else {
     // Lot 9 : « une seule logique » de fermeture, celle de l'appli. Moins d'une
     // minute → le chrono est supprimé et rien n'est enregistré (cancelled).
-    // La position n'est PAS transmise : à la borne, elle n'est que comparée,
-    // jamais enregistrée (même appel qu'aujourd'hui, positions nulles).
+    // Aucune position à la borne : positions nulles, comme avant.
     const fin = await asUser.rpc('finish_active_session', { p_end: null, p_lat: null, p_lng: null, p_accuracy: null });
     if (rpcMissing(fin.error)) {
       // Migration pas encore passée : l'ancien chemin, inchangé.
       const { data, error } = await asUser.rpc('stop_active_session', { p_end: null });
       if (error) {
         if (error.code === 'BT001' || /m[êe]me quart d/i.test(error.message)) return refuse('too_short', 409);
-        if (/clôturé/i.test(error.message)) return refuse('month_closed', 409);
+        if (isClosedError(error.message)) return refuse('month_closed', 409);
         // Deux scans simultanés : le premier a déjà fermé le pointage.
         if (/aucun pointage en cours/i.test(error.message)) return refuse('double_scan', 409);
         console.error('[kiosk] departure', error);
@@ -440,7 +499,7 @@ async function punch(admin: SupabaseClient, req: Request, body: Record<string, u
       const row = (Array.isArray(data) ? data[0] : data) as { start_time: string; end_time: string } | null;
       if (row) range = { start: row.start_time.slice(0, 5), end: row.end_time.slice(0, 5) };
     } else if (fin.error) {
-      if (/clôturé/i.test(fin.error.message)) return refuse('month_closed', 409);
+      if (isClosedError(fin.error.message)) return refuse('month_closed', 409);
       if (/aucun pointage en cours/i.test(fin.error.message)) return refuse('double_scan', 409);
       console.error('[kiosk] departure', fin.error);
       return json({ error: 'Départ non enregistré. Réessayez.' }, 500);
@@ -471,9 +530,10 @@ Deno.serve(async (req) => {
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
     const action = String(body.action || '');
     switch (action) {
-      case 'create_pairing': case 'revoke': case 'settings':
+      case 'create_pairing': case 'cancel_pairing': case 'revoke': case 'settings':
         return await adminAction(admin, req, action, body);
       case 'pair': return await pair(admin, req, body);
+      case 'unpair': return await unpair(admin, body);
       case 'sync': return await sync(admin, body);
       case 'board': return await board(admin, body);
       case 'ticket': return await ticket(admin, body);

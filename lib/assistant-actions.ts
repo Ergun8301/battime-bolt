@@ -163,17 +163,21 @@ export function makeActionExecutor(user: { id: string; company_id: string }): Ac
         // ── Lot 7 ──
         case 'modifier_intervention': {
           // L'état d'avant, pour « Annuler ».
-          const { data: prev, error: readErr } = await supabase.from('planning').select('user_id, work_date, estimated_start, notes')
+          const { data: prev, error: readErr } = await supabase.from('planning').select('user_id, work_date, estimated_start, estimated_end, notes')
             .eq('id', d.planning_id!).eq('company_id', cid).single();
           if (readErr) throw readErr;
-          const p0 = prev as { user_id: string; work_date: string; estimated_start: string | null; notes: string | null };
+          const p0 = prev as { user_id: string; work_date: string; estimated_start: string | null; estimated_end: string | null; notes: string | null };
+          // Lot 11 : « décale à 9h » sur 08:00–12:00 garde la fin (09:00–12:00) tant
+          // qu'elle reste après le nouveau début ; sinon la fin est retirée.
+          const keptEnd = d.debut && p0.estimated_end && p0.estimated_end.slice(0, 5) > d.debut.slice(0, 5) ? p0.estimated_end : null;
           await updatePlanningSlot(cid, d.planning_id!, {
             ...(d.nouvelle_date ? { workDate: d.nouvelle_date } : {}), ...(d.nouveau_user_id ? { userId: d.nouveau_user_id } : {}),
-            ...(d.debut ? { estimatedStart: d.debut } : {}), ...(d.note !== null ? { notes: d.note } : {}),
+            ...(d.debut ? { estimatedStart: d.debut, estimatedEnd: keptEnd } : {}), ...(d.note !== null ? { notes: d.note } : {}),
           });
           message = 'Intervention modifiée.';
+          // « Annuler » remet le début ET la fin d'avant.
           undo = () => updatePlanningSlot(cid, d.planning_id!, {
-            userId: p0.user_id, workDate: p0.work_date, estimatedStart: p0.estimated_start, notes: p0.notes,
+            userId: p0.user_id, workDate: p0.work_date, estimatedStart: p0.estimated_start, estimatedEnd: p0.estimated_end, notes: p0.notes,
           });
           break;
         }

@@ -7,6 +7,7 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { BTP_LEAVE_DEFAULT_RATE, parseAmount, type CostSource, type LeaveFund } from '@/lib/real-cost';
+import { InfoTip } from '@/components/ui/info-tip';
 
 export default function LeaveFundSetting({ source, companyId }: { source: CostSource; companyId: string }) {
   const [fund, setFund] = useState<LeaveFund | null>(null);
@@ -32,8 +33,15 @@ export default function LeaveFundSetting({ source, companyId }: { source: CostSo
   return (
     <div className="bt-set-sub bt-set-rem">
       <div className="bt-set-subtxt">
-        <label className="bt-set-l">Caisse de congés BTP</label>
-        <p className="bt-set-substate">Ajoute la cotisation congés payés (sur le brut) au coût réel de chaque salarié. À laisser éteint hors BTP.</p>
+        {/* Lot 11 : une ligne courte ; le détail dans l'ⓘ, À CÔTÉ du libellé (jamais dedans). */}
+        <div className="bt-set-lrow">
+          <label className="bt-set-l">Caisse de congés BTP</label>
+          <InfoTip
+            label="Plus d’infos : Caisse de congés BTP" testId="set-tip-caisse"
+            text={<>Cotisation congés payés sur le brut, ajoutée au coût réel de chaque bulletin. Ne change pas la paie.</>}
+          />
+        </div>
+        <p className="bt-set-substate">Ajoutée au coût réel. À laisser éteint hors BTP.</p>
       </div>
       <div className="bt-set-remctl">
         <label className="bt-set-switch">

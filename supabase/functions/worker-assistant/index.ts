@@ -73,7 +73,7 @@ Deno.serve(async (req) => {
       db.from('time_entries').select('user_id, work_date, start_time, end_time, break_minutes, status').eq('user_id', user.id).gte('work_date', mondayOf(today)).lte('work_date', today),
       db.from('planning').select('user_id, work_date, estimated_start, estimated_end, absence_type, worksite_id').eq('user_id', user.id).gte('work_date', plusDays(today, -2)).lte('work_date', plusDays(today, 1)),
       db.from('active_sessions').select('worksite_id, started_at').eq('user_id', user.id).maybeSingle(),
-      db.from('time_entries').select('id, start_time, end_time, status, worksite_id, meal_allowance, reception, reserve_fixed_at').eq('user_id', user.id).eq('work_date', today).neq('status', 'cancelled').order('start_time'),
+      db.from('time_entries').select('id, start_time, end_time, status, worksite_id, meal_allowance, reception, reserve_fixed_at, reserve_resolved_at').eq('user_id', user.id).eq('work_date', today).neq('status', 'cancelled').order('start_time'),
       db.from('time_entries').select('id', { count: 'exact', head: true }).eq('user_id', user.id).eq('work_date', plusDays(today, -1)).neq('status', 'cancelled'),
       // Lot 8 : SES demandes en attente et SES documents récents (pour les retirer).
       db.from('leave_requests').select('id, type, start_date, end_date').eq('user_id', user.id).eq('status', 'pending').order('start_date'),
@@ -92,10 +92,11 @@ Deno.serve(async (req) => {
     const s0 = sess.data as { worksite_id: string; started_at: string } | null;
     const live: WorkerLive = {
       enCours: s0 ? { chantier_id: s0.worksite_id, chantier: siteName(s0.worksite_id), depuis: s0.started_at } : null,
-      lignes: ((todayRows.data ?? []) as { id: string; start_time: string; end_time: string; status: string; worksite_id: string | null; meal_allowance: boolean | null; reception: string | null; reserve_fixed_at: string | null }[])
+      lignes: ((todayRows.data ?? []) as { id: string; start_time: string; end_time: string; status: string; worksite_id: string | null; meal_allowance: boolean | null; reception: string | null; reserve_fixed_at: string | null; reserve_resolved_at: string | null }[])
         .map((e) => ({
           id: e.id, chantier: siteName(e.worksite_id), chantier_id: e.worksite_id, debut: e.start_time.slice(0, 5), fin: e.end_time.slice(0, 5), envoyee: e.status !== 'draft',
-          panier: !!e.meal_allowance, reserve: e.reception === 'avec', corrigee: !!e.reserve_fixed_at,
+          // Lot 11 : « levée » = par le bureau OU par lui (même définition que lib/reserves.ts).
+          panier: !!e.meal_allowance, reserve: e.reception === 'avec', corrigee: !!(e.reserve_fixed_at || e.reserve_resolved_at),
         })),
       hier: yRows.count ?? 0,
       conges: ((myLeaves.data ?? []) as { id: string; type: string; start_date: string; end_date: string }[]).map((l) => ({ id: l.id, type: l.type, du: l.start_date, au: l.end_date })),

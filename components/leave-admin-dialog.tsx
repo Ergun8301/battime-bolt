@@ -36,10 +36,11 @@ const TYPE_LABEL: Record<LeaveType, string> = { conge: 'Congé', maladie: 'Arrê
 const LA_CSS = `
 .bt-la-row{display:flex;align-items:flex-start;gap:10px;border:1px solid rgba(21,18,15,.12);border-radius:12px;padding:11px 12px;background:#fff;margin-bottom:8px}
 .bt-la-main{flex:1;min-width:0}
-.bt-la-who{font-size:14px;font-weight:800;color:#15120F}
+.bt-la-who{font-size:14px;font-weight:800;color:#15120F;overflow-wrap:anywhere}
 .bt-la-what{font-size:12.5px;font-weight:600;color:#3a352f;margin-top:2px}
 .bt-la-when{font-family:'JetBrains Mono',monospace;font-size:11px;color:#8a8378;font-weight:600;margin-top:2px}
-.bt-la-note{font-size:12px;color:#6E6A63;margin-top:4px;font-style:italic}
+.bt-la-note{font-size:12px;color:#6E6A63;margin-top:4px;font-style:italic;overflow-wrap:anywhere}
+.bt-la-rej{display:flex;flex-wrap:wrap;gap:8px;padding-top:8px}
 .bt-la-acts{display:flex;gap:6px;flex:none}
 .bt-la-tag{font-size:11px;font-weight:800;padding:3px 8px;border-radius:99px;flex:none;align-self:flex-start}
 .bt-la-tag.approved{background:#E4F2E9;color:#1F7A4D;border:1px solid #B7DCC4}
@@ -136,8 +137,8 @@ export default function LeaveAdminDialog({ open, onOpenChange, companyId, adminI
               <div className="bt-la-when">{period(r)}</div>
               {r.note && <div className="bt-la-note">« {r.note} »</div>}
               {rejectingId === r.id && (
-                <div className="flex gap-2 pt-2">
-                  <Input className="h-8 text-sm" placeholder="Motif (facultatif)" value={rejectNote}
+                <div className="bt-la-rej">
+                  <Input className="h-8 text-sm min-w-0 flex-1 basis-40" placeholder="Motif (facultatif)" value={rejectNote}
                     onChange={(e) => setRejectNote(e.target.value)} />
                   <Button size="sm" variant="destructive" onClick={() => reject(r)} disabled={busyId === r.id}>
                     {busyId === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Confirmer'}

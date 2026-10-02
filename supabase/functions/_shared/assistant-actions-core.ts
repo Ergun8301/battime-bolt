@@ -100,19 +100,19 @@ export const GUIDE: GuideEntry[] = [
   {
     id: 'export', mots: ['export', 'exporter', 'paie', 'comptable', 'excel', 'pdf', 'csv', 'envoyer au comptable'],
     titre: 'Exporter les heures / envoyer au comptable',
-    etapes: ['« Exporter » → « Exporter l’équipe ».', 'Choisissez la période.', 'Excel, PDF, CSV pour la paie, ou « Envoyer à » votre comptable.'],
+    etapes: ['« Exporter » (la fenêtre « Exporter l’équipe » s’ouvre).', 'Choisissez la période.', '« Exporter ▾ » : PDF, Excel ou CSV — ou « Envoyer à » votre comptable.'],
     lien: 'export',
   },
   {
     id: 'cloture', mots: ['cloturer', 'cloture', 'fermer le mois', 'verrouiller'],
     titre: 'Clôturer le mois',
-    etapes: ['« Exporter » → « Exporter l’équipe ».', 'Section « Clôture du mois » → « Clôturer ».', '« Rouvrir » annule si besoin.'],
+    etapes: ['« Exporter » (fenêtre « Exporter l’équipe »).', 'Section « Clôture du mois » → « Clôturer ».', '« Rouvrir » annule si besoin.'],
     lien: 'export',
   },
   {
     id: 'couts', mots: ['cout', 'budget', 'rentabilite', 'depense', 'main d oeuvre'],
     titre: 'Voir les coûts et budgets des chantiers',
-    etapes: ['Bouton « Coût chantiers ».', 'Choisissez la période (mois, semaine…).', 'Dépliez un chantier ; « Ajouter une dépense » si besoin.'],
+    etapes: ['Bouton « Coût chantiers » (« Coûts » sur tablette) : heures et coûts par chantier.', 'Choisissez la période (mois, semaine…).', 'Dépliez un chantier ; « Ajouter une dépense » si besoin.'],
     lien: 'couts',
   },
   {
@@ -123,7 +123,7 @@ export const GUIDE: GuideEntry[] = [
   {
     id: 'reserves', mots: ['reserve', 'reserves', 'lever la reserve'],
     titre: 'Suivre les réserves de chantier',
-    etapes: ['Bouton « Réserves ».', 'Onglet « À traiter ».', '« Lever la réserve » quand c’est réglé.'],
+    etapes: ['Bouton « Réserves ».', 'Onglet « À traiter » (le salarié peut aussi lever depuis son téléphone).', '« Lever la réserve » : commentaire et photo facultatifs.'],
     lien: 'reserves',
   },
   {
@@ -159,14 +159,19 @@ export const GUIDE: GuideEntry[] = [
     etapes: ['Sur le planning, attrapez la bulle de l’intervention.', 'Glissez-la sur la case du bon jour (ou d’un autre salarié).', 'C’est enregistré tout de suite.'], lien: 'planning'
   },
   {
-    id: 'heure_note', mots: ['heure fixe', 'changer l heure', 'note intervention', 'modifier intervention', 'horaire intervention'],
-    titre: 'Mettre une heure ou une note sur une intervention',
-    etapes: ['Cliquez la bulle de l’intervention sur le planning.', 'Choisissez l’« Heure fixe » et/ou écrivez une note.', '« Enregistrer ».'], lien: 'planning'
+    id: 'heure_note', mots: ['heure fixe', 'horaire prevu', 'changer l heure', 'note intervention', 'modifier intervention', 'horaire intervention', 'heure de rdv'],
+    titre: 'Mettre un horaire ou une note sur une intervention',
+    etapes: ['Cliquez la bulle de l’intervention sur le planning.', '« Horaire prévu » : tapez début et fin (ex. 14h – 17h) ou « Matin », « Après-midi », « Journée ».', '« Enregistrer ».'], lien: 'planning'
   },
   {
     id: 'retirer', mots: ['retirer intervention', 'enlever du planning', 'supprimer intervention', 'annuler intervention'],
-    titre: 'Retirer une intervention du planning',
-    etapes: ['Cliquez la bulle de l’intervention.', '« Retirer ».', 'Elle disparaît du planning du salarié.'], lien: 'planning'
+    titre: 'Supprimer une intervention du planning',
+    etapes: ['Cliquez la bulle de l’intervention.', '« Supprimer ».', 'Une erreur ? « Annuler » sur la carte la remet.'], lien: 'planning'
+  },
+  {
+    id: 'selection', mots: ['selectionner', 'supprimer plusieurs', 'tout selectionner', 'effacer plusieurs interventions', 'vider la semaine'],
+    titre: 'Supprimer plusieurs interventions d’un coup',
+    etapes: ['« Sélectionner » dans la barre du planning.', 'Cochez les bulles, ou « Tout sélectionner » (heures envoyées jamais cochables).', '« Supprimer (N) » — « Annuler » sur la carte remet tout.'], lien: 'planning'
   },
   {
     id: 'present', mots: ['present', 'enlever absence', 'annuler conge', 'finalement la', 'revient'],
@@ -186,8 +191,8 @@ export const GUIDE: GuideEntry[] = [
   {
     id: 'rappel', mots: ['rappel', 'relancer salarie', 'oublie d envoyer', 'pas envoye ses heures', 'cloche'],
     titre: 'Relancer un salarié qui n’a pas envoyé ses heures',
-    etapes: ['« Salariés ».', 'La cloche « Envoyer un rappel » sur sa ligne.', 'Il reçoit une notification (sinon un email s’ouvre).'],
-    lien: 'salaries',
+    etapes: ['En haut : 🟠 « à relancer » (journées non envoyées du mois).', '« Relancer » sur sa ligne (ou la cloche « Envoyer un rappel » dans « Salariés »).', 'Il reçoit une notification (sinon un email s’ouvre).'],
+    lien: 'planning',
   },
   {
     id: 'fiche_client', mots: ['fiche client', 'modifier client', 'adresse client', 'telephone client', 'email client'],
@@ -212,7 +217,12 @@ export const GUIDE: GuideEntry[] = [
   {
     id: 'archiver_salarie', mots: ['archiver salarie', 'salarie parti', 'depart salarie', 'desactiver salarie', 'reactiver'],
     titre: 'Archiver un salarié parti',
-    etapes: ['Cliquez son nom sur le planning.', '« Archiver » en bas de sa fiche.', 'Ses heures restent ; il ne peut plus se connecter.'], lien: 'salaries'
+    etapes: ['Cliquez son nom sur le planning.', '« Archiver » en bas de sa fiche (sa fin de contrat : « Clôturer jusqu’au… » d’abord).', 'Ses heures restent ; il ne peut plus se connecter.'], lien: 'salaries'
+  },
+  {
+    id: 'cloture_salarie', mots: ['fin de contrat', 'cloturer un salarie', 'cloturer ses heures', 'solde de tout compte', 'depart en cours de mois'],
+    titre: 'Fin de contrat : clôturer les heures d’un salarié',
+    etapes: ['Cliquez son nom sur le planning.', '« Clôturer jusqu’au… » → son dernier jour, puis « Exporter ▾ » à côté.', '« Rouvrir » annule si besoin.'], lien: 'salaries'
   },
   {
     id: 'feuille', mots: ['feuille d heures', 'voir les heures', 'heures d un salarie', 'releve'],
@@ -232,19 +242,19 @@ export const GUIDE: GuideEntry[] = [
   {
     id: 'reouvrir', mots: ['rouvrir le mois', 'reouvrir', 'decloturer'],
     titre: 'Rouvrir un mois clôturé',
-    etapes: ['« Exporter » → « Exporter l’équipe ».', 'Section « Clôture du mois ».', '« Rouvrir ».'],
+    etapes: ['« Exporter » (fenêtre « Exporter l’équipe »).', 'Section « Clôture du mois ».', '« Rouvrir ».'],
     lien: 'export',
   },
   {
     id: 'telecharger', mots: ['telecharger', 'fichier des heures', 'tableur', 'imprimer'],
     titre: 'Télécharger les heures (Excel, PDF, CSV)',
-    etapes: ['« Exporter » → « Exporter l’équipe ».', 'Choisissez la période.', '« Excel », « PDF » ou « CSV pour la paie » : le fichier se télécharge.'],
+    etapes: ['« Exporter » (équipe) ou la fiche d’un salarié.', 'Choisissez la période.', '« Exporter ▾ » → « PDF », « Excel » ou « CSV » : le fichier se télécharge.'],
     lien: 'export',
   },
   {
     id: 'lever_reserve', mots: ['lever reserve', 'reserve reglee', 'rouvrir reserve'],
     titre: 'Lever une réserve réglée',
-    etapes: ['Bouton « Réserves ».', 'Sur la réserve : « Lever la réserve ».', '« Rouvrir » si elle revient.'],
+    etapes: ['Bouton « Réserves ».', 'Sur la réserve : « Lever la réserve » (commentaire, photo : facultatifs).', '« Rouvrir » si elle revient.'],
     lien: 'reserves',
   },
   {
@@ -260,9 +270,9 @@ export const GUIDE: GuideEntry[] = [
   },
   {
     id: 'borne', mots: ['borne', 'tablette', 'qr code', 'pointeuse'],
-    titre: 'Installer une borne de pointage (tablette)',
-    etapes: ['Réglages de l’entreprise → « Borne ».', '« Créer le code » (et le chantier).', 'Sur la tablette, ouvrez la borne et tapez le code à 6 chiffres.'],
-    lien: 'reglages',
+    titre: 'Relier la tablette de pointage (borne)',
+    etapes: ['Bouton « Borne » du planning : le code à 6 chiffres s’affiche tout de suite.', 'Sur la tablette, ouvrez bemexo.com/borne et tapez le code (ou scannez le QR).', 'Une nouvelle tablette remplace l’ancienne. « Déconnecter la tablette » pour la retirer.'],
+    lien: 'planning',
   },
   {
     id: 'position', mots: ['position', 'gps', 'localisation', 'geolocalisation'],

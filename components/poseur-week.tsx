@@ -18,6 +18,23 @@ import { DAYS_IN_WEEK, weekDays as buildWeekDays, weekStart as startOfWorkWeek }
 import { fr } from 'date-fns/locale';
 import { slotLabel } from '@/lib/slot';
 
+/**
+ * Horaire prévu, lisible (lot 11). Créneau habituel → « Matin » / « Après-midi »
+ * / « Journée » ; heures précises → « 14:00–18:00 » ; heure de début seule (un
+ * rendez-vous « à 14:00 ») → « Prévu · 14:00 » — avant, elle n'apparaissait pas.
+ */
+function plannedLabel(start?: string | null, end?: string | null): string | null {
+  const s = start?.substring(0, 5);
+  const e = end?.substring(0, 5);
+  if (s && e) {
+    if ((s === '08:00' && e === '12:00') || (s === '13:00' && e === '17:00') || (s === '08:00' && e === '17:00')) return slotLabel(start, end);
+    if (s === '13:30' && e === '17:00') return 'Après-midi';
+    return `${s}–${e}`;
+  }
+  if (s) return `Prévu · ${s}`;
+  return null;
+}
+
 interface TimeEntryWithWorksite extends TimeEntry {
   worksite: Worksite | null;
 }
@@ -168,9 +185,9 @@ export default function PoseurWeek({ onSelectDay }: { onSelectDay?: (date: strin
                         <span className="font-medium truncate block">{p.worksite?.client_name || 'Chantier'}</span>
                         {p.worksite?.city && <span className="text-[#9a7c14] text-xs">{p.worksite.city}</span>}
                       </div>
-                      {p.estimated_start && p.estimated_end && (
+                      {plannedLabel(p.estimated_start, p.estimated_end) && (
                         <span className="text-[#9a7c14] text-xs shrink-0">
-                          {slotLabel(p.estimated_start, p.estimated_end)}
+                          {plannedLabel(p.estimated_start, p.estimated_end)}
                         </span>
                       )}
                     </div>
@@ -258,8 +275,8 @@ export default function PoseurWeek({ onSelectDay }: { onSelectDay?: (date: strin
                         <MapPin className="h-3 w-3 shrink-0" />
                         <span className="truncate font-medium">{p.worksite?.client_name || 'Chantier'}</span>
                       </div>
-                      {p.estimated_start && p.estimated_end && (
-                        <div className="text-[#9a7c14] mt-0.5">{slotLabel(p.estimated_start, p.estimated_end)}</div>
+                      {plannedLabel(p.estimated_start, p.estimated_end) && (
+                        <div className="text-[#9a7c14] mt-0.5">{plannedLabel(p.estimated_start, p.estimated_end)}</div>
                       )}
                     </div>
                   )

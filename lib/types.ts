@@ -124,12 +124,13 @@ export interface TimeEntry {
   modified_by?: string | null;
   modified_at?: string | null;
   /**
-   * Réserve de réception — DEUX gestes distincts, à ne pas confondre.
+   * Réserve de réception — levée par le bureau OU par le salarié (lot 11,
+   * demande d'Ergun ; avant : seul le bureau la fermait).
    *
-   * `reserve_fixed_*`    : le SALARIÉ déclare avoir corrigé sur place. La
-   *                        réserve reste ouverte ; c'est une information pour
-   *                        le bureau, pas un quitus qu'on se donne à soi-même.
-   * `reserve_resolved_*` : le BUREAU lève la réserve. Seul geste qui la ferme.
+   * `reserve_fixed_*`    : levée par le SALARIÉ (mark_reserve_fixed, avec un
+   *                        commentaire facultatif).
+   * `reserve_resolved_*` : levée par le BUREAU (set_reserve_resolution).
+   * Les deux comptent comme « levée » : voir lib/reserves.ts (isReserveLifted).
    */
   reserve_fixed_at?: string | null;
   reserve_fixed_by?: string | null;

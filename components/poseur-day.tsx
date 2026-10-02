@@ -32,6 +32,10 @@ import { LiveLine } from '@/components/planning-bubble';
 import { placeLive, cellKey } from '@/supabase/functions/_shared/live-place';
 import TeamDay from '@/components/team-day';
 import ChantierDocuments from '@/components/chantier-documents';
+import ReserveLiftForm from '@/components/reserve-lift-form';
+import { liftReserve, undoWorkerLift, liftErrorMessage, announceReservesChanged, RESERVES_CHANGED_EVENT } from '@/lib/reserve-lift';
+import { fetchMyClosure } from '@/lib/worker-closure';
+import { isReserveLifted } from '@/lib/reserves';
 
 /** Une correction reçue du bureau, telle que la journée du salarié l'affiche. */
 interface CorrectionVue {
@@ -255,9 +259,8 @@ button.bt-stat:focus-visible{outline:2px solid #FFC21A;outline-offset:2px}
 .bt-iv-reserve.encours{background:#FFF6E0;border:1px solid #EAD08A;color:#8a6d05}
 .bt-iv-reserve.corrige{background:#EAF6EF;border:1px solid #BBE0CC;color:#1F7A4D}
 .bt-iv-reserve.levee{background:#EFEDE8;border:1px solid #D6D1C6;color:#5c574f}
-.bt-iv-fixbtn{display:inline-flex;align-items:center;gap:6px;margin-top:7px;border:1.5px solid #1F7A4D;background:#fff;color:#1F7A4D;border-radius:9px;padding:6px 11px;font-family:inherit;font-weight:800;font-size:12.5px;cursor:pointer}
+.bt-iv-fixbtn{display:inline-flex;align-items:center;gap:6px;margin-top:7px;border:1.5px solid #1F7A4D;background:#fff;color:#1F7A4D;border-radius:9px;padding:8px 13px;font-family:inherit;font-weight:800;font-size:13.5px;cursor:pointer;min-height:36px}
 .bt-iv-fixbtn:disabled{opacity:.55}
-.bt-iv-fixundo{margin-left:7px;border:none;background:none;color:#8a8378;font-family:inherit;font-size:11.5px;font-weight:700;text-decoration:underline;cursor:pointer;padding:0}
 .bt-iv-acts{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
 .bt-iv-mod{flex:1;min-width:110px;border:1.5px solid #15120F;background:transparent;border-radius:10px;padding:10px;font-weight:800;font-size:13.5px;color:#15120F;cursor:pointer;font-family:inherit}
 .bt-iv-doc{flex:none;border:1.5px solid rgba(21,18,15,.18);background:#fff;border-radius:10px;padding:10px 12px;font-weight:800;font-size:13.5px;color:#15120F;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
@@ -496,7 +499,8 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
   // l'éditeur d'intervention peut se refermer derrière lui, la pièce doit
   // rester rattachée à l'intervention depuis laquelle on l'a prise.
   const [docsWs, setDocsWs] = useState<{ id: string; name: string; entryId: string | null } | null>(null);
-  const [fixingId, setFixingId] = useState<string | null>(null);
+  // Lot 11 : la carte dont le formulaire « Lever la réserve » est ouvert.
+  const [liftingId, setLiftingId] = useState<string | null>(null);
   // « Je commence » sur une carte (lot 9) : la carte en cours de démarrage, et
   // le départ mis en attente derrière l'information sur l'endroit (CNIL).
   const [starting, setStarting] = useState<string | null>(null);
@@ -544,7 +548,14 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
   // mois passé était déclaré « clôturé » sur le téléphone alors que personne
   // n'avait rien clôturé et que la base laissait écrire.
   const [closedMonths, setClosedMonths] = useState<Set<string>>(new Set());
-  const monthLocked = closedMonths.has(date.slice(0, 7));
+  // Lot 11 : « Clôturer jusqu'au… » — le bureau peut clôturer les heures d'UN
+  // salarié (fin de contrat en cours de mois). Même effet à l'écran qu'un mois
+  // clôturé, jusqu'à cette date incluse. null = aucune clôture (ou table pas
+  // encore créée : tout se comporte comme avant).
+  const [closedUntil, setClosedUntil] = useState<string | null>(null);
+  const userLocked = !!closedUntil && date <= closedUntil;
+  const monthLocked = closedMonths.has(date.slice(0, 7)) || userLocked;
+  const closedUntilLabel = closedUntil ? format(new Date(`${closedUntil}T12:00:00`), 'd MMMM', { locale: fr }) : '';
 
   /**
    * Met un refus du serveur en français de chantier.
@@ -555,7 +566,19 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
    * clôturé le mois pendant que l'application était ouverte.
    */
   const explainWriteError = (err: unknown, fallback: string): string => {
-    const msg = err instanceof Error ? err.message : String(err ?? '');
+    const msg = err instanceof Error ? err.message : String((err as { message?: string })?.message ?? err ?? '');
+    // Clôture de CE salarié (« … clôturées par le bureau jusqu'au 2026-10-15 ») :
+    // testée AVANT celle du mois — le message contient aussi « clôturé », et
+    // fermer tout le mois à l'écran serait faux.
+    if (/jusqu/i.test(msg) && /clôtur/i.test(msg)) {
+      const m = /(\d{4})-(\d{2})-(\d{2})/.exec(msg);
+      const fr2 = !m ? /(\d{2})\/(\d{2})\/(\d{4})/.exec(msg) : null;
+      const until = m ? `${m[1]}-${m[2]}-${m[3]}` : fr2 ? `${fr2[3]}-${fr2[2]}-${fr2[1]}` : null;
+      if (until) setClosedUntil((prev) => (prev && prev >= until ? prev : until));
+      else if (user?.id) fetchMyClosure(user.id).then((d) => { if (d) setClosedUntil(d); });
+      const label = until ? format(new Date(`${until}T12:00:00`), 'd MMMM', { locale: fr }) : closedUntilLabel;
+      return `Le bureau a clôturé tes heures${label ? ` jusqu'au ${label}` : ''}. Rapproche-toi de la secrétaire.`;
+    }
     if (msg.includes('clôturé')) {
       setClosedMonths((prev) => new Set(prev).add(date.slice(0, 7)));
       return 'Le bureau vient de clôturer ce mois. Rapproche-toi de la secrétaire.';
@@ -578,6 +601,14 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
       });
     return () => { stale = true; };
   }, [user?.company_id]);
+
+  // Ma clôture à moi (lot 11), lue une fois, comme les mois clôturés.
+  useEffect(() => {
+    if (!user?.id) return;
+    let stale = false;
+    fetchMyClosure(user.id).then((d) => { if (!stale) setClosedUntil(d); });
+    return () => { stale = true; };
+  }, [user?.id]);
 
   // Le temps de route est-il payé ? Réglage de l'entreprise, pas du logiciel.
   const [travelPaid, setTravelPaid] = useState(false);
@@ -985,29 +1016,55 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
   };
 
   /**
-   * « J'ai corrigé sur place ».
+   * « Lever la réserve » (lot 11, demande d'Ergun) : le salarié lève lui-même,
+   * depuis son téléphone, avec le MÊME formulaire que le bureau (commentaire et
+   * photo facultatifs). La réserve passe dans « Levées » côté bureau, avec son
+   * nom, la date, le commentaire et la photo — et le bureau peut la rouvrir.
+   * Passe par mark_reserve_fixed (déjà en production), qui marche aussi sur un
+   * mois clôturé : ce n'est pas une écriture d'heures.
    *
-   * Ce geste NE LÈVE PAS la réserve : le salarié ne se donne pas quitus sur son
-   * propre travail. Il informe le bureau, qui constatera et lèvera. Tant que le
-   * bureau n'est pas passé, le salarié peut se rétracter.
+   * Pendant 10 s, « Annuler » la remet à lever (refusé si le bureau l'a levée
+   * entre-temps : la fonction serveur le dit).
    */
-  const markFixed = async (entryId: string, fixed: boolean) => {
-    setFixingId(entryId);
+  const liftFromCard = async (entry: TimeEntryWithWorksite, note: string, photo: File | null) => {
+    if (!user) return;
     try {
-      const { error } = await supabase.rpc('mark_reserve_fixed', {
-        p_entry_id: entryId, p_fixed: fixed, p_note: null,
+      const res = await liftReserve({
+        role: 'worker', companyId: user.company_id, userId: user.id,
+        entryId: entry.id, worksiteId: entry.worksite_id, note, photo,
       });
-      if (error) throw error;
-      toast.success(fixed
-        ? 'Signalé au bureau — la réserve sera levée par le bureau'
-        : 'Signalement retiré');
+      setLiftingId(null);
+      toast.success('Réserve levée', {
+        duration: 10_000,
+        action: {
+          label: 'Annuler',
+          onClick: async () => {
+            try {
+              await undoWorkerLift(entry.id, res.photo);
+              toast.success('Réserve remise à lever');
+            } catch (e) {
+              toast.error(liftErrorMessage(e, true));
+            }
+            await fetchData();
+            announceReservesChanged();
+          },
+        },
+      });
       await fetchData();
+      announceReservesChanged();
     } catch (e) {
-      toast.error((e as { message?: string })?.message || "Impossible de signaler.");
-    } finally {
-      setFixingId(null);
+      toast.error(liftErrorMessage(e, true));
+      throw e; // le formulaire reste ouvert, avec la saisie
     }
   };
+
+  // Une réserve levée depuis le bandeau « réserves à lever » : la carte du jour
+  // se met à jour aussi (relecture silencieuse, keep()).
+  useEffect(() => {
+    const onChanged = () => { fetchData(); };
+    window.addEventListener(RESERVES_CHANGED_EVENT, onChanged);
+    return () => window.removeEventListener(RESERVES_CHANGED_EVENT, onChanged);
+  }, [fetchData]);
 
   const saveSlot = async () => {
     if (!user || !openSlot) return;
@@ -1759,7 +1816,10 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
             return (
               <div key={item.key} className={`bt-iv-plan bt-iv-tap${isLive ? ' live' : ''}`} onClick={onTap} data-testid={isLive ? 'card-live' : 'card-planned'}>
                 <div className="bt-plan-k" style={isLive ? { color: '#1F7A4D' } : undefined}>
-                  {p.estimated_start && p.estimated_end ? `Prévu · ${p.estimated_start.substring(0, 5)}–${p.estimated_end.substring(0, 5)}` : 'Prévu'}
+                  {/* Lot 11 : une heure de début seule (« à 14:00 ») se voit aussi. */}
+                  {p.estimated_start && p.estimated_end
+                    ? `Prévu · ${p.estimated_start.substring(0, 5)}–${p.estimated_end.substring(0, 5)}`
+                    : p.estimated_start ? `Prévu · ${p.estimated_start.substring(0, 5)}` : 'Prévu'}
                 </div>
                 <div className="bt-iv-row">
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -1853,26 +1913,30 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
                   </div>
                 )}
                 {entry.reception === 'avec' && (
-                  <>
-                    <div className="bt-iv-reserve avec">⚠ Avec réserve</div>
-                    {/* Trois états bien distincts : le bureau a levé, le salarié
-                        a signalé avoir corrigé (en attente du bureau), ou rien
-                        encore. Le salarié ne ferme jamais lui-même. */}
-                    {entry.reserve_resolved_at ? (
-                      <div className="bt-iv-reserve levee">✓ Levée par le bureau</div>
-                    ) : entry.reserve_fixed_at ? (
-                      <div className="bt-iv-reserve corrige">
-                        ✓ Corrigé sur place — en attente du bureau
-                        <button type="button" className="bt-iv-fixundo" disabled={fixingId === entry.id}
-                          onClick={(ev) => { ev.stopPropagation(); markFixed(entry.id, false); }}>annuler</button>
-                      </div>
+                  // Lot 11 — trois états, une définition (lib/reserves.ts) :
+                  // à lever (bouton + formulaire sous la carte), levée par le
+                  // bureau, levée par moi. Les gestes ici n'ouvrent jamais la fiche.
+                  <div onClick={(ev) => ev.stopPropagation()} data-testid="card-reserve">
+                    {isReserveLifted(entry) ? (
+                      entry.reserve_resolved_at
+                        ? <div className="bt-iv-reserve levee">✓ Réserve levée par le bureau</div>
+                        : <div className="bt-iv-reserve corrige">✓ Réserve levée le {format(new Date(entry.reserve_fixed_at!), 'd MMM', { locale: fr })}</div>
                     ) : (
-                      <button type="button" className="bt-iv-fixbtn" disabled={fixingId === entry.id}
-                        onClick={(ev) => { ev.stopPropagation(); markFixed(entry.id, true); }}>
-                        {fixingId === entry.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : '✓'} J&apos;ai corrigé sur place
-                      </button>
+                      <>
+                        <div className="bt-iv-reserve avec">⚠ Avec réserve</div>
+                        {liftingId === entry.id ? (
+                          <ReserveLiftForm tu onSubmit={(note, photo) => liftFromCard(entry, note, photo)} onCancel={() => setLiftingId(null)} />
+                        ) : (
+                          <div>
+                            <button type="button" className="bt-iv-fixbtn" data-testid="card-lift" disabled={!isOnline}
+                              onClick={() => setLiftingId(entry.id)}>
+                              ✓ Lever la réserve
+                            </button>
+                          </div>
+                        )}
+                      </>
                     )}
-                  </>
+                  </div>
                 )}
                 {entry.reception === 'sans' && <div className="bt-iv-reserve sans">✓ Sans réserve</div>}
                 {entry.reception === 'en_cours' && <div className="bt-iv-reserve encours">🔨 Chantier en cours</div>}
@@ -1962,7 +2026,9 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
         {allSubmitted && (
           <div className="bt-sentnote">
             {monthLocked
-              ? 'Mois clôturé — vois avec la secrétaire pour modifier.'
+              ? (userLocked && !closedMonths.has(date.slice(0, 7))
+                ? `Heures clôturées jusqu'au ${closedUntilLabel} — vois avec la secrétaire pour modifier.`
+                : 'Mois clôturé — vois avec la secrétaire pour modifier.')
               : 'Touche un chantier pour le corriger (la secrétaire sera prévenue).'}
           </div>
         )}
@@ -2225,9 +2291,15 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
       <Dialog open={lateOpen} onOpenChange={setLateOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-orange-500" /> Mois clôturé</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-orange-500" /> {userLocked && !closedMonths.has(date.slice(0, 7)) ? 'Heures clôturées' : 'Mois clôturé'}
+            </DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-muted-foreground">Le bureau a clôturé ce mois : la paie est partie. Pour toute correction, rapproche-toi de la secrétaire — elle peut rouvrir le mois.</p>
+          <p className="text-sm text-muted-foreground">
+            {userLocked && !closedMonths.has(date.slice(0, 7))
+              ? `Le bureau a clôturé tes heures jusqu'au ${closedUntilLabel}. Pour toute correction, rapproche-toi de la secrétaire.`
+              : 'Le bureau a clôturé ce mois : la paie est partie. Pour toute correction, rapproche-toi de la secrétaire — elle peut rouvrir le mois.'}
+          </p>
           <Button className="w-full mt-2" onClick={() => setLateOpen(false)}>Compris</Button>
         </DialogContent>
       </Dialog>

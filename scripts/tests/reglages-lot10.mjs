@@ -26,9 +26,13 @@ const LABELS = grab(/<label className="(?:bt-set-l|sa-l)">([^<{]+)<\/label>/g);
 const PLACEHOLDERS = grab(/placeholder="([^"]+)"/g);
 const ARIA = grab(/aria-label="([^"]+)"/g);
 // Textes de boutons / interrupteurs : listés ici, mais chacun DOIT figurer dans la source d'origine.
-const BUTTONS = ['Ajouter un logo', 'Gérer mon abonnement', 'Gérer les bornes', 'Envoyer le récap maintenant', 'Vérifier les habilitations',
+const BUTTONS_ORIG = ['Ajouter un logo', 'Gérer mon abonnement', 'Gérer les bornes', 'Envoyer le récap maintenant', 'Vérifier les habilitations',
   'Autoriser le support BEMEXO', 'Enregistrer', 'h / semaine', 'Non payée', 'Activée', 'Activées', 'Tous les champs sont facultatifs.'];
-const missingInSrc = BUTTONS.filter((t) => !ORIG.includes(t));
+const missingInSrc = BUTTONS_ORIG.filter((t) => !ORIG.includes(t));
+// Lot 11 : seul changement voulu par le propriétaire — « Gérer les bornes » devient « Relier la tablette »
+// (même bouton, même fenêtre des bornes). Le build d'origine, lui, est contrôlé avec le texte d'origine.
+const RENAMED = { 'Gérer les bornes': 'Relier la tablette' };
+const BUTTONS = BUTTONS_ORIG.map((t) => RENAMED[t] || t);
 // Rubrique attendue pour chaque libellé (lot 10).
 const SECTION_OF = {
   "Nom de l'entreprise": 'entreprise', SIRET: 'entreprise', 'TVA intracom.': 'entreprise', Adresse: 'entreprise', 'Code postal': 'entreprise',
@@ -124,10 +128,10 @@ const openSettings = async (ctx, port) => {
   return p;
 };
 const dialogText = async (p) => norm(await p.locator('[role=dialog]').textContent());
-const inventory = async (p) => {
+const inventory = async (p, buttons = BUTTONS) => {
   const txt = await dialogText(p);
   const missing = [];
-  for (const l of [...LABELS, ...BUTTONS]) if (!txt.includes(norm(l))) missing.push(l);
+  for (const l of [...LABELS, ...buttons]) if (!txt.includes(norm(l))) missing.push(l);
   for (const ph of PLACEHOLDERS) if (await p.locator(`[role=dialog] [placeholder="${ph}"]`).count() < 1) missing.push(`placeholder « ${ph} »`);
   for (const a of ARIA) if (await p.locator(`[role=dialog] [aria-label="${a}"]`).count() < 1) missing.push(`aria-label « ${a} »`);
   return missing;
@@ -199,7 +203,8 @@ const scenario = async (p, log, isNew) => {
 
 // ─── Version lot 10 ────────────────────────────────────────────────────────────
 check(LABELS.length >= 20 && PLACEHOLDERS.length >= 8, `inventaire extrait de ${BASE.slice(0, 7)} : ${LABELS.length} libellés, ${PLACEHOLDERS.length} champs (placeholder), ${ARIA.length} aria-label`);
-check(missingInSrc.length === 0, `les ${BUTTONS.length} textes de boutons vérifiés figurent dans la source d'origine${missingInSrc.length ? ' — absents : ' + missingInSrc.join(', ') : ''}`);
+check(missingInSrc.length === 0, `les ${BUTTONS_ORIG.length} textes de boutons vérifiés figurent dans la source d'origine${missingInSrc.length ? ' — absents : ' + missingInSrc.join(', ') : ''}`);
+check(Object.entries(RENAMED).every(([o, n]) => ORIG.includes(o) && !ORIG.includes(n)), `lot 11 : renommage voulu ${Object.entries(RENAMED).map(([o, n]) => `« ${o} » → « ${n} »`).join(', ')} (le texte d'origine existait, le nouveau non)`);
 check(LABELS.every((l) => SECTION_OF[l]), `chaque libellé d'origine a une rubrique${LABELS.filter((l) => !SECTION_OF[l]).map((l) => ' — sans rubrique : ' + l).join('')}`);
 
 const logN = { rpc: [], writes: [] };
@@ -289,7 +294,7 @@ if (OUT_ORIG) {
   await setup(co, logO);
   const po = await openSettings(co, Number(PORT) + 1);
   check(await po.locator('[data-testid^=set-sec-]').count() === 0, '[origine] build du commit cca24c8 (sans rubriques)');
-  const missO = await inventory(po);
+  const missO = await inventory(po, BUTTONS_ORIG);
   check(missO.length === 0, `[origine] le même inventaire est présent dans l'écran d'origine${missO.length ? ' — manquants : ' + missO.join(' | ') : ''}`);
   const payloadOrig = await scenario(po, logO, false);
   check(sortObj(payloadOrig) === sortObj(payloadNew), '4) avant / après : même fonction, même charge utile, champ par champ');

@@ -82,7 +82,8 @@ const onTop = (p, sel) => p.evaluate((s) => { const el = document.querySelector(
   await p.waitForTimeout(800);
   check(calls.includes('board') && calls.includes('sync'), `1) la borne appelle « board » et « sync » : ${calls.join(', ')}`);
   const fs1 = p.locator('[data-testid=kb-fullscreen]');
-  check(await fs1.isVisible() && (await fs1.innerText()).trim() === 'Plein écran', '1) bouton « Plein écran » visible dans le coin');
+  // Lot 11 : icône seule (le libellé est dans aria-label / title).
+  check(await fs1.isVisible() && (await fs1.getAttribute('aria-label')) === 'Plein écran', '1) bouton « Plein écran » visible dans le coin');
   const workers = await p.locator('[data-testid=kb-worker]').allInnerTexts();
   check(['Inès Garnier', 'Julie Bernard', 'Karim Haddad', 'Lucas Petit', 'Sofia Moreau', 'Thomas Lefèvre'].every((n) => workers.includes(n)), `1) prénom + nom : ${workers.join(' / ')}`);
   const titles = await p.locator('[data-testid=bubble-title]').allInnerTexts();
@@ -119,10 +120,10 @@ const onTop = (p, sel) => p.evaluate((s) => { const el = document.querySelector(
   await p.screenshot({ path: `${SH}/borne-planning-defile-1280x800.png` });
   await p.evaluate(() => { document.querySelector('.kb-week').scrollTop = 0; });
 
-  // ── 2) « Pointer (QR) » : plein écran, retour au toucher et après 60 s ─────
+  // ── 2) « QR » : plein écran, retour au toucher et après 30 s (lot 11 ; 60 s au lot 9) ─
   await p.click('[data-testid=kb-pointer]');
   await p.waitForTimeout(300);
-  check(await p.locator('[data-testid=kb-qr-overlay]').isVisible(), '2) « Pointer (QR) » ouvre le QR');
+  check(await p.locator('[data-testid=kb-qr-overlay]').isVisible(), '2) « QR » ouvre le QR');
   check((await p.locator('[data-testid=kb-qr-overlay] .kb-qr svg').count()) === 1, '2) QR calculé hors ligne affiché');
   check(await onTop(p, '[data-testid=kb-fullscreen]'), '2) bouton plein écran au-dessus du QR');
   await p.screenshot({ path: `${SH}/borne-qr-1280x800.png` });
@@ -131,24 +132,24 @@ const onTop = (p, sel) => p.evaluate((s) => { const el = document.querySelector(
   check((await p.locator('[data-testid=kb-qr-overlay]').count()) === 0 && await p.locator('[data-testid=kb-week]').isVisible(), '2) un toucher ramène au planning');
   await p.click('[data-testid=kb-pointer]');
   await p.waitForTimeout(200);
-  await p.clock.fastForward(30_000);
-  check(await p.locator('[data-testid=kb-qr-overlay]').isVisible(), '2) toujours affiché après 30 s');
-  await p.clock.fastForward(31_000);
+  await p.clock.fastForward(25_000);
+  check(await p.locator('[data-testid=kb-qr-overlay]').isVisible(), '2) toujours affiché après 25 s');
+  await p.clock.fastForward(6_000);
   await p.waitForTimeout(300);
-  check((await p.locator('[data-testid=kb-qr-overlay]').count()) === 0, '2) retour automatique au planning après 60 s');
+  check((await p.locator('[data-testid=kb-qr-overlay]').count()) === 0, '2) retour automatique au planning après 30 s');
 
-  // ── 3) Plein écran : bascule et libellé ─────────────────────────────────────
+  // ── 3) Plein écran : bascule et libellé (aria-label : icône seule au lot 11) ─
   await p.click('[data-testid=kb-fullscreen]');
   await p.waitForTimeout(400);
   const isFull = await p.evaluate(() => !!document.fullscreenElement);
-  const label = (await p.locator('[data-testid=kb-fullscreen]').innerText()).trim();
-  check(isFull && label === 'Quitter le plein écran', `3) plein écran → « ${label} »`);
+  const label = await p.locator('[data-testid=kb-fullscreen]').getAttribute('aria-label');
+  check(isFull && label === 'Quitter le plein écran' && (await p.locator('[data-testid=kb-fullscreen]').getAttribute('aria-pressed')) === 'true', `3) plein écran → « ${label} »`);
   await p.click('[data-testid=kb-fullscreen]');
   await p.waitForTimeout(400);
-  check(!(await p.evaluate(() => !!document.fullscreenElement)) && (await p.locator('[data-testid=kb-fullscreen]').innerText()).trim() === 'Plein écran', '3) « Quitter le plein écran » → retour à « Plein écran »');
+  check(!(await p.evaluate(() => !!document.fullscreenElement)) && (await p.locator('[data-testid=kb-fullscreen]').getAttribute('aria-label')) === 'Plein écran', '3) « Quitter le plein écran » → retour à « Plein écran »');
 
-  // ── 4) Déconnecter : caché derrière un appui long de 5 s ───────────────────
-  const kn = await p.locator('[data-testid=kb-kname]').boundingBox();
+  // ── 4) Déconnecter : caché derrière un appui long de 5 s (lot 11 : sur le logo / l'entreprise) ─
+  const kn = await p.locator('[data-testid=kb-brand]').boundingBox();
   await p.mouse.move(kn.x + 10, kn.y + kn.height / 2); await p.mouse.down();
   await p.clock.fastForward(2000); await p.mouse.up();
   await p.clock.fastForward(4000);
@@ -166,7 +167,7 @@ const onTop = (p, sel) => p.evaluate((s) => { const el = document.querySelector(
   await p.waitForTimeout(400);
   const f2 = await fits(p);
   check(f2.page && f2.grid && f2.table && f2.tooWide.length === 0, `5) 7 jours sans défilement horizontal (1024×768) ${JSON.stringify(f2)}`);
-  check(await p.locator('[data-testid=kb-pointer]').isVisible() && await p.locator('[data-testid=kb-fullscreen]').isVisible(), '5) « Pointer (QR) » et « Plein écran » visibles');
+  check(await p.locator('[data-testid=kb-pointer]').isVisible() && await p.locator('[data-testid=kb-fullscreen]').isVisible(), '5) « QR » et « Plein écran » visibles');
   await p.screenshot({ path: `${SH}/borne-planning-1024x768.png` });
   await ctx.close();
 }
@@ -179,7 +180,7 @@ const onTop = (p, sel) => p.evaluate((s) => { const el = document.querySelector(
   check((await p.locator('[data-testid=kb-unavailable]').innerText()).includes('Planning indisponible'), '6) sans cache : « Planning indisponible »');
   await p.click('[data-testid=kb-pointer]');
   await p.waitForTimeout(300);
-  check((await p.locator('[data-testid=kb-qr-overlay] .kb-qr svg').count()) === 1, '6) « Pointer (QR) » marche quand même');
+  check((await p.locator('[data-testid=kb-qr-overlay] .kb-qr svg').count()) === 1, '6) « QR » marche quand même');
   check((await p.locator('.kp').count()) === 0, '6) la borne n’est pas oubliée pour une erreur 400');
   await ctx.close();
 }
@@ -210,7 +211,7 @@ const onTop = (p, sel) => p.evaluate((s) => { const el = document.querySelector(
   const { ctx, p } = await tablet({ board: '401' });
   await p.goto(`http://localhost:${PORT}/borne`);
   await p.waitForTimeout(1500);
-  check((await p.locator('.kp').count()) === 1 && /retirée par le bureau/.test(await bodyText(p)), '7) 401 → retour à l’appairage, message clair');
+  check((await p.locator('.kp').count()) === 1 && /Tablette déconnectée par le bureau/.test(await bodyText(p)), '7) 401 → retour à l’appairage, message clair (lot 11 : « Tablette déconnectée par le bureau (ou remplacée par une autre) »)');
   check(await p.locator('[data-testid=kb-fullscreen]').isVisible(), '7) plein écran disponible aussi pendant l’installation');
   await ctx.close();
 }

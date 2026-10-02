@@ -193,26 +193,31 @@ for (const [w, h] of [[1280, 800], [1024, 768]]) {
   await p.goto(`http://localhost:${PORT}/borne`);
   await p.waitForSelector('[data-testid=kb-week]', { timeout: 10000 }).catch(() => {});
   await p.waitForTimeout(1000);
+  // Lot 11 (demande du patron) : l'en-tête discret du lot 10 devient UNE barre
+  // fine — logo BEMEXO et nom de l'entreprise de même taille, plus de nom de
+  // borne, date + heure au centre, « QR ». (Détails : borne-lot11.mjs.)
   const hdr = await p.evaluate(() => {
     const logo = document.querySelector('.kb-top [data-testid=kb-logo]');
     const co = document.querySelector('.kb-top [data-testid=kb-company]');
-    const kn = document.querySelector('.kb-top [data-testid=kb-kname]');
+    const kn = document.querySelector('[data-testid=kb-kname]');
     const clock = document.querySelector('.kb-top .kb-clock');
+    const time = document.querySelector('.kb-top .kb-clock [data-testid=kb-time]');
     const go = document.querySelector('.kb-top [data-testid=kb-pointer]');
     const cs = co && getComputedStyle(co);
+    const logoH = logo ? logo.getBoundingClientRect().height : 0;
     return {
-      logoAlt: logo?.getAttribute('alt') || '', logoH: logo ? Math.round(logo.getBoundingClientRect().height) : 0,
+      logoAlt: logo?.getAttribute('alt') || '', logoH: Math.round(logoH),
       logoSrc: logo?.getAttribute('src') || '',
-      company: co?.textContent || '', coSize: cs ? parseFloat(cs.fontSize) : 0, coWeight: cs ? Number(cs.fontWeight) : 0, coColor: cs?.color || '',
-      kname: kn?.textContent || '', knVisible: !!kn && kn.getBoundingClientRect().width > 0,
+      company: co?.textContent || '', coSize: cs ? parseFloat(cs.fontSize) : 0, ratio: cs && logoH ? parseFloat(cs.fontSize) / logoH : 0,
+      kname: !!kn, bars: document.querySelectorAll('.kb .kb-top').length, foot: document.querySelectorAll('.kb-foot').length,
       clock: !!clock && clock.getBoundingClientRect().height > 0, go: !!go && go.getBoundingClientRect().height > 0,
-      clockSize: clock ? parseFloat(getComputedStyle(clock).fontSize) : 0,
+      timeSize: time ? parseFloat(getComputedStyle(time).fontSize) : 0,
     };
   });
-  check(/BEMEXO/.test(hdr.logoAlt) && /bemexo-wordmark/.test(hdr.logoSrc) && hdr.logoH > 0 && hdr.logoH <= 22, `2) ${w}×${h} : petit logo BEMEXO (${hdr.logoH}px de haut)`);
-  check(hdr.company === 'Martin Menuiserie' && hdr.coSize <= 16 && hdr.coWeight < 900 && hdr.coColor !== 'rgb(242, 237, 227)', `2) ${w}×${h} : nom de l’entreprise discret (${hdr.coSize}px, ${hdr.coWeight}, ${hdr.coColor})`);
-  check(hdr.kname === 'Entrée du dépôt' && hdr.knVisible, `2) ${w}×${h} : nom de la borne toujours là (appui long)`);
-  check(hdr.clock && hdr.go && hdr.clockSize > hdr.coSize * 1.5, `2) ${w}×${h} : horloge et « Pointer (QR) » gardés`);
+  check(/BEMEXO/.test(hdr.logoAlt) && /bemexo-wordmark/.test(hdr.logoSrc) && hdr.logoH > 0 && hdr.logoH <= 24, `2) ${w}×${h} : logo BEMEXO dans la barre (${hdr.logoH}px de haut)`);
+  check(hdr.company === 'Martin Menuiserie' && hdr.ratio >= 1 && hdr.ratio <= 1.3, `2) ${w}×${h} : nom de l’entreprise de la taille du logo (${hdr.coSize}px pour ${hdr.logoH}px)`);
+  check(!hdr.kname && hdr.bars === 1 && hdr.foot === 0, `2) ${w}×${h} : une seule barre, plus de nom de borne ni de pied`);
+  check(hdr.clock && hdr.go && hdr.timeSize > hdr.coSize * 1.3, `2) ${w}×${h} : horloge et « QR » gardés`);
   const ro = await p.evaluate(() => {
     const wk = document.querySelector('.kb-week');
     const interactive = wk.querySelectorAll('button, a, input, select, textarea, [tabindex], [onclick], [role=button], [contenteditable]').length;
@@ -245,12 +250,12 @@ for (const [w, h] of [[1280, 800], [1024, 768]]) {
   await p.waitForTimeout(300);
   const rc = await collect(p);
   check(rc.other.length === 0 && (await p.locator('[data-testid=kb-qr-overlay]').count()) === 0, `2) ${w}×${h} : toucher une case ou un nom ne fait rien (${rc.other.length} mutation)`);
-  // Appui long de 5 s sur le nom de la borne : toujours la confirmation.
+  // Appui long de 5 s (lot 11 : sur le logo / l'entreprise) : toujours la confirmation.
   await p.mouse.move(5, h - 5);
-  const kn = await p.locator('[data-testid=kb-kname]').boundingBox();
+  const kn = await p.locator('[data-testid=kb-brand]').boundingBox();
   await p.mouse.move(kn.x + Math.min(10, kn.width / 2), kn.y + kn.height / 2); await p.mouse.down();
   await p.clock.fastForward(5200); await p.waitForTimeout(150);
-  check(await p.locator('[data-testid=kb-unpair-confirm]').isVisible(), `2) ${w}×${h} : appui long 5 s sur le nom de la borne → confirmation`);
+  check(await p.locator('[data-testid=kb-unpair-confirm]').isVisible(), `2) ${w}×${h} : appui long 5 s sur le logo → confirmation`);
   await p.mouse.up();
   await p.click('text=Annuler');
   await p.mouse.move(5, h - 5);
@@ -266,7 +271,7 @@ for (const [w, h] of [[1280, 800], [1024, 768]]) {
   await p.waitForSelector('[data-testid=kb-week]', { timeout: 10000 }).catch(() => {});
   await p.waitForTimeout(1000);
   const m = await p.evaluate(() => ({ page: document.documentElement.scrollWidth <= window.innerWidth, go: !!document.querySelector('[data-testid=kb-pointer]')?.getBoundingClientRect().height, logo: !!document.querySelector('[data-testid=kb-logo]') }));
-  check(m.page && m.go && m.logo, `3) téléphone 390×844 : pas de défilement horizontal de la page, logo et « Pointer (QR) » présents ${JSON.stringify(m)}`);
+  check(m.page && m.go && m.logo, `3) téléphone 390×844 : pas de défilement horizontal de la page, logo et « QR » présents ${JSON.stringify(m)}`);
   // Pas de capture : la borne est une tablette ; la grille de la semaine n'est pas
   // faite pour un téléphone (on vérifie seulement que rien ne déborde de la page).
   await ctx.close();

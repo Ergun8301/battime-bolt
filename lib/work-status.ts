@@ -3,7 +3,7 @@
 // => never missing. An absence (congé/maladie/intempérie) => never missing.
 // "Declared" = a time_entry whose status is not 'draft'.
 
-import { format } from 'date-fns';
+import { format, startOfMonth } from 'date-fns';
 
 /**
  * @param plannedDates work_date (yyyy-MM-dd) of chantier assignments (absences already excluded)
@@ -22,6 +22,15 @@ export function computeMissingDays(
     missing.add(d);
   }
   return Array.from(missing).sort((a, b) => (a < b ? 1 : -1));
+}
+
+/**
+ * Lot 11 — « À relancer » regarde le MOIS EN COURS (le 1er du mois → hier) :
+ * un patron ou une secrétaire raisonne en mois de paie, pas en « 21 derniers
+ * jours ». Bandeau du cockpit, pastilles des lignes et fiche lisent la même date.
+ */
+export function missingWindowStart(now: Date = new Date()): string {
+  return format(startOfMonth(now), 'yyyy-MM-dd');
 }
 
 /** Défauts repris de l'ouverture manuelle d'un chantier planifié. */
