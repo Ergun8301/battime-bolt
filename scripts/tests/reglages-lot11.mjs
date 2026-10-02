@@ -3,8 +3,10 @@
 // Lot 11 — item 10 : « Supprime tous les textes d'explication sous les listes déroulantes et sous les
 // réglages : une ligne courte maximum, le détail dans une infobulle ⓘ au survol. »
 // Sur la VRAIE page /admin (base simulée, aucune écriture réelle), Réglages de l'entreprise :
-//  1) chaque ⓘ s'ouvre au SURVOL (souris), au CLIC (sans survol préalable) et au TOUCHER (téléphone),
-//     montre un texte, tient dans l'écran, et n'est jamais DANS un libellé ni dans un autre bouton ;
+//  1) chaque ⓘ s'ouvre au SURVOL (souris), au vrai CLIC de souris (survol puis clic : elle RESTE ouverte),
+//     au CLAVIER (Entrée) et au TOUCHER (téléphone), montre un texte, tient dans l'écran, et n'est jamais
+//     DANS un libellé ni dans un autre bouton ; passer la souris sur un ⓘ pendant qu'on tape dans le champ
+//     voisin ne vole jamais le focus (la saisie continue dans le champ, rien n'est perdu) ;
 //  2) chaque libellé d'origine (lu dans la source au commit cca24c8) est toujours là, texte exact ;
 //  3) plus aucun paragraphe d'explication de plus de ~90 caractères sous un réglage — sauf le bloc
 //     légal avant « Endroit au pointage », qui reste ENTIER (obligation, pas explication) ;
@@ -161,13 +163,13 @@ const subLines = await p.locator(`${SET} .bt-set-substate`).evaluateAll((els) =>
 }));
 check(subLines.every((n) => n <= 2), `3) à 1280 px, chaque explication tient sur 1 ligne (2 au plus quand la commande est à côté) : ${subLines.join(', ')} ligne(s)`);
 
-// 1) Chaque ⓘ : présent, à côté du libellé (jamais dedans), s'ouvre au survol et au clic.
+// 1) Chaque ⓘ : présent, à côté du libellé (jamais dedans), s'ouvre au survol, au clic et au clavier.
 const present = [];
 for (const key of TIPS) if (await tip(p, key).count()) present.push(key);
 check(JSON.stringify(present) === JSON.stringify(TIPS), `1) un ⓘ par réglage expliqué (${present.length}/${TIPS.length}) : ${present.join(', ')}${TIPS.filter((k) => !present.includes(k)).map((k) => ' — manque ' + k).join('')}`);
 const placement = await p.locator(`${SET} [data-testid^=set-tip-]`).evaluateAll((els) => els.map((e) => ({ id: e.dataset.testid, inLabel: !!e.parentElement.closest('label'), inButton: !!e.parentElement.closest('button'), nextToLabel: !!e.parentElement.querySelector(':scope > label') })));
 check(placement.every((x) => !x.inLabel && !x.inButton && x.nextToLabel), `1) chaque ⓘ est À CÔTÉ de son libellé, jamais dans un <label> ni dans un bouton${placement.filter((x) => x.inLabel || x.inButton || !x.nextToLabel).map((x) => ' — ' + x.id).join('')}`);
-const hoverOk = []; const clickOk = []; const texts = {};
+const hoverOk = []; const clickOk = []; const keyOk = []; const texts = {};
 for (const key of present) {
   await openSec(p, SECTION_OF_TIP[key]);
   const t = tip(p, key);
@@ -180,29 +182,55 @@ for (const key of present) {
   await p.mouse.move(5, 5);
   const closed = await waitPop(p, false);
   if (opened && closed && texts[key].length > 10) hoverOk.push(key);
-  // Clic sans survol (clavier, lecteur d'écran, stylet) : s'ouvre, un second clic referme.
-  await t.dispatchEvent('click');
-  const o2 = await waitPop(p, true); const t2 = await popText(p);
-  await t.dispatchEvent('click');
+  // Vrai clic de souris (la souris arrive sur le ⓘ — survol — puis clique) : l'infobulle RESTE
+  // ouverte, y compris quand la souris repart ; un second clic la referme.
+  await t.click();
+  await p.waitForTimeout(250);
+  const o2 = await popOpen(p); const t2 = await popText(p);
+  await p.mouse.move(5, 5); await p.waitForTimeout(250);
+  const kept = await popOpen(p);
+  await t.click();
   const c2 = await waitPop(p, false);
-  if (o2 && c2 && t2 === texts[key]) clickOk.push(key);
+  if (o2 && kept && c2 && t2 === texts[key]) clickOk.push(key);
+  await p.mouse.move(5, 5); await waitPop(p, false);
+  // Clavier (Tab jusqu'au ⓘ puis Entrée ; lecteur d'écran) : s'ouvre, Entrée de nouveau referme.
+  await t.focus(); await p.keyboard.press('Enter');
+  const o3 = await waitPop(p, true); const t3 = await popText(p);
+  await p.keyboard.press('Enter');
+  const c3 = await waitPop(p, false);
+  if (o3 && c3 && t3 === texts[key]) keyOk.push(key);
 }
 check(hoverOk.length === present.length, `1) survol : les ${hoverOk.length}/${present.length} ⓘ s'ouvrent et se referment${present.filter((k) => !hoverOk.includes(k)).map((k) => ' — échec ' + k).join('')}`);
-check(clickOk.length === present.length, `1) clic : les ${clickOk.length}/${present.length} ⓘ s'ouvrent, et se referment au second clic${present.filter((k) => !clickOk.includes(k)).map((k) => ' — échec ' + k).join('')}`);
+check(clickOk.length === present.length, `1) clic de souris (survol puis clic) : les ${clickOk.length}/${present.length} ⓘ restent ouverts, même souris partie, et se referment au second clic${present.filter((k) => !clickOk.includes(k)).map((k) => ' — échec ' + k).join('')}`);
+check(keyOk.length === present.length, `1) clavier (Entrée) : les ${keyOk.length}/${present.length} ⓘ s'ouvrent, et se referment à la seconde Entrée${present.filter((k) => !keyOk.includes(k)).map((k) => ' — échec ' + k).join('')}`);
+// Saisie + survol : on tape dans le champ d'un réglage, la souris passe sur le ⓘ voisin puis repart,
+// on continue de taper. Le focus doit rester dans le champ et rien ne doit être perdu.
+{
+  const FIELDS = [
+    { key: 'horaire', label: 'Horaire hebdomadaire de base', a: '3', b: '9' },
+    { key: 'majoration', label: 'Majoration des heures supplémentaires', a: '3', b: '0' },
+    { key: 'comptable', label: 'Adresse de votre comptable', a: 'paie@cab', b: 'inet.fr' },
+  ];
+  const focusBad = [];
+  for (const f of FIELDS) {
+    await openSec(p, SECTION_OF_TIP[f.key]);
+    const input = p.locator(`${SET} .bt-set-sub:has(label.bt-set-l:text-is("${f.label}")) input:not([type=checkbox])`).first();
+    const before = await input.inputValue();
+    await p.mouse.move(5, 5); await waitPop(p, false);
+    await input.click(); await input.fill('');
+    await p.keyboard.type(f.a);
+    await tip(p, f.key).hover(); const op = await waitPop(p, true);
+    await p.mouse.move(5, 5); const cl = await waitPop(p, false); await p.waitForTimeout(150);
+    await p.keyboard.type(f.b);
+    const stillFocused = await input.evaluate((el) => document.activeElement === el);
+    const val = await input.inputValue();
+    if (!(op && cl && stillFocused && val === f.a + f.b)) focusBad.push(`${f.key} (ouverte ${op}, refermée ${cl}, focus gardé ${stillFocused}, valeur « ${val} »)`);
+    await input.fill(before); // valeurs d'origine pour la suite et les captures
+  }
+  check(focusBad.length === 0, `1) saisie + survol du ⓘ voisin (horaire, majoration, comptable) : le focus reste dans le champ et la saisie est complète${focusBad.map((x) => ' — échec ' + x).join('')}`);
+}
 check(texts.horaire?.includes('lundi au dimanche') && texts.endroit?.includes('12 mois') && texts.relance?.includes('3 au total') && texts.support?.includes("retirer l'accès"),
   `1) le détail est bien dans l'infobulle (horaire : « ${texts.horaire?.slice(0, 50)}… »)`);
-// Information (non comptée) : à la souris, un CLIC juste après le survol. Le composant partagé
-// components/ui/info-tip.tsx (hors de cette zone) bascule l'état au clic : le survol l'a ouverte,
-// le clic la referme. Signalé ; la ligne passera à « reste ouverte » quand il sera corrigé.
-{
-  await openSec(p, 'paie'); const t = tip(p, 'horaire'); await t.scrollIntoViewIfNeeded();
-  await p.mouse.move(5, 5); await waitPop(p, false);
-  await t.click(); await p.waitForTimeout(250);
-  const still = await popOpen(p);
-  console.log(`ℹ️  souris, survol puis clic sur un ⓘ : l'infobulle ${still ? 'reste ouverte' : 'se referme (bascule de components/ui/info-tip.tsx, hors zone — signalé)'}`);
-  if (still) await t.click();
-  await p.mouse.move(5, 5); await waitPop(p, false);
-}
 // Capture : une infobulle ouverte au survol.
 await openSec(p, 'paie'); await tip(p, 'horaire').scrollIntoViewIfNeeded(); await tip(p, 'horaire').hover(); await waitPop(p, true);
 await p.waitForTimeout(400); // fin du fondu d'ouverture
