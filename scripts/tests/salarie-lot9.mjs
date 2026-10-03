@@ -145,7 +145,7 @@ check(lt2.toLowerCase().includes(`tu es pointé depuis ${parisHHmm(D.active_sess
 check(await p.locator('[data-testid=lt-finish]').count() === 1 && (await p.locator('[data-testid=lt-finish]').innerText()).includes('Terminer ma journée'), '2) un seul bouton : « Terminer ma journée »');
 check(!lt2.includes('Annuler') && !lt2.includes('POINTAGE EN COURS'), '2) plus de gros bloc ni de bouton « Annuler »');
 const ltBox = await p.locator('[data-testid=live-timer]').boundingBox();
-check(!!ltBox && ltBox.height <= 90, `2) carte compacte (${ltBox ? Math.round(ltBox.height) : '?'} px de haut)`);
+check(!!ltBox && ltBox.height <= 130, `2) carte compacte (${ltBox ? Math.round(ltBox.height) : '?'} px de haut)`);
 await p.screenshot({ path: `${SH}/salarie-pointe-qr.png` });
 
 // ═════ 3 · Carte verte depuis la base (pointage ouvert à la borne) ; non modifiable ═════

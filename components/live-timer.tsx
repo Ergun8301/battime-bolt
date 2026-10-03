@@ -67,13 +67,13 @@ const LT_CSS = `
 .bt-lt.late{background:#2A1E16;border:1px solid rgba(240,145,90,.45)}
 .bt-lt-k{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:#a59c86;font-weight:700;display:flex;align-items:center;gap:6px}
 .bt-lt{padding:10px 12px}
-.bt-lt-one{display:flex;align-items:center;gap:10px}
-.bt-lt-txt{flex:1;min-width:0}
+.bt-lt-one{display:flex;flex-direction:column;gap:8px}
+.bt-lt-txt{min-width:0}
 .bt-lt-line{display:flex;align-items:baseline;gap:8px;min-width:0;margin-top:3px}
 .bt-lt-site{font-size:14.5px;font-weight:900;letter-spacing:-.01em;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bt-lt-since{flex:none;font-family:'JetBrains Mono',monospace;font-size:12px;color:#a59c86;font-weight:600}
-.bt-lt-one .bt-lt-btn{flex:none;padding:10px 12px;font-size:13.5px;white-space:nowrap}
-.bt-lt-one .bt-lt-k{letter-spacing:.05em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bt-lt-one .bt-lt-btn{width:100%;padding:10px 12px;font-size:14.5px;white-space:nowrap}
+.bt-lt-one .bt-lt-k{font-family:inherit;font-size:13px;letter-spacing:0;text-transform:none;color:#cfe9d9;font-weight:800}
 .bt-lt-big{font-family:'JetBrains Mono',monospace;font-size:34px;font-weight:700;color:#2FD584;letter-spacing:-.02em;line-height:1.05;margin-top:6px}
 .bt-lt-big.late{color:#F0915A}
 .bt-lt-row{display:flex;gap:8px;margin-top:11px}

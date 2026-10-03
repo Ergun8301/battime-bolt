@@ -255,7 +255,7 @@ const p2 = settingsKept ? p : await openSettings(ctx);
 // activé (le téléphone ne commence plus de pointage) — pour pouvoir le désactiver.
 await openSec(p2, 'borne');
 const posSub = p2.locator(`${SET} .bt-set-sub`, { has: p2.locator('label.bt-set-l', { hasText: /^Endroit au pointage en direct$/ }) });
-check(await posSub.getByRole('button', { name: 'Désactiver' }).count() === 1 && await posSub.getByRole('button', { name: 'Activer' }).count() === 0,
+check(await posSub.getByRole('button', { name: 'Désactiver' }).count() === 1 && await posSub.getByRole('button', { name: 'Activer', exact: true }).count() === 0,
   '3) lot 12 : réglage activé → affiché avec « Désactiver » seulement');
 
 // 5) Feuille de style jamais réécrite : on tape dans plusieurs champs (= nouveaux rendus).
