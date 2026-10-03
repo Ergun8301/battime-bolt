@@ -65,7 +65,7 @@ const D = {
     phone: '', email: 'contact@khabitat.fr', logo_url: '', subscription_status: 'active', trial_ends_at: '2030-01-01',
     auto_reminder_enabled: true, reminder_hour: 17, budget_alerts_enabled: true, travel_paid: false, weekly_hours: 35,
     accountant_email: 'compta@cabinet.fr', overtime_rate_1: 25, overtime_rate_2: 50,
-    ai_enabled: true, kiosk_enabled: true, support_enabled: true, position_tracking_enabled: false, colleagues_planning_visible: false,
+    ai_enabled: true, kiosk_enabled: true, support_enabled: true, position_tracking_enabled: true /* lot 12 : réglage affiché seulement s'il est activé */, colleagues_planning_visible: false,
   }],
   worksites: [{ id: 'w1', company_id: CO, client_name: 'Villa Dupont', city: 'Lyon', is_active: true }],
   planning: [], time_entries: [], active_sessions: [], month_closures: [], leave_requests: [], invitations: [], documents: [],

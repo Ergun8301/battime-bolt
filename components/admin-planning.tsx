@@ -34,7 +34,8 @@ import { weekStart as weekStartOf, weekEnd as weekEndOf } from '@/lib/week';
 import { fr } from 'date-fns/locale';
 import type { DateRange } from 'react-day-picker';
 import { toast } from 'sonner';
-import { computeMissingDays, missingWindowStart } from '@/lib/work-status';
+import { computeMissingDays, missingWindowStart, withIncompleteDays } from '@/lib/work-status';
+import { isExitToComplete, type QrFields } from '@/lib/qr-entry';
 import { exportEntriesToExcel, exportEntriesToPDF, exportEntriesToCSV, excelAsBase64 } from '@/lib/export-utils';
 import { fetchAllPaged, chunk } from '@/lib/fetch-all';
 import { isPreviewHost } from '@/lib/hosting';
@@ -69,7 +70,7 @@ import { keep } from '@/lib/same';
 
 // ─── helpers / constants ──────────────────────────────────────────────────────
 
-// Lot 11 : « À relancer » regarde le mois en cours (lib/work-status missingWindowStart).
+// « À relancer » : mois précédent + mois en cours (lot 12, lib/work-status missingWindowStart).
 // Lot 9 : « en cours depuis » relu toutes les 30 s (en pause quand l'onglet est caché).
 const LIVE_POLL_MS = 30000;
 
@@ -1220,6 +1221,17 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       const m = computeMissingDays(Array.from(days).filter((d) => !absence.get(uid)?.has(d)), declared.get(uid) || new Set<string>());
       if (m.length) miss.set(uid, m);
     });
+    // Lot 12 : une sortie oubliée « à compléter » compte aussi. Lecture à part,
+    // silencieuse (colonne absente tant que la migration n'est pas passée).
+    const incRes = await supabase.from('time_entries').select('user_id, work_date, start_time, end_time, exit_forgotten')
+      .eq('company_id', user.company_id).eq('exit_forgotten', true).eq('status', 'draft')
+      .gte('work_date', windowStart).lte('work_date', todayKey);
+    const incByUser = new Map<string, string[]>();
+    for (const r of (incRes.error ? [] : incRes.data || []) as (QrFields & { user_id: string; work_date: string })[]) {
+      if (!isExitToComplete(r)) continue;
+      incByUser.set(r.user_id, [...(incByUser.get(r.user_id) || []), r.work_date]);
+    }
+    incByUser.forEach((days, uid) => { miss.set(uid, withIncompleteDays(miss.get(uid) || [], days)); });
     setTodayAbsence((prev) => keep(prev, today));
     setMissingByWorker((prev) => keep(prev, miss));
     setCompanyName(compRes.data?.name || '');
@@ -1255,9 +1267,11 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const liveKeysRef = useRef<Set<string> | null>(null);
   const fetchLive = useCallback(async () => {
     if (!user?.company_id) return;
+    // Lot 12 : seulement les chronos ouverts AUJOURD'HUI (une sortie oubliée
+    // d'un jour précédent n'allume rien ; elle est fermée la nuit).
     const { data, error } = await supabase.from('active_sessions')
       .select('user_id, worksite_id, planning_id, work_date, started_at')
-      .eq('company_id', user.company_id);
+      .eq('company_id', user.company_id).eq('work_date', format(new Date(), 'yyyy-MM-dd'));
     // Lecture en échec : on garde l'état connu (dire « personne » serait faux).
     if (error) return;
     const rows = (data || []) as LiveSessionLike[];
@@ -1435,7 +1449,8 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   }, [waitingByWorker, docsByWorksite]);
   // « octobre » : le mois regardé par « À relancer », écrit en toutes lettres.
   // Recalculé à chaque rendu : un onglet resté ouvert au changement de mois suit les données (relues toutes les 60 s).
-  const monthLabel = format(new Date(), 'MMMM', { locale: fr });
+  // Lot 12 : mois précédent + mois en cours (« septembre et octobre »).
+  const monthLabel = `${format(subMonths(new Date(), 1), 'MMMM', { locale: fr })} et ${format(new Date(), 'MMMM', { locale: fr })}`;
 
   /** Les pièces jointes rangées par chantier — le classement qu'on n'avait pas. */
   const docsByChantier = useMemo(() => {
@@ -2375,7 +2390,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   /** Lot 11 : les lignes « À relancer » (panneau du cockpit ET fenêtre mobile). */
   const renderRelanceRows = (onOpen: () => void) => (
     waitingByWorker.length === 0 ? (
-      <div className="bt-pl-sp-empty">Tout le monde est à jour ce mois-ci.</div>
+      <div className="bt-pl-sp-empty">Tout le monde est à jour.</div>
     ) : waitingByWorker.map((r) => {
       const w = workers.find((x) => x.id === r.id);
       return (
@@ -2440,7 +2455,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                 <div className="bt-pl-sp" data-testid="relance-panel">
                   <div className="bt-pl-sp-h">À relancer · {monthLabel} <span className="n">{cockpitStats.waiting} j</span></div>
                   <div className="bt-pl-sp-list">{renderRelanceRows(() => setStatPanel(null))}</div>
-                  <div className="bt-pl-sp-foot">Journées planifiées ce mois-ci, sans heures envoyées.</div>
+                  <div className="bt-pl-sp-foot">Journées planifiées sans heures envoyées (ce mois-ci et le mois dernier, sauf mois clôturé).</div>
                 </div>
               )}
             </div>
@@ -3061,7 +3076,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         <DialogContent className="bt-skin max-w-sm">
           <DialogHeader><DialogTitle>À relancer · {monthLabel}</DialogTitle></DialogHeader>
           <div className="bt-pl-sp-list overflow-hidden rounded-lg border" data-testid="relance-list">{renderRelanceRows(() => setRelanceOpen(false))}</div>
-          <p className="text-xs text-muted-foreground">Journées planifiées ce mois-ci, sans heures envoyées.</p>
+          <p className="text-xs text-muted-foreground">Journées planifiées sans heures envoyées (ce mois-ci et le mois dernier, sauf mois clôturé).</p>
         </DialogContent>
       </Dialog>
 

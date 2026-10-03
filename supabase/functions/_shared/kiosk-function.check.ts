@@ -35,7 +35,13 @@ const nowIso = () => { tick = Math.max(Date.now(), tick + 1); return new Date(ti
 /** Il y a `min` minutes (négatif = dans le futur). */
 const ago = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
 const calls: { method: string; table: string; body?: unknown; query: string; prefer: string }[] = [];
-let rpcResult: (name: string, args: Row) => { status: number; body: unknown } = () => ({ status: 200, body: [] });
+// Par défaut, les fonctions du lot 12 sont ABSENTES (base pas encore migrée) :
+// la fonction kiosk doit retomber sur le chemin d'avant (insertion au nom du salarié).
+const LOT12_FN = new Set(['kiosk_open_session', 'close_forgotten_sessions']);
+const defaultRpc = (name: string) => (LOT12_FN.has(name)
+  ? { status: 404, body: { code: 'PGRST202', message: `Could not find the function public.${name}` } }
+  : { status: 200, body: [] });
+let rpcResult: (name: string, args: Row) => { status: number; body: unknown } = defaultRpc;
 let insertError: Record<string, { status: number; body: unknown } | undefined> = {};
 
 const SKIP = new Set(['select', 'order', 'limit', 'offset', 'on_conflict', 'columns']);
@@ -187,7 +193,7 @@ const ECOLE = 'w0000000-0000-4000-8000-00000000000c';
 function freshDb(): Db {
   calls.length = 0;
   insertError = {};
-  rpcResult = () => ({ status: 200, body: [] });
+  rpcResult = defaultRpc;
   return {
     auth: [{ id: 'u-admin', token: 'jwt-admin' }, { id: 'u-karim', token: 'jwt-karim' }, { id: 'u-admin2', token: 'jwt-admin2' }],
     companies: [{ id: CO, name: 'Martin Menuiserie', kiosk_enabled: true }, { id: CO2, name: 'Autre Société', kiosk_enabled: true }],
@@ -406,5 +412,50 @@ Deno.test({
     const t2 = await call({ action: 'ticket', k: k.id, c: code });
     const d = await call({ action: 'punch', ticket: t2.json.ticket }, { token: 'jwt-karim' });
     eq([d.status, d.json.error], [409, 'Heures clôturées par le bureau.'], 'départ refusé, même message');
+  },
+});
+
+Deno.test({
+  name: 'Lot 12 — arrivée par kiosk_open_session, sortie oubliée fermée au scan suivant',
+  sanitizeOps: false, sanitizeResources: false,
+  async fn() {
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    const yesterday = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(Date.now() - 86400000));
+    db = freshDb();
+    const opened: Row[] = [];
+    let closeN = 1;
+    rpcResult = (name, args) => {
+      if (name === 'kiosk_open_session') { opened.push(args); return { status: 204, body: undefined }; }
+      if (name === 'close_forgotten_sessions') {
+        if (closeN > 0) db.active_sessions = db.active_sessions.filter((r) => r.user_id !== args.p_user);
+        return { status: 200, body: closeN };
+      }
+      return { status: 200, body: [] };
+    };
+    const k = await addKiosk(CO, 't-k', ago(60), { worksite_id: VILLA });
+    const { codeAt, deriveSeed } = await import('./kiosk-code.ts');
+    const code = await codeAt(await deriveSeed('cle-de-test', String(k.id), 'sel'), Date.now());
+    let t = await call({ action: 'ticket', k: k.id, c: code });
+    let p = await call({ action: 'punch', ticket: t.json.ticket }, { token: 'jwt-karim' });
+    eq([p.status, p.json.kind], [200, 'arrival'], `arrivée : ${JSON.stringify(p.json)}`);
+    eq([opened.length, opened[0]?.p_user, opened[0]?.p_worksite, opened[0]?.p_date], [1, 'u-karim', VILLA, today], 'arrivée par kiosk_open_session (au nom du salarié, côté base)');
+    ok(!calls.some((c) => c.table === 'active_sessions' && c.method === 'POST'), 'aucune insertion directe quand la fonction existe');
+
+    // Sortie oubliée hier : le scan du matin ferme hier et démarre aujourd'hui.
+    db.active_sessions.push({ user_id: 'u-karim', company_id: CO, worksite_id: VILLA, work_date: yesterday, started_at: new Date(Date.now() - 86400000).toISOString() });
+    db.kiosk_punches = [];
+    t = await call({ action: 'ticket', k: k.id, c: code });
+    p = await call({ action: 'punch', ticket: t.json.ticket }, { token: 'jwt-karim' });
+    eq([p.status, p.json.kind], [200, 'arrival'], `lendemain : la borne ne bloque plus (${JSON.stringify(p.json)})`);
+    ok(calls.some((c) => c.table === 'rpc:close_forgotten_sessions' && (c.body as Row)?.p_user === 'u-karim'), 'sortie oubliée fermée pour CE salarié');
+    eq(opened.length, 2, 'puis nouvelle arrivée');
+
+    // Rien n'a pu être fermé (jour clos) : l'ancien refus, clair.
+    closeN = 0;
+    db.active_sessions = [{ user_id: 'u-karim', company_id: CO, worksite_id: VILLA, work_date: yesterday, started_at: new Date(Date.now() - 86400000).toISOString() }];
+    db.kiosk_punches = [];
+    t = await call({ action: 'ticket', k: k.id, c: code });
+    p = await call({ action: 'punch', ticket: t.json.ticket }, { token: 'jwt-karim' });
+    eq([p.status, p.json.code], [409, 'stale_session'], 'rien fermé → refus « pointage d’un autre jour »');
   },
 });

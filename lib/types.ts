@@ -123,6 +123,10 @@ export interface TimeEntry {
   exported_at?: string | null;
   modified_by?: string | null;
   modified_at?: string | null;
+  /** Lot 12 (posés par la base, voir lib/qr-entry.ts) : ligne QR, sortie oubliée, heures QR corrigées. */
+  source?: string | null;
+  exit_forgotten?: boolean | null;
+  corrected_at?: string | null;
   /**
    * Réserve de réception — levée par le bureau OU par le salarié (lot 11,
    * demande d'Ergun ; avant : seul le bureau la fermait).

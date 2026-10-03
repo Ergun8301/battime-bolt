@@ -419,9 +419,9 @@ export const WORKER_GUIDE: WorkerGuideEntry[] = [
     etapes: ['Ouvrez le chantier du jour.', 'Bouton « Documents ».', '« Photo » ou « Fichier ».'], lien: 'journee' },
   { mots: ['demander conge', 'conge', 'vacances', 'absence', 'maladie', 'arret'], titre: 'Demander un congé',
     etapes: ['Menu (votre nom en haut à droite) → « Mes congés ».', '« Faire une demande » : type et dates.', '« Envoyer la demande » : le bureau répond.'], lien: 'conges' },
-  // Lot 9 : plus de liste déroulante — on démarre depuis la carte du chantier.
-  { mots: ['pointer', 'commencer', 'chrono', 'en direct', 'je commence'], titre: 'Pointer en direct',
-    etapes: ['« Ma journée » → la carte du chantier (pas de carte : « Je commence sur un autre chantier »).', '« Je commence » sur la carte (elle passe au vert).', '« J’ai fini » en partant : l’heure exacte est notée.'], lien: 'journee' },
+  // Lot 12 : on commence par le QR de la tablette ; le téléphone peut seulement terminer.
+  { mots: ['pointer', 'commencer', 'chrono', 'en direct', 'je commence'], titre: 'Pointer son arrivée et son départ',
+    etapes: ['En arrivant : scannez le QR de la tablette.', 'En partant : scannez à nouveau (ou « Terminer ma journée » dans « Ma journée »).', 'Pas de tablette : notez vos heures avec « + ».'], lien: 'journee' },
   { mots: ['envoyer journee', 'envoyer ma journee', 'valider journee', 'envoyer'], titre: 'Envoyer sa journée',
     etapes: ['« Ma journée ».', 'Vérifiez vos chantiers et horaires.', '« Envoyer ma journée → ».'], lien: 'journee' },
   { mots: ['ajouter heure', 'noter heure', 'saisir heure', 'ajouter chantier', 'oublie'], titre: 'Noter ses heures à la main',
@@ -450,8 +450,8 @@ export const WORKER_GUIDE: WorkerGuideEntry[] = [
     etapes: ['« Ma journée » → le chantier avec la réserve (ou le bandeau jaune des réserves à lever).', '« Lever la réserve » : commentaire et photo facultatifs.', 'Le bureau la voit dans « Levées ».'], lien: 'journee' },
   { mots: ['annuler ma demande', 'annuler conge', 'retirer ma demande'], titre: 'Annuler une demande de congé',
     etapes: ['Menu → « Mes congés ».', '« Annuler ma demande » (tant qu’elle attend).'], lien: 'conges' },
-  { mots: ['annuler pointage', 'je me suis trompe de chantier', 'pointage par erreur'], titre: 'Annuler un pointage en cours',
-    etapes: ['« Ma journée » : le pointage en cours, en haut.', '« Annuler » puis « Oui, annuler ».', '« Je commence » sur la carte du bon chantier.'], lien: 'journee' },
+  { mots: ['oublie de scanner', 'sortie oubliee', 'oublie de pointer', 'annuler pointage', 'pointage par erreur'], titre: 'Sortie oubliée',
+    etapes: ['« Ma journée » : « Terminer ma journée » sur la carte du pointage.', 'Le lendemain : la ligne « Sortie oubliée » attend votre heure de fin.', 'Touchez-la, mettez l’heure, puis « Envoyer ma journée ».'], lien: 'journee' },
   { mots: ['nouveau chantier', 'chantier pas dans la liste', 'ajouter un chantier', 'autre chantier'], titre: 'Travailler sur un chantier qui n’est pas dans la liste',
     etapes: ['« Ma journée » → « + » → « Autre ».', 'Écrivez le nom : « Ajouter ce chantier ».', 'Le bureau le verra.'], lien: 'journee' },
   { mots: ['envoyer au client', 'email du client', 'partager photo client'], titre: 'Envoyer les photos au client',
@@ -681,7 +681,17 @@ function planned(snapshot: WorkerSnapshot): string | null {
   return today?.chantier_id ?? (snapshot.chantiers.length === 1 ? snapshot.chantiers[0].id : null);
 }
 
+/**
+ * Lot 12 : le téléphone ne COMMENCE plus de journée et n'annule plus un
+ * pointage (avec tablette : le QR seulement ; sans tablette : heures saisies
+ * avec « + »). Il peut seulement TERMINER un pointage ouvert.
+ */
+export const QR_START_ANSWER = 'Le pointage commence en scannant le QR de la tablette. Sans tablette, notez vos heures avec « + » dans « Ma journée ».';
+export const NO_CANCEL_ANSWER = 'Un pointage ne s’annule pas depuis le téléphone : « Terminer ma journée », puis corrigez ou retirez la ligne dans « Ma journée ».';
+const PHONE_LIVE_REMOVED = new Set(['commencer_pointage', 'annuler_pointage']);
+
 export function prepareWorkerAction(type: string, raw: Record<string, unknown>, snapshot: WorkerSnapshot, live: WorkerLive): WorkerAction | null {
+  if (PHONE_LIVE_REMOVED.has(type)) return null;
   const s = (v: unknown, max = 200) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
   const iso = (v: unknown) => { const x = s(v, 10); return /^\d{4}-\d{2}-\d{2}$/.test(x) ? x : ''; };
   let d: WorkerActionDraft;
@@ -838,7 +848,7 @@ export function handleWorkerLocally(text: string, snapshot: WorkerSnapshot, live
   const efface = !asks && /\b(efface|effacer|supprime|supprimer|enleve|enlever|retire|retirer|annule|annuler|vire|virer)\w*/.test(n);
   if (efface) {
     const go = (type: string, raw: Record<string, unknown> = {}): WorkerFullReply => { const a = prepareWorkerAction(type, raw, snapshot, live)!; return { kind: 'action', action: a, answer: actionAnswer(a, snapshot) }; };
-    if (/\b(pointage|chrono)\b/.test(n)) return go('annuler_pointage');
+    if (/\b(pointage|chrono)\b/.test(n)) return { kind: 'answer', answer: NO_CANCEL_ANSWER };
     if (/\b(conges?|vacances|demande)\b/.test(n)) return go('annuler_conge', { ancienne_date: parseDateFr(text, snapshot.aujourdhui) || '' });
     if (/\breserve\b/.test(n)) return go('retirer_reserve', { chantier: n.replace(/^.*\breserve\w*\s*(de|sur|a|au|chez)?\s*/, '') });
     if (/\b(photo|document|fichier)\b/.test(n)) return go('retirer_photo', { quoi: text });
@@ -880,9 +890,7 @@ export function handleWorkerLocally(text: string, snapshot: WorkerSnapshot, live
     }
     const start = /\b(je commence|commence|demarre|debut)\w*\b/.exec(n);
     if (start && /\b(pointage|chrono|commence|demarre)/.test(n) && !/\bcomment\b/.test(n)) {
-      const after = n.slice(start.index + start[0].length).replace(/\b(mon|le|pointage|chrono|sur|a|au|chez|chantier)\b/g, ' ').trim();
-      const a = prepareWorkerAction('commencer_pointage', { chantier: after }, snapshot, live)!;
-      return { kind: 'action', action: a, answer: actionAnswer(a, snapshot) };
+      return { kind: 'answer', answer: QR_START_ANSWER };
     }
     const leave = /\b(conges?|vacances|absence|malade|maladie|arret|intemperie)\b/.test(n) && /\b(demande|poser|pose|prendre|voudrais|veux|suis|serai|sera|mets|met)\w*\b/.test(n);
     if (leave && !/\bcomment\b/.test(n)) {
@@ -915,7 +923,6 @@ export const WORKER_FUNCTIONS = [
     parameters: { type: 'object', properties: { ancienne_date: S('Un jour de la demande, s’il y en a plusieurs') }, required: [] } },
   { name: 'modifier_conge', description: 'Changer les dates de SA demande de congé encore en attente.',
     parameters: { type: 'object', properties: { ancienne_date: S('Un jour de la demande actuelle'), du: S('Nouveau début, aaaa-mm-jj'), au: S('Nouvelle fin, aaaa-mm-jj') }, required: ['du'] } },
-  { name: 'annuler_pointage', description: 'Annuler le pointage EN COURS (lancé par erreur).', parameters: { type: 'object', properties: {}, required: [] } },
   { name: 'retirer_photo', description: 'Retirer une photo ou un document qu’il a ajouté.',
     parameters: { type: 'object', properties: { chantier: S('Chantier'), quoi: S('Laquelle (« la dernière photo », son nom)') }, required: [] } },
   { name: 'retirer_reserve', description: 'Retirer la réserve qu’il a signalée aujourd’hui (journée pas encore envoyée).',
@@ -929,7 +936,6 @@ export const WORKER_FUNCTIONS = [
     }, required: ['lignes'] } },
   { name: 'demander_conge', description: 'Préparer une demande de congé / absence au bureau.',
     parameters: { type: 'object', properties: { type: { type: 'string', enum: [...LEAVE_KINDS] }, du: S('aaaa-mm-jj'), au: S('aaaa-mm-jj'), note: S('Mot pour le bureau') }, required: ['du'] } },
-  { name: 'commencer_pointage', description: 'Préparer le début d’un pointage en direct.', parameters: { type: 'object', properties: { chantier: S('Chantier tel que dit') }, required: [] } },
   { name: 'terminer_pointage', description: 'Préparer la fin du pointage en cours.', parameters: { type: 'object', properties: {}, required: [] } },
   { name: 'ranger_photo', description: 'Un FICHIER est joint : le ranger dans les documents du chantier, avec sa catégorie (dite, sinon devinée d’après le contenu), et « Avec réserve » s’il s’agit d’une réserve.',
     parameters: { type: 'object', properties: {
@@ -982,9 +988,9 @@ export function colleaguesQuestion(text: string, today: string): { qui: string; 
 export function workerFunctionPrompt(snapshot: WorkerSnapshot, live: WorkerLive, text: string): string {
   return `Tu es l'Assistant BEMEXO d'un salarié (bâtiment, restauration…), dans son appli de pointage. Aujourd'hui : ${snapshot.aujourdhui}.
 Tu te comportes comme un vrai assistant : tu FAIS le travail complet du premier coup, tu ne poses une question qu'en dernier recours. Réponds en appelant UNE fonction.
-- Heures travaillées, « rajoute-moi une intervention à Lyon de 14h à 18h » → declarer_heures (chantier = le nom ou le LIEU dit). Congé → demander_conge. « Je commence » → commencer_pointage. « J'ai fini » → terminer_pointage. Réserve → signaler_reserve ; « j'ai réglé la réserve », « lève la réserve » → reserve_corrigee (commentaire si dit). « Envoie ma journée » → envoyer_journee. Panier → panier_repas. « Pareil qu'hier » → copier_journee.
+- Heures travaillées, « rajoute-moi une intervention à Lyon de 14h à 18h » → declarer_heures (chantier = le nom ou le LIEU dit). Congé → demander_conge. « Je commence » → repondre : le pointage commence en scannant le QR de la tablette (sans tablette : heures avec « + »). « J'ai fini » → terminer_pointage. Réserve → signaler_reserve ; « j'ai réglé la réserve », « lève la réserve » → reserve_corrigee (commentaire si dit). « Envoie ma journée » → envoyer_journee. Panier → panier_repas. « Pareil qu'hier » → copier_journee.
 - « Où sont mes collègues ? », « Où est Paul ? », « Que fait Jacques demain ? » → planning_collegues.
-- Effacer / enlever / annuler ce qu'il a saisi → effacer_heures, annuler_conge, modifier_conge, annuler_pointage, retirer_photo, retirer_reserve. Les heures ENVOYÉES ne s'effacent jamais : dis-le en une phrase (repondre) et propose de demander au bureau.
+- Effacer / enlever / annuler ce qu'il a saisi → effacer_heures, annuler_conge, modifier_conge, retirer_photo, retirer_reserve. Les heures ENVOYÉES ne s'effacent jamais : dis-le en une phrase (repondre) et propose de demander au bureau.
 - « Comment… », « à quoi sert… », « où je trouve… » → repondre avec 3 étapes au plus d'après le GUIDE, et le lien de l'écran. Question générale (métier, calcul, rédiger un message) → repondre, en 1 à 4 phrases.
 - Un FICHIER (photo, PDF) est joint → ranger_photo (chantier, catégorie dite ou devinée d'après le contenu, réserve éventuelle).
 - Dates : recopie la date du CALENDRIER (« jeudi » = le prochain jeudi, aujourd’hui compris ; « jeudi prochain » = la ligne marquée « (jeudi prochain) »). Heures HH:MM (« 14h » → 14:00).
@@ -1018,6 +1024,8 @@ export function fromWorkerCall(name: string, args: Record<string, unknown>, snap
     const d = typeof args.date === 'string' ? (/^\d{4}-\d{2}-\d{2}$/.test(args.date) ? args.date : parseDateFr(args.date, snapshot.aujourdhui)) : '';
     return { kind: 'collegues', qui: typeof args.qui === 'string' ? args.qui.slice(0, 40) : '', date: d || snapshot.aujourdhui, answer: '' };
   }
+  if (name === 'commencer_pointage') return { kind: 'answer', answer: QR_START_ANSWER };
+  if (name === 'annuler_pointage') return { kind: 'answer', answer: NO_CANCEL_ANSWER };
   const a = prepareWorkerAction(name, args, snapshot, live);
   if (!a) return { kind: 'answer', answer: 'Je n’ai pas compris. Reformulez.' };
   return { kind: 'action', action: a, answer: actionAnswer(a, snapshot) };
@@ -1025,7 +1033,7 @@ export function fromWorkerCall(name: string, args: Record<string, unknown>, snap
 
 export const WORKER_ACTION_SUGGESTIONS = [
   'Ce matin 7h30-12h, après-midi 13h-16h30',
-  'Je commence mon pointage',
+  'J’ai fini ma journée',
   'Demander un congé',
   'Comment je signale une réserve ?',
 ];

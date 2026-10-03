@@ -276,9 +276,15 @@ export const GUIDE: GuideEntry[] = [
   },
   {
     id: 'position', mots: ['position', 'gps', 'localisation', 'geolocalisation'],
-    titre: 'Enregistrer l’endroit du pointage',
-    etapes: ['Réglages de l’entreprise → position au pointage.', 'Lisez les obligations (information des salariés, CSE, registre).', '« C’est fait, activer ».'],
+    titre: 'L’endroit du pointage',
+    etapes: ['Aucun endroit n’est noté : on pointe en scannant le QR de la tablette, à l’entrée.', 'Sans tablette, le salarié saisit ses heures.', 'Si « Endroit au pointage en direct » était activé, il reste dans Réglages pour le désactiver.'],
     lien: 'reglages',
+  },
+  {
+    id: 'sortie_oubliee', mots: ['sortie oubliee', 'oublie de scanner', 'pas rescanne', 'pointage ouvert', 'oublie de pointer', 'pointage reste ouvert'],
+    titre: 'Un salarié a oublié de scanner en partant',
+    etapes: ['Chaque nuit, un pointage resté ouvert est fermé en brouillon « sortie oubliée ».', 'Le salarié met son heure de fin, puis envoie sa journée (il apparaît dans « à relancer » en attendant).', 'Fiche du salarié : badges « QR », « corrigé », « sortie oubliée ».'],
+    lien: 'planning',
   },
   {
     id: 'support', mots: ['support', 'aide bemexo', 'autoriser le support', 'acces support'],

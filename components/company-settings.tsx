@@ -655,6 +655,11 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
                   logiciel n'a pas à donner de conseil juridique, mais il a à ne
                   pas laisser quelqu'un allumer ça en croyant que c'est un
                   réglage d'affichage. */}
+              {/* Lot 12 : le téléphone ne commence plus de pointage (QR de la
+                  tablette, ou heures saisies) : ce réglage n'a plus d'usage. Il
+                  est CACHÉ, pas effacé — encore affiché si une entreprise l'a
+                  activé, pour qu'elle puisse le désactiver. */}
+              {posTracking && (
               <div className="bt-set-sub" style={{ display: 'block' }}>
                 <div className="bt-set-subtxt">
                   <SetLabel tipId="endroit" tip={<>Deux points par journée, jamais entre les deux. Sert à répondre à un client qui conteste une facture. Le salarié peut refuser : son pointage marche pareil. Effacé au bout de 12 mois.</>}>Endroit au pointage en direct</SetLabel>
@@ -717,6 +722,7 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
                   </div>
                 )}
               </div>
+              )}
 
               {colleagues !== null && (
                 <div className="bt-set-sub" data-testid="setting-colleagues">

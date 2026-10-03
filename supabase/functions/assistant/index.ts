@@ -104,7 +104,7 @@ Deno.serve(async (req) => {
       db.from('time_entries').select('user_id, company_id').eq('company_id', cid).eq('work_date', hier),
       db.from('planning').select('user_id, company_id, worksite_id, absence_type').eq('company_id', cid).eq('work_date', hier),
       db.from('planning').select('user_id, company_id, worksite_id, absence_type').eq('company_id', cid).eq('work_date', today),
-      db.from('active_sessions').select('user_id, company_id, worksite_id, started_at').eq('company_id', cid),
+      db.from('active_sessions').select('user_id, company_id, worksite_id, started_at').eq('company_id', cid).eq('work_date', today),
       db.from('leave_requests').select('id, user_id, company_id, type, start_date, end_date').eq('company_id', cid).eq('status', 'pending'),
       db.from('planning').select('id, user_id, company_id, work_date, worksite_id, absence_type, notes, estimated_start').eq('company_id', cid).gte('work_date', planFrom).lte('work_date', planTo),
       db.from('time_entries').select('user_id, company_id, work_date, worksite_id').eq('company_id', cid).neq('status', 'cancelled')
