@@ -12,6 +12,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { approveLeave, rejectLeave } from '@/lib/admin-writes';
 import { LeaveRequest, LeaveType, User } from '@/lib/types';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -35,10 +36,11 @@ const TYPE_LABEL: Record<LeaveType, string> = { conge: 'Congé', maladie: 'Arrê
 const LA_CSS = `
 .bt-la-row{display:flex;align-items:flex-start;gap:10px;border:1px solid rgba(21,18,15,.12);border-radius:12px;padding:11px 12px;background:#fff;margin-bottom:8px}
 .bt-la-main{flex:1;min-width:0}
-.bt-la-who{font-size:14px;font-weight:800;color:#15120F}
+.bt-la-who{font-size:14px;font-weight:800;color:#15120F;overflow-wrap:anywhere}
 .bt-la-what{font-size:12.5px;font-weight:600;color:#3a352f;margin-top:2px}
 .bt-la-when{font-family:'JetBrains Mono',monospace;font-size:11px;color:#8a8378;font-weight:600;margin-top:2px}
-.bt-la-note{font-size:12px;color:#6E6A63;margin-top:4px;font-style:italic}
+.bt-la-note{font-size:12px;color:#6E6A63;margin-top:4px;font-style:italic;overflow-wrap:anywhere}
+.bt-la-rej{display:flex;flex-wrap:wrap;gap:8px;padding-top:8px}
 .bt-la-acts{display:flex;gap:6px;flex:none}
 .bt-la-tag{font-size:11px;font-weight:800;padding:3px 8px;border-radius:99px;flex:none;align-self:flex-start}
 .bt-la-tag.approved{background:#E4F2E9;color:#1F7A4D;border:1px solid #B7DCC4}
@@ -81,36 +83,10 @@ export default function LeaveAdminDialog({ open, onOpenChange, companyId, adminI
     if (!companyId || !adminId) return;
     setBusyId(r.id);
     try {
-      // Mêmes opérations que confirmAbsence() côté planning : on purge d'abord les
-      // absences existantes sur la période, puis on insère une ligne par jour.
-      const dates: string[] = [];
-      let d = parseISO(r.start_date);
-      const endD = parseISO(r.end_date);
-      let guard = 0;
-      while (d <= endD && guard < 400) { dates.push(format(d, 'yyyy-MM-dd')); d = addDays(d, 1); guard++; }
-
-      const { error: delErr } = await supabase.from('planning').delete()
-        .eq('company_id', companyId).eq('user_id', r.user_id)
-        .gte('work_date', r.start_date).lte('work_date', r.end_date)
-        .not('absence_type', 'is', null);
-      if (delErr) throw delErr;
-
-      const planRows = dates.map((dt) => ({
-        company_id: companyId, created_by: adminId, user_id: r.user_id,
-        worksite_id: null, work_date: dt, estimated_start: null, estimated_end: null,
-        notes: null, absence_type: r.type,
-      }));
-      const { error: insErr } = await supabase.from('planning').insert(planRows);
-      if (insErr) throw insErr;
-
-      const { error } = await supabase.from('leave_requests')
-        .update({ status: 'approved', decided_at: new Date().toISOString(), decided_by: adminId })
-        .eq('id', r.id);
-      if (error) throw error;
-
+      // lib/admin-writes.ts : mêmes opérations que « Statut » sur le planning
+      // (setAbsence), puis le statut, puis la notification — même chemin que l'Assistant.
+      await approveLeave(companyId, adminId, r);
       toast.success('Demande acceptée — absence posée sur le planning');
-      notifyWorker(r.user_id, 'Congé accepté',
-        `Ta demande du ${format(parseISO(r.start_date), 'd MMM', { locale: fr })} au ${format(parseISO(r.end_date), 'd MMM', { locale: fr })} a été acceptée.`);
       fetchRows();
       onChanged?.();
     } catch (e) {
@@ -125,16 +101,8 @@ export default function LeaveAdminDialog({ open, onOpenChange, companyId, adminI
     if (!adminId) return;
     setBusyId(r.id);
     try {
-      const { error } = await supabase.from('leave_requests')
-        .update({
-          status: 'rejected', decided_at: new Date().toISOString(), decided_by: adminId,
-          decision_note: rejectNote.trim() || null,
-        })
-        .eq('id', r.id);
-      if (error) throw error;
+      await rejectLeave(adminId, r, rejectNote);
       toast.success('Demande refusée');
-      notifyWorker(r.user_id, 'Congé refusé',
-        rejectNote.trim() || `Ta demande du ${format(parseISO(r.start_date), 'd MMM', { locale: fr })} n'a pas été retenue.`);
       setRejectingId(null); setRejectNote('');
       fetchRows();
     } catch {
@@ -154,7 +122,7 @@ export default function LeaveAdminDialog({ open, onOpenChange, companyId, adminI
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bt-skin max-w-lg max-h-[85vh] overflow-y-auto">
-        <style dangerouslySetInnerHTML={{ __html: LA_CSS }} />
+        <style dangerouslySetInnerHTML={LA_CSS_HTML} />
         <DialogHeader><DialogTitle>Demandes de congé</DialogTitle></DialogHeader>
 
         {rows.length === 0 && <p className="bt-la-empty">Aucune demande pour le moment.</p>}
@@ -169,8 +137,8 @@ export default function LeaveAdminDialog({ open, onOpenChange, companyId, adminI
               <div className="bt-la-when">{period(r)}</div>
               {r.note && <div className="bt-la-note">« {r.note} »</div>}
               {rejectingId === r.id && (
-                <div className="flex gap-2 pt-2">
-                  <Input className="h-8 text-sm" placeholder="Motif (facultatif)" value={rejectNote}
+                <div className="bt-la-rej">
+                  <Input className="h-8 text-sm min-w-0 flex-1 basis-40" placeholder="Motif (facultatif)" value={rejectNote}
                     onChange={(e) => setRejectNote(e.target.value)} />
                   <Button size="sm" variant="destructive" onClick={() => reject(r)} disabled={busyId === r.id}>
                     {busyId === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Confirmer'}
@@ -210,3 +178,7 @@ export default function LeaveAdminDialog({ open, onOpenChange, companyId, adminI
     </Dialog>
   );
 }
+
+// Objet FIXE : un `{ __html }` neuf à chaque rendu fait réécrire la feuille
+// de style par React (re-calcul de la page, polices rechargées → flash).
+const LA_CSS_HTML = { __html: LA_CSS };

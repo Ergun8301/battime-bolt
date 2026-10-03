@@ -27,11 +27,11 @@ const SUB_CSS = `
 .bt-sub{font-family:'Archivo',sans-serif}
 .bt-sub *{box-sizing:border-box}
 .bt-sub-grid{display:flex;gap:14px;align-items:stretch;justify-content:center;flex-wrap:wrap}
-.bt-sub-card{position:relative;flex:1 1 200px;max-width:290px;min-width:0;display:flex;flex-direction:column;background:#FBF8F2;border:1.5px solid rgba(21,18,15,.14);border-radius:16px;padding:20px 18px;text-align:left;color:#15120F}
+.bt-sub-card{position:relative;flex:1 1 180px;max-width:290px;min-width:0;display:flex;flex-direction:column;background:#FBF8F2;border:1.5px solid rgba(21,18,15,.14);border-radius:16px;padding:20px 18px;text-align:left;color:#15120F}
 .bt-sub-card.reco{border-color:#FFC21A;border-width:2.5px;box-shadow:0 20px 46px -22px rgba(255,194,26,.5),0 10px 28px -18px rgba(0,0,0,.4);transform:translateY(-8px)}
 .bt-sub-card.off{background:#ECE7DE;border-color:rgba(21,18,15,.1);opacity:.72}
 .bt-sub-card.off .bt-sub-amount,.bt-sub-card.off .bt-sub-label{color:#8a8378}
-.bt-sub-badge{position:absolute;top:-12px;left:50%;transform:translateX(-50%);white-space:nowrap;background:#FFC21A;color:#15120F;font-size:11px;font-weight:900;letter-spacing:.01em;padding:4px 12px;border-radius:999px;box-shadow:0 3px 0 #C99300}
+.bt-sub-badge{position:absolute;top:-12px;left:50%;transform:translateX(-50%);width:max-content;max-width:calc(100% - 12px);text-align:center;line-height:1.25;background:#FFC21A;color:#15120F;font-size:11px;font-weight:900;letter-spacing:.01em;padding:4px 12px;border-radius:999px;box-shadow:0 3px 0 #C99300}
 .bt-sub-label{font-size:15.5px;font-weight:900;letter-spacing:-.01em}
 .bt-sub-range{font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:600;color:#8a8378;margin-top:3px}
 .bt-sub-price{display:flex;align-items:baseline;gap:4px;margin:15px 0 3px}
@@ -113,7 +113,7 @@ export default function SubscribePanel({ workerCount, dark }: Props = {}) {
 
   return (
     <div className={`bt-sub${dark ? ' bt-sub--dark' : ''}`}>
-      <style dangerouslySetInnerHTML={{ __html: SUB_CSS }} />
+      <style dangerouslySetInnerHTML={SUB_CSS_HTML} />
       {loading ? (
         <div className="bt-sub-skel">Chargement des offres…</div>
       ) : (
@@ -159,3 +159,7 @@ export default function SubscribePanel({ workerCount, dark }: Props = {}) {
     </div>
   );
 }
+
+// Objet FIXE : un `{ __html }` neuf à chaque rendu fait réécrire la feuille
+// de style par React (re-calcul de la page, polices rechargées → flash).
+const SUB_CSS_HTML = { __html: SUB_CSS };

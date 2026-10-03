@@ -161,7 +161,7 @@ export default function AdminPage() {
 
   return (
     <div className="bt-admin">
-      <style dangerouslySetInnerHTML={{ __html: ADMIN_CSS }} />
+      <style dangerouslySetInnerHTML={ADMIN_CSS_HTML} />
 
       {activating && (
         <div className="bt-activating">
@@ -200,11 +200,13 @@ export default function AdminPage() {
       )}
 
       <Dialog open={subOpen} onOpenChange={setSubOpen}>
-        <DialogContent className="bt-skin max-w-2xl">
+        {/* Lot 11 : tient en largeur ET en hauteur (défile au téléphone) ; marge du
+            haut pour le badge « Recommandé », posé 12 px au-dessus de sa carte. */}
+        <DialogContent className="bt-skin max-w-2xl max-h-[92vh] overflow-y-auto" data-testid="subscribe-dialog">
           <DialogHeader>
             <DialogTitle>Choisissez votre abonnement</DialogTitle>
           </DialogHeader>
-          <div className="pt-1">
+          <div className="pt-5">
             <SubscribePanel workerCount={workerCount} />
           </div>
         </DialogContent>
@@ -212,3 +214,7 @@ export default function AdminPage() {
     </div>
   );
 }
+
+// Objet FIXE : un `{ __html }` neuf à chaque rendu fait réécrire la feuille
+// de style par React (re-calcul de la page, polices rechargées → flash).
+const ADMIN_CSS_HTML = { __html: ADMIN_CSS };

@@ -8,7 +8,11 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Clock, CalendarDays, CalendarRange, History, LogOut, Check, ArrowLeft, Camera, Loader2, Palmtree, Bell, BellOff } from 'lucide-react';
+import { Clock, CalendarDays, CalendarRange, History, LogOut, Check, ArrowLeft, Camera, Loader2, Palmtree, Bell, BellOff, Sparkles, Info, ScanLine } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { useAiEnabled } from '@/lib/real-cost';
+import QrScanner from '@/components/qr-scanner';
+import { GEO_INFO_LINK, GEO_INFO_TEXT, GEO_INFO_TITLE } from '@/lib/position-info';
 import { toast } from 'sonner';
 import { format, subDays, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -18,7 +22,12 @@ import PoseurWeek from '@/components/poseur-week';
 import PoseurMonth from '@/components/poseur-month';
 import PoseurHistory from '@/components/poseur-history';
 import LeaveRequestDialog from '@/components/leave-request-dialog';
+import WorkerAssistant from '@/components/worker-assistant';
 import { pushSupported, currentPushState, enablePush, disablePush } from '@/lib/push';
+import WorkerReserves, { type WorkerReserve } from '@/components/worker-reserves';
+import { COUNTED_STATUSES } from '@/lib/status';
+import { keep } from '@/lib/same';
+import { RESERVES_CHANGED_EVENT } from '@/lib/reserve-lift';
 
 const TABS = [
   { value: 'day', label: 'Ma journée', icon: Clock },
@@ -46,6 +55,14 @@ const POSEUR_CSS = `
 .bt-phdr-date{font-size:22px;font-weight:900;letter-spacing:-.02em;line-height:1.1;text-transform:capitalize;min-width:0}
 .bt-phdr-back{display:flex;align-items:center;gap:10px;background:transparent;border:none;color:#F2EDE3;cursor:pointer;padding:0;text-align:left;min-width:0}
 /* Bouton identité (nom + rond photo/initiales) = déclencheur du menu */
+.bt-phdr-scan{flex:none;width:40px;height:40px;border-radius:999px;border:1.5px solid rgba(242,237,227,.25);background:transparent;color:#F2EDE3;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;margin-left:auto}
+.bt-info-bg{position:fixed;inset:0;z-index:95;background:rgba(21,18,15,.45);display:flex;align-items:flex-end;justify-content:center;padding:16px}
+.bt-info{width:100%;max-width:420px;background:#FBF8F2;border-radius:18px;padding:18px;margin-bottom:env(safe-area-inset-bottom)}
+.bt-info h2{display:flex;align-items:center;gap:8px;font-size:16px;font-weight:900;margin:0 0 10px;color:#15120F}
+.bt-info h3{font-size:13.5px;font-weight:900;margin:0 0 4px;color:#15120F}
+.bt-info p{font-size:14px;line-height:1.5;color:#3d3833;margin:0 0 8px}
+.bt-info a{font-size:13px;font-weight:700;color:#6E6A63;text-decoration:underline}
+.bt-info button{width:100%;margin-top:14px;border:none;background:#15120F;color:#FBF8F2;border-radius:13px;padding:13px;font-weight:900;font-size:15px;cursor:pointer;font-family:inherit}
 .bt-phdr-id{display:inline-flex;align-items:center;gap:9px;flex:none;max-width:62%;background:transparent;border:none;cursor:pointer;font-family:inherit;padding:3px 3px 3px 11px;border-radius:999px;transition:background .14s ease}
 .bt-phdr-id:hover{background:rgba(242,237,227,.08)}
 .bt-phdr-id:active{background:rgba(242,237,227,.15)}
@@ -105,8 +122,18 @@ const POSEUR_CSS = `
 .bt-skin .mono,.bt-skin .tabular{font-variant-numeric:tabular-nums}
 `;
 
+// Toujours le MÊME objet (lot 10) : un nouvel objet `dangerouslySetInnerHTML`
+// à chaque rendu faisait réécrire la feuille par React, qui rechargeait alors son
+// `@import` des polices — le texte clignotait à chaque relecture automatique.
+const POSEUR_CSS_HTML = { __html: POSEUR_CSS };
+
+/** Même liste qu'avant ? On garde l'ancienne (aucun rendu pour rien, toutes les minutes). */
+const sameList = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
+
 export default function PoseurPage() {
   const { user, signOut } = useAuth();
+  // Assistant BEMEXO (lot 4) : après un enregistrement, la journée se recharge.
+  const [dayKey, setDayKey] = useState(0);
   // Envoi différé des saisies faites sans réseau : tourne pour TOUS les jours en
   // attente, dès que l'application est ouverte et qu'il y a du réseau.
   const { pendingCount: offlineCount, blockedCount: offlineBlocked, syncing: offlineSyncing, syncNow } = useOfflineSync(user?.id);
@@ -118,10 +145,38 @@ export default function PoseurPage() {
   // disparaître 11 h un dimanche. Fusionné avec `pending` dans un seul bandeau.
   const [unsentDays, setUnsentDays] = useState<string[]>([]);
   const [pendingOpen, setPendingOpen] = useState(false); // liste « journées à envoyer »
+  // Lot 11 : mes réserves encore à lever (tous jours confondus) → bandeau.
+  const [reserves, setReserves] = useState<WorkerReserve[]>([]);
   const [photoUrl, setPhotoUrl] = useState(''); // photo de profil du salarié (facultatif)
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const [leaveOpen, setLeaveOpen] = useState(false); // demandes de congé
+  // Lot 6 : assistant ouvert par ✨ (barre du bas / menu), scanner 📷 (en-tête),
+  // « ℹ️ Informations » (menu). Chacun n'existe que si l'interrupteur de
+  // l'entreprise est allumé (ai_enabled / kiosk_enabled).
+  const router = useRouter();
+  const aiOn = useAiEnabled(user?.company_id);
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  const [kioskOn, setKioskOn] = useState(false);
+  const [scanOpen, setScanOpen] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
+  useEffect(() => {
+    if (!user?.company_id) return;
+    let stale = false;
+    // Lot 12 : l'icône du scanner ne s'affiche que si une tablette est VRAIMENT
+    // reliée (company_has_kiosk : borne allumée ET une tablette non retirée).
+    // Fonction absente (migration du lot 12 pas encore passée) ou lecture en
+    // échec : comportement d'avant, l'interrupteur de l'entreprise seul.
+    supabase.from('companies').select('kiosk_enabled').eq('id', user.company_id).maybeSingle()
+      .then(async ({ data }) => {
+        const enabled = !!(data as { kiosk_enabled?: boolean } | null)?.kiosk_enabled;
+        if (!enabled) { if (!stale) setKioskOn(false); return; }
+        const r = await supabase.rpc('company_has_kiosk');
+        if (stale) return;
+        setKioskOn(r.error || typeof r.data !== 'boolean' ? true : r.data);
+      });
+    return () => { stale = true; };
+  }, [user?.company_id]);
   // Notifications push : 'unsupported' (navigateur/iOS non compatible), 'denied'
   // (refusé au niveau navigateur), 'on'/'off'. On n'affiche l'item que si utile.
   const [pushState, setPushState] = useState<'unsupported' | 'denied' | 'on' | 'off'>('unsupported');
@@ -143,7 +198,8 @@ export default function PoseurPage() {
     const absenceDays = new Set(rows.filter((p) => p.absence_type).map((p) => p.work_date));
     const planned = rows.filter((p) => !p.absence_type && !absenceDays.has(p.work_date)).map((p) => p.work_date);
     const declared = new Set<string>((entRes.data || []).map((e: { work_date: string }) => e.work_date));
-    setPending(computeMissingDays(planned, declared));
+    const missing = computeMissingDays(planned, declared);
+    setPending((prev) => (sameList(prev, missing) ? prev : missing));
 
     // Heures saisies, jamais envoyées. On les cherche sur toute la fenêtre :
     // un brouillon d'avant-hier est aussi perdu que celui d'aujourd'hui.
@@ -154,13 +210,36 @@ export default function PoseurPage() {
       .select('work_date').eq('user_id', user.id).eq('status', 'draft')
       .gte('work_date', windowStart).lte('work_date', todayStr)
       .order('work_date', { ascending: false });
-    setUnsentDays(Array.from(new Set(((drafts || []) as { work_date: string }[]).map((d) => d.work_date))));
+    const unsent = Array.from(new Set(((drafts || []) as { work_date: string }[]).map((d) => d.work_date)));
+    setUnsentDays((prev) => (sameList(prev, unsent) ? prev : unsent));
+
+    // Lot 11 : réserves à lever — envoyées (comme le registre du bureau), ni
+    // levées par le bureau ni par moi (définition partagée : lib/reserves.ts).
+    // Une lecture en échec garde le bandeau tel quel (pas de « 0 » à tort).
+    const { data: res, error: resErr } = await supabase.from('time_entries')
+      .select('id, work_date, observation, worksite_id, worksite:worksites(client_name, city)')
+      .eq('user_id', user.id).eq('reception', 'avec')
+      .in('status', COUNTED_STATUSES as unknown as string[])
+      .is('reserve_resolved_at', null).is('reserve_fixed_at', null)
+      .order('work_date', { ascending: false }).limit(50);
+    if (!resErr) {
+      const one = <T,>(v: T | T[] | null | undefined): T | null => (Array.isArray(v) ? v[0] ?? null : v ?? null);
+      const next = ((res || []) as { id: string; work_date: string; observation: string | null; worksite_id: string | null; worksite?: unknown }[])
+        .map((r): WorkerReserve => {
+          const ws = one(r.worksite as { client_name?: string; city?: string } | null);
+          return { id: r.id, work_date: r.work_date, observation: r.observation || null, worksite_id: r.worksite_id, chantier: ws?.client_name || 'Chantier', city: ws?.city || null };
+        });
+      // keep() : même liste → même objet, aucun redessin (relu toutes les minutes).
+      setReserves((prev) => keep(prev, next));
+    }
   }, [user]);
 
   useEffect(() => {
     fetchPending();
     const id = setInterval(fetchPending, 60000);
-    return () => clearInterval(id);
+    // Une réserve levée depuis une carte de « Ma journée » : le bandeau suit.
+    window.addEventListener(RESERVES_CHANGED_EVENT, fetchPending);
+    return () => { clearInterval(id); window.removeEventListener(RESERVES_CHANGED_EVENT, fetchPending); };
   }, [fetchPending]);
 
   // Photo de profil du salarié (depuis users.photo_url).
@@ -194,7 +273,11 @@ export default function PoseurPage() {
     const hdr = hdrRef.current;
     if (!phone || !hdr) return;
     let phdrH = hdr.offsetHeight;
-    const measure = () => { phdrH = hdr.offsetHeight; phone.style.setProperty('--phdr-h', `${phdrH}px`); };
+    // Réécrit seulement si la hauteur a vraiment changé (pas de mutation pour rien).
+    const measure = () => {
+      phdrH = hdr.offsetHeight;
+      if (phone.style.getPropertyValue('--phdr-h') !== `${phdrH}px`) phone.style.setProperty('--phdr-h', `${phdrH}px`);
+    };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(hdr);
@@ -358,6 +441,10 @@ export default function PoseurPage() {
     </Popover>
   ) : null;
 
+  // Lot 11 : « ⚠ N réserves à lever › » — même habillage, liste + formulaire.
+  // (Rien à l'écran tant qu'il n'y en a pas : le composant ne rend rien.)
+  const reservesBanner = <WorkerReserves items={reserves} onChanged={fetchPending} />;
+
   // Lignes qui n'ont pas encore atteint le serveur (réseau coupé au moment de
   // l'ajout). Même habillage que le bandeau « à envoyer ».
   const offlineBanner = offlineCount > 0 ? (
@@ -381,7 +468,7 @@ export default function PoseurPage() {
 
   return (
     <div className="bt-poseur">
-      <style dangerouslySetInnerHTML={{ __html: POSEUR_CSS }} />
+      <style dangerouslySetInnerHTML={POSEUR_CSS_HTML} />
       <div ref={phoneRef} className={`bt-phone${wide ? ' wide' : ''}`}>
 
         {/* ===== EN-TÊTE NOIR ===== */}
@@ -399,6 +486,11 @@ export default function PoseurPage() {
               )}
             </div>
 
+            {kioskOn && (
+              <button type="button" className="bt-phdr-scan" onClick={() => setScanOpen(true)} aria-label="Scanner la borne" data-testid="scan-open">
+                <ScanLine className="h-5 w-5" />
+              </button>
+            )}
             {/* Identité du salarié = déclencheur du menu (nom + rond photo/initiales). */}
             <input type="file" accept="image/*" hidden ref={photoInputRef} onChange={(e) => onPickPhoto(e.target.files?.[0])} />
             <DropdownMenu>
@@ -422,6 +514,14 @@ export default function PoseurPage() {
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setLeaveOpen(true)}>
                   <Palmtree className="h-4 w-4 mr-2" /> Mes congés
+                </DropdownMenuItem>
+                {aiOn && (
+                  <DropdownMenuItem onClick={() => setAssistantOpen(true)}>
+                    <Sparkles className="h-4 w-4 mr-2" /> Assistant BEMEXO
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem onClick={() => setInfoOpen(true)}>
+                  <Info className="h-4 w-4 mr-2" /> Informations
                 </DropdownMenuItem>
                 {/* Masqué si l'appareil ne gère pas le push (iOS hors écran d'accueil,
                     navigateur ancien) : inutile d'afficher un bouton qui ne peut rien faire. */}
@@ -450,9 +550,9 @@ export default function PoseurPage() {
         {/* ===== CORPS ===== */}
         <div className="bt-phbody">
           {selectedDate ? (
-            <PoseurDay date={selectedDate} topBanner={offlineBanner} />
+            <PoseurDay key={dayKey} date={selectedDate} topBanner={offlineBanner} onAssistant={aiOn ? () => setAssistantOpen(true) : undefined} />
           ) : view === 'day' ? (
-            <PoseurDay topBanner={<>{offlineBanner}{toSendBanner}</>} />
+            <PoseurDay key={dayKey} topBanner={<>{offlineBanner}{toSendBanner}{reservesBanner}</>} onAssistant={aiOn ? () => setAssistantOpen(true) : undefined} />
           ) : (
             <div className="bt-phscroll bt-skin">
               {view === 'week' ? (
@@ -467,6 +567,34 @@ export default function PoseurPage() {
         </div>
 
         <LeaveRequestDialog open={leaveOpen} onOpenChange={setLeaveOpen} userId={user?.id} />
+        {scanOpen && <QrScanner onClose={() => setScanOpen(false)} onPath={(path) => { setScanOpen(false); router.push(path); }} />}
+        {infoOpen && (
+          <div className="bt-info-bg" role="dialog" aria-modal="true" aria-label="Informations" onClick={() => setInfoOpen(false)}>
+            <div className="bt-info" onClick={(e) => e.stopPropagation()}>
+              <h2><Info className="h-4 w-4" /> Informations</h2>
+              <h3>{GEO_INFO_TITLE}</h3>
+              <p>{GEO_INFO_TEXT}</p>
+              <a href={GEO_INFO_LINK}>Politique de confidentialité</a>
+              <button type="button" onClick={() => setInfoOpen(false)}>Fermer</button>
+            </div>
+          </div>
+        )}
+        <WorkerAssistant
+          open={assistantOpen}
+          onOpenChange={setAssistantOpen}
+          onSaved={() => { setDayKey((k) => k + 1); fetchPending(); }}
+          onNavigate={(a) => {
+            if (a === 'journee') goHome();
+            else if (a === 'semaine') goTo('week');
+            else if (a === 'mois') goTo('month');
+            else if (a === 'historique') goTo('history');
+            else if (a === 'conges') setLeaveOpen(true);
+            else if (a === 'notifications') { if (pushState !== 'on' && pushState !== 'unsupported' && !pushBusy) togglePush(); }
+            else if (a === 'photo') photoInputRef.current?.click();
+            else if (a === 'borne') setScanOpen(true);
+            else if (a === 'infos') setInfoOpen(true);
+          }}
+        />
       </div>
     </div>
   );
