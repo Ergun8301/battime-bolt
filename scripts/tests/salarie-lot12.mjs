@@ -49,6 +49,7 @@ const D = {
   planning: [], time_entries: [], active_sessions: [],
   month_closures: [], leave_requests: [], documents: [], time_entry_corrections: [], time_entry_positions: [], push_subscriptions: [],
 };
+let hasKiosk = 'absent'; // true | false | 'absent'
 let finishMode = 'ok'; // ok | missing (PGRST202 → stop_active_session) | missing-bt001
 const calls = [];
 const reset = () => { calls.length = 0; };
@@ -93,6 +94,11 @@ await ctx.route('**/*.supabase.co/**', async (r) => {
     if (finishMode === 'missing-bt001') return r.fulfill({ status: 400, json: { code: 'BT001', message: 'Début et fin tombent sur le même quart d\'heure : rien à enregistrer.', details: null, hint: null } });
     D.active_sessions = [];
     return r.fulfill({ json: [{ entry_id: 'e-stop', work_date: today, start_time: '08:00:00', end_time: '08:15:00' }] });
+  }
+  // Lot 12 : une tablette est-elle vraiment reliée ? 'absent' = migration pas encore passée.
+  if (u.pathname === '/rest/v1/rpc/company_has_kiosk') {
+    if (hasKiosk === 'absent') return r.fulfill({ status: 404, json: { code: 'PGRST202', message: 'Could not find the function public.company_has_kiosk', details: null, hint: null } });
+    return r.fulfill({ json: hasKiosk });
   }
   if (u.pathname.startsWith('/rest/v1/rpc/')) return r.fulfill({ json: [] });
   const t = u.pathname.replace('/rest/v1/', '');
@@ -206,6 +212,15 @@ await p.locator('[data-testid=lt-finish]').click();
 await p.waitForTimeout(1500);
 const f4 = callsTo('POST', '/rest/v1/rpc/finish_active_session');
 check(f4.length === 1 && f4[0].body?.p_end === '16:45:00', `4) fin tapée « 16h45 » → finish_active_session(p_end=16:45:00) : ${JSON.stringify(f4.map((c) => c.body))}`);
+
+// ═════ 5 · Icône du scanner : seulement si une tablette est vraiment reliée ═════
+D.active_sessions = []; D.time_entries = [];
+const icon = async (enabled, has) => { D.companies[0].kiosk_enabled = enabled; hasKiosk = has; await open(); await p.waitForTimeout(400); return p.locator('[data-testid=scan-open]').count(); };
+check(await icon(true, true) === 1, '5) borne allumée + tablette reliée : icône du scanner affichée');
+check(await icon(true, false) === 0, '5) borne allumée mais AUCUNE tablette reliée : pas d’icône');
+check(await icon(false, true) === 0, '5) borne éteinte : pas d’icône');
+check(await icon(true, 'absent') === 1, '5) avant la migration (fonction absente) : comportement d’avant, icône affichée');
+check(await icon(false, 'absent') === 0, '5) avant la migration, borne éteinte : pas d’icône (inchangé)');
 
 console.log(`\n${ok} ✅ / ${ko} ❌`);
 await b.close(); srv.close();

@@ -17,6 +17,7 @@ Migration 100 % additive, aucune donnée effacée.
 | **Bureau — fiche salarié** | « modifié après envoi » | + badges **« QR »**, **« corrigé »** (heures d'une ligne QR changées), **« sortie oubliée »** |
 | **« À relancer »** | Mois en cours | **Mois précédent + mois en cours**, sauf mois clôturé / salarié clôturé |
 | **Réglage « Endroit au pointage en direct »** | Visible | **Caché** (pas effacé) ; reste affiché seulement s'il était activé, pour le désactiver |
+| **Icône du scanner (salarié)** | Dès que la borne est allumée pour l'entreprise | Seulement si une tablette est **vraiment reliée** (avant la migration : comme avant) |
 | **Assistant salarié** | « Je commence », « annule mon pointage » | Renvoie au QR de la tablette ; seul « J'ai fini » reste |
 
 Le moteur du chrono (`active_sessions`, `finish_active_session`) est **gardé** :
@@ -39,8 +40,7 @@ L'ancienne `kiosk` (v4) insère le chrono au nom du salarié, sans passer par
 (« avec la tablette, la journée commence en scannant le QR ») et les arrivées
 QR tomberaient. La nouvelle `kiosk` marche avant la migration (repli).
 
-Ordre complet : migration lot 11 → `kiosk` → migration lot 12 → `assistant`
-→ `worker-assistant` → application (bemexo.com).
+Plan complet (ordre, SQL de contrôle, retour arrière) : [mise-en-prod-lots-11-12.md](mise-en-prod-lots-11-12.md).
 
 Avant la migration, l'application marche (badges absents, pas de fermeture de
 nuit).
