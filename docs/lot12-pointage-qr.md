@@ -26,15 +26,24 @@ c'est lui que la borne utilise.
 
 1. **Migration** `20261003120000_lot12_pointage_qr.sql` (après celle du lot 11) :
    3 colonnes sur `time_entries` (`source`, `exit_forgotten`, `corrected_at`),
-   1 sur `active_sessions` (`source`), 5 fonctions neuves, 2 triggers neufs,
+   1 sur `active_sessions` (`source`), 6 fonctions neuves, 2 triggers neufs,
    1 travail cron `bemexo-close-forgotten-sessions`. Rien de modifié.
 2. **Fonction `kiosk`** (`--no-verify-jwt`) : arrivée par `kiosk_open_session`,
    sortie oubliée fermée au scan du lendemain, case verte du jour seulement.
 3. **Fonction `assistant`** : aide (sortie oubliée, endroit), chronos du jour seulement.
 4. **Fonction `worker-assistant`** : plus de « commencer » / « annuler » un pointage.
 
+⚠ **Ordre impératif : la fonction `kiosk` AVANT la migration du lot 12.**
+L'ancienne `kiosk` (v4) insère le chrono au nom du salarié, sans passer par
+`kiosk_open_session` : après la migration, le nouveau garde la refuserait
+(« avec la tablette, la journée commence en scannant le QR ») et les arrivées
+QR tomberaient. La nouvelle `kiosk` marche avant la migration (repli).
+
+Ordre complet : migration lot 11 → `kiosk` → migration lot 12 → `assistant`
+→ `worker-assistant` → application (bemexo.com).
+
 Avant la migration, l'application marche (badges absents, pas de fermeture de
-nuit). Avant `kiosk`, la borne marche (ancien chemin).
+nuit).
 
 ## Tests
 
