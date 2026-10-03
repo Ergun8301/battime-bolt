@@ -50,6 +50,9 @@ const ENTRIES = [
   { ...entry('e-today', 'u-lucas', today, 'submitted', 4 * 60 + 30), source: 'qr', corrected_at: `${today}T12:00:00Z` }, // aujourd'hui (lot 12 : QR, corrigé)
   { ...entry('e-draft', 'u-lucas', today, 'draft', 60, 14 * 60), source: 'qr', exit_forgotten: true }, // brouillon : jamais payé, signalé à la clôture (lot 12 : sortie oubliée)
   entry('e-prev', 'u-lucas', prevLast, 'submitted', 9 * 60),        // mois précédent : JAMAIS dans le CSV
+  // Lot 12 : sortie oubliée « fin à compléter » (début = fin, fermée la nuit) — jamais payée,
+  // jamais exportée, signalée à la clôture, comptée dans les jours en attente.
+  { ...entry('e-incomplet', 'u-lucas', day(-2), 'draft', 0, 8 * 60), source: 'qr', exit_forgotten: true },
   entry('n-today', 'u-nina', today, 'submitted', 6 * 60),
   entry('l-today', 'u-long', today, 'submitted', 8 * 60),
 ];
@@ -62,7 +65,8 @@ const PLANNING = [
   slot('p-g4', 'u-long', day(-4)), slot('p-g2', 'u-long', day(-2)),
 ];
 const lucasSent = new Set(ENTRIES.filter((e) => e.user_id === 'u-lucas' && e.status !== 'draft').map((e) => e.work_date));
-const lucasMissing = PLANNING.filter((p) => p.user_id === 'u-lucas' && !lucasSent.has(p.work_date)).length; // ≥ 1
+const lucasPlannedMissing = PLANNING.filter((p) => p.user_id === 'u-lucas' && !lucasSent.has(p.work_date)).map((p) => p.work_date);
+const lucasMissing = new Set([...lucasPlannedMissing, day(-2)]).size; // ≥ 1 ; lot 12 : + le jour « fin à compléter »
 const enAttente = (n) => `${n} jour${n > 1 ? 's' : ''} en attente`;
 // Les heures de Lucas réellement PAYÉES après « clôturer jusqu'à aujourd'hui » (1er → aujourd'hui).
 const paidAfterClose = ENTRIES.filter((e) => e.user_id === 'u-lucas' && e.status === 'submitted' && e.work_date >= first && e.work_date <= today)
@@ -278,7 +282,7 @@ const centi = (min) => (min / 60).toFixed(2).replace('.', ',');
   check(confTitle.includes(`Clôturer les heures de Lucas jusqu'au ${dLong}`), `A) confirmation : « ${confTitle} »`);
   check(await conf.getByText('Il ne pourra plus rien saisir ni envoyer jusqu’à cette date. Vous gardez la main.'.replace('’', "'")).count() === 1,
     'A) confirmation : « Il ne pourra plus rien saisir ni envoyer jusqu’à cette date. Vous gardez la main. »');
-  check(await conf.locator('[data-testid=closure-drafts]').innerText().then((t) => /1 journée en brouillon/.test(t)), 'A) confirmation : le brouillon d’aujourd’hui est signalé (orange)');
+  check(await conf.locator('[data-testid=closure-drafts]').innerText().then((t) => /2 journées en brouillon/.test(t)), 'A) confirmation : le brouillon d’aujourd’hui ET la ligne « fin à compléter » sont signalés (orange), jamais comptés');
   await shot(pg, 'fiche-cloture-confirmation-1280x800.png');
   const w1 = writes.length;
   await conf.locator('[data-testid=closure-confirm-btn]').click();
@@ -304,6 +308,8 @@ const centi = (min) => (min / 60).toFixed(2).replace('.', ',');
   const totalF = rowsF.slice(1).reduce((s, r) => s + Number(r[9].replace(',', '.')), 0);
   check(rowsF.slice(1).every((r) => r[0] === '00042' && r[1] === 'Petit' && r[2] === 'Lucas'), 'A) relevé final : chaque ligne porte 00042 / Petit / Lucas');
   check(Math.abs(totalF - paidAfterClose / 60) < 0.001, `A) relevé final : ${centi(paidAfterClose)} h payées = seuls les jours du 1er au ${ddmm(today)} (le ${ddmm(prevLast)} du mois précédent exclu ; lu ${totalF.toFixed(2)})`);
+  check(Math.abs(totalF - paidAfterClose / 60) < 0.001 && !paidAfterClose.toString().includes('NaN'),
+    `A) lot 12 : la ligne « fin à compléter » du ${ddmm(day(-2))} n’entre pas dans le relevé (brouillon, jamais envoyable)`);
 
   // Rouvrir
   const w2 = writes.length;

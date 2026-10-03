@@ -163,8 +163,18 @@ export default function PoseurPage() {
   useEffect(() => {
     if (!user?.company_id) return;
     let stale = false;
+    // Lot 12 : l'icône du scanner ne s'affiche que si une tablette est VRAIMENT
+    // reliée (company_has_kiosk : borne allumée ET une tablette non retirée).
+    // Fonction absente (migration du lot 12 pas encore passée) ou lecture en
+    // échec : comportement d'avant, l'interrupteur de l'entreprise seul.
     supabase.from('companies').select('kiosk_enabled').eq('id', user.company_id).maybeSingle()
-      .then(({ data }) => { if (!stale) setKioskOn(!!(data as { kiosk_enabled?: boolean } | null)?.kiosk_enabled); });
+      .then(async ({ data }) => {
+        const enabled = !!(data as { kiosk_enabled?: boolean } | null)?.kiosk_enabled;
+        if (!enabled) { if (!stale) setKioskOn(false); return; }
+        const r = await supabase.rpc('company_has_kiosk');
+        if (stale) return;
+        setKioskOn(r.error || typeof r.data !== 'boolean' ? true : r.data);
+      });
     return () => { stale = true; };
   }, [user?.company_id]);
   // Notifications push : 'unsupported' (navigateur/iOS non compatible), 'denied'

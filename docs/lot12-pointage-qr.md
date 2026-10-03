@@ -17,6 +17,7 @@ Migration 100 % additive, aucune donnée effacée.
 | **Bureau — fiche salarié** | « modifié après envoi » | + badges **« QR »**, **« corrigé »** (heures d'une ligne QR changées), **« sortie oubliée »** |
 | **« À relancer »** | Mois en cours | **Mois précédent + mois en cours**, sauf mois clôturé / salarié clôturé |
 | **Réglage « Endroit au pointage en direct »** | Visible | **Caché** (pas effacé) ; reste affiché seulement s'il était activé, pour le désactiver |
+| **Icône du scanner (salarié)** | Dès que la borne est allumée pour l'entreprise | Seulement si une tablette est **vraiment reliée** (avant la migration : comme avant) |
 | **Assistant salarié** | « Je commence », « annule mon pointage » | Renvoie au QR de la tablette ; seul « J'ai fini » reste |
 
 Le moteur du chrono (`active_sessions`, `finish_active_session`) est **gardé** :
@@ -26,15 +27,23 @@ c'est lui que la borne utilise.
 
 1. **Migration** `20261003120000_lot12_pointage_qr.sql` (après celle du lot 11) :
    3 colonnes sur `time_entries` (`source`, `exit_forgotten`, `corrected_at`),
-   1 sur `active_sessions` (`source`), 5 fonctions neuves, 2 triggers neufs,
+   1 sur `active_sessions` (`source`), 6 fonctions neuves, 2 triggers neufs,
    1 travail cron `bemexo-close-forgotten-sessions`. Rien de modifié.
 2. **Fonction `kiosk`** (`--no-verify-jwt`) : arrivée par `kiosk_open_session`,
    sortie oubliée fermée au scan du lendemain, case verte du jour seulement.
 3. **Fonction `assistant`** : aide (sortie oubliée, endroit), chronos du jour seulement.
 4. **Fonction `worker-assistant`** : plus de « commencer » / « annuler » un pointage.
 
+⚠ **Ordre impératif : la fonction `kiosk` AVANT la migration du lot 12.**
+L'ancienne `kiosk` (v4) insère le chrono au nom du salarié, sans passer par
+`kiosk_open_session` : après la migration, le nouveau garde la refuserait
+(« avec la tablette, la journée commence en scannant le QR ») et les arrivées
+QR tomberaient. La nouvelle `kiosk` marche avant la migration (repli).
+
+Plan complet (ordre, SQL de contrôle, retour arrière) : [mise-en-prod-lots-11-12.md](mise-en-prod-lots-11-12.md).
+
 Avant la migration, l'application marche (badges absents, pas de fermeture de
-nuit). Avant `kiosk`, la borne marche (ancien chemin).
+nuit).
 
 ## Tests
 
