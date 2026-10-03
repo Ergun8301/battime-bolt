@@ -224,7 +224,7 @@ export const CASES: EvalCase[] = [
     check: draft((l, date) => (date === '2026-09-30' && l.length === 1 && l[0].worksite_id === W.dupont && l[0].start === '08:00' && l[0].end === '17:00' && l[0].break_minutes === 60 ? null : `${date} ${JSON.stringify(l)}`)) },
   { id: 's04', cote: 'salarie', categorie: 'Heures', phrase: 'jai fait 6h 14h au kebab de bourg',
     check: draft((l) => (l.length === 1 && l[0].worksite_id === W.bourg && l[0].start === '06:00' && l[0].end === '14:00' ? null : `lignes : ${JSON.stringify(l)}`)) },
-  { id: 's05', cote: 'salarie', categorie: 'Pointage', phrase: 'je commence sur mister grill macon', check: act('commencer_pointage', (d) => eq(d, 'worksite_id', W.macon)) },
+  { id: 's05', cote: 'salarie', categorie: 'Pointage', phrase: 'je commence sur mister grill macon', check: answer() }, // lot 12 : on commence par le QR de la tablette
   { id: 's06', cote: 'salarie', categorie: 'Pointage', enCours: true, phrase: 'j’ai fini', check: act('terminer_pointage') },
   { id: 's07', cote: 'salarie', categorie: 'Pointage', enCours: true, phrase: 'j’ai terminé à 17h', check: act('terminer_pointage', (d) => eq(d, 'fin', '17:00')) },
   { id: 's08', cote: 'salarie', categorie: 'Congés', phrase: 'je voudrais poser des congés du 20 au 24 octobre',
@@ -255,7 +255,7 @@ export const CASES: EvalCase[] = [
   // ── Lot 8 : effacer ce qu'il a saisi (pas envoyé) ──
   { id: 's26', cote: 'salarie', categorie: 'Effacer', phrase: 'efface ma journée', check: act('effacer_heures', (d) => all(eq(d, 'tout', true), eq(d, 'date', '2026-10-01'))) },
   { id: 's27', cote: 'salarie', categorie: 'Effacer', phrase: 'supprime la ligne de bureau martin', check: act('effacer_heures', (d) => all(eq(d, 'tout', false), eq(d, 'entry_id', 'e2'))) },
-  { id: 's28', cote: 'salarie', categorie: 'Effacer', phrase: 'annule mon pointage je me suis trompé', enCours: true, check: act('annuler_pointage') },
+  { id: 's28', cote: 'salarie', categorie: 'Effacer', phrase: 'annule mon pointage je me suis trompé', enCours: true, check: answer() }, // lot 12 : plus d'annulation au téléphone
   { id: 's29', cote: 'salarie', categorie: 'Effacer', phrase: 'annule ma demande de congé', check: act('annuler_conge', (d) => eq(d, 'leave_id', 'lv1')) },
   { id: 's30', cote: 'salarie', categorie: 'Effacer', phrase: 'finalement mes vacances ce sera du 21 au 25 octobre',
     check: act('modifier_conge', (d) => all(eq(d, 'leave_id', 'lv1'), eq(d, 'du', '2026-10-21'), eq(d, 'au', '2026-10-25'))) },

@@ -16,7 +16,8 @@ branche, fusionnée seulement après validation de la préview.
 | 5 | Accès support BEMEXO | `feat/acces-support` | PR ouverte — [détail](acces-support.md) |
 | 9 | Borne en planning, « en cours » partout, une seule logique salarié | `feat/lot9-borne-encours` | fusionné (PR 124) — migration + `kiosk` + `worker-assistant` **en production** — [détail](lot9-borne-encours.md) |
 | 10 | Finitions d'affichage (plus de flash, barre du haut, réglages en rubriques) | `feat/lot10-finitions` | fusionné (PR 125) — application seule |
-| 11 | Simplification : une tablette, sélection multiple, horaire prévu, réserves levées par le salarié, « Clôturer jusqu'au… » | `feat/lot11-simplification` | PR ouverte — [détail](lot11-simplification.md) |
+| 11 | Simplification : une tablette, sélection multiple, horaire prévu, réserves levées par le salarié, « Clôturer jusqu'au… » | `feat/lot11-simplification` | fusionné (PR 126) — part en prod avec le lot 12 — [détail](lot11-simplification.md) |
+| 12 | Pointage QR : entrée / sortie, sortie oubliée fermée la nuit, pause, badges bureau | `feat/lot12-pointage-qr` | PR ouverte — [détail](lot12-pointage-qr.md) |
 
 ## Règles communes
 

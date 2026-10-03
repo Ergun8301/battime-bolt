@@ -108,6 +108,7 @@ const setup = async (ctx) => {
 };
 
 let ok = 0, ko = 0; const check = (c, m) => { if (c) { ok++; console.log('✅', m); } else { ko++; console.log('❌', m); } };
+const MONTHS2 = (() => { const f = (d) => d.toLocaleDateString('fr-FR', { month: 'long', timeZone: 'Europe/Paris' }); const n = new Date(); const pm = new Date(n.getFullYear(), n.getMonth() - 1, 15); return `${f(pm)} et ${f(n)}`; })();
 const vis = (p, sel) => p.locator(`${sel}:visible`);
 
 // ─── Bureau 1440×900 : bandeau, en cours, sondage ──────────────────────────────
@@ -133,11 +134,11 @@ check(await p.locator('.bt-pl-name', { hasText: 'Ancien Compte' }).count() === 0
 // Lot 11 : « h validées » a quitté le cockpit (détail par chantier dans « Coût chantiers »).
 check(await p.locator('[data-testid=stat-hours]').count() === 0, '1) lot 11 : plus de « h validées » dans le cockpit');
 const waitTitle = await p.locator('[data-testid=stat-waiting]').getAttribute('title');
-check(/en octobre/.test(waitTitle || ''), `1) infobulle : le mois en toutes lettres (« ${waitTitle} »)`);
+check((waitTitle || '').includes(`en ${MONTHS2}`), `1) infobulle : les mois en toutes lettres (« ${waitTitle} »)`);
 await p.click('[data-testid=stat-waiting]'); await p.waitForTimeout(200);
 // textContent (pas innerText) : l'en-tête du panneau est en capitales par CSS.
 const panelTxt = await p.locator('.bt-pl-sp').textContent();
-check(/À relancer · octobre/.test(panelTxt) && /ce mois-ci/.test(panelTxt) && !/Ancien/.test(panelTxt), '1) panneau : « À relancer · octobre », mois en cours, sans le compte désactivé');
+check(panelTxt.includes(`À relancer · ${MONTHS2}`) && /mois dernier/.test(panelTxt) && !/Ancien/.test(panelTxt), `1) panneau : « À relancer · ${MONTHS2} », sans le compte désactivé`);
 await p.locator('.bt-pl-sp').screenshot({ path: `${SH}/admin-panneau-journees.png` });
 await p.locator('.bt-pl-ddbackdrop').first().click(); await p.waitForTimeout(200);
 
@@ -156,7 +157,8 @@ check(await marcRow.locator('[data-testid=bubble-live]').count() === 0, '2) aucu
 if (inWeek(day(-1))) {
   const ninaLive = p.locator('tr', { has: p.locator('.bt-pl-name', { hasText: 'Nina Morel' }) }).first().locator('[data-testid=bubble-live]');
   const t = (await ninaLive.innerText().catch(() => '')).trim();
-  check(new RegExp(`^en cours depuis [a-zéû]+\\. ${hhmm(sNina.started_at)}$`).test(t), `2) chrono oublié : jour préfixé « ${t} »`);
+  // Lot 12 : un chrono d'un jour précédent n'allume plus rien (fermé la nuit en « sortie oubliée »).
+  check(t === '', `2) lot 12 : chrono oublié d'hier → pas de case verte (« ${t} »)`);
 } else console.log('   (hier n’est pas dans la semaine affichée : préfixe du jour non vérifié)');
 check(await p.locator('[data-testid=stat-live]').count() === 0, '2) lot 11 : plus de compteur « en direct » (la case verte suffit)');
 await p.click('button[aria-label="Légende des icônes"]'); await p.waitForTimeout(200);

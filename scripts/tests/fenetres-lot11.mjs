@@ -295,11 +295,7 @@ const ADMIN = [
     for (const k of ['entreprise', 'paie', 'borne', 'notif']) await openSection(p, k);
     return true;
   } },
-  { id: 'reglages-endroit', name: 'Réglages — confirmation légale « Endroit au pointage »', open: async (p, L) => {
-    if (!(await openSettings(p, L))) return false;
-    await openSection(p, 'borne');
-    return step(p, ['[role=dialog] .bt-set-sub:has(label:text-is("Endroit au pointage en direct")) button.bt-set-btn', 'Activer']);
-  } },
+  // Lot 12 : la confirmation légale « Endroit au pointage » n'est plus atteignable (réglage caché).
   { id: 'borne-depuis-reglages', name: 'Borne, ouverte depuis les réglages', open: async (p, L) => {
     if (!(await openSettings(p, L))) return false;
     await openSection(p, 'borne');
@@ -364,10 +360,8 @@ const WORKER = [
     open: (p) => step(p, ['.bt-send', 'Envoyer ma journée']) },
   { id: 'deja-envoyee', name: 'Journée déjà envoyée', prep: (D) => { D.time_entries = [wEntry('we1', WL, '08:00', '12:00', { status: 'submitted' })]; }, open: tapEntry },
   { id: 'mois-cloture', name: 'Mois clôturé', prep: (D) => { D.month_closures = [{ company_id: CO, month: `${today.slice(0, 7)}-01` }]; }, open: tapEntry },
-  { id: 'autre-chantier', name: 'Sur quel chantier ? (journée vide)', shot: true, prep: (D) => { D.time_entries = []; }, open: (p) => step(p, ['[data-testid=start-other]']) },
-  { id: 'endroit', name: "Information sur l'endroit (avant le 1er chrono)",
-    prep: (D) => { D.companies[0].position_tracking_enabled = true; D.time_entries = []; D.planning = [{ id: 'p1', company_id: CO, user_id: ME, worksite_id: WL.id, work_date: today, absence_type: null, estimated_start: '08:00:00', estimated_end: '12:00:00', notes: null, worksite: WL }]; },
-    open: (p) => step(p, ['[data-testid=card-planned] [data-testid=card-start]']) },
+  // Lot 12 : « Sur quel chantier ? » et l'information d'endroit avant le 1er chrono n'existent plus
+  // (le téléphone ne commence plus de pointage).
 ];
 
 // ─── Exécution ─────────────────────────────────────────────────────────────────

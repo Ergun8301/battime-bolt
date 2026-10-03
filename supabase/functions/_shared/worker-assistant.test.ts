@@ -151,10 +151,10 @@ const kindOf = (r: unknown) => (r as { kind: string }).kind;
 const act = (r: unknown) => (r as { action: { draft: Record<string, unknown>; problems: string[] } }).action;
 
 Deno.test('3 bis salarié — actions locales : pointage, congé, réserve, guide', () => {
+  // Lot 12 : le téléphone ne commence plus de pointage (QR de la tablette).
   const start = handleWorkerLocally('Je commence sur villa dupont', BTP, IDLE);
-  eq([kindOf(start), act(start).draft.type, act(start).draft.worksite_id, act(start).problems], ['action', 'commencer_pointage', 'w-dupont', []], 'début de pointage, chantier résolu');
-  eq(act(handleWorkerLocally('Je commence mon pointage', BTP, IDLE)).draft.worksite_id, 'w-martin', 'rien dit → chantier du planning du jour');
-  eq(act(handleWorkerLocally('je commence', BTP, RUNNING)).problems, ['Un pointage est déjà en cours (Bureau Martin).'], 'déjà en cours → bloqué');
+  eq([kindOf(start), (start as { answer: string }).answer.includes('QR')], ['answer', true], 'début de pointage : renvoyé au QR de la tablette');
+  eq(kindOf(handleWorkerLocally('annule mon pointage', BTP, RUNNING)), 'answer', 'annuler un pointage : plus depuis le téléphone');
   const stop = handleWorkerLocally("J'ai fini", BTP, RUNNING);
   eq([act(stop).draft.type, act(stop).problems], ['terminer_pointage', []], 'fin de pointage');
   eq(act(handleWorkerLocally('termine mon pointage', BTP, IDLE)).problems, ['Aucun pointage en cours.'], 'rien à terminer');

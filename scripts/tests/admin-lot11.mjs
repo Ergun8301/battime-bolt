@@ -175,6 +175,7 @@ const setup = async (ctx) => {
 const writesSince = (n) => log.writes.slice(n);
 
 let ok = 0, ko = 0; const check = (c, m) => { if (c) { ok++; console.log('✅', m); } else { ko++; console.log('❌', m); } };
+const MONTHS2 = (() => { const f = (d) => d.toLocaleDateString('fr-FR', { month: 'long', timeZone: 'Europe/Paris' }); const n = new Date(); const pm = new Date(n.getFullYear(), n.getMonth() - 1, 15); return `${f(pm)} et ${f(n)}`; })();
 const vis = (p, sel) => p.locator(`${sel}:visible`);
 const newPage = async (w, h, mobile = false) => {
   const ctx = await b.newContext({ viewport: { width: w, height: h }, locale: 'fr-FR', timezoneId: 'Europe/Paris', ...(mobile ? { deviceScaleFactor: 2, isMobile: true, hasTouch: true } : {}) });
@@ -234,7 +235,7 @@ const settle = async (pg) => { await pg.clock.fastForward(8000); await pg.waitFo
   }
   check((await row(p, 'Marc Durand').locator('.bt-pl-namebtn').innerText()).includes('À jour'), '1) Marc (lundi 19, passé, retiré par lui-même : rien de dû) : « À jour »');
   const title = await p.locator('[data-testid=stat-waiting]').getAttribute('title');
-  check(/en octobre/.test(title || ''), `1) infobulle avec le mois : « ${title} »`);
+  check((title || '').includes(`en ${MONTHS2}`), `1) infobulle avec les mois (lot 12 : mois précédent + mois en cours) : « ${title} »`);
   check((await p.locator('[data-testid=stat-docs]').innerText()).replace(/\s+/g, ' ').includes('1 pièces'), '1) 📎 « Pièces » inchangé');
   check((await p.locator('.bt-pl-bar button', { hasText: 'Réserves' }).innerText()).includes('1'), '1) pastille « Réserves » = 1 (la réserve levée par le salarié ne compte plus)');
   check(await row(p, 'Kevin Roussel').locator('[title="Réception avec réserve — levée"]').count() === 1, '1) bulle de Kevin : réserve levée par le salarié → triangle gris « levée »');
@@ -243,7 +244,7 @@ const settle = async (pg) => { await pg.clock.fastForward(8000); await pg.waitFo
   await p.click('[data-testid=stat-waiting]'); await p.waitForTimeout(250);
   const panel = p.locator('[data-testid=relance-panel]');
   const ptxt = (await panel.textContent()) || '';
-  check(/À relancer · octobre/.test(ptxt), '1) panneau « À relancer · octobre »');
+  check(ptxt.includes(`À relancer · ${MONTHS2}`), `1) panneau « À relancer · ${MONTHS2} »`);
   const rows = await panel.locator('[data-testid=relance-row]').count();
   check(rows === 5 && !/Ancien|Paul|Marc/.test(ptxt), `1) une ligne par salarié en retard (${rows}), ni désactivé, ni bureau, ni Marc`);
   const kRow = panel.locator('[data-testid=relance-row]', { hasText: 'Kevin Roussel' });

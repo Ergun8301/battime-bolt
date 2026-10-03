@@ -359,8 +359,9 @@ async function board(admin: SupabaseClient, body: Record<string, unknown>) {
     admin.from('planning')
       .select('id, user_id, worksite_id, work_date, estimated_start, estimated_end, absence_type, position, created_at')
       .eq('company_id', k.company_id).gte('work_date', week.days[0]).lte('work_date', week.days[6]),
+    // Lot 12 : seulement les chronos d'aujourd'hui (une sortie oubliée n'allume rien).
     admin.from('active_sessions').select('user_id, worksite_id, planning_id, work_date, started_at')
-      .eq('company_id', k.company_id),
+      .eq('company_id', k.company_id).eq('work_date', parisDate(Date.now())),
   ]);
   if (u.error || p.error || s.error) {
     console.error('[kiosk] board', u.error || p.error || s.error);
@@ -439,8 +440,19 @@ async function punch(admin: SupabaseClient, req: Request, body: Record<string, u
   // 3) Arrivée ou départ : même règle que l'appli.
   const today = parisDate(now);
   const { data: sess } = await admin.from('active_sessions').select('work_date').eq('user_id', profile.id).maybeSingle();
-  const action = decideAction(sess as { work_date: string } | null, today);
-  if (action === 'stale_session') return refuse('stale_session', 409);
+  let action = decideAction(sess as { work_date: string } | null, today);
+  if (action === 'stale_session') {
+    // Lot 12 : la sortie oubliée d'un jour précédent ne bloque plus la borne.
+    // Elle est fermée en brouillon « sortie oubliée » (comme le fait le cron de
+    // nuit), puis ce scan est une arrivée normale. Migration absente ou jour
+    // clos (rien n'a été fermé) : l'ancien refus.
+    const closed = await admin.rpc('close_forgotten_sessions', { p_user: profile.id });
+    if (closed.error || !closed.data) {
+      if (closed.error && !rpcMissing(closed.error)) console.error('[kiosk] close_forgotten', closed.error);
+      return refuse('stale_session', 409);
+    }
+    action = 'arrival';
+  }
 
   // Le client AU NOM DU SALARIÉ : ses policies, ses triggers, son auth.uid().
   const asUser = createClient(SUPABASE_URL, ANON_KEY, {
@@ -468,10 +480,19 @@ async function punch(admin: SupabaseClient, req: Request, body: Record<string, u
     const place = arrivalPlace(kiosk!.worksite_id, kioskIsOther, (plans || []) as PlannedSlot[]);
     if (!place) return json({ error: 'Aucun lieu rattaché à cette borne. Prévenez le bureau.', code: 'no_worksite' }, 409);
     const worksiteId = place.worksiteId;
-    const { error } = await asUser.from('active_sessions').insert({
-      user_id: profile.id, company_id: profile.company_id, worksite_id: worksiteId,
-      planning_id: place.planningId, work_date: today,
+    // Lot 12 : arrivée par `kiosk_open_session` (service seulement) — le chrono
+    // est inséré au nom du salarié (tous ses gardes s'appliquent) et marqué QR,
+    // seule façon de COMMENCER une journée quand une tablette est reliée.
+    // Migration absente : l'insertion d'avant, au nom du salarié.
+    let { error } = await admin.rpc('kiosk_open_session', {
+      p_user: profile.id, p_worksite: worksiteId, p_planning: place.planningId, p_date: today,
     });
+    if (rpcMissing(error)) {
+      ({ error } = await asUser.from('active_sessions').insert({
+        user_id: profile.id, company_id: profile.company_id, worksite_id: worksiteId,
+        planning_id: place.planningId, work_date: today,
+      }));
+    }
     if (error) {
       if (error.code === '23505') return refuse('double_scan', 409);
       if (isClosedError(error.message)) return refuse('month_closed', 409);

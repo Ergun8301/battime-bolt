@@ -14,7 +14,7 @@ import { positionUtile, fmtPrecision, fmtCoord } from '@/lib/position';
 import { parisHHmm } from '@/lib/utils';
 import { DEFAULT_WEEKLY_HOURS, DEFAULT_OVERTIME_RATES, weeklyHoursFor, weeklyTotals, routeMinutesByEntry, type RouteEntry } from '@/lib/overtime';
 import { weekStart as weekStartOf, weekEnd as weekEndOf } from '@/lib/week';
-import { computeMissingDays, missingWindowStart } from '@/lib/work-status';
+import { computeMissingDays, missingWindowStart, withIncompleteDays } from '@/lib/work-status';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -27,6 +27,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ExportMenu, type ExportKind } from '@/components/export-menu';
 import { InfoTip } from '@/components/ui/info-tip';
 import { TimeField, TIME_HINT } from '@/components/time-field';
+import { fetchQrFlags, isQrEntry, isExitToComplete, type QrFields } from '@/lib/qr-entry';
 import {
   CalendarRange, Clock, Utensils, MapPin, Loader2,
   Settings2, Archive, ArchiveRestore, Trash2, Link2, User as UserIcon, AlertTriangle, Hammer, PencilLine, BellOff,
@@ -132,6 +133,8 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
   const [cSaving, setCSaving] = useState(false);
   // L'historique des corrections, par ligne d'heures.
   const [corrections, setCorrections] = useState<Map<string, CorrectionRow[]>>(new Map());
+  // Lot 12 : drapeaux QR des lignes affichées (vide tant que la migration n'est pas passée).
+  const [qrFlags, setQrFlags] = useState<Map<string, QrFields>>(() => new Map());
   // Les endroits enregistrés au pointage. Vide par défaut : le réglage est
   // éteint tant qu'une entreprise ne l'a pas explicitement allumé.
   const [positions, setPositions] = useState<Map<string, PositionRow[]>>(new Map());
@@ -364,18 +367,26 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
   const fetchMissing = useCallback(async () => {
     if (!worker) return;
     const windowStart = missingWindowStart();
-    const [planRes, entRes, cancelledRes] = await Promise.all([
+    const [planRes, entRes, cancelledRes, closedRes, incRes] = await Promise.all([
       supabase.from('planning').select('id, work_date, absence_type').eq('user_id', worker.id).gte('work_date', windowStart),
       supabase.from('time_entries').select('work_date, status').eq('user_id', worker.id).in('status', ['submitted', 'validated']).gte('work_date', windowStart),
       supabase.from('time_entries').select('planning_id').eq('user_id', worker.id).eq('status', 'cancelled').not('planning_id', 'is', null).gte('work_date', windowStart),
+      // Lot 12 : le mois précédent compte aussi, sauf s'il est clôturé.
+      supabase.from('month_closures').select('month').eq('company_id', worker.company_id),
+      // Lot 12 : sortie oubliée « à compléter » (lecture silencieuse avant migration).
+      supabase.from('time_entries').select('work_date, start_time, end_time, exit_forgotten').eq('user_id', worker.id)
+        .eq('exit_forgotten', true).eq('status', 'draft').gte('work_date', windowStart),
     ]);
     const rows = (planRes.data || []) as { id: string; work_date: string; absence_type: string | null }[];
     const withdrawn = new Set<string>(cancelledRes.error ? [] : ((cancelledRes.data || []) as { planning_id: string }[]).map((r) => r.planning_id));
     const absenceDays = new Set<string>(rows.filter((p) => p.absence_type).map((p) => p.work_date));
     const planned = rows.filter((p) => !p.absence_type && !absenceDays.has(p.work_date) && !withdrawn.has(p.id)).map((p) => p.work_date);
     const declared = new Set<string>((entRes.data || []).map((e: { work_date: string }) => e.work_date));
-    setMissing(computeMissingDays(planned, declared));
-  }, [worker?.id]);
+    const closedMonths = new Set<string>(((closedRes.data || []) as { month: string }[]).map((m) => m.month.slice(0, 7)));
+    const incomplete = (incRes.error ? [] : (incRes.data || []) as (QrFields & { work_date: string })[])
+      .filter((r) => isExitToComplete(r)).map((r) => r.work_date);
+    setMissing(withIncompleteDays(computeMissingDays(planned, declared), incomplete).filter((d) => !closedMonths.has(d.slice(0, 7))));
+  }, [worker?.id, worker?.company_id]);
 
   useEffect(() => { fetchMissing(); }, [fetchMissing]);
   // Jours clôturés (« Clôturer jusqu'au… ») : la base les refuse au salarié,
@@ -420,6 +431,8 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
         .order('start_time', { ascending: false })
         .range(f, t2) as unknown as PromiseLike<{ data: ExportEntry[] | null; error: { message: string } | null }>);
       setEntries(rows);
+      // Lot 12 : badges « QR », « corrigé », « sortie oubliée » (requête à part, silencieuse).
+      void fetchQrFlags(supabase as never, rows.map((r) => r.id)).then(setQrFlags);
 
       // L'historique des corrections des lignes affichées. Une requête, pas une
       // par ligne : la fiche d'un salarié peut porter plusieurs dizaines de
@@ -1013,6 +1026,19 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
                     )}
                     {!isCancelled && entry.modified_at && (
                       <Badge variant="outline" className="text-[10px] py-0 text-amber-700 border-amber-300">modifié après envoi</Badge>
+                    )}
+                    {/* Lot 12 : trace du pointage QR (posée par la base). */}
+                    {!isCancelled && isQrEntry(qrFlags.get(entry.id) ?? {}) && (
+                      <Badge variant="outline" className="text-[10px] py-0 text-muted-foreground" data-testid="badge-qr" title="Ligne venue d’un pointage à la tablette (QR)">QR</Badge>
+                    )}
+                    {!isCancelled && qrFlags.get(entry.id)?.corrected_at && (
+                      <Badge variant="outline" className="text-[10px] py-0 text-amber-700 border-amber-300" data-testid="badge-corrected" title="Heures du pointage QR changées après coup">corrigé</Badge>
+                    )}
+                    {!isCancelled && qrFlags.get(entry.id)?.exit_forgotten && (
+                      <Badge variant="outline" className="text-[10px] py-0 text-[#C0461F] border-[#E8B79E]" data-testid="badge-exit-forgotten"
+                        title="Le salarié n’a pas rescanné en partant : chrono fermé la nuit">
+                        {isExitToComplete(qrFlags.get(entry.id) ?? {}) ? 'sortie oubliée · fin à compléter' : 'sortie oubliée'}
+                      </Badge>
                     )}
                     {!isCancelled && entry.reception === 'avec' && (
                       <Badge variant="outline" className="text-[10px] py-0 gap-1 text-[#C0461F] border-[#E8B79E] bg-[#FBE3D8]">

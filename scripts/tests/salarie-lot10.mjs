@@ -7,7 +7,7 @@
 // scripts/tests/salarie-lot9.mjs, téléphone 390×844, horloge de Playwright
 // (page.clock) pour déclencher les relectures. Un MutationObserver est posé
 // après le premier affichage ; données IDENTIQUES → seule exception admise :
-// les secondes du chrono en direct (.bt-lt-big, LiveTimer).
+// les secondes du chrono en direct (.bt-lt-big, puis .bt-lt-el au lot 12 — LiveTimer).
 import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path';
 let chromium;
 try { ({ chromium } = await import('playwright-core')); } catch {
@@ -126,7 +126,8 @@ p.on('pageerror', (e) => console.log('   [erreur page]', e.message));
 const open = async () => { await p.goto(`http://localhost:${PORT_USED}/poseur`); await p.waitForSelector('.bt-total', { timeout: 15000 }); await p.waitForTimeout(1200); };
 
 // ── Mesure des mutations ──────────────────────────────────────────────────────
-const ALLOWED = ['.bt-lt-big'];
+// Lot 12 : la petite carte affiche le temps écoulé dans .bt-lt-el.
+const ALLOWED = ['.bt-lt-big', '.bt-lt-el'];
 const MARK = '.bt-phone, .bt-day, .bt-day-scroll, .bt-total, [data-testid=card-planned], [data-testid=card-entry], [data-testid=card-live], [data-testid=live-timer], .bt-sec, .bt-send';
 async function observe() {
   await p.evaluate(([allowed, mark]) => {
@@ -199,7 +200,7 @@ D.planning = [{ id: 'p1', company_id: CO, user_id: ME, worksite_id: 'w1', work_d
 D.time_entries = [entry('e1', W2, '13:00', '16:30')];
 D.active_sessions = [];
 await open();
-check(await p.locator('[data-testid=card-start]').count() === 2, '1) journée affichée, « Je commence » sur les 2 cartes');
+check(await p.locator('[data-testid=card-planned], [data-testid=card-entry]').count() === 2 && await p.locator('[data-testid=card-start]').count() === 0, '1) journée affichée (2 cartes, lot 12 : aucun « Je commence »)');
 await quiet('1A) relecture 30 s', 'idle30', async () => { await p.clock.fastForward(30_000); });
 await quiet('1B) retour sur l’onglet', 'idleVisible', async () => { await setVisible(false); await p.clock.fastForward(20_000); await p.waitForTimeout(200); await setVisible(true); });
 await quiet('1C) minute suivante (jour, journées à envoyer)', 'idle60', async () => { await p.clock.fastForward(30_000); await p.waitForTimeout(300); await p.clock.fastForward(30_000); });

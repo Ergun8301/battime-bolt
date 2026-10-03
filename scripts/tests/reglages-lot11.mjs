@@ -46,7 +46,7 @@ const D = {
     phone: '', email: 'contact@khabitat.fr', logo_url: '', subscription_status: 'active', trial_ends_at: '2030-01-01',
     auto_reminder_enabled: true, reminder_hour: 17, budget_alerts_enabled: true, travel_paid: false, weekly_hours: 35,
     accountant_email: 'compta@cabinet.fr', overtime_rate_1: 25, overtime_rate_2: 50,
-    ai_enabled: true, kiosk_enabled: true, support_enabled: true, position_tracking_enabled: false, colleagues_planning_visible: false,
+    ai_enabled: true, kiosk_enabled: true, support_enabled: true, position_tracking_enabled: true /* lot 12 : réglage affiché seulement s'il est activé */, colleagues_planning_visible: false,
   }],
   worksites: [{ id: 'w1', company_id: CO, client_name: 'Villa Dupont', city: 'Lyon', is_active: true }],
   planning: [], time_entries: [], active_sessions: [], month_closures: [], leave_requests: [], invitations: [], documents: [],
@@ -251,21 +251,12 @@ const settingsKept = (await p.locator(SET).count()) === 1;
 check(settingsKept, '4) Échap referme la fenêtre des bornes, les réglages restent ouverts');
 const p2 = settingsKept ? p : await openSettings(ctx);
 
-// 3 bis) Le bloc légal avant « Endroit au pointage » reste ENTIER.
+// 3 bis) Lot 12 : « Endroit au pointage en direct » n'est affiché que s'il est
+// activé (le téléphone ne commence plus de pointage) — pour pouvoir le désactiver.
 await openSec(p2, 'borne');
 const posSub = p2.locator(`${SET} .bt-set-sub`, { has: p2.locator('label.bt-set-l', { hasText: /^Endroit au pointage en direct$/ }) });
-await posSub.getByRole('button', { name: 'Activer' }).click();
-const legal = p2.locator(`${SET} [data-testid=set-legal]`);
-await legal.waitFor({ timeout: 3000 }).catch(() => {});
-const legalTxt = norm(await legal.textContent().catch(() => ''));
-check(await legal.isVisible().catch(() => false)
-  && ['chacun de vos salariés', 'CSE', 'registre', 'ne vaudront rien comme preuve', 'ne remplace pas votre information individuelle', "C'est fait, activer"].every((t) => legalTxt.includes(t)),
-  `3) bloc légal ENTIER et visible avant d'activer (${legalTxt.length} caractères : salariés, CSE, registre, preuve, information individuelle, « C'est fait, activer »)`);
-check(await legal.locator('[data-testid^=set-tip-], [data-testid=info-tip]').count() === 0, '3) aucune partie du bloc légal n’est cachée dans une infobulle');
-const tooLong2 = await (async () => p2.locator(SET).evaluate((d, max) => [...d.querySelectorAll('p, .bt-set-substate, .sa-txt')].filter((el) => !el.closest('[data-testid=set-legal]') && el.getBoundingClientRect().width > 0 && (el.textContent || '').replace(/\s+/g, ' ').trim().length > max).length, MAX_LINE))();
-check(tooLong2 === 0, `3) bloc légal ouvert : hors de lui, toujours aucune ligne > ${MAX_LINE} caractères`);
-await legal.screenshot({ path: `${SH}/reglages-bloc-legal-1280x800.png` }).catch(() => {});
-await legal.getByRole('button', { name: 'Annuler' }).click();
+check(await posSub.getByRole('button', { name: 'Désactiver' }).count() === 1 && await posSub.getByRole('button', { name: 'Activer' }).count() === 0,
+  '3) lot 12 : réglage activé → affiché avec « Désactiver » seulement');
 
 // 5) Feuille de style jamais réécrite : on tape dans plusieurs champs (= nouveaux rendus).
 await openSec(p2, 'entreprise');

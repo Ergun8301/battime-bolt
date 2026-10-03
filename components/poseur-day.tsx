@@ -28,6 +28,7 @@ import LiveTimer from '@/components/live-timer';
 import { useOwnLiveSession, startLiveSession, announceLiveChange } from '@/lib/live-session';
 import { geoInfoSeen, markGeoInfoSeen } from '@/lib/position-info';
 import GeoInfoDialog from '@/components/geo-info-dialog';
+import { isExitToComplete, pauseCandidate, EXIT_TO_COMPLETE_MSG, PAUSE_CHOICES } from '@/lib/qr-entry';
 import { LiveLine } from '@/components/planning-bubble';
 import { placeLive, cellKey } from '@/supabase/functions/_shared/live-place';
 import TeamDay from '@/components/team-day';
@@ -481,6 +482,8 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
 
   // Coherence confirmation
   const [confirmOpen, setConfirmOpen] = useState(false);
+  // Lot 12 : « Tu as pris une pause ? » — l'id de la ligne QR concernée.
+  const [pauseAsk, setPauseAsk] = useState<string | null>(null);
   const [coherenceWarnings, setCoherenceWarnings] = useState<string[]>([]);
 
   // Copy-yesterday
@@ -1284,6 +1287,30 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
   };
 
   const handleSubmitDay = () => {
+    // Lot 12 : une sortie oubliée sans heure de fin ne part pas (la base le
+    // refuse aussi) — on ouvre la ligne pour qu'il la complète.
+    const toComplete = entries.find((e) => e.status === 'draft' && !e.locked && isExitToComplete(e));
+    if (toComplete) { toast.error(EXIT_TO_COMPLETE_MSG); openEntry(toComplete); return; }
+    // Lot 12 : journée QR de plus de 6 h sans pause → « Tu as pris une pause ? ».
+    const ask = pauseCandidate(entries);
+    if (ask && !pauseAsk) { setPauseAsk(ask); return; }
+    continueSubmit();
+  };
+
+  /** Pause choisie (0 / 30 min / 1 h) : posée sur la ligne QR, puis l'envoi continue. */
+  const answerPause = async (minutes: number) => {
+    const id = pauseAsk;
+    setPauseAsk(null);
+    if (!id || !user) return;
+    if (minutes > 0) {
+      const { error } = await supabase.from('time_entries').update({ break_minutes: minutes })
+        .eq('id', id).eq('user_id', user.id).eq('status', 'draft');
+      if (error) { toast.error(explainWriteError(error, "Pause non enregistrée")); return; }
+    }
+    continueSubmit();
+  };
+
+  const continueSubmit = () => {
     const draftIds = entries.filter((e) => e.status === 'draft' && !e.locked).map((e) => e.id);
     // Un chantier prévu par le bureau EST une ligne de la feuille : il n'a pas
     // besoin d'être ouvert pour compter. On ne refuse que si la journée est
@@ -1438,7 +1465,10 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
   const liveSynthetic = !!livePlace && !liveSlotId;
   // Un seul chrono par salarié : « Je commence » n'apparaît que sur le jour
   // courant, en ligne, mois ouvert, et quand on SAIT qu'aucun chrono ne tourne.
-  const canStartLive = date === mountedToday && isOnline && !monthLocked && live.known && !liveSession;
+  // Lot 12 : le téléphone ne COMMENCE plus de journée. Avec une tablette, on
+  // commence en scannant le QR ; sans tablette, on saisit ses heures (« + »).
+  // Un pointage ouvert se termine sur la petite carte (LiveTimer).
+  const canStartLive = false as boolean;
 
   /**
    * Les chantiers prévus par le bureau que le salarié n'a pas ouverts : ils
@@ -1861,8 +1891,16 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
                 </div>
                 <div className="bt-iv-times">
                   {entry.worksite?.city && <span className="bt-iv-city">{entry.worksite.city}</span>}
-                  <span className="bt-iv-times-v">{entry.start_time?.substring(0, 5)} → {entry.end_time?.substring(0, 5)} · {fmtHM(entry.total_minutes)}</span>
+                  {isExitToComplete(entry)
+                    ? <span className="bt-iv-times-v">{entry.start_time?.substring(0, 5)} → <b style={{ color: '#C0461F' }}>fin à compléter</b></span>
+                    : <span className="bt-iv-times-v">{entry.start_time?.substring(0, 5)} → {entry.end_time?.substring(0, 5)} · {fmtHM(entry.total_minutes)}</span>}
                 </div>
+                {/* Lot 12 : sortie oubliée (chrono fermé la nuit) — dit simplement. */}
+                {entry.exit_forgotten && entry.status === 'draft' && (
+                  <div className="bt-iv-reserve avec" data-testid="card-exit-forgotten">
+                    ⚠ Sortie oubliée{isExitToComplete(entry) ? ' — mets ton heure de fin' : ' — vérifie ton heure de fin'}
+                  </div>
+                )}
                 {/* CE QUE LE BUREAU A CORRIGÉ. Affiché ici même, et pas
                     seulement envoyé en notification : le salarié qui n'a pas
                     activé les notifications doit le voir quand même. Chaque
@@ -2314,6 +2352,23 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
           <div className="flex gap-2 mt-2">
             <Button variant="outline" className="flex-1" onClick={() => { setConfirmCorrectOpen(false); setPendingAction(null); }}>Annuler</Button>
             <Button className="flex-1" onClick={confirmCorrect}>Continuer</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Lot 12 : journée QR de plus de 6 h sans pause — un seul toucher. */}
+      <Dialog open={!!pauseAsk} onOpenChange={(o) => { if (!o) setPauseAsk(null); }}>
+        <DialogContent className="max-w-sm" data-testid="pause-ask">
+          <DialogHeader>
+            <DialogTitle>Tu as pris une pause&nbsp;?</DialogTitle>
+          </DialogHeader>
+          <div className="grid grid-cols-3 gap-2 pt-1">
+            {PAUSE_CHOICES.map((m) => (
+              <Button key={m} variant={m === 0 ? 'outline' : 'default'} className="h-12 text-base font-black" data-testid={`pause-${m}`}
+                onClick={() => void answerPause(m)}>
+                {m === 0 ? 'Non' : m === 30 ? '30 min' : '1 h'}
+              </Button>
+            ))}
           </div>
         </DialogContent>
       </Dialog>
