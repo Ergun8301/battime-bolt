@@ -24,7 +24,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import qrcode from 'qrcode-generator';
-import { MonitorSmartphone } from 'lucide-react';
+import { Check, Copy, MonitorSmartphone } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { keep } from '@/lib/same';
@@ -76,7 +76,18 @@ const CSS = `
 .ka-code-l{display:flex;align-items:center;gap:4px;font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:#a59c86;font-weight:700}
 .ka-code-l button{color:#a59c86!important}
 .ka-code-l button:hover{color:#F2EDE3!important}
-.ka-digits{display:block;font-family:'JetBrains Mono',monospace;font-size:clamp(32px,9vw,46px);letter-spacing:.12em;color:#FFC21A;line-height:1.15;font-weight:700;white-space:nowrap;margin:4px 0 4px}
+.ka-digrow{display:flex;align-items:center;flex-wrap:wrap;gap:6px 12px;margin:4px 0}
+/* Lot 13 : 6 chiffres SANS caractère espace (copier-coller exact) ; l'écart
+   visuel entre les deux groupes est une marge CSS, pas un espace. */
+.ka-digits{display:block;font-family:'JetBrains Mono',monospace;font-size:clamp(32px,9vw,46px);letter-spacing:.12em;color:#FFC21A;line-height:1.15;font-weight:700;white-space:nowrap;user-select:all;-webkit-user-select:all}
+.ka-digits .ka-d3{margin-right:.4em}
+.ka-copy{display:inline-flex;align-items:center;gap:6px;border:1.5px solid rgba(242,237,227,.4);background:transparent;color:#F2EDE3;border-radius:10px;padding:6px 10px;font:inherit;font-size:12.5px;font-weight:800;cursor:pointer;white-space:nowrap}
+.ka-copy:hover{border-color:#F2EDE3}
+.ka-copy.ok{border-color:#2FD584;color:#2FD584}
+.ka-how a{color:#F2EDE3;font-weight:800;text-decoration:underline;text-underline-offset:2px;overflow-wrap:anywhere}
+.ka-howrow{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px}
+.ka-qrfig{flex:none;margin:0;display:flex;flex-direction:column;align-items:center;gap:6px}
+.ka-qrcap{font-size:11px;font-weight:700;color:#a59c86;text-align:center;max-width:110px;line-height:1.3}
 .ka-digits.wait{opacity:.3}
 .ka-how{font-size:13px;color:#cfc7b6;font-weight:600;line-height:1.45;margin:0}
 .ka-how b{color:#F2EDE3;font-weight:800}
@@ -310,6 +321,28 @@ export default function KioskAdmin({ open, onOpenChange, companyId }: Props) {
   // Le QR du code : ouvre /borne?code=… sur la tablette (même site que celui-ci).
   const code = pairing?.code ?? null;
   const qrUrl = code ? `${window.location.origin}/borne?code=${code}` : null;
+  // Lot 13 : l'adresse de la page tablette, construite sur le site EN COURS
+  // (bemexo.com en prod, l'adresse de la préview sur une préview).
+  const borneUrl = `${window.location.origin}/borne`;
+  const borneLabel = `${window.location.host}/borne`;
+  const [copied, setCopied] = useState<'code' | 'link' | null>(null);
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (copiedTimer.current) clearTimeout(copiedTimer.current); }, []);
+  const copy = async (what: 'code' | 'link', text: string) => {
+    let ok = false;
+    try { await navigator.clipboard.writeText(text); ok = true; } catch {
+      // Repli (navigateur sans presse-papiers asynchrone) : sélection + copie.
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { ok = document.execCommand('copy'); } catch { ok = false; }
+      ta.remove();
+    }
+    if (!ok) { toast.error('Copie impossible : sélectionnez le texte à la main.'); return; }
+    setCopied(what);
+    if (copiedTimer.current) clearTimeout(copiedTimer.current);
+    copiedTimer.current = setTimeout(() => setCopied(null), 2000);
+  };
   const qrHtml = useMemo(() => {
     if (!qrUrl) return null;
     const qr = qrcode(0, 'M');
@@ -374,15 +407,36 @@ export default function KioskAdmin({ open, onOpenChange, companyId }: Props) {
                 </>
               ) : (
                 <>
-                  <b className={`ka-digits${code ? '' : ' wait'}`} data-testid="ka-code" aria-live="polite" aria-busy={!code}>
-                    {code ? `${code.slice(0, 3)} ${code.slice(3)}` : '··· ···'}
-                  </b>
-                  <p className="ka-how">Sur la tablette, ouvrez <b>bemexo.com/borne</b> et tapez ce code, fenêtre ouverte.</p>
+                  <div className="ka-digrow">
+                    <b className={`ka-digits${code ? '' : ' wait'}`} data-testid="ka-code" aria-live="polite" aria-busy={!code}>
+                      {code
+                        ? code.split('').map((d, i) => <span key={i} className={i === 2 ? 'ka-d3' : undefined}>{d}</span>)
+                        : <><span className="ka-d3">···</span><span>···</span></>}
+                    </b>
+                    {code && (
+                      <button type="button" className={`ka-copy${copied === 'code' ? ' ok' : ''}`} data-testid="ka-copy-code" onClick={() => void copy('code', code)}>
+                        {copied === 'code' ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />} {copied === 'code' ? 'Copié' : 'Copier le code'}
+                      </button>
+                    )}
+                  </div>
+                  <div className="ka-howrow">
+                    <p className="ka-how">
+                      Sur la tablette, ouvrez{' '}
+                      <a href={borneUrl} target="_blank" rel="noopener noreferrer" data-testid="ka-borne-link">{borneLabel}</a>{' '}
+                      et tapez ce code, fenêtre ouverte.
+                    </p>
+                    <button type="button" className={`ka-copy${copied === 'link' ? ' ok' : ''}`} data-testid="ka-copy-link" onClick={() => void copy('link', borneUrl)}>
+                      {copied === 'link' ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />} {copied === 'link' ? 'Copié' : 'Copier le lien'}
+                    </button>
+                  </div>
                 </>
               )}
             </div>
             {qrHtml && (
-              <div className="ka-qr" data-testid="ka-qr" data-url={qrUrl ?? undefined} role="img" aria-label="QR : ouvre la page de la tablette avec le code" dangerouslySetInnerHTML={qrHtml} />
+              <figure className="ka-qrfig">
+                <div className="ka-qr" data-testid="ka-qr" data-url={qrUrl ?? undefined} role="img" aria-label="QR : ouvre la page de la tablette avec le code" dangerouslySetInnerHTML={qrHtml} />
+                <figcaption className="ka-qrcap" data-testid="ka-qr-caption">Ou scannez avec la tablette</figcaption>
+              </figure>
             )}
           </div>
 

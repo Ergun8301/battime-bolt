@@ -139,7 +139,7 @@ const openDialog = async (p) => { await p.click('[data-testid=bar-kiosk]'); awai
   await openDialog(p);
   const txt = await dialogText(p);
   check(/Borne de pointage/.test(txt), 'A1) la fenêtre garde son titre « Borne de pointage »');
-  check(/^\d{3} \d{3}$/.test((await codeText(p)).trim()) && (await codeText(p)).trim() === '123 456', `A1) le code à 6 chiffres s’affiche dès l’ouverture (« ${(await codeText(p)).trim()} »)`);
+  check(/^\d{6}$/.test((await codeText(p)).trim()) && (await codeText(p)).trim() === '123456', `A1) le code à 6 chiffres s’affiche dès l’ouverture (« ${(await codeText(p)).trim()} »)`);
   check(calls('create_pairing').length === 1, `A1) un seul appel create_pairing à l’ouverture (${calls('create_pairing').length})`);
   const cp = calls('create_pairing')[0] || {};
   check(!('name' in cp) && !('worksite_id' in cp), `A1) ni nom ni lieu envoyés (${JSON.stringify(cp)})`);
@@ -149,7 +149,7 @@ const openDialog = async (p) => { await p.click('[data-testid=bar-kiosk]'); awai
   check(await p.locator('[data-testid=ka-disconnect]').count() === 0, 'A1) pas de « Déconnecter la tablette » sans tablette');
   const url = await p.locator('[data-testid=ka-qr]').getAttribute('data-url');
   check(url === `${BASE}/borne?code=123456` && await p.locator('[data-testid=ka-qr] svg').count() === 1, `A1) petit QR à côté du code → ${url}`);
-  check(/bemexo\.com\/borne/.test(txt) && /tapez ce code/.test(txt), 'A1) « Sur la tablette, ouvrez bemexo.com/borne et tapez ce code. »');
+  check(txt.includes(`${new URL(BASE).host}/borne`) && /tapez ce code/.test(txt), 'A1) « Sur la tablette, ouvrez <adresse du site>/borne et tapez ce code. » (lot 13 : adresse du site en cours)');
   const gone = ['Ajouter une borne', 'Vos bornes', 'Créer le code', 'Lieu', 'Nom (', 'GPS', 'sur place', 'Enregistrer les options', 'Valable encore', 'Retirer'];
   check(gone.every((g) => !txt.includes(g)), `A1) plus de liste, d’« Ajouter une borne », de lieu, de nom, de GPS, de compte à rebours (${gone.filter((g) => txt.includes(g)).join(', ') || 'ok'})`);
   check(await p.locator('[role=dialog] select, [role=dialog] input[type=checkbox], [role=dialog] input[type=time]').count() === 0, 'A1) ni liste déroulante, ni case GPS, ni champ heure à roulette');
@@ -160,10 +160,10 @@ const openDialog = async (p) => { await p.click('[data-testid=bar-kiosk]'); awai
 
   // ── A2 · renouvellement automatique ~1 min avant l'expiration ──────────────
   await ff(8 * 60e3);
-  check(calls('create_pairing').length === 1 && (await codeText(p)).trim() === '123 456', 'A2) après 8 min : même code');
+  check(calls('create_pairing').length === 1 && (await codeText(p)).trim() === '123456', 'A2) après 8 min : même code');
   await ff(60e3 + 2000);
   await p.waitForTimeout(500);
-  check(calls('create_pairing').length === 2 && (await codeText(p)).trim() === '654 321', `A2) à 9 min : nouveau code tout seul (${(await codeText(p)).trim()})`);
+  check(calls('create_pairing').length === 2 && (await codeText(p)).trim() === '654321', `A2) à 9 min : nouveau code tout seul (${(await codeText(p)).trim()})`);
   check(calls('cancel_pairing').some((c) => c.pairing_id === 'pair-1'), 'A2) l’ancien code est périmé (cancel_pairing)');
   check(await p.locator('[data-testid=ka-qr]').getAttribute('data-url') === `${BASE}/borne?code=654321`, 'A2) le QR suit le nouveau code');
 
@@ -231,7 +231,7 @@ const openDialog = async (p) => { await p.click('[data-testid=bar-kiosk]'); awai
   check(await p.locator('[data-sonner-toast]', { hasText: 'Tablette reliée' }).count() >= 1, 'A6) toast « Tablette reliée »');
   const rv = calls('revoke').map((c) => c.kiosk_id).sort();
   check(JSON.stringify(rv) === JSON.stringify(['k-a', 'k-b']), `A6) les anciennes tablettes sont déconnectées, la nouvelle reste (${rv.join(', ')})`);
-  check(calls('create_pairing').length === 2 && (await codeText(p)).trim() === '654 321', 'A6) le code a servi : un nouveau code s’affiche');
+  check(calls('create_pairing').length === 2 && (await codeText(p)).trim() === '654321', 'A6) le code a servi : un nouveau code s’affiche');
   check((await statusText(p)).trim() === 'Tablette reliée — vue à l’instant', `A6) « Tablette reliée — vue à l’instant » (${(await statusText(p)).trim()})`);
   // Plusieurs tablettes encore actives (cas de la prod) : « Déconnecter » les retire toutes.
   state.D.kiosks.push({ id: 'k-x', company_id: CO, revoked_at: null, created_at: isoAgo(10), last_seen_at: isoAgo(10) });
@@ -276,7 +276,7 @@ const openDialog = async (p) => { await p.click('[data-testid=bar-kiosk]'); awai
     const over = [...d.querySelectorAll('*')].filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && (r.right > window.innerWidth + 0.5 || r.left < -0.5); }).map((e) => e.className || e.tagName).slice(0, 5);
     return { sw: d.scrollWidth, cw: d.clientWidth, page: document.documentElement.scrollWidth <= window.innerWidth, over };
   });
-  check(/\d{3} \d{3}/.test(await codeText(p)) && (await statusText(p)).includes('Tablette reliée'), 'A7) 390×844 (menu → Borne) : code et état affichés');
+  check(/\d{6}/.test(await codeText(p)) && (await statusText(p)).includes('Tablette reliée'), 'A7) 390×844 (menu → Borne) : code et état affichés');
   check(m.sw <= m.cw + 1 && m.page && m.over.length === 0, `A7) 390×844 : aucun défilement horizontal ${JSON.stringify(m)}`);
   await p.screenshot({ path: `${SH}/borne-admin-390x844.png` });
   await ctx.close();
@@ -550,6 +550,64 @@ async function phone({ session = null } = {}) {
   check(!!pu && JSON.stringify(Object.keys(pu).sort()) === JSON.stringify(['action', 'ticket']), `D) « punch » sans position (${JSON.stringify(pu || {})})`);
   check(await p.evaluate(() => window.__geo) === 0, 'D) aucune demande de position, même si needs_gps: true');
   await ctx.close();
+}
+
+// ── LOT 13 · copier le code (6 chiffres, sans espace), lien du site en cours, légende du QR ──
+{
+  const { ctx, p, ff } = await adminPage();
+  await ctx.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: BASE });
+  await openDialog(p);
+  // 1) Sélection à la main (double-clic / glisser) : exactement les 6 chiffres.
+  const sel = await p.locator('[data-testid=ka-code]').evaluate((el) => {
+    const r = document.createRange(); r.selectNodeContents(el);
+    const s = window.getSelection(); s.removeAllRanges(); s.addRange(r); return s.toString();
+  });
+  check(sel === '123456', `L13-1) sélection du code : « ${sel} » (6 chiffres, aucun espace)`);
+  check(!/\s/.test(await p.locator('[data-testid=ka-code]').textContent()), 'L13-1) aucun caractère espace dans le code (écart visuel en CSS)');
+  const gap = await p.locator('[data-testid=ka-code] .ka-d3').evaluate((el) => parseFloat(getComputedStyle(el).marginRight));
+  check(gap > 4, `L13-1) écart visuel entre les 3 premiers et les 3 derniers chiffres : marge CSS de ${gap.toFixed(1)} px`);
+  // 2) « Copier le code » → exactement les 6 chiffres, « Copié » pendant 2 s.
+  await p.click('[data-testid=ka-copy-code]'); await p.waitForTimeout(200);
+  const clip1 = await p.evaluate(() => navigator.clipboard.readText());
+  check(/^\d{6}$/.test(clip1) && clip1 === '123456', `L13-2) « Copier le code » copie « ${clip1} » (exactement 6 chiffres)`);
+  check((await p.locator('[data-testid=ka-copy-code]').innerText()).includes('Copié'), 'L13-2) le bouton affiche « Copié »');
+  await ff(1000);
+  check((await p.locator('[data-testid=ka-copy-code]').innerText()).includes('Copié'), 'L13-2) … encore « Copié » à ~1,5 s');
+  await ff(1200);
+  check((await p.locator('[data-testid=ka-copy-code]').innerText()).includes('Copier le code'), 'L13-2) … puis « Copier le code » après 2 s');
+  // 3) Adresse du site en cours, cliquable (nouvel onglet), « Copier le lien ».
+  const link = p.locator('[data-testid=ka-borne-link]');
+  check(await link.getAttribute('href') === `${BASE}/borne` && await link.getAttribute('target') === '_blank'
+    && /noopener/.test(await link.getAttribute('rel') || ''), `L13-3) lien ${await link.getAttribute('href')} (nouvel onglet)`);
+  check((await link.innerText()) === `${new URL(BASE).host}/borne` && !(await p.locator('[role=dialog]').innerText()).includes('bemexo.com'), `L13-3) adresse construite sur le site en cours (« ${await link.innerText()} »), jamais « bemexo.com » en dur`);
+  await p.click('[data-testid=ka-copy-link]'); await p.waitForTimeout(200);
+  const clip2 = await p.evaluate(() => navigator.clipboard.readText());
+  check(clip2 === `${BASE}/borne`, `L13-3) « Copier le lien » copie « ${clip2} »`);
+  check((await p.locator('[data-testid=ka-copy-link]').innerText()).includes('Copié'), 'L13-3) le bouton affiche « Copié »');
+  // 4) Légende du QR, et le QR encode bien /borne?code=… (même SVG que celui généré pour cette adresse).
+  check((await p.locator('[data-testid=ka-qr-caption]').innerText()).trim() === 'Ou scannez avec la tablette', 'L13-4) légende « Ou scannez avec la tablette » sous le QR');
+  const qrUrl = await p.locator('[data-testid=ka-qr]').getAttribute('data-url');
+  const { createRequire } = await import('node:module');
+  const qrcode = createRequire(`${process.cwd()}/package.json`)('qrcode-generator');
+  const q = qrcode(0, 'M'); q.addData(`${BASE}/borne?code=123456`); q.make();
+  const expected = q.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
+  const rendered = await p.locator('[data-testid=ka-qr]').innerHTML();
+  // Le navigateur réécrit la balise SVG (guillemets, fermetures) : on compare les MODULES du QR (le tracé).
+  const pathOf = (svg) => (/\sd="([^"]+)"/.exec(svg) || [])[1] || '';
+  check(qrUrl === `${BASE}/borne?code=123456` && pathOf(rendered).length > 100 && pathOf(rendered) === pathOf(expected), `L13-4) le QR encode exactement ${BASE}/borne?code=123456 (ouvre /borne, code pré-rempli — voir C)`);
+  await p.mouse.move(5, 5);
+  await p.screenshot({ path: `${SH}/borne-admin-copier-1440x900.png` });
+  await ctx.close();
+  // Téléphone : tout tient en largeur.
+  const m = await adminPage({ width: 390, height: 844, isMobile: true });
+  await m.p.locator('.bt-pl-m-ibtn[aria-label="Menu"]').click().catch(() => {});
+  await m.p.waitForTimeout(300);
+  await m.p.locator('.bt-mm-item', { hasText: 'Borne' }).click().catch(() => {});
+  await m.p.waitForTimeout(900);
+  const sw = await m.p.locator('[role=dialog]').evaluate((d) => d.scrollWidth - d.clientWidth).catch(() => -1);
+  check(sw >= 0 && sw <= 1 && await m.p.locator('[data-testid=ka-copy-code]').count() === 1, `L13) 390×844 : boutons « Copier » présents, aucun défilement horizontal (${sw})`);
+  await m.p.screenshot({ path: `${SH}/borne-admin-copier-390x844.png` });
+  await m.ctx.close();
 }
 
 console.log(`\n${ok} ✅ / ${ko} ❌`);
