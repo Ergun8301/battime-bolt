@@ -1,4 +1,4 @@
-# Mise en prod groupée — lots 11 + 12
+# Mise en prod groupée — lots 11 + 12 (+ 13 front, + 14)
 
 **Rien n'est appliqué tant qu'Ergun n'a pas donné son feu vert lui-même.**
 Projet Supabase `sdperbcquvneohotjono`. Fonctions déployées depuis le DERNIER
@@ -12,6 +12,7 @@ commit de `integration/bemexo-ia`.
 | 1 | Migration `20261002120000_lot11_cloture_salarie.sql` | SQL B |
 | 2 | Fonction `kiosk` (`--no-verify-jwt`) | version listée + un scan QR réel sur la tablette de test |
 | 3 | Migration `20261003120000_lot12_pointage_qr.sql` | SQL C + un scan QR réel (chrono `source = 'qr'`) |
+| 3 bis | Migration `20261006120000_lot14_chef_equipe_7_jours.sql` (lot 14) | SQL D |
 | 4 | Fonction `assistant` | version listée |
 | 5 | Fonction `worker-assistant` | version listée |
 | 6 | **Fusion dans `main` (Ergun), IMMÉDIATEMENT après l'étape 5** | bemexo.com affiche le lot 12 |
@@ -67,9 +68,29 @@ SELECT (SELECT count(*) FROM information_schema.columns WHERE table_schema = 'pu
        (SELECT count(*) FROM public.kiosks WHERE revoked_at IS NULL) AS kiosks_actifs_inchange;
 ```
 
+## SQL D — après la migration du lot 14
+
+```sql
+SELECT (SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'time_entries' AND column_name IN ('lead_edited_by','lead_edited_at')) AS colonnes_2,
+       (SELECT count(*) FROM pg_trigger WHERE tgname = 'time_entries_lead_guard') AS trigger_1,
+       (SELECT prosrc LIKE '%- 6%' FROM pg_proc WHERE proname = 'is_my_team_member') AS regle_7_jours_true,
+       (SELECT count(*) FROM pg_policies WHERE tablename = 'time_entries') AS policies_inchangees,
+       (SELECT count(*) FROM public.time_entries WHERE lead_edited_by IS NOT NULL) AS lignes_touchees_0,
+       (SELECT count(*) FROM public.kiosks WHERE revoked_at IS NULL) AS kiosks_actifs_inchange;
+```
+
+`policies_inchangees` : même nombre qu'avant la migration (la noter au SQL A).
+Lot 13 : front seul, rien à appliquer. Il part avec la fusion dans `main`.
+
+### R14 (avant R12 et R11)
+
+Le SQL complet est en bas de `20261006120000_lot14_chef_equipe_7_jours.sql` :
+retirer le trigger `time_entries_lead_guard`, la fonction `guard_time_entry_lead`,
+et remettre l'ancienne `is_my_team_member` (recopiée mot pour mot).
+
 ## Retour arrière
 
-Ordre : R12 → (si besoin) anciennes fonctions `kiosk` v4 `cca24c8`,
+Ordre : R14 → R12 → (si besoin) anciennes fonctions `kiosk` v4 `cca24c8`,
 `assistant` v7 `f788f84`, `worker-assistant` v5 `cca24c8` → R11 (R11 toujours
 APRÈS R12 : la fermeture de nuit utilise une fonction du lot 11). Colonnes et
 table gardées (sans effet, trace conservée).

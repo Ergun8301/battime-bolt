@@ -31,7 +31,8 @@
     "test:fin-pointage": "node supabase/tests/lot9_fin_pointage.mjs",
     "test:cloture-salarie": "node supabase/tests/lot11_cloture_salarie.mjs",
     "test:salarie-lot9": "node scripts/tests/salarie-lot9.mjs out docs/captures-lot9",
-    "test:pointage-qr": "node supabase/tests/lot12_pointage_qr.mjs"
+    "test:pointage-qr": "node supabase/tests/lot12_pointage_qr.mjs",
+    "test:chef-equipe": "node supabase/tests/lot14_chef_equipe.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

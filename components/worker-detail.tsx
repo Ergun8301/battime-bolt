@@ -28,6 +28,7 @@ import { ExportMenu, type ExportKind } from '@/components/export-menu';
 import { InfoTip } from '@/components/ui/info-tip';
 import { TimeField, TIME_HINT } from '@/components/time-field';
 import { fetchQrFlags, isQrEntry, isExitToComplete, type QrFields } from '@/lib/qr-entry';
+import { fetchLeadMarks, type LeadMark } from '@/lib/lead-trace';
 import {
   CalendarRange, Clock, Utensils, MapPin, Loader2,
   Settings2, Archive, ArchiveRestore, Trash2, Link2, User as UserIcon, AlertTriangle, Hammer, PencilLine, BellOff,
@@ -135,6 +136,8 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
   const [corrections, setCorrections] = useState<Map<string, CorrectionRow[]>>(new Map());
   // Lot 12 : drapeaux QR des lignes affichées (vide tant que la migration n'est pas passée).
   const [qrFlags, setQrFlags] = useState<Map<string, QrFields>>(() => new Map());
+  // Lot 14 : lignes saisies ou corrigées par un chef d'équipe.
+  const [leadMarks, setLeadMarks] = useState<Map<string, LeadMark>>(() => new Map());
   // Les endroits enregistrés au pointage. Vide par défaut : le réglage est
   // éteint tant qu'une entreprise ne l'a pas explicitement allumé.
   const [positions, setPositions] = useState<Map<string, PositionRow[]>>(new Map());
@@ -433,6 +436,8 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
       setEntries(rows);
       // Lot 12 : badges « QR », « corrigé », « sortie oubliée » (requête à part, silencieuse).
       void fetchQrFlags(supabase as never, rows.map((r) => r.id)).then(setQrFlags);
+      // Lot 14 : « par le chef d'équipe » (requête à part, silencieuse).
+      void fetchLeadMarks(supabase as never, rows.map((r) => r.id)).then(setLeadMarks);
 
       // L'historique des corrections des lignes affichées. Une requête, pas une
       // par ligne : la fiche d'un salarié peut porter plusieurs dizaines de
@@ -1026,6 +1031,13 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
                     )}
                     {!isCancelled && entry.modified_at && (
                       <Badge variant="outline" className="text-[10px] py-0 text-amber-700 border-amber-300">modifié après envoi</Badge>
+                    )}
+                    {/* Lot 14 : saisie ou corrigée par un chef d'équipe (posée par la base). */}
+                    {!isCancelled && leadMarks.get(entry.id) && (
+                      <Badge variant="outline" className="text-[10px] py-0 text-muted-foreground" data-testid="badge-lead"
+                        title={`Saisie ou corrigée par le chef d’équipe le ${format(new Date(leadMarks.get(entry.id)!.lead_edited_at || Date.now()), 'd MMM à HH:mm', { locale: fr })}`}>
+                        par le chef d’équipe
+                      </Badge>
                     )}
                     {/* Lot 12 : trace du pointage QR (posée par la base). */}
                     {!isCancelled && isQrEntry(qrFlags.get(entry.id) ?? {}) && (
