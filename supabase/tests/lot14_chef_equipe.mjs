@@ -228,5 +228,48 @@ await one(`INSERT INTO public.time_entries (company_id, user_id, worksite_id, wo
 await as(CHEF);
 check(!((await run(`SELECT 1 FROM public.time_entries WHERE user_id = $1 AND work_date = $2::date`, [NINA, j7])).rows || []).length, '… ni au-delà de 7 jours');
 
+// ═══ CORRECTIF : le chef ENVOIE (salarié qui n'ouvre jamais l'appli) ════
+const SEND = `SELECT public.lead_send_entries($1::uuid[]) AS n`;
+const MONTH_EXPORT = `SELECT id FROM public.time_entries WHERE company_id = $1 AND status IN ('submitted','validated')
+  AND work_date >= date_trunc('month', $2::date)::date AND work_date <= $2::date`;
+await as(CHEF);
+const jamais = (await accepted(INS, [CO, CHEF2, WS2, j1, '07:00', '15:00'], 'chef : saisit la journée d’Ali (il n’ouvre jamais l’appli)')).rows?.[0]?.id;
+r = await accepted(SEND, [[jamais]], 'chef : « OK » → envoyée au bureau');
+check(r.rows?.[0]?.n === 1, '… 1 ligne envoyée');
+row = await one(`SELECT status, submitted_at, lead_edited_by FROM public.time_entries WHERE id = $1`, [jamais]);
+check(row.status === 'submitted' && row.submitted_at && row.lead_edited_by === CHEF, 'arrive chez le patron comme une journée ENVOYÉE, badge « par le chef d’équipe »');
+const exp = (await one(`SELECT array_agg(id::text) AS ids FROM (${MONTH_EXPORT}) x`, [CO, j1])).ids || [];
+check(exp.includes(jamais), 'la journée entre dans l’export du mois (statut envoyé)');
+// Le salarié qui utilise l'appli garde la main, le patron voit « modifié après envoi ».
+await as(CHEF2);
+await accepted(`UPDATE public.time_entries SET end_time = '15:30' WHERE id = $1`, [jamais], 'Ali corrige lui-même sa journée envoyée par le chef');
+row = await one(`SELECT status, modified_at, modified_by FROM public.time_entries WHERE id = $1`, [jamais]);
+check(row.status === 'submitted' && row.modified_at && row.modified_by === CHEF2, '… toujours envoyée, « modifié après envoi » côté patron');
+// Une ligne saisie par le salarié lui-même, en brouillon : le chef peut l'envoyer.
+await as(LUCAS);
+const brouillon = (await accepted(INS, [CO, LUCAS, WS2, j1, '13:00', '16:00'], 'Lucas a noté une ligne sans l’envoyer')).rows?.[0]?.id;
+await as(CHEF);
+await accepted(SEND, [[brouillon]], 'chef : l’envoie pour lui');
+row = await one(`SELECT status, lead_edited_by FROM public.time_entries WHERE id = $1`, [brouillon]);
+check(row.status === 'submitted' && row.lead_edited_by === CHEF, '… envoyée, badge « par le chef d’équipe »');
+// Limites inchangées.
+await as(CHEF);
+r = await accepted(SEND, [[val, lock]], 'chef : envoie une journée validée et une verrouillée');
+check(r.rows?.[0]?.n === 0 && (await one(`SELECT status FROM public.time_entries WHERE id = $1`, [val])).status === 'validated', '… rien ne bouge (0 envoyée)');
+const vieux = (await one(`INSERT INTO public.time_entries (company_id, user_id, worksite_id, work_date, start_time, end_time, status) VALUES ($1, $2, $3, $4::date, '08:00', '12:00', 'draft') RETURNING id`, [CO, LUCAS, WS, j7])).id;
+await as(CHEF);
+await refused(SEND, [[vieux]], 'pas dans votre équipe', 'chef : envoyer une ligne d’il y a 7 jours → refusé');
+const bureau = (await one(`INSERT INTO public.time_entries (company_id, user_id, worksite_id, work_date, start_time, end_time, status) VALUES ($1, $2, $3, $4::date, '08:00', '12:00', 'draft') RETURNING id`, [CO, ADMIN, WS, j0])).id;
+await as(CHEF);
+await refused(SEND, [[bureau]], 'pas dans votre équipe', 'chef : envoyer les heures d’un compte Bureau → refusé');
+const closedDay = (await one(`INSERT INTO public.time_entries (company_id, user_id, worksite_id, work_date, start_time, end_time, status) VALUES ($1, $2, $3, $4::date, '06:00', '07:00', 'draft') RETURNING id`, [CO, NINA, WS2, j1])).id;
+await as(CHEF);
+await refused(SEND, [[closedDay]], /cl[ôo]tur/, 'chef : envoyer pour un salarié clôturé → refusé (garde du salarié)');
+const incompl = (await one(`INSERT INTO public.time_entries (company_id, user_id, worksite_id, work_date, start_time, end_time, status, exit_forgotten) VALUES ($1, $2, $3, $4::date, '08:00', '08:00', 'draft', true) RETURNING id`, [CO, LUCAS, WS2, j3])).id;
+await as(CHEF);
+await refused(SEND, [[incompl]], 'indiquez l', 'chef : envoyer une sortie oubliée « à compléter » → refusé (lot 12)');
+await as(LUCAS);
+await refused(SEND, [[brouillon]], 'Réservé au chef', 'un salarié ne peut pas appeler l’envoi du chef');
+
 console.log(`\n${ok} ok / ${ko} échec(s)`);
 process.exit(ko ? 1 : 0);

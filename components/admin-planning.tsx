@@ -1877,7 +1877,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       const q = role === 'admin'
         ? `Donner à ${label} l'accès complet au bureau ? Cette personne pourra voir les taux horaires, sortir la paie et modifier les réglages.`
         : role === 'lead'
-        ? `Faire de ${label} un chef d'équipe ? Il pourra saisir et corriger les heures de tous les salariés de l'entreprise sur les 7 derniers jours (jamais une journée validée ou clôturée), marquées « par le chef d'équipe ». Ce sont les salariés qui envoient. Il ne verra ni les taux horaires, ni le coût des chantiers, ni la paie, ni les réglages.`
+        ? `Faire de ${label} un chef d'équipe ? Il pourra saisir et corriger les heures de tous les salariés de l'entreprise sur les 7 derniers jours (jamais une journée validée ou clôturée), envoyées au bureau et marquées « par le chef d'équipe ». Le salarié peut encore corriger tant que ce n'est pas validé. Il ne verra ni les taux horaires, ni le coût des chantiers, ni la paie, ni les réglages.`
         : `Repasser ${label} en simple salarié ? Il ne verra plus que ses propres heures.`;
       if (!window.confirm(q)) return;
     }

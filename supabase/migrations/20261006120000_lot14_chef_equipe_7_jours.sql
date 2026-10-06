@@ -15,8 +15,13 @@
 --   · jamais un compte Bureau ; jamais une ligne validée ou verrouillée (les
 --     policies existantes ne laissent passer que draft / submitted non
 --     verrouillé) ; jamais un mois clôturé ni un salarié clôturé (gardes
---     existants, inchangés) ; il n'ENVOIE jamais à la place du salarié (garde
---     existant : une ligne d'un autre reste en brouillon) ;
+--     existants, inchangés) ;
+--   · CORRECTIF (avant mise en prod) : dans certaines entreprises les salariés
+--     n'ouvrent jamais l'appli — c'est le chef qui saisit. Ce qu'il saisit ou
+--     corrige est donc ENVOYÉ au bureau (lead_send_entries), avec le badge
+--     « par le chef d'équipe ». Le salarié qui utilise l'appli garde la main :
+--     il peut encore corriger tant que ce n'est pas validé (« modifié après
+--     envoi » côté bureau, comme aujourd'hui) ;
 --   · déjà une ligne ce jour-là sur ce chantier → il la corrige, il n'en crée
 --     pas une deuxième (refus en base) ;
 --   · chaque ligne saisie ou corrigée par lui garde la trace
@@ -32,8 +37,8 @@
 --     `correct_time_entry` qui l'appellent suivent la nouvelle règle sans être
 --     modifiées. L'ancienne version est recopiée en bas (retour arrière).
 --   · ADDITIF pour le reste : 2 colonnes neuves (valeur par défaut NULL), 1
---     fonction de trigger neuve, 1 trigger neuf. Aucune policy modifiée, aucune
---     donnée touchée.
+--     fonction de trigger neuve, 1 trigger neuf, 1 fonction d'envoi neuve
+--     (lead_send_entries). Aucune policy modifiée, aucune donnée touchée.
 -- ─────────────────────────────────────────────────────────────────────────────
 
 -- ── 1) Trace « par le chef d'équipe » ───────────────────────────────────────
@@ -71,6 +76,15 @@ CREATE OR REPLACE FUNCTION public.guard_time_entry_lead()
  RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path TO ''
 AS $fn$
 BEGIN
+  -- Envoi par le chef (lead_send_entries) : la ligne part AU NOM du salarié
+  -- (gardes du salarié appliqués), la trace désigne le chef.
+  IF current_setting('bemexo.lead_send_by', true) IS NOT NULL
+     AND current_setting('bemexo.lead_send_by', true) <> '' THEN
+    new.lead_edited_by := current_setting('bemexo.lead_send_by', true)::uuid;
+    new.lead_edited_at := now();
+    RETURN new;
+  END IF;
+
   -- Cron / service : il pose lui-même ses colonnes.
   IF auth.uid() IS NULL THEN
     RETURN new;
@@ -118,14 +132,60 @@ CREATE TRIGGER time_entries_lead_guard
   BEFORE INSERT OR UPDATE ON public.time_entries
   FOR EACH ROW EXECUTE FUNCTION public.guard_time_entry_lead();
 
+-- ── 4) Le chef ENVOIE ce qu'il a saisi (salariés qui n'ouvrent jamais l'appli) ─
+-- Pour chaque ligne : vérifiée avec l'identité du CHEF (son équipe, 7 jours,
+-- brouillon, non verrouillée), puis passée en « envoyée » AU NOM DU SALARIÉ :
+-- tous les gardes du salarié s'appliquent (mois clôturé, salarié clôturé,
+-- sortie oubliée « à compléter »…), `submitted_at` est posé comme d'habitude.
+CREATE OR REPLACE FUNCTION public.lead_send_entries(p_ids uuid[])
+ RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path TO ''
+AS $fn$
+DECLARE
+  v_lead uuid := auth.uid();
+  r record;
+  v_n integer := 0;
+BEGIN
+  IF v_lead IS NULL OR NOT public.is_lead() THEN
+    RAISE EXCEPTION 'Réservé au chef d''équipe.' USING ERRCODE = '42501';
+  END IF;
+  FOR r IN
+    SELECT t.id, t.user_id, t.work_date, t.status, t.locked, t.company_id
+      FROM public.time_entries t WHERE t.id = ANY (p_ids)
+     ORDER BY t.work_date, t.start_time
+  LOOP
+    IF r.company_id IS DISTINCT FROM public.get_my_company_id()
+       OR r.user_id = v_lead
+       OR NOT public.is_my_team_member(r.user_id, r.work_date) THEN
+      RAISE EXCEPTION 'Ces heures ne sont pas dans votre équipe (7 derniers jours).' USING ERRCODE = '42501';
+    END IF;
+    IF r.locked OR r.status <> 'draft' THEN
+      CONTINUE;  -- déjà envoyée, validée ou chez le comptable : rien à faire
+    END IF;
+    PERFORM set_config('request.jwt.claim.sub', r.user_id::text, true);
+    PERFORM set_config('request.jwt.claims', json_build_object('sub', r.user_id, 'role', 'authenticated')::text, true);
+    PERFORM set_config('bemexo.lead_send_by', v_lead::text, true);
+    UPDATE public.time_entries SET status = 'submitted' WHERE id = r.id AND status = 'draft';
+    v_n := v_n + 1;
+    PERFORM set_config('bemexo.lead_send_by', '', true);
+    PERFORM set_config('request.jwt.claim.sub', v_lead::text, true);
+    PERFORM set_config('request.jwt.claims', json_build_object('sub', v_lead, 'role', 'authenticated')::text, true);
+  END LOOP;
+  RETURN v_n;
+END;
+$fn$;
+REVOKE EXECUTE ON FUNCTION public.lead_send_entries(uuid[]) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.lead_send_entries(uuid[]) TO authenticated;
+
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Vérification après application :
 --   SELECT count(*) FROM information_schema.columns WHERE table_name = 'time_entries'
 --     AND column_name IN ('lead_edited_by','lead_edited_at');                          -- 2
 --   SELECT count(*) FROM pg_trigger WHERE tgname = 'time_entries_lead_guard';          -- 1
 --   SELECT prosrc LIKE '%- 6%' FROM pg_proc WHERE proname = 'is_my_team_member';      -- true
+--   SELECT has_function_privilege('authenticated', 'public.lead_send_entries(uuid[])', 'EXECUTE'); -- true
 --
 -- RETOUR ARRIÈRE (l'ancienne règle, mot pour mot) :
+--   DROP FUNCTION IF EXISTS public.lead_send_entries(uuid[]);
 --   DROP TRIGGER IF EXISTS time_entries_lead_guard ON public.time_entries;
 --   DROP FUNCTION IF EXISTS public.guard_time_entry_lead();
 --   CREATE OR REPLACE FUNCTION public.is_my_team_member(p_user uuid, p_date date)

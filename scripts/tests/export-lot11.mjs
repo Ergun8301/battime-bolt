@@ -254,6 +254,9 @@ const centi = (min) => (min / 60).toFixed(2).replace('.', ',');
   check(rowsT.length === 2 && rowsT[1][0] === '00042' && rowsT[1][1] === 'Petit' && rowsT[1][2] === 'Lucas',
     `A) CSV fiche : matricule ENREGISTRÉ 00042, Nom = Petit, Prénom = Lucas (${rowsT[1]?.slice(0, 3).join(' / ')})`);
   check(rowsT[1]?.[9] === centi(paidToday), `A) CSV fiche (aujourd'hui) : ${centi(paidToday)} h payées, brouillon exclu (${rowsT[1]?.[9]})`);
+  // Lot 14 : la journée d'aujourd'hui (4 h 30) a été saisie ET envoyée par le chef d'équipe
+  // (salarié qui n'ouvre jamais l'appli) : elle sort dans l'export comme toute journée envoyée.
+  check(rowsT[1]?.[9] === centi(4 * 60 + 30), `A) lot 14 : journée envoyée par le chef d’équipe → dans l’export (${rowsT[1]?.[9]} h)`);
   check(/-paie\.csv$/.test(csvToday.name), `A) fichier nommé …-paie.csv (${csvToday.name})`);
   check(!writes.slice(w0).some((w) => w.t === 'time_entries'), 'A) export de la fiche : aucune écriture (sans verrou)');
 
