@@ -55,6 +55,7 @@ const D = {
   month_closures: [], leave_requests: [], documents: [], time_entry_corrections: [], time_entry_positions: [], push_subscriptions: [],
 };
 let hasKiosk = 'absent'; // true | false | 'absent'
+let sendMode = 'ok'; // ok | absent (migration du lot 14 pas encore passée)
 let finishMode = 'ok'; // ok | missing (PGRST202 → stop_active_session) | missing-bt001
 const calls = [];
 const reset = () => { calls.length = 0; };
@@ -101,6 +102,17 @@ await ctx.route('**/*.supabase.co/**', async (r) => {
     return r.fulfill({ json: [{ entry_id: 'e-stop', work_date: today, start_time: '08:00:00', end_time: '08:15:00' }] });
   }
   // Lot 12 : une tablette est-elle vraiment reliée ? 'absent' = migration pas encore passée.
+  if (u.pathname === '/rest/v1/rpc/lead_send_entries') {
+    if (sendMode === 'absent') return r.fulfill({ status: 404, json: { code: 'PGRST202', message: 'Could not find the function public.lead_send_entries' } });
+    let n = 0;
+    for (const id of body?.p_ids || []) { const e = D.time_entries.find((x) => x.id === id); if (e && e.status === 'draft') { e.status = 'submitted'; e.lead_edited_by = ME; n++; } }
+    return r.fulfill({ json: n });
+  }
+  if (u.pathname === '/rest/v1/time_entries' && req.method() === 'POST') {
+    const row = { ...(Array.isArray(body) ? body[0] : body), id: `new-${D.time_entries.length + 1}`, total_minutes: 0, locked: false };
+    D.time_entries.push(row);
+    return r.fulfill({ status: 201, json: [{ id: row.id }] });
+  }
   if (u.pathname === '/rest/v1/rpc/correct_time_entry') {
     const e = D.time_entries.find((x) => x.id === body?.p_entry_id);
     if (!e) return r.fulfill({ status: 400, json: { message: 'Cette ligne n’existe pas, ou vous n’y avez pas accès.' } });
@@ -168,9 +180,12 @@ await td().screenshot({ path: `${SH}/chef-saisie-veille-390x844.png` });
 await td().locator('[data-testid=td-save]').click(); await p.waitForTimeout(1200);
 const post = callsTo('POST', '/rest/v1/time_entries');
 const b0 = Array.isArray(post[0]?.body) ? post[0].body[0] : post[0]?.body;
-check(post.length === 1 && b0?.user_id === 'u-lucas' && b0?.work_date === yesterday && b0?.worksite_id === 'w2' && b0?.start_time === '07:30' && b0?.end_time === '16:00' && b0?.status === 'draft',
-  `2) ligne créée pour Lucas, HIER, en brouillon (c’est lui qui enverra) : ${JSON.stringify(b0)}`);
-check((await bodyText()).includes('Lucas devra l’envoyer'), '2) message « C’est noté — Lucas devra l’envoyer »');
+check(post.length === 1 && b0?.user_id === 'u-lucas' && b0?.work_date === yesterday && b0?.worksite_id === 'w2' && b0?.start_time === '07:30' && b0?.end_time === '16:00',
+  `2) ligne créée pour Lucas, HIER, sans être sur son chantier : ${JSON.stringify(b0)}`);
+const send2 = callsTo('POST', '/rest/v1/rpc/lead_send_entries');
+check(send2.length === 1 && JSON.stringify(send2[0].body?.p_ids) === JSON.stringify([D.time_entries.at(-1).id]), `2) « OK » l’envoie au bureau (lead_send_entries ${JSON.stringify(send2[0]?.body)})`);
+check(D.time_entries.at(-1).status === 'submitted' && (await bodyText()).includes('Envoyé au bureau pour Lucas'), '2) journée ENVOYÉE, message « Envoyé au bureau pour Lucas — par le chef d’équipe »');
+check((await td().locator('[data-testid=td-row]').innerText()).toLowerCase().includes('envoyé'), '2) la ligne apparaît « envoyé » dans « Mon équipe »');
 
 // ═════ 3 · Le salarié a déjà une ligne ce jour-là sur ce chantier : corrigée, pas doublée ═════
 D.planning = [];
@@ -188,6 +203,7 @@ await td().locator('[data-testid=td-save]').click(); await p.waitForTimeout(1200
 check(callsTo('POST', '/rest/v1/time_entries').length === 0, '3) aucune 2e ligne créée');
 const pt = callsTo('PATCH', '/rest/v1/time_entries');
 check(pt.length === 1 && pt[0].search.includes('id=eq.n-1') && pt[0].body?.end_time === '13:00' && !('start_time' in pt[0].body), `3) la ligne existante est corrigée (fin 13:00, début inchangé) : ${JSON.stringify(pt[0]?.body)}`);
+check(callsTo('POST', '/rest/v1/rpc/lead_send_entries').some((c) => JSON.stringify(c.body?.p_ids) === '["n-1"]'), '3) … puis envoyée au bureau');
 
 // ═════ 4 · Journée envoyée : correction notifiée ; validée / chez le comptable : intouchable ═════
 D.time_entries = [
@@ -206,6 +222,24 @@ await p.fill('[data-testid=td-end]', '17h'); await p.keyboard.press('Tab'); awai
 await td().locator('[data-testid=td-save]').click(); await p.waitForTimeout(1500);
 const rpc = callsTo('POST', '/rest/v1/rpc/correct_time_entry');
 check(rpc.length === 1 && rpc[0].body?.p_entry_id === 'l-sent' && rpc[0].body?.p_end === '17:00', `4) journée envoyée : correction par correct_time_entry (journal + salarié prévenu) ${JSON.stringify(rpc[0]?.body)}`);
+
+// ═════ 4 bis · Ligne notée par le salarié sans l'envoyer : « Envoyer » ═════
+D.time_entries = [lucasEntry('l-draft', W1, '08:00', '12:00', { work_date: yesterday })];
+await open(); reset();
+await td().locator(`[data-testid=td-day][data-day="${yesterday}"]`).click(); await p.waitForTimeout(700);
+await td().locator('[data-testid=td-who]').selectOption('u-lucas'); await p.waitForTimeout(300);
+await td().locator('[data-testid=td-send]').click(); await p.waitForTimeout(1200);
+check(callsTo('POST', '/rest/v1/rpc/lead_send_entries').some((c) => JSON.stringify(c.body?.p_ids) === '["l-draft"]') && D.time_entries[0].status === 'submitted', '4 bis) brouillon du salarié : « Envoyer » l’envoie au bureau');
+// Serveur pas encore à jour (migration absente) : noté, pas d'erreur rouge.
+sendMode = 'absent';
+D.time_entries = [];
+await open(); reset();
+await td().locator('[data-testid=td-who]').selectOption('u-nina'); await p.waitForTimeout(300);
+await td().locator('[data-testid=td-add]').click(); await p.waitForTimeout(300);
+await td().locator('[data-testid=td-site]').selectOption('w1');
+await td().locator('[data-testid=td-save]').click(); await p.waitForTimeout(1200);
+check((await bodyText()).includes('envoi au bureau bientôt disponible') && await p.locator('[data-sonner-toast][data-type="error"]').count() === 0, '4 bis) avant la migration : « noté », aucune erreur');
+sendMode = 'ok';
 
 // ═════ 5 · Le salarié ne voit rien de tout ça et saisit comme avant ═════
 D.users[0].role = 'worker';

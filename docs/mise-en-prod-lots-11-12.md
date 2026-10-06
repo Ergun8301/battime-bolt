@@ -74,6 +74,7 @@ SELECT (SELECT count(*) FROM information_schema.columns WHERE table_schema = 'pu
 SELECT (SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'time_entries' AND column_name IN ('lead_edited_by','lead_edited_at')) AS colonnes_2,
        (SELECT count(*) FROM pg_trigger WHERE tgname = 'time_entries_lead_guard') AS trigger_1,
        (SELECT prosrc LIKE '%- 6%' FROM pg_proc WHERE proname = 'is_my_team_member') AS regle_7_jours_true,
+       has_function_privilege('authenticated', 'public.lead_send_entries(uuid[])', 'EXECUTE') AS envoi_chef_true,
        (SELECT count(*) FROM pg_policies WHERE tablename = 'time_entries') AS policies_inchangees,
        (SELECT count(*) FROM public.time_entries WHERE lead_edited_by IS NOT NULL) AS lignes_touchees_0,
        (SELECT count(*) FROM public.kiosks WHERE revoked_at IS NULL) AS kiosks_actifs_inchange;
@@ -85,7 +86,7 @@ Lot 13 : front seul, rien à appliquer. Il part avec la fusion dans `main`.
 ### R14 (avant R12 et R11)
 
 Le SQL complet est en bas de `20261006120000_lot14_chef_equipe_7_jours.sql` :
-retirer le trigger `time_entries_lead_guard`, la fonction `guard_time_entry_lead`,
+retirer la fonction `lead_send_entries`, le trigger `time_entries_lead_guard`, la fonction `guard_time_entry_lead`,
 et remettre l'ancienne `is_my_team_member` (recopiée mot pour mot).
 
 ## Retour arrière

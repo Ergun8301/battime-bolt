@@ -460,7 +460,7 @@ export const WORKER_GUIDE: WorkerGuideEntry[] = [
     etapes: ['Icône scanner en haut de l’écran.', 'Visez le QR code de la borne.', 'Le pointage démarre (ou s’arrête).'], lien: 'borne' },
   // Lot 14 : toute l'équipe, sur les 7 derniers jours (plus besoin d'être sur le même chantier).
   { mots: ['mon equipe', 'chef d equipe', 'heures de l equipe', 'saisir pour un salarie', 'heures d hier'], titre: 'Chef d’équipe : noter les heures de l’équipe',
-    etapes: ['« Mon équipe » (chef d’équipe seulement) : choisissez le jour (7 derniers jours) et le salarié.', '« Corriger » sa ligne, ou « Ajouter des heures » (chantier, début, fin), puis « OK ».', 'C’est le salarié qui envoie sa journée.'], lien: 'journee' },
+    etapes: ['« Mon équipe » (chef d’équipe seulement) : choisissez le jour (7 derniers jours) et le salarié.', '« Corriger » sa ligne, ou « Ajouter des heures » (chantier, début, fin).', '« OK — envoyer au bureau » : c’est envoyé, marqué « par le chef d’équipe ».'], lien: 'journee' },
   { mots: ['informations', 'confidentialite', 'donnees', 'position gps'], titre: 'Informations sur vos données',
     etapes: ['Menu (votre nom en haut à droite).', '« Informations ».'], lien: 'infos' },
   { mots: ['collegues', 'ou sont les autres', 'planning des collegues'], titre: 'Savoir où sont ses collègues',

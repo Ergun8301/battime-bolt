@@ -18,9 +18,13 @@
 // trois états affichés sont MOT POUR MOT ceux de la journée du salarié : chez
 // le comptable, envoyé, à envoyer.
 //
-// CE QU'IL NE FAIT PAS, ET C'EST DÉLIBÉRÉ. Il n'ENVOIE pas à la place de ses
-// salariés : le chef prépare, le salarié envoie (la base le refuse aussi). Il
-// ne voit ni taux horaire, ni coût, ni paie, ni réglages.
+// LOT 14, CORRECTIF : dans certaines entreprises, les salariés n'ouvrent jamais
+// l'appli — c'est le chef qui saisit. « OK » ENREGISTRE ET ENVOIE donc au
+// bureau (lead_send_entries) : la journée arrive chez le patron comme une
+// journée envoyée, badge « par le chef d'équipe ». Le salarié qui utilise
+// l'appli peut encore la corriger tant qu'elle n'est pas validée (« modifié
+// après envoi » côté bureau). Le chef ne voit ni taux horaire, ni coût, ni
+// paie, ni réglages.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
@@ -53,6 +57,15 @@ interface Props {
   onChanged: () => void;
 }
 
+/** Envoi au bureau par le chef (lot 14). `missing` = serveur pas encore à jour. */
+async function sendForWorker(ids: string[]): Promise<'ok' | 'missing'> {
+  const { error } = await supabase.rpc('lead_send_entries', { p_ids: ids });
+  if (!error) return 'ok';
+  const code = (error as { code?: string }).code;
+  if (code === 'PGRST202' || code === '42883') return 'missing';
+  throw error;
+}
+
 /** Lot 14 : 7 derniers jours, aujourd'hui compris (même fenêtre qu'en base). */
 export const LEAD_DAYS = 7;
 
@@ -79,6 +92,7 @@ const TD_CSS = `
 .bt-td-tag.verrou{background:#EFEDE8;color:#5c574f}
 .bt-td-edit{flex:none;border:1.5px solid rgba(21,18,15,.2);background:#fff;border-radius:8px;padding:5px 9px;font-family:inherit;font-weight:800;font-size:12px;color:#15120F;cursor:pointer}
 .bt-td-edit:disabled{opacity:.45}
+.bt-td-edit.send{background:#FFC21A;border-color:#FFC21A}
 .bt-td-add{margin-top:8px;width:100%;border:1.5px dashed rgba(21,18,15,.3);background:#FBF8F2;border-radius:10px;padding:9px;font-family:inherit;font-weight:800;font-size:13px;color:#15120F;cursor:pointer}
 .bt-td-empty{font-size:13px;color:#9a948a;font-weight:600;padding:10px 0 2px;line-height:1.5}
 .bt-td-form{margin-top:10px;padding-top:10px;border-top:1px solid rgba(21,18,15,.09)}
@@ -179,6 +193,7 @@ export default function TeamDay({ me, today, worksites, onChanged }: Props) {
     if (!existing && !site) { toast.error('Choisis le chantier.'); return; }
     if (existing && start === existing.start_time.slice(0, 5) && end === existing.end_time.slice(0, 5)) { setEditing(null); return; }
     setSaving(true);
+    let savedId: string | null = null;
     try {
       if (existing) {
         if (existing.locked) throw new Error('Ces heures sont chez le comptable : elles ne se corrigent plus.');
@@ -200,18 +215,23 @@ export default function TeamDay({ me, today, worksites, onChanged }: Props) {
           }).eq('id', existing.id).select('id');
         if (error) throw error;
         if (!data || data.length === 0) throw new Error('Ces heures ne se corrigent plus (validées, verrouillées ou clôturées).');
+        savedId = existing.id;
       } else {
-        const { error } = await supabase.from('time_entries').insert({
+        const { data, error } = await supabase.from('time_entries').insert({
           company_id: me.company_id, user_id: person.id, worksite_id: site,
           work_date: day, start_time: start, end_time: end,
           break_minutes: 0, meal_allowance: false, status: 'draft',
-        });
+        }).select('id');
         if (error) throw error;
+        savedId = (data as { id: string }[] | null)?.[0]?.id ?? null;
       }
+      // Lot 14 : « OK » envoie au bureau (le salarié n'ouvre peut-être jamais l'appli).
+      const sent = savedId ? await sendForWorker([savedId]) : 'missing';
       setEditing(null);
       await load();
       onChanged();
-      toast.success(`C’est noté — ${person.first_name} devra l’envoyer`);
+      if (sent === 'ok') toast.success(`Envoyé au bureau pour ${person.first_name} — « par le chef d’équipe »`);
+      else toast.message(`C’est noté pour ${person.first_name} (envoi au bureau bientôt disponible).`);
     } catch (e) {
       const msg = (e as { message?: string })?.message || '';
       toast.error(/cl[ôo]tur/i.test(msg) ? 'Heures clôturées par le bureau : plus de saisie sur ce jour.'
@@ -222,13 +242,29 @@ export default function TeamDay({ me, today, worksites, onChanged }: Props) {
     }
   };
 
+  /** Une ligne en brouillon (notée par le salarié sans l'envoyer) : le chef l'envoie. */
+  const sendOne = async (r: Row) => {
+    if (!person) return;
+    setSaving(true);
+    try {
+      const sent = await sendForWorker([r.id]);
+      await load(); onChanged();
+      if (sent === 'ok') toast.success(`Envoyé au bureau pour ${person.first_name} — « par le chef d’équipe »`);
+      else toast.message('Envoi au bureau bientôt disponible.');
+    } catch (e) {
+      const msg = (e as { message?: string })?.message || '';
+      toast.error(/cl[ôo]tur/i.test(msg) ? 'Heures clôturées par le bureau : plus d’envoi sur ce jour.'
+        : /indiquez l/i.test(msg) ? 'Sortie oubliée : mets d’abord l’heure de fin.' : msg || 'Envoi impossible.');
+    } finally { setSaving(false); }
+  };
+
   const dayLabel = (d: string, i: number) => (i === 0 ? 'Aujourd’hui' : i === 1 ? 'Hier' : format(parseISO(d), 'EEE d', { locale: fr }));
 
   return (
     <div className="bt-td" data-testid="team-day">
       <style dangerouslySetInnerHTML={TD_CSS_HTML} />
       <div className="bt-td-h"><Users className="h-3.5 w-3.5" /> Mon équipe</div>
-      <div className="bt-td-sub">Tu prépares ou corriges les heures de l&apos;équipe (7 derniers jours) ; <strong>c&apos;est à eux de les envoyer</strong>.</div>
+      <div className="bt-td-sub">Tu saisis ou corriges les heures de l&apos;équipe (7 derniers jours). <strong>« OK » les envoie au bureau</strong>, marquées « par le chef d&apos;équipe ».</div>
 
       <div className="bt-td-days" role="group" aria-label="Jour">
         {days.map((d, i) => (
@@ -261,6 +297,9 @@ export default function TeamDay({ me, today, worksites, onChanged }: Props) {
               <button type="button" className="bt-td-edit" disabled={r.locked || r.status === 'validated'} onClick={() => openEditor(r)} data-testid="td-edit">
                 Corriger
               </button>
+              {r.status === 'draft' && !r.locked && (
+                <button type="button" className="bt-td-edit send" disabled={saving} onClick={() => void sendOne(r)} data-testid="td-send">Envoyer</button>
+              )}
             </div>
           ))}
           {person && !editing && (
@@ -302,9 +341,9 @@ export default function TeamDay({ me, today, worksites, onChanged }: Props) {
             </div>
           </div>
           <button type="button" className="bt-td-save" disabled={saving} onClick={save} data-testid="td-save">
-            {saving ? <Loader2 className="inline h-4 w-4 animate-spin" /> : 'OK'}
+            {saving ? <Loader2 className="inline h-4 w-4 animate-spin" /> : 'OK — envoyer au bureau'}
           </button>
-          <div className="bt-td-note">Noté « par le chef d&apos;équipe », visible du bureau.</div>
+          <div className="bt-td-note">Envoyé au bureau « par le chef d&apos;équipe ». S&apos;il utilise l&apos;appli, {person.first_name} peut encore corriger.</div>
         </div>
       )}
     </div>
