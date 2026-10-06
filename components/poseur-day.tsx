@@ -1717,18 +1717,15 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
         {/* rappel « jours oubliés » (rendu par le parent) — défile avec la liste */}
         {topBanner}
 
-        {/* Feuille d'heures d'équipe — chef d'équipe uniquement, jour courant.
-            La RLS décide seule de qui il voit : cet écran n'ajoute aucun filtre
-            de sécurité, il n'en serait pas un. */}
+        {/* Feuille d'heures d'équipe — chef d'équipe uniquement, affichée sur
+            le jour courant ; le chef y choisit lui-même le jour (7 derniers)
+            et le salarié (lot 14). La RLS décide seule de ce qu'il peut voir
+            et écrire : cet écran n'ajoute aucun filtre de sécurité. */}
         {user?.role === 'lead' && user?.company_id && date === mountedToday && (
           <TeamDay
             me={user}
-            date={date}
-            myWorksiteIds={Array.from(new Set([
-              ...planning.map((p) => p.worksite_id).filter(Boolean),
-              ...entries.filter((e) => e.status !== 'cancelled').map((e) => e.worksite_id).filter(Boolean),
-            ])) as string[]}
-            worksiteName={(id) => worksites.find((w) => w.id === id)?.client_name || 'Chantier'}
+            today={mountedToday}
+            worksites={worksites}
             onChanged={() => { fetchData(); }}
           />
         )}

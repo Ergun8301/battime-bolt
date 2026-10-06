@@ -47,7 +47,7 @@ const entry = (id, user_id, work_date, status, minutes, start = 8 * 60) => ({
 });
 const ENTRIES = [
   entry('e-first', 'u-lucas', first, 'submitted', 7 * 60),          // 1er du mois : dans la période après clôture
-  { ...entry('e-today', 'u-lucas', today, 'submitted', 4 * 60 + 30), source: 'qr', corrected_at: `${today}T12:00:00Z` }, // aujourd'hui (lot 12 : QR, corrigé)
+  { ...entry('e-today', 'u-lucas', today, 'submitted', 4 * 60 + 30), source: 'qr', corrected_at: `${today}T12:00:00Z`, lead_edited_by: 'u-nina', lead_edited_at: `${today}T18:00:00Z` }, // aujourd'hui (lot 12 : QR, corrigé ; lot 14 : par le chef d'équipe)
   { ...entry('e-draft', 'u-lucas', today, 'draft', 60, 14 * 60), source: 'qr', exit_forgotten: true }, // brouillon : jamais payé, signalé à la clôture (lot 12 : sortie oubliée)
   entry('e-prev', 'u-lucas', prevLast, 'submitted', 9 * 60),        // mois précédent : JAMAIS dans le CSV
   // Lot 12 : sortie oubliée « fin à compléter » (début = fin, fermée la nuit) — jamais payée,
@@ -231,6 +231,7 @@ const centi = (min) => (min / 60).toFixed(2).replace('.', ',');
   check(await dlg.locator('[data-testid=badge-qr]').count() === 2, `A) lot 12 : badge « QR » sur les 2 lignes venues de la tablette (${await dlg.locator('[data-testid=badge-qr]').count()})`);
   check(await dlg.locator('[data-testid=badge-corrected]').count() === 1, 'A) lot 12 : badge « corrigé » sur la ligne QR changée après coup');
   check((await dlg.locator('[data-testid=badge-exit-forgotten]').allInnerTexts()).join('|') === 'sortie oubliée', 'A) lot 12 : badge « sortie oubliée »');
+  check((await dlg.locator('[data-testid=badge-lead]').allInnerTexts()).join('|') === 'par le chef d’équipe', 'A) lot 14 : badge « par le chef d’équipe » sur la ligne saisie / corrigée par le chef (visible du patron)');
 
   // 12) le menu
   check(await dlg.locator('[data-testid=export-menu]').count() === 1, 'A) fiche : un seul bouton « Exporter ▾ »');

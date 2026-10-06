@@ -129,7 +129,7 @@ export const GUIDE: GuideEntry[] = [
   {
     id: 'role', mots: ['chef d equipe', 'role', 'droits', 'bureau', 'admin', 'secretaire'],
     titre: 'Changer le rôle de quelqu’un',
-    etapes: ['« Salariés ».', 'Sur sa ligne : Salarié, Chef d’équipe ou Bureau.', 'C’est enregistré tout de suite.'],
+    etapes: ['« Salariés ».', 'Sur sa ligne : Salarié, Chef d’équipe ou Bureau.', 'C’est enregistré tout de suite. Un chef d’équipe saisit et corrige les heures de toute l’équipe sur 7 jours (marquées « par le chef d’équipe ») ; les salariés envoient.'],
     lien: 'salaries',
   },
   {
