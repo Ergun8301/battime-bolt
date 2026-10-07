@@ -832,6 +832,17 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
   // changement. Fermé ailleurs (borne, tablette, Assistant) → la journée est
   // relue : la ligne créée par la fermeture y apparaît.
   const live = useOwnLiveSession(user?.id, () => { fetchData(); });
+  // Le total du jour compte aussi le chrono en cours (affichage seul, rien
+  // n'est écrit) : sans ça, « 0:00 travaillées » pendant toute la journée
+  // pointée. Recalculé chaque minute, et tout de suite au début du chrono.
+  const liveStartedAt = live.session?.started_at ?? null;
+  const [liveNow, setLiveNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!liveStartedAt) return;
+    setLiveNow(Date.now());
+    const id = window.setInterval(() => setLiveNow(Date.now()), 60_000);
+    return () => window.clearInterval(id);
+  }, [liveStartedAt]);
 
   useEffect(() => {
     if (user) {
@@ -1504,7 +1515,10 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
    * heures. Le seul endroit où le salarié pouvait vérifier lui mentait.
    */
   const plannedMinutes = plannedToSend.reduce((s, p) => s + calculateTotalMinutes(p.start, p.end, 0), 0);
-  const shownMinutes = totalMinutes + plannedMinutes;
+  const liveMinutes = liveHere && liveSession
+    ? Math.max(0, Math.floor((liveNow - new Date(liveSession.started_at).getTime()) / 60000))
+    : 0;
+  const shownMinutes = totalMinutes + plannedMinutes + liveMinutes;
   const shownChantiers = nbChantiers + plannedToSend.length;
 
   const gaps = computePauses([

@@ -791,12 +791,12 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
               </div>
 
               {/* Notifications email — déclenchement manuel des mêmes fonctions que
-                  les crons (récap hebdo du vendredi, alertes habilitations). Utile
+                  les crons (récap hebdo du lundi, alertes habilitations). Utile
                   pour tester sans attendre l'horaire planifié. */}
               <div className="bt-set-sub">
                 <div className="bt-set-subtxt">
                   <SetLabel tipId="emails" tip={<>Envoi automatique. Les boutons ci-dessous l&apos;envoient tout de suite.</>}>Notifications par email</SetLabel>
-                  <p className="bt-set-substate">Récap le vendredi, habilitations à 30 j et 7 j.</p>
+                  <p className="bt-set-substate">Récap le lundi à 7 h, habilitations à 30 j et 7 j.</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button type="button" className="bt-set-btn" onClick={sendDigestNow} disabled={digestBusy}>
