@@ -40,9 +40,32 @@ l'objet visé est absent de la prod. Le fichier du repo reste tel quel. Si un
 | 0 SQL A | ✅ `kiosks_actifs` = 1 (tablette reliée depuis la préview), policies `time_entries` = 8 | — |
 | 1 Lot 11 | ✅ SQL B conforme. Historique : `20261006123445 lot11_cloture_salarie` (numéro = heure d'application, comme le lot 9) | 7 : `DROP POLICY` ×4 sur `user_closures` (`user_closures_select`, `_admin_insert`, `_admin_update`, `support_read` dans le bloc `DO`) ; `DROP TRIGGER` ×3 (`time_entries_guard_user_closure`, `active_sessions_guard_user_closure`, `user_closures_guard`) |
 | 2 `kiosk` | ✅ v5, `verify_jwt` désactivé | — |
-| 2 scan réel | ⏳ en attente | — |
-| 3 Lot 12 | à faire | prévues : `DROP TRIGGER` `active_sessions_qr_guard`, `time_entries_qr_guard` (à vérifier absents) |
-| 3 bis Lot 14 | à faire | prévue : `DROP TRIGGER` `time_entries_lead_guard` (à vérifier absent) |
+| 2 scan réel | ✅ scan n° 1 conforme (arrivée, anti-rebond 60 s, départ) | — |
+| 3 Lot 12, sections 1 à 5 | ✅ appliquées par Cowork, code identique au fichier (commentaires retirés). Historique : `20261007122239 lot12_pointage_qr_partie1`. SQL C conforme sauf ce qui dépend de la section 6 : colonnes 4, fonctions **5** (sans `close_forgotten_sessions`), triggers 2, `kiosk_open_session` refusée au salarié, `kiosks_actifs` = 1 | `DROP TRIGGER` `active_sessions_qr_guard`, `time_entries_qr_guard` (absents avant) — aucun `DROP` dans l'historique |
+| 3 Lot 12, section 6 | ⏳ **RESTE À FAIRE** (voir plus bas) | — |
+| 3 bis Lot 14 | ✅ SQL D conforme : colonnes 2, trigger 1, règle 7 jours vraie, `lead_send_entries` ouverte au chef, policies `time_entries` = 8 (inchangé), 0 ligne touchée, `kiosks_actifs` = 1. Historique : `20261007133225 lot14_chef_equipe_7_jours` | `DROP TRIGGER time_entries_lead_guard` (absent avant) |
+| 4 `assistant` | ✅ v11, `verify_jwt` actif, 5 fichiers identiques au repo (v8 à v10 : `\u0300-\u036f` envoyé en caractères réels, même comportement mais pas le même texte — corrigé) | — |
+| 5 `worker-assistant` | ✅ v7, `verify_jwt` actif, 4 fichiers identiques au repo (v6 : même souci d'échappement, corrigé) | — |
+| + `missing-days-reminders` | ✅ v8 (PR #132 : chefs d'équipe relancés + brouillons des jours passés), `verify_jwt` désactivé, 3 fichiers identiques au repo. `dry_run` : 0 envoi, `reminder_log` inchangé (0 ligne) | — |
+
+### Reste à faire — lot 12, section 6
+
+Lignes 193 à 250 de `20261003120000_lot12_pointage_qr.sql` : la fonction
+`close_forgotten_sessions` et la tâche `bemexo-close-forgotten-sessions`
+(`30 0 * * *`). L'outil Supabase (MCP) bloque cette fonction (délai de
+confirmation dépassé). À coller tel quel dans l'éditeur SQL de Supabase
+(option C), puis vérifier :
+
+```sql
+SELECT (SELECT count(*) FROM pg_proc WHERE pronamespace = 'public'::regnamespace AND proname = 'close_forgotten_sessions') AS fonction_1,
+       (SELECT count(*) FROM cron.job WHERE jobname = 'bemexo-close-forgotten-sessions' AND schedule = '30 0 * * *') AS cron_1,
+       has_function_privilege('authenticated', 'public.close_forgotten_sessions(uuid)', 'EXECUTE') AS close_salarie_false;
+```
+
+En attendant : aucune fermeture de nuit. Un pointage resté ouvert reste
+ouvert ; la tablette refuse le scan suivant (« Un pointage d'un autre jour est
+resté ouvert ») et le salarié le ferme dans l'appli, comme avant le lot 12.
+Le badge « sortie oubliée » n'apparaît pas tant que la section 6 n'est pas posée.
 
 ## `kiosks_actifs` (tablettes non retirées) — aujourd'hui **4**
 
