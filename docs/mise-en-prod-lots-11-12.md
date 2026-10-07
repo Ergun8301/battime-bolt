@@ -26,6 +26,24 @@ commit de `integration/bemexo-ia`.
   avec tablette, la base le refuse (« avec la tablette, la journée commence en
   scannant le QR »). Plus la fenêtre est courte, moins de salariés la voient.
 
+## Journal d'exécution (6–7 octobre 2026)
+
+L'outil Supabase (MCP) bloque toute requête contenant `DROP` (confirmation
+qui expire). Décision d'Ergun (option B) : appliquer chaque fichier **sans ses
+lignes `DROP … IF EXISTS`**, seulement après avoir vérifié en lecture que
+l'objet visé est absent de la prod. Le fichier du repo reste tel quel. Si un
+`DROP` vise un objet qui existe déjà, le fichier passe par l'éditeur SQL
+(option C). Le retour arrière (R14, R12, R11) garde ses `DROP` : option C.
+
+| Étape | Résultat | Lignes `DROP` retirées en prod (cibles vérifiées absentes) |
+|---|---|---|
+| 0 SQL A | ✅ `kiosks_actifs` = 1 (tablette reliée depuis la préview), policies `time_entries` = 8 | — |
+| 1 Lot 11 | ✅ SQL B conforme. Historique : `20261006123445 lot11_cloture_salarie` (numéro = heure d'application, comme le lot 9) | 7 : `DROP POLICY` ×4 sur `user_closures` (`user_closures_select`, `_admin_insert`, `_admin_update`, `support_read` dans le bloc `DO`) ; `DROP TRIGGER` ×3 (`time_entries_guard_user_closure`, `active_sessions_guard_user_closure`, `user_closures_guard`) |
+| 2 `kiosk` | ✅ v5, `verify_jwt` désactivé | — |
+| 2 scan réel | ⏳ en attente | — |
+| 3 Lot 12 | à faire | prévues : `DROP TRIGGER` `active_sessions_qr_guard`, `time_entries_qr_guard` (à vérifier absents) |
+| 3 bis Lot 14 | à faire | prévue : `DROP TRIGGER` `time_entries_lead_guard` (à vérifier absent) |
+
 ## `kiosks_actifs` (tablettes non retirées) — aujourd'hui **4**
 
 | Moment | Valeur attendue | Pourquoi |
