@@ -6,6 +6,9 @@
 // Deux rappels distincts :
 //   1. JOUR MANQUANT — jour passé + affectation chantier + aucune journée
 //      envoyée. Une absence (congé/maladie/intempérie) n'est jamais manquante.
+//      Aussi : un jour passé resté en BROUILLON (sortie oubliée « fin à
+//      compléter », heures saisies jamais envoyées), même hors planning.
+//      Relancés : salariés ET chefs d'équipe (_shared/missing-days.ts).
 //   2. HEURES SAISIES, PAS ENVOYÉES — le salarié a rempli sa journée du jour
 //      mais n'a pas appuyé sur « Envoyer ». Le travail est fait, le bureau ne
 //      voit rien et la paie ne compte rien. C'est le piège le plus fréquent.
@@ -31,6 +34,7 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { loadUnsubscribed, sendResend } from '../_shared/email.ts';
+import { computeMissingDays, REMINDED_ROLES, type DayRow, type PlanRow } from '../_shared/missing-days.ts';
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -166,16 +170,17 @@ async function runForCompany(
   const [companyRes, workersRes, planRes, entRes, logRes, subsRes, draftRes] = await Promise.all([
     admin.from('companies').select('name').eq('id', companyId).maybeSingle(),
     admin.from('users').select('id, first_name, last_name, email')
-      .eq('company_id', companyId).eq('role', 'worker').eq('is_active', true),
+      .eq('company_id', companyId).in('role', [...REMINDED_ROLES]).eq('is_active', true),
     admin.from('planning').select('user_id, work_date, absence_type')
       .eq('company_id', companyId).gte('work_date', windowStart).lt('work_date', todayStr),
     admin.from('time_entries').select('user_id, work_date')
       .eq('company_id', companyId).in('status', ['submitted', 'validated']).gte('work_date', windowStart),
     admin.from('reminder_log').select('user_id, last_sent_at, sent_count').eq('company_id', companyId),
     admin.from('push_subscriptions').select('user_id').eq('company_id', companyId),
-    // Heures saisies aujourd'hui mais jamais envoyées.
-    admin.from('time_entries').select('user_id')
-      .eq('company_id', companyId).eq('status', 'draft').eq('work_date', todayStr),
+    // Heures saisies mais jamais envoyées : aujourd'hui (rappel du jour) et
+    // jours passés de la fenêtre (comptés comme journées manquantes).
+    admin.from('time_entries').select('user_id, work_date')
+      .eq('company_id', companyId).eq('status', 'draft').gte('work_date', windowStart).lte('work_date', todayStr),
   ]);
 
   const companyName = (companyRes.data as { name: string } | null)?.name || 'Votre entreprise';
@@ -185,21 +190,15 @@ async function runForCompany(
   // se règle sur le téléphone).
   const optedOut = await loadUnsubscribed(admin, 'missing-days');
 
-  // Jours d'absence : on les exclut, même si une ligne chantier existe le même jour.
-  const planRows = (planRes.data || []) as { user_id: string; work_date: string; absence_type: string | null }[];
-  const absenceDays = new Set(planRows.filter((p) => p.absence_type).map((p) => `${p.user_id}|${p.work_date}`));
-  const declared = new Set(((entRes.data || []) as { user_id: string; work_date: string }[])
-    .map((e) => `${e.user_id}|${e.work_date}`));
-
-  const missingByWorker = new Map<string, string[]>();
-  for (const p of planRows) {
-    if (p.absence_type) continue;
-    const key = `${p.user_id}|${p.work_date}`;
-    if (absenceDays.has(key) || declared.has(key)) continue;
-    const arr = missingByWorker.get(p.user_id) || [];
-    if (!arr.includes(p.work_date)) arr.push(p.work_date);
-    missingByWorker.set(p.user_id, arr);
-  }
+  // Jours manquants : planifiés non déclarés + brouillons des jours passés
+  // (sortie oubliée, heures saisies jamais envoyées). Absences exclues.
+  const draftRows = (draftRes.data || []) as DayRow[];
+  const missingByWorker = computeMissingDays(
+    (planRes.data || []) as PlanRow[],
+    (entRes.data || []) as DayRow[],
+    draftRows,
+    todayStr,
+  );
 
   const logs = new Map(((logRes.data || []) as { user_id: string; last_sent_at: string; sent_count: number }[])
     .map((l) => [l.user_id, l]));
@@ -270,7 +269,7 @@ async function runForCompany(
   // fois par jour, donc ce rappel part au plus une fois par jour. On saute les
   // salariés qui viennent de recevoir la relance ci-dessus : un seul message.
   const dejaPrevenu = new Set(results.filter((r) => r.channel).map((r) => r.worker));
-  const withDraftToday = new Set(((draftRes.data || []) as { user_id: string }[]).map((d) => d.user_id));
+  const withDraftToday = new Set(draftRows.filter((d) => d.work_date === todayStr).map((d) => d.user_id));
   const unsent: { worker: string; channel?: string; skipped?: string }[] = [];
 
   for (const w of workers) {
