@@ -222,6 +222,23 @@ check(await icon(false, true) === 0, '5) borne éteinte : pas d’icône');
 check(await icon(true, 'absent') === 1, '5) avant la migration (fonction absente) : comportement d’avant, icône affichée');
 check(await icon(false, 'absent') === 0, '5) avant la migration, borne éteinte : pas d’icône (inchangé)');
 
+// ═════ 6 · Total du jour : le chrono en cours compte (affichage seul) ═════
+D.companies[0].kiosk_enabled = true; hasKiosk = true;
+D.time_entries = [];
+D.active_sessions = [{ user_id: ME, company_id: CO, worksite_id: 'w1', planning_id: null, work_date: today, started_at: new Date(Date.now() - 65 * 60000 - 5000).toISOString() }];
+await open();
+const tot1 = (await p.locator('.bt-total-big').innerText()).trim();
+check(tot1 === '1:05', `6) pointé depuis 1 h 05, aucune ligne : total = 1:05 (lu : ${tot1})`);
+D.time_entries = [entry('e-matin', W1, '07:00', '09:00', { total_minutes: 120 })];
+await open();
+const tot2 = (await p.locator('.bt-total-big').innerText()).trim();
+check(tot2 === '3:05', `6) 2 h déjà notées + chrono 1 h 05 : total = 3:05 (lu : ${tot2})`);
+await p.screenshot({ path: path.join(SH, 'lot12-6-total-direct.png') });
+D.active_sessions = []; D.time_entries = [];
+await open();
+const tot3 = (await p.locator('.bt-total-big').innerText()).trim();
+check(tot3 === '0:00', `6) sans chrono ni ligne : total = 0:00 (lu : ${tot3})`);
+
 console.log(`\n${ok} ✅ / ${ko} ❌`);
 await b.close(); srv.close();
 process.exit(ko ? 1 : 0);
