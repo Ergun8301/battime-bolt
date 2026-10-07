@@ -15,6 +15,9 @@
   var script = document.currentScript;
   var GA_ID = script && script.getAttribute('data-ga-id');
   if (!GA_ID || !window.CookieConsent) return;
+  // Borne de pointage (tablette posée à l'entrée) : pas de bandeau par-dessus
+  // le QR, et aucune mesure d'audience sur un écran partagé.
+  if (/^\/borne(\/|$)/.test(window.location.pathname)) return;
 
   window.dataLayer = window.dataLayer || [];
   function gtag() { window.dataLayer.push(arguments); }

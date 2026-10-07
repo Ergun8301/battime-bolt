@@ -25,7 +25,7 @@ export const EMAIL_LINK_CSS = `
 export function EmailLinkCard({ children }: { children: ReactNode }) {
   return (
     <>
-      <style dangerouslySetInnerHTML={{ __html: EMAIL_LINK_CSS }} />
+      <style dangerouslySetInnerHTML={EMAIL_LINK_CSS_HTML} />
       <main className="el">
         <div className="el-card">
           <Link href="/landing" className="el-logo" aria-label="BEMEXO — accueil">
@@ -37,3 +37,7 @@ export function EmailLinkCard({ children }: { children: ReactNode }) {
     </>
   );
 }
+
+// Objet FIXE : un `{ __html }` neuf à chaque rendu fait réécrire la feuille
+// de style par React (re-calcul de la page, polices rechargées → flash).
+const EMAIL_LINK_CSS_HTML = { __html: EMAIL_LINK_CSS };

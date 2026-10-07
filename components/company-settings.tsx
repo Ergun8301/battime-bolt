@@ -5,11 +5,18 @@
 // (n'écrit QUE les champs humains, jamais Stripe/abonnement). Le logo est stocké
 // dans le bucket `company-logos` (dossier {company_id}/…), URL publique dans logo_url.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState, type ReactNode } from 'react';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
+import { saveCompanySettings } from '@/lib/admin-writes';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Loader2, Upload, Trash2, Building2, CreditCard, Mail, ShieldCheck } from 'lucide-react';
+import { Loader2, Upload, Trash2, Building2, CreditCard, Mail, ShieldCheck, MonitorSmartphone, Clock, Bell, ChevronDown } from 'lucide-react';
+import LeaveFundSetting from '@/components/leave-fund-setting';
+import { supabaseCostSource, useAiEnabled } from '@/lib/real-cost';
+import KioskAdmin from '@/components/kiosk-admin';
+import SupportAccess from '@/components/support-access';
+import { InfoTip } from '@/components/ui/info-tip';
+import { readSupportSession, supabaseSupportSource } from '@/lib/support';
 import { toast } from 'sonner';
 
 interface Props { open: boolean; onOpenChange: (o: boolean) => void; onSaved?: () => void; }
@@ -20,7 +27,7 @@ type Form = {
 };
 const EMPTY: Form = { name: '', siret: '', tva_intra: '', address: '', postal_code: '', city: '', phone: '', email: '', logo_url: '' };
 
-const SET_CSS = `
+export const SET_CSS = `
 .bt-set{display:flex;flex-direction:column;gap:9px}
 .bt-set-load{padding:26px;text-align:center;color:#6E6A63;font-weight:600}
 .bt-set-toprow{display:flex;align-items:flex-start;gap:13px}
@@ -33,6 +40,8 @@ const SET_CSS = `
 .bt-set-btn.ghost{border-color:rgba(21,18,15,.2);color:#C0461F}
 .bt-set-hint{font-size:11px;color:#9a948a;font-weight:600}
 .bt-set-l{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:#6E6A63;font-weight:700;margin:0 0 3px;display:block}
+.bt-set-lrow{display:flex;align-items:center;gap:5px;min-width:0;margin:0 0 3px}
+.bt-set-lrow .bt-set-l{margin:0;min-width:0}
 .bt-set-i{width:100%;font-family:'Archivo',sans-serif;font-size:14px;font-weight:500;padding:9px 11px;border:1.5px solid rgba(21,18,15,.18);border-radius:10px;background:#fff;outline:none;color:#15120F}
 .bt-set-i::placeholder{color:#b3aca0}
 .bt-set-i:focus{border-color:#15120F}
@@ -58,6 +67,77 @@ const SET_CSS = `
   .bt-set-grid-cpv{grid-template-columns:1fr}
 }
 `;
+
+// Lot 10 : les 4 rubriques repliables. Feuille à part (SET_CSS est aussi lue par
+// l'aperçu du coût salarié, qui n'a pas de rubriques).
+const SEC_CSS = `
+.bt-set-sec{border:1.5px solid rgba(21,18,15,.14);border-radius:14px;background:#fff;transition:border-color .15s}
+.bt-set-sec.open{border-color:#15120F}
+.bt-set-sec-h{margin:0;font:inherit}
+.bt-set-sec-btn{width:100%;display:flex;align-items:center;gap:11px;padding:11px 13px;background:none;border:none;border-radius:12px;cursor:pointer;text-align:left;font-family:inherit;color:#15120F}
+.bt-set-sec-btn:hover{background:#FBF8F2}
+.bt-set-sec-btn:focus-visible{outline:2.5px solid #FFC21A;outline-offset:2px}
+.bt-set-sec-ico{width:30px;height:30px;flex:none;border-radius:9px;background:#15120F;color:#FFC21A;display:flex;align-items:center;justify-content:center}
+.bt-set-sec-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.bt-set-sec-t{font-size:15px;font-weight:900;letter-spacing:-.01em;line-height:1.2}
+.bt-set-sec-hint{font-size:12px;font-weight:600;color:#6E6A63;line-height:1.3}
+.bt-set-sec-chev{flex:none;color:#15120F;transition:transform .15s}
+.bt-set-sec.open .bt-set-sec-chev{transform:rotate(180deg)}
+.bt-set-sec-panel{display:flex;flex-direction:column;gap:9px;padding:2px 13px 13px}
+.bt-set-sec-panel[hidden]{display:none}
+`;
+
+// Objet FIXE (lot 10) : un `{ __html }` neuf à chaque rendu fait réécrire la
+// feuille de style par React (re-calcul de la page, polices rechargées → flash).
+const SET_HTML = { __html: SET_CSS + SEC_CSS };
+
+/**
+ * Lot 11 — le libellé d'un réglage et, À CÔTÉ (jamais dedans), son ⓘ.
+ * Sous le réglage : une ligne courte au plus ; le détail est dans l'infobulle,
+ * qui s'ouvre au survol à l'ordinateur et au toucher sur tablette / téléphone.
+ */
+function SetLabel({ children, tip, tipId }: { children: string; tip?: ReactNode; tipId?: string }) {
+  return (
+    <div className="bt-set-lrow">
+      <label className="bt-set-l">{children}</label>
+      {tip ? <InfoTip text={tip} label={`Plus d’infos : ${children}`} testId={tipId ? `set-tip-${tipId}` : undefined} /> : null}
+    </div>
+  );
+}
+
+type SecKey = 'entreprise' | 'paie' | 'borne' | 'notif';
+// Fermées par défaut, sauf la première.
+const SECS_INIT: Record<SecKey, boolean> = { entreprise: true, paie: false, borne: false, notif: false };
+
+/**
+ * Une rubrique repliable. Fermée, son contenu est MASQUÉ, jamais démonté : les
+ * valeurs tapées, les interrupteurs et les sous-réglages (caisse de congés,
+ * support) gardent leur état, et le bouton « Enregistrer » du bas lit tout.
+ */
+function SetSection({ id, testId, title, hint, icon, open, onToggle, children }: {
+  id: string; testId: string; title: string; hint: string; icon: ReactNode;
+  open: boolean; onToggle: () => void; children: ReactNode;
+}) {
+  const btnId = `${id}-btn`;
+  const panelId = `${id}-panel`;
+  return (
+    <section className={`bt-set-sec${open ? ' open' : ''}`} data-testid={testId}>
+      <h3 className="bt-set-sec-h">
+        <button type="button" id={btnId} className="bt-set-sec-btn" aria-expanded={open} aria-controls={panelId} onClick={onToggle}>
+          <span className="bt-set-sec-ico" aria-hidden="true">{icon}</span>
+          <span className="bt-set-sec-txt">
+            <span className="bt-set-sec-t">{title}</span>
+            <span className="bt-set-sec-hint">{hint}</span>
+          </span>
+          <ChevronDown className="bt-set-sec-chev h-5 w-5" aria-hidden="true" />
+        </button>
+      </h3>
+      <div id={panelId} role="region" aria-labelledby={btnId} className="bt-set-sec-panel" hidden={!open}>
+        {children}
+      </div>
+    </section>
+  );
+}
 
 export default function CompanySettings({ open, onOpenChange, onSaved }: Props) {
   const { user } = useAuth();
@@ -87,9 +167,24 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
   // ne se décide pas au milieu de quinze champs, d'un bouton qu'on presse par
   // habitude.
   const [posTracking, setPosTracking] = useState(false);
+  // Lot 7 : « Les salariés voient le planning de leurs collègues » (prénom,
+  // chantier, horaires — rien d'autre). null = colonne absente : bloc masqué.
+  const [colleagues, setColleagues] = useState<boolean | null>(null);
+  const [colSaving, setColSaving] = useState(false);
   const [posSaving, setPosSaving] = useState(false);
   const [posConfirm, setPosConfirm] = useState(false);
   const [posErr, setPosErr] = useState<string | null>(null);
+  // Borne de pointage QR (lot 1) : le bloc n'existe que si l'entreprise a
+  // `kiosk_enabled`. Lecture séparée : tant que la colonne n'existe pas en
+  // base, la requête échoue seule et rien ne s'affiche.
+  const [kioskEnabled, setKioskEnabled] = useState(false);
+  const [kioskOpen, setKioskOpen] = useState(false);
+  // Accès support (lot 5) : le bloc n'existe que si BEMEXO a activé
+  // `support_enabled`, et jamais pour le support lui-même (mode support).
+  const [supportEnabled, setSupportEnabled] = useState(false);
+  // Coût réel (lot 2) : réglage « Caisse de congés BTP », seulement si `ai_enabled`.
+  const aiOn = useAiEnabled(open ? user?.company_id : null);
+  const costSource = supabaseCostSource;
   // Horaire hebdomadaire de base : au-delà, les heures sont supplémentaires.
   const [weeklyHours, setWeeklyHours] = useState('35');
   // Destinataire de l'export de paie. Enregistré une fois, modifiable ici : la
@@ -100,6 +195,12 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
   // l'écrire en dur produirait un bulletin faux en silence.
   const [rate1, setRate1] = useState('25');
   const [rate2, setRate2] = useState('50');
+  // Lot 10 : rubriques ouvertes. Affichage seulement — remises à l'état de départ
+  // (la première ouverte) à chaque ouverture des réglages.
+  const secId = useId();
+  const [secs, setSecs] = useState<Record<SecKey, boolean>>(SECS_INIT);
+  const toggleSec = (k: SecKey) => setSecs((s) => ({ ...s, [k]: !s[k] }));
+  useEffect(() => { if (open) setSecs(SECS_INIT); }, [open]);
 
   useEffect(() => {
     if (!open || !user?.company_id) return;
@@ -139,6 +240,24 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
   // Lecture SÉPARÉE, comme sur l'écran du salarié : tant que la colonne
   // n'existe pas, cette requête échoue seule et les quinze autres réglages
   // s'affichent normalement. Un réglage neuf ne casse pas ceux qui marchent.
+  // Lecture séparée : tant que la migration du lot 7 n'est pas appliquée, la
+  // requête échoue seule et le bloc ne s'affiche pas.
+  useEffect(() => {
+    if (!open || !user?.company_id) return;
+    let stale = false;
+    supabase.from('companies').select('colleagues_planning_visible').eq('id', user.company_id).maybeSingle()
+      .then(({ data, error }) => {
+        if (!stale) setColleagues(error || !data ? null : !!(data as { colleagues_planning_visible?: boolean }).colleagues_planning_visible);
+      });
+    return () => { stale = true; };
+  }, [open, user?.company_id]);
+  const toggleColleagues = async (v: boolean) => {
+    setColSaving(true);
+    const { error } = await supabase.rpc('set_colleagues_planning', { p_enabled: v });
+    setColSaving(false);
+    if (!error) setColleagues(v);
+  };
+
   useEffect(() => {
     if (!open || !user?.company_id) return;
     let stale = false;
@@ -146,6 +265,26 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
     supabase.from('companies').select('position_tracking_enabled').eq('id', user.company_id).maybeSingle()
       .then(({ data }) => {
         if (!stale && data) setPosTracking(!!(data as { position_tracking_enabled?: boolean }).position_tracking_enabled);
+      });
+    return () => { stale = true; };
+  }, [open, user?.company_id]);
+
+  useEffect(() => {
+    if (!open || !user?.company_id) return;
+    let stale = false;
+    supabase.from('companies').select('kiosk_enabled').eq('id', user.company_id).maybeSingle()
+      .then(({ data }) => {
+        if (!stale) setKioskEnabled(!!(data as { kiosk_enabled?: boolean } | null)?.kiosk_enabled);
+      });
+    return () => { stale = true; };
+  }, [open, user?.company_id]);
+
+  useEffect(() => {
+    if (!open || !user?.company_id || readSupportSession()) return;
+    let stale = false;
+    supabase.from('companies').select('support_enabled').eq('id', user.company_id).maybeSingle()
+      .then(({ data }) => {
+        if (!stale) setSupportEnabled(!!(data as { support_enabled?: boolean } | null)?.support_enabled);
       });
     return () => { stale = true; };
   }, [open, user?.company_id]);
@@ -272,18 +411,14 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
     }
     setSaving(true); setErr(null);
     try {
-      const { error } = await supabase.rpc('update_company_info', {
-        p_name: f.name, p_siret: f.siret, p_tva_intra: f.tva_intra, p_address: f.address,
-        p_postal_code: f.postal_code, p_city: f.city, p_phone: f.phone, p_email: f.email, p_logo_url: f.logo_url,
-        p_auto_reminder_enabled: reminderOn, p_reminder_hour: reminderHour,
-        p_budget_alerts_enabled: budgetAlertsOn,
-        p_travel_paid: travelPaid,
-        p_weekly_hours: Number(weeklyHours.replace(',', '.')) || 0,
-        p_accountant_email: mail,
-        p_overtime_rate_1: r1,
-        p_overtime_rate_2: r2,
+      // lib/admin-writes.ts : même écriture que l'Assistant BEMEXO.
+      await saveCompanySettings({
+        ...f,
+        auto_reminder_enabled: reminderOn, reminder_hour: reminderHour,
+        budget_alerts_enabled: budgetAlertsOn, travel_paid: travelPaid,
+        weekly_hours: Number(weeklyHours.replace(',', '.')) || 0,
+        accountant_email: mail, overtime_rate_1: r1, overtime_rate_2: r2,
       });
-      if (error) throw error;
       onSaved?.();
       onOpenChange(false);
     } catch {
@@ -297,330 +432,384 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bt-skin max-w-2xl max-h-[92vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><Building2 className="h-5 w-5" /> Réglages de l&apos;entreprise</DialogTitle>
+          <DialogTitle className="flex items-center gap-2"><Building2 className="h-5 w-5 shrink-0" /> Réglages de l&apos;entreprise</DialogTitle>
         </DialogHeader>
-        <style dangerouslySetInnerHTML={{ __html: SET_CSS }} />
+        <style dangerouslySetInnerHTML={SET_HTML} />
         {loading ? (
           <div className="bt-set-load">Chargement…</div>
         ) : (
           <div className="bt-set">
-            {/* Logo + nom sur une même ligne (compact, sans scroll) */}
-            <div className="bt-set-toprow">
-              <div className="bt-set-logo-prev">
-                {f.logo_url
-                  ? <img src={f.logo_url} alt="Logo de l'entreprise" />
-                  : <span className="bt-set-logo-ph"><Building2 className="h-6 w-6" /></span>}
-              </div>
-              <div className="bt-set-namewrap">
-                <label className="bt-set-l">Nom de l&apos;entreprise</label>
-                <input className="bt-set-i" value={f.name} onChange={(e) => set('name', e.target.value)} placeholder="Ex. K Habitat" />
-                <div className="bt-set-rowbtns">
-                  <label className="bt-set-btn">
-                    {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                    {f.logo_url ? 'Remplacer le logo' : 'Ajouter un logo'}
-                    <input type="file" accept="image/png,image/jpeg,image/svg+xml" hidden onChange={(e) => onPickLogo(e.target.files?.[0])} />
-                  </label>
-                  {f.logo_url && (
-                    <button type="button" className="bt-set-btn ghost" onClick={() => set('logo_url', '')}>
-                      <Trash2 className="h-4 w-4" /> Supprimer
-                    </button>
-                  )}
-                  <span className="bt-set-hint">PNG, JPG ou SVG · 2 Mo max</span>
+            {/* Lot 10 : les réglages sont rangés en 4 rubriques repliables. Rien n'est
+                retiré : une rubrique fermée est seulement MASQUÉE (attribut hidden),
+                ses champs restent montés. Ce qu'on a tapé ailleurs survit, et
+                « Enregistrer » envoie tout, exactement comme avant. */}
+            <SetSection
+              id={`${secId}-entreprise`} testId="set-sec-entreprise" title="Entreprise"
+              hint="Nom, logo, coordonnées, abonnement"
+              icon={<Building2 className="h-4 w-4" />}
+              open={secs.entreprise} onToggle={() => toggleSec('entreprise')}
+            >
+              {/* Logo + nom sur une même ligne (compact, sans scroll) */}
+              <div className="bt-set-toprow">
+                <div className="bt-set-logo-prev">
+                  {f.logo_url
+                    ? <img src={f.logo_url} alt="Logo de l'entreprise" />
+                    : <span className="bt-set-logo-ph"><Building2 className="h-6 w-6" /></span>}
                 </div>
-              </div>
-            </div>
-
-            <div className="bt-set-grid2">
-              <div className="bt-set-field">
-                <label className="bt-set-l">SIRET</label>
-                <input className="bt-set-i" value={f.siret} onChange={(e) => set('siret', e.target.value)} placeholder="123 456 789 00012" />
-              </div>
-              <div className="bt-set-field">
-                <label className="bt-set-l">TVA intracom.</label>
-                <input className="bt-set-i" value={f.tva_intra} onChange={(e) => set('tva_intra', e.target.value)} placeholder="FR12 345678901" />
-              </div>
-            </div>
-
-            <div className="bt-set-field">
-              <label className="bt-set-l">Adresse</label>
-              <input className="bt-set-i" value={f.address} onChange={(e) => set('address', e.target.value)} placeholder="12 rue des Artisans" />
-            </div>
-
-            <div className="bt-set-grid-cpv">
-              <div className="bt-set-field">
-                <label className="bt-set-l">Code postal</label>
-                <input className="bt-set-i" value={f.postal_code} onChange={(e) => set('postal_code', e.target.value)} placeholder="13100" />
-              </div>
-              <div className="bt-set-field">
-                <label className="bt-set-l">Ville</label>
-                <input className="bt-set-i" value={f.city} onChange={(e) => set('city', e.target.value)} placeholder="Aix-en-Provence" />
-              </div>
-            </div>
-
-            <div className="bt-set-grid2">
-              <div className="bt-set-field">
-                <label className="bt-set-l">Téléphone</label>
-                <input className="bt-set-i" value={f.phone} onChange={(e) => set('phone', e.target.value)} placeholder="06 12 34 56 78" />
-              </div>
-              <div className="bt-set-field">
-                <label className="bt-set-l">Email</label>
-                <input className="bt-set-i" type="email" value={f.email} onChange={(e) => set('email', e.target.value)} placeholder="contact@entreprise.fr" />
-              </div>
-            </div>
-
-            {/* Abonnement — gestion/résiliation en self-service via le portail Stripe */}
-            <div className="bt-set-sub">
-              <div className="bt-set-subtxt">
-                <label className="bt-set-l">Abonnement</label>
-                <p className="bt-set-substate">
-                  {subStatus === 'active' ? 'Abonnement actif — vous pouvez le gérer ou le résilier à tout moment.'
-                    : subStatus === 'trialing' ? "Essai gratuit en cours — aucun abonnement à gérer pour l'instant."
-                    : subStatus === 'canceled' ? 'Abonnement résilié.'
-                    : 'Aucun abonnement actif.'}
-                </p>
-              </div>
-              {(subStatus === 'active' || subStatus === 'canceled') && (
-                <button type="button" className="bt-set-btn" onClick={openPortal} disabled={portalBusy}>
-                  {portalBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />} Gérer mon abonnement
-                </button>
-              )}
-            </div>
-
-            {/* Relance automatique : le salarié en retard est prévenu directement
-                (notification, ou email s'il n'a pas activé les notifications) —
-                le bureau n'a plus à courir après chacun. */}
-            <div className="bt-set-sub bt-set-rem">
-              <div className="bt-set-subtxt">
-                <label className="bt-set-l">Relance automatique des heures</label>
-                <p className="bt-set-substate">
-                  Prévient chaque salarié qui a des journées planifiées non déclarées, tous les jours de la semaine.
-                  Au maximum une relance tous les 2 jours, et 3 au total — ensuite on n&apos;insiste plus.
-                </p>
-              </div>
-              <div className="bt-set-remctl">
-                <label className="bt-set-switch">
-                  <input type="checkbox" checked={reminderOn} onChange={(e) => setReminderOn(e.target.checked)} />
-                  <span>{reminderOn ? 'Activée' : 'Désactivée'}</span>
-                </label>
-                <select
-                  className="bt-set-hour"
-                  value={reminderHour}
-                  onChange={(e) => setReminderHour(parseInt(e.target.value, 10))}
-                  disabled={!reminderOn}
-                  aria-label="Heure d'envoi de la relance"
-                >
-                  {Array.from({ length: 16 }, (_, i) => i + 6).map((h) => (
-                    <option key={h} value={h}>{h}h</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* Alertes de budget : main-d'œuvre uniquement, d'où le libellé
-                explicite — comparer un budget total aux seules heures ne
-                déclencherait jamais d'alerte. */}
-            <div className="bt-set-sub bt-set-rem">
-              <div className="bt-set-subtxt">
-                <label className="bt-set-l">Alertes de budget chantier</label>
-                <p className="bt-set-substate">
-                  Prévient quand la <strong>main-d&apos;œuvre</strong> consommée atteint 70 %, 80 % puis 100 % du budget
-                  saisi sur un chantier. Hors matériaux et sous-traitance.
-                </p>
-              </div>
-              <div className="bt-set-remctl">
-                <label className="bt-set-switch">
-                  <input type="checkbox" checked={budgetAlertsOn} onChange={(e) => setBudgetAlertsOn(e.target.checked)} />
-                  <span>{budgetAlertsOn ? 'Activées' : 'Désactivées'}</span>
-                </label>
-              </div>
-            </div>
-
-            {/* Horaire hebdomadaire de base — la seule référence qui décide
-                ce qui est une heure supplémentaire. Calcul à la semaine. */}
-            <div className="bt-set-sub">
-              <div className="bt-set-subtxt">
-                <label className="bt-set-l">Horaire hebdomadaire de base</label>
-                <p className="bt-set-substate">
-                  Au-delà de cet horaire, les heures d&apos;une semaine sont comptées comme <strong>supplémentaires</strong>.
-                  Le calcul se fait à la semaine, du lundi au dimanche. Un salarié peut avoir son propre horaire, depuis sa fiche.
-                </p>
-              </div>
-              <div className="bt-set-remctl">
-                <label className="bt-set-switch" style={{ gap: 8 }}>
-                  <input
-                    type="number" min={0} max={80} step={0.5} inputMode="decimal"
-                    className="bt-field" style={{ width: 88, textAlign: 'right' }}
-                    value={weeklyHours}
-                    onChange={(e) => setWeeklyHours(e.target.value)}
-                  />
-                  <span>h / semaine</span>
-                </label>
-              </div>
-            </div>
-
-            {/* Majoration des heures supplémentaires. Les TAUX sont à
-                l'entreprise ; le seuil entre les deux paliers (8 h) est la
-                règle française et n'est pas réglable — un réglage de plus
-                qu'on ne saurait pas remplir est un piège. */}
-            <div className="bt-set-sub">
-              <div className="bt-set-subtxt">
-                <label className="bt-set-l">Majoration des heures supplémentaires</label>
-                <p className="bt-set-substate">
-                  Les <strong>8 premières</strong> heures supplémentaires de la semaine sont majorées au 1<sup>er</sup> taux,
-                  les suivantes au 2<sup>e</sup>. Les valeurs de départ sont les taux légaux français ;
-                  remplacez-les par ceux de votre convention si elle diffère.
-                </p>
-              </div>
-              <div className="bt-set-remctl">
-                <label className="bt-set-switch" style={{ gap: 6 }}>
-                  <span style={{ fontWeight: 700, color: '#6E6A63' }}>1<sup>er</sup></span>
-                  <input type="number" min={0} max={200} step={1} inputMode="decimal"
-                    className="bt-field" style={{ width: 72, textAlign: 'right' }}
-                    value={rate1} onChange={(e) => setRate1(e.target.value)} />
-                  <span>%</span>
-                </label>
-                <label className="bt-set-switch" style={{ gap: 6 }}>
-                  <span style={{ fontWeight: 700, color: '#6E6A63' }}>2<sup>e</sup></span>
-                  <input type="number" min={0} max={200} step={1} inputMode="decimal"
-                    className="bt-field" style={{ width: 72, textAlign: 'right' }}
-                    value={rate2} onChange={(e) => setRate2(e.target.value)} />
-                  <span>%</span>
-                </label>
-              </div>
-            </div>
-
-            {/* Trajet entre deux chantiers — le salarié dit si le trou était de
-                la route ou une pause ; c'est ici qu'on décide si la route est
-                payée. Rien n'est déduit ni ajouté en silence. */}
-            <div className="bt-set-sub">
-              <div className="bt-set-subtxt">
-                <label className="bt-set-l">Temps de route entre deux chantiers</label>
-                <p className="bt-set-substate">
-                  Le salarié indique lui-même si le temps entre deux interventions était de la <strong>route</strong> ou une <strong>pause</strong>.
-                  Ici, vous décidez si la route est payée. Les pauses ne sont jamais comptées.
-                </p>
-              </div>
-              <div className="bt-set-remctl">
-                <label className="bt-set-switch">
-                  <input type="checkbox" checked={travelPaid} onChange={(e) => setTravelPaid(e.target.checked)} />
-                  <span>{travelPaid ? 'Payée' : 'Non payée'}</span>
-                </label>
-              </div>
-            </div>
-
-            {/* ── L'ENDROIT AU POINTAGE ───────────────────────────────────────
-                CE QUE CE BLOC DIT À L'EMPLOYEUR, ET POURQUOI IL LE DIT.
-                BEMEXO n'est pas responsable de ce traitement : l'entreprise
-                l'est. Allumer sans l'avoir dit à ses salariés la met en faute —
-                et rend la donnée inutilisable comme preuve, donc inutile. Le
-                logiciel n'a pas à donner de conseil juridique, mais il a à ne
-                pas laisser quelqu'un allumer ça en croyant que c'est un
-                réglage d'affichage. */}
-            <div className="bt-set-sub" style={{ display: 'block' }}>
-              <div className="bt-set-subtxt">
-                <label className="bt-set-l">Endroit au pointage en direct</label>
-                <p className="bt-set-substate">
-                  Enregistre <strong>où se trouve le salarié</strong> au moment où il démarre un pointage
-                  en direct, et au moment où il le ferme. <strong>Deux points par journée, jamais
-                  entre les deux.</strong> Sert à répondre à un client qui conteste une facture.
-                  Les salariés peuvent refuser : leur pointage fonctionne à l&apos;identique.
-                  Les positions s&apos;effacent automatiquement au bout de douze mois.
-                </p>
-              </div>
-
-              {posErr && (
-                <p className="bt-set-substate" style={{ color: '#8a2a1c', fontWeight: 700 }}>{posErr}</p>
-              )}
-
-              {posConfirm ? (
-                <div style={{
-                  marginTop: 8, border: '1px solid #E8B79E', background: '#FBE3D8',
-                  borderRadius: 10, padding: '10px 12px', fontSize: 13, color: '#8a2a1c', lineHeight: 1.5,
-                }}>
-                  <b>Avant d&apos;activer, vous devez avoir&nbsp;:</b>
-                  <ul style={{ margin: '6px 0 0 16px', listStyle: 'disc' }}>
-                    <li>informé <b>chacun de vos salariés</b>, individuellement et par écrit&nbsp;;</li>
-                    <li>informé et consulté le <b>CSE</b>, si votre entreprise en a un&nbsp;;</li>
-                    <li>inscrit ce traitement à votre <b>registre</b>.</li>
-                  </ul>
-                  <p style={{ margin: '8px 0 0' }}>
-                    Sans cette information préalable, les positions enregistrées <b>ne vaudront rien
-                    comme preuve</b> — et c&apos;est la seule raison de les collecter.
-                  </p>
-                  {/* CE QUE L'APPLICATION FAIT, ET CE QU'ELLE NE FAIT PAS.
-                      L'étape 27 montrait un écran d'information à chaque salarié ;
-                      l'étape 28 l'a retiré. Sans cette précision, un employeur
-                      pourrait croire que BEMEXO informe ses salariés à sa place —
-                      ce qui ne l'a jamais dispensé de le faire, mais qui devient
-                      bien plus facile à croire maintenant que l'écran a disparu. */}
-                  <p style={{ margin: '8px 0 0' }}>
-                    Ce que l&apos;application affiche de son côté : <b>une phrase</b> sur l&apos;écran de
-                    pointage, et le détail dans la <b>politique de confidentialité</b>. C&apos;est utile,
-                    mais <b>ça ne remplace pas votre information individuelle</b>.
-                  </p>
-                  <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-                    <button type="button" className="bt-set-btn" disabled={posSaving} onClick={() => basculerPosition(true)}>
-                      {posSaving && <Loader2 className="h-3.5 w-3.5 animate-spin" />} C&apos;est fait, activer
-                    </button>
-                    <button type="button" className="bt-set-btn ghost" disabled={posSaving} onClick={() => setPosConfirm(false)}>
-                      Annuler
-                    </button>
+                <div className="bt-set-namewrap">
+                  <label className="bt-set-l">Nom de l&apos;entreprise</label>
+                  <input className="bt-set-i" value={f.name} onChange={(e) => set('name', e.target.value)} placeholder="Ex. K Habitat" />
+                  <div className="bt-set-rowbtns">
+                    <label className="bt-set-btn">
+                      {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                      {f.logo_url ? 'Remplacer le logo' : 'Ajouter un logo'}
+                      <input type="file" accept="image/png,image/jpeg,image/svg+xml" hidden onChange={(e) => onPickLogo(e.target.files?.[0])} />
+                    </label>
+                    {f.logo_url && (
+                      <button type="button" className="bt-set-btn ghost" onClick={() => set('logo_url', '')}>
+                        <Trash2 className="h-4 w-4" /> Supprimer
+                      </button>
+                    )}
+                    <span className="bt-set-hint">PNG, JPG ou SVG · 2 Mo max</span>
                   </div>
                 </div>
-              ) : (
-                <div className="bt-set-rowbtns" style={{ marginTop: 8 }}>
-                  <button
-                    type="button"
-                    className={`bt-set-btn${posTracking ? ' ghost' : ''}`}
-                    disabled={posSaving}
-                    onClick={() => (posTracking ? basculerPosition(false) : setPosConfirm(true))}
-                  >
-                    {posSaving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                    {posTracking ? 'Désactiver' : 'Activer'}
+              </div>
+
+              <div className="bt-set-grid2">
+                <div className="bt-set-field">
+                  <label className="bt-set-l">SIRET</label>
+                  <input className="bt-set-i" value={f.siret} onChange={(e) => set('siret', e.target.value)} placeholder="123 456 789 00012" />
+                </div>
+                <div className="bt-set-field">
+                  <label className="bt-set-l">TVA intracom.</label>
+                  <input className="bt-set-i" value={f.tva_intra} onChange={(e) => set('tva_intra', e.target.value)} placeholder="FR12 345678901" />
+                </div>
+              </div>
+
+              <div className="bt-set-field">
+                <label className="bt-set-l">Adresse</label>
+                <input className="bt-set-i" value={f.address} onChange={(e) => set('address', e.target.value)} placeholder="12 rue des Artisans" />
+              </div>
+
+              <div className="bt-set-grid-cpv">
+                <div className="bt-set-field">
+                  <label className="bt-set-l">Code postal</label>
+                  <input className="bt-set-i" value={f.postal_code} onChange={(e) => set('postal_code', e.target.value)} placeholder="13100" />
+                </div>
+                <div className="bt-set-field">
+                  <label className="bt-set-l">Ville</label>
+                  <input className="bt-set-i" value={f.city} onChange={(e) => set('city', e.target.value)} placeholder="Aix-en-Provence" />
+                </div>
+              </div>
+
+              <div className="bt-set-grid2">
+                <div className="bt-set-field">
+                  <label className="bt-set-l">Téléphone</label>
+                  <input className="bt-set-i" value={f.phone} onChange={(e) => set('phone', e.target.value)} placeholder="06 12 34 56 78" />
+                </div>
+                <div className="bt-set-field">
+                  <label className="bt-set-l">Email</label>
+                  <input className="bt-set-i" type="email" value={f.email} onChange={(e) => set('email', e.target.value)} placeholder="contact@entreprise.fr" />
+                </div>
+              </div>
+
+              {/* Abonnement — gestion/résiliation en self-service via le portail Stripe */}
+              <div className="bt-set-sub">
+                <div className="bt-set-subtxt">
+                  <SetLabel
+                    tipId="abonnement"
+                    tip={subStatus === 'active' ? <>Gérez-le ou résiliez-le à tout moment avec « Gérer mon abonnement ».</>
+                      : subStatus === 'trialing' ? <>Aucun abonnement à gérer pour l&apos;instant.</>
+                      : undefined}
+                  >Abonnement</SetLabel>
+                  <p className="bt-set-substate">
+                    {subStatus === 'active' ? 'Abonnement actif.'
+                      : subStatus === 'trialing' ? 'Essai gratuit en cours.'
+                      : subStatus === 'canceled' ? 'Abonnement résilié.'
+                      : 'Aucun abonnement actif.'}
+                  </p>
+                </div>
+                {(subStatus === 'active' || subStatus === 'canceled') && (
+                  <button type="button" className="bt-set-btn" onClick={openPortal} disabled={portalBusy}>
+                    {portalBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />} Gérer mon abonnement
                   </button>
-                  <span className="bt-set-hint">{posTracking ? 'Activé' : 'Désactivé'}</span>
+                )}
+              </div>
+            </SetSection>
+
+            <SetSection
+              id={`${secId}-paie`} testId="set-sec-paie" title="Heures & paie"
+              hint={`Horaire, heures supplémentaires, route, comptable${aiOn ? ', caisse de congés' : ''}`}
+              icon={<Clock className="h-4 w-4" />}
+              open={secs.paie} onToggle={() => toggleSec('paie')}
+            >
+              {/* Horaire hebdomadaire de base — la seule référence qui décide
+                  ce qui est une heure supplémentaire. Calcul à la semaine. */}
+              <div className="bt-set-sub">
+                <div className="bt-set-subtxt">
+                  <SetLabel tipId="horaire" tip={<>Calcul à la semaine, du lundi au dimanche. Un salarié peut avoir son propre horaire, depuis sa fiche.</>}>Horaire hebdomadaire de base</SetLabel>
+                  <p className="bt-set-substate">Au-delà : heures supplémentaires.</p>
+                </div>
+                <div className="bt-set-remctl">
+                  <label className="bt-set-switch" style={{ gap: 8 }}>
+                    <input
+                      type="number" min={0} max={80} step={0.5} inputMode="decimal"
+                      className="bt-field" style={{ width: 88, textAlign: 'right' }}
+                      value={weeklyHours}
+                      onChange={(e) => setWeeklyHours(e.target.value)}
+                    />
+                    <span>h / semaine</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Majoration des heures supplémentaires. Les TAUX sont à
+                  l'entreprise ; le seuil entre les deux paliers (8 h) est la
+                  règle française et n'est pas réglable — un réglage de plus
+                  qu'on ne saurait pas remplir est un piège. */}
+              <div className="bt-set-sub">
+                <div className="bt-set-subtxt">
+                  <SetLabel tipId="majoration" tip={<>Les valeurs de départ (25 % et 50 %) sont les taux légaux. Remplacez-les par ceux de votre convention si elle diffère.</>}>Majoration des heures supplémentaires</SetLabel>
+                  <p className="bt-set-substate">1<sup>er</sup> taux : les 8 premières h sup. 2<sup>e</sup> taux : au-delà.</p>
+                </div>
+                <div className="bt-set-remctl">
+                  <label className="bt-set-switch" style={{ gap: 6 }}>
+                    <span style={{ fontWeight: 700, color: '#6E6A63' }}>1<sup>er</sup></span>
+                    <input type="number" min={0} max={200} step={1} inputMode="decimal"
+                      className="bt-field" style={{ width: 72, textAlign: 'right' }}
+                      value={rate1} onChange={(e) => setRate1(e.target.value)} />
+                    <span>%</span>
+                  </label>
+                  <label className="bt-set-switch" style={{ gap: 6 }}>
+                    <span style={{ fontWeight: 700, color: '#6E6A63' }}>2<sup>e</sup></span>
+                    <input type="number" min={0} max={200} step={1} inputMode="decimal"
+                      className="bt-field" style={{ width: 72, textAlign: 'right' }}
+                      value={rate2} onChange={(e) => setRate2(e.target.value)} />
+                    <span>%</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Trajet entre deux chantiers — le salarié dit si le trou était de
+                  la route ou une pause ; c'est ici qu'on décide si la route est
+                  payée. Rien n'est déduit ni ajouté en silence. */}
+              <div className="bt-set-sub">
+                <div className="bt-set-subtxt">
+                  <SetLabel tipId="route" tip={<>Le salarié indique lui-même si le temps entre deux interventions était de la route ou une pause. Ici, vous décidez si la route est payée.</>}>Temps de route entre deux chantiers</SetLabel>
+                  <p className="bt-set-substate">Les pauses ne sont jamais payées.</p>
+                </div>
+                <div className="bt-set-remctl">
+                  <label className="bt-set-switch">
+                    <input type="checkbox" checked={travelPaid} onChange={(e) => setTravelPaid(e.target.checked)} />
+                    <span>{travelPaid ? 'Payée' : 'Non payée'}</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Comptable — destinataire de l'export de paie. L'adresse vit ici,
+                  pas dans l'écran d'export : rien ne part vers une adresse tapée
+                  au moment de l'envoi, et le bureau garde la main dessus. */}
+              <div className="bt-set-sub">
+                <div className="bt-set-subtxt">
+                  <SetLabel tipId="comptable" tip={<>Dans « Exporter », le bouton « Envoyer à … » lui envoie la paie du mois. Vous recevez une copie. Laissez vide pour ne rien envoyer.</>}>Adresse de votre comptable</SetLabel>
+                  <p className="bt-set-substate">Reçoit le tableur des heures en pièce jointe.</p>
+                </div>
+                <div className="bt-set-remctl">
+                  <input
+                    type="email" inputMode="email" autoComplete="off" placeholder="comptable@cabinet.fr"
+                    className="bt-field" style={{ minWidth: 220 }}
+                    value={accountantEmail}
+                    onChange={(e) => setAccountantEmail(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {aiOn && user?.company_id && <LeaveFundSetting source={costSource} companyId={user.company_id} />}
+            </SetSection>
+
+            <SetSection
+              id={`${secId}-borne`} testId="set-sec-borne" title="Borne & pointage"
+              hint={`${kioskEnabled ? 'Borne, e' : 'E'}ndroit au pointage${colleagues !== null ? ', planning des collègues' : ''}`}
+              icon={<MonitorSmartphone className="h-4 w-4" />}
+              open={secs.borne} onToggle={() => toggleSec('borne')}
+            >
+              {/* Borne de pointage QR (lot 1) — seulement si l'entreprise l'a. */}
+              {kioskEnabled && (
+                <div className="bt-set-sub">
+                  <div className="bt-set-subtxt">
+                    <SetLabel tipId="borne" tip={<>Vos salariés scannent le QR avec leur téléphone. La borne n&apos;affiche ni heures pointées ni coûts.</>}>Borne de pointage</SetLabel>
+                    <p className="bt-set-substate">Tablette à l&apos;entrée : planning de la semaine et QR pour pointer.</p>
+                  </div>
+                  {/* Lot 11 : « Gérer les bornes » devient « Relier la tablette » (même fenêtre). */}
+                  <button type="button" className="bt-set-btn" onClick={() => setKioskOpen(true)} data-testid="set-kiosk-open">
+                    <MonitorSmartphone className="h-4 w-4" /> Relier la tablette
+                  </button>
                 </div>
               )}
-            </div>
 
-            {/* Comptable — destinataire de l'export de paie. L'adresse vit ici,
-                pas dans l'écran d'export : rien ne part vers une adresse tapée
-                au moment de l'envoi, et le bureau garde la main dessus. */}
-            <div className="bt-set-sub">
-              <div className="bt-set-subtxt">
-                <label className="bt-set-l">Adresse de votre comptable</label>
-                <p className="bt-set-substate">
-                  Depuis le planning, le bouton <strong>Envoyer au comptable</strong> expédie le tableur des heures
-                  à cette adresse, <strong>en pièce jointe</strong>. Vous recevez une copie. Laissez vide pour désactiver l&apos;envoi.
-                </p>
-              </div>
-              <div className="bt-set-remctl">
-                <input
-                  type="email" inputMode="email" autoComplete="off" placeholder="comptable@cabinet.fr"
-                  className="bt-field" style={{ minWidth: 220 }}
-                  value={accountantEmail}
-                  onChange={(e) => setAccountantEmail(e.target.value)}
-                />
-              </div>
-            </div>
+              {/* ── L'ENDROIT AU POINTAGE ───────────────────────────────────────
+                  CE QUE CE BLOC DIT À L'EMPLOYEUR, ET POURQUOI IL LE DIT.
+                  BEMEXO n'est pas responsable de ce traitement : l'entreprise
+                  l'est. Allumer sans l'avoir dit à ses salariés la met en faute —
+                  et rend la donnée inutilisable comme preuve, donc inutile. Le
+                  logiciel n'a pas à donner de conseil juridique, mais il a à ne
+                  pas laisser quelqu'un allumer ça en croyant que c'est un
+                  réglage d'affichage. */}
+              {/* Lot 12 : le téléphone ne commence plus de pointage (QR de la
+                  tablette, ou heures saisies) : ce réglage n'a plus d'usage. Il
+                  est CACHÉ, pas effacé — encore affiché si une entreprise l'a
+                  activé, pour qu'elle puisse le désactiver. */}
+              {posTracking && (
+              <div className="bt-set-sub" style={{ display: 'block' }}>
+                <div className="bt-set-subtxt">
+                  <SetLabel tipId="endroit" tip={<>Deux points par journée, jamais entre les deux. Sert à répondre à un client qui conteste une facture. Le salarié peut refuser : son pointage marche pareil. Effacé au bout de 12 mois.</>}>Endroit au pointage en direct</SetLabel>
+                  <p className="bt-set-substate">Enregistre où est le salarié au début et à la fin d&apos;un pointage.</p>
+                </div>
 
-            {/* Notifications email — déclenchement manuel des mêmes fonctions que
-                les crons (récap hebdo du vendredi, alertes habilitations). Utile
-                pour tester sans attendre l'horaire planifié. */}
-            <div className="bt-set-sub">
-              <div className="bt-set-subtxt">
-                <label className="bt-set-l">Notifications par email</label>
-                <p className="bt-set-substate">Récap hebdo (vendredi) et alertes d&apos;habilitations (30 j / 7 j) — envoi automatique, ou à la demande ci-dessous.</p>
+                {posErr && (
+                  <p className="bt-set-substate" style={{ color: '#8a2a1c', fontWeight: 700 }}>{posErr}</p>
+                )}
+
+                {/* Lot 11 : ce bloc reste ENTIER à l'écran — c'est une obligation avant
+                    d'activer, pas une explication (il ne passe pas dans une infobulle). */}
+                {posConfirm ? (
+                  <div data-testid="set-legal" style={{
+                    marginTop: 8, border: '1px solid #E8B79E', background: '#FBE3D8',
+                    borderRadius: 10, padding: '10px 12px', fontSize: 13, color: '#8a2a1c', lineHeight: 1.5,
+                  }}>
+                    <b>Avant d&apos;activer, vous devez avoir&nbsp;:</b>
+                    <ul style={{ margin: '6px 0 0 16px', listStyle: 'disc' }}>
+                      <li>informé <b>chacun de vos salariés</b>, individuellement et par écrit&nbsp;;</li>
+                      <li>informé et consulté le <b>CSE</b>, si votre entreprise en a un&nbsp;;</li>
+                      <li>inscrit ce traitement à votre <b>registre</b>.</li>
+                    </ul>
+                    <p style={{ margin: '8px 0 0' }}>
+                      Sans cette information préalable, les positions enregistrées <b>ne vaudront rien
+                      comme preuve</b> — et c&apos;est la seule raison de les collecter.
+                    </p>
+                    {/* CE QUE L'APPLICATION FAIT, ET CE QU'ELLE NE FAIT PAS.
+                        L'étape 27 montrait un écran d'information à chaque salarié ;
+                        l'étape 28 l'a retiré. Sans cette précision, un employeur
+                        pourrait croire que BEMEXO informe ses salariés à sa place —
+                        ce qui ne l'a jamais dispensé de le faire, mais qui devient
+                        bien plus facile à croire maintenant que l'écran a disparu. */}
+                    <p style={{ margin: '8px 0 0' }}>
+                      Ce que l&apos;application affiche de son côté : <b>une phrase</b> sur l&apos;écran de
+                      pointage, et le détail dans la <b>politique de confidentialité</b>. C&apos;est utile,
+                      mais <b>ça ne remplace pas votre information individuelle</b>.
+                    </p>
+                    <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                      <button type="button" className="bt-set-btn" disabled={posSaving} onClick={() => basculerPosition(true)}>
+                        {posSaving && <Loader2 className="h-3.5 w-3.5 animate-spin" />} C&apos;est fait, activer
+                      </button>
+                      <button type="button" className="bt-set-btn ghost" disabled={posSaving} onClick={() => setPosConfirm(false)}>
+                        Annuler
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bt-set-rowbtns" style={{ marginTop: 8 }}>
+                    <button
+                      type="button"
+                      className={`bt-set-btn${posTracking ? ' ghost' : ''}`}
+                      disabled={posSaving}
+                      onClick={() => (posTracking ? basculerPosition(false) : setPosConfirm(true))}
+                    >
+                      {posSaving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                      {posTracking ? 'Désactiver' : 'Activer'}
+                    </button>
+                    <span className="bt-set-hint">{posTracking ? 'Activé' : 'Désactivé'}</span>
+                  </div>
+                )}
               </div>
-              <div className="flex flex-wrap gap-2">
-                <button type="button" className="bt-set-btn" onClick={sendDigestNow} disabled={digestBusy}>
-                  {digestBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />} Envoyer le récap maintenant
-                </button>
-                <button type="button" className="bt-set-btn" onClick={checkCertsNow} disabled={certBusy}>
-                  {certBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />} Vérifier les habilitations
-                </button>
+              )}
+
+              {colleagues !== null && (
+                <div className="bt-set-sub" data-testid="setting-colleagues">
+                  <div className="bt-set-subtxt">
+                    <SetLabel tipId="collegues" tip={<>Visible dans l&apos;Assistant (« Où est Paul ? »). Jamais leurs heures pointées, ni le détail de leurs congés (seulement « absent »).</>}>Les salariés voient le planning de leurs collègues</SetLabel>
+                    <p className="bt-set-substate">Prénom, chantier et horaires prévus — rien d&apos;autre.</p>
+                  </div>
+                  <div className="bt-set-rowbtns" style={{ marginTop: 8 }}>
+                    <button type="button" className={`bt-set-btn${colleagues ? ' ghost' : ''}`} disabled={colSaving} onClick={() => toggleColleagues(!colleagues)}>
+                      {colSaving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                      {colleagues ? 'Désactiver' : 'Activer'}
+                    </button>
+                    <span className="bt-set-hint">{colleagues ? 'Activé' : 'Désactivé'}</span>
+                  </div>
+                </div>
+              )}
+            </SetSection>
+
+            <SetSection
+              id={`${secId}-notif`} testId="set-sec-notif" title="Notifications & support"
+              hint={`Relance des heures, alertes de budget, emails${supportEnabled ? ', support BEMEXO' : ''}`}
+              icon={<Bell className="h-4 w-4" />}
+              open={secs.notif} onToggle={() => toggleSec('notif')}
+            >
+              {/* Relance automatique : le salarié en retard est prévenu directement
+                  (notification, ou email s'il n'a pas activé les notifications) —
+                  le bureau n'a plus à courir après chacun. */}
+              <div className="bt-set-sub bt-set-rem">
+                <div className="bt-set-subtxt">
+                  <SetLabel tipId="relance" tip={<>Par notification, sinon par e-mail. Une relance tous les 2 jours au plus, 3 au total. Regarde les 2 dernières semaines.</>}>Relance automatique des heures</SetLabel>
+                  <p className="bt-set-substate">Prévient chaque jour les salariés qui ont des journées non envoyées.</p>
+                </div>
+                <div className="bt-set-remctl">
+                  <label className="bt-set-switch">
+                    <input type="checkbox" checked={reminderOn} onChange={(e) => setReminderOn(e.target.checked)} />
+                    <span>{reminderOn ? 'Activée' : 'Désactivée'}</span>
+                  </label>
+                  <select
+                    className="bt-set-hour"
+                    value={reminderHour}
+                    onChange={(e) => setReminderHour(parseInt(e.target.value, 10))}
+                    disabled={!reminderOn}
+                    aria-label="Heure d'envoi de la relance"
+                  >
+                    {Array.from({ length: 16 }, (_, i) => i + 6).map((h) => (
+                      <option key={h} value={h}>{h}h</option>
+                    ))}
+                  </select>
+                </div>
               </div>
-            </div>
+
+              {/* Alertes de budget : main-d'œuvre uniquement, d'où le libellé
+                  explicite — comparer un budget total aux seules heures ne
+                  déclencherait jamais d'alerte. */}
+              <div className="bt-set-sub bt-set-rem">
+                <div className="bt-set-subtxt">
+                  <SetLabel tipId="budget" tip={<>Hors matériaux et sous-traitance. Le budget se saisit dans la fiche du client.</>}>Alertes de budget chantier</SetLabel>
+                  <p className="bt-set-substate">E-mail à 70 %, 80 % et 100 % du budget main-d&apos;œuvre.</p>
+                </div>
+                <div className="bt-set-remctl">
+                  <label className="bt-set-switch">
+                    <input type="checkbox" checked={budgetAlertsOn} onChange={(e) => setBudgetAlertsOn(e.target.checked)} />
+                    <span>{budgetAlertsOn ? 'Activées' : 'Désactivées'}</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Notifications email — déclenchement manuel des mêmes fonctions que
+                  les crons (récap hebdo du lundi, alertes habilitations). Utile
+                  pour tester sans attendre l'horaire planifié. */}
+              <div className="bt-set-sub">
+                <div className="bt-set-subtxt">
+                  <SetLabel tipId="emails" tip={<>Envoi automatique. Les boutons ci-dessous l&apos;envoient tout de suite.</>}>Notifications par email</SetLabel>
+                  <p className="bt-set-substate">Récap le lundi à 7 h, habilitations à 30 j et 7 j.</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" className="bt-set-btn" onClick={sendDigestNow} disabled={digestBusy}>
+                    {digestBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />} Envoyer le récap maintenant
+                  </button>
+                  <button type="button" className="bt-set-btn" onClick={checkCertsNow} disabled={certBusy}>
+                    {certBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />} Vérifier les habilitations
+                  </button>
+                </div>
+              </div>
+
+              {supportEnabled && <SupportAccess source={supabaseSupportSource} />}
+            </SetSection>
 
             {err && <div className="bt-set-err">{err}</div>}
             <div className="bt-set-foot">
@@ -632,6 +821,9 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
           </div>
         )}
       </DialogContent>
+      {kioskEnabled && user?.company_id && (
+        <KioskAdmin open={kioskOpen} onOpenChange={setKioskOpen} companyId={user.company_id} />
+      )}
     </Dialog>
   );
 }

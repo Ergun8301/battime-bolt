@@ -3,7 +3,7 @@
 // => never missing. An absence (congé/maladie/intempérie) => never missing.
 // "Declared" = a time_entry whose status is not 'draft'.
 
-import { format } from 'date-fns';
+import { format, startOfMonth, subMonths } from 'date-fns';
 
 /**
  * @param plannedDates work_date (yyyy-MM-dd) of chantier assignments (absences already excluded)
@@ -22,6 +22,28 @@ export function computeMissingDays(
     missing.add(d);
   }
   return Array.from(missing).sort((a, b) => (a < b ? 1 : -1));
+}
+
+/**
+ * « À relancer » regarde le MOIS EN COURS ET LE MOIS PRÉCÉDENT (lot 12, demande
+ * d'Ergun : le 1er du mois, le compteur ne tombe plus à zéro). Les jours d'un
+ * mois clôturé, ou clôturés pour ce salarié (« Clôturer jusqu'au… »), sont
+ * retirés par l'écran qui affiche. Bandeau du cockpit, pastilles des lignes et
+ * fiche lisent la même date.
+ */
+export function missingWindowStart(now: Date = new Date()): string {
+  return format(startOfMonth(subMonths(now, 1)), 'yyyy-MM-dd');
+}
+
+/**
+ * Lot 12 : ajoute aux jours « à relancer » ceux qui portent une sortie oubliée
+ * « à compléter » (même un jour non planifié, même un jour déjà envoyé en
+ * partie). Passés seulement, du plus récent au plus ancien, sans doublon.
+ */
+export function withIncompleteDays(missing: string[], incomplete: string[]): string[] {
+  const todayStr = format(new Date(), 'yyyy-MM-dd');
+  const all = new Set([...missing, ...incomplete.filter((d) => d < todayStr)]);
+  return Array.from(all).sort((a, b) => (a < b ? 1 : -1));
 }
 
 /** Défauts repris de l'ouverture manuelle d'un chantier planifié. */

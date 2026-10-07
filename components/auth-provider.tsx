@@ -1,10 +1,12 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, ReactNode } from 'react';
 import { User as SupabaseUser, Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { User } from '@/lib/types';
+import { withSupportCompany } from '@/lib/support';
 import { useRouter } from 'next/navigation';
+import { keep } from '@/lib/same';
 
 interface AuthContextType {
   user: User | null;
@@ -22,6 +24,9 @@ const PROFILE_FETCH_TIMEOUT = 8000;
 // Garde-fou global : on ne reste jamais coince sur l'ecran de chargement.
 const AUTH_INIT_TIMEOUT = 10000;
 
+// Mode support (lot 5) : `withSupportCompany` renvoie le profil TEL QUEL pour
+// tout le monde, sauf pour un compte support entré chez un client (voir
+// lib/support.ts). Les droits restent ceux que la base accorde.
 async function fetchUserProfile(userId: string): Promise<User | null> {
   try {
     const response: any = await Promise.race([
@@ -48,15 +53,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+  // Qui est connecté en ce moment : Supabase renvoie « SIGNED_IN » à chaque
+  // retour sur l'onglet (session revalidée). Pour la MÊME personne, ce n'est pas
+  // une nouvelle connexion : pas d'écran de chargement, sinon tout l'écran est
+  // démonté (planning, assistant ouvert, conversation…).
+  const signedInId = useRef<string | null>(null);
 
   const refreshUser = async () => {
     try {
       const { data: { session: currentSession } } = await supabase.auth.getSession();
       if (currentSession?.user) {
         const profile = await fetchUserProfile(currentSession.user.id);
-        setUser(profile);
-        setSupabaseUser(currentSession.user);
-        setSession(currentSession);
+        setUser((prev) => keep(prev, withSupportCompany(profile)));
+        setSupabaseUser((prev) => keep(prev, currentSession.user));
+        setSession((prev) => keep(prev, currentSession));
       }
     } catch (err) {
       console.error('Error refreshing user:', err);
@@ -79,9 +89,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (initialSession?.user) {
           setSession(initialSession);
           setSupabaseUser(initialSession.user);
+          signedInId.current = initialSession.user.id;
           const profile = await fetchUserProfile(initialSession.user.id);
           if (!isMounted) return;
-          setUser(profile);
+          setUser((prev) => keep(prev, withSupportCompany(profile)));
         }
       } catch (err) {
         console.error('Error initializing auth:', err);
@@ -106,10 +117,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Supabase attendu ici peut provoquer un deadlock (spinner infini).
       // On met a jour la session de maniere synchrone et on diffère la lecture
       // du profil hors du callback (setTimeout).
-      setSession(newSession);
-      setSupabaseUser(newSession?.user ?? null);
+      //
+      // Lot 10 : au retour sur l'onglet, Supabase renvoie la MÊME session (et le
+      // même profil). keep() garde alors les objets déjà en mémoire : aucun écran
+      // abonné à useAuth() n'est redessiné pour rien.
+      setSession((prev) => keep(prev, newSession));
+      setSupabaseUser((prev) => keep(prev, newSession?.user ?? null));
 
       if (event === 'SIGNED_OUT' || !newSession?.user) {
+        signedInId.current = null;
         setUser(null);
         setLoading(false);
         if (event === 'SIGNED_OUT') {
@@ -120,16 +136,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // Nouvelle connexion : on remet l'ecran de chargement le temps de
       // recuperer le profil, pour eviter une redirection prematuree des layouts.
-      if (event === 'SIGNED_IN') {
+      if (event === 'SIGNED_IN' && signedInId.current !== newSession.user.id) {
         setLoading(true);
       }
+      signedInId.current = newSession.user.id;
 
       const signedInUser = newSession.user;
       setTimeout(() => {
         if (!isMounted) return;
         fetchUserProfile(signedInUser.id)
           .then((profile) => {
-            if (isMounted) setUser(profile);
+            if (isMounted) setUser((prev) => keep(prev, withSupportCompany(profile)));
           })
           .finally(() => {
             if (isMounted) setLoading(false);

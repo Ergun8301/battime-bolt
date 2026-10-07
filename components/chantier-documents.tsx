@@ -33,7 +33,10 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
+import { DOC_CATEGORY_LABEL } from '@/supabase/functions/_shared/worker-assistant-core';
+import { DOC_MAX_BYTES, uploadWorksiteDocument } from '@/lib/chantier-docs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { InfoTip } from '@/components/ui/info-tip';
 import {
   Loader2, Trash2, FileText, FolderOpen, Download, Mail, Copy, Camera, Paperclip, Link2,
 } from 'lucide-react';
@@ -44,6 +47,8 @@ import { toast } from 'sonner';
 type Uploader = { first_name: string | null; last_name: string | null };
 interface DocRow {
   id: string; label: string | null; file_path: string; file_name: string | null;
+  /** Lot 7 : catégorie (posée par l'Assistant) — absente tant que la migration n'est pas là. */
+  category?: string | null;
   mime_type: string | null; size_bytes: number | null; created_at: string;
   uploaded_by: string | null; uploader?: Uploader | Uploader[] | null;
   work_date: string | null; time_entry_id: string | null;
@@ -67,7 +72,8 @@ const DOC_CSS = `
 .bt-doc-addbtn:active{transform:translateY(2px);box-shadow:0 1px 0 #C99300}
 .bt-doc-addbtn.ghost:active{box-shadow:0 1px 0 rgba(21,18,15,.22)}
 .bt-doc-addbtn:disabled{opacity:.65;transform:none}
-.bt-doc-hint{font-size:11.5px;color:#9a948a;font-weight:600;margin:8px 2px 2px}
+.bt-doc-hint{display:flex;align-items:center;gap:4px;font-size:11.5px;color:#9a948a;font-weight:600;margin:8px 2px 2px}
+.bt-doc-hint-t{min-width:0}
 .bt-doc-hint b{color:#6E6A63}
 .bt-doc-tabs{display:flex;gap:7px;margin-top:11px}
 .bt-doc-tab{flex:1;border:1.5px solid rgba(21,18,15,.16);background:#fff;border-radius:11px;padding:9px 8px;font-family:inherit;font-weight:800;font-size:13px;color:#6E6A63;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:7px}
@@ -92,8 +98,9 @@ const DOC_CSS = `
 .bt-doc-act.danger:hover{background:#F4D9D1;color:#C0461F}
 .bt-doc-send{margin-top:12px;padding:12px;border:1px solid rgba(21,18,15,.12);border-radius:13px;background:#FBF7EF}
 .bt-doc-send-h{display:flex;align-items:center;gap:7px;font-size:13.5px;font-weight:900;color:#15120F;margin-bottom:8px}
-.bt-doc-send-to{font-size:12.5px;font-weight:700;color:#15120F;margin-bottom:9px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.bt-doc-send-edit{border:none;background:transparent;color:#a87c1e;font-weight:800;font-size:11.5px;cursor:pointer;text-decoration:underline;font-family:inherit;padding:0}
+.bt-doc-send-to{font-size:12.5px;font-weight:700;color:#15120F;margin-bottom:9px;display:flex;align-items:center;gap:8px;min-width:0}
+.bt-doc-send-mail{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bt-doc-send-edit{flex:none;border:none;background:transparent;color:#a87c1e;font-weight:800;font-size:11.5px;cursor:pointer;text-decoration:underline;font-family:inherit;padding:0}
 .bt-doc-send-row{display:flex;gap:7px;margin-bottom:9px}
 .bt-doc-send-input{flex:1;min-width:0;font-family:inherit;font-size:14px;padding:9px 11px;border:1.5px solid rgba(21,18,15,.18);border-radius:10px;background:#fff;outline:none;color:#15120F}
 .bt-doc-send-input:focus{border-color:#15120F}
@@ -143,11 +150,15 @@ export default function ChantierDocuments({
   const fetchDocs = async () => {
     if (!worksiteId) return;
     setLoading(true);
-    const { data } = await supabase.from('documents')
-      .select('id,label,file_path,file_name,mime_type,size_bytes,created_at,uploaded_by,work_date,time_entry_id,uploader:users!uploaded_by(first_name,last_name)')
+    const cols = 'id,label,file_path,file_name,mime_type,size_bytes,created_at,uploaded_by,work_date,time_entry_id,uploader:users!uploaded_by(first_name,last_name)';
+    const read = (withCategory: boolean) => supabase.from('documents')
+      .select(withCategory ? `${cols},category` : cols)
       .eq('worksite_id', worksiteId)
       .order('work_date', { ascending: false, nullsFirst: false })
       .order('created_at', { ascending: false });
+    // Avec la catégorie (lot 7) ; sans, si la colonne n'existe pas encore.
+    let { data, error } = await read(true);
+    if (error) ({ data } = await read(false));
     const rows = (data || []) as unknown as DocRow[];
     setDocs(rows);
     const paths = rows.map((r) => r.file_path);
@@ -235,34 +246,13 @@ export default function ChantierDocuments({
 
   const onPick = async (file: File | undefined) => {
     if (!file || !worksiteId || !user?.company_id || !user?.id) return;
-    if (file.size > 15 * 1024 * 1024) { toast.error('Fichier trop lourd (15 Mo max).'); return; }
-    // Le classement suit le TYPE du fichier, jamais le bouton cliqué. Une image
-    // choisie via « Fichier » est rangée dans Photos par la liste ; basculer sur
-    // l'onglet Fichiers la ferait disparaître sous les yeux de la personne qui
-    // vient de l'envoyer.
-    const image = (file.type || '').startsWith('image/');
+    if (file.size > DOC_MAX_BYTES) { toast.error('Fichier trop lourd (15 Mo max).'); return; }
     setUploading(true);
     try {
-      const ext = (file.name.split('.').pop() || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '') || 'bin';
-      const path = `${user.company_id}/${worksiteId}/${crypto.randomUUID()}.${ext}`;
-      const { error: upErr } = await supabase.storage.from('chantier-docs').upload(path, file, { contentType: file.type || undefined });
-      if (upErr) throw upErr;
-      const { error: insErr } = await supabase.from('documents').insert({
-        company_id: user.company_id, worksite_id: worksiteId, uploaded_by: user.id,
-        // Nom : celui du fichier pour un document choisi, RIEN pour une photo —
-        // la base le compose alors elle-même, à son heure à elle.
-        label: image ? null : file.name,
-        file_path: path, file_name: file.name, mime_type: file.type || null, size_bytes: file.size,
-        // Le jour et l'intervention : la base revérifie et rectifie la date
-        // d'après l'intervention, elle ne fait pas confiance au navigateur.
-        work_date: workDate, time_entry_id: timeEntryId,
+      // Même geste que l'Assistant BEMEXO : lib/chantier-docs.ts.
+      const { image } = await uploadWorksiteDocument({
+        companyId: user.company_id, userId: user.id, worksiteId, file, workDate, timeEntryId,
       });
-      if (insErr) {
-        // Le fichier est déjà dans le bucket : sans ce nettoyage, il y resterait
-        // sans aucune ligne pour le retrouver ni le supprimer.
-        await supabase.storage.from('chantier-docs').remove([path]);
-        throw insErr;
-      }
       setTab(image ? 'photos' : 'files');
       toast.success(image ? 'Photo ajoutée' : 'Fichier ajouté');
       await fetchDocs();
@@ -318,13 +308,13 @@ export default function ChantierDocuments({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bt-skin max-w-lg max-h-[88vh] overflow-y-auto overflow-x-hidden">
+      <DialogContent className="bt-skin max-w-lg max-h-[88vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <FolderOpen className="h-5 w-5" /> Documents{worksiteName ? ` — ${worksiteName}` : ''}
+            <FolderOpen className="h-5 w-5 shrink-0" /> <span className="min-w-0">Documents{worksiteName ? ` — ${worksiteName}` : ''}</span>
           </DialogTitle>
         </DialogHeader>
-        <style dangerouslySetInnerHTML={{ __html: DOC_CSS }} />
+        <style dangerouslySetInnerHTML={DOC_CSS_HTML} />
 
         {/* Deux entrées distinctes : l'appareil photo d'un côté, le sélecteur de
             fichiers de l'autre. `capture` fait ouvrir directement la caméra sur
@@ -343,11 +333,14 @@ export default function ChantierDocuments({
             <Paperclip className="h-4 w-4" /> Fichier
           </button>
         </div>
+        {/* Lot 11 : une ligne courte ; le reste dans l'ⓘ. */}
         <div className="bt-doc-hint">
-          15 Mo max. Le nom est automatique.{' '}
-          {workDate
-            ? <>Rattaché au <b>{format(parseISO(workDate), 'EEEE d MMMM', { locale: fr })}</b>{timeEntryId ? <> et à <b>cette intervention</b></> : null}.</>
-            : <>Rattaché au chantier, sans jour précis.</>}
+          <span className="bt-doc-hint-t">
+            {workDate
+              ? <>Rattaché au <b>{format(parseISO(workDate), 'EEEE d MMMM', { locale: fr })}</b>{timeEntryId ? <> et à <b>cette intervention</b></> : null}.</>
+              : <>Rattaché au chantier, sans jour précis.</>}
+          </span>
+          <InfoTip testId="doc-tip" label="Plus d’infos : pièces" text={<>15 Mo maximum par pièce. Une photo est nommée automatiquement (« Photo 3 — 20/09/2026 ») ; un fichier garde son nom.</>} />
         </div>
 
         <div className="bt-doc-tabs">
@@ -384,6 +377,11 @@ export default function ChantierDocuments({
                       </a>
                       <div className="bt-doc-meta">
                         <a className="bt-doc-name" href={url} target="_blank" rel="noopener noreferrer">{d.label || d.file_name || 'Document'}</a>
+                        {d.category && d.category !== 'photo' && (
+                          <span style={{ display: 'inline-block', marginLeft: 6, fontSize: 10.5, fontWeight: 800, padding: '1px 7px', borderRadius: 999, background: d.category === 'facture_payee' ? '#E3F5EA' : '#FFF2CC', color: '#15120F' }}>
+                            {DOC_CATEGORY_LABEL[d.category] ?? d.category}
+                          </span>
+                        )}
                         {/* Date + HEURE (horodatage serveur) : sur un chantier, savoir qu'une
                             photo a été prise à 8h12 ou à 17h45 change tout pour une réserve. */}
                         <div className="bt-doc-sub">
@@ -408,7 +406,7 @@ export default function ChantierDocuments({
           <div className="bt-doc-send-h"><Mail className="h-4 w-4" /> Envoyer au client</div>
           {clientEmail && !editingEmail && (
             <div className="bt-doc-send-to">
-              {clientEmail}
+              <span className="bt-doc-send-mail" title={clientEmail}>{clientEmail}</span>
               <button type="button" className="bt-doc-send-edit" onClick={() => { setEmailInput(clientEmail); setEditingEmail(true); }}>modifier</button>
             </div>
           )}
@@ -438,3 +436,7 @@ export default function ChantierDocuments({
     </Dialog>
   );
 }
+
+// Objet FIXE : un `{ __html }` neuf à chaque rendu fait réécrire la feuille
+// de style par React (re-calcul de la page, polices rechargées → flash).
+const DOC_CSS_HTML = { __html: DOC_CSS };

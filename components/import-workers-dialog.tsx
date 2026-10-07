@@ -15,6 +15,7 @@ import { supabase } from '@/lib/supabase';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { InfoTip } from '@/components/ui/info-tip';
 import { Loader2, UploadCloud, FileSpreadsheet, CheckCircle2, ArrowLeft, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -110,7 +111,9 @@ const IMPW_CSS = `
 .bt-impw-drop-ic{width:46px;height:46px;border-radius:12px;background:#15120F;color:#FFC21A;display:flex;align-items:center;justify-content:center;margin:0 auto 12px}
 .bt-impw-drop-t{font-size:15px;font-weight:800;color:#15120F}
 .bt-impw-drop-s{font-family:'JetBrains Mono',monospace;font-size:12px;color:#8a8378;font-weight:600;margin-top:6px}
-.bt-impw-row{display:grid;grid-template-columns:130px 1fr;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid rgba(21,18,15,.07)}
+.bt-impw-row{display:grid;grid-template-columns:130px minmax(0,1fr);gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid rgba(21,18,15,.07)}
+.bt-impw-row > *{min-width:0}
+.bt-impw-lead{display:flex;align-items:center;gap:4px;margin-top:12px;font-size:12px;color:hsl(var(--muted-foreground));font-weight:600}
 .bt-impw-flabel{font-size:13px;font-weight:800;color:#15120F}
 .bt-impw-flabel .req{color:#B5472E;margin-left:2px}
 .bt-impw-sample{font-family:'JetBrains Mono',monospace;font-size:11px;color:#8a8378;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -127,7 +130,7 @@ const IMPW_CSS = `
 .bt-impw-faillist{margin-top:12px;max-height:160px;overflow-y:auto;border:1px solid rgba(181,71,46,.25);border-radius:10px}
 .bt-impw-failrow{padding:8px 11px;font-size:12px;border-bottom:1px solid rgba(181,71,46,.15)}
 .bt-impw-failrow:last-child{border-bottom:none}
-.bt-impw-failrow b{font-weight:800;color:#15120F}
+.bt-impw-failrow b{font-weight:800;color:#15120F;overflow-wrap:anywhere}
 .bt-impw-failrow span{display:block;color:#8a8378;margin-top:1px}
 `;
 
@@ -251,7 +254,7 @@ export default function ImportWorkersDialog({ open, onOpenChange, existingEmails
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!busy) { onOpenChange(o); if (!o) reset(); } }}>
       <DialogContent className="bt-skin max-w-xl max-h-[88vh] overflow-y-auto" onInteractOutside={(e) => { if (busy) e.preventDefault(); }}>
-        <style dangerouslySetInnerHTML={{ __html: IMPW_CSS }} />
+        <style dangerouslySetInnerHTML={IMPW_CSS_HTML} />
         <DialogHeader><DialogTitle>Importer des salariés</DialogTitle></DialogHeader>
 
         {/* ÉTAPE 1 — fichier */}
@@ -270,9 +273,11 @@ export default function ImportWorkersDialog({ open, onOpenChange, existingEmails
             </div>
             <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden
               onChange={(e) => parseFile(e.target.files?.[0])} />
-            <p className="text-xs text-muted-foreground mt-3">
-              Une ligne = un salarié. La première ligne doit contenir les <strong>titres de colonnes</strong> (Nom, Prénom, Email, Téléphone…). Chaque salarié recevra un vrai email d&apos;invitation pour créer son mot de passe.
-            </p>
+            {/* Lot 11 : une ligne courte ; le détail dans l'ⓘ. */}
+            <div className="bt-impw-lead">
+              <span>Une ligne = un salarié, titres des colonnes en 1re ligne.</span>
+              <InfoTip testId="import-tip" label="Plus d’infos : fichier" text={<>La première ligne doit contenir les titres de colonnes (Nom, Prénom, Email, Téléphone…). Chaque salarié reçoit un vrai e-mail d&apos;invitation pour créer son mot de passe.</>} />
+            </div>
           </div>
         )}
 
@@ -280,7 +285,7 @@ export default function ImportWorkersDialog({ open, onOpenChange, existingEmails
         {step === 'map' && (
           <div className="pt-1">
             <p className="text-sm text-muted-foreground mb-2 flex items-center gap-2">
-              <FileSpreadsheet className="h-4 w-4 shrink-0" /> <span className="truncate">{fileName}</span> · {rows.length} ligne{rows.length > 1 ? 's' : ''}
+              <FileSpreadsheet className="h-4 w-4 shrink-0" /> <span className="truncate">{fileName}</span> <span className="shrink-0 whitespace-nowrap">· {rows.length} ligne{rows.length > 1 ? 's' : ''}</span>
             </p>
             <p className="text-sm font-medium mb-1">Faites correspondre vos colonnes :</p>
             <div>
@@ -294,7 +299,7 @@ export default function ImportWorkersDialog({ open, onOpenChange, existingEmails
                       {sample && <div className="bt-impw-sample">ex. {sample}</div>}
                     </div>
                     <Select value={String(col ?? -1)} onValueChange={(v) => setMapping((m) => ({ ...m, [f.key]: parseInt(v, 10) }))}>
-                      <SelectTrigger><SelectValue placeholder="— ignorer —" /></SelectTrigger>
+                      <SelectTrigger className="gap-1.5 [&>svg]:shrink-0"><SelectValue placeholder="— ignorer —" /></SelectTrigger>
                       <SelectContent className="bt-skin">
                         <SelectItem value="-1">— ignorer —</SelectItem>
                         {headers.map((h, i) => (
@@ -320,14 +325,14 @@ export default function ImportWorkersDialog({ open, onOpenChange, existingEmails
 
             <div className="bt-impw-warn">
               <AlertTriangle className="h-4 w-4" />
-              <span>Chaque ligne envoie un email réel. Vérifie le mapping avant de lancer l&apos;import — {prepared.valid.length > 1 ? 'ça ne se rattrape pas en un clic une fois parti' : "l'invitation part dès que tu cliques"}.</span>
+              <span>Chaque ligne envoie un vrai e-mail d&apos;invitation. Vérifiez les colonnes avant de lancer.</span>
             </div>
 
-            <div className="flex gap-2 pt-3">
+            <div className="flex flex-wrap gap-2 pt-3">
               <Button variant="outline" onClick={() => { reset(); }} disabled={busy}>
                 <ArrowLeft className="h-4 w-4 mr-1" /> Changer de fichier
               </Button>
-              <Button className="flex-1 font-bold" onClick={doImport} disabled={busy || !prepared.valid.length}>
+              <Button className="flex-1 min-w-[11rem] font-bold" onClick={doImport} disabled={busy || !prepared.valid.length}>
                 Inviter {prepared.valid.length} salarié{prepared.valid.length > 1 ? 's' : ''}
               </Button>
             </div>
@@ -373,3 +378,7 @@ export default function ImportWorkersDialog({ open, onOpenChange, existingEmails
     </Dialog>
   );
 }
+
+// Objet FIXE : un `{ __html }` neuf à chaque rendu fait réécrire la feuille
+// de style par React (re-calcul de la page, polices rechargées → flash).
+const IMPW_CSS_HTML = { __html: IMPW_CSS };

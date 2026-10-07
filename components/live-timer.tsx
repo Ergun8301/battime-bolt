@@ -18,48 +18,47 @@
 // coupée à une heure inventée. On lui DEMANDE à quelle heure il a fini, comme
 // on lui demande déjà si un trou était de la route ou une pause.
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
-import { supabase } from '@/lib/supabase';
-import { demanderPosition, FENETRE_POSITION_MS } from '@/lib/position';
+// LOT 9 : CE BLOC NE SAIT PLUS QUE MONTRER LE CHRONO QUI TOURNE. Le départ se
+// fait sur la carte du chantier (« Je commence », components/poseur-day.tsx) :
+// plus de liste déroulante à part, le chantier est celui qu'on touche. Et
+// « J'ai fini » marche à tout moment : l'heure réelle est gardée, à la minute
+// (lib/live-session.ts → finish_active_session).
+
+// LOT 12 : UNE PETITE CARTE, PLUS UN GROS BLOC. Le téléphone ne COMMENCE plus
+// de journée (avec une tablette : par le QR seulement ; sans tablette : le
+// salarié saisit ses heures). Il peut seulement TERMINER un pointage ouvert —
+// « Tu es pointé depuis 08:00 — Terminer ma journée » —, par exemple quand il
+// a oublié de rescanner en partant. Plus de bouton « Annuler » (moins d'une
+// minute = annulé tout seul), plus d'endroit demandé au téléphone.
+
+import { useEffect, useState } from 'react';
+import { finishLiveSession, announceLiveChange, type OwnLiveSession } from '@/lib/live-session';
 import { parisHHmm } from '@/lib/utils';
-import { TimeCylinder } from '@/components/time-cylinder';
-import { Play, Square, Clock, AlertTriangle, Loader2, Trash2, MapPin } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
+import { TimeField } from '@/components/time-field';
+import { Square, Clock, AlertTriangle, Loader2 } from 'lucide-react';
+import { addDays, format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import type { Worksite } from '@/lib/types';
 
-interface Session {
-  user_id: string;
-  worksite_id: string;
-  planning_id: string | null;
-  work_date: string;
-  started_at: string;
-}
-
 interface Props {
   userId: string;
-  companyId: string;
-  /** Jour affiché à l'écran (ISO). Un chrono ne se lance que sur le jour courant. */
+  /** Le chrono ouvert, lu et tenu à jour par la journée (useOwnLiveSession). Rien à montrer sans lui. */
+  session: OwnLiveSession | null;
+  /** Jour courant (ISO) : un chrono d'un autre jour est un pointage oublié. */
   today: string;
   worksites: Worksite[];
-  /** Créneau prévu du jour, pour rattacher le pointage au planning quand il existe. */
-  planningIdFor: (worksiteId: string) => string | null;
-  /** Le jour est verrouillé (mois clos) : on n'ouvre pas de chrono. */
-  frozen?: boolean;
   /**
    * L'entreprise a activé l'enregistrement de l'endroit (étape 26).
    *
    * CE DRAPEAU N'EST PAS LA PROTECTION, il en est la façade. La vraie barrière
    * est en base : un trigger efface la position si l'entreprise ne l'a pas
-   * activée, et `stop_active_session` n'écrit rien dans ce cas. Ici, il sert à
-   * ne pas déclencher une demande d'autorisation du navigateur pour une donnée
-   * que la base jettera — demander pour rien est la meilleure façon de faire
-   * refuser quelqu'un.
+   * activée, et la fermeture n'écrit rien dans ce cas. Ici, il sert à ne pas
+   * déclencher une demande d'autorisation du navigateur pour une donnée que la
+   * base jettera — demander pour rien est la meilleure façon de faire refuser
+   * quelqu'un.
    */
   positionActive?: boolean;
-  onSaved: () => void;
 }
 
 const LT_CSS = `
@@ -67,12 +66,17 @@ const LT_CSS = `
 .bt-lt.on{background:#1C2A1F;border:1px solid rgba(70,194,129,.35)}
 .bt-lt.late{background:#2A1E16;border:1px solid rgba(240,145,90,.45)}
 .bt-lt-k{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:#a59c86;font-weight:700;display:flex;align-items:center;gap:6px}
-.bt-lt-site{font-size:16px;font-weight:900;letter-spacing:-.01em;margin-top:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.bt-lt-since{font-family:'JetBrains Mono',monospace;font-size:12px;color:#a59c86;font-weight:600;margin-top:2px}
+.bt-lt{padding:10px 12px}
+.bt-lt-one{display:flex;flex-direction:column;gap:8px}
+.bt-lt-txt{min-width:0}
+.bt-lt-line{display:flex;align-items:baseline;gap:8px;min-width:0;margin-top:3px}
+.bt-lt-site{font-size:14.5px;font-weight:900;letter-spacing:-.01em;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bt-lt-since{flex:none;font-family:'JetBrains Mono',monospace;font-size:12px;color:#a59c86;font-weight:600}
+.bt-lt-one .bt-lt-btn{width:100%;padding:10px 12px;font-size:14.5px;white-space:nowrap}
+.bt-lt-one .bt-lt-k{font-family:inherit;font-size:13px;letter-spacing:0;text-transform:none;color:#cfe9d9;font-weight:800}
 .bt-lt-big{font-family:'JetBrains Mono',monospace;font-size:34px;font-weight:700;color:#2FD584;letter-spacing:-.02em;line-height:1.05;margin-top:6px}
 .bt-lt-big.late{color:#F0915A}
 .bt-lt-row{display:flex;gap:8px;margin-top:11px}
-.bt-lt-sel{flex:1;min-width:0;font-family:inherit;font-size:15px;font-weight:700;padding:11px 12px;border-radius:11px;border:1.5px solid rgba(242,237,227,.28);background:#221D17;color:#F2EDE3}
 .bt-lt-btn{flex:none;display:inline-flex;align-items:center;justify-content:center;gap:7px;border:none;border-radius:11px;padding:11px 18px;font-family:inherit;font-weight:900;font-size:15px;cursor:pointer;background:#FFC21A;color:#15120F;box-shadow:0 3px 0 #C99300}
 .bt-lt-btn.stop{background:#F2EDE3;color:#15120F;box-shadow:0 3px 0 #b5ae9f;flex:1;min-width:0}
 .bt-lt-btn:active{transform:translateY(2px);box-shadow:none}
@@ -97,6 +101,11 @@ const LT_CSS = `
 .bt-lt-geo-a{color:#F2EDE3;text-decoration:underline;text-underline-offset:2px;white-space:nowrap}
 `;
 
+// Toujours le MÊME objet (lot 10) : le chrono se redessine chaque seconde, et un
+// nouvel objet `dangerouslySetInnerHTML` faisait réécrire cette feuille de style
+// à chaque seconde. Seul le texte des secondes doit bouger.
+const LT_CSS_HTML = { __html: LT_CSS };
+
 const fmtElapsed = (ms: number) => {
   const total = Math.max(0, Math.floor(ms / 1000));
   const h = Math.floor(total / 3600);
@@ -105,400 +114,141 @@ const fmtElapsed = (ms: number) => {
   return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 };
 
-export default function LiveTimer({
-  userId, companyId, today, worksites, planningIdFor, frozen, positionActive, onSaved,
-}: Props) {
-  const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(true);
+export default function LiveTimer({ userId, session, today, worksites }: Props) {
   const [busy, setBusy] = useState(false);
-  const [pick, setPick] = useState('');
   const [now, setNow] = useState(() => Date.now());
   // Heure de fin proposée quand le chrono a été oublié d'un jour sur l'autre.
   const [endGuess, setEndGuess] = useState('17:00');
-  // Le serveur a refusé de fermer : début et fin tombent dans le même quart
-  // d'heure. Ce n'est pas une panne, c'est « tu viens de démarrer » — et ça
-  // doit s'accompagner d'une sortie, pas d'un mur.
-  const [tooShort, setTooShort] = useState(false);
-  // Demande de confirmation avant d'effacer un pointage en cours.
-  const [confirmCancel, setConfirmCancel] = useState(false);
-  const mounted = useRef(true);
-
-  const load = useCallback(async () => {
-    const { data, error } = await supabase.from('active_sessions')
-      .select('user_id, worksite_id, planning_id, work_date, started_at')
-      .eq('user_id', userId).maybeSingle();
-    if (!mounted.current) return;
-    // Une erreur de lecture ne doit pas afficher « aucun chrono » : ce serait
-    // inviter le salarié à en ouvrir un second.
-    if (!error) setSession((data as Session) || null);
-    setLoading(false);
-  }, [userId]);
-
-  useEffect(() => {
-    mounted.current = true;
-    load();
-    return () => { mounted.current = false; };
-  }, [load]);
+  // Le chrono qu'on vient de fermer d'ici : on ne le montre plus en attendant
+  // la relecture (sinon un second appui partirait sur un chrono déjà fermé).
+  const [closed, setClosed] = useState<string | null>(null);
+  // Pointage oublié : heure de fin indiquée avant (ou égale à) l'heure de début.
+  const [endBeforeStart, setEndBeforeStart] = useState(false);
 
   // La pendule ne tourne que s'il y a quelque chose à compter.
   useEffect(() => {
     if (!session) return;
+    setNow(Date.now());
     const id = setInterval(() => setNow(Date.now()), 1000);
-    const onFocus = () => { setNow(Date.now()); load(); };
-    window.addEventListener('focus', onFocus);
-    return () => { clearInterval(id); window.removeEventListener('focus', onFocus); };
-  }, [session, load]);
+    return () => clearInterval(id);
+  }, [session]);
 
-  const start = async () => {
-    if (!pick) { toast.error('Choisis un chantier.'); return; }
-    setBusy(true);
-    // On repart propre : sinon l'avertissement du pointage précédent s'affiche
-    // sur le nouveau, et la confirmation d'annulation resterait armée.
-    setTooShort(false);
-    setConfirmCancel(false);
-    try {
-      // L'ENDROIT, AVANT L'ÉCRITURE, ET JAMAIS AU PRIX DU POINTAGE.
-      // `demanderPosition` rend toujours la main — refus, sous-sol, vieux
-      // téléphone donnent `null`. Un salarié qui refuse pointe exactement comme
-      // avant : c'est ce qui rend son refus réellement libre.
-      const p = positionActive ? await demanderPosition() : null;
+  // Un autre chrono (ou plus de chrono) : on repart propre.
+  useEffect(() => { setEndBeforeStart(false); }, [session?.started_at]);
 
-      // ── LES COLONNES NE SONT AJOUTÉES QUE S'IL Y A QUELQUE CHOSE À METTRE ──
-      //
-      // CE N'EST PAS UNE COQUETTERIE. Tant que la migration de l'étape 26 n'est
-      // pas appliquée, ces colonnes n'existent pas : les nommer ferait échouer
-      // l'insertion avec un PGRST204, et PLUS PERSONNE NE POURRAIT DÉMARRER UN
-      // POINTAGE. L'étape 25 pouvait se permettre d'échouer en avance parce
-      // qu'elle ajoutait une fonction neuve ; ici on touche un geste qui marche
-      // déjà, et casser un geste qui marche n'est jamais un compromis
-      // acceptable.
-      //
-      // Quand la position est absente — interrupteur éteint, refus, colonnes
-      // pas encore là — l'écriture est identique au mot près à celle d'hier.
-      const { error } = await supabase.from('active_sessions').insert({
-        user_id: userId, company_id: companyId, worksite_id: pick,
-        planning_id: planningIdFor(pick), work_date: today,
-        // L'HEURE DE LA PRISE N'EST PAS ENVOYÉE D'ICI, ET C'EST DÉLIBÉRÉ.
-        // Elle l'était — `new Date()` — c'est-à-dire l'horloge du téléphone.
-        // Une horloge fausse affichait une heure fausse ; une horloge avancée
-        // de cinq ans produisait une ligne que la purge des douze mois
-        // n'aurait pas effacée avant 2031. On ne promet pas une durée de
-        // conservation en la laissant fixer par l'appareil qu'on conserve.
-        // C'est le trigger qui pose `now()`, côté serveur.
-        ...(p ? {
-          start_lat: p.lat,
-          start_lng: p.lng,
-          start_accuracy_m: p.accuracy == null ? null : Math.round(p.accuracy),
-        } : {}),
-      });
-      if (error) {
-        // 23505 = un chrono tourne déjà. Le dire, et le montrer.
-        if (error.code === '23505') { await load(); toast.error('Un pointage est déjà en cours.'); return; }
-        throw error;
-      }
-      await load();
-      toast.success('Pointage démarré');
-    } catch (e) {
-      toast.error((e as { message?: string })?.message || 'Impossible de démarrer le pointage.');
-    } finally {
-      setBusy(false);
-    }
-  };
+  // Fermé d'ici : on le cache tout de suite, et la journée relit (LIVE_CHANGED).
+  const done = (startedAt: string) => { setClosed(startedAt); announceLiveChange(); };
+
+  // Ouvert un jour PRÉCÉDENT : une fin avant le début est une fin le lendemain
+  // (nuit à cheval, même règle que finish_active_session). Fin = début : rien.
+  const finLendemain = (end: string) => !!session && session.work_date < today && end < parisHHmm(session.started_at);
 
   /**
-   * Ferme le chrono et crée l'intervention, EN UNE SEULE ÉCRITURE.
+   * « J'ai fini » — À N'IMPORTE QUEL MOMENT (lot 9).
    *
-   * Le navigateur écrivait l'intervention puis effaçait le chrono. Si la
-   * seconde requête échouait — un salarié qui perd le réseau sur un chantier,
-   * c'est le quotidien — l'intervention existait et le chrono aussi : à la
-   * réouverture il le fermait à nouveau et créait une SECONDE intervention pour
-   * la même période. Deux fois les mêmes heures, envoyées en paie.
+   * Ferme le chrono et crée l'intervention EN UNE SEULE ÉCRITURE côté serveur
+   * (soit les deux, soit aucune : un réseau qui lâche entre les deux ne crée
+   * plus de doublon). L'heure réelle est gardée : début tronqué à la minute,
+   * fin arrondie au-dessus — jamais une minute contre le salarié.
    *
-   * Les deux écritures vivent maintenant dans une seule transaction côté
-   * serveur : soit les deux, soit aucune. Et l'heure de début y est recalculée
-   * à partir de `started_at`, pour que le fuseau et l'arrondi au quart d'heure
-   * soient faits au même endroit pour tout le monde.
+   * Moins d'une minute : ce n'était pas du travail, c'était un appui de trop.
+   * Le chrono est effacé, SANS message d'erreur — l'ancien mur « tu viens de
+   * démarrer » a disparu avec l'arrondi au quart d'heure.
    */
-  /**
-   * Le serveur refuse de fermer parce que début et fin tombent sur le même
-   * quart d'heure.
-   *
-   * Ce refus est LÉGITIME — on ne fabrique pas des heures qui n'ont pas été
-   * travaillées — mais il annule toute la transaction, donc le `DELETE` de la
-   * session n'a pas lieu non plus : le chrono reste ouvert. Sans issue, le
-   * salarié est enfermé jusqu'au quart d'heure suivant devant un compteur
-   * qu'il ne peut ni arrêter ni effacer.
-   *
-   * On reconnaît ce cas au texte, faute de mieux : la fonction lève un
-   * `raise_exception` générique, sans code distinctif. Une migration qui lui
-   * donne un SQLSTATE propre est écrite dans supabase/migrations (NON
-   * appliquée) ; le jour où elle passe, ce test deviendra un test de code.
-   * S'il cesse de reconnaître le message, on retombe sur l'affichage brut :
-   * dégradé, jamais cassé.
-   */
-  const isTooShort = (e: unknown): boolean => {
-    const msg = (e as { message?: string })?.message || '';
-    // `BT001` est le code que propose la migration jointe (non appliquée). On
-    // ne teste PAS `P0002` : c'est `no_data_found`, un code standard de
-    // PostgreSQL qui peut remonter d'ailleurs — le confondre avec « trop
-    // court » proposerait d'annuler un pointage pour une panne sans rapport.
-    return /m[êe]me quart d/i.test(msg) || (e as { code?: string })?.code === 'BT001';
-  };
-
   const stop = async (endTime?: string) => {
     if (!session) return;
+    // Pointage oublié : une fin avant le début n'a rien à compter, et le serveur
+    // l'annulerait sans un mot. On le dit AVANT, pour qu'il corrige l'heure.
+    // Sauf la NUIT À CHEVAL : chrono d'un jour précédent, fin avant le début =
+    // fin le lendemain (18:00 → 00:30), écrite comme une ligne de nuit.
+    if (endTime && endTime <= parisHHmm(session.started_at) && !finLendemain(endTime)) { setEndBeforeStart(true); return; }
+    setEndBeforeStart(false);
     setBusy(true);
-    setTooShort(false);
     try {
-      // ── ON NE DEMANDE MÊME PAS L'ENDROIT SUR UN POINTAGE OUBLIÉ ────────────
-      //
-      // Le serveur écarte déjà ce point au-delà de quatorze heures. Mais il
-      // l'écarte APRÈS l'avoir reçu — et pour un salarié qui ferme son pointage
-      // le soir chez lui, ce qu'il a reçu est son DOMICILE. Le refuser à
-      // l'arrivée ne le défait pas : la donnée a quitté le téléphone, traversé
-      // le réseau, et il a vu une demande d'autorisation au pire moment.
-      //
-      // `session.started_at` vient du serveur, pas du navigateur : c'est la
-      // seule valeur du calcul qui ne dépende pas de l'horloge du téléphone.
-      // L'autre — `Date.now()` — peut mentir, et c'est exactement pourquoi le
-      // garde SQL reste en place derrière celui-ci. Deux tests, deux rôles :
-      // ici on évite la demande, là-bas on garantit le refus.
-      const ecoule = Date.now() - new Date(session.started_at).getTime();
-      const tropVieux = ecoule > FENETRE_POSITION_MS;
-
-      // Même règle qu'au départ : on ne passe les paramètres que si on a une
-      // position. Sans eux, l'appel est exactement celui d'hier et résout la
-      // fonction à un seul argument — donc fermer un pointage continue de
-      // marcher même si la migration n'est pas passée.
-      const p = positionActive && !tropVieux ? await demanderPosition() : null;
-
-      const { data, error } = await supabase.rpc('stop_active_session', {
-        p_end: endTime ? `${endTime}:00` : null,
-        ...(p ? {
-          p_lat: p.lat,
-          p_lng: p.lng,
-          p_accuracy: p.accuracy == null ? null : Math.round(p.accuracy),
-        } : {}),
-      });
-      if (error) throw error;
-      const row = (Array.isArray(data) ? data[0] : data) as
-        { start_time: string; end_time: string } | null;
-      setSession(null);
-      onSaved();
-      toast.success(row
-        ? `Pointage fermé — ${row.start_time.slice(0, 5)} à ${row.end_time.slice(0, 5)}`
-        : 'Pointage fermé');
+      // Même geste que l'Assistant BEMEXO : lib/live-session.ts. On ne demande
+      // pas l'endroit sur un pointage oublié (domicile) ; `started_at` vient du serveur.
+      // Lot 12 : aucun endroit demandé au téléphone (il ne commence plus de journée).
+      const r = await finishLiveSession({ userId, startedAt: session.started_at, positionActive: false, endTime });
+      if (r.kind === 'saved') {
+        done(session.started_at);
+        const nuit = r.end_time.slice(0, 5) < r.start_time.slice(0, 5) ? ' (le lendemain)' : '';
+        toast.success(`Pointage fermé — ${r.start_time.slice(0, 5)} à ${r.end_time.slice(0, 5)}${nuit}`);
+      } else if (r.kind === 'cancelled') {
+        done(session.started_at);
+        toast.message(endTime ? 'Pointage annulé — rien n’a été compté' : 'Pointage annulé (moins d’une minute)');
+      } else if (r.kind === 'stale') {
+        done(session.started_at);
+        toast.message('Ce pointage était déjà fermé (borne ou autre appareil) — l’écran est à jour.');
+      } else {
+        // Serveur pas encore passé au lot 9 (quart d'heure) : rien n'est écrit,
+        // le chrono reste ouvert. Une ligne, neutre, avec la sortie.
+        toast.message('Rien à compter pour l’instant : réessaie dans quelques minutes.');
+      }
     } catch (e) {
       // Le chrono reste ouvert et reste affiché : rien n'a été écrit.
-      await load();
-      if (isTooShort(e)) {
-        // Pas un toast d'erreur qui disparaît : un état affiché, avec la sortie.
-        setTooShort(true);
-      } else {
-        toast.error((e as { message?: string })?.message || "La fermeture a échoué. Le pointage reste ouvert.");
-      }
+      announceLiveChange();
+      toast.error((e as { message?: string })?.message || 'La fermeture a échoué. Le pointage reste ouvert.');
     } finally {
       setBusy(false);
     }
   };
 
-  /**
-   * Efface un pointage en cours sans rien écrire dans les heures.
-   *
-   * C'EST LA SORTIE QUI MANQUAIT. Il n'existait aucun moyen d'annuler : le
-   * composant ne savait que lire et démarrer. Un salarié qui lançait un chrono
-   * par erreur restait devant un compteur géant jusqu'au quart d'heure suivant.
-   *
-   * Aucune migration n'est nécessaire : la policy `active_sessions_delete`
-   * autorise déjà le salarié à supprimer sa propre session (vérifié en base).
-   *
-   * `.select('user_id')` : une suppression filtrée par la RLS renvoie zéro
-   * ligne SANS erreur. Zéro ligne effacée n'est pas une réussite — et ici le
-   * dire compte double, puisque le but du geste est précisément de sortir.
-   *
-   * ON VISE LA SESSION AFFICHÉE, PAS « la session de ce salarié ». La clé
-   * primaire d'`active_sessions` est le seul `user_id` : un nouveau pointage
-   * REMPLACE l'ancien. Un effacement filtré sur le seul `user_id` supprime donc
-   * ce qui tourne à l'instant, pas ce que l'écran montrait.
-   *
-   * Le scénario : le salarié ouvre la confirmation sur son téléphone, ferme ce
-   * pointage depuis la tablette, en démarre un autre, travaille deux heures,
-   * puis revient au téléphone et appuie sur « Oui, annuler ». Les deux heures
-   * disparaissent, sans un mot. `started_at` est immuable : l'ajouter au filtre
-   * fait que la confirmation périmée ne touche rien, et on le dit.
-   */
-  const cancel = async () => {
-    if (!session) return;
-    setBusy(true);
-    try {
-      const { data, error } = await supabase.from('active_sessions')
-        .delete().eq('user_id', userId).eq('started_at', session.started_at).select('user_id');
-      if (error) throw error;
-      if (!data || data.length === 0) {
-        // Zéro ligne : ce n'est pas ce pointage-là qui tourne. On recharge pour
-        // montrer la vérité plutôt que d'insister sur une vue périmée.
-        await load();
-        setConfirmCancel(false);
-        toast.error("Ce pointage n'est plus celui en cours — l'écran vient d'être remis à jour.");
-        return;
-      }
-      setSession(null);
-      setTooShort(false);
-      setConfirmCancel(false);
-      toast.success('Pointage annulé — rien n’a été compté');
-    } catch (e) {
-      await load();
-      toast.error((e as { message?: string })?.message || "Impossible d'annuler le pointage.");
-    } finally {
-      setBusy(false);
-    }
-  };
+  // Rien qui tourne : plus rien à montrer ici. Le départ est sur les cartes.
+  if (!session || session.started_at === closed) return null;
 
-  if (loading) return null;
-
-  // ── Un chrono tourne ──
-  if (session) {
-    const site = worksites.find((w) => w.id === session.worksite_id);
-    const startedHHmm = parisHHmm(session.started_at);
-    const elapsed = now - new Date(session.started_at).getTime();
-    // Oublié d'un jour sur l'autre : on ne ferme pas à une heure inventée.
-    const stale = session.work_date !== today;
-
-    return (
-      <div className={`bt-lt ${stale ? 'late' : 'on'}`}>
-        <style dangerouslySetInnerHTML={{ __html: LT_CSS }} />
-        <div className="bt-lt-k">
-          {stale ? <><AlertTriangle className="h-3.5 w-3.5" /> Pointage resté ouvert</> : <><Clock className="h-3.5 w-3.5" /> Pointage en cours</>}
-        </div>
-        {/* Chantier et heure de début sur UNE ligne : sur un téléphone, chaque
-            ligne de ce bloc est une ligne de journée qu'on ne voit pas. */}
-        <div className="bt-lt-site">{site?.client_name || 'Chantier'}</div>
-        <div className="bt-lt-since">
-          Commencé {stale ? format(parseISO(session.work_date), 'EEEE d MMMM', { locale: fr }) + ' ' : ''}à {startedHHmm}
-        </div>
-
-        {/* La confirmation remplace les boutons, elle ne s'ajoute pas : pas de
-            saut de mise en page, et le geste dangereux reste explicite. */}
-        {confirmCancel ? (
-          <>
-            <div className="bt-lt-note warn">
-              Annuler ce pointage&nbsp;? Les <b>{stale ? 'heures écoulées' : fmtElapsed(elapsed)}</b> seront
-              perdues et rien ne sera compté.
-            </div>
-            <div className="bt-lt-row">
-              <button type="button" className="bt-lt-btn danger" disabled={busy} onClick={cancel}>
-                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />} Oui, annuler
-              </button>
-              <button type="button" className="bt-lt-btn ghost" disabled={busy} onClick={() => setConfirmCancel(false)}>
-                Non
-              </button>
-            </div>
-          </>
-        ) : stale ? (
-          <>
-            <div className="bt-lt-note">
-              Ce pointage a été ouvert <b>un autre jour</b> et n&apos;a jamais été fermé.
-              Personne ne va deviner l&apos;heure à ta place : indique à quelle heure tu as fini.
-            </div>
-            <div className="bt-lt-ask">
-              <div className="bt-lt-asklab">Tu as fini à quelle heure&nbsp;?</div>
-              <TimeCylinder value={endGuess} onChange={setEndGuess} />
-            </div>
-            <div className="bt-lt-row">
-              <button type="button" className="bt-lt-btn stop" disabled={busy} onClick={() => stop(endGuess)}>
-                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Square className="h-4 w-4" />} Fermer ce pointage
-              </button>
-              <button type="button" className="bt-lt-btn ghost" disabled={busy} onClick={() => setConfirmCancel(true)} aria-label="Annuler ce pointage">
-                Annuler
-              </button>
-            </div>
-            {/* Un pointage oublié peut LUI AUSSI tomber sur le même quart
-                d'heure : commencé à 16:58 hier, fin indiquée à 17:00. Sans
-                cette ligne, l'appui ne produisait rien du tout — ni ligne, ni
-                message. Un échec muet est pire que le mur qu'on remplace. */}
-            {tooShort && (
-              <div className="bt-lt-note warn">
-                L&apos;heure indiquée tombe sur <b>le même quart d&apos;heure</b> que le début :
-                il n&apos;y a rien à compter. Indique une autre heure de fin, ou annule ce pointage.
-              </div>
-            )}
-          </>
-        ) : (
-          <>
-            <div className="bt-lt-big">{fmtElapsed(elapsed)}</div>
-            <div className="bt-lt-row">
-              <button type="button" className="bt-lt-btn stop" disabled={busy} onClick={() => stop()}>
-                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Square className="h-4 w-4" />} J&apos;ai fini
-              </button>
-              <button type="button" className="bt-lt-btn ghost" disabled={busy} onClick={() => setConfirmCancel(true)} aria-label="Annuler ce pointage">
-                Annuler
-              </button>
-            </div>
-            {tooShort ? (
-              <div className="bt-lt-note warn">
-                Tu viens de démarrer : il n&apos;y a <b>pas encore un quart d&apos;heure</b> à compter.
-                Attends quelques minutes, ou annule ce pointage.
-              </div>
-            ) : (
-              <div className="bt-lt-note">Rien n&apos;est compté tant que tu n&apos;as pas fermé.</div>
-            )}
-            {/* La mention de l'endroit ne figure QUE sur la carte de départ
-                (plus bas), pas ici. Une information se donne AVANT la collecte,
-                pas pendant : redire la même chose sur le chrono en marche
-                n'apprend rien à quelqu'un qui l'a déjà lue, et deux rappels
-                pour un seul fait finissent par ressembler à une alerte. */}
-          </>
-        )}
-      </div>
-    );
-  }
-
-  // ── Aucun chrono ──
-  if (frozen) return null;
+  const site = worksites.find((w) => w.id === session.worksite_id);
+  const startedHHmm = parisHHmm(session.started_at);
+  const elapsed = now - new Date(session.started_at).getTime();
+  // Oublié d'un jour sur l'autre : on ne ferme pas à une heure inventée.
+  const stale = session.work_date !== today;
 
   return (
-    <div className="bt-lt">
-      <style dangerouslySetInnerHTML={{ __html: LT_CSS }} />
-      <div className="bt-lt-k"><Clock className="h-3.5 w-3.5" /> Pointer en direct</div>
-      <div className="bt-lt-row">
-        <select className="bt-lt-sel" value={pick} onChange={(e) => setPick(e.target.value)}>
-          <option value="">Choisis un chantier…</option>
-          {worksites.map((w) => <option key={w.id} value={w.id}>{w.client_name}</option>)}
-        </select>
-        <button type="button" className="bt-lt-btn" disabled={busy || !pick} onClick={start}>
-          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />} Je commence
-        </button>
-      </div>
-      <div className="bt-lt-note">
-        Tu peux aussi noter tes heures à la main, comme avant. Le pointage en direct évite juste
-        d&apos;avoir à s&apos;en souvenir le soir.
-      </div>
-      {/* UNE PHRASE, À L'ENDROIT DU POINTAGE, AVANT LE PREMIER APPUI.
-          C'est tout ce qui reste de l'écran plein écran de l'étape 27 — et
-          c'est suffisant : l'obligation est que l'information soit portée à la
-          connaissance du salarié avant la collecte, pas qu'elle lui barre la
-          route. Elle dit les trois choses qui comptent pour lui — quoi, quelle
-          étendue, et qu'il peut refuser — et le lien mène au détail complet
-          pour ceux qui veulent vraiment savoir. */}
-      {positionActive && (
-        <div className="bt-lt-geo">
-          <MapPin className="h-3.5 w-3.5" />
-          <span>
-            Ton entreprise note <b style={{ color: '#F2EDE3' }}>l&apos;endroit</b> au départ et à la
-            fin du pointage — rien entre les deux, et tu peux refuser.{' '}
-            {/* `Link` ET PAS `<a>`, ET UNE ANCRE.
-                Un `<a>` brut recharge la page entière : le salarié quitte
-                l'application pour lire une page légale, et doit la relancer
-                pour pointer. C'est la friction qu'on vient de retirer, remise
-                par la petite porte. `Link` reste dans l'application, et le
-                retour arrière le ramène là où il en était — c'est d'ailleurs
-                ce que font déjà les autres écrans du dépôt.
-
-                L'ancre l'amène à la section qui le concerne, pas en haut de
-                douze sections. Elle existe : `id="endroit"` sur le titre, et
-                le contrôle mécanique est dans `out/confidentialite.html`. */}
-            <Link href="/confidentialite#endroit" className="bt-lt-geo-a">En savoir plus</Link>
-          </span>
+    <div className={`bt-lt ${stale ? 'late' : 'on'}`} data-testid="live-timer">
+      <style dangerouslySetInnerHTML={LT_CSS_HTML} />
+      {stale ? (
+        <>
+          <div className="bt-lt-k"><AlertTriangle className="h-3.5 w-3.5" /> Sortie oubliée</div>
+          <div className="bt-lt-line">
+            <span className="bt-lt-site">{site?.client_name || 'Chantier'}</span>
+            <span className="bt-lt-since">depuis {format(parseISO(session.work_date), 'EEEE d', { locale: fr })} {startedHHmm}</span>
+          </div>
+          <div className="bt-lt-ask">
+            <div className="bt-lt-asklab">Tu as fini à quelle heure&nbsp;?</div>
+            <TimeField value={endGuess} onChange={(v) => { setEndGuess(v); setEndBeforeStart(false); }} ariaLabel="Heure de fin" testId="lt-end" />
+            {/* Fin avant le début sur un chrono de la veille : la nuit compte,
+                et on le DIT avant d'écrire (18:00 → 06:30 = douze heures et demie). */}
+            {finLendemain(endGuess) && (
+              <div className="bt-lt-note" data-testid="fin-lendemain">
+                Fin <b>le lendemain</b> ({format(addDays(parseISO(session.work_date), 1), 'EEEE d MMMM', { locale: fr })}) à {endGuess} :
+                la nuit est comptée sur la journée du début.
+              </div>
+            )}
+          </div>
+          <div className="bt-lt-row">
+            <button type="button" className="bt-lt-btn stop" disabled={busy || !endGuess} onClick={() => stop(endGuess)} data-testid="lt-finish">
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Square className="h-4 w-4" />} Terminer ma journée
+            </button>
+          </div>
+          {endBeforeStart && (
+            <div className="bt-lt-note warn">
+              {session.work_date < today
+                ? <>Fin et début à la même heure ({startedHHmm})&nbsp;: rien à compter. Indique l&apos;heure où tu as fini.</>
+                : <>Indique une heure <b>après {startedHHmm}</b>.</>}
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="bt-lt-one">
+          <div className="bt-lt-txt">
+            <div className="bt-lt-k"><Clock className="h-3.5 w-3.5" /> Tu es pointé depuis {startedHHmm}</div>
+            <div className="bt-lt-line">
+              <span className="bt-lt-site">{site?.client_name || 'Chantier'}</span>
+              <span className="bt-lt-since bt-lt-el" title="Temps écoulé">{fmtElapsed(elapsed)}</span>
+            </div>
+          </div>
+          <button type="button" className="bt-lt-btn stop" disabled={busy} onClick={() => stop()} data-testid="lt-finish">
+            {busy && <Loader2 className="h-4 w-4 animate-spin" />} Terminer ma journée
+          </button>
         </div>
       )}
     </div>

@@ -9,6 +9,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { requestLeave } from '@/lib/leave';
 import { LeaveRequest, LeaveType } from '@/lib/types';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -32,12 +33,13 @@ const TYPE_LABEL: Record<LeaveType, string> = { conge: 'Congé', maladie: 'Arrê
 
 const LR_CSS = `
 .bt-lr-seg{display:flex;gap:6px;margin-bottom:12px}
-.bt-lr-segbtn{flex:1;padding:9px 6px;border-radius:10px;border:1.5px solid rgba(21,18,15,.18);background:#fff;font-family:inherit;font-weight:800;font-size:12.5px;color:#15120F;cursor:pointer}
+.bt-lr-segbtn{flex:1;min-width:0;padding:9px 6px;border-radius:10px;border:1.5px solid rgba(21,18,15,.18);background:#fff;font-family:inherit;font-weight:800;font-size:12.5px;color:#15120F;cursor:pointer}
 .bt-lr-segbtn.on{background:#FFC21A;border-color:#15120F;box-shadow:0 2px 0 #C99300}
 .bt-lr-l{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:#6E6A63;font-weight:700;margin:0 0 3px;display:block}
 .bt-lr-i{width:100%;font-family:'Archivo',sans-serif;font-size:14px;font-weight:500;padding:9px 11px;border:1.5px solid rgba(21,18,15,.18);border-radius:10px;background:#fff;outline:none;color:#15120F}
 .bt-lr-i:focus{border-color:#15120F}
-.bt-lr-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.bt-lr-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:10px}
+.bt-lr-grid .bt-lr-i{min-width:0}
 .bt-lr-row{display:flex;align-items:center;gap:9px;border:1px solid rgba(21,18,15,.12);border-radius:11px;padding:9px 11px;background:#fff;margin-bottom:6px}
 .bt-lr-row-main{flex:1;min-width:0}
 .bt-lr-row-t{font-size:13.5px;font-weight:800;color:#15120F}
@@ -47,7 +49,7 @@ const LR_CSS = `
 .bt-lr-tag.approved{background:#E4F2E9;color:#1F7A4D;border:1px solid #B7DCC4}
 .bt-lr-tag.rejected{background:#FBE3D8;color:#C0461F;border:1px solid #E8B79E}
 .bt-lr-empty{text-align:center;color:#8a8378;font-size:13px;padding:18px 0}
-.bt-lr-note{font-size:12px;color:#8a8378;margin-top:3px}
+.bt-lr-note{font-size:12px;color:#8a8378;margin-top:3px;overflow-wrap:anywhere}
 `;
 
 export default function LeaveRequestDialog({ open, onOpenChange, userId }: Props) {
@@ -73,10 +75,7 @@ export default function LeaveRequestDialog({ open, onOpenChange, userId }: Props
     if (end < start) { toast.error('La date de fin est avant le début'); return; }
     setSaving(true);
     try {
-      const { error } = await supabase.rpc('request_leave', {
-        p_type: type, p_start_date: start, p_end_date: end, p_note: note.trim() || null,
-      });
-      if (error) throw error;
+      await requestLeave({ type, start, end, note });
       toast.success('Demande envoyée');
       setStart(''); setEnd(''); setNote(''); setType('conge'); setAdding(false);
       fetchRows();
@@ -114,7 +113,7 @@ export default function LeaveRequestDialog({ open, onOpenChange, userId }: Props
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bt-skin max-w-md max-h-[88vh] overflow-y-auto">
-        <style dangerouslySetInnerHTML={{ __html: LR_CSS }} />
+        <style dangerouslySetInnerHTML={LR_CSS_HTML} />
         <DialogHeader><DialogTitle>Mes congés</DialogTitle></DialogHeader>
 
         {!adding && (
@@ -145,7 +144,7 @@ export default function LeaveRequestDialog({ open, onOpenChange, userId }: Props
             </div>
             <span className="bt-lr-l">Mot pour le bureau (facultatif)</span>
             <input className="bt-lr-i" value={note} onChange={(e) => setNote(e.target.value)} placeholder="ex. mariage de ma sœur" />
-            <div className="flex gap-2 pt-3">
+            <div className="flex flex-wrap gap-2 pt-3">
               <Button variant="outline" onClick={() => setAdding(false)} disabled={saving}>Annuler</Button>
               <Button className="flex-1 font-bold" onClick={submit} disabled={saving}>
                 {saving && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Envoyer la demande
@@ -182,3 +181,7 @@ export default function LeaveRequestDialog({ open, onOpenChange, userId }: Props
     </Dialog>
   );
 }
+
+// Objet FIXE : un `{ __html }` neuf à chaque rendu fait réécrire la feuille
+// de style par React (re-calcul de la page, polices rechargées → flash).
+const LR_CSS_HTML = { __html: LR_CSS };

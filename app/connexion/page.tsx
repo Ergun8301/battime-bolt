@@ -430,7 +430,7 @@ export default function ConnexionPage() {
 
   return (
     <>
-      <style dangerouslySetInnerHTML={{ __html: AUTH_CSS }} />
+      <style dangerouslySetInnerHTML={AUTH_CSS_HTML} />
       <div className="bt-auth">
         {processingHash ? (
           <div className="bt-center">
@@ -465,3 +465,7 @@ export default function ConnexionPage() {
     </>
   );
 }
+
+// Objet FIXE : un `{ __html }` neuf à chaque rendu fait réécrire la feuille
+// de style par React (re-calcul de la page, polices rechargées → flash).
+const AUTH_CSS_HTML = { __html: AUTH_CSS };
