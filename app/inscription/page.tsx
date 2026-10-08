@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { passwordProblem, PASSWORD_PLACEHOLDER, PASSWORD_RULE } from '@/lib/password';
@@ -9,8 +9,8 @@ import { ASIDE_FULL } from './_illustrations';
 
 // Design "noir + jaune chantier" (maquette Claude Design). Habillage uniquement :
 // la creation de compte (signUp + metadonnees -> trigger qui cree l'entreprise +
-// rattache en admin), la redirection /admin et la gestion d'erreurs restent
-// INCHANGEES.
+// rattache en admin) et la redirection /admin restent INCHANGEES. Seule
+// nouveauté : une adresse qui a déjà un compte reçoit un message dédié.
 //
 // IMPORTANT — repartition des roles :
 //  - Le PANNEAU NOIR (aside, vitrine 3D) vient du designer : injecte tel quel
@@ -64,6 +64,7 @@ const SIGNUP_CSS = `
 .bt-exists-btns a{display:flex;align-items:center;justify-content:center;text-align:center;text-decoration:none;font-weight:800;font-size:14.5px;padding:11px 8px;border-radius:10px}
 .bt-exists-login{background:#15120F;color:#FFC21A}
 .bt-exists-reset{background:#fff;color:#15120F;border:1.5px solid rgba(21,18,15,.25)}
+.bt-exists-n{font-size:12.5px;font-weight:500;color:#6E6A63;margin:10px 0 0;line-height:1.4}
 @media(min-width:881px){
   .bt-split{height:100vh;height:100svh;min-height:0}
   .bt-formcol{height:100vh;height:100svh;overflow-y:auto}
@@ -114,9 +115,13 @@ export default function InscriptionPage() {
   const [info, setInfo] = useState<string | null>(null);
   // L'adresse a déjà un compte : on le dit, avec « Se connecter » et « Mot de passe oublié ».
   const [exists, setExists] = useState(false);
+  const loginLink = useRef<HTMLAnchorElement>(null);
   const router = useRouter();
   // Événement GA4 « sign_up » : une seule fois par compte créé.
   const signUpTracked = useRef(false);
+
+  // Au clavier, on arrive directement sur « Se connecter ».
+  useEffect(() => { if (exists) loginLink.current?.focus(); }, [exists]);
 
   // ── Creation de compte (adresse déjà inscrite : message dédié, voir plus bas) ──
   const handleSignup = async (e: React.FormEvent) => {
@@ -156,10 +161,11 @@ export default function InscriptionPage() {
         return;
       }
 
-      // identities vide = adresse déjà inscrite et confirmée : Supabase répond
-      // « OK » sans créer de compte ni envoyer d'e-mail (pour ne pas révéler
-      // qu'un compte existe). Annoncer « vérifiez vos e-mails » laisserait la
-      // personne attendre un message qui ne viendra jamais.
+      // identities vide = adresse qui a déjà un compte (confirmé, ou salarié
+      // invité) : Supabase répond « OK » sans créer de compte (pour ne pas
+      // révéler qu'un compte existe) et sans e-mail pour un compte confirmé.
+      // Annoncer « vérifiez vos e-mails » laisserait la personne attendre un
+      // message qui ne viendra jamais.
       if (data.user && data.user.identities?.length === 0) {
         setExists(true);
         return;
@@ -167,9 +173,8 @@ export default function InscriptionPage() {
 
       // Mesure GA4 (ne part que si la mesure d'audience est acceptée).
       // Aucune donnée personnelle : seulement la méthode d'inscription.
-      // identities vide = e-mail déjà inscrit (Supabase répond « OK » sans
-      // créer de compte) : pas de sign_up dans ce cas.
-      const compteCree = !!data.user && (data.user.identities?.length ?? 1) > 0;
+      // L'adresse déjà inscrite est sortie plus haut : pas de sign_up pour elle.
+      const compteCree = !!data.user;
       if (compteCree && !signUpTracked.current) {
         signUpTracked.current = true;
         (window as unknown as { bxTrack?: (n: string, p: object) => void }).bxTrack?.('sign_up', { method: 'email' });
@@ -180,10 +185,10 @@ export default function InscriptionPage() {
         return;
       }
 
-      setInfo('Compte cree. Verifiez votre email pour activer votre acces, puis connectez-vous.');
+      setInfo('Compte créé. Vérifiez votre email pour activer votre accès, puis connectez-vous.');
     } catch (err) {
       console.error('Signup error:', err);
-      setError('Une erreur est survenue lors de la creation du compte. Veuillez reessayer.');
+      setError('Une erreur est survenue lors de la création du compte. Veuillez réessayer.');
     } finally {
       setLoading(false);
     }
@@ -254,11 +259,12 @@ export default function InscriptionPage() {
                 {exists && (
                   <div className="bt-exists" role="alert">
                     <p className="bt-exists-t">Un compte existe déjà avec cet e-mail.</p>
-                    <p className="bt-exists-s">Connectez-vous. Mot de passe perdu&nbsp;? Choisissez-en un nouveau : le lien arrive par e-mail.</p>
+                    <p className="bt-exists-s">Connectez-vous. Mot de passe oublié&nbsp;? Cliquez ci-dessous pour recevoir un lien et en choisir un nouveau.</p>
                     <div className="bt-exists-btns">
-                      <Link href="/connexion" className="bt-exists-login">Se connecter</Link>
+                      <Link href="/connexion" className="bt-exists-login" ref={loginLink}>Se connecter</Link>
                       <Link href="/mot-de-passe-oublie" className="bt-exists-reset">Mot de passe oublié</Link>
                     </div>
+                    <p className="bt-exists-n">Salarié invité par votre employeur&nbsp;? Ouvrez le lien de l&apos;e-mail d&apos;invitation.</p>
                   </div>
                 )}
 

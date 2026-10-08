@@ -38,7 +38,7 @@ const MODES = {
   // Nouvelle adresse : 200, une identité, e-mail de confirmation envoyé.
   nouveau: { status: 200, body: user([identity]) },
   // Réglage Supabase qui renvoie une erreur au lieu de masquer.
-  erreur: { status: 422, body: { code: 422, error_code: 'user_already_exists', msg: 'User already registered' } },
+  erreur: { status: 422, headers: { 'x-supabase-api-version': '2024-01-01' }, body: { code: 'user_already_exists', message: 'User already registered' } },
 };
 let mode = 'existant';
 const signups = [];
@@ -53,12 +53,17 @@ async function page(viewport) {
     if (u.pathname.endsWith('/auth/v1/signup')) {
       signups.push(JSON.parse(r.request().postData() || '{}'));
       const m = MODES[mode];
-      return r.fulfill({ status: m.status, contentType: 'application/json', body: JSON.stringify(m.body) });
+      return r.fulfill({ status: m.status, headers: m.headers, contentType: 'application/json', body: JSON.stringify(m.body) });
     }
     return r.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
   });
   // Aucune requête tierce (polices Google, mesure d'audience) pendant le test.
   await ctx.route(/^https?:\/\/(?!127\.0\.0\.1|localhost)(?!.*supabase\.co)/, (r) => r.abort());
+  // Espion GA4 : la page appelle window.bxTrack('sign_up') pour un compte créé.
+  await ctx.addInitScript(() => {
+    window.__events = [];
+    Object.defineProperty(window, 'bxTrack', { configurable: false, get: () => (n) => window.__events.push(n), set: () => {} });
+  });
   const p = await ctx.newPage();
   await p.goto(`http://127.0.0.1:${PORT}/inscription`);
   await p.waitForSelector('#company-name');
@@ -71,7 +76,8 @@ async function fill(p, email = 'patron@exemple.fr') {
   await p.fill('#signup-email', email);
   await p.fill('#signup-password', 'Bemexo2026Test');
 }
-const submit = async (p) => { await p.click('button[type=submit]'); await p.waitForTimeout(600); };
+const submit = async (p) => { await p.click('button[type=submit]'); await p.waitForSelector('.bt-exists, .bt-info, .bt-err'); };
+const signUps = (p) => p.evaluate(() => window.__events.filter((n) => n === 'sign_up').length);
 
 for (const [name, vp] of [['telephone', { width: 390, height: 844 }], ['ordinateur', { width: 1366, height: 860 }]]) {
   console.log(`\n── ${name} ──`);
@@ -83,11 +89,14 @@ for (const [name, vp] of [['telephone', { width: 390, height: 844 }], ['ordinate
   const box = p.locator('.bt-exists');
   check(await box.isVisible(), 'encadré « compte existant » visible');
   check((await box.textContent()).includes('Un compte existe déjà avec cet e-mail.'), 'texte « Un compte existe déjà avec cet e-mail. »');
-  check(!(await p.locator('.bt-info').count()), 'PAS de « Compte cree. Verifiez votre email »');
+  check(!(await p.locator('.bt-info').count()), 'PAS de « Compte créé. Vérifiez votre email »');
   check(!(await p.locator('.bt-err').count()), 'pas d\'erreur rouge');
   check(await p.locator('.bt-exists a', { hasText: 'Se connecter' }).getAttribute('href') === '/connexion', 'bouton « Se connecter » → /connexion');
   check(await p.locator('.bt-exists a', { hasText: 'Mot de passe oublié' }).getAttribute('href') === '/mot-de-passe-oublie', 'bouton « Mot de passe oublié » → /mot-de-passe-oublie');
   check(signups.length === 1 && signups[0].email === 'patron@exemple.fr' && signups[0].data?.company_name === 'Mister Kebab Grill', 'un seul appel signUp, adresse et entreprise transmises');
+  check(await signUps(p) === 0, 'aucun événement GA4 « sign_up » pour un doublon');
+  check(await p.evaluate(() => document.activeElement?.textContent) === 'Se connecter', 'focus clavier sur « Se connecter »');
+  check((await box.textContent()).includes('Salarié invité par votre employeur'), 'ligne pour le salarié invité');
   await box.scrollIntoViewIfNeeded();
   await p.screenshot({ path: `${SH}/1-compte-existant-${name}.png`, fullPage: false });
 
@@ -114,7 +123,8 @@ for (const [name, vp] of [['telephone', { width: 390, height: 844 }], ['ordinate
   mode = 'nouveau';
   ({ ctx, p } = await page(vp));
   await fill(p, 'nouveau@exemple.fr'); await submit(p);
-  check(await p.locator('.bt-info').isVisible(), '« Compte cree. Verifiez votre email… » affiché');
+  check((await p.locator('.bt-info').textContent()).startsWith('Compte créé. Vérifiez votre email'), '« Compte créé. Vérifiez votre email… » affiché');
+  check(await signUps(p) === 1, 'un événement GA4 « sign_up » pour le compte créé');
   check(!(await p.locator('.bt-exists').count()), 'pas d\'encadré « compte existant »');
   await p.screenshot({ path: `${SH}/2-nouveau-compte-${name}.png`, fullPage: false });
   await ctx.close();
