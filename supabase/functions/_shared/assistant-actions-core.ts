@@ -144,9 +144,9 @@ export const GUIDE: GuideEntry[] = [
     etapes: ['Cliquez une bulle du planning → « Documents ».', '« Photo » ou « Fichier ».', '« Envoyer au client » pour les partager.'], lien: 'planning'
   },
   {
-    id: 'relancer', mots: ['relancer invitation', 'invitation', 'pas recu', 'renvoyer'],
-    titre: 'Relancer une invitation',
-    etapes: ['Sous le planning : « Invitations en attente ».', '« Relancer » sur la bonne ligne.', 'Vérifiez l’adresse email si rien n’arrive.'], lien: 'salaries'
+    id: 'relancer', mots: ['relancer invitation', 'invitation', 'pas recu', 'renvoyer', 'envoyer invitation', 'envoyer les invitations', 'activer compte', 'pas active'],
+    titre: 'Envoyer ou renvoyer une invitation',
+    etapes: ['Au-dessus du planning : « Voir la liste » (salariés qui n’ont pas encore activé leur compte).', '« Envoyer l’invitation » ou « Renvoyer » sur la bonne ligne, ou « Envoyer toutes les invitations ».', 'Vérifiez l’adresse e-mail si rien n’arrive.'], lien: 'salaries'
   },
   {
     id: 'semaine', mots: ['semaine prochaine', 'changer de semaine', 'semaine suivante'],
@@ -186,7 +186,7 @@ export const GUIDE: GuideEntry[] = [
   {
     id: 'annuler_invitation', mots: ['annuler invitation', 'supprimer invitation', 'retirer invitation'],
     titre: 'Annuler une invitation',
-    etapes: ['Sous le planning : « Invitations en attente ».', 'La croix sur la bonne ligne.', 'Le compte jamais utilisé est retiré.'], lien: 'salaries'
+    etapes: ['Au-dessus du planning : « Voir la liste ».', 'La croix ✕ sur la bonne ligne, puis confirmez.', 'Le compte jamais utilisé est retiré.'], lien: 'salaries'
   },
   {
     id: 'rappel', mots: ['rappel', 'relancer salarie', 'oublie d envoyer', 'pas envoye ses heures', 'cloche'],

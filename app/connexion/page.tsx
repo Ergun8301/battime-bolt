@@ -5,8 +5,10 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { passwordProblem, PASSWORD_PLACEHOLDER, PASSWORD_RULE } from '@/lib/password';
 import { PasswordInput } from '@/components/password-input';
+import { useAuth } from '@/components/auth-provider';
 import Link from 'next/link';
 import { SAL_ILLUS, ENT_ILLUS } from './_illustrations';
+import { AUTH_CSS_HTML } from './_auth-style';
 
 // Design "noir + jaune chantier" (maquette Claude Design v2). Habillage uniquement :
 // toute la logique d'authentification (signInWithPassword, lecture du role +
@@ -15,75 +17,27 @@ import { SAL_ILLUS, ENT_ILLUS } from './_illustrations';
 // connexion pour tous, c'est le role qui pilote la redirection.
 // Les illustrations des panneaux noirs (vrais ecrans Ma journee / Planning) sont
 // du HTML statique decoratif injecte tel quel (_illustrations.ts).
-const AUTH_CSS = `
-@import url('/fonts/fonts.css');
-.bt-auth{font-family:'Archivo',sans-serif;background:#F2EDE3;color:#15120F;-webkit-font-smoothing:antialiased;min-height:100vh;min-height:100svh}
-.bt-auth *{box-sizing:border-box}
-.bt-auth .mono{font-family:'JetBrains Mono',monospace}
-.bt-mono{font-family:'JetBrains Mono',monospace}
-.bt-split{display:grid;grid-template-columns:1fr 1fr;min-height:100vh;min-height:100svh;position:relative}
-.bt-leftcol{display:flex;flex-direction:column;justify-content:center;padding:32px 7vw;min-width:0}
-.bt-wrap{width:100%;max-width:480px;margin:0 auto}
-.bt-logo{display:flex;align-items:center;justify-content:center;margin-bottom:28px}
-.bt-logo-badge{display:inline-flex;align-items:center;justify-content:center;background:#15120F;border-radius:16px;padding:16px 30px;box-shadow:0 14px 30px -14px rgba(21,18,15,.5);text-decoration:none;max-width:100%}
-.bt-logo-badge-img{width:clamp(196px,52vw,264px);height:auto;display:block;max-width:100%}
-.bt-vis-brand{position:absolute;bottom:clamp(34px,5vh,52px);left:50%;transform:translateX(-50%);width:clamp(200px,24vw,262px);height:auto;opacity:.97;pointer-events:none;z-index:2}
-.bt-h1{font-size:25px;line-height:1.15;font-weight:900;letter-spacing:-.02em;margin:0 0 10px;text-align:center}
-.bt-h1-accent{color:#9a7c14}
-.bt-sub{font-size:15px;color:#6E6A63;font-weight:500;margin:0 0 20px;text-align:center}
-.bt-tabs{display:grid;grid-template-columns:1fr 1fr;gap:6px;background:#E4DCCE;border-radius:12px;padding:5px;margin-bottom:20px}
-.bt-tab{cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;border-radius:9px;font-weight:800;font-size:15px;color:#6E6A63;border:none;background:transparent;font-family:'Archivo',sans-serif}
-.bt-tab.is-active{background:#15120F;color:#FFC21A}
-.bt-label{display:block;font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#6E6A63;font-weight:700;margin-bottom:6px}
-.bt-field{width:100%;font-family:'Archivo',sans-serif;font-size:16px;font-weight:500;padding:13px 16px;border:1.5px solid rgba(21,18,15,.18);border-radius:11px;background:#FBF8F2;outline:none;color:#15120F}
-.bt-field::placeholder{color:#a39d92}
-.bt-field:focus{border-color:#15120F;background:#fff}
-.bt-forgot{font-size:12.5px;font-weight:700;color:#9a7c14;text-decoration:none}
-.bt-ybtn{width:100%;border:none;cursor:pointer;background:#FFC21A;color:#15120F;font-family:'Archivo',sans-serif;font-weight:900;font-size:17px;padding:16px;border-radius:12px;box-shadow:0 4px 0 #C99300;transition:transform .12s ease, box-shadow .12s ease}
-.bt-ybtn:hover{transform:translateY(-2px);box-shadow:0 6px 0 #C99300}
-.bt-ybtn:active{transform:translateY(2px);box-shadow:0 1px 0 #C99300}
-.bt-ybtn:disabled{opacity:.65;cursor:default;transform:none;box-shadow:0 4px 0 #C99300}
-.bt-foot{text-align:center;font-size:14.5px;color:#6E6A63;font-weight:500;margin:18px 0 0}
-.bt-foot a{font-weight:800;color:#15120F;text-decoration:none;border-bottom:2px solid #FFC21A}
-.bt-err{background:#fce8e6;border:1px solid #f3b4ad;color:#9a2820;font-size:14px;font-weight:600;border-radius:10px;padding:11px 14px;margin-bottom:16px}
-.bt-visual{position:relative;background:radial-gradient(140% 120% at 50% 43%,rgba(0,0,0,0) 55%,rgba(0,0,0,.4) 100%),radial-gradient(circle at 50% 42%,#332818 0%,#20190f 50%,#15120F 80%);overflow:hidden;display:flex;align-items:center;justify-content:center;padding:44px 40px clamp(84px,11.5vh,112px);min-width:0}
-.bt-ruban-center{position:absolute;top:0;left:calc(50% - 6px);width:12px;height:100%;background:repeating-linear-gradient(45deg,#15120F 0 9px,#FFC21A 9px 18px);z-index:5;pointer-events:none}
-.bt-vis-inner{display:flex;flex-direction:column;align-items:center;position:relative;z-index:1;filter:drop-shadow(0 44px 74px rgba(0,0,0,.62));animation:bt-vis-float 7s ease-in-out infinite}
-@keyframes bt-vis-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
-.bt-vis-halo{position:absolute;top:43%;left:50%;transform:translate(-50%,-50%);width:min(64vh,620px);height:min(64vh,620px);border-radius:50%;background:radial-gradient(circle,rgba(255,194,26,.16),transparent 62%);filter:blur(22px);z-index:0;pointer-events:none}
-.bt-vis-xbg{position:absolute;z-index:0;pointer-events:none;height:auto}
-.bt-vis-xbg-1{bottom:-64px;right:-78px;width:380px;opacity:.09;transform:rotate(12deg)}
-.bt-vis-xbg-2{top:3%;left:-44px;width:168px;opacity:.08;transform:rotate(-18deg)}
-.bt-vis-xbg-3{top:-26px;right:11%;width:148px;opacity:.075;transform:rotate(-8deg)}
-.bt-vis-xbg-4{bottom:7%;left:4%;width:196px;opacity:.08;transform:rotate(14deg)}
-.bt-vis-xbg-5{top:45%;right:-46px;width:118px;opacity:.06;transform:rotate(-15deg)}
-@media(prefers-reduced-motion:reduce){.bt-vis-inner{animation:none}}
-.bt-vis-tagline{display:none;font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:#FFC21A;text-align:center;font-weight:700}
-.bt-card{width:100%;max-width:420px;background:#fff;border:1px solid rgba(21,18,15,.12);border-radius:18px;padding:34px 30px;box-shadow:0 24px 50px -24px rgba(21,18,15,.4)}
-.bt-center{min-height:100vh;min-height:100svh;display:flex;align-items:center;justify-content:center;padding:24px}
-.bt-spin{width:34px;height:34px;border:3px solid rgba(21,18,15,.18);border-top-color:#15120F;border-radius:50%;animation:btspin .8s linear infinite;margin:0 auto}
-@keyframes btspin{to{transform:rotate(360deg)}}
-@media(min-width:881px){
-  .bt-split{height:100vh;height:100svh;min-height:0}
-  .bt-leftcol{overflow-y:auto}
-}
-@media(max-width:880px){
-  .bt-split{grid-template-columns:1fr}
-  .bt-leftcol{order:2;padding:40px 28px}
-  .bt-visual{order:1;min-height:0;padding:24px}
-  .bt-vis-inner{display:none}
-  .bt-vis-halo{display:none}
-  .bt-vis-xbg{display:none}
-  .bt-vis-tagline{display:block}
-  .bt-vis-brand{display:none}
-  .bt-ruban-center{display:none}
-  .bt-h1{font-size:23px}
-}
-`;
 
-function LoginView() {
+/** L'écran d'arrivée selon le rôle (même règle qu'à la connexion). */
+const homeForRole = (role: string) => (role === 'admin' ? '/admin' : '/poseur');
+
+/**
+ * L'e-mail déjà tapé passe à « Mot de passe oublié » par le stockage de session,
+ * PAS par l'adresse de la page : une adresse e-mail dans l'URL finirait dans
+ * l'historique et dans les statistiques de visite.
+ */
+const RESET_EMAIL_KEY = 'bx-reset-email'; // même clé dans app/mot-de-passe-oublie/page.tsx
+
+/**
+ * Après « Créer mon mot de passe » ou « Réinitialiser », quand la connexion
+ * directe n'a pas pu se faire : on revient ici avec un message et l'e-mail
+ * déjà rempli, au lieu d'un écran de connexion muet.
+ */
+interface LoginNotice { text: string; email: string }
+
+function LoginView({ notice }: { notice?: LoginNotice | null }) {
   const [tab, setTab] = useState<'sal' | 'ent'>('sal');
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(notice?.email ?? '');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -141,7 +95,7 @@ function LoginView() {
         return;
       }
 
-      router.push(profile.role === 'admin' ? '/admin' : '/poseur');
+      router.push(homeForRole(profile.role));
     } catch (err) {
       console.error('Login error:', err);
       setError('Une erreur est survenue lors de la connexion. Veuillez reessayer.');
@@ -183,6 +137,8 @@ function LoginView() {
             Bon retour sur le <span className="bt-h1-accent">chantier</span>.
           </h1>
 
+          {notice && <div className="bt-ok" role="status" data-testid="login-notice">{notice.text}</div>}
+
           <div className="bt-tabs">
             <button type="button" className={`bt-tab${!isEnt ? ' is-active' : ''}`} onClick={() => setTab('sal')}>
               <span style={{ fontSize: '16px' }}>👷</span> Salarié
@@ -209,7 +165,12 @@ function LoginView() {
 
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
               <label className="bt-label" htmlFor="login-password" style={{ marginBottom: 0 }}>Mot de passe</label>
-              <Link href="/mot-de-passe-oublie" className="bt-forgot">Oublié&nbsp;?</Link>
+              {/* L'e-mail déjà tapé suit (stockage de session) : pas besoin de le retaper. */}
+              <Link
+                href="/mot-de-passe-oublie"
+                className="bt-forgot"
+                onClick={() => { try { if (email.trim()) sessionStorage.setItem(RESET_EMAIL_KEY, email.trim()); } catch { /* navigation privée : on retapera */ } }}
+              >Oublié&nbsp;?</Link>
             </div>
             <PasswordInput
               id="login-password"
@@ -275,7 +236,9 @@ function LoginView() {
 //    lu par la page : il n'est jamais dans la requête (?type=). Le lire ici avec
 //    useSearchParams donnait toujours « invitation » — d'où « Créer un mot de
 //    passe » et « Mot de passe défini ! » après un « mot de passe oublié ».
-function SetPasswordForm({ isRecovery }: { isRecovery: boolean }) {
+function SetPasswordForm({ isRecovery, onNeedLogin }: { isRecovery: boolean; onNeedLogin: (notice: LoginNotice) => void }) {
+  const router = useRouter();
+  const { refreshUser } = useAuth();
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -300,7 +263,7 @@ function SetPasswordForm({ isRecovery }: { isRecovery: boolean }) {
       return;
     }
 
-    const { error: updateError } = await supabase.auth.updateUser({
+    const { data: updated, error: updateError } = await supabase.auth.updateUser({
       password: password,
     });
 
@@ -324,19 +287,56 @@ function SetPasswordForm({ isRecovery }: { isRecovery: boolean }) {
     setSuccess(true);
     setLoading(false);
 
-    setTimeout(() => {
-      window.location.href = '/connexion';
-    }, 2000);
+    // Le lien reçu par e-mail a déjà ouvert une session : on emmène la personne
+    // directement sur son écran (planning pour le bureau, « Ma journée » pour un
+    // salarié). Avant, on la renvoyait sur un écran de connexion muet, sans
+    // savoir si le mot de passe avait été enregistré.
+    const email = updated?.user?.email ?? '';
+    const shown = new Promise((r) => setTimeout(r, 900)); // le temps de lire « ✅ »
+    // Le rôle décide de l'écran. Lecture bornée à 6 s : au-delà, on montre
+    // l'écran de connexion avec le message plutôt qu'un « Connexion… » sans fin.
+    const findTarget = async (): Promise<string | null> => {
+      const userId = updated?.user?.id;
+      if (!userId) return null;
+      const { data: profile } = await supabase.from('users').select('role').eq('id', userId).maybeSingle();
+      if (!profile?.role) return null;
+      // Le profil en mémoire (auth-provider) est rafraîchi AVANT d'arriver sur
+      // l'écran : /admin et /poseur ne voient jamais « personne n'est connecté ».
+      await refreshUser();
+      return homeForRole(profile.role);
+    };
+    let target: string | null = null;
+    try {
+      target = await Promise.race([
+        findTarget(),
+        new Promise<null>((r) => setTimeout(() => r(null), 6000)),
+      ]);
+    } catch {
+      target = null;
+    }
+    await shown;
+    if (target) {
+      router.replace(target);
+      return;
+    }
+    // Connexion directe impossible (profil illisible, réseau) : écran de connexion
+    // avec le message et l'e-mail déjà rempli. Pas de signOut ici : l'écoute de
+    // session (auth-provider) renverrait vers l'accueil et le message serait perdu ;
+    // la connexion qui suit remplace simplement la session.
+    onNeedLogin({
+      text: isRecovery ? 'Mot de passe modifié ✅ Connectez-vous' : 'Mot de passe créé ✅ Connectez-vous',
+      email,
+    });
   };
 
   if (success) {
     return (
-      <div style={{ textAlign: 'center' }}>
+      <div style={{ textAlign: 'center' }} role="status" data-testid="password-saved">
         <div style={{ background: '#e7f6ed', border: '1px solid #a8dcc0', borderRadius: '12px', padding: '16px' }}>
           <p style={{ color: '#1f7a4d', fontWeight: 700 }}>
-            {isRecovery ? 'Mot de passe réinitialisé !' : 'Mot de passe défini !'}
+            {isRecovery ? 'Mot de passe modifié ✅' : 'Mot de passe créé ✅'}
           </p>
-          <p style={{ fontSize: '13.5px', color: '#3a8a62', marginTop: '6px' }}>Redirection vers la connexion…</p>
+          <p style={{ fontSize: '13.5px', color: '#3a8a62', marginTop: '6px' }}>Connexion…</p>
         </div>
       </div>
     );
@@ -383,6 +383,7 @@ export default function ConnexionPage() {
   const [showPasswordSet, setShowPasswordSet] = useState(false);
   const [isRecovery, setIsRecovery] = useState(false);
   const [processingHash, setProcessingHash] = useState(false);
+  const [notice, setNotice] = useState<LoginNotice | null>(null);
   const router = useRouter();
 
   // ── Gestion du lien invitation / recuperation : INCHANGEE ──
@@ -460,17 +461,16 @@ export default function ConnexionPage() {
               <p className="bt-sub">
                 {isRecovery ? 'Choisissez un nouveau mot de passe.' : 'Définissez votre mot de passe pour accéder à BEMEXO.'}
               </p>
-              <SetPasswordForm isRecovery={isRecovery} />
+              <SetPasswordForm
+                isRecovery={isRecovery}
+                onNeedLogin={(n) => { setNotice(n); setShowPasswordSet(false); }}
+              />
             </div>
           </div>
         ) : (
-          <LoginView />
+          <LoginView notice={notice} />
         )}
       </div>
     </>
   );
 }
-
-// Objet FIXE : un `{ __html }` neuf à chaque rendu fait réécrire la feuille
-// de style par React (re-calcul de la page, polices rechargées → flash).
-const AUTH_CSS_HTML = { __html: AUTH_CSS };

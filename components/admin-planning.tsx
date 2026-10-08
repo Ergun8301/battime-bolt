@@ -16,7 +16,7 @@ import { Textarea } from '@/components/ui/textarea';
 import {
   ChevronLeft, ChevronRight, Plus, Trash2, Loader2,
   UserPlus, Users, Building2, Archive, CalendarRange, Download, FileSpreadsheet, FileText,
-  Bell, Clock, Mail, RefreshCw, X, Pencil, LogOut, Settings, User as UserIcon, Paperclip, AlertTriangle, Info, Hammer, CheckCircle2, Menu, TrendingUp, Palmtree,
+  Bell, Mail, Pencil, LogOut, Settings, User as UserIcon, Paperclip, AlertTriangle, Info, Hammer, CheckCircle2, Menu, TrendingUp, Palmtree,
   Check, CheckSquare,
   Image as ImageIcon,
   ShieldCheck,
@@ -51,7 +51,8 @@ import { fetchCompanyClosures, closedFor } from '@/lib/worker-closure';
 import { isReserveLifted } from '@/lib/reserves';
 import CompanySettings from '@/components/company-settings';
 import AssistantPanel from '@/components/assistant-panel';
-import { attributeEntries, closeMonth as closeMonthWrite, resendInvitation as resendInvitationWrite, sendHoursReminder, setUserRole, setWorksiteActive, updatePlanningSlot, updateWorksite } from '@/lib/admin-writes';
+import PendingInvitations from '@/components/pending-invitations';
+import { attributeEntries, closeMonth as closeMonthWrite, sendHoursReminder, setUserRole, setWorksiteActive, updatePlanningSlot, updateWorksite } from '@/lib/admin-writes';
 import { addPlanningSlot, createWorksite, inviteWorker, setAbsence } from '@/lib/planning-writes';
 import { supabaseAssistantSource } from '@/lib/assistant';
 import AssistantActionCard from '@/components/assistant-action-card';
@@ -679,10 +680,10 @@ ${PL_GRID_CSS}
 /* mobile */
 .bt-pl-mobile{display:none;flex-direction:column;border:1.5px solid #15120F;border-radius:14px;overflow:hidden;background:#fff}
 .bt-pl-m-headrow{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
-@media (max-width:1023px){.bt-pl-cockpit,.bt-pl-bar,.bt-pl-gridwrap{display:none}.bt-pl-mobile{display:flex}
-/* le bandeau invitations reste visible en mobile : on le détache en carte arrondie
-   (sinon, bande ambre carrée « orpheline » posée sur le fond noir de la page) */
-.bt-pl-inv{border:1.5px solid #E8CE7A;border-radius:14px;margin-bottom:10px}}
+/* invitations en attente : une instance pour l'ordinateur (sous la barre), une pour le
+   téléphone (sous l'en-tête noir) — components/pending-invitations.tsx */
+.bt-pl-inv-mob{display:none}
+@media (max-width:1023px){.bt-pl-cockpit,.bt-pl-bar,.bt-pl-gridwrap,.bt-pl-inv-desk{display:none}.bt-pl-mobile{display:flex}.bt-pl-inv-mob{display:block}}
 .bt-pl-kicker{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#FFC21A;margin-bottom:3px;font-weight:700}
 .bt-pl-m-ibtn{flex:none;width:40px;height:40px;border-radius:11px;border:1px solid rgba(242,237,227,.25);background:rgba(242,237,227,.06);color:#F2EDE3;display:inline-flex;align-items:center;justify-content:center;font-size:17px;cursor:pointer;font-family:inherit}
 .bt-pl-m-ibtn:hover{background:rgba(242,237,227,.08)}
@@ -730,10 +731,6 @@ ${PL_GRID_CSS}
 .bt-pl-coach-t small{display:block;font-size:11.5px;color:#8a8378;font-weight:500;margin-top:1px}
 .bt-pl-coach-step.done .bt-pl-coach-t b{text-decoration:line-through;text-decoration-thickness:1.5px;color:#56514a}
 
-/* bandeau « invitations en attente » — ambre BEMEXO (fini le jaune Tailwind pâle) */
-.bt-pl-inv{background:#FFF1CC;border-bottom:1.5px solid #E8CE7A;padding:10px 16px;display:flex;flex-direction:column;gap:6px}
-.bt-pl-inv-title{display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#7a5e00;margin:0}
-.bt-pl-inv-row{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600;color:#15120F}
 
 /* ===== MOUVEMENT / EFFETS (apparence seulement — dnd-kit non touché) ===== */
 .bt-pl-bub{transition:box-shadow .16s ease, transform .12s ease}
@@ -932,9 +929,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const [exporting, setExporting] = useState(false);
 
   // invitation row actions
-  const [resendingId, setResendingId] = useState<string | null>(null);
   const [remindingId, setRemindingId] = useState<string | null>(null);
-  const [cancellingId, setCancellingId] = useState<string | null>(null);
 
   // cell add dialog (a client on a specific day)
   const [addOpen, setAddOpen] = useState(false);
@@ -2121,45 +2116,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
 
   // ─── invitations ──────────────────────────────────────────────────────────────
 
-  const resendInvitation = async (inv: Invitation) => {
-    if (!user?.company_id) return;
-    setResendingId(inv.id);
-    try {
-      await resendInvitationWrite(user.company_id, inv);
-      toast.success('Invitation renvoyée');
-      fetchExtras();
-    } catch (err) {
-      console.error('Error resending invitation:', err);
-      toast.error("Impossible de renvoyer l'invitation");
-    } finally {
-      setResendingId(null);
-    }
-  };
-
-  // Annuler = révoquer : la fonction serveur supprime le compte de l'invité s'il
-  // ne s'est jamais connecté (avant, seule la ligne d'invitation disparaissait
-  // et l'invité restait membre actif de l'entreprise).
-  const cancelInvitation = async (inv: Invitation) => {
-    if (!user?.company_id) return;
-    setCancellingId(inv.id);
-    try {
-      const { error } = await supabase.functions.invoke('invite-worker', { body: { action: 'revoke', email: inv.email } });
-      if (error) {
-        let msg = "Impossible d'annuler l'invitation";
-        try { const body = await (error as { context?: Response }).context?.json(); if (body?.error) msg = body.error; } catch { /* message générique */ }
-        toast.error(msg);
-        return;
-      }
-      toast.success('Invitation annulée');
-      fetchData();
-      fetchExtras();
-    } catch (err) {
-      console.error('Error cancelling invitation:', err);
-      toast.error("Impossible d'annuler l'invitation");
-    } finally {
-      setCancellingId(null);
-    }
-  };
+  // Envoi, renvoi et suppression : components/pending-invitations.tsx.
 
   // ─── affectation popup (this day only) ──────────────────────────────────────
 
@@ -2650,23 +2607,15 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
           </div>
         </div>
 
-        {/* Invitations en attente (sous la barre) */}
-        {pendingInvites.length > 0 && (
-          <div className="bt-pl-inv">
-            <p className="bt-pl-inv-title"><Clock className="h-3.5 w-3.5" /> Invitations en attente</p>
-            {pendingInvites.map(inv => (
-              <div key={inv.id} className="bt-pl-inv-row">
-                <Mail className="h-3.5 w-3.5 shrink-0" style={{ color: '#7a5e00' }} />
-                <span className="min-w-0 flex-1 truncate">{inv.first_name} {inv.last_name} · {inv.email}</span>
-                <Button variant="outline" size="sm" className="h-7 border-[#15120F]/30 bg-white/80 hover:bg-white font-bold" onClick={() => resendInvitation(inv)} disabled={resendingId === inv.id || cancellingId === inv.id}>
-                  {resendingId === inv.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-                  <span className="hidden sm:inline ml-1">Relancer</span>
-                </Button>
-                <Button variant="ghost" size="icon" className="h-7 w-7" style={{ color: '#B5472E' }} onClick={() => cancelInvitation(inv)} disabled={resendingId === inv.id || cancellingId === inv.id}>
-                  {cancellingId === inv.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <X className="h-3.5 w-3.5" />}
-                </Button>
-              </div>
-            ))}
+        {/* Invitations en attente (sous la barre) : UNE ligne repliée, le planning
+            reste visible dès l'arrivée (components/pending-invitations.tsx). */}
+        {user?.company_id && (
+          <div className="bt-pl-inv-desk">
+            <PendingInvitations
+              companyId={user.company_id}
+              invitations={pendingInvites}
+              onChanged={() => { fetchData(); fetchExtras(); }}
+            />
           </div>
         )}
 
@@ -2907,6 +2856,16 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                 ))}
               </div>
             </div>
+            {/* Invitations en attente, sous l'en-tête (téléphone) : la même ligne repliée. */}
+            {user?.company_id && (
+              <div className="bt-pl-inv-mob">
+                <PendingInvitations
+                  companyId={user.company_id}
+                  invitations={pendingInvites}
+                  onChanged={() => { fetchData(); fetchExtras(); }}
+                />
+              </div>
+            )}
             <div className="bt-pl-m-list">
               {/* Lot 11 : « Sélectionner » aussi sur téléphone (« Tout sélectionner » = le jour affiché). */}
               {workers.length > 0 && !selectMode && (
