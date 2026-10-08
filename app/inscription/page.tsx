@@ -57,6 +57,13 @@ const SIGNUP_CSS = `
 .bt-foot a{font-weight:800;color:#15120F;text-decoration:none;border-bottom:2px solid #FFC21A}
 .bt-err{background:#fce8e6;border:1px solid #f3b4ad;color:#9a2820;font-size:14px;font-weight:600;border-radius:10px;padding:11px 14px;margin-bottom:14px}
 .bt-info{background:#e7f6ed;border:1px solid #a8dcc0;color:#1f7a4d;font-size:14px;font-weight:600;border-radius:10px;padding:11px 14px;margin-bottom:14px}
+.bt-exists{background:#fff6d9;border:1.5px solid #FFC21A;border-radius:12px;padding:14px;margin-bottom:14px}
+.bt-exists-t{font-size:15px;font-weight:900;color:#15120F;margin:0 0 4px}
+.bt-exists-s{font-size:13.5px;font-weight:500;color:#6E6A63;margin:0 0 12px;line-height:1.4}
+.bt-exists-btns{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.bt-exists-btns a{display:flex;align-items:center;justify-content:center;text-align:center;text-decoration:none;font-weight:800;font-size:14.5px;padding:11px 8px;border-radius:10px}
+.bt-exists-login{background:#15120F;color:#FFC21A}
+.bt-exists-reset{background:#fff;color:#15120F;border:1.5px solid rgba(21,18,15,.25)}
 @media(min-width:881px){
   .bt-split{height:100vh;height:100svh;min-height:0}
   .bt-formcol{height:100vh;height:100svh;overflow-y:auto}
@@ -76,12 +83,15 @@ const SIGNUP_CSS = `
 }
 `;
 
+// L'adresse a déjà un compte (réponse en erreur, selon le réglage Supabase).
+function isAlreadyRegistered(message: string): boolean {
+  const m = message.toLowerCase();
+  return m.includes('already registered') || m.includes('already been registered') || m.includes('already exists');
+}
+
 // Traduction des messages d'erreur Supabase les plus courants a l'inscription.
 function translateAuthError(message: string): string {
   const m = message.toLowerCase();
-  if (m.includes('already registered') || m.includes('already been registered') || m.includes('already exists')) {
-    return 'Un compte existe deja avec cet email. Connectez-vous plutot.';
-  }
   if (m.includes('password')) {
     return PASSWORD_RULE;
   }
@@ -102,15 +112,18 @@ export default function InscriptionPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  // L'adresse a déjà un compte : on le dit, avec « Se connecter » et « Mot de passe oublié ».
+  const [exists, setExists] = useState(false);
   const router = useRouter();
   // Événement GA4 « sign_up » : une seule fois par compte créé.
   const signUpTracked = useRef(false);
 
-  // ── Creation de compte : INCHANGEE ──
+  // ── Creation de compte (adresse déjà inscrite : message dédié, voir plus bas) ──
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setInfo(null);
+    setExists(false);
 
     const probleme = passwordProblem(password);
     if (probleme) {
@@ -138,7 +151,17 @@ export default function InscriptionPage() {
       });
 
       if (authError) {
-        setError(translateAuthError(authError.message));
+        if (isAlreadyRegistered(authError.message)) setExists(true);
+        else setError(translateAuthError(authError.message));
+        return;
+      }
+
+      // identities vide = adresse déjà inscrite et confirmée : Supabase répond
+      // « OK » sans créer de compte ni envoyer d'e-mail (pour ne pas révéler
+      // qu'un compte existe). Annoncer « vérifiez vos e-mails » laisserait la
+      // personne attendre un message qui ne viendra jamais.
+      if (data.user && data.user.identities?.length === 0) {
+        setExists(true);
         return;
       }
 
@@ -210,7 +233,7 @@ export default function InscriptionPage() {
                 </div>
 
                 <label className="bt-label" htmlFor="signup-email">Email professionnel</label>
-                <input id="signup-email" className="bt-field" type="email" required disabled={loading} placeholder="bureau@entreprise.fr" value={email} onChange={(e) => setEmail(e.target.value)} />
+                <input id="signup-email" className="bt-field" type="email" required disabled={loading} placeholder="bureau@entreprise.fr" value={email} onChange={(e) => { setEmail(e.target.value); setExists(false); }} />
 
                 <label className="bt-label" htmlFor="signup-password">Mot de passe</label>
                 <input id="signup-password" className="bt-field" type="password" required disabled={loading} placeholder={PASSWORD_PLACEHOLDER} value={password} onChange={(e) => setPassword(e.target.value)} />
@@ -228,6 +251,16 @@ export default function InscriptionPage() {
 
                 {error && <div className="bt-err">{error}</div>}
                 {info && <div className="bt-info">{info}</div>}
+                {exists && (
+                  <div className="bt-exists" role="alert">
+                    <p className="bt-exists-t">Un compte existe déjà avec cet e-mail.</p>
+                    <p className="bt-exists-s">Connectez-vous. Mot de passe perdu&nbsp;? Choisissez-en un nouveau : le lien arrive par e-mail.</p>
+                    <div className="bt-exists-btns">
+                      <Link href="/connexion" className="bt-exists-login">Se connecter</Link>
+                      <Link href="/mot-de-passe-oublie" className="bt-exists-reset">Mot de passe oublié</Link>
+                    </div>
+                  </div>
+                )}
 
                 <button className="bt-ybtn" type="submit" disabled={loading}>
                   {loading ? 'Création…' : 'Démarrer mon essai gratuit →'}
