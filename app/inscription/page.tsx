@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { passwordProblem, PASSWORD_PLACEHOLDER, PASSWORD_RULE } from '@/lib/password';
+import { PasswordInput } from '@/components/password-input';
 import Link from 'next/link';
 import { ASIDE_FULL } from './_illustrations';
 
@@ -241,7 +242,7 @@ export default function InscriptionPage() {
                 <input id="signup-email" className="bt-field" type="email" required disabled={loading} placeholder="bureau@entreprise.fr" value={email} onChange={(e) => { setEmail(e.target.value); setExists(false); }} />
 
                 <label className="bt-label" htmlFor="signup-password">Mot de passe</label>
-                <input id="signup-password" className="bt-field" type="password" required disabled={loading} placeholder={PASSWORD_PLACEHOLDER} value={password} onChange={(e) => setPassword(e.target.value)} />
+                <PasswordInput id="signup-password" className="bt-field" autoComplete="new-password" required disabled={loading} placeholder={PASSWORD_PLACEHOLDER} value={password} onChange={setPassword} showRules wrapStyle={{ marginBottom: 'clamp(8px,1.7vh,16px)' }} />
 
                 <div className="bt-grid2">
                   <div>
