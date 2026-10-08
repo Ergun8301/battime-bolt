@@ -20,6 +20,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { callKiosk, type KioskPunchResult as PunchResp } from '@/lib/kiosk-client';
+import { PasswordInput } from '@/components/password-input';
 
 /** `needs_gps` : renvoyé (toujours faux) par la fonction, ignoré ici. */
 interface TicketResp { ticket: string; kiosk_name: string; company_name: string; needs_gps?: boolean }
@@ -89,7 +90,7 @@ function Login({ t, onDone }: { t: TicketResp; onDone: () => void }) {
         <label className="kx-l" htmlFor="kx-email">E-mail</label>
         <input id="kx-email" className="kx-i" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
         <label className="kx-l" htmlFor="kx-pass">Mot de passe</label>
-        <input id="kx-pass" className="kx-i" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+        <PasswordInput id="kx-pass" className="kx-i" autoComplete="current-password" required value={password} onChange={setPassword} wrapStyle={{ marginBottom: 14 }} />
         <button className="kx-btn" style={{ marginTop: 4 }} type="submit" disabled={busy}>{busy ? 'Connexion…' : 'Se connecter et pointer'}</button>
         <p style={{ textAlign: 'center', margin: '14px 0 0' }}>
           <Link href="/mot-de-passe-oublie" style={{ color: '#6E6A63', fontWeight: 700, fontSize: 14 }}>Mot de passe oublié ?</Link>

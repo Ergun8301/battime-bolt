@@ -86,3 +86,9 @@
     padding-bottom: env(safe-area-inset-bottom);
   }
 }
+
+/* Champ mot de passe : Edge ajoute son propre œil ; on garde seulement le nôtre
+   (components/password-input.tsx), sinon deux icônes se superposent. */
+input::-ms-reveal {
+  display: none;
+}

@@ -74,7 +74,7 @@ async function fill(p, email = 'patron@exemple.fr') {
   await p.fill('#firstname', 'Fatih');
   await p.fill('#lastname', 'Test');
   await p.fill('#signup-email', email);
-  await p.fill('#signup-password', 'Bemexo2026Test');
+  await p.fill('#signup-password', 'Bemexo.2026');
 }
 const submit = async (p) => { await p.click('button[type=submit]'); await p.waitForSelector('.bt-exists, .bt-info, .bt-err'); };
 const signUps = (p) => p.evaluate(() => window.__events.filter((n) => n === 'sign_up').length);
