@@ -113,11 +113,26 @@ Pour chaque modèle :
 
 Les liens déjà envoyés avec l'ancien modèle continuent de fonctionner.
 
-### Optionnel — durée de validité des liens
+### Obligatoire — durée de validité des liens : 24 h
 
-Supabase → **Authentication** → **Providers** → **Email** → *Email OTP Expiration*.
+Les e-mails d'invitation et de mot de passe oublié écrivent « Ce lien est valable 24 h ». Le réglage doit le dire aussi, **avant** de coller les modèles :
 
-Par défaut : 3600 s (1 h). Un salarié ouvre souvent son invitation le soir ou le lendemain. **86400** (24 h) évite des liens expirés, au prix d'une fenêtre plus longue.
+Supabase → **Authentication** → **Providers** → **Email** → *Email OTP Expiration* → **86400** → **Save**.
+
+(Par défaut : 3600 s, soit 1 h. Un salarié ouvre souvent son invitation le soir ou le lendemain.)
+
+### Obligatoire — règle de mot de passe (octobre 2026)
+
+L'appli demande désormais : **8 caractères minimum, dont 1 chiffre et 1 caractère spécial** (ex. `Fatih.2024`), sans majuscule obligatoire. Le serveur ne doit jamais être plus strict, sinon la personne coche tout puis se fait refuser. **À régler AVANT de fusionner la PR qui change la règle** (aujourd'hui le serveur exige encore 12 caractères avec majuscule) :
+
+Supabase → **Authentication** → **Providers** → **Email** :
+
+| Champ | Valeur |
+|---|---|
+| Minimum password length | **8** |
+| Password Requirements | **Letters and digits** |
+
+Aucun réglage Supabase ne sait exiger un caractère spécial sans exiger aussi une majuscule : « Letters and digits » est le plus proche (il impose une lettre et un chiffre ; le caractère spécial est vérifié par l'appli).
 
 ---
 

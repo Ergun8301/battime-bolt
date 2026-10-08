@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState, Suspense } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { passwordProblem, PASSWORD_PLACEHOLDER, PASSWORD_RULE } from '@/lib/password';
+import { PasswordInput } from '@/components/password-input';
 import Link from 'next/link';
 import { SAL_ILLUS, ENT_ILLUS } from './_illustrations';
 
@@ -210,17 +211,17 @@ function LoginView() {
               <label className="bt-label" htmlFor="login-password" style={{ marginBottom: 0 }}>Mot de passe</label>
               <Link href="/mot-de-passe-oublie" className="bt-forgot">Oublié&nbsp;?</Link>
             </div>
-            <input
+            <PasswordInput
               id="login-password"
               className="bt-field"
-              type="password"
               name="password"
+              autoComplete="current-password"
               required
               disabled={loading}
               placeholder="••••••••"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              style={{ marginBottom: '18px' }}
+              onChange={setPassword}
+              wrapStyle={{ marginBottom: '18px' }}
             />
 
             {error && <div className="bt-err">{error}</div>}
@@ -270,16 +271,16 @@ function LoginView() {
 }
 
 // ── Ecran "definir / reinitialiser le mot de passe" (lien invitation / recuperation).
-//    Logique INCHANGEE — seul l'habillage change. useSearchParams => Suspense.
-function SetPasswordForm() {
+//    Le type (invitation ou récupération) vient du FRAGMENT du lien (#…type=…),
+//    lu par la page : il n'est jamais dans la requête (?type=). Le lire ici avec
+//    useSearchParams donnait toujours « invitation » — d'où « Créer un mot de
+//    passe » et « Mot de passe défini ! » après un « mot de passe oublié ».
+function SetPasswordForm({ isRecovery }: { isRecovery: boolean }) {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
-  const searchParams = useSearchParams();
-  const type = searchParams.get('type');
-  const isRecovery = type === 'recovery';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -341,28 +342,29 @@ function SetPasswordForm() {
       <label className="bt-label" htmlFor="new-password">
         {isRecovery ? 'Nouveau mot de passe' : 'Créer un mot de passe'}
       </label>
-      <input
+      <PasswordInput
         id="new-password"
         className="bt-field"
-        type="password"
+        autoComplete="new-password"
         required
         disabled={loading}
         placeholder={PASSWORD_PLACEHOLDER}
         value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        style={{ marginBottom: '18px' }}
+        onChange={setPassword}
+        showRules
+        wrapStyle={{ marginBottom: '18px' }}
       />
       <label className="bt-label" htmlFor="confirm-new-password">Confirmer le mot de passe</label>
-      <input
+      <PasswordInput
         id="confirm-new-password"
         className="bt-field"
-        type="password"
+        autoComplete="new-password"
         required
         disabled={loading}
         placeholder="••••••••"
         value={confirmPassword}
-        onChange={(e) => setConfirmPassword(e.target.value)}
-        style={{ marginBottom: '22px' }}
+        onChange={setConfirmPassword}
+        wrapStyle={{ marginBottom: '22px' }}
       />
       {error && <div className="bt-err">{error}</div>}
       <button className="bt-ybtn" type="submit" disabled={loading}>
@@ -453,9 +455,7 @@ export default function ConnexionPage() {
               <p className="bt-sub">
                 {isRecovery ? 'Choisissez un nouveau mot de passe.' : 'Définissez votre mot de passe pour accéder à BEMEXO.'}
               </p>
-              <Suspense>
-                <SetPasswordForm />
-              </Suspense>
+              <SetPasswordForm isRecovery={isRecovery} />
             </div>
           </div>
         ) : (

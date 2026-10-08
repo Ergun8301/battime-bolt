@@ -1,79 +1,83 @@
 // La règle de mot de passe, à un seul endroit.
 //
 // POURQUOI CE FICHIER EXISTE. La règle était écrite deux fois — à l'inscription
-// et à la création du mot de passe après invitation — avec le même `< 6` copié
-// des deux côtés. Deux copies d'une règle finissent toujours par diverger, et
-// celle qui divergerait ici laisserait passer des mots de passe faibles sur un
-// parcours et pas sur l'autre, sans que rien ne le signale.
+// et à la création du mot de passe après invitation. Deux copies d'une règle
+// finissent toujours par diverger : un parcours laisserait passer ce que
+// l'autre refuse, sans que rien ne le signale.
 //
 // CE QUE CE FICHIER N'EST PAS. Ce n'est PAS une barrière de sécurité. Une
 // vérification faite dans le navigateur se contourne en appelant l'API Supabase
 // directement. La vraie application de la règle est le réglage du tableau de
-// bord Supabase (Authentication → Sign In / Providers → Email), qui refuse
-// côté serveur. Ici, on empêche l'erreur honnête et on l'explique en français
-// avant que la requête ne parte — pas on se défend contre un attaquant.
+// bord Supabase (Authentication → Providers → Email : longueur minimale et
+// caractères exigés), qui refuse côté serveur. Ici, on aide la personne à
+// réussir du premier coup — on ne se défend pas contre un attaquant.
 //
-// Les deux doivent donc dire la MÊME chose, sinon l'utilisateur passe notre
-// contrôle puis se fait refuser par le serveur avec un message anglais.
+// La règle (octobre 2026) : 8 caractères minimum, dont au moins un chiffre et
+// un caractère spécial. Plus de majuscule obligatoire. Exemple : Fatih.2024.
+// Le serveur, lui, peut au plus exiger « lettres et chiffres » (aucun réglage
+// Supabase ne sait demander un caractère spécial sans majuscule) : il ne doit
+// jamais être PLUS strict que cette liste, sinon la personne coche tout puis se
+// fait refuser.
 
-export const PASSWORD_MIN_LENGTH = 12;
+export const PASSWORD_MIN_LENGTH = 8;
+
+export interface PasswordCheck {
+  id: 'length' | 'digit' | 'special';
+  /** Ce qu'affiche la liste sous le champ. */
+  label: string;
+  /** Ce qui manque, dans une phrase : « il manque un chiffre ». */
+  missing: string;
+  test: (password: string) => boolean;
+}
+
+// Construite à l'exécution : la cible TypeScript (ES5) refuse l'écriture
+// littérale /…/u, que tous les navigateurs actuels comprennent.
+const SPECIAL = new RegExp('[^\\p{L}\\p{N}\\s]', 'u');
+
+/**
+ * Les conditions, dans l'ordre d'affichage. Une coche verte par condition
+ * remplie, au fur et à mesure de la frappe (components/password-input.tsx).
+ *
+ * « Caractère spécial » = tout ce qui n'est ni une lettre (accentuée ou non),
+ * ni un chiffre, ni un espace : . - _ ! ? @ # € * … Une lettre accentuée (é)
+ * ne compte PAS : « Bétonnière2 » n'a pas de caractère spécial, et la liste le
+ * dit. Le chiffre est testé en ASCII (0-9), comme le fait Supabase.
+ */
+export const PASSWORD_CHECKS: PasswordCheck[] = [
+  { id: 'length', label: `${PASSWORD_MIN_LENGTH} caractères minimum`, missing: `${PASSWORD_MIN_LENGTH} caractères minimum`, test: (p) => p.length >= PASSWORD_MIN_LENGTH },
+  { id: 'digit', label: 'Au moins 1 chiffre', missing: 'un chiffre', test: (p) => /[0-9]/.test(p) },
+  { id: 'special', label: 'Au moins 1 caractère spécial (. - _ ! ? @ # …)', missing: 'un caractère spécial (. - _ ! ? @ # …)', test: (p) => SPECIAL.test(p) },
+];
 
 /**
  * Le mot de passe est-il conforme ? Retourne le message à afficher, ou `null`
- * si tout va bien.
- *
- * ATTENTION AUX CLASSES DE CARACTÈRES. On teste l'ASCII (`a-z`, `A-Z`, `0-9`)
- * et pas les classes Unicode, parce que c'est ce que Supabase teste. Avec
- * `\p{Ll}`, un mot de passe comme « éééééééééééé1A » passerait notre contrôle
- * — le « é » comptant comme minuscule — puis se ferait refuser par le serveur.
- * L'utilisateur verrait un message anglais incompréhensible après avoir cru
- * avoir bien fait. Les deux règles doivent coïncider exactement.
+ * si tout va bien. On nomme TOUT ce qui manque, pas seulement le premier
+ * manquement : sinon la personne corrige, réessaie, et se fait refuser une
+ * deuxième fois.
  */
 export function passwordProblem(password: string): string | null {
-  const manques: string[] = [];
-
-  if (password.length < PASSWORD_MIN_LENGTH) {
-    return `Le mot de passe doit contenir au moins ${PASSWORD_MIN_LENGTH} caractères.`;
-  }
-  // On ÉCRIT les classes (a-z, A-Z, 0-9). Sans ça, « Bétonnière » — qui n'a
-  // que des lettres accentuées après le B — se fait refuser avec « il manque
-  // une minuscule » devant un mot de passe qui semble n'être que ça. Le
-  // message serait vrai et incompréhensible en même temps.
-  if (!/[0-9]/.test(password)) manques.push('un chiffre (0-9)');
-  if (!/[a-z]/.test(password)) manques.push('une minuscule non accentuée (a-z)');
-  if (!/[A-Z]/.test(password)) manques.push('une majuscule non accentuée (A-Z)');
-
-  if (manques.length === 0) return null;
-
-  // On nomme TOUT ce qui manque, pas seulement le premier manquement : sinon
-  // le salarié corrige, réessaie, et se fait refuser une deuxième fois.
-  const liste =
-    manques.length === 1
-      ? manques[0]
-      : `${manques.slice(0, -1).join(', ')} et ${manques[manques.length - 1]}`;
-
-  return `Le mot de passe doit contenir au moins ${liste}.`;
+  const failed = PASSWORD_CHECKS.filter((c) => !c.test(password));
+  if (failed.length === 0) return null;
+  const short = failed.find((c) => c.id === 'length');
+  const chars = failed.filter((c) => c.id !== 'length').map((c) => c.missing);
+  const parts: string[] = [];
+  if (short) parts.push(`au moins ${PASSWORD_MIN_LENGTH} caractères`);
+  if (chars.length) parts.push(`au moins ${chars.join(' et ')}`);
+  return `Le mot de passe doit contenir ${parts.join(', dont ')}.`;
 }
 
-/**
- * Ce que le champ affiche tant qu'il est vide.
- *
- * Les deux champs annonçaient « 6 caractères minimum ». Laisser cette phrase
- * en place aurait été pire que de ne rien écrire : l'application aurait promis
- * une règle puis refusé le mot de passe qui la respecte.
- */
-export const PASSWORD_PLACEHOLDER =
-  `${PASSWORD_MIN_LENGTH} caractères, 1 chiffre, 1 majuscule`;
+/** Ce que le champ affiche tant qu'il est vide. */
+export const PASSWORD_PLACEHOLDER = 'Ex. Fatih.2024';
 
 /**
  * La règle en une phrase, pour traduire un refus venu du SERVEUR.
  *
- * Quand Supabase refuse un mot de passe, il le dit en anglais et on ne sait pas
- * toujours laquelle des règles a manqué. On réaffiche donc la règle entière
- * plutôt que d'en deviner une : l'ancien texte annonçait « trop court
- * (6 caractères minimum) » pour TOUT refus lié au mot de passe — y compris un
- * refus portant sur les caractères, et avec un seuil qui n'existe plus.
+ * Quand Supabase refuse un mot de passe, il le dit en anglais. On réaffiche la
+ * règle entière plutôt que d'en deviner un morceau. « Une lettre » y figure :
+ * c'est la seule exigence que le réglage serveur « lettres et chiffres » peut
+ * ajouter à notre liste (un mot de passe fait uniquement de chiffres et de
+ * symboles, très rare).
  */
 export const PASSWORD_RULE =
   `Mot de passe refusé : il faut au moins ${PASSWORD_MIN_LENGTH} caractères, `
-  + `dont un chiffre, une minuscule et une majuscule.`;
+  + `avec au moins une lettre, un chiffre et un caractère spécial (ex. Fatih.2024).`;
