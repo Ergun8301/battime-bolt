@@ -309,8 +309,13 @@ function SetPasswordForm({ isRecovery }: { isRecovery: boolean }) {
       // jour plus stricte que la nôtre, son refus arrive ici EN ANGLAIS, devant
       // un salarié qui vient de cliquer sur un lien d'invitation. On réaffiche
       // alors la règle en français plutôt que « Password should contain… ».
+      // « Mot de passe oublié » puis le même mot de passe qu'avant : le serveur
+      // refuse, mais ce n'est pas la règle qui est en cause.
+      const memeMotDePasse = updateError.code === 'same_password' || /different from the old/i.test(updateError.message);
       setError(
-        /password/i.test(updateError.message) ? PASSWORD_RULE : updateError.message
+        memeMotDePasse
+          ? 'C’est déjà votre mot de passe actuel. Choisissez-en un nouveau, ou connectez-vous directement avec celui-ci.'
+          : /password/i.test(updateError.message) ? PASSWORD_RULE : updateError.message
       );
       setLoading(false);
       return;

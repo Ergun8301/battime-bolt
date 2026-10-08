@@ -1,4 +1,4 @@
-// Mot de passe : règle simplifiée (8 caractères, 1 chiffre, 1 caractère spécial),
+// Mot de passe : règle simplifiée (8 caractères, 1 lettre, 1 chiffre, 1 caractère spécial),
 // coches vertes sous le champ, bouton œil sur chaque champ mot de passe.
 //
 // Lancer : npm run build, puis
@@ -32,6 +32,7 @@ const UID = '22222222-2222-4222-8222-222222222222';
 const jwt = `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64({ sub: UID, role: 'authenticated', exp: now + 3600, aal: 'aal1' })}.sig`;
 const user = { id: UID, aud: 'authenticated', role: 'authenticated', email: 'salarie@exemple.fr', app_metadata: {}, user_metadata: {}, identities: [{ id: UID, provider: 'email' }], created_at: '2026-10-08T08:00:00Z' };
 const calls = [];
+let memeMotDePasse = false; // le serveur répond « same_password » au changement de mot de passe
 
 async function page(url, viewport = { width: 390, height: 844 }) {
   const ctx = await b.newContext({ viewport, deviceScaleFactor: 2, locale: 'fr-FR', timezoneId: 'Europe/Paris' });
@@ -39,6 +40,7 @@ async function page(url, viewport = { width: 390, height: 844 }) {
     const u = new URL(r.request().url()); const m = r.request().method();
     calls.push({ m, path: u.pathname, body: r.request().postData() });
     if (u.pathname.endsWith('/auth/v1/signup')) return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...user, identities: [{ id: UID, provider: 'email' }] }) });
+    if (u.pathname.endsWith('/auth/v1/user') && m === 'PUT' && memeMotDePasse) return r.fulfill({ status: 422, contentType: 'application/json', body: JSON.stringify({ code: 422, error_code: 'same_password', msg: 'New password should be different from the old password.' }) });
     if (u.pathname.endsWith('/auth/v1/user')) return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(user) });
     if (u.pathname.endsWith('/functions/v1/kiosk')) return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ticket: 'tk', kiosk_name: 'Borne' }) });
     return r.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
@@ -65,18 +67,20 @@ console.log('1. Inscription : règle sous le champ, coches au fur et à mesure')
 let { ctx, p } = await page('/inscription');
 await p.waitForSelector('#signup-password');
 const wrapSel = 'div:has(> div > #signup-password)';
-check(JSON.stringify(await states(p, wrapSel)) === '["non","non","non"]', 'champ vide : 3 conditions, aucune cochée');
+check(JSON.stringify(await states(p, wrapSel)) === '["non","non","non","non"]', 'champ vide : 4 conditions, aucune cochée');
 const labels = await p.$$eval(`${wrapSel} .pw-rules li`, (lis) => lis.map((li) => li.textContent));
-check(labels[0].startsWith('8 caractères minimum') && labels[1].startsWith('Au moins 1 chiffre') && labels[2].startsWith('Au moins 1 caractère spécial'), 'libellés : 8 caractères, 1 chiffre, 1 caractère spécial');
+check(labels[0].startsWith('8 caractères minimum') && labels[1].startsWith('Au moins 1 lettre') && labels[2].startsWith('Au moins 1 chiffre') && labels[3].startsWith('Au moins 1 caractère spécial'), 'libellés : 8 caractères, 1 lettre, 1 chiffre, 1 caractère spécial');
 check(!labels.join(' ').toLowerCase().includes('majuscule') && !labels.join(' ').includes('12'), 'plus de majuscule ni de 12 caractères');
 await p.fill('#signup-password', 'fatih');
-check(JSON.stringify(await states(p, wrapSel)) === '["non","non","non"]', '« fatih » : rien de coché');
+check(JSON.stringify(await states(p, wrapSel)) === '["non","oui","non","non"]', '« fatih » : seule la lettre est cochée');
 await p.fill('#signup-password', 'fatih2024');
-check(JSON.stringify(await states(p, wrapSel)) === '["oui","oui","non"]', '« fatih2024 » : longueur et chiffre cochés, pas le caractère spécial');
+check(JSON.stringify(await states(p, wrapSel)) === '["oui","oui","oui","non"]', '« fatih2024 » : tout coché sauf le caractère spécial');
 await p.fill('#signup-password', 'Bétonnière2');
-check(JSON.stringify(await states(p, wrapSel)) === '["oui","oui","non"]', '« Bétonnière2 » : une lettre accentuée ne compte pas comme caractère spécial');
+check(JSON.stringify(await states(p, wrapSel)) === '["oui","oui","oui","non"]', '« Bétonnière2 » : une lettre accentuée ne compte pas comme caractère spécial');
+await p.fill('#signup-password', '12/05/1990');
+check(JSON.stringify(await states(p, wrapSel)) === '["oui","non","oui","oui"]', '« 12/05/1990 » : pas de lettre, la case reste vide (le serveur le refuserait)');
 await p.fill('#signup-password', 'Fatih.2024');
-check(JSON.stringify(await states(p, wrapSel)) === '["oui","oui","oui"]', '« Fatih.2024 » : les 3 coches vertes');
+check(JSON.stringify(await states(p, wrapSel)) === '["oui","oui","oui","oui"]', '« Fatih.2024 » : les 4 coches vertes');
 const color = await p.$eval(`${wrapSel} .pw-rules li[data-ok="oui"]`, (li) => getComputedStyle(li).color);
 check(color === 'rgb(31, 122, 77)', 'coche remplie en vert');
 await eyeToggles(p, '#signup-password', 'inscription');
@@ -91,6 +95,10 @@ await p.click('button[type=submit]');
 await p.waitForSelector('.bt-err');
 check((await p.textContent('.bt-err')).includes('caractère spécial'), 'message : il manque un caractère spécial');
 check(!calls.some((c) => c.path.endsWith('/signup')), 'aucune requête d\'inscription envoyée');
+await p.fill('#signup-password', '12/05/1990');
+await p.click('button[type=submit]');
+await p.waitForFunction(() => document.querySelector('.bt-err')?.textContent.includes('une lettre'));
+check(!calls.some((c) => c.path.endsWith('/signup')), '« 12/05/1990 » : refusé avant l\'envoi (il manque une lettre)');
 await p.fill('#signup-password', 'fatih.2024');
 await p.click('button[type=submit]');
 await p.waitForSelector('.bt-info');
@@ -112,12 +120,12 @@ calls.length = 0;
 await p.waitForSelector('#new-password');
 const newSel = 'div:has(> div > #new-password)';
 check((await p.textContent('label[for=new-password]')).trim() === 'Nouveau mot de passe' && (await p.textContent('button[type=submit]')).trim() === 'Réinitialiser', 'libellés « Nouveau mot de passe » et « Réinitialiser »');
-check(JSON.stringify(await states(p, newSel)) === '["non","non","non"]', 'nouveau mot de passe : 3 conditions affichées');
+check(JSON.stringify(await states(p, newSel)) === '["non","non","non","non"]', 'nouveau mot de passe : 4 conditions affichées');
 check(await p.locator('div:has(> div > #confirm-new-password) .pw-rules').count() === 0, 'confirmation : pas de liste (une seule suffit)');
 await eyeToggles(p, '#new-password', 'nouveau mot de passe');
 await eyeToggles(p, '#confirm-new-password', 'confirmation');
 await p.fill('#new-password', 'Fatih.2024');
-check(JSON.stringify(await states(p, newSel)) === '["oui","oui","oui"]', '« Fatih.2024 » : 3 coches vertes');
+check(JSON.stringify(await states(p, newSel)) === '["oui","oui","oui","oui"]', '« Fatih.2024 » : 4 coches vertes');
 await p.fill('#confirm-new-password', 'Fatih.2024');
 await p.screenshot({ path: `${SH}/2-nouveau-mot-de-passe-telephone.png`, fullPage: true });
 await p.click('button[type=submit]');
@@ -130,13 +138,26 @@ await ctx.close();
 console.log('5. Lien d\'invitation : même champ');
 ({ ctx, p } = await page(`/connexion#access_token=${jwt}&refresh_token=r&expires_in=3600&token_type=bearer&type=invite`));
 await p.waitForSelector('#new-password');
-check(await p.locator('div:has(> div > #new-password) .pw-rules li').count() === 3, 'création du mot de passe : 3 conditions');
+check(await p.locator('div:has(> div > #new-password) .pw-rules li').count() === 4, 'création du mot de passe : 4 conditions');
 check((await p.textContent('label[for=new-password]')).trim() === 'Créer un mot de passe', 'invitation : libellé « Créer un mot de passe »');
 await p.fill('#new-password', 'abc');
 await p.fill('#confirm-new-password', 'abc');
 await p.click('button[type=submit]');
 await p.waitForSelector('.bt-err');
 check((await p.textContent('.bt-err')).includes('au moins 8 caractères'), 'trop court : message en français');
+await ctx.close();
+
+console.log('5 bis. Mot de passe oublié, puis le même mot de passe qu\'avant');
+memeMotDePasse = true;
+({ ctx, p } = await page(`/connexion#access_token=${jwt}&refresh_token=r&expires_in=3600&token_type=bearer&type=recovery`));
+await p.waitForSelector('#new-password');
+await p.fill('#new-password', 'Fatih.2024');
+await p.fill('#confirm-new-password', 'Fatih.2024');
+await p.click('button[type=submit]');
+await p.waitForSelector('.bt-err');
+const errMeme = await p.textContent('.bt-err');
+check(errMeme.includes('déjà votre mot de passe actuel') && !errMeme.includes('Mot de passe refusé'), 'message « C’est déjà votre mot de passe actuel », pas la règle');
+memeMotDePasse = false;
 await ctx.close();
 
 console.log('6. Pointage QR (/pointer) : bouton œil');
@@ -151,7 +172,7 @@ await p.waitForSelector('#signup-password');
 await p.fill('#signup-password', 'Fatih.2024');
 await p.locator('#signup-password').scrollIntoViewIfNeeded();
 await p.screenshot({ path: `${SH}/3-inscription-regle-ordinateur.png` });
-check(JSON.stringify(await states(p, wrapSel)) === '["oui","oui","oui"]', 'ordinateur : 3 coches vertes');
+check(JSON.stringify(await states(p, wrapSel)) === '["oui","oui","oui","oui"]', 'ordinateur : 4 coches vertes');
 await ctx.close();
 
 await b.close(); srv.close();

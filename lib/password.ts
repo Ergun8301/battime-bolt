@@ -17,12 +17,14 @@
 // Le serveur, lui, peut au plus exiger « lettres et chiffres » (aucun réglage
 // Supabase ne sait demander un caractère spécial sans majuscule) : il ne doit
 // jamais être PLUS strict que cette liste, sinon la personne coche tout puis se
-// fait refuser.
+// fait refuser. D'où la condition « 1 lettre » : « lettres et chiffres » exige
+// une lettre a-z ou A-Z, et « 12/05/1990 » (une date de naissance) cocherait
+// sinon les trois autres cases avant d'être refusé.
 
 export const PASSWORD_MIN_LENGTH = 8;
 
 export interface PasswordCheck {
-  id: 'length' | 'digit' | 'special';
+  id: 'length' | 'letter' | 'digit' | 'special';
   /** Ce qu'affiche la liste sous le champ. */
   label: string;
   /** Ce qui manque, dans une phrase : « il manque un chiffre ». */
@@ -41,10 +43,12 @@ const SPECIAL = new RegExp('[^\\p{L}\\p{N}\\s]', 'u');
  * « Caractère spécial » = tout ce qui n'est ni une lettre (accentuée ou non),
  * ni un chiffre, ni un espace : . - _ ! ? @ # € * … Une lettre accentuée (é)
  * ne compte PAS : « Bétonnière2 » n'a pas de caractère spécial, et la liste le
- * dit. Le chiffre est testé en ASCII (0-9), comme le fait Supabase.
+ * dit. La lettre et le chiffre sont testés en ASCII (a-z, A-Z, 0-9), comme le
+ * fait Supabase : « ééééé.12 » n'a pas de lettre pour le serveur.
  */
 export const PASSWORD_CHECKS: PasswordCheck[] = [
   { id: 'length', label: `${PASSWORD_MIN_LENGTH} caractères minimum`, missing: `${PASSWORD_MIN_LENGTH} caractères minimum`, test: (p) => p.length >= PASSWORD_MIN_LENGTH },
+  { id: 'letter', label: 'Au moins 1 lettre', missing: 'une lettre', test: (p) => /[A-Za-z]/.test(p) },
   { id: 'digit', label: 'Au moins 1 chiffre', missing: 'un chiffre', test: (p) => /[0-9]/.test(p) },
   { id: 'special', label: 'Au moins 1 caractère spécial (. - _ ! ? @ # …)', missing: 'un caractère spécial (. - _ ! ? @ # …)', test: (p) => SPECIAL.test(p) },
 ];
@@ -62,7 +66,7 @@ export function passwordProblem(password: string): string | null {
   const chars = failed.filter((c) => c.id !== 'length').map((c) => c.missing);
   const parts: string[] = [];
   if (short) parts.push(`au moins ${PASSWORD_MIN_LENGTH} caractères`);
-  if (chars.length) parts.push(`au moins ${chars.join(' et ')}`);
+  if (chars.length) parts.push(`au moins ${chars.length > 1 ? `${chars.slice(0, -1).join(', ')} et ${chars[chars.length - 1]}` : chars[0]}`);
   return `Le mot de passe doit contenir ${parts.join(', dont ')}.`;
 }
 
@@ -73,10 +77,7 @@ export const PASSWORD_PLACEHOLDER = 'Ex. Fatih.2024';
  * La règle en une phrase, pour traduire un refus venu du SERVEUR.
  *
  * Quand Supabase refuse un mot de passe, il le dit en anglais. On réaffiche la
- * règle entière plutôt que d'en deviner un morceau. « Une lettre » y figure :
- * c'est la seule exigence que le réglage serveur « lettres et chiffres » peut
- * ajouter à notre liste (un mot de passe fait uniquement de chiffres et de
- * symboles, très rare).
+ * règle entière plutôt que d'en deviner un morceau.
  */
 export const PASSWORD_RULE =
   `Mot de passe refusé : il faut au moins ${PASSWORD_MIN_LENGTH} caractères, `
