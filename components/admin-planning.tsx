@@ -125,7 +125,7 @@ const ABSENCE_OPTIONS: { value: string; label: string }[] = [
   { value: 'conge', label: 'Congé' },
   { value: 'maladie', label: 'Arrêt maladie' },
   { value: 'intemperie', label: 'Intempérie' },
-  { value: 'repos', label: 'Repos' },
+  // « Repos » n'est pas proposé : la base le refuse (planning_absence_type_check).
 ];
 
 // Open-ended absences are materialised up to this horizon (no DB column to store
@@ -1874,7 +1874,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       refresh();
     } catch (err) {
       console.error('Error saving absence:', err);
-      toast.error("Impossible d'enregistrer l'absence (si « Repos », votre base la refuse peut-être encore)");
+      toast.error("Impossible d'enregistrer l'absence : rien n'a été changé");
     } finally {
       setAbsSaving(false);
     }
