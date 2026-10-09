@@ -4,6 +4,7 @@
 // réponse, jamais d'écriture). La source démo (préviews uniquement) exécute le
 // MÊME lecteur de phrases que le serveur, sur des chantiers fictifs.
 import { supabase } from '@/lib/supabase';
+import { bestPlanningFor, type PlannedLike } from '@/supabase/functions/_shared/day-hours';
 import { isPreviewHost } from '@/lib/hosting';
 import { attachmentPayload } from '@/lib/attachment';
 import { generateLocalId } from '@/lib/offline-store';
@@ -118,11 +119,11 @@ export type SaveLines = (date: string, lines: DraftLine[]) => Promise<{ ok: numb
 /**
  * Enregistre les lignes CONFIRMÉES, une par une, par le chemin de la saisie
  * manuelle (lib/worker-entry.ts). Le planning du jour est rattaché comme à la
- * main : le premier prévu sur ce chantier.
+ * main : celui de ce chantier que la ligne recouvre le plus.
  */
 export function makeWorkerSaver(user: { id: string; company_id: string }, chantiers: WorkerSnapshot['chantiers']): SaveLines {
   return async (date, lines) => {
-    const { data: plans } = await supabase.from('planning').select('id, worksite_id').eq('user_id', user.id).eq('work_date', date);
+    const { data: plans } = await supabase.from('planning').select('id, worksite_id, absence_type, estimated_start, estimated_end').eq('user_id', user.id).eq('work_date', date);
     let ok = 0, queued = 0;
     const created: string[] = [];
     for (const l of lines) {
@@ -130,7 +131,8 @@ export function makeWorkerSaver(user: { id: string; company_id: string }, chanti
       const localId = generateLocalId();
       const r = await insertWorkerEntry({
         localId, company_id: user.company_id, user_id: user.id, worksite_id: l.worksite_id!,
-        planning_id: ((plans || []) as { id: string; worksite_id: string | null }[]).find((p) => p.worksite_id === l.worksite_id)?.id ?? null,
+        // Lot 1 : le planning de ce chantier que la ligne recouvre le plus (plus « le premier »).
+        planning_id: bestPlanningFor({ start: l.start, end: l.end, worksite_id: l.worksite_id ?? null }, (plans || []) as PlannedLike[]),
         work_date: date, start_time: l.start, end_time: l.end, break_minutes: l.break_minutes,
         total_minutes: shiftMinutes(l.start, l.end, l.break_minutes), meal_allowance: false,
         observation: l.observation || null, reception: null, _worksite_name: ws?.nom || '', _worksite_city: ws?.ville ?? null, _saved_at: Date.now(),

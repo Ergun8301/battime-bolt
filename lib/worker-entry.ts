@@ -4,6 +4,7 @@
 // (lot 4) passe EXACTEMENT par le même chemin : mêmes colonnes, statut
 // « draft », identifiant local anti-doublon, repli hors ligne, même RLS.
 import { supabase } from '@/lib/supabase';
+import { keptBreak } from '@/supabase/functions/_shared/day-hours';
 import { addPendingEntry, type PendingEntry } from '@/lib/offline-store';
 
 /**
@@ -63,8 +64,14 @@ export async function markEntryReserve(p: { userId: string; entryId: string; det
  * Renvoie false si la RLS a refusé (ligne verrouillée par le bureau).
  */
 export async function updateEntryTimes(p: { userId: string; entryId: string; start: string; end: string; wasSubmitted: boolean }): Promise<boolean> {
+  // Lot 1 : la pause de la ligne est gardée — sauf si les nouvelles heures sont
+  // plus courtes qu'elle (le total deviendrait négatif).
+  const { data: cur } = await supabase.from('time_entries').select('break_minutes').eq('id', p.entryId).eq('user_id', p.userId).maybeSingle();
+  const brk = (cur as { break_minutes: number | null } | null)?.break_minutes || 0;
+  const kept = keptBreak({ start: p.start, end: p.end }, brk);
   const { data, error } = await supabase.from('time_entries').update({
     start_time: p.start, end_time: p.end,
+    ...(kept !== brk ? { break_minutes: kept } : {}),
     ...(p.wasSubmitted ? { modified_at: new Date().toISOString(), modified_by: p.userId } : {}),
   }).eq('id', p.entryId).eq('user_id', p.userId).select('id');
   if (error) throw error;

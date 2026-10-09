@@ -1,7 +1,7 @@
 // `deno test supabase/functions/_shared/day-hours.test.ts` (npm run test:heures)
 // Lot 1 — « une journée de 7h à 18h affiche 7h30 ». Les règles d'une journée.
 import {
-  bestPlanningFor, coveredMinutes, findOverlap, firstOverlap, keptBreak, overlapMinutes, pauseAsks,
+  bestPlanningFor, coveredMinutes, findOverlap, firstBlockingOverlap, firstOverlap, keptBreak, overlapMinutes, pauseAsks,
   plannedState, spanMinutes,
 } from './day-hours.ts';
 
@@ -27,6 +27,11 @@ Deno.test('chevauchements : refusés au-delà d’une minute (tolérance du lot 
   eq(findOverlap({ start: '12:30', end: '18:00' }, [{ start: '07:00', end: '12:30' }]), null, 'bout à bout : pas de chevauchement');
   eq(firstOverlap([{ start: '12:00', end: '18:00' }, { start: '07:00', end: '13:00' }])?.map((x) => x.start), ['07:00', '12:00'], 'la paire est trouvée, triée');
   eq(firstOverlap([{ start: '07:00', end: '12:00' }, { start: '13:00', end: '18:00' }]), null, 'matin + après-midi : rien');
+  const locked = (start: string, end: string) => ({ start, end, editable: false });
+  const draft = (start: string, end: string) => ({ start, end, editable: true });
+  eq(firstBlockingOverlap([locked('07:00', '12:00'), locked('11:00', '16:00'), draft('17:00', '18:00')]), null, 'deux lignes verrouillées qui se chevauchent ne bloquent pas un nouveau brouillon');
+  eq(firstBlockingOverlap([locked('07:00', '12:00'), draft('11:00', '16:00')])?.length, 2, 'un brouillon sur une ligne verrouillée : bloqué');
+  eq(firstBlockingOverlap([draft('08:00', '12:00'), draft('11:00', '15:00')])?.map((x) => x.start), ['08:00', '11:00'], 'deux prévus confirmés 08–12 et 11–15 : bloqués');
 });
 
 Deno.test('le prévu du bureau face aux heures saisies', () => {

@@ -66,6 +66,23 @@ export function firstOverlap<T extends Span>(spans: T[]): [T, T] | null {
   return null;
 }
 
+/**
+ * Le chevauchement qui BLOQUE un envoi : au moins un des deux créneaux est
+ * encore modifiable par le salarié (brouillon, file du téléphone, prévu à
+ * confirmer). Deux lignes déjà envoyées et verrouillées par le bureau qui se
+ * chevauchent ne bloquent pas sa journée : il ne pourrait rien y corriger.
+ */
+export function firstBlockingOverlap<T extends Span & { editable?: boolean }>(spans: T[]): [T, T] | null {
+  const sorted = [...spans].sort((x, y) => interval(x)[0] - interval(y)[0]);
+  for (let i = 0; i < sorted.length; i++) {
+    for (let j = i + 1; j < sorted.length; j++) {
+      if (!sorted[i].editable && !sorted[j].editable) continue;
+      if (overlapMinutes(sorted[i], sorted[j]) > OVERLAP_TOLERANCE) return [sorted[i], sorted[j]];
+    }
+  }
+  return null;
+}
+
 /** Minutes de [s] couvertes par l'union des créneaux `by`. */
 export function coveredMinutes(s: Span, by: Span[]): number {
   const [a, b] = interval(s);

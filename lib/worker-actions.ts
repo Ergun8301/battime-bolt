@@ -184,6 +184,7 @@ export function makeWorkerExecutor(user: { id: string; company_id: string }): Wo
         // ── Lot 7 ──
         case 'envoyer_journee': {
           const r = await sendWorkerDay(user, d.date);
+          if (r.blocked) return { ok: false, message: r.blocked };
           // Lot 1 : les horaires prévus par le bureau ne partent jamais sans un « oui » du salarié.
           const prevus = r.plannedLeft > 0
             ? ` ${r.plannedLeft} créneau${r.plannedLeft > 1 ? 'x' : ''} prévu${r.plannedLeft > 1 ? 's' : ''} par le bureau à confirmer dans « Ma journée ».`
@@ -214,11 +215,11 @@ export function makeWorkerExecutor(user: { id: string; company_id: string }): Wo
           break;
         }
         case 'copier_journee': {
-          const { data: src, error } = await supabase.from('time_entries').select('worksite_id, start_time, end_time, observation')
+          const { data: src, error } = await supabase.from('time_entries').select('worksite_id, start_time, end_time, break_minutes, observation')
             .eq('user_id', user.id).eq('work_date', d.depuis).neq('status', 'cancelled').order('start_time');
           if (error) throw error;
           if (!src || !src.length) return { ok: false, message: 'Rien à copier ce jour-là.' };
-          const ids = await copyLinesTo(user, src as { worksite_id: string | null; start_time: string; end_time: string; observation: string | null }[], d.vers);
+          const ids = await copyLinesTo(user, src as { worksite_id: string | null; start_time: string; end_time: string; break_minutes: number | null; observation: string | null }[], d.vers);
           message = `${src.length} ligne${src.length > 1 ? 's' : ''} copiée${src.length > 1 ? 's' : ''} sur ${d.vers.length} jour${d.vers.length > 1 ? 's' : ''}.`;
           undo = () => deleteDrafts(ids);
           break;

@@ -29,7 +29,7 @@ import { useOwnLiveSession, startLiveSession, announceLiveChange } from '@/lib/l
 import { geoInfoSeen, markGeoInfoSeen } from '@/lib/position-info';
 import GeoInfoDialog from '@/components/geo-info-dialog';
 import { isExitToComplete, EXIT_TO_COMPLETE_MSG, PAUSE_CHOICES } from '@/lib/qr-entry';
-import { bestPlanningFor, findOverlap, firstOverlap, keptBreak, pauseAsks, type PauseAsk, type PlannedState, type Span } from '@/supabase/functions/_shared/day-hours';
+import { bestPlanningFor, findOverlap, firstBlockingOverlap, keptBreak, pauseAsks, type PauseAsk, type PlannedState, type Span } from '@/supabase/functions/_shared/day-hours';
 import { LiveLine } from '@/components/planning-bubble';
 import { placeLive, cellKey } from '@/supabase/functions/_shared/live-place';
 import TeamDay from '@/components/team-day';
@@ -1255,7 +1255,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
       if (!yEntries || yEntries.length === 0) { toast.error('Aucun chantier hier à copier'); return; }
 
       // lib/worker-day.ts : même chemin que l'Assistant BEMEXO (planning du jour rattaché).
-      const rows = await copyLinesTo(user, yEntries.map((e) => ({ worksite_id: e.worksite_id, start_time: e.start_time, end_time: e.end_time, observation: e.observation })), [date]);
+      const rows = await copyLinesTo(user, yEntries.map((e) => ({ worksite_id: e.worksite_id, start_time: e.start_time, end_time: e.end_time, break_minutes: e.break_minutes, observation: e.observation })), [date]);
 
       toast.success(`${rows.length} chantier${rows.length > 1 ? 's' : ''} copié${rows.length > 1 ? 's' : ''} depuis hier`);
       await applyDayMeal(dayMeal);
@@ -1279,8 +1279,8 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
     // Les interventions retirées ne se copient pas ; le panier non plus (il se
     // coche jour par jour, et un seul par jour est accepté en base).
     const sources = [
-      ...liveEntries.map((e) => ({ worksite_id: e.worksite_id, start_time: e.start_time, end_time: e.end_time, meal_allowance: false, observation: e.observation })),
-      ...pendingEntries.map((e) => ({ worksite_id: e.worksite_id, start_time: e.start_time, end_time: e.end_time, meal_allowance: false, observation: e.observation })),
+      ...liveEntries.map((e) => ({ worksite_id: e.worksite_id, start_time: e.start_time, end_time: e.end_time, break_minutes: e.break_minutes, meal_allowance: false, observation: e.observation })),
+      ...pendingEntries.map((e) => ({ worksite_id: e.worksite_id, start_time: e.start_time, end_time: e.end_time, break_minutes: e.break_minutes, meal_allowance: false, observation: e.observation })),
     ];
     if (sources.length === 0) { toast.error('Aucun chantier à copier'); return; }
     if (targets.length === 0) { toast.error('Aucun jour à remplir'); return; }
@@ -1350,14 +1350,18 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
     sendCtx.current = { plannedOk: false, breaks: new Map(), asked: new Set() };
     // Lot 1 : deux lignes qui se chevauchent ne partent pas — les mêmes minutes
     // seraient payées deux fois. Le salarié corrige l'une des deux.
-    const clash = firstOverlap(sendSpans());
-    if (clash) {
-      toast.error(`Deux chantiers se chevauchent : ${clash[0].start}–${clash[0].end} et ${clash[1].start}–${clash[1].end}. Corrige l'un des deux avant d'envoyer.`);
-      return;
-    }
+    if (overlapBlocks()) return;
     // Lot 1 : des heures PRÉVUES par le bureau ne partent jamais sans un « oui ».
     if (plannedToSend.length > 0) { setPlannedAsk(true); return; }
     askNextPause();
+  };
+
+  /** Un chevauchement que le salarié peut corriger (au moins une des deux lignes modifiable) → envoi refusé. */
+  const overlapBlocks = (): boolean => {
+    const clash = firstBlockingOverlap(sendSpans());
+    if (!clash) return false;
+    toast.error(`Deux chantiers se chevauchent : ${clash[0].start}–${clash[0].end} et ${clash[1].start}–${clash[1].end}. Corrige l'un des deux avant d'envoyer.`);
+    return true;
   };
 
   /** Réponse à « Le bureau avait prévu… » : envoyer ces horaires, envoyer sans, ou corriger. */
@@ -1365,6 +1369,9 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
     setPlannedAsk(false);
     if (choice === 'fix') return;
     sendCtx.current.plannedOk = choice === 'send';
+    // Deux créneaux prévus qui se chevauchent (deux chantiers 08–12 et 11–15) :
+    // les confirmer enverrait deux fois la même heure.
+    if (sendCtx.current.plannedOk && overlapBlocks()) { sendCtx.current.plannedOk = false; return; }
     askNextPause();
   };
 
@@ -1380,7 +1387,8 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
     const ask = pauseAsk;
     setPauseAsk(null);
     if (!ask || !user) return;
-    sendCtx.current.asked.add(ask.id);
+    const ctx = sendCtx.current;
+    ctx.asked.add(ask.id);
     if (minutes > 0) {
       if (ask.id.startsWith('plan:')) {
         sendCtx.current.breaks.set(ask.id, minutes);
@@ -1396,9 +1404,15 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
         const { data: upd, error } = await supabase.from('time_entries').update({ break_minutes: minutes })
           .eq('id', ask.id).eq('user_id', user.id).eq('status', 'draft').select('id');
         if (error || !upd || upd.length === 0) { toast.error(explainWriteError(error, 'Pause non enregistrée')); fetchData(); return; }
-        sendCtx.current.breaks.set(ask.id, minutes);
+        ctx.breaks.set(ask.id, minutes);
+        // L'écran suit tout de suite (total, fiche, nouvelle question) : sinon
+        // « Corriger » puis « Envoyer » reposait la question sur la ligne d'avant.
+        setEntries((prev) => prev.map((e) => (e.id === ask.id
+          ? { ...e, total_minutes: e.total_minutes + (e.break_minutes || 0) - minutes, break_minutes: minutes } : e)));
       }
     }
+    // Un nouvel appui sur « Envoyer » pendant l'écriture a relancé l'envoi : celui-ci s'arrête.
+    if (sendCtx.current !== ctx) return;
     askNextPause();
   };
 

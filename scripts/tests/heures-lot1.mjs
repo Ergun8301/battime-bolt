@@ -360,6 +360,17 @@ await scenario('S1d', 'bureau a prévu Matin + Après-midi, le salarié les a fa
     check(r.lines.filter((x) => x.includes('(prévu)')).length === 2, `S1d les deux créneaux partent après le « oui » (${r.lines.join(' + ')})`);
   } });
 
+// Deux créneaux prévus qui se chevauchent (deux chantiers 08–12 et 11–15) : « Oui » ne doit pas envoyer 8 h pour 7 h.
+console.log('\n═══ S1f · deux créneaux prévus qui se chevauchent, le salarié répond « Oui »');
+freshDb(); D.planning = [plan('p-a', SALLE.id, '08:00', '12:00'), plan('p-b', AUTRE.id, '11:00', '15:00')];
+await openWorker();
+{
+  const asked = await send({ confirmPlanned: true });
+  const txt = await workerText();
+  console.log(`  questions : ${asked.join(' / ')} · lignes : ${D.time_entries.length}`);
+  check(asked.includes('prévu') && D.time_entries.length === 0 && /se chevauchent/.test(txt), 'S1f « Oui » sur deux prévus qui se chevauchent : refusé, rien n’est envoyé');
+}
+
 // Créneau « à 09:30 » sans fin : plus de 09:30–17:00 inventé en silence.
 console.log('\n═══ S1e · créneau prévu « à 09:30 » sans heure de fin');
 freshDb(); D.planning = [plan('p-930', SALLE.id, '09:30', null)];
