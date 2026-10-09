@@ -1,7 +1,7 @@
 // `deno test supabase/functions/_shared/office-edits.test.ts` (npm run test:bureau-regles)
 // Lot 2 — le bureau corrige une journée envoyée (motif, pause, panier, route)
 // ou la renvoie au salarié. Les mêmes règles que `office_correct_entry`.
-import { changedKeys, diffLabels, jourMois, precheck, pushBody, reasonOk, REASON_MAX, REASON_MIN } from './office-edits.ts';
+import { changedAfterReturn, changedKeys, diffLabels, frozenLabel, jourMois, precheck, pushBody, reasonOk, REASON_MAX, REASON_MIN, stateOf } from './office-edits.ts';
 
 function eq(a: unknown, b: unknown, msg: string) {
   if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error(`${msg} — attendu ${JSON.stringify(b)}, obtenu ${JSON.stringify(a)}`);
@@ -84,4 +84,17 @@ Deno.test('la notification : quoi, quand, pourquoi', () => {
     'Le bureau t\'a renvoyé ta journée du 8 octobre : « il manque le chantier de l’après-midi ». Corrige si besoin, puis renvoie-la.', 'renvoi');
   const long = pushBody({ kind: 'return', date: '2026-10-08', reason: 'x'.repeat(500) });
   eq(long.includes('…') && long.length < 260, true, 'un motif de 500 caractères est raccourci dans la notification');
+});
+
+Deno.test('renvoi : ce qu’il a figé, et ce que le salarié a changé après', () => {
+  const fige = { start_time: '08:00', end_time: '17:00', break_minutes: 0, meal_allowance: true, gap_before: null, status: 'submitted' };
+  eq(frozenLabel(fige), 'était 8h00–17h00 · pause 0 min · panier', 'ce que le renvoi a figé');
+  eq(frozenLabel({ ...fige, meal_allowance: false, break_minutes: 30, gap_before: 'route' }), 'était 8h00–17h00 · pause 30 min · avant : route', 'pause et route');
+  eq(frozenLabel({ status: 'submitted' }), '', 'journal partiel : rien à dire');
+  const ligne = (o: Record<string, unknown> = {}) => ({ start_time: '08:00:00', end_time: '17:00:00', break_minutes: 0, meal_allowance: true, gap_before: null, status: 'submitted', ...o });
+  eq(changedAfterReturn(fige, ligne()), [], 'renvoyée telle quelle : rien');
+  eq(changedAfterReturn(fige, ligne({ end_time: '12:00:00' })), ['8h00–17h00 → 8h00–12h00'], 'fin changée après le renvoi');
+  eq(changedAfterReturn(fige, ligne({ break_minutes: 45, meal_allowance: false })), ['pause 0 → 45 min', 'panier retiré'], 'pause et panier');
+  eq(changedAfterReturn(fige, ligne({ start_time: '08:00:59' })), [], 'secondes ignorées');
+  eq(stateOf(ligne({ gap_before: 'trajet', break_minutes: null })), { start_time: '08:00', end_time: '17:00', break_minutes: 0, meal_allowance: true, gap_before: null }, 'état lisible, valeurs inconnues neutralisées');
 });

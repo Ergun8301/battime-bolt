@@ -29,8 +29,8 @@ import { InfoTip } from '@/components/ui/info-tip';
 import { TimeField, TIME_HINT } from '@/components/time-field';
 import { fetchQrFlags, isQrEntry, isExitToComplete, type QrFields } from '@/lib/qr-entry';
 import { fetchLeadMarks, type LeadMark } from '@/lib/lead-trace';
-import { fetchEntryEdits, correctOfficeEntry, returnDayToWorker, isReturned, type EntryEdit } from '@/lib/office-edits';
-import { changedKeys, diffLabels, precheck, reasonOk } from '@/supabase/functions/_shared/office-edits';
+import { fetchEntryEdits, correctOfficeEntry, returnDayToWorker, isReturned, lastEdit, type EntryEdit } from '@/lib/office-edits';
+import { changedAfterReturn, changedKeys, diffLabels, frozenLabel, precheck, reasonOk } from '@/supabase/functions/_shared/office-edits';
 import { interval } from '@/supabase/functions/_shared/day-hours';
 import { eraseEmptyDraft, isDisposableDraft, restoreDrafts } from '@/lib/erase';
 import { ActionDone, type UndoResult } from '@/components/action-done';
@@ -1152,9 +1152,17 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
               // Lot 2 : le journal du bureau sur cette ligne, et ce qu'il dit.
               const lineEdits = edits.get(entry.id) || [];
               const returned = isReturned(entry.status, lineEdits);
+              // Lot 2 : renvoyée, puis RENVOYÉE PAR LE SALARIÉ (elle compte de
+              // nouveau). Ce qu'il y a changé depuis se lit en comparant la ligne à
+              // ce que le renvoi a figé. La garde existante ne pose aucune trace
+              // sur un brouillon : sans ça, « corrigé par le bureau » d'avant le
+              // renvoi resterait affiché sur des heures que le bureau n'a pas vues.
+              const lastRet = lastEdit(lineEdits)?.kind === 'return' ? lastEdit(lineEdits) : undefined;
+              const afterReturn = lastRet && isCounted(entry.status) ? changedAfterReturn(lastRet.old_values, entry) : [];
+              const retNewer = !!lastRet && (!entry.modified_at || Date.parse(lastRet.edited_at) > Date.parse(entry.modified_at));
               // « modifié après envoi » ne doit plus s'allumer après une correction
               // du BUREAU (la garde pose aussi modified_by pour lui) : on lit QUI.
-              const changedBy = !entry.modified_at || !entry.modified_by || entry.modified_by === worker?.id ? 'worker'
+              const changedBy = (afterReturn.length > 0 && retNewer) || !entry.modified_at || !entry.modified_by || entry.modified_by === worker?.id ? 'worker'
                 : (corrections.get(entry.id) || []).some((c) => c.corrected_by === entry.modified_by && c.corrected_by_role === 'lead')
                   || leadMarks.get(entry.id)?.lead_edited_by === entry.modified_by ? 'lead' : 'office';
               const routeMin = weekRoute.get(entry.id) || 0;
@@ -1202,13 +1210,17 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
                         <UserIcon className="h-2.5 w-2.5" /> ajouté par le salarié
                       </Badge>
                     )}
-                    {!isCancelled && entry.modified_at && changedBy === 'worker' && (
+                    {/* Changée après un renvoi : CE badge, et jamais « corrigé par le bureau ». */}
+                    {!isCancelled && afterReturn.length > 0 && (
+                      <Badge variant="outline" className="text-[10px] py-0 text-amber-700 border-amber-300" data-testid="badge-after-return">modifié après renvoi</Badge>
+                    )}
+                    {!isCancelled && !afterReturn.length && entry.modified_at && changedBy === 'worker' && (
                       <Badge variant="outline" className="text-[10px] py-0 text-amber-700 border-amber-300">modifié après envoi</Badge>
                     )}
-                    {!isCancelled && entry.modified_at && changedBy === 'office' && (
+                    {!isCancelled && !afterReturn.length && entry.modified_at && changedBy === 'office' && (
                       <Badge variant="outline" className="text-[10px] py-0 text-amber-700 border-amber-300" data-testid="badge-office">corrigé par le bureau</Badge>
                     )}
-                    {!isCancelled && entry.modified_at && changedBy === 'lead' && !leadMarks.get(entry.id) && (
+                    {!isCancelled && !afterReturn.length && entry.modified_at && changedBy === 'lead' && !leadMarks.get(entry.id) && (
                       <Badge variant="outline" className="text-[10px] py-0 text-amber-700 border-amber-300">corrigé par le chef d’équipe</Badge>
                     )}
                     {/* Lot 14 : saisie ou corrigée par un chef d'équipe (posée par la base). */}
@@ -1342,6 +1354,10 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
                           {x.notify_error ? ` (${x.notify_error})` : ''}
                         </span>
                       )}
+                      {/* Ce que le salarié avait envoyé, figé au moment du renvoi. */}
+                      {x.kind === 'return' && frozenLabel(x.old_values) && (
+                        <span className="basis-full text-amber-800" data-testid="return-frozen">{frozenLabel(x.old_values)}</span>
+                      )}
                     </div>
                   ) : c ? (
                     <div key={c.id} className="mt-2 flex flex-wrap items-center gap-2 rounded-md border border-amber-200 bg-amber-50/70 px-2.5 py-1.5 text-xs">
@@ -1370,6 +1386,13 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
                       )}
                     </div>
                   ) : null))}
+                  {/* Lot 2 : après le renvoi, ce qui a changé avant que la ligne revienne. */}
+                  {!isCancelled && afterReturn.length > 0 && (
+                    <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-xs" data-testid="after-return">
+                      <PencilLine className="h-3 w-3 shrink-0 text-amber-700" />
+                      <span className="font-semibold text-amber-900">Changé après renvoi : {afterReturn.join(' · ')}</span>
+                    </div>
+                  )}
 
                   {/* ── CORRIGER LES HEURES ───────────────────────────────────
                       ON NE CORRIGE QUE CE QUI COMPTE. `isCounted` est la règle

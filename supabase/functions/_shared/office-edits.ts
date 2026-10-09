@@ -138,6 +138,39 @@ export function diffLabels(oldV: Partial<EditState>, newV: Partial<EditState>): 
   return out;
 }
 
+/** Une ligne d'heures dans les mots du journal (sans le statut) : de quoi la comparer à ce qu'un renvoi a figé. */
+export const stateOf = (e: EntryLike): Partial<EditState> => ({
+  start_time: hhmm(e.start_time), end_time: hhmm(e.end_time), break_minutes: Math.round(Number(e.break_minutes) || 0),
+  meal_allowance: !!e.meal_allowance, gap_before: gapOf(e.gap_before),
+});
+
+/**
+ * Ce qu'un renvoi a FIGÉ, lisible sur l'historique du bureau :
+ * « était 8h00–17h00 · pause 0 min · panier ». Sans ça, la ligne « Renvoyée au
+ * salarié » ne disait pas ce que le salarié avait envoyé avant d'y retoucher.
+ */
+export function frozenLabel(v: Partial<EditState>): string {
+  const o = v || {};
+  if (!o.start_time || !o.end_time) return '';
+  const parts = [`était ${fmtH(o.start_time)}–${fmtH(o.end_time)}`, `pause ${Number(o.break_minutes || 0)} min`];
+  if (o.meal_allowance) parts.push('panier');
+  if (gapOf(o.gap_before)) parts.push(`avant : ${gapLabel(o.gap_before)}`);
+  return parts.join(' · ');
+}
+
+/**
+ * Lot 2 — ce que le salarié a changé APRÈS un renvoi, une fois la ligne
+ * renvoyée au bureau. `returnValues` = ce que le renvoi a figé (old_values).
+ *
+ * POURQUOI ICI. Une ligne renvoyée est un brouillon : la garde de la base
+ * (guard_time_entry_write) ne pose modified_at / modified_by que sur une ligne
+ * ENVOYÉE. Le trigger time_entries_guard_write_returned (même migration) les
+ * pose aussi sur un brouillon renvoyé, mais ne dit que QUI et QUAND. QUOI se
+ * lit en comparant ce que le renvoi a figé à la ligne telle qu'elle est.
+ */
+export const changedAfterReturn = (returnValues: Partial<EditState>, entry: EntryLike): string[] =>
+  diffLabels(returnValues, stateOf(entry));
+
 const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
 /** « 8 octobre » — sans Intl : le même texte sur le téléphone, le serveur et les tests. */
 export const jourMois = (iso: string) => {

@@ -55,6 +55,7 @@ const push = (m: Map<string, string[]>, k: string, v: string) => { const l = m.g
 const RANK: Record<string, number> = { sent: 3, exit: 2, draft: 1 };
 const REASON: Record<string, string> = { sent: 'heures déjà envoyées', exit: 'sortie oubliée à compléter', draft: 'heures déjà notées par le salarié' };
 const blockOf = (t: EntryLite) => (t.status === 'draft' ? (t.exit_forgotten ? 'exit' : 'draft') : 'sent');
+const LIVE = 'pointage en cours';
 
 /** Cases du planning : par identifiants, ou un salarié (ou toute l'équipe) sur une période. */
 export async function erasePlanning(companyId: string, o: { ids?: string[]; userId?: string | null; from?: string; to?: string; absences?: boolean }): Promise<EraseResult> {
@@ -107,9 +108,28 @@ export async function erasePlanning(companyId: string, o: { ids?: string[]; user
       if ((RANK[st] || 0) > (RANK[byKey.get(k) || ''] || 0)) byKey.set(k, st);
     }
   }
-  for (const r of rows) {
-    const st = byKey.get(keyOf(r));
-    if (st) mark(r.id, st);
+  // Lot 2 : ces heures sans lien n'appartiennent à aucune case en particulier.
+  // Une AUTRE case du même salarié, jour et chantier qui RESTE les porte
+  // toujours : elles ne gardent donc une case que si c'est la dernière. Sinon,
+  // une case copiée ou déplacée là où des heures sans lien existaient déjà
+  // (case Q d'origine) ne pouvait plus jamais partir — « Annuler » compris.
+  // « Reste » = pas dans cet effacement, ou gardée pour une autre raison
+  // (heures liées, mois clôturé).
+  if (rows.some((r) => byKey.has(keyOf(r)))) {
+    const doomed = new Set(rows.filter((r) => !linked.has(r.id) && !closed.has(String(r.work_date).slice(0, 7))).map((r) => r.id));
+    const covered = new Set<string>();
+    for (const part of chunks(users)) {
+      const { data: others, error: oErr } = await supabase.from('planning').select('id, user_id, work_date, worksite_id')
+        .eq('company_id', companyId).in('user_id', part).gte('work_date', dates[0]).lte('work_date', dates[dates.length - 1])
+        .is('absence_type', null);
+      if (oErr) throw oErr;
+      for (const o of (others ?? []) as Row[]) if (!doomed.has(o.id) && byKey.has(keyOf(o))) covered.add(keyOf(o));
+    }
+    for (const r of rows) {
+      const k = keyOf(r);
+      const st = byKey.get(k);
+      if (st && !covered.has(k)) mark(r.id, st);
+    }
   }
   const reasons = new Set<string>();
   let toDelete = rows.filter((r) => {
@@ -280,7 +300,14 @@ export interface MovePrep { reason: string | null; drafts: Row[]; detached: { id
  *    case déplacée n'apparaît pas « retirée » à sa nouvelle place.
  * Rien n'est déplacé ici : l'appelant déplace, puis undoMovePrep remet tout si
  * le déplacement échoue (ou s'il est annulé). Partagé par le glisser du
- * planning et l'Assistant (modifier_intervention).
+ * planning et l'Assistant (modifier_intervention, et son « Annuler »).
+ *
+ * Lot 2 (relecture) :
+ *  · un POINTAGE EN COURS sur la case (active_sessions.planning_id), ou sans
+ *    lien sur son salarié, jour et chantier (placeLive l'y rattache), la garde :
+ *    la ligne naîtra à la fin du pointage avec ce planning_id et CE jour-là ;
+ *  · des heures SANS lien ne la gardent que si aucune autre case du même
+ *    salarié, jour et chantier ne reste pour les porter.
  */
 export async function prepareMove(companyId: string, id: string): Promise<MovePrep> {
   const kept = (reason: string): MovePrep => ({ reason, drafts: [], detached: [] });
@@ -289,6 +316,17 @@ export async function prepareMove(companyId: string, id: string): Promise<MovePr
   if (error) throw error;
   if (!p) return { reason: null, drafts: [], detached: [] };
   const row = p as { user_id: string; work_date: string; worksite_id: string | null };
+  // Pointage en cours : lu en base, pas seulement à l'écran (l'Assistant n'en sait rien).
+  const { data: live, error: lErr } = await supabase.from('active_sessions').select('user_id').eq('planning_id', id).limit(1);
+  if (lErr) throw lErr;
+  if ((live ?? []).length) return kept(LIVE);
+  if (row.worksite_id) {
+    const { data: loose, error: llErr } = await supabase.from('active_sessions').select('user_id')
+      .eq('company_id', companyId).eq('user_id', row.user_id).eq('work_date', row.work_date).eq('worksite_id', row.worksite_id)
+      .is('planning_id', null).limit(1);
+    if (llErr) throw llErr;
+    if ((loose ?? []).length) return kept(LIVE);
+  }
   let worst = '';
   const mark = (t: EntryLite) => { const st = blockOf(t); if (RANK[st] > (RANK[worst] || 0)) worst = st; };
   const empties: string[] = [];
@@ -302,7 +340,15 @@ export async function prepareMove(companyId: string, id: string): Promise<MovePr
     const loose = await readEntries((cols) => supabase.from('time_entries').select(cols)
       .eq('company_id', companyId).eq('user_id', row.user_id).eq('work_date', row.work_date).eq('worksite_id', row.worksite_id)
       .is('planning_id', null).neq('status', 'cancelled'));
-    for (const t of loose) if (!disposable(t)) mark(t);
+    const blocking = loose.filter((t) => !disposable(t));
+    if (blocking.length) {
+      // Une autre case reste sur ce salarié, ce jour et ce chantier : elle porte ces heures.
+      const { data: other, error: oErr } = await supabase.from('planning').select('id')
+        .eq('company_id', companyId).eq('user_id', row.user_id).eq('work_date', row.work_date).eq('worksite_id', row.worksite_id)
+        .is('absence_type', null).neq('id', id).limit(1);
+      if (oErr) throw oErr;
+      if (!(other ?? []).length) for (const t of blocking) mark(t);
+    }
   }
   if (worst) return kept(REASON[worst]);
 

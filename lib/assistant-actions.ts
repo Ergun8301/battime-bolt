@@ -193,9 +193,28 @@ export function makeActionExecutor(user: { id: string; company_id: string }): Ac
           // déplacement avait détaché ou effacé).
           const moved = prep;
           undo = async () => {
-            await updatePlanningSlot(cid, d.planning_id!, {
-              userId: p0.user_id, workDate: p0.work_date, estimatedStart: p0.estimated_start, estimatedEnd: p0.estimated_end, notes: p0.notes,
-            });
+            // Lot 2 : revenir est AUSSI un déplacement. Des heures notées ou un
+            // pointage commencé depuis sur la case, à sa place actuelle, la
+            // gardent — sinon ces heures désigneraient un autre jour. Même règle
+            // que le glisser (prepareMove), sur la case telle qu'elle est.
+            let back: MovePrep | null = null;
+            if (moved) {
+              back = await prepareMove(cid, d.planning_id!);
+              if (back.reason) throw new Error(`Annulation impossible : ${back.reason}.`);
+            }
+            try {
+              await updatePlanningSlot(cid, d.planning_id!, {
+                userId: p0.user_id, workDate: p0.work_date, estimatedStart: p0.estimated_start, estimatedEnd: p0.estimated_end, notes: p0.notes,
+              });
+            } catch (err) {
+              if (back) await undoMovePrep(back).catch((e) => console.error('Remise après échec impossible :', e));
+              throw err;
+            }
+            // Revenue à sa place d'origine : ce que le premier déplacement avait
+            // défait là-bas y est remis. Ce que le retour a défait à la place
+            // quittée (brouillon vide effacé, ligne retirée détachée) le reste,
+            // comme après n'importe quel déplacement : remis, ces lignes
+            // désigneraient de nouveau la case depuis un autre jour.
             if (moved) await undoMovePrep(moved);
           };
           break;
