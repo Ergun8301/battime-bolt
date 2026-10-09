@@ -12,6 +12,8 @@
 //   · un renvoi simple remplace l'ancienne invitation au lieu de s'empiler ;
 //   · e-mail refusé (limite d'envoi…) : l'ancienne invitation reste ;
 //   · deux renvois simultanés dont le plus récent échoue : le premier reste ;
+//   · deux invitations créées à la MÊME microseconde : une seule reste (départage
+//     par id), le salarié n'est pas compté deux fois ;
 //   · jamais touchées : les invitations acceptées, celles d'une autre entreprise.
 
 type Row = Record<string, unknown>;
@@ -28,6 +30,8 @@ const uuid = () => `00000000-0000-4000-8000-${String(++seq).padStart(12, '0')}`;
 /** Horodatage réel, strictement croissant (comme now() d'une insertion à l'autre). */
 let tick = 0;
 const nowIso = () => { tick = Math.max(Date.now(), tick + 1); return new Date(tick).toISOString(); };
+/** Si posé : toutes les insertions reçoivent CET horodatage (égalité parfaite). */
+let sameCreatedAt: string | null = null;
 const ago = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
 
 const SKIP = new Set(['select', 'order', 'limit', 'offset', 'on_conflict', 'columns']);
@@ -97,7 +101,7 @@ async function fakeFetch(input: string | URL | Request, init?: RequestInit): Pro
   if (method === 'POST') {
     const items = (Array.isArray(body) ? body : [body]) as Row[];
     const saved = items.map((it) => {
-      const row: Row = { id: uuid(), created_at: nowIso(), accepted_at: null, ...it };
+      const row: Row = { id: uuid(), created_at: sameCreatedAt ?? nowIso(), accepted_at: null, ...it };
       rows.push(row);
       return row;
     });
@@ -149,7 +153,7 @@ const CO2 = 'c0000000-0000-4000-8000-000000000002';
 const EMAIL = 'jean.exemple@example.test';
 
 function freshDb(): Db {
-  sending = []; autoSend = true; sentTo.length = 0;
+  sending = []; autoSend = true; sentTo.length = 0; sameCreatedAt = null;
   return {
     auth: [{ id: 'u-admin', token: 'jwt-admin' }, { id: 'u-worker', token: 'jwt-worker' }],
     users: [
@@ -194,8 +198,9 @@ async function twoAtOnce() {
   await until(() => sending.length === 2, 'les deux envois en cours');
   eq(pending().length, 3, 'pendant l’envoi : l’ancienne + les deux nouvelles coexistent');
   const rowOf = (phone: string) => db.invitations.find((r) => r.phone === phone)!;
+  // Même ordre que la base : created_at, puis id pour départager une égalité.
   const [older, newer] = [rowOf('0600000001'), rowOf('0600000002')]
-    .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+    .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)) || String(a.id).localeCompare(String(b.id)));
   const promiseOf = (row: Row) => (row.phone === '0600000001' ? pA : pB);
   const sendingOf = (row: Row) => sending.find((s) => s.phone === row.phone)!;
   return { older, newer, promiseOf, sendingOf };
@@ -228,20 +233,29 @@ Deno.test({
   },
 });
 
-for (const order of ['la plus ancienne', 'la plus récente'] as const) {
+for (const [order, tie] of [
+  ['la plus ancienne', false], ['la plus récente', false],
+  ['la plus ancienne', true], ['la plus récente', true],
+] as const) {
   Deno.test({
     ...OPTS,
-    name: `Invitations — deux renvois simultanés (e-mail de ${order} parti d’abord) : le salarié reste dans la liste`,
+    name: tie
+      ? `Invitations — deux renvois créés à la même microseconde (e-mail de ${order} parti d’abord) : une seule reste`
+      : `Invitations — deux renvois simultanés (e-mail de ${order} parti d’abord) : le salarié reste dans la liste`,
     async fn() {
       db = freshDb();
+      if (tie) sameCreatedAt = new Date(Date.now() - 1000).toISOString();
       const { older, newer, promiseOf, sendingOf } = await twoAtOnce();
+      if (tie) eq(older.created_at, newer.created_at, 'les deux nouvelles ont le même horodatage');
       const [first, second] = order === 'la plus ancienne' ? [older, newer] : [newer, older];
       sendingOf(first).finish(true);
       eq((await promiseOf(first)).status, 200, 'premier envoi');
       sendingOf(second).finish(true);
       eq((await promiseOf(second)).status, 200, 'second envoi');
       const left = pending();
-      eq(left.length, 1, 'exactement une invitation en attente (avant le correctif : zéro, le salarié disparaissait)');
+      eq(left.length, 1, tie
+        ? 'exactement une invitation en attente (sans départage par id : deux, le salarié compté deux fois)'
+        : 'exactement une invitation en attente (avant le correctif : zéro, le salarié disparaissait)');
       eq(left[0].id, newer.id, 'c’est la plus récente qui reste (celle que prend le trigger d’inscription)');
       ok(!db.invitations.some((r) => r.id === 'inv-ancienne'), 'l’invitation d’hier est retirée');
       untouched();

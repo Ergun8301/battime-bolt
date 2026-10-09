@@ -146,9 +146,12 @@ Deno.serve(async (req) => {
     //    renvois partent en même temps pour la même adresse, chacun effaçait
     //    l'autre (« tout sauf la mienne ») et le salarié disparaissait de la
     //    liste. Ici, la plus récente des invitations envoyées reste toujours.
-    await supabaseAdmin.from("invitations").delete()
-      .eq("company_id", company_id).ilike("email", email).is("accepted_at", null)
-      .lt("created_at", inv.created_at);
+    //    Ordre total (created_at, puis id) : deux invitations créées à la même
+    //    microseconde ne restent pas toutes les deux (le salarié compté deux fois).
+    const pendingSameEmail = () => supabaseAdmin.from("invitations").delete()
+      .eq("company_id", company_id).ilike("email", email).is("accepted_at", null);
+    await pendingSameEmail().lt("created_at", inv.created_at);
+    await pendingSameEmail().eq("created_at", inv.created_at).lt("id", inv.id);
 
     return jsonResponse({ success: true }, { status: 200 });
   } catch (e) {
