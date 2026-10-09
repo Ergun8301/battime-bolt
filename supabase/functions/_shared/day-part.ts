@@ -32,8 +32,12 @@ const at = (x: number): DayPart => (x < NOON ? 'matin' : x < EVENING ? 'apres-mi
 export function dayPartOf(start?: string | null, end?: string | null): DayPart | 'journee' | null {
   const s = toMinutes(start);
   if (s === null) return null;
-  const e = toMinutes(end);
-  if (e === null || e <= s) return at(s); // RDV « 14:00 » (ou fin illisible) : le début décide
+  const fin = toMinutes(end);
+  // RDV « 14:00 », fin illisible, ou sortie oubliée (fin = début) : le début décide.
+  if (fin === null || fin === s) return at(s);
+  // Fin avant le début = poste de nuit (comme la saisie et le chrono) : on coupe à
+  // minuit, sinon 17:00–00:30 se teintait « Après-midi » sur le seul début.
+  const e = fin < s ? 24 * 60 : fin;
   const ov = [[0, NOON], [NOON, EVENING], [EVENING, 24 * 60]]
     .map(([a, b]) => Math.max(0, Math.min(e, b) - Math.max(s, a)));
   if (ov.filter((m) => m >= SPAN_MIN).length >= 2) return 'journee';

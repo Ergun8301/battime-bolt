@@ -95,7 +95,7 @@ slot('p-e3', 'u-eli', 21, W3, null, null, 'soir');
 slot('p-f1', 'u-fanny', 19, W5, '09:00:00', '11:00:00', 'matin', { notes: 'Formation sécurité' });
 slot('p-f2', 'u-fanny', 20, W1, '13:30:00', '17:00:00', 'apres-midi');
 slot('p-f3', 'u-fanny', 21, W2, '12:00:00', '12:00:00', 'apres-midi');
-slot('p-f4', 'u-fanny', 22, W3, '09:00:00', '08:00:00', 'matin');
+slot('p-f4', 'u-fanny', 22, W3, '09:00:00', '08:00:00', null); // fin avant début = nuit, coupée à minuit : 09–24 = journée
 // Gabin : matin + après-midi chaque jour ; Hugo : après-midi + un samedi soir ; Maximilien : journées
 for (const d of [19, 20, 21, 22, 23]) { slot(`p-g${d}m`, 'u-gabin', d, W4, '08:00:00', '12:00:00', 'matin'); slot(`p-g${d}a`, 'u-gabin', d, W1, '13:30:00', '17:00:00', 'apres-midi'); }
 for (const d of [19, 20, 21, 22, 23]) slot(`p-h${d}`, 'u-hugo', d, W2, '13:30:00', '17:00:00', 'apres-midi');

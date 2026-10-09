@@ -29,8 +29,16 @@ Deno.test('créneau d’un horaire prévu (seuils 12 h et 18 h, 2 h dans deux cr
     ['08:00', '17:00', 'journee'],
     ['10:00', '14:00', 'journee'],
     ['16:00', '22:00', 'journee'],
-    ['12:00', '12:00', 'apres-midi'], // fin ≤ début : seul le début compte
-    ['09:00', '08:00', 'matin'],
+    ['12:00', '12:00', 'apres-midi'], // fin = début (sortie oubliée) : seul le début compte
+    ['09:00:00', '09:00:00', 'matin'],
+    ['18:30', '18:30', 'soir'],
+    // Fin avant le début = poste de nuit, coupé à minuit.
+    ['22:00', '06:00', 'soir'],
+    ['17:00:00', '00:30:00', 'soir'], // 1 h l'après-midi, 6 h le soir
+    ['17:00', '00:00', 'soir'],
+    ['18:00', '00:30', 'soir'],
+    ['16:00', '02:00', 'journee'], // 2 h l'après-midi + 6 h le soir : blanc
+    ['09:00', '08:00', 'journee'], // 09:00 → minuit
     ['8:00', '12:00', 'matin'],
     [null, null, null],
     [undefined, undefined, null],
@@ -47,6 +55,7 @@ Deno.test('libellé de la borne « 14:00 » / « 08:00–17:00 »', () => {
   eq(dayPartOfLabel('14:00'), 'apres-midi', '« 14:00 »');
   eq(dayPartOfLabel('08:00–17:00'), 'journee', 'tiret demi-cadratin');
   eq(dayPartOfLabel('18:00-21:00'), 'soir', 'trait d’union');
+  eq(dayPartOfLabel('17:00–00:30'), 'soir', 'nuit sur la borne');
   eq(dayPartOfLabel(null), null, 'sans horaire');
   eq(dayPartTintFromLabel('08:00–12:00')?.key, 'matin', 'teinte depuis le libellé');
   eq(dayPartTintFromLabel('08:00–17:00'), null, 'journée entière : pas de teinte');
