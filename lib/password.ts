@@ -13,7 +13,7 @@
 // réussir du premier coup — on ne se défend pas contre un attaquant.
 //
 // La règle (octobre 2026) : 8 caractères minimum, dont au moins un chiffre et
-// un caractère spécial. Plus de majuscule obligatoire. Exemple : Fatih.2024.
+// un caractère spécial. Plus de majuscule obligatoire. Exemple : Soleil-Mars-27.
 // Le serveur, lui, peut au plus exiger « lettres et chiffres » (aucun réglage
 // Supabase ne sait demander un caractère spécial sans majuscule) : il ne doit
 // jamais être PLUS strict que cette liste, sinon la personne coche tout puis se
@@ -71,7 +71,7 @@ export function passwordProblem(password: string): string | null {
 }
 
 /** Ce que le champ affiche tant qu'il est vide. */
-export const PASSWORD_PLACEHOLDER = 'Ex. Fatih.2024';
+export const PASSWORD_PLACEHOLDER = 'Ex. Soleil-Mars-27';
 
 /**
  * La règle en une phrase, pour traduire un refus venu du SERVEUR.
@@ -81,4 +81,4 @@ export const PASSWORD_PLACEHOLDER = 'Ex. Fatih.2024';
  */
 export const PASSWORD_RULE =
   `Mot de passe refusé : il faut au moins ${PASSWORD_MIN_LENGTH} caractères, `
-  + `avec au moins une lettre, un chiffre et un caractère spécial (ex. Fatih.2024).`;
+  + `avec au moins une lettre, un chiffre et un caractère spécial (ex. Soleil-Mars-27).`;

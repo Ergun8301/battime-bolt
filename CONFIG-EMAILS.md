@@ -123,7 +123,7 @@ Supabase → **Authentication** → **Providers** → **Email** → *Email OTP E
 
 ### Obligatoire — règle de mot de passe (octobre 2026)
 
-L'appli demande désormais : **8 caractères minimum, dont 1 lettre, 1 chiffre et 1 caractère spécial** (ex. `Fatih.2024`), sans majuscule obligatoire. Le serveur ne doit jamais être plus strict, sinon la personne coche tout puis se fait refuser. **À régler AVANT de fusionner la PR qui change la règle** (aujourd'hui le serveur exige encore 12 caractères avec majuscule) :
+L'appli demande désormais : **8 caractères minimum, dont 1 lettre, 1 chiffre et 1 caractère spécial** (ex. `Soleil-Mars-27`), sans majuscule obligatoire. Le serveur ne doit jamais être plus strict, sinon la personne coche tout puis se fait refuser. **À régler AVANT de fusionner la PR qui change la règle** (aujourd'hui le serveur exige encore 12 caractères avec majuscule) :
 
 Supabase → **Authentication** → **Providers** → **Email** :
 

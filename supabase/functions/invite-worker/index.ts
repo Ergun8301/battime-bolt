@@ -107,10 +107,12 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "Champs requis manquants (email, prénom, nom)" }, { status: 400 });
     }
 
-    // 1) L'invitation d'abord — une seule en attente par e-mail et par entreprise
-    //    (un renvoi remplace la précédente au lieu de s'empiler).
-    await supabaseAdmin.from("invitations").delete()
-      .eq("company_id", company_id).ilike("email", email).is("accepted_at", null);
+    // 1) La nouvelle invitation d'abord. Les anciennes en attente (même e-mail,
+    //    même entreprise) ne sont retirées qu'APRÈS un envoi réussi (étape 3) :
+    //    si l'e-mail échoue (limite d'envoi atteinte…), l'invitation précédente
+    //    reste et le salarié ne disparaît pas de la liste du bureau. Pendant
+    //    l'envoi, deux lignes coexistent : le trigger d'inscription prend la
+    //    plus récente (ORDER BY created_at DESC).
     const invRow: Record<string, unknown> = { company_id, email, first_name, last_name, role, created_by: caller.id };
     if (phone) invRow.phone = phone;
     const { data: inv, error: insertError } = await supabaseAdmin
@@ -130,12 +132,18 @@ Deno.serve(async (req) => {
       data: { first_name, last_name, company_id, role, phone, employer_name },
     });
     if (inviteError) {
+      // Échec : on retire seulement la NOUVELLE ligne ; l'ancienne invitation reste.
       await supabaseAdmin.from("invitations").delete().eq("id", inv.id);
       const msg = /already|registered|exists/i.test(inviteError.message)
         ? "Un compte existe déjà avec cette adresse."
         : inviteError.message;
       return jsonResponse({ error: msg }, { status: 400 });
     }
+
+    // 3) Envoi réussi : une seule invitation en attente par e-mail et par entreprise
+    //    (un renvoi remplace la précédente au lieu de s'empiler).
+    await supabaseAdmin.from("invitations").delete()
+      .eq("company_id", company_id).ilike("email", email).is("accepted_at", null).neq("id", inv.id);
 
     return jsonResponse({ success: true }, { status: 200 });
   } catch (e) {
