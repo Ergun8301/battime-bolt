@@ -116,7 +116,7 @@ Deno.serve(async (req) => {
     const invRow: Record<string, unknown> = { company_id, email, first_name, last_name, role, created_by: caller.id };
     if (phone) invRow.phone = phone;
     const { data: inv, error: insertError } = await supabaseAdmin
-      .from("invitations").insert(invRow).select("id").single();
+      .from("invitations").insert(invRow).select("id, created_at").single();
     if (insertError || !inv) return jsonResponse({ error: insertError?.message ?? "Invitation impossible" }, { status: 400 });
 
     // 2) Le compte + l'e-mail d'invitation. Pour un invité pas encore connecté,
@@ -142,8 +142,13 @@ Deno.serve(async (req) => {
 
     // 3) Envoi réussi : une seule invitation en attente par e-mail et par entreprise
     //    (un renvoi remplace la précédente au lieu de s'empiler).
+    //    On ne retire que les invitations PLUS ANCIENNES que la nouvelle : si deux
+    //    renvois partent en même temps pour la même adresse, chacun effaçait
+    //    l'autre (« tout sauf la mienne ») et le salarié disparaissait de la
+    //    liste. Ici, la plus récente des invitations envoyées reste toujours.
     await supabaseAdmin.from("invitations").delete()
-      .eq("company_id", company_id).ilike("email", email).is("accepted_at", null).neq("id", inv.id);
+      .eq("company_id", company_id).ilike("email", email).is("accepted_at", null)
+      .lt("created_at", inv.created_at);
 
     return jsonResponse({ success: true }, { status: 200 });
   } catch (e) {

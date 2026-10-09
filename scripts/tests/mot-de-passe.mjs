@@ -102,7 +102,7 @@ await p.fill('#signup-password', 'soleil-mars-27');
 await p.screenshot({ path: `${SH}/1-inscription-regle-telephone.png`, fullPage: true });
 
 console.log('2. Inscription : envoi refusé sans caractère spécial, accepté avec');
-await p.fill('#company-name', 'Test'); await p.fill('#firstname', 'Fatih'); await p.fill('#lastname', 'Test'); await p.fill('#signup-email', 'patron@exemple.fr');
+await p.fill('#company-name', 'Test'); await p.fill('#firstname', 'Jean'); await p.fill('#lastname', 'Test'); await p.fill('#signup-email', 'patron@exemple.fr');
 calls.length = 0;
 await p.fill('#signup-password', 'soleil2027');
 await p.click('button[type=submit]');
@@ -256,8 +256,10 @@ console.log('9. Aucun nom de client dans les écrans d’accès');
 for (const url of ['/inscription', '/connexion', '/mot-de-passe-oublie', '/pointer?k=borne&c=123456']) {
   ({ ctx, p } = await page(url));
   await p.waitForTimeout(500);
-  const html = (await p.content()).toLowerCase();
-  check(!/fatih|kebab|yilmazer/.test(html), `${url} : aucun nom de client`);
+  // Champs mot de passe : seul exemple possible, l'exemple neutre (aucun prénom
+  // ni nom de client) ; sinon des points (champ « confirmer », connexion).
+  const exemples = await p.$$eval('input[type=password], input[autocomplete$=password]', (els) => els.map((e) => e.getAttribute('placeholder') || ''));
+  check(exemples.every((e) => e === '' || e === 'Ex. Soleil-Mars-27' || /^•+$/.test(e)), `${url} : champs mot de passe, seul exemple « Ex. Soleil-Mars-27 » (${exemples.join(' | ') || 'aucun champ'})`);
   await ctx.close();
 }
 await b.close(); srv.close();

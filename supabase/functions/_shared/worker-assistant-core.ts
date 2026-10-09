@@ -20,7 +20,7 @@ export { looksLikeAction };
 
 export interface WorkerSnapshot {
   aujourdhui: string;
-  /** Lot 7 : la phrase dite (départage deux chantiers du même client : « le kebab de Bourg »). */
+  /** Lot 7 : la phrase dite (départage deux chantiers du même client : « la pizzeria de Bourg »). */
   demande?: string;
   chantiers: { id: string; nom: string; ville: string | null }[];
   /** Ses heures déclarées, par jour, sur la semaine en cours (lundi → aujourd'hui). */
@@ -114,7 +114,7 @@ export function plannedWorksite(date: string, start: string, end: string, snapsh
 function fillUnsaid(line: DraftLine, date: string, snapshot: WorkerSnapshot): DraftLine {
   if (line.worksite_id) return line;
   if (line.worksite_text) {
-    // Un client connu mais ambigu (deux chantiers « Mister Grill Kebab ») : la ville
+    // Un client connu mais ambigu (deux chantiers « Pizzeria Exemple ») : la ville
     // dite dans la phrase départage ; sinon le salarié choisit — jamais « Autre ».
     const qw = words(line.worksite_text).filter((w) => w.length > 2);
     const same = snapshot.chantiers.filter((c) => norm(c.nom) !== 'autre' && words(c.nom).some((n) => n.length > 2 && qw.includes(n)));

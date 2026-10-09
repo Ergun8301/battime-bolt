@@ -229,8 +229,8 @@ Deno.test('5 bis. Planning proposé sans habitude : ordre des replis, « Pas de 
       { id: 'c', prenom: 'Cyr', nom: 'C', role: 'worker' },
     ],
     chantiers: [
-      { id: 'w-macon', nom: 'Mister Grill Kebab', ville: 'Mâcon' },
-      { id: 'w-bourg', nom: 'Mister Grill Kebab', ville: 'Bourg-en-Bresse' },
+      { id: 'w-macon', nom: 'Pizzeria Exemple', ville: 'Mâcon' },
+      { id: 'w-bourg', nom: 'Pizzeria Exemple', ville: 'Bourg-en-Bresse' },
       { id: 'w-autre', nom: 'Autre', ville: null },
     ],
     planning: [], congesEnAttente: [], pointages: [],
@@ -247,7 +247,7 @@ Deno.test('5 bis. Planning proposé sans habitude : ordre des replis, « Pas de 
   ] };
   eq(site(p2, 'a'), ['w-macon'], 'dernier pointage (le plus récent)');
   const notes2 = (proposeWeek(p2, NEXT).draft as { notes: string[] }).notes;
-  if (!notes2.includes('Ali A : Mister Grill Kebab · Mâcon (dernier chantier pointé), à vérifier.')) throw new Error(`note : ${notes2}`);
+  if (!notes2.includes('Ali A : Pizzeria Exemple · Mâcon (dernier chantier pointé), à vérifier.')) throw new Error(`note : ${notes2}`);
   // 3) sans rien pour Bea : chantier le plus utilisé de l'entreprise
   eq(site(p2, 'b'), ['w-macon'], 'chantier le plus utilisé');
   // 1) le planning de la semaine en cours passe avant le pointage
@@ -292,8 +292,8 @@ Deno.test('Lot 7 : un client doit être NOMMÉ — « à Lyon » reste un lieu',
   };
   const lyon = plan('Rajoute-moi une intervention à Lyon aujourd’hui de 14h à 18h', { salarie: 'moi', chantier: 'Villa Dupont', dates: ['2026-10-01'] });
   eq([lyon.worksite_id, lyon.note], ['w-autre', 'Intervention à Lyon'], 'le modèle a traduit Lyon en client : on revient au lieu');
-  eq(plan('mets kevin sur mister grill macon lundi', { salarie: 'Kevin', chantier: 'Mister Grill Kebab', lieu: 'Mâcon', dates: ['lundi'] }).worksite_id, 'w-mgk-macon', 'client + ville départagent');
-  eq(plan('mets kevin sur mister grill lundi', { salarie: 'Kevin', chantier: 'Mister Grill Kebab', dates: ['lundi'] }).worksite_id, null, 'ambigu : on demande, jamais « Autre »');
+  eq(plan('mets kevin sur pizzeria exemple macon lundi', { salarie: 'Kevin', chantier: 'Pizzeria Exemple', lieu: 'Mâcon', dates: ['lundi'] }).worksite_id, 'w-pex-macon', 'client + ville départagent');
+  eq(plan('mets kevin sur pizzeria exemple lundi', { salarie: 'Kevin', chantier: 'Pizzeria Exemple', dates: ['lundi'] }).worksite_id, null, 'ambigu : on demande, jamais « Autre »');
   eq(plan('Karim demain chez Martin', { salarie: 'Karim', chantier: 'Bureau Martin', dates: ['demain'] }).worksite_id, 'w-martin', 'client nommé');
 });
 
