@@ -66,6 +66,7 @@ import ImportWorkersDialog from '@/components/import-workers-dialog';
 import LeaveAdminDialog from '@/components/leave-admin-dialog';
 import { CHANTIER_PALETTES, hashStr, LiveLine, PL_GRID_CSS, PlannedBubbleView, type ChantierPalette } from '@/components/planning-bubble';
 import { cellKey, parisDay, placeLive, type LivePlace, type LiveSessionLike } from '@/supabase/functions/_shared/live-place';
+import { copyRefusal, targetRefusal } from '@/supabase/functions/_shared/copy-slot';
 import KioskAdmin from '@/components/kiosk-admin';
 import { keep } from '@/lib/same';
 
@@ -280,6 +281,8 @@ const selAttr = (sel: SelState) => (sel.lock ? 'lock' : sel.on ? 'on' : 'off');
 // A bubble is both draggable (move/reorder) and droppable (reorder target).
 // Lot 11 : en mode « Sélectionner » (sel défini), le clic coche au lieu d'ouvrir,
 // et le glisser est coupé. Hors de ce mode, le rendu est EXACTEMENT celui d'avant.
+// Lot 2 : Ctrl ou Alt (⌥) maintenu pendant le glisser = COPIER. `data-bub` reste
+// posé en permanence (repère des tests) : `data-pid` n'existe qu'en sélection.
 function DraggableBubble({
   p, palette, real, draft, onEdit, docCount = 0, live, sel, onToggle,
 }: {
@@ -298,14 +301,14 @@ function DraggableBubble({
   const drop = useDroppable({ id: `bub|${p.id}` });
   return (
     <div ref={drop.setNodeRef} className={sel ? selClass(sel) : drop.isOver ? 'bt-pl-bub-over' : ''}
-      data-sel={sel ? selAttr(sel) : undefined} data-pid={sel ? p.id : undefined}>
+      data-sel={sel ? selAttr(sel) : undefined} data-pid={sel ? p.id : undefined} data-bub={p.id}>
       <div
         ref={drag.setNodeRef}
         {...drag.attributes}
         {...drag.listeners}
         onClick={(e) => { e.stopPropagation(); if (sel) onToggle?.(p, sel.lock); else onEdit(p); }}
         className={`bt-pl-grab ${drag.isDragging ? 'bt-pl-dragging' : ''}`}
-        title={sel ? (sel.lock || (sel.on ? 'Cliquer pour décocher' : 'Cliquer pour cocher')) : 'Glisser pour déplacer / réordonner · cliquer pour modifier'}
+        title={sel ? (sel.lock || (sel.on ? 'Cliquer pour décocher' : 'Cliquer pour cocher')) : 'Glisser pour déplacer · Ctrl ou Alt (⌥) + glisser pour copier · cliquer pour modifier'}
       >
         <BubbleContent p={p} palette={palette} real={real} draft={draft} docCount={docCount} live={live} />
       </div>
@@ -429,7 +432,12 @@ function DroppableCell({
       <div className="bt-pl-cellinner">
         {children}
         {isOver && (
-          <div className="bt-pl-drop"><span className="bt-pl-drop-arrow">↓</span><span>Déposer ici</span></div>
+          // Lot 2 : « Copier ici » remplace « Déposer ici » quand Ctrl / Alt est
+          // maintenu — basculé par la classe .bt-pl--copying, sans prop de plus.
+          <div className="bt-pl-drop">
+            <span className="bt-pl-drop-arrow"><span className="mv">↓</span><span className="cp">+</span></span>
+            <span className="mv">Déposer ici</span><span className="cp">Copier ici</span>
+          </div>
         )}
       </div>
     </td>
@@ -739,6 +747,14 @@ ${PL_GRID_CSS}
 .bt-pl-dragging{opacity:.35}
 .bt-pl-dragging .bt-pl-bub{box-shadow:none;transform:none}
 .bt-pl-overlay{transform:rotate(-2.5deg) scale(1.06);filter:drop-shadow(0 16px 22px rgba(21,18,15,.5));cursor:grabbing}
+/* Lot 2 : Ctrl / Alt maintenu = COPIER. La bulle d'origine reste pleine (elle ne
+   part pas), le curseur et une pastille « + » jaune le disent sur la copie. */
+.bt-pl--copying .bt-pl-dragging{opacity:1}
+.bt-pl--copying .bt-pl-overlay{cursor:copy}
+.bt-pl-overlay{position:relative}
+.bt-pl-copybadge{position:absolute;top:-8px;right:-8px;z-index:3;width:18px;height:18px;border-radius:50%;background:#FFC21A;color:#15120F;border:1.5px solid #15120F;font-size:14px;font-weight:900;line-height:1;display:flex;align-items:center;justify-content:center;pointer-events:none}
+.bt-pl-drop .cp,.bt-pl--copying .bt-pl-drop .mv{display:none}
+.bt-pl--copying .bt-pl-drop .cp{display:inline}
 .bt-pl-extra{transition:box-shadow .16s ease, transform .12s ease}
 .bt-pl-extra:hover{transform:translateY(-1px);box-shadow:0 8px 18px -8px rgba(181,71,46,.4)}
 .bt-pl-cell{transition:background .14s ease}
@@ -899,6 +915,16 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   // Lot 9 : relu par son propre sondage (30 s), plus par fetchExtras.
   const [liveNow, setLiveNow] = useState<LiveSessionLike[]>([]);
   const [activeDrag, setActiveDrag] = useState<{ id: string; type: 'move' | 'new'; worksiteId?: string } | null>(null);
+  // Lot 2 : Ctrl / Alt (⌥) / ⌘ maintenu AU DÉPÔT = copier au lieu de déplacer.
+  // dnd-kit ne transmet que le premier appui (activatorEvent) : l'état des touches
+  // est suivi à part, lu par handleDragEnd dans la ref (synchrone), affiché par l'état.
+  const copyRef = useRef(false);
+  const [copying, setCopying] = useState(false);
+  const setCopy = useCallback((on: boolean) => {
+    if (copyRef.current === on) return; // pas de redessin à chaque mouvement de souris
+    copyRef.current = on;
+    setCopying(on);
+  }, []);
 
   // disponibilité popup + worker fiche + management screens
   const [statusTarget, setStatusTarget] = useState<{ worker: User; fromStr: string } | null>(null);
@@ -1602,6 +1628,20 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     if (p.added_by_worker) return 'Ajoutée par le salarié — non supprimable';
     return hardLock(p);
   };
+  // Lot 2 : ce qu'un glisser simple ne DÉPLACE plus vers une autre case. Une ligne
+  // d'heures (envoyée, notée, retirée) désigne sa case par planning_id : déplacée,
+  // la case laissait la ligne pointer un autre jour, et le chargement suivant
+  // recréait une bulle « ajoutée par le salarié » à l'ancienne place
+  // (ensure_planning_slot). La COPIE (Ctrl / Alt), elle, reste toujours possible.
+  const moveLock = (p: PlanningWithWorksite): string | null => {
+    if (realForPlanning(p)) return 'Heures envoyées — non déplaçable';
+    if (draftForPlanning(p)) return 'Heures notées par le salarié — non déplaçable';
+    if (liveForBubble(p)) return 'Pointage en cours — non déplaçable';
+    if (withdrawnIds.has(p.id)) return 'Retirée par le salarié — non déplaçable';
+    if (closedMonths.has(p.work_date.slice(0, 7))) return 'Mois clôturé — non déplaçable';
+    if (closedFor(workerClosures, p.user_id, p.work_date)) return 'Heures clôturées pour ce salarié — non déplaçable';
+    return null;
+  };
   // La sélection affichée = la sélection ∩ ce qui est encore au planning et
   // supprimable. Calculée au rendu : aucun setState quand un sondage relit.
   const selIds: string[] = selectMode
@@ -1710,13 +1750,116 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   [planning]);
 
   // ─── drag: create (palette) · move (cross-cell) · reorder (within cell) ──────
+  // Lot 2 : + copier (Ctrl / Alt / ⌘ maintenu au dépôt).
+
+  // Les touches pendant qu'une bulle est en main, écoutées sur la fenêtre (phase
+  // de capture). Appuyer ou relâcher en cours de route compte : c'est l'état au
+  // moment du dépôt qui décide. Alt seul ouvrirait la barre de menus de Firefox.
+  useEffect(() => {
+    if (activeDrag?.type !== 'move') return;
+    const held = (e: KeyboardEvent | PointerEvent) => e.ctrlKey || e.altKey || e.metaKey;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Alt') e.preventDefault();
+      setCopy(held(e));
+    };
+    const onMove = (e: PointerEvent) => setCopy(held(e));
+    const onBlur = () => setCopy(false); // fenêtre quittée : la touche a pu être relâchée ailleurs
+    window.addEventListener('keydown', onKey, true);
+    window.addEventListener('keyup', onKey, true);
+    window.addEventListener('pointermove', onMove, true);
+    window.addEventListener('blur', onBlur);
+    return () => {
+      window.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('keyup', onKey, true);
+      window.removeEventListener('pointermove', onMove, true);
+      window.removeEventListener('blur', onBlur);
+    };
+  }, [activeDrag?.type, setCopy]);
 
   const handleDragStart = (e: DragStartEvent) => {
     const data = e.active.data.current as { type?: 'move' | 'new'; worksiteId?: string } | undefined;
-    setActiveDrag({ id: String(e.active.id), type: data?.type === 'new' ? 'new' : 'move', worksiteId: data?.worksiteId });
+    const type = data?.type === 'new' ? 'new' : 'move';
+    const ev = e.activatorEvent as PointerEvent | null;
+    setCopy(type === 'move' && !!ev && (ev.ctrlKey || ev.altKey || ev.metaKey));
+    setActiveDrag({ id: String(e.active.id), type, worksiteId: data?.worksiteId });
+  };
+
+  // L'ordre d'une case (au mieux : il faut la colonne `position`).
+  const persistOrder = async (ids: string[]) => {
+    if (!user?.company_id) return;
+    try {
+      const results = await Promise.all(ids.map((id, i) =>
+        supabase.from('planning').update({ position: i }).eq('id', id).eq('company_id', user.company_id)));
+      const bad = results.find(r => r.error);
+      if (bad?.error) throw bad.error;
+    } catch (err) {
+      console.warn('Order not persisted (run the SQL migration?):', err);
+      if (!positionWarned) {
+        toast('Astuce : exécutez le SQL « position » pour mémoriser l\'ordre des chantiers.');
+        setPositionWarned(true);
+      }
+    }
+  };
+
+  /**
+   * Lot 2 : COPIER une intervention (Ctrl / Alt au dépôt). Une seule ligne de
+   * planning neuve, par le même chemin que « Ajouter au planning » : chantier,
+   * horaire prévu et note. Jamais les heures du salarié, ni ses documents, ni
+   * l'ordre, ni « ajoutée par le salarié ». L'original n'est pas touché.
+   */
+  const copySlot = async (src: PlanningWithWorksite, tWorker: string, tDate: string, overBubbleId: string | null) => {
+    if (!user?.company_id || !src.worksite_id) return;
+    const cell = cellChantiers(tWorker, tDate);
+    const refusal = copyRefusal(src, cell, {
+      absent: !!absenceForDay(tWorker, tDate),
+      monthClosed: closedMonths.has(tDate.slice(0, 7)),
+      workerClosed: !!closedFor(workerClosures, tWorker, tDate),
+    });
+    if (refusal) { toast.error(refusal.message); return; }
+    let newId: string;
+    try {
+      newId = await addPlanningSlot({
+        companyId: user.company_id, createdBy: user.id, userId: tWorker, worksiteId: src.worksite_id, workDate: tDate,
+        notes: src.notes, estimatedStart: src.estimated_start, estimatedEnd: src.estimated_end,
+      });
+    } catch (err) {
+      console.error('Error copying planning:', err);
+      toast.error('Impossible de copier : rien n’a été ajouté.');
+      return;
+    }
+    // Déposée SUR une bulle : la copie prend sa place, comme un déplacement.
+    if (overBubbleId) {
+      const ids = cell.map((p) => p.id);
+      const i = ids.indexOf(overBubbleId);
+      ids.splice(i < 0 ? ids.length : i, 0, newId);
+      await persistOrder(ids);
+    }
+    const who = workers.find((w) => w.id === tWorker)?.first_name || 'Salarié';
+    const companyId = user.company_id;
+    setUndoCard({
+      key: Date.now(),
+      message: `Intervention copiée · ${who} · ${format(parseISO(tDate), 'EEE d MMM', { locale: fr })}`,
+      strong: false,
+      // Les mêmes gardes que « Supprimer » : des heures notées depuis sur la copie,
+      // ou un mois clôturé entre-temps, la gardent — et on le dit.
+      undo: async () => {
+        try {
+          const r = await erasePlanning(companyId, { ids: [newId] });
+          refreshRef.current();
+          if (!r.deleted.length) return { ok: false, message: `Impossible d’annuler : ${r.reason || 'la copie n’est plus au planning'}.` };
+          return { ok: true, message: 'Annulé : la copie est retirée du planning.' };
+        } catch (err) {
+          console.error('Error undoing copy:', err);
+          return { ok: false, message: 'Impossible d’annuler pour le moment. Réessayez.' };
+        }
+      },
+    });
+    fetchPlanning();
   };
 
   const handleDragEnd = async (e: DragEndEvent) => {
+    const copy = copyRef.current; // l'état des touches AU DÉPÔT, avant tout le reste
+    setCopy(false);
     const drag = activeDrag;
     setActiveDrag(null);
     const { active, over } = e;
@@ -1754,9 +1897,22 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     const draggedId = String(active.id);
     const dragged = planning.find(p => p.id === draggedId);
     if (!dragged || dragged.absence_type) return;
+    if (copy) { await copySlot(dragged, tWorker, tDate, overBubbleId); return; }
     if (overBubbleId === draggedId) return;
 
     const sameCell = dragged.user_id === tWorker && dragged.work_date === tDate;
+    // Lot 2 : vers une AUTRE case, d'abord ce que la bulle porte, puis la case visée.
+    // Réordonner dans la même case ne change rien de tout ça : toujours permis.
+    if (!sameCell) {
+      const lock = moveLock(dragged);
+      if (lock) { toast.error(`${lock} · maintenez Ctrl ou Alt pour copier`); return; }
+      const refusal = targetRefusal({
+        absent: !!absenceForDay(tWorker, tDate),
+        monthClosed: closedMonths.has(tDate.slice(0, 7)),
+        workerClosed: !!closedFor(workerClosures, tWorker, tDate),
+      }, 'déplacé');
+      if (refusal) { toast.error(refusal.message); return; }
+    }
     const target = cellChantiers(tWorker, tDate).filter(p => p.id !== draggedId);
     const idx = overBubbleId ? (() => { const i = target.findIndex(p => p.id === overBubbleId); return i < 0 ? target.length : i; })() : target.length;
     const newIds = target.map(p => p.id);
@@ -1782,18 +1938,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       }
     }
     // 2) Persist the order (best-effort — requires the `position` column).
-    try {
-      const results = await Promise.all(newIds.map((id, i) =>
-        supabase.from('planning').update({ position: i }).eq('id', id).eq('company_id', user.company_id)));
-      const bad = results.find(r => r.error);
-      if (bad?.error) throw bad.error;
-    } catch (err) {
-      console.warn('Order not persisted (run the SQL migration?):', err);
-      if (!positionWarned) {
-        toast('Astuce : exécutez le SQL « position » pour mémoriser l\'ordre des chantiers.');
-        setPositionWarned(true);
-      }
-    }
+    await persistOrder(newIds);
   };
 
   // ─── cell add (click) ─────────────────────────────────────────────────────────
@@ -2412,10 +2557,10 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   }
 
   return (
-    <div className={`bt-pl${selectMode ? ' bt-pl--select' : ''}${undoCard ? ' bt-pl--undo' : ''}`}>
+    <div className={`bt-pl${selectMode ? ' bt-pl--select' : ''}${undoCard ? ' bt-pl--undo' : ''}${copying ? ' bt-pl--copying' : ''}`}>
       <style dangerouslySetInnerHTML={PL_STYLE} />
 
-      <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragStart={handleDragStart} onDragEnd={(e) => { handleDragEnd(e); setChantierMenuOpen(false); }} onDragCancel={() => { setActiveDrag(null); setChantierMenuOpen(false); }}>
+      <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragStart={handleDragStart} onDragEnd={(e) => { handleDragEnd(e); setChantierMenuOpen(false); }} onDragCancel={() => { setCopy(false); setActiveDrag(null); setChantierMenuOpen(false); }}>
         {/* Barre UNIQUE pleine largeur, figée (sticky) — tout aligné sur une ligne */}
         {/* COCKPIT : tableau de bord sombre. Lot 10 : rangé de gauche à droite —
             logo · chiffres (au centre) · essai + entreprise. Mêmes informations. */}
@@ -3015,7 +3160,16 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
           })() : activeDrag?.type === 'move' ? (
             (() => {
               const p = planning.find(x => x.id === activeDrag.id);
-              return p ? <div className="bt-pl-overlay"><BubbleContent p={p} palette={paletteFor(p)} real={realForPlanning(p)} docCount={docsByWorksite.get(p.worksite_id || '') || 0} live={liveForBubble(p)} /></div> : null;
+              // Lot 2 : en copie, la bulle tenue montre ce qui sera créé — le prévu,
+              // sans les heures ni le pointage de l'original — et une pastille « + ».
+              return p ? (
+                <div className="bt-pl-overlay" data-testid="drag-overlay">
+                  {copying && <span className="bt-pl-copybadge" aria-hidden="true">+</span>}
+                  {copying
+                    ? <BubbleContent p={p} palette={paletteFor(p)} docCount={docsByWorksite.get(p.worksite_id || '') || 0} />
+                    : <BubbleContent p={p} palette={paletteFor(p)} real={realForPlanning(p)} docCount={docsByWorksite.get(p.worksite_id || '') || 0} live={liveForBubble(p)} />}
+                </div>
+              ) : null;
             })()
           ) : null}
         </DragOverlay>

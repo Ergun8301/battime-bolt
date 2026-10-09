@@ -21,7 +21,7 @@ import {
 import { removeWorksiteDocument, uploadWorksiteDocument } from '@/lib/chantier-docs';
 import { sanitizeExtraction, supabaseCostSource } from '@/lib/real-cost';
 import { corrigerHeures } from '@/lib/corrections';
-import { casesLabel, eraseOne, erasePlanning, restoreRows } from '@/lib/erase';
+import { casesLabel, eraseOne, erasePlanning, planningLinkReason, restoreRows } from '@/lib/erase';
 import { DOC_CATEGORY_LABEL, type ActionDraft, type ActionQuestion } from '@/supabase/functions/_shared/assistant-actions-core';
 
 export type {
@@ -167,6 +167,12 @@ export function makeActionExecutor(user: { id: string; company_id: string }): Ac
             .eq('id', d.planning_id!).eq('company_id', cid).single();
           if (readErr) throw readErr;
           const p0 = prev as { user_id: string; work_date: string; estimated_start: string | null; estimated_end: string | null; notes: string | null };
+          // Lot 2 : changer de jour ou de salarié = la même garde que le glisser du
+          // planning. Une case qui porte des heures (ou retirée par le salarié) ne bouge pas.
+          if ((d.nouvelle_date && d.nouvelle_date !== p0.work_date) || (d.nouveau_user_id && d.nouveau_user_id !== p0.user_id)) {
+            const lock = await planningLinkReason(cid, d.planning_id!);
+            if (lock) return { ok: false, message: `Rien n’a été déplacé : ${lock}.` };
+          }
           // Lot 11 : « décale à 9h » sur 08:00–12:00 garde la fin (09:00–12:00) tant
           // qu'elle reste après le nouveau début ; sinon la fin est retirée.
           const keptEnd = d.debut && p0.estimated_end && p0.estimated_end.slice(0, 5) > d.debut.slice(0, 5) ? p0.estimated_end : null;

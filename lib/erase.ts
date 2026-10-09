@@ -113,3 +113,38 @@ export async function eraseOne(table: string, companyId: string, id: string): Pr
 
 /** « 27 cases effacées » — le nombre, toujours. */
 export const casesLabel = (n: number, verbe = 'effacée') => `${n} case${n > 1 ? 's' : ''} ${verbe}${n > 1 ? 's' : ''}`;
+
+/**
+ * Lot 2 : pourquoi une case ne peut PAS changer de jour ni de salarié (null =
+ * elle le peut). Même lecture que erasePlanning : les lignes d'heures qui la
+ * désignent (envoyées, notées ou retirées), puis les heures sans lien du même
+ * salarié, jour et chantier. Une ligne garde son planning_id : déplacer la case
+ * la laissait désigner un autre jour, et le chargement suivant recréait une
+ * bulle « ajoutée par le salarié » à l'ancienne place (ensure_planning_slot).
+ * Partagé par l'Assistant (modifier_intervention) ; le glisser du planning fait
+ * la même vérification sur ce qu'il affiche déjà (moveLock).
+ */
+export async function planningLinkReason(companyId: string, id: string): Promise<string | null> {
+  const { data: p, error } = await supabase.from('planning').select('user_id, work_date, worksite_id')
+    .eq('id', id).eq('company_id', companyId).maybeSingle();
+  if (error) throw error;
+  if (!p) return null;
+  const RANK: Record<string, number> = { sent: 3, draft: 2, cancelled: 1 };
+  let worst = '';
+  const mark = (status: string) => {
+    const st = status === 'cancelled' ? 'cancelled' : status === 'draft' ? 'draft' : 'sent';
+    if (RANK[st] > (RANK[worst] || 0)) worst = st;
+  };
+  const { data: te, error: teErr } = await supabase.from('time_entries').select('status').eq('planning_id', id);
+  if (teErr) throw teErr;
+  for (const t of (te ?? []) as { status: string }[]) mark(t.status);
+  const row = p as { user_id: string; work_date: string; worksite_id: string | null };
+  if (worst !== 'sent' && row.worksite_id) {
+    const { data: loose, error: lErr } = await supabase.from('time_entries').select('status')
+      .eq('company_id', companyId).eq('user_id', row.user_id).eq('work_date', row.work_date).eq('worksite_id', row.worksite_id)
+      .is('planning_id', null).neq('status', 'cancelled');
+    if (lErr) throw lErr;
+    for (const t of (loose ?? []) as { status: string }[]) mark(t.status);
+  }
+  return worst === 'sent' ? 'heures déjà envoyées' : worst === 'draft' ? 'heures déjà notées par le salarié' : worst === 'cancelled' ? 'retirée par le salarié' : null;
+}
