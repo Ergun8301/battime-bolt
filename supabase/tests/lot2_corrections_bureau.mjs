@@ -121,6 +121,8 @@ check(before.fn === after.fn, 'fonctions existantes inchangées (correct_time_en
 check(before.pol === after.pol, 'policies existantes inchangées');
 check(before.trg === after.trg, 'triggers existants inchangés');
 check(before.col === after.col, 'aucune colonne ajoutée ni modifiée sur les tables existantes');
+const ownPol = (await db.query(`SELECT string_agg(policyname || ':' || cmd, ',' ORDER BY policyname) AS s FROM pg_policies WHERE tablename = 'time_entry_edits'`)).rows[0].s;
+check(ownPol === 'time_entry_edits_select:SELECT', `journal : une seule policy, en lecture, limitée à l'entreprise (pas de support_read) : ${ownPol}`);
 check(!/\b(DROP\s+(TABLE|COLUMN|FUNCTION)|RENAME|ALTER\s+COLUMN|ALTER\s+POLICY|DELETE\s+FROM)\b/i.test(SQL2.split('-- RETOUR ARRIÈRE')[0]), 'migration additive et rejouable (chargée deux fois)');
 const priv = (await db.query(`SELECT
   has_table_privilege('anon', 'public.time_entry_edits', 'SELECT') AS anon_sel,

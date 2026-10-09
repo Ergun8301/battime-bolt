@@ -80,16 +80,9 @@ CREATE POLICY time_entry_edits_select ON public.time_entry_edits FOR SELECT TO a
 -- Aucune policy INSERT / UPDATE / DELETE : seules les fonctions ci-dessous
 -- écrivent (journal infalsifiable).
 
--- Support (lot 5) : la même lecture seule que sur time_entry_corrections.
-DO $do$
-BEGIN
-  IF to_regprocedure('public.support_company_ids()') IS NOT NULL THEN
-    EXECUTE 'DROP POLICY IF EXISTS support_read ON public.time_entry_edits';
-    EXECUTE 'CREATE POLICY support_read ON public.time_entry_edits FOR SELECT TO authenticated '
-            'USING (company_id = ANY ((SELECT public.support_company_ids())::uuid[]))';
-  END IF;
-END
-$do$;
+-- Lecture STRICTEMENT limitée à l'entreprise de l'utilisateur (demande du
+-- 9 octobre) : pas de policy « support_read » ici, contrairement à
+-- time_entry_corrections. À ajouter plus tard si l'accès support doit la lire.
 
 -- ── 2) Corriger une ligne envoyée, avec motif ──────────────────────────────
 -- p_changes : objet JSON, une clé présente = « change-la ». Clés permises :
@@ -292,7 +285,7 @@ GRANT EXECUTE ON FUNCTION public.office_edit_mark_notified(uuid[], text) TO auth
 REVOKE ALL ON FUNCTION public.guard_time_entry_keep_sent() FROM PUBLIC, anon, authenticated;
 
 -- Contrôles après application :
--- SELECT count(*) FROM pg_policies WHERE tablename = 'time_entry_edits';               -- 2
+-- SELECT count(*) FROM pg_policies WHERE tablename = 'time_entry_edits';               -- 1
 -- SELECT count(*) FROM pg_trigger WHERE tgname = 'time_entries_keep_sent';             -- 1
 -- SELECT has_function_privilege('anon', 'public.office_return_day(uuid, date, text)', 'EXECUTE');  -- false
 
