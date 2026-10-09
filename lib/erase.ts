@@ -49,6 +49,12 @@ async function readEntries(q: (cols: string) => Read): Promise<EntryLite[]> {
 export const isDisposableDraft = (t: DraftLike & { submitted_at?: unknown }) => isEmptyDraft(t) && !t.submitted_at;
 const disposable = isDisposableDraft;
 const push = (m: Map<string, string[]>, k: string, v: string) => { const l = m.get(k); if (l) l.push(v); else m.set(k, [v]); };
+// Ce qui GARDE une case, du plus fort au plus faible : envoyée > sortie
+// oubliée à compléter > notée. Une ligne retirée ne garde plus rien (lot 2).
+// Les mêmes mots pour « Supprimer » et pour un déplacement (prepareMove).
+const RANK: Record<string, number> = { sent: 3, exit: 2, draft: 1 };
+const REASON: Record<string, string> = { sent: 'heures déjà envoyées', exit: 'sortie oubliée à compléter', draft: 'heures déjà notées par le salarié' };
+const blockOf = (t: EntryLite) => (t.status === 'draft' ? (t.exit_forgotten ? 'exit' : 'draft') : 'sent');
 
 /** Cases du planning : par identifiants, ou un salarié (ou toute l'équipe) sur une période. */
 export async function erasePlanning(companyId: string, o: { ids?: string[]; userId?: string | null; from?: string; to?: string; absences?: boolean }): Promise<EraseResult> {
@@ -66,11 +72,6 @@ export async function erasePlanning(companyId: string, o: { ids?: string[]; user
 
   const { data: cl } = await supabase.from('month_closures').select('month').eq('company_id', companyId);
   const closed = new Set(((cl ?? []) as { month: string }[]).map((c) => String(c.month).slice(0, 7)));
-  // Ce qui GARDE une case, du plus fort au plus faible : envoyée > sortie
-  // oubliée à compléter > notée. Une ligne retirée ne garde plus rien (lot 2).
-  const RANK: Record<string, number> = { sent: 3, exit: 2, draft: 1 };
-  const REASON: Record<string, string> = { sent: 'heures déjà envoyées', exit: 'sortie oubliée à compléter', draft: 'heures déjà notées par le salarié' };
-  const blockOf = (t: EntryLite) => (t.status === 'draft' ? (t.exit_forgotten ? 'exit' : 'draft') : 'sent');
   const linked = new Map<string, string>();
   const mark = (id: string, st: string) => { if ((RANK[st] || 0) > (RANK[linked.get(id) || ''] || 0)) linked.set(id, st); };
   const draftsOf = new Map<string, string[]>();    // intervention → ses brouillons vides
@@ -262,37 +263,82 @@ export async function eraseOne(table: string, companyId: string, id: string): Pr
 /** « 27 cases effacées » — le nombre, toujours. */
 export const casesLabel = (n: number, verbe = 'effacée') => `${n} case${n > 1 ? 's' : ''} ${verbe}${n > 1 ? 's' : ''}`;
 
+/** Ce qu'un déplacement a défait avant de changer la case de place (pour le remettre). */
+export interface MovePrep { reason: string | null; drafts: Row[]; detached: { id: string; planning_id: string }[] }
+
 /**
- * Lot 2 : pourquoi une case ne peut PAS changer de jour ni de salarié (null =
- * elle le peut). Même lecture que erasePlanning : les lignes d'heures qui la
- * désignent (envoyées, notées ou retirées), puis les heures sans lien du même
- * salarié, jour et chantier. Une ligne garde son planning_id : déplacer la case
- * la laissait désigner un autre jour, et le chargement suivant recréait une
- * bulle « ajoutée par le salarié » à l'ancienne place (ensure_planning_slot).
- * Partagé par l'Assistant (modifier_intervention) ; le glisser du planning fait
- * la même vérification sur ce qu'il affiche déjà (moveLock).
+ * Lot 2 : avant qu'une case change de jour ou de salarié. Même classement que
+ * erasePlanning, sur les lignes d'heures qui la désignent puis sur les heures
+ * sans lien du même salarié, jour et chantier :
+ *  · envoyées, notées, sortie oubliée à compléter → elle ne bouge pas (`reason`).
+ *    La ligne garderait son planning_id : elle désignerait un autre jour, et le
+ *    chargement suivant recréait une bulle « ajoutée par le salarié » à
+ *    l'ancienne place (ensure_planning_slot) ;
+ *  · un brouillon VIDE jamais envoyé est effacé (relu en entier, gardé s'il a
+ *    changé entre-temps) ;
+ *  · une ligne RETIRÉE est détachée : ses heures restent, sur leur jour, et la
+ *    case déplacée n'apparaît pas « retirée » à sa nouvelle place.
+ * Rien n'est déplacé ici : l'appelant déplace, puis undoMovePrep remet tout si
+ * le déplacement échoue (ou s'il est annulé). Partagé par le glisser du
+ * planning et l'Assistant (modifier_intervention).
  */
-export async function planningLinkReason(companyId: string, id: string): Promise<string | null> {
+export async function prepareMove(companyId: string, id: string): Promise<MovePrep> {
+  const kept = (reason: string): MovePrep => ({ reason, drafts: [], detached: [] });
   const { data: p, error } = await supabase.from('planning').select('user_id, work_date, worksite_id')
     .eq('id', id).eq('company_id', companyId).maybeSingle();
   if (error) throw error;
-  if (!p) return null;
-  const RANK: Record<string, number> = { sent: 3, draft: 2, cancelled: 1 };
-  let worst = '';
-  const mark = (status: string) => {
-    const st = status === 'cancelled' ? 'cancelled' : status === 'draft' ? 'draft' : 'sent';
-    if (RANK[st] > (RANK[worst] || 0)) worst = st;
-  };
-  const { data: te, error: teErr } = await supabase.from('time_entries').select('status').eq('planning_id', id);
-  if (teErr) throw teErr;
-  for (const t of (te ?? []) as { status: string }[]) mark(t.status);
+  if (!p) return { reason: null, drafts: [], detached: [] };
   const row = p as { user_id: string; work_date: string; worksite_id: string | null };
-  if (worst !== 'sent' && row.worksite_id) {
-    const { data: loose, error: lErr } = await supabase.from('time_entries').select('status')
-      .eq('company_id', companyId).eq('user_id', row.user_id).eq('work_date', row.work_date).eq('worksite_id', row.worksite_id)
-      .is('planning_id', null).neq('status', 'cancelled');
-    if (lErr) throw lErr;
-    for (const t of (loose ?? []) as { status: string }[]) mark(t.status);
+  let worst = '';
+  const mark = (t: EntryLite) => { const st = blockOf(t); if (RANK[st] > (RANK[worst] || 0)) worst = st; };
+  const empties: string[] = [];
+  const cancelled: string[] = [];
+  for (const t of await readEntries((cols) => supabase.from('time_entries').select(cols).eq('planning_id', id))) {
+    if (t.status === 'cancelled') cancelled.push(t.id);
+    else if (disposable(t)) empties.push(t.id);
+    else mark(t);
   }
-  return worst === 'sent' ? 'heures déjà envoyées' : worst === 'draft' ? 'heures déjà notées par le salarié' : worst === 'cancelled' ? 'retirée par le salarié' : null;
+  if (!worst && row.worksite_id) {
+    const loose = await readEntries((cols) => supabase.from('time_entries').select(cols)
+      .eq('company_id', companyId).eq('user_id', row.user_id).eq('work_date', row.work_date).eq('worksite_id', row.worksite_id)
+      .is('planning_id', null).neq('status', 'cancelled'));
+    for (const t of loose) if (!disposable(t)) mark(t);
+  }
+  if (worst) return kept(REASON[worst]);
+
+  const out: MovePrep = { reason: null, drafts: [], detached: [] };
+  // Gardée au dernier moment : ce qui est déjà défait est remis, rien ne bouge.
+  const late = async (reason: string) => { await undoMovePrep(out); return kept(reason); };
+  try {
+    if (empties.length) {
+      const { data: full, error: fErr } = await supabase.from('time_entries').select('*').in('id', empties);
+      if (fErr) throw fErr;
+      for (const d of (full ?? []) as Row[]) {
+        if (!disposable(d as DraftLike & { submitted_at?: unknown })) return await late(REASON.draft);
+        const { data: del, error: dErr } = await supabase.from('time_entries').delete()
+          .eq('id', d.id).eq('status', 'draft').eq('locked', false).is('submitted_at', null)
+          .eq('start_time', String(d.start_time)).eq('end_time', String(d.end_time)).select('id');
+        if (dErr) throw dErr;
+        if (!del || !del.length) return await late(REASON.draft);
+        out.drafts.push(d);
+      }
+    }
+    if (cancelled.length) {
+      const { data: up, error: uErr } = await supabase.from('time_entries').update({ planning_id: null })
+        .in('id', cancelled).eq('status', 'cancelled').select('id');
+      if (uErr) throw uErr;
+      for (const x of (up ?? []) as { id: string }[]) out.detached.push({ id: x.id, planning_id: id });
+      if (out.detached.length !== cancelled.length) return await late('heures modifiées entre-temps');
+    }
+  } catch (err) {
+    try { await undoMovePrep(out); } catch (e) { console.error('Remise après échec impossible :', e); }
+    throw err;
+  }
+  return out;
+}
+
+/** Remet ce que prepareMove a défait : les brouillons vides, puis le lien des lignes retirées. */
+export async function undoMovePrep(m: MovePrep): Promise<void> {
+  await restoreDrafts(m.drafts);
+  await relink(m.detached);
 }

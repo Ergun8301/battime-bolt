@@ -46,7 +46,7 @@ import { TIME_PRESETS } from '@/lib/time-input';
 import { InfoTip } from '@/components/ui/info-tip';
 import { ExportMenu } from '@/components/export-menu';
 import { ActionDone, type UndoResult } from '@/components/action-done';
-import { erasePlanning, isDisposableDraft, undoErase, type EraseResult } from '@/lib/erase';
+import { erasePlanning, isDisposableDraft, prepareMove, undoErase, undoMovePrep, type EraseResult, type MovePrep } from '@/lib/erase';
 import { fetchCompanyClosures, closedFor } from '@/lib/worker-closure';
 import { isReserveLifted } from '@/lib/reserves';
 import CompanySettings from '@/components/company-settings';
@@ -1663,15 +1663,17 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     return hardLock(p);
   };
   // Lot 2 : ce qu'un glisser simple ne DÉPLACE plus vers une autre case. Une ligne
-  // d'heures (envoyée, notée, retirée) désigne sa case par planning_id : déplacée,
-  // la case laissait la ligne pointer un autre jour, et le chargement suivant
-  // recréait une bulle « ajoutée par le salarié » à l'ancienne place
-  // (ensure_planning_slot). La COPIE (Ctrl / Alt), elle, reste toujours possible.
+  // d'heures (envoyée, notée) désigne sa case par planning_id : déplacée, la case
+  // laissait la ligne pointer un autre jour, et le chargement suivant recréait
+  // une bulle « ajoutée par le salarié » à l'ancienne place (ensure_planning_slot).
+  // Une case retirée par le salarié, ou qui ne porte qu'un brouillon vide, se
+  // déplace : comme pour « Supprimer », la ligne retirée est détachée et le
+  // brouillon vide effacé avant (prepareMove). La COPIE (Ctrl / Alt), elle,
+  // reste toujours possible.
   const moveLock = (p: PlanningWithWorksite): string | null => {
     if (realForPlanning(p)) return 'Heures envoyées — non déplaçable';
-    if (draftForPlanning(p)) return 'Heures notées par le salarié — non déplaçable';
+    if (draftForPlanning(p)) return exitDraftKeys.has(`p:${p.id}`) ? 'Sortie oubliée à compléter — non déplaçable' : 'Heures notées par le salarié — non déplaçable';
     if (liveForBubble(p)) return 'Pointage en cours — non déplaçable';
-    if (withdrawnIds.has(p.id)) return 'Retirée par le salarié — non déplaçable';
     if (closedMonths.has(p.work_date.slice(0, 7))) return 'Mois clôturé — non déplaçable';
     if (closedFor(workerClosures, p.user_id, p.work_date)) return 'Heures clôturées pour ce salarié — non déplaçable';
     return null;
@@ -1963,13 +1965,34 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
 
     // 1) The move itself (user_id/date) must work even without the position column.
     if (!sameCell) {
-      const error = await updatePlanningSlot(user.company_id, draggedId, { userId: tWorker, workDate: tDate }).then(() => null, (e: unknown) => e);
-      if (error) {
-        console.error('Error moving planning:', error);
+      // Lot 2 : la base d'abord, pas seulement ce que l'écran affiche. Des heures
+      // notées depuis le dernier chargement gardent la case ; une ligne retirée
+      // est détachée, un brouillon vide effacé (lib/erase), remis si le
+      // déplacement échoue.
+      let prep: MovePrep;
+      try {
+        prep = await prepareMove(user.company_id, draggedId);
+      } catch (err) {
+        console.error('Error preparing move:', err);
         toast.error('Impossible de déplacer');
         setPlanning(prev);
         return;
       }
+      if (prep.reason) {
+        toast.error(`Rien n’a été déplacé : ${prep.reason} · maintenez Ctrl ou Alt pour copier`);
+        setPlanning(prev);
+        fetchPlanning();
+        return;
+      }
+      const error = await updatePlanningSlot(user.company_id, draggedId, { userId: tWorker, workDate: tDate }).then(() => null, (e: unknown) => e);
+      if (error) {
+        console.error('Error moving planning:', error);
+        await undoMovePrep(prep).catch((e) => console.error('Remise après échec impossible :', e));
+        toast.error('Impossible de déplacer');
+        setPlanning(prev);
+        return;
+      }
+      if (prep.drafts.length || prep.detached.length) fetchPlanning();
     }
     // 2) Persist the order (best-effort — requires the `position` column).
     await persistOrder(newIds);

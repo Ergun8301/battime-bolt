@@ -11,8 +11,11 @@
 //      horaire, note), l'original intact, la copie sans heures, rien sur time_entries ni /functions
 //  D3  Alt et ⌘ copient ; Ctrl appuyé en cours de route copie ; relâché avant le dépôt : déplace
 //  D4  repères : .bt-pl--copying, pastille « + », curseur « copy », « Copier ici » (sinon « Déposer ici »)
-//  D5  glisser simple d'une bulle envoyée / notée / en cours / retirée : refusé, avec l'astuce,
+//  D5  glisser simple d'une bulle envoyée / notée / en cours : refusé, avec l'astuce,
 //      zéro écriture ; réordonner dans sa propre case reste permis
+//  D5b bulle RETIRÉE par le salarié (lot 2 c) : déplacée, sa ligne retirée d'abord détachée
+//  D5c bulle qui ne porte qu'un brouillon VIDE : déplacée, le brouillon effacé d'abord
+//  D5d heures envoyées depuis le chargement (l'écran ne le sait pas) : la base refuse, zéro écriture
 //  D6  copie refusée, zéro écriture : absence, même case, chevauchement 08–12 sur 08–17,
 //      septembre clôturé, salarié clôturé
 //  D7  copie déposée SUR une bulle : POST puis positions ; ordre affiché juste
@@ -68,7 +71,8 @@ const fresh = () => ({
     slot('pl-tue-b', 'u-lou', D_(20), W1, { ...H('13:30', '17:00'), position: 1 }),
     slot('pl-abs', 'u-lou', D_(22), null, { absence_type: 'maladie' }),
     // Noa : lun. retirée par le salarié (ligne « cancelled ») · mar. heures notées (brouillon)
-    slot('pn-mon', 'u-noa', D_(19), W1), slot('pn-tue', 'u-noa', D_(20), W2),
+    // · mer. un brouillon VIDE (08:00–08:00, jamais envoyé)
+    slot('pn-mon', 'u-noa', D_(19), W1), slot('pn-tue', 'u-noa', D_(20), W2), slot('pn-wed', 'u-noa', D_(21), W1),
     // Tom : clôturé jusqu'au mardi 20 · jeu. libre
     slot('pt-thu', 'u-tom', D_(22), W1),
   ],
@@ -76,6 +80,7 @@ const fresh = () => ({
     entry('e1', 'u-sam', D_(20), W1, 'submitted', 480, { planning_id: 'ps-tue' }),
     entry('e2', 'u-noa', D_(19), W1, 'cancelled', 0, { planning_id: 'pn-mon' }),
     entry('e3', 'u-noa', D_(20), W2, 'draft', 120, { planning_id: 'pn-tue' }),
+    entry('e4', 'u-noa', D_(21), W1, 'draft', 0, { planning_id: 'pn-wed', locked: false, submitted_at: null }),
   ],
   active_sessions: [{ user_id: 'u-sam', company_id: CO, worksite_id: 'w2', planning_id: 'ps-wed', work_date: D_(21), started_at: ago(2), positions: [] }],
   month_closures: [{ company_id: CO, month: '2026-09-01' }],
@@ -150,7 +155,8 @@ const setup = async (ctx) => {
       const body = JSON.parse(r.request().postData() || '{}');
       const hit = filterRows(D[t], url.searchParams); for (const x of hit) Object.assign(x, body);
       log.writes.push({ m, t, ids: hit.map((x) => x.id), body });
-      return r.fulfill({ json: [] });
+      // Comme PostgREST avec `select` : les lignes touchées (lib/erase compte les lignes détachées).
+      return r.fulfill({ json: hit.map((x) => ({ ...x })) });
     }
     const all = filterRows(D[t], url.searchParams).map((x) => embed(t, x, sel));
     if (single) return all.length ? r.fulfill({ json: all[0] }) : r.fulfill({ status: 406, json: { code: 'PGRST116', message: 'none' } });
@@ -339,7 +345,7 @@ if (AVANT) {
   // D5 — glisser simple d'une bulle qui porte des heures : refusé, avec l'astuce
   const locked = [
     ['ps-tue', 'Heures envoyées — non déplaçable'], ['pn-tue', 'Heures notées par le salarié — non déplaçable'],
-    ['ps-wed', 'Pointage en cours — non déplaçable'], ['pn-mon', 'Retirée par le salarié — non déplaçable'],
+    ['ps-wed', 'Pointage en cours — non déplaçable'],
   ];
   for (const [id, why] of locked) {
     await settle(p);
@@ -356,6 +362,45 @@ if (AVANT) {
   pw = planningWrites(w);
   check(pw.length > 0 && pw.every((x) => x.m === 'PATCH' && Object.keys(x.body).join() === 'position') && (await toasts(p)).every((x) => !x.includes('déplaçable')), `D5 réordonner une bulle envoyée DANS sa case : permis (${pw.length} position(s))`);
   check(JSON.stringify(await idsIn(p, 'Sam', TUE)) === '["ps-tue","ps-tue2"]', 'D5 nouvel ordre affiché');
+
+  // D5b — une bulle RETIRÉE par le salarié se déplace (comme elle se supprime, lot 2 c) :
+  // sa ligne retirée est d'abord détachée (heures intactes, sur leur jour), puis la case bouge.
+  await settle(p);
+  check(await p.locator('[data-bub="pn-mon"] [data-withdrawn="1"]').count() === 1, 'D5b avant : la bulle retirée est grisée');
+  w = log.writes.length;
+  await drag(p, bub(p, 'pn-mon'), cell(p, 'Noa', THU));
+  let mw = writesSince(w);
+  const fmtW = (l) => l.map((x) => `${x.m} ${x.t} ${x.ids?.join(',') || ''} ${x.body ? JSON.stringify(x.body) : ''}`).join(' | ');
+  check(mw[0]?.m === 'PATCH' && mw[0].t === 'time_entries' && mw[0].ids.join() === 'e2' && mw[0].body.planning_id === null
+    && mw.some((x) => x.m === 'PATCH' && x.t === 'planning' && x.ids[0] === 'pn-mon' && x.body.work_date === D_(22))
+    && mw.every((x) => x.m === 'PATCH') && (await toasts(p)).every((x) => !x.includes('déplaçable')), `D5b bulle retirée : ligne détachée, puis case déplacée (${fmtW(mw)})`);
+  const e2 = D.time_entries.find((x) => x.id === 'e2');
+  check(e2.status === 'cancelled' && e2.work_date === D_(19) && e2.planning_id === null, 'D5b la ligne retirée reste sur lundi, intacte (seul le lien part)');
+  await p.waitForTimeout(600);
+  check(JSON.stringify(await idsIn(p, 'Noa', THU)) === '["pn-mon"]' && await p.locator('[data-bub="pn-mon"] [data-withdrawn]').count() === 0, 'D5b à sa nouvelle place, la bulle n’est plus « retirée »');
+
+  // D5c — une bulle qui ne porte qu'un brouillon VIDE se déplace : le brouillon part d'abord
+  // (relu, effacé seulement s'il est encore vide et jamais envoyé), puis la case.
+  await settle(p);
+  w = log.writes.length;
+  await drag(p, bub(p, 'pn-wed'), cell(p, 'Noa', FRI));
+  mw = writesSince(w);
+  check(mw[0]?.m === 'DELETE' && mw[0].t === 'time_entries' && mw[0].ids.join() === 'e4'
+    && mw.some((x) => x.m === 'PATCH' && x.t === 'planning' && x.ids[0] === 'pn-wed' && x.body.work_date === D_(23))
+    && !mw.some((x) => x.m === 'POST') && (await toasts(p)).every((x) => !x.includes('déplaçable')), `D5c brouillon vide : effacé, puis case déplacée (${fmtW(mw)})`);
+  check(!D.time_entries.some((x) => x.id === 'e4') && D.planning.find((x) => x.id === 'pn-wed')?.work_date === D_(23), 'D5c base : brouillon vide parti, case au vendredi');
+
+  // D5d — des heures envoyées DEPUIS le chargement (l'écran ne le sait pas encore) :
+  // la base est relue avant de déplacer, rien ne bouge.
+  await settle(p);
+  D.time_entries.push(entry('e8', 'u-sam', D_(23), W2, 'submitted', 240, { planning_id: 'ps-fri' }));
+  w = log.writes.length;
+  await drag(p, bub(p, 'ps-fri'), cell(p, 'Sam', SAT));
+  let t5 = await toasts(p);
+  check(writesSince(w).length === 0 && t5.some((x) => x.includes('Rien n’a été déplacé : heures déjà envoyées · maintenez Ctrl ou Alt pour copier')), `D5d heures envoyées entre-temps : « ${t5.join(' | ')} », zéro écriture`);
+  await p.waitForTimeout(400);
+  check(JSON.stringify(await idsIn(p, 'Sam', FRI)) === '["ps-fri"]' && (await idsIn(p, 'Sam', SAT)).length === 0, 'D5d la bulle revient à sa place');
+  D.time_entries = D.time_entries.filter((x) => x.id !== 'e8');
 
   // D6 — copies refusées, zéro écriture
   const refusals = [
