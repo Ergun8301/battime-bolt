@@ -88,6 +88,38 @@ export async function resendInvitation(companyId: string, inv: { email: string; 
   if (error) throw error;
 }
 
+/**
+ * Invitations en attente → croix ✕ : annule l'invitation. Le serveur supprime
+ * aussi le compte de l'invité s'il ne s'est jamais connecté et n'a aucune heure.
+ */
+export async function revokeInvitation(email: string) {
+  const { error } = await supabase.functions.invoke('invite-worker', { body: { action: 'revoke', email } });
+  if (error) throw error;
+}
+
+/**
+ * Invitations en attente : date du dernier e-mail d'invitation, par adresse
+ * (en minuscules). Absente = jamais envoyée (compte préparé sans e-mail).
+ */
+export async function fetchInvitationsSentAt(): Promise<Map<string, string | null>> {
+  const { data, error } = await supabase.rpc('pending_invitations_sent_at');
+  if (error) throw error;
+  const sent = new Map<string, string | null>();
+  for (const row of (data || []) as { email: string | null; invited_at: string | null }[]) {
+    if (row.email) sent.set(row.email.toLowerCase(), row.invited_at);
+  }
+  return sent;
+}
+
+/** Le message d'erreur renvoyé par une fonction serveur (sinon `fallback`). */
+export async function functionErrorMessage(err: unknown, fallback: string): Promise<string> {
+  try {
+    const body = await (err as { context?: Response }).context?.json();
+    if (body?.error) return String(body.error);
+  } catch { /* corps illisible : message générique */ }
+  return fallback;
+}
+
 /** Cloche « Envoyer un rappel » (notification). Renvoie le nombre d'appareils touchés. */
 export async function sendHoursReminder(userId: string, jours: string): Promise<number> {
   const { data, error } = await supabase.functions.invoke('send-push', {

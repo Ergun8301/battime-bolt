@@ -73,7 +73,7 @@ const paidAfterClose = ENTRIES.filter((e) => e.user_id === 'u-lucas' && e.status
   .reduce((s, e) => s + e.total_minutes, 0);
 const paidToday = ENTRIES.filter((e) => e.user_id === 'u-lucas' && e.status === 'submitted' && e.work_date === today).reduce((s, e) => s + e.total_minutes, 0);
 
-const COMPANY = { id: CO, name: 'Mister Grill Kebab', ai_enabled: false, kiosk_enabled: false, position_tracking_enabled: false, subscription_status: 'active', trial_ends_at: '2030-01-01', weekly_hours: 35, travel_paid: false, accountant_email: null };
+const COMPANY = { id: CO, name: 'Pizzeria Exemple', ai_enabled: false, kiosk_enabled: false, position_tracking_enabled: false, subscription_status: 'active', trial_ends_at: '2030-01-01', weekly_hours: 35, travel_paid: false, accountant_email: null };
 const freshDb = () => ({
   users: USERS.map((x) => ({ ...x })),
   companies: [{ ...COMPANY }],

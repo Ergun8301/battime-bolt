@@ -13,7 +13,7 @@ const autre={id:'w-autre',company_id:CO,client_name:'Autre',city:'',is_active:tr
 const D={
   users:[{id:'u-admin',company_id:CO,first_name:'Paul',last_name:'Martin',role:'admin',email:'paul@exemple.fr',is_active:true,created_at:'2026-01-01'},
     {id:'u-kevin',company_id:CO,first_name:'Kevin',last_name:'Roussel',role:'worker',email:'k@x.fr',is_active:true,created_at:'2026-01-01'}],
-  companies:[{id:CO,name:'Mister Grill Kebab',ai_enabled:true,kiosk_enabled:false,position_tracking_enabled:false,subscription_status:'active',trial_ends_at:'2030-01-01',weekly_hours:35}],
+  companies:[{id:CO,name:'Pizzeria Exemple',ai_enabled:true,kiosk_enabled:false,position_tracking_enabled:false,subscription_status:'active',trial_ends_at:'2030-01-01',weekly_hours:35}],
   worksites:[{id:'w1',company_id:CO,client_name:'Villa Dupont',city:'Lyon',is_active:true},autre],
   planning:[{id:'f440b232',company_id:CO,user_id:'u-kevin',worksite_id:'w-autre',work_date:today,absence_type:null,estimated_start:'14:00:00',estimated_end:'18:00:00',notes:'Intervention à Lyon',worksite:autre}],
   time_entries:[], active_sessions:[], month_closures:[], leave_requests:[], invitations:[], documents:[], certifications:[], push_subscriptions:[],

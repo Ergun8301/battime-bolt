@@ -214,7 +214,7 @@ export function makeActionExecutor(user: { id: string; company_id: string }): Ac
           message = 'Rôle changé.';
           break;
         case 'relancer_invitation': {
-          const { data: inv } = await supabase.from('invitations').select('email, first_name, last_name, phone').eq('company_id', cid).eq('email', d.email).is('accepted_at', null).maybeSingle();
+          const { data: inv } = await supabase.from('invitations').select('email, first_name, last_name, phone').eq('company_id', cid).eq('email', d.email).is('accepted_at', null).order('created_at', { ascending: false }).limit(1).maybeSingle();
           if (!inv) return { ok: false, message: 'Invitation introuvable (déjà acceptée ?).' };
           await resendInvitation(cid, inv as { email: string; first_name: string | null; last_name: string | null; phone: string | null });
           message = 'Invitation renvoyée.';
@@ -346,7 +346,7 @@ export function makeActionExecutor(user: { id: string; company_id: string }): Ac
           break;
         }
         case 'annuler_invitation': {
-          const { data: inv } = await supabase.from('invitations').select('email, first_name, last_name, phone').eq('company_id', cid).eq('email', d.email).is('accepted_at', null).maybeSingle();
+          const { data: inv } = await supabase.from('invitations').select('email, first_name, last_name, phone').eq('company_id', cid).eq('email', d.email).is('accepted_at', null).order('created_at', { ascending: false }).limit(1).maybeSingle();
           // Même chemin que la croix de « Invitations en attente ».
           const { error } = await supabase.functions.invoke('invite-worker', { body: { action: 'revoke', email: d.email } });
           if (error) throw new Error('Impossible d’annuler l’invitation.');

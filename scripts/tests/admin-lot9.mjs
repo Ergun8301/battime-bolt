@@ -42,7 +42,7 @@ const D = {
     u('u-kevin', 'Kevin', 'Roussel'), u('u-sara', 'Sara', 'Benali'), u('u-marc', 'Marc', 'Durand'), u('u-lea', 'Léa', 'Petit'), u('u-nina', 'Nina', 'Morel'),
     u('u-old', 'Ancien', 'Compte', 'worker', false), // désactivé : planning passé sans heures → exclu
   ],
-  companies: [{ id: CO, name: 'Mister Grill Kebab', ai_enabled: true, kiosk_enabled: false, position_tracking_enabled: false, subscription_status: 'active', trial_ends_at: '2030-01-01', weekly_hours: 35 }],
+  companies: [{ id: CO, name: 'Pizzeria Exemple', ai_enabled: true, kiosk_enabled: false, position_tracking_enabled: false, subscription_status: 'active', trial_ends_at: '2030-01-01', weekly_hours: 35 }],
   worksites: [W1, W2],
   planning: [
     slot('pl-kevin', 'u-kevin', today, W1), slot('pk-2', 'u-kevin', day(-2), W1), slot('pk-3', 'u-kevin', day(-3), W1), // Kevin : 2 jours dus

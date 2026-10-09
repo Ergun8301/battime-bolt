@@ -80,7 +80,7 @@ Mesure du 29/09, **même modèle avant / après** (`gemini-3.5-flash-lite`, quot
 
 1ᵉʳ passage v2 : 52/56 (93 %). Les 4 échecs, corrigés dans le code (pas au cas par cas) :
 « à Lyon » pris pour le client situé à Lyon, « jeudi prochain » dit un jeudi,
-« Mister Grill Mâcon » (même client, 2 villes) côté bureau et « le kebab de Bourg » côté salarié.
+« Pizzeria Exemple Mâcon » (même client, 2 villes) côté bureau et « la pizzeria de Bourg » côté salarié.
 
 Retours préview (Cowork) : 2 cas ajoutés (« Comment je corrige le pointage d’un salarié ? »,
 « comment je change ma photo ») → **58/58** au nouveau passage.
