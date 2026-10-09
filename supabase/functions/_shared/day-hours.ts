@@ -216,3 +216,24 @@ export const keptBreak = (s: Span, breakMinutes?: number | null): number => {
   const b = Math.max(0, Math.round(Number(breakMinutes) || 0));
   return b < spanMinutes(s) ? b : 0;
 };
+
+// ── Le brouillon vide (lot 2) ───────────────────────────────────────────────
+
+export interface DraftLike {
+  status?: string | null;
+  locked?: boolean | null;
+  exit_forgotten?: boolean | null;
+  start_time?: string | null;
+  end_time?: string | null;
+}
+
+/**
+ * Un BROUILLON VIDE : début = fin (0 minute), pas verrouillé, et pas une
+ * « sortie oubliée » à compléter (celle-là attend la fin du salarié : la
+ * supprimer effacerait son heure d'arrivée). Il ne compte nulle part et n'a
+ * rien à protéger : supprimer l'intervention l'emporte au lieu d'être bloquée
+ * par lui. Sans heures lues, ce n'est PAS vide : on ne sait pas.
+ */
+export const isEmptyDraft = (e: DraftLike): boolean =>
+  e.status === 'draft' && !e.locked && !e.exit_forgotten && !!e.start_time && !!e.end_time
+  && spanMinutes({ start: e.start_time, end: e.end_time }) === 0;

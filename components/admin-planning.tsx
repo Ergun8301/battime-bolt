@@ -48,7 +48,7 @@ import { TIME_PRESETS } from '@/lib/time-input';
 import { InfoTip } from '@/components/ui/info-tip';
 import { ExportMenu } from '@/components/export-menu';
 import { ActionDone, type UndoResult } from '@/components/action-done';
-import { erasePlanning, restoreRows, type EraseResult } from '@/lib/erase';
+import { erasePlanning, isDisposableDraft, prepareMove, undoErase, undoMovePrep, type EraseResult, type MovePrep } from '@/lib/erase';
 import { fetchCompanyClosures, closedFor } from '@/lib/worker-closure';
 import { isReserveLifted } from '@/lib/reserves';
 import CompanySettings from '@/components/company-settings';
@@ -70,6 +70,7 @@ import { CHANTIER_PALETTES, hashStr, LiveLine, PL_GRID_CSS, PlannedBubbleView, t
 import { PlanningPrintSheet, PrintMenu, PRINT_MENU_CSS, printTitle, type PrintJob, type PrintOptions } from '@/components/planning-print';
 import { DAY_PARTS, dayPartTint } from '@/supabase/functions/_shared/day-part';
 import { cellKey, parisDay, placeLive, type LivePlace, type LiveSessionLike } from '@/supabase/functions/_shared/live-place';
+import { copyRefusal, targetRefusal } from '@/supabase/functions/_shared/copy-slot';
 import KioskAdmin from '@/components/kiosk-admin';
 import { keep } from '@/lib/same';
 
@@ -129,7 +130,7 @@ const ABSENCE_OPTIONS: { value: string; label: string }[] = [
   { value: 'conge', label: 'Congé' },
   { value: 'maladie', label: 'Arrêt maladie' },
   { value: 'intemperie', label: 'Intempérie' },
-  { value: 'repos', label: 'Repos' },
+  // « Repos » n'est pas proposé : la base le refuse (planning_absence_type_check).
 ];
 
 // Open-ended absences are materialised up to this horizon (no DB column to store
@@ -191,6 +192,14 @@ interface RealAgg { minutes: number; start: string; end: string; count: number; 
   /** Au moins une réserve de cette case n'a pas encore été levée par le bureau. */
   reserveOpen: boolean; note: string }
 const realKey = (userId: string, date: string, worksiteId: string | null) => `${userId}|${date}|${worksiteId}`;
+/** Un brouillon tel que la grille le lit (lot 2 : de quoi reconnaître le brouillon vide). */
+interface DraftRow {
+  id?: string; status?: string; user_id: string; work_date: string; worksite_id: string | null; planning_id?: string | null;
+  start_time: string; end_time: string; total_minutes: number; reception: string | null; reserve_resolved_at: string | null;
+  reserve_fixed_at?: string | null; observation: string | null; locked?: boolean; exit_forgotten?: boolean | null; submitted_at?: string | null;
+}
+// `exit_forgotten` (lot 12) peut manquer en base : la lecture est refaite sans elle.
+const DRAFT_COLS = 'id, status, user_id, work_date, worksite_id, planning_id, start_time, end_time, total_minutes, reception, reserve_resolved_at, reserve_fixed_at, observation, locked, submitted_at';
 
 /** Une pièce jointe telle que le panneau « pièces » du cockpit la montre. */
 interface DocLine {
@@ -205,9 +214,11 @@ interface DocLine {
 
 // ─── compact one-line chantier bubble ──────────────────────────────────────────
 
-function BubbleContent({ p, palette, real, draft, docCount = 0, live }: { p: PlanningWithWorksite; palette: ChantierPalette; real?: RealAgg; draft?: RealAgg; docCount?: number;
+function BubbleContent({ p, palette, real, draft, docCount = 0, live, withdrawn }: { p: PlanningWithWorksite; palette: ChantierPalette; real?: RealAgg; draft?: RealAgg; docCount?: number;
   /** Lot 9 : pointage en direct ouvert sur cette bulle → « en cours depuis HH:MM ». */
-  live?: string }) {
+  live?: string;
+  /** Lot 2 : le salarié l'a retirée (« je n'y suis pas allé ») — bulle éteinte, supprimable. */
+  withdrawn?: boolean }) {
   const hour = plannedHoursOf(p);
   const isOther = p.worksite?.client_name === 'Autre' && !!p.notes?.trim();
   const sub = isOther ? 'Autre' : [p.worksite?.product_type, p.worksite?.city].filter(Boolean).join(' · ');
@@ -268,8 +279,9 @@ function BubbleContent({ p, palette, real, draft, docCount = 0, live }: { p: Pla
     );
   }
   // Prévu — pointillé couleur chantier (même rendu que la borne) ; Lot 3 : fond teinté
-  // selon le créneau prévu (blanc pour une journée entière ou sans horaire).
-  return <PlannedBubbleView title={bubbleTitleOf(p)} sub={sub} hours={hour} palette={palette} docs={docs} live={live} tint={dayPartTint(p.estimated_start, p.estimated_end)} />;
+  // selon le créneau prévu (blanc pour une journée entière ou sans horaire) ; Lot 2 :
+  // retirée par le salarié, éteinte et barrée.
+  return <PlannedBubbleView title={bubbleTitleOf(p)} sub={sub} hours={hour} palette={palette} docs={docs} live={live} tint={dayPartTint(p.estimated_start, p.estimated_end)} withdrawn={withdrawn} />;
 }
 
 /** Lot 11 : état d'une bulle en mode « Sélectionner » (absent hors de ce mode). */
@@ -287,8 +299,10 @@ const selAttr = (sel: SelState) => (sel.lock ? 'lock' : sel.on ? 'on' : 'off');
 // A bubble is both draggable (move/reorder) and droppable (reorder target).
 // Lot 11 : en mode « Sélectionner » (sel défini), le clic coche au lieu d'ouvrir,
 // et le glisser est coupé. Hors de ce mode, le rendu est EXACTEMENT celui d'avant.
+// Lot 2 : Ctrl ou Alt (⌥) maintenu pendant le glisser = COPIER. `data-bub` reste
+// posé en permanence (repère des tests) : `data-pid` n'existe qu'en sélection.
 function DraggableBubble({
-  p, palette, real, draft, onEdit, docCount = 0, live, sel, onToggle,
+  p, palette, real, draft, onEdit, docCount = 0, live, sel, onToggle, withdrawn,
 }: {
   p: PlanningWithWorksite;
   palette: ChantierPalette;
@@ -300,21 +314,22 @@ function DraggableBubble({
   live?: string;
   sel?: SelState;
   onToggle?: (p: PlanningWithWorksite, lock: string | null) => void;
+  withdrawn?: boolean;
 }) {
   const drag = useDraggable({ id: p.id, data: { type: 'move' }, disabled: !!sel });
   const drop = useDroppable({ id: `bub|${p.id}` });
   return (
     <div ref={drop.setNodeRef} className={sel ? selClass(sel) : drop.isOver ? 'bt-pl-bub-over' : ''}
-      data-sel={sel ? selAttr(sel) : undefined} data-pid={sel ? p.id : undefined}>
+      data-sel={sel ? selAttr(sel) : undefined} data-pid={sel ? p.id : undefined} data-bub={p.id}>
       <div
         ref={drag.setNodeRef}
         {...drag.attributes}
         {...drag.listeners}
         onClick={(e) => { e.stopPropagation(); if (sel) onToggle?.(p, sel.lock); else onEdit(p); }}
         className={`bt-pl-grab ${drag.isDragging ? 'bt-pl-dragging' : ''}`}
-        title={sel ? (sel.lock || (sel.on ? 'Cliquer pour décocher' : 'Cliquer pour cocher')) : 'Glisser pour déplacer / réordonner · cliquer pour modifier'}
+        title={sel ? (sel.lock || (sel.on ? 'Cliquer pour décocher' : 'Cliquer pour cocher')) : 'Glisser pour déplacer · Ctrl ou Alt (⌥) + glisser pour copier · cliquer pour modifier'}
       >
-        <BubbleContent p={p} palette={palette} real={real} draft={draft} docCount={docCount} live={live} />
+        <BubbleContent p={p} palette={palette} real={real} draft={draft} docCount={docCount} live={live} withdrawn={withdrawn} />
       </div>
       {sel && <SelMark sel={sel} />}
     </div>
@@ -436,7 +451,12 @@ function DroppableCell({
       <div className="bt-pl-cellinner">
         {children}
         {isOver && (
-          <div className="bt-pl-drop"><span className="bt-pl-drop-arrow">↓</span><span>Déposer ici</span></div>
+          // Lot 2 : « Copier ici » remplace « Déposer ici » quand Ctrl / Alt est
+          // maintenu — basculé par la classe .bt-pl--copying, sans prop de plus.
+          <div className="bt-pl-drop">
+            <span className="bt-pl-drop-arrow"><span className="mv">↓</span><span className="cp">+</span></span>
+            <span className="mv">Déposer ici</span><span className="cp">Copier ici</span>
+          </div>
         )}
       </div>
     </td>
@@ -763,6 +783,14 @@ ${PRINT_MENU_CSS}
 .bt-pl-dragging{opacity:.35}
 .bt-pl-dragging .bt-pl-bub{box-shadow:none;transform:none}
 .bt-pl-overlay{transform:rotate(-2.5deg) scale(1.06);filter:drop-shadow(0 16px 22px rgba(21,18,15,.5));cursor:grabbing}
+/* Lot 2 : Ctrl / Alt maintenu = COPIER. La bulle d'origine reste pleine (elle ne
+   part pas), le curseur et une pastille « + » jaune le disent sur la copie. */
+.bt-pl--copying .bt-pl-dragging{opacity:1}
+.bt-pl--copying .bt-pl-overlay{cursor:copy}
+.bt-pl-overlay{position:relative}
+.bt-pl-copybadge{position:absolute;top:-8px;right:-8px;z-index:3;width:18px;height:18px;border-radius:50%;background:#FFC21A;color:#15120F;border:1.5px solid #15120F;font-size:14px;font-weight:900;line-height:1;display:flex;align-items:center;justify-content:center;pointer-events:none}
+.bt-pl-drop .cp,.bt-pl--copying .bt-pl-drop .mv{display:none}
+.bt-pl--copying .bt-pl-drop .cp{display:inline}
 .bt-pl-extra{transition:box-shadow .16s ease, transform .12s ease}
 .bt-pl-extra:hover{transform:translateY(-1px);box-shadow:0 8px 18px -8px rgba(181,71,46,.4)}
 .bt-pl-cell{transition:background .14s ease}
@@ -862,7 +890,10 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const [planning, setPlanning] = useState<PlanningWithWorksite[]>([]);
   const [realEntries, setRealEntries] = useState<{ user_id: string; work_date: string; worksite_id: string | null; planning_id?: string | null; start_time: string; end_time: string; total_minutes: number; reception: string | null; reserve_resolved_at: string | null; reserve_fixed_at?: string | null; observation: string | null }[]>([]);
   // Saisies pas encore envoyées : affichées en pointillé, jamais comptées.
-  const [draftEntries, setDraftEntries] = useState<{ user_id: string; work_date: string; worksite_id: string | null; planning_id?: string | null; start_time: string; end_time: string; total_minutes: number; reception: string | null; reserve_resolved_at: string | null; reserve_fixed_at?: string | null; observation: string | null }[]>([]);
+  const [draftEntries, setDraftEntries] = useState<DraftRow[]>([]);
+  // Lot 2 : brouillons VIDES (0 minute, jamais envoyés), gardés à part : ils ne
+  // s'affichent plus « 0h00 · à envoyer » et ne verrouillent plus leur intervention.
+  const [emptyDrafts, setEmptyDrafts] = useState<DraftRow[]>([]);
   // Lot 11 : cases de la semaine que le salarié a RETIRÉES (sa ligne 'cancelled' la
   // désigne encore, la base refuse donc de l'effacer) → 🔒 en mode « Sélectionner ».
   const [withdrawnIds, setWithdrawnIds] = useState<Set<string>>(EMPTY_SET);
@@ -923,6 +954,16 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   // Lot 9 : relu par son propre sondage (30 s), plus par fetchExtras.
   const [liveNow, setLiveNow] = useState<LiveSessionLike[]>([]);
   const [activeDrag, setActiveDrag] = useState<{ id: string; type: 'move' | 'new'; worksiteId?: string } | null>(null);
+  // Lot 2 : Ctrl / Alt (⌥) / ⌘ maintenu AU DÉPÔT = copier au lieu de déplacer.
+  // dnd-kit ne transmet que le premier appui (activatorEvent) : l'état des touches
+  // est suivi à part, lu par handleDragEnd dans la ref (synchrone), affiché par l'état.
+  const copyRef = useRef(false);
+  const [copying, setCopying] = useState(false);
+  const setCopy = useCallback((on: boolean) => {
+    if (copyRef.current === on) return; // pas de redessin à chaque mouvement de souris
+    copyRef.current = on;
+    setCopying(on);
+  }, []);
 
   // disponibilité popup + worker fiche + management screens
   const [statusTarget, setStatusTarget] = useState<{ worker: User; fromStr: string } | null>(null);
@@ -1167,8 +1208,12 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
           .eq('company_id', user.company_id).gte('work_date', from).lte('work_date', to).order('work_date'),
         supabase.from('time_entries').select('user_id, work_date, worksite_id, planning_id, start_time, end_time, total_minutes, reception, reserve_resolved_at, reserve_fixed_at, observation')
           .eq('company_id', user.company_id).in('status', ['submitted', 'validated']).gte('work_date', from).lte('work_date', to),
-        supabase.from('time_entries').select('user_id, work_date, worksite_id, planning_id, start_time, end_time, total_minutes, reception, reserve_resolved_at, reserve_fixed_at, observation')
-          .eq('company_id', user.company_id).eq('status', 'draft').gte('work_date', from).lte('work_date', to),
+        (async () => {
+          const q = (cols: string) => supabase.from('time_entries').select(cols)
+            .eq('company_id', user.company_id).eq('status', 'draft').gte('work_date', from).lte('work_date', to);
+          const r = await q(`${DRAFT_COLS}, exit_forgotten`);
+          return r.error && /exit_forgotten/.test(r.error.message || '') ? q(DRAFT_COLS) : r;
+        })(),
         supabase.from('time_entries').select('planning_id')
           .eq('company_id', user.company_id).eq('status', 'cancelled').not('planning_id', 'is', null).gte('work_date', from).lte('work_date', to),
       ]);
@@ -1177,7 +1222,13 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       const realRows = realRes.error ? [] : (realRes.data || []);
       setPlanning((prev) => keep(prev, planRows));
       if (!realRes.error) setRealEntries((prev) => keep(prev, realRows));
-      if (!draftRes.error) setDraftEntries((prev) => keep(prev, draftRes.data || []));
+      if (!draftRes.error) {
+        // Lot 2 : un brouillon VIDE (0 minute, jamais envoyé) ne compte nulle part
+        // et ne bloque plus rien : supprimer son intervention l'emporte (lib/erase).
+        const drafts = (draftRes.data || []) as unknown as DraftRow[];
+        setDraftEntries((prev) => keep(prev, drafts.filter((e) => !isDisposableDraft(e))));
+        setEmptyDrafts((prev) => keep(prev, drafts.filter((e) => isDisposableDraft(e))));
+      }
       if (!cancelledRes.error) setWithdrawnIds((prev) => keep(prev, withdrawnSet(cancelledRes.data)));
 
       // Unification : toute heure déclarée sur un chantier sans créneau planning → on
@@ -1494,6 +1545,15 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   // seulement pour que le bureau sache qu'une saisie existe.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const draftMap = useMemo(() => aggregate(draftEntries), [draftEntries, bubbleKeyOf]);
+  // Lot 2 : interventions qui ne portent qu'un brouillon vide (la fenêtre le dit :
+  // « Supprimer » l'emporte), et celles dont le brouillon est une sortie oubliée
+  // à compléter (gardées : son heure d'arrivée compte).
+  const emptyDraftPids = useMemo(() => {
+    const out = new Set<string>();
+    for (const e of emptyDrafts) { const k = bubbleKeyOf(e); if (k.startsWith('p:')) out.add(k.slice(2)); }
+    return out;
+  }, [emptyDrafts, bubbleKeyOf]);
+  const exitDraftKeys = useMemo(() => new Set(draftEntries.filter((e) => e.exit_forgotten).map((e) => bubbleKeyOf(e))), [draftEntries, bubbleKeyOf]);
 
   /**
    * Lot 11 : les jours qu'on peut ENCORE réclamer. Un jour d'un mois clôturé, ou
@@ -1650,13 +1710,14 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
 
   // ─── Lot 11 : « Sélectionner » → « Supprimer (N) » → « Annuler » ───────────────
   // Ce qui ne s'efface JAMAIS d'ici (et le dit) : des heures envoyées ou notées,
-  // un pointage en cours, une case retirée par le salarié (sa ligne la désigne
-  // encore), un mois clôturé (ou un salarié clôturé à cette date).
+  // un pointage en cours, un mois clôturé (ou un salarié clôturé à cette date).
+  // Lot 2 : une case RETIRÉE par le salarié se supprime désormais — sa ligne
+  // retirée est détachée, ses heures restent (lib/erase) ; un brouillon vide part
+  // avec la case.
   const hardLock = (p: PlanningWithWorksite): string | null => {
     if (realForPlanning(p)) return 'Heures envoyées — non supprimable';
-    if (draftForPlanning(p)) return 'Heures notées par le salarié — non supprimable';
+    if (draftForPlanning(p)) return exitDraftKeys.has(`p:${p.id}`) ? 'Sortie oubliée à compléter — non supprimable' : 'Heures notées par le salarié — non supprimable';
     if (liveForBubble(p)) return 'Pointage en cours — non supprimable';
-    if (withdrawnIds.has(p.id)) return 'Retirée par le salarié — non supprimable';
     if (closedMonths.has(p.work_date.slice(0, 7))) return 'Mois clôturé — non supprimable';
     if (closedFor(workerClosures, p.user_id, p.work_date)) return 'Heures clôturées pour ce salarié — non supprimable';
     return null;
@@ -1668,6 +1729,22 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     if (p.absence_type) return 'Absence — à changer avec « Présent »';
     if (p.added_by_worker) return 'Ajoutée par le salarié — non supprimable';
     return hardLock(p);
+  };
+  // Lot 2 : ce qu'un glisser simple ne DÉPLACE plus vers une autre case. Une ligne
+  // d'heures (envoyée, notée) désigne sa case par planning_id : déplacée, la case
+  // laissait la ligne pointer un autre jour, et le chargement suivant recréait
+  // une bulle « ajoutée par le salarié » à l'ancienne place (ensure_planning_slot).
+  // Une case retirée par le salarié, ou qui ne porte qu'un brouillon vide, se
+  // déplace : comme pour « Supprimer », la ligne retirée est détachée et le
+  // brouillon vide effacé avant (prepareMove). La COPIE (Ctrl / Alt), elle,
+  // reste toujours possible.
+  const moveLock = (p: PlanningWithWorksite): string | null => {
+    if (realForPlanning(p)) return 'Heures envoyées — non déplaçable';
+    if (draftForPlanning(p)) return exitDraftKeys.has(`p:${p.id}`) ? 'Sortie oubliée à compléter — non déplaçable' : 'Heures notées par le salarié — non déplaçable';
+    if (liveForBubble(p)) return 'Pointage en cours — non déplaçable';
+    if (closedMonths.has(p.work_date.slice(0, 7))) return 'Mois clôturé — non déplaçable';
+    if (closedFor(workerClosures, p.user_id, p.work_date)) return 'Heures clôturées pour ce salarié — non déplaçable';
+    return null;
   };
   // La sélection affichée = la sélection ∩ ce qui est encore au planning et
   // supprimable. Calculée au rendu : aucun setState quand un sondage relit.
@@ -1716,7 +1793,6 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   /** La carte « N intervention(s) supprimée(s) · Annuler » : elle reste jusqu'à sa croix. */
   const showUndo = (r: EraseResult) => {
     const k = r.deleted.length;
-    const rows = r.deleted;
     setUndoCard({
       key: Date.now(),
       message: `${k} intervention${k > 1 ? 's' : ''} supprimée${k > 1 ? 's' : ''}`
@@ -1724,7 +1800,8 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       strong: k > 1,
       undo: async () => {
         try {
-          await restoreRows('planning', rows);
+          // Lot 2 : l'intervention, puis ses brouillons vides, puis le lien des lignes retirées.
+          await undoErase(r);
           refreshRef.current();
           return { ok: true, message: k > 1 ? 'Annulé : tout est remis au planning.' : 'Annulé : l’intervention est remise au planning.' };
         } catch (err) {
@@ -1777,13 +1854,116 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   [planning]);
 
   // ─── drag: create (palette) · move (cross-cell) · reorder (within cell) ──────
+  // Lot 2 : + copier (Ctrl / Alt / ⌘ maintenu au dépôt).
+
+  // Les touches pendant qu'une bulle est en main, écoutées sur la fenêtre (phase
+  // de capture). Appuyer ou relâcher en cours de route compte : c'est l'état au
+  // moment du dépôt qui décide. Alt seul ouvrirait la barre de menus de Firefox.
+  useEffect(() => {
+    if (activeDrag?.type !== 'move') return;
+    const held = (e: KeyboardEvent | PointerEvent) => e.ctrlKey || e.altKey || e.metaKey;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Alt') e.preventDefault();
+      setCopy(held(e));
+    };
+    const onMove = (e: PointerEvent) => setCopy(held(e));
+    const onBlur = () => setCopy(false); // fenêtre quittée : la touche a pu être relâchée ailleurs
+    window.addEventListener('keydown', onKey, true);
+    window.addEventListener('keyup', onKey, true);
+    window.addEventListener('pointermove', onMove, true);
+    window.addEventListener('blur', onBlur);
+    return () => {
+      window.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('keyup', onKey, true);
+      window.removeEventListener('pointermove', onMove, true);
+      window.removeEventListener('blur', onBlur);
+    };
+  }, [activeDrag?.type, setCopy]);
 
   const handleDragStart = (e: DragStartEvent) => {
     const data = e.active.data.current as { type?: 'move' | 'new'; worksiteId?: string } | undefined;
-    setActiveDrag({ id: String(e.active.id), type: data?.type === 'new' ? 'new' : 'move', worksiteId: data?.worksiteId });
+    const type = data?.type === 'new' ? 'new' : 'move';
+    const ev = e.activatorEvent as PointerEvent | null;
+    setCopy(type === 'move' && !!ev && (ev.ctrlKey || ev.altKey || ev.metaKey));
+    setActiveDrag({ id: String(e.active.id), type, worksiteId: data?.worksiteId });
+  };
+
+  // L'ordre d'une case (au mieux : il faut la colonne `position`).
+  const persistOrder = async (ids: string[]) => {
+    if (!user?.company_id) return;
+    try {
+      const results = await Promise.all(ids.map((id, i) =>
+        supabase.from('planning').update({ position: i }).eq('id', id).eq('company_id', user.company_id)));
+      const bad = results.find(r => r.error);
+      if (bad?.error) throw bad.error;
+    } catch (err) {
+      console.warn('Order not persisted (run the SQL migration?):', err);
+      if (!positionWarned) {
+        toast('Astuce : exécutez le SQL « position » pour mémoriser l\'ordre des chantiers.');
+        setPositionWarned(true);
+      }
+    }
+  };
+
+  /**
+   * Lot 2 : COPIER une intervention (Ctrl / Alt au dépôt). Une seule ligne de
+   * planning neuve, par le même chemin que « Ajouter au planning » : chantier,
+   * horaire prévu et note. Jamais les heures du salarié, ni ses documents, ni
+   * l'ordre, ni « ajoutée par le salarié ». L'original n'est pas touché.
+   */
+  const copySlot = async (src: PlanningWithWorksite, tWorker: string, tDate: string, overBubbleId: string | null) => {
+    if (!user?.company_id || !src.worksite_id) return;
+    const cell = cellChantiers(tWorker, tDate);
+    const refusal = copyRefusal(src, cell, {
+      absent: !!absenceForDay(tWorker, tDate),
+      monthClosed: closedMonths.has(tDate.slice(0, 7)),
+      workerClosed: !!closedFor(workerClosures, tWorker, tDate),
+    });
+    if (refusal) { toast.error(refusal.message); return; }
+    let newId: string;
+    try {
+      newId = await addPlanningSlot({
+        companyId: user.company_id, createdBy: user.id, userId: tWorker, worksiteId: src.worksite_id, workDate: tDate,
+        notes: src.notes, estimatedStart: src.estimated_start, estimatedEnd: src.estimated_end,
+      });
+    } catch (err) {
+      console.error('Error copying planning:', err);
+      toast.error('Impossible de copier : rien n’a été ajouté.');
+      return;
+    }
+    // Déposée SUR une bulle : la copie prend sa place, comme un déplacement.
+    if (overBubbleId) {
+      const ids = cell.map((p) => p.id);
+      const i = ids.indexOf(overBubbleId);
+      ids.splice(i < 0 ? ids.length : i, 0, newId);
+      await persistOrder(ids);
+    }
+    const who = workers.find((w) => w.id === tWorker)?.first_name || 'Salarié';
+    const companyId = user.company_id;
+    setUndoCard({
+      key: Date.now(),
+      message: `Intervention copiée · ${who} · ${format(parseISO(tDate), 'EEE d MMM', { locale: fr })}`,
+      strong: false,
+      // Les mêmes gardes que « Supprimer » : des heures notées depuis sur la copie,
+      // ou un mois clôturé entre-temps, la gardent — et on le dit.
+      undo: async () => {
+        try {
+          const r = await erasePlanning(companyId, { ids: [newId] });
+          refreshRef.current();
+          if (!r.deleted.length) return { ok: false, message: `Impossible d’annuler : ${r.reason || 'la copie n’est plus au planning'}.` };
+          return { ok: true, message: 'Annulé : la copie est retirée du planning.' };
+        } catch (err) {
+          console.error('Error undoing copy:', err);
+          return { ok: false, message: 'Impossible d’annuler pour le moment. Réessayez.' };
+        }
+      },
+    });
+    fetchPlanning();
   };
 
   const handleDragEnd = async (e: DragEndEvent) => {
+    const copy = copyRef.current; // l'état des touches AU DÉPÔT, avant tout le reste
+    setCopy(false);
     const drag = activeDrag;
     setActiveDrag(null);
     const { active, over } = e;
@@ -1821,9 +2001,22 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     const draggedId = String(active.id);
     const dragged = planning.find(p => p.id === draggedId);
     if (!dragged || dragged.absence_type) return;
+    if (copy) { await copySlot(dragged, tWorker, tDate, overBubbleId); return; }
     if (overBubbleId === draggedId) return;
 
     const sameCell = dragged.user_id === tWorker && dragged.work_date === tDate;
+    // Lot 2 : vers une AUTRE case, d'abord ce que la bulle porte, puis la case visée.
+    // Réordonner dans la même case ne change rien de tout ça : toujours permis.
+    if (!sameCell) {
+      const lock = moveLock(dragged);
+      if (lock) { toast.error(`${lock} · maintenez Ctrl ou Alt pour copier`); return; }
+      const refusal = targetRefusal({
+        absent: !!absenceForDay(tWorker, tDate),
+        monthClosed: closedMonths.has(tDate.slice(0, 7)),
+        workerClosed: !!closedFor(workerClosures, tWorker, tDate),
+      }, 'déplacé');
+      if (refusal) { toast.error(refusal.message); return; }
+    }
     const target = cellChantiers(tWorker, tDate).filter(p => p.id !== draggedId);
     const idx = overBubbleId ? (() => { const i = target.findIndex(p => p.id === overBubbleId); return i < 0 ? target.length : i; })() : target.length;
     const newIds = target.map(p => p.id);
@@ -1840,27 +2033,37 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
 
     // 1) The move itself (user_id/date) must work even without the position column.
     if (!sameCell) {
-      const error = await updatePlanningSlot(user.company_id, draggedId, { userId: tWorker, workDate: tDate }).then(() => null, (e: unknown) => e);
-      if (error) {
-        console.error('Error moving planning:', error);
+      // Lot 2 : la base d'abord, pas seulement ce que l'écran affiche. Des heures
+      // notées depuis le dernier chargement gardent la case ; une ligne retirée
+      // est détachée, un brouillon vide effacé (lib/erase), remis si le
+      // déplacement échoue.
+      let prep: MovePrep;
+      try {
+        prep = await prepareMove(user.company_id, draggedId);
+      } catch (err) {
+        console.error('Error preparing move:', err);
         toast.error('Impossible de déplacer');
         setPlanning(prev);
         return;
       }
+      if (prep.reason) {
+        toast.error(`Rien n’a été déplacé : ${prep.reason} · maintenez Ctrl ou Alt pour copier`);
+        setPlanning(prev);
+        fetchPlanning();
+        return;
+      }
+      const error = await updatePlanningSlot(user.company_id, draggedId, { userId: tWorker, workDate: tDate }).then(() => null, (e: unknown) => e);
+      if (error) {
+        console.error('Error moving planning:', error);
+        await undoMovePrep(prep).catch((e) => console.error('Remise après échec impossible :', e));
+        toast.error('Impossible de déplacer');
+        setPlanning(prev);
+        return;
+      }
+      if (prep.drafts.length || prep.detached.length) fetchPlanning();
     }
     // 2) Persist the order (best-effort — requires the `position` column).
-    try {
-      const results = await Promise.all(newIds.map((id, i) =>
-        supabase.from('planning').update({ position: i }).eq('id', id).eq('company_id', user.company_id)));
-      const bad = results.find(r => r.error);
-      if (bad?.error) throw bad.error;
-    } catch (err) {
-      console.warn('Order not persisted (run the SQL migration?):', err);
-      if (!positionWarned) {
-        toast('Astuce : exécutez le SQL « position » pour mémoriser l\'ordre des chantiers.');
-        setPositionWarned(true);
-      }
-    }
+    await persistOrder(newIds);
   };
 
   // ─── cell add (click) ─────────────────────────────────────────────────────────
@@ -1941,7 +2144,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       refresh();
     } catch (err) {
       console.error('Error saving absence:', err);
-      toast.error("Impossible d'enregistrer l'absence (si « Repos », votre base la refuse peut-être encore)");
+      toast.error("Impossible d'enregistrer l'absence : rien n'a été changé");
     } finally {
       setAbsSaving(false);
     }
@@ -2448,6 +2651,8 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
 
   // Lot 3 : une case de la feuille imprimée — les MÊMES bulles que l'écran, sans ce qui
   // n'a de sens qu'à l'écran : ni « en cours », ni « + », ni sélection, ni bouton.
+  // Une intervention retirée par le salarié reste barrée sur le papier (lot 2) :
+  // imprimée comme « à faire », elle dirait le contraire de l'écran.
   // Une maladie devient « Absent » (donnée de santé : la feuille s'affiche au dépôt,
   // comme la borne) ; congé et intempérie restent écrits comme à l'écran.
   const renderPrintCell = (workerId: string, iso: string) => {
@@ -2465,7 +2670,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     return (
       <div className="bt-pl-cellfill">
         {cellChantiers(workerId, iso).map((p) => (
-          <BubbleContent key={p.id} p={p} palette={paletteFor(p)} real={realForPlanning(p)} draft={draftForPlanning(p)} docCount={docsByWorksite.get(p.worksite_id || '') || 0} />
+          <BubbleContent key={p.id} p={p} palette={paletteFor(p)} real={realForPlanning(p)} draft={draftForPlanning(p)} docCount={docsByWorksite.get(p.worksite_id || '') || 0} withdrawn={withdrawnIds.has(p.id)} />
         ))}
         {extraDeclaredForCell(workerId, iso).map((x, i) => (
           <div key={`xd${i}`} className="bt-pl-extra">
@@ -2520,10 +2725,10 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   }
 
   return (
-    <div className={`bt-pl${selectMode ? ' bt-pl--select' : ''}${undoCard ? ' bt-pl--undo' : ''}`}>
+    <div className={`bt-pl${selectMode ? ' bt-pl--select' : ''}${undoCard ? ' bt-pl--undo' : ''}${copying ? ' bt-pl--copying' : ''}`}>
       <style dangerouslySetInnerHTML={PL_STYLE} />
 
-      <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragStart={handleDragStart} onDragEnd={(e) => { handleDragEnd(e); setChantierMenuOpen(false); }} onDragCancel={() => { setActiveDrag(null); setChantierMenuOpen(false); }}>
+      <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragStart={handleDragStart} onDragEnd={(e) => { handleDragEnd(e); setChantierMenuOpen(false); }} onDragCancel={() => { setCopy(false); setActiveDrag(null); setChantierMenuOpen(false); }}>
         {/* Barre UNIQUE pleine largeur, figée (sticky) — tout aligné sur une ligne */}
         {/* COCKPIT : tableau de bord sombre. Lot 10 : rangé de gauche à droite —
             logo · chiffres (au centre) · essai + entreprise. Mêmes informations. */}
@@ -2886,7 +3091,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                                     title={selectMode ? undefined : 'Cliquer pour ajouter une intervention'}
                                   >
                                     {chantiers.map(p => (
-                                      <DraggableBubble key={p.id} p={p} palette={paletteFor(p)} real={realForPlanning(p)} draft={draftForPlanning(p)} onEdit={openEdit} docCount={docsByWorksite.get(p.worksite_id || '') || 0} live={liveForBubble(p)} sel={selFor(p)} onToggle={toggleOne} />
+                                      <DraggableBubble key={p.id} p={p} palette={paletteFor(p)} real={realForPlanning(p)} draft={draftForPlanning(p)} onEdit={openEdit} docCount={docsByWorksite.get(p.worksite_id || '') || 0} live={liveForBubble(p)} sel={selFor(p)} onToggle={toggleOne} withdrawn={withdrawnIds.has(p.id)} />
                                     ))}
                                     {extra.map((x, i) => {
                                       const chip = (
@@ -3113,7 +3318,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                                 <div key={p.id} className={`bt-pl-m-bubbtn${sel ? ` ${selClass(sel)}` : ''}`} role="button" tabIndex={0}
                                   data-sel={sel ? selAttr(sel) : undefined} data-pid={sel ? p.id : undefined}
                                   onClick={act} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); act(); } }}>
-                                  <BubbleContent p={p} palette={paletteFor(p)} real={realForPlanning(p)} draft={draftForPlanning(p)} docCount={docsByWorksite.get(p.worksite_id || '') || 0} live={liveForBubble(p)} />
+                                  <BubbleContent p={p} palette={paletteFor(p)} real={realForPlanning(p)} draft={draftForPlanning(p)} docCount={docsByWorksite.get(p.worksite_id || '') || 0} live={liveForBubble(p)} withdrawn={withdrawnIds.has(p.id)} />
                                   {sel && <SelMark sel={sel} />}
                                 </div>
                               );
@@ -3156,7 +3361,16 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
           })() : activeDrag?.type === 'move' ? (
             (() => {
               const p = planning.find(x => x.id === activeDrag.id);
-              return p ? <div className="bt-pl-overlay"><BubbleContent p={p} palette={paletteFor(p)} real={realForPlanning(p)} docCount={docsByWorksite.get(p.worksite_id || '') || 0} live={liveForBubble(p)} /></div> : null;
+              // Lot 2 : en copie, la bulle tenue montre ce qui sera créé — le prévu,
+              // sans les heures ni le pointage de l'original — et une pastille « + ».
+              return p ? (
+                <div className="bt-pl-overlay" data-testid="drag-overlay">
+                  {copying && <span className="bt-pl-copybadge" aria-hidden="true">+</span>}
+                  {copying
+                    ? <BubbleContent p={p} palette={paletteFor(p)} docCount={docsByWorksite.get(p.worksite_id || '') || 0} />
+                    : <BubbleContent p={p} palette={paletteFor(p)} real={realForPlanning(p)} docCount={docsByWorksite.get(p.worksite_id || '') || 0} live={liveForBubble(p)} withdrawn={withdrawnIds.has(p.id)} />}
+                </div>
+              ) : null;
             })()
           ) : null}
         </DragOverlay>
@@ -3811,6 +4025,13 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                   <span style={{ color: '#1F7A4D' }}>{editRealAgg.start?.substring(0, 5)}–{editRealAgg.end?.substring(0, 5)} · <strong>{formatMinutes(editRealAgg.minutes)} réelles</strong>{editRealAgg.count > 1 ? ` (${editRealAgg.count} saisies)` : ''}</span>
                 ) : (
                   <span className="text-muted-foreground">pas encore déclaré</span>
+                )}
+                {/* Lot 2 : ce qui part avec « Supprimer », dit avant le clic. */}
+                {!editRealAgg && withdrawnIds.has(editing.id) && (
+                  <div className="mt-1 text-[13px] text-muted-foreground" data-testid="edit-withdrawn">Retirée par le salarié : ses heures retirées restent dans sa fiche.</div>
+                )}
+                {!editRealAgg && emptyDraftPids.has(editing.id) && (
+                  <div className="mt-1 text-[13px] text-muted-foreground" data-testid="edit-empty-draft">Brouillon vide du salarié (0 min) : supprimé avec l’intervention.</div>
                 )}
                 {editRealAgg?.reception === 'avec' && (
                   editRealAgg.reserveOpen ? (

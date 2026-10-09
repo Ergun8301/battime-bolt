@@ -29,15 +29,21 @@
     "test:kiosk-fonction": "npx -y deno@2 test -A supabase/functions/_shared/kiosk-function.test.ts",
     "test:invitations-fonction": "npx -y deno@2 test -A supabase/functions/_shared/invite-worker-function.test.ts",
     "test:heures": "npx -y deno@2 test supabase/functions/_shared/day-hours.test.ts",
+    "test:copie-planning": "npx -y deno@2 test supabase/functions/_shared/copy-slot.test.ts",
     "test:heures-ecrans": "node scripts/tests/heures-lot1.mjs out docs/captures-heures",
     "test:creneaux": "npx -y deno@2 test supabase/functions/_shared/day-part.test.ts",
     "test:planning-lot3": "node scripts/tests/planning-lot3.mjs out docs/captures-planning-lot3",
+    "test:brouillons": "node scripts/tests/brouillons-lot2.mjs out docs/captures-lot2",
     "test:reserves-lot11": "node scripts/tests/reserves-lot11.mjs out docs/captures-lot11",
     "test:fin-pointage": "node supabase/tests/lot9_fin_pointage.mjs",
     "test:cloture-salarie": "node supabase/tests/lot11_cloture_salarie.mjs",
     "test:salarie-lot9": "node scripts/tests/salarie-lot9.mjs out docs/captures-lot9",
     "test:pointage-qr": "node supabase/tests/lot12_pointage_qr.mjs",
-    "test:chef-equipe": "node supabase/tests/lot14_chef_equipe.mjs"
+    "test:chef-equipe": "node supabase/tests/lot14_chef_equipe.mjs",
+    "test:bureau-regles": "npx -y deno@2 test supabase/functions/_shared/office-edits.test.ts supabase/functions/_shared/copy-slot.test.ts",
+    "test:corrections-bureau": "node supabase/tests/lot2_corrections_bureau.mjs",
+    "test:bureau-ecrans": "node scripts/tests/bureau-lot2.mjs out docs/captures-lot2",
+    "test:planning-lot2": "node scripts/tests/planning-lot2.mjs out docs/captures-lot2"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

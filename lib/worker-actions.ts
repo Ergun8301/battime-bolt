@@ -50,9 +50,12 @@ export function makeWorkerExecutor(user: { id: string; company_id: string }): Wo
     const { data } = await supabase.from('companies').select('position_tracking_enabled').eq('id', user.company_id).maybeSingle();
     return !!(data as { position_tracking_enabled?: boolean } | null)?.position_tracking_enabled;
   };
+  // Lot 2 : seulement les brouillons JAMAIS envoyés (`submitted_at` nul). Une
+  // journée renvoyée par le bureau est en brouillon, mais elle a été envoyée :
+  // elle se corrige ou se retire, elle ne s'efface pas (la base le refuse aussi).
   const deleteDrafts = async (ids: string[]) => {
     if (!ids.length) return;
-    const { error } = await supabase.from('time_entries').delete().in('id', ids).eq('user_id', user.id).eq('status', 'draft');
+    const { error } = await supabase.from('time_entries').delete().in('id', ids).eq('user_id', user.id).eq('status', 'draft').is('submitted_at', null);
     if (error) throw error;
   };
   return async (d, attachment) => {
@@ -220,7 +223,10 @@ export function makeWorkerExecutor(user: { id: string; company_id: string }): Wo
           if (error) throw error;
           if (!src || !src.length) return { ok: false, message: 'Rien à copier ce jour-là.' };
           const ids = await copyLinesTo(user, src as { worksite_id: string | null; start_time: string; end_time: string; break_minutes: number | null; observation: string | null }[], d.vers);
-          message = `${src.length} ligne${src.length > 1 ? 's' : ''} copiée${src.length > 1 ? 's' : ''} sur ${d.vers.length} jour${d.vers.length > 1 ? 's' : ''}.`;
+          // Lot 2 : le nombre VRAIMENT copié (une ligne de 0 minute, à compléter, ne se copie pas).
+          if (!ids.length) return { ok: false, message: 'Rien à copier : les heures de ce jour-là sont à compléter.' };
+          const n = Math.round(ids.length / Math.max(1, d.vers.length));
+          message = `${n} ligne${n > 1 ? 's' : ''} copiée${n > 1 ? 's' : ''} sur ${d.vers.length} jour${d.vers.length > 1 ? 's' : ''}.`;
           undo = () => deleteDrafts(ids);
           break;
         }
@@ -243,13 +249,13 @@ export function makeWorkerExecutor(user: { id: string; company_id: string }): Wo
           break;
         // ── Lot 8 : effacer ce qu'il a saisi. Tout est LU avant : « Annuler » remet à l'identique. ──
         case 'effacer_heures': {
-          let q = supabase.from('time_entries').select('*').eq('user_id', user.id).eq('work_date', d.date).eq('status', 'draft').eq('locked', false);
+          let q = supabase.from('time_entries').select('*').eq('user_id', user.id).eq('work_date', d.date).eq('status', 'draft').eq('locked', false).is('submitted_at', null);
           if (!d.tout && d.entry_id) q = q.eq('id', d.entry_id);
           const { data: rows, error: readErr } = await q;
           if (readErr) throw readErr;
           const list = (rows ?? []) as (Record<string, unknown> & { id: string })[];
-          if (!list.length) return { ok: false, message: 'Rien à effacer : les heures envoyées ne s’effacent plus (demandez au bureau de les corriger).' };
-          const { data: gone, error } = await supabase.from('time_entries').delete().in('id', list.map((r) => r.id)).eq('user_id', user.id).eq('status', 'draft').select('id');
+          if (!list.length) return { ok: false, message: 'Rien à effacer : ces heures ont été envoyées (ou renvoyées par le bureau) — corrige-les ou retire-les dans « Ma journée ».' };
+          const { data: gone, error } = await supabase.from('time_entries').delete().in('id', list.map((r) => r.id)).eq('user_id', user.id).eq('status', 'draft').is('submitted_at', null).select('id');
           if (error) throw error;
           const ids = new Set(((gone ?? []) as { id: string }[]).map((x) => x.id));
           const deleted = list.filter((r) => ids.has(r.id));
