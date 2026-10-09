@@ -29,6 +29,7 @@
     "test:kiosk-fonction": "npx -y deno@2 test -A supabase/functions/_shared/kiosk-function.test.ts",
     "test:invitations-fonction": "npx -y deno@2 test -A supabase/functions/_shared/invite-worker-function.test.ts",
     "test:heures": "npx -y deno@2 test supabase/functions/_shared/day-hours.test.ts",
+    "test:copie-planning": "npx -y deno@2 test supabase/functions/_shared/copy-slot.test.ts",
     "test:heures-ecrans": "node scripts/tests/heures-lot1.mjs out docs/captures-heures",
     "test:brouillons": "node scripts/tests/brouillons-lot2.mjs out docs/captures-lot2",
     "test:reserves-lot11": "node scripts/tests/reserves-lot11.mjs out docs/captures-lot11",
