@@ -102,7 +102,7 @@ await p.fill('#signup-password', 'soleil-mars-27');
 await p.screenshot({ path: `${SH}/1-inscription-regle-telephone.png`, fullPage: true });
 
 console.log('2. Inscription : envoi refusé sans caractère spécial, accepté avec');
-await p.fill('#company-name', 'Test'); await p.fill('#firstname', 'Fatih'); await p.fill('#lastname', 'Test'); await p.fill('#signup-email', 'patron@exemple.fr');
+await p.fill('#company-name', 'Test'); await p.fill('#firstname', 'Jean'); await p.fill('#lastname', 'Test'); await p.fill('#signup-email', 'patron@exemple.fr');
 calls.length = 0;
 await p.fill('#signup-password', 'soleil2027');
 await p.click('button[type=submit]');
@@ -257,7 +257,9 @@ for (const url of ['/inscription', '/connexion', '/mot-de-passe-oublie', '/point
   ({ ctx, p } = await page(url));
   await p.waitForTimeout(500);
   const html = (await p.content()).toLowerCase();
-  check(!/fatih|kebab|yilmazer/.test(html), `${url} : aucun nom de client`);
+  // Le seul exemple affiché est l'exemple neutre (aucun prénom ni nom de client).
+  const exemples = [...html.matchAll(/ex\. ([a-z0-9.\-]+)/g)].map((m) => m[1]);
+  check(exemples.every((e) => e === 'soleil-mars-27'), `${url} : seul exemple affiché « Ex. Soleil-Mars-27 »`);
   await ctx.close();
 }
 await b.close(); srv.close();

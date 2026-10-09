@@ -971,7 +971,7 @@ export function prepare(type: string, raw: Record<string, unknown>, ctx: ActionC
       const fin = hhmm(raw.fin) || parseTimeFr(str(raw.fin, 20)) || (!hhmm(raw.debut) && moment ? moment.fin : '');
       // « Rajoute-MOI » : la personne qui parle.
       const moi = /^(moi|me|m'|moi-meme|moi meme|je)$/i.test(norm(s).trim());
-      // « Mister Grill Mâcon » : le client + la ville départagent deux chantiers du même client.
+      // « Pizzeria Exemple Mâcon » : le client + la ville départagent deux chantiers du même client.
       // Un LIEU seul (« à Lyon ») n'est jamais pris pour le client situé dans cette
       // ville : il faut au moins un mot du NOM du client (la ville ne fait que départager).
       const named = !!c && matchesSomeChantier(c, ctx);

@@ -70,8 +70,8 @@ async function page(viewport) {
   return { ctx, p };
 }
 async function fill(p, email = 'patron@exemple.fr') {
-  await p.fill('#company-name', 'Mister Kebab Grill');
-  await p.fill('#firstname', 'Fatih');
+  await p.fill('#company-name', 'Pizzeria Exemple');
+  await p.fill('#firstname', 'Jean');
   await p.fill('#lastname', 'Test');
   await p.fill('#signup-email', email);
   await p.fill('#signup-password', 'Bemexo.2026');
@@ -93,7 +93,7 @@ for (const [name, vp] of [['telephone', { width: 390, height: 844 }], ['ordinate
   check(!(await p.locator('.bt-err').count()), 'pas d\'erreur rouge');
   check(await p.locator('.bt-exists a', { hasText: 'Se connecter' }).getAttribute('href') === '/connexion', 'bouton « Se connecter » → /connexion');
   check(await p.locator('.bt-exists a', { hasText: 'Mot de passe oublié' }).getAttribute('href') === '/mot-de-passe-oublie', 'bouton « Mot de passe oublié » → /mot-de-passe-oublie');
-  check(signups.length === 1 && signups[0].email === 'patron@exemple.fr' && signups[0].data?.company_name === 'Mister Kebab Grill', 'un seul appel signUp, adresse et entreprise transmises');
+  check(signups.length === 1 && signups[0].email === 'patron@exemple.fr' && signups[0].data?.company_name === 'Pizzeria Exemple', 'un seul appel signUp, adresse et entreprise transmises');
   check(await signUps(p) === 0, 'aucun événement GA4 « sign_up » pour un doublon');
   check(await p.evaluate(() => document.activeElement?.textContent) === 'Se connecter', 'focus clavier sur « Se connecter »');
   check((await box.textContent()).includes('Salarié invité par votre employeur'), 'ligne pour le salarié invité');

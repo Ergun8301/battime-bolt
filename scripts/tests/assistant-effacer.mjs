@@ -22,7 +22,7 @@ const users=[{id:'u-admin',company_id:CO,first_name:'Paul',last_name:'Martin',ro
 const planning=[]; let n=0;
 for(const u of workers) for(const d of days) planning.push({id:`p${String(++n).padStart(2,'0')}`,company_id:CO,user_id:u,worksite_id:'w1',work_date:d,absence_type:null,estimated_start:'08:00:00',estimated_end:'16:30:00',notes:`note ${n}`,created_by:'u-admin'});
 const snapshot=JSON.stringify(planning);
-const D={ users, companies:[{id:CO,name:'Mister Grill Kebab',ai_enabled:true,kiosk_enabled:false,position_tracking_enabled:false,subscription_status:'active',trial_ends_at:'2030-01-01',weekly_hours:35}],
+const D={ users, companies:[{id:CO,name:'Pizzeria Exemple',ai_enabled:true,kiosk_enabled:false,position_tracking_enabled:false,subscription_status:'active',trial_ends_at:'2030-01-01',weekly_hours:35}],
   worksites:W, planning,
   time_entries:[{id:'t1',planning_id:'p01',user_id:'u1',status:'sent'},{id:'t2',planning_id:'p07',user_id:'u2',status:'draft'},{id:'t3',planning_id:'p13',user_id:'u3',status:'validated'}],
   active_sessions:[], month_closures:[], leave_requests:[], invitations:[], documents:[], certifications:[], push_subscriptions:[], assistant_journal:[] };

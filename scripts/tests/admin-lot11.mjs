@@ -42,7 +42,7 @@ const slot = (id, user_id, work_date, ws, extra = {}) => ({ id, company_id: CO, 
 const entry = (id, user_id, work_date, ws, status, minutes, extra = {}) => ({ id, company_id: CO, user_id, work_date, worksite_id: ws?.id ?? null, planning_id: null, status, start_time: '08:00:00', end_time: `${String(8 + Math.floor(minutes / 60)).padStart(2, '0')}:00:00`, total_minutes: minutes, reception: null, reserve_resolved_at: null, reserve_fixed_at: null, observation: null, ...extra });
 const sKevin = { user_id: 'u-kevin', company_id: CO, worksite_id: 'w1', planning_id: 'pk-wed', work_date: TODAY, started_at: ago(2), positions: [] };
 const LONG_MAIL = 'comptabilite.cabinet-dupont-et-associes@expertise-comptable-lyonnaise.fr';
-const COMPANY = { id: CO, name: 'Mister Grill Kebab', ai_enabled: false, kiosk_enabled: false, position_tracking_enabled: false, subscription_status: 'active', trial_ends_at: '2030-01-01', weekly_hours: 35, accountant_email: LONG_MAIL };
+const COMPANY = { id: CO, name: 'Pizzeria Exemple', ai_enabled: false, kiosk_enabled: false, position_tracking_enabled: false, subscription_status: 'active', trial_ends_at: '2030-01-01', weekly_hours: 35, accountant_email: LONG_MAIL };
 const PLANNING0 = [
   // Kevin : lun. sans heures (cochable) + lun. brouillon, mar. envoyé, mer. en cours, jeu. cochable ; 2 jours dus début octobre, 1 en septembre (hors mois)
   slot('pk-mon', 'u-kevin', D_(19), W1), slot('pk-mon2', 'u-kevin', D_(19), W2), slot('pk-tue', 'u-kevin', D_(20), W1, { estimated_start: '08:00:00', estimated_end: '17:00:00' }),

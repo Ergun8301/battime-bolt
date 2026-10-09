@@ -38,7 +38,7 @@ const sKevin = { user_id: 'u-kevin', company_id: CO, worksite_id: 'w1', planning
 const sMarc = { user_id: 'u-marc', company_id: CO, worksite_id: 'w2', planning_id: null, work_date: today, started_at: ago(1), positions: [] };
 const sNina = { user_id: 'u-nina', company_id: CO, worksite_id: 'w1', planning_id: 'pl-nina', work_date: day(-1), started_at: new Date(`${day(-1)}T05:45:00Z`).toISOString(), positions: [] };
 const sLea = { user_id: 'u-lea', company_id: CO, worksite_id: 'w1', planning_id: 'pl-lea', work_date: today, started_at: ago(0.5), positions: [] };
-const COMPANY = { id: CO, name: 'Mister Grill Kebab', ai_enabled: true, kiosk_enabled: false, position_tracking_enabled: false, subscription_status: 'active', trial_ends_at: '2030-01-01', weekly_hours: 35 };
+const COMPANY = { id: CO, name: 'Pizzeria Exemple', ai_enabled: true, kiosk_enabled: false, position_tracking_enabled: false, subscription_status: 'active', trial_ends_at: '2030-01-01', weekly_hours: 35 };
 const D = {
   users: [
     u('u-admin', 'Paul', 'Martin', 'admin'),
@@ -326,7 +326,7 @@ for (const [width, height] of [[1024, 768], [1280, 800], [1440, 900]]) {
   const head = pm.locator('.bt-pl-m-head');
   const headTxt = (await head.innerText()).replace(/\s+/g, ' ');
   check(await head.locator('.bt-pl-logo').count() === 1, 'mobile : logo dans l’en-tête');
-  check(headTxt.includes('Mister Grill Kebab'), 'mobile : nom de l’entreprise dans l’en-tête');
+  check(headTxt.includes('Pizzeria Exemple'), 'mobile : nom de l’entreprise dans l’en-tête');
   check(await head.locator('.bt-pl-trial').count() === 1, 'mobile : pastille d’essai conservée');
   check(await head.locator('[data-testid=m-stat-waiting]').count() === 1 && /6 j/.test(await head.locator('[data-testid=m-stat-waiting]').innerText()), 'mobile : chiffre « À relancer » compact (6 j)');
   check(await head.locator('[data-testid=m-stat-live]').count() === 0 && await head.locator('.bt-pl-m-stat').count() === 2, 'mobile (lot 11) : 2 puces, plus de « en direct »');

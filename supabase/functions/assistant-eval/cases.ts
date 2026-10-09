@@ -16,7 +16,7 @@ export const FILES = {
 
 const C = 'co-eval';
 const W = {
-  dupont: 'w-dupont', martin: 'w-martin', macon: 'w-mgk-macon', bourg: 'w-mgk-bourg', ppj: 'w-ppj-viriat', autre: 'w-autre',
+  dupont: 'w-dupont', martin: 'w-martin', macon: 'w-pex-macon', bourg: 'w-pex-bourg', ppj: 'w-ppj-viriat', autre: 'w-autre',
 };
 export const ADMIN_RAW = {
   companyId: C, today: TODAY,
@@ -29,8 +29,8 @@ export const ADMIN_RAW = {
   worksites: [
     { id: W.dupont, company_id: C, client_name: 'Villa Dupont', city: 'Lyon' },
     { id: W.martin, company_id: C, client_name: 'Bureau Martin', city: 'Villeurbanne' },
-    { id: W.macon, company_id: C, client_name: 'Mister Grill Kebab', city: 'Mâcon' },
-    { id: W.bourg, company_id: C, client_name: 'Mister Grill Kebab', city: 'Bourg-en-Bresse' },
+    { id: W.macon, company_id: C, client_name: 'Pizzeria Exemple', city: 'Mâcon' },
+    { id: W.bourg, company_id: C, client_name: 'Pizzeria Exemple', city: 'Bourg-en-Bresse' },
     { id: W.ppj, company_id: C, client_name: 'Pierre-Paul Jacques', city: 'Viriat' },
     { id: W.autre, company_id: C, client_name: 'Autre', city: '' },
   ],
@@ -85,7 +85,7 @@ export const WORKER_LIVE = {
     { id: 'dw2', nom: 'photo-1.jpg', chantier: 'Bureau Martin', date: '2026-09-29' },
   ],
 };
-export const LIVE_EN_COURS = { chantier_id: W.macon, chantier: 'Mister Grill Kebab', depuis: '2026-10-01T06:30:00Z' };
+export const LIVE_EN_COURS = { chantier_id: W.macon, chantier: 'Pizzeria Exemple', depuis: '2026-10-01T06:30:00Z' };
 
 // ── Résultat normalisé (quelle que soit la version) ─────────────────────────
 export interface Outcome {
@@ -139,7 +139,7 @@ export const CASES: EvalCase[] = [
     check: act('affecter_planning', (d) => all(eq(d, 'user_id', ME), eq(d, 'worksite_id', W.autre), eq(d, 'dates', ['2026-10-02']), eq(d, 'debut', '08:00'), eq(d, 'fin', '12:00'), has(d, 'note', /annecy/i))) },
   { id: 'b03', cote: 'bureau', categorie: 'Interventions', phrase: 'euh ajoute une intervention chez dupont jeudi prochain à 14h pour karim, c’est pour le remplacement du chauffe-eau',
     check: act('affecter_planning', (d) => all(eq(d, 'user_id', 'u-karim'), eq(d, 'worksite_id', W.dupont), eq(d, 'dates', ['2026-10-08']), eq(d, 'debut', '14:00'), has(d, 'note', /chauffe-eau/i), clean(d, 'note'))) },
-  { id: 'b04', cote: 'bureau', categorie: 'Interventions', phrase: 'mets kevin sur mister grill macon lundi et mardi',
+  { id: 'b04', cote: 'bureau', categorie: 'Interventions', phrase: 'mets kevin sur pizzeria exemple macon lundi et mardi',
     check: act('affecter_planning', (d) => all(eq(d, 'user_id', 'u-kevin'), eq(d, 'worksite_id', W.macon), eq(d, 'dates', ['2026-10-05', '2026-10-06']))) },
   { id: 'b05', cote: 'bureau', categorie: 'Interventions', phrase: 'Karim demain matin chez Martin',
     check: act('affecter_planning', (d) => all(eq(d, 'user_id', 'u-karim'), eq(d, 'worksite_id', W.martin), eq(d, 'dates', ['2026-10-02']), eq(d, 'debut', '08:00'))) },
@@ -222,9 +222,9 @@ export const CASES: EvalCase[] = [
     check: draft((l) => (l.length === 1 && l[0].worksite_id === W.autre && l[0].start === '14:00' && l[0].end === '18:00' && /annecy/i.test(String(l[0].observation ?? '')) ? null : `lignes : ${JSON.stringify(l)}`)) },
   { id: 's03', cote: 'salarie', categorie: 'Heures', phrase: 'hier j’ai bossé de 8h à 17h avec 1h de pause chez dupont',
     check: draft((l, date) => (date === '2026-09-30' && l.length === 1 && l[0].worksite_id === W.dupont && l[0].start === '08:00' && l[0].end === '17:00' && l[0].break_minutes === 60 ? null : `${date} ${JSON.stringify(l)}`)) },
-  { id: 's04', cote: 'salarie', categorie: 'Heures', phrase: 'jai fait 6h 14h au kebab de bourg',
+  { id: 's04', cote: 'salarie', categorie: 'Heures', phrase: 'jai fait 6h 14h a la pizzeria de bourg',
     check: draft((l) => (l.length === 1 && l[0].worksite_id === W.bourg && l[0].start === '06:00' && l[0].end === '14:00' ? null : `lignes : ${JSON.stringify(l)}`)) },
-  { id: 's05', cote: 'salarie', categorie: 'Pointage', phrase: 'je commence sur mister grill macon', check: answer() }, // lot 12 : on commence par le QR de la tablette
+  { id: 's05', cote: 'salarie', categorie: 'Pointage', phrase: 'je commence sur pizzeria exemple macon', check: answer() }, // lot 12 : on commence par le QR de la tablette
   { id: 's06', cote: 'salarie', categorie: 'Pointage', enCours: true, phrase: 'j’ai fini', check: act('terminer_pointage') },
   { id: 's07', cote: 'salarie', categorie: 'Pointage', enCours: true, phrase: 'j’ai terminé à 17h', check: act('terminer_pointage', (d) => eq(d, 'fin', '17:00')) },
   { id: 's08', cote: 'salarie', categorie: 'Congés', phrase: 'je voudrais poser des congés du 20 au 24 octobre',
