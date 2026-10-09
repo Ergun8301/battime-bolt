@@ -184,9 +184,13 @@ export function makeWorkerExecutor(user: { id: string; company_id: string }): Wo
         // ── Lot 7 ──
         case 'envoyer_journee': {
           const r = await sendWorkerDay(user, d.date);
-          if (r.expected === 0) return { ok: false, message: 'Rien à envoyer : notez d’abord vos heures.' };
+          // Lot 1 : les horaires prévus par le bureau ne partent jamais sans un « oui » du salarié.
+          const prevus = r.plannedLeft > 0
+            ? ` ${r.plannedLeft} créneau${r.plannedLeft > 1 ? 'x' : ''} prévu${r.plannedLeft > 1 ? 's' : ''} par le bureau à confirmer dans « Ma journée ».`
+            : '';
+          if (r.expected === 0) return { ok: false, message: r.plannedLeft > 0 ? `Rien d’envoyé : les heures prévues par le bureau ne comptent qu’une fois confirmées.${prevus}` : 'Rien à envoyer : notez d’abord vos heures.' };
           if (r.sent === 0) return { ok: false, message: 'Rien n’a été envoyé : la journée est verrouillée ou a changé.' };
-          message = r.sent < r.expected ? `${r.sent} chantier(s) envoyé(s) sur ${r.expected} — les autres sont verrouillés.` : 'Journée envoyée au bureau.';
+          message = (r.sent < r.expected ? `${r.sent} chantier(s) envoyé(s) sur ${r.expected} — les autres sont verrouillés.` : 'Journée envoyée au bureau.') + prevus;
           break;
         }
         case 'modifier_heures': {

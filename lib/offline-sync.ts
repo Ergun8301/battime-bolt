@@ -124,7 +124,8 @@ export async function syncAllPending(userId: string): Promise<SyncResult> {
         work_date: entry.work_date,
         start_time: entry.start_time,
         end_time: entry.end_time,
-        break_minutes: 0,
+        // Lot 1 : la pause notée hors ligne part avec la ligne (elle était remise à 0).
+        break_minutes: entry.break_minutes || 0,
         // total_minutes est une colonne calculée en base — jamais envoyée.
         meal_allowance: entry.meal_allowance,
         observation: entry.observation,

@@ -191,7 +191,14 @@ const noAsk = async (lines, label) => {
   check(asked === 0 && submitted().length === 1, `3) ${label} : pas de question, envoyée`);
 };
 await noAsk([entry('e-a', W1, '08:00', '12:00', { source: 'qr' }), entry('e-b', W1, '13:00', '17:00', { source: 'qr' })], 'scan à midi (2 lignes 08–12 / 13–17)');
-await noAsk([entry('e-m', W1, '08:00', '17:00')], 'journée saisie à la main (pas QR)');
+// Lot 1 : la question vaut aussi pour une journée saisie à la main (plus seulement la borne).
+D.time_entries = [entry('e-m', W1, '08:00', '17:00')];
+await open(); reset();
+await sendBtn().click(); await p.waitForTimeout(800);
+check(await p.locator('[data-testid=pause-ask]').count() === 1, '3) lot 1 : journée de 9 h saisie à la main : la pause est demandée aussi');
+await p.locator('[data-testid=pause-0]').click(); await p.waitForTimeout(1500);
+{ const c = p.locator('button:has-text("Confirmer l\'envoi")'); if (await c.count()) { await c.click(); await p.waitForTimeout(800); } }
+check(submitted().length === 1, '3) … « Non » : aucune pause posée, journée envoyée');
 await noAsk([entry('e-p', W1, '08:00', '17:00', { source: 'qr', break_minutes: 30, total_minutes: 510 })], 'pause déjà notée');
 await noAsk([entry('e-s', W1, '08:00', '13:30', { source: 'qr' })], 'journée QR de 5 h 30');
 
