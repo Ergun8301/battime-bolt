@@ -6,11 +6,12 @@
 // `.select('id')` pour voir un refus silencieux de la RLS). Ce qui touche au
 // hors-ligne (file du téléphone) reste dans l'écran.
 import { supabase } from '@/lib/supabase';
-import { planningsToMaterialise, remainingPlannings } from '@/lib/work-status';
+import { planningsToMaterialise, remainingPlannings, sendablePlannings } from '@/lib/work-status';
+import { firstBlockingOverlap, keptBreak, pauseAsks } from '@/supabase/functions/_shared/day-hours';
 import { cellKey, placeLive, type LiveSessionLike } from '@/supabase/functions/_shared/live-place';
 
 export interface DayUser { id: string; company_id: string }
-export interface PlannedLine { planningId: string; worksiteId: string; start: string; end: string }
+export interface PlannedLine { planningId: string; worksiteId: string; start: string; end: string; breakMinutes?: number }
 
 /**
  * Matérialise les chantiers prévus non ouverts, et rend les identifiants des
@@ -29,7 +30,9 @@ export async function materialisePlanned(user: DayUser, date: string, plannedToS
   const rows = plannedToSend.map((p) => ({
     company_id: user.company_id, user_id: user.id, worksite_id: p.worksiteId,
     planning_id: p.planningId, work_date: date,
-    start_time: p.start, end_time: p.end, break_minutes: 0,
+    start_time: p.start, end_time: p.end,
+    // Lot 1 : la pause répondue à l'envoi (« Tu as pris une pause ? »).
+    break_minutes: keptBreak(p, p.breakMinutes),
     // Le panier est posé ensuite, par `setDayMeal`, sur une seule ligne du jour.
     meal_allowance: false, observation: null, reception: null,
     status: 'draft' as const,
@@ -100,7 +103,7 @@ export async function setDayMealOnline(user: DayUser, date: string, value: boole
   return ok;
 }
 
-export interface CopySource { worksite_id: string | null; start_time: string; end_time: string; observation?: string | null }
+export interface CopySource { worksite_id: string | null; start_time: string; end_time: string; break_minutes?: number | null; observation?: string | null }
 
 /**
  * Copie des lignes (brouillons) sur d'autres jours — « Copier la journée
@@ -118,7 +121,8 @@ export async function copyLinesTo(user: DayUser, sources: CopySource[], targets:
   const rows = targets.flatMap((td) => sources.map((s) => ({
     company_id: user.company_id, user_id: user.id, worksite_id: s.worksite_id,
     planning_id: planMap.get(`${td}|${s.worksite_id}`) || null,
-    work_date: td, start_time: s.start_time, end_time: s.end_time, break_minutes: 0,
+    // Lot 1 : la pause de la ligne copiée suit (elle était remise à 0).
+    work_date: td, start_time: s.start_time, end_time: s.end_time, break_minutes: keptBreak({ start: s.start_time, end: s.end_time }, s.break_minutes),
     // total_minutes est une colonne calculée par Postgres : jamais envoyée.
     meal_allowance: false, observation: s.observation || null, status: 'draft' as const,
   })));
@@ -128,20 +132,23 @@ export async function copyLinesTo(user: DayUser, sources: CopySource[], targets:
 }
 
 /**
- * « Envoyer ma journée » EN LIGNE, tout compris, pour l'assistant : relit la
- * journée, ajoute les chantiers prévus non ouverts (même règle que l'écran),
- * puis bascule. Le hors-ligne reste l'affaire de l'écran.
+ * « Envoyer ma journée » EN LIGNE, pour l'assistant : relit la journée et
+ * bascule les lignes SAISIES. Lot 1 : les créneaux prévus par le bureau ne
+ * partent plus d'ici — une heure prévue n'est pas une heure faite, et
+ * l'Assistant ne les montre pas avant d'envoyer. Ils sont comptés dans
+ * `plannedLeft` : le salarié les confirme dans « Ma journée ».
+ * Le hors-ligne reste l'affaire de l'écran.
  */
-export async function sendWorkerDay(user: DayUser, date: string): Promise<{ sent: number; expected: number }> {
+export async function sendWorkerDay(user: DayUser, date: string): Promise<{ sent: number; expected: number; plannedLeft: number; blocked?: string }> {
   const [{ data: entries, error: e1 }, { data: plans, error: e2 }, { data: sess }] = await Promise.all([
-    supabase.from('time_entries').select('id, status, locked, worksite_id, planning_id').eq('user_id', user.id).eq('work_date', date),
+    supabase.from('time_entries').select('id, status, locked, worksite_id, planning_id, start_time, end_time, break_minutes').eq('user_id', user.id).eq('work_date', date),
     supabase.from('planning').select('id, worksite_id, absence_type, estimated_start, estimated_end').eq('user_id', user.id).eq('work_date', date),
     // Lot 9 : le chrono ouvert. Une lecture qui échoue ne bloque pas l'envoi.
     supabase.from('active_sessions').select('user_id, worksite_id, planning_id, work_date, started_at').eq('user_id', user.id).maybeSingle(),
   ]);
   if (e1) throw e1;
   if (e2) throw e2;
-  const rows = (entries || []) as { id: string; status: string; locked: boolean; worksite_id: string | null; planning_id: string | null }[];
+  const rows = (entries || []) as { id: string; status: string; locked: boolean; worksite_id: string | null; planning_id: string | null; start_time: string; end_time: string; break_minutes: number | null }[];
   const planning = (plans || []) as { id: string; worksite_id: string | null; absence_type: string | null; estimated_start: string | null; estimated_end: string | null }[];
   const todo = remainingPlannings(planning.filter((p) => p.worksite_id && !p.absence_type),
     rows.map((e) => ({ worksite_id: e.worksite_id, planning_id: e.planning_id })));
@@ -152,9 +159,16 @@ export async function sendWorkerDay(user: DayUser, date: string): Promise<{ sent
   const liveSlot = live && live.work_date === date
     ? placeLive([live], todo.map((p) => ({ id: p.id, user_id: user.id, worksite_id: p.worksite_id ?? null, work_date: date }))).get(cellKey(user.id, date))?.slotId ?? null
     : null;
-  const planned = planningsToMaterialise(todo.filter((p) => p.id !== liveSlot));
+  const lines = rows.filter((e) => e.status !== 'cancelled' && e.start_time && e.end_time)
+    .map((e) => ({ start: e.start_time, end: e.end_time }));
+  const plannedLeft = planningsToMaterialise(sendablePlannings(todo.filter((p) => p.id !== liveSlot), lines)).length;
   const draftIds = rows.filter((e) => e.status === 'draft' && !e.locked).map((e) => e.id);
-  const newIds = await materialisePlanned(user, date, planned);
-  const all = [...draftIds, ...newIds];
-  return { sent: await submitDrafts(user, all), expected: all.length };
+  // Mêmes garde-fous que l'écran : un chevauchement corrigeable bloque, et plus
+  // de 6 h d'affilée sans pause renvoie vers « Ma journée », où la question est posée.
+  const spans = rows.filter((e) => e.status !== 'cancelled' && e.start_time && e.end_time && e.start_time.slice(0, 5) !== e.end_time.slice(0, 5))
+    .map((e) => ({ id: e.id, start: e.start_time.slice(0, 5), end: e.end_time.slice(0, 5), editable: e.status === 'draft' && !e.locked, break_minutes: e.break_minutes || 0 }));
+  const clash = firstBlockingOverlap(spans);
+  if (clash) return { sent: 0, expected: draftIds.length, plannedLeft, blocked: `Deux chantiers se chevauchent (${clash[0].start}–${clash[0].end} et ${clash[1].start}–${clash[1].end}) : corrige l’un des deux dans « Ma journée ».` };
+  if (draftIds.length > 0 && pauseAsks(spans).length > 0) return { sent: 0, expected: draftIds.length, plannedLeft, blocked: 'Plus de 6 h d’affilée sans pause notée : envoie ta journée depuis « Ma journée », la pause y est demandée.' };
+  return { sent: await submitDrafts(user, draftIds), expected: draftIds.length, plannedLeft };
 }

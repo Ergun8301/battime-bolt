@@ -4,6 +4,7 @@
 // "Declared" = a time_entry whose status is not 'draft'.
 
 import { format, startOfMonth, subMonths } from 'date-fns';
+import { plannedSpan, plannedState, type PlannedState, type Span } from '@/supabase/functions/_shared/day-hours';
 
 /**
  * @param plannedDates work_date (yyyy-MM-dd) of chantier assignments (absences already excluded)
@@ -46,9 +47,6 @@ export function withIncompleteDays(missing: string[], incomplete: string[]): str
   return Array.from(all).sort((a, b) => (a < b ? 1 : -1));
 }
 
-/** Défauts repris de l'ouverture manuelle d'un chantier planifié. */
-export const PLANNED_DEFAULT_START = '08:00';
-export const PLANNED_DEFAULT_END = '17:00';
 
 export interface PlanningLike {
   id: string;
@@ -63,6 +61,8 @@ export interface MaterialisedLine {
   worksiteId: string;
   start: string;
   end: string;
+  /** Lot 1 : la pause déclarée à l'envoi (« Tu as pris une pause ? »). */
+  breakMinutes?: number;
 }
 
 /**
@@ -90,8 +90,12 @@ export interface MaterialisedLine {
  *     chantier n'en donnent qu'une : sinon on fabrique un chevauchement que le
  *     salarié n'a pas commis, et l'alerte de cohérence l'accuse à tort.
  *
- *  3. Les horaires du bureau font foi, avec les mêmes défauts que l'ouverture
- *     manuelle : le salarié retrouve ce qu'il aurait vu en ouvrant la fiche.
+ *  3. Les horaires du bureau font foi — mais seulement s'il y en a. Lot 1 : un
+ *     créneau « à 09:30 » sans fin ne devient plus 09:30–17:00 en silence. Il
+ *     reste « à compléter » : le salarié l'ouvre et met sa vraie fin.
+ *
+ * Et depuis le lot 1, ces lignes ne partent plus jamais seules : l'écran les
+ * montre À PART du total travaillé et demande « tu les as faites ? » à l'envoi.
  */
 /** Une ligne déjà posée sur la feuille (envoyée, brouillon, retirée ou en file). */
 export interface LineLike {
@@ -155,10 +159,28 @@ export function planningsToMaterialise(plannings: PlanningLike[]): MaterialisedL
   for (const p of plannings) {
     if (p.absence_type) continue;
     if (!p.worksite_id) continue;
-    const start = (p.estimated_start || PLANNED_DEFAULT_START).slice(0, 5);
-    const end = (p.estimated_end || PLANNED_DEFAULT_END).slice(0, 5);
+    const span = plannedSpan(p);
+    if (!span) continue;
+    const { start, end } = span;
     if (out.some((x) => x.worksiteId === p.worksite_id && x.start === start && x.end === end)) continue;
     out.push({ planningId: p.id, worksiteId: p.worksite_id, start, end });
   }
   return out;
+}
+
+/**
+ * Lot 1 : parmi les créneaux prévus restants, ceux qui peuvent encore partir
+ * (après le « oui » du salarié). Un créneau dont les heures sont déjà saisies
+ * — même rattachées à un autre planning, même sur un autre chantier — ne part
+ * pas : ces minutes sont déjà comptées. S'il ne les chevauche qu'en partie, il
+ * ne part pas non plus : le salarié l'ouvre et le corrige.
+ */
+export function sendablePlannings<T extends PlanningLike>(remaining: T[], lines: Span[]): T[] {
+  return remaining.filter((p) => plannedState(p, lines) === 'todo');
+}
+
+/** Lot 1 : les créneaux prévus restants qui ont encore une carte à l'écran (couverts → disparus). */
+export function visiblePlannings<T extends PlanningLike>(remaining: T[], lines: Span[]): (T & { state: PlannedState })[] {
+  return remaining.map((p) => ({ ...p, state: plannedState(p, lines) }))
+    .filter((p) => p.absence_type || p.state !== 'covered');
 }

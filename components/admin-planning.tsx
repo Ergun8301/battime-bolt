@@ -836,9 +836,9 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const [roleBusyId, setRoleBusyId] = useState<string | null>(null);
   const [worksites, setWorksites] = useState<Worksite[]>([]);
   const [planning, setPlanning] = useState<PlanningWithWorksite[]>([]);
-  const [realEntries, setRealEntries] = useState<{ user_id: string; work_date: string; worksite_id: string | null; start_time: string; end_time: string; total_minutes: number; reception: string | null; reserve_resolved_at: string | null; reserve_fixed_at?: string | null; observation: string | null }[]>([]);
+  const [realEntries, setRealEntries] = useState<{ user_id: string; work_date: string; worksite_id: string | null; planning_id?: string | null; start_time: string; end_time: string; total_minutes: number; reception: string | null; reserve_resolved_at: string | null; reserve_fixed_at?: string | null; observation: string | null }[]>([]);
   // Saisies pas encore envoyées : affichées en pointillé, jamais comptées.
-  const [draftEntries, setDraftEntries] = useState<{ user_id: string; work_date: string; worksite_id: string | null; start_time: string; end_time: string; total_minutes: number; reception: string | null; reserve_resolved_at: string | null; reserve_fixed_at?: string | null; observation: string | null }[]>([]);
+  const [draftEntries, setDraftEntries] = useState<{ user_id: string; work_date: string; worksite_id: string | null; planning_id?: string | null; start_time: string; end_time: string; total_minutes: number; reception: string | null; reserve_resolved_at: string | null; reserve_fixed_at?: string | null; observation: string | null }[]>([]);
   // Lot 11 : cases de la semaine que le salarié a RETIRÉES (sa ligne 'cancelled' la
   // désigne encore, la base refuse donc de l'effacer) → 🔒 en mode « Sélectionner ».
   const [withdrawnIds, setWithdrawnIds] = useState<Set<string>>(EMPTY_SET);
@@ -1098,9 +1098,9 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       const [planRes, realRes, draftRes, cancelledRes] = await Promise.all([
         supabase.from('planning').select('*, worksite:worksites(*), user:users!user_id(*)')
           .eq('company_id', user.company_id).gte('work_date', from).lte('work_date', to).order('work_date'),
-        supabase.from('time_entries').select('user_id, work_date, worksite_id, start_time, end_time, total_minutes, reception, reserve_resolved_at, reserve_fixed_at, observation')
+        supabase.from('time_entries').select('user_id, work_date, worksite_id, planning_id, start_time, end_time, total_minutes, reception, reserve_resolved_at, reserve_fixed_at, observation')
           .eq('company_id', user.company_id).in('status', ['submitted', 'validated']).gte('work_date', from).lte('work_date', to),
-        supabase.from('time_entries').select('user_id, work_date, worksite_id, start_time, end_time, total_minutes, reception, reserve_resolved_at, reserve_fixed_at, observation')
+        supabase.from('time_entries').select('user_id, work_date, worksite_id, planning_id, start_time, end_time, total_minutes, reception, reserve_resolved_at, reserve_fixed_at, observation')
           .eq('company_id', user.company_id).eq('status', 'draft').gte('work_date', from).lte('work_date', to),
         supabase.from('time_entries').select('planning_id')
           .eq('company_id', user.company_id).eq('status', 'cancelled').not('planning_id', 'is', null).gte('work_date', from).lte('work_date', to),
@@ -1372,10 +1372,34 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     } finally { setClosureBusy(false); }
   };
 
+  /**
+   * Lot 1 : la bulle qui PORTE une ligne d'heures. Avec deux créneaux du même
+   * chantier le même jour (« Matin » + « Après-midi »), les deux bulles
+   * affichaient chacune le total des deux : « 08:00–17:00 · 7h30 » deux fois,
+   * 15 h à l'œil pour 7h30 payées. Chaque ligne n'est plus montrée qu'une fois :
+   * sur la bulle de son planning_id, sinon sur la première bulle de ce chantier.
+   */
+  const bubbleKeyOf = useMemo(() => {
+    const groups = new Map<string, string[]>();
+    const sorted = [...planning].filter((p) => !p.absence_type)
+      .sort((a, b) => (a.estimated_start || '99').localeCompare(b.estimated_start || '99') || a.id.localeCompare(b.id));
+    for (const p of sorted) {
+      const k = realKey(p.user_id, p.work_date, p.worksite_id);
+      const list = groups.get(k);
+      if (list) list.push(p.id); else groups.set(k, [p.id]);
+    }
+    return (e: { user_id: string; work_date: string; worksite_id: string | null; planning_id?: string | null }) => {
+      const k = realKey(e.user_id, e.work_date, e.worksite_id);
+      const list = groups.get(k);
+      if (!list) return k;
+      return `p:${e.planning_id && list.includes(e.planning_id) ? e.planning_id : list[0]}`;
+    };
+  }, [planning]);
+
   const aggregate = (rows: typeof realEntries) => {
     const m = new Map<string, RealAgg>();
     for (const e of rows) {
-      const k = realKey(e.user_id, e.work_date, e.worksite_id);
+      const k = bubbleKeyOf(e);
       const cur = m.get(k);
       // Une réserve « ouverte » = déclarée ET pas encore levée (par le bureau ou,
       // lot 11, par le salarié : lib/reserves isReserveLifted). Sans cette
@@ -1396,11 +1420,13 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     return m;
   };
 
-  const realMap = useMemo(() => aggregate(realEntries), [realEntries]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const realMap = useMemo(() => aggregate(realEntries), [realEntries, bubbleKeyOf]);
   // Les brouillons ne sont JAMAIS mélangés aux heures déclarées : ils ne
   // comptent ni dans le total du cockpit, ni dans l'export. On les montre
   // seulement pour que le bureau sache qu'une saisie existe.
-  const draftMap = useMemo(() => aggregate(draftEntries), [draftEntries]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const draftMap = useMemo(() => aggregate(draftEntries), [draftEntries, bubbleKeyOf]);
 
   /**
    * Lot 11 : les jours qu'on peut ENCORE réclamer. Un jour d'un mois clôturé, ou
@@ -1493,12 +1519,12 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   }, [statPanel, user?.company_id]);
 
   const realForPlanning = (p: PlanningWithWorksite): RealAgg | undefined =>
-    p.absence_type ? undefined : realMap.get(realKey(p.user_id, p.work_date, p.worksite_id));
+    p.absence_type ? undefined : realMap.get(`p:${p.id}`);
 
   // Brouillon affiché seulement s'il n'y a pas déjà des heures envoyées.
   const draftForPlanning = (p: PlanningWithWorksite): RealAgg | undefined => {
     if (p.absence_type) return undefined;
-    const k = realKey(p.user_id, p.work_date, p.worksite_id);
+    const k = `p:${p.id}`;
     return realMap.has(k) ? undefined : draftMap.get(k);
   };
 
