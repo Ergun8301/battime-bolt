@@ -29,10 +29,15 @@ import { InfoTip } from '@/components/ui/info-tip';
 import { TimeField, TIME_HINT } from '@/components/time-field';
 import { fetchQrFlags, isQrEntry, isExitToComplete, type QrFields } from '@/lib/qr-entry';
 import { fetchLeadMarks, type LeadMark } from '@/lib/lead-trace';
+import { fetchEntryEdits, correctOfficeEntry, returnDayToWorker, isReturned, lastEdit, type EntryEdit } from '@/lib/office-edits';
+import { changedAfterReturn, changedKeys, diffLabels, frozenLabel, precheck, reasonOk } from '@/supabase/functions/_shared/office-edits';
+import { interval } from '@/supabase/functions/_shared/day-hours';
+import { eraseEmptyDraft, isDisposableDraft, restoreDrafts } from '@/lib/erase';
+import { ActionDone, type UndoResult } from '@/components/action-done';
 import {
   CalendarRange, Clock, Utensils, MapPin, Loader2,
   Settings2, Archive, ArchiveRestore, Trash2, Link2, User as UserIcon, AlertTriangle, Hammer, PencilLine, BellOff,
-  ShieldCheck, Plus, Lock,
+  ShieldCheck, Plus, Lock, Coffee, Car, Undo2,
 } from 'lucide-react';
 import { format, parseISO, isSameDay, differenceInCalendarDays, startOfMonth, startOfDay } from 'date-fns';
 import { weekStart, weekEnd } from '@/lib/week';
@@ -46,6 +51,12 @@ function formatMinutesToHours(minutes: number): string {
   const m = minutes % 60;
   return `${h}h${m.toString().padStart(2, '0')}`;
 }
+/** Lot 2 : « 30 min » sous l'heure, « 1h30 » au-delà (pause, route). */
+const fmtDuree = (m: number) => (m < 60 ? `${m} min` : formatMinutesToHours(m));
+/** Les pauses proposées au bureau, plus la valeur actuelle si elle n'y est pas. */
+const pauseOptions = (current: number) => Array.from(new Set([0, 15, 30, 45, 60, 90, current || 0])).sort((a, b) => a - b);
+/** « Pause 0 → 30 min · panier ajouté » : la première lettre en capitale, le reste tel quel. */
+const cap = (t: string) => (t ? t.charAt(0).toUpperCase() + t.slice(1) : t);
 
 interface WorkerDetailDialogProps {
   worker: User | null;
@@ -132,12 +143,28 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
   const [cBadEnd, setCBadEnd] = useState(false);
   const [cEnd, setCEnd] = useState('17:00');
   const [cSaving, setCSaving] = useState(false);
+  // Lot 2 : pause, panier, route avant ce chantier, et le MOTIF que le salarié
+  // lira. Tant que la migration n'est pas passée (`editsAvailable` faux), le
+  // panneau reste exactement celui d'avant : début et fin seulement.
+  const [cBreak, setCBreak] = useState(0);
+  const [cMeal, setCMeal] = useState(false);
+  const [cGap, setCGap] = useState<'' | 'route' | 'pause'>('');
+  const [cReason, setCReason] = useState('');
+  const [cReturning, setCReturning] = useState(false);
+  // Lot 2 : le journal des gestes du bureau (corrections avec motif, renvois),
+  // par ligne d'heures. Vide et indisponible tant que la table n'existe pas.
+  const [edits, setEdits] = useState<Map<string, EntryEdit[]>>(() => new Map());
+  const [editsAvailable, setEditsAvailable] = useState(false);
   // L'historique des corrections, par ligne d'heures.
   const [corrections, setCorrections] = useState<Map<string, CorrectionRow[]>>(new Map());
   // Lot 12 : drapeaux QR des lignes affichées (vide tant que la migration n'est pas passée).
   const [qrFlags, setQrFlags] = useState<Map<string, QrFields>>(() => new Map());
   // Lot 14 : lignes saisies ou corrigées par un chef d'équipe.
   const [leadMarks, setLeadMarks] = useState<Map<string, LeadMark>>(() => new Map());
+  // Lot 2 : le dernier brouillon vide supprimé d'ici, et son « Annuler ». Dans la
+  // fiche, pas dans un toast : la fenêtre modale rend les boutons des toasts
+  // inaccessibles.
+  const [erasedDraft, setErasedDraft] = useState<{ key: number; undo: () => Promise<UndoResult> } | null>(null);
   // Les endroits enregistrés au pointage. Vide par défaut : le réglage est
   // éteint tant qu'une entreprise ne l'a pas explicitement allumé.
   const [positions, setPositions] = useState<Map<string, PositionRow[]>>(new Map());
@@ -193,6 +220,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
   // Reset per worker.
   useEffect(() => {
     if (!worker) return;
+    setErasedDraft(null);
     const t = new Date();
     setRange({ from: t, to: t });
     setMFirst(worker.first_name || '');
@@ -312,6 +340,30 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
     if (!worker || !me) return;
     // Heure tapée mais illisible (« 7h75 ») : on bloque, sinon l'ancienne heure partirait en silence.
     if (cBadStart || cBadEnd) { toast.error(`Heure non comprise. ${TIME_HINT}`); return; }
+    // Lot 2 : migration passée → heures, pause, panier et route, avec motif,
+    // par `office_correct_entry` (lib/office-edits.ts). Sinon : le chemin d'avant.
+    if (editsAvailable) {
+      const changes = changedKeys(entry, { start_time: cStart, end_time: cEnd, break_minutes: cBreak, meal_allowance: cMeal, gap_before: cGap });
+      const refus = precheck(entry, changes, sameDayOthers(entry), cReason);
+      if (refus) { toast.error(refus); return; }
+      setCSaving(true);
+      try {
+        const r = await correctOfficeEntry({ entryId: entry.id, workerId: worker.id, workDate: entry.work_date, changes, reason: cReason, companyName });
+        // Refus du serveur : le panneau reste ouvert, avec la saisie.
+        if (!r.ok) { toast.error(r.message); return; }
+        if (r.notified) toast.success(r.message); else toast.warning(r.message);
+        setCorrectingId(null);
+        fetchEntries();
+        fetchMissing();
+        onChanged?.();
+      } catch (err) {
+        console.error('Error correcting day:', err);
+        toast.error((err as { message?: string })?.message || 'Correction impossible');
+      } finally {
+        setCSaving(false);
+      }
+      return;
+    }
     setCSaving(true);
     try {
       const r = await corrigerHeures({ entryId: entry.id, newStart: cStart, newEnd: cEnd });
@@ -327,6 +379,63 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
       toast.error((err as { message?: string })?.message || 'Correction impossible');
     } finally {
       setCSaving(false);
+    }
+  };
+
+  /**
+   * Lot 2 : « Renvoyer au salarié ». Toute la journée repasse en brouillon, il
+   * voit le motif et la renvoie lui-même. Le serveur refuse ce qu'il ne pourrait
+   * pas corriger (chez le comptable, mois ou salarié clôturé) : son message est
+   * affiché tel quel.
+   */
+  const doReturn = async (entry: ExportEntry) => {
+    if (!worker || !me) return;
+    if (!reasonOk(cReason)) { toast.error('Indiquez un motif (3 caractères au moins).'); return; }
+    setCReturning(true);
+    try {
+      const r = await returnDayToWorker({ workerId: worker.id, workDate: entry.work_date, reason: cReason, companyName });
+      if (!r.ok) { toast.error(r.message); return; }
+      if (r.notified) toast.success(r.message); else toast.warning(r.message);
+      setCorrectingId(null);
+      fetchEntries();
+      fetchMissing();
+      onChanged?.();
+    } catch (err) {
+      console.error('Error returning day:', err);
+      toast.error((err as { message?: string })?.message || 'Renvoi impossible');
+    } finally {
+      setCReturning(false);
+    }
+  };
+
+  /**
+   * Lot 2 : un brouillon VIDE (0 minute, jamais envoyé) ne compte nulle part ; le
+   * bureau peut le supprimer d'ici. Relu en entier et revérifié avant
+   * (lib/erase) : des heures tapées entre-temps le gardent. « Annuler » le remet.
+   */
+  const deleteEmptyDraft = async (entry: ExportEntry) => {
+    if (!worker) return;
+    try {
+      const row = await eraseEmptyDraft(worker.company_id, entry.id);
+      setErasedDraft({
+        key: Date.now(),
+        undo: async () => {
+          try {
+            await restoreDrafts([row]);
+            fetchEntries();
+            onChanged?.();
+            return { ok: true, message: 'Annulé : le brouillon est remis.' };
+          } catch (err) {
+            console.error('Error restoring draft:', err);
+            return { ok: false, message: 'Impossible de le remettre pour le moment. Réessayez.' };
+          }
+        },
+      });
+      fetchEntries();
+      onChanged?.();
+    } catch (err) {
+      console.error('Error deleting empty draft:', err);
+      toast.error((err as { message?: string })?.message || 'Impossible de supprimer pour le moment.');
     }
   };
 
@@ -425,7 +534,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
 
       const rows = await fetchAllPaged<ExportEntry>((f, t2) => supabase
         .from('time_entries')
-        .select('id, user_id, company_id, work_date, start_time, end_time, break_minutes, total_minutes, meal_allowance, status, observation, reception, gap_before, planning_id, modified_at, exported_at, locked, worksite:worksites(id, client_name, city)')
+        .select('id, user_id, company_id, work_date, start_time, end_time, break_minutes, total_minutes, meal_allowance, status, observation, reception, gap_before, planning_id, modified_at, modified_by, exported_at, locked, submitted_at, worksite:worksites(id, client_name, city)')
         .eq('user_id', worker.id)
         .eq('company_id', worker.company_id)
         .gte('work_date', format(from, 'yyyy-MM-dd'))
@@ -456,6 +565,13 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
         }
         setCorrections(map);
 
+        // Lot 2 : le journal des gestes du bureau (motifs, renvois). Requête à
+        // part et silencieuse : table absente → `available` faux, la fiche
+        // reste exactement celle d'avant.
+        const ed = await fetchEntryEdits(supabase as never, ids);
+        setEdits(ed.byEntry);
+        setEditsAvailable(ed.available);
+
         // Les endroits enregistrés sur ces journées (étape 26). Requête à
         // part : tant que la table n'existe pas — ou tant que l'entreprise n'a
         // pas activé le réglage — celle-ci échoue ou revient vide toute seule,
@@ -472,6 +588,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
         setPositions(pmap);
       } else {
         setCorrections(new Map());
+        setEdits(new Map());
         setPositions(new Map());
       }
     } catch (err) {
@@ -485,6 +602,22 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
   useEffect(() => { fetchEntries(); }, [fetchEntries]);
 
   const liveEntries = entries.filter((e) => e.status !== 'cancelled');
+  // Lot 2 : les autres lignes vivantes du même jour (chevauchement, « route avant »).
+  const sameDayOthers = (entry: ExportEntry) => liveEntries
+    .filter((e) => e.id !== entry.id && e.work_date === entry.work_date && e.start_time && e.end_time)
+    .map((e) => ({ start: e.start_time.slice(0, 5), end: e.end_time.slice(0, 5) }));
+  /**
+   * La fin de la ligne précédente du même jour, si elle finit AVANT ce début :
+   * il y a un trou, et la question « route ou pause ? » a un sens. Même calcul
+   * que la route comptée (lib/overtime.ts, routeMinutesByEntry).
+   */
+  const previousEnd = (entry: ExportEntry, start: string): string | null => {
+    const at = interval({ start, end: start })[0];
+    const before = sameDayOthers(entry).filter((o) => interval(o)[0] < at);
+    if (!before.length) return null;
+    const last = before.reduce((m, o) => (interval(o)[1] > interval(m)[1] ? o : m), before[0]);
+    return interval(last)[1] < at ? last.end : null;
+  };
   // Total et export : uniquement les heures envoyées (un brouillon reste affiché
   // mais n'entre ni dans le total de la période ni dans le relevé).
   const countedEntries = entries.filter((e) => isCounted(e.status));
@@ -999,6 +1132,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
         )}
 
         {/* Entries */}
+        {erasedDraft && <ActionDone key={erasedDraft.key} message="brouillon vide supprimé" undo={erasedDraft.undo} />}
         {loading ? (
           <div className="space-y-2">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full" />)}</div>
         ) : entries.length === 0 ? (
@@ -1012,7 +1146,37 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
               const isUnknown = entry.worksite?.client_name === OTHER_NAME;
               const isCancelled = entry.status === 'cancelled';
               const isWorkerAdded = !isCancelled && !entry.planning_id;
+              // Lot 2 : 0 minute, jamais envoyé, pas une sortie oubliée (drapeau du lot 12).
+              const isEmptyDraft = isDisposableDraft({ ...entry, exit_forgotten: qrFlags.get(entry.id)?.exit_forgotten });
               const realWorksites = worksites.filter((w) => w.client_name !== OTHER_NAME);
+              // Lot 2 : le journal du bureau sur cette ligne, et ce qu'il dit.
+              const lineEdits = edits.get(entry.id) || [];
+              const returned = isReturned(entry.status, lineEdits);
+              // Lot 2 : renvoyée, puis RENVOYÉE PAR LE SALARIÉ (elle compte de
+              // nouveau). Ce qu'il y a changé depuis se lit en comparant la ligne à
+              // ce que le renvoi a figé. La garde existante ne pose aucune trace
+              // sur un brouillon : sans ça, « corrigé par le bureau » d'avant le
+              // renvoi resterait affiché sur des heures que le bureau n'a pas vues.
+              const lastRet = lastEdit(lineEdits)?.kind === 'return' ? lastEdit(lineEdits) : undefined;
+              const afterReturn = lastRet && isCounted(entry.status) ? changedAfterReturn(lastRet.old_values, entry) : [];
+              const retNewer = !!lastRet && (!entry.modified_at || Date.parse(lastRet.edited_at) > Date.parse(entry.modified_at));
+              // « modifié après envoi » ne doit plus s'allumer après une correction
+              // du BUREAU (la garde pose aussi modified_by pour lui) : on lit QUI.
+              const changedBy = (afterReturn.length > 0 && retNewer) || !entry.modified_at || !entry.modified_by || entry.modified_by === worker?.id ? 'worker'
+                : (corrections.get(entry.id) || []).some((c) => c.corrected_by === entry.modified_by && c.corrected_by_role === 'lead')
+                  || leadMarks.get(entry.id)?.lead_edited_by === entry.modified_by ? 'lead' : 'office';
+              const routeMin = weekRoute.get(entry.id) || 0;
+              const linkedCorr = new Set(lineEdits.map((x) => x.correction_id).filter(Boolean));
+              // L'historique, dans l'ordre : corrections d'avant (sans celles déjà
+              // dans le journal du bureau) et gestes du bureau avec motif.
+              const history = [
+                ...(corrections.get(entry.id) || []).filter((c) => !linkedCorr.has(c.id)).map((c) => ({ at: c.corrected_at, c, x: null as EntryEdit | null })),
+                ...lineEdits.map((x) => ({ at: x.edited_at, c: null as CorrectionRow | null, x })),
+              ].sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
+              const pending = correctingId === entry.id && editsAvailable
+                ? changedKeys(entry, { start_time: cStart, end_time: cEnd, break_minutes: cBreak, meal_allowance: cMeal, gap_before: cGap })
+                : {};
+              const prevEnd = correctingId === entry.id && editsAvailable ? previousEnd(entry, cStart) : null;
               return (
                 <div key={entry.id} className={`p-4 ${isCancelled ? 'opacity-60' : isUnknown ? 'bg-amber-50/60' : ''}`}>
                   <div className="flex items-baseline justify-between gap-3">
@@ -1024,13 +1188,40 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
                       {entry.worksite?.client_name || OTHER_NAME}
                     </p>
                     {isCancelled && <Badge variant="outline" className="text-[10px] py-0">Retirée</Badge>}
+                    {/* Lot 2 : un brouillon ne compte pas — le dire (« brouillon vide »
+                        s'il n'a aucune minute, avec de quoi le supprimer). Renvoyé
+                        par le bureau, il attend le salarié : le dire aussi. */}
+                    {entry.status === 'draft' && !isEmptyDraft && (
+                      <Badge variant="outline" className="text-[10px] py-0 text-muted-foreground" data-testid="badge-draft">brouillon</Badge>
+                    )}
+                    {isEmptyDraft && (
+                      <>
+                        <Badge variant="outline" className="text-[10px] py-0 text-muted-foreground" data-testid="badge-empty-draft"
+                          title="Début = fin : ne compte nulle part">brouillon vide</Badge>
+                        <button type="button" className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                          data-testid="delete-empty-draft" onClick={() => deleteEmptyDraft(entry)}>Supprimer</button>
+                      </>
+                    )}
+                    {returned && (
+                      <Badge variant="outline" className="text-[10px] py-0 text-amber-800 border-amber-300 bg-amber-50" data-testid="badge-returned">renvoyée · en attente du salarié</Badge>
+                    )}
                     {isWorkerAdded && (
                       <Badge variant="outline" className="text-[10px] py-0 gap-1 text-muted-foreground">
                         <UserIcon className="h-2.5 w-2.5" /> ajouté par le salarié
                       </Badge>
                     )}
-                    {!isCancelled && entry.modified_at && (
+                    {/* Changée après un renvoi : CE badge, et jamais « corrigé par le bureau ». */}
+                    {!isCancelled && afterReturn.length > 0 && (
+                      <Badge variant="outline" className="text-[10px] py-0 text-amber-700 border-amber-300" data-testid="badge-after-return">modifié après renvoi</Badge>
+                    )}
+                    {!isCancelled && !afterReturn.length && entry.modified_at && changedBy === 'worker' && (
                       <Badge variant="outline" className="text-[10px] py-0 text-amber-700 border-amber-300">modifié après envoi</Badge>
+                    )}
+                    {!isCancelled && !afterReturn.length && entry.modified_at && changedBy === 'office' && (
+                      <Badge variant="outline" className="text-[10px] py-0 text-amber-700 border-amber-300" data-testid="badge-office">corrigé par le bureau</Badge>
+                    )}
+                    {!isCancelled && !afterReturn.length && entry.modified_at && changedBy === 'lead' && !leadMarks.get(entry.id) && (
+                      <Badge variant="outline" className="text-[10px] py-0 text-amber-700 border-amber-300">corrigé par le chef d’équipe</Badge>
                     )}
                     {/* Lot 14 : saisie ou corrigée par un chef d'équipe (posée par la base). */}
                     {!isCancelled && leadMarks.get(entry.id) && (
@@ -1070,6 +1261,9 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
                     <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5" />{entry.start_time?.substring(0, 5)}–{entry.end_time?.substring(0, 5)}</span>
                     {entry.worksite?.city && <span className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{entry.worksite.city}</span>}
                     {entry.meal_allowance && <span className="flex items-center gap-1"><Utensils className="h-3.5 w-3.5" />panier</span>}
+                    {/* Lot 2 : la pause et la route se voient enfin sur la fiche. */}
+                    {(entry.break_minutes || 0) > 0 && <span className="flex items-center gap-1" data-testid="line-break"><Coffee className="h-3.5 w-3.5" />pause {fmtDuree(entry.break_minutes)}</span>}
+                    {routeMin > 0 && <span className="flex items-center gap-1" data-testid="line-route"><Car className="h-3.5 w-3.5" />route {fmtDuree(routeMin)}{travelPaid ? '' : ' (non payée)'}</span>}
                   </div>
                   {entry.observation && <p className="mt-1 text-sm text-muted-foreground">« {entry.observation} »</p>}
 
@@ -1141,7 +1335,31 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
                       Affiché sous la ligne, dans l'ordre. Plusieurs corrections
                       successives se lisent donc comme une suite, et pas comme
                       un état final qui aurait effacé son propre passé. */}
-                  {(corrections.get(entry.id) || []).map((c) => (
+                  {history.map(({ c, x }) => (x ? (
+                    /* Lot 2 : un geste du bureau, avec le motif que le salarié a lu. */
+                    <div key={x.id} className="mt-2 flex flex-wrap items-center gap-2 rounded-md border border-amber-200 bg-amber-50/70 px-2.5 py-1.5 text-xs" data-testid="edit-row">
+                      {x.kind === 'return' ? <Undo2 className="h-3 w-3 shrink-0 text-amber-700" /> : <PencilLine className="h-3 w-3 shrink-0 text-amber-700" />}
+                      <span className="font-semibold text-amber-900">
+                        {x.kind === 'return' ? 'Renvoyée au salarié' : cap(diffLabels(x.old_values, x.new_values).join(' · ')) || 'Corrigée'}
+                      </span>
+                      <span className="text-amber-900">— « {x.reason} »</span>
+                      <span className="text-amber-800">
+                        — {x.edited_by === me?.id ? 'par vous' : 'par le bureau'}
+                        {' · '}
+                        {format(parseISO(x.edited_at), 'd MMM à HH:mm', { locale: fr })}
+                      </span>
+                      {!x.notified_at && (
+                        <span className="flex items-center gap-1 rounded bg-white px-1.5 py-0.5 font-semibold text-[#8a2a1c]">
+                          <BellOff className="h-3 w-3" /> pas prévenu
+                          {x.notify_error ? ` (${x.notify_error})` : ''}
+                        </span>
+                      )}
+                      {/* Ce que le salarié avait envoyé, figé au moment du renvoi. */}
+                      {x.kind === 'return' && frozenLabel(x.old_values) && (
+                        <span className="basis-full text-amber-800" data-testid="return-frozen">{frozenLabel(x.old_values)}</span>
+                      )}
+                    </div>
+                  ) : c ? (
                     <div key={c.id} className="mt-2 flex flex-wrap items-center gap-2 rounded-md border border-amber-200 bg-amber-50/70 px-2.5 py-1.5 text-xs">
                       <PencilLine className="h-3 w-3 shrink-0 text-amber-700" />
                       <span className="font-semibold text-amber-900">
@@ -1167,7 +1385,14 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
                         </span>
                       )}
                     </div>
-                  ))}
+                  ) : null))}
+                  {/* Lot 2 : après le renvoi, ce qui a changé avant que la ligne revienne. */}
+                  {!isCancelled && afterReturn.length > 0 && (
+                    <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-xs" data-testid="after-return">
+                      <PencilLine className="h-3 w-3 shrink-0 text-amber-700" />
+                      <span className="font-semibold text-amber-900">Changé après renvoi : {afterReturn.join(' · ')}</span>
+                    </div>
+                  )}
 
                   {/* ── CORRIGER LES HEURES ───────────────────────────────────
                       ON NE CORRIGE QUE CE QUI COMPTE. `isCounted` est la règle
@@ -1207,8 +1432,8 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
                       correction reste tracée et notifiée comme les autres. */}
                   {isCounted(entry.status) && (
                     correctingId === entry.id ? (
-                      <div className="mt-3 space-y-2 rounded-md border bg-background p-2">
-                        <p className="text-xs font-medium">Corriger les heures de cette journée</p>
+                      <div className="mt-3 space-y-2 rounded-md border bg-background p-2" data-testid="correct-panel">
+                        <p className="text-xs font-medium">{editsAvailable ? 'Corriger cette journée' : 'Corriger les heures de cette journée'}</p>
 
                         {/* La paie est déjà partie. On n'interdit pas — c'est le
                             bureau qui décide — mais on ne le laisse pas le
@@ -1245,16 +1470,66 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
                           </span>
                         </div>
 
+                        {/* Lot 2 (migration passée) : pause, panier, route, et le
+                            motif. Une ligne compacte : la secrétaire corrige ce
+                            qu'elle voit, sans nouvel écran. */}
+                        {editsAvailable && (
+                          <>
+                            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+                              <label className="flex items-center gap-1.5">
+                                <span>Pause</span>
+                                <select className="h-8 rounded-md border bg-background px-1.5 text-xs" value={cBreak}
+                                  onChange={(e) => setCBreak(Number(e.target.value))} data-testid="correct-break">
+                                  {pauseOptions(entry.break_minutes || 0).map((m) => <option key={m} value={m}>{fmtDuree(m)}</option>)}
+                                </select>
+                              </label>
+                              <span className="flex items-center gap-1">
+                                <label className="flex items-center gap-1.5">
+                                  <input type="checkbox" checked={cMeal} onChange={(e) => setCMeal(e.target.checked)} data-testid="correct-meal" />
+                                  <span>Panier</span>
+                                </label>
+                                <InfoTip text="Un seul panier par jour : il est retiré de l'autre chantier." />
+                              </span>
+                              {prevEnd && (
+                                <label className="flex items-center gap-1.5">
+                                  <span>Entre {prevEnd} et {cStart} :</span>
+                                  <select className="h-8 rounded-md border bg-background px-1.5 text-xs" value={cGap}
+                                    onChange={(e) => setCGap(e.target.value as '' | 'route' | 'pause')} data-testid="correct-gap">
+                                    <option value="">—</option>
+                                    <option value="route">Route</option>
+                                    <option value="pause">Pause</option>
+                                  </select>
+                                </label>
+                              )}
+                            </div>
+                            <label className="block space-y-1 text-xs">
+                              <span className="font-medium">Motif (vu par le salarié)</span>
+                              <Input value={cReason} onChange={(e) => setCReason(e.target.value)} maxLength={500}
+                                placeholder="ex. : pause oubliée" className="h-9 text-sm" data-testid="correct-reason" />
+                            </label>
+                          </>
+                        )}
+
                         <div className="flex items-center gap-1 text-xs text-muted-foreground">
                           <span>Le salarié est prévenu.</span>
                           <InfoTip text="Il reçoit une notification et voit la correction sur sa journée." />
                         </div>
 
-                        <div className="flex items-center gap-2">
-                          <Button size="sm" onClick={() => doCorrection(entry)} disabled={cSaving}>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Button size="sm" onClick={() => doCorrection(entry)} data-testid="correct-submit"
+                            disabled={cSaving || cReturning || (editsAvailable && (!reasonOk(cReason) || Object.keys(pending).length === 0))}>
                             {cSaving && <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />} Corriger et prévenir
                           </Button>
-                          <Button variant="ghost" size="sm" disabled={cSaving} onClick={() => setCorrectingId(null)}>Annuler</Button>
+                          {editsAvailable && (
+                            <span className="flex items-center gap-1">
+                              <Button variant="outline" size="sm" onClick={() => doReturn(entry)} data-testid="correct-return"
+                                disabled={cSaving || cReturning || !reasonOk(cReason)}>
+                                {cReturning && <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />} Renvoyer au salarié
+                              </Button>
+                              <InfoTip text="Toute la journée repasse en brouillon : elle ne compte plus tant qu'il ne l'a pas renvoyée. Il voit votre motif." />
+                            </span>
+                          )}
+                          <Button variant="ghost" size="sm" disabled={cSaving || cReturning} onClick={() => setCorrectingId(null)}>Annuler</Button>
                         </div>
                       </div>
                     ) : (
@@ -1264,6 +1539,10 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
                           setCorrectingId(entry.id);
                           setCStart(entry.start_time?.slice(0, 5) || '08:00');
                           setCEnd(entry.end_time?.slice(0, 5) || '17:00');
+                          setCBreak(entry.break_minutes || 0);
+                          setCMeal(!!entry.meal_allowance);
+                          setCGap(entry.gap_before === 'route' || entry.gap_before === 'pause' ? entry.gap_before : '');
+                          setCReason('');
                         }}
                       >
                         <PencilLine className="h-3 w-3 mr-1" /> Corriger les heures

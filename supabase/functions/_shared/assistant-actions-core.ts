@@ -84,7 +84,7 @@ export const GUIDE: GuideEntry[] = [
   {
     id: 'absence', mots: ['absence', 'conge', 'maladie', 'arret', 'intemperie', 'repos', 'poser un conge', 'vacances'],
     titre: 'Poser un congé ou une absence',
-    etapes: ['Sur le planning, cliquez le nom du salarié.', 'Choisissez Congé, Arrêt maladie, Intempérie ou Repos.', 'Choisissez les dates, puis « Enregistrer ».'], lien: 'planning'
+    etapes: ['Sur le planning, cliquez le nom du salarié.', 'Choisissez Congé, Arrêt maladie ou Intempérie.', 'Choisissez les dates, puis « Enregistrer ».'], lien: 'planning'
   },
   {
     id: 'demandes_conge', mots: ['demande de conge', 'accepter conge', 'refuser conge', 'valider conge'],
@@ -364,8 +364,12 @@ export const ACTION_TYPES = [
   'supprimer_depense', 'modifier_depense', 'supprimer_habilitation', 'modifier_habilitation', 'annuler_invitation',
 ] as const;
 export type ActionType = typeof ACTION_TYPES[number];
-export const ABSENCE_KINDS = ['conge', 'maladie', 'intemperie', 'repos'] as const;
-export const ABSENCE_LABEL: Record<string, string> = { conge: 'Congé', maladie: 'Arrêt maladie', intemperie: 'Intempérie', repos: 'Repos' };
+// Lot 2 : « repos » retiré — la base ne l'accepte pas (planning_absence_type_check :
+// conge, maladie, intemperie), l'écran ne le propose plus. L'Assistant non plus.
+export const ABSENCE_KINDS = ['conge', 'maladie', 'intemperie'] as const;
+export const ABSENCE_LABEL: Record<string, string> = { conge: 'Congé', maladie: 'Arrêt maladie', intemperie: 'Intempérie' };
+/** « Repos » demandé : on le dit clairement, plutôt qu'une erreur brute de la base (ou un congé deviné). */
+export const REFUS_REPOS = 'Repos n’est pas un type d’absence : congé, maladie ou intempérie.';
 export const ROLE_LABEL: Record<string, string> = { worker: 'Salarié', lead: 'Chef d’équipe', admin: 'Bureau' };
 export const EXPENSE_LABEL: Record<string, string> = { materiaux: 'Matériaux', sous_traitance: 'Sous-traitance', location: 'Location', autre: 'Divers' };
 export const CERT_LABEL: Record<string, string> = {
@@ -758,7 +762,7 @@ export function checkAction(d: ActionDraft, ctx: ActionContext): string[] {
       break;
     case 'poser_absence':
       if (!d.user_id || !sal.has(d.user_id)) p.push('Choisissez le salarié.');
-      if (!(ABSENCE_KINDS as readonly string[]).includes(d.absence_type)) p.push('Type d’absence inconnu.');
+      if (!(ABSENCE_KINDS as readonly string[]).includes(d.absence_type)) p.push(d.absence_type === 'repos' ? REFUS_REPOS : 'Type d’absence inconnu.');
       if (!ISO.test(d.du) || !ISO.test(d.au)) p.push('Dates manquantes.');
       else if (d.au < d.du) p.push('La date de fin est avant le début.');
       else if (addDays(d.du, 90) < d.au) p.push('90 jours au plus d’un coup.');
@@ -958,7 +962,8 @@ export function prepare(type: string, raw: Record<string, unknown>, ctx: ActionC
       const t = str(raw.salarie, 80);
       const kind = norm(str(raw.type, 20));
       const du = dateOf(raw.du, ctx);
-      d = { type, user_id: resolveSalarie(t, ctx), salarie_texte: t, absence_type: (ABSENCE_KINDS as readonly string[]).includes(kind) ? kind : 'conge', du, au: dateOf(raw.au, ctx) || du };
+      // « repos » est gardé tel quel : la carte dit pourquoi elle ne part pas (jamais un congé deviné).
+      d = { type, user_id: resolveSalarie(t, ctx), salarie_texte: t, absence_type: (ABSENCE_KINDS as readonly string[]).includes(kind) || kind === 'repos' ? kind : 'conge', du, au: dateOf(raw.au, ctx) || du };
       break;
     }
     case 'affecter_planning': {
@@ -1581,7 +1586,11 @@ export function handleActionLocally(text: string, ctx: ActionContext): LocalRepl
   if (!detailed && /\b(ajout|nouveau|nouvel|inviter|embauch|cree)\w*\b.*\b(salarie|ouvrier|employe|poseur|compagnon)/.test(n) && !/\bcomment\b/.test(n)) {
     return { answer: 'Remplissez la fiche : il recevra une invitation par email.', links: [], action: prepare('inviter_salarie', {}, ctx)! };
   }
-  if (!detailed && /\b(poser|pose|mettre|enregistr)\w*\b.*\b(conge|absence|arret|maladie|repos)/.test(n) && !/\bcomment\b/.test(n)) {
+  // Lot 2 : « mets Sam en repos » — pas un type d'absence, on le dit (la base le refuserait).
+  if (/\b(poser|pose|mettre|mets|met|enregistr)\w*\b.*\brepos\b/.test(n) && !/\b(conge|maladie|arret|intemperie|comment)\b/.test(n)) {
+    return { answer: REFUS_REPOS, links: [navLink('planning')] };
+  }
+  if (!detailed && /\b(poser|pose|mettre|enregistr)\w*\b.*\b(conge|absence|arret|maladie)/.test(n) && !/\bcomment\b/.test(n)) {
     return { answer: 'Choisissez le salarié et les dates.', links: [], action: prepare('poser_absence', {}, ctx)! };
   }
   if (/\b(comment|ou |ou est|je veux|je voudrais|aide|expliqu|montre|a quoi sert|quoi sert|c est quoi|ca sert)/.test(n)) {

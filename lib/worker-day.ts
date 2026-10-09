@@ -7,7 +7,7 @@
 // hors-ligne (file du téléphone) reste dans l'écran.
 import { supabase } from '@/lib/supabase';
 import { planningsToMaterialise, remainingPlannings, sendablePlannings } from '@/lib/work-status';
-import { firstBlockingOverlap, keptBreak, pauseAsks } from '@/supabase/functions/_shared/day-hours';
+import { firstBlockingOverlap, keptBreak, pauseAsks, spanMinutes } from '@/supabase/functions/_shared/day-hours';
 import { cellKey, placeLive, type LiveSessionLike } from '@/supabase/functions/_shared/live-place';
 
 export interface DayUser { id: string; company_id: string }
@@ -110,8 +110,13 @@ export interface CopySource { worksite_id: string | null; start_time: string; en
  * d'hier » et « Dupliquer cette journée ». Le panier ne se copie pas. Le
  * planning du jour cible est rattaché quand il prévoit ce chantier.
  * Renvoie les identifiants créés.
+ *
+ * Lot 2 : une ligne de 0 minute (sortie oubliée « à compléter », début = fin)
+ * ne se recopie pas. La copie perdait le drapeau (la base le remet à faux à
+ * chaque insertion) et devenait un brouillon vide… qui pouvait partir.
  */
-export async function copyLinesTo(user: DayUser, sources: CopySource[], targets: string[]): Promise<string[]> {
+export async function copyLinesTo(user: DayUser, allSources: CopySource[], targets: string[]): Promise<string[]> {
+  const sources = allSources.filter((s) => s.start_time && s.end_time && spanMinutes({ start: s.start_time, end: s.end_time }) > 0);
   if (sources.length === 0 || targets.length === 0) return [];
   const { data: plan } = await supabase.from('planning').select('id, work_date, worksite_id').eq('user_id', user.id).in('work_date', targets);
   const planMap = new Map<string, string>();
