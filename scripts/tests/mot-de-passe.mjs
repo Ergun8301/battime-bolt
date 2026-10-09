@@ -256,10 +256,10 @@ console.log('9. Aucun nom de client dans les écrans d’accès');
 for (const url of ['/inscription', '/connexion', '/mot-de-passe-oublie', '/pointer?k=borne&c=123456']) {
   ({ ctx, p } = await page(url));
   await p.waitForTimeout(500);
-  const html = (await p.content()).toLowerCase();
-  // Le seul exemple affiché est l'exemple neutre (aucun prénom ni nom de client).
-  const exemples = [...html.matchAll(/ex\. ([a-z0-9.\-]+)/g)].map((m) => m[1]);
-  check(exemples.every((e) => e === 'soleil-mars-27'), `${url} : seul exemple affiché « Ex. Soleil-Mars-27 »`);
+  // Champs mot de passe : seul exemple possible, l'exemple neutre (aucun prénom
+  // ni nom de client) ; sinon des points (champ « confirmer », connexion).
+  const exemples = await p.$$eval('input[type=password], input[autocomplete$=password]', (els) => els.map((e) => e.getAttribute('placeholder') || ''));
+  check(exemples.every((e) => e === '' || e === 'Ex. Soleil-Mars-27' || /^•+$/.test(e)), `${url} : champs mot de passe, seul exemple « Ex. Soleil-Mars-27 » (${exemples.join(' | ') || 'aucun champ'})`);
   await ctx.close();
 }
 await b.close(); srv.close();
