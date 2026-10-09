@@ -114,7 +114,19 @@ export default function PendingInvitations({ companyId, invitations, onChanged }
     return () => { lockListeners.delete(setLocked); };
   }, []);
 
-  const list = invitations.filter((inv) => !!inv.email);
+  // Une personne = une ligne. Pendant un envoi (ou juste après deux renvois
+  // simultanés), deux invitations de la même adresse coexistent un instant :
+  // on ne garde que la plus récente.
+  const list = useMemo(() => {
+    const byEmail = new Map<string, Invitation>();
+    for (const inv of invitations) {
+      const key = (inv.email || '').trim().toLowerCase();
+      if (!key) continue;
+      const cur = byEmail.get(key);
+      if (!cur || new Date(inv.created_at || 0).getTime() > new Date(cur.created_at || 0).getTime()) byEmail.set(key, inv);
+    }
+    return Array.from(byEmail.values());
+  }, [invitations]);
   const n = list.length;
   // Relire les dates quand la liste change (un envoi recrée l'invitation).
   const listKey = list.map((i) => `${i.email}|${i.created_at}`).sort().join(',');
