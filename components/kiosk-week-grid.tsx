@@ -16,6 +16,7 @@ import { memo, useEffect, useRef } from 'react';
 import { format, getISOWeek, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { PL_GRID_CSS, PlannedBubbleView, paletteAt } from '@/components/planning-bubble';
+import { dayPartTintFromLabel } from '@/supabase/functions/_shared/day-part';
 import type { KioskBoard, KioskBoardLiveExtra, KioskBoardSlot } from '@/lib/kiosk-client';
 
 // Même hachure que la cellule nom d'un absent au bureau.
@@ -146,6 +147,8 @@ function KioskWeekGrid({ board, today, showLive }: {
                               <span className="bt-pl-abs-lbl">Absent</span>
                             </div>
                           )}
+                          {/* Lot 3 : même teinte de créneau qu'au bureau, lue sur l'horaire déjà
+                              affiché (« 08:00–12:00 ») — rien à redéployer côté fonction. */}
                           {slots.map((s, i) => (
                             <PlannedBubbleView
                               key={i}
@@ -154,6 +157,7 @@ function KioskWeekGrid({ board, today, showLive }: {
                               hours={s.hours}
                               palette={paletteAt(s.color)}
                               live={showLive && s.live ? s.live : undefined}
+                              tint={dayPartTintFromLabel(s.hours)}
                             />
                           ))}
                           {extras.map((x, i) => (

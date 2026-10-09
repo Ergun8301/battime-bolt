@@ -7,6 +7,7 @@
 // Rien ici ne lit la base : uniquement des champs déjà choisis par l'appelant
 // (titre, chantier · ville, horaires prévus, « en cours depuis »).
 import type { ReactNode } from 'react';
+import type { DayPartTint } from '@/supabase/functions/_shared/day-part';
 
 export interface ChantierPalette { bar: string; tagBg: string; tagText: string }
 
@@ -41,35 +42,40 @@ export function LiveLine({ since, dark = false }: { since: string; dark?: boolea
 
 /**
  * Bulle « prévu » : fond blanc, pointillé couleur chantier ; verte quand le salarié est en cours.
+ * Lot 3 : `tint` = teinte du créneau (matin / après-midi / soir, day-part.ts). Le chantier
+ * garde sa couleur (barre de gauche + pointillé) ; le vert « en cours » passe avant.
  * Lot 2 : `withdrawn` (bureau seulement, la borne ne le passe pas) — retirée par le
- * salarié : éteinte et barrée, pour qu'elle ne se lise plus comme « à faire ».
+ * salarié : éteinte (sans teinte) et barrée, pour qu'elle ne se lise plus comme « à faire ».
  */
-export function PlannedBubbleView({ title, sub, hours, palette, docs, live, withdrawn }: {
+export function PlannedBubbleView({ title, sub, hours, palette, docs, live, tint, withdrawn }: {
   title: string;
   sub?: string | null;
   hours?: string | null;
   palette: ChantierPalette;
   docs?: ReactNode;
   live?: string;
+  tint?: DayPartTint | null;
   withdrawn?: boolean;
 }) {
   const off = withdrawn && !live;
+  const t = live || off ? null : tint ?? null;
   const style = live
     ? { background: '#E7F6EE', border: '1.5px solid #2FA36B', color: '#15120F' }
-    : { background: '#fff', border: `1.5px dashed ${palette.bar}`, color: '#15120F', ...(off ? { opacity: 0.55 } : {}) };
+    : { background: t ? t.bg : '#fff', border: `1.5px dashed ${palette.bar}`, color: '#15120F', ...(off ? { opacity: 0.55 } : {}) };
   return (
-    <div className={`bt-pl-bub${live ? ' bt-pl-bub-on' : ''}`} style={style} data-withdrawn={off ? '1' : undefined}>
+    <div className={`bt-pl-bub${live ? ' bt-pl-bub-on' : ''}`} style={style} data-creneau={t?.key} data-withdrawn={off ? '1' : undefined}>
       <span className="bt-pl-bub-bar" style={{ background: live ? '#2FA36B' : palette.bar }} />
       <div className="bt-pl-bub-name">
         <span className="bt-pl-bub-title" data-testid="bubble-title" style={off ? { textDecoration: 'line-through' } : undefined}>{title}</span>
         {docs && <span className="bt-pl-bub-ic">{docs}</span>}
       </div>
+      {/* Sur une teinte, l'encre plus foncée : le gris habituel passerait sous 4,5:1. */}
       {off
         ? <div className="bt-pl-bub-sub" style={{ color: '#6E6A63' }}>retirée par le salarié</div>
-        : sub && <div className="bt-pl-bub-sub" style={{ color: '#6E6A63' }}>{sub}</div>}
+        : sub && <div className="bt-pl-bub-sub" style={{ color: t ? t.ink : '#6E6A63' }}>{sub}</div>}
       {hours && (
         <div className="bt-pl-bub-foot">
-          <span className="bt-pl-hour" data-testid="bubble-hours">{hours}</span>
+          <span className="bt-pl-hour" data-testid="bubble-hours" style={t ? { color: t.ink } : undefined}>{hours}</span>
         </div>
       )}
       {live && <LiveLine since={live} />}

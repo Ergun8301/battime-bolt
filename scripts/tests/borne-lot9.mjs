@@ -92,6 +92,11 @@ const onTop = (p, sel) => p.evaluate((s) => { const el = document.querySelector(
   check(titles.includes('Villa Dupont') && titles.includes('Cuisine Martin') && titles.includes('École Jean Moulin'), '1) chantiers visibles');
   check(subs.includes('Lyon 6e') && subs.includes('Villeurbanne') && subs.includes('Bron'), '1) villes visibles');
   check(hours.includes('07:30–16:30') && hours.includes('16:30'), '1) horaires prévus visibles');
+  // Lot 3 : même couleur de créneau qu'au bureau, lue sur l'horaire affiché (aucune donnée de plus).
+  const kc = await p.locator('.kb-week .bt-pl-bub').evaluateAll((els) => els.map((e) => ({ h: e.querySelector('[data-testid=bubble-hours]')?.textContent, c: e.getAttribute('data-creneau'), on: e.classList.contains('bt-pl-bub-on') })));
+  check(kc.some((x) => x.h === '08:00–12:00' && x.c === 'matin') && kc.some((x) => x.h === '13:30–17:00' && x.c === 'apres-midi') && kc.some((x) => x.h === '16:30' && x.c === 'apres-midi')
+    && kc.filter((x) => x.h === '08:00–17:00').every((x) => !x.c) && kc.filter((x) => x.on).length === 1 && kc.filter((x) => x.on).every((x) => !x.c),
+    'Lot 3) couleur du créneau comme au bureau : 08–12 matin, 13:30–17 et 16:30 après-midi, journée blanche, « en cours » vert');
   const ths = await p.locator('.bt-pl-th').allInnerTexts();
   check(ths.length === 7 && /Lundi/.test(ths[0]) && /Dimanche/.test(ths[6]) && /Jeudi\s*1/.test(ths[3]), `1) lundi → dimanche : ${ths.map((t) => t.replace(/\s+/g, ' ')).join(' | ')}`);
   check(/Jeudi/.test(await p.locator('.bt-pl-th.today').innerText()), '1) aujourd’hui surligné (jeudi)');

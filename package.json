@@ -31,6 +31,8 @@
     "test:heures": "npx -y deno@2 test supabase/functions/_shared/day-hours.test.ts",
     "test:copie-planning": "npx -y deno@2 test supabase/functions/_shared/copy-slot.test.ts",
     "test:heures-ecrans": "node scripts/tests/heures-lot1.mjs out docs/captures-heures",
+    "test:creneaux": "npx -y deno@2 test supabase/functions/_shared/day-part.test.ts",
+    "test:planning-lot3": "node scripts/tests/planning-lot3.mjs out docs/captures-planning-lot3",
     "test:brouillons": "node scripts/tests/brouillons-lot2.mjs out docs/captures-lot2",
     "test:reserves-lot11": "node scripts/tests/reserves-lot11.mjs out docs/captures-lot11",
     "test:fin-pointage": "node supabase/tests/lot9_fin_pointage.mjs",
