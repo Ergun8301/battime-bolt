@@ -105,7 +105,7 @@ const fnPrint = async () => (await db.query(`SELECT string_agg(proname || ':' ||
 const polPrint = async () => (await db.query(`SELECT string_agg(tablename || '.' || policyname || ':' || md5(coalesce(qual, '') || '|' || coalesce(with_check, '')), ',' ORDER BY tablename, policyname) AS s
   FROM pg_policies WHERE tablename <> 'time_entry_edits'`)).rows[0].s;
 const trgPrint = async () => (await db.query(`SELECT string_agg(tgname || ':' || md5(pg_get_triggerdef(oid)), ',' ORDER BY tgname) AS s
-  FROM pg_trigger WHERE NOT tgisinternal AND tgname <> 'time_entries_keep_sent'`)).rows[0].s;
+  FROM pg_trigger WHERE NOT tgisinternal AND tgname NOT IN ('time_entries_keep_sent', 'time_entries_guard_write_returned')`)).rows[0].s;
 const colPrint = async () => (await db.query(`SELECT string_agg(table_name || '.' || column_name || ':' || data_type, ',' ORDER BY table_name, column_name) AS s
   FROM information_schema.columns WHERE table_schema = 'public' AND table_name <> 'time_entry_edits'`)).rows[0].s;
 const before = { fn: await fnPrint(), pol: await polPrint(), trg: await trgPrint(), col: await colPrint() };
@@ -134,9 +134,19 @@ const priv = (await db.query(`SELECT
   has_function_privilege('anon', 'public.office_return_day(uuid, date, text)', 'EXECUTE') AS anon_fn2,
   has_function_privilege('anon', 'public.office_edit_mark_notified(uuid[], text)', 'EXECUTE') AS anon_fn3,
   has_function_privilege('authenticated', 'public.guard_time_entry_keep_sent()', 'EXECUTE') AS auth_trg,
+  has_function_privilege('authenticated', 'public.guard_time_entry_returned_trace()', 'EXECUTE') AS auth_trg2,
+  has_function_privilege('anon', 'public.guard_time_entry_returned_trace()', 'EXECUTE') AS anon_trg2,
   has_function_privilege('authenticated', 'public.office_return_day(uuid, date, text)', 'EXECUTE') AS auth_fn`)).rows[0];
 check(!priv.anon_sel && !priv.auth_ins && !priv.auth_upd && !priv.auth_del && priv.auth_sel, 'journal : lecture seule pour authenticated, rien pour anon (malgré les droits par défaut)');
 check(!priv.anon_fn1 && !priv.anon_fn2 && !priv.anon_fn3 && !priv.auth_trg && priv.auth_fn, 'fonctions : anon exclu, fonction de trigger non appelable');
+check(!priv.auth_trg2 && !priv.anon_trg2, 'trace après renvoi : fonction de trigger non appelable (ni authenticated, ni anon)');
+// La trace après renvoi passe APRÈS la garde existante (ordre alphabétique des triggers BEFORE).
+const order = (await db.query(`SELECT tgname, prosecdef, proconfig FROM pg_trigger t JOIN pg_proc p ON p.oid = t.tgfoid
+  WHERE t.tgrelid = 'public.time_entries'::regclass AND NOT t.tgisinternal ORDER BY tgname`)).rows;
+const iW = order.findIndex((x) => x.tgname === 'time_entries_guard_write');
+const iR = order.findIndex((x) => x.tgname === 'time_entries_guard_write_returned');
+check(iW >= 0 && iR === iW + 1, `time_entries_guard_write_returned juste après time_entries_guard_write (${order.map((x) => x.tgname).join(', ')})`);
+check(order[iR]?.prosecdef === true && JSON.stringify(order[iR]?.proconfig || []).includes('search_path='), 'trace après renvoi : SECURITY DEFINER, search_path vide');
 
 // ═══ Outils ═══════════════════════════════════════════════════════════════
 const as = async (uid, role = 'authenticated') => { await db.exec(`RESET ROLE`); await db.query(`SELECT set_config('request.jwt.claim.sub', $1, false)`, [uid ?? '']); if (role) await db.exec(`SET ROLE ${role}`); };
@@ -305,8 +315,11 @@ await as(ADMIN);
 await refused(RET, [ALEX, d(4), 'à revoir'], 'clôturées jusqu', 'salarié clôturé : renvoi refusé');
 
 // ═══ Après un renvoi : le salarié corrige et renvoie ═══════════════════════
+check((await etat(r1)).modified_at === null, 'avant : la ligne renvoyée n’a aucune trace de modification');
 await as(SAM);
 await accepted(`UPDATE public.time_entries SET end_time = '12:30' WHERE id = $1`, [r1], 'Sam corrige sa ligne renvoyée (brouillon)');
+const stamped = await etat(r1);
+check(stamped.modified_by === SAM && !!stamped.modified_at && stamped.status === 'draft', 'trace après renvoi : modified_at / modified_by = Sam (le bureau verra « modifié »)');
 await as(SAM);
 await refused(`DELETE FROM public.time_entries WHERE id = $1`, [r2], 'se retirent', 'Sam ne peut PAS effacer une ligne renvoyée (déjà envoyée une fois)');
 check(!!(await etat(r2)), '… la ligne et son historique sont toujours là');
@@ -318,7 +331,45 @@ await as(SAM);
 await accepted(`UPDATE public.time_entries SET status = 'submitted' WHERE id = $1`, [r1], 'Sam renvoie sa journée');
 const after1 = await etat(r1);
 check(after1.status === 'submitted' && after1.submitted_at && new Date(after1.submitted_at) >= new Date(before1), 'brouillon → envoyée : submitted_at reposé par la garde existante');
+check(after1.modified_by === SAM && String(after1.modified_at) === String(stamped.modified_at), 'renvoi par Sam : la trace posée sur le brouillon est gardée (la garde recopie old.modified_*)');
 check((await editsOf(r1)).length === 1, 'l’historique du bureau reste');
+
+// ═══ La trace après renvoi : seulement là où il faut ═══════════════════════
+// Renvoyée, puis touchée sans rien changer de suivi (statut seul) : pas de trace.
+const t1 = await ligne({ date: d(14), start: '08:00', end: '17:00' });
+await as(ADMIN);
+await accepted(RET, [SAM, d(14), 'à revoir'], 'bureau : renvoie une autre journée de Sam');
+await as(SAM);
+await accepted(`UPDATE public.time_entries SET status = 'submitted' WHERE id = $1`, [t1], 'Sam la renvoie telle quelle');
+check((await etat(t1)).modified_at === null, 'renvoyée sans rien changer : aucune trace (rien à signaler au bureau)');
+// Changer ET renvoyer en une seule écriture : tracé.
+const t2 = await ligne({ date: d(15), start: '08:00', end: '17:00', meal: true });
+await as(ADMIN);
+await accepted(RET, [SAM, d(15), 'panier en trop'], 'bureau : renvoie la journée du panier');
+await as(SAM);
+await accepted(`UPDATE public.time_entries SET meal_allowance = false, status = 'submitted' WHERE id = $1`, [t2], 'Sam retire le panier et renvoie, d’un coup');
+let tr = await etat(t2);
+check(tr.modified_by === SAM && !!tr.modified_at && tr.status === 'submitted' && tr.m === false, 'panier retiré + renvoi en une écriture : tracé (Sam)');
+// Le bureau qui touche une ligne renvoyée : comportement d'avant (sa propre trace, par la garde existante).
+const t3 = await ligne({ date: d(16), start: '08:00', end: '17:00' });
+await as(ADMIN);
+await accepted(RET, [SAM, d(16), 'à revoir'], 'bureau : renvoie une troisième journée');
+await as(ADMIN);
+await accepted(`UPDATE public.time_entries SET break_minutes = 30 WHERE id = $1`, [t3], 'bureau : retouche directe de la ligne renvoyée');
+tr = await etat(t3);
+check(tr.modified_by === ADMIN && !!tr.modified_at && tr.b === 30, 'bureau : modified_by = le bureau, comme avant (la trace après renvoi ne s’en mêle pas)');
+// Un brouillon JAMAIS envoyé : aucune trace, comme avant.
+const t4 = await ligne({ date: d(17), start: '08:00', end: '12:00', status: 'draft' });
+await as(SAM);
+await accepted(`UPDATE public.time_entries SET end_time = '13:00', observation = 'plus long' WHERE id = $1`, [t4], 'Sam modifie un brouillon jamais envoyé');
+tr = await etat(t4);
+check(tr.modified_at === null && tr.modified_by === null && tr.e === '13:00:00', 'brouillon jamais envoyé : aucune trace (inchangé)');
+// Système (auth.uid() nul) sur une ligne renvoyée : rien.
+const t5 = await ligne({ date: d(18), start: '08:00', end: '12:00' });
+await as(ADMIN);
+await accepted(RET, [SAM, d(18), 'à revoir'], 'bureau : renvoie une quatrième journée');
+await one(`UPDATE public.time_entries SET end_time = '12:15' WHERE id = $1`, [t5]);
+check((await etat(t5)).modified_at === null, 'écriture système sur une ligne renvoyée : aucune trace');
 
 // ═══ Effacer : jamais des heures envoyées, bureau compris ══════════════════
 const sent = await ligne({ date: d(10), start: '08:00', end: '12:00' });

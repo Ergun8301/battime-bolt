@@ -23,6 +23,13 @@
 //  D9  Échap avec Ctrl, et Ctrl + glisser en mode « Sélectionner » : zéro écriture, aucune fenêtre
 //  D10 déplacement vers une absence / un salarié ou un mois clôturé : refusé
 //  D11 Assistant « déplace l'intervention » : même garde (heures envoyées → rien n'est déplacé)
+//  D12 heures SANS lien (planning_id nul) déjà dans la case : elles restent sur la bulle la plus
+//      ANCIENNE ; la copie s'annule (DELETE), une bulle déplacée là revient et s'efface
+//      (l'autre bulle porte toujours ces heures) — la dernière, elle, reste gardée
+//  D13 pointage en cours lu EN BASE (l'écran ne le sait pas) : sur la case, ou sans lien sur
+//      son salarié / jour / chantier → « pointage en cours », zéro écriture (glisser et Assistant)
+//  D14 « Annuler » d'un déplacement par l'Assistant : même garde à la place actuelle
+//      (heures envoyées depuis → « Annulation impossible »), sinon retour + ligne retirée détachée
 import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path';
 let chromium;
 try { ({ chromium } = await import('playwright-core')); } catch {
@@ -53,7 +60,7 @@ const entry = (id, user_id, work_date, ws, status, minutes, extra = {}) => ({ id
 const H = (s, e) => ({ estimated_start: `${s}:00`, estimated_end: `${e}:00` });
 const COMPANY = { id: CO, name: 'Entreprise Test', ai_enabled: true, kiosk_enabled: false, position_tracking_enabled: false, travel_paid: false, subscription_status: 'active', trial_ends_at: '2030-01-01', weekly_hours: 35, accountant_email: null };
 const fresh = () => ({
-  users: [u('u-admin', 'Alex', 'admin'), u('u-sam', 'Sam'), u('u-lou', 'Lou'), u('u-noa', 'Noa'), u('u-tom', 'Tom')],
+  users: [u('u-admin', 'Alex', 'admin'), u('u-sam', 'Sam'), u('u-lou', 'Lou'), u('u-noa', 'Noa'), u('u-tom', 'Tom'), u('u-eva', 'Eva')],
   companies: [{ ...COMPANY }],
   worksites: [W1, W2],
   planning: [
@@ -75,12 +82,18 @@ const fresh = () => ({
     slot('pn-mon', 'u-noa', D_(19), W1), slot('pn-tue', 'u-noa', D_(20), W2), slot('pn-wed', 'u-noa', D_(21), W1),
     // Tom : clôturé jusqu'au mardi 20 · jeu. libre
     slot('pt-thu', 'u-tom', D_(22), W1),
+    // Eva (D12–D13) : lun. 08–12 libre · mar. une bulle ANCIENNE sans horaire (créée le 1er octobre)
+    // qui a des heures envoyées SANS lien (planning_id nul) · mar. aussi, au Dépôt, une bulle libre
+    slot('pe-p', 'u-eva', D_(19), W1, H('08:00', '12:00')),
+    slot('pe-q', 'u-eva', D_(20), W1, { created_at: '2026-10-01T06:00:00Z' }),
+    slot('pe-live', 'u-eva', D_(20), W2, H('13:00', '14:00')),
   ],
   time_entries: [
     entry('e1', 'u-sam', D_(20), W1, 'submitted', 480, { planning_id: 'ps-tue' }),
     entry('e2', 'u-noa', D_(19), W1, 'cancelled', 0, { planning_id: 'pn-mon' }),
     entry('e3', 'u-noa', D_(20), W2, 'draft', 120, { planning_id: 'pn-tue' }),
     entry('e4', 'u-noa', D_(21), W1, 'draft', 0, { planning_id: 'pn-wed', locked: false, submitted_at: null }),
+    entry('e-loose', 'u-eva', D_(20), W1, 'submitted', 480, { planning_id: null }),
   ],
   active_sessions: [{ user_id: 'u-sam', company_id: CO, worksite_id: 'w2', planning_id: 'ps-wed', work_date: D_(21), started_at: ago(2), positions: [] }],
   month_closures: [{ company_id: CO, month: '2026-09-01' }],
@@ -478,6 +491,66 @@ if (AVANT) {
   check(D.planning.some((x) => x.id === cid2), 'D8 la copie est gardée');
   await p.click('[data-testid=undo-close]').catch(() => {});
 
+  // D12 — des heures SANS lien (planning_id nul) déjà dans la case visée
+  const realIn = (id) => p.locator(`[data-bub="${id}"] .bt-pl-real-txt`).count();
+  // La ligne d'Eva est la dernière de la grille : on la fait venir à l'écran avant chaque glisser.
+  const evaInView = async () => { await row(p, 'Eva').evaluate((el) => el.scrollIntoView({ block: 'end' })); await p.waitForTimeout(200); };
+  await settle(p);
+  check(await realIn('pe-q') === 1, 'D12 avant : les heures sans lien d’Eva sont sur sa bulle de mardi (pe-q)');
+  await evaInView();
+  w = log.writes.length;
+  await drag(p, bub(p, 'pe-p'), cell(p, 'Eva', TUE), { key: 'Control' });
+  pw = planningWrites(w);
+  const cidE = pw.find((x) => x.m === 'POST')?.ids?.[0];
+  check(pw[0]?.m === 'POST' && pw.filter((x) => x.m === 'POST').length === 1 && pw.slice(1).every((x) => x.m === 'PATCH' && Object.keys(x.body).join() === 'position') && !!cidE,
+    `D12 copie de lun. 08–12 vers mar. (case avec heures sans lien) : un POST, puis au plus des positions (${pw.map((x) => x.m).join(', ')})`);
+  await p.waitForTimeout(500);
+  check(await realIn('pe-q') === 1 && await realIn(cidE) === 0, 'D12 les heures restent sur la bulle la plus ANCIENNE (pe-q), la copie 08:00–12:00 n’en prend pas');
+  w = log.writes.length;
+  await p.click('[data-testid=undo-card] [data-testid=action-undo]'); await p.waitForSelector('[data-testid=undo-card] [data-testid=action-undone]', { timeout: 8000 }).catch(() => {});
+  pw = planningWrites(w);
+  const undoTxt = (await p.locator('[data-testid=undo-card]').innerText().catch(() => '')).replace(/\s+/g, ' ');
+  check(pw.length === 1 && pw[0].m === 'DELETE' && JSON.stringify(pw[0].ids) === JSON.stringify([cidE]) && /la copie est retirée du planning/.test(undoTxt),
+    `D12 « Annuler » la copie : DELETE de la copie seule, accepté (« ${undoTxt.trim()} »)`);
+  check(D.planning.some((x) => x.id === 'pe-q') && !D.planning.some((x) => x.id === cidE), 'D12 la bulle d’origine reste, la copie est partie');
+  await p.click('[data-testid=undo-close]').catch(() => {}); await p.waitForTimeout(150);
+  // Un glisser simple vers la même case, puis retour : jamais coincé
+  await settle(p);
+  await evaInView();
+  w = log.writes.length;
+  await drag(p, bub(p, 'pe-p'), cell(p, 'Eva', TUE));
+  pw = planningWrites(w);
+  check(pw.some((x) => x.m === 'PATCH' && x.ids[0] === 'pe-p' && x.body.work_date === D_(20)) && (await toasts(p)).every((x) => !x.includes('déplacé')),
+    `D12 déplacée vers mar. (heures sans lien d’une autre bulle) : PATCH (${pw.map((x) => `${x.m} ${x.ids?.[0]}`).join(', ')})`);
+  await p.waitForTimeout(500);
+  check(await realIn('pe-q') === 1 && await realIn('pe-p') === 0, 'D12 à sa nouvelle place, elle ne prend pas les heures de pe-q');
+  await settle(p);
+  await evaInView();
+  w = log.writes.length;
+  await drag(p, bub(p, 'pe-p'), await center(cell(p, 'Eva', MON)));
+  pw = planningWrites(w);
+  let tE = await toasts(p);
+  check(pw.some((x) => x.m === 'PATCH' && x.ids[0] === 'pe-p' && x.body.work_date === D_(19)) && tE.every((x) => !x.includes('déplaçable') && !x.includes('Rien n’a été déplacé')),
+    `D12 et elle REVIENT (rien ne la coince) : PATCH vers lun. (${pw.map((x) => `${x.m} ${x.ids?.[0]}`).join(', ')}${tE.length ? ` · ${tE.join(' | ')}` : ''})`);
+  check(D.planning.find((x) => x.id === 'pe-p')?.work_date === D_(19), 'D12 base : pe-p de nouveau lundi');
+
+  // D13 — un pointage en cours que l'écran ne connaît pas (d'un autre jour : le sondage
+  // de l'écran ne lit qu'aujourd'hui) : la base est relue avant de déplacer
+  await settle(p);
+  D.active_sessions.push({ user_id: 'u-eva', company_id: CO, worksite_id: 'w2', planning_id: 'pe-live', work_date: D_(20), started_at: ago(20), positions: [] });
+  for (const [label, link] of [['sur la case (planning_id)', 'pe-live'], ['sans lien, même salarié / jour / chantier', null]]) {
+    D.active_sessions.find((x) => x.user_id === 'u-eva').planning_id = link;
+    await settle(p);
+    await evaInView();
+    w = log.writes.length;
+    await drag(p, bub(p, 'pe-live'), await center(cell(p, 'Eva', WED)));
+    const t = await toasts(p);
+    check(writesSince(w).length === 0 && t.some((x) => x.includes('Rien n’a été déplacé : pointage en cours · maintenez Ctrl ou Alt pour copier')),
+      `D13 pointage en cours ${label} : « ${t.join(' | ')} », zéro écriture`);
+    await p.waitForTimeout(300);
+    check(JSON.stringify(await idsIn(p, 'Eva', TUE)).includes('pe-live'), 'D13 la bulle reste à sa place');
+  }
+
   // D11 — l'Assistant déplace une intervention : même garde
   const asReply = (planningId, userId, date, nouvelle) => ({
     answer: '', links: [], remaining: 40,
@@ -500,6 +573,58 @@ if (AVANT) {
   await p.waitForSelector('[data-testid=action-done]', { timeout: 10000 }).catch(() => {});
   pw = planningWrites(w);
   check(pw.length === 1 && pw[0].m === 'PATCH' && pw[0].ids[0] === 'ps-mon' && pw[0].body.work_date === D_(24), `D11 Assistant, bulle libre : déplacée comme avant (${pw.map((x) => `${x.m} ${JSON.stringify(x.body)}`).join(', ')})`);
+
+  // D14 — « Annuler » ce déplacement : la même garde, sur la case à sa place ACTUELLE (samedi)
+  D.time_entries.push(entry('e10', 'u-sam', D_(24), W1, 'submitted', 240, { planning_id: 'ps-mon' }));
+  const moveCard = p.locator('[data-testid=action-done]').last();
+  w = log.writes.length;
+  await moveCard.locator('[data-testid=action-undo]').click(); await p.waitForTimeout(1200);
+  const undoErr = await moveCard.locator('.ad-e').innerText().catch(() => '');
+  check(planningWrites(w).length === 0 && undoErr.includes('Annulation impossible : heures déjà envoyées.') && D.planning.find((x) => x.id === 'ps-mon').work_date === D_(24),
+    `D14 heures envoyées samedi depuis : « ${undoErr} », zéro écriture, la case reste samedi`);
+  D.time_entries = D.time_entries.filter((x) => x.id !== 'e10');
+  D.time_entries.push(entry('e11', 'u-sam', D_(24), W1, 'cancelled', 0, { planning_id: 'ps-mon' }));
+  w = log.writes.length;
+  await moveCard.locator('[data-testid=action-undo]').click();
+  await p.waitForSelector('[data-testid=action-undone]', { timeout: 8000 }).catch(() => {});
+  mw = writesSince(w);
+  const e11 = D.time_entries.find((x) => x.id === 'e11');
+  check(mw[0]?.m === 'PATCH' && mw[0].t === 'time_entries' && mw[0].ids.join() === 'e11' && mw[0].body.planning_id === null
+    && mw.some((x) => x.m === 'PATCH' && x.t === 'planning' && x.ids[0] === 'ps-mon' && x.body.work_date === D_(22)),
+    `D14 sinon : la ligne retirée samedi est détachée, puis la case revient jeudi (${fmtW(mw)})`);
+  check(D.planning.find((x) => x.id === 'ps-mon').work_date === D_(22) && e11.planning_id === null && e11.work_date === D_(24),
+    'D14 base : case jeudi, la ligne retirée reste samedi, SANS lien vers une case d’un autre jour');
+
+  // D13 (Assistant) et D12 (effacer) — par l'Assistant, avec Eva dans les choix
+  const evaReply = (draft) => ({ answer: '', links: [], remaining: 40, action: { draft, problems: [], summary: '', question: null },
+    options: { salaries: [{ id: 'u-sam', nom: 'Sam Test' }, { id: 'u-eva', nom: 'Eva Test' }], chantiers: [{ id: 'w1', nom: 'Salle', ville: 'Lyon' }, { id: 'w2', nom: 'Dépôt', ville: 'Vienne' }] } });
+  const ask = async (text) => { await p.fill('.as-bar textarea', text); await p.click('button[aria-label="Envoyer"]'); await p.waitForTimeout(1500); };
+  const moveDraft = (id, date, nouvelle) => ({ type: 'modifier_intervention', user_id: 'u-eva', salarie_texte: 'Eva', date, planning_id: id, choix: [{ id, chantier: 'Salle', debut: '', note: '' }], nouvelle_date: nouvelle, nouveau_user_id: null, debut: '', note: null });
+  const delDraft = (id, date) => ({ type: 'supprimer_intervention', user_id: 'u-eva', salarie_texte: 'Eva', date, planning_id: id, choix: [{ id, chantier: 'Salle', debut: '', note: '', date }] });
+  REP = evaReply(moveDraft('pe-live', D_(20), D_(23)));
+  w = log.writes.length;
+  await ask('Déplace l’intervention d’Eva de mardi à vendredi');
+  let errE = await p.locator('.ac-err').last().innerText().catch(() => '');
+  check(planningWrites(w).length === 0 && writesSince(w).every((x) => x.t !== 'time_entries') && errE.includes('Rien n’a été déplacé : pointage en cours.'),
+    `D13 Assistant, pointage en cours sans lien : « ${errE} », zéro écriture`);
+  D.active_sessions = D.active_sessions.filter((x) => x.user_id !== 'u-eva');
+  REP = evaReply(moveDraft('pe-p', D_(19), D_(20)));
+  w = log.writes.length;
+  await ask('Déplace l’intervention d’Eva de lundi à mardi');
+  pw = planningWrites(w);
+  check(pw.length === 1 && pw[0].m === 'PATCH' && pw[0].ids[0] === 'pe-p' && pw[0].body.work_date === D_(20), `D12 Assistant : pe-p déplacée à mardi, à côté de pe-q (${pw.map((x) => `${x.m} ${x.ids?.[0]}`).join(', ')})`);
+  REP = evaReply(delDraft('pe-p', D_(20)));
+  w = log.writes.length;
+  await ask('Supprime l’intervention d’Eva de mardi');
+  pw = planningWrites(w);
+  check(pw.length === 1 && pw[0].m === 'DELETE' && pw[0].ids.join() === 'pe-p' && !D.planning.some((x) => x.id === 'pe-p'),
+    `D12 Assistant « supprimer » pe-p : effacée — pe-q porte toujours les heures sans lien (${pw.map((x) => `${x.m} ${x.ids?.join(',')}`).join(', ')})`);
+  REP = evaReply(delDraft('pe-q', D_(20)));
+  w = log.writes.length;
+  await ask('Supprime l’autre intervention d’Eva de mardi');
+  errE = await p.locator('.ac-err').last().innerText().catch(() => '');
+  check(planningWrites(w).length === 0 && D.planning.some((x) => x.id === 'pe-q') && errE.includes('Rien n’a été retiré : heures déjà envoyées.'),
+    `D12 Assistant « supprimer » pe-q, la DERNIÈRE bulle de ces heures : gardée (« ${errE} »)`);
   await ctx.close();
 }
 

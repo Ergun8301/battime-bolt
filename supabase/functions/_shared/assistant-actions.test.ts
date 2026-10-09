@@ -3,7 +3,7 @@
 // brouillon contrôlé », pour chaque action de la liste blanche.
 import { callFunction } from './ai-provider.ts';
 import {
-  ASSISTANT_FUNCTIONS, actionPrompt, addDays, buildActionContext, checkAction, findGuide, fromFunctionCall,
+  ABSENCE_KINDS, ABSENCE_LABEL, ASSISTANT_FUNCTIONS, REFUS_REPOS, actionPrompt, addDays, buildActionContext, checkAction, findGuide, fromFunctionCall,
   guideForPrompt, handleActionLocally, mondayOf, prepare, proposeWeek, questionFor, summarize, type ActionContext,
 } from './assistant-actions-core.ts';
 
@@ -93,6 +93,23 @@ Deno.test('3. Poser une absence', async () => {
   eq([d.user_id, d.absence_type, reply.action!.problems], ['u-karim', 'maladie', []], 'nom → id, type gardé');
   eq(prepare('poser_absence', { salarie: 'Petit', type: 'conge', du: '2026-10-01' }, CTX)!.problems, ['Choisissez le salarié.'], '« Petit » ambigu → à choisir, jamais deviné');
   eq(prepare('poser_absence', { salarie: 'Karim', type: 'conge', du: '2026-10-05', au: '2026-10-01' }, CTX)!.problems, ['La date de fin est avant le début.'], 'dates à l’envers');
+});
+
+Deno.test('3 bis. Lot 2 : « repos » n’est pas un type d’absence (la base le refuse)', async () => {
+  eq([...ABSENCE_KINDS], ['conge', 'maladie', 'intemperie'], 'types proposés = ceux que la base accepte');
+  eq('repos' in ABSENCE_LABEL, false, 'plus de libellé « Repos »');
+  const decl = ASSISTANT_FUNCTIONS.find((f) => f.name === 'poser_absence') as unknown as { parameters: { properties: { type: { enum: string[] } } } };
+  eq(decl.parameters.properties.type.enum, ['conge', 'maladie', 'intemperie'], 'le modèle ne peut plus choisir « repos »');
+  const r = prepare('poser_absence', { salarie: 'Karim', type: 'repos', du: '2026-10-01' }, CTX)!;
+  eq([(r.draft as { absence_type: string }).absence_type, r.problems], ['repos', [REFUS_REPOS]], '« repos » reçu quand même : refus clair, jamais un congé deviné');
+  eq(REFUS_REPOS, 'Repos n’est pas un type d’absence : congé, maladie ou intempérie.', 'le message');
+  for (const q of ['Mets Karim en repos lundi', 'pose un repos pour Lucas demain', 'mettre Karim au repos le 12']) {
+    const a = handleActionLocally(q, CTX);
+    eq([a?.answer, a?.action], [REFUS_REPOS, undefined], `« ${q} » → refus clair, aucune carte`);
+  }
+  eq(handleActionLocally('Poser un congé', CTX)!.action!.draft.type, 'poser_absence', 'un congé reste une carte d’absence');
+  const { reply } = await viaAi('poser_absence', { salarie: 'Karim', type: 'intemperie', du: '2026-10-01' });
+  eq([(reply.action!.draft as { absence_type: string }).absence_type, reply.action!.problems], ['intemperie', []], 'intempérie passe');
 });
 
 Deno.test('4. Affecter au planning', async () => {

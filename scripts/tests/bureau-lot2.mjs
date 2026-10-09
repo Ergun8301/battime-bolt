@@ -273,8 +273,14 @@ const newCtx = async (uid, email, viewport) => {
     const hit = filterRows(D[t] || [], url.searchParams);
     if (m === 'PATCH') {
       for (const x of hit) {
+        // Trigger time_entries_guard_write_returned (migration du lot 2) : un non-admin qui
+        // change une ligne RENVOYÉE (brouillon déjà envoyé une fois) pose la trace.
+        const differs = (k) => body && k in body && (k.endsWith('_time') ? hh(body[k]) !== hh(x[k]) : String(body[k] ?? '') !== String(x[k] ?? ''));
+        const stamp = t === 'time_entries' && MIG === 'oui' && uid !== ADMIN && x.status === 'draft' && !!x.submitted_at
+          && ['start_time', 'end_time', 'break_minutes', 'meal_allowance', 'gap_before', 'worksite_id', 'observation'].some(differs);
         if (t === 'time_entries' && x.status === 'draft' && body?.status === 'submitted') x.submitted_at = NOW.toISOString();
         Object.assign(x, body);
+        if (stamp) Object.assign(x, { modified_at: nowIso(), modified_by: uid });
         if (t === 'time_entries') { x.total_minutes = generated(x); x.worksite = ws(x.worksite_id); }
       }
       return reply(hit);
@@ -588,6 +594,50 @@ await openWorker();
   await openWorker();
   check(await wp.locator('[data-testid=day-returned]').count() === 0, 'W2 le bandeau disparaît');
   check(D.time_entry_edits.filter((x) => x.kind === 'return').length === 2, 'W2 l’historique du bureau reste');
+  const at = D.time_entries.find((x) => x.id === 'e-aprem');
+  check(at.modified_by === ME && Date.parse(at.modified_at) > Date.parse(D.time_entry_edits.filter((x) => x.kind === 'return').at(-1).edited_at),
+    'W2 trace après renvoi posée par la base (trigger du lot 2) : modified_by = Sam');
+}
+
+// R1 · le bureau voit ce que le salarié a changé APRÈS le renvoi
+console.log('\n═══ R1 · après le renvoi, côté bureau');
+await openSheet();
+{
+  const at = card('Atelier'); const ma = card('Salle');
+  check(await at.locator('[data-testid=badge-after-return]').count() === 1, 'R1 Atelier : badge « modifié après renvoi »');
+  check(await at.locator('[data-testid=badge-office]').count() === 0 && !/modifié après envoi/.test(await txt(at)), 'R1 Atelier : ni « corrigé par le bureau », ni « modifié après envoi » en double');
+  const diff = await txt(at.locator('[data-testid=after-return]'));
+  check(/Changé après renvoi : 13h00–17h00 → 13h00–17h30/.test(diff), `R1 Atelier : le changement (« ${diff.trim()} »)`);
+  const frozen = await txt(at.locator('[data-testid=return-frozen]'));
+  check(/était 13h00–17h00 · pause 0 min · avant : route/.test(frozen) && !/panier/.test(frozen), `R1 Atelier : la ligne « Renvoyée » dit ce qui était envoyé (« ${frozen.trim()} »)`);
+  check(await ma.locator('[data-testid=badge-after-return]').count() === 0 && await ma.locator('[data-testid=after-return]').count() === 0, 'R1 Salle : renvoyée telle quelle → rien « après renvoi »');
+  check(await ma.locator('[data-testid=badge-office]').count() === 1, 'R1 Salle : « corrigé par le bureau » (le panier du bureau, avant le renvoi) reste juste');
+  check(/était 8h00–12h00 · pause 0 min · panier/.test(await txt(ma.locator('[data-testid=return-frozen]'))), 'R1 Salle : « était 8h00–12h00 · pause 0 min · panier »');
+  await shot(at, 'bureau-apres-renvoi');
+}
+
+// R2 · même chose SANS trace en base (ancienne ligne, ou trigger absent) : lu dans le journal
+console.log('\n═══ R2 · après le renvoi, sans trace en base');
+freshDb();
+{
+  const T0 = new Date(NOW.getTime() - 3 * 3600e3).toISOString(); // correction du bureau, avant le renvoi
+  D.time_entries = [
+    // renvoyée, changée (17:00 → 12:00), renvoyée par le salarié — la base n'a rien posé
+    row({ id: 'e-chg', worksite_id: SALLE.id, start_time: '08:00', end_time: '12:00', status: 'submitted', submitted_at: T0, modified_at: T0, modified_by: ADMIN }),
+    // renvoyée puis changée, mais PAS encore renvoyée : brouillon, ne compte pas
+    row({ id: 'e-att', worksite_id: ATELIER.id, start_time: '13:00', end_time: '15:00', status: 'draft', submitted_at: T0 }),
+  ];
+  addEdit(D.time_entries[0], 'return', 'il manque ta pause', ADMIN, { start_time: '08:00', end_time: '17:00', break_minutes: 0, meal_allowance: true, gap_before: null, status: 'submitted' },
+    { start_time: '08:00', end_time: '17:00', break_minutes: 0, meal_allowance: true, gap_before: null, status: 'draft' }, { notified_at: NOW.toISOString() });
+  addEdit(D.time_entries[1], 'return', 'il manque ta pause', ADMIN, { start_time: '13:00', end_time: '17:00', break_minutes: 0, meal_allowance: false, gap_before: null, status: 'submitted' },
+    { start_time: '13:00', end_time: '17:00', break_minutes: 0, meal_allowance: false, gap_before: null, status: 'draft' }, { notified_at: NOW.toISOString() });
+  await openSheet();
+  const c = card('Salle'); const w = card('Atelier');
+  check(await c.locator('[data-testid=badge-after-return]').count() === 1 && await c.locator('[data-testid=badge-office]').count() === 0,
+    'R2 changée après renvoi, modified_by = bureau d’avant : « modifié après renvoi », jamais « corrigé par le bureau »');
+  check(/Changé après renvoi : 8h00–17h00 → 8h00–12h00 · panier retiré/.test(await txt(c.locator('[data-testid=after-return]'))), `R2 le changement : « ${(await txt(c.locator('[data-testid=after-return]'))).trim()} »`);
+  check(await w.locator('[data-testid=badge-returned]').count() === 1 && await w.locator('[data-testid=badge-after-return]').count() === 0 && await w.locator('[data-testid=after-return]').count() === 0,
+    'R2 encore en brouillon : « renvoyée · en attente du salarié », pas de comparaison tant qu’elle ne compte pas');
 }
 
 // ═══ W3, W5 · une ligne renvoyée se retire, elle ne s'efface pas ═════════════

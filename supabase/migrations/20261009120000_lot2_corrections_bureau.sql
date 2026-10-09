@@ -5,7 +5,7 @@
 -- PAS ENCORE APPLIQUÉE EN PRODUCTION : feu vert d'Ergun. Testée sur un Postgres
 -- jetable : npm run test:corrections-bureau (supabase/tests/lot2_corrections_bureau.mjs).
 --
--- 100 % ADDITIVE : 1 table, 3 fonctions, 1 fonction de trigger, 1 trigger.
+-- 100 % ADDITIVE : 1 table, 3 fonctions, 2 fonctions de trigger, 2 triggers.
 -- Aucune table, colonne, policy, fonction ou trigger existant n'est modifié ;
 -- aucune donnée n'est touchée. correct_time_entry, time_entry_corrections,
 -- guard_time_entry_write / _delete restent mot pour mot.
@@ -29,7 +29,11 @@
 --     que les écrans actuels et `send-push` lisent déjà ;
 --   · des heures envoyées une fois ne s'EFFACENT plus, bureau compris : elles
 --     se retirent (statut 'cancelled'). Sans ça, une journée renvoyée en
---     brouillon pouvait être effacée par le salarié — et son historique avec.
+--     brouillon pouvait être effacée par le salarié — et son historique avec ;
+--   · ce que le salarié change sur une ligne RENVOYÉE pose modified_at /
+--     modified_by, comme sur une ligne envoyée : le bureau voit que le
+--     salarié y a retouché, et non plus « corrigé par le bureau » d'avant le
+--     renvoi (la fiche montre QUOI avec le journal : « modifié après renvoi »).
 --
 -- DROITS. Les fonctions tournent avec les droits du propriétaire (SECURITY
 -- DEFINER) : user_closed_until n'est pas exécutable par `authenticated`, et les
@@ -275,7 +279,44 @@ DROP TRIGGER IF EXISTS time_entries_keep_sent ON public.time_entries;
 CREATE TRIGGER time_entries_keep_sent BEFORE DELETE ON public.time_entries
   FOR EACH ROW EXECUTE FUNCTION public.guard_time_entry_keep_sent();
 
--- ── 6) Droits (repris explicitement : voir « DROITS » en tête) ──────────────
+-- ── 6) Après un renvoi, ce que le salarié change se VOIT au bureau ─────────
+-- guard_time_entry_write (inchangée) ne pose modified_at / modified_by que sur
+-- une ligne ENVOYÉE (old.status = 'submitted'). Une ligne renvoyée est un
+-- brouillon : sans ceci, ce que le salarié y change (17:00 → 12:00), puis son
+-- renvoi, ne laissaient AUCUNE trace — la fiche gardait « corrigé par le
+-- bureau » sur des heures que le bureau n'avait jamais vues.
+-- S'AJOUTE à la garde, sans la remplacer : Postgres enchaîne les triggers
+-- BEFORE d'une table par ordre alphabétique de leur nom, et
+-- « time_entries_guard_write_returned » passe juste APRÈS
+-- « time_entries_guard_write » (qui vient de recopier old.modified_*), avant
+-- time_entries_lead_guard et time_entries_qr_guard (qui n'y touchent pas).
+-- Ne pose QUE les deux colonnes de trace, et seulement pour :
+--   · un utilisateur connecté qui n'est pas du bureau (le bureau a déjà sa
+--     trace, branche admin de la garde ; cron / service_role : auth.uid() nul) ;
+--   · un brouillon DÉJÀ ENVOYÉ une fois (submitted_at posé : renvoyé par le
+--     bureau). Un brouillon jamais envoyé reste sans trace, comme avant ;
+--   · un vrai changement : heures, pause, panier, route, chantier, observation.
+CREATE OR REPLACE FUNCTION public.guard_time_entry_returned_trace()
+ RETURNS trigger
+ LANGUAGE plpgsql SECURITY DEFINER
+ SET search_path TO ''
+AS $fn$
+BEGIN
+  IF auth.uid() IS NULL OR public.is_admin() THEN RETURN new; END IF;
+  IF old.status = 'draft' AND old.submitted_at IS NOT NULL
+     AND (new.start_time, new.end_time, new.break_minutes, new.meal_allowance, new.gap_before, new.worksite_id, new.observation)
+         IS DISTINCT FROM
+         (old.start_time, old.end_time, old.break_minutes, old.meal_allowance, old.gap_before, old.worksite_id, old.observation) THEN
+    new.modified_at := now();
+    new.modified_by := auth.uid();
+  END IF;
+  RETURN new;
+END $fn$;
+DROP TRIGGER IF EXISTS time_entries_guard_write_returned ON public.time_entries;
+CREATE TRIGGER time_entries_guard_write_returned BEFORE UPDATE ON public.time_entries
+  FOR EACH ROW EXECUTE FUNCTION public.guard_time_entry_returned_trace();
+
+-- ── 7) Droits (repris explicitement : voir « DROITS » en tête) ──────────────
 REVOKE ALL ON FUNCTION public.office_correct_entry(uuid, jsonb, text) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.office_return_day(uuid, date, text)     FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.office_edit_mark_notified(uuid[], text) FROM PUBLIC, anon;
@@ -283,13 +324,22 @@ GRANT EXECUTE ON FUNCTION public.office_correct_entry(uuid, jsonb, text) TO auth
 GRANT EXECUTE ON FUNCTION public.office_return_day(uuid, date, text)     TO authenticated;
 GRANT EXECUTE ON FUNCTION public.office_edit_mark_notified(uuid[], text) TO authenticated;
 REVOKE ALL ON FUNCTION public.guard_time_entry_keep_sent() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.guard_time_entry_returned_trace() FROM PUBLIC, anon, authenticated;
 
 -- Contrôles après application :
 -- SELECT count(*) FROM pg_policies WHERE tablename = 'time_entry_edits';               -- 1
 -- SELECT count(*) FROM pg_trigger WHERE tgname = 'time_entries_keep_sent';             -- 1
+-- SELECT count(*) FROM pg_trigger WHERE tgname = 'time_entries_guard_write_returned';  -- 1
 -- SELECT has_function_privilege('anon', 'public.office_return_day(uuid, date, text)', 'EXECUTE');  -- false
+-- SELECT has_function_privilege('authenticated', 'public.guard_time_entry_returned_trace()', 'EXECUTE');  -- false
+-- Ordre des triggers BEFORE UPDATE de time_entries (alphabétique) : guard_user_closure,
+-- guard_write, guard_write_returned, lead_guard, qr_guard —
+-- SELECT string_agg(tgname, ', ' ORDER BY tgname) FROM pg_trigger
+--  WHERE tgrelid = 'public.time_entries'::regclass AND NOT tgisinternal;
 
 -- RETOUR ARRIÈRE (rien d'existant n'a été remplacé : on retire ce qui a été ajouté) :
+--   DROP TRIGGER IF EXISTS time_entries_guard_write_returned ON public.time_entries;
+--   DROP FUNCTION IF EXISTS public.guard_time_entry_returned_trace();
 --   DROP TRIGGER IF EXISTS time_entries_keep_sent ON public.time_entries;
 --   DROP FUNCTION IF EXISTS public.guard_time_entry_keep_sent();
 --   DROP FUNCTION IF EXISTS public.office_edit_mark_notified(uuid[], text);

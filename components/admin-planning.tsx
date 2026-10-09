@@ -1427,22 +1427,34 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
    * chantier le même jour (« Matin » + « Après-midi »), les deux bulles
    * affichaient chacune le total des deux : « 08:00–17:00 · 7h30 » deux fois,
    * 15 h à l'œil pour 7h30 payées. Chaque ligne n'est plus montrée qu'une fois :
-   * sur la bulle de son planning_id, sinon sur la première bulle de ce chantier.
+   * sur la bulle de son planning_id, sinon sur la bulle qui porte les heures
+   * sans lien de ce chantier.
+   *
+   * Lot 2 : cette bulle-là est celle « ajoutée par le salarié », sinon la plus
+   * ANCIENNE (créée la première), et non plus celle qui commence le plus tôt.
+   * Une copie ou un déplacement posé 08:00 dans une case sans horaire prenait
+   * sinon ces heures à son compte : la nouvelle bulle devenait « Heures
+   * envoyées — non déplaçable », et l'ancienne, libre.
    */
   const bubbleKeyOf = useMemo(() => {
-    const groups = new Map<string, string[]>();
-    const sorted = [...planning].filter((p) => !p.absence_type)
-      .sort((a, b) => (a.estimated_start || '99').localeCompare(b.estimated_start || '99') || a.id.localeCompare(b.id));
-    for (const p of sorted) {
+    const groups = new Map<string, Set<string>>();
+    const owner = new Map<string, PlanningWithWorksite>(); // case → bulle des heures sans lien
+    const first = (a: PlanningWithWorksite, b: PlanningWithWorksite) => (
+      !!a.added_by_worker !== !!b.added_by_worker ? !!a.added_by_worker
+        : (a.created_at || '') !== (b.created_at || '') ? (a.created_at || '') < (b.created_at || '') : a.id < b.id);
+    for (const p of planning) {
+      if (p.absence_type) continue;
       const k = realKey(p.user_id, p.work_date, p.worksite_id);
-      const list = groups.get(k);
-      if (list) list.push(p.id); else groups.set(k, [p.id]);
+      const set = groups.get(k);
+      if (set) set.add(p.id); else groups.set(k, new Set([p.id]));
+      const cur = owner.get(k);
+      if (!cur || first(p, cur)) owner.set(k, p);
     }
     return (e: { user_id: string; work_date: string; worksite_id: string | null; planning_id?: string | null }) => {
       const k = realKey(e.user_id, e.work_date, e.worksite_id);
-      const list = groups.get(k);
-      if (!list) return k;
-      return `p:${e.planning_id && list.includes(e.planning_id) ? e.planning_id : list[0]}`;
+      const set = groups.get(k);
+      if (!set) return k;
+      return `p:${e.planning_id && set.has(e.planning_id) ? e.planning_id : owner.get(k)!.id}`;
     };
   }, [planning]);
 
@@ -1878,8 +1890,37 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       strong: false,
       // Les mêmes gardes que « Supprimer » : des heures notées depuis sur la copie,
       // ou un mois clôturé entre-temps, la gardent — et on le dit.
+      // Lot 2 (D8) : aucune ligne d'heures ne la désigne → on efface CETTE copie
+      // par son identifiant, sans regarder les heures sans lien de la case : la
+      // case d'origine (plus ancienne) les porte toujours.
       undo: async () => {
         try {
+          const [{ data: linkedRows, error: lErr }, { data: live, error: sErr }] = await Promise.all([
+            supabase.from('time_entries').select('id').eq('planning_id', newId).limit(1),
+            supabase.from('active_sessions').select('user_id').eq('planning_id', newId).limit(1),
+          ]);
+          if (lErr) throw lErr;
+          if (sErr) throw sErr;
+          if (!(linkedRows ?? []).length) {
+            if ((live ?? []).length) return { ok: false, message: 'Impossible d’annuler : pointage en cours.' };
+            // Son jour d'AUJOURD'HUI (elle a pu être déplacée depuis), et le mois de ce jour.
+            const [{ data: cur, error: pErr }, { data: cl, error: cErr }] = await Promise.all([
+              supabase.from('planning').select('work_date').eq('company_id', companyId).eq('id', newId).maybeSingle(),
+              supabase.from('month_closures').select('month').eq('company_id', companyId),
+            ]);
+            if (pErr) throw pErr;
+            if (cErr) throw cErr;
+            if (!cur) { refreshRef.current(); return { ok: false, message: 'Impossible d’annuler : la copie n’est plus au planning.' }; }
+            const month = String((cur as { work_date: string }).work_date).slice(0, 7);
+            if (((cl ?? []) as { month: string }[]).some((c) => String(c.month).slice(0, 7) === month)) {
+              return { ok: false, message: 'Impossible d’annuler : mois clôturé.' };
+            }
+            const { data: del, error: dErr } = await supabase.from('planning').delete().eq('company_id', companyId).eq('id', newId).select('id');
+            if (dErr) throw dErr;
+            refreshRef.current();
+            if (!(del ?? []).length) return { ok: false, message: 'Impossible d’annuler : la copie n’est plus au planning.' };
+            return { ok: true, message: 'Annulé : la copie est retirée du planning.' };
+          }
           const r = await erasePlanning(companyId, { ids: [newId] });
           refreshRef.current();
           if (!r.deleted.length) return { ok: false, message: `Impossible d’annuler : ${r.reason || 'la copie n’est plus au planning'}.` };
