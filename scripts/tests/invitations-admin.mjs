@@ -250,6 +250,16 @@ check(log.sends.length === 0 && log.revokes.length === 0, 'envoi groupé : simul
 await p.screenshot({ path: `${SH}/4-preview-simulation.png` });
 await ctx.close();
 
+console.log('9 bis. Deux invitations pour la même adresse (envoi en cours ailleurs) : une seule ligne');
+// La plus ANCIENNE arrive en premier : la liste garde quand même la plus récente.
+reset([inv(1), inv(2), inv(1, { id: 'inv-1-bis', email: 'Salarie1@Exemple.fr', first_name: 'Jeanne', created_at: '2026-10-09T08:00:00Z' })]);
+({ ctx, p } = await open(PROD));
+check((await p.locator('[data-testid=inv-count]:visible').innerText()).trim() === '2 salariés n’ont pas encore activé leur compte', '3 lignes en base, 2 personnes : « 2 salariés… »');
+await p.click('[data-testid=inv-toggle]:visible'); await p.waitForSelector('[data-testid=inv-row]:visible');
+check(await rows(p).count() === 2, 'une seule ligne par personne');
+check((await rows(p).allInnerTexts()).some((t) => t.includes('Jeanne')) && !(await rows(p).allInnerTexts()).some((t) => t.includes('Paul Exemple1')), 'c’est la plus récente qui est montrée');
+await ctx.close();
+
 console.log('10. Singulier, et rien quand tout le monde est actif');
 reset([inv(7)]);
 ({ ctx, p } = await open(PROD));

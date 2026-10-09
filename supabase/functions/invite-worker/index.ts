@@ -36,6 +36,18 @@ function jsonResponse(body: unknown, init?: ResponseInit) {
   });
 }
 
+/**
+ * Motif ILIKE qui ne reconnaît QUE cette adresse (majuscules et minuscules
+ * confondues). Dans LIKE, « _ » et « % » sont des jokers : « l_dupont@… »
+ * attrapait aussi « l.dupont@… », et un renvoi ou une annulation pouvait
+ * toucher l'invitation (ou le compte) d'un autre salarié. On les échappe,
+ * ainsi que « \ ». PostgREST lit en plus « * » comme « % », sans échappement
+ * possible : ces adresses sont refusées à l'entrée.
+ */
+function exactEmailPattern(email: string): string {
+  return email.replace(/[\\%_]/g, (c) => `\\${c}`);
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return jsonResponse({ error: "Method not allowed" }, { status: 405 });
@@ -73,19 +85,29 @@ Deno.serve(async (req) => {
     const action = String(payload?.action ?? "invite");
     const email = String(payload?.email ?? "").trim();
     if (!email) return jsonResponse({ error: "E-mail requis" }, { status: 400 });
+    if (email.includes("*")) {
+      return jsonResponse({ error: "Adresse e-mail invalide (le caractère « * » n'est pas accepté)." }, { status: 400 });
+    }
+    const emailPattern = exactEmailPattern(email);
 
     // ── Révocation ──
     if (action === "revoke") {
-      const { data: target } = await supabaseAdmin
-        .from("users").select("id").eq("company_id", company_id).ilike("email", email).maybeSingle();
+      // Une vérification qui échoue ARRÊTE l'annulation : on ne supprime jamais
+      // un compte sans avoir pu lire qu'il n'a ni connexion ni heures.
+      const unverified = () => jsonResponse({ error: "Vérification impossible pour le moment. Réessayez." }, { status: 500 });
+      const { data: target, error: targetErr } = await supabaseAdmin
+        .from("users").select("id").eq("company_id", company_id).ilike("email", emailPattern).maybeSingle();
+      if (targetErr) return unverified();
       if (target?.id) {
-        const { data: authUser } = await supabaseAdmin.auth.admin.getUserById(target.id);
-        if (authUser?.user?.last_sign_in_at) {
+        const { data: authUser, error: authErr } = await supabaseAdmin.auth.admin.getUserById(target.id);
+        if (authErr || !authUser?.user) return unverified();
+        if (authUser.user.last_sign_in_at) {
           return jsonResponse({ error: "Ce salarié s'est déjà connecté : archivez-le plutôt." }, { status: 409 });
         }
-        const { count } = await supabaseAdmin
+        const { count, error: countErr } = await supabaseAdmin
           .from("time_entries").select("id", { count: "exact", head: true }).eq("user_id", target.id);
-        if ((count || 0) > 0) {
+        if (countErr || count == null) return unverified();
+        if (count > 0) {
           return jsonResponse({ error: "Ce compte a déjà des heures : archivez-le plutôt." }, { status: 409 });
         }
         await supabaseAdmin.from("planning").delete().eq("user_id", target.id);
@@ -94,7 +116,7 @@ Deno.serve(async (req) => {
         const { error: delErr } = await supabaseAdmin.auth.admin.deleteUser(target.id);
         if (delErr) return jsonResponse({ error: delErr.message }, { status: 400 });
       }
-      await supabaseAdmin.from("invitations").delete().eq("company_id", company_id).ilike("email", email);
+      await supabaseAdmin.from("invitations").delete().eq("company_id", company_id).ilike("email", emailPattern);
       return jsonResponse({ success: true, deleted_account: !!target?.id }, { status: 200 });
     }
 
@@ -105,6 +127,18 @@ Deno.serve(async (req) => {
     const role = "worker";
     if (!first_name || !last_name) {
       return jsonResponse({ error: "Champs requis manquants (email, prénom, nom)" }, { status: 400 });
+    }
+
+    // 0) Adresse déjà rattachée à une AUTRE entreprise : refus. Sinon GoTrue
+    //    renverrait l'invitation au compte existant, et la personne, en
+    //    l'acceptant, resterait dans son entreprise actuelle tandis que notre
+    //    invitation serait marquée acceptée. Même message que GoTrue pour un
+    //    compte déjà actif (rien de plus n'est révélé).
+    const { data: sameEmailUsers, error: sameEmailErr } = await supabaseAdmin
+      .from("users").select("company_id").ilike("email", emailPattern);
+    if (sameEmailErr) return jsonResponse({ error: "Vérification impossible pour le moment. Réessayez." }, { status: 500 });
+    if ((sameEmailUsers ?? []).some((u) => u.company_id !== company_id)) {
+      return jsonResponse({ error: "Un compte existe déjà avec cette adresse." }, { status: 400 });
     }
 
     // 1) La nouvelle invitation d'abord. Les anciennes en attente (même e-mail,
@@ -146,9 +180,20 @@ Deno.serve(async (req) => {
     //    renvois partent en même temps pour la même adresse, chacun effaçait
     //    l'autre (« tout sauf la mienne ») et le salarié disparaissait de la
     //    liste. Ici, la plus récente des invitations envoyées reste toujours.
-    await supabaseAdmin.from("invitations").delete()
-      .eq("company_id", company_id).ilike("email", email).is("accepted_at", null)
-      .lt("created_at", inv.created_at);
+    //    Ordre total (created_at, puis id) : deux invitations créées à la même
+    //    microseconde ne restent pas toutes les deux (le salarié compté deux fois).
+    //    Une ligne sans date (jamais écrite par l'application) compte comme plus
+    //    ancienne. Un échec ici ne perd rien (l'ancienne ligne reste en double) :
+    //    on le note.
+    const pendingSameEmail = () => supabaseAdmin.from("invitations").delete()
+      .eq("company_id", company_id).ilike("email", emailPattern).is("accepted_at", null);
+    const cleanup = await Promise.all([
+      pendingSameEmail().lt("created_at", inv.created_at),
+      pendingSameEmail().eq("created_at", inv.created_at).lt("id", inv.id),
+      pendingSameEmail().is("created_at", null),
+    ]);
+    const cleanupErr = cleanup.find((r) => r.error)?.error;
+    if (cleanupErr) console.error("[invite-worker] nettoyage des anciennes invitations :", cleanupErr);
 
     return jsonResponse({ success: true }, { status: 200 });
   } catch (e) {
