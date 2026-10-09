@@ -31,7 +31,7 @@ import { useOwnLiveSession, startLiveSession, announceLiveChange } from '@/lib/l
 import { geoInfoSeen, markGeoInfoSeen } from '@/lib/position-info';
 import GeoInfoDialog from '@/components/geo-info-dialog';
 import { isExitToComplete, EXIT_TO_COMPLETE_MSG, PAUSE_CHOICES } from '@/lib/qr-entry';
-import { bestPlanningFor, findOverlap, firstBlockingOverlap, keptBreak, pauseAsks, type PauseAsk, type PlannedState, type Span } from '@/supabase/functions/_shared/day-hours';
+import { bestPlanningFor, findOverlap, firstBlockingOverlap, isEmptyDraft, keptBreak, pauseAsks, type PauseAsk, type PlannedState, type Span } from '@/supabase/functions/_shared/day-hours';
 import { LiveLine } from '@/components/planning-bubble';
 import { placeLive, cellKey } from '@/supabase/functions/_shared/live-place';
 import TeamDay from '@/components/team-day';
@@ -1120,6 +1120,9 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
   const saveSlot = async () => {
     if (!user || !openSlot) return;
     if (!fStart || !fEnd) { toast.error("Indique l'heure de début et de fin"); return; }
+    // Lot 2 : 0 minute n'est pas une saisie. Ce brouillon vide restait « à envoyer »
+    // et verrouillait l'intervention au bureau.
+    if (fStart.slice(0, 5) === fEnd.slice(0, 5)) { toast.error('Le début et la fin sont identiques.'); return; }
     // Lot 6 (règle d'Ergun) : le détail des réserves est FACULTATIF. « Avec
     // réserve » suffit ; le détail et les photos aident, sans jamais bloquer « OK ».
     // Lot 1 : deux lignes qui se chevauchent compteraient deux fois les mêmes
@@ -1276,6 +1279,8 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
 
       // lib/worker-day.ts : même chemin que l'Assistant BEMEXO (planning du jour rattaché).
       const rows = await copyLinesTo(user, yEntries.map((e) => ({ worksite_id: e.worksite_id, start_time: e.start_time, end_time: e.end_time, break_minutes: e.break_minutes, observation: e.observation })), [date]);
+      // Lot 2 : une ligne de 0 minute (fin à compléter) ne se recopie pas.
+      if (rows.length === 0) { toast.error('Rien à copier : les heures d’hier sont à compléter.'); return; }
 
       toast.success(`${rows.length} chantier${rows.length > 1 ? 's' : ''} copié${rows.length > 1 ? 's' : ''} depuis hier`);
       await applyDayMeal(dayMeal);
@@ -1307,7 +1312,8 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
     setCopying(true);
     try {
       // lib/worker-day.ts : planning du jour cible rattaché, panier non copié.
-      await copyLinesTo(user, sources, targets);
+      const ids = await copyLinesTo(user, sources, targets);
+      if (ids.length === 0) { toast.error('Rien à copier : les heures sont à compléter.'); return; }
       toast.success(`Copié sur ${targets.length} jour${targets.length > 1 ? 's' : ''}`);
       setRepeatOpen(false);
     } catch (err) {
@@ -2624,7 +2630,9 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
           <p className="text-sm text-muted-foreground">
             {confirmDel?.kind === 'entry' && confirmDel.sent
               ? 'Il a déjà été envoyé : il restera visible comme « Retiré » et la secrétaire en sera informée.'
-              : 'Les heures seront perdues.'}
+              : confirmDel?.kind === 'entry' && isEmptyDraft(confirmDel.entry) && !confirmDel.entry.submitted_at
+                ? 'Brouillon vide : il sera supprimé.'
+                : 'Les heures seront perdues.'}
           </p>
           <div className="flex gap-2 mt-2">
             <Button variant="outline" className="flex-1" onClick={() => setConfirmDel(null)}>Non</Button>

@@ -1,7 +1,7 @@
 // `deno test supabase/functions/_shared/day-hours.test.ts` (npm run test:heures)
 // Lot 1 — « une journée de 7h à 18h affiche 7h30 ». Les règles d'une journée.
 import {
-  bestPlanningFor, coveredMinutes, findOverlap, firstBlockingOverlap, firstOverlap, keptBreak, overlapMinutes, pauseAsks,
+  bestPlanningFor, coveredMinutes, findOverlap, firstBlockingOverlap, firstOverlap, isEmptyDraft, keptBreak, overlapMinutes, pauseAsks,
   plannedState, spanMinutes,
 } from './day-hours.ts';
 
@@ -78,4 +78,21 @@ Deno.test('une correction garde la pause (elle était remise à 0)', () => {
   eq(keptBreak({ start: '07:00', end: '07:30' }, 60), 0, 'ligne plus courte que la pause : pause retirée');
   eq(keptBreak({ start: '07:00', end: '17:00' }, null), 0, 'pas de pause');
   eq(keptBreak({ start: '07:00', end: '17:00' }, -5), 0, 'jamais négative');
+});
+
+Deno.test('lot 2 — le brouillon vide (0 minute) ne bloque plus rien, le reste si', () => {
+  const d = (start: string | null, end: string | null, extra: Record<string, unknown> = {}) => ({ status: 'draft', locked: false, exit_forgotten: false, start_time: start, end_time: end, ...extra });
+  eq(isEmptyDraft(d('08:00', '08:00')), true, 'brouillon 08:00–08:00 : vide');
+  eq(isEmptyDraft(d('08:00:00', '08:00:00')), true, 'avec les secondes de la base : vide');
+  eq(isEmptyDraft(d('22:00', '22:00')), true, 'début = fin le soir : vide (pas 24 h)');
+  eq(isEmptyDraft(d('08:00', '08:01')), false, '1 minute : pas vide');
+  eq(isEmptyDraft(d('08:00', '12:00')), false, 'des heures notées : pas vide');
+  eq(isEmptyDraft(d('22:00', '06:00')), false, 'nuit 22:00–06:00 : pas vide');
+  eq(isEmptyDraft(d('08:00', '08:00', { status: 'submitted' })), false, 'envoyée : jamais « brouillon vide »');
+  eq(isEmptyDraft(d('08:00', '08:00', { status: 'cancelled' })), false, 'retirée : jamais « brouillon vide »');
+  eq(isEmptyDraft(d('08:00', '08:00', { locked: true })), false, 'verrouillée par le bureau : gardée');
+  eq(isEmptyDraft(d('08:00', '08:00', { exit_forgotten: true })), false, 'sortie oubliée à compléter : gardée (son heure d’arrivée compte)');
+  eq(isEmptyDraft(d('08:00', '08:00', { exit_forgotten: undefined, locked: undefined })), true, 'colonnes du lot 12 absentes : se lit « non »');
+  eq(isEmptyDraft(d(null, null)), false, 'heures non lues : on ne sait pas, donc pas vide');
+  eq(isEmptyDraft(d('08:00', '')), false, 'fin non lue : pas vide');
 });

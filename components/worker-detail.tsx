@@ -32,6 +32,8 @@ import { fetchLeadMarks, type LeadMark } from '@/lib/lead-trace';
 import { fetchEntryEdits, correctOfficeEntry, returnDayToWorker, isReturned, type EntryEdit } from '@/lib/office-edits';
 import { changedKeys, diffLabels, precheck, reasonOk } from '@/supabase/functions/_shared/office-edits';
 import { interval } from '@/supabase/functions/_shared/day-hours';
+import { eraseEmptyDraft, isDisposableDraft, restoreDrafts } from '@/lib/erase';
+import { ActionDone, type UndoResult } from '@/components/action-done';
 import {
   CalendarRange, Clock, Utensils, MapPin, Loader2,
   Settings2, Archive, ArchiveRestore, Trash2, Link2, User as UserIcon, AlertTriangle, Hammer, PencilLine, BellOff,
@@ -159,6 +161,10 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
   const [qrFlags, setQrFlags] = useState<Map<string, QrFields>>(() => new Map());
   // Lot 14 : lignes saisies ou corrigées par un chef d'équipe.
   const [leadMarks, setLeadMarks] = useState<Map<string, LeadMark>>(() => new Map());
+  // Lot 2 : le dernier brouillon vide supprimé d'ici, et son « Annuler ». Dans la
+  // fiche, pas dans un toast : la fenêtre modale rend les boutons des toasts
+  // inaccessibles.
+  const [erasedDraft, setErasedDraft] = useState<{ key: number; undo: () => Promise<UndoResult> } | null>(null);
   // Les endroits enregistrés au pointage. Vide par défaut : le réglage est
   // éteint tant qu'une entreprise ne l'a pas explicitement allumé.
   const [positions, setPositions] = useState<Map<string, PositionRow[]>>(new Map());
@@ -214,6 +220,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
   // Reset per worker.
   useEffect(() => {
     if (!worker) return;
+    setErasedDraft(null);
     const t = new Date();
     setRange({ from: t, to: t });
     setMFirst(worker.first_name || '');
@@ -401,6 +408,37 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
     }
   };
 
+  /**
+   * Lot 2 : un brouillon VIDE (0 minute, jamais envoyé) ne compte nulle part ; le
+   * bureau peut le supprimer d'ici. Relu en entier et revérifié avant
+   * (lib/erase) : des heures tapées entre-temps le gardent. « Annuler » le remet.
+   */
+  const deleteEmptyDraft = async (entry: ExportEntry) => {
+    if (!worker) return;
+    try {
+      const row = await eraseEmptyDraft(worker.company_id, entry.id);
+      setErasedDraft({
+        key: Date.now(),
+        undo: async () => {
+          try {
+            await restoreDrafts([row]);
+            fetchEntries();
+            onChanged?.();
+            return { ok: true, message: 'Annulé : le brouillon est remis.' };
+          } catch (err) {
+            console.error('Error restoring draft:', err);
+            return { ok: false, message: 'Impossible de le remettre pour le moment. Réessayez.' };
+          }
+        },
+      });
+      fetchEntries();
+      onChanged?.();
+    } catch (err) {
+      console.error('Error deleting empty draft:', err);
+      toast.error((err as { message?: string })?.message || 'Impossible de supprimer pour le moment.');
+    }
+  };
+
   // Reassign an "Autre" entry to a real client.
   const reassignEntry = async (entryId: string, newWorksiteId: string) => {
     if (!worker) return;
@@ -496,7 +534,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
 
       const rows = await fetchAllPaged<ExportEntry>((f, t2) => supabase
         .from('time_entries')
-        .select('id, user_id, company_id, work_date, start_time, end_time, break_minutes, total_minutes, meal_allowance, status, observation, reception, gap_before, planning_id, modified_at, modified_by, exported_at, locked, worksite:worksites(id, client_name, city)')
+        .select('id, user_id, company_id, work_date, start_time, end_time, break_minutes, total_minutes, meal_allowance, status, observation, reception, gap_before, planning_id, modified_at, modified_by, exported_at, locked, submitted_at, worksite:worksites(id, client_name, city)')
         .eq('user_id', worker.id)
         .eq('company_id', worker.company_id)
         .gte('work_date', format(from, 'yyyy-MM-dd'))
@@ -1094,6 +1132,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
         )}
 
         {/* Entries */}
+        {erasedDraft && <ActionDone key={erasedDraft.key} message="brouillon vide supprimé" undo={erasedDraft.undo} />}
         {loading ? (
           <div className="space-y-2">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full" />)}</div>
         ) : entries.length === 0 ? (
@@ -1107,6 +1146,8 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
               const isUnknown = entry.worksite?.client_name === OTHER_NAME;
               const isCancelled = entry.status === 'cancelled';
               const isWorkerAdded = !isCancelled && !entry.planning_id;
+              // Lot 2 : 0 minute, jamais envoyé, pas une sortie oubliée (drapeau du lot 12).
+              const isEmptyDraft = isDisposableDraft({ ...entry, exit_forgotten: qrFlags.get(entry.id)?.exit_forgotten });
               const realWorksites = worksites.filter((w) => w.client_name !== OTHER_NAME);
               // Lot 2 : le journal du bureau sur cette ligne, et ce qu'il dit.
               const lineEdits = edits.get(entry.id) || [];
@@ -1139,10 +1180,19 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
                       {entry.worksite?.client_name || OTHER_NAME}
                     </p>
                     {isCancelled && <Badge variant="outline" className="text-[10px] py-0">Retirée</Badge>}
-                    {/* Lot 2 : un brouillon ne compte pas — le dire. Renvoyé par le
-                        bureau, il attend le salarié : le dire aussi. */}
-                    {entry.status === 'draft' && (
+                    {/* Lot 2 : un brouillon ne compte pas — le dire (« brouillon vide »
+                        s'il n'a aucune minute, avec de quoi le supprimer). Renvoyé
+                        par le bureau, il attend le salarié : le dire aussi. */}
+                    {entry.status === 'draft' && !isEmptyDraft && (
                       <Badge variant="outline" className="text-[10px] py-0 text-muted-foreground" data-testid="badge-draft">brouillon</Badge>
+                    )}
+                    {isEmptyDraft && (
+                      <>
+                        <Badge variant="outline" className="text-[10px] py-0 text-muted-foreground" data-testid="badge-empty-draft"
+                          title="Début = fin : ne compte nulle part">brouillon vide</Badge>
+                        <button type="button" className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                          data-testid="delete-empty-draft" onClick={() => deleteEmptyDraft(entry)}>Supprimer</button>
+                      </>
                     )}
                     {returned && (
                       <Badge variant="outline" className="text-[10px] py-0 text-amber-800 border-amber-300 bg-amber-50" data-testid="badge-returned">renvoyée · en attente du salarié</Badge>

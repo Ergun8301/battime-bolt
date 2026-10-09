@@ -223,7 +223,10 @@ export function makeWorkerExecutor(user: { id: string; company_id: string }): Wo
           if (error) throw error;
           if (!src || !src.length) return { ok: false, message: 'Rien à copier ce jour-là.' };
           const ids = await copyLinesTo(user, src as { worksite_id: string | null; start_time: string; end_time: string; break_minutes: number | null; observation: string | null }[], d.vers);
-          message = `${src.length} ligne${src.length > 1 ? 's' : ''} copiée${src.length > 1 ? 's' : ''} sur ${d.vers.length} jour${d.vers.length > 1 ? 's' : ''}.`;
+          // Lot 2 : le nombre VRAIMENT copié (une ligne de 0 minute, à compléter, ne se copie pas).
+          if (!ids.length) return { ok: false, message: 'Rien à copier : les heures de ce jour-là sont à compléter.' };
+          const n = Math.round(ids.length / Math.max(1, d.vers.length));
+          message = `${n} ligne${n > 1 ? 's' : ''} copiée${n > 1 ? 's' : ''} sur ${d.vers.length} jour${d.vers.length > 1 ? 's' : ''}.`;
           undo = () => deleteDrafts(ids);
           break;
         }

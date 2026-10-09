@@ -46,7 +46,7 @@ import { TIME_PRESETS } from '@/lib/time-input';
 import { InfoTip } from '@/components/ui/info-tip';
 import { ExportMenu } from '@/components/export-menu';
 import { ActionDone, type UndoResult } from '@/components/action-done';
-import { erasePlanning, restoreRows, type EraseResult } from '@/lib/erase';
+import { erasePlanning, isDisposableDraft, undoErase, type EraseResult } from '@/lib/erase';
 import { fetchCompanyClosures, closedFor } from '@/lib/worker-closure';
 import { isReserveLifted } from '@/lib/reserves';
 import CompanySettings from '@/components/company-settings';
@@ -187,6 +187,14 @@ interface RealAgg { minutes: number; start: string; end: string; count: number; 
   /** Au moins une réserve de cette case n'a pas encore été levée par le bureau. */
   reserveOpen: boolean; note: string }
 const realKey = (userId: string, date: string, worksiteId: string | null) => `${userId}|${date}|${worksiteId}`;
+/** Un brouillon tel que la grille le lit (lot 2 : de quoi reconnaître le brouillon vide). */
+interface DraftRow {
+  id?: string; status?: string; user_id: string; work_date: string; worksite_id: string | null; planning_id?: string | null;
+  start_time: string; end_time: string; total_minutes: number; reception: string | null; reserve_resolved_at: string | null;
+  reserve_fixed_at?: string | null; observation: string | null; locked?: boolean; exit_forgotten?: boolean | null; submitted_at?: string | null;
+}
+// `exit_forgotten` (lot 12) peut manquer en base : la lecture est refaite sans elle.
+const DRAFT_COLS = 'id, status, user_id, work_date, worksite_id, planning_id, start_time, end_time, total_minutes, reception, reserve_resolved_at, reserve_fixed_at, observation, locked, submitted_at';
 
 /** Une pièce jointe telle que le panneau « pièces » du cockpit la montre. */
 interface DocLine {
@@ -201,9 +209,11 @@ interface DocLine {
 
 // ─── compact one-line chantier bubble ──────────────────────────────────────────
 
-function BubbleContent({ p, palette, real, draft, docCount = 0, live }: { p: PlanningWithWorksite; palette: ChantierPalette; real?: RealAgg; draft?: RealAgg; docCount?: number;
+function BubbleContent({ p, palette, real, draft, docCount = 0, live, withdrawn }: { p: PlanningWithWorksite; palette: ChantierPalette; real?: RealAgg; draft?: RealAgg; docCount?: number;
   /** Lot 9 : pointage en direct ouvert sur cette bulle → « en cours depuis HH:MM ». */
-  live?: string }) {
+  live?: string;
+  /** Lot 2 : le salarié l'a retirée (« je n'y suis pas allé ») — bulle éteinte, supprimable. */
+  withdrawn?: boolean }) {
   const hour = plannedHoursOf(p);
   const isOther = p.worksite?.client_name === 'Autre' && !!p.notes?.trim();
   const sub = isOther ? 'Autre' : [p.worksite?.product_type, p.worksite?.city].filter(Boolean).join(' · ');
@@ -262,7 +272,7 @@ function BubbleContent({ p, palette, real, draft, docCount = 0, live }: { p: Pla
     );
   }
   // Prévu — fond blanc, pointillé couleur chantier (même rendu que la borne).
-  return <PlannedBubbleView title={bubbleTitleOf(p)} sub={sub} hours={hour} palette={palette} docs={docs} live={live} />;
+  return <PlannedBubbleView title={bubbleTitleOf(p)} sub={sub} hours={hour} palette={palette} docs={docs} live={live} withdrawn={withdrawn} />;
 }
 
 /** Lot 11 : état d'une bulle en mode « Sélectionner » (absent hors de ce mode). */
@@ -281,7 +291,7 @@ const selAttr = (sel: SelState) => (sel.lock ? 'lock' : sel.on ? 'on' : 'off');
 // Lot 11 : en mode « Sélectionner » (sel défini), le clic coche au lieu d'ouvrir,
 // et le glisser est coupé. Hors de ce mode, le rendu est EXACTEMENT celui d'avant.
 function DraggableBubble({
-  p, palette, real, draft, onEdit, docCount = 0, live, sel, onToggle,
+  p, palette, real, draft, onEdit, docCount = 0, live, sel, onToggle, withdrawn,
 }: {
   p: PlanningWithWorksite;
   palette: ChantierPalette;
@@ -293,6 +303,7 @@ function DraggableBubble({
   live?: string;
   sel?: SelState;
   onToggle?: (p: PlanningWithWorksite, lock: string | null) => void;
+  withdrawn?: boolean;
 }) {
   const drag = useDraggable({ id: p.id, data: { type: 'move' }, disabled: !!sel });
   const drop = useDroppable({ id: `bub|${p.id}` });
@@ -307,7 +318,7 @@ function DraggableBubble({
         className={`bt-pl-grab ${drag.isDragging ? 'bt-pl-dragging' : ''}`}
         title={sel ? (sel.lock || (sel.on ? 'Cliquer pour décocher' : 'Cliquer pour cocher')) : 'Glisser pour déplacer / réordonner · cliquer pour modifier'}
       >
-        <BubbleContent p={p} palette={palette} real={real} draft={draft} docCount={docCount} live={live} />
+        <BubbleContent p={p} palette={palette} real={real} draft={draft} docCount={docCount} live={live} withdrawn={withdrawn} />
       </div>
       {sel && <SelMark sel={sel} />}
     </div>
@@ -838,7 +849,10 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const [planning, setPlanning] = useState<PlanningWithWorksite[]>([]);
   const [realEntries, setRealEntries] = useState<{ user_id: string; work_date: string; worksite_id: string | null; planning_id?: string | null; start_time: string; end_time: string; total_minutes: number; reception: string | null; reserve_resolved_at: string | null; reserve_fixed_at?: string | null; observation: string | null }[]>([]);
   // Saisies pas encore envoyées : affichées en pointillé, jamais comptées.
-  const [draftEntries, setDraftEntries] = useState<{ user_id: string; work_date: string; worksite_id: string | null; planning_id?: string | null; start_time: string; end_time: string; total_minutes: number; reception: string | null; reserve_resolved_at: string | null; reserve_fixed_at?: string | null; observation: string | null }[]>([]);
+  const [draftEntries, setDraftEntries] = useState<DraftRow[]>([]);
+  // Lot 2 : brouillons VIDES (0 minute, jamais envoyés), gardés à part : ils ne
+  // s'affichent plus « 0h00 · à envoyer » et ne verrouillent plus leur intervention.
+  const [emptyDrafts, setEmptyDrafts] = useState<DraftRow[]>([]);
   // Lot 11 : cases de la semaine que le salarié a RETIRÉES (sa ligne 'cancelled' la
   // désigne encore, la base refuse donc de l'effacer) → 🔒 en mode « Sélectionner ».
   const [withdrawnIds, setWithdrawnIds] = useState<Set<string>>(EMPTY_SET);
@@ -1100,8 +1114,12 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
           .eq('company_id', user.company_id).gte('work_date', from).lte('work_date', to).order('work_date'),
         supabase.from('time_entries').select('user_id, work_date, worksite_id, planning_id, start_time, end_time, total_minutes, reception, reserve_resolved_at, reserve_fixed_at, observation')
           .eq('company_id', user.company_id).in('status', ['submitted', 'validated']).gte('work_date', from).lte('work_date', to),
-        supabase.from('time_entries').select('user_id, work_date, worksite_id, planning_id, start_time, end_time, total_minutes, reception, reserve_resolved_at, reserve_fixed_at, observation')
-          .eq('company_id', user.company_id).eq('status', 'draft').gte('work_date', from).lte('work_date', to),
+        (async () => {
+          const q = (cols: string) => supabase.from('time_entries').select(cols)
+            .eq('company_id', user.company_id).eq('status', 'draft').gte('work_date', from).lte('work_date', to);
+          const r = await q(`${DRAFT_COLS}, exit_forgotten`);
+          return r.error && /exit_forgotten/.test(r.error.message || '') ? q(DRAFT_COLS) : r;
+        })(),
         supabase.from('time_entries').select('planning_id')
           .eq('company_id', user.company_id).eq('status', 'cancelled').not('planning_id', 'is', null).gte('work_date', from).lte('work_date', to),
       ]);
@@ -1110,7 +1128,13 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       const realRows = realRes.error ? [] : (realRes.data || []);
       setPlanning((prev) => keep(prev, planRows));
       if (!realRes.error) setRealEntries((prev) => keep(prev, realRows));
-      if (!draftRes.error) setDraftEntries((prev) => keep(prev, draftRes.data || []));
+      if (!draftRes.error) {
+        // Lot 2 : un brouillon VIDE (0 minute, jamais envoyé) ne compte nulle part
+        // et ne bloque plus rien : supprimer son intervention l'emporte (lib/erase).
+        const drafts = (draftRes.data || []) as unknown as DraftRow[];
+        setDraftEntries((prev) => keep(prev, drafts.filter((e) => !isDisposableDraft(e))));
+        setEmptyDrafts((prev) => keep(prev, drafts.filter((e) => isDisposableDraft(e))));
+      }
       if (!cancelledRes.error) setWithdrawnIds((prev) => keep(prev, withdrawnSet(cancelledRes.data)));
 
       // Unification : toute heure déclarée sur un chantier sans créneau planning → on
@@ -1427,6 +1451,15 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   // seulement pour que le bureau sache qu'une saisie existe.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const draftMap = useMemo(() => aggregate(draftEntries), [draftEntries, bubbleKeyOf]);
+  // Lot 2 : interventions qui ne portent qu'un brouillon vide (la fenêtre le dit :
+  // « Supprimer » l'emporte), et celles dont le brouillon est une sortie oubliée
+  // à compléter (gardées : son heure d'arrivée compte).
+  const emptyDraftPids = useMemo(() => {
+    const out = new Set<string>();
+    for (const e of emptyDrafts) { const k = bubbleKeyOf(e); if (k.startsWith('p:')) out.add(k.slice(2)); }
+    return out;
+  }, [emptyDrafts, bubbleKeyOf]);
+  const exitDraftKeys = useMemo(() => new Set(draftEntries.filter((e) => e.exit_forgotten).map((e) => bubbleKeyOf(e))), [draftEntries, bubbleKeyOf]);
 
   /**
    * Lot 11 : les jours qu'on peut ENCORE réclamer. Un jour d'un mois clôturé, ou
@@ -1583,13 +1616,14 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
 
   // ─── Lot 11 : « Sélectionner » → « Supprimer (N) » → « Annuler » ───────────────
   // Ce qui ne s'efface JAMAIS d'ici (et le dit) : des heures envoyées ou notées,
-  // un pointage en cours, une case retirée par le salarié (sa ligne la désigne
-  // encore), un mois clôturé (ou un salarié clôturé à cette date).
+  // un pointage en cours, un mois clôturé (ou un salarié clôturé à cette date).
+  // Lot 2 : une case RETIRÉE par le salarié se supprime désormais — sa ligne
+  // retirée est détachée, ses heures restent (lib/erase) ; un brouillon vide part
+  // avec la case.
   const hardLock = (p: PlanningWithWorksite): string | null => {
     if (realForPlanning(p)) return 'Heures envoyées — non supprimable';
-    if (draftForPlanning(p)) return 'Heures notées par le salarié — non supprimable';
+    if (draftForPlanning(p)) return exitDraftKeys.has(`p:${p.id}`) ? 'Sortie oubliée à compléter — non supprimable' : 'Heures notées par le salarié — non supprimable';
     if (liveForBubble(p)) return 'Pointage en cours — non supprimable';
-    if (withdrawnIds.has(p.id)) return 'Retirée par le salarié — non supprimable';
     if (closedMonths.has(p.work_date.slice(0, 7))) return 'Mois clôturé — non supprimable';
     if (closedFor(workerClosures, p.user_id, p.work_date)) return 'Heures clôturées pour ce salarié — non supprimable';
     return null;
@@ -1649,7 +1683,6 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   /** La carte « N intervention(s) supprimée(s) · Annuler » : elle reste jusqu'à sa croix. */
   const showUndo = (r: EraseResult) => {
     const k = r.deleted.length;
-    const rows = r.deleted;
     setUndoCard({
       key: Date.now(),
       message: `${k} intervention${k > 1 ? 's' : ''} supprimée${k > 1 ? 's' : ''}`
@@ -1657,7 +1690,8 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       strong: k > 1,
       undo: async () => {
         try {
-          await restoreRows('planning', rows);
+          // Lot 2 : l'intervention, puis ses brouillons vides, puis le lien des lignes retirées.
+          await undoErase(r);
           refreshRef.current();
           return { ok: true, message: k > 1 ? 'Annulé : tout est remis au planning.' : 'Annulé : l’intervention est remise au planning.' };
         } catch (err) {
@@ -2745,7 +2779,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                                     title={selectMode ? undefined : 'Cliquer pour ajouter une intervention'}
                                   >
                                     {chantiers.map(p => (
-                                      <DraggableBubble key={p.id} p={p} palette={paletteFor(p)} real={realForPlanning(p)} draft={draftForPlanning(p)} onEdit={openEdit} docCount={docsByWorksite.get(p.worksite_id || '') || 0} live={liveForBubble(p)} sel={selFor(p)} onToggle={toggleOne} />
+                                      <DraggableBubble key={p.id} p={p} palette={paletteFor(p)} real={realForPlanning(p)} draft={draftForPlanning(p)} onEdit={openEdit} docCount={docsByWorksite.get(p.worksite_id || '') || 0} live={liveForBubble(p)} sel={selFor(p)} onToggle={toggleOne} withdrawn={withdrawnIds.has(p.id)} />
                                     ))}
                                     {extra.map((x, i) => {
                                       const chip = (
@@ -2972,7 +3006,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                                 <div key={p.id} className={`bt-pl-m-bubbtn${sel ? ` ${selClass(sel)}` : ''}`} role="button" tabIndex={0}
                                   data-sel={sel ? selAttr(sel) : undefined} data-pid={sel ? p.id : undefined}
                                   onClick={act} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); act(); } }}>
-                                  <BubbleContent p={p} palette={paletteFor(p)} real={realForPlanning(p)} draft={draftForPlanning(p)} docCount={docsByWorksite.get(p.worksite_id || '') || 0} live={liveForBubble(p)} />
+                                  <BubbleContent p={p} palette={paletteFor(p)} real={realForPlanning(p)} draft={draftForPlanning(p)} docCount={docsByWorksite.get(p.worksite_id || '') || 0} live={liveForBubble(p)} withdrawn={withdrawnIds.has(p.id)} />
                                   {sel && <SelMark sel={sel} />}
                                 </div>
                               );
@@ -3015,7 +3049,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
           })() : activeDrag?.type === 'move' ? (
             (() => {
               const p = planning.find(x => x.id === activeDrag.id);
-              return p ? <div className="bt-pl-overlay"><BubbleContent p={p} palette={paletteFor(p)} real={realForPlanning(p)} docCount={docsByWorksite.get(p.worksite_id || '') || 0} live={liveForBubble(p)} /></div> : null;
+              return p ? <div className="bt-pl-overlay"><BubbleContent p={p} palette={paletteFor(p)} real={realForPlanning(p)} docCount={docsByWorksite.get(p.worksite_id || '') || 0} live={liveForBubble(p)} withdrawn={withdrawnIds.has(p.id)} /></div> : null;
             })()
           ) : null}
         </DragOverlay>
@@ -3658,6 +3692,13 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                   <span style={{ color: '#1F7A4D' }}>{editRealAgg.start?.substring(0, 5)}–{editRealAgg.end?.substring(0, 5)} · <strong>{formatMinutes(editRealAgg.minutes)} réelles</strong>{editRealAgg.count > 1 ? ` (${editRealAgg.count} saisies)` : ''}</span>
                 ) : (
                   <span className="text-muted-foreground">pas encore déclaré</span>
+                )}
+                {/* Lot 2 : ce qui part avec « Supprimer », dit avant le clic. */}
+                {!editRealAgg && withdrawnIds.has(editing.id) && (
+                  <div className="mt-1 text-[13px] text-muted-foreground" data-testid="edit-withdrawn">Retirée par le salarié : ses heures retirées restent dans sa fiche.</div>
+                )}
+                {!editRealAgg && emptyDraftPids.has(editing.id) && (
+                  <div className="mt-1 text-[13px] text-muted-foreground" data-testid="edit-empty-draft">Brouillon vide du salarié (0 min) : supprimé avec l’intervention.</div>
                 )}
                 {editRealAgg?.reception === 'avec' && (
                   editRealAgg.reserveOpen ? (

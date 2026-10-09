@@ -39,26 +39,34 @@ export function LiveLine({ since, dark = false }: { since: string; dark?: boolea
   );
 }
 
-/** Bulle « prévu » : fond blanc, pointillé couleur chantier ; verte quand le salarié est en cours. */
-export function PlannedBubbleView({ title, sub, hours, palette, docs, live }: {
+/**
+ * Bulle « prévu » : fond blanc, pointillé couleur chantier ; verte quand le salarié est en cours.
+ * Lot 2 : `withdrawn` (bureau seulement, la borne ne le passe pas) — retirée par le
+ * salarié : éteinte et barrée, pour qu'elle ne se lise plus comme « à faire ».
+ */
+export function PlannedBubbleView({ title, sub, hours, palette, docs, live, withdrawn }: {
   title: string;
   sub?: string | null;
   hours?: string | null;
   palette: ChantierPalette;
   docs?: ReactNode;
   live?: string;
+  withdrawn?: boolean;
 }) {
+  const off = withdrawn && !live;
   const style = live
     ? { background: '#E7F6EE', border: '1.5px solid #2FA36B', color: '#15120F' }
-    : { background: '#fff', border: `1.5px dashed ${palette.bar}`, color: '#15120F' };
+    : { background: '#fff', border: `1.5px dashed ${palette.bar}`, color: '#15120F', ...(off ? { opacity: 0.55 } : {}) };
   return (
-    <div className={`bt-pl-bub${live ? ' bt-pl-bub-on' : ''}`} style={style}>
+    <div className={`bt-pl-bub${live ? ' bt-pl-bub-on' : ''}`} style={style} data-withdrawn={off ? '1' : undefined}>
       <span className="bt-pl-bub-bar" style={{ background: live ? '#2FA36B' : palette.bar }} />
       <div className="bt-pl-bub-name">
-        <span className="bt-pl-bub-title" data-testid="bubble-title">{title}</span>
+        <span className="bt-pl-bub-title" data-testid="bubble-title" style={off ? { textDecoration: 'line-through' } : undefined}>{title}</span>
         {docs && <span className="bt-pl-bub-ic">{docs}</span>}
       </div>
-      {sub && <div className="bt-pl-bub-sub" style={{ color: '#6E6A63' }}>{sub}</div>}
+      {off
+        ? <div className="bt-pl-bub-sub" style={{ color: '#6E6A63' }}>retirée par le salarié</div>
+        : sub && <div className="bt-pl-bub-sub" style={{ color: '#6E6A63' }}>{sub}</div>}
       {hours && (
         <div className="bt-pl-bub-foot">
           <span className="bt-pl-hour" data-testid="bubble-hours">{hours}</span>

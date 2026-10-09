@@ -21,7 +21,7 @@ import {
 import { removeWorksiteDocument, uploadWorksiteDocument } from '@/lib/chantier-docs';
 import { sanitizeExtraction, supabaseCostSource } from '@/lib/real-cost';
 import { corrigerHeures } from '@/lib/corrections';
-import { casesLabel, eraseOne, erasePlanning, restoreRows } from '@/lib/erase';
+import { casesLabel, eraseOne, erasePlanning, restoreRows, undoErase } from '@/lib/erase';
 import { DOC_CATEGORY_LABEL, type ActionDraft, type ActionQuestion } from '@/supabase/functions/_shared/assistant-actions-core';
 
 export type {
@@ -277,7 +277,8 @@ export function makeActionExecutor(user: { id: string; company_id: string }): Ac
             : d.type === 'supprimer_absence' ? `${k} jour${k > 1 ? 's' : ''} d’absence retiré${k > 1 ? 's' : ''}.`
             : `${casesLabel(k)}.`;
           if (r.skipped) message += ` ${r.skipped} gardée${r.skipped > 1 ? 's' : ''} (${r.reason}).`;
-          undo = async () => { await restoreRows('planning', r.deleted); return k > 1 ? `Annulé : ${casesLabel(k, 'remise')} au planning.` : 'Annulé : c’est comme avant.'; };
+          // Lot 2 : même « Annuler » que l'écran — l'intervention, ses brouillons vides, le lien des lignes retirées.
+          undo = async () => { await undoErase(r); return k > 1 ? `Annulé : ${casesLabel(k, 'remise')} au planning.` : 'Annulé : c’est comme avant.'; };
           break;
         }
         case 'supprimer_document': {
