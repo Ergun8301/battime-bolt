@@ -28,7 +28,12 @@
 //   · un administrateur archivé ne peut ni inviter ni annuler ;
 //   · annuler une adresse ne touche jamais une autre entreprise ;
 //   · une invitation en attente sans date compte comme plus ancienne : retirée ;
-//   · jamais touchées : les invitations acceptées, celles d'une autre entreprise.
+//   · jamais touchées : les invitations acceptées, celles d'une autre entreprise ;
+//   · CONTRAT DU TRIGGER D'INSCRIPTION (lot 7 sécurité) : l'appel à GoTrue porte
+//     company_id = l'entreprise de l'APPELANT (jamais celle du corps), un uuid,
+//     sans company_name, rôle salarié, et l'invitation de cette entreprise pour
+//     cette adresse existe DÉJÀ au moment de l'appel. handle_new_user refuse le
+//     compte sans l'un ou l'autre.
 
 type Row = Record<string, unknown>;
 type Db = Record<string, Row[]>;
@@ -127,6 +132,8 @@ type Sending = { phone: string; finish: (ok: boolean) => void };
 let sending: Sending[] = [];
 let autoSend = true;
 const sentTo: string[] = [];
+/** Chaque appel à /auth/v1/invite : ses métadonnées, et les invitations en attente à cet instant. */
+const invitedData: { email: string; data: Row; pendingAtCall: Row[] }[] = [];
 
 async function fakeFetch(input: string | URL | Request, init?: RequestInit): Promise<Response> {
   const req = input instanceof Request ? input : null;
@@ -142,6 +149,12 @@ async function fakeFetch(input: string | URL | Request, init?: RequestInit): Pro
     return u ? reply(200, { id: u.id, aud: 'authenticated', role: 'authenticated', email: `${u.id}@x.fr` }) : reply(401, { msg: 'invalid token' });
   }
   if (url.pathname === '/auth/v1/invite' && method === 'POST') {
+    // Ce que voit le trigger handle_new_user quand GoTrue crée le compte.
+    invitedData.push({
+      email: String(body?.email),
+      data: { ...(body?.data ?? {}) },
+      pendingAtCall: (db.invitations || []).filter((r) => r.accepted_at == null).map((r) => ({ ...r })),
+    });
     const phone = String(body?.data?.phone ?? '');
     const ok = autoSend ? true : await new Promise<boolean>((resolve) => sending.push({ phone, finish: resolve }));
     if (!ok) return reply(429, { code: 429, error_code: 'over_email_send_rate_limit', msg: 'email rate limit exceeded' });
@@ -246,7 +259,7 @@ const INV_ACCEPTEE = 'a0000000-0000-4000-8000-000000000002';
 const INV_AUTRE_ENT = 'a0000000-0000-4000-8000-000000000003';
 
 function freshDb(): Db {
-  sending = []; autoSend = true; sentTo.length = 0; sameCreatedAt = null; failWhen = null; restErrors.length = 0;
+  sending = []; autoSend = true; sentTo.length = 0; invitedData.length = 0; sameCreatedAt = null; failWhen = null; restErrors.length = 0;
   return {
     auth: [{ id: 'u-admin', token: 'jwt-admin' }, { id: 'u-worker', token: 'jwt-worker' }],
     authUsers: [],
@@ -504,6 +517,37 @@ for (const [panne, when] of [
     },
   });
 }
+
+Deno.test({
+  ...OPTS,
+  name: 'Invitations — le compte porte l’entreprise de l’APPELANT (le trigger d’inscription en dépend)',
+  async fn() {
+    db = freshDb();
+    const NEW = 'nouvelle.salariee@example.test';
+    // Le corps essaie d'imposer une autre entreprise, un nom d'entreprise et un rôle : tout est ignoré.
+    const r = await call({ email: NEW, first_name: 'Nina', last_name: 'Exemple', company_id: CO2, company_name: 'Autre Société', role: 'admin' });
+    eq(r.status, 200, `invitation ${JSON.stringify(r.json)}`);
+    eq(invitedData.length, 1, 'un seul appel à GoTrue');
+    const { email, data, pendingAtCall } = invitedData[0];
+    eq(email, NEW, 'adresse envoyée');
+    eq(data.company_id, CO, 'company_id = l’entreprise de l’appelant, jamais celle du corps');
+    ok(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(String(data.company_id).trim().toLowerCase()),
+      'company_id est un uuid (le trigger refuse tout le reste)');
+    ok(!('company_name' in data), 'pas de clé company_name (elle ferait créer une NOUVELLE entreprise au trigger)');
+    eq(data.role, 'worker', 'rôle salarié');
+    eq([data.first_name, data.last_name], ['Nina', 'Exemple'], 'noms de l’invitation');
+    const mine = pendingAtCall.filter((x) => x.company_id === data.company_id && String(x.email).toLowerCase() === NEW);
+    eq(mine.length, 1, 'au moment de l’appel à GoTrue, l’invitation de CETTE entreprise pour CETTE adresse existe déjà');
+    eq(db.invitations.filter((x) => String(x.email).toLowerCase() === NEW).map((x) => x.company_id), [CO], 'aucune invitation créée dans une autre entreprise');
+    // Un renvoi suit le même contrat.
+    const again = await resend('0600000005');
+    eq(again.status, 200, 'renvoi');
+    const last = invitedData[invitedData.length - 1];
+    eq(last.data.company_id, CO, 'renvoi : même entreprise');
+    ok(last.pendingAtCall.some((x) => x.company_id === CO && x.email === EMAIL && x.phone === '0600000005'), 'renvoi : la nouvelle invitation existe déjà au moment de l’appel');
+    untouched();
+  },
+});
 
 Deno.test({
   ...OPTS,

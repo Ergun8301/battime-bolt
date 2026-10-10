@@ -17,6 +17,9 @@ import { format, addDays, addWeeks, subWeeks, parseISO } from 'date-fns';
 import { DAYS_IN_WEEK, weekDays as buildWeekDays, weekStart as startOfWorkWeek } from '@/lib/week';
 import { fr } from 'date-fns/locale';
 import { slotLabel } from '@/lib/slot';
+import { formatPause } from '@/supabase/functions/_shared/pause';
+import { fetchMyMissions, type Meeting } from '@/lib/missions';
+import { MEETING_TINT, meetingsFor, meetingTimeLabel } from '@/supabase/functions/_shared/missions';
 
 /**
  * Horaire prévu, lisible (lot 11). Créneau habituel → « Matin » / « Après-midi »
@@ -60,6 +63,9 @@ export default function PoseurWeek({ onSelectDay }: { onSelectDay?: (date: strin
   const [weekStart, setWeekStart] = useState(startOfWorkWeek());
   const [planning, setPlanning] = useState<PlanningWithWorksite[]>([]);
   const [entries, setEntries] = useState<TimeEntryWithWorksite[]>([]);
+  // Lot 4 : les réunions de la semaine (lecture à part, silencieuse ; vide tant
+  // que la migration n'est pas passée). Jamais additionnées aux heures.
+  const [meetings, setMeetings] = useState<{ list: Meeting[]; participants: Record<string, string[]> }>({ list: [], participants: {} });
   const [loading, setLoading] = useState(true);
 
   const weekEnd = addDays(weekStart, DAYS_IN_WEEK - 1); // lundi → dimanche
@@ -100,6 +106,17 @@ export default function PoseurWeek({ onSelectDay }: { onSelectDay?: (date: strin
   }, [user, weekStart]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => {
+    if (!user?.id || !user.company_id) return;
+    let stale = false;
+    const from = format(weekStart, 'yyyy-MM-dd');
+    fetchMyMissions(user.id, user.company_id, from, format(addDays(weekStart, DAYS_IN_WEEK - 1), 'yyyy-MM-dd'), { tasks: false }).then((r) => {
+      if (stale || r === null) return; // lecture en échec : rien de plus
+      setMeetings(r === 'missing' ? { list: [], participants: {} } : { list: r.meetings, participants: r.participants });
+    });
+    return () => { stale = true; };
+  }, [user?.id, user?.company_id, weekStart]);
+  const meetingsOn = (d: string) => (user ? meetingsFor(meetings.list, meetings.participants, user.id, d, user.role !== 'admin') : []);
 
   const weekDays = buildWeekDays(weekStart);
   const todayStr = format(new Date(), 'yyyy-MM-dd');
@@ -150,7 +167,8 @@ export default function PoseurWeek({ onSelectDay }: { onSelectDay?: (date: strin
             .filter(p => p.work_date === dateStr)
             .sort((a, b) => (a.estimated_start || '99:99').localeCompare(b.estimated_start || '99:99'));
           const dayEntries = entries.filter(e => e.work_date === dateStr);
-          const hasContent = dayPlanning.length > 0 || dayEntries.length > 0;
+          const dayMeetings = meetingsOn(dateStr);
+          const hasContent = dayPlanning.length > 0 || dayEntries.length > 0 || dayMeetings.length > 0;
           const canOpen = !!onSelectDay;
 
           return (
@@ -195,6 +213,15 @@ export default function PoseurWeek({ onSelectDay }: { onSelectDay?: (date: strin
                 </div>
               ))}
 
+              {/* Lot 4 : réunions (couleur à part, ne comptent pas comme heures) */}
+              {dayMeetings.map((m) => (
+                <div key={m.id} className="flex items-center gap-2 text-sm rounded p-2 text-[#15120F]" style={{ background: MEETING_TINT.bg, border: `1px solid ${MEETING_TINT.edge}` }} data-testid="week-meeting">
+                  <span aria-hidden="true">👥</span>
+                  <span className="font-mono text-xs font-bold shrink-0" style={{ color: MEETING_TINT.edge }}>{meetingTimeLabel(m.start_time, m.end_time)}</span>
+                  <span className="font-medium truncate">{m.title}</span>
+                </div>
+              ))}
+
               {/* Time entries */}
               {dayEntries.map((entry) => {
                 const isCancelled = entry.status === 'cancelled';
@@ -210,7 +237,8 @@ export default function PoseurWeek({ onSelectDay }: { onSelectDay?: (date: strin
                       <span className="font-medium truncate block">{entry.worksite?.client_name || 'Autre'}</span>
                       <span className="text-xs opacity-75">
                         {entry.start_time?.substring(0, 5)}–{entry.end_time?.substring(0, 5)}
-                        {entry.break_minutes > 0 ? ` · pause ${entry.break_minutes}min` : ''}
+                        {/* Lot 3bis : « pause 1 h 15 », plus « pause 75min ». */}
+                        {entry.break_minutes > 0 ? ` · pause ${formatPause(entry.break_minutes)}` : ''}
                       </span>
                     </div>
                     <div className="flex flex-col items-end gap-1 shrink-0">
@@ -246,7 +274,8 @@ export default function PoseurWeek({ onSelectDay }: { onSelectDay?: (date: strin
             .filter(p => p.work_date === dateStr)
             .sort((a, b) => (a.estimated_start || '99:99').localeCompare(b.estimated_start || '99:99'));
           const dayEntries = entries.filter(e => e.work_date === dateStr);
-          const hasContent = dayPlanning.length > 0 || dayEntries.length > 0;
+          const dayMeetings = meetingsOn(dateStr);
+          const hasContent = dayPlanning.length > 0 || dayEntries.length > 0 || dayMeetings.length > 0;
           const canOpen = !!onSelectDay;
 
           return (
@@ -280,6 +309,16 @@ export default function PoseurWeek({ onSelectDay }: { onSelectDay?: (date: strin
                       )}
                     </div>
                   )
+                ))}
+
+                {dayMeetings.map((m) => (
+                  <div key={m.id} className="rounded px-1.5 py-1 text-[11px] text-[#15120F]" style={{ background: MEETING_TINT.bg, border: `1px solid ${MEETING_TINT.edge}` }} data-testid="week-meeting">
+                    <div className="flex items-center gap-1">
+                      <span aria-hidden="true">👥</span>
+                      <span className="truncate font-medium">{m.title}</span>
+                    </div>
+                    <div className="mt-0.5 font-mono" style={{ color: MEETING_TINT.edge }}>{meetingTimeLabel(m.start_time, m.end_time)}</div>
+                  </div>
                 ))}
 
                 {dayEntries.map((entry) => {

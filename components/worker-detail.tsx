@@ -7,6 +7,7 @@ import { useAuth } from '@/components/auth-provider';
 import { corrigerHeures, fmtHeure } from '@/lib/corrections';
 import { User, Worksite, Certification, CertificationType } from '@/lib/types';
 import { ExportEntry, exportEntriesToExcel, exportEntriesToPDF, exportEntriesToCSV } from '@/lib/export-utils';
+import { readMealEnabled, showMealCorrection, useMealEnabled } from '@/lib/meal-setting';
 import { fetchCompanyClosures, closeWorkerUntil, reopenWorker } from '@/lib/worker-closure';
 import { fetchAllPaged } from '@/lib/fetch-all';
 import { isCounted } from '@/lib/status';
@@ -31,7 +32,8 @@ import { fetchQrFlags, isQrEntry, isExitToComplete, type QrFields } from '@/lib/
 import { fetchLeadMarks, type LeadMark } from '@/lib/lead-trace';
 import { fetchEntryEdits, correctOfficeEntry, returnDayToWorker, isReturned, lastEdit, type EntryEdit } from '@/lib/office-edits';
 import { changedAfterReturn, changedKeys, diffLabels, frozenLabel, precheck, reasonOk } from '@/supabase/functions/_shared/office-edits';
-import { interval } from '@/supabase/functions/_shared/day-hours';
+import { interval, spanMinutes } from '@/supabase/functions/_shared/day-hours';
+import PausePicker from '@/components/pause-picker';
 import { eraseEmptyDraft, isDisposableDraft, restoreDrafts } from '@/lib/erase';
 import { ActionDone, type UndoResult } from '@/components/action-done';
 import {
@@ -53,8 +55,6 @@ function formatMinutesToHours(minutes: number): string {
 }
 /** Lot 2 : « 30 min » sous l'heure, « 1h30 » au-delà (pause, route). */
 const fmtDuree = (m: number) => (m < 60 ? `${m} min` : formatMinutesToHours(m));
-/** Les pauses proposées au bureau, plus la valeur actuelle si elle n'y est pas. */
-const pauseOptions = (current: number) => Array.from(new Set([0, 15, 30, 45, 60, 90, current || 0])).sort((a, b) => a - b);
 /** « Pause 0 → 30 min · panier ajouté » : la première lettre en capitale, le reste tel quel. */
 const cap = (t: string) => (t ? t.charAt(0).toUpperCase() + t.slice(1) : t);
 
@@ -130,6 +130,9 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
   const [companyName, setCompanyName] = useState('');
   // Réglage entreprise : la route entre deux chantiers est-elle payée ?
   const [travelPaid, setTravelPaid] = useState(false);
+  // Lot 3 bis : panier non utilisé → la case de correction n'est plus proposée,
+  // sauf sur une ligne qui a encore un panier (pour pouvoir le retirer).
+  const mealOn = useMealEnabled(worker?.company_id) !== false;
   const [companyWeeklyHours, setCompanyWeeklyHours] = useState(DEFAULT_WEEKLY_HOURS);
   const [overtimeRates, setOvertimeRates] = useState(DEFAULT_OVERTIME_RATES);
   const [worksites, setWorksites] = useState<Worksite[]>([]);
@@ -147,6 +150,8 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
   // lira. Tant que la migration n'est pas passée (`editsAvailable` faux), le
   // panneau reste exactement celui d'avant : début et fin seulement.
   const [cBreak, setCBreak] = useState(0);
+  // Lot 3bis : « Autre » illisible ou pause plus longue que la ligne → correction bloquée.
+  const [cPauseErr, setCPauseErr] = useState<string | null>(null);
   const [cMeal, setCMeal] = useState(false);
   const [cGap, setCGap] = useState<'' | 'route' | 'pause'>('');
   const [cReason, setCReason] = useState('');
@@ -343,6 +348,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
     // Lot 2 : migration passée → heures, pause, panier et route, avec motif,
     // par `office_correct_entry` (lib/office-edits.ts). Sinon : le chemin d'avant.
     if (editsAvailable) {
+      if (cPauseErr) { toast.error(cPauseErr); return; }
       const changes = changedKeys(entry, { start_time: cStart, end_time: cEnd, break_minutes: cBreak, meal_allowance: cMeal, gap_before: cGap });
       const refus = precheck(entry, changes, sameDayOthers(entry), cReason);
       if (refus) { toast.error(refus); return; }
@@ -660,11 +666,13 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
 
   // Le MÊME menu « Exporter ▾ » que l'équipe : PDF, Excel, CSV. Ici, jamais de
   // verrou (« Sans verrou ») : c'est un relevé, pas l'envoi de la paie.
-  const doExport = (kind: ExportKind) => {
+  const doExport = async (kind: ExportKind) => {
     if (!worker) return;
     if (countedEntries.length === 0) { toast.error('Aucune heure envoyée sur cette période'); return; }
     setExporting(true);
     try {
+      // Lot 3 bis : le réglage panier relu AU CLIC (jamais un état chargé avant un changement).
+      const mealEnabled = await readMealEnabled(worker.company_id);
       const name = `${worker.first_name} ${worker.last_name}`;
       const fromStr = range?.from ? format(range.from, 'yyyy-MM-dd') : '';
       const toStr = range?.to ? format(range.to, 'yyyy-MM-dd') : fromStr;
@@ -676,7 +684,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
       })) as unknown as ExportEntry[];
       const opts = {
         fileName, title: 'BEMEXO — Relevé salarié', periodLabel, companyName,
-        singleWorkerName: name, travelPaid,
+        singleWorkerName: name, travelPaid, mealEnabled,
         weeklyHoursByWorker: new Map([[worker.id, effectiveWeeklyHours]]),
         recapEntries: recap,
         overtimeRates,
@@ -1475,14 +1483,22 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
                             qu'elle voit, sans nouvel écran. */}
                         {editsAvailable && (
                           <>
+                            {/* Lot 3bis : les mêmes puces que le salarié, en petit (+ « Autre » h:mm). */}
+                            <PausePicker
+                              variant="compact"
+                              testId="correct-break"
+                              vous
+                              hint="Pendant ces heures. Plusieurs pauses : additionnez-les."
+                              value={cBreak}
+                              onChange={setCBreak}
+                              maxExclusive={!cBadStart && !cBadEnd && cStart && cEnd && cStart !== cEnd ? spanMinutes({ start: cStart, end: cEnd }) : undefined}
+                              onErrorChange={setCPauseErr}
+                            />
+                            {/* Intégration 3bis : la pause a quitté cette ligne. Sans case Panier ni
+                                trou avant la ligne, elle resterait vide (un blanc de plus dans le panneau). */}
+                            {(showMealCorrection(mealOn, entry.meal_allowance) || prevEnd) && (
                             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
-                              <label className="flex items-center gap-1.5">
-                                <span>Pause</span>
-                                <select className="h-8 rounded-md border bg-background px-1.5 text-xs" value={cBreak}
-                                  onChange={(e) => setCBreak(Number(e.target.value))} data-testid="correct-break">
-                                  {pauseOptions(entry.break_minutes || 0).map((m) => <option key={m} value={m}>{fmtDuree(m)}</option>)}
-                                </select>
-                              </label>
+                              {showMealCorrection(mealOn, entry.meal_allowance) && (
                               <span className="flex items-center gap-1">
                                 <label className="flex items-center gap-1.5">
                                   <input type="checkbox" checked={cMeal} onChange={(e) => setCMeal(e.target.checked)} data-testid="correct-meal" />
@@ -1490,6 +1506,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
                                 </label>
                                 <InfoTip text="Un seul panier par jour : il est retiré de l'autre chantier." />
                               </span>
+                              )}
                               {prevEnd && (
                                 <label className="flex items-center gap-1.5">
                                   <span>Entre {prevEnd} et {cStart} :</span>
@@ -1502,6 +1519,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
                                 </label>
                               )}
                             </div>
+                            )}
                             <label className="block space-y-1 text-xs">
                               <span className="font-medium">Motif (vu par le salarié)</span>
                               <Input value={cReason} onChange={(e) => setCReason(e.target.value)} maxLength={500}
@@ -1517,7 +1535,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
 
                         <div className="flex flex-wrap items-center gap-2">
                           <Button size="sm" onClick={() => doCorrection(entry)} data-testid="correct-submit"
-                            disabled={cSaving || cReturning || (editsAvailable && (!reasonOk(cReason) || Object.keys(pending).length === 0))}>
+                            disabled={cSaving || cReturning || (editsAvailable && (!reasonOk(cReason) || Object.keys(pending).length === 0 || !!cPauseErr))}>
                             {cSaving && <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />} Corriger et prévenir
                           </Button>
                           {editsAvailable && (

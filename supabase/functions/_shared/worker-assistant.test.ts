@@ -51,6 +51,18 @@ Deno.test('10 phrases réalistes (BTP + restaurant)', () => {
   eq(lines('entre 8h et 12h bureau martin').l, [['w-martin', '08:00', '12:00', 0]], '10. « entre … et … »');
 });
 
+Deno.test('lot 3bis — la pause dite : h:mm, h, minutes (aucune limite à 0 / 30 / 60)', () => {
+  const brk = (t: string) => lines(t).l.map((x) => x[3]);
+  eq(brk('8h-17h villa dupont pause 1:15'), [75], '« pause 1:15 » = 1 h 15 (avant : 1 minute)');
+  eq(brk('8h-17h villa dupont pause 0:45'), [45], '« pause 0:45 » = 45 min (avant : 0)');
+  eq(brk('8h-17h villa dupont pause 1h15'), [75], '« pause 1h15 »');
+  eq(brk('8h-17h villa dupont pause de 15 min'), [15], '« pause de 15 min »');
+  eq(brk('8h-17h villa dupont 45 min de pause'), [45], '« 45 min de pause »');
+  eq(brk('8h-17h villa dupont 1h30 de pause'), [90], '« 1h30 de pause »');
+  eq(brk('8h-17h villa dupont 1:15 de pause'), [75], '« 1:15 de pause »');
+  eq(lines('7:30-16:00 villa dupont pause 0:45').l, [['w-dupont', '07:30', '16:00', 45]], 'les heures en « 7:30 » restent des horaires');
+});
+
 Deno.test('Chantier ambigu ou inconnu : aucun choix inventé', () => {
   eq(resolveWorksite('Leclerc', BTP.chantiers), null, '« Leclerc » = 2 chantiers → ambigu');
   eq(resolveWorksite('résidence leclerc', BTP.chantiers), 'w-leclerc', 'précisé → trouvé');

@@ -73,6 +73,17 @@ Deno.test('ce qui a changé, en mots de chantier', () => {
   eq(diffLabels({ start_time: '08:07:00', end_time: '17:00:00' }, { start_time: '08:07', end_time: '17:00' }), [], 'secondes ignorées');
 });
 
+Deno.test('lot 3bis — toute pause plus courte que la ligne passe (plus seulement 0 / 15 / 30 / 45 / 60 / 90)', () => {
+  const M = 'pause oubliée';
+  for (const b of [15, 45, 75, 120, 539]) eq(precheck(LIGNE, { break_minutes: b }, [], M), null, `pause ${b} min sur 08:00–17:00 : acceptée`);
+  eq(precheck(LIGNE, { break_minutes: 540 }, [], M), 'La pause doit être plus courte que la journée.', '9 h de pause sur 9 h : refusée, message de la base');
+  eq(precheck({ ...LIGNE, end_time: '16:00:00' }, { break_minutes: 480 }, [], M), 'La pause doit être plus courte que la journée.', '8 h sur 8 h : refusée');
+  eq(changedKeys(LIGNE, form({ break_minutes: 75 })), { break_minutes: 75 }, '1 h 15 part telle quelle');
+  const avant = { start_time: '08:00', end_time: '17:00', break_minutes: 0, meal_allowance: false, gap_before: null, status: 'submitted' };
+  eq(diffLabels(avant, { ...avant, break_minutes: 75 }), ['pause 0 → 75 min'], 'notification et historique : format inchangé (en minutes)');
+  eq(frozenLabel({ ...avant, break_minutes: 45 }), 'était 8h00–17h00 · pause 45 min', 'renvoi figé avec 45 min');
+});
+
 Deno.test('la notification : quoi, quand, pourquoi', () => {
   eq(jourMois('2026-10-08'), '8 octobre', 'date lisible');
   eq(jourMois('2026-08-01'), '1 août', 'accents');
