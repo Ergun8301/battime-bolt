@@ -194,8 +194,8 @@ export function parseHoursText(text: string, snapshot: WorkerSnapshot): Draft | 
   // « 8h/12h » : ici la barre relie deux heures, ce n'est pas un séparateur.
   const n = norm(text).replace(/(\d{1,2}(?:\s*[h:.]\s*\d{0,2})?)\s*\/\s*(\d{1,2}(?:\s*[h:.]\s*\d{0,2})?)/g, '$1-$2');
   const n2 = n.replace(/\bentre\s+(\S+)\s+et\s+(\S+)/g, '$1-$2')
-    // « 1h de pause », « 30 min de pause » → « pause 1h », « pause 30 min ».
-    .replace(/\b(\d{1,2})\s*(h|min|mn|minutes?)\s*(\d{2})?\s+de\s+pause\b/g, (_m, a, u, b) => `pause ${a}${u}${b ?? ''}`)
+    // « 1h de pause », « 30 min de pause », « 1:15 de pause » → « pause 1h », « pause 30 min », « pause 1:15 ».
+    .replace(/\b(\d{1,2})\s*(h|:|min|mn|minutes?)\s*(\d{2})?\s+de\s+pause\b/g, (_m, a, u, b) => `pause ${a}${u}${b ?? ''}`)
     .replace(/\bavec\s+(?=pause\b)/g, '');
   // Des DATES de congé (« du 20 au 24 octobre ») ne sont pas des horaires.
   if (/\b(conges?|vacances|absence|absent|maladie|malade|arret|rtt|repos)\b/.test(n)) return null;
@@ -208,11 +208,13 @@ export function parseHoursText(text: string, snapshot: WorkerSnapshot): Draft | 
   const lines: DraftLine[] = [];
   const segments = n2.split(/\s*(?:,|;|\/|\n|\bpuis\b|\bensuite\b|\bet l'?apres[- ]?midi\b|\bet le soir\b|\bet\s+(?=(?:de\s+)?\d))\s*/).filter(Boolean);
   let pendingPause = 0;
+  // Lot 3bis : « pause 1:15 » = 1 h 15 (avant : 1 minute). « Autre » apprend ce format au salarié.
+  const pauseMins = (p: RegExpExecArray) => (p[2] === 'h' || p[2] === ':' ? Number(p[1]) * 60 + Number(p[3] || 0) : Number(p[1]));
   for (const seg of segments) {
-    const pause = /\bpause\s+(?:de\s+|dej(?:euner)?\s+)?(\d+)\s*(h|min|mn|minutes?)?(?:\s*(\d{2}))?/.exec(seg);
+    const pause = /\bpause\s+(?:de\s+|dej(?:euner)?\s+)?(\d+)\s*(h|:|min|mn|minutes?)?(?:\s*(\d{2}))?/.exec(seg);
     const m = RANGE.exec(seg);
     if (pause && !m) {
-      const mins = pause[2] === 'h' ? Number(pause[1]) * 60 + Number(pause[3] || 0) : Number(pause[1]);
+      const mins = pauseMins(pause);
       if (lines.length) lines[lines.length - 1].break_minutes += mins; else pendingPause += mins;
       continue;
     }
@@ -222,7 +224,7 @@ export function parseHoursText(text: string, snapshot: WorkerSnapshot): Draft | 
     let rest = (seg.slice(0, m.index) + ' ' + seg.slice(m.index + m[0].length));
     if (pause) {
       rest = rest.replace(pause[0], ' ');
-      pendingPause += pause[2] === 'h' ? Number(pause[1]) * 60 + Number(pause[3] || 0) : Number(pause[1]);
+      pendingPause += pauseMins(pause);
     }
     rest = rest.replace(FILLER, ' ').replace(/\s+/g, ' ').trim();
     // Le nom tel que dicté (casse d'origine) pour l'afficher au salarié.
