@@ -51,7 +51,8 @@
     "test:panier-rls": "bash supabase/tests/run-rls.sh supabase/tests/panier_reglage.sql",
     "test:panier-ecrans": "node scripts/tests/panier-lot3bis.mjs out docs/captures-lot3bis",
     "test:impression": "npx -y deno@2 test supabase/functions/_shared/print-period.test.ts supabase/functions/_shared/planning-cells.test.ts",
-    "test:impression-ecrans": "node scripts/tests/impression-lot3bis.mjs out docs/captures-lot3bis"
+    "test:impression-ecrans": "node scripts/tests/impression-lot3bis.mjs out docs/captures-lot3bis",
+    "test:invitation-entreprise": "node supabase/tests/lot7_invitation_entreprise.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
