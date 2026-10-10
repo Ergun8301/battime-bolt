@@ -160,7 +160,12 @@ export function bestPlanningFor(line: Span & { worksite_id: string | null }, pla
 export const PAUSE_ASK_MINUTES = 360;
 /** Un trou de 20 min ou plus entre deux lignes coupe la journée (pause légale : 20 min). */
 export const PAUSE_GAP_MINUTES = 20;
-export const PAUSE_CHOICES = [0, 30, 60] as const;
+/**
+ * Une ligne de 30 min ou moins ne reçoit pas la pause demandée à l'envoi (règle
+ * du lot 1). Indépendante des puces proposées (lot 3bis : _shared/pause.ts) :
+ * ajouter « 15 min » aux puces ne doit pas faire de 16–30 min une cible.
+ */
+export const PAUSE_MIN_TARGET_MINUTES = 30;
 
 export interface PauseLine extends Span {
   id: string;
@@ -201,8 +206,7 @@ export function pauseAsks(lines: PauseLine[]): PauseAsk[] {
     if (st.some((l) => (l.break_minutes || 0) > 0)) continue;
     const minutes = st.reduce((s, l) => s + spanMinutes(l), 0);
     if (minutes <= PAUSE_ASK_MINUTES) continue;
-    const smallest = Math.min(...PAUSE_CHOICES.filter((m) => m > 0));
-    const target = st.filter((l) => l.editable && spanMinutes(l) > smallest)
+    const target = st.filter((l) => l.editable && spanMinutes(l) > PAUSE_MIN_TARGET_MINUTES)
       .sort((a, b) => spanMinutes(b) - spanMinutes(a))[0];
     if (!target) continue;
     const end = st.reduce((m, l) => (interval(l)[1] > interval(m)[1] ? l : m), st[0]).end;

@@ -8,7 +8,8 @@
 import { useEffect, useId, useState, type ReactNode } from 'react';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
-import { saveCompanySettings } from '@/lib/admin-writes';
+import { saveCompanySettings, saveMealEnabled } from '@/lib/admin-writes';
+import { readMealSetting, rememberMealEnabled } from '@/lib/meal-setting';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Loader2, Upload, Trash2, Building2, CreditCard, Mail, ShieldCheck, MonitorSmartphone, Clock, Bell, ChevronDown } from 'lucide-react';
 import LeaveFundSetting from '@/components/leave-fund-setting';
@@ -158,6 +159,11 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
   // Le temps de route entre deux chantiers est-il payé ? Décision de
   // l'entreprise : le logiciel ne tranche pas à sa place.
   const [travelPaid, setTravelPaid] = useState(false);
+  // Lot 3 bis : « Utiliser le panier repas ». null = colonne absente (migration
+  // pas passée) : ligne masquée, rien n'est envoyé. Enregistré par « Enregistrer »,
+  // par sa propre fonction serveur, et seulement s'il a changé.
+  const [mealOn, setMealOn] = useState<boolean | null>(null);
+  const [mealInit, setMealInit] = useState<boolean | null>(null);
   // ── L'endroit au pointage (étape 26) ───────────────────────────────────────
   // Ce réglage ne passe PAS par le bouton « Enregistrer » du bas : il a son
   // propre geste et sa propre écriture. Deux raisons, la seconde étant celle
@@ -249,6 +255,13 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
       .then(({ data, error }) => {
         if (!stale) setColleagues(error || !data ? null : !!(data as { colleagues_planning_visible?: boolean }).colleagues_planning_visible);
       });
+    return () => { stale = true; };
+  }, [open, user?.company_id]);
+  // Lot 3 bis : lecture SEULE de meal_enabled (jamais ajoutée au select du haut).
+  useEffect(() => {
+    if (!open || !user?.company_id) return;
+    let stale = false;
+    readMealSetting(user.company_id).then((v) => { if (!stale) { setMealOn(v); setMealInit(v); } });
     return () => { stale = true; };
   }, [open, user?.company_id]);
   const toggleColleagues = async (v: boolean) => {
@@ -419,6 +432,17 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
         weekly_hours: Number(weeklyHours.replace(',', '.')) || 0,
         accountant_email: mail, overtime_rate_1: r1, overtime_rate_2: r2,
       });
+      // Lot 3 bis : APRÈS update_company_info (inchangé). Échec → la fenêtre reste
+      // ouverte ; les autres réglages sont déjà enregistrés, réessayer est sans risque.
+      if (mealOn !== null && mealOn !== mealInit && user?.company_id) {
+        try {
+          await saveMealEnabled(mealOn);
+          setMealInit(mealOn); rememberMealEnabled(user.company_id, mealOn);
+        } catch {
+          setErr('Panier repas : réglage non enregistré. Réessayez.');
+          return;
+        }
+      }
       onSaved?.();
       onOpenChange(false);
     } catch {
@@ -539,7 +563,7 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
 
             <SetSection
               id={`${secId}-paie`} testId="set-sec-paie" title="Heures & paie"
-              hint={`Horaire, heures supplémentaires, route, comptable${aiOn ? ', caisse de congés' : ''}`}
+              hint={`Horaire, heures supplémentaires, route, ${mealOn !== null ? 'panier repas, ' : ''}comptable${aiOn ? ', caisse de congés' : ''}`}
               icon={<Clock className="h-4 w-4" />}
               open={secs.paie} onToggle={() => toggleSec('paie')}
             >
@@ -605,6 +629,23 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
                   </label>
                 </div>
               </div>
+
+              {/* Lot 3 bis : panier repas. Décoché, il est MASQUÉ partout côté
+                  salarié ; les paniers déjà notés restent (bureau, exports). */}
+              {mealOn !== null && (
+                <div className="bt-set-sub" data-testid="setting-meal">
+                  <div className="bt-set-subtxt">
+                    <SetLabel tipId="panier" tip={<>Décoché : la case « Panier » disparaît chez vos salariés. Les paniers déjà notés sont gardés et restent dans les exports.</>}>Utiliser le panier repas</SetLabel>
+                    <p className="bt-set-substate">Une case « Panier » par jour pour le salarié.</p>
+                  </div>
+                  <div className="bt-set-remctl">
+                    <label className="bt-set-switch">
+                      <input type="checkbox" checked={mealOn} onChange={(e) => setMealOn(e.target.checked)} data-testid="set-meal" />
+                      <span>{mealOn ? 'Oui' : 'Non'}</span>
+                    </label>
+                  </div>
+                </div>
+              )}
 
               {/* Comptable — destinataire de l'export de paie. L'adresse vit ici,
                   pas dans l'écran d'export : rien ne part vers une adresse tapée

@@ -17,6 +17,7 @@ import { format, addDays, addWeeks, subWeeks, parseISO } from 'date-fns';
 import { DAYS_IN_WEEK, weekDays as buildWeekDays, weekStart as startOfWorkWeek } from '@/lib/week';
 import { fr } from 'date-fns/locale';
 import { slotLabel } from '@/lib/slot';
+import { formatPause } from '@/supabase/functions/_shared/pause';
 
 /**
  * Horaire prévu, lisible (lot 11). Créneau habituel → « Matin » / « Après-midi »
@@ -210,7 +211,8 @@ export default function PoseurWeek({ onSelectDay }: { onSelectDay?: (date: strin
                       <span className="font-medium truncate block">{entry.worksite?.client_name || 'Autre'}</span>
                       <span className="text-xs opacity-75">
                         {entry.start_time?.substring(0, 5)}–{entry.end_time?.substring(0, 5)}
-                        {entry.break_minutes > 0 ? ` · pause ${entry.break_minutes}min` : ''}
+                        {/* Lot 3bis : « pause 1 h 15 », plus « pause 75min ». */}
+                        {entry.break_minutes > 0 ? ` · pause ${formatPause(entry.break_minutes)}` : ''}
                       </span>
                     </div>
                     <div className="flex flex-col items-end gap-1 shrink-0">

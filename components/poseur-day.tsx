@@ -20,6 +20,7 @@ import { syncAllPending } from '@/lib/offline-sync';
 import { insertWorkerEntry } from '@/lib/worker-entry';
 import { planningsToMaterialise, remainingPlannings, sendablePlannings, visiblePlannings } from '@/lib/work-status';
 import { copyLinesTo, materialisePlanned as materialiseDay, setDayMealOnline, submitDrafts } from '@/lib/worker-day';
+import { useMealEnabled } from '@/lib/meal-setting';
 import { fmtHeure } from '@/lib/corrections';
 import { fetchEntryEdits, lastEdit, type EntryEdit } from '@/lib/office-edits';
 import { diffLabels } from '@/supabase/functions/_shared/office-edits';
@@ -30,8 +31,10 @@ import LiveTimer from '@/components/live-timer';
 import { useOwnLiveSession, startLiveSession, announceLiveChange } from '@/lib/live-session';
 import { geoInfoSeen, markGeoInfoSeen } from '@/lib/position-info';
 import GeoInfoDialog from '@/components/geo-info-dialog';
-import { isExitToComplete, EXIT_TO_COMPLETE_MSG, PAUSE_CHOICES } from '@/lib/qr-entry';
-import { bestPlanningFor, findOverlap, firstBlockingOverlap, isEmptyDraft, keptBreak, pauseAsks, type PauseAsk, type PlannedState, type Span } from '@/supabase/functions/_shared/day-hours';
+import { isExitToComplete, EXIT_TO_COMPLETE_MSG } from '@/lib/qr-entry';
+import { bestPlanningFor, findOverlap, firstBlockingOverlap, isEmptyDraft, keptBreak, pauseAsks, spanMinutes, type PauseAsk, type PlannedState, type Span } from '@/supabase/functions/_shared/day-hours';
+import { pauseError } from '@/supabase/functions/_shared/pause';
+import PausePicker from '@/components/pause-picker';
 import { LiveLine } from '@/components/planning-bubble';
 import { placeLive, cellKey } from '@/supabase/functions/_shared/live-place';
 import TeamDay from '@/components/team-day';
@@ -369,10 +372,8 @@ button.bt-stat:focus-visible{outline:2px solid #FFC21A;outline-offset:2px}
 .bt-times-hint{text-align:center;font-size:12.5px;color:#9a948a;font-weight:600;margin-top:8px}
 
 .bt-pause-auto{display:flex;align-items:center;gap:8px;margin-top:16px;background:rgba(255,194,26,.12);border:1px solid rgba(255,194,26,.4);border-radius:12px;padding:11px 13px;font-size:12.5px;font-weight:700;color:#7a5e00}
-/* Lot 1 : la pause se déclare dans la fiche (et se demande à l'envoi après 6 h d'affilée). */
-.bt-pause-pick{display:flex;gap:8px}
-.bt-pause-b{flex:1;min-width:0;border:1.5px solid rgba(21,18,15,.16);background:#fff;border-radius:13px;padding:12px 6px;font-weight:800;font-size:13px;color:#6E6A63;cursor:pointer;font-family:inherit}
-.bt-pause-b.on{background:#15120F;border-color:#15120F;color:#FFC21A}
+/* Lot 1 : la pause se déclare dans la fiche (et se demande à l'envoi après 6 h d'affilée).
+   Lot 3bis : ses puces vivent dans components/pause-picker.tsx (fiche, question, bureau). */
 .bt-plan-warn{margin-top:6px;font-size:12px;font-weight:700;color:#9a3b14}
 
 .bt-recep{display:flex;gap:8px}
@@ -478,6 +479,10 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
   const [fObs, setFObs] = useState('');
   // Lot 1 : la pause de la ligne (minutes), gardée quand on corrige les heures.
   const [fBreak, setFBreak] = useState(0);
+  // Lot 3bis : « Autre » illisible, ou pause plus longue que la ligne → OK refusé (plus de remise à 0 en silence).
+  const [fPauseErr, setFPauseErr] = useState<string | null>(null);
+  // Une fiche ouverte = un sélecteur neuf (rien de tapé dans « Autre » ne passe d'une ligne à l'autre).
+  const [fOpenSeq, setFOpenSeq] = useState(0);
   const [fReception, setFReception] = useState<'sans' | 'avec' | 'en_cours' | ''>(''); // statut du chantier : en cours / sans / avec réserve (facultatif)
   const [fSaving, setFSaving] = useState(false);
   // Les heures telles qu'elles étaient à l'ouverture de la fiche (lot 9). Une
@@ -649,6 +654,12 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
       .then(({ data }) => { if (!stale && data) setTravelPaid(!!(data as { travel_paid?: boolean }).travel_paid); });
     return () => { stale = true; };
   }, [user?.company_id]);
+
+  // Lot 3 bis : l'entreprise utilise-t-elle le panier repas ? Lecture À PART
+  // (lib/meal-setting.ts). « Non » explicite : la case disparaît et l'écran
+  // n'écrit plus jamais `meal_allowance` (ni pose, ni retrait, ni déplacement
+  // d'un panier resté). Null (pas encore lu) : comme avant.
+  const meal = useMealEnabled(user?.company_id);
 
   /**
    * L'entreprise enregistre-t-elle l'endroit au pointage ? (étape 26)
@@ -935,6 +946,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
   // Renvoie false si le panier n'a pas pu être écrit (ligne verrouillée, réseau…).
   const applyDayMeal = useCallback(async (value: boolean, flagModified = false): Promise<boolean> => {
     if (!user) return false;
+    if (meal === false) return true; // lot 3 bis : panier non utilisé → rien n'est écrit
     let ok = true;
     // En ligne : lib/worker-day.ts (même chemin que l'Assistant BEMEXO).
     if (navigator.onLine) ok = await setDayMealOnline(user, date, value, flagModified);
@@ -946,10 +958,10 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
       setPendingEntries(getPendingEntries(user.id).filter((e) => e.work_date === date));
     }
     return ok;
-  }, [user, date]);
+  }, [user, date, meal]);
 
   const toggleDayMeal = async (value: boolean, flagModified = false) => {
-    if (!user) return;
+    if (!user || meal === false) return;
     setDayMeal(value);
     // Journée encore vide : rien sur quoi écrire. On GARDE l'intention, posée
     // sur la première ligne qui apparaîtra (effet ci-dessous) — jamais perdue.
@@ -978,7 +990,9 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
   // du prévu, borne…) et un panier attendait : on le pose, UNE fois. Échec →
   // on le dit (journée verrouillée) plutôt que de le décocher en silence.
   useEffect(() => {
-    if (!user || loading) return;
+    // Lot 3 bis : seulement une fois le « oui » connu. Une intention restée d'avant
+    // le réglage n'est ni posée ni effacée (gardée par jour, sans effet).
+    if (!user || loading || meal !== true) return;
     const intent = readMealIntent(user.id, date);
     if (intent === null) return;
     // Seulement les lignes DE CE JOUR : juste après un changement de jour,
@@ -995,7 +1009,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
       else setDayMeal(intent);
       if (navigator.onLine) fetchData();
     }).catch(() => { toast.error('Panier non pris en compte'); });
-  }, [user, date, loading, entries, pendingEntries, applyDayMeal, fetchData]);
+  }, [user, date, loading, meal, entries, pendingEntries, applyDayMeal, fetchData]);
 
   // ─── Inline editor open / save / delete ─────────────────────────────────────
 
@@ -1005,7 +1019,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
   // 08:00–16:45 : un quart d'heure perdu sans que personne n'ait rien changé.
   // La molette n'affiche que les quarts d'heure ; l'heure exacte est rappelée
   // dessous, et elle ne bouge que si on tourne la molette.
-  const setTimes = (start: string, end: string) => { setFStart(start); setFEnd(end); setFInit({ start, end }); };
+  const setTimes = (start: string, end: string) => { setFStart(start); setFEnd(end); setFInit({ start, end }); setFOpenSeq((n) => n + 1); };
   const openPlanned = (p: Planning & { worksite: Worksite }) => {
     if (monthLocked) { setLateOpen(true); return; }
     setOpenSlot({ kind: 'planned', planningId: p.id });
@@ -1032,6 +1046,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
     if (monthLocked) { setLateOpen(true); return; }
     setOpenSlot({ kind: 'new' });
     setFBreak(0);
+    setFOpenSeq((n) => n + 1);
     setFWorksiteId('');
     setChantierQuery('');
     // Heure de début pré-remplie à MAINTENANT (heure de Paris) ; fin = début + 1 h
@@ -1136,6 +1151,10 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
       ...pendingEntries.filter((e) => e.localId !== selfLocal).map((e) => ({ start: e.start_time.slice(0, 5), end: e.end_time.slice(0, 5) })),
     ]);
     if (clash) { toast.error(`Ces heures chevauchent ${clash.start}–${clash.end}, déjà noté. Corrige le début ou la fin.`); return; }
+    // Lot 3bis : une pause illisible ou plus longue que la ligne bloque, la fiche
+    // reste ouverte. Avant, keptBreak la remettait à 0 sans un mot.
+    const pErr = fPauseErr ?? pauseError(fBreak, spanMinutes({ start: fStart, end: fEnd }));
+    if (pErr) { toast.error(pErr); return; }
     setFSaving(true);
     try {
       // Lot 1 : la pause de la ligne est GARDÉE (et déduite), jamais remise à 0.
@@ -1408,7 +1427,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
     continueSubmit();
   };
 
-  /** Pause choisie (0 / 30 min / 1 h) : posée sur la plus longue ligne de la plage, puis l'envoi continue. */
+  /** Pause choisie (puce ou « Autre », toute durée plus courte que la ligne) : posée sur la plus longue ligne de la plage, puis l'envoi continue. */
   const answerPause = async (minutes: number) => {
     const ask = pauseAsk;
     setPauseAsk(null);
@@ -1938,7 +1957,9 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
                 pris / non pris. Mêmes données qu'avant (meal_allowance, une
                 ligne par jour), mêmes garde-fous : mois clos → fenêtre « Mois
                 clôturé », journée envoyée → confirmation, lignes chez le
-                comptable → grisée. La ligne blanche « Panier repas » a disparu. */}
+                comptable → grisée. La ligne blanche « Panier repas » a disparu.
+                Lot 3 bis : absente si l'entreprise n'utilise pas le panier. */}
+            {meal !== false && (
             <button
               type="button"
               className={`bt-stat${dayMeal ? ' on' : ''}`}
@@ -1956,6 +1977,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
               <span className="bt-stat-n">{dayMeal ? 'Panier ✓' : 'Panier'}</span>
               <span className="bt-stat-l">{dayMeal ? 'repas pris' : 'non pris'}</span>
             </button>
+            )}
           </div>
         </div>
 
@@ -2402,16 +2424,20 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
               <div className="bt-times-hint">Touche une heure pour la régler</div>
 
               {/* Lot 1 : la pause DANS ces heures (déduite de la durée). Les trous
-                  entre deux lignes restent comptés à part (Route / Pause). */}
-              <div className="bt-sec">Pause dans ces heures</div>
-              <div className="bt-pause-pick" data-testid="ed-pause">
-                {Array.from(new Set([0, 30, 60, ...(fBreak && ![0, 30, 60].includes(fBreak) ? [fBreak] : [])])).map((m) => (
-                  <button key={m} type="button" className={`bt-pause-b${fBreak === m ? ' on' : ''}`} data-testid={`ed-pause-${m}`}
-                    onClick={() => setFBreak(m)}>
-                    {m === 0 ? 'Aucune' : m === 60 ? '1 h' : `${m} min`}
-                  </button>
-                ))}
-              </div>
+                  entre deux lignes restent comptés à part (Route / Pause).
+                  Lot 3bis : le TOTAL des pauses de la ligne — l'indice le dit,
+                  pour qu'un salarié à deux lignes ne mette pas sa journée sur chacune. */}
+              <div className="bt-sec">Total des pauses</div>
+              <PausePicker
+                key={fOpenSeq}
+                testId="ed-pause"
+                label={null}
+                hint="Pendant ces heures. Plusieurs pauses ? Additionne-les."
+                value={fBreak}
+                onChange={setFBreak}
+                maxExclusive={fStart && fEnd && fStart !== fEnd ? spanMinutes({ start: fStart, end: fEnd }) : undefined}
+                onErrorChange={setFPauseErr}
+              />
 
               {/* 3 · Statut du chantier — en cours / sans / avec réserve (facultatif) */}
               <div className="bt-sec">3 · Statut du chantier <span style={{ textTransform: 'none', letterSpacing: 0, color: '#a39d92' }}>(facultatif)</span></div>
@@ -2582,7 +2608,8 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
         </DialogContent>
       </Dialog>
 
-      {/* Plus de 6 h d'affilée sans pause (borne OU saisie à la main) — un seul toucher. */}
+      {/* Plus de 6 h d'affilée sans pause (borne OU saisie à la main) — un seul toucher
+          sur une puce ; « Autre » (h:mm) part avec « OK ». Les lignes du QR passent ici. */}
       <Dialog open={!!pauseAsk} onOpenChange={(o) => { if (!o) setPauseAsk(null); }}>
         <DialogContent className="max-w-sm" data-testid="pause-ask">
           <DialogHeader>
@@ -2593,14 +2620,18 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
               {pauseAsk.start}–{pauseAsk.end} : {formatMinutesToHours(pauseAsk.minutes)} d&apos;affilée, sans pause notée.
             </p>
           )}
-          <div className="grid grid-cols-3 gap-2 pt-1">
-            {PAUSE_CHOICES.filter((m) => !pauseAsk || m < pauseAsk.lineMinutes).map((m) => (
-              <Button key={m} variant={m === 0 ? 'outline' : 'default'} className="h-12 text-base font-black" data-testid={`pause-${m}`}
-                onClick={() => void answerPause(m)}>
-                {m === 0 ? 'Non' : m === 30 ? '30 min' : '1 h'}
-              </Button>
-            ))}
-          </div>
+          {pauseAsk && (
+            <PausePicker
+              key={pauseAsk.id}
+              testId="pause"
+              value={null}
+              zeroLabel="Non"
+              confirmLabel="OK"
+              hint="Pendant cette plage. Plusieurs pauses ? Additionne-les."
+              maxExclusive={pauseAsk.lineMinutes}
+              onChange={(m) => void answerPause(m)}
+            />
+          )}
         </DialogContent>
       </Dialog>
 
