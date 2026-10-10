@@ -53,6 +53,9 @@
     "test:impression": "npx -y deno@2 test supabase/functions/_shared/print-period.test.ts supabase/functions/_shared/planning-cells.test.ts",
     "test:impression-ecrans": "node scripts/tests/impression-lot3bis.mjs out docs/captures-lot3bis",
     "test:invitation-entreprise": "node supabase/tests/lot7_invitation_entreprise.mjs",
+    "test:formations": "npx -y deno@2 test --allow-read supabase/functions/_shared/trainings.test.ts",
+    "test:formations-db": "node supabase/tests/lot6_formations.mjs",
+    "test:formations-ecrans": "node scripts/tests/formations-lot6.mjs out docs/captures-lot6",
     "test:missions": "npx -y deno@2 test --allow-read supabase/functions/_shared/missions.test.ts",
     "test:missions-db": "node supabase/tests/lot4_missions_reunions.mjs",
     "test:missions-ecrans": "node scripts/tests/missions-lot4.mjs out docs/captures-lot4"

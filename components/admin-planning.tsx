@@ -83,6 +83,10 @@ import { cellKey, parisDay, placeLive, type LivePlace, type LiveSessionLike } fr
 import { copyRefusal, targetRefusal } from '@/supabase/functions/_shared/copy-slot';
 import KioskAdmin from '@/components/kiosk-admin';
 import { keep } from '@/lib/same';
+// Formations (lot 6, oct. 2026) : depuis « Salariés » et le menu du téléphone, seulement si la migration est passée.
+import TrainingsAdmin from '@/components/trainings-admin';
+import { trainingsAvailable } from '@/lib/trainings';
+import { GraduationCap } from 'lucide-react';
 
 // ─── helpers / constants ──────────────────────────────────────────────────────
 
@@ -1501,6 +1505,22 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       });
     return () => { stale = true; };
   }, [user?.company_id]);
+
+  // Formations : lecture SÉPARÉE — tant que la table n'existe pas, rien ne s'affiche.
+  // Revérifiée à l'ouverture de « Salariés » / du menu seulement si elle avait
+  // échoué pour une autre raison (réseau) ; table absente : on ne redemande pas.
+  const [trainingsOn, setTrainingsOn] = useState(false);
+  const [trainingsOpen, setTrainingsOpen] = useState(false);
+  const trainingsMissing = useRef(false);
+  useEffect(() => {
+    if (!user?.company_id || trainingsOn || trainingsMissing.current) return;
+    let stale = false;
+    trainingsAvailable(user.company_id).then((s) => {
+      if (s === 'missing') trainingsMissing.current = true;
+      else if (s === 'on' && !stale) setTrainingsOn(true);
+    });
+    return () => { stale = true; };
+  }, [user?.company_id, trainingsOn, salariesOpen, mobileMenuOpen]);
 
   const refresh = () => { fetchPlanning(); fetchExtras(); fetchClosures(); fetchMissions(); };
   // Lot 11 : « Annuler » peut être cliqué bien après (la carte reste) — peut-être sur
@@ -3664,6 +3684,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         openReserves={openReserves}
         onOpenKiosk={kioskOn && user?.company_id ? () => setKioskOpen(true) : undefined}
         onSignOut={signOut}
+        onOpenTrainings={trainingsOn && user?.company_id ? () => setTrainingsOpen(true) : undefined}
       />
 
       {/* Lot 3 : la feuille imprimée, directement dans <body> (le CSS d'impression cache
@@ -3698,6 +3719,11 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
               <Palmtree className="h-4 w-4 mr-1.5" /> Demandes de congé
               {pendingLeaves > 0 && <span className="bt-pl-badge ml-1.5">{pendingLeaves}</span>}
             </Button>
+            {trainingsOn && (
+              <Button size="sm" variant="outline" className="mb-2 w-full font-bold" data-testid="salaries-trainings" onClick={() => { setSalariesOpen(false); setTrainingsOpen(true); }}>
+                <GraduationCap className="h-4 w-4 mr-1.5" /> Formations
+              </Button>
+            )}
 
             {/* LE BUREAU. Une entreprise n'avait qu'un seul administrateur, celui
                 qui a créé le compte : si le patron est sur un toit, personne ne
@@ -3864,6 +3890,11 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         workers={workers}
         onChanged={() => { fetchExtras(); refresh(); }}
       />
+
+      {/* Formations : `workers` (les vrais comptes), jamais displayWorkers (démo). */}
+      {trainingsOn && user?.company_id && (
+        <TrainingsAdmin open={trainingsOpen} onOpenChange={setTrainingsOpen} companyId={user.company_id} companyName={companyName} workers={workers} />
+      )}
 
       {/* Chantiers — mobile equivalent of the desktop "Clients" dropdown (list +
           search + edit fiche + create). Same data/functions as desktop, no drag
