@@ -10,7 +10,7 @@ Migration 100 % additive, aucune donnée effacée.
 | **Sans tablette** | « Je commence » sur les cartes, gros bloc « POINTAGE EN COURS » | Plus de chrono sur le téléphone : le salarié saisit ses heures (« + ») et envoie |
 | **Avec tablette — entrée** | Scan QR **ou** « Je commence » | **Scan QR uniquement** (refusé en base depuis le téléphone, l'API ou l'Assistant) |
 | **Sortie** | 2e scan ou « J'ai fini » | 2e scan, ou petite carte **« Tu es pointé depuis 08:00 — Terminer ma journée »** |
-| **Pause** | Rien | Non scannée. À l'envoi, journée QR de plus de 6 h sans pause → **« Tu as pris une pause ? »** : Non / 30 min / 1 h (un toucher). Un scan à midi = 2 lignes, pas de question |
+| **Pause** | Rien | Non scannée. À l'envoi, journée QR de plus de 6 h sans pause → **« Tu as pris une pause ? »** : Non / 15 / 30 / 45 min / 1 h / 1 h 30 / 2 h (un toucher), ou « Autre » (h:mm, puis OK) — lot 3bis. Un scan à midi = 2 lignes, pas de question |
 | **Sortie oubliée** | Chrono ouvert sans limite ; la borne refusait le lendemain | **Chaque nuit** (01:30–02:30 Paris), le chrono d'un jour précédent devient un brouillon **« sortie oubliée »** (fin = heure prévue, sinon **« fin à compléter »**). Le scan du lendemain marche normalement |
 | **Ligne « à compléter »** | — | Impossible à envoyer (refus en base), hors export et clôture, comptée dans **« à relancer »** |
 | **Case verte du bureau** | Tout chrono ouvert | Seulement un chrono ouvert **aujourd'hui** (bureau, borne, Assistant) |

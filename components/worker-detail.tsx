@@ -31,7 +31,8 @@ import { fetchQrFlags, isQrEntry, isExitToComplete, type QrFields } from '@/lib/
 import { fetchLeadMarks, type LeadMark } from '@/lib/lead-trace';
 import { fetchEntryEdits, correctOfficeEntry, returnDayToWorker, isReturned, lastEdit, type EntryEdit } from '@/lib/office-edits';
 import { changedAfterReturn, changedKeys, diffLabels, frozenLabel, precheck, reasonOk } from '@/supabase/functions/_shared/office-edits';
-import { interval } from '@/supabase/functions/_shared/day-hours';
+import { interval, spanMinutes } from '@/supabase/functions/_shared/day-hours';
+import PausePicker from '@/components/pause-picker';
 import { eraseEmptyDraft, isDisposableDraft, restoreDrafts } from '@/lib/erase';
 import { ActionDone, type UndoResult } from '@/components/action-done';
 import {
@@ -53,8 +54,6 @@ function formatMinutesToHours(minutes: number): string {
 }
 /** Lot 2 : « 30 min » sous l'heure, « 1h30 » au-delà (pause, route). */
 const fmtDuree = (m: number) => (m < 60 ? `${m} min` : formatMinutesToHours(m));
-/** Les pauses proposées au bureau, plus la valeur actuelle si elle n'y est pas. */
-const pauseOptions = (current: number) => Array.from(new Set([0, 15, 30, 45, 60, 90, current || 0])).sort((a, b) => a - b);
 /** « Pause 0 → 30 min · panier ajouté » : la première lettre en capitale, le reste tel quel. */
 const cap = (t: string) => (t ? t.charAt(0).toUpperCase() + t.slice(1) : t);
 
@@ -147,6 +146,8 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
   // lira. Tant que la migration n'est pas passée (`editsAvailable` faux), le
   // panneau reste exactement celui d'avant : début et fin seulement.
   const [cBreak, setCBreak] = useState(0);
+  // Lot 3bis : « Autre » illisible ou pause plus longue que la ligne → correction bloquée.
+  const [cPauseErr, setCPauseErr] = useState<string | null>(null);
   const [cMeal, setCMeal] = useState(false);
   const [cGap, setCGap] = useState<'' | 'route' | 'pause'>('');
   const [cReason, setCReason] = useState('');
@@ -343,6 +344,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
     // Lot 2 : migration passée → heures, pause, panier et route, avec motif,
     // par `office_correct_entry` (lib/office-edits.ts). Sinon : le chemin d'avant.
     if (editsAvailable) {
+      if (cPauseErr) { toast.error(cPauseErr); return; }
       const changes = changedKeys(entry, { start_time: cStart, end_time: cEnd, break_minutes: cBreak, meal_allowance: cMeal, gap_before: cGap });
       const refus = precheck(entry, changes, sameDayOthers(entry), cReason);
       if (refus) { toast.error(refus); return; }
@@ -1475,14 +1477,18 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
                             qu'elle voit, sans nouvel écran. */}
                         {editsAvailable && (
                           <>
+                            {/* Lot 3bis : les mêmes puces que le salarié, en petit (+ « Autre » h:mm). */}
+                            <PausePicker
+                              variant="compact"
+                              testId="correct-break"
+                              vous
+                              hint="Pendant ces heures. Plusieurs pauses : additionnez-les."
+                              value={cBreak}
+                              onChange={setCBreak}
+                              maxExclusive={!cBadStart && !cBadEnd && cStart && cEnd && cStart !== cEnd ? spanMinutes({ start: cStart, end: cEnd }) : undefined}
+                              onErrorChange={setCPauseErr}
+                            />
                             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
-                              <label className="flex items-center gap-1.5">
-                                <span>Pause</span>
-                                <select className="h-8 rounded-md border bg-background px-1.5 text-xs" value={cBreak}
-                                  onChange={(e) => setCBreak(Number(e.target.value))} data-testid="correct-break">
-                                  {pauseOptions(entry.break_minutes || 0).map((m) => <option key={m} value={m}>{fmtDuree(m)}</option>)}
-                                </select>
-                              </label>
                               <span className="flex items-center gap-1">
                                 <label className="flex items-center gap-1.5">
                                   <input type="checkbox" checked={cMeal} onChange={(e) => setCMeal(e.target.checked)} data-testid="correct-meal" />
@@ -1517,7 +1523,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
 
                         <div className="flex flex-wrap items-center gap-2">
                           <Button size="sm" onClick={() => doCorrection(entry)} data-testid="correct-submit"
-                            disabled={cSaving || cReturning || (editsAvailable && (!reasonOk(cReason) || Object.keys(pending).length === 0))}>
+                            disabled={cSaving || cReturning || (editsAvailable && (!reasonOk(cReason) || Object.keys(pending).length === 0 || !!cPauseErr))}>
                             {cSaving && <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />} Corriger et prévenir
                           </Button>
                           {editsAvailable && (

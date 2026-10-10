@@ -26,8 +26,9 @@ export const EXIT_TO_COMPLETE_MSG = 'Sortie oubliée : mets ton heure de fin ava
 
 // Lot 1 : la question « Tu as pris une pause ? » n'est plus réservée aux
 // lignes de la borne. Sa règle (plus de 6 h d'affilée, toutes lignes) vit dans
-// supabase/functions/_shared/day-hours.ts (pauseAsks).
-export { PAUSE_ASK_MINUTES, PAUSE_CHOICES } from '@/supabase/functions/_shared/day-hours';
+// supabase/functions/_shared/day-hours.ts (pauseAsks) ; les durées proposées
+// (lot 3bis), dans supabase/functions/_shared/pause.ts.
+export { PAUSE_ASK_MINUTES } from '@/supabase/functions/_shared/day-hours';
 
 /**
  * Les trois drapeaux du lot 12 pour des lignes déjà lues (bureau). Requête à

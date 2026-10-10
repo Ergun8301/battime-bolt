@@ -327,7 +327,10 @@ const openSheet = async () => {
 };
 const card = (txt) => dlg.locator('.divide-y > div').filter({ hasText: txt }).first();
 const sheetTotal = async () => parseHM(await dlg.locator('div:has(> span:text("Total de la période")) > span').nth(1).innerText().catch(() => ''));
-const openPanel = async (c) => { await c.getByRole('button', { name: /Corriger les heures/ }).click(); await op.waitForTimeout(300); };
+// Lot 3bis : les puces de la pause poussent la ligne « Panier » d'un cran ; son ⓘ
+// arrive pile sous la souris restée sur « Corriger les heures » et s'ouvre au
+// survol. Une vraie souris bouge : on l'écarte, comme elle.
+const openPanel = async (c) => { await c.getByRole('button', { name: /Corriger les heures/ }).click(); await op.mouse.move(2, 2); await op.waitForTimeout(300); };
 let toastMark = 0;
 /** Les messages affichés depuis le dernier `clearToasts()`. */
 const toasts = async () => (await op.evaluate((k) => (window.__toasts || []).slice(k), toastMark)).join(' | ');
@@ -411,11 +414,11 @@ await openSheet();
   const panel = c.locator('[data-testid=correct-panel]');
   check((await panel.innerText()).includes('Corriger cette journée'), 'titre « Corriger cette journée »');
   const n = writes.length;
-  await panel.locator('[data-testid=correct-break]').selectOption('30');
+  await panel.locator('[data-testid=correct-break-30]').click(); // lot 3bis : puces (plus de liste)
   await panel.locator('[data-testid=correct-reason]').fill('ok');
   check(await panel.locator('[data-testid=correct-submit]').isDisabled() && await panel.locator('[data-testid=correct-return]').isDisabled(),
     'A3 motif de 2 caractères : « Corriger et prévenir » et « Renvoyer » inactifs');
-  await panel.locator('[data-testid=correct-break]').selectOption('0');
+  await panel.locator('[data-testid=correct-break-0]').click();
   await panel.locator('[data-testid=correct-reason]').fill('pause oubliée');
   check(await panel.locator('[data-testid=correct-submit]').isDisabled(), 'A3 rien de changé : « Corriger et prévenir » inactif');
   await panel.locator('[data-testid=correct-submit]').click({ force: true }).catch(() => {});
@@ -423,7 +426,7 @@ await openSheet();
   check(since(n).filter((w) => w.m !== 'GET').length === 0, 'A3 aucune requête d’écriture');
 
   // A2 · pause 0 → 30 avec motif
-  await panel.locator('[data-testid=correct-break]').selectOption('30');
+  await panel.locator('[data-testid=correct-break-30]').click();
   await shot(c, 'bureau-panneau');
   await panel.locator('[data-testid=correct-submit]').click();
   await op.waitForTimeout(1800);
@@ -714,7 +717,7 @@ await openSheet();
   const c = card('Salle');
   await openPanel(c);
   const panel = c.locator('[data-testid=correct-panel]');
-  await panel.locator('[data-testid=correct-break]').selectOption('30');
+  await panel.locator('[data-testid=correct-break-30]').click();
   await panel.locator('[data-testid=correct-reason]').fill('pause oubliée');
   const n = writes.length;
   await panel.locator('[data-testid=correct-submit]').click();

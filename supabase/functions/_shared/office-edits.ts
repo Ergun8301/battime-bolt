@@ -14,6 +14,7 @@
 //
 // Fonctions pures, sans dépendance : importées par Deno ET par le navigateur.
 import { findOverlap, spanMinutes, type Span } from './day-hours.ts';
+import { PAUSE_TOO_LONG } from './pause.ts';
 
 /** Un motif d'un ou deux caractères (« ok », « . ») n'explique rien au salarié. */
 export const REASON_MIN = 3;
@@ -91,7 +92,7 @@ export function precheck(entry: EntryLike, changes: Changes, sameDay: Span[], re
   if (start === end) return 'Le début et la fin sont identiques.';
   const span = spanMinutes({ start, end });
   const brk = changes.break_minutes ?? Math.round(Number(entry.break_minutes) || 0);
-  if (brk < 0 || brk >= span) return 'La pause doit être plus courte que la journée.';
+  if (brk < 0 || brk >= span) return PAUSE_TOO_LONG;
   if ('gap_before' in changes && changes.gap_before !== null && changes.gap_before !== 'route' && changes.gap_before !== 'pause') {
     return 'Avant ce chantier : route ou pause.';
   }

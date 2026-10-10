@@ -11,6 +11,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActionAsk, ActionDone } from '@/components/action-done';
 import { Loader2, Plus, Trash2, CheckCircle2 } from 'lucide-react';
 import { checkDraft, fmtMin, shiftMinutes, type DraftExtra, type DraftLine, type SaveLines } from '@/lib/worker-assistant';
+import { formatPauseInput, parsePauseInput, readPauseInput } from '@/supabase/functions/_shared/pause';
 
 const CSS = `
 .wd{margin-top:10px;border:1px solid rgba(21,18,15,.12);border-radius:12px;background:#FBF8F2;padding:10px}
@@ -21,7 +22,8 @@ const CSS = `
 .wd select,.wd input{font-family:inherit;font-size:14px;border:1.5px solid rgba(21,18,15,.16);border-radius:8px;padding:7px 8px;background:#fff;color:#15120F;min-width:0}
 .wd select{flex:1;font-weight:700}
 .wd input[type=time]{flex:1;width:auto;min-width:96px}
-.wd .pause{width:64px}
+.wd .pause{width:76px;font-family:'JetBrains Mono',ui-monospace,monospace;font-weight:700}
+.wd .pause[aria-invalid=true]{border-color:#C0461F}
 .wd-lbl{font-size:11px;color:#6E6A63;font-weight:700}
 .wd-plan{font-size:11.5px;color:#0F7A43;font-weight:700;margin:-2px 0 6px 2px}
 .wd-x{border:none;background:transparent;color:#9a948a;padding:4px;cursor:pointer}
@@ -40,6 +42,36 @@ interface Props {
   ctl?: ExtraControl;
 }
 const launched = new WeakSet<object>();
+
+/**
+ * Lot 3bis — « Total des pauses (h:mm) » : un champ, pas huit puces dans la
+ * bulle. Même lecture que partout (_shared/pause.ts). Le texte illisible est
+ * porté par la VALEUR de la ligne (NaN), pas par une table indexée : retirer
+ * une ligne ne déplace pas l'erreur sur sa voisine.
+ */
+function DraftPause({ value, onChange, testId }: { value: number; onChange: (m: number) => void; testId: string }) {
+  const [text, setText] = useState(() => (Number.isFinite(value) && value > 0 ? formatPauseInput(value) : ''));
+  const [shown, setShown] = useState(false);
+  /** Champ vide = pas de pause ; illisible = NaN (bloque « Enregistrer »). */
+  const valueOf = (t: string) => (t.trim() ? parsePauseInput(t) ?? NaN : 0);
+  // La ligne affichée à cet endroit a changé (ligne retirée au-dessus) : le texte suit sa valeur.
+  useEffect(() => {
+    if (!Number.isFinite(value)) return;
+    setText((t) => (valueOf(t) === value ? t : value > 0 ? formatPauseInput(value) : ''));
+  }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
+  const r = readPauseInput(text, true);
+  const bad = r.kind === 'bad' && shown ? r.message : null;
+  return (
+    <>
+      <input className="pause" type="text" inputMode="text" autoComplete="off" maxLength={12} placeholder="0:00" value={text}
+        aria-label="Total des pauses (h:mm)" aria-invalid={!!bad || undefined} data-testid={testId}
+        onChange={(e) => { setText(e.target.value); setShown(false); onChange(valueOf(e.target.value)); }}
+        onBlur={() => setShown(true)}
+        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); setShown(true); } }} />
+      {bad && <span className="wd-err" style={{ margin: 0 }} role="alert" data-testid={`${testId}-error`}>{bad}</span>}
+    </>
+  );
+}
 
 export default function WorkerDraftCard({ extra, save, onSaved, ctl }: Props) {
   const { chantiers } = extra;
@@ -78,7 +110,9 @@ export default function WorkerDraftCard({ extra, save, onSaved, ctl }: Props) {
   const checked = useMemo(() => checkDraft(date, lines, { aujourdhui: today, chantiers, semaine: [], planning: [] }), [date, lines, chantiers, today]);
   const errors = edited ? checked.errors : Array.from(new Set(checked.errors.concat(extra.draft.errors)));
   const missing = lines.some((l) => !l.worksite_id);
-  const total = lines.reduce((s, l) => s + Math.max(0, shiftMinutes(l.start, l.end, l.break_minutes) || 0), 0);
+  // Lot 3bis : une pause illisible (NaN, voir DraftPause) bloque « Enregistrer » ; trop longue, checkDraft le dit.
+  const pauseBad = lines.some((l) => !Number.isFinite(l.break_minutes));
+  const total = lines.reduce((s, l) => s + Math.max(0, shiftMinutes(l.start, l.end, Number.isFinite(l.break_minutes) ? l.break_minutes : 0) || 0), 0);
   const upd = (i: number, patch: Partial<DraftLine>) => { setEdited(true); setLines((ls) => ls.map((l, j) => (j === i ? { ...l, ...patch } : l))); };
   const dateLabel = date === today ? 'Aujourd’hui'
     : new Date(`${date}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -140,10 +174,9 @@ export default function WorkerDraftCard({ extra, save, onSaved, ctl }: Props) {
             <span className="wd-lbl">→</span>
             <input type="time" value={l.end} onChange={(e) => upd(i, { end: e.target.value })} aria-label="Fin" />
           </div>
-          <div className="wd-row" style={{ marginTop: 6 }}>
-            <span className="wd-lbl">Pause</span>
-            <input className="pause" type="number" min={0} step={5} value={l.break_minutes} onChange={(e) => upd(i, { break_minutes: Math.max(0, Number(e.target.value) || 0) })} aria-label="Pause (minutes)" />
-            <span className="wd-lbl">min</span>
+          <div className="wd-row" style={{ marginTop: 6, flexWrap: 'wrap' }}>
+            <span className="wd-lbl">Total des pauses (h:mm)</span>
+            <DraftPause value={l.break_minutes} onChange={(m) => upd(i, { break_minutes: m })} testId={`wd-pause-${i}`} />
           </div>
         </div>
       ))}
@@ -152,7 +185,7 @@ export default function WorkerDraftCard({ extra, save, onSaved, ctl }: Props) {
         <button type="button" className="wd-add" onClick={() => setLines((ls) => [...ls, { worksite_id: null, worksite_text: '', start: '13:00', end: '17:00', break_minutes: 0 }])}><Plus className="h-3.5 w-3.5" /> Créneau</button>
         <span className="wd-total">Total {fmtMin(total)}</span>
         <button
-          type="button" className="wd-save" disabled={busy || missing || errors.length > 0}
+          type="button" className="wd-save" disabled={busy || missing || pauseBad || errors.length > 0}
           onClick={() => doSave(lines)}
         >
           {busy && <Loader2 className="h-4 w-4 animate-spin" />} Enregistrer
