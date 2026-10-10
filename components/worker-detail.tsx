@@ -1494,6 +1494,9 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
                               maxExclusive={!cBadStart && !cBadEnd && cStart && cEnd && cStart !== cEnd ? spanMinutes({ start: cStart, end: cEnd }) : undefined}
                               onErrorChange={setCPauseErr}
                             />
+                            {/* Intégration 3bis : la pause a quitté cette ligne. Sans case Panier ni
+                                trou avant la ligne, elle resterait vide (un blanc de plus dans le panneau). */}
+                            {(showMealCorrection(mealOn, entry.meal_allowance) || prevEnd) && (
                             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
                               {showMealCorrection(mealOn, entry.meal_allowance) && (
                               <span className="flex items-center gap-1">
@@ -1516,6 +1519,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
                                 </label>
                               )}
                             </div>
+                            )}
                             <label className="block space-y-1 text-xs">
                               <span className="font-medium">Motif (vu par le salarié)</span>
                               <Input value={cReason} onChange={(e) => setCReason(e.target.value)} maxLength={500}
