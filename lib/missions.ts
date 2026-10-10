@@ -105,7 +105,7 @@ async function readMeetings(companyId: string, from: string, to: string): Promis
  * l'état connu, gardé partie par partie quand une lecture échoue pour une autre
  * raison que « table absente ».
  */
-export async function fetchOfficeMissions(companyId: string, from: string, to: string, prev: MissionsState): Promise<MissionsState> {
+export async function fetchOfficeMissions(companyId: string, from: string, to: string, prev: MissionsState): Promise<{ state: MissionsState; complete: boolean }> {
   const [t, m] = await Promise.all([
     readTasks(companyId, from, to).catch(() => null),
     readMeetings(companyId, from, to).catch(() => null),
@@ -115,7 +115,8 @@ export async function fetchOfficeMissions(companyId: string, from: string, to: s
   else if (t) Object.assign(next, { tasksOn: true, tasks: t });
   if (m === 'missing') Object.assign(next, { meetingsOn: false, meetings: [], participants: {} });
   else if (m) Object.assign(next, { meetingsOn: true, meetings: m.meetings, participants: m.participants });
-  return next;
+  // complete = les deux lectures ont répondu pour CETTE période (sinon l'état gardé est celui d'avant).
+  return { state: next, complete: t !== null && m !== null };
 }
 
 /**

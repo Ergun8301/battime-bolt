@@ -686,6 +686,17 @@ section('O7 · modifier (nouvelle / modifiée / annulée), puis retirer');
   check(pushes.every((x) => x.body.tag === `reunion-${id}`), 'même étiquette : la notification suivante remplace la précédente');
   check(pushes.some((x) => x.body.body === 'Réunion modifiée : « Réunion chantier » vendredi 23 octobre à 08:30'), 'texte « Réunion modifiée : … à 08:30 »');
   check(await cellOf(op, 'Chloé Démo', FRI).locator('[data-testid=meeting-chip]').count() === 0 && await cellOf(op, 'Sam Test', FRI).locator('[data-testid=meeting-chip]').count() === 1, 'chips : Chloé retirée, Sam ajouté');
+  // Relecture : un participant archivé depuis ne bloque plus la modification (la base le refuserait).
+  D.meeting_participants.push({ meeting_id: id, company_id: CO, user_id: 'u-ancien' });
+  await op.evaluate(() => document.dispatchEvent(new Event('visibilitychange'))); await op.waitForTimeout(800);
+  await cellOf(op, 'Sam Test', FRI).locator('[data-testid=meeting-chip]').click(); await op.waitForTimeout(500);
+  await setTime(dlg().locator('[data-testid=meeting-start]'), '08:45');
+  n = writes.length;
+  await dlg().locator('[data-testid=meeting-save]').click(); await op.waitForTimeout(1500);
+  const rpcA = of(since(n), 'RPC', 'office_save_meeting');
+  check(rpcA.length === 1 && sameSet(rpcA[0].body.p_user_ids, [ALEX, SAM]) && D.meetings.find((x) => x.id === id)?.start_time?.startsWith('08:45'),
+    `participant archivé : la réunion se modifie quand même, sans lui (${JSON.stringify(rpcA[0]?.body.p_user_ids)})`);
+  check(!of(since(n), 'FN', 'send-push').some((x) => (x.body.user_ids || []).includes('u-ancien')), 'l’archivé ne reçoit aucune notification');
   await cellOf(op, 'Sam Test', FRI).locator('[data-testid=meeting-chip]').click(); await op.waitForTimeout(500);
   await dlg().locator('[data-testid=meeting-del]').click();
   n = writes.length;
