@@ -697,6 +697,15 @@ await openWorker();
   check(await txt(card2.locator('[data-testid=wd-pause-0-error]')) === UNREADABLE, `P13 … « ${UNREADABLE} »`);
   await card2.locator('[data-testid=wd-pause-0]').fill('5:00'); await wp.waitForTimeout(150);
   check(await card2.locator('button.wd-save').isDisabled() && (await txt(card2)).includes('Pause plus longue que le créneau 08:00 → 12:00.'), 'P13 « 5:00 » sur 4 h : refusé par le contrôle de l’Assistant');
+  // Ligne retirée au-dessus : le champ pause illisible de la ligne suivante garde SON texte et son erreur.
+  await card2.locator('[data-testid=wd-pause-0]').fill('1:30');
+  await card2.locator('button.wd-add').click(); await wp.waitForTimeout(150);
+  await card2.locator('[data-testid=wd-pause-1]').fill('1'); await wp.waitForTimeout(150);
+  await card2.locator('button[aria-label="Retirer"]').first().click(); await wp.waitForTimeout(200);
+  const left = card2.locator('[data-testid=wd-pause-0]');
+  await left.press('Enter'); await wp.waitForTimeout(150);
+  check(await left.inputValue() === '1' && await card2.locator('button.wd-save').isDisabled() && (await txt(card2.locator('[data-testid=wd-pause-0-error]'))).length > 0,
+    `P13 ligne retirée au-dessus : le champ restant montre « 1 » et son erreur, « Enregistrer » inactif (texte « ${await left.inputValue()} »)`);
   assistantReply = null;
 }
 

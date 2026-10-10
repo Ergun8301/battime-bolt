@@ -113,7 +113,15 @@ export default function WorkerDraftCard({ extra, save, onSaved, ctl }: Props) {
   // Lot 3bis : une pause illisible (NaN, voir DraftPause) bloque « Enregistrer » ; trop longue, checkDraft le dit.
   const pauseBad = lines.some((l) => !Number.isFinite(l.break_minutes));
   const total = lines.reduce((s, l) => s + Math.max(0, shiftMinutes(l.start, l.end, Number.isFinite(l.break_minutes) ? l.break_minutes : 0) || 0), 0);
-  const upd = (i: number, patch: Partial<DraftLine>) => { setEdited(true); setLines((ls) => ls.map((l, j) => (j === i ? { ...l, ...patch } : l))); };
+  // Clé stable par ligne (pas sa position) : retirer une ligne ne fait pas
+  // glisser le texte d'un champ « pause » sur la ligne suivante.
+  const lineIds = useRef(new WeakMap<DraftLine, number>());
+  const nextLineId = useRef(0);
+  const keyOf = (l: DraftLine) => { let k = lineIds.current.get(l); if (k === undefined) { k = nextLineId.current++; lineIds.current.set(l, k); } return k; };
+  const upd = (i: number, patch: Partial<DraftLine>) => {
+    setEdited(true);
+    setLines((ls) => ls.map((l, j) => { if (j !== i) return l; const n = { ...l, ...patch }; lineIds.current.set(n, keyOf(l)); return n; }));
+  };
   const dateLabel = date === today ? 'Aujourd’hui'
     : new Date(`${date}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
 
@@ -160,7 +168,7 @@ export default function WorkerDraftCard({ extra, save, onSaved, ctl }: Props) {
       <style>{CSS}</style>
       <p className="wd-date">{dateLabel}</p>
       {lines.map((l, i) => (
-        <div key={i} className={`wd-line${l.worksite_id ? '' : ' todo'}`}>
+        <div key={keyOf(l)} className={`wd-line${l.worksite_id ? '' : ' todo'}`}>
           <div className="wd-row" style={{ marginBottom: 6 }}>
             <select value={l.worksite_id ?? ''} onChange={(e) => upd(i, { worksite_id: e.target.value || null, from_planning: false })} aria-label="Chantier">
               <option value="">{l.worksite_text ? `« ${l.worksite_text} » → choisir…` : 'Choisir le chantier…'}</option>
