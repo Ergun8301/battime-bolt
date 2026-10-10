@@ -101,7 +101,7 @@ const ST_CSS = `
 @media (max-width:639px){
   .bt-st-g{grid-template-columns:22px minmax(0,1fr) auto;grid-template-areas:"rk nm v" ". bar bar";row-gap:6px}
   .bt-st-g > .bt-st-rk{grid-area:rk}.bt-st-g > .bt-st-nm{grid-area:nm}.bt-st-g > .bt-st-bar{grid-area:bar}.bt-st-g > .bt-st-v{grid-area:v}
-  .bt-st-head .hb{display:none}
+  .bt-st-head .hb,.bt-st-team .hb{display:none}
   .bt-st-det{grid-template-columns:minmax(0,1fr);padding-left:12px}
   .bt-st-nav{margin-left:0;width:100%;justify-content:space-between}
   .bt-st-def{margin-left:0}

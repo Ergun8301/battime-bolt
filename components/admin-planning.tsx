@@ -2281,7 +2281,9 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         + `Merci de les saisir et de les envoyer dès que possible depuis l'application BEMEXO.\n\n`
         + `— ${companyName || "L'équipe"}`,
       );
-      void logHoursReminder(worker.id, missing, 'mailto'); // « e-mail préparé », pas forcément parti
+      // « e-mail préparé », pas forcément parti. Attendu AVANT d'ouvrir la messagerie : certains
+      // navigateurs (iOS) suspendent la page dès que mailto: s'ouvre. Ne lève jamais.
+      await logHoursReminder(worker.id, missing, 'mailto');
       window.location.href = `mailto:${worker.email}?subject=${subject}&body=${body}`;
       toast.success(`${worker.first_name} n'a pas le push : e-mail préparé`);
       return done();
