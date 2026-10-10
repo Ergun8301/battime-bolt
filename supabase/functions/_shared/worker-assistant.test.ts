@@ -227,3 +227,42 @@ Deno.test('Lot 11 — « Lever la réserve » : chantier cité, commentaire facu
   const g = handleWorkerLocally('comment je lève une réserve ?', BTP, LIVE) as { kind: string; answer: string };
   eq([g.kind, /Lever la réserve/.test(g.answer)], ['guide', true], 'aide : « Lever la réserve »');
 });
+
+// ═══ Lot 1 — le prévu du bureau n'est pas une heure travaillée (Assistant = écran) ═══
+import { plannedLeftToday, PREVU_NON_CONFIRME, workerFunctionPrompt } from './worker-assistant-core.ts';
+
+Deno.test('Lot 1 — Assistant salarié : le prévu du bureau ne compte ni dans les heures ni dans l’envoi', () => {
+  // Le cas client : Matin 08–12 + Après-midi 13:30–17 prévus (7h30), rien de noté.
+  const raw = (entries: Parameters<typeof buildWorkerSnapshot>[0]['entries']) => buildWorkerSnapshot({
+    userId: 'moi', companyId: 'c1', today: '2026-09-29',
+    worksites: [{ id: 'w1', company_id: 'c1', client_name: 'Villa Dupont', city: null }],
+    entries,
+    planning: [
+      { user_id: 'moi', work_date: '2026-09-29', estimated_start: '08:00:00', estimated_end: '12:00:00', absence_type: null, worksite_id: 'w1' },
+      { user_id: 'moi', work_date: '2026-09-29', estimated_start: '13:30:00', estimated_end: '17:00:00', absence_type: null, worksite_id: 'w1' },
+    ],
+  });
+  const vide = raw([]);
+  eq(vide.semaine, [], '1. rien de noté → aucune minute, même avec 7h30 prévues');
+  eq(answerSimpleQuestion('Combien d’heures aujourd’hui ?', vide), 'Aujourd’hui : aucune heure déclarée.', '2. aujourd’hui : le prévu n’est pas « déclaré »');
+  eq(answerSimpleQuestion('Combien d’heures cette semaine ?', vide), 'Cette semaine : 0 h 00 déclarées sur 0 jour.', '3. semaine : idem');
+  // 07:00–18:00 en brouillon : 11 h, pas 11 h + 7 h 30 (le prévu couvert disparaît, comme à l'écran).
+  const note = raw([{ user_id: 'moi', work_date: '2026-09-29', start_time: '07:00:00', end_time: '18:00:00', break_minutes: 0, status: 'draft' }]);
+  eq(answerSimpleQuestion('Combien d’heures aujourd’hui ?', note), 'Aujourd’hui : 11 h 00 déclarées.', '4. seules ses lignes comptent (brouillon compris, comme l’écran)');
+
+  // « Envoie ma journée » : le prévu n'est pas une ligne à envoyer.
+  const send = (live: WorkerLive) => act(handleWorkerLocally('envoie ma journée', vide, live));
+  const seul = send({ enCours: null, lignes: [] });
+  eq([seul.draft.lignes, seul.draft.prevus, seul.problems], [0, 2, [PREVU_NON_CONFIRME]], '5. seulement du prévu → rien à envoyer, dit clairement');
+  const avec = send({ enCours: null, lignes: [{ id: 'e1', chantier: 'Villa Dupont', debut: '08:00', fin: '12:00', envoyee: false }] });
+  eq([avec.draft.lignes, avec.draft.prevus, avec.problems], [1, 1, []], '6. une ligne notée → elle part ; l’après-midi reste prévu à confirmer');
+  const couvert = send({ enCours: null, lignes: [{ id: 'e1', chantier: 'Villa Dupont', debut: '07:00', fin: '18:00', envoyee: true }] });
+  eq([couvert.draft.lignes, couvert.draft.prevus, couvert.problems], [0, 0, ['Rien à envoyer : notez d’abord vos heures.']], '7. prévu couvert par une ligne déjà envoyée → plus rien de prévu');
+  const absent: WorkerSnapshot = { ...vide, planning: [{ date: '2026-09-29', chantier_id: 'w1', chantier: 'Villa Dupont', debut: null, fin: null, absence: 'conge' }] };
+  eq(plannedLeftToday(absent, { enCours: null, lignes: [] }), 0, '8. une absence n’est jamais du prévu à confirmer');
+
+  // Voie IA : le prévu est nommé comme tel, à part des heures notées.
+  const p = workerFunctionPrompt(note, { enCours: null, lignes: [] }, 'j’ai fait combien ?');
+  eq([p.includes('"heures_notees":[{"date":"2026-09-29","heures":"11 h 00"}]'), p.includes('"prevu_par_le_bureau":['), p.includes('"planning":['), /n'est PAS du travail fait/.test(p)],
+    [true, true, false, true], '9. IA : heures notées et prévu séparés, consigne explicite');
+});
