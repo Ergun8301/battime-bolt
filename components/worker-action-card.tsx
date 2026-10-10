@@ -18,6 +18,7 @@ import type { WorkerActionExecutor, WorkerActionResult } from '@/lib/worker-acti
 import { ActionAsk, ActionDone } from '@/components/action-done';
 import GeoInfoDialog from '@/components/geo-info-dialog';
 import { markGeoInfoSeen } from '@/lib/position-info';
+import { MEAL_OFF_MESSAGE } from '@/lib/meal-setting';
 
 const CSS = `
 .wa{margin-top:10px;border:1px solid rgba(21,18,15,.14);border-radius:14px;background:#FBF8F2;padding:11px}
@@ -63,6 +64,16 @@ const HEAD: Record<WorkerActionDraft['type'], [string, typeof Play, string]> = {
 const launched = new WeakSet<object>();
 type Phase = 'auto' | 'question' | 'form' | 'done';
 const hhmm = (iso: string) => (iso ? new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' }) : '');
+
+/**
+ * Lot 3 bis : l'entreprise n'utilise pas le panier repas. Refus poli, sans
+ * formulaire ni « C'est fait » : rien n'est lu ni écrit. La bulle perd le texte
+ * du serveur (qui annonçait l'action), la carte dit pourquoi.
+ */
+export function MealOffNote({ ctl }: { ctl?: ExtraControl }) {
+  useEffect(() => { ctl?.settle(null); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  return <p data-testid="wa-meal-off" style={{ margin: 0, fontSize: 13, fontWeight: 700, color: '#15120F' }}>{MEAL_OFF_MESSAGE}</p>;
+}
 
 interface Props {
   extra: WorkerActionExtra; execute: WorkerActionExecutor; onDone?: () => void;

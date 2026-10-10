@@ -23,6 +23,8 @@ export interface Company {
   // Fin de periode d'essai 30 j (posee a la creation via l'inscription patron).
   // NULL = pas en essai. Rien ne l'applique encore (pas de blocage a l'expiration).
   trial_ends_at?: string | null;
+  /** Lot 3 bis : l'entreprise utilise le panier repas. Absent (migration pas passée) = oui. Lu SEUL (lib/meal-setting.ts). */
+  meal_enabled?: boolean;
 }
 
 export interface User {

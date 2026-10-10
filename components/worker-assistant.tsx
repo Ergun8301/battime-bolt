@@ -8,9 +8,10 @@ import { useMemo } from 'react';
 import { useAuth } from '@/components/auth-provider';
 import AssistantPanel from '@/components/assistant-panel';
 import WorkerDraftCard from '@/components/worker-draft-card';
-import WorkerActionCard from '@/components/worker-action-card';
+import WorkerActionCard, { MealOffNote } from '@/components/worker-action-card';
 import { demoWorkerExecutor, makeWorkerExecutor } from '@/lib/worker-actions';
 import { useAiEnabled } from '@/lib/real-cost';
+import { useMealEnabled } from '@/lib/meal-setting';
 import {
   demoSaver, demoWorkerSource, isWorkerAssistantDemo, makeWorkerSaver, supabaseWorkerSource,
   WORKER_ACTION_SUGGESTIONS, type DraftExtra, type WorkerActionExtra,
@@ -24,6 +25,9 @@ export default function WorkerAssistant({ onSaved, onNavigate, defaultOpen = fal
   const { user } = useAuth();
   const demo = useMemo(() => isWorkerAssistantDemo(), []);
   const ai = useAiEnabled(demo ? null : user?.company_id);
+  // Lot 3 bis : panier repas non utilisé par l'entreprise → refus poli dans la bulle.
+  // Le serveur (non redéployé) peut encore proposer l'action : le navigateur la refuse.
+  const meal = useMealEnabled(demo ? null : user?.company_id);
   const source = useMemo(() => (demo ? demoWorkerSource() : supabaseWorkerSource), [demo]);
   const isWorker = user?.role === 'worker' || user?.role === 'lead';
   if (!demo && !(ai && isWorker)) return null;
@@ -43,6 +47,7 @@ export default function WorkerAssistant({ onSaved, onNavigate, defaultOpen = fal
       intro="Dites-moi vos heures, ce que vous voulez faire, ou comment faire"
       renderExtra={(extra, ctl) => {
         if ((extra as WorkerActionExtra).workerAction) {
+          if (meal === false && (extra as WorkerActionExtra).workerAction.draft.type === 'panier_repas') return <MealOffNote ctl={ctl} />;
           const exec = demo || !user ? demoWorkerExecutor : makeWorkerExecutor({ id: user.id, company_id: user.company_id });
           return <WorkerActionCard extra={extra as WorkerActionExtra} execute={exec} onDone={onSaved} ctl={ctl} />;
         }

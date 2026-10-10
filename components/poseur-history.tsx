@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
 import { isCounted } from '@/lib/status';
+import { showMealColumn, useMealEnabled } from '@/lib/meal-setting';
 import { TimeEntry, Worksite, User as CompanyUser } from '@/lib/types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -32,6 +33,9 @@ export default function PoseurHistory() {
   const [companyName, setCompanyName] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
+  // Lot 3 bis : panier non utilisé → plus de « 0 panier » ni de colonne vide.
+  // Un panier qui existe reste affiché (badge, compte, colonne du PDF).
+  const mealOn = useMealEnabled(user?.company_id) !== false;
 
   useEffect(() => {
     fetchData();
@@ -88,9 +92,10 @@ export default function PoseurHistory() {
 
       const totalMinutes = countedEntries.reduce((sum, e) => sum + e.total_minutes, 0);
       const totalMealAllowance = countedEntries.filter(e => e.meal_allowance).length;
+      const showMeal = showMealColumn(mealOn, countedEntries);
 
       doc.text(`Total : ${formatMinutesToHours(totalMinutes)}`, 14, 44);
-      doc.text(`Paniers repas : ${totalMealAllowance}`, 100, 44);
+      if (showMeal) doc.text(`Paniers repas : ${totalMealAllowance}`, 100, 44);
 
       const rows = countedEntries.map((entry) => [
         format(parseISO(entry.work_date), 'dd/MM/yyyy'),
@@ -98,17 +103,17 @@ export default function PoseurHistory() {
         entry.worksite?.city || '-',
         `${entry.start_time?.substring(0, 5) || '-'} - ${entry.end_time?.substring(0, 5) || '-'}`,
         formatMinutesToHours(entry.total_minutes),
-        entry.meal_allowance ? 'Oui' : 'Non',
+        ...(showMeal ? [entry.meal_allowance ? 'Oui' : 'Non'] : []),
         'Envoye',
       ]);
 
       autoTable(doc, {
         startY: 55,
-        head: [['Date', 'Client', 'Ville', 'Heures', 'Total', 'Panier', 'Statut']],
+        head: [['Date', 'Client', 'Ville', 'Heures', 'Total', ...(showMeal ? ['Panier'] : []), 'Statut']],
         body: rows,
         styles: { fontSize: 8 },
         headStyles: { fillColor: [21, 18, 15] },
-        columnStyles: {
+        columnStyles: showMeal ? {
           0: { cellWidth: 25 },
           1: { cellWidth: 45 },
           2: { cellWidth: 30 },
@@ -116,6 +121,13 @@ export default function PoseurHistory() {
           4: { cellWidth: 20 },
           5: { cellWidth: 15 },
           6: { cellWidth: 20 },
+        } : {
+          0: { cellWidth: 25 },
+          1: { cellWidth: 45 },
+          2: { cellWidth: 30 },
+          3: { cellWidth: 30 },
+          4: { cellWidth: 20 },
+          5: { cellWidth: 20 },
         },
       });
 
@@ -192,9 +204,11 @@ export default function PoseurHistory() {
                     <p className="font-bold text-[#15120F]">
                       {formatMinutesToHours(dayEntries.filter((e) => isCounted(e.status)).reduce((sum, e) => sum + e.total_minutes, 0))}
                     </p>
-                    <p className="text-xs text-muted-foreground">
-                      {dayEntries.filter((e) => isCounted(e.status) && e.meal_allowance).length} panier{dayEntries.filter((e) => isCounted(e.status) && e.meal_allowance).length > 1 ? 's' : ''}
-                    </p>
+                    {(mealOn || dayEntries.some((e) => isCounted(e.status) && e.meal_allowance)) && (
+                      <p className="text-xs text-muted-foreground" data-testid="history-meal-count">
+                        {dayEntries.filter((e) => isCounted(e.status) && e.meal_allowance).length} panier{dayEntries.filter((e) => isCounted(e.status) && e.meal_allowance).length > 1 ? 's' : ''}
+                      </p>
+                    )}
                   </div>
                 </div>
 

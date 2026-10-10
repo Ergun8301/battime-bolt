@@ -20,6 +20,7 @@ import { syncAllPending } from '@/lib/offline-sync';
 import { insertWorkerEntry } from '@/lib/worker-entry';
 import { planningsToMaterialise, remainingPlannings, sendablePlannings, visiblePlannings } from '@/lib/work-status';
 import { copyLinesTo, materialisePlanned as materialiseDay, setDayMealOnline, submitDrafts } from '@/lib/worker-day';
+import { useMealEnabled } from '@/lib/meal-setting';
 import { fmtHeure } from '@/lib/corrections';
 import { fetchEntryEdits, lastEdit, type EntryEdit } from '@/lib/office-edits';
 import { diffLabels } from '@/supabase/functions/_shared/office-edits';
@@ -654,6 +655,12 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
     return () => { stale = true; };
   }, [user?.company_id]);
 
+  // Lot 3 bis : l'entreprise utilise-t-elle le panier repas ? Lecture À PART
+  // (lib/meal-setting.ts). « Non » explicite : la case disparaît et l'écran
+  // n'écrit plus jamais `meal_allowance` (ni pose, ni retrait, ni déplacement
+  // d'un panier resté). Null (pas encore lu) : comme avant.
+  const meal = useMealEnabled(user?.company_id);
+
   /**
    * L'entreprise enregistre-t-elle l'endroit au pointage ? (étape 26)
    *
@@ -939,6 +946,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
   // Renvoie false si le panier n'a pas pu être écrit (ligne verrouillée, réseau…).
   const applyDayMeal = useCallback(async (value: boolean, flagModified = false): Promise<boolean> => {
     if (!user) return false;
+    if (meal === false) return true; // lot 3 bis : panier non utilisé → rien n'est écrit
     let ok = true;
     // En ligne : lib/worker-day.ts (même chemin que l'Assistant BEMEXO).
     if (navigator.onLine) ok = await setDayMealOnline(user, date, value, flagModified);
@@ -950,10 +958,10 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
       setPendingEntries(getPendingEntries(user.id).filter((e) => e.work_date === date));
     }
     return ok;
-  }, [user, date]);
+  }, [user, date, meal]);
 
   const toggleDayMeal = async (value: boolean, flagModified = false) => {
-    if (!user) return;
+    if (!user || meal === false) return;
     setDayMeal(value);
     // Journée encore vide : rien sur quoi écrire. On GARDE l'intention, posée
     // sur la première ligne qui apparaîtra (effet ci-dessous) — jamais perdue.
@@ -982,7 +990,9 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
   // du prévu, borne…) et un panier attendait : on le pose, UNE fois. Échec →
   // on le dit (journée verrouillée) plutôt que de le décocher en silence.
   useEffect(() => {
-    if (!user || loading) return;
+    // Lot 3 bis : seulement une fois le « oui » connu. Une intention restée d'avant
+    // le réglage n'est ni posée ni effacée (gardée par jour, sans effet).
+    if (!user || loading || meal !== true) return;
     const intent = readMealIntent(user.id, date);
     if (intent === null) return;
     // Seulement les lignes DE CE JOUR : juste après un changement de jour,
@@ -999,7 +1009,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
       else setDayMeal(intent);
       if (navigator.onLine) fetchData();
     }).catch(() => { toast.error('Panier non pris en compte'); });
-  }, [user, date, loading, entries, pendingEntries, applyDayMeal, fetchData]);
+  }, [user, date, loading, meal, entries, pendingEntries, applyDayMeal, fetchData]);
 
   // ─── Inline editor open / save / delete ─────────────────────────────────────
 
@@ -1947,7 +1957,9 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
                 pris / non pris. Mêmes données qu'avant (meal_allowance, une
                 ligne par jour), mêmes garde-fous : mois clos → fenêtre « Mois
                 clôturé », journée envoyée → confirmation, lignes chez le
-                comptable → grisée. La ligne blanche « Panier repas » a disparu. */}
+                comptable → grisée. La ligne blanche « Panier repas » a disparu.
+                Lot 3 bis : absente si l'entreprise n'utilise pas le panier. */}
+            {meal !== false && (
             <button
               type="button"
               className={`bt-stat${dayMeal ? ' on' : ''}`}
@@ -1965,6 +1977,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
               <span className="bt-stat-n">{dayMeal ? 'Panier ✓' : 'Panier'}</span>
               <span className="bt-stat-l">{dayMeal ? 'repas pris' : 'non pris'}</span>
             </button>
+            )}
           </div>
         </div>
 

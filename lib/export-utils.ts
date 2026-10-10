@@ -9,6 +9,7 @@ import { format, parseISO } from 'date-fns';
 import { TimeEntryWithWorksite, User } from '@/lib/types';
 import { routeMinutesByEntry, DEFAULT_OVERTIME_RATES, TIER_1_MINUTES, type OvertimeRates } from '@/lib/overtime';
 import { weekStart, weekEnd } from '@/lib/week';
+import { showMealColumn } from '@/supabase/functions/_shared/meal-setting';
 
 export type ExportEntry = TimeEntryWithWorksite & { user?: User };
 
@@ -37,6 +38,13 @@ export interface ExportOptions {
    * déclaré — mais elle n'entre dans le total que si l'entreprise le paie.
    */
   travelPaid?: boolean;
+  /**
+   * Lot 3 bis : l'entreprise utilise-t-elle le panier repas ? Absent = oui.
+   * Non : la colonne « Panier » et le total « Paniers repas » disparaissent —
+   * SAUF si la période contient un panier : rien ne sort d'une paie en silence.
+   * Le CSV de paie n'a pas de panier : inchangé.
+   */
+  mealEnabled?: boolean;
   /**
    * Horaire hebdomadaire de base, salarié par salarié (voir lib/overtime.ts).
    * Absent = pas de récapitulatif des heures supplémentaires : le comptable
@@ -197,6 +205,7 @@ function statusLabel(status: string): string {
  */
 function buildWorkbook(entries: ExportEntry[], opts: ExportOptions) {
   const includeWorker = !opts.singleWorkerName;
+  const meal = showMealColumn(opts.mealEnabled !== false, entries);
 
   const route = routeMinutesByEntry(entries);
   const rows = entries.map((entry) => {
@@ -213,7 +222,7 @@ function buildWorkbook(entries: ExportEntry[], opts: ExportOptions) {
     row['Pause (min)'] = entry.break_minutes;
     row['Route (min)'] = route.get(entry.id) || 0;
     row['Total heures'] = formatMinutesToHours(entry.total_minutes + (opts.travelPaid ? (route.get(entry.id) || 0) : 0));
-    row['Panier repas'] = entry.meal_allowance ? 'Oui' : 'Non';
+    if (meal) row['Panier repas'] = entry.meal_allowance ? 'Oui' : 'Non';
     row['Statut'] = statusLabel(entry.status);
     row['Observation'] = entry.observation || '-';
     return row;
@@ -224,7 +233,7 @@ function buildWorkbook(entries: ExportEntry[], opts: ExportOptions) {
     { wch: 12 },
     ...(includeWorker ? [{ wch: 20 }] : []),
     { wch: 25 }, { wch: 15 }, { wch: 8 }, { wch: 8 },
-    { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 30 },
+    { wch: 12 }, { wch: 12 }, { wch: 12 }, ...(meal ? [{ wch: 12 }] : []), { wch: 10 }, { wch: 30 },
   ];
 
   const wb = XLSX.utils.book_new();
@@ -365,6 +374,7 @@ export function exportEntriesToCSV(opts: ExportOptions): void {
 
 export function exportEntriesToPDF(entries: ExportEntry[], opts: ExportOptions): void {
   const includeWorker = !opts.singleWorkerName;
+  const meal = showMealColumn(opts.mealEnabled !== false, entries);
   const doc = new jsPDF('landscape');
 
   doc.setFontSize(18);
@@ -383,7 +393,7 @@ export function exportEntriesToPDF(entries: ExportEntry[], opts: ExportOptions):
   const totalMinutes = workMinutes + (opts.travelPaid ? routeTotal : 0);
   const paniers = entries.filter((e) => e.meal_allowance).length;
   doc.text(`Total heures : ${formatMinutesToHours(totalMinutes)}`, 14, y);
-  doc.text(`Paniers repas : ${paniers}`, 100, y);
+  if (meal) doc.text(`Paniers repas : ${paniers}`, 100, y);
   y += 6;
   if (routeTotal > 0) {
     doc.text(
@@ -395,8 +405,8 @@ export function exportEntriesToPDF(entries: ExportEntry[], opts: ExportOptions):
   y += 2;
 
   const head = includeWorker
-    ? [['Date', 'Salarié', 'Client', 'Ville', 'Début', 'Fin', 'Pause', 'Route', 'Total', 'Panier', 'Statut']]
-    : [['Date', 'Client', 'Ville', 'Début', 'Fin', 'Pause', 'Route', 'Total', 'Panier', 'Statut']];
+    ? [['Date', 'Salarié', 'Client', 'Ville', 'Début', 'Fin', 'Pause', 'Route', 'Total', ...(meal ? ['Panier'] : []), 'Statut']]
+    : [['Date', 'Client', 'Ville', 'Début', 'Fin', 'Pause', 'Route', 'Total', ...(meal ? ['Panier'] : []), 'Statut']];
 
   const body = entries.map((entry) => {
     const cols: string[] = [format(parseISO(entry.work_date), 'dd/MM/yyyy')];
@@ -411,7 +421,7 @@ export function exportEntriesToPDF(entries: ExportEntry[], opts: ExportOptions):
       `${entry.break_minutes} min`,
       `${route.get(entry.id) || 0} min`,
       formatMinutesToHours(entry.total_minutes + (opts.travelPaid ? (route.get(entry.id) || 0) : 0)),
-      entry.meal_allowance ? 'Oui' : 'Non',
+      ...(meal ? [entry.meal_allowance ? 'Oui' : 'Non'] : []),
       statusLabel(entry.status),
     );
     return cols;
