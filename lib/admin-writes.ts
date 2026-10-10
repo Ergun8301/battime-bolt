@@ -135,6 +135,20 @@ export async function sendHoursReminder(userId: string, jours: string): Promise<
   return (data as { sent?: number } | null)?.sent || 0;
 }
 
+/**
+ * Lot 5 : note la relance au journal (« Relances reçues » des statistiques).
+ * `channel` : 'push' = notification partie, 'mailto' = e-mail PRÉPARÉ (pas
+ * forcément envoyé). JAMAIS bloquant : avant la migration (fonction absente,
+ * 404 PGRST202) ou sur toute erreur, la relance reste exactement celle d'avant.
+ * La requête part DANS la fonction (`await`) : un appel supabase-js non
+ * attendu ne serait jamais envoyé.
+ */
+export async function logHoursReminder(userId: string, days: string[], channel: 'push' | 'mailto'): Promise<void> {
+  try {
+    await supabase.rpc('log_hours_reminder', { p_user_id: userId, p_days: days.slice(0, 62), p_channel: channel });
+  } catch { /* journal : un plus, jamais une condition */ }
+}
+
 // ── Mois, heures ─────────────────────────────────────────────────────────────
 /** « Clôturer » un mois ('aaaa-mm'). */
 export async function closeMonth(companyId: string, userId: string, month: string) {

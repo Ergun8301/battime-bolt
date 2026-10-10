@@ -23,6 +23,7 @@ import {
   ShieldCheck,
   Sparkles,
   Printer,
+  BarChart3,
 } from 'lucide-react';
 import {
   DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
@@ -36,7 +37,8 @@ import { weekStart as weekStartOf, weekEnd as weekEndOf } from '@/lib/week';
 import { fr } from 'date-fns/locale';
 import type { DateRange } from 'react-day-picker';
 import { toast } from 'sonner';
-import { computeMissingDays, missingWindowStart, withIncompleteDays } from '@/lib/work-status';
+import { missingWindowStart } from '@/lib/work-status';
+import { missingDaysFrom, type PlanRowLike, type UserDayLike } from '@/supabase/functions/_shared/team-stats-core';
 import { isExitToComplete, type QrFields } from '@/lib/qr-entry';
 import { exportEntriesToExcel, exportEntriesToPDF, exportEntriesToCSV, excelAsBase64 } from '@/lib/export-utils';
 import { readMealEnabled } from '@/lib/meal-setting';
@@ -54,7 +56,7 @@ import { fetchCompanyClosures, closedFor } from '@/lib/worker-closure';
 import CompanySettings from '@/components/company-settings';
 import AssistantPanel from '@/components/assistant-panel';
 import PendingInvitations from '@/components/pending-invitations';
-import { attributeEntries, closeMonth as closeMonthWrite, sendHoursReminder, setUserRole, setWorksiteActive, updatePlanningSlot, updateWorksite } from '@/lib/admin-writes';
+import { attributeEntries, closeMonth as closeMonthWrite, logHoursReminder, sendHoursReminder, setUserRole, setWorksiteActive, updatePlanningSlot, updateWorksite } from '@/lib/admin-writes';
 import { addPlanningSlot, createWorksite, inviteWorker, setAbsence } from '@/lib/planning-writes';
 import { supabaseAssistantSource } from '@/lib/assistant';
 import AssistantActionCard from '@/components/assistant-action-card';
@@ -63,6 +65,8 @@ import { useAiEnabled } from '@/lib/real-cost';
 import AdminMobileMenu from '@/components/admin-mobile-menu';
 import ImportDialog from '@/components/import-dialog';
 import CostReport from '@/components/cost-report';
+// Lot 5 : statistiques de l'équipe (lecture seule).
+import TeamStats from '@/components/team-stats';
 import ReservesReport from '@/components/reserves-report';
 import ImportWorkersDialog from '@/components/import-workers-dialog';
 import LeaveAdminDialog from '@/components/leave-admin-dialog';
@@ -536,6 +540,13 @@ button.bt-pl-stat[aria-expanded="true"]{background:rgba(242,237,227,.14)}
 button.bt-pl-stat:focus-visible{outline:2px solid #FFC21A;outline-offset:1px}
 button.bt-pl-stat .ch{opacity:0;font-size:9px;color:#a59c86;margin-left:-3px;transition:opacity .12s}
 button.bt-pl-stat:hover .ch,button.bt-pl-stat[aria-expanded="true"] .ch{opacity:1}
+/* Lot 5 : l'accès discret aux statistiques. Un LIEN du cockpit, pas un chiffre :
+   sa propre classe (le lot 11 garde « deux indicateurs seulement » .bt-pl-stat),
+   aucun nombre, couleur des libellés. */
+.bt-pl-cklink{display:inline-flex;align-items:center;gap:6px;padding:3px 11px;white-space:nowrap;font:inherit;font-size:11px;font-weight:600;color:#a59c86;background:none;border:0;border-radius:9px;cursor:pointer;-webkit-appearance:none}
+.bt-pl-cklink:hover{background:rgba(242,237,227,.09);color:#F2EDE3}
+.bt-pl-cklink:focus-visible{outline:2px solid #FFC21A;outline-offset:1px}
+@media (max-width:1279px){.bt-pl-cockpit .bt-pl-cklink{gap:5px;padding:3px 6px;font-size:10.5px}}
 
 /* Le panneau d'un chiffre. Aligné à gauche sous son chiffre, jamais au-delà
    du bord de l'écran sur un portable posé en paysage. */
@@ -928,6 +939,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const [mobileChantiersOpen, setMobileChantiersOpen] = useState(false); // liste « Chantiers » mobile (équivalent du dropdown Clients desktop)
   const [importOpen, setImportOpen] = useState(false); // import CSV/Excel de clients/chantiers
   const [costOpen, setCostOpen] = useState(false); // rapport coût & heures par chantier
+  const [statsOpen, setStatsOpen] = useState(false); // lot 5 : statistiques de l'équipe (lecture seule)
   const [reservesOpen, setReservesOpen] = useState(false); // registre des réserves de chantier
   const [openReserves, setOpenReserves] = useState(0); // compteur pour la pastille
   // Lot 10 : « 📟 Borne » dans la barre — même condition que les réglages
@@ -1369,44 +1381,27 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       setDocsByWorksite((prev) => keep(prev, docCounts));
     }
 
-    const planned = new Map<string, Set<string>>();
-    const absence = new Map<string, Set<string>>();
+    // L'absence du jour (teinte de la case).
     const today = new Map<string, string>();
-    // Lecture en échec : comme avant (aucune case comptée comme retirée).
-    const withdrawn = cancelledRes.error ? EMPTY_SET : withdrawnSet(cancelledRes.data);
-    for (const p of planRes.data || []) {
-      if (p.absence_type) {
-        if (!absence.has(p.user_id)) absence.set(p.user_id, new Set());
-        absence.get(p.user_id)!.add(p.work_date);
-        if (p.work_date === todayKey) today.set(p.user_id, p.absence_type);
-      } else if (!withdrawn.has(p.id)) {
-        // Une case retirée par le salarié ne réclame rien ; une autre case du
-        // même jour, elle, réclame toujours ses heures.
-        if (!planned.has(p.user_id)) planned.set(p.user_id, new Set());
-        planned.get(p.user_id)!.add(p.work_date);
-      }
-    }
-    const declared = new Map<string, Set<string>>();
-    for (const e of entRes.data || []) {
-      if (!declared.has(e.user_id)) declared.set(e.user_id, new Set());
-      declared.get(e.user_id)!.add(e.work_date);
-    }
-    const miss = new Map<string, string[]>();
-    planned.forEach((days, uid) => {
-      const m = computeMissingDays(Array.from(days).filter((d) => !absence.get(uid)?.has(d)), declared.get(uid) || new Set<string>());
-      if (m.length) miss.set(uid, m);
-    });
+    for (const p of planRes.data || []) if (p.absence_type && p.work_date === todayKey) today.set(p.user_id, p.absence_type);
     // Lot 12 : une sortie oubliée « à compléter » compte aussi. Lecture à part,
     // silencieuse (colonne absente tant que la migration n'est pas passée).
     const incRes = await supabase.from('time_entries').select('user_id, work_date, start_time, end_time, exit_forgotten')
       .eq('company_id', user.company_id).eq('exit_forgotten', true).eq('status', 'draft')
       .gte('work_date', windowStart).lte('work_date', todayKey);
-    const incByUser = new Map<string, string[]>();
-    for (const r of (incRes.error ? [] : incRes.data || []) as (QrFields & { user_id: string; work_date: string })[]) {
-      if (!isExitToComplete(r)) continue;
-      incByUser.set(r.user_id, [...(incByUser.get(r.user_id) || []), r.work_date]);
-    }
-    incByUser.forEach((days, uid) => { miss.set(uid, withIncompleteDays(miss.get(uid) || [], days)); });
+    // « À relancer » : une case planifiée qui n'est ni une absence ni RETIRÉE par le
+    // salarié réclame ses heures (une autre case du même jour, elle, les réclame
+    // toujours) ; un jour d'absence ne réclame rien ; plus les sorties oubliées.
+    // Lot 5 : la règle vit dans _shared (missingDaysFrom), MÊME ordre qu'avant
+    // (keep() compare l'ordre) — les statistiques du bureau lisent la même.
+    const miss = missingDaysFrom({
+      planRows: (planRes.data || []) as PlanRowLike[],
+      declaredRows: (entRes.data || []) as UserDayLike[],
+      // Lecture en échec : comme avant (aucune case comptée comme retirée).
+      withdrawnIds: cancelledRes.error ? EMPTY_SET : withdrawnSet(cancelledRes.data),
+      incompleteRows: ((incRes.error ? [] : incRes.data || []) as (QrFields & UserDayLike)[]).filter((r) => isExitToComplete(r)),
+      today: todayKey,
+    });
     setTodayAbsence((prev) => keep(prev, today));
     setMissingByWorker((prev) => keep(prev, miss));
     setCompanyName(compRes.data?.name || '');
@@ -2271,7 +2266,11 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     const done = () => { setRemindedIds((prev) => new Set(prev).add(worker.id)); return true; };
     try {
       const sent = await sendHoursReminder(worker.id, jours);
-      if (sent > 0) { toast.success(`Rappel envoyé à ${worker.first_name}`); return done(); }
+      if (sent > 0) {
+        // Lot 5 : noté au journal des relances (statistiques) — jamais bloquant.
+        void logHoursReminder(worker.id, missing, 'push');
+        toast.success(`Rappel envoyé à ${worker.first_name}`); return done();
+      }
 
       // Aucun appareil abonné → on retombe sur l'ancien comportement (mailto).
       if (!worker.email) { toast.error(`${worker.first_name} n'a pas activé les notifications`); return false; }
@@ -2282,6 +2281,9 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         + `Merci de les saisir et de les envoyer dès que possible depuis l'application BEMEXO.\n\n`
         + `— ${companyName || "L'équipe"}`,
       );
+      // « e-mail préparé », pas forcément parti. Attendu AVANT d'ouvrir la messagerie : certains
+      // navigateurs (iOS) suspendent la page dès que mailto: s'ouvre. Ne lève jamais.
+      await logHoursReminder(worker.id, missing, 'mailto');
       window.location.href = `mailto:${worker.email}?subject=${subject}&body=${body}`;
       toast.success(`${worker.first_name} n'a pas le push : e-mail préparé`);
       return done();
@@ -2961,6 +2963,14 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                   {docsByChantier.length > 0 && <div className="bt-pl-sp-foot">Cliquez un chantier pour ouvrir ses pièces.</div>}
                 </div>
               )}
+            </div>
+
+            {/* Lot 5 : statistiques de l'équipe — un lien discret, sans chiffre. */}
+            <div className="bt-pl-statwrap">
+              <button type="button" className="bt-pl-cklink" data-testid="stat-stats" title="Statistiques de l'équipe — lecture seule"
+                onClick={() => { setStatPanel(null); setStatsOpen(true); }}>
+                <BarChart3 className="h-3.5 w-3.5" style={{ opacity: 0.75 }} /><span>statistiques</span>
+              </button>
             </div>
 
             {statPanel && <div className="bt-pl-ddbackdrop" onClick={() => setStatPanel(null)} />}
@@ -3658,6 +3668,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         onOpenSelect={workers.length > 0 ? enterSelect : undefined}
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenCost={() => setCostOpen(true)}
+        onOpenStats={() => setStatsOpen(true)}
         onOpenLeaves={() => setLeaveOpen(true)}
         pendingLeaves={pendingLeaves}
         onOpenReserves={() => setReservesOpen(true)}
@@ -3792,6 +3803,8 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       />
 
       <CostReport open={costOpen} onOpenChange={setCostOpen} companyId={user?.company_id} />
+
+      <TeamStats open={statsOpen} onOpenChange={setStatsOpen} companyId={user?.company_id} />
 
       {aiOn && user?.role === 'admin' && (
         <AssistantPanel
