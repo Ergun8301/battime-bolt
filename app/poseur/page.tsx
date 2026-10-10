@@ -28,6 +28,9 @@ import WorkerReserves, { type WorkerReserve } from '@/components/worker-reserves
 import { COUNTED_STATUSES } from '@/lib/status';
 import { keep } from '@/lib/same';
 import { RESERVES_CHANGED_EVENT } from '@/lib/reserve-lift';
+// Formations (lot 6, oct. 2026) : rien ne s'affiche tant que la migration n'est pas passée.
+import PoseurTrainings, { TrainingsBanner, useMyTrainings } from '@/components/poseur-trainings';
+import { GraduationCap } from 'lucide-react';
 
 const TABS = [
   { value: 'day', label: 'Ma journée', icon: Clock },
@@ -35,6 +38,9 @@ const TABS = [
   { value: 'month', label: 'Mon mois', icon: CalendarRange },
   { value: 'history', label: 'Historique', icon: History },
 ];
+// Formations : une entrée du menu seulement quand il y en a au moins une.
+const FORMATIONS_TAB = { value: 'formations', label: 'Formations', icon: GraduationCap };
+const ALL_TABS = [...TABS, FORMATIONS_TAB];
 
 const POSEUR_CSS = `
 @import url('/fonts/fonts.css');
@@ -147,6 +153,9 @@ export default function PoseurPage() {
   const [pendingOpen, setPendingOpen] = useState(false); // liste « journées à envoyer »
   // Lot 11 : mes réserves encore à lever (tous jours confondus) → bandeau.
   const [reserves, setReserves] = useState<WorkerReserve[]>([]);
+  // Formations : mes formations (my_trainings), relues toutes les minutes et au retour sur l'appli.
+  const trainings = useMyTrainings(user?.id);
+  const trainingsMenu = trainings.available && trainings.items.length > 0;
   const [photoUrl, setPhotoUrl] = useState(''); // photo de profil du salarié (facultatif)
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
@@ -329,6 +338,8 @@ export default function PoseurPage() {
 
   // À chaque navigation, l'en-tête repart visible.
   useEffect(() => { setHdrHidden(false); }, [view, selectedDate]);
+  // Formations : la fonction a disparu (base restaurée…) → retour à « Ma journée ».
+  useEffect(() => { if (view === 'formations' && !trainings.available) setView('day'); }, [view, trainings.available]);
 
   // Le salarié change SA propre photo (appareil photo ou galerie sur mobile). Upload
   // dans SON dossier, puis enregistrement de l'URL via update_my_photo (il ne touche
@@ -366,10 +377,10 @@ export default function PoseurPage() {
   const isToday = view === 'day' && !selectedDate;
   // « Ma journée » garde le format téléphone ; les écrans hérités (semaine/mois/
   // historique) restent larges sur ordinateur — on ne les bride pas à 480 px.
-  const wide = !selectedDate && view !== 'day';
+  const wide = !selectedDate && view !== 'day' && view !== 'formations';
   const headerTitle = selectedDate
     ? format(parseISO(selectedDate), 'EEEE d MMMM', { locale: fr })
-    : (TABS.find((t) => t.value === view)?.label || 'Ma journée');
+    : (ALL_TABS.find((t) => t.value === view)?.label || 'Ma journée');
 
   /**
    * UN SEUL BANDEAU : « à envoyer ».
@@ -444,6 +455,8 @@ export default function PoseurPage() {
   // Lot 11 : « ⚠ N réserves à lever › » — même habillage, liste + formulaire.
   // (Rien à l'écran tant qu'il n'y en a pas : le composant ne rend rien.)
   const reservesBanner = <WorkerReserves items={reserves} onChanged={fetchPending} />;
+  // Formations : « 2 formations à voir › » tant qu'il en reste à cocher « Vue ».
+  const trainingsBanner = <TrainingsBanner count={trainings.unseen} onOpen={() => goTo('formations')} />;
 
   // Lignes qui n'ont pas encore atteint le serveur (réseau coupé au moment de
   // l'ajout). Même habillage que le bandeau « à envoyer ».
@@ -540,6 +553,13 @@ export default function PoseurPage() {
                     {!selectedDate && view === t.value && <Check className="h-4 w-4 ml-auto" />}
                   </DropdownMenuItem>
                 ))}
+                {trainingsMenu && (
+                  <DropdownMenuItem onClick={() => goTo('formations')} data-testid="menu-formations">
+                    <GraduationCap className="h-4 w-4 mr-2" /> Formations
+                    {trainings.unseen > 0 && <span className="ml-auto rounded-full bg-[#B5472E] px-1.5 text-[10.5px] font-extrabold leading-[17px] text-white" data-testid="menu-formations-badge">{trainings.unseen}</span>}
+                    {!selectedDate && view === 'formations' && <Check className={`h-4 w-4 ${trainings.unseen > 0 ? 'ml-1.5' : 'ml-auto'}`} />}
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={signOut}><LogOut className="h-4 w-4 mr-2" /> Déconnexion</DropdownMenuItem>
               </DropdownMenuContent>
@@ -552,10 +572,12 @@ export default function PoseurPage() {
           {selectedDate ? (
             <PoseurDay key={dayKey} date={selectedDate} topBanner={offlineBanner} onAssistant={aiOn ? () => setAssistantOpen(true) : undefined} />
           ) : view === 'day' ? (
-            <PoseurDay key={dayKey} topBanner={<>{offlineBanner}{toSendBanner}{reservesBanner}</>} onAssistant={aiOn ? () => setAssistantOpen(true) : undefined} />
+            <PoseurDay key={dayKey} topBanner={<>{offlineBanner}{toSendBanner}{reservesBanner}{trainingsBanner}</>} onAssistant={aiOn ? () => setAssistantOpen(true) : undefined} />
           ) : (
             <div className="bt-phscroll bt-skin">
-              {view === 'week' ? (
+              {view === 'formations' ? (
+                <PoseurTrainings items={trainings.items} companyId={user?.company_id} onPatch={trainings.patch} />
+              ) : view === 'week' ? (
                 <PoseurWeek onSelectDay={openDay} />
               ) : view === 'month' ? (
                 <PoseurMonth onSelectDay={openDay} />

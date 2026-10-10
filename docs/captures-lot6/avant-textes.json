@@ -1,0 +1,16 @@
+{
+  "salaries": "Salariés Nouveau salarié Importer (CSV/Excel) Demandes de congé BUREAU · ACCÈS COMPLET Admin Test(vous) Retirer Un seul accès bureau. Alex Exemple Salarié Chef d'équipe Bureau Chloé Démo CHEF Salarié Chef d'équipe Bureau Dina Essai Salarié Chef d'équipe Bureau Sam Test Salarié Chef d'équipe Bureau Close",
+  "menuBureau": "Menu ET Entreprise Test Admin Test GESTION Salariés Chantiers Demandes de congé Réserves de chantier Coût chantiers Exporter Sélectionner des interventions Réglages de l'entreprise Déconnexion Close",
+  "journee": "TOTAL AUJOURD'HUI 3:30 travaillées 1 chantier 0:00 pause Panier non pris CHANTIERS DU JOUR Villa Exemple 3 ✓ Envoyé Lyon 08:00 → 11:30 · 3:30 Dupliquer cette journée Touche un chantier pour le corriger (la secrétaire sera prévenue). + Journée envoyée ✓",
+  "menuSalarie": [
+    "Changer ma photo",
+    "Mes congés",
+    "Informations",
+    "Activer les notifications",
+    "Ma journée",
+    "Ma semaine",
+    "Mon mois",
+    "Historique",
+    "Déconnexion"
+  ]
+}

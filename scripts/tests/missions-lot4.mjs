@@ -259,7 +259,9 @@ const newCtx = async (uid, viewport) => {
     }
     if (url.pathname.startsWith('/rest/v1/rpc/')) {
       const fn = url.pathname.replace('/rest/v1/rpc/', '');
-      writes.push({ m: 'RPC', t: fn, body, by: uid });
+      // Une fonction lue par un GET (my_trainings, formations du lot 6) est une LECTURE, pas une écriture.
+      if (m === 'GET' || m === 'HEAD') gets.push({ t: `rpc/${fn}`, p: new URLSearchParams(url.searchParams), by: uid });
+      else writes.push({ m: 'RPC', t: fn, body, by: uid });
       if (NEW_FNS.has(fn)) {
         if (MIG !== 'oui') return r.fulfill(MISSING_FN(fn));
         try {

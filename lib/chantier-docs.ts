@@ -77,3 +77,22 @@ export async function downscaleImage(file: File, maxSide = 1600, quality = 0.85)
     return file;
   }
 }
+
+/**
+ * Liens signés (bucket privé chantier-docs), même appel que l'écran « Documents »
+ * (components/chantier-documents.tsx). Formations (lot 6) : seuls les chemins du
+ * dossier de l'entreprise (`{companyId}/…`) sont signés. Rend chemin → lien ;
+ * un échec rend {} (le document s'affiche alors « Lien indisponible »).
+ */
+export async function signCompanyDocuments(companyId: string, paths: (string | null | undefined)[], seconds = 3600): Promise<Record<string, string>> {
+  const list = Array.from(new Set(paths.filter((p): p is string => !!p && !!companyId && p.startsWith(`${companyId}/`))));
+  if (!list.length) return {};
+  try {
+    const { data } = await supabase.storage.from('chantier-docs').createSignedUrls(list, seconds);
+    const map: Record<string, string> = {};
+    (data || []).forEach((s) => { if (s.path && s.signedUrl) map[s.path] = s.signedUrl; });
+    return map;
+  } catch {
+    return {};
+  }
+}
