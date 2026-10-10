@@ -8,9 +8,14 @@
 //   - On rattache l'invité à l'entreprise de l'APPELANT (company_id dérivé du
 //     serveur, jamais pris dans le corps de la requête).
 //   - Le rôle est forcé à 'worker' (impossible de créer un admin par ici).
-//   - L'invitation est enregistrée AVANT la création du compte : c'est elle que
-//     le trigger handle_new_user vérifie pour rattacher l'invité à l'entreprise.
-//     Les métadonnées du signUp ne sont plus une preuve d'appartenance.
+//   - L'invitation est enregistrée AVANT la création du compte, et le compte
+//     part avec company_id = l'entreprise de l'APPELANT dans ses métadonnées.
+//     Le trigger handle_new_user (lot 7 sécurité) ne rattache l'invité qu'à
+//     CETTE entreprise, et seulement si elle a une invitation en attente pour
+//     cette adresse : jamais celle d'une autre entreprise. Les deux sont
+//     OBLIGATOIRES (sans company_id, ou sans l'invitation, le compte est
+//     refusé). La métadonnée seule ne prouve rien : l'invitation ne s'écrit
+//     que côté serveur (service role, ici) — l'API la refuse au bureau.
 //
 // ACTIONS :
 //   - (défaut) inviter / renvoyer une invitation (idempotent par e-mail).
@@ -145,8 +150,9 @@ Deno.serve(async (req) => {
     //    même entreprise) ne sont retirées qu'APRÈS un envoi réussi (étape 3) :
     //    si l'e-mail échoue (limite d'envoi atteinte…), l'invitation précédente
     //    reste et le salarié ne disparaît pas de la liste du bureau. Pendant
-    //    l'envoi, deux lignes coexistent : le trigger d'inscription prend la
-    //    plus récente (ORDER BY created_at DESC).
+    //    l'envoi, deux lignes de CETTE entreprise coexistent : le trigger
+    //    d'inscription prend la plus récente parmi celles de l'entreprise
+    //    envoyée en company_id (jamais la ligne d'une autre entreprise).
     const invRow: Record<string, unknown> = { company_id, email, first_name, last_name, role, created_by: caller.id };
     if (phone) invRow.phone = phone;
     const { data: inv, error: insertError } = await supabaseAdmin
@@ -162,6 +168,10 @@ Deno.serve(async (req) => {
     const { data: company } = await supabaseAdmin
       .from("companies").select("name").eq("id", company_id).maybeSingle();
     const employer_name = (company?.name as string | undefined)?.trim() || null;
+    //    company_id OBLIGATOIRE : le trigger d'inscription choisit l'entreprise
+    //    avec (lot 7 sécurité). Ne jamais le retirer ni le renommer : chaque
+    //    invitation échouerait (« Database error saving new user »), sans rien
+    //    créer. Contrat vérifié par invite-worker-function.check.ts.
     const { error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
       data: { first_name, last_name, company_id, role, phone, employer_name },
     });
