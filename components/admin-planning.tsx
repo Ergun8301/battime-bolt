@@ -985,7 +985,8 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     const seq = ++printSeq.current;
     const weekISO = format(currentWeekStart, 'yyyy-MM-dd');
     // La période est à l'écran (sa semaine, ou un de ses jours) : ses données, comme au lot 3.
-    if (withinPeriod(o.period, { kind: 'week', start: weekISO }) && loadedWeek === weekISO) {
+    const missionsReady = (!missions.meetingsOn && !(o.tasks && missions.tasksOn)) || missionsWeek === weekISO;
+    if (withinPeriod(o.period, { kind: 'week', start: weekISO }) && loadedWeek === weekISO && missionsReady) {
       setPrintOpen(false); setPrintJob({ ...o, data: null, printedAt: new Date() });
       return;
     }
@@ -1044,6 +1045,9 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const [addAbsent, setAddAbsent] = useState(false);
   const [editMeeting, setEditMeeting] = useState<Meeting | null>(null);
   const [missions, setMissions] = useState<MissionsState>(MISSIONS_OFF);
+  // Semaine dont `missions` est vraiment chargé (comme loadedWeek pour le planning) :
+  // sinon l'impression relit à part, plutôt que d'oublier réunions et tâches sans le dire.
+  const [missionsWeek, setMissionsWeek] = useState<string | null>(null);
 
   // affectation (bubble) edit dialog
   const [editing, setEditing] = useState<PlanningWithWorksite | null>(null);
@@ -1305,9 +1309,10 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     const seq = ++missionsSeq.current;
     const from = format(currentWeekStart, 'yyyy-MM-dd');
     const to = format(addDays(currentWeekStart, DAYS_IN_WEEK - 1), 'yyyy-MM-dd');
-    const next = await fetchOfficeMissions(user.company_id, from, to, missionsRef.current);
+    const { state: next, complete } = await fetchOfficeMissions(user.company_id, from, to, missionsRef.current);
     if (seq !== missionsSeq.current) return; // une semaine plus récente a été demandée
     setMissions((prev) => keep(prev, next));
+    setMissionsWeek(complete ? from : null);
   }, [user?.company_id, currentWeekStart]);
 
   // Today's absence (cell tint) + planned-but-undeclared dots + company + invitations.

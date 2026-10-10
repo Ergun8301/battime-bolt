@@ -299,7 +299,10 @@ export function MeetingForm({ workers, date, defaultWorkerId, meeting, participa
   const [end, setEnd] = useState(hhmm(meeting?.end_time));
   const [place, setPlace] = useState(meeting?.place || '');
   const [allTeam, setAllTeam] = useState(!!meeting?.all_team);
-  const [picked, setPicked] = useState<string[]>(() => (meeting ? (participants || []) : defaultWorkerId ? [defaultWorkerId] : []));
+  // Participants encore éligibles (salariés actifs) : un archivé ne bloque plus la modification
+  // (la base le refuserait) et ne reçoit pas de notification d'annulation.
+  const eligible = (participants || []).filter((id) => workers.some((w) => w.id === id));
+  const [picked, setPicked] = useState<string[]>(() => (meeting ? eligible : defaultWorkerId ? [defaultWorkerId] : []));
   const [notify, setNotify] = useState((meeting?.meeting_date || date) >= today);
   const [badS, setBadS] = useState(false);
   const [badE, setBadE] = useState(false);
@@ -310,7 +313,7 @@ export function MeetingForm({ workers, date, defaultWorkerId, meeting, participa
   const team = workers.map((w) => w.id);
   const prev: MeetingState | null = meeting ? {
     title: meeting.title, date: meeting.meeting_date, start: hhmm(meeting.start_time), end: hhmm(meeting.end_time) || null,
-    place: meeting.place, allTeam: meeting.all_team, userIds: participants || [],
+    place: meeting.place, allTeam: meeting.all_team, userIds: eligible,
   } : null;
   const state: MeetingState = { title, date: day, start, end: end || null, place: place || null, allTeam, userIds: picked };
 
