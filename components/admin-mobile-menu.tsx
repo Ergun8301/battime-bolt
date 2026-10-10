@@ -1,6 +1,7 @@
 'use client';
 
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { GraduationCap } from 'lucide-react';
 import { User } from '@/lib/types';
 import {
   Users, Building2, Download, Settings, LogOut, TrendingUp, Palmtree,
@@ -57,6 +58,8 @@ interface AdminMobileMenuProps {
   pendingLeaves?: number;
   onOpenReserves: () => void;
   openReserves?: number;
+  /** Formations (lot 6) : seulement quand la migration est passée. */
+  onOpenTrainings?: () => void;
   /** Lot 10 : bornes de pointage (seulement si l'entreprise a la borne). */
   onOpenKiosk?: () => void;
   /** Lot 11 : « Exporter » ouvre directement l'export de l'équipe (un seul salarié : lien dans la fenêtre). */
@@ -73,6 +76,7 @@ export default function AdminMobileMenu({
   onOpenSalaries, onOpenChantiers, onOpenCost, onOpenStats, onOpenLeaves, pendingLeaves = 0,
   onOpenReserves, openReserves = 0, onOpenKiosk,
   onOpenExportTeam, onOpenSelect, onOpenSettings, onSignOut,
+  onOpenTrainings,
 }: AdminMobileMenuProps) {
   const go = (fn: () => void) => { onOpenChange(false); fn(); };
 
@@ -122,6 +126,13 @@ export default function AdminMobileMenu({
             <span className="bt-mm-label">Demandes de congé</span>
             {pendingLeaves > 0 && <span className="bt-mm-badge">{pendingLeaves}</span>}
           </button>
+
+          {onOpenTrainings && (
+            <button className="bt-mm-item" onClick={() => go(onOpenTrainings)} data-testid="mm-trainings">
+              <span className="bt-mm-icon"><GraduationCap className="h-4 w-4" /></span>
+              <span className="bt-mm-label">Formations</span>
+            </button>
+          )}
 
           <button className="bt-mm-item" onClick={() => go(onOpenReserves)}>
             <span className="bt-mm-icon"><AlertTriangle className="h-4 w-4" /></span>
