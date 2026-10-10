@@ -8,11 +8,15 @@
 //    « ajoutées par le salarié » (mêmes heures) ;
 //  - lecture paginée (un mois de 40 salariés dépasse le plafond de 1 000 lignes) ;
 //  - toute erreur est LEVÉE : une feuille incomplète ne doit jamais avoir l'air complète.
+// Lot 4 : aussi les réunions de la période (toujours imprimées) et, avec « Avec les
+// tâches », les tâches du jour — une table encore absente (migration pas passée)
+// donne simplement « aucune » ; le mois n'imprime ni l'un ni l'autre.
 import { supabase } from '@/lib/supabase';
 import type { PlanningWithWorksite } from '@/lib/types';
 import { chunk, fetchAllPaged } from '@/lib/fetch-all';
 import { isDisposableDraft } from '@/lib/erase';
 import { DRAFT_COLS, SENT_COLS, withdrawnSet, type DraftRow, type EntryRow } from '@/lib/planning-cells';
+import { loadMissionsForPrint, MISSIONS_OFF, type MissionsState } from '@/lib/missions';
 
 export interface PrintData {
   from: string;
@@ -23,16 +27,18 @@ export interface PrintData {
   withdrawn: Set<string>;
   /** Nom de chaque chantier cité, archivés compris (sinon une heure hors planning s'imprimerait « Autre »). */
   wsNames: Map<string, string>;
+  /** Lot 4 : réunions (et tâches si demandées) de la période ; jamais des heures. */
+  missions: MissionsState;
 }
 
 type Page<T> = PromiseLike<{ data: T[] | null; error: { message: string } | null }>;
 
-export async function loadPrintData(companyId: string, from: string, to: string): Promise<PrintData> {
+export async function loadPrintData(companyId: string, from: string, to: string, want: { tasks: boolean; meetings: boolean } = { tasks: false, meetings: false }): Promise<PrintData> {
   // Ordre total (date puis id) : une page ne peut ni sauter ni répéter une ligne.
   const drafts = (cols: string) => fetchAllPaged<DraftRow>((f, t) => supabase.from('time_entries').select(cols)
     .eq('company_id', companyId).eq('status', 'draft').gte('work_date', from).lte('work_date', to)
     .order('work_date').order('id').range(f, t) as unknown as Page<DraftRow>);
-  const [planning, real, draftRows, cancelled] = await Promise.all([
+  const [planning, real, draftRows, cancelled, missions] = await Promise.all([
     // Sans la jointure `user` de l'écran : la feuille ne lit jamais p.user (les noms
     // viennent de la liste des salariés). Le type la déclare : d'où la conversion.
     fetchAllPaged<PlanningWithWorksite>((f, t) => supabase.from('planning').select('*, worksite:worksites(*)')
@@ -49,6 +55,7 @@ export async function loadPrintData(companyId: string, from: string, to: string)
     fetchAllPaged<{ planning_id: string | null }>((f, t) => supabase.from('time_entries').select('planning_id')
       .eq('company_id', companyId).eq('status', 'cancelled').not('planning_id', 'is', null).gte('work_date', from).lte('work_date', to)
       .order('work_date').order('id').range(f, t) as unknown as Page<{ planning_id: string | null }>),
+    want.tasks || want.meetings ? loadMissionsForPrint(companyId, from, to, want) : Promise.resolve(MISSIONS_OFF),
   ]);
   // Lot 2 : un brouillon VIDE (0 minute, jamais envoyé) ne s'affiche pas — ni à l'écran, ni sur papier.
   const shown = draftRows.filter((d) => !isDisposableDraft(d));
@@ -62,5 +69,5 @@ export async function loadPrintData(companyId: string, from: string, to: string)
     if (error) throw error;
     for (const w of (data || []) as { id: string; client_name: string }[]) wsNames.set(w.id, w.client_name);
   }
-  return { from, to, planning, real, drafts: shown, withdrawn: withdrawnSet(cancelled), wsNames };
+  return { from, to, planning, real, drafts: shown, withdrawn: withdrawnSet(cancelled), wsNames, missions };
 }

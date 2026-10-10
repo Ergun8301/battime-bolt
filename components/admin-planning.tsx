@@ -70,6 +70,10 @@ import { CHANTIER_PALETTES, hashStr, LiveLine, PL_GRID_CSS, PlannedBubbleView, t
 import { PlanningPrintSheet, PrintMenu, PRINT_MENU_CSS, printTitle, type PrintJob, type PrintOptions } from '@/components/planning-print';
 import { absenceCode, periodDays, periodRange, withinPeriod, worksiteCodes, type PrintPeriod } from '@/supabase/functions/_shared/print-period';
 import { loadPrintData } from '@/lib/planning-print-data';
+// Lot 4 : tâches du jour et réunions (tables à part : jamais des heures).
+import { AddKindSwitch, DayTasksPanel, MeetingChip, MeetingForm, MISSIONS_CSS, PrintTasks, TasksBadge, type AddKind } from '@/components/missions-office';
+import { fetchOfficeMissions, MISSIONS_OFF, type DayTask, type Meeting, type MissionsState } from '@/lib/missions';
+import { MEETING_TINT, meetingsFor, sortTasks } from '@/supabase/functions/_shared/missions';
 import {
   aggregateEntries, bubbleTitleOf, DRAFT_COLS, extraDeclared, makeBubbleKeyOf, makePrintSource, orderCmp, SENT_COLS, withdrawnSet,
   type DraftRow, type EntryRow, type PrintSource, type RealAgg,
@@ -160,6 +164,9 @@ const scheduleError = (start: string, end: string): string | null => {
   return null;
 };
 const EMPTY_SET: Set<string> = new Set();
+// Lot 4 : listes vides partagées (aucun redessin pour rien).
+const NO_TASKS: DayTask[] = [];
+const NO_MEETINGS: Meeting[] = [];
 // Lot 7 : horaire prévu affiché sur la bulle — « 14:00 » (RDV) ou « 14:00–18:00 ».
 const plannedHoursOf = (p: PlanningWithWorksite): string | null =>
   p.estimated_start ? `${p.estimated_start.slice(0, 5)}${p.estimated_end ? `–${p.estimated_end.slice(0, 5)}` : ''}` : null;
@@ -693,6 +700,7 @@ button.bt-pl-m-stat{font:inherit;background:none;border:0;padding:0;color:inheri
 
 ${PL_GRID_CSS}
 ${PRINT_MENU_CSS}
+${MISSIONS_CSS}
 /* Lot 9 : pastille « en cours » — dans une case étroite de la grille, le chantier
    passe sous « en cours depuis HH:MM » au lieu de déborder ; en ligne sur mobile. */
 .bt-pl-livechip{align-items:flex-start}
@@ -977,7 +985,8 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     const seq = ++printSeq.current;
     const weekISO = format(currentWeekStart, 'yyyy-MM-dd');
     // La période est à l'écran (sa semaine, ou un de ses jours) : ses données, comme au lot 3.
-    if (withinPeriod(o.period, { kind: 'week', start: weekISO }) && loadedWeek === weekISO) {
+    const missionsReady = (!missions.meetingsOn && !(o.tasks && missions.tasksOn)) || missionsWeek === weekISO;
+    if (withinPeriod(o.period, { kind: 'week', start: weekISO }) && loadedWeek === weekISO && missionsReady) {
       setPrintOpen(false); setPrintJob({ ...o, data: null, printedAt: new Date() });
       return;
     }
@@ -985,7 +994,9 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     setPrintBusy(true);
     try {
       const { from, to } = periodRange(o.period);
-      const data = await loadPrintData(user.company_id, from, to);
+      // Lot 4 : réunions toujours, tâches si demandées ; le mois n'imprime ni l'un ni l'autre.
+      const month = o.period.kind === 'month';
+      const data = await loadPrintData(user.company_id, from, to, { meetings: !month && missions.meetingsOn, tasks: !month && !!o.tasks && missions.tasksOn });
       if (seq !== printSeq.current) return;
       setPrintOpen(false); setPrintJob({ ...o, data, printedAt: new Date() });
     } catch (err) {
@@ -1025,6 +1036,18 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const [addTimeBad, setAddTimeBad] = useState(false);
   const [addEnd, setAddEnd] = useState('');
   const [addSaving, setAddSaving] = useState(false);
+  // Lot 4 : la même fenêtre « + » ajoute aussi une tâche ou une réunion (petites
+  // pastilles en tête, seulement quand la migration est passée). Ouverte depuis
+  // une pastille réunion, un compteur de tâches ou un jour d'absence : pas de
+  // pastilles (on regarde ce qui existe ; pas d'intervention sur une absence).
+  const [addKind, setAddKind] = useState<AddKind>('intervention');
+  const [addLocked, setAddLocked] = useState(false);
+  const [addAbsent, setAddAbsent] = useState(false);
+  const [editMeeting, setEditMeeting] = useState<Meeting | null>(null);
+  const [missions, setMissions] = useState<MissionsState>(MISSIONS_OFF);
+  // Semaine dont `missions` est vraiment chargé (comme loadedWeek pour le planning) :
+  // sinon l'impression relit à part, plutôt que d'oublier réunions et tâches sans le dire.
+  const [missionsWeek, setMissionsWeek] = useState<string | null>(null);
 
   // affectation (bubble) edit dialog
   const [editing, setEditing] = useState<PlanningWithWorksite | null>(null);
@@ -1276,6 +1299,22 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     }
   }, [user?.company_id, currentWeekStart]);
 
+  // Lot 4 : tâches et réunions de la semaine affichée. Lectures simples (GET) ; table
+  // absente → la fonction se cache ; autre erreur → on garde ce qu'on sait.
+  const missionsSeq = useRef(0);
+  const missionsRef = useRef(missions);
+  missionsRef.current = missions;
+  const fetchMissions = useCallback(async () => {
+    if (!user?.company_id) return;
+    const seq = ++missionsSeq.current;
+    const from = format(currentWeekStart, 'yyyy-MM-dd');
+    const to = format(addDays(currentWeekStart, DAYS_IN_WEEK - 1), 'yyyy-MM-dd');
+    const { state: next, complete } = await fetchOfficeMissions(user.company_id, from, to, missionsRef.current);
+    if (seq !== missionsSeq.current) return; // une semaine plus récente a été demandée
+    setMissions((prev) => keep(prev, next));
+    setMissionsWeek(complete ? from : null);
+  }, [user?.company_id, currentWeekStart]);
+
   // Today's absence (cell tint) + planned-but-undeclared dots + company + invitations.
   const fetchExtras = useCallback(async () => {
     if (!user?.company_id) return;
@@ -1385,6 +1424,13 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
 
   useEffect(() => { fetchData(); }, [fetchData]);
   useEffect(() => { fetchPlanning(); }, [fetchPlanning]);
+  // Lot 4 : relu à chaque semaine, et au retour sur l'onglet (« Fait » coché entre-temps).
+  useEffect(() => {
+    fetchMissions();
+    const onVisible = () => { if (document.visibilityState !== 'hidden') fetchMissions(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [fetchMissions]);
   useEffect(() => {
     fetchExtras();
     const id = setInterval(fetchExtras, 60000);
@@ -1456,7 +1502,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     return () => { stale = true; };
   }, [user?.company_id]);
 
-  const refresh = () => { fetchPlanning(); fetchExtras(); fetchClosures(); };
+  const refresh = () => { fetchPlanning(); fetchExtras(); fetchClosures(); fetchMissions(); };
   // Lot 11 : « Annuler » peut être cliqué bien après (la carte reste) — peut-être sur
   // une autre semaine : il relit alors la semaine AFFICHÉE, pas celle de la suppression.
   const refreshRef = useRef(refresh);
@@ -2074,7 +2120,28 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     setAddWorksite(paletteWorksiteId || '');
     setAddNote('');
     setAddStart(''); setAddEnd('');
+    setAddKind('intervention'); setAddLocked(false); setAddAbsent(false); setEditMeeting(null);
     setAddOpen(true);
+  };
+  // Lot 4 : le compteur de tâches d'une case (relu à l'ouverture : « Fait » à jour).
+  const openTasks = (workerId: string, dateStr: string, absent: boolean) => {
+    setAddTarget({ workerId, date: dateStr });
+    setAddKind('tache'); setAddLocked(true); setAddAbsent(absent); setEditMeeting(null);
+    setAddOpen(true);
+    fetchMissions();
+  };
+  // Lot 4 : la pastille d'une réunion → la même fenêtre, sur la réunion.
+  const openMeeting = (m: Meeting, workerId: string) => {
+    setAddTarget({ workerId, date: m.meeting_date });
+    setAddKind('reunion'); setAddLocked(true); setAddAbsent(false); setEditMeeting(m);
+    setAddOpen(true);
+  };
+  // Le titre suit l'onglet : « Ajouter une intervention » ne change pas (lot 11).
+  const addTitleOf = () => {
+    if (addKind === 'reunion') return 'Réunion';
+    if (addKind !== 'tache' || !addTarget) return 'Ajouter une intervention';
+    const w = displayWorkers.find((x) => x.id === addTarget.workerId);
+    return `Tâches du jour — ${w?.first_name || ''}, ${format(parseISO(addTarget.date), 'EEEE d MMMM', { locale: fr })}`;
   };
 
   const confirmAdd = async (e: React.FormEvent) => {
@@ -2666,6 +2733,23 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     return worksiteCodes(titles);
   }, [printJob, printSrc, printRows]);
 
+  // Lot 4 : réunions et tâches, par case. Écran : la semaine affichée ; feuille : la
+  // période imprimée (lue à part hors de l'écran). Jamais additionnées aux heures.
+  const cellsOf = (ms: MissionsState) => {
+    const tasks = new Map<string, DayTask[]>();
+    if (ms.tasksOn) for (const t of ms.tasks) { const k = `${t.user_id}|${t.work_date}`; const l = tasks.get(k); if (l) l.push(t); else tasks.set(k, [t]); }
+    tasks.forEach((l, k) => tasks.set(k, sortTasks(l)));
+    return {
+      tasks: (uid: string, d: string) => tasks.get(`${uid}|${d}`) || NO_TASKS,
+      meetings: (uid: string, d: string) => (ms.meetingsOn ? meetingsFor(ms.meetings, ms.participants, uid, d) : NO_MEETINGS),
+    };
+  };
+  const cells = useMemo(() => cellsOf(missions), [missions]); // eslint-disable-line react-hooks/exhaustive-deps
+  const printMissions = printJob ? (printJob.data ? printJob.data.missions : missions) : null;
+  const printCells = useMemo(() => (printMissions ? cellsOf(printMissions) : null), [printMissions]); // eslint-disable-line react-hooks/exhaustive-deps
+  const printHasMeetings = !!printJob && !!printMissions?.meetingsOn && printJob.period.kind !== 'month'
+    && printRows.some((w) => periodDays(printJob.period).some((d) => (printCells?.meetings(w.id, d).length || 0) > 0));
+
   const absenceForDay = (workerId: string, dateStr: string) =>
     planning.find(p => p.user_id === workerId && p.work_date === dateStr && p.absence_type);
 
@@ -2693,11 +2777,18 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     if (abs) {
       const masked = abs.absence_type === 'maladie';
       const av = masked ? ABSENCE_VISUAL.conge : (ABSENCE_VISUAL[abs.absence_type!] || ABSENCE_VISUAL.conge);
+      // Lot 4 : la réunion fait partie du planning (imprimée même sous une absence).
+      const meets = printCells?.meetings(workerId, iso) || NO_MEETINGS;
+      const tasks = printJob?.tasks ? (printCells?.tasks(workerId, iso) || NO_TASKS) : NO_TASKS;
       return (
-        <div className="bt-pl-abs" style={{ background: av.bg, color: av.fg, minHeight: 56 }} data-testid="print-absence">
-          {!masked && <span className="bt-pl-abs-ico">{av.icon}</span>}
-          <span className="bt-pl-abs-lbl">{masked ? 'Absent' : (ABSENCE_LABELS[abs.absence_type!] || abs.absence_type)}</span>
-        </div>
+        <>
+          <div className="bt-pl-abs" style={{ background: av.bg, color: av.fg, minHeight: 56 }} data-testid="print-absence">
+            {!masked && <span className="bt-pl-abs-ico">{av.icon}</span>}
+            <span className="bt-pl-abs-lbl">{masked ? 'Absent' : (ABSENCE_LABELS[abs.absence_type!] || abs.absence_type)}</span>
+          </div>
+          {meets.map((m) => <div key={m.id} style={{ marginTop: 6 }}><MeetingChip m={m} print /></div>)}
+          {tasks.length > 0 && <div style={{ marginTop: 6 }}><PrintTasks tasks={tasks} /></div>}
+        </>
       );
     }
     return (
@@ -2712,6 +2803,9 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
             <span className="bt-pl-extra-by" style={x.pending ? { color: '#6E6A63' } : undefined}><UserIcon className="h-2.5 w-2.5 shrink-0" /> {formatMinutes(x.minutes)} · {x.pending ? 'saisi, à envoyer' : 'ajouté par le salarié'}</span>
           </div>
         ))}
+        {/* Lot 4 : réunions (couleur à part) puis, avec « Avec les tâches », la liste. */}
+        {(printCells?.meetings(workerId, iso) || NO_MEETINGS).map((m) => <MeetingChip key={m.id} m={m} print />)}
+        {printJob?.tasks && <PrintTasks tasks={printCells?.tasks(workerId, iso) || NO_TASKS} />}
       </div>
     );
   };
@@ -2935,6 +3029,10 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                   <div className="bt-pl-legrow"><span className="bt-pl-legic" style={{ color: '#caa01a' }}><UserIcon className="h-3.5 w-3.5" /></span> Intervention ajoutée par le salarié</div>
                   <div className="bt-pl-legrow"><span className="bt-pl-legic"><Paperclip className="h-3.5 w-3.5" /></span> Documents du chantier</div>
                   <div className="bt-pl-legrow"><span className="bt-pl-legic"><span className="bt-pl-live-dot" /></span> En cours (pointage en direct)</div>
+                  {/* Lot 4 : seulement quand les réunions existent (migration passée). */}
+                  {missions.meetingsOn && (
+                    <div className="bt-pl-legrow" data-testid="leg-reunion"><span className="bt-pl-legic"><span className="bt-pl-legsw" style={{ background: MEETING_TINT.bg, borderColor: MEETING_TINT.edge, borderStyle: 'solid' }} /></span> 👥 Réunion <span className="bt-pl-legmuted">· ne compte pas dans les heures</span></div>
+                  )}
                 </div>
               </>
             )}
@@ -3031,7 +3129,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
             {printOpen && (
               <>
                 <div className="bt-pl-ddbackdrop" onClick={closePrintMenu} />
-                <PrintMenu displayed={displayedPeriod} busy={printBusy}
+                <PrintMenu displayed={displayedPeriod} busy={printBusy} tasksOn={missions.tasksOn}
                   workers={displayWorkers.map((w) => ({ id: w.id, name: `${w.first_name} ${w.last_name}` }))}
                   onPrint={startPrint} onClose={closePrintMenu} />
               </>
@@ -3130,6 +3228,15 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                             const extra = extraDeclaredForCell(worker.id, dateStr);
                             const liveHere = !!liveForCell(worker.id, dateStr);
                             const liveChip = liveChipFor(worker.id, dateStr);
+                            // Lot 4 : réunions (couleur à part) et compteur de tâches de la case.
+                            const meets = cells.meetings(worker.id, dateStr);
+                            const tasks = cells.tasks(worker.id, dateStr);
+                            const missionChips = (meets.length > 0 || tasks.length > 0) ? (
+                              <>
+                                {meets.map((m) => <MeetingChip key={m.id} m={m} inert={selectMode} onOpen={() => openMeeting(m, worker.id)} />)}
+                                {tasks.length > 0 && <TasksBadge tasks={tasks} inert={selectMode} onOpen={() => openTasks(worker.id, dateStr, !!absence)} />}
+                              </>
+                            ) : null;
                             return (
                               <DroppableCell key={dateStr} workerId={worker.id} dateStr={dateStr} isToday={dateStr === todayStr} live={liveHere}>
                                 {absence ? (() => {
@@ -3137,7 +3244,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                                   return (
                                     <>
                                       <button
-                                        style={{ background: av.bg, color: av.fg, ...(liveChip ? { height: 'auto', flex: 1, minHeight: 56, marginBottom: 7 } : null) }}
+                                        style={{ background: av.bg, color: av.fg, ...(liveChip || missionChips ? { height: 'auto', flex: 1, minHeight: 56, marginBottom: 7 } : null) }}
                                         onClick={() => (selectMode ? toast('Absence — à changer avec « Présent »') : setStatusTarget({ worker, fromStr: dateStr }))}
                                         className="bt-pl-abs"
                                         title={selectMode ? 'Absence — à changer avec « Présent » (non supprimable ici)' : 'Absence — cliquer pour changer le statut'}
@@ -3147,6 +3254,8 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                                       </button>
                                       {/* Absent mais pointe quand même : on le dit, sans trancher. */}
                                       {liveChip}
+                                      {/* Lot 4 : réunion / tâches existantes, visibles (pas d'ajout un jour d'absence). */}
+                                      {missionChips && <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: liveChip ? 7 : 0 }}>{missionChips}</div>}
                                     </>
                                   );
                                 })() : (
@@ -3179,6 +3288,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                                         : chip;
                                     })}
                                     {liveChip}
+                                    {missionChips}
                                     {chantiers.length === 0 && extra.length === 0 && !liveChip && <div className="bt-pl-add">+</div>}
                                   </div>
                                 )}
@@ -3347,6 +3457,15 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                 // Lot 9 : la carte du jour est la case salarié × jour — même règle que la grille.
                 const liveHere = !!liveForCell(worker.id, dateStr);
                 const liveChip = liveChipFor(worker.id, dateStr);
+                // Lot 4 : réunions et tâches de la journée, aussi un jour d'absence.
+                const meets = cells.meetings(worker.id, dateStr);
+                const tasks = cells.tasks(worker.id, dateStr);
+                const missionChips = (meets.length > 0 || tasks.length > 0) ? (
+                  <>
+                    {meets.map((m) => <MeetingChip key={m.id} m={m} big inert={selectMode} onOpen={() => openMeeting(m, worker.id)} />)}
+                    {tasks.length > 0 && <TasksBadge tasks={tasks} inert={selectMode} onOpen={() => openTasks(worker.id, dateStr, !!absence)} />}
+                  </>
+                ) : null;
                 return (
                   <div key={worker.id} className={`bt-pl-m-card${liveHere ? ' bt-pl-cell-live' : ''}`} data-live={liveHere ? '1' : undefined}>
                     {/* Taper le salarié → présence / absence / fiche (même dialogue que le clic
@@ -3369,10 +3488,10 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                         <span className="bt-pl-m-badge" data-testid="m-badge-sent" style={{ background: '#EFEAE0', color: '#3D382F' }}>✓ ENVOYÉ</span>
                       ) : null}
                     </button>
-                    {absence && liveChip && <div className="bt-pl-m-bubs">{liveChip}</div>}
+                    {absence && (liveChip || missionChips) && <div className="bt-pl-m-bubs">{liveChip}{missionChips}</div>}
                     {!absence && (
                       <>
-                        {(chantiers.length > 0 || extra.length > 0 || liveChip) && (
+                        {(chantiers.length > 0 || extra.length > 0 || liveChip || missionChips) && (
                           <div className="bt-pl-m-bubs">
                             {/* Taper une bulle → modifier l'affectation (openEdit, comme desktop). */}
                             {chantiers.map(p => {
@@ -3402,6 +3521,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                                 : chip;
                             })}
                             {liveChip}
+                            {missionChips}
                           </div>
                         )}
                         {/* Ajouter un chantier à ce salarié pour ce jour (openAdd → même dialogue que
@@ -3549,7 +3669,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       {/* Lot 3 : la feuille imprimée, directement dans <body> (le CSS d'impression cache
           tout le reste) et seulement le temps d'imprimer. Photos : initiales seules. */}
       {printJob && printSrc && createPortal(
-        <PlanningPrintSheet job={printJob} company={companyLabel} codes={printCodes}
+        <PlanningPrintSheet job={printJob} company={companyLabel} codes={printCodes} hasMeetings={printHasMeetings}
           rows={printRows.map((w) => ({
             id: w.id, name: `${w.first_name} ${w.last_name}`, initials: `${w.first_name?.[0] || ''}${w.last_name?.[0] || ''}`, tint: avatarTint(w.id, false),
           }))}
@@ -3974,10 +4094,27 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         </DialogContent>
       </Dialog>
 
-      {/* Cell add — a client on a specific day */}
-      <Dialog open={addOpen} onOpenChange={(o) => { setAddOpen(o); if (!o) setAddTarget(null); }}>
+      {/* Cell add — a client on a specific day. Lot 4 : la même fenêtre pose aussi une
+          tâche ou une réunion (pastilles en tête) ; le titre suit ce qui est choisi. */}
+      <Dialog open={addOpen} onOpenChange={(o) => { setAddOpen(o); if (!o) { setAddTarget(null); setEditMeeting(null); } }}>
         <DialogContent className="bt-skin max-w-sm">
-          <DialogHeader><DialogTitle>Ajouter une intervention</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{addTitleOf()}</DialogTitle></DialogHeader>
+          {!addLocked && (missions.tasksOn || missions.meetingsOn) && (
+            <AddKindSwitch value={addKind} onChange={setAddKind} tasksOn={missions.tasksOn && !addTarget?.workerId.startsWith('demo-')} meetingsOn={missions.meetingsOn} />
+          )}
+          {addKind === 'tache' && addTarget && user?.company_id && (
+            <DayTasksPanel key={`${addTarget.workerId}|${addTarget.date}`} companyId={user.company_id} workerId={addTarget.workerId} date={addTarget.date}
+              tasks={cells.tasks(addTarget.workerId, addTarget.date)} canAdd={!addAbsent} onChanged={fetchMissions} />
+          )}
+          {addKind === 'reunion' && addTarget && (
+            <MeetingForm key={editMeeting?.id || `new|${addTarget.workerId}|${addTarget.date}`}
+              workers={workers.map((w) => ({ id: w.id, name: `${w.first_name} ${w.last_name}` }))}
+              date={addTarget.date} defaultWorkerId={addTarget.workerId.startsWith('demo-') ? null : addTarget.workerId}
+              meeting={editMeeting} participants={editMeeting ? (missions.participants[editMeeting.id] || []) : undefined}
+              companyName={companyName}
+              onSaved={async () => { await fetchMissions(); setAddOpen(false); setAddTarget(null); setEditMeeting(null); }} />
+          )}
+          {addKind === 'intervention' && (
           <form onSubmit={confirmAdd} className="space-y-4 pt-2" data-testid="add-form">
             <div className="space-y-2">
               <Label>Client</Label>
@@ -3997,6 +4134,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
               {addSaving && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Ajouter au planning
             </Button>
           </form>
+          )}
         </DialogContent>
       </Dialog>
 
