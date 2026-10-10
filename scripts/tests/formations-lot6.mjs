@@ -788,6 +788,9 @@ section('W7 · chef d’équipe : pareil');
   const n = writes.length;
   await lp.locator('[data-testid=training-row]', { hasText: 'Gestes et postures' }).locator('[data-testid=training-seen]').click(); await lp.waitForTimeout(1200);
   check(of(since(n), 'RPC', 'set_training_seen').length === 1 && D.training_views.some((v) => v.training_id === 't-gestes' && v.user_id === CHLOE), 'Chloé coche « Vue » (pour elle seule)');
+  // Relecture : une « Vue » de la veille ne s'annule plus (10 min côté base) → simple mention, pas d'erreur au toucher.
+  const old = lp.locator('[data-testid=training-row]', { hasText: 'Port du harnais' }).locator('[data-testid=training-seen]');
+  check(await old.isDisabled() && (await old.getAttribute('aria-label') || '').endsWith(': vue'), '« Vue » de la veille : bouton inactif, plus « toucher pour annuler »');
   await lead.close();
 }
 

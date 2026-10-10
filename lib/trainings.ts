@@ -103,7 +103,11 @@ export async function fetchOfficeTrainings(companyId: string): Promise<
 export async function fetchPickableDocuments(companyId: string): Promise<PickableDoc[] | null> {
   const cols = 'id, label, file_name, file_path, mime_type, created_at, worksite_id, worksite:worksites(client_name)';
   const read = (withCategory: boolean) => supabase.from('documents').select(withCategory ? `${cols}, category` : cols)
-    .eq('company_id', companyId).order('created_at', { ascending: false }).limit(300);
+    .eq('company_id', companyId)
+    // Les photos de chantier sont aussi dans `documents` : écartées AVANT la limite,
+    // sinon 300 photos récentes cachent le livret PDF plus ancien.
+    .or('mime_type.is.null,mime_type.not.ilike.image/*')
+    .order('created_at', { ascending: false }).limit(300);
   // Avec la catégorie (lot 7) ; sans, si la colonne n'existe pas encore (comme « Documents »).
   let { data, error } = await read(true);
   if (error) ({ data, error } = await read(false));

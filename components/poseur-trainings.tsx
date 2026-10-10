@@ -26,6 +26,10 @@ const OFF: State = { available: false, items: [] };
 const POLL_MS = 60_000;
 
 /** Mes formations. `available` = la migration est passée (sinon : rien ne s'affiche). */
+/** « Vue » ne s'annule que 10 minutes (même règle que set_training_seen) : ensuite le bouton devient une simple mention. */
+const SEEN_UNDO_MS = 10 * 60 * 1000;
+const canUndoSeen = (seenAt: string) => Date.now() - new Date(seenAt).getTime() < SEEN_UNDO_MS;
+
 export function useMyTrainings(userId: string | null | undefined) {
   const [st, setSt] = useState<State>(OFF);
   const seq = useRef(0);
@@ -181,8 +185,8 @@ export default function PoseurTrainings({ items, companyId, onPatch }: {
                     ) : (
                       <span className="bt-tr-na" data-testid="training-na">Lien indisponible</span>
                     )}
-                    <button type="button" className="bt-tr-seen" aria-pressed={!!t.seen_at} disabled={busyId === t.id} data-testid="training-seen"
-                      aria-label={`${t.title} : ${t.seen_at ? 'vue (toucher pour annuler)' : 'pas encore vue'}`} onClick={() => toggle(t)}>
+                    <button type="button" className="bt-tr-seen" aria-pressed={!!t.seen_at} disabled={busyId === t.id || (!!t.seen_at && !canUndoSeen(t.seen_at))} data-testid="training-seen"
+                      aria-label={`${t.title} : ${t.seen_at ? (canUndoSeen(t.seen_at) ? 'vue (toucher pour annuler)' : 'vue') : 'pas encore vue'}`} onClick={() => toggle(t)}>
                       {busyId === t.id ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
                       {t.seen_at ? `✓ Vue le ${ddmm(t.seen_at)}` : '○ Vue'}
                     </button>

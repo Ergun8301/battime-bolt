@@ -126,7 +126,7 @@ export default function TrainingsAdmin({ open, onOpenChange, companyId, companyN
   const resetForm = useCallback(() => {
     setAdding(false); setTitle(''); setKind('video'); setLink(''); setDocId(''); setAllTeam(true); setPicked([]); setQuery(''); setFormError(null);
   }, []);
-  useEffect(() => { if (!open) { resetForm(); setDocs(null); setExpanded(null); setConfirmId(null); setShowArchived(false); } }, [open, resetForm]);
+  useEffect(() => { if (!open) { resetForm(); setDocs(null); setExpanded(null); setConfirmId(null); setShowArchived(false); setDocUrls({}); } }, [open, resetForm]); // liens signés 1 h : resignés à la réouverture
 
   // Les documents ne sont lus qu'au premier choix de « Document ».
   useEffect(() => {
