@@ -7,6 +7,7 @@ import { useAuth } from '@/components/auth-provider';
 import { corrigerHeures, fmtHeure } from '@/lib/corrections';
 import { User, Worksite, Certification, CertificationType } from '@/lib/types';
 import { ExportEntry, exportEntriesToExcel, exportEntriesToPDF, exportEntriesToCSV } from '@/lib/export-utils';
+import { readMealEnabled, showMealCorrection, useMealEnabled } from '@/lib/meal-setting';
 import { fetchCompanyClosures, closeWorkerUntil, reopenWorker } from '@/lib/worker-closure';
 import { fetchAllPaged } from '@/lib/fetch-all';
 import { isCounted } from '@/lib/status';
@@ -130,6 +131,9 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
   const [companyName, setCompanyName] = useState('');
   // Réglage entreprise : la route entre deux chantiers est-elle payée ?
   const [travelPaid, setTravelPaid] = useState(false);
+  // Lot 3 bis : panier non utilisé → la case de correction n'est plus proposée,
+  // sauf sur une ligne qui a encore un panier (pour pouvoir le retirer).
+  const mealOn = useMealEnabled(worker?.company_id) !== false;
   const [companyWeeklyHours, setCompanyWeeklyHours] = useState(DEFAULT_WEEKLY_HOURS);
   const [overtimeRates, setOvertimeRates] = useState(DEFAULT_OVERTIME_RATES);
   const [worksites, setWorksites] = useState<Worksite[]>([]);
@@ -660,11 +664,13 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
 
   // Le MÊME menu « Exporter ▾ » que l'équipe : PDF, Excel, CSV. Ici, jamais de
   // verrou (« Sans verrou ») : c'est un relevé, pas l'envoi de la paie.
-  const doExport = (kind: ExportKind) => {
+  const doExport = async (kind: ExportKind) => {
     if (!worker) return;
     if (countedEntries.length === 0) { toast.error('Aucune heure envoyée sur cette période'); return; }
     setExporting(true);
     try {
+      // Lot 3 bis : le réglage panier relu AU CLIC (jamais un état chargé avant un changement).
+      const mealEnabled = await readMealEnabled(worker.company_id);
       const name = `${worker.first_name} ${worker.last_name}`;
       const fromStr = range?.from ? format(range.from, 'yyyy-MM-dd') : '';
       const toStr = range?.to ? format(range.to, 'yyyy-MM-dd') : fromStr;
@@ -676,7 +682,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
       })) as unknown as ExportEntry[];
       const opts = {
         fileName, title: 'BEMEXO — Relevé salarié', periodLabel, companyName,
-        singleWorkerName: name, travelPaid,
+        singleWorkerName: name, travelPaid, mealEnabled,
         weeklyHoursByWorker: new Map([[worker.id, effectiveWeeklyHours]]),
         recapEntries: recap,
         overtimeRates,
@@ -1483,6 +1489,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
                                   {pauseOptions(entry.break_minutes || 0).map((m) => <option key={m} value={m}>{fmtDuree(m)}</option>)}
                                 </select>
                               </label>
+                              {showMealCorrection(mealOn, entry.meal_allowance) && (
                               <span className="flex items-center gap-1">
                                 <label className="flex items-center gap-1.5">
                                   <input type="checkbox" checked={cMeal} onChange={(e) => setCMeal(e.target.checked)} data-testid="correct-meal" />
@@ -1490,6 +1497,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
                                 </label>
                                 <InfoTip text="Un seul panier par jour : il est retiré de l'autre chantier." />
                               </span>
+                              )}
                               {prevEnd && (
                                 <label className="flex items-center gap-1.5">
                                   <span>Entre {prevEnd} et {cStart} :</span>

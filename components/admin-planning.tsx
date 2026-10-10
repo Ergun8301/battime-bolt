@@ -39,6 +39,7 @@ import { toast } from 'sonner';
 import { computeMissingDays, missingWindowStart, withIncompleteDays } from '@/lib/work-status';
 import { isExitToComplete, type QrFields } from '@/lib/qr-entry';
 import { exportEntriesToExcel, exportEntriesToPDF, exportEntriesToCSV, excelAsBase64 } from '@/lib/export-utils';
+import { readMealEnabled } from '@/lib/meal-setting';
 import { fetchAllPaged, chunk } from '@/lib/fetch-all';
 import { isPreviewHost } from '@/lib/hosting';
 import WorkerDetailDialog from '@/components/worker-detail';
@@ -2343,12 +2344,17 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         .range(f, t2) as unknown as PromiseLike<{ data: (TimeEntryWithWorksite & { user: User })[] | null; error: { message: string } | null }>);
       if (entries.length === 0) { toast.error(`Aucune saisie du ${format(exportRange.from, 'dd/MM')} au ${format(exportRange.to, 'dd/MM')}`); return; }
 
+      // Lot 3 bis : le réglage panier relu AU CLIC (lecture seule, à part) — couvre
+      // Excel, PDF et l'envoi au comptable. Changer le réglage change le fichier :
+      // un nouvel envoi n'est alors pas reconnu comme doublon (empreinte du fichier).
+      const mealEnabled = await readMealEnabled(user.company_id);
       const opts = {
         fileName: `bemexo-${kind === 'pdf' ? 'rapport' : kind === 'csv' ? 'paie' : 'export'}-${from}`,
         title: 'BEMEXO - Rapport hebdomadaire',
         periodLabel: `${format(exportRange.from, 'dd/MM/yyyy')} au ${format(exportRange.to, 'dd/MM/yyyy')}`,
         companyName,
         travelPaid,
+        mealEnabled,
         weeklyHoursByWorker,
         recapEntries,
         overtimeRates,

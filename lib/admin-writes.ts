@@ -218,6 +218,15 @@ export async function saveCompanySettings(s: CompanySettings) {
   });
   if (error) throw error;
 }
+/**
+ * Lot 3 bis : « Utiliser le panier repas ». Fonction serveur À PART
+ * (`set_meal_enabled`, bureau seulement) : élargir `update_company_info`
+ * casserait « Enregistrer » tant que la base n'a pas suivi.
+ */
+export async function saveMealEnabled(v: boolean) {
+  const { error } = await supabase.rpc('set_meal_enabled', { p_enabled: v });
+  if (error) throw error;
+}
 /** Réglages actuels (mêmes colonnes et mêmes valeurs par défaut que l'écran). */
 export async function readCompanySettings(companyId: string): Promise<CompanySettings> {
   const { data, error } = await supabase.from('companies')

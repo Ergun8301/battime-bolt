@@ -15,6 +15,7 @@ import { removeWorksiteDocument, uploadWorksiteDocument } from '@/lib/chantier-d
 import { copyLinesTo, sendWorkerDay, setDayMealOnline } from '@/lib/worker-day';
 import { createWorksite } from '@/lib/planning-writes';
 import { geoInfoSeen } from '@/lib/position-info';
+import { MEAL_OFF_MESSAGE, readMealEnabled } from '@/lib/meal-setting';
 import type { WorkerActionDraft } from '@/supabase/functions/_shared/worker-assistant-core';
 
 export interface WorkerActionResult {
@@ -209,6 +210,8 @@ export function makeWorkerExecutor(user: { id: string; company_id: string }): Wo
           break;
         }
         case 'panier_repas': {
+          // Lot 3 bis : l'entreprise n'utilise pas le panier → refus poli, AVANT toute lecture ou écriture.
+          if (!(await readMealEnabled(user.company_id))) return { ok: false, message: MEAL_OFF_MESSAGE };
           const { data: before } = await supabase.from('time_entries').select('meal_allowance').eq('user_id', user.id).eq('work_date', today()).eq('meal_allowance', true).limit(1);
           const had = !!(before && before.length);
           const ok = await setDayMealOnline(user, today(), d.valeur);
