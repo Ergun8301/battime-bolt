@@ -21,7 +21,7 @@ import {
 import { removeWorksiteDocument, uploadWorksiteDocument } from '@/lib/chantier-docs';
 import { sanitizeExtraction, supabaseCostSource } from '@/lib/real-cost';
 import { corrigerHeures } from '@/lib/corrections';
-import { casesLabel, eraseOne, erasePlanning, restoreRows } from '@/lib/erase';
+import { casesLabel, eraseOne, erasePlanning, prepareMove, restoreRows, undoErase, undoMovePrep, type MovePrep } from '@/lib/erase';
 import { DOC_CATEGORY_LABEL, type ActionDraft, type ActionQuestion } from '@/supabase/functions/_shared/assistant-actions-core';
 
 export type {
@@ -167,18 +167,56 @@ export function makeActionExecutor(user: { id: string; company_id: string }): Ac
             .eq('id', d.planning_id!).eq('company_id', cid).single();
           if (readErr) throw readErr;
           const p0 = prev as { user_id: string; work_date: string; estimated_start: string | null; estimated_end: string | null; notes: string | null };
+          // Lot 2 : changer de jour ou de salarié = la même règle que le glisser du
+          // planning. Une case qui porte des heures ne bouge pas ; retirée par le
+          // salarié, sa ligne est d'abord détachée (heures intactes) ; un brouillon
+          // vide part (lib/erase, prepareMove).
+          let prep: MovePrep | null = null;
+          if ((d.nouvelle_date && d.nouvelle_date !== p0.work_date) || (d.nouveau_user_id && d.nouveau_user_id !== p0.user_id)) {
+            prep = await prepareMove(cid, d.planning_id!);
+            if (prep.reason) return { ok: false, message: `Rien n’a été déplacé : ${prep.reason}.` };
+          }
           // Lot 11 : « décale à 9h » sur 08:00–12:00 garde la fin (09:00–12:00) tant
           // qu'elle reste après le nouveau début ; sinon la fin est retirée.
           const keptEnd = d.debut && p0.estimated_end && p0.estimated_end.slice(0, 5) > d.debut.slice(0, 5) ? p0.estimated_end : null;
-          await updatePlanningSlot(cid, d.planning_id!, {
-            ...(d.nouvelle_date ? { workDate: d.nouvelle_date } : {}), ...(d.nouveau_user_id ? { userId: d.nouveau_user_id } : {}),
-            ...(d.debut ? { estimatedStart: d.debut, estimatedEnd: keptEnd } : {}), ...(d.note !== null ? { notes: d.note } : {}),
-          });
+          try {
+            await updatePlanningSlot(cid, d.planning_id!, {
+              ...(d.nouvelle_date ? { workDate: d.nouvelle_date } : {}), ...(d.nouveau_user_id ? { userId: d.nouveau_user_id } : {}),
+              ...(d.debut ? { estimatedStart: d.debut, estimatedEnd: keptEnd } : {}), ...(d.note !== null ? { notes: d.note } : {}),
+            });
+          } catch (err) {
+            if (prep) await undoMovePrep(prep).catch((e) => console.error('Remise après échec impossible :', e));
+            throw err;
+          }
           message = 'Intervention modifiée.';
-          // « Annuler » remet le début ET la fin d'avant.
-          undo = () => updatePlanningSlot(cid, d.planning_id!, {
-            userId: p0.user_id, workDate: p0.work_date, estimatedStart: p0.estimated_start, estimatedEnd: p0.estimated_end, notes: p0.notes,
-          });
+          // « Annuler » remet le début ET la fin d'avant (et, à sa place, ce que le
+          // déplacement avait détaché ou effacé).
+          const moved = prep;
+          undo = async () => {
+            // Lot 2 : revenir est AUSSI un déplacement. Des heures notées ou un
+            // pointage commencé depuis sur la case, à sa place actuelle, la
+            // gardent — sinon ces heures désigneraient un autre jour. Même règle
+            // que le glisser (prepareMove), sur la case telle qu'elle est.
+            let back: MovePrep | null = null;
+            if (moved) {
+              back = await prepareMove(cid, d.planning_id!);
+              if (back.reason) throw new Error(`Annulation impossible : ${back.reason}.`);
+            }
+            try {
+              await updatePlanningSlot(cid, d.planning_id!, {
+                userId: p0.user_id, workDate: p0.work_date, estimatedStart: p0.estimated_start, estimatedEnd: p0.estimated_end, notes: p0.notes,
+              });
+            } catch (err) {
+              if (back) await undoMovePrep(back).catch((e) => console.error('Remise après échec impossible :', e));
+              throw err;
+            }
+            // Revenue à sa place d'origine : ce que le premier déplacement avait
+            // défait là-bas y est remis. Ce que le retour a défait à la place
+            // quittée (brouillon vide effacé, ligne retirée détachée) le reste,
+            // comme après n'importe quel déplacement : remis, ces lignes
+            // désigneraient de nouveau la case depuis un autre jour.
+            if (moved) await undoMovePrep(moved);
+          };
           break;
         }
         case 'repondre_conge': {
@@ -277,7 +315,8 @@ export function makeActionExecutor(user: { id: string; company_id: string }): Ac
             : d.type === 'supprimer_absence' ? `${k} jour${k > 1 ? 's' : ''} d’absence retiré${k > 1 ? 's' : ''}.`
             : `${casesLabel(k)}.`;
           if (r.skipped) message += ` ${r.skipped} gardée${r.skipped > 1 ? 's' : ''} (${r.reason}).`;
-          undo = async () => { await restoreRows('planning', r.deleted); return k > 1 ? `Annulé : ${casesLabel(k, 'remise')} au planning.` : 'Annulé : c’est comme avant.'; };
+          // Lot 2 : même « Annuler » que l'écran — l'intervention, ses brouillons vides, le lien des lignes retirées.
+          undo = async () => { await undoErase(r); return k > 1 ? `Annulé : ${casesLabel(k, 'remise')} au planning.` : 'Annulé : c’est comme avant.'; };
           break;
         }
         case 'supprimer_document': {

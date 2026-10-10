@@ -48,6 +48,14 @@ function isAlreadySent(e: PgError): boolean {
   return e.code === '23505' && `${e.message} ${e.details}`.includes('client_id');
 }
 
+/**
+ * Lot 2 : l'intervention (planning_id) a été supprimée par le bureau pendant
+ * que la saisie attendait sur le téléphone (clé étrangère).
+ */
+function isMissingPlanning(e: PgError): boolean {
+  return e.code === '23503' && `${e.message} ${e.details}`.includes('planning');
+}
+
 /** La colonne client_id n'existe pas encore en base (SQL pas encore passé). */
 function isMissingClientId(e: PgError): boolean {
   return e.code === 'PGRST204' && `${e.message}`.includes('client_id');
@@ -124,7 +132,8 @@ export async function syncAllPending(userId: string): Promise<SyncResult> {
         work_date: entry.work_date,
         start_time: entry.start_time,
         end_time: entry.end_time,
-        break_minutes: 0,
+        // Lot 1 : la pause notée hors ligne part avec la ligne (elle était remise à 0).
+        break_minutes: entry.break_minutes || 0,
         // total_minutes est une colonne calculée en base — jamais envoyée.
         meal_allowance: entry.meal_allowance,
         observation: entry.observation,
@@ -153,6 +162,18 @@ export async function syncAllPending(userId: string): Promise<SyncResult> {
             .insert({ ...base, client_id: entry.localId, meal_allowance: false }));
           if (error && isMissingClientId(error)) {
             ({ error } = await supabase.from('time_entries').insert({ ...base, meal_allowance: false }));
+          }
+        }
+        if (error && isMissingPlanning(error) && base.planning_id) {
+          // Les heures sont celles du salarié : elles partent quand même, sans
+          // le lien (une seule fois). Avant : refus définitif, et la saisie
+          // restait « sur le téléphone » pour toujours.
+          const unlinked = { ...base, planning_id: null };
+          ({ error } = await supabase.from('time_entries').insert({ ...unlinked, client_id: entry.localId }));
+          if (error && isMissingClientId(error)) ({ error } = await supabase.from('time_entries').insert(unlinked));
+          if (error && isMealConflict(error)) {
+            ({ error } = await supabase.from('time_entries').insert({ ...unlinked, client_id: entry.localId, meal_allowance: false }));
+            if (error && isMissingClientId(error)) ({ error } = await supabase.from('time_entries').insert({ ...unlinked, meal_allowance: false }));
           }
         }
 

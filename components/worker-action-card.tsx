@@ -223,7 +223,7 @@ export default function WorkerActionCard({ extra, execute, onDone, ctl }: Props)
       break;
     // ── Lot 7 ──
     case 'envoyer_journee':
-      body = <p className="wa-info">{d.lignes} chantier{d.lignes > 1 ? 's' : ''} aujourd’hui (prévus compris) partent au bureau.</p>;
+      body = <p className="wa-info">Tes heures notées aujourd’hui partent au bureau. Les horaires seulement prévus par le bureau se confirment dans « Ma journée ».</p>;
       break;
     case 'modifier_heures':
       body = (<>

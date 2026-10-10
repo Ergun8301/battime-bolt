@@ -74,7 +74,7 @@ export const GUIDE: GuideEntry[] = [
   {
     id: 'absence', mots: ['absence', 'conge', 'maladie', 'arret', 'intemperie', 'repos', 'poser un conge', 'vacances'],
     titre: 'Poser un congé ou une absence',
-    etapes: ['Sur le planning, cliquez le nom du salarié.', 'Choisissez Congé, Arrêt maladie, Intempérie ou Repos.', 'Choisissez les dates, puis « Enregistrer ».'],
+    etapes: ['Sur le planning, cliquez le nom du salarié.', 'Choisissez Congé, Arrêt maladie ou Intempérie.', 'Choisissez les dates, puis « Enregistrer ».'],
   },
   {
     id: 'demandes_conge', mots: ['demande de conge', 'accepter conge', 'refuser conge', 'valider conge'],
@@ -174,8 +174,9 @@ export const ACTION_TYPES = [
   'inviter_salarie', 'creer_chantier', 'poser_absence', 'affecter_planning', 'planning_semaine', 'corriger_pointage', 'ranger_document',
 ] as const;
 export type ActionType = typeof ACTION_TYPES[number];
-export const ABSENCE_KINDS = ['conge', 'maladie', 'intemperie', 'repos'] as const;
-export const ABSENCE_LABEL: Record<string, string> = { conge: 'Congé', maladie: 'Arrêt maladie', intemperie: 'Intempérie', repos: 'Repos' };
+// Lot 2 : « repos » retiré, comme dans _shared (la base ne l'accepte pas).
+export const ABSENCE_KINDS = ['conge', 'maladie', 'intemperie'] as const;
+export const ABSENCE_LABEL: Record<string, string> = { conge: 'Congé', maladie: 'Arrêt maladie', intemperie: 'Intempérie' };
 
 // ── Ce que l'assistant sait de l'entreprise (lu avec le jeton du patron) ────
 export interface ActionContext {

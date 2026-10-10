@@ -11,7 +11,8 @@
 // Chaque fonction LÈVE l'erreur Supabase : c'est l'appelant qui l'affiche.
 import { supabase } from '@/lib/supabase';
 
-export const ABSENCE_TYPES = ['conge', 'maladie', 'intemperie', 'repos'] as const;
+// Lot 2 : « repos » retiré — la base ne l'accepte pas (planning_absence_type_check).
+export const ABSENCE_TYPES = ['conge', 'maladie', 'intemperie'] as const;
 export type AbsenceType = typeof ABSENCE_TYPES[number];
 
 /** « Nouveau salarié » → « Envoyer l'invitation ». */
@@ -79,21 +80,32 @@ export interface AbsenceRow { work_date: string; absence_type: string; created_b
  */
 export async function setAbsence(p: { companyId: string; createdBy: string; userId: string; type: string; from: string; to: string }): Promise<{ ids: string[]; replaced: AbsenceRow[] }> {
   const dates = daysBetween(p.from, p.to);
-  const { data: before } = await supabase.from('planning').select('work_date, absence_type, created_by')
+  const { data: before, error: readErr } = await supabase.from('planning').select('id, work_date, absence_type, created_by')
     .eq('company_id', p.companyId).eq('user_id', p.userId)
     .gte('work_date', p.from).lte('work_date', p.to).not('absence_type', 'is', null);
-  const { error: delErr } = await supabase.from('planning').delete()
-    .eq('company_id', p.companyId).eq('user_id', p.userId)
-    .gte('work_date', p.from).lte('work_date', p.to).not('absence_type', 'is', null);
-  if (delErr) throw delErr;
+  if (readErr) throw readErr;
   const rows = dates.map((dt) => ({
     company_id: p.companyId, created_by: p.createdBy, user_id: p.userId,
     worksite_id: null, work_date: dt, estimated_start: null, estimated_end: null,
     notes: null, absence_type: p.type,
   }));
+  // Lot 2 : la NOUVELLE absence d'abord, l'ancienne ensuite. Dans l'autre ordre,
+  // un type refusé par la base (« Repos ») effaçait les congés déjà posés sur la
+  // période, puis échouait : des absences perdues sans un mot.
   const { data, error } = await supabase.from('planning').insert(rows).select('id');
   if (error) throw error;
-  return { ids: ((data || []) as { id: string }[]).map((r) => r.id), replaced: (before || []) as AbsenceRow[] };
+  const ids = ((data || []) as { id: string }[]).map((r) => r.id);
+  const old = ((before || []) as (AbsenceRow & { id: string })[]);
+  if (old.length) {
+    const { error: delErr } = await supabase.from('planning').delete()
+      .eq('company_id', p.companyId).in('id', old.map((r) => r.id));
+    if (delErr) {
+      // Rien ne doit rester en double : on retire ce qu'on vient de poser.
+      await supabase.from('planning').delete().eq('company_id', p.companyId).in('id', ids);
+      throw delErr;
+    }
+  }
+  return { ids, replaced: old.map(({ work_date, absence_type, created_by }) => ({ work_date, absence_type, created_by })) };
 }
 
 /** Annule un `setAbsence` : retire les lignes posées, remet les absences remplacées. */

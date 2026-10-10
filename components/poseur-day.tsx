@@ -18,9 +18,11 @@ import {
 } from '@/lib/offline-store';
 import { syncAllPending } from '@/lib/offline-sync';
 import { insertWorkerEntry } from '@/lib/worker-entry';
-import { planningsToMaterialise, remainingPlannings } from '@/lib/work-status';
+import { planningsToMaterialise, remainingPlannings, sendablePlannings, visiblePlannings } from '@/lib/work-status';
 import { copyLinesTo, materialisePlanned as materialiseDay, setDayMealOnline, submitDrafts } from '@/lib/worker-day';
 import { fmtHeure } from '@/lib/corrections';
+import { fetchEntryEdits, lastEdit, type EntryEdit } from '@/lib/office-edits';
+import { diffLabels } from '@/supabase/functions/_shared/office-edits';
 import { positionUtile, fmtPrecision, fmtCoord } from '@/lib/position';
 import { parisHHmm } from '@/lib/utils';
 import { TimeCylinder, snapToGrid } from '@/components/time-cylinder';
@@ -28,7 +30,8 @@ import LiveTimer from '@/components/live-timer';
 import { useOwnLiveSession, startLiveSession, announceLiveChange } from '@/lib/live-session';
 import { geoInfoSeen, markGeoInfoSeen } from '@/lib/position-info';
 import GeoInfoDialog from '@/components/geo-info-dialog';
-import { isExitToComplete, pauseCandidate, EXIT_TO_COMPLETE_MSG, PAUSE_CHOICES } from '@/lib/qr-entry';
+import { isExitToComplete, EXIT_TO_COMPLETE_MSG, PAUSE_CHOICES } from '@/lib/qr-entry';
+import { bestPlanningFor, findOverlap, firstBlockingOverlap, isEmptyDraft, keptBreak, pauseAsks, type PauseAsk, type PlannedState, type Span } from '@/supabase/functions/_shared/day-hours';
 import { LiveLine } from '@/components/planning-bubble';
 import { placeLive, cellKey } from '@/supabase/functions/_shared/live-place';
 import TeamDay from '@/components/team-day';
@@ -201,6 +204,8 @@ const DAY_CSS = `
 .bt-total-k{font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:#a59c86;margin-bottom:8px}
 .bt-total-big{font-family:'JetBrains Mono',monospace;font-size:52px;font-weight:700;letter-spacing:-.02em;line-height:.9}
 .bt-total-unit{font-size:15px;font-weight:700;color:#a59c86;margin-left:4px}
+/* Lot 1 : le prévu du bureau s'affiche À PART — ce ne sont pas des heures faites. */
+.bt-total-prevu{margin-top:8px;font-size:12.5px;font-weight:700;color:#FFC21A}
 .bt-stats{display:flex;gap:8px;margin-top:16px}
 .bt-stat{flex:1;background:#211D19;border-radius:11px;padding:10px 12px}
 .bt-stat-n{font-family:'JetBrains Mono',monospace;font-size:19px;font-weight:700;color:#F2EDE3;line-height:1}
@@ -248,6 +253,10 @@ button.bt-stat:focus-visible{outline:2px solid #FFC21A;outline-offset:2px}
 .bt-iv-corr{margin-top:8px;display:flex;align-items:center;gap:7px;background:#FFF6E0;border:1px solid #EAD08A;border-radius:9px;padding:6px 9px}
 .bt-iv-corr-t{font-size:12.5px;font-weight:800;color:#6b5a2e;line-height:1.35}
 .bt-iv-corr-v{font-family:'JetBrains Mono',monospace;font-weight:700}
+/* Lot 2 : journée renvoyée par le bureau. Même ton que la correction : il doit
+   la VOIR (et lire le motif), pas croire qu'il a fait une faute grave. */
+.bt-retour{display:flex;align-items:flex-start;gap:8px;background:#FFF6E0;border:1px solid #EAD08A;border-radius:12px;padding:10px 12px;margin:0 0 12px;font-size:13px;font-weight:700;color:#6b5a2e;line-height:1.4}
+.bt-retour svg{flex:none;margin-top:2px;color:#8a6d05}
 /* L'endroit enregistré. Gris, discret, factuel : ce n'est ni une alerte ni une
    récompense, c'est le compte-rendu de ce qui a été gardé sur lui. */
 .bt-iv-geo{margin-top:8px;display:flex;align-items:flex-start;gap:7px;font-size:12px;color:#6E6A63;font-weight:600;line-height:1.45}
@@ -360,6 +369,11 @@ button.bt-stat:focus-visible{outline:2px solid #FFC21A;outline-offset:2px}
 .bt-times-hint{text-align:center;font-size:12.5px;color:#9a948a;font-weight:600;margin-top:8px}
 
 .bt-pause-auto{display:flex;align-items:center;gap:8px;margin-top:16px;background:rgba(255,194,26,.12);border:1px solid rgba(255,194,26,.4);border-radius:12px;padding:11px 13px;font-size:12.5px;font-weight:700;color:#7a5e00}
+/* Lot 1 : la pause se déclare dans la fiche (et se demande à l'envoi après 6 h d'affilée). */
+.bt-pause-pick{display:flex;gap:8px}
+.bt-pause-b{flex:1;min-width:0;border:1.5px solid rgba(21,18,15,.16);background:#fff;border-radius:13px;padding:12px 6px;font-weight:800;font-size:13px;color:#6E6A63;cursor:pointer;font-family:inherit}
+.bt-pause-b.on{background:#15120F;border-color:#15120F;color:#FFC21A}
+.bt-plan-warn{margin-top:6px;font-size:12px;font-weight:700;color:#9a3b14}
 
 .bt-recep{display:flex;gap:8px}
 .bt-recep-b{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:5px;border:1.5px solid rgba(21,18,15,.16);background:#fff;border-radius:13px;padding:11px 6px;font-weight:800;font-size:12.5px;color:#6E6A63;cursor:pointer;font-family:inherit;text-align:center;line-height:1.1}
@@ -439,6 +453,9 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
   // voir sur sa journée, même s'il n'a pas activé les notifications — une
   // correction qu'on ne découvre qu'en fin de mois est un litige en préparation.
   const [mesCorrections, setMesCorrections] = useState<Map<string, CorrectionVue[]>>(new Map());
+  // Lot 2 : les gestes du bureau AVEC MOTIF (corrections, renvoi de la journée).
+  // Vide tant que la migration n'est pas passée : rien ne s'affiche de plus.
+  const [mesRetouches, setMesRetouches] = useState<Map<string, EntryEdit[]>>(new Map());
   // Les endroits enregistrés sur mes journées (étape 26). Vide tant que
   // l'entreprise n'a pas activé le réglage — et c'est le cas par défaut.
   const [mesPositions, setMesPositions] = useState<Map<string, PositionVue[]>>(new Map());
@@ -459,6 +476,8 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
   const [fStart, setFStart] = useState('');
   const [fEnd, setFEnd] = useState('');
   const [fObs, setFObs] = useState('');
+  // Lot 1 : la pause de la ligne (minutes), gardée quand on corrige les heures.
+  const [fBreak, setFBreak] = useState(0);
   const [fReception, setFReception] = useState<'sans' | 'avec' | 'en_cours' | ''>(''); // statut du chantier : en cours / sans / avec réserve (facultatif)
   const [fSaving, setFSaving] = useState(false);
   // Les heures telles qu'elles étaient à l'ouverture de la fiche (lot 9). Une
@@ -476,14 +495,20 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
   const [chantierQuery, setChantierQuery] = useState(''); // recherche dans la liste des chantiers (nouvelle intervention)
   // Tiroir molette (purement présentation : quelle roue on règle)
   const [drawerField, setDrawerField] = useState<'start' | 'end' | null>(null);
-  // Les pauses sont CALCULÉES automatiquement (les trous entre créneaux, via
-  // computePauses ; break_minutes reste toujours 0). Plus de sélecteur manuel :
-  // le salarié saisit seulement ses heures, la pause se déduit toute seule.
+  // Lot 1 : deux sortes de pause. Un TROU entre deux lignes (computePauses,
+  // « Route » ou « Pause ») ; et une pause DANS une ligne (break_minutes),
+  // choisie dans la fiche ou demandée à l'envoi après 6 h d'affilée. Avant,
+  // break_minutes était remis à 0 à chaque enregistrement : une journée
+  // 07:00–18:00 comptait 11 h, pause jamais demandée ni déduite.
 
   // Coherence confirmation
   const [confirmOpen, setConfirmOpen] = useState(false);
-  // Lot 12 : « Tu as pris une pause ? » — l'id de la ligne QR concernée.
-  const [pauseAsk, setPauseAsk] = useState<string | null>(null);
+  // « Tu as pris une pause ? » — la plage de plus de 6 h et la ligne qui reçoit la réponse.
+  const [pauseAsk, setPauseAsk] = useState<PauseAsk | null>(null);
+  // Lot 1 : « Le bureau avait prévu… tu l'as fait ? » avant d'envoyer du prévu.
+  const [plannedAsk, setPlannedAsk] = useState(false);
+  // Réponses de l'envoi en cours : prévu confirmé, pauses posées (sur une ligne ou un prévu).
+  const sendCtx = useRef<{ plannedOk: boolean; breaks: Map<string, number>; asked: Set<string> }>({ plannedOk: false, breaks: new Map(), asked: new Set() });
   const [coherenceWarnings, setCoherenceWarnings] = useState<string[]>([]);
 
   // Copy-yesterday
@@ -587,6 +612,8 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
       return 'Le bureau vient de clôturer ce mois. Rapproche-toi de la secrétaire.';
     }
     if (msg.includes('ne redevient pas brouillon')) return 'Journée déjà envoyée : tu peux la corriger ou la retirer.';
+    // Lot 2 : des heures envoyées une fois (même renvoyées par le bureau) ne s'effacent plus.
+    if (msg.includes('se retirent')) return 'Ces heures ont déjà été envoyées : retire-les plutôt.';
     if (msg.includes('ne se réactive pas')) return 'Ce chantier a été retiré : ajoute-le à nouveau.';
     if (msg.includes('chantier hors de votre entreprise')) return "Ce chantier n'existe plus dans ton entreprise. Choisis-en un autre.";
     return fallback;
@@ -699,6 +726,11 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
         }
         setMesCorrections(keep(m));
 
+        // Lot 2 : le journal du bureau (motifs, renvoi). Requête à part, erreurs
+        // ignorées : table absente → carte et journée exactement comme avant.
+        const ret = await fetchEntryEdits(supabase as never, idsDuJour);
+        setMesRetouches(keep(ret.byEntry));
+
         // Les endroits enregistrés sur ces mêmes journées. Requête à part de
         // la précédente : tant que la table n'existe pas, celle-ci échoue
         // seule, la carte reste vide, et la journée s'affiche normalement.
@@ -714,6 +746,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
         setMesPositions(keep(mp));
       } else {
         setMesCorrections(keep(new Map<string, CorrectionVue[]>()));
+        setMesRetouches(keep(new Map<string, EntryEdit[]>()));
         setMesPositions(keep(new Map<string, PositionVue[]>()));
       }
       setWorksites(keep<Worksite[]>(worksitesData));
@@ -979,22 +1012,26 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
     setTimes(p.estimated_start ? p.estimated_start.substring(0, 5) : '08:00', p.estimated_end ? p.estimated_end.substring(0, 5) : '17:00');
     setFObs('');
     setFReception('');
+    setFBreak(0);
   };
   const openEntry = (e: TimeEntryWithWorksite) => {
     setOpenSlot({ kind: 'entry', entryId: e.id });
     setTimes(e.start_time?.substring(0, 5) || '08:00', e.end_time?.substring(0, 5) || '17:00');
     setFObs(e.observation || '');
     setFReception(e.reception || '');
+    setFBreak(e.break_minutes || 0);
   };
   const openPending = (e: PendingEntry) => {
     setOpenSlot({ kind: 'pending', localId: e.localId });
     setTimes(e.start_time.substring(0, 5), e.end_time.substring(0, 5));
     setFObs(e.observation || '');
     setFReception(e.reception || '');
+    setFBreak(e.break_minutes || 0);
   };
   const openNew = () => {
     if (monthLocked) { setLateOpen(true); return; }
     setOpenSlot({ kind: 'new' });
+    setFBreak(0);
     setFWorksiteId('');
     setChantierQuery('');
     // Heure de début pré-remplie à MAINTENANT (heure de Paris) ; fin = début + 1 h
@@ -1083,11 +1120,27 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
   const saveSlot = async () => {
     if (!user || !openSlot) return;
     if (!fStart || !fEnd) { toast.error("Indique l'heure de début et de fin"); return; }
+    // Lot 2 : 0 minute n'est pas une saisie. Ce brouillon vide restait « à envoyer »
+    // et verrouillait l'intervention au bureau.
+    if (fStart.slice(0, 5) === fEnd.slice(0, 5)) { toast.error('Le début et la fin sont identiques.'); return; }
     // Lot 6 (règle d'Ergun) : le détail des réserves est FACULTATIF. « Avec
     // réserve » suffit ; le détail et les photos aident, sans jamais bloquer « OK ».
+    // Lot 1 : deux lignes qui se chevauchent compteraient deux fois les mêmes
+    // minutes (07:00–13:00 + 12:00–18:00 = 12 h pour 11 h de présence). Refusé
+    // ici, la fiche reste ouverte avec la saisie.
+    const selfId = openSlot.kind === 'entry' ? openSlot.entryId : null;
+    const selfLocal = openSlot.kind === 'pending' ? openSlot.localId : null;
+    const clash = findOverlap({ start: fStart, end: fEnd }, [
+      ...entries.filter((e) => e.id !== selfId && e.status !== 'cancelled' && e.start_time && e.end_time && !isExitToComplete(e))
+        .map((e) => ({ start: e.start_time.slice(0, 5), end: e.end_time.slice(0, 5) })),
+      ...pendingEntries.filter((e) => e.localId !== selfLocal).map((e) => ({ start: e.start_time.slice(0, 5), end: e.end_time.slice(0, 5) })),
+    ]);
+    if (clash) { toast.error(`Ces heures chevauchent ${clash.start}–${clash.end}, déjà noté. Corrige le début ou la fin.`); return; }
     setFSaving(true);
     try {
-      const totalMins = calculateTotalMinutes(fStart, fEnd, 0);
+      // Lot 1 : la pause de la ligne est GARDÉE (et déduite), jamais remise à 0.
+      const brk = keptBreak({ start: fStart, end: fEnd }, fBreak);
+      const totalMins = calculateTotalMinutes(fStart, fEnd, brk);
       let savedMsg = "C'est noté";
 
       // ── Update an existing entry ──
@@ -1099,7 +1152,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
         const { data: upd, error } = await supabase.from('time_entries').update({
           ...(!fInit || fStart !== fInit.start ? { start_time: fStart } : {}),
           ...(!fInit || fEnd !== fInit.end ? { end_time: fEnd } : {}),
-          break_minutes: 0, observation: fObs.trim() || null,
+          break_minutes: brk, observation: fObs.trim() || null,
           reception: fReception || null,
           // Editing an already-sent entry: flag it so the secretary sees the change.
           ...(wasSubmitted ? { modified_at: new Date().toISOString(), modified_by: user.id } : {}),
@@ -1111,7 +1164,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
         const pend = getPendingEntries(user.id).find((e) => e.localId === openSlot.localId);
         if (pend) {
           removePendingEntry(user.id, openSlot.localId);
-          addPendingEntry(user.id, { ...pend, start_time: fStart, end_time: fEnd, break_minutes: 0, total_minutes: totalMins, observation: fObs.trim() || null, reception: fReception || null });
+          addPendingEntry(user.id, { ...pend, start_time: fStart, end_time: fEnd, break_minutes: brk, total_minutes: totalMins, observation: fObs.trim() || null, reception: fReception || null });
         }
       } else {
         // ── Create a new slot (planned chantier or free intervention) ──
@@ -1134,16 +1187,18 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
         // Le planning EXACT qu'on a ouvert, pas « le premier de ce chantier » :
         // avec deux créneaux prévus sur le même chantier, l'ancien code liait les
         // deux lignes au premier, et l'appariement ne s'y retrouvait plus.
+        // Lot 1 : même règle pour le « + » — le planning de ce chantier que la
+        // ligne recouvre le plus (supabase/functions/_shared/day-hours.ts).
         const planningId = openSlot.kind === 'planned'
           ? openSlot.planningId
-          : (planning.find((p) => p.worksite_id === worksiteId)?.id || null);
+          : bestPlanningFor({ start: fStart, end: fEnd, worksite_id: worksiteId }, planning);
 
         // Un identifiant est posé dès la saisie, en ligne comme hors ligne : si la
         // réponse du serveur se perd, la même saisie ne peut pas entrer deux fois.
         const localId = generateLocalId();
         const pending: PendingEntry = {
           localId, company_id: user.company_id, user_id: user.id, worksite_id: worksiteId,
-          planning_id: planningId, work_date: date, start_time: fStart, end_time: fEnd, break_minutes: 0,
+          planning_id: planningId, work_date: date, start_time: fStart, end_time: fEnd, break_minutes: brk,
           total_minutes: totalMins, meal_allowance: false, observation: fObs.trim() || null, reception: fReception || null,
           _worksite_name: worksiteName, _worksite_city: worksiteCity, _saved_at: Date.now(),
         };
@@ -1174,10 +1229,13 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
   // visible "Retirée", excluded from the total, secretary informed).
   // `.select('id')` sur chaque écriture : 0 ligne = refus RLS (verrouillée), pas
   // un succès.
+  // Lot 2 : un brouillon DÉJÀ ENVOYÉ une fois (renvoyé par le bureau,
+  // `submitted_at` posé) se retire aussi — l'effacer ferait disparaître des
+  // heures que le bureau a vues, et la base le refuse désormais.
   const handleRetire = async (entry: TimeEntryWithWorksite) => {
     if (!user) return;
     try {
-      if (entry.status === 'submitted') {
+      if (entry.status === 'submitted' || (entry.status === 'draft' && !!entry.submitted_at)) {
         const { data: upd, error } = await supabase.from('time_entries')
           .update({ status: 'cancelled', modified_at: new Date().toISOString(), modified_by: user.id })
           .eq('id', entry.id).eq('user_id', user.id).select('id');
@@ -1220,7 +1278,9 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
       if (!yEntries || yEntries.length === 0) { toast.error('Aucun chantier hier à copier'); return; }
 
       // lib/worker-day.ts : même chemin que l'Assistant BEMEXO (planning du jour rattaché).
-      const rows = await copyLinesTo(user, yEntries.map((e) => ({ worksite_id: e.worksite_id, start_time: e.start_time, end_time: e.end_time, observation: e.observation })), [date]);
+      const rows = await copyLinesTo(user, yEntries.map((e) => ({ worksite_id: e.worksite_id, start_time: e.start_time, end_time: e.end_time, break_minutes: e.break_minutes, observation: e.observation })), [date]);
+      // Lot 2 : une ligne de 0 minute (fin à compléter) ne se recopie pas.
+      if (rows.length === 0) { toast.error('Rien à copier : les heures d’hier sont à compléter.'); return; }
 
       toast.success(`${rows.length} chantier${rows.length > 1 ? 's' : ''} copié${rows.length > 1 ? 's' : ''} depuis hier`);
       await applyDayMeal(dayMeal);
@@ -1244,15 +1304,16 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
     // Les interventions retirées ne se copient pas ; le panier non plus (il se
     // coche jour par jour, et un seul par jour est accepté en base).
     const sources = [
-      ...liveEntries.map((e) => ({ worksite_id: e.worksite_id, start_time: e.start_time, end_time: e.end_time, meal_allowance: false, observation: e.observation })),
-      ...pendingEntries.map((e) => ({ worksite_id: e.worksite_id, start_time: e.start_time, end_time: e.end_time, meal_allowance: false, observation: e.observation })),
+      ...liveEntries.map((e) => ({ worksite_id: e.worksite_id, start_time: e.start_time, end_time: e.end_time, break_minutes: e.break_minutes, meal_allowance: false, observation: e.observation })),
+      ...pendingEntries.map((e) => ({ worksite_id: e.worksite_id, start_time: e.start_time, end_time: e.end_time, break_minutes: e.break_minutes, meal_allowance: false, observation: e.observation })),
     ];
     if (sources.length === 0) { toast.error('Aucun chantier à copier'); return; }
     if (targets.length === 0) { toast.error('Aucun jour à remplir'); return; }
     setCopying(true);
     try {
       // lib/worker-day.ts : planning du jour cible rattaché, panier non copié.
-      await copyLinesTo(user, sources, targets);
+      const ids = await copyLinesTo(user, sources, targets);
+      if (ids.length === 0) { toast.error('Rien à copier : les heures sont à compléter.'); return; }
       toast.success(`Copié sur ${targets.length} jour${targets.length > 1 ? 's' : ''}`);
       setRepeatOpen(false);
     } catch (err) {
@@ -1267,66 +1328,125 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
 
   const checkCoherenceWarnings = (): string[] => {
     const drafts = entries.filter((e) => e.status === 'draft' && !e.locked);
-    // Les chantiers prévus non ouverts partent maintenant eux aussi. Les laisser
-    // hors des contrôles aurait rouvert le trou que ces contrôles bouchent :
-    // deux plannings 08:00–17:00 le même jour, c'est 18 h envoyées sans un mot.
-    if (drafts.length === 0 && plannedToSend.length === 0) return [];
+    // Les chantiers prévus CONFIRMÉS partent eux aussi : ils entrent dans les contrôles.
+    const planned = confirmedPlanned();
+    if (drafts.length === 0 && planned.length === 0) return [];
     const warnings: string[] = [];
+    // Pause répondue à l'instant : déjà en base, pas encore relue ici.
+    const minutesOf = (e: TimeEntryWithWorksite) => {
+      const b = sendCtx.current.breaks.get(e.id);
+      return b == null ? e.total_minutes : e.total_minutes + (e.break_minutes || 0) - b;
+    };
 
     // L'ancien avertissement « il reste N chantiers prévus sans heures » a
     // disparu : il ne reste plus rien, ces chantiers partent avec la feuille.
     // Le garder aurait fait surgir une fenêtre de confirmation à chaque envoi
     // d'une journée conforme au planning — exactement le geste qu'on supprime.
-    const plannedMins = plannedToSend.reduce((s, p) => s + calculateTotalMinutes(p.start, p.end, 0), 0);
-    const totalMins = drafts.reduce((s, e) => s + e.total_minutes, 0) + plannedMins;
+    const plannedMins = planned.reduce((s, p) => s + calculateTotalMinutes(p.start, p.end, p.breakMinutes || 0), 0);
+    const totalMins = drafts.reduce((s, e) => s + minutesOf(e), 0) + plannedMins;
     if (totalMins > 600) warnings.push(`Total : ${formatMinutesToHours(totalMins)} (dépasse 10h). Vérifie tes horaires.`);
-
-    const slots = [
-      ...liveEntries.map((e) => ({ s: (e.start_time || '').slice(0, 5), e: (e.end_time || '').slice(0, 5) })),
-      ...pendingEntries.map((e) => ({ s: (e.start_time || '').slice(0, 5), e: (e.end_time || '').slice(0, 5) })),
-      ...plannedToSend.map((p) => ({ s: p.start, e: p.end })),
-    ]
-      .filter((x) => x.s && x.e)
-      .sort((a, b) => a.s.localeCompare(b.s));
-    // Une minute de recouvrement est tolérée (lot 9) : deux pointages qui se
-    // suivent, fermé à 10:15 (fin arrondie au-dessus) et repris à 10:14:50
-    // (début tronqué, 10:14), se touchent d'une minute sans se chevaucher.
-    if (slots.some((x, i) => i > 0 && toMin(x.s) < toMin(slots[i - 1].e) - 1)) {
-      warnings.push('Certains chantiers se chevauchent. Vérifie tes heures.');
-    }
+    // Lot 1 : un chevauchement n'est plus un simple avertissement — il bloque
+    // l'envoi plus haut (handleSubmitDay), avec la même tolérance d'une minute.
     return warnings;
   };
+
+  /** Les créneaux prévus que le salarié a confirmés pour CET envoi, avec leur pause. */
+  const confirmedPlanned = () => (sendCtx.current.plannedOk
+    ? plannedToSend.map((p) => ({ ...p, breakMinutes: sendCtx.current.breaks.get(`plan:${p.planningId}`) || 0 }))
+    : []);
+
+  /** Les heures du jour qui partiraient (lignes, file du téléphone, prévu confirmé). */
+  const sendSpans = (): (Span & { id: string; editable: boolean; break_minutes: number })[] => [
+    ...entries.filter((e) => e.status !== 'cancelled' && e.start_time && e.end_time && !isExitToComplete(e)).map((e) => ({
+      id: e.id, start: e.start_time.slice(0, 5), end: e.end_time.slice(0, 5),
+      editable: e.status === 'draft' && !e.locked, break_minutes: sendCtx.current.breaks.get(e.id) ?? (e.break_minutes || 0),
+    })),
+    ...pendingEntries.map((e) => ({
+      id: `pending:${e.localId}`, start: e.start_time.slice(0, 5), end: e.end_time.slice(0, 5),
+      editable: true, break_minutes: sendCtx.current.breaks.get(`pending:${e.localId}`) ?? (e.break_minutes || 0),
+    })),
+    ...confirmedPlanned().map((p) => ({ id: `plan:${p.planningId}`, start: p.start, end: p.end, editable: true, break_minutes: p.breakMinutes })),
+  ];
 
   const handleSubmitDay = () => {
     // Lot 12 : une sortie oubliée sans heure de fin ne part pas (la base le
     // refuse aussi) — on ouvre la ligne pour qu'il la complète.
     const toComplete = entries.find((e) => e.status === 'draft' && !e.locked && isExitToComplete(e));
     if (toComplete) { toast.error(EXIT_TO_COMPLETE_MSG); openEntry(toComplete); return; }
-    // Lot 12 : journée QR de plus de 6 h sans pause → « Tu as pris une pause ? ».
-    const ask = pauseCandidate(entries);
-    if (ask && !pauseAsk) { setPauseAsk(ask); return; }
+    sendCtx.current = { plannedOk: false, breaks: new Map(), asked: new Set() };
+    // Lot 1 : deux lignes qui se chevauchent ne partent pas — les mêmes minutes
+    // seraient payées deux fois. Le salarié corrige l'une des deux.
+    if (overlapBlocks()) return;
+    // Lot 1 : des heures PRÉVUES par le bureau ne partent jamais sans un « oui ».
+    if (plannedToSend.length > 0) { setPlannedAsk(true); return; }
+    askNextPause();
+  };
+
+  /** Un chevauchement que le salarié peut corriger (au moins une des deux lignes modifiable) → envoi refusé. */
+  const overlapBlocks = (): boolean => {
+    const clash = firstBlockingOverlap(sendSpans());
+    if (!clash) return false;
+    toast.error(`Deux chantiers se chevauchent : ${clash[0].start}–${clash[0].end} et ${clash[1].start}–${clash[1].end}. Corrige l'un des deux avant d'envoyer.`);
+    return true;
+  };
+
+  /** Réponse à « Le bureau avait prévu… » : envoyer ces horaires, envoyer sans, ou corriger. */
+  const answerPlanned = (choice: 'send' | 'skip' | 'fix') => {
+    setPlannedAsk(false);
+    if (choice === 'fix') return;
+    sendCtx.current.plannedOk = choice === 'send';
+    // Deux créneaux prévus qui se chevauchent (deux chantiers 08–12 et 11–15) :
+    // les confirmer enverrait deux fois la même heure.
+    if (sendCtx.current.plannedOk && overlapBlocks()) { sendCtx.current.plannedOk = false; return; }
+    askNextPause();
+  };
+
+  /** Plus de 6 h d'affilée sans pause notée → « Tu as pris une pause ? » (une plage à la fois). */
+  const askNextPause = () => {
+    const ask = pauseAsks(sendSpans()).find((a) => !sendCtx.current.asked.has(a.id));
+    if (ask) { setPauseAsk(ask); return; }
     continueSubmit();
   };
 
-  /** Pause choisie (0 / 30 min / 1 h) : posée sur la ligne QR, puis l'envoi continue. */
+  /** Pause choisie (0 / 30 min / 1 h) : posée sur la plus longue ligne de la plage, puis l'envoi continue. */
   const answerPause = async (minutes: number) => {
-    const id = pauseAsk;
+    const ask = pauseAsk;
     setPauseAsk(null);
-    if (!id || !user) return;
+    if (!ask || !user) return;
+    const ctx = sendCtx.current;
+    ctx.asked.add(ask.id);
     if (minutes > 0) {
-      const { error } = await supabase.from('time_entries').update({ break_minutes: minutes })
-        .eq('id', id).eq('user_id', user.id).eq('status', 'draft');
-      if (error) { toast.error(explainWriteError(error, "Pause non enregistrée")); return; }
+      if (ask.id.startsWith('plan:')) {
+        sendCtx.current.breaks.set(ask.id, minutes);
+      } else if (ask.id.startsWith('pending:')) {
+        const localId = ask.id.slice('pending:'.length);
+        const pe = pendingEntries.find((e) => e.localId === localId);
+        if (pe) {
+          updatePendingEntry(user.id, localId, { break_minutes: minutes, total_minutes: calculateTotalMinutes(pe.start_time.slice(0, 5), pe.end_time.slice(0, 5), minutes) });
+          setPendingEntries(getPendingEntries(user.id).filter((e) => e.work_date === date));
+        }
+        sendCtx.current.breaks.set(ask.id, minutes);
+      } else {
+        const { data: upd, error } = await supabase.from('time_entries').update({ break_minutes: minutes })
+          .eq('id', ask.id).eq('user_id', user.id).eq('status', 'draft').select('id');
+        if (error || !upd || upd.length === 0) { toast.error(explainWriteError(error, 'Pause non enregistrée')); fetchData(); return; }
+        ctx.breaks.set(ask.id, minutes);
+        // L'écran suit tout de suite (total, fiche, nouvelle question) : sinon
+        // « Corriger » puis « Envoyer » reposait la question sur la ligne d'avant.
+        setEntries((prev) => prev.map((e) => (e.id === ask.id
+          ? { ...e, total_minutes: e.total_minutes + (e.break_minutes || 0) - minutes, break_minutes: minutes } : e)));
+      }
     }
-    continueSubmit();
+    // Un nouvel appui sur « Envoyer » pendant l'écriture a relancé l'envoi : celui-ci s'arrête.
+    if (sendCtx.current !== ctx) return;
+    askNextPause();
   };
 
   const continueSubmit = () => {
     const draftIds = entries.filter((e) => e.status === 'draft' && !e.locked).map((e) => e.id);
-    // Un chantier prévu par le bureau EST une ligne de la feuille : il n'a pas
-    // besoin d'être ouvert pour compter. On ne refuse que si la journée est
-    // réellement vide — aucune ligne d'aucune sorte.
-    if (draftIds.length === 0 && plannedToSend.length === 0 && pendingEntries.length === 0) {
+    // Un chantier prévu CONFIRMÉ (« oui, je l'ai fait ») est une ligne de la
+    // feuille. On ne refuse que si la journée est réellement vide.
+    if (draftIds.length === 0 && confirmedPlanned().length === 0 && pendingEntries.length === 0) {
       toast.error('Ajoute un chantier');
       return;
     }
@@ -1347,9 +1467,10 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
    * cette colonne à toute insertion.
    */
   const materialisePlanned = async (): Promise<string[]> => {
-    if (!user || plannedToSend.length === 0) return [];
+    const planned = confirmedPlanned();
+    if (!user || planned.length === 0) return [];
     // lib/worker-day.ts : identifiant stable dérivé du planning, reprise sur 23505.
-    return materialiseDay(user, date, plannedToSend);
+    return materialiseDay(user, date, planned);
   };
 
   const doSubmit = async () => {
@@ -1363,13 +1484,14 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
     // Sans ça, un salarié qui envoie sa journée depuis un sous-sol la retrouve
     // en brouillon le lendemain — son geste effacé sans un mot.
     if (!navigator.onLine) {
-      for (const p of plannedToSend) {
+      for (const p of confirmedPlanned()) {
         const ws = worksites.find((w) => w.id === p.worksiteId);
+        const brk = keptBreak(p, p.breakMinutes);
         addPendingEntry(user.id, {
           localId: generateLocalId(), company_id: user.company_id, user_id: user.id,
           worksite_id: p.worksiteId, planning_id: p.planningId, work_date: date,
-          start_time: p.start, end_time: p.end, break_minutes: 0,
-          total_minutes: calculateTotalMinutes(p.start, p.end, 0),
+          start_time: p.start, end_time: p.end, break_minutes: brk,
+          total_minutes: calculateTotalMinutes(p.start, p.end, brk),
           meal_allowance: false, observation: null, reception: null,
           _worksite_name: ws?.client_name || '', _worksite_city: ws?.city || null,
           _saved_at: Date.now(), submit_after_sync: true,
@@ -1423,6 +1545,13 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
 
   const liveEntries = entries.filter((e) => e.status !== 'cancelled');
   const cancelledEntries = entries.filter((e) => e.status === 'cancelled');
+  // Lot 2 : une ligne encore en brouillon dont le dernier geste du bureau est
+  // un renvoi → la journée attend le salarié (le plus récent motif s'affiche).
+  const returnedBy = liveEntries
+    .filter((e) => e.status === 'draft')
+    .map((e) => lastEdit(mesRetouches.get(e.id)))
+    .filter((x): x is EntryEdit => x?.kind === 'return')
+    .sort((a, b) => (a.edited_at < b.edited_at ? 1 : -1))[0] ?? null;
   const serverTotal = liveEntries.reduce((s, e) => s + e.total_minutes, 0);
   const pendingTotal = pendingEntries.reduce((s, e) => s + e.total_minutes, 0);
   const totalMinutes = serverTotal + pendingTotal;
@@ -1449,13 +1578,23 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
   // comme des cartes « prévu » vides, qu'on ne pouvait qu'ouvrir pour se faire
   // répondre « Choisis un chantier ». C'est moi qui l'avais cassé en passant
   // de l'ancien filtre `p.worksite_id && …` à l'appariement.
-  const plannedTodo = remainingPlannings(
+  const plannedRemaining = remainingPlannings(
     planning.filter((p) => p.worksite_id && !p.absence_type),
     [
       ...entries.map((e) => ({ worksite_id: e.worksite_id, planning_id: e.planning_id })),
       ...pendingEntries.map((e) => ({ worksite_id: e.worksite_id, planning_id: e.planning_id })),
     ],
   );
+  // Lot 1 : un créneau prévu dont les heures sont DÉJÀ saisies (même sur une
+  // ligne rattachée à un autre planning) disparaît. Exemple : Matin 08–12 et
+  // Après-midi 13:30–17 prévus, le salarié note 07:00–18:00 — l'après-midi
+  // restait « à faire » et partait en plus, 14h30 pour 11 h de présence.
+  const daySpans: Span[] = [
+    ...liveEntries.filter((e) => e.start_time && e.end_time && !isExitToComplete(e))
+      .map((e) => ({ start: e.start_time.slice(0, 5), end: e.end_time.slice(0, 5) })),
+    ...pendingEntries.map((e) => ({ start: e.start_time.slice(0, 5), end: e.end_time.slice(0, 5) })),
+  ];
+  const plannedTodo = visiblePlannings(plannedRemaining, daySpans);
 
   /**
    * Le chrono ouvert, placé sur SA carte (lot 9) — même règle que le bureau et
@@ -1492,7 +1631,9 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
    * La carte « en cours » ne part PAS (lot 9) : ses heures seront écrites par
    * « J'ai fini ». La matérialiser les compterait deux fois.
    */
-  const plannedToSend = planningsToMaterialise(plannedTodo.filter((p) => p.id !== liveSlotId));
+  // Lot 1 : seuls les créneaux sans rien de saisi en face, avec un début ET une
+  // fin, peuvent partir — et seulement après le « oui » du salarié (plannedAsk).
+  const plannedToSend = planningsToMaterialise(sendablePlannings(plannedTodo.filter((p) => p.id !== liveSlotId), daySpans));
 
   /**
    * Y a-t-il quelque chose à envoyer ?
@@ -1507,19 +1648,19 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
   const canSend = hasRealDrafts || plannedToSend.length > 0;
 
   /**
-   * Le total affiché doit être celui qu'on s'apprête à envoyer.
-   *
-   * Il n'y a pas d'écran de confirmation : le total posé juste au-dessus du
-   * bouton EST la confirmation. Sur une journée uniquement planifiée il
-   * annonçait « 0:00 » et « 0 chantier » alors qu'un appui allait envoyer neuf
-   * heures. Le seul endroit où le salarié pouvait vérifier lui mentait.
+   * Lot 1 : « travaillées » = les heures SAISIES (lignes, file du téléphone,
+   * chrono en cours). Avant, le prévu du bureau y était ajouté : avec les
+   * préréglages Matin 08:00–12:00 + Après-midi 13:30–17:00, l'écran disait
+   * « 7:30 travaillées » avant toute saisie, et « Envoyer » envoyait ces 7h30.
+   * Le prévu s'affiche maintenant à part (« + 7:30 prévues »), et l'envoi
+   * demande d'abord s'il a été fait (plannedAsk).
    */
   const plannedMinutes = plannedToSend.reduce((s, p) => s + calculateTotalMinutes(p.start, p.end, 0), 0);
   const liveMinutes = liveHere && liveSession
     ? Math.max(0, Math.floor((liveNow - new Date(liveSession.started_at).getTime()) / 60000))
     : 0;
-  const shownMinutes = totalMinutes + plannedMinutes + liveMinutes;
-  const shownChantiers = nbChantiers + plannedToSend.length;
+  const shownMinutes = totalMinutes + liveMinutes;
+  const shownChantiers = nbChantiers;
 
   const gaps = computePauses([
     ...liveEntries.map((e) => ({
@@ -1535,7 +1676,10 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
   // salarié n'a pas répondu, on ne décide pas à sa place, et on ne le fait pas
   // entrer dans le total des pauses affiché juste au-dessus de la question.
   const pauses = gaps.filter((g) => g.gap === 'pause');
-  const pauseMinutes = pauses.reduce((s, p) => s + p.minutes, 0);
+  // Lot 1 : + les pauses notées DANS les lignes (break_minutes), déjà déduites du total.
+  const breakMinutes = liveEntries.reduce((s, e) => s + (e.break_minutes || 0), 0) + pendingEntries.reduce((s, e) => s + (e.break_minutes || 0), 0);
+  const breakCount = liveEntries.filter((e) => (e.break_minutes || 0) > 0).length + pendingEntries.filter((e) => (e.break_minutes || 0) > 0).length;
+  const pauseMinutes = pauses.reduce((s, p) => s + p.minutes, 0) + breakMinutes;
   const routeMinutes = gaps.filter((g) => g.gap === 'route').reduce((s, p) => s + p.minutes, 0);
   /**
    * Les trous sur lesquels on pose encore la question.
@@ -1652,7 +1796,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
   // has a start time, so filling a planned card no longer makes it jump to the bottom.
   type DayItem =
     | { kind: 'live'; sort: string; key: string; data: { worksiteId: string | null; since: string } }
-    | { kind: 'planned'; sort: string; key: string; data: Planning & { worksite: Worksite } }
+    | { kind: 'planned'; sort: string; key: string; data: Planning & { worksite: Worksite; state?: PlannedState } }
     | { kind: 'entry'; sort: string; key: string; data: TimeEntryWithWorksite }
     | { kind: 'pending'; sort: string; key: string; data: PendingEntry }
     | { kind: 'cancelled'; sort: string; key: string; data: TimeEntryWithWorksite };
@@ -1690,7 +1834,8 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
     : titleName ? `Chantier ${titleName}` : 'Chantier';
 
   const editorEntry = openSlot?.kind === 'entry' ? entries.find((x) => x.id === openSlot.entryId) : undefined;
-  const durMin = (fStart && fEnd) ? calculateTotalMinutes(fStart, fEnd, 0) : 0;
+  // Lot 1 : la durée affichée déduit la pause de la ligne.
+  const durMin = (fStart && fEnd) ? calculateTotalMinutes(fStart, fEnd, keptBreak({ start: fStart, end: fEnd }, fBreak)) : 0;
 
   if (loading) {
     return (
@@ -1766,6 +1911,11 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
             <span className="bt-total-big">{fmtHM(shownMinutes)}</span>
             <span className="bt-total-unit">travaillées</span>
           </div>
+          {plannedMinutes > 0 && (
+            <div className="bt-total-prevu" data-testid="total-prevu">
+              + {fmtHM(plannedMinutes)} prévue{plannedMinutes >= 120 ? 's' : ''} par le bureau, pas encore confirmée{plannedMinutes >= 120 ? 's' : ''}
+            </div>
+          )}
           <div className="bt-stats">
             <div className="bt-stat">
               <div className="bt-stat-n">{shownChantiers}</div>
@@ -1774,7 +1924,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
             <div className="bt-stat">
               <div className="bt-stat-n">{fmtHM(pauseMinutes)}</div>
               <div className="bt-stat-l">
-                pause{pauses.length > 1 ? 's' : ''}
+                pause{pauses.length + breakCount > 1 ? 's' : ''}
                 {unansweredGaps > 0 && ` · ${unansweredGaps} à préciser`}
               </div>
             </div>
@@ -1811,6 +1961,15 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
 
         {/* ----- INTERVENTIONS ----- */}
         <div className="bt-sec">Chantiers du jour</div>
+
+        {/* Lot 2 : le bureau a renvoyé la journée. En haut des cartes, avec SON
+            motif : c'est la première chose à lire avant de corriger. */}
+        {returnedBy && (
+          <div className="bt-retour" data-testid="day-returned">
+            <AlertTriangle className="h-4 w-4" />
+            <div>Le bureau t&apos;a renvoyé cette journée : « {returnedBy.reason} ». Corrige si besoin, puis envoie-la.</div>
+          </div>
+        )}
 
         {items.map((item) => {
           const g = gapByKey.get(item.key);
@@ -1860,7 +2019,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
                   {/* Lot 11 : une heure de début seule (« à 14:00 ») se voit aussi. */}
                   {p.estimated_start && p.estimated_end
                     ? `Prévu · ${p.estimated_start.substring(0, 5)}–${p.estimated_end.substring(0, 5)}`
-                    : p.estimated_start ? `Prévu · ${p.estimated_start.substring(0, 5)}` : 'Prévu'}
+                    : p.estimated_start ? `Prévu · ${p.estimated_start.substring(0, 5)} · fin à préciser` : 'Prévu · heures à préciser'}
                 </div>
                 <div className="bt-iv-row">
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -1872,6 +2031,13 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
                   )}
                   {!isLive && <span className="bt-iv-cta">Mes heures ›</span>}
                 </div>
+                {/* Lot 1 : ce prévu ne partira pas tel quel — dire pourquoi. */}
+                {!isLive && p.state === 'overlaps' && (
+                  <div className="bt-plan-warn" data-testid="card-planned-overlap">Chevauche tes heures notées : ne sera pas envoyé. Ouvre-le pour le corriger.</div>
+                )}
+                {!isLive && p.state === 'incomplete' && (
+                  <div className="bt-plan-warn" data-testid="card-planned-incomplete">Heures à préciser : ouvre-le pour les mettre.</div>
+                )}
                 {isLive ? <LiveLine since={liveSince} /> : startButton(p.worksite_id, p.id, item.key)}
               </div>
             );
@@ -1917,17 +2083,35 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
                     activé les notifications doit le voir quand même. Chaque
                     correction garde sa ligne — deux corrections successives se
                     lisent comme une suite, pas comme un état final. */}
-                {(mesCorrections.get(entry.id) || []).map((c) => (
-                  <div key={c.id} className="bt-iv-corr">
-                    <Hammer className="h-3.5 w-3.5 shrink-0" style={{ color: '#8a6d05' }} />
-                    <div className="bt-iv-corr-t">
-                      {c.corrected_by_role === 'lead' ? 'Ton chef a corrigé' : 'Le bureau a corrigé'} :{' '}
-                      <span className="bt-iv-corr-v">{fmtHeure(c.old_start)}–{fmtHeure(c.old_end)}</span>
-                      {' → '}
-                      <span className="bt-iv-corr-v">{fmtHeure(c.new_start)}–{fmtHeure(c.new_end)}</span>
-                    </div>
-                  </div>
-                ))}
+                {/* Lot 2 : une correction du bureau AVEC MOTIF remplace la
+                    ligne « heures » qu'elle a aussi écrite dans l'ancien journal
+                    (correction_id) — une seule ligne par geste, dans l'ordre. */}
+                {(() => {
+                  const retouches = (mesRetouches.get(entry.id) || []).filter((x) => x.kind === 'correction');
+                  const liees = new Set(retouches.map((x) => x.correction_id).filter(Boolean));
+                  return [
+                    ...(mesCorrections.get(entry.id) || []).filter((c) => !liees.has(c.id)).map((c) => ({ at: c.corrected_at, node: (
+                      <div key={c.id} className="bt-iv-corr">
+                        <Hammer className="h-3.5 w-3.5 shrink-0" style={{ color: '#8a6d05' }} />
+                        <div className="bt-iv-corr-t">
+                          {c.corrected_by_role === 'lead' ? 'Ton chef a corrigé' : 'Le bureau a corrigé'} :{' '}
+                          <span className="bt-iv-corr-v">{fmtHeure(c.old_start)}–{fmtHeure(c.old_end)}</span>
+                          {' → '}
+                          <span className="bt-iv-corr-v">{fmtHeure(c.new_start)}–{fmtHeure(c.new_end)}</span>
+                        </div>
+                      </div>
+                    ) })),
+                    ...retouches.map((x) => ({ at: x.edited_at, node: (
+                      <div key={x.id} className="bt-iv-corr" data-testid="card-office-edit">
+                        <Hammer className="h-3.5 w-3.5 shrink-0" style={{ color: '#8a6d05' }} />
+                        <div className="bt-iv-corr-t">
+                          Le bureau a corrigé : <span className="bt-iv-corr-v">{diffLabels(x.old_values, x.new_values).join(' · ')}</span>
+                          {' · '}« {x.reason} »
+                        </div>
+                      </div>
+                    ) })),
+                  ].sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0)).map((r) => r.node);
+                })()}
                 {/* CE QUI A ÉTÉ GARDÉ SUR LUI — LES MÊMES CHIFFRES QUE LE BUREAU.
                     Je n'affichais d'abord que l'heure et la précision : le
                     salarié savait qu'un endroit avait été noté, sans savoir
@@ -2217,10 +2401,16 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
               </div>
               <div className="bt-times-hint">Touche une heure pour la régler</div>
 
-              {/* Pauses calculées automatiquement (trous entre créneaux) — plus de sélecteur manuel */}
-              <div className="bt-pause-auto">
-                <span aria-hidden>☕</span>
-                Les pauses sont calculées automatiquement d&apos;après vos horaires.
+              {/* Lot 1 : la pause DANS ces heures (déduite de la durée). Les trous
+                  entre deux lignes restent comptés à part (Route / Pause). */}
+              <div className="bt-sec">Pause dans ces heures</div>
+              <div className="bt-pause-pick" data-testid="ed-pause">
+                {Array.from(new Set([0, 30, 60, ...(fBreak && ![0, 30, 60].includes(fBreak) ? [fBreak] : [])])).map((m) => (
+                  <button key={m} type="button" className={`bt-pause-b${fBreak === m ? ' on' : ''}`} data-testid={`ed-pause-${m}`}
+                    onClick={() => setFBreak(m)}>
+                    {m === 0 ? 'Aucune' : m === 60 ? '1 h' : `${m} min`}
+                  </button>
+                ))}
               </div>
 
               {/* 3 · Statut du chantier — en cours / sans / avec réserve (facultatif) */}
@@ -2258,7 +2448,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
                     </button>
                   )}
                   {openSlot.kind === 'entry' && editorEntry && (
-                    <button type="button" className="bt-ed-trash" disabled={fSaving} onClick={() => setConfirmDel({ kind: 'entry', entry: editorEntry, sent: editorEntry.status === 'submitted' })} aria-label="Retirer ce chantier" title="Retirer ce chantier">
+                    <button type="button" className="bt-ed-trash" disabled={fSaving} onClick={() => setConfirmDel({ kind: 'entry', entry: editorEntry, sent: editorEntry.status === 'submitted' || !!editorEntry.submitted_at })} aria-label="Retirer ce chantier" title="Retirer ce chantier">
                       <Trash2 className="h-4 w-4" />
                     </button>
                   )}
@@ -2367,14 +2557,44 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
         </DialogContent>
       </Dialog>
 
-      {/* Lot 12 : journée QR de plus de 6 h sans pause — un seul toucher. */}
+      {/* Lot 1 : le prévu du bureau ne part qu'après un « oui ». */}
+      <Dialog open={plannedAsk} onOpenChange={(o) => { if (!o) setPlannedAsk(false); }}>
+        <DialogContent className="max-w-sm" data-testid="planned-confirm">
+          <DialogHeader>
+            <DialogTitle>Horaires prévus par le bureau</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">Tu n&apos;as pas noté d&apos;heures pour :</p>
+          <ul className="space-y-1 text-sm font-semibold" data-testid="planned-confirm-list">
+            {plannedToSend.map((p) => (
+              <li key={p.planningId}>
+                {worksites.find((w) => w.id === p.worksiteId)?.client_name || 'Chantier'} · {p.start}–{p.end} ({formatMinutesToHours(calculateTotalMinutes(p.start, p.end, 0))})
+              </li>
+            ))}
+          </ul>
+          <p className="text-sm text-muted-foreground">Tu as travaillé exactement ces horaires&nbsp;?</p>
+          <div className="grid gap-2 pt-1">
+            <Button className="h-11 font-black" data-testid="planned-confirm-send" onClick={() => answerPlanned('send')}>Oui, envoyer ces horaires</Button>
+            <Button variant="outline" className="h-11" data-testid="planned-confirm-fix" onClick={() => answerPlanned('fix')}>Non, je corrige mes heures</Button>
+            {(hasRealDrafts || pendingEntries.length > 0) && (
+              <Button variant="ghost" className="h-10 text-sm" data-testid="planned-confirm-skip" onClick={() => answerPlanned('skip')}>Envoyer seulement mes heures notées</Button>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Plus de 6 h d'affilée sans pause (borne OU saisie à la main) — un seul toucher. */}
       <Dialog open={!!pauseAsk} onOpenChange={(o) => { if (!o) setPauseAsk(null); }}>
         <DialogContent className="max-w-sm" data-testid="pause-ask">
           <DialogHeader>
             <DialogTitle>Tu as pris une pause&nbsp;?</DialogTitle>
           </DialogHeader>
+          {pauseAsk && (
+            <p className="text-sm text-muted-foreground" data-testid="pause-ask-range">
+              {pauseAsk.start}–{pauseAsk.end} : {formatMinutesToHours(pauseAsk.minutes)} d&apos;affilée, sans pause notée.
+            </p>
+          )}
           <div className="grid grid-cols-3 gap-2 pt-1">
-            {PAUSE_CHOICES.map((m) => (
+            {PAUSE_CHOICES.filter((m) => !pauseAsk || m < pauseAsk.lineMinutes).map((m) => (
               <Button key={m} variant={m === 0 ? 'outline' : 'default'} className="h-12 text-base font-black" data-testid={`pause-${m}`}
                 onClick={() => void answerPause(m)}>
                 {m === 0 ? 'Non' : m === 30 ? '30 min' : '1 h'}
@@ -2410,7 +2630,9 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
           <p className="text-sm text-muted-foreground">
             {confirmDel?.kind === 'entry' && confirmDel.sent
               ? 'Il a déjà été envoyé : il restera visible comme « Retiré » et la secrétaire en sera informée.'
-              : 'Les heures seront perdues.'}
+              : confirmDel?.kind === 'entry' && isEmptyDraft(confirmDel.entry) && !confirmDel.entry.submitted_at
+                ? 'Brouillon vide : il sera supprimé.'
+                : 'Les heures seront perdues.'}
           </p>
           <div className="flex gap-2 mt-2">
             <Button variant="outline" className="flex-1" onClick={() => setConfirmDel(null)}>Non</Button>

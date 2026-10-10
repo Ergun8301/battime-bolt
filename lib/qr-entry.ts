@@ -24,41 +24,10 @@ export const isExitToComplete = (e: QrFields) =>
 
 export const EXIT_TO_COMPLETE_MSG = 'Sortie oubliée : mets ton heure de fin avant d’envoyer.';
 
-/** Au-delà de 6 h d'affilée sans pause, on demande « Tu as pris une pause ? ». */
-export const PAUSE_ASK_MINUTES = 360;
-export const PAUSE_CHOICES = [0, 30, 60] as const;
-
-interface DayLine extends QrFields {
-  id: string;
-  status: string;
-  locked?: boolean | null;
-  break_minutes?: number | null;
-  total_minutes: number;
-  gap_before?: string | null;
-}
-
-const toMin = (t?: string | null) => {
-  const [h, m] = (t || '00:00').slice(0, 5).split(':').map(Number);
-  return h * 60 + m;
-};
-
-/**
- * La ligne QR sur laquelle poser la question de la pause, ou null.
- * Une journée QR de plus de 6 h, aucune pause notée nulle part, et pas de
- * trou entre deux lignes (un scan à midi = deux lignes = la pause est déjà là).
- */
-export function pauseCandidate(lines: DayLine[]): string | null {
-  const live = lines.filter((l) => l.status !== 'cancelled');
-  if (live.some((l) => (l.break_minutes || 0) > 0 || l.gap_before === 'pause')) return null;
-  const sorted = [...live].sort((a, b) => toMin(a.start_time) - toMin(b.start_time));
-  for (let i = 1; i < sorted.length; i++) {
-    if (toMin(sorted[i].start_time) - toMin(sorted[i - 1].end_time) >= 20) return null;
-  }
-  const cands = live.filter((l) => l.status === 'draft' && !l.locked && isQrEntry(l) && !isExitToComplete(l)
-    && l.total_minutes > PAUSE_ASK_MINUTES);
-  if (!cands.length) return null;
-  return cands.sort((a, b) => b.total_minutes - a.total_minutes)[0].id;
-}
+// Lot 1 : la question « Tu as pris une pause ? » n'est plus réservée aux
+// lignes de la borne. Sa règle (plus de 6 h d'affilée, toutes lignes) vit dans
+// supabase/functions/_shared/day-hours.ts (pauseAsks).
+export { PAUSE_ASK_MINUTES, PAUSE_CHOICES } from '@/supabase/functions/_shared/day-hours';
 
 /**
  * Les trois drapeaux du lot 12 pour des lignes déjà lues (bureau). Requête à
