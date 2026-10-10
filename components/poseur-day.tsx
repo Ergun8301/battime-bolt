@@ -43,6 +43,8 @@ import ReserveLiftForm from '@/components/reserve-lift-form';
 import { liftReserve, undoWorkerLift, liftErrorMessage, announceReservesChanged, RESERVES_CHANGED_EVENT } from '@/lib/reserve-lift';
 import { fetchMyClosure } from '@/lib/worker-closure';
 import { isReserveLifted } from '@/lib/reserves';
+// Lot 4 : les réunions et les tâches du jour (lecture à part, rien sur les heures).
+import { MyMeetings, MyTasks, useMyMissions } from '@/components/missions-worker';
 
 /** Une correction reçue du bureau, telle que la journée du salarié l'affiche. */
 interface CorrectionVue {
@@ -558,6 +560,10 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
   const [mountedToday, setMountedToday] = useState(() => format(new Date(), 'yyyy-MM-dd'));
   const date = dateProp || mountedToday;
   const editingOpen = openSlot !== null;
+  // Lot 4 : mes réunions et mes tâches du jour. Lecture séparée de fetchData,
+  // relue au retour sur l'appli ; vide (rien d'affiché) tant que la migration
+  // n'est pas passée. Ne touche ni aux totaux, ni à l'envoi, ni au hors-ligne.
+  const missions = useMyMissions(user, date);
   useEffect(() => {
     if (dateProp) return;
     const refresh = () => {
@@ -1981,6 +1987,9 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
           </div>
         </div>
 
+        {/* Lot 4 : les réunions du jour, au-dessus des chantiers (jamais des heures). */}
+        <MyMeetings meetings={missions.meetings} />
+
         {/* ----- INTERVENTIONS ----- */}
         <div className="bt-sec">Chantiers du jour</div>
 
@@ -2252,6 +2261,9 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
             )}
           </div>
         )}
+
+        {/* Lot 4 : les tâches du jour ajoutées par le bureau, « Fait » à cocher. */}
+        <MyTasks tasks={missions.tasks} online={isOnline} busyId={missions.busyId} onToggle={missions.toggle} />
 
         {/* Journée SANS AUCUNE carte (pas de planning, rien de saisi) : le
             chrono se lance quand même, SANS écrire d'heures à la main (« + »

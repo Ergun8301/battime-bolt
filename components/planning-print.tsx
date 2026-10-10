@@ -13,6 +13,10 @@
 // par défaut celle de l'écran. Une période hors de l'écran est LUE à part
 // (lib/planning-print-data.ts), sans rien écrire.
 //
+// Lot 4 : « Avec les tâches » (semaine ou jour, quand la migration est passée) :
+// les tâches du jour sous chaque case ; les réunions, elles, sont toujours
+// imprimées (couleur à part, légende « Réunion »). Le mois n'imprime ni l'un ni l'autre.
+//
 // Rien ici n'écrit en base, et rien ne touche à « Exporter » (qui, lui, verrouille
 // les heures de la période) : imprimer ne change aucune donnée.
 import { useEffect, useRef, useState, type ReactNode } from 'react';
@@ -20,6 +24,7 @@ import { format, getISOWeek, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Loader2, Printer } from 'lucide-react';
 import { DAY_PARTS } from '@/supabase/functions/_shared/day-part';
+import { MEETING_TINT } from '@/supabase/functions/_shared/missions';
 import { addDaysISO, ISO_DAY, normalizePeriod, periodDays, shiftPeriod, switchKind, type PeriodKind, type PrintPeriod } from '@/supabase/functions/_shared/print-period';
 import type { PrintData } from '@/lib/planning-print-data';
 
@@ -28,6 +33,8 @@ export interface PrintOptions {
   /** 'all' = toute l'équipe, sinon l'id du salarié. */
   who: string;
   signature: boolean;
+  /** Lot 4 : les tâches du jour sous les cases (semaine / jour). */
+  tasks?: boolean;
 }
 export interface PrintJob extends PrintOptions {
   /** Période lue à part (hors de l'écran) ; null = les données de l'écran. */
@@ -38,19 +45,20 @@ export interface PrintJob extends PrintOptions {
 }
 export interface PrintRow { id: string; name: string; initials: string; tint: { background: string; color: string } }
 
-// Seule la signature est retenue. La période part toujours de celle de l'écran
-// (lot 3bis), et le salarié revient toujours à « Toute l'équipe » : une feuille
-// d'une seule personne par erreur passerait inaperçue sur le panneau du dépôt.
-// Un ancien réglage « scope » (lot 3) est simplement ignoré.
+// Seules la signature et « Avec les tâches » (lot 4) sont retenues. La période part
+// toujours de celle de l'écran (lot 3bis), et le salarié revient toujours à « Toute
+// l'équipe » : une feuille d'une seule personne par erreur passerait inaperçue sur
+// le panneau du dépôt. Un ancien réglage « scope » (lot 3) est simplement ignoré.
 const STORE_KEY = 'bemexo_print';
-function readPrefs(): { signature: boolean } {
+type Prefs = { signature: boolean; tasks: boolean };
+function readPrefs(): Prefs {
   try {
     const v = JSON.parse(localStorage.getItem(STORE_KEY) || '{}');
-    return { signature: v.signature === true };
-  } catch { return { signature: false }; }
+    return { signature: v.signature === true, tasks: v.tasks === true };
+  } catch { return { signature: false, tasks: false }; }
 }
-function savePrefs(p: { signature: boolean }) {
-  try { localStorage.setItem(STORE_KEY, JSON.stringify(p)); } catch { /* stockage indisponible : réglage pour la session */ }
+function savePrefs(p: Partial<Prefs>) {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify({ ...readPrefs(), ...p })); } catch { /* stockage indisponible : réglage pour la session */ }
 }
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -117,7 +125,7 @@ export const PRINT_MENU_CSS = `
 const KINDS: { kind: PeriodKind; label: string }[] = [{ kind: 'week', label: 'Semaine' }, { kind: 'day', label: 'Jour' }, { kind: 'month', label: 'Mois' }];
 
 /** Le menu d'options, ancré à droite sous l'icône 🖨 (même famille que la légende). */
-export function PrintMenu({ displayed, workers, busy, onPrint, onClose }: {
+export function PrintMenu({ displayed, workers, busy, onPrint, onClose, tasksOn = false }: {
   /** La période de l'écran : le menu s'ouvre toujours sur elle. */
   displayed: PrintPeriod;
   workers: { id: string; name: string }[];
@@ -125,12 +133,15 @@ export function PrintMenu({ displayed, workers, busy, onPrint, onClose }: {
   busy: boolean;
   onPrint: (o: PrintOptions) => void;
   onClose: () => void;
+  /** Lot 4 : les tâches existent (migration passée) → case « Avec les tâches ». */
+  tasksOn?: boolean;
 }) {
   // « Aujourd'hui » lu à l'ouverture du menu (et non au rendu de la page) : juste
   // aussi sur un onglet resté ouvert depuis la veille.
   const [today] = useState(() => format(new Date(), 'yyyy-MM-dd'));
   const [period, setPeriod] = useState<PrintPeriod>(() => normalizePeriod(displayed));
   const [signature, setSignature] = useState(() => readPrefs().signature);
+  const [withTasks, setWithTasks] = useState(() => readPrefs().tasks);
   const [who, setWho] = useState('all');
   const goRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -142,6 +153,7 @@ export function PrintMenu({ displayed, workers, busy, onPrint, onClose }: {
   const wasBusy = useRef(false);
   useEffect(() => { if (wasBusy.current && !busy) goRef.current?.focus(); wasBusy.current = busy; }, [busy]);
   const pickSig = (v: boolean) => { setSignature(v); savePrefs({ signature: v }); };
+  const pickTasks = (v: boolean) => { setWithTasks(v); savePrefs({ tasks: v }); };
   const tomorrow = addDaysISO(today, 1);
   const kind = period.kind;
   return (
@@ -186,13 +198,20 @@ export function PrintMenu({ displayed, workers, busy, onPrint, onClose }: {
             <input type="checkbox" checked={signature} onChange={(e) => pickSig(e.target.checked)} data-testid="print-sig" />
             Avec colonne signature
           </label>
+          {/* Lot 4 : semaine ou jour (le mois n'a pas la place d'une liste). */}
+          {tasksOn && kind !== 'month' && (
+            <label className="bt-pl-pr-chk">
+              <input type="checkbox" checked={withTasks} onChange={(e) => pickTasks(e.target.checked)} data-testid="print-tasks" />
+              Avec les tâches
+            </label>
+          )}
         </div>
       </fieldset>
       <div className="bt-pl-pr-foot">
         {/* Pendant la lecture, « Préparation… » prend la place : la note reviendrait sur deux lignes. */}
         <span className="bt-pl-pr-note">{busy ? '' : 'A4 paysage, en couleur'}</span>
         <button ref={goRef} type="button" className="bt-pl-pr-go" data-testid="print-go" autoFocus disabled={busy} aria-busy={busy || undefined}
-          onClick={() => onPrint({ period, who, signature })}>
+          onClick={() => onPrint({ period, who, signature, tasks: tasksOn && kind !== 'month' && withTasks })}>
           {busy ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Préparation…</> : <><Printer className="h-3.5 w-3.5" /> Imprimer</>}
         </button>
       </div>
@@ -281,13 +300,15 @@ const PRINT_SHEET_STYLE = { __html: PRINT_SHEET_CSS };
 const CELL_HEIGHT_HACK = { height: '1px' } as const;
 
 /** La grille imprimée. Uniquement des div/span : aucun bouton, rien de cliquable. */
-export function PlanningPrintSheet({ job, company, rows, renderCell, codes }: {
+export function PlanningPrintSheet({ job, company, rows, renderCell, codes, hasMeetings = false }: {
   job: PrintJob;
   company: string;
   rows: PrintRow[];
   renderCell: (workerId: string, iso: string) => ReactNode;
   /** Mois : code de chaque chantier imprimé (titre → code), pour la clé « Chantiers : ». */
   codes?: Map<string, string>;
+  /** Lot 4 : au moins une réunion sur la feuille → « 👥 Réunion » dans la légende. */
+  hasMeetings?: boolean;
 }) {
   const kind = job.period.kind;
   const days = periodDays(job.period).map((d) => parseISO(d));
@@ -307,6 +328,9 @@ export function PlanningPrintSheet({ job, company, rows, renderCell, codes }: {
             <span key={d.key}><span className="bt-print-sw" style={{ background: d.bg, borderColor: d.edge }} />{d.label} · {d.hint}</span>
           ))}
           <span>Blanc : journée entière ou sans horaire · Noir : heures envoyées{kind === 'month' ? ' · C congé · I intempérie · A absent · R repos' : ''}</span>
+          {hasMeetings && kind !== 'month' && (
+            <span data-testid="print-leg-meeting"><span className="bt-print-sw" style={{ background: MEETING_TINT.bg, borderColor: MEETING_TINT.edge, borderStyle: 'solid' }} />👥 Réunion · ne compte pas dans les heures</span>
+          )}
         </div>
         {extra}
       </th>
