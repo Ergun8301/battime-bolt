@@ -18,7 +18,8 @@
 //  (a) « Imprimer »
 //   P1 barre à 1024 / 1280 / 1366 avec Borne + assistant + 3 congés + 12 réserves : une ligne,
 //      icône 🖨 seule (≤ 34 px), « Borne » réduit à 📟 sous 1366 ; menu ouvert sans débordement ;
-//   P2 menu : jour par défaut = aujourd'hui, Échap ferme, « Un jour » et la signature retenus ;
+//   P2 menu : semaine affichée par défaut (« S-43 · 19 – 25 oct. »), « Jour » = aujourd'hui,
+//      Échap ferme, la signature retenue (lot 3bis : plus le type de période) ;
 //   P3 semaine + équipe : print() une fois, titre « Planning S-43 – Entreprise Test », feuille
 //      cachée à l'écran, seule visible à l'impression, 7 jours × 9 salariés, rien de cliquable,
 //      mêmes bulles que l'écran, noir gardé, nom long entier, maladie → « Absent » ;
@@ -256,11 +257,11 @@ const PDF_OPTS = { format: 'A4', landscape: true, printBackground: false, prefer
 // ─── Imprimer depuis le menu ─────────────────────────────────────────────────────
 const openMenu = async (p) => { await p.click('[data-testid=bar-print]'); await p.waitForSelector('[data-testid=print-menu]'); };
 /** Ouvre le menu, règle les options, clique « Imprimer » et attend l'appel à print(). */
-const printWith = async (p, { scope = 'week', day = null, who = 'all', signature = false } = {}) => {
+const printWith = async (p, { scope = 'week', date = null, who = 'all', signature = false } = {}) => {
   const n = await p.evaluate(() => window.__printed || 0);
   await openMenu(p);
   await p.click(`[data-testid=print-scope-${scope}]`);
-  if (scope === 'day' && day !== null) await p.locator('[data-testid=print-day]').nth(day).click();
+  if (scope === 'day' && date !== null) await p.fill('[data-testid=print-date]', date);
   await p.selectOption('[data-testid=print-who]', who);
   if (await p.isChecked('[data-testid=print-sig]') !== signature) await p.click('[data-testid=print-sig]');
   await p.click('[data-testid=print-go]');
@@ -344,20 +345,20 @@ if (AVANT) {
 
   // P2 le menu
   await openMenu(p);
-  check(await p.locator('[data-testid=print-scope-week]').getAttribute('aria-pressed') === 'true' && (await p.locator('[data-testid=print-scope-week]').innerText()).trim() === 'Semaine 43', 'P2 par défaut : « Semaine 43 »');
+  check(await p.locator('[data-testid=print-scope-week]').getAttribute('aria-pressed') === 'true' && (await p.locator('[data-testid=print-scope-week]').innerText()).trim() === 'Semaine'
+    && (await p.locator('[data-testid=print-period-label]').innerText()).trim() === 'S-43 · 19 – 25 oct.', 'P2 par défaut : « Semaine », « S-43 · 19 – 25 oct. »');
   check(await p.locator('[data-testid=print-who]').inputValue() === 'all' && (await p.locator('[data-testid=print-who] option').count()) === 10, 'P2 « Toute l’équipe » puis les 9 salariés');
   check(await p.evaluate(() => document.activeElement?.getAttribute('data-testid')) === 'print-go', 'P2 « Imprimer » a le focus (Entrée imprime)');
   await p.mouse.move(1000, 600); await shot(p, 'apres-menu-imprimer-1440.png', { clip: { x: 700, y: 0, width: 740, height: 480 } });
   await p.click('[data-testid=print-scope-day]');
-  check(await p.locator('[data-testid=print-day]').count() === 7 && await p.locator('[data-testid=print-day][aria-pressed=true]').getAttribute('aria-label') === 'mercredi 21 octobre', 'P2 « Un jour » : 7 jours, aujourd’hui (mer 21) choisi');
+  check(await p.locator('[data-testid=print-date]').inputValue() === '2026-10-21' && await p.locator('[data-testid=print-today]').getAttribute('aria-pressed') === 'true', 'P2 « Jour » : aujourd’hui (mer 21) choisi, « Aujourd’hui » enfoncé');
   await p.click('[data-testid=print-sig]');
   await p.keyboard.press('Escape'); await p.waitForTimeout(150);
   check(await p.locator('[data-testid=print-menu]').count() === 0, 'P2 Échap ferme le menu');
   await p.reload(); await p.waitForSelector('.bt-pl-gridwrap .bt-pl-name'); await p.waitForTimeout(1200);
   await openMenu(p);
-  check(await p.locator('[data-testid=print-scope-day]').getAttribute('aria-pressed') === 'true' && await p.isChecked('[data-testid=print-sig]') && await p.locator('[data-testid=print-who]').inputValue() === 'all', 'P2 après rechargement : « Un jour » et la signature retenus, salarié revenu à « Toute l’équipe »');
-  await p.click('[data-testid=print-scope-week]');
-  check(await p.locator('[data-testid=print-day]').count() === 0 && await p.locator('[data-testid=print-scope-week]').getAttribute('aria-pressed') === 'true', 'P2 retour à « Semaine 43 »');
+  check(await p.locator('[data-testid=print-scope-week]').getAttribute('aria-pressed') === 'true' && await p.isChecked('[data-testid=print-sig]') && await p.locator('[data-testid=print-who]').inputValue() === 'all', 'P2 après rechargement : de nouveau la semaine affichée, la signature retenue, salarié revenu à « Toute l’équipe »');
+  check(await p.locator('[data-testid=print-date]').count() === 0 && (await p.locator('[data-testid=print-period-label]').innerText()).trim() === 'S-43 · 19 – 25 oct.', 'P2 « Semaine » : pas de champ de date, « S-43 »');
   await p.click('[data-testid=print-sig]'); await p.keyboard.press('Escape');
 
   // P3 semaine, toute l'équipe, sans signature
@@ -415,7 +416,7 @@ if (AVANT) {
   check(await p.locator('.bt-print').count() === 0 && await p.title() !== titleBefore, 'P7 après le PDF (afterprint) : feuille retirée, titre remis');
 
   // P5 un jour + un salarié (mardi 20, Bruno)
-  const title5 = await printWith(p, { scope: 'day', day: 1, who: 'u-bruno' });
+  const title5 = await printWith(p, { scope: 'day', date: '2026-10-20', who: 'u-bruno' });
   check(title5 === 'Planning mardi 20 octobre – Entreprise Test – Bruno Essai', `P5 titre « ${title5} »`);
   await paper(p, async () => {
     check(await p.locator('.bt-print thead th.bt-pl-th').count() === 1 && await p.locator('.bt-print tbody tr').count() === 1, 'P5 une colonne, une ligne');
@@ -429,7 +430,7 @@ if (AVANT) {
   check(pdf5.pages === 1, `P5 un jour, un salarié : ${pdf5.pages} page`);
 
   // P6 un jour + équipe + signature ; semaine + un salarié
-  await printWith(p, { scope: 'day', day: 2, signature: true });
+  await printWith(p, { scope: 'day', date: '2026-10-21', signature: true });
   await paper(p, async () => {
     const ths = await p.locator('.bt-print thead tr:last-child th').allInnerTexts();
     check(ths.length === 3 && /Mercredi/.test(ths[1]) && ths[2].trim() === 'Signature' && await p.locator('.bt-print tbody tr').count() === 9, `P6 un jour + équipe + signature : ${ths.length} colonnes, 9 lignes`);

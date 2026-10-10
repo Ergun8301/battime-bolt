@@ -49,7 +49,9 @@
     "test:absences-lot2": "node scripts/tests/absences-lot2.mjs out",
     "test:panier": "npx -y deno@2 test supabase/functions/_shared/meal-setting.test.ts",
     "test:panier-rls": "bash supabase/tests/run-rls.sh supabase/tests/panier_reglage.sql",
-    "test:panier-ecrans": "node scripts/tests/panier-lot3bis.mjs out docs/captures-lot3bis"
+    "test:panier-ecrans": "node scripts/tests/panier-lot3bis.mjs out docs/captures-lot3bis",
+    "test:impression": "npx -y deno@2 test supabase/functions/_shared/print-period.test.ts supabase/functions/_shared/planning-cells.test.ts",
+    "test:impression-ecrans": "node scripts/tests/impression-lot3bis.mjs out docs/captures-lot3bis"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

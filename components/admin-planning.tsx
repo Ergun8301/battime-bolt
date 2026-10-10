@@ -51,7 +51,6 @@ import { ExportMenu } from '@/components/export-menu';
 import { ActionDone, type UndoResult } from '@/components/action-done';
 import { erasePlanning, isDisposableDraft, prepareMove, undoErase, undoMovePrep, type EraseResult, type MovePrep } from '@/lib/erase';
 import { fetchCompanyClosures, closedFor } from '@/lib/worker-closure';
-import { isReserveLifted } from '@/lib/reserves';
 import CompanySettings from '@/components/company-settings';
 import AssistantPanel from '@/components/assistant-panel';
 import PendingInvitations from '@/components/pending-invitations';
@@ -69,6 +68,12 @@ import ImportWorkersDialog from '@/components/import-workers-dialog';
 import LeaveAdminDialog from '@/components/leave-admin-dialog';
 import { CHANTIER_PALETTES, hashStr, LiveLine, PL_GRID_CSS, PlannedBubbleView, type ChantierPalette } from '@/components/planning-bubble';
 import { PlanningPrintSheet, PrintMenu, PRINT_MENU_CSS, printTitle, type PrintJob, type PrintOptions } from '@/components/planning-print';
+import { absenceCode, periodDays, periodRange, withinPeriod, worksiteCodes, type PrintPeriod } from '@/supabase/functions/_shared/print-period';
+import { loadPrintData } from '@/lib/planning-print-data';
+import {
+  aggregateEntries, bubbleTitleOf, DRAFT_COLS, extraDeclared, makeBubbleKeyOf, makePrintSource, orderCmp, SENT_COLS, withdrawnSet,
+  type DraftRow, type EntryRow, type PrintSource, type RealAgg,
+} from '@/lib/planning-cells';
 import { DAY_PARTS, dayPartTint } from '@/supabase/functions/_shared/day-part';
 import { cellKey, parisDay, placeLive, type LivePlace, type LiveSessionLike } from '@/supabase/functions/_shared/live-place';
 import { copyRefusal, targetRefusal } from '@/supabase/functions/_shared/copy-slot';
@@ -155,25 +160,11 @@ const scheduleError = (start: string, end: string): string | null => {
   return null;
 };
 const EMPTY_SET: Set<string> = new Set();
-/** Lot 11 : identifiants des cases retirées par le salarié, triés (keep() compare le contenu ET l'ordre). */
-const withdrawnSet = (rows: { planning_id: string | null }[] | null): Set<string> =>
-  new Set((rows || []).map((r) => r.planning_id).filter((id): id is string => !!id).sort());
 // Lot 7 : horaire prévu affiché sur la bulle — « 14:00 » (RDV) ou « 14:00–18:00 ».
 const plannedHoursOf = (p: PlanningWithWorksite): string | null =>
   p.estimated_start ? `${p.estimated_start.slice(0, 5)}${p.estimated_end ? `–${p.estimated_end.slice(0, 5)}` : ''}` : null;
-// « Autre » (intervention hors client, ajoutée par l'assistant) : son titre est la note.
-const bubbleTitleOf = (p: PlanningWithWorksite): string =>
-  (p.worksite?.client_name === 'Autre' && p.notes?.trim()) || p.worksite?.client_name || 'Chantier';
-
-// Display order inside a cell: manual position first (asc), then creation order.
-const orderCmp = (a: PlanningWithWorksite, b: PlanningWithWorksite) => {
-  const pa = a.position ?? null;
-  const pb = b.position ?? null;
-  if (pa !== null && pb !== null) return pa - pb;
-  if (pa !== null) return -1;
-  if (pb !== null) return 1;
-  return (a.created_at || '').localeCompare(b.created_at || '');
-};
+// Titre « Autre » = la note (bubbleTitleOf), ordre dans une case (orderCmp), withdrawnSet,
+// bulle qui porte les heures… : lib/planning-cells.ts (lot 3bis, partagé avec la feuille imprimée).
 
 // Prefer a bubble droppable under the pointer, else fall back to the cell.
 const collisionDetection: CollisionDetection = (args) => {
@@ -187,20 +178,8 @@ const collisionDetection: CollisionDetection = (args) => {
 const paletteFor = (p: PlanningWithWorksite) =>
   CHANTIER_PALETTES[hashStr(p.worksite_id || p.id) % CHANTIER_PALETTES.length];
 
-type ReceptionStatus = 'sans' | 'avec' | 'en_cours' | null;
-const RECEPTION_RANK: Record<string, number> = { avec: 3, en_cours: 2, sans: 1 };
-interface RealAgg { minutes: number; start: string; end: string; count: number; reception: ReceptionStatus;
-  /** Au moins une réserve de cette case n'a pas encore été levée par le bureau. */
-  reserveOpen: boolean; note: string }
-const realKey = (userId: string, date: string, worksiteId: string | null) => `${userId}|${date}|${worksiteId}`;
-/** Un brouillon tel que la grille le lit (lot 2 : de quoi reconnaître le brouillon vide). */
-interface DraftRow {
-  id?: string; status?: string; user_id: string; work_date: string; worksite_id: string | null; planning_id?: string | null;
-  start_time: string; end_time: string; total_minutes: number; reception: string | null; reserve_resolved_at: string | null;
-  reserve_fixed_at?: string | null; observation: string | null; locked?: boolean; exit_forgotten?: boolean | null; submitted_at?: string | null;
-}
-// `exit_forgotten` (lot 12) peut manquer en base : la lecture est refaite sans elle.
-const DRAFT_COLS = 'id, status, user_id, work_date, worksite_id, planning_id, start_time, end_time, total_minutes, reception, reserve_resolved_at, reserve_fixed_at, observation, locked, submitted_at';
+// RealAgg (heures d'une bulle), DraftRow / DRAFT_COLS (brouillons), EntryRow / SENT_COLS
+// (heures envoyées) : lib/planning-cells.ts.
 
 /** Une pièce jointe telle que le panneau « pièces » du cockpit la montre. */
 interface DocLine {
@@ -889,7 +868,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const [roleBusyId, setRoleBusyId] = useState<string | null>(null);
   const [worksites, setWorksites] = useState<Worksite[]>([]);
   const [planning, setPlanning] = useState<PlanningWithWorksite[]>([]);
-  const [realEntries, setRealEntries] = useState<{ user_id: string; work_date: string; worksite_id: string | null; planning_id?: string | null; start_time: string; end_time: string; total_minutes: number; reception: string | null; reserve_resolved_at: string | null; reserve_fixed_at?: string | null; observation: string | null }[]>([]);
+  const [realEntries, setRealEntries] = useState<EntryRow[]>([]);
   // Saisies pas encore envoyées : affichées en pointillé, jamais comptées.
   const [draftEntries, setDraftEntries] = useState<DraftRow[]>([]);
   // Lot 2 : brouillons VIDES (0 minute, jamais envoyés), gardés à part : ils ne
@@ -985,7 +964,39 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const [printJob, setPrintJobState] = useState<PrintJob | null>(null);
   const printJobRef = useRef<PrintJob | null>(null);
   const setPrintJob = (j: PrintJob | null) => { printJobRef.current = j; setPrintJobState(j); };
-  const startPrint = (o: PrintOptions) => { setPrintOpen(false); setPrintJob({ ...o, printedAt: new Date() }); };
+  // Lot 3bis : une période hors de l'écran est lue avant d'imprimer (« Préparation… »).
+  // printSeq annule une lecture en cours (menu fermé, Échap, Ctrl+P) : sa réponse tardive
+  // n'imprime plus rien. loadedWeek = la semaine dont `planning` contient vraiment les
+  // lignes (une réponse ancienne peut arriver après la nouvelle : on relit alors à part).
+  const [printBusy, setPrintBusy] = useState(false);
+  const printSeq = useRef(0);
+  const [loadedWeek, setLoadedWeek] = useState<string | null>(null);
+  const displayedRef = useRef({ week: '', day: '', ready: false });
+  const closePrintMenu = useCallback(() => { printSeq.current++; setPrintBusy(false); setPrintOpen(false); }, []);
+  const startPrint = async (o: PrintOptions) => {
+    const seq = ++printSeq.current;
+    const weekISO = format(currentWeekStart, 'yyyy-MM-dd');
+    // La période est à l'écran (sa semaine, ou un de ses jours) : ses données, comme au lot 3.
+    if (withinPeriod(o.period, { kind: 'week', start: weekISO }) && loadedWeek === weekISO) {
+      setPrintOpen(false); setPrintJob({ ...o, data: null, printedAt: new Date() });
+      return;
+    }
+    if (!user?.company_id) return;
+    setPrintBusy(true);
+    try {
+      const { from, to } = periodRange(o.period);
+      const data = await loadPrintData(user.company_id, from, to);
+      if (seq !== printSeq.current) return;
+      setPrintOpen(false); setPrintJob({ ...o, data, printedAt: new Date() });
+    } catch (err) {
+      if (seq !== printSeq.current) return;
+      console.error('Error loading print period:', err);
+      // Le menu reste ouvert : rien de partiel n'est imprimé, on peut réessayer.
+      toast.error("Impossible de préparer l'impression. Réessayez.");
+    } finally {
+      if (seq === printSeq.current) setPrintBusy(false);
+    }
+  };
 
   // team export
   const [exportOpen, setExportOpen] = useState(false);
@@ -1126,7 +1137,11 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     return () => { off = true; };
   }, [printJob]);
   // Ctrl+P (ou le menu du navigateur) sans passer par le bouton : on monte la feuille
-  // par défaut (semaine affichée, toute l'équipe) AVANT que la page soit imprimée.
+  // par défaut (période affichée, toute l'équipe) AVANT que la page soit imprimée.
+  // Lot 3bis : la période affichée = la semaine sur ordinateur, le jour sur téléphone.
+  // Une lecture en cours (menu « Préparation… ») est annulée et le menu fermé : sinon
+  // sa réponse relancerait une seconde impression. Semaine pas encore chargée : pas de
+  // feuille (une feuille vide aurait l'air complète), le navigateur imprime comme avant.
   // Une fenêtre ouverte (fiche, export…) : on n'y touche pas, l'impression reste celle d'avant.
   // Le bandeau cookies (#cc-main, role=dialog lui aussi) ne compte pas : il reste parfois
   // ouvert dans un coin, et il ne s'imprime de toute façon pas avec la feuille.
@@ -1135,7 +1150,13 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     const before = () => {
       const dialogOpen = Array.from(document.querySelectorAll('[role=dialog],[role=alertdialog]')).some((d) => !d.closest('#cc-main'));
       if (printJobRef.current || dialogOpen) return;
-      flushSync(() => set({ scope: 'week', dayIdx: 0, who: 'all', signature: false, auto: true, printedAt: new Date() }));
+      printSeq.current++;
+      const shown = displayedRef.current;
+      const period: PrintPeriod = window.innerWidth < 1024 ? { kind: 'day', start: shown.day } : { kind: 'week', start: shown.week };
+      flushSync(() => {
+        setPrintBusy(false); setPrintOpen(false);
+        if (shown.ready) set({ period, who: 'all', signature: false, data: null, auto: true, printedAt: new Date() });
+      });
     };
     const after = () => set(null);
     window.addEventListener('beforeprint', before);
@@ -1207,7 +1228,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       const [planRes, realRes, draftRes, cancelledRes] = await Promise.all([
         supabase.from('planning').select('*, worksite:worksites(*), user:users!user_id(*)')
           .eq('company_id', user.company_id).gte('work_date', from).lte('work_date', to).order('work_date'),
-        supabase.from('time_entries').select('user_id, work_date, worksite_id, planning_id, start_time, end_time, total_minutes, reception, reserve_resolved_at, reserve_fixed_at, observation')
+        supabase.from('time_entries').select(SENT_COLS)
           .eq('company_id', user.company_id).in('status', ['submitted', 'validated']).gte('work_date', from).lte('work_date', to),
         (async () => {
           const q = (cols: string) => supabase.from('time_entries').select(cols)
@@ -1220,8 +1241,9 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       ]);
       if (planRes.error) throw planRes.error;
       const planRows = planRes.data || [];
-      const realRows = realRes.error ? [] : (realRes.data || []);
+      const realRows = realRes.error ? [] : ((realRes.data || []) as unknown as EntryRow[]);
       setPlanning((prev) => keep(prev, planRows));
+      setLoadedWeek(from); // lot 3bis : `planning` = cette semaine (imprimer la lit telle quelle)
       if (!realRes.error) setRealEntries((prev) => keep(prev, realRows));
       if (!draftRes.error) {
         // Lot 2 : un brouillon VIDE (0 minute, jamais envoyé) ne compte nulle part
@@ -1505,59 +1527,14 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
    * sinon ces heures à son compte : la nouvelle bulle devenait « Heures
    * envoyées — non déplaçable », et l'ancienne, libre.
    */
-  const bubbleKeyOf = useMemo(() => {
-    const groups = new Map<string, Set<string>>();
-    const owner = new Map<string, PlanningWithWorksite>(); // case → bulle des heures sans lien
-    const first = (a: PlanningWithWorksite, b: PlanningWithWorksite) => (
-      !!a.added_by_worker !== !!b.added_by_worker ? !!a.added_by_worker
-        : (a.created_at || '') !== (b.created_at || '') ? (a.created_at || '') < (b.created_at || '') : a.id < b.id);
-    for (const p of planning) {
-      if (p.absence_type) continue;
-      const k = realKey(p.user_id, p.work_date, p.worksite_id);
-      const set = groups.get(k);
-      if (set) set.add(p.id); else groups.set(k, new Set([p.id]));
-      const cur = owner.get(k);
-      if (!cur || first(p, cur)) owner.set(k, p);
-    }
-    return (e: { user_id: string; work_date: string; worksite_id: string | null; planning_id?: string | null }) => {
-      const k = realKey(e.user_id, e.work_date, e.worksite_id);
-      const set = groups.get(k);
-      if (!set) return k;
-      return `p:${e.planning_id && set.has(e.planning_id) ? e.planning_id : owner.get(k)!.id}`;
-    };
-  }, [planning]);
-
-  const aggregate = (rows: typeof realEntries) => {
-    const m = new Map<string, RealAgg>();
-    for (const e of rows) {
-      const k = bubbleKeyOf(e);
-      const cur = m.get(k);
-      // Une réserve « ouverte » = déclarée ET pas encore levée (par le bureau ou,
-      // lot 11, par le salarié : lib/reserves isReserveLifted). Sans cette
-      // distinction, le triangle d'alerte resterait allumé à vie sur la case.
-      const stillOpen = e.reception === 'avec' && !isReserveLifted(e);
-      if (!cur) m.set(k, { minutes: e.total_minutes, start: e.start_time, end: e.end_time, count: 1, reception: (e.reception as ReceptionStatus) || null, reserveOpen: stillOpen, note: e.observation || '' });
-      else {
-        cur.minutes += e.total_minutes;
-        if (e.start_time && e.start_time < cur.start) cur.start = e.start_time;
-        if (e.end_time && e.end_time > cur.end) cur.end = e.end_time;
-        cur.count += 1;
-        // garde le statut le plus « fort » (avec > en_cours > sans) + cumule les notes
-        if ((RECEPTION_RANK[e.reception || ''] || 0) > (RECEPTION_RANK[cur.reception || ''] || 0)) cur.reception = (e.reception as ReceptionStatus) || cur.reception;
-        if (stillOpen) cur.reserveOpen = true;
-        if (e.observation) cur.note = cur.note ? `${cur.note} · ${e.observation}` : e.observation;
-      }
-    }
-    return m;
-  };
-
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const realMap = useMemo(() => aggregate(realEntries), [realEntries, bubbleKeyOf]);
+  // Lot 3bis : la règle vit dans lib/planning-cells.ts (makeBubbleKeyOf, aggregateEntries),
+  // la MÊME pour la feuille imprimée.
+  const bubbleKeyOf = useMemo(() => makeBubbleKeyOf(planning), [planning]);
+  const realMap = useMemo(() => aggregateEntries(realEntries, bubbleKeyOf), [realEntries, bubbleKeyOf]);
   // Les brouillons ne sont JAMAIS mélangés aux heures déclarées : ils ne
   // comptent ni dans le total du cockpit, ni dans l'export. On les montre
   // seulement pour que le bureau sache qu'une saisie existe.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const draftMap = useMemo(() => aggregate(draftEntries), [draftEntries, bubbleKeyOf]);
+  const draftMap = useMemo(() => aggregateEntries(draftEntries, bubbleKeyOf), [draftEntries, bubbleKeyOf]);
   // Lot 2 : interventions qui ne portent qu'un brouillon vide (la fenêtre le dit :
   // « Supprimer » l'emporte), et celles dont le brouillon est une sortie oubliée
   // à compléter (gardées : son heure d'arrivée compte).
@@ -1675,26 +1652,8 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     worksites.forEach((w) => m.set(w.id, w.client_name));
     return m;
   }, [worksites]);
-  const extraDeclaredForCell = (workerId: string, dateStr: string) => {
-    const plannedWs = new Set(
-      planning.filter((p) => p.user_id === workerId && p.work_date === dateStr && !p.absence_type).map((p) => p.worksite_id),
-    );
-    const agg = new Map<string, { worksiteId: string | null; name: string; minutes: number; pending: boolean }>();
-    const add = (rows: typeof realEntries, pending: boolean) => {
-      for (const e of rows) {
-        if (e.user_id !== workerId || e.work_date !== dateStr) continue;
-        if (e.worksite_id && plannedWs.has(e.worksite_id)) continue; // déjà porté par sa bulle
-        const key = `${e.worksite_id || 'none'}|${pending ? 'd' : 'r'}`;
-        const name = (e.worksite_id && worksiteNameById.get(e.worksite_id)) || 'Autre';
-        const cur = agg.get(key);
-        if (cur) cur.minutes += e.total_minutes;
-        else agg.set(key, { worksiteId: e.worksite_id, name, minutes: e.total_minutes, pending });
-      }
-    };
-    add(realEntries, false);
-    add(draftEntries, true);
-    return Array.from(agg.values());
-  };
+  const extraDeclaredForCell = (workerId: string, dateStr: string) =>
+    extraDeclared(planning, realEntries, draftEntries, worksiteNameById, workerId, dateStr);
 
   // ─── Lot 9 : où afficher « en cours depuis » ─────────────────────────────────
   // UNE règle, partagée avec la borne et le salarié (placeLive) : la case
@@ -2663,7 +2622,8 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   // ─── derived ──────────────────────────────────────────────────────────────────
 
   const weekDays = buildWeekDays(currentWeekStart);
-  const displayWorkers = demoWorkers.length ? [...workers, ...demoWorkers] : workers;
+  // useMemo : la feuille imprimée (printRows) en dépend sans être recalculée à chaque rendu.
+  const displayWorkers = useMemo(() => (demoWorkers.length ? [...workers, ...demoWorkers] : workers), [workers, demoWorkers]);
   const thisWeekStart = weekStart();
   const isCurrentWeek = format(currentWeekStart, 'yyyy-MM-dd') === format(thisWeekStart, 'yyyy-MM-dd');
   const dayShort = (d: Date) => format(d, 'EEE', { locale: fr }).replace('.', '');
@@ -2677,9 +2637,34 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   useLayoutEffect(() => {
     if (!printJob) return;
     const prev = document.title;
-    document.title = printTitle(printJob, companyLabel, weekDays, getISOWeek(currentWeekStart), printWorker ? `${printWorker.first_name} ${printWorker.last_name}` : null);
+    document.title = printTitle(printJob, companyLabel, printWorker ? `${printWorker.first_name} ${printWorker.last_name}` : null);
     return () => { document.title = prev; };
   }, [printJob]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Lot 3bis : la période affichée — le menu s'ouvre dessus, Ctrl+P l'imprime
+  // (lue par « beforeprint » dans une ref : l'écouteur est posé une seule fois).
+  const weekISO = format(currentWeekStart, 'yyyy-MM-dd');
+  const displayedPeriod = useMemo<PrintPeriod>(() => ({ kind: 'week', start: weekISO }), [weekISO]);
+  displayedRef.current = { week: weekISO, day: format(weekDays[mobileDayIdx] || weekDays[0], 'yyyy-MM-dd'), ready: loadedWeek === weekISO };
+  // Ce que la feuille lit : la période lue à part, sinon les lignes de l'écran (qui
+  // suivent l'écran, comme au lot 3). Mêmes règles dans les deux cas (planning-cells).
+  const printSrc = useMemo(() => {
+    if (!printJob) return null;
+    if (printJob.data) return makePrintSource(printJob.data, printJob.data.wsNames);
+    return makePrintSource({ planning, real: realEntries, drafts: draftEntries, withdrawn: withdrawnIds }, worksiteNameById);
+  }, [printJob, planning, realEntries, draftEntries, withdrawnIds, worksiteNameById]);
+  const printRows = useMemo(() => (!printJob ? [] : printJob.who === 'all' ? displayWorkers : displayWorkers.filter((w) => w.id === printJob.who)), [printJob, displayWorkers]);
+  // Mois : un code par chantier imprimé (titres des bulles + heures hors planning des lignes imprimées).
+  const printCodes = useMemo(() => {
+    if (!printJob || !printSrc || printJob.period.kind !== 'month') return undefined;
+    const titles: string[] = [];
+    const days = periodDays(printJob.period);
+    for (const w of printRows) for (const iso of days) {
+      if (printSrc.absence(w.id, iso)) continue;
+      for (const p of printSrc.slots(w.id, iso)) titles.push(printSrc.titleOf(p));
+      for (const x of printSrc.extra(w.id, iso)) titles.push(x.name);
+    }
+    return worksiteCodes(titles);
+  }, [printJob, printSrc, printRows]);
 
   const absenceForDay = (workerId: string, dateStr: string) =>
     planning.find(p => p.user_id === workerId && p.work_date === dateStr && p.absence_type);
@@ -2702,8 +2687,9 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   // imprimée comme « à faire », elle dirait le contraire de l'écran.
   // Une maladie devient « Absent » (donnée de santé : la feuille s'affiche au dépôt,
   // comme la borne) ; congé et intempérie restent écrits comme à l'écran.
-  const renderPrintCell = (workerId: string, iso: string) => {
-    const abs = absenceForDay(workerId, iso);
+  // Lot 3bis : lit `src` (l'écran ou la période lue à part), plus les closures de l'écran.
+  const renderPrintCell = (src: PrintSource<PlanningWithWorksite>, workerId: string, iso: string) => {
+    const abs = src.absence(workerId, iso);
     if (abs) {
       const masked = abs.absence_type === 'maladie';
       const av = masked ? ABSENCE_VISUAL.conge : (ABSENCE_VISUAL[abs.absence_type!] || ABSENCE_VISUAL.conge);
@@ -2716,10 +2702,10 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     }
     return (
       <div className="bt-pl-cellfill">
-        {cellChantiers(workerId, iso).map((p) => (
-          <BubbleContent key={p.id} p={p} palette={paletteFor(p)} real={realForPlanning(p)} draft={draftForPlanning(p)} docCount={docsByWorksite.get(p.worksite_id || '') || 0} withdrawn={withdrawnIds.has(p.id)} />
+        {src.slots(workerId, iso).map((p) => (
+          <BubbleContent key={p.id} p={p} palette={paletteFor(p)} real={src.real(p)} draft={src.draft(p)} docCount={docsByWorksite.get(p.worksite_id || '') || 0} withdrawn={src.withdrawn(p.id)} />
         ))}
-        {extraDeclaredForCell(workerId, iso).map((x, i) => (
+        {src.extra(workerId, iso).map((x, i) => (
           <div key={`xd${i}`} className="bt-pl-extra">
             <span className="bt-pl-bub-bar" style={{ background: x.pending ? '#8a8378' : '#B5472E' }} />
             <span className="bt-pl-extra-top"><span className="bt-pl-extra-name">{x.name}</span></span>
@@ -2727,6 +2713,38 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
           </div>
         ))}
       </div>
+    );
+  };
+  // Lot 3bis : une case de la feuille du MOIS — un petit bloc par intervention, le code
+  // du chantier dedans. Mêmes couleurs que la grille : noir = heures envoyées, brouillon
+  // teinté par les heures saisies, prévu par son horaire (blanc : journée ou sans
+  // horaire), retirée par le salarié éteinte et barrée. Absence : sa lettre (maladie → A).
+  const renderMonthCell = (src: PrintSource<PlanningWithWorksite>, codes: Map<string, string>, workerId: string, iso: string) => {
+    const abs = src.absence(workerId, iso);
+    if (abs) {
+      const masked = abs.absence_type === 'maladie';
+      const av = masked ? ABSENCE_VISUAL.conge : (ABSENCE_VISUAL[abs.absence_type!] || ABSENCE_VISUAL.conge);
+      return <div className="bt-print-m-abs" data-testid="print-m-abs" style={{ background: av.bg, color: av.fg }}>{absenceCode(abs.absence_type)}</div>;
+    }
+    return (
+      <>
+        {src.slots(workerId, iso).map((p) => {
+          const real = src.real(p), draft = real ? undefined : src.draft(p), off = !real && !draft && src.withdrawn(p.id);
+          const t = real || off ? null : draft ? dayPartTint(draft.start, draft.end) : dayPartTint(p.estimated_start, p.estimated_end);
+          const state = real ? 'real' : draft ? 'draft' : off ? 'off' : 'planned';
+          return (
+            <span key={p.id} className={`bt-print-m-b${real ? ' is-real' : ''}${!real && !t ? ' is-white' : ''}${off ? ' is-off' : ''}`}
+              style={{ background: real ? undefined : t?.bg ?? '#fff', borderColor: paletteFor(p).bar }} data-testid="print-m-slot" data-creneau={t?.key} data-state={state}>
+              {codes.get(src.titleOf(p))}
+            </span>
+          );
+        })}
+        {src.extra(workerId, iso).map((x, i) => (
+          <span key={`xd${i}`} className="bt-print-m-b is-white" style={{ background: '#fff', borderStyle: 'solid', borderColor: x.pending ? '#8a8378' : '#B5472E' }} data-testid="print-m-slot" data-state="extra">
+            {codes.get(x.name)}
+          </span>
+        ))}
+      </>
     );
   };
 
@@ -3002,20 +3020,20 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
           )}
           {/* « Coût chantiers » (« Coûts » sous 1280 px) : les heures par chantier y sont. */}
           <button className="bt-pl-out" onClick={() => setCostOpen(true)} title="Heures et coût par chantier" data-testid="bar-cost"><TrendingUp className="h-4 w-4" /> <span className="bt-pl-lbl-long">Coût chantiers</span><span className="bt-pl-lbl-short">Coûts</span></button>
-          {/* Lot 3 : « Imprimer » — une icône seule ; le menu choisit semaine ou jour,
-              toute l'équipe ou un salarié, et la colonne signature. N'écrit rien. */}
+          {/* Lot 3 : « Imprimer » — une icône seule ; le menu choisit la période (lot 3bis :
+              semaine, jour ou mois, par défaut celle de l'écran), toute l'équipe ou un
+              salarié, et la colonne signature. N'écrit rien. */}
           <div className="bt-pl-ddwrap">
-            <button className="bt-pl-out" onClick={() => setPrintOpen((o) => !o)} title="Imprimer le planning" aria-label="Imprimer le planning"
+            <button className="bt-pl-out" onClick={() => (printOpen ? closePrintMenu() : setPrintOpen(true))} title="Imprimer le planning" aria-label="Imprimer le planning"
               aria-expanded={printOpen} data-testid="bar-print" disabled={displayWorkers.length === 0}>
               <Printer className="h-4 w-4" />
             </button>
             {printOpen && (
               <>
-                <div className="bt-pl-ddbackdrop" onClick={() => setPrintOpen(false)} />
-                <PrintMenu days={weekDays} weekNo={getISOWeek(currentWeekStart)}
+                <div className="bt-pl-ddbackdrop" onClick={closePrintMenu} />
+                <PrintMenu displayed={displayedPeriod} busy={printBusy}
                   workers={displayWorkers.map((w) => ({ id: w.id, name: `${w.first_name} ${w.last_name}` }))}
-                  defaultDayIdx={Math.max(0, weekDays.findIndex((d) => format(d, 'yyyy-MM-dd') === todayStr))}
-                  onPrint={startPrint} onClose={() => setPrintOpen(false)} />
+                  onPrint={startPrint} onClose={closePrintMenu} />
               </>
             )}
           </div>
@@ -3530,13 +3548,12 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
 
       {/* Lot 3 : la feuille imprimée, directement dans <body> (le CSS d'impression cache
           tout le reste) et seulement le temps d'imprimer. Photos : initiales seules. */}
-      {printJob && createPortal(
-        <PlanningPrintSheet job={printJob} company={companyLabel} weekNo={getISOWeek(currentWeekStart)}
-          days={printJob.scope === 'week' ? weekDays : [weekDays[printJob.dayIdx] || weekDays[0]]}
-          rows={(printJob.who === 'all' ? displayWorkers : displayWorkers.filter((w) => w.id === printJob.who)).map((w) => ({
+      {printJob && printSrc && createPortal(
+        <PlanningPrintSheet job={printJob} company={companyLabel} codes={printCodes}
+          rows={printRows.map((w) => ({
             id: w.id, name: `${w.first_name} ${w.last_name}`, initials: `${w.first_name?.[0] || ''}${w.last_name?.[0] || ''}`, tint: avatarTint(w.id, false),
           }))}
-          renderCell={renderPrintCell} />,
+          renderCell={printJob.period.kind === 'month' ? (u, d) => renderMonthCell(printSrc, printCodes || new Map(), u, d) : (u, d) => renderPrintCell(printSrc, u, d)} />,
         document.body,
       )}
 
