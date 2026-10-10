@@ -5,6 +5,9 @@
 
 import { format, startOfMonth, subMonths } from 'date-fns';
 import { plannedSpan, plannedState, type PlannedState, type Span } from '@/supabase/functions/_shared/day-hours';
+// Lot 5 : le corps des deux règles vit dans _shared (avec `today` explicite) pour que
+// les statistiques du bureau lisent EXACTEMENT la même règle que le cockpit.
+import { missingDays, withIncomplete } from '@/supabase/functions/_shared/team-stats-core';
 
 /**
  * @param plannedDates work_date (yyyy-MM-dd) of chantier assignments (absences already excluded)
@@ -15,14 +18,7 @@ export function computeMissingDays(
   plannedDates: string[],
   declaredDates: Set<string>,
 ): string[] {
-  const todayStr = format(new Date(), 'yyyy-MM-dd');
-  const missing = new Set<string>();
-  for (const d of plannedDates) {
-    if (d >= todayStr) continue;        // today/future not missing yet
-    if (declaredDates.has(d)) continue; // already declared
-    missing.add(d);
-  }
-  return Array.from(missing).sort((a, b) => (a < b ? 1 : -1));
+  return missingDays(plannedDates, declaredDates, format(new Date(), 'yyyy-MM-dd'));
 }
 
 /**
@@ -42,9 +38,7 @@ export function missingWindowStart(now: Date = new Date()): string {
  * partie). Passés seulement, du plus récent au plus ancien, sans doublon.
  */
 export function withIncompleteDays(missing: string[], incomplete: string[]): string[] {
-  const todayStr = format(new Date(), 'yyyy-MM-dd');
-  const all = new Set([...missing, ...incomplete.filter((d) => d < todayStr)]);
-  return Array.from(all).sort((a, b) => (a < b ? 1 : -1));
+  return withIncomplete(missing, incomplete, format(new Date(), 'yyyy-MM-dd'));
 }
 
 

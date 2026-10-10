@@ -4,7 +4,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { User } from '@/lib/types';
 import {
   Users, Building2, Download, Settings, LogOut, TrendingUp, Palmtree,
-  AlertTriangle, CheckSquare,
+  AlertTriangle, CheckSquare, BarChart3,
 } from 'lucide-react';
 
 // Menu hamburger mobile de l'admin : identité + statut d'abonnement + les mêmes
@@ -51,6 +51,8 @@ interface AdminMobileMenuProps {
   onOpenSalaries: () => void;
   onOpenChantiers: () => void;
   onOpenCost: () => void;
+  /** Lot 5 : statistiques de l'équipe (lecture seule). */
+  onOpenStats?: () => void;
   onOpenLeaves: () => void;
   pendingLeaves?: number;
   onOpenReserves: () => void;
@@ -68,7 +70,7 @@ interface AdminMobileMenuProps {
 export default function AdminMobileMenu({
   open, onOpenChange, user, companyLabel, companyLogo, companyInitials,
   trial, onSubscribe,
-  onOpenSalaries, onOpenChantiers, onOpenCost, onOpenLeaves, pendingLeaves = 0,
+  onOpenSalaries, onOpenChantiers, onOpenCost, onOpenStats, onOpenLeaves, pendingLeaves = 0,
   onOpenReserves, openReserves = 0, onOpenKiosk,
   onOpenExportTeam, onOpenSelect, onOpenSettings, onSignOut,
 }: AdminMobileMenuProps) {
@@ -138,6 +140,13 @@ export default function AdminMobileMenu({
             <span className="bt-mm-icon"><TrendingUp className="h-4 w-4" /></span>
             <span className="bt-mm-label">Coût chantiers</span>
           </button>
+
+          {onOpenStats && (
+            <button className="bt-mm-item" onClick={() => go(onOpenStats)} data-testid="mm-stats">
+              <span className="bt-mm-icon"><BarChart3 className="h-4 w-4" /></span>
+              <span className="bt-mm-label">Statistiques</span>
+            </button>
+          )}
 
           <button className="bt-mm-item" onClick={() => go(onOpenExportTeam)} data-testid="mm-export">
             <span className="bt-mm-icon"><Download className="h-4 w-4" /></span>

@@ -14,7 +14,7 @@ import { showMealColumn } from '@/supabase/functions/_shared/meal-setting';
 export type ExportEntry = TimeEntryWithWorksite & { user?: User };
 
 /** Une ligne du récapitulatif : un salarié, une semaine. */
-interface RecapRow {
+export interface RecapRow {
   userId: string; worker: string; firstName: string; lastName: string;
   weekStart: string; weekEnd: string;
   minutes: number; normalMinutes: number; overtimeMinutes: number;
@@ -93,6 +93,13 @@ export interface ExportOptions {
 }
 
 /**
+ * Ce que le récapitulatif lit des options d'export. Lot 5 : les statistiques
+ * du bureau appellent weeklyRecap avec ces seuls champs — MÊME fonction que le
+ * CSV de paie, donc mêmes heures et mêmes heures sup, à la minute.
+ */
+export type RecapOptions = Pick<ExportOptions, 'recapEntries' | 'travelPaid' | 'weeklyHoursByWorker' | 'payPeriod' | 'singleWorkerName'>;
+
+/**
  * Récapitulatif par salarié et par semaine : total, dont route payée, et
  * heures supplémentaires.
  *
@@ -100,7 +107,7 @@ export interface ExportOptions {
  * à justifier, pas à recopier. Les heures supplémentaires se comptent à la
  * semaine (lib/overtime.ts), sur des semaines ENTIÈRES.
  */
-function weeklyRecap(opts: ExportOptions) {
+export function weeklyRecap(opts: RecapOptions): RecapRow[] {
   const source = opts.recapEntries;
   if (!source || source.length === 0) return [];
   const route = routeMinutesByEntry(source);

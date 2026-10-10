@@ -14,7 +14,7 @@ import {
   addPlanningSlot, createWorksite, invitedUserId, inviteWorker, savePayrollBasics, setAbsence, setWorksiteBudget, undoAbsence,
 } from '@/lib/planning-writes';
 import {
-  addCertification, addExpense, approveLeave, attributeEntries, closeMonth, readCompanySettings, rejectLeave, resendInvitation,
+  addCertification, addExpense, approveLeave, attributeEntries, closeMonth, logHoursReminder, readCompanySettings, rejectLeave, resendInvitation,
   saveCompanySettings, sendHoursReminder, setReserveResolution, setUserRole, setWorkerActive, setWorksiteActive,
   updatePlanningSlot, updateWorkerIdentity, updateWorksite, type Role,
 } from '@/lib/admin-writes';
@@ -262,6 +262,8 @@ export function makeActionExecutor(user: { id: string; company_id: string }): Ac
           const sent = await sendHoursReminder(d.user_id!, '');
           message = sent > 0 ? 'Rappel envoyé sur son téléphone.' : 'Il n’a pas activé les notifications : rappel non envoyé. Utilisez la cloche du planning (email).';
           if (!sent) return { ok: false, message };
+          // Lot 5 : au journal des relances (statistiques), seulement si le rappel est parti.
+          await logHoursReminder(d.user_id!, [], 'push');
           break;
         }
         case 'cloturer_mois':
