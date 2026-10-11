@@ -4176,7 +4176,10 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
           )}
           {addKind === 'tache' && addTarget && user?.company_id && (
             <DayTasksPanel key={`${addTarget.workerId}|${addTarget.date}`} companyId={user.company_id} workerId={addTarget.workerId} date={addTarget.date}
-              tasks={cells.tasks(addTarget.workerId, addTarget.date)} canAdd={!addAbsent} onChanged={fetchMissions} />
+              tasks={cells.tasks(addTarget.workerId, addTarget.date)} canAdd={!addAbsent} onChanged={fetchMissions}
+              timesOn={missions.taskTimesOn}
+              slots={planning.filter((p) => p.user_id === addTarget.workerId && p.work_date === addTarget.date && !p.absence_type)
+                .map((p) => ({ start: p.estimated_start, end: p.estimated_end }))} />
           )}
           {addKind === 'reunion' && addTarget && (
             <MeetingForm key={editMeeting?.id || `new|${addTarget.workerId}|${addTarget.date}`}
