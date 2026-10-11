@@ -34,7 +34,7 @@ export type {
   ActionDraft, AssistantAction, EntryChoice, ActionQuestion,
 } from '@/supabase/functions/_shared/assistant-actions-core';
 export {
-  A_CONFIRMER, ABSENCE_KINDS, ABSENCE_LABEL, CERT_LABEL, DOC_CATEGORY_LABEL, EXPENSE_LABEL, ROLE_LABEL, actionMode, applyAnswer, checkAction, frDate, isRemoval, questionFor, summarize,
+  A_CONFIRMER, A_CONFIRMER_REMPLACE, ABSENCE_KINDS, ABSENCE_LABEL, CERT_LABEL, DOC_CATEGORY_LABEL, EXPENSE_LABEL, ROLE_LABEL, actionMode, applyAnswer, checkAction, confirmText, frDate, isRemoval, questionFor, summarize,
 } from '@/supabase/functions/_shared/assistant-actions-core';
 
 export interface ActionOptions {
@@ -53,6 +53,8 @@ export interface ActionExtra {
 
 export interface ActionResult {
   ok: boolean; message: string; undo?: () => Promise<ActionResult>;
+  /** Lot 1 : annulation en partie seulement (des cases gardées) — « Modifier » ne refait alors rien. */
+  partial?: boolean;
   /** Lot 8 : nombre d'éléments effacés (au-delà de 10, « Annuler » est mis en avant). */
   count?: number;
 }
@@ -66,6 +68,10 @@ export interface RemovalPreview {
   kept: number; reason: string;
   /** Les jours touchés, dans l'ordre. */
   days: string[];
+  /** Les cases montrées (à retirer ET gardées) : seules elles seront relues au clic (le planning a pu bouger depuis). */
+  ids: string[];
+  /** Cases qui partent en portant des heures RETIRÉES par le salarié (ces heures restent dans sa fiche). */
+  withdrawn: number;
 }
 export type RemovalPreviewer = (d: ActionDraft) => Promise<RemovalPreview | null>;
 
@@ -87,6 +93,18 @@ async function journal(action: string, summary: string, undone = false): Promise
   return !error;
 }
 
+/**
+ * Lot 1 : « Annuler » un placement qui n'a pas tout retiré. Rien de retiré →
+ * ce n'est pas une annulation (erreur, le bouton reste) ; une partie → « en
+ * partie », et « Modifier » ne refait pas l'action (elle serait en double).
+ */
+function partialUndo(r: { deleted: unknown[]; skipped: number; reason: string }): void | { message: string; partial: boolean } {
+  if (!r.skipped) return;
+  const kept = `${r.skipped > 1 ? `${r.skipped} cases portent` : 'La case porte'} des heures (${r.reason})`;
+  if (!r.deleted.length) throw new Error(`Rien n’a été retiré : ${kept}. Supprimez-${r.skipped > 1 ? 'les' : 'la'} depuis le planning si besoin.`);
+  return { message: `Annulé en partie : ${casesLabel(r.deleted.length, 'retirée')}. ${kept} : ${r.skipped > 1 ? 'elles restent' : 'elle reste'}.`, partial: true };
+}
+
 /** Exécuteur réel : la personne du bureau connectée, son entreprise. */
 export function makeActionExecutor(user: { id: string; company_id: string }): ActionExecutor {
   const cid = user.company_id;
@@ -94,7 +112,8 @@ export function makeActionExecutor(user: { id: string; company_id: string }): Ac
   return async (d, summary, attachment) => {
     let message = '';
     // Lot 8 : l'annulation peut rendre son propre message (« 27 cases remises »).
-    let undo: (() => Promise<void | string>) | undefined;
+    // Lot 1 : `partial` = tout n'a pas pu être défait (des cases portent des heures).
+    let undo: (() => Promise<void | string | { message: string; partial: boolean }>) | undefined;
     let count: number | undefined;
     try {
       switch (d.type) {
@@ -163,10 +182,7 @@ export function makeActionExecutor(user: { id: string; company_id: string }): Ac
           message = `${d.dates.length} jour${d.dates.length > 1 ? 's' : ''} ajouté${d.dates.length > 1 ? 's' : ''} au planning.`;
           // Lot 1 : retiré par le même chemin que « Supprimer » — une case sur
           // laquelle des heures ont été notées depuis est gardée, et c'est dit.
-          undo = async () => {
-            const r = await erasePlanning(cid, { ids });
-            if (r.skipped) return `Annulé en partie : ${r.skipped} case${r.skipped > 1 ? 's' : ''} gardée${r.skipped > 1 ? 's' : ''} (${r.reason}).`;
-          };
+          undo = async () => partialUndo(await erasePlanning(cid, { ids }));
           break;
         }
         case 'planning_semaine': {
@@ -179,8 +195,8 @@ export function makeActionExecutor(user: { id: string; company_id: string }): Ac
           // depuis est GARDÉE, et c'est dit.
           undo = async () => {
             const r = await erasePlanning(cid, { ids });
-            const k = r.deleted.length;
-            return `Annulé : ${casesLabel(k, 'retirée')} du planning.${r.skipped ? ` ${r.skipped} gardée${r.skipped > 1 ? 's' : ''} (${r.reason}).` : ''}`;
+            if (r.skipped) return partialUndo(r);
+            return r.deleted.length ? `Annulé : ${casesLabel(r.deleted.length, 'retirée')} du planning.` : 'Rien à retirer : ces cases ne sont plus au planning.';
           };
           break;
         }
@@ -351,6 +367,8 @@ export function makeActionExecutor(user: { id: string; company_id: string }): Ac
         case 'supprimer_absence': {
           const r = d.type === 'supprimer_intervention'
             ? await erasePlanning(cid, { ids: [d.planning_id!] })
+            // Lot 1 : les cases que la carte a montrées, et elles seules.
+            : d.ids ? await erasePlanning(cid, { ids: d.ids })
             : await erasePlanning(cid, { userId: d.user_id, from: d.du, to: d.au, absences: d.type === 'supprimer_absence' });
           if (!r.deleted.length) {
             return { ok: false, message: r.skipped ? `Rien n’a été retiré : ${r.reason}.` : d.type === 'supprimer_absence' ? 'Aucune absence sur ces jours.' : 'Aucune case à effacer sur cette période.' };
@@ -470,9 +488,10 @@ export function makeActionExecutor(user: { id: string; company_id: string }): Ac
     if (undo) {
       const run = undo;
       result.undo = async () => {
-        let said: void | string;
+        let said: void | string | { message: string; partial: boolean };
         try { said = await run(); } catch (e) { return { ok: false, message: errText(e, 'Annulation impossible.') }; }
         await journal(d.type, summary, true);
+        if (said && typeof said === 'object') return { ok: true, message: said.message, partial: said.partial };
         return { ok: true, message: typeof said === 'string' ? said : 'Annulé : c’est comme avant.' };
       };
     }
@@ -493,7 +512,7 @@ export function makeRemovalPreview(user: { company_id: string }): RemovalPreview
       ? await erasePlanning(user.company_id, { ids: [d.planning_id!], dryRun: true })
       : await erasePlanning(user.company_id, { userId: d.user_id, from: d.du, to: d.au, absences: d.type === 'supprimer_absence', dryRun: true });
     const days = Array.from(new Set(r.deleted.map((x) => String(x.work_date)))).sort();
-    return { count: r.deleted.length, kept: r.skipped, reason: r.reason, days };
+    return { count: r.deleted.length, kept: r.skipped, reason: r.reason, days, ids: r.seen ?? r.deleted.map((x) => x.id), withdrawn: r.withdrawn ?? 0 };
   };
 }
 

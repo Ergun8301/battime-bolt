@@ -601,8 +601,9 @@ if (AVANT) {
   const ask = async (text) => { await p.fill('.as-bar textarea', text); await p.click('button[aria-label="Envoyer"]'); await p.waitForTimeout(1500); };
   // Lot 1 (heures sûres) : une suppression montre d'abord sa carte (rien d'écrit), puis « Retirer ».
   const askDel = async (text) => {
-    await ask(text);
+    // Relevé AVANT l'envoi : une suppression partie d'office pendant l'attente compterait.
     const w0 = log.writes.length;
+    await ask(text);
     const notice = (await p.locator('[data-testid=removal-notice]').last().innerText().catch(() => '')).replace(/\s+/g, ' ');
     const before = writesSince(w0).length + planningWrites(w0).length;
     await p.locator('[data-testid=action-confirm]').last().click(); await p.waitForTimeout(1500);

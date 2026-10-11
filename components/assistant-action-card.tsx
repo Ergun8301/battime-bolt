@@ -13,7 +13,7 @@
 // parce qu'il porte des heures) ; rien n'est écrit avant « Confirmer ».
 
 import type { ExtraControl } from '@/components/assistant-panel';
-import { readCard, useCardMemory, writeCard } from '@/lib/card-memory';
+import { readCard, undoneMemory, useCardMemory, writeCard } from '@/lib/card-memory';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   CheckCircle2, Loader2, UserPlus, Building2, CalendarOff, CalendarPlus, CalendarRange, Clock, FolderInput, Paperclip,
@@ -21,7 +21,7 @@ import {
   CalendarX, Eraser, FileX, FilePen, Trash2, MailX,
 } from 'lucide-react';
 import {
-  A_CONFIRMER, ABSENCE_KINDS, ABSENCE_LABEL, CERT_LABEL, DOC_CATEGORY_LABEL, EXPENSE_LABEL, ROLE_LABEL, actionMode, applyAnswer, bulletinFigures, checkAction, frDate, isRemoval, questionFor, summarize,
+  ABSENCE_KINDS, ABSENCE_LABEL, CERT_LABEL, DOC_CATEGORY_LABEL, EXPENSE_LABEL, ROLE_LABEL, actionMode, applyAnswer, bulletinFigures, checkAction, confirmText, frDate, isRemoval, questionFor, summarize,
   type ActionDraft, type ActionExecutor, type ActionExtra, type ActionResult, type RemovalPreview, type RemovalPreviewer,
 } from '@/lib/assistant-actions';
 import { ActionAsk, ActionDone } from '@/components/action-done';
@@ -74,18 +74,22 @@ const dot = (t: string) => (/[.!?…]$/.test(t) ? t : `${t}.`);
 function removalLines(d: ActionDraft, who: (id: string | null, said?: string) => string, p: RemovalPreview | null | undefined): string[] {
   const days = (x: RemovalPreview) => (x.days.length ? ` : ${x.days.slice(0, 7).map(frDate).join(', ')}${x.days.length > 7 ? '…' : ''}` : '');
   const kept = (x: RemovalPreview) => (x.kept ? [`${plural(x.kept, 'case gardée', 'cases gardées')} (${x.reason}).`] : []);
+  // Même phrase que la fenêtre « Supprimer ? » du planning.
+  const withdrawn = (x: RemovalPreview) => (x.withdrawn
+    ? [`${x.withdrawn === 1 ? 'Une case porte' : `${x.withdrawn} cases portent`} des heures retirées par le salarié : ces heures restent dans sa fiche, seul le lien avec la case disparaît.`] : []);
   switch (d.type) {
     case 'supprimer_intervention': {
       const c = d.choix.find((x) => x.id === d.planning_id);
       if (!c) return [];
       const label = [c.nom, c.date ? frDate(c.date) : '', c.chantier, c.debut, c.note].filter(Boolean).join(' · ');
       if (p && p.count === 0 && p.kept) return [label, `Cette case reste : ${p.reason}.`];
+      if (p && p.withdrawn) return [label, ...withdrawn(p)];
       return [label, 'Une case qui porte des heures (notées ou envoyées) n’est jamais effacée.'];
     }
     case 'effacer_planning': {
       const head = dot(`Planning de ${d.user_id ? who(d.user_id, d.salarie_texte) : 'toute l’équipe'}, du ${frDate(d.du)} au ${frDate(d.au)}`);
       if (!p) return [head, 'Les cases avec des heures notées ou envoyées, et les mois clôturés, restent.'];
-      return [head, p.count ? dot(`${plural(p.count, 'case retirée', 'cases retirées')}${days(p)}`) : 'Aucune case à retirer sur cette période.', ...kept(p)];
+      return [head, p.count ? dot(`${plural(p.count, 'case retirée', 'cases retirées')}${days(p)}`) : 'Aucune case à retirer sur cette période.', ...withdrawn(p), ...kept(p)];
     }
     case 'supprimer_absence': {
       const head = dot(`Absence de ${who(d.user_id, d.salarie_texte)}, du ${frDate(d.du)} au ${frDate(d.au)}`);
@@ -225,7 +229,7 @@ export default function AssistantActionCard({ extra, execute, onDone, ctl, previ
     writeCard(extra, { phase, cancelled });
   }, [phase, cancelled]); // eslint-disable-line react-hooks/exhaustive-deps
   // « Modifier » après coup : l'ancienne action est défaite AU MOMENT d'enregistrer.
-  const editOf = useRef<(() => Promise<{ ok: boolean; message: string }>) | null>(null);
+  const editOf = useRef<(() => Promise<{ ok: boolean; message: string; partial?: boolean }>) | null>(null);
   const [question, setQuestion] = useState(() => questionFor(extra.action.draft, extra.action.problems, ctx));
   // Lot 1 : ce que la suppression retirerait, relu quand la carte change (rien n'est écrit).
   const [prev, setPrev] = useState<RemovalPreview | null | undefined>(undefined);
@@ -245,15 +249,26 @@ export default function AssistantActionCard({ extra, execute, onDone, ctl, previ
   useEffect(() => { if (cancelled) ctl?.settle(); }, [cancelled]); // eslint-disable-line react-hooks/exhaustive-deps
   // Lot 1 : au-dessus de la carte d'une suppression, jamais « C'est fait » avant le clic
   // (même si un serveur pas encore redéployé l'annonçait).
-  useEffect(() => { if (removal && phase === 'form' && !result) ctl?.text(A_CONFIRMER); }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (removal && phase === 'form' && !result) ctl?.text(confirmText(extra.action.draft)); }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const run = async (draft: ActionDraft) => {
     setBusy(true); setErr(null);
     if (editOf.current) {
-      const u = await editOf.current();
+      const undoFn = editOf.current;
+      const u = await undoFn();
       if (!u.ok) { setBusy(false); setErr(u.message); return; }
       editOf.current = null;
+      // Lot 1 : une case est restée (des heures dessus) → on ne refait pas l'action :
+      // l'ancienne case et la nouvelle coexisteraient, en double.
+      if (u.partial) {
+        setBusy(false);
+        undoneMemory.set(undoFn, `${u.message} La modification n’est pas faite : reprenez-la depuis le planning.`);
+        setPhase('done');
+        return;
+      }
     }
+    // Lot 1 : seules les cases que la carte a montrées partent.
+    if ((draft.type === 'effacer_planning' || draft.type === 'supprimer_absence') && prev) draft = { ...draft, ids: prev.ids };
     const summary = summarize(draft, ctx);
     const r = await execute(draft, summary, extra.attachment);
     setBusy(false);
@@ -791,7 +806,7 @@ export default function AssistantActionCard({ extra, execute, onDone, ctl, previ
         <button
           type="button" className="ac-b no" disabled={busy}
           onClick={() => { if (editOf.current && result) { editOf.current = null; setPhase('done'); } else setCancelled(true); }}
-        >{editOf.current ? 'Garder comme avant' : removal ? 'Ne rien changer' : 'Annuler'}</button>
+        >{editOf.current ? 'Garder comme avant' : removal ? 'Garder' : 'Annuler'}</button>
         <button
           type="button" className="ac-b ok" disabled={busy || problems.length > 0} data-testid="action-confirm"
           onClick={() => run(d)}

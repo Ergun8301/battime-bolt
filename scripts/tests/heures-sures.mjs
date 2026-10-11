@@ -19,7 +19,19 @@
 //  S5  bureau « corrige les heures de … » : motif OBLIGATOIRE, office_correct_entry (comme la fiche).
 //  S6  devis joint : le montant du devis est AFFICHÉ, jamais enregistré comme budget.
 //  S7  « planning de la semaine » appliqué : « Annuler » retire les cases ajoutées.
-//  S8  bureau « supprime le document … » : carte, « Ne rien changer » → rien d'écrit.
+//  S8  bureau « supprime le document … » : carte, « Garder » → rien d'écrit.
+// Relecture :
+//  S3b la ligne ne part pas ET le chrono relancé ne peut pas être retiré : on dit de prévenir le bureau.
+//  S3c le retrait de la ligne passe en base mais la réponse se perd : la ligne est relue, le chrono reste.
+//  S9  « changer ma demande de congé » : envoi refusé → l'ancienne reste ; réponse perdue → pas de demande en moins.
+//  S10 « copier ma journée » puis retouche d'une copie, puis « Annuler » : la copie retouchée est gardée.
+//  S11 heures dictées puis retouchées, puis « Annuler » : la ligne retouchée est gardée.
+//  S12 « efface mes heures d'avant-hier » : la carte lit la base (lignes, total, ce qui reste), et seules
+//      les lignes montrées partent.
+//  S13 bureau : placer 2 jours, des heures notées sur l'un, « Modifier » → rien en double ; « Annuler »
+//      quand tout porte des heures → « Rien n'a été retiré ».
+//  S14 bureau « effacer la semaine » : seules les cases montrées partent ; une case aux heures retirées est annoncée.
+//  S15 planning « Présent » : seule l'absence en cours part (fenêtre d'abord), le congé posé plus tard reste.
 import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path';
 let chromium;
 try { ({ chromium } = await import('playwright-core')); } catch {
@@ -71,6 +83,9 @@ const fresh = () => {
 fresh();
 let kioskActive = false; // la base refuse de recréer un chrono (garde du lot 12)
 let lockEntries = false; // la base refuse d'effacer une ligne (verrouillée entre-temps)
+let refuseStop = false;  // la base refuse de retirer un chrono
+let loseDeleteOf = null; // cette table : l'effacement PASSE en base, mais la réponse se perd (une fois)
+let refuseRpc = null;    // cette fonction serveur répond une erreur
 let workerReply = null, officeReply = null;
 const log = [];
 // Écritures en base (les RPC de lecture de l'écran, comme ensure_other_worksite, n'en sont pas).
@@ -118,6 +133,12 @@ const route = (session) => async (r) => {
     D.time_entry_edits.push(ed);
     return r.fulfill({ json: [ed] });
   }
+  if (u.pathname === '/rest/v1/rpc/request_leave') {
+    log.push({ m: 'RPC', t: 'request_leave', body });
+    if (refuseRpc === 'request_leave') return r.fulfill({ status: 400, json: { code: 'P0001', message: 'Demande refusée : chevauche une autre absence', details: null, hint: null } });
+    D.leave_requests.push({ id: `lr-${++nid}`, company_id: CO, user_id: ME, type: body.p_type, start_date: body.p_start_date, end_date: body.p_end_date, note: body.p_note, status: 'pending', created_at: new Date(Date.now() + nid).toISOString() });
+    return r.fulfill({ json: null });
+  }
   if (u.pathname.startsWith('/rest/v1/rpc/')) { log.push({ m: 'RPC', t: t.slice(4), body }); return r.fulfill({ json: [] }); }
   D[t] = D[t] || [];
   if (m === 'GET' || m === 'HEAD') {
@@ -126,9 +147,11 @@ const route = (session) => async (r) => {
     return r.fulfill({ json: rows, headers: { 'content-range': `0-${Math.max(0, rows.length - 1)}/${rows.length}` } });
   }
   if (m === 'DELETE') {
+    if (t === 'active_sessions' && refuseStop) { log.push({ m: 'DELETE-REFUS', t }); return r.fulfill({ status: 400, json: { code: 'P0001', message: 'refusé', details: null, hint: null } }); }
     const gone = t === 'time_entries' && lockEntries ? [] : filt(D[t], u.searchParams);
     D[t] = D[t].filter((x) => !gone.includes(x));
     log.push({ m, t, ids: gone.map((x) => x.id), q: u.search });
+    if (loseDeleteOf === t) { loseDeleteOf = null; log.push({ m: 'REPONSE-PERDUE', t }); return r.abort('failed'); }
     return r.fulfill({ json: gone });
   }
   if (m === 'PATCH') {
@@ -173,7 +196,7 @@ const panel = (pg) => pg.locator('[data-testid=assistant-panel]');
 
 const finishScenario = async (code, label, opts) => {
   console.log(`\n═══ ${code} · ${label}`);
-  fresh(); kioskActive = opts.kiosk; lockEntries = false;
+  fresh(); kioskActive = opts.kiosk; lockEntries = false; refuseStop = false; loseDeleteOf = null;
   // Chrono ouvert AUJOURD'HUI (Paris) : 2 h plus tôt, ou juste après minuit si on lance le test la nuit.
   const [hh, mm] = parisHHmm(new Date().toISOString()).split(':').map(Number);
   const back = Math.max(1, Math.min(120, hh * 60 + mm - 1));
@@ -187,6 +210,8 @@ const finishScenario = async (code, label, opts) => {
   check(D.time_entries.length === 1 && D.active_sessions.length === 0, `${code} « J’ai fini » : une ligne d’heures, plus de chrono`);
   const line = JSON.stringify(D.time_entries[0]);
   if (opts.lock) lockEntries = true;
+  if (opts.refuseStop) refuseStop = true;
+  if (opts.lose) loseDeleteOf = 'time_entries';
   const n = log.length;
   await wp.locator('[data-testid=action-undo]').click();
   await wp.waitForSelector('[data-testid=action-undone], .ad-e', { timeout: 10000 }).catch(() => {});
@@ -221,6 +246,16 @@ const finishScenario = async (code, label, opts) => {
   check(w.filter((x) => x.t === 'active_sessions').map((x) => x.m).join() === 'POST,DELETE', `S3 chrono recréé puis retiré : jamais compté deux fois (${w.map((x) => `${x.m} ${x.t}`).join(' → ')})`);
   check(/La journée reste terminée/.test(err), `S3 message : « ${err} »`);
 }
+if (!AVANT) { // S3b — et le chrono relancé ne peut pas être retiré
+  const { err } = await finishScenario('S3b', 'ligne qui ne part pas, chrono relancé impossible à retirer', { kiosk: false, lock: true, refuseStop: true, shot: 'annuler-fin-chrono-a-arreter' });
+  check(D.time_entries.length === 1, 'S3b la ligne d’heures est gardée');
+  check(!/La journée reste terminée/.test(err) && /prévenez le bureau/.test(err) && /deux fois/.test(err), `S3b on ne rassure pas à tort, on dit de faire arrêter le chrono : « ${err} »`);
+}
+if (!AVANT) { // S3c — retrait de la ligne passé en base, réponse perdue
+  const { undone, err, started } = await finishScenario('S3c', 'la ligne part en base, mais la réponse se perd', { kiosk: false, lose: true, shot: 'annuler-fin-reponse-perdue' });
+  check(D.time_entries.length === 0 && D.active_sessions.length === 1 && D.active_sessions[0].started_at === started, `S3c rien de perdu : la ligne est partie, le chrono qui porte les heures RESTE (${D.time_entries.length} ligne, ${D.active_sessions.length} chrono)`);
+  check(/chrono est reparti/.test(undone) && !err, `S3c message juste : « ${undone || err} »`);
+}
 { // S4 — effacer une ligne : carte d'abord
   console.log('\n═══ S4 · salarié « efface la ligne de Villa Dupont » : carte, puis « Effacer », puis « Annuler »');
   fresh(); kioskActive = false; lockEntries = false;
@@ -247,6 +282,100 @@ const finishScenario = async (code, label, opts) => {
     await wp.waitForSelector('[data-testid=action-undone]', { timeout: 10000 }).catch(() => {});
     check(D.time_entries.length === 2 && D.time_entries.some((x) => x.id === 'e1' && x.start_time === '07:30:00'), 'S4 « Annuler » : la ligne revient à l’identique');
   }
+}
+
+const plusDays = (iso, n) => new Date(Date.parse(`${iso}T12:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
+const CHANTIERS = [{ id: 'w1', nom: 'Villa Dupont', ville: 'Lyon' }, { id: 'w2', nom: 'Bureau Martin', ville: 'Villeurbanne' }];
+const workerAction = (draft, answer = 'Vérifiez, puis confirmez.') => ({ kind: 'action', answer, remaining: 20, chantiers: CHANTIERS, action: { draft, problems: [] } });
+const L1 = plusDays(today, 20), L2 = plusDays(today, 24), L3 = plusDays(today, 25);
+const leaveScenario = async (code, label, opts) => {
+  console.log(`\n═══ ${code} · ${label}`);
+  fresh(); refuseRpc = opts.refuse ? 'request_leave' : null; loseDeleteOf = opts.lose ? 'leave_requests' : null;
+  D.leave_requests = [{ id: 'l1', company_id: CO, user_id: ME, type: 'conge', start_date: L1, end_date: L2, note: null, status: 'pending', created_at: '2026-10-01T08:00:00Z' }];
+  workerReply = workerAction({ type: 'modifier_conge', leave_id: 'l1', choix: [{ id: 'l1', type: 'conge', du: L1, au: L2 }], du: L1, au: L3 }, 'Vérifiez ce qui sera remplacé, puis confirmez : rien ne change avant.');
+  await openWorker();
+  await askWorker('change mon congé, je reviens un jour plus tard');
+  await wp.waitForSelector('[data-testid=worker-action-confirm]', { timeout: 10000 }).catch(() => {});
+  await wp.waitForTimeout(500);
+  const before = (await panel(wp).innerText()).replace(/\s+/g, ' ');
+  await wp.locator('[data-testid=worker-action-confirm]').last().click();
+  await wp.waitForSelector('[data-testid=action-done], .wa-p', { timeout: 10000 }).catch(() => {});
+  await wp.waitForTimeout(500);
+  return { before, after: (await panel(wp).innerText()).replace(/\s+/g, ' ') };
+};
+if (!AVANT) { // S9a — nouvelle demande refusée : l'ancienne reste
+  const { before, after } = await leaveScenario('S9a', '« changer ma demande », envoi refusé', { refuse: true });
+  check(/Vérifiez ce qui sera remplacé/.test(before) && /Ce qui sera remplacé/i.test(before) && !/ce qui sera effacé/.test(before), 'S9a la carte dit « remplacé », pas « effacé »');
+  check(D.leave_requests.length === 1 && D.leave_requests[0].id === 'l1' && !log.some((x) => x.m === 'DELETE' && x.t === 'leave_requests'), `S9a l’ancienne demande RESTE, rien n’est retiré (${D.leave_requests.map((x) => x.id).join(',')})`);
+  check(/chevauche/.test(after), 'S9a le refus est dit');
+}
+if (!AVANT) { // S9b — l'ancienne part en base, réponse perdue : jamais aucune demande
+  await leaveScenario('S9b', '« changer ma demande », retrait de l’ancienne passé mais réponse perdue', { lose: true });
+  check(D.leave_requests.length === 1 && D.leave_requests[0].start_date === L1 && D.leave_requests[0].end_date === L3, `S9b la nouvelle demande est GARDÉE (avant : retirée aussi, plus aucune demande) — ${D.leave_requests.map((x) => `${x.start_date}→${x.end_date}`).join(',') || 'aucune'}`);
+  // « Annuler » : l'ancienne revient AVANT que la nouvelle parte ; nouvelle déjà traitée → c'est dit.
+  D.leave_requests[0].status = 'approved';
+  await wp.locator('[data-testid=action-undo]').last().click();
+  await wp.waitForSelector('[data-testid=action-undone], .ad-e', { timeout: 10000 }).catch(() => {});
+  const said = (await wp.locator('[data-testid=action-undone]').last().innerText().catch(() => '')).trim();
+  check(D.leave_requests.length === 2 && /n’a pas pu être retirée/.test(said), `S9b « Annuler » quand la nouvelle est déjà traitée : l’ancienne est renvoyée et c’est dit (« ${said} »)`);
+}
+refuseRpc = null; loseDeleteOf = null;
+if (!AVANT) { // S10 — copier puis retoucher, puis « Annuler »
+  console.log('\n═══ S10 · « copie ma journée d’hier », une copie retouchée, puis « Annuler »');
+  fresh();
+  D.time_entries = [entry('y1', W1, '07:30', '12:00', { work_date: yesterday, status: 'submitted', submitted_at: `${yesterday}T17:00:00Z` }), entry('y2', W2, '13:00', '16:30', { work_date: yesterday, status: 'submitted', submitted_at: `${yesterday}T17:00:00Z` })];
+  workerReply = workerAction({ type: 'copier_journee', depuis: yesterday, vers: [today] }, 'C’est fait.');
+  await openWorker();
+  await askWorker('copie ma journée d’hier');
+  await wp.waitForSelector('[data-testid=action-done]', { timeout: 10000 }).catch(() => {});
+  const copies = D.time_entries.filter((x) => x.work_date === today);
+  check(copies.length === 2, `S10 2 lignes copiées (${copies.length})`);
+  copies.find((x) => x.start_time.startsWith('13:00')).end_time = '17:00:00'; // retouchée dans « Ma journée »
+  await wp.locator('[data-testid=action-undo]').last().click();
+  await wp.waitForSelector('[data-testid=action-undone], .ad-e', { timeout: 10000 }).catch(() => {});
+  const said = (await wp.locator('[data-testid=action-undone]').last().innerText().catch(() => '')).trim();
+  const left = D.time_entries.filter((x) => x.work_date === today);
+  check(left.length === 1 && left[0].end_time === '17:00:00', `S10 la copie retouchée est GARDÉE, l’autre retirée (${left.map((x) => `${x.start_time}-${x.end_time}`).join(',')})`);
+  check(/Annulé en partie/.test(said) && /1 gardée/.test(said), `S10 c’est dit : « ${said} »`);
+}
+if (!AVANT) { // S11 — heures dictées, retouchées, puis « Annuler »
+  console.log('\n═══ S11 · heures dictées, une ligne retouchée dans « Ma journée », puis « Annuler »');
+  fresh();
+  workerReply = { kind: 'draft', remaining: 20, answer: 'Vérifiez, puis enregistrez.', chantiers: CHANTIERS,
+    draft: { date: today, errors: [], lines: [{ worksite_id: 'w1', worksite_text: 'Villa Dupont', start: '07:30', end: '12:00', break_minutes: 0 }, { worksite_id: 'w2', worksite_text: 'Bureau Martin', start: '13:00', end: '16:30', break_minutes: 0 }] } };
+  await openWorker();
+  await askWorker('ce matin 7h30 12h villa dupont, après-midi 13h 16h30 bureau martin');
+  await wp.waitForSelector('[data-testid=action-done]', { timeout: 10000 }).catch(() => {});
+  check(D.time_entries.length === 2, `S11 2 lignes notées (${D.time_entries.length})`);
+  D.time_entries.find((x) => x.worksite_id === 'w1').start_time = '07:00:00'; // retouchée depuis
+  await wp.locator('[data-testid=action-undo]').last().click();
+  await wp.waitForSelector('[data-testid=action-undone], .ad-e', { timeout: 10000 }).catch(() => {});
+  const said = (await wp.locator('[data-testid=action-undone]').last().innerText().catch(() => '')).trim();
+  check(D.time_entries.length === 1 && D.time_entries[0].start_time === '07:00:00', `S11 la ligne retouchée est GARDÉE (avant : effacée) — ${D.time_entries.map((x) => `${x.start_time}-${x.end_time}`).join(',')}`);
+  check(/Annulé en partie/.test(said) && /1 ligne gardée/.test(said), `S11 c’est dit : « ${said} »`);
+}
+if (!AVANT) { // S12 — effacer les heures d'avant-hier : la carte lit la base
+  console.log('\n═══ S12 · « efface mes heures d’avant-hier » : chiffres lus en base, seules les lignes montrées partent');
+  fresh();
+  const d2 = plusDays(today, -2);
+  D.time_entries = [
+    entry('a1', W1, '07:30', '12:00', { work_date: d2 }),
+    entry('a2', W2, '13:00', '16:30', { work_date: d2, submitted_at: `${d2}T17:00:00Z` }), // renvoyée par le bureau
+  ];
+  workerReply = workerAction({ type: 'effacer_heures', date: d2, entry_id: null, tout: true, choix: [] }, 'Vérifiez ce qui sera effacé, puis confirmez : rien ne part avant.');
+  await openWorker();
+  const n = log.length;
+  await askWorker('efface mes heures d’avant-hier');
+  await wp.waitForFunction(() => /au total/.test(document.querySelector('[data-testid=removal-notice]')?.textContent || ''), null, { timeout: 8000 }).catch(() => {});
+  const notice = (await wp.locator('[data-testid=removal-notice]').innerText().catch(() => '')).replace(/\s+/g, ' ');
+  check(/Villa Dupont · 07:30–12:00 \(4 h 30\)/.test(notice) && /1 ligne, 4 h 30 au total/.test(notice), `S12 la carte dit quelles lignes, combien d’heures (« ${notice.slice(0, 120)} »)`);
+  check(/1 ligne envoyée \(ou renvoyée par le bureau\) reste/.test(notice) && !/Bureau Martin/.test(notice), 'S12 la ligne renvoyée par le bureau n’est pas annoncée comme effacée, et c’est dit qu’elle reste');
+  check(!writes(n).some((x) => x.m === 'DELETE'), 'S12 rien n’est effacé avant « Effacer »');
+  await panel(wp).screenshot({ path: shot('salarie-effacer-autre-jour') }).catch(() => {});
+  D.time_entries.push(entry('a3', W2, '17:00', '18:00', { work_date: d2 })); // ajoutée entre-temps (autre appareil)
+  await wp.locator('[data-testid=worker-action-confirm]').last().click();
+  await wp.waitForSelector('[data-testid=action-done]', { timeout: 10000 }).catch(() => {});
+  check(D.time_entries.map((x) => x.id).sort().join() === 'a2,a3', `S12 seule la ligne montrée est partie (restent ${D.time_entries.map((x) => x.id).sort().join(',')})`);
 }
 await wctx.close();
 
@@ -334,8 +463,8 @@ const askOffice = async (text, action) => {
     check(writes(n).filter((x) => x.m === 'DELETE' && x.t === 'planning').flatMap((x) => x.ids).length === 2, 'S7 seulement les cases de cette action');
   }
 }
-{ // S8 — supprimer un document : carte, « Ne rien changer »
-  console.log('\n═══ S8 · bureau « supprime la facture » : carte, puis « Ne rien changer »');
+{ // S8 — supprimer un document : carte, « Garder »
+  console.log('\n═══ S8 · bureau « supprime la facture » : carte, puis « Garder »');
   fresh();
   D.documents = [{ id: 'd1', company_id: CO, worksite_id: 'w1', label: 'Facture Plomberie', file_name: 'facture.pdf', file_path: 'c/w1/facture.pdf', category: 'facture', uploaded_by: 'u-admin', created_at: `${today}T08:00:00Z` }];
   await openOffice();
@@ -349,9 +478,87 @@ const askOffice = async (text, action) => {
   check(writes(n).filter((x) => x.t !== 'assistant_journal').length === 0 && D.documents.length === 1, 'S8 rien n’est supprimé avant le clic');
   await panel(op).screenshot({ path: shot('bureau-supprimer-document') }).catch(() => {});
   if (!AVANT) {
-    await op.getByRole('button', { name: 'Ne rien changer' }).last().click(); await op.waitForTimeout(500);
-    check(D.documents.length === 1 && writes(n).length === 0 && /rien n’a été fait/.test(await panel(op).innerText()), 'S8 « Ne rien changer » : rien d’écrit, et c’est dit');
+    await op.getByRole('button', { name: 'Garder', exact: true }).last().click(); await op.waitForTimeout(500);
+    check(D.documents.length === 1 && writes(n).length === 0 && /rien n’a été fait/.test(await panel(op).innerText()), 'S8 « Garder » : rien d’écrit, et c’est dit');
   }
+}
+const mon0 = (() => { const t = new Date(`${today}T12:00:00Z`); const k = (t.getUTCDay() + 6) % 7; return new Date(t.getTime() - k * 86400000).toISOString().slice(0, 10); })();
+const nextMon = new Date(Date.parse(`${mon0}T12:00:00Z`) + 7 * 86400000).toISOString().slice(0, 10);
+const plus = (iso, n) => new Date(Date.parse(`${iso}T12:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
+const slot = (id, uid, date, ws, extra = {}) => ({ id, company_id: CO, user_id: uid, worksite_id: ws?.id ?? null, work_date: date, absence_type: null, estimated_start: null, estimated_end: null, notes: null, position: null, added_by_worker: false, created_by: 'u-admin', created_at: `${date}T06:00:00Z`, ...extra });
+if (!AVANT) { // S13 — placer, des heures notées sur une case, puis « Modifier » / « Annuler »
+  console.log('\n═══ S13 · bureau : placer Sam 2 jours, des heures notées sur l’un, puis « Modifier »');
+  fresh();
+  await openOffice();
+  const place = { type: 'affecter_planning', user_id: ME, salarie_texte: 'Sam', worksite_id: 'w1', chantier_texte: 'Villa Dupont', dates: [nextMon, plus(nextMon, 1)], note: '', debut: '', fin: '' };
+  await askOffice('Mets Sam sur Villa Dupont lundi et mardi prochains', { draft: place, problems: [] });
+  await op.waitForSelector('[data-testid=action-done]', { timeout: 10000 }).catch(() => {});
+  check(D.planning.length === 2, `S13 2 cases placées (${D.planning.length})`);
+  const p0 = D.planning.find((x) => x.work_date === nextMon);
+  D.time_entries.push(entry('h1', W1, '08:00', '12:00', { work_date: nextMon, planning_id: p0.id })); // notées depuis par Sam
+  await op.locator('[data-testid=action-edit]').last().click(); await op.waitForTimeout(400);
+  const n = log.length;
+  await op.locator('[data-testid=action-confirm]').last().click();
+  await op.waitForSelector('[data-testid=action-undone]', { timeout: 10000 }).catch(() => {});
+  const said = (await op.locator('[data-testid=action-undone]').last().innerText().catch(() => '')).trim();
+  check(D.planning.length === 1 && D.planning[0].id === p0.id && !writes(n).some((x) => x.m === 'POST' && x.t === 'planning'),
+    `S13 « Modifier » : la case aux heures reste, l’action n’est PAS refaite — rien en double (${D.planning.length} case)`);
+  check(/Annulé en partie/.test(said) && /La modification n’est pas faite/.test(said), `S13 c’est dit : « ${said} »`);
+  // Tout porte des heures : « Annuler » ne prétend pas avoir annulé.
+  fresh();
+  await openOffice();
+  await askOffice('Mets Sam sur Villa Dupont lundi et mardi prochains', { draft: place, problems: [] });
+  await op.waitForSelector('[data-testid=action-done]', { timeout: 10000 }).catch(() => {});
+  for (const x of D.planning) D.time_entries.push(entry(`h-${x.id}`, W1, '08:00', '12:00', { work_date: x.work_date, planning_id: x.id }));
+  await op.locator('[data-testid=action-undo]').last().click();
+  await op.waitForSelector('.ad-e', { timeout: 10000 }).catch(() => {});
+  const e = (await op.locator('.ad-e').last().innerText().catch(() => '')).trim();
+  check(D.planning.length === 2 && /Rien n’a été retiré/.test(e) && await op.locator('[data-testid=action-undone]').count() === 0, `S13 « Annuler » quand tout porte des heures : « ${e} »`);
+}
+if (!AVANT) { // S14 — effacer la semaine : seules les cases montrées partent
+  console.log('\n═══ S14 · bureau « efface le planning de Sam la semaine prochaine » : seules les cases montrées partent');
+  fresh();
+  D.planning = [slot('s1', ME, nextMon, W1), slot('s2', ME, plus(nextMon, 1), W1), slot('s3', ME, plus(nextMon, 2), W2)];
+  D.time_entries = [entry('r1', W2, '08:00', '10:00', { work_date: plus(nextMon, 2), planning_id: 's3', status: 'cancelled' })]; // retirée par Sam
+  await openOffice();
+  const n = log.length;
+  await askOffice('Efface le planning de Sam la semaine prochaine', { draft: { type: 'effacer_planning', user_id: ME, salarie_texte: 'Sam', du: nextMon, au: plus(nextMon, 6) }, problems: [] });
+  await op.waitForFunction(() => /cases retirées/.test(document.querySelector('[data-testid=removal-notice]')?.textContent || ''), null, { timeout: 8000 }).catch(() => {});
+  const notice = (await op.locator('[data-testid=removal-notice]').innerText().catch(() => '')).replace(/\s+/g, ' ');
+  check(/3 cases retirées/.test(notice) && /Une case porte des heures retirées par le salarié : ces heures restent dans sa fiche/.test(notice), `S14 la carte annonce aussi la case aux heures retirées (« ${notice.slice(0, 160)} »)`);
+  check(!writes(n).some((x) => x.m === 'DELETE' || x.m === 'PATCH'), 'S14 rien n’est écrit avant « Effacer »');
+  await panel(op).screenshot({ path: shot('bureau-effacer-heures-retirees') }).catch(() => {});
+  D.planning.push(slot('s4', ME, plus(nextMon, 3), W1)); // ajoutée entre-temps par un collègue
+  await op.locator('[data-testid=action-confirm]').last().click();
+  await op.waitForSelector('[data-testid=action-done]', { timeout: 10000 }).catch(() => {});
+  check(D.planning.map((x) => x.id).join() === 's4' && D.time_entries[0].planning_id === null, `S14 les 3 cases montrées partent, pas celle ajoutée depuis ; les heures retirées restent (détachées) — reste ${D.planning.map((x) => x.id).join(',')}`);
+}
+
+if (!AVANT) { // S15 — planning « Présent » : seule l'absence en cours
+  console.log('\n═══ S15 · planning : « Présent » à partir d’aujourd’hui, un congé posé plus tard');
+  fresh();
+  const abs = (id, date, type) => slot(id, ME, date, null, { absence_type: type });
+  D.planning = [abs('i0', today, 'intemperie'), abs('i1', plus(today, 1), 'intemperie'), abs('i2', plus(today, 2), 'intemperie'),
+    abs('c0', plus(today, 60), 'conge'), abs('c1', plus(today, 61), 'conge'), abs('c2', plus(today, 62), 'conge')];
+  await op.goto(`http://localhost:${PORT}/admin`);
+  await op.waitForSelector('.bt-pl-gridwrap .bt-pl-abs', { timeout: 20000 }).catch(() => {}); await op.waitForTimeout(1200);
+  const dayIdx = (new Date(`${today}T12:00:00Z`).getUTCDay() + 6) % 7;
+  const row = op.locator('tr', { has: op.locator('.bt-pl-name', { hasText: 'Sam Test' }) }).first();
+  await row.locator('td.bt-pl-cell').nth(dayIdx).locator('.bt-pl-abs').click();
+  await op.waitForSelector('[role=dialog] >> text=Statut de Sam', { timeout: 8000 }).catch(() => {});
+  const n = log.length;
+  await op.locator('[role=dialog]').last().locator('button', { hasText: 'Présent' }).click();
+  await op.waitForSelector('[data-testid=erase-ask]', { timeout: 8000 }).catch(() => {});
+  const ask = (await op.locator('[data-testid=erase-ask]').innerText().catch(() => '')).replace(/\s+/g, ' ');
+  check(/Retirer 3 jours d’absence \?/.test(ask) && /reste\./.test(ask), `S15 « Retirer ? » d’abord : les 3 jours de l’absence en cours, le congé posé plus tard reste (« ${ask.slice(0, 160)} »)`);
+  check(!writes(n).some((x) => x.m === 'DELETE'), 'S15 rien n’est retiré avant le clic');
+  await op.waitForTimeout(300); await op.screenshot({ path: shot('planning-present-confirmation') }).catch(() => {});
+  await op.click('[data-testid=erase-confirm]');
+  await op.waitForSelector('[data-testid=undo-card]', { timeout: 8000 }).catch(() => {});
+  check(D.planning.map((x) => x.id).sort().join() === 'c0,c1,c2', `S15 seule l’absence en cours part ; le congé de plus tard reste (avant : tout effacé) — reste ${D.planning.map((x) => x.id).sort().join(',')}`);
+  await op.locator('[data-testid=undo-card] [data-testid=action-undo]').click();
+  await op.waitForSelector('[data-testid=undo-card] [data-testid=action-undone]', { timeout: 8000 }).catch(() => {});
+  check(D.planning.length === 6, `S15 « Annuler » remet l’absence (${D.planning.length} jours)`);
 }
 await octx.close();
 

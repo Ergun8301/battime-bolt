@@ -3,8 +3,8 @@
 // brouillon contrôlé », pour chaque action de la liste blanche.
 import { callFunction } from './ai-provider.ts';
 import {
-  ABSENCE_KINDS, ABSENCE_LABEL, ACTION_TYPES, A_CONFIRMER, ASSISTANT_FUNCTIONS, ATTACHMENT_FUNCTIONS, MOTIF_MANQUANT, REFUS_REPOS, REMOVAL_TYPES, actionAnswer, actionMode,
-  actionPrompt, addDays, buildActionContext, checkAction, findGuide, fromFunctionCall, functionsFor, guideForPrompt, handleActionLocally, isRemoval, mondayOf,
+  ABSENCE_KINDS, ABSENCE_LABEL, ACTION_TYPES, A_CONFIRMER, A_CONFIRMER_REMPLACE, ASSISTANT_FUNCTIONS, ATTACHMENT_FUNCTIONS, MOTIF_MANQUANT, REFUS_REPOS, REMOVAL_TYPES, actionAnswer, actionMode,
+  actionPrompt, addDays, buildActionContext, checkAction, confirmText, findGuide, fromFunctionCall, functionsFor, guideForPrompt, handleActionLocally, isRemoval, mondayOf,
   prepare, proposeWeek, questionFor, summarize, type ActionContext, type ActionDraft,
 } from './assistant-actions-core.ts';
 
@@ -390,6 +390,11 @@ Deno.test('Lot 1 — suppression : la question « Laquelle ? » reste, puis la c
   // Ce qui reste direct dit toujours « C’est fait ».
   const place = fromFunctionCall('affecter_planning', { salarie: 'Karim', chantier: 'Villa Dupont', dates: [NEXT] }, ctx);
   eq(place.answer, 'C’est fait.', 'placer : direct');
+  // Une carte qui REMPLACE ne dit pas « retiré ».
+  const docCtx: ActionContext = { ...ctx, documents: [{ id: 'doc1', nom: 'Facture Plomberie', worksite_id: 'w-dupont', date: MON, categorie: 'facture' }] };
+  const mod = fromFunctionCall('modifier_document', { chantier: 'Villa Dupont', quoi: 'Facture Plomberie', nouveau_nom: 'Facture plomberie v2' }, docCtx);
+  eq([mod.action!.problems, mod.answer], [[], A_CONFIRMER_REMPLACE], 'modifier un document : « ce qui sera remplacé »');
+  eq([confirmText({ type: 'modifier_depense' }), confirmText({ type: 'supprimer_depense' })], [A_CONFIRMER_REMPLACE, A_CONFIRMER], 'le texte suit le type');
 });
 
 Deno.test('Lot 1 — corriger des heures : motif OBLIGATOIRE, comme sur la fiche', () => {

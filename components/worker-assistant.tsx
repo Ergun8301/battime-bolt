@@ -9,7 +9,7 @@ import { useAuth } from '@/components/auth-provider';
 import AssistantPanel from '@/components/assistant-panel';
 import WorkerDraftCard from '@/components/worker-draft-card';
 import WorkerActionCard, { MealOffNote } from '@/components/worker-action-card';
-import { demoWorkerExecutor, makeWorkerExecutor } from '@/lib/worker-actions';
+import { demoWorkerExecutor, makeWorkerErasePreview, makeWorkerExecutor } from '@/lib/worker-actions';
 import { useAiEnabled } from '@/lib/real-cost';
 import { useMealEnabled } from '@/lib/meal-setting';
 import {
@@ -43,13 +43,15 @@ export default function WorkerAssistant({ onSaved, onNavigate, defaultOpen = fal
       launcher={open === undefined}
       onNavigate={onNavigate ?? (() => {})}
       suggestions={WORKER_ACTION_SUGGESTIONS}
-      footNote="Fait tout de suite · « Annuler » en un clic"
+      footNote="Gestes simples faits tout de suite · « Annuler » en un clic"
       intro="Dites-moi vos heures, ce que vous voulez faire, ou comment faire"
       renderExtra={(extra, ctl) => {
         if ((extra as WorkerActionExtra).workerAction) {
           if (meal === false && (extra as WorkerActionExtra).workerAction.draft.type === 'panier_repas') return <MealOffNote ctl={ctl} />;
           const exec = demo || !user ? demoWorkerExecutor : makeWorkerExecutor({ id: user.id, company_id: user.company_id });
-          return <WorkerActionCard extra={extra as WorkerActionExtra} execute={exec} onDone={onSaved} ctl={ctl} />;
+          // Lot 1 : la carte « effacer mes heures » lit d'abord ce qui partirait (pas en démo).
+          const preview = demo || !user ? undefined : makeWorkerErasePreview({ id: user.id });
+          return <WorkerActionCard extra={extra as WorkerActionExtra} execute={exec} onDone={onSaved} ctl={ctl} preview={preview} />;
         }
         const x = extra as DraftExtra;
         const save = demo || !user ? demoSaver : makeWorkerSaver({ id: user.id, company_id: user.company_id }, x.chantiers);

@@ -268,7 +268,7 @@ Deno.test('Lot 1 — Assistant salarié : le prévu du bureau ne compte ni dans 
 });
 
 // ═══ Lot 1 (heures sûres) — effacer ou retirer : la carte d'abord, « Annuler » après ═══
-import { isWorkerRemoval, WORKER_A_CONFIRMER, WORKER_ATTACHMENT_FUNCTIONS, WORKER_REMOVAL_TYPES, workerActionMode, workerFunctionsFor, workerQuestionFor } from './worker-assistant-core.ts';
+import { isWorkerRemoval, WORKER_A_CONFIRMER, WORKER_A_CONFIRMER_REMPLACE, WORKER_ATTACHMENT_FUNCTIONS, workerConfirmText, WORKER_REMOVAL_TYPES, workerActionMode, workerFunctionsFor, workerQuestionFor } from './worker-assistant-core.ts';
 
 Deno.test('Lot 1 — salarié : toute suppression passe par la carte de confirmation', () => {
   const LIVE: WorkerLive = {
@@ -290,6 +290,8 @@ Deno.test('Lot 1 — salarié : toute suppression passe par la carte de confirma
   eq([act(all).draft.tout, all.answer], [true, WORKER_A_CONFIRMER], 'toute la journée : la carte');
   // Ce qui reste direct dit toujours « C’est fait ».
   eq((handleWorkerLocally('coche le panier repas', BTP, LIVE) as { answer: string }).answer, 'C’est fait.', 'panier : direct');
+  // Changer sa demande REMPLACE : la bulle ne dit pas « effacé ».
+  eq([workerConfirmText({ type: 'modifier_conge' }), workerConfirmText({ type: 'annuler_conge' })], [WORKER_A_CONFIRMER_REMPLACE, WORKER_A_CONFIRMER], 'le texte suit le type');
 });
 
 Deno.test('Lot 1 — salarié : la question « Quelle ligne ? » reste, puis la carte', () => {

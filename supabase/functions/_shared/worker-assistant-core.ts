@@ -470,7 +470,7 @@ export const WORKER_GUIDE: WorkerGuideEntry[] = [
   { mots: ['collegues', 'ou sont les autres', 'planning des collegues'], titre: 'Savoir où sont ses collègues',
     etapes: ['Bouton ✨ de la barre du bas.', 'Demandez « Où sont mes collègues ? » ou « Où est Paul demain ? ».', 'Prénom, chantier et horaires (si le bureau l’a autorisé).'], lien: 'ask:Où sont mes collègues aujourd’hui ?' },
   { mots: ['assistant', 'dicter', 'micro', 'comment tu marches'], titre: 'Se servir de l’Assistant',
-    etapes: ['Bouton ✨ de la barre du bas.', '🎤 pour dicter (appui = démarre, appui = arrête), 📎 pour une photo.', 'C’est fait tout de suite, avec « Annuler ».'], lien: 'ask:Combien d’heures cette semaine ?' },
+    etapes: ['Bouton ✨ de la barre du bas.', '🎤 pour dicter (appui = démarre, appui = arrête), 📎 pour une photo.', 'C’est fait tout de suite, avec « Annuler » ; pour effacer, vous confirmez d’abord.'], lien: 'ask:Combien d’heures cette semaine ?' },
 ];
 
 export function findWorkerGuide(text: string): WorkerGuideEntry | null {
@@ -539,8 +539,12 @@ export type WorkerActionDraft =
   | { type: 'nouveau_chantier'; nom: string; ville: string }
   | { type: 'email_client'; worksite_id: string | null; chantier_texte: string; email: string }
   // ── Lot 8 : effacer ce qu'il a saisi, tant que ce n'est pas envoyé ──
-  /** tout = toutes SES lignes non envoyées du jour ; sinon la ligne choisie. */
-  | { type: 'effacer_heures'; date: string; entry_id: string | null; tout: boolean; choix: WorkerLive['lignes'] }
+  /**
+   * tout = toutes SES lignes non envoyées du jour ; sinon la ligne choisie.
+   * Lot 1 : `ids` = les lignes que la carte a montrées (posé par l'écran, jamais
+   * par le modèle) — seules elles partent.
+   */
+  | { type: 'effacer_heures'; date: string; entry_id: string | null; tout: boolean; choix: WorkerLive['lignes']; ids?: string[] }
   | { type: 'annuler_conge'; leave_id: string | null; choix: NonNullable<WorkerLive['conges']> }
   | { type: 'modifier_conge'; leave_id: string | null; choix: NonNullable<WorkerLive['conges']>; du: string; au: string }
   | { type: 'annuler_pointage'; chantier: string; depuis: string }
@@ -861,13 +865,16 @@ export type WorkerFullReply = WorkerReply | { kind: 'action'; action: WorkerActi
 
 /** Lot 1 : au-dessus de la carte d'une suppression, avant le clic. */
 export const WORKER_A_CONFIRMER = 'Vérifiez ce qui sera effacé, puis confirmez : rien ne part avant.';
+/** … et de « changer ma demande » : l'ancienne est remplacée, rien n'est effacé. */
+export const WORKER_A_CONFIRMER_REMPLACE = 'Vérifiez ce qui sera remplacé, puis confirmez : rien ne change avant.';
+export const workerConfirmText = (d: { type: string }) => (d.type === 'modifier_conge' ? WORKER_A_CONFIRMER_REMPLACE : WORKER_A_CONFIRMER);
 
 function actionAnswer(a: WorkerAction, snapshot?: WorkerSnapshot): string {
   const removal = isWorkerRemoval(a.draft);
   if (workerActionMode(a.draft) === 'direct' || removal) {
     const q = snapshot ? workerQuestionFor(a.draft, a.problems, snapshot) : null;
     if (q) return q.text;
-    if (!a.problems.length) return removal ? WORKER_A_CONFIRMER : 'C’est fait.';
+    if (!a.problems.length) return removal ? workerConfirmText(a.draft) : 'C’est fait.';
   }
   // Lot 8 : ce qui ne s'efface pas est dit tel quel, en une phrase.
   if (a.problems.some((x) => /ne s’efface plus|Tout est déjà envoyé/.test(x))) return a.problems.find((x) => /ne s’efface plus|Tout est déjà envoyé/.test(x))!;

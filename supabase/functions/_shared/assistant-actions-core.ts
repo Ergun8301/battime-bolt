@@ -470,9 +470,13 @@ export type ActionDraft =
     }
   // ── Lot 8 : revenir en arrière (tout est restauré par « Annuler ») ──
   | { type: 'supprimer_intervention'; user_id: string | null; salarie_texte: string; date: string; planning_id: string | null; choix: SlotChoice[] }
-  /** user_id null ET salarie_texte vide = toute l'équipe. Les absences ne sont pas touchées. */
-  | { type: 'effacer_planning'; user_id: string | null; salarie_texte: string; du: string; au: string }
-  | { type: 'supprimer_absence'; user_id: string | null; salarie_texte: string; du: string; au: string }
+  /**
+   * user_id null ET salarie_texte vide = toute l'équipe. Les absences ne sont pas touchées.
+   * Lot 1 : `ids` = les cases que la carte a montrées (posé par l'écran, jamais
+   * par le modèle) — seules elles partent, même si le planning a bougé depuis.
+   */
+  | { type: 'effacer_planning'; user_id: string | null; salarie_texte: string; du: string; au: string; ids?: string[] }
+  | { type: 'supprimer_absence'; user_id: string | null; salarie_texte: string; du: string; au: string; ids?: string[] }
   | { type: 'supprimer_document'; worksite_id: string | null; chantier_texte: string; document_id: string | null; choix: DocChoice[] }
   | { type: 'modifier_document'; worksite_id: string | null; chantier_texte: string; document_id: string | null; choix: DocChoice[]; categorie: string; libelle: string }
   | { type: 'supprimer_depense'; worksite_id: string | null; chantier_texte: string; expense_id: string | null; choix: ExpenseChoice[] }
@@ -1683,6 +1687,9 @@ export function fromFunctionCall(name: string, args: Record<string, unknown>, ct
 
 /** Lot 1 : au-dessus de la carte d'une suppression, avant le clic. */
 export const A_CONFIRMER = 'Vérifiez ce qui sera retiré, puis confirmez : rien ne part avant.';
+/** … et d'une carte qui REMPLACE (document, dépense, habilitation) : rien n'est retiré. */
+export const A_CONFIRMER_REMPLACE = 'Vérifiez ce qui sera remplacé, puis confirmez : rien ne change avant.';
+export const confirmText = (d: { type: string }) => (d.type.startsWith('modifier_') ? A_CONFIRMER_REMPLACE : A_CONFIRMER);
 
 /** Le texte au-dessus de la carte, selon ce que l'écran va faire. */
 export function actionAnswer(a: AssistantAction, ctx: ActionContext): string {
@@ -1690,7 +1697,7 @@ export function actionAnswer(a: AssistantAction, ctx: ActionContext): string {
   if (actionMode(a.draft) === 'direct' || removal) {
     const q = questionFor(a.draft, a.problems, ctx);
     if (q) return q.text;
-    if (!a.problems.length) return removal ? A_CONFIRMER : 'C’est fait.';
+    if (!a.problems.length) return removal ? confirmText(a.draft) : 'C’est fait.';
   }
   return a.problems.length ? 'J’ai préparé l’action : complétez ce qui manque, puis confirmez.' : 'Vérifiez, puis confirmez.';
 }

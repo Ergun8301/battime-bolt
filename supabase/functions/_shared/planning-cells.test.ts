@@ -124,3 +124,22 @@ Deno.test('Lot 1 — planning : une case seule sans heures → directe ; plusieu
   eq(eraseConfirmation(slots, ['c', 'r'], withdrawn)!.withHours, 1, 'le nombre de cases avec des heures est dit');
   eq(eraseConfirmation(slots, ['zz'], withdrawn), null, 'case disparue entre-temps : rien à demander');
 });
+
+// ── Lot 1 (relecture) : « Présent à partir du… » ne retire que l'absence en cours ──
+import { absenceRunFrom } from '../../../lib/planning-cells.ts';
+
+Deno.test('Lot 1 — « Présent » : l’absence en cours seulement, un congé posé plus tard reste', () => {
+  const days = (from: string, n: number, p: string) => Array.from({ length: n }, (_, i) => {
+    const d = new Date(Date.parse(`${from}T00:00:00Z`) + i * 86400000).toISOString().slice(0, 10);
+    return { id: `${p}${i}`, work_date: d };
+  });
+  // Intempérie du 11 au 13 octobre, congé du 20 au 31 décembre.
+  const rows = [...days('2026-10-11', 3, 'i'), ...days('2026-12-20', 12, 'c')];
+  const r = absenceRunFrom(rows, '2026-10-11');
+  eq([r.ids, r.days.length, r.later], [['i0', 'i1', 'i2'], 3, '2026-12-20'], 'l’intempérie part, le congé de décembre reste');
+  eq(absenceRunFrom(rows, '2026-10-12').ids, ['i1', 'i2'], 'à partir du lendemain : la suite de l’absence en cours');
+  eq(absenceRunFrom(rows, '2026-10-15'), { ids: [], days: [], later: '2026-12-20' }, 'pas d’absence ce jour-là : rien ne part');
+  // Passage de mois et week-ends compris (une absence est posée jour par jour).
+  eq(absenceRunFrom(days('2026-10-30', 5, 'x'), '2026-10-30').days, ['2026-10-30', '2026-10-31', '2026-11-01', '2026-11-02', '2026-11-03'], 'fin de mois : les jours se suivent');
+  eq(absenceRunFrom([], '2026-10-11'), { ids: [], days: [], later: null }, 'aucune absence');
+});
