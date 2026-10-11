@@ -243,7 +243,10 @@ for (const [w, h] of [[1280, 800], [1024, 768]]) {
     if (before !== after) { hoverSame = false; diffs.push(`${sel}: ${before} → ${after}`); }
   }
   check(hoverSame, `2) ${w}×${h} : aucun effet au survol dans la grille ${diffs.join(' ; ')}`);
-  // Toucher une case : rien ne s'ouvre, rien ne change.
+  // Toucher une case : rien ne s'ouvre, rien ne change. Lot 2 (IA) : le tout
+  // premier toucher met la tablette en plein écran (voulu) : on le fait avant.
+  await p.mouse.click(5, h - 5);
+  await p.waitForTimeout(300);
   await observe(p);
   await p.click('.kb-week tbody tr:nth-child(3) td:nth-child(5)');
   await p.click('.kb-week tbody tr:nth-child(3) .bt-pl-namebtn');

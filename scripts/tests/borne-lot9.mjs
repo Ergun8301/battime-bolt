@@ -144,6 +144,11 @@ const onTop = (p, sel) => p.evaluate((s) => { const el = document.querySelector(
   check((await p.locator('[data-testid=kb-qr-overlay]').count()) === 0, '2) retour automatique au planning après 30 s');
 
   // ── 3) Plein écran : bascule et libellé (aria-label : icône seule au lot 11) ─
+  // Lot 2 (IA) : le premier toucher (« QR ») a déjà mis la tablette en plein
+  // écran ; on en sort pour tester l'icône elle-même.
+  check(await p.evaluate(() => !!document.fullscreenElement), '3) le premier toucher a mis la tablette en plein écran (lot 2 IA)');
+  await p.evaluate(() => document.exitFullscreen());
+  await p.waitForTimeout(300);
   await p.click('[data-testid=kb-fullscreen]');
   await p.waitForTimeout(400);
   const isFull = await p.evaluate(() => !!document.fullscreenElement);
