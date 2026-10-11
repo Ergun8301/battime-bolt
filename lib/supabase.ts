@@ -13,9 +13,23 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publish
 // à l'API de données (/rest/v1/) porte l'en-tête `x-bemexo-origine`, lu par la
 // base. Hors de là : aucun en-tête, requêtes identiques à avant. Jamais sur
 // l'authentification, le stockage ni les fonctions.
+// AVANT LA MIGRATION, RIEN NE CHANGE : l'en-tête ne part que si la table
+// `traces` existe — su par lib/traces.ts (markTracesTable), sinon demandé une
+// fois, à la première action de l'assistant (requête sans en-tête).
 export type WriteOrigin = 'assistant';
 let currentOrigin: WriteOrigin | null = null;
+// null = pas encore su ; on redemande après une erreur réseau.
+let tracesTable: boolean | null = null;
+export function markTracesTable(present: boolean) { tracesTable = present; }
 export async function withOrigin<T>(origin: WriteOrigin, run: () => Promise<T>): Promise<T> {
+  if (tracesTable === null) {
+    try {
+      const { error } = await supabase.from('traces').select('id').limit(1);
+      if (!error) tracesTable = true;
+      else if (['PGRST205', '42P01'].includes(String(error.code || ''))) tracesTable = false;
+    } catch { /* réseau : on redemandera */ }
+  }
+  if (!tracesTable) return run();
   const prev = currentOrigin;
   currentOrigin = origin;
   try { return await run(); } finally { currentOrigin = prev; }

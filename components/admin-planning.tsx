@@ -67,7 +67,6 @@ import ImportDialog from '@/components/import-dialog';
 import CostReport from '@/components/cost-report';
 // Lot 5 : statistiques de l'équipe (lecture seule).
 import TeamStats from '@/components/team-stats';
-import dynamic from 'next/dynamic';
 import ReservesReport from '@/components/reserves-report';
 import ImportWorkersDialog from '@/components/import-workers-dialog';
 import LeaveAdminDialog from '@/components/leave-admin-dialog';
@@ -91,11 +90,13 @@ import { keep } from '@/lib/same';
 // Formations (lot 6, oct. 2026) : depuis « Salariés » et le menu du téléphone, seulement si la migration est passée.
 import TrainingsAdmin from '@/components/trainings-admin';
 import { trainingsAvailable } from '@/lib/trainings';
+// Lot 3 : « Interventions supprimées ou décalées » (lecture seule).
 import { tracesAvailable } from '@/lib/traces';
-
-// Lot 3 : « Interventions supprimées ou décalées », chargée seulement à l'ouverture.
-const TracesDialog = dynamic(() => import('@/components/traces-dialog'), { ssr: false });
+import dynamic from 'next/dynamic';
 import { GraduationCap } from 'lucide-react';
+
+// Lot 3 : la fenêtre des traces n'est chargée qu'à l'ouverture.
+const TracesDialog = dynamic(() => import('@/components/traces-dialog'), { ssr: false });
 
 // ─── helpers / constants ──────────────────────────────────────────────────────
 

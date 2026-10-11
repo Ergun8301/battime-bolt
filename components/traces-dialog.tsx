@@ -17,9 +17,9 @@ import { format } from 'date-fns';
 import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { fetchTraces, type TracesResult } from '@/lib/traces';
+import { fetchTraces, TRACES_LIMIT, type TracesResult } from '@/lib/traces';
 import {
-  daysAgoISO, isSystemTrace, ORIGIN_LABEL, traceChange, traceConcerned, traceTitle, traceWho, whenLabel, WORKER_DAYS, type TraceRow,
+  daysAgoISO, isSystemTrace, ORIGIN_LABEL, traceChange, traceConcerned, traceTitle, traceWho, visibleTraces, whenLabel, WORKER_DAYS, type TraceRow,
 } from '@/supabase/functions/_shared/traces';
 import { isFuturePeriod, periodFor, periodLabel, shiftPeriod, type Period } from '@/supabase/functions/_shared/team-stats-core';
 
@@ -31,7 +31,8 @@ interface Props {
   viewerId: string;
   /** Bureau : filtres, auteurs nommés, origine. Sinon : vue du salarié. */
   office?: boolean;
-  /** Bureau : la liste du filtre « salarié » (les vrais comptes, jamais la démo). */
+  /** Bureau : la liste du filtre « salarié » (les vrais comptes, jamais la démo) ; s'y
+   *  ajoutent les personnes citées par les traces (un compte archivé, par exemple). */
   workers?: { id: string; first_name: string; last_name: string }[];
 }
 
@@ -106,8 +107,22 @@ function TracesBody({ companyId, viewerId, office, workers }: Omit<Props, 'open'
     return () => { stale = true; };
   }, [companyId, viewerId, office, range, who, retry]);
 
-  const sorted = useMemo(() => [...workers].sort((a, z) => `${a.first_name} ${a.last_name}`.localeCompare(`${z.first_name} ${z.last_name}`, 'fr')), [workers]);
-  const viewer = { id: viewerId, office };
+  // Bureau : les salariés cités par les traces déjà lues, absents de `workers`
+  // (compte archivé…) — pour pouvoir filtrer sur eux aussi.
+  const [cited, setCited] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (!office || !res?.ok) return;
+    const known = new Set(workers.map((w) => w.id));
+    const add: Record<string, string> = {};
+    for (const t of res.rows) if (t.user_id && !known.has(t.user_id) && res.names.users?.[t.user_id]) add[t.user_id] = res.names.users[t.user_id];
+    if (Object.keys(add).some((id) => !(id in cited))) setCited((c) => ({ ...c, ...add }));
+  }, [office, res, workers, cited]);
+  const sorted = useMemo(() => [
+    ...workers.map((w) => ({ id: w.id, name: `${w.first_name} ${w.last_name}` })),
+    ...Object.entries(cited).filter(([id]) => !workers.some((w) => w.id === id)).map(([id, name]) => ({ id, name })),
+  ].sort((a, z) => a.name.localeCompare(z.name, 'fr')), [workers, cited]);
+  const viewer = useMemo(() => ({ id: viewerId, office }), [viewerId, office]);
+  const shown = useMemo(() => (res?.ok ? visibleTraces(res.rows, viewer) : []), [res, viewer]);
 
   return (
     <div className="bt-tr-body">
@@ -115,7 +130,7 @@ function TracesBody({ companyId, viewerId, office, workers }: Omit<Props, 'open'
         <div className="bt-tr-ctl">
           <select className="bt-tr-sel" value={who} onChange={(e) => setWho(e.target.value)} aria-label="Salarié" data-testid="traces-worker">
             <option value="">Tous les salariés</option>
-            {sorted.map((w) => <option key={w.id} value={w.id}>{w.first_name} {w.last_name}</option>)}
+            {sorted.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
           </select>
           <div className="bt-tr-seg" role="group" aria-label="Période">
             {(['week', 'month'] as const).map((k) => (
@@ -131,8 +146,9 @@ function TracesBody({ companyId, viewerId, office, workers }: Omit<Props, 'open'
           </div>
         </div>
       ) : (
-        <p className="bt-tr-note">Les {WORKER_DAYS} derniers jours : ce qui a été supprimé ou décalé dans votre planning et vos heures.</p>
+        <p className="bt-tr-note">Les {WORKER_DAYS} derniers jours : ce qui a été supprimé ou décalé dans votre planning, vos heures, vos tâches et vos réunions.</p>
       )}
+      {office && <p className="bt-tr-note">Ce qui a été supprimé ou décalé pendant cette période (le jour concerné est sur chaque ligne).</p>}
 
       {res === null ? (
         <div className="bt-tr-empty"><Loader2 className="inline h-4 w-4 animate-spin motion-reduce:animate-none" /> Chargement…</div>
@@ -141,17 +157,17 @@ function TracesBody({ companyId, viewerId, office, workers }: Omit<Props, 'open'
           Impossible de charger la liste.
           <Button type="button" size="sm" variant="outline" onClick={() => setRetry((n) => n + 1)}>Réessayer</Button>
         </div>
-      ) : res.rows.length === 0 ? (
+      ) : shown.length === 0 ? (
         <div className="bt-tr-empty" data-testid="traces-empty">Rien de supprimé ni de décalé sur cette période.</div>
       ) : (
         <div className="bt-tr-list" data-testid="traces-list">
-          {res.rows.map((t) => {
-            const chg = traceChange(t, res.names);
+          {shown.map((t) => {
+            const chg = traceChange(t, res.names, viewer);
             const concerned = office ? traceConcerned(t, res.names) : '';
             return (
               <div key={t.id} className="bt-tr-item" data-testid="traces-item">
                 <div className="bt-tr-top">
-                  <span className="bt-tr-title"><span className={dotClass(t)} aria-hidden="true" />{traceTitle(t)}{concerned ? ` — ${concerned}` : ''}</span>
+                  <span className="bt-tr-title"><span className={dotClass(t)} aria-hidden="true" />{traceTitle(t, viewer)}{concerned ? ` — ${concerned}` : ''}</span>
                   <span className="bt-tr-when">{whenLabel(t.created_at)}</span>
                 </div>
                 <div className="bt-tr-who">
@@ -161,13 +177,16 @@ function TracesBody({ companyId, viewerId, office, workers }: Omit<Props, 'open'
                 {(chg.before || chg.after) && (
                   <div className="bt-tr-chg">
                     {chg.before && <><span>{chg.after ? 'Avant' : 'Était'}</span><p className={chg.after ? undefined : 'old'}>{chg.before}</p></>}
-                    {chg.after && <><span>{chg.before ? 'Après' : 'Remis'}</span><p>{chg.after}</p></>}
+                    {chg.after && <><span>{chg.before ? 'Après' : 'Maintenant'}</span><p>{chg.after}</p></>}
                   </div>
                 )}
               </div>
             );
           })}
         </div>
+      )}
+      {res?.ok && res.truncated && (
+        <p className="bt-tr-note" data-testid="traces-truncated">Seules les {TRACES_LIMIT} plus récentes sont affichées : choisissez une semaine ou un salarié.</p>
       )}
       <p className="bt-tr-note">Lecture seule. {office ? 'Le salarié voit les lignes qui le concernent dans son Historique.' : 'Une question ? Voyez avec le bureau.'}</p>
     </div>

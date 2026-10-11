@@ -69,15 +69,47 @@ export function whenLabel(iso: string): string {
 
 const isAbsence = (t: TraceRow) => t.object_table === 'planning' && !!str((t.before ?? t.after)?.absence_type);
 
+/** Qui lit : le salarié (lui-même) ou le bureau. */
+export interface TraceViewer { id: string; office: boolean }
+
+/**
+ * Une case (ou une ligne d'heures) passée d'un salarié à un autre. La base écrit
+ * une ligne pour l'ancien ET une pour le nouveau, même avant / après.
+ */
+export function isReassigned(t: TraceRow): boolean {
+  const b = str(t.before?.user_id), a = str(t.after?.user_id);
+  return (t.object_table === 'planning' || t.object_table === 'time_entries') && !!b && !!a && a !== b;
+}
+/** Le salarié qui la REÇOIT (vu par lui) : rien de supprimé chez lui. */
+const received = (t: TraceRow, viewer: TraceViewer) => !viewer.office && isReassigned(t) && t.after?.user_id === viewer.id;
+/** Le salarié qui la PERD (vu par lui) : retirée de son planning. */
+const handedOver = (t: TraceRow, viewer?: TraceViewer) => !!viewer && !viewer.office && isReassigned(t) && t.before?.user_id === viewer.id;
+
+/**
+ * Les lignes à montrer, dans l'ordre reçu :
+ *  · le salarié ne voit pas ce qu'il a REÇU d'un collègue (ce n'est pas une
+ *    intervention supprimée chez lui) ;
+ *  · le bureau ne voit qu'UNE ligne par changement de salarié (celle de l'ancien),
+ *    l'avant / après disant « de qui à qui ».
+ */
+export function visibleTraces(rows: TraceRow[], viewer: TraceViewer): TraceRow[] {
+  if (!viewer.office) return rows.filter((t) => !received(t, viewer));
+  const keyOf = (t: TraceRow) => `${t.object_table}|${t.object_id}|${t.created_at}|${t.action}`;
+  const fromOld = new Set(rows.filter((t) => isReassigned(t) && t.user_id === t.before?.user_id).map(keyOf));
+  return rows.filter((t) => !(isReassigned(t) && t.user_id === t.after?.user_id && fromOld.has(keyOf(t))));
+}
+
 /** Le titre de la ligne : « Intervention supprimée », « Heures changées »… */
-export function traceTitle(t: TraceRow): string {
+export function traceTitle(t: TraceRow, viewer?: TraceViewer): string {
   const a = t.action;
   switch (t.object_table) {
     case 'planning': {
       const what = isAbsence(t) ? 'Absence' : 'Intervention';
+      if (handedOver(t, viewer)) return `${what} retirée de votre planning`;
       return `${what} ${{ supprimee: 'supprimée', decalee: 'décalée', modifiee: 'modifiée', retiree: 'retirée', remise: 'remise' }[a]}`;
     }
     case 'time_entries':
+      if (handedOver(t, viewer)) return 'Heures retirées de votre compte';
       return { supprimee: 'Heures supprimées', decalee: 'Heures changées', modifiee: 'Heures modifiées', retiree: 'Heures retirées', remise: 'Heures remises' }[a];
     case 'active_sessions':
       return a === 'remise' ? 'Pointage en cours remis' : 'Pointage en cours supprimé';
@@ -138,10 +170,23 @@ export function snapshotLabel(table: TraceTable, s: Snap | null, names: TraceNam
   return parts.filter(Boolean).join(' · ');
 }
 
-/** Avant → après : ce qui est montré sous le titre. Une suppression n'a qu'un avant, une remise qu'un après. */
-export function traceChange(t: TraceRow, names: TraceNames): { before: string | null; after: string | null } {
-  const b = t.action === 'remise' ? null : snapshotLabel(t.object_table, t.before, names) || null;
-  const a = t.action === 'supprimee' ? null : snapshotLabel(t.object_table, t.after, names) || null;
+const personName = (id: unknown, names: TraceNames) => names.users?.[String(id)] || 'Salarié supprimé';
+
+/**
+ * Avant → après : ce qui est montré sous le titre. Une suppression n'a qu'un
+ * avant, une remise qu'un après. Changement de salarié : le bureau lit « de qui
+ * à qui » ; l'ancien salarié lit seulement l'avant (rien de son collègue).
+ */
+export function traceChange(t: TraceRow, names: TraceNames, viewer?: TraceViewer): { before: string | null; after: string | null } {
+  let b = t.action === 'remise' ? null : snapshotLabel(t.object_table, t.before, names) || null;
+  let a = t.action === 'supprimee' ? null : snapshotLabel(t.object_table, t.after, names) || null;
+  if (isReassigned(t)) {
+    if (handedOver(t, viewer)) a = null;
+    else if (names.users) {
+      b = b && `${personName(t.before?.user_id, names)} · ${b}`;
+      a = a && `${personName(t.after?.user_id, names)} · ${a}`;
+    }
+  }
   return { before: b, after: a };
 }
 
@@ -157,7 +202,7 @@ export const isSystemTrace = (t: TraceRow) => !t.actor_id || t.origin === 'syste
  *  · le bureau : le nom de la personne (repli sur son rôle) ;
  *  · le système : « automatiquement, la nuit » (ou « automatiquement »).
  */
-export function traceWho(t: TraceRow, viewer: { id: string; office: boolean }, names: TraceNames): string {
+export function traceWho(t: TraceRow, viewer: TraceViewer, names: TraceNames): string {
   const actor = t.actor_id;
   if (!actor || isSystemTrace(t)) return night(t.created_at) ? 'automatiquement, la nuit' : 'automatiquement';
   const role = t.actor_role === 'admin' ? 'le bureau' : t.actor_role === 'lead' ? 'le chef d’équipe' : 'un salarié';
@@ -177,6 +222,7 @@ export const ORIGIN_LABEL: Record<TraceOrigin, string> = {
 
 /** Le salarié concerné (bureau) : le nom, sinon « Toute l’équipe » / la liste des participants d'une réunion. */
 export function traceConcerned(t: TraceRow, names: TraceNames): string {
+  if (isReassigned(t)) return `${personName(t.before?.user_id, names)} → ${personName(t.after?.user_id, names)}`;
   if (t.user_id) return names.users?.[t.user_id] || 'Salarié supprimé';
   if (t.object_table === 'meetings') {
     const s = t.before ?? t.after;
@@ -195,12 +241,13 @@ export function worksiteIds(rows: TraceRow[]): string[] {
   return Array.from(out);
 }
 
-/** Les personnes citées (auteurs, salariés concernés, participants) — au bureau. */
+/** Les personnes citées (auteurs, salariés concernés, de qui à qui, participants) — au bureau. */
 export function personIds(rows: TraceRow[]): string[] {
   const out = new Set<string>();
   for (const t of rows) {
     if (t.actor_id) out.add(t.actor_id);
     if (t.user_id) out.add(t.user_id);
+    if (isReassigned(t)) { out.add(String(t.before!.user_id)); out.add(String(t.after!.user_id)); }
     const p = (t.before ?? t.after)?.participants;
     if (Array.isArray(p)) for (const id of p) out.add(String(id));
   }

@@ -21,10 +21,15 @@
 --   IF to_regclass('public.meetings') IS NOT NULL THEN
 --     DROP TRIGGER IF EXISTS traces_reunion_supprimee ON public.meetings;
 --     DROP TRIGGER IF EXISTS traces_reunion_changee ON public.meetings;
+--     DROP TRIGGER IF EXISTS traces_reunion_personnes ON public.meetings;
+--   END IF;
+--   IF to_regclass('public.meeting_participants') IS NOT NULL THEN
+--     DROP TRIGGER IF EXISTS traces_reunion_participant_retire ON public.meeting_participants;
 --   END IF;
 -- END $$;
 -- DROP FUNCTION IF EXISTS public.traces_capture();
 -- DROP FUNCTION IF EXISTS public.traces_meeting();
+-- DROP FUNCTION IF EXISTS public.traces_meeting_people();
 -- DROP FUNCTION IF EXISTS public.traces_classify(text, text, jsonb, jsonb, uuid);
 -- DROP FUNCTION IF EXISTS public.traces_author();
 -- DROP FUNCTION IF EXISTS public.traces_origin();
@@ -39,10 +44,16 @@
 --   NOT has_table_privilege('anon', 'public.traces', 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') AS v3_anon_rien,
 --   has_table_privilege('authenticated', 'public.traces', 'SELECT') AND NOT has_table_privilege('authenticated', 'public.traces', 'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') AS v4_personne_n_ecrit,
 --   NOT has_table_privilege('service_role', 'public.traces', 'INSERT,UPDATE,DELETE,TRUNCATE') AS v5_meme_le_service,
---   (SELECT bool_and(p.prosecdef AND array_to_string(p.proconfig, ',') = 'search_path=""' AND NOT has_function_privilege('anon', p.oid, 'EXECUTE') AND NOT has_function_privilege('authenticated', p.oid, 'EXECUTE')) FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname IN ('traces_capture', 'traces_meeting', 'traces_classify', 'traces_author', 'traces_origin')) AS v6_fonctions_fermees,
---   (SELECT count(*) FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname IN ('traces_capture', 'traces_meeting', 'traces_classify', 'traces_author', 'traces_origin')) = 5 AS v7_cinq_fonctions,
---   (SELECT count(*) FROM pg_trigger WHERE NOT tgisinternal AND tgname LIKE 'traces\_%') = 11 AS v8_onze_declencheurs,
+--   (SELECT bool_and(p.prosecdef AND array_to_string(p.proconfig, ',') = 'search_path=""' AND NOT has_function_privilege('anon', p.oid, 'EXECUTE') AND NOT has_function_privilege('authenticated', p.oid, 'EXECUTE')) FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname IN ('traces_capture', 'traces_meeting', 'traces_meeting_people', 'traces_classify', 'traces_author', 'traces_origin')) AS v6_fonctions_fermees,
+--   (SELECT count(*) FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname IN ('traces_capture', 'traces_meeting', 'traces_meeting_people', 'traces_classify', 'traces_author', 'traces_origin')) = 6 AS v7_six_fonctions,
+--   (SELECT count(*) FROM pg_trigger WHERE NOT tgisinternal AND tgname LIKE 'traces\_%') = 13 AS v8_treize_declencheurs,
 --   (SELECT count(*) FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'traces' AND indexname IN ('traces_company_date_idx', 'traces_user_date_idx', 'traces_object_idx')) = 3 AS v9_index;
+--
+-- SI L'APPLICATION ÉCHOUE AVEC « lock timeout » (canceling statement due to
+-- lock timeout) : une longue requête occupait le planning ou les heures. Rien
+-- n'a été appliqué ; il suffit de recoller le fichier un peu plus tard (il est
+-- rejouable). Le fichier n'attend jamais plus de 5 secondes un verrou : les
+-- salariés ne restent pas bloqués derrière lui.
 --
 -- HISTORIQUE : si le fichier est collé dans l'éditeur SQL, inscrire ensuite :
 --   INSERT INTO supabase_migrations.schema_migrations (version, name)
@@ -65,21 +76,32 @@
 --     changée de salarié : une ligne pour l'ancien ET pour le nouveau) ;
 --     modifiée (chantier ou absence) ; remise (« Annuler » remet le même id).
 --     Une case posée puis retirée dans les 5 minutes par la même personne
---     (« Annuler » d'un ajout) n'est pas une intervention supprimée.
+--     (« Annuler » d'un ajout) n'est pas une intervention supprimée. Une
+--     absence REMPLACÉE (nouvelle posée, ancienne retirée) : « modifiée »
+--     (Congé → Arrêt maladie), rien si le type ne change pas ; son « Annuler »
+--     (l'ancienne reposée, nouvel id) : « remise ».
 --   · time_entries : ligne supprimée (sauf un brouillon VIDE jamais envoyé, qui
---     ne compte nulle part) ; retirée (statut « Retirée », avant/après) ; heures
+--     ne compte nulle part, et son propre brouillon posé il y a moins de 5
+--     minutes : « Annuler » d'un ajout) ; retirée (statut « Retirée »,
+--     avant/après) ; heures
 --     décalées ou modifiées par QUELQU'UN D'AUTRE que le salarié, ou après
 --     l'envoi ; remise. Un salarié qui tape ses propres brouillons : pas tracé.
 --   · active_sessions : chrono supprimé SANS devenir une ligne d'heures (un
 --     chrono fermé normalement — « J'ai fini », la borne, la nuit — écrit sa
 --     ligne dans la même transaction : pas tracé ; moins d'une minute : pas
---     tracé) ; remis par « Annuler » (même salarié, même jour, 15 minutes).
+--     tracé) ; remis par « Annuler » (même salarié, même jour, 15 minutes, et
+--     même heure de début ou même auteur sur le même chantier — un NOUVEAU
+--     chrono lancé par le salarié après une suppression du bureau n'en est pas une).
 --     Les coordonnées GPS du début ne sont JAMAIS recopiées.
 --   · day_tasks : tâche supprimée (« Fait » n'est pas tracé).
 --   · meetings : réunion supprimée ; décalée (date, heures) ; modifiée (titre,
---     lieu, « Toute l'équipe »). Une ligne-résumé pour le bureau (avec la liste
---     des participants) + une ligne par participant (sans la liste : un
---     participant ne voit pas les autres, règle du lot 4).
+--     lieu, « Toute l'équipe ») ; retirée à un salarié (enlevé de la liste, ou
+--     « Toute l'équipe » devenue une liste sans lui). Une ligne-résumé pour le
+--     bureau (avec la liste des participants ; lisible par l'équipe seulement
+--     si la réunion est « Toute l'équipe » avant ET après) + une ligne par
+--     salarié concerné (sans la liste : un participant ne voit pas les autres,
+--     règle du lot 4). Un salarié retiré ne lit que l'avant, jamais les
+--     nouveaux détails d'une réunion où il n'est plus invité.
 --
 -- QUI ET D'OÙ : `actor_id` = auth.uid() (NULL = système), `actor_role` = son
 -- rôle à cet instant. `origin` : 'ecran' par défaut quand quelqu'un est
@@ -94,9 +116,13 @@
 -- WHEN OTHERS → RAISE WARNING). Exception documentée : la réunion supprimée
 -- est lue AVANT la suppression (BEFORE DELETE), parce que la clé étrangère
 -- efface ses participants avant tout déclencheur AFTER ; ce déclencheur rend
--- toujours la ligne : il ne peut ni bloquer ni annuler la suppression.
+-- toujours la ligne : il ne peut ni bloquer ni annuler la suppression. Les
+-- lignes des salariés d'une réunion CHANGÉE sont écrites à la fin de la
+-- transaction (déclencheurs de contrainte différés) : office_save_meeting
+-- remplace les participants APRÈS avoir changé la réunion. Eux aussi
+-- attrapent toute erreur : la validation n'échoue jamais à cause d'eux.
 --
--- 100 % ADDITIVE : une table neuve, cinq fonctions neuves, onze déclencheurs
+-- 100 % ADDITIVE : une table neuve, six fonctions neuves, treize déclencheurs
 -- neufs. Aucune table, colonne, policy, fonction ou déclencheur existant n'est
 -- modifié ; aucune donnée existante n'est lue ni réécrite à l'application.
 -- Rejouable (IF NOT EXISTS, OR REPLACE pour les fonctions ; policies et
@@ -118,6 +144,9 @@
 -- Testée sur un Postgres jetable : npm run test:traces-db
 -- (supabase/tests/lot3_traces_suppressions.mjs).
 -- ─────────────────────────────────────────────────────────────────────────────
+
+-- Jamais plus de 5 secondes d'attente d'un verrou (voir « lock timeout »).
+SET LOCAL lock_timeout = '5s';
 
 -- ── 1) La table ─────────────────────────────────────────────────────────────
 -- Pas de clé étrangère vers users : une trace survit au salarié supprimé.
@@ -155,7 +184,7 @@ REVOKE ALL ON SEQUENCE public.traces_id_seq FROM PUBLIC, anon, authenticated, se
 
 -- Le bureau lit toute son entreprise. Le salarié (ou le chef d'équipe) lit SES
 -- lignes, des seuls types qui le concernent, plus le résumé d'une réunion
--- « Toute l'équipe ». Policies neuves, posées une fois (aucun DROP).
+-- restée « Toute l'équipe ». Policies neuves, posées une fois (aucun DROP).
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'traces' AND policyname = 'traces_select_office') THEN
@@ -167,8 +196,11 @@ BEGIN
       USING (company_id = public.get_my_company_id()
              AND object_table IN ('planning', 'time_entries', 'active_sessions', 'day_tasks', 'meetings')
              AND (user_id = auth.uid()
+                  -- « Toute l'équipe » AVANT ET APRÈS : sinon le résumé dirait à
+                  -- tous les détails d'une réunion devenue restreinte.
                   OR (user_id IS NULL AND object_table = 'meetings'
-                      AND coalesce(before ->> 'all_team', after ->> 'all_team') = 'true')));
+                      AND (before IS NULL OR before ->> 'all_team' = 'true')
+                      AND (after IS NULL OR after ->> 'all_team' = 'true'))));
   END IF;
 END $$;
 
@@ -217,6 +249,7 @@ DECLARE
   v_key text := CASE WHEN p_table = 'active_sessions' THEN 'user_id' ELSE 'id' END;
   v_action text;
   v_last text;
+  v_repl jsonb;
   -- Ce qui se voit, par table : décalé (jour, heures, salarié) / modifié (le reste).
   v_moved text[] := CASE p_table
     WHEN 'planning' THEN ARRAY['work_date', 'user_id', 'estimated_start', 'estimated_end']
@@ -239,6 +272,27 @@ BEGIN
        AND (p_old ->> 'created_at')::timestamptz > now() - interval '5 minutes' THEN
       RETURN;
     END IF;
+    -- Pareil pour SON brouillon jamais envoyé (« Annuler » de l'assistant, ligne en trop).
+    IF p_table = 'time_entries' AND p_actor IS NOT NULL AND p_old ->> 'user_id' = p_actor::text
+       AND p_old ->> 'status' = 'draft' AND p_old ->> 'submitted_at' IS NULL
+       AND (p_old ->> 'created_at')::timestamptz > now() - interval '5 minutes' THEN
+      RETURN;
+    END IF;
+    -- Absence REMPLACÉE (lib/planning-writes.ts setAbsence : la nouvelle d'abord,
+    -- l'ancienne ensuite, en deux requêtes) : même type → rien ; sinon « modifiée »,
+    -- la nouvelle en après. Colonnes lues en jsonb (created_at peut manquer).
+    IF p_table = 'planning' AND p_old ->> 'absence_type' IS NOT NULL THEN
+      SELECT to_jsonb(p) INTO v_repl FROM public.planning p
+       WHERE p.company_id = (p_old ->> 'company_id')::uuid AND p.user_id = (p_old ->> 'user_id')::uuid
+         AND p.work_date = (p_old ->> 'work_date')::date AND p.absence_type IS NOT NULL AND p.id <> (p_old ->> 'id')::uuid
+         AND (to_jsonb(p) ->> 'created_at')::timestamptz > now() - interval '5 minutes'
+       ORDER BY to_jsonb(p) ->> 'created_at' DESC LIMIT 1;
+      IF v_repl IS NOT NULL THEN
+        IF v_repl ->> 'absence_type' = p_old ->> 'absence_type' THEN RETURN; END IF;
+        p_new := v_repl;
+        v_action := 'modifiee';
+      END IF;
+    END IF;
     IF p_table = 'active_sessions' THEN
       -- Moins d'une minute : un appui de trop, pas une heure travaillée.
       IF (p_old ->> 'started_at')::timestamptz > now() - interval '1 minute' THEN RETURN; END IF;
@@ -251,7 +305,7 @@ BEGIN
       -- Jamais de coordonnées dans une trace.
       p_old := p_old - 'start_lat' - 'start_lng' - 'start_accuracy_m' - 'start_located_at';
     END IF;
-    v_action := 'supprimee';
+    v_action := coalesce(v_action, 'supprimee');
 
   ELSIF p_op = 'INSERT' THEN
     -- Remise : la dernière trace de cet objet dit « supprimée ».
@@ -259,10 +313,29 @@ BEGIN
       SELECT t.action INTO v_last FROM public.traces t
        WHERE t.object_id = (r ->> 'id')::uuid AND t.object_table = p_table
        ORDER BY t.id DESC LIMIT 1;
+      -- « Annuler » d'une absence remplacée : l'ancienne reposée (nouvel id), même
+      -- salarié, même jour, même type que l'avant d'une trace récente, et plus
+      -- aucune autre absence ce jour-là (sinon c'est un remplacement qui commence).
+      IF v_last IS NULL AND p_table = 'planning' AND r ->> 'absence_type' IS NOT NULL THEN
+        SELECT 'supprimee' INTO v_last FROM public.traces t
+         WHERE t.user_id = (r ->> 'user_id')::uuid AND t.object_table = 'planning' AND t.work_date = (r ->> 'work_date')::date
+           AND t.action IN ('supprimee', 'modifiee') AND t.before ->> 'absence_type' = r ->> 'absence_type'
+           AND t.created_at > now() - interval '15 minutes'
+           AND NOT EXISTS (SELECT 1 FROM public.planning p WHERE p.user_id = (r ->> 'user_id')::uuid AND p.work_date = (r ->> 'work_date')::date
+                            AND p.absence_type IS NOT NULL AND p.id <> (r ->> 'id')::uuid)
+         LIMIT 1;
+      END IF;
     ELSIF p_table = 'active_sessions' THEN
+      -- Remis par « Annuler » (worker-actions remet la ligne lue) : la MÊME heure
+      -- de début ; ou, si le serveur repose l'heure de prise (bouchon des lots 9
+      -- et 11 : « comme en production »), la même personne que celle qui l'avait
+      -- supprimé, sur le même chantier. Un nouveau chrono lancé par le salarié
+      -- après une suppression du bureau n'est pas une remise.
       SELECT t.action INTO v_last FROM public.traces t
        WHERE t.object_id = (r ->> 'user_id')::uuid AND t.object_table = 'active_sessions'
          AND t.work_date = (r ->> 'work_date')::date AND t.created_at > now() - interval '15 minutes'
+         AND ((t.before ->> 'started_at')::timestamptz = (r ->> 'started_at')::timestamptz
+              OR (t.actor_id = p_actor AND t.before ->> 'worksite_id' IS NOT DISTINCT FROM r ->> 'worksite_id'))
        ORDER BY t.id DESC LIMIT 1;
       p_new := p_new - 'start_lat' - 'start_lng' - 'start_accuracy_m' - 'start_located_at';
     END IF;
@@ -333,6 +406,9 @@ END $fn$;
 -- ── 5) Réunions : un résumé pour le bureau + une ligne par participant ──────
 -- BEFORE DELETE (voir « JAMAIS BLOQUANT ») et AFTER UPDATE : dans les deux cas
 -- la liste des participants est encore celle d'avant. Rend toujours la ligne.
+-- Supprimée : le résumé et une ligne par participant (l'avant seulement).
+-- Changée : le résumé seulement ; les lignes des salariés attendent la fin de
+-- la transaction (traces_meeting_people), quand on sait qui la voit encore.
 CREATE OR REPLACE FUNCTION public.traces_meeting()
  RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path TO ''
 AS $fn$
@@ -359,7 +435,7 @@ BEGIN
       SELECT OLD.company_id, x.uid, a.actor_id, a.actor_role, a.origin, v_action, 'meetings', OLD.id, OLD.meeting_date,
              CASE WHEN x.uid IS NULL THEN v_before || jsonb_build_object('participants', to_jsonb(v_ids)) ELSE v_before END,
              v_after
-        FROM (SELECT NULL::uuid AS uid UNION ALL SELECT unnest(v_ids)) x;
+        FROM (SELECT NULL::uuid AS uid UNION ALL SELECT unnest(v_ids) WHERE v_after IS NULL) x;
     END IF;
   EXCEPTION WHEN OTHERS THEN
     RAISE WARNING 'traces (meetings, %) : % [%] — action faite, trace non écrite', TG_OP, SQLERRM, SQLSTATE;
@@ -368,36 +444,126 @@ BEGIN
   RETURN NEW;
 END $fn$;
 
--- ── 6) Droits des fonctions : personne ne les appelle à la main ─────────────
+-- ── 6) Réunions changées : la ligne de chaque salarié, à la fin ────────────
+-- office_save_meeting change la réunion PUIS remplace ses participants : c'est
+-- seulement à la fin de la transaction (déclencheurs de contrainte DIFFÉRÉS)
+-- qu'on sait qui la voit encore. Chacun ne lit que ce qui le concerne :
+--   · il la voit encore (gardé dans la liste, ou « Toute l'équipe ») et le
+--     jour, l'heure, le titre ou le lieu ont changé → sa ligne, avant → après ;
+--   · il ne la voit plus → « retirée », l'avant seulement.
+-- Un participant AJOUTÉ ne reçoit rien (recevoir une réunion n'est pas une
+-- intervention supprimée). « Toute l'équipe » avant et après : le résumé suffit.
+-- Deux déclencheurs, une fonction : meetings (UPDATE) et meeting_participants
+-- (DELETE, retiré sans autre changement). Jamais deux lignes pour la même
+-- personne dans la même transaction (now() = début de la transaction).
+CREATE OR REPLACE FUNCTION public.traces_meeting_people()
+ RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path TO ''
+AS $fn$
+DECLARE
+  a record;
+  -- Lu en jsonb : la même fonction sert aux deux tables.
+  v_id uuid := (CASE WHEN TG_TABLE_NAME = 'meetings' THEN to_jsonb(NEW) ->> 'id' ELSE to_jsonb(OLD) ->> 'meeting_id' END)::uuid;
+  m record;
+  v_now jsonb;
+  v_before jsonb;
+  v_old uuid[];
+  v_uid uuid;
+  v_seen text;
+  k text;
+BEGIN
+  BEGIN
+    SELECT * INTO m FROM public.meetings mt WHERE mt.id = v_id;
+    -- Réunion retirée entre-temps : déjà tracée (traces_meeting, BEFORE DELETE).
+    IF NOT FOUND THEN RETURN NULL; END IF;
+    v_now := to_jsonb(m);
+    -- Le résumé écrit par traces_meeting dans CETTE transaction (le premier : la liste d'origine).
+    SELECT t.before INTO v_before FROM public.traces t
+     WHERE t.object_id = v_id AND t.object_table = 'meetings' AND t.user_id IS NULL AND t.created_at = now()
+       AND t.action IN ('decalee', 'modifiee')
+     ORDER BY t.id LIMIT 1;
+
+    IF TG_TABLE_NAME = 'meetings' THEN
+      IF v_before IS NULL OR (v_before ->> 'all_team' = 'true' AND m.all_team) THEN RETURN NULL; END IF;
+      -- Ce qu'un salarié qui la voit encore lit de changé.
+      FOREACH k IN ARRAY ARRAY['meeting_date', 'start_time', 'end_time'] LOOP
+        IF v_before -> k IS DISTINCT FROM v_now -> k THEN v_seen := 'decalee'; EXIT; END IF;
+      END LOOP;
+      IF v_seen IS NULL AND (v_before -> 'title' IS DISTINCT FROM v_now -> 'title' OR v_before -> 'place' IS DISTINCT FROM v_now -> 'place') THEN
+        v_seen := 'modifiee';
+      END IF;
+      -- Qui la voyait : la liste d'avant, ou toute l'équipe active.
+      IF v_before ->> 'all_team' = 'true' THEN
+        SELECT coalesce(array_agg(u.id), '{}'::uuid[]) INTO v_old FROM public.users u
+         WHERE u.company_id = m.company_id AND u.is_active IS DISTINCT FROM false AND u.role::text IN ('worker', 'lead');
+      ELSE
+        SELECT coalesce(array_agg(x::uuid), '{}'::uuid[]) INTO v_old FROM jsonb_array_elements_text(coalesce(v_before -> 'participants', '[]'::jsonb)) x;
+      END IF;
+      SELECT * INTO a FROM public.traces_author();
+      v_before := v_before - 'participants';
+      INSERT INTO public.traces (company_id, user_id, actor_id, actor_role, origin, action, object_table, object_id, work_date, before, after)
+      SELECT m.company_id, x.uid, a.actor_id, a.actor_role, a.origin, CASE WHEN x.sees THEN v_seen ELSE 'retiree' END, 'meetings', v_id,
+             (v_before ->> 'meeting_date')::date, v_before, CASE WHEN x.sees THEN v_now END
+        FROM (SELECT o.uid, (m.all_team OR EXISTS (SELECT 1 FROM public.meeting_participants mp WHERE mp.meeting_id = v_id AND mp.user_id = o.uid)) AS sees
+                FROM unnest(v_old) AS o(uid)
+               WHERE EXISTS (SELECT 1 FROM public.users u WHERE u.id = o.uid)) x
+       WHERE (NOT x.sees OR v_seen IS NOT NULL)
+         AND NOT EXISTS (SELECT 1 FROM public.traces t WHERE t.object_id = v_id AND t.object_table = 'meetings' AND t.user_id = x.uid AND t.created_at = now());
+    ELSE
+      -- Un participant retiré de la liste (sans autre changement visible, sinon
+      -- c'est fait ci-dessus) : remis aussitôt (office_save_meeting remplace la
+      -- liste), passé à « Toute l'équipe », ou compte supprimé → rien.
+      v_uid := (to_jsonb(OLD) ->> 'user_id')::uuid;
+      IF m.all_team
+         OR EXISTS (SELECT 1 FROM public.meeting_participants mp WHERE mp.meeting_id = v_id AND mp.user_id = v_uid)
+         OR NOT EXISTS (SELECT 1 FROM public.users u WHERE u.id = v_uid)
+         OR EXISTS (SELECT 1 FROM public.traces t WHERE t.object_id = v_id AND t.object_table = 'meetings' AND t.user_id = v_uid AND t.created_at = now()) THEN
+        RETURN NULL;
+      END IF;
+      v_before := coalesce(v_before, v_now) - 'participants';
+      SELECT * INTO a FROM public.traces_author();
+      INSERT INTO public.traces (company_id, user_id, actor_id, actor_role, origin, action, object_table, object_id, work_date, before, after)
+      VALUES (m.company_id, v_uid, a.actor_id, a.actor_role, a.origin, 'retiree', 'meetings', v_id, (v_before ->> 'meeting_date')::date, v_before, NULL);
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'traces (%, réunion, salariés) : % [%] — action faite, trace non écrite', TG_TABLE_NAME, SQLERRM, SQLSTATE;
+  END;
+  RETURN NULL;
+END $fn$;
+
+-- ── 7) Droits des fonctions : personne ne les appelle à la main ─────────────
 -- Un déclencheur s'exécute sans droit EXECUTE (comme l'étape 27d).
 REVOKE ALL ON FUNCTION public.traces_origin() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.traces_author() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.traces_classify(text, text, jsonb, jsonb, uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.traces_capture() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.traces_meeting() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.traces_meeting_people() FROM PUBLIC, anon, authenticated;
 
--- ── 7) Les déclencheurs (neufs) ─────────────────────────────────────────────
+-- ── 8) Les déclencheurs (neufs) ─────────────────────────────────────────────
 -- Posés seulement s'ils n'existent pas encore (rejouable sans rien retirer), et
--- seulement si la table existe (tâches et réunions : lot 4).
+-- seulement si la table existe (tâches et réunions : lot 4). Les deux derniers
+-- sont des déclencheurs de CONTRAINTE, différés à la fin de la transaction.
 DO $$
 DECLARE r record;
 BEGIN
   FOR r IN SELECT * FROM (VALUES
-    ('traces_planning_supprimee', 'public.planning',        'AFTER DELETE', 'REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT', 'traces_capture'),
-    ('traces_planning_changee',   'public.planning',        'AFTER UPDATE', 'REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT', 'traces_capture'),
-    ('traces_planning_remise',    'public.planning',        'AFTER INSERT', 'REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT', 'traces_capture'),
-    ('traces_heures_supprimee',   'public.time_entries',    'AFTER DELETE', 'REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT', 'traces_capture'),
-    ('traces_heures_changee',     'public.time_entries',    'AFTER UPDATE', 'REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT', 'traces_capture'),
-    ('traces_heures_remise',      'public.time_entries',    'AFTER INSERT', 'REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT', 'traces_capture'),
-    ('traces_pointage_supprime',  'public.active_sessions', 'AFTER DELETE', 'REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT', 'traces_capture'),
-    ('traces_pointage_remis',     'public.active_sessions', 'AFTER INSERT', 'REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT', 'traces_capture'),
-    ('traces_tache_supprimee',    'public.day_tasks',       'AFTER DELETE', 'REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT', 'traces_capture'),
-    ('traces_reunion_supprimee',  'public.meetings',        'BEFORE DELETE', 'FOR EACH ROW', 'traces_meeting'),
-    ('traces_reunion_changee',    'public.meetings',        'AFTER UPDATE', 'FOR EACH ROW', 'traces_meeting')
-  ) AS v(name, tbl, ev, how, fn) LOOP
+    ('traces_planning_supprimee', 'public.planning',        'TRIGGER', 'AFTER DELETE', 'REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT', 'traces_capture'),
+    ('traces_planning_changee',   'public.planning',        'TRIGGER', 'AFTER UPDATE', 'REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT', 'traces_capture'),
+    ('traces_planning_remise',    'public.planning',        'TRIGGER', 'AFTER INSERT', 'REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT', 'traces_capture'),
+    ('traces_heures_supprimee',   'public.time_entries',    'TRIGGER', 'AFTER DELETE', 'REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT', 'traces_capture'),
+    ('traces_heures_changee',     'public.time_entries',    'TRIGGER', 'AFTER UPDATE', 'REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT', 'traces_capture'),
+    ('traces_heures_remise',      'public.time_entries',    'TRIGGER', 'AFTER INSERT', 'REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT', 'traces_capture'),
+    ('traces_pointage_supprime',  'public.active_sessions', 'TRIGGER', 'AFTER DELETE', 'REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT', 'traces_capture'),
+    ('traces_pointage_remis',     'public.active_sessions', 'TRIGGER', 'AFTER INSERT', 'REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT', 'traces_capture'),
+    ('traces_tache_supprimee',    'public.day_tasks',       'TRIGGER', 'AFTER DELETE', 'REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT', 'traces_capture'),
+    ('traces_reunion_supprimee',  'public.meetings',        'TRIGGER', 'BEFORE DELETE', 'FOR EACH ROW', 'traces_meeting'),
+    ('traces_reunion_changee',    'public.meetings',        'TRIGGER', 'AFTER UPDATE', 'FOR EACH ROW', 'traces_meeting'),
+    ('traces_reunion_personnes',  'public.meetings',        'CONSTRAINT TRIGGER', 'AFTER UPDATE', 'DEFERRABLE INITIALLY DEFERRED FOR EACH ROW', 'traces_meeting_people'),
+    ('traces_reunion_participant_retire', 'public.meeting_participants', 'CONSTRAINT TRIGGER', 'AFTER DELETE', 'DEFERRABLE INITIALLY DEFERRED FOR EACH ROW', 'traces_meeting_people')
+  ) AS v(name, tbl, kind, ev, how, fn) LOOP
     IF to_regclass(r.tbl) IS NOT NULL
        AND NOT EXISTS (SELECT 1 FROM pg_trigger t WHERE t.tgname = r.name AND t.tgrelid = to_regclass(r.tbl)) THEN
-      EXECUTE format('CREATE TRIGGER %I %s ON %s %s EXECUTE FUNCTION public.%I()', r.name, r.ev, r.tbl, r.how, r.fn);
+      EXECUTE format('CREATE %s %I %s ON %s %s EXECUTE FUNCTION public.%I()', r.kind, r.name, r.ev, r.tbl, r.how, r.fn);
     END IF;
   END LOOP;
 END $$;

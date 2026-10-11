@@ -3,7 +3,7 @@
 // La source « vraie » appelle la fonction `worker-assistant` (brouillon ou
 // réponse, jamais d'écriture). La source démo (préviews uniquement) exécute le
 // MÊME lecteur de phrases que le serveur, sur des chantiers fictifs.
-import { supabase } from '@/lib/supabase';
+import { supabase, withOrigin } from '@/lib/supabase';
 import { bestPlanningFor, type PlannedLike } from '@/supabase/functions/_shared/day-hours';
 import { isPreviewHost } from '@/lib/hosting';
 import { attachmentPayload } from '@/lib/attachment';
@@ -122,7 +122,8 @@ export type SaveLines = (date: string, lines: DraftLine[]) => Promise<{ ok: numb
  * main : celui de ce chantier que la ligne recouvre le plus.
  */
 export function makeWorkerSaver(user: { id: string; company_id: string }, chantiers: WorkerSnapshot['chantiers']): SaveLines {
-  return async (date, lines) => {
+  // Lot 3 : les lignes écrites (et leur « Annuler ») sont tracées « assistant ».
+  return (date, lines) => withOrigin('assistant', async () => {
     const { data: plans } = await supabase.from('planning').select('id, worksite_id, absence_type, estimated_start, estimated_end').eq('user_id', user.id).eq('work_date', date);
     let ok = 0, queued = 0;
     const created: string[] = [];
@@ -140,15 +141,15 @@ export function makeWorkerSaver(user: { id: string; company_id: string }, chanti
       if (r === 'online') { ok++; created.push(localId); } else queued++;
     }
     // Lot 7 : « Annuler » retire ces lignes (brouillons, comme « Retirer » à l'écran).
-    const undo = queued ? undefined : async () => {
+    const undo = queued ? undefined : () => withOrigin('assistant', async () => {
       const { error } = await supabase.from('time_entries').delete().eq('user_id', user.id).eq('status', 'draft').in('client_id', created);
       if (error) return { ok: false, message: 'Annulation impossible : la journée a déjà été envoyée ou verrouillée.' };
       await supabase.rpc('assistant_journal_log', { p_action: 'declarer_heures', p_summary: `Heures du ${date} (${created.length} ligne(s))`, p_undone: true });
       return { ok: true, message: 'Annulé : les lignes sont retirées.' };
-    };
+    });
     if (ok) await supabase.rpc('assistant_journal_log', { p_action: 'declarer_heures', p_summary: `Heures du ${date} (${ok} ligne(s))`, p_undone: false });
     return { ok, queued, undo };
-  };
+  });
 }
 
 export const demoSaver: SaveLines = async (_d, lines) => {

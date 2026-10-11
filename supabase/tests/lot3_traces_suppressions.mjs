@@ -147,7 +147,7 @@ function commentedBlock(startRe, endRe = null) {
 }
 const POST_SQL = commentedBlock(/^-- VÉRIFICATION APRÈS APPLICATION/);
 const ROLLBACK_SQL = commentedBlock(/^-- ── DÉBUT DU RETOUR ARRIÈRE ──$/, /^-- ── FIN DU RETOUR ARRIÈRE ──$/);
-const NEW_FNS = ['traces_capture', 'traces_meeting', 'traces_classify', 'traces_author', 'traces_origin'];
+const NEW_FNS = ['traces_capture', 'traces_meeting', 'traces_meeting_people', 'traces_classify', 'traces_author', 'traces_origin'];
 
 // ═══ La migration : additive, rejouable, droits repris ═════════════════════
 section('Migration : additive, rejouable, droits repris malgré les droits par défaut');
@@ -183,11 +183,13 @@ check(before.priv === after.priv, 'droits des tables existantes inchangés');
   const code = SQL.split('\n').filter((l) => !/^\s*--/.test(l)).join('\n');
   check(!/\bDROP\b/i.test(code), 'aucun DROP exécuté (seulement dans le retour arrière commenté)');
   const deletes = code.match(/'?\bDELETE\b[^\n]*/gi) || [];
-  check(deletes.length > 0 && deletes.every((l) => /^DELETE', '(REFERENCING OLD TABLE|FOR EACH ROW)/.test(l) || /^'DELETE' THEN\b/.test(l)),
+  check(deletes.length > 0 && deletes.every((l) => /^DELETE', '(REFERENCING OLD TABLE|FOR EACH ROW|DEFERRABLE INITIALLY DEFERRED FOR EACH ROW)/.test(l) || /^'DELETE' THEN\b/.test(l)),
     `DELETE n'apparaît que comme événement de déclencheur ou valeur de TG_OP (${deletes.length} fois), jamais en instruction`);
   check(!/\b(RENAME|ALTER\s+COLUMN|ALTER\s+POLICY|UPDATE\s+public\.|TRUNCATE)\b/i.test(code), 'aucun RENAME / ALTER COLUMN / ALTER POLICY / UPDATE de données');
 }
 check(!!POST_SQL && !!ROLLBACK_SQL, 'en-tête : vérification après application et retour arrière présents (blocs commentés)');
+check(/^SET LOCAL lock_timeout = '5s';$/m.test(SQL) && SQL.indexOf("SET LOCAL lock_timeout") < SQL.indexOf('CREATE TABLE'),
+  'verrous : jamais plus de 5 s d’attente (SET LOCAL lock_timeout, avant toute instruction)');
 check(/INSERT INTO supabase_migrations\.schema_migrations \(version, name\)\n--\s+VALUES \('20261011120000', 'lot3_traces_suppressions'\) ON CONFLICT DO NOTHING;/.test(SQL),
   'en-tête : ligne d’historique (version + nom du fichier)');
 {
@@ -301,14 +303,43 @@ await as(ADMIN);
 const delN = (await rows(`DELETE FROM public.planning WHERE user_id = $1 AND company_id = $2 AND notes IS NULL AND created_at < now() - interval '90 minutes' RETURNING id`, [ALEX, CO])).length;
 check(delN === 100 && await nTraces() === nb + 100, `100 cases supprimées → 100 traces (${(await nTraces()) - nb})`);
 
+section('Planning : absence remplacée (setAbsence) et son « Annuler »');
+// lib/planning-writes.ts : la nouvelle absence d'abord, l'ancienne retirée ensuite (deux requêtes).
+const absence = async (type, by = ADMIN, ago = '2 days') => (await one(`INSERT INTO public.planning (company_id, user_id, work_date, absence_type, created_by, created_at)
+  VALUES ($1, $2, $3, $4, $5, now() - $6::interval) RETURNING *`, [CO, SAM, d(2), type, by, ago]));
+const A1 = await absence('conge');
+await as(ADMIN);
+const A2 = await one(`INSERT INTO public.planning (company_id, user_id, work_date, absence_type, created_by) VALUES ($1, $2, $3, 'maladie', $4) RETURNING *`, [CO, SAM, d(2), ADMIN]);
+await db.query(`DELETE FROM public.planning WHERE id = $1`, [A1.id]);
+t = await tracesOf(A1.id);
+check(t.length === 1 && t[0].action === 'modifiee' && t[0].before.absence_type === 'conge' && t[0].after?.absence_type === 'maladie' && t[0].after?.id === A2.id && t[0].user_id === SAM,
+  'Congé remplacé par Arrêt maladie : UNE ligne « modifiée », Congé → Maladie (pas « Congé supprimé » sans un mot)');
+// « Annuler » : la maladie posée retirée (même personne, < 5 min), le congé reposé (nouvel id).
+await as(ADMIN);
+await db.query(`DELETE FROM public.planning WHERE id = $1`, [A2.id]);
+check((await tracesOf(A2.id)).length === 0, '« Annuler » : l’absence qu’on venait de poser repart sans trace');
+const A3 = await one(`INSERT INTO public.planning (company_id, user_id, work_date, absence_type, created_by) VALUES ($1, $2, $3, 'conge', $4) RETURNING *`, [CO, SAM, d(2), ADMIN]);
+t = await tracesOf(A3.id);
+check(t.length === 1 && t[0].action === 'remise' && t[0].after.absence_type === 'conge', '… et le congé reposé : « remise »');
+// Même type reposé (congé → congé) : rien de visible, aucune trace.
+await root();
+await db.query(`UPDATE public.planning SET created_at = now() - interval '2 days' WHERE id = $1`, [A3.id]);
+const nA = await nTraces();
+await as(ADMIN);
+await one(`INSERT INTO public.planning (company_id, user_id, work_date, absence_type, created_by) VALUES ($1, $2, $3, 'conge', $4) RETURNING id`, [CO, SAM, d(2), ADMIN]);
+await db.query(`DELETE FROM public.planning WHERE id = $1`, [A3.id]);
+check(await nTraces() === nA, 'congé remplacé par un congé (même type) : aucune trace');
+
 // ═══ Heures ════════════════════════════════════════════════════════════════
 section('Heures : brouillon effacé, brouillon vide, ligne retirée, correction du bureau');
 await root();
-const entry = async (o = {}) => (await one(`INSERT INTO public.time_entries (company_id, user_id, worksite_id, work_date, start_time, end_time, status, submitted_at)
-  VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-  [CO, o.user ?? SAM, o.ws ?? WS, o.date ?? d(10), o.start ?? '08:00', o.end ?? '12:00', o.status ?? 'draft', o.status === 'submitted' ? new Date().toISOString() : null]));
-check(await nTraces() === nb + 100, 'écrire des heures : aucune trace');
+// Lignes « anciennes » (écrites il y a une heure), sauf `fresh`.
+const entry = async (o = {}) => (await one(`INSERT INTO public.time_entries (company_id, user_id, worksite_id, work_date, start_time, end_time, status, submitted_at, created_at)
+  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now() - $9::interval) RETURNING *`,
+  [CO, o.user ?? SAM, o.ws ?? WS, o.date ?? d(10), o.start ?? '08:00', o.end ?? '12:00', o.status ?? 'draft', o.status === 'submitted' ? new Date().toISOString() : null, o.fresh ? '0 seconds' : '1 hour']));
+const nH = await nTraces();
 const E1 = await entry();
+check(await nTraces() === nH, 'écrire des heures : aucune trace');
 await as(SAM);
 check((await rows(`DELETE FROM public.time_entries WHERE id = $1 RETURNING id`, [E1.id])).length === 1, 'Sam efface son brouillon (4 h notées)');
 t = await tracesOf(E1.id);
@@ -328,6 +359,16 @@ const E0 = await entry({ start: '08:00', end: '08:00' });
 await as(SAM);
 await db.query(`DELETE FROM public.time_entries WHERE id = $1`, [E0.id]);
 check((await tracesOf(E0.id)).length === 0, 'brouillon VIDE (0 minute) jamais envoyé effacé : aucune trace (il ne compte nulle part)');
+// L'assistant du salarié déclare deux lignes, puis « Annuler » aussitôt (lib/worker-assistant.ts makeWorkerSaver).
+const EA = await entry({ date: d(10), start: '07:30', end: '12:00', fresh: true });
+const EB = await entry({ date: d(10), start: '13:00', end: '16:30', fresh: true });
+await as(SAM, 'authenticated', { 'x-bemexo-origine': 'assistant' });
+await db.query(`DELETE FROM public.time_entries WHERE id IN ($1, $2)`, [EA.id, EB.id]);
+check((await tracesOf(EA.id)).length === 0 && (await tracesOf(EB.id)).length === 0, '« Annuler » de ses heures déclarées il y a moins de 5 minutes (brouillons jamais envoyés) : aucune trace');
+const EC = await entry({ date: d(10), start: '07:00', end: '09:00', fresh: true });
+await as(ADMIN);
+await db.query(`DELETE FROM public.time_entries WHERE id = $1`, [EC.id]);
+check((await tracesOf(EC.id)).length === 1, 'le même brouillon récent supprimé par le bureau : tracé');
 const E2 = await entry({ date: d(11) });
 await as(SAM);
 await db.query(`UPDATE public.time_entries SET end_time = '12:30' WHERE id = $1`, [E2.id]);
@@ -393,11 +434,30 @@ check(t.length === 1 && t[0].action === 'supprimee' && t[0].actor_id === ADMIN &
   'trace : « pointage supprimé » par le bureau, heure de début gardée');
 check(!('start_lat' in t[0].before) && !('start_lng' in t[0].before) && !('start_accuracy_m' in t[0].before) && !('start_located_at' in t[0].before),
   'aucune coordonnée GPS recopiée dans la trace');
-// « Annuler » : le chrono est remis (même salarié, même jour).
+// Un NOUVEAU chrono lancé après la suppression (autre heure de début) : pas une remise.
 await as(SAM);
-check(!(await err(`INSERT INTO public.active_sessions (user_id, company_id, worksite_id, work_date) VALUES ($1, $2, $3, $4)`, [SAM, CO, WS, TODAY])), 'Sam remet son chrono');
+await db.query(`INSERT INTO public.active_sessions (user_id, company_id, worksite_id, work_date) VALUES ($1, $2, $3, $4)`, [SAM, CO, WS, TODAY]);
 t = (await tracesOf(SAM)).filter((x) => x.object_table === 'active_sessions');
-check(t.length === 2 && t[1].action === 'remise', 'trace : « remis »');
+check(t.length === 1, 'Sam relance un NOUVEAU chrono après la suppression : aucune trace (rien n’a été « remis »)');
+await root();
+await db.query(`DELETE FROM public.active_sessions WHERE user_id = $1`, [SAM]);
+check((await tracesOf(SAM)).filter((x) => x.object_table === 'active_sessions').length === 1, '(ce chrono de quelques secondes, retiré : pas tracé non plus)');
+// « Annuler » : Sam annule son chrono par l'assistant, puis « Annuler » le remet (même chantier ;
+// le serveur repose l'heure de prise, comme en production).
+await startSession(SAM, '90 minutes');
+await as(SAM);
+await db.query(`DELETE FROM public.active_sessions WHERE user_id = $1`, [SAM]);
+const startedAt = (await last()).before.started_at;
+// Entre les deux, un chrono sur un AUTRE chantier : un nouveau départ, pas une remise.
+await as(SAM);
+await db.query(`INSERT INTO public.active_sessions (user_id, company_id, worksite_id, work_date) VALUES ($1, $2, $3, $4)`, [SAM, CO, WS2, TODAY]);
+check((await tracesOf(SAM)).filter((x) => x.object_table === 'active_sessions').length === 2, 'Sam lance un chrono sur un autre chantier : aucune trace');
+await root();
+await db.query(`DELETE FROM public.active_sessions WHERE user_id = $1`, [SAM]);
+await as(SAM);
+check(!(await err(`INSERT INTO public.active_sessions (user_id, company_id, worksite_id, work_date, started_at) VALUES ($1, $2, $3, $4, $5)`, [SAM, CO, WS, TODAY, startedAt])), 'Sam remet son chrono (« Annuler » : la ligne lue)');
+t = (await tracesOf(SAM)).filter((x) => x.object_table === 'active_sessions');
+check(t.length === 3 && t[1].action === 'supprimee' && t[2].action === 'remise', 'trace : « remis »');
 // Fermé normalement (« J'ai fini ») : la ligne d'heures naît dans la même transaction.
 await root();
 await db.query(`UPDATE public.active_sessions SET started_at = now() - interval '3 hours' WHERE user_id = $1`, [SAM]);
@@ -469,6 +529,49 @@ await one(`SELECT public.office_delete_meeting($1)`, [M2.id]);
 t = await tracesOf(M2.id);
 check(t.length === 1 && t[0].user_id === null && t[0].before.all_team === true, '« Toute l’équipe » supprimée : un seul résumé (lisible par toute l’équipe)');
 
+section('Réunions : participant retiré, « Toute l’équipe » devenue restreinte — chacun ne lit que ce qui le concerne');
+// Le cas signalé en relecture : « Toute l'équipe » transformée en entretien restreint.
+await as(ADMIN);
+const M4 = await one(`SELECT * FROM public.office_save_meeting(NULL, 'Equipe', $1, '08:00', NULL, NULL, true, NULL)`, [d(17)]);
+await as(ADMIN);
+await one(`SELECT * FROM public.office_save_meeting($1, 'Entretien confidentiel Sam', $2, '08:00', NULL, 'Bureau RH', false, $3::uuid[])`, [M4.id, d(17), `{${SAM}}`]);
+t = await tracesOf(M4.id);
+const sum4 = t.find((x) => x.user_id === null);
+check(sum4?.action === 'modifiee' && sum4.before.all_team === true && sum4.after.all_team === false, 'résumé (bureau) : « modifiée », Toute l’équipe → liste');
+const t4 = (uid) => t.find((x) => x.user_id === uid);
+check(t4(SAM)?.action === 'modifiee' && t4(SAM).after?.title === 'Entretien confidentiel Sam', 'Sam (toujours invité) : sa ligne, avant → après');
+check(t4(ALEX)?.action === 'retiree' && t4(ALEX).after === null && t4(ALEX).before.title === 'Equipe' && t4(CHEF)?.action === 'retiree',
+  'Alex et le chef d’équipe (plus invités) : « retirée », l’avant SEULEMENT');
+check(!t4(ANCIEN), 'salarié archivé : rien');
+await as(ALEX);
+check(await count(`SELECT count(*) n FROM public.meetings WHERE id = $1`, [M4.id]) === 0, 'Alex ne voit pas la réunion restreinte (lot 4)…');
+const alexM4 = JSON.stringify(await rows(`SELECT * FROM public.traces WHERE object_id = $1`, [M4.id]));
+check(!alexM4.includes('Entretien') && !alexM4.includes('Bureau RH'), `… ni ses nouveaux détails dans les traces (${alexM4.length > 2 ? 'il lit seulement « Equipe » retirée' : 'rien'})`);
+await as(SAM);
+check((await rows(`SELECT * FROM public.traces WHERE object_id = $1`, [M4.id])).every((x) => x.user_id === SAM), 'Sam : seulement SA ligne (le résumé n’est plus lisible par l’équipe)');
+// Un participant retiré, rien d'autre ne change.
+await as(ADMIN);
+const M5 = await one(`SELECT * FROM public.office_save_meeting(NULL, 'Chantier', $1, '07:30', NULL, NULL, false, $2::uuid[])`, [d(18), `{${SAM},${ALEX}}`]);
+await as(ADMIN);
+await one(`SELECT * FROM public.office_save_meeting($1, 'Chantier', $2, '07:30', NULL, NULL, false, $3::uuid[])`, [M5.id, d(18), `{${ALEX}}`]);
+t = await tracesOf(M5.id);
+check(t.length === 1 && t[0].user_id === SAM && t[0].action === 'retiree' && t[0].after === null && t[0].before.title === 'Chantier' && !('participants' in t[0].before),
+  'Sam retiré de la liste (rien d’autre) : une ligne « retirée » pour lui seul, sans la liste');
+// Retiré ET décalée : celui qui reste lit avant → après, celui qui part l'avant seulement.
+await as(ADMIN);
+await one(`SELECT * FROM public.office_save_meeting($1, 'Chantier', $2, '07:30', NULL, NULL, false, $3::uuid[])`, [M5.id, d(18), `{${ALEX},${CHEF}}`]);
+await as(ADMIN);
+await one(`SELECT * FROM public.office_save_meeting($1, 'Chantier', $2, '09:00', NULL, NULL, false, $3::uuid[])`, [M5.id, d(18), `{${ALEX}}`]);
+t = (await tracesOf(M5.id)).slice(1);
+check(t.length === 3 && t.find((x) => !x.user_id)?.action === 'decalee' && t.find((x) => x.user_id === ALEX)?.after?.start_time === '09:00:00'
+  && t.find((x) => x.user_id === CHEF)?.action === 'retiree' && t.find((x) => x.user_id === CHEF)?.after === null,
+  'décalée et le chef retiré : résumé + Alex (07:30 → 09:00) + le chef « retirée » sans la nouvelle heure');
+// Liste → « Toute l'équipe », rien d'autre : personne ne perd la réunion, rien pour les salariés.
+await as(ADMIN);
+await one(`SELECT * FROM public.office_save_meeting($1, 'Chantier', $2, '09:00', NULL, NULL, true, NULL)`, [M5.id, d(18)]);
+t = (await tracesOf(M5.id)).slice(4);
+check(t.length === 1 && t[0].user_id === null && t[0].action === 'modifiee', 'liste → « Toute l’équipe » : le résumé seulement (personne ne perd la réunion)');
+
 // ═══ Lecture ═══════════════════════════════════════════════════════════════
 section('Qui lit quoi');
 await root();
@@ -484,7 +587,7 @@ const r2 = await rows(`SELECT company_id FROM public.traces`);
 check(r2.length === 1 && r2[0].company_id === CO2, 'bureau d’une autre entreprise : ne lit que la sienne (1 trace)');
 await as(SAM);
 const mine = await rows(`SELECT * FROM public.traces`);
-check(mine.length > 0 && mine.every((x) => x.user_id === SAM || (x.user_id === null && x.object_table === 'meetings' && x.before?.all_team === true)),
+check(mine.length > 0 && mine.every((x) => x.user_id === SAM || (x.user_id === null && x.object_table === 'meetings' && (x.before === null || x.before.all_team === true) && (x.after === null || x.after.all_team === true))),
   `Sam : SES lignes seulement (+ la réunion « Toute l’équipe ») — ${mine.length} lignes`);
 check(['planning', 'time_entries', 'active_sessions', 'day_tasks', 'meetings'].every((k) => mine.some((x) => x.object_table === k)),
   'Sam voit son planning, ses heures, son chrono, ses tâches, ses réunions');

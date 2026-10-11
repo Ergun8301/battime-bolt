@@ -1,8 +1,8 @@
 // Lot 3 — « Interventions supprimées ou décalées » : mise en forme des traces.
 //   npm run test:traces
 import {
-  dayLabel, daysAgoISO, hhmm, isSystemTrace, ORIGIN_LABEL, parisMidnightISO, parisTime, personIds, snapshotLabel, traceChange, traceConcerned,
-  traceTitle, traceWho, whenLabel, worksiteIds, type TraceRow,
+  dayLabel, daysAgoISO, hhmm, isReassigned, isSystemTrace, ORIGIN_LABEL, parisMidnightISO, parisTime, personIds, snapshotLabel, traceChange, traceConcerned,
+  traceTitle, traceWho, visibleTraces, whenLabel, worksiteIds, type TraceRow,
 } from './traces.ts';
 
 function eq(a: unknown, b: unknown, msg: string) {
@@ -90,4 +90,39 @@ Deno.test('noms à lire en une fois', () => {
   const rows = [tr({}), tr({ action: 'decalee', after: slot({ worksite_id: 'w2' }) }), tr({ object_table: 'meetings', user_id: null, before: { participants: ['u-alex'] } })];
   eq(worksiteIds(rows).sort(), ['w1', 'w2'], 'chantiers');
   ok(personIds(rows).includes('u-alex') && personIds(rows).includes(SAM) && personIds(rows).includes(ADMIN), 'personnes : auteurs, concernés, participants');
+});
+
+Deno.test('case passée d’un salarié à un autre : de qui à qui, sans doublon', () => {
+  // La base écrit DEUX lignes (l'ancien, le nouveau), même avant / après : seul user_id change.
+  const ALEX = 'u-alex';
+  const base = { action: 'decalee' as const, before: slot(), after: slot({ user_id: ALEX }) };
+  const forSam = tr({ ...base, id: 10, user_id: SAM });
+  const forAlex = tr({ ...base, id: 11, user_id: ALEX });
+  ok(isReassigned(forSam) && !isReassigned(tr({ action: 'decalee', after: slot({ work_date: '2026-10-15' }) })), 'changement de salarié repéré');
+  // Sam (il la perd) : « retirée de votre planning », l'avant seulement.
+  const sam = { id: SAM, office: false };
+  eq(traceTitle(forSam, sam), 'Intervention retirée de votre planning', 'titre chez l’ancien');
+  eq(traceChange(forSam, { worksites: names.worksites }, sam), { before: 'mer. 14/10 · 08:00–12:00 · Villa Exemple', after: null }, 'ancien : l’avant seulement');
+  eq(visibleTraces([forSam], sam).length, 1, 'l’ancien la voit');
+  // Alex (il la reçoit) : rien dans « Interventions supprimées ».
+  eq(visibleTraces([forAlex], { id: ALEX, office: false }).length, 0, 'le nouveau ne la voit pas');
+  // Bureau : une seule ligne, « Sam Test → Alex Exemple », l'avant et l'après nommés.
+  const office = { id: ADMIN, office: true };
+  const shown = visibleTraces([forAlex, forSam], office);
+  eq(shown.map((t) => t.id), [10], 'bureau, tous les salariés : une ligne (celle de l’ancien)');
+  eq(visibleTraces([forAlex], office).map((t) => t.id), [11], 'bureau filtré sur Alex : sa ligne reste');
+  eq(traceConcerned(forSam, names), 'Sam Test → Alex Exemple', 'de qui à qui');
+  eq(traceTitle(forSam, office), 'Intervention décalée', 'titre au bureau');
+  eq(traceChange(forSam, names, office), { before: 'Sam Test · mer. 14/10 · 08:00–12:00 · Villa Exemple', after: 'Alex Exemple · mer. 14/10 · 08:00–12:00 · Villa Exemple' }, 'avant / après nommés : plus jamais identiques');
+  ok(personIds([forAlex]).includes(SAM), 'le nom de l’ancien est lu même filtré sur le nouveau');
+});
+
+Deno.test('absence remplacée, réunion retirée', () => {
+  const abs = tr({ action: 'modifiee', before: slot({ absence_type: 'conge', worksite_id: null }), after: slot({ id: 'p2', absence_type: 'maladie', worksite_id: null }) });
+  eq(traceTitle(abs), 'Absence modifiée', 'titre');
+  eq(traceChange(abs, names), { before: 'mer. 14/10 · Congé', after: 'mer. 14/10 · Arrêt maladie' }, 'Congé → Arrêt maladie');
+  const m = { meeting_date: '2026-10-16', start_time: '14:00:00', end_time: null, title: 'Point sécurité', place: null, all_team: false };
+  const gone = tr({ object_table: 'meetings', action: 'retiree', before: m, after: null });
+  eq(traceTitle(gone), 'Réunion retirée', 'retiré d’une réunion');
+  eq(traceChange(gone, names), { before: 'ven. 16/10 · 14:00 · « Point sécurité »', after: null }, 'l’avant seulement');
 });

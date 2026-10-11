@@ -3,6 +3,9 @@
 // semaine prochaine » → 27 cases effacées d'un coup, la carte affiche le nombre et un
 // « Annuler » bien visible ; Annuler remet les 27 cases À L'IDENTIQUE. Les cases avec des
 // heures envoyées et le mois clôturé ne sont jamais touchés.
+// Lot 3 (traces) : l'en-tête `x-bemexo-origine: assistant` part sur l'action et son
+// « Annuler », jamais aux chargements ni vers les fonctions ; et JAMAIS tant que la
+// table `traces` n'existe pas (migration pas appliquée : requêtes identiques à avant).
 import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path'; import { chromium } from 'playwright-core';
 const [,, OUT, SH, PORT='4198'] = process.argv; fs.mkdirSync(SH,{recursive:true});
 const T={'.html':'text/html','.js':'text/javascript','.css':'text/css','.svg':'image/svg+xml','.woff2':'font/woff2','.png':'image/png','.json':'application/json','.webmanifest':'application/json'};
@@ -43,8 +46,12 @@ const match=(x,k,v)=>{ if(!(k in x)) return true; const s=x[k]==null?null:String
 const SKIP=new Set(['select','limit','order','on_conflict','columns','offset']);
 const filt=(rows,sp)=>rows.filter(x=>[...sp].every(([k,v])=>SKIP.has(k)||match(x,k,v)));
 const log=[];
+// Lot 3 : chaque requête, avec son en-tête d'origine et le moment (chargement, action, annuler).
+let phase='load', TRACES='oui'; const reqs=[];
 await ctx.route('**/*.supabase.co/**', async (r)=>{
   const u=new URL(r.request().url()); const m=r.request().method();
+  reqs.push({phase,m,path:u.pathname,origin:r.request().headers()['x-bemexo-origine']||null});
+  if(u.pathname==='/rest/v1/traces'&&TRACES!=='oui') return r.fulfill({status:404,json:{code:'PGRST205',message:"Could not find the table 'public.traces' in the schema cache",details:null,hint:null}});
   if(u.pathname.startsWith('/auth/v1/user')) return r.fulfill({json:session.user});
   if(u.pathname.startsWith('/auth/v1/')) return r.fulfill({json:{}});
   if(u.pathname.startsWith('/functions/v1/assistant')) return r.fulfill({json:REP});
@@ -62,6 +69,7 @@ await ctx.route('**/*.supabase.co/**', async (r)=>{
 });
 let ok=0, ko=0; const check=(c,m)=>{ if(c){ok++;console.log('✅',m);} else {ko++;console.log('❌',m);} };
 const p=await ctx.newPage(); await p.goto(`http://localhost:${PORT}/admin`); await p.waitForTimeout(2500);
+phase='action';
 await p.click('[data-testid="bar-assistant"]'); await p.waitForTimeout(400);
 await p.fill('.as-bar textarea','Efface le planning de la semaine prochaine');
 await p.click('button[aria-label="Envoyer"]');
@@ -73,6 +81,7 @@ check(D.planning.length===3 && ['p01','p07','p13'].every(id=>D.planning.some(x=>
 const undoBtn=p.locator('[data-testid=action-undo]');
 check(await undoBtn.getAttribute('class')==='strong' && /tout remettre/.test(await undoBtn.innerText()), '« Annuler : tout remettre » bien visible (plus de 10 éléments)');
 await p.locator('[data-testid=assistant-panel]').screenshot({path:`${SH}/01-27-cases-effacees.png`});
+phase='undo';
 await undoBtn.click();
 await p.waitForSelector('[data-testid=action-undone]', { timeout: 10000 }).catch(()=>{});
 const undone=await p.locator('[data-testid=action-undone]').innerText().catch(()=> '');
@@ -81,5 +90,26 @@ const sort=(a)=>JSON.stringify([...a].sort((x,y)=>x.id.localeCompare(y.id)));
 check(sort(D.planning)===sort(JSON.parse(snapshot)), 'base : les 30 cases sont revenues À L’IDENTIQUE (mêmes id, horaires, notes, auteur)');
 await p.locator('[data-testid=assistant-panel]').screenshot({path:`${SH}/02-annuler-tout-remis.png`});
 console.log('   requêtes :', log.join(' | '));
+// ─── Lot 3 : l'en-tête d'origine ───
+const tagged=(ph)=>reqs.filter(x=>x.phase===ph&&x.origin);
+check(tagged('load').length===0, `chargement : aucun en-tête x-bemexo-origine (${tagged('load').length})`);
+check(reqs.some(x=>x.phase==='action'&&x.m==='DELETE'&&x.path==='/rest/v1/planning'&&x.origin==='assistant'), 'action de l’assistant : l’effacement porte « x-bemexo-origine: assistant »');
+check(reqs.some(x=>x.phase==='undo'&&x.m==='POST'&&x.path==='/rest/v1/planning'&&x.origin==='assistant'), '« Annuler » : la remise porte l’en-tête aussi');
+check(!reqs.some(x=>x.path.startsWith('/functions/')&&x.origin), 'jamais vers les fonctions edge');
+check(!reqs.some(x=>!x.path.startsWith('/rest/v1/')&&x.origin), 'jamais vers l’authentification ni le stockage');
+// Sans la migration (table `traces` absente) : aucun en-tête, nulle part.
+TRACES='non'; phase='load'; reqs.length=0;
+const p2=await ctx.newPage(); await p2.goto(`http://localhost:${PORT}/admin`); await p2.waitForTimeout(2500);
+phase='action';
+await p2.click('[data-testid="bar-assistant"]'); await p2.waitForTimeout(400);
+await p2.fill('.as-bar textarea','Efface le planning de la semaine prochaine');
+await p2.click('button[aria-label="Envoyer"]');
+await p2.waitForSelector('[data-testid=action-done]', { timeout: 10000 }).catch(()=>{});
+phase='undo';
+await p2.locator('[data-testid=action-undo]').click();
+await p2.waitForSelector('[data-testid=action-undone]', { timeout: 10000 }).catch(()=>{});
+check(/27 cases remises/.test(await p2.locator('[data-testid=action-undone]').innerText().catch(()=> '')), 'sans la migration : l’action et « Annuler » marchent comme avant');
+check(reqs.length>0&&reqs.every(x=>!x.origin), `sans la migration : aucun en-tête d’origine (${reqs.filter(x=>x.origin).length} sur ${reqs.length} requêtes)`);
+check(sort(D.planning)===sort(JSON.parse(snapshot)), 'base : les 30 cases sont revenues À L’IDENTIQUE');
 console.log(`\n${ok} ✅ / ${ko} ❌`);
 await b.close(); srv.close(); process.exit(ko?1:0);

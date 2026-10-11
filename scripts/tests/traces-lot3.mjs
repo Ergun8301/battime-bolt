@@ -16,8 +16,10 @@
 //          un vrai Postgres. Personne n'écrit de trace : tout POST/PATCH/DELETE
 //          sur `traces` est refusé, et compté.
 //
-//   N1 sans migration, salarié : pas de lien dans l'Historique, aucune écriture
-//   N2 sans migration, bureau : rien dans les Réglages ni dans le menu du téléphone
+//   N1 sans migration, salarié : pas de lien dans l'Historique, aucune écriture,
+//      UNE seule lecture de `traces` (404), jamais redemandée
+//   N2 sans migration, bureau : rien dans les Réglages ni dans le menu du téléphone,
+//      une seule lecture au chargement de /admin, aucune à l'ouverture des Réglages / du menu
 //   W1 salarié : lien discret « Interventions supprimées » dans l'Historique
 //   W2 la liste : SES lignes seulement, 60 derniers jours, qui (« le bureau »,
 //      « vous », « l'assistant du bureau », « automatiquement, la nuit »), avant → après en clair
@@ -29,6 +31,11 @@
 //   O3 filtre salarié ; « Mois » ; ‹ période précédente ; › grisé sur la période en cours
 //   O4 téléphone : menu ☰ → la même liste ; pas de défilement horizontal
 //   O5 jamais d'écriture (ni trace, ni rien d'autre) en lisant
+//   O6 plus de 500 lignes : l'écran le dit
+//   R  case passée de Sam à Alex : Sam lit « retirée de votre planning », Alex ne
+//      la voit pas, le bureau lit UNE ligne « Sam Test → Alex Exemple » ;
+//      réunion « Toute l'équipe » devenue restreinte : Sam lit « Réunion retirée »
+//      (l'avant seulement), jamais le résumé ni les nouveaux détails
 import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path';
 let chromium;
 try { ({ chromium } = await import('playwright-core')); } catch {
@@ -95,6 +102,17 @@ const TRACES = [
       trace({ user_id: ALEX, object_table: 'meetings', object_id: 'm-1', before: m, created_at: at }),
       trace({ user_id: SAM, object_table: 'meetings', object_id: 'm-1', before: m, created_at: at })];
   })(),
+  // Case passée de Sam à Alex (même jour, même heure) : la base écrit une ligne pour chacun.
+  trace({ action: 'decalee', object_id: 'p-r', before: planSnap({ id: 'p-r', work_date: '2026-10-16' }), after: planSnap({ id: 'p-r', work_date: '2026-10-16', user_id: ALEX }), created_at: '2026-10-14T06:10:00.000Z' }),
+  { ...trace({ action: 'decalee', object_id: 'p-r', before: planSnap({ id: 'p-r', work_date: '2026-10-16' }), after: planSnap({ id: 'p-r', work_date: '2026-10-16', user_id: ALEX }), created_at: '2026-10-14T06:10:00.000Z' }), user_id: ALEX },
+  // « Toute l'équipe » devenue un entretien restreint (sans Sam) : résumé (bureau) + « retirée » pour Sam.
+  ...(() => {
+    const m = { id: 'm-2', company_id: CO, title: 'Equipe', meeting_date: '2026-10-15', start_time: '08:00:00', end_time: null, place: null, all_team: true };
+    const at = '2026-10-13T08:00:00.000Z';
+    return [trace({ user_id: null, object_table: 'meetings', object_id: 'm-2', action: 'modifiee', before: { ...m, participants: [] },
+      after: { ...m, title: 'Entretien confidentiel', place: 'Bureau RH', all_team: false }, created_at: at }),
+    trace({ user_id: SAM, object_table: 'meetings', object_id: 'm-2', action: 'retiree', before: m, created_at: at })];
+  })(),
   // Une autre entreprise
   trace({ company_id: CO2, user_id: 'u-autre', before: planSnap({ company_id: CO2 }), created_at: '2026-10-14T07:00:00.000Z' }),
 ];
@@ -121,14 +139,17 @@ const myCompany = (uid) => (userOf(uid)?.is_active !== false ? userOf(uid)?.comp
 const visible = (t, uid, rows) => {
   if (t !== 'traces') return rows;
   const co = myCompany(uid);
+  const allTeam = (x) => (x.before === null || x.before?.all_team === true) && (x.after === null || x.after?.all_team === true);
   return rows.filter((x) => x.company_id === co && (isAdmin(uid) || x.user_id === uid
-    || (x.user_id === null && x.object_table === 'meetings' && (x.before ?? x.after)?.all_team === true)));
+    || (x.user_id === null && x.object_table === 'meetings' && allTeam(x))));
 };
-// Les deux formes de `or=` que lib/traces.ts envoie.
+// Les trois formes de `or=` que lib/traces.ts envoie.
 const orFilter = (rows, or) => {
   if (!or) return rows;
   const mine = /^\(user_id\.eq\.([^,]+),and\(user_id\.is\.null,object_table\.eq\.meetings\)\)$/.exec(or);
   if (mine) return rows.filter((x) => x.user_id === mine[1] || (x.user_id === null && x.object_table === 'meetings'));
+  const one = /^\(user_id\.eq\.([^,]+),and\(user_id\.is\.null,object_table\.eq\.meetings,before->>all_team\.eq\.true,or\(after\.is\.null,after->>all_team\.eq\.true\)\)\)$/.exec(or);
+  if (one) return rows.filter((x) => x.user_id === one[1] || (x.user_id === null && x.object_table === 'meetings' && x.before?.all_team === true && (x.after === null || x.after?.all_team === true)));
   if (or === '(object_table.neq.meetings,user_id.is.null)') return rows.filter((x) => x.object_table !== 'meetings' || x.user_id === null);
   throw new Error(`or= inattendu : ${or}`);
 };
@@ -285,19 +306,26 @@ let w0 = writes.length; let g0 = gets.length;
 await openHistory();
 check(await wp.locator('[data-testid=history-traces]').count() === 0, 'pas de lien « Interventions supprimées »');
 check(!(await txt(wp.locator('body'))).includes('Interventions supprimées'), 'aucun texte du lot 3 à l’écran');
-check(tracesGets(g0, SAM).length >= 1 && tracesGets(g0, SAM).every((g) => g.missing), 'une seule question à la base (table absente : PGRST205), sans suite');
+check(tracesGets(g0, SAM).length === 1 && tracesGets(g0, SAM).every((g) => g.missing), `une seule question à la base (table absente : PGRST205), sans suite (${tracesGets(g0, SAM).length})`);
+await wp.getByRole('button', { name: 'Mon compte et menu' }).click(); await wp.waitForTimeout(300); await wp.keyboard.press('Escape'); await wp.waitForTimeout(300);
+check(tracesGets(g0, SAM).length === 1, 'rien de plus en restant sur l’Historique');
 check(writesSince(w0).length === 0, `aucune écriture (${JSON.stringify(writesSince(w0).map((w) => `${w.m} ${w.t}`))})`);
 await shot(wp, 'sans-migration-salarie-historique');
 
 section('N2 — sans migration, bureau : rien dans les Réglages ni dans le menu');
-w0 = writes.length;
-await openOffice(); await openSettings();
+w0 = writes.length; g0 = gets.length;
+await openOffice();
+check(tracesGets(g0, ADMIN).length === 1 && tracesGets(g0, ADMIN)[0].missing, `/admin : une seule lecture de « traces » au chargement (${tracesGets(g0, ADMIN).length})`);
+await openSettings();
+check(tracesGets(g0, ADMIN).length === 1, 'ouvrir les Réglages : aucune lecture de plus (table absente, su une fois)');
 check(await op.locator('[data-testid=set-traces]').count() === 0, 'Réglages : pas d’entrée « Interventions supprimées ou décalées »');
 await shot(dlg(op), 'sans-migration-bureau-reglages');
 await closeDlg(op);
 const mob0 = await newCtx(ADMIN, { width: 390, height: 844 }); const mp0 = await openMobileOffice(mob0);
+const g1 = gets.length;
 await openMobileMenu(mp0);
 check(await mp0.locator('[data-testid=mm-traces]').count() === 0, 'menu ☰ du téléphone : pas d’entrée');
+check(tracesGets(g1, ADMIN).length === 0, 'ouvrir le menu ☰ : aucune lecture de « traces »');
 await shot(mp0, 'sans-migration-bureau-menu-mobile');
 await mob0.close();
 check(writesSince(w0).length === 0, 'aucune écriture');
@@ -320,7 +348,7 @@ check((await txt(dW.locator('h2'))) === 'Interventions supprimées', 'fenêtre �
 check((await txt(dW)).includes('Les 60 derniers jours'), 'dit la période : les 60 derniers jours');
 const wl = await items(wp);
 console.log('     ', wl.join('\n       '));
-check(wl.length === 7, `7 lignes : les siennes (planning, heures, pointage, tâche, réunion), pas celles d’Alex ni d’il y a 70 jours (${wl.length})`);
+check(wl.length === 9, `9 lignes : les siennes (planning, heures, pointage, tâche, réunions, case passée à Alex), pas celles d’Alex ni d’il y a 70 jours (${wl.length})`);
 check(wl[0].startsWith('intervention supprimée') && wl[0].includes('par le bureau') && wl[0].includes('jeu. 15/10 · 08:00–12:00 · villa exemple') && wl[0].includes('14/10 à 09:40'),
   'case supprimée : par le bureau, quand (heure de Paris), jour · heures · chantier');
 const moved = wl.find((x) => x.startsWith('intervention décalée'));
@@ -331,6 +359,12 @@ check(wl.some((x) => x.startsWith('heures modifiées') && x.includes('automatiqu
 check(wl.some((x) => x.startsWith('tâche supprimée') && x.includes('« ranger le dépôt »')), 'tâche supprimée');
 check(wl.some((x) => x.startsWith('réunion supprimée') && x.includes('« point sécurité »') && !x.includes('alex')), 'réunion supprimée — sans la liste des autres participants');
 check(!wl.some((x) => x.includes('alex') || x.includes('06/08')), 'rien d’Alex, rien d’il y a plus de 60 jours');
+const handed = wl.find((x) => x.startsWith('intervention retirée de votre planning'));
+check(!!handed && handed.includes('était ven. 16/10 · 08:00–12:00 · villa exemple') && !handed.includes('après'), `case passée à un collègue : « retirée de votre planning », l’avant seulement (${handed})`);
+const left = wl.find((x) => x.startsWith('réunion retirée'));
+check(!!left && left.includes('« equipe »') && !wl.some((x) => x.includes('entretien') || x.includes('bureau rh')), 'réunion « Toute l’équipe » devenue restreinte : « Réunion retirée » (l’avant), jamais ses nouveaux détails');
+check(!wl.some((x) => x.startsWith('intervention remise') || x.includes(' remis ')), '(aucune étiquette « Remis » au masculin)');
+check((await txt(dW)).includes('votre planning, vos heures, vos tâches et vos réunions'), 'la phrase dit tout ce que la liste montre');
 const tq = tracesGets(g0, SAM).find((g) => g.p.get('select') === '*');
 check(!!tq && tq.p.getAll('created_at').some((v) => v.startsWith('gte.2026-08-14T22:00:00')), `lecture bornée aux 60 derniers jours (${tq?.p.getAll('created_at').join(' & ')})`);
 
@@ -357,8 +391,16 @@ OFFLINE_TRACES = 1;
 await wp.locator('[data-testid=history-traces]').click(); await waitList(wp);
 check((await txt(dlg(wp))).includes('Impossible de charger la liste.'), 'message clair quand la lecture échoue');
 await dlg(wp).getByRole('button', { name: 'Réessayer' }).click(); await waitList(wp);
-check((await items(wp)).length === 7, '« Réessayer » relit la liste');
+check((await items(wp)).length === 9, '« Réessayer » relit la liste');
 await closeDlg(wp);
+
+section('R — Alex (il a REÇU la case de Sam) : rien de « supprimé » pour lui');
+const alexCtx = await newCtx(ALEX, { width: 390, height: 844 }); const ap = track(await alexCtx.newPage(), 'alex');
+await openHistory(ap);
+await ap.locator('[data-testid=history-traces]').click(); await waitList(ap);
+const al = await items(ap);
+check(al.length === 2 && !al.some((x) => x.includes('retirée de votre planning') || x.includes('ven. 16/10 · 08:00–12:00 · villa exemple')), `Alex : sa case et sa réunion, pas la case reçue (${al.length})`);
+await alexCtx.close();
 
 // ═══ Bureau ═════════════════════════════════════════════════════════════════
 section('O1/O2 — bureau : Réglages → Voir ; la semaine, toute l’entreprise');
@@ -377,7 +419,12 @@ check((await txt(dO.locator('h2'))) === 'Interventions supprimées ou décalées
 check((await txt(op.locator('[data-testid=traces-period]'))).startsWith('S-42'), `semaine en cours par défaut (${await txt(op.locator('[data-testid=traces-period]'))})`);
 let ol = await items(op);
 console.log('     ', ol.join('\n       '));
-check(ol.length === 7, `cette semaine : 7 lignes (Sam, Alex, la réunion une seule fois ; ni l’autre entreprise, ni le mois dernier) (${ol.length})`);
+check(ol.length === 9, `cette semaine : 9 lignes (Sam, Alex, chaque réunion une seule fois, la case passée de Sam à Alex une seule fois ; ni l’autre entreprise, ni le mois dernier) (${ol.length})`);
+const reas = ol.filter((x) => x.includes('sam test → alex exemple'));
+check(reas.length === 1 && reas[0].startsWith('intervention décalée') && reas[0].includes('avant sam test · ven. 16/10 · 08:00–12:00 · villa exemple') && reas[0].includes('après alex exemple · ven. 16/10'),
+  'case passée de Sam à Alex : UNE ligne « Sam Test → Alex Exemple », avant / après nommés');
+check((await txt(dO)).includes('Ce qui a été supprimé ou décalé pendant cette période'), 'la période filtre la date de l’intervention : c’est dit sous les filtres');
+check(await dO.locator('[data-testid=traces-truncated]').count() === 0, 'moins de 500 lignes : pas d’avertissement');
 check(ol.some((x) => x.startsWith('intervention supprimée — sam test') && x.includes('par admin test') && x.includes('écran')), 'nom du salarié, nom de l’auteur, origine « Écran »');
 check(ol.some((x) => x.startsWith('intervention supprimée — alex exemple')), 'Alex aussi');
 check(ol.filter((x) => x.startsWith('réunion supprimée')).length === 1 && ol.some((x) => x.startsWith('réunion supprimée — alex exemple, sam test')), 'la réunion : une seule ligne, avec ses participants');
@@ -389,12 +436,18 @@ await shot(dO, 'bureau-semaine');
 section('O3 — filtre salarié, mois, période précédente');
 await op.selectOption('[data-testid=traces-worker]', ALEX); await waitList(op);
 ol = await items(op);
-check(ol.length === 2 && ol.every((x) => x.includes('alex exemple')), `Alex : sa case et sa réunion (${ol.length})`);
+check(ol.length === 3 && ol.every((x) => x.includes('alex exemple')), `Alex : sa case, sa réunion, la case reçue de Sam (${ol.length})`);
+// Filtré sur Sam : ses lignes ET le résumé d'une réunion restée « Toute l'équipe » (comme dans son Historique).
+const tqs = gets.length;
+await op.selectOption('[data-testid=traces-worker]', SAM); await waitList(op);
+const sq = tracesGets(tqs, ADMIN).find((g) => g.p.get('select') === '*');
+check(!!sq && /before->>all_team\.eq\.true/.test(sq.p.get('or') || ''), 'filtre salarié : la réunion « Toute l’équipe » restée telle reste dans la liste du salarié');
+check(!(await items(op)).some((x) => x.includes('entretien')), 'filtré sur Sam : rien de l’entretien restreint (seulement « Réunion retirée » pour lui)');
 await op.selectOption('[data-testid=traces-worker]', ''); await waitList(op);
 await dO.getByRole('button', { name: 'Mois' }).click(); await waitList(op);
 check((await txt(op.locator('[data-testid=traces-period]'))) === 'Octobre 2026', 'période : Octobre 2026');
 ol = await items(op);
-check(ol.length === 8 && ol.some((x) => x.startsWith('tâche supprimée — sam test')), `le mois : 8 lignes, la tâche du 02/10 comprise (${ol.length})`);
+check(ol.length === 10 && ol.some((x) => x.startsWith('tâche supprimée — sam test')), `le mois : 10 lignes, la tâche du 02/10 comprise (${ol.length})`);
 check(await dO.getByRole('button', { name: 'Période suivante' }).isDisabled(), '› grisé : pas de période future');
 await dO.getByRole('button', { name: 'Période précédente' }).click(); await dO.getByRole('button', { name: 'Période précédente' }).click(); await waitList(op);
 check((await txt(op.locator('[data-testid=traces-period]'))) === 'Août 2026' && (await items(op)).length === 1, 'août : la case supprimée le 05/08');
@@ -409,10 +462,19 @@ const mm = mp.locator('[data-testid=mm-traces]');
 check(await mm.count() === 1 && (await txt(mm)) === 'Interventions supprimées ou décalées', 'menu ☰ : « Interventions supprimées ou décalées »');
 await shot(mp, 'bureau-menu-mobile');
 await mm.click(); await mp.waitForSelector('[data-testid=traces-dialog]'); await waitList(mp);
-check((await items(mp)).length === 7, 'la même liste (semaine en cours)');
+check((await items(mp)).length === 9, 'la même liste (semaine en cours)');
 check(await noOverflow(mp, '[data-testid=traces-dialog]'), 'pas de défilement horizontal (390 px)');
 await shot(dlg(mp), 'bureau-liste-mobile');
 await mob.close();
+
+section('O6 — plus de 500 lignes : l’écran le dit');
+freshDb(Array.from({ length: 520 }, (_, i) => trace({ object_id: `bulk-${i}`, before: planSnap({ id: `bulk-${i}` }), created_at: new Date(Date.parse('2026-10-14T07:00:00Z') - i * 60000).toISOString() })));
+await openOffice(); await openSettings();
+await op.locator('[data-testid=set-traces]').getByRole('button', { name: 'Voir' }).click();
+await op.waitForSelector('[data-testid=traces-dialog]'); await waitList(op);
+check((await items(op)).length === 500, `500 lignes affichées (${(await items(op)).length})`);
+check((await txt(op.locator('[data-testid=traces-truncated]'))).includes('Seules les 500 plus récentes sont affichées'), 'et une phrase le dit : « Seules les 500 plus récentes… choisissez une semaine ou un salarié »');
+await closeDlg(op);
 
 section('O5 — jamais d’écriture, jamais d’erreur');
 check(!writes.some((w) => w.t === 'traces'), 'aucune requête d’écriture vers « traces » pendant tout le test');
