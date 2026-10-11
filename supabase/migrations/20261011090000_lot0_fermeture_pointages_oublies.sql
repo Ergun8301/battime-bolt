@@ -5,6 +5,9 @@
 --   SELECT cron.unschedule('bemexo-close-forgotten-sessions')
 --    WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'bemexo-close-forgotten-sessions');
 --   DROP FUNCTION IF EXISTS public.close_forgotten_sessions(uuid);
+-- … puis, seulement si le fichier avait été inscrit dans l'historique (c'est un
+-- DELETE, sur l'historique uniquement, à coller par Ergun) :
+--   DELETE FROM supabase_migrations.schema_migrations WHERE name = 'lot0_fermeture_pointages_oublies';
 --
 -- VÉRIFICATION APRÈS APPLICATION (doit renvoyer 4 × true) :
 --   SELECT
@@ -26,16 +29,26 @@
 -- lendemain est bloqué. La borne appelle déjà close_forgotten_sessions (elle
 -- ignore l'erreur tant que la fonction manque) : rien à redéployer.
 --
--- CE QUE FAIT LA FONCTION (mot pour mot la partie 6 du lot 12, déjà testée) :
--- un chrono resté ouvert un jour PRÉCÉDENT (heure de Paris) devient une ligne
+-- CE QUE FAIT LA FONCTION (la partie 6 du lot 12, déjà testée, avec deux
+-- ajouts relevés en relecture) : un chrono resté ouvert un jour PRÉCÉDENT
+-- (heure de Paris) ET commencé il y a plus de 14 heures devient une ligne
 -- d'heures en BROUILLON marquée « sortie oubliée » (exit_forgotten = true).
+--   · Ajout 1 — postes de nuit : un chrono commencé hier à 21:00 n'est PAS
+--     fermé à 01:30 ; il reste ouvert pour la sortie de 05:00. 14 heures, c'est
+--     au-delà de toute journée légale (10 h, 12 h par dérogation) : un chrono
+--     plus vieux est forcément oublié. (Sans cet ajout, la sortie de 05:00 à la
+--     borne serait prise pour une arrivée.)
+--   · Ajout 2 — position : si l'entreprise enregistre la position au pointage,
+--     celle du départ est recopiée sur la ligne d'heures, comme le fait
+--     finish_active_session (sinon elle disparaissait avec le chrono).
 --   · Fin = heure prévue du planning si elle est après le début ; sinon fin =
 --     début, c'est-à-dire « à compléter » : la ligne ne peut pas être envoyée
 --     tant que le salarié n'a pas mis son heure de sortie.
 --   · Jour clos (mois clôturé ou salarié clôturé) : on n'écrit rien, on laisse.
 --   · Rien ne se perd : la ligne « en cours » est retirée SEULEMENT après que
 --     la ligne d'heures a été écrite, dans la même transaction. L'heure de
---     début, le chantier, le créneau et la source (qr) sont recopiés.
+--     début, le chantier, le créneau, la source (qr) et la position de départ
+--     (si l'entreprise l'enregistre) sont recopiés.
 --
 -- 100 % ADDITIVE : une fonction neuve et un travail cron neuf. Aucune table,
 -- colonne, policy, trigger ou fonction existante n'est modifiée ; aucune
@@ -45,7 +58,8 @@
 -- À SAVOIR (règle « DROP ou DELETE ») : le mot DELETE apparaît UNE fois, dans
 -- le corps de la fonction (retrait de la ligne « en cours » une fois recopiée
 -- en brouillon). Il ne s'exécute pas à l'application du fichier, seulement
--- chaque nuit, et uniquement sur des chronos d'un jour passé.
+-- chaque nuit, et uniquement sur des chronos d'un jour passé commencés il y a
+-- plus de 14 heures.
 --
 -- Testée sur un Postgres jetable : npm run test:fermeture-nuit
 -- (supabase/tests/lot0_fermeture_pointages_oublies.mjs).
@@ -61,10 +75,12 @@ DECLARE
   v_plan time;
   v_end time;
   v_n integer := 0;
+  v_id uuid;
 BEGIN
   FOR s IN
     SELECT * FROM public.active_sessions a
-     WHERE a.work_date < v_today AND (p_user IS NULL OR a.user_id = p_user)
+     WHERE a.work_date < v_today AND a.started_at < now() - interval '14 hours'
+       AND (p_user IS NULL OR a.user_id = p_user)
      FOR UPDATE SKIP LOCKED
   LOOP
     IF public.is_month_closed(s.company_id, s.work_date)
@@ -83,7 +99,22 @@ BEGIN
        start_time, end_time, break_minutes, meal_allowance, status, source, exit_forgotten)
     VALUES
       (s.company_id, s.user_id, s.worksite_id, s.planning_id, s.work_date,
-       v_start, v_end, 0, false, 'draft', s.source, true);
+       v_start, v_end, 0, false, 'draft', s.source, true)
+    RETURNING id INTO v_id;
+
+    -- Même condition que finish_active_session : la position de départ suit
+    -- la ligne d'heures, seulement si l'entreprise l'enregistre.
+    IF s.start_lat IS NOT NULL AND s.start_lng IS NOT NULL
+       AND EXISTS (SELECT 1 FROM public.companies c
+                    WHERE c.id = s.company_id AND c.position_tracking_enabled) THEN
+      INSERT INTO public.time_entry_positions
+        (company_id, entry_id, user_id, work_date, moment,
+         latitude, longitude, accuracy_m, captured_at)
+      VALUES
+        (s.company_id, v_id, s.user_id, s.work_date, 'start',
+         s.start_lat, s.start_lng, s.start_accuracy_m,
+         coalesce(s.start_located_at, s.started_at));
+    END IF;
 
     DELETE FROM public.active_sessions a
      WHERE a.user_id = s.user_id AND a.started_at = s.started_at;

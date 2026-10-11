@@ -87,7 +87,17 @@ check(body.indexOf('INSERT INTO public.time_entries') > 0 && body.indexOf('INSER
   '… et APRÈS l’écriture de la ligne d’heures');
 const part6 = SQL12.slice(CUT);
 const fnOf = (s) => s.slice(s.indexOf('CREATE OR REPLACE FUNCTION public.close_forgotten_sessions'), s.indexOf('$fn$;', s.indexOf('CREATE OR REPLACE FUNCTION public.close_forgotten_sessions')));
-check(fnOf(SQL0) === fnOf(part6), 'fonction identique mot pour mot à la partie 6 du lot 12 (déjà testée)');
+// La partie 6 du lot 12, plus EXACTEMENT les deux ajouts de la relecture
+// (postes de nuit : 14 heures ; position de départ recopiée), rien d'autre.
+const POS = SQL0.slice(SQL0.indexOf('    RETURNING id INTO v_id;'), SQL0.indexOf('    DELETE FROM public.active_sessions'));
+const back0 = fnOf(SQL0)
+  .replace('  v_id uuid;\n', '')
+  .replace("WHERE a.work_date < v_today AND a.started_at < now() - interval '14 hours'\n       AND (p_user IS NULL OR a.user_id = p_user)",
+    'WHERE a.work_date < v_today AND (p_user IS NULL OR a.user_id = p_user)')
+  .replace(')\n' + POS, ');\n\n');
+check(back0 === fnOf(part6), 'fonction = partie 6 du lot 12 (déjà testée) + les deux ajouts seulement');
+check(/INSERT INTO public\.time_entry_positions[\s\S]*'start'/.test(POS) && /position_tracking_enabled/.test(POS),
+  'ajout 2 : position de départ recopiée, seulement si l’entreprise l’enregistre');
 
 const EXISTING_FN = ['get_my_company_id', 'is_admin', 'is_month_closed', 'guard_time_entry_write', 'guard_time_entry_delete',
   'guard_active_session', 'guard_month_closure', 'finish_active_session', 'user_closed_until', 'kiosk_open_session',
@@ -230,11 +240,33 @@ check(await countNina() === before2 + 1, '… une ligne de plus');
 // ═══ Autre entreprise : jamais mélangée ═════════════════════════════════════
 await as(SAM);
 await accepted(START, [SAM, CO2, WS2, today], 'Sam (autre entreprise) démarre');
-await backdate(SAM, D, '10:00');
+await one(`UPDATE public.companies SET position_tracking_enabled = true WHERE id = $1`, [CO2]);
+await one(`UPDATE public.active_sessions SET start_lat = 48.8566, start_lng = 2.3522, start_accuracy_m = 12 WHERE user_id = $1 RETURNING 1`, [SAM]);
+await backdate(SAM, D, '09:00');
 await asService();
 check((await run(CLOSE_ALL)).rows?.[0]?.n === 1, 'cron : le chrono oublié de l’autre entreprise est fermé aussi');
 r = await one(`SELECT company_id, worksite_id FROM public.time_entries WHERE user_id = $1`, [SAM]);
 check(r && r.company_id === CO2 && r.worksite_id === WS2, '… dans SA propre entreprise, sur SON chantier');
+r = await one(`SELECT p.moment, p.latitude::float AS lat, p.longitude::float AS lng, p.accuracy_m, p.company_id
+  FROM public.time_entry_positions p JOIN public.time_entries e ON e.id = p.entry_id WHERE e.user_id = $1`, [SAM]);
+check(r && r.moment === 'start' && r.lat === 48.8566 && r.lng === 2.3522 && r.accuracy_m === 12 && r.company_id === CO2,
+  `position de départ recopiée sur la ligne d’heures (entreprise qui l’enregistre) (${JSON.stringify(r)})`);
+check((await one(`SELECT count(*)::int AS n FROM public.time_entry_positions p JOIN public.time_entries e ON e.id = p.entry_id WHERE e.company_id = $1`, [CO])).n === 0,
+  '… aucune position pour l’entreprise qui ne l’enregistre pas');
+
+// ═══ Poste de nuit : un chrono commencé il y a moins de 14 h reste ouvert ═══
+await one(`UPDATE public.companies SET kiosk_enabled = false WHERE id = $1`, [CO2]);
+await as(SAM);
+await accepted(START, [SAM, CO2, WS2, today], 'Sam reprend un poste de nuit …');
+await one(`UPDATE public.active_sessions SET work_date = $2::date, started_at = now() - interval '4 hours' WHERE user_id = $1 RETURNING 1`, [SAM, D]);
+await asService();
+check((await run(CLOSE_ALL)).rows?.[0]?.n === 0, 'cron de nuit : un chrono d’hier commencé il y a 4 h n’est PAS fermé');
+await asService();
+check((await run(`SELECT public.close_forgotten_sessions($1) AS n`, [SAM])).rows?.[0]?.n === 0, '… ni par la borne (la sortie de 05:00 reste une sortie)');
+check(!!(await one(`SELECT 1 AS x FROM public.active_sessions WHERE user_id = $1`, [SAM])), '… le chrono reste ouvert');
+await one(`UPDATE public.active_sessions SET started_at = now() - interval '15 hours' WHERE user_id = $1 RETURNING 1`, [SAM]);
+await asService();
+check((await run(CLOSE_ALL)).rows?.[0]?.n === 1, 'commencé il y a 15 h : fermé en brouillon « sortie oubliée »');
 
 // ═══ Cron : planifié sous un nom stable, re-planifier remplace ═════════════
 // PGlite n'a pas pg_cron : on rejoue le bloc DO du fichier contre un faux
@@ -260,8 +292,18 @@ r = (await run(verif)).rows?.[0];
 check(r && r.fonction === true && r.droits === true && r.cron === true && r.appel_vide === true, `vérification d’en-tête : 4 × true (${JSON.stringify(r)})`);
 const back = header.slice(header.indexOf('RETOUR ARRIÈRE'), header.indexOf('-- VÉRIFICATION')).split('\n')
   .filter((l) => /^--\s{3}/.test(l)).map((l) => l.replace(/^--\s{3}/, '')).join('\n');
+// L'historique, tel qu'en production après inscription (même table, mêmes colonnes utiles).
+await one(`CREATE SCHEMA supabase_migrations`);
+await one(`CREATE TABLE supabase_migrations.schema_migrations (version text PRIMARY KEY, name text, statements text[])`);
+const hist = SQL0.slice(SQL0.indexOf('-- HISTORIQUE'), SQL0.indexOf('-- ─', SQL0.indexOf('-- HISTORIQUE'))).split('\n')
+  .filter((l) => /^--\s{3}/.test(l)).map((l) => l.replace(/^--\s{3}/, '')).join('\n');
+await db.exec(hist);
+await db.exec(hist);
+check((await one(`SELECT count(*)::int AS n FROM supabase_migrations.schema_migrations WHERE name = 'lot0_fermeture_pointages_oublies' AND version = '20261011090000'`)).n === 1,
+  'inscription d’en-tête : une ligne, sous le nom du fichier (rejouable)');
 await db.exec(back);
 check(await hasFn() === 0 && (await db.query(`SELECT count(*)::int AS n FROM cron.job`)).rows[0].n === 0, 'retour arrière : fonction et cron retirés');
+check((await one(`SELECT count(*)::int AS n FROM supabase_migrations.schema_migrations`)).n === 0, '… et l’inscription dans l’historique aussi');
 check((await one(`SELECT count(*)::int AS n FROM public.time_entries`)).n > 0, '… les lignes d’heures déjà écrites restent');
 await db.exec(SQL0);
 check(await hasFn() === 1, 'rechargée après le retour arrière');

@@ -11,8 +11,9 @@
 //   2. npm run check:migrations -- <fichier>     (ou « - » pour lire l'entrée standard)
 //
 // Résultat : ce qui reste À APPLIQUER, ce qui est inscrit sans fichier, et les
-// écarts anciens connus (supabase/migrations-historique.json). Code de sortie 1
-// s'il reste un fichier à appliquer ou une inscription inconnue.
+// écarts anciens connus (supabase/migrations-historique.json). Code de sortie :
+// 0 tout est inscrit, 1 il reste un fichier à appliquer ou une inscription
+// inconnue, 2 fichier illisible.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -27,19 +28,31 @@ export function parseFileName(file) {
 }
 
 // Accepte la sortie de l'outil Supabase ({ migrations: [...] }), un tableau JSON
-// de lignes, un CSV « version,name » ou du texte « version nom » / « nom ».
+// de lignes (même entouré de texte, comme le renvoie l'outil execute_sql), un
+// CSV avec ou sans guillemets, un tableau Markdown, la sortie de psql, ou du
+// texte « version nom » / « nom ». Un nom de migration est un seul mot
+// [a-z0-9_] : toute autre ligne (séparateurs, en-têtes, « (91 rows) ») est ignorée.
+const NAME = /^[a-z0-9_]+$/i;
 export function parseHistory(text) {
   const t = text.trim();
   if (!t) return [];
+  const fromRows = (rows) => rows.filter((r) => r && typeof r.name === 'string' && NAME.test(r.name.trim()))
+    .map((r) => ({ version: String(r.version ?? ''), name: r.name.trim() }));
   if (t.startsWith('{') || t.startsWith('[')) {
     const data = JSON.parse(t);
-    const rows = Array.isArray(data) ? data : Array.isArray(data.migrations) ? data.migrations : [];
-    return rows.filter((r) => r && typeof r.name === 'string').map((r) => ({ version: String(r.version ?? ''), name: r.name.trim() }));
+    return fromRows(Array.isArray(data) ? data : Array.isArray(data.migrations) ? data.migrations : []);
   }
-  return t.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
-    .map((l) => l.split(/[\s,;|]+/).filter(Boolean))
-    .filter((p) => p.length && !/^version$/i.test(p[0]))
-    .map((p) => (p.length > 1 && /^\d+$/.test(p[0]) ? { version: p[0], name: p[1] } : { version: '', name: p[p.length - 1] }));
+  const json = /\[\s*\{[\s\S]*\}\s*\]/.exec(t);
+  if (json) { try { return fromRows(JSON.parse(json[0])); } catch { /* texte ordinaire */ } }
+  const out = [];
+  for (const line of t.split(/\r?\n/)) {
+    const parts = line.split(/[\s,;|]+/).map((p) => p.replace(/^["'`]+|["'`]+$/g, '')).filter(Boolean);
+    if (!parts.length || /^version$/i.test(parts[0])) continue;
+    const version = /^\d+$/.test(parts[0]) ? parts[0] : '';
+    const name = parts.slice(version ? 1 : 0).find((p) => NAME.test(p) && !/^\d+$/.test(p));
+    if (name && (version || parts.length === 1)) out.push({ version, name });
+  }
+  return out;
 }
 
 export function compare(files, prod, hist = {}) {
@@ -99,8 +112,16 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     console.log(`Usage : npm run check:migrations -- <fichier | ->\n\nLire d'abord l'historique en production :\n  ${SQL_HISTORIQUE}`);
     process.exit(2);
   }
-  const text = src === '-' ? fs.readFileSync(0, 'utf8') : fs.readFileSync(src, 'utf8');
-  const r = compare(loadFiles(), parseHistory(text), loadHistorique());
+  let r;
+  try {
+    // Sous « npm run », le dossier courant est la racine du dépôt : un chemin
+    // relatif se lit depuis le dossier où la commande a été tapée (INIT_CWD).
+    const text = src === '-' ? fs.readFileSync(0, 'utf8') : fs.readFileSync(path.resolve(process.env.INIT_CWD || process.cwd(), src), 'utf8');
+    r = compare(loadFiles(), parseHistory(text), loadHistorique());
+  } catch (e) {
+    console.error(`Lecture impossible : ${e.message}`);
+    process.exit(2);
+  }
   console.log(report(r));
   process.exit(r.aAppliquer.length || r.inconnus.length ? 1 : 0);
 }
