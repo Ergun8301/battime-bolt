@@ -12,11 +12,13 @@
 //     système le relâche (page visible), au retour sur la page et toutes les
 //     60 s ; jamais deux verrous ; refusé ou absent → petit rappel discret.
 //  D) Plein écran au premier toucher, une seule fois ; l'icône marche toujours.
-//  E) 403 (borne désactivée pour l'entreprise) : « Borne suspendue », la
-//     tablette reste reliée (bx_kiosk_v1 gardé), revérifie chaque minute et
-//     repart toute seule. 401 et 410 : l'appairage est bien effacé.
+//  E) 403 (borne en pause pour l'entreprise) : « Borne suspendue », la
+//     tablette reste reliée (bx_kiosk_v1 gardé), ne tient plus le verrou
+//     d'écran, revérifie chaque minute et repart toute seule ; elle peut quand
+//     même se déconnecter (lien discret + confirmation → `unpair`). 401 et
+//     410 : l'appairage est bien effacé.
 //  F) Appairage : navigator.storage.persist() demandé (et sans erreur s'il
-//     n'existe pas).
+//     n'existe pas), aussi à l'ouverture d'une tablette déjà reliée.
 //  G) Fenêtre « Borne » du bureau : aide « Installer la tablette », repliée par
 //     défaut, qui s'ouvre et se referme.
 import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path';
@@ -358,11 +360,20 @@ const openBorne = async (p) => {
   await openBorne(p);
   await p.waitForSelector('[data-testid=kb-suspended]', { timeout: 5000 }).catch(() => {});
   const txt = await p.locator('[data-testid=kb-suspended]').innerText().catch(() => '');
-  check(/Borne suspendue/.test(txt) && /Le bureau l.a mise en pause/.test(txt), `E) 403 → « Borne suspendue — le bureau l’a mise en pause » (${txt.replace(/\n+/g, ' / ')})`);
+  check(/Borne suspendue/.test(txt) && /en pause pour cette entreprise/.test(txt) && !/bureau l.a mise en pause/.test(txt), `E) 403 → « Borne suspendue — en pause pour cette entreprise » (${txt.replace(/\n+/g, ' / ')})`);
   check(/Vérifié à 09:30/.test(txt) && /nouvel essai chaque minute/.test(txt), 'E) heure de la dernière vérification affichée');
   check((await stored(p)) !== null && JSON.parse(await stored(p)).token === 'jeton', 'E) l’appairage est GARDÉ (bx_kiosk_v1 intact)');
   check(await p.locator('[data-testid=kb-pairing]').count() === 0 && await p.locator('[data-testid=kb-pointer]').count() === 0, 'E) ni écran « Relier », ni QR (il serait refusé)');
   check(await p.locator('[data-testid=kb-fullscreen]').isVisible(), 'E) l’icône plein écran reste là');
+  // Pendant la pause, l'écran n'est plus forcé allumé (veille possible), même au toucher.
+  let w0 = await wl(p);
+  check(w0.active === 0, `E) suspendue : aucun verrou d’écran tenu (${w0.active})`);
+  await p.mouse.click(640, 300);
+  await p.waitForTimeout(200);
+  const w1 = await wl(p);
+  check(w1.active === 0 && w1.requests === w0.requests, `E) suspendue : un toucher ne redemande pas le verrou (${w1.requests - w0.requests})`);
+  if (await p.evaluate(() => !!document.fullscreenElement)) { await p.evaluate(() => document.exitFullscreen()); await p.waitForTimeout(200); }
+  check(await p.locator('[data-testid=kb-susp-unpair]').isVisible() && await p.locator('[data-testid=kb-unpair-confirm]').count() === 0, 'E) lien discret « Déconnecter cette tablette » présent (sans confirmation ouverte)');
   await p.screenshot({ path: `${SH}/apres-borne-suspendue-1280x800.png` });
   const s0 = calls('sync'), b0 = calls('board');
   await p.clock.fastForward(61_000);
@@ -379,6 +390,33 @@ const openBorne = async (p) => {
   await p.waitForTimeout(300);
   check(await p.locator('[data-testid=kb-suspended]').count() === 0 && await p.locator('[data-testid=kb-week]').isVisible() && calls('board') > b0, 'E) réactivée : la borne repart toute seule, planning relu aussitôt');
   check(await p.locator('[data-testid=kb-pointer]').isVisible(), 'E) … et le bouton « QR » revient');
+  await p.waitForTimeout(200);
+  w0 = await wl(p);
+  check(w0.active === 1, `E) réactivée : le verrou d’écran est repris (${w0.active} tenu)`);
+  await ctx.close();
+}
+{
+  // Pendant la pause, le bureau ne peut rien (fonction en 403) : la tablette
+  // se déconnecte elle-même, toujours avec confirmation, et prévient le serveur.
+  const { ctx, p, fn, calls } = await tablet({ api: { sync: 403, board: 403 } });
+  await openBorne(p);
+  await p.waitForSelector('[data-testid=kb-suspended]', { timeout: 5000 }).catch(() => {});
+  await p.click('[data-testid=kb-susp-unpair]');
+  await p.waitForTimeout(200);
+  const ctxt = await p.locator('[data-testid=kb-unpair-confirm]').innerText().catch(() => '');
+  check(/Déconnecter cette tablette \?/.test(ctxt) && /nouveau code du bureau/.test(ctxt), 'E) suspendue : « Déconnecter cette tablette » demande confirmation');
+  await p.screenshot({ path: `${SH}/apres-borne-suspendue-deconnecter-1280x800.png` });
+  await p.click('[data-testid=kb-unpair-confirm] .kb-btn.no');
+  await p.waitForTimeout(200);
+  check(await p.locator('[data-testid=kb-unpair-confirm]').count() === 0 && (await stored(p)) !== null && calls('unpair') === 0 && await p.locator('[data-testid=kb-suspended]').isVisible(), 'E) « Annuler » : rien n’est effacé, toujours suspendue');
+  await p.click('[data-testid=kb-susp-unpair]');
+  await p.waitForTimeout(200);
+  await p.click('[data-testid=kb-unpair-confirm] .kb-btn.yes');
+  await p.waitForSelector('[data-testid=kb-pairing]', { timeout: 5000 }).catch(() => {});
+  await p.waitForTimeout(200);
+  const u = fn.find((c) => c.action === 'unpair');
+  check(await p.locator('[data-testid=kb-pairing]').isVisible() && (await stored(p)) === null && !!u && u.kiosk_id === 'k-test' && u.token === 'jeton',
+    'E) « Oui, déconnecter » : `unpair` appelé avec le jeton de la tablette, bx_kiosk_v1 effacé, écran « Relier »');
   await ctx.close();
 }
 {
@@ -414,6 +452,14 @@ for (const present of [true, false]) {
   const persisted = await p.evaluate(() => window.__persist);
   if (present) check(persisted === 1 && calls('pair') === 1 && (await stored(p)) !== null, `F) appairage : stockage persistant demandé (${persisted} appel)`);
   else check(errors.length === n && await p.locator('[data-testid=kb-week]').isVisible(), 'F) navigateur sans navigator.storage : appairage normal, aucune erreur');
+  await ctx.close();
+}
+{
+  // Tablette reliée AVANT ce lot (jamais réappairée) : persist() demandé à l'ouverture.
+  const { ctx, p, calls } = await tablet();
+  await openBorne(p);
+  const persisted = await p.evaluate(() => window.__persist);
+  check(persisted === 1 && calls('pair') === 0, `F) tablette déjà reliée : stockage persistant demandé à l’ouverture (${persisted} appel, sans nouvel appairage)`);
   await ctx.close();
 }
 
@@ -485,8 +531,10 @@ for (const [w, h, mobile] of [[1440, 900, false], [390, 844, true]]) {
   await p.waitForTimeout(300);
   const t = await dlg();
   const host = new URL(BASE).host;
-  check((await isOpen()) === true && /Ajouter à l’écran d’accueil/.test(t) && /depuis l’icône installée/.test(t) && /verrouillage automatique sur « Jamais »/.test(t) && /reliez-la depuis l’icône, pas depuis Safari/.test(t) && t.includes(`${host}/borne`),
+  check((await isOpen()) === true && /Ajouter à l’écran d’accueil/.test(t) && /depuis l’icône installée/.test(t) && /verrouillage automatique sur «\u00a0Jamais\u00a0»/.test(t) && /reliez-la depuis l’icône, pas depuis Safari/.test(t) && t.includes(`${host}/borne`),
     `G) ${w}px : ouverte → écran d’accueil, icône installée, verrouillage « Jamais », iPad depuis l’icône, adresse ${host}/borne`);
+  const ls = await p.evaluate(() => getComputedStyle(document.querySelector('[data-testid=ka-install] ol')).listStyleType);
+  check(ls === 'decimal', `G) ${w}px : étapes numérotées (${ls})`);
   const hs = await p.evaluate(() => { const d = document.querySelector('[role=dialog]'); return document.documentElement.scrollWidth > window.innerWidth || d.scrollWidth > d.clientWidth + 1; });
   check(!hs, `G) ${w}px : pas de défilement horizontal`);
   await help.scrollIntoViewIfNeeded();

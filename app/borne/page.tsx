@@ -49,9 +49,11 @@
 //     toutes les 60 s ; s'il est refusé, un petit rappel « mise en veille sur
 //     Jamais » en bas à droite ;
 //   · plein écran au premier toucher, une seule fois (pas sur iPhone) ;
-//   · borne désactivée par l'entreprise (403) : écran « Borne suspendue », la
-//     tablette reste reliée et revérifie chaque minute. Seules une tablette
-//     déconnectée par le bureau (410) ou inconnue (401) oublient l'appairage.
+//   · borne mise en pause pour l'entreprise (403, interrupteur BEMEXO) : écran
+//     « Borne suspendue », la tablette reste reliée, ne garde plus l'écran
+//     allumé et revérifie chaque minute ; on peut quand même la déconnecter
+//     (lien discret + confirmation). Seules une tablette déconnectée par le
+//     bureau (410) ou inconnue (401) oublient l'appairage d'elles-mêmes.
 //
 // ?demo=1 : aperçu sans appairage (graine fictive, QR non valable, semaine
 // fictive construite par le même `buildBoard` que la fonction), seulement sur
@@ -281,12 +283,13 @@ const CSS = `
 /* Lot 2 (IA) : rappel discret quand l'écran n'est pas maintenu allumé (sous le QR et la veille). */
 .kb-wake{position:absolute;right:12px;bottom:10px;z-index:20;max-width:calc(100% - 24px);border:1px solid rgba(242,237,227,.18);background:rgba(21,18,15,.88);color:#a59c86;font:inherit;font-size:12px;font-weight:700;line-height:1.3;border-radius:99px;padding:5px 11px;cursor:pointer;text-align:left}
 .kb-wake b{color:#F2EDE3;font-weight:800}
-/* Lot 2 (IA) : borne suspendue par l'entreprise (403), la tablette reste reliée. */
+/* Lot 2 (IA) : borne en pause pour l'entreprise (403), la tablette reste reliée. */
 .kb-susp{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:32px;text-align:center}
 .kb-susp .kb-logo{height:clamp(18px,3vmin,26px);opacity:.85}
 .kb-susp h1{margin:10px 0 0;font-weight:900;font-size:clamp(26px,4.4vmin,40px);letter-spacing:-.02em;color:#F2EDE3}
 .kb-susp p{margin:0;max-width:34em;color:#cfc7b6;font-weight:600;font-size:clamp(15px,2.2vmin,19px);line-height:1.45}
 .kb-susp small{color:#a59c86;font-weight:700;font-size:13px}
+.kb-susp-out{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);border:none;background:transparent;color:#8a8378;font:inherit;font-size:12px;font-weight:700;text-decoration:underline;text-underline-offset:3px;cursor:pointer;padding:6px 10px;white-space:nowrap}
 /* Portrait : date au-dessus de l'heure (plus de place pour le nom). */
 @media (orientation:portrait){
   :root{--kb-logo:clamp(13px,2.1vmin,18px)}
@@ -641,8 +644,8 @@ function Display({ paired, online, boardErr, awakeUntil, wake, onWake, onUnpair 
       {/* Lot 2 (IA) : écran non maintenu allumé → petit rappel (un toucher le masque). */}
       {(wake === 'denied' || wake === 'unsupported') && !hideWake && !paired.demo && (
         <button type="button" className="kb-wake" data-testid="kb-wake-hint" onClick={() => setHideWake(true)}
-          title="La tablette peut se mettre en veille. Dans ses réglages, mettez le verrouillage automatique (ou la mise en veille de l’écran) sur « Jamais », et laissez-la branchée.">
-          Écran non maintenu allumé · réglez la mise en veille sur <b>« Jamais »</b>
+          title="La tablette peut se mettre en veille. Dans ses réglages, mettez le verrouillage automatique (ou la mise en veille de l’écran) sur « Jamais », et laissez-la branchée.">
+          Écran non maintenu allumé · réglez la mise en veille sur <b>«&nbsp;Jamais&nbsp;»</b>
         </button>
       )}
 
@@ -683,20 +686,45 @@ function Display({ paired, online, boardErr, awakeUntil, wake, onWake, onUnpair 
 }
 
 /**
- * Lot 2 (IA) — l'entreprise a mis la borne en pause (403 de la fonction) : la
- * tablette RESTE reliée et revérifie chaque minute ; elle repart toute seule.
- * Pas de QR (il serait refusé).
+ * Lot 2 (IA) — la borne est en pause pour l'entreprise (403 de la fonction :
+ * `kiosk_enabled` coupé, interrupteur réservé à BEMEXO) : la tablette RESTE
+ * reliée et revérifie chaque minute ; elle repart toute seule. Pas de QR (il
+ * serait refusé). Le bureau ne peut rien faire pendant la pause (fonction en
+ * 403) : la tablette peut donc se déconnecter elle-même, toujours confirmé
+ * (`unpair` ne dépend pas de l'interrupteur).
  */
-function Suspended({ companyName, checkedAt }: { companyName: string; checkedAt: number | null }) {
+function Suspended({ companyName, checkedAt, onUnpair }: { companyName: string; checkedAt: number | null; onUnpair: () => void }) {
+  const [confirm, setConfirm] = useState(false);
+  // La confirmation ne reste pas affichée indéfiniment (comme sur le planning).
+  useEffect(() => {
+    if (!confirm) return;
+    const t = setTimeout(() => setConfirm(false), 20 * 1000);
+    return () => clearTimeout(t);
+  }, [confirm]);
   return (
     <div className="kb" data-testid="kb-suspended">
       <div className="kb-susp" role="status">
         <img className="kb-logo" src="/bemexo-wordmark-light.svg" alt="BEMEXO" draggable={false} />
         {companyName && <small>{companyName}</small>}
         <h1>Borne suspendue</h1>
-        <p>Le bureau l&apos;a mise en pause. Elle reprendra toute seule dès sa réactivation&nbsp;: rien à refaire sur cette tablette.</p>
+        <p>La borne de pointage est en pause pour cette entreprise. Elle reprendra toute seule dès sa réactivation&nbsp;: rien à refaire sur cette tablette.</p>
         {checkedAt && <small>Vérifié à {parisTime(checkedAt)} · nouvel essai chaque minute</small>}
       </div>
+      <button type="button" className="kb-susp-out" data-testid="kb-susp-unpair" onClick={() => setConfirm(true)}>
+        Déconnecter cette tablette
+      </button>
+      {confirm && (
+        <div className="kb-confirm" role="dialog" aria-label="Déconnecter la tablette">
+          <div className="kb-confirm-card" data-testid="kb-unpair-confirm">
+            <h2>Déconnecter cette tablette ?</h2>
+            <p>Elle oubliera cette entreprise. Pour la relier de nouveau, il faudra un nouveau code du bureau, une fois la borne réactivée.</p>
+            <div>
+              <button type="button" className="kb-btn yes" onClick={onUnpair}>Oui, déconnecter</button>
+              <button type="button" className="kb-btn no" onClick={() => setConfirm(false)}>Annuler</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -794,9 +822,15 @@ export default function BornePage() {
     pairedRef.current = p;
     setPaired(p);
     setReady(true);
+    // Lot 2 (IA) : une tablette reliée AVANT ce lot le demande aussi (sans nouvel appairage).
+    if (p && !p.demo) persistStorage();
   }, []);
 
-  const wake = useWakeLock(!!paired);
+  // Lot 2 (IA) : pendant une pause (« Borne suspendue »), l'écran n'est plus
+  // forcé allumé : la tablette peut se mettre en veille, la boucle d'une minute
+  // suffit pour repartir.
+  const suspended = suspendedAt !== null;
+  const wake = useWakeLock(!!paired && !suspended);
   useFullscreenOnFirstTouch(!!paired);
 
   // Déconnectée par le bureau ou remplacée par une autre tablette (410), ou
@@ -904,7 +938,6 @@ export default function BornePage() {
   }, [paired?.kioskId, sync, fetchBoard]);
 
   // Lot 2 (IA) : borne suspendue → on revérifie chaque minute (sans rien effacer).
-  const suspended = suspendedAt !== null;
   useEffect(() => {
     if (!suspended) return;
     const id = setInterval(() => { const p = pairedRef.current; if (p) sync(p); }, SUSPENDED_RETRY_MS);
@@ -925,7 +958,7 @@ export default function BornePage() {
     <>
       <style dangerouslySetInnerHTML={CSS_HTML} />
       {paired && suspended ? (
-        <Suspended companyName={paired.companyName} checkedAt={suspendedAt} />
+        <Suspended companyName={paired.companyName} checkedAt={suspendedAt} onUnpair={unpairHere} />
       ) : paired ? (
         <Display
           paired={paired}

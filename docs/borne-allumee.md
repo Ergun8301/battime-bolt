@@ -19,25 +19,31 @@ Front seulement : aucune migration, aucune fonction à redéployer.
    quand la tablette le relâche (batterie faible…), au retour sur la page et
    toutes les 60 s. S'il est refusé ou si la tablette ne sait pas le faire, un
    petit rappel apparaît en bas à droite : « Écran non maintenu allumé ·
-   réglez la mise en veille sur « Jamais » » (un toucher le masque). Pendant
+   réglez la mise en veille sur « Jamais » » (un toucher le masque). Pendant
    les heures de veille, l'écran reste noir mais allumé, comme avant.
 4. **Plein écran au premier toucher**, une seule fois (le navigateur exige un
    geste). Rien sur iPhone, qui ne le permet pas. L'icône plein écran marche
    comme avant.
-5. **« Borne suspendue » au lieu de déconnecter.** Si l'entreprise désactive
-   la borne (même quelques minutes), la tablette affiche « Borne suspendue — le
-   bureau l'a mise en pause », reste reliée et revérifie chaque minute ; elle
-   repart toute seule. Seule une tablette déconnectée par le bureau, remplacée
-   par une autre, ou inconnue, oublie son appairage (comme avant).
+5. **« Borne suspendue » au lieu de déconnecter.** Si la borne est mise en
+   pause pour l'entreprise (interrupteur réservé à BEMEXO, même quelques
+   minutes), la tablette affiche « Borne suspendue — la borne de pointage est
+   en pause pour cette entreprise », reste reliée et revérifie chaque minute ;
+   elle repart toute seule. Pendant la pause, l'écran n'est plus forcé allumé
+   (la tablette peut se mettre en veille). Le bureau ne peut rien faire pendant
+   la pause : **seule la tablette peut alors se déconnecter**, par le lien
+   discret « Déconnecter cette tablette » en bas de l'écran, toujours avec
+   confirmation. Seule une tablette déconnectée par le bureau, remplacée par
+   une autre, ou inconnue, oublie son appairage d'elle-même (comme avant).
 6. **Appairage mieux gardé** : la tablette demande au navigateur de ne pas
-   effacer ses données pour faire de la place (`navigator.storage.persist()`).
+   effacer ses données pour faire de la place (`navigator.storage.persist()`),
+   à l'appairage et à chaque ouverture d'une tablette déjà reliée.
 
 ## Ce qui change pour le bureau
 
 Dans la fenêtre « Borne de pointage », une aide repliée **« Installer la
 tablette »** : ajouter la borne à l'écran d'accueil, l'ouvrir depuis l'icône
 et la relier depuis l'icône (sur iPad l'icône a sa propre mémoire), régler le
-verrouillage automatique sur « Jamais », Accès guidé / Épinglage, et remplacer
+verrouillage automatique sur « Jamais », Accès guidé / Épinglage, et remplacer
 une ancienne icône.
 
 ## À faire une fois sur la tablette actuelle

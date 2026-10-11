@@ -17,7 +17,7 @@
 //   · un seul lien discret « Déconnecter la tablette » (confirmation sur place) ;
 //   · « Horaires d'ouverture » (facultatifs) : enregistrés dès qu'ils changent.
 // Lot 2 (IA) : « Installer la tablette », une aide courte, repliée par défaut
-// (icône d'écran d'accueil, verrouillage automatique sur « Jamais »…).
+// (icône d'écran d'accueil, verrouillage automatique sur « Jamais »…).
 // Plus de liste, plus de « Ajouter une borne », plus de lieu ni de nom, plus de GPS.
 //
 // Toutes les écritures passent par la fonction `kiosk` (qui revérifie le rôle
@@ -113,7 +113,8 @@ const CSS = `
 .ka-help summary::after{content:'';margin-left:auto;width:7px;height:7px;border-right:2px solid #8a8378;border-bottom:2px solid #8a8378;transform:rotate(45deg) translateY(-2px)}
 .ka-help[open] summary::after{transform:rotate(-135deg) translateY(-2px)}
 .ka-help summary small{font-weight:600;color:#9a948a;font-size:13px}
-.ka-help ol{margin:0;padding:0 14px 12px 32px;display:flex;flex-direction:column;gap:7px;font-size:13px;line-height:1.45;color:#3d3933;font-weight:500}
+.ka-help ol{margin:0;padding:0 14px 12px 32px;list-style:decimal;display:flex;flex-direction:column;gap:7px;font-size:13px;line-height:1.45;color:#3d3933;font-weight:500}
+.ka-help li::marker{font-weight:800;color:#8a8378}
 .ka-help li b{font-weight:800;color:#15120F}
 .ka-help .ka-muted{font-weight:500}
 @media(max-width:420px){.ka-qr{width:76px;height:76px}.ka-code{padding:14px;gap:12px}}
@@ -484,7 +485,7 @@ export default function KioskAdmin({ open, onOpenChange, companyId }: Props) {
             <ol>
               <li>Sur la tablette, ouvrez <b>{borneLabel}</b>, puis <b>Ajouter à l’écran d’accueil</b> <span className="ka-muted">(iPad : bouton Partager ; Android : menu ⋮ → Installer l’application)</span>.</li>
               <li>Ouvrez la borne <b>depuis l’icône installée</b> et reliez-la avec le code ci-dessus. Sur iPad, l’icône a sa propre mémoire : reliez-la depuis l’icône, pas depuis Safari.</li>
-              <li>Réglez le <b>verrouillage automatique sur « Jamais »</b> <span className="ka-muted">(iPad : Réglages › Luminosité et affichage ; Android : Paramètres › Affichage › Mise en veille de l’écran, au maximum)</span> et laissez la tablette branchée.</li>
+              <li>Réglez le <b>verrouillage automatique sur « Jamais »</b> <span className="ka-muted">(iPad : Réglages › Luminosité et affichage ; Android : Paramètres › Affichage › Mise en veille de l’écran, au maximum)</span> et laissez la tablette branchée.</li>
               <li>Facultatif : <b>Accès guidé</b> (iPad) ou <b>Épinglage d’application</b> (Android) pour que la tablette reste sur la borne.</li>
               <li>Déjà une ancienne icône BEMEXO sur la tablette ? Supprimez-la et ajoutez-la de nouveau depuis {borneLabel} : elle ouvrira directement la borne, en plein écran.</li>
             </ol>
