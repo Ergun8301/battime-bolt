@@ -57,8 +57,12 @@ const REASON: Record<string, string> = { sent: 'heures déjà envoyées', exit: 
 const blockOf = (t: EntryLite) => (t.status === 'draft' ? (t.exit_forgotten ? 'exit' : 'draft') : 'sent');
 const LIVE = 'pointage en cours';
 
-/** Cases du planning : par identifiants, ou un salarié (ou toute l'équipe) sur une période. */
-export async function erasePlanning(companyId: string, o: { ids?: string[]; userId?: string | null; from?: string; to?: string; absences?: boolean }): Promise<EraseResult> {
+/**
+ * Cases du planning : par identifiants, ou un salarié (ou toute l'équipe) sur une période.
+ * Lot 1 (heures sûres) : `dryRun` = LIRE seulement — ce qui partirait et ce qui
+ * serait gardé (et pourquoi), pour la carte de confirmation. Rien n'est écrit.
+ */
+export async function erasePlanning(companyId: string, o: { ids?: string[]; userId?: string | null; from?: string; to?: string; absences?: boolean; dryRun?: boolean }): Promise<EraseResult> {
   let q = supabase.from('planning').select('*').eq('company_id', companyId);
   if (o.ids) q = q.in('id', o.ids);
   else {
@@ -138,6 +142,7 @@ export async function erasePlanning(companyId: string, o: { ids?: string[]; user
     if (st) { reasons.add(REASON[st]); return false; }
     return true;
   });
+  if (o.dryRun) return { deleted: toDelete, skipped: rows.length - toDelete.length, reason: Array.from(reasons).join(', '), drafts: [], detached: [] };
   // Les brouillons vides en vrac d'une case partent avec sa PREMIÈRE intervention effacée.
   const owner = new Map<string, string>(); // brouillon → intervention
   for (const r of toDelete) {

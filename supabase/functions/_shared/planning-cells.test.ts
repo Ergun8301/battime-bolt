@@ -109,3 +109,18 @@ Deno.test('index par case = filtre de l’écran (200 lignes au hasard)', () => 
   }
   eq(cells, 12, '12 cases comparées');
 });
+
+// ── Lot 1 (heures sûres) : « Supprimer ? » sur le planning ──
+import { eraseConfirmation } from '../../../lib/planning-cells.ts';
+
+Deno.test('Lot 1 — planning : une case seule sans heures → directe ; plusieurs, ou des heures retirées → on demande', () => {
+  const slots = [
+    { id: 'a', work_date: '2026-10-13' }, { id: 'b', work_date: '2026-10-13' }, { id: 'c', work_date: '2026-10-14' }, { id: 'r', work_date: '2026-10-15' },
+  ];
+  const withdrawn = new Set(['r']);
+  eq(eraseConfirmation(slots, ['a'], withdrawn), null, 'une case sans heures : tout de suite, avec « Annuler »');
+  eq(eraseConfirmation(slots, ['a', 'b', 'c'], withdrawn), { count: 3, days: [{ date: '2026-10-13', n: 2 }, { date: '2026-10-14', n: 1 }], withHours: 0 }, 'plusieurs cases : combien, quels jours');
+  eq(eraseConfirmation(slots, ['r'], withdrawn), { count: 1, days: [{ date: '2026-10-15', n: 1 }], withHours: 1 }, 'une case qui porte des heures (retirées) : on demande');
+  eq(eraseConfirmation(slots, ['c', 'r'], withdrawn)!.withHours, 1, 'le nombre de cases avec des heures est dit');
+  eq(eraseConfirmation(slots, ['zz'], withdrawn), null, 'case disparue entre-temps : rien à demander');
+});

@@ -15,7 +15,12 @@
 // demande est claire (actionMode), avec « Annuler » et « Modifier » ; s'il
 // manque une info indispensable, UNE question (questionFor). Titres propres et
 // dates relatives : _shared/fr-langue.ts.
+//
+// Lot 1 (heures sûres) : tout ce qui RETIRE ou REMPLACE (isRemoval) passe
+// d'abord par une carte de confirmation qui dit ce qui part ; « Annuler »
+// reste disponible après.
 import { calendarForPrompt, cleanName, cleanSpoken, cleanTitle, dayPart, parseDateFr, parseTimeFr } from './fr-langue.ts';
+import { REASON_MAX, reasonOk } from './office-edits.ts';
 
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -95,7 +100,7 @@ export const GUIDE: GuideEntry[] = [
   {
     id: 'corriger', mots: ['corriger', 'correction', 'modifier les heures', 'erreur de pointage', 'mauvaise heure', 'corriger pointage', 'modifier pointage', 'changer pointage', 'rectifier', 'heures pointees'],
     titre: 'Corriger les heures d’un salarié',
-    etapes: ['Ouvrez sa feuille d’heures (clic sur son nom → « Feuille d’heures »).', 'Sur la journée envoyée : « Corriger les heures ».', 'Nouvelles heures → « Corriger et prévenir » : il est averti.'], lien: 'salaries'
+    etapes: ['Ouvrez sa feuille d’heures (clic sur son nom → « Feuille d’heures »).', 'Sur la journée envoyée : « Corriger les heures ».', 'Nouvelles heures et un motif (obligatoire) → « Corriger et prévenir » : il est averti.'], lien: 'salaries'
   },
   {
     id: 'export', mots: ['export', 'exporter', 'paie', 'comptable', 'excel', 'pdf', 'csv', 'envoyer au comptable'],
@@ -171,7 +176,7 @@ export const GUIDE: GuideEntry[] = [
   {
     id: 'selection', mots: ['selectionner', 'supprimer plusieurs', 'tout selectionner', 'effacer plusieurs interventions', 'vider la semaine'],
     titre: 'Supprimer plusieurs interventions d’un coup',
-    etapes: ['« Sélectionner » dans la barre du planning.', 'Cochez les bulles, ou « Tout sélectionner » (heures envoyées jamais cochables).', '« Supprimer (N) » — « Annuler » sur la carte remet tout.'], lien: 'planning'
+    etapes: ['« Sélectionner » dans la barre du planning.', 'Cochez les bulles, ou « Tout sélectionner » (heures envoyées jamais cochables).', '« Supprimer (N) », puis confirmez — « Annuler » sur la carte remet tout.'], lien: 'planning'
   },
   {
     id: 'present', mots: ['present', 'enlever absence', 'annuler conge', 'finalement la', 'revient'],
@@ -319,7 +324,7 @@ export const GUIDE: GuideEntry[] = [
   {
     id: 'assistant', mots: ['assistant', 'dicter', 'micro', 'trombone', 'joindre un fichier', 'comment tu marches'],
     titre: 'Se servir de l’Assistant',
-    etapes: ['Bouton ✨ en haut du planning.', 'Écrivez, ou 🎤 pour dicter (appui = démarre, appui = arrête), 📎 pour une photo ou un PDF.', 'Les actions simples sont faites tout de suite, avec « Annuler ».'], lien: 'planning'
+    etapes: ['Bouton ✨ en haut du planning.', 'Écrivez, ou 🎤 pour dicter (appui = démarre, appui = arrête), 📎 pour une photo ou un PDF.', 'Les actions simples sont faites tout de suite, avec « Annuler » ; une suppression attend votre confirmation.'], lien: 'planning'
   },
 ];
 
@@ -420,8 +425,14 @@ export type ActionDraft =
     }
   | {
       type: 'creer_chantier'; nom_client: string; ville: string; adresse: string; telephone: string; email: string; description: string;
-      /** Lus sur un devis joint (📎). */
-      budget_heures?: string; budget_montant?: string;
+      /** Lu sur un devis joint (📎) : des HEURES de main-d'œuvre, seulement si le devis les donne en heures. */
+      budget_heures?: string;
+      /**
+       * Lot 1 : le montant HT du devis, AFFICHÉ sur la carte, jamais enregistré.
+       * Il comprend matériaux et marge : pris pour le budget main-d'œuvre
+       * (`budget_amount`, comparé au seul coût des heures), il faussait les alertes.
+       */
+      montant_devis?: string;
     }
   | { type: 'ranger_document'; worksite_id: string | null; chantier_texte: string; categorie?: string; libelle?: string }
   | { type: 'poser_absence'; user_id: string | null; salarie_texte: string; absence_type: string; du: string; au: string }
@@ -431,7 +442,8 @@ export type ActionDraft =
       debut?: string; fin?: string;
     }
   | { type: 'planning_semaine'; semaine_du: string; lignes: { user_id: string; date: string; worksite_id: string | null }[]; notes: string[] }
-  | { type: 'corriger_pointage'; user_id: string | null; salarie_texte: string; date: string; entry_id: string | null; debut: string; fin: string; choix: EntryChoice[] }
+  /** Lot 1 : `motif` obligatoire, comme sur la fiche (office_correct_entry) — le salarié le lit. */
+  | { type: 'corriger_pointage'; user_id: string | null; salarie_texte: string; date: string; entry_id: string | null; debut: string; fin: string; choix: EntryChoice[]; motif: string }
   // ── Lot 7 ──
   /** Bulle du planning : déplacer (jour, salarié), heure, note. '' / null = inchangé. */
   | { type: 'modifier_intervention'; user_id: string | null; salarie_texte: string; date: string; planning_id: string | null; choix: SlotChoice[]; nouvelle_date: string; nouveau_user_id: string | null; debut: string; note: string | null }
@@ -472,22 +484,33 @@ export type ActionDraft =
 export interface AssistantAction { draft: ActionDraft; problems: string[] }
 
 /**
+ * Lot 1 (heures sûres, décision D3) : ce qui RETIRE ou REMPLACE quelque chose.
+ * Jamais fait d'office : une carte dit d'abord ce qui part (quoi, combien,
+ * quel jour), rien n'est écrit avant « Confirmer » ; « Annuler » reste ensuite.
+ */
+export const REMOVAL_TYPES: readonly ActionType[] = [
+  'supprimer_intervention', 'effacer_planning', 'supprimer_absence', 'supprimer_document', 'supprimer_depense',
+  'supprimer_habilitation', 'modifier_document', 'modifier_depense', 'modifier_habilitation', 'annuler_invitation',
+];
+export const isRemoval = (d: { type: string }) => (REMOVAL_TYPES as readonly string[]).includes(d.type);
+
+/**
  * Lot 7 — MOINS DE VALIDATIONS. Clair, complet, réversible → fait tout de
- * suite, avec « Annuler » et « Modifier ». La carte de confirmation reste pour
- * les écritures multiples (planning de la semaine), ce qui envoie un message
- * (invitation, rappel, relance, réponse de congé), les corrections de
- * pointages passés, et tout ce qui touche au coût, à la paie, aux droits.
+ * suite, avec « Annuler » et « Modifier » : placer, déplacer ou modifier une
+ * intervention, poser une absence, ranger un document, créer un client sans
+ * budget. La carte de confirmation reste pour tout le reste : les écritures
+ * multiples (planning de la semaine), ce qui envoie un message (invitation,
+ * rappel, relance, réponse de congé), les corrections d'heures (motif
+ * obligatoire), ce qui touche au coût, à la paie, aux droits — et, lot 1,
+ * toute suppression (isRemoval).
  */
 export function actionMode(d: ActionDraft): 'direct' | 'confirm' {
   switch (d.type) {
     case 'affecter_planning': case 'poser_absence': case 'ranger_document': case 'modifier_intervention':
-    // Lot 8 : effacer se fait tout de suite — « Annuler » remet TOUT comme avant.
-    case 'supprimer_intervention': case 'effacer_planning': case 'supprimer_absence': case 'supprimer_document':
-    case 'modifier_document': case 'supprimer_depense': case 'modifier_depense': case 'supprimer_habilitation': case 'modifier_habilitation':
       return 'direct';
     case 'creer_chantier':
-      // Un budget (devis joint) touche au coût : on le fait vérifier.
-      return d.budget_heures || d.budget_montant ? 'confirm' : 'direct';
+      // Des heures prévues (budget) ou un montant de devis à relire : on le fait vérifier.
+      return d.budget_heures || d.montant_devis ? 'confirm' : 'direct';
     default:
       return 'confirm';
   }
@@ -501,7 +524,9 @@ export interface ActionQuestion { text: string; field: string; chips: { label: s
  * rien ne manque, ou le problème n'est pas un oubli (carte de confirmation).
  */
 export function questionFor(d: ActionDraft, problems: string[], ctx: ActionContext): ActionQuestion | null {
-  if (actionMode(d) !== 'direct' || !problems.length) return null;
+  // Lot 1 : une suppression pose aussi sa question (« Laquelle ? ») ; la réponse
+  // mène à la carte de confirmation, jamais à l'effacement direct.
+  if ((actionMode(d) !== 'direct' && !isRemoval(d)) || !problems.length) return null;
   const p = problems[0];
   const sal = ctx.salaries.filter((s) => s.role !== 'admin' || d.type === 'poser_absence').map((s) => ({ label: fullName(s), value: s.id }));
   const chan = ctx.chantiers.filter((c) => norm(c.nom) !== 'autre').map((c) => ({ label: `${c.nom}${c.ville ? ` · ${c.ville}` : ''}`, value: c.id }));
@@ -689,6 +714,8 @@ const num = (v: unknown) => {
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 export const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+/** Lot 1 : la phrase de la fiche salarié (precheck, office-edits.ts), avec la raison. */
+export const MOTIF_MANQUANT = 'Indiquez un motif (3 caractères au moins) : le salarié le lit.';
 export function addDays(iso: string, n: number): string {
   const d = new Date(`${iso}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10);
 }
@@ -755,7 +782,6 @@ export function checkAction(d: ActionDraft, ctx: ActionContext): string[] {
       if (d.email && !EMAIL.test(d.email)) p.push('Email du client invalide.');
       if (ctx.chantiers.some((c) => norm(c.nom) === norm(d.nom_client))) p.push(`« ${d.nom_client} » existe déjà.`);
       if (d.budget_heures && !(Number(d.budget_heures) > 0)) p.push('Heures prévues incohérentes.');
-      if (d.budget_montant && !(Number(d.budget_montant) > 0)) p.push('Montant prévu incohérent.');
       break;
     case 'ranger_document':
       if (!d.worksite_id || !ch.has(d.worksite_id)) p.push('Choisissez le chantier.');
@@ -790,6 +816,9 @@ export function checkAction(d: ActionDraft, ctx: ActionContext): string[] {
       else if (!d.choix.some((c) => c.id === d.entry_id)) p.push('Ligne à corriger introuvable.');
       if (!HHMM.test(d.debut) || !HHMM.test(d.fin)) p.push('Heures de début et de fin nécessaires.');
       else if (d.debut === d.fin) p.push('Début et fin identiques.');
+      else if (d.entry_id && d.choix.some((c) => c.id === d.entry_id && c.debut === d.debut && c.fin === d.fin)) p.push('Rien ne change : ce sont déjà ses heures.');
+      // Lot 1 : même règle que la fiche — pas de motif, pas de correction.
+      if (!reasonOk(d.motif ?? '')) p.push(MOTIF_MANQUANT);
       break;
     case 'modifier_intervention':
       if (!d.user_id || !sal.has(d.user_id)) { p.push('Choisissez le salarié.'); break; }
@@ -949,7 +978,9 @@ export function prepare(type: string, raw: Record<string, unknown>, ctx: ActionC
       d = {
         type, nom_client: cleanName(str(raw.nom_client, 120)), ville: cleanName(str(raw.ville, 80)), adresse: cleanSpoken(str(raw.adresse, 160)), telephone: str(raw.telephone, 30),
         email: str(raw.email, 120).toLowerCase(), description: cleanTitle(str(raw.description, 300), 300),
-        budget_heures: num(raw.budget_heures), budget_montant: num(raw.budget_montant),
+        // Lot 1 : le montant du devis n'est plus un budget. Un ancien appel qui
+        // l'envoie encore en `budget_montant` est lu comme montant du devis.
+        budget_heures: num(raw.budget_heures), montant_devis: num(raw.montant_devis) || num(raw.budget_montant),
       };
       break;
     case 'ranger_document': {
@@ -1011,7 +1042,10 @@ export function prepare(type: string, raw: Record<string, unknown>, ctx: ActionC
     case 'corriger_pointage': {
       const s = str(raw.salarie, 80);
       const choix = entries.slice(0, 8);
-      d = { type, user_id: resolveSalarie(s, ctx), salarie_texte: s, date: dateOf(raw.date, ctx) || ctx.today, entry_id: choix.length === 1 ? choix[0].id : null, debut: hhmm(raw.debut), fin: hhmm(raw.fin), choix };
+      d = {
+        type, user_id: resolveSalarie(s, ctx), salarie_texte: s, date: dateOf(raw.date, ctx) || ctx.today, entry_id: choix.length === 1 ? choix[0].id : null,
+        debut: hhmm(raw.debut), fin: hhmm(raw.fin), choix, motif: cleanTitle(str(raw.motif, REASON_MAX), REASON_MAX),
+      };
       break;
     }
     // ── Lot 7 ──
@@ -1290,7 +1324,7 @@ export function summarize(d: ActionDraft, ctx: ActionContext): string {
       return `${titre} — ${sal(d.user_id, d.salarie_texte)}, ${d.dates.map(frDate).join(', ') || 'jour à choisir'}${h}`;
     }
     case 'planning_semaine': return `Planning de la semaine du ${frDate(d.semaine_du)} : ${d.lignes.filter((l) => l.worksite_id).length} affectation(s)`;
-    case 'corriger_pointage': return `Corriger ${sal(d.user_id, d.salarie_texte)} le ${frDate(d.date)} : ${d.debut || '?'} → ${d.fin || '?'}`;
+    case 'corriger_pointage': return `Corriger ${sal(d.user_id, d.salarie_texte)} le ${frDate(d.date)} : ${d.debut || '?'} → ${d.fin || '?'}${d.motif ? ` (motif : ${d.motif})` : ''}`;
     case 'ranger_document': return `Rangé sur ${ch(d.worksite_id, d.chantier_texte)} · ${d.categorie ? DOC_CATEGORY_LABEL[d.categorie] : 'Document'}${d.libelle ? ` « ${d.libelle} »` : ''}`;
     case 'modifier_intervention': {
       const c = d.choix.find((x) => x.id === d.planning_id);
@@ -1361,10 +1395,11 @@ export const ASSISTANT_FUNCTIONS = [
   },
   {
     name: 'creer_chantier',
-    description: 'Préparer la création d’un client / chantier. Avec un devis joint : client, adresse du chantier, contact, montant HT et heures prévues s’ils y sont.',
+    description: 'Préparer la création d’un client / chantier. Avec un devis joint : client, adresse du chantier, contact, montant HT du devis, et les heures de main-d’œuvre si le devis les donne EN HEURES.',
     parameters: { type: 'object', properties: {
       nom_client: S('Nom du client'), ville: S('Ville'), adresse: S('Adresse'), telephone: S('Téléphone'), email: S('Email'), description: S('Description'),
-      budget_montant: { type: 'number', description: 'Montant prévu (€ HT)' }, budget_heures: { type: 'number', description: 'Heures prévues' },
+      montant_devis: { type: 'number', description: 'Montant total HT du devis (affiché pour information, ce n’est PAS un budget main-d’œuvre)' },
+      budget_heures: { type: 'number', description: 'Heures de main-d’œuvre prévues, seulement si elles sont écrites en heures' },
     }, required: ['nom_client'] },
   },
   {
@@ -1407,8 +1442,11 @@ export const ASSISTANT_FUNCTIONS = [
   },
   {
     name: 'corriger_pointage',
-    description: 'Préparer la correction des heures envoyées par un salarié, un jour donné.',
-    parameters: { type: 'object', properties: { salarie: S('Nom du salarié'), date: S('aaaa-mm-jj'), debut: S('HH:MM'), fin: S('HH:MM') }, required: ['salarie', 'date', 'debut', 'fin'] },
+    description: 'Préparer la correction des heures envoyées par un salarié, un jour donné, avec le motif (le salarié le lit).',
+    parameters: { type: 'object', properties: {
+      salarie: S('Nom du salarié'), date: S('aaaa-mm-jj'), debut: S('HH:MM'), fin: S('HH:MM'),
+      motif: S('Pourquoi on corrige, tel que dit (ex. « oubli de pause », « badge oublié »). Vide si rien n’est dit : l’écran le demandera.'),
+    }, required: ['salarie', 'date', 'debut', 'fin'] },
   },
   // ── Lot 7 : tous les boutons du bureau (hors suppressions et paiement) ──
   {
@@ -1557,6 +1595,18 @@ export const ASSISTANT_FUNCTIONS = [
   },
 ];
 
+/**
+ * Lot 1 : un FICHIER est joint → le modèle ne voit que les outils qui lisent un
+ * document (répondre, ranger, créer le client d'un devis, la dépense d'une
+ * facture, le salarié ou le coût d'un bulletin). Un PDF piégé (« supprime tout
+ * le planning ») ne peut donc demander ni suppression, ni relance, ni rappel.
+ * Chacun de ces outils passe de toute façon par la carte ou par « Annuler ».
+ */
+export const ATTACHMENT_ACTIONS = ['repondre', 'ranger_document', 'creer_chantier', 'ajouter_depense', 'inviter_salarie', 'cout_reel'] as const;
+export const ATTACHMENT_FUNCTIONS = ASSISTANT_FUNCTIONS.filter((f) => (ATTACHMENT_ACTIONS as readonly string[]).includes(f.name));
+/** Les outils proposés au modèle : tous, ou ceux des documents s'il y a un fichier. */
+export const functionsFor = (hasFile: boolean) => (hasFile ? ATTACHMENT_FUNCTIONS : ASSISTANT_FUNCTIONS);
+
 // ── Sans IA : les demandes courantes, tout de suite ─────────────────────────
 export interface LocalReply { answer: string; links: { label: string; action: string }[]; action?: AssistantAction }
 
@@ -1631,12 +1681,16 @@ export function fromFunctionCall(name: string, args: Record<string, unknown>, ct
   return { answer: actionAnswer(a, ctx), links: [], action: a };
 }
 
+/** Lot 1 : au-dessus de la carte d'une suppression, avant le clic. */
+export const A_CONFIRMER = 'Vérifiez ce qui sera retiré, puis confirmez : rien ne part avant.';
+
 /** Le texte au-dessus de la carte, selon ce que l'écran va faire. */
 export function actionAnswer(a: AssistantAction, ctx: ActionContext): string {
-  if (actionMode(a.draft) === 'direct') {
+  const removal = isRemoval(a.draft);
+  if (actionMode(a.draft) === 'direct' || removal) {
     const q = questionFor(a.draft, a.problems, ctx);
     if (q) return q.text;
-    if (!a.problems.length) return 'C’est fait.';
+    if (!a.problems.length) return removal ? A_CONFIRMER : 'C’est fait.';
   }
   return a.problems.length ? 'J’ai préparé l’action : complétez ce qui manque, puis confirmez.' : 'Vérifiez, puis confirmez.';
 }

@@ -682,6 +682,10 @@ await openWorker();
   const n = writes.length;
   await wp.locator('button[aria-label="Envoyer"]').click();
   await wp.waitForTimeout(2500);
+  // Lot 1 (heures sûres) : la carte de confirmation d'abord, rien d'écrit ; puis « Effacer ».
+  check(await wp.locator('[data-testid=removal-notice]').count() === 1 && of(since(n), 'DELETE', 'time_entries').length === 0, 'W5 lot 1 : carte « Ce qui sera effacé » d’abord, rien d’écrit');
+  await wp.locator('[data-testid=worker-action-confirm]').last().click();
+  await wp.waitForTimeout(1500);
   const cardTxt = (await wp.locator('[data-testid=worker-action-card]').last().innerText().catch(() => '')).replace(/\s+/g, ' ');
   check(of(since(n), 'DELETE', 'time_entries').length === 0 && D.time_entries.some((x) => x.id === 'e-r1'), 'W5 aucun DELETE, la ligne est toujours là');
   check(/Rien à effacer : ces heures ont été envoyées \(ou renvoyées par le bureau\)/.test(cardTxt), `W5 message : « ${cardTxt.slice(0, 140)} »`);

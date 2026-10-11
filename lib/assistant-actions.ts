@@ -9,6 +9,11 @@
 // l'écran sans clic « Confirmer » ; chacune rend une VRAIE annulation (`undo`)
 // qui défait exactement ce qui a été écrit. Tout est noté dans le journal
 // `assistant_journal` (qui, quoi, quand — annulations comprises).
+//
+// Lot 1 (heures sûres) : les suppressions attendent le clic « Confirmer » de
+// la carte (actionMode) ; `makeRemovalPreview` lit, sans rien écrire, ce
+// qu'elles retireraient. Corriger des heures passe par la même voie que la
+// fiche salarié (office_correct_entry), motif obligatoire.
 import { supabase } from '@/lib/supabase';
 import {
   addPlanningSlot, createWorksite, invitedUserId, inviteWorker, savePayrollBasics, setAbsence, setWorksiteBudget, undoAbsence,
@@ -20,15 +25,16 @@ import {
 } from '@/lib/admin-writes';
 import { removeWorksiteDocument, uploadWorksiteDocument } from '@/lib/chantier-docs';
 import { sanitizeExtraction, supabaseCostSource } from '@/lib/real-cost';
-import { corrigerHeures } from '@/lib/corrections';
+import { correctOfficeEntry } from '@/lib/office-edits';
 import { casesLabel, eraseOne, erasePlanning, prepareMove, restoreRows, undoErase, undoMovePrep, type MovePrep } from '@/lib/erase';
 import { DOC_CATEGORY_LABEL, type ActionDraft, type ActionQuestion } from '@/supabase/functions/_shared/assistant-actions-core';
+import { precheck, type Changes } from '@/supabase/functions/_shared/office-edits';
 
 export type {
   ActionDraft, AssistantAction, EntryChoice, ActionQuestion,
 } from '@/supabase/functions/_shared/assistant-actions-core';
 export {
-  ABSENCE_KINDS, ABSENCE_LABEL, CERT_LABEL, DOC_CATEGORY_LABEL, EXPENSE_LABEL, ROLE_LABEL, actionMode, applyAnswer, checkAction, frDate, questionFor, summarize,
+  A_CONFIRMER, ABSENCE_KINDS, ABSENCE_LABEL, CERT_LABEL, DOC_CATEGORY_LABEL, EXPENSE_LABEL, ROLE_LABEL, actionMode, applyAnswer, checkAction, frDate, isRemoval, questionFor, summarize,
 } from '@/supabase/functions/_shared/assistant-actions-core';
 
 export interface ActionOptions {
@@ -51,6 +57,17 @@ export interface ActionResult {
   count?: number;
 }
 export type ActionExecutor = (d: ActionDraft, summary: string, attachment?: File) => Promise<ActionResult>;
+
+/** Lot 1 : ce qu'une suppression du planning retirerait, lu avant le clic (rien n'est écrit). */
+export interface RemovalPreview {
+  /** Cases (ou jours d'absence) qui partiraient. */
+  count: number;
+  /** Cases gardées, et pourquoi (heures notées ou envoyées, mois clôturé…). */
+  kept: number; reason: string;
+  /** Les jours touchés, dans l'ordre. */
+  days: string[];
+}
+export type RemovalPreviewer = (d: ActionDraft) => Promise<RemovalPreview | null>;
 
 const n = (v?: string) => (v && Number(v) > 0 ? Number(v) : null);
 const yes = (v: string, fallback: boolean) => (v === 'oui' ? true : v === 'non' ? false : fallback);
@@ -104,9 +121,11 @@ export function makeActionExecutor(user: { id: string; company_id: string }): Ac
             client_name: d.nom_client, city: d.ville, address: d.adresse, client_phone: d.telephone, client_email: d.email, description: d.description,
           });
           message = `Client « ${d.nom_client} » créé.`;
-          if (n(d.budget_heures) || n(d.budget_montant)) {
-            await setWorksiteBudget(cid, ws.id, n(d.budget_heures), n(d.budget_montant));
-            message += ' Budget enregistré.';
+          // Lot 1 : seules des HEURES deviennent un budget. Le montant du devis
+          // (matériaux et marge compris) n'est jamais le budget main-d'œuvre.
+          if (n(d.budget_heures)) {
+            await setWorksiteBudget(cid, ws.id, n(d.budget_heures), null);
+            message += ' Heures prévues enregistrées.';
           }
           let doc: { id: string; path: string } | null = null;
           if (attachment) {
@@ -142,20 +161,45 @@ export function makeActionExecutor(user: { id: string; company_id: string }): Ac
           const ids: string[] = [];
           for (const day of d.dates) ids.push(await addPlanningSlot({ ...base, userId: d.user_id!, worksiteId: d.worksite_id!, workDate: day, notes: d.note, estimatedStart: d.debut || null, estimatedEnd: d.fin || null }));
           message = `${d.dates.length} jour${d.dates.length > 1 ? 's' : ''} ajouté${d.dates.length > 1 ? 's' : ''} au planning.`;
+          // Lot 1 : retiré par le même chemin que « Supprimer » — une case sur
+          // laquelle des heures ont été notées depuis est gardée, et c'est dit.
           undo = async () => {
-            const { error } = await supabase.from('planning').delete().eq('company_id', cid).in('id', ids);
-            if (error) throw error;
+            const r = await erasePlanning(cid, { ids });
+            if (r.skipped) return `Annulé en partie : ${r.skipped} case${r.skipped > 1 ? 's' : ''} gardée${r.skipped > 1 ? 's' : ''} (${r.reason}).`;
           };
           break;
         }
         case 'planning_semaine': {
           const rows = d.lignes.filter((l) => l.worksite_id);
-          for (const l of rows) await addPlanningSlot({ ...base, userId: l.user_id, worksiteId: l.worksite_id!, workDate: l.date });
+          const ids: string[] = [];
+          for (const l of rows) ids.push(await addPlanningSlot({ ...base, userId: l.user_id, worksiteId: l.worksite_id!, workDate: l.date }));
           message = `Planning appliqué : ${rows.length} affectation${rows.length > 1 ? 's' : ''}.`;
+          // Lot 1 : « Annuler » retire les cases ajoutées, par le même chemin que
+          // « Supprimer » : une case sur laquelle des heures ont été notées
+          // depuis est GARDÉE, et c'est dit.
+          undo = async () => {
+            const r = await erasePlanning(cid, { ids });
+            const k = r.deleted.length;
+            return `Annulé : ${casesLabel(k, 'retirée')} du planning.${r.skipped ? ` ${r.skipped} gardée${r.skipped > 1 ? 's' : ''} (${r.reason}).` : ''}`;
+          };
           break;
         }
         case 'corriger_pointage': {
-          const r = await corrigerHeures({ entryId: d.entry_id!, newStart: d.debut, newEnd: d.fin });
+          // Lot 1 : même voie que « Corriger cette journée » sur la fiche salarié —
+          // office_correct_entry, motif obligatoire, tracé avant / après dans la
+          // même transaction, le salarié prévenu. Jamais de repli sur l'ancien
+          // chemin sans motif.
+          const line = d.choix.find((c) => c.id === d.entry_id);
+          if (!line) return { ok: false, message: 'Ligne à corriger introuvable.' };
+          const changes: Changes = {
+            ...(d.debut !== line.debut ? { start_time: d.debut } : {}), ...(d.fin !== line.fin ? { end_time: d.fin } : {}),
+          };
+          const refus = precheck({ start_time: line.debut, end_time: line.fin }, changes, [], d.motif ?? '');
+          if (refus) return { ok: false, message: refus };
+          const { data: co } = await supabase.from('companies').select('name').eq('id', cid).maybeSingle();
+          const r = await correctOfficeEntry({
+            entryId: line.id, workerId: d.user_id!, workDate: d.date, changes, reason: d.motif, companyName: (co as { name?: string } | null)?.name || '',
+          });
           if (!r.ok) return { ok: false, message: r.message };
           message = r.message;
           break;
@@ -436,11 +480,29 @@ export function makeActionExecutor(user: { id: string; company_id: string }): Ac
   };
 }
 
+/**
+ * Lot 1 : ce qu'une suppression du planning retirerait — lu par le même code
+ * que l'effacement (erasePlanning, `dryRun`), rien n'est écrit. Les autres
+ * suppressions (document, dépense…) se décrivent seules sur la carte : null.
+ */
+export function makeRemovalPreview(user: { company_id: string }): RemovalPreviewer {
+  return async (d) => {
+    if (d.type !== 'supprimer_intervention' && d.type !== 'effacer_planning' && d.type !== 'supprimer_absence') return null;
+    if (d.type === 'supprimer_intervention' ? !d.planning_id : !d.du || !d.au || (d.type === 'supprimer_absence' && !d.user_id)) return null;
+    const r = d.type === 'supprimer_intervention'
+      ? await erasePlanning(user.company_id, { ids: [d.planning_id!], dryRun: true })
+      : await erasePlanning(user.company_id, { userId: d.user_id, from: d.du, to: d.au, absences: d.type === 'supprimer_absence', dryRun: true });
+    const days = Array.from(new Set(r.deleted.map((x) => String(x.work_date)))).sort();
+    return { count: r.deleted.length, kept: r.skipped, reason: r.reason, days };
+  };
+}
+
 /** Démo (préviews) : rien n'est écrit, l'annulation non plus. */
 export const demoActionExecutor: ActionExecutor = async (d) => {
   await new Promise((r) => setTimeout(r, 450));
   const k = d.type === 'planning_semaine' ? d.lignes.filter((l) => l.worksite_id).length : 1;
-  const direct = ['affecter_planning', 'poser_absence', 'ranger_document', 'modifier_intervention', 'creer_chantier',
+  // Ce qui se défait (« Annuler ») : les gestes directs, et les suppressions une fois confirmées.
+  const direct = ['affecter_planning', 'poser_absence', 'ranger_document', 'modifier_intervention', 'creer_chantier', 'planning_semaine',
     'supprimer_intervention', 'effacer_planning', 'supprimer_absence', 'supprimer_document', 'modifier_document',
     'supprimer_depense', 'modifier_depense', 'supprimer_habilitation', 'modifier_habilitation'].includes(d.type);
   if (d.type === 'effacer_planning') {

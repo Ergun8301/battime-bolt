@@ -4,13 +4,15 @@
 // Lot 7 : geste simple et complet → fait tout de suite, « ✅ Fait » + Annuler +
 // Modifier ; info manquante → UNE question ; envoi de la journée, nouveau
 // chantier, email client, correction d'une ligne envoyée → à confirmer.
+// Lot 1 (heures sûres) : effacer ou retirer (heures, congé, pointage, photo,
+// réserve) → toujours la carte d'abord, qui dit ce qui part ; « Annuler » après.
 
 import type { ExtraControl } from '@/components/assistant-panel';
 import { readCard, useCardMemory, writeCard } from '@/lib/card-memory';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CheckCircle2, Loader2, CalendarOff, Play, Square, AlertTriangle, FolderInput, Paperclip, Send, Clock, UtensilsCrossed, Copy, Wrench, MapPin, Mail, Eraser, CalendarX, CircleX, FileX } from 'lucide-react';
 import {
-  applyWorkerAnswer, checkWorkerAction, DOC_CATEGORY_LABEL, LEAVE_KINDS, LEAVE_LABEL, workerActionMode, workerQuestionFor,
+  applyWorkerAnswer, checkWorkerAction, DOC_CATEGORY_LABEL, fmtMin, isWorkerRemoval, LEAVE_KINDS, LEAVE_LABEL, shiftMinutes, WORKER_A_CONFIRMER, workerActionMode, workerQuestionFor,
   type WorkerActionDraft, type WorkerLive, type WorkerSnapshot,
 } from '@/supabase/functions/_shared/worker-assistant-core';
 import type { WorkerActionExtra } from '@/lib/worker-assistant';
@@ -39,7 +41,53 @@ const CSS = `
 .wa-b.ok{background:#15120F;color:#FBF8F2}.wa-b.ok:disabled{opacity:.35;cursor:default}
 .wa-b.no{background:transparent;color:#6E6A63}
 .wa-done{display:flex;align-items:center;gap:8px;color:#0F7A43;font-weight:800;font-size:14px;margin-top:10px}
+.wa-rm{margin-top:8px;border:1px solid rgba(192,70,31,.28);background:#FFF6F2;border-radius:10px;padding:8px 9px}
+.wa-rm-h{font-size:10.5px;font-weight:900;color:#9a3b14;text-transform:uppercase;letter-spacing:.05em;margin:0 0 3px}
+.wa-rm ul{margin:0;padding:0 0 0 16px;font-size:13px;color:#15120F;line-height:1.45}
+.wa-rm .ok{color:#0F7A43}
 `;
+
+const frDay = (iso: string) => (iso ? new Date(`${iso}T12:00:00Z`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' }) : '');
+
+/**
+ * Lot 1 : ce que la suppression retirera, en clair — quelles lignes, combien
+ * d'heures, quel jour. Les heures déjà envoyées ne s'effacent jamais d'ici.
+ */
+function workerRemovalLines(d: WorkerActionDraft, today: string): string[] {
+  const line = (l: WorkerLive['lignes'][number]) => `${l.chantier} · ${l.debut}–${l.fin} (${fmtMin(Math.max(0, shiftMinutes(l.debut, l.fin)))})`;
+  switch (d.type) {
+    case 'effacer_heures': {
+      if (d.date !== today) return [`Toutes vos heures non envoyées du ${frDay(d.date)}.`, 'Les heures déjà envoyées restent.'];
+      const open = d.choix.filter((l) => !l.envoyee && (d.tout || l.id === d.entry_id));
+      if (!open.length) return [];
+      const total = open.reduce((n, l) => n + Math.max(0, shiftMinutes(l.debut, l.fin)), 0);
+      return [
+        ...open.map(line),
+        `${open.length > 1 ? `${open.length} lignes, ` : ''}${fmtMin(total)} au total, ${frDay(d.date)}.`,
+        'Les heures déjà envoyées restent.',
+      ];
+    }
+    case 'annuler_conge': {
+      const c = d.choix.find((x) => x.id === d.leave_id);
+      return c ? [`${LEAVE_LABEL[c.type] ?? 'Congé'} du ${frDay(c.du)} au ${frDay(c.au)} : la demande est retirée.`] : [];
+    }
+    case 'modifier_conge': {
+      const c = d.choix.find((x) => x.id === d.leave_id);
+      return c ? [`Demande du ${frDay(c.du)} au ${frDay(c.au)}, remplacée par une nouvelle demande${d.du ? ` du ${frDay(d.du)} au ${frDay(d.au || d.du)}` : ''}.`] : [];
+    }
+    case 'annuler_pointage':
+      return d.chantier ? [`Pointage en cours sur ${d.chantier}${d.depuis ? ` depuis ${hhmm(d.depuis)}` : ''} : rien ne sera noté.`] : [];
+    case 'retirer_photo': {
+      const c = d.choix.find((x) => x.id === d.document_id);
+      return c ? [`« ${c.nom} » · ${c.chantier} · ${frDay(c.date)}`] : [];
+    }
+    case 'retirer_reserve': {
+      const c = d.choix.find((x) => x.id === d.entry_id);
+      return c ? [`Réserve sur ${c.chantier} · ${c.debut}–${c.fin}. Les heures restent.`] : [];
+    }
+    default: return [];
+  }
+}
 
 const HEAD: Record<WorkerActionDraft['type'], [string, typeof Play, string]> = {
   demander_conge: ['Demande de congé', CalendarOff, 'Envoyer la demande'],
@@ -107,8 +155,11 @@ export default function WorkerActionCard({ extra, execute, onDone, ctl }: Props)
   }, [d, snap, live, extra.workerAction.draft, extra.workerAction.problems]);
   const set = (patch: Partial<WorkerActionDraft>) => setD((x) => ({ ...x, ...patch } as WorkerActionDraft));
   const direct = workerActionMode(extra.workerAction.draft) === 'direct';
+  // Lot 1 : une suppression pose sa question s'il le faut, puis montre la carte de confirmation.
+  const removal = isWorkerRemoval(extra.workerAction.draft);
   const [question, setQuestion] = useState(() => workerQuestionFor(extra.workerAction.draft, extra.workerAction.problems, snap));
-  const [phase, setPhase] = useState<Phase>(() => mem.phase ?? (!direct ? 'form' : !extra.workerAction.problems.length ? 'auto' : question ? 'question' : 'form'));
+  const [phase, setPhase] = useState<Phase>(() => mem.phase ?? (!direct ? (removal && question && extra.workerAction.problems.length ? 'question' : 'form')
+    : !extra.workerAction.problems.length ? 'auto' : question ? 'question' : 'form'));
   const [result, setResult] = useState<WorkerActionResult | null>(mem.result ?? null);
   useCardMemory<typeof mem>(extra, (m) => {
     if (m.result) setResult(m.result);
@@ -124,6 +175,8 @@ export default function WorkerActionCard({ extra, execute, onDone, ctl }: Props)
   useEffect(() => { if (phase === 'question') ctl?.text(null); }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (phase === 'done') ctl?.settle('C’est fait.'); }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (cancelled) ctl?.settle(); }, [cancelled]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Lot 1 : au-dessus de la carte d'une suppression, jamais « C'est fait » avant le clic.
+  useEffect(() => { if (removal && phase === 'form' && !result) ctl?.text(WORKER_A_CONFIRMER); }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
   const editOf = useRef<WorkerActionResult['undo'] | null>(null);
 
   const run = async (draft: WorkerActionDraft = d) => {
@@ -160,7 +213,8 @@ export default function WorkerActionCard({ extra, execute, onDone, ctl }: Props)
         const nd = applyWorkerAnswer(d, question.field, value);
         const p2 = checkWorkerAction(nd, snap, live);
         setD(nd);
-        if (!p2.length) { launched.add(extra); setPhase('auto'); run(nd); return; }
+        // Lot 1 : une suppression complétée va sur la carte de confirmation, jamais directement.
+        if (!p2.length) { if (removal) { setPhase('form'); return; } launched.add(extra); setPhase('auto'); run(nd); return; }
         const q2 = workerQuestionFor(nd, p2, snap);
         if (q2) setQuestion(q2); else setPhase('form');
       }} />
@@ -357,11 +411,21 @@ export default function WorkerActionCard({ extra, execute, onDone, ctl }: Props)
       <p className="wa-h"><span className="i"><Icon className="h-3.5 w-3.5" /></span>{title}</p>
       {extra.attachment && <p className="wa-att"><Paperclip className="h-3.5 w-3.5" /> {extra.attachment.name}</p>}
       <div className="wa-f">{body}</div>
+      {removal && (() => {
+        const lines = workerRemovalLines(d, snap.aujourdhui);
+        if (!lines.length) return null;
+        return (
+          <div className="wa-rm" data-testid="removal-notice">
+            <p className="wa-rm-h">{d.type === 'modifier_conge' ? 'Ce qui sera remplacé' : 'Ce qui sera effacé'}</p>
+            <ul>{lines.map((l) => <li key={l}>{l}</li>)}<li className="ok">Rien n’est fait avant « {confirm} ». « Annuler » restera possible juste après.</li></ul>
+          </div>
+        );
+      })()}
       {problems.map((p) => <p key={p} className="wa-p">{p}</p>)}
       {geoFor && <GeoInfoDialog onOk={() => { markGeoInfoSeen(geoFor); setGeoFor(null); run(d); }} />}
       {err && <p className="wa-p">{err}</p>}
       <div className="wa-foot">
-        <button type="button" className="wa-b no" disabled={busy} onClick={() => { if (editOf.current && result) { editOf.current = null; setPhase('done'); } else setCancelled(true); }}>{editOf.current ? 'Garder comme avant' : 'Annuler'}</button>
+        <button type="button" className="wa-b no" disabled={busy} onClick={() => { if (editOf.current && result) { editOf.current = null; setPhase('done'); } else setCancelled(true); }}>{editOf.current ? 'Garder comme avant' : removal ? 'Ne rien effacer' : 'Annuler'}</button>
         <button
           type="button" className="wa-b ok" disabled={busy || problems.length > 0} data-testid="worker-action-confirm"
           onClick={() => run()}

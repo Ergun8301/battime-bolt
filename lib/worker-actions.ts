@@ -6,6 +6,10 @@
 //
 // Lot 7 : les gestes simples sont lancés tout de suite par l'écran ; chacun
 // rend une VRAIE annulation (`undo`). Tout est noté dans `assistant_journal`.
+//
+// Lot 1 (heures sûres) : une annulation ne retire JAMAIS quelque chose avant
+// d'avoir remis ce qu'elle restaure (le chrono, la demande de congé). Si la
+// remise est refusée, ce qui existe reste, et on dit quoi faire.
 import { supabase } from '@/lib/supabase';
 import { requestLeave } from '@/lib/leave';
 import { announceLiveChange, finishLiveSession, startLiveSession } from '@/lib/live-session';
@@ -31,6 +35,8 @@ const today = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/P
 /** Jour (Paris) d'un horodatage : le jour où le chrono a été ouvert. */
 const parisDayOf = (iso: string) => new Date(iso).toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
 const errText = (e: unknown, fallback: string) => (e as { message?: string } | null)?.message || fallback;
+/** Lot 1 : « Annuler » après « Terminer » n'a pas pu relancer le chrono — rien n'est perdu. */
+export const GARDEE = 'La journée reste terminée : vos heures sont gardées. Corrigez l’heure de fin dans « Ma journée ».';
 
 const SUMMARY: Record<WorkerActionDraft['type'], string> = {
   demander_conge: 'Demande de congé', commencer_pointage: 'Début de pointage', terminer_pointage: 'Fin de pointage',
@@ -50,14 +56,6 @@ export function makeWorkerExecutor(user: { id: string; company_id: string }): Wo
   const positionActive = async () => {
     const { data } = await supabase.from('companies').select('position_tracking_enabled').eq('id', user.company_id).maybeSingle();
     return !!(data as { position_tracking_enabled?: boolean } | null)?.position_tracking_enabled;
-  };
-  // Lot 2 : seulement les brouillons JAMAIS envoyés (`submitted_at` nul). Une
-  // journée renvoyée par le bureau est en brouillon, mais elle a été envoyée :
-  // elle se corrige ou se retire, elle ne s'efface pas (la base le refuse aussi).
-  const deleteDrafts = async (ids: string[]) => {
-    if (!ids.length) return;
-    const { error } = await supabase.from('time_entries').delete().in('id', ids).eq('user_id', user.id).eq('status', 'draft').is('submitted_at', null);
-    if (error) throw error;
   };
   return async (d, attachment) => {
     let message = '';
@@ -136,15 +134,26 @@ export function makeWorkerExecutor(user: { id: string; company_id: string }): Wo
           }
           const row = r;
           message = `Pointage fermé — ${row.start_time.slice(0, 5)} à ${row.end_time.slice(0, 5)}${row.end_time.slice(0, 5) < row.start_time.slice(0, 5) ? ' (le lendemain)' : ''}.`;
-          // Annuler : on retire la ligne créée et le chrono repart de l'heure d'origine.
+          // Annuler : le chrono repart de l'heure d'origine, PUIS la ligne créée
+          // est retirée. Lot 1 (heures sûres) : jamais l'inverse. La base peut
+          // refuser de recréer le chrono (borne active, mois clos, clôture du
+          // salarié) : la ligne d'heures reste alors, intacte.
           if (d.worksite_id) {
             undo = async () => {
               const { data } = await supabase.from('time_entries').select('id').eq('user_id', user.id).eq('work_date', jourChrono)
                 .eq('start_time', row.start_time).eq('end_time', row.end_time).eq('status', 'draft').order('created_at', { ascending: false }).limit(1);
               const id = (data as { id: string }[] | null)?.[0]?.id;
               if (!id) throw new Error('La ligne a déjà été envoyée : corrigez-la dans « Ma journée ».');
-              await deleteDrafts([id]);
-              await relancer();
+              try { await relancer(); } catch { throw new Error(GARDEE); }
+              // La ligne ne part que si elle est encore un brouillon jamais envoyé.
+              const { data: gone, error: delErr } = await supabase.from('time_entries').delete()
+                .eq('id', id).eq('user_id', user.id).eq('status', 'draft').is('submitted_at', null).select('id');
+              if (delErr || !gone || gone.length === 0) {
+                // Retour à l'état sûr : la ligne reste, le chrono recréé repart (pas d'heures comptées deux fois).
+                await supabase.from('active_sessions').delete().eq('user_id', user.id).eq('started_at', d.depuis);
+                announceLiveChange();
+                throw new Error(GARDEE);
+              }
             };
           }
           break;
@@ -230,7 +239,24 @@ export function makeWorkerExecutor(user: { id: string; company_id: string }): Wo
           if (!ids.length) return { ok: false, message: 'Rien à copier : les heures de ce jour-là sont à compléter.' };
           const n = Math.round(ids.length / Math.max(1, d.vers.length));
           message = `${n} ligne${n > 1 ? 's' : ''} copiée${n > 1 ? 's' : ''} sur ${d.vers.length} jour${d.vers.length > 1 ? 's' : ''}.`;
-          undo = () => deleteDrafts(ids);
+          // Lot 1 : « Annuler » ne retire que les copies restées telles quelles.
+          // Une copie retouchée depuis (autres heures) ou envoyée est GARDÉE.
+          const copied = new Set((src as { worksite_id: string | null; start_time: string; end_time: string }[]).map((r) => `${r.worksite_id}|${r.start_time.slice(0, 5)}|${r.end_time.slice(0, 5)}`));
+          undo = async () => {
+            const { data: now, error: rErr } = await supabase.from('time_entries').select('id, worksite_id, start_time, end_time, status, submitted_at').in('id', ids).eq('user_id', user.id);
+            if (rErr) throw rErr;
+            const rows = (now ?? []) as { id: string; worksite_id: string | null; start_time: string; end_time: string; status: string; submitted_at: string | null }[];
+            const same = rows.filter((r) => r.status === 'draft' && !r.submitted_at && copied.has(`${r.worksite_id}|${r.start_time.slice(0, 5)}|${r.end_time.slice(0, 5)}`));
+            let gone = 0;
+            for (const r of same) {
+              const { data: del, error: dErr } = await supabase.from('time_entries').delete().eq('id', r.id).eq('user_id', user.id)
+                .eq('status', 'draft').is('submitted_at', null).eq('start_time', r.start_time).eq('end_time', r.end_time).select('id');
+              if (dErr) throw dErr;
+              gone += del?.length ?? 0;
+            }
+            const kept = rows.length - gone;
+            return kept ? `Annulé : ${gone} copie${gone > 1 ? 's' : ''} retirée${gone > 1 ? 's' : ''}, ${kept} gardée${kept > 1 ? 's' : ''} (modifiée${kept > 1 ? 's' : ''} ou envoyée${kept > 1 ? 's' : ''} depuis).` : 'Annulé : c’est comme avant.';
+          };
           break;
         }
         case 'reserve_corrigee': {
@@ -263,7 +289,12 @@ export function makeWorkerExecutor(user: { id: string; company_id: string }): Wo
           const ids = new Set(((gone ?? []) as { id: string }[]).map((x) => x.id));
           const deleted = list.filter((r) => ids.has(r.id));
           if (!deleted.length) return { ok: false, message: 'Rien n’a été effacé : ces heures sont verrouillées par le bureau.' };
-          message = `${deleted.length} ligne${deleted.length > 1 ? 's' : ''} effacée${deleted.length > 1 ? 's' : ''}.`;
+          // Lot 1 : les heures effacées sont écrites dans le message — donc au journal (trace).
+          const what = deleted.map((r) => {
+            const c = d.choix.find((l) => l.id === r.id);
+            return `${c ? `${c.chantier} ` : ''}${String(r.start_time).slice(0, 5)}–${String(r.end_time).slice(0, 5)}`;
+          }).join(', ');
+          message = `${deleted.length} ligne${deleted.length > 1 ? 's' : ''} effacée${deleted.length > 1 ? 's' : ''} (${what}).`;
           undo = async () => {
             // total_minutes est calculé par la base : on ne le renvoie pas.
             const back = deleted.map(({ total_minutes: _t, ...r }) => r);
@@ -278,20 +309,30 @@ export function makeWorkerExecutor(user: { id: string; company_id: string }): Wo
           if (readErr) throw readErr;
           const p0 = prev as { id: string; type: string; start_date: string; end_date: string; note: string | null } | null;
           if (!p0) return { ok: false, message: 'Demande déjà traitée par le bureau : elle ne peut plus être changée d’ici.' };
-          const { data: gone, error } = await supabase.from('leave_requests').delete().eq('id', p0.id).select('id');
-          if (error) throw error;
-          if (!gone || gone.length === 0) return { ok: false, message: 'Demande déjà traitée par le bureau.' };
+          // La dernière demande en attente sur ces dates (celle qu'on vient d'envoyer).
+          const pendingOn = async (du: string, au: string) => {
+            const { data } = await supabase.from('leave_requests').select('id').eq('user_id', user.id).eq('status', 'pending')
+              .eq('start_date', du).eq('end_date', au).order('created_at', { ascending: false }).limit(1);
+            return (data as { id: string }[] | null)?.[0]?.id ?? null;
+          };
+          // Lot 1 : changer les dates = la NOUVELLE demande d'abord, l'ancienne
+          // retirée ensuite. Un envoi refusé ne laisse plus le salarié sans demande.
           if (d.type === 'modifier_conge') await requestLeave({ type: p0.type, start: d.du, end: d.au, note: p0.note });
+          const { data: gone, error } = await supabase.from('leave_requests').delete().eq('id', p0.id).select('id');
+          if (error || !gone || gone.length === 0) {
+            if (d.type === 'modifier_conge') { const id = await pendingOn(d.du, d.au); if (id) await supabase.from('leave_requests').delete().eq('id', id); }
+            if (error) throw error;
+            return { ok: false, message: 'Demande déjà traitée par le bureau.' };
+          }
           message = d.type === 'annuler_conge' ? 'Demande de congé annulée.' : 'Nouvelles dates envoyées au bureau.';
           undo = async () => {
+            // Même demande qu'avant (mêmes dates, même motif), par le même chemin que « Mes congés » —
+            // remise AVANT de retirer la nouvelle : jamais aucune demande entre les deux.
+            await requestLeave({ type: p0.type, start: p0.start_date, end: p0.end_date, note: p0.note });
             if (d.type === 'modifier_conge') {
-              const { data } = await supabase.from('leave_requests').select('id').eq('user_id', user.id).eq('status', 'pending')
-                .eq('start_date', d.du).eq('end_date', d.au).order('created_at', { ascending: false }).limit(1);
-              const id = (data as { id: string }[] | null)?.[0]?.id;
+              const id = await pendingOn(d.du, d.au);
               if (id) await supabase.from('leave_requests').delete().eq('id', id);
             }
-            // Même demande qu'avant (mêmes dates, même motif), par le même chemin que « Mes congés ».
-            await requestLeave({ type: p0.type, start: p0.start_date, end: p0.end_date, note: p0.note });
           };
           break;
         }

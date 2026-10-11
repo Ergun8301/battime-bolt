@@ -60,7 +60,7 @@ import { attributeEntries, closeMonth as closeMonthWrite, logHoursReminder, send
 import { addPlanningSlot, createWorksite, inviteWorker, setAbsence } from '@/lib/planning-writes';
 import { supabaseAssistantSource } from '@/lib/assistant';
 import AssistantActionCard from '@/components/assistant-action-card';
-import { makeActionExecutor, type ActionExtra } from '@/lib/assistant-actions';
+import { makeActionExecutor, makeRemovalPreview, type ActionExtra } from '@/lib/assistant-actions';
 import { useAiEnabled } from '@/lib/real-cost';
 import AdminMobileMenu from '@/components/admin-mobile-menu';
 import ImportDialog from '@/components/import-dialog';
@@ -79,8 +79,8 @@ import { AddKindSwitch, DayTasksPanel, MeetingChip, MeetingForm, MISSIONS_CSS, P
 import { fetchOfficeMissions, MISSIONS_OFF, type DayTask, type Meeting, type MissionsState } from '@/lib/missions';
 import { MEETING_TINT, meetingsFor, sortTasks } from '@/supabase/functions/_shared/missions';
 import {
-  aggregateEntries, bubbleTitleOf, DRAFT_COLS, extraDeclared, makeBubbleKeyOf, makePrintSource, orderCmp, SENT_COLS, withdrawnSet,
-  type DraftRow, type EntryRow, type PrintSource, type RealAgg,
+  aggregateEntries, bubbleTitleOf, DRAFT_COLS, eraseConfirmation, extraDeclared, makeBubbleKeyOf, makePrintSource, orderCmp, SENT_COLS, withdrawnSet,
+  type DraftRow, type EntryRow, type EraseAsk, type PrintSource, type RealAgg,
 } from '@/lib/planning-cells';
 import { DAY_PARTS, dayPartTint } from '@/supabase/functions/_shared/day-part';
 import { cellKey, parisDay, placeLive, type LivePlace, type LiveSessionLike } from '@/supabase/functions/_shared/live-place';
@@ -1082,6 +1082,8 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const [eraseBusy, setEraseBusy] = useState(false);
   // La carte « N intervention(s) supprimée(s) · Annuler » reste jusqu'à sa croix.
   const [undoCard, setUndoCard] = useState<{ key: number; message: string; strong: boolean; undo: () => Promise<UndoResult> } | null>(null);
+  // Lot 1 : « Supprimer ? » — plusieurs cases, ou une case qui porte des heures (retirées) : on demande d'abord.
+  const [eraseAsk, setEraseAsk] = useState<(EraseAsk & { go: () => void }) | null>(null);
 
   // separate client fiche (permanent data)
   const [clientFiche, setClientFiche] = useState<Worksite | null>(null);
@@ -1844,11 +1846,14 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       },
     });
   };
-  const deleteSelected = async () => {
+  const deleteSelected = async (confirmed = false) => {
     if (!user?.company_id) return;
     // Recalculé AU MOMENT du clic : des heures ont pu être envoyées entre-temps.
     const ids = planning.filter((p) => selOn.has(p.id) && !lockReason(p)).map((p) => p.id);
     if (!ids.length) return;
+    // Lot 1 : plusieurs cases (ou des heures retirées dessus) → la fenêtre « Supprimer ? » d'abord.
+    const ask = confirmed ? null : eraseConfirmation(planning, ids, withdrawnIds);
+    if (ask) { setEraseAsk({ ...ask, go: () => { deleteSelected(true); } }); return; }
     setEraseBusy(true);
     try {
       const r = await erasePlanning(user.company_id, { ids });
@@ -2556,11 +2561,14 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   // Lot 11 : « Supprimer » (une seule intervention) = même chemin que « Supprimer (N) » :
   // la ligne est lue en entier avant d'être effacée, et la carte « Annuler » la
   // remet à l'identique. Plus d'effacement immédiat et définitif.
-  const deleteAffectation = async () => {
+  const deleteAffectation = async (confirmed = false) => {
     if (!user?.company_id || !editing) return;
     const why = hardLock(editing);
     if (why) { toast.error(why); return; }
     const id = editing.id;
+    // Lot 1 : une case qui porte des heures (retirées par le salarié) → on demande d'abord.
+    const ask = confirmed ? null : eraseConfirmation(planning, [id], withdrawnIds);
+    if (ask) { setEraseAsk({ ...ask, go: () => { deleteAffectation(true); } }); return; }
     setDeletingEdit(true);
     try {
       const r = await erasePlanning(user.company_id, { ids: [id] });
@@ -3616,7 +3624,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                 <button type="button" className="bt-pl-selbar-btn dy" data-testid="sel-all-day" onClick={() => toggleGroup(dayIds)}>
                   {allOn(dayIds) ? 'Tout désélectionner' : 'Tout sélectionner'}
                 </button>
-                <button type="button" className="bt-pl-selbar-del" data-testid="sel-delete" disabled={n === 0 || eraseBusy} onClick={deleteSelected}>
+                <button type="button" className="bt-pl-selbar-del" data-testid="sel-delete" disabled={n === 0 || eraseBusy} onClick={() => deleteSelected()}>
                   {eraseBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />} Supprimer ({n})
                 </button>
                 <button type="button" className="bt-pl-selbar-btn bt-pl-selbar-ok" data-testid="sel-done" onClick={exitSelect}>Terminer</button>
@@ -3625,6 +3633,35 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
           </div>
         );
       })()}
+
+      {/* Lot 1 (heures sûres) : « Supprimer ? » avant d'effacer plusieurs cases, ou une
+          case qui porte des heures. Rien ne part avant « Supprimer » ; « Annuler » reste après. */}
+      <Dialog open={!!eraseAsk} onOpenChange={(o) => { if (!o) setEraseAsk(null); }}>
+        <DialogContent className="bt-skin max-w-sm" data-testid="erase-ask">
+          <DialogHeader><DialogTitle>Supprimer {eraseAsk?.count === 1 ? 'cette intervention' : `${eraseAsk?.count ?? 0} interventions`} ?</DialogTitle></DialogHeader>
+          {eraseAsk && (
+            <div className="space-y-2 text-sm">
+              {eraseAsk.days.length > 0 && (
+                <ul className="list-disc pl-5" data-testid="erase-ask-days">
+                  {eraseAsk.days.map((x) => <li key={x.date}>{format(parseISO(x.date), 'EEEE d MMMM', { locale: fr })} : {x.n} intervention{x.n > 1 ? 's' : ''}</li>)}
+                </ul>
+              )}
+              {eraseAsk.withHours > 0 && (
+                <p data-testid="erase-ask-hours">
+                  {eraseAsk.withHours === 1 ? 'Une case porte' : `${eraseAsk.withHours} cases portent`} des heures retirées par le salarié : ces heures restent dans sa fiche, seul le lien avec la case disparaît.
+                </p>
+              )}
+              <p className="text-muted-foreground">« Annuler » restera possible juste après.</p>
+            </div>
+          )}
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={() => setEraseAsk(null)} data-testid="erase-keep">Garder</Button>
+            <Button variant="destructive" data-testid="erase-confirm" onClick={() => { const go = eraseAsk?.go; setEraseAsk(null); go?.(); }}>
+              <Trash2 className="h-4 w-4 mr-2" /> Supprimer{eraseAsk && eraseAsk.count > 1 ? ` (${eraseAsk.count})` : ''}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Lot 11 : « À relancer » sur téléphone — la même liste que sur ordinateur. */}
       <Dialog open={relanceOpen} onOpenChange={setRelanceOpen}>
@@ -3864,6 +3901,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
               extra={extra as ActionExtra}
               ctl={ctl}
               execute={makeActionExecutor({ id: user.id, company_id: user.company_id })}
+              preview={makeRemovalPreview({ company_id: user.company_id })}
               onDone={() => { fetchData(); fetchExtras(); }}
             />
           )}
@@ -4306,7 +4344,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                 <Button className="flex-1" onClick={saveAffectation} disabled={savingEdit}>
                   {savingEdit && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer
                 </Button>
-                <Button variant="outline" className="text-destructive" onClick={deleteAffectation} disabled={deletingEdit} data-testid="edit-delete">
+                <Button variant="outline" className="text-destructive" onClick={() => deleteAffectation()} disabled={deletingEdit} data-testid="edit-delete">
                   {deletingEdit ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Trash2 className="h-4 w-4 mr-2" />} Supprimer
                 </Button>
               </div>

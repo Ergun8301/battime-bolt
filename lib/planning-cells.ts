@@ -39,6 +39,26 @@ export const DRAFT_COLS = 'id, status, user_id, work_date, worksite_id, planning
 /** Lot 11 : identifiants des cases retirées par le salarié, triés (keep() compare le contenu ET l'ordre). */
 export const withdrawnSet = (rows: { planning_id: string | null }[] | null): Set<string> =>
   new Set((rows || []).map((r) => r.planning_id).filter((id): id is string => !!id).sort());
+
+/** Lot 1 : ce que la fenêtre « Supprimer ? » du planning annonce. */
+export interface EraseAsk { count: number; days: { date: string; n: number }[]; withHours: number }
+/**
+ * Lot 1 (heures sûres, décision D3) : supprimer depuis le planning. UNE case
+ * sans heures → tout de suite, avec « Annuler ». PLUSIEURS cases, ou une case
+ * qui porte des heures (retirées par le salarié : ces heures restent, seul le
+ * lien avec la case disparaît) → on demande d'abord. Une case avec des heures
+ * notées ou envoyées n'arrive jamais ici : elle n'est pas supprimable.
+ * Rend null (supprimer tout de suite) ou ce que la fenêtre doit dire.
+ */
+export function eraseConfirmation(slots: Pick<SlotLike, 'id' | 'work_date'>[], ids: string[], withdrawn: Set<string>): EraseAsk | null {
+  const want = new Set(ids);
+  const pick = slots.filter((s) => want.has(s.id));
+  const withHours = pick.filter((s) => withdrawn.has(s.id)).length;
+  if (pick.length <= 1 && !withHours) return null;
+  const by = new Map<string, number>();
+  for (const s of pick) by.set(s.work_date, (by.get(s.work_date) || 0) + 1);
+  return { count: pick.length, days: Array.from(by.entries()).sort(([a], [b]) => a.localeCompare(b)).map(([date, n]) => ({ date, n })), withHours };
+}
 // « Autre » (intervention hors client, ajoutée par l'assistant) : son titre est la note.
 export const bubbleTitleOf = (p: Pick<SlotLike, 'worksite' | 'notes'>): string =>
   (p.worksite?.client_name === 'Autre' && p.notes?.trim()) || p.worksite?.client_name || 'Chantier';

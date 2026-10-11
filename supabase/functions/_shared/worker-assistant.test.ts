@@ -266,3 +266,49 @@ Deno.test('Lot 1 — Assistant salarié : le prévu du bureau ne compte ni dans 
   eq([p.includes('"heures_notees":[{"date":"2026-09-29","heures":"11 h 00"}]'), p.includes('"prevu_par_le_bureau":['), p.includes('"planning":['), /n'est PAS du travail fait/.test(p)],
     [true, true, false, true], '9. IA : heures notées et prévu séparés, consigne explicite');
 });
+
+// ═══ Lot 1 (heures sûres) — effacer ou retirer : la carte d'abord, « Annuler » après ═══
+import { isWorkerRemoval, WORKER_A_CONFIRMER, WORKER_ATTACHMENT_FUNCTIONS, WORKER_REMOVAL_TYPES, workerActionMode, workerFunctionsFor, workerQuestionFor } from './worker-assistant-core.ts';
+
+Deno.test('Lot 1 — salarié : toute suppression passe par la carte de confirmation', () => {
+  const LIVE: WorkerLive = {
+    enCours: RUNNING.enCours,
+    lignes: [...IDLE.lignes.map((l) => ({ ...l, reserve: true })), { id: 'e3', chantier: 'École Jules Ferry', debut: '16:30', fin: '18:00', envoyee: false, reserve: true }],
+    conges: [{ id: 'l1', type: 'conge', du: '2026-10-12', au: '2026-10-16' }],
+    documents: [{ id: 'd1', nom: 'Photo mur', chantier: 'Villa Dupont', date: '2026-09-29' }],
+  };
+  for (const t of WORKER_REMOVAL_TYPES) {
+    const a = prepareWorkerAction(t, { du: '2026-10-19', au: '2026-10-23' }, BTP, LIVE);
+    if (t === 'annuler_pointage') { eq(a, null, 'annuler un pointage : plus depuis le téléphone (lot 12)'); continue; }
+    eq([t, workerActionMode(a!.draft), isWorkerRemoval(a!.draft)], [t, 'confirm', true], `${t} : confirmation d’abord`);
+  }
+  // « Efface la ligne de Villa Dupont » : la carte, jamais « C’est fait » avant le clic.
+  const one = handleWorkerLocally('supprime la ligne de villa dupont', BTP, LIVE) as { answer: string };
+  eq([act(one).draft.type, act(one).draft.entry_id, act(one).problems, one.answer], ['effacer_heures', 'e1', [], WORKER_A_CONFIRMER], 'une ligne : la carte');
+  // « Efface ma journée » : toutes les lignes non envoyées, la carte.
+  const all = handleWorkerLocally('efface ma journée', BTP, LIVE) as { answer: string };
+  eq([act(all).draft.tout, all.answer], [true, WORKER_A_CONFIRMER], 'toute la journée : la carte');
+  // Ce qui reste direct dit toujours « C’est fait ».
+  eq((handleWorkerLocally('coche le panier repas', BTP, LIVE) as { answer: string }).answer, 'C’est fait.', 'panier : direct');
+});
+
+Deno.test('Lot 1 — salarié : la question « Quelle ligne ? » reste, puis la carte', () => {
+  const LIVE: WorkerLive = { enCours: null, lignes: [
+    { id: 'e1', chantier: 'Villa Dupont', debut: '07:30', fin: '12:00', envoyee: false },
+    { id: 'e2', chantier: 'Bureau Martin', debut: '13:00', fin: '16:30', envoyee: false },
+  ] };
+  const a = prepareWorkerAction('effacer_heures', { chantier: 'quelque chose' }, BTP, LIVE)!;
+  const d = { ...a.draft, tout: false, entry_id: null } as typeof a.draft;
+  const p = checkWorkerAction(d, BTP, LIVE);
+  const q = workerQuestionFor(d, p, BTP)!;
+  eq([q.text, q.field, q.chips.length], ['Quelle ligne ?', 'entry_id', 2], 'deux lignes : la question');
+});
+
+Deno.test('Lot 1 — salarié : fichier joint → seulement « ranger » et « répondre »', async () => {
+  eq(WORKER_ATTACHMENT_FUNCTIONS.map((f) => f.name), ['repondre', 'ranger_photo'], 'outils proposés avec un fichier');
+  eq(workerFunctionsFor(false), WORKER_FUNCTIONS, 'sans fichier : tous les outils');
+  const fake = () => Promise.resolve(new Response(JSON.stringify({ candidates: [{ content: { parts: [{ functionCall: { name: 'effacer_heures', args: {} } }] } }] })));
+  const env = { get: (k: string) => (k === 'GEMINI_API_KEY' ? 'AQ.k' : undefined) };
+  const r = await callFunction({ prompt: 'x', functions: workerFunctionsFor(true), file: { mime: 'application/pdf', base64: 'JVBERi0xLjQK' } }, env, fake);
+  eq(r.ok, false, 'un PDF qui « demande » d’effacer des heures : refusé');
+});
