@@ -1,12 +1,35 @@
 -- ═════════════════════════════════════════════════════════════════════════════
 -- LOT 9 (oct. 2026) — TÂCHES AVEC HEURE DE DÉBUT ET DE FIN
 -- ═════════════════════════════════════════════════════════════════════════════
--- RETOUR ARRIÈRE (à coller tel quel si besoin ; efface seulement les heures
--- des tâches, les tâches elles-mêmes et leur « Fait » restent) :
+-- RETOUR ARRIÈRE (à coller tel quel si besoin ; retire seulement les heures
+-- des tâches, les tâches elles-mêmes et leur « Fait » restent). Les heures déjà
+-- saisies sont d'abord RECOPIÉES dans day_tasks_heures_lot9_sauvegarde (fermée
+-- à anon et authenticated) : rien ne disparaît sans trace.
+--   DO $rb$
+--   BEGIN
+--     IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public'
+--                 AND table_name = 'day_tasks' AND column_name = 'start_time') THEN
+--       CREATE TABLE IF NOT EXISTS public.day_tasks_heures_lot9_sauvegarde (
+--         id uuid PRIMARY KEY, start_time time NOT NULL, end_time time NOT NULL,
+--         sauvegarde_le timestamptz NOT NULL DEFAULT now());
+--       ALTER TABLE public.day_tasks_heures_lot9_sauvegarde ENABLE ROW LEVEL SECURITY;
+--       REVOKE ALL ON public.day_tasks_heures_lot9_sauvegarde FROM anon, authenticated;
+--       INSERT INTO public.day_tasks_heures_lot9_sauvegarde (id, start_time, end_time)
+--         SELECT id, start_time, end_time FROM public.day_tasks WHERE start_time IS NOT NULL
+--       ON CONFLICT (id) DO UPDATE SET start_time = EXCLUDED.start_time, end_time = EXCLUDED.end_time, sauvegarde_le = now();
+--       RAISE NOTICE 'Heures de tâches recopiées dans day_tasks_heures_lot9_sauvegarde : %',
+--         (SELECT count(*) FROM public.day_tasks_heures_lot9_sauvegarde);
+--     END IF;
+--   END $rb$;
 --   ALTER TABLE public.day_tasks DROP CONSTRAINT IF EXISTS day_tasks_times_check;
 --   ALTER TABLE public.day_tasks DROP COLUMN IF EXISTS end_time, DROP COLUMN IF EXISTS start_time;
 --
--- VÉRIFICATION APRÈS APPLICATION (doit renvoyer 6 × true) :
+-- REMETTRE LES HEURES (après avoir rechargé ce fichier, si on revient au lot 9) :
+--   UPDATE public.day_tasks d SET start_time = s.start_time, end_time = s.end_time
+--     FROM public.day_tasks_heures_lot9_sauvegarde s WHERE s.id = d.id;
+--
+-- VÉRIFICATION APRÈS APPLICATION (doit renvoyer 6 × true, aussi plus tard,
+-- même une fois des heures saisies) :
 --   SELECT
 --     (SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'day_tasks'
 --       AND column_name IN ('start_time', 'end_time') AND data_type = 'time without time zone'
@@ -24,8 +47,10 @@
 --     NOT has_column_privilege('anon', 'public.day_tasks', 'start_time', 'SELECT')
 --     AND NOT has_column_privilege('anon', 'public.day_tasks', 'start_time', 'INSERT')
 --     AND NOT has_column_privilege('anon', 'public.day_tasks', 'end_time', 'INSERT')           AS anon_rien,
---     (SELECT count(*) FROM pg_policies WHERE schemaname = 'public' AND tablename = 'day_tasks') = 3
---     AND NOT EXISTS (SELECT 1 FROM public.day_tasks WHERE start_time IS NOT NULL OR end_time IS NOT NULL) AS existant_intact;
+--     (SELECT count(*) FROM pg_policies WHERE schemaname = 'public' AND tablename = 'day_tasks'
+--       AND policyname IN ('day_tasks_select', 'day_tasks_admin_insert', 'day_tasks_admin_delete')) = 3
+--     AND NOT EXISTS (SELECT 1 FROM public.day_tasks
+--       WHERE (start_time IS NULL) <> (end_time IS NULL) OR end_time <= start_time)          AS existant_coherent;
 --
 -- HISTORIQUE : si le fichier est collé dans l'éditeur SQL, inscrire ensuite :
 --   INSERT INTO supabase_migrations.schema_migrations (version, name)
@@ -66,7 +91,7 @@
 -- start_time / end_time.
 --
 -- À SAVOIR (règle « DROP ou DELETE ») : DROP n'apparaît que dans le RETOUR
--- ARRIÈRE ci-dessus. Aucun DELETE.
+-- ARRIÈRE ci-dessus (qui sauvegarde d'abord les heures). Aucun DELETE.
 --
 -- Testée sur un Postgres jetable : npm run test:taches-heures-db
 -- (supabase/tests/lot9_taches_avec_heures.mjs).

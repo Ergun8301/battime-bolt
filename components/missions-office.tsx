@@ -216,6 +216,9 @@ export function DayTasksPanel({ companyId, workerId, date, tasks, canAdd, onChan
   const [templates, setTemplates] = useState<TaskTemplate[] | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Au clavier : l'alerte prend le focus (Entrée = « Ajouter quand même ») ; « Non » le rend au texte.
+  const yesRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => { if (pending) yesRef.current?.focus(); }, [pending]);
   const loadTemplates = async () => setTemplates(await fetchTemplates(companyId));
   useEffect(() => { if (canAdd) loadTemplates(); }, [companyId, canAdd]); // eslint-disable-line react-hooks/exhaustive-deps
   const list = useMemo(() => sortTasks(tasks), [tasks]);
@@ -316,13 +319,13 @@ export function DayTasksPanel({ companyId, workerId, date, tasks, canAdd, onChan
               <div className="bt-ms-warn" role="alert" data-testid="task-outside">
                 <span>{pending.message}</span>
                 <span className="bt-ms-confirm">
-                  <button type="button" className="yes" data-testid="task-outside-yes" disabled={saving} onClick={() => add(pending.raw, pending.keep, true)}>Ajouter quand même</button>
-                  <button type="button" data-testid="task-outside-no" onClick={() => setPending(null)}>Non</button>
+                  <button type="button" ref={yesRef} className="yes" data-testid="task-outside-yes" disabled={saving} onClick={() => add(pending.raw, pending.keep, true)}>Ajouter quand même</button>
+                  <button type="button" data-testid="task-outside-no" onClick={() => { setPending(null); inputRef.current?.focus(); }}>Non</button>
                 </span>
               </div>
             )}
             <label className="bt-ms-chk">
-              <input type="checkbox" checked={keepIt} onChange={(e) => setKeepIt(e.target.checked)} data-testid="task-keep" />
+              <input type="checkbox" checked={keepIt} onChange={(e) => { setKeepIt(e.target.checked); setPending(null); }} data-testid="task-keep" />
               Garder dans mes tâches habituelles
             </label>
           </form>

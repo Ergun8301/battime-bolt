@@ -18,7 +18,7 @@ import { DAYS_IN_WEEK, weekDays as buildWeekDays, weekStart as startOfWorkWeek }
 import { fr } from 'date-fns/locale';
 import { slotLabel } from '@/lib/slot';
 import { formatPause } from '@/supabase/functions/_shared/pause';
-import { fetchMyMissions, taskTimesOn, type DayTask, type Meeting } from '@/lib/missions';
+import { fetchMyMissions, type DayTask, type Meeting } from '@/lib/missions';
 import { MEETING_TINT, meetingsFor, meetingTimeLabel, taskTimeLabel, tasksFor } from '@/supabase/functions/_shared/missions';
 
 /**
@@ -112,9 +112,9 @@ export default function PoseurWeek({ onSelectDay }: { onSelectDay?: (date: strin
     if (!user?.id || !user.company_id) return;
     let stale = false;
     const from = format(weekStart, 'yyyy-MM-dd');
-    fetchMyMissions(user.id, user.company_id, from, format(addDays(weekStart, DAYS_IN_WEEK - 1), 'yyyy-MM-dd')).then((r) => {
+    fetchMyMissions(user.id, user.company_id, from, format(addDays(weekStart, DAYS_IN_WEEK - 1), 'yyyy-MM-dd'), { tasks: 'timed' }).then((r) => {
       if (stale || r === null) return; // lecture en échec : rien de plus
-      setMeetings(r === 'missing' ? { list: [], participants: {}, tasks: [] } : { list: r.meetings, participants: r.participants, tasks: taskTimesOn() ? r.tasks : [] });
+      setMeetings(r === 'missing' ? { list: [], participants: {}, tasks: [] } : { list: r.meetings, participants: r.participants, tasks: r.tasks });
     });
     return () => { stale = true; };
   }, [user?.id, user?.company_id, weekStart]);

@@ -289,23 +289,38 @@ export interface MyMissions { on: boolean; tasks: DayTask[]; meetings: Meeting[]
  * La RLS filtre déjà (mes tâches, mes réunions ou « Toute l'équipe ») ; mes
  * participations sont relues pour le cas d'un compte qui en voit plus.
  * 'missing' = tables absentes ; null = lecture en échec (on garde l'état connu).
+ * `tasks: 'timed'` (« Ma semaine », lot 9) : les tâches seulement si leurs
+ * heures existent. Une seule lecture tant qu'on ne sait pas (colonnes absentes
+ * → aucune tâche, pas de relecture), aucune ensuite ; une lecture des tâches en
+ * échec n'emporte jamais les réunions (comme au lot 4, où la semaine ne lisait
+ * pas les tâches).
  */
-export async function fetchMyMissions(userId: string, companyId: string, from: string, to: string, opts: { tasks?: boolean } = {}): Promise<MyMissions | 'missing' | null> {
+export async function fetchMyMissions(userId: string, companyId: string, from: string, to: string, opts: { tasks?: boolean | 'timed' } = {}): Promise<MyMissions | 'missing' | null> {
   try {
     const noTasks = { data: [] as DayTask[], error: null as { code?: string; message?: string } | null };
+    const select = (cols: string) => supabase.from('day_tasks').select(cols).eq('company_id', companyId).eq('user_id', userId).gte('work_date', from).lte('work_date', to).order('created_at');
     // Lot 9 : avec les heures si elles existent (relu sans, une fois, sinon).
     const myTasks = () => withTaskTimes(async (cols) => {
-      const r = await supabase.from('day_tasks').select(cols).eq('company_id', companyId).eq('user_id', userId).gte('work_date', from).lte('work_date', to).order('created_at');
+      const r = await select(cols);
       if (r.error) throw r.error;
       return { data: (r.data || []) as unknown as DayTask[], error: null };
     }).catch((e) => ({ data: null, error: e as { code?: string; message?: string } }));
+    // Lot 9, semaine : avec les heures ou rien.
+    const timedTasks = async () => {
+      if (taskTimes === false) return noTasks;
+      const r = await select(TASK_COLS_TIMES);
+      if (!r.error) { taskTimes = true; return { data: (r.data || []) as unknown as DayTask[], error: null }; }
+      if (isMissingColumn(r.error)) taskTimes = false;
+      return noTasks;
+    };
+    const skipTasks = opts.tasks === false || opts.tasks === 'timed';
     const [tRes, mRes] = await Promise.all([
-      opts.tasks === false ? Promise.resolve(noTasks) : myTasks(),
+      opts.tasks === false ? Promise.resolve(noTasks) : opts.tasks === 'timed' ? timedTasks().catch(() => noTasks) : myTasks(),
       supabase.from('meetings').select(MEETING_COLS).eq('company_id', companyId).gte('meeting_date', from).lte('meeting_date', to).order('start_time'),
     ]);
     const tMissing = !!tRes.error && isMissingRelation(tRes.error);
     const mMissing = !!mRes.error && isMissingRelation(mRes.error);
-    if (mMissing && (tMissing || opts.tasks === false)) return 'missing';
+    if (mMissing && (tMissing || skipTasks)) return 'missing';
     if ((tRes.error && !tMissing) || (mRes.error && !mMissing)) return null;
     const meetings = (mMissing ? [] : (mRes.data || [])) as Meeting[];
     const participants: Record<string, string[]> = {};

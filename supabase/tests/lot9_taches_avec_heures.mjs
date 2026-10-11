@@ -9,7 +9,8 @@
 // pour anon / authenticated sur les objets neufs), puis le lot 4 TEL QUEL et
 // quelques tâches déjà là. Le fichier du lot 9 est chargé TEL QUEL, deux fois ;
 // la vérification de son en-tête doit renvoyer 6 × true ; son RETOUR ARRIÈRE
-// (en-tête) est exécuté, puis il est rechargé.
+// (en-tête) est exécuté (il sauvegarde d'abord les heures), puis le fichier est
+// rechargé et « Remettre les heures » les rend à leurs tâches.
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
@@ -97,7 +98,9 @@ const POST4 = v4.join('\n');
 const header = SQL.slice(0, SQL.indexOf('-- ─────'));
 const block = (from, to) => header.slice(header.indexOf(from), header.indexOf(to)).split('\n').slice(1)
   .filter((l) => /^--\s{3}/.test(l)).map((l) => l.replace(/^--\s{3}/, '')).join('\n').trim();
-const ROLLBACK_SQL = block('-- RETOUR ARRIÈRE', '-- VÉRIFICATION');
+const ROLLBACK_SQL = block('-- RETOUR ARRIÈRE', '-- REMETTRE LES HEURES');
+const RESTORE_SQL = block('-- REMETTRE LES HEURES', '-- VÉRIFICATION');
+const BACKUP = 'day_tasks_heures_lot9_sauvegarde'; // créée par le retour arrière seulement
 const POST_SQL = block('-- VÉRIFICATION', '-- HISTORIQUE');
 const HISTO_SQL = header.slice(header.indexOf('-- HISTORIQUE')).split('\n').slice(1).filter((l) => /^--\s{3}/.test(l)).map((l) => l.replace(/^--\s{3}/, '')).join('\n').trim();
 
@@ -122,14 +125,14 @@ const polPrint = async () => (await one(`SELECT string_agg(tablename || '.' || p
   FROM pg_policies`)).s;
 const trgPrint = async () => (await one(`SELECT coalesce(string_agg(tgname || ':' || md5(pg_get_triggerdef(oid)), ',' ORDER BY tgname), '') AS s FROM pg_trigger WHERE NOT tgisinternal`)).s;
 const colPrint = async () => (await one(`SELECT string_agg(table_name || '.' || column_name || ':' || data_type || ':' || is_nullable || ':' || coalesce(column_default, ''), ',' ORDER BY table_name, column_name) AS s
-  FROM information_schema.columns WHERE table_schema = 'public' AND NOT (table_name = 'day_tasks' AND column_name = ANY($1))`, [NEW_COLS])).s;
+  FROM information_schema.columns WHERE table_schema = 'public' AND table_name <> $2 AND NOT (table_name = 'day_tasks' AND column_name = ANY($1))`, [NEW_COLS, BACKUP])).s;
 const conPrint = async () => (await one(`SELECT string_agg(conrelid::regclass::text || '.' || conname || ':' || md5(pg_get_constraintdef(oid)), ',' ORDER BY 1) AS s
-  FROM pg_constraint WHERE connamespace = 'public'::regnamespace AND conname <> 'day_tasks_times_check'`)).s;
+  FROM pg_constraint WHERE connamespace = 'public'::regnamespace AND conname <> 'day_tasks_times_check' AND conrelid IS DISTINCT FROM to_regclass('public.${BACKUP}')`)).s;
 const privPrint = async () => JSON.stringify(await rows(`SELECT c.relname, r.rolname,
     has_table_privilege(r.rolname, c.oid, 'SELECT') AS s, has_table_privilege(r.rolname, c.oid, 'INSERT') AS i,
     has_table_privilege(r.rolname, c.oid, 'UPDATE') AS u, has_table_privilege(r.rolname, c.oid, 'DELETE') AS d
   FROM pg_class c CROSS JOIN (VALUES ('anon'), ('authenticated')) AS r(rolname)
-  WHERE c.relnamespace = 'public'::regnamespace AND c.relkind = 'r' ORDER BY 1, 2`));
+  WHERE c.relnamespace = 'public'::regnamespace AND c.relkind = 'r' AND c.relname <> '${BACKUP}' ORDER BY 1, 2`));
 const colPrivPrint = async () => JSON.stringify(await rows(`SELECT column_name AS c, r.rolname,
     has_column_privilege(r.rolname, 'public.day_tasks', column_name, 'INSERT') AS i, has_column_privilege(r.rolname, 'public.day_tasks', column_name, 'UPDATE') AS u
   FROM information_schema.columns CROSS JOIN (VALUES ('anon'), ('authenticated')) AS r(rolname)
@@ -142,9 +145,9 @@ check(!/\b(DROP|DELETE|RENAME|TRUNCATE|UPDATE)\b|\bALTER\s+(COLUMN|POLICY|FUNCTI
   'migration additive : ni DROP, ni DELETE, ni RENAME, ni UPDATE, ni ALTER COLUMN / POLICY / FUNCTION hors commentaires');
 check(!/\bREVOKE\b/i.test(code), 'aucun droit retiré (pas de REVOKE)');
 check((code.match(/\bALTER TABLE public\.(\w+)/g) || []).every((x) => x.endsWith('day_tasks')), 'seule day_tasks est touchée');
-check(!!ROLLBACK_SQL && !!POST_SQL && /INSERT INTO supabase_migrations\.schema_migrations \(version, name\)\s+VALUES \('20261011130000', 'lot9_taches_avec_heures'\) ON CONFLICT DO NOTHING;/.test(HISTO_SQL),
+check(!!ROLLBACK_SQL && !!RESTORE_SQL && !!POST_SQL && /INSERT INTO supabase_migrations\.schema_migrations \(version, name\)\s+VALUES \('20261011130000', 'lot9_taches_avec_heures'\) ON CONFLICT DO NOTHING;/.test(HISTO_SQL),
   'en-tête : RETOUR ARRIÈRE, VÉRIFICATION et HISTORIQUE (même nom que le fichier)');
-check((ROLLBACK_SQL.match(/\bDROP\b/g) || []).length === 3 && !/\bDROP\b/.test(POST_SQL + HISTO_SQL + code) && !/\bDELETE\b/.test(ROLLBACK_SQL + POST_SQL + HISTO_SQL + code),
+check((ROLLBACK_SQL.match(/\bDROP\b/g) || []).length === 3 && !/\bDROP\b/.test(RESTORE_SQL + POST_SQL + HISTO_SQL + code) && !/\bDELETE\b/.test(ROLLBACK_SQL + RESTORE_SQL + POST_SQL + HISTO_SQL + code),
   'DROP seulement dans le retour arrière (3 fois), aucun DELETE nulle part en SQL');
 
 await db.exec(SQL);
@@ -240,6 +243,19 @@ await as('', 'anon');
 check((await err(`SELECT start_time FROM public.day_tasks`)) === '42501', 'anon : lecture refusée');
 check((await err(`INSERT INTO public.day_tasks (company_id, user_id, work_date, text, start_time, end_time) VALUES ($1, $2, $3, 'x', '08:00', '09:00')`, [CO, SAM, D])) === '42501', 'anon : insertion refusée');
 
+// ═══ La vérification reste vraie plus tard ══════════════════════════════════
+section('Vérification d’en-tête : toujours vraie une fois des heures saisies');
+await root();
+{
+  const v = await one(POST_SQL);
+  const bad = Object.entries(v).filter(([, x]) => x !== true).map(([k]) => k);
+  check(Object.keys(v).length === 6 && bad.length === 0, `avec ${(await rows(`SELECT 1 FROM public.day_tasks WHERE start_time IS NOT NULL`)).length} tâches à heures : toujours 6 × true${bad.length ? ` (faux : ${bad.join(', ')})` : ''}`);
+  await db.exec(`CREATE POLICY day_tasks_essai_lot_suivant ON public.day_tasks FOR SELECT TO authenticated USING (false)`);
+  const v2 = await one(POST_SQL);
+  check(Object.values(v2).every((x) => x === true), 'une policy de plus sur day_tasks (un lot suivant) : toujours 6 × true (policies contrôlées par leur nom)');
+  await db.exec(`DROP POLICY day_tasks_essai_lot_suivant ON public.day_tasks`);
+}
+
 // ═══ Jamais des heures ═════════════════════════════════════════════════════
 section('Jamais des heures, jamais du planning');
 await root();
@@ -251,9 +267,21 @@ section('Retour arrière (en-tête, tel quel), puis la migration se rejoue');
 await root();
 const nTasks = Number((await one(`SELECT count(*) AS n FROM public.day_tasks`)).n);
 const doneBefore = Number((await one(`SELECT count(*) AS n FROM public.day_tasks WHERE done_at IS NOT NULL`)).n);
+const timedBefore = JSON.stringify(await rows(`SELECT id, start_time, end_time FROM public.day_tasks WHERE start_time IS NOT NULL ORDER BY id`));
 { const e = await errExec(ROLLBACK_SQL); check(!e, `le retour arrière s’exécute sans erreur${e ? ` (${e})` : ''}`); }
 { const e = await errExec(ROLLBACK_SQL); check(!e, `le retour arrière se rejoue sans erreur${e ? ` (${e})` : ''}`); }
 check((await err(`SELECT start_time FROM public.day_tasks`)) === '42703', 'colonnes retirées (42703, comme avant le lot 9)');
+{
+  const saved = JSON.stringify(await rows(`SELECT id, start_time, end_time FROM public.${BACKUP} ORDER BY id`));
+  check(saved === timedBefore && JSON.parse(saved).length === 3, `heures déjà saisies recopiées avant le retrait (${JSON.parse(saved).length} tâches, rejouer ne les perd pas) : rien ne disparaît sans trace`);
+  const rls = await one(`SELECT relrowsecurity AS r FROM pg_class WHERE oid = 'public.${BACKUP}'::regclass`);
+  const priv = await one(`SELECT has_table_privilege('anon', 'public.${BACKUP}', 'SELECT') OR has_table_privilege('authenticated', 'public.${BACKUP}', 'SELECT')
+    OR has_table_privilege('authenticated', 'public.${BACKUP}', 'INSERT') OR has_table_privilege('anon', 'public.${BACKUP}', 'DELETE') AS any`);
+  check(rls.r === true && priv.any === false, 'sauvegarde fermée : RLS active, aucun droit pour anon ni authenticated (malgré les droits par défaut)');
+  await as(ADMIN);
+  check((await err(`SELECT * FROM public.${BACKUP}`)) === '42501', 'le bureau ne lit pas la sauvegarde depuis l’appli');
+  await root();
+}
 check(Number((await one(`SELECT count(*) AS n FROM public.day_tasks`)).n) === nTasks && Number((await one(`SELECT count(*) AS n FROM public.day_tasks WHERE done_at IS NOT NULL`)).n) === doneBefore,
   `les tâches et leur « Fait » restent (${nTasks} tâches)`);
 const back = await prints();
@@ -272,6 +300,14 @@ check(!(await errExec(SQL)), 'la migration se recharge après le retour arrière
 {
   const v = await one(POST_SQL);
   check(Object.values(v).every((x) => x === true), 'vérification d’en-tête : de nouveau 6 × true');
+}
+{
+  const e = await errExec(RESTORE_SQL);
+  check(!e, `« Remettre les heures » (en-tête, tel quel) s’exécute${e ? ` (${e})` : ''}`);
+  const now = JSON.stringify(await rows(`SELECT id, start_time, end_time FROM public.day_tasks WHERE start_time IS NOT NULL ORDER BY id`));
+  check(now === timedBefore, 'les heures sauvegardées sont revenues sur leurs tâches');
+  const v = await one(POST_SQL);
+  check(Object.values(v).every((x) => x === true), 'vérification d’en-tête : 6 × true avec les heures revenues');
 }
 
 console.log(`\n${ok} ok, ${ko} échec(s)`);

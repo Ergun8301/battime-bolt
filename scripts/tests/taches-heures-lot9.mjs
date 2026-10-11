@@ -16,15 +16,18 @@
 //           sur un vrai Postgres).
 //
 //   A1  colonnes absentes : pas de « de … à … », insertion du lot 4 mot pour mot,
-//       une seule relecture sans les heures, « Ma journée », semaine et feuille d'avant
+//       une seule relecture sans les heures, « Ma journée » (« Fait » marche),
+//       semaine (sans lire les tâches) et feuille d'avant
 //   A2  lot 4 pas appliqué : rien de plus qu'avant (aucune pastille « Tâche »)
 //   B1  bureau : « Heure de … à … », moment déduit (pastilles grisées), colonnes envoyées
-//   B2  alerte NON bloquante hors créneau : « Non » n'écrit rien, « Ajouter quand même » écrit
+//   B2  alerte NON bloquante hors créneau : « Non » n'écrit rien, « Ajouter quand même » écrit ;
+//       focus clavier ; changer « Garder… » retire l'alerte
 //   B3  deux créneaux (libellé au pluriel), sans planning : pas d'alerte ; saisies refusées
 //   B4  tri : avec heure d'abord, par heure, puis sans heure ; compteur de la case
 //   B5  jamais des heures : cockpit identique, aucune écriture planning / heures
 //   S1  « Ma journée » : « 08:00–08:30 », teinté comme son moment, trié ; « Fait » garde l'heure
 //   S2  « Ma semaine » : la ligne « 10:00–11:30 · Texte », triée, au bon jour
+//   S3  « Ma semaine » : tâches illisibles (500) → les réunions restent
 //   P1  impression semaine, jour + salarié (feuille de mission) : heures imprimées, triées
 //   M1  390 px : la fenêtre « + » et « Ma journée » sans débordement
 import http from 'node:http'; import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
@@ -89,6 +92,8 @@ const ENTRIES = [
 // lot 9 (start_time / end_time absentes : 42703 en lecture, PGRST204 en écriture)
 // — l'état de la production aujourd'hui ; 'oui' : lot 9 appliqué.
 let MIG = 'oui';
+// S3 : la lecture des tâches tombe en panne (500), celle des réunions marche.
+let TASKS_FAIL = false;
 let pushSent = 2;
 const D = {};
 const freshDb = () => {
@@ -265,7 +270,8 @@ const newCtx = async (uid, viewport) => {
       if (m === 'GET' || m === 'HEAD') gets.push({ t: `rpc/${fn}`, p: new URLSearchParams(url.searchParams), by: uid });
       else writes.push({ m: 'RPC', t: fn, body, by: uid });
       if (NEW_FNS.has(fn)) {
-        if (MIG !== 'oui') return r.fulfill(MISSING_FN(fn));
+        // Les fonctions du lot 4 existent dès 'lot4' (production) : seul 'non' les ignore.
+        if (MIG === 'non') return r.fulfill(MISSING_FN(fn));
         try {
           if (fn === 'set_day_task_done') return r.fulfill({ json: setDone(uid, body) });
           if (fn === 'office_save_meeting') return r.fulfill({ json: saveMeetingFn(uid, body) });
@@ -287,6 +293,7 @@ const newCtx = async (uid, viewport) => {
     if (m === 'GET' || m === 'HEAD') {
       gets.push({ t, p: new URLSearchParams(url.searchParams), by: uid });
       const sel = url.searchParams.get('select') || '*';
+      if (TASKS_FAIL && t === 'day_tasks') return r.fulfill({ status: 500, json: { code: 'XX000', message: 'erreur passagère', details: null, hint: null } });
       if (MIG === 'lot4' && t === 'day_tasks' && /\b(start_time|end_time)\b/.test(sel)) return r.fulfill({ status: 400, json: { code: '42703', message: 'column day_tasks.start_time does not exist', details: null, hint: null } });
       let rows = sortRows(filterRows(visible(t, uid, D[t] || []), url.searchParams), url.searchParams.get('order')).map((x) => {
         if (t !== 'planning' && t !== 'time_entries') return x;
@@ -430,8 +437,17 @@ const statsBase = await stats();
   await openWorker();
   const list = (await wp.locator('[data-testid=my-task]').allInnerTexts()).map((s) => s.replace(/\s+/g, ' ').trim());
   check(list.length === 1 && list[0].startsWith('Matin Ranger le dépôt') && await wp.locator('[data-testid=my-task-time]').count() === 0, `« Ma journée » : la tâche du lot 4, sans heure (${list.join(' / ')})`);
+  // « Fait » : set_day_task_done existe en production (lot 4), il répond.
+  const k = await toastMark(wp);
+  const n = writes.length;
+  await wp.locator('[data-testid=my-task] [data-testid=my-task-done]').first().click(); await wp.waitForTimeout(900);
+  const row = wp.locator('[data-testid=my-task]').first();
+  check(of(since(n), 'RPC', 'set_day_task_done').length === 1 && await row.getAttribute('data-done') === '1' && await row.locator('[data-testid=my-task-time]').count() === 0
+    && !(await toastsSince(wp, k)).includes('en attente'), '« Fait » : set_day_task_done répond, la tâche est cochée et reste sans heure');
+  const reads = gets.filter((g) => g.t === 'day_tasks' && g.by === SAM).length;
   await openWeek();
   check(await wp.locator('[data-testid=week-task], [data-testid=week-tasks]').count() === 0, '« Ma semaine » : comme au lot 4 (pas de tâche)');
+  check(gets.filter((g) => g.t === 'day_tasks' && g.by === SAM).length === reads, '« Ma semaine » : aucune lecture des tâches (colonnes déjà connues absentes), comme au lot 4');
 }
 {
   await printWith(op, { kind: 'week', tasks: true });
@@ -497,14 +513,23 @@ section('B2 · hors du créneau prévu : alerte non bloquante');
   check((await txt(warn)).startsWith('Cette tâche dépasse le créneau prévu (08:00–12:00). Ajouter quand même ?'), `alerte « ${await txt(warn)} »`);
   check(of(since(n), 'POST', 'day_tasks').length === 0, 'rien n’est écrit tant qu’on n’a pas répondu');
   await shot(d, 'bureau-alerte-creneau');
+  const focused = () => op.evaluate(() => document.activeElement?.getAttribute('data-testid') || document.activeElement?.tagName || '');
+  check(await focused() === 'task-outside-yes', 'clavier : l’alerte prend le focus sur « Ajouter quand même »');
+  // Changer « Garder dans mes tâches habituelles » après l'alerte : l'alerte se retire (on redemande avec le nouveau choix).
+  await d.locator('[data-testid=task-keep]').check(); await op.waitForTimeout(200);
+  check(await warn.count() === 0 && of(since(n), 'POST', 'day_tasks').length === 0, 'cocher « Garder… » après l’alerte : l’alerte se retire, rien d’écrit');
+  await d.locator('[data-testid=task-keep]').uncheck(); await op.waitForTimeout(200);
+  await d.locator('[data-testid=task-add]').click(); await op.waitForTimeout(500);
   await warn.locator('[data-testid=task-outside-no]').click(); await op.waitForTimeout(300);
   check(await warn.count() === 0 && of(since(n), 'POST', 'day_tasks').length === 0 && await d.locator('[data-testid=task-text]').inputValue() === 'Rendre les clés',
     '« Non » : rien d’écrit, la saisie reste pour corriger');
+  check(await focused() === 'task-text', 'clavier : après « Non », le focus revient au texte');
   await d.locator('[data-testid=task-add]').click(); await op.waitForTimeout(500);
   n = writes.length;
-  await d.locator('[data-testid=task-outside-yes]').click(); await op.waitForTimeout(900);
+  await op.keyboard.press('Enter'); await op.waitForTimeout(900);
   const post = of(since(n), 'POST', 'day_tasks');
-  check(post.length === 1 && post[0].body.start_time === '11:00' && post[0].body.end_time === '12:30' && post[0].body.part === 'matin', '« Ajouter quand même » : tâche écrite 11:00–12:30 (matin)');
+  check(post.length === 1 && post[0].body.start_time === '11:00' && post[0].body.end_time === '12:30' && post[0].body.part === 'matin', '« Ajouter quand même » (Entrée au clavier) : tâche écrite 11:00–12:30 (matin)');
+  check(of(since(n), 'POST', 'task_templates').length === 0, '… sans tâche habituelle (case décochée au moment de répondre)');
   check(await warn.count() === 0, 'l’alerte disparaît');
   // Une tâche sans heure, avec un moment choisi : le corps du lot 4.
   n = writes.length;
@@ -615,6 +640,24 @@ section('S2 · « Ma semaine » : « 10:00–11:30 · Texte », au bon jour');
   const g = (await wide.locator('[data-testid=week-task]:visible').allInnerTexts()).map((s) => s.replace(/\s+/g, ' ').trim());
   check(g.length === 4 && g[0].includes('Appeler le client') && g[0].includes('08:00–08:30') && g[3] === '☐ Ranger le dépôt', `grille large : 4 tâches, triées (${g.join(' / ')})`);
   await wide.close();
+}
+
+// ═══ S3 · lecture des tâches en panne ════════════════════════════════════════
+section('S3 · « Ma semaine » : une panne de lecture des tâches n’emporte pas les réunions');
+{
+  D.meetings.push({ id: 'm-1', company_id: CO, title: 'Réunion d’équipe', meeting_date: '2026-10-22', start_time: '08:00:00', end_time: '08:30:00', place: null, all_team: true,
+    created_at: '2026-10-01T08:00:00Z', updated_at: '2026-10-01T08:00:00Z' });
+  TASKS_FAIL = true;
+  const wk = await worker.newPage();
+  wk.on('pageerror', (e) => errors.push(`salarié (panne) : ${e.message}`));
+  await wk.goto(`http://localhost:${PORT}/poseur`); await wk.waitForSelector('.bt-total', { timeout: 20000 }); await wk.waitForTimeout(900);
+  await wk.getByRole('button', { name: 'Mon compte et menu' }).click(); await wk.getByRole('menuitem', { name: 'Ma semaine' }).click(); await wk.waitForTimeout(1500);
+  const meet = (await wk.locator('[data-testid=week-meeting]:visible').allInnerTexts()).map((x) => x.replace(/\s+/g, ' ').trim());
+  check(meet.length === 1 && meet[0].includes('Réunion d’équipe'), `la réunion de jeudi reste affichée (${meet.join(' / ') || 'aucune'})`);
+  check(await wk.locator('[data-testid=week-task]:visible').count() === 0, 'pas de tâche affichée (lecture en panne), sans erreur');
+  TASKS_FAIL = false;
+  await wk.close();
+  D.meetings = [];
 }
 
 // ═══ P1 · impression ═════════════════════════════════════════════════════════
