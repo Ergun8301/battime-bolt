@@ -249,10 +249,18 @@ const openEditAndDelete = async (title) => {
   const n = log.length;
   await op.click('[data-testid=edit-delete]');
   await op.waitForTimeout(500);
+  // Lot 1 (heures sûres) : une case qui porte des heures (retirées) → « Supprimer ? » d'abord.
+  let asked = '', writesBeforeYes = 0;
+  if (await op.locator('[data-testid=erase-ask]').count()) {
+    asked = (await op.locator('[data-testid=erase-ask]').innerText().catch(() => '')).replace(/\s+/g, ' ');
+    writesBeforeYes = writesSince(n).length;
+    await op.click('[data-testid=erase-confirm]');
+    await op.waitForTimeout(500);
+  }
   const toast = await toasts();
   await op.waitForSelector('[data-testid=undo-card]', { timeout: 3000 }).catch(() => {});
   await op.waitForTimeout(400);
-  return { hint, since: n, toast };
+  return { hint, since: n, toast, asked, writesBeforeYes };
 };
 const undo = async () => {
   const n = log.length;
@@ -363,10 +371,11 @@ await openOffice();
   await bubble('Dépôt').click(); await op.waitForTimeout(500);
   await op.locator('[role=dialog]').screenshot({ path: shot('b3-fenetre-retiree'), timeout: 5000 }).catch(() => {});
   await op.keyboard.press('Escape'); await op.waitForTimeout(300);
-  const { hint, since } = await openEditAndDelete('Dépôt');
+  const { hint, since, asked, writesBeforeYes } = await openEditAndDelete('Dépôt');
   const w = writesSince(since);
   console.log('   écritures :', wsum(w));
   await op.screenshot({ path: shot('b3-supprimer') });
+  if (!AVANT) check(/heures retirées par le salarié : ces heures restent/.test(asked) && writesBeforeYes === 0, 'B3 lot 1 : « Supprimer ? » d’abord (case avec des heures retirées), rien d’écrit avant');
   check(/Retirée par le salarié : ses heures retirées restent/.test(hint), 'B3 la fenêtre dit que les heures retirées restent');
   const iPatch = w.findIndex((x) => x.m === 'PATCH' && x.t === 'time_entries' && x.body && x.body.planning_id === null && x.ids?.join() === 'e4');
   const iDelP = w.findIndex((x) => x.m === 'DELETE' && x.t === 'planning' && x.ids?.join() === 'p4');
@@ -484,6 +493,15 @@ await openOffice();
   await op.fill('.as-bar textarea', 'Efface le planning d’aujourd’hui');
   const n = log.length;
   await op.click('button[aria-label="Envoyer"]');
+  // Lot 1 : la carte de confirmation d'abord (rien d'écrit), puis « Effacer ».
+  if (!AVANT) {
+    await op.waitForSelector('[data-testid=removal-notice]', { timeout: 10000 }).catch(() => {});
+    await op.waitForFunction(() => /cases? retirées?/.test(document.querySelector('[data-testid=removal-notice]')?.textContent || ''), null, { timeout: 6000 }).catch(() => {});
+    const notice = (await op.locator('[data-testid=removal-notice]').innerText().catch(() => '')).replace(/\s+/g, ' ');
+    check(/2 cases retirées/.test(notice) && /1 case gardée \(sortie oubliée à compléter\)/.test(notice) && writesSince(n).filter((x) => x.t !== 'assistant_journal').length === 0,
+      `B10 lot 1 : carte AVANT d’effacer (${notice.slice(0, 140)}), rien d’écrit`);
+    await op.click('[data-testid=action-confirm]');
+  }
   await op.waitForSelector('[data-testid=action-done], [data-testid=action-error]', { timeout: 10000 }).catch(() => {});
   await op.waitForTimeout(800);
   const card = (await op.locator('[data-testid=assistant-panel]').innerText().catch(() => '')).replace(/\s+/g, ' ');

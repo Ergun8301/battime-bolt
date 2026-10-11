@@ -44,7 +44,7 @@ async function runOne(c: EvalCase, version: 'v1' | 'v2', call: Call): Promise<Ca
       if (local) out = fromAdmin(local as AnyReply);
       else {
         via = 'ia';
-        const r = await call({ prompt: A.actionPrompt(ctx as never, '{}', A.guideForPrompt(), c.phrase), functions: A.ASSISTANT_FUNCTIONS, file, kind });
+        const r = await call({ prompt: A.actionPrompt(ctx as never, '{}', A.guideForPrompt(), c.phrase), functions: version === 'v2' ? A2.functionsFor(!!file) : A.ASSISTANT_FUNCTIONS, file, kind });
         out = r.ok ? fromAdmin(A.fromFunctionCall(r.call.name, r.call.args, ctx as never) as AnyReply) : { kind: 'none', answer: `IA : ${r.reason}` };
       }
     } else {
@@ -56,7 +56,7 @@ async function runOne(c: EvalCase, version: 'v1' | 'v2', call: Call): Promise<Ca
       if (local) out = fromWorker(local as AnyWorker);
       else {
         via = 'ia';
-        const r = await call({ prompt: W.workerFunctionPrompt(snap as never, live as never, c.phrase), functions: W.WORKER_FUNCTIONS, file, kind });
+        const r = await call({ prompt: W.workerFunctionPrompt(snap as never, live as never, c.phrase), functions: version === 'v2' ? W2.workerFunctionsFor(!!file) : W.WORKER_FUNCTIONS, file, kind });
         out = r.ok ? fromWorker(W.fromWorkerCall(r.call.name, r.call.args, snap as never, live as never) as AnyWorker) : { kind: 'none', answer: `IA : ${r.reason}` };
       }
     }

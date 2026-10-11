@@ -39,6 +39,43 @@ export const DRAFT_COLS = 'id, status, user_id, work_date, worksite_id, planning
 /** Lot 11 : identifiants des cases retirées par le salarié, triés (keep() compare le contenu ET l'ordre). */
 export const withdrawnSet = (rows: { planning_id: string | null }[] | null): Set<string> =>
   new Set((rows || []).map((r) => r.planning_id).filter((id): id is string => !!id).sort());
+
+/** Lot 1 : ce que la fenêtre « Supprimer ? » du planning annonce. */
+export interface EraseAsk { count: number; days: { date: string; n: number }[]; withHours: number }
+/**
+ * Lot 1 (heures sûres, décision D3) : supprimer depuis le planning. UNE case
+ * sans heures → tout de suite, avec « Annuler ». PLUSIEURS cases, ou une case
+ * qui porte des heures (retirées par le salarié : ces heures restent, seul le
+ * lien avec la case disparaît) → on demande d'abord. Une case avec des heures
+ * notées ou envoyées n'arrive jamais ici : elle n'est pas supprimable.
+ * Rend null (supprimer tout de suite) ou ce que la fenêtre doit dire.
+ */
+export function eraseConfirmation(slots: Pick<SlotLike, 'id' | 'work_date'>[], ids: string[], withdrawn: Set<string>): EraseAsk | null {
+  const want = new Set(ids);
+  const pick = slots.filter((s) => want.has(s.id));
+  const withHours = pick.filter((s) => withdrawn.has(s.id)).length;
+  if (pick.length <= 1 && !withHours) return null;
+  const by = new Map<string, number>();
+  for (const s of pick) by.set(s.work_date, (by.get(s.work_date) || 0) + 1);
+  return { count: pick.length, days: Array.from(by.entries()).sort(([a], [b]) => a.localeCompare(b)).map(([date, n]) => ({ date, n })), withHours };
+}
+/** Le jour suivant, « AAAA-MM-JJ » (calcul en UTC : pas de piège d'heure d'été). */
+const nextDay = (d: string) => new Date(Date.parse(`${d}T00:00:00Z`) + 86400000).toISOString().slice(0, 10);
+/**
+ * Lot 1 : « Présent à partir du… » met fin à l'absence EN COURS ce jour-là —
+ * les jours d'absence qui se suivent depuis `from`. Une absence posée plus
+ * tard (un congé de décembre) n'est pas touchée : `later` = son premier jour.
+ * Une absence est posée jour par jour, week-ends compris (setAbsence).
+ */
+export function absenceRunFrom(rows: { id: string; work_date: string }[], from: string): { ids: string[]; days: string[]; later: string | null } {
+  const byDay = new Map<string, string[]>();
+  for (const r of rows) if (r.work_date >= from) { const l = byDay.get(r.work_date); if (l) l.push(r.id); else byDay.set(r.work_date, [r.id]); }
+  const ids: string[] = [], days: string[] = [];
+  for (let d = from; byDay.has(d); d = nextDay(d)) { days.push(d); ids.push(...byDay.get(d)!); }
+  const end = days.length ? days[days.length - 1] : '';
+  const later = Array.from(byDay.keys()).filter((d) => d > from && d > end).sort()[0] ?? null;
+  return { ids, days, later };
+}
 // « Autre » (intervention hors client, ajoutée par l'assistant) : son titre est la note.
 export const bubbleTitleOf = (p: Pick<SlotLike, 'worksite' | 'notes'>): string =>
   (p.worksite?.client_name === 'Autre' && p.notes?.trim()) || p.worksite?.client_name || 'Chantier';

@@ -170,7 +170,7 @@ export const CASES: EvalCase[] = [
   { id: 'b18', cote: 'bureau', categorie: 'Documents', file: 'facture', phrase: 'range ça sur le chantier de viriat',
     check: act('ranger_document', (d) => all(eq(d, 'worksite_id', W.ppj), eq(d, 'categorie', 'facture_payee'))) },
   { id: 'b19', cote: 'bureau', categorie: 'Documents', file: 'devis', phrase: 'nouveau client, voilà son devis validé',
-    check: (o) => (o.kind === 'action' && o.type === 'creer_chantier' ? all(has(o.draft ?? {}, 'nom_client', /garnier/i), has(o.draft ?? {}, 'budget_montant', /^18400/)) : `attendu creer_chantier, obtenu ${o.kind} ${o.type ?? ''}`) },
+    check: (o) => (o.kind === 'action' && o.type === 'creer_chantier' ? all(has(o.draft ?? {}, 'nom_client', /garnier/i), has(o.draft ?? {}, 'montant_devis', /^18400/), (o.draft ?? {}).budget_montant === undefined ? null : 'le montant du devis ne doit pas devenir un budget (lot 1)') : `attendu creer_chantier, obtenu ${o.kind} ${o.type ?? ''}`) },
   // Salariés / droits
   { id: 'b20', cote: 'bureau', categorie: 'Salariés', phrase: 'passe kevin chef d’équipe', check: act('changer_role', (d) => all(eq(d, 'user_id', 'u-kevin'), eq(d, 'role', 'lead'))) },
   { id: 'b21', cote: 'bureau', categorie: 'Salariés', phrase: 'relance l’invitation de marc', check: act('relancer_invitation', (d) => eq(d, 'email', 'marc.durand@gmail.com')) },

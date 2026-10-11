@@ -599,6 +599,16 @@ if (AVANT) {
   const evaReply = (draft) => ({ answer: '', links: [], remaining: 40, action: { draft, problems: [], summary: '', question: null },
     options: { salaries: [{ id: 'u-sam', nom: 'Sam Test' }, { id: 'u-eva', nom: 'Eva Test' }], chantiers: [{ id: 'w1', nom: 'Salle', ville: 'Lyon' }, { id: 'w2', nom: 'Dépôt', ville: 'Vienne' }] } });
   const ask = async (text) => { await p.fill('.as-bar textarea', text); await p.click('button[aria-label="Envoyer"]'); await p.waitForTimeout(1500); };
+  // Lot 1 (heures sûres) : une suppression montre d'abord sa carte (rien d'écrit), puis « Retirer ».
+  const askDel = async (text) => {
+    // Relevé AVANT l'envoi : une suppression partie d'office pendant l'attente compterait.
+    const w0 = log.writes.length;
+    await ask(text);
+    const notice = (await p.locator('[data-testid=removal-notice]').last().innerText().catch(() => '')).replace(/\s+/g, ' ');
+    const before = writesSince(w0).length + planningWrites(w0).length;
+    await p.locator('[data-testid=action-confirm]').last().click(); await p.waitForTimeout(1500);
+    return { notice, before };
+  };
   const moveDraft = (id, date, nouvelle) => ({ type: 'modifier_intervention', user_id: 'u-eva', salarie_texte: 'Eva', date, planning_id: id, choix: [{ id, chantier: 'Salle', debut: '', note: '' }], nouvelle_date: nouvelle, nouveau_user_id: null, debut: '', note: null });
   const delDraft = (id, date) => ({ type: 'supprimer_intervention', user_id: 'u-eva', salarie_texte: 'Eva', date, planning_id: id, choix: [{ id, chantier: 'Salle', debut: '', note: '', date }] });
   REP = evaReply(moveDraft('pe-live', D_(20), D_(23)));
@@ -615,13 +625,15 @@ if (AVANT) {
   check(pw.length === 1 && pw[0].m === 'PATCH' && pw[0].ids[0] === 'pe-p' && pw[0].body.work_date === D_(20), `D12 Assistant : pe-p déplacée à mardi, à côté de pe-q (${pw.map((x) => `${x.m} ${x.ids?.[0]}`).join(', ')})`);
   REP = evaReply(delDraft('pe-p', D_(20)));
   w = log.writes.length;
-  await ask('Supprime l’intervention d’Eva de mardi');
+  const del1 = await askDel('Supprime l’intervention d’Eva de mardi');
+  check(del1.before === 0 && /Salle/.test(del1.notice), `D12 lot 1 : carte « Ce qui sera retiré » d’abord, rien d’écrit (${del1.notice.slice(0, 80)})`);
   pw = planningWrites(w);
   check(pw.length === 1 && pw[0].m === 'DELETE' && pw[0].ids.join() === 'pe-p' && !D.planning.some((x) => x.id === 'pe-p'),
     `D12 Assistant « supprimer » pe-p : effacée — pe-q porte toujours les heures sans lien (${pw.map((x) => `${x.m} ${x.ids?.join(',')}`).join(', ')})`);
   REP = evaReply(delDraft('pe-q', D_(20)));
   w = log.writes.length;
-  await ask('Supprime l’autre intervention d’Eva de mardi');
+  const del2 = await askDel('Supprime l’autre intervention d’Eva de mardi');
+  check(/Cette case reste : heures déjà envoyées/.test(del2.notice), `D12 lot 1 : la carte dit AVANT que la case reste (« ${del2.notice.slice(0, 90)} »)`);
   errE = await p.locator('.ac-err').last().innerText().catch(() => '');
   check(planningWrites(w).length === 0 && D.planning.some((x) => x.id === 'pe-q') && errE.includes('Rien n’a été retiré : heures déjà envoyées.'),
     `D12 Assistant « supprimer » pe-q, la DERNIÈRE bulle de ces heures : gardée (« ${errE} »)`);
