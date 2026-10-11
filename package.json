@@ -62,6 +62,9 @@
     "test:stats": "npx -y deno@2 test supabase/functions/_shared/team-stats-core.test.ts",
     "test:stats-db": "node supabase/tests/lot5_journal_relances.mjs",
     "test:stats-ecrans": "node scripts/tests/statistiques-lot5.mjs out docs/captures-lot5",
+    "test:fermeture-nuit": "node supabase/tests/lot0_fermeture_pointages_oublies.mjs",
+    "test:check-migrations": "node --test scripts/tests/check-migrations.test.mjs",
+    "check:migrations": "node scripts/check-migrations.mjs",
     "test:taches-heures-db": "node supabase/tests/lot9_taches_avec_heures.mjs",
     "test:taches-heures-ecrans": "node scripts/tests/taches-heures-lot9.mjs out docs/captures-taches-heures"
   },
