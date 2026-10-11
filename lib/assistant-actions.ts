@@ -9,7 +9,7 @@
 // l'écran sans clic « Confirmer » ; chacune rend une VRAIE annulation (`undo`)
 // qui défait exactement ce qui a été écrit. Tout est noté dans le journal
 // `assistant_journal` (qui, quoi, quand — annulations comprises).
-import { supabase } from '@/lib/supabase';
+import { supabase, withOrigin } from '@/lib/supabase';
 import {
   addPlanningSlot, createWorksite, invitedUserId, inviteWorker, savePayrollBasics, setAbsence, setWorksiteBudget, undoAbsence,
 } from '@/lib/planning-writes';
@@ -74,7 +74,8 @@ async function journal(action: string, summary: string, undone = false): Promise
 export function makeActionExecutor(user: { id: string; company_id: string }): ActionExecutor {
   const cid = user.company_id;
   const base = { companyId: cid, createdBy: user.id };
-  return async (d, summary, attachment) => {
+  // Lot 3 : tout ce que l'action écrit (et son « Annuler ») est tracé « assistant ».
+  const exec: ActionExecutor = async (d, summary, attachment) => {
     let message = '';
     // Lot 8 : l'annulation peut rendre son propre message (« 27 cases remises »).
     let undo: (() => Promise<void | string>) | undefined;
@@ -427,13 +428,14 @@ export function makeActionExecutor(user: { id: string; company_id: string }): Ac
       const run = undo;
       result.undo = async () => {
         let said: void | string;
-        try { said = await run(); } catch (e) { return { ok: false, message: errText(e, 'Annulation impossible.') }; }
+        try { said = await withOrigin('assistant', run); } catch (e) { return { ok: false, message: errText(e, 'Annulation impossible.') }; }
         await journal(d.type, summary, true);
         return { ok: true, message: typeof said === 'string' ? said : 'Annulé : c’est comme avant.' };
       };
     }
     return result;
   };
+  return (d, summary, attachment) => withOrigin('assistant', () => exec(d, summary, attachment));
 }
 
 /** Démo (préviews) : rien n'est écrit, l'annulation non plus. */

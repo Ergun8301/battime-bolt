@@ -11,7 +11,7 @@ import { supabase } from '@/lib/supabase';
 import { saveCompanySettings, saveMealEnabled } from '@/lib/admin-writes';
 import { readMealSetting, rememberMealEnabled } from '@/lib/meal-setting';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Loader2, Upload, Trash2, Building2, CreditCard, Mail, ShieldCheck, MonitorSmartphone, Clock, Bell, ChevronDown } from 'lucide-react';
+import { Loader2, Upload, Trash2, Building2, CreditCard, Mail, ShieldCheck, MonitorSmartphone, Clock, Bell, ChevronDown, History } from 'lucide-react';
 import LeaveFundSetting from '@/components/leave-fund-setting';
 import { supabaseCostSource, useAiEnabled } from '@/lib/real-cost';
 import KioskAdmin from '@/components/kiosk-admin';
@@ -20,7 +20,11 @@ import { InfoTip } from '@/components/ui/info-tip';
 import { readSupportSession, supabaseSupportSource } from '@/lib/support';
 import { toast } from 'sonner';
 
-interface Props { open: boolean; onOpenChange: (o: boolean) => void; onSaved?: () => void; }
+interface Props {
+  open: boolean; onOpenChange: (o: boolean) => void; onSaved?: () => void;
+  /** Lot 3 : « Interventions supprimées ou décalées » (seulement quand la migration est passée). */
+  onOpenTraces?: () => void;
+}
 
 type Form = {
   name: string; siret: string; tva_intra: string; address: string;
@@ -140,7 +144,7 @@ function SetSection({ id, testId, title, hint, icon, open, onToggle, children }:
   );
 }
 
-export default function CompanySettings({ open, onOpenChange, onSaved }: Props) {
+export default function CompanySettings({ open, onOpenChange, onSaved, onOpenTraces }: Props) {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -851,6 +855,20 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
 
               {supportEnabled && <SupportAccess source={supabaseSupportSource} />}
             </SetSection>
+
+            {/* Lot 3 : lecture seule, hors des rubriques (rien à enregistrer). Absente
+                tant que la table des traces n'existe pas. */}
+            {onOpenTraces && (
+              <div className="bt-set-sub" data-testid="set-traces">
+                <div className="bt-set-subtxt">
+                  <SetLabel>Interventions supprimées ou décalées</SetLabel>
+                  <p className="bt-set-substate">Planning, heures, tâches et réunions : qui, quand, avant → après.</p>
+                </div>
+                <button type="button" className="bt-set-btn" onClick={() => { onOpenChange(false); onOpenTraces(); }}>
+                  <History className="h-4 w-4" /> Voir
+                </button>
+              </div>
+            )}
 
             {err && <div className="bt-set-err">{err}</div>}
             <div className="bt-set-foot">
