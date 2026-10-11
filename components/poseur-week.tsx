@@ -18,8 +18,8 @@ import { DAYS_IN_WEEK, weekDays as buildWeekDays, weekStart as startOfWorkWeek }
 import { fr } from 'date-fns/locale';
 import { slotLabel } from '@/lib/slot';
 import { formatPause } from '@/supabase/functions/_shared/pause';
-import { fetchMyMissions, type Meeting } from '@/lib/missions';
-import { MEETING_TINT, meetingsFor, meetingTimeLabel } from '@/supabase/functions/_shared/missions';
+import { fetchMyMissions, taskTimesOn, type DayTask, type Meeting } from '@/lib/missions';
+import { MEETING_TINT, meetingsFor, meetingTimeLabel, taskTimeLabel, tasksFor } from '@/supabase/functions/_shared/missions';
 
 /**
  * Horaire prévu, lisible (lot 11). Créneau habituel → « Matin » / « Après-midi »
@@ -65,7 +65,9 @@ export default function PoseurWeek({ onSelectDay }: { onSelectDay?: (date: strin
   const [entries, setEntries] = useState<TimeEntryWithWorksite[]>([]);
   // Lot 4 : les réunions de la semaine (lecture à part, silencieuse ; vide tant
   // que la migration n'est pas passée). Jamais additionnées aux heures.
-  const [meetings, setMeetings] = useState<{ list: Meeting[]; participants: Record<string, string[]> }>({ list: [], participants: {} });
+  // Lot 9 : et mes tâches, avec leur heure (« 10:00–11:30 · Texte ») — seulement
+  // une fois la migration du lot 9 passée : avant, la semaine reste celle du lot 4.
+  const [meetings, setMeetings] = useState<{ list: Meeting[]; participants: Record<string, string[]>; tasks: DayTask[] }>({ list: [], participants: {}, tasks: [] });
   const [loading, setLoading] = useState(true);
 
   const weekEnd = addDays(weekStart, DAYS_IN_WEEK - 1); // lundi → dimanche
@@ -110,13 +112,15 @@ export default function PoseurWeek({ onSelectDay }: { onSelectDay?: (date: strin
     if (!user?.id || !user.company_id) return;
     let stale = false;
     const from = format(weekStart, 'yyyy-MM-dd');
-    fetchMyMissions(user.id, user.company_id, from, format(addDays(weekStart, DAYS_IN_WEEK - 1), 'yyyy-MM-dd'), { tasks: false }).then((r) => {
+    fetchMyMissions(user.id, user.company_id, from, format(addDays(weekStart, DAYS_IN_WEEK - 1), 'yyyy-MM-dd')).then((r) => {
       if (stale || r === null) return; // lecture en échec : rien de plus
-      setMeetings(r === 'missing' ? { list: [], participants: {} } : { list: r.meetings, participants: r.participants });
+      setMeetings(r === 'missing' ? { list: [], participants: {}, tasks: [] } : { list: r.meetings, participants: r.participants, tasks: taskTimesOn() ? r.tasks : [] });
     });
     return () => { stale = true; };
   }, [user?.id, user?.company_id, weekStart]);
   const meetingsOn = (d: string) => (user ? meetingsFor(meetings.list, meetings.participants, user.id, d, user.role !== 'admin') : []);
+  // Avec heure d'abord, par heure ; puis les autres (même ordre que « Ma journée »).
+  const tasksOn = (d: string) => (user ? tasksFor(meetings.tasks, user.id, d) : []);
 
   const weekDays = buildWeekDays(weekStart);
   const todayStr = format(new Date(), 'yyyy-MM-dd');
@@ -168,7 +172,8 @@ export default function PoseurWeek({ onSelectDay }: { onSelectDay?: (date: strin
             .sort((a, b) => (a.estimated_start || '99:99').localeCompare(b.estimated_start || '99:99'));
           const dayEntries = entries.filter(e => e.work_date === dateStr);
           const dayMeetings = meetingsOn(dateStr);
-          const hasContent = dayPlanning.length > 0 || dayEntries.length > 0 || dayMeetings.length > 0;
+          const dayTasks = tasksOn(dateStr);
+          const hasContent = dayPlanning.length > 0 || dayEntries.length > 0 || dayMeetings.length > 0 || dayTasks.length > 0;
           const canOpen = !!onSelectDay;
 
           return (
@@ -221,6 +226,19 @@ export default function PoseurWeek({ onSelectDay }: { onSelectDay?: (date: strin
                   <span className="font-medium truncate">{m.title}</span>
                 </div>
               ))}
+
+              {/* Lot 9 : tâches du jour, l'heure devant (ne comptent pas comme heures) */}
+              {dayTasks.length > 0 && (
+                <div className="rounded border border-[rgba(21,18,15,.12)] bg-white p-2 text-sm text-[#15120F] space-y-0.5" data-testid="week-tasks">
+                  {dayTasks.map((t) => (
+                    <div key={t.id} className={`flex items-baseline gap-1.5 min-w-0 ${t.done_at ? 'text-[#6E6A63] line-through' : ''}`} data-testid="week-task">
+                      <span aria-hidden="true" className="shrink-0">{t.done_at ? '☑' : '☐'}</span>
+                      {taskTimeLabel(t) && <span className="font-mono text-xs font-bold shrink-0">{taskTimeLabel(t)} ·</span>}
+                      <span className="truncate">{t.text}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {/* Time entries */}
               {dayEntries.map((entry) => {
@@ -275,7 +293,8 @@ export default function PoseurWeek({ onSelectDay }: { onSelectDay?: (date: strin
             .sort((a, b) => (a.estimated_start || '99:99').localeCompare(b.estimated_start || '99:99'));
           const dayEntries = entries.filter(e => e.work_date === dateStr);
           const dayMeetings = meetingsOn(dateStr);
-          const hasContent = dayPlanning.length > 0 || dayEntries.length > 0 || dayMeetings.length > 0;
+          const dayTasks = tasksOn(dateStr);
+          const hasContent = dayPlanning.length > 0 || dayEntries.length > 0 || dayMeetings.length > 0 || dayTasks.length > 0;
           const canOpen = !!onSelectDay;
 
           return (
@@ -318,6 +337,16 @@ export default function PoseurWeek({ onSelectDay }: { onSelectDay?: (date: strin
                       <span className="truncate font-medium">{m.title}</span>
                     </div>
                     <div className="mt-0.5 font-mono" style={{ color: MEETING_TINT.edge }}>{meetingTimeLabel(m.start_time, m.end_time)}</div>
+                  </div>
+                ))}
+
+                {dayTasks.map((t) => (
+                  <div key={t.id} className={`rounded border border-[rgba(21,18,15,.12)] bg-white px-1.5 py-1 text-[11px] ${t.done_at ? 'text-[#6E6A63] line-through' : 'text-[#15120F]'}`} data-testid="week-task">
+                    <div className="flex items-center gap-1 min-w-0">
+                      <span aria-hidden="true" className="shrink-0">{t.done_at ? '☑' : '☐'}</span>
+                      <span className="truncate font-medium">{t.text}</span>
+                    </div>
+                    {taskTimeLabel(t) && <div className="mt-0.5 font-mono">{taskTimeLabel(t)}</div>}
                   </div>
                 ))}
 
