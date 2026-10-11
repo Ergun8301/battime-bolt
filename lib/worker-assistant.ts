@@ -3,7 +3,7 @@
 // La source « vraie » appelle la fonction `worker-assistant` (brouillon ou
 // réponse, jamais d'écriture). La source démo (préviews uniquement) exécute le
 // MÊME lecteur de phrases que le serveur, sur des chantiers fictifs.
-import { supabase } from '@/lib/supabase';
+import { supabase, withOrigin } from '@/lib/supabase';
 import { bestPlanningFor, type PlannedLike } from '@/supabase/functions/_shared/day-hours';
 import { isPreviewHost } from '@/lib/hosting';
 import { attachmentPayload } from '@/lib/attachment';
@@ -122,7 +122,8 @@ export type SaveLines = (date: string, lines: DraftLine[]) => Promise<{ ok: numb
  * main : celui de ce chantier que la ligne recouvre le plus.
  */
 export function makeWorkerSaver(user: { id: string; company_id: string }, chantiers: WorkerSnapshot['chantiers']): SaveLines {
-  return async (date, lines) => {
+  // Lot 3 : les lignes écrites (et leur « Annuler ») sont tracées « assistant ».
+  return (date, lines) => withOrigin('assistant', async () => {
     const { data: plans } = await supabase.from('planning').select('id, worksite_id, absence_type, estimated_start, estimated_end').eq('user_id', user.id).eq('work_date', date);
     let ok = 0, queued = 0;
     // Lot 1 : chaque ligne enregistrée, avec ses heures telles qu'elles sont parties.
@@ -144,7 +145,7 @@ export function makeWorkerSaver(user: { id: string; company_id: string }, chanti
     // Lot 1 : seulement celles restées telles quelles — une ligne retouchée depuis
     // dans « Ma journée » (autres heures), envoyée ou renvoyée par le bureau est
     // GARDÉE, et c'est dit. Comme pour « copier ma journée ».
-    const undo = queued ? undefined : async () => {
+    const undo = queued ? undefined : () => withOrigin('assistant', async () => {
       const { data: now, error: rErr } = await supabase.from('time_entries').select('id, client_id, start_time, end_time, status, submitted_at')
         .eq('user_id', user.id).in('client_id', created.map((c) => c.localId));
       if (rErr) return { ok: false, message: 'Annulation impossible pour le moment : réessayez.' };
@@ -162,10 +163,10 @@ export function makeWorkerSaver(user: { id: string; company_id: string }, chanti
       if (!gone) return { ok: false, message: rows.length ? `Rien n’a été retiré : ${why}. Corrigez-les dans « Ma journée ».` : 'Rien à retirer : ces lignes ne sont plus là.' };
       await supabase.rpc('assistant_journal_log', { p_action: 'declarer_heures', p_summary: `Heures du ${date} (${gone} ligne(s) retirée(s)${kept ? `, ${kept} gardée(s)` : ''})`, p_undone: true });
       return kept ? { ok: true, message: `Annulé en partie : ${gone} ligne${gone > 1 ? 's' : ''} retirée${gone > 1 ? 's' : ''}, ${why}.`, partial: true } : { ok: true, message: 'Annulé : les lignes sont retirées.' };
-    };
+    });
     if (ok) await supabase.rpc('assistant_journal_log', { p_action: 'declarer_heures', p_summary: `Heures du ${date} (${ok} ligne(s))`, p_undone: false });
     return { ok, queued, undo };
-  };
+  });
 }
 
 export const demoSaver: SaveLines = async (_d, lines) => {

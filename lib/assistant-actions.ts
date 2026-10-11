@@ -14,7 +14,7 @@
 // la carte (actionMode) ; `makeRemovalPreview` lit, sans rien écrire, ce
 // qu'elles retireraient. Corriger des heures passe par la même voie que la
 // fiche salarié (office_correct_entry), motif obligatoire.
-import { supabase } from '@/lib/supabase';
+import { supabase, withOrigin } from '@/lib/supabase';
 import {
   addPlanningSlot, createWorksite, invitedUserId, inviteWorker, savePayrollBasics, setAbsence, setWorksiteBudget, undoAbsence,
 } from '@/lib/planning-writes';
@@ -109,7 +109,8 @@ function partialUndo(r: { deleted: unknown[]; skipped: number; reason: string })
 export function makeActionExecutor(user: { id: string; company_id: string }): ActionExecutor {
   const cid = user.company_id;
   const base = { companyId: cid, createdBy: user.id };
-  return async (d, summary, attachment) => {
+  // Lot 3 : tout ce que l'action écrit (et son « Annuler ») est tracé « assistant ».
+  const exec: ActionExecutor = async (d, summary, attachment) => {
     let message = '';
     // Lot 8 : l'annulation peut rendre son propre message (« 27 cases remises »).
     // Lot 1 : `partial` = tout n'a pas pu être défait (des cases portent des heures).
@@ -489,7 +490,7 @@ export function makeActionExecutor(user: { id: string; company_id: string }): Ac
       const run = undo;
       result.undo = async () => {
         let said: void | string | { message: string; partial: boolean };
-        try { said = await run(); } catch (e) { return { ok: false, message: errText(e, 'Annulation impossible.') }; }
+        try { said = await withOrigin('assistant', run); } catch (e) { return { ok: false, message: errText(e, 'Annulation impossible.') }; }
         await journal(d.type, summary, true);
         if (said && typeof said === 'object') return { ok: true, message: said.message, partial: said.partial };
         return { ok: true, message: typeof said === 'string' ? said : 'Annulé : c’est comme avant.' };
@@ -497,6 +498,7 @@ export function makeActionExecutor(user: { id: string; company_id: string }): Ac
     }
     return result;
   };
+  return (d, summary, attachment) => withOrigin('assistant', () => exec(d, summary, attachment));
 }
 
 /**

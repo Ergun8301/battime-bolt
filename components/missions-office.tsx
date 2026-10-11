@@ -5,7 +5,9 @@
 //  - AddKindSwitch : « Intervention · Tâche · Réunion », petites pastilles en tête
 //    de la fenêtre « + » (seulement quand la migration est passée) ;
 //  - DayTasksPanel : les tâches du jour (fait / pas fait), l'ajout, les tâches
-//    habituelles ; pas de renommage (on retire et on remet) ;
+//    habituelles ; pas de renommage (on retire et on remet). Lot 9 : heure
+//    « de … à … » facultative (le moment s'en déduit), alerte NON bloquante si
+//    la tâche sort du créneau prévu du salarié ;
 //  - MeetingForm : titre, date, heure, lieu, participants, notification ;
 //  - MeetingChip / TasksBadge : ce que montre la case du planning ;
 //  - PrintTasks / MeetingChip print : la feuille imprimée.
@@ -23,8 +25,8 @@ import {
   type DayTask, type Meeting, type TaskTemplate,
 } from '@/lib/missions';
 import {
-  MEETING_PLACE_MAX, MEETING_TINT, MEETING_TITLE_MAX, meetingTimeLabel, sortTasks, TASK_TEXT_MAX, taskPartInfo, taskProgress, hhmm,
-  validateMeeting, type MeetingState, type TaskPart,
+  MEETING_PLACE_MAX, MEETING_TINT, MEETING_TITLE_MAX, meetingTimeLabel, sortTasks, TASK_TEXT_MAX, taskOutsideMessage, taskOutsideSlots,
+  taskPartFromTimes, taskPartInfo, taskProgress, taskTimeLabel, hhmm, validateMeeting, validateTaskTimes, type MeetingState, type PlannedSlot, type TaskPart,
 } from '@/supabase/functions/_shared/missions';
 
 export type AddKind = 'intervention' | 'tache' | 'reunion';
@@ -46,6 +48,8 @@ export const MISSIONS_CSS = `
 .bt-ms-pills{display:flex;flex-wrap:wrap;gap:5px}
 .bt-ms-pill{height:26px;padding:0 9px;border-radius:999px;border:1.5px solid rgba(21,18,15,.16);background:#fff;font:inherit;font-size:12px;font-weight:700;color:#15120F;cursor:pointer;white-space:nowrap}
 .bt-ms-pill[aria-pressed="true"]{border-color:#15120F;box-shadow:inset 0 0 0 1px #15120F}
+.bt-ms-pill:disabled{cursor:default;opacity:.45}
+.bt-ms-pill[aria-pressed="true"]:disabled{opacity:1}
 .bt-ms-btn{height:34px;padding:0 13px;border-radius:9px;border:0;background:#15120F;color:#fff;font:inherit;font-size:12.5px;font-weight:800;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;gap:6px;flex:none}
 .bt-ms-btn:disabled{opacity:.6;cursor:default}
 .bt-ms-btn.ghost{background:#fff;color:#15120F;border:1.5px solid rgba(21,18,15,.2)}
@@ -57,6 +61,13 @@ export const MISSIONS_CSS = `
 .bt-ms-task:first-child{border-top:0}
 .bt-ms-task .t{flex:1;min-width:0;font-weight:700;overflow-wrap:anywhere;line-height:1.25}
 .bt-ms-part{flex:none;font-size:10.5px;font-weight:800;padding:2px 6px;border-radius:6px;border:1px solid;color:#15120F}
+.bt-ms-part.tm{font-family:'JetBrains Mono',monospace;background:#fff;border-color:rgba(21,18,15,.25)}
+.bt-ms-hours{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#6E6A63}
+.bt-ms-hours>span.f{width:106px;flex:none}
+.bt-ms-hours input{padding-left:8px;padding-right:4px;font-size:14px}
+.bt-ms-hours .bt-ms-lbl{display:inline;margin:0}
+.bt-ms-warn{display:flex;flex-direction:column;gap:6px;padding:8px 10px;border-radius:9px;background:#FFF6DD;border:1px solid #EAD9A0;font-size:12.5px;font-weight:700;color:#15120F}
+.bt-ms-warn .bt-ms-confirm{flex-wrap:wrap}
 .bt-ms-st{flex:none;font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:800;white-space:nowrap}
 .bt-ms-st.done{color:#15120F}
 .bt-ms-st.todo{color:#8a8378}
@@ -87,6 +98,7 @@ export const MISSIONS_CSS = `
 .bt-print-tasks .k{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:800;color:#6E6A63;text-transform:uppercase;letter-spacing:.04em}
 .bt-print-tasks .ln{overflow-wrap:anywhere}
 .bt-print-tasks .pt{font-weight:600;color:${MEETING_TINT.ink}}
+.bt-print-tasks .tm{font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:800}
 .bt-print .bt-pl-meet{cursor:default}
 .bt-print .bt-pl-meet .nm{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 @media print{.bt-print--day .bt-pl-cellfill>.bt-print-tasks{flex:0 0 100%}}
@@ -143,18 +155,34 @@ export function TasksBadge({ tasks, onOpen, inert = false }: { tasks: { done_at:
   );
 }
 
-/** Sur la feuille imprimée, sous la case : « ☐ Ranger le dépôt · Matin ». */
+/**
+ * Sur la feuille imprimée, sous la case : « ☐ 10:00–11:30 · Préparer la
+ * commande », puis les tâches sans heure « ☐ Ranger le dépôt · Matin ».
+ */
 export function PrintTasks({ tasks }: { tasks: DayTask[] }) {
   if (!tasks.length) return null;
   return (
     <div className="bt-print-tasks" data-testid="print-tasks">
       <span className="k">Tâches</span>
       {sortTasks(tasks).map((t) => {
-        const part = taskPartInfo(t.part);
-        return <span key={t.id} className="ln" data-done={t.done_at ? '1' : '0'}>{t.done_at ? '☑' : '☐'} {t.text}{part && <span className="pt"> · {part.label}</span>}</span>;
+        const when = taskTimeLabel(t);
+        const part = when ? null : taskPartInfo(t.part);
+        return (
+          <span key={t.id} className="ln" data-done={t.done_at ? '1' : '0'}>
+            {t.done_at ? '☑' : '☐'} {when && <><span className="tm" data-testid="print-task-time">{when}</span> · </>}{t.text}{part && <span className="pt"> · {part.label}</span>}
+          </span>
+        );
       })}
     </div>
   );
+}
+
+/** Lot 9 : l'heure d'une tâche (« 10:00–11:30 »), teintée comme son moment. */
+function TaskTimeTag({ task }: { task: { start_time?: string | null; end_time?: string | null; part: TaskPart } }) {
+  const when = taskTimeLabel(task);
+  if (!when) return null;
+  const pi = taskPartInfo(task.part);
+  return <span className="bt-ms-part tm" style={pi ? { background: pi.bg, borderColor: pi.edge } : undefined} data-testid="task-time">{when}</span>;
 }
 
 const PARTS: { key: TaskPart; label: string }[] = [{ key: null, label: '—' }, { key: 'matin', label: 'Matin' }, { key: 'apres-midi', label: 'Après-midi' }, { key: 'soir', label: 'Soir' }];
@@ -163,29 +191,53 @@ const PARTS: { key: TaskPart; label: string }[] = [{ key: null, label: '—' }, 
  * Les tâches du jour d'un salarié : la liste (fait / pas fait), l'ajout, les
  * tâches habituelles. `canAdd` faux (jour d'absence) : on voit et on retire,
  * on n'ajoute pas.
+ * Lot 9 : `timesOn` (colonnes présentes) → « Heure de … à … » facultative ;
+ * le moment se déduit alors des heures (mêmes couleurs que les créneaux).
+ * `slots` = les interventions prévues du salarié ce jour-là : une tâche qui en
+ * sort demande « Ajouter quand même ? » (jamais bloquant).
  */
-export function DayTasksPanel({ companyId, workerId, date, tasks, canAdd, onChanged }: {
+export function DayTasksPanel({ companyId, workerId, date, tasks, canAdd, onChanged, timesOn = false, slots = [] }: {
   companyId: string; workerId: string; date: string; tasks: DayTask[]; canAdd: boolean; onChanged: () => Promise<void> | void;
+  timesOn?: boolean; slots?: PlannedSlot[];
 }) {
   const [text, setText] = useState('');
-  const [part, setPart] = useState<TaskPart>(null);
+  const [pickedPart, setPart] = useState<TaskPart>(null);
+  const [start, setStart] = useState('');
+  const [end, setEnd] = useState('');
+  const [badS, setBadS] = useState(false);
+  const [badE, setBadE] = useState(false);
+  // Une tâche qui sort du créneau, en attente de « Ajouter quand même ».
+  const [pending, setPending] = useState<{ raw: string; keep: boolean; message: string } | null>(null);
+  const timed = timesOn && !!start && !!end && !validateTaskTimes(start, end);
+  // Heures saisies : le moment suit les heures (même règle que la couleur des créneaux).
+  const part: TaskPart = timed ? taskPartFromTimes(start, end) : pickedPart;
   const [keepIt, setKeepIt] = useState(false);
   const [saving, setSaving] = useState(false);
   const [templates, setTemplates] = useState<TaskTemplate[] | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Au clavier : l'alerte prend le focus (Entrée = « Ajouter quand même ») ; « Non » le rend au texte.
+  const yesRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => { if (pending) yesRef.current?.focus(); }, [pending]);
   const loadTemplates = async () => setTemplates(await fetchTemplates(companyId));
   useEffect(() => { if (canAdd) loadTemplates(); }, [companyId, canAdd]); // eslint-disable-line react-hooks/exhaustive-deps
   const list = useMemo(() => sortTasks(tasks), [tasks]);
 
-  const add = async (raw: string, keep: boolean) => {
+  const add = async (raw: string, keep: boolean, anyway = false) => {
     if (saving) return;
+    if (timesOn) {
+      const bad = badS || badE ? `Heure non comprise. ${TIME_HINT}` : validateTaskTimes(start, end);
+      if (bad) { toast.error(bad); return; }
+      const out = timed ? taskOutsideSlots(start, end, slots) : null;
+      if (out?.outside && !anyway) { setPending({ raw, keep, message: taskOutsideMessage(out.label) }); return; }
+    }
+    setPending(null);
     setSaving(true);
     try {
-      const r = await addDayTask({ companyId, userId: workerId, date, text: raw, part });
+      const r = await addDayTask({ companyId, userId: workerId, date, text: raw, part, start: timed ? start : null, end: timed ? end : null });
       if (!r.ok) { toast.error(r.message || "Impossible d'ajouter la tâche."); return; }
       if (keep) { await addTemplate(companyId, raw); await loadTemplates(); }
-      setText('');
+      setText(''); setStart(''); setEnd('');
       await onChanged();
       inputRef.current?.focus();
     } finally {
@@ -212,7 +264,8 @@ export function DayTasksPanel({ companyId, workerId, date, tasks, canAdd, onChan
             const pi = taskPartInfo(t.part);
             return (
               <div key={t.id} className="bt-ms-task" data-testid="task-row" data-done={t.done_at ? '1' : '0'}>
-                {pi && <span className="bt-ms-part" style={{ background: pi.bg, borderColor: pi.edge }}>{pi.label}</span>}
+                {taskTimeLabel(t) ? <TaskTimeTag task={t} />
+                  : pi && <span className="bt-ms-part" style={{ background: pi.bg, borderColor: pi.edge }}>{pi.label}</span>}
                 <span className="t">{t.text}</span>
                 {confirmId === t.id ? (
                   <span className="bt-ms-confirm">Retirer ?
@@ -240,7 +293,7 @@ export function DayTasksPanel({ companyId, workerId, date, tasks, canAdd, onChan
             <label className="bt-ms-lbl" htmlFor="bt-ms-new" style={{ marginBottom: 0 }}>Nouvelle tâche</label>
             <div className="bt-ms-row">
               <input id="bt-ms-new" ref={inputRef} className="bt-ms-input" data-testid="task-text" maxLength={TASK_TEXT_MAX} value={text}
-                placeholder="Ex : ranger le dépôt" onChange={(e) => setText(e.target.value)} autoComplete="off" />
+                placeholder="Ex : ranger le dépôt" onChange={(e) => { setText(e.target.value); setPending(null); }} autoComplete="off" />
               <button type="submit" className="bt-ms-btn" data-testid="task-add" disabled={saving || !text.trim()}>
                 {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Ajouter
               </button>
@@ -250,12 +303,29 @@ export function DayTasksPanel({ companyId, workerId, date, tasks, canAdd, onChan
                 const pi = taskPartInfo(p.key);
                 return (
                   <button key={p.label} type="button" className="bt-ms-pill" aria-pressed={part === p.key} data-testid={`task-part-${p.key ?? 'aucun'}`}
-                    style={pi ? { background: pi.bg } : undefined} title={p.key ? p.label : 'Sans moment'} onClick={() => setPart(p.key)}>{p.label}</button>
+                    style={pi ? { background: pi.bg } : undefined} disabled={timed} title={timed ? 'Déduit de l’heure' : p.key ? p.label : 'Sans moment'}
+                    onClick={() => setPart(p.key)}>{p.label}</button>
                 );
               })}
             </div>
+            {timesOn && (
+              <div className="bt-ms-hours" role="group" aria-label="Heure (facultatif)" title="Facultatif : le moment se déduit de l’heure" data-testid="task-hours">
+                <span className="bt-ms-lbl">Heure</span>
+                de <span className="f"><TimeField value={start} onChange={(v) => { setStart(v); setPending(null); }} ariaLabel="Début de la tâche" placeholder="début" testId="task-start" onBadChange={setBadS} /></span>
+                à <span className="f"><TimeField value={end} onChange={(v) => { setEnd(v); setPending(null); }} ariaLabel="Fin de la tâche" placeholder="fin" testId="task-end" onBadChange={setBadE} /></span>
+              </div>
+            )}
+            {pending && (
+              <div className="bt-ms-warn" role="alert" data-testid="task-outside">
+                <span>{pending.message}</span>
+                <span className="bt-ms-confirm">
+                  <button type="button" ref={yesRef} className="yes" data-testid="task-outside-yes" disabled={saving} onClick={() => add(pending.raw, pending.keep, true)}>Ajouter quand même</button>
+                  <button type="button" data-testid="task-outside-no" onClick={() => { setPending(null); inputRef.current?.focus(); }}>Non</button>
+                </span>
+              </div>
+            )}
             <label className="bt-ms-chk">
-              <input type="checkbox" checked={keepIt} onChange={(e) => setKeepIt(e.target.checked)} data-testid="task-keep" />
+              <input type="checkbox" checked={keepIt} onChange={(e) => { setKeepIt(e.target.checked); setPending(null); }} data-testid="task-keep" />
               Garder dans mes tâches habituelles
             </label>
           </form>

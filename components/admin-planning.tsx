@@ -90,7 +90,13 @@ import { keep } from '@/lib/same';
 // Formations (lot 6, oct. 2026) : depuis « Salariés » et le menu du téléphone, seulement si la migration est passée.
 import TrainingsAdmin from '@/components/trainings-admin';
 import { trainingsAvailable } from '@/lib/trainings';
+// Lot 3 : « Interventions supprimées ou décalées » (lecture seule).
+import { tracesAvailable } from '@/lib/traces';
+import dynamic from 'next/dynamic';
 import { GraduationCap } from 'lucide-react';
+
+// Lot 3 : la fenêtre des traces n'est chargée qu'à l'ouverture.
+const TracesDialog = dynamic(() => import('@/components/traces-dialog'), { ssr: false });
 
 // ─── helpers / constants ──────────────────────────────────────────────────────
 
@@ -1519,6 +1525,21 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     });
     return () => { stale = true; };
   }, [user?.company_id, trainingsOn, salariesOpen, mobileMenuOpen]);
+
+  // Lot 3 : traces des interventions supprimées ou décalées — l'entrée (Réglages,
+  // menu du téléphone) n'existe que si la table existe. Même règle que les formations.
+  const [tracesOn, setTracesOn] = useState(false);
+  const [tracesOpen, setTracesOpen] = useState(false);
+  const tracesMissing = useRef(false);
+  useEffect(() => {
+    if (!user?.company_id || tracesOn || tracesMissing.current) return;
+    let stale = false;
+    tracesAvailable().then((s) => {
+      if (s === 'missing') tracesMissing.current = true;
+      else if (s === 'on' && !stale) setTracesOn(true);
+    });
+    return () => { stale = true; };
+  }, [user?.company_id, tracesOn, settingsOpen, mobileMenuOpen]);
 
   const refresh = () => { fetchPlanning(); fetchExtras(); fetchClosures(); fetchMissions(); };
   // Lot 11 : « Annuler » peut être cliqué bien après (la carte reste) — peut-être sur
@@ -3726,7 +3747,8 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         onChanged={() => { fetchData(); refresh(); }}
       />
 
-      <CompanySettings open={settingsOpen} onOpenChange={setSettingsOpen} onSaved={fetchData} />
+      <CompanySettings open={settingsOpen} onOpenChange={setSettingsOpen} onSaved={fetchData}
+        onOpenTraces={tracesOn && user?.company_id ? () => setTracesOpen(true) : undefined} />
 
       <AdminMobileMenu
         open={mobileMenuOpen}
@@ -3751,7 +3773,13 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         onOpenKiosk={kioskOn && user?.company_id ? () => setKioskOpen(true) : undefined}
         onSignOut={signOut}
         onOpenTrainings={trainingsOn && user?.company_id ? () => setTrainingsOpen(true) : undefined}
+        onOpenTraces={tracesOn && user?.company_id ? () => setTracesOpen(true) : undefined}
       />
+
+      {/* Lot 3 : lecture seule ; `workers` (les vrais comptes), jamais la démo. */}
+      {tracesOn && user?.company_id && (
+        <TracesDialog open={tracesOpen} onOpenChange={setTracesOpen} companyId={user.company_id} viewerId={user.id} office workers={workers} />
+      )}
 
       {/* Lot 3 : la feuille imprimée, directement dans <body> (le CSS d'impression cache
           tout le reste) et seulement le temps d'imprimer. Photos : initiales seules. */}
@@ -4204,7 +4232,10 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
           )}
           {addKind === 'tache' && addTarget && user?.company_id && (
             <DayTasksPanel key={`${addTarget.workerId}|${addTarget.date}`} companyId={user.company_id} workerId={addTarget.workerId} date={addTarget.date}
-              tasks={cells.tasks(addTarget.workerId, addTarget.date)} canAdd={!addAbsent} onChanged={fetchMissions} />
+              tasks={cells.tasks(addTarget.workerId, addTarget.date)} canAdd={!addAbsent} onChanged={fetchMissions}
+              timesOn={missions.taskTimesOn}
+              slots={planning.filter((p) => p.user_id === addTarget.workerId && p.work_date === addTarget.date && !p.absence_type)
+                .map((p) => ({ start: p.estimated_start, end: p.estimated_end }))} />
           )}
           {addKind === 'reunion' && addTarget && (
             <MeetingForm key={editMeeting?.id || `new|${addTarget.workerId}|${addTarget.date}`}

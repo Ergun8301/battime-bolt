@@ -10,7 +10,7 @@
 // Lot 1 (heures sûres) : une annulation ne retire JAMAIS quelque chose avant
 // d'avoir remis ce qu'elle restaure (le chrono, la demande de congé). Si la
 // remise est refusée, ce qui existe reste, et on dit quoi faire.
-import { supabase } from '@/lib/supabase';
+import { supabase, withOrigin } from '@/lib/supabase';
 import { requestLeave } from '@/lib/leave';
 import { announceLiveChange, finishLiveSession, startLiveSession } from '@/lib/live-session';
 import { parisHHmm } from '@/lib/utils';
@@ -62,7 +62,8 @@ export function makeWorkerExecutor(user: { id: string; company_id: string }): Wo
     const { data } = await supabase.from('companies').select('position_tracking_enabled').eq('id', user.company_id).maybeSingle();
     return !!(data as { position_tracking_enabled?: boolean } | null)?.position_tracking_enabled;
   };
-  return async (d, attachment) => {
+  // Lot 3 : tout ce que l'action écrit (et son « Annuler ») est tracé « assistant ».
+  const exec: WorkerActionExecutor = async (d, attachment) => {
     let message = '';
     // Lot 8 : l'annulation peut rendre son propre message. Lot 1 : `partial` = tout n'a pas été défait.
     let undo: (() => Promise<void | string | { message: string; partial?: boolean }>) | undefined;
@@ -437,7 +438,7 @@ export function makeWorkerExecutor(user: { id: string; company_id: string }): Wo
       const run = undo;
       result.undo = async () => {
         let said: void | string | { message: string; partial?: boolean };
-        try { said = await run(); } catch (e) { return { ok: false, message: errText(e, 'Annulation impossible.') }; }
+        try { said = await withOrigin('assistant', run); } catch (e) { return { ok: false, message: errText(e, 'Annulation impossible.') }; }
         await journal(d.type, summary, true);
         if (said && typeof said === 'object') return { ok: true, message: said.message, partial: !!said.partial };
         return { ok: true, message: typeof said === 'string' ? said : 'Annulé : c’est comme avant.' };
@@ -445,6 +446,7 @@ export function makeWorkerExecutor(user: { id: string; company_id: string }): Wo
     }
     return result;
   };
+  return (d, attachment) => withOrigin('assistant', () => exec(d, attachment));
 }
 
 /** Lot 1 : ce que « effacer mes heures » retirerait, lu avant le clic (rien n'est écrit). */

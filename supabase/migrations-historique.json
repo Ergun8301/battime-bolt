@@ -1,0 +1,32 @@
+{
+  "_lisez_moi": "Écarts ANCIENS et connus entre les fichiers de supabase/migrations et l'historique de la production (supabase_migrations.schema_migrations), relevés le 11/10/2026 au lot 0. Les numéros de version ne correspondent jamais (fichiers collés dans l'éditeur SQL ou appliqués sous un autre horodatage) : on compare donc par NOM. À partir du lot 0, chaque fichier doit être inscrit sous son nom exact. Jamais de « supabase db push ». Lu par scripts/check-migrations.mjs.",
+  "inscrit_sous_un_autre_nom": {
+    "security_hardening": ["security_hardening_companies_rls_and_definer_rpc"],
+    "trial_and_subscription": ["trial_start_and_subscription_columns"],
+    "subscription_plans": ["subscription_plans_table"],
+    "reception_en_cours": ["time_entry_reception_en_cours"],
+    "etape2_securite": ["etape2_securite_bloc_a", "etape2_bloc_b_retrait_colonnes_paie"],
+    "etape3_hors_ligne": ["etape3_hors_ligne_client_id"],
+    "etape19_chef_equipe": ["etape19a_chef_equipe_enum", "etape19b_chef_equipe_reste"],
+    "lot12_pointage_qr": ["lot12_pointage_qr_partie1"]
+  },
+  "fichier_sans_inscription": {
+    "etape2bis_recap_lundi": "appliquée sans inscription : le travail cron weekly-digest-monday existe en production",
+    "users_hourly_rate": "ancienne colonne users.hourly_rate, absente en production (paie retirée par etape2_bloc_b_retrait_colonnes_paie, coût repris par lot2_cout_salarie)"
+  },
+  "inscription_sans_fichier": {
+    "worker_can_edit_submitted_entries": "appliquée directement en production (juin 2026)",
+    "time_entries_cancelled_status": "appliquée directement en production (juin 2026)",
+    "users_payroll_optional_fields": "appliquée directement en production (juin 2026)",
+    "add_trial_ends_at_to_companies": "appliquée directement en production (juin 2026)",
+    "etape1_total_minutes_nuit_et_panier_unique": "appliquée directement en production (sept. 2026)",
+    "etape12b_nom_photo_unique": "correctif appliqué directement (sept. 2026)",
+    "etape13b_cout_chantier_securise": "correctif appliqué directement (sept. 2026)",
+    "etape14b_guard_last_admin_verrou": "correctif appliqué directement (sept. 2026)",
+    "etape15_stripe_events": "appliquée directement (sept. 2026)",
+    "etape17b_reserve_corrigee_correctifs": "correctif appliqué directement (sept. 2026)"
+  },
+  "partie_rattrapee": {
+    "lot12_pointage_qr": "la partie 6 (fermeture nocturne des pointages oubliés) n'était pas en production : rattrapée par lot0_fermeture_pointages_oublies"
+  }
+}
