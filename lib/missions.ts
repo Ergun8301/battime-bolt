@@ -11,6 +11,10 @@
 //     done_at) ; « Fait » et les réunions passent par leurs fonctions. Fonction
 //     absente (PGRST202) → « Mise à jour de la base en attente », rien d'écrit,
 //     jamais de repli sur une écriture brute.
+//   · LOT 9 (heures d'une tâche, migration 20261011130000) : les tâches sont
+//     lues AVEC start_time / end_time ; colonne absente (42703) → relues une
+//     fois sans, et on s'en souvient : les champs « de … à … » se cachent et
+//     une tâche s'écrit EXACTEMENT comme au lot 4 (jamais start_time / end_time).
 //   · NOTIFICATION : la branche « message du bureau » de send-push (déjà en
 //     production, comme lib/office-edits.ts et lib/admin-writes.ts). Jamais
 //     d'e-mail, jamais de mailto — et donc jamais sendReminder.
@@ -21,7 +25,7 @@
 import { supabase } from '@/lib/supabase';
 import { chunk, fetchAllPaged } from '@/lib/fetch-all';
 import {
-  cleanText, DB_PENDING, isMissingFunction, isMissingRelation, meetingNotices, meetingPushBody, MEETING_PLACE_MAX, MEETING_TITLE_MAX,
+  cleanText, DB_PENDING, isMissingColumn, isMissingFunction, isMissingRelation, meetingNotices, meetingPushBody, MEETING_PLACE_MAX, MEETING_TITLE_MAX,
   TASK_TEXT_MAX, type MeetingNoticeKind, type MeetingState, type TaskPart,
 } from '@/supabase/functions/_shared/missions';
 
@@ -36,6 +40,9 @@ export interface DayTask {
   created_at: string;
   done_at: string | null;
   done_by: string | null;
+  /** Lot 9 : « 10:00:00 » ou null ; absentes (undefined) tant que la migration n'est pas passée. */
+  start_time?: string | null;
+  end_time?: string | null;
 }
 export interface Meeting {
   id: string;
@@ -54,24 +61,50 @@ export interface TaskTemplate { id: string; text: string }
 /** Ce que le planning du bureau sait des tâches et des réunions d'une période. */
 export interface MissionsState {
   tasksOn: boolean;
+  /** Lot 9 : les colonnes start_time / end_time existent (champs « de … à … » affichés). */
+  taskTimesOn: boolean;
   meetingsOn: boolean;
   tasks: DayTask[];
   meetings: Meeting[];
   /** id de réunion → ids des participants (vide pour « Toute l'équipe »). */
   participants: Record<string, string[]>;
 }
-export const MISSIONS_OFF: MissionsState = { tasksOn: false, meetingsOn: false, tasks: [], meetings: [], participants: {} };
+export const MISSIONS_OFF: MissionsState = { tasksOn: false, taskTimesOn: false, meetingsOn: false, tasks: [], meetings: [], participants: {} };
 
 const TASK_COLS = 'id, company_id, user_id, work_date, text, part, created_by, created_at, done_at, done_by';
+const TASK_COLS_TIMES = `${TASK_COLS}, start_time, end_time`;
+// Lot 9 : null = pas encore su ; false = colonnes absentes (migration pas passée).
+let taskTimes: boolean | null = null;
+/** Les heures d'une tâche existent en base (dernière lecture réussie avec elles). */
+export const taskTimesOn = () => taskTimes === true;
+
+/**
+ * Une lecture de day_tasks AVEC les heures ; « colonne absente » (42703) → la
+ * même lecture sans elles, une seule fois, et on s'en souvient pour la suite.
+ * `run` lève toute erreur.
+ */
+async function withTaskTimes<T>(run: (cols: string) => Promise<T>): Promise<T> {
+  const tried = taskTimes !== false;
+  try {
+    const r = await run(tried ? TASK_COLS_TIMES : TASK_COLS);
+    if (tried) taskTimes = true;
+    return r;
+  } catch (e) {
+    if (!tried || !isMissingColumn(e)) throw e;
+    taskTimes = false;
+    return run(TASK_COLS);
+  }
+}
+
 const MEETING_COLS = 'id, company_id, title, meeting_date, start_time, end_time, place, all_team, created_at, updated_at';
 type Page<T> = PromiseLike<{ data: T[] | null; error: { message: string } | null }>;
 
 /** Les tâches d'une entreprise sur une période. 'missing' = table absente ; toute autre erreur est levée. */
 async function readTasks(companyId: string, from: string, to: string): Promise<DayTask[] | 'missing'> {
   try {
-    return await fetchAllPaged<DayTask>((f, t) => supabase.from('day_tasks').select(TASK_COLS)
+    return await withTaskTimes((cols) => fetchAllPaged<DayTask>((f, t) => supabase.from('day_tasks').select(cols)
       .eq('company_id', companyId).gte('work_date', from).lte('work_date', to)
-      .order('work_date').order('id').range(f, t) as unknown as Page<DayTask>);
+      .order('work_date').order('id').range(f, t) as unknown as Page<DayTask>));
   } catch (e) {
     if (isMissingRelation(e)) return 'missing';
     throw e;
@@ -111,8 +144,8 @@ export async function fetchOfficeMissions(companyId: string, from: string, to: s
     readMeetings(companyId, from, to).catch(() => null),
   ]);
   const next: MissionsState = { ...prev };
-  if (t === 'missing') Object.assign(next, { tasksOn: false, tasks: [] });
-  else if (t) Object.assign(next, { tasksOn: true, tasks: t });
+  if (t === 'missing') Object.assign(next, { tasksOn: false, taskTimesOn: false, tasks: [] });
+  else if (t) Object.assign(next, { tasksOn: true, taskTimesOn: taskTimesOn(), tasks: t });
   if (m === 'missing') Object.assign(next, { meetingsOn: false, meetings: [], participants: {} });
   else if (m) Object.assign(next, { meetingsOn: true, meetings: m.meetings, participants: m.participants });
   // complete = les deux lectures ont répondu pour CETTE période (sinon l'état gardé est celui d'avant).
@@ -130,7 +163,7 @@ export async function loadMissionsForPrint(companyId: string, from: string, to: 
     want.meetings ? readMeetings(companyId, from, to) : Promise.resolve('missing' as const),
   ]);
   return {
-    tasksOn: t !== 'missing', tasks: t === 'missing' ? [] : t,
+    tasksOn: t !== 'missing', taskTimesOn: t !== 'missing' && taskTimesOn(), tasks: t === 'missing' ? [] : t,
     meetingsOn: m !== 'missing', meetings: m === 'missing' ? [] : m.meetings, participants: m === 'missing' ? {} : m.participants,
   };
 }
@@ -142,14 +175,29 @@ const fail = (e: unknown, fallback: string): WriteResult => ({
   message: isMissingFunction(e) || isMissingRelation(e) ? DB_PENDING : ((e as { message?: string })?.message || fallback),
 });
 
-/** Ajoute une tâche à la journée d'un salarié. Seules les colonnes permises partent. */
-export async function addDayTask(p: { companyId: string; userId: string; date: string; text: string; part: TaskPart }): Promise<WriteResult & { task?: DayTask }> {
+/**
+ * Ajoute une tâche à la journée d'un salarié. Seules les colonnes permises
+ * partent. Lot 9 : start_time / end_time partent SEULEMENT si les deux heures
+ * sont données ET que les colonnes existent ; sans heure, le corps est celui du
+ * lot 4, mot pour mot. Heures données mais colonnes absentes : rien n'est écrit
+ * (jamais une tâche sans ses heures en silence).
+ */
+export async function addDayTask(p: { companyId: string; userId: string; date: string; text: string; part: TaskPart; start?: string | null; end?: string | null }): Promise<WriteResult & { task?: DayTask }> {
   const text = cleanText(p.text, TASK_TEXT_MAX);
   if (!text) return { ok: false, message: 'Écrivez la tâche.' };
-  const body = { company_id: p.companyId, user_id: p.userId, work_date: p.date, text, part: p.part ?? null };
-  const { data, error } = await supabase.from('day_tasks').insert(body).select(TASK_COLS).single();
+  const timed = !!p.start && !!p.end;
+  if (timed && !taskTimesOn()) return { ok: false, message: DB_PENDING };
+  const body = { company_id: p.companyId, user_id: p.userId, work_date: p.date, text, part: p.part ?? null, ...(timed ? { start_time: p.start, end_time: p.end } : {}) };
+  const insert = (cols: string) => supabase.from('day_tasks').insert(body).select(cols).single();
+  let { data, error } = await insert(timed || taskTimes !== false ? TASK_COLS_TIMES : TASK_COLS);
+  if (error && isMissingColumn(error)) {
+    // Colonnes retirées depuis la lecture : rien n'a été écrit (une seule requête).
+    taskTimes = false;
+    if (timed) return { ok: false, message: DB_PENDING };
+    ({ data, error } = await insert(TASK_COLS));
+  }
   if (error) return fail(error, "Impossible d'ajouter la tâche.");
-  return { ok: true, task: data as DayTask };
+  return { ok: true, task: data as unknown as DayTask };
 }
 
 /** Retire une tâche (confirmation à l'écran : pas d'« Annuler » générique). */
@@ -241,18 +289,38 @@ export interface MyMissions { on: boolean; tasks: DayTask[]; meetings: Meeting[]
  * La RLS filtre déjà (mes tâches, mes réunions ou « Toute l'équipe ») ; mes
  * participations sont relues pour le cas d'un compte qui en voit plus.
  * 'missing' = tables absentes ; null = lecture en échec (on garde l'état connu).
+ * `tasks: 'timed'` (« Ma semaine », lot 9) : les tâches seulement si leurs
+ * heures existent. Une seule lecture tant qu'on ne sait pas (colonnes absentes
+ * → aucune tâche, pas de relecture), aucune ensuite ; une lecture des tâches en
+ * échec n'emporte jamais les réunions (comme au lot 4, où la semaine ne lisait
+ * pas les tâches).
  */
-export async function fetchMyMissions(userId: string, companyId: string, from: string, to: string, opts: { tasks?: boolean } = {}): Promise<MyMissions | 'missing' | null> {
+export async function fetchMyMissions(userId: string, companyId: string, from: string, to: string, opts: { tasks?: boolean | 'timed' } = {}): Promise<MyMissions | 'missing' | null> {
   try {
     const noTasks = { data: [] as DayTask[], error: null as { code?: string; message?: string } | null };
+    const select = (cols: string) => supabase.from('day_tasks').select(cols).eq('company_id', companyId).eq('user_id', userId).gte('work_date', from).lte('work_date', to).order('created_at');
+    // Lot 9 : avec les heures si elles existent (relu sans, une fois, sinon).
+    const myTasks = () => withTaskTimes(async (cols) => {
+      const r = await select(cols);
+      if (r.error) throw r.error;
+      return { data: (r.data || []) as unknown as DayTask[], error: null };
+    }).catch((e) => ({ data: null, error: e as { code?: string; message?: string } }));
+    // Lot 9, semaine : avec les heures ou rien.
+    const timedTasks = async () => {
+      if (taskTimes === false) return noTasks;
+      const r = await select(TASK_COLS_TIMES);
+      if (!r.error) { taskTimes = true; return { data: (r.data || []) as unknown as DayTask[], error: null }; }
+      if (isMissingColumn(r.error)) taskTimes = false;
+      return noTasks;
+    };
+    const skipTasks = opts.tasks === false || opts.tasks === 'timed';
     const [tRes, mRes] = await Promise.all([
-      opts.tasks === false ? Promise.resolve(noTasks)
-        : supabase.from('day_tasks').select(TASK_COLS).eq('company_id', companyId).eq('user_id', userId).gte('work_date', from).lte('work_date', to).order('created_at'),
+      opts.tasks === false ? Promise.resolve(noTasks) : opts.tasks === 'timed' ? timedTasks().catch(() => noTasks) : myTasks(),
       supabase.from('meetings').select(MEETING_COLS).eq('company_id', companyId).gte('meeting_date', from).lte('meeting_date', to).order('start_time'),
     ]);
     const tMissing = !!tRes.error && isMissingRelation(tRes.error);
     const mMissing = !!mRes.error && isMissingRelation(mRes.error);
-    if (mMissing && (tMissing || opts.tasks === false)) return 'missing';
+    if (mMissing && (tMissing || skipTasks)) return 'missing';
     if ((tRes.error && !tMissing) || (mRes.error && !mMissing)) return null;
     const meetings = (mMissing ? [] : (mRes.data || [])) as Meeting[];
     const participants: Record<string, string[]> = {};

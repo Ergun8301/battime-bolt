@@ -8,7 +8,7 @@
 // part, voir supabase/migrations/20261010170000_lot4_missions_reunions.sql).
 // Totaux, export, coûts, relances et borne ne lisent jamais ces données — et ne
 // doivent pas commencer à le faire (statistiques futures comprises).
-import { DAY_PART_INK, DAY_PARTS, type DayPart } from './day-part.ts';
+import { DAY_PART_INK, DAY_PARTS, dayPartOf, toMinutes, type DayPart } from './day-part.ts';
 import { jourMois } from './office-edits.ts';
 
 export type TaskPart = DayPart | null;
@@ -32,6 +32,9 @@ export interface TaskLike {
   part: TaskPart;
   created_at: string;
   done_at: string | null;
+  /** Lot 9 : heures facultatives (« 10:00:00 »), les deux ou aucune. Absentes tant que la migration n'est pas passée. */
+  start_time?: string | null;
+  end_time?: string | null;
 }
 
 /** Espaces en trop retirés ; null si vide ; coupé à `max` caractères. */
@@ -41,12 +44,87 @@ export function cleanText(s: string | null | undefined, max: number): string | n
   return t.length > max ? t.slice(0, max).trim() : t;
 }
 
-/** Par moment (matin → soir → sans moment), puis dans l'ordre d'ajout. */
+/**
+ * Lot 9 : d'abord les tâches AVEC heure, par heure de début (puis de fin) ;
+ * ensuite celles sans heure, par moment (matin → soir → sans moment). À
+ * égalité : l'ordre d'ajout.
+ */
 export function sortTasks<T extends TaskLike>(tasks: T[]): T[] {
   const rank = (p: TaskPart) => { const i = TASK_PART_ORDER.indexOf(p ?? null); return i < 0 ? TASK_PART_ORDER.length : i; };
-  return [...tasks].sort((a, b) => rank(a.part) - rank(b.part)
-    || String(a.created_at).localeCompare(String(b.created_at))
-    || String(a.id).localeCompare(String(b.id)));
+  const at = (t: TaskLike) => (taskTimeLabel(t) ? toMinutes(t.start_time) : null);
+  return [...tasks].sort((a, b) => {
+    const sa = at(a), sb = at(b);
+    if (sa !== null && sb !== null) { if (sa !== sb) return sa - sb; }
+    else if (sa !== null || sb !== null) return sa !== null ? -1 : 1;
+    return (sa !== null ? (toMinutes(a.end_time) ?? 0) - (toMinutes(b.end_time) ?? 0) : rank(a.part) - rank(b.part))
+      || String(a.created_at).localeCompare(String(b.created_at))
+      || String(a.id).localeCompare(String(b.id));
+  });
+}
+
+// ─── Lot 9 : tâches avec heure de début et de fin ───────────────────────────
+
+/** « 10:00–11:30 » quand la tâche a ses deux heures (lisibles) ; sinon ''. */
+export function taskTimeLabel(t: { start_time?: string | null; end_time?: string | null }): string {
+  const s = hhmm(t.start_time), e = hhmm(t.end_time);
+  return s && e ? `${s}–${e}` : '';
+}
+
+/**
+ * Le moment déduit des heures, avec la MÊME règle que la couleur des créneaux
+ * (day-part.ts) : 10:00–11:30 → matin, 14:00–15:00 → après-midi. Sur deux
+ * créneaux (08:00–17:00) ou sans heures lisibles → sans moment.
+ */
+export function taskPartFromTimes(start?: string | null, end?: string | null): TaskPart {
+  if (!hhmm(start) || !hhmm(end)) return null;
+  const p = dayPartOf(start, end);
+  return p === 'journee' ? null : p;
+}
+
+/** Mêmes refus que la contrainte day_tasks_times_check. '' = pas d'heure. */
+export function validateTaskTimes(start?: string | null, end?: string | null): string | null {
+  const s = hhmm(start), e = hhmm(end);
+  if (!s && !e) return null;
+  if (!s || !e) return 'Indiquez l’heure de début et l’heure de fin (ou aucune).';
+  if ((toMinutes(e) ?? 0) <= (toMinutes(s) ?? 0)) return 'La fin doit être après le début.';
+  return null;
+}
+
+export interface PlannedSlot { start?: string | null; end?: string | null }
+
+/**
+ * La tâche sort-elle du (des) créneau(x) prévu(s) du salarié ce jour-là ?
+ * Créneau = une intervention du planning avec début ET fin estimés ; les
+ * créneaux qui se touchent ou se chevauchent n'en font qu'un (08:00–12:00 +
+ * 12:00–17:00 = 08:00–17:00). Fin avant le début = poste de nuit, coupé à
+ * minuit (comme day-part.ts). Sans aucun créneau horaire (pas de planning, un
+ * rendez-vous « à 14:00 » seul…) : rien à comparer, pas d'alerte.
+ * `label` = les créneaux tels qu'écrits sur les bulles : « 08:00–12:00, 13:30–17:00 ».
+ */
+export function taskOutsideSlots(start: string | null | undefined, end: string | null | undefined, slots: PlannedSlot[]): { outside: boolean; label: string } {
+  const spans = slots
+    .map((x) => {
+      const a = toMinutes(x.start), b = toMinutes(x.end);
+      if (a === null || b === null || a === b) return null;
+      return { a, b: b < a ? 24 * 60 : b, label: `${hhmm(x.start)}–${hhmm(x.end)}` };
+    })
+    .filter((x): x is { a: number; b: number; label: string } => !!x)
+    .sort((x, y) => x.a - y.a || x.b - y.b);
+  const label = Array.from(new Set(spans.map((x) => x.label))).join(', ');
+  const s = toMinutes(start), e = toMinutes(end);
+  if (!spans.length || s === null || e === null) return { outside: false, label };
+  const merged: { a: number; b: number }[] = [];
+  for (const x of spans) {
+    const last = merged[merged.length - 1];
+    if (last && x.a <= last.b) last.b = Math.max(last.b, x.b);
+    else merged.push({ a: x.a, b: x.b });
+  }
+  return { outside: !merged.some((m) => s >= m.a && e <= m.b), label };
+}
+
+/** « Cette tâche dépasse le créneau prévu (08:00–12:00). Ajouter quand même ? » */
+export function taskOutsideMessage(label: string): string {
+  return `Cette tâche dépasse ${label.includes(',') ? 'les créneaux prévus' : 'le créneau prévu'} (${label}). Ajouter quand même ?`;
 }
 
 /** « 1/3 » : faites / toutes. */
@@ -172,6 +250,11 @@ export function meetingNotices(prev: MeetingState | null, next: MeetingState | n
 type PgErr = { code?: string; message?: string } | null | undefined;
 /** Table absente : PostgREST (PGRST205) ou Postgres (42P01). La fonction se cache. */
 export const isMissingRelation = (e: unknown) => ['PGRST205', '42P01'].includes(String((e as PgErr)?.code || ''));
+/**
+ * Lot 9 : colonne absente (start_time / end_time pas encore créées) — Postgres
+ * en lecture (42703), PostgREST en écriture (PGRST204). On relit sans les heures.
+ */
+export const isMissingColumn = (e: unknown) => ['42703', 'PGRST204'].includes(String((e as PgErr)?.code || ''));
 /** Fonction absente : PostgREST (PGRST202) ou Postgres (42883). Rien n'est écrit. */
 export const isMissingFunction = (e: unknown) => ['PGRST202', '42883'].includes(String((e as PgErr)?.code || ''));
 export const DB_PENDING = 'Mise à jour de la base en attente : rien n’a été modifié.';
