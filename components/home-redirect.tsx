@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/auth-provider';
 import { Loader2 } from 'lucide-react';
+import { hasKioskPairing } from '@/lib/kiosk-device';
 
 // Aiguillage de la racine "/". Logique inchangée (déplacée depuis app/page.tsx
 // pour que la route "/" puisse rester un composant serveur et porter sa balise
@@ -32,6 +33,11 @@ export default function HomeRedirect() {
         } else {
           router.replace('/poseur');
         }
+      } else if (hasKioskPairing()) {
+        // Lot 2 (IA) : la tablette de la borne (reliée, sans compte connecté),
+        // ouverte par une ancienne icône d'écran d'accueil qui pointait sur "/"
+        // → retour à la borne, pas à la vitrine.
+        router.replace('/borne');
       } else {
         // Visiteur non connecté (prospect, arrivée depuis Google) → la vitrine,
         // pas le mur de connexion. Il y trouvera « Se connecter » / « Essayer ».

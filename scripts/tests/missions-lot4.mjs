@@ -16,6 +16,10 @@
 //           avec les règles du SQL (supabase/tests/lot4_missions_reunions.mjs les
 //           prouve sur un vrai Postgres).
 //   'table' tables présentes, fonctions absentes (cache PostgREST en retard).
+// Base du LOT 4 seul : les heures d'une tâche (lot 9, start_time / end_time)
+// n'existent pas — une lecture qui les demande reçoit 42703, comme en production
+// avant la migration 20261011130000. Le lot 9 a son propre harnais
+// (taches-heures-lot9.mjs) ; ici, tout doit rester exactement celui du lot 4.
 //
 //   O1  sans migration : fenêtre « + » d'avant, rien de plus, pas de « Avec les tâches »
 //   O2  « + » : pastilles Intervention · Tâche · Réunion ; l'intervention marche comme avant
@@ -285,6 +289,7 @@ const newCtx = async (uid, viewport) => {
     if (m === 'GET' || m === 'HEAD') {
       gets.push({ t, p: new URLSearchParams(url.searchParams), by: uid });
       const sel = url.searchParams.get('select') || '*';
+      if (t === 'day_tasks' && /\b(start_time|end_time)\b/.test(sel)) return r.fulfill({ status: 400, json: { code: '42703', message: 'column day_tasks.start_time does not exist', details: null, hint: null } });
       let rows = sortRows(filterRows(visible(t, uid, D[t] || []), url.searchParams), url.searchParams.get('order')).map((x) => {
         if (t !== 'planning' && t !== 'time_entries') return x;
         return { ...x, ...(sel.includes('worksite:worksites') ? { worksite: x.worksite_id ? WS[x.worksite_id] : null } : {}), ...(sel.includes('user:users') ? { user: userOf(x.user_id) || null } : {}) };

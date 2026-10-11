@@ -60,7 +60,7 @@ import { attributeEntries, closeMonth as closeMonthWrite, logHoursReminder, send
 import { addPlanningSlot, createWorksite, inviteWorker, setAbsence } from '@/lib/planning-writes';
 import { supabaseAssistantSource } from '@/lib/assistant';
 import AssistantActionCard from '@/components/assistant-action-card';
-import { makeActionExecutor, type ActionExtra } from '@/lib/assistant-actions';
+import { makeActionExecutor, makeRemovalPreview, type ActionExtra } from '@/lib/assistant-actions';
 import { useAiEnabled } from '@/lib/real-cost';
 import AdminMobileMenu from '@/components/admin-mobile-menu';
 import ImportDialog from '@/components/import-dialog';
@@ -79,8 +79,8 @@ import { AddKindSwitch, DayTasksPanel, MeetingChip, MeetingForm, MISSIONS_CSS, P
 import { fetchOfficeMissions, MISSIONS_OFF, type DayTask, type Meeting, type MissionsState } from '@/lib/missions';
 import { MEETING_TINT, meetingsFor, sortTasks } from '@/supabase/functions/_shared/missions';
 import {
-  aggregateEntries, bubbleTitleOf, DRAFT_COLS, extraDeclared, makeBubbleKeyOf, makePrintSource, orderCmp, SENT_COLS, withdrawnSet,
-  type DraftRow, type EntryRow, type PrintSource, type RealAgg,
+  absenceRunFrom, aggregateEntries, bubbleTitleOf, DRAFT_COLS, eraseConfirmation, extraDeclared, makeBubbleKeyOf, makePrintSource, orderCmp, SENT_COLS, withdrawnSet,
+  type DraftRow, type EntryRow, type EraseAsk, type PrintSource, type RealAgg,
 } from '@/lib/planning-cells';
 import { DAY_PARTS, dayPartTint } from '@/supabase/functions/_shared/day-part';
 import { cellKey, parisDay, placeLive, type LivePlace, type LiveSessionLike } from '@/supabase/functions/_shared/live-place';
@@ -90,7 +90,13 @@ import { keep } from '@/lib/same';
 // Formations (lot 6, oct. 2026) : depuis « Salariés » et le menu du téléphone, seulement si la migration est passée.
 import TrainingsAdmin from '@/components/trainings-admin';
 import { trainingsAvailable } from '@/lib/trainings';
+// Lot 3 : « Interventions supprimées ou décalées » (lecture seule).
+import { tracesAvailable } from '@/lib/traces';
+import dynamic from 'next/dynamic';
 import { GraduationCap } from 'lucide-react';
+
+// Lot 3 : la fenêtre des traces n'est chargée qu'à l'ouverture.
+const TracesDialog = dynamic(() => import('@/components/traces-dialog'), { ssr: false });
 
 // ─── helpers / constants ──────────────────────────────────────────────────────
 
@@ -1082,6 +1088,9 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const [eraseBusy, setEraseBusy] = useState(false);
   // La carte « N intervention(s) supprimée(s) · Annuler » reste jusqu'à sa croix.
   const [undoCard, setUndoCard] = useState<{ key: number; message: string; strong: boolean; undo: () => Promise<UndoResult> } | null>(null);
+  // Lot 1 : « Supprimer ? » — plusieurs cases, ou une case qui porte des heures (retirées) : on demande d'abord.
+  // Lot 1 : `absence` = « Présent à partir du… » (jours d'absence retirés), `later` = une absence posée plus tard, qui reste.
+  const [eraseAsk, setEraseAsk] = useState<(EraseAsk & { go: () => void; absence?: boolean; later?: string | null }) | null>(null);
 
   // separate client fiche (permanent data)
   const [clientFiche, setClientFiche] = useState<Worksite | null>(null);
@@ -1517,6 +1526,21 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     return () => { stale = true; };
   }, [user?.company_id, trainingsOn, salariesOpen, mobileMenuOpen]);
 
+  // Lot 3 : traces des interventions supprimées ou décalées — l'entrée (Réglages,
+  // menu du téléphone) n'existe que si la table existe. Même règle que les formations.
+  const [tracesOn, setTracesOn] = useState(false);
+  const [tracesOpen, setTracesOpen] = useState(false);
+  const tracesMissing = useRef(false);
+  useEffect(() => {
+    if (!user?.company_id || tracesOn || tracesMissing.current) return;
+    let stale = false;
+    tracesAvailable().then((s) => {
+      if (s === 'missing') tracesMissing.current = true;
+      else if (s === 'on' && !stale) setTracesOn(true);
+    });
+    return () => { stale = true; };
+  }, [user?.company_id, tracesOn, settingsOpen, mobileMenuOpen]);
+
   const refresh = () => { fetchPlanning(); fetchExtras(); fetchClosures(); fetchMissions(); };
   // Lot 11 : « Annuler » peut être cliqué bien après (la carte reste) — peut-être sur
   // une autre semaine : il relit alors la semaine AFFICHÉE, pas celle de la suppression.
@@ -1824,11 +1848,11 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   }, [selectMode]);
 
   /** La carte « N intervention(s) supprimée(s) · Annuler » : elle reste jusqu'à sa croix. */
-  const showUndo = (r: EraseResult) => {
+  const showUndo = (r: EraseResult, absence = false) => {
     const k = r.deleted.length;
     setUndoCard({
       key: Date.now(),
-      message: `${k} intervention${k > 1 ? 's' : ''} supprimée${k > 1 ? 's' : ''}`
+      message: (absence ? `${k} jour${k > 1 ? 's' : ''} d’absence retiré${k > 1 ? 's' : ''}` : `${k} intervention${k > 1 ? 's' : ''} supprimée${k > 1 ? 's' : ''}`)
         + (r.skipped ? ` · ${r.skipped} gardée${r.skipped > 1 ? 's' : ''} (${r.reason})` : ''),
       strong: k > 1,
       undo: async () => {
@@ -1836,7 +1860,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
           // Lot 2 : l'intervention, puis ses brouillons vides, puis le lien des lignes retirées.
           await undoErase(r);
           refreshRef.current();
-          return { ok: true, message: k > 1 ? 'Annulé : tout est remis au planning.' : 'Annulé : l’intervention est remise au planning.' };
+          return { ok: true, message: k > 1 ? 'Annulé : tout est remis au planning.' : absence ? 'Annulé : l’absence est remise au planning.' : 'Annulé : l’intervention est remise au planning.' };
         } catch (err) {
           console.error('Error restoring planning:', err);
           return { ok: false, message: 'Impossible de tout remettre pour le moment. Réessayez.' };
@@ -1844,11 +1868,14 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       },
     });
   };
-  const deleteSelected = async () => {
+  const deleteSelected = async (confirmed = false) => {
     if (!user?.company_id) return;
     // Recalculé AU MOMENT du clic : des heures ont pu être envoyées entre-temps.
     const ids = planning.filter((p) => selOn.has(p.id) && !lockReason(p)).map((p) => p.id);
     if (!ids.length) return;
+    // Lot 1 : plusieurs cases (ou des heures retirées dessus) → la fenêtre « Supprimer ? » d'abord.
+    const ask = confirmed ? null : eraseConfirmation(planning, ids, withdrawnIds);
+    if (ask) { setEraseAsk({ ...ask, go: () => { deleteSelected(true); } }); return; }
     setEraseBusy(true);
     try {
       const r = await erasePlanning(user.company_id, { ids });
@@ -2189,14 +2216,26 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const fromLabel = (fromStr: string) =>
     fromStr === todayStr ? "aujourd'hui" : format(new Date(`${fromStr}T00:00:00`), 'EEEE d MMMM', { locale: fr });
 
-  const setPresentFrom = async (workerId: string, fromStr: string) => {
+  // Lot 1 (heures sûres) : « Présent » met fin à l'absence EN COURS ce jour-là,
+  // pas à toutes les absences qui suivent (un congé posé en décembre reste).
+  // Même chemin que « Supprimer » (lu avant d'être effacé, « Annuler » après) ;
+  // plusieurs jours → la fenêtre « Retirer ? » d'abord.
+  const setPresentFrom = async (workerId: string, fromStr: string, confirmed = false) => {
     if (!user?.company_id) return;
     try {
-      const { error } = await supabase.from('planning').delete()
+      const { data, error } = await supabase.from('planning').select('id, work_date')
         .eq('company_id', user.company_id).eq('user_id', workerId)
-        .gte('work_date', fromStr).not('absence_type', 'is', null);
+        .gte('work_date', fromStr).not('absence_type', 'is', null).order('work_date');
       if (error) throw error;
-      toast.success(fromStr === todayStr ? 'Salarié présent' : `Présent à partir du ${format(new Date(`${fromStr}T00:00:00`), 'd MMM', { locale: fr })}`);
+      const run = absenceRunFrom((data ?? []) as { id: string; work_date: string }[], fromStr);
+      if (!run.ids.length) { toast.success(`Déjà présent ${fromStr === todayStr ? "aujourd'hui" : `le ${format(parseISO(fromStr), 'd MMM', { locale: fr })}`} : rien à changer.`); return; }
+      if (!confirmed && run.days.length > 1) {
+        setEraseAsk({ count: run.days.length, days: run.days.map((date) => ({ date, n: 1 })), withHours: 0, absence: true, later: run.later, go: () => { setPresentFrom(workerId, fromStr, true); } });
+        return;
+      }
+      const r = await erasePlanning(user.company_id, { ids: run.ids });
+      if (!r.deleted.length) { toast.error(`Rien n’a été retiré${r.reason ? ` (${r.reason})` : ''}.`); return; }
+      showUndo(r, true);
       refresh();
     } catch (err) {
       console.error('Error setting present:', err);
@@ -2556,11 +2595,14 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   // Lot 11 : « Supprimer » (une seule intervention) = même chemin que « Supprimer (N) » :
   // la ligne est lue en entier avant d'être effacée, et la carte « Annuler » la
   // remet à l'identique. Plus d'effacement immédiat et définitif.
-  const deleteAffectation = async () => {
+  const deleteAffectation = async (confirmed = false) => {
     if (!user?.company_id || !editing) return;
     const why = hardLock(editing);
     if (why) { toast.error(why); return; }
     const id = editing.id;
+    // Lot 1 : une case qui porte des heures (retirées par le salarié) → on demande d'abord.
+    const ask = confirmed ? null : eraseConfirmation(planning, [id], withdrawnIds);
+    if (ask) { setEraseAsk({ ...ask, go: () => { deleteAffectation(true); } }); return; }
     setDeletingEdit(true);
     try {
       const r = await erasePlanning(user.company_id, { ids: [id] });
@@ -3616,7 +3658,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                 <button type="button" className="bt-pl-selbar-btn dy" data-testid="sel-all-day" onClick={() => toggleGroup(dayIds)}>
                   {allOn(dayIds) ? 'Tout désélectionner' : 'Tout sélectionner'}
                 </button>
-                <button type="button" className="bt-pl-selbar-del" data-testid="sel-delete" disabled={n === 0 || eraseBusy} onClick={deleteSelected}>
+                <button type="button" className="bt-pl-selbar-del" data-testid="sel-delete" disabled={n === 0 || eraseBusy} onClick={() => deleteSelected()}>
                   {eraseBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />} Supprimer ({n})
                 </button>
                 <button type="button" className="bt-pl-selbar-btn bt-pl-selbar-ok" data-testid="sel-done" onClick={exitSelect}>Terminer</button>
@@ -3625,6 +3667,40 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
           </div>
         );
       })()}
+
+      {/* Lot 1 (heures sûres) : « Supprimer ? » avant d'effacer plusieurs cases, ou une
+          case qui porte des heures. Rien ne part avant « Supprimer » ; « Annuler » reste après. */}
+      <Dialog open={!!eraseAsk} onOpenChange={(o) => { if (!o) setEraseAsk(null); }}>
+        <DialogContent className="bt-skin max-w-sm" data-testid="erase-ask">
+          <DialogHeader><DialogTitle>{eraseAsk?.absence ? `Retirer ${eraseAsk.count} jour${eraseAsk.count > 1 ? 's' : ''} d’absence ?` : `Supprimer ${eraseAsk?.count === 1 ? 'cette intervention' : `${eraseAsk?.count ?? 0} interventions`} ?`}</DialogTitle></DialogHeader>
+          {eraseAsk && (
+            <div className="space-y-2 text-sm">
+              {eraseAsk.days.length > 0 && (
+                <ul className="list-disc pl-5" data-testid="erase-ask-days">
+                  {eraseAsk.absence && eraseAsk.days.length > 7
+                    ? <li>du {format(parseISO(eraseAsk.days[0].date), 'EEEE d MMMM', { locale: fr })} au {format(parseISO(eraseAsk.days[eraseAsk.days.length - 1].date), 'EEEE d MMMM', { locale: fr })}</li>
+                    : eraseAsk.days.map((x) => <li key={x.date}>{format(parseISO(x.date), 'EEEE d MMMM', { locale: fr })}{eraseAsk.absence ? '' : ` : ${x.n} intervention${x.n > 1 ? 's' : ''}`}</li>)}
+                </ul>
+              )}
+              {eraseAsk.later && (
+                <p data-testid="erase-ask-later">L’absence posée à partir du {format(parseISO(eraseAsk.later), 'd MMMM', { locale: fr })} reste.</p>
+              )}
+              {eraseAsk.withHours > 0 && (
+                <p data-testid="erase-ask-hours">
+                  {eraseAsk.withHours === 1 ? 'Une case porte' : `${eraseAsk.withHours} cases portent`} des heures retirées par le salarié : ces heures restent dans sa fiche, seul le lien avec la case disparaît.
+                </p>
+              )}
+              <p className="text-muted-foreground">« Annuler » restera possible juste après.</p>
+            </div>
+          )}
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={() => setEraseAsk(null)} data-testid="erase-keep">Garder</Button>
+            <Button variant="destructive" data-testid="erase-confirm" onClick={() => { const go = eraseAsk?.go; setEraseAsk(null); go?.(); }}>
+              <Trash2 className="h-4 w-4 mr-2" /> {eraseAsk?.absence ? 'Retirer' : 'Supprimer'}{eraseAsk && eraseAsk.count > 1 ? ` (${eraseAsk.count})` : ''}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Lot 11 : « À relancer » sur téléphone — la même liste que sur ordinateur. */}
       <Dialog open={relanceOpen} onOpenChange={setRelanceOpen}>
@@ -3671,7 +3747,8 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         onChanged={() => { fetchData(); refresh(); }}
       />
 
-      <CompanySettings open={settingsOpen} onOpenChange={setSettingsOpen} onSaved={fetchData} />
+      <CompanySettings open={settingsOpen} onOpenChange={setSettingsOpen} onSaved={fetchData}
+        onOpenTraces={tracesOn && user?.company_id ? () => setTracesOpen(true) : undefined} />
 
       <AdminMobileMenu
         open={mobileMenuOpen}
@@ -3696,7 +3773,13 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         onOpenKiosk={kioskOn && user?.company_id ? () => setKioskOpen(true) : undefined}
         onSignOut={signOut}
         onOpenTrainings={trainingsOn && user?.company_id ? () => setTrainingsOpen(true) : undefined}
+        onOpenTraces={tracesOn && user?.company_id ? () => setTracesOpen(true) : undefined}
       />
+
+      {/* Lot 3 : lecture seule ; `workers` (les vrais comptes), jamais la démo. */}
+      {tracesOn && user?.company_id && (
+        <TracesDialog open={tracesOpen} onOpenChange={setTracesOpen} companyId={user.company_id} viewerId={user.id} office workers={workers} />
+      )}
 
       {/* Lot 3 : la feuille imprimée, directement dans <body> (le CSS d'impression cache
           tout le reste) et seulement le temps d'imprimer. Photos : initiales seules. */}
@@ -3864,6 +3947,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
               extra={extra as ActionExtra}
               ctl={ctl}
               execute={makeActionExecutor({ id: user.id, company_id: user.company_id })}
+              preview={makeRemovalPreview({ company_id: user.company_id })}
               onDone={() => { fetchData(); fetchExtras(); }}
             />
           )}
@@ -4148,7 +4232,10 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
           )}
           {addKind === 'tache' && addTarget && user?.company_id && (
             <DayTasksPanel key={`${addTarget.workerId}|${addTarget.date}`} companyId={user.company_id} workerId={addTarget.workerId} date={addTarget.date}
-              tasks={cells.tasks(addTarget.workerId, addTarget.date)} canAdd={!addAbsent} onChanged={fetchMissions} />
+              tasks={cells.tasks(addTarget.workerId, addTarget.date)} canAdd={!addAbsent} onChanged={fetchMissions}
+              timesOn={missions.taskTimesOn}
+              slots={planning.filter((p) => p.user_id === addTarget.workerId && p.work_date === addTarget.date && !p.absence_type)
+                .map((p) => ({ start: p.estimated_start, end: p.estimated_end }))} />
           )}
           {addKind === 'reunion' && addTarget && (
             <MeetingForm key={editMeeting?.id || `new|${addTarget.workerId}|${addTarget.date}`}
@@ -4306,7 +4393,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                 <Button className="flex-1" onClick={saveAffectation} disabled={savingEdit}>
                   {savingEdit && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer
                 </Button>
-                <Button variant="outline" className="text-destructive" onClick={deleteAffectation} disabled={deletingEdit} data-testid="edit-delete">
+                <Button variant="outline" className="text-destructive" onClick={() => deleteAffectation()} disabled={deletingEdit} data-testid="edit-delete">
                   {deletingEdit ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Trash2 className="h-4 w-4 mr-2" />} Supprimer
                 </Button>
               </div>

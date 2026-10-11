@@ -1,10 +1,11 @@
 // Lot 4 — missions (tâches du jour) et réunions : règles pures.
 //   npm run test:missions
 import {
-  cleanText, DB_PENDING, hhmm, isMissingFunction, isMissingRelation, jourComplet, MEETING_TINT, meetingNotices, meetingPushBody,
-  meetingsFor, meetingTimeLabel, PUSH_MAX, sortTasks, taskPartInfo, taskProgress, tasksFor, validateMeeting, type MeetingState, type TaskLike,
+  cleanText, DB_PENDING, hhmm, isMissingColumn, isMissingFunction, isMissingRelation, jourComplet, MEETING_TINT, meetingNotices, meetingPushBody,
+  meetingsFor, meetingTimeLabel, PUSH_MAX, sortTasks, taskOutsideMessage, taskOutsideSlots, taskPartFromTimes, taskPartInfo, taskProgress, tasksFor,
+  taskTimeLabel, validateMeeting, validateTaskTimes, type MeetingState, type TaskLike,
 } from './missions.ts';
-import { DAY_PART_INK, DAY_PARTS } from './day-part.ts';
+import { DAY_PART_INK, DAY_PARTS, dayPartOf } from './day-part.ts';
 
 function eq(a: unknown, b: unknown, msg: string) {
   if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error(`${msg} — attendu ${JSON.stringify(b)}, obtenu ${JSON.stringify(a)}`);
@@ -23,6 +24,85 @@ Deno.test('tâches : matin < après-midi < soir < sans moment, puis ordre d’aj
   eq(list.map((t) => t.id), ['a', 'b', 'c', 'd', 'e'], 'la liste d’origine n’est pas modifiée');
   const cell = tasksFor([...list, task('x', 'matin', '2026-10-14T05:00:00Z', { user_id: 'u-alex' }), task('y', 'matin', '2026-10-14T05:00:00Z', { work_date: '2026-10-16' })], 'u-sam', '2026-10-15');
   eq(cell.map((t) => t.id), ['e', 'c', 'd', 'b', 'a'], 'une case : ce salarié, ce jour');
+});
+
+// ─── Lot 9 : heure de début et de fin ────────────────────────────────────────
+
+Deno.test('lot 9 — tri : les tâches avec heure d’abord, par heure (puis fin), ensuite celles sans heure par moment', () => {
+  const list = [
+    task('sans-soir', 'soir', '2026-10-14T05:00:00Z'),
+    task('h14', 'apres-midi', '2026-10-14T09:00:00Z', { start_time: '14:00:00', end_time: '15:00:00' }),
+    task('sans-matin', 'matin', '2026-10-14T06:00:00Z'),
+    task('h10-12', 'matin', '2026-10-14T08:00:00Z', { start_time: '10:00:00', end_time: '12:00:00' }),
+    task('h10-11', 'matin', '2026-10-14T10:00:00Z', { start_time: '10:00', end_time: '11:00' }),
+    task('h08', 'matin', '2026-10-14T11:00:00Z', { start_time: '08:00:00', end_time: '08:30:00' }),
+    task('sans', null, '2026-10-14T04:00:00Z'),
+    task('debut-seul', 'matin', '2026-10-14T03:00:00Z', { start_time: '07:00:00', end_time: null }),
+  ];
+  eq(sortTasks(list).map((t) => t.id), ['h08', 'h10-11', 'h10-12', 'h14', 'debut-seul', 'sans-matin', 'sans-soir', 'sans'], 'ordre');
+  eq(sortTasks([task('b', null, '2', { start_time: '09:00', end_time: '10:00' }), task('a', null, '1', { start_time: '09:00', end_time: '10:00' })]).map((t) => t.id), ['a', 'b'],
+    'même heure : ordre d’ajout');
+  eq(tasksFor(list, 'u-sam', '2026-10-15')[0].id, 'h08', 'une case : triée de la même façon');
+});
+
+Deno.test('lot 9 — libellé « 10:00–11:30 », seulement avec les deux heures', () => {
+  eq(taskTimeLabel({ start_time: '10:00:00', end_time: '11:30:00' }), '10:00–11:30', 'deux heures');
+  eq(taskTimeLabel({ start_time: '8:05', end_time: '9:00' }), '08:05–09:00', 'sans zéro devant');
+  eq(taskTimeLabel({ start_time: '10:00', end_time: null }), '', 'début seul (impossible en base)');
+  eq(taskTimeLabel({}), '', 'tâche du lot 4 (colonnes absentes)');
+});
+
+Deno.test('lot 9 — moment déduit des heures : même règle que la couleur des créneaux (day-part.ts)', () => {
+  eq(taskPartFromTimes('10:00', '11:30'), 'matin', 'matin');
+  eq(taskPartFromTimes('11:00', '13:00'), 'matin', '11–13 : à égalité, le plus tôt');
+  eq(taskPartFromTimes('14:00', '15:00'), 'apres-midi', 'après-midi');
+  eq(taskPartFromTimes('17:00', '20:00'), 'soir', '17–20 : le soir porte le plus de minutes');
+  eq(taskPartFromTimes('19:00', '21:00'), 'soir', 'soir');
+  eq(taskPartFromTimes('08:00', '17:00'), null, 'journée entière : sans moment (bulle blanche)');
+  eq(taskPartFromTimes('10:00', ''), null, 'une seule heure : sans moment');
+  eq(taskPartFromTimes(null, null), null, 'sans heure');
+  for (const [a, b] of [['07:00', '09:00'], ['12:30', '16:00'], ['18:30', '22:00'], ['10:00', '14:00'], ['16:00', '22:00']]) {
+    const d = dayPartOf(a, b);
+    eq(taskPartFromTimes(a, b), d === 'journee' ? null : d, `${a}–${b} : identique à dayPartOf`);
+  }
+});
+
+Deno.test('lot 9 — heures : les deux ou aucune, la fin après le début (comme day_tasks_times_check)', () => {
+  eq(validateTaskTimes('', ''), null, 'aucune');
+  eq(validateTaskTimes(null, undefined), null, 'aucune (null)');
+  eq(validateTaskTimes('10:00', '11:30'), null, 'valide');
+  eq(validateTaskTimes('10:00', ''), 'Indiquez l’heure de début et l’heure de fin (ou aucune).', 'début seul');
+  eq(validateTaskTimes('', '11:00'), 'Indiquez l’heure de début et l’heure de fin (ou aucune).', 'fin seule');
+  eq(validateTaskTimes('11:00', '11:00'), 'La fin doit être après le début.', 'fin = début');
+  eq(validateTaskTimes('17:00', '08:00'), 'La fin doit être après le début.', 'pas de tâche de nuit');
+  const sql = Deno.readTextFileSync(new URL('../../migrations/20261011130000_lot9_taches_avec_heures.sql', import.meta.url));
+  ok(/start_time IS NULL AND end_time IS NULL\)\s+OR \(start_time IS NOT NULL AND end_time IS NOT NULL AND end_time > start_time\)/.test(sql), 'même règle que la contrainte SQL');
+});
+
+Deno.test('lot 9 — dépassement du créneau prévu (planning du salarié ce jour-là)', () => {
+  const matin = [{ start: '08:00:00', end: '12:00:00' }];
+  eq(taskOutsideSlots('10:00', '11:30', matin), { outside: false, label: '08:00–12:00' }, 'dans le créneau');
+  eq(taskOutsideSlots('08:00', '12:00', matin).outside, false, 'bornes comprises');
+  eq(taskOutsideSlots('11:00', '12:30', matin), { outside: true, label: '08:00–12:00' }, 'dépasse la fin');
+  eq(taskOutsideSlots('07:30', '09:00', matin).outside, true, 'commence avant');
+  eq(taskOutsideSlots('14:00', '15:00', matin).outside, true, 'complètement dehors');
+  const deux = [{ start: '13:30:00', end: '17:00:00' }, { start: '08:00:00', end: '12:00:00' }];
+  eq(taskOutsideSlots('14:00', '15:00', deux), { outside: false, label: '08:00–12:00, 13:30–17:00' }, 'deux créneaux : dans le second, libellé dans l’ordre');
+  eq(taskOutsideSlots('11:00', '14:00', deux).outside, true, 'à cheval sur la pause de midi : dehors');
+  eq(taskOutsideSlots('11:00', '14:00', [{ start: '08:00', end: '12:00' }, { start: '12:00', end: '17:00' }]).outside, false, 'créneaux qui se touchent : un seul');
+  eq(taskOutsideSlots('09:00', '10:00', [{ start: '08:00', end: '12:00' }, { start: '08:00', end: '12:00' }]).label, '08:00–12:00', 'même créneau deux fois : écrit une fois');
+  eq(taskOutsideSlots('22:00', '23:30', [{ start: '20:00', end: '02:00' }]).outside, false, 'poste de nuit : coupé à minuit');
+  eq(taskOutsideSlots('10:00', '11:00', []), { outside: false, label: '' }, 'pas de planning : rien à comparer');
+  eq(taskOutsideSlots('10:00', '11:00', [{ start: '14:00', end: null }, { start: null, end: null }]), { outside: false, label: '' }, 'rendez-vous « à 14:00 » seul ou sans horaire : pas d’alerte');
+  eq(taskOutsideSlots(null, null, matin).outside, false, 'tâche sans heure : pas d’alerte');
+  eq(taskOutsideMessage('08:00–12:00'), 'Cette tâche dépasse le créneau prévu (08:00–12:00). Ajouter quand même ?', 'message, un créneau');
+  eq(taskOutsideMessage('08:00–12:00, 13:30–17:00'), 'Cette tâche dépasse les créneaux prévus (08:00–12:00, 13:30–17:00). Ajouter quand même ?', 'message, deux créneaux');
+});
+
+Deno.test('lot 9 — colonne absente (migration pas passée) : 42703 en lecture, PGRST204 en écriture', () => {
+  ok(isMissingColumn({ code: '42703', message: 'column day_tasks.start_time does not exist' }), 'lecture');
+  ok(isMissingColumn({ code: 'PGRST204', message: "Could not find the 'start_time' column of 'day_tasks' in the schema cache" }), 'écriture');
+  ok(!isMissingColumn({ code: 'PGRST205' }) && !isMissingColumn({ code: '23514' }) && !isMissingColumn(null), 'table absente, contrainte, rien : pas « colonne absente »');
 });
 
 Deno.test('tâches : avancement « 0/0 », « 1/3 », « 3/3 »', () => {

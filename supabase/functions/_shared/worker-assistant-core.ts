@@ -12,7 +12,8 @@
 // RIEN N'EST ENREGISTRÉ ICI : on produit un brouillon ; l'écran l'exécute.
 //
 // Lot 7 : les gestes simples et réversibles sont faits TOUT DE SUITE par
-// l'écran (workerActionMode), avec « Annuler » ; un lieu sans chantier connu
+// l'écran (workerActionMode), avec « Annuler » — sauf, lot 1 (heures sûres),
+// tout ce qui efface ou retire : carte de confirmation d'abord (isWorkerRemoval) ; un lieu sans chantier connu
 // (« une intervention à Lyon ») va sur « Autre » avec le lieu en note ; le
 // salarié peut demander où sont ses collègues (prénom, chantier, horaires).
 import { calendarForPrompt, cleanName, cleanSpoken, cleanTitle, dayPart, looksLikeAction, low, parseDateFr, parseDateRangeFr, parseTimeFr } from './fr-langue.ts';
@@ -469,7 +470,7 @@ export const WORKER_GUIDE: WorkerGuideEntry[] = [
   { mots: ['collegues', 'ou sont les autres', 'planning des collegues'], titre: 'Savoir où sont ses collègues',
     etapes: ['Bouton ✨ de la barre du bas.', 'Demandez « Où sont mes collègues ? » ou « Où est Paul demain ? ».', 'Prénom, chantier et horaires (si le bureau l’a autorisé).'], lien: 'ask:Où sont mes collègues aujourd’hui ?' },
   { mots: ['assistant', 'dicter', 'micro', 'comment tu marches'], titre: 'Se servir de l’Assistant',
-    etapes: ['Bouton ✨ de la barre du bas.', '🎤 pour dicter (appui = démarre, appui = arrête), 📎 pour une photo.', 'C’est fait tout de suite, avec « Annuler ».'], lien: 'ask:Combien d’heures cette semaine ?' },
+    etapes: ['Bouton ✨ de la barre du bas.', '🎤 pour dicter (appui = démarre, appui = arrête), 📎 pour une photo.', 'C’est fait tout de suite, avec « Annuler » ; pour effacer, vous confirmez d’abord.'], lien: 'ask:Combien d’heures cette semaine ?' },
 ];
 
 export function findWorkerGuide(text: string): WorkerGuideEntry | null {
@@ -538,8 +539,12 @@ export type WorkerActionDraft =
   | { type: 'nouveau_chantier'; nom: string; ville: string }
   | { type: 'email_client'; worksite_id: string | null; chantier_texte: string; email: string }
   // ── Lot 8 : effacer ce qu'il a saisi, tant que ce n'est pas envoyé ──
-  /** tout = toutes SES lignes non envoyées du jour ; sinon la ligne choisie. */
-  | { type: 'effacer_heures'; date: string; entry_id: string | null; tout: boolean; choix: WorkerLive['lignes'] }
+  /**
+   * tout = toutes SES lignes non envoyées du jour ; sinon la ligne choisie.
+   * Lot 1 : `ids` = les lignes que la carte a montrées (posé par l'écran, jamais
+   * par le modèle) — seules elles partent.
+   */
+  | { type: 'effacer_heures'; date: string; entry_id: string | null; tout: boolean; choix: WorkerLive['lignes']; ids?: string[] }
   | { type: 'annuler_conge'; leave_id: string | null; choix: NonNullable<WorkerLive['conges']> }
   | { type: 'modifier_conge'; leave_id: string | null; choix: NonNullable<WorkerLive['conges']>; du: string; au: string }
   | { type: 'annuler_pointage'; chantier: string; depuis: string }
@@ -547,12 +552,26 @@ export type WorkerActionDraft =
   | { type: 'retirer_reserve'; entry_id: string | null; choix: WorkerLive['lignes'] };
 
 /**
+ * Lot 1 (heures sûres, décision D3) : ce qui EFFACE ou RETIRE ce que le
+ * salarié a saisi — ses heures pas encore envoyées, une demande de congé, un
+ * pointage, une photo, une réserve. Jamais fait d'office : la carte dit ce qui
+ * part (quelles lignes, combien d'heures, quel jour), rien n'est écrit avant
+ * « Confirmer » ; « Annuler » reste ensuite.
+ */
+export const WORKER_REMOVAL_TYPES: readonly WorkerActionDraft['type'][] = [
+  'effacer_heures', 'annuler_conge', 'modifier_conge', 'annuler_pointage', 'retirer_photo', 'retirer_reserve',
+];
+export const isWorkerRemoval = (d: { type: string }) => (WORKER_REMOVAL_TYPES as readonly string[]).includes(d.type);
+
+/**
  * Lot 7 — fait tout de suite (simple, réversible) ou carte de confirmation :
  * l'envoi de la journée (elle part au bureau), un nouveau chantier (le
- * salarié ne peut pas le retirer), l'email d'un client, et la correction
- * d'une ligne déjà envoyée (correction passée) restent à confirmer.
+ * salarié ne peut pas le retirer), l'email d'un client, la correction
+ * d'une ligne déjà envoyée (correction passée), et (lot 1) toute suppression
+ * restent à confirmer.
  */
 export function workerActionMode(d: WorkerActionDraft): 'direct' | 'confirm' {
+  if (isWorkerRemoval(d)) return 'confirm';
   switch (d.type) {
     case 'envoyer_journee': case 'nouveau_chantier': case 'email_client': return 'confirm';
     case 'modifier_heures': return d.choix.find((l) => l.id === d.entry_id)?.envoyee ? 'confirm' : 'direct';
@@ -561,9 +580,9 @@ export function workerActionMode(d: WorkerActionDraft): 'direct' | 'confirm' {
 }
 
 export interface WorkerQuestion { text: string; field: string; chips: { label: string; value: string }[] }
-/** UNE question s'il manque une info indispensable à un geste direct ; sinon null. */
+/** UNE question s'il manque une info indispensable à un geste direct (ou, lot 1, à une suppression : la réponse mène à la carte) ; sinon null. */
 export function workerQuestionFor(d: WorkerActionDraft, problems: string[], snapshot: WorkerSnapshot): WorkerQuestion | null {
-  if (workerActionMode(d) !== 'direct' || !problems.length) return null;
+  if ((workerActionMode(d) !== 'direct' && !isWorkerRemoval(d)) || !problems.length) return null;
   const p = problems[0];
   const chan = snapshot.chantiers.filter((c) => norm(c.nom) !== 'autre').map((c) => ({ label: `${c.nom}${c.ville ? ` · ${c.ville}` : ''}`, value: c.id }));
   const lines = (l: WorkerLive['lignes']) => l.map((x) => ({ label: `${x.chantier} · ${x.debut}–${x.fin}`, value: x.id }));
@@ -844,11 +863,18 @@ export type WorkerFullReply = WorkerReply | { kind: 'action'; action: WorkerActi
   /** Lot 7 : le serveur lit le planning des collègues (fonction limitée) puis répond. */
   | { kind: 'collegues'; qui: string; date: string; answer: string };
 
+/** Lot 1 : au-dessus de la carte d'une suppression, avant le clic. */
+export const WORKER_A_CONFIRMER = 'Vérifiez ce qui sera effacé, puis confirmez : rien ne part avant.';
+/** … et de « changer ma demande » : l'ancienne est remplacée, rien n'est effacé. */
+export const WORKER_A_CONFIRMER_REMPLACE = 'Vérifiez ce qui sera remplacé, puis confirmez : rien ne change avant.';
+export const workerConfirmText = (d: { type: string }) => (d.type === 'modifier_conge' ? WORKER_A_CONFIRMER_REMPLACE : WORKER_A_CONFIRMER);
+
 function actionAnswer(a: WorkerAction, snapshot?: WorkerSnapshot): string {
-  if (workerActionMode(a.draft) === 'direct') {
+  const removal = isWorkerRemoval(a.draft);
+  if (workerActionMode(a.draft) === 'direct' || removal) {
     const q = snapshot ? workerQuestionFor(a.draft, a.problems, snapshot) : null;
     if (q) return q.text;
-    if (!a.problems.length) return 'C’est fait.';
+    if (!a.problems.length) return removal ? workerConfirmText(a.draft) : 'C’est fait.';
   }
   // Lot 8 : ce qui ne s'efface pas est dit tel quel, en une phrase.
   if (a.problems.some((x) => /ne s’efface plus|Tout est déjà envoyé/.test(x))) return a.problems.find((x) => /ne s’efface plus|Tout est déjà envoyé/.test(x))!;
@@ -980,6 +1006,15 @@ export const WORKER_FUNCTIONS = [
   { name: 'planning_collegues', description: 'Où sont / que font ses collègues (tous ou un seul), un jour donné : prénom, chantier, horaires.',
     parameters: { type: 'object', properties: { qui: S('Prénom du collègue, vide = tous'), date: S('aaaa-mm-jj (défaut aujourd’hui)') }, required: [] } },
 ];
+
+/**
+ * Lot 1 : un FICHIER est joint → le modèle ne voit que « ranger » et
+ * « répondre ». Un PDF piégé ne peut donc demander ni d'effacer des heures, ni
+ * d'envoyer la journée, ni de retirer une demande de congé.
+ */
+export const WORKER_ATTACHMENT_ACTIONS = ['ranger_photo', 'repondre'] as const;
+export const WORKER_ATTACHMENT_FUNCTIONS = WORKER_FUNCTIONS.filter((f) => (WORKER_ATTACHMENT_ACTIONS as readonly string[]).includes(f.name));
+export const workerFunctionsFor = (hasFile: boolean) => (hasFile ? WORKER_ATTACHMENT_FUNCTIONS : WORKER_FUNCTIONS);
 
 // ── Lot 7 : le planning des collègues (lecture limitée côté base) ──────────
 export interface ColleagueRow { prenom: string; date: string; chantier: string | null; ville: string | null; debut: string | null; fin: string | null; absent: boolean }

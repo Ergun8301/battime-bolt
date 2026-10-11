@@ -3,7 +3,7 @@
 // La source « vraie » appelle la fonction `worker-assistant` (brouillon ou
 // réponse, jamais d'écriture). La source démo (préviews uniquement) exécute le
 // MÊME lecteur de phrases que le serveur, sur des chantiers fictifs.
-import { supabase } from '@/lib/supabase';
+import { supabase, withOrigin } from '@/lib/supabase';
 import { bestPlanningFor, type PlannedLike } from '@/supabase/functions/_shared/day-hours';
 import { isPreviewHost } from '@/lib/hosting';
 import { attachmentPayload } from '@/lib/attachment';
@@ -114,7 +114,7 @@ export function demoWorkerSource(): AssistantSource {
   };
 }
 
-export type SaveLines = (date: string, lines: DraftLine[]) => Promise<{ ok: number; queued: number; undo?: () => Promise<{ ok: boolean; message: string }> }>;
+export type SaveLines = (date: string, lines: DraftLine[]) => Promise<{ ok: number; queued: number; undo?: () => Promise<{ ok: boolean; message: string; partial?: boolean }> }>;
 
 /**
  * Enregistre les lignes CONFIRMÉES, une par une, par le chemin de la saisie
@@ -122,10 +122,12 @@ export type SaveLines = (date: string, lines: DraftLine[]) => Promise<{ ok: numb
  * main : celui de ce chantier que la ligne recouvre le plus.
  */
 export function makeWorkerSaver(user: { id: string; company_id: string }, chantiers: WorkerSnapshot['chantiers']): SaveLines {
-  return async (date, lines) => {
+  // Lot 3 : les lignes écrites (et leur « Annuler ») sont tracées « assistant ».
+  return (date, lines) => withOrigin('assistant', async () => {
     const { data: plans } = await supabase.from('planning').select('id, worksite_id, absence_type, estimated_start, estimated_end').eq('user_id', user.id).eq('work_date', date);
     let ok = 0, queued = 0;
-    const created: string[] = [];
+    // Lot 1 : chaque ligne enregistrée, avec ses heures telles qu'elles sont parties.
+    const created: { localId: string; start: string; end: string }[] = [];
     for (const l of lines) {
       const ws = chantiers.find((c) => c.id === l.worksite_id);
       const localId = generateLocalId();
@@ -137,18 +139,34 @@ export function makeWorkerSaver(user: { id: string; company_id: string }, chanti
         total_minutes: shiftMinutes(l.start, l.end, l.break_minutes), meal_allowance: false,
         observation: l.observation || null, reception: null, _worksite_name: ws?.nom || '', _worksite_city: ws?.ville ?? null, _saved_at: Date.now(),
       });
-      if (r === 'online') { ok++; created.push(localId); } else queued++;
+      if (r === 'online') { ok++; created.push({ localId, start: l.start.slice(0, 5), end: l.end.slice(0, 5) }); } else queued++;
     }
     // Lot 7 : « Annuler » retire ces lignes (brouillons, comme « Retirer » à l'écran).
-    const undo = queued ? undefined : async () => {
-      const { error } = await supabase.from('time_entries').delete().eq('user_id', user.id).eq('status', 'draft').in('client_id', created);
-      if (error) return { ok: false, message: 'Annulation impossible : la journée a déjà été envoyée ou verrouillée.' };
-      await supabase.rpc('assistant_journal_log', { p_action: 'declarer_heures', p_summary: `Heures du ${date} (${created.length} ligne(s))`, p_undone: true });
-      return { ok: true, message: 'Annulé : les lignes sont retirées.' };
-    };
+    // Lot 1 : seulement celles restées telles quelles — une ligne retouchée depuis
+    // dans « Ma journée » (autres heures), envoyée ou renvoyée par le bureau est
+    // GARDÉE, et c'est dit. Comme pour « copier ma journée ».
+    const undo = queued ? undefined : () => withOrigin('assistant', async () => {
+      const { data: now, error: rErr } = await supabase.from('time_entries').select('id, client_id, start_time, end_time, status, submitted_at')
+        .eq('user_id', user.id).in('client_id', created.map((c) => c.localId));
+      if (rErr) return { ok: false, message: 'Annulation impossible pour le moment : réessayez.' };
+      const rows = (now ?? []) as { id: string; client_id: string; start_time: string; end_time: string; status: string; submitted_at: string | null }[];
+      let gone = 0;
+      for (const r of rows) {
+        const c = created.find((x) => x.localId === r.client_id);
+        if (!c || r.status !== 'draft' || r.submitted_at || r.start_time.slice(0, 5) !== c.start || r.end_time.slice(0, 5) !== c.end) continue;
+        const { data: del, error } = await supabase.from('time_entries').delete().eq('id', r.id).eq('user_id', user.id)
+          .eq('status', 'draft').is('submitted_at', null).eq('start_time', r.start_time).eq('end_time', r.end_time).select('id');
+        if (!error) gone += del?.length ?? 0;
+      }
+      const kept = rows.length - gone;
+      const why = `${kept} ligne${kept > 1 ? 's' : ''} gardée${kept > 1 ? 's' : ''} (modifiée${kept > 1 ? 's' : ''} ou envoyée${kept > 1 ? 's' : ''} depuis)`;
+      if (!gone) return { ok: false, message: rows.length ? `Rien n’a été retiré : ${why}. Corrigez-les dans « Ma journée ».` : 'Rien à retirer : ces lignes ne sont plus là.' };
+      await supabase.rpc('assistant_journal_log', { p_action: 'declarer_heures', p_summary: `Heures du ${date} (${gone} ligne(s) retirée(s)${kept ? `, ${kept} gardée(s)` : ''})`, p_undone: true });
+      return kept ? { ok: true, message: `Annulé en partie : ${gone} ligne${gone > 1 ? 's' : ''} retirée${gone > 1 ? 's' : ''}, ${why}.`, partial: true } : { ok: true, message: 'Annulé : les lignes sont retirées.' };
+    });
     if (ok) await supabase.rpc('assistant_journal_log', { p_action: 'declarer_heures', p_summary: `Heures du ${date} (${ok} ligne(s))`, p_undone: false });
     return { ok, queued, undo };
-  };
+  });
 }
 
 export const demoSaver: SaveLines = async (_d, lines) => {

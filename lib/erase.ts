@@ -31,6 +31,10 @@ export interface EraseResult {
   drafts: Row[];
   /** Lot 2 : lignes retirées par le salarié, détachées de l'intervention effacée (heures intactes). */
   detached: { id: string; planning_id: string }[];
+  /** Lot 1 (`dryRun`) : cases à effacer qui portent des heures retirées par le salarié (elles seront détachées). */
+  withdrawn?: number;
+  /** Lot 1 (`dryRun`) : toutes les cases lues (effacées ou gardées) — ce que la carte a montré. */
+  seen?: string[];
 }
 
 /** Une ligne d'heures, telle que l'effacement la classe. */
@@ -57,8 +61,12 @@ const REASON: Record<string, string> = { sent: 'heures déjà envoyées', exit: 
 const blockOf = (t: EntryLite) => (t.status === 'draft' ? (t.exit_forgotten ? 'exit' : 'draft') : 'sent');
 const LIVE = 'pointage en cours';
 
-/** Cases du planning : par identifiants, ou un salarié (ou toute l'équipe) sur une période. */
-export async function erasePlanning(companyId: string, o: { ids?: string[]; userId?: string | null; from?: string; to?: string; absences?: boolean }): Promise<EraseResult> {
+/**
+ * Cases du planning : par identifiants, ou un salarié (ou toute l'équipe) sur une période.
+ * Lot 1 (heures sûres) : `dryRun` = LIRE seulement — ce qui partirait et ce qui
+ * serait gardé (et pourquoi), pour la carte de confirmation. Rien n'est écrit.
+ */
+export async function erasePlanning(companyId: string, o: { ids?: string[]; userId?: string | null; from?: string; to?: string; absences?: boolean; dryRun?: boolean }): Promise<EraseResult> {
   let q = supabase.from('planning').select('*').eq('company_id', companyId);
   if (o.ids) q = q.in('id', o.ids);
   else {
@@ -69,7 +77,7 @@ export async function erasePlanning(companyId: string, o: { ids?: string[]; user
   const { data, error } = await q.limit(2000);
   if (error) throw error;
   const rows = (data ?? []) as Row[];
-  if (!rows.length) return { deleted: [], skipped: 0, reason: '', drafts: [], detached: [] };
+  if (!rows.length) return { deleted: [], skipped: 0, reason: '', drafts: [], detached: [], seen: [] };
 
   const { data: cl } = await supabase.from('month_closures').select('month').eq('company_id', companyId);
   const closed = new Set(((cl ?? []) as { month: string }[]).map((c) => String(c.month).slice(0, 7)));
@@ -138,6 +146,12 @@ export async function erasePlanning(companyId: string, o: { ids?: string[]; user
     if (st) { reasons.add(REASON[st]); return false; }
     return true;
   });
+  if (o.dryRun) {
+    return {
+      deleted: toDelete, skipped: rows.length - toDelete.length, reason: Array.from(reasons).join(', '), drafts: [], detached: [],
+      withdrawn: toDelete.filter((r) => cancelledOf.has(r.id)).length, seen: rows.map((r) => r.id),
+    };
+  }
   // Les brouillons vides en vrac d'une case partent avec sa PREMIÈRE intervention effacée.
   const owner = new Map<string, string>(); // brouillon → intervention
   for (const r of toDelete) {

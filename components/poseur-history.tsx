@@ -1,8 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import dynamic from 'next/dynamic';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
+import { tracesAvailable } from '@/lib/traces';
 import { isCounted } from '@/lib/status';
 import { showMealColumn, useMealEnabled } from '@/lib/meal-setting';
 import { TimeEntry, Worksite, User as CompanyUser } from '@/lib/types';
@@ -16,6 +18,9 @@ import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+
+// Lot 3 : la liste n'est chargée que si on l'ouvre.
+const TracesDialog = dynamic(() => import('@/components/traces-dialog'), { ssr: false });
 
 interface TimeEntryWithWorksite extends TimeEntry {
   worksite: Worksite;
@@ -36,10 +41,20 @@ export default function PoseurHistory() {
   // Lot 3 bis : panier non utilisé → plus de « 0 panier » ni de colonne vide.
   // Un panier qui existe reste affiché (badge, compte, colonne du PDF).
   const mealOn = useMealEnabled(user?.company_id) !== false;
+  // Lot 3 : « Interventions supprimées », seulement quand la base a la table des traces.
+  const [tracesOn, setTracesOn] = useState(false);
+  const [tracesOpen, setTracesOpen] = useState(false);
 
   useEffect(() => {
     fetchData();
   }, [user]);
+
+  useEffect(() => {
+    if (!user?.company_id) return;
+    let stale = false;
+    tracesAvailable().then((s) => { if (!stale && s === 'on') setTracesOn(true); });
+    return () => { stale = true; };
+  }, [user?.company_id]);
 
   const fetchData = async () => {
     if (!user) return;
@@ -183,6 +198,17 @@ export default function PoseurHistory() {
           PDF
         </Button>
       </div>
+      {tracesOn && (
+        <div className="-mt-2">
+          <button type="button" className="text-xs font-semibold text-muted-foreground underline underline-offset-2 hover:text-foreground"
+            onClick={() => setTracesOpen(true)} data-testid="history-traces">
+            Interventions supprimées
+          </button>
+        </div>
+      )}
+      {tracesOn && user && (
+        <TracesDialog open={tracesOpen} onOpenChange={setTracesOpen} companyId={user.company_id} viewerId={user.id} />
+      )}
 
       {entries.length === 0 ? (
         <Card>

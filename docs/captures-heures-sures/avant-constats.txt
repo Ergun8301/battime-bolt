@@ -1,0 +1,22 @@
+oui — S1 « J’ai fini » : une ligne d’heures, plus de chrono
+non — S1 la ligne d’heures est GARDÉE, intacte (0 ligne)
+non — S1 aucune suppression de ligne d’heures
+non — S1 le chrono est tenté D’ABORD (DELETE time_entries → POST-REFUS active_sessions)
+non — S1 message simple : « active_sessions: avec la tablette, la journée commence en scannant le QR »
+oui — S2 « J’ai fini » : une ligne d’heures, plus de chrono
+non — S2 le chrono repart D’ABORD, la ligne part ENSUITE (DELETE time_entries → POST active_sessions)
+oui — S2 base : chrono rétabli à l’heure d’origine, ligne retirée
+oui — S2 « Annulé : c’est comme avant. »
+oui — S3 « J’ai fini » : une ligne d’heures, plus de chrono
+non — S3 retour à l’état sûr : ligne gardée, chrono retiré (1 ligne, 1 chrono)
+non — S3 chrono recréé puis retiré : jamais compté deux fois (DELETE time_entries → POST active_sessions)
+non — S3 message : «  »
+non — S4 la carte dit ce qui part : «  »
+non — S4 rien n’est effacé avant « Effacer »
+non — S5 la carte demande le motif
+non — S5 sans motif : « Corriger et prévenir » est grisé
+non — S6 la carte affiche le montant du devis : «  »
+oui — S7 2 cases ajoutées (2)
+non — S7 « Annuler » proposé après « Appliquer »
+non — S8 la carte dit ce qui part : «  »
+non — S8 rien n’est supprimé avant le clic

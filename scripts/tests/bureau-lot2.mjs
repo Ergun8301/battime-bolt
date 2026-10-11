@@ -682,9 +682,12 @@ await openWorker();
   const n = writes.length;
   await wp.locator('button[aria-label="Envoyer"]').click();
   await wp.waitForTimeout(2500);
+  // Lot 1 (heures sûres) : la carte lit la base AVANT le clic — la ligne renvoyée n'est pas
+  // effaçable : c'est dit tout de suite, « Effacer » reste grisé, rien n'est écrit.
   const cardTxt = (await wp.locator('[data-testid=worker-action-card]').last().innerText().catch(() => '')).replace(/\s+/g, ' ');
+  check(await wp.locator('[data-testid=removal-notice]').count() === 0 && await wp.locator('[data-testid=worker-action-confirm]').last().isDisabled(), 'W5 lot 1 : la carte n’annonce aucun effacement, « Effacer » grisé');
   check(of(since(n), 'DELETE', 'time_entries').length === 0 && D.time_entries.some((x) => x.id === 'e-r1'), 'W5 aucun DELETE, la ligne est toujours là');
-  check(/Rien à effacer : ces heures ont été envoyées \(ou renvoyées par le bureau\)/.test(cardTxt), `W5 message : « ${cardTxt.slice(0, 140)} »`);
+  check(/Rien à effacer : 1 ligne envoyée \(ou renvoyée par le bureau\) reste : corrigez-la dans « Ma journée »/.test(cardTxt), `W5 message : « ${cardTxt.slice(0, 160)} »`);
   assistantReply = null; D.companies[0].ai_enabled = false;
 }
 
