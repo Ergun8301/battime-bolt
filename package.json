@@ -64,7 +64,10 @@
     "test:stats-ecrans": "node scripts/tests/statistiques-lot5.mjs out docs/captures-lot5",
     "test:fermeture-nuit": "node supabase/tests/lot0_fermeture_pointages_oublies.mjs",
     "test:check-migrations": "node --test scripts/tests/check-migrations.test.mjs",
-    "check:migrations": "node scripts/check-migrations.mjs"
+    "check:migrations": "node scripts/check-migrations.mjs",
+    "test:traces": "npx -y deno@2 test supabase/functions/_shared/traces.test.ts",
+    "test:traces-db": "node supabase/tests/lot3_traces_suppressions.mjs",
+    "test:traces-ecrans": "node scripts/tests/traces-lot3.mjs out docs/captures-traces"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

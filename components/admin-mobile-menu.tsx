@@ -1,7 +1,7 @@
 'use client';
 
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { GraduationCap } from 'lucide-react';
+import { GraduationCap, History } from 'lucide-react';
 import { User } from '@/lib/types';
 import {
   Users, Building2, Download, Settings, LogOut, TrendingUp, Palmtree,
@@ -67,6 +67,8 @@ interface AdminMobileMenuProps {
   /** Lot 11 : mode « Sélectionner » du jour affiché (supprimer plusieurs interventions). */
   onOpenSelect?: () => void;
   onOpenSettings: () => void;
+  /** Lot 3 : interventions supprimées ou décalées (seulement quand la migration est passée). */
+  onOpenTraces?: () => void;
   onSignOut: () => void;
 }
 
@@ -76,7 +78,7 @@ export default function AdminMobileMenu({
   onOpenSalaries, onOpenChantiers, onOpenCost, onOpenStats, onOpenLeaves, pendingLeaves = 0,
   onOpenReserves, openReserves = 0, onOpenKiosk,
   onOpenExportTeam, onOpenSelect, onOpenSettings, onSignOut,
-  onOpenTrainings,
+  onOpenTrainings, onOpenTraces,
 }: AdminMobileMenuProps) {
   const go = (fn: () => void) => { onOpenChange(false); fn(); };
 
@@ -175,6 +177,13 @@ export default function AdminMobileMenu({
             <span className="bt-mm-icon"><Settings className="h-4 w-4" /></span>
             <span className="bt-mm-label">Réglages de l&apos;entreprise</span>
           </button>
+
+          {onOpenTraces && (
+            <button className="bt-mm-item" onClick={() => go(onOpenTraces)} data-testid="mm-traces">
+              <span className="bt-mm-icon"><History className="h-4 w-4" /></span>
+              <span className="bt-mm-label">Interventions supprimées ou décalées</span>
+            </button>
+          )}
 
           <div className="bt-mm-sep" />
           <button className="bt-mm-item danger" onClick={() => go(onSignOut)}>
