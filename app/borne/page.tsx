@@ -42,6 +42,17 @@
 // la date et l'heure sont toutes deux dans `.kb-clock` (seule zone de la barre
 // qui change avec le temps).
 //
+// Lot 2 (IA) — LA TABLETTE RESTE ALLUMÉE ET RELIÉE :
+//   · son propre manifeste (app/borne/layout.tsx) : l'icône d'écran d'accueil
+//     ouvre /borne, plus la vitrine ;
+//   · verrou d'écran redemandé à chaque toucher, quand le système le relâche et
+//     toutes les 60 s ; s'il est refusé, un petit rappel « mise en veille sur
+//     Jamais » en bas à droite ;
+//   · plein écran au premier toucher, une seule fois (pas sur iPhone) ;
+//   · borne désactivée par l'entreprise (403) : écran « Borne suspendue », la
+//     tablette reste reliée et revérifie chaque minute. Seules une tablette
+//     déconnectée par le bureau (410) ou inconnue (401) oublient l'appairage.
+//
 // ?demo=1 : aperçu sans appairage (graine fictive, QR non valable, semaine
 // fictive construite par le même `buildBoard` que la fonction), seulement sur
 // une preview.
@@ -55,9 +66,14 @@ import { parisDay, parisHHmm } from '../../supabase/functions/_shared/live-place
 import { callKiosk, type KioskBoard, type KioskPlanningRow, type KioskSettings } from '@/lib/kiosk-client';
 import KioskWeekGrid from '@/components/kiosk-week-grid';
 import { isPreviewHost } from '@/lib/hosting';
+import { KIOSK_STORE_KEY } from '@/lib/kiosk-device';
 
-const STORE_KEY = 'bx_kiosk_v1';
+const STORE_KEY = KIOSK_STORE_KEY;
 const SYNC_EVERY_MS = 5 * 60 * 1000;
+/** Lot 2 (IA) : borne suspendue (403) → nouvel essai chaque minute. */
+const SUSPENDED_RETRY_MS = 60 * 1000;
+/** Lot 2 (IA) : vérification du verrou d'écran. */
+const WAKE_CHECK_MS = 60 * 1000;
 const BOARD_EVERY_MS = 30 * 1000;
 /** Au-delà, les « en cours depuis » du cache ne sont plus montrés. */
 const LIVE_FRESH_MS = 2 * 60 * 1000;
@@ -195,6 +211,15 @@ function exitFullscreen() {
   else fsDoc().webkitExitFullscreen?.();
 }
 
+/**
+ * Le toucher que le navigateur compte comme un GESTE (nécessaire au plein écran
+ * et, sur iPad, au verrou d'écran) : l'appui pour une souris, le doigt relâché
+ * pour un écran tactile. Un seul appel par toucher.
+ */
+function isGesture(e: PointerEvent): boolean {
+  return e.type === 'pointerdown' ? e.pointerType === 'mouse' : e.pointerType !== 'mouse';
+}
+
 const CSS = `
 @import url('/fonts/fonts.css');
 .kb{position:fixed;inset:0;background:#15120F;color:#F2EDE3;font-family:'Archivo',system-ui,sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
@@ -253,6 +278,15 @@ const CSS = `
    la barre), au-dessus du QR, de la veille et de l'appairage. */
 .kb-fs{position:fixed;right:12px;top:calc(var(--kb-pad-top) + (var(--kb-bar-h) - 36px) / 2);z-index:60;width:36px;height:36px;display:inline-flex;align-items:center;justify-content:center;border:1.5px solid rgba(242,237,227,.28);background:rgba(21,18,15,.9);color:#F2EDE3;border-radius:10px;padding:0;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .kb-fs svg{width:16px;height:16px;flex:none}
+/* Lot 2 (IA) : rappel discret quand l'écran n'est pas maintenu allumé (sous le QR et la veille). */
+.kb-wake{position:absolute;right:12px;bottom:10px;z-index:20;max-width:calc(100% - 24px);border:1px solid rgba(242,237,227,.18);background:rgba(21,18,15,.88);color:#a59c86;font:inherit;font-size:12px;font-weight:700;line-height:1.3;border-radius:99px;padding:5px 11px;cursor:pointer;text-align:left}
+.kb-wake b{color:#F2EDE3;font-weight:800}
+/* Lot 2 (IA) : borne suspendue par l'entreprise (403), la tablette reste reliée. */
+.kb-susp{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:32px;text-align:center}
+.kb-susp .kb-logo{height:clamp(18px,3vmin,26px);opacity:.85}
+.kb-susp h1{margin:10px 0 0;font-weight:900;font-size:clamp(26px,4.4vmin,40px);letter-spacing:-.02em;color:#F2EDE3}
+.kb-susp p{margin:0;max-width:34em;color:#cfc7b6;font-weight:600;font-size:clamp(15px,2.2vmin,19px);line-height:1.45}
+.kb-susp small{color:#a59c86;font-weight:700;font-size:13px}
 /* Portrait : date au-dessus de l'heure (plus de place pour le nom). */
 @media (orientation:portrait){
   :root{--kb-logo:clamp(13px,2.1vmin,18px)}
@@ -286,19 +320,119 @@ const CSS = `
 // `@import` des polices → texte qui clignote à chaque relecture du planning.
 const CSS_HTML = { __html: CSS };
 
-function useWakeLock(active: boolean) {
+/** Lot 2 (IA) : état du verrou d'écran (pour le petit rappel). */
+type WakeState = 'pending' | 'active' | 'denied' | 'unsupported';
+interface WakeSentinel {
+  released?: boolean;
+  release: () => Promise<void>;
+  addEventListener?: (type: 'release', fn: () => void) => void;
+  removeEventListener?: (type: 'release', fn: () => void) => void;
+}
+type WakeNav = Navigator & { wakeLock?: { request: (t: 'screen') => Promise<WakeSentinel> } };
+
+/**
+ * Garde l'écran allumé tant que la tablette est reliée (veille comprise : écran
+ * noir, mais allumé, comme avant). Lot 2 (IA) : le verrou est redemandé
+ * · à chaque toucher (dans le geste : l'iPad ne l'accorde souvent qu'ainsi) ;
+ * · quand le système le relâche (batterie faible…), si la page est visible ;
+ * · au retour sur la page, et toutes les 60 s s'il n'est plus tenu.
+ * Jamais deux verrous : l'ancien est libéré dès que le nouveau est tenu (dans
+ * cet ordre, pour qu'un refus ne fasse pas perdre celui qui marchait).
+ */
+function useWakeLock(active: boolean): WakeState {
+  const [state, setState] = useState<WakeState>('pending');
   useEffect(() => {
     if (!active) return;
-    let lock: { release: () => Promise<void> } | null = null;
-    const nav = navigator as Navigator & { wakeLock?: { request: (t: 'screen') => Promise<{ release: () => Promise<void> }> } };
-    const take = async () => {
-      try { if (nav.wakeLock && document.visibilityState === 'visible') lock = await nav.wakeLock.request('screen'); } catch { /* refusé : l'écran suivra le réglage de la tablette */ }
+    const wl = (navigator as WakeNav).wakeLock;
+    if (!wl || typeof wl.request !== 'function') { setState('unsupported'); return; }
+    let lock: WakeSentinel | null = null;
+    let asking = false;
+    let stopped = false;
+    let lastErr = '';
+    const held = () => !!lock && !lock.released;
+    const onRelease = () => {
+      lock = null;
+      if (document.visibilityState === 'visible') void take(false);
     };
-    take();
-    const onVis = () => { if (document.visibilityState === 'visible') take(); };
+    const drop = (s: WakeSentinel | null) => {
+      if (!s) return;
+      s.removeEventListener?.('release', onRelease);
+      if (!s.released) s.release().catch(() => {});
+    };
+    async function take(force: boolean) {
+      if (stopped || asking || document.visibilityState !== 'visible') return;
+      if (!force && held()) return;
+      asking = true;
+      try {
+        const next = await wl!.request('screen');
+        if (stopped) { next.release().catch(() => {}); return; }
+        const old = lock;
+        lock = next;
+        next.addEventListener?.('release', onRelease);
+        drop(old);
+        lastErr = '';
+        setState('active');
+      } catch (e) {
+        // Refusé (pas de geste, économie d'énergie…) : on le dit une fois, et on
+        // réessaie au prochain toucher. L'écran suit alors le réglage de la tablette.
+        const name = (e as { name?: string })?.name || String(e);
+        if (name !== lastErr) console.warn('[borne] écran non maintenu allumé :', name);
+        lastErr = name;
+        setState(held() ? 'active' : 'denied');
+      } finally { asking = false; }
+    }
+    void take(false);
+    const onPointer = (e: PointerEvent) => { if (isGesture(e)) void take(true); };
+    const onVis = () => { if (document.visibilityState === 'visible') void take(false); };
+    const id = setInterval(() => { void take(false); }, WAKE_CHECK_MS);
+    document.addEventListener('pointerdown', onPointer, true);
+    document.addEventListener('pointerup', onPointer, true);
     document.addEventListener('visibilitychange', onVis);
-    return () => { document.removeEventListener('visibilitychange', onVis); lock?.release().catch(() => {}); };
+    return () => {
+      stopped = true;
+      clearInterval(id);
+      document.removeEventListener('pointerdown', onPointer, true);
+      document.removeEventListener('pointerup', onPointer, true);
+      document.removeEventListener('visibilitychange', onVis);
+      drop(lock); lock = null;
+    };
   }, [active]);
+  return state;
+}
+
+/**
+ * Lot 2 (IA) : plein écran au PREMIER toucher, une seule fois par ouverture de
+ * la page (le navigateur exige un geste). Rien sur iPhone (pas de plein écran),
+ * ni si l'appli installée est déjà en plein écran, ni si ce premier toucher est
+ * sur l'icône plein écran (elle fait son travail elle-même).
+ */
+function useFullscreenOnFirstTouch(active: boolean) {
+  const tried = useRef(false);
+  useEffect(() => {
+    if (!active || tried.current) return;
+    const onPointer = (e: PointerEvent) => {
+      if (tried.current || !isGesture(e)) return;
+      tried.current = true;
+      off();
+      if ((e.target as Element | null)?.closest?.('.kb-fs')) return;
+      try {
+        if (!fsSupported() || isFullscreen() || window.matchMedia('(display-mode: fullscreen)').matches) return;
+        enterFullscreen();
+      } catch { /* refusé : l'icône plein écran reste là */ }
+    };
+    const off = () => {
+      document.removeEventListener('pointerdown', onPointer, true);
+      document.removeEventListener('pointerup', onPointer, true);
+    };
+    document.addEventListener('pointerdown', onPointer, true);
+    document.addEventListener('pointerup', onPointer, true);
+    return off;
+  }, [active]);
+}
+
+/** Lot 2 (IA) : moins de risque que le navigateur efface l'appairage pour faire de la place. */
+function persistStorage() {
+  try { void navigator.storage?.persist?.().catch(() => {}); } catch { /* non pris en charge */ }
 }
 
 function Pairing({ onPaired, notice, initialCode }: { onPaired: (p: Paired) => void; notice: string | null; initialCode: string }) {
@@ -394,15 +528,17 @@ function TopBar({ main, companyName, online, stamp, dateText, hhmm, onQr, press 
   );
 }
 
-function Display({ paired, online, boardErr, awakeUntil, onWake, onUnpair }: {
+function Display({ paired, online, boardErr, awakeUntil, wake, onWake, onUnpair }: {
   paired: Paired;
   online: boolean;
   boardErr: boolean;
   awakeUntil: number;
+  wake: WakeState;
   onWake: (until: number) => void;
   onUnpair: () => void;
 }) {
   const [now, setNow] = useState(() => Date.now());
+  const [hideWake, setHideWake] = useState(false);
   const [svg, setSvg] = useState('');
   const [qrUntil, setQrUntil] = useState(0);
   const [confirmUnpair, setConfirmUnpair] = useState(false);
@@ -502,6 +638,14 @@ function Display({ paired, online, boardErr, awakeUntil, onWake, onUnpair }: {
         </main>
       </div>
 
+      {/* Lot 2 (IA) : écran non maintenu allumé → petit rappel (un toucher le masque). */}
+      {(wake === 'denied' || wake === 'unsupported') && !hideWake && !paired.demo && (
+        <button type="button" className="kb-wake" data-testid="kb-wake-hint" onClick={() => setHideWake(true)}
+          title="La tablette peut se mettre en veille. Dans ses réglages, mettez le verrouillage automatique (ou la mise en veille de l’écran) sur « Jamais », et laissez-la branchée.">
+          Écran non maintenu allumé · réglez la mise en veille sur <b>« Jamais »</b>
+        </button>
+      )}
+
       {qrOpen && (
         <div className="kb-qrview" data-testid="kb-qr-overlay" onClick={closeQr} role="dialog" aria-label="QR de pointage">
           <TopBar main={false} companyName={paired.companyName} online={online} stamp={null} dateText={dateText} hhmm={hhmm} />
@@ -534,6 +678,25 @@ function Display({ paired, online, boardErr, awakeUntil, onWake, onUnpair }: {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Lot 2 (IA) — l'entreprise a mis la borne en pause (403 de la fonction) : la
+ * tablette RESTE reliée et revérifie chaque minute ; elle repart toute seule.
+ * Pas de QR (il serait refusé).
+ */
+function Suspended({ companyName, checkedAt }: { companyName: string; checkedAt: number | null }) {
+  return (
+    <div className="kb" data-testid="kb-suspended">
+      <div className="kb-susp" role="status">
+        <img className="kb-logo" src="/bemexo-wordmark-light.svg" alt="BEMEXO" draggable={false} />
+        {companyName && <small>{companyName}</small>}
+        <h1>Borne suspendue</h1>
+        <p>Le bureau l&apos;a mise en pause. Elle reprendra toute seule dès sa réactivation&nbsp;: rien à refaire sur cette tablette.</p>
+        {checkedAt && <small>Vérifié à {parisTime(checkedAt)} · nouvel essai chaque minute</small>}
+      </div>
     </div>
   );
 }
@@ -594,9 +757,16 @@ export default function BornePage() {
   const [awakeUntil, setAwakeUntil] = useState(0);
   /** Lot 11 : code arrivé par le QR du bureau (/borne?code=…), pré-rempli. */
   const [urlCode, setUrlCode] = useState('');
+  /** Lot 2 (IA) : heure du dernier refus « borne désactivée » (403), sinon null. */
+  const [suspendedAt, setSuspendedAt] = useState<number | null>(null);
   // Les boucles lisent toujours la DERNIÈRE version (le stockage peut être indisponible).
   const pairedRef = useRef<Paired | null>(null);
   const awakeRef = useRef(0);
+  const suspendedRef = useRef(false);
+  const suspend = useCallback((on: boolean) => {
+    suspendedRef.current = on;
+    setSuspendedAt(on ? Date.now() : null);
+  }, []);
 
   const commit = useCallback((next: Paired | null) => {
     // La démo n'écrit jamais : elle ne doit pas effacer une vraie borne de la tablette.
@@ -626,15 +796,18 @@ export default function BornePage() {
     setReady(true);
   }, []);
 
-  useWakeLock(!!paired);
+  const wake = useWakeLock(!!paired);
+  useFullscreenOnFirstTouch(!!paired);
 
-  // Déconnectée par le bureau ou remplacée par une autre tablette (ou
-  // activation coupée) : on oublie tout, tout de suite. Une panne réseau, elle,
-  // ne fait rien perdre.
-  const forget = useCallback((status: number) => {
+  // Déconnectée par le bureau ou remplacée par une autre tablette (410), ou
+  // inconnue (401) : on oublie tout, tout de suite. Lot 2 (IA) : la borne
+  // désactivée pour l'entreprise (403) n'efface plus rien (« Borne
+  // suspendue »), et une panne réseau ne fait rien perdre non plus.
+  const forget = useCallback(() => {
+    suspend(false);
     commit(null);
-    setNotice(status === 403 ? 'La borne de pointage a été désactivée pour cette entreprise.' : 'Tablette déconnectée par le bureau (ou remplacée par une autre). Tapez un nouveau code pour la relier.');
-  }, [commit]);
+    setNotice('Tablette déconnectée par le bureau (ou remplacée par une autre). Tapez un nouveau code pour la relier.');
+  }, [commit, suspend]);
 
   // Lot 11 : « Oui, déconnecter » sur la tablette. On prévient le serveur
   // (avec le jeton de la tablette) pour que le bureau voie « Aucune tablette
@@ -642,9 +815,11 @@ export default function BornePage() {
   const unpairHere = useCallback(() => {
     const p = pairedRef.current;
     if (p && !p.demo) void callKiosk({ action: 'unpair', kiosk_id: p.kioskId, token: p.token });
-    commit(null); setNotice(null); setBoardErr(false);
-  }, [commit]);
+    suspend(false); commit(null); setNotice(null); setBoardErr(false);
+  }, [commit, suspend]);
 
+  // `sync` relance le planning à la réactivation ; `fetchBoard` est défini après.
+  const fetchBoardRef = useRef<(p: Paired) => Promise<void>>(async () => {});
   const sync = useCallback(async (p: Paired) => {
     if (p.demo) return;
     const { data, status } = await callKiosk<{
@@ -660,11 +835,14 @@ export default function BornePage() {
       const settings = sameData(rest.settings, data.settings) ? rest.settings : data.settings;
       commit({ ...rest, kioskName: data.kiosk_name, companyName: data.company_name, settings, syncedAt: Date.now() });
       setOnline(true);
+      // Réactivée par l'entreprise : le planning revient sans attendre.
+      if (suspendedRef.current) { suspend(false); void fetchBoardRef.current(pairedRef.current ?? cur); }
       return;
     }
-    if (status === 401 || status === 410 || status === 403) { forget(status); return; }
+    if (status === 403) { suspend(true); setOnline(true); return; }
+    if (status === 401 || status === 410) { forget(); return; }
     setOnline(false);
-  }, [commit, forget]);
+  }, [commit, forget, suspend]);
 
   const fetchBoard = useCallback(async (p: Paired) => {
     if (p.demo) return;
@@ -677,12 +855,14 @@ export default function BornePage() {
       setBoardErr(false); setOnline(true);
       return;
     }
-    if (status === 401 || status === 410 || status === 403) { forget(status); return; }
+    if (status === 403) { suspend(true); setOnline(true); return; }
+    if (status === 401 || status === 410) { forget(); return; }
     // Toute autre erreur (réseau, « Action inconnue » d'une fonction pas encore
     // redéployée…) : on garde le dernier planning ; sans lui, « indisponible ».
     setBoardErr(true);
     if (!status) setOnline(false);
-  }, [commit, forget]);
+  }, [commit, forget, suspend]);
+  fetchBoardRef.current = fetchBoard;
 
   const awake = () => {
     const p = pairedRef.current;
@@ -692,7 +872,7 @@ export default function BornePage() {
   const tickBoard = useRef<() => void>(() => {});
   tickBoard.current = () => {
     const p = pairedRef.current;
-    if (!p || p.demo) return;
+    if (!p || p.demo || suspendedRef.current) return;
     if (document.visibilityState !== 'visible' || !navigator.onLine || !awake()) return;
     fetchBoard(p);
   };
@@ -723,6 +903,14 @@ export default function BornePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paired?.kioskId, sync, fetchBoard]);
 
+  // Lot 2 (IA) : borne suspendue → on revérifie chaque minute (sans rien effacer).
+  const suspended = suspendedAt !== null;
+  useEffect(() => {
+    if (!suspended) return;
+    const id = setInterval(() => { const p = pairedRef.current; if (p) sync(p); }, SUSPENDED_RETRY_MS);
+    return () => clearInterval(id);
+  }, [suspended, sync]);
+
   const onWake = useCallback((until: number) => {
     awakeRef.current = until;
     setAwakeUntil(until);
@@ -736,12 +924,15 @@ export default function BornePage() {
   return (
     <>
       <style dangerouslySetInnerHTML={CSS_HTML} />
-      {paired ? (
+      {paired && suspended ? (
+        <Suspended companyName={paired.companyName} checkedAt={suspendedAt} />
+      ) : paired ? (
         <Display
           paired={paired}
           online={online}
           boardErr={boardErr}
           awakeUntil={awakeUntil}
+          wake={wake}
           onWake={onWake}
           onUnpair={unpairHere}
         />
@@ -749,7 +940,7 @@ export default function BornePage() {
         <Pairing
           key={urlCode}
           initialCode={urlCode}
-          onPaired={(p) => { commit(p); setNotice(null); setBoardErr(false); setUrlCode(''); }}
+          onPaired={(p) => { commit(p); suspend(false); setNotice(null); setBoardErr(false); setUrlCode(''); persistStorage(); }}
           notice={notice}
         />
       )}
