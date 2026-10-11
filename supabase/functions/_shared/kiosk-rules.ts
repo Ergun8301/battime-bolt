@@ -6,6 +6,8 @@
 //
 // Lot 11 : plus de contrôle « le salarié est sur place » (GPS). La position du
 // téléphone n'est plus demandée, celle de la tablette n'est plus relevée.
+// Lot 12 (QR fixe) : la position n'est demandée QUE pour le QR fixe imprimé
+// (règles dans fixed-qr.ts) ; le QR de la tablette reste sans position.
 
 export const DOUBLE_SCAN_MS = 60 * 1000;
 /** Essais de code d'appairage ratés tolérés en 10 minutes, depuis une même adresse. */
@@ -43,6 +45,29 @@ export const REFUSAL_MESSAGES: Record<ScanRefusal | 'code_invalid' | 'ticket_inv
   // (« Clôturer jusqu'au… ») — dans les deux cas, ses heures sont fermées.
   month_closed: 'Heures clôturées par le bureau.',
 };
+
+/**
+ * Lot 12 (QR fixe) — `ticket` : QR refusés (code faux, borne inconnue, jeton
+ * faux) tolérés en 10 minutes depuis une même adresse, pour les deux sortes de
+ * QR. Seuls les ÉCHECS comptent : 20 salariés sur le Wi-Fi du dépôt qui
+ * scannent à 7 h 30 ne sont jamais bloqués. Pas de plafond global (il
+ * bloquerait toutes les entreprises d'un coup).
+ */
+export const MAX_TICKET_FAILURES_PER_IP = 30;
+
+export function ticketThrottled(failuresFromIp: number): boolean {
+  return failuresFromIp >= MAX_TICKET_FAILURES_PER_IP;
+}
+
+/**
+ * Lot 12 (QR fixe) — une colonne ou une table que la migration du QR fixe
+ * ajoute n'existe pas encore : PostgreSQL 42703 (colonne inconnue), 42P01
+ * (table inconnue), PostgREST PGRST204 (colonne absente du cache) ou PGRST205
+ * (table absente du cache). La fonction se comporte alors exactement comme avant.
+ */
+export function schemaMissing(err: { code?: string | null } | null | undefined): boolean {
+  return !!err && ['42703', '42P01', 'PGRST204', 'PGRST205'].includes(String(err.code));
+}
 
 /** Une erreur de la base qui veut dire « heures clôturées » (mois ou salarié). */
 export function isClosedError(message: string | null | undefined): boolean {

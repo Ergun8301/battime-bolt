@@ -174,6 +174,7 @@ export default function PoseurPage() {
     let stale = false;
     // Lot 12 : l'icône du scanner ne s'affiche que si une tablette est VRAIMENT
     // reliée (company_has_kiosk : borne allumée ET une tablette non retirée).
+    // Un QR fixe imprimé actif compte aussi (c'est une ligne « fixe » de kiosks).
     // Fonction absente (migration du lot 12 pas encore passée) ou lecture en
     // échec : comportement d'avant, l'interrupteur de l'entreprise seul.
     supabase.from('companies').select('kiosk_enabled').eq('id', user.company_id).maybeSingle()
@@ -589,7 +590,8 @@ export default function PoseurPage() {
         </div>
 
         <LeaveRequestDialog open={leaveOpen} onOpenChange={setLeaveOpen} userId={user?.id} />
-        {scanOpen && <QrScanner onClose={() => setScanOpen(false)} onPath={(path) => { setScanOpen(false); router.push(path); }} />}
+        {/* Lot 12 : un QR fixe (/pointer#f=…) s'ouvre par une vraie navigation, pour que la page lise le fragment. */}
+        {scanOpen && <QrScanner onClose={() => setScanOpen(false)} onPath={(path) => { setScanOpen(false); if (path.includes('#')) window.location.assign(path); else router.push(path); }} />}
         {infoOpen && (
           <div className="bt-info-bg" role="dialog" aria-modal="true" aria-label="Informations" onClick={() => setInfoOpen(false)}>
             <div className="bt-info" onClick={(e) => e.stopPropagation()}>

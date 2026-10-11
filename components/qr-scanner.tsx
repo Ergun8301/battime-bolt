@@ -3,6 +3,7 @@
 // Scanner du QR de la borne, DANS l'appli (lot 6). Le QR contient l'adresse
 // /pointer?k=…&c=… (lot 1) : on l'ouvre, et c'est exactement le même flux que
 // le scan avec l'appareil photo du téléphone.
+// Lot 12 : il lit aussi le QR FIXE imprimé (/pointer#f=…, jeton dans le fragment).
 //
 // Lecture : BarcodeDetector quand le navigateur l'a (Android / Chrome) ; sinon
 // jsQR, chargé seulement à ce moment-là. Rien n'est enregistré : l'image reste
@@ -27,6 +28,9 @@ export function pointerPathFromQr(text: string): string | null {
   try {
     const u = new URL(text, typeof window !== 'undefined' ? window.location.origin : 'https://bemexo.com');
     if (u.pathname.replace(/\/+$/, '') !== '/pointer') return null;
+    // Lot 12 : QR fixe imprimé — le jeton reste dans le fragment.
+    const f = new URLSearchParams(u.hash.replace(/^#/, '')).get('f');
+    if (f && /^[A-Za-z0-9._-]{20,200}$/.test(f)) return `/pointer#f=${f}`;
     if (!u.searchParams.get('k') || !u.searchParams.get('c')) return null;
     return `/pointer?k=${encodeURIComponent(u.searchParams.get('k')!)}&c=${encodeURIComponent(u.searchParams.get('c')!)}`;
   } catch {

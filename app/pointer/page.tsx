@@ -12,6 +12,15 @@
 //      règle que l'appli. Grand écran de confirmation.
 //
 // Lot 11 : la position n'est JAMAIS demandée (plus de contrôle « sur place »).
+// Lot 12 — SAUF pour le QR FIXE imprimé (/pointer#f=…, option du bureau) :
+//   · avant le premier scan d'un QR fixe sur ce téléphone, un écran court
+//     explique pourquoi, qu'il n'y a qu'UNE lecture au scan, que rien n'est
+//     gardé, et que le salarié peut refuser (autres moyens proposés) ;
+//   · la position est lue UNE fois (lib/position.ts, délai de 8 s), juste
+//     avant le pointage, envoyée avec lui et vérifiée par le serveur ;
+//   · refus, position introuvable, hors zone ou trop imprécise : « Scannez la
+//     tablette, ou ajoutez votre intervention à la main. »
+// Le QR de la tablette (?k=…&c=…) ne change pas : jamais de position.
 //
 // Lot 9 : un départ moins d'une minute après l'arrivée annule le pointage
 // (rien n'est enregistré). Écran neutre : ce n'est pas une erreur.
@@ -19,18 +28,27 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
-import { callKiosk, type KioskPunchResult as PunchResp } from '@/lib/kiosk-client';
+import { callKiosk, type KioskPunchResult as PunchResp, type KioskTicket as TicketResp } from '@/lib/kiosk-client';
+import { demanderPosition } from '@/lib/position';
 import { PasswordInput } from '@/components/password-input';
-
-/** `needs_gps` : renvoyé (toujours faux) par la fonction, ignoré ici. */
-interface TicketResp { ticket: string; kiosk_name: string; company_name: string; needs_gps?: boolean }
+import { FIXED_QR_ALTERNATIVE, FIXED_REFUSAL_MESSAGES } from '@/supabase/functions/_shared/fixed-qr';
 
 type Phase =
   | { s: 'checking' }
+  | { s: 'info'; t: TicketResp }
   | { s: 'login'; t: TicketResp }
+  | { s: 'locating'; t: TicketResp }
   | { s: 'punching'; t: TicketResp }
   | { s: 'done'; r: PunchResp }
+  | { s: 'refused'; msg: string; t?: TicketResp }
   | { s: 'error'; msg: string; retry?: boolean; neutral?: boolean };
+
+/** Lot 12 : l'écran d'information du QR fixe a été lu sur ce téléphone. */
+const INFO_KEY = 'bx_fixed_qr_info_v1';
+const infoSeen = () => { try { return localStorage.getItem(INFO_KEY) === '1'; } catch { return false; } };
+const markInfoSeen = () => { try { localStorage.setItem(INFO_KEY, '1'); } catch { /* navigation privée : redemandé la prochaine fois */ } };
+/** Les refus du QR fixe : écran « autres moyens » (pas une panne). */
+const FIXED_CODES = new Set(Object.keys(FIXED_REFUSAL_MESSAGES));
 
 const CSS = `
 @import url('/fonts/fonts.css');
@@ -56,8 +74,12 @@ const CSS = `
 .kx-i{width:100%;font-family:inherit;font-size:16px;font-weight:500;padding:13px 15px;border:1.5px solid rgba(21,18,15,.18);border-radius:12px;background:#FBF8F2;outline:none;color:#15120F;margin-bottom:14px}
 .kx-i:focus{border-color:#15120F;background:#fff}
 .kx-err{background:#fce8e6;border:1px solid #f3b4ad;color:#9a2820;font-size:14px;font-weight:700;border-radius:12px;padding:11px 14px;margin-bottom:14px}
+.kx-info{list-style:none;margin:0 0 6px;padding:0;display:flex;flex-direction:column;gap:12px;font-size:15px;line-height:1.45;color:#3b362f}
+.kx-info b{color:#15120F}
+.kx-link{display:block;width:100%;margin-top:12px;background:none;border:0;padding:8px;font:inherit;font-size:15px;font-weight:700;color:#6E6A63;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
 .kx-spin{width:44px;height:44px;border:4px solid rgba(21,18,15,.15);border-top-color:#15120F;border-radius:50%;animation:kxs .8s linear infinite;margin:0 auto 18px}
 @keyframes kxs{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.kx-spin{animation-duration:2.4s}}
 `;
 
 function Login({ t, onDone }: { t: TicketResp; onDone: () => void }) {
@@ -100,44 +122,111 @@ function Login({ t, onDone }: { t: TicketResp; onDone: () => void }) {
   );
 }
 
+/** Lot 12 — avant le premier scan d'un QR fixe : pourquoi, une seule lecture, rien de gardé, droit de refuser. */
+function FixedInfo({ t, onAccept, onRefuse }: { t: TicketResp; onAccept: () => void; onRefuse: () => void }) {
+  const radius = t.radius_m || 200;
+  return (
+    <div className="kx-wrap">
+      <div className="kx-logo"><img src="/bemexo-wordmark-light.svg" alt="BEMEXO" /></div>
+      <div className="kx-card" data-testid="fixed-info">
+        <h1 className="kx-h2">Ce QR demande votre position</h1>
+        {t.company_name && <p className="kx-p">{t.company_name}</p>}
+        <ul className="kx-info">
+          <li><b>Pourquoi ?</b> Ce QR est imprimé : une photo pourrait servir ailleurs. On vérifie donc que vous êtes à moins de {radius} m de l’entreprise.</li>
+          <li><b>Une seule lecture</b>, au moment du scan. Jamais en continu, jamais en dehors.</li>
+          <li><b>Rien n’est gardé :</b> ni coordonnées, ni trajet. Seulement « dans la zone : oui » avec votre pointage.</li>
+          <li><b>Vous pouvez refuser :</b> scannez la tablette, ou ajoutez votre intervention à la main.</li>
+        </ul>
+        <button type="button" className="kx-btn" data-testid="fixed-info-ok" onClick={onAccept}>Continuer</button>
+        <button type="button" className="kx-link" data-testid="fixed-info-no" onClick={onRefuse}>Je refuse</button>
+      </div>
+    </div>
+  );
+}
+
 export default function PointerPage() {
   const [phase, setPhase] = useState<Phase>({ s: 'checking' });
   const started = useRef(false);
 
   const punch = useCallback(async (t: TicketResp) => {
+    // Lot 12 — QR fixe : la position est lue ICI, une fois, juste avant le
+    // pointage (jamais avant, jamais après). Pas de position : on ne l'envoie
+    // pas, on propose les autres moyens.
+    let pos: { lat: number; lng: number; accuracy: number | null } | null = null;
+    if (t.needs_position) {
+      setPhase({ s: 'locating', t });
+      pos = await demanderPosition(8000);
+      if (!pos) { setPhase({ s: 'refused', msg: FIXED_REFUSAL_MESSAGES.position_missing, t }); return; }
+    }
     setPhase({ s: 'punching', t });
-    const { data, error, code } = await callKiosk<PunchResp>({ action: 'punch', ticket: t.ticket });
+    const { data, error, code } = await callKiosk<PunchResp>(pos
+      ? { action: 'punch', ticket: t.ticket, lat: pos.lat, lng: pos.lng, accuracy: pos.accuracy }
+      : { action: 'punch', ticket: t.ticket });
     if (data) { setPhase({ s: 'done', r: data }); return; }
     if (code === 'auth') { setPhase({ s: 'login', t }); return; }
+    if (code && FIXED_CODES.has(code)) { setPhase({ s: 'refused', msg: error || FIXED_QR_ALTERNATIVE, t }); return; }
     // Arrivée et départ trop proches (ancien chemin) : rien de grave, ton neutre.
     setPhase({ s: 'error', msg: error || 'Pointage impossible.', neutral: code === 'too_short' || code === 'double_scan' });
   }, []);
+
+  /** Après le ticket (ou l'écran d'information) : se connecter si besoin, puis pointer. */
+  const proceed = useCallback(async (t: TicketResp) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) { setPhase({ s: 'login', t }); return; }
+    punch(t);
+  }, [punch]);
 
   useEffect(() => {
     if (started.current) return;
     started.current = true;
     const q = new URLSearchParams(window.location.search);
     const k = q.get('k'), c = q.get('c');
+    // Lot 12 : le QR fixe imprimé porte son jeton dans le fragment (#f=…),
+    // jamais envoyé au serveur du site.
+    const f = new URLSearchParams(window.location.hash.replace(/^#/, '')).get('f');
     // Le code ne doit pas resservir : on le retire de l'adresse (historique,
     // partage, retour arrière).
     window.history.replaceState(null, '', window.location.pathname);
-    if (!k || !c) { setPhase({ s: 'error', msg: 'Scannez le QR affiché sur la borne.' }); return; }
+    if (!f && (!k || !c)) { setPhase({ s: 'error', msg: 'Scannez le QR affiché sur la borne.' }); return; }
     (async () => {
-      const { data: t, error } = await callKiosk<TicketResp>({ action: 'ticket', k, c });
-      if (!t) { setPhase({ s: 'error', msg: error || 'QR invalide.' }); return; }
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) { setPhase({ s: 'login', t }); return; }
-      punch(t);
+      const { data: t, error, code } = await callKiosk<TicketResp>(f ? { action: 'ticket', f } : { action: 'ticket', k, c });
+      if (!t) {
+        if (f && code && FIXED_CODES.has(code)) { setPhase({ s: 'refused', msg: error || FIXED_QR_ALTERNATIVE }); return; }
+        setPhase({ s: 'error', msg: error || 'QR invalide.' });
+        return;
+      }
+      if (t.needs_position && !infoSeen()) { setPhase({ s: 'info', t }); return; }
+      void proceed(t);
     })();
-  }, [punch]);
+  }, [proceed]);
 
   let body: React.ReactNode;
   let tone = '';
-  if (phase.s === 'checking' || phase.s === 'punching') {
+  if (phase.s === 'checking' || phase.s === 'punching' || phase.s === 'locating') {
     body = (
-      <div className="kx-wrap">
+      <div className="kx-wrap" data-testid={`pointer-${phase.s}`}>
         <div className="kx-spin" aria-hidden="true" />
-        <p className="kx-sub">{phase.s === 'checking' ? 'Vérification du QR…' : 'Pointage en cours…'}</p>
+        <p className="kx-sub">{phase.s === 'checking' ? 'Vérification du QR…' : phase.s === 'locating' ? 'Lecture de votre position (une seule fois)…' : 'Pointage en cours…'}</p>
+      </div>
+    );
+  } else if (phase.s === 'info') {
+    const t = phase.t;
+    body = (
+      <FixedInfo t={t}
+        onAccept={() => { markInfoSeen(); void proceed(t); }}
+        onRefuse={() => setPhase({ s: 'refused', msg: `Votre position ne sera pas lue. ${FIXED_QR_ALTERNATIVE}` })} />
+    );
+  } else if (phase.s === 'refused') {
+    // Lot 12 — pas une panne : le QR fixe n'a pas pu vérifier la zone. Deux
+    // autres moyens, toujours proposés.
+    const t = phase.t;
+    body = (
+      <div className="kx-wrap" data-testid="fixed-refused">
+        <div className="kx-icon" aria-hidden="true">📍</div>
+        <h1 className="kx-title" style={{ fontSize: 'clamp(24px,7vw,32px)' }}>Pointage non enregistré</h1>
+        <p className="kx-sub" style={{ marginTop: 12 }}>{phase.msg}</p>
+        <Link className="kx-btn" href="/poseur" data-testid="fixed-refused-manual">Ajouter mon intervention à la main</Link>
+        {t && <button type="button" className="kx-link" data-testid="fixed-refused-retry" onClick={() => punch(t)}>Réessayer</button>}
       </div>
     );
   } else if (phase.s === 'login') {

@@ -72,3 +72,31 @@ export interface KioskPunchResult {
   /** Lot 9 : départ moins d'une minute après l'arrivée → rien n'est enregistré. */
   cancelled?: boolean;
 }
+
+/** Lot 12 — réponse de `ticket` (page /pointer). */
+export interface KioskTicket {
+  ticket: string;
+  kiosk_name: string;
+  company_name: string;
+  /** Renvoyé (toujours faux) par la fonction, ignoré. */
+  needs_gps?: boolean;
+  /** Lot 12 : QR fixe imprimé → la position est lue UNE fois, juste avant le pointage. */
+  needs_position?: boolean;
+  radius_m?: number;
+}
+
+/** Lot 12 — état du QR fixe imprimable (`fixed_status` et les autres actions `fixed_*`). */
+export interface FixedQrStatus {
+  /** Faux tant que la migration n'est pas passée : le bureau ne voit pas l'option. */
+  available: boolean;
+  enabled?: boolean;
+  company_name?: string;
+  /** Jeton à mettre dans /pointer#f=… (recalculé par le serveur, jamais stocké). */
+  token?: string | null;
+  ref?: string | null;
+  created_at?: string | null;
+  last_used_at?: string | null;
+  uses_7d?: number;
+  point?: { set: boolean; accuracy_m: number | null; at: string | null };
+  radius_m?: number;
+}
