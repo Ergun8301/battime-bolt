@@ -163,7 +163,7 @@ export const ADMIN_TOURS: AdminTour[] = [
   ] },
   { id: 'selection', etapes: [
     { cible: 'bureau-nav.selection', texte: 'Cliquez sur « Sélectionner ». S’il est déjà coloré, passez à l’étape suivante.', mobile: 'Touchez « Sélectionner des interventions ».' },
-    { cible: 'bureau-planning.bulle', texte: 'Cliquez sur chaque intervention à retirer.' },
+    { ecran: 'planning', cible: 'bureau-planning.bulle', texte: 'Cliquez sur chaque intervention à retirer.' }, // le menu ☰ ne doit pas recouvrir le planning
     { cible: 'bureau-selection.tout', texte: 'Ou cliquez sur « Tout sélectionner ».' },
     { cible: 'bureau-selection.supprimer', texte: 'Cliquez sur « Supprimer », puis confirmez.' },
   ] },

@@ -83,14 +83,14 @@ export default function SupportAccess({ source }: Props) {
       {!state ? (
         <div className="sa-row"><Loader2 className="h-4 w-4 animate-spin" /></div>
       ) : state.grant ? (
-        <div className="sa-row">
+        <div className="sa-row" data-guide="bureau-reglages.support">
           <span className="sa-on"><ShieldCheck className="h-4 w-4" /> Autorisé jusqu’au {fmtDateTime(state.grant.expires_at)}</span>
           <button type="button" className="sa-btn ghost" disabled={busy} onClick={() => act(() => source.revoke())} data-testid="support-revoke">
             {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Retirer l’accès
           </button>
         </div>
       ) : (
-        <div className="sa-row">
+        <div className="sa-row" data-guide="bureau-reglages.support">
           <select value={hours} onChange={(e) => setHours(Number(e.target.value) as SupportHours)} aria-label="Durée de l’accès">
             {SUPPORT_DURATIONS.map((d) => <option key={d.hours} value={d.hours}>{d.label}</option>)}
           </select>

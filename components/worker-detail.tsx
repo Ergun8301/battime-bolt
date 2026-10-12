@@ -906,7 +906,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
       <span className="inline-flex items-center gap-1">
         <Popover open={closePickOpen} onOpenChange={setClosePickOpen}>
           <PopoverTrigger asChild>
-            <Button variant="outline" size="sm" data-testid="closure-open" disabled={closeBusy}>
+            <Button variant="outline" size="sm" data-testid="closure-open" data-guide="bureau-fiche.cloturer" disabled={closeBusy}>
               <Lock className="h-4 w-4 mr-1" /> Clôturer jusqu&apos;au…
             </Button>
           </PopoverTrigger>
@@ -982,7 +982,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
 
             {/* Habilitations — liste prédéfinie + "Autre" en texte libre. Alertes
                 email automatiques à 30 j et 7 j avant expiration (Chantier 3B). */}
-            <div className="rounded-md border bg-muted/30 p-2 space-y-2">
+            <div className="rounded-md border bg-muted/30 p-2 space-y-2" data-guide="bureau-fiche.habilitations">
               <div className="flex items-center justify-between">
                 <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><ShieldCheck className="h-3.5 w-3.5" /> Habilitations</p>
                 <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => setCertAdding((v) => !v)}>
@@ -1042,10 +1042,10 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <Button size="sm" onClick={saveWorker} disabled={mSaving}>
+              <Button size="sm" onClick={saveWorker} disabled={mSaving} data-guide="bureau-fiche.enregistrer">
                 {mSaving && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer
               </Button>
-              <Button size="sm" variant="outline" onClick={onArchiveClick} disabled={mBusy} data-testid="worker-archive">
+              <Button size="sm" variant="outline" onClick={onArchiveClick} disabled={mBusy} data-testid="worker-archive" data-guide="bureau-fiche.archiver">
                 {worker.is_active ? <Archive className="h-4 w-4 mr-1" /> : <ArchiveRestore className="h-4 w-4 mr-1" />}
                 {worker.is_active ? 'Archiver' : 'Réactiver'}
               </Button>
@@ -1085,7 +1085,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
             </Popover>
             <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-2">
               {closureControl}
-              <ExportMenu onPick={doExport} disabled={liveEntries.length === 0} busy={exporting} />
+              <ExportMenu onPick={doExport} disabled={liveEntries.length === 0} busy={exporting} guide="bureau-fiche.exporter" />
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
@@ -1534,7 +1534,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
                         </div>
 
                         <div className="flex flex-wrap items-center gap-2">
-                          <Button size="sm" onClick={() => doCorrection(entry)} data-testid="correct-submit"
+                          <Button size="sm" onClick={() => doCorrection(entry)} data-testid="correct-submit" data-guide="bureau-fiche.corriger-valider"
                             disabled={cSaving || cReturning || (editsAvailable && (!reasonOk(cReason) || Object.keys(pending).length === 0 || !!cPauseErr))}>
                             {cSaving && <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />} Corriger et prévenir
                           </Button>
@@ -1552,7 +1552,7 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
                       </div>
                     ) : (
                       <Button
-                        variant="outline" size="sm" className="mt-2 ml-2 h-8 text-xs"
+                        variant="outline" size="sm" className="mt-2 ml-2 h-8 text-xs" data-guide="bureau-fiche.corriger"
                         onClick={() => {
                           setCorrectingId(entry.id);
                           setCStart(entry.start_time?.slice(0, 5) || '08:00');

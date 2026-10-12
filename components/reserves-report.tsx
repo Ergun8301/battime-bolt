@@ -284,7 +284,7 @@ export default function ReservesReport({ open, onOpenChange, companyId, onOpenDo
         <DialogHeader><DialogTitle>Réserves de chantier</DialogTitle></DialogHeader>
 
         <div className="bt-rr-tabs">
-          <button className={`bt-rr-tab${tab === 'open' ? ' on' : ''}`} onClick={() => setTab('open')} data-testid="rr-tab-open">
+          <button className={`bt-rr-tab${tab === 'open' ? ' on' : ''}`} onClick={() => setTab('open')} data-testid="rr-tab-open" data-guide="bureau-reserves.a-traiter">
             <AlertTriangle className="h-4 w-4 shrink-0" /> À traiter <span className="bt-rr-tabn">{openRows.length}</span>
           </button>
           <button className={`bt-rr-tab${tab === 'done' ? ' on' : ''}`} onClick={() => setTab('done')} data-testid="rr-tab-done">
@@ -298,7 +298,7 @@ export default function ReservesReport({ open, onOpenChange, companyId, onOpenDo
           bySite.length === 0 ? (
             <div className="bt-rr-empty">Aucune réserve à traiter.</div>
           ) : bySite.map((site) => (
-            <div key={site.worksiteId || site.name} className="bt-rr-site">
+            <div key={site.worksiteId || site.name} className="bt-rr-site" data-guide="bureau-reserves.liste">
               <div className="bt-rr-sitehead">
                 <Building2 className="h-4 w-4 shrink-0" style={{ color: '#9a948a' }} />
                 <span className="bt-rr-sitename" title={site.name}>{site.name}</span>

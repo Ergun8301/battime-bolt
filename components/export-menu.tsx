@@ -14,17 +14,19 @@ const ITEMS: { kind: ExportKind; label: string; sub: string; Icon: typeof FileTe
   { kind: 'csv', label: 'CSV', sub: 'Pour le logiciel de paie', Icon: Table },
 ];
 
-export function ExportMenu({ onPick, disabled = false, busy = false, align = 'end', testId = 'export-menu' }: {
+export function ExportMenu({ onPick, disabled = false, busy = false, align = 'end', testId = 'export-menu', guide }: {
   onPick: (k: ExportKind) => void;
   disabled?: boolean;
   busy?: boolean;
   align?: 'start' | 'end' | 'center';
   testId?: string;
+  /** Ancre du guide pas à pas (lot 7) : l'attribut data-guide du bouton, rien d'autre. */
+  guide?: string;
 }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button type="button" disabled={disabled || busy} data-testid={testId} className="gap-1.5">
+        <Button type="button" disabled={disabled || busy} data-testid={testId} data-guide={guide} className="gap-1.5">
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
           Exporter <ChevronDown className="h-4 w-4" />
         </Button>

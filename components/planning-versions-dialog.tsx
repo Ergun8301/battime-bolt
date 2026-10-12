@@ -225,7 +225,7 @@ function VersionsBody({ companyId, userId, monday, names, onChanged, working }: 
           <History className="inline h-4 w-4 mr-1" /> Aucune version pour cette semaine. Elles apparaissent quand l’assistant change le planning, ou avec « Garder cette version ».
         </div>
       ) : (
-        <div className="bt-pv-list" data-testid="versions-list">
+        <div className="bt-pv-list" data-testid="versions-list" data-guide="bureau-versions.liste">
           {list!.map((v) => {
             const on = sel?.v.id === v.id;
             const p = on ? sel!.prev : null;
@@ -240,7 +240,7 @@ function VersionsBody({ companyId, userId, monday, names, onChanged, working }: 
                 {v.kind === 'assistant' && v.note && <p className="bt-pv-who" data-testid="versions-note">{v.note}</p>}
                 {!on && (
                   <div className="bt-pv-act">
-                    <Button type="button" size="sm" variant="outline" disabled={!!busy} onClick={() => view(v)} data-testid="versions-view">Voir</Button>
+                    <Button type="button" size="sm" variant="outline" disabled={!!busy} onClick={() => view(v)} data-testid="versions-view" data-guide="bureau-versions.voir">Voir</Button>
                     <Button type="button" size="sm" variant="outline" disabled={!!busy} onClick={() => view(v, true)} data-testid="versions-restore">Revenir à cette version</Button>
                   </div>
                 )}

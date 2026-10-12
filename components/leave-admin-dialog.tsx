@@ -129,7 +129,7 @@ export default function LeaveAdminDialog({ open, onOpenChange, companyId, adminI
 
         {pending.length > 0 && <div className="bt-la-kicker">En attente ({pending.length})</div>}
         {pending.map((r) => (
-          <div key={r.id} className="bt-la-row">
+          <div key={r.id} className="bt-la-row" data-guide="bureau-conges.liste">
             <CalendarRange className="h-4 w-4 shrink-0 mt-0.5 text-muted-foreground" />
             <div className="bt-la-main">
               <div className="bt-la-who">{nameOf(r.user_id)}</div>
