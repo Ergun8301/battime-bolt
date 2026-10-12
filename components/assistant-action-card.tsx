@@ -7,9 +7,13 @@
 // Info indispensable manquante → UNE question avec ses choix. Sinon (écritures
 // multiples, message envoyé, correction passée, coût / paie / droits) : la
 // fiche modifiable et « Confirmer ». Les contrôles sont ceux du serveur.
+//
+// Lot 1 (heures sûres) : une suppression n'est JAMAIS lancée d'office. La
+// carte dit d'abord ce qui part (quoi, combien, quels jours, ce qui est gardé
+// parce qu'il porte des heures) ; rien n'est écrit avant « Confirmer ».
 
 import type { ExtraControl } from '@/components/assistant-panel';
-import { readCard, useCardMemory, writeCard } from '@/lib/card-memory';
+import { readCard, undoneMemory, useCardMemory, writeCard } from '@/lib/card-memory';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   CheckCircle2, Loader2, UserPlus, Building2, CalendarOff, CalendarPlus, CalendarRange, Clock, FolderInput, Paperclip,
@@ -17,8 +21,8 @@ import {
   CalendarX, Eraser, FileX, FilePen, Trash2, MailX,
 } from 'lucide-react';
 import {
-  ABSENCE_KINDS, ABSENCE_LABEL, CERT_LABEL, DOC_CATEGORY_LABEL, EXPENSE_LABEL, ROLE_LABEL, actionMode, applyAnswer, bulletinFigures, checkAction, frDate, questionFor, summarize,
-  type ActionDraft, type ActionExecutor, type ActionExtra, type ActionResult,
+  ABSENCE_KINDS, ABSENCE_LABEL, CERT_LABEL, DOC_CATEGORY_LABEL, EXPENSE_LABEL, ROLE_LABEL, actionMode, applyAnswer, bulletinFigures, checkAction, confirmText, frDate, isRemoval, questionFor, summarize,
+  type ActionDraft, type ActionExecutor, type ActionExtra, type ActionResult, type RemovalPreview, type RemovalPreviewer,
 } from '@/lib/assistant-actions';
 import { ActionAsk, ActionDone } from '@/components/action-done';
 
@@ -50,7 +54,79 @@ const CSS = `
 .ac-sub{font-size:11.5px;font-weight:900;color:#15120F;margin:6px 0 0}
 .ac-att{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:#56514a;margin:-4px 0 8px}
 .ac-hint{font-size:11.5px;color:#6E6A63;margin:4px 0 0}
+.ac-rm{margin-top:8px;border:1px solid rgba(192,70,31,.28);background:#FFF6F2;border-radius:10px;padding:8px 9px}
+.ac-rm-h{font-size:10.5px;font-weight:900;color:#9a3b14;text-transform:uppercase;letter-spacing:.05em;margin:0 0 3px}
+.ac-rm ul{margin:0;padding:0 0 0 16px;font-size:12.5px;color:#15120F;line-height:1.45}
+.ac-rm .ok{color:#0F7A43}
+.ac-ro{font-size:13.5px;font-weight:800;color:#15120F;padding:6px 0 0}
 `;
+
+const euros = (v: number) => `${v.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} €`;
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n > 1 ? many : one}`;
+/** Un point final, sans doubler celui d'une abréviation (« ven. 16 oct. »). */
+const dot = (t: string) => (/[.!?…]$/.test(t) ? t : `${t}.`);
+
+/**
+ * Lot 1 : ce que la suppression retirera, en clair. Le planning est lu par le
+ * même code que l'effacement (`preview`, rien n'est écrit) : combien de cases,
+ * quels jours, et celles qui RESTENT parce qu'elles portent des heures.
+ */
+function removalLines(d: ActionDraft, who: (id: string | null, said?: string) => string, p: RemovalPreview | null | undefined): string[] {
+  const days = (x: RemovalPreview) => (x.days.length ? ` : ${x.days.slice(0, 7).map(frDate).join(', ')}${x.days.length > 7 ? '…' : ''}` : '');
+  const kept = (x: RemovalPreview) => (x.kept ? [`${plural(x.kept, 'case gardée', 'cases gardées')} (${x.reason}).`] : []);
+  // Même phrase que la fenêtre « Supprimer ? » du planning.
+  const withdrawn = (x: RemovalPreview) => (x.withdrawn
+    ? [`${x.withdrawn === 1 ? 'Une case porte' : `${x.withdrawn} cases portent`} des heures retirées par le salarié : ces heures restent dans sa fiche, seul le lien avec la case disparaît.`] : []);
+  switch (d.type) {
+    case 'supprimer_intervention': {
+      const c = d.choix.find((x) => x.id === d.planning_id);
+      if (!c) return [];
+      const label = [c.nom, c.date ? frDate(c.date) : '', c.chantier, c.debut, c.note].filter(Boolean).join(' · ');
+      if (p && p.count === 0 && p.kept) return [label, `Cette case reste : ${p.reason}.`];
+      if (p && p.withdrawn) return [label, ...withdrawn(p)];
+      return [label, 'Une case qui porte des heures (notées ou envoyées) n’est jamais effacée.'];
+    }
+    case 'effacer_planning': {
+      const head = dot(`Planning de ${d.user_id ? who(d.user_id, d.salarie_texte) : 'toute l’équipe'}, du ${frDate(d.du)} au ${frDate(d.au)}`);
+      if (!p) return [head, 'Les cases avec des heures notées ou envoyées, et les mois clôturés, restent.'];
+      return [head, p.count ? dot(`${plural(p.count, 'case retirée', 'cases retirées')}${days(p)}`) : 'Aucune case à retirer sur cette période.', ...withdrawn(p), ...kept(p)];
+    }
+    case 'supprimer_absence': {
+      const head = dot(`Absence de ${who(d.user_id, d.salarie_texte)}, du ${frDate(d.du)} au ${frDate(d.au)}`);
+      if (!p) return [head];
+      return [head, p.count ? dot(`${plural(p.count, 'jour d’absence retiré', 'jours d’absence retirés')}${days(p)}`) : 'Aucune absence sur ces jours.', ...kept(p)];
+    }
+    case 'supprimer_document': {
+      const c = d.choix.find((x) => x.id === d.document_id);
+      return c ? [`« ${c.nom} » · ${c.chantier} · ${frDate(c.date)}${c.categorie ? ` (${DOC_CATEGORY_LABEL[c.categorie] ?? c.categorie})` : ''}`, 'Le fichier est retiré des documents du chantier.'] : [];
+    }
+    case 'supprimer_depense': {
+      const c = d.choix.find((x) => x.id === d.expense_id);
+      return c ? [`${c.libelle} · ${euros(c.montant)} · ${c.chantier} · ${frDate(c.date)}`, 'Elle sort du coût du chantier.'] : [];
+    }
+    case 'supprimer_habilitation': {
+      const c = d.choix.find((x) => x.id === d.cert_id);
+      return c ? [`${c.nom} · ${c.libelle || CERT_LABEL[c.categorie] || c.categorie} · expire le ${frDate(c.expiration)}`] : [];
+    }
+    case 'modifier_document': {
+      const c = d.choix.find((x) => x.id === d.document_id);
+      return c ? [`Avant : « ${c.nom} »${c.categorie ? `, ${DOC_CATEGORY_LABEL[c.categorie] ?? c.categorie}` : ''}.`] : [];
+    }
+    case 'modifier_depense': {
+      const c = d.choix.find((x) => x.id === d.expense_id);
+      return c ? [`Avant : ${c.libelle} · ${euros(c.montant)} · ${EXPENSE_LABEL[c.categorie] ?? c.categorie}.`] : [];
+    }
+    case 'modifier_habilitation': {
+      const c = d.choix.find((x) => x.id === d.cert_id);
+      return c ? [dot(`Avant : ${c.libelle || CERT_LABEL[c.categorie] || c.categorie}, expire le ${frDate(c.expiration)}`)] : [];
+    }
+    case 'annuler_invitation': {
+      const c = d.choix.find((x) => x.email === d.email);
+      return c ? [`${c.nom} · ${c.email}`, 'Son lien d’invitation ne marchera plus.'] : [];
+    }
+    default: return [];
+  }
+}
 
 const TITLES: Record<ActionDraft['type'], [string, typeof UserPlus]> = {
   inviter_salarie: ['Inviter un salarié', UserPlus],
@@ -104,6 +180,8 @@ interface Props {
   extra: ActionExtra; execute: ActionExecutor; onDone?: () => void;
   /** Lot 7 : la carte pilote le texte de sa bulle (voir ExtraControl). */
   ctl?: ExtraControl;
+  /** Lot 1 : lit ce qu'une suppression du planning retirerait (rien n'est écrit). Absent en démo. */
+  preview?: RemovalPreviewer;
 }
 
 // Une action directe n'est lancée qu'UNE fois, même si l'écran se redessine.
@@ -111,7 +189,7 @@ const launched = new WeakSet<object>();
 
 type Phase = 'auto' | 'question' | 'form' | 'done';
 
-export default function AssistantActionCard({ extra, execute, onDone, ctl }: Props) {
+export default function AssistantActionCard({ extra, execute, onDone, ctl, preview }: Props) {
   const { options } = extra;
   // Lot 7 : ce qui a déjà été fait survit à un redessin du panneau.
   const mem = readCard<{ phase: Phase; result: ActionResult; doneSummary: string; cancelled: boolean; d: ActionDraft }>(extra);
@@ -129,9 +207,11 @@ export default function AssistantActionCard({ extra, execute, onDone, ctl }: Pro
   const set = (patch: Partial<ActionDraft>) => setD((x) => ({ ...x, ...patch } as ActionDraft));
 
   const direct = actionMode(extra.action.draft) === 'direct';
+  // Lot 1 : une suppression pose sa question s'il le faut, puis montre la carte de confirmation.
+  const removal = isRemoval(extra.action.draft);
   const [phase, setPhase] = useState<Phase>(() => {
     if (mem.phase) return mem.phase;
-    if (!direct) return 'form';
+    if (!direct) return removal && extra.action.problems.length && questionFor(extra.action.draft, extra.action.problems, ctx) ? 'question' : 'form';
     if (!extra.action.problems.length) return 'auto';
     return questionFor(extra.action.draft, extra.action.problems, ctx) ? 'question' : 'form';
   });
@@ -149,20 +229,46 @@ export default function AssistantActionCard({ extra, execute, onDone, ctl }: Pro
     writeCard(extra, { phase, cancelled });
   }, [phase, cancelled]); // eslint-disable-line react-hooks/exhaustive-deps
   // « Modifier » après coup : l'ancienne action est défaite AU MOMENT d'enregistrer.
-  const editOf = useRef<(() => Promise<{ ok: boolean; message: string }>) | null>(null);
+  const editOf = useRef<(() => Promise<{ ok: boolean; message: string; partial?: boolean }>) | null>(null);
   const [question, setQuestion] = useState(() => questionFor(extra.action.draft, extra.action.problems, ctx));
+  // Lot 1 : ce que la suppression retirerait, relu quand la carte change (rien n'est écrit).
+  const [prev, setPrev] = useState<RemovalPreview | null | undefined>(undefined);
+  const prevKey = removal && phase === 'form' && preview
+    ? JSON.stringify(['planning_id', 'user_id', 'du', 'au'].map((k) => (d as Record<string, unknown>)[k] ?? ''))
+    : '';
+  useEffect(() => {
+    if (!prevKey || !preview) { setPrev(undefined); return; }
+    let live = true;
+    setPrev(undefined);
+    preview(d).then((r) => { if (live) setPrev(r); }).catch(() => { if (live) setPrev(null); });
+    return () => { live = false; };
+  }, [prevKey]); // eslint-disable-line react-hooks/exhaustive-deps
   // Fait : la bulle ne garde pas la question (« Pour quel salarié ? ») au-dessus du résultat.
   useEffect(() => { if (phase === 'question') ctl?.text(null); }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (phase === 'done') ctl?.settle('C’est fait.'); }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (cancelled) ctl?.settle(); }, [cancelled]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Lot 1 : au-dessus de la carte d'une suppression, jamais « C'est fait » avant le clic
+  // (même si un serveur pas encore redéployé l'annonçait).
+  useEffect(() => { if (removal && phase === 'form' && !result) ctl?.text(confirmText(extra.action.draft)); }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const run = async (draft: ActionDraft) => {
     setBusy(true); setErr(null);
     if (editOf.current) {
-      const u = await editOf.current();
+      const undoFn = editOf.current;
+      const u = await undoFn();
       if (!u.ok) { setBusy(false); setErr(u.message); return; }
       editOf.current = null;
+      // Lot 1 : une case est restée (des heures dessus) → on ne refait pas l'action :
+      // l'ancienne case et la nouvelle coexisteraient, en double.
+      if (u.partial) {
+        setBusy(false);
+        undoneMemory.set(undoFn, `${u.message} La modification n’est pas faite : reprenez-la depuis le planning.`);
+        setPhase('done');
+        return;
+      }
     }
+    // Lot 1 : seules les cases que la carte a montrées partent.
+    if ((draft.type === 'effacer_planning' || draft.type === 'supprimer_absence') && prev) draft = { ...draft, ids: prev.ids };
     const summary = summarize(draft, ctx);
     const r = await execute(draft, summary, extra.attachment);
     setBusy(false);
@@ -195,7 +301,8 @@ export default function AssistantActionCard({ extra, execute, onDone, ctl }: Pro
         const nd = applyAnswer(d, question.field, value);
         const p2 = checkAction(nd, ctx);
         setD(nd);
-        if (!p2.length) { launched.add(extra); run(nd); setPhase('auto'); return; }
+        // Lot 1 : une suppression complétée va sur la carte de confirmation, jamais directement.
+        if (!p2.length) { if (removal) { setPhase('form'); return; } launched.add(extra); run(nd); setPhase('auto'); return; }
         const q2 = questionFor(nd, p2, ctx);
         if (q2) setQuestion(q2); else setPhase('form');
       }} />
@@ -261,12 +368,14 @@ export default function AssistantActionCard({ extra, execute, onDone, ctl }: Pro
           <div><label>Téléphone</label><input value={d.telephone} onChange={(e) => set({ telephone: e.target.value })} /></div>
         </div>
         <div><label>Adresse</label><input value={d.adresse} onChange={(e) => set({ adresse: e.target.value })} /></div>
-        {(d.budget_heures || d.budget_montant || extra.attachment) && (
+        {(d.budget_heures || d.montant_devis || extra.attachment) && (<>
           <div className="ac-row">
-            <div><label>Montant prévu (€)</label><input inputMode="decimal" value={d.budget_montant ?? ''} onChange={(e) => set({ budget_montant: e.target.value.replace(',', '.') })} /></div>
+            {/* Lot 1 : affiché seulement — il comprend matériaux et marge, ce n'est pas un budget main-d'œuvre. */}
+            {d.montant_devis && <div><label>Montant du devis (HT)</label><p className="ac-ro" data-testid="devis-amount">{euros(Number(d.montant_devis))}</p></div>}
             <div><label>Heures prévues</label><input inputMode="decimal" value={d.budget_heures ?? ''} onChange={(e) => set({ budget_heures: e.target.value.replace(',', '.') })} /></div>
           </div>
-        )}
+          {d.montant_devis && <p className="ac-hint">Le montant du devis n’est pas enregistré comme budget : il comprend matériaux et marge. Seules les heures prévues servent aux alertes.</p>}
+        </>)}
       </>);
       break;
     case 'poser_absence':
@@ -372,7 +481,12 @@ export default function AssistantActionCard({ extra, execute, onDone, ctl }: Pro
           <div><label>Nouveau début</label><input type="time" value={d.debut} onChange={(e) => set({ debut: e.target.value })} /></div>
           <div><label>Nouvelle fin</label><input type="time" value={d.fin} onChange={(e) => set({ fin: e.target.value })} /></div>
         </div>
-        <p className="ac-hint">Même règle que « Corriger les heures » : c’est tracé et le salarié est prévenu.</p>
+        {/* Lot 1 : motif obligatoire, comme « Corriger cette journée » sur la fiche. */}
+        <div><label>Motif (le salarié le lit)</label>
+          <input value={d.motif ?? ''} maxLength={500} placeholder="Ex. : oubli de pause" data-testid="correction-motif"
+            className={(d.motif ?? '').trim().length >= 3 ? '' : 'todo'} onChange={(e) => set({ motif: e.target.value })} />
+        </div>
+        <p className="ac-hint">Même règle que « Corriger cette journée » : c’est tracé (avant / après, motif) et le salarié est prévenu.</p>
       </>);
       break;
     // ── Lot 7 ──
@@ -676,13 +790,23 @@ export default function AssistantActionCard({ extra, execute, onDone, ctl }: Pro
       <p className="ac-h"><span className="i"><Icon className="h-3.5 w-3.5" /></span>{title}</p>
       {extra.attachment && <p className="ac-att"><Paperclip className="h-3.5 w-3.5" /> {extra.attachment.name}</p>}
       <div className="ac-f">{body}</div>
+      {removal && (() => {
+        const lines = removalLines(d, (id, said) => options.salaries.find((x) => x.id === id)?.nom ?? (said || 'salarié à choisir'), prev);
+        if (!lines.length) return null;
+        return (
+          <div className="ac-rm" data-testid="removal-notice">
+            <p className="ac-rm-h">{d.type.startsWith('modifier_') ? 'Ce qui sera remplacé' : 'Ce qui sera retiré'}</p>
+            <ul>{lines.map((l) => <li key={l}>{l}</li>)}<li className="ok">Rien n’est fait avant « {CONFIRM[d.type]} ». « Annuler » restera possible juste après.</li></ul>
+          </div>
+        );
+      })()}
       {problems.map((p) => <p key={p} className="ac-p">{p}</p>)}
       {err && <p className="ac-err">{err}</p>}
       <div className="ac-foot">
         <button
           type="button" className="ac-b no" disabled={busy}
           onClick={() => { if (editOf.current && result) { editOf.current = null; setPhase('done'); } else setCancelled(true); }}
-        >{editOf.current ? 'Garder comme avant' : 'Annuler'}</button>
+        >{editOf.current ? 'Garder comme avant' : removal ? 'Garder' : 'Annuler'}</button>
         <button
           type="button" className="ac-b ok" disabled={busy || problems.length > 0} data-testid="action-confirm"
           onClick={() => run(d)}

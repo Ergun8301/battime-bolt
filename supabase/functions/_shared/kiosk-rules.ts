@@ -6,6 +6,8 @@
 //
 // Lot 11 : plus de contrôle « le salarié est sur place » (GPS). La position du
 // téléphone n'est plus demandée, celle de la tablette n'est plus relevée.
+// Lot 12 (QR fixe) : la position n'est demandée QUE pour le QR fixe imprimé
+// (règles dans fixed-qr.ts) ; le QR de la tablette reste sans position.
 
 export const DOUBLE_SCAN_MS = 60 * 1000;
 /** Essais de code d'appairage ratés tolérés en 10 minutes, depuis une même adresse. */
@@ -43,6 +45,74 @@ export const REFUSAL_MESSAGES: Record<ScanRefusal | 'code_invalid' | 'ticket_inv
   // (« Clôturer jusqu'au… ») — dans les deux cas, ses heures sont fermées.
   month_closed: 'Heures clôturées par le bureau.',
 };
+
+/**
+ * Lot 12 (QR fixe) — `ticket` du QR FIXE : essais refusés, plafonnés.
+ *
+ * CE QUE LE PLAFOND FAIT ET NE FAIT PAS
+ *   · Il ne gêne JAMAIS un QR valable : le jeton est vérifié D'ABORD ; le
+ *     plafond ne répond « Trop d'essais » (429) qu'à un essai qui ÉCHOUE déjà
+ *     (le refus normal serait un 400). Un salarié qui scanne un bon QR passe
+ *     toujours, même derrière une adresse (Wi-Fi du dépôt, 4G partagée) d'où
+ *     viennent 1 000 mauvais essais.
+ *   · Il ne touche PAS au QR de la tablette (branche k/c, inchangée).
+ *   · Il ne compte pas les échecs d'une autre entreprise : le compteur est
+ *     celui du couple (adresse, QR visé).
+ *
+ * AUCUNE ADRESSE IP N'EST GARDÉE. Le couple (adresse, QR visé) est haché
+ * avec la clé serveur, et seuls les 12 premiers bits du résultat servent :
+ * un « seau » de 0 à 4 095. La table n'a qu'une ligne par seau (4 096 au plus,
+ * réécrite quand la fenêtre de 10 minutes est passée) : elle ne grossit pas,
+ * ne garde ni adresse ni date de scan au-delà de 10 minutes, et n'a besoin
+ * d'AUCUNE purge (donc d'aucun DELETE). Deux couples qui tombent dans le même
+ * seau (1 chance sur 4 096) partagent leur compteur : sans conséquence, seuls
+ * des essais déjà refusés sont concernés.
+ */
+export const MAX_TICKET_FAILURES_PER_IP = 30;
+/** Durée de la fenêtre d'un seau. */
+export const TICKET_FAILURE_WINDOW_MS = 10 * 60 * 1000;
+/** Nombre de seaux (12 bits). */
+export const TICKET_BUCKETS = 4096;
+
+export function ticketThrottled(failures: number): boolean {
+  return failures >= MAX_TICKET_FAILURES_PER_IP;
+}
+
+const B64URL = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+
+/** Le seau (0 à 4 095) d'une empreinte en base64url : ses 12 premiers bits (deux caractères). */
+export function ticketBucket(hash: string): number {
+  const a = B64URL.indexOf(hash.charAt(0)), b = B64URL.indexOf(hash.charAt(1));
+  return (a < 0 ? 0 : a) * 64 + (b < 0 ? 0 : b);
+}
+
+export interface TicketBucketRow { failures: number; window_start: string }
+
+/** Le seau est-il plein (30 échecs dans sa fenêtre en cours) ? */
+export function ticketBucketFull(row: TicketBucketRow | null | undefined, nowMs: number): boolean {
+  if (!row) return false;
+  const start = Date.parse(row.window_start);
+  return Number.isFinite(start) && nowMs - start < TICKET_FAILURE_WINDOW_MS && ticketThrottled(row.failures);
+}
+
+/** Le seau après un échec de plus : la fenêtre en cours continue, ou une neuve commence. */
+export function ticketBucketNext(row: TicketBucketRow | null | undefined, nowMs: number): TicketBucketRow {
+  const start = row ? Date.parse(row.window_start) : NaN;
+  if (row && Number.isFinite(start) && nowMs - start < TICKET_FAILURE_WINDOW_MS) {
+    return { failures: row.failures + 1, window_start: row.window_start };
+  }
+  return { failures: 1, window_start: new Date(nowMs).toISOString() };
+}
+
+/**
+ * Lot 12 (QR fixe) — une colonne ou une table que la migration du QR fixe
+ * ajoute n'existe pas encore : PostgreSQL 42703 (colonne inconnue), 42P01
+ * (table inconnue), PostgREST PGRST204 (colonne absente du cache) ou PGRST205
+ * (table absente du cache). La fonction se comporte alors exactement comme avant.
+ */
+export function schemaMissing(err: { code?: string | null } | null | undefined): boolean {
+  return !!err && ['42703', '42P01', 'PGRST204', 'PGRST205'].includes(String(err.code));
+}
 
 /** Une erreur de la base qui veut dire « heures clôturées » (mois ou salarié). */
 export function isClosedError(message: string | null | undefined): boolean {

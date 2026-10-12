@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import LandingDemoVideo from '@/components/landing-demo-video';
 import VitrineFonts from '@/components/vitrine-fonts';
+import KioskReturn from '@/components/kiosk-return';
 
 export const metadata: Metadata = {
   title: 'BEMEXO — Les heures du batiment, saisies sur le chantier',
@@ -546,6 +547,7 @@ export default function LandingPage() {
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(LD_SOFTWARE) }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(LD_FAQ) }} />
       <VitrineFonts />
+      <KioskReturn />
       <style dangerouslySetInnerHTML={{ __html: STYLES }} />
       <div className="lp">
         <div dangerouslySetInnerHTML={{ __html: BODY }} />

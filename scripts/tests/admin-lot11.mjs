@@ -334,7 +334,13 @@ const settle = async (pg) => { await pg.clock.fastForward(8000); await pg.waitFo
   // retirée (heures intactes) et efface quand même la case.
   D.time_entries.push(entry('e9', 'u-tom', D_(19), W1, 'cancelled', 0, { planning_id: 'pt-mon' }));
   const w1 = log.writes.length;
-  await p.click('[data-testid=sel-delete]'); await p.waitForSelector('[data-testid=undo-card]', { timeout: 8000 }).catch(() => {});
+  // Lot 1 (heures sûres) : plusieurs cases → « Supprimer ? » d'abord, rien n'est écrit avant.
+  await p.click('[data-testid=sel-delete]'); await p.waitForSelector('[data-testid=erase-ask]', { timeout: 8000 }).catch(() => {});
+  const ask = (await p.locator('[data-testid=erase-ask]').innerText().catch(() => '')).replace(/\s+/g, ' ');
+  check(/Supprimer 5 interventions \?/.test(ask) && /: 2 interventions/.test(ask) && /Annuler » restera possible/.test(ask), `lot 1 : « Supprimer ? » avant d’effacer 5 cases (${ask.slice(0, 90)}…)`);
+  check(writesSince(w1).length === 0 && D.planning.some((x) => x.id === 'pt-mon'), 'lot 1 : rien n’est écrit avant « Supprimer (5) »');
+  await p.waitForTimeout(400); await p.screenshot({ path: `${SH}/admin-supprimer-confirmation.png` });
+  await p.click('[data-testid=erase-confirm]'); await p.waitForSelector('[data-testid=undo-card]', { timeout: 8000 }).catch(() => {});
   const dels = writesSince(w1).filter((x) => x.m === 'DELETE' && x.t === 'planning');
   const delIds = dels.flatMap((x) => x.ids).sort();
   check(dels.length === 1 && JSON.stringify(delIds) === JSON.stringify(['pk-thu', 'pm-thu', 'pn-mon', 'pn-tue', 'pt-mon']), `3) « Supprimer (5) » → DELETE de 5 cases (${delIds.join(', ')}) — y compris celle retirée entre-temps par le salarié`);
@@ -405,7 +411,13 @@ const settle = async (pg) => { await pg.clock.fastForward(8000); await pg.waitFo
   // Lot 2 : case retirée par le salarié → sa ligne retirée est détachée, puis la case effacée ; « Annuler » rattache.
   const w5b = log.writes.length;
   await row(p, 'Marc Durand').locator('td').nth(1).locator('.bt-pl-grab').first().click(); await p.waitForTimeout(400);
-  await p.click('[data-testid=edit-delete]'); await p.waitForSelector('[data-testid=undo-card]', { timeout: 8000 }).catch(() => {});
+  // Lot 1 : la case porte des heures (retirées) → on demande d'abord, et on dit que les heures restent.
+  await p.click('[data-testid=edit-delete]'); await p.waitForSelector('[data-testid=erase-ask-hours]', { timeout: 8000 }).catch(() => {});
+  const askH = (await p.locator('[data-testid=erase-ask]').innerText().catch(() => '')).replace(/\s+/g, ' ');
+  check(/Supprimer cette intervention \?/.test(askH) && /heures retirées par le salarié : ces heures restent/.test(askH), 'lot 1 : case avec des heures retirées → « Supprimer ? », les heures restent (dit)');
+  check(writesSince(w5b).length === 0, 'lot 1 : rien n’est écrit avant « Supprimer »');
+  await p.waitForTimeout(400); await p.screenshot({ path: `${SH}/admin-supprimer-case-avec-heures.png` });
+  await p.click('[data-testid=erase-confirm]'); await p.waitForSelector('[data-testid=undo-card]', { timeout: 8000 }).catch(() => {});
   const wr = writesSince(w5b);
   check(wr.length === 2 && wr[0].m === 'PATCH' && wr[0].ids.join() === 'e5' && wr[0].body.planning_id === null && wr[1].m === 'DELETE' && wr[1].ids.join() === 'pm-mon', `4) case retirée par le salarié : ligne retirée détachée, PUIS case effacée (${wr.map((x) => x.m).join(', ')})`);
   await p.click('[data-testid=action-undo]'); await p.waitForSelector('[data-testid=action-undone]', { timeout: 8000 }).catch(() => {});
@@ -617,7 +629,12 @@ for (const [width, height] of [[1280, 800], [1024, 768]]) {
   check(await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'mobile : mode sélection sans défilement horizontal');
   await p.screenshot({ path: `${SH}/admin-mobile-selection.png` });
   const w0 = log.writes.length;
-  await p.tap('[data-testid=sel-delete]'); await p.waitForSelector('[data-testid=undo-card]', { timeout: 8000 }).catch(() => {});
+  await p.tap('[data-testid=sel-delete]'); await p.waitForSelector('[data-testid=erase-ask]', { timeout: 8000 }).catch(() => {});
+  // Lot 1 : « Supprimer ? » tient aussi sur téléphone.
+  const eb = await p.locator('[data-testid=erase-ask]').boundingBox();
+  check(eb && eb.x >= 0 && eb.x + eb.width <= 390.5 && writesSince(w0).length === 0, 'mobile : « Supprimer ? » dans l’écran, rien d’écrit avant');
+  await p.waitForTimeout(400); await p.screenshot({ path: `${SH}/admin-mobile-supprimer-confirmation.png` });
+  await p.tap('[data-testid=erase-confirm]'); await p.waitForSelector('[data-testid=undo-card]', { timeout: 8000 }).catch(() => {});
   const md = writesSince(w0).filter((x) => x.m === 'DELETE' && x.t === 'planning');
   check(md.length === 1 && JSON.stringify(md[0].ids.sort()) === JSON.stringify(['pk-thu', 'pm-thu']), 'mobile : « Supprimer (2) » → DELETE des 2 cases');
   await p.screenshot({ path: `${SH}/admin-mobile-annuler.png` });

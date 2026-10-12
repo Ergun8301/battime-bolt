@@ -10,7 +10,43 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publish
 /** Clé publique (déjà dans le site) : en-tête « apikey » de l'envoi XHR des vidéos (lot 13), comme le fait supabase-js. */
 export const SUPABASE_ANON_KEY = supabaseAnonKey;
 
+// Lot 3 — d'où vient une écriture, pour les traces (« Interventions supprimées
+// ou décalées », supabase/migrations/20261011120000_lot3_traces_suppressions.sql).
+// Pendant une action de l'assistant (withOrigin('assistant', …)), chaque appel
+// à l'API de données (/rest/v1/) porte l'en-tête `x-bemexo-origine`, lu par la
+// base. Hors de là : aucun en-tête, requêtes identiques à avant. Jamais sur
+// l'authentification, le stockage ni les fonctions.
+// AVANT LA MIGRATION, RIEN NE CHANGE : l'en-tête ne part que si la table
+// `traces` existe — su par lib/traces.ts (markTracesTable), sinon demandé une
+// fois, à la première action de l'assistant (requête sans en-tête).
+export type WriteOrigin = 'assistant';
+let currentOrigin: WriteOrigin | null = null;
+// null = pas encore su ; on redemande après une erreur réseau.
+let tracesTable: boolean | null = null;
+export function markTracesTable(present: boolean) { tracesTable = present; }
+export async function withOrigin<T>(origin: WriteOrigin, run: () => Promise<T>): Promise<T> {
+  if (tracesTable === null) {
+    try {
+      const { error } = await supabase.from('traces').select('id').limit(1);
+      if (!error) tracesTable = true;
+      else if (['PGRST205', '42P01'].includes(String(error.code || ''))) tracesTable = false;
+    } catch { /* réseau : on redemandera */ }
+  }
+  if (!tracesTable) return run();
+  const prev = currentOrigin;
+  currentOrigin = origin;
+  try { return await run(); } finally { currentOrigin = prev; }
+}
+const originFetch: typeof fetch = (input, init) => {
+  const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+  if (!currentOrigin || !url.includes('/rest/v1/')) return fetch(input, init);
+  const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
+  headers.set('x-bemexo-origine', currentOrigin);
+  return fetch(input, { ...init, headers });
+};
+
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  global: { fetch: originFetch },
   auth: {
     persistSession: true,
     autoRefreshToken: true,

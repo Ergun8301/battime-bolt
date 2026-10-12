@@ -6,12 +6,13 @@
 // dans le bucket `company-logos` (dossier {company_id}/…), URL publique dans logo_url.
 
 import { useEffect, useId, useState, type ReactNode } from 'react';
+import dynamic from 'next/dynamic';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
 import { saveCompanySettings, saveMealEnabled } from '@/lib/admin-writes';
 import { readMealSetting, rememberMealEnabled } from '@/lib/meal-setting';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Loader2, Upload, Trash2, Building2, CreditCard, Mail, ShieldCheck, MonitorSmartphone, Clock, Bell, ChevronDown } from 'lucide-react';
+import { Loader2, Upload, Trash2, Building2, CreditCard, Mail, ShieldCheck, MonitorSmartphone, Clock, Bell, ChevronDown, History } from 'lucide-react';
 import LeaveFundSetting from '@/components/leave-fund-setting';
 import { supabaseCostSource, useAiEnabled } from '@/lib/real-cost';
 import KioskAdmin from '@/components/kiosk-admin';
@@ -20,7 +21,14 @@ import { InfoTip } from '@/components/ui/info-tip';
 import { readSupportSession, supabaseSupportSource } from '@/lib/support';
 import { toast } from 'sonner';
 
-interface Props { open: boolean; onOpenChange: (o: boolean) => void; onSaved?: () => void; }
+// Lot 12 : le QR fixe encore actif alors que la borne est coupée (chargé seulement dans ce cas rare).
+const KioskFixedQr = dynamic(() => import('@/components/kiosk-fixed-qr'), { ssr: false });
+
+interface Props {
+  open: boolean; onOpenChange: (o: boolean) => void; onSaved?: () => void;
+  /** Lot 3 : « Interventions supprimées ou décalées » (seulement quand la migration est passée). */
+  onOpenTraces?: () => void;
+}
 
 type Form = {
   name: string; siret: string; tva_intra: string; address: string;
@@ -140,7 +148,7 @@ function SetSection({ id, testId, title, hint, icon, open, onToggle, children }:
   );
 }
 
-export default function CompanySettings({ open, onOpenChange, onSaved }: Props) {
+export default function CompanySettings({ open, onOpenChange, onSaved, onOpenTraces }: Props) {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -185,6 +193,9 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
   // base, la requête échoue seule et rien ne s'affiche.
   const [kioskEnabled, setKioskEnabled] = useState(false);
   const [kioskOpen, setKioskOpen] = useState(false);
+  // Lot 12 : borne coupée par BEMEXO mais QR fixe imprimé encore actif — le bouton
+  // « Relier la tablette » n'existe plus, le bureau doit pouvoir le couper ici.
+  const [fixedCut, setFixedCut] = useState(false);
   // Accès support (lot 5) : le bloc n'existe que si BEMEXO a activé
   // `support_enabled`, et jamais pour le support lui-même (mode support).
   const [supportEnabled, setSupportEnabled] = useState(false);
@@ -285,9 +296,18 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
   useEffect(() => {
     if (!open || !user?.company_id) return;
     let stale = false;
-    supabase.from('companies').select('kiosk_enabled').eq('id', user.company_id).maybeSingle()
+    const companyId = user.company_id;
+    supabase.from('companies').select('kiosk_enabled').eq('id', companyId).maybeSingle()
       .then(({ data }) => {
-        if (!stale) setKioskEnabled(!!(data as { kiosk_enabled?: boolean } | null)?.kiosk_enabled);
+        if (stale) return;
+        const on = !!(data as { kiosk_enabled?: boolean } | null)?.kiosk_enabled;
+        setKioskEnabled(on);
+        setFixedCut(false);
+        if (on) return;
+        // Borne coupée : y a-t-il encore un QR fixe actif ? (une seule petite lecture ;
+        // colonne absente = migration pas passée = aucun QR fixe, rien ne s'affiche)
+        supabase.from('kiosks').select('id').eq('company_id', companyId).eq('kind', 'fixe').is('revoked_at', null).limit(1)
+          .then(({ data: rows, error }) => { if (!stale && !error) setFixedCut(((rows as unknown[] | null) ?? []).length > 0); });
       });
     return () => { stale = true; };
   }, [open, user?.company_id]);
@@ -688,6 +708,9 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
                 </div>
               )}
 
+              {/* Lot 12 : borne coupée, QR fixe imprimé encore actif → le bureau peut le couper ici. */}
+              {!kioskEnabled && fixedCut && <KioskFixedQr defaultOpen />}
+
               {/* ── L'ENDROIT AU POINTAGE ───────────────────────────────────────
                   CE QUE CE BLOC DIT À L'EMPLOYEUR, ET POURQUOI IL LE DIT.
                   BEMEXO n'est pas responsable de ce traitement : l'entreprise
@@ -851,6 +874,20 @@ export default function CompanySettings({ open, onOpenChange, onSaved }: Props) 
 
               {supportEnabled && <SupportAccess source={supabaseSupportSource} />}
             </SetSection>
+
+            {/* Lot 3 : lecture seule, hors des rubriques (rien à enregistrer). Absente
+                tant que la table des traces n'existe pas. */}
+            {onOpenTraces && (
+              <div className="bt-set-sub" data-testid="set-traces">
+                <div className="bt-set-subtxt">
+                  <SetLabel>Interventions supprimées ou décalées</SetLabel>
+                  <p className="bt-set-substate">Planning, heures, tâches et réunions : qui, quand, avant → après.</p>
+                </div>
+                <button type="button" className="bt-set-btn" onClick={() => { onOpenChange(false); onOpenTraces(); }}>
+                  <History className="h-4 w-4" /> Voir
+                </button>
+              </div>
+            )}
 
             {err && <div className="bt-set-err">{err}</div>}
             <div className="bt-set-foot">

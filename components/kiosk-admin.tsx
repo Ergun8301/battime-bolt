@@ -16,13 +16,23 @@
 //     déconnecte elle-même les anciennes) ;
 //   · un seul lien discret « Déconnecter la tablette » (confirmation sur place) ;
 //   · « Horaires d'ouverture » (facultatifs) : enregistrés dès qu'ils changent.
+// Lot 2 (IA) : « Installer la tablette », une aide courte, repliée par défaut
+// (icône d'écran d'accueil, verrouillage automatique sur « Jamais »…).
 // Plus de liste, plus de « Ajouter une borne », plus de lieu ni de nom, plus de GPS.
+//
+// Lot 12 — « QR fixe à imprimer » (option, désactivée par défaut) : une section
+// repliée sous les horaires (components/kiosk-fixed-qr.tsx, chargée seulement
+// quand la fenêtre s'ouvre). Le QR fixe est une ligne « fixe » de `kiosks` :
+// elle n'est JAMAIS comptée ici comme une tablette (ni « Tablette reliée », ni
+// déconnectée par « Déconnecter la tablette » ou par le secours ci-dessous).
+// Tant que la migration n'est pas passée, la section n'apparaît pas.
 //
 // Toutes les écritures passent par la fonction `kiosk` (qui revérifie le rôle
 // admin et l'interrupteur) ; ici on ne fait que LIRE, sous RLS. Les relectures
 // gardent le même objet quand rien n'a changé (keep) : rien ne se redessine.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
 import qrcode from 'qrcode-generator';
 import { Check, Copy, MonitorSmartphone } from 'lucide-react';
 import { toast } from 'sonner';
@@ -33,9 +43,12 @@ import { InfoTip } from '@/components/ui/info-tip';
 import { TimeField } from '@/components/time-field';
 import { callKiosk, type KioskPairingCode, type KioskSettings } from '@/lib/kiosk-client';
 
+// Lot 12 : la section du QR fixe, chargée seulement à l'ouverture de la fenêtre.
+const KioskFixedQr = dynamic(() => import('@/components/kiosk-fixed-qr'), { ssr: false });
+
 interface Props { open: boolean; onOpenChange: (o: boolean) => void; companyId: string }
 
-interface KioskRow { id: string; created_at: string; last_seen_at: string | null }
+interface KioskRow { id: string; created_at: string; last_seen_at: string | null; kind?: string | null }
 interface Pairing extends KioskPairingCode { receivedAt: number }
 
 /** Durée de vie d'un code côté serveur (fonction kiosk : PAIRING_TTL_MS). */
@@ -105,6 +118,16 @@ const CSS = `
 .ka-save{font-size:12.5px;font-weight:700;color:#8a8378;margin:8px 0 0;min-height:1.2em}
 .ka-save.ok{color:#1F7A4D}
 .ka-save.bad{color:#C0461F}
+.ka-help{border:1px solid rgba(21,18,15,.1);border-radius:14px;background:#fff}
+.ka-help summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;padding:10px 14px;font-weight:800;font-size:14px}
+.ka-help summary::-webkit-details-marker{display:none}
+.ka-help summary::after{content:'';margin-left:auto;width:7px;height:7px;border-right:2px solid #8a8378;border-bottom:2px solid #8a8378;transform:rotate(45deg) translateY(-2px)}
+.ka-help[open] summary::after{transform:rotate(-135deg) translateY(-2px)}
+.ka-help summary small{font-weight:600;color:#9a948a;font-size:13px}
+.ka-help ol{margin:0;padding:0 14px 12px 32px;list-style:decimal;display:flex;flex-direction:column;gap:7px;font-size:13px;line-height:1.45;color:#3d3933;font-weight:500}
+.ka-help li::marker{font-weight:800;color:#8a8378}
+.ka-help li b{font-weight:800;color:#15120F}
+.ka-help .ka-muted{font-weight:500}
 @media(max-width:420px){.ka-qr{width:76px;height:76px}.ka-code{padding:14px;gap:12px}}
 `;
 
@@ -154,11 +177,16 @@ export default function KioskAdmin({ open, onOpenChange, companyId }: Props) {
   const showPlanning = useRef<boolean | undefined>(undefined);
 
   const readKiosks = useCallback(async (): Promise<KioskRow[] | null> => {
-    const { data, error } = await supabase.from('kiosks')
-      .select('id, created_at, last_seen_at')
+    const read = (cols: string) => supabase.from('kiosks')
+      .select(cols)
       .eq('company_id', companyId).is('revoked_at', null).order('created_at', { ascending: true });
+    // Lot 12 : avec le type, pour écarter le QR fixe (ce n'est pas une tablette).
+    // Colonne absente (42703 : migration pas passée, donc aucun QR fixe) : la
+    // lecture d'avant. Toute autre erreur : comme avant (rien).
+    let { data, error } = await read('id, created_at, last_seen_at, kind');
+    if (error?.code === '42703') ({ data, error } = await read('id, created_at, last_seen_at'));
     if (error) return null;
-    return (data || []) as KioskRow[];
+    return ((data || []) as unknown as KioskRow[]).filter((r) => r.kind !== 'fixe');
   }, [companyId]);
 
   /** Un code neuf. L'ancien reste affiché jusqu'à l'arrivée du nouveau, puis il est périmé. */
@@ -466,6 +494,19 @@ export default function KioskAdmin({ open, onOpenChange, companyId }: Props) {
               </>
             )}
           </div>
+
+          {/* Lot 2 (IA) : aide d'installation, repliée par défaut. */}
+          <details className="ka-help" data-testid="ka-install">
+            <summary>Installer la tablette <small>(aide)</small></summary>
+            <ol>
+              <li>Sur la tablette, ouvrez <b>{borneLabel}</b>, puis <b>Ajouter à l’écran d’accueil</b> <span className="ka-muted">(iPad : bouton Partager ; Android : menu ⋮ → Installer l’application)</span>.</li>
+              <li>Ouvrez la borne <b>depuis l’icône installée</b> et reliez-la avec le code ci-dessus. Sur iPad, l’icône a sa propre mémoire : reliez-la depuis l’icône, pas depuis Safari.</li>
+              <li>Réglez le <b>verrouillage automatique sur « Jamais »</b> <span className="ka-muted">(iPad : Réglages › Luminosité et affichage ; Android : Paramètres › Affichage › Mise en veille de l’écran, au maximum)</span> et laissez la tablette branchée.</li>
+              <li>Facultatif : <b>Accès guidé</b> (iPad) ou <b>Épinglage d’application</b> (Android) pour que la tablette reste sur la borne.</li>
+              <li>Déjà une ancienne icône BEMEXO sur la tablette ? Supprimez-la et ajoutez-la de nouveau depuis {borneLabel} : elle ouvrira directement la borne, en plein écran.</li>
+            </ol>
+          </details>
+          {open && <KioskFixedQr />}
         </div>
       </DialogContent>
     </Dialog>
