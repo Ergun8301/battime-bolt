@@ -240,14 +240,24 @@ const rienDeSilencieux = (types: string[]): Check => (o) => {
 };
 const TR_MOTS = new RegExp('(^|[^\\p{L}])(bu|bir|ve|saat|hafta|toplam|çalıştınız|çalıştın|çalıştım|dakika|kadar|için|ile|yaptınız|bildirdiniz)(?![\\p{L}])', 'iu');
 const FR_MOTS = new RegExp('(^|[^\\p{L}])(vous|heures|semaine|cette|déclarées|aujourd|travaillé|votre)(?![\\p{L}])', 'iu');
-/** Réponse en TURC : lettres ou mots turcs présents, aucun mot français courant. */
+/**
+ * Les libellés d'ÉCRAN cités entre guillemets (« Ma semaine », "Ma journée", 'Ma semaine') sont en français dans toute l'appli (D9) :
+ * une réponse turque qui renvoie vers eux n'est pas « mêlée de français ». On les retire avant de chercher le turc ET le français ;
+ * le reste de la réponse reste soumis au contrôle (une réponse en français, guillemets ou non, échoue). Une apostrophe de mot
+ * (aujourd'hui, Martin’de) n'ouvre jamais une citation : le guillemet simple doit suivre un espace ou une ponctuation et précéder une non-lettre.
+ */
+export const sansLibellesEcran = (a: string) => a
+  .replace(/«[^»]{0,60}»|“[^”]{0,60}”|"[^"]{0,60}"/g, ' ')
+  .replace(/(^|[\s(:,;.])['’‘][^'’‘]{1,60}['’](?![\p{L}])/gu, '$1 ');
+/** Réponse en TURC : lettres ou mots turcs présents, aucun mot français courant (hors libellés d'écran entre guillemets). */
 const enTurc: Check = (o) => {
   const u = o.kind === 'multi' && o.items?.length === 1 ? o.items[0] : o;
   if (u.kind !== 'answer') return `attendu une réponse, obtenu ${u.kind} ${u.type ?? ''}`;
   const a = u.answer ?? '';
   if (a.length < 10) return 'réponse vide';
-  if (!(/[ğışİĞŞ]/.test(a) || TR_MOTS.test(a))) return `réponse pas en turc : « ${a.slice(0, 70)} »`;
-  return FR_MOTS.test(a) ? `réponse mêlée de français : « ${a.slice(0, 70)} »` : null;
+  const libre = sansLibellesEcran(a);
+  if (!(/[ğışİĞŞ]/.test(libre) || TR_MOTS.test(libre))) return `réponse pas en turc : « ${a.slice(0, 70)} »`;
+  return FR_MOTS.test(libre) ? `réponse mêlée de français : « ${a.slice(0, 70)} »` : null;
 };
 const unSeul = (m: string | null, ...autres: (string | null)[]) => m ?? autres.find((x) => x) ?? null;
 
@@ -472,4 +482,9 @@ export const CASES: EvalCase[] = [
     check: fiche(['heures'], heures(TODAY, [['08:00', '17:00']], 480, [W.martin], (h) => (h.lignes[0].pause === 60 ? null : `pause = ${h.lignes[0].pause} (attendu 60)`))) },
   { id: 'st11', cote: 'salarie', categorie: 'Long TR', live: 'vide', phrase: "Aujourd'hui sabah 8’den 12’ye kadar chez Dupont çalıştım, öğleden sonra 13’ten 17’ye kadar chez Martin, panier da işaretle.",
     check: fiche(['heures', 'panier_repas'], (it) => unSeul(heures(TODAY, [['08:00', '12:00'], ['13:00', '17:00']], 480, [W.dupont, W.martin])(it), annexe(it, 'panier_repas', (d) => eq(d, 'valeur', true)))) },
+  // Variantes des règles R1–R3 (mesure du 2026-10 sur le vrai modèle) : la ville dite comme « adresse », un seul chantier cité pour deux créneaux.
+  { id: 'st12', cote: 'salarie', categorie: 'Long TR', live: 'vide', phrase: "Bugün 9’dan 12’ye kadar ve 14’ten 17’ye kadar yeni bir şantiyede çalıştım: müşteri Ayhan Demir, adres Bron 69500, pergola montajı için.",
+    check: fiche(['heures'], heures(TODAY, [['09:00', '12:00'], ['14:00', '17:00']], 360, ['NOUVEAU', 'NOUVEAU'], nouveauChantier({ nom: 'Ayhan Demir', ville: 'Bron', cp: '69500', travaux: /pergola/ }))) },
+  { id: 'st13', cote: 'salarie', categorie: 'Long TR', live: 'vide', phrase: "Bugün sabah 8’den 12’ye kadar, öğleden sonra da 13’ten 17’ye kadar çalıştım, hepsi Martin’de.",
+    check: fiche(['heures'], heures(TODAY, [['08:00', '12:00'], ['13:00', '17:00']], 480, [W.martin, W.martin])) },
 ];

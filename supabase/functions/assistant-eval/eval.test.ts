@@ -3,7 +3,7 @@
 //   npm run test:assistant-eval
 // Avec une clé : GEMINI_API_KEY=… deno run -A supabase/functions/assistant-eval/cli.ts v2
 import { runEval } from './run.ts';
-import { CASES, LIVE_VIDE, WORKER_LIVE, type Outcome } from './cases.ts';
+import { CASES, LIVE_VIDE, sansLibellesEcran, WORKER_LIVE, type Outcome } from './cases.ts';
 
 Deno.test('Jeu d’évaluation : les 80 phrases d’origine (dans l’ordre) + les phrases longues du salarié, bureau ET salarié', () => {
   if (new Set(CASES.map((c) => c.id)).size !== CASES.length) throw new Error('identifiants en double');
@@ -11,8 +11,8 @@ Deno.test('Jeu d’évaluation : les 80 phrases d’origine (dans l’ordre) + l
   const anciens = [...Array.from({ length: 47 }, (_, i) => `b${String(i + 1).padStart(2, '0')}`), ...Array.from({ length: 33 }, (_, i) => `s${String(i + 1).padStart(2, '0')}`)];
   if (JSON.stringify(CASES.slice(0, 80).map((c) => c.id)) !== JSON.stringify(anciens)) throw new Error('les 80 phrases b01–b47, s01–s33 doivent rester en tête, dans l’ordre');
   const longs = CASES.filter((c) => /^(sl|st)\d\d$/.test(c.id));
-  if (longs.length < 14 || longs.length !== CASES.length - 80) throw new Error(`${longs.length} phrases longues (au moins 14 ; 27 attendues)`);
-  if (longs.filter((c) => c.categorie === 'Long FR').length !== 16 || longs.filter((c) => c.categorie === 'Long TR').length !== 11 || longs.some((c) => c.cote !== 'salarie')) throw new Error('16 « Long FR » et 11 « Long TR », côté salarié');
+  if (longs.length < 14 || longs.length !== CASES.length - 80) throw new Error(`${longs.length} phrases longues (au moins 14 ; 29 attendues)`);
+  if (longs.filter((c) => c.categorie === 'Long FR').length !== 16 || longs.filter((c) => c.categorie === 'Long TR').length !== 13 || longs.some((c) => c.cote !== 'salarie')) throw new Error('16 « Long FR » et 13 « Long TR », côté salarié');
   // La phrase exacte d'Ergun (retour réel d'un salarié) est le cas sl01.
   const ergun = "Ajoute-moi une intervention. J'ai travaillé aujourd'hui de 8h à midi, puis pause d'1h, puis de 13h à 17h sur un nouveau chantier : prénom Pierrick, nom Dupont, à Montagna 01250, pour la pose d'un store banne.";
   if (CASES.find((c) => c.id === 'sl01')?.phrase !== ergun) throw new Error('sl01 : la phrase exacte d’Ergun');
@@ -225,9 +225,9 @@ Deno.test('repeat : N passes par cas, total et réussites comptent des essais, p
   if (un.total !== 1 || un.repeat !== 1) throw new Error('par défaut : une passe');
 });
 
-// ── Les 27 phrases longues avec une sortie PLAUSIBLE du modèle (y compris ses défauts mesurés) : toutes passent ──
+// ── Les 29 phrases longues avec une sortie PLAUSIBLE du modèle (y compris ses défauts mesurés) : toutes passent ──
 // C'est le test de bout en bout du code (redécoupage, pause, rattachement, annexes) ; la vraie réussite se mesure sur le vrai modèle.
-Deno.test('27 phrases longues : une sortie plausible du modèle (créneaux fusionnés, pause doublée, civilité devant le nom…) passe par le MÊME chemin que la production', async () => {
+Deno.test('29 phrases longues : une sortie plausible du modèle (créneaux fusionnés, pause doublée, civilité devant le nom…) passe par le MÊME chemin que la production', async () => {
   type Appel = { name: string; args: Record<string, unknown> };
   const T = '2026-10-01';
   const nc = (nom: string, ville: string, code_postal: string, description: string, adresse = '') => ({ nom, adresse, code_postal, ville, description });
@@ -265,6 +265,8 @@ Deno.test('27 phrases longues : une sortie plausible du modèle (créneaux fusio
     st09: [h([l('Martin', '08:00', '16:30', 30)]), panier],
     st10: [h([l('Martin', '08:00', '17:00', 60)])],
     st11: [h([l('Dupont', '08:00', '12:00'), l('Martin', '13:00', '17:00')]), panier],
+    st12: [h([l('nouveau', '09:00', '12:00'), l('nouveau', '14:00', '17:00')], nc('Ayhan Demir', '', '69500', 'montage d’une pergola', 'Bron'))],
+    st13: [h([l('', '08:00', '12:00'), l('Martin', '13:00', '17:00')])],
   };
   const ids = CASES.filter((c) => /^(sl|st)\d\d$/.test(c.id)).map((c) => c.id);
   if (Object.keys(plausibles).sort().join() !== ids.slice().sort().join()) throw new Error('une sortie plausible par phrase longue');
@@ -274,4 +276,62 @@ Deno.test('27 phrases longues : une sortie plausible du modèle (créneaux fusio
     if (r.ok !== 1) ko.push(`${id} : ${r.echecs[0]?.why}`);
   }
   if (ko.length) throw new Error(`échecs :\n${ko.join('\n')}`);
+});
+
+// ── Les 5 échecs MESURÉS sur le vrai modèle (gemini-3.5-flash-lite, réflexion medium) : les sorties réelles passent maintenant ──
+Deno.test('Sorties RÉELLES mesurées : st01 (ville en adresse + Villa Dupont deviné), st08 (Villa Dupont deviné), sl12 (« Nouveau chantier » sans bloc), st05 (« Ma semaine »)', async () => {
+  const T = '2026-10-01';
+  const h = (lignes: unknown[], bloc?: unknown) => ({ name: 'declarer_heures', args: { date: T, lignes, ...(bloc ? { nouveau_chantier: bloc } : {}) } });
+  const l = (chantier: string, debut: string, fin: string) => ({ chantier, debut, fin });
+  // st01 a) la ville est dans l'ADRESSE ; b) le créneau 1 a reçu « Villa Dupont » (deviné à cause du nom de famille).
+  const st01 = await passe('st01', h([l('Villa Dupont', '08:00', '12:00'), l('Pierrick Dupont', '13:00', '17:00')], { nom: 'Pierrick Dupont', ville: '', adresse: 'Montagna', code_postal: '01250', description: 'Pose de store banne' }));
+  if (st01) throw new Error(`st01 (sortie réelle) : ${st01}`);
+  // st08 : créneau 1 = Villa Dupont (deviné), créneau 2 = Bureau Martin.
+  const st08 = await passe('st08', h([l('Villa Dupont', '08:00', '12:00'), l('Bureau Martin', '13:00', '17:00')]), { name: 'panier_repas', args: { valeur: true } });
+  if (st08) throw new Error(`st08 (sortie réelle) : ${st08}`);
+  // sl12 : heures justes sur Bureau Martin, AUCUN bloc : le chantier est réutilisé (reutilise_id), pas « Non préparé ».
+  const sl12 = await passe('sl12', h([l('Bureau Martin', '08:00', '12:00'), l('Bureau Martin', '13:00', '17:00')]));
+  if (sl12) throw new Error(`sl12 (sortie réelle) : ${sl12}`);
+  // st05 : réponse turque correcte qui cite l'écran « Ma semaine » (en français, comme toute l'appli).
+  const reel = "Bu hafta toplam 15 saat 30 dakika çalıştınız (dün 7s 30dk, bugün 8s). Detayları 'Ma semaine' ekranından görebilirsiniz.";
+  const st05 = await passe('st05', { name: 'repondre', args: { reponse: reel } });
+  if (/mêlée/.test(String(st05))) throw new Error(`st05 : le libellé d’écran ne doit pas compter comme du français : ${st05}`);
+  // (la réponse réelle donne 15 h 30 et non 7 h 30 : c'est le jeu de test du cas qui attend « 7 » ; le contrôle de langue, lui, passe.)
+});
+
+Deno.test('st12 / st13 : les variantes (ville dite comme adresse, un seul chantier cité) passent avec la sortie du modèle ; échouent si la ville manque ou si Dupont est deviné', async () => {
+  const T = '2026-10-01';
+  const h = (lignes: unknown[], bloc?: unknown) => ({ name: 'declarer_heures', args: { date: T, lignes, ...(bloc ? { nouveau_chantier: bloc } : {}) } });
+  const l = (chantier: string, debut: string, fin: string) => ({ chantier, debut, fin });
+  const demir = { nom: 'Ayhan Demir', ville: '', adresse: 'Bron', code_postal: '69500', description: 'Pergola montajı' };
+  if (await passe('st12', h([l('nouveau', '09:00', '12:00'), l('nouveau', '14:00', '17:00')], demir))) throw new Error(`st12 : ${await passe('st12', h([l('nouveau', '09:00', '12:00'), l('nouveau', '14:00', '17:00')], demir))}`);
+  // Une ville vraiment absente (ni adresse ni code postal) n'est PAS inventée : le cas échoue (« manque ville »).
+  const sans = await passe('st12', h([l('nouveau', '09:00', '12:00'), l('nouveau', '14:00', '17:00')], { ...demir, adresse: '', code_postal: '' }));
+  if (!/ville|code postal/.test(String(sans))) throw new Error(`st12 sans ville : doit échouer (${sans})`);
+  // st13 : Martin cité pour le 2e créneau seulement, le 1er est sans nom ; « Villa Dupont » deviné ne passe pas non plus.
+  if (await passe('st13', h([l('', '08:00', '12:00'), l('Martin', '13:00', '17:00')]))) throw new Error('st13 : créneau sans nom → Martin');
+  if (await passe('st13', h([l('Villa Dupont', '08:00', '12:00'), l('Bureau Martin', '13:00', '17:00')]))) throw new Error('st13 : Villa Dupont deviné → Martin');
+});
+
+Deno.test('st05 : un libellé d’écran entre guillemets n’est pas du français ; une vraie réponse en français (guillemets ou non) échoue toujours', () => {
+  const sans = sansLibellesEcran;
+  if (/Ma semaine/.test(sans("Detayları 'Ma semaine' ekranından görebilirsiniz.")) || /Ma semaine/.test(sans('Detayları « Ma semaine » ekranından.')) || /Ma semaine/.test(sans('Detayları "Ma semaine" ekranından.'))) throw new Error('libellés entre guillemets retirés');
+  // Une apostrophe de mot n'ouvre jamais une citation (le français autour reste visible au contrôle).
+  if (!/vous/.test(sans("Bu hafta vous avez l'heure d'aujourd'hui et Martin’de çalıştınız"))) throw new Error('apostrophes de mots : rien n’est retiré');
+  const cas5 = cas('st05').check;
+  const rep = (answer: string): Outcome => ({ kind: 'answer', answer });
+  const ok = [
+    "Bu hafta toplam 7 saat 30 dakika çalıştınız. Detayları 'Ma semaine' ekranından görebilirsiniz.",
+    'Bu hafta toplam 7 saat 30 dakika çalıştınız. Detayları « Ma semaine » ekranından görebilirsiniz.',
+    'Bu hafta toplam 7 saat 30 dakika çalıştınız, "Ma semaine" ekranına bakın.',
+  ];
+  for (const a of ok) { const why = cas5(rep(a)); if (why) throw new Error(`doit passer : ${a} → ${why}`); }
+  const ko: [string, RegExp][] = [
+    ['Cette semaine, vous avez travaillé 7 h 30. Voir « Ma semaine ».', /pas en turc|mêlée/],
+    ["Bu hafta 7 saat 30 dakika. Vous avez travaillé 7 h 30 déclarées, voir 'Ma semaine'.", /mêlée/],
+    ['Bu hafta çalıştınız ve vous avez 7 h 30 déclarées « Ma semaine ».', /mêlée/],
+    ["Cette semaine : 7 h 30 déclarées. Détails dans 'Ma semaine'.", /pas en turc|mêlée/],
+    ["Voir 'Ma semaine' et « Ma journée » pour les détails complets.", /pas en turc/],
+  ];
+  for (const [a, re] of ko) { const why = String(cas5(rep(a))); if (!re.test(why)) throw new Error(`doit échouer (${re}) : ${a} → ${why}`); }
 });

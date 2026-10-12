@@ -162,6 +162,64 @@ export function cleanNewWorksite(raw: unknown): NewWorksite {
   return { nom, adresse: adresse.slice(0, 120), code_postal: cp, ville: capitaliser(ville.replace(/[\s.,;:]+$/, '')).slice(0, 60), description };
 }
 
+// ── R1 : la ville depuis le code postal ─────────────────────────────────────
+/** Un mot de voie (français et turc) : l'adresse est alors une vraie rue, jamais une ville. Texte plié (sans accents). */
+const MOT_VOIE = /(?:^|[^a-z])(?:rue|avenue|av|chemin|impasse|allee|route|boulevard|bd|place|cours|quai|lotissement|residence|domaine|hameau|passage|square|zone|lieu[- ]?dit|sokak\w*|cadde\w*|mahalle\w*|bulvar\w*|sk|cd|mah)(?![a-z])/;
+/** Mots qui introduisent l'adresse ou la ville dans la phrase (« adres Montagna 01250 », « code postal 01250 ») : jamais le début d'un nom de ville. */
+const INTRO_VILLE = new Set(['adres', 'adresse', 'ville', 'sehir', 'il', 'posta', 'kodu', 'code', 'postal', 'chez', 'a', 'au', 'ici', 'sur', 'pour']);
+
+/**
+ * Les mots capitalisés (ou avec tirets) juste AVANT un code postal à 5 chiffres dans la phrase : « Montagna 01250 », « Bourg en Bresse 01000 ».
+ * Les mots du nom du client (« Pierrick Dupont Montagna 01250 ») et ceux qui introduisent l'adresse sont retirés ; une virgule coupe ;
+ * un nom de rue (« rue des Tilleuls 01000 ») n'est jamais pris pour une ville. Sans assertion arrière (Safari < 16.4). Vide si rien de sûr.
+ */
+function villeDuTexte(text: string, nc: NewWorksite): string {
+  const cps = Array.from(text.matchAll(/(^|[^\p{L}\d])(\d{5})(?!\d)/gu));
+  const m = nc.code_postal ? cps.find((x) => x[2] === nc.code_postal) : cps[0];
+  if (!m) return '';
+  const jetons = text.slice(0, (m.index ?? 0) + m[1].length).split(/\s+/).filter(Boolean);
+  const mots: string[] = [];
+  let attente: string[] = [];
+  let debut = jetons.length;
+  for (let i = jetons.length - 1; i >= 0; i--) {
+    const j = jetons[i];
+    // Une ponctuation à la fin d'un mot le sépare de ce qui le suit (« Dupont, Montagna 01250 »), sauf juste avant le code.
+    if (i < jetons.length - 1 && /[,;:.!?)]$/.test(j)) break;
+    const coeur = j.replace(/[,;:.!?()]+$/, '');
+    if (/^\p{Lu}[\p{L}'’-]*$/u.test(coeur)) { mots.unshift(coeur, ...attente); attente = []; debut = i; continue; }
+    if (mots.length && PETITS.has(norm(coeur))) { attente.unshift(coeur); continue; }
+    break;
+  }
+  const exclus = new Set(norm(nc.nom).split(/[^a-z0-9]+/).filter(Boolean));
+  while (mots.length && (exclus.has(norm(mots[0])) || INTRO_VILLE.has(norm(mots[0])))) { mots.shift(); debut++; }
+  if (!mots.length || mots.length > 4) return '';
+  const ville = mots.join(' ');
+  // La rue ne devient pas une ville : un mot de voie juste avant, ou le mot déjà dans l'adresse dite.
+  if (jetons.slice(Math.max(0, debut - 2), debut).some((j) => MOT_VOIE.test(norm(j)))) return '';
+  if (nc.adresse && (' ' + norm(nc.adresse).replace(/[^a-z0-9]+/g, ' ') + ' ').indexOf(' ' + norm(ville).replace(/[^a-z0-9]+/g, ' ') + ' ') >= 0 && /\d/.test(nc.adresse)) return '';
+  return ville.slice(0, 60);
+}
+
+/**
+ * R1 — le modèle a mis la ville dans l'ADRESSE (« adres Montagna 01250 » → adresse = Montagna, ville vide) ou l'a oubliée : la ville
+ * se retrouve SANS rien inventer. (1) Un code postal, une ville vide et une adresse sans chiffre ni mot de voie (≤ 4 mots) : l'adresse
+ * EST la ville. (2) Sinon les mots capitalisés qui précèdent un code postal dans la phrase. Une ville donnée par le modèle n'est
+ * JAMAIS écrasée ; une ville absente de la phrase n'est JAMAIS inventée (la fiche la réclame).
+ */
+export function villeDepuisCodePostal(nc: NewWorksite, text: string): NewWorksite {
+  if (nc.ville) return nc;
+  const adr = nc.adresse.trim();
+  if (nc.code_postal && adr && !/\d/.test(adr) && !MOT_VOIE.test(norm(adr)) && adr.split(/\s+/).length <= 4) {
+    return { ...nc, ville: capitaliser(adr).slice(0, 60), adresse: '' };
+  }
+  const v = villeDuTexte(text, nc);
+  if (!v) return nc;
+  const memeQueAdresse = !!adr && norm(adr).replace(/[^a-z0-9]+/g, ' ').trim() === norm(v).replace(/[^a-z0-9]+/g, ' ').trim();
+  return { ...nc, ville: v, adresse: memeQueAdresse ? '' : nc.adresse };
+}
+/** Le bloc « nouveau chantier » d'un appel du modèle, proprement écrit ET complété (R1). */
+const lireBloc = (raw: unknown, text: string): NewWorksite => villeDepuisCodePostal(cleanNewWorksite(raw), text);
+
 const MOTS_VIDES = new Set(['monsieur', 'madame', 'mme', 'mr', 'bay', 'bayan', 'chez', 'le', 'la', 'les', 'de', 'du', 'des', 'd', 'l', 'et', 'sarl', 'sas', 'ets']);
 // Les chiffres et les lettres seules DISTINGUENT : « Villa 1 » ≠ « Villa 2 », « Bâtiment A » ≠ « Bâtiment B ». « M. » (civilité) est retiré avant.
 const motsNom = (s: string) => Array.from(new Set(norm(s).replace(/(^|\s)m\.\s*/g, '$1').split(/[^a-z0-9]+/).filter((w) => w && !MOTS_VIDES.has(w)))).sort().join(' ');
@@ -369,6 +427,58 @@ const memeNom = (a: string, b: string) => !!a && !!b && motsNom(a) === motsNom(b
 const BLOC_VIDE: NewWorksite = { nom: '', adresse: '', code_postal: '', ville: '', description: '' };
 const blocDit = (nc: NewWorksite) => !!(nc.nom || nc.adresse || nc.code_postal || nc.ville || nc.description);
 
+// ── R2 : un chantier DEVINÉ n'est pas un chantier dit ───────────────────────
+/** Mots qui ne distinguent aucun chantier (« chantier », « client », « nouveau »…). */
+const GENERIQUES = new Set(['chantier', 'santiye', 'nouveau', 'nouvelle', 'client', 'cliente', 'musteri', 'yeni']);
+const jetonsDe = (s: string) => norm(s).split(/[^a-z0-9]+/).filter(Boolean);
+/** Même mot, à la façon de `resolveWorksite` : égal, ou préfixe d'au moins 4 lettres (« villasında », « Dupon »). */
+const memeMot = (t: string, w: string) => t === w || (t.length >= 4 && w.length >= 4 && (t.startsWith(w) || w.startsWith(t)));
+const contientMot = (liste: string[], w: string) => liste.some((t) => memeMot(t, w));
+
+/** Les mots qui désignent un chantier existant : ceux de son nom, et ceux de sa ville (« à Mâcon »). Chiffres et lettres seules laissés de côté. */
+function motsDuChantier(c: { nom: string; ville: string | null }): { nom: string[]; ville: string[] } {
+  const nom = Array.from(new Set(jetonsDe(c.nom).filter((w) => w.length > 1 && !MOTS_VIDES.has(w) && !GENERIQUES.has(w))));
+  const ville = Array.from(new Set(jetonsDe((c.ville ?? '').replace(/\d+/g, ' ')).filter((w) => w.length > 2 && !MOTS_VIDES.has(w))));
+  return { nom, ville };
+}
+
+/**
+ * Le chantier rendu par le modèle pour un créneau est-il DIT dans la phrase ?
+ *  - « cite » : au moins un mot qui le désigne y figure (hors mots du NOUVEAU client, consommés une fois par lui) ;
+ *  - « devine » : aucun (« Villa Dupont » pour « Pierrick Dupont, nouveau client ») : le modèle l'a deviné, le créneau est SANS NOM ;
+ *  - « ambigu » : le seul mot dit est un mot du nom du nouveau client et l'existant n'est pas dit en entier (« chez Dupont » alors que
+ *    « Pierrick Dupont » est à créer ET que « Villa Dupont » existe) : jamais l'un ou l'autre au hasard.
+ */
+function citation(c: { nom: string; ville: string | null }, jetons: string[], reste: string[], ncMots: Set<string>): 'cite' | 'devine' | 'ambigu' {
+  const m = motsDuChantier(c);
+  const tous = [...m.nom, ...m.ville];
+  if (!tous.length) return 'cite';
+  const touches = tous.filter((w) => contientMot(reste, w));
+  if (!touches.length) return 'devine';
+  if (ncMots.size && touches.every((w) => ncMots.has(w)) && m.nom.some((w) => !contientMot(jetons, w))) return 'ambigu';
+  return 'cite';
+}
+/** Un nom de chantier vide ou fait de mots génériques (« chantier », « şantiye ») : le créneau est sans nom. */
+const sansNomDit = (t: string) => jetonsDe(t).filter((w) => w.length > 1 && !STOP_NOM.has(w) && !GENERIQUES.has(w)).length === 0;
+
+// ── R3 : « nouveau chantier » qui est en fait un chantier EXISTANT ──────────
+/**
+ * La phrase dit « nouveau chantier » avec le nom ET la ville d'un chantier qui existe déjà (« un nouveau chantier, Bureau Martin à
+ * Villeurbanne »), et le modèle a seulement rattaché les créneaux à ce chantier, sans bloc : on rend le bloc avec `reutilise_id` (rien
+ * ne sera créé, la fiche dit « Chantier existant utilisé »). Un seul candidat, tous ses mots dans la phrase ; sinon rien (« Non préparé »).
+ */
+function chantierReutilise(text: string, lines: DraftLine[], snapshot: WorkerSnapshot): NewWorksite | null {
+  if (!profilSaisie(text).familles.includes('nouveau_chantier')) return null;
+  const jetons = jetonsDe(text);
+  const ids = Array.from(new Set(lines.filter((l) => !l.nouveau && l.worksite_id).map((l) => l.worksite_id!)));
+  const candidats = ids.map((id) => snapshot.chantiers.find((c) => c.id === id)).filter((c): c is WorkerSnapshot['chantiers'][number] => {
+    if (!c || !c.ville) return false;
+    const m = motsDuChantier(c);
+    return m.nom.length > 0 && m.ville.length > 0 && [...m.nom, ...m.ville].every((w) => contientMot(jetons, w));
+  });
+  return candidats.length === 1 ? { nom: candidats[0].nom, adresse: '', code_postal: '', ville: candidats[0].ville!, description: '', reutilise_id: candidats[0].id } : null;
+}
+
 // ── 6.0 : le pipeline des heures ────────────────────────────────────────────
 /**
  * Les arguments de declarer_heures (profil long) → une fiche d'heures contrôlée : date lisible, un créneau par plage dite, pause
@@ -381,9 +491,33 @@ export function normaliserHeures(args: Record<string, unknown>, text: string, sn
   const absorbee = absorberPause(brutes);
 
   // Le bloc « nouveau chantier » et sa réutilisation éventuelle.
-  const nc = cleanNewWorksite(args.nouveau_chantier);
+  const nc = lireBloc(args.nouveau_chantier, text);
   const existant = nc.nom && nc.ville ? snapshot.chantiers.find((c) => memeChantier(nc, c)) : undefined;
   const classees = brutes.map((l) => classer(l.chantier, nc.nom ? nc : null, existant?.id, snapshot));
+
+  // R2. Un chantier DEVINÉ n'est pas un chantier dit : le créneau est SANS NOM (le modèle a rendu « Villa Dupont » pour « Pierrick Dupont »).
+  const tousJetons = jetonsDe(text);
+  const reste = tousJetons.slice();
+  if (nc.nom) for (const w of [...jetonsDe(nc.nom), ...jetonsDe(nc.ville)]) { const k = reste.indexOf(w); if (k >= 0) reste.splice(k, 1); }
+  const ncMots = new Set(nc.nom ? jetonsDe(nc.nom) : []);
+  const sansNom = new Set<number>();
+  brutes.forEach((l, i) => {
+    const c = classees[i];
+    if (c.classe === 'existant' && c.id && c.id !== existant?.id) {
+      const cl = snapshot.chantiers.find((x) => x.id === c.id);
+      const r = cl ? citation(cl, tousJetons, reste, ncMots) : 'cite';
+      if (r === 'devine') { classees[i] = { classe: 'non_apparie' }; sansNom.add(i); l.chantier = ''; }
+      else if (r === 'ambigu' && cl) { classees[i] = { classe: 'choisir', a_choisir: { existant: cl.nom, nouveau: nc.nom } }; l.chantier = ''; }
+    } else if (c.classe === 'non_apparie' && sansNomDit(l.chantier)) { sansNom.add(i); l.chantier = ''; }
+  });
+  // Pas de nouveau chantier dans la phrase : un seul chantier NOMMÉ → les créneaux sans nom y vont ; sinon le planning, comme avant.
+  if (!nc.nom && !classees.some((c) => c.classe === 'nouveau')) {
+    const nommes = Array.from(new Set(classees.filter((c) => c.classe === 'existant' && c.id).map((c) => c.id!)));
+    if (nommes.length === 1) {
+      const nomUnique = snapshot.chantiers.find((x) => x.id === nommes[0])?.nom ?? '';
+      sansNom.forEach((i) => { classees[i] = { classe: 'existant', id: nommes[0] }; brutes[i].chantier = nomUnique; });
+    }
+  }
   if (nc.nom) {
     const U = classees.filter((c) => c.classe === 'non_apparie');
     const aucunExistant = !classees.some((c) => c.classe === 'existant');
@@ -415,6 +549,11 @@ export function normaliserHeures(args: Record<string, unknown>, text: string, sn
 
   const rattachees = toutes.filter((l) => l.nouveau || (existant && l.worksite_id === existant.id)).length;
   const draft: Draft = { date, lines: toutes, errors };
+  // R3. « Nouveau chantier » dit pour un chantier qui existe déjà, sans bloc rendu par le modèle : réutilisé, rien à créer.
+  if (!blocDit(nc) && !toutes.some((l) => l.nouveau)) {
+    const reutilise = chantierReutilise(text, toutes, snapshot);
+    if (reutilise) { draft.nouveau_chantier = reutilise; return draft; }
+  }
   if (blocDit(nc) || toutes.some((l) => l.nouveau)) {
     const bloc: NewWorksite = toutes.some((l) => l.nouveau) && !blocDit(nc) ? { ...BLOC_VIDE } : nc;
     if (existant && rattachees) bloc.reutilise_id = existant.id;
@@ -563,7 +702,7 @@ export function buildLongReply(calls: Appel[], text: string, snapshot: WorkerSna
     // 6. nouveau_chantier autonome : fusionné dans les heures si une ligne l'attend (même nom, « nouveau »…).
     const restes: Appel[] = [];
     for (const c of NC) {
-      const nc = cleanNewWorksite(c.args);
+      const nc = lireBloc(c.args, text);
       const bloc = cleanNewWorksite(args.nouveau_chantier);
       const lignes = lignesBrutes(args);
       const vise = lignes.some((l) => classer(l.chantier, nc, undefined, snapshot).classe === 'nouveau');
@@ -580,7 +719,7 @@ export function buildLongReply(calls: Appel[], text: string, snapshot: WorkerSna
 
   // 6 (suite). nouveau_chantier SEUL : un élément « chantier » (même bloc, mêmes contrôles).
   for (const c of NC) {
-    const nc = cleanNewWorksite(c.args);
+    const nc = lireBloc(c.args, text);
     const existant = nc.nom && nc.ville ? snapshot.chantiers.find((x) => memeChantier(nc, x)) : undefined;
     if (existant) nc.reutilise_id = existant.id;
     pieces.push({ rang: RANG.chantier, item: { kind: 'chantier', nouveau_chantier: nc, manque: champsManquants(nc), depend: [] } });

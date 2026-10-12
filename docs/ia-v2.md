@@ -289,6 +289,9 @@ local ne lit pas), une plage + une autocorrection (« 7h, non plutôt 7h30 »). 
 | créneau sans chantier nommé rempli au hasard depuis le planning | seulement quand aucun nouveau chantier n'est dit |
 | chantier « nouveau » qui existe déjà (même nom + ville) | réutilisé, rien n'est créé (`reutilise_id`) |
 | ville non dite | jamais inventée : la fiche la réclame |
+| R1 · ville dite comme « adresse » (« adres Montagna 01250 » → adresse = Montagna, ville vide) | avec un code postal, une ville vide et une adresse sans chiffre ni mot de voie (rue, avenue, chemin, impasse, sokak, cadde, mahalle…), l'adresse EST la ville ; sinon les mots capitalisés qui précèdent un code postal dans la phrase (hors nom du client, hors rue) ; une ville donnée par le modèle n'est jamais écrasée, une ville absente de la phrase jamais inventée |
+| R2 · chantier DEVINÉ (« Villa Dupont » rendu pour « Pierrick Dupont, nouveau client », ou pour un « chantier » sans nom) | si aucun mot du chantier rendu n'est dans la phrase (hors mots du nouveau client), le créneau est SANS NOM : il prend le nouveau chantier (s'il est seul), sinon l'unique chantier nommé, sinon le planning comme avant ; « chez Dupont » + « Pierrick Dupont » reste « à choisir » |
+| R3 · « nouveau chantier » dit pour un chantier qui existe déjà (« Bureau Martin à Villeurbanne »), sans bloc rendu | nom ET ville du chantier existant dits dans la phrase, un seul candidat : bloc `reutilise_id`, la fiche dit « Chantier existant utilisé » (plus de « Non préparé : Nouveau chantier ») |
 | date non ISO en turc (« dün », « bugün », « yarın », `30.09`) | lue ; sinon « Date illisible » (jamais un repli silencieux sur aujourd'hui) |
 | action non demandée (consigne cachée dans un nom de chantier) | un indice lexical est exigé dans la phrase pour chaque annexe (panier, réserve, congé, envoi) |
 | plus de 4 actions | les appels écartés sont comptés et dits (« Autres actions »), les familles demandées et absentes sont listées (« Non préparé »), « Lecture rapide : vérifiez que tout y est » |
@@ -301,7 +304,7 @@ seulement, après avoir cherché un chantier actif de même nom + ville ; « Ann
 
 - Cartes, boutons et libellés restent en **français** ; seule la réponse libre suit la langue du salarié (turc ou français). Les textes pour le bureau (travaux, note de congé, détail de réserve) sont écrits en français.
 - Dictée turque : dépend du navigateur (Chrome : `tr-TR` ; Safari iOS : selon la langue de dictée installée). À essayer sur un appareil réel avant la mise en ligne.
-- En profil long, pas de repli local : ces phrases dépendent à 100 % du modèle (Gemini gratuit : 429/503 possibles). L'écran remet la phrase dans le champ si le modèle échoue.
+- En profil long, pas de repli local : ces phrases dépendent à 100 % du modèle (Gemini gratuit : 429/503 possibles). L'écran remet la phrase dans le champ si le modèle échoue (message « L’assistant n’a pas pu répondre. Utilisez la saisie habituelle. »). Une erreur du fournisseur consomme quand même une demande du quota journalier (débité avant l'appel, comme pour le profil court).
 - Autres langues que le turc : traitées comme du français.
 - **Données personnelles** : une phrase comme celle d'Ergun contient le prénom, le nom et l'adresse d'un client particulier. Ces données partent chez Google (formule gratuite : réutilisables par Google), sont écrites dans
   `worksites` (lisibles par tous les salariés de l'entreprise) ; le journal ne garde que « Chantier créé » et la ville. **Avant d'ouvrir le turc et les clients particuliers à de vrais salariés** : formule payante
@@ -310,11 +313,11 @@ seulement, après avoir cherché un chantier actif de même nom + ville ; « Ann
 
 ### Mesure (Cowork), avant toute mise en ligne
 
-Le jeu compte maintenant **107 phrases** : les 80 d'origine (47 bureau + 33 salarié, inchangées) + **27 phrases longues du salarié** (`sl01–sl16` « Long FR », `st01–st11` « Long TR », dont la phrase exacte d'Ergun en `sl01`).
+Le jeu compte maintenant **109 phrases** : les 80 d'origine (47 bureau + 33 salarié, inchangées) + **29 phrases longues du salarié** (`sl01–sl16` « Long FR », `st01–st13` « Long TR », dont la phrase exacte d'Ergun en `sl01` ; `st12` et `st13` mesurent R1 et R2).
 Les cas d'heures d'aujourd'hui sont mesurés sur une journée vide (`live: 'vide'`). Banc : `POST /functions/v1/assistant-eval` avec `{ "version": "v2", "prodPath": true, "repeat": 3, "parallel": 1, "ids": [...] }` —
 `prodPath` = le chemin exact des clients (aucun nouvel essai après une erreur du fournisseur) ; `repeat` = 3 passes par cas (le modèle n'est plus à température fixe) ; **au plus 4 ids par appel avec `repeat: 3`, ou 12 avec
 `repeat: 1`**, un par un (la clé gratuite est partagée avec la production ; la durée maximale d'une fonction n'a pas été vérifiée : réduire les lots au besoin). 200 ids au plus, un id inconnu est refusé.
-Seuils : les 80 anciennes phrases ≥ 97,5 % (234 réussites sur 240 essais, aucun cas qui passait avant et échoue 3/3) ET les 27 nouvelles ≥ 97,5 % (79/81, aucun cas en échec 3/3), les 27 comptant toutes. Le rapport donne
+Seuils : les 80 anciennes phrases ≥ 97,5 % (234 réussites sur 240 essais, aucun cas qui passait avant et échoue 3/3) ET les 29 nouvelles ≥ 97,5 % (85/87, aucun cas en échec 3/3), les 29 comptant toutes. Le rapport donne
 par catégorie, par profil (court/long), la médiane et le maximum des temps, la cause de chaque échec (`fournisseur` ou `modèle ou code`) et le nombre de réponses du modèle de secours.
 Tests sans modèle : `npm run test:saisie-profil`, `test:worker-multi`, `test:worker-turn`, `test:assistant-eval`, `test:ai-provider`, `test:ia-config`, `test:ia-domaines`.
 

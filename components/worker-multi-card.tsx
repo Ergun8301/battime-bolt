@@ -373,7 +373,7 @@ export default function WorkerMultiCard({ extra, deps, meal, onDone, ctl }: Prop
         const vide = !b.ville.trim() && !reuse && utilise;
         return (
           <div key={`bloc-${it.id}`} className={`wm-block${utilise ? '' : ' off'}${vide ? ' todo' : ''}`} data-testid="wm-nouveau">
-            <p className="wm-sum"><MapPin className="h-4 w-4" style={{ flex: 'none', marginTop: 1 }} aria-hidden="true" /><span><span className="wm-lbl" style={{ margin: 0 }}>Nouveau chantier</span><span data-testid="wm-nouveau-resume">{resume(b) || 'À préciser'}</span></span></p>
+            <p className="wm-sum"><MapPin className="h-4 w-4" style={{ flex: 'none', marginTop: 1 }} aria-hidden="true" /><span><span className="wm-lbl" style={{ margin: 0 }}>{reuse ? 'Chantier existant utilisé' : 'Nouveau chantier'}</span><span data-testid="wm-nouveau-resume">{resume(b) || 'À préciser'}</span></span></p>
             <div className="wm-grid">
               <div><label className="wm-lbl" htmlFor={`${uid}-${it.id}-nom`}>Client (prénom et nom)</label>
                 <input id={`${uid}-${it.id}-nom`} value={b.nom} maxLength={80} readOnly={!!reuse} onChange={(e) => editBloc(it.id, { nom: e.target.value })} data-testid="wm-nom" autoComplete="off" /></div>
