@@ -180,6 +180,12 @@ export const GUIDE: GuideEntry[] = [
     etapes: ['« Sélectionner » dans la barre du planning.', 'Cochez les bulles, ou « Tout sélectionner » (heures envoyées jamais cochables).', '« Supprimer (N) », puis confirmez — « Annuler » sur la carte remet tout.'], lien: 'planning'
   },
   {
+    // Lot 8 : versions du planning (lib/planning-versions.ts). Libellés vérifiés par assistant-aide.test.ts.
+    id: 'versions', mots: ['versions du planning', 'version du planning', 'revenir en arriere', 'retour en arriere', 'planning d avant', 'ancien planning', 'garder cette version'],
+    titre: 'Revenir à une version d’avant du planning',
+    etapes: ['Sur le planning, l’icône ⟲ à côté de « Salarié » (menu ☰ du téléphone : « Versions du planning ») ouvre les versions de la semaine affichée.', '« Voir » montre ce qui changerait ; « Revenir à cette version » demande de confirmer. Les cases avec des heures, d’un mois clôturé ou avec un pointage en cours ne bougent pas.', '« Annuler » juste après remet le planning d’avant.'], lien: 'planning'
+  },
+  {
     id: 'present', mots: ['present', 'enlever absence', 'annuler conge', 'finalement la', 'revient'],
     titre: 'Remettre quelqu’un présent (enlever une absence)',
     etapes: ['Sur le planning, cliquez le nom du salarié.', '« Présent », à partir du jour choisi.', 'Les absences suivantes sont retirées.'], lien: 'planning'

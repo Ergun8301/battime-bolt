@@ -7,7 +7,7 @@
 
 import { useState } from 'react';
 import { undoneMemory } from '@/lib/card-memory';
-import { CheckCircle2, Loader2, Undo2, Pencil, HelpCircle } from 'lucide-react';
+import { CheckCircle2, Loader2, Undo2, Pencil, HelpCircle, History } from 'lucide-react';
 
 const CSS = `
 .ad{margin-top:10px;border:1px solid rgba(15,122,67,.25);border-radius:14px;background:#F2FBF5;padding:10px 11px}
@@ -20,6 +20,7 @@ const CSS = `
 .ad-b button.strong{background:#15120F;color:#FFF;border-color:#15120F;padding:8px 16px;font-size:13.5px}
 .ad-u{display:flex;align-items:center;gap:8px;color:#56514a;font-weight:800;font-size:13px;margin-top:10px}
 .ad-e{font-size:12.5px;color:#9a3b14;font-weight:700;margin:6px 0 0 26px}
+.ad-l{display:inline-flex;align-items:center;gap:5px;margin:8px 0 0 26px;padding:0;border:none;background:none;color:#56514a;font-size:12.5px;font-weight:700;text-decoration:underline;text-underline-offset:2px;cursor:pointer;font-family:inherit}
 .aq{margin-top:10px;border:1px solid rgba(21,18,15,.12);border-radius:14px;background:#FBF8F2;padding:10px 11px}
 .aq-t{display:flex;align-items:center;gap:7px;font-size:13.5px;font-weight:800;color:#15120F}
 .aq-c{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
@@ -30,10 +31,12 @@ const CSS = `
 
 export interface UndoResult { ok: boolean; message: string }
 
-export function ActionDone({ message, summary, undo, onEdit, strongUndo = false }: {
+export function ActionDone({ message, summary, undo, onEdit, strongUndo = false, link }: {
   message: string; summary?: string; undo?: () => Promise<UndoResult>; onEdit?: () => void;
   /** Lot 8 : beaucoup d'éléments effacés → « Annuler » bien visible. */
   strongUndo?: boolean;
+  /** Lot 8 (versions) : un lien discret sous le résultat (« Versions de la semaine »). */
+  link?: { label: string; onClick: () => void; testId?: string };
 }) {
   const [busy, setBusy] = useState(false);
   const [undone, setUndone] = useState<string | null>(() => (undo && undoneMemory.get(undo)) || null);
@@ -60,6 +63,7 @@ export function ActionDone({ message, summary, undo, onEdit, strongUndo = false 
           {onEdit && <button type="button" disabled={busy} data-testid="action-edit" onClick={onEdit}><Pencil className="h-3.5 w-3.5" /> Modifier</button>}
         </div>
       )}
+      {link && <button type="button" className="ad-l" data-testid={link.testId} onClick={link.onClick}><History className="h-3.5 w-3.5" /> {link.label}</button>}
     </div>
   );
 }
