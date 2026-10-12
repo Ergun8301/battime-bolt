@@ -4,7 +4,7 @@
 //   npm run test:ia-config
 import {
   aiKey, callFunction, DELAIS, extractJson, formuleNom, isProModel, MODELES_PAR_DEFAUT, PAUSE_MESSAGE, PLAFONDS_ESSAI,
-  plafondProjet, readConfig, REPOS_MS, reposReinit, tierFor,
+  plafondProjet, PROFIL_LONG, readConfig, REPOS_MS, reposReinit, tierFor,
 } from './ai-provider.ts';
 import { loadAssistantContext, type RpcClient } from './assistant-context.ts';
 
@@ -177,6 +177,34 @@ Deno.test('Gemini 3.x : ni temperature, ni top_p, ni top_k ; thinkingLevel seul,
     const want = c.model === D ? 'low' : 'minimal'; // « minimal » n'existe pas sur 3.8 Flash
     if (JSON.stringify(gc.thinkingConfig) !== JSON.stringify({ thinkingLevel: want })) throw new Error(`${c.model} : ${JSON.stringify(gc.thinkingConfig)}`);
   }
+});
+
+Deno.test('Profil long : « medium » sur le rapide, « low » sur le secours, fenêtres 14 s / 22 s, aucun paramètre retiré de Gemini 3 ; le profil par défaut ne bouge pas', async () => {
+  if (JSON.stringify(PROFIL_LONG) !== JSON.stringify({ reflexion: 'medium', reflexionSecours: 'low', delais: { premier: 14000, total: 22000 } })) throw new Error(JSON.stringify(PROFIL_LONG));
+  if (JSON.stringify(DELAIS.rapide) !== JSON.stringify({ premier: 5000, total: 8000 })) throw new Error('délais du profil court inchangés');
+  const niveau = (c: Seen) => (c.body.generationConfig as { thinkingConfig: Record<string, unknown> }).thinkingConfig;
+  // Long, le rapide répond : UN appel, en « medium », ni temperature ni top_p ni budget de réflexion.
+  const a = fakeGemini();
+  const ra = await callFunction({ prompt: 'x', functions: FN, profil: 'long', maxCalls: 4 }, env(KEY), a.fetchImpl);
+  if (!ra.ok || names(a.calls) !== R || JSON.stringify(niveau(a.calls[0])) !== '{"thinkingLevel":"medium"}') throw new Error(`rapide long : ${names(a.calls)} ${JSON.stringify(a.calls[0]?.body)}`);
+  // Long, erreur du rapide : le secours en « low » (jamais « medium » ni « minimal »).
+  const b = fakeGemini({ [R]: { status: 503 } });
+  const rb = await callFunction({ prompt: 'x', functions: FN, profil: 'long', maxCalls: 4 }, env(KEY), b.fetchImpl);
+  if (!rb.ok || rb.secours !== true || names(b.calls) !== `${R},${S}` || JSON.stringify(niveau(b.calls[0])) !== '{"thinkingLevel":"medium"}' || JSON.stringify(niveau(b.calls[1])) !== '{"thinkingLevel":"low"}') throw new Error(`secours long : ${names(b.calls)}`);
+  for (const c of [...a.calls, ...b.calls]) {
+    if (/temperature|top_?p|top_?k/i.test(c.raw) || /thinkingBudget|thinking_budget/i.test(c.raw)) throw new Error(`paramètre retiré de Gemini 3 : ${c.raw.slice(0, 200)}`);
+  }
+  // Même appel sans profil : « minimal » puis « minimal » (secours), comme avant.
+  const c = fakeGemini({ [R]: { status: 503 } });
+  await callFunction({ prompt: 'x', functions: FN }, env(KEY), c.fetchImpl);
+  if (JSON.stringify(niveau(c.calls[0])) !== '{"thinkingLevel":"minimal"}' || JSON.stringify(niveau(c.calls[1])) !== '{"thinkingLevel":"minimal"}') throw new Error('profil court : minimal puis minimal');
+  // Un AI_CONFIG de production inchangé (aucun champ nouveau) est toujours lu tel quel, profil long compris.
+  const prod = '{"formule":"essai","rapide":"gemini:gemini-3.5-flash-lite","documents":"gemini:gemini-3.8-flash","secours":"gemini:gemini-3.1-flash-lite","plafonds":{"rapide":400,"documents":15}}';
+  const { out, logs } = await logged(() => readConfig(env({ AI_CONFIG: prod })));
+  if (logs.length || out.rapide.model !== R || out.rapide.reflexion !== 'minimal') throw new Error(`AI_CONFIG de production relu : ${logs.join('|')}`);
+  // Aucune clé de réflexion ni de fenêtre n'est acceptée dans AI_CONFIG (constantes du code, pas de la configuration).
+  const { logs: l2 } = await logged(() => readConfig(env({ AI_CONFIG: '{"profil_long":{"reflexion":"medium"}}' })));
+  if (l2.length !== 1 || !/AI_CONFIG invalide/.test(l2[0])) throw new Error('un champ de profil dans AI_CONFIG doit rester refusé');
 });
 
 Deno.test('Routage : questions ET ordres → UN appel au modèle rapide ; fichier → UN appel au modèle documents', async () => {

@@ -39,7 +39,7 @@ type Env = { get(key: string): string | undefined };
 export type Tier = 'rapide' | 'documents';
 type Slot = Tier | 'secours';
 export type FormuleNom = 'essai' | 'payant';
-export interface Modele { fournisseur: 'gemini'; model: string; reflexion: 'minimal' | 'low' }
+export interface Modele { fournisseur: 'gemini'; model: string; reflexion: 'minimal' | 'low' | 'medium' | 'high' }
 export interface AiConfig {
   formule: FormuleNom;
   rapide: Modele; documents: Modele; secours: Modele;
@@ -76,6 +76,15 @@ export const DELAIS: Record<Tier, { premier: number; total: number }> = {
   rapide: { premier: 5000, total: 8000 },
   documents: { premier: 12000, total: 25000 },
 };
+/** Plafond d'appels de fonction acceptés pour UNE demande (salarié, phrases à plusieurs actions). */
+export const MAX_APPELS = 4;
+/**
+ * Phrases longues, plusieurs actions, turc (salarié) : réflexion « medium » (mesurée 11/11 contre 4/11 en
+ * « minimal ») et fenêtres plus larges (médiane 3,5 s, maximum 13 s mesuré). Constantes, PAS de la configuration :
+ * ni AI_CONFIG ni le palier de quota ne changent (une demande = une unité de « rapide »). Secours en « low ».
+ */
+export const PROFIL_LONG = { reflexion: 'medium' as const, reflexionSecours: 'low' as const, delais: { premier: 14_000, total: 22_000 } };
+
 /** Combien de temps un modèle lent ou indisponible est mis de côté (ms) ; 0 = jamais. Seulement « documents » : le modèle rapide ne l'est pas. */
 export const REPOS_MS: Record<Tier, number> = { rapide: 0, documents: 10 * 60_000 };
 
@@ -161,9 +170,17 @@ export interface ToolsRequest {
   prompt: string; functions: FunctionDecl[]; file?: AiFile;
   /** Modèle à utiliser ; par défaut « documents » s'il y a un fichier, « rapide » sinon. */
   tier?: Tier;
+  /** Appels de fonction acceptés pour cette demande (défaut 1 ; plafond MAX_APPELS). */
+  maxCalls?: number;
+  /** 'long' : réflexion « medium » et fenêtres 14 s / 22 s (PROFIL_LONG). Sans effet sur le quota. */
+  profil?: 'long';
 }
+export interface FunctionCall { name: string; args: Record<string, unknown> }
 export type ToolsResult =
-  | { ok: true; call: { name: string; args: Record<string, unknown> }; /** Choisi par le modèle de secours (plus léger). */ secours?: true }
+  | { ok: true; call: FunctionCall;
+      /** Tous les appels, dans l'ordre (≤ maxCalls) ; calls[0] === call. Absent si maxCalls ≤ 1. */ calls?: FunctionCall[];
+      /** Appels valides au-delà du plafond, écartés : l'appelant le dit (jamais de perte silencieuse). Absent si 0. */ rognes?: number;
+      /** Choisi par le modèle de secours (plus léger). */ secours?: true }
   | { ok: false; reason: 'not_configured' | 'provider_error' | 'bad_response' };
 
 type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
@@ -223,13 +240,14 @@ export function reposReinit(horloge: () => number = Date.now): void { auRepos.cl
  * la demande va tout de suite au secours (et au modèle de côté en dernier recours,
  * si le secours échoue aussi). Une réponse du secours porte `secours: true`.
  */
+interface OptsSecours { delais?: { premier: number; total: number }; reflexion?: Modele['reflexion']; reflexionSecours?: Modele['reflexion'] }
 async function avecSecours<T extends { ok: boolean; reason?: string }>(
-  cfg: AiConfig, tier: Tier, run: (m: Modele, timeoutMs: number) => Promise<T>,
+  cfg: AiConfig, tier: Tier, run: (m: Modele, timeoutMs: number) => Promise<T>, opts?: OptsSecours,
 ): Promise<T> {
-  const d = DELAIS[tier];
+  const d = opts?.delais ?? DELAIS[tier];
   const fin = Date.now() + d.total;
   const left = () => fin - Date.now();
-  const m = cfg[tier];
+  const m = opts?.reflexion ? { ...cfg[tier], reflexion: opts.reflexion } : cfg[tier];
   const distinct = cfg.secours.model !== m.model;
   const deCote = distinct && REPOS_MS[tier] > 0 && (auRepos.get(m.model) ?? 0) > maintenant();
   if (deCote) {
@@ -241,7 +259,7 @@ async function avecSecours<T extends { ok: boolean; reason?: string }>(
     if (lents.has(r) && REPOS_MS[tier] > 0) auRepos.set(m.model, maintenant() + REPOS_MS[tier]);
     console.error(`[ai] modèle ${tier} indisponible : modèle de secours`);
   }
-  const s = await run(cfg.secours, left());
+  const s = await run(opts?.reflexionSecours ? { ...cfg.secours, reflexion: opts.reflexionSecours } : cfg.secours, left());
   if (s.ok) return { ...s, secours: true };
   // Mis de côté, et le secours échoue aussi : on retente le modèle de côté avec le temps qui reste.
   if (deCote && s.reason === 'provider_error' && left() >= 1500) {
@@ -254,24 +272,49 @@ async function avecSecours<T extends { ok: boolean; reason?: string }>(
 
 const parts = (prompt: string, file?: AiFile) => [{ text: prompt }, ...(file ? [{ inline_data: { mime_type: file.mime, data: file.base64 } }] : [])];
 
+const asArgs = (a: unknown): Record<string, unknown> => (a && typeof a === 'object' && !Array.isArray(a) ? a as Record<string, unknown> : {});
+/** Sérialisation à clés triées, objets imbriqués compris : deux appels identiques donnent la même chaîne (et deux journées différentes, jamais la même). */
+const stable = (v: unknown): string => (Array.isArray(v) ? `[${v.map(stable).join(',')}]`
+  : v && typeof v === 'object' ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${stable((v as Record<string, unknown>)[k])}`).join(',')}}` : JSON.stringify(v) ?? 'null');
+
 export async function callFunction(req: ToolsRequest, env: Env, fetchImpl: FetchLike = fetch): Promise<ToolsResult> {
   const key = aiKey(env);
   if (!key) return { ok: false, reason: 'not_configured' };
   const allowed = new Set(req.functions.map((x) => x.name));
+  const max = Math.min(Math.max(1, Math.floor(req.maxCalls ?? 1)), MAX_APPELS);
   const payload = {
     contents: [{ role: 'user', parts: parts(req.prompt, req.file) }],
     tools: [{ functionDeclarations: req.functions }],
     toolConfig: { functionCallingConfig: { mode: 'ANY', allowedFunctionNames: [...allowed] } },
   };
+  const opts: OptsSecours | undefined = req.profil === 'long'
+    ? { delais: PROFIL_LONG.delais, reflexion: PROFIL_LONG.reflexion, reflexionSecours: PROFIL_LONG.reflexionSecours } : undefined;
   return avecSecours(readConfig(env), req.tier ?? tierFor(!!req.file), async (m, ms): Promise<ToolsResult> => {
     const r = await geminiCall(m, key, payload, ms, fetchImpl);
     if (!r.ok) return r;
     const body = r.body as { candidates?: { content?: { parts?: { functionCall?: { name?: string; args?: unknown } }[] } }[] };
-    const fc = body?.candidates?.[0]?.content?.parts?.find((p) => p.functionCall)?.functionCall;
-    if (!fc?.name || !allowed.has(fc.name)) return { ok: false, reason: 'bad_response' };
-    const args = fc.args && typeof fc.args === 'object' ? fc.args as Record<string, unknown> : {};
-    return { ok: true, call: { name: fc.name, args } };
-  });
+    const ps = body?.candidates?.[0]?.content?.parts ?? [];
+    if (max === 1) {
+      const fc = ps.find((p) => p.functionCall)?.functionCall;
+      if (!fc?.name || !allowed.has(fc.name)) return { ok: false, reason: 'bad_response' };
+      return { ok: true, call: { name: fc.name, args: asArgs(fc.args) } };
+    }
+    // Plusieurs appels : noms autorisés seulement ; les DOUBLONS EXACTS sont retirés AVANT le plafond
+    // (un doublon ne doit pas prendre la place d'une vraie action). Les règles métier sont dans le tour.
+    const vus = new Set<string>();
+    const tous: FunctionCall[] = [];
+    for (const p of ps) {
+      const fc = p.functionCall;
+      if (!fc?.name || !allowed.has(fc.name)) continue;
+      const args = asArgs(fc.args);
+      const k = `${fc.name}|${stable(args)}`;
+      if (!vus.has(k)) { vus.add(k); tous.push({ name: fc.name, args }); }
+    }
+    if (!tous.length) return { ok: false, reason: 'bad_response' };
+    const calls = tous.slice(0, max);
+    const rognes = tous.length - calls.length;
+    return { ok: true, call: calls[0], calls, ...(rognes ? { rognes } : {}) };
+  }, opts);
 }
 
 /** Produit un objet JSON selon une consigne et un schéma, à partir d'un document s'il y en a un. */
