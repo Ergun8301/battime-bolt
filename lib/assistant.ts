@@ -7,6 +7,7 @@
 // de confirmation ; s'il manque une info, UNE question (`followUp`).
 import { supabase } from '@/lib/supabase';
 import { isPreviewHost } from '@/lib/hosting';
+import { iaFormule } from '@/lib/ia-formule';
 import { attachmentPayload } from '@/lib/attachment';
 import type { AssistantLink } from '@/supabase/functions/_shared/assistant-core';
 import {
@@ -23,8 +24,14 @@ export interface AssistantReply {
   answer: string; links: AssistantLink[]; remaining?: number; notice?: boolean; extra?: unknown;
   /** Lot 7 : une question a été posée — la prochaine réponse complète la MÊME demande. */
   followUp?: boolean;
+  /** Lot 6 : formule IA active rendue par la fonction (« payant » seul cache le bandeau) ; absente = inconnue. */
+  formule?: string | null;
 }
-export interface AssistantSource { demo: boolean; ask(question: string, file?: File): Promise<AssistantReply> }
+export interface AssistantSource {
+  demo: boolean; ask(question: string, file?: File): Promise<AssistantReply>;
+  /** Lot 6 : la formule IA active, demandée à l'ouverture du panneau (rien n'est compté). */
+  status?(): Promise<string | null>;
+}
 
 /** Démo : uniquement sur une preview, jamais sur bemexo.com. */
 export function isAssistantDemo(): boolean {
@@ -34,16 +41,18 @@ export function isAssistantDemo(): boolean {
 
 type ServerReply = {
   answer?: string; links?: AssistantLink[]; remaining?: number; quota?: boolean; unavailable?: boolean;
-  action?: ActionExtra['action']; options?: ActionExtra['options'];
+  action?: ActionExtra['action']; options?: ActionExtra['options']; formule?: string | null;
 };
 const toReply = (d: ServerReply): AssistantReply => ({
   answer: d.answer || '…', links: d.links || [], remaining: d.remaining, notice: !!(d.quota || d.unavailable),
   extra: d.action && d.options ? ({ action: d.action, options: d.options } as ActionExtra) : undefined,
   followUp: !!d.action?.question,
+  ...(d.formule !== undefined ? { formule: d.formule } : {}),
 });
 
 export const supabaseAssistantSource: AssistantSource = {
   demo: false,
+  status: () => iaFormule('assistant'),
   async ask(question, file) {
     try {
       const body = file ? { question, file: await attachmentPayload(file) } : { question };

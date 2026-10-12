@@ -1,9 +1,18 @@
 // Edge Function : assistant — l'Assistant BEMEXO du bureau (lots 3 et 3 bis).
 //
-// DÉPLOIEMENT : `supabase functions deploy assistant` (JWT vérifié).
-// Secrets : GEMINI_API_KEY, AI_MODEL (facultatif, questions), AI_ACTION_MODEL
-// (facultatif, actions — lot 7), ASSISTANT_DAILY_LIMIT (facultatif, 50 par
-// défaut : demandes par entreprise et par jour).
+// DÉPLOIEMENT : `supabase functions deploy assistant` (JWT vérifié), APRÈS la
+// migration 20261012090000_lot6_couche_ia_v2.sql.
+// Secrets : AI_CONFIG (formule, modèles, plafonds) et AI_API_KEY (repli :
+// GEMINI_API_KEY), voir _shared/ai-provider.ts ; ASSISTANT_DAILY_LIMIT
+// (facultatif, 50 par défaut : demandes par entreprise et par jour).
+// AI_MODEL, AI_ACTION_MODEL et AI_FALLBACK_MODEL ne sont plus lus.
+//
+// Lot 6 : PLUS DE CLÉ DE SERVICE. Qui appelle, son entreprise, ai_enabled, le
+// quota et le plafond global viennent de public.assistant_context, appelée avec
+// SON jeton ; tout le reste est lu avec ce même client. Un SEUL appel au modèle
+// par demande (rapide, ou documents si un fichier est joint). Le corps
+// { statut: true } rend seulement la formule (bandeau « Mode essai »), sans
+// rien compter ni appeler le modèle.
 //
 // Lot 7 : la réponse porte aussi `question` (UNE question s'il manque une info
 // à une action directe) ; l'écran exécute les actions simples tout de suite.
@@ -22,8 +31,8 @@
 // compteur du quota ; aucune question ni réponse dans les logs.
 // Réservé à un ADMIN actif d'une entreprise dont `ai_enabled` est vrai.
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { callFunction, readAttachment } from '../_shared/ai-provider.ts';
-import { looksLikeAction } from '../_shared/fr-langue.ts';
+import { aiKey, callFunction, formuleNom, PAUSE_MESSAGE, plafondProjet, readAttachment, tierFor } from '../_shared/ai-provider.ts';
+import { loadAssistantContext } from '../_shared/assistant-context.ts';
 import { DEFAULT_DAILY_LIMIT, MAX_QUESTION_CHARS, buildSnapshot, previousDay, type RawData } from '../_shared/assistant-core.ts';
 import {
   actionPrompt, addDays, buildActionContext, fromFunctionCall, functionsFor, handleActionLocally, mondayOf, questionFor,
@@ -36,18 +45,17 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+// Lot 6 : la formule active part avec chaque réponse (bandeau « Mode essai »).
+const FORMULE = formuleNom(Deno.env);
+const json = (body: Record<string, unknown>, status = 200) =>
+  new Response(JSON.stringify({ ...body, formule: FORMULE }), { status, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
 
 const URL_ = Deno.env.get('SUPABASE_URL') ?? '';
-const admin = createClient(URL_, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '', {
-  auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
-});
 
 const parisToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 
 /** Réponse envoyée à l'écran : le brouillon, son résumé, et les listes pour le modifier. */
-function reply(r: LocalReply, ctx: ActionContext, remaining: number) {
+function reply(r: LocalReply, ctx: ActionContext, remaining: number): Response {
   return json({
     answer: r.answer, links: r.links, remaining,
     action: r.action ? { ...r.action, summary: summarize(r.action.draft, ctx), question: questionFor(r.action.draft, r.action.problems, ctx) } : undefined,
@@ -64,37 +72,41 @@ Deno.serve(async (req) => {
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
   try {
     const jwt = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
-    const { data: { user } } = jwt ? await admin.auth.getUser(jwt) : { data: { user: null } };
-    if (!user) return json({ error: 'Non authentifié' }, 401);
-    const { data: me } = await admin.from('users').select('company_id, role, is_active').eq('id', user.id).maybeSingle();
-    if (!me || me.role !== 'admin' || me.is_active === false || !me.company_id) return json({ error: 'Réservé au bureau' }, 403);
-    const { data: co } = await admin.from('companies').select('ai_enabled').eq('id', me.company_id).maybeSingle();
-    if (!(co as { ai_enabled?: boolean } | null)?.ai_enabled) return json({ error: 'Assistant non activé' }, 403);
-
-    const body = await req.json().catch(() => ({})) as { question?: string; file?: unknown };
+    if (!jwt) return json({ error: 'Non authentifié' }, 401);
+    const body = await req.json().catch(() => ({})) as { question?: string; file?: unknown; statut?: boolean };
+    // Lot 6 : à l'ouverture du panneau, l'écran demande seulement la formule (rien n'est compté).
+    if (body.statut === true) return json({ formule: FORMULE });
     const question = String(body.question ?? '').trim().slice(0, MAX_QUESTION_CHARS);
     if (!question) return json({ error: 'Posez une question.' }, 400);
     // 📎 Photo ou PDF : lu par le modèle, jamais journalisé ni stocké ici.
     const att = readAttachment(body.file);
     if (!att.ok) return json({ error: att.error }, 400);
 
-    // Quota AVANT tout travail (même quota que le lot 3).
-    const limit = Number(Deno.env.get('ASSISTANT_DAILY_LIMIT')) || DEFAULT_DAILY_LIMIT;
-    const { data: used, error: qErr } = await admin.rpc('assistant_consume', { p_company: me.company_id, p_limit: limit });
-    if (qErr) return json({ error: 'Assistant indisponible.' }, 500);
-    if (used == null) {
-      return json({ quota: true, answer: `Limite de ${limit} demandes par jour atteinte pour votre entreprise. Revenez demain.`, links: [] });
-    }
-    const remaining = Math.max(0, limit - Number(used));
-
-    // Lecture AVEC LE JETON DU PATRON : ses droits, rien de plus.
+    // Tout passe par LE JETON DU PATRON : ses droits, rien de plus.
     const db = createClient(URL_, Deno.env.get('SUPABASE_ANON_KEY') ?? '', {
       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
       global: { headers: { Authorization: `Bearer ${jwt}` } },
     });
+    // Qui je suis + quota AVANT tout travail (même compteur que le lot 3), en un aller-retour.
+    const limit = Number(Deno.env.get('ASSISTANT_DAILY_LIMIT')) || DEFAULT_DAILY_LIMIT;
+    const tier = tierFor(!!att.file);
+    const me = await loadAssistantContext(db, 'bureau', { limit, tier, globalLimit: plafondProjet(Deno.env, tier) });
+    if (!me.ok) {
+      switch (me.raison) {
+        case 'non_connecte': return json({ error: 'Non authentifié' }, 401);
+        case 'non_autorise': return json({ error: 'Réservé au bureau' }, 403);
+        case 'ia_coupee': return json({ error: 'Assistant non activé' }, 403);
+        case 'quota': return json({ quota: true, answer: `Limite de ${me.limite ?? limit} demandes par jour atteinte pour votre entreprise. Revenez demain.`, links: [] });
+        case 'pause': return json({ quota: true, pause: true, answer: PAUSE_MESSAGE, links: [] });
+        default: return json({ error: 'Assistant indisponible.' }, 500);
+      }
+    }
+    const user = { id: me.userId };
+    const remaining = Math.max(0, me.remaining ?? 0);
+
     const today = parisToday();
     const hier = previousDay(today);
-    const cid = me.company_id as string;
+    const cid = me.companyId;
     const planFrom = addDays(mondayOf(today), -14), planTo = addDays(mondayOf(today), 13);
     const [workers, sites, all, month, entries, planY, planT, sessions, leaves, plan, recent, invits, reserves, closures, docs, expenses, certs] = await Promise.all([
       db.from('users').select('id, company_id, first_name, last_name, role, is_active').eq('company_id', cid),
@@ -153,7 +165,7 @@ Deno.serve(async (req) => {
     if (local) return reply(local, ctx, remaining);
 
     // 2. Sans clé : on guide quand même.
-    if (!Deno.env.get('GEMINI_API_KEY')) {
+    if (!aiKey(Deno.env)) {
       if (att.file) return json({ unavailable: true, answer: 'Lecture de fichier indisponible pour le moment.', links: [] });
       const g = findGuide(question);
       return reply(g ? { answer: guideAnswer(g), links: [{ label: NAV_ACTIONS[g.lien], action: g.lien }] }
@@ -162,9 +174,9 @@ Deno.serve(async (req) => {
 
     // 3. L'IA choisit UNE fonction de la liste blanche.
     const snapshot = buildSnapshot(raw);
+    // Lot 6 : seulement les outils du domaine de la demande ; UN appel (rapide, ou documents si fichier).
     const r = await callFunction({
-      prompt: actionPrompt(ctx, JSON.stringify(snapshot), guideForPrompt(), question), functions: functionsFor(!!att.file), file: att.file,
-      kind: looksLikeAction(question, !!att.file) ? 'action' : 'question',
+      prompt: actionPrompt(ctx, JSON.stringify(snapshot), guideForPrompt(), question), functions: functionsFor(!!att.file, question), file: att.file, tier,
     }, Deno.env);
     if (!r.ok) return json({ unavailable: true, answer: 'L’assistant n’a pas pu répondre. Réessayez dans un instant.', links: [] });
 
