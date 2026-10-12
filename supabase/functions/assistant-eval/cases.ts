@@ -228,6 +228,18 @@ export const CASES: EvalCase[] = [
   { id: 'b47', cote: 'bureau', categorie: 'Effacer', phrase: 'retire Kevin de la Villa Dupont vendredi',
     check: actAvecProblemes('supprimer_intervention', ['Choisissez l’intervention.'], (d) => all(eq(d, 'user_id', 'u-kevin'), eq(d, 'planning_id', null),
       (d.choix as { nom: string }[]).length && (d.choix as { nom: string }[]).every((c) => c.nom === 'Kevin') ? null : `choix : ${JSON.stringify(d.choix)}`)) },
+  // DIAGNOSTIC (retour d'Ergun) : phrases longues, françaises et turques. Le contrôle échoue exprès : on lit la sortie réelle.
+  { id: 'dgs1', cote: 'salarie', categorie: 'Diag', phrase: 'Ajoute-moi une intervention. J’ai travaillé aujourd’hui de 8h à midi, puis pause d’1h, puis de 13h à 17h sur un nouveau chantier : prénom Pierrick, nom Dupont, à Montagna 01250, pour la pose d’un store banne.', check: () => 'DIAG' },
+  { id: 'dgs2', cote: 'salarie', categorie: 'Diag', phrase: 'Alors aujourd’hui j’ai commencé à 7h30 chez Dupont jusqu’à midi, ensuite une pause d’une heure, et l’après-midi de 13h à 16h30 sur un nouveau chantier, c’est madame Claire Martin, 12 rue des Lilas à Bourg-en-Bresse 01000, pour la rénovation d’une salle de bain. Et coche aussi le panier repas.', check: () => 'DIAG' },
+  { id: 'dgs3', cote: 'salarie', categorie: 'Diag', phrase: 'Hier j’ai bossé de 8h à 12h et de 13h à 17h chez Dupont, j’ai oublié de cocher le panier. Et je voudrais poser un congé du lundi au mercredi de la semaine prochaine.', check: () => 'DIAG' },
+  { id: 'dgs4', cote: 'salarie', categorie: 'Diag', phrase: 'euh alors ce matin 7h 12h chez dupont, midi pause de 45 minutes, après-midi 12h45 16h30 pareil chez dupont, et j’ai vu une fissure sur le mur, mets une réserve.', check: () => 'DIAG' },
+  { id: 'dgt1', cote: 'salarie', categorie: 'Diag', phrase: 'Bugün sabah 8’den 12’ye kadar çalıştım, sonra bir saat mola verdim, sonra öğleden sonra 13’ten 17’ye kadar yeni bir şantiyede çalıştım: müşteri Pierrick Dupont, adres Montagna 01250, kollu tente montajı için.', check: () => 'DIAG' },
+  { id: 'dgt2', cote: 'salarie', categorie: 'Diag', phrase: 'Dün sabah 7:30’dan 12’ye kadar Dupont villasında, öğleden sonra 13’ten 16:30’a kadar Martin ofisinde çalıştım, yarım saat de mola verdim.', check: () => 'DIAG' },
+  { id: 'dgt3', cote: 'salarie', categorie: 'Diag', phrase: 'Gelecek pazartesiden çarşambaya kadar izin almak istiyorum, bürodan onay gelince haber verin.', check: () => 'DIAG' },
+  { id: 'dgt4', cote: 'salarie', categorie: 'Diag', phrase: 'Bugünkü yemek sepetini işaretle ve günümü büroya gönder.', check: () => 'DIAG' },
+  { id: 'dgt5', cote: 'salarie', categorie: 'Diag', phrase: 'Bu hafta toplam kaç saat çalıştım ve geçen haftadan farkım ne?', check: () => 'DIAG' },
+  { id: 'dgt6', cote: 'salarie', categorie: 'Diag', phrase: 'Şey, bugün... yani sabah erkenden 7’de Dupont’ta başladım, öğlen 12’de bıraktım, bir saat yemek molası verdim, sonra 13’ten 17’ye kadar Montagna’da yeni bir müşteri için çalıştım, adı Ayşe Kaya, posta kodu 01250, çatı tamiri yaptık.', check: () => 'DIAG' },
+  { id: 'dgt7', cote: 'salarie', categorie: 'Diag', phrase: 'Dupont şantiyesinde duvarda bir çatlak buldum, rezerv olarak not et.', check: () => 'DIAG' },
   // ════ SALARIÉ ════
   { id: 's01', cote: 'salarie', categorie: 'Heures', phrase: 'ce matin 7h30 12h villa dupont et aprem 13h 16h30 bureau martin',
     check: draft((l) => (l.length === 2 && l[0].worksite_id === W.dupont && l[1].worksite_id === W.martin && l[0].start === '07:30' && l[1].end === '16:30' ? null : `lignes : ${JSON.stringify(l.map((x) => [x.worksite_id, x.start, x.end]))}`)) },

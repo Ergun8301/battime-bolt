@@ -11,7 +11,8 @@ import * as W1 from './v1/worker-assistant-core.ts';
 import { ADMIN_RAW, CASES, FILES, LIVE_EN_COURS, ME, WORKER_LIVE, WORKER_RAW, type EvalCase, type Outcome } from './cases.ts';
 
 export type Call = (req: ToolsRequest) => Promise<ToolsResult>;
-export interface CaseResult { id: string; cote: string; categorie: string; phrase: string; ok: boolean; why: string | null; via: 'local' | 'ia' | 'erreur'; ms?: number; sortie?: Outcome }
+export interface CaseResult { id: string; cote: string; categorie: string; phrase: string; ok: boolean; why: string | null; via: 'local' | 'ia' | 'erreur'; ms?: number; sortie?: Outcome; appels?: unknown }
+export interface RunOpts { sansLocal?: boolean; trace?: boolean }
 
 type AnyReply = { answer?: string; links?: { action: string }[]; action?: { draft: { type: string }; problems: string[] } };
 function fromAdmin(r: AnyReply | null): Outcome {
@@ -28,22 +29,24 @@ function fromWorker(r: AnyWorker | null): Outcome {
   return { kind: 'answer', answer: r.answer, links: (r.links ?? []).map((l) => l.action) };
 }
 
-async function runOne(c: EvalCase, version: 'v1' | 'v2', call: Call): Promise<CaseResult> {
+async function runOne(c: EvalCase, version: 'v1' | 'v2', call: Call, opt: RunOpts = {}): Promise<CaseResult> {
   const base = { id: c.id, cote: c.cote, categorie: c.categorie, phrase: c.phrase };
   const t0 = Date.now();
   const file = c.file ? FILES[c.file] : undefined;
   try {
     let out: Outcome;
     let via: CaseResult['via'] = 'local';
+    let appels: unknown;
     if (c.cote === 'bureau') {
       const A = version === 'v2' ? A2 : A1;
       const ctx = A.buildActionContext(ADMIN_RAW as Parameters<typeof A2.buildActionContext>[0]) as A2.ActionContext;
       if (version === 'v2') { ctx.me = ME; ctx.demande = c.phrase; }
-      const local = file ? null : A.handleActionLocally(c.phrase, ctx as never);
+      const local = file || opt.sansLocal ? null : A.handleActionLocally(c.phrase, ctx as never);
       if (local) out = fromAdmin(local as AnyReply);
       else {
         via = 'ia';
         const r = await call({ prompt: A.actionPrompt(ctx as never, '{}', A.guideForPrompt(), c.phrase), functions: version === 'v2' ? A2.functionsFor(!!file, c.phrase) : A.ASSISTANT_FUNCTIONS, file });
+        appels = (r as { appels?: unknown }).appels;
         out = r.ok ? fromAdmin(A.fromFunctionCall(r.call.name, r.call.args, ctx as never) as AnyReply) : { kind: 'none', answer: `IA : ${r.reason}` };
       }
     } else {
@@ -51,28 +54,29 @@ async function runOne(c: EvalCase, version: 'v1' | 'v2', call: Call): Promise<Ca
       const snap = W.buildWorkerSnapshot(WORKER_RAW as never) as W2.WorkerSnapshot;
       if (version === 'v2') snap.demande = c.phrase;
       const live = { ...WORKER_LIVE, enCours: c.enCours ? LIVE_EN_COURS : null } as W2.WorkerLive;
-      const local = file ? null : W.handleWorkerLocally(c.phrase, snap as never, live as never);
+      const local = file || opt.sansLocal ? null : W.handleWorkerLocally(c.phrase, snap as never, live as never);
       if (local) out = fromWorker(local as AnyWorker);
       else {
         via = 'ia';
         const r = await call({ prompt: W.workerFunctionPrompt(snap as never, live as never, c.phrase), functions: version === 'v2' ? W2.workerFunctionsFor(!!file, c.phrase) : W.WORKER_FUNCTIONS, file });
+        appels = (r as { appels?: unknown }).appels;
         out = r.ok ? fromWorker(W.fromWorkerCall(r.call.name, r.call.args, snap as never, live as never) as AnyWorker) : { kind: 'none', answer: `IA : ${r.reason}` };
       }
     }
     const why = c.check(out);
     // Diagnostic : pour un échec, ce que l'assistant a réellement préparé (jeu fictif, rien d'une vraie entreprise).
-    return { ...base, ok: !why, why, via, ms: Date.now() - t0, ...(why ? { sortie: out } : {}) };
+    return { ...base, ok: !why, why, via, ms: Date.now() - t0, ...(why ? { sortie: out } : {}), ...(opt.trace && appels ? { appels } : {}) };
   } catch (e) {
     return { ...base, ok: false, why: `erreur : ${(e as Error).message}`, via: 'erreur' };
   }
 }
 
-export async function runEval(version: 'v1' | 'v2', call: Call, ids?: string[], parallel = 6, gapMs = 0) {
+export async function runEval(version: 'v1' | 'v2', call: Call, ids?: string[], parallel = 6, gapMs = 0, opt: RunOpts = {}) {
   const cases = CASES.filter((c) => !ids?.length || ids.includes(c.id));
   const results: CaseResult[] = [];
   for (let i = 0; i < cases.length; i += parallel) {
     if (i && gapMs) await new Promise((r) => setTimeout(r, gapMs));
-    results.push(...await Promise.all(cases.slice(i, i + parallel).map((c) => runOne(c, version, call))));
+    results.push(...await Promise.all(cases.slice(i, i + parallel).map((c) => runOne(c, version, call, opt))));
   }
   const byCat = new Map<string, { ok: number; n: number }>();
   for (const r of results) {
@@ -85,7 +89,7 @@ export async function runEval(version: 'v1' | 'v2', call: Call, ids?: string[], 
   return {
     version, total: results.length, ok, pct: Math.round((ok / Math.max(1, results.length)) * 1000) / 10,
     categories: Array.from(byCat.entries()).map(([categorie, v]) => ({ categorie, ...v, pct: Math.round((v.ok / v.n) * 100) })),
-    echecs: results.filter((r) => !r.ok).map((r) => ({ id: r.id, phrase: r.phrase, why: r.why, via: r.via, sortie: r.sortie })),
+    echecs: results.filter((r) => !r.ok).map((r) => ({ id: r.id, phrase: r.phrase, why: r.why, via: r.via, sortie: r.sortie, appels: r.appels })),
     // Lot 7 (lenteur) : temps par phrase passée par l'IA.
     temps: results.filter((r) => r.via === 'ia').map((r) => ({ id: r.id, ms: r.ms })),
   };
