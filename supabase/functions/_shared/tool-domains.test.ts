@@ -1,18 +1,18 @@
 // Lot 6 — outils envoyés au modèle par DOMAINE : plus légers, sans perdre une
 // action. CHAQUE phrase du jeu d'évaluation (bureau et salarié) doit garder
 // l'outil attendu dans la sélection.   npm run test:ia-domaines
-import { ASSISTANT_FUNCTIONS, ATTACHMENT_FUNCTIONS, buildActionContext, functionsFor, handleActionLocally, type ActionContext } from './assistant-actions-core.ts';
+import { actionPrompt, ASSISTANT_FUNCTIONS, ATTACHMENT_FUNCTIONS, buildActionContext, functionsFor, guideForPrompt, handleActionLocally, type ActionContext } from './assistant-actions-core.ts';
 import { WORKER_ATTACHMENT_FUNCTIONS, WORKER_FUNCTIONS, buildWorkerSnapshot, handleWorkerLocally, workerFunctionsFor, type WorkerLive, type WorkerSnapshot } from './worker-assistant-core.ts';
 import { domainTools, OFFICE_DOMAINS, WORKER_DOMAINS } from './tool-domains.ts';
 import { ADMIN_RAW, CASES, LIVE_EN_COURS, ME, WORKER_LIVE, WORKER_RAW } from '../assistant-eval/cases.ts';
 
-// L'outil attendu de chaque phrase, lu dans cases.ts (act('x'), o.type === 'x', réponse, heures, collègues).
+// L'outil attendu de chaque phrase, lu dans cases.ts (act('x'), actAvecProblemes('x'), o.type === 'x', réponse, heures, collègues).
 const SRC = await Deno.readTextFile(new URL('../assistant-eval/cases.ts', import.meta.url));
 function expectedTool(id: string, cote: string): string | null {
   const at = SRC.indexOf(`id: '${id}'`);
   const next = SRC.indexOf("{ id: '", at + 5);
   const chunk = SRC.slice(at, next < 0 ? undefined : next);
-  const m = /check: act\('(\w+)'/.exec(chunk) ?? /o\.type === '(\w+)'/.exec(chunk);
+  const m = /check: act(?:AvecProblemes)?\('(\w+)'/.exec(chunk) ?? /o\.type === '(\w+)'/.exec(chunk);
   if (m) return m[1];
   if (/check: (answer|refus)\(/.test(chunk)) return 'repondre';
   if (/check: draft\(/.test(chunk)) return 'declarer_heures';
@@ -84,4 +84,46 @@ Deno.test('Domaines : exemples précis, et « rien reconnu » = tous les outils'
   if (w.includes('effacer_heures') || w.length !== WORKER_ATTACHMENT_FUNCTIONS.length) throw new Error(`fichier salarié : ${w.join(',')}`);
   const c = workerFunctionsFor(false, 'où est sofiane demain').map((x) => x.name);
   if (!c.includes('planning_collegues')) throw new Error(`collègues : ${c.join(',')}`);
+});
+
+// Correction « retire X du planning demain » : le modèle prenait effacer_planning pour supprimer_intervention (2 essais sur 3).
+Deno.test('« Retire X » / « vide le planning » : la frontière est écrite dans les DEUX descriptions et dans la consigne', () => {
+  const desc = (n: string) => ASSISTANT_FUNCTIONS.find((f) => f.name === n)!.description;
+  const un = desc('supprimer_intervention'), tout = desc('effacer_planning');
+  // supprimer_intervention : un salarié (ou un chantier) + UN jour, avec les exemples de phrases ; le reste va à l'autre outil.
+  for (const m of ['UNE intervention', 'UN jour', 'retire Karim du planning demain', 'enlève Kevin de la Villa Dupont vendredi', '« Vide / efface le planning »', 'une semaine', 'toute l’équipe', 'effacer_planning']) {
+    if (!un.includes(m)) throw new Error(`supprimer_intervention : « ${m} » manque dans la description : ${un}`);
+  }
+  // effacer_planning : « vide / efface le planning » (un salarié, l'équipe, une période, une semaine) ; « retire / enlève X + UN jour » renvoie à l'autre outil.
+  for (const m of ['VIDER le planning', 'UN salarié', 'TOUTE l’équipe', 'période', 'semaine', 'vide le planning de Karim cette semaine', 'Retire / enlève Karim du planning demain', 'UN seul jour', 'supprimer_intervention']) {
+    if (!tout.includes(m)) throw new Error(`effacer_planning : « ${m} » manque dans la description : ${tout}`);
+  }
+  // La consigne de l'assistant donne la même règle, avec des exemples.
+  const ctx = buildActionContext(ADMIN_RAW as Parameters<typeof buildActionContext>[0]) as ActionContext;
+  const prompt = actionPrompt(ctx, '{}', guideForPrompt(), 'retire karim du planning demain');
+  for (const m of ['« Retire / enlève X du planning demain »', '(un salarié, UN jour) → supprimer_intervention', '« vide / efface le planning » (de quelqu’un, d’une période, d’une semaine ou de l’équipe) → effacer_planning']) {
+    if (!prompt.includes(m)) throw new Error(`la consigne ne donne pas la frontière supprimer_intervention / effacer_planning : « ${m} » manque`);
+  }
+});
+
+Deno.test('« Retire X » / « vide le planning » : les deux outils sont TOUJOURS envoyés ensemble, jamais l’un sans l’autre', () => {
+  // Dans la table des domaines : aucun domaine ne porte l'un sans l'autre.
+  for (const [nom, d] of Object.entries(OFFICE_DOMAINS)) {
+    if (d.tools.includes('supprimer_intervention') !== d.tools.includes('effacer_planning')) throw new Error(`domaine « ${nom} » : un seul des deux outils`);
+  }
+  const noms = (q: string) => functionsFor(false, q).map((f) => f.name);
+  const phrases = [
+    'retire karim du planning demain', 'Enlève Kevin de la Villa Dupont vendredi', 'enlève Karim de lundi', 'retire-moi du planning de jeudi', 'vire Kevin de vendredi',
+    'efface le planning de karim jeudi', 'vide le planning de karim de lundi à mercredi', 'efface le planning de la semaine prochaine', 'vide la semaine', 'efface tout',
+    'effacer le planning de toute l’équipe', 'supprime l’intervention de Kevin', 'supprime le planning de Karim', 'annule l’intervention de jeudi', 'retirer Sofiane du chantier Dupont',
+    // et chaque phrase du jeu d'évaluation qui parle de retirer / enlever / effacer / vider
+    ...CASES.filter((c) => c.cote === 'bureau' && /retir|enlev|effac|vid/i.test(c.phrase)).map((c) => c.phrase),
+  ];
+  for (const q of phrases) {
+    const n = noms(q);
+    if (!n.includes('supprimer_intervention') || !n.includes('effacer_planning')) throw new Error(`« ${q} » : ${n.includes('supprimer_intervention') ? '' : 'supprimer_intervention absent '}${n.includes('effacer_planning') ? '' : 'effacer_planning absent'}`);
+  }
+  // Et une phrase sans rapport avec le planning n'envoie ni l'un ni l'autre (le filtre sert toujours).
+  const autre = noms('ajoute une dépense de 450 euros de placo sur villa dupont');
+  if (autre.includes('supprimer_intervention') || autre.includes('effacer_planning')) throw new Error(`dépense : ${autre.join(',')}`);
 });

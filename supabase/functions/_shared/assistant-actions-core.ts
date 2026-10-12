@@ -1544,7 +1544,7 @@ export const ASSISTANT_FUNCTIONS = [
   // ── Lot 8 : revenir en arrière ──
   {
     name: 'supprimer_intervention',
-    description: 'Retirer / enlever / supprimer UNE intervention (une case) du planning.',
+    description: 'Retirer / enlever / supprimer UNE intervention (une case) du planning : un salarié (ou un chantier) et UN jour, par exemple « retire Karim du planning demain », « enlève Kevin de la Villa Dupont vendredi ». « Vide / efface le planning », plusieurs jours, une semaine, toute l’équipe → effacer_planning.',
     parameters: { type: 'object', properties: {
       salarie: S('Salarié prévu (« moi » pour la personne qui parle)'), date: S('Jour, aaaa-mm-jj'),
       chantier: S('Client ou chantier, s’il est dit'), lieu: S('Lieu ou ville dit (« l’intervention à Lyon »)'),
@@ -1552,7 +1552,7 @@ export const ASSISTANT_FUNCTIONS = [
   },
   {
     name: 'effacer_planning',
-    description: 'Effacer / vider le planning (les interventions, pas les absences) d’UN salarié ou de TOUTE l’équipe sur un jour, une période ou une semaine.',
+    description: 'Effacer / VIDER le planning (les interventions, pas les absences) d’UN salarié ou de TOUTE l’équipe sur un jour, une période ou une semaine : « vide le planning de Karim cette semaine », « efface le planning de la semaine prochaine ». « Retire / enlève Karim du planning demain » (un salarié nommé, UN seul jour, une case) → supprimer_intervention, pas cet outil.',
     parameters: { type: 'object', properties: {
       salarie: S('Salarié ; vide = toute l’équipe'), du: S('Premier jour, aaaa-mm-jj'), au: S('Dernier jour, aaaa-mm-jj'),
       semaine: S('« prochaine », « en cours » ou un jour de la semaine voulue, si c’est une semaine entière'),
@@ -1738,6 +1738,7 @@ Règles :
 - « Rajoute-moi », « mets-moi » : salarie = « moi ». Un lieu sans client (« à Lyon ») → lieu.
 - Ne dis jamais « je n'ai pas accès » : guide, ou fais l'action.
 - Enlever, retirer, supprimer, effacer, vider, annuler → la fonction « supprimer_… » ou « effacer_planning » qui correspond (une intervention, le planning d’un salarié ou de toute l’équipe sur une période, une absence, un document, une dépense, une habilitation, une invitation). Clients, chantiers et salariés : archiver_client / archiver_salarie, jamais supprimer.
+- « Retire / enlève X du planning demain », « enlève X de <chantier> vendredi » (un salarié, UN jour) → supprimer_intervention ; « vide / efface le planning » (de quelqu’un, d’une période, d’une semaine ou de l’équipe) → effacer_planning.
 - INTERDIT d’effacer : les heures envoyées ou validées, un mois clôturé, un export de paie. Si on le demande → « repondre » en UNE phrase : ce n’est pas possible, et qu’on peut corriger les heures à la place.
 - Jamais de paiement, jamais de n° de sécurité sociale.
 - FICHIER joint : bulletin d'un nouveau salarié → inviter_salarie ; bulletin d'un salarié existant → cout_reel ; devis d'un NOUVEAU client → creer_chantier ; « ajoute la dépense » → ajouter_depense ; tout document ou photo à classer / ranger sur un chantier existant (facture, devis, plan, PV, photo) → ranger_document, avec la catégorie dite ou devinée d'après le contenu (facture acquittée / payée → facture_payee).
