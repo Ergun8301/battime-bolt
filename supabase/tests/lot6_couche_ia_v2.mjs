@@ -299,7 +299,7 @@ check((await ctx('patron', 50)).raison === 'cote_inconnu' && (await ctx(null, 50
   const b0 = await n(`SELECT questions AS n FROM public.assistant_usage WHERE company_id = $1`, [CO2]);
   await as(ADMIN2);
   const r = await ctx('bureau', 100000);
-  check(r.ok && r.remaining === 500 - r.used, 'limite passée par l’appelant bornée à 500 en base (un appel direct ne fait que consommer SON quota)');
+  check(r.ok && r.used + r.remaining === 200, 'bureau : limite 100000 passée par l’appelant bornée à 200 en base (un appel direct ne fait que consommer SON quota)');
   await root();
   check((await n(`SELECT questions AS n FROM public.assistant_usage WHERE company_id = $1`, [CO2])) === b0 + 1, 'appel direct : +1 sur SON entreprise seulement');
 }
@@ -352,44 +352,63 @@ await root();
 check((await rows(`SELECT 1 FROM public.ai_project_usage WHERE tier NOT IN ('rapide', 'documents')`)).length === 0
   && (await err(`INSERT INTO public.ai_project_usage VALUES (current_date, 'pro', 1)`)) === '23514', 'niveaux limités à rapide / documents (contrainte)');
 
-// ═══ Les limites de l'appelant sont bornées EN BASE ════════════════════════
-section('Appel direct à la fonction avec des limites énormes : rien de gagné');
-await root();
-await db.exec(`DELETE FROM public.worker_assistant_usage WHERE user_id = '${SAM}'`); // remise à zéro DU BANC
-await db.exec(`DELETE FROM public.zz_controle`);
+// ═══ Les limites de l'appelant sont bornées EN BASE, par côté ═══════════════
+section('Appel direct à la fonction avec des limites énormes : rien de gagné (bureau 200, salarié 50, bulletin 100)');
 {
-  const g0 = await n(`SELECT requests AS n FROM public.ai_project_usage WHERE tier = 'rapide'`);
-  await as(SAM);
-  const HUGE = 2147483647;
-  let accepted = 0, last = null;
-  for (let i = 0; i < 520; i++) { last = await ctx('salarie', HUGE, 'rapide', HUGE); if (last.ok) accepted++; }
-  check(accepted === 500 && last.ok === false && last.raison === 'quota' && last.limite === 500,
-    `un salarié qui appelle en boucle avec des limites énormes : ${accepted} demandes acceptées, pas plus que le maximum en base (500)`);
+  const HUGE = 100000;
+  const glob = (tier) => n(`SELECT requests AS n FROM public.ai_project_usage WHERE tier = '${tier}'`);
+  // Remise à zéro DU BANC des quotas de CETTE section, puis le contrôle repart de zéro (les appels, eux, restent surveillés).
   await root();
-  check((await n(`SELECT requests AS n FROM public.ai_project_usage WHERE tier = 'rapide'`)) - g0 === 500,
-    'compteur global : +500 au plus (son quota), pas un de plus après les refus');
-  // Plafond global énorme : borné à 100 000 en base.
+  await db.exec(`DELETE FROM public.worker_assistant_usage WHERE user_id = '${SAM}'`);
+  await db.exec(`DELETE FROM public.assistant_usage WHERE company_id = '${CO2}'`);
+  await db.exec(`DELETE FROM public.ai_bulletin_usage WHERE company_id = '${CO}'`);
+  await db.exec(`DELETE FROM public.zz_controle`);
+  const loop = async (side, tier, max, times) => {
+    let accepted = 0, first = null, last = null;
+    for (let i = 0; i < times; i++) { last = await ctx(side, HUGE, tier, HUGE); if (last.ok) { accepted++; first ??= last; } }
+    return { accepted, first, last };
+  };
+  // Salarié : 50 au plus par personne et par jour, même avec une limite de 100000.
+  const gR = await glob('rapide'), gD = await glob('documents');
+  await as(SAM);
+  const sal = await loop('salarie', 'rapide', 50, 80);
+  check(sal.accepted === 50 && sal.first.remaining === 49 && sal.last.ok === false && sal.last.raison === 'quota' && sal.last.limite === 50,
+    `salarié : limite 100000 bornée à 50 en base (${sal.accepted} demandes acceptées en 80 appels directs)`);
+  await root();
+  check((await glob('rapide')) - gR === 50, 'salarié : le compteur global avance de 50 AU PLUS (son quota), pas un de plus après les refus');
+  // Bureau : 200 au plus par entreprise et par jour.
+  await as(ADMIN2);
+  const bur = await loop('bureau', 'rapide', 200, 260);
+  check(bur.accepted === 200 && bur.first.remaining === 199 && bur.last.ok === false && bur.last.raison === 'quota' && bur.last.limite === 200,
+    `bureau : limite 100000 bornée à 200 en base (${bur.accepted} demandes acceptées en 260 appels directs)`);
+  await root();
+  check((await glob('rapide')) - gR === 250, 'bureau : le compteur global avance de 200 AU PLUS par entreprise (250 au total avec le salarié ci-dessus)');
+  // Bulletin : 100 au plus par entreprise et par jour.
+  await as(ADMIN);
+  const bul = await loop('bulletin', 'documents', 100, 140);
+  check(bul.accepted === 100 && bul.first.remaining === 99 && bul.last.ok === false && bul.last.raison === 'quota' && bul.last.limite === 100,
+    `bulletin : limite 100000 bornée à 100 en base (${bul.accepted} lectures acceptées en 140 appels directs)`);
+  await root();
+  check((await glob('documents')) - gD === 100, 'bulletin : le compteur global « documents » avance de 100 AU PLUS');
+  check((await n(`SELECT reads AS n FROM public.ai_bulletin_usage WHERE company_id = '${CO}'`)) === 100, 'bulletin : le quota de l’entreprise s’arrête à 100');
+  // Les défauts des fonctions Edge (50 / 20 / 100) restent sous ces maxima : l'usage normal n'est jamais rogné.
+  const dflt = (f, name) => Number(new RegExp(`${name}\\s*=\\s*(\\d+)`).exec(fs.readFileSync(path.join(here, '..', 'functions', f), 'utf8'))?.[1]);
+  const [dB, dS, dP] = [dflt('_shared/assistant-core.ts', 'DEFAULT_DAILY_LIMIT'), dflt('_shared/worker-assistant-core.ts', 'DEFAULT_WORKER_DAILY_LIMIT'), dflt('payslip-read/index.ts', 'DEFAULT_DAILY_LIMIT')];
+  check(dB > 0 && dS > 0 && dP > 0 && dB <= 200 && dS <= 50 && dP <= 100, `défauts des fonctions Edge lus dans le code (${dB} bureau, ${dS} salarié, ${dP} bulletin) ≤ maxima en base (200 / 50 / 100)`);
+  // Limite négative : bornée à 0, refusée.
+  await as(ADMIN2);
+  check((await ctx('bureau', -5)).raison === 'quota', 'quota négatif : borné à 0, refusé');
+  // Plafond global énorme ou négatif : borné à [0 ; 100 000].
+  await root();
   await db.exec(`UPDATE public.ai_project_usage SET requests = 100000 WHERE tier = 'rapide'`);
   await as(ADMIN);
-  const p1 = await ctx('bureau', 50, 'rapide', HUGE);
+  const p1 = await ctx('bureau', 50, 'rapide', 2147483647);
   check(p1.ok === false && p1.raison === 'pause', 'plafond global énorme passé en direct : borné à 100 000, donc « pause » quand même');
   const p2 = await ctx('bureau', 50, 'documents', -5);
   check(p2.ok === false && p2.raison === 'pause', 'plafond négatif : borné à 0, « pause »');
   await root();
-  await db.exec(`UPDATE public.ai_project_usage SET requests = ${g0 + 500} WHERE tier = 'rapide'`);
-  // Quota d'entreprise énorme : borné à 500.
-  await db.exec(`UPDATE public.assistant_usage SET questions = 500 WHERE company_id = '${CO2}'`);
-  await as(ADMIN2);
-  const q1 = await ctx('bureau', HUGE);
-  check(q1.ok === false && q1.raison === 'quota' && q1.limite === 500, 'quota d’entreprise énorme passé en direct : borné à 500');
-  check((await ctx('bureau', -5)).raison === 'quota', 'quota négatif : borné à 0, refusé');
-  await root();
+  await db.exec(`UPDATE public.ai_project_usage SET requests = ${gR + 250} WHERE tier = 'rapide'`);
   await db.exec(`UPDATE public.assistant_usage SET questions = 1 WHERE company_id = '${CO2}'`);
-  // Quota de bulletins énorme : borné à 500 aussi.
-  await db.exec(`UPDATE public.ai_bulletin_usage SET reads = 500 WHERE company_id = '${CO}'`);
-  await as(ADMIN);
-  check((await ctx('bulletin', HUGE)).raison === 'quota', 'quota de bulletins énorme passé en direct : borné à 500');
-  await root();
   await db.exec(`UPDATE public.ai_bulletin_usage SET reads = 2 WHERE company_id = '${CO}'`);
 }
 

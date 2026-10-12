@@ -65,7 +65,7 @@ Côtés : `bureau` = admin ; `salarie` = salarié ou chef d'équipe ; `bulletin`
   du jour est atteint : « L'assistant est en pause jusqu'à demain… », **aucun appel au modèle**.
 - Il n'avance **que si le quota de la personne / de l'entreprise a laissé passer** (même transaction, ligne verrouillée) : une demande refusée ne compte pas,
   et un utilisateur qui appelle la fonction en direct ne peut pas user le compteur au-delà de **son propre quota**.
-- Les limites passées par l'appelant sont **bornées en base** (quota 500 par jour, plafond global 100 000).
+- Les limites passées par l'appelant sont **bornées en base, par côté** : quota du jour 200 (bureau, par entreprise), 50 (salarié, par personne), 100 (bulletin, par entreprise), plafond global 100 000. Les défauts des fonctions (50 / 20 / 100) restent en dessous : un membre qui appelle la fonction en direct ne peut jamais pousser le compteur global au-delà de ce que l'usage normal de son quota permet.
 - La lecture d'un bulletin, qui n'avait aucun quota, en reçoit un par entreprise et par jour (table `ai_bulletin_usage`, secret facultatif
   `PAYSLIP_DAILY_LIMIT`, 100 par défaut). Les secrets `ASSISTANT_DAILY_LIMIT` (50) et `WORKER_ASSISTANT_DAILY_LIMIT` (20) ne changent pas.
 - Une phrase que l'assistant sait traiter sans modèle compte quand même (le quota est pris avant de lire les données) : le plafond est donc prudent.

@@ -72,9 +72,12 @@
 -- SÉCURITÉ :
 --   · la personne ne choisit ni son entreprise ni son rôle : tout est lu d'après
 --     auth.uid() ; une autre entreprise ne touche jamais nos lignes ;
---   · les limites passées par l'appelant sont BORNÉES en base (quota : 500 par
---     jour ; plafond global : 100 000) : appeler la fonction en direct avec une
---     limite énorme ne fait que consommer SON propre quota, rien de plus ;
+--   · les limites passées par l'appelant sont BORNÉES en base, par côté (quota du
+--     jour : bureau 200 par entreprise, salarié 50 par personne, bulletin 100 par
+--     entreprise ; plafond global : 100 000), au-dessus des valeurs d'usage normal
+--     (50 / 20 / 100 par défaut côté fonctions Edge) : appeler la fonction en
+--     direct avec une limite énorme ne fait que consommer SON propre quota, et ne
+--     peut jamais pousser le compteur global au-delà de ce maximum ;
 --   · anon : aucun droit ; les deux compteurs sont fermés à tous (RLS sans
 --     policy, droits retirés) ; seule la fonction les écrit ; la clé de service
 --     peut les lire et les écrire, jamais les vider ;
@@ -127,7 +130,7 @@ GRANT SELECT, INSERT, UPDATE ON public.ai_bulletin_usage TO service_role;
 
 -- ── Qui je suis + quota + plafond global, en un aller-retour, avec le jeton de la personne ──
 -- p_side         'bureau' (admin) | 'salarie' (worker, lead) | 'bulletin' (admin, payslip-read)
--- p_limit        quota du jour (secret de la fonction Edge), borné à 500 ici
+-- p_limit        quota du jour (secret de la fonction Edge), borné ici selon le côté : bureau 200, salarie 50, bulletin 100
 -- p_tier         'rapide' | 'documents' : le modèle qui va servir
 -- p_global_limit plafond du jour pour tout le projet, borné à 100 000 ici ; NULL = pas de plafond
 -- Rend { ok: true, user_id, company_id, role, ai_enabled, used, remaining, projet_used }
@@ -146,7 +149,8 @@ DECLARE
   v_role  text;
   v_on    boolean;
   v_ai    boolean;
-  v_limit integer := least(greatest(coalesce(p_limit, 0), 0), 500);
+  v_max   integer := CASE p_side WHEN 'bureau' THEN 200 WHEN 'salarie' THEN 50 WHEN 'bulletin' THEN 100 ELSE 0 END;
+  v_limit integer := least(greatest(coalesce(p_limit, 0), 0), v_max);
   v_glim  integer := CASE WHEN p_global_limit IS NULL THEN NULL ELSE least(greatest(p_global_limit, 0), 100000) END;
   v_used  integer := NULL;
   v_g     integer := NULL;
