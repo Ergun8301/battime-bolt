@@ -53,6 +53,10 @@ export interface DictationHandlers {
   onState: (listening: boolean) => void;
   /** Micro refusé ou indisponible : message court pour l'utilisateur. */
   onError?: (message: string) => void;
+  /** Langue de la reconnaissance (« fr-FR » par défaut ; « tr-TR » pour un salarié qui parle turc). */
+  lang?: string;
+  /** Le navigateur ne sait pas dicter dans cette langue : le panneau revient à la langue d'avant. */
+  onLangUnsupported?: () => void;
 }
 
 /**
@@ -118,7 +122,7 @@ export class Dictation {
   private open() {
     if (!this.want) return;
     const rec = new this.Ctor();
-    rec.lang = 'fr-FR';
+    rec.lang = this.h.lang ?? 'fr-FR';
     rec.continuous = true;
     rec.interimResults = true;
     rec.maxAlternatives = 1;
@@ -149,6 +153,16 @@ export class Dictation {
         this.close(true);
         this.h.onState(false);
         this.h.onError?.(code === 'audio-capture' ? 'Micro introuvable.' : 'Micro refusé : autorisez-le dans les réglages du navigateur.');
+      }
+      if (code === 'language-not-supported') {
+        // Inutile de relancer : le navigateur répondrait la même chose à chaque tour.
+        this.want = false;
+        this.close(true);
+        this.h.onState(false);
+        this.h.onError?.((this.h.lang ?? '').indexOf('tr') === 0
+          ? 'La dictée en turc n’est pas disponible sur cet appareil. Écrivez votre message, ou changez la langue du clavier.'
+          : 'Cette langue n’est pas disponible pour la dictée sur cet appareil. Écrivez votre message.');
+        this.h.onLangUnsupported?.();
       }
       // « no-speech », « network », « aborted » : la fin de séance suit, on relancera.
     };

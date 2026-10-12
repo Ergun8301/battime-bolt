@@ -19,7 +19,7 @@
 // Lot 1 (heures sûres) : tout ce qui RETIRE ou REMPLACE (isRemoval) passe
 // d'abord par une carte de confirmation qui dit ce qui part ; « Annuler »
 // reste disponible après.
-import { calendarForPrompt, cleanName, cleanSpoken, cleanTitle, dayPart, parseDateFr, parseTimeFr } from './fr-langue.ts';
+import { calendarForPrompt, cleanName, cleanSpoken, cleanTitle, dateAVenir, dayPart, parseDateFr, parseTimeFr, plageAVenir } from './fr-langue.ts';
 import { REASON_MAX, reasonOk } from './office-edits.ts';
 import { OFFICE_DOMAINS, pickTools } from './tool-domains.ts';
 
@@ -747,6 +747,15 @@ function hhmm(v: unknown): string {
 function isoDate(v: unknown): string { const s = str(v, 10); return ISO.test(s) ? s : ''; }
 /** Date ISO, ou dite en français (« jeudi », « demain », « le 12 ») : jamais devinée au hasard. */
 function dateOf(v: unknown, ctx: ActionContext): string { return isoDate(v) || (typeof v === 'string' ? parseDateFr(v, ctx.today) : ''); }
+/**
+ * Un JOUR DU PLANNING (affecter, déplacer, retirer une intervention, effacer le planning). Le modèle donne parfois un jour déjà
+ * passé pour un nom de jour seul (« lundi » → le lundi de la semaine en cours) : si la phrase nomme ce jour sans marqueur de
+ * passé, c'est la PROCHAINE occurrence (aujourd'hui compris). Voir dateAVenir. Jamais pour les absences et congés, les heures,
+ * les dépenses ou les échéances : ils peuvent être rétroactifs.
+ */
+const dateJour = (v: unknown, ctx: ActionContext): string => dateAVenir(dateOf(v, ctx), ctx.demande, ctx.today);
+/** Une plage de jours du planning (« de lundi à mercredi ») : même règle, du ≤ au. */
+const plageJours = (du: unknown, au: unknown, ctx: ActionContext) => plageAVenir(dateOf(du, ctx), dateOf(au, ctx), ctx.demande, ctx.today);
 
 /**
  * Un nom dit → UN identifiant de la liste, sinon null (inconnu ou ambigu :
@@ -1010,7 +1019,7 @@ export function prepare(type: string, raw: Record<string, unknown>, ctx: ActionC
     }
     case 'affecter_planning': {
       const s = str(raw.salarie, 80), c = str(raw.chantier, 120), lieu = cleanName(str(raw.lieu, 80));
-      const dates = (Array.isArray(raw.dates) ? raw.dates : [raw.dates]).map((x) => dateOf(x, ctx)).filter(Boolean);
+      const dates = (Array.isArray(raw.dates) ? raw.dates : [raw.dates]).map((x) => dateJour(x, ctx)).filter(Boolean);
       // Titre propre : l'objet court de l'intervention, jamais la phrase dictée.
       let objet = cleanTitle(str(raw.objet, 200) || str(raw.note, 200));
       const moment = dayPart(`${str(raw.moment, 40)} ${str(raw.debut, 20)}`);
@@ -1063,7 +1072,7 @@ export function prepare(type: string, raw: Record<string, unknown>, ctx: ActionC
     case 'modifier_intervention': {
       const s = str(raw.salarie, 80);
       const uid = resolveSalarie(s, ctx);
-      const date = dateOf(raw.date, ctx) || ctx.today;
+      const date = dateJour(raw.date, ctx) || ctx.today;
       const cid = str(raw.chantier, 120) ? resolveChantier(str(raw.chantier, 120), ctx) : null;
       const name = (id: string | null) => ctx.chantiers.find((c) => c.id === id)?.nom ?? 'Chantier';
       const choix: SlotChoice[] = ctx.planning
@@ -1073,7 +1082,7 @@ export function prepare(type: string, raw: Record<string, unknown>, ctx: ActionC
       const heure = str(raw.heure, 20);
       d = {
         type, user_id: uid, salarie_texte: s, date, choix, planning_id: choix.length === 1 ? choix[0].id : null,
-        nouvelle_date: dateOf(raw.nouvelle_date, ctx), nouveau_user_id: ns ? resolveSalarie(ns, ctx) : null,
+        nouvelle_date: dateJour(raw.nouvelle_date, ctx), nouveau_user_id: ns ? resolveSalarie(ns, ctx) : null,
         debut: hhmm(heure) || parseTimeFr(heure) || dayPart(heure)?.debut || '',
         note: typeof raw.note === 'string' && raw.note.trim() ? cleanTitle(str(raw.note, 200)) : null,
       };
@@ -1177,7 +1186,7 @@ export function prepare(type: string, raw: Record<string, unknown>, ctx: ActionC
       const s = str(raw.salarie, 80);
       const moi = /^(moi|me|je)$/.test(norm(s).trim());
       const uid = moi && ctx.me ? ctx.me : s ? resolveSalarie(s, ctx) : null;
-      const date = dateOf(raw.date, ctx);
+      const date = dateJour(raw.date, ctx);
       // Un salarié nommé : SEULEMENT ses cases (jamais celles des collègues).
       const who = uid ?? (s ? salariesNamed(s, ctx) : null);
       const choix = slotsMatching(ctx, who, date, `${str(raw.chantier, 120)} ${str(raw.lieu, 80)}`, who != null);
@@ -1192,8 +1201,10 @@ export function prepare(type: string, raw: Record<string, unknown>, ctx: ActionC
       const moi = /^(moi|me|je)$/.test(norm(s).trim());
       const uid = equipe || !s ? null : moi && ctx.me ? ctx.me : resolveSalarie(s, ctx);
       const wk = weekRange(str(raw.semaine, 40), ctx);
-      const du = dateOf(raw.du, ctx) || wk?.du || '';
-      const au = dateOf(raw.au, ctx) || wk?.au || du;
+      // Planning (effacer) : un jour passé sans marqueur est une erreur du modèle. Une ABSENCE retirée peut être passée : jamais déplacée.
+      const p = type === 'effacer_planning' ? plageJours(raw.du, raw.au, ctx) : { du: dateOf(raw.du, ctx), au: dateOf(raw.au, ctx) };
+      const du = p.du || wk?.du || '';
+      const au = p.au || wk?.au || du;
       d = { type, user_id: uid, salarie_texte: equipe ? '' : s, du, au } as ActionDraft;
       break;
     }
@@ -1544,17 +1555,17 @@ export const ASSISTANT_FUNCTIONS = [
   // ── Lot 8 : revenir en arrière ──
   {
     name: 'supprimer_intervention',
-    description: 'Retirer / enlever / supprimer UNE intervention (une case) du planning.',
+    description: 'Retirer / enlever / supprimer UNE intervention (une case) du planning : un salarié (ou un chantier) et UN seul jour, par exemple « retire Marc du planning mardi », « enlève Sofiane de la Pizzeria Exemple jeudi ». « Vide / efface le planning », plusieurs jours, une période, une semaine, toute l’équipe → effacer_planning.',
     parameters: { type: 'object', properties: {
-      salarie: S('Salarié prévu (« moi » pour la personne qui parle)'), date: S('Jour, aaaa-mm-jj'),
+      salarie: S('Salarié prévu (« moi » pour la personne qui parle)'), date: S('Jour, aaaa-mm-jj. Un nom de jour seul (« mardi ») = le PROCHAIN jour de ce nom du CALENDRIER, aujourd’hui compris ; jamais un jour déjà passé, sauf s’il est dit (« dernier », « hier »).'),
       chantier: S('Client ou chantier, s’il est dit'), lieu: S('Lieu ou ville dit (« l’intervention à Lyon »)'),
     }, required: [] },
   },
   {
     name: 'effacer_planning',
-    description: 'Effacer / vider le planning (les interventions, pas les absences) d’UN salarié ou de TOUTE l’équipe sur un jour, une période ou une semaine.',
+    description: 'Effacer / VIDER le planning (les interventions, pas les absences) d’UN salarié sur plusieurs jours, une période ou une semaine, ou de TOUTE l’équipe (même un seul jour) : « vide », « efface le planning ». « Retire / enlève <salarié> du planning <un jour> » (UN seul jour, une case) → supprimer_intervention, pas cet outil.',
     parameters: { type: 'object', properties: {
-      salarie: S('Salarié ; vide = toute l’équipe'), du: S('Premier jour, aaaa-mm-jj'), au: S('Dernier jour, aaaa-mm-jj'),
+      salarie: S('Salarié ; vide = toute l’équipe'), du: S('Premier jour, aaaa-mm-jj. Un nom de jour seul (« mardi ») = le PROCHAIN jour de ce nom du CALENDRIER, aujourd’hui compris ; jamais un jour déjà passé, sauf s’il est dit (« dernier », « hier »).'), au: S('Dernier jour, aaaa-mm-jj (même règle : le PROCHAIN jour de ce nom du CALENDRIER, jamais un jour déjà passé).'),
       semaine: S('« prochaine », « en cours » ou un jour de la semaine voulue, si c’est une semaine entière'),
     }, required: [] },
   },
@@ -1713,6 +1724,14 @@ export function actionAnswer(a: AssistantAction, ctx: ActionContext): string {
   return a.problems.length ? 'J’ai préparé l’action : complétez ce qui manque, puis confirmez.' : 'Vérifiez, puis confirmez.';
 }
 
+/** Un bulletin lu par le modèle de secours (plus léger) : à vérifier avant de confirmer. */
+export const SECOURS_BULLETIN = 'Bulletin lu par le modèle de secours (plus léger) : contrôlez chaque chiffre avant de confirmer.';
+export function avertirSecours(r: LocalReply, secours: boolean): LocalReply {
+  const d = r.action?.draft;
+  const bulletin = d?.type === 'cout_reel' || (d?.type === 'inviter_salarie' && !!d.bulletin);
+  return secours && bulletin ? { ...r, answer: `${r.answer} ${SECOURS_BULLETIN}` } : r;
+}
+
 export const ACTION_SUGGESTIONS = [
   'Ajouter un salarié',
   'Faire le planning de la semaine prochaine',
@@ -1738,6 +1757,7 @@ Règles :
 - « Rajoute-moi », « mets-moi » : salarie = « moi ». Un lieu sans client (« à Lyon ») → lieu.
 - Ne dis jamais « je n'ai pas accès » : guide, ou fais l'action.
 - Enlever, retirer, supprimer, effacer, vider, annuler → la fonction « supprimer_… » ou « effacer_planning » qui correspond (une intervention, le planning d’un salarié ou de toute l’équipe sur une période, une absence, un document, une dépense, une habilitation, une invitation). Clients, chantiers et salariés : archiver_client / archiver_salarie, jamais supprimer.
+- « Retire / enlève <salarié> du planning <un jour> » ou « enlève <salarié> de <chantier> <un jour> » (UN seul jour, une case) → supprimer_intervention ; « vide / efface le planning » (plusieurs jours, une période, une semaine ou l’équipe) → effacer_planning.
 - INTERDIT d’effacer : les heures envoyées ou validées, un mois clôturé, un export de paie. Si on le demande → « repondre » en UNE phrase : ce n’est pas possible, et qu’on peut corriger les heures à la place.
 - Jamais de paiement, jamais de n° de sécurité sociale.
 - FICHIER joint : bulletin d'un nouveau salarié → inviter_salarie ; bulletin d'un salarié existant → cout_reel ; devis d'un NOUVEAU client → creer_chantier ; « ajoute la dépense » → ajouter_depense ; tout document ou photo à classer / ranger sur un chantier existant (facture, devis, plan, PV, photo) → ranger_document, avec la catégorie dite ou devinée d'après le contenu (facture acquittée / payée → facture_payee).

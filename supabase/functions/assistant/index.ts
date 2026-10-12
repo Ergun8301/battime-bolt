@@ -11,8 +11,8 @@
 // quota et le plafond global viennent de public.assistant_context, appelée avec
 // SON jeton ; tout le reste est lu avec ce même client. Un SEUL appel au modèle
 // par demande (rapide, ou documents si un fichier est joint). Le corps
-// { statut: true } rend seulement la formule (bandeau « Mode essai »), sans
-// rien compter ni appeler le modèle.
+// { statut: true } rend seulement la formule (lue par le support BEMEXO, jamais
+// affichée aux patrons ni aux salariés), sans rien compter ni appeler le modèle.
 //
 // Lot 7 : la réponse porte aussi `question` (UNE question s'il manque une info
 // à une action directe) ; l'écran exécute les actions simples tout de suite.
@@ -35,7 +35,7 @@ import { aiKey, callFunction, formuleNom, PAUSE_MESSAGE, plafondProjet, readAtta
 import { loadAssistantContext } from '../_shared/assistant-context.ts';
 import { DEFAULT_DAILY_LIMIT, MAX_QUESTION_CHARS, buildSnapshot, previousDay, type RawData } from '../_shared/assistant-core.ts';
 import {
-  actionPrompt, addDays, buildActionContext, fromFunctionCall, functionsFor, handleActionLocally, mondayOf, questionFor,
+  actionPrompt, addDays, avertirSecours, buildActionContext, fromFunctionCall, functionsFor, handleActionLocally, mondayOf, questionFor,
   resolveSalarie, summarize, findGuide, guideAnswer, guideForPrompt, NAV_ACTIONS, type EntryChoice, type LocalReply, type ActionContext,
 } from '../_shared/assistant-actions-core.ts';
 
@@ -45,7 +45,7 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
-// Lot 6 : la formule active part avec chaque réponse (bandeau « Mode essai »).
+// Lot 6 : la formule active part avec chaque réponse (interne : l'écran du support seul la montre).
 const FORMULE = formuleNom(Deno.env);
 const json = (body: Record<string, unknown>, status = 200) =>
   new Response(JSON.stringify({ ...body, formule: FORMULE }), { status, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
@@ -195,7 +195,9 @@ Deno.serve(async (req) => {
         });
       }
     }
-    return reply(fromFunctionCall(r.call.name, r.call.args, ctx, choices), ctx, remaining);
+    const out = fromFunctionCall(r.call.name, r.call.args, ctx, choices);
+    // Un bulletin lu par le modèle de secours (plus léger) : à vérifier avant de confirmer.
+    return reply(avertirSecours(out, !!r.secours), ctx, remaining);
   } catch {
     console.error('[assistant] erreur interne');
     return json({ error: 'Erreur serveur' }, 500);

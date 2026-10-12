@@ -27,7 +27,7 @@ connaît le **vrai coût horaire** du salarié et la **vraie rentabilité** des 
 ## IA
 
 - `supabase/functions/_shared/ai-provider.ts` : seul fichier à changer pour un autre fournisseur.
-- Modèle « documents » d'`AI_CONFIG` (lot 6, voir `docs/ia-v2.md` : `AI_MODEL` n'est plus lu), clé `AI_API_KEY` (repli `GEMINI_API_KEY`). Quota : 100 lectures par entreprise et par jour (`PAYSLIP_DAILY_LIMIT`). Bandeau « Mode essai » tant que la formule n'est pas « payant ».
+- Modèle « documents » d'`AI_CONFIG` (lot 6, voir `docs/ia-v2.md` : `AI_MODEL` n'est plus lu), clé `AI_API_KEY` (repli `GEMINI_API_KEY`). Quota : 100 lectures par entreprise et par jour (`PAYSLIP_DAILY_LIMIT`). Aucun bandeau à l'écran (retiré à la demande d'Ergun) : l'avertissement « Gemini gratuit = données fictives » vit dans `docs/ia-v2.md`.
 - Clé AI Studio : format « AQ.… » (auth key, depuis le 28/05/2026) ou ancien « AIza… » — les deux marchent. Envoyée dans l'en-tête `x-goog-api-key`, jamais dans l'URL, jamais dans les logs (test dédié).
 - Réponse JSON imposée + contrôle : total employeur > brut, heures entre 1 et 250 ; sinon champ vide « à vérifier ».
 - Sans clé : « Lecture automatique indisponible, saisissez les chiffres » — la saisie manuelle marche.

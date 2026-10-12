@@ -314,3 +314,17 @@ Deno.test('Lot 1 — salarié : fichier joint → seulement « ranger » et « r
   const r = await callFunction({ prompt: 'x', functions: workerFunctionsFor(true), file: { mime: 'application/pdf', base64: 'JVBERi0xLjQK' } }, env, fake);
   eq(r.ok, false, 'un PDF qui « demande » d’effacer des heures : refusé');
 });
+
+// ── Congé : peut être rétroactif (« en congé lundi et mardi » dit un mercredi) → la date donnée par le modèle n'est JAMAIS déplacée ──
+Deno.test('Dates salarié : congé demandé ou déplacé, jours passés conservés ; heures passées conservées', () => {
+  const snap = (demande: string): WorkerSnapshot => ({ ...BTP, aujourdhui: '2026-10-01', demande });
+  const du = (type: string, raw: Record<string, unknown>, demande: string) => { const d = prepareWorkerAction(type, raw, snap(demande), IDLE)!.draft as unknown as Record<string, string>; return [d.du, d.au]; };
+  for (const type of ['demander_conge', 'modifier_conge']) {
+    const raw = { type: 'conge', du: '2026-09-28', au: '2026-09-30' };
+    eq(du(type, raw, 'je voudrais poser un congé de lundi à mercredi'), ['2026-09-28', '2026-09-30'], `${type} : lundi→mercredi passés conservés`);
+    eq(du(type, { ...raw, du: '2026-10-05', au: '2026-10-07' }, 'je voudrais poser un congé de lundi à mercredi'), ['2026-10-05', '2026-10-07'], `${type} : dates à venir intactes`);
+  }
+  // Les heures du salarié sont des jours passés : jamais déplacées.
+  const h = fromWorkerCall('declarer_heures', { date: '2026-09-28', lignes: [{ chantier: 'Villa Dupont', debut: '7:30', fin: '12:00' }] }, snap('lundi 7h30 12h villa dupont'), IDLE) as { kind: string; draft: { date: string } };
+  eq([h.kind, h.draft.date], ['draft', '2026-09-28'], 'heures : le lundi passé reste');
+});

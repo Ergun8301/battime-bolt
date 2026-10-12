@@ -17,7 +17,7 @@ import { parisHHmm } from '@/lib/utils';
 import { markEntryReserve, updateEntryTimes } from '@/lib/worker-entry';
 import { removeWorksiteDocument, uploadWorksiteDocument } from '@/lib/chantier-docs';
 import { copyLinesTo, sendWorkerDay, setDayMealOnline } from '@/lib/worker-day';
-import { createWorksite } from '@/lib/planning-writes';
+import { createWorksiteSalarie } from '@/lib/worker-worksite';
 import { geoInfoSeen } from '@/lib/position-info';
 import { MEAL_OFF_MESSAGE, readMealEnabled } from '@/lib/meal-setting';
 import type { WorkerActionDraft } from '@/supabase/functions/_shared/worker-assistant-core';
@@ -297,10 +297,13 @@ export function makeWorkerExecutor(user: { id: string; company_id: string }): Wo
           };
           break;
         }
-        case 'nouveau_chantier':
-          await createWorksite(user.company_id, { client_name: d.nom, city: d.ville });
+        case 'nouveau_chantier': {
+          // Créé tel que dit (« ajoute le chantier X à Lyon » est explicite) : le serveur a déjà refusé l'identique exact. Adresse, code postal
+          // et travaux seulement s'ils ont été dits ; sans eux, exactement l'ancien insert (nom + ville).
+          await createWorksiteSalarie(user.company_id, { nom: d.nom, ville: d.ville, adresse: d.adresse ?? '', code_postal: d.code_postal ?? '', description: d.description ?? '' });
           message = `Chantier « ${d.nom} » ajouté.`;
           break;
+        }
         // ── Lot 8 : effacer ce qu'il a saisi. Tout est LU avant : « Annuler » remet à l'identique. ──
         case 'effacer_heures': {
           let q = supabase.from('time_entries').select('*').eq('user_id', user.id).eq('work_date', d.date).eq('status', 'draft').eq('locked', false).is('submitted_at', null);

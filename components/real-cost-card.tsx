@@ -4,15 +4,12 @@
 //
 // Déposer un bulletin → l'IA lit 4 chiffres → l'admin les vérifie → « Valider ».
 // RIEN n'est enregistré avant ce clic, et le fichier n'est jamais conservé.
-// Lot 6 : le bandeau « Mode essai » est visible dès l'ouverture, avant tout dépôt
-// (seule la réponse « payant » de la fonction le retire).
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FileUp, Keyboard, Loader2, Trash2, ShieldCheck, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/components/auth-provider';
 import { InfoTip } from '@/components/ui/info-tip';
-import TrialBanner from '@/components/trial-banner';
 import {
   demoCostSource, isCostDemo, supabaseCostSource, useAiEnabled,
   parseAmount, realHourlyCost, slipHourlyCost, validateFigures,
@@ -49,7 +46,6 @@ export default function RealCostCard({ source, companyId, userId, firstName, onC
   const [notice, setNotice] = useState<string | null>(null);
   const [reading, setReading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [formule, setFormule] = useState<string | null | undefined>(undefined);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -57,12 +53,6 @@ export default function RealCostCard({ source, companyId, userId, firstName, onC
     setSlips(s); setFund(f);
   }, [source, companyId, userId]);
   useEffect(() => { load(); }, [load]);
-  // Lot 6 : tant que la formule est inconnue (ou si la fonction ne répond pas), le bandeau reste affiché.
-  useEffect(() => {
-    let stale = false;
-    source.status?.().then((f) => { if (!stale && f) setFormule(f); }).catch(() => {});
-    return () => { stale = true; };
-  }, [source]);
 
   const onFile = async (file: File | undefined) => {
     if (!file) return;
@@ -121,7 +111,6 @@ export default function RealCostCard({ source, companyId, userId, firstName, onC
         <p className="text-sm font-semibold">Coût réel</p>
         <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground"><ShieldCheck className="h-3.5 w-3.5" /> Visible par le bureau uniquement</span>
       </div>
-      <TrialBanner formule={formule} className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-snug text-amber-900" />
 
       {slips === null ? (
         <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />

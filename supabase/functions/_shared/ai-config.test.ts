@@ -4,7 +4,7 @@
 //   npm run test:ia-config
 import {
   aiKey, callFunction, DELAIS, extractJson, formuleNom, isProModel, MODELES_PAR_DEFAUT, PAUSE_MESSAGE, PLAFONDS_ESSAI,
-  plafondProjet, readConfig, tierFor,
+  plafondProjet, PROFIL_LONG, readConfig, REPOS_MS, reposReinit, tierFor,
 } from './ai-provider.ts';
 import { loadAssistantContext, type RpcClient } from './assistant-context.ts';
 
@@ -14,6 +14,7 @@ const okJson = () => new Response(JSON.stringify({ candidates: [{ content: { par
 type Plan = Record<string, { ms?: number; status?: number; reject?: boolean; bad?: boolean }>;
 interface Seen { model: string; body: Record<string, unknown>; raw: string; start: number; end: number }
 function fakeGemini(plan: Plan = {}, reply = okCall) {
+  reposReinit(); // chaque scénario repart à neuf : aucun modèle mis de côté par le précédent
   const calls: Seen[] = [];
   const fetchImpl = (url: string, init: RequestInit) => {
     const model = decodeURIComponent(/models\/([^:]+):/.exec(url)![1]);
@@ -178,6 +179,34 @@ Deno.test('Gemini 3.x : ni temperature, ni top_p, ni top_k ; thinkingLevel seul,
   }
 });
 
+Deno.test('Profil long : « medium » sur le rapide, « low » sur le secours, fenêtres 14 s / 22 s, aucun paramètre retiré de Gemini 3 ; le profil par défaut ne bouge pas', async () => {
+  if (JSON.stringify(PROFIL_LONG) !== JSON.stringify({ reflexion: 'medium', reflexionSecours: 'low', delais: { premier: 14000, total: 22000 } })) throw new Error(JSON.stringify(PROFIL_LONG));
+  if (JSON.stringify(DELAIS.rapide) !== JSON.stringify({ premier: 5000, total: 8000 })) throw new Error('délais du profil court inchangés');
+  const niveau = (c: Seen) => (c.body.generationConfig as { thinkingConfig: Record<string, unknown> }).thinkingConfig;
+  // Long, le rapide répond : UN appel, en « medium », ni temperature ni top_p ni budget de réflexion.
+  const a = fakeGemini();
+  const ra = await callFunction({ prompt: 'x', functions: FN, profil: 'long', maxCalls: 4 }, env(KEY), a.fetchImpl);
+  if (!ra.ok || names(a.calls) !== R || JSON.stringify(niveau(a.calls[0])) !== '{"thinkingLevel":"medium"}') throw new Error(`rapide long : ${names(a.calls)} ${JSON.stringify(a.calls[0]?.body)}`);
+  // Long, erreur du rapide : le secours en « low » (jamais « medium » ni « minimal »).
+  const b = fakeGemini({ [R]: { status: 503 } });
+  const rb = await callFunction({ prompt: 'x', functions: FN, profil: 'long', maxCalls: 4 }, env(KEY), b.fetchImpl);
+  if (!rb.ok || rb.secours !== true || names(b.calls) !== `${R},${S}` || JSON.stringify(niveau(b.calls[0])) !== '{"thinkingLevel":"medium"}' || JSON.stringify(niveau(b.calls[1])) !== '{"thinkingLevel":"low"}') throw new Error(`secours long : ${names(b.calls)}`);
+  for (const c of [...a.calls, ...b.calls]) {
+    if (/temperature|top_?p|top_?k/i.test(c.raw) || /thinkingBudget|thinking_budget/i.test(c.raw)) throw new Error(`paramètre retiré de Gemini 3 : ${c.raw.slice(0, 200)}`);
+  }
+  // Même appel sans profil : « minimal » puis « minimal » (secours), comme avant.
+  const c = fakeGemini({ [R]: { status: 503 } });
+  await callFunction({ prompt: 'x', functions: FN }, env(KEY), c.fetchImpl);
+  if (JSON.stringify(niveau(c.calls[0])) !== '{"thinkingLevel":"minimal"}' || JSON.stringify(niveau(c.calls[1])) !== '{"thinkingLevel":"minimal"}') throw new Error('profil court : minimal puis minimal');
+  // Un AI_CONFIG de production inchangé (aucun champ nouveau) est toujours lu tel quel, profil long compris.
+  const prod = '{"formule":"essai","rapide":"gemini:gemini-3.5-flash-lite","documents":"gemini:gemini-3.8-flash","secours":"gemini:gemini-3.1-flash-lite","plafonds":{"rapide":400,"documents":15}}';
+  const { out, logs } = await logged(() => readConfig(env({ AI_CONFIG: prod })));
+  if (logs.length || out.rapide.model !== R || out.rapide.reflexion !== 'minimal') throw new Error(`AI_CONFIG de production relu : ${logs.join('|')}`);
+  // Aucune clé de réflexion ni de fenêtre n'est acceptée dans AI_CONFIG (constantes du code, pas de la configuration).
+  const { logs: l2 } = await logged(() => readConfig(env({ AI_CONFIG: '{"profil_long":{"reflexion":"medium"}}' })));
+  if (l2.length !== 1 || !/AI_CONFIG invalide/.test(l2[0])) throw new Error('un champ de profil dans AI_CONFIG doit rester refusé');
+});
+
 Deno.test('Routage : questions ET ordres → UN appel au modèle rapide ; fichier → UN appel au modèle documents', async () => {
   for (const phrase of ['combien d’heures cette semaine ?', 'ajoute une intervention à Lyon pour Kevin jeudi']) {
     const f = fakeGemini();
@@ -259,6 +288,117 @@ Deno.test('Plafond global : réglé dans AI_CONFIG, sous le gratuit de Gemini pa
   if (plafondProjet(env({ AI_CONFIG: 'payant' }), 'documents') !== null) throw new Error('payant : pas de plafond global');
   if (!PAUSE_MESSAGE.startsWith('L’assistant est en pause jusqu’à demain')) throw new Error('message de pause');
   if (DELAIS.rapide.total > 10_000) throw new Error('rapide : réponse en moins de 10 s, secours compris');
+  // Documents : 12 s au premier modèle (il dépassait presque toujours 25 s), 25 s au plus secours compris ; mis de côté 10 min.
+  if (DELAIS.documents.premier !== 12_000 || DELAIS.documents.total > 25_000 || DELAIS.documents.total < DELAIS.documents.premier + 5_000) throw new Error(`documents : ${JSON.stringify(DELAIS.documents)}`);
+  if (REPOS_MS.documents !== 10 * 60_000 || REPOS_MS.rapide !== 0) throw new Error(`repos : ${JSON.stringify(REPOS_MS)}`);
+});
+
+// ── Un modèle « documents » lent ou indisponible est mis de côté 10 min : le secours répond tout de suite ──
+/** Raccourcit les délais d'un niveau le temps d'un scénario (les vraies valeurs sont dans DELAIS : rien de fragile en temps réel). */
+async function avecDelais<T>(tier: 'rapide' | 'documents', d: { premier: number; total: number }, f: () => Promise<T>): Promise<T> {
+  const avant = DELAIS[tier];
+  DELAIS[tier] = d;
+  try { return await f(); } finally { DELAIS[tier] = avant; }
+}
+const SHORT = { premier: 200, total: 2500 }; // le secours garde au moins 1,5 s : 2,5 s au total
+const withFile = { prompt: 'phrase-confidentielle-du-patron', functions: FN, file: PDF };
+
+Deno.test('Repos : documents trop lent → secours, puis 10 min directement au secours (horloge injectée), puis nouvel essai', async () => {
+  await avecDelais('documents', SHORT, async () => {
+    const plan: Plan = { [D]: { ms: 60_000 } };
+    const f = fakeGemini(plan);
+    let t = 5_000_000;
+    reposReinit(() => t);
+    const journal: string[] = [];
+    const appel = async () => { const { out, logs } = await logged(() => callFunction(withFile, env(KEY), f.fetchImpl)); journal.push(...logs); return out; };
+    const a = await appel();
+    if (!a.ok || a.secours !== true || names(f.calls) !== `${D},${S}`) throw new Error(`1er appel : ${names(f.calls)}`);
+    if (f.calls[1].start < f.calls[0].end) throw new Error('le secours est parti avant l’abandon du premier');
+    // Dans les 10 minutes : le modèle lent n'est plus attendu.
+    for (const dt of [1_000, REPOS_MS.documents - 2_000]) {
+      t += dt;
+      const b = await appel();
+      if (!b.ok || b.secours !== true) throw new Error('le secours doit répondre');
+    }
+    if (names(f.calls) !== `${D},${S},${S},${S}`) throw new Error(`pendant le repos : ${names(f.calls)}`);
+    // Après les 10 minutes : on réessaie le modèle « documents » (toujours lent : abandon, secours, et le repos repart).
+    t += 2_000;
+    await appel();
+    if (names(f.calls) !== `${D},${S},${S},${S},${D},${S}`) throw new Error(`après le repos : ${names(f.calls)}`);
+    t += 1_000;
+    await appel();
+    if (names(f.calls) !== `${D},${S},${S},${S},${D},${S},${S}`) throw new Error(`repos renouvelé : ${names(f.calls)}`);
+    // Le modèle « documents » va mieux : il répond après le repos, sans marque « secours », et n'est plus mis de côté.
+    plan[D] = {};
+    t += REPOS_MS.documents + 1;
+    const n = f.calls.length;
+    const c = await appel(), e = await appel();
+    if (!c.ok || c.secours !== undefined || !e.ok || e.secours !== undefined || names(f.calls.slice(n)) !== `${D},${D}`) throw new Error(`rétabli : ${names(f.calls.slice(n))}`);
+    // Les journaux restent techniques : une ligne « [ai] … », jamais le contenu.
+    if (!journal.some((l) => l.includes('au repos')) || journal.some((l) => !l.startsWith('[ai] ') || l.includes('confidentielle'))) throw new Error(`journal : ${journal.join(' | ')}`);
+  });
+});
+
+Deno.test('Repos : seulement pour « lent ou indisponible » (délai, 429, 5xx, 404, injoignable), jamais pour un 400 ni une réponse illisible', async () => {
+  await avecDelais('documents', SHORT, async () => {
+    const deux = async (plan: Plan, req: Parameters<typeof callFunction>[0] = withFile) => {
+      const f = fakeGemini(plan);
+      await logged(async () => { await callFunction(req, env(KEY), f.fetchImpl); await callFunction(req, env(KEY), f.fetchImpl); });
+      return names(f.calls);
+    };
+    for (const fail of [{ status: 429 }, { status: 500 }, { status: 503 }, { status: 404 }, { reject: true }, { ms: 60_000 }]) {
+      const n = await deux({ [D]: fail });
+      if (n !== `${D},${S},${S}`) throw new Error(`${JSON.stringify(fail)} : le modèle devait être mis de côté (${n})`);
+    }
+    // Mauvaise requête / clé refusée : une erreur de réglage, pas une panne passagère → pas de repos, le modèle est réessayé.
+    for (const status of [400, 401, 403]) {
+      const n = await deux({ [D]: { status } });
+      if (n !== `${D},${S},${D},${S}`) throw new Error(`${status} : pas de repos attendu (${n})`);
+    }
+    // Réponse illisible : pas une panne, ni secours ni repos.
+    const bad = await deux({ [D]: { bad: true } });
+    if (bad !== `${D},${D}`) throw new Error(`illisible : ${bad}`);
+    // Le modèle rapide n'est jamais mis de côté (REPOS_MS.rapide = 0) : questions et ordres le réessaient toujours.
+    const r = await deux({ [R]: { status: 503 } }, { prompt: 'x', functions: FN });
+    if (r !== `${R},${S},${R},${S}`) throw new Error(`rapide : ${r}`);
+    // Pas de secours distinct (même modèle) : rien à mettre de côté.
+    const same = fakeGemini({ [S]: { status: 503 } });
+    const cfg = env({ ...KEY, AI_CONFIG: `{"documents":"gemini:${S}"}` });
+    await logged(async () => { await callFunction(withFile, cfg, same.fetchImpl); await callFunction(withFile, cfg, same.fetchImpl); });
+    if (names(same.calls) !== `${S},${S}`) throw new Error(`même modèle : ${names(same.calls)}`);
+  });
+});
+
+Deno.test('Repos : si le secours échoue aussi, le modèle mis de côté est réessayé en dernier recours (avec le temps qui reste)', async () => {
+  await avecDelais('documents', SHORT, async () => {
+    const plan: Plan = { [D]: { ms: 60_000 } };
+    const f = fakeGemini(plan);
+    let t = 7_000_000;
+    reposReinit(() => t);
+    await logged(() => callFunction(withFile, env(KEY), f.fetchImpl)); // D abandonné, S répond : D au repos
+    plan[D] = {}; plan[S] = { status: 503 };
+    t += 60_000;
+    const { out } = await logged(() => callFunction(withFile, env(KEY), f.fetchImpl));
+    if (!out.ok || out.secours !== undefined || names(f.calls) !== `${D},${S},${S},${D}`) throw new Error(`dernier recours : ${names(f.calls)}`);
+    // Tout en panne : échec propre, deux appels au plus, sans « lent » dans le résultat.
+    const g = fakeGemini({ [D]: { status: 503 }, [S]: { status: 503 } });
+    reposReinit(() => t);
+    await logged(() => callFunction(withFile, env(KEY), g.fetchImpl)); // D 503 → repos ; S 503
+    const { out: x } = await logged(() => callFunction(withFile, env(KEY), g.fetchImpl));
+    if (x.ok || JSON.stringify(x) !== '{"ok":false,"reason":"provider_error"}' || names(g.calls) !== `${D},${S},${S},${D}`) throw new Error(`tout en panne : ${names(g.calls)} ${JSON.stringify(x)}`);
+  });
+});
+
+Deno.test('Secours : le résultat porte « secours: true » (appel de fonction ET lecture JSON), jamais quand le modèle du niveau a répondu', async () => {
+  const ok1 = fakeGemini();
+  const a = await callFunction(withFile, env(KEY), ok1.fetchImpl);
+  if (!a.ok || 'secours' in a) throw new Error('modèle du niveau : pas de marque');
+  const f = fakeGemini({ [D]: { status: 503 } });
+  const { out: b } = await logged(() => callFunction(withFile, env(KEY), f.fetchImpl));
+  if (!b.ok || b.secours !== true) throw new Error('secours : marque attendue (appel de fonction)');
+  const g = fakeGemini({ [D]: { status: 503 } }, okJson);
+  const { out: c } = await logged(() => extractJson({ prompt: 'p', schema: {}, file: PDF, tier: 'documents' }, env(KEY), g.fetchImpl));
+  if (!c.ok || c.secours !== true || (c.data as { mois?: string }).mois !== '2026-09') throw new Error('secours : marque attendue (lecture JSON)');
 });
 
 // ── Qui appelle : assistant_context, avec le jeton de la personne ──────────
@@ -355,4 +495,28 @@ Deno.test('Documentation : l’exemple d’AI_CONFIG à copier-coller est valide
   if (c.rapide.model !== R || c.documents.model !== D || c.secours.model !== S || c.formule !== 'essai') throw new Error(JSON.stringify(c));
   for (const m of [R, D, S]) if (!md.includes(m)) throw new Error(`${m} absent de la doc`);
   if (!md.includes('Gemini gratuit = données fictives uniquement ; le payant est obligatoire avant tout vrai client (UE/Suisse)')) throw new Error('avertissement manquant dans la doc');
+  // Plus aucun bandeau à l'écran (demande d'Ergun) : l'encadré de la doc est le seul rappel, il ne doit pas disparaître.
+  if (!md.includes("AVANT LE PREMIER VRAI CLIENT QUI UTILISE L'ASSISTANT")) throw new Error('encadré « avant le premier vrai client » manquant dans la doc');
+});
+
+Deno.test('Aucun bandeau « Mode essai » dans les écrans (retiré à la demande d’Ergun) ; la formule reste lue pour le support', async () => {
+  const racine = new URL('../../../', import.meta.url);
+  const trouves: string[] = [];
+  async function parcourir(rel: string) {
+    for await (const e of Deno.readDir(new URL(rel, racine))) {
+      const p = `${rel}${e.name}`;
+      if (e.isDirectory) { await parcourir(`${p}/`); continue; }
+      if (!/\.(ts|tsx)$/.test(e.name)) continue;
+      const txt = await Deno.readTextFile(new URL(p, racine));
+      // Le texte du bandeau, son composant ou son repère de test : nulle part dans le code des écrans.
+      if (/Gemini gratuit\)|TrialBanner|TRIAL_TEXT|showTrialBanner|data-testid="mode-essai"/.test(txt)) trouves.push(p);
+    }
+  }
+  for (const d of ['app/', 'components/', 'lib/']) await parcourir(d);
+  if (trouves.length) throw new Error(`bandeau « Mode essai » encore présent dans : ${trouves.join(', ')}`);
+  // …mais la lecture de la formule (réservée au support, voir app/support) existe toujours.
+  const f = await Deno.readTextFile(new URL('lib/ia-formule.ts', racine));
+  if (!/export async function iaFormule\(/.test(f) || !/statut: true/.test(f)) throw new Error('lib/ia-formule.ts : iaFormule attendue');
+  const sup = await Deno.readTextFile(new URL('app/support/page.tsx', racine));
+  if (!/iaFormule\('assistant'\)/.test(sup)) throw new Error('app/support/page.tsx : la console du support doit lire la formule');
 });

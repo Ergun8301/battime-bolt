@@ -117,7 +117,7 @@ export default function LeaveRequestDialog({ open, onOpenChange, userId }: Props
         <DialogHeader><DialogTitle>Mes congés</DialogTitle></DialogHeader>
 
         {!adding && (
-          <Button className="w-full font-bold" onClick={() => setAdding(true)}>
+          <Button className="w-full font-bold" data-guide="conges.faire" onClick={() => setAdding(true)}>
             <Plus className="h-4 w-4 mr-1.5" /> Faire une demande
           </Button>
         )}
@@ -125,7 +125,7 @@ export default function LeaveRequestDialog({ open, onOpenChange, userId }: Props
         {adding && (
           <div className="pt-1">
             <span className="bt-lr-l">Type</span>
-            <div className="bt-lr-seg">
+            <div className="bt-lr-seg" data-guide="conges.type">
               {LEAVE_TYPES.map((t) => (
                 <button key={t.key} type="button" className={`bt-lr-segbtn${type === t.key ? ' on' : ''}`} onClick={() => setType(t.key)}>
                   {t.label}
@@ -146,7 +146,7 @@ export default function LeaveRequestDialog({ open, onOpenChange, userId }: Props
             <input className="bt-lr-i" value={note} onChange={(e) => setNote(e.target.value)} placeholder="ex. mariage de ma sœur" />
             <div className="flex flex-wrap gap-2 pt-3">
               <Button variant="outline" onClick={() => setAdding(false)} disabled={saving}>Annuler</Button>
-              <Button className="flex-1 font-bold" onClick={submit} disabled={saving}>
+              <Button className="flex-1 font-bold" data-guide="conges.envoyer" onClick={submit} disabled={saving}>
                 {saving && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Envoyer la demande
               </Button>
             </div>
@@ -169,7 +169,7 @@ export default function LeaveRequestDialog({ open, onOpenChange, userId }: Props
                 {r.status === 'pending' ? 'En attente' : r.status === 'approved' ? 'Acceptée' : 'Refusée'}
               </span>
               {r.status === 'pending' && (
-                <button type="button" onClick={() => cancelRequest(r.id)} title="Annuler ma demande"
+                <button type="button" data-guide="conges.annuler" onClick={() => cancelRequest(r.id)} title="Annuler ma demande"
                   className="shrink-0 text-muted-foreground hover:text-destructive">
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>

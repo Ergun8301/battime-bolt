@@ -5,8 +5,21 @@ Toujours derrière **`companies.ai_enabled`** (rien ne change pour les autres).
 ## 0. Couche IA v2 (lot 6) : un seul réglage, une seule clé
 
 > ⚠️ **Gemini gratuit = données fictives uniquement ; le payant est obligatoire avant tout vrai client (UE/Suisse).**
-> Avec la clé gratuite, Google peut relire et réutiliser ce qui est envoyé. Tant que la formule est « essai »,
-> un bandeau le rappelle dans l'assistant du bureau, l'assistant du salarié et l'écran de lecture d'un bulletin.
+> Avec la clé gratuite, Google peut relire et réutiliser ce qui est envoyé. À la demande d'Ergun, **aucun bandeau** ne le
+> rappelle plus à l'écran (ni chez le patron, ni chez le salarié) : l'avertissement vit ici, dans les PR et dans le plan,
+> et le support BEMEXO voit la formule sur sa console (voir « Pas de bandeau à l'écran » plus bas).
+
+> ## 🛑 AVANT LE PREMIER VRAI CLIENT QUI UTILISE L'ASSISTANT
+>
+> 1. **Passer Gemini en payant avec plafond** : `AI_CONFIG` avec la formule « payant » **et ses `plafonds`**
+>    (`{"formule":"payant","plafonds":{"rapide":N,"documents":N}}` : demandes par jour pour tout le projet, sans `plafonds` il n'y en a aucun en payant),
+>    facturation activée sur la clé, plafond de dépense ou alerte de budget réglé côté Google, et une **clé de test séparée** pour les essais
+>    (jeu d'évaluation, démonstrations) : la clé des vrais clients ne sert qu'aux vrais clients.
+> 2. **Sinon, les données des vrais salariés partent vers une formule gratuite que Google peut relire et réutiliser** (obligation UE/Suisse).
+>    Plus aucun bandeau à l'écran ne le dit : personne ne le verra à notre place.
+> 3. Ensuite : **Supabase Pro**, et la **politique de confidentialité mise à jour** (sous-traitant Google, formule payante).
+>
+> Contrôle : la console `/support` doit afficher « IA : formule payant ».
 
 ### Les deux secrets (Supabase → Edge Functions → Secrets)
 
@@ -45,9 +58,26 @@ Exemple à copier-coller dans `AI_CONFIG` (c'est aussi la valeur par défaut) :
 | secours | `gemini-3.1-flash-lite` | `minimal` | **seulement après** une erreur ou un délai dépassé du premier appel |
 
 - **Un seul appel par demande** en temps normal. Le secours ne part jamais en même temps : fini la « course » entre un modèle fort et un modèle léger.
-- Délais : rapide 5 s puis secours, 8 s au plus au total ; documents 25 s puis secours, 40 s au plus.
+- Délais (`DELAIS` dans `_shared/ai-provider.ts`) : rapide 5 s puis secours, 8 s au plus au total ; documents **12 s** puis secours, **25 s** au plus (c'était 25 s / 40 s : voir le constat ci-dessous).
+- Un modèle « documents » **lent ou indisponible** (délai dépassé, 429, 5xx, 404, injoignable) est **mis de côté 10 minutes** (`REPOS_MS`, variable d'isolat, rien en base) : les lectures suivantes
+  vont tout de suite au secours au lieu de réattendre 12 s. Un 400 (mauvaise requête, clé refusée) ou une réponse illisible ne le met pas de côté. Si le secours échoue aussi,
+  le modèle mis de côté est réessayé avec le temps qui reste. Le modèle « rapide » n'est jamais mis de côté (`REPOS_MS.rapide = 0`).
+- Un résultat obtenu par le **secours** porte `secours: true` : la lecture d'un bulletin (écran « Coût réel » et assistant) le signale **« à vérifier »** (voir plus bas).
 - Corps de la requête Gemini : ni `temperature`, ni `top_p`, ni `top_k` (retirés pour Gemini 3.6 et suivants) ; la réflexion passe **uniquement** par
   `thinkingConfig.thinkingLevel` (jamais avec `thinkingBudget` : erreur 400). Jamais de modèle Pro.
+
+### Constat : `gemini-3.8-flash` (niveau « documents ») très lent, 12/10/2026
+
+Journaux de la fonction de banc d'essai (lignes techniques seulement, aucun contenu), sur environ 8 appels « documents » : `[ai] gemini-3.8-flash : plus de 25000 ms, abandon` ×3 et
+`[ai] fournisseur : HTTP 503` ×1, chaque fois suivis de `[ai] modèle documents indisponible : modèle de secours`. Aucun 429. Le secours répondait donc après 26 s en tout : chaque lecture
+de document attendait 25 s pour rien.
+
+Correctif : attente du premier appel ramenée à 12 s, et modèle mis de côté 10 minutes après un échec « lent ou indisponible ». Aucun nom de modèle ni la formule n'ont changé.
+**Cause de la lenteur de `gemini-3.8-flash` non élucidée : à rechoisir le modèle « documents » si cela se confirme** (décision d'Ergun / Cowork, pas du code).
+
+**Un secours léger est « à vérifier »** : un bulletin lu par le modèle de secours ressort avec les **quatre** chiffres (mois, brut, total employeur, heures) marqués « · à vérifier »
+sur l'écran « Coût réel » (`payslip-read` → `payslipReply`, `sanitizeExtraction(…, secours)`), et l'assistant ajoute « Bulletin lu par le modèle de secours (plus léger) : contrôlez chaque chiffre avant de confirmer »
+au-dessus de la carte (coût réel, ou invitation avec bulletin). Dans les deux cas rien n'est enregistré avant la validation de l'administrateur. L'assistant du salarié ne lit pas de bulletin.
 
 ### Plus de clé de service
 
@@ -79,12 +109,21 @@ côté salarié : heures, congés, chantier, collègues). Plusieurs domaines rec
 est toujours là. Avec un fichier joint, la liste « documents » du lot 1 ne change pas. Test : pour **chacune** des 80 phrases du jeu d'évaluation
 (bureau et salarié), l'outil attendu est dans la sélection (`npm run test:ia-domaines`, 573 déclarations au lieu de 1413 sur les phrases qui passent par le modèle).
 
-### Bandeau « Mode essai »
+### Pas de bandeau à l'écran (demande d'Ergun) ; la formule reste visible du support
 
-Texte exact : « Mode essai (Gemini gratuit) : données fictives uniquement. Google peut relire et réutiliser ce que vous envoyez. »
-Visible **avant** tout envoi dans l'assistant du bureau, l'assistant du salarié et l'écran « Coût réel » (lecture d'un bulletin). La source de vérité est
-`formule` d'`AI_CONFIG` : à l'ouverture, l'écran demande `{ "statut": true }` à la fonction (aucun quota, aucun appel au modèle). **En cas de doute le
-bandeau reste affiché** (fonction injoignable, ancienne version encore déployée) ; seul « payant » le retire.
+Le lot 6 avait ajouté un bandeau « Mode essai (Gemini gratuit) : données fictives uniquement… » dans l'assistant du bureau, l'assistant du salarié et
+l'écran « Coût réel » (lecture d'un bulletin). **Ergun ne l'a jamais demandé : il est retiré** (composant, styles et logique « en cas de doute on l'affiche »).
+Les écrans du patron et du salarié ne disent plus rien de la formule. L'avertissement reste ailleurs : cette page (encadré en haut), les PR, le plan.
+
+Ce qui **ne change pas** (tout est côté serveur) : le secret `AI_CONFIG`, le compteur global (`ai_project_usage`) et ses plafonds, `assistant_context`,
+le champ `formule` joint à chaque réponse des fonctions, la demande `{ "statut": true }` (aucun quota, aucun appel au modèle) et `lib/ia-formule.ts` (`iaFormule`).
+
+**Seul le support BEMEXO** voit la formule : une ligne discrète « IA : formule essai » ou « IA : formule payant » sur sa console `/support`, affichée
+**après** les vérifications du lot 5 (compte inscrit dans `support_staff`, double vérification). « IA : formule inconnue » si la fonction ne répond pas ou
+si l'ancienne version est encore déployée. Pas de chiffre du compteur (il est réservé au service) : le panneau support complet est prévu plus tard (lot 28).
+Aucune migration. Un patron ou un salarié qui ouvre `/support` voit « Accès réservé » et la fonction n'est même pas interrogée. Test : `npm run test:ia-formule-ecrans`.
+
+**Mise en ligne du retrait** : le front seulement (site statique). Aucune migration, aucun secret, **aucune fonction à redéployer** (côté fonctions, seuls des commentaires ont changé).
 
 ### Mise en ligne (dans CET ordre)
 
@@ -96,6 +135,9 @@ bandeau reste affiché** (fonction injoignable, ancienne version encore déploy�
 3. (Facultatif, sans urgence) poser `AI_API_KEY` et `AI_CONFIG`. Tant qu'ils sont absents : `GEMINI_API_KEY` + réglages par défaut, formule **essai**.
 4. Après le déploiement, relancer le jeu d'évaluation sur le vrai modèle : `POST /functions/v1/assistant-eval` avec `{ "version": "v2", "prodPath": true }`
    (les ordres passent maintenant par le modèle rapide, réflexion minimale).
+
+Correction « retire X » et lecture de documents plus rapide (après la mesure du lot 6) : redéployer `assistant`, `worker-assistant` et `payslip-read` (ils embarquent l'adaptateur partagé),
+et `assistant-eval` si le banc d'essai doit mesurer les nouveaux délais. Aucune migration, aucun secret.
 
 Retour arrière : redéployer les trois fonctions d'avant le lot 6, puis le bloc RETOUR ARRIÈRE de la migration (les tables de compteurs restent).
 
@@ -185,6 +227,101 @@ Retours préview (Cowork) : 2 cas ajoutés (« Comment je corrige le pointage d�
 Relancer : `POST /functions/v1/assistant-eval` avec l'en-tête `x-cron-secret`,
 body `{ "version": "v2", "ids": [...], "parallel": 1, "gapMs": 4000 }`. Le modèle est celui d'`AI_CONFIG` (lot 6), le même que pour les clients ;
 `"prodPath": true` = sans nouvel essai après une erreur. Les anciens essais « chronomètre » et « sonde » de modèles (appels directs à Gemini) sont retirés.
+
+### Après la mesure sur le vrai modèle (80 phrases, 78/80) : « retire X » et b47
+
+- **b44 « retire karim du planning demain »** : le modèle répondait tantôt `supprimer_intervention` (juste), tantôt `effacer_planning` (2 échecs sur 3 essais). Les deux outils sont proches : la
+  frontière est maintenant écrite dans leurs **descriptions** et dans la **consigne** de l'assistant. Un salarié (ou un chantier) et **UN seul jour** (« retire Marc du planning mardi ») →
+  `supprimer_intervention` ; « vide / efface le planning » (de quelqu'un, d'une période, d'une semaine ou de l'équipe) → `effacer_planning`. Le verbe compte : « retire / enlève X + un jour » = une case, « vide / efface le planning » = tout ce qui est prévu. Les exemples ne contiennent **ni « cette semaine », ni phrase du jeu** : un exemple « cette semaine » avait fait régresser b36 sur le vrai modèle (il prenait la semaine en cours, passée, au lieu de la semaine prochaine). Retirer l'exemple n'a pas suffi (b36 échouait encore) : les paramètres de date (`du`, `au` d'`effacer_planning`, `date` de `supprimer_intervention`) rappellent maintenant la règle du calendrier — un nom de jour seul = le PROCHAIN jour de ce nom, aujourd'hui compris, jamais un jour déjà passé sauf s'il est dit. Les deux outils partent toujours **ensemble** (même domaine « planning », testé).
+  Le modèle n'est pas déterministe (plus de `temperature` sur Gemini 3.x) : un test fixe les textes, pas la réponse du modèle ; à re-mesurer sur le vrai modèle après déploiement.
+- **b47 « retire Kevin de la Villa Dupont vendredi »** : l'assistant rendait `supprimer_intervention`, Kevin, `planning_id` vide, « Choisissez l’intervention. » et les seules cases de Kevin : c'est
+  **exactement le comportement voulu** (rien ce jour-là → on le dit, avec ses cases proches). C'était l'**attente du cas qui était fausse** : le contrôle `act` du banc répond « pas prête » dès qu'il y a un problème,
+  donc b47 ne pouvait jamais passer. Le cas utilise maintenant `actAvecProblemes` (type `supprimer_intervention`, Kevin, `planning_id` vide, problèmes **exactement** `['Choisissez l’intervention.']`, choix non vide
+  et uniquement de Kevin). Aucun test n'est supprimé ni assoupli : `act` est inchangé pour tous les autres cas (b47 est le seul à attendre un `planning_id` vide).
+
+### Dates : prochain jour de la semaine, côté code
+
+Mesuré sur le vrai modèle (aujourd'hui du jeu = jeudi 2026-10-01) : pour un nom de jour seul, le modèle renvoie parfois le jour **passé** de la semaine en cours, quel que soit le texte des descriptions
+(b36 « vide le planning de karim de lundi à mercredi » → 2026-09-28 → 2026-09-30 au lieu de 2026-10-05 → 2026-10-07, y compris sur l'ancien code ; b06 « décale l'intervention de karim de vendredi à lundi »
+→ 2026-09-25 / 2026-09-28 au lieu de 2026-10-02 / 2026-10-05). Le texte ne suffisant pas, la règle est aussi **en code**, en un seul endroit (`dateAVenir` / `plageAVenir` dans `_shared/fr-langue.ts`) :
+si une date donnée par le modèle est **déjà passée** et que la phrase **nomme ce jour de la semaine** sans marqueur de passé, elle devient la **prochaine occurrence** de ce jour (aujourd'hui compris), et une plage garde `du ≤ au`.
+Jamais touchée : une date qui n'est pas passée, un jour que la phrase ne nomme pas, ni quand le passé est dit (« dernier », « passé », « hier », « avant-hier », « précédent », « il y a », « depuis », « était »),
+ni quand une date est écrite (`28/09`, « 28 septembre », « lundi 28 », `2026-09-28`) ou la semaine en cours dite (« cette semaine », « semaine en cours »).
+
+Couvert (actions de **planning**, où un jour passé sans marqueur est presque toujours une erreur du modèle) : `affecter_planning` (dates), `modifier_intervention` (date, nouvelle_date),
+`supprimer_intervention` (date), `effacer_planning` (du/au). **Pas** concernés, car leurs jours peuvent légitimement être passés (« Kevin est malade lundi et mardi » dit un jeudi = le lundi et le mardi passés) :
+les absences et congés (`poser_absence`, `supprimer_absence`, `demander_conge`, `modifier_conge`), `corriger_pointage`, `ajouter_depense` et les heures du salarié (`declarer_heures`, `effacer_heures`, `copier_journee`).
+Leurs dates restent celles du modèle, et les descriptions de `supprimer_absence` ne demandent pas « le prochain jour ».
+
+## G · Phrases longues et plusieurs actions (français / turc)
+
+**Le problème** (retour réel d'Ergun, sur le téléphone d'un salarié) : « Ajoute-moi une intervention. J'ai travaillé aujourd'hui de 8h à midi, puis pause d'1h, puis de 13h à 17h
+sur un nouveau chantier : prénom Pierrick, nom Dupont, à Montagna 01250, pour la pose d'un store banne. » donnait UN créneau de 3 h (13h-17h perdu), la pause lue comme « cahier »,
+le client et l'adresse ignorés, puis « sur quel chantier ? ». Attendu : UNE fiche avec les DEUX créneaux, la pause d'1 h, le nouveau chantier, à confirmer en un clic.
+
+**Les causes, mesurées** : (1) le lecteur à expressions régulières passait AVANT l'IA et déformait les phrases longues ; (2) la consigne disait « appelle UNE fonction » et `callFunction`
+ne gardait que le premier `functionCall` ; (3) `declarer_heures` n'avait aucun champ pour un NOUVEAU chantier ; (4) le palier « rapide » (réflexion « minimal », 5 s) ne comprenait que 4 phrases
+longues sur 11 ; (5) la limite de 500 caractères ; (6) la dictée verrouillée sur `fr-FR`.
+
+### Le profil « long » (`_shared/saisie-profil.ts`, `_shared/worker-turn.ts`)
+
+Une phrase du salarié est « longue » dès qu'un seul de ces signaux joue : ≥ 120 caractères, turc détecté, plusieurs familles d'actions (panier, réserve, congé, envoi, copie, nouveau chantier,
+heures), ≥ 3 plages horaires, 2 plages + le mot « pause », nouveau chantier + code postal/adresse/prénom, une plage + une pause dite en toutes lettres (« une demi-heure de pause », que le lecteur
+local ne lit pas), une plage + une autocorrection (« 7h, non plutôt 7h30 »). Deux plages seules (« Ce matin 7h30-12h, après-midi 13h-16h30 ») restent **courtes**.
+
+- **Court** : exactement le chemin d'avant (lecteur local, sinon une fonction, même consigne, mêmes outils, aucun champ de plus dans la requête). Les 80 phrases du jeu d'évaluation restent toutes courtes
+  (test `npm run test:saisie-profil`, 0 « longue »), leurs sorties locales sont identiques (preuve par comparaison avant/après).
+- **Long** : **jamais le lecteur local** (même sans clé ou en cas d'échec : une notice, jamais un repli sur le lecteur qui avait produit le bug) ; IA en réflexion « medium », fenêtres de **14 s puis 22 s au
+  total** (`PROFIL_LONG` dans `ai-provider.ts` : des constantes du code, pas de la configuration `AI_CONFIG`), modèle de secours en « low » ; jusqu'à **4 appels de fonction** (`maxCalls`, `MAX_APPELS`).
+  Une demande = **une unité de quota** du palier « rapide » (aucune migration). Latence mesurée : médiane 3,5 s, maximum 13 s sur 11 phrases (réflexion « medium » : 11/11 comprises contre 4/11 avant).
+  Le client envoie `multi: true` ; sans ce drapeau (ancien navigateur en mémoire) le serveur reste en profil court, comme avant.
+- Limite de saisie du salarié : **1500 caractères** (`WORKER_TEXT_MAX`), le bureau reste à 500.
+- Outils du profil long : ceux du domaine de la phrase + un socle (heures, nouveau chantier, panier, envoi, réserves, congé, répondre), jamais `ranger_photo`. `declarer_heures` y gagne `nouveau_chantier`
+  (nom du client, adresse, code postal, ville, travaux) et une ligne peut dire `chantier: "nouveau"`.
+
+### Ce que le code corrige (le modèle se trompe de façon répétable) — `_shared/worker-multi.ts`
+
+| Défaut mesuré | Règle déterministe |
+|---|---|
+| créneau fusionné 08:00-17:00 pause 60 | redécoupé selon les plages lues dans la phrase (français : « de 8h à midi », « 08.00-12.00 », « huit heures à midi » ; turc : « 8’den 12’ye kadar ») |
+| pause décomptée deux fois (7h-12h « pause 60 » puis 13h-17h) | le trou entre deux créneaux EST la pause : la pause portée par un créneau et égale au trou (± 10 min) est mise à 0 ; l'écart n'est marqué « pause » que si le salarié l'a dite |
+| ligne « nouveau » ou client non apparié | rattachée au nouveau chantier ; « Pierrick Dupont » n'est jamais « Villa Dupont » ; « Dupont » seul entre les deux → « à choisir » ; jamais « Autre » |
+| créneau sans chantier nommé rempli au hasard depuis le planning | seulement quand aucun nouveau chantier n'est dit |
+| chantier « nouveau » qui existe déjà (même nom + ville) | réutilisé, rien n'est créé (`reutilise_id`) |
+| ville non dite | jamais inventée : la fiche la réclame |
+| R1 · ville dite comme « adresse » (« adres Montagna 01250 » → adresse = Montagna, ville vide) | avec un code postal, une ville vide et une adresse sans chiffre ni mot de voie, DITE d'un seul tenant avec le code postal dans la phrase (« Montagna 01250 »), l'adresse EST la ville ; sinon, seulement si le modèle a rendu le code postal, les mots capitalisés qui le précèdent (hors nom du client). Un mot de voie (rue, avenue, chemin, place, sokak, cadde, mahalle, ZA, ZI, mairie, gare…) dans l'adresse OU dans ces mots (« Rue des Lilas », « Gül Sokak » en majuscules) n'est jamais une ville : la fiche réclame la ville. Une ville donnée par le modèle n'est jamais écrasée, une ville absente de la phrase ou un nombre sans code postal rendu (« devis Alpha 12345 ») jamais inventés |
+| R2 · chantier DEVINÉ (« Villa Dupont » rendu pour « Pierrick Dupont, nouveau client », ou pour un « chantier » sans nom) | si aucun mot du chantier rendu n'est dans la phrase (hors mots du nouveau client), le créneau est SANS NOM : il prend le nouveau chantier (s'il est seul), sinon l'unique chantier nommé, sinon le planning comme avant ; « chez Dupont » + « Pierrick Dupont » reste « à choisir ». Un autre lieu dit sans nom (« ailleurs », « autre part », « başka bir yerde », « un autre chantier » ; pas « par ailleurs ») laisse le créneau sans nom « à choisir » : jamais rangé chez l'unique chantier nommé (un chantier existant « Autre » rendu par le modèle reste comme avant) |
+| R3 · « nouveau chantier » dit pour un chantier qui existe déjà (« Bureau Martin à Villeurbanne »), sans bloc rendu | nom ET ville du chantier existant dits dans la phrase APRÈS « nouveau chantier » / « yeni şantiye » (≤ 15 mots), un seul candidat : bloc `reutilise_id`, la fiche dit « Chantier existant utilisé » (plus de « Non préparé : Nouveau chantier ») ; « …au Bureau Martin, demain je commence un nouveau chantier » reste « Non préparé : Nouveau chantier » |
+| date non ISO en turc (« dün », « bugün », « yarın », `30.09`) | lue ; sinon « Date illisible » (jamais un repli silencieux sur aujourd'hui) |
+| action non demandée (consigne cachée dans un nom de chantier) | un indice lexical est exigé dans la phrase pour chaque annexe (panier, réserve, congé, envoi) |
+| plus de 4 actions | les appels écartés sont comptés et dits (« Autres actions »), les familles demandées et absentes sont listées (« Non préparé »), « Lecture rapide : vérifiez que tout y est » |
+
+La réponse est une fiche `multi` : éléments dans l'ordre chantier → heures → panier → réserve → congé → envoi, **rien n'est enregistré avant « Tout confirmer »** (y compris les gestes « directs » du lot 7,
+qui en profil long ne s'exécutent pas seuls). Les suppressions, copies et modifications de ligne ne sont jamais dans une fiche (elles gardent leur propre confirmation). Le chantier est créé à la confirmation
+seulement, après avoir cherché un chantier actif de même nom + ville ; « Annuler » retire les lignes d'heures créées, le chantier reste (le salarié ne peut pas le supprimer).
+
+### Limites connues
+
+- Cartes, boutons et libellés restent en **français** ; seule la réponse libre suit la langue du salarié (turc ou français). Les textes pour le bureau (travaux, note de congé, détail de réserve) sont écrits en français.
+- Dictée turque : dépend du navigateur (Chrome : `tr-TR` ; Safari iOS : selon la langue de dictée installée). À essayer sur un appareil réel avant la mise en ligne.
+- En profil long, pas de repli local : ces phrases dépendent à 100 % du modèle (Gemini gratuit : 429/503 possibles). L'écran remet la phrase dans le champ si le modèle échoue (message « L’assistant n’a pas pu répondre. Utilisez la saisie habituelle. »). Une erreur du fournisseur consomme quand même une demande du quota journalier (débité avant l'appel, comme pour le profil court).
+- Autres langues que le turc : traitées comme du français.
+- **Données personnelles** : une phrase comme celle d'Ergun contient le prénom, le nom et l'adresse d'un client particulier. Ces données partent chez Google (formule gratuite : réutilisables par Google), sont écrites dans
+  `worksites` (lisibles par tous les salariés de l'entreprise) ; le journal ne garde que « Chantier créé » et la ville. **Avant d'ouvrir le turc et les clients particuliers à de vrais salariés** : formule payante
+  sans réutilisation des données, et mention dans la politique de confidentialité. Aucun journal ne contient le texte ni les arguments (test statique).
+- La colonne `worksites.postal_code` n'est créée par aucune migration du dépôt : à confirmer en production (lecture seule) avant la mise en ligne ; le code ne dépend pas de son existence.
+
+### Mesure (Cowork), avant toute mise en ligne
+
+Le jeu compte maintenant **109 phrases** : les 80 d'origine (47 bureau + 33 salarié, inchangées) + **29 phrases longues du salarié** (`sl01–sl16` « Long FR », `st01–st13` « Long TR », dont la phrase exacte d'Ergun en `sl01` ; `st12` et `st13` mesurent R1 et R2).
+Les cas d'heures d'aujourd'hui sont mesurés sur une journée vide (`live: 'vide'`). Banc : `POST /functions/v1/assistant-eval` avec `{ "version": "v2", "prodPath": true, "repeat": 3, "parallel": 1, "ids": [...] }` —
+`prodPath` = le chemin exact des clients (aucun nouvel essai après une erreur du fournisseur) ; `repeat` = 3 passes par cas (le modèle n'est plus à température fixe) ; **au plus 4 ids par appel avec `repeat: 3`, ou 12 avec
+`repeat: 1`**, un par un (la clé gratuite est partagée avec la production ; la durée maximale d'une fonction n'a pas été vérifiée : réduire les lots au besoin). 200 ids au plus, un id inconnu est refusé.
+Seuils : les 80 anciennes phrases ≥ 97,5 % (234 réussites sur 240 essais, aucun cas qui passait avant et échoue 3/3) ET les 29 nouvelles ≥ 97,5 % (85/87, aucun cas en échec 3/3), les 29 comptant toutes. Le rapport donne
+par catégorie, par profil (court/long), la médiane et le maximum des temps, la cause de chaque échec (`fournisseur` ou `modèle ou code`) et le nombre de réponses du modèle de secours.
+Tests sans modèle : `npm run test:saisie-profil`, `test:worker-multi`, `test:worker-turn`, `test:assistant-eval`, `test:ai-provider`, `test:ia-config`, `test:ia-domaines`.
+
+**Mise en ligne** : le front d'abord, puis `worker-assistant` (et `assistant-eval` pour mesurer). Aucune migration, aucun secret, `assistant`, `payslip-read` et le bureau ne changent pas.
 
 ## Prod
 

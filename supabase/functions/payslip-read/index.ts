@@ -10,8 +10,8 @@
 // Lot 6 : PLUS DE CLÉ DE SERVICE. Qui appelle, son entreprise, ai_enabled, le
 // quota de lectures et le plafond global viennent de public.assistant_context
 // (côté « bulletin »), appelée avec SON jeton. Le corps { statut: true } rend
-// seulement la formule (bandeau « Mode essai »), sans rien compter ni appeler
-// le modèle.
+// seulement la formule (lue par le support BEMEXO, jamais affichée aux patrons
+// ni aux salariés), sans rien compter ni appeler le modèle.
 //
 // CE QUE LA FONCTION NE FAIT PAS, ET C'EST TOUT L'INTÉRÊT :
 //   - elle n'ENREGISTRE rien : ni le fichier, ni les chiffres. Le bulletin est
@@ -25,14 +25,14 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { aiKey, extractJson, formuleNom, PAUSE_MESSAGE, plafondProjet } from '../_shared/ai-provider.ts';
 import { loadAssistantContext } from '../_shared/assistant-context.ts';
-import { PAYSLIP_PROMPT, PAYSLIP_SCHEMA, sanitizeExtraction } from '../_shared/payslip-core.ts';
+import { PAYSLIP_PROMPT, PAYSLIP_SCHEMA, payslipReply } from '../_shared/payslip-core.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
-// Lot 6 : la formule active part avec chaque réponse (bandeau « Mode essai »).
+// Lot 6 : la formule active part avec chaque réponse (interne : l'écran du support seul la montre).
 const FORMULE = formuleNom(Deno.env);
 const json = (body: Record<string, unknown>, status = 200) =>
   new Response(JSON.stringify({ ...body, formule: FORMULE }), { status, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
@@ -84,8 +84,8 @@ Deno.serve(async (req) => {
         message: r.reason === 'not_configured' ? UNAVAILABLE : 'Lecture impossible pour ce document. Saisissez les chiffres.',
       });
     }
-    const { figures, doubts } = sanitizeExtraction(r.data);
-    return json({ available: true, figures, doubts });
+    // Lu par le modèle de secours (plus léger) : les quatre chiffres sont « à vérifier » à l'écran.
+    return json(payslipReply(r));
   } catch {
     // Volontairement sans détail : l'erreur pourrait contenir un extrait du document.
     console.error('[payslip-read] erreur interne');

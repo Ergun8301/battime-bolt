@@ -1,10 +1,10 @@
 // Tests de l'assistant qui AGIT (lot 3 bis) : `npm run test:assistant-actions` (Deno).
 // L'IA est SIMULÉE : on vérifie la chaîne complète « appel de fonction →
 // brouillon contrôlé », pour chaque action de la liste blanche.
-import { callFunction } from './ai-provider.ts';
+import { callFunction, reposReinit } from './ai-provider.ts';
 import {
-  ABSENCE_KINDS, ABSENCE_LABEL, ACTION_TYPES, A_CONFIRMER, A_CONFIRMER_REMPLACE, ASSISTANT_FUNCTIONS, ATTACHMENT_FUNCTIONS, MOTIF_MANQUANT, REFUS_REPOS, REMOVAL_TYPES, actionAnswer, actionMode,
-  actionPrompt, addDays, buildActionContext, checkAction, confirmText, findGuide, fromFunctionCall, functionsFor, guideForPrompt, handleActionLocally, isRemoval, mondayOf,
+  ABSENCE_KINDS, ABSENCE_LABEL, ACTION_TYPES, A_CONFIRMER, A_CONFIRMER_REMPLACE, ASSISTANT_FUNCTIONS, ATTACHMENT_FUNCTIONS, MOTIF_MANQUANT, REFUS_REPOS, REMOVAL_TYPES, SECOURS_BULLETIN, actionAnswer, actionMode,
+  actionPrompt, addDays, avertirSecours, buildActionContext, checkAction, confirmText, findGuide, fromFunctionCall, functionsFor, guideForPrompt, handleActionLocally, isRemoval, mondayOf,
   prepare, proposeWeek, questionFor, summarize, type ActionContext, type ActionDraft,
 } from './assistant-actions-core.ts';
 
@@ -37,6 +37,7 @@ const CTX: ActionContext = {
 
 /** Gemini simulé : renvoie l'appel de fonction voulu, et garde la requête. */
 function fakeGemini(name: string, args: Record<string, unknown>) {
+  reposReinit(); // chaque scénario repart à neuf : aucun modèle mis de côté par le précédent
   const seen: { url?: string; init?: RequestInit } = {};
   const fetchImpl = (url: string, init: RequestInit) => {
     seen.url = url; seen.init = init;
@@ -427,4 +428,107 @@ Deno.test('Lot 1 — fichier joint : le modèle ne voit QUE les outils des docum
   eq(r.ok, false, 'appel d’un outil hors liste refusé');
   const sent = JSON.parse(String(f.seen.init!.body));
   eq(sent.tools[0].functionDeclarations.map((x: { name: string }) => x.name), names, 'seuls les outils des documents partent au modèle');
+});
+
+Deno.test('Bulletin lu par le modèle de SECOURS : « à vérifier » au-dessus de la carte ; rien de plus quand le modèle « documents » a lu', async () => {
+  const BULLETIN = { salarie: 'Karim', mois: '2026-09', brut: 2450, cout_employeur: 3480, heures_payees: 151.67 };
+  const lire = async (name: string, args: Record<string, unknown>, documentsEnPanne: boolean) => {
+    reposReinit();
+    let n = 0;
+    const fetchImpl = () => {
+      n++;
+      return Promise.resolve(documentsEnPanne && n === 1 ? new Response('{}', { status: 503 })
+        : new Response(JSON.stringify({ candidates: [{ content: { parts: [{ functionCall: { name, args } }] } }] })));
+    };
+    const orig = console.error; console.error = () => {};
+    try {
+      const r = await callFunction({ prompt: 'x', functions: functionsFor(true), file: PDF }, env, fetchImpl);
+      if (!r.ok) throw new Error('appel refusé');
+      const out = fromFunctionCall(r.call.name, r.call.args, CTX);
+      return { r, out, final: avertirSecours(out, !!r.secours) };
+    } finally { console.error = orig; reposReinit(); }
+  };
+  // cout_reel lu par le secours : l'avertissement est ajouté, la carte (le brouillon) reste identique.
+  const a = await lire('cout_reel', BULLETIN, true);
+  eq(a.r.ok && a.r.secours, true, 'marque « secours »');
+  eq(a.final.answer, `${a.out.answer} ${SECOURS_BULLETIN}`, 'avertissement ajouté');
+  eq(a.final.action, a.out.action, 'la carte ne change pas');
+  // Même chose pour l'invitation qui lit un bulletin (coût réel proposé).
+  const b = await lire('inviter_salarie', { prenom: 'Marc', nom: 'Durand', email: 'marc@exemple.fr', bulletin_mois: '2026-09', bulletin_brut: 2450, bulletin_cout_employeur: 3480, bulletin_heures_payees: 151.67 }, true);
+  eq(b.final.answer, `${b.out.answer} ${SECOURS_BULLETIN}`, 'invitation avec bulletin lue par le secours');
+  // Le modèle « documents » a lu : aucune marque, texte inchangé.
+  const c = await lire('cout_reel', BULLETIN, false);
+  eq(c.r.ok && 'secours' in c.r, false, 'pas de marque');
+  eq(c.final.answer, c.out.answer, 'texte inchangé');
+  // Secours, mais pas un bulletin (ranger une facture, invitation sans bulletin) : pas d'avertissement « bulletin ».
+  const d = await lire('ranger_document', { chantier: 'Villa Dupont', categorie: 'facture' }, true);
+  eq(d.final.answer, d.out.answer, 'pas un bulletin');
+  const e = await lire('inviter_salarie', { prenom: 'Marc', nom: 'Durand', email: 'marc@exemple.fr' }, true);
+  eq(e.final.answer, e.out.answer, 'invitation sans bulletin');
+});
+
+// ── Jours du planning donnés PASSÉS par le modèle pour un nom de jour seul (mesuré sur le vrai modèle) ──
+// Aujourd'hui = jeudi 2026-10-01 : « lundi » = 2026-10-05. Le modèle renvoie parfois le lundi de la semaine en cours (2026-09-28).
+// Corrigé pour le PLANNING (affecter, déplacer, retirer une intervention, effacer) ; PAS pour les absences et congés, légitimement rétroactifs.
+Deno.test('Dates : un jour PASSÉ pour un nom de jour seul → la prochaine occurrence, pour les 4 actions de PLANNING', () => {
+  const CTXJ = (demande?: string): ActionContext => ({ ...CTX, today: '2026-10-01', demande });
+  const draftOf = (name: string, raw: Record<string, unknown>, demande?: string) => fromFunctionCall(name, raw, CTXJ(demande)).action!.draft as unknown as Record<string, unknown>;
+  type Cas = { fn: string; phrase: string; raw: Record<string, unknown>; champs: string[]; passe: string[]; attendu: string[]; futur: string[] };
+  const cas: Cas[] = [
+    { fn: 'affecter_planning', phrase: 'mets Karim sur Villa Dupont lundi et mardi', raw: { salarie: 'Karim', chantier: 'Villa Dupont', dates: ['2026-09-28', '2026-09-29'] },
+      champs: ['dates'], passe: ['2026-09-28', '2026-09-29'], attendu: ['2026-10-05', '2026-10-06'], futur: ['2026-10-05', '2026-10-06'] },
+    { fn: 'modifier_intervention', phrase: 'décale l’intervention de Karim de vendredi à lundi', raw: { salarie: 'Karim', date: '2026-09-25', nouvelle_date: '2026-09-28' },
+      champs: ['date', 'nouvelle_date'], passe: ['2026-09-25', '2026-09-28'], attendu: ['2026-10-02', '2026-10-05'], futur: ['2026-10-02', '2026-10-05'] },
+    { fn: 'supprimer_intervention', phrase: 'retire Karim du planning mardi', raw: { salarie: 'Karim', date: '2026-09-29' },
+      champs: ['date'], passe: ['2026-09-29'], attendu: ['2026-10-06'], futur: ['2026-10-06'] },
+    { fn: 'effacer_planning', phrase: 'vide le planning de Karim de lundi à mercredi', raw: { salarie: 'Karim', du: '2026-09-28', au: '2026-09-30' },
+      champs: ['du', 'au'], passe: ['2026-09-28', '2026-09-30'], attendu: ['2026-10-05', '2026-10-07'], futur: ['2026-10-05', '2026-10-07'] },
+  ];
+  const avec = (c: Cas, valeurs: string[]) => {
+    const raw = { ...c.raw };
+    c.champs.forEach((k, i) => { raw[k] = k === 'dates' ? valeurs : valeurs[i]; });
+    return raw;
+  };
+  const lire = (c: Cas, d: Record<string, unknown>) => c.champs.flatMap((k) => (k === 'dates' ? d[k] as string[] : [d[k] as string]));
+  for (const c of cas) {
+    // Date passée + phrase sans marqueur de passé → la prochaine occurrence.
+    eq(lire(c, draftOf(c.fn, avec(c, c.passe), c.phrase)), c.attendu, `${c.fn} : jour passé corrigé`);
+    // Date déjà à venir → intacte.
+    eq(lire(c, draftOf(c.fn, avec(c, c.futur), c.phrase)), c.futur, `${c.fn} : date à venir intacte`);
+    // Le passé est dit, ou une date est écrite → jamais touchée.
+    for (const marque of [`${c.phrase} dernier`, `hier, ${c.phrase}`, `${c.phrase} le 28 septembre`, `${c.phrase} (28/09)`, `depuis ${c.phrase}`, `${c.phrase} cette semaine`, `${c.phrase} la semaine dernière`]) {
+      eq(lire(c, draftOf(c.fn, avec(c, c.passe), marque)), c.passe, `${c.fn} : « ${marque} » intact`);
+    }
+    // Pas de phrase, ou une phrase qui ne nomme pas ces jours → intact.
+    eq(lire(c, draftOf(c.fn, avec(c, c.passe), undefined)), c.passe, `${c.fn} : sans phrase, intact`);
+    eq(lire(c, draftOf(c.fn, avec(c, c.passe), `${c.fn === 'affecter_planning' ? 'mets' : 'retire'} Karim sur Villa Dupont`)), c.passe, `${c.fn} : phrase sans jour, intact`);
+  }
+  // Aujourd'hui compris : « jeudi » dit un jeudi, le modèle donne le jeudi passé → aujourd'hui.
+  eq(draftOf('supprimer_intervention', { salarie: 'Karim', date: '2026-09-24' }, 'retire Karim du planning jeudi').date, '2026-10-01', 'jeudi = aujourd’hui');
+  // Plage : l'ordre est gardé (du ≤ au) quand on corrige.
+  const p = draftOf('effacer_planning', { salarie: 'Karim', du: '2026-09-28', au: '2026-10-02' }, 'vide le planning de Karim de lundi à vendredi');
+  eq([p.du, p.au], ['2026-10-05', '2026-10-09'], 'du ≤ au après correction');
+  // La carte « semaine entière » (sans du/au) n'est pas touchée : « la semaine prochaine » reste le lundi 5.
+  const w = draftOf('effacer_planning', { semaine: 'prochaine' }, 'efface le planning de la semaine prochaine');
+  eq([w.du, w.au], ['2026-10-05', '2026-10-11'], 'semaine entière intacte');
+  // Les jours qui sont légitimement passés ne sont pas concernés : heures à corriger, dépenses.
+  const h = draftOf('corriger_pointage', { salarie: 'Karim', date: '2026-09-28', debut: '08:00', fin: '17:00', motif: 'oubli de pause' }, 'corrige les heures de Karim lundi');
+  eq(h.date, '2026-09-28', 'corriger des heures : le lundi passé est voulu');
+  const dep = draftOf('ajouter_depense', { chantier: 'Villa Dupont', montant: 100, libelle: 'Placo', date: '2026-09-28' }, 'ajoute une dépense de 100 euros lundi');
+  eq(dep.date, '2026-09-28', 'une dépense passée n’est pas déplacée');
+});
+
+Deno.test('Dates : une ABSENCE ou un congé peut être rétroactif — la date passée est conservée (aucune correction)', () => {
+  const CTXJ = (demande: string): ActionContext => ({ ...CTX, today: '2026-10-01', demande });
+  const draftOf = (name: string, raw: Record<string, unknown>, demande: string) => fromFunctionCall(name, raw, CTXJ(demande)).action!.draft as unknown as Record<string, unknown>;
+  // « Kevin est malade lundi et mardi » dit un jeudi = le lundi et le mardi passés.
+  const a = draftOf('poser_absence', { salarie: 'Sofia', type: 'maladie', du: '2026-09-28', au: '2026-09-29' }, 'Sofia est malade lundi et mardi');
+  eq([a.du, a.au], ['2026-09-28', '2026-09-29'], 'poser_absence : jours passés conservés');
+  const b = draftOf('supprimer_absence', { salarie: 'Sofia', du: '2026-09-28', au: '2026-09-29' }, 'enlève l’arrêt de Sofia de lundi à mardi');
+  eq([b.du, b.au], ['2026-09-28', '2026-09-29'], 'supprimer_absence : jours passés conservés');
+  // Et leurs descriptions ne demandent pas « le prochain jour » (contrairement au planning).
+  for (const nom of ['poser_absence', 'supprimer_absence']) {
+    const props = (ASSISTANT_FUNCTIONS.find((f) => f.name === nom)!.parameters as unknown as { properties: Record<string, { description: string }> }).properties;
+    for (const k of ['du', 'au']) if (/PROCHAIN|jamais un jour/.test(props[k]?.description ?? '')) throw new Error(`${nom}.${k} : la règle « prochain jour » ne s’applique pas aux absences`);
+  }
 });

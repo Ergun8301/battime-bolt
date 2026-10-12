@@ -186,7 +186,8 @@ export default function WorkerActionCard({ extra, execute, onDone, ctl, preview 
   const siteName = (id: string | null) => extra.chantiers.find((c) => c.id === id)?.nom
     ?? (d.type === 'effacer_heures' ? d.choix.find((l) => l.chantier_id === id)?.chantier : undefined) ?? 'Chantier';
   const set = (patch: Partial<WorkerActionDraft>) => setD((x) => ({ ...x, ...patch } as WorkerActionDraft));
-  const direct = workerActionMode(extra.workerAction.draft) === 'direct';
+  // Profil long du serveur : un geste « direct » attend quand même « Confirmer » (jamais d'exécution au montage).
+  const direct = !extra.confirmer && workerActionMode(extra.workerAction.draft) === 'direct';
   // Lot 1 : une suppression pose sa question s'il le faut, puis montre la carte de confirmation.
   const removal = isWorkerRemoval(extra.workerAction.draft);
   const [question, setQuestion] = useState(() => workerQuestionFor(extra.workerAction.draft, extra.workerAction.problems, snap));

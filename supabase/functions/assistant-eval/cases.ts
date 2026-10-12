@@ -3,6 +3,10 @@
 // le résultat attendu. « Correct » = la bonne action, les bons champs, prête à
 // être faite DU PREMIER COUP (ou la bonne réponse / le bon écran).
 // Entreprise fictive, date figée : jeudi 1er octobre 2026.
+//
+// Phrases libres du SALARIÉ (sl01… français, st01… turc) : UNE fiche à confirmer pour plusieurs
+// actions (heures avec tous les créneaux et la pause, nouveau chantier, panier, réserve, congé,
+// envoi). Les 80 cas b01–b47 et s01–s33 ne bougent pas.
 
 export const TODAY = '2026-10-01';
 export const ME = 'u-ergun';
@@ -86,16 +90,27 @@ export const WORKER_LIVE = {
   ],
 };
 export const LIVE_EN_COURS = { chantier_id: W.macon, chantier: 'Pizzeria Exemple', depuis: '2026-10-01T06:30:00Z' };
+/**
+ * Journée d'aujourd'hui VIDE : tout cas qui déclare des heures d'aujourd'hui est mesuré dessus, sinon la fiche porterait
+ * légitimement l'erreur « Déjà noté aujourd'hui » (les lignes e1 et e2 de WORKER_LIVE).
+ */
+export const LIVE_VIDE = { ...WORKER_LIVE, lignes: [] as typeof WORKER_LIVE.lignes, hier: 1 };
 
 // ── Résultat normalisé (quelle que soit la version) ─────────────────────────
 export interface Outcome {
-  kind: 'action' | 'answer' | 'draft' | 'collegues' | 'none';
+  kind: 'action' | 'answer' | 'draft' | 'collegues' | 'none' | 'multi' | 'chantier';
   type?: string;
   draft?: Record<string, unknown>;
   problems?: string[];
   answer?: string;
   links?: string[];
   qui?: string; date?: string;
+  // ── fiche à plusieurs éléments (kind 'multi') ──
+  items?: Outcome[]; ignores?: string[]; non_prepare?: string[]; incertain?: boolean; note?: string;
+  // ── un élément de la fiche ──
+  id?: string; depend?: string[]; cible?: { chantier_id: string | null; nouveau: boolean; nom: string };
+  deja_notees?: { chantier: string; debut: string; fin: string }[]; avertissements?: string[];
+  nouveau_chantier?: Record<string, unknown>; manque?: string[];
 }
 type Check = (o: Outcome) => string | null;
 
@@ -103,6 +118,17 @@ const act = (type: string, f: (d: Record<string, unknown>) => string | null = ()
   if (o.kind !== 'action') return `attendu l'action ${type}, obtenu ${o.kind}${o.answer ? ` (« ${o.answer.slice(0, 60)} »)` : ''}`;
   if (o.type !== type) return `attendu ${type}, obtenu ${o.type}`;
   if (o.problems?.length) return `pas prête : ${o.problems.join(' / ')}`;
+  return f(o.draft ?? {});
+};
+/**
+ * Comme `act`, mais l'action est rendue AVEC ces problèmes exacts : c'est la réponse voulue (par ex. « Choisissez
+ * l’intervention. » quand rien n'est prévu ce jour-là), pas un échec. `act` reste inchangé pour tous les autres cas :
+ * une action « pas prête » y reste un échec.
+ */
+const actAvecProblemes = (type: string, problems: string[], f: (d: Record<string, unknown>) => string | null = () => null): Check => (o) => {
+  if (o.kind !== 'action') return `attendu l'action ${type}, obtenu ${o.kind}${o.answer ? ` (« ${o.answer.slice(0, 60)} »)` : ''}`;
+  if (o.type !== type) return `attendu ${type}, obtenu ${o.type}`;
+  if (JSON.stringify(o.problems ?? []) !== JSON.stringify(problems)) return `problèmes = ${JSON.stringify(o.problems ?? [])} (attendu ${JSON.stringify(problems)})`;
   return f(o.draft ?? {});
 };
 const eq = (d: Record<string, unknown>, k: string, v: unknown) => (JSON.stringify(d[k]) === JSON.stringify(v) ? null : `${k} = ${JSON.stringify(d[k])} (attendu ${JSON.stringify(v)})`);
@@ -128,7 +154,142 @@ const refus = (): Check => (o) => (o.kind === 'answer' && /ne s.efface|impossibl
 const coll = (qui: string, date: string): Check => (o) => (o.kind !== 'collegues' ? `attendu le planning des collègues, obtenu ${o.kind} ${o.type ?? ''}`
   : (o.qui ?? '').toLowerCase() !== qui ? `qui = « ${o.qui} » (attendu « ${qui} »)` : o.date !== date ? `date = ${o.date} (attendu ${date})` : null);
 
-export interface EvalCase { id: string; cote: 'bureau' | 'salarie'; categorie: string; phrase: string; file?: keyof typeof FILES; enCours?: boolean; check: Check }
+
+// ── Contrôles d'une fiche à plusieurs éléments (phrases libres du salarié) ──
+const fold = (s: unknown) => String(s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ı/g, 'i').replace(/[’']/g, "'"); // « ı » n'est pas décomposé par NFD
+const hm = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+interface Ligne { key: string; start: string; end: string; pause: number; site: string | null; nouveau: boolean; planning: boolean; gap: 'pause' | null }
+interface NC { nom?: string; adresse?: string; code_postal?: string; ville?: string; description?: string; reutilise_id?: string }
+interface Heures { date: string; lignes: Ligne[]; erreurs: string[]; nouveau?: NC; manque: string[] }
+/** Type d'un élément de fiche : 'heures' pour le brouillon d'heures, 'chantier' pour un chantier seul, sinon le type d'action. */
+const typeDe = (i: Outcome) => (i.kind === 'draft' ? 'heures' : i.kind === 'action' ? String(i.type) : i.kind);
+/** Une fiche donne ses éléments ; toute autre réponse est un élément seul. */
+const elements = (o: Outcome): Outcome[] => (o.kind === 'multi' ? o.items ?? [] : [o]);
+/** LE SEUL endroit qui connaît les noms de champs de l'élément « heures ». */
+function heuresDe(items: Outcome[]): Heures | string {
+  const hs = items.filter((i) => i.kind === 'draft');
+  if (hs.length !== 1) return `${hs.length} brouillon(s) d'heures (attendu 1)`;
+  const d = hs[0].draft as { date: string; lines: Record<string, unknown>[]; errors?: string[]; nouveau_chantier?: NC; manque?: string[] };
+  return {
+    date: d.date, erreurs: d.errors ?? [], nouveau: d.nouveau_chantier, manque: d.manque ?? [],
+    lignes: d.lines.map((l) => ({
+      key: String(l.key ?? ''), start: String(l.start), end: String(l.end), pause: Number(l.break_minutes) || 0, site: (l.worksite_id as string | null) ?? null,
+      nouveau: l.nouveau === true, planning: l.from_planning === true, gap: l.gap_before === 'pause' ? 'pause' : null,
+    })),
+  };
+}
+const duree = (l: Ligne) => { let d = hm(l.end) - hm(l.start); if (d < 0) d += 1440; return d; };
+/** Fiche à N éléments : types ET ordre EXACTS (jamais un « envoyer_journee » ni un panier que la phrase n'a pas demandé). */
+const fiche = (ordre: string[], f: (items: Outcome[]) => string | null = () => null): Check => (o) => {
+  if (o.kind !== 'multi' && ordre.length > 1) return `attendu une fiche à ${ordre.length} éléments, obtenu ${o.kind} ${o.type ?? ''}`;
+  const items = elements(o);
+  const got = items.map(typeDe).join(' > ');
+  return got !== ordre.join(' > ') ? `éléments = ${got} (attendu ${ordre.join(' > ')})` : f(items);
+};
+/** Heures : date, créneaux EXACTS (pas un seul, pas fusionnés), pause nette (écart OU pause du créneau, jamais les deux), aucune erreur ; chantier de chaque créneau ('NOUVEAU' = rattaché au chantier à créer, jamais pris au hasard dans le planning). */
+const heures = (date: string, creneaux: [string, string][], netMin: number, chantiers: string[], f: (h: Heures) => string | null = () => null) => (items: Outcome[]): string | null => {
+  const h = heuresDe(items); if (typeof h === 'string') return h;
+  if (h.erreurs.length) return `erreurs : ${h.erreurs.join(' / ')}`;
+  if (h.date !== date) return `date = ${h.date} (attendu ${date})`;
+  const got = h.lignes.map((l) => `${l.start}-${l.end}`).join(' ');
+  const want = creneaux.map(([a, b]) => `${a}-${b}`).join(' ');
+  if (got !== want) return `créneaux = ${got} (attendu ${want})`;
+  const net = h.lignes.reduce((s, l) => s + duree(l) - l.pause, 0);
+  if (net !== netMin) return `net = ${net} min (attendu ${netMin}) — pause comptée deux fois ou oubliée ? pauses = ${h.lignes.map((l) => l.pause)}`;
+  for (let i = 0; i < chantiers.length; i++) {
+    const l = h.lignes[i]; const voulu = chantiers[i];
+    if (voulu === 'NOUVEAU') {
+      if (!l.nouveau) return `créneau ${i + 1} : devait être rattaché au NOUVEAU chantier (chantier = ${l.site}, planning = ${l.planning})`;
+      if (l.planning) return `créneau ${i + 1} : chantier pris au hasard dans le planning`;
+    } else if (l.nouveau || l.site !== voulu) return `créneau ${i + 1} : chantier ${l.nouveau ? 'NOUVEAU' : l.site} (attendu ${voulu})`;
+    else if (l.planning) return `créneau ${i + 1} : chantier pris dans le planning au lieu de celui dit`;
+  }
+  return f(h);
+};
+/** Les écarts entre créneaux : 'pause' (dite par le salarié) ou null (non qualifié), pour chaque créneau (le premier n'a pas d'écart avant lui). */
+const ecarts = (voulu: ('pause' | null)[]) => (h: Heures): string | null => {
+  const got = h.lignes.map((l) => l.gap);
+  return JSON.stringify(got) === JSON.stringify(voulu) ? null : `écarts = ${JSON.stringify(got)} (attendu ${JSON.stringify(voulu)})`;
+};
+const cleNom = (x: unknown) => fold(x).replace(/\b(madame|monsieur|mme|mr|m|a)\b/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim().split(' ').filter(Boolean).sort().join(' ');
+const memeNom = (a: unknown, b: string) => cleNom(a) === cleNom(b); // « Dupont Pierrick » = « Pierrick Dupont » = « Monsieur Pierrick Dupont »
+/** Nouveau chantier : nom (ordre libre, sans civilité), ville, code postal EXACTS ; travaux/adresse par motif ; null = doit rester VIDE (rien d'inventé). */
+const nouveauChantier = (att: { nom: string; ville: string | RegExp | null; cp: string | null; travaux?: RegExp; adresse?: RegExp }) => (h: Heures): string | null => {
+  const n = h.nouveau; if (!n) return 'pas de bloc « nouveau chantier »';
+  if (!memeNom(n.nom, att.nom)) return `nom = « ${n.nom} » (attendu ${att.nom})`;
+  const ville = fold(n.ville);
+  if (att.ville === null ? ville !== '' : att.ville instanceof RegExp ? !att.ville.test(ville) : !memeNom(String(n.ville ?? '').replace(/^(a|à)\s+/i, ''), att.ville)) return `ville = « ${n.ville} » (attendu ${att.ville ?? 'vide'})`;
+  if ((att.cp ?? '') !== String(n.code_postal ?? '').replace(/\s/g, '')) return `code postal = « ${n.code_postal} » (attendu ${att.cp ?? 'vide'})`;
+  if (att.travaux && !att.travaux.test(fold(n.description))) return `travaux = « ${n.description} » (attendu ${att.travaux})`;
+  if (att.adresse && !att.adresse.test(fold(n.adresse))) return `adresse = « ${n.adresse} » (attendu ${att.adresse})`;
+  return null;
+};
+/** Élément annexe (panier, réserve, congé, envoi) : présent UNE fois, sans problème bloquant, champs contrôlés. */
+const annexe = (items: Outcome[], type: string, f: (d: Record<string, unknown>, it: Outcome) => string | null = () => null): string | null => {
+  const x = items.filter((i) => i.kind === 'action' && i.type === type);
+  if (x.length !== 1) return `${type} : ${x.length} élément(s) (attendu 1)`;
+  if (x[0].problems?.length) return `${type} pas prêt : ${x[0].problems.join(' / ')}`;
+  return f(x[0].draft ?? {}, x[0]);
+};
+const LIBELLE_NON_PREPARE: Record<string, string> = { panier_repas: 'Panier repas', signaler_reserve: 'Réserve', demander_conge: 'Congé', envoyer_journee: 'Envoi de la journée' };
+/** Rien ne disparaît sans un mot : chaque action demandée est dans la fiche, OU nommée dans « Laissé de côté », OU dans « Non préparé ». */
+const rienDeSilencieux = (types: string[]): Check => (o) => {
+  const items = elements(o).map(typeDe);
+  const perdus = types.filter((t) => !items.includes(t) && !(o.ignores ?? []).includes(t) && !(o.non_prepare ?? []).includes(LIBELLE_NON_PREPARE[t] ?? t));
+  return perdus.length ? `action perdue sans un mot : ${perdus.join(', ')} (éléments : ${items.join(' > ')} ; laissé de côté : ${(o.ignores ?? []).join(',')} ; non préparé : ${(o.non_prepare ?? []).join(',')})` : null;
+};
+const TR_MOTS = new RegExp('(^|[^\\p{L}])(bu|bir|ve|saat|hafta|toplam|çalıştınız|çalıştın|çalıştım|dakika|kadar|için|ile|yaptınız|bildirdiniz)(?![\\p{L}])', 'iu');
+const FR_MOTS = new RegExp('(^|[^\\p{L}])(vous|heures|semaine|cette|déclarées|aujourd|travaillé|votre)(?![\\p{L}])', 'iu');
+/**
+ * Les libellés d'ÉCRAN cités entre guillemets (« Ma semaine », "Ma journée", 'Ma semaine') sont en français dans toute l'appli (D9) :
+ * une réponse turque qui renvoie vers eux n'est pas « mêlée de français ». On les retire avant de chercher le turc ET le français ;
+ * le reste de la réponse reste soumis au contrôle (une réponse en français, guillemets ou non, échoue). Une apostrophe de mot
+ * (aujourd'hui, Martin’de) n'ouvre jamais une citation : le guillemet simple doit suivre un espace ou une ponctuation et précéder une non-lettre.
+ */
+export const sansLibellesEcran = (a: string) => a
+  .replace(/«[^»]{0,60}»|“[^”]{0,60}”|"[^"]{0,60}"/g, ' ')
+  .replace(/(^|[\s(:,;.])['’‘][^'’‘]{1,60}['’](?![\p{L}])/gu, '$1 ');
+/** Réponse en TURC : lettres ou mots turcs présents, aucun mot français courant (hors libellés d'écran entre guillemets). */
+const enTurc: Check = (o) => {
+  const u = o.kind === 'multi' && o.items?.length === 1 ? o.items[0] : o;
+  if (u.kind !== 'answer') return `attendu une réponse, obtenu ${u.kind} ${u.type ?? ''}`;
+  const a = u.answer ?? '';
+  if (a.length < 10) return 'réponse vide';
+  const libre = sansLibellesEcran(a);
+  if (!(/[ğışİĞŞ]/.test(libre) || TR_MOTS.test(libre))) return `réponse pas en turc : « ${a.slice(0, 70)} »`;
+  return FR_MOTS.test(libre) ? `réponse mêlée de français : « ${a.slice(0, 70)} »` : null;
+};
+const unSeul = (m: string | null, ...autres: (string | null)[]) => m ?? autres.find((x) => x) ?? null;
+
+/** `live: 'vide'` : aucune ligne notée aujourd'hui (LIVE_VIDE). */
+export interface EvalCase { id: string; cote: 'bureau' | 'salarie'; categorie: string; phrase: string; file?: keyof typeof FILES; enCours?: boolean; live?: 'vide'; check: Check }
+
+// sl13 : la journée complète en un message (4 appels au plus) : heures sur trois chantiers dont un NOUVEAU, panier, réserve, envoi.
+const recapitulatifComplet = fiche(['heures', 'panier_repas', 'signaler_reserve', 'envoyer_journee'], (it) => {
+  const creneaux = (it.find((i) => i.kind === 'draft')?.draft?.lines ?? []) as { key: string; start: string }[];
+  const cleDuMatin = creneaux.find((l) => l.start === '07:00')?.key;
+  return unSeul(
+    heures(TODAY, [['07:00', '10:00'], ['10:30', '12:00'], ['13:00', '16:30']], 480, [W.dupont, W.martin, 'NOUVEAU'],
+      nouveauChantier({ nom: 'Ayhan Demir', ville: 'Bourg-en-Bresse', cp: '01000', adresse: /tilleuls/, travaux: /pergola/ }))(it),
+    annexe(it, 'panier_repas', (d) => eq(d, 'valeur', true)),
+    // La réserve vise le chantier « chez Dupont » : le créneau 07:00-10:00 de la fiche (pas encore noté en base).
+    annexe(it, 'signaler_reserve', (d, x) => unSeul(has(d, 'detail', /fissure/i), eq(d, 'entry_id', `draft:${cleDuMatin}`), x.cible?.nom === 'Villa Dupont' ? null : `cible = ${JSON.stringify(x.cible)} (attendu Villa Dupont)`)),
+    // L'envoi dépend de TOUT le reste (sendWorkerDay envoie la journée entière).
+    annexe(it, 'envoyer_journee', (_d, x) => (it.filter((i) => i !== x).every((i) => x.depend?.includes(String(i.id))) ? null : `dépend de ${JSON.stringify(x.depend)} (attendu les trois autres éléments)`)),
+  );
+});
+// sl15 : cinq actions demandées pour quatre appels au plus : aucune ne disparaît sans un mot, et l'envoi (s'il est préparé) vient en dernier.
+const cinqActions: Check = (o) => {
+  if (o.kind !== 'multi') return `attendu une fiche, obtenu ${o.kind} ${o.type ?? ''}`;
+  const items = o.items ?? [];
+  if (items.length > 4) return `${items.length} éléments (4 au plus)`;
+  const envoi = items.findIndex((i) => typeDe(i) === 'envoyer_journee');
+  return unSeul(
+    heures(TODAY, [['08:00', '12:00'], ['13:00', '17:00']], 480, [W.dupont, W.dupont])(items),
+    rienDeSilencieux(['panier_repas', 'signaler_reserve', 'demander_conge', 'envoyer_journee'])(o),
+    envoi >= 0 && envoi !== items.length - 1 ? 'l’envoi doit être le DERNIER élément' : null,
+  );
+};
 
 export const CASES: EvalCase[] = [
   // ════ BUREAU ════
@@ -212,8 +373,10 @@ export const CASES: EvalCase[] = [
     check: act('modifier_document', (d) => all(eq(d, 'document_id', 'd-devis'), eq(d, 'categorie', 'facture'))) },
   // Retour Cowork : un salarié nommé → SEULEMENT ses cases ; rien ce jour-là → on le dit.
   { id: 'b46', cote: 'bureau', categorie: 'Effacer', phrase: 'Enlève Karim de la Villa Dupont vendredi', check: act('supprimer_intervention', (d) => all(eq(d, 'user_id', 'u-karim'), eq(d, 'planning_id', 'p-karim-4'))) },
+  // Rien ce jour-là pour Kevin : l'assistant le dit (« Choisissez l’intervention. ») et ne propose QUE les cases de Kevin (lot 8).
+  // Attente corrigée : avec `act`, ce cas ne pouvait jamais passer (« pas prête » dès qu'il y a un problème).
   { id: 'b47', cote: 'bureau', categorie: 'Effacer', phrase: 'retire Kevin de la Villa Dupont vendredi',
-    check: act('supprimer_intervention', (d) => all(eq(d, 'user_id', 'u-kevin'), eq(d, 'planning_id', null),
+    check: actAvecProblemes('supprimer_intervention', ['Choisissez l’intervention.'], (d) => all(eq(d, 'user_id', 'u-kevin'), eq(d, 'planning_id', null),
       (d.choix as { nom: string }[]).length && (d.choix as { nom: string }[]).every((c) => c.nom === 'Kevin') ? null : `choix : ${JSON.stringify(d.choix)}`)) },
   // ════ SALARIÉ ════
   { id: 's01', cote: 'salarie', categorie: 'Heures', phrase: 'ce matin 7h30 12h villa dupont et aprem 13h 16h30 bureau martin',
@@ -262,4 +425,66 @@ export const CASES: EvalCase[] = [
   { id: 's31', cote: 'salarie', categorie: 'Effacer', phrase: 'enlève la réserve sur bureau martin', check: act('retirer_reserve', (d) => eq(d, 'entry_id', 'e2')) },
   { id: 's32', cote: 'salarie', categorie: 'Effacer', phrase: 'retire la dernière photo que j’ai mise', check: act('retirer_photo', (d) => eq(d, 'document_id', 'dw1')) },
   { id: 's33', cote: 'salarie', categorie: 'Effacer', phrase: 'efface mes heures d’hier', check: act('effacer_heures', (d) => all(eq(d, 'tout', true), eq(d, 'date', '2026-09-30'))) },
+  // ════ SALARIÉ — PHRASES LONGUES (une fiche, plusieurs actions ; français et turc) ════
+  // Aujourd'hui du jeu = jeudi 2026-10-01 ; hier = 2026-09-30 ; lundi suivant = 2026-10-05 ; mercredi = 2026-10-07.
+  // Les cas d'heures d'aujourd'hui sont mesurés sur une journée VIDE (live: 'vide').
+  { id: 'sl01', cote: 'salarie', categorie: 'Long FR', live: 'vide', phrase: "Ajoute-moi une intervention. J'ai travaillé aujourd'hui de 8h à midi, puis pause d'1h, puis de 13h à 17h sur un nouveau chantier : prénom Pierrick, nom Dupont, à Montagna 01250, pour la pose d'un store banne.",
+    check: fiche(['heures'], heures(TODAY, [['08:00', '12:00'], ['13:00', '17:00']], 480, ['NOUVEAU', 'NOUVEAU'], (h) => unSeul(ecarts([null, 'pause'])(h), nouveauChantier({ nom: 'Pierrick Dupont', ville: 'Montagna', cp: '01250', travaux: /store/ })(h)))) },
+  { id: 'sl02', cote: 'salarie', categorie: 'Long FR', live: 'vide', phrase: "Alors ce matin j'ai commencé à 7h chez Dupont jusqu'à 10h, ensuite de 10h30 à midi chez Martin, et cet après-midi de 13h à 16h30 de nouveau chez Dupont.",
+    check: fiche(['heures'], heures(TODAY, [['07:00', '10:00'], ['10:30', '12:00'], ['13:00', '16:30']], 480, [W.dupont, W.martin, W.dupont], (h) => unSeul(ecarts([null, null, null])(h), h.nouveau ? 'pas de nouveau chantier attendu' : null))) },
+  { id: 'sl03', cote: 'salarie', categorie: 'Long FR', live: 'vide', phrase: "Aujourd'hui j'ai bossé de 8h à 16h30 chez Martin avec une demi-heure de pause, et n'oublie pas de me mettre le panier repas.",
+    check: fiche(['heures', 'panier_repas'], (it) => unSeul(heures(TODAY, [['08:00', '16:30']], 480, [W.martin], (h) => (h.lignes[0].pause === 30 ? null : `pause = ${h.lignes[0].pause} (attendu 30)`))(it), annexe(it, 'panier_repas', (d) => eq(d, 'valeur', true)))) },
+  { id: 'sl04', cote: 'salarie', categorie: 'Long FR', live: 'vide', phrase: "Cet après-midi j'ai fait une intervention de 14h à 18h chez une nouvelle cliente, madame Claire Martin, 12 rue des Lilas à Bourg-en-Bresse 01000, c'est pour la rénovation d'une salle de bain.",
+    check: fiche(['heures'], heures(TODAY, [['14:00', '18:00']], 240, ['NOUVEAU'], nouveauChantier({ nom: 'Claire Martin', ville: 'Bourg-en-Bresse', cp: '01000', adresse: /12.*lilas/, travaux: /salle de bain/ }))) },
+  { id: 'sl05', cote: 'salarie', categorie: 'Long FR', live: 'vide', phrase: "Aujourd'hui j'ai travaillé de 9h à 12h puis de 14h à 17h chez un nouveau client à Bourg-en-Bresse, monsieur Ayhan Demir, pour la pose d'une pergola.",
+    check: fiche(['heures'], heures(TODAY, [['09:00', '12:00'], ['14:00', '17:00']], 360, ['NOUVEAU', 'NOUVEAU'], nouveauChantier({ nom: 'Ayhan Demir', ville: 'Bourg-en-Bresse', cp: null, travaux: /pergola/ }))) },
+  { id: 'sl06', cote: 'salarie', categorie: 'Long FR', live: 'vide', phrase: "Aujourd'hui de 8h à 12h sur un nouveau chantier chez monsieur Paul Durand, pour la pose de carrelage.",
+    check: fiche(['heures'], heures(TODAY, [['08:00', '12:00']], 240, ['NOUVEAU'], (h) => unSeul(nouveauChantier({ nom: 'Paul Durand', ville: null, cp: null, travaux: /carrelage/ })(h), h.manque.includes('ville') ? null : `manque = ${JSON.stringify(h.manque)} (la ville doit être réclamée)`))) },
+  { id: 'sl07', cote: 'salarie', categorie: 'Long FR', live: 'vide', phrase: "Aujourd'hui j'ai travaillé de 7h30 à 12h puis de 13h à 16h30 chez Dupont, mets-moi le panier repas, et signale une réserve : fissure sur le mur sud.",
+    check: fiche(['heures', 'panier_repas', 'signaler_reserve'], (it) => unSeul(heures(TODAY, [['07:30', '12:00'], ['13:00', '16:30']], 480, [W.dupont, W.dupont])(it), annexe(it, 'panier_repas', (d) => eq(d, 'valeur', true)), annexe(it, 'signaler_reserve', (d, x) => unSeul(has(d, 'detail', /fissure/i), x.cible?.nom === 'Villa Dupont' ? null : `cible = ${JSON.stringify(x.cible)} (attendu Villa Dupont)`)))) },
+  { id: 'sl08', cote: 'salarie', categorie: 'Long FR', phrase: "Hier j'ai bossé de 8h à 12h et de 13h à 17h chez Dupont, et je voudrais poser un congé du lundi au mercredi de la semaine prochaine.",
+    check: fiche(['heures', 'demander_conge'], (it) => unSeul(heures('2026-09-30', [['08:00', '12:00'], ['13:00', '17:00']], 480, [W.dupont, W.dupont])(it), annexe(it, 'demander_conge', (d) => all(eq(d, 'conge_type', 'conge'), eq(d, 'du', '2026-10-05'), eq(d, 'au', '2026-10-07'))))) },
+  { id: 'sl09', cote: 'salarie', categorie: 'Long FR', live: 'vide', phrase: "euh alors ce matin 7h 12h chez dupont, midi pause de 45 minutes, après-midi 12h45 16h30 pareil chez dupont, et j'ai vu une fissure sur le mur, mets une réserve.",
+    check: fiche(['heures', 'signaler_reserve'], (it) => unSeul(heures(TODAY, [['07:00', '12:00'], ['12:45', '16:30']], 525, [W.dupont, W.dupont], ecarts([null, 'pause']))(it), annexe(it, 'signaler_reserve', (d) => has(d, 'detail', /fissure/i)))) },
+  { id: 'sl10', cote: 'salarie', categorie: 'Long FR', live: 'vide', phrase: "Ce matin de 8h à 12h chez Dupont, et cet après-midi de 13h à 17h chez une nouvelle cliente, madame Claire Martin à Bron 69500, pour l'installation d'une porte de garage.",
+    check: fiche(['heures'], heures(TODAY, [['08:00', '12:00'], ['13:00', '17:00']], 480, [W.dupont, 'NOUVEAU'], nouveauChantier({ nom: 'Claire Martin', ville: 'Bron', cp: '69500', travaux: /garage/ }))) },
+  { id: 'sl11', cote: 'salarie', categorie: 'Long FR', live: 'vide', phrase: "Mets mes heures d'aujourd'hui de 8h à 12h et de 13h à 17h chez Martin, puis envoie ma journée au bureau.",
+    check: fiche(['heures', 'envoyer_journee'], (it) => unSeul(heures(TODAY, [['08:00', '12:00'], ['13:00', '17:00']], 480, [W.martin, W.martin])(it), annexe(it, 'envoyer_journee', (d, x) => (x.deja_notees?.length ? `déjà notées = ${JSON.stringify(x.deja_notees)}` : null)))) },
+  { id: 'sl12', cote: 'salarie', categorie: 'Long FR', live: 'vide', phrase: "J'ai travaillé de 8h à 12h puis de 13h à 17h sur un nouveau chantier, Bureau Martin à Villeurbanne.",
+    check: fiche(['heures'], heures(TODAY, [['08:00', '12:00'], ['13:00', '17:00']], 480, [W.martin, W.martin], (h) => (h.nouveau?.reutilise_id === W.martin ? null : `reutilise_id = ${h.nouveau?.reutilise_id} (aucune création attendue : Bureau Martin existe déjà)`))) },
+  { id: 'sl13', cote: 'salarie', categorie: 'Long FR', live: 'vide', phrase: "Alors écoute, je te fais le récapitulatif complet de ma journée d'aujourd'hui. Ce matin j'ai commencé à 7h chez Dupont jusqu'à 10h, ensuite de 10h30 à midi chez Martin, et cet après-midi de 13h à 16h30 j'ai travaillé sur un nouveau chantier : c'est pour monsieur Ayhan Demir, 5 rue des Tilleuls à Bourg-en-Bresse 01000, pour la pose d'une pergola en aluminium avec les lames orientables. Mets-moi aussi le panier repas, et signale une réserve sur le chantier de chez Dupont : il y a une fissure sur le mur sud qu'il faudra reprendre avant la livraison. Voilà, c'est tout pour aujourd'hui, tu peux envoyer ma journée au bureau.",
+    check: recapitulatifComplet },
+  { id: 'sl14', cote: 'salarie', categorie: 'Long FR', live: 'vide', phrase: "Ce matin j'ai commencé à 7h, non plutôt 7h30, jusqu'à midi chez Dupont.",
+    check: fiche(['heures'], heures(TODAY, [['07:30', '12:00']], 270, [W.dupont])) },
+  { id: 'sl15', cote: 'salarie', categorie: 'Long FR', live: 'vide', phrase: "Aujourd'hui de 8h à 12h et de 13h à 17h chez Dupont, mets le panier repas, signale une réserve : fissure au plafond, pose un congé du lundi au mercredi prochain, et envoie ma journée.",
+    check: cinqActions },
+  { id: 'sl16', cote: 'salarie', categorie: 'Long FR', live: 'vide', phrase: "Aujourd'hui de 8h à 16h30 chez Martin avec une heure de pause.",
+    check: fiche(['heures'], heures(TODAY, [['08:00', '16:30']], 450, [W.martin], (h) => (h.lignes[0].pause === 60 ? null : `pause = ${h.lignes[0].pause} (attendu 60)`))) },
+  { id: 'st01', cote: 'salarie', categorie: 'Long TR', live: 'vide', phrase: "Bugün sabah 8’den 12’ye kadar çalıştım, sonra bir saat mola verdim, sonra öğleden sonra 13’ten 17’ye kadar yeni bir şantiyede çalıştım: müşteri Pierrick Dupont, adres Montagna 01250, kollu tente montajı için.",
+    check: fiche(['heures'], heures(TODAY, [['08:00', '12:00'], ['13:00', '17:00']], 480, ['NOUVEAU', 'NOUVEAU'], (h) => unSeul(ecarts([null, 'pause'])(h), nouveauChantier({ nom: 'Pierrick Dupont', ville: 'Montagna', cp: '01250', travaux: /tente|store/ })(h)))) },
+  { id: 'st02', cote: 'salarie', categorie: 'Long TR', live: 'vide', phrase: "Bu sabah 7’den 10’a kadar Dupont’ta, sonra 10:30’dan 12’ye kadar Martin ofisinde, öğleden sonra da 13’ten 16:30’a kadar tekrar Dupont’ta çalıştım.",
+    check: fiche(['heures'], heures(TODAY, [['07:00', '10:00'], ['10:30', '12:00'], ['13:00', '16:30']], 480, [W.dupont, W.martin, W.dupont], ecarts([null, null, null]))) },
+  { id: 'st03', cote: 'salarie', categorie: 'Long TR', phrase: "Gelecek pazartesiden çarşambaya kadar izin almak istiyorum, bugünkü panier repas’yı da işaretle ve günümü büroya gönder.",
+    check: fiche(['panier_repas', 'demander_conge', 'envoyer_journee'], (it) => unSeul(annexe(it, 'panier_repas', (d) => eq(d, 'valeur', true)), annexe(it, 'demander_conge', (d) => all(eq(d, 'du', '2026-10-05'), eq(d, 'au', '2026-10-07'))), annexe(it, 'envoyer_journee', (_d, x) => ((x.deja_notees?.length ?? 0) === 2 && x.depend?.includes(String(it[0].id)) ? null : `deja_notees = ${JSON.stringify(x.deja_notees)} ; dépend de ${JSON.stringify(x.depend)} (attendu les 2 lignes du jour et le panier)`)))) },
+  { id: 'st04', cote: 'salarie', categorie: 'Long TR', phrase: "Dupont şantiyesinde duvarda bir çatlak buldum, rezerv olarak not et.",
+    check: fiche(['signaler_reserve'], (it) => annexe(it, 'signaler_reserve', (d) => all(eq(d, 'entry_id', 'e1'), /catlak|fissure/.test(fold(d.detail)) ? null : `detail = « ${d.detail} » (attendu une fissure)`))) },
+  { id: 'st05', cote: 'salarie', categorie: 'Long TR', phrase: "Bu hafta toplam kaç saat çalıştım?",
+    check: (o) => enTurc(o) ?? (/7/.test(o.answer ?? '') ? null : `la réponse devait donner 7 h 30 : « ${(o.answer ?? '').slice(0, 70)} »`) },
+  { id: 'st06', cote: 'salarie', categorie: 'Long TR', live: 'vide', phrase: "Şey, bugün... yani sabah erkenden 7’de Dupont’ta başladım, öğlen 12’de bıraktım, bir saat yemek molası verdim, sonra 13’ten 17’ye kadar Montagna’da yeni bir müşteri için çalıştım, adı Ayşe Kaya, posta kodu 01250, çatı tamiri yaptık.",
+    check: fiche(['heures'], heures(TODAY, [['07:00', '12:00'], ['13:00', '17:00']], 540, [W.dupont, 'NOUVEAU'], nouveauChantier({ nom: 'Ayşe Kaya', ville: /^montagna/, cp: '01250', travaux: /cati|tamir|toit/ }))) },
+  { id: 'st07', cote: 'salarie', categorie: 'Long TR', phrase: "Dün sabah 7:30’dan 12’ye kadar Dupont villasında, öğleden sonra 13’ten 16:30’a kadar Martin ofisinde çalıştım.",
+    check: fiche(['heures'], heures('2026-09-30', [['07:30', '12:00'], ['13:00', '16:30']], 480, [W.dupont, W.martin])) },
+  { id: 'st08', cote: 'salarie', categorie: 'Long TR', live: 'vide', phrase: "Bugün chantier’de 8’den 12’ye kadar ve 13’ten 17’ye kadar Martin’de çalıştım, panier repas da yaz.",
+    check: fiche(['heures', 'panier_repas'], (it) => unSeul(heures(TODAY, [['08:00', '12:00'], ['13:00', '17:00']], 480, [W.martin, W.martin])(it), annexe(it, 'panier_repas', (d) => eq(d, 'valeur', true)))) },
+  { id: 'st09', cote: 'salarie', categorie: 'Long TR', live: 'vide', phrase: "Bugün Martin ofisinde 8’den 16:30’a kadar çalıştım, aralarda yarım saat mola verdim ve panier’yi işaretle.",
+    check: fiche(['heures', 'panier_repas'], (it) => unSeul(heures(TODAY, [['08:00', '16:30']], 480, [W.martin], (h) => (h.lignes[0].pause === 30 ? null : `pause = ${h.lignes[0].pause} (attendu 30)`))(it), annexe(it, 'panier_repas', (d) => eq(d, 'valeur', true)))) },
+  { id: 'st10', cote: 'salarie', categorie: 'Long TR', live: 'vide', phrase: "Bugün Martin ofisinde çalıştım: 8’den 17’ye kadar, bir saat mola.",
+    check: fiche(['heures'], heures(TODAY, [['08:00', '17:00']], 480, [W.martin], (h) => (h.lignes[0].pause === 60 ? null : `pause = ${h.lignes[0].pause} (attendu 60)`))) },
+  { id: 'st11', cote: 'salarie', categorie: 'Long TR', live: 'vide', phrase: "Aujourd'hui sabah 8’den 12’ye kadar chez Dupont çalıştım, öğleden sonra 13’ten 17’ye kadar chez Martin, panier da işaretle.",
+    check: fiche(['heures', 'panier_repas'], (it) => unSeul(heures(TODAY, [['08:00', '12:00'], ['13:00', '17:00']], 480, [W.dupont, W.martin])(it), annexe(it, 'panier_repas', (d) => eq(d, 'valeur', true)))) },
+  // Variantes des règles R1–R3 (mesure du 2026-10 sur le vrai modèle) : la ville dite comme « adresse », un seul chantier cité pour deux créneaux.
+  { id: 'st12', cote: 'salarie', categorie: 'Long TR', live: 'vide', phrase: "Bugün 9’dan 12’ye kadar ve 14’ten 17’ye kadar yeni bir şantiyede çalıştım: müşteri Ayhan Demir, adres Bron 69500, pergola montajı için.",
+    check: fiche(['heures'], heures(TODAY, [['09:00', '12:00'], ['14:00', '17:00']], 360, ['NOUVEAU', 'NOUVEAU'], nouveauChantier({ nom: 'Ayhan Demir', ville: 'Bron', cp: '69500', travaux: /pergola/ }))) },
+  { id: 'st13', cote: 'salarie', categorie: 'Long TR', live: 'vide', phrase: "Bugün sabah 8’den 12’ye kadar, öğleden sonra da 13’ten 17’ye kadar çalıştım, hepsi Martin’de.",
+    check: fiche(['heures'], heures(TODAY, [['08:00', '12:00'], ['13:00', '17:00']], 480, [W.martin, W.martin])) },
 ];
