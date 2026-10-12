@@ -6,6 +6,7 @@
 // dans le bucket `company-logos` (dossier {company_id}/…), URL publique dans logo_url.
 
 import { useEffect, useId, useState, type ReactNode } from 'react';
+import dynamic from 'next/dynamic';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
 import { saveCompanySettings, saveMealEnabled } from '@/lib/admin-writes';
@@ -19,6 +20,9 @@ import SupportAccess from '@/components/support-access';
 import { InfoTip } from '@/components/ui/info-tip';
 import { readSupportSession, supabaseSupportSource } from '@/lib/support';
 import { toast } from 'sonner';
+
+// Lot 12 : le QR fixe encore actif alors que la borne est coupée (chargé seulement dans ce cas rare).
+const KioskFixedQr = dynamic(() => import('@/components/kiosk-fixed-qr'), { ssr: false });
 
 interface Props {
   open: boolean; onOpenChange: (o: boolean) => void; onSaved?: () => void;
@@ -189,6 +193,9 @@ export default function CompanySettings({ open, onOpenChange, onSaved, onOpenTra
   // base, la requête échoue seule et rien ne s'affiche.
   const [kioskEnabled, setKioskEnabled] = useState(false);
   const [kioskOpen, setKioskOpen] = useState(false);
+  // Lot 12 : borne coupée par BEMEXO mais QR fixe imprimé encore actif — le bouton
+  // « Relier la tablette » n'existe plus, le bureau doit pouvoir le couper ici.
+  const [fixedCut, setFixedCut] = useState(false);
   // Accès support (lot 5) : le bloc n'existe que si BEMEXO a activé
   // `support_enabled`, et jamais pour le support lui-même (mode support).
   const [supportEnabled, setSupportEnabled] = useState(false);
@@ -289,9 +296,18 @@ export default function CompanySettings({ open, onOpenChange, onSaved, onOpenTra
   useEffect(() => {
     if (!open || !user?.company_id) return;
     let stale = false;
-    supabase.from('companies').select('kiosk_enabled').eq('id', user.company_id).maybeSingle()
+    const companyId = user.company_id;
+    supabase.from('companies').select('kiosk_enabled').eq('id', companyId).maybeSingle()
       .then(({ data }) => {
-        if (!stale) setKioskEnabled(!!(data as { kiosk_enabled?: boolean } | null)?.kiosk_enabled);
+        if (stale) return;
+        const on = !!(data as { kiosk_enabled?: boolean } | null)?.kiosk_enabled;
+        setKioskEnabled(on);
+        setFixedCut(false);
+        if (on) return;
+        // Borne coupée : y a-t-il encore un QR fixe actif ? (une seule petite lecture ;
+        // colonne absente = migration pas passée = aucun QR fixe, rien ne s'affiche)
+        supabase.from('kiosks').select('id').eq('company_id', companyId).eq('kind', 'fixe').is('revoked_at', null).limit(1)
+          .then(({ data: rows, error }) => { if (!stale && !error) setFixedCut(((rows as unknown[] | null) ?? []).length > 0); });
       });
     return () => { stale = true; };
   }, [open, user?.company_id]);
@@ -691,6 +707,9 @@ export default function CompanySettings({ open, onOpenChange, onSaved, onOpenTra
                   </button>
                 </div>
               )}
+
+              {/* Lot 12 : borne coupée, QR fixe imprimé encore actif → le bureau peut le couper ici. */}
+              {!kioskEnabled && fixedCut && <KioskFixedQr defaultOpen />}
 
               {/* ── L'ENDROIT AU POINTAGE ───────────────────────────────────────
                   CE QUE CE BLOC DIT À L'EMPLOYEUR, ET POURQUOI IL LE DIT.

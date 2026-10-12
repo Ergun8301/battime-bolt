@@ -9,6 +9,9 @@
 //  - PoseurTrainings : la liste. « Ouvrir ↗ » est un VRAI lien (nouvel onglet,
 //    rel="noopener noreferrer") — jamais d'iframe, aucune vidéo hébergée ici ;
 //    « Vue » se coche à la main (set_training_seen), « Annuler » 10 s.
+//  - Lot 13 : une vidéo envoyée par le bureau (kind 'upload') se regarde DANS
+//    l'appli (« Regarder » : lecteur intégré, lien signé créé à l'ouverture,
+//    components/training-video-player.tsx) ; « Vue » par set_training_video_seen.
 // Tant que la migration n'est pas appliquée : rien du tout (ni bandeau, ni menu).
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { CirclePlay, FileText, Loader2 } from 'lucide-react';
@@ -19,7 +22,10 @@ import { keep } from '@/lib/same';
 import {
   announceTrainingsChanged, fetchMyTrainings, setTrainingSeen, signTrainingDocs, TRAININGS_CHANGED_EVENT, type MyTraining,
 } from '@/lib/trainings';
+import { setVideoSeen } from '@/lib/training-videos';
+import dynamic from 'next/dynamic';
 import { PROVIDER_LABEL, providerOf, safeTrainingUrl, toSeeLabel } from '@/supabase/functions/_shared/trainings';
+import { videoSummary } from '@/supabase/functions/_shared/training-videos';
 
 interface State { available: boolean; items: MyTraining[] }
 const OFF: State = { available: false, items: [] };
@@ -74,6 +80,11 @@ export function TrainingsBanner({ count, onOpen }: { count: number; onOpen: () =
   );
 }
 
+// Lot 13 : le lecteur ne se charge qu'au premier « Regarder ».
+const TrainingVideoPlayer = dynamic(() => import('@/components/training-video-player'), {
+  ssr: false, loading: () => <p className="bt-tr-na"><Loader2 className="inline h-3 w-3 animate-spin motion-reduce:animate-none" /> Chargement…</p>,
+});
+
 const CSS = `
 .bt-tr-list{display:flex;flex-direction:column;gap:8px}
 .bt-tr-row{display:flex;align-items:flex-start;gap:10px;background:#fff;border:1px solid rgba(21,18,15,.12);border-radius:12px;padding:10px 12px;min-width:0}
@@ -86,6 +97,9 @@ const CSS = `
 .bt-tr-acts{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:8px}
 .bt-tr-open{display:inline-flex;align-items:center;height:30px;padding:0 10px;border-radius:8px;border:1.5px solid rgba(21,18,15,.2);background:#fff;font-size:12.5px;font-weight:800;color:#15120F;text-decoration:none;white-space:nowrap}
 .bt-tr-open:focus-visible,.bt-tr-seen:focus-visible{outline:2px solid #FFC21A;outline-offset:1px}
+button.bt-tr-open{font:inherit;font-size:12.5px;font-weight:800;cursor:pointer}
+button.bt-tr-open[aria-expanded="true"]{background:#FFF6D9;border-color:#15120F}
+.bt-tr-player{margin-top:8px}
 .bt-tr-na{font-size:12px;font-weight:700;color:#8a8378}
 .bt-tr-seen{display:inline-flex;align-items:center;gap:5px;height:30px;padding:0 10px;border-radius:8px;border:1.5px solid rgba(21,18,15,.2);background:#fff;font:inherit;font-size:12.5px;font-weight:800;color:#15120F;cursor:pointer;white-space:nowrap}
 .bt-tr-seen[aria-pressed="true"]{background:#15120F;border-color:#15120F;color:#FFC21A}
@@ -106,6 +120,8 @@ export default function PoseurTrainings({ items, companyId, onPatch }: {
   const [urls, setUrls] = useState<Record<string, string>>({});
   const signedRef = useRef({ at: 0, key: '' });
   const [busyId, setBusyId] = useState<string | null>(null);
+  // Lot 13 : la vidéo ouverte dans le lecteur (une à la fois).
+  const [playing, setPlaying] = useState<string | null>(null);
   const pathsKey = Array.from(new Set(items.map((t) => t.document_path).filter((p): p is string => !!p))).sort().join('|');
 
   // Liens des documents : signés à l'ouverture (ou quand la liste change), puis au
@@ -132,7 +148,8 @@ export default function PoseurTrainings({ items, companyId, onPatch }: {
     setBusyId(t.id);
     onPatch(t.id, seen ? new Date().toISOString() : null); // tout de suite ; revient si le serveur refuse
     try {
-      const r = await setTrainingSeen(t.id, seen);
+      const setSeen = t.kind === 'upload' ? setVideoSeen : setTrainingSeen;
+      const r = await setSeen(t.id, seen);
       if (!r.ok) {
         onPatch(t.id, t.seen_at);
         toast.error(r.message || 'Impossible d’enregistrer. Réessayez.');
@@ -146,7 +163,7 @@ export default function PoseurTrainings({ items, companyId, onPatch }: {
           action: {
             label: 'Annuler',
             onClick: async () => {
-              const u = await setTrainingSeen(t.id, false);
+              const u = await setSeen(t.id, false);
               if (u.ok) { onPatch(t.id, null); toast.success('« Vue » retirée'); } else toast.error(u.message || 'Impossible d’annuler.');
               announceTrainingsChanged();
             },
@@ -170,9 +187,11 @@ export default function PoseurTrainings({ items, companyId, onPatch }: {
         <div className="bt-tr-list">
           {[...items].sort(order).map((t) => {
             const isDoc = t.kind === 'document';
-            const href = isDoc ? (t.document_path ? urls[t.document_path] || null : null) : safeTrainingUrl(t.video_url);
+            const isUpload = t.kind === 'upload';
+            const href = isDoc ? (t.document_path ? urls[t.document_path] || null : null) : isUpload ? null : safeTrainingUrl(t.video_url);
             const prov = providerOf(t.video_url);
-            const what = isDoc ? (t.document_name || 'Document') : prov ? PROVIDER_LABEL[prov] : 'Vidéo';
+            const what = isDoc ? (t.document_name || 'Document') : isUpload ? videoSummary({ duration_s: t.video_duration, size_bytes: t.video_size }) : prov ? PROVIDER_LABEL[prov] : 'Vidéo';
+            const isPlaying = isUpload && playing === t.id && !!t.video_path;
             return (
               <div key={t.id} className={`bt-tr-row${t.seen_at ? ' seen' : ''}`} data-testid="training-row" data-seen={t.seen_at ? '1' : '0'}>
                 <span className="bt-tr-ic" aria-hidden="true">{isDoc ? <FileText className="h-4 w-4" /> : <CirclePlay className="h-4 w-4" />}</span>
@@ -180,7 +199,11 @@ export default function PoseurTrainings({ items, companyId, onPatch }: {
                   <div className="bt-tr-t">{t.title}</div>
                   <div className="bt-tr-s">{what} · ajoutée le {added(t.created_at)}</div>
                   <div className="bt-tr-acts">
-                    {href ? (
+                    {isUpload && t.video_path ? (
+                      <button type="button" className="bt-tr-open" aria-expanded={isPlaying} onClick={() => setPlaying(isPlaying ? null : t.id)} data-testid="training-watch">
+                        {isPlaying ? 'Fermer la vidéo' : '▶ Regarder'}
+                      </button>
+                    ) : href ? (
                       <a className="bt-tr-open" href={href} target="_blank" rel="noopener noreferrer" data-testid="training-open">Ouvrir ↗</a>
                     ) : (
                       <span className="bt-tr-na" data-testid="training-na">Lien indisponible</span>
@@ -191,6 +214,9 @@ export default function PoseurTrainings({ items, companyId, onPatch }: {
                       {t.seen_at ? `✓ Vue le ${ddmm(t.seen_at)}` : '○ Vue'}
                     </button>
                   </div>
+                  {isPlaying && t.video_path && (
+                    <div className="bt-tr-player"><TrainingVideoPlayer companyId={companyId} path={t.video_path} title={t.title} /></div>
+                  )}
                 </div>
               </div>
             );

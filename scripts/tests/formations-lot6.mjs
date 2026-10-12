@@ -123,6 +123,10 @@ const freshDb = () => {
 freshDb();
 const NEW_TABLES = new Set(['trainings', 'training_views']);
 const NEW_FNS = new Set(['my_trainings', 'set_training_seen']);
+// Lot 13 (vidéos envoyées) PAS appliqué ici : sa table et ses fonctions répondent
+// « absentes », comme la vraie base (le lot 13 a son propre harnais, videos-lot13.mjs).
+const LOT13_TABLES = new Set(['training_videos', 'training_video_views']);
+const LOT13_FNS = new Set(['my_training_videos', 'set_training_video_seen', 'training_video_limits', 'start_training_video', 'publish_training_video', 'set_training_video_archived']);
 const EMAIL_FNS = ['invite-worker', 'weekly-digest', 'send-payroll-export', 'cert-expiry-alerts', 'send-email', 'send-reminder-email'];
 const userOf = (id) => D.users.find((x) => x.id === id);
 const isAdmin = (uid) => userOf(uid)?.role === 'admin' && userOf(uid)?.is_active !== false;
@@ -296,6 +300,7 @@ const newCtx = async (uid, viewport) => {
           return r.fulfill({ status: e.status || 400, json: { code: e.code, message: e.message, details: null, hint: null } });
         }
       }
+      if (LOT13_FNS.has(fn)) return r.fulfill(MISSING_FN(fn));
       if (fn === 'company_has_kiosk') return r.fulfill({ json: false });
       return r.fulfill({ json: [] });
     }
@@ -305,6 +310,7 @@ const newCtx = async (uid, viewport) => {
       if (single) return rows.length ? r.fulfill({ status, json: rows[0] }) : r.fulfill({ status: 406, json: { code: 'PGRST116', message: 'none', details: null, hint: null } });
       return r.fulfill({ status, json: rows, headers: { 'content-range': `${off}-${Math.max(off, off + rows.length - 1)}/${total}`, 'access-control-allow-origin': '*', 'access-control-expose-headers': 'content-range' } });
     };
+    if (LOT13_TABLES.has(t)) return r.fulfill(MISSING_TABLE(t));
     if (NEW_TABLES.has(t) && MIG === 'non') { if (m === 'GET' || m === 'HEAD') gets.push({ t, p: new URLSearchParams(url.searchParams), by: uid, missing: true }); else writes.push({ m, t, body, by: uid }); return r.fulfill(MISSING_TABLE(t)); }
     if (m === 'GET' || m === 'HEAD') {
       gets.push({ t, p: new URLSearchParams(url.searchParams), by: uid });
