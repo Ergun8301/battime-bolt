@@ -1546,7 +1546,7 @@ export const ASSISTANT_FUNCTIONS = [
     name: 'supprimer_intervention',
     description: 'Retirer / enlever / supprimer UNE intervention (une case) du planning : un salarié (ou un chantier) et UN seul jour, par exemple « retire Marc du planning mardi », « enlève Sofiane de la Pizzeria Exemple jeudi ». « Vide / efface le planning », plusieurs jours, une période, une semaine, toute l’équipe → effacer_planning.',
     parameters: { type: 'object', properties: {
-      salarie: S('Salarié prévu (« moi » pour la personne qui parle)'), date: S('Jour, aaaa-mm-jj'),
+      salarie: S('Salarié prévu (« moi » pour la personne qui parle)'), date: S('Jour, aaaa-mm-jj. Un nom de jour seul (« mardi ») = le PROCHAIN jour de ce nom du CALENDRIER, aujourd’hui compris ; jamais un jour déjà passé, sauf s’il est dit (« dernier », « hier »).'),
       chantier: S('Client ou chantier, s’il est dit'), lieu: S('Lieu ou ville dit (« l’intervention à Lyon »)'),
     }, required: [] },
   },
@@ -1554,14 +1554,14 @@ export const ASSISTANT_FUNCTIONS = [
     name: 'effacer_planning',
     description: 'Effacer / VIDER le planning (les interventions, pas les absences) d’UN salarié sur plusieurs jours, une période ou une semaine, ou de TOUTE l’équipe (même un seul jour) : « vide », « efface le planning ». « Retire / enlève <salarié> du planning <un jour> » (UN seul jour, une case) → supprimer_intervention, pas cet outil.',
     parameters: { type: 'object', properties: {
-      salarie: S('Salarié ; vide = toute l’équipe'), du: S('Premier jour, aaaa-mm-jj'), au: S('Dernier jour, aaaa-mm-jj'),
+      salarie: S('Salarié ; vide = toute l’équipe'), du: S('Premier jour, aaaa-mm-jj. Un nom de jour seul (« mardi ») = le PROCHAIN jour de ce nom du CALENDRIER, aujourd’hui compris ; jamais un jour déjà passé, sauf s’il est dit (« dernier », « hier »).'), au: S('Dernier jour, aaaa-mm-jj (même règle : le PROCHAIN jour de ce nom du CALENDRIER, jamais un jour déjà passé).'),
       semaine: S('« prochaine », « en cours » ou un jour de la semaine voulue, si c’est une semaine entière'),
     }, required: [] },
   },
   {
     name: 'supprimer_absence',
     description: 'Retirer un congé, un arrêt ou une absence posé au planning (le salarié redevient présent ces jours-là).',
-    parameters: { type: 'object', properties: { salarie: S('Salarié'), du: S('Premier jour, aaaa-mm-jj'), au: S('Dernier jour, aaaa-mm-jj') }, required: ['salarie'] },
+    parameters: { type: 'object', properties: { salarie: S('Salarié'), du: S('Premier jour, aaaa-mm-jj. Un nom de jour seul (« mardi ») = le PROCHAIN jour de ce nom du CALENDRIER, aujourd’hui compris ; jamais un jour déjà passé, sauf s’il est dit (« dernier », « hier »).'), au: S('Dernier jour, aaaa-mm-jj (même règle : le PROCHAIN jour de ce nom du CALENDRIER, jamais un jour déjà passé).') }, required: ['salarie'] },
   },
   {
     name: 'supprimer_document',

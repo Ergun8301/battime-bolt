@@ -114,6 +114,19 @@ Deno.test('« Retire X » / « vide le planning » : la frontière est écrite d
   for (const f of ASSISTANT_FUNCTIONS) {
     if (/cette semaine/i.test(f.description)) throw new Error(`« cette semaine » dans la description de ${f.name}`);
   }
+  type Props = { properties: Record<string, { description: string }> };
+  // Règle de date écrite dans les paramètres : un nom de jour seul = le PROCHAIN jour de ce nom du calendrier, jamais un jour passé
+  // (le modèle prenait le lundi de la semaine en cours, déjà passé, pour « de lundi à mercredi »). Même règle pour supprimer_absence.
+  const param = (outil: string, nom: string) => ((ASSISTANT_FUNCTIONS.find((f) => f.name === outil)!.parameters as unknown as Props).properties[nom]?.description ?? '');
+  for (const [outil, nom] of [['effacer_planning', 'du'], ['effacer_planning', 'au'], ['supprimer_intervention', 'date'], ['supprimer_absence', 'du'], ['supprimer_absence', 'au']]) {
+    const d = param(outil, nom);
+    if (!/PROCHAIN/.test(d) || !/CALENDRIER/.test(d) || !/jamais un jour (déjà )?passé/.test(d)) throw new Error(`${outil}.${nom} : la règle « prochain jour du calendrier, jamais un jour passé » manque : « ${d} »`);
+  }
+  for (const f of ASSISTANT_FUNCTIONS) {
+    for (const [nom, p] of Object.entries((f.parameters as unknown as Props).properties)) {
+      if (/cette semaine/i.test(p.description)) throw new Error(`« cette semaine » dans ${f.name}.${nom}`);
+    }
+  }
   // On ne dresse pas le modèle sur le test : aucune phrase du jeu d'évaluation n'est recopiée dans ces textes.
   const norm = (x: string) => low(x).replace(/\s+/g, ' ');
   for (const c of CASES.filter((x) => x.cote === 'bureau')) {
