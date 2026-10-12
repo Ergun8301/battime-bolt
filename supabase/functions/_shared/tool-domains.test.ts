@@ -116,9 +116,9 @@ Deno.test('« Retire X » / « vide le planning » : la frontière est écrite d
   }
   type Props = { properties: Record<string, { description: string }> };
   // Règle de date écrite dans les paramètres : un nom de jour seul = le PROCHAIN jour de ce nom du calendrier, jamais un jour passé
-  // (le modèle prenait le lundi de la semaine en cours, déjà passé, pour « de lundi à mercredi »). Même règle pour supprimer_absence.
+  // (le modèle prenait le lundi de la semaine en cours, déjà passé, pour « de lundi à mercredi »). PAS pour les absences : elles peuvent être rétroactives.
   const param = (outil: string, nom: string) => ((ASSISTANT_FUNCTIONS.find((f) => f.name === outil)!.parameters as unknown as Props).properties[nom]?.description ?? '');
-  for (const [outil, nom] of [['effacer_planning', 'du'], ['effacer_planning', 'au'], ['supprimer_intervention', 'date'], ['supprimer_absence', 'du'], ['supprimer_absence', 'au']]) {
+  for (const [outil, nom] of [['effacer_planning', 'du'], ['effacer_planning', 'au'], ['supprimer_intervention', 'date']]) {
     const d = param(outil, nom);
     if (!/PROCHAIN/.test(d) || !/CALENDRIER/.test(d) || !/jamais un jour (déjà )?passé/.test(d)) throw new Error(`${outil}.${nom} : la règle « prochain jour du calendrier, jamais un jour passé » manque : « ${d} »`);
   }

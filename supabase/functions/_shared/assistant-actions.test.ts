@@ -469,23 +469,20 @@ Deno.test('Bulletin lu par le modèle de SECOURS : « à vérifier » au-dessus 
 
 // ── Jours du planning donnés PASSÉS par le modèle pour un nom de jour seul (mesuré sur le vrai modèle) ──
 // Aujourd'hui = jeudi 2026-10-01 : « lundi » = 2026-10-05. Le modèle renvoie parfois le lundi de la semaine en cours (2026-09-28).
-Deno.test('Dates : un jour PASSÉ pour un nom de jour seul → la prochaine occurrence, pour TOUTES les actions de planning', () => {
+// Corrigé pour le PLANNING (affecter, déplacer, retirer une intervention, effacer) ; PAS pour les absences et congés, légitimement rétroactifs.
+Deno.test('Dates : un jour PASSÉ pour un nom de jour seul → la prochaine occurrence, pour les 4 actions de PLANNING', () => {
   const CTXJ = (demande?: string): ActionContext => ({ ...CTX, today: '2026-10-01', demande });
   const draftOf = (name: string, raw: Record<string, unknown>, demande?: string) => fromFunctionCall(name, raw, CTXJ(demande)).action!.draft as unknown as Record<string, unknown>;
   type Cas = { fn: string; phrase: string; raw: Record<string, unknown>; champs: string[]; passe: string[]; attendu: string[]; futur: string[] };
   const cas: Cas[] = [
     { fn: 'affecter_planning', phrase: 'mets Karim sur Villa Dupont lundi et mardi', raw: { salarie: 'Karim', chantier: 'Villa Dupont', dates: ['2026-09-28', '2026-09-29'] },
       champs: ['dates'], passe: ['2026-09-28', '2026-09-29'], attendu: ['2026-10-05', '2026-10-06'], futur: ['2026-10-05', '2026-10-06'] },
-    { fn: 'poser_absence', phrase: 'Sofia sera en congé de lundi à mercredi', raw: { salarie: 'Sofia', type: 'conge', du: '2026-09-28', au: '2026-09-30' },
-      champs: ['du', 'au'], passe: ['2026-09-28', '2026-09-30'], attendu: ['2026-10-05', '2026-10-07'], futur: ['2026-10-05', '2026-10-07'] },
     { fn: 'modifier_intervention', phrase: 'décale l’intervention de Karim de vendredi à lundi', raw: { salarie: 'Karim', date: '2026-09-25', nouvelle_date: '2026-09-28' },
       champs: ['date', 'nouvelle_date'], passe: ['2026-09-25', '2026-09-28'], attendu: ['2026-10-02', '2026-10-05'], futur: ['2026-10-02', '2026-10-05'] },
     { fn: 'supprimer_intervention', phrase: 'retire Karim du planning mardi', raw: { salarie: 'Karim', date: '2026-09-29' },
       champs: ['date'], passe: ['2026-09-29'], attendu: ['2026-10-06'], futur: ['2026-10-06'] },
     { fn: 'effacer_planning', phrase: 'vide le planning de Karim de lundi à mercredi', raw: { salarie: 'Karim', du: '2026-09-28', au: '2026-09-30' },
       champs: ['du', 'au'], passe: ['2026-09-28', '2026-09-30'], attendu: ['2026-10-05', '2026-10-07'], futur: ['2026-10-05', '2026-10-07'] },
-    { fn: 'supprimer_absence', phrase: 'enlève le congé de Sofia de lundi à mardi', raw: { salarie: 'Sofia', du: '2026-09-28', au: '2026-09-29' },
-      champs: ['du', 'au'], passe: ['2026-09-28', '2026-09-29'], attendu: ['2026-10-05', '2026-10-06'], futur: ['2026-10-05', '2026-10-06'] },
   ];
   const avec = (c: Cas, valeurs: string[]) => {
     const raw = { ...c.raw };
@@ -519,4 +516,19 @@ Deno.test('Dates : un jour PASSÉ pour un nom de jour seul → la prochaine occu
   eq(h.date, '2026-09-28', 'corriger des heures : le lundi passé est voulu');
   const dep = draftOf('ajouter_depense', { chantier: 'Villa Dupont', montant: 100, libelle: 'Placo', date: '2026-09-28' }, 'ajoute une dépense de 100 euros lundi');
   eq(dep.date, '2026-09-28', 'une dépense passée n’est pas déplacée');
+});
+
+Deno.test('Dates : une ABSENCE ou un congé peut être rétroactif — la date passée est conservée (aucune correction)', () => {
+  const CTXJ = (demande: string): ActionContext => ({ ...CTX, today: '2026-10-01', demande });
+  const draftOf = (name: string, raw: Record<string, unknown>, demande: string) => fromFunctionCall(name, raw, CTXJ(demande)).action!.draft as unknown as Record<string, unknown>;
+  // « Kevin est malade lundi et mardi » dit un jeudi = le lundi et le mardi passés.
+  const a = draftOf('poser_absence', { salarie: 'Sofia', type: 'maladie', du: '2026-09-28', au: '2026-09-29' }, 'Sofia est malade lundi et mardi');
+  eq([a.du, a.au], ['2026-09-28', '2026-09-29'], 'poser_absence : jours passés conservés');
+  const b = draftOf('supprimer_absence', { salarie: 'Sofia', du: '2026-09-28', au: '2026-09-29' }, 'enlève l’arrêt de Sofia de lundi à mardi');
+  eq([b.du, b.au], ['2026-09-28', '2026-09-29'], 'supprimer_absence : jours passés conservés');
+  // Et leurs descriptions ne demandent pas « le prochain jour » (contrairement au planning).
+  for (const nom of ['poser_absence', 'supprimer_absence']) {
+    const props = (ASSISTANT_FUNCTIONS.find((f) => f.name === nom)!.parameters as unknown as { properties: Record<string, { description: string }> }).properties;
+    for (const k of ['du', 'au']) if (/PROCHAIN|jamais un jour/.test(props[k]?.description ?? '')) throw new Error(`${nom}.${k} : la règle « prochain jour » ne s’applique pas aux absences`);
+  }
 });

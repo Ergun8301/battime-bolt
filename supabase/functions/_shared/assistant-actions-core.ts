@@ -748,9 +748,10 @@ function isoDate(v: unknown): string { const s = str(v, 10); return ISO.test(s) 
 /** Date ISO, ou dite en français (« jeudi », « demain », « le 12 ») : jamais devinée au hasard. */
 function dateOf(v: unknown, ctx: ActionContext): string { return isoDate(v) || (typeof v === 'string' ? parseDateFr(v, ctx.today) : ''); }
 /**
- * Un JOUR DU PLANNING (affecter, déplacer, retirer, absence…). Le modèle donne parfois un jour déjà passé pour un nom de jour
- * seul (« lundi » → le lundi de la semaine en cours) : si la phrase nomme ce jour sans marqueur de passé, c'est la PROCHAINE
- * occurrence (aujourd'hui compris). Voir dateAVenir. Pas pour les heures, dépenses ou échéances, qui sont légitimement passées.
+ * Un JOUR DU PLANNING (affecter, déplacer, retirer une intervention, effacer le planning). Le modèle donne parfois un jour déjà
+ * passé pour un nom de jour seul (« lundi » → le lundi de la semaine en cours) : si la phrase nomme ce jour sans marqueur de
+ * passé, c'est la PROCHAINE occurrence (aujourd'hui compris). Voir dateAVenir. Jamais pour les absences et congés, les heures,
+ * les dépenses ou les échéances : ils peuvent être rétroactifs.
  */
 const dateJour = (v: unknown, ctx: ActionContext): string => dateAVenir(dateOf(v, ctx), ctx.demande, ctx.today);
 /** Une plage de jours du planning (« de lundi à mercredi ») : même règle, du ≤ au. */
@@ -1011,10 +1012,9 @@ export function prepare(type: string, raw: Record<string, unknown>, ctx: ActionC
     case 'poser_absence': {
       const t = str(raw.salarie, 80);
       const kind = norm(str(raw.type, 20));
-      const p = plageJours(raw.du, raw.au, ctx);
-      const du = p.du;
+      const du = dateOf(raw.du, ctx);
       // « repos » est gardé tel quel : la carte dit pourquoi elle ne part pas (jamais un congé deviné).
-      d = { type, user_id: resolveSalarie(t, ctx), salarie_texte: t, absence_type: (ABSENCE_KINDS as readonly string[]).includes(kind) || kind === 'repos' ? kind : 'conge', du, au: p.au || du };
+      d = { type, user_id: resolveSalarie(t, ctx), salarie_texte: t, absence_type: (ABSENCE_KINDS as readonly string[]).includes(kind) || kind === 'repos' ? kind : 'conge', du, au: dateOf(raw.au, ctx) || du };
       break;
     }
     case 'affecter_planning': {
@@ -1201,7 +1201,8 @@ export function prepare(type: string, raw: Record<string, unknown>, ctx: ActionC
       const moi = /^(moi|me|je)$/.test(norm(s).trim());
       const uid = equipe || !s ? null : moi && ctx.me ? ctx.me : resolveSalarie(s, ctx);
       const wk = weekRange(str(raw.semaine, 40), ctx);
-      const p = plageJours(raw.du, raw.au, ctx);
+      // Planning (effacer) : un jour passé sans marqueur est une erreur du modèle. Une ABSENCE retirée peut être passée : jamais déplacée.
+      const p = type === 'effacer_planning' ? plageJours(raw.du, raw.au, ctx) : { du: dateOf(raw.du, ctx), au: dateOf(raw.au, ctx) };
       const du = p.du || wk?.du || '';
       const au = p.au || wk?.au || du;
       d = { type, user_id: uid, salarie_texte: equipe ? '' : s, du, au } as ActionDraft;
@@ -1571,7 +1572,7 @@ export const ASSISTANT_FUNCTIONS = [
   {
     name: 'supprimer_absence',
     description: 'Retirer un congé, un arrêt ou une absence posé au planning (le salarié redevient présent ces jours-là).',
-    parameters: { type: 'object', properties: { salarie: S('Salarié'), du: S('Premier jour, aaaa-mm-jj. Un nom de jour seul (« mardi ») = le PROCHAIN jour de ce nom du CALENDRIER, aujourd’hui compris ; jamais un jour déjà passé, sauf s’il est dit (« dernier », « hier »).'), au: S('Dernier jour, aaaa-mm-jj (même règle : le PROCHAIN jour de ce nom du CALENDRIER, jamais un jour déjà passé).') }, required: ['salarie'] },
+    parameters: { type: 'object', properties: { salarie: S('Salarié'), du: S('Premier jour, aaaa-mm-jj'), au: S('Dernier jour, aaaa-mm-jj') }, required: ['salarie'] },
   },
   {
     name: 'supprimer_document',
