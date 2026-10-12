@@ -228,6 +228,9 @@ export const CASES: EvalCase[] = [
   { id: 'b47', cote: 'bureau', categorie: 'Effacer', phrase: 'retire Kevin de la Villa Dupont vendredi',
     check: actAvecProblemes('supprimer_intervention', ['Choisissez l’intervention.'], (d) => all(eq(d, 'user_id', 'u-kevin'), eq(d, 'planning_id', null),
       (d.choix as { nom: string }[]).length && (d.choix as { nom: string }[]).every((c) => c.nom === 'Kevin') ? null : `choix : ${JSON.stringify(d.choix)}`)) },
+  // REPRO (retour d'Ergun, test réel sur téléphone) : la dictée exacte, côté bureau et côté salarié.
+  { id: 'rb1', cote: 'bureau', categorie: 'Repro', phrase: 'Ajoute-moi une intervention. J’ai travaillé aujourd’hui de 8h à midi, puis pause d’1h, puis de 13h à 17h sur un nouveau chantier : prénom Pierrick, nom Dupont, à Montagna 01250, pour la pose d’un store banne.', check: () => 'REPRO' },
+  { id: 'rs1', cote: 'salarie', categorie: 'Repro', phrase: 'Ajoute-moi une intervention. J’ai travaillé aujourd’hui de 8h à midi, puis pause d’1h, puis de 13h à 17h sur un nouveau chantier : prénom Pierrick, nom Dupont, à Montagna 01250, pour la pose d’un store banne.', check: () => 'REPRO' },
   // ════ SALARIÉ ════
   { id: 's01', cote: 'salarie', categorie: 'Heures', phrase: 'ce matin 7h30 12h villa dupont et aprem 13h 16h30 bureau martin',
     check: draft((l) => (l.length === 2 && l[0].worksite_id === W.dupont && l[1].worksite_id === W.martin && l[0].start === '07:30' && l[1].end === '16:30' ? null : `lignes : ${JSON.stringify(l.map((x) => [x.worksite_id, x.start, x.end]))}`)) },
