@@ -981,7 +981,8 @@ export const WORKER_FUNCTIONS = [
   { name: 'declarer_heures', description: 'Préparer la déclaration de SES heures.',
     parameters: { type: 'object', properties: {
       date: S('aaaa-mm-jj'),
-      lignes: { type: 'array', items: { type: 'object', properties: { chantier: S('tel que dit'), debut: S('HH:MM'), fin: S('HH:MM'), pause: { type: 'number' } }, required: ['debut', 'fin'] } },
+      lignes: { type: 'array', items: { type: 'object', properties: { chantier: S('tel que dit, ou « nouveau » si c’est le nouveau chantier à créer'), debut: S('HH:MM'), fin: S('HH:MM'), pause: { type: 'number', description: 'minutes de pause DANS ce créneau' } }, required: ['debut', 'fin'] } },
+      nouveau_chantier: { type: 'object', description: 'Chantier à CRÉER (client nouveau), s’il est dit', properties: { nom: S('Prénom et nom du client'), adresse: S('Rue, si dite'), code_postal: S('Code postal'), ville: S('Ville'), description: S('Type de travaux') }, required: ['nom'] },
     }, required: ['lignes'] } },
   { name: 'demander_conge', description: 'Préparer une demande de congé / absence au bureau.',
     parameters: { type: 'object', properties: { type: { type: 'string', enum: [...LEAVE_KINDS] }, du: S('aaaa-mm-jj'), au: S('aaaa-mm-jj'), note: S('Mot pour le bureau') }, required: ['du'] } },
@@ -1001,7 +1002,7 @@ export const WORKER_FUNCTIONS = [
   { name: 'copier_journee', description: 'Copier une journée (par défaut hier) sur un ou plusieurs jours (par défaut aujourd’hui).',
     parameters: { type: 'object', properties: { depuis: S('Jour à copier aaaa-mm-jj'), vers: { type: 'array', items: S('aaaa-mm-jj') } }, required: [] } },
   { name: 'reserve_corrigee', description: '« Lever la réserve » d’un chantier du jour (réglée sur place), avec un commentaire facultatif.', parameters: { type: 'object', properties: { chantier: S('Chantier'), commentaire: S('Ce qui a été fait (facultatif)') }, required: [] } },
-  { name: 'nouveau_chantier', description: 'Ajouter un chantier qui n’est pas dans la liste.', parameters: { type: 'object', properties: { nom: S('Nom du client / chantier'), ville: S('Ville') }, required: ['nom'] } },
+  { name: 'nouveau_chantier', description: 'Ajouter un chantier qui n’est pas dans la liste.', parameters: { type: 'object', properties: { nom: S('Nom du client / chantier'), adresse: S('Rue, si dite'), code_postal: S('Code postal'), ville: S('Ville'), description: S('Type de travaux') }, required: ['nom'] } },
   { name: 'email_client', description: 'Enregistrer l’email du client d’un chantier (pour lui envoyer les documents).',
     parameters: { type: 'object', properties: { chantier: S('Chantier'), email: S('Email') }, required: ['email'] } },
   { name: 'planning_collegues', description: 'Où sont / que font ses collègues (tous ou un seul), un jour donné : prénom, chantier, horaires.',
@@ -1047,7 +1048,7 @@ export function colleaguesQuestion(text: string, today: string): { qui: string; 
 
 export function workerFunctionPrompt(snapshot: WorkerSnapshot, live: WorkerLive, text: string): string {
   return `Tu es l'Assistant BEMEXO d'un salarié (bâtiment, restauration…), dans son appli de pointage. Aujourd'hui : ${snapshot.aujourdhui}.
-Tu te comportes comme un vrai assistant : tu FAIS le travail complet du premier coup, tu ne poses une question qu'en dernier recours. Réponds en appelant UNE fonction.
+Tu te comportes comme un vrai assistant : tu FAIS le travail complet du premier coup, tu ne poses une question qu'en dernier recours. ${(globalThis as { __DIAG_MULTI?: boolean }).__DIAG_MULTI ? 'Réponds en appelant la ou LES fonctions nécessaires : UNE fonction par action demandée (jusqu’à 4 dans le même message), dans l’ordre de la phrase. Le salarié parle librement, en français ou en turc (ou les deux), avec des phrases longues et des hésitations : comprends-le et extrais TOUTES les informations (plusieurs créneaux, pause, nouveau chantier avec nom du client, adresse, code postal, ville et type de travaux, panier, congé, réserve…). Quand tu réponds par écrit (repondre), écris dans SA langue.' : 'Réponds en appelant UNE fonction.'}
 - Heures travaillées, « rajoute-moi une intervention à Lyon de 14h à 18h » → declarer_heures (chantier = le nom ou le LIEU dit). Congé → demander_conge. « Je commence » → repondre : le pointage commence en scannant le QR de la tablette (sans tablette : heures avec « + »). « J'ai fini » → terminer_pointage. Réserve → signaler_reserve ; « j'ai réglé la réserve », « lève la réserve » → reserve_corrigee (commentaire si dit). « Envoie ma journée » → envoyer_journee. Panier → panier_repas. « Pareil qu'hier » → copier_journee.
 - « Où sont mes collègues ? », « Où est Paul ? », « Que fait Jacques demain ? » → planning_collegues.
 - Effacer / enlever / annuler ce qu'il a saisi → effacer_heures, annuler_conge, modifier_conge, retirer_photo, retirer_reserve. Les heures ENVOYÉES ne s'effacent jamais : dis-le en une phrase (repondre) et propose de demander au bureau.

@@ -53,8 +53,9 @@ Deno.serve(async (req) => {
   const body = await req.json().catch(() => ({})) as {
     version?: string; ids?: string[]; parallel?: number; gapMs?: number; prodPath?: boolean;
     /** Diagnostic : sans le lecteur local ; AI_CONFIG de remplacement ; niveau forcé ; appels bruts du modèle. */
-    sansLocal?: boolean; aiConfig?: unknown; tier?: string; trace?: boolean;
+    sansLocal?: boolean; aiConfig?: unknown; tier?: string; trace?: boolean; multi?: boolean;
   };
+  (globalThis as { __DIAG_MULTI?: boolean }).__DIAG_MULTI = !!body.multi;
   const env = { get: (k: string) => (k === 'AI_CONFIG' && body.aiConfig ? JSON.stringify(body.aiConfig) : Deno.env.get(k)) };
   const tier = body.tier === 'documents' || body.tier === 'rapide' ? body.tier : undefined;
   const opt = { sansLocal: !!body.sansLocal, trace: !!body.trace };
