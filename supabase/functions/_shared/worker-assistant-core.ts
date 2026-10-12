@@ -19,6 +19,7 @@
 import { calendarForPrompt, cleanName, cleanSpoken, cleanTitle, dayPart, looksLikeAction, low, parseDateFr, parseDateRangeFr, parseTimeFr } from './fr-langue.ts';
 import { plannedState } from './day-hours.ts';
 import { WORKER_DOMAINS, pickTools } from './tool-domains.ts';
+import { WORKER_TEXT_MAX } from './saisie-profil.ts';
 export { looksLikeAction };
 
 export interface WorkerSnapshot {
@@ -41,8 +42,38 @@ export interface DraftLine {
   from_planning?: boolean;
   /** Lot 7 : lieu dit sans chantier connu (« à Lyon ») → ligne sur « Autre », lieu en note. */
   observation?: string;
+  /** Ligne sur le NOUVEAU chantier de la fiche (worksite_id reste null tant qu'il n'est pas créé). */
+  nouveau?: true;
+  /** Clé STABLE de la ligne dans la fiche : 'L0', 'L1'… Les annexes visent `draft:<key>`, jamais un rang. */
+  key?: string;
+  /** 'pause' : l'écart AVANT cette ligne est une pause dite par le salarié. null/absent : écart non qualifié (« Route ou Pause ? » dans « Ma journée »). */
+  gap_before?: 'pause' | null;
+  /** Chantier dit ambigu (« Dupont » alors qu'un client « Pierrick Dupont » est à créer ET que « Villa Dupont » existe) : ligne laissée « à choisir », jamais devinée. */
+  a_choisir?: { existant: string; nouveau: string };
 }
-export interface Draft { date: string; lines: DraftLine[]; errors: string[] }
+/** Chantier à CRÉER (jamais créé avant « Tout confirmer »). */
+export interface NewWorksite {
+  /** « Pierrick Dupont » (client : prénom + nom), ≤ 80 car. */
+  nom: string;
+  /** '' si non dite, ≤ 120. */
+  adresse: string;
+  /** '' ou exactement 5 chiffres. */
+  code_postal: string;
+  /** '' si non dite — JAMAIS inventée (la fiche la réclame), ≤ 60. */
+  ville: string;
+  /** Les travaux, en français, '' si non dits, ≤ 200. */
+  description: string;
+  /** Id d'un chantier ACTIF de même nom + ville : rien ne sera créé. */
+  reutilise_id?: string;
+  /** Le bloc est dit mais aucun créneau n'y est rattaché : rien ne sera créé tant qu'un créneau ne le choisit pas. */
+  inutilise?: true;
+}
+export interface Draft {
+  date: string; lines: DraftLine[]; errors: string[];
+  nouveau_chantier?: NewWorksite;
+  /** Infos obligatoires absentes : la fiche les réclame, « Tout confirmer » reste grisé. Jamais dans `errors`. */
+  manque?: ('ville' | 'nom')[];
+}
 
 export type WorkerReply =
   | { kind: 'draft'; draft: Draft; answer: string }
@@ -114,7 +145,7 @@ export function plannedWorksite(date: string, start: string, end: string, snapsh
 }
 
 /** Ligne sans chantier dit : planning d'abord, puis le chantier unique (restaurant, dépôt). */
-function fillUnsaid(line: DraftLine, date: string, snapshot: WorkerSnapshot): DraftLine {
+export function fillUnsaid(line: DraftLine, date: string, snapshot: WorkerSnapshot): DraftLine {
   if (line.worksite_id) return line;
   if (line.worksite_text) {
     // Un client connu mais ambigu (deux chantiers « Pizzeria Exemple ») : la ville
@@ -179,7 +210,7 @@ export function checkDraft(date: string, lines: DraftLine[], snapshot: WorkerSna
 const TIME = String.raw`(midi|minuit|\d{1,2}(?:\s*[h:.]\s*\d{0,2})?)`;
 const RANGE = new RegExp(String.raw`(?:de\s+|entre\s+)?${TIME}\s*(?:-|–|à|a|au|jusqu'?a|et)\s*${TIME}(?!\s*(?:er\s+)?(?:janvier|fevrier|mars|avril|mai|juin|juillet|aout|septembre|octobre|novembre|decembre)\b)`, 'i');
 
-function parseTime(raw: string): string | null {
+export function parseTime(raw: string): string | null {
   const t = norm(raw).replace(/\s+/g, '');
   if (t === 'midi') return '12:00';
   if (t === 'minuit') return '00:00';
@@ -537,7 +568,8 @@ export type WorkerActionDraft =
   | { type: 'copier_journee'; depuis: string; vers: string[] }
   /** Lot 11 : « Lever la réserve » (l'identifiant reste reserve_corrigee), commentaire facultatif. */
   | { type: 'reserve_corrigee'; entry_id: string | null; choix: WorkerLive['lignes']; note?: string }
-  | { type: 'nouveau_chantier'; nom: string; ville: string }
+  /** adresse, code_postal et description : seulement si le salarié les a dits (profil court, « ajoute le chantier X à Lyon »). */
+  | { type: 'nouveau_chantier'; nom: string; ville: string; adresse?: string; code_postal?: string; description?: string }
   | { type: 'email_client'; worksite_id: string | null; chantier_texte: string; email: string }
   // ── Lot 8 : effacer ce qu'il a saisi, tant que ce n'est pas envoyé ──
   /**
@@ -800,9 +832,14 @@ export function prepareWorkerAction(type: string, raw: Record<string, unknown>, 
       d = { type, entry_id: pick?.id ?? null, choix: open, ...(note ? { note } : {}) };
       break;
     }
-    case 'nouveau_chantier':
-      d = { type, nom: cleanTitle(s(raw.nom, 80)), ville: cleanTitle(s(raw.ville, 60)) };
+    case 'nouveau_chantier': {
+      const adresse = s(raw.adresse, 120), code_postal = s(raw.code_postal, 10), description = s(raw.description, 200);
+      d = {
+        type, nom: cleanTitle(s(raw.nom, 80)), ville: cleanTitle(s(raw.ville, 60)),
+        ...(adresse ? { adresse } : {}), ...(code_postal ? { code_postal } : {}), ...(description ? { description } : {}),
+      };
       break;
+    }
     case 'email_client': {
       const t = s(raw.chantier, 120);
       d = { type, worksite_id: t ? resolveWorksite(t, snapshot.chantiers) : planned(snapshot), chantier_texte: t, email: s(raw.email, 120).toLowerCase() };
@@ -1067,7 +1104,7 @@ DONNÉES : ${JSON.stringify({
     prevu_par_le_bureau: snapshot.planning,
     en_cours: live.enCours, lignes_du_jour: live.lignes.map((l) => ({ chantier: l.chantier, debut: l.debut, fin: l.fin })),
   })}
-MESSAGE : ${text.slice(0, 500)}`;
+MESSAGE : ${text.slice(0, WORKER_TEXT_MAX)}`;
 }
 
 /** Appel de fonction de l'IA → réponse contrôlée (mêmes contrôles que le lecteur). */
