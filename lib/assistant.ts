@@ -131,7 +131,7 @@ export function demoAssistantSource(): AssistantSource {
         }
         if (/devis|client|valide/.test(t + file.name.toLowerCase())) {
           return done(withSummary(fromFunctionCall('creer_chantier', {
-            nom_client: 'Maison Garnier', ville: 'Caluire', adresse: '12 rue des Lilas', telephone: '06 12 34 56 78', budget_montant: 18400, budget_heures: 160,
+            nom_client: 'Maison Garnier', ville: 'Caluire', adresse: '12 rue des Lilas', telephone: '06 12 34 56 78', montant_devis: 18400, budget_heures: 160,
           }, ctx), ctx));
         }
         const categorie = /factur/.test(t) ? (/pay|acquit|regl/.test(t) ? 'facture_payee' : 'facture') : /devis/.test(t) ? 'devis' : /reserve/.test(t) ? 'reserve' : '';
@@ -170,7 +170,9 @@ export function demoAssistantSource(): AssistantSource {
         return done(withSummary(fromFunctionCall('affecter_planning', { salarie: 'Lucas', chantier: 'Villa Dupont', dates: [addDays(ctx.today, 1)] }, ctx), ctx));
       }
       if (/corrig/.test(t)) {
-        return done(withSummary(fromFunctionCall('corriger_pointage', { salarie: 'Karim', date: addDays(ctx.today, -1), debut: '7:30', fin: '16:00' }, ctx,
+        // Lot 1 : le motif dit (« … motif : oubli de pause ») ; sinon la carte le demande.
+        const motif = /(?:motif|parce que|car)\s*:?\s*(.+)$/i.exec(q)?.[1] ?? '';
+        return done(withSummary(fromFunctionCall('corriger_pointage', { salarie: 'Karim', date: addDays(ctx.today, -1), debut: '7:30', fin: '16:00', motif }, ctx,
           [{ id: 'demo-e1', chantier: 'Villa Dupont', debut: '07:30', fin: '17:00' }]), ctx));
       }
       if (/\b(client|chantier)\b/.test(t) && /\b(cree|nouveau|ajoute)/.test(t)) {

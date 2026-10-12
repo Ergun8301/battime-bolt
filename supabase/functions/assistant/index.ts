@@ -26,7 +26,7 @@ import { callFunction, readAttachment } from '../_shared/ai-provider.ts';
 import { looksLikeAction } from '../_shared/fr-langue.ts';
 import { DEFAULT_DAILY_LIMIT, MAX_QUESTION_CHARS, buildSnapshot, previousDay, type RawData } from '../_shared/assistant-core.ts';
 import {
-  ASSISTANT_FUNCTIONS, actionPrompt, addDays, buildActionContext, fromFunctionCall, handleActionLocally, mondayOf, questionFor,
+  actionPrompt, addDays, buildActionContext, fromFunctionCall, functionsFor, handleActionLocally, mondayOf, questionFor,
   resolveSalarie, summarize, findGuide, guideAnswer, guideForPrompt, NAV_ACTIONS, type EntryChoice, type LocalReply, type ActionContext,
 } from '../_shared/assistant-actions-core.ts';
 
@@ -163,7 +163,7 @@ Deno.serve(async (req) => {
     // 3. L'IA choisit UNE fonction de la liste blanche.
     const snapshot = buildSnapshot(raw);
     const r = await callFunction({
-      prompt: actionPrompt(ctx, JSON.stringify(snapshot), guideForPrompt(), question), functions: ASSISTANT_FUNCTIONS, file: att.file,
+      prompt: actionPrompt(ctx, JSON.stringify(snapshot), guideForPrompt(), question), functions: functionsFor(!!att.file), file: att.file,
       kind: looksLikeAction(question, !!att.file) ? 'action' : 'question',
     }, Deno.env);
     if (!r.ok) return json({ unavailable: true, answer: 'L’assistant n’a pas pu répondre. Réessayez dans un instant.', links: [] });

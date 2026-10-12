@@ -3,8 +3,9 @@
 // brouillon contrôlé », pour chaque action de la liste blanche.
 import { callFunction } from './ai-provider.ts';
 import {
-  ABSENCE_KINDS, ABSENCE_LABEL, ASSISTANT_FUNCTIONS, REFUS_REPOS, actionPrompt, addDays, buildActionContext, checkAction, findGuide, fromFunctionCall,
-  guideForPrompt, handleActionLocally, mondayOf, prepare, proposeWeek, questionFor, summarize, type ActionContext,
+  ABSENCE_KINDS, ABSENCE_LABEL, ACTION_TYPES, A_CONFIRMER, A_CONFIRMER_REMPLACE, ASSISTANT_FUNCTIONS, ATTACHMENT_FUNCTIONS, MOTIF_MANQUANT, REFUS_REPOS, REMOVAL_TYPES, actionAnswer, actionMode,
+  actionPrompt, addDays, buildActionContext, checkAction, confirmText, findGuide, fromFunctionCall, functionsFor, guideForPrompt, handleActionLocally, isRemoval, mondayOf,
+  prepare, proposeWeek, questionFor, summarize, type ActionContext, type ActionDraft,
 } from './assistant-actions-core.ts';
 
 function eq(a: unknown, b: unknown, msg: string) {
@@ -139,12 +140,13 @@ Deno.test('5. Planning de la semaine prochaine : congés, déjà planifié, chan
 
 Deno.test('6. Corriger un pointage', async () => {
   const one = [{ id: 'e1', chantier: 'Villa Dupont', debut: '07:30', fin: '17:00' }];
-  const { reply } = await viaAi('corriger_pointage', { salarie: 'Karim', date: '2026-09-29', debut: '7h30', fin: '16h' }, one);
-  const d = reply.action!.draft as { entry_id: string; debut: string; fin: string };
-  eq([d.entry_id, d.debut, d.fin, reply.action!.problems], ['e1', '07:30', '16:00', []], 'une seule ligne → choisie');
+  const { reply } = await viaAi('corriger_pointage', { salarie: 'Karim', date: '2026-09-29', debut: '7h30', fin: '16h', motif: 'Oubli de pause' }, one);
+  const d = reply.action!.draft as { entry_id: string; debut: string; fin: string; motif: string };
+  eq([d.entry_id, d.debut, d.fin, d.motif, reply.action!.problems], ['e1', '07:30', '16:00', 'Oubli de pause', []], 'une seule ligne → choisie');
   const two = [...one, { id: 'e2', chantier: 'Bureau Martin', debut: '13:00', fin: '17:00' }];
-  eq(prepare('corriger_pointage', { salarie: 'Karim', date: '2026-09-29', debut: '8:00', fin: '12:00' }, CTX, two)!.problems, ['Choisissez la ligne à corriger.'], 'plusieurs lignes → à choisir');
-  eq(prepare('corriger_pointage', { salarie: 'Karim', date: '2026-09-29', debut: '8:00', fin: '12:00' }, CTX, [])!.problems, ['Aucune heure envoyée ce jour-là à corriger.'], 'rien à corriger');
+  const m = { motif: 'Erreur de saisie' };
+  eq(prepare('corriger_pointage', { salarie: 'Karim', date: '2026-09-29', debut: '8:00', fin: '12:00', ...m }, CTX, two)!.problems, ['Choisissez la ligne à corriger.'], 'plusieurs lignes → à choisir');
+  eq(prepare('corriger_pointage', { salarie: 'Karim', date: '2026-09-29', debut: '8:00', fin: '12:00', ...m }, CTX, [])!.problems, ['Aucune heure envoyée ce jour-là à corriger.'], 'rien à corriger');
 });
 
 Deno.test('Guide : « comment… » → 3 étapes + bouton, jamais « je n’ai pas accès »', () => {
@@ -208,10 +210,21 @@ Deno.test('📎 Bulletin → invitation pré-remplie + paie, JAMAIS le n° de s�
   eq(a.problems, [], 'prêt à confirmer');
 });
 
-Deno.test('📎 Devis → client + budget', async () => {
-  const { reply } = await viaAi('creer_chantier', { nom_client: 'Maison Garnier', ville: 'Caluire', adresse: '12 rue des Lilas', budget_montant: 18400, budget_heures: 160 });
+Deno.test('📎 Devis → client + heures prévues ; le montant du devis n’est JAMAIS un budget (lot 1)', async () => {
+  const { reply } = await viaAi('creer_chantier', { nom_client: 'Maison Garnier', ville: 'Caluire', adresse: '12 rue des Lilas', montant_devis: 18400, budget_heures: 160 });
   const d = reply.action!.draft as Record<string, unknown>;
-  eq([d.nom_client, d.adresse, d.budget_montant, d.budget_heures, reply.action!.problems], ['Maison Garnier', '12 rue des Lilas', '18400', '160', []], 'client et budget');
+  eq([d.nom_client, d.adresse, d.montant_devis, d.budget_heures, reply.action!.problems], ['Maison Garnier', '12 rue des Lilas', '18400', '160', []], 'client, montant du devis, heures');
+  eq('budget_montant' in d, false, 'aucun budget en euros dans le brouillon');
+  eq(actionMode(reply.action!.draft), 'confirm', 'carte à relire');
+  // Un ancien appel qui envoie encore « budget_montant » : lu comme montant du devis, pas comme budget.
+  const old = fromFunctionCall('creer_chantier', { nom_client: 'Maison Garnier', budget_montant: 18400 }, CTX).action!.draft as Record<string, unknown>;
+  eq([old.montant_devis, 'budget_montant' in old, old.budget_heures], ['18400', false, ''], 'ancien nom → montant du devis');
+  // Le modèle ne peut plus remplir de budget en euros à la création.
+  const decl = ASSISTANT_FUNCTIONS.find((f) => f.name === 'creer_chantier')!;
+  eq(Object.keys(decl.parameters.properties).includes('budget_montant'), false, 'champ budget_montant retiré de la déclaration');
+  if (!/PAS un budget/.test(JSON.stringify(decl))) throw new Error('la déclaration doit dire que le montant n’est pas un budget');
+  // Sans devis ni heures : direct, comme avant.
+  eq(actionMode(fromFunctionCall('creer_chantier', { nom_client: 'Maison Garnier' }, CTX).action!.draft), 'direct', 'client simple : tout de suite');
 });
 
 Deno.test('📎 Ranger un document : chantier ambigu → liste, jamais d’invention', () => {
@@ -339,4 +352,79 @@ Deno.test('Lot 8 : un salarié nommé → SEULEMENT ses cases ; rien ce jour-là
   // Le jour dit existe : retiré directement.
   const r3 = fromFunctionCall('supprimer_intervention', { salarie: 'Karim', date: addDays(MON, 1) }, ctx);
   eq((r3.action!.draft as typeof d).planning_id, 'k1', 'la case de Karim ce jour-là');
+});
+
+// ── Lot 1 : heures sûres ──────────────────────────────────────────────────
+Deno.test('Lot 1 — toute suppression passe par la carte de confirmation ; les gestes simples restent directs', () => {
+  for (const t of REMOVAL_TYPES) {
+    const a = prepare(t, {}, CTX);
+    if (!a) throw new Error(`${t} : pas de brouillon`);
+    eq([t, actionMode(a.draft), isRemoval(a.draft)], [t, 'confirm', true], `${t} : confirmation d’abord`);
+  }
+  const direct: string[] = [];
+  for (const t of ACTION_TYPES) {
+    const a = t === 'planning_semaine' ? proposeWeek(CTX, NEXT) : prepare(t, {}, CTX);
+    if (a && actionMode(a.draft) === 'direct') direct.push(t);
+  }
+  eq(direct.sort(), ['affecter_planning', 'creer_chantier', 'modifier_intervention', 'poser_absence', 'ranger_document'], 'seuls ces gestes restent directs');
+  for (const t of ['planning_semaine', 'corriger_pointage', 'inviter_salarie', 'envoyer_rappel']) {
+    const a = t === 'planning_semaine' ? proposeWeek(CTX, NEXT) : prepare(t, {}, CTX)!;
+    eq(actionMode(a.draft), 'confirm', `${t} : carte`);
+  }
+});
+
+Deno.test('Lot 1 — suppression : la question « Laquelle ? » reste, puis la carte (jamais « C’est fait » avant le clic)', () => {
+  const ctx: ActionContext = {
+    ...CTX,
+    planning: [0, 1].map((i) => ({ id: `k${i}`, user_id: 'u-karim', date: MON, worksite_id: i ? 'w-martin' : 'w-dupont', absence: null })),
+  };
+  const amb = fromFunctionCall('supprimer_intervention', { salarie: 'Karim', date: MON }, ctx);
+  const q = questionFor(amb.action!.draft, amb.action!.problems, ctx)!;
+  eq([q.text, q.field, q.chips.length, amb.answer], ['Laquelle ?', 'planning_id', 2, 'Laquelle ?'], 'deux cases : la question');
+  const one = fromFunctionCall('supprimer_intervention', { salarie: 'Karim', date: MON, chantier: 'Villa Dupont' }, ctx);
+  eq([(one.action!.draft as { planning_id: string }).planning_id, one.action!.problems, one.answer], ['k0', [], A_CONFIRMER], 'une case : la carte, rien n’est fait');
+  if (/C’est fait/.test(one.answer)) throw new Error('jamais « C’est fait » avant « Confirmer »');
+  // « Efface le planning de la semaine prochaine » (sans IA) : la carte aussi.
+  const wk = handleActionLocally('Efface le planning de la semaine prochaine', ctx)!;
+  eq([wk.action!.draft.type, actionMode(wk.action!.draft), wk.answer], ['effacer_planning', 'confirm', A_CONFIRMER], 'effacer la semaine : carte');
+  // Ce qui reste direct dit toujours « C’est fait ».
+  const place = fromFunctionCall('affecter_planning', { salarie: 'Karim', chantier: 'Villa Dupont', dates: [NEXT] }, ctx);
+  eq(place.answer, 'C’est fait.', 'placer : direct');
+  // Une carte qui REMPLACE ne dit pas « retiré ».
+  const docCtx: ActionContext = { ...ctx, documents: [{ id: 'doc1', nom: 'Facture Plomberie', worksite_id: 'w-dupont', date: MON, categorie: 'facture' }] };
+  const mod = fromFunctionCall('modifier_document', { chantier: 'Villa Dupont', quoi: 'Facture Plomberie', nouveau_nom: 'Facture plomberie v2' }, docCtx);
+  eq([mod.action!.problems, mod.answer], [[], A_CONFIRMER_REMPLACE], 'modifier un document : « ce qui sera remplacé »');
+  eq([confirmText({ type: 'modifier_depense' }), confirmText({ type: 'supprimer_depense' })], [A_CONFIRMER_REMPLACE, A_CONFIRMER], 'le texte suit le type');
+});
+
+Deno.test('Lot 1 — corriger des heures : motif OBLIGATOIRE, comme sur la fiche', () => {
+  const one = [{ id: 'e1', chantier: 'Villa Dupont', debut: '07:30', fin: '17:00' }];
+  const sans = prepare('corriger_pointage', { salarie: 'Karim', date: '2026-09-29', debut: '7h30', fin: '16h' }, CTX, one)!;
+  eq(sans.problems, [MOTIF_MANQUANT], 'sans motif : pas d’exécution');
+  eq(actionAnswer(sans, CTX), 'J’ai préparé l’action : complétez ce qui manque, puis confirmez.', 'la carte demande le motif');
+  const court = prepare('corriger_pointage', { salarie: 'Karim', date: '2026-09-29', debut: '7h30', fin: '16h', motif: 'ok' }, CTX, one)!;
+  eq(court.problems, [MOTIF_MANQUANT], 'motif de 2 caractères refusé (même règle que precheck)');
+  const avec = { ...sans.draft, motif: 'Badge oublié le soir' } as ActionDraft;
+  eq(checkAction(avec, CTX), [], 'motif saisi sur la carte → prêt');
+  if (!/motif : Badge oublié le soir/.test(summarize(avec, CTX))) throw new Error('le motif doit apparaître dans le résumé (journal)');
+  const same = { ...avec, debut: '07:30', fin: '17:00' } as ActionDraft;
+  eq(checkAction(same, CTX), ['Rien ne change : ce sont déjà ses heures.'], 'mêmes heures : rien à corriger');
+  const decl = ASSISTANT_FUNCTIONS.find((f) => f.name === 'corriger_pointage')!;
+  eq(Object.keys(decl.parameters.properties).includes('motif'), true, 'le modèle peut transmettre le motif dit');
+});
+
+Deno.test('Lot 1 — fichier joint : le modèle ne voit QUE les outils des documents', async () => {
+  const names = ATTACHMENT_FUNCTIONS.map((f) => f.name);
+  eq(names, ['repondre', 'inviter_salarie', 'creer_chantier', 'ranger_document', 'ajouter_depense', 'cout_reel'], 'outils proposés avec un fichier');
+  for (const t of [...REMOVAL_TYPES, 'envoyer_rappel', 'relancer_invitation', 'repondre_conge', 'cloturer_mois', 'changer_role', 'corriger_pointage']) {
+    if (names.includes(t)) throw new Error(`${t} proposé avec un fichier`);
+  }
+  eq(functionsFor(false), ASSISTANT_FUNCTIONS, 'sans fichier : tous les outils');
+  // Un PDF piégé fait « appeler » effacer_planning : refusé (outil non proposé).
+  const f = fakeGemini('effacer_planning', { semaine: 'prochaine' });
+  const PDF = { mime: 'application/pdf', base64: 'JVBERi0xLjQK' };
+  const r = await callFunction({ prompt: 'x', functions: functionsFor(true), file: PDF }, env, f.fetchImpl);
+  eq(r.ok, false, 'appel d’un outil hors liste refusé');
+  const sent = JSON.parse(String(f.seen.init!.body));
+  eq(sent.tools[0].functionDeclarations.map((x: { name: string }) => x.name), names, 'seuls les outils des documents partent au modèle');
 });

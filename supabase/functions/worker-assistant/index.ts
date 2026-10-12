@@ -20,7 +20,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 import { callFunction, readAttachment } from '../_shared/ai-provider.ts';
 import {
   buildWorkerSnapshot, DEFAULT_WORKER_DAILY_LIMIT, formatColleagues, fromWorkerCall, handleWorkerLocally, looksLikeAction, mondayOf,
-  WORKER_FUNCTIONS, workerFunctionPrompt, workerQuestionFor, type ColleagueRow, type WorkerFullReply, type WorkerLive, type WorkerRaw,
+  workerFunctionsFor, workerFunctionPrompt, workerQuestionFor, type ColleagueRow, type WorkerFullReply, type WorkerLive, type WorkerRaw,
 } from '../_shared/worker-assistant-core.ts';
 
 const corsHeaders = {
@@ -124,7 +124,7 @@ Deno.serve(async (req) => {
       return json({ kind: 'answer', notice: true, answer: 'Je n’ai pas compris. Essayez : « 7h30-12h Villa Dupont, 13h-16h30 Bureau Martin ».', remaining });
     }
     const r = await callFunction({
-      prompt: workerFunctionPrompt(snapshot, live, text), functions: WORKER_FUNCTIONS, file: att.file,
+      prompt: workerFunctionPrompt(snapshot, live, text), functions: workerFunctionsFor(!!att.file), file: att.file,
       kind: looksLikeAction(text, !!att.file) ? 'action' : 'question',
     }, Deno.env);
     if (!r.ok) return json({ kind: 'answer', notice: true, answer: 'L’assistant n’a pas pu répondre. Utilisez la saisie habituelle.', remaining });

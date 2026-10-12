@@ -3,6 +3,9 @@
 // semaine prochaine » → 27 cases effacées d'un coup, la carte affiche le nombre et un
 // « Annuler » bien visible ; Annuler remet les 27 cases À L'IDENTIQUE. Les cases avec des
 // heures envoyées et le mois clôturé ne sont jamais touchés.
+// Lot 1 (heures sûres) : AVANT tout effacement, la carte de confirmation dit ce qui part
+// (27 cases, les jours) et ce qui reste (3 cases avec des heures) ; rien n'est écrit avant
+// le clic « Effacer ».
 // Lot 3 (traces) : l'en-tête `x-bemexo-origine: assistant` part sur l'action et son
 // « Annuler », jamais aux chargements ni vers les fonctions ; et JAMAIS tant que la
 // table `traces` n'existe pas (migration pas appliquée : requêtes identiques à avant).
@@ -73,6 +76,16 @@ phase='action';
 await p.click('[data-testid="bar-assistant"]'); await p.waitForTimeout(400);
 await p.fill('.as-bar textarea','Efface le planning de la semaine prochaine');
 await p.click('button[aria-label="Envoyer"]');
+// Lot 1 : la carte de confirmation d'abord — lue par le même code que l'effacement, rien d'écrit.
+await p.waitForSelector('[data-testid=removal-notice]', { timeout: 10000 }).catch(()=>{});
+await p.waitForFunction(() => /27 cases retirées/.test(document.querySelector('[data-testid=removal-notice]')?.textContent || ''), null, { timeout: 8000 }).catch(()=>{});
+const notice=await p.locator('[data-testid=removal-notice]').innerText().catch(()=> '');
+check(/27 cases retirées/.test(notice), `carte de confirmation : le nombre AVANT d’effacer (${(/\d+ cases retirées[^.]*/.exec(notice) ?? [''])[0]})`);
+check(/3 cases gardées/.test(notice) && /heures déjà envoyées/.test(notice), 'carte : les 3 cases avec des heures restent, et c’est dit avant');
+check(/Rien n’est fait avant « Effacer »/.test(notice), 'carte : rien n’est fait avant le clic');
+check(D.planning.length===30 && !log.some(x=>x.startsWith('DELETE')), `base intacte tant qu’on n’a pas confirmé (${D.planning.length} cases, ${log.filter(x=>x.startsWith('DELETE')).length} DELETE)`);
+await p.locator('[data-testid=assistant-panel]').screenshot({path:`${SH}/00-confirmation-avant-effacement.png`});
+await p.click('[data-testid=action-confirm]');
 await p.waitForSelector('[data-testid=action-done]', { timeout: 10000 }).catch(()=>{});
 const card=await p.locator('[data-testid=action-done]').innerText().catch(()=> '');
 check(/27 cases effacées/.test(card), `carte « Fait » affiche le nombre : ${card.split('\n')[0]}`);
@@ -104,6 +117,10 @@ phase='action';
 await p2.click('[data-testid="bar-assistant"]'); await p2.waitForTimeout(400);
 await p2.fill('.as-bar textarea','Efface le planning de la semaine prochaine');
 await p2.click('button[aria-label="Envoyer"]');
+// Lot 1 : la carte de confirmation d'abord, puis « Effacer ».
+await p2.waitForSelector('[data-testid=action-confirm]', { timeout: 10000 }).catch(()=>{});
+check(!reqs.some(x=>x.m==='DELETE'), 'sans la migration : rien d’effacé avant la confirmation');
+await p2.click('[data-testid=action-confirm]');
 await p2.waitForSelector('[data-testid=action-done]', { timeout: 10000 }).catch(()=>{});
 phase='undo';
 await p2.locator('[data-testid=action-undo]').click();

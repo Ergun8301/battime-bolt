@@ -5,6 +5,8 @@
 //    « Je commence », ni « Envoyer » — une réunion ne compte pas comme heures ;
 //  - « Tâches du jour » : les tâches que le bureau a ajoutées, et une petite case
 //    « Fait » (set_day_task_done). Hors-ligne : la case attend le réseau.
+//    Lot 9 : une tâche avec heure affiche « 10:00–11:30 » (teinté comme son
+//    moment) ; celles avec heure d'abord, par heure, puis les autres.
 // Lecture À PART de celle de la journée (jamais de « Impossible de charger tes
 // données » à cause d'elle), relue au retour sur l'appli (notification touchée,
 // onglet repris). Rien ne s'affiche tant que la migration n'est pas passée, ni
@@ -14,7 +16,7 @@ import { Check, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { fetchMyMissions, setTaskDone, type DayTask, type Meeting } from '@/lib/missions';
 import { keep } from '@/lib/same';
-import { MEETING_TINT, meetingsFor, meetingTimeLabel, sortTasks, taskPartInfo } from '@/supabase/functions/_shared/missions';
+import { MEETING_TINT, meetingsFor, meetingTimeLabel, sortTasks, taskPartInfo, taskTimeLabel } from '@/supabase/functions/_shared/missions';
 
 const CSS = `
 .bt-meet{background:${MEETING_TINT.bg};border:1.5px solid ${MEETING_TINT.edge};border-radius:14px;padding:11px 14px;margin-bottom:9px}
@@ -29,6 +31,7 @@ const CSS = `
 .bt-task.done .bt-task-t{color:#6E6A63;text-decoration:line-through}
 .bt-task-t{flex:1;min-width:0;font-size:14px;font-weight:700;color:#15120F;overflow-wrap:anywhere;line-height:1.25}
 .bt-task-p{flex:none;font-size:10.5px;font-weight:800;padding:2px 6px;border-radius:6px;border:1px solid;color:#15120F}
+.bt-task-p.tm{font-family:'JetBrains Mono',monospace;font-size:11px;background:#fff;border-color:rgba(21,18,15,.25)}
 .bt-task-ok{flex:none;display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 11px;border-radius:10px;border:1.5px solid rgba(21,18,15,.25);background:#fff;font-family:inherit;font-size:13px;font-weight:800;color:#15120F;cursor:pointer}
 .bt-task-ok .bx{width:16px;height:16px;border-radius:4px;border:1.5px solid #15120F;display:inline-flex;align-items:center;justify-content:center;background:#fff}
 .bt-task-ok[aria-pressed="true"]{border-color:#15120F}
@@ -127,12 +130,14 @@ export function MyTasks({ tasks, online, busyId, onToggle }: { tasks: DayTask[];
       {!online && <p className="bt-tasks-off" data-testid="my-tasks-offline">Hors-ligne : coche quand le réseau revient.</p>}
       {tasks.map((t) => {
         const pi = taskPartInfo(t.part);
+        const when = taskTimeLabel(t);
         return (
           <div key={t.id} className={`bt-task${t.done_at ? ' done' : ''}`} data-testid="my-task" data-done={t.done_at ? '1' : '0'}>
-            {pi && <span className="bt-task-p" style={{ background: pi.bg, borderColor: pi.edge }}>{pi.label}</span>}
+            {when ? <span className="bt-task-p tm" style={pi ? { background: pi.bg, borderColor: pi.edge } : undefined} data-testid="my-task-time">{when}</span>
+              : pi && <span className="bt-task-p" style={{ background: pi.bg, borderColor: pi.edge }}>{pi.label}</span>}
             <span className="bt-task-t">{t.text}</span>
             <button type="button" className="bt-task-ok" aria-pressed={!!t.done_at} disabled={!online || busyId === t.id} data-testid="my-task-done"
-              aria-label={`${t.text} : ${t.done_at ? 'fait (toucher pour décocher)' : 'pas fait'}`} onClick={() => onToggle(t)}>
+              aria-label={`${when ? `${when} · ` : ''}${t.text} : ${t.done_at ? 'fait (toucher pour décocher)' : 'pas fait'}`} onClick={() => onToggle(t)}>
               <span className="bx">{busyId === t.id ? <Loader2 className="h-3 w-3 animate-spin" /> : t.done_at ? <Check className="h-3 w-3" strokeWidth={3.5} /> : null}</span>
               Fait
             </button>
