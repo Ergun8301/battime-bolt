@@ -69,6 +69,8 @@ interface AdminMobileMenuProps {
   onOpenSettings: () => void;
   /** Lot 3 : interventions supprimées ou décalées (seulement quand la migration est passée). */
   onOpenTraces?: () => void;
+  /** Lot 8 : versions du planning de la semaine affichée (bureau, migration passée). */
+  onOpenVersions?: () => void;
   onSignOut: () => void;
 }
 
@@ -78,7 +80,7 @@ export default function AdminMobileMenu({
   onOpenSalaries, onOpenChantiers, onOpenCost, onOpenStats, onOpenLeaves, pendingLeaves = 0,
   onOpenReserves, openReserves = 0, onOpenKiosk,
   onOpenExportTeam, onOpenSelect, onOpenSettings, onSignOut,
-  onOpenTrainings, onOpenTraces,
+  onOpenTrainings, onOpenTraces, onOpenVersions,
 }: AdminMobileMenuProps) {
   const go = (fn: () => void) => { onOpenChange(false); fn(); };
 
@@ -177,6 +179,13 @@ export default function AdminMobileMenu({
             <span className="bt-mm-icon"><Settings className="h-4 w-4" /></span>
             <span className="bt-mm-label">Réglages de l&apos;entreprise</span>
           </button>
+
+          {onOpenVersions && (
+            <button className="bt-mm-item" onClick={() => go(onOpenVersions)} data-testid="mm-versions">
+              <span className="bt-mm-icon"><History className="h-4 w-4" /></span>
+              <span className="bt-mm-label">Versions du planning (semaine affichée)</span>
+            </button>
+          )}
 
           {onOpenTraces && (
             <button className="bt-mm-item" onClick={() => go(onOpenTraces)} data-testid="mm-traces">

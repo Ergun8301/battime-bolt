@@ -11,7 +11,8 @@ import { setAbsence } from '@/lib/planning-writes';
 // ── Planning : une bulle (popup « Enregistrer », glisser vers une autre case) ─
 // Lot 11 : « Horaire prévu : début – fin » (les deux facultatifs). `estimatedEnd`
 // absent (undefined) = comportement d'avant : poser un début efface la fin.
-export interface SlotPatch { estimatedStart?: string | null; estimatedEnd?: string | null; notes?: string | null; userId?: string; workDate?: string }
+// Lot 8 : `worksiteId` (revenir à une version du planning remet aussi le chantier d'une case).
+export interface SlotPatch { estimatedStart?: string | null; estimatedEnd?: string | null; notes?: string | null; userId?: string; workDate?: string; worksiteId?: string | null }
 const hhmmss = (v: string | null | undefined) => (v ? `${v.slice(0, 5)}:00` : null);
 export async function updatePlanningSlot(companyId: string, id: string, p: SlotPatch) {
   const row: Record<string, unknown> = {};
@@ -20,6 +21,7 @@ export async function updatePlanningSlot(companyId: string, id: string, p: SlotP
   if (p.notes !== undefined) row.notes = (p.notes ?? '').trim() || null;
   if (p.userId) row.user_id = p.userId;
   if (p.workDate) row.work_date = p.workDate;
+  if (p.worksiteId !== undefined) row.worksite_id = p.worksiteId;
   const { error } = await supabase.from('planning').update(row).eq('id', id).eq('company_id', companyId);
   if (error) throw error;
 }

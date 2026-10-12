@@ -62,7 +62,10 @@ export const supabaseAssistantSource: AssistantSource = {
         const body = ctx && typeof ctx.json === 'function' ? await ctx.json().catch(() => ({})) : {};
         return { answer: (body as { error?: string }).error || 'Connexion impossible. Réessayez.', links: [], notice: true };
       }
-      return toReply(data as ServerReply);
+      const reply = toReply(data as ServerReply);
+      // Lot 8 : la demande accompagne la carte (gardée seulement avec une version du planning).
+      if (reply.extra) (reply.extra as ActionExtra).request = question;
+      return reply;
     } catch {
       return { answer: 'Connexion impossible. Réessayez.', links: [], notice: true };
     }

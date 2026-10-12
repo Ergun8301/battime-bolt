@@ -24,6 +24,7 @@ import {
   Sparkles,
   Printer,
   BarChart3,
+  History,
 } from 'lucide-react';
 import {
   DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
@@ -97,6 +98,9 @@ import { GraduationCap } from 'lucide-react';
 
 // Lot 3 : la fenêtre des traces n'est chargée qu'à l'ouverture.
 const TracesDialog = dynamic(() => import('@/components/traces-dialog'), { ssr: false });
+// Lot 8 : « Versions du planning » (bureau), chargée à l'ouverture seulement.
+import { versionsAvailable } from '@/lib/planning-versions';
+const PlanningVersionsDialog = dynamic(() => import('@/components/planning-versions-dialog'), { ssr: false });
 
 // ─── helpers / constants ──────────────────────────────────────────────────────
 
@@ -627,6 +631,8 @@ button.bt-pl-m-stat{font:inherit;background:none;border:0;padding:0;color:inheri
 .bt-pl-datearr{width:32px;height:34px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;font-size:16px;line-height:1;cursor:pointer;border:1.5px solid rgba(21,18,15,.16);background:#FAF7F0;color:#15120F;font-family:inherit;transition:border-color .14s ease,background .14s ease,transform .08s ease}
 .bt-pl-datearr:hover{border-color:#15120F;background:#fff}
 .bt-pl-datearr:active{transform:translateY(1px)}
+.bt-pl-corner-ver{position:absolute;left:84px;bottom:6px;width:24px;height:24px;border-radius:7px;border:1.5px solid rgba(21,18,15,.16);background:#fff;color:#56514a;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0;transition:border-color .14s ease,background .14s ease}
+.bt-pl-corner-ver:hover{border-color:#15120F;background:#FAF7F0;color:#15120F}
 .bt-pl-datebox{display:inline-flex;align-items:center;gap:9px;height:34px;padding:0 13px;border-radius:10px;border:1.5px solid rgba(21,18,15,.16);background:#FAF7F0;cursor:pointer;font-family:inherit;transition:border-color .14s ease,background .14s ease}
 .bt-pl-datebox:hover{border-color:#15120F;background:#fff}
 .bt-pl-datebox-wk{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:#15120F;letter-spacing:.02em}
@@ -1540,6 +1546,28 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     });
     return () => { stale = true; };
   }, [user?.company_id, tracesOn, settingsOpen, mobileMenuOpen]);
+
+  // Lot 8 : versions du planning — l'entrée (coin de la grille, menu du téléphone,
+  // lien de l'assistant) n'existe que pour le bureau et si la table existe.
+  const [versionsOn, setVersionsOn] = useState(false);
+  const [versionsOpen, setVersionsOpen] = useState(false);
+  const versionsMissing = useRef(false);
+  useEffect(() => {
+    if (!user?.company_id || user.role !== 'admin' || versionsOn || versionsMissing.current) return;
+    let stale = false;
+    versionsAvailable().then((s) => {
+      if (s === 'off') versionsMissing.current = true;
+      else if (s === 'on' && !stale) setVersionsOn(true);
+    });
+    return () => { stale = true; };
+  }, [user?.company_id, user?.role, versionsOn, mobileMenuOpen]);
+  const versionNames = useMemo(() => {
+    const users: Record<string, string> = {};
+    for (const u of [...workers, ...officeUsers, ...(user ? [user] : [])]) users[u.id] = `${u.first_name || ''} ${u.last_name || ''}`.trim() || 'Sans nom';
+    const sites: Record<string, string> = {};
+    for (const w of worksites) sites[w.id] = w.client_name || 'Chantier';
+    return { users, worksites: sites };
+  }, [workers, officeUsers, user, worksites]);
 
   const refresh = () => { fetchPlanning(); fetchExtras(); fetchClosures(); fetchMissions(); };
   // Lot 11 : « Annuler » peut être cliqué bien après (la carte reste) — peut-être sur
@@ -3234,6 +3262,13 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                 <th className="bt-pl-th-name">
                   <span className="bt-pl-corner-wk">S-{getISOWeek(currentWeekStart)}</span>
                   <span className="bt-pl-corner-sal">Salarié</span>
+                  {/* Lot 8 : « Versions » dans le coin de la semaine qu'il concerne — la barre du haut n'a plus
+                      une once de place au pire cas (lot 3 : « une seule ligne » à 1280 px). */}
+                  {versionsOn && user?.role === 'admin' && (
+                    <button type="button" className="bt-pl-corner-ver" onClick={() => setVersionsOpen(true)} title="Versions du planning de cette semaine" aria-label="Versions du planning de cette semaine" data-testid="corner-versions">
+                      <History className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                 </th>
                 {weekDays.map(day => {
                   const isToday = format(day, 'yyyy-MM-dd') === todayStr;
@@ -3774,11 +3809,20 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         onSignOut={signOut}
         onOpenTrainings={trainingsOn && user?.company_id ? () => setTrainingsOpen(true) : undefined}
         onOpenTraces={tracesOn && user?.company_id ? () => setTracesOpen(true) : undefined}
+        onOpenVersions={versionsOn && user?.role === 'admin' ? () => setVersionsOpen(true) : undefined}
       />
 
       {/* Lot 3 : lecture seule ; `workers` (les vrais comptes), jamais la démo. */}
       {tracesOn && user?.company_id && (
         <TracesDialog open={tracesOpen} onOpenChange={setTracesOpen} companyId={user.company_id} viewerId={user.id} office workers={workers} />
+      )}
+
+      {/* Lot 8 : la semaine AFFICHÉE ; un retour relit le planning. */}
+      {versionsOn && user?.company_id && user.role === 'admin' && (
+        <PlanningVersionsDialog open={versionsOpen} onOpenChange={setVersionsOpen} companyId={user.company_id} userId={user.id}
+          monday={format(currentWeekStart, 'yyyy-MM-dd')}
+          weekLabel={`semaine du ${format(currentWeekStart, 'd', { locale: fr })} au ${format(addDays(currentWeekStart, DAYS_IN_WEEK - 1), 'd MMM', { locale: fr })}`}
+          names={versionNames} onChanged={() => refreshRef.current()} />
       )}
 
       {/* Lot 3 : la feuille imprimée, directement dans <body> (le CSS d'impression cache
@@ -3949,6 +3993,13 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
               execute={makeActionExecutor({ id: user.id, company_id: user.company_id })}
               preview={makeRemovalPreview({ company_id: user.company_id })}
               onDone={() => { fetchData(); fetchExtras(); }}
+              onOpenVersions={(monday) => {
+                // Lot 8 : « Versions de la semaine » — la semaine de l'action, puis la liste.
+                changeWeek(weekStartOf(new Date(`${monday}T12:00:00`)));
+                setVersionsOn(true);
+                setVersionsOpen(true);
+                if (window.matchMedia('(max-width: 640px)').matches) setAssistantOpen(false);
+              }}
             />
           )}
         />
