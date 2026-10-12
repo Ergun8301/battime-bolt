@@ -21,6 +21,10 @@
 //   · « documents » seulement quand un fichier est joint, et la lecture d'un bulletin ;
 //   · « secours »   seulement APRÈS une erreur ou un délai dépassé du premier
 //                   appel, jamais en même temps.
+// Un modèle « documents » lent ou indisponible (délai dépassé, 429, 5xx, 404,
+// injoignable) est mis de côté 10 min (par isolat) : les demandes suivantes
+// vont tout de suite au secours, sans réattendre. Un 400 ou une réponse
+// illisible ne le met pas de côté. Un résultat du secours porte `secours: true`.
 // Jamais de modèle Pro (refusé ici même, et par un test).
 //
 // GEMINI 3.x : pas de temperature / top_p / top_k (retirés de l'API). La
@@ -64,11 +68,16 @@ export const PLAFONDS_ESSAI: Record<Tier, number> = { rapide: 400, documents: 15
 const PLAFOND_MAX = 100_000;
 export const PAUSE_MESSAGE = 'L’assistant est en pause jusqu’à demain : la limite d’utilisation du jour est atteinte.';
 
-/** Temps laissé au premier appel, et temps total d'une demande, secours compris (ms). */
+/**
+ * Temps laissé au premier appel, et temps total d'une demande, secours compris (ms).
+ * Documents : 12 s puis le secours, 25 s au plus (gemini-3.8-flash dépassait presque toujours 25 s : voir docs/ia-v2.md).
+ */
 export const DELAIS: Record<Tier, { premier: number; total: number }> = {
   rapide: { premier: 5000, total: 8000 },
-  documents: { premier: 25000, total: 40000 },
+  documents: { premier: 12000, total: 25000 },
 };
+/** Combien de temps un modèle lent ou indisponible est mis de côté (ms) ; 0 = jamais. Seulement « documents » : le modèle rapide ne l'est pas. */
+export const REPOS_MS: Record<Tier, number> = { rapide: 0, documents: 10 * 60_000 };
 
 /** Jamais de Pro, quel que soit le réglage (règle d'Ergun). */
 export const isProModel = (model: string) => /(^|[-_.])pro($|[-_.])/i.test(model);
@@ -140,7 +149,7 @@ export interface ExtractRequest {
   tier?: Tier;
 }
 export type AiResult =
-  | { ok: true; data: unknown }
+  | { ok: true; data: unknown; /** Lu par le modèle de secours (plus léger) : à vérifier. */ secours?: true }
   | { ok: false; reason: 'not_configured' | 'provider_error' | 'bad_response' };
 
 // ── Appel de fonctions (lot 3 bis) ─────────────────────────────────────────
@@ -154,12 +163,16 @@ export interface ToolsRequest {
   tier?: Tier;
 }
 export type ToolsResult =
-  | { ok: true; call: { name: string; args: Record<string, unknown> } }
+  | { ok: true; call: { name: string; args: Record<string, unknown> }; /** Choisi par le modèle de secours (plus léger). */ secours?: true }
   | { ok: false; reason: 'not_configured' | 'provider_error' | 'bad_response' };
 
 type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
 type Echec = { ok: false; reason: 'not_configured' | 'provider_error' | 'bad_response' };
 type Brut = { ok: true; body: unknown } | Echec;
+// Échecs « lent ou indisponible » (délai dépassé, 429, 5xx, 404, injoignable ; pas un 400 ni une réponse illisible) :
+// repérés à part pour le repos du modèle, sans rien ajouter au résultat rendu.
+const lents = new WeakSet<object>();
+const lent = <T extends object>(x: T): T => { lents.add(x); return x; };
 
 /** UN appel à Gemini : réflexion par thinkingLevel, ni temperature ni top_p ni top_k, plafond de temps. */
 async function geminiCall(m: Modele, key: string, payload: Record<string, unknown>, timeoutMs: number, fetchImpl: FetchLike): Promise<Brut> {
@@ -179,26 +192,36 @@ async function geminiCall(m: Modele, key: string, payload: Record<string, unknow
       });
     } catch {
       console.error(ctl.signal.aborted ? `[ai] ${m.model} : plus de ${timeoutMs} ms, abandon` : '[ai] fournisseur injoignable');
-      return { ok: false, reason: 'provider_error' };
+      return lent({ ok: false, reason: 'provider_error' });
     }
     if (!res.ok) {
       console.error(`[ai] fournisseur : HTTP ${res.status}`);
-      return { ok: false, reason: 'provider_error' };
+      const echec: Echec = { ok: false, reason: 'provider_error' };
+      return res.status === 429 || res.status === 404 || res.status >= 500 ? lent(echec) : echec;
     }
     try {
       return { ok: true, body: await res.json() };
     } catch {
-      return { ok: false, reason: ctl.signal.aborted ? 'provider_error' : 'bad_response' };
+      return ctl.signal.aborted ? lent({ ok: false, reason: 'provider_error' }) : { ok: false, reason: 'bad_response' };
     }
   } finally {
     clearTimeout(timer);
   }
 }
 
+// Modèles mis de côté (lents ou indisponibles) : nom → jusqu'à quand (ms). Propre à l'isolat, sans base ni secret.
+const auRepos = new Map<string, number>();
+let maintenant: () => number = Date.now;
+/** Pour les tests : vide les modèles mis de côté et (re)donne l'horloge utilisée pour ce repos. */
+export function reposReinit(horloge: () => number = Date.now): void { auRepos.clear(); maintenant = horloge; }
+
 /**
  * Le modèle du niveau demandé, puis — seulement s'il a échoué (erreur du
  * fournisseur, injoignable, délai dépassé) — le modèle de secours. Une réponse
  * illisible n'est pas une panne : pas de second appel.
+ * Un modèle lent ou indisponible est mis de côté REPOS_MS[niveau] : tant que ça dure,
+ * la demande va tout de suite au secours (et au modèle de côté en dernier recours,
+ * si le secours échoue aussi). Une réponse du secours porte `secours: true`.
  */
 async function avecSecours<T extends { ok: boolean; reason?: string }>(
   cfg: AiConfig, tier: Tier, run: (m: Modele, timeoutMs: number) => Promise<T>,
@@ -206,11 +229,27 @@ async function avecSecours<T extends { ok: boolean; reason?: string }>(
   const d = DELAIS[tier];
   const fin = Date.now() + d.total;
   const left = () => fin - Date.now();
-  const r = await run(cfg[tier], Math.min(d.premier, left()));
-  if (r.ok || r.reason !== 'provider_error') return r;
-  if (cfg.secours.model === cfg[tier].model || left() < 1500) return r;
-  console.error(`[ai] modèle ${tier} indisponible : modèle de secours`);
-  return run(cfg.secours, left());
+  const m = cfg[tier];
+  const distinct = cfg.secours.model !== m.model;
+  const deCote = distinct && REPOS_MS[tier] > 0 && (auRepos.get(m.model) ?? 0) > maintenant();
+  if (deCote) {
+    console.error(`[ai] modèle ${tier} au repos : modèle de secours`);
+  } else {
+    const r = await run(m, Math.min(d.premier, left()));
+    if (r.ok) { auRepos.delete(m.model); return r; }
+    if (r.reason !== 'provider_error' || !distinct || left() < 1500) return r;
+    if (lents.has(r) && REPOS_MS[tier] > 0) auRepos.set(m.model, maintenant() + REPOS_MS[tier]);
+    console.error(`[ai] modèle ${tier} indisponible : modèle de secours`);
+  }
+  const s = await run(cfg.secours, left());
+  if (s.ok) return { ...s, secours: true };
+  // Mis de côté, et le secours échoue aussi : on retente le modèle de côté avec le temps qui reste.
+  if (deCote && s.reason === 'provider_error' && left() >= 1500) {
+    const r = await run(m, left());
+    if (r.ok) auRepos.delete(m.model);
+    return r;
+  }
+  return s;
 }
 
 const parts = (prompt: string, file?: AiFile) => [{ text: prompt }, ...(file ? [{ inline_data: { mime_type: file.mime, data: file.base64 } }] : [])];

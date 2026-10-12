@@ -1,9 +1,9 @@
 // Tests du coût réel (lot 2) : `npm run test:cout` (Deno).
 import {
-  parseAmount, parseMonth, realHourlyCost, realLabourCost, sanitizeExtraction, slipHourlyCost,
+  parseAmount, parseMonth, payslipReply, realHourlyCost, realLabourCost, sanitizeExtraction, slipHourlyCost,
   validateFigures, PAYSLIP_PROMPT, PAYSLIP_SCHEMA,
 } from './payslip-core.ts';
-import { extractJson, MODELES_PAR_DEFAUT } from './ai-provider.ts';
+import { extractJson, MODELES_PAR_DEFAUT, reposReinit } from './ai-provider.ts';
 
 function eq(a: unknown, b: unknown, msg: string) {
   if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error(`${msg} — attendu ${JSON.stringify(b)}, obtenu ${JSON.stringify(a)}`);
@@ -52,6 +52,29 @@ Deno.test('Contrôle de cohérence : dans le doute, le champ reste vide', () => 
   eq(sanitizeExtraction('pas un objet').figures, { month: null, gross: null, employer_total: null, paid_hours: null }, 'réponse absurde');
   eq(sanitizeExtraction({ gross: 2000, nir: '1 85 05 78 006 084 36' }).figures.gross, 2000, 'champ inattendu ignoré');
   if ('nir' in sanitizeExtraction({ nir: 'x' }).figures) throw new Error('un champ non demandé traverse le nettoyage');
+});
+
+Deno.test('Lu par le modèle de SECOURS : les quatre chiffres sont « à vérifier » (les champs gardés ne changent pas)', async () => {
+  const lu = { month: '2026-08', gross: 2450, employer_total: 3528.4, paid_hours: 151.67 };
+  eq(sanitizeExtraction(lu, true), { figures: lu, doubts: ['month', 'gross', 'employer_total', 'paid_hours'] }, 'secours : tout à vérifier');
+  eq(sanitizeExtraction(lu, false).doubts, [], 'modèle « documents » : rien de plus qu’avant');
+  // Un champ déjà vidé par le contrôle de cohérence n'est pas listé deux fois.
+  eq(sanitizeExtraction({ ...lu, employer_total: 2000 }, true).doubts, ['employer_total', 'month', 'gross', 'paid_hours'], 'pas de doublon');
+  // De bout en bout (faux fournisseur) : « documents » en panne → le secours lit → la réponse de payslip-read marque tout « à vérifier ».
+  reposReinit();
+  const text = JSON.stringify(lu);
+  const modeles: string[] = [];
+  const fake = (u: string) => {
+    modeles.push(/models\/([^:]+):/.exec(u)![1]);
+    return Promise.resolve(modeles.length === 1 ? new Response('{}', { status: 503 }) : new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text }] } }] })));
+  };
+  const orig = console.error; console.error = () => {};
+  let r;
+  try { r = await extractJson({ prompt: PAYSLIP_PROMPT, schema: PAYSLIP_SCHEMA, file, tier: 'documents' }, env({ AI_API_KEY: 'k' }), fake); } finally { console.error = orig; reposReinit(); }
+  if (!r.ok || r.secours !== true || modeles.join(',') !== `${MODELES_PAR_DEFAUT.documents},${MODELES_PAR_DEFAUT.secours}`) throw new Error(`secours : ${modeles.join(',')}`);
+  // Ce que payslip-read renvoie à l'écran : tout « à vérifier » ; sans secours, comme avant.
+  eq(payslipReply(r), { available: true, figures: lu, doubts: ['month', 'gross', 'employer_total', 'paid_hours'] }, 'payslip-read : tout à vérifier');
+  eq(payslipReply({ data: lu }), { available: true, figures: lu, doubts: [] }, 'payslip-read : lecture normale inchangée');
 });
 
 Deno.test('Validation avant enregistrement', () => {

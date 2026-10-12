@@ -105,6 +105,17 @@ const act = (type: string, f: (d: Record<string, unknown>) => string | null = ()
   if (o.problems?.length) return `pas prête : ${o.problems.join(' / ')}`;
   return f(o.draft ?? {});
 };
+/**
+ * Comme `act`, mais l'action est rendue AVEC ces problèmes exacts : c'est la réponse voulue (par ex. « Choisissez
+ * l’intervention. » quand rien n'est prévu ce jour-là), pas un échec. `act` reste inchangé pour tous les autres cas :
+ * une action « pas prête » y reste un échec.
+ */
+const actAvecProblemes = (type: string, problems: string[], f: (d: Record<string, unknown>) => string | null = () => null): Check => (o) => {
+  if (o.kind !== 'action') return `attendu l'action ${type}, obtenu ${o.kind}${o.answer ? ` (« ${o.answer.slice(0, 60)} »)` : ''}`;
+  if (o.type !== type) return `attendu ${type}, obtenu ${o.type}`;
+  if (JSON.stringify(o.problems ?? []) !== JSON.stringify(problems)) return `problèmes = ${JSON.stringify(o.problems ?? [])} (attendu ${JSON.stringify(problems)})`;
+  return f(o.draft ?? {});
+};
 const eq = (d: Record<string, unknown>, k: string, v: unknown) => (JSON.stringify(d[k]) === JSON.stringify(v) ? null : `${k} = ${JSON.stringify(d[k])} (attendu ${JSON.stringify(v)})`);
 const all = (...r: (string | null)[]) => r.find((x) => x) ?? null;
 const has = (d: Record<string, unknown>, k: string, re: RegExp) => (re.test(String(d[k] ?? '')) ? null : `${k} = « ${d[k]} » (attendu ${re})`);
@@ -212,8 +223,10 @@ export const CASES: EvalCase[] = [
     check: act('modifier_document', (d) => all(eq(d, 'document_id', 'd-devis'), eq(d, 'categorie', 'facture'))) },
   // Retour Cowork : un salarié nommé → SEULEMENT ses cases ; rien ce jour-là → on le dit.
   { id: 'b46', cote: 'bureau', categorie: 'Effacer', phrase: 'Enlève Karim de la Villa Dupont vendredi', check: act('supprimer_intervention', (d) => all(eq(d, 'user_id', 'u-karim'), eq(d, 'planning_id', 'p-karim-4'))) },
+  // Rien ce jour-là pour Kevin : l'assistant le dit (« Choisissez l’intervention. ») et ne propose QUE les cases de Kevin (lot 8).
+  // Attente corrigée : avec `act`, ce cas ne pouvait jamais passer (« pas prête » dès qu'il y a un problème).
   { id: 'b47', cote: 'bureau', categorie: 'Effacer', phrase: 'retire Kevin de la Villa Dupont vendredi',
-    check: act('supprimer_intervention', (d) => all(eq(d, 'user_id', 'u-kevin'), eq(d, 'planning_id', null),
+    check: actAvecProblemes('supprimer_intervention', ['Choisissez l’intervention.'], (d) => all(eq(d, 'user_id', 'u-kevin'), eq(d, 'planning_id', null),
       (d.choix as { nom: string }[]).length && (d.choix as { nom: string }[]).every((c) => c.nom === 'Kevin') ? null : `choix : ${JSON.stringify(d.choix)}`)) },
   // ════ SALARIÉ ════
   { id: 's01', cote: 'salarie', categorie: 'Heures', phrase: 'ce matin 7h30 12h villa dupont et aprem 13h 16h30 bureau martin',

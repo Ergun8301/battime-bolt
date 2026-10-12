@@ -1,6 +1,6 @@
 // Lot 7 — le français parlé : dates relatives, heures, titres propres.
 //   npm run test:fr-langue
-import { calendarForPrompt, cleanName, cleanSpoken, cleanTitle, dayPart, isNewRequest, looksLikeAction, parseDateFr, parseDateRangeFr, parseTimeFr } from './fr-langue.ts';
+import { calendarForPrompt, cleanName, cleanSpoken, cleanTitle, dateAVenir, dayPart, isNewRequest, looksLikeAction, parseDateFr, parseDateRangeFr, parseTimeFr, plageAVenir } from './fr-langue.ts';
 import { placeOf } from './worker-assistant-core.ts';
 
 function eq(a: unknown, b: unknown, msg: string) {
@@ -65,4 +65,33 @@ Deno.test('Question en attente : réponse courte ou nouvelle demande ?', () => {
   eq(isNewRequest('Comment je corrige le pointage d’un salarié ?'), true, 'question d’aide');
   eq(isNewRequest('qui n’a pas pointé hier'), true, 'question chiffrée');
   eq(isNewRequest('mets Lucas sur Bureau Martin toute la semaine prochaine'), true, 'nouvelle action complète');
+});
+
+Deno.test('Jour passé donné par le modèle pour un nom de jour seul → la PROCHAINE occurrence (aujourd’hui compris)', () => {
+  // On est jeudi 2026-10-01. Le modèle renvoie le lundi / mercredi de la semaine EN COURS (passés) pour « lundi », « mercredi ».
+  eq(dateAVenir('2026-09-28', 'vide le planning de karim de lundi à mercredi', T), '2026-10-05', 'lundi passé → lundi prochain');
+  eq(dateAVenir('2026-09-30', 'vide le planning de karim de lundi à mercredi', T), '2026-10-07', 'mercredi passé → mercredi prochain');
+  eq(dateAVenir('2026-09-24', 'retire Marc du planning jeudi', T), '2026-10-01', 'jeudi passé, on est jeudi → aujourd’hui compris');
+  eq(dateAVenir('2026-09-28', 'mets Kevin lundi prochain', T), '2026-10-05', '« lundi prochain »');
+  eq(dateAVenir('2026-09-28', 'mets Kevin lundi de la semaine prochaine', T), '2026-10-05', 'lundi de la semaine prochaine');
+  // Rien à corriger : date non passée, aujourd’hui, jour non nommé, aucune phrase.
+  eq(dateAVenir('2026-10-05', 'de lundi à mercredi', T), '2026-10-05', 'date à venir : intacte');
+  eq(dateAVenir('2026-10-01', 'jeudi', T), '2026-10-01', 'aujourd’hui : intact');
+  eq(dateAVenir('2026-09-28', 'vide le planning de karim', T), '2026-09-28', 'la phrase ne nomme pas ce jour : intact');
+  eq(dateAVenir('2026-09-28', 'mardi', T), '2026-09-28', 'la phrase nomme un AUTRE jour : intact');
+  eq(dateAVenir('2026-09-28', undefined, T), '2026-09-28', 'pas de phrase : intact');
+  eq(dateAVenir('', 'lundi', T), '', 'pas de date : intact');
+  // Le passé est DIT, ou la date est écrite : jamais touchée.
+  for (const p of ['lundi dernier', 'le lundi précédent', 'lundi passé', 'hier lundi', 'avant-hier lundi', 'il y a une semaine, lundi', 'depuis lundi', 'Kevin était malade lundi', 'lundi 28 septembre', 'lundi 28/09', 'le lundi 28', 'lundi 2026-09-28', 'lundi de cette semaine', 'lundi de la semaine en cours']) {
+    eq(dateAVenir('2026-09-28', p, T), '2026-09-28', `« ${p} » : intact`);
+  }
+  // Une heure n’est pas une date écrite (« lundi le 14h » n’existe pas, « lundi à 14h » oui).
+  eq(dateAVenir('2026-09-28', 'mets Kevin lundi à 14h', T), '2026-10-05', 'une heure n’est pas un marqueur');
+  // Plage : l’ordre est gardé (du ≤ au).
+  eq(plageAVenir('2026-09-28', '2026-09-30', 'de lundi à mercredi', T), { du: '2026-10-05', au: '2026-10-07' }, 'de lundi à mercredi');
+  eq(plageAVenir('2026-09-28', '', 'lundi', T), { du: '2026-10-05', au: '' }, 'sans fin : la fin reste vide');
+  eq(plageAVenir('2026-09-28', '2026-10-02', 'de lundi à vendredi', T), { du: '2026-10-05', au: '2026-10-09' }, 'fin à venir mais avant le début corrigé → vendredi après le début');
+  eq(plageAVenir('2026-10-08', '2026-09-30', 'de jeudi à mercredi', T), { du: '2026-10-08', au: '2026-10-14' }, 'fin passée corrigée, avant le début → mercredi après le début');
+  eq(plageAVenir('2026-10-06', '2026-10-02', 'de mardi à vendredi', T), { du: '2026-10-06', au: '2026-10-02' }, 'rien de passé : l’ordre du modèle n’est pas retouché');
+  eq(plageAVenir('2026-09-28', '2026-09-30', 'de lundi à mercredi derniers', T), { du: '2026-09-28', au: '2026-09-30' }, 'passé dit : intact');
 });

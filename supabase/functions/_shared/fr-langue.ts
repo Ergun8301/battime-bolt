@@ -136,6 +136,41 @@ function validIso(iso: string): boolean {
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === iso;
 }
 
+// ── Le modèle donne parfois un jour PASSÉ pour un nom de jour seul ─────────
+// Mesuré sur le vrai modèle : « de lundi à mercredi » (dit un jeudi) revient avec le lundi→mercredi de la
+// semaine EN COURS, déjà passé, malgré la règle du calendrier. Le texte des consignes ne suffit pas :
+// ce garde-fou le corrige en code, au même endroit pour tous les outils de planning (bureau et salarié).
+const PASSE_DIT = new RegExp([
+  "\\b(?:derni\\w*|passee?s?|hier|avant[- ]?hier|precedent\\w*|depuis|etai(?:t|ent))\\b", '\\bil y a\\b',        // le passé est dit
+  '\\bcette semaine\\b', '\\bsemaine (?:en cours|actuelle)\\b',                                         // la semaine en cours est dite
+  '\\b\\d{4}-\\d{2}-\\d{2}\\b', '\\b\\d{1,2}/\\d{1,2}\\b', `\\b\\d{1,2}(?:er)?\\s+(?:${MOIS.join('|')})\\b`,   // une date écrite
+  '\\ble\\s+\\d{1,2}(?:er)?\\b(?!\\s*(?:h|heures?|:))',
+  `\\b(?:${JOURS.join('|')})\\s+\\d{1,2}(?:er)?\\b(?!\\s*(?:h|heures?|:|/))`,                              // « lundi 28 »
+].join('|'));
+
+/**
+ * `iso` (donné par le modèle) déjà PASSÉ alors que la phrase nomme ce jour de la semaine SANS marqueur de passé
+ * (« dernier », « hier », « depuis », une date écrite…) → la PROCHAINE occurrence de ce jour, aujourd'hui compris
+ * (comme « jeudi » dans parseDateFr). Une date qui n'est pas passée, ou que la phrase ne désigne pas, reste intacte.
+ */
+export function dateAVenir(iso: string, phrase: string | undefined, today: string): string {
+  if (!iso || !phrase || !validIso(iso) || iso >= today) return iso;
+  const n = low(phrase);
+  if (PASSE_DIT.test(n)) return iso;
+  const jour = JOURS[dow(iso)];
+  const m = new RegExp(`\\b${jour}\\b(\\s+(?:prochain|suivant|d'apres))?`).exec(n);
+  if (!m) return iso;
+  return parseDateFr(`${jour}${m[1] ? ' prochain' : ''}${/\bsemaine prochaine\b/.test(n) ? ' semaine prochaine' : ''}`, today) || iso;
+}
+
+/** Une plage « de lundi à mercredi » : chaque bout corrigé (dateAVenir) sans jamais finir avant le début (sinon : la prochaine occurrence après le début). */
+export function plageAVenir(du: string, au: string, phrase: string | undefined, today: string): { du: string; au: string } {
+  const d2 = dateAVenir(du, phrase, today);
+  let a2 = dateAVenir(au, phrase, today);
+  if (d2 && a2 && a2 < d2 && (d2 !== du || a2 !== au)) a2 = addDaysIso(d2, ((dow(a2) - dow(d2) + 7) % 7) || 7);
+  return { du: d2, au: a2 };
+}
+
 /**
  * Une période dite : « du 20 au 24 octobre », « du 12/10 au 16/10 », « du lundi
  * au mercredi », « demain et après-demain ». null si rien de clair.

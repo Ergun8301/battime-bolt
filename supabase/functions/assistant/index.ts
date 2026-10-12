@@ -35,7 +35,7 @@ import { aiKey, callFunction, formuleNom, PAUSE_MESSAGE, plafondProjet, readAtta
 import { loadAssistantContext } from '../_shared/assistant-context.ts';
 import { DEFAULT_DAILY_LIMIT, MAX_QUESTION_CHARS, buildSnapshot, previousDay, type RawData } from '../_shared/assistant-core.ts';
 import {
-  actionPrompt, addDays, buildActionContext, fromFunctionCall, functionsFor, handleActionLocally, mondayOf, questionFor,
+  actionPrompt, addDays, avertirSecours, buildActionContext, fromFunctionCall, functionsFor, handleActionLocally, mondayOf, questionFor,
   resolveSalarie, summarize, findGuide, guideAnswer, guideForPrompt, NAV_ACTIONS, type EntryChoice, type LocalReply, type ActionContext,
 } from '../_shared/assistant-actions-core.ts';
 
@@ -195,7 +195,9 @@ Deno.serve(async (req) => {
         });
       }
     }
-    return reply(fromFunctionCall(r.call.name, r.call.args, ctx, choices), ctx, remaining);
+    const out = fromFunctionCall(r.call.name, r.call.args, ctx, choices);
+    // Un bulletin lu par le modèle de secours (plus léger) : à vérifier avant de confirmer.
+    return reply(avertirSecours(out, !!r.secours), ctx, remaining);
   } catch {
     console.error('[assistant] erreur interne');
     return json({ error: 'Erreur serveur' }, 500);
