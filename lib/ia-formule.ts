@@ -2,15 +2,13 @@
 //
 // La source de vérité est le secret AI_CONFIG des fonctions Edge : l'écran ne la
 // devine jamais, il la DEMANDE (corps { statut: true } : aucun quota, aucun appel
-// au modèle). Règle de prudence : tant qu'on ne sait pas, le bandeau « Mode
-// essai » est AFFICHÉ (fonction injoignable, ancienne version encore déployée,
-// réponse inattendue). Il ne disparaît que sur un « payant » explicite.
+// au modèle).
+//
+// À la demande d'Ergun, plus RIEN n'est affiché aux patrons ni aux salariés
+// (le bandeau « Mode essai » a été retiré des assistants et de la lecture d'un
+// bulletin). Cette lecture ne sert plus qu'au SUPPORT BEMEXO : une ligne
+// discrète « IA : formule essai / payant » sur sa console (app/support).
 import { supabase } from '@/lib/supabase';
-
-export const TRIAL_TEXT = 'Mode essai (Gemini gratuit) : données fictives uniquement. Google peut relire et réutiliser ce que vous envoyez.';
-
-/** Bandeau visible sauf si la fonction a répondu « payant ». */
-export const showTrialBanner = (formule: string | null | undefined): boolean => formule !== 'payant';
 
 /** La formule active, demandée à une fonction d'IA ; null si inconnue (erreur, vieille version, panne). */
 export async function iaFormule(fn: 'assistant' | 'worker-assistant' | 'payslip-read'): Promise<string | null> {

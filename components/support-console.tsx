@@ -3,6 +3,10 @@
 // Écran de la console support (lot 5) — AFFICHAGE seulement. La logique (et
 // donc les vérifications) vit dans app/support/page.tsx et dans la base ; la
 // démo des préviews réutilise ce même écran avec de faux états.
+//
+// Une ligne discrète « IA : formule essai / payant » n'apparaît qu'aux étapes
+// « ready » et « inside », donc seulement après les trois vérifications (compte
+// support, double vérification). Aucun patron ni salarié n'y arrive.
 
 import { useState } from 'react';
 import { Loader2, LifeBuoy, ShieldCheck, LogIn, ArrowRight, KeyRound, Eye, EyeOff } from 'lucide-react';
@@ -17,6 +21,7 @@ export type ConsoleStep =
   | { kind: 'ready' }
   | { kind: 'inside'; name: string; companyId: string };
 
+// Polices sans apostrophes : l'apostrophe d'un <style> rendu côté serveur fait échouer l'hydratation React (418/423/425).
 const CSS = `
 .sc{min-height:100vh;background:#F4F1EA;display:flex;justify-content:center;padding:32px 16px;font-family:inherit}
 .sc-card{width:100%;max-width:460px;background:#fff;border:1px solid rgba(21,18,15,.1);border-radius:18px;padding:22px;box-shadow:0 10px 30px rgba(21,18,15,.06);align-self:flex-start}
@@ -33,10 +38,10 @@ const CSS = `
 .sc-btn:disabled{opacity:.45;cursor:default}
 .sc-qr{display:flex;justify-content:center;margin:6px 0 10px}
 .sc-qr img{width:180px;height:180px;border:1px solid rgba(21,18,15,.1);border-radius:12px;padding:6px;background:#fff}
-.sc-secret{display:flex;gap:6px;align-items:center;font-family:'JetBrains Mono',monospace;font-size:12.5px;background:#FBF8F2;border:1px dashed rgba(21,18,15,.2);border-radius:9px;padding:7px 9px;margin:0 0 12px;word-break:break-all}
+.sc-secret{display:flex;gap:6px;align-items:center;font-family:JetBrains Mono,monospace;font-size:12.5px;background:#FBF8F2;border:1px dashed rgba(21,18,15,.2);border-radius:9px;padding:7px 9px;margin:0 0 12px;word-break:break-all}
 .sc-secret button{border:none;background:transparent;cursor:pointer;color:#6E6A63;flex:none}
 .sc-code{display:flex;gap:8px}
-.sc-code input{flex:1;min-width:0;font-family:'JetBrains Mono',monospace;font-size:22px;letter-spacing:.3em;text-align:center;border:1.5px solid rgba(21,18,15,.2);border-radius:11px;padding:8px}
+.sc-code input{flex:1;min-width:0;font-family:JetBrains Mono,monospace;font-size:22px;letter-spacing:.3em;text-align:center;border:1.5px solid rgba(21,18,15,.2);border-radius:11px;padding:8px}
 .sc-err{font-size:13px;color:#9a3b14;font-weight:700;margin:10px 0 0}
 .sc-list{display:flex;flex-direction:column;gap:8px}
 .sc-co{display:flex;align-items:center;gap:10px;border:1px solid rgba(21,18,15,.12);border-radius:12px;padding:10px 12px}
@@ -44,6 +49,7 @@ const CSS = `
 .sc-co small{font-size:12px;color:#6E6A63;font-weight:600}
 .sc-co div{flex:1;min-width:0}
 .sc-foot{font-size:12px;color:#9a948a;margin:14px 0 0;line-height:1.45}
+.sc .sc-ia{font-size:11.5px;color:#9a948a;margin:0}
 `;
 
 const qrSrc = (q: string) => (q.startsWith('data:') ? q : `data:image/svg+xml;utf-8,${encodeURIComponent(q)}`);
@@ -65,10 +71,15 @@ function CodeForm({ onVerify }: { onVerify: (code: string) => Promise<void> }) {
   );
 }
 
+/** « IA : formule essai / payant » ; null = formule inconnue (fonction injoignable ou ancienne version). */
+const iaLabel = (f: string | null) => `IA : formule ${f === 'essai' || f === 'payant' ? f : 'inconnue'}`;
+
 interface Props {
   step: ConsoleStep;
   companies: SupportCompany[];
   error: string | null;
+  /** Formule IA active (requête de statut des fonctions), montrée seulement une fois le support vérifié ; undefined = pas demandée, rien n'est montré. */
+  ia?: string | null;
   onLogin: () => void;
   onVerify: (factorId: string, code: string) => Promise<void>;
   onEnter: (companyId: string) => void;
@@ -76,7 +87,7 @@ interface Props {
   onExit: (companyId: string) => void;
 }
 
-export default function SupportConsoleView({ step, companies, error, onLogin, onVerify, onEnter, onBack, onExit }: Props) {
+export default function SupportConsoleView({ step, companies, error, ia, onLogin, onVerify, onEnter, onBack, onExit }: Props) {
   const [showSecret, setShowSecret] = useState(false);
   const level = step.kind === 'enroll' || step.kind === 'challenge' ? 2 : step.kind === 'ready' || step.kind === 'inside' ? 3 : 1;
   return (
@@ -147,6 +158,9 @@ export default function SupportConsoleView({ step, companies, error, onLogin, on
 
         {error && <p className="sc-err">{error}</p>}
         <p className="sc-foot">Lecture seule. Chaque entrée et chaque sortie sont notées dans le journal du client, qu’il peut consulter à tout moment.</p>
+        {(step.kind === 'ready' || step.kind === 'inside') && ia !== undefined && (
+          <p className="sc-ia" data-testid="support-ia">{iaLabel(ia)}</p>
+        )}
       </div>
     </main>
   );

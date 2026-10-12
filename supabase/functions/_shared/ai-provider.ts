@@ -133,7 +133,7 @@ export function readConfig(env: Env): AiConfig {
   memo.set(raw, cfg);
   return cfg;
 }
-/** La formule renvoyée à l'écran (bandeau « Mode essai ») : l'écran ne la devine jamais. */
+/** La formule renvoyée avec chaque réponse (lue par le support BEMEXO, jamais affichée aux patrons ni aux salariés) : l'écran ne la devine jamais. */
 export const formuleNom = (env: Env): FormuleNom => readConfig(env).formule;
 /** Plafond du jour pour tout le projet ; null = pas de plafond. */
 export const plafondProjet = (env: Env, tier: Tier): number | null => readConfig(env).plafonds?.[tier] ?? null;

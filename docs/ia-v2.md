@@ -5,8 +5,21 @@ Toujours derrière **`companies.ai_enabled`** (rien ne change pour les autres).
 ## 0. Couche IA v2 (lot 6) : un seul réglage, une seule clé
 
 > ⚠️ **Gemini gratuit = données fictives uniquement ; le payant est obligatoire avant tout vrai client (UE/Suisse).**
-> Avec la clé gratuite, Google peut relire et réutiliser ce qui est envoyé. Tant que la formule est « essai »,
-> un bandeau le rappelle dans l'assistant du bureau, l'assistant du salarié et l'écran de lecture d'un bulletin.
+> Avec la clé gratuite, Google peut relire et réutiliser ce qui est envoyé. À la demande d'Ergun, **aucun bandeau** ne le
+> rappelle plus à l'écran (ni chez le patron, ni chez le salarié) : l'avertissement vit ici, dans les PR et dans le plan,
+> et le support BEMEXO voit la formule sur sa console (voir « Pas de bandeau à l'écran » plus bas).
+
+> ## 🛑 AVANT LE PREMIER VRAI CLIENT QUI UTILISE L'ASSISTANT
+>
+> 1. **Passer Gemini en payant avec plafond** : `AI_CONFIG` avec la formule « payant » **et ses `plafonds`**
+>    (`{"formule":"payant","plafonds":{"rapide":N,"documents":N}}` : demandes par jour pour tout le projet, sans `plafonds` il n'y en a aucun en payant),
+>    facturation activée sur la clé, plafond de dépense ou alerte de budget réglé côté Google, et une **clé de test séparée** pour les essais
+>    (jeu d'évaluation, démonstrations) : la clé des vrais clients ne sert qu'aux vrais clients.
+> 2. **Sinon, les données des vrais salariés partent vers une formule gratuite que Google peut relire et réutiliser** (obligation UE/Suisse).
+>    Plus aucun bandeau à l'écran ne le dit : personne ne le verra à notre place.
+> 3. Ensuite : **Supabase Pro**, et la **politique de confidentialité mise à jour** (sous-traitant Google, formule payante).
+>
+> Contrôle : la console `/support` doit afficher « IA : formule payant ».
 
 ### Les deux secrets (Supabase → Edge Functions → Secrets)
 
@@ -96,12 +109,21 @@ côté salarié : heures, congés, chantier, collègues). Plusieurs domaines rec
 est toujours là. Avec un fichier joint, la liste « documents » du lot 1 ne change pas. Test : pour **chacune** des 80 phrases du jeu d'évaluation
 (bureau et salarié), l'outil attendu est dans la sélection (`npm run test:ia-domaines`, 573 déclarations au lieu de 1413 sur les phrases qui passent par le modèle).
 
-### Bandeau « Mode essai »
+### Pas de bandeau à l'écran (demande d'Ergun) ; la formule reste visible du support
 
-Texte exact : « Mode essai (Gemini gratuit) : données fictives uniquement. Google peut relire et réutiliser ce que vous envoyez. »
-Visible **avant** tout envoi dans l'assistant du bureau, l'assistant du salarié et l'écran « Coût réel » (lecture d'un bulletin). La source de vérité est
-`formule` d'`AI_CONFIG` : à l'ouverture, l'écran demande `{ "statut": true }` à la fonction (aucun quota, aucun appel au modèle). **En cas de doute le
-bandeau reste affiché** (fonction injoignable, ancienne version encore déployée) ; seul « payant » le retire.
+Le lot 6 avait ajouté un bandeau « Mode essai (Gemini gratuit) : données fictives uniquement… » dans l'assistant du bureau, l'assistant du salarié et
+l'écran « Coût réel » (lecture d'un bulletin). **Ergun ne l'a jamais demandé : il est retiré** (composant, styles et logique « en cas de doute on l'affiche »).
+Les écrans du patron et du salarié ne disent plus rien de la formule. L'avertissement reste ailleurs : cette page (encadré en haut), les PR, le plan.
+
+Ce qui **ne change pas** (tout est côté serveur) : le secret `AI_CONFIG`, le compteur global (`ai_project_usage`) et ses plafonds, `assistant_context`,
+le champ `formule` joint à chaque réponse des fonctions, la demande `{ "statut": true }` (aucun quota, aucun appel au modèle) et `lib/ia-formule.ts` (`iaFormule`).
+
+**Seul le support BEMEXO** voit la formule : une ligne discrète « IA : formule essai » ou « IA : formule payant » sur sa console `/support`, affichée
+**après** les vérifications du lot 5 (compte inscrit dans `support_staff`, double vérification). « IA : formule inconnue » si la fonction ne répond pas ou
+si l'ancienne version est encore déployée. Pas de chiffre du compteur (il est réservé au service) : le panneau support complet est prévu plus tard (lot 28).
+Aucune migration. Un patron ou un salarié qui ouvre `/support` voit « Accès réservé » et la fonction n'est même pas interrogée. Test : `npm run test:ia-formule-ecrans`.
+
+**Mise en ligne du retrait** : le front seulement (site statique). Aucune migration, aucun secret, **aucune fonction à redéployer** (côté fonctions, seuls des commentaires ont changé).
 
 ### Mise en ligne (dans CET ordre)
 

@@ -467,4 +467,28 @@ Deno.test('Documentation : l’exemple d’AI_CONFIG à copier-coller est valide
   if (c.rapide.model !== R || c.documents.model !== D || c.secours.model !== S || c.formule !== 'essai') throw new Error(JSON.stringify(c));
   for (const m of [R, D, S]) if (!md.includes(m)) throw new Error(`${m} absent de la doc`);
   if (!md.includes('Gemini gratuit = données fictives uniquement ; le payant est obligatoire avant tout vrai client (UE/Suisse)')) throw new Error('avertissement manquant dans la doc');
+  // Plus aucun bandeau à l'écran (demande d'Ergun) : l'encadré de la doc est le seul rappel, il ne doit pas disparaître.
+  if (!md.includes("AVANT LE PREMIER VRAI CLIENT QUI UTILISE L'ASSISTANT")) throw new Error('encadré « avant le premier vrai client » manquant dans la doc');
+});
+
+Deno.test('Aucun bandeau « Mode essai » dans les écrans (retiré à la demande d’Ergun) ; la formule reste lue pour le support', async () => {
+  const racine = new URL('../../../', import.meta.url);
+  const trouves: string[] = [];
+  async function parcourir(rel: string) {
+    for await (const e of Deno.readDir(new URL(rel, racine))) {
+      const p = `${rel}${e.name}`;
+      if (e.isDirectory) { await parcourir(`${p}/`); continue; }
+      if (!/\.(ts|tsx)$/.test(e.name)) continue;
+      const txt = await Deno.readTextFile(new URL(p, racine));
+      // Le texte du bandeau, son composant ou son repère de test : nulle part dans le code des écrans.
+      if (/Gemini gratuit\)|TrialBanner|TRIAL_TEXT|showTrialBanner|data-testid="mode-essai"/.test(txt)) trouves.push(p);
+    }
+  }
+  for (const d of ['app/', 'components/', 'lib/']) await parcourir(d);
+  if (trouves.length) throw new Error(`bandeau « Mode essai » encore présent dans : ${trouves.join(', ')}`);
+  // …mais la lecture de la formule (réservée au support, voir app/support) existe toujours.
+  const f = await Deno.readTextFile(new URL('lib/ia-formule.ts', racine));
+  if (!/export async function iaFormule\(/.test(f) || !/statut: true/.test(f)) throw new Error('lib/ia-formule.ts : iaFormule attendue');
+  const sup = await Deno.readTextFile(new URL('app/support/page.tsx', racine));
+  if (!/iaFormule\('assistant'\)/.test(sup)) throw new Error('app/support/page.tsx : la console du support doit lire la formule');
 });

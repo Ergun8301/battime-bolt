@@ -11,8 +11,8 @@
 // quota et le plafond global viennent de public.assistant_context, appelée avec
 // SON jeton ; tout le reste est lu avec ce même client. Un SEUL appel au modèle
 // par demande (rapide, ou documents si un fichier est joint). Le corps
-// { statut: true } rend seulement la formule (bandeau « Mode essai »), sans
-// rien compter ni appeler le modèle.
+// { statut: true } rend seulement la formule (lue par le support BEMEXO, jamais
+// affichée aux patrons ni aux salariés), sans rien compter ni appeler le modèle.
 //
 // Lot 7 : la réponse porte aussi `question` (UNE question s'il manque une info
 // à une action directe) ; l'écran exécute les actions simples tout de suite.
@@ -45,7 +45,7 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
-// Lot 6 : la formule active part avec chaque réponse (bandeau « Mode essai »).
+// Lot 6 : la formule active part avec chaque réponse (interne : l'écran du support seul la montre).
 const FORMULE = formuleNom(Deno.env);
 const json = (body: Record<string, unknown>, status = 200) =>
   new Response(JSON.stringify({ ...body, formule: FORMULE }), { status, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
