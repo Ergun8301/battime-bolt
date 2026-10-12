@@ -1,0 +1,1584 @@
+{
+ "version": "v2",
+ "repeat": 1,
+ "total": 109,
+ "ok": 31,
+ "pct": 28.4,
+ "categories": [
+  {
+   "categorie": "Bureau · Interventions",
+   "ok": 1,
+   "n": 7,
+   "pct": 14
+  },
+  {
+   "categorie": "Bureau · Congés",
+   "ok": 0,
+   "n": 4,
+   "pct": 0
+  },
+  {
+   "categorie": "Bureau · Clients",
+   "ok": 0,
+   "n": 5,
+   "pct": 0
+  },
+  {
+   "categorie": "Bureau · Documents",
+   "ok": 0,
+   "n": 3,
+   "pct": 0
+  },
+  {
+   "categorie": "Bureau · Salariés",
+   "ok": 0,
+   "n": 6,
+   "pct": 0
+  },
+  {
+   "categorie": "Bureau · Réglages",
+   "ok": 0,
+   "n": 3,
+   "pct": 0
+  },
+  {
+   "categorie": "Bureau · Aide",
+   "ok": 4,
+   "n": 5,
+   "pct": 80
+  },
+  {
+   "categorie": "Bureau · Effacer",
+   "ok": 2,
+   "n": 14,
+   "pct": 14
+  },
+  {
+   "categorie": "Salarié · Heures",
+   "ok": 2,
+   "n": 4,
+   "pct": 50
+  },
+  {
+   "categorie": "Salarié · Pointage",
+   "ok": 3,
+   "n": 3,
+   "pct": 100
+  },
+  {
+   "categorie": "Salarié · Congés",
+   "ok": 1,
+   "n": 2,
+   "pct": 50
+  },
+  {
+   "categorie": "Salarié · Ma journée",
+   "ok": 4,
+   "n": 7,
+   "pct": 57
+  },
+  {
+   "categorie": "Salarié · Réserves",
+   "ok": 1,
+   "n": 1,
+   "pct": 100
+  },
+  {
+   "categorie": "Salarié · Documents",
+   "ok": 0,
+   "n": 2,
+   "pct": 0
+  },
+  {
+   "categorie": "Salarié · Collègues",
+   "ok": 3,
+   "n": 3,
+   "pct": 100
+  },
+  {
+   "categorie": "Salarié · Aide",
+   "ok": 3,
+   "n": 3,
+   "pct": 100
+  },
+  {
+   "categorie": "Salarié · Effacer",
+   "ok": 7,
+   "n": 8,
+   "pct": 88
+  },
+  {
+   "categorie": "Salarié · Long FR",
+   "ok": 0,
+   "n": 16,
+   "pct": 0
+  },
+  {
+   "categorie": "Salarié · Long TR",
+   "ok": 0,
+   "n": 13,
+   "pct": 0
+  }
+ ],
+ "echecs": [
+  {
+   "id": "b01",
+   "phrase": "Rajoute-moi une intervention à Lyon aujourd’hui de 14h à 18h",
+   "why": "attendu l'action affecter_planning, obtenu none (« IA : provider_error »)",
+   "via": "ia",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "b02",
+   "phrase": "rajoute moi une intervention a annecy demain de 8h a 12h",
+   "why": "attendu l'action affecter_planning, obtenu none (« IA : provider_error »)",
+   "via": "ia",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "b03",
+   "phrase": "euh ajoute une intervention chez dupont jeudi prochain à 14h pour karim, c’est pour le remplacement du chauffe-eau",
+   "why": "attendu l'action affecter_planning, obtenu none (« IA : provider_error »)",
+   "via": "ia",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "b04",
+   "phrase": "mets kevin sur pizzeria exemple macon lundi et mardi",
+   "why": "attendu l'action affecter_planning, obtenu none (« IA : provider_error »)",
+   "via": "ia",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "b05",
+   "phrase": "Karim demain matin chez Martin",
+   "why": "attendu l'action affecter_planning, obtenu none (« IA : provider_error »)",
+   "via": "ia",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "b06",
+   "phrase": "décale l’intervention de karim de vendredi à lundi",
+   "why": "attendu l'action modifier_intervention, obtenu none (« IA : provider_error »)",
+   "via": "ia",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "b08",
+   "phrase": "Sofiane sera en congé du 12 au 16 octobre",
+   "why": "attendu l'action poser_absence, obtenu none (« IA : provider_error »)",
+   "via": "ia",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "b09",
+   "phrase": "kevin est malade aujourd’hui et demain",
+   "why": "attendu l'action poser_absence, obtenu none (« IA : provider_error »)",
+   "via": "ia",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "b10",
+   "phrase": "accepte le congé de kevin",
+   "why": "attendu l'action repondre_conge, obtenu none (« IA : provider_error »)",
+   "via": "ia",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "b11",
+   "phrase": "refuse la demande de congé de Kevin, trop de boulot ce mois ci",
+   "why": "attendu l'action repondre_conge, obtenu none (« IA : provider_error »)",
+   "via": "ia",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "b12",
+   "phrase": "crée un nouveau client maison garnier à caluire, tel 06 12 34 56 78",
+   "why": "attendu l'action creer_chantier, obtenu none (« IA : provider_error »)",
+   "via": "ia",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "b13",
+   "phrase": "nouveau chantier : résidence les lilas à bron",
+   "why": "attendu l'action creer_chantier, obtenu none (« IA : provider_error »)",
+   "via": "ia",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "b14",
+   "phrase": "change le téléphone de bureau martin : 04 78 00 00 00",
+   "why": "attendu l'action modifier_client, obtenu none (« IA : provider_error »)",
+   "via": "ia",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "b15",
+   "phrase": "le chantier villa dupont est fini, archive le",
+   "why": "attendu l'action archiver_client, obtenu none (« IA : provider_error »)",
+   "via": "ia",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "b16",
+   "phrase": "ajoute une dépense de 450 euros de placo sur villa dupont",
+   "why": "attendu l'action ajouter_depense, obtenu none (« IA : provider_error »)",
+   "via": "ia",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "b17",
+   "phrase": "Classe ce document sur le chantier de Pierre-Paul Jacques à Viriat, c’est une facture payée",
+   "why": "attendu l'action ranger_document, obtenu none (« IA : provider_error »)",
+   "via": "ia",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "b18",
+   "phrase": "range ça sur le chantier de viriat",
+   "why": "attendu l'action ranger_document, obtenu none (« IA : provider_error »)",
+   "via": "ia",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "b19",
+   "phrase": "nouveau client, voilà son devis validé",
+   "why": "attendu creer_chantier, obtenu none ",
+   "via": "ia",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "b20",
+   "phrase": "passe kevin chef d’équipe",
+   "why": "attendu l'action changer_role, obtenu none (« IA : provider_error »)",
+   "via": "ia",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "b21",
+   "phrase": "relance l’invitation de marc",
+   "why": "attendu l'action relancer_invitation, obtenu none (« IA : provider_error »)",
+   "via": "ia",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "b22",
+   "phrase": "envoie un rappel a karim pour ses heures",
+   "why": "attendu l'action envoyer_rappel, obtenu none (« IA : provider_error »)",
+   "via": "ia",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "b23",
+   "phrase": "ajoute le caces de karim, il expire le 15 mars 2027",
+   "why": "attendu l'action ajouter_habilitation, obtenu none (« IA : provider_error »)",
+   "via": "ia",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "b24",
+   "phrase": "Kevin a quitté la boite, archive le",
+   "why": "attendu l'action archiver_salarie, obtenu none (« IA : provider_error »)",
+   "via": "ia",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "b25",
+   "phrase": "invite marc durand marc.durand@gmail.com",
+   "why": "attendu l'action inviter_salarie, obtenu none (« IA : provider_error »)",
+   "via": "ia",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "b26",
+   "phrase": "clôture le mois de septembre",
+   "why": "attendu l'action cloturer_mois, obtenu none (« IA : provider_error »)",
+   "via": "ia",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "b27",
+   "phrase": "l’email de notre comptable c’est compta@cabinet-roux.fr",
+   "why": "attendu l'action modifier_reglages, obtenu none (« IA : provider_error »)",
+   "via": "ia",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "b28",
+   "phrase": "lève la réserve de karim sur villa dupont, c’est réparé",
+   "why": "attendu l'action lever_reserve, obtenu none (« IA : provider_error »)",
+   "via": "ia",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "b32",
+   "phrase": "rédige un petit message pour dire au client que le chantier est décalé à lundi",
+   "why": "attendu une réponse, obtenu none ",
+   "via": "ia",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "b34",
+   "phrase": "Enlève l’intervention à Lyon de Kevin jeudi",
+   "why": "attendu l'action supprimer_intervention, obtenu none (« IA : provider_error »)",
+   "via": "ia",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "b36",
+   "phrase": "vide le planning de karim de lundi à mercredi",
+   "why": "attendu l'action effacer_planning, obtenu none (« IA : provider_error »)",
+   "via": "ia",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "b37",
+   "phrase": "enlève le congé de Sofiane du 12 au 13 octobre",
+   "why": "attendu l'action supprimer_absence, obtenu none (« IA : provider_error »)",
+   "via": "ia",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "b38",
+   "phrase": "supprime la facture du chantier de viriat",
+   "why": "attendu l'action supprimer_document, obtenu none (« IA : provider_error »)",
+   "via": "ia",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "b39",
+   "phrase": "efface la dépense de placo sur villa dupont",
+   "why": "attendu l'action supprimer_depense, obtenu none (« IA : provider_error »)",
+   "via": "ia",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "b40",
+   "phrase": "la location sur villa dupont c’était 350 euros pas 300, corrige",
+   "why": "attendu l'action modifier_depense, obtenu none (« IA : provider_error »)",
+   "via": "ia",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "b41",
+   "phrase": "supprime le caces de karim",
+   "why": "attendu l'action supprimer_habilitation, obtenu none (« IA : provider_error »)",
+   "via": "ia",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "b42",
+   "phrase": "annule l’invitation de marc",
+   "why": "attendu l'action annuler_invitation, obtenu none (« IA : provider_error »)",
+   "via": "ia",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "b44",
+   "phrase": "retire karim du planning demain",
+   "why": "attendu l'action supprimer_intervention, obtenu none (« IA : provider_error »)",
+   "via": "ia",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "b45",
+   "phrase": "le devis cuisine de villa dupont, en fait c’est une facture",
+   "why": "attendu l'action modifier_document, obtenu none (« IA : provider_error »)",
+   "via": "ia",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "b46",
+   "phrase": "Enlève Karim de la Villa Dupont vendredi",
+   "why": "attendu l'action supprimer_intervention, obtenu none (« IA : provider_error »)",
+   "via": "ia",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "b47",
+   "phrase": "retire Kevin de la Villa Dupont vendredi",
+   "why": "attendu l'action supprimer_intervention, obtenu none (« IA : provider_error »)",
+   "via": "ia",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "s01",
+   "phrase": "ce matin 7h30 12h villa dupont et aprem 13h 16h30 bureau martin",
+   "why": "attendu des heures, obtenu none ",
+   "via": "ia",
+   "profil": "court",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "s04",
+   "phrase": "jai fait 6h 14h a la pizzeria de bourg",
+   "why": "attendu des heures, obtenu none ",
+   "via": "ia",
+   "profil": "court",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "s08",
+   "phrase": "je voudrais poser des congés du 20 au 24 octobre",
+   "why": "attendu l'action demander_conge, obtenu none (« IA : provider_error »)",
+   "via": "ia",
+   "profil": "court",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "s13",
+   "phrase": "change mes horaires de villa dupont : 7h 11h30",
+   "why": "attendu l'action modifier_heures, obtenu none (« IA : provider_error »)",
+   "via": "ia",
+   "profil": "court",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "s16",
+   "phrase": "voilà la photo de la réserve sur bureau martin",
+   "why": "attendu l'action ranger_photo, obtenu none (« IA : provider_error »)",
+   "via": "ia",
+   "profil": "court",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "s17",
+   "phrase": "classe la facture sur viriat",
+   "why": "attendu l'action ranger_photo, obtenu none (« IA : provider_error »)",
+   "via": "ia",
+   "profil": "court",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "s23",
+   "phrase": "l’email du client de villa dupont c’est jean.dupont@gmail.com",
+   "why": "attendu l'action email_client, obtenu none (« IA : provider_error »)",
+   "via": "ia",
+   "profil": "court",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "s24",
+   "phrase": "je bosse sur un nouveau chantier, la boulangerie petit à tassin",
+   "why": "attendu l'action nouveau_chantier, obtenu none (« IA : provider_error »)",
+   "via": "ia",
+   "profil": "court",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "s30",
+   "phrase": "finalement mes vacances ce sera du 21 au 25 octobre",
+   "why": "attendu l'action modifier_conge, obtenu none (« IA : provider_error »)",
+   "via": "ia",
+   "profil": "court",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "sl01",
+   "phrase": "Ajoute-moi une intervention. J'ai travaillé aujourd'hui de 8h à midi, puis pause d'1h, puis de 13h à 17h sur un nouveau chantier : prénom Pierrick, nom Dupont, à Montagna 01250, pour la pose d'un store banne.",
+   "why": "éléments = none (attendu heures)",
+   "via": "ia",
+   "profil": "long",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "sl02",
+   "phrase": "Alors ce matin j'ai commencé à 7h chez Dupont jusqu'à 10h, ensuite de 10h30 à midi chez Martin, et cet après-midi de 13h à 16h30 de nouveau chez Dupont.",
+   "why": "éléments = none (attendu heures)",
+   "via": "ia",
+   "profil": "long",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "sl03",
+   "phrase": "Aujourd'hui j'ai bossé de 8h à 16h30 chez Martin avec une demi-heure de pause, et n'oublie pas de me mettre le panier repas.",
+   "why": "attendu une fiche à 2 éléments, obtenu none ",
+   "via": "ia",
+   "profil": "long",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "sl04",
+   "phrase": "Cet après-midi j'ai fait une intervention de 14h à 18h chez une nouvelle cliente, madame Claire Martin, 12 rue des Lilas à Bourg-en-Bresse 01000, c'est pour la rénovation d'une salle de bain.",
+   "why": "éléments = none (attendu heures)",
+   "via": "ia",
+   "profil": "long",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "sl05",
+   "phrase": "Aujourd'hui j'ai travaillé de 9h à 12h puis de 14h à 17h chez un nouveau client à Bourg-en-Bresse, monsieur Ayhan Demir, pour la pose d'une pergola.",
+   "why": "éléments = none (attendu heures)",
+   "via": "ia",
+   "profil": "long",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "sl06",
+   "phrase": "Aujourd'hui de 8h à 12h sur un nouveau chantier chez monsieur Paul Durand, pour la pose de carrelage.",
+   "why": "éléments = none (attendu heures)",
+   "via": "ia",
+   "profil": "long",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "sl07",
+   "phrase": "Aujourd'hui j'ai travaillé de 7h30 à 12h puis de 13h à 16h30 chez Dupont, mets-moi le panier repas, et signale une réserve : fissure sur le mur sud.",
+   "why": "attendu une fiche à 3 éléments, obtenu none ",
+   "via": "ia",
+   "profil": "long",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "sl08",
+   "phrase": "Hier j'ai bossé de 8h à 12h et de 13h à 17h chez Dupont, et je voudrais poser un congé du lundi au mercredi de la semaine prochaine.",
+   "why": "attendu une fiche à 2 éléments, obtenu none ",
+   "via": "ia",
+   "profil": "long",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "sl09",
+   "phrase": "euh alors ce matin 7h 12h chez dupont, midi pause de 45 minutes, après-midi 12h45 16h30 pareil chez dupont, et j'ai vu une fissure sur le mur, mets une réserve.",
+   "why": "attendu une fiche à 2 éléments, obtenu none ",
+   "via": "ia",
+   "profil": "long",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "sl10",
+   "phrase": "Ce matin de 8h à 12h chez Dupont, et cet après-midi de 13h à 17h chez une nouvelle cliente, madame Claire Martin à Bron 69500, pour l'installation d'une porte de garage.",
+   "why": "éléments = none (attendu heures)",
+   "via": "ia",
+   "profil": "long",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "sl11",
+   "phrase": "Mets mes heures d'aujourd'hui de 8h à 12h et de 13h à 17h chez Martin, puis envoie ma journée au bureau.",
+   "why": "attendu une fiche à 2 éléments, obtenu none ",
+   "via": "ia",
+   "profil": "long",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "sl12",
+   "phrase": "J'ai travaillé de 8h à 12h puis de 13h à 17h sur un nouveau chantier, Bureau Martin à Villeurbanne.",
+   "why": "éléments = none (attendu heures)",
+   "via": "ia",
+   "profil": "long",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "sl13",
+   "phrase": "Alors écoute, je te fais le récapitulatif complet de ma journée d'aujourd'hui. Ce matin j'ai commencé à 7h chez Dupont jusqu'à 10h, ensuite de 10h30 à midi chez Martin, et cet après-midi de 13h à 16h30 j'ai travaillé sur un nouveau chantier : c'est pour monsieur Ayhan Demir, 5 rue des Tilleuls à Bourg-en-Bresse 01000, pour la pose d'une pergola en aluminium avec les lames orientables. Mets-moi aussi le panier repas, et signale une réserve sur le chantier de chez Dupont : il y a une fissure sur le mur sud qu'il faudra reprendre avant la livraison. Voilà, c'est tout pour aujourd'hui, tu peux envoyer ma journée au bureau.",
+   "why": "attendu une fiche à 4 éléments, obtenu none ",
+   "via": "ia",
+   "profil": "long",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "sl14",
+   "phrase": "Ce matin j'ai commencé à 7h, non plutôt 7h30, jusqu'à midi chez Dupont.",
+   "why": "éléments = none (attendu heures)",
+   "via": "ia",
+   "profil": "long",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "sl15",
+   "phrase": "Aujourd'hui de 8h à 12h et de 13h à 17h chez Dupont, mets le panier repas, signale une réserve : fissure au plafond, pose un congé du lundi au mercredi prochain, et envoie ma journée.",
+   "why": "attendu une fiche, obtenu none ",
+   "via": "ia",
+   "profil": "long",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "sl16",
+   "phrase": "Aujourd'hui de 8h à 16h30 chez Martin avec une heure de pause.",
+   "why": "éléments = none (attendu heures)",
+   "via": "ia",
+   "profil": "long",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "st01",
+   "phrase": "Bugün sabah 8’den 12’ye kadar çalıştım, sonra bir saat mola verdim, sonra öğleden sonra 13’ten 17’ye kadar yeni bir şantiyede çalıştım: müşteri Pierrick Dupont, adres Montagna 01250, kollu tente montajı için.",
+   "why": "éléments = none (attendu heures)",
+   "via": "ia",
+   "profil": "long",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "st02",
+   "phrase": "Bu sabah 7’den 10’a kadar Dupont’ta, sonra 10:30’dan 12’ye kadar Martin ofisinde, öğleden sonra da 13’ten 16:30’a kadar tekrar Dupont’ta çalıştım.",
+   "why": "éléments = none (attendu heures)",
+   "via": "ia",
+   "profil": "long",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "st03",
+   "phrase": "Gelecek pazartesiden çarşambaya kadar izin almak istiyorum, bugünkü panier repas’yı da işaretle ve günümü büroya gönder.",
+   "why": "attendu une fiche à 3 éléments, obtenu none ",
+   "via": "ia",
+   "profil": "long",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "st04",
+   "phrase": "Dupont şantiyesinde duvarda bir çatlak buldum, rezerv olarak not et.",
+   "why": "éléments = none (attendu signaler_reserve)",
+   "via": "ia",
+   "profil": "long",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "st05",
+   "phrase": "Bu hafta toplam kaç saat çalıştım?",
+   "why": "attendu une réponse, obtenu none ",
+   "via": "ia",
+   "profil": "long",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "st06",
+   "phrase": "Şey, bugün... yani sabah erkenden 7’de Dupont’ta başladım, öğlen 12’de bıraktım, bir saat yemek molası verdim, sonra 13’ten 17’ye kadar Montagna’da yeni bir müşteri için çalıştım, adı Ayşe Kaya, posta kodu 01250, çatı tamiri yaptık.",
+   "why": "éléments = none (attendu heures)",
+   "via": "ia",
+   "profil": "long",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "st07",
+   "phrase": "Dün sabah 7:30’dan 12’ye kadar Dupont villasında, öğleden sonra 13’ten 16:30’a kadar Martin ofisinde çalıştım.",
+   "why": "éléments = none (attendu heures)",
+   "via": "ia",
+   "profil": "long",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "st08",
+   "phrase": "Bugün chantier’de 8’den 12’ye kadar ve 13’ten 17’ye kadar Martin’de çalıştım, panier repas da yaz.",
+   "why": "attendu une fiche à 2 éléments, obtenu none ",
+   "via": "ia",
+   "profil": "long",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "st09",
+   "phrase": "Bugün Martin ofisinde 8’den 16:30’a kadar çalıştım, aralarda yarım saat mola verdim ve panier’yi işaretle.",
+   "why": "attendu une fiche à 2 éléments, obtenu none ",
+   "via": "ia",
+   "profil": "long",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "st10",
+   "phrase": "Bugün Martin ofisinde çalıştım: 8’den 17’ye kadar, bir saat mola.",
+   "why": "éléments = none (attendu heures)",
+   "via": "ia",
+   "profil": "long",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "st11",
+   "phrase": "Aujourd'hui sabah 8’den 12’ye kadar chez Dupont çalıştım, öğleden sonra 13’ten 17’ye kadar chez Martin, panier da işaretle.",
+   "why": "attendu une fiche à 2 éléments, obtenu none ",
+   "via": "ia",
+   "profil": "long",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "st12",
+   "phrase": "Bugün 9’dan 12’ye kadar ve 14’ten 17’ye kadar yeni bir şantiyede çalıştım: müşteri Ayhan Demir, adres Bron 69500, pergola montajı için.",
+   "why": "éléments = none (attendu heures)",
+   "via": "ia",
+   "profil": "long",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  },
+  {
+   "id": "st13",
+   "phrase": "Bugün sabah 8’den 12’ye kadar, öğleden sonra da 13’ten 17’ye kadar çalıştım, hepsi Martin’de.",
+   "why": "éléments = none (attendu heures)",
+   "via": "ia",
+   "profil": "long",
+   "cause": "fournisseur",
+   "sortie": {
+    "kind": "none",
+    "answer": "IA : provider_error"
+   }
+  }
+ ],
+ "parCas": [
+  {
+   "id": "b01",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "b02",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "b03",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "b04",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "b05",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "b06",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "b07",
+   "essais": 1,
+   "ok": 1
+  },
+  {
+   "id": "b08",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "b09",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "b10",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "b11",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "b12",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "b13",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "b14",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "b15",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "b16",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "b17",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "b18",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "b19",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "b20",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "b21",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "b22",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "b23",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "b24",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "b25",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "b26",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "b27",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "b28",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "b29",
+   "essais": 1,
+   "ok": 1
+  },
+  {
+   "id": "b30",
+   "essais": 1,
+   "ok": 1
+  },
+  {
+   "id": "b31",
+   "essais": 1,
+   "ok": 1
+  },
+  {
+   "id": "b32",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "b33",
+   "essais": 1,
+   "ok": 1
+  },
+  {
+   "id": "b34",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "b35",
+   "essais": 1,
+   "ok": 1
+  },
+  {
+   "id": "b36",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "b37",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "b38",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "b39",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "b40",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "b41",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "b42",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "b43",
+   "essais": 1,
+   "ok": 1
+  },
+  {
+   "id": "b44",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "b45",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "b46",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "b47",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "s01",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "s02",
+   "essais": 1,
+   "ok": 1
+  },
+  {
+   "id": "s03",
+   "essais": 1,
+   "ok": 1
+  },
+  {
+   "id": "s04",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "s05",
+   "essais": 1,
+   "ok": 1
+  },
+  {
+   "id": "s06",
+   "essais": 1,
+   "ok": 1
+  },
+  {
+   "id": "s07",
+   "essais": 1,
+   "ok": 1
+  },
+  {
+   "id": "s08",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "s09",
+   "essais": 1,
+   "ok": 1
+  },
+  {
+   "id": "s10",
+   "essais": 1,
+   "ok": 1
+  },
+  {
+   "id": "s11",
+   "essais": 1,
+   "ok": 1
+  },
+  {
+   "id": "s12",
+   "essais": 1,
+   "ok": 1
+  },
+  {
+   "id": "s13",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "s14",
+   "essais": 1,
+   "ok": 1
+  },
+  {
+   "id": "s15",
+   "essais": 1,
+   "ok": 1
+  },
+  {
+   "id": "s16",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "s17",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "s18",
+   "essais": 1,
+   "ok": 1
+  },
+  {
+   "id": "s19",
+   "essais": 1,
+   "ok": 1
+  },
+  {
+   "id": "s20",
+   "essais": 1,
+   "ok": 1
+  },
+  {
+   "id": "s21",
+   "essais": 1,
+   "ok": 1
+  },
+  {
+   "id": "s22",
+   "essais": 1,
+   "ok": 1
+  },
+  {
+   "id": "s23",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "s24",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "s25",
+   "essais": 1,
+   "ok": 1
+  },
+  {
+   "id": "s26",
+   "essais": 1,
+   "ok": 1
+  },
+  {
+   "id": "s27",
+   "essais": 1,
+   "ok": 1
+  },
+  {
+   "id": "s28",
+   "essais": 1,
+   "ok": 1
+  },
+  {
+   "id": "s29",
+   "essais": 1,
+   "ok": 1
+  },
+  {
+   "id": "s30",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "s31",
+   "essais": 1,
+   "ok": 1
+  },
+  {
+   "id": "s32",
+   "essais": 1,
+   "ok": 1
+  },
+  {
+   "id": "s33",
+   "essais": 1,
+   "ok": 1
+  },
+  {
+   "id": "sl01",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "sl02",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "sl03",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "sl04",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "sl05",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "sl06",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "sl07",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "sl08",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "sl09",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "sl10",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "sl11",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "sl12",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "sl13",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "sl14",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "sl15",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "sl16",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "st01",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "st02",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "st03",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "st04",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "st05",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "st06",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "st07",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "st08",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "st09",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "st10",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "st11",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "st12",
+   "essais": 1,
+   "ok": 0
+  },
+  {
+   "id": "st13",
+   "essais": 1,
+   "ok": 0
+  }
+ ],
+ "profils": [
+  {
+   "profil": "court",
+   "n": 9,
+   "ok": 0,
+   "medianeMs": 1,
+   "secours": 0
+  },
+  {
+   "profil": "long",
+   "n": 29,
+   "ok": 0,
+   "medianeMs": 1,
+   "secours": 0
+  }
+ ]
+}

@@ -36,7 +36,7 @@ import { loadAssistantContext } from '../_shared/assistant-context.ts';
 import { DEFAULT_DAILY_LIMIT, MAX_QUESTION_CHARS, buildSnapshot, previousDay, type RawData } from '../_shared/assistant-core.ts';
 import {
   actionPrompt, addDays, avertirSecours, buildActionContext, fromFunctionCall, functionsFor, handleActionLocally, mondayOf, questionFor,
-  resolveSalarie, summarize, findGuide, guideAnswer, guideForPrompt, NAV_ACTIONS, type EntryChoice, type LocalReply, type ActionContext,
+  resolveSalarie, summarize, findGuide, guideAnswer, guideForPrompt, guideLinks, type EntryChoice, type LocalReply, type ActionContext,
 } from '../_shared/assistant-actions-core.ts';
 
 
@@ -168,7 +168,7 @@ Deno.serve(async (req) => {
     if (!aiKey(Deno.env)) {
       if (att.file) return json({ unavailable: true, answer: 'Lecture de fichier indisponible pour le moment.', links: [] });
       const g = findGuide(question);
-      return reply(g ? { answer: guideAnswer(g), links: [{ label: NAV_ACTIONS[g.lien], action: g.lien }] }
+      return reply(g ? { answer: guideAnswer(g), links: guideLinks(g) }
         : { answer: 'L’assistant est indisponible pour le moment.', links: [] }, ctx, remaining);
     }
 

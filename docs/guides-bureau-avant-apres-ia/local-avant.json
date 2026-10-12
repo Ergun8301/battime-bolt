@@ -1,0 +1,191 @@
+{
+ "guideForPrompt_sha256": "8e2b61c308d69d70e8f44f7804a4633da1bfd6b45e3e99e46d91530c9e959e6a",
+ "b01": null,
+ "b02": null,
+ "b03": null,
+ "b04": null,
+ "b05": null,
+ "b06": null,
+ "b07": {
+  "answer": "Voici une proposition. Ajustez si besoin, puis « Appliquer ».",
+  "links": [],
+  "action": {
+   "draft": {
+    "type": "planning_semaine",
+    "semaine_du": "2026-10-05",
+    "lignes": [
+     {
+      "user_id": "u-karim",
+      "date": "2026-10-05",
+      "worksite_id": "w-dupont"
+     },
+     {
+      "user_id": "u-karim",
+      "date": "2026-10-06",
+      "worksite_id": "w-dupont"
+     },
+     {
+      "user_id": "u-karim",
+      "date": "2026-10-07",
+      "worksite_id": "w-dupont"
+     },
+     {
+      "user_id": "u-karim",
+      "date": "2026-10-08",
+      "worksite_id": "w-dupont"
+     },
+     {
+      "user_id": "u-karim",
+      "date": "2026-10-09",
+      "worksite_id": "w-dupont"
+     },
+     {
+      "user_id": "u-sofiane",
+      "date": "2026-10-05",
+      "worksite_id": "w-dupont"
+     },
+     {
+      "user_id": "u-sofiane",
+      "date": "2026-10-06",
+      "worksite_id": "w-dupont"
+     },
+     {
+      "user_id": "u-sofiane",
+      "date": "2026-10-07",
+      "worksite_id": "w-dupont"
+     },
+     {
+      "user_id": "u-sofiane",
+      "date": "2026-10-08",
+      "worksite_id": "w-dupont"
+     },
+     {
+      "user_id": "u-sofiane",
+      "date": "2026-10-09",
+      "worksite_id": "w-dupont"
+     },
+     {
+      "user_id": "u-kevin",
+      "date": "2026-10-05",
+      "worksite_id": "w-pex-macon"
+     },
+     {
+      "user_id": "u-kevin",
+      "date": "2026-10-06",
+      "worksite_id": "w-pex-macon"
+     },
+     {
+      "user_id": "u-kevin",
+      "date": "2026-10-07",
+      "worksite_id": "w-pex-macon"
+     },
+     {
+      "user_id": "u-kevin",
+      "date": "2026-10-08",
+      "worksite_id": "w-pex-macon"
+     },
+     {
+      "user_id": "u-kevin",
+      "date": "2026-10-09",
+      "worksite_id": "w-pex-macon"
+     }
+    ],
+    "notes": [
+     "Sofiane Merabet : Villa Dupont · Lyon (chantier le plus utilisé de l’entreprise), à vérifier."
+    ]
+   },
+   "problems": []
+  }
+ },
+ "b08": null,
+ "b09": null,
+ "b10": null,
+ "b11": null,
+ "b12": null,
+ "b13": null,
+ "b14": null,
+ "b15": null,
+ "b16": null,
+ "b20": null,
+ "b21": null,
+ "b22": null,
+ "b23": null,
+ "b24": null,
+ "b25": null,
+ "b26": null,
+ "b27": null,
+ "b28": null,
+ "b29": {
+  "answer": "Télécharger les heures (Excel, PDF, CSV) :\n1. « Exporter » (équipe) ou la fiche d’un salarié.\n2. Choisissez la période.\n3. « Exporter ▾ » → « PDF », « Excel » ou « CSV » : le fichier se télécharge.",
+  "links": [
+   {
+    "label": "Exporter / clôturer",
+    "action": "export"
+   }
+  ]
+ },
+ "b30": {
+  "answer": "Suivre les réserves de chantier :\n1. Bouton « Réserves ».\n2. Onglet « À traiter » (le salarié peut aussi lever depuis son téléphone).\n3. « Lever la réserve » : commentaire et photo facultatifs.",
+  "links": [
+   {
+    "label": "Réserves",
+    "action": "reserves"
+   }
+  ]
+ },
+ "b31": {
+  "answer": "Déplacer une intervention :\n1. Sur le planning, attrapez la bulle de l’intervention.\n2. Glissez-la sur la case du bon jour (ou d’un autre salarié).\n3. C’est enregistré tout de suite.",
+  "links": [
+   {
+    "label": "Voir le planning",
+    "action": "planning"
+   }
+  ]
+ },
+ "b32": null,
+ "b33": {
+  "answer": "Corriger les heures d’un salarié :\n1. Ouvrez sa feuille d’heures (clic sur son nom → « Feuille d’heures »).\n2. Sur la journée envoyée : « Corriger les heures ».\n3. Nouvelles heures et un motif (obligatoire) → « Corriger et prévenir » : il est averti.",
+  "links": [
+   {
+    "label": "Salariés",
+    "action": "salaries"
+   }
+  ]
+ },
+ "b34": null,
+ "b35": {
+  "answer": "Vérifiez ce qui sera retiré, puis confirmez : rien ne part avant.",
+  "links": [],
+  "action": {
+   "draft": {
+    "type": "effacer_planning",
+    "user_id": null,
+    "salarie_texte": "",
+    "du": "2026-10-05",
+    "au": "2026-10-11"
+   },
+   "problems": []
+  }
+ },
+ "b36": null,
+ "b37": null,
+ "b38": null,
+ "b39": null,
+ "b40": null,
+ "b41": null,
+ "b42": null,
+ "b43": {
+  "answer": "Impossible : les heures envoyées ou validées, les mois clôturés et les exports de paie ne s’effacent pas. Pour une erreur d’heures, demandez « Corrige les heures de … ».",
+  "links": [
+   {
+    "label": "Salariés",
+    "action": "salaries"
+   }
+  ]
+ },
+ "b44": null,
+ "b45": null,
+ "b46": null,
+ "b47": null,
+ "prompt_sha256": "6cbfc26ea293c946286d2885baeeeb113b60e108961c333ef2da15e63bfa383a"
+}
