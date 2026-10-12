@@ -83,6 +83,17 @@ export interface KioskTicket {
   /** Lot 12 : QR fixe imprimé → la position est lue UNE fois, juste avant le pointage. */
   needs_position?: boolean;
   radius_m?: number;
+  /** Lot 12 : l'entreprise a une tablette reliée (sinon l'écran ne dit pas « Scannez la tablette »). */
+  has_tablet?: boolean;
+}
+
+/** Lot 12 — un pointage fait avec le QR fixe, tel que le bureau le lit (aucune coordonnée). */
+export interface FixedQrRecent {
+  name: string;
+  kind: 'arrival' | 'departure' | string;
+  at: string;
+  /** Position DÉCLARÉE par le téléphone dans la zone au moment du scan : un frein, pas une preuve. */
+  in_zone: boolean;
 }
 
 /** Lot 12 — état du QR fixe imprimable (`fixed_status` et les autres actions `fixed_*`). */
@@ -90,6 +101,12 @@ export interface FixedQrStatus {
   /** Faux tant que la migration n'est pas passée : le bureau ne voit pas l'option. */
   available: boolean;
   enabled?: boolean;
+  /** Faux = borne coupée par BEMEXO : le QR fixe ne marche pas, le bureau peut seulement le désactiver ou le régénérer. */
+  kiosk_enabled?: boolean;
+  /** Faux = aucune tablette reliée : le QR fixe est le seul pointage en direct. */
+  has_tablet?: boolean;
+  /** Les derniers pointages faits avec le QR fixe (les plus récents d'abord). */
+  recent?: FixedQrRecent[];
   company_name?: string;
   /** Jeton à mettre dans /pointer#f=… (recalculé par le serveur, jamais stocké). */
   token?: string | null;

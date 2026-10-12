@@ -9,6 +9,7 @@
 -- ── DÉBUT DU RETOUR ARRIÈRE ──
 -- UPDATE public.kiosks SET revoked_at = now() WHERE kind = 'fixe' AND revoked_at IS NULL;
 -- DROP INDEX IF EXISTS public.kiosks_one_fixed_qr_idx;
+-- DROP INDEX IF EXISTS public.kiosk_punches_in_zone_idx;
 -- ALTER TABLE public.kiosks DROP CONSTRAINT IF EXISTS kiosks_kind_check;
 -- ALTER TABLE public.kiosks DROP COLUMN IF EXISTS kind;
 -- ALTER TABLE public.kiosk_punches DROP COLUMN IF EXISTS in_zone;
@@ -23,7 +24,7 @@
 -- (Les lignes « fixe » restent dans kiosks, retirées : elles ne comptent plus
 -- nulle part — company_kiosk_active ignore les bornes retirées.)
 --
--- VÉRIFICATION APRÈS APPLICATION — LECTURE SEULE, une ligne, 8 × true :
+-- VÉRIFICATION APRÈS APPLICATION — LECTURE SEULE, une ligne, 9 × true :
 -- SELECT
 --   (SELECT is_nullable = 'NO' AND column_default LIKE '''tablette''%' FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'kiosks' AND column_name = 'kind') AS v1_kind_tablette_par_defaut,
 --   (SELECT count(*) FROM pg_constraint WHERE conname IN ('kiosks_kind_check', 'kiosk_settings_fixed_qr_radius_check', 'kiosk_settings_fixed_qr_point_check')) = 3 AS v2_trois_controles,
@@ -32,7 +33,8 @@
 --   (SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'kiosk_settings' AND column_name IN ('fixed_qr_latitude', 'fixed_qr_longitude', 'fixed_qr_accuracy_m', 'fixed_qr_point_at', 'fixed_qr_radius_m')) = 5 AS v5_point_et_rayon,
 --   (SELECT relrowsecurity FROM pg_class WHERE oid = 'public.kiosk_ticket_failures'::regclass) AND NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'kiosk_ticket_failures') AS v6_echecs_service_seul,
 --   NOT has_table_privilege('anon', 'public.kiosk_ticket_failures', 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') AND NOT has_table_privilege('authenticated', 'public.kiosk_ticket_failures', 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') AS v7_ni_anon_ni_compte,
---   has_column_privilege('authenticated', 'public.kiosks', 'kind', 'SELECT') AND NOT has_column_privilege('anon', 'public.kiosks', 'kind', 'SELECT') AND NOT has_column_privilege('authenticated', 'public.kiosks', 'seed_salt', 'SELECT') AS v8_bureau_lit_kind_pas_le_sel;
+--   has_column_privilege('authenticated', 'public.kiosks', 'kind', 'SELECT') AND NOT has_column_privilege('anon', 'public.kiosks', 'kind', 'SELECT') AND NOT has_column_privilege('authenticated', 'public.kiosks', 'seed_salt', 'SELECT') AS v8_bureau_lit_kind_pas_le_sel,
+--   NOT EXISTS (SELECT 1 FROM pg_class WHERE relkind = 'S' AND relnamespace = 'public'::regnamespace AND relname LIKE 'kiosk_ticket_failures%') AS v9_aucune_sequence_neuve;
 --
 -- HISTORIQUE : si le fichier est collé dans l'éditeur SQL, inscrire ensuite :
 --   INSERT INTO supabase_migrations.schema_migrations (version, name)
@@ -58,10 +60,19 @@
 --      C'est la position de L'ENTREPRISE, pas celle d'un salarié.
 --   3) kiosk_punches.in_zone : « dans la zone : oui » sur un pointage fait
 --      avec le QR fixe (NULL pour la tablette). Jamais de latitude ni de
---      longitude du salarié : la position est vérifiée par la fonction kiosk
---      puis oubliée.
---   4) kiosk_ticket_failures : QR refusés par adresse (10 minutes), pour
---      plafonner les essais sur `ticket`. Clé service seule.
+--      longitude du salarié : la position est comparée par la fonction kiosk
+--      puis oubliée. ATTENTION : cette position est DÉCLARÉE par le téléphone
+--      du salarié, que le serveur ne peut pas contrôler et qu'on falsifie en
+--      deux minutes — « dans la zone : oui » est un FREIN, pas une preuve de
+--      présence. Le bureau la lit (fonction kiosk, action fixed_status : les
+--      derniers pointages du QR fixe) ; aucun droit client n'est ouvert sur la
+--      table. Un petit index partiel sert cette lecture.
+--   4) kiosk_ticket_failures : plafond des essais REFUSÉS du QR fixe sur
+--      `ticket`. AUCUNE adresse n'est gardée : une ligne par « seau » de 12 bits
+--      d'une empreinte (adresse, QR visé), au plus 4 096 lignes, réécrites
+--      toutes les 10 minutes. La table ne grossit pas et n'a besoin d'aucune
+--      purge (donc d'aucun DELETE). Pas de colonne d'identité, donc pas de
+--      séquence. Clé service seule.
 --
 -- company_kiosk_active / company_has_kiosk (lot 12 « pointage QR ») NE SONT PAS
 -- MODIFIÉES. Elles comptent toute ligne non retirée de kiosks, donc AUSSI un
@@ -143,22 +154,31 @@ ALTER TABLE public.kiosk_punches
   ADD COLUMN IF NOT EXISTS in_zone boolean;
 
 COMMENT ON COLUMN public.kiosk_punches.in_zone IS
-  'Lot 12 : TRUE = pointage fait avec le QR fixe, position vérifiée dans la zone au moment du scan. NULL = tablette (aucune position). Les coordonnées ne sont JAMAIS enregistrées.';
+  'Lot 12 : TRUE = pointage fait avec le QR fixe, position DÉCLARÉE par le téléphone dans la zone au moment du scan (se falsifie : un frein, pas une preuve de présence). NULL = tablette (aucune position). Les coordonnées ne sont JAMAIS enregistrées.';
 
--- ── 4) QR refusés par adresse (plafond sur « ticket ») ─────────────────────
+-- Lecture du bureau (fonction kiosk, « derniers pointages du QR fixe ») : les
+-- pointages à in_zone renseigné d'une entreprise, du plus récent au plus ancien.
+CREATE INDEX IF NOT EXISTS kiosk_punches_in_zone_idx
+  ON public.kiosk_punches (company_id, created_at DESC) WHERE in_zone IS NOT NULL;
+
+-- ── 4) Plafond des essais refusés du QR fixe (aucune adresse gardée) ───────
+-- Une ligne par « seau » (0 à 4 095) : les 12 premiers bits d'une empreinte
+-- HMAC(clé serveur, adresse + QR visé), calculée par la fonction kiosk. Le
+-- compteur repart à 1 quand sa fenêtre de 10 minutes est passée : la table ne
+-- dépasse jamais 4 096 lignes et ne contient ni adresse, ni date de scan au-delà
+-- de 10 minutes (rien à purger, aucun DELETE).
 CREATE TABLE IF NOT EXISTS public.kiosk_ticket_failures (
-  id         bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  ip         text NOT NULL,
-  created_at timestamptz NOT NULL DEFAULT now()
+  bucket       smallint PRIMARY KEY CHECK (bucket BETWEEN 0 AND 4095),
+  window_start timestamptz NOT NULL DEFAULT now(),
+  failures     integer NOT NULL DEFAULT 0 CHECK (failures >= 0)
 );
-CREATE INDEX IF NOT EXISTS kiosk_ticket_failures_ip_idx ON public.kiosk_ticket_failures (ip, created_at DESC);
 COMMENT ON TABLE public.kiosk_ticket_failures IS
-  'Lot 12 : QR refusés (code faux, borne inconnue, jeton de QR fixe faux), par adresse. Au-delà de 30 en 10 minutes, la fonction kiosk répond « Trop d’essais ». Clé service seule.';
+  'Lot 12 : plafond des essais refusés du QR fixe (30 par seau en 10 minutes, jamais pour un QR valable). Seau = 12 bits d''une empreinte (adresse, QR visé) : aucune adresse gardée, 4 096 lignes au plus, rien à purger. Clé service seule.';
 
 -- ── 5) Droits ──────────────────────────────────────────────────────────────
 ALTER TABLE public.kiosk_ticket_failures ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.kiosk_ticket_failures FROM PUBLIC, anon, authenticated;
-GRANT SELECT, INSERT ON public.kiosk_ticket_failures TO service_role;
+GRANT SELECT, INSERT, UPDATE ON public.kiosk_ticket_failures TO service_role;
 -- Aucune policy : seule la clé service (qui contourne RLS) lit et écrit.
 
 -- Le bureau lit le type de ses bornes (policy existante kiosks_admin_read,

@@ -12,8 +12,14 @@
 //     entreprise, « QR fixe — moins sécurisé », date, référence) ; régénérer ;
 //     désactiver ; « Déconnecter la tablette » ne touche pas au QR fixe ;
 //     390 px sans défilement horizontal ; migration absente → rien ne change.
+//     L'avertissement dit que la position est déclarée par le téléphone et peut
+//     être falsifiée (un frein, pas une preuve) ; « Scannez la tablette » n'est
+//     dit que s'il y a une tablette ; derniers pointages « dans la zone : oui »
+//     lisibles par le bureau ; borne COUPÉE : on peut encore désactiver et
+//     régénérer le QR fixe (Réglages → Borne & pointage), pas l'activer.
 //  B) Salarié (/pointer#f=…) : écran d'information RGPD avant le premier scan
-//     (aucune position lue avant « Continuer ») ; scan accepté dans la zone
+//     DE CE COMPTE (un collègue sur le même téléphone le voit à son tour ;
+//     aucune position lue avant « Continuer ») ; scan accepté dans la zone
 //     (UNE lecture, jamais en continu) ; refusé hors zone ; localisation
 //     refusée ; « Je refuse » ; migration absente ; QR de la tablette toujours
 //     sans position ; le scanner de l'appli ouvre le QR fixe.
@@ -56,6 +62,7 @@ const filterRows = (rows, params) => {
       if (op === 'gt') return String(cur) > val;
       if (op === 'lt') return String(cur) < val;
       if (op === 'is') return val === 'null' ? cur == null : String(cur) === val;
+      if (op === 'not') return val === 'is.null' ? cur != null : true;
       return true;
     });
   }
@@ -65,7 +72,9 @@ const filterRows = (rows, params) => {
 const REF = { lat: 45.7578, lng: 4.832 };
 const north = (m) => REF.lat + m / 111195;
 const haversine = (a, c) => { const R = 6371008.8, rad = Math.PI / 180; const h = Math.sin((c.lat - a.lat) * rad / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(c.lat * rad) * Math.sin((c.lng - a.lng) * rad / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(h)); };
-const ALT = 'Scannez la tablette, ou ajoutez votre intervention à la main.';
+const ALT = 'Scannez la tablette, ou ajoutez votre intervention à la main.';           // entreprise avec une tablette reliée
+const ALT_SANS = 'Ajoutez votre intervention à la main.';                             // aucune tablette reliée
+const ALT_NEUTRE = 'Ajoutez votre intervention à la main, ou scannez la tablette si votre entreprise en a une.'; // on ne sait pas
 
 // ═══════════════════════════════════════════════════════════════════════════
 // A) BUREAU
@@ -75,21 +84,22 @@ const ADMIN_SESSION = sessionFor('u-admin', 'paul@exemple.fr');
  * Une page /admin, base simulée. mode : 'ok' (migration passée), 'absent'
  * (fonction neuve, migration pas passée), 'old' (ancienne fonction : « Action inconnue »).
  */
-async function adminPage({ width = 1440, height = 900, isMobile = false, mode = 'ok', kiosks = [], geo = null } = {}) {
+async function adminPage({ width = 1440, height = 900, isMobile = false, mode = 'ok', kiosks = [], geo = null, borneCut = false, recent = [] } = {}) {
   const ctx = await b.newContext({ viewport: { width, height }, locale: 'fr-FR', timezoneId: 'Europe/Paris', isMobile, hasTouch: isMobile, deviceScaleFactor: isMobile ? 2 : 1 });
   if (geo) { await ctx.grantPermissions(['geolocation'], { origin: BASE }); await ctx.setGeolocation(geo); }
   const state = {
     D: {
-      users: [u('u-admin', 'Paul', 'Martin', 'admin'), u('u-kevin', 'Kevin', 'Roussel')], companies: [{ ...COMPANY }], worksites: [W1, AUTRE],
+      users: [u('u-admin', 'Paul', 'Martin', 'admin'), u('u-kevin', 'Kevin', 'Roussel')], companies: [{ ...COMPANY, kiosk_enabled: !borneCut }], worksites: [W1, AUTRE],
       planning: [], time_entries: [], active_sessions: [], month_closures: [], leave_requests: [], invitations: [], documents: [], certifications: [], push_subscriptions: [],
       kiosks: kiosks.map((k) => ({ company_id: CO, revoked_at: null, kind: 'tablette', ...k })), kiosk_settings: [],
     },
     fn: [], restWrites: 0, n: 0,
-    fx: { enabled: false, id: null, token: null, ref: null, created_at: null, point: { set: false, accuracy_m: null, at: null }, radius: 200 },
+    fx: { enabled: false, id: null, token: null, ref: null, created_at: null, point: { set: false, accuracy_m: null, at: null }, radius: 200, recent },
   };
   const status = () => {
     const f = state.fx;
-    return { available: true, enabled: f.enabled, company_name: 'Martin Menuiserie', token: f.enabled ? f.token : null, ref: f.enabled ? f.ref : null,
+    return { available: true, enabled: f.enabled, kiosk_enabled: !borneCut, has_tablet: state.D.kiosks.some((k) => k.kind === 'tablette' && !k.revoked_at),
+      recent: f.recent, company_name: 'Martin Menuiserie', token: f.enabled ? f.token : null, ref: f.enabled ? f.ref : null,
       created_at: f.enabled ? f.created_at : null, last_used_at: null, uses_7d: f.enabled ? 3 : 0, point: f.point, radius_m: f.radius };
   };
   const newFixed = () => {
@@ -116,6 +126,8 @@ async function adminPage({ width = 1440, height = 900, isMobile = false, mode = 
         if (mode === 'old') return r.fulfill({ status: 400, json: { error: 'Action inconnue' } });
         if (mode === 'absent') return a === 'fixed_status' ? r.fulfill({ json: { available: false } }) : r.fulfill({ status: 409, json: { error: 'Le QR fixe n’est pas disponible pour l’instant.', code: 'fixed_unavailable' } });
         if (a === 'fixed_status') return r.fulfill({ json: status() });
+        // Borne coupée par BEMEXO : comme la vraie fonction, seul couper (désactiver, régénérer) reste permis.
+        if (borneCut && !['fixed_disable', 'fixed_regenerate'].includes(a)) return r.fulfill({ status: 403, json: { error: 'La borne est désactivée pour votre entreprise.', code: 'kiosk_disabled' } });
         if ((a === 'fixed_enable' || a === 'fixed_regenerate') && body.confirm !== true) return r.fulfill({ status: 400, json: { error: 'Confirmation requise.', code: 'confirm_required' } });
         if (a === 'fixed_enable') { if (!state.fx.enabled) newFixed(); return r.fulfill({ json: status() }); }
         if (a === 'fixed_regenerate') { revokeFixed(); newFixed(); return r.fulfill({ json: status() }); }
@@ -146,7 +158,7 @@ async function adminPage({ width = 1440, height = 900, isMobile = false, mode = 
   const p = await ctx.newPage();
   p.on('pageerror', (e) => console.log('   [erreur page]', e.message));
   await p.goto(`${BASE}/admin`);
-  await p.waitForSelector('[data-testid=bar-kiosk], .bt-pl-m-ibtn', { timeout: 20000 }).catch(() => {});
+  await p.waitForSelector('[data-testid=bar-kiosk], .bt-pl-m-ibtn, .bt-pl-acct', { timeout: 20000 }).catch(() => {});
   await p.waitForTimeout(1200);
   const calls = (action) => state.fn.filter((c) => c.action === action);
   return { ctx, p, state, calls };
@@ -159,7 +171,9 @@ const shot = async (p, name, el = '[role=dialog]') => { await p.mouse.move(2, 2)
 
 // ── A1 · désactivé par défaut, avertissement, confirmation, activer ──────────
 {
-  const { ctx, p, state, calls } = await adminPage({ height: 1100, geo: { latitude: REF.lat, longitude: REF.lng, accuracy: 250 } });
+  const iso0 = (min) => new Date(Date.now() - min * 60e3).toISOString();
+  const RECENT = [{ name: 'Kevin Roussel', kind: 'arrival', at: iso0(35), in_zone: true }, { name: 'Lucas Petit', kind: 'departure', at: iso0(60 * 26), in_zone: true }];
+  const { ctx, p, state, calls } = await adminPage({ height: 1100, geo: { latitude: REF.lat, longitude: REF.lng, accuracy: 250 }, recent: RECENT });
   await openDialog(p);
   check(await p.locator('[data-testid=kf]').count() === 1, 'A1) section « QR fixe à imprimer » présente (migration passée)');
   check(calls('fixed_status').length === 1, 'A1) un seul appel fixed_status à l’ouverture');
@@ -170,12 +184,16 @@ const shot = async (p, name, el = '[role=dialog]') => { await p.mouse.move(2, 2)
   await p.click('[data-testid=kf-head]'); await p.waitForTimeout(300);
   const warn = await p.locator('[data-testid=kf-warn]').innerText();
   check(/^Moins sécurisé :/.test(warn) && /une photo de ce QR permet de pointer/.test(warn) && /Le QR de la tablette, qui change chaque minute, reste disponible\./.test(warn), `A1) avertissement « Moins sécurisé : une photo de ce QR permet de pointer… Le QR de la tablette, qui change chaque minute, reste disponible. »`);
+  check(/cette position est déclarée par le téléphone et peut être falsifiée/.test(warn) && /la zone est un frein, pas une preuve de présence/.test(warn), 'A1) l’avertissement dit la vérité : position déclarée par le téléphone, falsifiable, un frein et non une preuve');
+  check(!/(vérifi|garanti|prouv)/i.test(warn.replace('pas une preuve de présence', '')), 'A1) l’avertissement ne promet aucune vérification ni garantie');
+  check(/Aucune tablette n’est reliée/.test(await p.locator('[data-testid=kf-no-tablet]').innerText().catch(() => '')), 'A1) aucune tablette reliée : le bureau est prévenu (le QR fixe serait le seul pointage en direct)');
   await shot(p, 'bureau-2-avertissement.png');
   await p.click('[data-testid=kf-enable]'); await p.waitForTimeout(250);
   const conf = await p.locator('[data-testid=kf-confirm]').innerText();
   check(/registre RGPD/.test(conf) && /CSE s’il existe/.test(conf) && /Informez vos salariés/.test(conf), 'A1) confirmation : informer les salariés, registre RGPD, CSE s’il existe');
-  check(/n’admet la géolocalisation .* que s’il n’existe pas d’autre moyen/.test(conf) && /le QR de la tablette et la saisie à la main restent toujours proposés/.test(conf), 'A1) confirmation : la jurisprudence (autre moyen toujours proposé)');
-  check(/jamais en continu/.test(conf) && /Aucune coordonnée du salarié n’est gardée/.test(conf), 'A1) confirmation : une lecture au scan, aucune coordonnée gardée');
+  check(/n’admet la géolocalisation .* que s’il n’existe pas d’autre moyen/.test(conf) && /la saisie à la main reste toujours proposée \(aucune tablette n’est reliée/.test(conf), 'A1) confirmation : la jurisprudence (la saisie à la main reste proposée ; aucune tablette reliée, dit sans détour)');
+  check(/La zone est un frein, pas une preuve/.test(conf) && /déclarée par le téléphone du salarié et peut être falsifiée/.test(conf) && /« dans la zone : oui » ne prouve pas qu’il était sur place/.test(conf), 'A1) confirmation : la zone est un frein, pas une preuve (« dans la zone : oui » ne prouve rien)');
+  check(/jamais en continu/.test(conf) && /Aucune coordonnée du salarié n’est gardée/.test(conf) && /premier scan de chaque compte/.test(conf), 'A1) confirmation : une lecture au scan, aucune coordonnée gardée, information à chaque compte');
   check(calls('fixed_enable').length === 0, 'A1) rien n’est activé avant « Oui, activer »');
   await shot(p, 'bureau-3-confirmation-rgpd.png');
   await p.click('[data-testid=kf-confirm-no]'); await p.waitForTimeout(200);
@@ -207,6 +225,17 @@ const shot = async (p, name, el = '[role=dialog]') => { await p.mouse.move(2, 2)
   check(/✓ Point posé \(± 12 m\)/.test(await p.locator('[data-testid=kf-point-msg]').innerText()) && new RegExp(`Posé le ${frToday.replace(/\//g, '\\/')} à \\d\\d:\\d\\d \\(± 12 m\\)`).test(await p.locator('[data-testid=kf-point-state]').innerText()), 'A2) « Posé le jj/mm/aaaa à hh:mm (± 12 m) »');
   check((await p.locator('[data-testid=kf-point]').innerText()).trim() === 'Reposer le point ici', 'A2) le bouton devient « Reposer le point ici »');
   await shot(p, 'bureau-6-point-pose.png');
+  // Les derniers pointages du QR fixe : « dans la zone : oui », lisible par le bureau, avec la réserve.
+  check((await p.locator('[data-testid=kf-recent-sum]').innerText()).trim() === 'Derniers pointages avec ce QR (2)', 'A2) le bureau voit « Derniers pointages avec ce QR (2) »');
+  await p.click('[data-testid=kf-recent-sum]'); await p.waitForTimeout(200);
+  const recRows = await p.locator('[data-testid=kf-recent-row]').allInnerTexts();
+  check(recRows.length === 2 && /^Kevin Roussel · arrivée · \d\d\/\d\d\/\d{4} à \d\d:\d\d · dans la zone : oui$/.test(recRows[0]) && /^Lucas Petit · départ · .* · dans la zone : oui$/.test(recRows[1]),
+    `A2) « Kevin Roussel · arrivée · date à heure · dans la zone : oui » (${recRows[0]})`);
+  const recNote = await p.locator('[data-testid=kf-recent-note]').innerText();
+  check(/position déclarée par le téléphone/.test(recNote) && /ce n’est pas une preuve de présence/.test(recNote) && /Aucune coordonnée n’est gardée/.test(recNote), 'A2) la liste dit ce que vaut « dans la zone » : déclaré par le téléphone, pas une preuve, aucune coordonnée');
+  check(!/\d{2}\.\d{3,}/.test(await p.locator('[data-testid=kf]').innerText()), 'A2) aucune coordonnée à l’écran');
+  await shot(p, 'bureau-10-derniers-pointages.png');
+  await p.click('[data-testid=kf-recent-sum]'); await p.waitForTimeout(150);
   await p.click('[data-testid=kf-radius-500]'); await p.waitForTimeout(500);
   check(calls('fixed_radius').at(-1)?.radius_m === 500 && await p.locator('[data-testid=kf-radius-500]').getAttribute('aria-pressed') === 'true', 'A2) rayon 500 m enregistré');
   await p.click('[data-testid=kf-radius-200]'); await p.waitForTimeout(500);
@@ -224,7 +253,7 @@ const shot = async (p, name, el = '[role=dialog]') => { await p.mouse.move(2, 2)
   check(/Martin Menuiserie/.test(sheet.text) && /QR fixe — moins sécurisé/.test(sheet.text), 'A3) feuille : nom de l’entreprise, « QR fixe — moins sécurisé »');
   check(sheet.text.includes(`Imprimé le ${frToday}`) && /Réf\. E001/.test(sheet.text), `A3) feuille : date (${frToday}) et référence courte (E001)`);
   check(sheet.svg && sheet.url === `${BASE}/pointer#f=${state.fx.token}`, 'A3) feuille : le QR du jeton actif');
-  check(/Votre position est lue une seule fois, au moment du scan/.test(sheet.text) && /Vous pouvez refuser : scannez la tablette, ou ajoutez votre intervention à la main\./.test(sheet.text), 'A3) feuille : information position + autre moyen');
+  check(/Votre position est lue une seule fois, au moment du scan/.test(sheet.text) && /Vous pouvez refuser : ajoutez votre intervention à la main\./.test(sheet.text) && !/tablette/i.test(sheet.text.replace('QR fixe — moins sécurisé', '')), 'A3) feuille (aucune tablette reliée) : information position + seul autre moyen vrai, sans « tablette »');
   check(await p.evaluate(() => window.__printed) === 1, 'A3) la fenêtre d’impression s’ouvre (window.print)');
   await pop.setViewportSize({ width: 794, height: 1123 });
   await pop.screenshot({ path: `${SH}/bureau-7-impression-a4.png` });
@@ -279,6 +308,66 @@ const shot = async (p, name, el = '[role=dialog]') => { await p.mouse.move(2, 2)
   await ctx.close();
 }
 
+// ── A5 bis · AVEC une tablette reliée : « la tablette » est un vrai autre moyen ──
+{
+  const iso = (min) => new Date(Date.now() - min * 60e3).toISOString();
+  const { ctx, p } = await adminPage({ kiosks: [{ id: 'k-tab', created_at: iso(3 * 24 * 60), last_seen_at: iso(3) }] });
+  await openDialog(p);
+  await p.click('[data-testid=kf-head]'); await p.waitForTimeout(250);
+  check(await p.locator('[data-testid=kf-no-tablet]').count() === 0, 'A5 bis) tablette reliée : pas d’avertissement « aucune tablette »');
+  await p.click('[data-testid=kf-enable]'); await p.waitForTimeout(250);
+  const conf = await p.locator('[data-testid=kf-confirm]').innerText();
+  check(/le QR de la tablette et la saisie à la main restent toujours proposés/.test(conf) && !/aucune tablette/i.test(conf), 'A5 bis) confirmation : « le QR de la tablette et la saisie à la main restent toujours proposés »');
+  await p.click('[data-testid=kf-confirm-yes]'); await p.waitForTimeout(700);
+  await p.evaluate(() => { const o = window.open.bind(window); window.open = (...a) => { const w = o(...a); if (w) w.print = () => {}; return w; }; });
+  const [pop] = await Promise.all([p.waitForEvent('popup'), p.click('[data-testid=kf-print]')]);
+  await pop.waitForLoadState().catch(() => {}); await p.waitForTimeout(500);
+  const txt = await pop.evaluate(() => document.body.innerText);
+  check(/Vous pouvez refuser : scannez la tablette, ou ajoutez votre intervention à la main\./.test(txt), 'A5 bis) feuille (tablette reliée) : « scannez la tablette, ou ajoutez votre intervention à la main »');
+  await pop.close(); await ctx.close();
+}
+
+// ── A8 · borne COUPÉE par BEMEXO : le bureau coupe encore le QR fixe (Réglages → Borne & pointage) ──
+const openSettingsBorne = async (p) => {
+  const desk = p.locator('.bt-pl-acct:visible'); const mob = p.locator('.bt-pl-m-ibtn[aria-label="Menu"]:visible');
+  await desk.or(mob).first().waitFor({ timeout: 20000 });
+  if (await desk.count()) await desk.first().click(); else await mob.first().click();
+  await p.locator('button:visible', { hasText: "Réglages de l'entreprise" }).first().click();
+  await p.waitForSelector('[role=dialog]:has(.bt-set) .bt-set', { timeout: 10000 });
+  await p.waitForTimeout(900);
+  const sec = p.locator('[data-testid=set-sec-borne] > h3 > button');
+  if ((await sec.getAttribute('aria-expanded')) !== 'true') { await sec.click(); await p.waitForTimeout(400); }
+};
+{
+  const iso = (min) => new Date(Date.now() - min * 60e3).toISOString();
+  const { ctx, p, state, calls } = await adminPage({ borneCut: true, height: 1200, kiosks: [{ id: 'f-actif', kind: 'fixe', created_at: iso(60), last_seen_at: null }], recent: [{ name: 'Kevin Roussel', kind: 'arrival', at: iso(20 * 60), in_zone: true }] });
+  Object.assign(state.fx, { enabled: true, id: 'f-actif', token: `0f1e2d3c-4b5a-4968-8776-a5b4c3d2e777.${'W'.repeat(43)}`, ref: 'E777', created_at: iso(60) });
+  await openSettingsBorne(p);
+  check(await p.locator('[data-testid=bar-kiosk], [data-testid=set-kiosk-open]').count() === 0, 'A8) borne coupée : ni bouton « Borne » ni « Relier la tablette » (comme avant)');
+  check(await p.locator('[data-testid=kf]').count() === 1 && await p.locator('[data-testid=kf-head]').getAttribute('aria-expanded') === 'true', 'A8) mais le QR fixe encore actif est là, ouvert, dans Réglages → Borne & pointage');
+  const cutTxt = await p.locator('[data-testid=kf-cut]').innerText();
+  check(/La borne est coupée par BEMEXO/.test(cutTxt) && /ne marche pas pour l’instant/.test(cutTxt) && /désactiver ou le régénérer/.test(cutTxt) && /pas l’activer/.test(cutTxt), 'A8) message clair : borne coupée, le QR ne marche pas, on peut le désactiver ou le régénérer');
+  const warnCut = await p.locator('[data-testid=kf-warn]').innerText();
+  check(/un frein, pas une preuve de présence/.test(warnCut) && !/reste disponible/.test(warnCut), 'A8) borne coupée : l’avertissement reste honnête et ne promet plus « le QR de la tablette reste disponible »');
+  check(await p.locator('[data-testid=kf-enable], [data-testid=kf-print], [data-testid=kf-point], [data-testid=kf-radius-200]').count() === 0, 'A8) ni « Activer », ni « Imprimer », ni point, ni rayon (la fonction les refuserait)');
+  check(await p.locator('[data-testid=kf-regen]').count() === 1 && await p.locator('[data-testid=kf-disable]').count() === 1 && await p.locator('[data-testid=kf-recent]').count() === 1, 'A8) « Régénérer… », « Désactiver… » et les derniers pointages restent');
+  await p.locator('[data-testid=kf]').scrollIntoViewIfNeeded();
+  await p.waitForTimeout(250);
+  await p.locator('[role=dialog]:has(.bt-set)').screenshot({ path: `${SH}/bureau-11-borne-coupee-reglages.png` });
+  await p.click('[data-testid=kf-regen]'); await p.click('[data-testid=kf-regen-yes]'); await p.waitForTimeout(700);
+  check(calls('fixed_regenerate').length === 1 && calls('fixed_regenerate')[0].confirm === true && (await p.locator('[data-testid=kf-badge]').innerText()).includes('E001'), 'A8) borne coupée : « Régénérer » avec confirmation → nouveau QR (l’ancien photographié ne marche plus)');
+  await p.click('[data-testid=kf-disable]'); await p.click('[data-testid=kf-disable-yes]'); await p.waitForTimeout(700);
+  check(calls('fixed_disable').length === 1 && (await p.locator('[data-testid=kf-badge]').innerText()).trim() === 'Désactivé' && await p.locator('[data-testid=kf-enable]').count() === 0, 'A8) borne coupée : « Désactiver » → badge « Désactivé », pas de bouton « Activer »');
+  check(calls('fixed_enable').length === 0 && state.restWrites === 0, 'A8) rien activé, aucune écriture directe en base');
+  await ctx.close();
+}
+for (const [label, opts] of [['borne coupée, aucun QR fixe actif', { borneCut: true }], ['borne coupée, migration absente', { borneCut: true, mode: 'absent' }]]) {
+  const { ctx, p } = await adminPage(opts);
+  await openSettingsBorne(p);
+  check(await p.locator('[data-testid=kf]').count() === 0 && await p.locator('[data-testid=set-sec-borne]').count() === 1, `A8) ${label} : rien de plus dans les réglages`);
+  await ctx.close();
+}
+
 // ── A6 · téléphone 390 px : tout tient en largeur ──────────────────────────
 {
   const m = await adminPage({ width: 390, height: 844, isMobile: true });
@@ -314,6 +403,8 @@ for (const mode of ['absent', 'old']) {
 // B) SALARIÉ — /pointer#f=…
 // ═══════════════════════════════════════════════════════════════════════════
 const KARIM = sessionFor('u-karim', 'karim@exemple.fr');
+const LEA = sessionFor('u-lea', 'lea@exemple.fr');
+const INFO_KEY = (uid) => `bx_fixed_qr_info_v1:${uid}`;
 const TOKEN = `0f1e2d3c-4b5a-4968-8776-a5b4c3d2e001.${'A'.repeat(43)}`;
 /** Compte les lectures de position (une seule par scan ; jamais de suivi continu). */
 const GEO_SPY = () => {
@@ -328,34 +419,37 @@ const GEO_SPY = () => {
  * Un téléphone. mode : 'ok' (migration passée) | 'absent' (migration pas passée).
  * geo : { lat, lng, accuracy } (localisation autorisée) ou null (refusée).
  */
-async function phone({ session = KARIM, mode = 'ok', geo = { latitude: north(50), longitude: REF.lng, accuracy: 15 }, infoSeen = false } = {}) {
+async function phone({ session = KARIM, mode = 'ok', geo = { latitude: north(50), longitude: REF.lng, accuracy: 15 }, infoSeenFor = [], tablet = true, loginAs = KARIM } = {}) {
   const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, locale: 'fr-FR', timezoneId: 'Europe/Paris' });
   if (geo) { await ctx.grantPermissions(['geolocation'], { origin: BASE }); await ctx.setGeolocation(geo); }
   await ctx.addInitScript(GEO_SPY);
   // (try : la page vide about:blank n'a pas de localStorage.)
   if (session) await ctx.addInitScript(([k, v]) => { try { localStorage.setItem(k, v); } catch { /* about:blank */ } }, [AUTH_KEY, JSON.stringify(session)]);
-  if (infoSeen) await ctx.addInitScript(() => { try { localStorage.setItem('bx_fixed_qr_info_v1', '1'); } catch { /* about:blank */ } });
+  // L'écran d'information déjà lu sur ce téléphone, PAR CES COMPTES seulement.
+  for (const uid of infoSeenFor) await ctx.addInitScript((k) => { try { localStorage.setItem(k, '1'); } catch { /* about:blank */ } }, INFO_KEY(uid));
   const fn = [];
   const st = { arrived: false };
   await ctx.route('**/*.supabase.co/**', async (r) => {
     const url = new URL(r.request().url());
-    if (url.pathname.startsWith('/auth/v1/user')) return r.fulfill({ json: (session || KARIM).user });
+    if (url.pathname.startsWith('/auth/v1/user')) return r.fulfill({ json: (session || loginAs).user });
+    if (url.pathname.startsWith('/auth/v1/token')) return r.fulfill({ json: loginAs }); // connexion e-mail + mot de passe
     if (url.pathname.startsWith('/auth/v1/')) return r.fulfill({ json: {} });
     if (url.pathname.startsWith('/functions/v1/kiosk')) {
       const body = JSON.parse(r.request().postData() || '{}');
       fn.push(body);
+      const alt = tablet ? ALT : ALT_SANS;
       if (body.action === 'ticket' && body.f) {
-        if (mode === 'absent') return r.fulfill({ status: 404, json: { error: `Le QR fixe n’est pas disponible pour l’instant. ${ALT}`, code: 'fixed_unavailable' } });
-        return r.fulfill({ json: { ticket: 'tk-fixe', kiosk_name: 'QR fixe', company_name: 'Martin Menuiserie', needs_gps: false, needs_position: true, radius_m: 200 } });
+        if (mode === 'absent') return r.fulfill({ status: 404, json: { error: `Le QR fixe n’est pas disponible pour l’instant. ${ALT_NEUTRE}`, code: 'fixed_unavailable' } });
+        return r.fulfill({ json: { ticket: 'tk-fixe', kiosk_name: 'QR fixe', company_name: 'Martin Menuiserie', needs_gps: false, needs_position: true, radius_m: 200, has_tablet: tablet } });
       }
       if (body.action === 'ticket') return r.fulfill({ json: { ticket: 'tk-tab', kiosk_name: 'Borne', company_name: 'Martin Menuiserie', needs_gps: false } });
       if (body.action === 'punch') {
         const time = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' }).format(new Date());
         if (body.ticket === 'tk-fixe') {
           // Le serveur décide (comme la vraie fonction) : position exigée, 200 m + marge.
-          if (typeof body.lat !== 'number') return r.fulfill({ status: 403, json: { error: `Position non reçue (refusée ou introuvable). ${ALT}`, code: 'position_missing' } });
-          if (!(body.accuracy <= 150)) return r.fulfill({ status: 403, json: { error: `Position trop imprécise pour vérifier la zone. ${ALT}`, code: 'position_imprecise' } });
-          if (haversine(REF, { lat: body.lat, lng: body.lng }) > 200 + Math.min(body.accuracy, 100)) return r.fulfill({ status: 403, json: { error: `Vous êtes hors de la zone de ce QR. ${ALT}`, code: 'out_of_zone' } });
+          if (typeof body.lat !== 'number') return r.fulfill({ status: 403, json: { error: `Position non reçue (refusée ou introuvable). ${alt}`, code: 'position_missing' } });
+          if (!(body.accuracy <= 150)) return r.fulfill({ status: 403, json: { error: `Position trop imprécise pour vérifier la zone. ${alt}`, code: 'position_imprecise' } });
+          if (haversine(REF, { lat: body.lat, lng: body.lng }) > 200 + Math.min(body.accuracy, 100)) return r.fulfill({ status: 403, json: { error: `Vous êtes hors de la zone de ce QR. ${alt}`, code: 'out_of_zone' } });
         }
         const kind = st.arrived ? 'departure' : 'arrival';
         st.arrived = !st.arrived;
@@ -394,7 +488,7 @@ const punches = (fn) => fn.filter((c) => c.action === 'punch');
   check(/Arrivée enregistrée/.test(await bodyText(p)), 'B1) 50 m du point (± 15 m) : « Arrivée enregistrée »');
   check(JSON.stringify(Object.keys(pu).sort()) === JSON.stringify(['accuracy', 'action', 'lat', 'lng', 'ticket']) && Math.abs(pu.lat - north(50)) < 1e-6 && pu.accuracy === 15, `B1) la position part AVEC le pointage, vérifiée par le serveur (${JSON.stringify(pu)})`);
   check(await p.evaluate(() => window.__geo) === 1 && await p.evaluate(() => window.__watch) === 0, 'B1) UNE seule lecture de position, aucun suivi continu');
-  check(await p.evaluate(() => localStorage.getItem('bx_fixed_qr_info_v1')) === '1', 'B1) information lue : retenue sur ce téléphone');
+  check(await p.evaluate((k) => localStorage.getItem(k), INFO_KEY('u-karim')) === '1' && await p.evaluate(() => localStorage.getItem('bx_fixed_qr_info_v1')) === null, 'B1) information lue : retenue pour CE COMPTE (clé par salarié, pas une clé du téléphone)');
   await p.screenshot({ path: `${SH}/salarie-2-arrivee-dans-la-zone-390x844.png` });
   // Deuxième scan (départ) : plus d'écran d'information, une lecture de plus.
   await p.goto('about:blank');
@@ -407,7 +501,7 @@ const punches = (fn) => fn.filter((c) => c.action === 'punch');
 
 // ── B2 · hors zone : refus clair, autres moyens ─────────────────────────────
 {
-  const { ctx, p, fn } = await phone({ infoSeen: true, geo: { latitude: north(2000), longitude: REF.lng, accuracy: 10 } });
+  const { ctx, p, fn } = await phone({ infoSeenFor: ['u-karim'], geo: { latitude: north(2000), longitude: REF.lng, accuracy: 10 } });
   await p.goto(`${BASE}/pointer#f=${TOKEN}`);
   await p.waitForSelector('[data-testid=fixed-refused]', { timeout: 15000 }).catch(() => {});
   const t = await bodyText(p);
@@ -421,7 +515,7 @@ const punches = (fn) => fn.filter((c) => c.action === 'punch');
 
 // ── B3 · localisation refusée : rien n'est envoyé, autres moyens ────────────
 {
-  const { ctx, p, fn } = await phone({ infoSeen: true, geo: null });
+  const { ctx, p, fn } = await phone({ infoSeenFor: ['u-karim'], geo: null });
   await p.goto(`${BASE}/pointer#f=${TOKEN}`);
   await p.waitForSelector('[data-testid=fixed-refused]', { timeout: 20000 }).catch(() => {});
   const t = await bodyText(p);
@@ -441,19 +535,24 @@ const punches = (fn) => fn.filter((c) => c.action === 'punch');
   const t = await bodyText(p);
   check(/Votre position ne sera pas lue\./.test(t) && t.includes(ALT), 'B4) « Je refuse » : « Votre position ne sera pas lue. » + autres moyens');
   check(await p.evaluate(() => window.__geo) === 0 && punches(fn).length === 0, 'B4) aucune lecture de position, aucun pointage');
-  check(await p.evaluate(() => localStorage.getItem('bx_fixed_qr_info_v1')) === null, 'B4) l’information sera remontrée au prochain scan');
+  check(await p.evaluate((k) => localStorage.getItem(k), INFO_KEY('u-karim')) === null, 'B4) l’information sera remontrée au prochain scan');
   await p.screenshot({ path: `${SH}/salarie-6-je-refuse-390x844.png` });
   await ctx.close();
 }
 
-// ── B5 · pas connecté : information, puis connexion (le ticket attend) ──────
+// ── B5 · pas connecté : connexion d'abord (le ticket attend), PUIS l'information, PUIS la position ──
 {
   const { ctx, p, fn } = await phone({ session: null });
   await p.goto(`${BASE}/pointer#f=${TOKEN}`);
+  await p.waitForSelector('text=Connectez-vous pour pointer', { timeout: 10000 }).catch(() => {});
+  check(/Connectez-vous pour pointer/.test(await bodyText(p)) && await p.locator('[data-testid=fixed-info]').count() === 0, 'B5) non connecté : la connexion d’abord (on ne sait pas encore de quel compte il s’agit)');
+  check(await p.evaluate(() => window.__geo) === 0 && punches(fn).length === 0, 'B5) … aucune position lue, aucun pointage');
+  await p.fill('#kx-email', 'karim@exemple.fr'); await p.fill('#kx-pass', 'secret123'); await p.click('button[type=submit]');
   await p.waitForSelector('[data-testid=fixed-info]', { timeout: 10000 }).catch(() => {});
+  check(await p.locator('[data-testid=fixed-info]').count() === 1 && await p.evaluate(() => window.__geo) === 0 && punches(fn).length === 0, 'B5) après la connexion : l’information de CE COMPTE, avant toute lecture de position');
   await p.click('[data-testid=fixed-info-ok]');
-  await p.waitForSelector('text=Connectez-vous pour pointer', { timeout: 8000 }).catch(() => {});
-  check(/Connectez-vous pour pointer/.test(await bodyText(p)) && await p.evaluate(() => window.__geo) === 0 && punches(fn).length === 0, 'B5) non connecté : connexion d’abord, position lue seulement au pointage');
+  await p.waitForSelector('text=Arrivée enregistrée', { timeout: 15000 }).catch(() => {});
+  check(/Arrivée enregistrée/.test(await bodyText(p)) && await p.evaluate(() => window.__geo) === 1 && await p.evaluate((k) => localStorage.getItem(k), INFO_KEY('u-karim')) === '1', 'B5) « Continuer » : une lecture, pointage enregistré, information retenue pour ce compte');
   await ctx.close();
 }
 
@@ -463,7 +562,7 @@ const punches = (fn) => fn.filter((c) => c.action === 'punch');
   await p.goto(`${BASE}/pointer#f=${TOKEN}`);
   await p.waitForSelector('[data-testid=fixed-refused]', { timeout: 10000 }).catch(() => {});
   const t = await bodyText(p);
-  check(/Le QR fixe n’est pas disponible pour l’instant\./.test(t) && t.includes(ALT), 'B6) migration absente : « Le QR fixe n’est pas disponible pour l’instant. » + autres moyens');
+  check(/Le QR fixe n’est pas disponible pour l’instant\./.test(t) && t.includes(ALT_NEUTRE), 'B6) migration absente : « Le QR fixe n’est pas disponible pour l’instant. » + autres moyens (formule neutre : entreprise inconnue)');
   check(await p.evaluate(() => window.__geo) === 0 && punches(fn).length === 0 && await p.locator('[data-testid=fixed-info]').count() === 0, 'B6) ni information, ni position, ni pointage');
   await p.screenshot({ path: `${SH}/salarie-5-migration-absente-390x844.png` });
   await ctx.close();
@@ -480,10 +579,53 @@ const punches = (fn) => fn.filter((c) => c.action === 'punch');
   await ctx.close();
 }
 
+// ── B7 bis · un collègue sur LE MÊME TÉLÉPHONE : l'information est montrée à SON compte aussi ──
+{
+  // Karim a déjà lu l'information sur ce téléphone ; Léa se connecte ensuite.
+  const { ctx, p, fn } = await phone({ session: LEA, loginAs: LEA, infoSeenFor: ['u-karim'] });
+  await p.goto(`${BASE}/pointer#f=${TOKEN}`);
+  await p.waitForSelector('[data-testid=fixed-info]', { timeout: 10000 }).catch(() => {});
+  check(await p.locator('[data-testid=fixed-info]').count() === 1, 'B9) autre compte sur le même téléphone : l’écran d’information s’affiche (la lecture de Karim ne vaut pas pour Léa)');
+  check(await p.evaluate(() => window.__geo) === 0 && punches(fn).length === 0, 'B9) … aucune position de Léa lue avant son « Continuer »');
+  await p.click('[data-testid=fixed-info-ok]');
+  await p.waitForSelector('text=Arrivée enregistrée', { timeout: 15000 }).catch(() => {});
+  check(/Arrivée enregistrée/.test(await bodyText(p)) && await p.evaluate(() => window.__geo) === 1, 'B9) Léa continue : une lecture, pointage enregistré');
+  check(await p.evaluate((k) => localStorage.getItem(k), INFO_KEY('u-lea')) === '1' && await p.evaluate((k) => localStorage.getItem(k), INFO_KEY('u-karim')) === '1', 'B9) deux comptes, deux marques sur ce téléphone');
+  await p.goto('about:blank');
+  await p.goto(`${BASE}/pointer#f=${TOKEN}`);
+  await p.waitForSelector('text=Départ enregistré', { timeout: 15000 }).catch(() => {});
+  check(/Départ enregistré/.test(await bodyText(p)) && await p.locator('[data-testid=fixed-info]').count() === 0, 'B9) Léa au scan suivant : plus d’écran d’information (retenu pour son compte)');
+  await ctx.close();
+}
+
+// ── B10 · entreprise SANS tablette reliée : jamais « Scannez la tablette » ──
+{
+  const { ctx, p, fn } = await phone({ tablet: false, geo: { latitude: north(2000), longitude: REF.lng, accuracy: 10 } });
+  await p.goto(`${BASE}/pointer#f=${TOKEN}`);
+  await p.waitForSelector('[data-testid=fixed-info]', { timeout: 10000 }).catch(() => {});
+  const info = await p.locator('[data-testid=fixed-info]').innerText().catch(() => '');
+  check(/Vous pouvez refuser : ajoutez votre intervention à la main\./.test(info) && !/tablette/i.test(info), 'B10) information, aucune tablette reliée : « Vous pouvez refuser : ajoutez votre intervention à la main. » (sans « tablette »)');
+  check(/que le bureau peut lire/.test(info), 'B10) information : « dans la zone : oui », que le bureau peut lire');
+  await p.screenshot({ path: `${SH}/salarie-7-sans-tablette-390x844.png` });
+  await p.click('[data-testid=fixed-info-ok]');
+  await p.waitForSelector('[data-testid=fixed-refused]', { timeout: 15000 }).catch(() => {});
+  const t = await bodyText(p);
+  check(t.includes(`Vous êtes hors de la zone de ce QR. ${ALT_SANS}`) && !/tablette/i.test(t), 'B10) hors zone : « … Ajoutez votre intervention à la main. », jamais « Scannez la tablette »');
+  await ctx.close();
+}
+{
+  const { ctx, p } = await phone({ tablet: false, infoSeenFor: ['u-karim'], geo: null });
+  await p.goto(`${BASE}/pointer#f=${TOKEN}`);
+  await p.waitForSelector('[data-testid=fixed-refused]', { timeout: 20000 }).catch(() => {});
+  const t = await bodyText(p);
+  check(t.includes(`Position non reçue (refusée ou introuvable). ${ALT_SANS}`) && !/tablette/i.test(t), 'B10) localisation refusée, aucune tablette : seul « Ajoutez votre intervention à la main. »');
+  await ctx.close();
+}
+
 // ── B8 · le scanner de l'appli ouvre le QR fixe ─────────────────────────────
 {
   const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, locale: 'fr-FR', timezoneId: 'Europe/Paris' });
-  await ctx.addInitScript(([k, v]) => { localStorage.setItem(k, v); localStorage.setItem('bx_fixed_qr_info_v1', '1'); }, [AUTH_KEY, JSON.stringify(KARIM)]);
+  await ctx.addInitScript(([k, v, ik]) => { localStorage.setItem(k, v); localStorage.setItem(ik, '1'); }, [AUTH_KEY, JSON.stringify(KARIM), INFO_KEY('u-karim')]);
   await ctx.addInitScript((text) => {
     // Caméra simulée + lecteur de QR simulé : il « voit » le QR fixe imprimé.
     window.BarcodeDetector = class { async detect() { return [{ rawValue: text }]; } };
@@ -507,7 +649,7 @@ const punches = (fn) => fn.filter((c) => c.action === 'punch');
     if (url.pathname.startsWith('/auth/v1/')) return r.fulfill({ json: {} });
     if (url.pathname.startsWith('/functions/v1/kiosk')) {
       const body = JSON.parse(r.request().postData() || '{}'); fn.push(body);
-      if (body.action === 'ticket') return r.fulfill({ status: 404, json: { error: `Le QR fixe n’est pas disponible pour l’instant. ${ALT}`, code: 'fixed_unavailable' } });
+      if (body.action === 'ticket') return r.fulfill({ status: 404, json: { error: `Le QR fixe n’est pas disponible pour l’instant. ${ALT_NEUTRE}`, code: 'fixed_unavailable' } });
       return r.fulfill({ status: 400, json: { error: 'Action inconnue' } });
     }
     if (url.pathname.startsWith('/functions/v1/')) return r.fulfill({ json: {} });

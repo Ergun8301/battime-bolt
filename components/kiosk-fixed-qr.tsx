@@ -15,10 +15,24 @@
 //   · « Régénérer… » (l'ancien QR imprimé cesse aussitôt de marcher) et
 //     « Désactiver… », chacun avec sa confirmation sur place.
 //
+// CE QUE VAUT LA ZONE, DIT EN CLAIR AU PATRON : la position est DÉCLARÉE par le
+// téléphone du salarié ; elle peut être falsifiée (coordonnées simulées sur un
+// navigateur, appel direct à la fonction). C'est un FREIN contre la photo du QR
+// utilisée de chez soi, PAS une preuve de présence. « Dans la zone : oui » (liste
+// des derniers pointages ci-dessous) est lu avec cette réserve.
+//
+// Borne COUPÉE par BEMEXO (kiosk_enabled faux) : la section reste utile pour
+// COUPER le QR imprimé — le désactiver, le régénérer — jamais pour l'activer,
+// poser le point ou changer le rayon (la fonction kiosk les refuse). Elle est
+// alors montrée aussi dans Réglages → Borne & pointage (components/company-settings.tsx),
+// où la fenêtre « Borne » n'existe plus.
+//
 // Toutes les écritures passent par la fonction `kiosk` (rôle admin et
 // interrupteur revérifiés). Migration absente ou ancienne fonction : la
 // section ne s'affiche pas du tout (l'appli reste exactement comme avant).
 // Le QR de la tablette, qui change chaque minute, n'est pas touché.
+// Ce composant porte sa propre feuille de style (il sert aussi hors de la
+// fenêtre « Borne »).
 
 import { useEffect, useMemo, useState } from 'react';
 import qrcode from 'qrcode-generator';
@@ -27,12 +41,20 @@ import { toast } from 'sonner';
 import { callKiosk, type FixedQrStatus } from '@/lib/kiosk-client';
 import { demanderPosition, fmtPrecision } from '@/lib/position';
 import {
-  fixedQrUrl, FIXED_QR_POINT_MAX_ACCURACY_M, FIXED_QR_RADIUS_CHOICES,
+  fixedAlternative, fixedQrUrl, lowerFirst, FIXED_QR_POINT_MAX_ACCURACY_M, FIXED_QR_RADIUS_CHOICES,
 } from '@/supabase/functions/_shared/fixed-qr';
 
 const CSS = `
+.kf-sec{background:#FBF8F2;border:1px solid rgba(21,18,15,.1);border-radius:14px;padding:12px 14px;font-family:'Archivo',sans-serif;color:#15120F;min-width:0}
 .kf-head{display:flex;align-items:center;gap:8px;width:100%;background:none;border:0;padding:0;font:inherit;color:inherit;cursor:pointer;text-align:left;min-width:0}
-.kf-head .ka-l{display:block;margin:0;flex:1;min-width:0}
+.kf-title{display:block;margin:0;flex:1;min-width:0;font-weight:800;font-size:14px}
+.kf-title small{font-weight:600;color:#9a948a;font-size:13px}
+.kf-btn{display:inline-flex;align-items:center;gap:6px;border:1.5px solid #15120F;background:#fff;border-radius:10px;padding:6px 11px;font-weight:800;font-size:13px;color:#15120F;cursor:pointer;font-family:inherit;white-space:nowrap}
+.kf-btn.danger{border-color:rgba(192,70,31,.45);color:#C0461F}
+.kf-btn:disabled{opacity:.6;cursor:default}
+.kf-chip{border:1.5px solid rgba(21,18,15,.22);background:#fff;border-radius:99px;padding:7px 12px;font:inherit;font-size:13px;font-weight:800;color:#15120F;cursor:pointer;white-space:nowrap}
+.kf-chip[aria-pressed=true]{background:#FFC21A;border-color:#FFC21A}
+.kf-chip:disabled{opacity:.6;cursor:default}
 .kf-badge{font-size:12px;font-weight:800;color:#8a8378;background:#fff;border:1px solid rgba(21,18,15,.14);border-radius:99px;padding:3px 9px;white-space:nowrap}
 .kf-badge.on{color:#8A3A12;background:#FDEBD9;border-color:#F3C9A6}
 .kf-chev{width:18px;height:18px;flex:none;color:#8a8378;transition:transform .15s ease}
@@ -56,10 +78,18 @@ const CSS = `
 .kf-msg.bad{color:#C0461F}
 .kf-link{background:none;border:0;padding:2px 0;font:inherit;font-size:13px;font-weight:700;color:#8a8378;text-decoration:underline;text-underline-offset:3px;cursor:pointer;text-align:left}
 .kf-link:hover{color:#C0461F}
+.kf-cut{margin:0;background:#FBE9E5;border:1px solid #F0B8AD;border-radius:10px;padding:8px 10px;color:#8A2A12;font-weight:700}
+.kf-recent summary{cursor:pointer;font-weight:800;color:#15120F}
+.kf-recent ul{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:5px;max-height:220px;overflow:auto}
+.kf-recent li{font-size:13px;line-height:1.35}
+.kf-recent li b{font-weight:800}
 `;
 const CSS_HTML = { __html: CSS };
 
-const WARNING = 'une photo de ce QR permet de pointer à toute heure depuis la zone autour de l’entreprise (le salarié doit quand même être connecté à son compte et accepter que sa position soit lue au moment du scan). Le QR de la tablette, qui change chaque minute, reste disponible.';
+// Dit franchement ce que la zone vaut : un frein, pas une preuve (la position est donnée par le téléphone).
+const WARNING = 'une photo de ce QR permet de pointer à toute heure. Le salarié doit être connecté à son compte et son téléphone envoie sa position au moment du scan, mais cette position est déclarée par le téléphone et peut être falsifiée : la zone est un frein, pas une preuve de présence.';
+const TABLET_STAYS = ' Le QR de la tablette, qui change chaque minute, reste disponible.'; // pas dit borne coupée : la tablette l'est aussi
+const NO_TABLET = 'Aucune tablette n’est reliée : le QR fixe serait le seul pointage en direct (le chrono du téléphone n’est plus proposé), et un salarié qui refuse sa position ne pourrait qu’ajouter son intervention à la main. Reliez d’abord la tablette pour garder un autre moyen de pointer.';
 
 const frDate = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' }) : '');
 const frTime = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' }) : '');
@@ -100,7 +130,7 @@ h1{font-size:30pt;font-weight:900;letter-spacing:-.02em;margin:0 0 3mm;line-heig
 <p class="tag">QR fixe — moins sécurisé</p>
 <div class="qr" data-url="${esc(url)}">${qrSvg(url)}</div>
 <p class="how">Pour pointer votre arrivée ou votre départ : scannez ce QR avec l’appareil photo de votre téléphone, ou avec le scanner de l’appli BEMEXO.</p>
-<p class="geo">Votre position est lue une seule fois, au moment du scan, pour vérifier que vous êtes près de l’entreprise. Elle n’est pas gardée. Vous pouvez refuser : scannez la tablette, ou ajoutez votre intervention à la main.</p>
+<p class="geo">Votre position est lue une seule fois, au moment du scan, pour vérifier que vous êtes près de l’entreprise. Elle n’est pas gardée. Vous pouvez refuser : ${esc(lowerFirst(fixedAlternative(st.has_tablet)))}</p>
 <p class="meta">Imprimé le ${esc(new Date().toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' }))} · Réf. ${esc(st.ref || '')}</p>
 </main>
 <div class="noprint"><button type="button" onclick="window.print()">Imprimer</button></div>
@@ -116,9 +146,9 @@ h1{font-size:30pt;font-weight:900;letter-spacing:-.02em;margin:0 0 3mm;line-heig
 type Confirm = null | 'enable' | 'regenerate' | 'disable';
 type Msg = { tone: '' | 'ok' | 'bad'; text: string } | null;
 
-export default function KioskFixedQr() {
+export default function KioskFixedQr({ defaultOpen = false }: { defaultOpen?: boolean }) {
   const [st, setSt] = useState<FixedQrStatus | null>(null);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const [confirm, setConfirm] = useState<Confirm>(null);
   const [busy, setBusy] = useState(false);
   const [pointMsg, setPointMsg] = useState<Msg>(null);
@@ -135,6 +165,8 @@ export default function KioskFixedQr() {
 
   if (!st?.available) return null;
   const enabled = !!st.enabled;
+  // Borne coupée par BEMEXO : on ne peut que couper le QR fixe (désactiver, régénérer).
+  const cut = st.kiosk_enabled === false;
 
   const act = async (body: Record<string, unknown>, done?: string) => {
     setBusy(true);
@@ -164,39 +196,48 @@ export default function KioskFixedQr() {
   };
 
   const point = st.point;
+  const recent = st.recent ?? [];
   return (
-    <div className="ka-sec" data-testid="kf">
+    <div className="kf-sec" data-testid="kf">
       <style dangerouslySetInnerHTML={CSS_HTML} />
       <button type="button" className="kf-head" aria-expanded={open} data-testid="kf-head" onClick={() => setOpen((o) => !o)}>
-        <span className="ka-l">QR fixe à imprimer <small>(option)</small></span>
+        <span className="kf-title">QR fixe à imprimer <small>(option)</small></span>
         <span className={`kf-badge${enabled ? ' on' : ''}`} data-testid="kf-badge">{enabled ? `Activé · réf. ${st.ref}` : 'Désactivé'}</span>
         <ChevronDown className="kf-chev" aria-hidden="true" />
       </button>
 
       {open && (
         <div className="kf-body">
-          <p className="kf-warn" data-testid="kf-warn"><b>Moins sécurisé :</b> {WARNING}</p>
+          <p className="kf-warn" data-testid="kf-warn"><b>Moins sécurisé :</b> {WARNING}{cut ? '' : TABLET_STAYS}</p>
+          {cut && (
+            <p className="kf-cut" data-testid="kf-cut" role="status">
+              La borne est coupée par BEMEXO : ce QR fixe ne marche pas pour l’instant{enabled ? ' (il remarchera si la borne est rallumée)' : ''}. Vous pouvez
+              {enabled ? ' le désactiver ou le régénérer' : ' seulement le laisser désactivé'}, pas l’activer ni changer le point ou le rayon.
+            </p>
+          )}
+          {!cut && st.has_tablet === false && <p className="kf-warn" data-testid="kf-no-tablet">{NO_TABLET}</p>}
 
-          {!enabled && confirm !== 'enable' && (
+          {!enabled && !cut && confirm !== 'enable' && (
             <div className="kf-row">
-              <button type="button" className="ka-btn" data-testid="kf-enable" onClick={() => setConfirm('enable')}>Activer le QR fixe…</button>
+              <button type="button" className="kf-btn" data-testid="kf-enable" onClick={() => setConfirm('enable')}>Activer le QR fixe…</button>
             </div>
           )}
 
-          {!enabled && confirm === 'enable' && (
+          {!enabled && !cut && confirm === 'enable' && (
             <div className="kf-confirm" data-testid="kf-confirm" role="group" aria-label="Confirmer l’activation du QR fixe">
               <b>Avant d’activer</b>
               <ul>
-                <li>Informez vos salariés (un écran d’information leur est montré au premier scan), inscrivez ce traitement à votre registre RGPD et consultez le CSE s’il existe.</li>
-                <li>La position n’est lue qu’au moment du scan, jamais en continu. Aucune coordonnée du salarié n’est gardée : seulement « dans la zone : oui ».</li>
-                <li>La justice n’admet la géolocalisation pour contrôler le temps de travail que s’il n’existe pas d’autre moyen : le QR de la tablette et la saisie à la main restent toujours proposés.</li>
+                <li><b>La zone est un frein, pas une preuve.</b> La position est déclarée par le téléphone du salarié et peut être falsifiée : « dans la zone : oui » ne prouve pas qu’il était sur place.</li>
+                <li>Informez vos salariés (un écran d’information leur est montré au premier scan de chaque compte), inscrivez ce traitement à votre registre RGPD et consultez le CSE s’il existe.</li>
+                <li>La position n’est lue qu’au moment du scan, jamais en continu. Aucune coordonnée du salarié n’est gardée : seulement « dans la zone : oui », que vous pouvez relire ici.</li>
+                <li>La justice n’admet la géolocalisation pour contrôler le temps de travail que s’il n’existe pas d’autre moyen : {st.has_tablet === false ? 'la saisie à la main reste toujours proposée (aucune tablette n’est reliée pour l’instant).' : 'le QR de la tablette et la saisie à la main restent toujours proposés.'}</li>
               </ul>
               <div className="kf-row">
-                <button type="button" className="ka-btn" data-testid="kf-confirm-yes" disabled={busy}
+                <button type="button" className="kf-btn" data-testid="kf-confirm-yes" disabled={busy}
                   onClick={() => void act({ action: 'fixed_enable', confirm: true }, 'QR fixe activé. Posez maintenant le point de référence.')}>
                   {busy ? 'Activation…' : 'Oui, activer'}
                 </button>
-                <button type="button" className="ka-btn" data-testid="kf-confirm-no" disabled={busy} onClick={() => setConfirm(null)}>Annuler</button>
+                <button type="button" className="kf-btn" data-testid="kf-confirm-no" disabled={busy} onClick={() => setConfirm(null)}>Annuler</button>
               </div>
             </div>
           )}
@@ -210,9 +251,11 @@ export default function KioskFixedQr() {
                     Réf. {st.ref} · créé le {frDate(st.created_at)}
                     {typeof st.uses_7d === 'number' ? ` · ${st.uses_7d === 0 ? 'aucun pointage' : st.uses_7d === 1 ? '1 pointage' : `${st.uses_7d} pointages`} ces 7 derniers jours` : ''}
                   </p>
-                  <div className="kf-row">
-                    <button type="button" className="ka-btn" data-testid="kf-print" onClick={() => url && printSheet(st, url)}>Imprimer</button>
-                  </div>
+                  {!cut && (
+                    <div className="kf-row">
+                      <button type="button" className="kf-btn" data-testid="kf-print" onClick={() => url && printSheet(st, url)}>Imprimer</button>
+                    </div>
+                  )}
                   {confirm === null && (
                     <div className="kf-row">
                       <button type="button" className="kf-link" data-testid="kf-regen" onClick={() => setConfirm('regenerate')}>Régénérer…</button>
@@ -226,11 +269,11 @@ export default function KioskFixedQr() {
                 <div className="kf-confirm" data-testid="kf-regen-confirm">
                   <b>Régénérer le QR fixe ?</b> L’ancien QR imprimé cessera aussitôt de marcher : il faudra imprimer le nouveau.
                   <div className="kf-row" style={{ marginTop: 8 }}>
-                    <button type="button" className="ka-btn danger" data-testid="kf-regen-yes" disabled={busy}
+                    <button type="button" className="kf-btn danger" data-testid="kf-regen-yes" disabled={busy}
                       onClick={() => void act({ action: 'fixed_regenerate', confirm: true }, 'Nouveau QR fixe : imprimez-le. L’ancien ne marche plus.')}>
                       {busy ? 'Régénération…' : 'Oui, régénérer'}
                     </button>
-                    <button type="button" className="ka-btn" disabled={busy} onClick={() => setConfirm(null)}>Non</button>
+                    <button type="button" className="kf-btn" disabled={busy} onClick={() => setConfirm(null)}>Non</button>
                   </div>
                 </div>
               )}
@@ -238,42 +281,62 @@ export default function KioskFixedQr() {
                 <div className="kf-confirm" data-testid="kf-disable-confirm">
                   <b>Désactiver le QR fixe ?</b> Plus aucun pointage ne sera possible avec le QR imprimé. Le réactiver plus tard créera un nouveau QR.
                   <div className="kf-row" style={{ marginTop: 8 }}>
-                    <button type="button" className="ka-btn danger" data-testid="kf-disable-yes" disabled={busy}
+                    <button type="button" className="kf-btn danger" data-testid="kf-disable-yes" disabled={busy}
                       onClick={() => void act({ action: 'fixed_disable' }, 'QR fixe désactivé.')}>
                       {busy ? 'Désactivation…' : 'Oui, désactiver'}
                     </button>
-                    <button type="button" className="ka-btn" disabled={busy} onClick={() => setConfirm(null)}>Non</button>
+                    <button type="button" className="kf-btn" disabled={busy} onClick={() => setConfirm(null)}>Non</button>
                   </div>
                 </div>
               )}
 
-              <div className="kf-sub">
-                <p className="kf-sub-t">Point de référence</p>
-                <p style={{ margin: 0 }} data-testid="kf-point-state">
-                  {point?.set
-                    ? `Posé le ${frDate(point.at)} à ${frTime(point.at)} (${fmtPrecision(point.accuracy_m)}).`
-                    : 'À poser une fois, depuis votre téléphone, à l’endroit où le QR sera affiché. Tant qu’il n’est pas posé, le QR fixe refuse les pointages.'}
-                </p>
-                <div className="kf-row" style={{ marginTop: 8 }}>
-                  <button type="button" className="ka-btn" data-testid="kf-point" disabled={busy} onClick={() => void setPoint()}>
-                    {point?.set ? 'Reposer le point ici' : 'Poser le point ici'}
-                  </button>
-                </div>
-                <p className={`kf-msg${pointMsg?.tone ? ` ${pointMsg.tone}` : ''}`} data-testid="kf-point-msg" aria-live="polite">{pointMsg?.text ?? ''}</p>
-              </div>
+              {!cut && (
+                <>
+                  <div className="kf-sub">
+                    <p className="kf-sub-t">Point de référence</p>
+                    <p style={{ margin: 0 }} data-testid="kf-point-state">
+                      {point?.set
+                        ? `Posé le ${frDate(point.at)} à ${frTime(point.at)} (${fmtPrecision(point.accuracy_m)}).`
+                        : 'À poser une fois, depuis votre téléphone, à l’endroit où le QR sera affiché. Tant qu’il n’est pas posé, le QR fixe refuse les pointages.'}
+                    </p>
+                    <div className="kf-row" style={{ marginTop: 8 }}>
+                      <button type="button" className="kf-btn" data-testid="kf-point" disabled={busy} onClick={() => void setPoint()}>
+                        {point?.set ? 'Reposer le point ici' : 'Poser le point ici'}
+                      </button>
+                    </div>
+                    <p className={`kf-msg${pointMsg?.tone ? ` ${pointMsg.tone}` : ''}`} data-testid="kf-point-msg" aria-live="polite">{pointMsg?.text ?? ''}</p>
+                  </div>
 
-              <div className="kf-sub">
-                <p className="kf-sub-t">Rayon autour du point</p>
-                <div className="kf-row">
-                  {FIXED_QR_RADIUS_CHOICES.map((r) => (
-                    <button key={r} type="button" className="ka-chip" aria-pressed={st.radius_m === r} data-testid={`kf-radius-${r}`} disabled={busy}
-                      onClick={() => { if (st.radius_m !== r) void act({ action: 'fixed_radius', radius_m: r }); }}>
-                      {r >= 1000 ? `${r / 1000} km` : `${r} m`}
-                    </button>
-                  ))}
-                </div>
-              </div>
+                  <div className="kf-sub">
+                    <p className="kf-sub-t">Rayon autour du point</p>
+                    <div className="kf-row">
+                      {FIXED_QR_RADIUS_CHOICES.map((r) => (
+                        <button key={r} type="button" className="kf-chip" aria-pressed={st.radius_m === r} data-testid={`kf-radius-${r}`} disabled={busy}
+                          onClick={() => { if (st.radius_m !== r) void act({ action: 'fixed_radius', radius_m: r }); }}>
+                          {r >= 1000 ? `${r / 1000} km` : `${r} m`}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
             </>
+          )}
+
+          {recent.length > 0 && (
+            <details className="kf-sub kf-recent" data-testid="kf-recent">
+              <summary data-testid="kf-recent-sum">Derniers pointages avec ce QR ({recent.length})</summary>
+              <ul>
+                {recent.map((x, i) => (
+                  <li key={`${x.at}-${i}`} data-testid="kf-recent-row">
+                    <b>{x.name}</b> · {x.kind === 'departure' ? 'départ' : 'arrivée'} · {frDate(x.at)} à {frTime(x.at)} · dans la zone : {x.in_zone ? 'oui' : 'non'}
+                  </li>
+                ))}
+              </ul>
+              <p className="kf-meta" style={{ marginTop: 8 }} data-testid="kf-recent-note">
+                « Dans la zone » : position déclarée par le téléphone au moment du scan. Elle peut être falsifiée : ce n’est pas une preuve de présence. Aucune coordonnée n’est gardée.
+              </p>
+            </details>
           )}
         </div>
       )}

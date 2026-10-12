@@ -4,9 +4,13 @@ import { createHmac } from 'node:crypto';
 import {
   checkFixedPosition, distanceM, fixedQrRef, fixedQrSignature, fixedQrToken, fixedQrUrl, parsePosition, parseRadius,
   safeEqual, splitFixedToken,
+  fixedAlternative, fixedRefusalMessage, lowerFirst,
   FIXED_QR_ALTERNATIVE, FIXED_QR_MARGIN_MAX_M, FIXED_QR_RADIUS_DEFAULT_M, FIXED_QR_SCAN_MAX_ACCURACY_M, FIXED_REFUSAL_MESSAGES,
 } from './fixed-qr.ts';
-import { schemaMissing, ticketThrottled, MAX_TICKET_FAILURES_PER_IP } from './kiosk-rules.ts';
+import {
+  schemaMissing, ticketBucket, ticketBucketFull, ticketBucketNext, ticketThrottled,
+  MAX_TICKET_FAILURES_PER_IP, TICKET_BUCKETS, TICKET_FAILURE_WINDOW_MS,
+} from './kiosk-rules.ts';
 
 function eq(a: unknown, b: unknown, msg: string) {
   if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error(`${msg} — attendu ${JSON.stringify(b)}, obtenu ${JSON.stringify(a)}`);
@@ -82,12 +86,35 @@ Deno.test('jeton : HMAC(clé serveur, id, sel), non stocké, régénérable', as
   ok(seedLike !== ref, 'jeton du QR fixe ≠ graine d’une tablette (préfixes différents)');
 });
 
-Deno.test('messages : chaque refus propose l’autre moyen ; plafond de ticket ; migration absente', () => {
-  for (const k of ['fixed_unavailable', 'fixed_invalid', 'fixed_revoked', 'fixed_no_point', 'position_missing', 'position_imprecise', 'out_of_zone'] as const) {
-    ok(FIXED_REFUSAL_MESSAGES[k].endsWith(FIXED_QR_ALTERNATIVE), `${k} : « ${FIXED_QR_ALTERNATIVE} »`);
+Deno.test('messages : chaque refus propose l’autre moyen — « la tablette » seulement s’il y en a une', () => {
+  const stems = ['fixed_unavailable', 'fixed_invalid', 'fixed_revoked', 'fixed_no_point', 'position_missing', 'position_imprecise', 'out_of_zone'] as const;
+  for (const k of stems) {
+    ok(fixedRefusalMessage(k, true).endsWith(FIXED_QR_ALTERNATIVE), `${k} avec tablette : « ${FIXED_QR_ALTERNATIVE} »`);
+    const sans = fixedRefusalMessage(k, false);
+    ok(sans.endsWith('Ajoutez votre intervention à la main.') && !/tablette/i.test(sans), `${k} sans tablette : jamais « tablette » (${sans})`);
+    ok(FIXED_REFUSAL_MESSAGES[k] === fixedRefusalMessage(k) && /scannez la tablette si votre entreprise en a une/.test(FIXED_REFUSAL_MESSAGES[k]), `${k} inconnu : formule neutre`);
   }
   eq(FIXED_QR_ALTERNATIVE, 'Scannez la tablette, ou ajoutez votre intervention à la main.', 'phrase demandée');
-  eq([ticketThrottled(MAX_TICKET_FAILURES_PER_IP - 1), ticketThrottled(MAX_TICKET_FAILURES_PER_IP)], [false, true], `ticket : ${MAX_TICKET_FAILURES_PER_IP} QR refusés depuis une adresse → plafond`);
+  eq(lowerFirst(fixedAlternative(false)), 'ajoutez votre intervention à la main.', 'au milieu d’une phrase');
+  eq([fixedRefusalMessage('point_imprecise', false).includes('tablette'), fixedRefusalMessage('confirm_required', true)], [false, 'Confirmation requise.'], 'messages du bureau : pas d’autre moyen à proposer');
   eq(['42703', '42P01', 'PGRST204', 'PGRST205', '23505', 'PGRST202'].map((code) => schemaMissing({ code })), [true, true, true, true, false, false], 'colonne / table absente reconnue');
   eq(schemaMissing(null), false, 'pas d’erreur : rien d’absent');
+});
+
+Deno.test('plafond des essais refusés : seaux de 12 bits, fenêtre de 10 minutes, jamais d’adresse gardée', () => {
+  // Le seau : les deux premiers caractères base64url = 12 bits (0 à 4 095).
+  eq([ticketBucket('AA'), ticketBucket('AB'), ticketBucket('BA'), ticketBucket('__'), ticketBucket('-_xyz')], [0, 1, 64, 4095, 62 * 64 + 63], 'bits → seau (« - » = 62, « _ » = 63)');
+  ok(ticketBucket('') === 0 && ticketBucket('!!') === 0, 'entrée vide ou hors alphabet : seau 0, jamais d’erreur');
+  eq(TICKET_BUCKETS, 4096, '4 096 seaux au plus : la table ne grossit pas');
+  const t0 = Date.parse('2026-10-12T07:30:00Z');
+  // Premier échec : fenêtre neuve ; ensuite on compte dans la même fenêtre.
+  let row = ticketBucketNext(null, t0);
+  eq([row.failures, row.window_start], [1, new Date(t0).toISOString()], 'premier échec : 1, fenêtre qui commence');
+  for (let i = 2; i <= MAX_TICKET_FAILURES_PER_IP; i++) row = ticketBucketNext(row, t0 + i * 1000);
+  eq([row.failures, row.window_start], [30, new Date(t0).toISOString()], '30 échecs : la fenêtre n’a pas bougé');
+  eq([ticketBucketFull(row, t0 + 60_000), ticketBucketFull({ ...row, failures: 29 }, t0 + 60_000)], [true, false], '30 échecs dans la fenêtre : plein ; 29 : pas encore');
+  eq(ticketBucketFull(row, t0 + TICKET_FAILURE_WINDOW_MS + 1), false, 'fenêtre passée : plus plein (jamais bloqué plus de 10 minutes)');
+  const fresh = ticketBucketNext(row, t0 + TICKET_FAILURE_WINDOW_MS + 5000);
+  eq([fresh.failures, fresh.window_start], [1, new Date(t0 + TICKET_FAILURE_WINDOW_MS + 5000).toISOString()], 'après la fenêtre : le compteur repart à 1 (ligne réécrite, rien à effacer)');
+  eq([ticketBucketFull(null, t0), ticketThrottled(MAX_TICKET_FAILURES_PER_IP - 1), ticketThrottled(MAX_TICKET_FAILURES_PER_IP)], [false, false, true], 'pas de ligne : jamais plein');
 });

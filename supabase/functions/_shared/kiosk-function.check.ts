@@ -23,7 +23,13 @@
 //     régénérer, désactiver ; scan accepté dans la zone, refusé hors zone,
 //     trop imprécis ou sans position ; jeton révoqué / désactivé / faux /
 //     autre entreprise ; double scan ; aucune coordonnée gardée ; relier une
-//     tablette ne coupe pas le QR fixe ; le QR tournant marche toujours.
+//     tablette ne coupe pas le QR fixe ; le QR tournant marche toujours ;
+//   · plafond des essais REFUSÉS du QR fixe : jamais un QR valable, jamais la
+//     tablette, jamais les échecs d'une autre entreprise, aucune adresse
+//     gardée, table bornée ; borne coupée : le bureau peut encore couper le QR
+//     fixe (désactiver, régénérer), pas l'activer ; « Déconnecter la tablette »
+//     d'une ancienne fenêtre ne coupe pas le QR fixe ; « Scannez la tablette »
+//     seulement s'il y en a une ; derniers pointages lisibles par le bureau.
 
 type Row = Record<string, unknown>;
 type Db = Record<string, Row[]>;
@@ -70,6 +76,11 @@ function matches(row: Row, params: URLSearchParams): boolean {
     const op = raw.slice(0, dot); const val = raw.slice(dot + 1);
     const cur = row[k];
     const s = cur == null ? null : String(cur);
+    if (op === 'not') { // not.is.null
+      const [inner, innerVal] = [val.slice(0, val.indexOf('.')), val.slice(val.indexOf('.') + 1)];
+      if (inner === 'is' && (innerVal === 'null' ? cur != null : s !== innerVal)) continue;
+      return false;
+    }
     if (op === 'eq' && s !== val) return false;
     if (op === 'neq' && s === val) return false;
     if (op === 'is' && !(val === 'null' ? cur == null : s === val)) return false;
@@ -533,11 +544,16 @@ Deno.test({
     const fakeToken = `00000000-0000-4000-8000-000000000999.${'A'.repeat(43)}`;
     const t = await call({ action: 'ticket', f: fakeToken });
     eq([t.status, t.json.code], [404, 'fixed_unavailable'], `ticket f : « pas disponible » (${t.json.error})`);
-    ok(String(t.json.error).includes('Scannez la tablette, ou ajoutez votre intervention à la main.'), '… avec l’autre moyen');
-    // Le QR de la tablette : inchangé (ticket raté, plafond absent → pas d’erreur).
+    ok(String(t.json.error).includes('Ajoutez votre intervention à la main, ou scannez la tablette si votre entreprise en a une.'), '… avec l’autre moyen (formule neutre : on ne sait pas si une tablette est reliée)');
+    // Le QR de la tablette : inchangé (aucun plafond, aucune écriture de plus).
     const k = await addKiosk(CO, 't-k', ago(60));
     const bad = await call({ action: 'ticket', k: k.id, c: '00000000' });
-    eq([bad.status, bad.json.code], [400, 'code_invalid'], 'code faux : même refus qu’avant (table des échecs absente : ignorée)');
+    eq([bad.status, bad.json.code], [400, 'code_invalid'], 'code faux : même refus qu’avant');
+    ok(!calls.some((c) => c.table === 'kiosk_ticket_failures'), 'tablette : la table des échecs n’est ni lue ni écrite');
+    // « Déconnecter la tablette » : comme avant (la colonne kind n’existe pas encore).
+    const rv = await call({ action: 'revoke', kiosk_id: k.id }, { token: 'jwt-admin' });
+    eq([rv.status, rv.json.revoked, k.revoked_at != null], [200, 1, true], 'revoke avant la migration : comme avant');
+    k.revoked_at = null;
     const { codeAt, deriveSeed } = await import('./kiosk-code.ts');
     const code = await codeAt(await deriveSeed('cle-de-test', String(k.id), 'sel'), Date.now());
     const good = await call({ action: 'ticket', k: k.id, c: code });
@@ -556,6 +572,7 @@ Deno.test({
     db = freshDb(); migrate();
     let st = await call({ action: 'fixed_status' }, { token: 'jwt-admin' });
     eq([st.status, st.json.available, st.json.enabled, st.json.radius_m, (st.json.point as Row).set], [200, true, false, 200, false], 'désactivé par défaut, rayon 200 m, point non posé');
+    eq([st.json.kiosk_enabled, st.json.has_tablet, st.json.recent], [true, false, []], 'statut : borne allumée, aucune tablette reliée, aucun pointage');
     const noConf = await call({ action: 'fixed_enable' }, { token: 'jwt-admin' });
     eq([noConf.status, noConf.json.code, db.kiosks.length], [400, 'confirm_required', 0], 'activer sans confirmation : refusé, rien de créé');
     const worker = await call({ action: 'fixed_enable', confirm: true }, { token: 'jwt-karim' });
@@ -634,7 +651,16 @@ Deno.test({
     // Sans position (refus, introuvable) : rien d'enregistré, l'autre moyen proposé.
     let p = await call({ action: 'punch', ticket: t.json.ticket }, { token: 'jwt-karim' });
     eq([p.status, p.json.code], [403, 'position_missing'], 'sans position : refusé');
-    ok(String(p.json.error).endsWith('Scannez la tablette, ou ajoutez votre intervention à la main.'), `« ${p.json.error} »`);
+    ok(String(p.json.error).endsWith('Ajoutez votre intervention à la main.') && !/tablette/i.test(String(p.json.error)),
+      `aucune tablette reliée : « ${p.json.error} » (jamais « Scannez la tablette »)`);
+    eq(t.json.has_tablet, false, 'ticket : has_tablet = faux');
+    // Une tablette reliée : l'autre moyen la cite.
+    const tabScan = await addKiosk(CO, 't-tab-scan', ago(60));
+    const tWith = await call({ action: 'ticket', f: token });
+    eq(tWith.json.has_tablet, true, 'ticket : has_tablet = vrai avec une tablette reliée');
+    p = await call({ action: 'punch', ticket: tWith.json.ticket }, { token: 'jwt-karim' });
+    ok(String(p.json.error).endsWith('Scannez la tablette, ou ajoutez votre intervention à la main.'), `tablette reliée : « ${p.json.error} »`);
+    tabScan.revoked_at = ago(1); // retirée : la suite se joue sans tablette
     eq([db.active_sessions.length, db.kiosk_punches.length], [0, 0], '… aucun chrono, aucun pointage');
     // Hors zone, trop imprécis.
     p = await call({ action: 'punch', ticket: t.json.ticket, ...at(400, 10) }, { token: 'jwt-karim' });
@@ -657,6 +683,13 @@ Deno.test({
     ok(!sent.includes(String(pos.lat)) && !sent.includes(String(pos.lat).slice(0, 9)), 'la latitude du salarié n’est envoyée à aucune table');
     ok(!JSON.stringify(db.kiosk_punches).match(/lat|lng|accuracy/), 'kiosk_punches : aucune coordonnée');
     ok(!JSON.stringify(db.active_sessions).includes(String(pos.lat).slice(0, 7)), 'active_sessions : aucune coordonnée');
+    // Le bureau LIT « dans la zone : oui » (qui, quand), sans aucune coordonnée ; l'autre entreprise ne voit rien.
+    const stR = await call({ action: 'fixed_status' }, { token: 'jwt-admin' });
+    const rec = stR.json.recent as Row[];
+    eq([rec.length, rec[0].name, rec[0].kind, rec[0].in_zone], [1, 'Karim', 'arrival', true], 'bureau : le pointage du QR fixe, « dans la zone : oui »');
+    ok(typeof rec[0].at === 'string' && !JSON.stringify(rec).match(/lat|lng|accuracy|45\./), '… avec la date, sans coordonnées');
+    eq((await call({ action: 'fixed_status' }, { token: 'jwt-admin2' })).json.recent, [], 'autre entreprise : ne voit pas ces pointages');
+    eq((await call({ action: 'fixed_status' }, { token: 'jwt-karim' })).status, 403, 'un salarié ne lit pas la liste');
 
     // Double scan en moins de 60 s : refusé (message neutre).
     t = await call({ action: 'ticket', f: token });
@@ -677,7 +710,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: 'Lot 12 QR fixe — jeton révoqué, désactivé, faux, autre entreprise, borne coupée, point absent, plafond',
+  name: 'Lot 12 QR fixe — jeton révoqué, désactivé, faux, autre entreprise, borne coupée, point absent',
   sanitizeOps: false, sanitizeResources: false,
   async fn() {
     db = freshDb(); migrate();
@@ -719,17 +752,132 @@ Deno.test({
     const en = await call({ action: 'fixed_enable', confirm: true }, { token: 'jwt-admin' });
     const t4 = await call({ action: 'ticket', f: en.json.token });
     eq([t4.status, t4.json.code], [409, 'fixed_no_point'], 'point de référence pas posé : refus clair');
-    // Plafond : 30 QR refusés depuis une adresse en 10 minutes → 429, même avec un bon QR ; une autre adresse passe.
     await call({ action: 'fixed_point', lat: REF.lat, lng: REF.lng, accuracy: 10 }, { token: 'jwt-admin' });
-    for (let i = 0; i < 30; i++) db.kiosk_ticket_failures.push({ id: i + 1, ip: '198.51.100.9', created_at: ago(1) });
-    eq((await call({ action: 'ticket', f: en.json.token }, { ip: '198.51.100.9' })).status, 429, '30 QR refusés depuis cette adresse : « Trop d’essais »');
-    eq((await call({ action: 'ticket', f: en.json.token }, { ip: '198.51.100.10' })).status, 200, 'une autre adresse : pas bloquée');
-    for (const f of db.kiosk_ticket_failures) f.created_at = ago(11);
-    eq((await call({ action: 'ticket', f: en.json.token }, { ip: '198.51.100.9' })).status, 200, 'après 10 minutes : de nouveau permis');
+    eq((await call({ action: 'ticket', f: en.json.token })).status, 200, 'point posé : le QR fixe marche');
+  },
+});
+
+Deno.test({
+  name: 'Lot 12 QR fixe — plafond des essais REFUSÉS : jamais un QR valable, jamais la tablette, aucune adresse gardée',
+  sanitizeOps: false, sanitizeResources: false,
+  async fn() {
+    db = freshDb(); migrate();
+    const token = await enableFixed();
+    const [id, sig] = String(token).split('.');
+    const bad = (n: number) => `${id}.${'E'.repeat(42)}${'AB'[n % 2]}`; // forme valable, signature fausse
+    const A = '198.51.100.9';
+    const tablet = await addKiosk(CO, 't-plaf', ago(60));
+    const { codeAt, deriveSeed } = await import('./kiosk-code.ts');
+    const goodCode = async () => await codeAt(await deriveSeed('cle-de-test', String(tablet.id), 'sel'), Date.now());
+
+    // 30 jetons faux depuis la même adresse : refusés (400) et comptés ; le 31e essai FAUX reçoit « Trop d'essais » (429).
+    for (let i = 0; i < 30; i++) eq((await call({ action: 'ticket', f: bad(i) }, { ip: A })).status, 400, `faux n° ${i + 1} : refusé (400)`);
+    const sizeBefore = db.kiosk_ticket_failures.length;
+    const over = await call({ action: 'ticket', f: bad(31) }, { ip: A });
+    eq([over.status, over.json.code], [429, 'throttled'], '31e jeton faux depuis cette adresse : « Trop d’essais » (429)');
+    eq(db.kiosk_ticket_failures.length, sizeBefore, '… plus aucune écriture une fois le seau plein');
+    // JAMAIS un QR valable : le bon jeton passe, depuis la même adresse, seau plein.
+    eq((await call({ action: 'ticket', f: token }, { ip: A })).status, 200, 'QR fixe valable depuis l’adresse « pleine » : accepté');
+    // JAMAIS la tablette (k/c inchangé) : un bon code passe, un faux ne compte ni ne bloque.
+    const before = calls.length;
+    const tk = await call({ action: 'ticket', k: tablet.id, c: await goodCode() }, { ip: A });
+    eq([tk.status, 'needs_position' in tk.json], [200, false], 'QR de la tablette depuis l’adresse « pleine » : accepté, sans position');
+    const tkBad = await call({ action: 'ticket', k: tablet.id, c: '00000000' }, { ip: A });
+    eq([tkBad.status, tkBad.json.code], [400, 'code_invalid'], 'code faux de la tablette : le refus d’avant (400), jamais « Trop d’essais »');
+    ok(!calls.slice(before).some((c) => c.table === 'kiosk_ticket_failures'), 'tablette : la table des échecs n’est ni lue ni écrite');
+    // Les échecs d'une AUTRE entreprise (un autre QR visé) ne comptent pas pour celui-ci.
+    const token2 = await enableFixed('jwt-admin2');
+    const id2 = String(token2).split('.')[0];
+    const other = (n: number) => `${id2}.${'C'.repeat(42)}${'AB'[n % 2]}`;
+    const fromB = '203.0.113.77';
+    for (let i = 0; i < 30; i++) await call({ action: 'ticket', f: other(i) }, { ip: fromB });
+    eq((await call({ action: 'ticket', f: other(99) }, { ip: fromB })).status, 429, 'l’autre entreprise : son propre seau est plein…');
+    eq((await call({ action: 'ticket', f: bad(5) }, { ip: fromB })).status, 400, '… sans toucher à un essai faux visant le QR de CETTE entreprise (autre seau)');
+    // Une autre adresse : pas bloquée.
+    eq((await call({ action: 'ticket', f: bad(7) }, { ip: '198.51.100.10' })).status, 400, 'autre adresse : le refus normal');
+    // Fenêtre passée (10 minutes) : le compteur repart à 1 — sans rien effacer.
+    for (const r of db.kiosk_ticket_failures) r.window_start = new Date(Date.now() - 11 * 60_000).toISOString();
     const n = db.kiosk_ticket_failures.length;
-    await call({ action: 'ticket', f: tampered }, { ip: '198.51.100.11' });
-    eq(db.kiosk_ticket_failures.length, n + 1, 'un QR refusé est compté (adresse seulement, rien d’autre)');
-    eq(Object.keys(db.kiosk_ticket_failures.at(-1)!).sort(), ['created_at', 'id', 'ip'], '… sans jeton ni position');
+    eq((await call({ action: 'ticket', f: bad(8) }, { ip: A })).status, 400, 'après 10 minutes : de nouveau permis');
+    eq(db.kiosk_ticket_failures.length, n, '… la ligne est réécrite, la table ne grossit pas');
+    // AUCUNE adresse gardée : ni dans la table, ni dans ce qui est envoyé à la base.
+    const sentIps = JSON.stringify(calls.filter((c) => c.table === 'kiosk_ticket_failures').map((c) => [c.query, c.body]));
+    ok(!/198\.51|203\.0\.113|203\.0\.113\.1/.test(sentIps + JSON.stringify(db.kiosk_ticket_failures)), 'aucune adresse IP (ni claire, ni entière) dans la table des échecs');
+    for (const c of calls.filter((x) => x.table === 'kiosk_ticket_failures' && x.method === 'POST')) {
+      eq(Object.keys(c.body as Row).sort(), ['bucket', 'failures', 'window_start'], 'seulement un seau, un compteur et une date de fenêtre');
+    }
+    ok(db.kiosk_ticket_failures.every((r) => Number.isInteger(r.bucket) && (r.bucket as number) >= 0 && (r.bucket as number) < 4096), 'seau entre 0 et 4 095');
+    // Une adresse qui change à chaque essai : la table reste bornée par le nombre de seaux, jamais une ligne par essai.
+    for (let i = 0; i < 300; i++) await call({ action: 'ticket', f: `${id}.${'D'.repeat(42)}${'AB'[i % 2]}` }, { ip: `10.0.${i >> 8}.${i & 255}` });
+    ok(db.kiosk_ticket_failures.length < 300 + n, `adresse changeante : une ligne par SEAU, pas par essai (${db.kiosk_ticket_failures.length} lignes pour 300 essais)`);
+    ok(!calls.some((c) => c.method === 'DELETE'), 'aucun DELETE');
+  },
+});
+
+Deno.test({
+  name: 'Lot 12 QR fixe — borne coupée par BEMEXO : le bureau peut couper le QR fixe, pas l’activer',
+  sanitizeOps: false, sanitizeResources: false,
+  async fn() {
+    db = freshDb(); migrate();
+    const token = await enableFixed();
+    const row = db.kiosks.find((k) => k.kind === 'fixe')!;
+    db.companies[0].kiosk_enabled = false;
+    // Lire l'état : permis, et dit que la borne est coupée.
+    const st = await call({ action: 'fixed_status' }, { token: 'jwt-admin' });
+    eq([st.status, st.json.available, st.json.enabled, st.json.kiosk_enabled], [200, true, true, false], 'borne coupée : le bureau lit l’état du QR fixe (actif, borne coupée)');
+    // Le QR imprimé ne marche pas tant que la borne est coupée…
+    eq((await call({ action: 'ticket', f: token })).json.code, 'kiosk_disabled', 'QR imprimé refusé tant que la borne est coupée');
+    // … mais tout ce qui active ou règle reste refusé.
+    for (const b of [{ action: 'fixed_point', lat: REF.lat, lng: REF.lng, accuracy: 10 }, { action: 'fixed_radius', radius_m: 500 },
+      { action: 'create_pairing' }, { action: 'settings' }, { action: 'revoke', kiosk_id: row.id }]) {
+      const r = await call(b, { token: 'jwt-admin' });
+      eq([r.status, r.json.code], [403, 'kiosk_disabled'], `${b.action} : refusé (borne coupée)`);
+    }
+    ok(row.revoked_at == null, '… le QR fixe est toujours là');
+    // Un salarié, lui, n'y touche pas.
+    eq((await call({ action: 'fixed_disable' }, { token: 'jwt-karim' })).status, 403, 'un salarié ne peut pas désactiver');
+    // Régénérer : permis (l'ancien QR photographié cesse de marcher pour de bon).
+    eq((await call({ action: 'fixed_regenerate' }, { token: 'jwt-admin' })).json.code, 'confirm_required', 'régénérer demande toujours confirmation');
+    const rg = await call({ action: 'fixed_regenerate', confirm: true }, { token: 'jwt-admin' });
+    ok(rg.status === 200 && rg.json.enabled && rg.json.token !== token && row.revoked_at, 'borne coupée : régénéré, l’ancien QR est retiré');
+    // Désactiver : permis.
+    const ds = await call({ action: 'fixed_disable' }, { token: 'jwt-admin' });
+    eq([ds.status, ds.json.enabled, ds.json.kiosk_enabled], [200, false, false], 'borne coupée : désactivé');
+    ok(db.kiosks.filter((k) => k.kind === 'fixe').every((k) => k.revoked_at), 'toutes les lignes fixes retirées');
+    // Activer, ou régénérer sans QR (ce serait activer) : refusé ; rien n'est créé.
+    const count = db.kiosks.length;
+    eq([(await call({ action: 'fixed_enable', confirm: true }, { token: 'jwt-admin' })).json.code, (await call({ action: 'fixed_regenerate', confirm: true }, { token: 'jwt-admin' })).json.code],
+      ['kiosk_disabled', 'kiosk_disabled'], 'borne coupée : activer ou « régénérer » sans QR actif est refusé');
+    eq(db.kiosks.length, count, '… aucune ligne créée');
+    ok(!calls.some((c) => c.method === 'DELETE'), 'aucun DELETE');
+    // Borne rallumée : tout revient.
+    db.companies[0].kiosk_enabled = true;
+    eq((await call({ action: 'fixed_enable', confirm: true }, { token: 'jwt-admin' })).status, 200, 'borne rallumée : on peut de nouveau activer');
+  },
+});
+
+Deno.test({
+  name: 'Lot 12 QR fixe — « Déconnecter la tablette » d’une ancienne fenêtre ne coupe jamais le QR fixe',
+  sanitizeOps: false, sanitizeResources: false,
+  async fn() {
+    db = freshDb(); migrate();
+    await enableFixed();
+    const row = db.kiosks.find((k) => k.kind === 'fixe')!;
+    const tab = await addKiosk(CO, 't-tab', ago(60));
+    // L'ancienne fenêtre du bureau prend la ligne fixe pour une tablette et demande à la retirer.
+    const r1 = await call({ action: 'revoke', kiosk_id: row.id }, { token: 'jwt-admin' });
+    eq([r1.status, r1.json.revoked, row.revoked_at], [200, 0, null], 'revoke sur le QR fixe : rien de retiré (seuls fixed_disable / fixed_regenerate le coupent)');
+    const r2 = await call({ action: 'revoke', kiosk_id: tab.id }, { token: 'jwt-admin' });
+    eq([r2.status, r2.json.revoked, tab.revoked_at != null], [200, 1, true], 'revoke sur la tablette : retirée, comme avant');
+    // Relier une nouvelle tablette : le secours de l'ancienne fenêtre (revoke des plus anciennes) ne touche pas non plus au QR fixe.
+    const cp = await call({ action: 'create_pairing' }, { token: 'jwt-admin' });
+    const pr = await call({ action: 'pair', code: cp.json.code });
+    eq(pr.status, 200, 'tablette reliée');
+    for (const k of db.kiosks.filter((x) => x.id !== pr.json.kiosk_id)) await call({ action: 'revoke', kiosk_id: k.id }, { token: 'jwt-admin' });
+    ok(row.revoked_at == null, 'le QR fixe reste actif après tous les « revoke » d’une ancienne fenêtre');
+    // Un autre admin ne retire pas non plus la tablette d'une autre entreprise.
+    const foreign = await call({ action: 'revoke', kiosk_id: pr.json.kiosk_id }, { token: 'jwt-admin2' });
+    eq(foreign.json.revoked, 0, 'autre entreprise : rien de retiré');
   },
 });
 
@@ -754,8 +902,10 @@ Deno.test({
     const far = await call({ action: 'punch', ticket: t2.json.ticket, lat: 43.3, lng: 5.4, accuracy: 5 }, { token: 'jwt-karim' });
     eq([far.status, far.json.kind], [200, 'arrival'], 'position « à 300 km » avec le QR de la tablette : ignorée (aucun contrôle)');
     ok(!everythingSent().includes('43.3'), '… et jamais envoyée à la base');
-    // Le code faux de la tablette compte dans le plafond (table présente).
-    await call({ action: 'ticket', k: k.id, c: '00000000' }, { ip: '192.0.2.50' });
-    ok(db.kiosk_ticket_failures.some((f) => f.ip === '192.0.2.50'), 'code faux de la tablette : compté dans le plafond par adresse');
+    // Le code faux de la tablette : le refus d'avant, rien de plus (aucun plafond, aucune écriture).
+    const callsBefore = calls.length;
+    const wrong = await call({ action: 'ticket', k: k.id, c: '00000000' }, { ip: '192.0.2.50' });
+    eq([wrong.status, wrong.json.code], [400, 'code_invalid'], 'code faux de la tablette : refus d’avant');
+    ok(!calls.slice(callsBefore).some((c) => c.table === 'kiosk_ticket_failures'), 'code faux de la tablette : aucun plafond, la table des échecs n’est pas touchée');
   },
 });

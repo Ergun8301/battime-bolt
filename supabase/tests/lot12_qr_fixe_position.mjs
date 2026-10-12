@@ -124,7 +124,7 @@ const conPrint = async () => (await one(`SELECT string_agg(conname || ':' || md5
     -- PostgreSQL 17 range aussi les NOT NULL dans pg_constraint : ceux des colonnes neuves ne comptent pas.
     AND NOT (contype = 'n' AND conname IN ('kiosks_kind_not_null', 'kiosk_settings_fixed_qr_radius_m_not_null'))`, [NEW_CONS])).s;
 const idxPrint = async () => (await one(`SELECT string_agg(indexname || ':' || md5(indexdef), ',' ORDER BY indexname) AS s FROM pg_indexes
-  WHERE schemaname = 'public' AND indexname NOT IN ('kiosks_one_fixed_qr_idx') AND NOT (tablename = ANY($1))`, [NEW_TABLES])).s;
+  WHERE schemaname = 'public' AND indexname NOT IN ('kiosks_one_fixed_qr_idx', 'kiosk_punches_in_zone_idx') AND NOT (tablename = ANY($1))`, [NEW_TABLES])).s;
 const privPrint = async () => JSON.stringify(await rows(`SELECT c.relname, r.rolname, has_table_privilege(r.rolname, c.oid, 'SELECT,INSERT,UPDATE,DELETE') AS p
   FROM pg_class c CROSS JOIN (VALUES ('anon'), ('authenticated')) AS r(rolname)
   WHERE c.relnamespace = 'public'::regnamespace AND c.relkind = 'r' AND NOT (c.relname = ANY($1)) ORDER BY 1, 2`, [NEW_TABLES]));
@@ -134,7 +134,8 @@ const colPrivPrint = async () => JSON.stringify(await rows(`SELECT table_name, c
   FROM information_schema.columns CROSS JOIN (VALUES ('anon'), ('authenticated')) AS r(rolname)
   WHERE table_schema = 'public' AND table_name LIKE 'kiosk%' AND NOT ((table_name || '.' || column_name) = ANY($1)) AND NOT (table_name = ANY($2))
   ORDER BY 1, 2, 3`, [NEW_COLS, NEW_TABLES]));
-const prints = async () => ({ fn: await fnPrint(), pol: await polPrint(), trg: await trgPrint(), col: await colPrint(), con: await conPrint(),
+const seqPrint = async () => (await one(`SELECT coalesce(string_agg(relname, ',' ORDER BY relname), '') AS s FROM pg_class WHERE relkind = 'S' AND relnamespace = 'public'::regnamespace`)).s;
+const prints = async () => ({ seq: await seqPrint(), fn: await fnPrint(), pol: await polPrint(), trg: await trgPrint(), col: await colPrint(), con: await conPrint(),
   idx: await idxPrint(), priv: await privPrint(), colpriv: await colPrivPrint() });
 const before = await prints();
 // Droits PAR DÉFAUT de la production : tout objet neuf est ouvert à anon et authenticated.
@@ -157,6 +158,7 @@ check(MIG_FILE === '20261011150000_lot12_qr_fixe_position.sql', `fichier ${MIG_F
 { const e = await errExec(SQL); check(!e, `migration chargée${e ? ` — ${e}` : ''}`); }
 { const e = await errExec(SQL); check(!e, `… une deuxième fois sans erreur (rejouable)${e ? ` — ${e}` : ''}`); }
 const after = await prints();
+check(before.seq === after.seq, `aucune séquence neuve (pas de colonne d’identité : rien à révoquer, rien d’ouvert à anon) — avant : « ${before.seq} »`);
 check(before.fn === after.fn, 'fonctions existantes inchangées (company_kiosk_active, company_has_kiosk, kiosk_open_session, gardes…)');
 check(before.pol === after.pol, 'policies existantes inchangées (kiosks_admin_read, kiosk_settings_admin_read…)');
 check(before.trg === after.trg, 'triggers existants inchangés (aucun trigger ajouté)');
@@ -169,7 +171,7 @@ check(!!POST_SQL && !!ROLLBACK_SQL, 'le fichier contient la vérification après
 {
   const v = await one(POST_SQL);
   const bad = Object.entries(v).filter(([, x]) => x !== true).map(([k]) => k);
-  check(Object.keys(v).length === 8 && bad.length === 0, `vérification après application : 8 colonnes à true${bad.length ? ` (faux : ${bad.join(', ')})` : ''}`);
+  check(Object.keys(v).length === 9 && bad.length === 0, `vérification après application : 9 colonnes à true${bad.length ? ` (faux : ${bad.join(', ')})` : ''}`);
 }
 
 section('Existant : les tablettes restent des tablettes');
@@ -196,7 +198,17 @@ check(await err(`UPDATE public.kiosk_settings SET fixed_qr_latitude = 45.75, fix
 check(await err(`UPDATE public.kiosk_settings SET fixed_qr_latitude = 45.75, fixed_qr_longitude = NULL WHERE company_id = $1`, [CO]) === '23514', 'point à moitié posé : refusé');
 check(await err(`UPDATE public.kiosk_settings SET fixed_qr_latitude = 45.75, fixed_qr_longitude = 4.83, fixed_qr_accuracy_m = 12, fixed_qr_point_at = now() WHERE company_id = $1`, [CO]) === null, 'point posé à ± 12 m : accepté');
 check(await err(`INSERT INTO public.kiosk_punches (company_id, kiosk_id, user_id, kind, in_zone) VALUES ($1, $2, $3, 'arrival', true)`, [CO, F1, LUCAS]) === null, 'pointage du QR fixe : kiosk_id obligatoire respecté, in_zone = oui');
-check(await err(`INSERT INTO public.kiosk_ticket_failures (ip) VALUES ('203.0.113.9')`) === null, 'service : un QR refusé s’enregistre (plafond de ticket)');
+check(await err(`INSERT INTO public.kiosk_ticket_failures (bucket, failures) VALUES (17, 1)`) === null, 'service : un seau d’essais refusés s’enregistre (plafond de ticket)');
+check(await err(`INSERT INTO public.kiosk_ticket_failures (bucket, failures) VALUES (17, 2)`) === '23505', '… une seule ligne par seau (la fonction la réécrit, elle n’en ajoute pas)');
+check(await err(`INSERT INTO public.kiosk_ticket_failures (bucket) VALUES (4096)`) === '23514' && await err(`INSERT INTO public.kiosk_ticket_failures (bucket) VALUES (-1)`) === '23514', 'seau hors de 0 à 4 095 : refusé (au plus 4 096 lignes : la table ne grossit pas)');
+check(await err(`INSERT INTO public.kiosk_ticket_failures (bucket, failures) VALUES (18, -1)`) === '23514', 'compteur négatif : refusé');
+check(await err(`INSERT INTO public.kiosk_ticket_failures AS t (bucket, failures) VALUES (17, 1) ON CONFLICT (bucket) DO UPDATE SET failures = t.failures + 1, window_start = now()`) === null
+  && (await one(`SELECT failures FROM public.kiosk_ticket_failures WHERE bucket = 17`)).failures === 2, 'service : l’écriture de la fonction (upsert du seau) marche');
+{
+  const cols = (await rows(`SELECT column_name AS c FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'kiosk_ticket_failures' ORDER BY ordinal_position`)).map((r) => r.c);
+  check(cols.join(',') === 'bucket,window_start,failures', `kiosk_ticket_failures : ni adresse IP, ni identifiant, ni jeton (${cols.join(', ')})`);
+  check((await one(`SELECT indexdef FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'kiosk_punches_in_zone_idx'`)).indexdef.includes('WHERE (in_zone IS NOT NULL)'), 'index partiel de lecture du bureau : kiosk_punches_in_zone_idx');
+}
 {
   const cols = (await rows(`SELECT column_name AS c FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'kiosk_punches' ORDER BY ordinal_position`)).map((r) => r.c);
   check(!cols.some((c) => /lat|lng|long|accuracy|position/i.test(c)), `kiosk_punches : aucune colonne de coordonnées (${cols.join(', ')})`);
@@ -238,13 +250,13 @@ await as(ADMIN);
   check(await err(`UPDATE public.kiosks SET kind = 'tablette'`) === '42501', 'bureau : ne change pas le type (écritures par la fonction kiosk seulement)');
   check(await err(`INSERT INTO public.kiosks (company_id, name, token_hash, seed_salt, kind) VALUES ($1, 'x', 'h', 's', 'fixe')`, [CO]) === '42501', 'bureau : ne crée pas de QR fixe en direct');
   check(await err(`UPDATE public.kiosk_settings SET fixed_qr_radius_m = 1000`) === '42501', 'bureau : ne change pas le rayon en direct');
-  check(await err(`SELECT * FROM public.kiosk_ticket_failures`) === '42501' && await err(`INSERT INTO public.kiosk_ticket_failures (ip) VALUES ('x')`) === '42501', 'bureau : aucun accès aux QR refusés');
+  check(await err(`SELECT * FROM public.kiosk_ticket_failures`) === '42501' && await err(`INSERT INTO public.kiosk_ticket_failures (bucket) VALUES (1)`) === '42501' && await err(`UPDATE public.kiosk_ticket_failures SET failures = 0`) === '42501', 'bureau : aucun accès aux essais refusés');
   check(await err(`SELECT in_zone FROM public.kiosk_punches`) === '42501', 'bureau : kiosk_punches reste sans accès client (comme avant)');
 }
 await as(LUCAS);
 check((await rows(`SELECT kind FROM public.kiosks`)).length === 0, 'salarié : ne lit aucune borne');
 check((await rows(`SELECT fixed_qr_latitude FROM public.kiosk_settings`)).length === 0, 'salarié : ne lit pas le point de référence');
-check(await err(`SELECT * FROM public.kiosk_ticket_failures`) === '42501', 'salarié : aucun accès aux QR refusés');
+check(await err(`SELECT * FROM public.kiosk_ticket_failures`) === '42501' && await err(`UPDATE public.kiosk_ticket_failures SET failures = 0`) === '42501', 'salarié : aucun accès aux essais refusés');
 check(await err(`UPDATE public.kiosk_punches SET in_zone = true`) === '42501', 'salarié : ne pose pas « dans la zone »');
 await as(ADMIN2);
 check(!(await rows(`SELECT id FROM public.kiosks`)).some((x) => x.id === F1 || x.id === TAB), 'bureau d’une autre entreprise : ne voit pas les bornes ni le QR fixe de CO');
@@ -259,7 +271,7 @@ check((await one(`SELECT public.company_has_kiosk() AS v`)).v === true, '… all
 await as('', 'anon');
 check(await err(`SELECT kind FROM public.kiosks`) === '42501', 'anon : kiosks refusé');
 check(await err(`SELECT fixed_qr_latitude FROM public.kiosk_settings`) === '42501', 'anon : kiosk_settings refusé');
-check(await err(`SELECT * FROM public.kiosk_ticket_failures`) === '42501' && await err(`INSERT INTO public.kiosk_ticket_failures (ip) VALUES ('x')`) === '42501', 'anon : QR refusés inaccessibles');
+check(await err(`SELECT * FROM public.kiosk_ticket_failures`) === '42501' && await err(`INSERT INTO public.kiosk_ticket_failures (bucket) VALUES (2)`) === '42501' && await err(`UPDATE public.kiosk_ticket_failures SET failures = 0`) === '42501', 'anon : essais refusés inaccessibles');
 check(await err(`SELECT public.company_has_kiosk()`) === '42501', 'anon : company_has_kiosk refusé (inchangé)');
 await root();
 {
@@ -283,7 +295,7 @@ check(Number((await one(`SELECT count(*) AS n FROM public.kiosk_punches`)).n) ==
 { const e = await errExec(SQL); check(!e, `la migration se recharge après le retour arrière${e ? ` — ${e}` : ''}`); }
 {
   const v = await one(POST_SQL);
-  check(Object.values(v).every((x) => x === true), 'vérification après application : de nouveau 8 × true');
+  check(Object.keys(v).length === 9 && Object.values(v).every((x) => x === true), 'vérification après application : de nouveau 9 × true');
 }
 check((await rows(`SELECT kind FROM public.kiosks`)).every((r) => r.kind === 'tablette'), 'rechargée : les anciennes lignes (retirées) sont vues comme tablettes retirées, sans effet');
 

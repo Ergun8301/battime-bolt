@@ -29,10 +29,13 @@
 //   SALARIÉ (le QR, puis son propre jeton)
 //     ticket          → vérifie le code du QR, rend un ticket de 5 minutes
 //                       (le temps de se connecter si besoin). Lot 12 : aussi le
-//                       jeton du QR fixe (f) ; QR refusés plafonnés par adresse
+//                       jeton du QR fixe (f) ; les essais REFUSÉS du QR fixe
+//                       sont plafonnés (jamais un QR valable)
 //     punch           → arrivée ou départ, AU NOM DU SALARIÉ. Lot 12 : avec un
 //                       ticket de QR fixe, la position lue au scan est exigée
-//                       et vérifiée ici ; elle n'est JAMAIS enregistrée
+//                       et comparée ici ; elle n'est JAMAIS enregistrée.
+//                       Elle est DÉCLARÉE par le téléphone : un frein, pas une
+//                       preuve de présence
 //
 // Lot 11 : plus aucun contrôle de position (GPS). La tablette n'envoie plus la
 // sienne, le téléphone non plus ; les colonnes `require_gps`, `latitude`,
@@ -69,11 +72,11 @@ import {
 } from '../_shared/kiosk-code.ts';
 import {
   arrivalPlace, checkScan, decideAction, isClosedError, pairThrottled, parisDate, parisTime, rpcMissing,
-  schemaMissing, ticketThrottled, REFUSAL_MESSAGES, type PlannedSlot,
+  schemaMissing, ticketBucket, ticketBucketFull, ticketBucketNext, REFUSAL_MESSAGES, type PlannedSlot, type TicketBucketRow,
 } from '../_shared/kiosk-rules.ts';
 import {
-  checkFixedPosition, fixedQrRef, fixedQrSignature, fixedQrToken, parsePosition, parseRadius, safeEqual, splitFixedToken,
-  FIXED_QR_POINT_MAX_ACCURACY_M, FIXED_QR_RADIUS_DEFAULT_M, FIXED_REFUSAL_MESSAGES, FIXED_SALT_PREFIX,
+  checkFixedPosition, fixedQrRef, fixedQrSignature, fixedQrToken, fixedRefusalMessage, parsePosition, parseRadius, safeEqual, splitFixedToken,
+  FIXED_QR_POINT_MAX_ACCURACY_M, FIXED_QR_RADIUS_DEFAULT_M, FIXED_REFUSAL_MESSAGES, FIXED_SALT_PREFIX, type FixedRefusal,
 } from '../_shared/fixed-qr.ts';
 import {
   buildBoard, parisWeek,
@@ -91,6 +94,10 @@ const json = (body: unknown, status = 200) =>
 const MESSAGES: Record<string, string> = { ...REFUSAL_MESSAGES, ...FIXED_REFUSAL_MESSAGES };
 const refuse = (code: keyof typeof REFUSAL_MESSAGES | string, status = 400, extra: Record<string, unknown> = {}) =>
   json({ error: MESSAGES[code] || code, code, ...extra }, status);
+// Lot 12 : un refus du QR fixe dont l'entreprise est connue — « Scannez la
+// tablette » n'est dit que si une tablette est reliée (voir hasTablet).
+const refuseFixed = (code: FixedRefusal, status: number, tablet: boolean | undefined, extra: Record<string, unknown> = {}) =>
+  json({ error: fixedRefusalMessage(code, tablet), code, ...extra }, status);
 
 const PAIRING_TTL_MS = 10 * 60 * 1000;
 const TICKET_TTL_MS = 5 * 60 * 1000;
@@ -154,12 +161,20 @@ async function loadSettings(admin: SupabaseClient, companyId: string) {
 
 // ── BUREAU ──────────────────────────────────────────────────────────────────
 
+/** Actions du QR fixe permises au bureau même quand la borne est coupée : elles ne font que couper (ou lire). */
+const CUT_ONLY_ACTIONS = new Set(['fixed_status', 'fixed_disable', 'fixed_regenerate']);
+
 async function adminAction(admin: SupabaseClient, req: Request, action: string, body: Record<string, unknown>) {
   const caller = await callerFromJwt(admin, req);
   if (!caller) return json({ error: 'Non authentifié' }, 401);
   const { profile } = caller;
   if (profile.role !== 'admin' || profile.is_active === false) return json({ error: "Réservé à l'administrateur" }, 403);
-  if (!(await companyEnabled(admin, profile.company_id))) return refuse('kiosk_disabled', 403);
+  // Lot 12 : borne coupée par BEMEXO (kiosk_enabled faux) — le bureau garde la
+  // main pour COUPER son QR fixe : en lire l'état, le désactiver, le régénérer
+  // (le QR imprimé ne doit pas rester valable en attendant qu'on rallume). Tout
+  // le reste (l'activer, le point, le rayon, les tablettes) demande la borne allumée.
+  const borneOn = await companyEnabled(admin, profile.company_id);
+  if (!borneOn && !CUT_ONLY_ACTIONS.has(action)) return refuse('kiosk_disabled', 403);
 
   if (action === 'create_pairing') {
     // Lot 11 : la fenêtre « Borne » n'envoie plus ni nom ni lieu (une seule
@@ -210,8 +225,19 @@ async function adminAction(admin: SupabaseClient, req: Request, action: string, 
   }
 
   if (action === 'revoke') {
-    const { data, error } = await admin.from('kiosks').update({ revoked_at: new Date().toISOString() })
-      .eq('id', String(body.kiosk_id || '')).eq('company_id', profile.company_id).is('revoked_at', null).select('id');
+    // Lot 12 : « Déconnecter la tablette » ne retire que des TABLETTES. Une
+    // fenêtre du bureau restée ouverte avec l'ancienne version du site (qui
+    // prendrait la ligne du QR fixe pour une tablette) ne coupe donc jamais le
+    // QR imprimé : seuls fixed_disable / fixed_regenerate le font. Colonne
+    // `kind` absente (migration pas passée) : la règle d'avant.
+    const cut = (onlyTablets: boolean) => {
+      let q = admin.from('kiosks').update({ revoked_at: new Date().toISOString() })
+        .eq('id', String(body.kiosk_id || '')).eq('company_id', profile.company_id).is('revoked_at', null);
+      if (onlyTablets) q = q.neq('kind', 'fixe');
+      return q.select('id');
+    };
+    let { data, error } = await cut(true);
+    if (schemaMissing(error)) ({ data, error } = await cut(false));
     if (error) return json({ error: 'Retrait impossible' }, 500);
     return json({ success: true, revoked: (data || []).length });
   }
@@ -233,7 +259,7 @@ async function adminAction(admin: SupabaseClient, req: Request, action: string, 
     return json({ success: true, settings: await loadSettings(admin, profile.company_id) });
   }
 
-  if (action.startsWith('fixed_')) return await fixedAdmin(admin, profile, action, body);
+  if (action.startsWith('fixed_')) return await fixedAdmin(admin, profile, action, body, borneOn);
 
   return json({ error: 'Action inconnue' }, 400);
 }
@@ -275,10 +301,46 @@ async function activeFixedRow(admin: SupabaseClient, companyId: string) {
   return data as { id: string; seed_salt: string; created_at: string; last_seen_at: string | null } | null;
 }
 
+/** Une tablette est-elle reliée (non retirée) ? `undefined` = on ne peut pas le savoir (colonne absente, panne). */
+async function hasTablet(admin: SupabaseClient, companyId: string): Promise<boolean | undefined> {
+  const { count, error } = await admin.from('kiosks').select('id', { count: 'exact', head: true })
+    .eq('company_id', companyId).eq('kind', 'tablette').is('revoked_at', null);
+  if (error) return undefined;
+  return (count || 0) > 0;
+}
+
+/** Combien de pointages récents le bureau voit sous le QR fixe. */
+const RECENT_FIXED_PUNCHES = 20;
+
+/**
+ * Les derniers pointages faits avec un QR fixe, pour le bureau de l'entreprise :
+ * qui, arrivée ou départ, quand, « dans la zone : oui ». Jamais de coordonnées
+ * (il n'y en a nulle part). « Dans la zone » est la position DÉCLARÉE par le
+ * téléphone : l'écran le dit, ce n'est pas une preuve de présence.
+ */
+async function recentFixedPunches(admin: SupabaseClient, companyId: string) {
+  const { data, error } = await admin.from('kiosk_punches').select('user_id, kind, created_at, in_zone')
+    .eq('company_id', companyId).not('in_zone', 'is', null)
+    .order('created_at', { ascending: false }).limit(RECENT_FIXED_PUNCHES);
+  if (error) { console.error('[kiosk] fixed recent', error.code); return []; }
+  const punches = (data || []) as { user_id: string; kind: string; created_at: string; in_zone: boolean | null }[];
+  if (!punches.length) return [];
+  const ids = [...new Set(punches.map((x) => x.user_id))];
+  const { data: us } = await admin.from('users').select('id, first_name, last_name').eq('company_id', companyId).in('id', ids);
+  const names = new Map(((us || []) as { id: string; first_name: string | null; last_name: string | null }[])
+    .map((u) => [u.id, [u.first_name, u.last_name].filter(Boolean).join(' ') || 'Salarié']));
+  return punches.map((x) => ({ name: names.get(x.user_id) || 'Salarié', kind: x.kind, at: x.created_at, in_zone: x.in_zone === true }));
+}
+
 async function fixedStatus(admin: SupabaseClient, companyId: string) {
   const [row, point] = await Promise.all([activeFixedRow(admin, companyId), loadFixedPoint(admin, companyId)]);
   if (row === undefined || point === undefined) return json({ available: false });
-  const { data: c } = await admin.from('companies').select('name').eq('id', companyId).maybeSingle();
+  const [{ data: c }, tablet, borneOn, recent] = await Promise.all([
+    admin.from('companies').select('name').eq('id', companyId).maybeSingle(),
+    hasTablet(admin, companyId),
+    companyEnabled(admin, companyId),
+    recentFixedPunches(admin, companyId),
+  ]);
   let uses7d = 0;
   if (row) {
     const { count } = await admin.from('kiosk_punches').select('id', { count: 'exact', head: true })
@@ -288,6 +350,10 @@ async function fixedStatus(admin: SupabaseClient, companyId: string) {
   return json({
     available: true,
     enabled: !!row,
+    // Faux = borne coupée par BEMEXO : le QR fixe ne marche pas, le bureau peut seulement le couper.
+    kiosk_enabled: borneOn,
+    // Faux = aucune tablette reliée : le QR fixe est alors le seul pointage en direct.
+    has_tablet: tablet,
     company_name: (c as { name?: string } | null)?.name || '',
     // Le jeton est recalculé, jamais lu en base : le bureau peut réimprimer.
     token: row ? await fixedQrToken(SERVER_KEY, row.id, row.seed_salt) : null,
@@ -295,6 +361,7 @@ async function fixedStatus(admin: SupabaseClient, companyId: string) {
     created_at: row?.created_at ?? null,
     last_used_at: row?.last_seen_at ?? null,
     uses_7d: uses7d,
+    recent,
     // Le point lui-même n'est pas renvoyé : seulement s'il est posé, sa précision et sa date.
     point: { set: pointSet(point), accuracy_m: pointSet(point) ? point.accuracy_m : null, at: pointSet(point) ? point.at : null },
     radius_m: point?.radius ?? FIXED_QR_RADIUS_DEFAULT_M,
@@ -319,7 +386,7 @@ async function revokeFixedRows(admin: SupabaseClient, companyId: string) {
     .eq('company_id', companyId).eq('kind', 'fixe').is('revoked_at', null).select('id');
 }
 
-async function fixedAdmin(admin: SupabaseClient, profile: { id: string; company_id: string }, action: string, body: Record<string, unknown>) {
+async function fixedAdmin(admin: SupabaseClient, profile: { id: string; company_id: string }, action: string, body: Record<string, unknown>, borneOn: boolean) {
   const companyId = profile.company_id;
   if (action === 'fixed_status') return await fixedStatus(admin, companyId);
 
@@ -331,6 +398,9 @@ async function fixedAdmin(admin: SupabaseClient, profile: { id: string; company_
     // Activer (moins sécurisé) et régénérer (l'ancien QR imprimé ne marche plus)
     // demandent une confirmation explicite, donnée à l'écran.
     if (body.confirm !== true) return refuse('confirm_required', 400);
+    // Borne coupée : on régénère un QR qui existe (l'ancien cesse de marcher),
+    // on n'en crée pas un de plus — activer demande la borne allumée.
+    if (!borneOn && !current) return refuse('kiosk_disabled', 403);
     if (action === 'fixed_enable' && current) return await fixedStatus(admin, companyId);
     if (action === 'fixed_regenerate') {
       const { error } = await revokeFixedRows(admin, companyId);
@@ -556,22 +626,30 @@ async function board(admin: SupabaseClient, body: Record<string, unknown>) {
 
 const clientIp = (req: Request) => (req.headers.get('x-forwarded-for') || '').split(',')[0].trim() || 'inconnue';
 
-// Lot 12 — QR refusés par adresse, 10 minutes (les deux sortes de QR). Table
-// absente (migration pas passée) : aucun plafond, comme avant ; jamais bloquant.
-async function ticketBlocked(admin: SupabaseClient, ip: string): Promise<boolean> {
-  const { count, error } = await admin.from('kiosk_ticket_failures').select('id', { count: 'exact', head: true })
-    .eq('ip', ip).gt('created_at', new Date(Date.now() - 10 * 60 * 1000).toISOString());
-  return !error && ticketThrottled(count || 0);
-}
-async function noteTicketFailure(admin: SupabaseClient, ip: string) {
-  const { error } = await admin.from('kiosk_ticket_failures').insert({ ip });
-  if (error && !schemaMissing(error)) console.error('[kiosk] ticket failure', error.code);
+// Lot 12 — QR FIXE : les essais REFUSÉS sont plafonnés (30 en 10 minutes par
+// couple adresse + QR visé), SANS jamais gêner un QR valable : le jeton est
+// vérifié d'abord, et le plafond ne change que la réponse d'un essai qui échoue
+// déjà (429 au lieu de 400). Le QR de la tablette (k/c) n'y touche pas.
+// Aucune adresse n'est gardée : un « seau » de 12 bits d'une empreinte de
+// (adresse, QR visé), une ligne par seau, réécrite après 10 minutes — voir
+// kiosk-rules.ts. Table absente (migration pas passée) ou panne : aucun plafond,
+// jamais bloquant. (L'adresse est lue comme pour l'appairage ; si elle est
+// falsifiée, le plafond est contourné, ce qui ne donne aucun accès : le jeton
+// est une signature.)
+async function noteFixedFailure(admin: SupabaseClient, ip: string, scope: string): Promise<'throttled' | 'noted'> {
+  const bucket = ticketBucket(await hmacB64(`ticket-failure|${ip}|${scope}`));
+  const { data, error } = await admin.from('kiosk_ticket_failures').select('failures, window_start').eq('bucket', bucket).maybeSingle();
+  if (error) { if (!schemaMissing(error)) console.error('[kiosk] ticket failure', error.code); return 'noted'; }
+  const row = (data as TicketBucketRow | null) ?? null;
+  const now = Date.now();
+  if (ticketBucketFull(row, now)) return 'throttled'; // plein : plus aucune écriture
+  const { error: werr } = await admin.from('kiosk_ticket_failures').upsert({ bucket, ...ticketBucketNext(row, now) }, { onConflict: 'bucket' });
+  if (werr && !schemaMissing(werr)) console.error('[kiosk] ticket failure', werr.code);
+  return 'noted';
 }
 
 async function ticket(admin: SupabaseClient, req: Request, body: Record<string, unknown>) {
-  const ip = clientIp(req);
-  if (await ticketBlocked(admin, ip)) return json({ error: 'Trop d’essais. Réessayez dans quelques minutes.', code: 'throttled' }, 429);
-  if (body.f) return await ticketFixed(admin, ip, body);
+  if (body.f) return await ticketFixed(admin, clientIp(req), body);
 
   const kioskId = String(body.k || '');
   const code = String(body.c || '');
@@ -580,11 +658,11 @@ async function ticket(admin: SupabaseClient, req: Request, body: Record<string, 
   const k = data as { id: string; company_id: string; name: string; seed_salt: string; revoked_at: string | null } | null;
   // Lot 12 : une ligne « QR fixe » n'a pas de QR qui change chaque minute (sa
   // graine n'est donnée à personne) : refusée ici comme une borne inconnue.
-  if (!k || k.seed_salt.startsWith(FIXED_SALT_PREFIX)) { await noteTicketFailure(admin, ip); return refuse('kiosk_unknown', 404); }
+  if (!k || k.seed_salt.startsWith(FIXED_SALT_PREFIX)) return refuse('kiosk_unknown', 404);
   if (k.revoked_at) return refuse('kiosk_revoked', 410);
   if (!(await companyEnabled(admin, k.company_id))) return refuse('kiosk_disabled', 403);
   const seed = await deriveSeed(SERVER_KEY, k.id, k.seed_salt);
-  if ((await verifyCode(seed, code, Date.now())) === null) { await noteTicketFailure(admin, ip); return refuse('code_invalid', 400); }
+  if ((await verifyCode(seed, code, Date.now())) === null) return refuse('code_invalid', 400);
 
   const payload = toBase64Url(enc.encode(JSON.stringify({ k: k.id, exp: Date.now() + TICKET_TTL_MS })));
   const { data: c } = await admin.from('companies').select('name').eq('id', k.company_id).maybeSingle();
@@ -601,8 +679,13 @@ async function ticket(admin: SupabaseClient, req: Request, body: Record<string, 
 // Lot 12 — le QR fixe imprimé : /pointer#f=<id>.<signature>. Le ticket rendu
 // porte `fq` (et non `k`) : la position sera exigée au pointage.
 async function ticketFixed(admin: SupabaseClient, ip: string, body: Record<string, unknown>) {
+  // Un jeton faux : refusé, compté (au-delà de 30 par seau, 429 au lieu de 400).
+  const invalid = async (scope: string) =>
+    (await noteFixedFailure(admin, ip, scope)) === 'throttled'
+      ? json({ error: 'Trop d’essais. Réessayez dans quelques minutes.', code: 'throttled' }, 429)
+      : refuse('fixed_invalid', 400);
   const parts = splitFixedToken(String(body.f || ''));
-  if (!parts) { await noteTicketFailure(admin, ip); return refuse('fixed_invalid', 400); }
+  if (!parts) return await invalid('forme');
   const { data, error } = await admin.from('kiosks')
     .select('id, company_id, seed_salt, revoked_at, kind').eq('id', parts.id).maybeSingle();
   if (error) {
@@ -611,18 +694,20 @@ async function ticketFixed(admin: SupabaseClient, ip: string, body: Record<strin
   }
   const k = data as { id: string; company_id: string; seed_salt: string; revoked_at: string | null; kind: string } | null;
   if (!k || k.kind !== 'fixe' || !safeEqual(parts.sig, await fixedQrSignature(SERVER_KEY, k.id, k.seed_salt))) {
-    await noteTicketFailure(admin, ip);
-    return refuse('fixed_invalid', 400);
+    return await invalid(parts.id);
   }
   // Signature juste mais QR régénéré ou désactivé : le dire (vieille feuille au mur).
-  if (k.revoked_at) return refuse('fixed_revoked', 410);
+  if (k.revoked_at) return refuseFixed('fixed_revoked', 410, await hasTablet(admin, k.company_id));
   if (!(await companyEnabled(admin, k.company_id))) return refuse('kiosk_disabled', 403);
-  const point = await loadFixedPoint(admin, k.company_id);
+  const [point, tablet, { data: c }] = await Promise.all([
+    loadFixedPoint(admin, k.company_id),
+    hasTablet(admin, k.company_id),
+    admin.from('companies').select('name').eq('id', k.company_id).maybeSingle(),
+  ]);
   if (point === undefined) return refuse('fixed_unavailable', 404);
-  if (!pointSet(point)) return refuse('fixed_no_point', 409);
+  if (!pointSet(point)) return refuseFixed('fixed_no_point', 409, tablet);
 
   const payload = toBase64Url(enc.encode(JSON.stringify({ fq: k.id, exp: Date.now() + TICKET_TTL_MS })));
-  const { data: c } = await admin.from('companies').select('name').eq('id', k.company_id).maybeSingle();
   return json({
     ticket: `${payload}.${await hmacB64(`kiosk-ticket|${payload}`)}`,
     kiosk_name: FIXED_QR_NAME,
@@ -631,6 +716,8 @@ async function ticketFixed(admin: SupabaseClient, ip: string, body: Record<strin
     // La page /pointer lit la position UNE fois, juste avant le pointage.
     needs_position: true,
     radius_m: point.radius,
+    // Pour dire la vérité à l'écran : « Scannez la tablette » seulement s'il y en a une.
+    has_tablet: tablet,
   });
 }
 
@@ -662,7 +749,7 @@ async function punch(admin: SupabaseClient, req: Request, body: Record<string, u
     if (ke) { if (schemaMissing(ke)) return refuse('fixed_unavailable', 404); throw ke; }
     const row = kd as (PunchKiosk & { kind: string }) | null;
     kiosk = row && row.kind === 'fixe' ? row : null;
-    if (kiosk?.revoked_at) return refuse('fixed_revoked', 410);
+    if (kiosk?.revoked_at) return refuseFixed('fixed_revoked', 410, await hasTablet(admin, kiosk.company_id));
   }
   const { data: last } = await admin.from('kiosk_punches').select('created_at')
     .eq('user_id', profile.id).order('created_at', { ascending: false }).limit(1).maybeSingle();
@@ -678,16 +765,18 @@ async function punch(admin: SupabaseClient, req: Request, body: Record<string, u
   });
   if (refusal) return refuse(refusal, refusal === 'double_scan' ? 409 : 403);
 
-  // 2 bis) Lot 12 — QR fixe : la position lue au scan, vérifiée ICI (distance
+  // 2 bis) Lot 12 — QR fixe : la position lue au scan, comparée ICI (distance
   // au point de référence ≤ rayon + marge de précision). Elle n'est écrite
   // NULLE PART (ni table, ni journal) : seul « dans la zone : oui » est gardé.
+  // Cette position est DÉCLARÉE par le téléphone, que le serveur ne peut pas
+  // contrôler : c'est un frein, pas une preuve de présence.
   if (fixed) {
     const point = await loadFixedPoint(admin, kiosk!.company_id);
     if (point === undefined) return refuse('fixed_unavailable', 404);
     const pos = parsePosition(body);
     const verdict = checkFixedPosition(pointSet(point) ? point : null, point ? point.radius : FIXED_QR_RADIUS_DEFAULT_M, pos);
     if (verdict !== 'ok') {
-      return refuse(verdict, verdict === 'fixed_no_point' ? 409 : 403,
+      return refuseFixed(verdict, verdict === 'fixed_no_point' ? 409 : 403, await hasTablet(admin, kiosk!.company_id),
         verdict === 'position_imprecise' && pos?.accuracy != null ? { accuracy_m: Math.round(pos.accuracy) } : {});
     }
   }
@@ -787,7 +876,8 @@ async function punch(admin: SupabaseClient, req: Request, body: Record<string, u
     }
   }
 
-  // Lot 12 : un scan du QR fixe garde « dans la zone : oui » (in_zone), aucune coordonnée.
+  // Lot 12 : un scan du QR fixe garde « dans la zone : oui » (in_zone : position déclarée
+  // par le téléphone, pas une preuve), aucune coordonnée.
   await admin.from('kiosk_punches').insert({
     company_id: kiosk!.company_id, kiosk_id: kiosk!.id, user_id: profile.id, kind: action,
     ...(fixed ? { in_zone: true } : {}),
