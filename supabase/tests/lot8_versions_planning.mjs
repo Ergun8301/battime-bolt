@@ -122,7 +122,7 @@ check((code.match(/\bALTER TABLE public\.(\w+)/g) || []).every((x) => x.endsWith
 check((code.match(/\b(REVOKE|GRANT)\b[^;]*;/g) || []).every((x) => /public\.planning_versions/.test(x)), 'droits retirés / donnés seulement sur la table et la fonction neuves');
 check(!/FOR\s+(UPDATE|DELETE|ALL)\b/i.test(code), 'aucune policy UPDATE, DELETE ni ALL');
 check(!/\bREFERENCES\b/i.test(code), 'aucune clé étrangère (comme les traces : l’historique ne bloque aucune suppression d’entreprise)');
-check(/pg_advisory_xact_lock/.test(code) && /FOR EACH ROW/.test(code), 'le déclencheur prend un verrou par entreprise et semaine avant de numéroter');
+check(/FOR EACH ROW/.test(code), 'déclencheur par ligne (BEFORE INSERT) : le n° est posé avant l’écriture');
 check(/SECURITY DEFINER[\s\S]*SET search_path = ''/.test(code) && /REVOKE ALL ON FUNCTION public\.planning_versions_numero\(\) FROM PUBLIC, anon, authenticated/.test(code),
   'fonction SECURITY DEFINER : search_path vide, noms qualifiés, retirée à PUBLIC / anon / authenticated');
 check(!!ROLLBACK_SQL && !!POST_SQL && /INSERT INTO supabase_migrations\.schema_migrations \(version, name\)\s+VALUES \('20261012100000', 'lot8_versions_planning'\) ON CONFLICT DO NOTHING;/.test(HISTO_SQL),
@@ -239,6 +239,37 @@ section('Numérotation : sans doublon, sans trou, même ajoutée en même temps'
   const all = (await rows(`SELECT number FROM public.planning_versions WHERE company_id = $1 AND week_start = $2 ORDER BY number`, [CO, WEEK])).map((x) => x.number);
   check(all.length === new Set(all).size && all[all.length - 1] === all.length, `n° toujours uniques et sans trou (${all.length} versions, dernier n° ${all[all.length - 1]})`);
   await as(ADMIN);
+}
+
+// PGlite n'a qu'UNE connexion : on ne peut pas y entrelacer deux transactions. On prouve donc le
+// verrou autrement — (1) la fonction du déclencheur prend le verrou AVANT de lire le plus grand n°,
+// avec la clé (entreprise, semaine) ; (2) pendant une transaction, après un ajout, la connexion
+// tient bien l'advisory lock de cette clé, et il part au COMMIT. L'essai à plusieurs connexions
+// (pgbench sur un vrai Postgres) a été fait à la main, hors dépôt : voir docs/versions-planning.md.
+section('Le verrou de la numérotation');
+{
+  await root();
+  const src = String((await one(`SELECT prosrc FROM pg_proc WHERE proname = 'planning_versions_numero' AND pronamespace = 'public'::regnamespace`)).prosrc).toLowerCase().replace(/\s+/g, ' ');
+  const iLock = src.indexOf('pg_catalog.pg_advisory_xact_lock(');
+  const iMax = src.indexOf('max(');
+  check(iLock >= 0 && iMax > iLock, 'la fonction prend le verrou AVANT de chercher le plus grand n°');
+  const key = src.slice(iLock, iMax);
+  check(key.includes('new.company_id') && key.includes('new.week_start'), 'la clé du verrou : l’entreprise ET la semaine de la ligne ajoutée');
+  const WK = '2026-12-07', WK2 = '2026-12-14';
+  const keyOf = async (w) => BigInt((await one(`SELECT pg_catalog.hashtextextended('planning_versions|' || $1::text || '|' || $2::text, 0) AS k`, [CO, w])).k);
+  const held = async () => (await rows(`SELECT classid::bigint AS c, objid::bigint AS o, objsubid AS sub FROM pg_locks WHERE locktype = 'advisory' AND pid = pg_backend_pid()`));
+  const asKey = (l) => ((BigInt(l.c) << 32n) | BigInt(l.o));
+  check((await held()).length === 0, 'avant : aucun verrou tenu');
+  await as(ADMIN);
+  await db.exec('BEGIN');
+  await db.query(`INSERT INTO public.planning_versions (company_id, week_start, kind) VALUES ($1, $2, 'manuel')`, [CO, WK]);
+  await root();
+  const during = await held();
+  const k1 = await keyOf(WK), k2 = await keyOf(WK2);
+  check(during.length === 1 && during[0].sub === 1 && asKey(during[0]) === BigInt.asUintN(64, k1), 'dans la transaction, après l’ajout : le verrou de (entreprise, semaine) est tenu — et celui-là seul');
+  check(asKey(during[0]) !== BigInt.asUintN(64, k2), 'une autre semaine n’a pas la même clé (elle ne serait pas retardée)');
+  await db.exec('COMMIT');
+  check((await held()).length === 0, 'après COMMIT : le verrou est rendu (il ne dure que la transaction)');
 }
 
 section('Personne ne modifie ni n’efface une version');
