@@ -17,7 +17,8 @@ import { parisHHmm } from '@/lib/utils';
 import { markEntryReserve, updateEntryTimes } from '@/lib/worker-entry';
 import { removeWorksiteDocument, uploadWorksiteDocument } from '@/lib/chantier-docs';
 import { copyLinesTo, sendWorkerDay, setDayMealOnline } from '@/lib/worker-day';
-import { createWorksite } from '@/lib/planning-writes';
+import { findOrCreateWorksite } from '@/lib/worker-worksite';
+import { cleanNewWorksite } from '@/supabase/functions/_shared/worker-multi';
 import { geoInfoSeen } from '@/lib/position-info';
 import { MEAL_OFF_MESSAGE, readMealEnabled } from '@/lib/meal-setting';
 import type { WorkerActionDraft } from '@/supabase/functions/_shared/worker-assistant-core';
@@ -297,10 +298,12 @@ export function makeWorkerExecutor(user: { id: string; company_id: string }): Wo
           };
           break;
         }
-        case 'nouveau_chantier':
-          await createWorksite(user.company_id, { client_name: d.nom, city: d.ville });
-          message = `Chantier « ${d.nom} » ajouté.`;
+        case 'nouveau_chantier': {
+          // Adresse, code postal et travaux seulement s'ils ont été dits ; un chantier actif de même nom + ville (relu maintenant) est utilisé, rien n'est créé en double.
+          const r = await findOrCreateWorksite(user.company_id, cleanNewWorksite({ nom: d.nom, ville: d.ville, adresse: d.adresse, code_postal: d.code_postal, description: d.description }));
+          message = r.created ? `Chantier « ${d.nom} » ajouté.` : `Chantier « ${d.nom} » : il existait déjà, rien n’a été créé.`;
           break;
+        }
         // ── Lot 8 : effacer ce qu'il a saisi. Tout est LU avant : « Annuler » remet à l'identique. ──
         case 'effacer_heures': {
           let q = supabase.from('time_entries').select('*').eq('user_id', user.id).eq('work_date', d.date).eq('status', 'draft').eq('locked', false).is('submitted_at', null);

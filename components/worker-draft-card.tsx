@@ -49,7 +49,7 @@ const launched = new WeakSet<object>();
  * porté par la VALEUR de la ligne (NaN), pas par une table indexée : retirer
  * une ligne ne déplace pas l'erreur sur sa voisine.
  */
-function DraftPause({ value, onChange, testId }: { value: number; onChange: (m: number) => void; testId: string }) {
+export function DraftPause({ value, onChange, testId }: { value: number; onChange: (m: number) => void; testId: string }) {
   const [text, setText] = useState(() => (Number.isFinite(value) && value > 0 ? formatPauseInput(value) : ''));
   const [shown, setShown] = useState(false);
   /** Champ vide = pas de pause ; illisible = NaN (bloque « Enregistrer »). */

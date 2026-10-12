@@ -26,6 +26,8 @@ export async function inviteWorker(p: { companyId: string; email: string; firstN
 export interface NewWorksite {
   client_name: string; product_type?: string | null; client_phone?: string | null; client_email?: string | null;
   city?: string | null; address?: string | null; description?: string | null;
+  /** Dit par le salarié (Assistant, fiche « Tout confirmer ») : la clé n'est envoyée que s'il y en a un. */
+  postal_code?: string | null;
 }
 
 /** « Nouveau client » → « Créer le client ». Renvoie la ligne créée. */
@@ -37,6 +39,8 @@ export async function createWorksite(companyId: string, w: NewWorksite) {
     // sans ville, une chaîne vide — `null` faisait échouer la création.
     client_phone: t(w.client_phone), client_email: t(w.client_email), city: (w.city ?? '').trim(), address: t(w.address),
     description: t(w.description), is_active: true,
+    // JAMAIS `postal_code: t(...)` : une clé `null` partirait dans tous les appels du bureau, et la colonne n'est pas prouvée par les migrations du dépôt.
+    ...(t(w.postal_code) ? { postal_code: t(w.postal_code) } : {}),
   }).select().single();
   if (error) throw error;
   return data as { id: string; client_name: string };

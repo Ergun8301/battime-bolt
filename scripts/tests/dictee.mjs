@@ -68,4 +68,82 @@ await run('Patron · Chrome Android', 'Pixel 7', 'android', '/apercu/assistant?d
 await run('Patron · Safari iOS', 'iPhone 14', 'ios', '/apercu/assistant?demo=assistant', null);
 await run('Salarié · Chrome Android', 'Pixel 7', 'android', '/apercu/assistant-salarie?demo=salarie', null);
 await run('Salarié · Safari iOS', 'iPhone 14', 'ios', '/apercu/assistant-salarie?demo=salarie', 'dictee-salarie-ios');
+// ── Langue de la dictée (salarié : Français / Türkçe), limite de saisie (1500 salarié, 500 bureau) ──
+async function runLangs() {
+  const ctx = await b.newContext({ ...devices['Pixel 7'], locale: 'fr-FR' });
+  await ctx.addInitScript(FAKE, 'android');
+  await ctx.addInitScript(() => { const w = window; w.__err = (code) => { const r = w.__rec.current; if (r && r.alive) { r.onerror && r.onerror({ error: code }); } }; });
+  const p = await ctx.newPage();
+  const open = async () => {
+    await p.goto(`http://localhost:${PORT}/apercu/assistant-salarie?demo=salarie`); await p.waitForTimeout(1500);
+    const o = p.locator('[data-testid="assistant-open"], [aria-label="Assistant BEMEXO"]').first();
+    if (await o.count()) { await o.click(); await p.waitForTimeout(300); }
+  };
+  await open();
+  const mic = p.locator('[data-testid="assistant-mic"]'); const ta = p.locator('.as-bar textarea');
+  ok(await p.locator('[data-testid=assistant-langs]').count() === 1, 'Salarié : le sélecteur « Français / Türkçe » est affiché');
+  ok(await p.locator('[data-testid="assistant-lang-fr-FR"]').getAttribute('aria-pressed') === 'true', 'Salarié : français par défaut');
+  await mic.click(); await p.waitForTimeout(100);
+  ok(await p.evaluate(() => window.__rec.lang) === 'fr-FR', 'Salarié : dictée en fr-FR par défaut');
+  ok(await p.locator('[data-testid="assistant-lang-tr-TR"]').isDisabled(), 'Salarié : le sélecteur est grisé pendant l’écoute');
+  await mic.click(); await p.waitForTimeout(200);
+  await p.locator('[data-testid="assistant-lang-tr-TR"]').click(); await p.waitForTimeout(100);
+  ok(await ta.getAttribute('lang') === 'tr', 'Salarié : champ lang="tr" après « Türkçe »');
+  await mic.click(); await p.waitForTimeout(100);
+  ok(await p.evaluate(() => window.__rec.lang) === 'tr-TR' && await p.evaluate(() => window.__rec.continuous) === true, 'Salarié : « Türkçe » → tr-TR, mode continu');
+  await p.evaluate(() => window.__say('bugün sabah 8’den 12’ye kadar çalıştım', true)); await p.waitForTimeout(100);
+  ok((await ta.inputValue()) === 'bugün sabah 8’den 12’ye kadar çalıştım', 'Salarié : le texte turc s’écrit dans le champ');
+  await mic.click(); await p.waitForTimeout(200);
+  // Mémorisée au rechargement
+  await open();
+  ok(await p.locator('[data-testid="assistant-lang-tr-TR"]').getAttribute('aria-pressed') === 'true', 'Salarié : la langue est mémorisée au rechargement');
+  await p.locator('[data-testid=assistant-mic]').click(); await p.waitForTimeout(100);
+  ok(await p.evaluate(() => window.__rec.lang) === 'tr-TR', 'Salarié : …et la dictée repart en tr-TR');
+  // Langue non prise en charge : arrêt immédiat, message, retour sur Français
+  await p.evaluate(() => window.__err('language-not-supported')); await p.waitForTimeout(300);
+  ok(await p.locator('[data-testid=assistant-mic]').getAttribute('aria-pressed') === 'false', 'Salarié : language-not-supported → arrêt immédiat');
+  ok((await p.locator('.as-bot.notice').last().innerText()).includes('La dictée en turc n’est pas disponible sur cet appareil'), 'Salarié : message « La dictée en turc n’est pas disponible sur cet appareil… »');
+  ok(await p.locator('[data-testid="assistant-lang-fr-FR"]').getAttribute('aria-pressed') === 'true', 'Salarié : le sélecteur retourne sur Français');
+  // Stockage bloqué : le panneau marche quand même
+  await ctx.close();
+  const c2 = await b.newContext({ ...devices['Pixel 7'], locale: 'fr-FR' });
+  await c2.addInitScript(FAKE, 'android');
+  await c2.addInitScript(() => { const bad = () => { throw new Error('stockage bloqué'); }; Object.defineProperty(window, 'localStorage', { configurable: true, get: bad }); });
+  const q = await c2.newPage();
+  q.on('pageerror', (e) => ok(false, `Stockage bloqué : erreur de page ${e.message}`));
+  await q.goto(`http://localhost:${PORT}/apercu/assistant-salarie?demo=salarie`); await q.waitForTimeout(1500);
+  const o2 = q.locator('[data-testid="assistant-open"], [aria-label="Assistant BEMEXO"]').first();
+  if (await o2.count()) { await o2.click(); await q.waitForTimeout(300); }
+  await q.locator('[data-testid="assistant-lang-tr-TR"]').click(); await q.waitForTimeout(100);
+  await q.locator('[data-testid=assistant-mic]').click(); await q.waitForTimeout(100);
+  ok(await q.evaluate(() => window.__rec.lang) === 'tr-TR', 'Salarié : avec le stockage bloqué, le choix « Türkçe » marche (sans être mémorisé)');
+  await c2.close();
+  // Limite : 1500 salarié, 500 bureau ; compteur à partir de 1 200
+  const c3 = await b.newContext({ ...devices['Pixel 7'], locale: 'fr-FR' });
+  await c3.addInitScript(FAKE, 'android');
+  const s = await c3.newPage();
+  await s.goto(`http://localhost:${PORT}/apercu/assistant-salarie?demo=salarie`); await s.waitForTimeout(1500);
+  const o3 = s.locator('[data-testid="assistant-open"], [aria-label="Assistant BEMEXO"]').first();
+  if (await o3.count()) { await o3.click(); await s.waitForTimeout(300); }
+  const t3 = s.locator('.as-bar textarea');
+  ok(await t3.getAttribute('maxlength') === '1500', 'Salarié : champ limité à 1500 caractères');
+  await t3.fill('a'.repeat(1100)); await s.waitForTimeout(100);
+  ok(await s.locator('[data-testid=assistant-count]').count() === 0, 'Salarié : pas de compteur à 1 100 caractères');
+  await t3.fill('a'.repeat(1203)); await s.waitForTimeout(100);
+  ok((await s.locator('[data-testid=assistant-count]').innerText()).replace(/\s/g, '') === '1203/1500', 'Salarié : compteur « 1 203 / 1 500 » à partir de 1 200');
+  ok(await t3.getAttribute('rows') === '6', 'Salarié : champ à 6 lignes au-delà de 300 caractères');
+  await c3.close();
+  const c4 = await b.newContext({ ...devices['Pixel 7'], locale: 'fr-FR' });
+  await c4.addInitScript(FAKE, 'android');
+  const o = await c4.newPage();
+  await o.goto(`http://localhost:${PORT}/apercu/assistant?demo=assistant`); await o.waitForTimeout(1500);
+  const o4 = o.locator('[data-testid="assistant-open"], [data-testid="bar-assistant"], [aria-label="Assistant BEMEXO"]').first();
+  if (await o4.count()) { await o4.click(); await o.waitForTimeout(300); }
+  ok(await o.locator('.as-bar textarea').getAttribute('maxlength') === '500', 'Bureau : champ TOUJOURS limité à 500 caractères');
+  ok(await o.locator('[data-testid=assistant-langs]').count() === 0, 'Bureau : aucun sélecteur de langue');
+  await o.locator('[data-testid=assistant-mic]').click(); await o.waitForTimeout(100);
+  ok(await o.evaluate(() => window.__rec.lang) === 'fr-FR', 'Bureau : dictée TOUJOURS en fr-FR');
+  await c4.close();
+}
+await runLangs();
 console.log(results.join('\n')); await b.close(); srv.close();
