@@ -5,20 +5,32 @@ import { actionPrompt, ASSISTANT_FUNCTIONS, ATTACHMENT_FUNCTIONS, buildActionCon
 import { WORKER_ATTACHMENT_FUNCTIONS, WORKER_FUNCTIONS, buildWorkerSnapshot, handleWorkerLocally, workerFunctionsFor, type WorkerLive, type WorkerSnapshot } from './worker-assistant-core.ts';
 import { domainTools, OFFICE_DOMAINS, WORKER_DOMAINS } from './tool-domains.ts';
 import { low } from './fr-langue.ts';
+import { workerFunctionsForLong } from './worker-multi-prompt.ts';
+import { workerProfile } from './worker-turn.ts';
 import { ADMIN_RAW, CASES, LIVE_EN_COURS, ME, WORKER_LIVE, WORKER_RAW } from '../assistant-eval/cases.ts';
 
-// L'outil attendu de chaque phrase, lu dans cases.ts (act('x'), actAvecProblemes('x'), o.type === 'x', réponse, heures, collègues).
+// Les outils attendus de chaque phrase, lus dans cases.ts (act('x'), actAvecProblemes('x'), o.type === 'x', réponse, heures, collègues,
+// et pour une fiche à plusieurs éléments fiche([...]) / rienDeSilencieux([...]) / enTurc).
 const SRC = await Deno.readTextFile(new URL('../assistant-eval/cases.ts', import.meta.url));
-function expectedTool(id: string, cote: string): string | null {
+const OUTIL_DE_FICHE: Record<string, string> = { heures: 'declarer_heures', chantier: 'nouveau_chantier' };
+function expectedTools(id: string, cote: string): string[] {
   const at = SRC.indexOf(`id: '${id}'`);
   const next = SRC.indexOf("{ id: '", at + 5);
-  const chunk = SRC.slice(at, next < 0 ? undefined : next);
+  let chunk = SRC.slice(at, next < 0 ? undefined : next);
+  // Un contrôle nommé (const recapitulatifComplet = fiche([...])) : on lit sa déclaration.
+  const nomme = /check: (\w+) \}/.exec(chunk);
+  if (nomme) { const d = SRC.indexOf(`const ${nomme[1]}`); chunk = SRC.slice(d, SRC.indexOf('\n};', d) + 3); }
+  const fiche = /fiche\(\[([^\]]*)\]/.exec(chunk);
+  if (fiche) return Array.from(fiche[1].matchAll(/'(\w+)'/g)).map((m) => OUTIL_DE_FICHE[m[1]] ?? m[1]);
+  const silence = /rienDeSilencieux\(\[([^\]]*)\]/.exec(chunk);
+  if (silence) return ['declarer_heures', ...Array.from(silence[1].matchAll(/'(\w+)'/g)).map((m) => m[1])];
+  if (/enTurc/.test(chunk)) return ['repondre'];
   const m = /check: act(?:AvecProblemes)?\('(\w+)'/.exec(chunk) ?? /o\.type === '(\w+)'/.exec(chunk);
-  if (m) return m[1];
-  if (/check: (answer|refus)\(/.test(chunk)) return 'repondre';
-  if (/check: draft\(/.test(chunk)) return 'declarer_heures';
-  if (/check: coll\(/.test(chunk)) return cote === 'salarie' ? 'planning_collegues' : null;
-  return null;
+  if (m) return [m[1]];
+  if (/check: (answer|refus)\(/.test(chunk)) return ['repondre'];
+  if (/check: draft\(/.test(chunk)) return ['declarer_heures'];
+  if (/check: coll\(/.test(chunk)) return cote === 'salarie' ? ['planning_collegues'] : [];
+  return [];
 }
 
 Deno.test('Domaines : chaque outil du bureau et du salarié appartient à au moins un domaine', () => {
@@ -37,8 +49,8 @@ Deno.test('Jeu d’évaluation : l’outil attendu reste proposé, pour CHAQUE p
   const lost: string[] = [];
   let total = 0, viaIa = 0, smaller = 0, sum = 0, sumAll = 0, bureau = 0, salarie = 0;
   for (const c of CASES) {
-    const tool = expectedTool(c.id, c.cote);
-    if (!tool) throw new Error(`${c.id} : outil attendu illisible dans cases.ts`);
+    const tools = expectedTools(c.id, c.cote);
+    if (!tools.length) throw new Error(`${c.id} : outil attendu illisible dans cases.ts`);
     total++;
     let fns: string[], all: number, local: boolean;
     if (c.cote === 'bureau') {
@@ -53,12 +65,16 @@ Deno.test('Jeu d’évaluation : l’outil attendu reste proposé, pour CHAQUE p
       const snap = buildWorkerSnapshot(WORKER_RAW as never) as WorkerSnapshot;
       snap.demande = c.phrase;
       const live = { ...WORKER_LIVE, enCours: c.enCours ? LIVE_EN_COURS : null } as WorkerLive;
-      local = !c.file && !!handleWorkerLocally(c.phrase, snap, live);
-      fns = workerFunctionsFor(!!c.file, c.phrase).map((f) => f.name);
+      // Phrase longue (profil long) : jamais le lecteur local, les outils du profil long ; sinon le chemin d'avant, inchangé.
+      const long = workerProfile(c.phrase, !!c.file) === 'long';
+      if (long !== /^(sl|st)\d\d$/.test(c.id)) throw new Error(`${c.id} : profil ${long ? 'long' : 'court'} inattendu`);
+      local = !long && !c.file && !!handleWorkerLocally(c.phrase, snap, live);
+      fns = (long ? workerFunctionsForLong(c.phrase) : workerFunctionsFor(!!c.file, c.phrase)).map((f) => f.name);
       all = c.file ? WORKER_ATTACHMENT_FUNCTIONS.length : WORKER_FUNCTIONS.length;
     }
     // Vérifié pour TOUTES les phrases : si le lecteur local ne la prenait plus, le modèle verrait quand même l'outil attendu.
-    if (!fns.includes(tool)) lost.push(`${c.id} « ${c.phrase} » : ${tool} absent (${fns.join(',')})`);
+    const absents = tools.filter((t) => !fns.includes(t));
+    if (absents.length) lost.push(`${c.id} « ${c.phrase} » : ${absents.join(', ')} absent (${fns.join(',')})`);
     if (!local) { viaIa++; sum += fns.length; sumAll += all; if (fns.length < all) smaller++; }
   }
   console.log(`${total} phrases (${bureau} bureau, ${salarie} salarié) : l’outil attendu est proposé à chacune. ${viaIa} passent par le modèle ; ${smaller} reçoivent moins d’outils ; ${sum} déclarations au lieu de ${sumAll} (−${Math.round((1 - sum / Math.max(1, sumAll)) * 100)} %).`);

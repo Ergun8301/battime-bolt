@@ -11,6 +11,9 @@
 // redessin (session rafraîchie, planning rechargé) ne ferme pas le panneau et
 // ne perde ni les messages, ni la réponse en cours. 📎 (lot 3 bis) : photo ou
 // PDF joint, compressé ici, rangé seulement après « Confirmer ».
+// Salarié (phrases longues, français ET turc) : limite de saisie relevée (`maxChars`), sélecteur de langue de
+// dictée (`dictationLangs`), indice d'attente après 4 s (`slowHint`) et phrase remise dans le champ quand
+// l'assistant n'a pas pu répondre (`restoreOnFailure`). Le bureau n'en passe aucune : rien ne change pour lui.
 // Rien ici ne parle de la formule IA (essai / payant) : à la demande d'Ergun, le
 // panneau n'affiche aucun bandeau ; seul le support BEMEXO la voit (app/support).
 
@@ -19,7 +22,7 @@ import { Sparkles, X, Mic, Square, ArrowUp, Loader2, ArrowRight, Paperclip, File
 import { Dictation, speechCtor } from '@/lib/dictation';
 import { ATTACH_ACCEPT, ATTACH_MAX_BYTES, attachmentError, compressAttachment } from '@/lib/attachment';
 import { ASSISTANT_SUGGESTIONS, type AssistantLink, type AssistantSource } from '@/lib/assistant';
-import { isNewRequest } from '@/supabase/functions/_shared/fr-langue';
+import { isNewRequest as isNewRequestFr } from '@/supabase/functions/_shared/fr-langue';
 
 export interface ExtraControl {
   /** Change le texte de la bulle (null = l'efface), la question en attente reste ouverte. */
@@ -64,6 +67,15 @@ const CSS = `
 .as-bar{display:flex;align-items:flex-end;gap:8px;background:#fff;border:1.5px solid rgba(21,18,15,.16);border-radius:16px;padding:6px 6px 6px 12px}
 .as-bar:focus-within{border-color:#15120F}
 .as-bar textarea{flex:1;border:none;outline:none;resize:none;font-family:inherit;font-size:15px;line-height:1.4;padding:7px 0;max-height:120px;background:transparent;color:#15120F}
+.as-bar textarea.long{max-height:min(38vh,240px)}
+.as-lang{display:flex;align-items:center;gap:6px;margin:0 2px 8px;font-size:12px;font-weight:800;color:#56514a}
+.as-lang button{min-height:32px;border:1.5px solid rgba(21,18,15,.16);background:#fff;border-radius:999px;padding:4px 12px;font-size:13px;font-weight:800;color:#15120F;cursor:pointer;font-family:inherit}
+.as-lang button[aria-pressed=true]{background:#15120F;color:#FBF8F2;border-color:#15120F}
+.as-lang button:disabled{opacity:.45;cursor:default}
+.as-lang button:focus-visible{outline:2px solid #FFC21A;outline-offset:2px}
+.as-count{text-align:right;font-size:11.5px;font-weight:700;color:#6E6A63;margin:0 6px 4px}
+.as-count.full{color:#B42318}
+.as-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .as-btn{width:38px;height:38px;flex:none;border-radius:12px;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer}
 .as-send{background:#15120F;color:#FBF8F2}
 .as-send:disabled{opacity:.35;cursor:default}
@@ -104,9 +116,28 @@ interface Props {
   launcher?: boolean;
   /** Lot 7 : nom de la conversation gardée en mémoire (une par écran). */
   memoryKey?: string;
+  /** Longueur maximale d'un message (défaut 500 : le bureau). Le salarié passe 1500 (phrases longues). */
+  maxChars?: number;
+  /** Langues de dictée proposées (le salarié : français et turc). Sans cette liste (bureau), pas de sélecteur : français. */
+  dictationLangs?: { code: string; label: string; aria: string }[];
+  /** Message d'attente affiché au bout de 4 s pour cette demande (null = « Je regarde… » reste). */
+  slowHint?: (text: string) => string | null;
+  /** Vrai (salarié) : si l'assistant n'a pas pu répondre (notice sans carte), la phrase est remise dans le champ pour ne pas la redicter. */
+  restoreOnFailure?: boolean;
+  /** Une saisie est-elle une NOUVELLE demande (et non la réponse à la question en attente) ? Défaut : la règle du français. */
+  isNewRequest?: (text: string) => boolean;
+  /** Vrai pour une carte longue (fiche à plusieurs éléments) : le panneau montre le HAUT de la réponse, pas sa fin. */
+  showFromTop?: (extra: unknown) => boolean;
 }
 
-export default function AssistantPanel({ source, onNavigate, defaultOpen = false, suggestions = ASSISTANT_SUGGESTIONS, intro, renderExtra, footNote = 'Actions simples faites tout de suite · « Annuler » en un clic', attachments = false, open: openProp, onOpenChange, launcher = true, memoryKey = 'assistant' }: Props) {
+const SLOW_MS = 4000;
+const fmtNum = (n: number) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+const LANG_KEY = (memoryKey: string) => `bemexo:dictee-langue:${memoryKey}`;
+
+export default function AssistantPanel({
+  source, onNavigate, defaultOpen = false, suggestions = ASSISTANT_SUGGESTIONS, intro, renderExtra, footNote = 'Actions simples faites tout de suite · « Annuler » en un clic', attachments = false, open: openProp, onOpenChange,
+  launcher = true, memoryKey = 'assistant', maxChars = 500, dictationLangs, slowHint, restoreOnFailure = false, isNewRequest = isNewRequestFr, showFromTop,
+}: Props) {
   const convo = convoOf(memoryKey);
   const [, redraw] = useReducer((x: number) => x + 1, 0);
   useEffect(() => { convo.listeners.add(redraw); return () => { convo.listeners.delete(redraw); }; }, [convo]);
@@ -126,6 +157,10 @@ export default function AssistantPanel({ source, onNavigate, defaultOpen = false
   const [text, setText] = useState('');
   const [listening, setListening] = useState(false);
   const [canSpeak, setCanSpeak] = useState(false);
+  const [hint, setHint] = useState<string | null>(null);
+  // Langue de dictée : « fr-FR » au départ (export statique : pas d'écart d'hydratation), la valeur gardée est lue APRÈS le montage.
+  const langs = dictationLangs && dictationLangs.length >= 2 ? dictationLangs : null;
+  const [lang, setLang] = useState(langs ? langs[0].code : 'fr-FR');
   const dictRef = useRef<Dictation | null>(null);
   // Lot 7 : une question vient d'être posée (« Sur quel chantier ? ») — la
   // prochaine réponse complète la MÊME demande au lieu d'en ouvrir une autre.
@@ -135,7 +170,31 @@ export default function AssistantPanel({ source, onNavigate, defaultOpen = false
   const bodyRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { setCanSpeak(!!speechCtor()); return () => dictRef.current?.abort(); }, []);
-  useEffect(() => { bodyRef.current?.scrollTo({ top: bodyRef.current.scrollHeight, behavior: 'smooth' }); }, [msgs, busy]);
+  useEffect(() => {
+    if (!langs) return;
+    try {
+      const v = window.localStorage.getItem(LANG_KEY(memoryKey));
+      if (v && langs.some((l) => l.code === v)) setLang(v);
+    } catch { /* stockage indisponible : le panneau marche sans */ }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const pickLang = (code: string) => {
+    setLang(code);
+    try { window.localStorage.setItem(LANG_KEY(memoryKey), code); } catch { /* sans effet */ }
+  };
+  // Défilement : vers le bas (la dernière bulle) ; mais une fiche longue s'ouvre sur son HAUT (titre, jour, chantier à créer), là où se vérifie
+  // ce qu'on va confirmer — pas sur son bouton. Seulement quand un message vient d'arriver (pas à chaque retouche de la carte).
+  const nbMsgs = useRef(msgs.length);
+  useEffect(() => {
+    const body = bodyRef.current;
+    if (!body) return;
+    const dernier = msgs[msgs.length - 1];
+    const nouveau = msgs.length !== nbMsgs.current;
+    nbMsgs.current = msgs.length;
+    const bulles = body.querySelectorAll<HTMLElement>('.as-bot');
+    const haut = nouveau && !busy && dernier?.who === 'bot' && dernier.extra != null && showFromTop?.(dernier.extra) ? bulles[bulles.length - 1] : null;
+    if (haut) body.scrollTo({ top: body.scrollTop + haut.getBoundingClientRect().top - body.getBoundingClientRect().top - 8, behavior: 'smooth' });
+    else body.scrollTo({ top: body.scrollHeight, behavior: 'smooth' });
+  }, [msgs, busy, showFromTop]);
 
   const ask = useCallback(async (q: string) => {
     const question = q.trim() || (file ? 'Regarde ce fichier.' : '');
@@ -146,16 +205,26 @@ export default function AssistantPanel({ source, onNavigate, defaultOpen = false
     setText(''); setFile(null);
     setMsgs((m) => [...m, { who: 'me', text: question, file: sent?.name }]);
     setBusy(true);
-    const full = pendingRef.current && !sent && !isNewRequest(question) ? `${pendingRef.current}, ${question}` : question;
+    // La réponse à la question en attente s'ajoute à la demande : c'est la FIN (la réponse) qui compte si le total dépasse la limite.
+    // (Le bureau, à 500, garde sa règle d'avant : la demande en attente entière, coupée ensuite par le serveur.)
+    const attente = pendingRef.current && maxChars > 500 ? pendingRef.current.slice(0, Math.max(0, maxChars - question.length - 2)) : pendingRef.current;
+    const full = attente && !sent && !isNewRequest(question) ? `${attente}, ${question}` : question;
+    // Une phrase longue peut demander plusieurs secondes : au bout de 4 s, on le dit.
+    const wait = slowHint?.(full) ?? null;
+    const timer = wait ? setTimeout(() => setHint(wait), SLOW_MS) : null;
     const r = await source.ask(full, sent ?? undefined);
+    if (timer) clearTimeout(timer);
+    setHint(null);
     pendingRef.current = r.followUp ? full : null;
     setBusy(false);
+    // L'assistant n'a pas pu répondre : la phrase revient dans le champ (300 à 1 500 caractères à redicter, sinon).
+    if (restoreOnFailure && r.notice && !r.extra) setText((cur) => cur || question.slice(0, maxChars));
     // Le fichier reste DANS L'ÉCRAN, joint à la carte : il ne sera rangé
     // (documents du chantier) qu'après « Confirmer ».
     const extra = r.extra && sent && typeof r.extra === 'object' ? { ...(r.extra as object), attachment: sent } : r.extra;
     setMsgs((m) => [...m, { who: 'bot', text: r.answer, links: r.links, notice: r.notice, extra }]);
     if (typeof r.remaining === 'number') setRemaining(r.remaining);
-  }, [busy, source, file]);
+  }, [busy, source, file, maxChars, slowHint, restoreOnFailure, isNewRequest]);
 
   const pickFile = async (f: File | undefined) => {
     if (fileRef.current) fileRef.current.value = '';
@@ -173,10 +242,17 @@ export default function AssistantPanel({ source, onNavigate, defaultOpen = false
     if (dictRef.current?.listening) { dictRef.current.stop(); return; }
     const Ctor = speechCtor();
     if (!Ctor) return;
+    let cut = false;
     dictRef.current = new Dictation(Ctor, {
-      onText: (t) => setText(t.slice(0, 500)),
+      onText: (t) => {
+        setText(t.slice(0, maxChars));
+        // Dictée coupée au plafond (salarié) : une seule fois par séance, on le dit. Le bureau coupe en silence, comme avant.
+        if (maxChars > 500 && t.length > maxChars && !cut) { cut = true; setMsgs((x) => [...x, { who: 'bot', text: `Message coupé à ${fmtNum(maxChars)} caractères.`, notice: true }]); }
+      },
       onState: setListening,
       onError: (m) => setMsgs((x) => [...x, { who: 'bot', text: m, notice: true }]),
+      lang,
+      onLangUnsupported: () => { if (langs) pickLang(langs[0].code); },
     });
     dictRef.current.start(text);
   };
@@ -234,7 +310,7 @@ export default function AssistantPanel({ source, onNavigate, defaultOpen = false
                   }) : null}
                 </div>
               )))}
-            {busy && <div className="as-typing"><Loader2 className="h-4 w-4 animate-spin" /> Je regarde…</div>}
+            {busy && <div className="as-typing" role="status"><Loader2 className="h-4 w-4 animate-spin" /> {hint ?? 'Je regarde…'}</div>}
           </div>
           <div className="as-foot">
             {file && (
@@ -246,9 +322,26 @@ export default function AssistantPanel({ source, onNavigate, defaultOpen = false
             {listening && (
               <div className="as-rec" role="status" data-testid="assistant-listening"><i /> J’écoute… appuyez sur ■ pour arrêter, ou Envoyer</div>
             )}
+            {langs && canSpeak && (
+              <div className="as-lang" role="group" aria-label="Langue de la dictée" data-testid="assistant-langs">
+                <span aria-hidden="true">Dictée :</span>
+                {langs.map((l) => (
+                  <button type="button" key={l.code} aria-pressed={lang === l.code} aria-label={l.aria} disabled={listening} data-testid={`assistant-lang-${l.code}`}
+                    onClick={() => pickLang(l.code)}><span lang={l.code.slice(0, 2)}>{l.label}</span></button>
+                ))}
+              </div>
+            )}
+            {maxChars > 500 && text.length >= maxChars * 0.8 && (
+              <p className={`as-count${text.length >= maxChars ? ' full' : ''}`} data-testid="assistant-count" aria-hidden="true">{fmtNum(text.length)} / {fmtNum(maxChars)}</p>
+            )}
+            {maxChars > 500 && (
+              // Annoncé seulement aux seuils (80 % et 100 %), pas à chaque lettre.
+              <div className="as-sr" role="status">{text.length >= maxChars ? `Limite de ${fmtNum(maxChars)} caractères atteinte.` : text.length >= maxChars * 0.8 ? `${fmtNum(Math.round(maxChars * 0.8))} caractères sur ${fmtNum(maxChars)}.` : ''}</div>
+            )}
             <form className="as-bar" onSubmit={(e) => { e.preventDefault(); ask(text); }}>
               <textarea
-                rows={listening || text.length > 60 ? 3 : 1} value={text} placeholder={listening ? 'Parlez, le texte s’écrit ici…' : 'Votre question…'} maxLength={500}
+                className={maxChars > 500 ? 'long' : undefined} lang={langs ? lang.slice(0, 2) : undefined}
+                rows={listening || text.length > 60 ? (maxChars > 500 && text.length > 300 ? 6 : 3) : 1} value={text} placeholder={listening ? 'Parlez, le texte s’écrit ici…' : 'Votre question…'} maxLength={maxChars}
                 onChange={(e) => { setText(e.target.value); dictRef.current?.edit(e.target.value); }}
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ask(text); } }}
                 aria-label="Votre question"

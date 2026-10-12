@@ -24,13 +24,22 @@
 // Lot 7 : tous les boutons de « Ma journée » ; « Où sont mes collègues ? » par
 // la fonction limitée `colleagues_planning` (prénom, chantier, horaires ; rien
 // d'autre ; réglage de l'entreprise) ; `question` s'il manque une info.
+//
+// Phrases longues, plusieurs actions, turc (corps { multi: true }, 1500 caractères) : le tour
+// partagé (_shared/worker-turn.ts) passe par l'IA en réflexion « medium », jamais par le
+// lecteur local, et rend UNE fiche `multi` à confirmer en un clic (rien n'est écrit ici).
+// Une demande = une unité de quota, quel que soit le nombre d'appels. Sans `multi: true`
+// (ancien navigateur), le comportement est exactement celui d'avant.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { aiKey, callFunction, formuleNom, PAUSE_MESSAGE, plafondProjet, readAttachment, tierFor } from '../_shared/ai-provider.ts';
 import { loadAssistantContext } from '../_shared/assistant-context.ts';
+import { WORKER_TEXT_MAX } from '../_shared/saisie-profil.ts';
 import {
-  buildWorkerSnapshot, DEFAULT_WORKER_DAILY_LIMIT, formatColleagues, fromWorkerCall, handleWorkerLocally, mondayOf,
-  workerFunctionsFor, workerFunctionPrompt, workerQuestionFor, type ColleagueRow, type WorkerFullReply, type WorkerLive, type WorkerRaw,
+  buildWorkerSnapshot, DEFAULT_WORKER_DAILY_LIMIT, formatColleagues, mondayOf, workerQuestionFor,
+  type ColleagueRow, type WorkerFullReply, type WorkerLive, type WorkerRaw,
 } from '../_shared/worker-assistant-core.ts';
+import type { LongLegacy } from '../_shared/worker-multi.ts';
+import { runWorkerTurn, type WorkerMultiReply } from '../_shared/worker-turn.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -52,10 +61,10 @@ Deno.serve(async (req) => {
   try {
     const jwt = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
     if (!jwt) return json({ error: 'Non authentifié' }, 401);
-    const body = await req.json().catch(() => ({})) as { text?: string; file?: unknown; statut?: boolean };
+    const body = await req.json().catch(() => ({})) as { text?: string; file?: unknown; statut?: boolean; multi?: boolean };
     // Lot 6 : à l'ouverture du panneau, l'écran demande seulement la formule (rien n'est compté).
     if (body.statut === true) return json({ formule: FORMULE });
-    const text = String(body.text ?? '').trim().slice(0, 500);
+    const text = String(body.text ?? '').trim().slice(0, WORKER_TEXT_MAX);
     if (!text) return json({ error: 'Écrivez ou dictez vos heures.' }, 400);
     // 📎 Photo ou PDF : lu par le modèle, jamais journalisé ni stocké ici.
     const att = readAttachment(body.file);
@@ -118,8 +127,9 @@ Deno.serve(async (req) => {
       documents: ((myDocs.data ?? []) as { id: string; label: string | null; file_name: string | null; worksite_id: string; created_at: string }[])
         .map((x) => ({ id: x.id, nom: (x.label || x.file_name || 'Document').slice(0, 60), chantier: siteName(x.worksite_id), date: x.created_at.slice(0, 10) })),
     };
-    // Réponse : l'action (et la question s'il manque une info), ou le planning des collègues.
-    const send = async (r: WorkerFullReply): Promise<Response> => {
+    // Réponse : la fiche `multi`, l'action (et la question s'il manque une info), ou le planning des collègues.
+    const send = async (r: WorkerFullReply | WorkerMultiReply | LongLegacy): Promise<Response> => {
+      if (r.kind === 'multi') return json({ ...r, chantiers: snapshot.chantiers, remaining });
       if (r.kind === 'collegues') {
         const { data, error } = await db.rpc('colleagues_planning', { p_from: r.date, p_to: r.date });
         const answer = error ? 'Le planning des collègues n’est pas disponible.'
@@ -131,19 +141,21 @@ Deno.serve(async (req) => {
       return json({ ...r, ...(question ? { question } : {}), chantiers: snapshot.chantiers, remaining });
     };
 
-    const local = att.file ? null : handleWorkerLocally(text, snapshot, live);
-    if (local) return send(local);
-
-    if (!aiKey(Deno.env)) {
-      if (att.file) return json({ kind: 'answer', notice: true, answer: 'Lecture de fichier indisponible pour le moment.', remaining });
-      return json({ kind: 'answer', notice: true, answer: 'Je n’ai pas compris. Essayez : « 7h30-12h Villa Dupont, 13h-16h30 Bureau Martin ».', remaining });
+    // Le tour (lecteur local, ou IA en profil court / long) est le MÊME code que celui du banc de mesure.
+    const t = await runWorkerTurn({
+      text, file: att.file, snapshot, live, tier, iaDisponible: !!aiKey(Deno.env), multiOk: body.multi === true,
+      call: (req) => callFunction(req, Deno.env),
+    });
+    if (t.via === 'erreur') {
+      if (t.raison === 'sans_cle') {
+        if (att.file) return json({ kind: 'answer', notice: true, answer: 'Lecture de fichier indisponible pour le moment.', remaining });
+        // Phrase longue : jamais le lecteur local (il déformerait la phrase) ; le panneau remet la phrase dans le champ.
+        if (t.profil === 'long') return json({ kind: 'answer', notice: true, answer: 'L’assistant n’est pas disponible pour le moment. Utilisez la saisie habituelle.', remaining });
+        return json({ kind: 'answer', notice: true, answer: 'Je n’ai pas compris. Essayez : « 7h30-12h Villa Dupont, 13h-16h30 Bureau Martin ».', remaining });
+      }
+      return json({ kind: 'answer', notice: true, answer: 'L’assistant n’a pas pu répondre. Utilisez la saisie habituelle.', remaining });
     }
-    // Lot 6 : seulement les outils du domaine de la phrase ; UN appel (rapide, ou documents si fichier).
-    const r = await callFunction({
-      prompt: workerFunctionPrompt(snapshot, live, text), functions: workerFunctionsFor(!!att.file, text), file: att.file, tier,
-    }, Deno.env);
-    if (!r.ok) return json({ kind: 'answer', notice: true, answer: 'L’assistant n’a pas pu répondre. Utilisez la saisie habituelle.', remaining });
-    return send(fromWorkerCall(r.call.name, r.call.args, snapshot, live));
+    return send(t.reply);
   } catch {
     console.error('[worker-assistant] erreur interne');
     return json({ error: 'Erreur serveur' }, 500);

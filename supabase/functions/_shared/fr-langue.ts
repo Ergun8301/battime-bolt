@@ -8,7 +8,7 @@
 // Sans réseau ni base : testable, identique côté serveur et navigateur.
 
 const deaccent = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-export const low = (s: string) => deaccent(s.toLowerCase()).replace(/[’']/g, "'");
+export const low = (s: string) => deaccent(s.toLowerCase()).replace(/ı/g, 'i').replace(/[’']/g, "'"); // « ı » turc → « i »
 
 // ── Nettoyage de l'oral ─────────────────────────────────────────────────────
 const FILLERS = [

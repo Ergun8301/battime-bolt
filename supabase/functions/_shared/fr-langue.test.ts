@@ -1,7 +1,7 @@
 // Lot 7 — le français parlé : dates relatives, heures, titres propres.
 //   npm run test:fr-langue
-import { calendarForPrompt, cleanName, cleanSpoken, cleanTitle, dateAVenir, dayPart, isNewRequest, looksLikeAction, parseDateFr, parseDateRangeFr, parseTimeFr, plageAVenir } from './fr-langue.ts';
-import { placeOf } from './worker-assistant-core.ts';
+import { calendarForPrompt, cleanName, cleanSpoken, cleanTitle, dateAVenir, dayPart, isNewRequest, looksLikeAction, low, parseDateFr, parseDateRangeFr, parseTimeFr, plageAVenir } from './fr-langue.ts';
+import { norm, placeOf } from './worker-assistant-core.ts';
 
 function eq(a: unknown, b: unknown, msg: string) {
   if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error(`${msg} — attendu ${JSON.stringify(b)}, obtenu ${JSON.stringify(a)}`);
@@ -94,4 +94,11 @@ Deno.test('Jour passé donné par le modèle pour un nom de jour seul → la PRO
   eq(plageAVenir('2026-10-08', '2026-09-30', 'de jeudi à mercredi', T), { du: '2026-10-08', au: '2026-10-14' }, 'fin passée corrigée, avant le début → mercredi après le début');
   eq(plageAVenir('2026-10-06', '2026-10-02', 'de mardi à vendredi', T), { du: '2026-10-06', au: '2026-10-02' }, 'rien de passé : l’ordre du modèle n’est pas retouché');
   eq(plageAVenir('2026-09-28', '2026-09-30', 'de lundi à mercredi derniers', T), { du: '2026-09-28', au: '2026-09-30' }, 'passé dit : intact');
+});
+
+// Turc : « ı » (i sans point) n'est pas décomposé par NFD ; sans cette ligne « Işık » ne ressemblerait jamais à « isik ». Le français n'en a aucun.
+Deno.test('Turc : « ı » est lu comme « i » (low et norm), le français ne change pas', () => {
+  eq([low('Işık Çalıştım'), norm('Işık Çalıştım')], ['isik calistim', 'isik calistim'], 'ı → i');
+  eq([low('Élève à l’Été'), norm('Élève à l’Été')], ["eleve a l'ete", "eleve a l'ete"], 'français inchangé');
+  eq(parseDateFr('Dün', T), '', 'parseDateFr ne lit pas le turc (le modèle le lit)');
 });

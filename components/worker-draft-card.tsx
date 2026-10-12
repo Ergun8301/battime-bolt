@@ -49,7 +49,7 @@ const launched = new WeakSet<object>();
  * porté par la VALEUR de la ligne (NaN), pas par une table indexée : retirer
  * une ligne ne déplace pas l'erreur sur sa voisine.
  */
-function DraftPause({ value, onChange, testId }: { value: number; onChange: (m: number) => void; testId: string }) {
+export function DraftPause({ value, onChange, testId, ariaLabel = 'Total des pauses (h:mm)' }: { value: number; onChange: (m: number) => void; testId: string; ariaLabel?: string }) {
   const [text, setText] = useState(() => (Number.isFinite(value) && value > 0 ? formatPauseInput(value) : ''));
   const [shown, setShown] = useState(false);
   /** Champ vide = pas de pause ; illisible = NaN (bloque « Enregistrer »). */
@@ -64,7 +64,7 @@ function DraftPause({ value, onChange, testId }: { value: number; onChange: (m: 
   return (
     <>
       <input className="pause" type="text" inputMode="text" autoComplete="off" maxLength={12} placeholder="0:00" value={text}
-        aria-label="Total des pauses (h:mm)" aria-invalid={!!bad || undefined} data-testid={testId}
+        aria-label={ariaLabel} aria-invalid={!!bad || undefined} data-testid={testId}
         onChange={(e) => { setText(e.target.value); setShown(false); onChange(valueOf(e.target.value)); }}
         onBlur={() => setShown(true)}
         onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); setShown(true); } }} />

@@ -22,6 +22,8 @@ export async function insertWorkerEntry(pending: PendingEntry): Promise<'online'
     company_id: pending.company_id, user_id: pending.user_id, worksite_id: pending.worksite_id, planning_id: pending.planning_id ?? null,
     work_date: pending.work_date, start_time: pending.start_time, end_time: pending.end_time, break_minutes: pending.break_minutes,
     meal_allowance: pending.meal_allowance, observation: pending.observation ?? null, reception: pending.reception ?? null, status: 'draft' as const,
+    // Une pause dite entre deux créneaux (Assistant, fiche « Tout confirmer ») ; sans elle, le corps de la requête reste celui d'avant.
+    ...(pending.gap_before ? { gap_before: pending.gap_before } : {}),
   };
   let { error } = await supabase.from('time_entries').insert({ ...row, client_id: pending.localId });
   if (error && error.code === 'PGRST204' && error.message?.includes('client_id')) {

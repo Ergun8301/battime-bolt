@@ -253,6 +253,76 @@ Couvert (actions de **planning**, où un jour passé sans marqueur est presque t
 les absences et congés (`poser_absence`, `supprimer_absence`, `demander_conge`, `modifier_conge`), `corriger_pointage`, `ajouter_depense` et les heures du salarié (`declarer_heures`, `effacer_heures`, `copier_journee`).
 Leurs dates restent celles du modèle, et les descriptions de `supprimer_absence` ne demandent pas « le prochain jour ».
 
+## G · Phrases longues et plusieurs actions (français / turc)
+
+**Le problème** (retour réel d'Ergun, sur le téléphone d'un salarié) : « Ajoute-moi une intervention. J'ai travaillé aujourd'hui de 8h à midi, puis pause d'1h, puis de 13h à 17h
+sur un nouveau chantier : prénom Pierrick, nom Dupont, à Montagna 01250, pour la pose d'un store banne. » donnait UN créneau de 3 h (13h-17h perdu), la pause lue comme « cahier »,
+le client et l'adresse ignorés, puis « sur quel chantier ? ». Attendu : UNE fiche avec les DEUX créneaux, la pause d'1 h, le nouveau chantier, à confirmer en un clic.
+
+**Les causes, mesurées** : (1) le lecteur à expressions régulières passait AVANT l'IA et déformait les phrases longues ; (2) la consigne disait « appelle UNE fonction » et `callFunction`
+ne gardait que le premier `functionCall` ; (3) `declarer_heures` n'avait aucun champ pour un NOUVEAU chantier ; (4) le palier « rapide » (réflexion « minimal », 5 s) ne comprenait que 4 phrases
+longues sur 11 ; (5) la limite de 500 caractères ; (6) la dictée verrouillée sur `fr-FR`.
+
+### Le profil « long » (`_shared/saisie-profil.ts`, `_shared/worker-turn.ts`)
+
+Une phrase du salarié est « longue » dès qu'un seul de ces signaux joue : ≥ 120 caractères, turc détecté, plusieurs familles d'actions (panier, réserve, congé, envoi, copie, nouveau chantier,
+heures), ≥ 3 plages horaires, 2 plages + le mot « pause », nouveau chantier + code postal/adresse/prénom, une plage + une pause dite en toutes lettres (« une demi-heure de pause », que le lecteur
+local ne lit pas), une plage + une autocorrection (« 7h, non plutôt 7h30 »). Deux plages seules (« Ce matin 7h30-12h, après-midi 13h-16h30 ») restent **courtes**.
+
+- **Court** : exactement le chemin d'avant (lecteur local, sinon une fonction, même consigne, mêmes outils, aucun champ de plus dans la requête). Les 80 phrases du jeu d'évaluation restent toutes courtes
+  (test `npm run test:saisie-profil`, 0 « longue »), leurs sorties locales sont identiques (preuve par comparaison avant/après).
+- **Long** : **jamais le lecteur local** (même sans clé ou en cas d'échec : une notice, jamais un repli sur le lecteur qui avait produit le bug) ; IA en réflexion « medium », fenêtres de **14 s puis 22 s au
+  total** (`PROFIL_LONG` dans `ai-provider.ts` : des constantes du code, pas de la configuration `AI_CONFIG`), modèle de secours en « low » ; jusqu'à **4 appels de fonction** (`maxCalls`, `MAX_APPELS`).
+  Une demande = **une unité de quota** du palier « rapide » (aucune migration). Latence mesurée : médiane 3,5 s, maximum 13 s sur 11 phrases (réflexion « medium » : 11/11 comprises contre 4/11 avant).
+  Le client envoie `multi: true` ; sans ce drapeau (ancien navigateur en mémoire) le serveur reste en profil court, comme avant.
+- Limite de saisie du salarié : **1500 caractères** (`WORKER_TEXT_MAX`), le bureau reste à 500.
+- Outils du profil long : ceux du domaine de la phrase + un socle (heures, nouveau chantier, panier, envoi, réserves, congé, répondre), jamais `ranger_photo`. `declarer_heures` y gagne `nouveau_chantier`
+  (nom du client, adresse, code postal, ville, travaux) et une ligne peut dire `chantier: "nouveau"`.
+
+### Ce que le code corrige (le modèle se trompe de façon répétable) — `_shared/worker-multi.ts`
+
+| Défaut mesuré | Règle déterministe |
+|---|---|
+| créneau fusionné 08:00-17:00 pause 60 | redécoupé selon les plages lues dans la phrase (français : « de 8h à midi », « 08.00-12.00 », « huit heures à midi » ; turc : « 8’den 12’ye kadar ») |
+| pause décomptée deux fois (7h-12h « pause 60 » puis 13h-17h) | le trou entre deux créneaux EST la pause : la pause portée par un créneau et égale au trou (± 10 min) est mise à 0 ; l'écart n'est marqué « pause » que si le salarié l'a dite |
+| ligne « nouveau » ou client non apparié | rattachée au nouveau chantier ; « Pierrick Dupont » n'est jamais « Villa Dupont » ; « Dupont » seul entre les deux → « à choisir » ; jamais « Autre » |
+| créneau sans chantier nommé rempli au hasard depuis le planning | seulement quand aucun nouveau chantier n'est dit |
+| chantier « nouveau » qui existe déjà (même nom + ville) | réutilisé, rien n'est créé (`reutilise_id`) |
+| ville non dite | jamais inventée : la fiche la réclame |
+| R1 · ville dite comme « adresse » (« adres Montagna 01250 » → adresse = Montagna, ville vide) | avec un code postal, une ville vide et une adresse sans chiffre ni mot de voie, DITE d'un seul tenant avec le code postal dans la phrase (« Montagna 01250 »), l'adresse EST la ville ; sinon, seulement si le modèle a rendu le code postal, les mots capitalisés qui le précèdent (hors nom du client). Un mot de voie (rue, avenue, chemin, place, sokak, cadde, mahalle, ZA, ZI, mairie, gare…) dans l'adresse OU dans ces mots (« Rue des Lilas », « Gül Sokak » en majuscules) n'est jamais une ville : la fiche réclame la ville. Une ville donnée par le modèle n'est jamais écrasée, une ville absente de la phrase ou un nombre sans code postal rendu (« devis Alpha 12345 ») jamais inventés |
+| R2 · chantier DEVINÉ (« Villa Dupont » rendu pour « Pierrick Dupont, nouveau client », ou pour un « chantier » sans nom) | si aucun mot du chantier rendu n'est dans la phrase (hors mots du nouveau client), le créneau est SANS NOM : il prend le nouveau chantier (s'il est seul), sinon l'unique chantier nommé, sinon le planning comme avant ; « chez Dupont » + « Pierrick Dupont » reste « à choisir ». Un autre lieu dit sans nom (« ailleurs », « autre part », « başka bir yerde », « un autre chantier » ; pas « par ailleurs ») laisse le créneau sans nom « à choisir » : jamais rangé chez l'unique chantier nommé (un chantier existant « Autre » rendu par le modèle reste comme avant) |
+| R3 · « nouveau chantier » dit pour un chantier qui existe déjà (« Bureau Martin à Villeurbanne »), sans bloc rendu | nom ET ville du chantier existant dits dans la phrase APRÈS « nouveau chantier » / « yeni şantiye » (≤ 15 mots), un seul candidat : bloc `reutilise_id`, la fiche dit « Chantier existant utilisé » (plus de « Non préparé : Nouveau chantier ») ; « …au Bureau Martin, demain je commence un nouveau chantier » reste « Non préparé : Nouveau chantier » |
+| date non ISO en turc (« dün », « bugün », « yarın », `30.09`) | lue ; sinon « Date illisible » (jamais un repli silencieux sur aujourd'hui) |
+| action non demandée (consigne cachée dans un nom de chantier) | un indice lexical est exigé dans la phrase pour chaque annexe (panier, réserve, congé, envoi) |
+| plus de 4 actions | les appels écartés sont comptés et dits (« Autres actions »), les familles demandées et absentes sont listées (« Non préparé »), « Lecture rapide : vérifiez que tout y est » |
+
+La réponse est une fiche `multi` : éléments dans l'ordre chantier → heures → panier → réserve → congé → envoi, **rien n'est enregistré avant « Tout confirmer »** (y compris les gestes « directs » du lot 7,
+qui en profil long ne s'exécutent pas seuls). Les suppressions, copies et modifications de ligne ne sont jamais dans une fiche (elles gardent leur propre confirmation). Le chantier est créé à la confirmation
+seulement, après avoir cherché un chantier actif de même nom + ville ; « Annuler » retire les lignes d'heures créées, le chantier reste (le salarié ne peut pas le supprimer).
+
+### Limites connues
+
+- Cartes, boutons et libellés restent en **français** ; seule la réponse libre suit la langue du salarié (turc ou français). Les textes pour le bureau (travaux, note de congé, détail de réserve) sont écrits en français.
+- Dictée turque : dépend du navigateur (Chrome : `tr-TR` ; Safari iOS : selon la langue de dictée installée). À essayer sur un appareil réel avant la mise en ligne.
+- En profil long, pas de repli local : ces phrases dépendent à 100 % du modèle (Gemini gratuit : 429/503 possibles). L'écran remet la phrase dans le champ si le modèle échoue (message « L’assistant n’a pas pu répondre. Utilisez la saisie habituelle. »). Une erreur du fournisseur consomme quand même une demande du quota journalier (débité avant l'appel, comme pour le profil court).
+- Autres langues que le turc : traitées comme du français.
+- **Données personnelles** : une phrase comme celle d'Ergun contient le prénom, le nom et l'adresse d'un client particulier. Ces données partent chez Google (formule gratuite : réutilisables par Google), sont écrites dans
+  `worksites` (lisibles par tous les salariés de l'entreprise) ; le journal ne garde que « Chantier créé » et la ville. **Avant d'ouvrir le turc et les clients particuliers à de vrais salariés** : formule payante
+  sans réutilisation des données, et mention dans la politique de confidentialité. Aucun journal ne contient le texte ni les arguments (test statique).
+- La colonne `worksites.postal_code` n'est créée par aucune migration du dépôt : à confirmer en production (lecture seule) avant la mise en ligne ; le code ne dépend pas de son existence.
+
+### Mesure (Cowork), avant toute mise en ligne
+
+Le jeu compte maintenant **109 phrases** : les 80 d'origine (47 bureau + 33 salarié, inchangées) + **29 phrases longues du salarié** (`sl01–sl16` « Long FR », `st01–st13` « Long TR », dont la phrase exacte d'Ergun en `sl01` ; `st12` et `st13` mesurent R1 et R2).
+Les cas d'heures d'aujourd'hui sont mesurés sur une journée vide (`live: 'vide'`). Banc : `POST /functions/v1/assistant-eval` avec `{ "version": "v2", "prodPath": true, "repeat": 3, "parallel": 1, "ids": [...] }` —
+`prodPath` = le chemin exact des clients (aucun nouvel essai après une erreur du fournisseur) ; `repeat` = 3 passes par cas (le modèle n'est plus à température fixe) ; **au plus 4 ids par appel avec `repeat: 3`, ou 12 avec
+`repeat: 1`**, un par un (la clé gratuite est partagée avec la production ; la durée maximale d'une fonction n'a pas été vérifiée : réduire les lots au besoin). 200 ids au plus, un id inconnu est refusé.
+Seuils : les 80 anciennes phrases ≥ 97,5 % (234 réussites sur 240 essais, aucun cas qui passait avant et échoue 3/3) ET les 29 nouvelles ≥ 97,5 % (85/87, aucun cas en échec 3/3), les 29 comptant toutes. Le rapport donne
+par catégorie, par profil (court/long), la médiane et le maximum des temps, la cause de chaque échec (`fournisseur` ou `modèle ou code`) et le nombre de réponses du modèle de secours.
+Tests sans modèle : `npm run test:saisie-profil`, `test:worker-multi`, `test:worker-turn`, `test:assistant-eval`, `test:ai-provider`, `test:ia-config`, `test:ia-domaines`.
+
+**Mise en ligne** : le front d'abord, puis `worker-assistant` (et `assistant-eval` pour mesurer). Aucune migration, aucun secret, `assistant`, `payslip-read` et le bureau ne changent pas.
+
 ## Prod
 
 Lot 7 : migrations `20261001090000_lot7_assistant_journal.sql`, `20261001100000_lot7_collegues_documents.sql`, puis `assistant` et `worker-assistant`.
