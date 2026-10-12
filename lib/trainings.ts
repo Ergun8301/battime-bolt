@@ -12,11 +12,17 @@
 //   · NOTIFICATION : la branche « message du bureau » de send-push (déjà en
 //     production). Jamais d'e-mail, jamais de mailto.
 //
+// LOT 13 (vidéos envoyées directement, lib/training-videos.ts) : le salarié
+// reçoit UNE liste — ses formations du lot 6 et ses vidéos (kind 'upload') —
+// lue en parallèle ; tant que la migration du lot 13 manque, la liste est
+// exactement celle du lot 6.
+//
 // JAMAIS DES HEURES : rien ici ne lit ni n'écrit planning, time_entries ou
 // active_sessions.
 import { supabase } from '@/lib/supabase';
 import { fetchAllPaged } from '@/lib/fetch-all';
 import { signCompanyDocuments } from '@/lib/chantier-docs';
+import { fetchMyVideos } from '@/lib/training-videos';
 import {
   docPickable, isMissingFunction, isMissingRelation, trainingErrorMessage, trainingPushBody, type ViewRow,
 } from '@/supabase/functions/_shared/trainings';
@@ -53,13 +59,18 @@ export interface PickableDoc {
 export interface MyTraining {
   id: string;
   title: string;
-  kind: 'video' | 'document';
+  /** 'upload' : vidéo envoyée directement (lot 13), lue dans l'appli. */
+  kind: 'video' | 'document' | 'upload';
   video_url: string | null;
   document_name: string | null;
   document_path: string | null;
   document_mime: string | null;
   created_at: string;
   seen_at: string | null;
+  /** Lot 13 seulement (kind 'upload'). */
+  video_path?: string | null;
+  video_size?: number | null;
+  video_duration?: number | null;
 }
 
 const TRAINING_COLS = 'id, company_id, title, kind, video_url, document_id, all_team, assignee_ids, created_by, created_at, archived_at, document:documents(label, file_name, file_path, mime_type)';
@@ -176,10 +187,17 @@ export async function signTrainingDocs(companyId: string, paths: (string | null 
  */
 export async function fetchMyTrainings(): Promise<MyTraining[] | 'missing' | null> {
   try {
-    const { data, error } = await supabase.rpc('my_trainings', {}, { get: true });
+    // Les deux lectures en parallèle ; celle des vidéos ne se refait plus une fois
+    // la migration du lot 13 connue absente (lib/training-videos.ts).
+    const [{ data, error }, videos] = await Promise.all([supabase.rpc('my_trainings', {}, { get: true }), fetchMyVideos()]);
     if (error) return isMissingFunction(error) || isMissingRelation(error) ? 'missing' : null;
     if (!Array.isArray(data)) return 'missing';
-    return data as MyTraining[];
+    if (videos === null) return null; // vidéos illisibles (réseau…) : on garde ce qu'on sait
+    const uploads: MyTraining[] = videos === 'missing' ? [] : videos.map((v) => ({
+      id: v.id, title: v.title, kind: 'upload', video_url: null, document_name: null, document_path: null, document_mime: null,
+      created_at: v.created_at, seen_at: v.seen_at, video_path: v.file_path, video_size: v.size_bytes, video_duration: v.duration_s,
+    }));
+    return [...(data as MyTraining[]), ...uploads];
   } catch {
     return null;
   }

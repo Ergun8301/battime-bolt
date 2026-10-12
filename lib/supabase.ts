@@ -7,6 +7,9 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://sdperbcquvneohotjono.supabase.co';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_UeU7qzDdQRwEd1qzvrH3Yw_T1Qn8YEO';
 
+/** Clé publique (déjà dans le site) : en-tête « apikey » de l'envoi XHR des vidéos (lot 13), comme le fait supabase-js. */
+export const SUPABASE_ANON_KEY = supabaseAnonKey;
+
 // Lot 3 — d'où vient une écriture, pour les traces (« Interventions supprimées
 // ou décalées », supabase/migrations/20261011120000_lot3_traces_suppressions.sql).
 // Pendant une action de l'assistant (withOrigin('assistant', …)), chaque appel

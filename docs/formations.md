@@ -22,3 +22,7 @@ Aperçu : il lit la base de production. Une fois la migration appliquée, une fo
 - `npm run test:formations` — règles pures (liens, public, « qui l'a vue », messages), Deno.
 - `npm run test:formations-db` — la migration sur un Postgres jetable (PGlite) : isolation des entreprises, droits, « Vue » pour soi seul, retour arrière.
 - `npm run build` puis `npm run test:formations-ecrans` — les vrais écrans sur une base simulée ; captures dans `docs/captures-lot6/` (« avant » : `AVANT=1` sur le build d'avant).
+
+## Lot 13 : vidéos envoyées directement
+
+Le bureau peut aussi **filmer ou choisir une vidéo** (MP4, MOV, WebM ; 50 Mo par fichier, 100 Mo par entreprise, forfait gratuit), que le salarié regarde dans l'appli. Tables, bucket et fonctions à part : la table `trainings` ci-dessus n'est pas modifiée. Voir [videos.md](videos.md).

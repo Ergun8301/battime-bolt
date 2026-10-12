@@ -72,7 +72,10 @@
     "test:taches-heures-ecrans": "node scripts/tests/taches-heures-lot9.mjs out docs/captures-taches-heures",
     "test:qr-fixe": "npx -y deno@2 test --allow-env supabase/functions/_shared/fixed-qr.test.ts",
     "test:qr-fixe-db": "node supabase/tests/lot12_qr_fixe_position.mjs",
-    "test:qr-fixe-ecrans": "node scripts/tests/qr-fixe-lot12.mjs out docs/captures-qr-fixe"
+    "test:qr-fixe-ecrans": "node scripts/tests/qr-fixe-lot12.mjs out docs/captures-qr-fixe",
+    "test:videos": "npx -y deno@2 test --allow-read supabase/functions/_shared/training-videos.test.ts",
+    "test:videos-db": "node supabase/tests/lot13_videos_envoi_direct.mjs",
+    "test:videos-ecrans": "node scripts/tests/videos-lot13.mjs out docs/captures-videos"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
