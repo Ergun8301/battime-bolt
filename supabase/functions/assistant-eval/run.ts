@@ -1,6 +1,6 @@
 // Lot 7 — exécute le jeu d'évaluation sur UNE version de l'assistant :
 //   v1 = code d'avant le lot 7 (copie figée dans ./v1, modèle léger) ;
-//   v2 = code du lot 7 (_shared, modèle fort pour les actions).
+//   v2 = code actuel (_shared ; lot 6 : outils par domaine, comme les vraies fonctions).
 // Le chemin est celui des vraies fonctions : lecteur local d'abord, IA sinon,
 // puis les MÊMES contrôles. Rien n'est lu ni écrit en base.
 import type { ToolsRequest, ToolsResult } from '../_shared/ai-provider.ts';
@@ -32,7 +32,6 @@ async function runOne(c: EvalCase, version: 'v1' | 'v2', call: Call): Promise<Ca
   const base = { id: c.id, cote: c.cote, categorie: c.categorie, phrase: c.phrase };
   const t0 = Date.now();
   const file = c.file ? FILES[c.file] : undefined;
-  const kind = version === 'v2' && W2.looksLikeAction(c.phrase, !!file) ? 'action' : 'question';
   try {
     let out: Outcome;
     let via: CaseResult['via'] = 'local';
@@ -44,7 +43,7 @@ async function runOne(c: EvalCase, version: 'v1' | 'v2', call: Call): Promise<Ca
       if (local) out = fromAdmin(local as AnyReply);
       else {
         via = 'ia';
-        const r = await call({ prompt: A.actionPrompt(ctx as never, '{}', A.guideForPrompt(), c.phrase), functions: version === 'v2' ? A2.functionsFor(!!file) : A.ASSISTANT_FUNCTIONS, file, kind });
+        const r = await call({ prompt: A.actionPrompt(ctx as never, '{}', A.guideForPrompt(), c.phrase), functions: version === 'v2' ? A2.functionsFor(!!file, c.phrase) : A.ASSISTANT_FUNCTIONS, file });
         out = r.ok ? fromAdmin(A.fromFunctionCall(r.call.name, r.call.args, ctx as never) as AnyReply) : { kind: 'none', answer: `IA : ${r.reason}` };
       }
     } else {
@@ -56,7 +55,7 @@ async function runOne(c: EvalCase, version: 'v1' | 'v2', call: Call): Promise<Ca
       if (local) out = fromWorker(local as AnyWorker);
       else {
         via = 'ia';
-        const r = await call({ prompt: W.workerFunctionPrompt(snap as never, live as never, c.phrase), functions: version === 'v2' ? W2.workerFunctionsFor(!!file) : W.WORKER_FUNCTIONS, file, kind });
+        const r = await call({ prompt: W.workerFunctionPrompt(snap as never, live as never, c.phrase), functions: version === 'v2' ? W2.workerFunctionsFor(!!file, c.phrase) : W.WORKER_FUNCTIONS, file });
         out = r.ok ? fromWorker(W.fromWorkerCall(r.call.name, r.call.args, snap as never, live as never) as AnyWorker) : { kind: 'none', answer: `IA : ${r.reason}` };
       }
     }

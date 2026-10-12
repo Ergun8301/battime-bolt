@@ -21,6 +21,7 @@
 // reste disponible après.
 import { calendarForPrompt, cleanName, cleanSpoken, cleanTitle, dayPart, parseDateFr, parseTimeFr } from './fr-langue.ts';
 import { REASON_MAX, reasonOk } from './office-edits.ts';
+import { OFFICE_DOMAINS, pickTools } from './tool-domains.ts';
 
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -1608,8 +1609,12 @@ export const ASSISTANT_FUNCTIONS = [
  */
 export const ATTACHMENT_ACTIONS = ['repondre', 'ranger_document', 'creer_chantier', 'ajouter_depense', 'inviter_salarie', 'cout_reel'] as const;
 export const ATTACHMENT_FUNCTIONS = ASSISTANT_FUNCTIONS.filter((f) => (ATTACHMENT_ACTIONS as readonly string[]).includes(f.name));
-/** Les outils proposés au modèle : tous, ou ceux des documents s'il y a un fichier. */
-export const functionsFor = (hasFile: boolean) => (hasFile ? ATTACHMENT_FUNCTIONS : ASSISTANT_FUNCTIONS);
+/**
+ * Les outils proposés au modèle : ceux des documents s'il y a un fichier ;
+ * sinon, lot 6, ceux du DOMAINE de la demande (tous si aucun n'est reconnu).
+ */
+export const functionsFor = (hasFile: boolean, question?: string) =>
+  (hasFile ? ATTACHMENT_FUNCTIONS : pickTools(ASSISTANT_FUNCTIONS, question, OFFICE_DOMAINS));
 
 // ── Sans IA : les demandes courantes, tout de suite ─────────────────────────
 export interface LocalReply { answer: string; links: { label: string; action: string }[]; action?: AssistantAction }

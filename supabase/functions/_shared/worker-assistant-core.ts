@@ -18,6 +18,7 @@
 // salarié peut demander où sont ses collègues (prénom, chantier, horaires).
 import { calendarForPrompt, cleanName, cleanSpoken, cleanTitle, dayPart, looksLikeAction, low, parseDateFr, parseDateRangeFr, parseTimeFr } from './fr-langue.ts';
 import { plannedState } from './day-hours.ts';
+import { WORKER_DOMAINS, pickTools } from './tool-domains.ts';
 export { looksLikeAction };
 
 export interface WorkerSnapshot {
@@ -1014,7 +1015,9 @@ export const WORKER_FUNCTIONS = [
  */
 export const WORKER_ATTACHMENT_ACTIONS = ['ranger_photo', 'repondre'] as const;
 export const WORKER_ATTACHMENT_FUNCTIONS = WORKER_FUNCTIONS.filter((f) => (WORKER_ATTACHMENT_ACTIONS as readonly string[]).includes(f.name));
-export const workerFunctionsFor = (hasFile: boolean) => (hasFile ? WORKER_ATTACHMENT_FUNCTIONS : WORKER_FUNCTIONS);
+/** Lot 6 : sans fichier, seulement les outils du DOMAINE de la phrase (tous si aucun n'est reconnu). */
+export const workerFunctionsFor = (hasFile: boolean, text?: string) =>
+  (hasFile ? WORKER_ATTACHMENT_FUNCTIONS : pickTools(WORKER_FUNCTIONS, text, WORKER_DOMAINS));
 
 // ── Lot 7 : le planning des collègues (lecture limitée côté base) ──────────
 export interface ColleagueRow { prenom: string; date: string; chantier: string | null; ville: string | null; debut: string | null; fin: string | null; absent: boolean }

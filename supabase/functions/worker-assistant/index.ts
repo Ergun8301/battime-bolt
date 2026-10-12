@@ -1,8 +1,17 @@
 // Edge Function : worker-assistant — l'Assistant BEMEXO du SALARIÉ (lot 4).
 //
-// DÉPLOIEMENT : `supabase functions deploy worker-assistant` (JWT vérifié).
-// Secrets : GEMINI_API_KEY, AI_MODEL (facultatif), WORKER_ASSISTANT_DAILY_LIMIT
+// DÉPLOIEMENT : `supabase functions deploy worker-assistant` (JWT vérifié),
+// APRÈS la migration 20261012090000_lot6_couche_ia_v2.sql.
+// Secrets : AI_CONFIG (formule, modèles, plafonds) et AI_API_KEY (repli :
+// GEMINI_API_KEY), voir _shared/ai-provider.ts ; WORKER_ASSISTANT_DAILY_LIMIT
 // (facultatif, 20 par défaut : demandes par salarié et par jour).
+// AI_MODEL, AI_ACTION_MODEL et AI_FALLBACK_MODEL ne sont plus lus.
+//
+// Lot 6 : PLUS DE CLÉ DE SERVICE. Qui appelle, son entreprise, ai_enabled, le
+// quota et le plafond global viennent de public.assistant_context, appelée avec
+// SON jeton. UN seul appel au modèle par demande. Le corps { statut: true }
+// rend seulement la formule (bandeau « Mode essai »), sans rien compter ni
+// appeler le modèle.
 //
 // CE QU'ELLE FAIT : transformer une phrase en BROUILLON de pointage, préparer
 // une demande de congé, un début/fin de pointage ou une réserve (lot 3 bis),
@@ -14,12 +23,12 @@
 //
 // Lot 7 : tous les boutons de « Ma journée » ; « Où sont mes collègues ? » par
 // la fonction limitée `colleagues_planning` (prénom, chantier, horaires ; rien
-// d'autre ; réglage de l'entreprise) ; `question` s'il manque une info ; modèle
-// fort (AI_ACTION_MODEL) pour les actions.
+// d'autre ; réglage de l'entreprise) ; `question` s'il manque une info.
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { callFunction, readAttachment } from '../_shared/ai-provider.ts';
+import { aiKey, callFunction, formuleNom, PAUSE_MESSAGE, plafondProjet, readAttachment, tierFor } from '../_shared/ai-provider.ts';
+import { loadAssistantContext } from '../_shared/assistant-context.ts';
 import {
-  buildWorkerSnapshot, DEFAULT_WORKER_DAILY_LIMIT, formatColleagues, fromWorkerCall, handleWorkerLocally, looksLikeAction, mondayOf,
+  buildWorkerSnapshot, DEFAULT_WORKER_DAILY_LIMIT, formatColleagues, fromWorkerCall, handleWorkerLocally, mondayOf,
   workerFunctionsFor, workerFunctionPrompt, workerQuestionFor, type ColleagueRow, type WorkerFullReply, type WorkerLive, type WorkerRaw,
 } from '../_shared/worker-assistant-core.ts';
 
@@ -28,13 +37,12 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+// Lot 6 : la formule active part avec chaque réponse (bandeau « Mode essai »).
+const FORMULE = formuleNom(Deno.env);
+const json = (body: Record<string, unknown>, status = 200) =>
+  new Response(JSON.stringify({ ...body, formule: FORMULE }), { status, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
 
 const URL_ = Deno.env.get('SUPABASE_URL') ?? '';
-const admin = createClient(URL_, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '', {
-  auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
-});
 const parisToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 const plusDays = (iso: string, d: number) => { const x = new Date(`${iso}T12:00:00Z`); x.setUTCDate(x.getUTCDate() + d); return x.toISOString().slice(0, 10); };
 
@@ -43,30 +51,37 @@ Deno.serve(async (req) => {
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
   try {
     const jwt = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
-    const { data: { user } } = jwt ? await admin.auth.getUser(jwt) : { data: { user: null } };
-    if (!user) return json({ error: 'Non authentifié' }, 401);
-    const { data: me } = await admin.from('users').select('company_id, role, is_active').eq('id', user.id).maybeSingle();
-    if (!me || me.is_active === false || !me.company_id || !['worker', 'lead'].includes(me.role)) return json({ error: 'Réservé aux salariés' }, 403);
-    const { data: co } = await admin.from('companies').select('ai_enabled').eq('id', me.company_id).maybeSingle();
-    if (!(co as { ai_enabled?: boolean } | null)?.ai_enabled) return json({ error: 'Assistant non activé' }, 403);
-
-    const body = await req.json().catch(() => ({})) as { text?: string; file?: unknown };
+    if (!jwt) return json({ error: 'Non authentifié' }, 401);
+    const body = await req.json().catch(() => ({})) as { text?: string; file?: unknown; statut?: boolean };
+    // Lot 6 : à l'ouverture du panneau, l'écran demande seulement la formule (rien n'est compté).
+    if (body.statut === true) return json({ formule: FORMULE });
     const text = String(body.text ?? '').trim().slice(0, 500);
     if (!text) return json({ error: 'Écrivez ou dictez vos heures.' }, 400);
     // 📎 Photo ou PDF : lu par le modèle, jamais journalisé ni stocké ici.
     const att = readAttachment(body.file);
     if (!att.ok) return json({ error: att.error }, 400);
 
-    const limit = Number(Deno.env.get('WORKER_ASSISTANT_DAILY_LIMIT')) || DEFAULT_WORKER_DAILY_LIMIT;
-    const { data: used, error: qErr } = await admin.rpc('worker_assistant_consume', { p_user: user.id, p_limit: limit });
-    if (qErr) return json({ error: 'Assistant indisponible.' }, 500);
-    if (used == null) return json({ kind: 'answer', notice: true, answer: `Limite de ${limit} demandes par jour atteinte. Utilisez la saisie habituelle.` });
-
-    // Lecture AVEC LE JETON DU SALARIÉ, filtrée sur SON id.
+    // Tout passe par LE JETON DU SALARIÉ ; les lectures sont filtrées sur SON id.
     const db = createClient(URL_, Deno.env.get('SUPABASE_ANON_KEY') ?? '', {
       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
       global: { headers: { Authorization: `Bearer ${jwt}` } },
     });
+    // Qui je suis + quota AVANT tout travail (même compteur que le lot 4), en un aller-retour.
+    const limit = Number(Deno.env.get('WORKER_ASSISTANT_DAILY_LIMIT')) || DEFAULT_WORKER_DAILY_LIMIT;
+    const tier = tierFor(!!att.file);
+    const ctxR = await loadAssistantContext(db, 'salarie', { limit, tier, globalLimit: plafondProjet(Deno.env, tier) });
+    if (!ctxR.ok) {
+      switch (ctxR.raison) {
+        case 'non_connecte': return json({ error: 'Non authentifié' }, 401);
+        case 'non_autorise': return json({ error: 'Réservé aux salariés' }, 403);
+        case 'ia_coupee': return json({ error: 'Assistant non activé' }, 403);
+        case 'quota': return json({ kind: 'answer', notice: true, answer: `Limite de ${ctxR.limite ?? limit} demandes par jour atteinte. Utilisez la saisie habituelle.` });
+        case 'pause': return json({ kind: 'answer', notice: true, pause: true, answer: `${PAUSE_MESSAGE} Utilisez la saisie habituelle.` });
+        default: return json({ error: 'Assistant indisponible.' }, 500);
+      }
+    }
+    const user = { id: ctxR.userId };
+    const me = { company_id: ctxR.companyId };
     const today = parisToday();
     const [sites, entries, plan, sess, todayRows, yRows, myLeaves, myDocs] = await Promise.all([
       db.from('worksites').select('id, company_id, client_name, city').eq('company_id', me.company_id).eq('is_active', true).order('client_name'),
@@ -86,7 +101,7 @@ Deno.serve(async (req) => {
       planning: (plan.data ?? []) as WorkerRaw['planning'],
     });
     snapshot.demande = text;
-    const remaining = Math.max(0, limit - Number(used));
+    const remaining = Math.max(0, ctxR.remaining ?? 0);
     // Lot 3 bis : ce qu'il faut pour préparer un pointage ou une réserve (SES lignes).
     const siteName = (id: string | null) => snapshot.chantiers.find((c) => c.id === id)?.nom ?? 'Chantier';
     const s0 = sess.data as { worksite_id: string; started_at: string } | null;
@@ -104,7 +119,7 @@ Deno.serve(async (req) => {
         .map((x) => ({ id: x.id, nom: (x.label || x.file_name || 'Document').slice(0, 60), chantier: siteName(x.worksite_id), date: x.created_at.slice(0, 10) })),
     };
     // Réponse : l'action (et la question s'il manque une info), ou le planning des collègues.
-    const send = async (r: WorkerFullReply) => {
+    const send = async (r: WorkerFullReply): Promise<Response> => {
       if (r.kind === 'collegues') {
         const { data, error } = await db.rpc('colleagues_planning', { p_from: r.date, p_to: r.date });
         const answer = error ? 'Le planning des collègues n’est pas disponible.'
@@ -119,13 +134,13 @@ Deno.serve(async (req) => {
     const local = att.file ? null : handleWorkerLocally(text, snapshot, live);
     if (local) return send(local);
 
-    if (!Deno.env.get('GEMINI_API_KEY')) {
+    if (!aiKey(Deno.env)) {
       if (att.file) return json({ kind: 'answer', notice: true, answer: 'Lecture de fichier indisponible pour le moment.', remaining });
       return json({ kind: 'answer', notice: true, answer: 'Je n’ai pas compris. Essayez : « 7h30-12h Villa Dupont, 13h-16h30 Bureau Martin ».', remaining });
     }
+    // Lot 6 : seulement les outils du domaine de la phrase ; UN appel (rapide, ou documents si fichier).
     const r = await callFunction({
-      prompt: workerFunctionPrompt(snapshot, live, text), functions: workerFunctionsFor(!!att.file), file: att.file,
-      kind: looksLikeAction(text, !!att.file) ? 'action' : 'question',
+      prompt: workerFunctionPrompt(snapshot, live, text), functions: workerFunctionsFor(!!att.file, text), file: att.file, tier,
     }, Deno.env);
     if (!r.ok) return json({ kind: 'answer', notice: true, answer: 'L’assistant n’a pas pu répondre. Utilisez la saisie habituelle.', remaining });
     return send(fromWorkerCall(r.call.name, r.call.args, snapshot, live));
