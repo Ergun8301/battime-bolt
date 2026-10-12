@@ -20,11 +20,19 @@
 // (icône d'écran d'accueil, verrouillage automatique sur « Jamais »…).
 // Plus de liste, plus de « Ajouter une borne », plus de lieu ni de nom, plus de GPS.
 //
+// Lot 12 — « QR fixe à imprimer » (option, désactivée par défaut) : une section
+// repliée sous les horaires (components/kiosk-fixed-qr.tsx, chargée seulement
+// quand la fenêtre s'ouvre). Le QR fixe est une ligne « fixe » de `kiosks` :
+// elle n'est JAMAIS comptée ici comme une tablette (ni « Tablette reliée », ni
+// déconnectée par « Déconnecter la tablette » ou par le secours ci-dessous).
+// Tant que la migration n'est pas passée, la section n'apparaît pas.
+//
 // Toutes les écritures passent par la fonction `kiosk` (qui revérifie le rôle
 // admin et l'interrupteur) ; ici on ne fait que LIRE, sous RLS. Les relectures
 // gardent le même objet quand rien n'a changé (keep) : rien ne se redessine.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
 import qrcode from 'qrcode-generator';
 import { Check, Copy, MonitorSmartphone } from 'lucide-react';
 import { toast } from 'sonner';
@@ -35,9 +43,12 @@ import { InfoTip } from '@/components/ui/info-tip';
 import { TimeField } from '@/components/time-field';
 import { callKiosk, type KioskPairingCode, type KioskSettings } from '@/lib/kiosk-client';
 
+// Lot 12 : la section du QR fixe, chargée seulement à l'ouverture de la fenêtre.
+const KioskFixedQr = dynamic(() => import('@/components/kiosk-fixed-qr'), { ssr: false });
+
 interface Props { open: boolean; onOpenChange: (o: boolean) => void; companyId: string }
 
-interface KioskRow { id: string; created_at: string; last_seen_at: string | null }
+interface KioskRow { id: string; created_at: string; last_seen_at: string | null; kind?: string | null }
 interface Pairing extends KioskPairingCode { receivedAt: number }
 
 /** Durée de vie d'un code côté serveur (fonction kiosk : PAIRING_TTL_MS). */
@@ -166,11 +177,16 @@ export default function KioskAdmin({ open, onOpenChange, companyId }: Props) {
   const showPlanning = useRef<boolean | undefined>(undefined);
 
   const readKiosks = useCallback(async (): Promise<KioskRow[] | null> => {
-    const { data, error } = await supabase.from('kiosks')
-      .select('id, created_at, last_seen_at')
+    const read = (cols: string) => supabase.from('kiosks')
+      .select(cols)
       .eq('company_id', companyId).is('revoked_at', null).order('created_at', { ascending: true });
+    // Lot 12 : avec le type, pour écarter le QR fixe (ce n'est pas une tablette).
+    // Colonne absente (42703 : migration pas passée, donc aucun QR fixe) : la
+    // lecture d'avant. Toute autre erreur : comme avant (rien).
+    let { data, error } = await read('id, created_at, last_seen_at, kind');
+    if (error?.code === '42703') ({ data, error } = await read('id, created_at, last_seen_at'));
     if (error) return null;
-    return (data || []) as KioskRow[];
+    return ((data || []) as unknown as KioskRow[]).filter((r) => r.kind !== 'fixe');
   }, [companyId]);
 
   /** Un code neuf. L'ancien reste affiché jusqu'à l'arrivée du nouveau, puis il est périmé. */
@@ -490,6 +506,7 @@ export default function KioskAdmin({ open, onOpenChange, companyId }: Props) {
               <li>Déjà une ancienne icône BEMEXO sur la tablette ? Supprimez-la et ajoutez-la de nouveau depuis {borneLabel} : elle ouvrira directement la borne, en plein écran.</li>
             </ol>
           </details>
+          {open && <KioskFixedQr />}
         </div>
       </DialogContent>
     </Dialog>
