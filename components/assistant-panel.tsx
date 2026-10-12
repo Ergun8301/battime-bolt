@@ -126,6 +126,8 @@ interface Props {
   restoreOnFailure?: boolean;
   /** Une saisie est-elle une NOUVELLE demande (et non la réponse à la question en attente) ? Défaut : la règle du français. */
   isNewRequest?: (text: string) => boolean;
+  /** Vrai pour une carte longue (fiche à plusieurs éléments) : le panneau montre le HAUT de la réponse, pas sa fin. */
+  showFromTop?: (extra: unknown) => boolean;
 }
 
 const SLOW_MS = 4000;
@@ -134,7 +136,7 @@ const LANG_KEY = (memoryKey: string) => `bemexo:dictee-langue:${memoryKey}`;
 
 export default function AssistantPanel({
   source, onNavigate, defaultOpen = false, suggestions = ASSISTANT_SUGGESTIONS, intro, renderExtra, footNote = 'Actions simples faites tout de suite · « Annuler » en un clic', attachments = false, open: openProp, onOpenChange,
-  launcher = true, memoryKey = 'assistant', maxChars = 500, dictationLangs, slowHint, restoreOnFailure = false, isNewRequest = isNewRequestFr,
+  launcher = true, memoryKey = 'assistant', maxChars = 500, dictationLangs, slowHint, restoreOnFailure = false, isNewRequest = isNewRequestFr, showFromTop,
 }: Props) {
   const convo = convoOf(memoryKey);
   const [, redraw] = useReducer((x: number) => x + 1, 0);
@@ -179,7 +181,20 @@ export default function AssistantPanel({
     setLang(code);
     try { window.localStorage.setItem(LANG_KEY(memoryKey), code); } catch { /* sans effet */ }
   };
-  useEffect(() => { bodyRef.current?.scrollTo({ top: bodyRef.current.scrollHeight, behavior: 'smooth' }); }, [msgs, busy]);
+  // Défilement : vers le bas (la dernière bulle) ; mais une fiche longue s'ouvre sur son HAUT (titre, jour, chantier à créer), là où se vérifie
+  // ce qu'on va confirmer — pas sur son bouton. Seulement quand un message vient d'arriver (pas à chaque retouche de la carte).
+  const nbMsgs = useRef(msgs.length);
+  useEffect(() => {
+    const body = bodyRef.current;
+    if (!body) return;
+    const dernier = msgs[msgs.length - 1];
+    const nouveau = msgs.length !== nbMsgs.current;
+    nbMsgs.current = msgs.length;
+    const bulles = body.querySelectorAll<HTMLElement>('.as-bot');
+    const haut = nouveau && !busy && dernier?.who === 'bot' && dernier.extra != null && showFromTop?.(dernier.extra) ? bulles[bulles.length - 1] : null;
+    if (haut) body.scrollTo({ top: body.scrollTop + haut.getBoundingClientRect().top - body.getBoundingClientRect().top - 8, behavior: 'smooth' });
+    else body.scrollTo({ top: body.scrollHeight, behavior: 'smooth' });
+  }, [msgs, busy, showFromTop]);
 
   const ask = useCallback(async (q: string) => {
     const question = q.trim() || (file ? 'Regarde ce fichier.' : '');
@@ -191,8 +206,9 @@ export default function AssistantPanel({
     setMsgs((m) => [...m, { who: 'me', text: question, file: sent?.name }]);
     setBusy(true);
     // La réponse à la question en attente s'ajoute à la demande : c'est la FIN (la réponse) qui compte si le total dépasse la limite.
-    const full = pendingRef.current && !sent && !isNewRequest(question)
-      ? `${pendingRef.current.slice(0, Math.max(0, maxChars - question.length - 2))}, ${question}` : question;
+    // (Le bureau, à 500, garde sa règle d'avant : la demande en attente entière, coupée ensuite par le serveur.)
+    const attente = pendingRef.current && maxChars > 500 ? pendingRef.current.slice(0, Math.max(0, maxChars - question.length - 2)) : pendingRef.current;
+    const full = attente && !sent && !isNewRequest(question) ? `${attente}, ${question}` : question;
     // Une phrase longue peut demander plusieurs secondes : au bout de 4 s, on le dit.
     const wait = slowHint?.(full) ?? null;
     const timer = wait ? setTimeout(() => setHint(wait), SLOW_MS) : null;
@@ -230,8 +246,8 @@ export default function AssistantPanel({
     dictRef.current = new Dictation(Ctor, {
       onText: (t) => {
         setText(t.slice(0, maxChars));
-        // Dictée coupée au plafond : une seule fois par séance, on le dit.
-        if (t.length > maxChars && !cut) { cut = true; setMsgs((x) => [...x, { who: 'bot', text: `Message coupé à ${fmtNum(maxChars)} caractères.`, notice: true }]); }
+        // Dictée coupée au plafond (salarié) : une seule fois par séance, on le dit. Le bureau coupe en silence, comme avant.
+        if (maxChars > 500 && t.length > maxChars && !cut) { cut = true; setMsgs((x) => [...x, { who: 'bot', text: `Message coupé à ${fmtNum(maxChars)} caractères.`, notice: true }]); }
       },
       onState: setListening,
       onError: (m) => setMsgs((x) => [...x, { who: 'bot', text: m, notice: true }]),
@@ -311,7 +327,7 @@ export default function AssistantPanel({
                 <span aria-hidden="true">Dictée :</span>
                 {langs.map((l) => (
                   <button type="button" key={l.code} aria-pressed={lang === l.code} aria-label={l.aria} disabled={listening} data-testid={`assistant-lang-${l.code}`}
-                    lang={l.code.slice(0, 2)} onClick={() => pickLang(l.code)}>{l.label}</button>
+                    onClick={() => pickLang(l.code)}><span lang={l.code.slice(0, 2)}>{l.label}</span></button>
                 ))}
               </div>
             )}

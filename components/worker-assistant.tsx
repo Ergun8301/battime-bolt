@@ -23,13 +23,15 @@ import {
 
 // Dictée : français par défaut, turc au choix (mémorisé). Les cartes et boutons restent en français.
 const DICTATION_LANGS = [
-  { code: 'fr-FR', label: 'Français', aria: 'Dicter en français' },
-  { code: 'tr-TR', label: 'Türkçe', aria: 'Dicter en turc' },
+  { code: 'fr-FR', label: 'Français', aria: 'Français : dicter en français' },
+  { code: 'tr-TR', label: 'Türkçe', aria: 'Türkçe : dicter en turc' },
 ];
 /** Une phrase longue peut demander plusieurs secondes (réflexion plus poussée du modèle) : on le dit au bout de 4 s. */
 const slowHint = (t: string) => (profilSaisie(t).long ? 'Je lis votre message… cela peut prendre quelques secondes.' : null);
 /** Une phrase longue, à plusieurs actions ou en turc est une NOUVELLE demande, pas la réponse à la question en attente. */
 const isNewWorkerRequest = (t: string) => isNewRequest(t) || nouvelleDemandeSalarie(t);
+/** Une fiche à plusieurs actions est longue : le panneau l'ouvre sur son HAUT (titre, jour, chantier à créer), pas sur son bouton. */
+const isMultiExtra = (extra: unknown) => !!(extra as MultiExtra).multi;
 
 export default function WorkerAssistant({ onSaved, onNavigate, defaultOpen = false, open, onOpenChange }: {
   onSaved?: () => void; onNavigate?: (action: string) => void; defaultOpen?: boolean;
@@ -62,11 +64,12 @@ export default function WorkerAssistant({ onSaved, onNavigate, defaultOpen = fal
       slowHint={slowHint}
       restoreOnFailure
       isNewRequest={isNewWorkerRequest}
+      showFromTop={isMultiExtra}
       footNote="Gestes simples faits tout de suite · « Annuler » en un clic"
       intro="Dites-moi vos heures, ce que vous voulez faire, ou comment faire"
       renderExtra={(extra, ctl) => {
         // Une fiche à plusieurs actions : TOUJOURS testée en premier (elle n'a pas de `draft`), et jamais rendue par une carte qui s'exécute au montage.
-        if ((extra as MultiExtra).multi) {
+        if (isMultiExtra(extra)) {
           const exec = demo || !user ? demoWorkerExecutor : makeWorkerExecutor({ id: user.id, company_id: user.company_id });
           const deps = demo || !user ? demoMultiDeps() : makeMultiDeps({ id: user.id, company_id: user.company_id }, exec);
           return <WorkerMultiCard extra={extra as MultiExtra} deps={deps} meal={meal} onDone={onSaved} ctl={ctl} />;

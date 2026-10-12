@@ -132,6 +132,9 @@ async function runLangs() {
   await t3.fill('a'.repeat(1203)); await s.waitForTimeout(100);
   ok((await s.locator('[data-testid=assistant-count]').innerText()).replace(/\s/g, '') === '1203/1500', 'Salarié : compteur « 1 203 / 1 500 » à partir de 1 200');
   ok(await t3.getAttribute('rows') === '6', 'Salarié : champ à 6 lignes au-delà de 300 caractères');
+  await t3.fill(''); await s.locator('[data-testid=assistant-mic]').click(); await s.waitForTimeout(100);
+  await s.evaluate(() => window.__say('b'.repeat(1520), false)); await s.waitForTimeout(150);
+  ok((await t3.inputValue()).length === 1500 && /Message coupé à 1 500 caractères\./.test((await s.locator('.as-bot.notice').last().innerText().catch(() => '')).replace(/\s/g, ' ')), 'Salarié : dictée de 1 520 caractères coupée à 1 500, avec « Message coupé à 1 500 caractères. »');
   await c3.close();
   const c4 = await b.newContext({ ...devices['Pixel 7'], locale: 'fr-FR' });
   await c4.addInitScript(FAKE, 'android');
@@ -143,6 +146,9 @@ async function runLangs() {
   ok(await o.locator('[data-testid=assistant-langs]').count() === 0, 'Bureau : aucun sélecteur de langue');
   await o.locator('[data-testid=assistant-mic]').click(); await o.waitForTimeout(100);
   ok(await o.evaluate(() => window.__rec.lang) === 'fr-FR', 'Bureau : dictée TOUJOURS en fr-FR');
+  // Dictée au-delà du plafond : le bureau coupe en silence (comme avant), le salarié le dit une fois.
+  await o.evaluate(() => window.__say('a'.repeat(520), false)); await o.waitForTimeout(150);
+  ok((await o.locator('.as-bar textarea').inputValue()).length === 500 && await o.locator('.as-bot.notice').count() === 0, 'Bureau : dictée de 520 caractères coupée à 500 SANS message (comme avant)');
   await c4.close();
 }
 await runLangs();

@@ -7,7 +7,7 @@
 // « simple » : en mode fiche, l'exécution directe du lot 7 n'existe pas. Le clic lance runMulti
 // (supabase/functions/_shared/worker-multi-run.ts) : chantier → heures → panier → réserve → congé → envoi.
 // Les erreurs bloquantes sont RECALCULÉES à chaque modification (verifierFiche), jamais lues une fois pour toutes.
-import { useEffect, useId, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Loader2, MapPin, Trash2, Undo2 } from 'lucide-react';
 import type { ExtraControl } from '@/components/assistant-panel';
 import { DraftPause } from '@/components/worker-draft-card';
@@ -16,14 +16,14 @@ import type { MultiExtra } from '@/lib/worker-assistant';
 import { addDaysIso } from '@/supabase/functions/_shared/fr-langue';
 import { fmtMin, LEAVE_LABEL, shiftMinutes, toMin, type DraftLine, type NewWorksite } from '@/supabase/functions/_shared/worker-assistant-core';
 import type { MultiItem } from '@/supabase/functions/_shared/worker-multi';
-import { verifierFiche } from '@/supabase/functions/_shared/worker-multi';
+import { DATE_ILLISIBLE, verifierFiche } from '@/supabase/functions/_shared/worker-multi';
 import { messageFinal, reutilisable, runMulti, type ItemResult, type MultiDeps, type MultiRun } from '@/supabase/functions/_shared/worker-multi-run';
 
 const CSS = `
 .wm{margin-top:10px;border:1px solid rgba(21,18,15,.14);border-radius:14px;background:#FBF8F2;padding:11px 11px 0;font-size:14px;color:#15120F}
 .wm h3{font-size:15px;font-weight:900;margin:0}
 .wm-sub{font-size:13px;color:#56514a;font-weight:700;margin:2px 0 0}
-.wm-note{font-size:13px;font-style:italic;color:#56514a;margin:6px 0 0}
+.wm-note{font-size:13px;font-style:italic;color:#56514a;margin:6px 0 0;overflow-wrap:anywhere}
 .wm-warn{font-size:12.5px;color:#9a3b14;font-weight:700;margin:6px 0 0}
 .wm-sec{margin-top:12px}
 .wm-lbl{display:block;font-size:11px;font-weight:800;color:#6E6A63;text-transform:uppercase;letter-spacing:.05em;margin:0 0 3px}
@@ -35,16 +35,17 @@ const CSS = `
 .wm-block.off{opacity:.55}
 .wm-block.todo{border-color:#F1B84A;background:#FFFBF0}
 .wm-sum{font-size:13.5px;font-weight:800;margin:0 0 6px;display:flex;gap:6px;align-items:flex-start}
+.wm-sum>span,.wm-res li>span{min-width:0;overflow-wrap:anywhere}
 .wm-grid{display:grid;grid-template-columns:1fr;gap:6px}
 .wm-grid2{display:grid;grid-template-columns:96px 1fr;gap:6px}
-.wm-help{font-size:12.5px;color:#56514a;margin:6px 0 0;line-height:1.4}
+.wm-help{font-size:12.5px;color:#56514a;margin:6px 0 0;line-height:1.4;overflow-wrap:anywhere}
 .wm-help.warn{color:#9a3b14;font-weight:700}
 .wm-row{display:flex;gap:6px;align-items:center}
 .wm-row>*{flex:1}
 .wm-row>.wm-arrow{flex:none;color:#6E6A63;font-weight:800}
 .wm-line{background:#fff;border:1px solid rgba(21,18,15,.1);border-radius:10px;padding:8px;margin-top:8px}
 .wm-line.todo{border-color:#F1B84A;background:#FFFBF0}
-.wm-x{flex:none!important;border:none;background:transparent;color:#9a948a;min-width:36px;min-height:36px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;border-radius:8px}
+.wm-x{flex:none!important;border:none;background:transparent;color:#9a948a;min-width:44px;min-height:44px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;border-radius:8px}
 .wm-x:hover{color:#C0461F}
 .wm-gap{margin:8px 0 0;padding:6px 9px;border-radius:8px;font-size:13px;font-weight:800;display:flex;gap:6px;align-items:center}
 .wm-gap.g-pause{background:#EAF6EE;color:#0F7A43}
@@ -57,7 +58,9 @@ const CSS = `
 .wm-annexe-h>span{flex:1;min-width:0}
 .wm-retirer{flex:none;border:1px solid rgba(21,18,15,.16);background:#fff;border-radius:999px;padding:5px 11px;min-height:36px;font-size:12.5px;font-weight:800;color:#56514a;cursor:pointer;font-family:inherit}
 .wm-check{display:flex;gap:8px;align-items:center;font-size:14px;font-weight:700;margin-top:6px}
-.wm-err{font-size:13px;color:#B42318;font-weight:700;margin:6px 0 0}
+.wm-err{font-size:13px;color:#B42318;font-weight:700;margin:6px 0 0;overflow-wrap:anywhere}
+.wm-bloq{margin-bottom:10px}
+.wm-remettre{display:flex;align-items:center;gap:6px;min-height:44px;width:100%;margin-top:8px;border:1px dashed rgba(21,18,15,.3);background:#fff;border-radius:10px;padding:6px 10px;font-size:13.5px;font-weight:800;color:#15120F;cursor:pointer;font-family:inherit}
 .wm-ok{font-size:13px;color:#0F7A43;font-weight:800}
 .wm-bar{position:sticky;bottom:0;background:#FBF8F2;margin:12px -11px 0;padding:10px 11px 11px;border-top:1px solid rgba(21,18,15,.1);border-radius:0 0 14px 14px;z-index:1}
 .wm-btns{display:flex;gap:8px}
@@ -77,6 +80,8 @@ const CSS = `
 .wm .pause[aria-invalid=true]{border-color:#C0461F}
 .wm .wd-err{font-size:12.5px;color:#9a3b14;font-weight:700}
 .wm :focus-visible{outline:2px solid #FFC21A;outline-offset:2px}
+.wm input,.wm select,.wm textarea,.wm button{scroll-margin-bottom:130px}
+.wm-live:focus{outline:none}
 `;
 
 type Phase = 'edit' | 'running' | 'done' | 'dismissed';
@@ -127,6 +132,10 @@ export default function WorkerMultiCard({ extra, deps, meal, onDone, ctl }: Prop
     return o;
   });
   const [removed, setRemoved] = useState<string[]>([]);
+  // Les créneaux retirés restent ici (avec leur rang) tant que la fiche est en édition : « Remettre le créneau ».
+  const [retires, setRetires] = useState<{ l: DraftLine; i: number }[]>([]);
+  // La date illisible (rendue par le modèle) reste bloquante tant que le salarié n'a pas touché au champ « Jour ».
+  const [dateVue, setDateVue] = useState(false);
   const [valeurs, setValeurs] = useState<Record<string, boolean>>(() => {
     const o: Record<string, boolean> = {};
     for (const it of m.items) if (it.kind === 'action' && it.action.draft.type === 'panier_repas') o[it.id] = it.action.draft.valeur;
@@ -154,6 +163,13 @@ export default function WorkerMultiCard({ extra, deps, meal, onDone, ctl }: Prop
   const [undone, setUndone] = useState<string | null>(() => (mem.run?.undo && undoneMemory.get(mem.run.undo)) || null);
   const [undoErr, setUndoErr] = useState<string | null>(null);
   const [busyUndo, setBusyUndo] = useState(false);
+  // Après « Tout confirmer », le bouton disparaît : le focus passe à la zone du résultat (annoncée, aussi au lecteur d'écran).
+  const resultRef = useRef<HTMLDivElement>(null);
+  const phasePrec = useRef(phase);
+  useEffect(() => {
+    if (phasePrec.current !== 'done' && phase === 'done') resultRef.current?.focus();
+    phasePrec.current = phase;
+  }, [phase]);
   useCardMemory<Memo>(extra, (x) => {
     if (x.phase) setPhase(x.phase);
     if (x.run) setRun(x.run);
@@ -194,7 +210,8 @@ export default function WorkerMultiCard({ extra, deps, meal, onDone, ctl }: Prop
   };
   const annexes = m.items.filter((i): i is Extract<MultiItem, { kind: 'action' }> => i.kind === 'action' && actif(i.id));
   const problemes = Array.from(new Set(annexes.filter((i) => !(i.action.draft.type === 'panier_repas' && meal === false)).flatMap(problemesDe)));
-  const bloquants = Array.from(new Set([...errors, ...problemes]));
+  const dateIllisible = !dateVue && !!heuresItem?.draft.errors.includes(DATE_ILLISIBLE);
+  const bloquants = Array.from(new Set([...(dateIllisible ? [DATE_ILLISIBLE] : []), ...errors, ...problemes]));
 
   // « Complétez : … » sous le bouton grisé.
   const aCompleter: string[] = [];
@@ -211,6 +228,16 @@ export default function WorkerMultiCard({ extra, deps, meal, onDone, ctl }: Prop
 
   // ── Modifications ─────────────────────────────────────────────────────────────────────────────
   const upd = (i: number, patch: Partial<DraftLine>) => setLines((ls) => ls.map((l, j) => (j === i ? { ...l, ...patch } : l)));
+  const retirerCreneau = (i: number) => {
+    setRetires((r) => [...r, { l: lines[i], i }]);
+    setLines((ls) => ls.filter((_, j) => j !== i));
+  };
+  const remettre = (key: string | undefined) => {
+    const r = retires.find((x) => x.l.key === key);
+    if (!r) return;
+    setRetires((rs) => rs.filter((x) => x !== r));
+    setLines((ls) => [...ls.slice(0, r.i), r.l, ...ls.slice(r.i)]);
+  };
   const choisirChantier = (i: number, v: string) => {
     if (v === NOUVEAU) upd(i, { worksite_id: null, nouveau: true, a_choisir: undefined, from_planning: false });
     else upd(i, { worksite_id: v || null, nouveau: undefined, a_choisir: undefined, from_planning: false });
@@ -268,7 +295,7 @@ export default function WorkerMultiCard({ extra, deps, meal, onDone, ctl }: Prop
 
   // ── Rendu : fiche ignorée, en cours, terminée ─────────────────────────────────────────────────
   // La zone annoncée (aria-live) est toujours le 2e enfant de la carte : elle existe déjà (vide) avant que le résultat n'y arrive.
-  const live = (content: ReactNode) => <div aria-live="polite" data-testid="wm-result" className="wm-live">{content}</div>;
+  const live = (content: ReactNode) => <div ref={resultRef} tabIndex={-1} aria-live="polite" data-testid="wm-result" className="wm-live">{content}</div>;
   if (phase === 'dismissed') return <p className="wm-help" data-testid="multi-card-ignoree"><style>{CSS}</style>Fiche ignorée.</p>;
 
   if (phase === 'done' && run) {
@@ -276,16 +303,17 @@ export default function WorkerMultiCard({ extra, deps, meal, onDone, ctl }: Prop
     return (
       <div className="wm wm-res" role="group" aria-label="Fiche récapitulative" data-testid="multi-card" style={{ paddingBottom: 11 }}>
         <style>{CSS}</style>
-        {live(<p className="wm-msg">{run.message || messageFinal(run.results)}</p>)}
+        {live(<>
+          <p className="wm-msg">{run.message || messageFinal(run.results)}</p>
+          {undone && <p className="wm-help" data-testid="wm-undone"><Undo2 className="h-4 w-4" style={{ display: 'inline', verticalAlign: 'text-bottom' }} /> {undone}</p>}
+        </>)}
         <ul data-testid="wm-items">
           {run.results.map((r) => (
             <li key={r.id} className={`s-${r.status}`} data-testid={`wm-res-${r.status}`}><b aria-hidden="true">{symbole(r.status)}</b><span>{r.label}{r.message ? ` : ${r.message}` : ''}</span></li>
           ))}
         </ul>
         {run.sent && <p className="wm-help">Journée envoyée : pour corriger, passez par « Ma journée ».</p>}
-        {undone ? (
-          <p className="wm-help" data-testid="wm-undone"><Undo2 className="h-4 w-4" style={{ display: 'inline', verticalAlign: 'text-bottom' }} /> {undone}</p>
-        ) : run.undo && (
+        {!undone && run.undo && (
           <>
             <button type="button" className="wm-undo" data-testid="wm-undo" disabled={busyUndo} onClick={annuler}>
               {busyUndo ? <Loader2 className="h-4 w-4 animate-spin" /> : <Undo2 className="h-4 w-4" />} Annuler
@@ -309,7 +337,8 @@ export default function WorkerMultiCard({ extra, deps, meal, onDone, ctl }: Prop
     );
   }
 
-  const dateLabel = !heuresItem || jourOk ? `Journée d’aujourd’hui · ${frDay(m.aujourdhui)}` : `Journée du ${frDay(date)}`;
+  // Sans heures (congé, chantier ou panier seuls), aucun sous-titre de journée : il serait faux pour l'action affichée.
+  const dateLabel = !heuresItem ? null : jourOk ? `Journée d’aujourd’hui · ${frDay(m.aujourdhui)}` : `Journée du ${frDay(date)}`;
   const optionsReserve = (it: Extract<MultiItem, { kind: 'action' }>) => {
     const d = it.action.draft;
     if (d.type !== 'signaler_reserve' && d.type !== 'reserve_corrigee') return [];
@@ -325,7 +354,7 @@ export default function WorkerMultiCard({ extra, deps, meal, onDone, ctl }: Prop
       <style>{CSS}</style>
       {live(null)}
       <h3>Fiche à confirmer</h3>
-      <p className="wm-sub">{dateLabel}</p>
+      {dateLabel && <p className="wm-sub">{dateLabel}</p>}
       {m.note && <p className="wm-note">{m.note}</p>}
       {m.incertain && <p className="wm-warn">Lecture rapide : vérifiez que tout y est.</p>}
       {m.non_prepare.length > 0 && <p className="wm-warn" data-testid="wm-nonprepare">Non préparé : {m.non_prepare.join(', ')}. Redemandez-le séparément.</p>}
@@ -333,7 +362,7 @@ export default function WorkerMultiCard({ extra, deps, meal, onDone, ctl }: Prop
       {heuresItem && (
         <div className="wm-sec">
           <label className="wm-lbl" htmlFor={`${uid}-jour`}>Jour</label>
-          <input id={`${uid}-jour`} type="date" value={date} min={hier31} max={demain} onChange={(e) => e.target.value && setDate(e.target.value)} data-testid="wm-jour" />
+          <input id={`${uid}-jour`} type="date" value={date} min={hier31} max={demain} onChange={(e) => { setDateVue(true); if (e.target.value) setDate(e.target.value); }} onBlur={() => setDateVue(true)} data-testid="wm-jour" />
         </div>
       )}
 
@@ -354,7 +383,7 @@ export default function WorkerMultiCard({ extra, deps, meal, onDone, ctl }: Prop
                 <div><label className="wm-lbl" htmlFor={`${uid}-${it.id}-cp`}>Code postal</label>
                   <input id={`${uid}-${it.id}-cp`} value={b.code_postal} maxLength={5} inputMode="numeric" readOnly={!!reuse} onChange={(e) => editBloc(it.id, { code_postal: e.target.value.replace(/\D/g, '') })} data-testid="wm-cp" autoComplete="off" /></div>
                 <div><label className="wm-lbl" htmlFor={`${uid}-${it.id}-ville`}>Ville (obligatoire)</label>
-                  <input id={`${uid}-${it.id}-ville`} value={b.ville} maxLength={60} readOnly={!!reuse} className={vide ? 'todo' : undefined} onChange={(e) => editBloc(it.id, { ville: e.target.value })} data-testid="wm-ville" autoComplete="off" aria-required="true" /></div>
+                  <input id={`${uid}-${it.id}-ville`} value={b.ville} maxLength={60} readOnly={!!reuse} className={vide ? 'todo' : undefined} onChange={(e) => editBloc(it.id, { ville: e.target.value })} data-testid="wm-ville" autoComplete="off" aria-required="true" aria-invalid={vide || undefined} aria-describedby={vide ? `${uid}-${it.id}-ask` : undefined} /></div>
               </div>
               <div><label className="wm-lbl" htmlFor={`${uid}-${it.id}-trav`}>Travaux</label>
                 <input id={`${uid}-${it.id}-trav`} value={b.description} maxLength={200} readOnly={!!reuse} onChange={(e) => editBloc(it.id, { description: e.target.value })} data-testid="wm-travaux" autoComplete="off" /></div>
@@ -362,7 +391,7 @@ export default function WorkerMultiCard({ extra, deps, meal, onDone, ctl }: Prop
             {reuse ? <p className="wm-help" data-testid="wm-reuse">Ce chantier existe déjà : il sera utilisé, rien ne sera créé.</p>
               : !utilise ? <p className="wm-help warn">Aucun créneau n’est sur ce chantier : il ne sera pas créé. Choisissez « Nouveau chantier » sur un créneau pour l’utiliser.</p>
               : <p className="wm-help">Ce chantier sera créé quand vous confirmerez. Vous ne pourrez pas le supprimer vous-même : le bureau pourra l’archiver.</p>}
-            {vide && <p className="wm-ask">Indiquez la ville du chantier pour confirmer.</p>}
+            {vide && <p className="wm-ask" id={`${uid}-${it.id}-ask`}>Indiquez la ville du chantier pour confirmer.</p>}
             {it.kind === 'chantier' && (
               <button type="button" className="wm-retirer" style={{ marginTop: 8 }} aria-label="Retirer : nouveau chantier" onClick={() => setRemoved((r) => [...r, it.id])}>Retirer</button>
             )}
@@ -388,27 +417,32 @@ export default function WorkerMultiCard({ extra, deps, meal, onDone, ctl }: Prop
                   <div className="wm-row" style={{ marginBottom: 6 }}>
                     <select value={l.nouveau ? NOUVEAU : l.worksite_id ?? ''} onChange={(e) => choisirChantier(i, e.target.value)} aria-label={`Chantier du créneau ${i + 1}`} data-testid={`wm-chantier-${i}`}>
                       <option value="">{l.worksite_text && !l.a_choisir ? `« ${l.worksite_text} » → choisir…` : 'Choisir le chantier…'}</option>
-                      {offreNouveau && <option value={NOUVEAU}>Nouveau chantier{blocHeures?.nom ? ` · ${blocHeures.nom}` : ''}</option>}
+                      {offreNouveau && <option value={NOUVEAU}>{blocHeures?.nom ? `Nouveau : ${blocHeures.nom}` : 'Nouveau chantier'}</option>}
                       {m.chantiers.map((c) => <option key={c.id} value={c.id}>{c.nom}{c.ville ? ` · ${c.ville}` : ''}</option>)}
                     </select>
-                    <button type="button" className="wm-x" onClick={() => setLines((ls) => ls.filter((_, j) => j !== i))} aria-label="Retirer ce créneau" data-testid={`wm-retirer-${i}`}><Trash2 className="h-4 w-4" /></button>
+                    <button type="button" className="wm-x" onClick={() => retirerCreneau(i)} aria-label={`Retirer le créneau ${i + 1}`} data-testid={`wm-retirer-${i}`}><Trash2 className="h-4 w-4" /></button>
                   </div>
                   {l.a_choisir && !l.worksite_id && !l.nouveau && <p className="wm-ask">Nouveau chantier « {l.a_choisir.nouveau} » ou « {l.a_choisir.existant} » ?</p>}
                   {l.from_planning && l.worksite_id && <p className="wm-plan" data-testid="from-planning">📅 D’après votre planning — modifiable</p>}
                   <div className="wm-row">
-                    <input type="time" value={l.start} onChange={(e) => upd(i, { start: e.target.value })} aria-label={`Début du créneau ${i + 1}`} style={{ minWidth: 96 }} />
+                    <input type="time" value={l.start} onChange={(e) => upd(i, { start: e.target.value })} aria-label={`Début du créneau ${i + 1}`} />
                     <span className="wm-arrow" aria-hidden="true">→</span>
-                    <input type="time" value={l.end} onChange={(e) => upd(i, { end: e.target.value })} aria-label={`Fin du créneau ${i + 1}`} style={{ minWidth: 96 }} />
+                    <input type="time" value={l.end} onChange={(e) => upd(i, { end: e.target.value })} aria-label={`Fin du créneau ${i + 1}`} />
                   </div>
                   <div className="wm-row" style={{ marginTop: 6, flexWrap: 'wrap' }}>
                     <span className="wm-lbl" style={{ margin: 0, flex: '1 1 auto' }}>Pause (h:mm)</span>
-                    <DraftPause value={l.break_minutes} onChange={(v) => upd(i, { break_minutes: v })} testId={`wd-pause-${i}`} />
+                    <DraftPause value={l.break_minutes} onChange={(v) => upd(i, { break_minutes: v })} testId={`wd-pause-${i}`} ariaLabel={`Pause (h:mm) du créneau ${i + 1}`} />
                   </div>
                   {doublon && <p className="wm-help warn">Cette pause est déjà comptée par l’écart entre les créneaux : mettez 0 pour ne pas la retirer deux fois.</p>}
                 </div>
               </div>
             );
           })}
+          {retires.map(({ l }) => (
+            <button key={l.key} type="button" className="wm-remettre" data-testid={`wm-remettre-${l.key}`} onClick={() => remettre(l.key)}>
+              <Undo2 className="h-4 w-4" aria-hidden="true" /> Remettre le créneau {l.start} → {l.end}
+            </button>
+          ))}
           {lines.length > 0 && <p className="wm-total" data-testid="wm-total">Total net : {fmtMin(total)}</p>}
         </div>
       )}
@@ -479,7 +513,7 @@ export default function WorkerMultiCard({ extra, deps, meal, onDone, ctl }: Prop
       )}
 
       {(bloquants.length > 0 || stopped) && (
-        <div className="wm-sec" data-testid="wm-bloquants" role="alert">
+        <div className="wm-sec wm-bloq" data-testid="wm-bloquants" role="alert">
           {bloquants.map((e) => <p key={e} className="wm-err">{e}</p>)}
           {stopped && <p className="wm-err" data-testid="wm-stop">{stopped}</p>}
         </div>
