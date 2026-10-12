@@ -153,7 +153,7 @@ Le guide pas à pas suit le **vrai** chemin ; il peut donc contredire d'une lign
 - `npm run test:guides-bureau` (Deno, `admin-tours.test.ts`) : 48 fiches ↔ `GUIDE` (ids figés, 50 entrées), 1 à 5 étapes sur ordinateur **et** sous 1 024 px (menu ☰ compris), phrases ≤ 140 caractères, vouvoiement, jargon, « Cliquez » / « Touchez », recherche stricte (`constructor`, `__proto__`), chaque ancre posée, une ancre = un élément sauf la liste `DUAL` (avec la raison), aucune ancre inutilisée, **aucune ancre sur un geste qui agit sur une ligne**, libellés cités présents dans le code, verrous de texte (verrouillage des heures, « à partir du jour », durée et lecture seule du support, « Ne cliquez pas »), liens `guide:<id>` des voies locale et modèle, faux positifs (« Quel Martin ? », demande de rédaction, réponse chiffrée), consigne identique, une seule fabrique du bouton, `tourStep` sans écriture.
 - `npm run test:guides-bureau-ecrans` (`scripts/tests/guides-bureau-lot7.mjs`, après `npm run build`) : la vraie page `/admin` dans un vrai navigateur, 1 280, 1 100, 768 et 390 px ; l'anneau **pile** sur la cible, les parcours au vrai clic, « Suivant » seul sur les 48 fiches à 1 280 et 390 px, saisies préservées, Échap, réseau coupé, **aucune écriture depuis l'apparition de la carte** (liste blanche nommée des seules lectures par RPC).
 
-Captures à 390 px : `docs/captures-lot7-fin/` (la réponse avec les deux boutons, l'anneau sur une ligne du menu ☰, l'anneau dans la fenêtre Salariés, l'étape des Réglages avec la rubrique repliée, la ligne du support).
+Captures à 390 px : `docs/captures-lot7-fin/` `01` à `05` (la réponse avec les deux boutons, l'anneau sur une ligne du menu ☰, l'anneau dans la fenêtre Salariés, l'étape des Réglages avec la rubrique repliée, la ligne du support) ; `06` à `08` pour la console support (voir plus bas).
 
 ### Mise en ligne : front d'abord, fonction ensuite
 
@@ -164,3 +164,54 @@ Captures à 390 px : `docs/captures-lot7-fin/` (la réponse avec les deux bouton
 ### Tester sur téléphone (390) et tablette (768)
 
 « Comment j'ajoute un salarié ? » : deux boutons ; « Me guider pas à pas » replie l'assistant, le ☰ s'ouvre, l'anneau suit « Salariés », « Nouveau salarié » puis « Envoyer l'invitation » (sans rien envoyer). « Comment je règle la caisse congés ? » : une rubrique à ouvrir soi-même. « Comment je déplace une intervention ? » : le message « sur ordinateur ». « Comment je réponds à une demande de congé ? » : l'anneau entoure la ligne de la demande, pas la coche. La Borne n'affiche pas de nouveau code tant qu'on ne touche pas « Borne ».
+
+## La console du support BEMEXO (`/support`)
+
+Il n'y a **pas d'assistant côté support** : un petit bouton **« Me guider pas à pas »** est donc sur la page elle-même, à droite du titre « Support BEMEXO » (sur téléphone, il passe sous le titre). Même composant (`guide-tour.tsx`), mêmes règles que le bureau : le guide **montre, il ne fait jamais**. Il n'appelle ni « Se connecter », ni « Valider », ni « Entrer », ni « Quitter » (les deux derniers s'écrivent dans le journal du client), il ne lit aucune donnée.
+
+### Les pièces
+
+| Pièce | Rôle |
+|---|---|
+| `admin-tours.ts` : `SUPPORT_TOUR`, `supportStepsFor(état, petitEcran)` | La fiche : 7 étapes, chacune dit dans quels **états de la console** elle s'affiche. Hors `ADMIN_TOURS` : l'assistant du bureau ne la lance jamais |
+| `components/support-console.tsx` | Le bouton `data-testid="support-guide-open"`, l'état du guide, `<GuideTour>`, et les 6 ancres `data-guide="support-console.…"` (`connexion`, `qr`, `code`, `valider`, `entreprises`, `quitter`) |
+| `app/support/page.tsx`, `app/apercu/acces-support/page.tsx` | **Inchangées** : la console porte tout (la démo d'aperçu reçoit donc le bouton aussi) |
+
+### Ce que dit la fiche, état par état
+
+| État de la console | Bouton | Étapes |
+|---|---|---|
+| `loading` (on ne sait pas encore qui est là) | non | — |
+| `not-staff` (patron, salarié ou compte non support : « Accès réservé ») | **non** | — |
+| `signed-out` (personne de connecté) | oui | 1 : « Cliquez sur « Se connecter » avec le compte support, puis revenez sur cette page. » |
+| `enroll` (première fois : QR code) | oui | 3 : le QR code, la case du code à 6 chiffres, « Valider » |
+| `challenge` (double vérification) | oui | 2 : la case du code, « Valider » |
+| `ready` (liste des entreprises) | oui | 1 : « Cliquez sur « Entrer » à côté de l'entreprise voulue. S'il n'y en a aucune, le patron doit d'abord l'autoriser. » |
+| `inside` (déjà entré chez un client) | oui | 1 : « Vous êtes en lecture seule. Cliquez sur « Quitter » quand vous avez fini. » |
+
+« Cliquez » devient « Touchez » sous 1 024 px (même dérivation que le bureau). Le bouton « Quitter » est bien « Quitter » à l'écran (pas « Sortir »).
+
+### Règles de sécurité
+
+- **« Entrer » n'est jamais entouré.** L'ancre `support-console.entreprises` est sur la **liste** des entreprises (ou sur la phrase « Aucune pour l'instant… » quand il n'y en a aucune) ; la phrase dit de choisir l'entreprise voulue. Le test interdit toute ancre sur le bouton « Entrer » (`support-enter`) et sur `support-console.entrer`.
+- **Un visiteur non connecté n'apprend rien de plus que la page publique** : sa fiche se limite à « Se connecter » (le DOM ne contient d'ailleurs que cette ancre, les autres états n'existent pas à l'écran). La double vérification, la liste des entreprises et la lecture seule ne sont dites qu'aux états atteints **après** `support_is_staff` vrai (et la double vérification passée pour `ready` et `inside`).
+- **Un changement d'état ferme le guide** (code validé, « Quitter »…) ; il ne se rouvre pas tout seul.
+- **Rien n'est lu au rendu** : la page est exportée en statique. La largeur de l'écran (`matchMedia`, seuil 1 023 px) n'est lue **qu'au clic** sur le bouton, et les étapes sont rangées dans l'état : `<GuideTour>` repart de zéro quand il reçoit de nouveaux objets à chaque rendu (bug trouvé et corrigé pendant les essais : l'anneau clignotait sur la page d'aperçu).
+- Le CSS de la console ne contient **aucune apostrophe** (elles font échouer l'hydratation React : erreurs 418/423/425) ; le test le vérifie.
+- La case du code a `autoFocus` et la carte du guide prend le focus à l'ouverture : le curseur sort de la case, mais elle reste utilisable (un clic dedans, 6 chiffres, « Valider » s'active) ; testé.
+- « Entrer » recharge la page (`/admin`) : le guide s'arrête là. Après « Se connecter », la personne arrive sur `/admin` et doit revenir sur `/support` (dit dans la phrase 1).
+
+### Décision à valider par Ergun
+
+Le bouton est visible aussi d'un visiteur **non connecté** (`signed-out`), mais sa fiche se limite à « Se connecter ». Si Ergun préfère « support vérifié seulement » (`ready` et `inside`), il suffit de retirer `signed-out`, `enroll` et `challenge` des fiches `connexion`, `qr`, `code` et `valider` (et d'adapter les chiffres du test).
+
+### Tests
+
+- `npm run test:guides-bureau` (Deno) : les 6 ancres distinctes, 1 / 3 / 2 / 1 / 1 étape selon l'état et **0 pour `loading` et `not-staff`** (aux deux largeurs), phrases ≤ 140 caractères au vouvoiement, « Touchez » sous 1 024 px, libellés « Se connecter », « Valider », « Entrer », « Quitter » présents dans `support-console.tsx` et « Sortir » absent, ancres posées une fois (la liste des entreprises : sur `.sc-list` et sur la phrase vide), jamais d'ancre sur « Entrer », fiche `signed-out` sans « QR », « Valider », « Entrer » ni « Quitter », pas d'apostrophe dans le CSS, `window` / `matchMedia` une seule fois (le gestionnaire du clic), aucune action de la console appelée par le guide, pages `app/support` et `app/apercu/acces-support` non touchées.
+- `ONLY=s node scripts/tests/guides-bureau-lot7.mjs out docs/captures-lot7-fin` (après `npm run build`) : la vraie route `/support` avec une base simulée (`support_is_staff`, double vérification par le jeton et le facteur TOTP) et `/apercu/acces-support?demo=support`, à 1 280 et 390 px. Anneau **pile** sur « Se connecter », le QR code, la case du code, « Valider », la **liste** des entreprises (plus grande que « Entrer » et qui le contient) ou la phrase vide, « Quitter » ; pas de bouton en `loading` ni `not-staff` ; Échap, « Fermer », focus rendu au bouton ; la case du code reste utilisable ; sur la démo, le guide se ferme quand le code est validé ; **aucune écriture depuis l'apparition de la carte** (aucune RPC `support_enter` / `support_exit`, aucun `/auth/v1/factors`), « Entrer » jamais cliqué. L'état `enroll` passe par la vraie route avec un mock de la création du facteur (la démo d'aperçu démarre à la double vérification) : cette requête part au chargement de la page, **avant** la carte du guide.
+
+Captures à 390 px : `docs/captures-lot7-fin/06-support-enroll.png`, `07-support-liste-des-entreprises.png`, `08-support-pret.png` (démo : liste des entreprises).
+
+### Mise en ligne
+
+Le front seul suffit (aucune fonction ni migration pour le support). À tester sur téléphone : `/support` connecté avec le compte support (bouton visible, anneau sur la liste), connecté en patron (« Accès réservé », pas de bouton), déconnecté (« Se connecter » seulement).

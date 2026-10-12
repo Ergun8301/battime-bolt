@@ -580,7 +580,7 @@ async function supportPage(w, h, { token = true, uid = 'u-support', aal = 'aal1'
     if (url.pathname.startsWith('/functions/v1/')) rec.fn = url.pathname.slice('/functions/v1/'.length);
     calls.push(rec);
     if (url.pathname.startsWith('/auth/v1/user')) return r.fulfill({ json: user });
-    if (m === 'POST' && url.pathname === '/auth/v1/factors') return r.fulfill({ json: { id: 'f-new', type: 'totp', friendly_name: 'BEMEXO support', totp: { qr_code: `data:image/svg+xml;utf-8,${QR_SVG}`, secret: 'JBSWY3DPEHPK3PXP', uri: 'otpauth://totp/x' } } });
+    if (m === 'POST' && url.pathname === '/auth/v1/factors') return r.fulfill({ json: { id: 'f-new', type: 'totp', friendly_name: 'BEMEXO support', totp: { qr_code: QR_SVG, secret: 'JBSWY3DPEHPK3PXP', uri: 'otpauth://totp/x' } } });
     if (url.pathname.startsWith('/auth/v1/')) return r.fulfill({ json: {} });
     if (url.pathname.startsWith('/functions/v1/')) return r.fulfill({ json: { formule: 'essai' } });
     if (rec.rpc === 'support_is_staff') { if (hold) await hold; return r.fulfill({ json: staff }); }
