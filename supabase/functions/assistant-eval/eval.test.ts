@@ -50,3 +50,18 @@ Deno.test('`act` n’est PAS assoupli : une action « pas prête » reste un éc
   const ko = await runEval('v2', appel('effacer_planning', { salarie: 'Karim', du: '2026-10-02', au: '2026-10-02' }), ['b44']);
   if (ok.ok !== 1 || ko.ok !== 0 || !/obtenu effacer_planning/.test(String(ko.echecs[0]?.why))) throw new Error('b44 : supprimer_intervention doit passer, effacer_planning échouer');
 });
+
+// ── Dates : les mauvaises sorties MESURÉES sur le vrai modèle (jour passé pour un nom de jour seul) sont corrigées en code ──
+// Aujourd'hui du jeu = jeudi 2026-10-01. b36 : du=2026-09-28 au=2026-09-30 (au lieu de 2026-10-05 → 2026-10-07) ;
+// b06 : date=2026-09-25 nouvelle_date=2026-09-28 (au lieu de 2026-10-02 → 2026-10-05).
+Deno.test('b36 et b06 : les dates passées renvoyées par le modèle sont ramenées à la prochaine occurrence', async () => {
+  const b36 = await runEval('v2', appel('effacer_planning', { salarie: 'Karim', du: '2026-09-28', au: '2026-09-30' }), ['b36']);
+  const b06 = await runEval('v2', appel('modifier_intervention', { salarie: 'Karim', date: '2026-09-25', nouvelle_date: '2026-09-28' }), ['b06']);
+  if (b36.ok !== 1 || b06.ok !== 1) throw new Error(`dates : ${JSON.stringify([...b36.echecs, ...b06.echecs])}`);
+  // Les bonnes dates restent bonnes.
+  const bon = await runEval('v2', appel('effacer_planning', { salarie: 'Karim', du: '2026-10-05', au: '2026-10-07' }), ['b36']);
+  if (bon.ok !== 1) throw new Error('b36 avec les bonnes dates devrait passer');
+  // Une date passée que la phrase ne désigne pas n'est PAS réécrite en silence : le cas échoue (le contrôle reste strict).
+  const faux = await runEval('v2', appel('effacer_planning', { salarie: 'Karim', du: '2026-09-29', au: '2026-09-30' }), ['b36']);
+  if (faux.ok !== 0) throw new Error('mardi→mercredi passés pour « lundi à mercredi » : doit échouer (ce n’est pas le lundi)');
+});

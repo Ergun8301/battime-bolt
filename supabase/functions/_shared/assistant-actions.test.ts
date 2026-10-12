@@ -466,3 +466,57 @@ Deno.test('Bulletin lu par le modèle de SECOURS : « à vérifier » au-dessus 
   const e = await lire('inviter_salarie', { prenom: 'Marc', nom: 'Durand', email: 'marc@exemple.fr' }, true);
   eq(e.final.answer, e.out.answer, 'invitation sans bulletin');
 });
+
+// ── Jours du planning donnés PASSÉS par le modèle pour un nom de jour seul (mesuré sur le vrai modèle) ──
+// Aujourd'hui = jeudi 2026-10-01 : « lundi » = 2026-10-05. Le modèle renvoie parfois le lundi de la semaine en cours (2026-09-28).
+Deno.test('Dates : un jour PASSÉ pour un nom de jour seul → la prochaine occurrence, pour TOUTES les actions de planning', () => {
+  const CTXJ = (demande?: string): ActionContext => ({ ...CTX, today: '2026-10-01', demande });
+  const draftOf = (name: string, raw: Record<string, unknown>, demande?: string) => fromFunctionCall(name, raw, CTXJ(demande)).action!.draft as unknown as Record<string, unknown>;
+  type Cas = { fn: string; phrase: string; raw: Record<string, unknown>; champs: string[]; passe: string[]; attendu: string[]; futur: string[] };
+  const cas: Cas[] = [
+    { fn: 'affecter_planning', phrase: 'mets Karim sur Villa Dupont lundi et mardi', raw: { salarie: 'Karim', chantier: 'Villa Dupont', dates: ['2026-09-28', '2026-09-29'] },
+      champs: ['dates'], passe: ['2026-09-28', '2026-09-29'], attendu: ['2026-10-05', '2026-10-06'], futur: ['2026-10-05', '2026-10-06'] },
+    { fn: 'poser_absence', phrase: 'Sofia sera en congé de lundi à mercredi', raw: { salarie: 'Sofia', type: 'conge', du: '2026-09-28', au: '2026-09-30' },
+      champs: ['du', 'au'], passe: ['2026-09-28', '2026-09-30'], attendu: ['2026-10-05', '2026-10-07'], futur: ['2026-10-05', '2026-10-07'] },
+    { fn: 'modifier_intervention', phrase: 'décale l’intervention de Karim de vendredi à lundi', raw: { salarie: 'Karim', date: '2026-09-25', nouvelle_date: '2026-09-28' },
+      champs: ['date', 'nouvelle_date'], passe: ['2026-09-25', '2026-09-28'], attendu: ['2026-10-02', '2026-10-05'], futur: ['2026-10-02', '2026-10-05'] },
+    { fn: 'supprimer_intervention', phrase: 'retire Karim du planning mardi', raw: { salarie: 'Karim', date: '2026-09-29' },
+      champs: ['date'], passe: ['2026-09-29'], attendu: ['2026-10-06'], futur: ['2026-10-06'] },
+    { fn: 'effacer_planning', phrase: 'vide le planning de Karim de lundi à mercredi', raw: { salarie: 'Karim', du: '2026-09-28', au: '2026-09-30' },
+      champs: ['du', 'au'], passe: ['2026-09-28', '2026-09-30'], attendu: ['2026-10-05', '2026-10-07'], futur: ['2026-10-05', '2026-10-07'] },
+    { fn: 'supprimer_absence', phrase: 'enlève le congé de Sofia de lundi à mardi', raw: { salarie: 'Sofia', du: '2026-09-28', au: '2026-09-29' },
+      champs: ['du', 'au'], passe: ['2026-09-28', '2026-09-29'], attendu: ['2026-10-05', '2026-10-06'], futur: ['2026-10-05', '2026-10-06'] },
+  ];
+  const avec = (c: Cas, valeurs: string[]) => {
+    const raw = { ...c.raw };
+    c.champs.forEach((k, i) => { raw[k] = k === 'dates' ? valeurs : valeurs[i]; });
+    return raw;
+  };
+  const lire = (c: Cas, d: Record<string, unknown>) => c.champs.flatMap((k) => (k === 'dates' ? d[k] as string[] : [d[k] as string]));
+  for (const c of cas) {
+    // Date passée + phrase sans marqueur de passé → la prochaine occurrence.
+    eq(lire(c, draftOf(c.fn, avec(c, c.passe), c.phrase)), c.attendu, `${c.fn} : jour passé corrigé`);
+    // Date déjà à venir → intacte.
+    eq(lire(c, draftOf(c.fn, avec(c, c.futur), c.phrase)), c.futur, `${c.fn} : date à venir intacte`);
+    // Le passé est dit, ou une date est écrite → jamais touchée.
+    for (const marque of [`${c.phrase} dernier`, `hier, ${c.phrase}`, `${c.phrase} le 28 septembre`, `${c.phrase} (28/09)`, `depuis ${c.phrase}`, `${c.phrase} cette semaine`, `${c.phrase} la semaine dernière`]) {
+      eq(lire(c, draftOf(c.fn, avec(c, c.passe), marque)), c.passe, `${c.fn} : « ${marque} » intact`);
+    }
+    // Pas de phrase, ou une phrase qui ne nomme pas ces jours → intact.
+    eq(lire(c, draftOf(c.fn, avec(c, c.passe), undefined)), c.passe, `${c.fn} : sans phrase, intact`);
+    eq(lire(c, draftOf(c.fn, avec(c, c.passe), `${c.fn === 'affecter_planning' ? 'mets' : 'retire'} Karim sur Villa Dupont`)), c.passe, `${c.fn} : phrase sans jour, intact`);
+  }
+  // Aujourd'hui compris : « jeudi » dit un jeudi, le modèle donne le jeudi passé → aujourd'hui.
+  eq(draftOf('supprimer_intervention', { salarie: 'Karim', date: '2026-09-24' }, 'retire Karim du planning jeudi').date, '2026-10-01', 'jeudi = aujourd’hui');
+  // Plage : l'ordre est gardé (du ≤ au) quand on corrige.
+  const p = draftOf('effacer_planning', { salarie: 'Karim', du: '2026-09-28', au: '2026-10-02' }, 'vide le planning de Karim de lundi à vendredi');
+  eq([p.du, p.au], ['2026-10-05', '2026-10-09'], 'du ≤ au après correction');
+  // La carte « semaine entière » (sans du/au) n'est pas touchée : « la semaine prochaine » reste le lundi 5.
+  const w = draftOf('effacer_planning', { semaine: 'prochaine' }, 'efface le planning de la semaine prochaine');
+  eq([w.du, w.au], ['2026-10-05', '2026-10-11'], 'semaine entière intacte');
+  // Les jours qui sont légitimement passés ne sont pas concernés : heures à corriger, dépenses.
+  const h = draftOf('corriger_pointage', { salarie: 'Karim', date: '2026-09-28', debut: '08:00', fin: '17:00', motif: 'oubli de pause' }, 'corrige les heures de Karim lundi');
+  eq(h.date, '2026-09-28', 'corriger des heures : le lundi passé est voulu');
+  const dep = draftOf('ajouter_depense', { chantier: 'Villa Dupont', montant: 100, libelle: 'Placo', date: '2026-09-28' }, 'ajoute une dépense de 100 euros lundi');
+  eq(dep.date, '2026-09-28', 'une dépense passée n’est pas déplacée');
+});

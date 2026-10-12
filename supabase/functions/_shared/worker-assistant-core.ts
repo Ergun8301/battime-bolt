@@ -16,7 +16,7 @@
 // tout ce qui efface ou retire : carte de confirmation d'abord (isWorkerRemoval) ; un lieu sans chantier connu
 // (« une intervention à Lyon ») va sur « Autre » avec le lieu en note ; le
 // salarié peut demander où sont ses collègues (prénom, chantier, horaires).
-import { calendarForPrompt, cleanName, cleanSpoken, cleanTitle, dayPart, looksLikeAction, low, parseDateFr, parseDateRangeFr, parseTimeFr } from './fr-langue.ts';
+import { calendarForPrompt, cleanName, cleanSpoken, cleanTitle, dayPart, looksLikeAction, low, parseDateFr, parseDateRangeFr, parseTimeFr, plageAVenir } from './fr-langue.ts';
 import { plannedState } from './day-hours.ts';
 import { WORKER_DOMAINS, pickTools } from './tool-domains.ts';
 export { looksLikeAction };
@@ -738,8 +738,8 @@ export function prepareWorkerAction(type: string, raw: Record<string, unknown>, 
   switch (type) {
     case 'demander_conge': {
       const kind = norm(s(raw.type, 20));
-      const du = iso(raw.du) || (typeof raw.du === 'string' ? parseDateFr(raw.du, snapshot.aujourdhui) : '');
-      const au = iso(raw.au) || (typeof raw.au === 'string' ? parseDateFr(raw.au, snapshot.aujourdhui) : '');
+      // Un congé se pose à venir : un jour passé pour un nom de jour seul est ramené au prochain (voir plageAVenir).
+      const { du, au } = plageAVenir(iso(raw.du) || (typeof raw.du === 'string' ? parseDateFr(raw.du, snapshot.aujourdhui) : ''), iso(raw.au) || (typeof raw.au === 'string' ? parseDateFr(raw.au, snapshot.aujourdhui) : ''), snapshot.demande, snapshot.aujourdhui);
       d = { type, conge_type: (LEAVE_KINDS as readonly string[]).includes(kind) ? kind : 'conge', du, au: au || du, note: cleanTitle(s(raw.note, 300), 300) };
       break;
     }
@@ -827,8 +827,7 @@ export function prepareWorkerAction(type: string, raw: Record<string, unknown>, 
       const base = { leave_id: hit.length === 1 ? hit[0].id : null, choix };
       if (type === 'annuler_conge') d = { type, ...base };
       else {
-        const du = iso(raw.du) || (typeof raw.du === 'string' ? parseDateFr(raw.du, snapshot.aujourdhui) : '');
-        const au = iso(raw.au) || (typeof raw.au === 'string' ? parseDateFr(raw.au, snapshot.aujourdhui) : '');
+        const { du, au } = plageAVenir(iso(raw.du) || (typeof raw.du === 'string' ? parseDateFr(raw.du, snapshot.aujourdhui) : ''), iso(raw.au) || (typeof raw.au === 'string' ? parseDateFr(raw.au, snapshot.aujourdhui) : ''), snapshot.demande, snapshot.aujourdhui);
         d = { type: 'modifier_conge', ...base, du, au: au || du };
       }
       break;

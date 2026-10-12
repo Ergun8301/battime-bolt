@@ -19,7 +19,7 @@
 // Lot 1 (heures sûres) : tout ce qui RETIRE ou REMPLACE (isRemoval) passe
 // d'abord par une carte de confirmation qui dit ce qui part ; « Annuler »
 // reste disponible après.
-import { calendarForPrompt, cleanName, cleanSpoken, cleanTitle, dayPart, parseDateFr, parseTimeFr } from './fr-langue.ts';
+import { calendarForPrompt, cleanName, cleanSpoken, cleanTitle, dateAVenir, dayPart, parseDateFr, parseTimeFr, plageAVenir } from './fr-langue.ts';
 import { REASON_MAX, reasonOk } from './office-edits.ts';
 import { OFFICE_DOMAINS, pickTools } from './tool-domains.ts';
 
@@ -747,6 +747,14 @@ function hhmm(v: unknown): string {
 function isoDate(v: unknown): string { const s = str(v, 10); return ISO.test(s) ? s : ''; }
 /** Date ISO, ou dite en français (« jeudi », « demain », « le 12 ») : jamais devinée au hasard. */
 function dateOf(v: unknown, ctx: ActionContext): string { return isoDate(v) || (typeof v === 'string' ? parseDateFr(v, ctx.today) : ''); }
+/**
+ * Un JOUR DU PLANNING (affecter, déplacer, retirer, absence…). Le modèle donne parfois un jour déjà passé pour un nom de jour
+ * seul (« lundi » → le lundi de la semaine en cours) : si la phrase nomme ce jour sans marqueur de passé, c'est la PROCHAINE
+ * occurrence (aujourd'hui compris). Voir dateAVenir. Pas pour les heures, dépenses ou échéances, qui sont légitimement passées.
+ */
+const dateJour = (v: unknown, ctx: ActionContext): string => dateAVenir(dateOf(v, ctx), ctx.demande, ctx.today);
+/** Une plage de jours du planning (« de lundi à mercredi ») : même règle, du ≤ au. */
+const plageJours = (du: unknown, au: unknown, ctx: ActionContext) => plageAVenir(dateOf(du, ctx), dateOf(au, ctx), ctx.demande, ctx.today);
 
 /**
  * Un nom dit → UN identifiant de la liste, sinon null (inconnu ou ambigu :
@@ -1003,14 +1011,15 @@ export function prepare(type: string, raw: Record<string, unknown>, ctx: ActionC
     case 'poser_absence': {
       const t = str(raw.salarie, 80);
       const kind = norm(str(raw.type, 20));
-      const du = dateOf(raw.du, ctx);
+      const p = plageJours(raw.du, raw.au, ctx);
+      const du = p.du;
       // « repos » est gardé tel quel : la carte dit pourquoi elle ne part pas (jamais un congé deviné).
-      d = { type, user_id: resolveSalarie(t, ctx), salarie_texte: t, absence_type: (ABSENCE_KINDS as readonly string[]).includes(kind) || kind === 'repos' ? kind : 'conge', du, au: dateOf(raw.au, ctx) || du };
+      d = { type, user_id: resolveSalarie(t, ctx), salarie_texte: t, absence_type: (ABSENCE_KINDS as readonly string[]).includes(kind) || kind === 'repos' ? kind : 'conge', du, au: p.au || du };
       break;
     }
     case 'affecter_planning': {
       const s = str(raw.salarie, 80), c = str(raw.chantier, 120), lieu = cleanName(str(raw.lieu, 80));
-      const dates = (Array.isArray(raw.dates) ? raw.dates : [raw.dates]).map((x) => dateOf(x, ctx)).filter(Boolean);
+      const dates = (Array.isArray(raw.dates) ? raw.dates : [raw.dates]).map((x) => dateJour(x, ctx)).filter(Boolean);
       // Titre propre : l'objet court de l'intervention, jamais la phrase dictée.
       let objet = cleanTitle(str(raw.objet, 200) || str(raw.note, 200));
       const moment = dayPart(`${str(raw.moment, 40)} ${str(raw.debut, 20)}`);
@@ -1063,7 +1072,7 @@ export function prepare(type: string, raw: Record<string, unknown>, ctx: ActionC
     case 'modifier_intervention': {
       const s = str(raw.salarie, 80);
       const uid = resolveSalarie(s, ctx);
-      const date = dateOf(raw.date, ctx) || ctx.today;
+      const date = dateJour(raw.date, ctx) || ctx.today;
       const cid = str(raw.chantier, 120) ? resolveChantier(str(raw.chantier, 120), ctx) : null;
       const name = (id: string | null) => ctx.chantiers.find((c) => c.id === id)?.nom ?? 'Chantier';
       const choix: SlotChoice[] = ctx.planning
@@ -1073,7 +1082,7 @@ export function prepare(type: string, raw: Record<string, unknown>, ctx: ActionC
       const heure = str(raw.heure, 20);
       d = {
         type, user_id: uid, salarie_texte: s, date, choix, planning_id: choix.length === 1 ? choix[0].id : null,
-        nouvelle_date: dateOf(raw.nouvelle_date, ctx), nouveau_user_id: ns ? resolveSalarie(ns, ctx) : null,
+        nouvelle_date: dateJour(raw.nouvelle_date, ctx), nouveau_user_id: ns ? resolveSalarie(ns, ctx) : null,
         debut: hhmm(heure) || parseTimeFr(heure) || dayPart(heure)?.debut || '',
         note: typeof raw.note === 'string' && raw.note.trim() ? cleanTitle(str(raw.note, 200)) : null,
       };
@@ -1177,7 +1186,7 @@ export function prepare(type: string, raw: Record<string, unknown>, ctx: ActionC
       const s = str(raw.salarie, 80);
       const moi = /^(moi|me|je)$/.test(norm(s).trim());
       const uid = moi && ctx.me ? ctx.me : s ? resolveSalarie(s, ctx) : null;
-      const date = dateOf(raw.date, ctx);
+      const date = dateJour(raw.date, ctx);
       // Un salarié nommé : SEULEMENT ses cases (jamais celles des collègues).
       const who = uid ?? (s ? salariesNamed(s, ctx) : null);
       const choix = slotsMatching(ctx, who, date, `${str(raw.chantier, 120)} ${str(raw.lieu, 80)}`, who != null);
@@ -1192,8 +1201,9 @@ export function prepare(type: string, raw: Record<string, unknown>, ctx: ActionC
       const moi = /^(moi|me|je)$/.test(norm(s).trim());
       const uid = equipe || !s ? null : moi && ctx.me ? ctx.me : resolveSalarie(s, ctx);
       const wk = weekRange(str(raw.semaine, 40), ctx);
-      const du = dateOf(raw.du, ctx) || wk?.du || '';
-      const au = dateOf(raw.au, ctx) || wk?.au || du;
+      const p = plageJours(raw.du, raw.au, ctx);
+      const du = p.du || wk?.du || '';
+      const au = p.au || wk?.au || du;
       d = { type, user_id: uid, salarie_texte: equipe ? '' : s, du, au } as ActionDraft;
       break;
     }

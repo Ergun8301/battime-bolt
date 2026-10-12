@@ -217,6 +217,19 @@ body `{ "version": "v2", "ids": [...], "parallel": 1, "gapMs": 4000 }`. Le modè
   donc b47 ne pouvait jamais passer. Le cas utilise maintenant `actAvecProblemes` (type `supprimer_intervention`, Kevin, `planning_id` vide, problèmes **exactement** `['Choisissez l’intervention.']`, choix non vide
   et uniquement de Kevin). Aucun test n'est supprimé ni assoupli : `act` est inchangé pour tous les autres cas (b47 est le seul à attendre un `planning_id` vide).
 
+### Dates : prochain jour de la semaine, côté code
+
+Mesuré sur le vrai modèle (aujourd'hui du jeu = jeudi 2026-10-01) : pour un nom de jour seul, le modèle renvoie parfois le jour **passé** de la semaine en cours, quel que soit le texte des descriptions
+(b36 « vide le planning de karim de lundi à mercredi » → 2026-09-28 → 2026-09-30 au lieu de 2026-10-05 → 2026-10-07, y compris sur l'ancien code ; b06 « décale l'intervention de karim de vendredi à lundi »
+→ 2026-09-25 / 2026-09-28 au lieu de 2026-10-02 / 2026-10-05). Le texte ne suffisant pas, la règle est aussi **en code**, en un seul endroit (`dateAVenir` / `plageAVenir` dans `_shared/fr-langue.ts`) :
+si une date donnée par le modèle est **déjà passée** et que la phrase **nomme ce jour de la semaine** sans marqueur de passé, elle devient la **prochaine occurrence** de ce jour (aujourd'hui compris), et une plage garde `du ≤ au`.
+Jamais touchée : une date qui n'est pas passée, un jour que la phrase ne nomme pas, ni quand le passé est dit (« dernier », « passé », « hier », « avant-hier », « précédent », « il y a », « depuis », « était »),
+ni quand une date est écrite (`28/09`, « 28 septembre », « lundi 28 », `2026-09-28`) ou la semaine en cours dite (« cette semaine », « semaine en cours »).
+
+Couvert : bureau — `affecter_planning` (dates), `poser_absence` (du/au), `modifier_intervention` (date, nouvelle_date), `supprimer_intervention` (date), `effacer_planning` et `supprimer_absence` (du/au) ;
+salarié — `demander_conge` et `modifier_conge` (du/au). **Pas** concernés, car leurs jours sont légitimement passés : `corriger_pointage`, `ajouter_depense`, les heures du salarié (`declarer_heures`, `effacer_heures`, `copier_journee`).
+Limite connue : « mets Kevin en maladie lundi » dit un jeudi, pour déclarer un arrêt déjà commencé, devient le lundi à venir ; il faut dire « lundi dernier » ou « depuis lundi ».
+
 ## Prod
 
 Lot 7 : migrations `20261001090000_lot7_assistant_journal.sql`, `20261001100000_lot7_collegues_documents.sql`, puis `assistant` et `worker-assistant`.
