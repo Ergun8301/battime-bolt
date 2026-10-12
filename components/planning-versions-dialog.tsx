@@ -72,6 +72,7 @@ const PV_CSS = `
 .bt-pv-res{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;border-radius:11px;padding:9px 11px;font-size:13px;font-weight:700;line-height:1.4}
 .bt-pv-res.ok{background:#F2FBF5;border:1px solid rgba(15,122,67,.25);color:#0F5F35}
 .bt-pv-res.ko{background:#FBF3DC;border:1px solid #EAD9A2;color:#7a5e00}
+.bt-pv-left{flex:1 0 100%;margin:4px 0 0;padding:0 0 0 16px;font-size:12.5px;font-weight:600;line-height:1.45}
 .bt-pv-empty{text-align:center;color:#9a948a;font-weight:600;padding:22px 0;font-size:13.5px}
 `;
 // Objet FIXE (règle anti-flash du lot 10).
@@ -95,7 +96,7 @@ export default function PlanningVersionsDialog({ open, onOpenChange, weekLabel, 
   );
 }
 
-type Result = { ok: boolean; message: string; undo: PlanningVersion | null; undone?: boolean; after?: string };
+type Result = { ok: boolean; message: string; undo: PlanningVersion | null; undone?: boolean; after?: string; lost?: string; left?: { cell: VersionCell; reason: string }[] };
 
 function VersionsBody({ companyId, userId, monday, names, onChanged, working }: Omit<Props, 'open' | 'onOpenChange' | 'weekLabel'> & { working: { current: boolean } }) {
   const [list, setList] = useState<PlanningVersion[] | null>(null);
@@ -149,11 +150,11 @@ function VersionsBody({ companyId, userId, monday, names, onChanged, working }: 
       return;
     }
     setSel(null);
-    setResult({ ok: r.ok, message: r.message, undo: r.saved, after: r.after });
+    setResult({ ok: r.ok, message: r.message, undo: r.saved, after: r.after, lost: r.lost });
     onChanged();
     await load();
   });
-  const undo = (saved: PlanningVersion, after?: string) => lock('undo', async () => {
+  const undo = (saved: PlanningVersion, after?: string, lost?: string) => lock('undo', async () => {
     const r = await restoreVersion({ companyId, userId, monday, version: saved, label: 'Annulé', ifStateIs: after });
     if (r.stale) {
       // Le planning a bougé depuis le retour : « Annuler » ne part plus en un clic, on montre ce qu'il changerait.
@@ -163,7 +164,8 @@ function VersionsBody({ companyId, userId, monday, names, onChanged, working }: 
       return;
     }
     // Échec à mi-chemin : « Annuler » reprend là où on en était.
-    setResult({ ok: r.ok, message: r.message, undo: r.ok ? null : saved, undone: r.ok, after: r.after });
+    const rest = r.ok && lost ? ` Pas remis : ${lost}.` : ''; // ce que le retour avait emporté et que « Annuler » ne remet pas
+    setResult({ ok: r.ok, message: `${r.message}${rest}`, undo: r.ok ? null : saved, undone: r.ok, after: r.after, left: r.left, lost: r.ok ? undefined : lost });
     onChanged();
     await load();
   });
@@ -195,12 +197,18 @@ function VersionsBody({ companyId, userId, monday, names, onChanged, working }: 
       </div>
 
       {result && (
-        <div className={`bt-pv-res ${result.ok ? 'ok' : 'ko'}`} role="status" data-testid="versions-result">
+        <div className={`bt-pv-res ${result.ok && !result.left?.length ? 'ok' : 'ko'}`} role="status" data-testid="versions-result">
           <span>{result.undone ? <Undo2 className="inline h-4 w-4 mr-1" /> : null}{result.message}</span>
           {result.undo && (
-            <Button type="button" size="sm" variant="outline" disabled={!!busy} onClick={() => undo(result.undo!, result.after)} data-testid="versions-undo">
+            <Button type="button" size="sm" variant="outline" disabled={!!busy} onClick={() => undo(result.undo!, result.after, result.lost)} data-testid="versions-undo">
               {busy === 'undo' ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <Undo2 className="h-4 w-4" />} Annuler
             </Button>
+          )}
+          {!!result.left?.length && (
+            <ul className="bt-pv-left" data-testid="versions-left">
+              {result.left.slice(0, MAX_LINES).map((k, i) => <li key={i}>{line(k.cell)} ({k.reason})</li>)}
+              {result.left.length > MAX_LINES && <li>+ {result.left.length - MAX_LINES} autre{result.left.length - MAX_LINES > 1 ? 's' : ''}</li>}
+            </ul>
           )}
         </div>
       )}

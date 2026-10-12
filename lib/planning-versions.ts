@@ -31,8 +31,8 @@ import { erasePlanning, prepareMove, undoMovePrep } from '@/lib/erase';
 import { updatePlanningSlot } from '@/lib/admin-writes';
 import { isMissingRelation } from '@/supabase/functions/_shared/missions';
 import {
-  CELLS_MAX, cellsFromRows, cellsSignature, chunkByKey, clipNote, clipRequest, countsOf, diffCells, emptyProtection, nothingToDo, planIsEmpty, planRestore, planSignature,
-  REASON_CLOSED, REASON_LIVE, restoreSummary, usersOf, weekRange,
+  CELLS_MAX, cellsFromRows, cellsSignature, chunkByKey, clipNote, clipRequest, countsOf, diffCells, emptyProtection, keepAfter, nothingToDo, notBackText, planIsEmpty, planRestore, planSignature,
+  REASON_CLOSED, REASON_LIVE, restoreSummary, usersOf, versionBefore, weekRange,
   type PlanningVersion, type Protection, type RestoreCounts, type RestorePlan, type VersionCell, type VersionDiff, type VersionKind,
 } from '@/supabase/functions/_shared/planning-versions';
 
@@ -120,35 +120,49 @@ export async function saveVersion(companyId: string, monday: string, kind: Versi
 /**
  * AVANT d'écrire : V1 « initiale » si la semaine n'a encore aucune version ;
  * sinon, si le planning a changé à la main depuis la dernière version, cet état
- * est gardé (« Avant l'assistant ») — chaque essai reste réversible.
+ * est gardé (« Avant l'assistant ») — chaque essai reste réversible
+ * (supabase/functions/_shared/planning-versions.ts, `versionBefore`).
  * `skipEmpty` (effacer) : une semaine sans aucune case ni version n'a rien à garder.
  * Jamais bloquant : une version qui ne s'écrit pas n'empêche pas l'action, mais
- * on le dit (faux = « version non gardée »). Fonction éteinte : vrai.
+ * on le dit (faux = « version non gardée »). Vrai seulement si tout est gardé,
+ * ou si la fonction est éteinte (table absente : rien ne change) ; un réseau
+ * qui ne répond pas n'est PAS « éteinte » : faux.
  */
 export async function recordBeforeAssistant(companyId: string, mondays: string[], o: { skipEmpty?: boolean } = {}): Promise<boolean> {
-  if (!mondays.length || (await versionsAvailable()) !== 'on') return true;
+  if (!mondays.length) return true;
+  const on = await versionsAvailable();
+  if (on === 'off') return true;
+  if (on === 'error') return false;
   let all = true;
   for (const monday of mondays) {
     try {
       const { cells } = await readWeek(companyId, monday);
       const last = await latestVersion(companyId, monday);
-      if (!last) { if (cells.length || !o.skipEmpty) await saveVersion(companyId, monday, 'initial', { cells }); }
-      else if (cellsSignature(last.cells) !== cellsSignature(cells)) await saveVersion(companyId, monday, 'avant_assistant', { cells });
+      const kind = versionBefore(last ? last.cells : null, cells, !!o.skipEmpty);
+      if (kind) await saveVersion(companyId, monday, kind, { cells });
     } catch (e) { all = false; console.error('Version « avant » non gardée :', e); }
   }
   return all;
 }
 
-/** APRÈS avoir écrit : la nouvelle version, avec la demande. Renvoie les semaines gardées et si tout s'est bien passé. */
+/**
+ * APRÈS avoir écrit : la nouvelle version, avec la demande. Renvoie les semaines
+ * RÉELLEMENT gardées (la première sert au lien « Versions de la semaine ») et si
+ * tout s'est bien passé. Une semaine sans version ni case n'a pas été touchée :
+ * rien n'y est écrit (`keepAfter`). Réseau muet : ok faux ; fonction éteinte : ok vrai.
+ */
 export async function recordAfterAssistant(companyId: string, mondays: string[], request: string | null | undefined, note: string): Promise<{ weeks: string[]; ok: boolean }> {
   const weeks: string[] = [];
-  if (!mondays.length || (await versionsAvailable()) !== 'on') return { weeks, ok: true };
+  if (!mondays.length) return { weeks, ok: true };
+  const on = await versionsAvailable();
+  if (on === 'off') return { weeks, ok: true };
+  if (on === 'error') return { weeks, ok: false };
   let ok = true;
   for (const monday of mondays) {
     try {
       const { cells } = await readWeek(companyId, monday);
       const last = await latestVersion(companyId, monday);
-      if (last && cellsSignature(last.cells) === cellsSignature(cells)) continue; // rien n'a changé sur cette semaine
+      if (!keepAfter(last ? last.cells : null, cells)) continue; // rien n'a changé, ou semaine non touchée
       await saveVersion(companyId, monday, 'assistant', { request, note, cells });
       weeks.push(monday);
     } catch (e) { ok = false; console.error('Version « essai » non gardée :', e); }
@@ -266,6 +280,10 @@ export interface RestoreResult {
   stale?: RestorePreview;
   /** L'empreinte du planning juste après ce retour : « Annuler » ne part seul que si elle est toujours vraie. */
   after?: string;
+  /** Ce que « Annuler » ne remettra pas (brouillons vides effacés, liens de lignes retirées) : vide = rien. */
+  lost?: string;
+  /** « Annuler » seulement : les cases qui n'ont pas pu être remises ou changées, avec la raison de chacune. */
+  left?: { cell: VersionCell; reason: string }[];
 }
 
 const errText = (e: unknown) => (e as { message?: string } | null)?.message || 'erreur inconnue';
@@ -329,6 +347,8 @@ async function doRestore({ companyId, userId, monday, version, label, expect, if
   const kept = [...plan.kept];
   const skipped = [...plan.skipped];
   let added = 0, removed = 0, changed = 0;
+  // Ce que « Supprimer » (lot 2) emporte avec une case retirée et que « Annuler » ne remet pas.
+  let droppedDrafts = 0, droppedLinks = 0;
   let failure: string | null = null;
   try {
     // Un pointage a pu démarrer depuis la lecture : on regarde encore, juste avant d'écrire.
@@ -339,6 +359,7 @@ async function doRestore({ companyId, userId, monday, version, label, expect, if
     for (const part of chunkByKey(plan.remove.filter((c) => !live.has(c.id)), CHUNK)) {
       const r = await erasePlanning(companyId, { ids: part.map((c) => c.id) });
       removed += r.deleted.length;
+      droppedDrafts += r.drafts.length; droppedLinks += r.detached.length;
       const gone = new Set(r.deleted.map((x) => x.id));
       // Sans raison donnée, la case n'existait plus (retirée entre-temps par quelqu'un d'autre) : rien à dire.
       for (const c of part) if (!gone.has(c.id) && r.reason) kept.push({ cell: c, reason: r.reason });
@@ -356,6 +377,7 @@ async function doRestore({ companyId, userId, monday, version, label, expect, if
           estimatedStart: u.to.estimated_start, estimatedEnd: u.to.estimated_end, notes: u.to.notes,
         });
         changed++;
+        if (prep) { droppedDrafts += prep.drafts.length; droppedLinks += prep.detached.length; }
       } catch (err) {
         if (prep) await undoMovePrep(prep).catch((e) => console.error('Remise après échec impossible :', e));
         throw err;
@@ -403,9 +425,15 @@ async function doRestore({ companyId, userId, monday, version, label, expect, if
   const head = label ?? `Revenu à la V${version.number}`;
   // Le planning tel que ce retour le laisse : « Annuler » en dépend.
   const after = await readWeek(companyId, monday).then((w) => cellsSignature(w.cells)).catch(() => undefined);
+  const lost = notBackText(droppedDrafts, droppedLinks);
+  const lostNote = lost ? ` « Annuler » ne remettra pas : ${lost}.` : '';
+  // « Annuler » : tout ce qui n'a pas pu revenir est dit, case par case.
+  const left = label ? [...kept, ...skipped].map((k) => ({ cell: k.cell, reason: k.reason })) : undefined;
   if (failure) {
     const done = added + removed + changed;
-    return { ok: false, counts, saved, after, message: `Retour interrompu (${failure}).${done ? ` Déjà fait : ${restoreSummary(counts)}` : ' Rien n’a été changé.'} « Annuler » remet le planning d’avant.` };
+    return { ok: false, counts, saved, after, lost: lost || undefined, left, message: `Retour interrompu (${failure}).${done ? ` Déjà fait : ${restoreSummary(counts)}` : ' Rien n’a été changé.'} « Annuler » remet le planning d’avant.${lostNote}` };
   }
-  return { ok: true, counts, saved, after, message: nothingToDo(counts) ? restoreSummary(counts) : `${head} : ${restoreSummary(counts)}` };
+  const summary = restoreSummary(counts);
+  const text = label && left?.length ? `${head} : n’a pas pu tout remettre — ${summary}` : nothingToDo(counts) ? summary : `${head} : ${summary}`;
+  return { ok: true, counts, saved, after, lost: lost || undefined, left, message: `${text}${lostNote}` };
 }

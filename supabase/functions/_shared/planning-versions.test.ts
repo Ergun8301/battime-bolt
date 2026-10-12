@@ -3,7 +3,7 @@
 import {
   addDaysISO, cellsFromRows, cellsSignature, chunkByKey, clipNote, clipRequest, countsOf, diffCells, emptyProtection, inWeek, mondayOf, planIsEmpty, planRestore, planSignature,
   REASON_ABSENT, REASON_CLOSED, REASON_LIVE, REASON_SITE, REASON_USER, REASON_WORKER,
-  mondaysOf, restoreSummary, sameContent, toCell, usersOf, versionSize, versionTitle, weekRange, weeksTouched, type VersionCell,
+  keepAfter, mondaysOf, notBackText, restoreSummary, sameContent, toCell, usersOf, versionBefore, versionSize, versionTitle, weekRange, weeksTouched, type VersionCell,
 } from './planning-versions.ts';
 
 function eq(a: unknown, b: unknown, msg: string) {
@@ -248,4 +248,39 @@ Deno.test('paquets : jamais une case séparée de ses voisines (même salarié, 
   }));
   eq(chunkByKey([], 100), [], 'rien : aucun paquet');
   eq(chunkByKey([cell('a', SAM, '2026-10-12', null), cell('b', SAM, '2026-10-12', null)], 100).length, 1, 'sans chantier : chacune seule, mais tenant dans un paquet');
+});
+
+Deno.test('quelle version garder autour d’un changement de l’assistant', () => {
+  const some = [cell('a', SAM, '2026-10-12')];
+  // AVANT : V1 « initiale » s'il n'y a aucune version ; « avant l'assistant » si le planning a bougé ; sinon rien.
+  eq(versionBefore(null, some), 'initial', 'aucune version : V1');
+  eq(versionBefore(null, []), 'initial', 'semaine vide à remplir (planning_semaine) : V1 vide, pour pouvoir y revenir');
+  eq(versionBefore(null, [], true), null, 'effacer une semaine sans case ni version : rien à garder');
+  eq(versionBefore(null, some, true), 'initial', 'effacer une semaine avec des cases : V1');
+  eq(versionBefore(some, some), null, 'rien n’a bougé depuis la dernière version : rien');
+  eq(versionBefore(some, [...some, cell('b', ALEX, '2026-10-13')]), 'avant_assistant', 'changé à la main depuis : « avant l’assistant »');
+  // APRÈS : jamais une version vide pour une semaine que l'action n'a pas touchée (rien ne se supprime).
+  eq(keepAfter(null, []), false, 'ni version ni case : rien à garder (semaine non touchée)');
+  eq(keepAfter(null, some), true, 'des cases mais pas de version (la V1 n’a pas pu s’écrire) : on garde');
+  eq(keepAfter(some, some), false, 'rien n’a changé : rien');
+  eq(keepAfter(some, []), true, 'tout effacé : l’essai à 0 case est gardé (la V1 a les cases)');
+  eq(keepAfter([], some), true, 'semaine vide remplie : l’essai est gardé');
+  eq(keepAfter([], []), false, 'V1 vide et toujours vide : rien');
+  // Trois semaines, seule la dernière a des cases : une seule version « essai », jamais à 0 case sur les autres.
+  const weeks = weeksTouched('2026-10-05', '2026-10-25');
+  eq(weeks, ['2026-10-05', '2026-10-12', '2026-10-19'], 'trois semaines touchées');
+  const state: Record<string, VersionCell[]> = { '2026-10-05': [], '2026-10-12': [], '2026-10-19': [cell('c1', SAM, '2026-10-19'), cell('c2', ALEX, '2026-10-20')] };
+  const last: Record<string, VersionCell[] | null> = {};
+  for (const w of weeks) { const k = versionBefore(null, state[w], true); if (k) last[w] = state[w]; else last[w] = null; }
+  eq(weeks.filter((w) => last[w]), ['2026-10-19'], 'avant : V1 seulement sur la semaine qui a des cases');
+  const erased: Record<string, VersionCell[]> = { '2026-10-05': [], '2026-10-12': [], '2026-10-19': [] };
+  eq(weeks.filter((w) => keepAfter(last[w], erased[w])), ['2026-10-19'], 'après : l’essai n’est gardé que sur cette semaine (le lien « Versions » y mène)');
+});
+
+Deno.test('ce que « Annuler » ne remet pas : brouillons vides, liens des lignes retirées', () => {
+  eq(notBackText(0, 0), '', 'rien');
+  eq(notBackText(1, 0), '1 brouillon vide effacé', 'un brouillon');
+  eq(notBackText(2, 0), '2 brouillons vides effacés', 'deux brouillons');
+  eq(notBackText(0, 1), 'le lien de 1 ligne retirée (ses heures restent)', 'un lien');
+  eq(notBackText(1, 3), '1 brouillon vide effacé et le lien de 3 lignes retirées (leurs heures restent)', 'les deux');
 });

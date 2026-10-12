@@ -25,6 +25,8 @@
 //       cases gardées restent et sont annoncées ; les heures et pointages ne sont pas touchés
 //    W4b une case retirée qui ne portait qu'un brouillon vide et une ligne « retirée » : le brouillon vide part,
 //       la ligne « retirée » garde toutes ses heures (lien détaché) — la règle de « Supprimer » (lot 2)
+//    W4b …et « Annuler » dit, avant et après, ce qu'il ne remet pas (brouillon vide, lien de la ligne retirée)
+//    W5c « Annuler » qui ne peut pas tout remettre (salarié archivé) : « n'a pas pu tout remettre », case par case
 //    W5 « Annuler » : le planning d'avant, à l'identique ; si le planning a bougé depuis le retour,
 //       « Annuler » ne part plus seul : nouvel aperçu à confirmer
 //    W6 l'état actuel ne peut pas être gardé : RIEN n'est touché
@@ -40,6 +42,9 @@
 //    A2 demande de plus de 500 caractères (émojis comprises) : coupée à 500, la version est gardée
 //    A3 « Efface le planning de la semaine prochaine » : V1 avec les cases d'avant ; « Versions de la
 //       semaine » ouvre la liste ; « Revenir » remet les cases effacées (écran, pas assistant)
+//    A5 « Efface octobre » sur 3 semaines dont seule la dernière a des cases : aucune version à 0 case sur les
+//       autres, le lien « Versions de la semaine » ouvre la semaine RÉELLEMENT gardée
+//    A6 réseau muet sur planning_versions (erreur, pas « table absente ») : l'action passe, le message le dit
 //    A4 une version qui ne s'écrit pas n'empêche pas l'action, et le message le dit
 import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path'; import { chromium } from 'playwright-core';
 const [,, OUT, SH, PORT = '4801'] = process.argv; fs.mkdirSync(SH, { recursive: true });
@@ -107,7 +112,7 @@ const VERSIONS = () => [
 
 // ─── Base simulée AVEC ÉTAT ─────────────────────────────────────────────────────
 let D = {}; let MIG = 'oui';
-const FAIL = { versions: 0, patch: 0, versionsAlways: false };
+const FAIL = { versions: 0, patch: 0, versionsAlways: false, versionsGet: false };
 const HOOK = { afterVersion: null }; // un événement qui survient PENDANT le retour (une fois)
 const log = []; // chaque requête de données : { n, m, t, origin, body, q }
 let VSEQ = 0;
@@ -120,7 +125,7 @@ const fresh = () => {
     documents: [], leave_requests: [], invitations: [], user_closures: [], certifications: [], push_subscriptions: [], kiosks: [], kiosk_settings: [], worksite_expenses: [], user_payroll: [],
     assistant_journal: [], day_tasks: [], meetings: [], meeting_participants: [], trainings: [], training_views: [],
   };
-  log.length = 0; FAIL.versions = 0; FAIL.patch = 0; FAIL.versionsAlways = false; HOOK.afterVersion = null;
+  log.length = 0; FAIL.versions = 0; FAIL.patch = 0; FAIL.versionsAlways = false; FAIL.versionsGet = false; HOOK.afterVersion = null;
 };
 const SKIP = new Set(['select', 'order', 'limit', 'offset', 'on_conflict', 'columns', 'or']);
 function filterRows(rows, params) {
@@ -190,6 +195,7 @@ const newCtx = async (viewport) => {
     const entry = { n: log.length, m, t, origin: h['x-bemexo-origine'] || null, body, q: url.search };
     log.push(entry);
     if (t === 'planning_versions' && MIG !== 'oui') return r.fulfill(missing(t));
+    if (t === 'planning_versions' && m === 'GET' && FAIL.versionsGet) { entry.failed = 'get'; return r.fulfill({ status: 500, json: { code: 'XX000', message: 'réseau muet', details: null, hint: null } }); }
     if (t === 'traces' && MIG !== 'oui') return r.fulfill(missing(t));
     D[t] = D[t] || [];
     const wantOne = (h['accept'] || '').includes('vnd.pgrst.object');
@@ -451,6 +457,38 @@ section('W4b · ce que le retour fait des lignes d’heures d’une case retiré
   check(!D.time_entries.some((e) => e.id === 'te-vide'), 'W4b son brouillon VIDE (0 minute) est parti avec elle, comme avec « Supprimer »');
   check(JSON.stringify(D.time_entries.find((e) => e.id === 'te-retiree') ?? null) === retiree, 'W4b la ligne « retirée » garde TOUTES ses heures : seul son lien avec la case est détaché');
   check(JSON.stringify(D.time_entries.filter((e) => !['te-vide', 'te-retiree'].includes(e.id))) === keepRows, 'W4b toutes les autres lignes d’heures sont identiques (aucune heure modifiée ni effacée)');
+  const res = await resultText(p);
+  check(/« Annuler » ne remettra pas : 1 brouillon vide effacé et le lien de 1 ligne retirée \(ses heures restent\)\./.test(res), `W4b le message le dit AVANT « Annuler » : ${res.slice(-140)}`);
+  await p.waitForSelector('[data-testid=versions-undo]', { timeout: 8000 }).catch(() => {});
+  await dlg(p).locator('[data-testid=versions-undo]').click();
+  await p.waitForFunction(() => /^Annulé/.test(document.querySelector('[data-testid=versions-result]')?.textContent?.trim() || ''), null, { timeout: 15000 }).catch(() => {});
+  const undone = await resultText(p);
+  check(D.planning.some((x) => x.id === 'x1') && /Pas remis : 1 brouillon vide effacé et le lien de 1 ligne retirée \(ses heures restent\)\./.test(undone), `W4b « Annuler » remet la case et dit ce qu’il ne remet pas : ${undone.slice(-150)}`);
+  check(!D.time_entries.some((e) => e.id === 'te-vide') && D.time_entries.find((e) => e.id === 'te-retiree')?.planning_id === null && D.time_entries.find((e) => e.id === 'te-retiree')?.total_minutes === 240, 'W4b c’est bien vrai : le brouillon vide n’est pas revenu, la ligne retirée n’est pas rattachée, ses 240 minutes sont intactes');
+  await dlg(p).screenshot({ path: shot('W4b-annuler-ne-remet-pas') });
+}
+
+section('W5c · « Annuler » qui ne peut pas tout remettre le dit, case par case');
+{
+  fresh();
+  const p = await open();
+  await openVersions(p);
+  await itemOf(p, 1).locator('[data-testid=versions-restore]').click();
+  await p.waitForSelector('[data-testid=versions-confirm]', { timeout: 8000 }).catch(() => {});
+  await dlg(p).locator('[data-testid=versions-confirm]').click();
+  await waitResult(p);
+  await p.waitForSelector('[data-testid=versions-undo]', { timeout: 8000 }).catch(() => {});
+  // Entre-temps, Sam est archivé : la case x1 (retirée par le retour) ne peut plus lui être remise.
+  D.users.find((x) => x.id === SAM).is_active = false;
+  await dlg(p).locator('[data-testid=versions-undo]').click();
+  await p.waitForFunction(() => /^Annulé/.test(document.querySelector('[data-testid=versions-result]')?.textContent?.trim() || ''), null, { timeout: 15000 }).catch(() => {});
+  const res = await resultText(p);
+  check(/^Annulé : n’a pas pu tout remettre — 1 case retirée, 2 modifiées, 1 non remise \(salarié archivé\)\./.test(res), `W5c le message : ${res}`);
+  const left = (await dlg(p).locator('[data-testid=versions-left]').innerText({ timeout: 4000 }).catch(() => '')).replace(/\s+/g, ' ');
+  check(/Sam Test · sam\. 03\/10 · Résidence Test.*\(salarié archivé\)/.test(left), `W5c la case concernée est listée avec sa raison : ${left}`);
+  check(!D.planning.some((x) => x.id === 'x1') && D.planning.find((x) => x.id === 'a5').notes === 'Apporter l’échelle', 'W5c le reste de « Annuler » a eu lieu (a5 retrouve sa note), x1 n’est pas remise');
+  check(/bt-pv-res ko/.test(await dlg(p).locator('[data-testid=versions-result]').getAttribute('class') || ''), 'W5c le bandeau est en avertissement (pas en vert)');
+  await dlg(p).screenshot({ path: shot('W5c-annuler-partiel') });
 }
 
 section('W5b · « Annuler » ne part pas seul si le planning a bougé depuis le retour');
@@ -735,6 +773,55 @@ section('A3 · « Efface le planning de la semaine prochaine », puis revenir');
   check(D.planning.find((x) => x.id === 'n2')?.created_by === LEA && D.planning.find((x) => x.id === 'n1')?.created_by === ADMIN, 'A3 l’auteur d’origine de chaque case est gardé quand il existe encore');
   check(writes(n1).filter((x) => x.t === 'planning').every((x) => !x.origin), 'A3 le retour est écrit par l’écran (pas d’en-tête « assistant »)');
   check(vOf(NEXT).some((v) => v.kind === 'avant_retour' && v.cells.length === 1), 'A3 l’état d’avant le retour est gardé (V3)');
+}
+
+section('A5 · « Efface octobre » sur 3 semaines dont seule la dernière a des cases');
+{
+  fresh(); D.planning_versions = []; D.time_entries = []; D.active_sessions = [];
+  D.planning = [row('n1', SAM, '2026-10-19', 'w1'), row('n2', ALEX, '2026-10-20', 'w2'), row('n3', LEA, '2026-10-22', 'w1')];
+  const p = await open();
+  await openAssistant(p);
+  await ask(p, 'Efface le planning d’octobre du 5 au 25', { draft: { type: 'effacer_planning', user_id: null, salarie_texte: '', du: '2026-10-05', au: '2026-10-25' }, problems: [] });
+  await p.waitForSelector('[data-testid=removal-notice]', { timeout: 8000 }).catch(() => {});
+  await p.click('[data-testid=action-confirm]');
+  await p.waitForSelector('[data-testid=action-done]', { timeout: 10000 }).catch(() => {});
+  check(D.planning.length === 0, `A5 les 3 cases sont effacées (${D.planning.length} restent)`);
+  const posted = log.filter((x) => x.t === 'planning_versions' && x.m === 'POST' && !x.failed).map((x) => `${x.body.week_start}:${x.body.kind}:${x.body.cells.length}`);
+  check(JSON.stringify(posted) === JSON.stringify(['2026-10-19:initial:3', '2026-10-19:assistant:0']), `A5 seule la semaine du 19 a des versions (V1 de 3 cases, essai à 0 case) : ${posted.join(' | ')}`);
+  check(!D.planning_versions.some((v) => ['2026-10-05', '2026-10-12'].includes(v.week_start)), 'A5 AUCUNE version écrite (ni à 0 case) sur les semaines du 5 et du 12 : elles n’ont pas été touchées');
+  check(await p.locator('[data-testid=action-versions]').count() === 1, 'A5 le lien « Versions de la semaine » est là');
+  await p.click('[data-testid=action-versions]');
+  await p.waitForSelector('[data-testid=versions-list]', { timeout: 8000 }).catch(() => {});
+  check(/semaine du 19 au 25 oct/.test(await dlg(p).innerText({ timeout: 4000 }).catch(() => '')), 'A5 le lien ouvre la semaine RÉELLEMENT gardée (du 19 au 25 oct.), pas la première de la période');
+  const titles = (await dlg(p).locator('.bt-pv-title').allInnerTexts()).map((x) => x.trim());
+  check(JSON.stringify(titles) === JSON.stringify(['V2 · Essai de l’assistant', 'V1 · Initiale']), `A5 la liste : ${titles.join(' | ')}`);
+  await dlg(p).screenshot({ path: shot('A5-trois-semaines-une-seule-gardee') });
+}
+
+section('A6 · réseau muet sur planning_versions : l’action passe, et le message le dit');
+{
+  fresh(); D.planning_versions = []; D.time_entries = []; D.active_sessions = [];
+  D.planning = [row('n1', SAM, '2026-10-06', 'w1'), row('n2', ALEX, '2026-10-07', 'w2')];
+  FAIL.versionsGet = true; // la table répond par une ERREUR (pas « absente ») : on ne sait pas si elle existe
+  const p = await open();
+  check(await p.locator('[data-testid="corner-versions"]').count() === 0, 'A6 l’entrée « Versions » reste cachée (on ne sait pas)');
+  await openAssistant(p);
+  await ask(p, 'Efface le planning de la semaine prochaine', { draft: { type: 'effacer_planning', user_id: null, salarie_texte: '', du: NEXT, au: '2026-10-11' }, problems: [] });
+  await p.waitForSelector('[data-testid=removal-notice]', { timeout: 8000 }).catch(() => {});
+  await p.click('[data-testid=action-confirm]');
+  await p.waitForSelector('[data-testid=action-done]', { timeout: 10000 }).catch(() => {});
+  const card = (await p.locator('[data-testid=action-done]').innerText({ timeout: 4000 }).catch(() => '')).replace(/\s+/g, ' ');
+  check(D.planning.length === 0, `A6 l’effacement a eu lieu (${D.planning.length} cases restent) : l’action n’est pas bloquée`);
+  check(/version du planning non gardée/.test(card), `A6 le message le dit : ${card.slice(0, 130)}`);
+  check(!log.some((x) => x.t === 'planning_versions' && x.m !== 'GET'), 'A6 aucune écriture vers planning_versions');
+  check(await p.locator('[data-testid=action-versions]').count() === 0 && await p.locator('[data-testid=action-undo]').count() === 1, 'A6 pas de lien « Versions », « Annuler » reste proposé');
+  // Même chose pour un planning de semaine.
+  D.planning = [];
+  await ask(p, 'Fais le planning de la semaine prochaine', semaine());
+  await p.locator('[data-testid=action-confirm]').last().click();
+  await p.waitForFunction(() => document.querySelectorAll('[data-testid=action-done]').length >= 2, null, { timeout: 10000 }).catch(() => {});
+  const card2 = (await p.locator('[data-testid=action-done]').last().innerText({ timeout: 4000 }).catch(() => '')).replace(/\s+/g, ' ');
+  check(D.planning.length === 2 && /version du planning non gardée/.test(card2), `A6 planning de la semaine : posé (${D.planning.length}) et le message le dit`);
 }
 
 section('A4 · une version qui ne s’écrit pas n’empêche pas l’action');

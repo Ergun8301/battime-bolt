@@ -171,6 +171,26 @@ export function cellsSignature(cells: VersionCell[]): string {
   return JSON.stringify(cells.map((c) => [c.work_date, c.user_id, c.worksite_id ?? '', hm(c.estimated_start), hm(c.estimated_end), c.notes ?? '']).sort());
 }
 
+/**
+ * AVANT un changement de l'assistant, quelle version garder pour une semaine ?
+ * `last` : les cases de la dernière version (null = aucune version). V1 « initial »
+ * s'il n'y en a aucune ; « avant_assistant » si le planning a changé à la main
+ * depuis ; rien sinon. `skipEmpty` (effacer) : une semaine sans case ni version n'a rien à garder.
+ */
+export function versionBefore(last: VersionCell[] | null, cells: VersionCell[], skipEmpty = false): 'initial' | 'avant_assistant' | null {
+  if (!last) return cells.length || !skipEmpty ? 'initial' : null;
+  return cellsSignature(last) !== cellsSignature(cells) ? 'avant_assistant' : null;
+}
+/**
+ * APRÈS le changement : faut-il garder l'essai ? Non si rien n'a changé depuis la
+ * dernière version, et non plus s'il n'y a ni version ni case (une semaine que
+ * l'action n'a pas touchée : une version vide ne se retire pas, rien n'est supprimé).
+ */
+export function keepAfter(last: VersionCell[] | null, cells: VersionCell[]): boolean {
+  if (!last) return cells.length > 0;
+  return cellsSignature(last) !== cellsSignature(cells);
+}
+
 export interface VersionDiff {
   /** Dans la version, plus au planning : à remettre. */
   add: VersionCell[];
@@ -326,6 +346,18 @@ export function chunkByKey(cells: VersionCell[], size = 100): VersionCell[][] {
   }
   if (cur.length) out.push(cur);
   return out;
+}
+
+/**
+ * Ce qu'un retour a retiré en même temps que des cases et que « Annuler » ne remet pas
+ * (règle de « Supprimer », lot 2) : un brouillon VIDE (0 minute, jamais envoyé) et le lien
+ * d'une ligne « retirée » par le salarié (ses heures ne bougent pas). Vide : rien.
+ */
+export function notBackText(drafts: number, links: number): string {
+  const parts: string[] = [];
+  if (drafts > 0) parts.push(`${drafts} brouillon${drafts > 1 ? 's' : ''} vide${drafts > 1 ? 's' : ''} effacé${drafts > 1 ? 's' : ''}`);
+  if (links > 0) parts.push(`le lien de ${links} ligne${links > 1 ? 's' : ''} retirée${links > 1 ? 's' : ''} (${links > 1 ? 'leurs' : 'ses'} heures restent)`);
+  return parts.join(' et ');
 }
 
 // ── Les mots ────────────────────────────────────────────────────────────────
