@@ -39,7 +39,7 @@ type Env = { get(key: string): string | undefined };
 export type Tier = 'rapide' | 'documents';
 type Slot = Tier | 'secours';
 export type FormuleNom = 'essai' | 'payant';
-export interface Modele { fournisseur: 'gemini'; model: string; reflexion: 'minimal' | 'low' }
+export interface Modele { fournisseur: 'gemini'; model: string; reflexion: 'minimal' | 'low' | 'medium' | 'high' }
 export interface AiConfig {
   formule: FormuleNom;
   rapide: Modele; documents: Modele; secours: Modele;
@@ -98,7 +98,7 @@ function lire(raw: string): AiConfig | string {
   try { j = JSON.parse(raw); } catch { return 'JSON illisible'; }
   if (!j || typeof j !== 'object' || Array.isArray(j)) return 'objet JSON attendu';
   const o = j as Record<string, unknown>;
-  if (Object.keys(o).some((k) => k !== 'formule' && k !== 'plafonds' && !(SLOTS as string[]).includes(k))) return 'champ inconnu';
+  if (Object.keys(o).some((k) => k !== 'formule' && k !== 'plafonds' && k !== 'reflexion' && !(SLOTS as string[]).includes(k))) return 'champ inconnu';
   const f = o.formule === undefined ? 'essai' : typeof o.formule === 'string' ? o.formule.trim().toLowerCase() : '';
   if (f !== 'essai' && f !== 'payant') return 'formule inconnue';
   const cfg = defauts(f);
@@ -109,6 +109,9 @@ function lire(raw: string): AiConfig | string {
     if (!m || m[1] !== 'gemini') return `modèle « ${s} » refusé (fournisseur:modèle attendu)`;
     if (isProModel(m[2])) return `modèle « ${s} » refusé (Pro)`;
     cfg[s] = { fournisseur: 'gemini', model: m[2], reflexion: REFLEXION[s] };
+  }
+  if (o.reflexion && typeof o.reflexion === 'object') {
+    for (const s2 of SLOTS) { const v = (o.reflexion as Record<string, unknown>)[s2]; if (v === 'minimal' || v === 'low' || v === 'medium' || v === 'high') cfg[s2].reflexion = v; }
   }
   if (o.plafonds !== undefined) {
     const p = o.plafonds as Record<string, unknown> | null;
