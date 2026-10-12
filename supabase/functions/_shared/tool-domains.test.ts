@@ -4,6 +4,7 @@
 import { actionPrompt, ASSISTANT_FUNCTIONS, ATTACHMENT_FUNCTIONS, buildActionContext, functionsFor, guideForPrompt, handleActionLocally, type ActionContext } from './assistant-actions-core.ts';
 import { WORKER_ATTACHMENT_FUNCTIONS, WORKER_FUNCTIONS, buildWorkerSnapshot, handleWorkerLocally, workerFunctionsFor, type WorkerLive, type WorkerSnapshot } from './worker-assistant-core.ts';
 import { domainTools, OFFICE_DOMAINS, WORKER_DOMAINS } from './tool-domains.ts';
+import { low } from './fr-langue.ts';
 import { ADMIN_RAW, CASES, LIVE_EN_COURS, ME, WORKER_LIVE, WORKER_RAW } from '../assistant-eval/cases.ts';
 
 // L'outil attendu de chaque phrase, lu dans cases.ts (act('x'), actAvecProblemes('x'), o.type === 'x', réponse, heures, collègues).
@@ -86,23 +87,38 @@ Deno.test('Domaines : exemples précis, et « rien reconnu » = tous les outils'
   if (!c.includes('planning_collegues')) throw new Error(`collègues : ${c.join(',')}`);
 });
 
-// Correction « retire X du planning demain » : le modèle prenait effacer_planning pour supprimer_intervention (2 essais sur 3).
-Deno.test('« Retire X » / « vide le planning » : la frontière est écrite dans les DEUX descriptions et dans la consigne', () => {
+// Correction « retire X du planning » : le modèle prenait effacer_planning pour supprimer_intervention (2 essais sur 3).
+// On fige la FRONTIÈRE (un jour + un nom ⇒ supprimer_intervention ; période, semaine, équipe ⇒ effacer_planning), pas des exemples de date :
+// un exemple « cette semaine » avait poussé le modèle vers la semaine en cours (régression de b36, mesurée sur le vrai modèle).
+Deno.test('« Retire X » / « vide le planning » : la frontière est écrite dans les DEUX descriptions et dans la consigne, sans exemple de date', () => {
   const desc = (n: string) => ASSISTANT_FUNCTIONS.find((f) => f.name === n)!.description;
   const un = desc('supprimer_intervention'), tout = desc('effacer_planning');
-  // supprimer_intervention : un salarié (ou un chantier) + UN jour, avec les exemples de phrases ; le reste va à l'autre outil.
-  for (const m of ['UNE intervention', 'UN jour', 'retire Karim du planning demain', 'enlève Kevin de la Villa Dupont vendredi', '« Vide / efface le planning »', 'une semaine', 'toute l’équipe', 'effacer_planning']) {
+  // supprimer_intervention : UNE case, un salarié (ou un chantier) et UN seul jour ; le reste va à l'autre outil.
+  for (const m of ['UNE intervention', 'UN seul jour', 'salarié', 'chantier', 'plusieurs jours', 'semaine', 'toute l’équipe', 'effacer_planning']) {
     if (!un.includes(m)) throw new Error(`supprimer_intervention : « ${m} » manque dans la description : ${un}`);
   }
-  // effacer_planning : « vide / efface le planning » (un salarié, l'équipe, une période, une semaine) ; « retire / enlève X + UN jour » renvoie à l'autre outil.
-  for (const m of ['VIDER le planning', 'UN salarié', 'TOUTE l’équipe', 'période', 'semaine', 'vide le planning de Karim cette semaine', 'Retire / enlève Karim du planning demain', 'UN seul jour', 'supprimer_intervention']) {
+  // effacer_planning : vider (un salarié sur plusieurs jours / une période / une semaine, ou l'équipe) ; « retire X + UN seul jour » renvoie à l'autre outil.
+  for (const m of ['VIDER', 'UN salarié', 'plusieurs jours', 'période', 'semaine', 'TOUTE l’équipe', 'UN seul jour', 'supprimer_intervention']) {
     if (!tout.includes(m)) throw new Error(`effacer_planning : « ${m} » manque dans la description : ${tout}`);
   }
-  // La consigne de l'assistant donne la même règle, avec des exemples.
+  // La consigne de l'assistant donne la même règle.
   const ctx = buildActionContext(ADMIN_RAW as Parameters<typeof buildActionContext>[0]) as ActionContext;
-  const prompt = actionPrompt(ctx, '{}', guideForPrompt(), 'retire karim du planning demain');
-  for (const m of ['« Retire / enlève X du planning demain »', '(un salarié, UN jour) → supprimer_intervention', '« vide / efface le planning » (de quelqu’un, d’une période, d’une semaine ou de l’équipe) → effacer_planning']) {
-    if (!prompt.includes(m)) throw new Error(`la consigne ne donne pas la frontière supprimer_intervention / effacer_planning : « ${m} » manque`);
+  const prompt = actionPrompt(ctx, '{}', guideForPrompt(), 'x');
+  const ligne = prompt.split('\n').find((l) => l.includes('→ supprimer_intervention') && l.includes('→ effacer_planning'));
+  if (!ligne || !ligne.includes('UN seul jour') || !/vide \/ efface le planning/.test(ligne)) throw new Error('la consigne ne donne pas la frontière supprimer_intervention / effacer_planning');
+  // Aucune date dans les exemples : ni « cette semaine » / semaine en cours dans ces textes.
+  const textes = [un, tout, ligne];
+  for (const t of textes) {
+    if (/cette semaine|semaine en cours|semaine actuelle|aujourd/i.test(t)) throw new Error(`date relative dans un exemple : ${t}`);
+  }
+  for (const f of ASSISTANT_FUNCTIONS) {
+    if (/cette semaine/i.test(f.description)) throw new Error(`« cette semaine » dans la description de ${f.name}`);
+  }
+  // On ne dresse pas le modèle sur le test : aucune phrase du jeu d'évaluation n'est recopiée dans ces textes.
+  const norm = (x: string) => low(x).replace(/\s+/g, ' ');
+  for (const c of CASES.filter((x) => x.cote === 'bureau')) {
+    const phrase = norm(c.phrase);
+    if (textes.some((t) => norm(t).includes(phrase))) throw new Error(`phrase du jeu d’évaluation recopiée (${c.id}) : « ${c.phrase} »`);
   }
 });
 
