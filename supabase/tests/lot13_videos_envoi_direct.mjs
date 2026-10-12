@@ -12,11 +12,14 @@
 //   · les droits PAR DÉFAUT de production (tout pour anon / authenticated sur
 //     les objets neufs), pour prouver que la migration les reprend.
 // Le stockage est simulé comme le fait Supabase : la VÉRIFICATION d'un envoi
-// (et de la création d'une URL d'envoi signée) est un INSERT dans
-// storage.objects avec les droits de l'utilisateur, annulé aussitôt ; l'envoi
-// TERMINÉ écrit la ligne avec les droits du service (taille et type dans
-// metadata). Les limites du bucket (50 Mo, types) sont appliquées par le
-// serveur de stockage, pas par Postgres : on vérifie qu'elles sont posées.
+// (et de la création d'une URL d'envoi signée, avec ou sans « écraser ») est un
+// INSERT dans storage.objects (avec ON CONFLICT DO UPDATE pour « écraser ») avec
+// les droits de l'utilisateur, annulé aussitôt ; l'envoi TERMINÉ écrit la ligne
+// avec les droits du service (taille et type dans metadata), UNE URL SIGNÉE
+// RESTANT VALABLE 2 h APRÈS CETTE VÉRIFICATION. Les limites du bucket (50 Mo,
+// types) sont appliquées par le serveur de stockage, pas par Postgres : on
+// vérifie qu'elles sont posées. Les scénarios « navigateur trafiqué » rejouent
+// ce qu'un compte du bureau malveillant peut faire (voir la section dédiée).
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
@@ -41,9 +44,13 @@ const STUB = lot11.slice(lot11.indexOf('const STUB = `') + 'const STUB = `'.leng
 
 const CO = 'c0000000-0000-0000-0000-000000000001';
 const CO2 = 'c0000000-0000-0000-0000-000000000002';
+const CO3 = 'c0000000-0000-0000-0000-000000000003'; // navigateur trafiqué
+const CO4 = 'c0000000-0000-0000-0000-000000000004'; // plafond de nouvelles places
 const ADMIN = 'a0000000-0000-0000-0000-00000000000a';
 const ADMIN_B = 'a0000000-0000-0000-0000-00000000000c'; // deuxième compte bureau, MÊME entreprise
 const ADMIN2 = 'a0000000-0000-0000-0000-00000000000b'; // bureau d'une AUTRE entreprise
+const ADMIN3 = 'a0000000-0000-0000-0000-0000000000d3';
+const ADMIN4 = 'a0000000-0000-0000-0000-0000000000d4';
 const CHEF = '30000000-0000-0000-0000-000000000003';
 const SAM = '10000000-0000-0000-0000-000000000001';
 const ALEX = '20000000-0000-0000-0000-000000000002';
@@ -131,6 +138,25 @@ const canUpload = async (uid, name, bucket = 'formations', role = 'authenticated
     return true;
   } catch { return false; } finally { await db.exec('ROLLBACK'); }
 };
+/** Création d'une URL signée en mode « écraser » (x-upsert) : INSERT … ON CONFLICT DO UPDATE d'essai, annulé. */
+const canSignUpsert = async (uid, name, bucket = 'formations') => {
+  await as(uid);
+  try {
+    await db.exec('BEGIN');
+    await db.query(`INSERT INTO storage.objects (bucket_id, name, owner) VALUES ($1, $2, $3)
+      ON CONFLICT (bucket_id, name) DO UPDATE SET metadata = EXCLUDED.metadata, version = EXCLUDED.version`, [bucket, name, uid]);
+    return true;
+  } catch { return false; } finally { await db.exec('ROLLBACK'); }
+};
+/** Le service écrit avec une URL « écraser » signée plus tôt : le fichier est remplacé, sa vraie taille change. */
+const overwritten = async (name, bytes) => {
+  await root();
+  await db.query(`INSERT INTO storage.objects (bucket_id, name, owner, metadata) VALUES ('formations', $1, $2, $3)
+    ON CONFLICT (bucket_id, name) DO UPDATE SET metadata = EXCLUDED.metadata`, [name, ADMIN, JSON.stringify({ size: bytes, mimetype: 'video/webm', eTag: 'y' })]);
+};
+/** Le temps passe : la place a été réservée il y a `interval` de plus. */
+const aged = async (id, interval) => { await root(); await db.query(`UPDATE public.training_videos SET reserved_at = reserved_at - $2::interval WHERE id = $1`, [id, interval]); };
+const agedCompany = async (co, interval) => { await root(); await db.query(`UPDATE public.training_videos SET reserved_at = reserved_at - $2::interval WHERE company_id = $1`, [co, interval]); };
 /** L'envoi terminé (URL signée) : le serveur de stockage écrit la ligne avec ses propres droits. */
 const landed = async (name, bytes, mime = 'video/webm') => {
   await root();
@@ -171,7 +197,7 @@ const POST_SQL = commentedBlock(/^-- ── DÉBUT DE LA VÉRIFICATION ──$/,
 const ROLLBACK_SQL = commentedBlock(/^-- ── DÉBUT DU RETOUR ARRIÈRE ──$/, /^-- ── FIN DU RETOUR ARRIÈRE ──$/);
 const NEW_TABLES = ['training_videos', 'training_video_views'];
 const NEW_FNS = ['training_video_quota_bytes', 'training_video_max_bytes', 'training_video_usage', 'training_video_upload_ok', 'training_video_readable',
-  'training_video_limits', 'start_training_video', 'publish_training_video', 'set_training_video_archived', 'my_training_videos', 'set_training_video_seen'];
+  'training_video_limits', 'start_training_video', 'publish_training_video', 'set_training_video_archived', 'my_training_videos', 'set_training_video_seen', 'training_video_leftovers'];
 const NEW_POLICIES = ['formations_office_insert', 'formations_read', 'training_videos_office_select', 'training_video_views_select'];
 
 // ═══ Avant : l'application d'aujourd'hui ════════════════════════════════════
@@ -258,7 +284,7 @@ check(!!POST_SQL && !!ROLLBACK_SQL, 'le fichier contient la vérification après
     'bucket « formations » : privé, 52428800 octets (50 Mo), MP4 / MOV / WebM seulement');
   const fns = await one(`SELECT count(*)::int AS n, bool_and(prosecdef) AS d, bool_and(array_to_string(proconfig, ',') = 'search_path=""') AS s,
     bool_or(has_function_privilege('anon', oid, 'EXECUTE')) AS a FROM pg_proc WHERE pronamespace = 'public'::regnamespace AND proname = ANY($1)`, [NEW_FNS]);
-  check(fns.n === 11 && fns.d && fns.s && !fns.a, '11 fonctions : SECURITY DEFINER, search_path vide, anon exclu (malgré les droits par défaut)');
+  check(fns.n === 12 && fns.d && fns.s && !fns.a, '12 fonctions : SECURITY DEFINER, search_path vide, anon exclu (malgré les droits par défaut)');
   const internal = await rows(`SELECT proname FROM pg_proc WHERE pronamespace = 'public'::regnamespace AND proname = ANY($1) AND has_function_privilege('authenticated', oid, 'EXECUTE') ORDER BY 1`,
     [['training_video_usage', 'training_video_max_bytes', 'training_video_quota_bytes']]);
   check(internal.length === 0, 'compteur interne (usage d’une entreprise au choix) : fermé au navigateur');
@@ -343,6 +369,8 @@ let V1;
   l = await limits(ADMIN);
   check(l.used_bytes === 30 * MO && l.reserved_bytes === 0, `jauge : 30 Mo utilisés, rien en cours (${l.used_bytes / MO} / ${l.reserved_bytes / MO})`);
   check(!(await canUpload(ADMIN, s.video_path)), 'vidéo publiée : plus aucun envoi sur sa place (pas d’écrasement)');
+  check(!(await canSignUpsert(ADMIN, s.video_path)), 'vidéo publiée : une URL « écraser » (upsert) ne peut pas être signée (le fichier existe, aucune policy UPDATE)');
+  check(!(await canSignUpsert(ADMIN_B, s.video_path)) && !(await canSignUpsert(ADMIN2, s.video_path)), '… ni par un autre compte du bureau, ni par une autre entreprise');
   await as(ADMIN);
   check(await err(`UPDATE storage.objects SET metadata = '{}' WHERE bucket_id = 'formations'`) === null
     && Number((await one(`SELECT count(*) n FROM storage.objects WHERE bucket_id = 'formations' AND metadata = '{}'`)).n) === 0, 'aucune policy UPDATE : le bureau ne peut pas modifier un fichier (0 ligne touchée)');
@@ -449,6 +477,7 @@ section('« Retirer » : statut et trace ; le fichier et les « Vue » restent')
 // ═══ Envois coupés, places abandonnées ══════════════════════════════════════
 section('Réseau coupé après l’envoi, autre fichier, place abandonnée');
 {
+  await agedCompany(CO, '4 hours'); // les places d’avant sont loin : le plafond de 3 nouvelles places par tranche de 3 h repart de zéro
   // Réseau coupé APRÈS l'arrivée du fichier : même taille → on publie sans renvoyer.
   const s = await start(ADMIN, { title: 'Tri des déchets', size: 5 * MO });
   await landed(s.video_path, 5 * MO);
@@ -464,6 +493,22 @@ section('Réseau coupé après l’envoi, autre fichier, place abandonnée');
   check(r2.video_id !== s2.video_id && old.archived_at !== null && old.archived_by === ADMIN && old.published_at === null,
     'autre fichier déjà arrivé : place fermée (archived_at, archived_by), nouvelle place');
   check(await count(`SELECT count(*) n FROM storage.objects WHERE name = $1`, [s2.video_path]) === 1, '… l’ancien fichier n’est PAS effacé (il compte dans le quota)');
+  {
+    // Ce fichier gardé doit se voir au bureau (« Envoi non terminé ») avec sa VRAIE taille, pour que la jauge s’explique.
+    await as(ADMIN);
+    const left = await rows('SELECT * FROM public.training_video_leftovers()');
+    const mine = left.find((x) => x.id === s2.video_id);
+    check(left.length === 1 && !!mine && Number(mine.real_bytes) === 6 * MO && mine.file_path === s2.video_path && mine.title === 'Rangement' && mine.archived_at !== null,
+      `le bureau voit le fichier gardé d’une place fermée : « ${mine?.title} », ${Number(mine?.real_bytes) / MO} Mo, fermée (${left.length} ligne)`);
+    await as(ADMIN_B);
+    check((await rows('SELECT id FROM public.training_video_leftovers()')).length === 1, 'l’autre compte du bureau le voit aussi (même entreprise)');
+    await as(SAM);
+    check(await err('SELECT * FROM public.training_video_leftovers()') === '42501', 'salarié : refusé');
+    await as(ADMIN2);
+    check((await rows('SELECT * FROM public.training_video_leftovers()')).length === 0, 'bureau d’une autre entreprise : aucun fichier de la première');
+    await as(null, 'anon');
+    check(await err('SELECT * FROM public.training_video_leftovers()') === '42501', 'anonyme : refusé');
+  }
   await as(ADMIN);
   check(await err('SELECT * FROM public.publish_training_video($1)', [s2.video_id]) === 'P0001', '… et cette place ne peut plus être publiée');
   // Place abandonnée (onglet fermé) depuis plus de 3 h : ne bloque plus, ne compte plus.
@@ -511,6 +556,116 @@ section('Quota de 100 Mo par entreprise : garanti par la base');
   check(await count(`SELECT count(*) n FROM public.training_videos WHERE company_id = $1 AND published_at IS NULL AND archived_at IS NULL`, [CO2]) === 0, 'aucune place ouverte restante dans cette entreprise');
 }
 
+// ═══ Navigateur trafiqué : ce que la base borne vraiment ═════════════════════
+section('Navigateur trafiqué : retirer, écraser, mentir sur la taille — la borne exacte tient');
+{
+  await root();
+  await db.exec(`INSERT INTO public.companies (id) VALUES ('${CO3}'), ('${CO4}');
+    INSERT INTO public.users VALUES ('${ADMIN3}', '${CO3}', 'admin', true, 'Trois', 'Bureau'), ('${ADMIN4}', '${CO4}', 'admin', true, 'Quatre', 'Bureau');`);
+  const places = async (co) => count('SELECT count(*) n FROM public.training_videos WHERE company_id = $1', [co]);
+
+  // ① Retirer une place non publiée : impossible (c'était la faille : le quota était « libéré » puis on recommençait).
+  const a1 = await start(ADMIN3, { title: 'Pirate 1', size: 1 });
+  check(await canUpload(ADMIN3, a1.video_path), 'bureau : URL d’envoi signée pour sa place (1 octet annoncé)');
+  await as(ADMIN3);
+  const retire = await errOf('SELECT public.set_training_video_archived($1, true)', [a1.video_id]);
+  check(retire?.code === 'P0002', `retirer une place PAS encore publiée : refusé (« ${retire?.msg} »)`);
+  await root();
+  check(await count('SELECT count(*) n FROM public.training_videos WHERE id = $1 AND archived_at IS NOT NULL', [a1.video_id]) === 0, '… la place n’est pas marquée retirée');
+  for (let i = 0; i < 4; i++) {
+    const again = await start(ADMIN3, { title: `Pirate ${i}`, size: 1 });
+    await canUpload(ADMIN3, again.video_path);
+    await as(ADMIN3);
+    await errOf('SELECT public.set_training_video_archived($1, true)', [again.video_id]);
+    if (again.video_id !== a1.video_id) check(false, 'recommencer doit reprendre LA MÊME place');
+  }
+  check(await places(CO3) === 1, 'retirer puis recommencer 4 fois : toujours UNE seule place (avant le correctif : 4 places, 200 Mo)');
+  await landed(a1.video_path, 50 * MO);
+  check((await limits(ADMIN3)).used_bytes === 50 * MO, 'un seul fichier de 50 Mo est arrivé : 50 Mo comptés');
+
+  // ② « Écraser » : la signature est refusée dès que le fichier existe ; avant son arrivée elle passe (limite du stockage, bornée en ④).
+  const a2 = await start(ADMIN3, { title: 'Deuxième', size: 3 * MO });
+  check(a2.video_id !== a1.video_id, 'autre taille que le fichier arrivé : la première place est fermée, une nouvelle est ouverte');
+  check(!(await canUpload(ADMIN3, a1.video_path)) && !(await canSignUpsert(ADMIN3, a1.video_path)), 'fichier arrivé : URL d’envoi refusée, URL « écraser » refusée (même sur une place fermée)');
+  check(await canUpload(ADMIN3, a2.video_path) && await canSignUpsert(ADMIN3, a2.video_path),
+    'LIMITE CONNUE : avant l’arrivée du fichier, une URL « écraser » se signe (INSERT d’essai sans conflit) — c’est ce que borne le plafond de ④');
+  await as(ADMIN3);
+  check(await err(`UPDATE storage.objects SET metadata = '{}' WHERE bucket_id = 'formations'`) === null
+    && await count(`SELECT count(*) n FROM storage.objects WHERE bucket_id = 'formations' AND metadata = '{}'`) === 0, 'aucune policy UPDATE : 0 ligne modifiable avec ses propres droits');
+
+  // ③ Une place « retirée » à la main (SQL) sans fichier reste comptée tant qu’une URL signée peut être vivante.
+  await root();
+  await db.query('UPDATE public.training_videos SET archived_at = now() WHERE id = $1', [a2.video_id]);
+  let l = await limits(ADMIN3);
+  check(l.reserved_bytes === 3 * MO, `place retirée SANS fichier : toujours comptée (${l.reserved_bytes / MO} Mo en cours)`);
+  check(!(await canUpload(ADMIN3, a2.video_path)), '… et la policy ne signe plus rien pour elle (retirée)');
+  await aged(a2.video_id, '4 hours');
+  l = await limits(ADMIN3);
+  check(l.reserved_bytes === 0, 'plus de 3 h après : plus comptée (les URL signées sont mortes)');
+  await root();
+  await db.query('UPDATE public.training_videos SET archived_at = NULL WHERE id = $1', [a2.video_id]);
+  await aged(a1.video_id, '4 hours');
+
+  // ④ Le pire cas, rejoué : 99 Mo déjà stockés, 3 places, 3 URL « écraser » signées avant l’arrivée, 3 envois minuscules, puis 3 écrasements à 50 Mo.
+  await landed(`${CO3}/${'9'.repeat(8)}-9999-4999-8999-${'9'.repeat(12)}`, 49 * MO); // un fichier plus ancien : 50 + 49 = 99 Mo
+  const b = [];
+  for (let i = 0; i < 3; i++) {
+    const x = await start(ADMIN3, { title: `Place ${i + 1}`, size: 2 + i }); // i = 0 : reprend la place ouverte « Deuxième »
+    if (i === 0) check(x.video_id === a2.video_id, 'la place ouverte est reprise (3 h de plus pour demander l’URL)');
+    b.push({ ...x, signedUpsert: await canSignUpsert(ADMIN3, x.video_path) });
+    if (i < 2) await landed(x.video_path, 1 + i); // l’envoi minuscule arrive ; la taille suivante est autre : la place est fermée, une neuve s’ouvre
+  }
+  check(b.every((x) => x.signedUpsert), 'les 3 places ont chacune une URL « écraser » signée avant l’arrivée du fichier');
+  await landed(b[2].video_path, 3); // la troisième place reçoit aussi son fichier minuscule : une autre taille demanderait une 4ᵉ place
+  const four = await startErr(ADMIN3, { title: 'Quatrième', size: 7 });
+  check(four?.code === 'P0001' && /Déjà trois envois de vidéo préparés ces 3 dernières heures/.test(four?.msg || '') && /Réessayez dans environ (\d+ min|\d+ h|\d+ h \d\d)\./.test(four?.msg || ''),
+    `la 4ᵉ nouvelle place dans les 3 h est refusée (« ${four?.msg} »)`);
+  check(await places(CO3) === 4 && await count('SELECT count(*) n FROM public.training_videos WHERE id = $1 AND archived_at IS NULL', [b[2].video_id]) === 1,
+    '… et la tentative n’a rien laissé (4 places en tout, dont la toute première, vieille de 4 h ; la troisième n’est pas fermée au passage)');
+  await overwritten(b[0].video_path, 50 * MO); await overwritten(b[1].video_path, 50 * MO); await overwritten(b[2].video_path, 50 * MO);
+  l = await limits(ADMIN3);
+  check(l.used_bytes === 249 * MO && l.used_bytes < 250 * MO, `pire cas : ${l.used_bytes / MO} Mo stockés (99 + 3 × 50) — STRICTEMENT moins de 250 Mo = 100 Mo + 3 fichiers de 50 Mo`);
+  const stuck = await startErr(ADMIN3, { title: 'Encore', size: 1 });
+  check(stuck?.code === 'P0001' && /Plus assez de place pour cette vidéo : 249 Mo utilisés sur 100 Mo/.test(stuck?.msg || ''), `ensuite plus rien ne part, même 1 octet (« ${stuck?.msg} »)`);
+  await agedCompany(CO3, '4 hours');
+  const later = await startErr(ADMIN3, { title: 'Plus tard', size: 1 });
+  check(later?.code === 'P0001' && /Plus assez de place/.test(later?.msg || ''), 'même 4 h plus tard : la vraie taille de tous les fichiers est comptée, rien ne repart');
+
+  // ⑤ Le plafond repart avec le temps (autre entreprise, partie de zéro) ; reprendre sa place ne le consomme pas.
+  const c = [];
+  for (let i = 0; i < 3; i++) {
+    const x = await start(ADMIN4, { title: `Vidéo ${i + 1}`, size: 1 + i });
+    c.push(x);
+    if (i < 2) await landed(x.video_path, 1 + i);
+  }
+  check(await places(CO4) === 3, 'trois nouvelles places en quelques minutes : acceptées');
+  const same = await start(ADMIN4, { title: 'Vidéo 3', size: 3 });
+  check(same.video_id === c[2].video_id && await places(CO4) === 3, 'reprendre sa place ouverte (réseau coupé) ne compte pas comme une nouvelle place');
+  await landed(c[2].video_path, 3); // son fichier arrive ; une vidéo d’une autre taille demande donc une nouvelle place
+  check(!(await canUpload(ADMIN4, c[2].video_path)) && !(await canSignUpsert(ADMIN4, c[2].video_path)),
+    'place encore ouverte, ni publiée ni retirée, MAIS dont le fichier est arrivé : aucune URL d’envoi, aucune URL « écraser » (la policy regarde le fichier)');
+  const nope = await startErr(ADMIN4, { title: 'Vidéo 4', size: 4 });
+  check(nope?.code === 'P0001' && /Déjà trois envois/.test(nope.msg), 'une quatrième : refusée (« Réessayez dans environ N min »)');
+  const wait = (m) => { const h = /environ (\d+) h(?: (\d\d))?\./.exec(m); if (h) return Number(h[1]) * 60 + Number(h[2] || 0); const x = /environ (\d+) min\./.exec(m); return x ? Number(x[1]) : NaN; };
+  const mins = wait(nope.msg);
+  check(mins >= 179 && mins <= 180 && /environ 3 h\./.test(nope.msg), `le délai annoncé est celui de la plus ancienne des trois (« ${nope.msg.slice(-24)} » = ${mins} min)`);
+  await aged(c[0].video_id, '2 hours'); // la plus ancienne a 2 h de plus : il reste ~1 h
+  const nope2 = await startErr(ADMIN4, { title: 'Vidéo 4', size: 4 });
+  const mins2 = wait(nope2?.msg || '');
+  check(nope2?.code === 'P0001' && mins2 >= 59 && mins2 <= 60, `… il diminue avec le temps (${mins2} min : « ${(nope2?.msg || '').slice(-14)} »)`);
+  await aged(c[0].video_id, '30 minutes');
+  const nope3 = await startErr(ADMIN4, { title: 'Vidéo 4', size: 4 });
+  check(/environ 30 min\./.test(nope3?.msg || '') || /environ 29 min\./.test(nope3?.msg || ''), `… et s’écrit en minutes sous l’heure (« ${(nope3?.msg || '').slice(-14)} »)`);
+  await aged(c[0].video_id, '-30 minutes');
+  await aged(c[0].video_id, '2 hours'); // 4 h : elle sort de la tranche
+  const ok4 = await start(ADMIN4, { title: 'Vidéo 4', size: 4 });
+  check(!!ok4.video_id && ok4.video_id !== c[2].video_id, 'la plus ancienne sortie de la tranche de 3 h : une nouvelle place est de nouveau possible');
+
+  // ⑥ Jamais un DELETE : tout ce qui est arrivé est encore là.
+  await root();
+  check(await count(`SELECT count(*) n FROM storage.objects WHERE bucket_id = 'formations' AND name LIKE $1`, [`${CO3}/%`]) === 5, 'entreprise 3 : 5 fichiers (rien n’a été effacé ni écrasé en SQL du côté de la base)');
+}
+
 // ═══ Lot 6 intact, jamais des heures ════════════════════════════════════════
 section('Lot 6 intact ; jamais des heures');
 {
@@ -519,8 +674,8 @@ section('Lot 6 intact ; jamais des heures');
     'my_trainings (lot 6) : inchangée, les vidéos envoyées n’y apparaissent pas');
   await root();
   check(await count('SELECT count(*) n FROM public.time_entries') === 0 && await count('SELECT count(*) n FROM public.active_sessions') === 0, 'aucune heure, aucun chrono écrit');
-  check(await count(`SELECT count(*) n FROM public.training_videos`) === 9 && await count(`SELECT count(*) n FROM storage.objects WHERE bucket_id = 'formations'`) === 8,
-    'rien n’a été effacé : 9 lignes de vidéos (publiées, retirées, en cours), 8 fichiers');
+  check(await count(`SELECT count(*) n FROM public.training_videos`) === 17 && await count(`SELECT count(*) n FROM storage.objects WHERE bucket_id = 'formations'`) === 16,
+    'rien n’a été effacé : 17 lignes de vidéos (publiées, retirées, en cours : 6 + 3 + 4 + 4), 16 fichiers (8 + 5 + 3)');
 }
 
 // ═══ Retour arrière ════════════════════════════════════════════════════════
@@ -536,7 +691,7 @@ await root();
   check(back.fn === before.fn && back.pol === before.pol && back.trg === before.trg && back.col === before.col && back.con === before.con && back.priv === before.priv,
     'après retour arrière : fonctions, policies, triggers, colonnes, contraintes et droits existants identiques à avant');
   check(back.data === before.data, 'données existantes identiques à avant (formations du lot 6, documents, autres buckets)');
-  check(await count(`SELECT count(*) n FROM storage.objects WHERE bucket_id = 'formations'`) === 8, 'les fichiers vidéo restent (aucun effacement en SQL ; le bucket se retire au tableau de bord, avec l’accord d’Ergun)');
+  check(await count(`SELECT count(*) n FROM storage.objects WHERE bucket_id = 'formations'`) === 16, 'les fichiers vidéo restent (aucun effacement en SQL ; le bucket se retire au tableau de bord, avec l’accord d’Ergun)');
   check(!(await errExec(SQL)), 'la migration se recharge après le retour arrière');
   const v = await one(POST_SQL);
   check(Object.values(v).every((x) => x === true), 'vérification après application : de nouveau toute à true');

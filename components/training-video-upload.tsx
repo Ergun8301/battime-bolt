@@ -12,7 +12,7 @@
 import { useEffect, useRef } from 'react';
 import { Camera, FolderOpen } from 'lucide-react';
 import {
-  formatDuration, formatMo, QUOTA_FULL, quotaFull, quotaLabel, quotaRatio, VIDEO_MAX_BYTES, VIDEO_QUOTA_BYTES, type Limits, type VideoMime,
+  formatDuration, formatMo, GPS_NOTE, QUOTA_FULL, quotaFull, quotaLabel, quotaRatio, VIDEO_MAX_BYTES, VIDEO_QUOTA_BYTES, type Limits, type VideoMime,
 } from '@/supabase/functions/_shared/training-videos';
 
 export interface PickedVideo { file: File; mime: VideoMime; url: string; duration: number | null }
@@ -123,6 +123,7 @@ export default function TrainingVideoUpload({ limits, file, fileError, progress,
           </div>
         </div>
       )}
+      {!full && !busy && <p className="bt-fo-muted" data-testid="tr-gps-note">{GPS_NOTE}</p>}
       {fileError && <p className="bt-fo-err" role="alert" data-testid="tr-file-error">{fileError}</p>}
       {progress && (
         <div className="bt-fo-prog" data-testid="tr-progress">

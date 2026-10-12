@@ -7,10 +7,11 @@
 //     lot 6. On ne redemande pas pendant la vie de la page (pas une requête en
 //     échec à chaque ouverture). Toute AUTRE erreur (réseau…) garde l'état connu.
 //   · ENVOI : start_training_video réserve la place (la base contrôle taille,
-//     type et quota), puis une URL d'envoi signée (policy du bucket « formations »)
-//     et un XHR — barre de progression réelle, « Annuler » — puis
-//     publish_training_video (la base relit la vraie taille). Jamais de clé de
-//     service : tout part avec les droits du bureau connecté.
+//     type et quota), puis une URL d'envoi signée (policy du bucket « formations »,
+//     vérifiée à la création de l'URL) et un XHR — barre de progression réelle,
+//     « Annuler » — puis publish_training_video (la base relit la vraie taille).
+//     Jamais de clé de service : tout part avec les droits du bureau connecté.
+//     Le quota de 100 Mo est tenu par la base (borne exacte : en-tête de la migration).
 //   · RIEN NE S'EFFACE : « Retirer » = set_training_video_archived ; le fichier
 //     reste (D12). Aucun appel de suppression de fichier dans ce lot.
 //
@@ -38,6 +39,15 @@ export interface OfficeVideo {
   published_at: string | null;
   archived_at: string | null;
 }
+/** Un fichier arrivé dont la vidéo n'a jamais été publiée (envoi coupé, place fermée) : gardé, et compté dans la place. */
+export interface OfficeLeftover {
+  id: string;
+  title: string;
+  file_path: string;
+  real_bytes: number;
+  reserved_at: string;
+  archived_at: string | null;
+}
 export interface MyVideo {
   id: string;
   title: string;
@@ -59,9 +69,13 @@ const VIDEO_COLS = 'id, company_id, title, all_team, assignee_ids, file_path, mi
 
 // ─── Bureau ──────────────────────────────────────────────────────────────────
 
-/** Les vidéos PUBLIÉES de l'entreprise, puis leurs « Vue » actives (lecture paginée). `missing` = migration pas appliquée. */
+/**
+ * Les vidéos PUBLIÉES de l'entreprise, leurs « Vue » actives (lecture paginée), et
+ * les fichiers arrivés mais jamais publiés (ils comptent dans la place : le bureau
+ * doit les voir). `missing` = migration pas appliquée.
+ */
 export async function fetchOfficeVideos(companyId: string): Promise<
-  { ok: true; videos: OfficeVideo[]; views: ViewRow[] } | { ok: false; missing: boolean; message: string }
+  { ok: true; videos: OfficeVideo[]; views: ViewRow[]; leftovers: OfficeLeftover[] } | { ok: false; missing: boolean; message: string }
 > {
   if (missing) return { ok: false, missing: true, message: '' };
   try {
@@ -71,10 +85,23 @@ export async function fetchOfficeVideos(companyId: string): Promise<
     const videos = ((data || []) as unknown as OfficeVideo[]).map((v) => ({ ...v, assignee_ids: v.assignee_ids || [] }));
     const raw = await fetchAllPaged<{ video_id: string; user_id: string; seen_at: string }>((f, t) => supabase.from('training_video_views').select('video_id, user_id, seen_at')
       .eq('company_id', companyId).is('undone_at', null).order('video_id').order('user_id').range(f, t) as unknown as Page<{ video_id: string; user_id: string; seen_at: string }>);
+    // Les fichiers non publiés : demandés seulement une fois la migration confirmée (une seule lecture en échec avant).
+    // Si cette lecture échoue, la liste des vidéos publiées reste affichée.
+    const leftovers = await fetchOfficeLeftovers();
     // Même forme que les « Vue » du lot 6 : seenSummary s'en sert tel quel.
-    return { ok: true, videos, views: raw.map((v) => ({ training_id: v.video_id, user_id: v.user_id, seen_at: v.seen_at })) };
+    return { ok: true, videos, views: raw.map((v) => ({ training_id: v.video_id, user_id: v.user_id, seen_at: v.seen_at })), leftovers };
   } catch (e) {
     return { ok: false, missing: markMissing(e), message: trainingErrorMessage(e, 'Impossible de charger les vidéos.') };
+  }
+}
+
+async function fetchOfficeLeftovers(): Promise<OfficeLeftover[]> {
+  try {
+    const { data, error } = await supabase.rpc('training_video_leftovers', {}, { get: true });
+    if (error || !Array.isArray(data)) return [];
+    return (data as OfficeLeftover[]).map((l) => ({ ...l, real_bytes: Number(l.real_bytes) || 0 }));
+  } catch {
+    return [];
   }
 }
 
@@ -121,8 +148,8 @@ export interface UploadRun {
 }
 
 /**
- * Envoie le fichier à SA place : URL d'envoi signée (2 h, une seule place),
- * puis un XHR (fetch ne donne pas l'avancement de l'envoi). `onProgress` reçoit
+ * Envoie le fichier à SA place : URL d'envoi signée (2 h, une seule place, jamais
+ * en mode « écraser »), puis un XHR (fetch ne donne pas l'avancement de l'envoi). `onProgress` reçoit
  * les octets partis et le total. Même format que supabase-js (FormData).
  */
 export function uploadVideoFile(path: string, file: File, mime: VideoMime, onProgress: (loaded: number, total: number) => void): UploadRun {
@@ -188,7 +215,7 @@ export async function setVideoArchived(id: string, archived: boolean): Promise<W
   }
 }
 
-/** Lien signé de LECTURE (1 h), créé à l'ouverture du lecteur ; seulement pour un chemin de l'entreprise. null = refusé ou réseau. */
+/** Lien signé de LECTURE (10 min), créé à l'ouverture du lecteur et re-signé si la lecture échoue ; seulement pour un chemin de l'entreprise. null = refusé ou réseau. */
 export async function signVideo(companyId: string | null | undefined, path: string, seconds = VIDEO_SIGN_SECONDS): Promise<string | null> {
   if (!videoPathOk(companyId, path)) return null;
   try {

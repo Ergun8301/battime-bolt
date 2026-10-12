@@ -39,6 +39,9 @@
 //   W3 lien expiré : re-signé une fois et la lecture reprend ; sinon message clair
 //   W4 « Vue » : set_training_video_seen (jamais set_training_seen) ; « Annuler »
 //   R  animations réduites : aucune transition sur les barres
+//   X1 un envoi arrivé mais jamais publié : montré au bureau (« Envoi non terminé »), gardé, compté
+//   X2 au plus 3 nouvelles places par tranche de 3 h : message clair, rien n'est envoyé
+//   T  téléphone de 360 px : bureau (envoi non terminé, aperçu, avertissement GPS) et salarié, sans défilement horizontal
 import http from 'node:http'; import https from 'node:https'; import fs from 'node:fs'; import path from 'node:path'; import os from 'node:os';
 import { execFileSync } from 'node:child_process'; import crypto from 'node:crypto';
 let chromium;
@@ -98,6 +101,7 @@ let pushSent = 1;
 let UP_MODE = 'normal'; // 'normal' | 'hold' | 'cut'
 let holdRelease = null;
 let MEDIA_FAIL = 0; // les N prochaines lectures du fichier échouent (lien expiré)
+let PUBLISH_FAIL = 0; // les N prochaines publications échouent (réseau coupé après l'arrivée du fichier)
 let LIMITS_LIE = null; // la jauge affiche moins que la vérité (pour prouver la garde de la base)
 let VIDEO_BYTES = Buffer.alloc(0); // une vraie petite vidéo WebM (fabriquée au début)
 const D = {};
@@ -115,11 +119,11 @@ const freshDb = () => {
   });
   OBJ.clear();
   OBJ.set(VID_PATH, { size: 38 * MO, mime: 'video/webm', bytes: null });
-  UP_MODE = 'normal'; MEDIA_FAIL = 0; LIMITS_LIE = null;
+  UP_MODE = 'normal'; MEDIA_FAIL = 0; LIMITS_LIE = null; PUBLISH_FAIL = 0;
 };
 freshDb();
 const LOT13_TABLES = new Set(['training_videos', 'training_video_views']);
-const LOT13_FNS = new Set(['my_training_videos', 'set_training_video_seen', 'training_video_limits', 'start_training_video', 'publish_training_video', 'set_training_video_archived']);
+const LOT13_FNS = new Set(['my_training_videos', 'set_training_video_seen', 'training_video_limits', 'start_training_video', 'publish_training_video', 'set_training_video_archived', 'training_video_leftovers']);
 const EMAIL_FNS = ['invite-worker', 'weekly-digest', 'send-payroll-export', 'cert-expiry-alerts', 'send-email', 'send-reminder-email'];
 const userOf = (id) => D.users.find((x) => x.id === id);
 const isAdmin = (uid) => userOf(uid)?.role === 'admin' && userOf(uid)?.is_active !== false;
@@ -129,6 +133,11 @@ const teamMember = (id) => { const x = userOf(id); return !!x && x.company_id ==
 class Refus extends Error { constructor(message, code = 'P0001', status = 400) { super(message); this.code = code; this.status = status; } }
 let idSeq = 0;
 const stamp = () => new Date(NOW.getTime() + (++idSeq) * 1000).toISOString();
+const nowSim = () => new Date(NOW.getTime() + idSeq * 1000);
+/** Le temps passe : toutes les places ont été réservées il y a `ms` de plus. */
+const ageAll = (ms) => { for (const v of D.training_videos) v.reserved_at = new Date(Date.parse(v.reserved_at) - ms).toISOString(); };
+const WINDOW_MS = 3 * 3600 * 1000;
+const inWindow = (v) => v.reserved_at > new Date(nowSim().getTime() - WINDOW_MS).toISOString();
 const visible = (t, uid, rows) => {
   if (t === 'trainings' || t === 'training_videos') return rows.filter((x) => x.company_id === CO && isAdmin(uid));
   if (t === 'training_views' || t === 'training_video_views') return rows.filter((x) => x.company_id === CO && (isAdmin(uid) || x.user_id === uid));
@@ -146,7 +155,7 @@ function myTrainings(uid) {
 }
 const usage = (except = null) => {
   let stored = 0; for (const [p, o] of OBJ) if (p.startsWith(`${CO}/`)) stored += o.size;
-  const reserved = D.training_videos.filter((v) => v.id !== except && !v.published_at && !v.archived_at && !OBJ.has(v.file_path)).reduce((a, v) => a + v.declared_bytes, 0);
+  const reserved = D.training_videos.filter((v) => v.id !== except && !v.published_at && inWindow(v) && !OBJ.has(v.file_path)).reduce((a, v) => a + v.declared_bytes, 0);
   return { stored, reserved };
 };
 function limitsOf(uid) {
@@ -168,16 +177,25 @@ function startVideo(uid, b) {
     if (!ids.length) throw new Refus('Choisissez au moins un salarié.', '22023');
     if (ids.some((id) => !teamMember(id))) throw new Refus('Salarié introuvable dans votre entreprise.', '42501');
   }
-  if (D.training_videos.some((v) => v.created_by !== uid && !v.published_at && !v.archived_at && !OBJ.has(v.file_path))) throw new Refus('Une autre vidéo est en cours d\'envoi dans votre entreprise. Réessayez dans quelques minutes.');
+  if (D.training_videos.some((v) => v.created_by !== uid && !v.published_at && inWindow(v) && !OBJ.has(v.file_path))) throw new Refus('Une autre vidéo est en cours d\'envoi dans votre entreprise. Réessayez dans quelques minutes.');
   let slot = D.training_videos.find((v) => v.created_by === uid && !v.published_at && !v.archived_at);
   const fields = { title, all_team: b.p_all_team !== false, assignee_ids: ids, mime_type: b.p_mime, declared_bytes: b.p_size, duration_s: b.p_duration ?? null, reserved_at: stamp() };
+  let closing = null; // fermée seulement si la suite passe (en SQL, un refus annule tout)
   if (slot && OBJ.has(slot.file_path)) {
     if (OBJ.get(slot.file_path).size === b.p_size) { Object.assign(slot, fields); return [{ video_id: slot.id, video_path: slot.file_path, uploaded: true }]; }
-    slot.archived_at = stamp(); slot.archived_by = uid; slot = null;
+    closing = slot; slot = null;
   }
   const x = usage(slot?.id ?? null);
   if (x.stored + x.reserved + b.p_size > QUOTA) throw new Refus(`Plus assez de place pour cette vidéo : ${Math.round((x.stored + x.reserved) / MO)} Mo utilisés sur 100 Mo.`);
   if (slot) { Object.assign(slot, fields); return [{ video_id: slot.id, video_path: slot.file_path, uploaded: false }]; }
+  // Au plus 3 nouvelles places par tranche de 3 h et par entreprise.
+  const recent = D.training_videos.filter((v) => v.company_id === CO && inWindow(v)).sort((a, z) => z.reserved_at.localeCompare(a.reserved_at)).slice(0, 3);
+  if (recent.length >= 3) {
+    const mins = Math.max(1, Math.ceil((Date.parse(recent[recent.length - 1].reserved_at) + WINDOW_MS - nowSim().getTime()) / 60000));
+    const wait = mins < 60 ? `${mins} min` : mins % 60 === 0 ? `${mins / 60} h` : `${Math.floor(mins / 60)} h ${String(mins % 60).padStart(2, '0')}`;
+    throw new Refus(`Déjà trois envois de vidéo préparés ces 3 dernières heures dans votre entreprise. Réessayez dans environ ${wait}.`);
+  }
+  if (closing) { closing.archived_at = stamp(); closing.archived_by = uid; }
   const id = crypto.randomUUID();
   const row = { id, company_id: CO, file_path: `${CO}/${id}`, created_by: uid, created_at: stamp(), published_at: null, archived_at: null, archived_by: null, size_bytes: null, ...fields };
   D.training_videos.push(row);
@@ -196,10 +214,16 @@ function publishVideo(uid, { p_id }) {
 }
 function archiveVideo(uid, { p_id, p_archived }) {
   if (!isAdmin(uid)) throw new Refus('Réservé au bureau de l\'entreprise.', '42501', 403);
-  const v = D.training_videos.find((x) => x.id === p_id && x.company_id === CO && (p_archived !== false || x.published_at));
+  const v = D.training_videos.find((x) => x.id === p_id && x.company_id === CO && x.published_at);
   if (!v) throw new Refus('Cette vidéo est introuvable.', 'P0002', 404);
   if (p_archived !== false) { if (!v.archived_at) { v.archived_at = stamp(); v.archived_by = uid; } } else { v.archived_at = null; v.archived_by = null; }
   return v.archived_at;
+}
+function leftovers(uid) {
+  if (!isAdmin(uid)) throw new Refus('Réservé au bureau de l\'entreprise.', '42501', 403);
+  return D.training_videos.filter((v) => v.company_id === CO && !v.published_at && OBJ.has(v.file_path))
+    .sort((a, z) => z.reserved_at.localeCompare(a.reserved_at))
+    .map((v) => ({ id: v.id, title: v.title, file_path: v.file_path, real_bytes: OBJ.get(v.file_path).size, reserved_at: v.reserved_at, archived_at: v.archived_at }));
 }
 const destined = (v, uid) => v.company_id === CO && v.published_at && !v.archived_at && (v.all_team || v.assignee_ids.includes(uid));
 function myVideos(uid) {
@@ -224,7 +248,7 @@ function setVideoSeen(uid, { p_video, p_seen }) {
   return null;
 }
 const readable = (uid, p) => p.startsWith(`${CO}/`) && (isAdmin(uid) || D.training_videos.some((v) => v.file_path === p && teamMember(uid) && destined(v, uid)));
-const uploadable = (uid, p) => isAdmin(uid) && D.training_videos.some((v) => v.file_path === p && v.created_by === uid && !v.published_at && !v.archived_at);
+const uploadable = (uid, p) => isAdmin(uid) && !OBJ.has(p) && D.training_videos.some((v) => v.file_path === p && v.created_by === uid && !v.published_at && !v.archived_at);
 
 // ─── Le faux serveur de stockage (vrai socket, HTTPS) ─────────────────────────
 execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', path.join(TMP, 'k.pem'), '-out', path.join(TMP, 'c.pem'), '-days', '1', '-subj', '/CN=sdperbcquvneohotjono.supabase.co'], { stdio: 'ignore' });
@@ -388,7 +412,8 @@ const newCtx = async (uid, viewport, extra = {}) => {
         try {
           if (fn === 'training_video_limits') return r.fulfill({ json: limitsOf(uid) });
           if (fn === 'start_training_video') return r.fulfill({ json: startVideo(uid, body) });
-          if (fn === 'publish_training_video') return r.fulfill({ json: publishVideo(uid, body) });
+          if (fn === 'publish_training_video') { if (PUBLISH_FAIL > 0) { PUBLISH_FAIL--; return r.abort('connectionfailed'); } return r.fulfill({ json: publishVideo(uid, body) }); }
+          if (fn === 'training_video_leftovers') return r.fulfill({ json: leftovers(uid) });
           if (fn === 'set_training_video_archived') return r.fulfill({ json: archiveVideo(uid, body) });
           if (fn === 'my_training_videos') return r.fulfill({ json: myVideos(uid) });
           if (fn === 'set_training_video_seen') return r.fulfill({ json: setVideoSeen(uid, body) });
@@ -561,6 +586,9 @@ section('V2 · « Vidéo (téléphone ou fichier) » : jauge, « Filmer », « C
   const h = await op.locator('label:has([data-testid=tr-film])').evaluate((e) => e.getBoundingClientRect().height);
   check(h <= 30, `boutons discrets (${h} px de haut)`);
   check((await txt(op.locator('[data-testid=tr-upload]'))).includes('MP4, MOV ou WebM · 50 Mo maximum'), 'rappel : « MP4, MOV ou WebM · 50 Mo maximum »');
+  const gps = await txt(op.locator('[data-testid=tr-gps-note]'));
+  check(gps === 'Attention : une vidéo filmée au téléphone peut contenir la position GPS du lieu, lisible par tous ceux qui la reçoivent. Désactivez la localisation de l’appareil photo avant de filmer.',
+    `avertissement vie privée sous « Filmer » : « ${gps} »`);
   await shot(dlg(), 'apres-bureau-option-video');
 }
 
@@ -591,6 +619,7 @@ section('V4 · « Filmer » : aperçu, durée, taille ; réserver → URL signé
   const meta = await txt(op.locator('[data-testid=tr-file-meta]'));
   check(/^2 s · 0,\d Mo$/.test(meta), `aperçu : durée et taille (« ${meta} »)`);
   check(await op.locator('[data-testid=tr-preview]').evaluate((v) => v.tagName === 'VIDEO' && v.getAttribute('preload') === 'metadata' && v.src.startsWith('blob:')), 'aperçu : <video> local (blob:), rien n’est encore parti');
+  check(await op.locator('[data-testid=tr-gps-note]').count() === 1, 'l’avertissement GPS reste affiché quand un fichier est choisi (un fichier de la galerie peut déjà contenir une position)');
   await op.click('[data-testid=tr-pick]');
   await op.locator(`[data-testid=tr-person][data-id=${SAM}]`).check();
   await shot(dlg(), 'apres-bureau-filmer-apercu');
@@ -727,7 +756,7 @@ section('V9 · bureau : « Regarder », « Retirer » (le fichier est gardé), �
   const ns = signs.length;
   await row.locator('[data-testid=tr-watch]').click();
   await op.waitForSelector('[data-testid=video-el]');
-  check(signs.length === ns + 1 && signs[ns].path === VID_PATH && signs[ns].expiresIn === 3600, 'lien signé 1 h demandé à l’ouverture');
+  check(signs.length === ns + 1 && signs[ns].path === VID_PATH && signs[ns].expiresIn === 600, 'lien signé de lecture : 10 minutes (600 s), demandé à l’ouverture');
   await shot(dlg(), 'apres-bureau-regarder');
   const n = writes.length;
   await row.locator('[data-testid=tr-archive]').click();
@@ -830,20 +859,126 @@ section('R · animations réduites : aucune transition sur les barres');
   await rm.close();
 }
 
-// ═══ Téléphone du bureau ═════════════════════════════════════════════════════
-section('Téléphone du bureau (390 px) : le panneau tient sans défilement horizontal');
+// ═══ X1 · un envoi arrivé mais jamais publié ═══════════════════════════════
+section('X1 · un fichier arrivé mais jamais publié : montré au bureau, gardé, compté dans la place');
+let LEFT_PATH = null;
 {
-  const mob = await newCtx(ADMIN, { width: 390, height: 844 });
+  ageAll(4 * 3600 * 1000); // le temps passe : l’envoi coupé de V6 est loin
+  await openOffice(); await openTrainings();
+  await openUpload();
+  await op.fill('[data-testid=tr-title]', 'Isolation des combles');
+  await op.setInputFiles('[data-testid=tr-film]', F_FILM);
+  await op.waitForSelector('[data-testid=tr-file-ready]');
+  PUBLISH_FAIL = 1; // le fichier arrive, puis le réseau coupe avant la publication
+  const n = writes.length;
+  await op.click('[data-testid=tr-save]');
+  await waitFor(async () => (await op.locator('[data-testid=tr-error]').count()) > 0, 20000);
+  LEFT_PATH = of(since(n), 'PUT')[0]?.path;
+  check(!!LEFT_PATH && OBJ.has(LEFT_PATH) && !D.training_videos.some((v) => v.title === 'Isolation des combles' && v.published_at), 'le fichier est arrivé au stockage, la vidéo n’est pas publiée');
+  check((await txt(op.locator('[data-testid=tr-error]'))).length > 0 && await op.locator('[data-testid=tr-file-ready]').count() === 1, 'message d’erreur clair, le fichier reste choisi');
+  // On choisit une AUTRE vidéo (autre taille) : la place est fermée, le fichier arrivé est GARDÉ.
+  await op.click('[data-testid=tr-file-change]');
+  await op.fill('[data-testid=tr-title]', 'Isolation des combles (version complète)');
+  await op.setInputFiles('[data-testid=tr-file]', F_MID);
+  await op.waitForSelector('[data-testid=tr-file-ready]');
+  const n2 = writes.length;
+  await op.click('[data-testid=tr-save]');
+  await waitFor(async () => (await op.locator('[data-testid=tr-form]').count()) === 0, 30000);
+  const old = D.training_videos.find((v) => v.file_path === LEFT_PATH);
+  check(!!old?.archived_at && !old.published_at && OBJ.has(LEFT_PATH), 'l’ancienne place est fermée (archived_at) et son fichier est toujours là : rien n’est effacé');
+  check(!since(n2).some((x) => x.m === 'DELETE') && D.training_videos.some((v) => v.title === 'Isolation des combles (version complète)' && v.size_bytes === 24 * MO && v.published_at), 'l’autre vidéo (24 Mo) est publiée normalement');
+  // Le bureau VOIT le fichier gardé, avec sa taille, dans « formations retirées et envois non terminés ».
+  await waitFor(async () => (await op.locator('[data-testid=tr-show-archived]').count()) > 0, 5000);
+  const toggle = await txt(op.locator('[data-testid=tr-show-archived]'));
+  check(toggle === 'Afficher les formations retirées et les envois non terminés (1)', `bouton : « ${toggle} »`);
+  await op.click('[data-testid=tr-show-archived]'); await op.waitForTimeout(300);
+  const row = op.locator('[data-kind=leftover]');
+  check(await row.count() === 1 && (await txt(row.locator('[data-testid=tr-title-text]'))) === 'Isolation des combles', 'une ligne « Isolation des combles » (le titre de la place fermée)');
+  const sum = await txt(row.locator('[data-testid=tr-leftover-sum]'));
+  check(sum === `Envoi non terminé · ${(Math.round(VIDEO_BYTES.length / MO * 10) / 10).toString().replace('.', ',')} Mo · place fermée · fichier gardé · 14/10`, `résumé : « ${sum} »`);
+  await row.locator('[data-testid=tr-head]').click(); await op.waitForTimeout(250);
+  const note = await txt(row.locator('[data-testid=tr-leftover-note]'));
+  check(note === 'Ce fichier est arrivé, mais la vidéo n’a pas été publiée : les salariés ne la voient pas. Le fichier est gardé et compte dans les 100 Mo.', `explication : « ${note} »`);
+  check(await row.locator('[data-testid=tr-archive], [data-testid=tr-restore]').count() === 0, 'aucun « Retirer » ni « Remettre » : il n’y a rien à retirer (pas publié) ni à effacer');
+  const ns = signs.length;
+  await row.locator('[data-testid=tr-watch]').click();
+  await op.waitForSelector('[data-testid=video-el]');
+  check(signs.length === ns + 1 && signs[ns].path === LEFT_PATH && signs[ns].expiresIn === 600 && await waitFor(() => op.locator('[data-testid=video-el]').evaluate((e) => e.readyState >= 1), 8000), '« Regarder » : le bureau peut vérifier ce que contient le fichier (lien 10 min)');
+  await shot(dlg(), 'apres-bureau-envoi-non-termine');
+  // Aucun salarié ne le voit.
+  check(myVideos(SAM).every((v) => v.file_path !== LEFT_PATH) && !readable(SAM, LEFT_PATH), 'les salariés ne voient pas ce fichier (ni liste, ni lien de lecture)');
+  // La jauge l’explique : tout ce qui est arrivé est compté.
+  await op.click('[data-testid=tr-cancel]').catch(() => {});
+  await closeDlg(); await openTrainings();
+  await openUpload();
+  const gauge = await txt(op.locator('[data-testid=tr-quota]'));
+  const want = Math.round((38 * MO + VIDEO_BYTES.length * 2 + 24 * MO + 24 * MO) / MO);
+  check(gauge === `${want} Mo utilisés sur 100 Mo`, `la jauge compte le fichier gardé : « ${gauge} »`);
+  await op.click('[data-testid=tr-cancel]');
+  await closeDlg();
+}
+
+// ═══ T · téléphone de 360 px ════════════════════════════════════════════════
+section('T · téléphone de 360 px : le bureau et le salarié tiennent sans défilement horizontal');
+{
+  const mob = await newCtx(ADMIN, { width: 360, height: 780 });
   const mp = track(await mob.newPage(), 'bureau mobile');
   await mp.goto(`http://localhost:${PORT}/admin`); await mp.waitForSelector('.bt-pl-m-card, .bt-pl-m-ibtn', { timeout: 25000 }); await mp.waitForTimeout(1200);
   await mp.locator('button[aria-label="Menu"]').first().click(); await mp.waitForSelector('.bt-mm-sheet'); await mp.waitForTimeout(400);
   await mp.click('[data-testid=mm-trainings]'); await mp.waitForSelector('[data-testid=trainings-dialog]'); await mp.waitForTimeout(800);
+  const fitsD = () => mp.locator('[data-testid=trainings-dialog]').evaluate((el) => el.scrollWidth <= el.clientWidth + 1);
+  await mp.click('[data-testid=tr-show-archived]'); await mp.waitForTimeout(250);
+  await mp.locator('[data-kind=leftover] [data-testid=tr-head]').click(); await mp.waitForTimeout(250);
+  check(await fitsD(), 'liste avec un « envoi non terminé » ouvert : pas de défilement horizontal (360 px)');
+  await mp.locator('[data-kind=leftover] [data-testid=tr-leftover-note]').scrollIntoViewIfNeeded(); await mp.waitForTimeout(200);
+  await shot(mp, 'apres-bureau-telephone-envoi-non-termine');
   await openUpload(mp);
+  check(await mp.locator('[data-testid=tr-gps-note]').isVisible(), 'avertissement GPS visible sur le téléphone');
   await mp.setInputFiles('[data-testid=tr-film]', F_FILM); await mp.waitForSelector('[data-testid=tr-preview]'); await mp.waitForTimeout(600);
-  const fits = await mp.locator('[data-testid=trainings-dialog]').evaluate((el) => el.scrollWidth <= el.clientWidth + 1);
-  check(fits, 'fenêtre sans défilement horizontal (aperçu compris)');
+  check(await fitsD(), 'fenêtre d’envoi (aperçu et avertissement compris) : pas de défilement horizontal (360 px)');
+  const inView = await mp.locator('[data-testid=tr-gps-note]').evaluate((e) => { const r = e.getBoundingClientRect(); return r.left >= 0 && r.right <= window.innerWidth; });
+  check(inView, 'l’avertissement tient dans la largeur de l’écran');
   await shot(mp, 'apres-bureau-telephone');
   await mob.close();
+
+  const wm = await newCtx(SAM, { width: 360, height: 740 });
+  const w3 = track(await wm.newPage(), 'salarié 360');
+  await openWorker(w3); await openWorkerTrainings(w3);
+  const row = w3.locator('[data-testid=training-row]', { hasText: 'Montage de l’échafaudage' });
+  await row.locator('[data-testid=training-watch]').click();
+  await w3.waitForSelector('[data-testid=video-el]', { timeout: 8000 }); await w3.waitForTimeout(500);
+  const wfit = await w3.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1 && document.body.scrollWidth <= window.innerWidth + 1);
+  const vb = await w3.locator('[data-testid=video-el]').evaluate((e) => { const r = e.getBoundingClientRect(); return r.left >= 0 && r.right <= window.innerWidth; });
+  check(wfit && vb, 'salarié (360 px) : liste et lecteur tiennent dans l’écran, sans défilement horizontal');
+  await shot(w3, 'apres-salarie-telephone-360');
+  await wm.close();
+}
+
+// ═══ X2 · plafond de nouvelles places ═══════════════════════════════════════
+section('X2 · au plus 3 nouvelles places par tranche de 3 h : message clair, rien n’est envoyé');
+{
+  await openOffice(); await openTrainings();
+  const send = async (titre) => {
+    await openUpload();
+    await op.fill('[data-testid=tr-title]', titre);
+    await op.setInputFiles('[data-testid=tr-film]', F_FILM);
+    await op.waitForSelector('[data-testid=tr-file-ready]');
+    await op.click('[data-testid=tr-save]');
+  };
+  // Deux places sont déjà dans la tranche (la fermée et la publiée de X1) : une troisième passe.
+  await send('Troisième envoi');
+  await waitFor(async () => (await op.locator('[data-testid=tr-form]').count()) === 0, 20000);
+  check(D.training_videos.some((v) => v.title === 'Troisième envoi' && v.published_at), 'la 3ᵉ place de la tranche passe');
+  await send('Quatrième envoi');
+  await waitFor(async () => (await op.locator('[data-testid=tr-error]').count()) > 0, 8000);
+  const msg = await txt(op.locator('[data-testid=tr-error]'));
+  check(/^Déjà trois envois de vidéo préparés ces 3 dernières heures dans votre entreprise\. Réessayez dans environ (\d+ min|\d+ h|\d+ h \d\d)\.$/.test(msg), `la 4ᵉ est refusée : « ${msg} »`);
+  const n = writes.length;
+  check(!D.training_videos.some((v) => v.title === 'Quatrième envoi') && !of(since(n), 'PUT').length, 'aucune place créée, aucun octet envoyé');
+  check(await op.locator('[data-testid=tr-file-ready]').count() === 1 && !(await op.locator('[data-testid=tr-save]').isDisabled()), 'le fichier reste choisi : on pourra réessayer plus tard');
+  await shot(dlg(), 'apres-bureau-trop-denvois');
+  await op.click('[data-testid=tr-cancel]');
+  await closeDlg();
 }
 
 // ═══ Fin ═════════════════════════════════════════════════════════════════════

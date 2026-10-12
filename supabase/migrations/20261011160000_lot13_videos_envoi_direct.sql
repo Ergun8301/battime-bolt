@@ -14,6 +14,7 @@
 -- DROP POLICY IF EXISTS formations_read ON storage.objects;
 -- DROP FUNCTION IF EXISTS public.set_training_video_seen(uuid, boolean);
 -- DROP FUNCTION IF EXISTS public.my_training_videos();
+-- DROP FUNCTION IF EXISTS public.training_video_leftovers();
 -- DROP FUNCTION IF EXISTS public.set_training_video_archived(uuid, boolean);
 -- DROP FUNCTION IF EXISTS public.publish_training_video(uuid);
 -- DROP FUNCTION IF EXISTS public.start_training_video(text, boolean, uuid[], text, bigint, integer);
@@ -39,7 +40,7 @@
 --   has_table_privilege('authenticated', 'public.training_videos', 'SELECT') AND NOT has_any_column_privilege('authenticated', 'public.training_videos', 'INSERT,UPDATE') AND NOT has_any_column_privilege('authenticated', 'public.training_video_views', 'INSERT,UPDATE') AND NOT has_table_privilege('authenticated', 'public.training_videos', 'DELETE,TRUNCATE,REFERENCES,TRIGGER') AND NOT has_table_privilege('authenticated', 'public.training_video_views', 'DELETE,TRUNCATE,REFERENCES,TRIGGER') AS v6_ecritures_par_fonctions_seulement,
 --   (SELECT bool_and(NOT has_function_privilege('anon', p.oid, 'EXECUTE')) FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname LIKE '%training_video%') AS v7_anon_aucune_fonction,
 --   (SELECT bool_and(has_function_privilege('authenticated', p.oid, 'EXECUTE') = (p.proname NOT IN ('training_video_usage', 'training_video_max_bytes', 'training_video_quota_bytes'))) FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname LIKE '%training_video%') AS v8_fonctions_internes_fermees,
---   (SELECT count(*) = 11 AND bool_and(p.prosecdef AND array_to_string(p.proconfig, ',') = 'search_path=""') FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname LIKE '%training_video%') AS v9_definer_search_path_vide,
+--   (SELECT count(*) = 12 AND bool_and(p.prosecdef AND array_to_string(p.proconfig, ',') = 'search_path=""') FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname LIKE '%training_video%') AS v9_definer_search_path_vide,
 --   (SELECT (r.rolsuper OR r.rolbypassrls) AND has_table_privilege(r.oid, 'storage.objects', 'SELECT') FROM pg_proc p JOIN pg_roles r ON r.oid = p.proowner WHERE p.pronamespace = 'public'::regnamespace AND p.proname = 'training_video_usage') AS v10_quota_lit_la_vraie_taille,
 --   NOT EXISTS (SELECT 1 FROM pg_trigger WHERE NOT tgisinternal AND tgrelid IN ('public.training_videos'::regclass, 'public.training_video_views'::regclass)) AS v11_aucun_trigger;
 -- ── FIN DE LA VÉRIFICATION ──
@@ -52,18 +53,51 @@
 -- et l'envoyer tel quel, « 100 % gratuit, sans carte, jusqu'aux 5 premiers
 -- clients » : Supabase Storage du forfait Free, déjà en place.
 --
--- LIMITES DU FORFAIT GRATUIT (D8) — GARANTIES PAR LE SERVEUR :
+-- LIMITES DU FORFAIT GRATUIT (D8) — CE QUE LA BASE GARANTIT, ET CE QU'ELLE NE
+-- PEUT PAS GARANTIR (dit tel quel, sans l'arrondir) :
 --   · 50 Mo par fichier : bucket privé NEUF « formations », file_size_limit =
 --     52428800, types vidéo seulement (MP4, MOV, WebM). Le stockage refuse
---     lui-même un fichier plus lourd ou d'un autre type.
---   · 100 Mo par entreprise : start_training_video compte la VRAIE taille des
---     fichiers de l'entreprise (storage.objects) + l'envoi en cours, et refuse
---     ce qui dépasse. Un SEUL envoi ouvert à la fois par entreprise : la seule
---     façon de dépasser est un navigateur trafiqué qui annonce une taille plus
---     petite que le fichier réel — au plus UN fichier (50 Mo au plus) ; ensuite
---     plus rien ne part, puisque la vraie taille est comptée.
+--     lui-même un fichier plus lourd ou d'un autre type. GARANTI.
+--   · 100 Mo par entreprise, navigateur NORMAL (taille annoncée = taille
+--     réelle) : GARANTI, jamais plus de 100 Mo. start_training_video compte la
+--     VRAIE taille de tous les fichiers de l'entreprise (storage.objects) + la
+--     taille ANNONCÉE de chaque place réservée dont le fichier n'est pas encore
+--     arrivé, et refuse ce qui dépasse (verrou par entreprise).
+--   · 100 Mo par entreprise, navigateur TRAFIQUÉ (un compte du bureau qui appelle
+--     l'API à la main) : borne exacte = 100 Mo + 3 fichiers de 50 Mo au plus,
+--     soit STRICTEMENT MOINS DE 250 Mo (50 Mo = limite du bucket).
+--     Pourquoi on ne peut pas faire mieux sans service payant : le stockage ne
+--     vérifie la policy d'envoi qu'à la CRÉATION de l'URL d'envoi signée ; le
+--     fichier est ensuite écrit avec les droits du service, jusqu'à 2 h plus
+--     tard, et la base ne voit sa taille qu'APRÈS son arrivée. Un navigateur
+--     trafiqué peut donc annoncer 1 octet et envoyer 50 Mo, ou garder une URL
+--     « écraser » signée avant l'arrivée du fichier et remplacer ensuite le
+--     fichier. Ce qui borne le dégât :
+--       1. une place = UN seul chemin = UN seul fichier à la fois (50 Mo au plus) ;
+--       2. une place réservée compte sa taille annoncée jusqu'à l'arrivée du
+--          fichier, ET RESTE COMPTÉE même si elle est « retirée » ou fermée :
+--          retirer une place ne libère JAMAIS le quota (une vidéo non publiée ne
+--          peut d'ailleurs pas être retirée) ;
+--       3. un seul envoi ouvert à la fois par entreprise ;
+--       4. au plus TROIS nouvelles places par tranche de 3 heures et par
+--          entreprise (une URL signée vit 2 h, la demande doit se faire dans les
+--          15 minutes : 3 h couvrent le tout). Passé ce délai, les URL signées
+--          sont mortes et la vraie taille de tous les fichiers est comptée ;
+--       5. la policy d'envoi refuse tout chemin qui n'est pas une place ouverte
+--          de l'entreprise, ou dont le fichier existe déjà.
+--     Ensuite plus rien ne part : la vraie taille est comptée à chaque demande.
 --   · Une vidéo retirée garde son fichier (D12 : rien n'est supprimé sans
---     l'accord d'Ergun) : elle compte toujours dans les 100 Mo.
+--     l'accord d'Ergun) : elle compte toujours dans les 100 Mo. Un fichier arrivé
+--     dont la vidéo n'a jamais été publiée compte aussi : training_video_leftovers()
+--     le montre au bureau (« Envoi non terminé »).
+--
+-- HYPOTHÈSES tirées de la documentation Supabase, NON TESTÉES sur le vrai
+-- service (à vérifier à l'application) : la policy INSERT est vérifiée à la
+-- création de l'URL signée (pas à l'envoi) ; l'URL vit 2 h ; la limite de taille
+-- et les types du bucket sont appliqués à l'envoi ; le propriétaire des
+-- fonctions (postgres) lit storage.objects (vérification v10). Si le stockage
+-- refusait déjà une URL « écraser » sans policy UPDATE, la borne serait même
+-- meilleure ; elle n'est jamais pire que celle écrite ici.
 --
 -- POURQUOI UN BUCKET ET UNE TABLE NEUFS (option B) plutôt que documents +
 -- chantier-docs : dans chantier-docs, TOUT membre de l'entreprise écrit et
@@ -84,11 +118,14 @@
 -- d'une vidéo publiée et non retirée) ; « Vue » par set_training_video_seen.
 --
 -- 100 % ADDITIVE, AUCUN DROP NI DELETE EXÉCUTÉ : un bucket neuf, 2 tables
--- neuves, 11 fonctions neuves, 2 policies neuves sur storage.objects et 2 sur
+-- neuves, 12 fonctions neuves, 2 policies neuves sur storage.objects et 2 sur
 -- les tables neuves (créées seulement si elles manquent). Aucune table,
 -- colonne, contrainte, policy, fonction ou trigger existant n'est modifié ;
 -- aucune donnée existante n'est touchée. Pas de policy UPDATE ni DELETE sur les
--- fichiers : on n'écrase pas, on n'efface pas. « Annuler » une « Vue » pose
+-- fichiers, et la policy d'envoi refuse un chemin dont le fichier existe déjà :
+-- la base n'accorde jamais d'écrasement ni d'effacement. (Reste une limite du
+-- stockage, dite plus haut : une URL « écraser » signée AVANT l'arrivée du
+-- fichier ; elle est comptée dans la borne.) « Annuler » une « Vue » pose
 -- undone_at (rien n'est effacé). Retirer une vidéo = archived_at + archived_by.
 -- Rejouable : IF NOT EXISTS, OR REPLACE, ON CONFLICT DO NOTHING, policies dans
 -- des blocs DO qui regardent pg_policies.
@@ -204,11 +241,15 @@ AS $fn$ SELECT coalesce((SELECT b.file_size_limit::bigint FROM storage.buckets b
 -- Place occupée par une entreprise :
 --   stored_bytes   = VRAIE taille de tous ses fichiers du bucket (publiés,
 --                    retirés ou jamais publiés : tout ce qui est stocké) ;
---   reserved_bytes = taille annoncée des envois en cours (place non publiée,
---                    non retirée, réservée il y a moins de 3 h — 15 min pour
---                    demander l'URL signée + 2 h de validité + marge — et dont
---                    le fichier n'est pas encore arrivé). p_except : la place
---                    que l'on va reprendre, pour ne pas la compter deux fois.
+--   reserved_bytes = taille ANNONCÉE des places pas encore publiées, réservées
+--                    il y a moins de 3 h (15 min pour demander l'URL signée +
+--                    2 h de validité + marge) et dont le fichier n'est pas encore
+--                    arrivé. Une place « retirée » ou fermée COMPTE TOUJOURS : tant
+--                    qu'une URL signée peut être vivante, un fichier peut encore
+--                    arriver ; retirer ne libère jamais le quota. Dès que le
+--                    fichier est là, c'est sa vraie taille (stored_bytes) qui
+--                    compte. p_except : la place que l'on va reprendre, pour ne
+--                    pas la compter deux fois.
 CREATE OR REPLACE FUNCTION public.training_video_usage(p_company uuid, p_except uuid DEFAULT NULL,
   OUT stored_bytes bigint, OUT reserved_bytes bigint)
  LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO ''
@@ -218,15 +259,18 @@ AS $fn$
                WHERE o.bucket_id = 'formations' AND o.name LIKE p_company::text || '/%'), 0)::bigint,
     coalesce((SELECT sum(v.declared_bytes) FROM public.training_videos v
                WHERE v.company_id = p_company AND v.id IS DISTINCT FROM p_except
-                 AND v.published_at IS NULL AND v.archived_at IS NULL
+                 AND v.published_at IS NULL
                  AND v.reserved_at > now() - interval '3 hours'
                  AND NOT EXISTS (SELECT 1 FROM storage.objects o WHERE o.bucket_id = 'formations' AND o.name = v.file_path)), 0)::bigint
 $fn$;
 
 -- ── 5) Policies du bucket (fonctions appelées par storage.objects) ─────────
--- Envoi : un compte bureau, sur SA place pas encore publiée, réservée il y a
--- moins de 15 minutes. Rien d'autre (ni un salarié, ni une autre entreprise,
--- ni un autre chemin, ni une vidéo publiée).
+-- Envoi : un compte bureau, sur SA place pas encore publiée ni retirée,
+-- réservée il y a moins de 15 minutes, ET dont le fichier n'existe pas encore.
+-- Rien d'autre : ni un salarié, ni une autre entreprise, ni un autre chemin, ni
+-- une vidéo publiée, ni une place retirée, ni un chemin déjà occupé (donc ni
+-- écrasement, ni « upsert » sur un fichier qui existe). Le stockage ne lance cette
+-- vérification qu'à la création de l'URL signée : voir LIMITES, en tête de fichier.
 CREATE OR REPLACE FUNCTION public.training_video_upload_ok(p_name text)
  RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO ''
 AS $fn$
@@ -236,6 +280,7 @@ AS $fn$
        AND v.created_by = auth.uid()
        AND v.published_at IS NULL AND v.archived_at IS NULL
        AND v.reserved_at > now() - interval '15 minutes')
+    AND NOT EXISTS (SELECT 1 FROM storage.objects o WHERE o.bucket_id = 'formations' AND o.name = p_name)
 $fn$;
 
 -- Lecture (lien signé) : le bureau, dans le dossier de SON entreprise ; un
@@ -253,7 +298,8 @@ AS $fn$
                   AND (v.all_team OR auth.uid() = ANY (v.assignee_ids)))), false)
 $fn$;
 
--- Pas de policy UPDATE (on n'écrase pas une vidéo) ni DELETE (D12).
+-- Pas de policy UPDATE (une mise à jour d'un fichier existant est refusée) ni
+-- DELETE (D12).
 DO $do$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'storage' AND tablename = 'objects' AND policyname = 'formations_office_insert') THEN
@@ -307,6 +353,9 @@ DECLARE
   v_real bigint;
   v_u record;
   v_id uuid;
+  v_recent integer;
+  v_oldest timestamptz;
+  v_wait integer;
 BEGIN
   IF v_me IS NULL OR v_co IS NULL OR NOT public.is_admin() THEN
     RAISE EXCEPTION 'Réservé au bureau de l''entreprise.' USING ERRCODE = '42501';
@@ -340,10 +389,11 @@ BEGIN
   -- Un appel à la fois par entreprise (jusqu'à la fin de la transaction).
   PERFORM pg_advisory_xact_lock(hashtext('bemexo.training_videos'), hashtext(v_co::text));
 
-  -- Un SEUL envoi ouvert par entreprise : celui d'un AUTRE compte du bureau bloque.
+  -- Un SEUL envoi ouvert par entreprise : celui d'un AUTRE compte du bureau bloque
+  -- (retiré ou non : une place sans fichier peut encore en recevoir un, 3 h).
   IF EXISTS (SELECT 1 FROM public.training_videos v
               WHERE v.company_id = v_co AND v.created_by IS DISTINCT FROM v_me
-                AND v.published_at IS NULL AND v.archived_at IS NULL
+                AND v.published_at IS NULL
                 AND v.reserved_at > now() - interval '3 hours'
                 AND NOT EXISTS (SELECT 1 FROM storage.objects o WHERE o.bucket_id = 'formations' AND o.name = v.file_path)) THEN
     RAISE EXCEPTION 'Une autre vidéo est en cours d''envoi dans votre entreprise. Réessayez dans quelques minutes.' USING ERRCODE = 'P0001';
@@ -386,6 +436,18 @@ BEGIN
      WHERE v.id = v_slot_id;
     RETURN QUERY SELECT v_slot_id, v_slot_path, false;
     RETURN;
+  END IF;
+  -- Au plus TROIS nouvelles places par tranche de 3 h et par entreprise (voir
+  -- LIMITES, en tête de fichier) : une place reprise ne compte pas deux fois.
+  SELECT count(*), min(r.reserved_at) INTO v_recent, v_oldest FROM (
+    SELECT v.reserved_at FROM public.training_videos v
+     WHERE v.company_id = v_co AND v.reserved_at > now() - interval '3 hours'
+     ORDER BY v.reserved_at DESC LIMIT 3) r;
+  IF v_recent >= 3 THEN
+    v_wait := greatest(1, ceil(extract(epoch FROM (v_oldest + interval '3 hours' - now())) / 60.0)::integer);
+    RAISE EXCEPTION 'Déjà trois envois de vidéo préparés ces 3 dernières heures dans votre entreprise. Réessayez dans environ %.',
+      CASE WHEN v_wait < 60 THEN v_wait || ' min' WHEN v_wait % 60 = 0 THEN (v_wait / 60) || ' h'
+           ELSE (v_wait / 60) || ' h ' || lpad((v_wait % 60)::text, 2, '0') END USING ERRCODE = 'P0001';
   END IF;
   v_id := gen_random_uuid();
   INSERT INTO public.training_videos (id, company_id, title, all_team, assignee_ids, file_path, mime_type, declared_bytes, duration_s, created_by)
@@ -440,7 +502,10 @@ END $fn$;
 
 -- ── 9) Bureau : « Retirer » / « Remettre » ─────────────────────────────────
 -- Retirer : archived_at + archived_by (heure du serveur) ; le fichier et les
--- « Vue » restent. Remettre : seulement une vidéo publiée.
+-- « Vue » restent, et la place ne libère RIEN du quota. Seulement une vidéo
+-- PUBLIÉE : une place pas encore publiée ne se retire pas (sinon elle sortirait
+-- du décompte alors que son URL signée peut encore recevoir un fichier).
+-- Remettre : seulement une vidéo publiée.
 CREATE OR REPLACE FUNCTION public.set_training_video_archived(p_id uuid, p_archived boolean)
  RETURNS timestamptz
  LANGUAGE plpgsql SECURITY DEFINER SET search_path TO ''
@@ -456,7 +521,7 @@ BEGIN
   IF coalesce(p_archived, true) THEN
     UPDATE public.training_videos v
        SET archived_at = coalesce(v.archived_at, now()), archived_by = CASE WHEN v.archived_at IS NULL THEN v_me ELSE v.archived_by END
-     WHERE v.id = p_id AND v.company_id = v_co
+     WHERE v.id = p_id AND v.company_id = v_co AND v.published_at IS NOT NULL
     RETURNING v.archived_at INTO v_at;
   ELSE
     UPDATE public.training_videos v SET archived_at = NULL, archived_by = NULL
@@ -467,6 +532,30 @@ BEGIN
     RAISE EXCEPTION 'Cette vidéo est introuvable.' USING ERRCODE = 'P0002';
   END IF;
   RETURN v_at;
+END $fn$;
+
+-- ── 9 bis) Bureau : les fichiers arrivés mais jamais publiés ───────────────
+-- Un envoi coupé avant la publication, ou une place fermée parce qu'un AUTRE
+-- fichier est arrivé : le fichier est gardé (D12) et COMPTE dans les 100 Mo. Le
+-- bureau doit le voir, avec sa vraie taille (« Envoi non terminé »), pour que
+-- la jauge s'explique. Titre et public viennent de la place ; rien ici ne publie.
+CREATE OR REPLACE FUNCTION public.training_video_leftovers()
+ RETURNS TABLE (id uuid, title text, file_path text, real_bytes bigint, reserved_at timestamptz, archived_at timestamptz)
+ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path TO ''
+AS $fn$
+DECLARE
+  v_co uuid := public.get_my_company_id();
+BEGIN
+  IF auth.uid() IS NULL OR v_co IS NULL OR NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Réservé au bureau de l''entreprise.' USING ERRCODE = '42501';
+  END IF;
+  RETURN QUERY
+    SELECT v.id, v.title, v.file_path, coalesce(nullif(o.metadata->>'size', '')::bigint, 0)::bigint, v.reserved_at, v.archived_at
+      FROM public.training_videos v
+      JOIN storage.objects o ON o.bucket_id = 'formations' AND o.name = v.file_path
+     WHERE v.company_id = v_co AND v.published_at IS NULL
+     ORDER BY v.reserved_at DESC
+     LIMIT 100;
 END $fn$;
 
 -- ── 10) Salarié, chef d'équipe : mes vidéos ────────────────────────────────
@@ -541,6 +630,7 @@ REVOKE ALL ON FUNCTION public.start_training_video(text, boolean, uuid[], text, 
 REVOKE ALL ON FUNCTION public.publish_training_video(uuid) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.set_training_video_archived(uuid, boolean) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.my_training_videos() FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.training_video_leftovers() FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.set_training_video_seen(uuid, boolean) FROM PUBLIC, anon;
 -- Les deux fonctions des policies du bucket : appelées avec les droits de l'utilisateur connecté.
 GRANT EXECUTE ON FUNCTION public.training_video_upload_ok(text) TO authenticated;
@@ -550,4 +640,5 @@ GRANT EXECUTE ON FUNCTION public.start_training_video(text, boolean, uuid[], tex
 GRANT EXECUTE ON FUNCTION public.publish_training_video(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.set_training_video_archived(uuid, boolean) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.my_training_videos() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.training_video_leftovers() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.set_training_video_seen(uuid, boolean) TO authenticated;

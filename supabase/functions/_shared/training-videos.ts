@@ -4,10 +4,13 @@
 // Sans base, sans réseau.
 //
 // Forfait Supabase GRATUIT (décision D8) : 50 Mo par fichier (limite du forfait,
-// non modifiable), 100 Mo par entreprise. La BASE garantit les deux (bucket
-// privé « formations » limité à 50 Mo et aux types ci-dessous ; quota compté
-// par start_training_video sur la vraie taille des fichiers) : l'écran ne fait
-// que prévenir plus tôt. Les valeurs sont recopiées de
+// non modifiable), 100 Mo par entreprise. 50 Mo : le bucket privé « formations »
+// le refuse lui-même (taille et types ci-dessous). 100 Mo : start_training_video
+// compte la vraie taille des fichiers + la taille annoncée des envois en cours ;
+// GARANTI avec un navigateur normal, et borné à « 100 Mo + 3 fichiers » (moins de
+// 250 Mo) avec un navigateur trafiqué : le stockage ne laisse pas la base voir la
+// taille avant la fin de l'envoi (détail : en-tête de la migration). L'écran ne
+// fait que prévenir plus tôt. Les valeurs sont recopiées de
 // supabase/migrations/20261011160000_lot13_videos_envoi_direct.sql (le test
 // vérifie qu'elles y sont mot pour mot).
 
@@ -23,8 +26,16 @@ const MO = 1024 * 1024;
 export const VIDEO_MAX_BYTES = 50 * MO; // 52428800
 /** 100 Mo par entreprise (training_video_quota_bytes). */
 export const VIDEO_QUOTA_BYTES = 100 * MO; // 104857600
-/** Lien signé de lecture : 1 h, re-signé à la demande (erreur de lecture, retour sur l'appli). */
-export const VIDEO_SIGN_SECONDS = 3600;
+/**
+ * Lien signé de lecture : 10 minutes (une vidéo de 50 Mo au plus se charge largement
+ * dedans), re-signé à la demande quand la lecture échoue (lien expiré, retour sur
+ * l'appli). « Retirer » une vidéo coupe donc l'accès au plus tard 10 minutes plus tard.
+ */
+export const VIDEO_SIGN_SECONDS = 600;
+/** Nouvelles places d'envoi par entreprise et par tranche de VIDEO_WINDOW_HOURS heures (start_training_video). */
+export const VIDEO_NEW_PLACES_MAX = 3;
+/** 15 min pour demander l'URL d'envoi + 2 h de validité de cette URL + marge. */
+export const VIDEO_WINDOW_HOURS = 3;
 
 /** Extension → type, pour un fichier que le navigateur n'a pas typé (Windows, certains Android). */
 const EXT_MIME: Readonly<Record<string, VideoMime>> = { mp4: 'video/mp4', m4v: 'video/mp4', mov: 'video/quicktime', qt: 'video/quicktime', webm: 'video/webm' };
@@ -70,6 +81,17 @@ export function videoSummary(v: { duration_s?: number | null; size_bytes?: numbe
 }
 
 export interface Limits { maxBytes: number; quotaBytes: number; usedBytes: number }
+/**
+ * Vie privée : un MP4 ou un MOV filmé au téléphone peut contenir la position GPS
+ * du lieu de tournage ; le fichier part tel quel et chaque destinataire peut le
+ * lire. Montré sous « Filmer » / « Choisir un fichier ».
+ */
+export const GPS_NOTE = 'Attention : une vidéo filmée au téléphone peut contenir la position GPS du lieu, lisible par tous ceux qui la reçoivent. Désactivez la localisation de l’appareil photo avant de filmer.';
+/** Un fichier arrivé dont la vidéo n'a jamais été publiée : gardé, et compté dans la place. */
+export const leftoverSummary = (bytes: number | null | undefined, closed: boolean) =>
+  ['Envoi non terminé', bytes ? formatMo(bytes) : null, closed ? 'place fermée' : null, 'fichier gardé'].filter(Boolean).join(' · ');
+export const leftoverNote = (quota: number) =>
+  `Ce fichier est arrivé, mais la vidéo n’a pas été publiée : les salariés ne la voient pas. Le fichier est gardé et compte dans les ${formatMo(quota)}.`;
 export const TOO_BIG = (max: number) =>
   `Vidéo trop lourde : ${formatMo(max)} maximum. Raccourcissez-la, filmez en 720p, ou collez un lien YouTube, Vimeo ou Google Drive.`;
 export const BAD_FORMAT = 'Format refusé : une vidéo MP4, MOV ou WebM.';

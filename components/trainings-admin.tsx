@@ -30,11 +30,11 @@ import {
   checkTrainingTitle, parseTrainingLink, PROVIDER_LABEL, providerOf, safeTrainingUrl, seenSummary, TRAINING_TITLE_MAX, TRAINING_URL_MAX, type ViewRow,
 } from '@/supabase/functions/_shared/trainings';
 import {
-  fetchOfficeVideos, fetchVideoLimits, publishVideo, setVideoArchived, startVideoUpload, uploadVideoFile, type OfficeVideo, type UploadRun,
+  fetchOfficeVideos, fetchVideoLimits, publishVideo, setVideoArchived, startVideoUpload, uploadVideoFile, type OfficeLeftover, type OfficeVideo, type UploadRun,
 } from '@/lib/training-videos';
 import type { PickedVideo } from '@/components/training-video-upload';
 import {
-  checkVideoFile, formatMo, VIDEO_MAX_BYTES, VIDEO_QUOTA_BYTES, videoSummary, type Limits,
+  checkVideoFile, formatMo, leftoverNote, leftoverSummary, VIDEO_MAX_BYTES, VIDEO_QUOTA_BYTES, videoSummary, type Limits,
 } from '@/supabase/functions/_shared/training-videos';
 
 // Lot 13 : le panneau d'envoi et le lecteur ne se chargent qu'à l'ouverture.
@@ -96,7 +96,7 @@ const CSS_HTML = { __html: CSS };
 
 type Kind = 'video' | 'document' | 'upload';
 /** Une ligne de la liste : formation du lot 6, ou vidéo envoyée (lot 13). */
-type Item = { src: 'link'; t: OfficeTraining; at: string } | { src: 'upload'; v: OfficeVideo; at: string };
+type Item = { src: 'link'; t: OfficeTraining; at: string } | { src: 'upload'; v: OfficeVideo; at: string } | { src: 'left'; l: OfficeLeftover; at: string };
 const NO_LIMITS: Limits = { maxBytes: VIDEO_MAX_BYTES, quotaBytes: VIDEO_QUOTA_BYTES, usedBytes: 0 };
 const ddmm = (iso: string) => { try { return format(parseISO(iso), 'dd/MM'); } catch { return ''; } };
 const ddmmhhmm = (iso: string) => { try { return format(parseISO(iso), 'dd/MM HH:mm'); } catch { return ''; } };
@@ -133,7 +133,7 @@ export default function TrainingsAdmin({ open, onOpenChange, companyId, companyN
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   // Lot 13 : vidéos envoyées. `vids` null = migration absente (ou pas encore lue) : option cachée.
-  const [vids, setVids] = useState<{ videos: OfficeVideo[]; views: ViewRow[] } | null>(null);
+  const [vids, setVids] = useState<{ videos: OfficeVideo[]; views: ViewRow[]; leftovers: OfficeLeftover[] } | null>(null);
   const [limits, setLimits] = useState<Limits | null>(null);
   const [file, setFile] = useState<PickedVideo | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
@@ -149,7 +149,7 @@ export default function TrainingsAdmin({ open, onOpenChange, companyId, companyN
     setLoadError(null);
     setList({ trainings: r.trainings, views: r.views });
     // Vidéos illisibles (migration absente, réseau…) : la liste du lot 6 reste telle quelle.
-    if (v.ok) setVids({ videos: v.videos, views: v.views });
+    if (v.ok) setVids({ videos: v.videos, views: v.views, leftovers: v.leftovers });
     else if (v.missing) setVids(null);
   }, [companyId]);
   const videosOn = vids !== null;
@@ -321,8 +321,10 @@ export default function TrainingsAdmin({ open, onOpenChange, companyId, companyN
   const items: Item[] = useMemo(() => [
     ...(list?.trainings || []).map((t): Item => ({ src: 'link', t, at: t.created_at })),
     ...(vids?.videos || []).map((v): Item => ({ src: 'upload', v, at: v.published_at || v.created_at })),
+    // Fichiers arrivés mais jamais publiés : gardés, comptés dans la place, donc montrés (avec les formations retirées).
+    ...(vids?.leftovers || []).map((l): Item => ({ src: 'left', l, at: l.reserved_at })),
   ].sort((a, z) => z.at.localeCompare(a.at)), [list, vids]);
-  const isArchived = (i: Item) => !!(i.src === 'link' ? i.t.archived_at : i.v.archived_at);
+  const isArchived = (i: Item) => i.src === 'left' || !!(i.src === 'link' ? i.t.archived_at : i.v.archived_at);
   const active = items.filter((i) => !isArchived(i));
   const archived = items.filter(isArchived);
 
@@ -440,7 +442,33 @@ export default function TrainingsAdmin({ open, onOpenChange, companyId, companyN
       </div>
     );
   };
-  const renderItem = (i: Item) => (i.src === 'link' ? row(i.t) : videoRow(i.v));
+  const leftoverRow = (l: OfficeLeftover) => {
+    const isOpen = expanded === l.id;
+    const isPlaying = isOpen && playing === l.id;
+    return (
+      <div key={l.id} className="bt-fo-item archived" data-testid="tr-archived-item" data-kind="leftover">
+        <button type="button" className="bt-fo-head" aria-expanded={isOpen} onClick={() => { setConfirmId(null); setPlaying(null); setExpanded(isOpen ? null : l.id); }} data-testid="tr-head">
+          <span className="bt-fo-ic" aria-hidden="true"><CirclePlay className="h-3.5 w-3.5" /></span>
+          <span className="bt-fo-main">
+            <span className="bt-fo-t" data-testid="tr-title-text">{l.title}</span>
+            <span className="bt-fo-s" data-testid="tr-leftover-sum">{leftoverSummary(l.real_bytes, !!l.archived_at)} · {ddmm(l.reserved_at)}</span>
+          </span>
+        </button>
+        {isOpen && (
+          <div className="bt-fo-detail" data-testid="tr-detail">
+            <p className="bt-fo-muted" data-testid="tr-leftover-note">{leftoverNote(lim.quotaBytes)}</p>
+            {isPlaying && <TrainingVideoPlayer companyId={companyId} path={l.file_path} title={l.title} />}
+            <div className="bt-fo-acts">
+              <button type="button" className="bt-fo-btn ghost sm" aria-expanded={isPlaying} onClick={() => setPlaying(isPlaying ? null : l.id)} data-testid="tr-watch">
+                {isPlaying ? 'Fermer la vidéo' : '▶ Regarder'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+  const renderItem = (i: Item) => (i.src === 'link' ? row(i.t) : i.src === 'upload' ? videoRow(i.v) : leftoverRow(i.l));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -559,7 +587,9 @@ export default function TrainingsAdmin({ open, onOpenChange, companyId, companyN
           {archived.length > 0 && (
             <>
               <button type="button" className="bt-fo-link" onClick={() => setShowArchived((v) => !v)} data-testid="tr-show-archived">
-                {showArchived ? 'Masquer les formations retirées' : `Afficher les formations retirées (${archived.length})`}
+                {(vids?.leftovers.length || 0) > 0
+                  ? (showArchived ? 'Masquer les formations retirées et les envois non terminés' : `Afficher les formations retirées et les envois non terminés (${archived.length})`)
+                  : (showArchived ? 'Masquer les formations retirées' : `Afficher les formations retirées (${archived.length})`)}
               </button>
               {showArchived && <div className="bt-fo-list" data-testid="tr-archived-list">{archived.map(renderItem)}</div>}
             </>
