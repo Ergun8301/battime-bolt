@@ -113,6 +113,19 @@ Deno.test('(g) Pause dite en toutes lettres et autocorrection : le lecteur local
   if (long('de 8h à 17h avec 1h de pause')) throw new Error('une pause chiffrée reste au lecteur local');
 });
 
+Deno.test('(g bis) Turc : « mola » fléchi (molası, molaya), « öğle arası », « ara verdim » : la pause est reconnue, et la plage collée à ce mot n’en est pas une', () => {
+  for (const milieu of ['bir saat yemek molası verdim', 'molaya çıktım', 'öğle arası bir saat', 'ara verdim']) {
+    const p = profilSaisie(`8’den 12’ye kadar çalıştım, ${milieu}, 13’ten 17’ye kadar çalıştım`);
+    if (!p.signaux.includes('deux_plages_et_pause') || !p.signaux.includes('pause_en_lettres')) throw new Error(`pause turque non reconnue : « ${milieu} » (${p.signaux.join(',')})`);
+    if (p.plages !== 2) throw new Error(`deux plages attendues : « ${milieu} » (${p.plages})`);
+  }
+  // Une plage SUIVIE du mot (avec un mot intercalaire) ou PRÉCÉDÉE de « molası » est la pause, pas du travail.
+  const apres = plagesDuTexte('8’den 12’ye kadar çalıştım, 12’den 13’e kadar yemek molası, 13’ten 17’ye kadar çalıştım').map((x) => `${x.start}-${x.end}`);
+  if (apres.join() !== '08:00-12:00,13:00-17:00') throw new Error(`plage de pause (suffixe) : ${apres.join()}`);
+  const avant = plagesDuTexte('8’den 12’ye kadar çalıştım, molası 12’den 13’e, 13’ten 17’ye kadar çalıştım').map((x) => `${x.start}-${x.end}`);
+  if (avant.join() !== '08:00-12:00,13:00-17:00') throw new Error(`plage de pause (préfixe) : ${avant.join()}`);
+});
+
 // ── Règle navigateur : aucun fichier importé par le navigateur ne contient d'assertion arrière ──
 const RACINE = new URL('../../../', import.meta.url);
 const NAVIGATEUR = [

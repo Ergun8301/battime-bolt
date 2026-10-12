@@ -91,6 +91,20 @@ Deno.test('Ergun : un clic → chantier créé, DEUX créneaux avec la pause, ra
   eq(statuts(out.results), 'i0:chantier:done i0:done', 'le chantier d’abord, puis les heures');
 });
 
+Deno.test('Un créneau retiré dans la fiche : la « pause » devenue sans objet n’est pas écrite (gap_before périmé effacé avant l’enregistrement)', async () => {
+  const f = faux();
+  const r = ergun();
+  // Le salarié retire le créneau 08:00-12:00 : 13:00-17:00 devient la première ligne, avec son gap_before « pause ».
+  const items = sansLignes(r.items, (ls) => ls.slice(1));
+  eq(heuresDe(items).draft.lines[0].gap_before, 'pause', 'la fiche garde le gap_before périmé');
+  await runMulti(entree(r, { items }), f.deps);
+  eq(f.saved[0].lines.map((l) => `${l.start}-${l.end}/${l.gap_before ?? '-'}`), ['13:00-17:00/-'], 'écrit sans gap_before');
+  // Les deux créneaux : la pause entre les deux est écrite.
+  const g = faux();
+  await runMulti(entree(ergun()), g.deps);
+  eq(g.saved[0].lines.map((l) => l.gap_before ?? '-'), ['-', 'pause'], 'pause conservée');
+});
+
 Deno.test('Rien n’est écrit tant que runMulti n’est pas appelé (la fiche est une donnée) ; ville vide → aucune écriture ; hors ligne + nouveau chantier → aucune écriture', async () => {
   const f = faux();
   // Construire la fiche n’appelle aucun accès.

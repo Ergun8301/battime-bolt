@@ -5,7 +5,7 @@
 //   npm run test:worker-multi
 import { buildWorkerSnapshot, type Draft, type DraftLine, type WorkerLive, type WorkerSnapshot } from './worker-assistant-core.ts';
 import {
-  buildLongReply, cleanNewWorksite, memeChantier, MULTI_ANSWER, MULTI_AUTORISES, normaliserHeures, parseDateTr, verifierFiche,
+  buildLongReply, cleanNewWorksite, DATE_ILLISIBLE, memeChantier, MULTI_ANSWER, MULTI_AUTORISES, nettoyerEcarts, normaliserHeures, parseDateTr, verifierFiche,
   type LongLegacy, type MultiItem, type WorkerMultiReply,
 } from './worker-multi.ts';
 import { LIVE_VIDE, WORKER_LIVE, WORKER_RAW } from '../assistant-eval/cases.ts';
@@ -527,4 +527,137 @@ Deno.test('La fiche survit à un aller-retour JSON', () => {
   eq(copie, JSON.parse(JSON.stringify(r)), 'stable');
   const it: MultiItem = copie.items[0];
   eq(it.id, 'i0', 'identifiant');
+});
+
+// ═══ Corrections de la relecture : jamais de perte silencieuse, chantiers distincts, pause niée, turc fléchi ═══
+const DUPONT_2 = (extra: Partial<{ debut: string; fin: string }>[] = []) => extra.map((x) => ({ chantier: 'Dupont', debut: '08:00', fin: '12:00', ...x }));
+
+Deno.test('Un créneau écarté par checkDraft RESTE dans la fiche : la vérification de la carte le bloque (pause ≥ créneau, fin vide, plus de 14 h)', () => {
+  const pause = heures({ lignes: [{ chantier: 'nouveau', debut: '08:00', fin: '12:00' }, { chantier: 'nouveau', debut: '13:00', fin: '17:00', pause: 300 }], nouveau_chantier: PIERRICK }, ERGUN);
+  eq(pause.lines.map((l) => l.key), ['L0', 'L1'], 'les deux créneaux sont dans la fiche');
+  eq(verifierFiche(pause.date, pause.lines, TODAY, []), ['Pause plus longue que le créneau 13:00 → 17:00.'], 'la carte le bloque');
+  eq(pause.errors, ['Pause plus longue que le créneau 13:00 → 17:00.'], 'le serveur le dit aussi');
+  const vide = heures({ lignes: [...DUPONT_2([{ debut: '07:00', fin: '12:00' }]), { chantier: 'Dupont', debut: '13:00', fin: '' }] }, 'x');
+  eq(vide.lines.map((l) => `${l.start}-${l.end}`), ['07:00-12:00', '13:00-'], 'fin vide : le créneau reste, vide');
+  eq(verifierFiche(vide.date, vide.lines, TODAY, []), ['Horaire illisible : vérifiez début et fin.'], 'bloquant');
+  const long = heures({ lignes: [{ chantier: 'Dupont', debut: '05:00', fin: '23:00' }, ...DUPONT_2([{ debut: '08:00', fin: '09:00' }]).slice(0, 0)] }, 'x');
+  eq([long.lines.length, verifierFiche(long.date, long.lines, TODAY, []).length], [1, 1], 'plus de 14 h : reste et bloque');
+  // Par la réponse complète : la fiche multi porte les deux créneaux.
+  const r = multi(build([call('declarer_heures', { date: TODAY, lignes: [{ chantier: 'nouveau', debut: '08:00', fin: '12:00' }, { chantier: 'nouveau', debut: '13:00', fin: '17:00', pause: 300 }], nouveau_chantier: PIERRICK })], ERGUN));
+  eq(heuresDe(r).lines.length, 2, 'la fiche du serveur garde les deux créneaux');
+  // Une fiche sans créneau écarté est inchangée : deux créneaux, aucune erreur.
+  eq(heures({ lignes: [{ chantier: 'nouveau', debut: '08:00', fin: '12:00' }, { chantier: 'nouveau', debut: '13:00', fin: '17:00' }], nouveau_chantier: PIERRICK }, ERGUN).errors, [], 'rien à signaler');
+});
+
+Deno.test('Date : une date ISO qui n’existe pas (2026-09-31) est « illisible » comme les autres ; une date valide reste valide', () => {
+  const d = (date: string) => normaliserHeures({ date, lignes: DUPONT_2([{}]) }, 'x', snap(), VIDE);
+  const x = d('2026-09-31');
+  eq([x.date, x.errors.includes(DATE_ILLISIBLE)], [TODAY, true], '31 septembre');
+  eq(d('2026-02-31').errors.includes(DATE_ILLISIBLE), true, '31 février');
+  eq([d('2026-09-30').date, d('2026-09-30').errors], ['2026-09-30', []], 'valide');
+});
+
+Deno.test('Plus de 6 créneaux : les suivants ne sont pas perdus en silence (« Laissé de côté » + lecture rapide)', () => {
+  const huit = Array.from({ length: 8 }, (_, i) => ({ chantier: 'Dupont', debut: `${String(6 + 2 * i).padStart(2, '0')}:00`, fin: `${String(6 + 2 * i).padStart(2, '0')}:30` }));
+  const r = multi(build([call('declarer_heures', { date: TODAY, lignes: huit })], 'huit interventions courtes chez Dupont dans la journée'));
+  eq(heuresDe(r).lines.length, 6, 'six préparés');
+  eq(r.ignores, [{ name: 'creneaux', label: 'Créneaux', raison: '2 créneaux de plus n’ont pas été préparés : redemandez-les séparément.' }], 'dit');
+  eq(r.incertain, true, 'lecture rapide');
+  const sept = multi(build([call('declarer_heures', { date: TODAY, lignes: huit.slice(0, 7) })], 'sept interventions chez Dupont'));
+  eq(sept.ignores[0].raison, '1 créneau de plus n’a pas été préparé : redemandez-le séparément.', 'singulier');
+  const six = multi(build([call('declarer_heures', { date: TODAY, lignes: huit.slice(0, 6) })], 'six interventions chez Dupont'));
+  eq([six.ignores, six.incertain], [[], undefined], 'six : rien à dire');
+});
+
+Deno.test('memeChantier : les chiffres et les lettres seules DISTINGUENT (Villa 1 ≠ Villa 2, Bâtiment A ≠ B, Lyon 3 ≠ Lyon 7) ; « Dupont Pierrick » = « Pierrick Dupont »', () => {
+  const m = (a: string, b: string, va = 'Lyon', vb = 'Lyon') => memeChantier({ nom: a, ville: va }, { nom: b, ville: vb });
+  eq(m('Villa 1', 'Villa 2'), false, 'Villa 1 / Villa 2');
+  eq(m('Bâtiment A', 'Bâtiment B'), false, 'Bâtiment A / B');
+  eq(m('Martin 1', 'Martin 2'), false, 'Martin 1 / 2');
+  eq(m('Dupont', 'Dupont', 'Lyon 3', 'Lyon 7'), false, 'Lyon 3 / Lyon 7');
+  eq(m('Dupont', 'Dupont', 'Lyon', 'Lyon 3'), false, 'Lyon / Lyon 3');
+  eq(m('Villa 1', 'Villa 1'), true, 'identiques');
+  eq(m('Bâtiment A', 'Batiment A'), true, 'accents');
+  eq(m('Dupont Pierrick', 'Pierrick Dupont', 'Montagna', 'Montagna'), true, 'ordre des mots');
+  eq(m('Dupont', 'Dupont', 'Montagna', 'Montagna 01250'), true, 'code postal à 5 chiffres retiré');
+  eq(m('M. Dupont', 'Dupont'), true, 'civilité « M. »');
+  eq(m('L’atelier Martin', 'Atelier Martin'), true, 'élision');
+  eq(m('Boulangerie du Coin', 'Boulangerie Coin', 'Lyon', 'Lyon 3'), false, 'Boulangerie du Coin (Lyon) ≠ Boulangerie Coin (Lyon 3)');
+  // Dans la fiche : « Villa 2 » n’est pas rattaché à « Villa 1 ».
+  const s = snap();
+  s.chantiers.push({ id: 'w-v1', nom: 'Villa 1', ville: 'Lyon' });
+  const d = normaliserHeures({ date: TODAY, lignes: [{ chantier: 'nouveau', debut: '08:00', fin: '12:00' }], nouveau_chantier: { nom: 'Villa 2', adresse: '', code_postal: '', ville: 'Lyon', description: '' } }, 'x', s, VIDE);
+  eq([d.nouveau_chantier?.reutilise_id, sites(d)], [undefined, 'NOUVEAU'], 'Villa 2 est créé, pas confondu avec Villa 1');
+});
+
+Deno.test('cleanNewWorksite : espaces de largeur nulle et caractères de direction Unicode retirés (le bureau les verrait et les imprimerait)', () => {
+  const x = cleanNewWorksite({ nom: 'Pierrick\u202e Dupont\u200b', ville: 'Lyon\u202e', adresse: '12 rue\u2066 des Lilas\u200f', description: 'pose\u200d store\ufeff banne\u2069' });
+  eq([x.nom, x.ville, x.adresse, x.description], ['Pierrick Dupont', 'Lyon', '12 rue des Lilas', 'pose store banne'], 'nettoyés');
+  eq(cleanNewWorksite({ nom: 'Ayşe Kaya', ville: 'İzmir', description: 'çatı onarımı' }).description, 'çatı onarımı', 'le turc est intact');
+});
+
+Deno.test('Pause NIÉE : « sans pause », « pas de pause », « mola vermedim » → l’écart n’est PAS marqué pause (un trajet n’est pas une pause)', () => {
+  const lignes = [{ chantier: 'Dupont', debut: '08:00', fin: '12:00' }, { chantier: 'Dupont', debut: '12:30', fin: '16:30' }];
+  const gaps = (texte: string) => heures({ lignes }, texte).lines.map((l) => l.gap_before ?? null);
+  eq(gaps('de 8h à 12h puis de 12h30 à 16h30 chez Dupont, sans pause, j’ai juste roulé entre les deux'), [null, null], 'sans pause');
+  eq(gaps('de 8h à 12h puis de 12h30 à 16h30 chez Dupont, pas de pause aujourd’hui, juste le trajet'), [null, null], 'pas de pause');
+  eq(gaps('de 8h à 12h puis de 12h30 à 16h30 chez Dupont, je n’ai pas pris de pause'), [null, null], 'pas pris de pause');
+  eq(gaps('8’den 12’ye kadar, 12:30’dan 16:30’a kadar Dupont’ta, mola vermedim, sadece yol'), [null, null], 'mola vermedim');
+  eq(gaps('8’den 12’ye kadar, 12:30’dan 16:30’a kadar Dupont’ta çalıştım, mola yok'), [null, null], 'mola yok');
+  // Témoins : la pause dite est marquée, un trajet seul ne l’est pas.
+  eq(gaps('de 8h à 12h puis de 12h30 à 16h30 chez Dupont, une pause de 30 minutes'), [null, 'pause'], 'pause affirmée');
+  eq(gaps('de 8h à 12h puis de 12h30 à 16h30 chez Dupont, route entre les deux'), [null, null], 'route');
+});
+
+Deno.test('Pause : une pause portée par un créneau (« 15 minutes de pause » dans 07h-12h) ne qualifie PAS l’écart d’1 h ; sans durée dite l’écart le plus long reste le repli', () => {
+  const d = heures({ lignes: [{ chantier: 'Dupont', debut: '07:00', fin: '12:00', pause: 15 }, { chantier: 'Dupont', debut: '13:00', fin: '17:00' }] }, 'de 7h à 12h avec 15 minutes de pause, puis de 13h à 17h chez Dupont');
+  eq([creneaux(d), d.lines.map((l) => l.gap_before ?? null)], ['07:00-12:00/p15 13:00-17:00', [null, null]], 'écart non qualifié');
+  const sansDuree = heures({ lignes: [{ chantier: 'Dupont', debut: '07:00', fin: '10:00' }, { chantier: 'Dupont', debut: '10:30', fin: '12:00' }, { chantier: 'Dupont', debut: '14:00', fin: '16:30' }] }, 'une pause entre midi et deux');
+  eq(sansDuree.lines.map((l) => l.gap_before ?? null), [null, null, 'pause'], 'repli : le plus long');
+});
+
+Deno.test('Turc : les formes fléchies de « mola » (molası, molaya, molayı), « öğle arası », « ara verdim » marquent la pause (D5/D6)', () => {
+  const args = { lignes: [{ chantier: 'nouveau', debut: '08:00', fin: '12:00' }, { chantier: 'nouveau', debut: '13:00', fin: '17:00' }], nouveau_chantier: PIERRICK };
+  for (const milieu of ['bir saat yemek molası verdim', 'molaya çıktım', 'bir saat molayı', 'öğle arası bir saat', 'ara verdim', 'bir saat mola']) {
+    const d = heures(args, `8’den 12’ye kadar çalıştım, ${milieu}, 13’ten 17’ye kadar çalıştım`);
+    eq([d.lines.map((l) => l.gap_before ?? null), net(d)], [[null, 'pause'], 480], `« ${milieu} »`);
+  }
+  // La pause dite par une durée en minutes reste attachée au bon écart.
+  const d = heures({ lignes: [{ chantier: 'Dupont', debut: '07:00', fin: '10:00' }, { chantier: 'Dupont', debut: '10:45', fin: '12:00' }, { chantier: 'Dupont', debut: '14:00', fin: '16:30' }] }, 'öğle molası 45 dakika');
+  eq(d.lines.map((l) => l.gap_before ?? null), [null, 'pause', null], '45 dakika');
+});
+
+Deno.test('Redécoupage : une ligne qui EST une plage dite (aujourd’hui 8h-17h) n’est pas coupée avec les plages d’un autre jour (hier 8h-12h, 13h-17h)', () => {
+  const d = heures({ lignes: [{ chantier: 'Martin', debut: '08:00', fin: '17:00', pause: 30 }] }, 'Hier de 8h à 12h et de 13h à 17h chez Dupont. Aujourd’hui de 8h à 17h chez Martin avec une demi-heure de pause');
+  eq([creneaux(d), net(d), d.lines.map((l) => l.gap_before ?? null)], ['08:00-17:00/p30', 510, [null]], 'net 8 h 30, pause gardée');
+});
+
+Deno.test('Réserve en turc : « rezerv koy », « sızıntı… rezerv yaz » sont préparées (indice lexical turc) ; une famille demandée mais non reconnue est « non comprise », pas « non demandée »', () => {
+  for (const texte of ['Dupont şantiyesinde 8’den 17’ye kadar çalıştım, rezerv koy: duvar boyası kötü', 'Dupont şantiyesinde bir sızıntı var, rezerv yaz', 'Dupont şantiyesinde kusur var', 'Dupont şantiyesinde bir sorun var, rezerv']) {
+    eq(types(multi(build([call('signaler_reserve', { chantier: 'Dupont', detail: 'sızıntı' })], texte, DEFAUT))), 'signaler_reserve', `« ${texte} »`);
+  }
+  const x = build([call('reserve_corrigee', { chantier: 'Villa Dupont' })], 'la fissure du mur sud', DEFAUT) as { kind: string; answer: string };
+  eq([x.kind, x.answer], ['answer', 'Lever la réserve : Non compris : redemandez-le.'], 'famille détectée, indice absent');
+});
+
+Deno.test('Appels sans heures ni annexe : le premier est rendu, les AUTRES sont nommés (« Non préparé : … ») — rien ne disparaît sans un mot', () => {
+  const a = build([call('terminer_pointage'), call('repondre', { reponse: 'Ok.' })], 'j’ai fini', DEFAUT) as LongLegacy;
+  eq([a.kind, a.confirmer, a.answer.endsWith(' Non préparé : Réponse. Redemandez-le séparément.')], ['action', true, true], 'terminer + repondre');
+  const b = build([call('modifier_heures', { chantier: 'Villa Dupont', debut: '07:00', fin: '11:30' }), call('copier_journee', { depuis: '2026-09-30', vers: [TODAY] })], 'change mes horaires puis copie hier', DEFAUT) as LongLegacy;
+  eq(b.answer.includes('Non préparé : Copier une journée. Redemandez-le séparément.'), true, 'modifier + copier');
+  const seul = build([call('terminer_pointage')], 'j’ai fini', DEFAUT) as LongLegacy;
+  eq(seul.answer.includes('Non préparé'), false, 'un seul appel : rien de plus');
+});
+
+Deno.test('nettoyerEcarts : « pause » périmée effacée (première ligne, écart nul ou > 4 h) ; gardée entre deux voisins séparés de 1 à 240 min', () => {
+  const l = (start: string, end: string, extra: Partial<DraftLine> = {}): DraftLine => ({ worksite_id: 'w', worksite_text: '', start, end, break_minutes: 0, ...extra });
+  const g = (lines: DraftLine[]) => nettoyerEcarts(lines).map((x) => x.gap_before ?? null);
+  eq(g([l('08:00', '12:00'), l('13:00', '17:00', { gap_before: 'pause' })]), [null, 'pause'], 'inchangé');
+  eq(g([l('13:00', '17:00', { gap_before: 'pause' })]), [null], 'le créneau d’avant a été retiré');
+  eq(g([l('08:00', '13:00'), l('13:00', '17:00', { gap_before: 'pause' })]), [null, null], 'écart nul');
+  eq(g([l('06:00', '08:00'), l('13:00', '17:00', { gap_before: 'pause' })]), [null, null], 'écart de 5 h');
+  eq(g([l('13:00', '17:00', { gap_before: 'pause' }), l('08:00', '12:00')]), [ 'pause', null], 'ordre de la fiche différent de l’ordre des heures : on suit les heures');
+  const garde = nettoyerEcarts([l('08:00', '12:00', { key: 'L0' }), l('13:00', '17:00', { key: 'L1', gap_before: 'pause' })]);
+  eq(garde.map((x) => x.key), ['L0', 'L1'], 'les clés sont conservées');
+  eq('gap_before' in nettoyerEcarts([l('13:00', '17:00', { gap_before: 'pause' })])[0], false, 'la clé est retirée, pas mise à undefined');
 });

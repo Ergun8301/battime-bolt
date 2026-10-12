@@ -3,7 +3,8 @@
 // Le salarié a le droit d'INSÉRER un chantier de son entreprise (politique
 // worksites_worker_insert_own_company), pas de le modifier ni de le supprimer.
 // `company_id` vient de sa session, jamais de la réponse du serveur. Le chantier
-// est CHERCHÉ avant d'être créé (même nom + même ville : réutilisé, pas de doublon).
+// est CHERCHÉ avant d'être créé par la fiche « Tout confirmer » (même nom + même ville : réutilisé, pas de doublon) ; le geste court
+// « ajoute le chantier X à Lyon » le crée tel que dit.
 import { supabase } from '@/lib/supabase';
 import { createWorksite } from '@/lib/planning-writes';
 import { memeChantier } from '@/supabase/functions/_shared/worker-multi';
@@ -37,11 +38,4 @@ export async function createWorksiteSalarie(companyId: string, nw: NewWorksite):
     row = await createWorksite(companyId, { ...fields, address: nw.adresse ? `${nw.adresse}, ${nw.code_postal}` : nw.code_postal });
   }
   return { id: row.id, nom: row.client_name, ville: nw.ville };
-}
-
-/** « ajoute le chantier X à Lyon » : un chantier actif de même nom + ville est utilisé tel quel, sinon il est créé. */
-export async function findOrCreateWorksite(companyId: string, nw: NewWorksite): Promise<FoundWorksite & { created: boolean }> {
-  const found = await findWorksite(companyId, nw);
-  if (found) return { ...found, created: false };
-  return { ...(await createWorksiteSalarie(companyId, nw)), created: true };
 }

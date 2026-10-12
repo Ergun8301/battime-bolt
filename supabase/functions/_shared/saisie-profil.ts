@@ -73,9 +73,11 @@ const NUM = String.raw`(\d{1,2})(?:[:.](\d{2}))?`;
 // turc : « 8'den 12'ye (kadar) », « 7:30'dan 12'ye », « 08.00'dan 12.00'ye », « 8 ile 12 arası »
 const RE_TR = new RegExp(`${PREFIXE}${NUM}\\s*'?\\s*(?:den|dan|ten|tan)\\s+${NUM}\\s*'?\\s*(?:ye|ya|e|a)(?:\\s+kadar)?(?![\\p{L}\\d])`, 'giu');
 const RE_TR2 = new RegExp(`${PREFIXE}${NUM}\\s*(?:ile|-)\\s*${NUM}\\s*arasi(?![\\p{L}\\d])`, 'giu');
-const PAUSE_MOT = String.raw`(?:pause|coupure|dejeuner|repas|mola|ara)`;
+// Le turc fléchit « mola » (molası, molaya, molayı…) : `mola\w*`, plus « öğle arası » et « ara verdim ».
+const PAUSE_MOT = String.raw`(?:pause|coupure|dejeuner|repas|mola\w*|ara|ogle arasi)`;
 const PAUSE_AVANT = new RegExp(`${PAUSE_MOT}\\s*(?:de\\s+|d')?\\s*$`);
-const PAUSE_APRES = new RegExp(`^\\s+(?:de\\s+|d')?(?:pause|coupure|dejeuner|mola)(?![\\p{L}\\d])(?!\\s*(?:de\\s+|d')?\\d)`, 'u');
+// Un mot intercalaire est toléré en turc : « 12'den 13'e kadar yemek molası ».
+const PAUSE_APRES = new RegExp(`^\\s+(?:de\\s+|d')?(?:(?:yemek|ogle)\\s+)?(?:pause|coupure|dejeuner|mola\\w*|ogle arasi|ara verd\\w*)(?![\\p{L}\\d])(?!\\s*(?:de\\s+|d')?\\d)`, 'u');
 
 export interface PlageTexte { start: string; end: string; at: number }
 /**
@@ -133,7 +135,7 @@ const FAMILLES: [string, RegExp][] = [
   ['nouveau_chantier', /\bnouveau\s+(?:chantier|client)|\bnouvelle?\s+cliente?|\byeni\s+(?:bir\s+)?(?:santiye|musteri)/],
 ];
 /** Mots qui disent la pause SANS durée en chiffres (le lecteur local ne les lit pas : « demi-heure de pause », « une heure de pause »). */
-const PAUSE_LETTRES = /\b(?:pause|coupure|dejeuner|mola)\b/;
+const PAUSE_LETTRES = /\b(?:pause|coupure|dejeuner|mola\w*|ogle arasi|ara verd\w*)\b/;
 const PAUSE_CHIFFREE = /\b(?:pause|coupure|dejeuner)\s+(?:de\s+|d')?\d|\d\s*(?:h|heures?|min\w*)\s*\d{0,2}\s+de\s+(?:pause|coupure)\b/;
 /** Autocorrection en cours de phrase : « 14h, euh non plutôt 14h30 ». */
 const AUTOCORRECTION = /\b(?:non plutot|ou plutot|plutot|enfin|pardon|attends?|je me trompe|en fait non|euh non|non non)\b/;
@@ -162,7 +164,7 @@ export function profilSaisie(text: string): ProfilSaisie {
   if (turc) signaux.push('turc');
   if (familles.length >= 2) signaux.push('plusieurs_actions');
   if (plages >= 3) signaux.push('trois_plages');
-  if (plages >= 2 && /\b(?:pause|coupure|dejeuner|mola)\b/.test(n)) signaux.push('deux_plages_et_pause');
+  if (plages >= 2 && PAUSE_LETTRES.test(n)) signaux.push('deux_plages_et_pause');
   if (/\bnouveau\s+(?:chantier|client)|\bnouvelle?\s+cliente?/.test(n) && /\b\d{5}\b|\bprenom\b|\bnom\b|\badresse\b|\brue\b|\bavenue\b|\bchemin\b|\broute\b/.test(n)) signaux.push('nouveau_chantier_detaille');
   // Une plage + le mot « pause » sans durée en chiffres : le lecteur local l'ignorerait et enregistrerait 9 h au lieu de 8 h 30.
   if (plages >= 1 && PAUSE_LETTRES.test(n) && !PAUSE_CHIFFREE.test(n)) signaux.push('pause_en_lettres');

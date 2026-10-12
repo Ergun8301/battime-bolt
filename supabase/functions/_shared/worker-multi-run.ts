@@ -12,7 +12,7 @@ import {
   fmtMin, isWorkerRemoval, shiftMinutes, toMin,
   type DraftLine, type NewWorksite, type WorkerActionDraft, type WorkerSnapshot,
 } from './worker-assistant-core.ts';
-import { cleanNewWorksite, memeChantier, MULTI_AUTORISES, verifierFiche, type DejaNotee, type MultiItem } from './worker-multi.ts';
+import { cleanNewWorksite, memeChantier, MULTI_AUTORISES, nettoyerEcarts, verifierFiche, type DejaNotee, type MultiItem } from './worker-multi.ts';
 
 export type UndoFn = () => Promise<{ ok: boolean; message: string; partial?: boolean }>;
 /** Ce que rend l'enregistrement des lignes d'heures (lib/worker-assistant.ts : makeWorkerSaver avec `undoPartiel`). */
@@ -205,7 +205,8 @@ export async function runMulti(input: MultiRunInput, deps: MultiDeps): Promise<M
     if (lines.some((l) => l.nouveau) && !w) {
       set(heuresItem.id, 'skipped', 'le chantier n’est pas créé');
     } else {
-      lignesFinales = lines.map((l) => (l.nouveau ? { ...l, worksite_id: w.id, worksite_text: w.nom, nouveau: undefined } : l));
+      // `gap_before` périmé (créneau retiré, horaires retouchés dans la fiche) : jamais écrit.
+      lignesFinales = nettoyerEcarts(lines.map((l) => (l.nouveau ? { ...l, worksite_id: w.id, worksite_text: w.nom, nouveau: undefined } : l)));
       const saver = deps.makeSaver(w ? [...chantiers.filter((c) => c.id !== w.id), { id: w.id, nom: w.nom, ville: w.ville || null }] : chantiers);
       set(heuresItem.id, 'running', '');
       try {

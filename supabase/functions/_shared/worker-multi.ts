@@ -71,6 +71,10 @@ export const MULTI_ORDRE = ['chantier', 'heures', 'panier_repas', 'signaler_rese
 export const MULTI_AUTORISES = ['panier_repas', 'signaler_reserve', 'reserve_corrigee', 'demander_conge', 'envoyer_journee'] as const;
 
 const MAX_ITEMS = 4;
+/** Au plus 6 créneaux par fiche (comme le lecteur local) : les suivants sont DITS, jamais perdus en silence. */
+const MAX_CRENEAUX = 6;
+/** Erreur posée par le serveur quand le modèle rend une date qu'aucune règle ne lit : la carte la garde bloquante tant que le salarié n'a pas touché au champ « Jour ». */
+export const DATE_ILLISIBLE = 'Date illisible : vérifiez le jour.';
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 const validIso = (iso: string) => { const d = new Date(`${iso}T12:00:00Z`); return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === iso; };
@@ -100,14 +104,18 @@ export function parseDateTr(raw: string, today: string): string {
 function lireDate(raw: unknown, today: string): { date: string; illisible: boolean } {
   if (raw === undefined || raw === null || raw === '') return { date: today, illisible: false };
   const s = String(raw).trim();
-  if (ISO.test(s)) return { date: s, illisible: false };
+  if (ISO.test(s)) return validIso(s) ? { date: s, illisible: false } : { date: today, illisible: true };
   const d = parseDateFr(s, today) || parseDateTr(s, today);
   return d ? { date: d, illisible: false } : { date: today, illisible: true };
 }
 
 // ── Le chantier à créer ─────────────────────────────────────────────────────
-/** Retours à la ligne, tabulations et caractères de contrôle → espace ; espaces réduits ; longueur bornée. */
-const nettoyer = (v: unknown, max: number) => String(v ?? '').replace(/[\x00-\x1f\x7f-\x9f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max).trim();
+/**
+ * Retours à la ligne, tabulations, caractères de contrôle, espaces de largeur nulle et caractères de direction Unicode
+ * (U+200B-200F, U+202A-202E, U+2060-2064, U+2066-2069, U+FEFF : ils inverseraient ou cacheraient du texte côté bureau) → espace ;
+ * espaces réduits ; longueur bornée.
+ */
+const nettoyer = (v: unknown, max: number) => String(v ?? '').replace(/[\x00-\x1f\x7f-\x9f\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max).trim();
 const CIVILITE = /^(?:monsieur|madame|mademoiselle|mme|mlle|mr|m\.|bay|bayan)\s+/i;
 const PETITS = new Set(['de', 'du', 'des', 'la', 'le', 'les', 'et', 'en', 'sur', 'sous', 'aux', 'au', 'd', 'l']);
 /** Tout en minuscules (dicté) → majuscule initiale de chaque mot (séparateurs espace, tiret, apostrophe) ; sinon tel quel (« Ayşe Kaya » intact). */
@@ -154,13 +162,15 @@ export function cleanNewWorksite(raw: unknown): NewWorksite {
   return { nom, adresse: adresse.slice(0, 120), code_postal: cp, ville: capitaliser(ville.replace(/[\s.,;:]+$/, '')).slice(0, 60), description };
 }
 
-const MOTS_VIDES = new Set(['monsieur', 'madame', 'mme', 'mr', 'bay', 'bayan', 'chez', 'le', 'la', 'les', 'de', 'du', 'des', 'et', 'sarl', 'sas', 'ets']);
-const motsNom = (s: string) => Array.from(new Set(norm(s).split(/[^a-z0-9]+/).filter((w) => w.length > 1 && !MOTS_VIDES.has(w)))).sort().join(' ');
-const cleVille = (s: string) => norm(s).replace(/\([^)]*\)/g, ' ').replace(/\d+/g, ' ').replace(/[^a-z]+/g, ' ').trim();
+const MOTS_VIDES = new Set(['monsieur', 'madame', 'mme', 'mr', 'bay', 'bayan', 'chez', 'le', 'la', 'les', 'de', 'du', 'des', 'd', 'l', 'et', 'sarl', 'sas', 'ets']);
+// Les chiffres et les lettres seules DISTINGUENT : « Villa 1 » ≠ « Villa 2 », « Bâtiment A » ≠ « Bâtiment B ». « M. » (civilité) est retiré avant.
+const motsNom = (s: string) => Array.from(new Set(norm(s).replace(/(^|\s)m\.\s*/g, '$1').split(/[^a-z0-9]+/).filter((w) => w && !MOTS_VIDES.has(w)))).sort().join(' ');
+// Seuls les parenthèses et le code postal (5 chiffres) sont retirés : « Lyon 3 » ≠ « Lyon 7 » (arrondissement).
+const cleVille = (s: string) => norm(s).replace(/\([^)]*\)/g, ' ').replace(/(^|[^\d])\d{5}(?!\d)/g, '$1 ').replace(/[^a-z0-9]+/g, ' ').trim();
 
 /**
- * Même chantier ? Les mots du nom (civilités et mots vides retirés), dans n'importe quel ordre, ET la ville (sans chiffres ni
- * parenthèses), non vide. « Dupont Pierrick » = « Pierrick Dupont » ; « Montagna » = « Montagna (01) » = « Montagna 01250 » ;
+ * Même chantier ? Les mots du nom (civilités et mots vides retirés, chiffres et lettres seules gardés), dans n'importe quel ordre,
+ * ET la ville (sans code postal ni parenthèses), non vide. « Dupont Pierrick » = « Pierrick Dupont » ; « Montagna » = « Montagna (01) » = « Montagna 01250 » ;
  * « Pierrick Dupont » ≠ « Villa Dupont ». Serveur ET client.
  */
 export function memeChantier(a: { nom: string; ville?: string | null }, b: { nom: string; ville?: string | null }): boolean {
@@ -196,12 +206,30 @@ export function verifierFiche(date: string, lines: DraftLine[], aujourdhui: stri
   return [...autres, ...(date === aujourdhui ? dejaNoteesErreurs(ck.lines, dejaNotees) : []), ...horsPeriode];
 }
 
+/**
+ * `gap_before` n'a de sens qu'entre deux créneaux voisins séparés de 1 à 240 min. La première ligne, ou un écart devenu nul ou
+ * trop grand (le salarié a retiré un créneau ou retouché les horaires dans la fiche), perd son « pause » : jamais écrit en base.
+ */
+export function nettoyerEcarts(lines: DraftLine[]): DraftLine[] {
+  const ordre = lines.map((_, i) => i).sort((a, b) => toMin(lines[a].start) - toMin(lines[b].start));
+  const avant = new Map<number, number>();
+  ordre.forEach((i, k) => { if (k > 0) avant.set(i, ordre[k - 1]); });
+  return lines.map((l, i) => {
+    if (!l.gap_before) return l;
+    const p = avant.get(i) === undefined ? null : lines[avant.get(i)!];
+    const trou = p ? toMin(l.start) - (toMin(p.start) + shiftMinutes(p.start, p.end)) : 0;
+    if (trou > 0 && trou <= 240) return l;
+    const { gap_before: _retire, ...reste } = l;
+    return reste;
+  });
+}
+
 // ── 6.1 / 6.2 : créneaux et pause ───────────────────────────────────────────
 interface Brute { chantier: string; debut: string; fin: string; pause: number }
 
 function lignesBrutes(args: Record<string, unknown>): Brute[] {
   const l = Array.isArray(args.lignes) ? args.lignes : [];
-  return l.slice(0, 6).map((x) => {
+  return l.slice(0, MAX_CRENEAUX).map((x) => {
     const r = obj(x);
     const debut = String(r.debut ?? ''), fin = String(r.fin ?? '');
     return { chantier: nettoyer(r.chantier, 80), debut: parseTime(debut) ?? debut, fin: parseTime(fin) ?? fin, pause: Math.max(0, Number(r.pause) || 0) };
@@ -218,6 +246,8 @@ function decouper(lines: Brute[], plages: PlageTexte[]): Brute[] {
   if (plages.length < 2) return lines;
   const out: Brute[] = [];
   for (const L of lines) {
+    // La ligne EST déjà une plage dite (« aujourd'hui de 8h à 17h » quand la phrase cite aussi hier 8h-12h, 13h-17h) : jamais redécoupée.
+    if (plages.some((p) => p.start === L.debut && p.end === L.fin)) { out.push(L); continue; }
     const a = plages.findIndex((p) => p.start === L.debut);
     let b = -1;
     for (let j = a + 1; a >= 0 && j < plages.length; j++) {
@@ -252,23 +282,41 @@ function absorberPause(lines: Brute[]): number {
   return absorbee;
 }
 
+/** Le mot de la pause (texte plié) : français et turc, formes fléchies comprises (« molası », « molaya », « öğle arası », « ara verdim »). */
+const MOT_PAUSE = String.raw`(?:pause|coupure|dejeuner|mola\w*|ogle arasi|ara verd\w*)`;
+/** « sans pause », « pas de pause », « aucune pause », « ni pause », « hiç mola » : la pause est NIÉE. */
+const NEG_AVANT = /(?:^|[^a-z])(?:sans|aucune?|ni|jamais|hic|pas(?:\s+(?:pris|fait|eu))?(?:\s+(?:de|d'))?)\s*(?:une?\s+|la\s+)?$/;
+/** « mola vermedim », « mola yok », « mola vermeden » : niée en turc (le verbe suit le mot). */
+const NEG_APRES = /^\s*(?:\w+\s+)?(?:vermedim|vermeden|vermedik|yapmadim|almadim|yok)(?![a-z])/;
+
+/** Le salarié dit-il qu'il a FAIT une pause ? Une pause niée (« sans pause, juste le trajet ») ne compte pas. */
+function pauseAffirmee(n: string): boolean {
+  for (const m of Array.from(n.matchAll(new RegExp(`(^|[^a-z])${MOT_PAUSE}(?![a-z])`, 'g')))) {
+    const debut = (m.index ?? 0) + m[1].length, fin = (m.index ?? 0) + m[0].length;
+    if (!NEG_AVANT.test(n.slice(Math.max(0, debut - 20), debut)) && !NEG_APRES.test(n.slice(fin, fin + 30))) return true;
+  }
+  return false;
+}
+
 /** La durée de pause DITE (« pause d'1h », « 45 minutes de pause », « une demi-heure de pause », « bir saat mola »), en minutes. */
 function dureePauseDite(text: string): number | null {
   const n = norm(text);
-  const MOT = String.raw`(?:pause|coupure|dejeuner|mola)`;
   const duree = (h: string | undefined, mm: string | undefined, unite: string) => (/^(?:h|heures?)$/.test(unite) ? Number(h) * 60 + Number(mm || 0) : Number(h));
-  const avant = new RegExp(`${MOT}\\s+(?:de\\s+|d')?(\\d{1,3})\\s*(h|heures?|min\\w*|dakika)\\s*(\\d{2})?`).exec(n);
+  const avant = new RegExp(`${MOT_PAUSE}\\s+(?:de\\s+|d')?(\\d{1,3})\\s*(h|heures?|min\\w*|dakika)\\s*(\\d{2})?`).exec(n);
   if (avant) return duree(avant[1], avant[3], avant[2]);
-  const apres = new RegExp(`(\\d{1,3})\\s*(h|heures?|min\\w*|dakika)\\s*(\\d{2})?\\s+(?:de\\s+)?${MOT}`).exec(n);
+  const apres = new RegExp(`(\\d{1,3})\\s*(h|heures?|min\\w*|dakika)\\s*(\\d{2})?\\s+(?:de\\s+)?${MOT_PAUSE}`).exec(n);
   if (apres) return duree(apres[1], apres[3], apres[2]);
   if (/demi[- ]?heure|yarim saat/.test(n)) return 30;
   if (/\b(?:une|1|bir)\s+(?:heure|saat)\b|\bd'une heure\b/.test(n)) return 60;
   return null;
 }
 
-/** La ligne qui SUIT l'écart dit « pause » : UNE seule, l'écart le plus proche de la durée dite (±10 min), sinon le plus long. */
+/**
+ * La ligne qui SUIT l'écart dit « pause » : UNE seule, l'écart le plus proche de la durée dite (±10 min). Sans durée dite ET sans
+ * pause portée par un créneau, l'écart le plus long ; sinon rien (le salarié répondra « Route ou Pause ? » dans « Ma journée »).
+ */
 function marquerPause(lines: DraftLine[], text: string, absorbee: number): void {
-  if (!/\b(?:pause|coupure|dejeuner|mola)\b/.test(norm(text))) return;
+  if (!pauseAffirmee(norm(text))) return;
   const trous: { i: number; trou: number }[] = [];
   for (let i = 1; i < lines.length; i++) {
     const trou = toMin(lines[i].start) - (toMin(lines[i - 1].start) + shiftMinutes(lines[i - 1].start, lines[i - 1].end));
@@ -277,8 +325,8 @@ function marquerPause(lines: DraftLine[], text: string, absorbee: number): void 
   if (!trous.length) return;
   const dite = absorbee || dureePauseDite(text);
   const proche = dite ? trous.filter((t) => Math.abs(t.trou - dite) <= 10).sort((x, y) => Math.abs(x.trou - dite) - Math.abs(y.trou - dite))[0] : undefined;
-  const choix = proche ?? trous.slice().sort((x, y) => y.trou - x.trou)[0];
-  lines[choix.i].gap_before = 'pause';
+  const choix = proche ?? (!dite && !lines.some((l) => l.break_minutes > 0) ? trous.slice().sort((x, y) => y.trou - x.trou)[0] : undefined);
+  if (choix) lines[choix.i].gap_before = 'pause';
 }
 
 // ── 6.3 : rattachement au nouveau chantier ──────────────────────────────────
@@ -357,15 +405,20 @@ export function normaliserHeures(args: Record<string, unknown>, text: string, sn
 
   const d = checkDraft(date, lines, snapshot);
   const deja = live.lignes.map((l) => ({ debut: l.debut, fin: l.fin, chantier: l.chantier, envoyee: l.envoyee }));
-  const errors = [...(illisible ? ['Date illisible : vérifiez le jour.'] : []), ...(lines.length ? verifierFiche(date, lines, snapshot.aujourdhui, deja) : d.errors)];
-  marquerPause(d.lines, text, absorbee);
+  const errors = [...(illisible ? [DATE_ILLISIBLE] : []), ...(lines.length ? verifierFiche(date, lines, snapshot.aujourdhui, deja) : d.errors)];
+  // Un créneau que checkDraft écarte (illisible, incohérent, pause ≥ créneau) RESTE dans la fiche : la carte le montre et sa
+  // vérification (verifierFiche) bloque « Tout confirmer » tant qu'il n'est pas corrigé ou retiré. Jamais une heure perdue en silence.
+  const gardees = new Set(d.lines.map((l) => l.key));
+  const rang = (l: DraftLine) => (HHMM.test(l.start) ? toMin(l.start) : Number.MAX_SAFE_INTEGER);
+  const toutes = [...d.lines, ...lines.filter((l) => !gardees.has(l.key))].sort((x, y) => rang(x) - rang(y));
+  marquerPause(toutes, text, absorbee);
 
-  const rattachees = d.lines.filter((l) => l.nouveau || (existant && l.worksite_id === existant.id)).length;
-  const draft: Draft = { date, lines: d.lines, errors };
-  if (blocDit(nc) || d.lines.some((l) => l.nouveau)) {
-    const bloc: NewWorksite = d.lines.some((l) => l.nouveau) && !blocDit(nc) ? { ...BLOC_VIDE } : nc;
+  const rattachees = toutes.filter((l) => l.nouveau || (existant && l.worksite_id === existant.id)).length;
+  const draft: Draft = { date, lines: toutes, errors };
+  if (blocDit(nc) || toutes.some((l) => l.nouveau)) {
+    const bloc: NewWorksite = toutes.some((l) => l.nouveau) && !blocDit(nc) ? { ...BLOC_VIDE } : nc;
     if (existant && rattachees) bloc.reutilise_id = existant.id;
-    const sansLigne = !d.lines.some((l) => l.nouveau) && !(existant && rattachees);
+    const sansLigne = !toutes.some((l) => l.nouveau) && !(existant && rattachees);
     if (bloc.nom && sansLigne) bloc.inutilise = true;
     draft.nouveau_chantier = bloc;
     const manque = sansLigne ? [] : champsManquants(bloc);
@@ -383,12 +436,12 @@ const LIBELLES: Record<string, string> = {
   retirer_reserve: 'Retirer une réserve', modifier_heures: 'Modifier une ligne', copier_journee: 'Copier une journée', terminer_pointage: 'Terminer le pointage',
   ranger_photo: 'Ranger un fichier', email_client: 'Mémoriser l’email d’un client', planning_collegues: 'Planning des collègues', declarer_heures: 'Heures d’un autre jour',
   panier_repas: 'Panier repas', signaler_reserve: 'Réserve', reserve_corrigee: 'Lever la réserve', envoyer_journee: 'Envoyer la journée', demander_conge: 'Congé',
-  nouveau_chantier: 'Nouveau chantier', autres_actions: 'Autres actions',
+  nouveau_chantier: 'Nouveau chantier', autres_actions: 'Autres actions', creneaux: 'Créneaux', repondre: 'Réponse',
 };
 /** Indice lexical obligatoire pour une annexe : une consigne cachée dans un nom de chantier (injecté dans la consigne de tous les salariés) ne déclenche rien. */
 const INDICE: Record<string, RegExp> = {
   panier_repas: /panier|sepet|yemek/,
-  signaler_reserve: /reserv|fissure|malfacon|catlak|defaut|probleme|souci|casse|fuite|humidite|infiltration/,
+  signaler_reserve: /reserv|rezerv|fissure|malfacon|catlak|defaut|probleme|souci|casse|fuite|humidite|infiltration|kusur|sorun|hasar|sizinti|kirik|\bnem\b/,
   reserve_corrigee: /reserv|rezerv|leve|regle|corrig|duzelt/,
   demander_conge: /conge|vacances|malad|rtt|izin|rapor|hasta|absen|tatil|repos/,
   envoyer_journee: /envoi|envoy|valide|transmet|gonder/,
@@ -475,7 +528,10 @@ export function buildLongReply(calls: Appel[], text: string, snapshot: WorkerSna
   if (!H.length && !NC.length && !ANN.length) {
     const r = fromWorkerCall(uniq[0].name, uniq[0].args, snapshot, live) as LongLegacy;
     // Un geste « direct » (modifier une ligne, copier une journée, terminer le pointage) ne s'exécute jamais tout seul ici.
-    return r.kind === 'action' && workerActionMode(r.action.draft) === 'direct' ? { ...r, confirmer: true } : r;
+    const reponse: LongLegacy = r.kind === 'action' && workerActionMode(r.action.draft) === 'direct' ? { ...r, confirmer: true } : r;
+    // Les autres appels ne sont PAS rendus : on le dit (rien ne disparaît sans un mot).
+    const laisses = Array.from(new Set(uniq.slice(1).map((c) => LIBELLES[c.name] ?? c.name)));
+    return laisses.length ? { ...reponse, answer: `${reponse.answer} Non préparé : ${laisses.join(', ')}. Redemandez-le séparément.` } : reponse;
   }
   // 4. Une suppression ou un « autre » mêlé à d'autres appels : jamais dans « Tout confirmer ».
   for (const c of SUPP) ignorer(c.name, 'Effacer ou annuler se demande à part, avec sa propre confirmation.');
@@ -491,6 +547,7 @@ export function buildLongReply(calls: Appel[], text: string, snapshot: WorkerSna
 
   const pieces: Piece[] = [];
   let heures: Draft | null = null;
+  let creneauxEnTrop = 0;
 
   // 5. Un seul declarer_heures par jour : même date → lignes fusionnées ; autre jour → laissé de côté.
   if (H.length) {
@@ -514,6 +571,9 @@ export function buildLongReply(calls: Appel[], text: string, snapshot: WorkerSna
       else restes.push(c);
     }
     NC.splice(0, NC.length, ...restes);
+    // Au-delà de 6 créneaux, les suivants ne sont pas préparés : c'est dit, la fiche passe en « lecture rapide ».
+    creneauxEnTrop = Math.max(0, (Array.isArray(args.lignes) ? args.lignes.length : 0) - MAX_CRENEAUX);
+    if (creneauxEnTrop) ignorer('creneaux', `${creneauxEnTrop} créneau${creneauxEnTrop > 1 ? 'x' : ''} de plus n’${creneauxEnTrop > 1 ? 'ont' : 'a'} pas été préparé${creneauxEnTrop > 1 ? 's' : ''} : redemandez-${creneauxEnTrop > 1 ? 'les' : 'le'} séparément.`);
     heures = normaliserHeures(args, text, snapshot, live);
     pieces.push({ rang: RANG.heures, item: { kind: 'heures', draft: heures, depend: [] } });
   }
@@ -548,8 +608,14 @@ export function buildLongReply(calls: Appel[], text: string, snapshot: WorkerSna
   const virtuelles = heures && dateFiche === today ? lignesVirtuelles(heures, snapshot) : [];
   const liveApres: WorkerLive = { ...live, lignes: [...live.lignes, ...virtuelles] };
   const nouveauIds = new Set(heures ? heures.lines.filter((l) => l.nouveau).map((l) => `draft:${l.key}`) : []);
+  const profil = profilSaisie(text);
   for (const c of annexes) {
-    if (!INDICE[c.name]?.test(n)) { ignorer(c.name, 'Non demandé dans votre message.'); continue; }
+    if (!INDICE[c.name]?.test(n)) {
+      // Demandée dans la phrase (la famille y est) mais non reconnue par l'indice : « non comprise », pas « non demandée ».
+      const dite = profil.familles.some((f) => FAMILLES[f]?.noms.includes(c.name));
+      ignorer(c.name, dite ? 'Non compris : redemandez-le.' : 'Non demandé dans votre message.');
+      continue;
+    }
     if (JOUR_SEUL.includes(c.name) && heures && dateFiche !== today) { ignorer(c.name, 'Le panier, la réserve et l’envoi ne concernent que la journée d’aujourd’hui.'); continue; }
     const args = c.name === 'demander_conge' ? dateConge(c.args, today) : c.args;
     const prep = prepareWorkerAction(c.name, args, snapshot, liveApres);
@@ -589,13 +655,13 @@ export function buildLongReply(calls: Appel[], text: string, snapshot: WorkerSna
   const couverts = new Set<string>([...items.map(typeDe), ...ignores.map((i) => i.name)]);
   if (items.some((it) => it.kind === 'heures')) couverts.add('declarer_heures');
   if (items.some((it) => it.kind === 'chantier' || (it.kind === 'heures' && it.draft.nouveau_chantier))) couverts.add('nouveau_chantier');
-  const non_prepare = profilSaisie(text).familles.map((f) => FAMILLES[f]).filter((f) => f && !f.noms.some((nom) => couverts.has(nom))).map((f) => f.libelle);
+  const non_prepare = profil.familles.map((f) => FAMILLES[f]).filter((f) => f && !f.noms.some((nom) => couverts.has(nom))).map((f) => f.libelle);
 
   const reply: WorkerMultiReply = {
     kind: 'multi', answer: MULTI_ANSWER, date: dateFiche, aujourdhui: today, items, ignores, non_prepare,
     deja_notees: live.lignes.map((l) => ({ debut: l.debut, fin: l.fin, chantier: l.chantier, envoyee: l.envoyee })),
     ...(note ? { note } : {}), ...(links ? { links } : {}),
-    ...(opts.secours || non_prepare.length || rognes > 0 ? { incertain: true as const } : {}),
+    ...(opts.secours || non_prepare.length || rognes > 0 || creneauxEnTrop > 0 ? { incertain: true as const } : {}),
   };
   return reply;
 }

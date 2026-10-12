@@ -17,8 +17,7 @@ import { parisHHmm } from '@/lib/utils';
 import { markEntryReserve, updateEntryTimes } from '@/lib/worker-entry';
 import { removeWorksiteDocument, uploadWorksiteDocument } from '@/lib/chantier-docs';
 import { copyLinesTo, sendWorkerDay, setDayMealOnline } from '@/lib/worker-day';
-import { findOrCreateWorksite } from '@/lib/worker-worksite';
-import { cleanNewWorksite } from '@/supabase/functions/_shared/worker-multi';
+import { createWorksiteSalarie } from '@/lib/worker-worksite';
 import { geoInfoSeen } from '@/lib/position-info';
 import { MEAL_OFF_MESSAGE, readMealEnabled } from '@/lib/meal-setting';
 import type { WorkerActionDraft } from '@/supabase/functions/_shared/worker-assistant-core';
@@ -299,9 +298,10 @@ export function makeWorkerExecutor(user: { id: string; company_id: string }): Wo
           break;
         }
         case 'nouveau_chantier': {
-          // Adresse, code postal et travaux seulement s'ils ont été dits ; un chantier actif de même nom + ville (relu maintenant) est utilisé, rien n'est créé en double.
-          const r = await findOrCreateWorksite(user.company_id, cleanNewWorksite({ nom: d.nom, ville: d.ville, adresse: d.adresse, code_postal: d.code_postal, description: d.description }));
-          message = r.created ? `Chantier « ${d.nom} » ajouté.` : `Chantier « ${d.nom} » : il existait déjà, rien n’a été créé.`;
+          // Créé tel que dit (« ajoute le chantier X à Lyon » est explicite) : le serveur a déjà refusé l'identique exact. Adresse, code postal
+          // et travaux seulement s'ils ont été dits ; sans eux, exactement l'ancien insert (nom + ville).
+          await createWorksiteSalarie(user.company_id, { nom: d.nom, ville: d.ville, adresse: d.adresse ?? '', code_postal: d.code_postal ?? '', description: d.description ?? '' });
+          message = `Chantier « ${d.nom} » ajouté.`;
           break;
         }
         // ── Lot 8 : effacer ce qu'il a saisi. Tout est LU avant : « Annuler » remet à l'identique. ──
