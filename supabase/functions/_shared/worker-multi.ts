@@ -164,7 +164,7 @@ export function cleanNewWorksite(raw: unknown): NewWorksite {
 
 // ── R1 : la ville depuis le code postal ─────────────────────────────────────
 /** Un mot de voie (français et turc) : l'adresse est alors une vraie rue, jamais une ville. Texte plié (sans accents). */
-const MOT_VOIE = /(?:^|[^a-z])(?:rue|avenue|av|chemin|impasse|allee|route|boulevard|bd|place|cours|quai|lotissement|residence|domaine|hameau|passage|square|zone|lieu[- ]?dit|sokak\w*|cadde\w*|mahalle\w*|bulvar\w*|sk|cd|mah)(?![a-z])/;
+const MOT_VOIE = /(?:^|[^a-z])(?:rue|avenue|av|chemin|impasse|allee|route|boulevard|bd|place|cours|quai|lotissement|residence|domaine|hameau|passage|square|zone|za|zi|zac|zup|lieu[- ]?dit|mairie|ecole|gare|eglise|parking|entrepot|depot|batiment|immeuble|devant|derriere|face|pres|sokak\w*|cadde\w*|mahalle\w*|bulvar\w*|sk|cd|mah)(?![a-z])/;
 /** Mots qui introduisent l'adresse ou la ville dans la phrase (« adres Montagna 01250 », « code postal 01250 ») : jamais le début d'un nom de ville. */
 const INTRO_VILLE = new Set(['adres', 'adresse', 'ville', 'sehir', 'il', 'posta', 'kodu', 'code', 'postal', 'chez', 'a', 'au', 'ici', 'sur', 'pour']);
 
@@ -174,8 +174,9 @@ const INTRO_VILLE = new Set(['adres', 'adresse', 'ville', 'sehir', 'il', 'posta'
  * un nom de rue (« rue des Tilleuls 01000 ») n'est jamais pris pour une ville. Sans assertion arrière (Safari < 16.4). Vide si rien de sûr.
  */
 function villeDuTexte(text: string, nc: NewWorksite): string {
-  const cps = Array.from(text.matchAll(/(^|[^\p{L}\d])(\d{5})(?!\d)/gu));
-  const m = nc.code_postal ? cps.find((x) => x[2] === nc.code_postal) : cps[0];
+  // Sans code postal rendu par le modèle, aucun nombre de la phrase (« devis Alpha 12345 ») ne sert d'ancre : rien n'est inventé.
+  if (!nc.code_postal) return '';
+  const m = Array.from(text.matchAll(/(^|[^\p{L}\d])(\d{5})(?!\d)/gu)).find((x) => x[2] === nc.code_postal);
   if (!m) return '';
   const jetons = text.slice(0, (m.index ?? 0) + m[1].length).split(/\s+/).filter(Boolean);
   const mots: string[] = [];
@@ -194,22 +195,29 @@ function villeDuTexte(text: string, nc: NewWorksite): string {
   while (mots.length && (exclus.has(norm(mots[0])) || INTRO_VILLE.has(norm(mots[0])))) { mots.shift(); debut++; }
   if (!mots.length || mots.length > 4) return '';
   const ville = mots.join(' ');
-  // La rue ne devient pas une ville : un mot de voie juste avant, ou le mot déjà dans l'adresse dite.
+  // La rue ne devient pas une ville : un mot de voie DANS la suite (« Rue des Lilas », « Gül Sokak » sont entièrement capitalisés),
+  // un mot de voie juste avant, ou le mot déjà dans l'adresse dite.
+  if (mots.some((w) => MOT_VOIE.test(norm(w)))) return '';
   if (jetons.slice(Math.max(0, debut - 2), debut).some((j) => MOT_VOIE.test(norm(j)))) return '';
   if (nc.adresse && (' ' + norm(nc.adresse).replace(/[^a-z0-9]+/g, ' ') + ' ').indexOf(' ' + norm(ville).replace(/[^a-z0-9]+/g, ' ') + ' ') >= 0 && /\d/.test(nc.adresse)) return '';
   return ville.slice(0, 60);
 }
 
+/** La phrase dit-elle l'une de ces suites de mots d'un seul tenant (ponctuation, casse et accents ignorés) ? « Montagna 01250 », « 01250 Montagna ». */
+const aplatir = (t: string) => ' ' + norm(t).replace(/[^a-z0-9]+/g, ' ').trim() + ' ';
+const dit = (text: string, ...suites: string[]) => suites.some((x) => aplatir(text).includes(aplatir(x)));
+
 /**
  * R1 — le modèle a mis la ville dans l'ADRESSE (« adres Montagna 01250 » → adresse = Montagna, ville vide) ou l'a oubliée : la ville
- * se retrouve SANS rien inventer. (1) Un code postal, une ville vide et une adresse sans chiffre ni mot de voie (≤ 4 mots) : l'adresse
- * EST la ville. (2) Sinon les mots capitalisés qui précèdent un code postal dans la phrase. Une ville donnée par le modèle n'est
+ * se retrouve SANS rien inventer. (1) Un code postal, une ville vide et une adresse sans chiffre ni mot de voie (≤ 4 mots), DITE d'un seul tenant avec
+ * le code postal dans la phrase (« Montagna 01250 ») : l'adresse EST la ville. (2) Sinon, SI le modèle a rendu le code postal, les mots
+ * capitalisés qui le précèdent dans la phrase, sans mot de voie (« Rue des Lilas », « Gül Sokak » ne sont jamais une ville). Une ville donnée par le modèle n'est
  * JAMAIS écrasée ; une ville absente de la phrase n'est JAMAIS inventée (la fiche la réclame).
  */
 export function villeDepuisCodePostal(nc: NewWorksite, text: string): NewWorksite {
   if (nc.ville) return nc;
   const adr = nc.adresse.trim();
-  if (nc.code_postal && adr && !/\d/.test(adr) && !MOT_VOIE.test(norm(adr)) && adr.split(/\s+/).length <= 4) {
+  if (nc.code_postal && adr && !/\d/.test(adr) && !MOT_VOIE.test(norm(adr)) && adr.split(/\s+/).length <= 4 && dit(text, `${adr} ${nc.code_postal}`, `${nc.code_postal} ${adr}`)) {
     return { ...nc, ville: capitaliser(adr).slice(0, 60), adresse: '' };
   }
   const v = villeDuTexte(text, nc);
@@ -461,6 +469,13 @@ function citation(c: { nom: string; ville: string | null }, jetons: string[], re
 /** Un nom de chantier vide ou fait de mots génériques (« chantier », « şantiye ») : le créneau est sans nom. */
 const sansNomDit = (t: string) => jetonsDe(t).filter((w) => w.length > 1 && !STOP_NOM.has(w) && !GENERIQUES.has(w)).length === 0;
 
+/**
+ * La phrase dit un AUTRE lieu sans le nommer (« de 13h à 17h ailleurs », « başka bir yerde », « un autre chantier ») : le créneau sans nom
+ * n'est alors jamais rangé chez l'unique chantier nommé — il reste « à choisir ». « Par ailleurs » et « d'ailleurs » sont des liaisons.
+ */
+const AUTRE_LIEU = /\bailleurs\b|\bautre part\b|\b(?:un|une|d')\s*autre\s+(?:chantier|lieu|site|endroit|client|adresse)\b|\b(?:baska|diger|farkli)\s+(?:bir\s+)?(?:yer|santiye|musteri|adres|is yeri)\w*/;
+const diraitUnAutreLieu = (text: string) => AUTRE_LIEU.test(norm(text).replace(/\b(?:par|d')\s*ailleurs\b/g, ' '));
+
 // ── R3 : « nouveau chantier » qui est en fait un chantier EXISTANT ──────────
 /**
  * La phrase dit « nouveau chantier » avec le nom ET la ville d'un chantier qui existe déjà (« un nouveau chantier, Bureau Martin à
@@ -470,11 +485,14 @@ const sansNomDit = (t: string) => jetonsDe(t).filter((w) => w.length > 1 && !STO
 function chantierReutilise(text: string, lines: DraftLine[], snapshot: WorkerSnapshot): NewWorksite | null {
   if (!profilSaisie(text).familles.includes('nouveau_chantier')) return null;
   const jetons = jetonsDe(text);
+  // « nouveau chantier » / « yeni şantiye » : le chantier existant est dit APRÈS ce marqueur, dans la même énumération (≤ 15 mots).
+  const marqueurs = jetons.flatMap((t, i) => (/^(?:nouveau|nouvelle|yeni)$/.test(t) && jetons.slice(i + 1, i + 4).some((u) => /^(?:chantiers?|clients?|cliente|santiye\w*|musteri\w*)$/.test(u)) ? [i] : []));
+  const apresMarqueur = (mots: string[]) => marqueurs.some((m) => mots.every((w) => jetons.some((t, k) => k > m && k <= m + 15 && memeMot(t, w))));
   const ids = Array.from(new Set(lines.filter((l) => !l.nouveau && l.worksite_id).map((l) => l.worksite_id!)));
   const candidats = ids.map((id) => snapshot.chantiers.find((c) => c.id === id)).filter((c): c is WorkerSnapshot['chantiers'][number] => {
     if (!c || !c.ville) return false;
     const m = motsDuChantier(c);
-    return m.nom.length > 0 && m.ville.length > 0 && [...m.nom, ...m.ville].every((w) => contientMot(jetons, w));
+    return m.nom.length > 0 && m.ville.length > 0 && [...m.nom, ...m.ville].every((w) => contientMot(jetons, w)) && apresMarqueur([...m.nom, ...m.ville]);
   });
   return candidats.length === 1 ? { nom: candidats[0].nom, adresse: '', code_postal: '', ville: candidats[0].ville!, description: '', reutilise_id: candidats[0].id } : null;
 }
@@ -510,6 +528,11 @@ export function normaliserHeures(args: Record<string, unknown>, text: string, sn
       else if (r === 'ambigu' && cl) { classees[i] = { classe: 'choisir', a_choisir: { existant: cl.nom, nouveau: nc.nom } }; l.chantier = ''; }
     } else if (c.classe === 'non_apparie' && sansNomDit(l.chantier)) { sansNom.add(i); l.chantier = ''; }
   });
+  // Un autre lieu dit sans nom (« ailleurs ») : le créneau sans nom est à choisir, jamais rangé chez un chantier nommé ni au planning.
+  if (sansNom.size && diraitUnAutreLieu(text)) {
+    sansNom.forEach((i) => { classees[i] = { classe: 'choisir' }; brutes[i].chantier = ''; });
+    sansNom.clear();
+  }
   // Pas de nouveau chantier dans la phrase : un seul chantier NOMMÉ → les créneaux sans nom y vont ; sinon le planning, comme avant.
   if (!nc.nom && !classees.some((c) => c.classe === 'nouveau')) {
     const nommes = Array.from(new Set(classees.filter((c) => c.classe === 'existant' && c.id).map((c) => c.id!)));

@@ -5,7 +5,7 @@
 //   npm run test:worker-multi
 import { buildWorkerSnapshot, type Draft, type DraftLine, type WorkerLive, type WorkerSnapshot } from './worker-assistant-core.ts';
 import {
-  buildLongReply, cleanNewWorksite, DATE_ILLISIBLE, memeChantier, MULTI_ANSWER, MULTI_AUTORISES, nettoyerEcarts, normaliserHeures, parseDateTr, verifierFiche,
+  buildLongReply, cleanNewWorksite, DATE_ILLISIBLE, memeChantier, MULTI_ANSWER, MULTI_AUTORISES, nettoyerEcarts, normaliserHeures, parseDateTr, verifierFiche, villeDepuisCodePostal,
   type LongLegacy, type MultiItem, type WorkerMultiReply,
 } from './worker-multi.ts';
 import { LIVE_VIDE, WORKER_LIVE, WORKER_RAW } from '../assistant-eval/cases.ts';
@@ -698,17 +698,18 @@ Deno.test('R1 : une vraie adresse (chiffre ou mot de voie) n’est JAMAIS prise 
 
 Deno.test('R1 : sinon la ville est lue dans la phrase, « <mots capitalisés> <5 chiffres> » — jamais inventée, jamais le nom du client, jamais une rue', () => {
   const ville = (texte: string, b: Parameters<typeof bloc>[0] = {}) => heures({ lignes: deuxNouveau, nouveau_chantier: bloc(b) }, texte).nouveau_chantier?.ville;
-  eq(ville(ST01), 'Montagna', 'st01, bloc sans adresse ni code postal');
-  eq(ville('Nouveau chantier : monsieur Pierrick Dupont Montagna 01250.'), 'Montagna', 'le nom du client est retiré');
-  eq(ville('Nouveau client Pierrick Dupont, Adresse Montagna 01250'), 'Montagna', 'le mot « Adresse » est retiré');
+  eq(ville(ST01, { code_postal: '01250' }), 'Montagna', 'st01, bloc sans adresse (code postal rendu)');
+  eq(ville('Nouveau chantier : monsieur Pierrick Dupont Montagna 01250.', { code_postal: '01250' }), 'Montagna', 'le nom du client est retiré');
+  eq(ville('Nouveau client Pierrick Dupont, Adresse Montagna 01250', { code_postal: '01250' }), 'Montagna', 'le mot « Adresse » est retiré');
   eq(ville('Nouveau chantier chez Pierrick Dupont à Bourg en Bresse 01000, pour une pergola.', { code_postal: '01000' }), 'Bourg en Bresse', 'petits mots entre deux majuscules');
-  eq(ville('Nouveau chantier chez Pierrick Dupont à Saint-Étienne-du-Rouvray 76800.'), 'Saint-Étienne-du-Rouvray', 'tirets');
+  eq(ville('Nouveau chantier chez Pierrick Dupont à Saint-Étienne-du-Rouvray 76800.', { code_postal: '76800' }), 'Saint-Étienne-du-Rouvray', 'tirets');
   eq(ville('Nouveau chantier chez Pierrick Dupont, 12 rue des Tilleuls à Bourg-en-Bresse 01000.', { adresse: '12 rue des Tilleuls', code_postal: '01000' }), 'Bourg-en-Bresse', 'adresse avec rue : la ville vient de la phrase');
+  eq(ville('Nouveau chantier chez Pierrick Dupont à Montagna 01250.'), '', 'le modèle n’a pas rendu le code postal : rien n’est deviné');
   // Jamais inventée : pas de ville dans la phrase, ou seulement un nom de client, ou une rue devant le code postal.
   eq(ville('Nouveau chantier chez Pierrick Dupont pour une pergola.'), '', 'aucun code postal dans la phrase');
-  eq(ville('Nouveau chantier chez Pierrick Dupont 01250.'), '', 'le client seul devant le code postal');
-  eq(ville('Nouveau chantier chez Pierrick Dupont, rue des Tilleuls 01000.', { adresse: 'rue des Tilleuls' }), '', 'une rue n’est pas une ville');
-  eq(ville('Nouveau chantier, le matin de 8h à 12h. Pierrick Dupont, 01250.'), '', 'la ponctuation coupe');
+  eq(ville('Nouveau chantier chez Pierrick Dupont 01250.', { code_postal: '01250' }), '', 'le client seul devant le code postal');
+  eq(ville('Nouveau chantier chez Pierrick Dupont, rue des Tilleuls 01000.', { adresse: 'rue des Tilleuls', code_postal: '01000' }), '', 'une rue n’est pas une ville');
+  eq(ville('Nouveau chantier, le matin de 8h à 12h. Pierrick Dupont, 01250.', { code_postal: '01250' }), '', 'la ponctuation coupe');
   eq(heures({ lignes: deuxNouveau, nouveau_chantier: bloc({}) }, 'Nouveau chantier chez Pierrick Dupont.').manque, ['ville'], 'la fiche réclame la ville');
   // Un code postal du bloc qui n’est pas dans la phrase : on ne prend pas un autre code.
   eq(ville('Nouveau chantier chez Pierrick Dupont à Lyon 69003.', { code_postal: '01250' }), '', 'autre code postal dans la phrase');
@@ -800,4 +801,85 @@ Deno.test('R3 : seulement si le nom ET la ville du chantier existant sont dans l
   // Un bloc rendu par le modèle garde la main (R3 ne le remplace pas).
   const bloc2 = heures({ lignes: [{ chantier: 'nouveau', debut: '08:00', fin: '12:00' }], nouveau_chantier: { nom: 'Bureau Martin', adresse: '', code_postal: '', ville: 'Villeurbanne', description: '' } }, SL12);
   eq(bloc2.nouveau_chantier?.reutilise_id, 'w-martin', 'bloc du modèle réutilisé comme avant');
+});
+
+// ── Vérificateur : R1 sans rue prise pour une ville, R2 « ailleurs », R3 dans l’ordre de la phrase ──
+const villeDe = (texte: string, b: Parameters<typeof bloc>[0] = {}) => heures({ lignes: deuxNouveau, nouveau_chantier: bloc({ code_postal: '01250', ...b }) }, texte);
+
+Deno.test('R1 : une rue ÉCRITE EN MAJUSCULES devant le code postal n’est JAMAIS la ville (Rue des Lilas, Gül Sokak, Avenue…, Caddesi, Mahallesi) — la fiche réclame la ville', () => {
+  const rues: [string, string][] = [
+    ['nouveau client Pierrick Dupont, Gül Sokak 01250', ''],
+    ['nouveau client Pierrick Dupont, Rue des Lilas 01250', ''],
+    ['nouveau client Pierrick Dupont, Rue des Lilas 01250', 'Rue des Lilas'],
+    ['nouveau client Pierrick Dupont, 12 Rue des Lilas 01250', ''],
+    ['nouveau client Pierrick Dupont, Avenue de la République 01250', 'Avenue de la République'],
+    ['nouveau client Pierrick Dupont, Chemin du Moulin 01250', 'Chemin du Moulin'],
+    ['nouveau client Pierrick Dupont, Place du Marché 01250', 'Place du Marché'],
+    ['yeni müşteri Pierrick Dupont, Atatürk Caddesi 01250', ''],
+    ['yeni müşteri Pierrick Dupont, Cumhuriyet Mahallesi 01250', 'Cumhuriyet Mahallesi'],
+    ['yeni müşteri Pierrick Dupont, Gül Sokak 01250', 'Gül Sokak'],
+  ];
+  for (const [fin, adresse] of rues) {
+    const d = villeDe(`Aujourd’hui de 8h à 12h puis de 13h à 17h, ${fin}`, { adresse });
+    eq([d.nouveau_chantier?.ville, d.nouveau_chantier?.adresse, d.manque], ['', adresse, ['ville']], `« ${fin} » / adresse « ${adresse} »`);
+  }
+  // Le cas turc mesuré par le vérificateur, par normaliserHeures : « Tout confirmer » reste bloqué (manque ville), aucun chantier à ville-rue.
+  const tr = heures({ lignes: deuxNouveau, nouveau_chantier: bloc({ adresse: 'Gül Sokak', code_postal: '01250' }) }, 'Bugün 8’den 12’ye 13’ten 17’ye kadar yeni müşteri Pierrick Dupont, Gül Sokak 01250');
+  eq([tr.nouveau_chantier?.ville, tr.nouveau_chantier?.adresse, tr.manque], ['', 'Gül Sokak', ['ville']], 'turc : adresse gardée, ville réclamée');
+  // Le même texte en minuscules passait déjà ; une vraie ville juste après la rue reste lue.
+  eq(villeDe('nouveau client Pierrick Dupont, rue des Lilas 01250').nouveau_chantier?.ville, '', 'minuscules');
+  eq(villeDe('nouveau client Pierrick Dupont, Rue des Lilas, Montagna 01250', { adresse: 'Rue des Lilas' }).nouveau_chantier?.ville, 'Montagna', 'la virgule coupe : la ville est lue');
+  // L’export testé directement.
+  eq(villeDepuisCodePostal(cleanNewWorksite(bloc({ code_postal: '01250' })), 'client Pierrick Dupont, Rue des Lilas 01250').ville, '', 'villeDepuisCodePostal');
+});
+
+Deno.test('R1 : l’adresse déplacée en ville doit être UNE ville dite devant le code postal — ZA, « devant la mairie », « Les Tilleuls » ailleurs dans la phrase restent des adresses', () => {
+  const cas = (adresse: string, texte: string) => { const n = villeDe(texte, { adresse }).nouveau_chantier; return [n?.ville, n?.adresse]; };
+  eq(cas('ZA des Grandes Terres', 'nouveau client Pierrick Dupont, ZA des Grandes Terres 01250'), ['', 'ZA des Grandes Terres'], 'ZA');
+  eq(cas('ZI Nord', 'nouveau client Pierrick Dupont, ZI Nord 01250'), ['', 'ZI Nord'], 'ZI');
+  eq(cas('devant la mairie', 'nouveau client Pierrick Dupont, devant la mairie 01250'), ['', 'devant la mairie'], 'mairie');
+  eq(cas('Les Tilleuls', 'nouveau client Pierrick Dupont aux Tilleuls, code postal 01250'), ['', 'Les Tilleuls'], 'adresse non collée au code postal : gardée');
+  // Dite devant le code postal (ou juste après), une ville d’un mot ou plus est lue comme avant.
+  eq(cas('Montagna', 'nouveau client Pierrick Dupont, adres Montagna 01250'), ['Montagna', ''], 'st01');
+  eq(cas('Bourg en Bresse', 'nouveau client Pierrick Dupont, Bourg en Bresse 01250'), ['Bourg en Bresse', ''], 'ville de plusieurs mots');
+  eq(cas('Montagna', 'nouveau client Pierrick Dupont, code postal 01250 Montagna'), ['Montagna', ''], 'après le code postal');
+});
+
+Deno.test('R1 : sans code postal rendu par le modèle, un nombre à 5 chiffres de la phrase (« devis Alpha 12345 ») ne fabrique PAS une ville', () => {
+  const d = heures({ lignes: deuxNouveau, nouveau_chantier: bloc({}) }, 'Aujourd’hui de 8h à 12h puis de 13h à 17h chez un nouveau client Pierrick Dupont, devis Alpha 12345');
+  eq([d.nouveau_chantier?.ville, d.nouveau_chantier?.code_postal, d.manque], ['', '', ['ville']], 'ville inventée refusée');
+  eq(heures({ lignes: deuxNouveau, nouveau_chantier: bloc({}) }, ST01).nouveau_chantier?.ville, '', 'même st01 : sans code postal rendu, la fiche réclame la ville');
+});
+
+// ── R2 : « ailleurs » ne se range jamais chez l’unique chantier nommé ───────
+const TIERS = (d: Draft) => d.lines.map((l) => `${l.worksite_id ?? 'AUCUN'}${l.a_choisir ? '?' : ''}${l.from_planning ? '*' : ''}`).join(',');
+
+Deno.test('R2 : « ailleurs », « başka bir yerde », « autre part » — le créneau sans nom reste à CHOISIR, jamais rangé chez l’unique chantier nommé', () => {
+  const lignes = [{ chantier: 'Bureau Martin', debut: '08:00', fin: '12:00' }, { chantier: 'Villa Dupont', debut: '13:00', fin: '17:00' }];
+  eq(TIERS(heures({ lignes }, 'Aujourd’hui de 8h à 12h au Bureau Martin et de 13h à 17h ailleurs.')), 'w-martin,AUCUN', 'ailleurs');
+  eq(TIERS(heures({ lignes }, 'Aujourd’hui de 8h à 12h au Bureau Martin et de 13h à 17h autre part.')), 'w-martin,AUCUN', 'autre part');
+  eq(TIERS(heures({ lignes }, 'Bugün 8’den 12’ye kadar Bureau Martin’de, 13’ten 17’ye kadar başka bir yerde çalıştım.')), 'w-martin,AUCUN', 'başka bir yerde');
+  eq(TIERS(heures({ lignes }, 'Bugün 8’den 12’ye kadar Bureau Martin’de, 13’ten 17’ye kadar başka bir şantiyede çalıştım.')), 'w-martin,AUCUN', 'başka bir şantiyede');
+  const d = heures({ lignes }, 'Aujourd’hui de 8h à 12h au Bureau Martin et de 13h à 17h ailleurs.');
+  eq([d.lines[1].worksite_id, d.lines[1].worksite_text, d.lines[1].nouveau, d.lines[1].from_planning], [null, '', undefined, undefined], 'créneau vide : la carte réclame « Choisissez le chantier » (Tout confirmer reste bloqué)');
+  // « Par ailleurs » / « d’ailleurs » sont des liaisons, pas un lieu : comportement inchangé (chez l’unique chantier nommé).
+  eq(TIERS(heures({ lignes }, 'Aujourd’hui de 8h à 12h et de 13h à 17h au Bureau Martin, par ailleurs j’ai fini tôt.')), 'w-martin,w-martin', 'par ailleurs');
+  eq(TIERS(heures({ lignes }, 'Aujourd’hui de 8h à 12h et de 13h à 17h au Bureau Martin, d’ailleurs j’ai fini tôt.')), 'w-martin,w-martin', 'd’ailleurs');
+  // Un chantier existant « Autre » rendu par le modèle pour « un autre chantier » : comportement antérieur inchangé.
+  eq(TIERS(heures({ lignes: [{ chantier: 'Bureau Martin', debut: '08:00', fin: '12:00' }, { chantier: 'Autre', debut: '13:00', fin: '17:00' }] }, 'Aujourd’hui de 8h à 12h au Bureau Martin et de 13h à 17h sur un autre chantier.')), 'w-martin,w-autre', 'Autre inchangé');
+  // Avec un nouveau chantier dit dans la phrase, « ailleurs » reste aussi à choisir.
+  const nv = heures({ lignes: [{ chantier: 'Bureau Martin', debut: '08:00', fin: '12:00' }, { chantier: 'Villa Dupont', debut: '13:00', fin: '17:00' }], nouveau_chantier: bloc({ ville: 'Montagna', code_postal: '01250' }) },
+    'Aujourd’hui de 8h à 12h au Bureau Martin et de 13h à 17h ailleurs, nouveau client Pierrick Dupont à Montagna 01250.');
+  eq(TIERS(nv), 'w-martin,AUCUN', 'avec nouveau chantier');
+});
+
+// ── R3 : le « nouveau chantier » vient AVANT le chantier existant dans la phrase ─
+Deno.test('R3 : « … au Bureau Martin à Villeurbanne, demain je commence un nouveau chantier » n’est PAS un chantier existant réutilisé (le nouveau chantier est dit après)', () => {
+  const lignes = [{ chantier: 'Bureau Martin', debut: '08:00', fin: '12:00' }, { chantier: 'Bureau Martin', debut: '13:00', fin: '17:00' }];
+  const texte = 'Aujourd’hui de 8h à 12h puis de 13h à 17h au Bureau Martin à Villeurbanne, demain je commence un nouveau chantier.';
+  eq(heures({ lignes }, texte).nouveau_chantier, undefined, 'aucun bloc réutilisé');
+  eq(multi(build([call('declarer_heures', { date: TODAY, lignes })], texte)).non_prepare, ['Nouveau chantier'], 'honnêtement « Non préparé »');
+  // Les formes où le nouveau chantier précède le nom restent réutilisées (français et turc).
+  eq(heures({ lignes }, 'Aujourd’hui de 8h à 12h puis de 13h à 17h, nouveau chantier : Bureau Martin à Villeurbanne.').nouveau_chantier?.reutilise_id, 'w-martin', 'nouveau chantier : …');
+  eq(heures({ lignes }, 'Bugün 8’den 12’ye 13’ten 17’ye kadar yeni bir şantiyede, Bureau Martin Villeurbanne’de çalıştım.').nouveau_chantier?.reutilise_id, 'w-martin', 'turc');
 });
