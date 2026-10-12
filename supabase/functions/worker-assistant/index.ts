@@ -10,8 +10,8 @@
 // Lot 6 : PLUS DE CLÉ DE SERVICE. Qui appelle, son entreprise, ai_enabled, le
 // quota et le plafond global viennent de public.assistant_context, appelée avec
 // SON jeton. UN seul appel au modèle par demande. Le corps { statut: true }
-// rend seulement la formule (bandeau « Mode essai »), sans rien compter ni
-// appeler le modèle.
+// rend seulement la formule (lue par le support BEMEXO, jamais affichée aux
+// patrons ni aux salariés), sans rien compter ni appeler le modèle.
 //
 // CE QU'ELLE FAIT : transformer une phrase en BROUILLON de pointage, préparer
 // une demande de congé, un début/fin de pointage ou une réserve (lot 3 bis),
@@ -37,7 +37,7 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
-// Lot 6 : la formule active part avec chaque réponse (bandeau « Mode essai »).
+// Lot 6 : la formule active part avec chaque réponse (interne : l'écran du support seul la montre).
 const FORMULE = formuleNom(Deno.env);
 const json = (body: Record<string, unknown>, status = 200) =>
   new Response(JSON.stringify({ ...body, formule: FORMULE }), { status, headers: { 'Content-Type': 'application/json', ...corsHeaders } });

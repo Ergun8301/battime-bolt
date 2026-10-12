@@ -10,6 +10,7 @@ BEMEXO seulement : verrou `companies_support_flag_guard`).
 | Patron | Réglages → « Support BEMEXO » : **Autoriser le support BEMEXO** (1 h / 24 h / 7 j), **Retirer l'accès**, journal des accès |
 | Support | `/support` : connexion → double vérification (code à 6 chiffres) → entreprises qui l'ont autorisé → **Entrer** |
 | Mode support | Même interface que le patron + bandeau rouge « Mode support · lecture seule · expire à … · Quitter » |
+| Formule IA | Sur `/support`, une fois la double vérification passée : une ligne discrète « IA : formule essai » ou « IA : formule payant » (jamais visible d'un patron ni d'un salarié ; pas de compteur chiffré). Voir `docs/ia-v2.md` |
 | Expiration | Automatique à l'heure dite ; « Quitter » ou fermer l'onglet fait sortir |
 | Journal | Autorisé / retiré / entré / sorti, avec qui et quand. Lisible par le patron, **non modifiable** (même par la clé service) |
 

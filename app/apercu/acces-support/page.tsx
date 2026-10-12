@@ -68,7 +68,7 @@ export default function ApercuAccesSupport() {
         {view === 'support' && (
           <div className="-mx-4 sm:mx-0">
             <SupportConsoleView
-              step={step} companies={companies} error={err}
+              step={step} companies={companies} error={err} ia="essai"
               onLogin={() => undefined}
               onVerify={async (_f, code) => { if (code === '000000') { setErr('Code incorrect. Réessayez avec le code affiché maintenant.'); return; } setErr(null); setStep({ kind: 'ready' }); }}
               onEnter={() => { source.enterAsSupport(); setView('inside'); }}

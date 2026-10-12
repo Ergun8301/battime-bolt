@@ -28,7 +28,7 @@
     "test:ia-config": "npx -y deno@2 test -A supabase/functions/_shared/ai-config.test.ts",
     "test:ia-domaines": "npx -y deno@2 test --allow-env --allow-read supabase/functions/_shared/tool-domains.test.ts",
     "test:couche-ia": "node supabase/tests/lot6_couche_ia_v2.mjs",
-    "test:mode-essai-ecrans": "node scripts/tests/mode-essai-lot6.mjs out docs/captures-ia-v2",
+    "test:ia-formule-ecrans": "node scripts/tests/ia-formule-lot6.mjs out docs/captures-ia-v2",
     "test:kiosk-board": "npx -y deno@2 test --allow-env --allow-read supabase/functions/_shared/kiosk-board.test.ts",
     "test:kiosk-fonction": "npx -y deno@2 test -A supabase/functions/_shared/kiosk-function.test.ts",
     "test:invitations-fonction": "npx -y deno@2 test -A supabase/functions/_shared/invite-worker-function.test.ts",

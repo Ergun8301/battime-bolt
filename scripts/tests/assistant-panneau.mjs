@@ -56,8 +56,10 @@ const away = async () => { await p.evaluate(() => {
   Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' }); document.dispatchEvent(new Event('visibilitychange', { bubbles: true })); window.dispatchEvent(new Event('visibilitychange'));
 }); await p.waitForTimeout(1200); };
 await p.click('[data-testid="bar-assistant"]'); await p.waitForTimeout(400);
-// Lot 6 : « Mode essai » visible AVANT d'envoyer quoi que ce soit (ici la fonction simulée ne dit pas sa formule : en cas de doute, bandeau affiché).
-check((await p.locator('[data-testid=mode-essai]').innerText()).trim()==='Mode essai (Gemini gratuit) : données fictives uniquement. Google peut relire et réutiliser ce que vous envoyez.', '6) bandeau « Mode essai » visible avant tout envoi, texte exact');
+// Retrait du bandeau (demande d'Ergun) : le panneau ne dit RIEN de la formule IA (essai / payant), ni avant ni après l'envoi.
+// (Preuve détaillée, sur tous les écrans et toutes les réponses de la fonction : scripts/tests/ia-formule-lot6.mjs.)
+const panneauSansFormule = async () => (await p.locator('[data-testid=mode-essai], .as-trial').count())===0 && !/Mode essai|Gemini gratuit|données fictives|Google peut relire/i.test(await p.locator('[data-testid=assistant-panel]').innerText());
+check(await panneauSansFormule(), '6) aucun bandeau « Mode essai » dans le panneau avant tout envoi');
 assistantDelay=2500;
 await p.fill('.as-bar textarea','Ajoute une intervention à Lyon pour Kevin jeudi de 14h à 18h');
 await p.click('button[aria-label="Envoyer"]');
@@ -71,6 +73,7 @@ await away();
 check(await p.locator('[data-testid=assistant-panel]').count()===1 && await p.locator('[data-testid=action-done]').count()===1, '2) après un 2ᵉ retour : panneau ouvert, « Fait » + Annuler/Modifier toujours là');
 check(await p.locator('[data-testid=action-undo]').count()===1 && await p.locator('[data-testid=action-edit]').count()===1, '2) boutons Annuler et Modifier présents');
 check(writes===1, `2) une seule écriture (pas de doublon) : ${writes}`);
+check(await panneauSansFormule(), '6) toujours aucun bandeau après la réponse');
 await p.locator('[data-testid=assistant-panel]').screenshot({path:`${SH}/12-panneau-reste-ouvert.png`});
 console.log(`\n${ok} ✅ / ${ko} ❌`);
 await b.close(); srv.close();
