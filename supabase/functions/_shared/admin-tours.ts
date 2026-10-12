@@ -329,3 +329,27 @@ export function adminStepsFor(t: AdminTour, narrow: boolean): { cible: string; t
   }
   return out;
 }
+
+// ── La console du SUPPORT BEMEXO (/support) ─────────────────────────────────
+// Pas d'assistant côté support : le bouton « Me guider pas à pas » est sur la page elle-même
+// (components/support-console.tsx). Cette fiche n'est PAS dans ADMIN_TOURS : l'assistant du
+// bureau ne la lance jamais. Chaque étape dit dans quels états de la console elle s'affiche ;
+// le guide MONTRE, il ne se connecte pas, ne valide aucun code et n'entre chez aucun client.
+export type ConsoleKind = 'loading' | 'signed-out' | 'not-staff' | 'enroll' | 'challenge' | 'ready' | 'inside';
+export interface SupportStep { etats: ConsoleKind[]; cible: string; texte: string }
+
+export const SUPPORT_TOUR: SupportStep[] = [
+  { etats: ['signed-out'], cible: 'support-console.connexion', texte: 'Cliquez sur « Se connecter » avec le compte support, puis revenez sur cette page.' },
+  { etats: ['enroll'], cible: 'support-console.qr', texte: 'Scannez ce QR code avec votre application d’authentification.' },
+  { etats: ['enroll'], cible: 'support-console.code', texte: 'Tapez le code à 6 chiffres dans la case entourée.' },
+  { etats: ['challenge'], cible: 'support-console.code', texte: 'Tapez le code à 6 chiffres de votre application d’authentification.' },
+  { etats: ['enroll', 'challenge'], cible: 'support-console.valider', texte: 'Cliquez sur « Valider ». Le bouton s’active quand les 6 chiffres sont tapés.' },
+  // L'anneau est sur la LISTE, jamais sur « Entrer » : entrer ouvre l'espace d'un client et s'écrit dans son journal.
+  { etats: ['ready'], cible: 'support-console.entreprises', texte: 'Cliquez sur « Entrer » à côté de l’entreprise voulue. S’il n’y en a aucune, le patron doit d’abord l’autoriser.' },
+  { etats: ['inside'], cible: 'support-console.quitter', texte: 'Vous êtes en lecture seule. Cliquez sur « Quitter » quand vous avez fini.' },
+];
+
+/** Les étapes à donner à <GuideTour> pour l'état de la console ; vide pour `loading` et `not-staff` (pas de guide). */
+export function supportStepsFor(kind: ConsoleKind, narrow: boolean): { cible: string; texte: string }[] {
+  return SUPPORT_TOUR.filter((e) => e.etats.includes(kind)).map((e) => ({ cible: e.cible, texte: narrow ? touchez(e.texte) : e.texte }));
+}

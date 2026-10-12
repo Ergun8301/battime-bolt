@@ -11,7 +11,10 @@
 //  c) « Suivant » seul sur TOUTES les fiches à 1280 et à 390 : aucune erreur JS, aucune écriture ;
 //  d) saisies préservées (Précédent / Suivant ne vide ni « Nouveau salarié » ni « Réglages ») ; Échap ne ferme que le guide ;
 //     réseau coupé après le démarrage ;
-//  e) AUCUNE ÉCRITURE à partir de l'apparition de la carte du guide (liste blanche nommée des seules lectures par RPC).
+//  e) AUCUNE ÉCRITURE à partir de l'apparition de la carte du guide (liste blanche nommée des seules lectures par RPC) ;
+//  s) (ONLY=s) console du SUPPORT (/support, /apercu/acces-support?demo=support) : le bouton « Me guider pas à pas » aux états
+//     signed-out, enroll, challenge, ready, inside — jamais en loading ni not-staff ; l'anneau sur « Se connecter », le QR, le
+//     champ du code, « Valider », la LISTE des entreprises (jamais « Entrer »), « Quitter » ; « Entrer » n'est jamais cliqué.
 import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path'; import { chromium } from 'playwright-core';
 const [,, OUT, SH, PORT = '4431'] = process.argv; fs.mkdirSync(SH, { recursive: true });
 const T = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.png': 'image/png', '.json': 'application/json', '.webmanifest': 'application/json' };
@@ -91,7 +94,7 @@ const calls = [];
 let REPLY = { id: 'ajouter_salarie', extra: [] };
 const mark = () => calls.length;
 // Les SEULES lectures par RPC (POST) que le guide a le droit de provoquer en ouvrant une fenêtre : ajoutées une à une, par nom.
-const RPC_LECTURE = new Set(['my_worksite_labour']);
+const RPC_LECTURE = new Set(['my_worksite_labour', 'support_is_staff', 'support_my_companies']);
 /** Tout ce qui n'est pas une lecture : un échec. */
 const ecritures = (from) => calls.slice(from).filter((c) => {
   if (c.path.startsWith('/auth/v1/token')) return false;                 // renouvellement de session, pas un geste du guide
@@ -546,6 +549,194 @@ if (run('e')) {
   const f = await startGuide(p, 'couts');
   await walk(p, 'couts', [{ cible: 'bureau-nav.couts', via: 'touch' }, { cible: 'bureau-cout.periodes', via: 'next' }], 'E 1100');
   noWrite(f, 'E couts'); await ctx.close();
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// S · Console du SUPPORT : le bouton, la fiche par état, jamais d'écriture ni de « Entrer »
+// ═════════════════════════════════════════════════════════════════════════
+const QR_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120"><rect width="120" height="120" fill="white"/><rect x="10" y="10" width="40" height="40"/><rect x="70" y="10" width="40" height="40"/><rect x="10" y="70" width="40" height="40"/></svg>';
+const COMPAGNIES = [
+  { company_id: 'c-martin', name: 'Maçonnerie Martin', expires_at: '2030-01-01T10:00:00Z' },
+  { company_id: 'c-dupont', name: 'Dupont Rénovation', expires_at: '2030-01-02T10:00:00Z' },
+];
+/**
+ * Un compte « support » simulé : même principe que ia-formule-lot6 (support_is_staff, double vérification par le JWT et le facteur TOTP).
+ * `hold` : promesse qui retient la réponse de support_is_staff (état « loading »).
+ * L'état « enroll » passe par la VRAIE route avec un mock de POST /auth/v1/factors : il part au chargement de la page, AVANT la carte
+ * du guide (ce sont les écritures de la page, pas celles du guide) ; `ecritures()` ne regarde qu'après l'apparition de la carte.
+ */
+async function supportPage(w, h, { token = true, uid = 'u-support', aal = 'aal1', factors = true, staff = true, companies = [], hold = null, inside = false, mobile = false }) {
+  const ctx = await b.newContext({ viewport: { width: w, height: h }, locale: 'fr-FR', timezoneId: 'Europe/Paris', ...(mobile ? { deviceScaleFactor: 2, isMobile: true, hasTouch: true } : {}) });
+  const t = Math.floor(Date.now() / 1000);
+  const jwtS = `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64({ sub: uid, role: 'authenticated', exp: t + 36000, aal, amr: [{ method: 'password', timestamp: t }] })}.sig`;
+  const user = { id: uid, email: `${uid}@exemple.fr`, aud: 'authenticated', role: 'authenticated', ...(factors ? { factors: [{ id: 'f-totp', factor_type: 'totp', status: 'verified', friendly_name: 'BEMEXO support' }] } : {}) };
+  const sess = { access_token: jwtS, refresh_token: 'r', expires_at: t + 36000, expires_in: 36000, token_type: 'bearer', user };
+  if (token) await ctx.addInitScript(([k, v]) => { localStorage.setItem(k, v); }, ['sb-sdperbcquvneohotjono-auth-token', JSON.stringify(sess)]);
+  if (inside) await ctx.addInitScript((v) => { sessionStorage.setItem('bemexo-support', JSON.stringify(v)); }, { staffId: uid, companyId: 'c-martin', name: 'Maçonnerie Martin', expiresAt: '2030-01-01T10:00:00Z' });
+  await ctx.route('**/*.supabase.co/**', async (r) => {
+    const url = new URL(r.request().url()); const m = r.request().method();
+    const rec = { method: m, path: url.pathname, t: Date.now() };
+    if (url.pathname.startsWith('/rest/v1/rpc/')) rec.rpc = url.pathname.slice('/rest/v1/rpc/'.length);
+    if (url.pathname.startsWith('/functions/v1/')) rec.fn = url.pathname.slice('/functions/v1/'.length);
+    calls.push(rec);
+    if (url.pathname.startsWith('/auth/v1/user')) return r.fulfill({ json: user });
+    if (m === 'POST' && url.pathname === '/auth/v1/factors') return r.fulfill({ json: { id: 'f-new', type: 'totp', friendly_name: 'BEMEXO support', totp: { qr_code: `data:image/svg+xml;utf-8,${QR_SVG}`, secret: 'JBSWY3DPEHPK3PXP', uri: 'otpauth://totp/x' } } });
+    if (url.pathname.startsWith('/auth/v1/')) return r.fulfill({ json: {} });
+    if (url.pathname.startsWith('/functions/v1/')) return r.fulfill({ json: { formule: 'essai' } });
+    if (rec.rpc === 'support_is_staff') { if (hold) await hold; return r.fulfill({ json: staff }); }
+    if (rec.rpc === 'support_my_companies') return r.fulfill({ json: companies });
+    if (rec.rpc) return r.fulfill({ json: [] });
+    return r.fulfill({ json: [], headers: { 'content-range': '0-0/0' } });
+  });
+  const p = await ctx.newPage();
+  p.on('pageerror', (e) => { errors.push(e.message); console.log('   [erreur page]', e.message); });
+  return { ctx, p };
+}
+const SC = '[data-testid=support-console]';
+const GUIDE_BTN = '[data-testid=support-guide-open]';
+async function supportOpen(p, route = 'support') {
+  await p.goto(`http://localhost:${PORT}/${route}`); await p.waitForSelector(SC, { timeout: 15000 });
+  await p.waitForFunction((s) => !document.querySelector(`${s} .animate-spin`), SC, { timeout: 15000 }).catch(() => {});
+  await p.waitForTimeout(500);
+}
+/** Lance le guide par le bouton de la page ; rend l'index des requêtes à l'apparition de la carte. */
+async function supportStart(p) { await p.locator(GUIDE_BTN).click(); await p.waitForSelector(G.card, { timeout: 5000 }); return mark(); }
+const AUTRES_ETATS = /double vérification|QR code|Entreprises qui vous ont autorisé|Vous êtes dans|Accès réservé/i;
+const supportWrites = (from, label) => {
+  const w = ecritures(from);
+  check(w.length === 0, `${label} : aucune écriture depuis l’apparition de la carte${w.length ? ` — ${w.map((c) => `${c.method} ${c.path}`).join(' ; ')}` : ''}`);
+  check(!calls.slice(from).some((c) => /support_(enter|exit)/.test(c.rpc || '')), `${label} : aucun « Entrer » / « Quitter » envoyé par le guide`);
+};
+
+if (run('s')) {
+  // ── Pas de bouton : loading (réponse retenue) puis not-staff (un patron connecté) ──
+  {
+    let release; const hold = new Promise((res) => { release = res; });
+    const { ctx, p } = await supportPage(1280, 800, { uid: 'u-admin', aal: 'aal1', factors: false, staff: false, hold });
+    await p.goto(`http://localhost:${PORT}/support`); await p.waitForSelector(SC, { timeout: 15000 }); await p.waitForTimeout(800);
+    check((await p.locator(`${SC} .animate-spin`).count()) > 0 && (await p.locator(GUIDE_BTN).count()) === 0, 'S loading · la console charge : pas de bouton « Me guider pas à pas »');
+    check((await p.locator(`${SC} [data-guide]`).count()) === 0, 'S loading · aucune ancre à l’écran');
+    release();
+    await p.waitForFunction((s) => /Accès réservé/.test(document.querySelector(s)?.innerText || ''), SC, { timeout: 10000 });
+    check((await p.locator(GUIDE_BTN).count()) === 0 && !/Me guider/.test(await p.locator('body').innerText()), 'S not-staff · un patron connecté voit « Accès réservé » : pas de bouton');
+    check((await p.locator(`${SC} [data-guide]`).count()) === 0, 'S not-staff · aucune ancre à l’écran');
+    await ctx.close();
+  }
+  // ── signed-out : une étape, « Se connecter » ──
+  for (const vp of [{ n: '1280', w: 1280, h: 800, m: false }, { n: '390', w: 390, h: 844, m: true }]) {
+    const { ctx, p } = await supportPage(vp.w, vp.h, { token: false, mobile: vp.m });
+    await supportOpen(p);
+    check((await p.locator(GUIDE_BTN).count()) === 1 && (await p.locator(GUIDE_BTN).innerText()).trim() === 'Me guider pas à pas', `S signed-out ${vp.n} · le bouton « Me guider pas à pas » est là`);
+    const bb = await boxOf(p, GUIDE_BTN), hb = await boxOf(p, `${SC} .sc-head`), cb = await boxOf(p, `${SC} .sc-card`);
+    check(!!bb && bb.h >= 44 && bb.x + bb.w <= cb.x + cb.w + 0.5 && bb.x >= hb.x, `S signed-out ${vp.n} · bouton d’au moins 44 px, dans la carte (${bb ? [bb.x, bb.y, bb.w, bb.h].map(Math.round) : '?'})`);
+    const html = await p.content();
+    check(['support-console.qr', 'support-console.code', 'support-console.valider', 'support-console.entreprises', 'support-console.quitter'].every((a) => !html.includes(a)) && html.includes('support-console.connexion'), `S signed-out ${vp.n} · le DOM ne contient que l’ancre de la connexion`);
+    const f = await supportStart(p);
+    check((await p.evaluate((s) => document.querySelector(s).innerText, SC)).length > 0 && !AUTRES_ETATS.test(await p.locator(SC).innerText()), `S signed-out ${vp.n} · rien des autres états sur la page`);
+    await walk(p, 'support-signed-out', [{ cible: 'support-console.connexion', via: 'next' }], `S ${vp.n}`);
+    supportWrites(f, `S signed-out ${vp.n}`);
+    // Le texte : « Cliquez » à l'ordinateur, « Touchez » au téléphone.
+    await supportStart(p);
+    const tx = await stepText(p);
+    check(vp.m ? /^Touchez « Se connecter »/.test(tx) && !/cliqu/i.test(tx) : /^Cliquez sur « Se connecter »/.test(tx), `S signed-out ${vp.n} · ${tx}`);
+    await p.keyboard.press('Escape'); await p.waitForTimeout(250);
+    check(!(await guideOpen(p)) && (await p.evaluate(() => document.activeElement?.getAttribute('data-testid'))) === 'support-guide-open', `S signed-out ${vp.n} · Échap ferme le guide et rend le focus au bouton`);
+    await supportStart(p); await p.locator(G.close).click(); await p.waitForTimeout(250);
+    check(!(await guideOpen(p)), `S signed-out ${vp.n} · « Fermer » ferme le guide`);
+    await ctx.close();
+  }
+  // ── enroll (route réelle, POST /auth/v1/factors simulé avant le guide) : QR, champ, Valider ──
+  for (const vp of [{ n: '1280', w: 1280, h: 800, m: false }, { n: '390', w: 390, h: 844, m: true }]) {
+    const { ctx, p } = await supportPage(vp.w, vp.h, { aal: 'aal1', factors: false, mobile: vp.m });
+    await supportOpen(p);
+    check((await p.locator('img[alt="QR code de double vérification"]').count()) === 1, `S enroll ${vp.n} · la console est à l’étape du QR code`);
+    const f = await supportStart(p);
+    if (vp.n === '390') { await waitPhase(p, 'ring'); await p.waitForTimeout(400); await shot(p, '06-support-enroll'); }
+    await walk(p, 'support-enroll', [
+      { cible: 'support-console.qr', via: 'next' },
+      { cible: 'support-console.code', via: 'next' },
+      { cible: 'support-console.valider', via: 'next' },
+    ], `S enroll ${vp.n}`);
+    // Le champ reste utilisable avec le guide ouvert (le champ a autoFocus, la carte prend le focus).
+    await supportStart(p); await p.locator(G.next).click(); await p.waitForTimeout(300);
+    const champ = p.locator('input[aria-label="Code à 6 chiffres"]');
+    await champ.click(); await champ.pressSequentially('123456'); await p.waitForTimeout(300);
+    check((await champ.inputValue()) === '123456' && await p.locator('button[type=submit]').isEnabled(), `S enroll ${vp.n} · le champ reste utilisable : 6 chiffres tapés, « Valider » s’active`);
+    supportWrites(f, `S enroll ${vp.n}`);
+    await ctx.close();
+  }
+  // ── challenge : champ du code, Valider ──
+  {
+    const { ctx, p } = await supportPage(1280, 800, { aal: 'aal1', factors: true });
+    await supportOpen(p);
+    check((await p.locator('h2', { hasText: 'Double vérification' }).count()) === 1, 'S challenge · la console est à la double vérification');
+    const f = await supportStart(p);
+    await walk(p, 'support-challenge', [{ cible: 'support-console.code', via: 'next' }, { cible: 'support-console.valider', via: 'next' }], 'S challenge');
+    supportWrites(f, 'S challenge'); await ctx.close();
+  }
+  // ── ready : l'anneau est sur la LISTE, jamais sur « Entrer » ──
+  for (const vp of [{ n: '1280', w: 1280, h: 800, m: false }, { n: '390', w: 390, h: 844, m: true }]) {
+    const { ctx, p } = await supportPage(vp.w, vp.h, { aal: 'aal2', factors: true, companies: COMPAGNIES, mobile: vp.m });
+    await supportOpen(p);
+    check((await p.locator('[data-testid=support-enter]').count()) === 2, `S ready ${vp.n} · deux entreprises, deux boutons « Entrer »`);
+    check((await p.locator('[data-testid=support-enter][data-guide]').count()) === 0, `S ready ${vp.n} · aucun bouton « Entrer » n’a d’ancre`);
+    const f = await supportStart(p);
+    const t = await checkRing(p, 'support-console.entreprises', `S ready ${vp.n}`);
+    check(!!t && t.tag === 'div' && (await p.locator(`.sc-list[data-guide="support-console.entreprises"]`).count()) === 1, `S ready ${vp.n} · l’anneau entoure la liste (div .sc-list), pas une ligne`);
+    const ring = await boxOf(p, G.ring), enter = await boxOf(p, '[data-testid=support-enter]');
+    check(!!ring && !!enter && ring.x < enter.x && ring.x + ring.w > enter.x + enter.w && ring.h > enter.h * 2, `S ready ${vp.n} · l’anneau est plus grand que « Entrer » et le contient (ce n’est pas lui)`);
+    if (vp.n === '390') await shot(p, '07-support-liste-des-entreprises');
+    check(/Entrer/.test(await stepText(p)) && /à côté de l’entreprise voulue/.test(await stepText(p)), `S ready ${vp.n} · la phrase dit de choisir l’entreprise voulue`);
+    await p.locator(G.next).click(); await p.waitForTimeout(300);
+    check(!(await guideOpen(p)) && (await p.url()).endsWith('/support'), `S ready ${vp.n} · « Terminer » ferme le guide, la page n’a pas bougé`);
+    supportWrites(f, `S ready ${vp.n}`);
+    await ctx.close();
+  }
+  // ── ready sans entreprise : l'anneau est sur la phrase « Aucune pour l'instant » ──
+  {
+    const { ctx, p } = await supportPage(1280, 800, { aal: 'aal2', factors: true, companies: [] });
+    await supportOpen(p);
+    const f = await supportStart(p);
+    const t = await checkRing(p, 'support-console.entreprises', 'S ready vide');
+    check(!!t && t.tag === 'p', 'S ready vide · l’anneau est sur la phrase « Aucune pour l’instant »');
+    supportWrites(f, 'S ready vide'); await ctx.close();
+  }
+  // ── inside : « Quitter » ──
+  {
+    const { ctx, p } = await supportPage(1280, 800, { aal: 'aal2', factors: true, companies: COMPAGNIES, inside: true });
+    await supportOpen(p);
+    check((await p.locator('h2', { hasText: 'Vous êtes dans' }).count()) === 1, 'S inside · la console est « dans » l’entreprise');
+    const f = await supportStart(p);
+    await checkRing(p, 'support-console.quitter', 'S inside');
+    check(/lecture seule/.test(await stepText(p)), 'S inside · la phrase dit « lecture seule »');
+    await p.locator(G.next).click(); await p.waitForTimeout(300);
+    supportWrites(f, 'S inside'); await ctx.close();
+  }
+  // ── Démo (sans base) : challenge → ready, le guide se ferme quand l'état change ──
+  {
+    const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, locale: 'fr-FR', isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+    const p = await ctx.newPage(); p.on('pageerror', (e) => { errors.push(e.message); console.log('   [erreur page]', e.message); });
+    await p.goto(`http://localhost:${PORT}/apercu/acces-support?demo=support`); await p.waitForSelector('[role=tablist]', { timeout: 15000 });
+    await p.getByRole('button', { name: 'Autoriser le support BEMEXO' }).click(); await p.waitForTimeout(900);
+    await p.getByRole('tab', { name: '2 · Support' }).click(); await p.waitForSelector(SC);
+    check((await p.locator(GUIDE_BTN).count()) === 1, 'S démo · le bouton est aussi sur la page d’aperçu');
+    const f = await supportStart(p);
+    await walk(p, 'support-demo-challenge', [{ cible: 'support-console.code', via: 'next' }, { cible: 'support-console.valider', via: 'next' }], 'S démo');
+    await supportStart(p); await p.locator(G.next).click(); await p.waitForTimeout(250);
+    await p.locator('input[aria-label="Code à 6 chiffres"]').fill('123456');
+    await real(p, 'support-console.valider').click();
+    await p.waitForSelector('h2:has-text("Entreprises qui vous ont autorisé")', { timeout: 5000 });
+    await p.waitForTimeout(400);
+    check(!(await guideOpen(p)), 'S démo · le code est validé : le guide s’est fermé tout seul (l’état a changé)');
+    await supportStart(p);
+    const t = await checkRing(p, 'support-console.entreprises', 'S démo ready');
+    check(!!t && t.tag === 'div', 'S démo ready · l’anneau entoure la liste');
+    await shot(p, '08-support-pret');
+    await p.locator(G.close).click(); await p.waitForTimeout(200);
+    check((await p.locator('[data-testid=support-enter]').count()) === 1, 'S démo · « Entrer » n’a pas été touché');
+    supportWrites(f, 'S démo'); await ctx.close();
+  }
+  check(errors.length === 0, `S · aucune erreur JS sur toute la console (${errors.length})`);
 }
 
 console.log(`\n${ok} ✅ / ${ko} ❌`);

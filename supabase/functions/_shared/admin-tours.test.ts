@@ -8,7 +8,10 @@ import {
   actionPrompt, buildActionContext, findGuide, fromFunctionCall, GUIDE, guideAnswer, guideButton, guideForPrompt, guideLinks,
   handleActionLocally, type ActionContext,
 } from './assistant-actions-core.ts';
-import { ADMIN_SCREENS, ADMIN_TOURS, adminStepsFor, findAdminTour, hasAdminTour, MENU_CIBLES, type AdminTour } from './admin-tours.ts';
+import {
+  ADMIN_SCREENS, ADMIN_TOURS, adminStepsFor, findAdminTour, hasAdminTour, MENU_CIBLES, SUPPORT_TOUR, supportStepsFor,
+  type AdminTour, type ConsoleKind,
+} from './admin-tours.ts';
 import { TOUR_LABEL, tourAction, tourIdOf } from './worker-tours.ts';
 
 const ROOTS = ['app', 'components'];
@@ -380,5 +383,115 @@ Deno.test('Guides bureau : une seule fabrique du bouton, et le guide ne fait rie
   if (!body) throw new Error('tourStep introuvable dans components/admin-planning.tsx');
   for (const bad of [/\breset[A-Z]\w*\(/, /setKioskOpen/, /enterSelect/, /exitSelect/, /setSelectMode/, /setAssistantOpen\(true/, /supabase/, /\.click\(/, /\bfetch\(/, /functions\.invoke/, /window\.open/, /\.(insert|update|upsert|delete)\(/]) {
     if (bad.test(body)) throw new Error(`tourStep (bureau) ne doit pas appeler ${bad}`);
+  }
+});
+
+// ── La console du SUPPORT BEMEXO (/support) ─────────────────────────────────
+const ETATS: ConsoleKind[] = ['loading', 'signed-out', 'not-staff', 'enroll', 'challenge', 'ready', 'inside'];
+const SUPPORT_FILE = 'components/support-console.tsx';
+
+Deno.test('Guide du support : une fiche à 6 ancres, un nombre d’étapes précis par état, rien pour loading et not-staff', () => {
+  const cibles = SUPPORT_TOUR.map((e) => e.cible);
+  eq(new Set(cibles).size, 6, 'ancres distinctes de la fiche support');
+  for (const e of SUPPORT_TOUR) {
+    if (!/^support-console\.[a-z]+$/.test(e.cible)) throw new Error(`cible « ${e.cible} » de forme inattendue`);
+    if (!e.etats.length) throw new Error(`${e.cible} : aucun état`);
+    for (const k of e.etats) if (!ETATS.includes(k)) throw new Error(`${e.cible} : état « ${k} » inconnu`);
+  }
+  const n = (k: ConsoleKind, narrow = false) => supportStepsFor(k, narrow).length;
+  for (const narrow of [false, true]) {
+    eq([n('signed-out', narrow), n('enroll', narrow), n('challenge', narrow), n('ready', narrow), n('inside', narrow)], [1, 3, 2, 1, 1], `étapes par état (${narrow ? '< 1024 px' : 'ordinateur'})`);
+    eq([n('loading', narrow), n('not-staff', narrow)], [0, 0], 'aucune étape tant qu’on ne sait pas qui est là, ni pour un compte qui n’est pas du support');
+  }
+  eq(supportStepsFor('enroll', false).map((s) => s.cible), ['support-console.qr', 'support-console.code', 'support-console.valider'], 'enroll : QR, champ du code, Valider');
+  eq(supportStepsFor('challenge', false).map((s) => s.cible), ['support-console.code', 'support-console.valider'], 'challenge : champ du code, Valider');
+});
+
+Deno.test('Guide du support : phrases courtes, simples, au vouvoiement, « Touchez » sous 1024 px', () => {
+  for (const k of ETATS) for (const narrow of [false, true]) supportStepsFor(k, narrow).forEach((e, i) => {
+    const at = `support ${k} ${narrow ? 'mobile' : 'ordi'} étape ${i + 1}`;
+    if (e.texte.length > 140) throw new Error(`${at} : ${e.texte.length} caractères (140 au plus) — ${e.texte}`);
+    if (!/[.]$/.test(e.texte)) throw new Error(`${at} : la phrase doit finir par un point — ${e.texte}`);
+    const low = e.texte.toLowerCase();
+    for (const w of BANNED) if (low.includes(w)) throw new Error(`${at} : mot à éviter « ${w} » — ${e.texte}`);
+    const tu = TUTOIEMENT.exec(e.texte);
+    if (tu) throw new Error(`${at} : tutoiement ou impératif « ${tu[0]} » (vouvoiement) — ${e.texte}`);
+    if (narrow && /cliqu/i.test(e.texte)) throw new Error(`${at} : « cliquez » sous 1024 px (on touche) — ${e.texte}`);
+    if (!narrow && /touch|appuy/i.test(e.texte.replace(/«[^»]*»/g, ''))) throw new Error(`${at} : « touchez » à l’ordinateur — ${e.texte}`);
+    if (/Sortir/.test(e.texte)) throw new Error(`${at} : le bouton s’appelle « Quitter », « Sortir » n’existe nulle part`);
+  });
+  eq(supportStepsFor('inside', true)[0].texte, 'Vous êtes en lecture seule. Touchez « Quitter » quand vous avez fini.', 'inside sous 1024 px');
+  eq(supportStepsFor('signed-out', true)[0].texte, 'Touchez « Se connecter » avec le compte support, puis revenez sur cette page.', 'signed-out sous 1024 px');
+});
+
+Deno.test('Guide du support : le visiteur non connecté n’apprend rien de plus que la page publique (une seule étape, « Se connecter »)', () => {
+  const out = supportStepsFor('signed-out', false);
+  eq(out.length, 1, 'signed-out : une étape');
+  if (!out[0].texte.includes('« Se connecter »')) throw new Error(`signed-out : « Se connecter » — ${out[0].texte}`);
+  for (const mot of ['QR', 'Valider', 'Entrer', 'Quitter', 'code', 'entreprise', 'authentification']) {
+    if (out.map((e) => e.texte).join(' ').includes(mot)) throw new Error(`signed-out : la fiche ne doit pas parler de « ${mot} »`);
+  }
+  // …et les étapes qui parlent de double vérification, d'entreprises ou de lecture seule ne sont jamais dites avant.
+  for (const e of SUPPORT_TOUR) if (e.etats.includes('signed-out') && e.etats.length !== 1) throw new Error(`${e.cible} : l’étape de connexion est la seule du visiteur`);
+  for (const k of ['signed-out', 'loading', 'not-staff'] as ConsoleKind[]) {
+    if (supportStepsFor(k, false).some((e) => /valider|entrer|quitter|qr/i.test(e.cible))) throw new Error(`${k} : aucune étape de la console vérifiée`);
+  }
+});
+
+Deno.test('Guide du support : les libellés cités et les ancres existent dans support-console.tsx, « Entrer » n’est jamais entouré', async () => {
+  const src = await sources();
+  const code = src[SUPPORT_FILE];
+  if (!code) throw new Error(`${SUPPORT_FILE} introuvable`);
+  const texte = N(code);
+  for (const e of SUPPORT_TOUR) for (const label of quoted(e.texte)) if (!texte.includes(N(label))) throw new Error(`${e.cible} : « ${label} » absent de ${SUPPORT_FILE}`);
+  for (const label of ['Se connecter', 'Valider', 'Entrer', 'Quitter']) if (!texte.includes(N(label))) throw new Error(`« ${label} » absent de ${SUPPORT_FILE}`);
+  if (/Sortir/.test(code)) throw new Error('« Sortir » n’existe pas dans la console (le bouton est « Quitter »)');
+  // Chaque ancre est posée, une fois — sauf la liste des entreprises : la liste OU la ligne « Aucune pour l'instant ».
+  const found = anchors({ [SUPPORT_FILE]: code });
+  for (const e of SUPPORT_TOUR) if (!found.has(e.cible)) throw new Error(`ancre « ${e.cible} » absente de ${SUPPORT_FILE}`);
+  for (const [k, n] of found) {
+    const max = k === 'support-console.entreprises' ? 2 : 1;
+    if (n !== max) throw new Error(`${k} ×${n} (${max} attendu)`);
+  }
+  eq(Array.from(found.keys()).sort(), SUPPORT_TOUR.map((e) => e.cible).filter((c, i, a) => a.indexOf(c) === i).sort(), 'les ancres posées sont exactement celles de la fiche');
+  // L'ancre « entreprises » : sur le conteneur de la liste et sur la ligne vide, jamais sur la ligne du bouton « Entrer ».
+  const lignes = code.split('\n').filter((l) => l.includes('support-console.entreprises'));
+  eq(lignes.length, 2, 'support-console.entreprises : deux endroits');
+  if (!lignes.some((l) => /<div className="sc-list"/.test(l))) throw new Error('support-console.entreprises doit être sur <div className="sc-list">');
+  if (!lignes.some((l) => /<p data-guide=[^>]*>Aucune pour/.test(l))) throw new Error('support-console.entreprises doit être aussi sur la ligne « Aucune pour l’instant »');
+  for (const l of code.split('\n')) if (/support-enter|onEnter/.test(l) && /data-guide/.test(l)) throw new Error('« Entrer » ouvre l’espace d’un client : jamais d’ancre dessus');
+  for (const a of AGIT_PAR_LIGNE.filter((x) => x.startsWith('support-'))) if (found.has(a)) throw new Error(`${a} : jamais posée`);
+  // Un patron ou un salarié connecté voit « Accès réservé » : aucun bouton (l'état not-staff n'a pas de fiche).
+  if (!/Accès réservé/.test(code)) throw new Error('« Accès réservé » (état not-staff) introuvable');
+});
+
+Deno.test('Guide du support : le bouton ne fait que lancer l’affichage (rien lu au rendu, aucune action de la console appelée)', async () => {
+  const code = await Deno.readTextFile(SUPPORT_FILE);
+  // Les apostrophes d'un <style> rendu côté serveur font échouer l'hydratation (erreurs 418/423/425).
+  const css = /const CSS = `([\s\S]*?)`;/.exec(code)?.[1];
+  if (!css) throw new Error('CSS introuvable');
+  if (/['’]/.test(css)) throw new Error('le CSS de la console ne doit contenir aucune apostrophe');
+  if (!/\.sc-guide\{/.test(css)) throw new Error('classe sc-guide absente du CSS');
+  const nu = bare(code);
+  // matchMedia / window : seulement dans le gestionnaire du clic (la page est exportée en statique).
+  const lignesWindow = nu.split('\n').filter((l) => /\bwindow\b|matchMedia|\bdocument\b/.test(l));
+  eq(lignesWindow.length, 1, 'window / matchMedia / document dans support-console.tsx');
+  if (!/const openTour = \(\) => setTour\(\{ kind: step\.kind, steps: supportStepsFor\(step\.kind, window\.matchMedia\('\(max-width: 1023px\)'\)\.matches\) \}\);/.test(lignesWindow[0])) throw new Error(`la largeur doit être lue dans openTour seulement — ${lignesWindow[0]}`);
+  if (!/onClick=\{openTour\}/.test(nu) || !/data-testid="support-guide-open"/.test(nu)) throw new Error('bouton support-guide-open branché sur openTour');
+  // openTour et le guide n'appellent jamais une action de la console.
+  const guide = nu.split('\n').filter((l) => !/^\s*import /.test(l) && /openTour|setTour|GuideTour|tourSteps|supportStepsFor/.test(l)).join('\n');
+  for (const bad of [/\bonLogin\(/, /\bonVerify\(/, /\bonEnter\(/, /\bonExit\(/, /\bonBack\(/, /\brefresh\(/, /\bfetch\(/, /supabase/, /\.click\(/, /localStorage|sessionStorage/]) {
+    if (bad.test(guide)) throw new Error(`le guide ne doit pas appeler ${bad}`);
+  }
+  // Les étapes sont rangées dans l'état au clic : de nouveaux objets à chaque rendu relanceraient <GuideTour> à chaque rendu de la console.
+  if (/steps=\{supportStepsFor/.test(nu)) throw new Error('GuideTour reçoit les étapes de l’état, pas un tableau neuf à chaque rendu');
+  // Les états sans bouton viennent de la fiche elle-même (une seule source) : loading et not-staff n'en ont pas.
+  if (!/supportStepsFor\(step\.kind, false\)\.length > 0/.test(nu)) throw new Error('le bouton n’apparaît que si la fiche a des étapes pour l’état');
+  // Un changement d'état ferme le guide.
+  if (!/useEffect\(\(\) => \{ setTour\(null\); \}, \[step\.kind\]\)/.test(nu)) throw new Error('un changement d’état doit fermer le guide');
+  // Les pages qui montent la console (réelle et aperçu) ne sont pas touchées : la console porte tout.
+  for (const f of ['app/support/page.tsx', 'app/apercu/acces-support/page.tsx']) {
+    const page = await Deno.readTextFile(f);
+    if (/GuideTour|supportStepsFor|data-guide/.test(page)) throw new Error(`${f} : le guide vit dans components/support-console.tsx`);
   }
 });
