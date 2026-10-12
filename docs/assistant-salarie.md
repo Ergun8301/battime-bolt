@@ -28,3 +28,14 @@ Pause : champ modifiable dans le brouillon, enregistré dans `break_minutes` (co
 ## Tests
 
 `npm run test:assistant-salarie` (phrases, ambiguïtés, incohérences, étanchéité, IA simulée) · `npm run test:assistant-salarie-rls`
+
+## Lot 7 — « Me guider pas à pas »
+
+Chaque réponse « guide » (ex. « comment je demande un congé ? ») garde sa fiche écrite et son bouton vers l'écran, puis ajoute **« Me guider pas à pas »** quand la fiche a un guidage : un anneau entoure le vrai bouton, une phrase par étape (voir `docs/guides-pas-a-pas.md`).
+
+- Une fiche d'aide (`WORKER_GUIDE`) a un `id` stable ; sa fiche de guidage (`supabase/functions/_shared/worker-tours.ts`) porte le même `id`. 23 fiches : tout ce qui se fait sur un écran, chef d'équipe compris. Les fiches « collègues » et « assistant » (`ask:`) n'en ont pas.
+- Voie locale et voie modèle fabriquent leurs boutons avec le **même** helper (`workerGuideLinks`) : raccourci, puis guide. Le modèle ne peut pas ajouter le guide d'une autre fiche. Aucun nouveau champ dans les réponses.
+- Le guide ne fait rien à la place du salarié : pas d'écriture, pas de réseau, pas de toucher automatique.
+- Mise en ligne : **le front d'abord, puis `worker-assistant`**. Aucune migration.
+- Tests : `npm run test:guides` (Deno) et `node scripts/tests/guides-lot7.mjs out <dossier>` (navigateur).
+- Retour : une étape de la fiche écrite « Historique » disait « Touchez un jour » alors que cet écran n'a pas de jour à toucher ; elle dit maintenant « Faites défiler : un bloc par jour ».
