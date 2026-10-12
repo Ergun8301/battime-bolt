@@ -20,6 +20,7 @@ import { calendarForPrompt, cleanName, cleanSpoken, cleanTitle, dayPart, looksLi
 import { plannedState } from './day-hours.ts';
 import { WORKER_DOMAINS, pickTools } from './tool-domains.ts';
 import { WORKER_TEXT_MAX } from './saisie-profil.ts';
+import { hasWorkerTour, TOUR_LABEL, tourAction } from './worker-tours.ts';
 export { looksLikeAction };
 
 export interface WorkerSnapshot {
@@ -443,66 +444,75 @@ export type WorkerNav = keyof typeof WORKER_NAV;
 
 /** Bouton raccourci : un écran, ou « ask:… » = une question toute prête posée à l'assistant. */
 export type WorkerGuideLink = WorkerNav | `ask:${string}`;
-export interface WorkerGuideEntry { mots: string[]; titre: string; etapes: string[]; lien: WorkerGuideLink }
+/** `id` stable : c'est lui qui relie la fiche à son guide pas à pas (worker-tours.ts). */
+export interface WorkerGuideEntry { id: string; mots: string[]; titre: string; etapes: string[]; lien: WorkerGuideLink }
 export function workerGuideLink(l: WorkerGuideLink): { label: string; action: string } {
   return l.startsWith('ask:') ? { label: l.slice(4), action: l } : { label: WORKER_NAV[l as WorkerNav], action: l };
+}
+/**
+ * Les boutons d'une réponse « guide » (lot 7) : le raccourci vers l'écran, puis
+ * « Me guider pas à pas » quand la fiche a un guidage. Un SEUL endroit les fabrique.
+ */
+export function workerGuideLinks(g: WorkerGuideEntry): { label: string; action: string }[] {
+  const go = workerGuideLink(g.lien);
+  return hasWorkerTour(g.id) ? [go, { label: TOUR_LABEL, action: tourAction(g.id) }] : [go];
 }
 
 /** Écrit à partir de app/poseur/page.tsx et components/poseur-*.tsx. */
 export const WORKER_GUIDE: WorkerGuideEntry[] = [
-  { mots: ['signaler reserve', 'reserve', 'probleme chantier', 'malfacon'], titre: 'Signaler une réserve',
+  { mots: ['signaler reserve', 'reserve', 'probleme chantier', 'malfacon'], id: 'reserve', titre: 'Signaler une réserve',
     etapes: ['Ouvrez le chantier du jour (« Mes heures ›»).', 'Statut du chantier : « Avec réserve ».', 'Un détail si vous voulez (facultatif), des photos via « Documents », puis « OK ».'], lien: 'journee' },
-  { mots: ['ajouter photo', 'photo', 'document', 'fichier'], titre: 'Ajouter une photo ou un document',
+  { mots: ['ajouter photo', 'photo', 'document', 'fichier'], id: 'photo-document', titre: 'Ajouter une photo ou un document',
     etapes: ['Ouvrez le chantier du jour.', 'Bouton « Documents ».', '« Photo » ou « Fichier ».'], lien: 'journee' },
-  { mots: ['demander conge', 'conge', 'vacances', 'absence', 'maladie', 'arret'], titre: 'Demander un congé',
+  { mots: ['demander conge', 'conge', 'vacances', 'absence', 'maladie', 'arret'], id: 'conge', titre: 'Demander un congé',
     etapes: ['Menu (votre nom en haut à droite) → « Mes congés ».', '« Faire une demande » : type et dates.', '« Envoyer la demande » : le bureau répond.'], lien: 'conges' },
   // Lot 12 : on commence par le QR de la tablette ; le téléphone peut seulement terminer.
-  { mots: ['pointer', 'commencer', 'chrono', 'en direct', 'je commence'], titre: 'Pointer son arrivée et son départ',
+  { mots: ['pointer', 'commencer', 'chrono', 'en direct', 'je commence'], id: 'pointer', titre: 'Pointer son arrivée et son départ',
     etapes: ['En arrivant : scannez le QR de la tablette.', 'En partant : scannez à nouveau (ou « Terminer ma journée » dans « Ma journée »).', 'Pas de tablette : notez vos heures avec « + ».'], lien: 'journee' },
-  { mots: ['envoyer journee', 'envoyer ma journee', 'valider journee', 'envoyer'], titre: 'Envoyer sa journée',
+  { mots: ['envoyer journee', 'envoyer ma journee', 'valider journee', 'envoyer'], id: 'envoyer-journee', titre: 'Envoyer sa journée',
     etapes: ['« Ma journée ».', 'Vérifiez vos chantiers et horaires.', '« Envoyer ma journée → ».'], lien: 'journee' },
-  { mots: ['ajouter heure', 'noter heure', 'saisir heure', 'ajouter chantier', 'oublie'], titre: 'Noter ses heures à la main',
+  { mots: ['ajouter heure', 'noter heure', 'saisir heure', 'ajouter chantier', 'oublie'], id: 'noter-heures', titre: 'Noter ses heures à la main',
     etapes: ['« Ma journée » → bouton « + ».', 'Chantier, puis horaires.', '« OK », puis « Envoyer ma journée ».'], lien: 'journee' },
-  { mots: ['planning', 'semaine', 'ou je vais', 'demain'], titre: 'Voir son planning',
+  { mots: ['planning', 'semaine', 'ou je vais', 'demain'], id: 'planning', titre: 'Voir son planning',
     etapes: ['Menu → « Ma semaine » ou « Mon mois ».', 'Touchez un jour pour le détail.'], lien: 'semaine' },
-  { mots: ['historique', 'anciennes heures', 'mois dernier'], titre: 'Retrouver ses anciennes heures',
-    etapes: ['Menu → « Historique ».', 'Touchez un jour.'], lien: 'historique' },
-  { mots: ['copier', 'dupliquer', 'meme que hier'], titre: 'Copier une journée',
+  { mots: ['historique', 'anciennes heures', 'mois dernier'], id: 'historique', titre: 'Retrouver ses anciennes heures',
+    etapes: ['Menu → « Historique ».', 'Faites défiler : un bloc par jour. « PDF » enregistre vos heures envoyées.'], lien: 'historique' },
+  { mots: ['copier', 'dupliquer', 'meme que hier'], id: 'copier-journee', titre: 'Copier une journée',
     etapes: ['« Ma journée ».', '« Copier la journée d’hier » ou « Dupliquer cette journée ».'], lien: 'journee' },
-  { mots: ['notification', 'rappel', 'alerte'], titre: 'Activer les notifications',
+  { mots: ['notification', 'rappel', 'alerte'], id: 'notifications', titre: 'Activer les notifications',
     etapes: ['Menu (votre nom en haut à droite).', '« Activer les notifications ».'], lien: 'notifications' },
-  { mots: ['photo de profil', 'avatar', 'changer ma photo'], titre: 'Changer sa photo',
+  { mots: ['photo de profil', 'avatar', 'changer ma photo'], id: 'photo-profil', titre: 'Changer sa photo',
     etapes: ['Menu (votre nom en haut à droite).', '« Changer ma photo ».'], lien: 'photo' },
   // ── Lot 7 : tout l'écran du salarié (libellés vérifiés par assistant-aide.test.ts) ──
-  { mots: ['panier', 'panier repas', 'repas', 'indemnite repas'], titre: 'Cocher le panier repas',
+  { mots: ['panier', 'panier repas', 'repas', 'indemnite repas'], id: 'panier', titre: 'Cocher le panier repas',
     etapes: ['« Ma journée ».', 'Touchez la case « Panier » du bloc noir (pris / non pris).', 'Un seul panier par jour.'], lien: 'journee' },
-  { mots: ['modifier mes heures', 'changer horaire', 'erreur d heure', 'corriger mes heures'], titre: 'Changer ses horaires',
+  { mots: ['modifier mes heures', 'changer horaire', 'erreur d heure', 'corriger mes heures'], id: 'modifier-heures', titre: 'Changer ses horaires',
     etapes: ['« Ma journée » → touchez la ligne.', 'Changez début et fin.', 'Validez ; si la journée est envoyée, le bureau est prévenu.'], lien: 'journee' },
-  { mots: ['retirer', 'enlever un chantier', 'supprimer une ligne', 'pas travaille'], titre: 'Retirer un chantier de sa journée',
+  { mots: ['retirer', 'enlever un chantier', 'supprimer une ligne', 'pas travaille'], id: 'retirer-ligne', titre: 'Retirer un chantier de sa journée',
     etapes: ['« Ma journée » → touchez la ligne.', '« Retirer ».', 'Confirmez.'], lien: 'journee' },
-  { mots: ['route', 'trajet', 'pause entre'], titre: 'Dire si un trou est de la route ou une pause',
+  { mots: ['route', 'trajet', 'pause entre'], id: 'route-pause', titre: 'Dire si un trou est de la route ou une pause',
     etapes: ['« Ma journée » : la question apparaît entre deux chantiers.', '« Route » ou « Pause ».'], lien: 'journee' },
   // Lot 11 : le salarié LÈVE la réserve lui-même (même formulaire que le bureau).
-  { mots: ['leve reserve', 'leve la reserve', 'leve une reserve', 'corrige sur place', 'reserve reglee', 'j ai corrige', 'reserves a lever'], titre: 'Lever une réserve',
+  { mots: ['leve reserve', 'leve la reserve', 'leve une reserve', 'corrige sur place', 'reserve reglee', 'j ai corrige', 'reserves a lever'], id: 'lever-reserve', titre: 'Lever une réserve',
     etapes: ['« Ma journée » → le chantier avec la réserve (ou le bandeau jaune des réserves à lever).', '« Lever la réserve » : commentaire et photo facultatifs.', 'Le bureau la voit dans « Levées ».'], lien: 'journee' },
-  { mots: ['annuler ma demande', 'annuler conge', 'retirer ma demande'], titre: 'Annuler une demande de congé',
+  { mots: ['annuler ma demande', 'annuler conge', 'retirer ma demande'], id: 'annuler-conge', titre: 'Annuler une demande de congé',
     etapes: ['Menu → « Mes congés ».', '« Annuler ma demande » (tant qu’elle attend).'], lien: 'conges' },
-  { mots: ['oublie de scanner', 'sortie oubliee', 'oublie de pointer', 'annuler pointage', 'pointage par erreur'], titre: 'Sortie oubliée',
+  { mots: ['oublie de scanner', 'sortie oubliee', 'oublie de pointer', 'annuler pointage', 'pointage par erreur'], id: 'sortie-oubliee', titre: 'Sortie oubliée',
     etapes: ['« Ma journée » : « Terminer ma journée » sur la carte du pointage.', 'Le lendemain : la ligne « Sortie oubliée » attend votre heure de fin.', 'Touchez-la, mettez l’heure, puis « Envoyer ma journée ».'], lien: 'journee' },
-  { mots: ['nouveau chantier', 'chantier pas dans la liste', 'ajouter un chantier', 'autre chantier'], titre: 'Travailler sur un chantier qui n’est pas dans la liste',
+  { mots: ['nouveau chantier', 'chantier pas dans la liste', 'ajouter un chantier', 'autre chantier'], id: 'autre-chantier', titre: 'Travailler sur un chantier qui n’est pas dans la liste',
     etapes: ['« Ma journée » → « + » → « Autre ».', 'Écrivez le nom : « Ajouter ce chantier ».', 'Le bureau le verra.'], lien: 'journee' },
-  { mots: ['envoyer au client', 'email du client', 'partager photo client'], titre: 'Envoyer les photos au client',
+  { mots: ['envoyer au client', 'email du client', 'partager photo client'], id: 'envoyer-client', titre: 'Envoyer les photos au client',
     etapes: ['« Documents » du chantier.', '« Envoyer au client » (son email la première fois).', 'Un email s’ouvre avec les liens.'], lien: 'journee' },
-  { mots: ['scanner', 'borne', 'qr code', 'pointer avec le qr'], titre: 'Pointer avec la borne (QR code)',
+  { mots: ['scanner', 'borne', 'qr code', 'pointer avec le qr'], id: 'borne', titre: 'Pointer avec la borne (QR code)',
     etapes: ['Icône scanner en haut de l’écran.', 'Visez le QR code de la borne.', 'Le pointage démarre (ou s’arrête).'], lien: 'borne' },
   // Lot 14 : toute l'équipe, sur les 7 derniers jours (plus besoin d'être sur le même chantier).
-  { mots: ['mon equipe', 'chef d equipe', 'heures de l equipe', 'saisir pour un salarie', 'heures d hier'], titre: 'Chef d’équipe : noter les heures de l’équipe',
+  { mots: ['mon equipe', 'chef d equipe', 'heures de l equipe', 'saisir pour un salarie', 'heures d hier'], id: 'equipe', titre: 'Chef d’équipe : noter les heures de l’équipe',
     etapes: ['« Mon équipe » (chef d’équipe seulement) : choisissez le jour (7 derniers jours) et le salarié.', '« Corriger » sa ligne, ou « Ajouter des heures » (chantier, début, fin).', '« OK — envoyer au bureau » : c’est envoyé, marqué « par le chef d’équipe ».'], lien: 'journee' },
-  { mots: ['informations', 'confidentialite', 'donnees', 'position gps'], titre: 'Informations sur vos données',
+  { mots: ['informations', 'confidentialite', 'donnees', 'position gps'], id: 'infos', titre: 'Informations sur vos données',
     etapes: ['Menu (votre nom en haut à droite).', '« Informations ».'], lien: 'infos' },
-  { mots: ['collegues', 'ou sont les autres', 'planning des collegues'], titre: 'Savoir où sont ses collègues',
+  { mots: ['collegues', 'ou sont les autres', 'planning des collegues'], id: 'collegues', titre: 'Savoir où sont ses collègues',
     etapes: ['Bouton ✨ de la barre du bas.', 'Demandez « Où sont mes collègues ? » ou « Où est Paul demain ? ».', 'Prénom, chantier et horaires (si le bureau l’a autorisé).'], lien: 'ask:Où sont mes collègues aujourd’hui ?' },
-  { mots: ['assistant', 'dicter', 'micro', 'comment tu marches'], titre: 'Se servir de l’Assistant',
+  { mots: ['assistant', 'dicter', 'micro', 'comment tu marches'], id: 'assistant', titre: 'Se servir de l’Assistant',
     etapes: ['Bouton ✨ de la barre du bas.', '🎤 pour dicter (appui = démarre, appui = arrête), 📎 pour une photo.', 'C’est fait tout de suite, avec « Annuler » ; pour effacer, vous confirmez d’abord.'], lien: 'ask:Combien d’heures cette semaine ?' },
 ];
 
@@ -994,7 +1004,7 @@ export function handleWorkerLocally(text: string, snapshot: WorkerSnapshot, live
     }
     if (/\b(comment|ou |ou est|je veux|je voudrais|aide|expliqu|montre|a quoi sert|quoi sert|c'?est quoi|ca sert)/.test(n)) {
       const g = findWorkerGuide(n);
-      if (g) return { kind: 'guide', answer: workerGuideAnswer(g), links: [workerGuideLink(g.lien)] };
+      if (g) return { kind: 'guide', answer: workerGuideAnswer(g), links: workerGuideLinks(g) };
     }
   }
   return handleLocally(text, snapshot);
@@ -1117,9 +1127,10 @@ export function fromWorkerCall(name: string, args: Record<string, unknown>, snap
       answer = g ? workerGuideAnswer(g) : 'Dites-moi ce que vous voulez faire : je vous guide, ou je le prépare.';
     }
     const l = typeof args.lien === 'string' && args.lien in WORKER_NAV ? args.lien as WorkerNav : null;
-    // Pas de lien donné par l'IA : celui de la fiche d'aide qui correspond.
-    const g = l ? null : findWorkerGuide(snapshot.demande ?? '') ?? findWorkerGuide(answer);
-    return { kind: 'guide', answer, links: l ? [workerGuideLink(l)] : g ? [workerGuideLink(g.lien)] : [] };
+    // Pas de lien donné par l'IA : celui de la fiche d'aide qui correspond. Lot 7 : avec son guidage,
+    // et aussi quand l'IA a donné LE MÊME écran que cette fiche (jamais le guidage d'une autre fiche).
+    const g = findWorkerGuide(snapshot.demande ?? '') ?? findWorkerGuide(answer);
+    return { kind: 'guide', answer, links: l ? (g && g.lien === l ? workerGuideLinks(g) : [workerGuideLink(l)]) : g ? workerGuideLinks(g) : [] };
   }
   if (name === 'declarer_heures') {
     const date = typeof args.date === 'string' ? (/^\d{4}-\d{2}-\d{2}$/.test(args.date) ? args.date : parseDateFr(args.date, snapshot.aujourdhui)) : '';

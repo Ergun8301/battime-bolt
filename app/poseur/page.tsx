@@ -25,6 +25,8 @@ import LeaveRequestDialog from '@/components/leave-request-dialog';
 import WorkerAssistant from '@/components/worker-assistant';
 import { pushSupported, currentPushState, enablePush, disablePush } from '@/lib/push';
 import WorkerReserves, { type WorkerReserve } from '@/components/worker-reserves';
+import GuideTour, { type GuideStep } from '@/components/guide-tour';
+import { findWorkerTour, tourIdOf, type WorkerTour } from '@/supabase/functions/_shared/worker-tours';
 import { COUNTED_STATUSES } from '@/lib/status';
 import { keep } from '@/lib/same';
 import { RESERVES_CHANGED_EVENT } from '@/lib/reserve-lift';
@@ -41,6 +43,8 @@ const TABS = [
 // Formations : une entrée du menu seulement quand il y en a au moins une.
 const FORMATIONS_TAB = { value: 'formations', label: 'Formations', icon: GraduationCap };
 const ALL_TABS = [...TABS, FORMATIONS_TAB];
+// Lot 7 : les ancres des guides pas à pas (components/guide-tour.tsx) sur les entrées du menu.
+const MENU_GUIDE: Record<string, string> = { day: 'menu.journee', week: 'menu.semaine', month: 'menu.mois', history: 'menu.historique' };
 
 const POSEUR_CSS = `
 @import url('/fonts/fonts.css');
@@ -169,6 +173,11 @@ export default function PoseurPage() {
   const [kioskOn, setKioskOn] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
+  // Lot 7 : guide pas à pas (components/guide-tour.tsx), lancé par « Me guider pas à pas » de l'assistant.
+  // Le menu du compte est piloté d'ici pour que le guide puisse l'ouvrir à l'étape qui le demande.
+  const [tour, setTour] = useState<WorkerTour | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const tourEnd = useRef(0); // quand le dernier guide s'est arrêté (le menu met un instant à se démonter)
   useEffect(() => {
     if (!user?.company_id) return;
     let stale = false;
@@ -374,6 +383,25 @@ export default function PoseurPage() {
   const goHome = () => { setSelectedDate(null); setView('day'); fetchPending(); };
   const goTo = (v: string) => { setSelectedDate(null); setView(v); };
 
+  // Lot 7 : l'écran que demande une étape du guide. De la NAVIGATION seulement (menu, page, fenêtre
+  // « Mes congés » / « Informations ») : jamais un geste qui agit (notifications, photo, scanner).
+  const here = useRef({ view, selectedDate });
+  here.current = { view, selectedDate };
+  const tourStep = (s: GuideStep) => {
+    setMenuOpen(s.ecran === 'menu');
+    setHdrHidden(false); // l'en-tête peut porter la cible (votre nom, le scanner)
+    const on = (v: string) => here.current.view === v && !here.current.selectedDate;
+    if (s.ecran === 'journee') { if (!on('day')) goHome(); }
+    else if (s.ecran === 'semaine') { if (!on('week')) goTo('week'); }
+    else if (s.ecran === 'mois') { if (!on('month')) goTo('month'); }
+    else if (s.ecran === 'historique') { if (!on('history')) goTo('history'); }
+    else if (s.ecran === 'conges') setLeaveOpen(true);
+    else if (s.ecran === 'infos') setInfoOpen(true);
+  };
+  const closeTour = () => { tourEnd.current = Date.now(); setTour(null); setMenuOpen(false); };
+  // L'assistant s'ouvre : le guide s'arrête (les deux se gêneraient).
+  useEffect(() => { if (assistantOpen && tour) closeTour(); }, [assistantOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const todayLabel = format(new Date(), 'EEEE d MMMM', { locale: fr });
   const isToday = view === 'day' && !selectedDate;
   // « Ma journée » garde le format téléphone ; les écrans hérités (semaine/mois/
@@ -501,32 +529,34 @@ export default function PoseurPage() {
             </div>
 
             {kioskOn && (
-              <button type="button" className="bt-phdr-scan" onClick={() => setScanOpen(true)} aria-label="Scanner la borne" data-testid="scan-open">
+              <button type="button" className="bt-phdr-scan" onClick={() => setScanOpen(true)} aria-label="Scanner la borne" data-testid="scan-open" data-guide="entete.scanner">
                 <ScanLine className="h-5 w-5" />
               </button>
             )}
             {/* Identité du salarié = déclencheur du menu (nom + rond photo/initiales). */}
             <input type="file" accept="image/*" hidden ref={photoInputRef} onChange={(e) => onPickPhoto(e.target.files?.[0])} />
-            <DropdownMenu>
+            <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
               <DropdownMenuTrigger asChild>
-                <button className="bt-phdr-id" aria-label="Mon compte et menu">
+                <button className="bt-phdr-id" aria-label="Mon compte et menu" data-guide="menu.compte">
                   <span className="bt-phdr-id-name">{user?.first_name}<span className="bt-phdr-id-last">{user?.last_name ? ` ${user.last_name}` : ''}</span></span>
                   <span className="bt-phdr-id-av">
                     {photoUrl ? <img src={photoUrl} alt="" /> : <span className="bt-phdr-id-ini">{(user?.first_name?.[0] || '')}{(user?.last_name?.[0] || '')}</span>}
                   </span>
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-60 bt-skin">
+              <DropdownMenuContent align="end" className="w-60 bt-skin"
+                // Lot 7 : pendant un guide, la fermeture du menu ne rend pas le focus au bouton du nom (il quitterait la carte du guide).
+                onCloseAutoFocus={(e) => { if (tour || Date.now() - tourEnd.current < 800) e.preventDefault(); }}>
                 <div className="bt-phdr-menuhead">
                   <span className="bt-phdr-menuhead-av">
                     {photoUrl ? <img src={photoUrl} alt="" /> : <span className="bt-phdr-id-ini">{(user?.first_name?.[0] || '')}{(user?.last_name?.[0] || '')}</span>}
                   </span>
                   <span className="bt-phdr-menuhead-name">{user?.first_name} {user?.last_name}</span>
                 </div>
-                <DropdownMenuItem onSelect={(e) => { e.preventDefault(); photoInputRef.current?.click(); }}>
+                <DropdownMenuItem data-guide="menu.photo" onSelect={(e) => { e.preventDefault(); photoInputRef.current?.click(); }}>
                   {uploadingPhoto ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Camera className="h-4 w-4 mr-2" />} Changer ma photo
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setLeaveOpen(true)}>
+                <DropdownMenuItem data-guide="menu.conges" onClick={() => setLeaveOpen(true)}>
                   <Palmtree className="h-4 w-4 mr-2" /> Mes congés
                 </DropdownMenuItem>
                 {aiOn && (
@@ -534,13 +564,13 @@ export default function PoseurPage() {
                     <Sparkles className="h-4 w-4 mr-2" /> Assistant BEMEXO
                   </DropdownMenuItem>
                 )}
-                <DropdownMenuItem onClick={() => setInfoOpen(true)}>
+                <DropdownMenuItem data-guide="menu.infos" onClick={() => setInfoOpen(true)}>
                   <Info className="h-4 w-4 mr-2" /> Informations
                 </DropdownMenuItem>
                 {/* Masqué si l'appareil ne gère pas le push (iOS hors écran d'accueil,
                     navigateur ancien) : inutile d'afficher un bouton qui ne peut rien faire. */}
                 {pushState !== 'unsupported' && (
-                  <DropdownMenuItem onSelect={(e) => { e.preventDefault(); if (!pushBusy) togglePush(); }}>
+                  <DropdownMenuItem data-guide="menu.notifications" onSelect={(e) => { e.preventDefault(); if (!pushBusy) togglePush(); }}>
                     {pushBusy ? <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                       : pushState === 'on' ? <BellOff className="h-4 w-4 mr-2" /> : <Bell className="h-4 w-4 mr-2" />}
                     {pushState === 'on' ? 'Couper les notifications'
@@ -549,7 +579,7 @@ export default function PoseurPage() {
                 )}
                 <DropdownMenuSeparator />
                 {TABS.map((t) => (
-                  <DropdownMenuItem key={t.value} onClick={() => goTo(t.value)}>
+                  <DropdownMenuItem key={t.value} data-guide={MENU_GUIDE[t.value]} onClick={() => goTo(t.value)}>
                     <t.icon className="h-4 w-4 mr-2" /> {t.label}
                     {!selectedDate && view === t.value && <Check className="h-4 w-4 ml-auto" />}
                   </DropdownMenuItem>
@@ -599,7 +629,7 @@ export default function PoseurPage() {
               <h3>{GEO_INFO_TITLE}</h3>
               <p>{GEO_INFO_TEXT}</p>
               <a href={GEO_INFO_LINK}>Politique de confidentialité</a>
-              <button type="button" onClick={() => setInfoOpen(false)}>Fermer</button>
+              <button type="button" onClick={() => setInfoOpen(false)} data-guide="infos.fermer">Fermer</button>
             </div>
           </div>
         )}
@@ -617,8 +647,19 @@ export default function PoseurPage() {
             else if (a === 'photo') photoInputRef.current?.click();
             else if (a === 'borne') setScanOpen(true);
             else if (a === 'infos') setInfoOpen(true);
+            // Lot 7 : « Me guider pas à pas » — l'assistant se replie, le guide entoure le vrai bouton. Fiche inconnue : rien.
+            else if (tourIdOf(a)) { const t = findWorkerTour(tourIdOf(a)!); if (t) { setAssistantOpen(false); setTour(t); } }
           }}
         />
+        {tour && (
+          <GuideTour
+            key={tour.id}
+            steps={tour.etapes}
+            onStepEnter={tourStep}
+            onClose={closeTour}
+            returnFocus={() => document.querySelector<HTMLElement>('[data-guide="journee.assistant"]')}
+          />
+        )}
       </div>
     </div>
   );

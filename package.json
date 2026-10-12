@@ -22,6 +22,8 @@
     "test:assistant-journal": "bash supabase/tests/run-rls.sh supabase/tests/lot7_assistant_journal.sql",
     "test:collegues": "bash supabase/tests/run-rls.sh supabase/tests/lot7_collegues_documents.sql",
     "test:assistant-aide": "npx -y deno@2 test --allow-read supabase/functions/_shared/assistant-aide.test.ts",
+    "test:guides": "npx -y deno@2 test --allow-read supabase/functions/_shared/worker-tours.test.ts",
+    "test:guides-ecrans": "node scripts/tests/guides-lot7.mjs out docs/captures-lot7b",
     "test:assistant-eval": "npx -y deno@2 test --allow-env supabase/functions/assistant-eval/eval.test.ts",
     "test:fr-langue": "npx -y deno@2 test --allow-env supabase/functions/_shared/fr-langue.test.ts",
     "test:ai-provider": "npx -y deno@2 test --allow-env supabase/functions/_shared/ai-provider.test.ts",

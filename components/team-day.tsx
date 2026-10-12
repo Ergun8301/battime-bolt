@@ -266,7 +266,7 @@ export default function TeamDay({ me, today, worksites, onChanged }: Props) {
       <div className="bt-td-h"><Users className="h-3.5 w-3.5" /> Mon équipe</div>
       <div className="bt-td-sub">Tu saisis ou corriges les heures de l&apos;équipe (7 derniers jours). <strong>« OK » les envoie au bureau</strong>, marquées « par le chef d&apos;équipe ».</div>
 
-      <div className="bt-td-days" role="group" aria-label="Jour">
+      <div className="bt-td-days" role="group" aria-label="Jour" data-guide="equipe.jour">
         {days.map((d, i) => (
           <button key={d} type="button" className="bt-td-day" aria-pressed={d === day} data-testid="td-day" data-day={d} onClick={() => setDay(d)}>
             {dayLabel(d, i)}<small>{format(parseISO(d), 'dd/MM')}</small>
@@ -280,7 +280,7 @@ export default function TeamDay({ me, today, worksites, onChanged }: Props) {
         <>
           <div className="bt-td-pick">
             <div className="bt-td-lab">Salarié</div>
-            <select className="bt-td-sel" value={who} onChange={(e) => setWho(e.target.value)} data-testid="td-who" aria-label="Salarié">
+            <select className="bt-td-sel" value={who} onChange={(e) => setWho(e.target.value)} data-testid="td-who" aria-label="Salarié" data-guide="equipe.salarie">
               {team.map((p) => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}
             </select>
           </div>
@@ -294,7 +294,7 @@ export default function TeamDay({ me, today, worksites, onChanged }: Props) {
               <span className={`bt-td-tag ${r.locked ? 'verrou' : isCounted(r.status) ? 'envoye' : 'aenvoyer'}`}>
                 {r.locked ? 'chez le comptable' : isCounted(r.status) ? 'envoyé' : 'à envoyer'}
               </span>
-              <button type="button" className="bt-td-edit" disabled={r.locked || r.status === 'validated'} onClick={() => openEditor(r)} data-testid="td-edit">
+              <button type="button" className="bt-td-edit" disabled={r.locked || r.status === 'validated'} onClick={() => openEditor(r)} data-testid="td-edit" data-guide="equipe.corriger">
                 Corriger
               </button>
               {r.status === 'draft' && !r.locked && (
@@ -303,7 +303,7 @@ export default function TeamDay({ me, today, worksites, onChanged }: Props) {
             </div>
           ))}
           {person && !editing && (
-            <button type="button" className="bt-td-add" onClick={() => openEditor(null)} data-testid="td-add">
+            <button type="button" className="bt-td-add" onClick={() => openEditor(null)} data-testid="td-add" data-guide="equipe.ajouter">
               <Plus className="inline h-3.5 w-3.5" /> Ajouter des heures pour {person.first_name}
             </button>
           )}
@@ -340,7 +340,7 @@ export default function TeamDay({ me, today, worksites, onChanged }: Props) {
               <TimeField value={end} onChange={setEnd} ariaLabel="Fin" testId="td-end" onBadChange={(b) => setBad((x) => ({ ...x, e: b }))} />
             </div>
           </div>
-          <button type="button" className="bt-td-save" disabled={saving} onClick={save} data-testid="td-save">
+          <button type="button" className="bt-td-save" disabled={saving} onClick={save} data-testid="td-save" data-guide="equipe.ok">
             {saving ? <Loader2 className="inline h-4 w-4 animate-spin" /> : 'OK — envoyer au bureau'}
           </button>
           <div className="bt-td-note">Envoyé au bureau « par le chef d&apos;équipe ». S&apos;il utilise l&apos;appli, {person.first_name} peut encore corriger.</div>

@@ -80,7 +80,7 @@ export default function ReserveLiftForm({ onSubmit, onCancel, tu = false }: Prop
         {bad && <span className="bt-rlf-bad">Photo uniquement (JPG, PNG…).</span>}
       </div>
       <div className="bt-rlf-acts">
-        <button type="button" className="bt-rlf-go" onClick={submit} disabled={busy} data-testid="reserve-lift-submit">
+        <button type="button" className="bt-rlf-go" onClick={submit} disabled={busy} data-testid="reserve-lift-submit" data-guide="reserves.valider">
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <span aria-hidden>✓</span>} Lever la réserve
         </button>
         <button type="button" className="bt-rlf-no" onClick={onCancel} disabled={busy}>Annuler</button>
