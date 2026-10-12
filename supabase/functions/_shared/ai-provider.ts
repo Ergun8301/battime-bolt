@@ -48,6 +48,8 @@ export interface AiConfig {
    * compté par projet, pas par entreprise). null = pas de plafond global.
    */
   plafonds: Record<Tier, number> | null;
+  /** Diagnostic : délais de remplacement par niveau. */
+  delais?: Partial<Record<Tier, { premier: number; total: number }>>;
 }
 
 // Noms vérifiés le 12/10/2026 dans la documentation de Google : à revoir chaque mois.
@@ -98,7 +100,7 @@ function lire(raw: string): AiConfig | string {
   try { j = JSON.parse(raw); } catch { return 'JSON illisible'; }
   if (!j || typeof j !== 'object' || Array.isArray(j)) return 'objet JSON attendu';
   const o = j as Record<string, unknown>;
-  if (Object.keys(o).some((k) => k !== 'formule' && k !== 'plafonds' && k !== 'reflexion' && !(SLOTS as string[]).includes(k))) return 'champ inconnu';
+  if (Object.keys(o).some((k) => k !== 'formule' && k !== 'plafonds' && k !== 'reflexion' && k !== 'delais' && !(SLOTS as string[]).includes(k))) return 'champ inconnu';
   const f = o.formule === undefined ? 'essai' : typeof o.formule === 'string' ? o.formule.trim().toLowerCase() : '';
   if (f !== 'essai' && f !== 'payant') return 'formule inconnue';
   const cfg = defauts(f);
@@ -110,6 +112,7 @@ function lire(raw: string): AiConfig | string {
     if (isProModel(m[2])) return `modèle « ${s} » refusé (Pro)`;
     cfg[s] = { fournisseur: 'gemini', model: m[2], reflexion: REFLEXION[s] };
   }
+  if (o.delais && typeof o.delais === 'object') cfg.delais = o.delais as AiConfig['delais'];
   if (o.reflexion && typeof o.reflexion === 'object') {
     for (const s2 of SLOTS) { const v = (o.reflexion as Record<string, unknown>)[s2]; if (v === 'minimal' || v === 'low' || v === 'medium' || v === 'high') cfg[s2].reflexion = v; }
   }
@@ -229,7 +232,7 @@ export function reposReinit(horloge: () => number = Date.now): void { auRepos.cl
 async function avecSecours<T extends { ok: boolean; reason?: string }>(
   cfg: AiConfig, tier: Tier, run: (m: Modele, timeoutMs: number) => Promise<T>,
 ): Promise<T> {
-  const d = DELAIS[tier];
+  const d = cfg.delais?.[tier] ?? DELAIS[tier];
   const fin = Date.now() + d.total;
   const left = () => fin - Date.now();
   const m = cfg[tier];
