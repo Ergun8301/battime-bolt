@@ -82,7 +82,8 @@ export type WorkerReply =
 export const MAX_SHIFT_MINUTES = 14 * 60;
 
 // ── Outils ──────────────────────────────────────────────────────────────────
-export const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[’']/g, "'");
+// « ı » (i turc sans point) n'est pas décomposé par NFD : ramené à « i » (le français n'en a pas).
+export const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/ı/g, 'i').replace(/[’']/g, "'");
 const pad = (n: number) => String(n).padStart(2, '0');
 export function toMin(t: string): number { const [h, m] = t.split(':').map(Number); return h * 60 + m; }
 export function fmtMin(min: number): string { return `${Math.floor(min / 60)} h ${pad(min % 60)}`; }
