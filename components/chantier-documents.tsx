@@ -326,7 +326,7 @@ export default function ChantierDocuments({
           onChange={(e) => onPick(e.target.files?.[0])} />
 
         <div className="bt-doc-addrow">
-          <button type="button" className="bt-doc-addbtn" onClick={() => photoRef.current?.click()} disabled={uploading}>
+          <button type="button" className="bt-doc-addbtn" data-guide="docs.photo" onClick={() => photoRef.current?.click()} disabled={uploading}>
             {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />} Photo
           </button>
           <button type="button" className="bt-doc-addbtn ghost" onClick={() => fileRef.current?.click()} disabled={uploading}>
@@ -419,7 +419,7 @@ export default function ChantierDocuments({
             </div>
           )}
           <div className="bt-doc-send-actions">
-            <button type="button" className="bt-doc-send-btn" onClick={openMail} disabled={sending || !clientEmail || docs.length === 0}>
+            <button type="button" className="bt-doc-send-btn" data-guide="docs.envoyer" onClick={openMail} disabled={sending || !clientEmail || docs.length === 0}>
               {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />} Ouvrir l&apos;e-mail
             </button>
             <button type="button" className="bt-doc-send-btn ghost" onClick={copyMessage} disabled={sending || docs.length === 0}>

@@ -77,7 +77,7 @@ export default function WorkerReserves({ items, onChanged }: { items: WorkerRese
   return (
     <>
       {n > 0 && (
-        <button className="bt-alert" onClick={() => setOpen(true)} aria-label="Réserves à lever" data-testid="reserves-banner">
+        <button className="bt-alert" onClick={() => setOpen(true)} aria-label="Réserves à lever" data-testid="reserves-banner" data-guide="reserves.bandeau">
           <span className="bt-alert-badge"><AlertTriangle className="h-3.5 w-3.5" /></span>
           <span className="bt-alert-txt">{n} réserve{n > 1 ? 's' : ''} à lever</span>
           <span className="bt-alert-chev">›</span>
@@ -100,7 +100,7 @@ export default function WorkerReserves({ items, onChanged }: { items: WorkerRese
                 {liftingId === r.id ? (
                   <ReserveLiftForm tu onSubmit={(note, photo) => lift(r, note, photo)} onCancel={() => setLiftingId(null)} />
                 ) : (
-                  <button type="button" className="bt-wr-go" data-testid="wr-lift" onClick={() => setLiftingId(r.id)}>
+                  <button type="button" className="bt-wr-go" data-testid="wr-lift" data-guide="reserves.lever" onClick={() => setLiftingId(r.id)}>
                     ✓ Lever la réserve
                   </button>
                 )}

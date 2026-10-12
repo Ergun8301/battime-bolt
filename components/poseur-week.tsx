@@ -180,6 +180,7 @@ export default function PoseurWeek({ onSelectDay }: { onSelectDay?: (date: strin
             <div
               key={dateStr}
               onClick={canOpen ? () => onSelectDay?.(dateStr) : undefined}
+              data-guide={canOpen ? 'semaine.jour' : undefined}
               className={`rounded-lg border p-3 space-y-2 transition-colors ${canOpen ? 'cursor-pointer hover:border-primary/60' : ''} ${isToday ? 'border-primary bg-primary/5' : 'bg-card'}`}
             >
               {/* Day header */}
@@ -301,6 +302,7 @@ export default function PoseurWeek({ onSelectDay }: { onSelectDay?: (date: strin
             <div
               key={dateStr}
               onClick={canOpen ? () => onSelectDay?.(dateStr) : undefined}
+              data-guide={canOpen ? 'semaine.jour' : undefined}
               className={`rounded-lg border p-2 min-h-[140px] flex flex-col transition-colors ${canOpen ? 'cursor-pointer hover:border-primary/60' : ''} ${isToday ? 'border-primary bg-primary/5' : 'bg-card'}`}
             >
               <div className="text-center mb-2 pb-2 border-b">
