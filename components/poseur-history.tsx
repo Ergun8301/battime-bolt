@@ -220,7 +220,7 @@ export default function PoseurHistory() {
       ) : (
         <div className="space-y-4">
           {Object.entries(groupedEntries).map(([date, dayEntries]) => (
-            <Card key={date}>
+            <Card key={date} data-guide="historique.jour">
               <CardContent className="py-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <p className="font-semibold">

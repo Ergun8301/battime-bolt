@@ -1972,6 +1972,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
               aria-label="Panier repas"
               aria-pressed={dayMeal}
               data-testid="panier"
+              data-guide="journee.panier"
               disabled={mealLocked}
               title={mealLocked ? 'Journée chez le comptable : vois avec la secrétaire.' : undefined}
               onClick={() => {
@@ -2014,7 +2015,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
                   : g.gap === 'route' ? `route${travelPaid ? ' (payée)' : ' (non payée)'}` : 'pause'}
               </div>
               {!monthLocked && (
-                <div className="bt-gap-btns">
+                <div className="bt-gap-btns" data-guide="journee.trou">
                   <button type="button" className={`bt-gap-b${g.gap === 'route' ? ' on' : ''}`} onClick={() => askGapKind(g.key, 'route')}>Route</button>
                   <button type="button" className={`bt-gap-b${g.gap === 'pause' ? ' on' : ''}`} onClick={() => askGapKind(g.key, 'pause')}>Pause</button>
                 </div>
@@ -2045,7 +2046,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
             const isLive = p.id === liveSlotId;
             const onTap = isLive ? tapLive : monthLocked ? () => setLateOpen(true) : frozen ? () => askCorrect(() => openPlanned(p)) : () => openPlanned(p);
             return (
-              <div key={item.key} className={`bt-iv-plan bt-iv-tap${isLive ? ' live' : ''}`} onClick={onTap} data-testid={isLive ? 'card-live' : 'card-planned'}>
+              <div key={item.key} className={`bt-iv-plan bt-iv-tap${isLive ? ' live' : ''}`} onClick={onTap} data-testid={isLive ? 'card-live' : 'card-planned'} data-guide={isLive ? undefined : 'journee.chantier'}>
                 <div className="bt-plan-k" style={isLive ? { color: '#1F7A4D' } : undefined}>
                   {/* Lot 11 : une heure de début seule (« à 14:00 ») se voit aussi. */}
                   {p.estimated_start && p.estimated_end
@@ -2080,7 +2081,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
             const isDraft = entry.status === 'draft' && !entry.locked;
             const onTap = !tappable ? undefined : monthLocked ? () => setLateOpen(true) : frozen ? () => askCorrect(() => openEntry(entry)) : () => openEntry(entry);
             return withGap(
-              <div key={item.key} className={`bt-iv${entry.locked ? ' ok' : entry.status === 'submitted' ? ' sent' : isDraft ? ' draft' : ''}${onTap ? ' bt-iv-tap' : ''}`} onClick={onTap} data-testid="card-entry">
+              <div key={item.key} className={`bt-iv${entry.locked ? ' ok' : entry.status === 'submitted' ? ' sent' : isDraft ? ' draft' : ''}${onTap ? ' bt-iv-tap' : ''}`} onClick={onTap} data-testid="card-entry" data-guide={onTap ? 'journee.chantier' : undefined}>
                 <div className="bt-iv-top">
                   <span className="bt-iv-name">{entry.worksite?.client_name || OTHER_NAME}</span>
                   {entry.worksite_id && (docsByWorksite.get(entry.worksite_id) || 0) > 0 && (
@@ -2105,7 +2106,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
                 </div>
                 {/* Lot 12 : sortie oubliée (chrono fermé la nuit) — dit simplement. */}
                 {entry.exit_forgotten && entry.status === 'draft' && (
-                  <div className="bt-iv-reserve avec" data-testid="card-exit-forgotten">
+                  <div className="bt-iv-reserve avec" data-testid="card-exit-forgotten" data-guide="journee.sortie-oubliee">
                     ⚠ Sortie oubliée{isExitToComplete(entry) ? ' — mets ton heure de fin' : ' — vérifie ton heure de fin'}
                   </div>
                 )}
@@ -2255,7 +2256,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
           <div className="bt-empty">
             <div>Aucun chantier aujourd&apos;hui.</div>
             {isOnline && !monthLocked && (
-              <button type="button" className="bt-ghostbtn" onClick={handleCopyYesterday} disabled={copyingYesterday}>
+              <button type="button" className="bt-ghostbtn" data-guide="journee.copier" onClick={handleCopyYesterday} disabled={copyingYesterday}>
                 {copyingYesterday ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />} Copier la journée d&apos;hier
               </button>
             )}
@@ -2283,7 +2284,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
         {/* Dupliquer cette journée */}
         {!isEmpty && !monthLocked && (
           <div style={{ textAlign: 'center' }}>
-            <button type="button" className="bt-dup" onClick={() => { setCopyDates([]); setRepeatOpen(true); }}>
+            <button type="button" className="bt-dup" data-guide="journee.copier" onClick={() => { setCopyDates([]); setRepeatOpen(true); }}>
               <Copy className="h-4 w-4" /> Dupliquer cette journée
             </button>
           </div>
@@ -2306,6 +2307,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
         <button
           type="button"
           className="bt-fab"
+          data-guide="journee.plus"
           aria-label="Ajouter un chantier"
           onClick={frozen && !monthLocked ? () => askCorrect(openNew) : openNew}
         >
@@ -2313,26 +2315,26 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
         </button>
 
         {!isOnline ? (
-          <button type="button" className="bt-send" disabled>Envoyer ma journée</button>
+          <button type="button" className="bt-send" data-guide="journee.envoyer" disabled>Envoyer ma journée</button>
         ) : pendingEntries.length > 0 ? (
-          <button type="button" className="bt-send" onClick={syncPendingEntries} disabled={syncing}>
+          <button type="button" className="bt-send" data-guide="journee.envoyer" onClick={syncPendingEntries} disabled={syncing}>
             {syncing && <Loader2 className="h-4 w-4 animate-spin" />} Envoyer ce qui reste ({pendingEntries.length})
           </button>
         ) : canSend ? (
-          <button type="button" className="bt-send" onClick={frozen ? () => askCorrect(handleSubmitDay) : handleSubmitDay} disabled={submitting}>
+          <button type="button" className="bt-send" data-guide="journee.envoyer" onClick={frozen ? () => askCorrect(handleSubmitDay) : handleSubmitDay} disabled={submitting}>
             {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Envoyer ma journée <span style={{ fontSize: 19 }}>→</span>
           </button>
         ) : allSubmitted ? (
-          <button type="button" className="bt-send done" disabled>Journée envoyée ✓</button>
+          <button type="button" className="bt-send done" data-guide="journee.envoyer" disabled>Journée envoyée ✓</button>
         ) : (
-          <button type="button" className="bt-send" disabled>Envoyer ma journée <span style={{ fontSize: 19 }}>→</span></button>
+          <button type="button" className="bt-send" data-guide="journee.envoyer" disabled>Envoyer ma journée <span style={{ fontSize: 19 }}>→</span></button>
         )}
 
         {/* Lot 6 : l'assistant vit DANS la barre, plus de bouton flottant qui
             recouvre « Envoyer ma journée ». Absent si l'assistant est coupé :
             « Envoyer » reprend alors toute la largeur (flex:1). */}
         {onAssistant && (
-          <button type="button" className="bt-ai" aria-label="Assistant BEMEXO" onClick={onAssistant} data-testid="dock-assistant">
+          <button type="button" className="bt-ai" aria-label="Assistant BEMEXO" onClick={onAssistant} data-testid="dock-assistant" data-guide="journee.assistant">
             <Sparkles className="h-6 w-6" />
           </button>
         )}
@@ -2364,6 +2366,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
                       key={ws.id}
                       type="button"
                       className={`bt-site${on ? ' on' : ''}${isOther ? ' other' : ''}`}
+                      data-guide={isOther ? 'editeur.autre' : 'editeur.chantier'}
                       onClick={() => setFWorksiteId(ws.id)}
                     >
                       {isOther && !on ? <span className="bt-rdo-plus">+</span> : null}
@@ -2398,6 +2401,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
                     <button
                       type="button"
                       className="bt-nommer-go"
+                      data-guide="editeur.ajouter-chantier"
                       disabled={!nomLibre.trim() || creationChantier}
                       onClick={creerChantierLibre}
                     >
@@ -2420,11 +2424,11 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
               {/* 2 · Horaires */}
               <div className="bt-sec">2 · Horaires</div>
               <div className="bt-times">
-                <button type="button" className="bt-timecard" onClick={() => setDrawerField('start')}>
+                <button type="button" className="bt-timecard" data-guide="editeur.horaires" onClick={() => setDrawerField('start')}>
                   <span className="k">Début</span>
                   <span className="v">{fStart}</span>
                 </button>
-                <button type="button" className="bt-timecard" onClick={() => setDrawerField('end')}>
+                <button type="button" className="bt-timecard" data-guide="editeur.horaires" onClick={() => setDrawerField('end')}>
                   <span className="k">Fin</span>
                   <span className="v">{fEnd}</span>
                 </button>
@@ -2460,7 +2464,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
                 <button type="button" className={`bt-recep-b sans${fReception === 'sans' ? ' on' : ''}`} onClick={() => setFReception(fReception === 'sans' ? '' : 'sans')}>
                   <CheckCircle2 className="h-[18px] w-[18px]" /> Sans réserve
                 </button>
-                <button type="button" className={`bt-recep-b avec${fReception === 'avec' ? ' on' : ''}`} onClick={() => setFReception(fReception === 'avec' ? '' : 'avec')}>
+                <button type="button" className={`bt-recep-b avec${fReception === 'avec' ? ' on' : ''}`} data-guide="editeur.reserve" onClick={() => setFReception(fReception === 'avec' ? '' : 'avec')}>
                   <AlertTriangle className="h-[18px] w-[18px]" /> Avec réserve
                 </button>
               </div>
@@ -2469,6 +2473,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
               <div className="bt-sec">4 · {fReception === 'avec' ? 'Détail des réserves' : 'Note'} <span style={{ textTransform: 'none', letterSpacing: 0, color: '#a39d92' }}>(facultatif)</span></div>
               <textarea
                 className="bt-note"
+                data-guide="editeur.note"
                 rows={2}
                 placeholder={fReception === 'avec' ? 'Ex. : fissure mur sud' : 'Préciser le travail effectué…'}
                 value={fObs}
@@ -2481,12 +2486,12 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
               {(slotWorksiteId || (openSlot.kind === 'entry' && editorEntry)) && (
                 <div className="bt-ed-dock-row">
                   {slotWorksiteId && (
-                    <button type="button" className="bt-ed-doc" onClick={() => setDocsWs({ id: slotWorksiteId, name: slotWorksiteName, entryId: openSlot.kind === 'entry' ? openSlot.entryId : null })}>
+                    <button type="button" className="bt-ed-doc" data-guide="editeur.documents" onClick={() => setDocsWs({ id: slotWorksiteId, name: slotWorksiteName, entryId: openSlot.kind === 'entry' ? openSlot.entryId : null })}>
                       <FolderOpen className="h-4 w-4" /> Documents
                     </button>
                   )}
                   {openSlot.kind === 'entry' && editorEntry && (
-                    <button type="button" className="bt-ed-trash" disabled={fSaving} onClick={() => setConfirmDel({ kind: 'entry', entry: editorEntry, sent: editorEntry.status === 'submitted' || !!editorEntry.submitted_at })} aria-label="Retirer ce chantier" title="Retirer ce chantier">
+                    <button type="button" className="bt-ed-trash" data-guide="editeur.retirer" disabled={fSaving} onClick={() => setConfirmDel({ kind: 'entry', entry: editorEntry, sent: editorEntry.status === 'submitted' || !!editorEntry.submitted_at })} aria-label="Retirer ce chantier" title="Retirer ce chantier">
                       <Trash2 className="h-4 w-4" />
                     </button>
                   )}
@@ -2498,7 +2503,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
                   encore « Autre » — les heures partaient sur « Autre » et le
                   chantier créé restait orphelin, les deux messages de succès
                   s'affichant côte à côte. Trouvé par Codex sur la PR 104. */}
-              <button type="button" className="bt-save" onClick={saveSlot} disabled={fSaving || creationChantier}
+              <button type="button" className="bt-save" data-guide="editeur.ok" onClick={saveSlot} disabled={fSaving || creationChantier}
                 title={creationChantier ? 'Ajout du chantier en cours…' : undefined}>
                 {(fSaving || creationChantier) && <Loader2 className="h-4 w-4 animate-spin" />}
                 OK <span style={{ fontSize: 18 }}>✓</span>
@@ -2557,7 +2562,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
           <div className="flex justify-center">
             <Calendar mode="multiple" selected={copyDates} onSelect={(d) => setCopyDates(d || [])} locale={fr} weekStartsOn={1} disabled={{ before: new Date() }} />
           </div>
-          <Button className="w-full h-11" disabled={copying || copyTargetStrs.length === 0} onClick={() => copyToDates(copyTargetStrs)}>
+          <Button className="w-full h-11" data-guide="copier.valider" disabled={copying || copyTargetStrs.length === 0} onClick={() => copyToDates(copyTargetStrs)}>
             {copying ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Copy className="h-4 w-4 mr-2" />}
             Copier{copyTargetStrs.length > 0 ? ` (${copyTargetStrs.length})` : ''}
           </Button>
@@ -2583,7 +2588,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
 
       {/* Confirm correcting an already-sent day */}
       <Dialog open={confirmCorrectOpen} onOpenChange={(o) => { setConfirmCorrectOpen(o); if (!o) setPendingAction(null); }}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-sm" data-guide-confirm>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-orange-500" /> Journée déjà envoyée</DialogTitle>
           </DialogHeader>
@@ -2597,7 +2602,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
 
       {/* Lot 1 : le prévu du bureau ne part qu'après un « oui ». */}
       <Dialog open={plannedAsk} onOpenChange={(o) => { if (!o) setPlannedAsk(false); }}>
-        <DialogContent className="max-w-sm" data-testid="planned-confirm">
+        <DialogContent className="max-w-sm" data-testid="planned-confirm" data-guide-confirm>
           <DialogHeader>
             <DialogTitle>Horaires prévus par le bureau</DialogTitle>
           </DialogHeader>
@@ -2623,7 +2628,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
       {/* Plus de 6 h d'affilée sans pause (borne OU saisie à la main) — un seul toucher
           sur une puce ; « Autre » (h:mm) part avec « OK ». Les lignes du QR passent ici. */}
       <Dialog open={!!pauseAsk} onOpenChange={(o) => { if (!o) setPauseAsk(null); }}>
-        <DialogContent className="max-w-sm" data-testid="pause-ask">
+        <DialogContent className="max-w-sm" data-testid="pause-ask" data-guide-confirm>
           <DialogHeader>
             <DialogTitle>Tu as pris une pause&nbsp;?</DialogTitle>
           </DialogHeader>
@@ -2649,7 +2654,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
 
       {/* Coherence confirmation */}
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-sm" data-guide-confirm>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-orange-500" /> Vérification</DialogTitle>
           </DialogHeader>
@@ -2666,7 +2671,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
 
       {/* Confirmation avant de retirer une intervention */}
       <Dialog open={!!confirmDel} onOpenChange={(o) => { if (!o) setConfirmDel(null); }}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-sm" data-guide-confirm>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-orange-500" /> Retirer ce chantier ?</DialogTitle>
           </DialogHeader>
@@ -2681,6 +2686,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
             <Button variant="outline" className="flex-1" onClick={() => setConfirmDel(null)}>Non</Button>
             <Button
               className="flex-1"
+              data-guide="confirmer.retirer"
               onClick={() => {
                 const c = confirmDel;
                 setConfirmDel(null);

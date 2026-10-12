@@ -225,7 +225,7 @@ export default function LiveTimer({ userId, session, today, worksites }: Props) 
             )}
           </div>
           <div className="bt-lt-row">
-            <button type="button" className="bt-lt-btn stop" disabled={busy || !endGuess} onClick={() => stop(endGuess)} data-testid="lt-finish">
+            <button type="button" className="bt-lt-btn stop" disabled={busy || !endGuess} onClick={() => stop(endGuess)} data-testid="lt-finish" data-guide="journee.terminer">
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Square className="h-4 w-4" />} Terminer ma journée
             </button>
           </div>
@@ -246,7 +246,7 @@ export default function LiveTimer({ userId, session, today, worksites }: Props) 
               <span className="bt-lt-since bt-lt-el" title="Temps écoulé">{fmtElapsed(elapsed)}</span>
             </div>
           </div>
-          <button type="button" className="bt-lt-btn stop" disabled={busy} onClick={() => stop()} data-testid="lt-finish">
+          <button type="button" className="bt-lt-btn stop" disabled={busy} onClick={() => stop()} data-testid="lt-finish" data-guide="journee.terminer">
             {busy && <Loader2 className="h-4 w-4 animate-spin" />} Terminer ma journée
           </button>
         </div>
