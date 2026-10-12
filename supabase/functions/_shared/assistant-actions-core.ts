@@ -21,6 +21,7 @@
 // reste disponible après.
 import { calendarForPrompt, cleanName, cleanSpoken, cleanTitle, dayPart, parseDateFr, parseTimeFr } from './fr-langue.ts';
 import { REASON_MAX, reasonOk } from './office-edits.ts';
+import { OFFICE_DOMAINS, pickTools } from './tool-domains.ts';
 
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -177,6 +178,12 @@ export const GUIDE: GuideEntry[] = [
     id: 'selection', mots: ['selectionner', 'supprimer plusieurs', 'tout selectionner', 'effacer plusieurs interventions', 'vider la semaine'],
     titre: 'Supprimer plusieurs interventions d’un coup',
     etapes: ['« Sélectionner » dans la barre du planning.', 'Cochez les bulles, ou « Tout sélectionner » (heures envoyées jamais cochables).', '« Supprimer (N) », puis confirmez — « Annuler » sur la carte remet tout.'], lien: 'planning'
+  },
+  {
+    // Lot 8 : versions du planning (lib/planning-versions.ts). Libellés vérifiés par assistant-aide.test.ts.
+    id: 'versions', mots: ['versions du planning', 'version du planning', 'revenir en arriere', 'retour en arriere', 'planning d avant', 'ancien planning', 'garder cette version'],
+    titre: 'Revenir à une version d’avant du planning',
+    etapes: ['Sur le planning, l’icône ⟲ à côté de « Salarié » (menu ☰ du téléphone : « Versions du planning ») ouvre les versions de la semaine affichée.', '« Voir » montre ce qui changerait ; « Revenir à cette version » demande de confirmer. Les cases avec des heures, d’un mois clôturé ou avec un pointage en cours ne bougent pas.', '« Annuler » juste après remet le planning d’avant.'], lien: 'planning'
   },
   {
     id: 'present', mots: ['present', 'enlever absence', 'annuler conge', 'finalement la', 'revient'],
@@ -1608,8 +1615,12 @@ export const ASSISTANT_FUNCTIONS = [
  */
 export const ATTACHMENT_ACTIONS = ['repondre', 'ranger_document', 'creer_chantier', 'ajouter_depense', 'inviter_salarie', 'cout_reel'] as const;
 export const ATTACHMENT_FUNCTIONS = ASSISTANT_FUNCTIONS.filter((f) => (ATTACHMENT_ACTIONS as readonly string[]).includes(f.name));
-/** Les outils proposés au modèle : tous, ou ceux des documents s'il y a un fichier. */
-export const functionsFor = (hasFile: boolean) => (hasFile ? ATTACHMENT_FUNCTIONS : ASSISTANT_FUNCTIONS);
+/**
+ * Les outils proposés au modèle : ceux des documents s'il y a un fichier ;
+ * sinon, lot 6, ceux du DOMAINE de la demande (tous si aucun n'est reconnu).
+ */
+export const functionsFor = (hasFile: boolean, question?: string) =>
+  (hasFile ? ATTACHMENT_FUNCTIONS : pickTools(ASSISTANT_FUNCTIONS, question, OFFICE_DOMAINS));
 
 // ── Sans IA : les demandes courantes, tout de suite ─────────────────────────
 export interface LocalReply { answer: string; links: { label: string; action: string }[]; action?: AssistantAction }

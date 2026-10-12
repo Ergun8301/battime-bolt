@@ -10,6 +10,7 @@ import { attachmentPayload } from '@/lib/attachment';
 import { generateLocalId } from '@/lib/offline-store';
 import { insertWorkerEntry } from '@/lib/worker-entry';
 import type { AssistantReply, AssistantSource } from '@/lib/assistant';
+import { iaFormule } from '@/lib/ia-formule';
 import {
   formatColleagues, fromWorkerCall, handleWorkerLocally, shiftMinutes, type ColleagueRow, type Draft, type DraftLine, type WorkerAction, type WorkerLive, type WorkerSnapshot,
 } from '@/supabase/functions/_shared/worker-assistant-core';
@@ -31,6 +32,8 @@ type ServerReply = {
   chantiers?: WorkerSnapshot['chantiers']; remaining?: number; notice?: boolean; error?: string;
   /** Lot 7 : UNE question s'il manque une info. */
   question?: { text: string };
+  /** Lot 6 : formule IA active (bandeau « Mode essai »). */
+  formule?: string | null;
 };
 const toReply = (d: ServerReply): AssistantReply => ({
   answer: d.answer || d.error || '…', links: d.links || [], remaining: d.remaining, notice: !!d.notice || !!d.error,
@@ -38,10 +41,12 @@ const toReply = (d: ServerReply): AssistantReply => ({
     : d.kind === 'action' && d.action ? ({ workerAction: d.action, chantiers: d.chantiers || [] } as WorkerActionExtra)
     : undefined,
   followUp: !!d.question || (d.kind === 'draft' && !!d.draft && d.draft.lines.some((l) => !l.worksite_id)),
+  ...(d.formule !== undefined ? { formule: d.formule } : {}),
 });
 
 export const supabaseWorkerSource: AssistantSource = {
   demo: false,
+  status: () => iaFormule('worker-assistant'),
   async ask(text, file) {
     try {
       const body = file ? { text, file: await attachmentPayload(file) } : { text };

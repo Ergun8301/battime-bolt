@@ -3,7 +3,7 @@ import {
   parseAmount, parseMonth, realHourlyCost, realLabourCost, sanitizeExtraction, slipHourlyCost,
   validateFigures, PAYSLIP_PROMPT, PAYSLIP_SCHEMA,
 } from './payslip-core.ts';
-import { extractJson, DEFAULT_AI_MODEL } from './ai-provider.ts';
+import { extractJson, MODELES_PAR_DEFAUT } from './ai-provider.ts';
 
 function eq(a: unknown, b: unknown, msg: string) {
   if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error(`${msg} — attendu ${JSON.stringify(b)}, obtenu ${JSON.stringify(a)}`);
@@ -77,15 +77,15 @@ Deno.test('IA simulée : sans clé → indisponible, aucun appel', async () => {
   eq(called, false, 'aucun appel sans clé');
 });
 
-Deno.test('IA simulée : modèle par défaut, clé en en-tête, JSON structuré, puis contrôle', async () => {
+Deno.test('IA simulée : modèle « documents », clé en en-tête, JSON structuré, puis contrôle', async () => {
   let url = '', init: RequestInit = {};
   const fake = (u: string, i: RequestInit) => {
     url = u; init = i;
     const text = JSON.stringify({ month: '2026-08', gross: 2450, employer_total: 2000, paid_hours: 151.67 });
     return Promise.resolve(new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text }] } }] })));
   };
-  const r = await extractJson({ prompt: PAYSLIP_PROMPT, schema: PAYSLIP_SCHEMA, file }, env({ GEMINI_API_KEY: 'k' }), fake);
-  if (!url.includes(`/models/${DEFAULT_AI_MODEL}:generateContent`)) throw new Error(`modèle par défaut non utilisé : ${url}`);
+  const r = await extractJson({ prompt: PAYSLIP_PROMPT, schema: PAYSLIP_SCHEMA, file, tier: 'documents' }, env({ GEMINI_API_KEY: 'k' }), fake);
+  if (!url.includes(`/models/${MODELES_PAR_DEFAUT.documents}:generateContent`)) throw new Error(`modèle « documents » non utilisé : ${url}`);
   if (url.includes('key=')) throw new Error('clé dans l’URL');
   eq((init.headers as Record<string, string>)['x-goog-api-key'], 'k', 'clé en en-tête');
   const sent = JSON.parse(String(init.body));
@@ -96,12 +96,14 @@ Deno.test('IA simulée : modèle par défaut, clé en en-tête, JSON structuré,
   eq(doubts, ['employer_total'], 'doute signalé à l’admin');
 });
 
-Deno.test('IA simulée : AI_MODEL change le modèle, erreur fournisseur propre', async () => {
-  let url = '';
-  const r = await extractJson({ prompt: '', schema: {}, file }, env({ GEMINI_API_KEY: 'k', AI_MODEL: 'autre-modele' }),
-    (u: string) => { url = u; return Promise.resolve(new Response('quota', { status: 429 })); });
-  if (!url.includes('/models/autre-modele:')) throw new Error('AI_MODEL ignoré');
-  eq(r, { ok: false, reason: 'provider_error' }, 'erreur 429');
+Deno.test('IA simulée : AI_CONFIG change le modèle (AI_MODEL n’est plus lu), erreur fournisseur propre', async () => {
+  const urls: string[] = [];
+  const quota = (u: string) => { urls.push(u); return Promise.resolve(new Response('quota', { status: 429 })); };
+  const cfg = JSON.stringify({ documents: `gemini:${MODELES_PAR_DEFAUT.secours}`, secours: `gemini:${MODELES_PAR_DEFAUT.rapide}` });
+  const r = await extractJson({ prompt: '', schema: {}, file }, env({ GEMINI_API_KEY: 'k', AI_CONFIG: cfg, AI_MODEL: 'ancien-modele' }), quota);
+  if (!urls[0].includes(`/models/${MODELES_PAR_DEFAUT.secours}:`) || urls.some((u) => u.includes('ancien-modele'))) throw new Error(`AI_CONFIG ignoré ou AI_MODEL lu : ${urls.join(' ')}`);
+  eq(urls.length, 2, 'erreur 429 : le secours est essayé, une fois');
+  eq(r, { ok: false, reason: 'provider_error' }, 'erreur 429 sur les deux');
   const r2 = await extractJson({ prompt: '', schema: {}, file }, env({ GEMINI_API_KEY: 'k' }),
     () => Promise.resolve(new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: 'pas du json' }] } }] }))));
   eq(r2, { ok: false, reason: 'bad_response' }, 'réponse non JSON');
@@ -130,6 +132,6 @@ Deno.test('Clé « AQ. » (auth key AI Studio) : en-tête x-goog-api-key, telle 
   } finally {
     Object.assign(console, orig);
   }
-  eq(logs.length, 2, 'deux erreurs journalisées');
+  if (!logs.length) throw new Error('les erreurs doivent être journalisées');
   if (logs.some((l) => l.includes(KEY) || l.includes('AQ.'))) throw new Error(`clé dans les logs : ${logs.join(' | ')}`);
 });

@@ -182,6 +182,8 @@ interface Props {
   ctl?: ExtraControl;
   /** Lot 1 : lit ce qu'une suppression du planning retirerait (rien n'est écrit). Absent en démo. */
   preview?: RemovalPreviewer;
+  /** Lot 8 : ouvre « Versions du planning » sur cette semaine (lundi). Absent : pas de lien. */
+  onOpenVersions?: (monday: string) => void;
 }
 
 // Une action directe n'est lancée qu'UNE fois, même si l'écran se redessine.
@@ -189,7 +191,7 @@ const launched = new WeakSet<object>();
 
 type Phase = 'auto' | 'question' | 'form' | 'done';
 
-export default function AssistantActionCard({ extra, execute, onDone, ctl, preview }: Props) {
+export default function AssistantActionCard({ extra, execute, onDone, ctl, preview, onOpenVersions }: Props) {
   const { options } = extra;
   // Lot 7 : ce qui a déjà été fait survit à un redessin du panneau.
   const mem = readCard<{ phase: Phase; result: ActionResult; doneSummary: string; cancelled: boolean; d: ActionDraft }>(extra);
@@ -270,7 +272,7 @@ export default function AssistantActionCard({ extra, execute, onDone, ctl, previ
     // Lot 1 : seules les cases que la carte a montrées partent.
     if ((draft.type === 'effacer_planning' || draft.type === 'supprimer_absence') && prev) draft = { ...draft, ids: prev.ids };
     const summary = summarize(draft, ctx);
-    const r = await execute(draft, summary, extra.attachment);
+    const r = await execute(draft, summary, extra.attachment, extra.request);
     setBusy(false);
     // Noté AVANT l'affichage : si le panneau a été redessiné entre-temps, la
     // nouvelle carte reprend ce résultat.
@@ -292,6 +294,7 @@ export default function AssistantActionCard({ extra, execute, onDone, ctl, previ
       <ActionDone
         message={result.message} summary={doneSummary} undo={result.undo} strongUndo={(result.count ?? 0) > 10}
         onEdit={result.undo ? () => { editOf.current = result.undo!; setPhase('form'); } : undefined}
+        link={result.versionsWeek && onOpenVersions ? { label: 'Versions de la semaine', onClick: () => onOpenVersions(result.versionsWeek!), testId: 'action-versions' } : undefined}
       />
     );
   }

@@ -28,6 +28,8 @@ import { sanitizeExtraction, supabaseCostSource } from '@/lib/real-cost';
 import { correctOfficeEntry } from '@/lib/office-edits';
 import { casesLabel, eraseOne, erasePlanning, prepareMove, restoreRows, undoErase, undoMovePrep, type MovePrep } from '@/lib/erase';
 import { DOC_CATEGORY_LABEL, type ActionDraft, type ActionQuestion } from '@/supabase/functions/_shared/assistant-actions-core';
+import { recordAfterAssistant, recordBeforeAssistant } from '@/lib/planning-versions';
+import { mondaysOf, weeksTouched } from '@/supabase/functions/_shared/planning-versions';
 import { precheck, type Changes } from '@/supabase/functions/_shared/office-edits';
 
 export type {
@@ -49,6 +51,8 @@ export interface ActionExtra {
   attachment?: File;
   /** Lot 7 : la question posée s'il manque une info (le panneau garde la demande). */
   pendingQuestion?: string;
+  /** Lot 8 : la demande telle qu'écrite ou dictée — gardée SEULEMENT avec une version du planning (D5). */
+  request?: string;
 }
 
 export interface ActionResult {
@@ -57,8 +61,10 @@ export interface ActionResult {
   partial?: boolean;
   /** Lot 8 : nombre d'éléments effacés (au-delà de 10, « Annuler » est mis en avant). */
   count?: number;
+  /** Lot 8 (versions) : une version du planning a été gardée pour cette semaine (lundi) → lien « Versions de la semaine ». */
+  versionsWeek?: string;
 }
-export type ActionExecutor = (d: ActionDraft, summary: string, attachment?: File) => Promise<ActionResult>;
+export type ActionExecutor = (d: ActionDraft, summary: string, attachment?: File, request?: string) => Promise<ActionResult>;
 
 /** Lot 1 : ce qu'une suppression du planning retirerait, lu avant le clic (rien n'est écrit). */
 export interface RemovalPreview {
@@ -110,8 +116,10 @@ export function makeActionExecutor(user: { id: string; company_id: string }): Ac
   const cid = user.company_id;
   const base = { companyId: cid, createdBy: user.id };
   // Lot 3 : tout ce que l'action écrit (et son « Annuler ») est tracé « assistant ».
-  const exec: ActionExecutor = async (d, summary, attachment) => {
+  const exec: ActionExecutor = async (d, summary, attachment, request) => {
     let message = '';
+    // Lot 8 (versions) : les semaines dont l'assistant change le planning EN BLOC.
+    let versionsWeek: string | undefined;
     // Lot 8 : l'annulation peut rendre son propre message (« 27 cases remises »).
     // Lot 1 : `partial` = tout n'a pas pu être défait (des cases portent des heures).
     let undo: (() => Promise<void | string | { message: string; partial: boolean }>) | undefined;
@@ -188,9 +196,16 @@ export function makeActionExecutor(user: { id: string; company_id: string }): Ac
         }
         case 'planning_semaine': {
           const rows = d.lignes.filter((l) => l.worksite_id);
+          // Lot 8 : V1 « initiale » avant le premier changement de l'assistant sur la semaine.
+          const weeks = mondaysOf([d.semaine_du, ...rows.map((l) => l.date)]);
+          const saved = await recordBeforeAssistant(cid, weeks);
           const ids: string[] = [];
           for (const l of rows) ids.push(await addPlanningSlot({ ...base, userId: l.user_id, worksiteId: l.worksite_id!, workDate: l.date }));
           message = `Planning appliqué : ${rows.length} affectation${rows.length > 1 ? 's' : ''}.`;
+          // … puis l'essai, avec la demande.
+          const after = await recordAfterAssistant(cid, weeks, request, message);
+          versionsWeek = after.weeks[0];
+          if (!saved || !after.ok) message += ' (version du planning non gardée)';
           // Lot 1 : « Annuler » retire les cases ajoutées, par le même chemin que
           // « Supprimer » : une case sur laquelle des heures ont été notées
           // depuis est GARDÉE, et c'est dit.
@@ -366,6 +381,9 @@ export function makeActionExecutor(user: { id: string; company_id: string }): Ac
         case 'supprimer_intervention':
         case 'effacer_planning':
         case 'supprimer_absence': {
+          // Lot 8 (versions) : effacer le planning d'une période = un changement en bloc (une case seule, non).
+          const weeks = d.type === 'effacer_planning' ? weeksTouched(d.du, d.au) : [];
+          const saved = await recordBeforeAssistant(cid, weeks, { skipEmpty: true });
           const r = d.type === 'supprimer_intervention'
             ? await erasePlanning(cid, { ids: [d.planning_id!] })
             // Lot 1 : les cases que la carte a montrées, et elles seules.
@@ -380,6 +398,9 @@ export function makeActionExecutor(user: { id: string; company_id: string }): Ac
             : d.type === 'supprimer_absence' ? `${k} jour${k > 1 ? 's' : ''} d’absence retiré${k > 1 ? 's' : ''}.`
             : `${casesLabel(k)}.`;
           if (r.skipped) message += ` ${r.skipped} gardée${r.skipped > 1 ? 's' : ''} (${r.reason}).`;
+          const after = await recordAfterAssistant(cid, weeks, request, message);
+          versionsWeek = after.weeks[0];
+          if (!saved || !after.ok) message += ' (version du planning non gardée)';
           // Lot 2 : même « Annuler » que l'écran — l'intervention, ses brouillons vides, le lien des lignes retirées.
           undo = async () => { await undoErase(r); return k > 1 ? `Annulé : ${casesLabel(k, 'remise')} au planning.` : 'Annulé : c’est comme avant.'; };
           break;
@@ -485,7 +506,7 @@ export function makeActionExecutor(user: { id: string; company_id: string }): Ac
       return { ok: false, message: errText(e, 'Action impossible.') };
     }
     const logged = await journal(d.type, summary);
-    const result: ActionResult = { ok: true, message: logged ? message : `${message} (journal non mis à jour)`, ...(count ? { count } : {}) };
+    const result: ActionResult = { ok: true, message: logged ? message : `${message} (journal non mis à jour)`, ...(count ? { count } : {}), ...(versionsWeek ? { versionsWeek } : {}) };
     if (undo) {
       const run = undo;
       result.undo = async () => {
@@ -498,7 +519,7 @@ export function makeActionExecutor(user: { id: string; company_id: string }): Ac
     }
     return result;
   };
-  return (d, summary, attachment) => withOrigin('assistant', () => exec(d, summary, attachment));
+  return (d, summary, attachment, request) => withOrigin('assistant', () => exec(d, summary, attachment, request));
 }
 
 /**
