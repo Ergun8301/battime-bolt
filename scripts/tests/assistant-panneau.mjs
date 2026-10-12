@@ -56,6 +56,8 @@ const away = async () => { await p.evaluate(() => {
   Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' }); document.dispatchEvent(new Event('visibilitychange', { bubbles: true })); window.dispatchEvent(new Event('visibilitychange'));
 }); await p.waitForTimeout(1200); };
 await p.click('[data-testid="bar-assistant"]'); await p.waitForTimeout(400);
+// Lot 6 : « Mode essai » visible AVANT d'envoyer quoi que ce soit (ici la fonction simulée ne dit pas sa formule : en cas de doute, bandeau affiché).
+check((await p.locator('[data-testid=mode-essai]').innerText()).trim()==='Mode essai (Gemini gratuit) : données fictives uniquement. Google peut relire et réutiliser ce que vous envoyez.', '6) bandeau « Mode essai » visible avant tout envoi, texte exact');
 assistantDelay=2500;
 await p.fill('.as-bar textarea','Ajoute une intervention à Lyon pour Kevin jeudi de 14h à 18h');
 await p.click('button[aria-label="Envoyer"]');

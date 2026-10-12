@@ -8,6 +8,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { isPreviewHost } from '@/lib/hosting';
+import { iaFormule } from '@/lib/ia-formule';
 import {
   BTP_LEAVE_DEFAULT_RATE, DEMO_FIGURES, realHourlyCost, type LeaveFund, type PayslipFigures,
 } from '@/supabase/functions/_shared/payslip-core';
@@ -27,6 +28,8 @@ export interface CostSource {
   save(companyId: string, userId: string, f: PayslipFigures, source: 'ai' | 'manual'): Promise<string | null>;
   remove(id: string): Promise<string | null>;
   read(file: File): Promise<ReadResult>;
+  /** Lot 6 : la formule IA active (bandeau « Mode essai »), sans quota ni appel au modèle ; null = inconnue. */
+  status?(): Promise<string | null>;
 }
 
 const UNAVAILABLE = 'Lecture automatique indisponible, saisissez les chiffres.';
@@ -90,6 +93,7 @@ async function toPayload(file: File): Promise<{ mime: string; base64: string }> 
 
 export const supabaseCostSource: CostSource = {
   demo: false,
+  status: () => iaFormule('payslip-read'),
   async slips(companyId, userId) {
     let q = supabase.from('payslip_figures')
       .select('id, user_id, month, gross, employer_total, paid_hours, source')

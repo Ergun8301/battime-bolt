@@ -11,8 +11,12 @@
 // redessin (session rafraîchie, planning rechargé) ne ferme pas le panneau et
 // ne perde ni les messages, ni la réponse en cours. 📎 (lot 3 bis) : photo ou
 // PDF joint, compressé ici, rangé seulement après « Confirmer ».
+// Lot 6 : bandeau « Mode essai » visible AVANT tout envoi. La formule vient de la
+// fonction (jamais devinée ici) ; tant qu'elle est inconnue (fonction injoignable,
+// ancienne version), le bandeau reste affiché : seul « payant » le retire.
 
 import { useCallback, useEffect, useReducer, useRef, useState, type ReactNode } from 'react';
+import TrialBanner from '@/components/trial-banner';
 import { Sparkles, X, Mic, Square, ArrowUp, Loader2, ArrowRight, Paperclip, FileText } from 'lucide-react';
 import { Dictation, speechCtor } from '@/lib/dictation';
 import { ATTACH_ACCEPT, ATTACH_MAX_BYTES, attachmentError, compressAttachment } from '@/lib/attachment';
@@ -28,7 +32,8 @@ export interface ExtraControl {
 type Msg = { who: 'me' | 'bot'; text: string; links?: AssistantLink[]; notice?: boolean; extra?: unknown; file?: string };
 
 // Lot 7 : une conversation par écran (bureau, salarié…), gardée en mémoire.
-interface Convo { msgs: Msg[]; busy: boolean; pending: string | null; open: boolean; remaining: number | null; listeners: Set<() => void> }
+// formule : undefined = pas encore demandée, null = inconnue (bandeau affiché).
+interface Convo { msgs: Msg[]; busy: boolean; pending: string | null; open: boolean; remaining: number | null; formule?: string | null; asking?: boolean; listeners: Set<() => void> }
 const CONVOS = new Map<string, Convo>();
 function convoOf(key: string): Convo {
   let c = CONVOS.get(key);
@@ -77,6 +82,7 @@ const CSS = `
 .as-rec i{width:8px;height:8px;border-radius:50%;background:#E5484D;animation:as-blink 1s infinite}
 @keyframes as-blink{50%{opacity:.25}}
 @media (prefers-reduced-motion:reduce){.as-mic.on,.as-rec i{animation:none}}
+.as-trial{margin:0;padding:7px 18px;font-size:12px;line-height:1.4;color:#6B5310;background:#FFF8E6;border-bottom:1px solid #F1E2B8}
 @media(max-width:640px){.as-fab{right:14px;bottom:14px}}
 `;
 
@@ -133,6 +139,12 @@ export default function AssistantPanel({ source, onNavigate, defaultOpen = false
   const bodyRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { setCanSpeak(!!speechCtor()); return () => dictRef.current?.abort(); }, []);
+  // Lot 6 : à l'ouverture, la fonction dit quelle formule IA est active (rien n'est compté, aucun modèle appelé).
+  useEffect(() => {
+    if (!open || convo.asking || convo.formule === 'essai' || convo.formule === 'payant' || !source.status) return;
+    convo.asking = true;
+    source.status().then((f) => { if (f !== null) { convo.formule = f; changed(convo); } }).catch(() => {}).finally(() => { convo.asking = false; });
+  }, [open, convo, source]);
   useEffect(() => { bodyRef.current?.scrollTo({ top: bodyRef.current.scrollHeight, behavior: 'smooth' }); }, [msgs, busy]);
 
   const ask = useCallback(async (q: string) => {
@@ -153,6 +165,7 @@ export default function AssistantPanel({ source, onNavigate, defaultOpen = false
     const extra = r.extra && sent && typeof r.extra === 'object' ? { ...(r.extra as object), attachment: sent } : r.extra;
     setMsgs((m) => [...m, { who: 'bot', text: r.answer, links: r.links, notice: r.notice, extra }]);
     if (typeof r.remaining === 'number') setRemaining(r.remaining);
+    if (r.formule !== undefined && r.formule !== convo.formule) { convo.formule = r.formule; changed(convo); }
   }, [busy, source, file]);
 
   const pickFile = async (f: File | undefined) => {
@@ -201,6 +214,7 @@ export default function AssistantPanel({ source, onNavigate, defaultOpen = false
             <b>Assistant BEMEXO</b>
             <button type="button" className="as-x" onClick={() => { dictRef.current?.abort(); setOpen(false); }} aria-label="Fermer"><X className="h-5 w-5" /></button>
           </div>
+          <TrialBanner formule={convo.formule} className="as-trial" />
           <div className="as-body" ref={bodyRef}>
             {msgs.length === 0 && (
               <>
