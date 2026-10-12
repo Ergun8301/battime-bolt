@@ -25,7 +25,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { aiKey, extractJson, formuleNom, PAUSE_MESSAGE, plafondProjet } from '../_shared/ai-provider.ts';
 import { loadAssistantContext } from '../_shared/assistant-context.ts';
-import { PAYSLIP_PROMPT, PAYSLIP_SCHEMA, sanitizeExtraction } from '../_shared/payslip-core.ts';
+import { PAYSLIP_PROMPT, PAYSLIP_SCHEMA, payslipReply } from '../_shared/payslip-core.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -84,8 +84,8 @@ Deno.serve(async (req) => {
         message: r.reason === 'not_configured' ? UNAVAILABLE : 'Lecture impossible pour ce document. Saisissez les chiffres.',
       });
     }
-    const { figures, doubts } = sanitizeExtraction(r.data);
-    return json({ available: true, figures, doubts });
+    // Lu par le modèle de secours (plus léger) : les quatre chiffres sont « à vérifier » à l'écran.
+    return json(payslipReply(r));
   } catch {
     // Volontairement sans détail : l'erreur pourrait contenir un extrait du document.
     console.error('[payslip-read] erreur interne');

@@ -68,9 +68,10 @@ function fmtMonth(y: number, mo: number): string | null {
  *   - total employeur ≤ brut : impossible (les charges patronales s'ajoutent
  *     au brut) → total employeur vidé ;
  *   - heures hors [1 ; 250] → vidées.
- * `doubts` liste les champs vidés, pour les signaler à l'écran.
+ * `doubts` liste les champs vidés, pour les signaler à l'écran. Lu par le modèle
+ * de SECOURS (plus léger) : les quatre champs sont à vérifier.
  */
-export function sanitizeExtraction(raw: unknown): { figures: PayslipFigures; doubts: (keyof PayslipFigures)[] } {
+export function sanitizeExtraction(raw: unknown, secours = false): { figures: PayslipFigures; doubts: (keyof PayslipFigures)[] } {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   const doubts: (keyof PayslipFigures)[] = [];
   const month = parseMonth(r.month);
@@ -87,7 +88,14 @@ export function sanitizeExtraction(raw: unknown): { figures: PayslipFigures; dou
     paid_hours = null;
     doubts.push('paid_hours');
   }
+  if (secours) for (const k of ['month', 'gross', 'employer_total', 'paid_hours'] as const) if (!doubts.includes(k)) doubts.push(k);
   return { figures: { month, gross, employer_total, paid_hours }, doubts };
+}
+
+/** Ce que `payslip-read` renvoie à l'écran après une lecture réussie ; `secours` : lu par le modèle de secours → tout est « à vérifier ». */
+export function payslipReply(r: { data: unknown; secours?: boolean }) {
+  const { figures, doubts } = sanitizeExtraction(r.data, !!r.secours);
+  return { available: true, figures, doubts };
 }
 
 /** Motif de refus avant enregistrement, ou null si les chiffres sont complets et cohérents. */

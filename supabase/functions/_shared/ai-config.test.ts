@@ -4,7 +4,7 @@
 //   npm run test:ia-config
 import {
   aiKey, callFunction, DELAIS, extractJson, formuleNom, isProModel, MODELES_PAR_DEFAUT, PAUSE_MESSAGE, PLAFONDS_ESSAI,
-  plafondProjet, readConfig, tierFor,
+  plafondProjet, readConfig, REPOS_MS, reposReinit, tierFor,
 } from './ai-provider.ts';
 import { loadAssistantContext, type RpcClient } from './assistant-context.ts';
 
@@ -14,6 +14,7 @@ const okJson = () => new Response(JSON.stringify({ candidates: [{ content: { par
 type Plan = Record<string, { ms?: number; status?: number; reject?: boolean; bad?: boolean }>;
 interface Seen { model: string; body: Record<string, unknown>; raw: string; start: number; end: number }
 function fakeGemini(plan: Plan = {}, reply = okCall) {
+  reposReinit(); // chaque scénario repart à neuf : aucun modèle mis de côté par le précédent
   const calls: Seen[] = [];
   const fetchImpl = (url: string, init: RequestInit) => {
     const model = decodeURIComponent(/models\/([^:]+):/.exec(url)![1]);
@@ -259,6 +260,117 @@ Deno.test('Plafond global : réglé dans AI_CONFIG, sous le gratuit de Gemini pa
   if (plafondProjet(env({ AI_CONFIG: 'payant' }), 'documents') !== null) throw new Error('payant : pas de plafond global');
   if (!PAUSE_MESSAGE.startsWith('L’assistant est en pause jusqu’à demain')) throw new Error('message de pause');
   if (DELAIS.rapide.total > 10_000) throw new Error('rapide : réponse en moins de 10 s, secours compris');
+  // Documents : 12 s au premier modèle (il dépassait presque toujours 25 s), 25 s au plus secours compris ; mis de côté 10 min.
+  if (DELAIS.documents.premier !== 12_000 || DELAIS.documents.total > 25_000 || DELAIS.documents.total < DELAIS.documents.premier + 5_000) throw new Error(`documents : ${JSON.stringify(DELAIS.documents)}`);
+  if (REPOS_MS.documents !== 10 * 60_000 || REPOS_MS.rapide !== 0) throw new Error(`repos : ${JSON.stringify(REPOS_MS)}`);
+});
+
+// ── Un modèle « documents » lent ou indisponible est mis de côté 10 min : le secours répond tout de suite ──
+/** Raccourcit les délais d'un niveau le temps d'un scénario (les vraies valeurs sont dans DELAIS : rien de fragile en temps réel). */
+async function avecDelais<T>(tier: 'rapide' | 'documents', d: { premier: number; total: number }, f: () => Promise<T>): Promise<T> {
+  const avant = DELAIS[tier];
+  DELAIS[tier] = d;
+  try { return await f(); } finally { DELAIS[tier] = avant; }
+}
+const SHORT = { premier: 200, total: 2500 }; // le secours garde au moins 1,5 s : 2,5 s au total
+const withFile = { prompt: 'phrase-confidentielle-du-patron', functions: FN, file: PDF };
+
+Deno.test('Repos : documents trop lent → secours, puis 10 min directement au secours (horloge injectée), puis nouvel essai', async () => {
+  await avecDelais('documents', SHORT, async () => {
+    const plan: Plan = { [D]: { ms: 60_000 } };
+    const f = fakeGemini(plan);
+    let t = 5_000_000;
+    reposReinit(() => t);
+    const journal: string[] = [];
+    const appel = async () => { const { out, logs } = await logged(() => callFunction(withFile, env(KEY), f.fetchImpl)); journal.push(...logs); return out; };
+    const a = await appel();
+    if (!a.ok || a.secours !== true || names(f.calls) !== `${D},${S}`) throw new Error(`1er appel : ${names(f.calls)}`);
+    if (f.calls[1].start < f.calls[0].end) throw new Error('le secours est parti avant l’abandon du premier');
+    // Dans les 10 minutes : le modèle lent n'est plus attendu.
+    for (const dt of [1_000, REPOS_MS.documents - 2_000]) {
+      t += dt;
+      const b = await appel();
+      if (!b.ok || b.secours !== true) throw new Error('le secours doit répondre');
+    }
+    if (names(f.calls) !== `${D},${S},${S},${S}`) throw new Error(`pendant le repos : ${names(f.calls)}`);
+    // Après les 10 minutes : on réessaie le modèle « documents » (toujours lent : abandon, secours, et le repos repart).
+    t += 2_000;
+    await appel();
+    if (names(f.calls) !== `${D},${S},${S},${S},${D},${S}`) throw new Error(`après le repos : ${names(f.calls)}`);
+    t += 1_000;
+    await appel();
+    if (names(f.calls) !== `${D},${S},${S},${S},${D},${S},${S}`) throw new Error(`repos renouvelé : ${names(f.calls)}`);
+    // Le modèle « documents » va mieux : il répond après le repos, sans marque « secours », et n'est plus mis de côté.
+    plan[D] = {};
+    t += REPOS_MS.documents + 1;
+    const n = f.calls.length;
+    const c = await appel(), e = await appel();
+    if (!c.ok || c.secours !== undefined || !e.ok || e.secours !== undefined || names(f.calls.slice(n)) !== `${D},${D}`) throw new Error(`rétabli : ${names(f.calls.slice(n))}`);
+    // Les journaux restent techniques : une ligne « [ai] … », jamais le contenu.
+    if (!journal.some((l) => l.includes('au repos')) || journal.some((l) => !l.startsWith('[ai] ') || l.includes('confidentielle'))) throw new Error(`journal : ${journal.join(' | ')}`);
+  });
+});
+
+Deno.test('Repos : seulement pour « lent ou indisponible » (délai, 429, 5xx, 404, injoignable), jamais pour un 400 ni une réponse illisible', async () => {
+  await avecDelais('documents', SHORT, async () => {
+    const deux = async (plan: Plan, req: Parameters<typeof callFunction>[0] = withFile) => {
+      const f = fakeGemini(plan);
+      await logged(async () => { await callFunction(req, env(KEY), f.fetchImpl); await callFunction(req, env(KEY), f.fetchImpl); });
+      return names(f.calls);
+    };
+    for (const fail of [{ status: 429 }, { status: 500 }, { status: 503 }, { status: 404 }, { reject: true }, { ms: 60_000 }]) {
+      const n = await deux({ [D]: fail });
+      if (n !== `${D},${S},${S}`) throw new Error(`${JSON.stringify(fail)} : le modèle devait être mis de côté (${n})`);
+    }
+    // Mauvaise requête / clé refusée : une erreur de réglage, pas une panne passagère → pas de repos, le modèle est réessayé.
+    for (const status of [400, 401, 403]) {
+      const n = await deux({ [D]: { status } });
+      if (n !== `${D},${S},${D},${S}`) throw new Error(`${status} : pas de repos attendu (${n})`);
+    }
+    // Réponse illisible : pas une panne, ni secours ni repos.
+    const bad = await deux({ [D]: { bad: true } });
+    if (bad !== `${D},${D}`) throw new Error(`illisible : ${bad}`);
+    // Le modèle rapide n'est jamais mis de côté (REPOS_MS.rapide = 0) : questions et ordres le réessaient toujours.
+    const r = await deux({ [R]: { status: 503 } }, { prompt: 'x', functions: FN });
+    if (r !== `${R},${S},${R},${S}`) throw new Error(`rapide : ${r}`);
+    // Pas de secours distinct (même modèle) : rien à mettre de côté.
+    const same = fakeGemini({ [S]: { status: 503 } });
+    const cfg = env({ ...KEY, AI_CONFIG: `{"documents":"gemini:${S}"}` });
+    await logged(async () => { await callFunction(withFile, cfg, same.fetchImpl); await callFunction(withFile, cfg, same.fetchImpl); });
+    if (names(same.calls) !== `${S},${S}`) throw new Error(`même modèle : ${names(same.calls)}`);
+  });
+});
+
+Deno.test('Repos : si le secours échoue aussi, le modèle mis de côté est réessayé en dernier recours (avec le temps qui reste)', async () => {
+  await avecDelais('documents', SHORT, async () => {
+    const plan: Plan = { [D]: { ms: 60_000 } };
+    const f = fakeGemini(plan);
+    let t = 7_000_000;
+    reposReinit(() => t);
+    await logged(() => callFunction(withFile, env(KEY), f.fetchImpl)); // D abandonné, S répond : D au repos
+    plan[D] = {}; plan[S] = { status: 503 };
+    t += 60_000;
+    const { out } = await logged(() => callFunction(withFile, env(KEY), f.fetchImpl));
+    if (!out.ok || out.secours !== undefined || names(f.calls) !== `${D},${S},${S},${D}`) throw new Error(`dernier recours : ${names(f.calls)}`);
+    // Tout en panne : échec propre, deux appels au plus, sans « lent » dans le résultat.
+    const g = fakeGemini({ [D]: { status: 503 }, [S]: { status: 503 } });
+    reposReinit(() => t);
+    await logged(() => callFunction(withFile, env(KEY), g.fetchImpl)); // D 503 → repos ; S 503
+    const { out: x } = await logged(() => callFunction(withFile, env(KEY), g.fetchImpl));
+    if (x.ok || JSON.stringify(x) !== '{"ok":false,"reason":"provider_error"}' || names(g.calls) !== `${D},${S},${S},${D}`) throw new Error(`tout en panne : ${names(g.calls)} ${JSON.stringify(x)}`);
+  });
+});
+
+Deno.test('Secours : le résultat porte « secours: true » (appel de fonction ET lecture JSON), jamais quand le modèle du niveau a répondu', async () => {
+  const ok1 = fakeGemini();
+  const a = await callFunction(withFile, env(KEY), ok1.fetchImpl);
+  if (!a.ok || 'secours' in a) throw new Error('modèle du niveau : pas de marque');
+  const f = fakeGemini({ [D]: { status: 503 } });
+  const { out: b } = await logged(() => callFunction(withFile, env(KEY), f.fetchImpl));
+  if (!b.ok || b.secours !== true) throw new Error('secours : marque attendue (appel de fonction)');
+  const g = fakeGemini({ [D]: { status: 503 } }, okJson);
+  const { out: c } = await logged(() => extractJson({ prompt: 'p', schema: {}, file: PDF, tier: 'documents' }, env(KEY), g.fetchImpl));
+  if (!c.ok || c.secours !== true || (c.data as { mois?: string }).mois !== '2026-09') throw new Error('secours : marque attendue (lecture JSON)');
 });
 
 // ── Qui appelle : assistant_context, avec le jeton de la personne ──────────

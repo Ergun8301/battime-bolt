@@ -1,10 +1,10 @@
 // Tests de l'assistant qui AGIT (lot 3 bis) : `npm run test:assistant-actions` (Deno).
 // L'IA est SIMULÉE : on vérifie la chaîne complète « appel de fonction →
 // brouillon contrôlé », pour chaque action de la liste blanche.
-import { callFunction } from './ai-provider.ts';
+import { callFunction, reposReinit } from './ai-provider.ts';
 import {
-  ABSENCE_KINDS, ABSENCE_LABEL, ACTION_TYPES, A_CONFIRMER, A_CONFIRMER_REMPLACE, ASSISTANT_FUNCTIONS, ATTACHMENT_FUNCTIONS, MOTIF_MANQUANT, REFUS_REPOS, REMOVAL_TYPES, actionAnswer, actionMode,
-  actionPrompt, addDays, buildActionContext, checkAction, confirmText, findGuide, fromFunctionCall, functionsFor, guideForPrompt, handleActionLocally, isRemoval, mondayOf,
+  ABSENCE_KINDS, ABSENCE_LABEL, ACTION_TYPES, A_CONFIRMER, A_CONFIRMER_REMPLACE, ASSISTANT_FUNCTIONS, ATTACHMENT_FUNCTIONS, MOTIF_MANQUANT, REFUS_REPOS, REMOVAL_TYPES, SECOURS_BULLETIN, actionAnswer, actionMode,
+  actionPrompt, addDays, avertirSecours, buildActionContext, checkAction, confirmText, findGuide, fromFunctionCall, functionsFor, guideForPrompt, handleActionLocally, isRemoval, mondayOf,
   prepare, proposeWeek, questionFor, summarize, type ActionContext, type ActionDraft,
 } from './assistant-actions-core.ts';
 
@@ -37,6 +37,7 @@ const CTX: ActionContext = {
 
 /** Gemini simulé : renvoie l'appel de fonction voulu, et garde la requête. */
 function fakeGemini(name: string, args: Record<string, unknown>) {
+  reposReinit(); // chaque scénario repart à neuf : aucun modèle mis de côté par le précédent
   const seen: { url?: string; init?: RequestInit } = {};
   const fetchImpl = (url: string, init: RequestInit) => {
     seen.url = url; seen.init = init;
@@ -427,4 +428,41 @@ Deno.test('Lot 1 — fichier joint : le modèle ne voit QUE les outils des docum
   eq(r.ok, false, 'appel d’un outil hors liste refusé');
   const sent = JSON.parse(String(f.seen.init!.body));
   eq(sent.tools[0].functionDeclarations.map((x: { name: string }) => x.name), names, 'seuls les outils des documents partent au modèle');
+});
+
+Deno.test('Bulletin lu par le modèle de SECOURS : « à vérifier » au-dessus de la carte ; rien de plus quand le modèle « documents » a lu', async () => {
+  const BULLETIN = { salarie: 'Karim', mois: '2026-09', brut: 2450, cout_employeur: 3480, heures_payees: 151.67 };
+  const lire = async (name: string, args: Record<string, unknown>, documentsEnPanne: boolean) => {
+    reposReinit();
+    let n = 0;
+    const fetchImpl = () => {
+      n++;
+      return Promise.resolve(documentsEnPanne && n === 1 ? new Response('{}', { status: 503 })
+        : new Response(JSON.stringify({ candidates: [{ content: { parts: [{ functionCall: { name, args } }] } }] })));
+    };
+    const orig = console.error; console.error = () => {};
+    try {
+      const r = await callFunction({ prompt: 'x', functions: functionsFor(true), file: PDF }, env, fetchImpl);
+      if (!r.ok) throw new Error('appel refusé');
+      const out = fromFunctionCall(r.call.name, r.call.args, CTX);
+      return { r, out, final: avertirSecours(out, !!r.secours) };
+    } finally { console.error = orig; reposReinit(); }
+  };
+  // cout_reel lu par le secours : l'avertissement est ajouté, la carte (le brouillon) reste identique.
+  const a = await lire('cout_reel', BULLETIN, true);
+  eq(a.r.ok && a.r.secours, true, 'marque « secours »');
+  eq(a.final.answer, `${a.out.answer} ${SECOURS_BULLETIN}`, 'avertissement ajouté');
+  eq(a.final.action, a.out.action, 'la carte ne change pas');
+  // Même chose pour l'invitation qui lit un bulletin (coût réel proposé).
+  const b = await lire('inviter_salarie', { prenom: 'Marc', nom: 'Durand', email: 'marc@exemple.fr', bulletin_mois: '2026-09', bulletin_brut: 2450, bulletin_cout_employeur: 3480, bulletin_heures_payees: 151.67 }, true);
+  eq(b.final.answer, `${b.out.answer} ${SECOURS_BULLETIN}`, 'invitation avec bulletin lue par le secours');
+  // Le modèle « documents » a lu : aucune marque, texte inchangé.
+  const c = await lire('cout_reel', BULLETIN, false);
+  eq(c.r.ok && 'secours' in c.r, false, 'pas de marque');
+  eq(c.final.answer, c.out.answer, 'texte inchangé');
+  // Secours, mais pas un bulletin (ranger une facture, invitation sans bulletin) : pas d'avertissement « bulletin ».
+  const d = await lire('ranger_document', { chantier: 'Villa Dupont', categorie: 'facture' }, true);
+  eq(d.final.answer, d.out.answer, 'pas un bulletin');
+  const e = await lire('inviter_salarie', { prenom: 'Marc', nom: 'Durand', email: 'marc@exemple.fr' }, true);
+  eq(e.final.answer, e.out.answer, 'invitation sans bulletin');
 });

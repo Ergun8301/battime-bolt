@@ -1713,6 +1713,14 @@ export function actionAnswer(a: AssistantAction, ctx: ActionContext): string {
   return a.problems.length ? 'J’ai préparé l’action : complétez ce qui manque, puis confirmez.' : 'Vérifiez, puis confirmez.';
 }
 
+/** Un bulletin lu par le modèle de secours (plus léger) : à vérifier avant de confirmer. */
+export const SECOURS_BULLETIN = 'Bulletin lu par le modèle de secours (plus léger) : contrôlez chaque chiffre avant de confirmer.';
+export function avertirSecours(r: LocalReply, secours: boolean): LocalReply {
+  const d = r.action?.draft;
+  const bulletin = d?.type === 'cout_reel' || (d?.type === 'inviter_salarie' && !!d.bulletin);
+  return secours && bulletin ? { ...r, answer: `${r.answer} ${SECOURS_BULLETIN}` } : r;
+}
+
 export const ACTION_SUGGESTIONS = [
   'Ajouter un salarié',
   'Faire le planning de la semaine prochaine',
