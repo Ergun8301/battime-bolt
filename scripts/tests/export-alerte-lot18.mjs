@@ -14,9 +14,14 @@
 //  F) comptage impossible : aucun export, aucune écriture, un message.
 //  G) plus de 1000 lignes : le compte est exact (lecture paginée) et tout est verrouillé.
 //  H) l'alerte ne charge ni Excel ni jsPDF et n'est pas dans le chargement de /admin (chunk à l'ouverture).
+//  I) rien à verrouiller (alerte non affichée) mais une ligne arrive PENDANT les lectures de l'export : l'alerte s'ouvre, rien n'est verrouillé.
+//  J) la période de l'alerte est celle de l'export (même si l'écran en change) ; boutons de période inactifs pendant le comptage.
+//  K) le verrou échoue APRÈS le fichier (en totalité, ou en partie) : message honnête, jamais « Erreur lors de l'export ».
+//  L) lectures de l'export : mêmes statuts partout, ordre complet (… start_time, id) pour des pages sans doublon ni trou.
 // Captures (390 px, 4 au plus) : alerte, chiffres changés, comptable, export sans verrou.
 import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path'; import { chromium } from 'playwright-core';
-const [,, OUT, SH, PORT = '42600'] = process.argv; fs.mkdirSync(SH, { recursive: true });
+const [,, OUT, SH, PORT = '42600'] = process.argv;
+const run = (n) => !process.env.ONLY || process.env.ONLY.split(',').includes(n); // ONLY=I,J,K,L : seulement ces parties fs.mkdirSync(SH, { recursive: true });
 const T = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.png': 'image/png', '.json': 'application/json', '.webmanifest': 'application/json' };
 const srv = http.createServer((q, r) => { const p = decodeURIComponent(new URL(q.url, 'http://x').pathname); for (const c of [p, p + '.html', path.join(p, 'index.html')]) { const f = path.join(OUT, c); if (fs.existsSync(f) && fs.statSync(f).isFile()) { r.writeHead(200, { 'Content-Type': T[path.extname(f)] || 'application/octet-stream' }); return fs.createReadStream(f).pipe(r); } } r.writeHead(404); r.end(); });
 await new Promise((r) => srv.listen(Number(PORT), r));
@@ -101,7 +106,7 @@ const filterRows = (rows, params) => {
  */
 const setup = async (ctx, { accountant = false, support = false, rows } = {}) => {
   const db = freshDb({ accountant }); if (rows) db.time_entries = rows;
-  const writes = []; const reads = [];
+  const writes = []; const reads = []; const allReads = [];
   await ctx.addInitScript(([k, v]) => { localStorage.setItem(k, v); }, ['sb-sdperbcquvneohotjono-auth-token', JSON.stringify(session)]);
   if (support) await ctx.addInitScript((v) => { sessionStorage.setItem('bemexo-support', JSON.stringify(v)); }, { staffId: 'u-admin', companyId: CO, name: 'Pizzeria Exemple', expiresAt: '2030-01-01T10:00:00Z' });
   await ctx.clock.setFixedTime(FIXED_NOW);
@@ -117,14 +122,19 @@ const setup = async (ctx, { accountant = false, support = false, rows } = {}) =>
       let body = null; try { body = req.postDataJSON(); } catch { body = req.postData(); }
       writes.push({ m, t, q: url.search, body });
       if (t === 'time_entries' && m === 'PATCH') {
+        db.patchN = (db.patchN || 0) + 1;
+        if ((db.failLockAt || []).includes(db.patchN)) return r.fulfill({ status: 500, json: { message: 'boom', code: 'XX000' } });
         const hit = filterRows(db.time_entries, url.searchParams);
         for (const x of hit) Object.assign(x, body);
         return r.fulfill({ status: 204, body: '' });
       }
       return r.fulfill({ status: 201, json: {} });
     }
+    if (t === 'time_entries') allReads.push({ select: url.searchParams.get('select'), order: url.searchParams.get('order'), status: url.searchParams.get('status'), wd: url.searchParams.getAll('work_date') });
+    if (t === 'user_payroll' && db.inject) { const f = db.inject; db.inject = null; f(); } // une ligne arrive pendant les lectures de l'export
     if (t === 'time_entries' && url.searchParams.get('select') === 'id,user_id,locked') {
       reads.push(url.search);
+      if (db.delayCount) await sleep(db.delayCount);
       if (db.failCount) return r.fulfill({ status: 500, json: { message: 'boom' } });
     }
     let rows = filterRows(db[t] || [], url.searchParams);
@@ -133,7 +143,7 @@ const setup = async (ctx, { accountant = false, support = false, rows } = {}) =>
     if ((req.headers()['accept'] || '').includes('vnd.pgrst.object')) return rows.length ? r.fulfill({ json: rows[0] }) : r.fulfill({ status: 406, json: { code: 'PGRST116', message: 'none' } });
     return r.fulfill({ json: rows, headers: { 'content-range': `0-${Math.max(0, rows.length - 1)}/${rows.length}`, 'access-control-allow-origin': '*', 'access-control-expose-headers': 'content-range' } });
   });
-  return { db, writes, reads };
+  return { db, writes, reads, allReads };
 };
 
 let ok = 0, ko = 0; const check = (c, m) => { if (c) { ok++; console.log('✅', m); } else { ko++; console.log('❌', m); } };
@@ -205,7 +215,7 @@ const ctxOf = (w, h, mobile = false) => b.newContext({ viewport: { width: w, hei
 const phrase = (n, m) => `Cet export va verrouiller ${n} ligne${n > 1 ? 's' : ''} d’heures de ${m} salarié${m > 1 ? 's' : ''} (période ${PERIODE}). ${m > 1 ? 'Ils ne pourront' : 'Il ne pourra'} plus ${n > 1 ? 'les' : 'la'} modifier.`;
 
 // ═══ A) 1280 × 800 — le parcours complet en CSV ════════════════════════════════
-{
+if (run('A')) {
   const ctx = await ctxOf(1280, 800);
   const { db, writes, reads } = await setup(ctx);
   const { pg, seen } = await openAdmin(ctx);
@@ -274,7 +284,7 @@ const phrase = (n, m) => `Cet export va verrouiller ${n} ligne${n > 1 ? 's' : ''
 }
 
 // ═══ A bis) aucune ligne du tout : pas d'alerte, le message d'avant ══════════════
-{
+if (run('A')) {
   const ctx = await ctxOf(1280, 800);
   const { writes, reads } = await setup(ctx, { rows: [] });
   const { pg } = await openAdmin(ctx);
@@ -287,7 +297,7 @@ const phrase = (n, m) => `Cet export va verrouiller ${n} ligne${n > 1 ? 's' : ''
 }
 
 // ═══ B) 390 × 844 — téléphone ══════════════════════════════════════════════════
-{
+if (run('B')) {
   const ctx = await ctxOf(390, 844, true);
   const { db, writes } = await setup(ctx);
   const { pg } = await openAdmin(ctx);
@@ -326,7 +336,7 @@ const phrase = (n, m) => `Cet export va verrouiller ${n} ligne${n > 1 ? 's' : ''
 }
 
 // ═══ C) mode support (lecture seule) ═══════════════════════════════════════════
-{
+if (run('C')) {
   const ctx = await ctxOf(1280, 800);
   const { db, writes, reads } = await setup(ctx, { support: true });
   const { pg } = await openAdmin(ctx);
@@ -342,7 +352,7 @@ const phrase = (n, m) => `Cet export va verrouiller ${n} ligne${n > 1 ? 's' : ''
 }
 
 // ═══ D) « Envoyer au comptable » ═══════════════════════════════════════════════
-{
+if (run('D')) {
   const ctx = await ctxOf(390, 844, true);
   const { db, writes } = await setup(ctx, { accountant: true });
   const { pg } = await openAdmin(ctx);
@@ -373,7 +383,7 @@ const phrase = (n, m) => `Cet export va verrouiller ${n} ligne${n > 1 ? 's' : ''
 }
 
 // ═══ E) les chiffres ont bougé entre l'alerte et le clic ═══════════════════════
-{
+if (run('E')) {
   const ctx = await ctxOf(390, 844, true);
   const { db, writes } = await setup(ctx);
   const { pg } = await openAdmin(ctx);
@@ -394,7 +404,7 @@ const phrase = (n, m) => `Cet export va verrouiller ${n} ligne${n > 1 ? 's' : ''
 }
 
 // ═══ F) comptage impossible ════════════════════════════════════════════════════
-{
+if (run('F')) {
   const ctx = await ctxOf(1280, 800);
   const { db, writes } = await setup(ctx);
   db.failCount = true;
@@ -408,7 +418,7 @@ const phrase = (n, m) => `Cet export va verrouiller ${n} ligne${n > 1 ? 's' : ''
 }
 
 // ═══ G) plus de 1000 lignes : compte exact, tout est verrouillé ════════════════
-{
+if (run('G')) {
   const rows = Array.from({ length: 1203 }, (_, i) => entry(`m${i}`, `u${i % 7}`, day(i % 7, WS), i % 2 ? 'validated' : 'submitted', 60, { user: { first_name: `S${i % 7}`, last_name: 'Test' } }));
   rows.push(entry('ok1', 'u-lucas', WS, 'submitted', 60, LOCKED));
   const ctx = await ctxOf(1280, 800);
@@ -425,7 +435,7 @@ const phrase = (n, m) => `Cet export va verrouiller ${n} ligne${n > 1 ? 's' : ''
 }
 
 // ═══ H) l'alerte ne charge ni Excel ni jsPDF ═══════════════════════════════════
-{
+if (run('H')) {
   const ctx = await ctxOf(1280, 800);
   await setup(ctx);
   const { pg, seen } = await openAdmin(ctx);
@@ -437,6 +447,120 @@ const phrase = (n, m) => `Cet export va verrouiller ${n} ligne${n > 1 ? 's' : ''
   const t0 = Date.now();
   await pick(pg, team, 'csv'); await waitAlert(pg);
   check(JSON.stringify(heavyOf(seen, t0)) === '[]', `H) l'ouverture de l'alerte ne demande aucune bibliothèque d'export de plus (nouveaux chunks lourds : ${heavyOf(seen, t0).join(',') || 'aucun'} ; déjà là : ${avant.join(',') || 'aucun'})`);
+  await ctx.close();
+}
+
+// ═══ I) rien à verrouiller, mais une ligne arrive PENDANT l'export ═════════════
+if (run('I')) {
+  const ctx = await ctxOf(1280, 800);
+  const rows = ENTRIES().filter((e) => ['a5', 'a6'].includes(e.id)); // tout est déjà verrouillé : comptage = 0, pas d'alerte
+  const { db, writes } = await setup(ctx, { rows });
+  const { pg } = await openAdmin(ctx);
+  const team = await openTeamExport(pg, false);
+  // Un salarié envoie sa journée entre le comptage et la lecture des lignes de l'export (réglages, paie, récapitulatif…).
+  db.inject = () => db.time_entries.push(entry('a7', 'u-lucas', day(2, WS), 'submitted', 3 * 60));
+  const nd = await noDownload(pg, () => pick(pg, team, 'csv'), 2500);
+  check(await alertBox(pg).count() === 1, 'I) N = 0 au comptage, une ligne arrive pendant l\'export : l\'alerte S\'OUVRE');
+  check(await alertText(pg) === phrase(1, 1), `I) … avec les chiffres à jour : « ${await alertText(pg)} »`);
+  check(await alertBox(pg).locator('[data-testid=export-verrou-change]').count() === 1, 'I) … et la phrase qui explique pourquoi');
+  check(nd && writes.length === 0 && lockedIds(db).join() === 'a5,a6', 'I) … rien n\'est téléchargé, rien n\'est écrit, la ligne a7 n\'est PAS verrouillée');
+  const f = await download(pg, () => alertBox(pg).locator('[data-testid=export-verrou-confirm]').click());
+  await pg.waitForTimeout(1000);
+  check(/^bemexo-paie-.*\.csv$/.test(f.name) && lockedIds(db).join() === 'a5,a6,a7', 'I) après « Exporter et verrouiller » : exporté, et a7 verrouillée parce que le bureau l\'a su');
+  await ctx.close();
+}
+if (run('I')) {
+  // Même scénario, mais tout reste déjà verrouillé (rien n'arrive) : aucune alerte, comme avant le lot.
+  const ctx = await ctxOf(1280, 800);
+  const { writes } = await setup(ctx, { rows: ENTRIES().filter((e) => ['a5', 'a6'].includes(e.id)) });
+  const { pg } = await openAdmin(ctx);
+  const team = await openTeamExport(pg, false);
+  await download(pg, () => pick(pg, team, 'csv'));
+  await pg.waitForTimeout(600);
+  check(await alertBox(pg).count() === 0 && patches(writes).length === 1, 'I) rien à verrouiller et rien de nouveau : pas d\'alerte, l\'export part (comme avant le lot)');
+  await ctx.close();
+}
+
+// ═══ J) la période annoncée est celle de l'export ═══════════════════════════════
+if (run('J')) {
+  const ctx = await ctxOf(1280, 800);
+  const { db, writes, allReads } = await setup(ctx);
+  db.delayCount = 1500;
+  const { pg } = await openAdmin(ctx);
+  const team = await openTeamExport(pg, false);
+  await team.locator('[data-testid=team-export-menu]').click();
+  await pg.locator('[data-testid=team-export-menu-csv]').click();
+  await pg.waitForTimeout(300);
+  const off = await Promise.all([team.getByRole('button', { name: "Aujourd'hui", exact: true }), team.getByRole('button', { name: 'Cette semaine', exact: true }), team.getByRole('button', { name: /Créneau/ })].map((l) => l.isDisabled()));
+  check(off.every(Boolean), `J) pendant le comptage, les trois boutons de période sont inactifs (${off.join(',')})`);
+  await waitAlert(pg);
+  db.delayCount = 0;
+  check(await alertText(pg) === phrase(4, 3), 'J) l\'alerte annonce la semaine (4 lignes, 3 salariés)');
+  // L'écran change de période PENDANT que l'alerte est ouverte (clic programmatique : l'alerte bloque la souris).
+  await pg.evaluate(() => { [...document.querySelectorAll('[data-testid=team-export] button')].find((x) => x.textContent.trim() === "Aujourd'hui").click(); });
+  await pg.waitForTimeout(300);
+  const n0 = allReads.length;
+  const f = await download(pg, () => alertBox(pg).locator('[data-testid=export-verrou-confirm]').click());
+  await pg.waitForTimeout(1000);
+  const lues = allReads.slice(n0).filter((r) => r.select && r.select.includes('worksite:worksites'));
+  check(lues.length === 1 && lues[0].wd.join() === `gte.${WS},lte.${WE}`, `J) l'export lit la période ANNONCÉE (${lues[0]?.wd.join(' ')}), pas celle de l'écran`);
+  check(lockedIds(db).join() === IN_FILE.join() && patches(writes).length === 1, 'J) … et verrouille les lignes annoncées, pas seulement celles d\'aujourd\'hui');
+  check(/^bemexo-paie-.*\.csv$/.test(f.name) && f.name.includes(WS), `J) … le fichier porte la période annoncée (${f.name})`);
+  await ctx.close();
+}
+
+// ═══ K) le verrou échoue APRÈS le fichier ═══════════════════════════════════════
+if (run('K')) {
+  const ctx = await ctxOf(1280, 800);
+  const { db, writes } = await setup(ctx);
+  db.failLockAt = [1];
+  const { pg } = await openAdmin(ctx);
+  const team = await openTeamExport(pg, false);
+  await pick(pg, team, 'csv'); await waitAlert(pg);
+  const f = await download(pg, () => alertBox(pg).locator('[data-testid=export-verrou-confirm]').click());
+  await pg.waitForTimeout(1000);
+  const tt = await toasts(pg);
+  check(/^bemexo-paie-/.test(f.name), 'K) le fichier est bien téléchargé');
+  check(/Fichier téléchargé, mais le verrouillage a échoué : les heures restent modifiables\. Recommencez\./.test(tt), `K) message honnête : « ${tt.replace(/\s+/g, ' ').slice(0, 130)} »`);
+  check(!/Erreur lors de l.export/.test(tt) && !/saisies? verrouillées?/.test(tt.replace(/le verrouillage/g, '')), 'K) … jamais « Erreur lors de l\'export », jamais un faux « N saisies verrouillées »');
+  check(lockedIds(db).join() === 'a5,a6' && patches(writes).length === 1, 'K) rien n\'est verrouillé de plus (la seule tentative a échoué)');
+  check(await closed(pg), 'K) l\'alerte se referme, « Exporter ▾ » est de nouveau utilisable');
+  await ctx.close();
+}
+if (run('K')) {
+  const rows = Array.from({ length: 1203 }, (_, i) => entry(`m${i}`, `u${i % 7}`, day(i % 7, WS), i % 2 ? 'validated' : 'submitted', 60, { user: { first_name: `S${i % 7}`, last_name: 'Test' } }));
+  const ctx = await ctxOf(1280, 800);
+  const { db, writes } = await setup(ctx, { rows });
+  db.failLockAt = [3]; // 7 lots de 200 : les 2 premiers passent, le 3e échoue
+  const { pg } = await openAdmin(ctx);
+  const team = await openTeamExport(pg, false);
+  await pick(pg, team, 'csv'); await waitAlert(pg);
+  await download(pg, () => alertBox(pg).locator('[data-testid=export-verrou-confirm]').click());
+  await pg.waitForTimeout(1500);
+  const tt = await toasts(pg);
+  check(/verrouillage n.est fait qu.en partie \(400 lignes sur 1203\)/.test(tt), `K) verrou à moitié posé : « ${tt.replace(/\s+/g, ' ').slice(0, 150)} »`);
+  check(db.time_entries.filter((e) => e.locked).length === 400 && patches(writes).length === 3, `K) … 400 lignes verrouillées exactement, on s'arrête au 1er échec (${patches(writes).length} tentatives)`);
+  await ctx.close();
+}
+
+// ═══ L) les lectures de l'export : mêmes statuts, ordre complet ═════════════════
+if (run('L')) {
+  const ctx = await ctxOf(1280, 800);
+  const { allReads } = await setup(ctx);
+  const { pg } = await openAdmin(ctx);
+  const team = await openTeamExport(pg, false);
+  const n0 = allReads.length;
+  await pick(pg, team, 'csv'); await waitAlert(pg);
+  await download(pg, () => alertBox(pg).locator('[data-testid=export-verrou-confirm]').click());
+  await pg.waitForTimeout(800);
+  const lec = allReads.slice(n0);
+  const comptage = lec.find((r) => r.select === 'id,user_id,locked');
+  const recap = lec.find((r) => r.select && r.select.includes('gap_before') && !r.select.includes('worksite:worksites'));
+  const lignes = lec.find((r) => r.select && r.select.includes('worksite:worksites'));
+  check(!!comptage && !!recap && !!lignes, 'L) les trois lectures sont faites : comptage, récapitulatif, lignes exportées');
+  check([comptage, recap, lignes].every((r) => r?.status === 'in.(submitted,validated)'), 'L) mêmes statuts partout : in.(submitted,validated)');
+  check([comptage, recap, lignes].every((r) => /,id\.asc$/.test(r?.order || '')), `L) ordre complet, terminé par id : ${[comptage, recap, lignes].map((r) => r?.order).join(' | ')}`);
+  check(lignes?.order === 'work_date.desc,user_id.asc,start_time.asc,id.asc', 'L) les lignes exportées gardent leur ordre (jour décroissant, salarié) avec un départage complet');
   await ctx.close();
 }
 

@@ -26,8 +26,11 @@ Les chiffres sont **exacts** : ce sont les lignes que l'export va réellement ve
 - **« Envoyer au comptable »** : l'alerte propose seulement « Envoyer et verrouiller » et « Annuler ». Pas de « sans verrouiller » : l'envoi part par e-mail et écrit lui-même dans le journal d'envoi, ce n'est pas un contrôle.
 - **Mode support (lecture seule)** : pas d'alerte, pas de comptage. Le fichier sort, rien n'est verrouillé (la base le refuse de toute façon) et le message le dit : « Export téléchargé — rien n'a été verrouillé ». L'écriture est de toute façon refusée par la base ; avant, le message annonçait pourtant « N saisies verrouillées ».
 - **Les chiffres ont bougé** pendant que l'alerte était ouverte (un salarié a envoyé ses heures) : au clic sur « Exporter et verrouiller », rien n'est exporté ni verrouillé, l'alerte reste et montre les chiffres à jour avec une phrase qui explique pourquoi. Un deuxième clic confirme les nouveaux chiffres.
+- **Même quand il n'y avait « rien à verrouiller »** (donc pas d'alerte) : si une ligne arrive pendant que l'export se prépare (1 à 3 secondes sur téléphone), elle n'est pas verrouillée sans prévenir. L'alerte s'ouvre avec les chiffres à jour, rien n'est exporté ni verrouillé avant votre choix.
+- **La période annoncée est celle de l'export** : elle est figée au clic (les boutons « Aujourd'hui », « Cette semaine » et « Créneau » sont inactifs pendant le comptage). Même si l'écran change de période pendant que l'alerte est ouverte, l'export porte sur la période annoncée.
+- **Le verrouillage échoue après le fichier** (réseau coupé) : le fichier est déjà téléchargé (ou l'e-mail déjà parti). Le message le dit : « Fichier téléchargé, mais le verrouillage a échoué : les heures restent modifiables. Recommencez. » Si le verrou n'a été posé qu'en partie (il se pose par lots de 200) : « … le verrouillage n'est fait qu'en partie (400 lignes sur 1203) : les autres heures restent modifiables. Recommencez. » Jamais « Erreur lors de l'export » dans ce cas.
 - **Comptage impossible** (réseau) : « Impossible de vérifier les heures qui seraient verrouillées. Rien n'a été exporté ni verrouillé. Réessayez. » On ne verrouille jamais à l'aveugle.
-- **Plus de 1000 lignes** : le comptage est paginé, le chiffre reste exact.
+- **Plus de 1000 lignes** : le comptage est paginé, le chiffre reste exact. Les lectures de l'export (récapitulatif, lignes exportées, comptage) se font dans un ordre complet (jour, salarié, heure de début, puis identifiant) : deux pages de 500 lignes ne se recouvrent plus et ne laissent plus de trou quand un salarié a deux chantiers le même jour. Le détail d'une journée sort dans l'ordre des heures.
 - **Export d'un seul salarié** (fiche salarié) : il **ne verrouille rien** (déjà le cas, c'est écrit dans l'écran). Il n'y a donc pas d'alerte.
 - **Message final** : « Export téléchargé — 42 saisies verrouillées » reprend le chiffre de l'alerte. Si tout était déjà verrouillé, le message est celui d'avant.
 
@@ -47,7 +50,7 @@ Les trois boutons font 44 px de haut, tiennent dans l'écran sans défilement ho
 - Le fichier est identique, octet pour octet, avec ou sans verrou (test automatique).
 - Le verrou est toujours posé **après** le fichier, par lots de 200 lignes, sur les lignes du fichier (comme avant, y compris celles qui étaient déjà verrouillées : leur date d'export est remise à jour).
 - Aucune migration, aucune fonction edge, aucune suppression. Le lot ne touche pas à l'IA.
-- Poids : `/admin` passe de 353 à 354 kB (budget 363). L'alerte est un fichier à part (2,7 kB compressé), chargé à l'ouverture de « Exporter l'équipe », jamais au chargement de la page. Elle n'importe ni Excel ni jsPDF (chargés par le menu « Exporter ▾ », lot 5).
+- Poids : `/admin` passe de 353 à 354 kB avec ce lot seul ; 356 kB une fois fusionné avec le lot 23 (budget 363). L'alerte est un fichier à part (2,7 kB compressé), chargé à l'ouverture de « Exporter l'équipe », jamais au chargement de la page. Elle n'importe ni Excel ni jsPDF (chargés par le menu « Exporter ▾ », lot 5).
 - Aucune lecture de plus au chargement (lot 29) : le comptage se fait **au clic**.
 
 ## Limites
@@ -63,13 +66,13 @@ Les trois boutons font 44 px de haut, tiennent dans l'écran sans défilement ho
 | Fichier | Rôle |
 |---|---|
 | `lib/export-verrou.ts` | Règles pures (comptes N / M, quand alerter, phrases, message final). Testées sous Deno. |
-| `lib/export-lignes.ts` | Le filtre UNIQUE des heures exportées (`lignesExportees`), partagé par le fichier, le verrou et l'alerte ; `lireCompteVerrou` (lecture paginée au clic). |
+| `lib/export-lignes.ts` | Le filtre UNIQUE des heures exportées (`lignesExportees`), partagé par le fichier, le verrou et l'alerte (le récapitulatif utilise les mêmes statuts, `STATUTS_EXPORTES`) ; `lireCompteVerrou` (lecture paginée au clic). |
 | `components/export-verrou-dialog.tsx` | L'alerte (`AlertDialog`), chargée à l'ouverture (`lazyWindow`). |
 | `components/admin-planning.tsx` | `demanderExport` (compte, décide), `choisirVerrou` (les choix), `runExport(kind, { verrouiller, annonce })`. |
 
 Tests :
 - `npm run test:export-alerte-regles` (Deno) : comptes, phrases, et garde-fous du source (un seul endroit écrit `locked: true`, après le fichier, seulement si on le demande ; même filtre pour l'alerte et le verrou ; l'alerte n'importe ni Excel ni PDF ; la fiche salarié ne verrouille rien).
-- `npm run test:export-alerte-ecrans` (après `npm run build`) : 77 contrôles dans un vrai navigateur à 1280 et 390 px, base simulée qui applique les écritures.
+- `npm run test:export-alerte-ecrans` (après `npm run build`) : 99 contrôles dans un vrai navigateur à 1280 et 390 px, base simulée qui applique les écritures.
 
 Tests existants adaptés (ils cliquent un format d'équipe et attendaient le fichier tout de suite) : `export-lot11`, `panier-lot3bis`, `site-rapide-lot5`, `statistiques-lot5`. Ils **confirment l'alerte** (« Exporter et verrouiller » = le comportement d'avant) ; leurs assertions ne changent pas.
 
