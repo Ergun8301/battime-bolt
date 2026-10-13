@@ -250,6 +250,23 @@ await root();
   check(pol.length === 1 && pol[0].policyname === 'kiosks_admin_read' && pol[0].cmd === 'SELECT', `kiosks : toujours la seule règle de lecture kiosks_admin_read (${pol.map((p) => p.policyname).join(', ')})`);
 }
 
+// ═══ La vérification détecte un droit manquant (chaque privilège, chaque colonne) ═══
+section('Vérification : un droit manquant à la clé service est vu (pas de « l’un des deux suffit »)');
+await root();
+{
+  // La clé service n'a plus que SELECT partout et UPDATE sur client_state : il manque UPDATE sur client_state_at.
+  await db.exec(`REVOKE UPDATE ON public.kiosks FROM service_role; GRANT UPDATE (client_state) ON public.kiosks TO service_role;`);
+  const v = await one(POST_SQL);
+  check(v.v6_cle_service_ecrit === false, 'UPDATE manquant sur client_state_at (SELECT présent) : v6 est faux — avec « SELECT,UPDATE » en un seul appel il restait vrai');
+  check(Object.entries(v).filter(([, x]) => x !== true).map(([k]) => k).join() === 'v6_cle_service_ecrit', 'seul v6 tombe, les sept autres restent vrais');
+  await db.exec(`REVOKE ALL ON public.kiosks FROM service_role; GRANT UPDATE (client_state_at) ON public.kiosks TO service_role; GRANT SELECT ON public.kiosks TO service_role;`);
+  const v2 = await one(POST_SQL);
+  check(v2.v6_cle_service_ecrit === false, 'UPDATE manquant sur client_state : v6 est faux');
+  await db.exec(`GRANT ALL ON public.kiosks TO service_role;`);
+  const ok8 = await one(POST_SQL);
+  check(Object.keys(ok8).length === 8 && Object.values(ok8).every((x) => x === true), 'droits rendus : de nouveau 8 × true');
+}
+
 // ═══ Retour arrière ════════════════════════════════════════════════════════
 section('Retour arrière (bloc du fichier, décommenté), puis la migration se rejoue');
 await root();

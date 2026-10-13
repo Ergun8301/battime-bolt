@@ -1853,12 +1853,46 @@ Deno.test({
     ok(String(k.last_seen_at) > seenBefore, 'le « vu à » est bien écrit');
     ok(!('client_state' in k) && !('client_state_at' in k), 'aucune colonne ni valeur n’apparaît en base');
     eq(out, '', 'rien n’est journalisé (ni erreur, ni avertissement)');
-    eq(statePatches().length, 1, 'une tentative d’écriture, refusée proprement par la base (PGRST204)');
-    eq(kioskPatches().length, 2, 'deux écritures en tout : le « vu à », puis la tentative');
+    eq(statePatches().length, 1, 'UNE tentative d’écriture groupée, refusée proprement par la base (PGRST204)');
+    eq(kioskPatches().length, 2, 'deux requêtes en tout : la tentative groupée, puis le « vu à » seul (l’écriture d’avant)');
+    eq(Object.keys(kioskPatches()[1].body as Row), ['last_seen_at'], 'le repli n’écrit que le « vu à », exactement comme avant');
     // Plus de tentative si la tablette n'envoie rien (ancienne page).
     calls.length = 0;
     await syncOf(k, 't-k');
-    eq(statePatches().length, 0, 'ancienne page (sans état) : aucune tentative');
+    eq([statePatches().length, kioskPatches().length], [0, 1], 'ancienne page (sans état) : aucune tentative, une seule écriture');
+    // Les syncs suivants n'insistent pas : pas d'erreur de la base à chaque sync (la fonction s'en souvient 10 minutes).
+    calls.length = 0;
+    for (let i = 0; i < 3; i++) { advance(5 * 60_000 / 3); await syncOf(k, 't-k', GOOD_STATE); }
+    eq([statePatches().length, kioskPatches().length], [0, 3], 'trois syncs avec état : trois écritures du « vu à », aucune tentative groupée (aucune erreur répétée)');
+    // Passé le délai, la fonction retente (la migration a pu passer entre-temps).
+    calls.length = 0;
+    advance(10 * 60_000);
+    await syncOf(k, 't-k', GOOD_STATE);
+    eq([statePatches().length, kioskPatches().length], [1, 2], 'au bout de 10 minutes : une nouvelle tentative, puis le « vu à » seul');
+  },
+});
+
+Deno.test({
+  name: 'Lot 30 — la migration passe pendant que la fonction tourne : l’état est écrit au plus 10 minutes plus tard, sans rien casser',
+  sanitizeOps: false, sanitizeResources: false,
+  async fn() {
+    db = freshDb();
+    const k = await addKiosk(CO, 't-k', ago(60));
+    const { result: r1, out } = await spyConsole(() => syncOf(k, 't-k', GOOD_STATE));
+    eq(r1.status, 200, 'avant la migration : sync 200');
+    eq(out, '', 'avant la migration : rien de journalisé');
+    migrate30();
+    advance(2 * 60_000);
+    await syncOf(k, 't-k', GOOD_STATE);
+    eq(k.client_state, null, '2 minutes après la migration : la fonction se souvient encore que les colonnes manquaient (pas de nouvelle erreur)');
+    advance(9 * 60_000);
+    const { result: r2, out: out2 } = await spyConsole(() => syncOf(k, 't-k', GOOD_STATE));
+    eq(r2.status, 200, 'sync 200');
+    eq(k.client_state, GOOD_STATE, '11 minutes après : l’état est écrit');
+    eq(out2, '', 'sans rien journaliser');
+    calls.length = 0;
+    await syncOf(k, 't-k', { wake: 'denied' });
+    eq(kioskPatches().length, 1, 'ensuite : UNE seule écriture par sync');
   },
 });
 
@@ -1886,8 +1920,17 @@ Deno.test({
     const keepAt = String(k.client_state_at);
     await syncOf(k, 't-k');
     eq([k.client_state, k.client_state_at], [{ wake: 'denied', standalone: false }, keepAt], 'sans client_state : l’état gardé est laissé tel quel');
-    // Le « vu à » a été écrit à part : un `sync` ne mêle jamais les deux écritures.
-    ok(kioskPatches().every((c) => ('last_seen_at' in (c.body as Row)) !== ('client_state' in (c.body as Row))), 'deux écritures distinctes : le « vu à » ne dépend jamais de l’état');
+    // UNE seule écriture par sync (288 par jour et par tablette, comme avant le lot 30) : « vu à » + état + date ensemble.
+    calls.length = 0;
+    await syncOf(k, 't-k', { wake: 'held' });
+    eq(kioskPatches().length, 1, 'UN seul PATCH de kiosks par sync (pas deux)');
+    eq(Object.keys(kioskPatches()[0].body as Row).sort(), ['client_state', 'client_state_at', 'last_seen_at'], '… qui porte « vu à », état et date d’état');
+    calls.length = 0;
+    await syncOf(k, 't-k');
+    eq([kioskPatches().length, Object.keys(kioskPatches()[0].body as Row)], [1, ['last_seen_at']], 'sans état (ancienne page) : un PATCH, le « vu à » seul');
+    calls.length = 0;
+    await syncOf(k, 't-k', { wake: 'peut-etre' });
+    eq([kioskPatches().length, Object.keys(kioskPatches()[0].body as Row)], [1, ['last_seen_at']], 'état invalide : un PATCH, le « vu à » seul');
     // Une tablette qui n'a jamais rien envoyé garde NULL.
     const other = await addKiosk(CO2, 't-o', ago(60));
     eq([other.client_state, other.client_state_at], [null, null], 'une autre tablette : NULL tant qu’elle n’a rien envoyé');
@@ -2002,6 +2045,7 @@ Deno.test({
     const k = await addKiosk(CO, 't-k-secret', ago(60));
     migrate30();
     const base = await syncOf(k, 't-k-secret');
+    calls.length = 0;
     clientStateFail = { status: 500, body: { code: 'XX000', message: 'boom t-k-secret a3f09c1d' } };
     const { result: r, out } = await spyConsole(() => syncOf(k, 't-k-secret', GOOD_STATE));
     eq(r.status, 200, 'sync répond 200 malgré la panne');
@@ -2009,6 +2053,8 @@ Deno.test({
     ok(/client_state/.test(out) && /XX000/.test(out), `journal : « ${out.trim()} »`);
     ok(!out.includes('t-k-secret') && !out.includes('a3f09c1d') && !out.includes('boom'), 'le journal ne cite ni jeton, ni état, ni message de la base');
     eq(k.client_state, null, 'rien d’écrit');
+    ok(Date.parse(String(k.last_seen_at)) > Date.now() - 5000, 'le « vu à » est quand même écrit (repli)');
+    eq([statePatches().length, kioskPatches().length], [1, 2], 'tentative groupée refusée, puis le « vu à » seul');
     clientStateFail = { status: 403, body: { code: '42501', message: 'permission denied for column client_state' } };
     const { result: r2, out: out2 } = await spyConsole(() => syncOf(k, 't-k-secret', GOOD_STATE));
     eq(r2.status, 200, 'droit refusé : sync reste 200');

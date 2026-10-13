@@ -26,8 +26,10 @@
 --   AND NOT has_column_privilege('authenticated', 'public.kiosks', 'client_state_at', 'INSERT,UPDATE')
 --   AND NOT has_column_privilege('anon', 'public.kiosks', 'client_state', 'INSERT,UPDATE')
 --   AND NOT has_column_privilege('anon', 'public.kiosks', 'client_state_at', 'INSERT,UPDATE') AS v5_ecriture_fonction_seule,
---   has_column_privilege('service_role', 'public.kiosks', 'client_state', 'SELECT,UPDATE')
---   AND has_column_privilege('service_role', 'public.kiosks', 'client_state_at', 'SELECT,UPDATE') AS v6_cle_service_ecrit,
+--   has_column_privilege('service_role', 'public.kiosks', 'client_state', 'SELECT')
+--   AND has_column_privilege('service_role', 'public.kiosks', 'client_state', 'UPDATE')
+--   AND has_column_privilege('service_role', 'public.kiosks', 'client_state_at', 'SELECT')
+--   AND has_column_privilege('service_role', 'public.kiosks', 'client_state_at', 'UPDATE') AS v6_cle_service_ecrit,
 --   (SELECT relrowsecurity FROM pg_class WHERE oid = 'public.kiosks'::regclass)
 --   AND EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'kiosks' AND policyname = 'kiosks_admin_read')
 --   AND NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'kiosks' AND cmd <> 'SELECT') AS v7_rls_lecture_seule,

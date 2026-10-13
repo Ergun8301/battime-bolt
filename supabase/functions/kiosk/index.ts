@@ -78,8 +78,9 @@
 //
 // Lot 30 (borne robuste) — AVANT LA MIGRATION 20261013170000_lot30_borne_robuste.sql
 // (colonnes kiosks.client_state et client_state_at), `sync` répond exactement comme
-// avant : l'écriture de l'état est tentée, échoue proprement (schemaMissing) et
-// n'est ni journalisée ni visible. Un `client_state` invalide (pas un objet, trop
+// avant : l'écriture groupée (« vu à » + état) échoue proprement (schemaMissing), le « vu à »
+// seul est écrit comme avant, et la fonction s'en souvient 10 minutes (pas d'erreur à chaque
+// sync) ; rien n'est journalisé ni visible. Un `client_state` invalide (pas un objet, trop
 // gros, champ mal typé) est ignoré en entier, sans refuser le `sync`. Jamais de
 // texte libre, de jeton ni de position : liste blanche dans _shared/kiosk-client-state.ts.
 //
@@ -985,21 +986,40 @@ async function unpair(admin: SupabaseClient, body: Record<string, unknown>) {
   return json({ success: true, revoked: true });
 }
 
+/** Lot 30 — colonnes d'état absentes (migration pas passée) : on ne retente qu'après ce délai. */
+const STATE_COLUMNS_RETRY_MS = 10 * 60 * 1000;
+/** Heure à laquelle on a appris que les colonnes manquent (0 = on ne sait pas, ou elles existent). */
+let stateColumnsAbsentAt = 0;
+
 /**
- * Lot 30 — l'état de l'écran de la tablette, écrit APRÈS le « vu à » et à part :
- * migration pas passée (colonnes absentes) = rien d'écrit, rien de journalisé, le
- * `sync` répond comme avant. Un état invalide est ignoré en entier. Ne lève jamais.
+ * « Vu à » de la tablette, et — Lot 30 — l'état de son écran, en UNE SEULE écriture de `kiosks`
+ * ({ last_seen_at, client_state, client_state_at } : 288 écritures par jour et par tablette, comme avant).
+ *
+ * Avant la migration (colonnes absentes, PGRST204 / 42703), l'écriture groupée échoue : on écrit alors le « vu à »
+ * seul — exactement l'écriture d'avant — et on s'en souvient 10 minutes, pour ne pas provoquer une erreur de la
+ * base à chaque `sync` ; rien n'est journalisé. Un état invalide est ignoré en entier (écriture d'avant). Toute
+ * autre erreur de l'écriture groupée (panne, droit retiré) est journalisée (le code seulement), et le « vu à »
+ * est quand même écrit. Ne lève que si l'écriture d'avant lèverait.
  */
-async function saveClientState(admin: SupabaseClient, kioskId: string, raw: unknown) {
-  const state = parseClientState(raw);
-  if (!state) return;
-  try {
-    const { error } = await admin.from('kiosks')
-      .update({ client_state: state, client_state_at: new Date(Date.now()).toISOString() }).eq('id', kioskId);
-    if (error && !schemaMissing(error)) console.error('[kiosk] client_state', error.code);
-  } catch (e) {
-    console.error('[kiosk] client_state', (e as { code?: string })?.code ?? 'erreur');
+async function touchKiosk(admin: SupabaseClient, kioskId: string, rawState: unknown) {
+  const at = new Date(Date.now()).toISOString();
+  const state = rawState === undefined ? null : parseClientState(rawState);
+  if (state) {
+    const sinceAbsent = Date.now() - stateColumnsAbsentAt;
+    // `sinceAbsent < 0` : l'horloge a reculé, on ne se fie pas à l'ancienne mémoire.
+    if (stateColumnsAbsentAt === 0 || sinceAbsent >= STATE_COLUMNS_RETRY_MS || sinceAbsent < 0) {
+      try {
+        const { error } = await admin.from('kiosks')
+          .update({ last_seen_at: at, client_state: state, client_state_at: at }).eq('id', kioskId);
+        if (!error) { stateColumnsAbsentAt = 0; return; }
+        if (schemaMissing(error)) stateColumnsAbsentAt = Date.now() || 1;
+        else console.error('[kiosk] client_state', error.code);
+      } catch (e) {
+        console.error('[kiosk] client_state', (e as { code?: string })?.code ?? 'erreur');
+      }
+    }
   }
+  await admin.from('kiosks').update({ last_seen_at: at }).eq('id', kioskId);
 }
 
 async function sync(admin: SupabaseClient, body: Record<string, unknown>) {
@@ -1007,9 +1027,8 @@ async function sync(admin: SupabaseClient, body: Record<string, unknown>) {
   if (!k) return json({ error: 'Borne inconnue', revoked: true }, 401);
   if (k.revoked_at) return json({ error: REFUSAL_MESSAGES.kiosk_revoked, revoked: true }, 410);
   if (!(await companyEnabled(admin, k.company_id))) return json({ error: REFUSAL_MESSAGES.kiosk_disabled, disabled: true }, 403);
-  await admin.from('kiosks').update({ last_seen_at: new Date().toISOString() }).eq('id', k.id);
-  // Lot 30 : l'état de l'écran (facultatif : une ancienne page n'en envoie pas).
-  if (body.client_state !== undefined) await saveClientState(admin, k.id, body.client_state);
+  // « Vu à » + (lot 30) l'état de l'écran, facultatif (une ancienne page n'en envoie pas) : une seule écriture.
+  await touchKiosk(admin, k.id, body.client_state);
 
   const settings = await loadSettings(admin, k.company_id);
   const { data: c } = await admin.from('companies').select('name').eq('id', k.company_id).maybeSingle();
