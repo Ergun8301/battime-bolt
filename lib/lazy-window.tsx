@@ -8,6 +8,9 @@
 //  · rendu SYNCHRONE dès que le code est déjà là (le cas normal, grâce au préchauffage) ;
 //  · jamais d'indicateur de chargement : une fenêtre n'apparaît que quand elle est prête ;
 //  · si le fichier ne vient pas : un message, la fenêtre se referme, le clic suivant réessaie.
+//    Un chargement de FOND (assistant monté fermé) échoue en silence : pas de message sans geste.
+//  · un onglet (zone déjà à l'écran) affiche à sa place un squelette, puis son texte d'erreur ;
+//    il réessaie tout seul au retour du réseau.
 import { useEffect, useReducer, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import { toast } from 'sonner';
 
@@ -24,8 +27,10 @@ type Opts<P> = {
   warm?: 'always' | 'mounted' | 'never';
   /** 'open' : monté à la première ouverture, puis jamais démonté (garde saisies et animation de fermeture) ; 'warm' : monté dès que le code est arrivé, même fermé (assistants : mémoire de la conversation). */
   mount?: 'open' | 'warm';
-  /** Seulement pour les onglets (rien à fermer) : affiché si le chargement échoue. */
+  /** Seulement pour les onglets (rien à fermer) : affiché si le chargement échoue (à la place du message flottant). */
   errorFallback?: ReactNode;
+  /** Seulement pour les onglets : affiché tant que le code n'est pas arrivé (même gabarit que l'écran, pour qu'il ne saute pas). Jamais pour une fenêtre. */
+  loadingFallback?: ReactNode;
 };
 
 const registry = new Set<() => Promise<unknown>>();
@@ -84,6 +89,7 @@ export function lazyWindow<P extends object>(loader: () => Promise<{ default: Co
     const propsRef = useRef(props);
     propsRef.current = props;
     const [failed, setFailed] = useState(false);
+    const [tries, setTries] = useState(0); // +1 au retour du réseau : relance le chargement d'un onglet en échec
     const [, rerender] = useReducer((n: number) => n + 1, 0);
     const open = o.isOpen(props);
     if (open) wanted.current = true;
@@ -101,18 +107,32 @@ export function lazyWindow<P extends object>(loader: () => Promise<{ default: Co
       load().then(() => { if (live) rerender(); }).catch(() => {
         if (!live) return;
         setFailed(true);
-        toast.error(LAZY_ERROR);
-        (o.close ?? ((p: P) => (p as { onOpenChange?: (v: boolean) => void }).onOpenChange?.(false)))(propsRef.current);
+        // Message et fermeture seulement si la fenêtre a été demandée : un chargement de fond (assistant
+        // monté fermé) échoue en silence, et le clic d'ouverture suivant réessaie (wanted retombe à false).
+        // Un onglet a déjà son texte à sa place (errorFallback) : pas de message flottant en plus.
+        if (o.isOpen(propsRef.current)) {
+          if (!o.errorFallback) toast.error(LAZY_ERROR);
+          (o.close ?? ((p: P) => (p as { onOpenChange?: (v: boolean) => void }).onOpenChange?.(false)))(propsRef.current);
+        }
         wanted.current = false;
       });
       return () => { live = false; };
-    }, [need, open]);
+    }, [need, open, tries]);
+
+    // Un onglet en échec reste affiché (isOpen vrai en permanence : l'effet ci-dessus ne se relance pas
+    // tout seul) : au retour du réseau, UNE nouvelle tentative. Pas de boucle (l'événement n'arrive qu'au retour).
+    useEffect(() => {
+      if (!failed || !o.errorFallback) return;
+      const again = () => { setFailed(false); setTries((n) => n + 1); };
+      window.addEventListener('online', again);
+      return () => window.removeEventListener('online', again);
+    }, [failed]);
 
     if (wanted.current && Comp) {
       const C = Comp;
       return <C {...props} />;
     }
-    return <>{failed ? o.errorFallback ?? null : null}</>;
+    return <>{failed ? o.errorFallback ?? null : wanted.current ? o.loadingFallback ?? null : null}</>;
   }
 
   return Object.assign(Wrapper, { preload: () => { void load().catch(() => {}); } });

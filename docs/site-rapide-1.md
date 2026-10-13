@@ -10,17 +10,18 @@ Le site pèse moins au premier chargement : `/admin` passe de **766 à 350 kB** 
 |---|---|---|
 | Excel (`xlsx`, 139 kB) et PDF (`jspdf` + `html2canvas` + `dompurify` + `canvg`, 105 kB, et `jspdf-autotable`) | dans le premier chargement de `/admin` et de `/poseur` | chargés **au clic** ; préchauffés à l'ouverture du menu « Exporter ▾ » (équipe et fiche salarié) et de la fenêtre d'export ; jsPDF seul est préchargé au repos dans l'Historique salarié |
 | Fenêtres du bureau (Réglages, Coûts, Statistiques, Congés, Réserves, fiche salarié, documents de chantier, les 2 imports, Borne, Formations, assistant) | dans le premier chargement | chargées **au repos** (un fichier à la fois), au démarrage d'un guide pas à pas, ou à l'ouverture |
-| Écrans du salarié (Ma semaine, Mon mois, Historique, Mes congés, assistant, lecteur de QR) | dans le premier chargement | idem |
-| Fichiers fixes | pas de consigne de cache | `public/_headers` : un an et `immutable` pour `/_next/static/*` (noms hachés), 30 jours pour `/fonts/*`, **rien** sur le HTML |
+| Écrans du salarié (Ma semaine, Mon mois, Historique, Mes congés) | dans le premier chargement | idem : au repos, ou à l'ouverture. Tant que le code d'un onglet n'est pas là, des blocs gris (les mêmes que ceux de l'onglet pendant qu'il charge ses données) |
+| Assistant du salarié, lecteur de QR | dans le premier chargement | l'assistant se charge dès que la page est montée (hors file de préchauffage, même en économie de données : il garde la conversation) ; le lecteur de QR seulement à l'appui sur « Scanner la borne » (préchargé au toucher), jamais au repos |
+| Fichiers fixes | pas de consigne de cache | `public/_headers` : un an et `immutable` pour `/_next/static/*` (noms hachés), 30 jours pour `/fonts/*.woff2` (et **pas** pour `fonts.css`, dont le nom ne change pas), **rien** sur le HTML |
 | Police | `@import` au fond du CSS de 8 écrans, Inter préchargée | `<link>` de `fonts.css` et préchargement d'Archivo dans le `<head>` ; Inter n'est plus préchargée |
 | Poids | personne ne surveille | `npm run budget` échoue si une page dépasse son budget |
 
 ### Comment les fenêtres se chargent (`lib/lazy-window.tsx`)
 
-- **Pas de clignotement, pas d'indicateur de chargement** : une fenêtre n'apparaît que quand son code est là. Quand il est déjà arrivé (le cas normal), elle s'affiche tout de suite.
+- **Pas de clignotement, pas d'indicateur de chargement pour une fenêtre** : elle n'apparaît que quand son code est là. Seuls les trois onglets du salarié, déjà à l'écran, montrent des blocs gris en attendant. Quand il est déjà arrivé (le cas normal), elle s'affiche tout de suite.
 - **Préchauffage** : après le chargement de la page, un fichier à la fois, 100 ms entre deux, quand le navigateur est au repos. Coupé en mode « économie de données » et en 2g (la fenêtre s'ouvre alors avec le délai du téléchargement). Les guides pas à pas chargent tout d'un coup en démarrant (ils ne cherchent leur cible que 1,5 s).
 - **Une fenêtre ouverte n'est plus démontée** : les saisies en cours sont conservées à la fermeture/réouverture, comme avant. Exception voulue : le lecteur de QR, démonté à la fermeture pour couper la caméra.
-- **Hors ligne ou fichier introuvable** : message « Impossible de charger cette fenêtre. Vérifiez votre connexion ou rechargez la page. », la fenêtre se referme, le clic suivant réessaie. Pour les onglets du salarié : « Cet écran n'a pas pu se charger… ». Aucune erreur, aucun écran cassé. Pour l'export : « Impossible de charger l'outil d'export… » et **aucune heure n'est verrouillée** (le verrouillage vient après le fichier).
+- **Hors ligne ou fichier introuvable** : message « Impossible de charger cette fenêtre. Vérifiez votre connexion ou rechargez la page. », la fenêtre se referme, le clic suivant réessaie. Pour les onglets du salarié, le texte « Cet écran n'a pas pu se charger… » remplace les blocs gris (pas de message flottant en plus) et une nouvelle tentative a lieu au retour du réseau, ou en changeant d'onglet. L'assistant, chargé en fond, échoue **en silence** : le message n'apparaît que si on l'ouvre. Aucune erreur, aucun écran cassé. Pour l'export : « Impossible de charger l'outil d'export… » et **aucune heure n'est verrouillée** (le verrouillage vient après le fichier).
 - L'impression du planning (Ctrl+P) reste dans le premier chargement : elle doit être prête au `beforeprint`.
 
 ### Export : l'ordre ne change pas
@@ -75,7 +76,7 @@ npm run test:budget
 4. Guide pas à pas (bureau et salarié) : toutes les étapes qui ouvrent une fenêtre montrent leur anneau (pas de « Je ne vois pas ce bouton »).
 5. Salarié hors ligne (mode avion **après** avoir laissé la page 5 s ouverte) : Ma semaine, Mon mois, Historique, Congés s'ouvrent ; côté bureau, Ctrl+P imprime la feuille.
 6. Mode « économie de données » : une fenêtre jamais ouverte s'ouvre avec un court délai, sans erreur.
-7. En-têtes : `curl -I` d'un fichier `/_next/static/…` (`immutable`), de `/fonts/archivo-latin.woff2` (30 jours), de `/admin` (pas de cache long). Le comportement exact de l'hébergeur sur `_headers` n'a pas pu être lu : à confirmer sur la préview.
+7. En-têtes : `curl -I` d'un fichier `/_next/static/…` (`immutable`), de `/fonts/archivo-latin.woff2` (30 jours), de `/fonts/fonts.css` et de `/admin` (**pas** de cache long). Les règles ont été passées dans les analyseurs de `_headers` de Netlify (`@netlify/headers-parser`) et de Cloudflare Pages (code de workers-sdk) : `fonts.css` ne reçoit aucun `Cache-Control`, les polices un seul ; à confirmer par ce `curl -I` sur la préview. Pourquoi `/fonts/*.woff2` et pas `/fonts/*` : les en-têtes de plusieurs règles qui correspondent s'additionnent sur Cloudflare, donc on ne peut pas « corriger » `fonts.css` par une règle de plus ; la règle ne doit pas le viser du tout.
 
 ## Limites
 

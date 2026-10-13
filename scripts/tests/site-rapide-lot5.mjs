@@ -5,6 +5,7 @@
 //  c) une fenêtre différée (Réglages, fiche salarié) s'ouvre SANS clignoter (jamais vide, jamais 1→0→1) et montre ses données ; 2e ouverture : aucun chunk de plus ;
 //  d) (chunk d'export qui ne charge pas) message d'erreur, AUCUNE écriture (pas de verrouillage sans fichier) ;
 //  e) onglets salarié (semaine, mois, historique), réseau coupé APRÈS le repos (tout se rouvre), chunk de fenêtre bloqué (message, pas d'erreur, réessai) ;
+//     onglet dont le code tarde (blocs gris), onglet en échec (texte, nouvelle tentative au retour du réseau / de l'onglet), assistant en échec de fond (silence tant qu'il n'est pas ouvert) ;
 //  f) téléphone (390 px) : chaque fenêtre du menu ☰ s'ouvre du premier coup, sans clignoter ni déborder.
 // Les chunks lourds sont reconnus dans out/ par une EMPREINTE de leur contenu (noms hachés = changent à chaque build).
 import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path'; import { createRequire } from 'node:module'; import { chromium } from 'playwright-core';
@@ -114,9 +115,9 @@ const filterRows = (rows, params) => {
   return rows;
 };
 /** closures : 'ok' (table présente) ou 'absent' (migration pas encore passée → 404 PGRST205). */
-const setup = async (ctx, { closures = 'ok', as, accountant = false } = {}) => {
+const setup = async (ctx, { closures = 'ok', as, accountant = false, ai = false } = {}) => {
   session = as ? mkSession(as.id, as.email) : mkSession('u-admin', 'paul@exemple.fr');
-  const db = freshDb(); if (accountant) db.companies[0].accountant_email = 'compta@exemple.fr';
+  const db = freshDb(); if (accountant) db.companies[0].accountant_email = 'compta@exemple.fr'; if (ai) db.companies[0].ai_enabled = true;
   const writes = [];
   await ctx.addInitScript(([k, v]) => { localStorage.setItem(k, v); }, ['sb-sdperbcquvneohotjono-auth-token', JSON.stringify(session)]);
   await ctx.clock.setFixedTime(FIXED_NOW);
@@ -126,6 +127,11 @@ const setup = async (ctx, { closures = 'ok', as, accountant = false } = {}) => {
     if (url.pathname.startsWith('/auth/v1/user')) return r.fulfill({ json: session.user });
     if (url.pathname.startsWith('/auth/v1/')) return r.fulfill({ json: {} });
     if (url.pathname.startsWith('/functions/v1/')) { let body = null; try { body = req.postDataJSON(); } catch { /* pas du JSON */ } writes.push({ m: 'FN', t: url.pathname, body }); return r.fulfill({ json: {} }); }
+    // « Coût chantiers » et Statistiques lisent my_worksite_labour : des heures fictives de l'entreprise de test (Lucas 11 h 30, Nina 6 h sur Villa Dupont).
+    if (url.pathname === '/rest/v1/rpc/my_worksite_labour') return r.fulfill({ json: [
+      { worksite_id: 'w1', user_id: 'u-lucas', worked_minutes: 690, route_minutes: 0, paid_minutes: 690, cost: 207, unpriced_minutes: 0 },
+      { worksite_id: 'w1', user_id: 'u-nina', worked_minutes: 360, route_minutes: 0, paid_minutes: 360, cost: 126, unpriced_minutes: 0 },
+    ] });
     if (url.pathname.startsWith('/rest/v1/rpc/')) return r.fulfill({ json: [] });
     const t = url.pathname.replace('/rest/v1/', '');
     const m = req.method();
@@ -396,6 +402,71 @@ const toasts = (pg) => pg.locator('[data-sonner-toast]').allInnerTexts().then((a
   check(errors.length === err0, `e3) aucune erreur JS après réessai (${errors.slice(err0, err0 + 2).join(' | ')})`);
   await ctx.close();
 }
+// ═══ e4/e5/e6) onglets du salarié et assistant : attente, échec, nouvelle tentative, échec silencieux ═══════════
+/** Chunks de /_next/static/chunks dont le contenu contient `re` (un seul attendu). */
+const chunksWith = (re) => walk(path.join(OUT, '_next', 'static', 'chunks')).filter((f) => f.endsWith('.js') && re.test(fs.readFileSync(f, 'utf8'))).map((f) => '/' + path.relative(OUT, f).split(path.sep).join('/'));
+const MONTH = chunksWith(/Aucune affectation ce mois-ci/);
+const ASSIST = chunksWith(/Gestes simples faits tout de suite/);
+check(MONTH.length === 1 && ASSIST.length === 1, `e4) chunks à part retrouvés : Mon mois (${MONTH.join(',') || 'introuvable'}), assistant salarié (${ASSIST.join(',') || 'introuvable'})`);
+const SALARIE = { as: { id: 'u-lucas', email: 'lucas@exemple.fr' } };
+const salarie = async (opts = {}, route) => {
+  const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, locale: 'fr-FR', timezoneId: 'Europe/Paris', isMobile: true, hasTouch: true });
+  await setup(ctx, { ...SALARIE, ...opts });
+  if (route) await ctx.route((u) => route.chunks.includes(new URL(u).pathname), route.handler);
+  const pg = await ctx.newPage(); mon(pg);
+  await pg.goto(`http://localhost:${PORT}/poseur`); await pg.waitForSelector('.bt-total', { timeout: 25000 });
+  return { ctx, pg };
+};
+const goTab = async (pg, label) => { await pg.locator('button[aria-label="Mon compte et menu"]').click(); await pg.waitForTimeout(250); await pg.getByRole('menuitem', { name: label }).click(); };
+const zone = (pg) => pg.evaluate(() => { const z = document.querySelector('.bt-phscroll'); return z ? { text: z.innerText, gris: z.querySelectorAll('.animate-pulse').length, statut: [...z.querySelectorAll('[role=status]')].map((e) => e.innerText).join(' ') } : null; });
+const waitZone = async (pg, pred, ms = 8000) => { const t0 = Date.now(); let z = null; while (Date.now() - t0 < ms) { z = await zone(pg); if (z && pred(z)) return z; await sleep(150); } return z; };
+const ANNEE = String(new Date(FIXED_NOW).getFullYear());
+{
+  // e4) le code de « Mon mois » n'est pas encore là (téléchargement lent) : des blocs gris, jamais une zone blanche, puis le contenu
+  const err0 = errors.length;
+  const { ctx, pg } = await salarie({}, { chunks: MONTH, handler: async (r) => { await sleep(3000); await r.continue(); } });
+  await goTab(pg, 'Mon mois');
+  const t0 = Date.now(); const attente = await waitZone(pg, (z) => z.gris >= 4, 2500);
+  check(!!attente && attente.gris >= 4 && !/Cet écran n'a pas pu se charger/.test(attente.text), `e4) « Mon mois » attend son code : blocs gris à l'écran (${attente?.gris ?? 0} blocs), pas de message d'échec`);
+  const pret = await waitZone(pg, (z) => z.gris === 0 && z.text.includes(ANNEE), 9000);
+  check(!!pret && pret.gris === 0 && pret.text.includes(ANNEE), `e4) « Mon mois » : le contenu remplace les blocs gris dès que le code arrive (${Date.now() - t0} ms)`);
+  check(!/Impossible de charger/.test(await toasts(pg)) && errors.length === err0, `e4) aucun message flottant ni erreur JS (${errors.slice(err0, err0 + 2).join(' | ')})`);
+  await ctx.close();
+}
+for (const mode of ['réseau', 'onglet']) {
+  // e5) le code de « Mon mois » ne vient pas : le texte à sa place (sans message flottant), puis NOUVELLE TENTATIVE
+  //     (retour du réseau, ou retour sur l'onglet) — avant la correction : écran en échec jusqu'au rechargement
+  const err0 = errors.length; let block = true;
+  const { ctx, pg } = await salarie({}, { chunks: MONTH, handler: (r) => (block ? r.abort() : r.continue()) });
+  await pg.waitForTimeout(2500);
+  await goTab(pg, 'Mon mois');
+  const ko = await waitZone(pg, (z) => /Cet écran n'a pas pu se charger/.test(z.statut), 6000);
+  check(!!ko && /Cet écran n'a pas pu se charger/.test(ko.statut) && ko.gris === 0, `e5) (${mode}) code de « Mon mois » bloqué : le texte d'échec est annoncé (role=status) à la place des blocs gris`);
+  check(!/Impossible de charger/.test(await toasts(pg)), `e5) (${mode}) pas de message flottant en plus pour un onglet`);
+  block = false;
+  if (mode === 'réseau') await pg.evaluate(() => window.dispatchEvent(new Event('online')));
+  else { await goTab(pg, 'Ma journée'); await pg.waitForTimeout(400); await goTab(pg, 'Mon mois'); }
+  const ok2 = await waitZone(pg, (z) => z.gris === 0 && z.text.includes(ANNEE) && !/Cet écran/.test(z.text), 8000);
+  check(!!ok2 && ok2.text.includes(ANNEE) && !/Cet écran/.test(ok2.text), `e5) (${mode}) une nouvelle tentative a lieu et « Mon mois » s'affiche`);
+  check(errors.length === err0, `e5) (${mode}) aucune erreur JS (${errors.slice(err0, err0 + 2).join(' | ')})`);
+  await ctx.close();
+}
+{
+  // e6) l'assistant du salarié se charge en fond, FERMÉ : s'il échoue, aucun message tant qu'on ne l'a pas ouvert ; au clic : message ; puis il s'ouvre
+  const err0 = errors.length; let block = true;
+  const { ctx, pg } = await salarie({ ai: true }, { chunks: ASSIST, handler: (r) => (block ? r.abort() : r.continue()) });
+  await pg.waitForSelector('[data-testid=dock-assistant]', { timeout: 10000 }); await pg.waitForTimeout(3500);
+  check(!/Impossible de charger/.test(await toasts(pg)), 'e6) chargement de fond de l\'assistant en échec : AUCUN message rouge sans geste de l\'utilisateur');
+  check(errors.length === err0, `e6) aucune erreur JS (${errors.slice(err0, err0 + 2).join(' | ')})`);
+  await pg.locator('[data-testid=dock-assistant]').click();
+  let msg = false; for (let i = 0; i < 25 && !msg; i++) { await sleep(150); msg = /Impossible de charger cette fenêtre/.test(await toasts(pg)); }
+  check(msg, 'e6) au clic sur l\'assistant, le chargement échoue : le message apparaît alors');
+  block = false; await pg.waitForTimeout(500);
+  await pg.locator('[data-testid=dock-assistant]').click();
+  check(await waitText(pg, /Dites-moi vos heures/, 8000), 'e6) après déblocage, le clic suivant ouvre l\'assistant');
+  check(errors.length === err0, `e6) aucune erreur JS après réessai (${errors.slice(err0, err0 + 2).join(' | ')})`);
+  await ctx.close();
+}
 // ═══ f) téléphone (390 px) : chaque fenêtre du menu ☰ s'ouvre du premier coup, sans clignoter ni déborder ═══════
 {
   const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, locale: 'fr-FR', timezoneId: 'Europe/Paris', isMobile: true, hasTouch: true, acceptDownloads: true });
@@ -419,7 +490,10 @@ const toasts = (pg) => pg.locator('[data-sonner-toast]').allInnerTexts().then((a
   };
   check(await archivoOk(pg), 'f) /admin : la police Archivo est chargée (feuille fonts.css en <link> du layout)');
   await viaMenu('Réglages', /Pizzeria Exemple|Réglages/, 'Réglages', 'bureau-reglages-390.png');
-  await viaMenu('Coût chantiers', /Coût par chantier/, 'Coûts', 'bureau-couts-390.png');
+  await viaMenu('Coût chantiers', /Coût par chantier/, 'Coûts', 'bureau-couts-390.png', async () => {
+    await sleep(500); const t = await dialogTexts(pg);
+    check(/Villa Dupont/.test(t) && /333/.test(t) && !/Aucune heure déclarée/.test(t), `f) 390 px : « Coûts » affiche les heures et le coût fictifs (Villa Dupont, 333 €) — pas une fenêtre vide`);
+  });
   await viaMenu('Statistiques', /Statistiques/, 'Statistiques');
   await viaMenu('Demandes de congé', /Demandes de congé/, 'Congés');
   await viaMenu('Réserves', /Réserves de chantier/, 'Réserves');

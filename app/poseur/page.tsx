@@ -8,6 +8,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Clock, CalendarDays, CalendarRange, History, LogOut, Check, ArrowLeft, Camera, Loader2, Palmtree, Bell, BellOff, Sparkles, Info, ScanLine } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAiEnabled } from '@/lib/real-cost';
@@ -32,12 +33,17 @@ import { GraduationCap } from 'lucide-react';
 
 // Lot 5 « site rapide 1 » : les onglets Semaine / Mois / Historique et les fenêtres fermées ne pèsent plus
 // dans le premier chargement. Ils arrivent au repos (file de préchauffage, lib/lazy-window.tsx) ou à
-// l'ouverture ; le JSX plus bas n'a pas changé. Hors ligne, un écran jamais chargé affiche ce message.
+// l'ouverture ; le JSX plus bas n'a pas changé. Tant que le code d'un onglet n'est pas là (économie de
+// données, iPhone dans la première seconde), il montre les mêmes blocs gris que l'onglet lui-même pendant
+// qu'il charge ses données : aucun écran blanc. Hors ligne, un écran jamais chargé affiche le message.
 type DayPickProps = { onSelectDay?: (date: string) => void };
-const NON_CHARGE = <p style={{ padding: 16, textAlign: 'center', fontSize: 14 }}>Cet écran n'a pas pu se charger. Vérifiez votre connexion puis rechargez la page.</p>;
-const PoseurWeek = lazyWindow<DayPickProps>(() => import('@/components/poseur-week'), { isOpen: () => true, priority: 1, errorFallback: NON_CHARGE });
-const PoseurHistory = lazyWindow(() => import('@/components/poseur-history'), { isOpen: () => true, priority: 2, errorFallback: NON_CHARGE });
-const PoseurMonth = lazyWindow<DayPickProps>(() => import('@/components/poseur-month'), { isOpen: () => true, priority: 3, errorFallback: NON_CHARGE });
+const NON_CHARGE = <p role="status" style={{ padding: 16, textAlign: 'center', fontSize: 14 }}>Cet écran n'a pas pu se charger. Vérifiez votre connexion puis rechargez la page.</p>;
+const PoseurWeek = lazyWindow<DayPickProps>(() => import('@/components/poseur-week'), { isOpen: () => true, priority: 1, errorFallback: NON_CHARGE,
+  loadingFallback: <div className="space-y-4"><Skeleton className="h-10 w-full" />{[1, 2, 3].map((i) => <Skeleton key={i} className="h-24 w-full" />)}</div> });
+const PoseurHistory = lazyWindow(() => import('@/components/poseur-history'), { isOpen: () => true, priority: 2, errorFallback: NON_CHARGE,
+  loadingFallback: <div className="space-y-4"><Skeleton className="h-12 w-48" />{[1, 2, 3].map((i) => <Skeleton key={i} className="h-32" />)}</div> });
+const PoseurMonth = lazyWindow<DayPickProps>(() => import('@/components/poseur-month'), { isOpen: () => true, priority: 3, errorFallback: NON_CHARGE,
+  loadingFallback: <div className="space-y-4"><Skeleton className="h-10 w-full" />{[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full" />)}</div> });
 const LeaveRequestDialog = lazyWindow(() => import('@/components/leave-request-dialog'), { isOpen: (p) => p.open, priority: 4 });
 // Assistant : monté dès que son code est là, même fermé (il garde la mémoire de la conversation).
 const WorkerAssistant = lazyWindow(() => import('@/components/worker-assistant'), { isOpen: (p) => !!p.open, priority: 5, warm: 'mounted', mount: 'warm' });
