@@ -20,7 +20,7 @@
 import { supabase, SUPABASE_ANON_KEY } from '@/lib/supabase';
 import { fetchAllPaged } from '@/lib/fetch-all';
 import { isMissingFunction, isMissingRelation, trainingErrorMessage, type ViewRow } from '@/supabase/functions/_shared/trainings';
-import { uploadErrorMessage, VIDEO_MAX_BYTES, VIDEO_QUOTA_BYTES, VIDEO_SIGN_SECONDS, videoPathOk, type Limits, type VideoMime } from '@/supabase/functions/_shared/training-videos';
+import { parseFileAudit, uploadErrorMessage, VIDEO_MAX_BYTES, VIDEO_QUOTA_BYTES, VIDEO_SIGN_SECONDS, videoPathOk, type FileAudit, type Limits, type VideoMime } from '@/supabase/functions/_shared/training-videos';
 
 export const VIDEO_BUCKET = 'formations';
 
@@ -102,6 +102,26 @@ async function fetchOfficeLeftovers(): Promise<OfficeLeftover[]> {
     return (data as OfficeLeftover[]).map((l) => ({ ...l, real_bytes: Number(l.real_bytes) || 0 }));
   } catch {
     return [];
+  }
+}
+
+// Lot 14 : fonction de la migration 20261013143711, propre à cette lecture. Elle n'appelle JAMAIS
+// markMissing : son absence ne doit pas cacher les vidéos du lot 13.
+let auditMissing = false;
+
+/**
+ * Les fichiers à vérifier (DÉTECTION SEULEMENT, rien n'est supprimé) : fichiers du dossier privé sans
+ * formation, formations dont le fichier manque. null = rien à montrer, fonction absente, droit refusé
+ * ou réseau : aucune erreur n'est affichée.
+ */
+export async function fetchVideoFilesAudit(): Promise<FileAudit | null> {
+  if (missing || auditMissing) return null;
+  try {
+    const { data, error } = await supabase.rpc('video_files_audit', {}, { get: true });
+    if (error) { if (isMissingFunction(error)) auditMissing = true; return null; }
+    return parseFileAudit(data);
+  } catch {
+    return null;
   }
 }
 

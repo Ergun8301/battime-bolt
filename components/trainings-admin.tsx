@@ -30,17 +30,18 @@ import {
   checkTrainingTitle, parseTrainingLink, PROVIDER_LABEL, providerOf, safeTrainingUrl, seenSummary, TRAINING_TITLE_MAX, TRAINING_URL_MAX, type ViewRow,
 } from '@/supabase/functions/_shared/trainings';
 import {
-  fetchOfficeVideos, fetchVideoLimits, publishVideo, setVideoArchived, startVideoUpload, uploadVideoFile, type OfficeLeftover, type OfficeVideo, type UploadRun,
+  fetchOfficeVideos, fetchVideoFilesAudit, fetchVideoLimits, publishVideo, setVideoArchived, startVideoUpload, uploadVideoFile, type OfficeLeftover, type OfficeVideo, type UploadRun,
 } from '@/lib/training-videos';
 import type { PickedVideo } from '@/components/training-video-upload';
 import {
-  checkVideoFile, formatMo, leftoverNote, leftoverSummary, VIDEO_MAX_BYTES, VIDEO_QUOTA_BYTES, videoSummary, type Limits,
+  checkVideoFile, formatMo, leftoverNote, leftoverSummary, VIDEO_MAX_BYTES, VIDEO_QUOTA_BYTES, videoSummary, type FileAudit, type Limits,
 } from '@/supabase/functions/_shared/training-videos';
 
 // Lot 13 : le panneau d'envoi et le lecteur ne se chargent qu'à l'ouverture.
 const Waiting = () => <p className="bt-fo-muted"><Loader2 className="inline h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> Chargement…</p>;
 const UploadPanel = dynamic(() => import('@/components/training-video-upload'), { ssr: false, loading: Waiting });
 const TrainingVideoPlayer = dynamic(() => import('@/components/training-video-player'), { ssr: false, loading: Waiting });
+const VideoOrphans = dynamic(() => import('@/components/training-video-orphans'), { ssr: false, loading: Waiting });
 
 const CSS = `
 .bt-fo{display:flex;flex-direction:column;gap:12px;font-size:13px;color:#15120F;min-width:0}
@@ -140,6 +141,9 @@ export default function TrainingsAdmin({ open, onOpenChange, companyId, companyN
   const [progress, setProgress] = useState<{ loaded: number; total: number } | null>(null);
   const [uploadNote, setUploadNote] = useState<string | null>(null);
   const [playing, setPlaying] = useState<string | null>(null);
+  const [audit, setAudit] = useState<FileAudit | null>(null); // lot 14 : fichiers à vérifier (lecture seule)
+  const auditSeq = useRef(0);
+  const [recording, setRecording] = useState(false); // lot 14 : prise en cours dans « Filmer dans BEMEXO » (ce qui la jetterait est verrouillé)
   const uploadRef = useRef<UploadRun | null>(null);
   const fileUrlRef = useRef<string | null>(null);
 
@@ -149,8 +153,16 @@ export default function TrainingsAdmin({ open, onOpenChange, companyId, companyN
     setLoadError(null);
     setList({ trainings: r.trainings, views: r.views });
     // Vidéos illisibles (migration absente, réseau…) : la liste du lot 6 reste telle quelle.
-    if (v.ok) setVids({ videos: v.videos, views: v.views, leftovers: v.leftovers });
-    else if (v.missing) setVids(null);
+    if (v.ok) {
+      setVids({ videos: v.videos, views: v.views, leftovers: v.leftovers });
+      // Lot 14 : non bloquant ; rien n'est affiché s'il n'y a rien ou si la migration manque. Seule la réponse du dernier chargement compte
+      // (une lecture plus ancienne qui arrive en retard ne remplace pas la plus récente).
+      const seq = ++auditSeq.current;
+      void fetchVideoFilesAudit().then((a) => { if (seq === auditSeq.current) setAudit(a); });
+    } else {
+      auditSeq.current++; setAudit(null);
+      if (v.missing) setVids(null);
+    }
   }, [companyId]);
   const videosOn = vids !== null;
   const refreshLimits = useCallback(async () => { const l = await fetchVideoLimits(); if (l) setLimits(l); }, []);
@@ -184,7 +196,7 @@ export default function TrainingsAdmin({ open, onOpenChange, companyId, companyN
     setFileError(c.ok ? null : c.error);
   }, [limits, file, progress]);
 
-  const pickFile = (f: File | null | undefined) => {
+  const pickFile = (f: File | null | undefined, durationS?: number) => {
     setUploadNote(null); setFormError(null);
     clearFile();
     if (!f) return;
@@ -192,7 +204,8 @@ export default function TrainingsAdmin({ open, onOpenChange, companyId, companyN
     if (!c.ok) { setFileError(c.error); return; }
     const url = URL.createObjectURL(f);
     fileUrlRef.current = url;
-    setFile({ file: f, mime: c.mime, url, duration: null });
+    // Lot 14 : une prise de « Filmer dans BEMEXO » arrive avec sa durée (le minuteur ; un WebM de navigateur n'en porte pas).
+    setFile({ file: f, mime: c.mime, url, duration: durationS ?? null, source: durationS != null ? 'recorder' : undefined });
   };
   // Durée lue par le panneau (aperçu) : gardée si c'est toujours le même fichier.
   const onDuration = useCallback((url: string, d: number | null) => {
@@ -471,7 +484,7 @@ export default function TrainingsAdmin({ open, onOpenChange, companyId, companyN
   const renderItem = (i: Item) => (i.src === 'link' ? row(i.t) : i.src === 'upload' ? videoRow(i.v) : leftoverRow(i.l));
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(o) => { if (!o && recording) return; onOpenChange(o); }}>
       <DialogContent className="bt-skin max-w-lg max-h-[85vh] overflow-y-auto" data-testid="trainings-dialog">
         <style dangerouslySetInnerHTML={CSS_HTML} />
         <DialogHeader><DialogTitle>Formations</DialogTitle></DialogHeader>
@@ -492,8 +505,8 @@ export default function TrainingsAdmin({ open, onOpenChange, companyId, companyN
                 {title.trim() !== '' && !titleCheck.ok && <div className="bt-fo-err" style={{ marginTop: 4 }}>{titleCheck.error}</div>}
               </div>
               <div className="bt-fo-pills" role="radiogroup" aria-label="Contenu">
-                <button type="button" role="radio" className="bt-fo-pill" aria-checked={kind === 'video'} aria-pressed={kind === 'video'} disabled={!!progress} onClick={() => setKind('video')} data-testid="tr-kind-video">Lien vidéo</button>
-                <button type="button" role="radio" className="bt-fo-pill" aria-checked={kind === 'document'} aria-pressed={kind === 'document'} disabled={!!progress} onClick={() => setKind('document')} data-testid="tr-kind-document">Document</button>
+                <button type="button" role="radio" className="bt-fo-pill" aria-checked={kind === 'video'} aria-pressed={kind === 'video'} disabled={!!progress || recording} onClick={() => setKind('video')} data-testid="tr-kind-video">Lien vidéo</button>
+                <button type="button" role="radio" className="bt-fo-pill" aria-checked={kind === 'document'} aria-pressed={kind === 'document'} disabled={!!progress || recording} onClick={() => setKind('document')} data-testid="tr-kind-document">Document</button>
                 {videosOn && (
                   <button type="button" role="radio" className="bt-fo-pill" aria-checked={kind === 'upload'} aria-pressed={kind === 'upload'} disabled={!!progress}
                     onClick={() => setKind('upload')} data-testid="tr-kind-upload">Vidéo (téléphone ou fichier)</button>
@@ -501,7 +514,7 @@ export default function TrainingsAdmin({ open, onOpenChange, companyId, companyN
               </div>
               {kind === 'upload' ? (
                 <UploadPanel limits={limits} file={file} fileError={fileError} progress={progress} note={uploadNote}
-                  onPick={pickFile} onClear={clearFile} onCancel={() => uploadRef.current?.cancel()} onDuration={onDuration} />
+                  onPick={pickFile} onClear={clearFile} onCancel={() => uploadRef.current?.cancel()} onDuration={onDuration} onRecording={setRecording} />
               ) : kind === 'video' ? (
                 <div>
                   <input className="bt-fo-input" value={link} maxLength={TRAINING_URL_MAX + 50} inputMode="url" autoComplete="off" aria-label="Lien de la vidéo"
@@ -566,7 +579,7 @@ export default function TrainingsAdmin({ open, onOpenChange, companyId, companyN
               </div>
               {formError && <p className="bt-fo-err" data-testid="tr-error">{formError}</p>}
               <div className="bt-fo-foot">
-                <button type="button" className="bt-fo-btn ghost sm" onClick={resetForm} disabled={!!progress} data-testid="tr-cancel">Annuler</button>
+                <button type="button" className="bt-fo-btn ghost sm" onClick={resetForm} disabled={!!progress || recording} data-testid="tr-cancel">Annuler</button>
                 <button type="submit" className="bt-fo-btn sm" disabled={!valid || saving} data-testid="tr-save">
                   {saving && !progress && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Ajouter
                 </button>
@@ -594,6 +607,7 @@ export default function TrainingsAdmin({ open, onOpenChange, companyId, companyN
               {showArchived && <div className="bt-fo-list" data-testid="tr-archived-list">{archived.map(renderItem)}</div>}
             </>
           )}
+          {videosOn && audit && <VideoOrphans audit={audit} quotaBytes={lim.quotaBytes} />}
         </div>
       </DialogContent>
     </Dialog>
