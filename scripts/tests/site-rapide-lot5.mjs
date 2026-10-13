@@ -417,7 +417,7 @@ const salarie = async (opts = {}, route) => {
   await pg.goto(`http://localhost:${PORT}/poseur`); await pg.waitForSelector('.bt-total', { timeout: 25000 });
   return { ctx, pg };
 };
-const goTab = async (pg, label) => { await pg.locator('button[aria-label="Mon compte et menu"]').click(); await pg.waitForTimeout(250); await pg.getByRole('menuitem', { name: label }).click(); };
+const goTab = async (pg, label) => { await pg.locator('button[aria-label="Mon compte et menu"]').click(); await pg.waitForTimeout(250); await pg.getByRole('menuitem', { name: label }).click(); await pg.waitForTimeout(700); }; // 700 ms : laisse le menu se refermer avant de le rouvrir
 const zone = (pg) => pg.evaluate(() => { const z = document.querySelector('.bt-phscroll'); return z ? { text: z.innerText, gris: z.querySelectorAll('.animate-pulse').length, statut: [...z.querySelectorAll('[role=status]')].map((e) => e.innerText).join(' ') } : null; });
 const waitZone = async (pg, pred, ms = 8000) => { const t0 = Date.now(); let z = null; while (Date.now() - t0 < ms) { z = await zone(pg); if (z && pred(z)) return z; await sleep(150); } return z; };
 const ANNEE = String(new Date(FIXED_NOW).getFullYear());
@@ -463,7 +463,9 @@ for (const mode of ['réseau', 'onglet']) {
   check(msg, 'e6) au clic sur l\'assistant, le chargement échoue : le message apparaît alors');
   block = false; await pg.waitForTimeout(500);
   await pg.locator('[data-testid=dock-assistant]').click();
-  check(await waitText(pg, /Dites-moi vos heures/, 8000), 'e6) après déblocage, le clic suivant ouvre l\'assistant');
+  // Le panneau de l'assistant n'est pas un role=dialog : on lit le texte de la page (« Dites-moi vos heures… » = panneau ouvert).
+  let ouvert = false; for (let i = 0; i < 50 && !ouvert; i++) { await sleep(150); ouvert = /Dites-moi vos heures/.test(await pg.evaluate(() => document.body.innerText)); }
+  check(ouvert, 'e6) après déblocage, le clic suivant ouvre l\'assistant');
   check(errors.length === err0, `e6) aucune erreur JS après réessai (${errors.slice(err0, err0 + 2).join(' | ')})`);
   await ctx.close();
 }

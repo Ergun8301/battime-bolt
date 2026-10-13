@@ -1,7 +1,7 @@
 # Site rapide 1 : Excel et PDF au clic, fenêtres à l'ouverture, cache long, budgets de poids
 
 Aucune fonctionnalité nouvelle, aucune migration, aucune fonction edge, aucun réglage de l'IA.
-Le site pèse moins au premier chargement : `/admin` passe de **766 à 350 kB** et `/poseur` de **544 à 328 kB**
+Le site pèse moins au premier chargement : `/admin` passe de **766 à 351 kB** et `/poseur` de **544 à 329 kB**
 (JavaScript compressé, colonne « First Load JS » de `next build`).
 
 ## Ce qui change
@@ -34,8 +34,8 @@ Mesures de cette machine (`next build`, Next 14.2.33), un build après chaque é
 
 | Route | Audit d'origine | Avant le lot | Après V1 (Excel/PDF) | **Après V1 + V2 (final)** | Budget | Objectif du plan |
 |---|---|---|---|---|---|---|
-| `/admin` | 722 | 766 | 489 | **350** | 360 | 350 |
-| `/poseur` | 487 | 544 | 410 | **328** | 338 | 300 |
+| `/admin` | 722 | 766 | 489 | **351** | 361 | 350 |
+| `/poseur` | 487 | 544 | 410 | **329** | 339 | 300 |
 | `/borne` | 161 | 163 | 163 | 164 | 169 | 170 |
 | `/pointer` | 142 | 146 | 146 | 146 | 151 | 170 |
 | `/connexion` | 149 | 150 | 150 | 150 | 155 | 150 |
@@ -49,9 +49,11 @@ Mesures de cette machine (`next build`, Next 14.2.33), un build après chaque é
 
 n/m = non mesuré à l'audit. Journaux : `build-avant.log`, `build-v1.log`, `build-final.log` (notes jetables).
 
+La colonne « final » est mesurée après la fusion de `integration/bemexo-ia` (lot 14, enregistreur vidéo) et des corrections de relecture (états d'attente des onglets, nouvelle tentative) : `/admin` 350 → 351 et `/poseur` 328 → 329 par rapport au build d'avant la fusion, les autres routes ne bougent pas. La base `integration/bemexo-ia` seule, mesurée de la même façon, donne les mêmes chiffres « avant » à 0,1 kB près (766 / 544, partagé 87.9).
+
 - **Sorties du premier chargement de `/admin`** : `xlsx` ≈ 139 kB, `jsPDF` et ses aides ≈ 105 kB, `jspdf-autotable` (une partie de 10 kB), le code des fenêtres et de l'assistant.
 - Le JavaScript partagé grossit de 0,7 kB (redécoupage de webpack) : toutes les pages le portent, d'où +0,5 à +0,7 kB sur les routes qui n'ont pas bougé.
-- **Cibles du plan** : `/admin` ≤ 350 kB est atteinte. `/poseur` ≤ 300 kB ne l'est pas (328) : `components/poseur-day.tsx` (lot 29) importe encore `ChantierDocuments` en statique, et `lib/assistant-actions` reste lié à l'assistant. Gain restant à prendre dans un lot suivant. `/connexion` et `/support` sont au bord de la cible « pages publiques ≤ 150 » : budget 155.
+- **Cibles du plan** : `/admin` ≤ 350 kB est manquée de 1 kB (351 après la fusion du lot 14 ; objectif affiché, non bloquant : le budget est à 361). `/poseur` ≤ 300 kB ne l'est pas (329) : `components/poseur-day.tsx` (lot 29) importe encore `ChantierDocuments` en statique, et `lib/assistant-actions` reste lié à l'assistant. Gain restant à prendre dans un lot suivant. `/connexion` et `/support` sont au bord de la cible « pages publiques ≤ 150 » : budget 155.
 - `/apercu/cout-salarie` importe `SET_CSS` de `company-settings` : cette page de démonstration reste lourde (212 kB).
 - `node_modules` de la machine de développement a `xlsx` 0.18.5 alors que le lock demande 0.20.3 ; `xlsx` quittant le premier chargement, l'écart est négligeable, mais les budgets sont à re-contrôler sur la CI / la préview.
 
@@ -88,6 +90,6 @@ npm run test:budget
 ## Tests
 
 - `npm run test:budget` : analyse du tableau de `next build`, dépassements, avertissements, route inconnue, groupe `/apercu/*`, et contrôle statique de `public/_headers`.
-- `npm run test:site-rapide-ecrans` (après `npm run build`, sur les vraies pages avec une base simulée) : rien de lourd au chargement ni au repos, chunks à l'ouverture du menu d'export, vrais fichiers PDF / Excel / CSV / pièce jointe du comptable, verrouillage après le fichier, aucune écriture si l'outil ne charge pas, fenêtres sans clignotement ni téléchargement de plus à la 2ᵉ ouverture, onglets salarié, réseau coupé après le repos, chunk de fenêtre bloqué (message puis réessai), fenêtres du menu ☰ à 390 px sans clignoter ni déborder, police Archivo chargée.
+- `npm run test:site-rapide-ecrans` (après `npm run build`, sur les vraies pages avec une base simulée) : rien de lourd au chargement ni au repos, chunks à l'ouverture du menu d'export, vrais fichiers PDF / Excel / CSV / pièce jointe du comptable, verrouillage après le fichier, aucune écriture si l'outil ne charge pas, fenêtres sans clignotement ni téléchargement de plus à la 2ᵉ ouverture, onglets salarié, réseau coupé après le repos, chunk de fenêtre bloqué (message puis réessai), onglet dont le code tarde (blocs gris), onglet en échec puis nouvelle tentative (retour du réseau, retour sur l'onglet), assistant en échec de fond (aucun message avant qu'on l'ouvre), fenêtres du menu ☰ à 390 px sans clignoter ni déborder (Coûts avec des heures fictives), police Archivo chargée.
 
-Captures à 390 px : `docs/captures-site-rapide-1/` (Réglages, Coûts, fiche salarié et menu Exporter côté bureau ; Mon mois et Mes congés hors ligne côté salarié).
+Captures à 390 px : `docs/captures-site-rapide-1/` (Réglages, Coûts avec des heures fictives, fiche salarié et menu Exporter côté bureau ; Mon mois et Mes congés hors ligne côté salarié).

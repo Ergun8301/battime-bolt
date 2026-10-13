@@ -20,8 +20,8 @@
       "max": 95
     },
     "/admin": {
-      "mesure": 350.0,
-      "max": 360,
+      "mesure": 351.0,
+      "max": 361,
       "objectif": 350
     },
     "/auth/confirm": {
@@ -85,8 +85,8 @@
       "max": 151
     },
     "/poseur": {
-      "mesure": 328.0,
-      "max": 338,
+      "mesure": 329.0,
+      "max": 339,
       "objectif": 300
     },
     "/suisse": {
