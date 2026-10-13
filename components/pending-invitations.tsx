@@ -289,7 +289,7 @@ export default function PendingInvitations({ companyId, invitations, onChanged }
           {n === 1 ? '1 salarié n’a pas encore activé son compte' : `${n} salariés n’ont pas encore activé leur compte`}
         </span>
         <span className="bt-inv-sep" aria-hidden="true">·</span>
-        <button type="button" className="bt-inv-toggle" aria-expanded={open} aria-controls="bt-inv-panel" onClick={() => setOpen((v) => !v)} data-testid="inv-toggle">
+        <button type="button" className="bt-inv-toggle" aria-expanded={open} aria-controls="bt-inv-panel" onClick={() => setOpen((v) => !v)} data-testid="inv-toggle" data-guide="bureau-invit.voir">
           {open ? 'Masquer la liste' : 'Voir la liste'}
           {open ? <ChevronUp className="h-3.5 w-3.5" aria-hidden="true" /> : <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />}
         </button>
@@ -312,7 +312,7 @@ export default function PendingInvitations({ companyId, invitations, onChanged }
               </button>
             )}
           </div>
-          <ul className="bt-inv-list">
+          <ul className="bt-inv-list" data-guide="bureau-invit.liste">
             {list.map((inv) => {
               const when = sentOf(inv);
               const mine = busy1?.email === inv.email;

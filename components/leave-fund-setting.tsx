@@ -9,7 +9,7 @@ import { toast } from 'sonner';
 import { BTP_LEAVE_DEFAULT_RATE, parseAmount, type CostSource, type LeaveFund } from '@/lib/real-cost';
 import { InfoTip } from '@/components/ui/info-tip';
 
-export default function LeaveFundSetting({ source, companyId }: { source: CostSource; companyId: string }) {
+export default function LeaveFundSetting({ source, companyId, guide }: { source: CostSource; companyId: string; guide?: string }) {
   const [fund, setFund] = useState<LeaveFund | null>(null);
   const [rate, setRate] = useState('');
 
@@ -31,7 +31,7 @@ export default function LeaveFundSetting({ source, companyId }: { source: CostSo
   };
 
   return (
-    <div className="bt-set-sub bt-set-rem">
+    <div className="bt-set-sub bt-set-rem" data-guide={guide}>
       <div className="bt-set-subtxt">
         {/* Lot 11 : une ligne courte ; le détail dans l'ⓘ, À CÔTÉ du libellé (jamais dedans). */}
         <div className="bt-set-lrow">

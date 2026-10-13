@@ -9,6 +9,7 @@ import AssistantPanel from '@/components/assistant-panel';
 import AssistantActionCard from '@/components/assistant-action-card';
 import { demoActionExecutor, type ActionExtra } from '@/lib/assistant-actions';
 import { demoAssistantSource, isAssistantDemo } from '@/lib/assistant';
+import { tourIdOf } from '@/supabase/functions/_shared/worker-tours';
 
 const LABELS: Record<string, string> = {
   couts: 'Coûts des chantiers', conges: 'Demandes de congés', 'salarie:demo-karim': 'Fiche de Karim', salaries: 'Salariés',
@@ -49,7 +50,10 @@ export default function ApercuAssistant() {
       <AssistantPanel
         source={source}
         attachments
-        onNavigate={(a) => toast.success(`Ouverture : ${LABELS[a] ?? a}`)}
+        onNavigate={(a) => {
+          if (tourIdOf(a) !== null) { toast.info('Guide pas à pas (non simulé en démonstration).'); return; }
+          toast.success(`Ouverture : ${LABELS[a] ?? a}`);
+        }}
         renderExtra={(extra, ctl) => <AssistantActionCard extra={extra as ActionExtra} execute={demoActionExecutor} ctl={ctl} />}
       />
     </main>

@@ -374,7 +374,7 @@ export default function CostReport({ open, onOpenChange, companyId }: Props) {
         <DialogHeader><DialogTitle>Coût par chantier</DialogTitle></DialogHeader>
 
         {/* période */}
-        <div className="flex flex-wrap items-center gap-2 pt-1">
+        <div className="flex flex-wrap items-center gap-2 pt-1" data-guide="bureau-cout.periodes">
           <Button variant={preset === 'month' ? 'default' : 'outline'} size="sm" onClick={() => setPreset('month')}>Ce mois</Button>
           <Button variant={preset === 'week' ? 'default' : 'outline'} size="sm" onClick={() => setPreset('week')}>Cette semaine</Button>
           <Popover>
@@ -432,7 +432,7 @@ export default function CostReport({ open, onOpenChange, companyId }: Props) {
                 le premier jour de pose — le cas que cet écran doit couvrir. */}
             <div className="bt-cr-addwrap">
               {!formOpen ? (
-                <button type="button" className="bt-cr-addbtn" onClick={() => setFormOpen(true)} disabled={activeSites.length === 0}>
+                <button type="button" className="bt-cr-addbtn" onClick={() => setFormOpen(true)} disabled={activeSites.length === 0} data-guide="bureau-cout.depense">
                   <Plus className="h-4 w-4" /> Ajouter une dépense
                 </button>
               ) : (

@@ -176,7 +176,7 @@ export default function RealCostCard({ source, companyId, userId, firstName, onC
         </div>
       ) : (
         <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={() => fileRef.current?.click()}
+          <button type="button" onClick={() => fileRef.current?.click()} data-guide="bureau-fiche.cout-bulletin"
             className="inline-flex items-center gap-2 rounded-md bg-foreground px-3 py-2 text-sm font-semibold text-background">
             <FileUp className="h-4 w-4" /> Déposer un bulletin
           </button>

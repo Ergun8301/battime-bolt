@@ -153,7 +153,7 @@ Deno.test('6. Corriger un pointage', async () => {
 Deno.test('Guide : « comment… » → 3 étapes + bouton, jamais « je n’ai pas accès »', () => {
   const r = handleActionLocally('Comment j’ajoute un salarié ?', CTX)!;
   eq(r.answer.split('\n').length, 4, 'titre + 3 étapes');
-  eq(r.links, [{ label: 'Nouveau salarié', action: 'nouveau_salarie' }], '« M’y emmener »');
+  eq(r.links, [{ label: 'Nouveau salarié', action: 'nouveau_salarie' }, { label: 'Me guider pas à pas', action: 'guide:ajouter_salarie' }], '« M’y emmener » puis « Me guider pas à pas »');
   eq(findGuide('comment je cloture le mois')!.lien, 'export', 'clôture → écran Exporter');
   eq(findGuide('où je change le logo')!.lien, 'reglages', 'logo → Réglages');
   const refus = fromFunctionCall('repondre', { reponse: 'Je n’ai pas accès à la création de salariés.' }, CTX);

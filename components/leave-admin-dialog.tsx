@@ -127,39 +127,43 @@ export default function LeaveAdminDialog({ open, onOpenChange, companyId, adminI
 
         {rows.length === 0 && <p className="bt-la-empty">Aucune demande pour le moment.</p>}
 
-        {pending.length > 0 && <div className="bt-la-kicker">En attente ({pending.length})</div>}
-        {pending.map((r) => (
-          <div key={r.id} className="bt-la-row">
-            <CalendarRange className="h-4 w-4 shrink-0 mt-0.5 text-muted-foreground" />
-            <div className="bt-la-main">
-              <div className="bt-la-who">{nameOf(r.user_id)}</div>
-              <div className="bt-la-what">{TYPE_LABEL[r.type]}</div>
-              <div className="bt-la-when">{period(r)}</div>
-              {r.note && <div className="bt-la-note">« {r.note} »</div>}
-              {rejectingId === r.id && (
-                <div className="bt-la-rej">
-                  <Input className="h-8 text-sm min-w-0 flex-1 basis-40" placeholder="Motif (facultatif)" value={rejectNote}
-                    onChange={(e) => setRejectNote(e.target.value)} />
-                  <Button size="sm" variant="destructive" onClick={() => reject(r)} disabled={busyId === r.id}>
-                    {busyId === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Confirmer'}
-                  </Button>
+        {pending.length > 0 && (
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-4" data-guide="bureau-conges.liste">
+            <div className="bt-la-kicker">En attente ({pending.length})</div>
+            {pending.map((r) => (
+              <div key={r.id} className="bt-la-row">
+                <CalendarRange className="h-4 w-4 shrink-0 mt-0.5 text-muted-foreground" />
+                <div className="bt-la-main">
+                  <div className="bt-la-who">{nameOf(r.user_id)}</div>
+                  <div className="bt-la-what">{TYPE_LABEL[r.type]}</div>
+                  <div className="bt-la-when">{period(r)}</div>
+                  {r.note && <div className="bt-la-note">« {r.note} »</div>}
+                  {rejectingId === r.id && (
+                    <div className="bt-la-rej">
+                      <Input className="h-8 text-sm min-w-0 flex-1 basis-40" placeholder="Motif (facultatif)" value={rejectNote}
+                        onChange={(e) => setRejectNote(e.target.value)} />
+                      <Button size="sm" variant="destructive" onClick={() => reject(r)} disabled={busyId === r.id}>
+                        {busyId === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Confirmer'}
+                      </Button>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-            {rejectingId !== r.id && (
-              <div className="bt-la-acts">
-                <Button size="icon" variant="outline" className="h-8 w-8" title="Accepter"
-                  onClick={() => approve(r)} disabled={busyId === r.id}>
-                  {busyId === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-                </Button>
-                <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive" title="Refuser"
-                  onClick={() => { setRejectingId(r.id); setRejectNote(''); }} disabled={busyId === r.id}>
-                  <XIcon className="h-3.5 w-3.5" />
-                </Button>
+                {rejectingId !== r.id && (
+                  <div className="bt-la-acts">
+                    <Button size="icon" variant="outline" className="h-8 w-8" title="Accepter"
+                      onClick={() => approve(r)} disabled={busyId === r.id}>
+                      {busyId === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                    </Button>
+                    <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive" title="Refuser"
+                      onClick={() => { setRejectingId(r.id); setRejectNote(''); }} disabled={busyId === r.id}>
+                      <XIcon className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                )}
               </div>
-            )}
+            ))}
           </div>
-        ))}
+        )}
 
         {decided.length > 0 && <div className="bt-la-kicker">Traitées</div>}
         {decided.map((r) => (
