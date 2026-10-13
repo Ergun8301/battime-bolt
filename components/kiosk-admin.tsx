@@ -472,7 +472,7 @@ export default function KioskAdmin({ open, onOpenChange, companyId }: Props) {
               <p>Si la tablette affiche un QR, scannez-le avec votre téléphone : c’est le plus simple.</p>
               <p>Une seule tablette par entreprise : en relier une nouvelle déconnecte l’ancienne.</p>
               {/* Le guide « borne » montre ce bouton à la place du code, tant que le code est caché. */}
-              <button type="button" className="ka-btn" data-testid="ka-link-another" data-guide="bureau-borne.code" onClick={() => setReveal(true)}>Relier une autre tablette</button>
+              <button type="button" className="ka-btn" data-testid="ka-link-another" onClick={() => setReveal(true)}>Relier une autre tablette</button>
             </div>
           ) : (
             <>
