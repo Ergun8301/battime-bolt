@@ -4,6 +4,7 @@ import {
   budgetProgress, buildBilan, checkCompletionDate, choosableWorksites, completedDay, completionUi, countDrafts, countUpcoming, COUNTED,
   EXPENSE_CATEGORIES, EXPENSE_LABEL, finishButtonLabel, finishWarnings, fmtEur, fmtH, frDate, hasCompletionColumn, isCountedStatus,
   isWorksiteFinished, termineLe, todayParis, type BilanEntry, type LabourRow,
+  canFinishWorksite, isOtherWorksite, OTHER_WORKSITE_NAME,
 } from './chantier-termine.ts';
 import { DOC_CATEGORY_NAMES } from './doc-categories.ts';
 
@@ -60,6 +61,27 @@ Deno.test('listes de choix du salarié : les terminés sont retirés, sauf deman
   eq(choosableWorksites(l, ['d']).map((w) => w.id), ['a', 'c', 'd'], 'le chantier déjà choisi reste');
   eq(choosableWorksites([] as { id: string }[]).length, 0, 'liste vide');
   eq(l.length, 4, 'la liste d’origine n’est pas modifiée (les noms restent affichables partout ailleurs)');
+});
+
+Deno.test('« Autre » (travail non prévu) reste TOUJOURS proposé, même marqué terminé, et ne se termine pas', () => {
+  eq(OTHER_WORKSITE_NAME, 'Autre', 'le nom que la base crée pour chaque entreprise (ensure_other_worksite)');
+  const l = [{ id: 'x', client_name: 'Autre', completed_at: '2026-10-12T12:00:00+00:00' }, { id: 'y', client_name: 'Villa', completed_at: '2026-10-12T12:00:00+00:00' }, { id: 'z', client_name: 'Autre', completed_at: null }];
+  eq(choosableWorksites(l).map((w) => w.id), ['x', 'z'], '« Autre » terminé par erreur reste dans les choix ; un vrai chantier terminé en sort');
+  eq(choosableWorksites(l, [], '2026-10-20').map((w) => w.id), ['x', 'z'], 'même pour un jour postérieur à sa « fin »');
+  eq([isOtherWorksite({ client_name: 'Autre' }), isOtherWorksite({ client_name: 'Autres' }), isOtherWorksite({ client_name: 'autre' }), isOtherWorksite({}), isOtherWorksite(null)], [true, false, false, false, false], 'reconnu comme le reste du code : nom exact « Autre »');
+  eq([canFinishWorksite({ client_name: 'Autre' }), canFinishWorksite({ client_name: 'Villa Dupont' }), canFinishWorksite({})], [false, true, true], 'le bloc « Terminer » n’existe pas pour « Autre »');
+});
+
+Deno.test('un chantier terminé reste proposé pour un jour qui n’est pas APRÈS sa fin (saisie d’un jour oublié, jour passé du chef d’équipe)', () => {
+  const fin = { id: 'f', completed_at: '2026-10-09T12:00:00+00:00' };
+  eq(choosableWorksites([fin], [], '2026-10-08').length, 1, 'la veille de la fin : proposé');
+  eq(choosableWorksites([fin], [], '2026-10-09').length, 1, 'le jour même de la fin : proposé (fin >= jour affiché)');
+  eq(choosableWorksites([fin], [], '2026-10-10').length, 0, 'le lendemain : plus proposé');
+  eq(choosableWorksites([fin], [], '2026-12-01').length, 0, 'bien après : plus proposé');
+  eq(choosableWorksites([fin]).length, 0, 'sans jour précisé : comportement d’avant (retiré)');
+  eq(choosableWorksites([fin], ['f'], '2026-12-01').length, 1, 'et le chantier déjà coché reste, quel que soit le jour');
+  eq(choosableWorksites([{ id: 'g', completed_at: 'illisible' }], [], '2026-10-01').length, 0, 'une date de fin illisible ne rend pas le chantier proposé par accident');
+  eq(choosableWorksites([{ id: 'h', completed_at: null }], [], '2026-12-01').length, 1, 'un chantier en cours l’est pour tous les jours');
 });
 
 Deno.test('qui voit quoi : sans la migration rien ; en mode support aucun bouton d’écriture', () => {
@@ -151,6 +173,16 @@ Deno.test('copies de règles : identiques à celles du reste du projet (lues dan
   ok(/isReserveLifted/.test(lib), 'lib/chantier-termine.ts utilise isReserveLifted (lib/reserves.ts)');
   ok(/my_worksite_labour/.test(lib), 'les heures viennent de my_worksite_labour');
   ok(!/total_minutes\s*[*+]|\/\s*60/.test(lib), 'lib/chantier-termine.ts ne recalcule aucune heure');
+  // La fonction de coût est lue PAGINÉE (plafond de 1000 lignes de l'API, sans erreur) et triée, comme lib/team-stats.ts.
+  ok(/my_worksite_labour[^\n]*\n?\s*\.order\('user_id'\)\.order\('worksite_id'\)\.range\(/.test(lib), 'lib/chantier-termine.ts : my_worksite_labour est lue paginée et triée (order user_id, worksite_id, range)');
+  ok(/fetchAllPaged<LabourRow>/.test(lib) && /namesUnavailable/.test(lib), 'les noms illisibles sont signalés (namesUnavailable), pas répétés « Salarié » en silence');
+  // Le bloc de la fiche : « Autre » ne se termine pas, et la fonction « prête » n'est interrogée que si la colonne est là.
+  const bar = read('../../../components/chantier-termine-bar.tsx');
+  ok(/canFinishWorksite\(worksite\)/.test(bar) && /if \(!hasColumn\) return;/.test(bar), 'le bloc de la fiche : pas de « Terminer » pour « Autre », pas de requête sans la colonne');
+  // Les listes de choix reçoivent le JOUR affiché.
+  ok(/choosableWorksites\(sortedWorksites, \[fWorksiteId\], date\)/.test(read('../../../components/poseur-day.tsx')), 'poseur-day passe le jour affiché au filtre');
+  const td = read('../../../components/team-day.tsx');
+  ok((td.match(/choosableWorksites\([^)]*, day\)/g) || []).length === 2, 'team-day passe le jour au filtre (liste ET chantier par défaut)');
 });
 
 // ── Un jeu de données fictif complet ────────────────────────────────────────────

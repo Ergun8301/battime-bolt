@@ -42,12 +42,26 @@ export function termineLe(w?: CompletionLike | null, court = false): string | nu
 }
 
 /**
- * Les listes de CHOIX du salarié (nouvelle intervention, nouveau pointage) : on retire les chantiers terminés.
- * `keep` : ceux qu'on garde malgré tout (le chantier déjà coché, par exemple). Jamais utilisée pour AFFICHER un nom
- * (cartes, historique, pointage en cours) : un chantier terminé garde son nom et ses heures partout ailleurs.
+ * Le chantier « Autre » : celui que la base crée pour chaque entreprise (ensure_other_worksite, règle d'or : l'heure n'est
+ * jamais bloquée) pour le travail non prévu. Reconnu partout par ce nom exact. Il ne se termine pas et reste toujours proposé.
  */
-export function choosableWorksites<T extends CompletionLike & { id: string }>(list: T[], keep: (string | null | undefined)[] = []): T[] {
-  return list.filter((w) => !isWorksiteFinished(w) || keep.includes(w.id));
+export const OTHER_WORKSITE_NAME = 'Autre';
+export const isOtherWorksite = (w?: { client_name?: string | null } | null): boolean => w?.client_name === OTHER_WORKSITE_NAME;
+/** Le bloc « Terminer » existe-t-il pour ce chantier ? Jamais pour « Autre » (la base le refuse aussi). */
+export const canFinishWorksite = (w?: { client_name?: string | null } | null): boolean => !isOtherWorksite(w);
+
+/**
+ * Les listes de CHOIX du salarié (nouvelle intervention, nouveau pointage, ligne du chef d'équipe) : on retire les chantiers
+ * terminés — SAUF
+ *  · « Autre », toujours proposé (le terminer par erreur ne doit pas fermer la porte au travail non prévu) ;
+ *  · `keep` : ceux qu'on garde malgré tout (le chantier déjà coché, par exemple) ;
+ *  · quand on saisit un JOUR qui n'est pas après la fin du chantier (`day` : jour affiché, AAAA-MM-JJ) : un chantier terminé
+ *    vendredi reste proposé pour vendredi et les jours d'avant (journée oubliée, correction du chef d'équipe), plus pour lundi.
+ * Jamais utilisée pour AFFICHER un nom (cartes, historique, pointage en cours) : un chantier terminé garde son nom et ses
+ * heures partout ailleurs.
+ */
+export function choosableWorksites<T extends CompletionLike & { id: string; client_name?: string | null }>(list: T[], keep: (string | null | undefined)[] = [], day?: string): T[] {
+  return list.filter((w) => !isWorksiteFinished(w) || isOtherWorksite(w) || keep.includes(w.id) || (!!day && (completedDay(w) ?? '') >= day));
 }
 
 /** Qui voit quoi : le bilan et les boutons d'écriture. Sans la migration, rien ; en mode support (lecture seule), pas de bouton d'écriture. */

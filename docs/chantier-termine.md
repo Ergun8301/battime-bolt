@@ -10,7 +10,8 @@ Tout se passe dans la **fiche client** (téléphone : ☰ → Chantiers → la l
 
 ### Terminer
 
-- La date de fin est **celle du jour par défaut**, modifiable, **jamais dans le futur** (l'écran et la base le refusent).
+- La date de fin est **celle du jour par défaut**, modifiable, **jamais dans le futur ni avant 2000** (l'écran et la base le refusent).
+- Le chantier **« Autre »** (celui que l'application crée pour chaque entreprise pour le travail non prévu) **ne se termine pas** : pas de bouton « Terminer » sur sa fiche, et la base refuse. Il doit rester proposé aux salariés : sans lui, une heure non prévue n'aurait plus de chantier où aller. (S'il avait été terminé avant ce correctif, « Rouvrir le chantier » le remet en service.)
 - Avant de terminer, l'écran contrôle quatre choses et les signale. Ce sont des **avertissements, jamais des blocages** : le bouton devient « Terminer quand même ».
   1. les **réserves non levées** de ce chantier ;
   2. les **pointages en cours** (chrono ouvert sur ce chantier) ;
@@ -51,7 +52,7 @@ Le bilan couvre **toute la vie du chantier** (pas une période choisie). Il lit 
 
 ## 2. Pour les salariés (et les chefs d'équipe)
 
-- Un chantier terminé **n'est plus proposé** dans « + » (nouvelle intervention) ni dans la liste de « Mon équipe » du chef d'équipe. Même en tapant son nom : « Aucun chantier trouvé ».
+- Un chantier terminé **n'est plus proposé** dans « + » (nouvelle intervention) ni dans la liste de « Mon équipe » du chef d'équipe. Même en tapant son nom : « Aucun chantier trouvé ». **Deux exceptions** : « Autre » reste toujours proposé ; et un chantier terminé le vendredi **reste proposé pour le vendredi et les jours d'avant** (journée oubliée, correction du chef d'équipe sur un jour passé : les heures partent sur le bon chantier et restent dans le bilan), plus pour le lundi suivant.
 - Il garde **son nom, ses heures, son historique** partout ailleurs : cartes de « Ma journée », semaine, mois, historique, pointage en cours. Le total du jour est exact.
 - Là où le chantier est affiché, on lit **« Terminé le … »**.
 - Un **pointage déjà en cours** sur ce chantier continue normalement (« Terminer ma journée » marche). Une intervention **déjà planifiée** par le bureau reste dans la journée.
@@ -66,7 +67,7 @@ Le bilan couvre **toute la vie du chantier** (pas une période choisie). Il lit 
 | `worksites.completed_at` (timestamptz) | le jour de fin, écrit **à midi UTC** (le même jour partout en Europe). **Peut déjà exister en production** (audit du 13/10 : colonne présente, 0 ligne renseignée) ; aucune migration du dépôt ne la crée, d'où `ADD COLUMN IF NOT EXISTS` |
 | `worksites.completed_by` (uuid) | qui l'a posé (sans clé étrangère : la trace survit au compte) |
 | `worksite_completion_ready()` | « suis-je prête ? » : l'écran cache tout tant qu'elle manque |
-| `set_worksite_completed(chantier, jour)` | terminer (un jour) ou rouvrir (`NULL`). **Bureau de l'entreprise du chantier seulement**, jamais dans le futur ; ne touche que les deux colonnes |
+| `set_worksite_completed(chantier, jour)` | terminer (un jour) ou rouvrir (`NULL`). **Bureau de l'entreprise du chantier seulement**, ni dans le futur ni avant 2000 (une date absurde donnerait un chantier masqué sans bouton « Rouvrir »), jamais le chantier « Autre » (rouvrir reste permis) ; ne touche que les deux colonnes |
 | `guard_worksite_completion()` + déclencheur | ceinture : un non-bureau ne pose jamais le statut (à l'insertion d'un chantier par un salarié, il est remis à vide) |
 
 **Aucune règle d'accès (RLS) de `worksites` n'est créée, modifiée ni retirée.** Un salarié ne peut toujours qu'**insérer** un chantier ; il ne peut jamais en changer le statut (essayé : fonction refusée, `UPDATE` direct = 0 ligne, insertion avec statut forcé = remis à vide).
@@ -82,7 +83,7 @@ Le **mode support** (lecture seule, lot 5) : le bilan se lit, aucun bouton « Te
    ```
    `completed_at` (timestamptz) peut être là ; `completed_by` ne l'est pas. Et les règles de `worksites` : `SELECT policyname, cmd FROM pg_policies WHERE tablename = 'worksites';` → `worksites_select_company`, `worksites_worker_insert_own_company`, `worksites_admin_write`, `support_read`.
 2. **Coller et exécuter** le fichier de migration dans l'éditeur SQL (jamais `db push`).
-3. **Après** : exécuter la requête du bloc « VÉRIFICATION » de l'en-tête du fichier : **9 × true**.
+3. **Après** : exécuter la requête du bloc « VÉRIFICATION » de l'en-tête du fichier : **10 × true**. Cette vérification n'a pas d'angle mort : elle exige que le déclencheur soit **actif** (pas seulement présent), que `worksites` ait **exactement ses quatre règles d'origine** (`support_read`, `worksites_admin_write`, `worksites_select_company`, `worksites_worker_insert_own_company`) et que la seule règle d'écriture exige le bureau sans contournement du genre `OR true` ; le test SQL le prouve en abîmant chaque point (déclencheur désactivé, règle pirate, règle ouverte à tous…) et en voyant la colonne concernée passer à `false`.
 4. Inscrire l'historique (ligne `INSERT` du bloc « HISTORIQUE », nom `lot23_chantier_termine`).
 5. **Ensuite seulement**, mettre en ligne l'application.
 
@@ -107,7 +108,8 @@ Après la migration et la mise en ligne, sur un chantier **de test** (pas un vra
 - **Guides pas à pas** : pas de fiche ajoutée. Les fiches du bureau (`admin-tours.ts`) sont liées au guide écrit de l'assistant (IA), qu'on ne touche pas ici, et le test refuse une ancre sans étape.
 - Le bilan ne propose pas de période : c'est **toute la vie** du chantier (comme le budget).
 - Le bureau garde un chantier terminé dans ses listes (palette de glisser-déposer comprise), avec la mention « Terminé le … » : il peut encore y planifier un passage (SAV).
-- Le bilan lit **toutes** les lignes de « Coût chantiers » de l'entreprise (une seule fonction, sans période) pour n'en garder que celles du chantier : c'est le prix de ne pas recalculer.
+- Le bilan lit **toutes** les lignes de « Coût chantiers » de l'entreprise (une seule fonction, sans période) pour n'en garder que celles du chantier : c'est le prix de ne pas recalculer. Cette lecture est **paginée** (500 lignes par page, triée) : l'API plafonne une réponse à 1000 lignes **sans erreur**, un bilan faux sinon (testé avec 1 507 lignes).
+- Si la liste des salariés ne peut pas être lue, le bilan l'écrit (« Noms indisponibles ») et numérote les salariés au lieu de répéter « Salarié » ; les heures et les montants restent exacts.
 - Le statut est un **jour** (écrit à midi UTC). Un chantier terminé le 1ᵉʳ octobre affiche « Terminé le 1 octobre 2026 » (même écriture que le reste de l'application).
 
 ## 7. Poids
@@ -118,9 +120,9 @@ Après la migration et la mise en ligne, sur un chantier **de test** (pas un vra
 
 | Commande | Ce qu'elle prouve |
 |---|---|
-| `npm run test:chantier-termine-db` | la migration sur une vraie base jetable (PGlite), **rejouée avec la colonne absente puis déjà présente** : additive, rejouable, retour arrière, vérification 9 × true, abus (salarié, chef d'équipe, bureau désactivé, autre entreprise, compte support, anonyme, insertion avec statut forcé), date future refusée, aucun blocage des écritures, bilan = sommes SQL indépendantes (heures, route, brouillons, réserves, dépenses, documents, budget). 237 vérifications |
+| `npm run test:chantier-termine-db` | la migration sur une vraie base jetable (PGlite), **rejouée avec la colonne absente puis déjà présente** : additive, rejouable, retour arrière, vérification 10 × true (et son absence d'angle mort, prouvée par des dérives volontaires), dates absurdes refusées, « Autre » refusé, abus (salarié, chef d'équipe, bureau désactivé, autre entreprise, compte support, anonyme, insertion avec statut forcé), date future refusée, aucun blocage des écritures, bilan = sommes SQL indépendantes (heures, route, brouillons, réserves, dépenses, documents, budget). 281 vérifications |
 | `npm run test:chantier-termine` | les règles pures (Deno) : date, avertissements, comptages, formats et budget identiques à « Coût chantiers », bilan complet |
-| `npm run test:chantier-termine-ecrans` (après `npm run build`) | les vraies pages à 390 px : fiche, terminer avec ses quatre avertissements, erreurs, rouvrir, bilan, mêmes chiffres que « Coût chantiers », fonction cachée avant la migration, mode support, salarié et chef d'équipe. 95 vérifications |
+| `npm run test:chantier-termine-ecrans` (après `npm run build`) | les vraies pages à 390 px : fiche, terminer avec ses quatre avertissements, erreurs, rouvrir, bilan, mêmes chiffres que « Coût chantiers », fonction cachée avant la migration, mode support, salarié et chef d'équipe. 111 vérifications |
 
 Captures à 390 px : `docs/captures-chantier-termine/` (fiche, terminer avec avertissements, bilan haut et bas, journée du salarié, choix de chantier sans le chantier terminé).
 

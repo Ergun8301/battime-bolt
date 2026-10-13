@@ -14,20 +14,23 @@ import { Button } from '@/components/ui/button';
 import { InfoTip } from '@/components/ui/info-tip';
 import { completionKnownReady, completionReady } from '@/lib/chantier-termine-ready';
 import { readSupportSession } from '@/lib/support';
-import { completionUi, hasCompletionColumn, termineLe } from '@/supabase/functions/_shared/chantier-statut';
+import { canFinishWorksite, completionUi, hasCompletionColumn, termineLe } from '@/supabase/functions/_shared/chantier-statut';
 import type { Worksite } from '@/lib/types';
 
 export type TermineMode = 'terminer' | 'rouvrir' | 'bilan';
 
 export default function ChantierTermineBar({ worksite, onOpen }: { worksite: Worksite; onOpen: (mode: TermineMode) => void }) {
   const [ready, setReady] = useState(completionKnownReady());
+  const hasColumn = hasCompletionColumn(worksite);
   useEffect(() => {
+    // Colonne absente de la ligne lue (migration pas appliquée) : inutile d'interroger la base (une requête 404 par fiche ouverte).
+    if (!hasColumn) return;
     let live = true;
     completionReady().then((r) => { if (live) setReady(r); });
     return () => { live = false; };
-  }, [worksite.id]);
+  }, [worksite.id, hasColumn]);
 
-  const ui = completionUi({ ready, hasColumn: hasCompletionColumn(worksite), supportMode: !!readSupportSession() });
+  const ui = completionUi({ ready, hasColumn, supportMode: !!readSupportSession() });
   if (!ui.bilan) return null;
   const fin = termineLe(worksite);
 
@@ -45,9 +48,10 @@ export default function ChantierTermineBar({ worksite, onOpen }: { worksite: Wor
         <Button variant="outline" size="sm" className="min-h-[44px]" onClick={() => onOpen('bilan')} data-testid="ct-bilan">
           <ClipboardList className="h-4 w-4 mr-1" /> Bilan du chantier
         </Button>
+        {/* « Autre » (travail non prévu) ne se termine pas : seul « Rouvrir » reste, au cas où il aurait été terminé avant. */}
         {ui.write && (fin
           ? <Button variant="outline" size="sm" className="min-h-[44px]" onClick={() => onOpen('rouvrir')} data-testid="ct-rouvrir"><RotateCcw className="h-4 w-4 mr-1" /> Rouvrir le chantier</Button>
-          : <Button size="sm" className="min-h-[44px]" onClick={() => onOpen('terminer')} data-testid="ct-terminer"><CheckCircle2 className="h-4 w-4 mr-1" /> Terminer le chantier</Button>)}
+          : canFinishWorksite(worksite) && <Button size="sm" className="min-h-[44px]" onClick={() => onOpen('terminer')} data-testid="ct-terminer"><CheckCircle2 className="h-4 w-4 mr-1" /> Terminer le chantier</Button>)}
       </div>
     </div>
   );

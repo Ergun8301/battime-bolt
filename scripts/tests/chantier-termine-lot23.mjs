@@ -149,7 +149,16 @@ async function mount(ctx, S, me) {
       }
       if (fn === 'my_worksite_labour') {
         if (S.labourError) return r.fulfill({ status: 500, json: { code: 'XX000', message: 'boom', details: null, hint: null } });
-        return r.fulfill({ json: S.labour });
+        // Comme PostgREST : tri demandé respecté, plafond de 1000 lignes par réponse SANS aucune erreur (max-rows).
+        S.labourCalls.push(url.search);
+        const rows = [...S.labour];
+        const ord = url.searchParams.get('order');
+        if (ord) {
+          const keys = ord.split(',').map((x) => x.split('.'));
+          rows.sort((a, b) => { for (const [k, dir] of keys) { if (a[k] !== b[k]) return (a[k] < b[k] ? -1 : 1) * (dir === 'desc' ? -1 : 1); } return 0; });
+        }
+        const off = Number(url.searchParams.get('offset') || 0); const lim = Math.min(Number(url.searchParams.get('limit') || 1000), 1000);
+        return r.fulfill({ json: rows.slice(off, off + lim) });
       }
       if (fn === 'set_worksite_completed') {
         S.setCalls.push(body);
@@ -167,6 +176,7 @@ async function mount(ctx, S, me) {
     // ── Tables ──
     const t = P.replace('/rest/v1/', '');
     if (method !== 'GET' && method !== 'HEAD') { S.writes.push(`${method} ${t}`); return r.fulfill({ status: 201, json: [{ id: 'new-1' }] }); }
+    if (S.failUsersNames && t === 'users' && url.searchParams.get('select') === 'id,first_name,last_name') return r.fulfill({ status: 500, json: { code: 'XX000', message: 'boom', details: null, hint: null } });
     if (S.failTable && S.failTable === t) return r.fulfill({ status: 500, json: { code: 'XX000', message: 'boom', details: null, hint: null } });
     let rows = filterRows(S[t] || [], url.searchParams);
     // Colonne absente (migration pas appliquée) : la base ne rend ni completed_at ni completed_by.
@@ -186,7 +196,7 @@ async function mount(ctx, S, me) {
 }
 const freshState = (extra = {}) => ({
   ready: 'ok', column: true, support: false, setError: null, setNetwork: false, labourError: false, failTable: null,
-  requests: [], rpc: [], writes: [], setCalls: [], labour: LABOUR,
+  requests: [], rpc: [], writes: [], setCalls: [], labourCalls: [], failUsersNames: false, labour: LABOUR,
   users: [ADMIN, SAM, ALEX, LEA],
   companies: [{ id: CO, name: 'Dupont Rénovation', ai_enabled: false, kiosk_enabled: false, position_tracking_enabled: false, subscription_status: 'active', trial_ends_at: '2030-01-01', weekly_hours: 35, travel_paid: true }],
   worksites: [WD(), WM(), WP(), WA()],
@@ -491,6 +501,68 @@ const S = freshState();
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// B ter · bilan sur une entreprise de plus de 1000 lignes de coût (lecture PAGINÉE) ; noms indisponibles ; « Autre »
+// ════════════════════════════════════════════════════════════════════════════
+{
+  const filler = Array.from({ length: 1503 }, (_, i) => ({ worksite_id: `wf${i % 40}`, user_id: `f-${String(i).padStart(5, '0')}`, worked_minutes: 60, route_minutes: 0, paid_minutes: 60, cost: 20, unpriced_minutes: 0 }));
+  const SBIG = freshState({ labour: [...filler, ...LABOUR] });   // 1 507 lignes : les nôtres sont APRÈS la 1000e
+  const { ctx, p } = await newPage(SBIG, ADMIN, { width: 390, height: 844 });
+  await loadAdmin(p);
+  await openFiche(p);
+  await p.waitForSelector('[data-testid=ct-bilan]', { timeout: 6000 });
+  await p.locator('[data-testid=ct-bilan]').click();
+  await p.waitForSelector('[data-testid=bilan]', { timeout: 8000 });
+  const Tb = async (id) => norm(await p.locator(`[data-testid=${id}]`).first().innerText());
+  check(await Tb('bl-heures-valid') === '20 h' && await Tb('bl-route') === '1 h' && await Tb('bl-mo') === '520 €', `B12) 1 507 lignes côté base (plafond de 1000 par réponse) : le bilan montre quand même 20 h, 1 h de route, 520 € (lu : ${await Tb('bl-heures-valid')} / ${await Tb('bl-mo')})`);
+  const pages = SBIG.labourCalls.map((q) => new URLSearchParams(q));
+  check(pages.length >= 4 && pages.every((q) => Number(q.get('limit')) <= 500 && /user_id/.test(q.get('order') || '') && /worksite_id/.test(q.get('order') || '')), `B12) lecture paginée et triée (${pages.length} pages de 500 au plus, order=${pages[0]?.get('order')})`);
+  check(await Tb('bl-bud-h') === '20 h / 40 h' && await Tb('bl-bud-h-pct') === '50 %', 'B12) et le budget prévu / réel aussi (20 h / 40 h, 50 %)');
+  await ctx.close();
+}
+{
+  // Noms : la lecture des salariés échoue, les heures restent exactes et l'écran le DIT.
+  const SN = freshState({ failUsersNames: true });
+  const { ctx, p } = await newPage(SN, ADMIN, { width: 390, height: 844 });
+  await loadAdmin(p);
+  await openFiche(p);
+  await p.waitForSelector('[data-testid=ct-bilan]', { timeout: 6000 });
+  await p.locator('[data-testid=ct-bilan]').click();
+  await p.waitForSelector('[data-testid=bilan]', { timeout: 8000 });
+  const note = await p.locator('[data-testid=bl-noms]').innerText().catch(() => '');
+  const who = (await p.locator('[data-testid=bl-salarie]').allInnerTexts()).map(norm);
+  check(/Noms indisponibles/.test(note), `B13) noms illisibles : « ${norm(note).slice(0, 70)}… »`);
+  check(who.length === 3 && who.every((w, i) => w.startsWith(`Salarié ${i + 1} `)) && !who.some((w) => /Girard|Roux|Petit/.test(w)), `B13) les salariés sont numérotés, pas répétés « Salarié » : ${who.map((w) => w.slice(0, 12)).join(' | ')}`);
+  check(norm(await p.locator('[data-testid=bl-heures-valid]').innerText()) === '20 h' && norm(await p.locator('[data-testid=bl-mo]').innerText()) === '520 €', 'B13) heures et montants restent exacts (20 h, 520 €)');
+  await ctx.close();
+  // Et quand tout va bien : pas de bandeau
+  const SOK = freshState();
+  const o = await newPage(SOK, ADMIN, { width: 390, height: 844 });
+  await loadAdmin(o.p); await openFiche(o.p);
+  await o.p.waitForSelector('[data-testid=ct-bilan]', { timeout: 6000 });
+  await o.p.locator('[data-testid=ct-bilan]').click();
+  await o.p.waitForSelector('[data-testid=bilan]', { timeout: 8000 });
+  check(await o.p.locator('[data-testid=bl-noms]').count() === 0, 'B13) noms lus : aucun bandeau');
+  await o.ctx.close();
+}
+{
+  // « Autre » : pas de bouton Terminer ; un « Autre » déjà terminé peut être rouvert
+  const SA = freshState();
+  const a = await newPage(SA, ADMIN, { width: 390, height: 844 });
+  await loadAdmin(a.p);
+  check(await openFiche(a.p, 'Autre'), 'B14) fiche du chantier « Autre » ouverte');
+  await a.p.waitForSelector('[data-testid=ct-bilan]', { timeout: 6000 }).catch(() => {});
+  check(await a.p.locator('[data-testid=ct-bilan]').count() === 1 && await a.p.locator('[data-testid=ct-terminer]').count() === 0, 'B14) « Autre » : le bilan se lit, MAIS aucun bouton « Terminer le chantier »');
+  await a.ctx.close();
+  const SL = freshState({ worksites: [WD(), WM(), WP(), { ...WA(), completed_at: FIN_AT, completed_by: 'u-admin' }] });
+  const l = await newPage(SL, ADMIN, { width: 390, height: 844 });
+  await loadAdmin(l.p);
+  await openFiche(l.p, 'Autre');
+  await l.p.waitForSelector('[data-testid=ct-rouvrir]', { timeout: 6000 }).catch(() => {});
+  check(await l.p.locator('[data-testid=ct-rouvrir]').count() === 1 && await l.p.locator('[data-testid=ct-terminer]').count() === 0, 'B14) « Autre » déjà terminé avant le correctif : « Rouvrir le chantier » est là pour le remettre en service');
+  await l.ctx.close();
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // D · AVANT LA MIGRATION : rien, sans message
 // ════════════════════════════════════════════════════════════════════════════
 for (const [label, extra] of [['fonction absente (404)', { ready: 'missing' }], ['fonction neutralisée par le retour arrière (403)', { ready: 'forbidden' }], ['réseau coupé', { ready: 'network' }], ['colonne absente', { column: false }], ['pas de réponse', { ready: 'hang' }]]) {
@@ -503,6 +575,7 @@ for (const [label, extra] of [['fonction absente (404)', { ready: 'missing' }], 
   check(await toasts(p, 'error') === 0 && !/Terminé|Bilan du chantier|Terminer le chantier/.test(norm(await p.locator('[role=dialog]').first().innerText())), `D) ${label} : aucun message d’erreur, la fiche est celle d’avant`);
   check(errs.filter((x) => !/Failed to load resource|ERR_FAILED|net::/.test(x)).length === 0, `D) ${label} : aucune erreur de page (${errs.filter((x) => !/Failed to load resource|ERR_FAILED|net::/.test(x)).slice(0, 2).join(' | ') || 'aucune'})`);
   check(!SD.rpc.includes('set_worksite_completed') && !SD.rpc.includes('my_worksite_labour'), `D) ${label} : aucune autre fonction appelée`);
+  if (extra.column === false) check(!SD.rpc.includes('worksite_completion_ready') && !SD.requests.some((x) => /worksite_completion_ready/.test(x)), `D) ${label} : la fonction « prête » n'est même pas interrogée (aucune requête inutile à chaque ouverture de fiche)`);
   await ctx.close();
 }
 
@@ -608,6 +681,73 @@ const openDay = async (p) => { await p.goto(`${BASE}/poseur`); await p.waitForSe
   await p.waitForSelector('.bt-site', { timeout: 6000 });
   const names = (await p.locator('.bt-site .bt-site-name').allInnerTexts()).map(norm);
   check(names.includes('Maison Martin') && names.includes('Villa Dupont'), `G5) avant la migration : tous les chantiers sont proposés comme avant (${names.join(', ')})`);
+  await ctx.close();
+}
+// G8 · « Autre » marqué terminé (par erreur) reste proposé : le travail non prévu n'est jamais bloqué
+{
+  const SW = workerState({ worksites: [WD(), WM(), WP(), { ...WA(), completed_at: FIN_AT, completed_by: 'u-admin' }] });
+  const { ctx, p } = await newPage(SW, SAM, { width: 390, height: 844 });
+  await openDay(p);
+  await p.locator('button[aria-label="Ajouter un chantier"]').click();
+  await p.waitForSelector('.bt-site', { timeout: 6000 });
+  const names = (await p.locator('.bt-site .bt-site-name').allInnerTexts()).map(norm);
+  check(names.includes('Autre chantier') && names.includes('Villa Dupont') && !names.includes('Maison Martin'), `G8) « Autre » terminé par erreur : toujours dans « + » (${names.join(', ')}) ; le vrai chantier terminé, lui, n'y est pas`);
+  await ctx.close();
+}
+// G9 · un chantier terminé reste proposé pour un jour qui n'est pas après sa fin (journée oubliée)
+{
+  const mondayOf = (d) => addDays(d, -((new Date(`${d}T12:00:00Z`).getUTCDay() + 6) % 7));
+  const frLabel = (d) => new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' }).format(new Date(`${d}T12:00:00Z`));
+  const M = addDays(mondayOf(today), -7);                  // lundi de la semaine dernière
+  const FIN = addDays(M, 2);                                // chantier terminé le mercredi
+  const SW = workerState({ worksites: [WD(), { ...WM(), completed_at: `${FIN}T12:00:00+00:00` }, WP(), WA()], time_entries: [] });
+  const { ctx, p } = await newPage(SW, SAM, { width: 390, height: 844 });
+  await openDay(p);
+  const optionsOf = async (d) => {
+    await p.locator('button[aria-label="Mon compte et menu"]').click();
+    await p.getByRole('menuitem', { name: 'Ma semaine' }).click();
+    await p.waitForTimeout(900);
+    await p.locator('div.flex.items-center.justify-between button:has(svg.lucide-chevron-left)').first().click();
+    await p.waitForTimeout(900);
+    await p.locator('p.font-semibold', { hasText: frLabel(d) }).first().click();
+    await p.waitForSelector('.bt-total', { timeout: 10000 });
+    await p.waitForTimeout(700);
+    await p.locator('button[aria-label="Ajouter un chantier"]').click();
+    await p.waitForSelector('.bt-site', { timeout: 6000 });
+    const names = (await p.locator('.bt-site .bt-site-name').allInnerTexts()).map(norm);
+    await p.locator('.bt-ed-cancel').click();   // referme la fenêtre de saisie
+    await p.waitForTimeout(400);
+    return names;
+  };
+  const tue = await optionsOf(addDays(M, 1)), wed = await optionsOf(FIN), thu = await optionsOf(addDays(M, 3));
+  check(tue.includes('Maison Martin') && wed.includes('Maison Martin') && !thu.includes('Maison Martin'),
+    `G9) chantier terminé le mercredi : proposé le mardi (${tue.includes('Maison Martin')}) et le mercredi (${wed.includes('Maison Martin')}), plus le jeudi (${thu.includes('Maison Martin')}) — une journée oubliée se saisit sur le bon chantier`);
+  check(thu.includes('Villa Dupont') && thu.includes('Autre chantier') && !thu.includes('Maison Martin'), 'G9) le jeudi : les chantiers en cours et « Autre » restent proposés');
+  await ctx.close();
+}
+// G10 · le chef d'équipe, jour passé : même règle (liste et chantier par défaut)
+{
+  const CHEF = u('u-chef', 'Chef', 'Équipe', 'lead');
+  const FIN = addDays(today, -3);
+  const plan = (d) => ({ id: `pl-${d}`, company_id: CO, user_id: 'u-sam', worksite_id: 'w2', work_date: d, absence_type: null, estimated_start: null, estimated_end: null, notes: null });
+  const SW = workerState({ users: [CHEF, SAM, ADMIN], worksites: [WD(), { ...WM(), completed_at: `${FIN}T12:00:00+00:00` }, WP(), WA()], time_entries: [], planning: [plan(addDays(today, -4)), plan(FIN), plan(addDays(today, -2))] });
+  const { ctx, p } = await newPage(SW, CHEF, { width: 390, height: 844 });
+  await openDay(p);
+  await p.waitForSelector('[data-testid=team-day]', { timeout: 8000 });
+  const probe = async (d) => {
+    await p.locator(`[data-testid=td-day][data-day="${d}"]`).click();
+    await p.waitForTimeout(900);
+    await p.locator('[data-testid=td-add]').click();
+    await p.waitForSelector('[data-testid=td-site]', { timeout: 5000 });
+    const opts = (await p.locator('[data-testid=td-site] option').allInnerTexts()).map(norm);
+    const dflt = await p.locator('[data-testid=td-site]').inputValue();
+    await p.locator('[data-testid=td-day][data-day="' + d + '"]').click();   // referme la fiche (changement de jour)
+    await p.waitForTimeout(300);
+    return { opts, dflt };
+  };
+  const avant = await probe(addDays(today, -4)), jour = await probe(FIN), apres = await probe(addDays(today, -2));
+  check(avant.opts.includes('Maison Martin') && jour.opts.includes('Maison Martin') && !apres.opts.includes('Maison Martin'), `G10) chef d'équipe, chantier terminé il y a 3 jours : proposé il y a 4 jours (${avant.opts.includes('Maison Martin')}) et le jour de la fin (${jour.opts.includes('Maison Martin')}), plus après (${apres.opts.includes('Maison Martin')})`);
+  check(avant.dflt === 'w2' && jour.dflt === 'w2' && apres.dflt === '', `G10) chantier par défaut de la ligne : celui du planning tant que le jour n'est pas après la fin (« ${avant.dflt} », « ${jour.dflt} »), vide après (« ${apres.dflt} »)`);
   await ctx.close();
 }
 // G6 · un salarié ne voit pas les factures ni les chiffres du bureau (le bilan n'existe pas pour lui)

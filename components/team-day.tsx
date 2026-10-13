@@ -170,7 +170,7 @@ export default function TeamDay({ me, today, worksites, onChanged }: Props) {
       ...planned.filter((p) => p.user_id === who).map((p) => p.worksite_id),
       ...planned.filter((p) => p.user_id === me.id).map((p) => p.worksite_id),
       ...rows.filter((r) => r.user_id === me.id).map((r) => r.worksite_id),
-    ].filter((w): w is string => !!w && choosableWorksites(worksites).some((x) => x.id === w));
+    ].filter((w): w is string => !!w && choosableWorksites(worksites, [], day).some((x) => x.id === w));
     return cands.find((w) => !taken.has(w)) ?? cands[0] ?? '';
   };
 
@@ -324,8 +324,8 @@ export default function TeamDay({ me, today, worksites, onChanged }: Props) {
               <div className="bt-td-lab">Chantier</div>
               <select className="bt-td-sel" value={site} onChange={(e) => setSite(e.target.value)} data-testid="td-site" aria-label="Chantier">
                 <option value="">Choisir…</option>
-                {/* Lot 23 : un chantier terminé n'est plus proposé pour une nouvelle ligne (ses lignes existantes gardent leur nom). */}
-                {choosableWorksites(worksites, [site]).map((w) => <option key={w.id} value={w.id}>{w.client_name}</option>)}
+                {/* Lot 23 : un chantier terminé n'est plus proposé pour une nouvelle ligne, sauf un jour qui n'est pas après sa fin (ses lignes existantes gardent leur nom). */}
+                {choosableWorksites(worksites, [site], day).map((w) => <option key={w.id} value={w.id}>{w.client_name}</option>)}
               </select>
               {site && theirRows.some((r) => r.worksite_id === site) && (
                 <div className="bt-td-note" data-testid="td-will-correct">Il a déjà une ligne sur ce chantier ce jour-là : elle sera corrigée, pas doublée.</div>

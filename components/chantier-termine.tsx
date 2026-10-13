@@ -217,7 +217,7 @@ function BilanView({ ws, companyId, supportMode }: { ws: Worksite; companyId: st
   if (data === 'loading') return <div className="flex items-center justify-center py-10 text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin mr-2" /> Calcul…</div>;
   if (data === 'error') return <div className="bt-ct-empty" data-testid="bl-erreur">Bilan illisible pour le moment. Réessayez — mieux vaut rien qu’un chiffre faux.</div>;
 
-  const { bilan: b, worksite, hoursUnavailable } = data;
+  const { bilan: b, worksite, hoursUnavailable, namesUnavailable } = data;
   const fin = b.period.completed;
   const bp = b.budget.progress;
   const hasBudget = !!(b.budget.hoursLine || b.budget.amountLine);
@@ -237,6 +237,11 @@ function BilanView({ ws, companyId, supportMode }: { ws: Worksite; companyId: st
         <Row k="Fin du chantier" v={fullDate(b.period.completed)} testId="bl-fin" />
       </section>
 
+      {namesUnavailable && (
+        <div className="bt-ct-warn" data-testid="bl-noms"><AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+          <span><b>Noms indisponibles</b> pour le moment : les salariés sont numérotés. Les heures et les montants, eux, sont exacts. Fermez puis rouvrez le bilan pour réessayer.</span></div>
+      )}
+
       <section className="bt-ct-sec" data-testid="bl-heures">
         <div className="bt-ct-h">Heures <InfoTip text="Les mêmes chiffres que « Coût chantiers » : heures envoyées par les salariés, route payée comprise. Les brouillons (journées pas encore envoyées) sont à part : ils ne comptent nulle part tant qu’ils ne sont pas envoyés." /></div>
         {hoursUnavailable ? (
@@ -248,9 +253,9 @@ function BilanView({ ws, companyId, supportMode }: { ws: Worksite; companyId: st
             <Row k="Heures en attente" v={b.hours.draftMinutes > 0 ? fmtH(b.hours.draftMinutes) : '—'} testId="bl-heures-attente" note="Brouillons non envoyés : pas encore comptées." />
             {b.hours.workers.length > 0 && (
               <div style={{ marginTop: 6 }} data-testid="bl-salaries">
-                {b.hours.workers.map((w) => (
+                {b.hours.workers.map((w, i) => (
                   <div key={w.userId} className="bt-ct-person" data-testid="bl-salarie">
-                    <div className="bt-ct-row"><span className="bt-ct-k">{w.name}</span><span className="bt-ct-v" data-testid="bl-salarie-h">{w.paidMinutes > 0 ? fmtH(w.paidMinutes) : '—'}</span></div>
+                    <div className="bt-ct-row"><span className="bt-ct-k">{namesUnavailable ? `Salarié ${i + 1}` : w.name}</span><span className="bt-ct-v" data-testid="bl-salarie-h">{w.paidMinutes > 0 ? fmtH(w.paidMinutes) : '—'}</span></div>
                     {(w.routeMinutes > 0 || w.draftMinutes > 0) && (
                       <div className="bt-ct-note">{[w.routeMinutes > 0 ? `dont ${fmtH(w.routeMinutes)} de route` : '', w.draftMinutes > 0 ? `+ ${fmtH(w.draftMinutes)} en attente (brouillon)` : ''].filter(Boolean).join(' · ')}</div>
                     )}
@@ -278,7 +283,7 @@ function BilanView({ ws, companyId, supportMode }: { ws: Worksite; companyId: st
         <Row k="Levées" v={String(b.reserves.lifted)} testId="bl-res-levees" />
         {b.reserves.openList.map((r) => (
           <div key={r.id} className="bt-ct-person" data-testid="bl-res-ligne">
-            <div className="bt-ct-row"><span className="bt-ct-k">{r.who}</span><span className="bt-ct-v" style={{ fontWeight: 700 }}>{frDate(r.work_date)}</span></div>
+            <div className="bt-ct-row"><span className="bt-ct-k">{namesUnavailable ? 'Salarié' : r.who}</span><span className="bt-ct-v" style={{ fontWeight: 700 }}>{frDate(r.work_date)}</span></div>
             {r.text ? <div className="bt-ct-note" style={{ color: '#3a352f' }}>{r.text.length > 160 ? `${r.text.slice(0, 160)}…` : r.text}</div> : null}
           </div>
         ))}

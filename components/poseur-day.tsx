@@ -1912,9 +1912,10 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
     if (b.client_name === OTHER_NAME) return 1;
     return a.client_name.localeCompare(b.client_name);
   });
-  // Lot 23 : un chantier TERMINÉ n'est plus proposé pour une nouvelle intervention ni un nouveau pointage. Seules les
-  // listes de CHOIX sont filtrées : `worksites` / `sortedWorksites` gardent tout (noms des cartes, pointage en cours).
-  const choosable = choosableWorksites(sortedWorksites, [fWorksiteId]);
+  // Lot 23 : un chantier TERMINÉ n'est plus proposé pour une nouvelle intervention ni un nouveau pointage — sauf pour un jour
+  // qui n'est pas après sa fin (journée oubliée) ; « Autre » reste toujours proposé. Seules les listes de CHOIX sont
+  // filtrées : `worksites` / `sortedWorksites` gardent tout (noms des cartes, pointage en cours).
+  const choosable = choosableWorksites(sortedWorksites, [fWorksiteId], date);
   const cq = chantierQuery.trim().toLowerCase();
   const filteredWorksites = cq
     ? choosable.filter((w) => w.client_name.toLowerCase().includes(cq) || (w.city || '').toLowerCase().includes(cq))

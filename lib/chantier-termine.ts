@@ -22,7 +22,7 @@ import {
 export { completionKnownReady, completionReady } from '@/lib/chantier-termine-ready';
 
 /** Les messages français que la base lève elle-même : affichables tels quels. */
-const DB_MESSAGES = ['Réservé au bureau', 'Chantier introuvable', 'ne peut pas être dans le futur'];
+const DB_MESSAGES = ['Réservé au bureau', 'Chantier introuvable', 'ne peut pas être dans le futur', 'La date de fin est invalide', 'ne peut pas être terminé'];
 export const OFFLINE_TEXT = 'Pas de connexion : rien n’a été changé. Réessayez.';
 const FAILED_TEXT = 'Impossible pour le moment : rien n’a été changé. Réessayez dans un instant.';
 
@@ -88,6 +88,8 @@ export interface BilanData {
   bilan: Bilan;
   /** Mode support : my_worksite_labour répond pour l'entreprise du compte support, pas pour le client visité. Mieux vaut le dire que montrer des zéros. */
   hoursUnavailable: boolean;
+  /** La liste des salariés n'a pas pu être lue : les heures sont exactes, mais sans noms (l'écran le dit au lieu de répéter « Salarié »). */
+  namesUnavailable: boolean;
 }
 
 /**
@@ -95,10 +97,14 @@ export interface BilanData {
  * « mieux vaut rien qu'un chiffre faux », comme Coût chantiers.
  */
 export async function loadBilan(worksiteId: string, companyId: string, supportMode: boolean): Promise<BilanData> {
-  const [wsRes, labourRes, entries, usersRes, expenses, docs] = await Promise.all([
+  let namesUnavailable = false;
+  const [wsRes, labour, entries, users, expenses, docs] = await Promise.all([
     supabase.from('worksites').select('id, client_name, city, completed_at, budget_hours, budget_amount').eq('id', worksiteId).eq('company_id', companyId).maybeSingle(),
+    // Toute la vie de l'entreprise (une ligne par chantier × salarié) : l'API plafonne à 1000 lignes SANS erreur, un bilan faux
+    // sinon. Lecture PAGINÉE, comme les statistiques (lib/team-stats.ts) : même fonction, mêmes règles, on garde les lignes de CE chantier.
     // Mode support : cette fonction est celle du bureau, elle ne répond que pour SA propre entreprise.
-    supportMode ? Promise.resolve({ data: [] as LabourRow[], error: null }) : supabase.rpc('my_worksite_labour', { p_from: null, p_to: null }),
+    supportMode ? Promise.resolve([] as LabourRow[]) : fetchAllPaged<LabourRow>((f, t) => supabase.rpc('my_worksite_labour', { p_from: null, p_to: null })
+      .order('user_id').order('worksite_id').range(f, t) as never),
     fetchAllPaged<{
       id: string; user_id: string; work_date: string; status: string; total_minutes: number; reception: string | null; observation: string | null;
       reserve_resolved_at: string | null; reserve_fixed_at: string | null;
@@ -106,7 +112,10 @@ export async function loadBilan(worksiteId: string, companyId: string, supportMo
       .select('id, user_id, work_date, status, total_minutes, reception, observation, reserve_resolved_at, reserve_fixed_at')
       .eq('company_id', companyId).eq('worksite_id', worksiteId).in('status', ['draft', ...COUNTED])
       .order('work_date', { ascending: false }).order('id').range(f, t) as never),
-    supabase.from('users').select('id, first_name, last_name').eq('company_id', companyId),
+    // Les noms : une lecture qui échoue ne fausse aucun chiffre, mais on ne laisse pas croire que les salariés s'appellent tous « Salarié ».
+    fetchAllPaged<{ id: string; first_name: string | null; last_name: string | null }>((f, t) => supabase.from('users')
+      .select('id, first_name, last_name').eq('company_id', companyId).order('id').range(f, t) as never)
+      .catch(() => { namesUnavailable = true; return [] as { id: string; first_name: string | null; last_name: string | null }[]; }),
     fetchAllPaged<{ category: string; amount: number }>((f, t) => supabase.from('worksite_expenses')
       .select('id, category, amount').eq('company_id', companyId).eq('worksite_id', worksiteId)
       .order('id').range(f, t) as never),
@@ -115,11 +124,10 @@ export async function loadBilan(worksiteId: string, companyId: string, supportMo
       .order('id').range(f, t) as never),
   ]);
   if (wsRes.error || !wsRes.data) throw wsRes.error || new Error('Chantier introuvable.');
-  if (labourRes.error) throw labourRes.error;
   const ws = wsRes.data as { id: string; client_name: string | null; city: string | null; completed_at?: string | null; budget_hours: number | null; budget_amount: number | null };
 
   const names: Record<string, string> = {};
-  for (const u of (usersRes.data || []) as { id: string; first_name: string | null; last_name: string | null }[]) {
+  for (const u of users) {
     names[u.id] = `${u.first_name || ''} ${u.last_name || ''}`.trim() || 'Salarié';
   }
   const bilanEntries: BilanEntry[] = entries.map((e) => ({
@@ -130,9 +138,10 @@ export async function loadBilan(worksiteId: string, companyId: string, supportMo
   return {
     worksite: { id: ws.id, client_name: ws.client_name || 'Chantier', city: ws.city, completed_at: completed },
     hoursUnavailable: supportMode,
+    namesUnavailable,
     bilan: buildBilan({
       worksiteId, completedDay: completed ? String(completed).slice(0, 10) : null,
-      labour: ((labourRes.data || []) as LabourRow[]),
+      labour,
       entries: bilanEntries, names,
       expenses: expenses.map((e) => ({ category: e.category, amount: Number(e.amount) })),
       docs: docs.map((d) => ({ category: d.category })),
