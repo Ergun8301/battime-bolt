@@ -235,7 +235,6 @@ function isGesture(e: PointerEvent): boolean {
 }
 
 const CSS = `
-@import url('/fonts/fonts.css');
 .kb{position:fixed;inset:0;background:#15120F;color:#F2EDE3;font-family:'Archivo',system-ui,sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 .kb *{box-sizing:border-box}
 /* Lot 11 — UNE barre fine en haut, le planning prend tout le reste.

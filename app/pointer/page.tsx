@@ -70,7 +70,6 @@ const markInfoSeen = (uid: string) => { try { localStorage.setItem(infoKey(uid),
 const FIXED_CODES = new Set(Object.keys(FIXED_REFUSAL_MESSAGES));
 
 const CSS = `
-@import url('/fonts/fonts.css');
 .kx{min-height:100vh;min-height:100svh;font-family:'Archivo',system-ui,sans-serif;-webkit-font-smoothing:antialiased;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:28px 20px;text-align:center;background:#F2EDE3;color:#15120F}
 .kx *{box-sizing:border-box}
 .kx.ok{background:#1C7A4B;color:#fff}

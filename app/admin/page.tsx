@@ -10,7 +10,6 @@ import { isPreviewHost } from '@/lib/hosting';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 const ADMIN_CSS = `
-@import url('/fonts/fonts.css');
 /* Canvas de l'app : parchemin chaud (crème plus prononcé, vers le doré sans
    tomber dans le jaune criard) — le cockpit sombre + le planning blanc
    ressortent nettement comme une carte posée dessus. */
