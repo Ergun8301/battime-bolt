@@ -103,6 +103,8 @@ const setup = async (ctx) => {
       const body = JSON.parse(r.request().postData() || '{}');
       if (body.action === 'create_pairing') { log.kioskCodes = (log.kioskCodes || 0) + 1; return r.fulfill({ json: { code: '123456', expires_at: new Date(Date.now() + 600000).toISOString(), pairing_id: 'pp-1' } }); }
       if (body.action === 'cancel_pairing') return r.fulfill({ json: { success: true } });
+      // Lecture seule du lot 12 (QR fixe) : la fenêtre « Borne » la demande à l'ouverture, ce n'est pas une écriture.
+      if (body.action === 'fixed_status') return r.fulfill({ json: { available: false } });
     }
     if (url.pathname.startsWith('/functions/v1/')) { log.writes++; return r.fulfill({ json: {} }); }
     if (url.pathname.startsWith('/rest/v1/rpc/')) return r.fulfill({ json: [] });
