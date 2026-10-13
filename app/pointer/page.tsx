@@ -27,13 +27,23 @@
 //
 // Lot 9 : un départ moins d'une minute après l'arrivée annule le pointage
 // (rien n'est enregistré). Écran neutre : ce n'est pas une erreur.
+//
+// Lot 10 : sous « Ouvrir mon espace », des raccourcis (jamais sur l'écran
+// « annulé » ni sur une erreur). Après une arrivée : « Ajouter une intervention
+// faite avant ». Après un départ : « Envoyer ma journée » (qui ne fait qu'OUVRIR
+// une demande de confirmation sur /poseur) et « Ajouter une intervention ».
+// Ils n'écrivent rien : ils ouvrent /poseur avec un paramètre que /poseur lit
+// une fois et efface. L'adresse est calculée AU TOUCHER, pas à l'affichage :
+// l'écran de succès peut rester ouvert des heures.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { callKiosk, type KioskPunchResult as PunchResp, type KioskTicket as TicketResp } from '@/lib/kiosk-client';
 import { demanderPosition } from '@/lib/position';
 import { PasswordInput } from '@/components/password-input';
+import { afterScanHref, type AfterScan } from '@/supabase/functions/_shared/after-scan';
 import { fixedAlternative, fixedRefusalMessage, lowerFirst, FIXED_REFUSAL_MESSAGES } from '@/supabase/functions/_shared/fixed-qr';
 
 type Phase =
@@ -75,6 +85,8 @@ const CSS = `
 .kx-sub{font-size:17px;font-weight:600;opacity:.85;line-height:1.45;margin:6px 0 0}
 .kx-chip{display:inline-block;margin-top:16px;padding:8px 14px;border-radius:99px;background:rgba(255,255,255,.14);font-weight:800;font-size:15px}
 .kx-btn{display:block;width:100%;margin-top:26px;border:none;cursor:pointer;background:#FFC21A;color:#15120F;font-family:inherit;font-weight:900;font-size:17px;padding:16px;border-radius:14px;box-shadow:0 4px 0 #C99300;text-decoration:none}
+.kx-sec{display:block;width:100%;margin-top:10px;background:transparent;border:2px solid currentColor;color:inherit;cursor:pointer;font-family:inherit;font-weight:800;font-size:16px;line-height:1.25;min-height:48px;padding:12px 16px;border-radius:14px}
+.kx-sec:disabled{opacity:.6;cursor:default}
 .kx-ghost{display:inline-block;margin-top:16px;color:inherit;opacity:.8;font-weight:700;text-decoration:underline;text-underline-offset:3px}
 .kx-card{background:#fff;border:1px solid rgba(21,18,15,.12);border-radius:20px;padding:26px 22px;box-shadow:0 24px 50px -24px rgba(21,18,15,.35);text-align:left}
 .kx-h2{font-size:22px;font-weight:900;letter-spacing:-.02em;margin:0 0 4px;text-align:center}
@@ -156,6 +168,25 @@ function FixedInfo({ t, onAccept, onRefuse }: { t: TicketResp; onAccept: () => v
 export default function PointerPage() {
   const [phase, setPhase] = useState<Phase>({ s: 'checking' });
   const started = useRef(false);
+  const router = useRouter();
+
+  // Un seul raccourci par écran : un second toucher pousserait une deuxième adresse `?a=…`
+  // que /poseur ne nettoie pas (il ne lit l'adresse qu'à son ouverture) et un rechargement rejouerait le geste.
+  const [going, setGoing] = useState(false);
+  const goingRef = useRef(false);
+
+  /** Lot 10 : ouvre /poseur sur le raccourci touché. Sans compte lisible, on ouvre simplement /poseur comme avant. */
+  const shortcut = useCallback(async (a: AfterScan, h?: string | null) => {
+    if (goingRef.current) return;
+    goingRef.current = true; setGoing(true);
+    try {
+      const { data } = await supabase.auth.getSession();
+      const u = data.session?.user.id;
+      router.push(u ? afterScanHref(a, Date.now(), { h, u }) : '/poseur');
+    } catch {
+      goingRef.current = false; setGoing(false);   // lecture impossible : le salarié peut retoucher
+    }
+  }, [router]);
 
   const punch = useCallback(async (t: TicketResp, informed = false) => {
     // Lot 12 — QR fixe : la position est lue ICI, une fois, juste avant le
@@ -273,6 +304,20 @@ export default function PointerPage() {
         {arrival && r.worksite_name && <div className="kx-chip">{r.worksite_name}</div>}
         {!arrival && r.range && <div className="kx-chip">Heures enregistrées : {r.range.start} → {r.range.end}</div>}
         <Link className="kx-btn" href="/poseur">Ouvrir mon espace</Link>
+        {arrival ? (
+          <button type="button" className="kx-sec" data-testid="after-before" disabled={going} onClick={() => void shortcut('avant', r.time)}>
+            Ajouter une intervention faite avant
+          </button>
+        ) : (
+          <>
+            <button type="button" className="kx-sec" data-testid="after-send" disabled={going} onClick={() => void shortcut('envoyer')}>
+              Envoyer ma journée
+            </button>
+            <button type="button" className="kx-sec" data-testid="after-add" disabled={going} onClick={() => void shortcut('ajouter', r.range?.end ?? r.time)}>
+              Ajouter une intervention
+            </button>
+          </>
+        )}
       </div>
     );
   } else if (phase.neutral) {

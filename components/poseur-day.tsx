@@ -5,7 +5,7 @@ import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
 import { TimeEntry, Worksite, Planning } from '@/lib/types';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Calendar } from '@/components/ui/calendar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Loader2, Copy, AlertTriangle, FolderOpen, Trash2, Paperclip, Hammer, CheckCircle2, MapPin, Sparkles, Play } from 'lucide-react';
@@ -28,12 +28,15 @@ import { positionUtile, fmtPrecision, fmtCoord } from '@/lib/position';
 import { parisHHmm } from '@/lib/utils';
 import { TimeCylinder, snapToGrid } from '@/components/time-cylinder';
 import LiveTimer from '@/components/live-timer';
-import { useOwnLiveSession, startLiveSession, announceLiveChange } from '@/lib/live-session';
+import { useOwnLiveSession, startLiveSession, announceLiveChange, readOwnLiveSession, type OwnLiveSession } from '@/lib/live-session';
+import { finishLiveAt } from '@/lib/live-end-at';
 import { geoInfoSeen, markGeoInfoSeen } from '@/lib/position-info';
 import GeoInfoDialog from '@/components/geo-info-dialog';
 import { isExitToComplete, EXIT_TO_COMPLETE_MSG } from '@/lib/qr-entry';
 import { bestPlanningFor, findOverlap, firstBlockingOverlap, isEmptyDraft, keptBreak, pauseAsks, spanMinutes, type PauseAsk, type PlannedState, type Span } from '@/supabase/functions/_shared/day-hours';
 import { pauseError } from '@/supabase/functions/_shared/pause';
+import { liveClash, parisClock, type LiveClash } from '@/supabase/functions/_shared/live-clash';
+import { parseAfterScan, afterScanSpan, AFTER_SCAN_USE_MS, type AfterScanParams } from '@/supabase/functions/_shared/after-scan';
 import PausePicker from '@/components/pause-picker';
 import { LiveLine } from '@/components/planning-bubble';
 import { placeLive, cellKey } from '@/supabase/functions/_shared/live-place';
@@ -449,6 +452,40 @@ type SlotTarget =
   | { kind: 'pending'; localId: string }
   | { kind: 'new' };
 
+/** Lot 10 : l'intervention saisie chevauche le pointage EN COURS (fenêtre d'alerte). */
+type LiveAsk = {
+  span: { start: string; end: string };   // HH:MM
+  liveStart: string;                       // HH:MM Paris du début du chrono
+  startedAt: string;                       // started_at ISO du chrono vu à l'ouverture
+  workDate: string;                        // work_date du chrono (AAAA-MM-JJ)
+  now: string;                             // HH:MM Paris à l'ouverture (texte « Il est … »)
+  result: Exclude<LiveClash, null>;
+  action: 'add' | 'update';                // 'update' = openSlot.kind 'entry' ou 'pending'
+};
+
+/**
+ * Lot 10 : le raccourci touché sur /pointer, lu dans l'adresse puis effacée.
+ * Variable de MODULE : elle survit au remontage de la journée (`key={dayKey}`).
+ * Remise à null dès qu'elle est prise, quelle que soit la suite.
+ */
+let afterScanPending: (AfterScanParams & { readAt: number }) | null = null;
+
+/** Messages longs sur un état à vérifier (pointage fermé ou incertain) : ils restent le temps de les lire. */
+const LONG_TOAST = { duration: 10000 } as const;
+
+/** Relit le chrono du salarié ; `undefined` si la lecture échoue ou dépasse `ms` (jamais « aucun chrono »). */
+async function readLiveWithin(userId: string, ms: number): Promise<OwnLiveSession | null | undefined> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const slow = new Promise<undefined>((resolve) => { timer = setTimeout(() => resolve(undefined), ms); });
+  try {
+    return await Promise.race([readOwnLiveSession(userId), slow]);
+  } catch {
+    return undefined;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { date?: string; topBanner?: ReactNode; /** Lot 6 : bouton ✨ dans la barre (si l'assistant est activé). */ onAssistant?: () => void } = {}) {
   const { user } = useAuth();
   const [entries, setEntries] = useState<TimeEntryWithWorksite[]>([]);
@@ -514,6 +551,21 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
   const [pauseAsk, setPauseAsk] = useState<PauseAsk | null>(null);
   // Lot 1 : « Le bureau avait prévu… tu l'as fait ? » avant d'envoyer du prévu.
   const [plannedAsk, setPlannedAsk] = useState(false);
+  // Lot 10 : l'intervention saisie recouvre le pointage en cours ; et « Envoyer ma
+  // journée » venu du raccourci de /pointer (toujours confirmé avant d'envoyer).
+  const [liveAsk, setLiveAsk] = useState<LiveAsk | null>(null);
+  const [liveBusy, setLiveBusy] = useState(false);
+  const liveBusyRef = useRef(false);          // verrou SYNCHRONE (deux touchers rapides)
+  // Le focus d'ouverture des deux fenêtres va au choix SANS conséquence : une touche Entrée ne ferme jamais le pointage ni n'envoie la journée.
+  const liveFixRef = useRef<HTMLButtonElement>(null);
+  const sendNoRef = useRef<HTMLButtonElement>(null);
+  const slotBusyRef = useRef(false);          // verrou de la relecture du chrono dans saveSlot
+  const openSlotRef = useRef<SlotTarget | null>(null);  // la fiche ouverte à ce rendu : saveSlot vérifie qu'elle n'a pas été fermée pendant la relecture
+  const skipLiveRef = useRef(false);          // vrai pendant le saveSlot qui suit la fermeture
+  const finishMissingRef = useRef(false);     // finish_active_session absente, constaté
+  const saveSlotRef = useRef<() => Promise<void>>(async () => {});  // réaffecté à chaque rendu
+  const loadedRef = useRef(false);            // la journée a été chargée au moins une fois sans erreur
+  const [sendAsk, setSendAsk] = useState(false);
   // Réponses de l'envoi en cours : prévu confirmé, pauses posées (sur une ligne ou un prévu).
   const sendCtx = useRef<{ plannedOk: boolean; breaks: Map<string, number>; asked: Set<string> }>({ plannedOk: false, breaks: new Map(), asked: new Set() });
   const [coherenceWarnings, setCoherenceWarnings] = useState<string[]>([]);
@@ -592,6 +644,12 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
   // clôturé, jusqu'à cette date incluse. null = aucune clôture (ou table pas
   // encore créée : tout se comporte comme avant).
   const [closedUntil, setClosedUntil] = useState<string | null>(null);
+  // Lot 10 : les deux lectures de clôture ont répondu (même vides). Le raccourci venu de
+  // /pointer attend ce moment : avant, `monthLocked` vaut faux et la fiche s'ouvrirait sur une journée fermée.
+  const [monthsRead, setMonthsRead] = useState(false);
+  const [mineRead, setMineRead] = useState(false);
+  const closuresRead = monthsRead && mineRead;
+  const [closuresLate, setClosuresLate] = useState(false);   // repli : lecture trop lente, le raccourci ne l'attend plus
   const userLocked = !!closedUntil && date <= closedUntil;
   const monthLocked = closedMonths.has(date.slice(0, 7)) || userLocked;
   const closedUntilLabel = closedUntil ? format(new Date(`${closedUntil}T12:00:00`), 'd MMMM', { locale: fr }) : '';
@@ -637,8 +695,9 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
     let stale = false;
     supabase.from('month_closures').select('month').eq('company_id', user.company_id)
       .then(({ data }) => {
-        if (stale || !data) return;
-        setClosedMonths(new Set((data as { month: string }[]).map((m) => m.month.slice(0, 7))));
+        if (stale) return;
+        setMonthsRead(true);
+        if (data) setClosedMonths(new Set((data as { month: string }[]).map((m) => m.month.slice(0, 7))));
       });
     return () => { stale = true; };
   }, [user?.company_id]);
@@ -647,7 +706,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
   useEffect(() => {
     if (!user?.id) return;
     let stale = false;
-    fetchMyClosure(user.id).then((d) => { if (!stale) setClosedUntil(d); });
+    fetchMyClosure(user.id).then((d) => { if (!stale) { setClosedUntil(d); setMineRead(true); } });
     return () => { stale = true; };
   }, [user?.id]);
 
@@ -775,6 +834,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
       // posé sur la première ligne (effet plus bas), jamais décoché en silence.
       const intent = readMealIntent(user.id, date);
       setDayMeal(intent ?? serverMeal);
+      loadedRef.current = true;
     } catch (err) {
       console.error('Error fetching data:', err);
       toast.error('Impossible de charger tes données');
@@ -912,12 +972,14 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
   // ne consomme l'événement : le salarié se retrouve éjecté au lieu de refermer
   // son écran. On empile une entrée d'historique tant qu'une couche est ouverte
   // et on referme celle du dessus à chaque retour.
-  const anyLayerOpen = !!(openSlot || drawerField || docsWs || confirmDel || confirmOpen || confirmCorrectOpen || lateOpen || repeatOpen);
+  const anyLayerOpen = !!(openSlot || drawerField || docsWs || confirmDel || confirmOpen || confirmCorrectOpen || lateOpen || repeatOpen || liveAsk || sendAsk);
   const [histTick, setHistTick] = useState(0);
   const closeTopLayer = useRef<() => void>(() => {});
   // Réassigné après chaque rendu, de la couche la plus haute à la plus basse.
   useEffect(() => {
     closeTopLayer.current = () => {
+      if (sendAsk) { setSendAsk(false); return; }
+      if (liveAsk) { if (!liveBusyRef.current) setLiveAsk(null); return; }
       if (drawerField) { setDrawerField(null); return; }
       if (confirmDel) { setConfirmDel(null); return; }
       if (confirmOpen) { setConfirmOpen(false); return; }
@@ -1140,6 +1202,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
 
   const saveSlot = async () => {
     if (!user || !openSlot) return;
+    if (slotBusyRef.current) return;   // lot 10 : relecture du pointage en cours (double toucher sur « OK »)
     if (!fStart || !fEnd) { toast.error("Indique l'heure de début et de fin"); return; }
     // Lot 2 : 0 minute n'est pas une saisie. Ce brouillon vide restait « à envoyer »
     // et verrouillait l'intervention au bureau.
@@ -1151,16 +1214,64 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
     // ici, la fiche reste ouverte avec la saisie.
     const selfId = openSlot.kind === 'entry' ? openSlot.entryId : null;
     const selfLocal = openSlot.kind === 'pending' ? openSlot.localId : null;
-    const clash = findOverlap({ start: fStart, end: fEnd }, [
+    // `editable` sert à l'alerte du pointage en cours (lot 10) : une ligne déjà
+    // envoyée ne se corrige pas depuis le téléphone.
+    const autres = [
       ...entries.filter((e) => e.id !== selfId && e.status !== 'cancelled' && e.start_time && e.end_time && !isExitToComplete(e))
-        .map((e) => ({ start: e.start_time.slice(0, 5), end: e.end_time.slice(0, 5) })),
-      ...pendingEntries.filter((e) => e.localId !== selfLocal).map((e) => ({ start: e.start_time.slice(0, 5), end: e.end_time.slice(0, 5) })),
-    ]);
+        .map((e) => ({ start: e.start_time.slice(0, 5), end: e.end_time.slice(0, 5), editable: e.status === 'draft' && !e.locked })),
+      ...pendingEntries.filter((e) => e.localId !== selfLocal).map((e) => ({ start: e.start_time.slice(0, 5), end: e.end_time.slice(0, 5), editable: true })),
+    ];
+    const clash = findOverlap({ start: fStart, end: fEnd }, autres);
     if (clash) { toast.error(`Ces heures chevauchent ${clash.start}–${clash.end}, déjà noté. Corrige le début ou la fin.`); return; }
     // Lot 3bis : une pause illisible ou plus longue que la ligne bloque, la fiche
     // reste ouverte. Avant, keptBreak la remettait à 0 sans un mot.
     const pErr = fPauseErr ?? pauseError(fBreak, spanMinutes({ start: fStart, end: fEnd }));
     if (pErr) { toast.error(pErr); return; }
+
+    // ── Lot 10 : ces heures recouvrent-elles le pointage EN COURS ? ──
+    // Toutes les validations locales sont passées : on ne propose jamais de
+    // fermer le pointage pour se heurter ensuite à un refus de la fiche.
+    // Le chantier se contrôle donc ICI (le contrôle plus bas reste, identique).
+    const plannedWorksite = openSlot.kind === 'planned' ? planning.find((pp) => pp.id === openSlot.planningId)?.worksite_id : null;
+    if ((openSlot.kind === 'new' && !fWorksiteId) || (openSlot.kind === 'planned' && !plannedWorksite)) { toast.error('Choisis un chantier'); return; }
+    // Seulement si les heures ont CHANGÉ : noter une observation, une pause ou
+    // une réception sur une ligne qui chevauchait déjà reste possible.
+    const hoursChanged = openSlot.kind === 'new' || openSlot.kind === 'planned' || !fInit || fStart !== fInit.start || fEnd !== fInit.end;
+    let clashOffline = false;
+    if (!skipLiveRef.current && !monthLocked && hoursChanged) {
+      slotBusyRef.current = true; setFSaving(true);
+      let seen: OwnLiveSession | null | undefined;
+      try {
+        // En ligne, on relit : un pointage lancé à la borne il y a quelques secondes n'est pas encore
+        // connu. Délai court : sur un réseau lent, chaque « OK » attend au plus 1,5 s, puis le dernier pointage relu fait foi.
+        if (navigator.onLine) seen = await readLiveWithin(user.id, 1500);
+      } finally { slotBusyRef.current = false; setFSaving(false); }
+      // La fiche peut être fermée (« Annuler », retour du téléphone) pendant la relecture :
+      // on n'écrit rien et on n'ouvre aucune alerte sans fiche derrière.
+      if (openSlotRef.current !== openSlot) return;
+      const session = seen !== undefined ? seen : live.known ? live.session : null;
+      // La date de PARIS (pas celle du téléphone) : un pointage d'un autre jour est une sortie oubliée.
+      const pc = parisClock(Date.now());
+      if (session && session.work_date === date && date === pc.date) {
+        const lc = liveClash({
+          span: { start: fStart.slice(0, 5), end: fEnd.slice(0, 5) },
+          liveStart: parisClock(session.started_at).hm,
+          now: pc.hm,
+          others: autres,
+          finishAvailable: !finishMissingRef.current,
+        });
+        if (lc && navigator.onLine) {
+          setLiveAsk({
+            span: { start: fStart.slice(0, 5), end: fEnd.slice(0, 5) }, liveStart: parisClock(session.started_at).hm,
+            startedAt: session.started_at, workDate: session.work_date, now: pc.hm, result: lc,
+            action: openSlot.kind === 'entry' || openSlot.kind === 'pending' ? 'update' : 'add',
+          });
+          return;
+        }
+        // Hors ligne on n'empêche jamais d'enregistrer : le contrôle de l'envoi prendra le relais.
+        clashOffline = !!lc;
+      }
+    }
     setFSaving(true);
     try {
       // Lot 1 : la pause de la ligne est GARDÉE (et déduite), jamais remise à 0.
@@ -1242,11 +1353,98 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
       if (navigator.onLine) fetchData();
       setPendingEntries(getPendingEntries(user.id).filter((e) => e.work_date === date));
       toast.success(savedMsg);
+      if (clashOffline) toast.message('Votre pointage est encore en cours : ces heures seront vérifiées au retour du réseau.', LONG_TOAST);
     } catch (err) {
       console.error('Error saving slot:', err);
       toast.error(explainWriteError(err, "Impossible d'ajouter ce chantier"));
     } finally {
       setFSaving(false);
+    }
+  };
+
+  saveSlotRef.current = saveSlot;
+  openSlotRef.current = openSlot;
+
+  /**
+   * Lot 10 — « Terminer le pointage à HH:MM, puis ajouter ».
+   *
+   * ORDRE IMPÉRATIF : fermer le pointage PUIS enregistrer l'intervention. Le
+   * trigger de la base marque `qr` toute ligne insérée tant qu'un pointage `qr`
+   * du même jour, chantier et minute existe : fermé d'abord, seule la ligne du
+   * pointage porte cette origine. La fermeture est celle, atomique, de
+   * « Terminer ma journée » (`finish_active_session`) ; rien n'est écrit en direct.
+   *
+   * Jamais « rien n'a été modifié » sans l'avoir vérifié : si la réponse se perd,
+   * on relit le pointage avant de parler.
+   */
+  const finishThenSave = async () => {
+    const ask = liveAsk;
+    if (!user || !ask || ask.result.can !== 'finish') return;
+    if (liveBusyRef.current) return;
+    // Sans fiche, saveSlot ne ferait rien après la fermeture : le pointage serait terminé sans que rien soit ajouté.
+    if (!openSlotRef.current) {
+      setLiveAsk(null);
+      toast.message('La fiche a été fermée : rien n\'a été modifié. Touchez « + » pour ajouter l\'intervention.', LONG_TOAST);
+      return;
+    }
+    liveBusyRef.current = true; setLiveBusy(true);
+    const at = ask.result.at;
+    const staleMsg = 'Ce pointage était déjà fermé ailleurs. Vos heures sont à jour : vérifiez-les, puis réessayez.';
+    /** La fenêtre se ferme, la fiche reste ouverte avec la saisie, le pointage n'est jamais rouvert. */
+    const giveUp = (message: () => void, refresh = false) => {
+      setLiveAsk(null);
+      message();
+      if (refresh) { announceLiveChange(); void fetchData(); }
+    };
+    try {
+      const pc = parisClock(Date.now());
+      if (pc.date !== ask.workDate || at > pc.hm) {
+        giveUp(() => toast.message(`Il est ${pc.hm} : le pointage ne peut pas être terminé à ${at}, c'est plus tard. Corrigez les heures.`, LONG_TOAST));
+        return;
+      }
+      const cur = await readLiveWithin(user.id, 8000);
+      if (cur === undefined) { giveUp(() => toast.error('Impossible de vérifier votre pointage pour l\'instant. Rien n\'a été modifié.', LONG_TOAST)); return; }
+      if (!cur || cur.started_at !== ask.startedAt) { giveUp(() => toast.message(staleMsg, LONG_TOAST), true); return; }
+
+      // Aucun autre `await` entre la relecture et la fermeture : la borne ne doit pas avoir le temps de changer le pointage.
+      let r: Awaited<ReturnType<typeof finishLiveAt>>;
+      try {
+        r = await finishLiveAt(at);
+      } catch (e) {
+        console.error('Error finishing live session:', e instanceof Error ? e.message : 'erreur');
+        const after = await readLiveWithin(user.id, 8000);
+        void fetchData();
+        setLiveAsk(null);
+        if (after === undefined) toast.error('La réponse n\'est pas arrivée : vérifiez votre pointage et vos heures avant de réessayer.', LONG_TOAST);
+        else if (!after || after.started_at !== ask.startedAt) {
+          // La fermeture a abouti, seule la réponse s'est perdue : rien n'est ajouté (la ligne du pointage existe peut-être).
+          toast.message('Le pointage semble avoir été terminé : vérifiez vos heures avant de réessayer.', LONG_TOAST);
+          announceLiveChange();
+        } else toast.error(explainWriteError(e, 'Le pointage n\'a pas pu être terminé. Il est toujours en cours.'), LONG_TOAST);
+        return;
+      }
+
+      if (r.kind === 'stale') { giveUp(() => toast.message(staleMsg, LONG_TOAST), true); return; }
+      if (r.kind === 'cancelled') { giveUp(() => toast.message('Le pointage a été annulé ou a changé. Vérifiez votre journée avant de réessayer.', LONG_TOAST), true); return; }
+      if (r.kind === 'unavailable') {
+        finishMissingRef.current = true;
+        giveUp(() => toast.message('Terminer le pointage à une heure précise n\'est pas disponible pour l\'instant. Corrigez les heures.', LONG_TOAST));
+        return;
+      }
+      const closedAt = r.end_time.slice(0, 5);
+      if (closedAt !== at) {
+        giveUp(() => toast.message(`Le pointage a été fermé à ${closedAt}. Vérifiez vos heures avant d'ajouter l'intervention.`, LONG_TOAST), true);
+        return;
+      }
+      announceLiveChange();
+      setLiveAsk(null);
+      toast.success(`Pointage terminé : ${ask.liveStart} à ${at} (heure choisie par vous)`);
+
+      // Le pointage est fermé : on enregistre l'intervention par le chemin habituel (mêmes validations, sans refaire le contrôle du pointage).
+      skipLiveRef.current = true;
+      try { await saveSlotRef.current(); } finally { skipLiveRef.current = false; }
+    } finally {
+      liveBusyRef.current = false; setLiveBusy(false);
     }
   };
 
@@ -1861,6 +2059,58 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
   const editorEntry = openSlot?.kind === 'entry' ? entries.find((x) => x.id === openSlot.entryId) : undefined;
   // Lot 1 : la durée affichée déduit la pause de la ligne.
   const durMin = (fStart && fEnd) ? calculateTotalMinutes(fStart, fEnd, keptBreak({ start: fStart, end: fEnd }, fBreak)) : 0;
+
+  // ─── Lot 10 : raccourcis venus de /pointer (après un scan) ────────────────────
+  // LECTURE dans un effet, une seule fois : pendant le rendu, `window.location`
+  // n'est pas encore à jour avec la navigation cliente de Next. L'adresse est
+  // nettoyée aussitôt : un rechargement ou un retour arrière ne rejoue rien.
+  useEffect(() => {
+    const search = window.location.search;
+    const p = parseAfterScan(search, Date.now());
+    if (new URLSearchParams(search).has('a')) window.history.replaceState(window.history.state, '', window.location.pathname);
+    if (p) afterScanPending = { ...p, readAt: Date.now() };
+  }, []);
+
+  // GESTE, une fois la journée chargée. Remis à null dans TOUS les cas
+  // (consommé, expiré, autre compte, autre jour) : il ne resservira pas.
+  // Il part à la fin du chargement ET des lectures de clôture (au plus 2 s de plus),
+  // et lit les valeurs de CE rendu : les autres dépendances sont volontairement absentes.
+  useEffect(() => {
+    if (loading || !user || !afterScanPending) return;
+    if (!closuresRead && !closuresLate) {
+      const id = setTimeout(() => setClosuresLate(true), 2000);
+      return () => clearTimeout(id);
+    }
+    const p = afterScanPending;
+    afterScanPending = null;
+    if (Date.now() - p.readAt > AFTER_SCAN_USE_MS) {
+      toast.message(p.a === 'envoyer' ? 'Ce raccourci a expiré : touchez « Envoyer ma journée ».' : 'Ce raccourci a expiré : touchez « + » pour ajouter une intervention.', LONG_TOAST);
+      return;
+    }
+    if (p.u !== user.id) return;                       // ce n'est pas le compte qui a scanné
+    if (dateProp || date !== mountedToday) return;     // une autre journée que celle d'aujourd'hui
+    if (p.a === 'envoyer') {
+      // La chaîne du bouton « Envoyer ma journée », avec un message à chaque branche.
+      // Jamais d'envoi direct : le bouton du dock n'a pas de confirmation propre.
+      if (!navigator.onLine) toast.message('Pas de réseau : envoyez votre journée quand il revient.', LONG_TOAST);
+      else if (pendingEntries.length > 0) toast.message('Envoyez d\'abord ce qui reste en attente (bouton en bas).', LONG_TOAST);
+      else if (submitting) return;
+      else if (!loadedRef.current) toast.message('Vos heures n\'ont pas pu être chargées. Réessayez dans un instant.', LONG_TOAST);
+      else if (canSend) setSendAsk(true);
+      else toast.message(allSubmitted ? 'Journée déjà envoyée.' : 'Rien à envoyer pour l\'instant.');
+      return;
+    }
+    // Le geste du bouton « + » (journée envoyée : même confirmation), puis la plage proposée.
+    const kind = p.a;
+    const go = () => {
+      openNew();
+      if (monthLocked) return;
+      const span = afterScanSpan(kind, p.h!);
+      if (span) setTimes(span.start, span.end);
+    };
+    if (frozen && !monthLocked) askCorrect(go); else go();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, user, closuresRead, closuresLate]);
 
   if (loading) {
     return (
@@ -2696,6 +2946,84 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
             >
               Oui, retirer
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Lot 10 : l'intervention saisie recouvre le pointage en cours. Tout est dit
+          ici (heure, ce qui sera compté, consigne pour la borne) : le bouton
+          « Terminer le pointage à … » vaut confirmation. Jamais de refus muet. */}
+      <Dialog open={!!liveAsk} onOpenChange={(o) => { if (!o && !liveBusyRef.current) setLiveAsk(null); }}>
+        <DialogContent className="max-w-sm" data-testid="live-clash" data-guide-confirm onOpenAutoFocus={(e) => { e.preventDefault(); liveFixRef.current?.focus(); }}>
+          {liveAsk && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-orange-500" /> Votre pointage est encore en cours</DialogTitle>
+                {/* Le problème ET la proposition sont décrits : un lecteur d'écran lit les deux à l'ouverture. */}
+                <DialogDescription asChild className="space-y-4 text-foreground">
+                  <div>
+                    <p data-testid="live-clash-text">
+                      {`Vous êtes pointé depuis ${liveAsk.liveStart} et le pointage n'est pas terminé. Vos heures ${liveAsk.span.start}–${liveAsk.span.end} le chevauchent : la journée serait bloquée à l'envoi quand vous terminerez votre pointage.`}
+                    </p>
+                    <div className="space-y-2 text-left text-muted-foreground" data-testid="live-clash-why">
+                      {liveAsk.result.can === 'finish' ? (
+                        <>
+                          <p>{`Vous pouvez terminer le pointage à ${liveAsk.result.at}, l'heure où commence cette intervention : il comptera de ${liveAsk.liveStart} à ${liveAsk.result.at}.`}</p>
+                          {/* L'intervention finit avant maintenant (sans passer minuit) : rien ne couvrira le temps qui reste, il faut le dire. */}
+                          {liveAsk.span.end > liveAsk.span.start && liveAsk.span.end < liveAsk.now && (
+                            <p data-testid="live-clash-gap">{`Après ${liveAsk.span.end}, rien ne sera compté : si vous avez continué à travailler jusqu'à ${liveAsk.now}, ajoutez ces heures ensuite.`}</p>
+                          )}
+                          <p>Ensuite, si vous pointez à la borne, ne scannez plus en partant : ajoutez vos dernières heures à la main, sinon la borne ouvrira un nouveau pointage.</p>
+                        </>
+                      ) : liveAsk.result.why === 'before' ? (
+                        <p>{`Cette intervention recouvre le début de votre pointage (${liveAsk.liveStart}). Terminez-la à ${liveAsk.liveStart} au plus tard. Si vous avez vraiment commencé plus tôt, fermez cette fiche, touchez « Terminer ma journée », puis corrigez les heures de la ligne créée.`}</p>
+                      ) : liveAsk.result.why === 'at-start' ? (
+                        <p>{`Cette intervention commence à ${liveAsk.span.start}, presque en même temps que votre pointage (${liveAsk.liveStart}) : le terminer à ${liveAsk.span.start} ne lui laisserait aucune durée. Corrigez l'heure de début. Si cette intervention est votre travail en cours, touchez « Terminer ma journée » plutôt que de l'ajouter ici.`}</p>
+                      ) : liveAsk.result.why === 'future' ? (
+                        <p>{`Il est ${liveAsk.now} : cette intervention commence à ${liveAsk.span.start}, plus tard. Corrigez les heures. Si vous avez fini votre journée, fermez cette fiche et touchez « Terminer ma journée », puis ajoutez l'intervention.`}</p>
+                      ) : liveAsk.result.why === 'collision' ? (
+                        <p>
+                          {`Terminer le pointage à ${liveAsk.span.start} chevaucherait ${liveAsk.result.with?.start}–${liveAsk.result.with?.end}, déjà noté. Modifiez ou retirez d'abord cette ligne dans votre journée (fermer la fiche perd la saisie en cours), ou corrigez les heures.`}
+                          {liveAsk.result.with?.editable === false && ' Cette ligne est déjà envoyée : seule la secrétaire peut la corriger.'}
+                        </p>
+                      ) : (
+                        <p>Terminer le pointage à une heure précise n&apos;est pas disponible pour l&apos;instant. Corrigez les heures, ou fermez cette fiche et touchez « Terminer ma journée ».</p>
+                      )}
+                    </div>
+                  </div>
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-2 pt-1">
+                {liveAsk.result.can === 'finish' && (
+                  <Button className="min-h-11 h-auto py-2 whitespace-normal text-center font-black" data-testid="live-clash-finish" disabled={liveBusy} aria-busy={liveBusy} onClick={finishThenSave}>
+                    {liveBusy
+                      ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Un instant…</>
+                      : `Terminer le pointage à ${liveAsk.result.at}, puis ${liveAsk.action === 'add' ? 'ajouter' : 'enregistrer'}`}
+                  </Button>
+                )}
+                <Button ref={liveFixRef} variant={liveAsk.result.can === 'finish' ? 'outline' : 'default'} className="min-h-11 h-auto py-2 whitespace-normal text-center" data-testid="live-clash-fix" disabled={liveBusy} onClick={() => setLiveAsk(null)}>
+                  Corriger les heures
+                </Button>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Lot 10 : « Envoyer ma journée » venu du raccourci de /pointer. Rien ne part
+          sans ce « oui » ; ensuite l'envoi garde toutes ses questions habituelles. */}
+      <Dialog open={sendAsk} onOpenChange={(o) => { if (!o) setSendAsk(false); }}>
+        <DialogContent className="max-w-sm" data-testid="send-ask" data-guide-confirm onOpenAutoFocus={(e) => { e.preventDefault(); sendNoRef.current?.focus(); }}>
+          <DialogHeader>
+            <DialogTitle>Envoyer votre journée maintenant&nbsp;?</DialogTitle>
+            <DialogDescription>Votre journée compte {formatMinutesToHours(totalMinutes)}. Une fois envoyée, la modifier prévient la secrétaire.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-2 pt-1">
+            <Button className="min-h-11 h-auto py-2 whitespace-normal font-black" data-testid="send-ask-yes"
+              onClick={() => { setSendAsk(false); if (frozen) askCorrect(handleSubmitDay); else handleSubmitDay(); }}>
+              Oui, envoyer ma journée
+            </Button>
+            <Button ref={sendNoRef} variant="outline" className="min-h-11" data-testid="send-ask-no" onClick={() => setSendAsk(false)}>Pas maintenant</Button>
           </div>
         </DialogContent>
       </Dialog>
