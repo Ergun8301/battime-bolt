@@ -1,15 +1,18 @@
 // Lot 3 bis — « Utiliser le panier repas » (réglage de l'entreprise), navigateur.
 //
-// LECTURE TOUJOURS SEULE : `select('meal_enabled')`, rien d'autre. Tant que la
-// migration n'est pas passée, cette requête échoue seule (42703) et les écrans
-// font exactement comme avant. Ne JAMAIS ajouter meal_enabled à un select de
-// plusieurs colonnes (réglages, planning, fiche, historique) : il ferait échouer
-// la lecture entière.
+// LECTURE À PART : `select('meal_enabled')` pour les gestes (exports, réglages).
+// Tant que la migration n'est pas passée, cette requête échoue seule (42703) et
+// les écrans font exactement comme avant. Ne JAMAIS ajouter meal_enabled à un
+// select de plusieurs colonnes (planning, fiche, historique) : il ferait échouer
+// la lecture entière. Seule exception : la lecture commune des réglages
+// (lib/company-settings.ts, lot 29), qui repasse colonne par colonne quand la
+// lecture groupée échoue en 42703 — c'est ce qui rend l'exception sûre.
 //
 // La dernière valeur lue est gardée sur le téléphone, entreprise par
 // entreprise : hors ligne, l'écran applique ce qu'il savait (voir mealEnabledFrom).
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useCompanySettings } from '@/lib/company-settings';
 import { isMissingColumn, mealEnabledFrom, mealSettingFrom } from '@/supabase/functions/_shared/meal-setting';
 
 export { MEAL_OFF_MESSAGE, showMealColumn, showMealCorrection } from '@/supabase/functions/_shared/meal-setting';
@@ -64,13 +67,19 @@ export async function readMealEnabled(companyId: string): Promise<boolean> {
  * d'emblée, puis la lecture la confirme.
  */
 export function useMealEnabled(companyId: string | null | undefined): boolean | null {
-  const [on, setOn] = useState<boolean | null>(null);
-  useEffect(() => {
-    if (!companyId) { setOn(true); return; }
-    let stale = false;
-    setOn(readCache(companyId));
-    readMealEnabled(companyId).then((v) => { if (!stale) setOn(v); });
-    return () => { stale = true; };
-  }, [companyId]);
-  return on;
+  // Lot 29 : lu avec les autres réglages de l'entreprise (une seule requête pour tout l'écran,
+  // voir lib/company-settings.ts). La fonction de lecture à part (readMealEnabled) reste pour
+  // les gestes (exports, fenêtre de réglages) : elle relit toujours la base.
+  const settings = useCompanySettings(companyId);
+  const [cached, setCached] = useState<boolean | null>(null);
+  useEffect(() => { setCached(companyId ? readCache(companyId) : null); }, [companyId]);
+  if (!companyId) return true;
+  if (settings) {
+    if (typeof settings.mealEnabled === 'boolean') return settings.mealEnabled;
+    // Ni oui ni non : colonne absente (le cache vient d'être oublié, voir company-settings) → oui ;
+    // lecture illisible (réseau, groupe en échec) → la dernière valeur gardée sur ce téléphone,
+    // comme mealEnabledFrom : un « non » du patron ne doit pas redevenir « oui » sur une erreur.
+    return readCache(companyId) ?? true;
+  }
+  return cached;
 }

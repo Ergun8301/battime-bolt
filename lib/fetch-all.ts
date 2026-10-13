@@ -6,11 +6,14 @@
 // produit un document incomplet sans le moindre signal. Un client de 30 salariés
 // avec 2 chantiers/jour dépasse 1300 lignes sur un mois.
 //
-// Robustesse : on avance de `rows.length` (et non du pas demandé) et on s'arrête
-// sur une page vide. Ainsi la pagination reste correcte quelle que soit la valeur
-// réelle du plafond côté serveur, même si elle est inférieure au pas demandé.
+// Robustesse : on avance de `rows.length` (et non du pas demandé). On s'arrête
+// dès qu'une page revient plus courte que le pas demandé (lot 29 : plus de page
+// vide en plus, une requête de moins pour les petites tables). Un plafond serveur
+// réglé SOUS le pas demandé ferait croire à une fin : le test de prudence plus bas
+// redemande une page quand la taille reçue ressemble à un plafond.
 
-const PAGE_SIZE = 500;
+export const MAX_ROWS_ASSUMED = 1000; // plafond par défaut de PostgREST ; PAGE_SIZE doit rester en dessous
+export const PAGE_SIZE = 500;
 const HARD_CAP = 100_000; // garde-fou : jamais de boucle infinie
 
 type PagedResult<T> = { data: T[] | null; error: { message: string } | null };
@@ -28,8 +31,14 @@ export async function fetchAllPaged<T>(
     const { data, error } = await build(offset, offset + PAGE_SIZE - 1);
     if (error) throw error;
     const rows = data || [];
+    // Garde-fou : plus de lignes que demandé = le `range` a été ignoré, la pagination n'est pas fiable.
+    if (rows.length > PAGE_SIZE) throw new Error('fetchAllPaged : le serveur a renvoyé plus de lignes que demandé (range ignoré ?)');
     out.push(...rows);
-    if (rows.length === 0 || out.length >= HARD_CAP) break;
+    // Page courte = fin. EXCEPTION prudente : une page courte dont la taille est un multiple de 50
+    // ressemble à un plafond serveur réglé plus bas que PAGE_SIZE (100, 200, 250…) : on en redemande
+    // une (au pire une requête de plus, jamais d'export tronqué en silence).
+    const lookCapped = rows.length > 0 && rows.length < PAGE_SIZE && rows.length % 50 === 0;
+    if ((rows.length < PAGE_SIZE && !lookCapped) || out.length >= HARD_CAP) break;
     offset += rows.length;
   }
   return out;
