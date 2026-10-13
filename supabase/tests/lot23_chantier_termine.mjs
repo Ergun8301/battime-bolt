@@ -53,6 +53,7 @@ const LEA = '40000000-0000-0000-0000-000000000004';
 const WS = 'e0000000-0000-0000-0000-000000000001'; // le chantier du jeu de données
 const WS_B = 'e0000000-0000-0000-0000-000000000003'; // un autre chantier de CO
 const WS2 = 'e0000000-0000-0000-0000-000000000002'; // chantier de l'autre entreprise
+const WS_AUTRE = 'e0000000-0000-0000-0000-0000000000a0'; // « Autre » : travail non prévu (ensure_other_worksite), un par entreprise
 
 const sliceBetween = (src, start, end) => { const i = src.indexOf(start); return src.slice(i, src.indexOf(end, i)); };
 const ETAPE2 = mig('20260918120000_etape2_securite.sql');
@@ -126,7 +127,8 @@ INSERT INTO public.users VALUES
   ('${ALEX}', '${CO}', 'worker', true, 'Alex', 'Roux'), ('${LEA}', '${CO}', 'worker', true, 'Léa', 'Petit');
 INSERT INTO public.user_payroll VALUES ('${SAM}', '${CO}', 40), ('${LEA}', '${CO}', 30);   -- Alex n'a pas de taux horaire
 INSERT INTO public.worksites (id, company_id, client_name, city, budget_hours, budget_amount) VALUES
-  ('${WS}', '${CO}', 'Villa Dupont', 'Lyon', 40, 1600), ('${WS_B}', '${CO}', 'Atelier Petit', 'Nantes', null, null), ('${WS2}', '${CO2}', 'Chantier voisin', 'Lille', null, null);
+  ('${WS}', '${CO}', 'Villa Dupont', 'Lyon', 40, 1600), ('${WS_B}', '${CO}', 'Atelier Petit', 'Nantes', null, null), ('${WS2}', '${CO2}', 'Chantier voisin', 'Lille', null, null),
+  ('${WS_AUTRE}', '${CO}', 'Autre', '', null, null);
 `;
 
 let ok = 0, ko = 0;
@@ -299,7 +301,27 @@ INSERT INTO public.worksite_expenses (company_id, worksite_id, spent_on, categor
     // La vérification de l'en-tête, exécutée TELLE QUELLE : une ligne, 9 colonnes à true.
     const v = await one(POST_SQL.replace(/;\s*$/, ''));
     const vals = Object.values(v);
-    ck(vals.length === 9 && vals.every((x) => x === true), `VÉRIFICATION de l’en-tête : ${vals.length} × true (${Object.entries(v).filter(([, x]) => x !== true).map(([k]) => k).join(', ') || 'aucune fausse'})`);
+    ck(vals.length === 10 && vals.every((x) => x === true), `VÉRIFICATION de l’en-tête : ${vals.length} × true (${Object.entries(v).filter(([, x]) => x !== true).map(([k]) => k).join(', ') || 'aucune fausse'})`);
+  }
+  // ═══ La vérification n'a pas d'angle mort : chaque dérive est vue (essais dans une transaction annulée) ═══
+  {
+    const verif = async () => await one(POST_SQL.replace(/;\s*$/, ''));
+    const falsy = (v) => Object.entries(v).filter(([, x]) => x !== true).map(([k]) => k.split('_')[0]).sort().join(',');
+    const mutate = async (sql) => { await root(); await db.exec('BEGIN'); try { await db.exec(sql); return falsy(await verif()); } finally { await db.exec('ROLLBACK'); } };
+    ck(await mutate(`ALTER TABLE public.worksites DISABLE TRIGGER worksites_guard_completion`) === 'v7', 'mutation : déclencheur DÉSACTIVÉ → v7 passe à false (avant, il restait true)');
+    ck(await mutate(`CREATE POLICY pirate ON public.worksites FOR ALL TO authenticated USING (true) WITH CHECK (true)`) === 'v8,v9', 'mutation : règle « FOR ALL USING (true) WITH CHECK (true) » ajoutée → v8 et v9 passent à false');
+    ck(await mutate(`CREATE POLICY pirate ON public.worksites FOR UPDATE TO authenticated USING (public.is_admin() OR true)`) === 'v8,v9', 'mutation : règle d’UPDATE « is_admin() OR true » ajoutée → v8 et v9 passent à false');
+    ck(await mutate(`ALTER POLICY worksites_admin_write ON public.worksites USING (true OR public.is_admin())`) === 'v9', 'mutation : règle du bureau devenue « USING (true OR is_admin()) » → v9 passe à false (avant, elle restait true : le mot « admin » y figure)');
+    ck(await mutate(`ALTER POLICY worksites_admin_write ON public.worksites WITH CHECK (true)`) === 'v9', 'mutation : règle du bureau avec « WITH CHECK (true) » → v9 passe à false');
+    ck(await mutate(`ALTER POLICY worksites_admin_write ON public.worksites USING (company_id = public.get_my_company_id())`) === 'v9', 'mutation : règle d’écriture qui ne demande plus le bureau → v9 passe à false');
+    ck(await mutate(`DROP POLICY worksites_select_company ON public.worksites`) === 'v8', 'mutation : une des quatre règles d’origine retirée → v8 passe à false');
+    ck(await mutate(`DROP POLICY worksites_admin_write ON public.worksites; CREATE POLICY worksites_admin_write ON public.worksites FOR ALL TO authenticated USING (public.is_admin())`) === '', 'variante légitime : règle du bureau sans WITH CHECK (équivaut à USING) → tout reste true');
+    ck(await mutate(`ALTER FUNCTION public.set_worksite_completed(uuid, date) SET search_path = public`) === 'v4', 'mutation : search_path de la fonction du bureau changé → v4 passe à false');
+    ck(await mutate(`GRANT EXECUTE ON FUNCTION public.set_worksite_completed(uuid, date) TO anon`) === 'v4', 'mutation : fonction du bureau ouverte aux anonymes → v4 passe à false');
+    ck(await mutate(`GRANT EXECUTE ON FUNCTION public.guard_worksite_completion() TO authenticated`) === 'v6', 'mutation : garde appelable par les connectés → v6 passe à false');
+    ck(await mutate(`REVOKE EXECUTE ON FUNCTION public.worksite_completion_ready() FROM authenticated`) === 'v3', 'mutation : « prête » fermée aux connectés → v3 passe à false');
+    ck(await mutate(`CREATE OR REPLACE FUNCTION public.set_worksite_completed(p_worksite uuid, p_date date DEFAULT NULL) RETURNS timestamptz LANGUAGE plpgsql SECURITY DEFINER SET search_path TO '' AS $x$ BEGIN IF NOT public.is_admin() OR public.get_my_company_id() IS NULL THEN RAISE EXCEPTION 'x'; END IF; RETURN NULL; END $x$`) === 'v10', 'mutation : fonction sans le refus de « Autre » → v10 passe à false (et elle seule)');
+    ck(falsy(await verif()) === '', 'et après ces essais annulés, la vérification rend toujours 10 × true');
   }
   await root();
   {
@@ -345,6 +367,42 @@ INSERT INTO public.worksite_expenses (company_id, worksite_id, spent_on, categor
     await as(ADMIN);
     const old = await errOf(`SELECT public.set_worksite_completed($1, $2)`, [WS, '2026-01-15']);
     ck(!old, `une date ancienne est acceptée (le bureau peut régulariser) ${old ? old.code + ' ' + old.msg : ''}`);
+  }
+  // Dates absurdes : un « -infinity » ou un 1900 donneraient un chantier masqué sans libellé ni bouton « Rouvrir ».
+  await as(ADMIN);
+  {
+    const before = JSON.stringify(await status());
+    await as(ADMIN);
+    const out = {};
+    for (const d of ['1900-01-01', '1999-12-31', '-infinity']) out[d] = await errOf(`SELECT public.set_worksite_completed($1, $2)`, [WS, d]);
+    ck(Object.values(out).every((e) => e?.code === '22023' && /invalide/.test(e.msg)), `dates avant 2000 et « -infinity » refusées (22023, « La date de fin est invalide. ») : ${Object.entries(out).map(([k, e]) => `${k} → ${e?.code ?? 'ACCEPTÉE'}`).join(', ')}`);
+    await as(ADMIN);
+    const inf = await errOf(`SELECT public.set_worksite_completed($1, 'infinity')`, [WS]);
+    ck(inf?.code === '22023' && /futur/.test(inf.msg), '« infinity » : refusée comme une date du futur');
+    ck(JSON.stringify(await status()) === before, 'aucun de ces refus n’a rien écrit');
+    await as(ADMIN);
+    const lim = await errOf(`SELECT public.set_worksite_completed($1, '2000-01-01')`, [WS]);
+    ck(!lim, 'le 1er janvier 2000 est la plus ancienne date acceptée');
+  }
+  // « Autre » : le travail non prévu ne se termine pas
+  {
+    await as(ADMIN);
+    const e = await errOf(`SELECT public.set_worksite_completed($1, $2)`, [WS_AUTRE, '2026-10-09']);
+    ck(e?.code === '22023' && /Autre/.test(e.msg) && /ne peut pas être terminé/.test(e.msg), `terminer « Autre » : refusé (22023, « ${e?.msg ?? 'pas d’erreur'} »)`);
+    ck((await status(WS_AUTRE)).completed_at === null, '« Autre » n’a pas été touché');
+    await root();
+    await db.query(`UPDATE public.worksites SET completed_at = '2026-09-01 12:00+00', completed_by = $2 WHERE id = $1`, [WS_AUTRE, ADMIN]);   // terminé AVANT le correctif
+    await as(ADMIN);
+    const back = await one(`SELECT public.set_worksite_completed($1, NULL) AS at`, [WS_AUTRE]);
+    ck(back.at === null && (await status(WS_AUTRE)).completed_at === null, 'mais un « Autre » déjà terminé avant le correctif se ROUVRE (rouvrir reste permis)');
+    await root();
+    await db.exec('BEGIN');   // essai annulé : le jeu de données ne change pas
+    await db.query(`INSERT INTO public.worksites (id, company_id, client_name) VALUES ('e0000000-0000-0000-0000-0000000000a1', $1, 'Autres travaux')`, [CO]);
+    await as(ADMIN);
+    const ok2 = await errOf(`SELECT public.set_worksite_completed('e0000000-0000-0000-0000-0000000000a1', '2026-10-09')`);
+    await root();
+    await db.exec('ROLLBACK');
+    ck(!ok2, 'seul le nom exact « Autre » est protégé (« Autres travaux » se termine ; essai annulé)');
   }
   await as(ADMIN);
   {
@@ -542,7 +600,7 @@ INSERT INTO public.worksite_expenses (company_id, worksite_id, spent_on, categor
   {
     const v = await one(POST_SQL.replace(/;\s*$/, ''));
     const vals = Object.values(v);
-    ck(vals.length === 9 && vals.every((x) => x === true), `et la VÉRIFICATION rend de nouveau ${vals.length} × true`);
+    ck(vals.length === 10 && vals.every((x) => x === true), `et la VÉRIFICATION rend de nouveau ${vals.length} × true`);
     ck(JSON.stringify(await rows(`SELECT id, completed_at, completed_by FROM public.worksites WHERE id = ANY($1) ORDER BY id`, [[WS, WS_B, WS2]])) === JSON.stringify(JSON.parse(stateBefore).filter((x) => [WS, WS_B, WS2].includes(x.id)).map((x) => ({ ...x, completed_at: x.completed_at ? new Date(x.completed_at) : null }))), 'les statuts posés avant le retour arrière sont toujours là');
     await as(SAM);
     ck((await one('SELECT public.worksite_completion_ready() AS r')).r === true, '« prête » répond de nouveau true');

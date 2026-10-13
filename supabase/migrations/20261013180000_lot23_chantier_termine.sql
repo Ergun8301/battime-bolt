@@ -25,6 +25,9 @@
 --   SELECT column_name, data_type FROM information_schema.columns
 --    WHERE table_schema = 'public' AND table_name = 'worksites' AND column_name IN ('completed_at', 'completed_by');
 --   → completed_at (timestamptz) peut déjà être là ; completed_by ne l'est pas.
+--   Et les règles de lignes de worksites (la vérification de fin les exige telles quelles : QUATRE, aucune autre) :
+--   SELECT string_agg(policyname, ',' ORDER BY policyname) FROM pg_policies WHERE schemaname = 'public' AND tablename = 'worksites';
+--   → support_read,worksites_admin_write,worksites_select_company,worksites_worker_insert_own_company
 --
 -- RETOUR ARRIÈRE — on NEUTRALISE, sans rien retirer : les deux fonctions du lot ne
 -- sont plus appelables par personne (ni connecté, ni anonyme). L'application cache
@@ -45,7 +48,7 @@
 -- REVOKE ALL ON FUNCTION public.set_worksite_completed(uuid, date) FROM PUBLIC, anon, authenticated;
 -- ── FIN DU RETOUR ARRIÈRE ──
 --
--- VÉRIFICATION APRÈS APPLICATION — LECTURE SEULE, une ligne, 9 colonnes à true
+-- VÉRIFICATION APRÈS APPLICATION — LECTURE SEULE, une ligne, 10 colonnes à true
 -- (le test l'exécute telle quelle).
 -- ── DÉBUT DE LA VÉRIFICATION ──
 -- SELECT
@@ -55,9 +58,12 @@
 --   (SELECT count(*) = 1 AND bool_and(p.prosecdef AND array_to_string(p.proconfig, ',') = 'search_path=""' AND has_function_privilege('authenticated', p.oid, 'EXECUTE') AND NOT has_function_privilege('anon', p.oid, 'EXECUTE')) FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname = 'set_worksite_completed') AS v4_fonction_bureau_fermee_aux_anonymes,
 --   position('public.is_admin()' in pg_get_functiondef('public.set_worksite_completed(uuid, date)'::regprocedure)) > 0 AND position('public.get_my_company_id()' in pg_get_functiondef('public.set_worksite_completed(uuid, date)'::regprocedure)) > 0 AS v5_bureau_de_la_bonne_entreprise,
 --   (SELECT count(*) = 1 AND bool_and(p.prosecdef AND array_to_string(p.proconfig, ',') = 'search_path=""' AND NOT has_function_privilege('anon', p.oid, 'EXECUTE') AND NOT has_function_privilege('authenticated', p.oid, 'EXECUTE')) FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname = 'guard_worksite_completion') AS v6_garde_fermee,
---   EXISTS (SELECT 1 FROM pg_trigger t WHERE t.tgname = 'worksites_guard_completion' AND t.tgrelid = 'public.worksites'::regclass AND NOT t.tgisinternal AND t.tgtype & 1 = 1 AND t.tgtype & 2 = 2 AND t.tgtype & 4 = 4 AND t.tgtype & 16 = 16) AS v7_garde_avant_insertion_et_mise_a_jour,
---   (SELECT count(*) FROM pg_policies WHERE schemaname = 'public' AND tablename = 'worksites' AND policyname LIKE '%complet%') = 0 AS v8_aucune_regle_ajoutee,
---   (SELECT count(*) FROM pg_policies WHERE schemaname = 'public' AND tablename = 'worksites' AND cmd IN ('UPDATE', 'ALL') AND NOT (qual ILIKE '%admin%')) = 0 AS v9_aucune_regle_d_ecriture_sans_bureau;
+--   EXISTS (SELECT 1 FROM pg_trigger t WHERE t.tgname = 'worksites_guard_completion' AND t.tgrelid = 'public.worksites'::regclass AND NOT t.tgisinternal AND t.tgenabled = 'O' AND t.tgtype & 1 = 1 AND t.tgtype & 2 = 2 AND t.tgtype & 4 = 4 AND t.tgtype & 16 = 16) AS v7_garde_actif_avant_insertion_et_mise_a_jour,
+--   (SELECT string_agg(policyname, ',' ORDER BY policyname) FROM pg_policies WHERE schemaname = 'public' AND tablename = 'worksites') = 'support_read,worksites_admin_write,worksites_select_company,worksites_worker_insert_own_company' AS v8_les_quatre_regles_d_origine_et_aucune_autre,
+--   (SELECT count(*) FROM pg_policies WHERE schemaname = 'public' AND tablename = 'worksites' AND cmd IN ('UPDATE', 'ALL') AND policyname <> 'worksites_admin_write') = 0
+--     AND EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'worksites' AND policyname = 'worksites_admin_write' AND cmd = 'ALL' AND permissive = 'PERMISSIVE'
+--                 AND qual ILIKE '%admin%' AND qual !~* '\mtrue\M' AND (with_check IS NULL OR (with_check ILIKE '%admin%' AND with_check !~* '\mtrue\M'))) AS v9_seule_regle_d_ecriture_reservee_au_bureau,
+--   position('client_name = ''Autre''' in pg_get_functiondef('public.set_worksite_completed(uuid, date)'::regprocedure)) > 0 AS v10_le_chantier_autre_ne_se_termine_pas;
 -- ── FIN DE LA VÉRIFICATION ──
 --
 -- HISTORIQUE : si le fichier est collé dans l'éditeur SQL, inscrire ensuite :
@@ -74,8 +80,11 @@
 --   2. worksite_completion_ready() : la fonction « suis-je prête ? » ; l'écran
 --      l'appelle et cache TOUT (bouton, bilan) tant qu'elle manque.
 --   3. set_worksite_completed(chantier, jour) : réservée au bureau DE L'ENTREPRISE
---      du chantier. Un jour => terminé à cette date (jamais dans le futur, jamais
---      d'un chantier d'une autre entreprise). NULL => rouvrir. Elle ne touche que
+--      du chantier. Un jour => terminé à cette date (ni dans le futur, ni avant 2000,
+--      jamais d'un chantier d'une autre entreprise, jamais le chantier « Autre » :
+--      c'est celui que la base crée pour chaque entreprise pour le travail non prévu,
+--      il doit rester proposé). NULL => rouvrir (permis aussi pour « Autre », au cas
+--      où il aurait été terminé avant). Elle ne touche que
 --      ces deux colonnes : aucune heure, aucun planning, aucun document n'est modifié.
 --      Un compte support (lecture seule, lot 5) est bureau de SA propre entreprise
 --      seulement : le chantier d'un client lui est « introuvable ».
@@ -128,6 +137,14 @@ BEGIN
   END IF;
   IF p_date IS NOT NULL AND p_date > v_today THEN
     RAISE EXCEPTION 'La date de fin ne peut pas être dans le futur.' USING ERRCODE = '22023';
+  END IF;
+  -- Une date absurde (1900, « -infinity ») ferait un chantier masqué sans libellé ni bouton « Rouvrir ».
+  IF p_date IS NOT NULL AND p_date < date '2000-01-01' THEN
+    RAISE EXCEPTION 'La date de fin est invalide.' USING ERRCODE = '22023';
+  END IF;
+  -- « Autre » (travail non prévu, règle d'or : l'heure n'est jamais bloquée) ne se termine pas ; le rouvrir reste permis.
+  IF p_date IS NOT NULL AND EXISTS (SELECT 1 FROM public.worksites w WHERE w.id = p_worksite AND w.company_id = v_company AND w.client_name = 'Autre') THEN
+    RAISE EXCEPTION 'Le chantier « Autre » ne peut pas être terminé : il sert aux heures non prévues.' USING ERRCODE = '22023';
   END IF;
 
   -- Midi UTC : le même jour à l'affichage, de Paris à Lisbonne.
