@@ -28,6 +28,8 @@ choses séparées : l'envoi au comptable n'a pas bougé (voir « Limites »).
 3. Cocher les salariés. Chaque ligne dit clairement ce qui est possible :
    - *avec adresse* : on peut cocher ; l'adresse de la fiche est affichée ;
    - **sans adresse** : grisé, « Pas d'adresse e-mail enregistrée » ;
+   - **adresse invalide** : grisé, « Adresse e-mail invalide : corrigez-la sur la
+     fiche du salarié » (une adresse mal écrite n'est pas une adresse absente) ;
    - **désabonné** : grisé. Pour un message : « le message n'est pas envoyé.
      Contactez cette personne autrement » ;
    - **rien cette semaine** (planning seulement) : grisé, pas de planning vide.
@@ -72,7 +74,12 @@ simple : aucune mise en forme, aucun lien n'est fabriqué.
   envoyé (jamais « dans le doute, on envoie »).
 - **PDF vérifié** : type `application/pdf`, signature `%PDF`, fin `%%EOF`, 1 Mo au
   plus ; le nom du fichier est fabriqué par le serveur.
-- **Doublon** : même contenu, même personne, dans la même minute = un seul envoi.
+- **Doublon** : un renvoi du **même contenu à la même personne dans la même minute**
+  n'envoie rien de plus. Pour un planning, « même contenu » veut dire **même
+  semaine** (pas les octets du PDF : le PDF est refait à chaque clic avec l'heure à
+  la seconde, deux PDF du même planning ne sont jamais identiques). Pour un message :
+  même texte. Si la réponse s'est perdue et que le bureau recommence aussitôt, rien
+  ne part en double et le plafond n'est pas consommé deux fois.
 - **Un e-mail par destinataire** (le lien de désabonnement est personnel).
 - **Jamais de renvoi automatique.** Si le service d'e-mail ne répond pas, le
   résultat est « incertain » et c'est le bureau qui décide.
@@ -100,25 +107,34 @@ propre à l'adresse **et** à la famille.
 
 ## Ordre de mise en ligne
 
-Chaque étape peut attendre l'autre **sans rien casser** :
+**L'ordre compte pour les deux dernières étapes.** Les étapes 1 et 2 peuvent attendre
+sans rien casser. Mais `email-unsubscribe` doit être redéployée **avant**
+`send-staff-email` : tant qu'elle est l'ancienne version, le lien « Se désabonner » et
+le désabonnement en un clic des messageries répondent « lien invalide » (400) pour les
+deux nouvelles familles. Comme `send-staff-email` est la seule façon d'envoyer ces
+e-mails, la mettre en ligne en dernier garantit qu'**aucun e-mail ne part avec un lien
+mort**. Sans `send-staff-email`, l'écran d'envoi n'est pas utilisable (message neutre).
 
 1. **La migration** `supabase/migrations/20261013190000_lot19_emails.sql`
    (éditeur SQL de Supabase). Puis la ligne de vérification (en tête du fichier,
-   9 × `true`), puis l'inscription dans l'historique (nom exact : `lot19_emails`).
+   10 × `true`), puis l'inscription dans l'historique (nom exact : `lot19_emails`).
    Elle ne change rien d'existant : deux tables et trois fonctions neuves.
 2. **Le site** (fusion de la branche, déploiement habituel). Tant que la fonction
    n'est pas en ligne, l'entrée « Envoyer par e-mail » du menu est visible ; au
    premier clic, la fenêtre dit « pas encore activé » **sans erreur** et l'entrée
    se cache pour le reste de l'onglet.
-3. **Les fonctions** (CLI Supabase connectée au projet) :
+3. **`email-unsubscribe`, redéployée d'abord** (CLI Supabase connectée au projet) :
    ```
-   supabase functions deploy send-staff-email
    supabase functions deploy email-unsubscribe --no-verify-jwt
    ```
-   - `send-staff-email` : **avec** la vérification du jeton (le défaut).
-   - `email-unsubscribe` : à **redéployer** pour qu'elle accepte les deux
-     nouvelles familles ; **toujours** `--no-verify-jwt` (c'est la messagerie du
-     destinataire qui l'appelle).
+   Elle accepte alors les deux nouvelles familles. **Toujours** `--no-verify-jwt`
+   (c'est la messagerie du destinataire qui l'appelle).
+4. **`send-staff-email`, en dernier** :
+   ```
+   supabase functions deploy send-staff-email
+   ```
+   **Avec** la vérification du jeton (le défaut).
+
    - Les autres fonctions d'e-mail (récap, rappels, alertes, export de paie)
      **n'ont pas besoin** d'être redéployées : leur comportement n'a pas changé.
 
@@ -147,7 +163,10 @@ démo) :
 4. Cliquer « Se désabonner » dans l'e-mail de `salarie2` : rouvrir la fenêtre,
    la ligne est maintenant **désabonné** ; un message à lui est **bloqué avec
    explication**.
-5. Cliquer deux fois de suite sur le même envoi : le second est « ignoré » (doublon).
+5. Renvoyer aussitôt (dans la minute) le planning de la même semaine au même
+   salarié, **même si le PDF est regénéré** : le second envoi est « ignoré »
+   (doublon) et rien ne part. Une autre semaine, ou une minute plus tard, part
+   normalement.
 6. Regarder « Derniers envois » : adresses masquées, jamais de texte.
 
 **N'essayez pas d'atteindre 50 pour de vrai** : le plafond est prouvé par les
@@ -168,7 +187,17 @@ tests (voir plus bas), y compris en rafale.
 - Le plafond (50) est une constante unique, `DAILY_EMAIL_CAP`, dans
   `supabase/functions/_shared/staff-email-core.ts` ; il n'est pas réglable par
   entreprise. Le modifier = changer cette ligne et redéployer la fonction.
-- Si la fonction s'arrêtait en plein envoi (panne), la place prise reste comptée jusqu'à minuit (heure de Paris) : on préfère compter un envoi de trop que de dépasser le plafond.
+- Si la fonction s'arrêtait en plein envoi (panne entre « place prise » et « envoyé »), la
+  place reste comptée jusqu'à minuit (heure de Paris) : on préfère compter un envoi de
+  trop que de dépasser le plafond. Dans « Derniers envois », une place restée « en cours »
+  plus de 5 minutes s'affiche **incertain** (« Envoi incertain : vérifiez la boîte du
+  salarié avant de renvoyer ») : c'est un calcul à l'affichage, rien n'est réécrit.
+- Les e-mails d'une même demande partent **l'un après l'autre, avec une pause de
+  250 ms**. Le service d'e-mail limite le nombre d'appels par seconde : s'il répond
+  quand même « trop de demandes » (429) pour l'un d'eux, cette personne est
+  « non envoyé », sa place est rendue, et il n'y a pas de reprise automatique : le
+  bureau relance ceux-là seulement. Un envoi à plus de 30 personnes d'un coup est
+  donc possible mais à surveiller la première fois.
 - Pas d'envoi différé ni de rappel automatique : tout part au clic de
   confirmation.
 - Réabonner quelqu'un n'est pas possible depuis l'écran (c'est la décision de la
@@ -199,7 +228,7 @@ de la semaine. jsPDF n'arrive qu'à l'ouverture de la fenêtre, comme les export
 
 | Commande | Ce qu'elle prouve |
 |---|---|
-| `npm run test:emails-db` | la base : en-tête, mots interdits, additif et rejouable, plafond (rafale incluse), doublons, abus (salarié, chef d'équipe, archivé, autre entreprise, support, anonyme), retours arrière |
+| `npm run test:emails-db` | la base : en-tête, mots interdits, additif et rejouable, vérification livrée **10 × true** (et qu'elle voit un `GRANT DELETE`/`TRUNCATE`, un `UPDATE` sur les désabonnés, une colonne en trop), plafond (rafale incluse), doublons, abus (salarié, chef d'équipe, archivé, autre entreprise, support, anonyme), retours arrière |
 | `npm run test:emails` | règles pures, moteur (faux transport), Resend (faux `fetch`), désabonnements ; requêtes des anciennes familles inchangées |
 | `npm run test:emails-fonction` | la vraie fonction de bout en bout sur un monde simulé (jeton, rôles, destinataire relu en base, plafond, clé absente, migration absente, journaux sans contenu) |
 | `npm run test:emails-moteur-db` | le moteur branché sur la VRAIE base SQL jetable (rafale de demandes simultanées) |

@@ -31,8 +31,8 @@ import {
   buildWeekPdf, callStaffEmail, countFor, loadLog, loadWeekSlots, type Etat, type LogRow, type SendData, type WeekSlot,
 } from '@/lib/staff-email';
 import {
-  DAILY_EMAIL_CAP, MAX_MESSAGE_CHARS, cleanMessage, limitMessage, messageLength, messageParts, planningFileName, planningParts,
-  previewText, weekFromMonday, type ResultItem, type StaffEmailKind,
+  DAILY_EMAIL_CAP, MAX_MESSAGE_CHARS, UNCERTAIN_LOG_TEXT, cleanMessage, effectiveLogStatus, isPlausibleEmail, limitMessage, messageLength,
+  messageParts, planningFileName, planningParts, previewText, weekFromMonday, type ResultItem, type StaffEmailKind,
 } from '@/supabase/functions/_shared/staff-email-core';
 
 const CSS = `
@@ -97,7 +97,7 @@ const CSS_HTML = { __html: CSS };
 
 type Phase = 'loading' | 'ready' | 'confirm' | 'sending' | 'done' | 'unavailable' | 'error' | 'support';
 type Mode = 'planning' | 'message';
-type RowKind = 'ok' | 'sans-adresse' | 'desabonne' | 'vide';
+type RowKind = 'ok' | 'sans-adresse' | 'adresse-invalide' | 'desabonne' | 'vide';
 
 export interface StaffEmailDialogProps {
   open: boolean;
@@ -179,7 +179,11 @@ export default function StaffEmailDialog({ open, onOpenChange, companyId, compan
 
   const rowKind = useCallback((w: User): RowKind => {
     const f = flags.get(w.id);
-    const hasEmail = f ? f.has_email : !!(w.email || '').trim();
+    const raw = (w.email || '').trim();
+    // La fonction a relu l'adresse en base : c'est elle qui fait foi ; sans sa réponse, la même règle qu'elle sur ce qu'on connaît.
+    const invalid = f ? f.invalid_email === true : raw !== '' && !isPlausibleEmail(raw);
+    const hasEmail = f ? f.has_email : isPlausibleEmail(raw);
+    if (invalid) return 'adresse-invalide';
     if (!hasEmail) return 'sans-adresse';
     if (f?.unsubscribed[kind]) return 'desabonne';
     if (mode === 'planning' && slots && countFor(slots, w.id) === 0) return 'vide';
@@ -215,12 +219,13 @@ export default function StaffEmailDialog({ open, onOpenChange, companyId, compan
   // L'aperçu : le texte EXACT de l'e-mail (mêmes gabarits que la fonction).
   const preview = useMemo(() => {
     const first = (chosen[0] || selectable[0])?.first_name || '';
-    const canReply = true;
+    // Le pied de l'e-mail dépend de l'adresse de l'entreprise (relue par la fonction, qui nous la dit) : même règle que l'envoi.
+    const canReply = etat?.can_reply === true;
     if (mode === 'planning' && week) {
       return planningParts({ company: companyName, firstName: first, weekLabel: week.label, fileName: planningFileName(week.start), canReply });
     }
     return messageParts({ company: companyName, firstName: first, message: clean.ok ? clean.text : text.trim() || 'Votre message apparaîtra ici.', canReply });
-  }, [chosen, selectable, mode, week, companyName, clean, text]);
+  }, [chosen, selectable, mode, week, companyName, clean, text, etat]);
 
   const nameOf = useMemo(() => new Map(people.map((w) => [w.id, fullName(w)])), [people]);
 
@@ -319,7 +324,7 @@ export default function StaffEmailDialog({ open, onOpenChange, companyId, compan
                 {people.map((w) => (
                   <div key={w.id} className="bt-em-row is-off" role="group" aria-label={fullName(w)}>
                     <span className="bt-em-name">{fullName(w)}</span>
-                    <span className={`bt-em-tag${(w.email || '').trim() ? '' : ' warn'}`}>{(w.email || '').trim() ? 'avec adresse' : 'sans adresse'}</span>
+                    <span className={`bt-em-tag${isPlausibleEmail((w.email || '').trim()) ? '' : ' warn'}`}>{isPlausibleEmail((w.email || '').trim()) ? 'avec adresse' : (w.email || '').trim() ? 'adresse invalide' : 'sans adresse'}</span>
                   </div>
                 ))}
               </div>
@@ -360,11 +365,12 @@ export default function StaffEmailDialog({ open, onOpenChange, companyId, compan
                     const k = rowKind(w);
                     const off = k !== 'ok';
                     const why = k === 'sans-adresse' ? 'Pas d’adresse e-mail enregistrée : rien ne peut lui être envoyé.'
+                      : k === 'adresse-invalide' ? 'Adresse e-mail invalide : corrigez-la sur la fiche du salarié, rien ne peut lui être envoyé.'
                       : k === 'desabonne' ? (mode === 'message'
                         ? 'A demandé à ne plus recevoir les messages du bureau : le message n’est pas envoyé. Contactez cette personne autrement.'
                         : 'A demandé à ne plus recevoir le planning par e-mail : pas d’envoi.')
                         : k === 'vide' ? 'Aucune intervention prévue cette semaine : pas de planning à envoyer.' : '';
-                    const tag = k === 'sans-adresse' ? 'sans adresse' : k === 'desabonne' ? 'désabonné' : k === 'vide' ? 'rien cette semaine' : '';
+                    const tag = k === 'sans-adresse' ? 'sans adresse' : k === 'adresse-invalide' ? 'adresse invalide' : k === 'desabonne' ? 'désabonné' : k === 'vide' ? 'rien cette semaine' : '';
                     return (
                       <div key={w.id} data-testid={`em-person-${w.id}`} data-state={k}>
                         <label className={`bt-em-row${off ? ' is-off' : ''}`}>
@@ -440,11 +446,16 @@ export default function StaffEmailDialog({ open, onOpenChange, companyId, compan
                     <p className="bt-em-muted" data-testid="em-log-empty">Aucun envoi pour le moment.</p>
                   ) : (
                     <ul className="bt-em-log" data-testid="em-log">
-                      {log.map((l) => (
-                        <li key={l.id}>
-                          {format(parseISO(l.created_at), 'd MMM HH:mm', { locale: fr })} · {KIND_LABEL[l.kind] || l.kind} · {l.user_id && nameOf.get(l.user_id) ? nameOf.get(l.user_id) : l.recipient_mask} · {STATUS_LABEL[l.status] || l.status}
-                        </li>
-                      ))}
+                      {log.map((l) => {
+                        // Une place restée « en cours » passé quelques minutes s'affiche « incertain » (calcul ici, rien n'est écrit).
+                        const st = effectiveLogStatus(l.status, parseISO(l.created_at).getTime(), Date.now());
+                        return (
+                          <li key={l.id} data-status={st}>
+                            {format(parseISO(l.created_at), 'd MMM HH:mm', { locale: fr })} · {KIND_LABEL[l.kind] || l.kind} · {l.user_id && nameOf.get(l.user_id) ? nameOf.get(l.user_id) : l.recipient_mask} · {STATUS_LABEL[st] || st}
+                            {st === 'uncertain' && <span className="block text-[#8a5a00]"> {UNCERTAIN_LOG_TEXT}</span>}
+                          </li>
+                        );
+                      })}
                     </ul>
                   ))}
                 </div>
@@ -458,7 +469,7 @@ export default function StaffEmailDialog({ open, onOpenChange, companyId, compan
               <div className="bt-em-banner info" role="status" data-testid="em-summary">
                 {results.filter((r) => r.outcome === 'sent').length} envoyé{results.filter((r) => r.outcome === 'sent').length > 1 ? 's' : ''}
                 {' · '}{results.filter((r) => r.outcome === 'skipped').length} ignoré{results.filter((r) => r.outcome === 'skipped').length > 1 ? 's' : ''}
-                {' · '}{results.filter((r) => r.outcome === 'failed').length} refusé{results.filter((r) => r.outcome === 'failed').length > 1 ? 's' : ''}
+                {' · '}{results.filter((r) => r.outcome === 'failed').length} non envoyé{results.filter((r) => r.outcome === 'failed').length > 1 ? 's' : ''}
                 {' · '}{results.filter((r) => r.outcome === 'uncertain').length} incertain{results.filter((r) => r.outcome === 'uncertain').length > 1 ? 's' : ''}
                 {' · '}{etat ? `${etat.used} aujourd’hui sur ${etat.cap}` : ''}
               </div>

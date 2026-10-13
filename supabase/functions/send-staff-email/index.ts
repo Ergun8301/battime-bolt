@@ -59,6 +59,7 @@ const USER_COLS = "id, company_id, role, is_active, first_name, email";
 function makeDeps(admin: Admin): Deps {
   return {
     now: () => Date.now(),
+    pause: (ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
 
     async loadProfile(userId) {
       const { data, error } = await admin.from("users").select("role, company_id, is_active").eq("id", userId).maybeSingle();

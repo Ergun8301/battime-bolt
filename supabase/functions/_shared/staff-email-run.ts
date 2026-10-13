@@ -24,7 +24,7 @@
 //     renvoyée automatiquement ;
 //   · aucun journal n'écrit une adresse ni un contenu : seulement des compteurs et des codes.
 import {
-  DAILY_EMAIL_CAP, MAX_RECIPIENTS_PER_CALL, MAX_TOTAL_PDF_BYTES, SEND_BUDGET_MS,
+  DAILY_EMAIL_CAP, MAX_RECIPIENTS_PER_CALL, MAX_TOTAL_PDF_BYTES, SEND_BUDGET_MS, SEND_PAUSE_MS,
   approxBase64Bytes, checkPdf, cleanLine, cleanMessage, contentHash, isContactable, isPlausibleEmail, isUuid, limitMessage,
   maskEmail, messageParts, normalizeEmail, partsToHtml, pickRecipients, planningFileName, planningParts, reasonText,
   recipientHash, sentText, weekFromMonday,
@@ -50,6 +50,8 @@ export type SendResult = { outcome: Outcome; code: string };
 export type Deps = {
   /** Horloge (millisecondes) : injectée pour tester le délai. */
   now(): number;
+  /** Attente entre deux envois (service d'e-mail : nombre d'appels par seconde limité). Injectée : les tests n'attendent pas. */
+  pause(ms: number): Promise<void>;
   loadProfile(userId: string): Promise<Profile | null>;
   /** Le compte est-il un compte du support BEMEXO ? (table absente = non). */
   isSupportStaff(userId: string): Promise<boolean>;
@@ -80,7 +82,7 @@ const asObject = (v: unknown): Record<string, unknown> | null =>
   v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : null;
 
 /** Réponse de l'écran « état » : qui a une adresse, qui est désabonné, combien d'envois aujourd'hui. */
-export type EtatWorker = { id: string; has_email: boolean; unsubscribed: Record<StaffEmailKind, boolean> };
+export type EtatWorker = { id: string; has_email: boolean; invalid_email: boolean; unsubscribed: Record<StaffEmailKind, boolean> };
 
 // ── Point d'entrée ──────────────────────────────────────────────────────────
 
@@ -132,6 +134,8 @@ async function run(deps: Deps, callerId: string, body: unknown): Promise<EngineR
 
 async function etat(deps: Deps, companyId: string): Promise<EngineResponse> {
   const used = await deps.usedToday(companyId);
+  // « Répondre » écrit-il au bureau ? L'aperçu du bureau doit dire la même chose que le pied de l'e-mail réel.
+  const company = await deps.loadCompany(companyId);
   const workers = (await deps.listWorkers(companyId)).filter((w) => isContactable(w, companyId));
   const emails = [...new Set(workers.map((w) => normalizeEmail(w.email)).filter((e) => isPlausibleEmail(e)))];
   const unsub = emails.length ? await deps.loadUnsubscribed(emails) : new Map<string, Set<string>>();
@@ -141,10 +145,11 @@ async function etat(deps: Deps, companyId: string): Promise<EngineResponse> {
     return {
       id: w.id,
       has_email: isPlausibleEmail(email),
+      invalid_email: email !== '' && !isPlausibleEmail(email),
       unsubscribed: { 'planning-hebdo': kinds.has('planning-hebdo'), 'message-bureau': kinds.has('message-bureau') },
     };
   });
-  return reply(200, { available: true, cap: DAILY_EMAIL_CAP, used, remaining: Math.max(0, DAILY_EMAIL_CAP - used), workers: out });
+  return reply(200, { available: true, cap: DAILY_EMAIL_CAP, used, remaining: Math.max(0, DAILY_EMAIL_CAP - used), can_reply: isPlausibleEmail(company?.email), workers: out });
 }
 
 // ── Action « planning » : un PDF par salarié ────────────────────────────────
@@ -187,7 +192,10 @@ async function planning(
     prepare: async (c) => {
       const pdf = pdfs.get(c.id)!;
       return {
-        chashPayload: `${week.start}|${pdf}`,
+        // L'empreinte du contenu est « cette semaine » : PAS les octets du PDF. jsPDF y écrit l'heure à la
+        // seconde et un identifiant, donc deux PDF du même planning ne sont jamais identiques et le doublon
+        // (réponse perdue, nouveau clic dans la minute) ne serait jamais reconnu. Un destinataire = une empreinte.
+        chashPayload: week.start,
         parts: planningParts({ company: companyName, firstName: c.firstName, weekLabel: week.label, fileName, canReply }),
         attachments: [{ filename: fileName, content: pdf }],
       };
@@ -259,6 +267,7 @@ async function deliver(deps: Deps, d: Deliver): Promise<EngineResponse> {
   const t0 = deps.now();
   let used: number | null = null;
   let reserved = 0;
+  let attempted = 0;
   const failedIds = new Set<string>();
 
   if (d.candidates.length) {
@@ -288,6 +297,8 @@ async function deliver(deps: Deps, d: Deliver): Promise<EngineResponse> {
       if (deps.now() - t0 > SEND_BUDGET_MS) {
         outcome = 'failed'; code = 'delai';
       } else {
+        // Une courte pause entre deux envois (jamais avant le premier) : le service d'e-mail refuse (429) les rafales.
+        if (attempted++ > 0) { try { await deps.pause(SEND_PAUSE_MS); } catch { /* une pause ratée ne bloque rien */ } }
         try {
           const sent = await deps.send({
             to: c.email, subject: p.parts.subject, html: partsToHtml(p.parts, d.companyName), kind: d.kind,

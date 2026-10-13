@@ -9,7 +9,7 @@ import {
   DAILY_EMAIL_CAP, MAX_MESSAGE_CHARS, MAX_PDF_BYTES, MAX_RECIPIENTS_PER_CALL, SEND_BUDGET_MS, STAFF_EMAIL_KINDS,
   checkPdf, classifyHttp, cleanLine, cleanMessage, decodeBase64, escapeHtml, isContactable, isPlausibleEmail, isStaffKind, limitMessage,
   maskEmail, messageLength, messageParts, normalizeEmail, partsToHtml, pickRecipients, planningFileName, planningParts, previewText,
-  reasonText, recipientHash, weekFromMonday,
+  reasonText, recipientHash, weekFromMonday, effectiveLogStatus, RESERVED_STALE_MS, SEND_PAUSE_MS, UNCERTAIN_LOG_TEXT,
 } from './staff-email-core.ts';
 import { handleStaffEmail } from './staff-email-run.ts';
 import {
@@ -179,7 +179,9 @@ Deno.test('Choix des destinataires : base seule, même entreprise, actif, adress
   eq(s.skipped, [{ user_id: 'x1', reason: 'adresse-partagee' }], '…le second est ignoré avec sa raison');
   // adresse piégée en base : jamais choisie comme destinataire
   const trap = pickRecipients(CO, [LUCAS], [{ ...w.users[0], email: 'lucas@example.com,patron@example.com' }], none);
-  eq(trap.skipped[0].reason, 'sans-adresse', 'une adresse en base qui contient une virgule n’est pas utilisée');
+  eq(trap.skipped[0].reason, 'adresse-invalide', 'une adresse en base qui contient une virgule n’est pas utilisée (« adresse invalide », pas « sans adresse »)');
+  eq(pickRecipients(CO, [LUCAS], [{ ...w.users[0], email: '   ' }], none).skipped[0].reason, 'sans-adresse', 'une adresse vide ou blanche = sans adresse');
+  ok(reasonText('adresse-invalide', 'planning-hebdo').startsWith('Adresse e-mail invalide') && reasonText('sans-adresse', 'planning-hebdo').startsWith('Pas d’adresse'), 'deux phrases différentes');
 });
 
 Deno.test('Résultat du service d’e-mail : envoyé / refusé / incertain', () => {
@@ -217,9 +219,16 @@ Deno.test('Moteur — état : adresses, désabonnés, compteur', async () => {
   eq(r.status, 200, 'état lisible');
   eq(r.body.available, true, 'disponible');
   eq([r.body.cap, r.body.used, r.body.remaining], [50, 0, 50], '0 envoi sur 50');
-  const ws = r.body.workers as { id: string; has_email: boolean; unsubscribed: Record<string, boolean> }[];
+  const ws = r.body.workers as { id: string; has_email: boolean; invalid_email: boolean; unsubscribed: Record<string, boolean> }[];
   eq(ws.map((x) => x.id).sort(), [KEVIN, LUCAS, NINA, SARA].sort(), 'les salariés actifs de CETTE entreprise seulement (ni l’archivé, ni l’autre entreprise, ni l’admin)');
   eq(ws.find((x) => x.id === KEVIN)?.has_email, false, 'Kevin n’a pas d’adresse');
+  eq([ws.find((x) => x.id === KEVIN)?.invalid_email, ws.find((x) => x.id === LUCAS)?.invalid_email], [false, false], 'ni Kevin (vide) ni Lucas n’ont une adresse « invalide »');
+  eq(r.body.can_reply, true, 'l’entreprise a une adresse : « Répondre » écrit au bureau (l’aperçu du bureau le sait)');
+  const w0 = makeWorld(); w0.companies[CO] = { name: 'Martin Menuiserie', email: null };
+  eq((await call(w0, ADMIN, { action: 'etat' })).body.can_reply, false, 'entreprise sans adresse : can_reply = false');
+  w0.users.find((x) => x.id === LUCAS)!.email = 'lucas@@example.com';
+  const bad0 = ((await call(w0, ADMIN, { action: 'etat' })).body.workers as { id: string; has_email: boolean; invalid_email: boolean }[]).find((x) => x.id === LUCAS);
+  eq([bad0?.has_email, bad0?.invalid_email], [false, true], 'une adresse mal formée est « invalide », pas « absente »');
   eq(ws.find((x) => x.id === SARA)?.unsubscribed, { 'planning-hebdo': true, 'message-bureau': true }, 'Sara est désabonnée');
   eq(ws.find((x) => x.id === LUCAS)?.unsubscribed, { 'planning-hebdo': false, 'message-bureau': false }, 'Lucas ne l’est pas');
   ok(!JSON.stringify(r.body).includes('@'), 'l’état ne renvoie AUCUNE adresse');
@@ -404,6 +413,20 @@ Deno.test('Moteur — doublon : même contenu, même personne, même minute = un
   const e1 = await call(w, ADMIN, planningBody([NINA]));
   const e2 = await call(w, ADMIN, planningBody([NINA]));
   eq([results(e1)[0].outcome, results(e2)[0].reason], ['sent', 'doublon'], 'planning identique redemandé : doublon');
+  // Le PDF d'un renvoi n'est JAMAIS identique octet pour octet (jsPDF y met l'heure à la seconde et un identifiant) :
+  // le doublon se reconnaît à la semaine et au destinataire, pas aux octets du fichier.
+  const w2 = makeWorld();
+  const again = (label: string) => ({ action: 'planning', week_start: MONDAY, items: [{ user_id: LUCAS, mime: 'application/pdf', content_base64: fakePdfBase64(label) }] });
+  const f1 = await call(w2, ADMIN, again('généré à 10:00:01'));
+  const f2 = await call(w2, ADMIN, again('généré à 10:00:02, autre identifiant'));
+  ok(again('a').items[0].content_base64 !== again('b').items[0].content_base64, 'les deux PDF diffèrent bien octet pour octet');
+  eq([results(f1)[0].outcome, results(f2)[0].outcome, results(f2)[0].reason], ['sent', 'skipped', 'doublon'], 'même semaine, même salarié, PDF différent dans la minute : un seul envoi');
+  eq([w2.mailbox.length, w2.journal.length, f2.body.used], [1, 1, 1], 'un seul e-mail, une seule place du plafond consommée');
+  const other = await call(w2, ADMIN, { action: 'planning', week_start: '2026-10-26', items: again('x').items });
+  eq(results(other)[0].outcome, 'sent', 'une AUTRE semaine pour le même salarié : accepté');
+  w2.clockMs += 61_000;
+  const later = await call(w2, ADMIN, again('encore un autre'));
+  eq(results(later)[0].outcome, 'sent', 'plus d’une minute plus tard : accepté de nouveau');
 });
 
 Deno.test('Moteur — transport : envoyé / non envoyé / incertain, jamais de renvoi automatique', async () => {
@@ -431,6 +454,33 @@ Deno.test('Moteur — transport : envoyé / non envoyé / incertain, jamais de r
   w.transport = () => ({ outcome: 'sent', code: 'Texte Libre Avec Des Espaces & le contenu' });
   await call(w, ADMIN, messageBody([LUCAS], 'Quatrième'));
   eq(w.journal.at(-1)?.reason, 'inconnu', 'un code qui n’a pas la forme d’un mot est remplacé');
+});
+
+Deno.test('Moteur — une courte pause entre deux envois (jamais avant le premier, jamais pour un seul)', async () => {
+  const w = makeWorld();
+  await call(w, ADMIN, messageBody([LUCAS], 'Un seul'));
+  eq(w.pauses, [], 'un seul destinataire : aucune pause');
+  const w2 = makeWorld();
+  const extra: string[] = [];
+  for (let i = 0; i < 2; i++) { const id = `10000000-0000-4000-8000-0000000000b${i}`; extra.push(id); w2.users.push({ id, company_id: CO, role: 'worker', is_active: true, first_name: `P${i}`, email: `p${i}@example.com` }); }
+  await call(w2, ADMIN, messageBody([LUCAS, NINA, ...extra], 'Quatre'));
+  eq(w2.mailbox.length, 4, 'quatre e-mails');
+  eq(w2.pauses, [SEND_PAUSE_MS, SEND_PAUSE_MS, SEND_PAUSE_MS], 'trois pauses entre quatre envois');
+  // un destinataire ignoré (désabonné) ne provoque pas de pause inutile
+  const w3 = makeWorld();
+  await call(w3, ADMIN, messageBody([SARA, LUCAS], 'Sara est désabonnée'));
+  eq(w3.pauses, [], 'un seul envoi réel : aucune pause');
+  ok(SEND_PAUSE_MS >= 100 && SEND_PAUSE_MS <= 1000, 'pause raisonnable (le plafond de 50 reste loin du délai de la fonction)');
+});
+
+Deno.test('Journal — une place restée « en cours » s’affiche « incertain » après quelques minutes', () => {
+  const t0 = Date.parse('2026-10-14T10:00:00Z');
+  eq(effectiveLogStatus('reserved', t0, t0 + 60_000), 'reserved', 'une minute : encore « en cours »');
+  eq(effectiveLogStatus('reserved', t0, t0 + RESERVED_STALE_MS), 'reserved', 'pile 5 minutes : encore « en cours »');
+  eq(effectiveLogStatus('reserved', t0, t0 + RESERVED_STALE_MS + 1), 'uncertain', 'au-delà : « incertain »');
+  eq(effectiveLogStatus('reserved', t0, t0 + 20 * 3600_000), 'uncertain', 'des heures plus tard : toujours « incertain » (jamais « en cours » pour toujours)');
+  for (const st of ['sent', 'failed', 'uncertain']) eq(effectiveLogStatus(st, t0, t0 + 3600_000), st, `${st} ne change pas`);
+  eq(UNCERTAIN_LOG_TEXT, 'Envoi incertain : vérifiez la boîte du salarié avant de renvoyer', 'la phrase demandée, mot pour mot');
 });
 
 Deno.test('Moteur — délai : au-delà du budget de temps, on cesse d’envoyer', async () => {
@@ -620,4 +670,18 @@ Deno.test('Fonction send-staff-email — garde-fous lisibles dans le source', ()
   const run = Deno.readTextFileSync(new URL('./staff-email-run.ts', import.meta.url));
   ok(run.indexOf('deps.reserve(') < run.indexOf('deps.send('), 'le plafond (réservation) est pris AVANT le premier envoi');
   ok(run.indexOf('deps.isSupportStaff(') > 0 && run.indexOf('deps.isSupportStaff(') < run.indexOf('deps.loadProfile('), 'le support est écarté avant tout');
+});
+
+Deno.test('Mise en ligne — email-unsubscribe d’abord, send-staff-email en dernier (dans les deux documents)', () => {
+  for (const f of ['../../../docs/emails-lot19.md', '../../../CONFIG-EMAILS.md']) {
+    const txt = Deno.readTextFileSync(new URL(f, import.meta.url));
+    const iUnsub = txt.lastIndexOf('supabase functions deploy email-unsubscribe --no-verify-jwt');
+    const iSend = txt.lastIndexOf('supabase functions deploy send-staff-email');
+    ok(iUnsub > 0 && iSend > 0 && iUnsub < iSend, `${f} : email-unsubscribe est déployée AVANT send-staff-email`);
+    ok(!/Chaque étape peut attendre l.autre \*\*sans rien casser/.test(txt), `${f} : plus de phrase « chaque étape peut attendre l'autre sans rien casser »`);
+  }
+  // Sans send-staff-email l'écran d'envoi n'est pas utilisable : la fenêtre ne parle qu'à cette fonction, rien d'autre.
+  const win = Deno.readTextFileSync(new URL('../../../lib/staff-email.ts', import.meta.url));
+  const calls = [...win.matchAll(/functions\.invoke\('([^']+)'/g)].map((m) => m[1]);
+  eq(calls, ['send-staff-email'], 'le navigateur n’appelle que send-staff-email');
 });

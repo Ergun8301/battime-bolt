@@ -177,7 +177,7 @@ const setup = async (ctx, uid, email, getD) => {
     // Lot 19 : « Envoyer par e-mail » lit l'état à l'ouverture (qui a une adresse, qui est désabonné) — une LECTURE, pas une écriture.
     if (url.pathname.startsWith('/functions/v1/send-staff-email')) {
       const us = (getD().users || []).filter((x) => x.role !== 'admin');
-      return r.fulfill({ json: { available: true, cap: 50, used: 3, remaining: 47, workers: us.map((x) => ({ id: x.id, has_email: !!x.email, unsubscribed: { 'planning-hebdo': x.id === 'u-sara', 'message-bureau': x.id === 'u-sara' } })) } });
+      return r.fulfill({ json: { available: true, cap: 50, used: 3, remaining: 47, can_reply: true, workers: us.map((x) => ({ id: x.id, has_email: !!x.email, invalid_email: false, unsubscribed: { 'planning-hebdo': x.id === 'u-sara', 'message-bureau': x.id === 'u-sara' } })) } });
     }
     if (url.pathname.startsWith('/functions/v1/')) { writes.push(`fonction ${url.pathname.replace('/functions/v1/', '')}`); return r.fulfill({ json: {} }); }
     // Lot 23 : la fonction « suis-je prête ? » du chantier terminé répond oui (le bloc de la fiche client et le bilan sont mesurés).

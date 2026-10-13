@@ -196,6 +196,7 @@ Deno.test({ ...OPTS, name: 'État — compteur, adresses, désabonnés (jamais d
   eq(r.status, 200, 'ok');
   eq([r.json.available, r.json.cap, r.json.used, r.json.remaining], [true, 50, 0, 50], 'disponible, 0 sur 50');
   ok(!JSON.stringify(r.json).includes('@'), 'aucune adresse dans la réponse');
+  eq(r.json.can_reply, true, 'can_reply : l’entreprise a une adresse (l’aperçu du bureau dit « Répondez à cet e-mail »)');
   const sara = (r.json.workers as Row[]).find((x) => x.id === SARA);
   eq(sara?.unsubscribed, { 'planning-hebdo': true, 'message-bureau': true }, 'Sara désabonnée');
   eq(resendCalls.length, 0, 'lire l’état n’envoie rien');
@@ -225,6 +226,17 @@ Deno.test({ ...OPTS, name: 'Planning — le destinataire vient de la base, le vr
   ok(String(resendCalls[0].headers['idempotency-key']).startsWith('staff-email-'), 'clé d’idempotence');
   eq(w.journal.map((j) => [j.kind, j.status]), [['planning-hebdo', 'sent']], 'journal');
   eq(otherHosts, [], 'aucun appel vers un hôte inattendu');
+} });
+
+Deno.test({ ...OPTS, name: 'Doublon — le renvoi d’un planning (PDF différent octet pour octet) dans la minute n’envoie qu’un e-mail', async fn() {
+  fresh();
+  const mk = (label: string) => ({ action: 'planning', week_start: MONDAY, items: [{ user_id: LUCAS, mime: 'application/pdf', content_base64: fakePdfBase64(label) }] });
+  const a = await call(mk('généré à 10:00:01 ID 1'));
+  const b = await call(mk('généré à 10:00:02 ID 2'));
+  eq([results(a)[0].outcome, results(b)[0].outcome, results(b)[0].reason], ['sent', 'skipped', 'doublon'], 'deuxième envoi : doublon, malgré un PDF différent');
+  eq([resendCalls.length, w.journal.length, b.json.used], [1, 1, 1], 'UN seul appel à Resend, une seule place du plafond');
+  w.clockMs += 61_000;
+  eq(results(await call(mk('encore un autre')))[0].outcome, 'sent', 'plus d’une minute plus tard : accepté de nouveau');
 } });
 
 Deno.test({ ...OPTS, name: 'Message — modèle fixe, un e-mail par destinataire, désabonnés écartés', async fn() {

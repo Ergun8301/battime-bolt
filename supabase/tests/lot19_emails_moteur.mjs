@@ -90,8 +90,13 @@ section('Doublons : décidés par la base');
   const [a, b] = await Promise.all([handleStaffEmail(deps, ADMIN, message([LUCAS], 'Même texte')), handleStaffEmail(deps, ADMIN, message([LUCAS], 'Même texte'))]);
   const kinds = [results(a)[0], results(b)[0]].map((x) => x.reason ?? x.outcome).sort();
   check(kinds.join() === 'doublon,sent' && w.mailbox.length === 1, 'deux clics SIMULTANÉS sur le même message : un seul e-mail, l’autre est un doublon');
+  // Le renvoi d'un PLANNING : le PDF n'est jamais identique octet pour octet (jsPDF y met l'heure et un identifiant).
+  const plan = (label) => ({ action: 'planning', week_start: MONDAY, items: [{ user_id: NINA, mime: 'application/pdf', content_base64: fakePdfBase64(label) }] });
+  const p1 = await handleStaffEmail(deps, ADMIN, plan('généré à 10:00:01'));
+  const p2 = await handleStaffEmail(deps, ADMIN, plan('généré à 10:00:02, autre identifiant'));
+  check(results(p1)[0].outcome === 'sent' && results(p2)[0].reason === 'doublon' && w.mailbox.filter((m) => m.kind === 'planning-hebdo').length === 1, 'renvoi d’un planning dans la minute, PDF différent : un seul e-mail (doublon décidé par la vraie base)');
   const c = await handleStaffEmail(deps, ADMIN, message([LUCAS], 'Autre texte'));
-  check(results(c)[0].outcome === 'sent' && w.mailbox.length === 2, 'un autre texte part');
+  check(results(c)[0].outcome === 'sent' && w.mailbox.length === 3, 'un autre texte part');
   await db.exec(`UPDATE public.staff_email_log SET created_at = now() - interval '2 minutes'`).catch(() => {}); // service : UPDATE accordé
   const d = await handleStaffEmail(deps, ADMIN, message([LUCAS], 'Même texte'));
   check(results(d)[0].outcome === 'sent', 'plus d’une minute plus tard, le même texte repart');

@@ -20,7 +20,9 @@ export type Etat = {
   cap: number;
   used: number;
   remaining: number;
-  workers: { id: string; has_email: boolean; unsubscribed: Record<string, boolean> }[];
+  /** « Répondre » écrit-il au bureau ? (l'entreprise a une adresse valable) : l'aperçu dit la même chose que l'e-mail réel. */
+  can_reply?: boolean;
+  workers: { id: string; has_email: boolean; invalid_email?: boolean; unsubscribed: Record<string, boolean> }[];
 };
 export type SendData = { cap: number; used: number; remaining: number; sent: number; results: ResultItem[]; error?: string };
 

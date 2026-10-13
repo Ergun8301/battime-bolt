@@ -42,6 +42,8 @@ export type World = {
   transport: (m: OutMail, n: number) => SendResult | Promise<SendResult>;
   /** Appels reçus par le transport (jamais plus d'un par destinataire). */
   sendCalls: number;
+  /** Les pauses demandées entre deux envois (les tests n'attendent pas). */
+  pauses: number[];
   unavailable: boolean;
   unsubFails: boolean;
   /** Le « jour de Paris » de la base : change pour simuler minuit. */
@@ -80,7 +82,7 @@ export function makeWorld(): World {
     unsub: new Set(['sara@example.com|planning-hebdo', 'sara@example.com|message-bureau']),
     journal: [], mailbox: [], logs: [], clockMs: Date.parse('2026-10-14T10:00:00Z'),
     transport: () => ({ outcome: 'sent', code: 'ok' }),
-    sendCalls: 0, unavailable: false, unsubFails: false, day: '2026-10-14', askedIds: [], seq: 0,
+    sendCalls: 0, pauses: [], unavailable: false, unsubFails: false, day: '2026-10-14', askedIds: [], seq: 0,
   };
 }
 
@@ -113,6 +115,7 @@ export function makeDeps(w: World, over: Partial<Deps> = {}): Deps {
   const down = () => { if (w.unavailable) throw new Unavailable(); };
   const base: Deps = {
     now: () => w.clockMs,
+    pause: async (ms) => { w.pauses.push(ms); },
     loadProfile: async (id) => w.profiles[id] ?? null,
     isSupportStaff: async (id) => w.support.has(id),
     loadCompany: async (id) => w.companies[id] ?? null,

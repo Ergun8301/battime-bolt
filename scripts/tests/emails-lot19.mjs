@@ -43,7 +43,7 @@ const LONG_NAME = ['Jean-Christophe-Maximilien', 'de La Rochefoucauld-Montmorenc
 const USERS = [
   u('u-admin', 'Paul', 'Martin', 'admin'),
   u('u-lucas', 'Lucas', 'Petit'), u('u-nina', 'Nina', 'Roux', 'lead'), u('u-omar', 'Omar', 'Diallo'),
-  u('u-sara', 'Sara', 'Benali'), u('u-kevin', 'Kevin', 'Roussel', 'worker', { email: '' }),
+  u('u-sara', 'Sara', 'Benali'), u('u-kevin', 'Kevin', 'Roussel', 'worker', { email: '' }), u('u-bad', 'Hugo', 'Moreau', 'worker', { email: 'hugo.moreau@@example' }),
   u('u-long', LONG_NAME[0], LONG_NAME[1], 'worker', { email: 'jean-christophe-maximilien.delarochefoucauld-montmorency@entreprise-renovation-grand-lyon.example.com' }),
 ];
 const WS = { id: 'w1', company_id: CO, client_name: 'Villa Dupont', address: '12 rue des Lilas', postal_code: '69003', city: 'Lyon', is_active: true };
@@ -55,6 +55,9 @@ const PLANNING = [
   slot('p7', 'u-long', '2026-10-12', WS2), slot('p8', 'u-long', '2026-10-16', null, { absence_type: 'conge', estimated_start: null, estimated_end: null }),
 ];
 const LOG = [
+  // « en cours » depuis une minute : encore « en cours » ; depuis hier : une panne, la place ne passera jamais à « envoyé » → « incertain ».
+  { id: 'l3', kind: 'planning-hebdo', user_id: 'u-lucas', recipient_mask: 'l***@example.com', status: 'reserved', created_at: '2026-10-13T12:59:00Z' },
+  { id: 'l4', kind: 'message-bureau', user_id: 'u-omar', recipient_mask: 'o***@example.com', status: 'reserved', created_at: '2026-10-12T11:00:00Z' },
   { id: 'l1', kind: 'planning-hebdo', user_id: 'u-lucas', recipient_mask: 'l***@example.com', status: 'sent', created_at: '2026-10-12T09:30:00Z' },
   { id: 'l2', kind: 'message-bureau', user_id: 'u-nina', recipient_mask: 'n***@example.com', status: 'uncertain', created_at: '2026-10-12T10:05:00Z' },
 ];
@@ -80,9 +83,9 @@ const filterRows = (rows, params) => {
 };
 
 /** L'état que renverrait la fonction : qui a une adresse, qui est désabonné, le compteur. */
-const etatBody = (used = 3) => ({
-  available: true, cap: 50, used, remaining: Math.max(0, 50 - used),
-  workers: USERS.filter((x) => x.role !== 'admin').map((x) => ({ id: x.id, has_email: !!x.email, unsubscribed: { 'planning-hebdo': x.id === 'u-sara', 'message-bureau': x.id === 'u-sara' } })),
+const etatBody = (used = 3, canReply = true) => ({
+  available: true, cap: 50, used, remaining: Math.max(0, 50 - used), can_reply: canReply,
+  workers: USERS.filter((x) => x.role !== 'admin').map((x) => ({ id: x.id, has_email: !!x.email && x.id !== 'u-bad', invalid_email: x.id === 'u-bad', unsubscribed: { 'planning-hebdo': x.id === 'u-sara', 'message-bureau': x.id === 'u-sara' } })),
 });
 const OKMSG = 'Envoyé.';
 
@@ -90,7 +93,7 @@ const OKMSG = 'Envoyé.';
  * Le bureau. `fn` : comment la fonction simulée répond ; `etat` : 'ok' | 'missing' | 'unavailable' | 'network' | 'error' ;
  * `send` : 'ok' | 'cap' | 'uncertain' | 'failed' | 'network' | 'refused' ; `used` : compteur du jour.
  */
-async function bureau({ width = 390, height = 844, isMobile = true, etat = 'ok', send = 'ok', used = 3, support = false, storedAbsent = false, log = LOG } = {}) {
+async function bureau({ width = 390, height = 844, isMobile = true, etat = 'ok', send = 'ok', used = 3, support = false, storedAbsent = false, log = LOG, canReply = true } = {}) {
   const ctx = await b.newContext({ viewport: { width, height }, locale: 'fr-FR', timezoneId: 'Europe/Paris', isMobile, hasTouch: isMobile, serviceWorkers: 'block', acceptDownloads: false });
   await ctx.clock.install({ time: NOW });
   const S = { fn: [], reads: [], restWrites: 0, requests: [], etat, send, used, resend: 0, etatCalls: 0 };
@@ -111,7 +114,7 @@ async function bureau({ width = 390, height = 844, isMobile = true, etat = 'ok',
         if (S.etat === 'unavailable') return r.fulfill({ json: { available: false } });
         if (S.etat === 'network') { S.etat = 'ok'; return r.abort('failed'); }
         if (S.etat === 'error') return r.fulfill({ status: 403, json: { error: 'Réservé à l’administrateur de l’entreprise' } });
-        return r.fulfill({ json: etatBody(S.used) });
+        return r.fulfill({ json: etatBody(S.used, canReply) });
       }
       const ids = body.action === 'planning' ? (body.items || []).map((i) => i.user_id) : (body.user_ids || []);
       if (S.send === 'network') return r.abort('failed');
@@ -198,7 +201,9 @@ console.log('\n── 2) la liste (téléphone 390 px) : adresse, sans adresse, 
   const { p, S } = h;
   await openDialog(h);
   const state = (id) => p.locator(person(id)).getAttribute('data-state');
-  check([await state('u-lucas'), await state('u-nina'), await state('u-omar'), await state('u-sara'), await state('u-kevin'), await state('u-long')].join() === 'ok,ok,vide,desabonne,sans-adresse,ok', '2) Lucas, Nina et le salarié au nom long : sélectionnables ; Omar : rien cette semaine ; Sara : désabonnée ; Kevin : sans adresse');
+  check([await state('u-lucas'), await state('u-nina'), await state('u-omar'), await state('u-sara'), await state('u-kevin'), await state('u-long'), await state('u-bad')].join() === 'ok,ok,vide,desabonne,sans-adresse,ok,adresse-invalide', '2) Lucas, Nina et le salarié au nom long : sélectionnables ; Omar : rien cette semaine ; Sara : désabonnée ; Kevin : sans adresse ; Hugo : adresse invalide');
+  check(/adresse invalide/.test(await txt(p, person('u-bad'))) && /Adresse e-mail invalide : corrigez-la sur la fiche du salarié/.test(await txt(p, person('u-bad'))) && !/Pas d’adresse e-mail enregistrée/.test(await txt(p, person('u-bad'))), '2) Hugo : « adresse invalide » + « Adresse e-mail invalide : corrigez-la… » (et non « Pas d’adresse enregistrée »)');
+  check(await p.locator(`${person('u-bad')} input`).isDisabled(), '2) … on ne le coche pas');
   check(/désabonné/.test(await txt(p, person('u-sara'))) && /ne plus recevoir le planning par e-mail/.test(await txt(p, person('u-sara'))), '2) Sara : « désabonné » + la raison écrite');
   check(/sans adresse/.test(await txt(p, person('u-kevin'))) && /Pas d’adresse e-mail enregistrée/.test(await txt(p, person('u-kevin'))), '2) Kevin : « sans adresse » + la raison');
   check(/rien cette semaine/.test(await txt(p, person('u-omar'))) && /Aucune intervention prévue/.test(await txt(p, person('u-omar'))), '2) Omar : « rien cette semaine » + la raison');
@@ -229,6 +234,7 @@ console.log('\n── 3) planning : aperçu, confirmation explicite, PDF valides
   await p.locator(`${person('u-lucas')} label`).click();
   check((await txt(p, '[data-testid=em-preview]')).includes('Bonjour Lucas,') && /Objet : \[Martin Menuiserie\] Votre planning de la semaine du 12 au 18 octobre 2026/.test(await txt(p, '[data-testid=em-preview]')) && /planning-semaine-2026-10-12\.pdf/.test(await txt(p, '[data-testid=em-preview]')), '3) aperçu : le prénom, l’objet avec la semaine, le nom du fichier joint');
   check(/lien « Se désabonner »/.test(await txt(p, '[data-testid=em-preview]')), '3) l’aperçu annonce le lien de désabonnement');
+  check(/Répondez à cet e-mail pour joindre le bureau/.test(await txt(p, '[data-testid=em-preview]')) && !/ne permet pas de répondre/.test(await txt(p, '[data-testid=em-preview]')), '3) l’entreprise a une adresse : l’aperçu dit « Répondez à cet e-mail pour joindre le bureau » (comme l’e-mail réel)');
   await p.locator('[data-testid=em-all]').click();
   if (process.env.CAPTURES_ECRAN_LARGE) await p.screenshot({ path: `${SH}/emails-planning-1280x800.png` });
   check(await p.locator(`${person('u-lucas')} input`).isChecked() && await p.locator(`${person('u-nina')} input`).isChecked() && await p.locator(`${person('u-long')} input`).isChecked() && !(await p.locator(`${person('u-sara')} input`).isChecked()), '3) « Tout sélectionner » coche Lucas, Nina et le nom long — jamais Sara');
@@ -256,8 +262,9 @@ console.log('\n── 3) planning : aperçu, confirmation explicite, PDF valides
   check(hasChunk(S, JSPDF), '3) jsPDF est arrivé à l’ouverture de la fenêtre (pas avant)');
   const res = await p.locator('[data-testid=em-results] li').evaluateAll((els) => els.map((e) => ({ o: e.getAttribute('data-outcome'), t: e.innerText.replace(/\s+/g, ' ') })));
   check(res.length === 3 && res.every((x) => x.o === 'sent' && /envoyé/.test(x.t)), `3) résultat par destinataire : trois « envoyé » (${res.map((x) => x.t.slice(0, 30)).join(' | ')})`);
-  check(/3 envoyés · 0 ignoré · 0 refusé · 0 incertain · 6 aujourd’hui sur 50/.test(await txt(p, '[data-testid=em-summary]')), `3) résumé : « ${await txt(p, '[data-testid=em-summary]')} »`);
+  check(/3 envoyés · 0 ignoré · 0 non envoyé · 0 incertain · 6 aujourd’hui sur 50/.test(await txt(p, '[data-testid=em-summary]')), `3) résumé : « ${await txt(p, '[data-testid=em-summary]')} »`);
   check(S.restWrites === 0, '3) aucune écriture directe dans la base depuis le navigateur');
+  check(S.requests.filter((r) => r.startsWith('/functions/v1/')).every((r) => r === '/functions/v1/send-staff-email'), '3) la fenêtre ne parle qu’à la fonction send-staff-email (sans elle, aucun envoi n’est possible)');
   await p.locator('[data-testid=em-new]').click();
   check(/6 e-mails aujourd’hui sur 50/.test(await txt(p, '[data-testid=em-counter]')) && !(await p.locator(`${person('u-lucas')} input`).isChecked()), '3) « Nouvel envoi » : compteur à jour (6), sélection vide');
   await h.ctx.close();
@@ -348,6 +355,7 @@ for (const [send, label, outcome, re] of [['failed', 'refusé par le service', '
   const li = p.locator('[data-testid=em-results] li').first();
   check(await li.getAttribute('data-outcome') === outcome && re.test(await li.innerText()) && !/envoyé\b(?! )/.test((await li.innerText()).split('—')[1]?.split('\n')[0] || ''), `6) ${label} : « ${(await li.innerText()).replace(/\s+/g, ' ').slice(0, 90)} »`);
   check(!/(^| )3 envoyés|1 envoyé/.test(await txt(p, '[data-testid=em-summary]')), `6) ${label} : le résumé ne compte aucun « envoyé » (${await txt(p, '[data-testid=em-summary]')})`);
+  if (send === 'failed') check(/1 non envoyé/.test(await txt(p, '[data-testid=em-summary]')) && !/refusé/.test(await txt(p, '[data-testid=em-done]')), '6) le résumé et la ligne disent le même mot : « non envoyé » (jamais « refusé »)');
   await h.ctx.close();
 }
 {
@@ -446,8 +454,24 @@ console.log('\n── 9) le journal');
   check(!S.reads.some((r) => r.t === 'staff_email_log'), '9) le journal n’est pas lu à l’ouverture');
   await p.locator('[data-testid=em-log-open]').click(); await p.waitForSelector('[data-testid=em-log]');
   const items = await p.locator('[data-testid=em-log] li').allInnerTexts();
-  check(items.length === 2 && /Message · Nina Roux · incertain/.test(items[0]) && /Planning · Lucas Petit · envoyé/.test(items[1]), `9) « Derniers envois » : ${items.map((x) => x.replace(/\s+/g, ' ')).join(' | ')}`);
+  check(items.length === 4, `9) « Derniers envois » : ${items.length} lignes (${items.map((x) => x.replace(/\s+/g, ' ')).join(' | ')})`);
+  check(/Planning · Lucas Petit · en cours/.test(items[0]) && !/incertain/.test(items[0]), '9) une place « en cours » depuis une minute : encore « en cours »');
+  check(/Message · Omar Diallo · incertain/.test(items.find((x) => /Omar/.test(x)) || '') && /Envoi incertain : vérifiez la boîte du salarié avant de renvoyer/.test(items.find((x) => /Omar/.test(x)) || ''), '9) une place restée « en cours » depuis hier : « incertain » + « Envoi incertain : vérifiez la boîte du salarié avant de renvoyer »');
+  check(items.some((x) => /Message · Nina Roux · incertain/.test(x)) && items.some((x) => /Planning · Lucas Petit · envoyé/.test(x)), '9) un envoi « incertain » et un « envoyé » gardent leur statut');
+  check(await p.locator('[data-testid=em-log] li[data-status=reserved]').count() === 1 && await p.locator('[data-testid=em-log] li[data-status=uncertain]').count() === 2, '9) le calcul se fait à l’affichage : 1 « en cours », 2 « incertain » (aucune écriture : la base simulée n’a rien reçu)');
+  check(S.restWrites === 0, '9) aucune écriture');
   check(S.reads.filter((r) => r.t === 'staff_email_log').length === 1 && !/@example\.com/.test(items.join(' ')), '9) UNE lecture, sur demande ; seules des adresses masquées existent dans le journal');
+  await h.ctx.close();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+console.log('\n── 9bis) l’aperçu suit l’adresse de l’entreprise');
+{
+  const h = await bureau({ canReply: false });
+  const { p } = h;
+  await openDialog(h);
+  await pick(p, 'u-lucas');
+  check(/ne permet pas de répondre au bureau : contactez-le directement/.test(await txt(p, '[data-testid=em-preview]')) && !/Répondez à cet e-mail/.test(await txt(p, '[data-testid=em-preview]')), '9bis) l’entreprise n’a pas d’adresse : l’aperçu dit « Cet e-mail ne permet pas de répondre au bureau » (comme l’e-mail réel)');
   await h.ctx.close();
 }
 

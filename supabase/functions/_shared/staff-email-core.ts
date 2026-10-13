@@ -24,6 +24,10 @@ export const MAX_TOTAL_PDF_BYTES = 8 * 1024 * 1024;
 export const MAX_RECIPIENTS_PER_CALL = DAILY_EMAIL_CAP;
 /** Au-delà de cette durée, on cesse d'envoyer (la fonction edge a une limite de temps). */
 export const SEND_BUDGET_MS = 110_000;
+/** Pause entre deux envois d'une même demande : le service d'e-mail limite le nombre d'appels par seconde (429). */
+export const SEND_PAUSE_MS = 250;
+/** Une place « en cours » depuis plus longtemps que ça (panne entre la réservation et l'envoi) s'affiche « incertain ». */
+export const RESERVED_STALE_MS = 5 * 60_000;
 
 export const STAFF_EMAIL_KINDS = ['planning-hebdo', 'message-bureau'] as const;
 export type StaffEmailKind = (typeof STAFF_EMAIL_KINDS)[number];
@@ -39,7 +43,7 @@ export type Outcome = 'sent' | 'failed' | 'uncertain';
 /** skipped = ignoré AVANT l'envoi (raison à l'appui) ; failed = refusé, rien n'est parti ; uncertain = peut-être parti. */
 export type ResultOutcome = Outcome | 'skipped';
 export type ReasonCode =
-  | 'inconnu' | 'sans-adresse' | 'adresse-partagee' | 'desabonne' | 'doublon' | 'limite' | 'pdf-invalide' | 'pdf-absent'
+  | 'inconnu' | 'sans-adresse' | 'adresse-invalide' | 'adresse-partagee' | 'desabonne' | 'doublon' | 'limite' | 'pdf-invalide' | 'pdf-absent'
   | 'refus-service' | 'incertain' | 'delai' | 'erreur';
 
 export type ResultItem = { user_id: string; outcome: ResultOutcome; reason?: ReasonCode; message: string };
@@ -48,6 +52,7 @@ export function reasonText(reason: ReasonCode, kind: StaffEmailKind): string {
   switch (reason) {
     case 'inconnu': return 'Salarié introuvable ou archivé : rien n’est parti.';
     case 'sans-adresse': return 'Pas d’adresse e-mail enregistrée : rien n’est parti.';
+    case 'adresse-invalide': return 'Adresse e-mail invalide : corrigez-la sur la fiche du salarié. Rien n’est parti.';
     case 'adresse-partagee': return 'Même adresse qu’un autre salarié de la liste : un seul e-mail est envoyé à cette adresse.';
     case 'desabonne': return kind === 'message-bureau'
       ? 'Désabonné : cette personne a demandé à ne plus recevoir ces messages. Le message n’est pas envoyé (ce n’est pas un e-mail obligatoire) : contactez-la autrement.'
@@ -64,6 +69,18 @@ export function reasonText(reason: ReasonCode, kind: StaffEmailKind): string {
 }
 
 export const sentText = 'Envoyé.';
+
+/** Phrase du journal pour un envoi dont on ne sait pas s'il est parti. */
+export const UNCERTAIN_LOG_TEXT = 'Envoi incertain : vérifiez la boîte du salarié avant de renvoyer';
+
+/**
+ * Le statut À AFFICHER d'une ligne du journal. Une place restée « reserved » (panne entre la réservation et
+ * l'envoi) ne passera jamais à « sent » : passé RESERVED_STALE_MS elle s'affiche « uncertain ». Calcul à
+ * l'affichage seulement : aucune écriture, aucun balayage. La place reste comptée dans le plafond jusqu'à minuit.
+ */
+export function effectiveLogStatus(status: string, createdAtMs: number, nowMs: number): string {
+  return status === 'reserved' && nowMs - createdAtMs > RESERVED_STALE_MS ? 'uncertain' : status;
+}
 
 /** Résultat HTTP du service d'e-mail : 2xx envoyé ; 4xx = refusé (rien n'est parti) ; 408, 409, 5xx et le reste = incertain. */
 export function classifyHttp(status: number): Outcome {
@@ -213,7 +230,7 @@ export type WorkerRow = {
   email: string | null;
 };
 export type Candidate = { id: string; email: string; firstName: string };
-export type Skipped = { user_id: string; reason: 'inconnu' | 'sans-adresse' | 'adresse-partagee' | 'desabonne' };
+export type Skipped = { user_id: string; reason: 'inconnu' | 'sans-adresse' | 'adresse-invalide' | 'adresse-partagee' | 'desabonne' };
 
 /** Un salarié que le bureau peut contacter : de CETTE entreprise, actif, salarié ou chef d'équipe. */
 export function isContactable(w: WorkerRow | undefined, companyId: string): w is WorkerRow {
@@ -239,7 +256,8 @@ export function pickRecipients(
     const w = byId.get(id);
     if (!isContactable(w, companyId)) { skipped.push({ user_id: id, reason: 'inconnu' }); continue; }
     const email = normalizeEmail(w.email);
-    if (!isPlausibleEmail(email)) { skipped.push({ user_id: id, reason: 'sans-adresse' }); continue; }
+    if (!email) { skipped.push({ user_id: id, reason: 'sans-adresse' }); continue; }
+    if (!isPlausibleEmail(email)) { skipped.push({ user_id: id, reason: 'adresse-invalide' }); continue; }
     if (unsubscribed.has(email)) { skipped.push({ user_id: id, reason: 'desabonne' }); continue; }
     // Deux salariés avec la même adresse (compte partagé) : un seul e-mail, pas deux.
     if (seenEmails.has(email)) { skipped.push({ user_id: id, reason: 'adresse-partagee' }); continue; }
