@@ -4,6 +4,8 @@ import {
   BAD_FORMAT, checkVideoFile, formatDuration, formatMo, GPS_NOTE, leftoverNote, leftoverSummary, PLAY_RESIGN_MAX, QUOTA_FULL, quotaFull, quotaLabel, quotaRatio, TOO_BIG,
   UPLOAD_CANCELLED, UPLOAD_CUT, uploadErrorMessage, VIDEO_MAX_BYTES, VIDEO_MIME_BUCKET_SQL, VIDEO_MIME_SQL, VIDEO_MIME_TYPES, VIDEO_NEW_PLACES_MAX, VIDEO_QUOTA_BYTES,
   VIDEO_SIGN_SECONDS, VIDEO_WINDOW_HOURS, videoMimeOf, videoPathOk, videoSummary,
+  AUDIT_BYTES, AUDIT_LINK, AUDIT_MISSING_NOTE, AUDIT_MISSING_ROW, AUDIT_MISSING_TITLE, AUDIT_MORE, AUDIT_NOTE, AUDIT_ORPHAN_ROW, AUDIT_ORPHANS_NOTE, AUDIT_ORPHANS_TITLE,
+  parseFileAudit, shortDate,
 } from './training-videos.ts';
 
 function eq(a: unknown, b: unknown, msg: string) {
@@ -126,4 +128,66 @@ Deno.test('envoi : messages clairs (coupure, annulation, trop lourd, format, exp
   ok(/vient de se terminer/.test(uploadErrorMessage({ status: 409, body: { error: 'Duplicate', message: 'The resource already exists' } })), 'déjà là');
   eq(uploadErrorMessage({ status: 500, body: {} }), 'L’envoi a échoué. Réessayez.', 'autre');
   eq(PLAY_RESIGN_MAX, 1, 'une seule re-signature avant « lecture impossible » (pas de boucle)');
+});
+
+// ─── Lot 14 : fichiers à vérifier (détection seulement) ──────────────────────
+const fichier = (n: number, extra: Record<string, unknown> = {}) => ({ kind: 'fichier_sans_formation', video_id: null, title: null, file_path: `c0/aaaaaaaa-0000-4000-8000-00000000000${n}`,
+  real_bytes: 5 * MO, occurred_at: '2026-10-12T12:00:00Z', archived: null, total_n: 1, total_bytes: 5 * MO, ...extra });
+const manque = (n: number, extra: Record<string, unknown> = {}) => ({ kind: 'formation_sans_fichier', video_id: `v${n}`, title: `Formation ${n}`, file_path: `c0/v${n}`,
+  real_bytes: 4 * MO, occurred_at: '2026-10-13T12:00:00Z', archived: false, total_n: 1, total_bytes: 0, ...extra });
+
+Deno.test('fichiers à vérifier : la réponse de la base en deux listes', () => {
+  eq(parseFileAudit([]), null, 'tableau vide : rien à montrer');
+  eq(parseFileAudit(null), null, 'null');
+  eq(parseFileAudit({ kind: 'fichier_sans_formation' }), null, 'ce n’est pas un tableau');
+  eq(parseFileAudit('x'), null, 'chaîne');
+  eq(parseFileAudit([null, 3, 'x', { kind: 'autre_chose' }]), null, 'lignes inconnues ignorées : rien');
+  const a = parseFileAudit([fichier(1), fichier(2, { total_n: 2, total_bytes: 11 * MO }), manque(1), manque(2, { archived: true, total_n: 2 })]);
+  ok(!!a, 'deux sortes');
+  eq([a!.orphans.length, a!.orphanTotal, a!.orphanBytes, a!.missing.length, a!.missingTotal], [2, 1, 5 * MO, 2, 1], 'les totaux sont ceux de la PREMIÈRE ligne de la sorte');
+  const t = parseFileAudit([fichier(1, { total_n: 150, total_bytes: 59411175 }), fichier(2, { total_n: 150, total_bytes: 59411175 }), manque(1, { total_n: 130 })]);
+  eq([t!.orphans.length, t!.orphanTotal, t!.orphanBytes, t!.missing.length, t!.missingTotal], [2, 150, 59411175, 1, 130], 'totaux supérieurs aux lignes montrées (100 au plus par sorte)');
+  const s = parseFileAudit([fichier(1, { real_bytes: '1048576', total_n: '7', total_bytes: '7340032' })]);
+  eq([s!.orphans[0].real_bytes, s!.orphanTotal, s!.orphanBytes], [1048576, 7, 7340032], 'nombres reçus en chaînes (bigint)');
+  eq(s!.missing, [], 'une seule sorte : l’autre liste est vide');
+  eq(s!.missingTotal, 0, 'et son total vaut 0');
+  const u = parseFileAudit([{ kind: 'fichier_sans_formation', file_path: 'c0/x' }]);
+  eq(u!.orphans[0], { kind: 'fichier_sans_formation', video_id: null, title: null, file_path: 'c0/x', real_bytes: 0, occurred_at: null, archived: null }, 'champs absents : valeurs neutres');
+  eq([u!.orphanTotal, u!.orphanBytes], [1, 0], 'sans total_n ni total_bytes : longueur et somme');
+  const k = parseFileAudit([{ kind: 'effacer_tout', file_path: 'c0/x' }, manque(1)]);
+  eq(k!.orphans, [], 'un kind inconnu est ignoré');
+  eq(parseFileAudit([fichier(1, { total_n: 0, total_bytes: 0 })]), null, 'les deux totaux à 0 : rien à montrer');
+});
+
+Deno.test('fichiers à vérifier : textes exacts', () => {
+  eq(AUDIT_LINK(9, false), 'Fichiers vidéo à vérifier (9)', 'lien replié');
+  eq(AUDIT_LINK(9, true), 'Masquer les fichiers vidéo à vérifier', 'lien déplié');
+  eq(AUDIT_NOTE, 'Rien n’est supprimé automatiquement : ces fichiers sont seulement signalés. Pour en retirer un, contactez BEMEXO.', 'note');
+  eq(AUDIT_ORPHANS_TITLE(7), 'Fichiers sans formation (7)', 'titre fichiers');
+  eq(AUDIT_ORPHANS_NOTE(VIDEO_QUOTA_BYTES), 'Le fichier est dans votre dossier vidéo, mais aucune formation ne l’utilise. Il compte dans les 100 Mo.', 'note fichiers');
+  eq(AUDIT_MISSING_TITLE(2), 'Formations dont le fichier manque (2)', 'titre formations');
+  eq(AUDIT_MISSING_NOTE, 'Les salariés ne peuvent pas lire ces vidéos : le fichier est introuvable.', 'note formations');
+  eq(AUDIT_MORE(1), '+ 1 autre', '+ 1 autre');
+  eq(AUDIT_MORE(2), '+ 2 autres', '+ 2 autres');
+  eq(AUDIT_BYTES(35 * MO), 'Ensemble : 35 Mo', 'ensemble');
+  // Dates à midi UTC : le même jour partout de Paris à Honolulu.
+  eq(shortDate('2026-10-12T12:00:00Z'), '12/10', 'date courte');
+  eq(shortDate('pas une date'), '', 'date illisible');
+  eq(shortDate(null), '', 'date absente');
+  eq(AUDIT_ORPHAN_ROW({ real_bytes: 5 * MO, occurred_at: '2026-10-12T12:00:00Z', file_path: 'c0/aaaaaaaa-0000-4000-8000-0000deadbeef' }),
+    'Fichier sans formation · 5 Mo · envoyé le 12/10 · réf. deadbeef', 'ligne fichier');
+  eq(AUDIT_ORPHAN_ROW({ real_bytes: 1.5 * MO, occurred_at: null, file_path: 'c0/abcdefgh12345678' }), 'Fichier sans formation · 1,5 Mo · réf. 12345678', 'ligne fichier sans date');
+  eq(AUDIT_MISSING_ROW({ title: 'Gestes et postures', occurred_at: '2026-10-13T12:00:00Z', archived: false }), 'Gestes et postures · publiée le 13/10', 'ligne formation');
+  eq(AUDIT_MISSING_ROW({ title: 'Ancienne consigne', occurred_at: '2026-10-13T12:00:00Z', archived: true }), 'Ancienne consigne · publiée le 13/10 · retirée', 'ligne formation retirée');
+});
+
+Deno.test('fichiers à vérifier : jumelle de la migration (nom de fonction, aucune suppression)', () => {
+  const dir = new URL('../../migrations/', import.meta.url);
+  let sql = '';
+  for (const e of Deno.readDirSync(dir)) if (e.name.endsWith('_videos_fichiers_a_verifier.sql')) sql = Deno.readTextFileSync(new URL(e.name, dir));
+  ok(sql.includes('CREATE OR REPLACE FUNCTION public.video_files_audit()'), 'la migration définit video_files_audit()');
+  ok(sql.includes("kind text, video_id uuid, title text, file_path text, real_bytes bigint,\n                occurred_at timestamptz, archived boolean, total_n bigint, total_bytes bigint"), 'mêmes colonnes que FileAuditRow + totaux');
+  ok(sql.includes("'fichier_sans_formation'::text") && sql.includes("'formation_sans_fichier'::text"), 'mêmes deux sortes');
+  const code = sql.split('\n').filter((l) => !/^\s*--/.test(l)).join('\n');
+  ok(!/DROP|DELETE|TRUNCATE|CASCADE/i.test(code), 'aucune suppression hors commentaires');
 });
