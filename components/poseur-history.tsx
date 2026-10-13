@@ -17,6 +17,7 @@ import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { loadPdf, preloadExportLibs, isExportLibError } from '@/lib/export-utils';
+import TermineLe from '@/components/termine-le'; // lot 23 : « Terminé le … »
 
 // Lot 3 : la liste n'est chargée que si on l'ouvre.
 const TracesDialog = dynamic(() => import('@/components/traces-dialog'), { ssr: false });
@@ -256,6 +257,7 @@ export default function PoseurHistory() {
                     <div key={entry.id} className={`flex items-center justify-between py-2 border-t first:border-t-0${entry.status === 'cancelled' ? ' line-through text-[#9a948a]' : ''}`}>
                       <div className="flex-1">
                         <p className="font-medium">{entry.worksite?.client_name || 'Autre'}</p>
+                        <TermineLe ws={entry.worksite} />
                         {entry.worksite?.city && (
                           <p className="text-sm text-muted-foreground flex items-center gap-1">
                             <MapPin className="h-3 w-3" />

@@ -80,6 +80,11 @@ import { cellKey, parisDay, placeLive, type LivePlace, type LiveSessionLike } fr
 import { copyRefusal, targetRefusal } from '@/supabase/functions/_shared/copy-slot';
 import { keep } from '@/lib/same';
 import { lazyWindow, warmAll } from '@/lib/lazy-window';
+// Lot 23 : chantier terminé. Le bloc de la fiche est petit (premier chargement) ; le contrôle avant de terminer
+// et le bilan sont dans une fenêtre chargée à l'ouverture.
+import ChantierTermineBar, { type TermineMode } from '@/components/chantier-termine-bar';
+import type { TermineTarget } from '@/components/chantier-termine';
+import { termineLe } from '@/supabase/functions/_shared/chantier-statut';
 // Formations (lot 6, oct. 2026) : depuis « Salariés » et le menu du téléphone, seulement si la migration est passée.
 import { trainingsAvailable } from '@/lib/trainings';
 // Lot 3 : « Interventions supprimées ou décalées » (lecture seule).
@@ -103,6 +108,7 @@ const LeaveAdminDialog = lazyWindow(() => import('@/components/leave-admin-dialo
 const TeamStats = lazyWindow(() => import('@/components/team-stats'), { isOpen: (p) => p.open, priority: 6 });
 const WorkerDetailDialog = lazyWindow(() => import('@/components/worker-detail'), { isOpen: (p) => p.worker != null, close: (p) => p.onOpenChange(false), priority: 7 });
 const ChantierDocuments = lazyWindow(() => import('@/components/chantier-documents'), { isOpen: (p) => p.open, priority: 8 });
+const ChantierTermine = lazyWindow(() => import('@/components/chantier-termine'), { isOpen: (p) => p.target != null, close: (p) => p.onClose(), priority: 13 });
 const ImportDialog = lazyWindow(() => import('@/components/import-dialog'), { isOpen: (p) => p.open, priority: 9 });
 const ImportWorkersDialog = lazyWindow(() => import('@/components/import-workers-dialog'), { isOpen: (p) => p.open, priority: 10 });
 // Déjà conditionnées par kioskOn / trainingsOn : préchauffées seulement quand elles existent à l'écran.
@@ -427,9 +433,10 @@ function PaletteRow({ worksite, color }: { worksite: Worksite; color: string }) 
   // c'est qu'elle a été saisie à la main — elle ne décrit alors plus rien, et
   // on ne la montre pas. Le salarié qui le choisit peut, lui, le nommer.
   const isOther = worksite.client_name === 'Autre';
-  const sub = isOther
-    ? 'Chantier non listé — le salarié le nomme'
-    : [worksite.product_type, worksite.city].filter(Boolean).join(' · ');
+  const sub = [
+    isOther ? 'Chantier non listé — le salarié le nomme' : [worksite.product_type, worksite.city].filter(Boolean).join(' · '),
+    termineLe(worksite, true), // lot 23 : « Terminé le 12/10/2026 » (vide tant que le chantier est en cours)
+  ].filter(Boolean).join(' · ');
   return (
     <div
       ref={setNodeRef}
@@ -1116,6 +1123,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
 
   // separate client fiche (permanent data)
   const [clientFiche, setClientFiche] = useState<Worksite | null>(null);
+  const [termineTarget, setTermineTarget] = useState<TermineTarget | null>(null); // lot 23 : terminer / rouvrir / bilan
   // Panneau Documents : le chantier, et le JOUR quand on l'ouvre depuis une
   // case du planning. Depuis la fiche client, il n'y a pas de jour — et lui
   // coller la date d'aujourd'hui inventerait une information.
@@ -4176,7 +4184,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
                 <p className="text-sm text-muted-foreground py-6 text-center">Aucun résultat</p>
               ) : (
                 filteredClients.map((ws) => {
-                  const sub = [ws.product_type, ws.city].filter(Boolean).join(' · ');
+                  const sub = [ws.product_type, ws.city, termineLe(ws, true)].filter(Boolean).join(' · ');
                   return (
                     <button
                       key={ws.id}
@@ -4606,6 +4614,9 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
                 </div>
               </div>
 
+              {/* Lot 23 : chantier terminé + bilan (caché tant que la migration n'est pas appliquée). */}
+              <ChantierTermineBar worksite={clientFiche} onOpen={(mode: TermineMode) => setTermineTarget({ ws: clientFiche, mode })} />
+
               <div className="flex flex-wrap gap-2 pt-1">
                 <Button onClick={saveClientFiche} disabled={savingWs} data-guide="bureau-clients.enregistrer">
                   {savingWs && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer
@@ -4624,6 +4635,13 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
           )}
         </DialogContent>
       </Dialog>
+
+      <ChantierTermine
+        target={termineTarget}
+        companyId={user?.company_id || ''}
+        onClose={() => setTermineTarget(null)}
+        onChanged={(patch) => { setClientFiche((f) => (f ? { ...f, ...patch } : f)); fetchData(); fetchPlanning(); }}
+      />
 
       <ChantierDocuments
         worksiteId={docsWorksite?.ws.id || null}

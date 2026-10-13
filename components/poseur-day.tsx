@@ -47,6 +47,9 @@ import ReserveLiftForm from '@/components/reserve-lift-form';
 import { liftReserve, undoWorkerLift, liftErrorMessage, announceReservesChanged, RESERVES_CHANGED_EVENT } from '@/lib/reserve-lift';
 import { fetchMyClosure } from '@/lib/worker-closure';
 import { isReserveLifted } from '@/lib/reserves';
+// Lot 23 : chantier terminé — plus proposé dans les listes de choix, « Terminé le … » sur ses cartes.
+import TermineLe from '@/components/termine-le';
+import { choosableWorksites } from '@/supabase/functions/_shared/chantier-statut';
 // Lot 4 : les réunions et les tâches du jour (lecture à part, rien sur les heures).
 import { MyMeetings, MyTasks, useMyMissions } from '@/components/missions-worker';
 
@@ -1909,15 +1912,19 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
     if (b.client_name === OTHER_NAME) return 1;
     return a.client_name.localeCompare(b.client_name);
   });
+  // Lot 23 : un chantier TERMINÉ n'est plus proposé pour une nouvelle intervention ni un nouveau pointage — sauf pour un jour
+  // qui n'est pas après sa fin (journée oubliée) ; « Autre » reste toujours proposé. Seules les listes de CHOIX sont
+  // filtrées : `worksites` / `sortedWorksites` gardent tout (noms des cartes, pointage en cours).
+  const choosable = choosableWorksites(sortedWorksites, [fWorksiteId], date);
   const cq = chantierQuery.trim().toLowerCase();
   const filteredWorksites = cq
-    ? sortedWorksites.filter((w) => w.client_name.toLowerCase().includes(cq) || (w.city || '').toLowerCase().includes(cq))
-    : sortedWorksites;
+    ? choosable.filter((w) => w.client_name.toLowerCase().includes(cq) || (w.city || '').toLowerCase().includes(cq))
+    : choosable;
   const autreId = worksites.find((w) => w.client_name === OTHER_NAME)?.id || '';
   const pq = pickQuery.trim().toLowerCase();
   const pickWorksites = pq
-    ? sortedWorksites.filter((w) => w.client_name.toLowerCase().includes(pq) || (w.city || '').toLowerCase().includes(pq))
-    : sortedWorksites;
+    ? choosable.filter((w) => w.client_name.toLowerCase().includes(pq) || (w.city || '').toLowerCase().includes(pq))
+    : choosable;
 
   /**
    * « Autre » nommé : on en fait un vrai chantier.
@@ -2277,6 +2284,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
                   <span className="bt-iv-name">{ws?.client_name || 'Chantier'}</span>
                 </div>
                 {ws?.city && <div className="bt-iv-city">{ws.city}</div>}
+                <TermineLe ws={ws} />
                 <LiveLine since={item.data.since} />
               </div>
             );
@@ -2298,6 +2306,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div className="bt-iv-name">{p.worksite?.client_name}</div>
                     {p.worksite?.city && <div className="bt-iv-city">{p.worksite.city}</div>}
+                    <TermineLe ws={p.worksite} />
                   </div>
                   {p.worksite?.id && (docsByWorksite.get(p.worksite.id) || 0) > 0 && (
                     <span className="bt-iv-docs"><Paperclip className="h-3 w-3" />{docsByWorksite.get(p.worksite.id)}</span>
@@ -2339,6 +2348,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
                     <div className="bt-badge bt-badge-wait">● À envoyer</div>
                   ) : null}
                 </div>
+                <TermineLe ws={entry.worksite} />
                 <div className="bt-iv-times">
                   {entry.worksite?.city && <span className="bt-iv-city">{entry.worksite.city}</span>}
                   {isExitToComplete(entry)
