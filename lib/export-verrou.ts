@@ -106,3 +106,16 @@ export function messageFinExport(o: {
   if (o.kind === 'comptable') return `${o.envoi ?? ''}${reste}`;
   return `${o.kind === 'csv' ? 'CSV de paie téléchargé' : 'Export téléchargé'}${reste}`;
 }
+
+/**
+ * Le verrou a échoué APRÈS le fichier : il est déjà téléchargé (ou l'e-mail déjà parti). On le dit, avec ce qui reste
+ * modifiable. `poses` = lignes déjà verrouillées avant l'échec (le verrou se pose par lots de 200).
+ */
+export function messageEchecVerrou(o: { kind: ExportEquipe; poses: number; total: number }): string {
+  const fichier = o.kind === 'comptable' ? 'Fichier envoyé' : 'Fichier téléchargé';
+  const reprise = o.kind === 'comptable' ? 'Recommencez : si l’e-mail est déjà parti, il ne partira pas deux fois.' : 'Recommencez.';
+  if (o.poses > 0) {
+    return `${fichier}, mais le verrouillage n’est fait qu’en partie (${o.poses} ligne${s(o.poses)} sur ${o.total}) : les autres heures restent modifiables. ${reprise}`;
+  }
+  return `${fichier}, mais le verrouillage a échoué : les heures restent modifiables. ${reprise}`;
+}

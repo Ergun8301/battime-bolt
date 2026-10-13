@@ -24,6 +24,8 @@ export interface VerrouAsk {
   compte: CompteVerrou;
   /** « du 01/10/2026 au 31/10/2026 » (lib/export-verrou.ts : libellePeriode). */
   periode: string;
+  /** La période annoncée : l'export porte TOUJOURS dessus, même si l'écran en change pendant que l'alerte est ouverte. */
+  range: { from: Date; to: Date };
   /** data-testid du bouton à qui rendre le focus à la fermeture. */
   retour: string;
   /** Adresse du comptable (kind = comptable). */
@@ -62,7 +64,7 @@ export default function ExportVerrouDialog({ ask, busy, onChoose, onCancel }: {
             <div className="space-y-2 text-left text-sm">
               {ask?.change && (
                 <p role="alert" className="rounded-md border border-orange-300 bg-orange-50 p-2 text-orange-900" data-testid="export-verrou-change">
-                  Les heures ont changé depuis l’alerte. Voici les chiffres à jour : rien n’a été exporté ni verrouillé.
+                  Des heures ont changé entre-temps. Voici les chiffres à jour : rien n’a été exporté ni verrouillé.
                 </p>
               )}
               <p className="font-semibold text-foreground" data-testid="export-verrou-texte" data-lignes={ask?.compte.lignes} data-salaries={ask?.compte.salaries}>

@@ -5,7 +5,7 @@
 // et le verrou ; l'alerte n'importe ni Excel ni PDF.
 import {
   alerteNecessaire, choixSansVerrou, compterVerrou, libellePeriode, memeCompte, messageFinExport,
-  phraseDejaVerrouillees, phraseVerrou, STATUTS_EXPORTES, type CompteVerrou,
+  messageEchecVerrou, phraseDejaVerrouillees, phraseVerrou, STATUTS_EXPORTES, type CompteVerrou,
 } from '../../../lib/export-verrou.ts';
 
 function eq(a: unknown, b: unknown, msg: string) {
@@ -105,6 +105,14 @@ Deno.test('message de fin : le texte d’avant le lot 18 quand on verrouille, «
   eq(messageFinExport({ kind: 'excel', verrouille: false, saisies: 7 }), 'Export téléchargé — rien n’a été verrouillé', 'Excel sans verrou');
 });
 
+Deno.test('verrou en échec APRÈS le fichier : on dit que le fichier est sorti et ce qui reste modifiable', () => {
+  eq(messageEchecVerrou({ kind: 'csv', poses: 0, total: 40 }), 'Fichier téléchargé, mais le verrouillage a échoué : les heures restent modifiables. Recommencez.', 'rien de verrouillé');
+  eq(messageEchecVerrou({ kind: 'excel', poses: 400, total: 1203 }), 'Fichier téléchargé, mais le verrouillage n’est fait qu’en partie (400 lignes sur 1203) : les autres heures restent modifiables. Recommencez.', 'verrouillé en partie');
+  eq(messageEchecVerrou({ kind: 'pdf', poses: 1, total: 5 }), 'Fichier téléchargé, mais le verrouillage n’est fait qu’en partie (1 ligne sur 5) : les autres heures restent modifiables. Recommencez.', 'une seule ligne');
+  eq(messageEchecVerrou({ kind: 'comptable', poses: 0, total: 9 }), 'Fichier envoyé, mais le verrouillage a échoué : les heures restent modifiables. Recommencez : si l’e-mail est déjà parti, il ne partira pas deux fois.', 'comptable');
+  ok(!/Erreur lors de l.export/.test(messageEchecVerrou({ kind: 'csv', poses: 0, total: 1 })), 'jamais « Erreur lors de l’export » : le fichier est sorti');
+});
+
 // ─── Garanties du code (lecture du source, sans commentaires) ──────────────────
 
 const lire = (f: string) => Deno.readTextFile(new URL(f, import.meta.url)).then((t: string) => t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1'));
@@ -131,6 +139,32 @@ Deno.test('un SEUL endroit verrouille (locked: true), dans l’export d’équip
   ok(/if \(verrouiller\) \{[\s\S]*?update\(\{ exported_at: stamp, locked: true \}\)/.test(run), 'le verrou n’est posé que dans « if (verrouiller) »');
   ok((run.match(/\.update\(/g) || []).length === 1, 'runExport n’écrit qu’une chose : le verrou');
   ok(/const verrouiller = \(o\.verrouiller \?\? true\) && !enModeSupport\(\)/.test(run) && /const enModeSupport = \(\) => \{ const s = readSupportSession\(\); return !!s && s\.staffId === user\?\.id; \}/.test(src), 'par défaut on verrouille (comme avant) ; en mode support, jamais');
+});
+
+Deno.test('l’export lit TOUTES ses pages dans un ordre complet (départage par id) et avec les statuts partagés', async () => {
+  const src = await lire('../../../components/admin-planning.tsx');
+  const run = src.slice(src.indexOf('const runExport = async'), src.indexOf('const demanderExport = async'));
+  const lectures = run.split('fetchAllPaged<').slice(1).map((l) => l.slice(0, l.indexOf('.range(f, t2)')));
+  eq(lectures.length, 2, 'deux lectures paginées dans runExport : le récapitulatif et les lignes exportées');
+  for (const l of lectures) ok(/\.order\('id'\)\s*$/.test(l.trim()), 'chaque lecture se termine par .order(\'id\') : un ordre total, pas de doublon ni de trou entre pages');
+  ok(!/\['submitted', 'validated'\]/.test(run), 'plus aucun statut recopié à la main dans runExport (STATUTS_EXPORTES)');
+  ok((run.match(/\[\.\.\.STATUTS_EXPORTES\]/g) || []).length === 1 && /lignesExportees\(user\.company_id/.test(run), 'le récapitulatif lit par STATUTS_EXPORTES, les lignes par lignesExportees');
+  const lignes = await lire('../../../lib/export-lignes.ts');
+  ok(/\.order\('id'\)\s*\.range\(f, t\)/.test(lignes), 'le comptage de l’alerte lit aussi dans un ordre total');
+});
+
+Deno.test('le verrou en échec n’est jamais présenté comme « Erreur lors de l’export » ; la période de l’alerte est celle de l’export', async () => {
+  const src = await lire('../../../components/admin-planning.tsx');
+  const run = src.slice(src.indexOf('const runExport = async'), src.indexOf('const demanderExport = async'));
+  const verrou = run.slice(run.indexOf('if (verrouiller) {'), run.indexOf('toast.success(messageFinExport'));
+  ok(/try \{[\s\S]*update\(\{ exported_at: stamp, locked: true \}\)[\s\S]*\} catch \(err\) \{[\s\S]*messageEchecVerrou\(/.test(verrou), 'le verrou est dans un try/catch qui dit la vérité');
+  ok(/const range = o\.range \?\? exportRange/.test(run) && !/exportRange\./.test(run), 'runExport lit la période figée (range), jamais l’état de l’écran en cours de route');
+  ok(/range: ask\.range/.test(src), 'le choix du bureau repart avec la période annoncée');
+  ok(src.includes('size="sm" disabled={exporting} onClick={() => { const t = new Date(); setExportRange')
+    && src.includes('size="sm" disabled={exporting} onClick={() => setExportRange({ from: currentWeekStart')
+    && src.includes('size="sm" disabled={exporting}><CalendarRange'), 'les trois boutons de période sont inactifs pendant un export');
+  const dem = src.slice(src.indexOf('const demanderExport = async'), src.indexOf('const choisirVerrou = async'));
+  ok(/runExport\(kind, \{ range, annonce: compte \}\)/.test(dem) && /setVerrouAsk\(\{ \.\.\.base, compte: r\.change, change: true \}\)/.test(dem), 'même sans alerte, « rien à verrouiller » est annoncé : une ligne qui arrive ouvre l’alerte');
 });
 
 Deno.test('l’alerte et le verrou partagent UN filtre (statuts, entreprise, période) : le N annoncé est le N verrouillé', async () => {

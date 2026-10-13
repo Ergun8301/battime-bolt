@@ -45,7 +45,7 @@ import { exportEntriesToExcel, exportEntriesToPDF, exportEntriesToCSV, excelAsBa
 import { readMealEnabled } from '@/lib/meal-setting';
 import { fetchAllPaged, chunk } from '@/lib/fetch-all';
 // Lot 18 : alerte avant l'export d'équipe qui verrouille (règles pures, filtre unique des heures exportées, support = lecture seule).
-import { alerteNecessaire, compterVerrou, libellePeriode, memeCompte, messageFinExport, type CompteVerrou, type ExportEquipe } from '@/lib/export-verrou';
+import { alerteNecessaire, compterVerrou, libellePeriode, memeCompte, messageEchecVerrou, messageFinExport, STATUTS_EXPORTES, type CompteVerrou, type ExportEquipe } from '@/lib/export-verrou';
 import { lignesExportees, lireCompteVerrou } from '@/lib/export-lignes';
 import { readSupportSession } from '@/lib/support';
 import type { VerrouAsk } from '@/components/export-verrou-dialog';
@@ -2424,20 +2424,23 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
 
   // Lot 18 : AVANT tout fichier, on dit au bureau ce que l'export va verrouiller (demanderExport, plus bas).
   // `verrouiller` (défaut : oui, comme avant le lot 18) = poser le verrou APRÈS le fichier ; faux = export de
-  // contrôle, rien n'est écrit en base. `annonce` = les chiffres de l'alerte : s'ils ont bougé entre l'alerte
-  // et le clic, on ne fait rien et on renvoie les chiffres à jour (`change`) pour les remontrer.
+  // contrôle, rien n'est écrit en base. `annonce` = les chiffres annoncés au bureau (ceux de l'alerte, ou « aucune
+  // ligne à verrouiller » quand il n'y a pas eu d'alerte) : s'ils ont bougé depuis, on ne fait rien et on renvoie les
+  // chiffres à jour (`change`) pour les remontrer. `range` = la période ANNONCÉE : l'export porte toujours dessus,
+  // même si l'écran a changé de période entre-temps.
   const runExport = async (
     kind: ExportEquipe,
-    o: { verrouiller?: boolean; annonce?: CompteVerrou } = {},
+    o: { verrouiller?: boolean; annonce?: CompteVerrou; range?: { from: Date; to: Date } } = {},
   ): Promise<{ change?: CompteVerrou } | void> => {
     if (!user?.company_id) { toast.error('Profil non chargé'); return; }
     // Mode support : lecture seule, la base refuse toute écriture. Le fichier sort, rien n'est verrouillé.
     const verrouiller = (o.verrouiller ?? true) && !enModeSupport();
     setExporting(true);
     try {
-      if (!exportRange) { toast.error('Choisissez une période'); return; }
-      const from = format(exportRange.from, 'yyyy-MM-dd');
-      const to = format(exportRange.to, 'yyyy-MM-dd');
+      const range = o.range ?? exportRange;
+      if (!range) { toast.error('Choisissez une période'); return; }
+      const from = format(range.from, 'yyyy-MM-dd');
+      const to = format(range.to, 'yyyy-MM-dd');
       // Lot 29 : les réglages de paie (heures de base, majorations, trajet payé, nom) sont relus
       // MAINTENANT, comme le panier plus bas : l'écran ne les relit plus toutes les 60 s, et un
       // autre administrateur a pu les changer. Illisibles : export annulé plutôt que fichier faux.
@@ -2494,10 +2497,12 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
         .from('time_entries')
         .select('id, user_id, work_date, start_time, end_time, total_minutes, status, gap_before, user:users!user_id(first_name, last_name)')
         .eq('company_id', user.company_id)
-        .in('status', ['submitted', 'validated'])
-        .gte('work_date', format(weekStartOf(exportRange.from), 'yyyy-MM-dd'))
-        .lte('work_date', format(weekEndOf(exportRange.to), 'yyyy-MM-dd'))
-        .order('work_date').order('user_id')
+        .in('status', [...STATUTS_EXPORTES])
+        .gte('work_date', format(weekStartOf(range.from), 'yyyy-MM-dd'))
+        .lte('work_date', format(weekEndOf(range.to), 'yyyy-MM-dd'))
+        // Lot 18 : ordre COMPLET (heure de début, puis id) : sans départage, deux pages de 500 lignes pouvaient se
+        // recouvrir ou laisser un trou quand un salarié a deux chantiers le même jour. Le récapitulatif ne dépend pas de l'ordre.
+        .order('work_date').order('user_id').order('start_time').order('id')
         .range(f, t2) as unknown as PromiseLike<{ data: (TimeEntryWithWorksite & { user: User })[] | null; error: { message: string } | null }>);
 
       // La table est construite sur les salariés PRÉSENTS dans la période, pas
@@ -2512,9 +2517,11 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
       // ajoute pour recompter ce que le verrou va toucher. Rien d'autre ne change : même lignes, même ordre.
       const entries = await fetchAllPaged<TimeEntryWithWorksite & { user: User }>((f, t2) => lignesExportees(user.company_id, from, to,
         'id, user_id, work_date, start_time, end_time, break_minutes, total_minutes, meal_allowance, status, observation, gap_before, locked, worksite:worksites(client_name, city), user:users!user_id(first_name, last_name)')
-        .order('work_date', { ascending: false }).order('user_id')
+        // Même ordre qu'avant, avec un départage COMPLET pour les égalités (même jour, même salarié : heure de début, puis id) :
+        // les pages se suivent sans doublon ni trou, et le détail d'une journée sort dans l'ordre des heures.
+        .order('work_date', { ascending: false }).order('user_id').order('start_time').order('id')
         .range(f, t2) as unknown as PromiseLike<{ data: (TimeEntryWithWorksite & { user: User })[] | null; error: { message: string } | null }>);
-      if (entries.length === 0) { toast.error(`Aucune saisie du ${format(exportRange.from, 'dd/MM')} au ${format(exportRange.to, 'dd/MM')}`); return; }
+      if (entries.length === 0) { toast.error(`Aucune saisie du ${format(range.from, 'dd/MM')} au ${format(range.to, 'dd/MM')}`); return; }
       // Lot 18 : les chiffres de l'alerte doivent être EXACTEMENT ce que le verrou va toucher. Un salarié a pu envoyer
       // (ou le bureau verrouiller) pendant que l'alerte était ouverte : on remontre les chiffres, sans rien exporter.
       // Si plus rien ne reste à verrouiller, on continue : le bureau avait accepté de verrouiller, il n'y a plus de surprise.
@@ -2528,7 +2535,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
       const opts = {
         fileName: `bemexo-${kind === 'pdf' ? 'rapport' : kind === 'csv' ? 'paie' : 'export'}-${from}`,
         title: 'BEMEXO - Rapport hebdomadaire',
-        periodLabel: `${format(exportRange.from, 'dd/MM/yyyy')} au ${format(exportRange.to, 'dd/MM/yyyy')}`,
+        periodLabel: `${format(range.from, 'dd/MM/yyyy')} au ${format(range.to, 'dd/MM/yyyy')}`,
         companyName: reglages.name,
         travelPaid: reglages.travelPaid,
         mealEnabled,
@@ -2616,11 +2623,21 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
       // aucune écriture n'est partie vers la base.
       if (verrouiller) {
         const stamp = new Date().toISOString();
-        for (const ids of chunk(entries.map((e) => e.id), 200)) {
-          const { error: lockErr } = await supabase.from('time_entries')
-            .update({ exported_at: stamp, locked: true })
-            .in('id', ids).eq('company_id', user.company_id);
-          if (lockErr) throw lockErr;
+        let poses = 0;
+        try {
+          for (const ids of chunk(entries.map((e) => e.id), 200)) {
+            const { error: lockErr } = await supabase.from('time_entries')
+              .update({ exported_at: stamp, locked: true })
+              .in('id', ids).eq('company_id', user.company_id);
+            if (lockErr) throw lockErr;
+            poses += ids.length;
+          }
+        } catch (err) {
+          // Le fichier est DÉJÀ sorti (ou l'e-mail déjà parti) : on le dit, et on dit ce qui reste modifiable.
+          // « Erreur lors de l'export » ferait croire que rien n'a été fait.
+          console.error('Error locking exported rows:', err);
+          toast.error(messageEchecVerrou({ kind, poses, total: entries.length }), { duration: 12000 });
+          return;
         }
       }
 
@@ -2641,9 +2658,11 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
   const demanderExport = async (kind: ExportEquipe, retour: string) => {
     if (!user?.company_id) { toast.error('Profil non chargé'); return; }
     if (!exportRange) { toast.error('Choisissez une période'); return; }
-    if (enModeSupport()) { await runExport(kind); return; }
-    const from = format(exportRange.from, 'yyyy-MM-dd');
-    const to = format(exportRange.to, 'yyyy-MM-dd');
+    // La période est figée ICI : l'alerte, le comptage et l'export portent tous sur elle.
+    const range = { from: exportRange.from, to: exportRange.to };
+    if (enModeSupport()) { await runExport(kind, { range }); return; }
+    const from = format(range.from, 'yyyy-MM-dd');
+    const to = format(range.to, 'yyyy-MM-dd');
     setExporting(true);
     let compte: CompteVerrou;
     try {
@@ -2656,8 +2675,15 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
     } finally {
       setExporting(false);
     }
-    if (!alerteNecessaire(compte, { support: false })) { await runExport(kind); return; }
-    setVerrouAsk({ kind, compte, periode: libellePeriode(from, to), retour, destinataire: kind === 'comptable' ? accountantEmail || undefined : undefined });
+    const base = { kind, periode: libellePeriode(from, to), retour, range, destinataire: kind === 'comptable' ? accountantEmail || undefined : undefined };
+    if (!alerteNecessaire(compte, { support: false })) {
+      // Rien à verrouiller : pas d'alerte. Mais « rien » est lui aussi annoncé : si une ligne arrive pendant les lectures
+      // de l'export (un salarié envoie sa journée), elle ne doit pas être verrouillée sans prévenir → on ouvre l'alerte.
+      const r = await runExport(kind, { range, annonce: compte });
+      if (r && r.change) setVerrouAsk({ ...base, compte: r.change, change: true });
+      return;
+    }
+    setVerrouAsk({ ...base, compte });
   };
 
   // Les trois choix de l'alerte : « Exporter et verrouiller » (verrouiller = true : exactement l'export d'avant le lot 18),
@@ -2667,7 +2693,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
     if (!ask || verrouBusy) return;
     setVerrouBusy(true);
     try {
-      const r = await runExport(ask.kind, { verrouiller, annonce: verrouiller ? ask.compte : undefined });
+      const r = await runExport(ask.kind, { verrouiller, annonce: verrouiller ? ask.compte : undefined, range: ask.range });
       if (r && r.change) { setVerrouAsk({ ...ask, compte: r.change, change: true }); return; }
       setVerrouAsk(null);
     } finally {
@@ -4306,11 +4332,12 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
           <DialogHeader><DialogTitle>Exporter l&apos;équipe</DialogTitle></DialogHeader>
           <div className="space-y-4 pt-1">
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" onClick={() => { const t = new Date(); setExportRange({ from: t, to: t }); }}>Aujourd'hui</Button>
-              <Button variant="outline" size="sm" onClick={() => setExportRange({ from: currentWeekStart, to: addDays(currentWeekStart, DAYS_IN_WEEK - 1) })}>Cette semaine</Button>
+              {/* Lot 18 : la période ne change pas pendant un export (comptage, lectures) : l'alerte annonce celle-ci. */}
+              <Button variant="outline" size="sm" disabled={exporting} onClick={() => { const t = new Date(); setExportRange({ from: t, to: t }); }}>Aujourd'hui</Button>
+              <Button variant="outline" size="sm" disabled={exporting} onClick={() => setExportRange({ from: currentWeekStart, to: addDays(currentWeekStart, DAYS_IN_WEEK - 1) })}>Cette semaine</Button>
               <Popover>
                 <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm"><CalendarRange className="h-4 w-4 mr-1" /> Créneau</Button>
+                  <Button variant="outline" size="sm" disabled={exporting}><CalendarRange className="h-4 w-4 mr-1" /> Créneau</Button>
                 </PopoverTrigger>
                 <PopoverContent className="bt-skin w-auto p-0" align="end">
                   <Calendar mode="range" numberOfMonths={1} locale={fr}
