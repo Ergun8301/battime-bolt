@@ -24,6 +24,8 @@
     "test:assistant-aide": "npx -y deno@2 test --allow-read supabase/functions/_shared/assistant-aide.test.ts",
     "test:guides": "npx -y deno@2 test --allow-read supabase/functions/_shared/worker-tours.test.ts",
     "test:guides-ecrans": "node scripts/tests/guides-lot7.mjs out docs/captures-lot7b",
+    "test:guides-bureau": "npx -y deno@2 test --allow-env --allow-read supabase/functions/_shared/admin-tours.test.ts",
+    "test:guides-bureau-ecrans": "node scripts/tests/guides-bureau-lot7.mjs out docs/captures-lot7-fin",
     "test:assistant-eval": "npx -y deno@2 test --allow-env supabase/functions/assistant-eval/eval.test.ts",
     "test:fr-langue": "npx -y deno@2 test --allow-env supabase/functions/_shared/fr-langue.test.ts",
     "test:ai-provider": "npx -y deno@2 test --allow-env supabase/functions/_shared/ai-provider.test.ts",

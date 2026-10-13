@@ -33,7 +33,11 @@ function anchors(src: Record<string, string>): Map<string, number> {
   for (const code of Object.values(src)) {
     for (const line of code.split('\n')) {
       if (!/data-guide|MENU_GUIDE/.test(line) || /querySelector/.test(line)) continue;
-      for (const m of line.matchAll(/["'`]([a-z]+(?:-[a-z]+)*\.[a-z]+(?:-[a-z]+)*)["'`]/g)) found.set(m[1], (found.get(m[1]) ?? 0) + 1);
+      for (const m of line.matchAll(/["'`]([a-z]+(?:-[a-z]+)*\.[a-z]+(?:-[a-z]+)*)["'`]/g)) {
+        // Les ancres du bureau et du support ont leur propre test (admin-tours.test.ts).
+        if (/^(bureau|support)-/.test(m[1])) continue;
+        found.set(m[1], (found.get(m[1]) ?? 0) + 1);
+      }
     }
   }
   return found;

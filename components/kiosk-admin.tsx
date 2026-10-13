@@ -407,7 +407,7 @@ export default function KioskAdmin({ open, onOpenChange, companyId }: Props) {
                 : latest ? `Tablette reliée — ${seenLabel(seenAgo)}` : 'Aucune tablette reliée'}
             </span>
             {latest && !confirmDisc && (
-              <button type="button" className="ka-link" data-testid="ka-disconnect" onClick={() => setConfirmDisc(true)}>
+              <button type="button" className="ka-link" data-testid="ka-disconnect" data-guide="bureau-borne.deconnecter" onClick={() => setConfirmDisc(true)}>
                 Déconnecter la tablette
               </button>
             )}
@@ -436,7 +436,7 @@ export default function KioskAdmin({ open, onOpenChange, companyId }: Props) {
               ) : (
                 <>
                   <div className="ka-digrow">
-                    <b className={`ka-digits${code ? '' : ' wait'}`} data-testid="ka-code" aria-live="polite" aria-busy={!code}>
+                    <b className={`ka-digits${code ? '' : ' wait'}`} data-testid="ka-code" data-guide="bureau-borne.code" aria-live="polite" aria-busy={!code}>
                       {code
                         ? code.split('').map((d, i) => <span key={i} className={i === 2 ? 'ka-d3' : undefined}>{d}</span>)
                         : <><span className="ka-d3">···</span><span>···</span></>}

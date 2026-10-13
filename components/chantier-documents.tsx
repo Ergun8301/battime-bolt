@@ -412,7 +412,7 @@ export default function ChantierDocuments({
           )}
           {(!clientEmail || editingEmail) && (
             <div className="bt-doc-send-row">
-              <input className="bt-doc-send-input" type="email" inputMode="email" placeholder="E-mail du client" value={emailInput} onChange={(e) => setEmailInput(e.target.value)} />
+              <input className="bt-doc-send-input" type="email" inputMode="email" placeholder="E-mail du client" data-guide="bureau-docs.email" value={emailInput} onChange={(e) => setEmailInput(e.target.value)} />
               <button type="button" className="bt-doc-send-save" onClick={saveClientEmail} disabled={savingEmail || !emailInput.trim()}>
                 {savingEmail ? <Loader2 className="h-4 w-4 animate-spin" /> : 'OK'}
               </button>
