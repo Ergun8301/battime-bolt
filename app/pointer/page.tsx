@@ -170,11 +170,22 @@ export default function PointerPage() {
   const started = useRef(false);
   const router = useRouter();
 
+  // Un seul raccourci par écran : un second toucher pousserait une deuxième adresse `?a=…`
+  // que /poseur ne nettoie pas (il ne lit l'adresse qu'à son ouverture) et un rechargement rejouerait le geste.
+  const [going, setGoing] = useState(false);
+  const goingRef = useRef(false);
+
   /** Lot 10 : ouvre /poseur sur le raccourci touché. Sans compte lisible, on ouvre simplement /poseur comme avant. */
   const shortcut = useCallback(async (a: AfterScan, h?: string | null) => {
-    const { data } = await supabase.auth.getSession();
-    const u = data.session?.user.id;
-    router.push(u ? afterScanHref(a, Date.now(), { h, u }) : '/poseur');
+    if (goingRef.current) return;
+    goingRef.current = true; setGoing(true);
+    try {
+      const { data } = await supabase.auth.getSession();
+      const u = data.session?.user.id;
+      router.push(u ? afterScanHref(a, Date.now(), { h, u }) : '/poseur');
+    } catch {
+      goingRef.current = false; setGoing(false);   // lecture impossible : le salarié peut retoucher
+    }
   }, [router]);
 
   const punch = useCallback(async (t: TicketResp, informed = false) => {
@@ -294,15 +305,15 @@ export default function PointerPage() {
         {!arrival && r.range && <div className="kx-chip">Heures enregistrées : {r.range.start} → {r.range.end}</div>}
         <Link className="kx-btn" href="/poseur">Ouvrir mon espace</Link>
         {arrival ? (
-          <button type="button" className="kx-sec" data-testid="after-before" onClick={() => void shortcut('avant', r.time)}>
+          <button type="button" className="kx-sec" data-testid="after-before" disabled={going} onClick={() => void shortcut('avant', r.time)}>
             Ajouter une intervention faite avant
           </button>
         ) : (
           <>
-            <button type="button" className="kx-sec" data-testid="after-send" onClick={() => void shortcut('envoyer')}>
+            <button type="button" className="kx-sec" data-testid="after-send" disabled={going} onClick={() => void shortcut('envoyer')}>
               Envoyer ma journée
             </button>
-            <button type="button" className="kx-sec" data-testid="after-add" onClick={() => void shortcut('ajouter', r.range?.end ?? r.time)}>
+            <button type="button" className="kx-sec" data-testid="after-add" disabled={going} onClick={() => void shortcut('ajouter', r.range?.end ?? r.time)}>
               Ajouter une intervention
             </button>
           </>

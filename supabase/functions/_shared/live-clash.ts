@@ -22,7 +22,7 @@ export function parisClock(at: string | number | Date): { date: string; hm: stri
 }
 
 /** Pourquoi on ne peut pas terminer le pointage à l'heure de début de l'intervention. */
-export type LiveClashWhy = 'before' | 'future' | 'collision' | 'unavailable';
+export type LiveClashWhy = 'before' | 'at-start' | 'future' | 'collision' | 'unavailable';
 
 export type LiveClash =
   | null                                                   // pas de chevauchement : on enregistre comme avant
@@ -37,7 +37,9 @@ export type LiveClash =
  * tourne. Toutes les heures sont celles de Paris, du MÊME jour (l'appelant ne
  * traite que le chrono du jour de Paris affiché).
  *  · pas de chevauchement (> OVERLAP_TOLERANCE) → null ;
- *  · 'before'      — elle commence au plus tard 1 min après le début du chrono :
+ *  · 'before'      — elle commence AVANT le chrono et le recouvre : le bon
+ *                    correctif est de la finir au plus tard à son début ;
+ *  · 'at-start'    — elle commence au plus tard 1 min après le début du chrono :
  *                    terminer à cette heure annulerait le pointage (le serveur
  *                    efface un chrono dont la fin n'est pas après le début) ;
  *  · 'future'      — elle commence après maintenant : on ne termine pas dans le futur ;
@@ -59,7 +61,8 @@ export function liveClash(i: {
   const [, end] = interval(i.span);
   if (end <= live + OVERLAP_TOLERANCE) return null;
   const start = toMin(i.span.start);
-  if (start <= live + OVERLAP_TOLERANCE) return { can: 'fix', why: 'before' };
+  if (start < live) return { can: 'fix', why: 'before' };
+  if (start <= live + OVERLAP_TOLERANCE) return { can: 'fix', why: 'at-start' };
   if (start > toMin(i.now)) return { can: 'fix', why: 'future' };
   const clash = findOverlap({ start: i.liveStart, end: i.span.start }, i.others);
   if (clash) return { can: 'fix', why: 'collision', with: clash };

@@ -16,10 +16,16 @@ Deno.test('liveClash : pas de chevauchement, une minute tolérée', () => {
   eq(clash('06:00', '08:04'), { can: 'fix', why: 'before' }, '2 min de recouvrement : refusé, commence avant le chrono');
 });
 
-Deno.test('liveClash : commence avant ou au début du chrono → "before"', () => {
+Deno.test('liveClash : commence AVANT le chrono → "before"', () => {
   eq(clash('07:00', '09:00'), { can: 'fix', why: 'before' }, '07:00–09:00');
-  eq(clash('08:02', '09:00'), { can: 'fix', why: 'before' }, '08:02–09:00 : même minute');
-  eq(clash('08:03', '09:00'), { can: 'fix', why: 'before' }, '08:03–09:00 : 1 min après le début, la fermeture annulerait');
+  eq(clash('06:00', '09:00'), { can: 'fix', why: 'before' }, '06:00–09:00');
+  eq(clash('07:00', '08:30'), { can: 'fix', why: 'before' }, '07:00–08:30 : finit dans le pointage');
+  eq(clash('08:01', '09:00'), { can: 'fix', why: 'before' }, '08:01–09:00 : une minute avant');
+});
+
+Deno.test('liveClash : commence au début du chrono (à une minute près) → "at-start"', () => {
+  eq(clash('08:02', '09:00'), { can: 'fix', why: 'at-start' }, '08:02–09:00 : même minute');
+  eq(clash('08:03', '09:00'), { can: 'fix', why: 'at-start' }, '08:03–09:00 : 1 min après le début, la fermeture annulerait');
   eq(clash('08:04', '09:00'), { can: 'finish', at: '08:04' }, '08:04–09:00 : 2 min de pointage possibles');
 });
 
@@ -50,6 +56,7 @@ Deno.test('liveClash : collision avec une ligne déjà notée', () => {
 Deno.test('liveClash : fonction de fermeture absente', () => {
   eq(clash('09:00', '10:00', { finishAvailable: false }), { can: 'fix', why: 'unavailable' }, 'cas finish → unavailable');
   eq(clash('07:00', '09:00', { finishAvailable: false }), { can: 'fix', why: 'before' }, 'la raison de fond prime');
+  eq(clash('08:03', '09:00', { finishAvailable: false }), { can: 'fix', why: 'at-start' }, 'idem au début du chrono');
   eq(clash('06:00', '07:30', { finishAvailable: false }), null, 'pas de chevauchement : rien à dire');
 });
 

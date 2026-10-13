@@ -59,11 +59,12 @@ const fresh = () => ({
   users: [{ id: ME, company_id: CO, first_name: 'Karim', last_name: 'Benali', role: 'worker', email: 'karim@exemple.fr', is_active: true, created_at: '2026-01-01' }],
   companies: [{ id: CO, name: 'Martin Menuiserie', ai_enabled: false, kiosk_enabled: true, position_tracking_enabled: false, travel_paid: false, subscription_status: 'active', trial_ends_at: '2030-01-01', weekly_hours: 35 }],
   worksites: WS, planning: [], time_entries: [], active_sessions: [],
-  month_closures: [], leave_requests: [], documents: [], time_entry_corrections: [], time_entry_positions: [], push_subscriptions: [],
+  month_closures: [], user_closures: [], leave_requests: [], documents: [], time_entry_corrections: [], time_entry_positions: [], push_subscriptions: [],
 });
 let D = fresh();
 let finishMode = 'ok';   // ok | absent | stale | cancelled | closed | lost
 let liveRead = 'ok';     // ok | error | slow
+let closureDelay = 0;     // lecture de « ma clôture » retardée (ms)
 let punchKind = 'arrival'; // pour /pointer : arrival | departure | cancelled
 let nPost = 0;
 let failPost = false;     // le serveur refuse les insertions (la saisie reste dans la file du téléphone)
@@ -142,6 +143,7 @@ await ctx.route('**/*.supabase.co/**', async (r) => {
     if (liveRead === 'error') return r.fulfill({ status: 500, json: { code: 'XX000', message: 'panne', details: null, hint: null } });
     if (liveRead === 'slow') await new Promise((res) => setTimeout(res, 6000));
   }
+  if (t === 'user_closures' && method === 'GET' && closureDelay) await new Promise((res) => setTimeout(res, closureDelay));
   const rows = match(D[t] || [], u.searchParams);
   if (method === 'GET' || method === 'HEAD') {
     const single = (req.headers()['accept'] || '').includes('vnd.pgrst.object');
@@ -177,7 +179,7 @@ const toastTexts = async () => (await p.locator('[data-sonner-toast]').allInnerT
 const dialogText = async () => (await p.locator('[data-testid=live-clash]').innerText()).replace(/\s+/g, ' ');
 /** Remet le monde au départ : base, interrupteurs, horloge à 10:30. */
 const scene = async (setup = () => {}) => {
-  D = fresh(); finishMode = 'ok'; liveRead = 'ok'; punchKind = 'arrival'; nPost = 0; failPost = false;
+  D = fresh(); finishMode = 'ok'; liveRead = 'ok'; closureDelay = 0; punchKind = 'arrival'; nPost = 0; failPost = false;
   await ctx.setOffline(false);
   // La file du téléphone d'un scénario ne doit pas fuir dans le suivant.
   await p.evaluate((me) => localStorage.removeItem(`battime_offline_${me}`), ME).catch(() => {});
@@ -226,6 +228,9 @@ const shot = async (name) => {
 
 const TEXT_MAIN = (live, s, e) => `Vous êtes pointé depuis ${live} et le pointage n'est pas terminé. Vos heures ${s}–${e} le chevauchent : la journée serait bloquée à l'envoi quand vous terminerez votre pointage.`;
 const TEXT_FINISH = (live, at) => `Vous pouvez terminer le pointage à ${at}, l'heure où commence cette intervention : il comptera de ${live} à ${at}.`;
+const TEXT_GAP = (end, now) => `Après ${end}, rien ne sera compté : si vous avez continué à travailler jusqu'à ${now}, ajoutez ces heures ensuite.`;
+const TEXT_BEFORE = (live) => `Cette intervention recouvre le début de votre pointage (${live}). Terminez-la à ${live} au plus tard. Si vous avez vraiment commencé plus tôt, fermez cette fiche, touchez « Terminer ma journée », puis corrigez les heures de la ligne créée.`;
+const TEXT_ATSTART = (start, live) => `Cette intervention commence à ${start}, presque en même temps que votre pointage (${live}) : le terminer à ${start} ne lui laisserait aucune durée. Corrigez l'heure de début. Si cette intervention est votre travail en cours, touchez « Terminer ma journée » plutôt que de l'ajouter ici.`;
 const TEXT_BORNE = 'Ensuite, si vous pointez à la borne, ne scannez plus en partant : ajoutez vos dernières heures à la main, sinon la borne ouvrira un nouveau pointage.';
 
 // ═════ 1 · Pas de pointage en cours : rien ne change ═════
@@ -248,6 +253,9 @@ check(t2.includes('Votre pointage est encore en cours'), '2) titre « Votre poin
 check((await p.locator('[data-testid=live-clash-text]').innerText()).replace(/\s+/g, ' ') === TEXT_MAIN('08:02', '09:00', '10:00'), '2) texte principal exact');
 check(t2.includes(TEXT_FINISH('08:02', '09:00')), '2) phrase « Vous pouvez terminer le pointage à 09:00 … »');
 check(t2.includes(TEXT_BORNE), '2) consigne « ne scannez plus en partant »');
+check(t2.includes(TEXT_GAP('10:00', '10:30')), '2) l’intervention finit à 10:00, il est 10:30 : « Après 10:00, rien ne sera compté … jusqu’à 10:30 »');
+check(await p.evaluate(() => document.activeElement?.getAttribute('data-testid')) === 'live-clash-fix', '2) focus d’ouverture sur « Corriger les heures » (jamais sur l’action irréversible)');
+check(await p.evaluate(() => { const d = document.querySelector('[data-testid=live-clash]'); const el = document.getElementById(d.getAttribute('aria-describedby')); return !!el && el.innerText.includes('Vous êtes pointé depuis') && el.innerText.includes('Vous pouvez terminer le pointage'); }), '2) la description lue par le lecteur d’écran contient le problème ET la proposition');
 check(await p.locator('[data-testid=live-clash-finish]').innerText() === 'Terminer le pointage à 09:00, puis ajouter', '2) bouton « Terminer le pointage à 09:00, puis ajouter »');
 check(await p.locator('[data-testid=live-clash-fix]').innerText() === 'Corriger les heures', '2) bouton « Corriger les heures »');
 check(writes().length === 0, `2) 0 écriture avant le toucher (${writes().map((c) => c.method + ' ' + c.path).join(', ')})`);
@@ -289,7 +297,7 @@ await scene(() => { D.active_sessions = [chrono('08:02:20')]; });
 await open();
 await addLine('Maison Martin', '07:00', '09:00', 1000);
 check(await p.locator('[data-testid=live-clash]').count() === 1 && await p.locator('[data-testid=live-clash-finish]').count() === 0, '5) avant le début du pointage : pas de bouton « Terminer »');
-check((await p.locator('[data-testid=live-clash-why]').innerText()).replace(/\s+/g, ' ') === 'Le pointage a commencé à 08:02 : une intervention ne peut pas commencer avant. Corrigez l\'heure de début. Si vous avez vraiment commencé plus tôt, fermez cette fiche, touchez « Terminer ma journée », puis corrigez les heures de la ligne créée.', '5) texte exact (avec « Terminer ma journée »)');
+check((await p.locator('[data-testid=live-clash-why]').innerText()).replace(/\s+/g, ' ') === TEXT_BEFORE('08:02'), '5) texte exact : l’intervention recouvre le début du pointage, à finir au plus tard à 08:02 (avec « Terminer ma journée »)');
 check(await p.locator('[data-testid=live-clash-fix]').innerText() === 'Corriger les heures' && writes().length === 0, '5) « Corriger les heures » seul, 0 écriture');
 await shot('alerte-avant');
 
@@ -321,7 +329,11 @@ check(await p.locator('[data-testid=live-clash]').count() === 0 && callsTo('POST
 await scene(() => { D.active_sessions = [chrono('08:15:20')]; });
 await open();
 await addLine('Maison Martin', '07:00', '08:30', 1000);
-check(await p.locator('[data-testid=live-clash]').count() === 1 && (await dialogText()).includes('Le pointage a commencé à 08:15'), '8) 07:00–08:30 : l’alerte « avant » s’ouvre');
+check(await p.locator('[data-testid=live-clash]').count() === 1 && (await dialogText()).includes(TEXT_BEFORE('08:15')), '8) 07:00–08:30 : l’alerte « avant » s’ouvre');
+await scene(() => { D.active_sessions = [chrono('08:15:20')]; });
+await open();
+await addLine('Maison Martin', '08:15', '09:00', 1000);
+check(await p.locator('[data-testid=live-clash-finish]').count() === 0 && (await p.locator('[data-testid=live-clash-why]').innerText()).replace(/\s+/g, ' ') === TEXT_ATSTART('08:15', '08:15') && !(await dialogText()).includes('ne peut pas commencer avant'), '8) 08:15–09:00 (même minute que le pointage) : texte « presque en même temps », pas de bouton « Terminer »');
 
 // ═════ 9 · Modification d'une ligne qui chevauche ═════
 await scene(() => { D.active_sessions = [chrono('08:02:20')]; D.time_entries = [entry('e1', W2, '09:00', '10:00')]; });
@@ -385,6 +397,8 @@ resetCalls();
 await p.locator('[data-testid=live-clash-finish]').click();
 await p.waitForTimeout(1500);
 check((await toastTexts()).includes('Ce pointage était déjà fermé ailleurs. Vos heures sont à jour : vérifiez-les, puis réessayez.') && callsTo('POST', '/rest/v1/time_entries').length === 0, '12) « Aucun pointage en cours » : message exact, aucune ligne ajoutée');
+await p.waitForTimeout(5500);
+check((await toastTexts()).includes('Ce pointage était déjà fermé ailleurs'), '12) le message reste affiché plus de 5 s (10 s, pas les 4 s par défaut)');
 // Pointage remplacé pendant que la fenêtre est ouverte : aucun appel de fermeture.
 await scene(() => { D.active_sessions = [chrono('08:02:20')]; });
 await open();
@@ -567,7 +581,7 @@ await p.waitForSelector('.bt-ed');
 await p.locator('.bt-site', { hasText: 'Maison Martin' }).first().click();
 await p.waitForTimeout(250);
 await pressOk(1200);
-check(await p.locator('[data-testid=live-clash]').count() === 1 && (await dialogText()).includes('Le pointage a commencé à 08:02'), '24) « + » ordinaire à 08:05 (08:00–09:00) : l’alerte « avant » s’ouvre, comme prévu');
+check(await p.locator('[data-testid=live-clash]').count() === 1 && (await dialogText()).includes(TEXT_BEFORE('08:02')), '24) « + » ordinaire à 08:05 (08:00–09:00) : l’alerte « avant » s’ouvre, comme prévu');
 
 // 25 · « Envoyer ma journée » après un départ : toujours une confirmation
 // (journée courte, sans prévu ni pause : le cas où le bouton du dock enverrait sans rien demander)
@@ -676,6 +690,78 @@ await ctx.clock.setSystemTime(new Date(NOW.getTime() + 20 * 60000));
 await p.locator('[data-testid=after-add]').click();
 await p.waitForSelector('.bt-ed', { timeout: 15000 }).catch(() => {});
 check(await p.locator('.bt-ed').count() === 1, '26) écran de succès laissé 20 min puis « Ajouter une intervention » : ça fonctionne');
+
+// ═════ 28 · L'intervention finit APRÈS maintenant : pas de phrase « rien ne sera compté » ═════
+await scene(() => { D.active_sessions = [chrono('08:02:20')]; });
+await open();
+await addLine('Maison Martin', '10:00', '11:00', 1000);
+check(await p.locator('[data-testid=live-clash-finish]').count() === 1 && await p.locator('[data-testid=live-clash-gap]').count() === 0, '28) 10:00–11:00 à 10:30 : « Terminer … » proposé, pas de phrase sur le temps non compté (la fin est dans le futur)');
+
+// ═════ 29 · La fiche est fermée pendant la relecture du pointage : rien n'est écrit, aucune alerte ═════
+await scene(() => { D.active_sessions = [chrono('08:02:20')]; });
+await open();
+await fillNew('Maison Martin', '09:00', '10:00');
+liveRead = 'slow';
+resetCalls();
+await p.locator('.bt-save', { hasText: 'OK' }).click();
+await p.locator('.bt-ed-cancel').click();
+await p.waitForTimeout(3600);
+check(await p.locator('.bt-ed').count() === 0 && await p.locator('[data-testid=live-clash]').count() === 0, '29) « Annuler » pendant la relecture : fiche fermée, aucune alerte sans fiche derrière');
+check(writes().length === 0 && await errorToasts() === 0, `29) 0 écriture, aucun message rouge (${writes().map((c) => c.method + ' ' + c.path).join(', ')})`);
+await scene();
+await open();
+await fillNew('Maison Martin', '09:00', '10:00');
+liveRead = 'slow';
+resetCalls();
+await p.locator('.bt-save', { hasText: 'OK' }).click();
+await p.locator('.bt-ed-cancel').click();
+await p.waitForTimeout(3600);
+check(callsTo('POST', '/rest/v1/time_entries').length === 0 && D.time_entries.length === 0, '29) sans pointage : annuler pendant la relecture n’enregistre rien non plus');
+
+// ═════ 30 · « Envoyer ma journée » : le focus d'ouverture va à « Pas maintenant » ═════
+await departCourt();
+await p.locator('[data-testid=after-send]').click();
+await p.waitForSelector('[data-testid=send-ask]', { timeout: 15000 }).catch(() => {});
+check(await p.evaluate(() => document.activeElement?.getAttribute('data-testid')) === 'send-ask-no', '30) fenêtre d’envoi : focus d’ouverture sur « Pas maintenant » (Entrée n’envoie rien)');
+await p.waitForTimeout(500);
+check(writes().length === 0, '30) aucune écriture');
+
+// ═════ 31 · Un double toucher sur un raccourci ne pousse qu'une adresse ═════
+await punchAt('departure');
+await p.evaluate(() => {
+  window.__pushes = [];
+  const push = history.pushState.bind(history);
+  history.pushState = (st, t, url) => { window.__pushes.push(String(url)); return push(st, t, url); };
+  const el = document.querySelector('[data-testid=after-add]');
+  el.click();
+  setTimeout(() => el.click(), 15);
+});
+await p.waitForSelector('.bt-ed', { timeout: 15000 });
+await p.waitForTimeout(800);
+check(await p.evaluate(() => window.__pushes.filter((u) => u.includes('a=ajouter')).length) === 1, '31) deux touchers à 15 ms d’écart : une seule adresse « ?a=… » poussée');
+check(new URL(p.url()).search === '', `31) adresse propre (${p.url().replace(BASE, '')})`);
+await p.reload();
+await p.waitForSelector('.bt-total', { timeout: 15000 });
+await p.waitForTimeout(900);
+check(await p.locator('.bt-ed').count() === 0, '31) rechargement : le raccourci ne se rejoue pas');
+await punchAt('departure');
+await p.evaluate(() => { document.querySelector('[data-testid=after-add]').click(); });
+check(await p.evaluate(() => ['after-send', 'after-add'].every((id) => document.querySelector(`[data-testid=${id}]`)?.disabled === true)), '31) après le premier toucher, les boutons de raccourci sont désactivés');
+
+// ═════ 32 · Salarié clôturé : le raccourci attend la lecture de la clôture ═════
+const clos = () => { D.user_closures = [{ user_id: ME, company_id: CO, closed_until: TODAY, reopened_at: null }]; };
+await scene(clos);
+closureDelay = 1200;
+await p.goto(href('ajouter', NOW.getTime() - 5000, ME, '17:07'));
+await p.waitForSelector('.bt-total', { timeout: 15000 });
+await p.waitForTimeout(2500);
+check(await p.locator('.bt-ed').count() === 0 && (await bodyText()).includes('Heures clôturées'), '32) clôture lue après la journée : la fenêtre « Heures clôturées » s’ouvre, pas la fiche');
+await scene(clos);
+closureDelay = 4000;
+await p.goto(href('ajouter', NOW.getTime() - 5000, ME, '17:07'));
+await p.waitForSelector('.bt-total', { timeout: 15000 });
+await p.waitForTimeout(3200);
+check(await p.locator('.bt-ed').count() === 1, '32) clôture très lente (4 s) : repli à 2 s, le raccourci n’est pas bloqué (le serveur refusera à l’enregistrement)');
 
 console.log(`\n${ok} ✅ / ${ko} ❌`);
 await b.close(); srv.close();
