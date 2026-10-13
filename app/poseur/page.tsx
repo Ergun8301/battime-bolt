@@ -57,7 +57,6 @@ const ALL_TABS = [...TABS, FORMATIONS_TAB];
 const MENU_GUIDE: Record<string, string> = { day: 'menu.journee', week: 'menu.semaine', month: 'menu.mois', history: 'menu.historique' };
 
 const POSEUR_CSS = `
-@import url('/fonts/fonts.css');
 
 .bt-poseur{font-family:'Archivo',sans-serif;color:#15120F;-webkit-font-smoothing:antialiased;background:#e7e0d2;display:flex;justify-content:center;height:100vh;height:100svh;height:100dvh;overflow:hidden}
 .bt-poseur *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}

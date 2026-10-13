@@ -498,7 +498,6 @@ const ABSENCE_VISUAL: Record<string, { icon: string; bg: string; fg: string }> =
 
 // Scoped noir/jaune styling for the planning. Logic-free — appearance only.
 const PL_CSS = `
-@import url('/fonts/fonts.css');
 .bt-pl{font-family:'Archivo',sans-serif;color:#15120F;flex:1 0 auto;display:flex;flex-direction:column;border-radius:16px;box-shadow:0 26px 64px -36px rgba(21,18,15,.6)}
 .bt-pl *{box-sizing:border-box}
 .bt-pl .mono{font-family:'JetBrains Mono',monospace}

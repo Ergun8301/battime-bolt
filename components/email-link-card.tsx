@@ -5,7 +5,6 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 export const EMAIL_LINK_CSS = `
-@import url('/fonts/fonts.css');
 .el{font-family:'Archivo',sans-serif;background:#F2EDE3;color:#15120F;-webkit-font-smoothing:antialiased;min-height:100vh;min-height:100svh;display:flex;align-items:center;justify-content:center;padding:24px 16px}
 .el *{box-sizing:border-box}
 .el-card{width:100%;max-width:440px;background:#fff;border:1px solid rgba(21,18,15,.12);border-radius:18px;padding:32px 28px;box-shadow:0 24px 50px -24px rgba(21,18,15,.4);text-align:center}
