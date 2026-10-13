@@ -392,7 +392,14 @@ async function teamCsv(p, range) {
     await p.keyboard.press('Escape'); await p.waitForTimeout(200);
   }
   await team.locator('[data-testid=team-export-menu]').click();
-  const [dl] = await Promise.all([p.waitForEvent('download', { timeout: 15000 }), p.locator('[data-testid=team-export-menu-csv]').click()]);
+  // Lot 18 : l'export d'équipe passe par l'alerte « Cet export va verrouiller… » : on la confirme (comportement d'avant).
+  // Cette base simulée APPLIQUE les écritures : un 2ᵉ export des mêmes jours ne trouve plus rien à verrouiller (le 1er a tout
+  // verrouillé) → pas d'alerte (règle du lot 18), le fichier part tout de suite. Le fichier, lui, est attendu dans les deux cas.
+  const [dl] = await Promise.all([p.waitForEvent('download', { timeout: 15000 }), (async () => {
+    await p.locator('[data-testid=team-export-menu-csv]').click();
+    const c = p.locator('[data-testid=export-verrou-confirm]');
+    if (await c.waitFor({ timeout: 4000 }).then(() => true, () => false)) await c.click();
+  })()]);
   const rows = parseCsv(fs.readFileSync(await dl.path(), 'utf8'));
   const head = rows[0];
   const iN = head.indexOf('Nom'), iP = head.indexOf('Prenom'), iT = head.indexOf('Total heures'), i25 = head.findIndex((h) => /^Heures sup 25/.test(h)), i50 = head.findIndex((h) => /^Heures sup 50/.test(h));
