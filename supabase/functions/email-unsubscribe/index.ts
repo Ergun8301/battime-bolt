@@ -3,7 +3,9 @@
 //
 //   POST (un clic, RFC 8058) — envoyé par la messagerie depuis l'en-tête
 //        List-Unsubscribe, ou par la page bemexo.com/desabonnement : inscrit
-//        l'adresse dans public.email_unsubscribes pour cette famille d'e-mails.
+//        l'adresse pour cette famille d'e-mails — dans public.email_unsubscribes pour
+//        les quatre familles d'origine, dans public.email_unsubscribes_v2 pour celles
+//        ajoutées au lot 19 (planning-hebdo, message-bureau) : voir unsubscribeTable().
 //   GET  — quelqu'un a ouvert le lien dans un navigateur : on le renvoie vers
 //        la page bemexo.com/desabonnement, qui demande de confirmer. Un GET ne
 //        désabonne JAMAIS : les antivirus de messagerie ouvrent les liens tout
@@ -17,7 +19,7 @@
 //   supabase functions deploy email-unsubscribe --no-verify-jwt
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import { EMAIL_KINDS, type EmailKind, decodeEmail, verifyUnsubscribeToken } from '../_shared/email.ts';
+import { ALL_EMAIL_KINDS, type EmailKind, decodeEmail, unsubscribeTable, verifyUnsubscribeToken } from '../_shared/email.ts';
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -38,7 +40,7 @@ Deno.serve(async (req) => {
   const token = url.searchParams.get('t') || '';
 
   const email = decodeEmail(encoded);
-  if (!email || !EMAIL_KINDS.includes(kind as EmailKind) || !token) {
+  if (!email || !ALL_EMAIL_KINDS.includes(kind as EmailKind) || !token) {
     return json({ error: 'Lien de désabonnement incomplet.' }, 400);
   }
   if (!(await verifyUnsubscribeToken(email, kind as EmailKind, token))) {
@@ -56,7 +58,7 @@ Deno.serve(async (req) => {
   try {
     const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
     const { error } = await admin
-      .from('email_unsubscribes')
+      .from(unsubscribeTable(kind as EmailKind))
       .upsert({ email, kind }, { onConflict: 'email,kind', ignoreDuplicates: true });
     if (error) {
       console.error('[email-unsubscribe]', error);

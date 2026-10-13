@@ -16,14 +16,32 @@
 // Importé via « ../_shared/email.ts » : le déploiement par la CLI Supabase
 // (`supabase functions deploy <nom>`) embarque ce fichier automatiquement.
 
+import { STAFF_EMAIL_KINDS, classifyHttp, type Outcome, type StaffEmailKind } from './staff-email-core.ts';
+
 export const FROM_NOTIFICATIONS = 'BEMEXO <notifications@bemexo.com>';
 export const FROM_CONTACT = 'BEMEXO <contact@bemexo.com>';
 export const REPLY_TO = 'contact@bemexo.com';
 const SITE_URL = 'https://bemexo.com';
 
-/** Familles d'e-mails récurrents, chacune désabonnable séparément. */
-export type EmailKind = 'weekly-digest' | 'missing-days' | 'cert-expiry' | 'budget-alerts';
-export const EMAIL_KINDS: EmailKind[] = ['weekly-digest', 'missing-days', 'cert-expiry', 'budget-alerts'];
+/**
+ * Familles d'e-mails récurrents, chacune désabonnable séparément.
+ *
+ * Les QUATRE premières (LegacyEmailKind) sont celles de la table `email_unsubscribes`,
+ * dont le CHECK ne laisse passer qu'elles : elles ne changent pas. Les familles
+ * ajoutées depuis (lot 19 : 'planning-hebdo', 'message-bureau') vivent dans la table
+ * `email_unsubscribes_v2`, sans liste fermée côté base : la liste blanche est ICI.
+ */
+export type LegacyEmailKind = 'weekly-digest' | 'missing-days' | 'cert-expiry' | 'budget-alerts';
+export type EmailKind = LegacyEmailKind | StaffEmailKind;
+/** Les quatre familles de l'ancienne table (inchangées). */
+export const EMAIL_KINDS: LegacyEmailKind[] = ['weekly-digest', 'missing-days', 'cert-expiry', 'budget-alerts'];
+/** Toutes les familles connues : ce que la fonction `email-unsubscribe` accepte. */
+export const ALL_EMAIL_KINDS: EmailKind[] = [...EMAIL_KINDS, ...STAFF_EMAIL_KINDS];
+
+/** La table des désabonnés d'une famille : l'ancienne pour les quatre d'origine, la v2 pour les autres. */
+export function unsubscribeTable(kind: EmailKind): 'email_unsubscribes' | 'email_unsubscribes_v2' {
+  return (EMAIL_KINDS as string[]).includes(kind) ? 'email_unsubscribes' : 'email_unsubscribes_v2';
+}
 
 // ── Version texte ────────────────────────────────────────────────────────
 
@@ -131,9 +149,10 @@ type Db = { from: (table: string) => any };
  * encore (migration pas appliquée), on n'empêche aucun envoi.
  */
 export async function loadUnsubscribed(db: Db, kind: EmailKind): Promise<Set<string>> {
-  const { data, error } = await db.from('email_unsubscribes').select('email').eq('kind', kind);
+  const table = unsubscribeTable(kind);
+  const { data, error } = await db.from(table).select('email').eq('kind', kind);
   if (error) {
-    console.warn('[email] email_unsubscribes illisible, aucun filtre appliqué :', error);
+    console.warn(`[email] ${table} illisible, aucun filtre appliqué :`, error);
     return new Set();
   }
   return new Set(((data || []) as { email: string }[]).map((r) => r.email.trim().toLowerCase()));
@@ -159,21 +178,32 @@ const KIND_LABEL: Record<EmailKind, string> = {
   'missing-days': 'les rappels de saisie des heures',
   'cert-expiry': 'les alertes d’habilitations',
   'budget-alerts': 'les alertes de budget chantier',
+  'planning-hebdo': 'le planning de la semaine du bureau',
+  'message-bureau': 'les messages du bureau',
 };
+
+/** La phrase du pied d'e-mail : les quatre familles d'origine gardent leur texte exact. */
+function footerSentence(kind: EmailKind): string {
+  return (EMAIL_KINDS as string[]).includes(kind)
+    ? `Vous recevez ${KIND_LABEL[kind]} de BEMEXO.`
+    : `Vous recevez ${KIND_LABEL[kind]} par BEMEXO, à la demande de votre entreprise.`;
+}
 
 /** Ligne de désabonnement ajoutée sous les e-mails récurrents (lien sur bemexo.com). */
 async function unsubscribeFooter(email: string, kind: EmailKind): Promise<string> {
   const url = await unsubscribePageUrl(email, kind);
   return `
 <p style="font-family:Arial,Helvetica,sans-serif;margin:0 auto;padding:0 16px 24px;max-width:560px;text-align:center;font-size:11px;line-height:1.5;color:#9a948a;">
-  Vous recevez ${KIND_LABEL[kind]} de BEMEXO. <a href="${url}" style="color:#6E6A63;">Se désabonner</a>
+  ${footerSentence(kind)} <a href="${url}" style="color:#6E6A63;">Se désabonner</a>
 </p>`;
 }
 
-export async function sendResend(opts: SendOptions): Promise<void> {
-  const apiKey = Deno.env.get('RESEND_API_KEY');
-  if (!apiKey) throw new Error('RESEND_API_KEY manquant (secret Supabase)');
-
+/**
+ * Le corps JSON envoyé à Resend. Mis à part pour que l'envoi « tout ou rien »
+ * (sendResend) et l'envoi qui RAPPORTE son issue (sendResendOutcome) construisent
+ * exactement le même message : mêmes en-têtes de désabonnement, même version texte.
+ */
+async function buildResendPayload(opts: SendOptions): Promise<Record<string, unknown>> {
   const headers: Record<string, string> = {};
   let html = opts.html;
   if (opts.kind) {
@@ -182,6 +212,24 @@ export async function sendResend(opts: SendOptions): Promise<void> {
     headers['List-Unsubscribe'] = `<${url}>, <mailto:${REPLY_TO}?subject=D%C3%A9sabonnement%20${opts.kind}>`;
     headers['List-Unsubscribe-Post'] = 'List-Unsubscribe=One-Click';
   }
+  return {
+    from: opts.from || FROM_NOTIFICATIONS,
+    to: [opts.to],
+    cc: opts.cc?.length ? opts.cc : undefined,
+    reply_to: opts.replyTo || REPLY_TO,
+    subject: opts.subject,
+    html,
+    text: htmlToText(html),
+    headers: Object.keys(headers).length ? headers : undefined,
+    attachments: opts.attachments,
+  };
+}
+
+export async function sendResend(opts: SendOptions): Promise<void> {
+  const apiKey = Deno.env.get('RESEND_API_KEY');
+  if (!apiKey) throw new Error('RESEND_API_KEY manquant (secret Supabase)');
+
+  const payload = await buildResendPayload(opts);
 
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -190,19 +238,50 @@ export async function sendResend(opts: SendOptions): Promise<void> {
       'Content-Type': 'application/json',
       ...(opts.idempotencyKey ? { 'Idempotency-Key': opts.idempotencyKey } : {}),
     },
-    body: JSON.stringify({
-      from: opts.from || FROM_NOTIFICATIONS,
-      to: [opts.to],
-      cc: opts.cc?.length ? opts.cc : undefined,
-      reply_to: opts.replyTo || REPLY_TO,
-      subject: opts.subject,
-      html,
-      text: htmlToText(html),
-      headers: Object.keys(headers).length ? headers : undefined,
-      attachments: opts.attachments,
-    }),
+    body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error(`Resend ${res.status}: ${await res.text().catch(() => '')}`);
+}
+
+/**
+ * Un envoi qui DIT ce qui s'est passé, sans jamais lever d'erreur ni renvoyer :
+ *   sent      le service a accepté le message ;
+ *   failed    le service l'a refusé (4xx) ou rien n'est parti (clé absente, message
+ *             non préparé) : on peut recommencer sans risque de doublon ;
+ *   uncertain réponse perdue, délai dépassé, erreur serveur : le message est PEUT-ÊTRE
+ *             parti. Pas de renvoi automatique.
+ * `code` est un mot court (jamais le texte de l'erreur, qui pourrait citer l'adresse).
+ * `doFetch` est injectable : les tests ne touchent jamais au vrai réseau.
+ */
+export async function sendResendOutcome(
+  opts: SendOptions,
+  doFetch: typeof fetch = fetch,
+  timeoutMs = 20_000,
+): Promise<{ outcome: Outcome; code: string }> {
+  const apiKey = Deno.env.get('RESEND_API_KEY');
+  if (!apiKey) return { outcome: 'failed', code: 'cle-absente' };
+  let payload: Record<string, unknown>;
+  try {
+    payload = await buildResendPayload(opts);
+  } catch {
+    return { outcome: 'failed', code: 'preparation' };
+  }
+  try {
+    const res = await doFetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        ...(opts.idempotencyKey ? { 'Idempotency-Key': opts.idempotencyKey } : {}),
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    const outcome = classifyHttp(res.status);
+    return { outcome, code: outcome === 'sent' ? 'ok' : outcome === 'failed' ? 'refus-service' : 'incertain-http' };
+  } catch {
+    return { outcome: 'uncertain', code: 'reseau' };
+  }
 }
 
 async function sha256Hex(s: string): Promise<string> {

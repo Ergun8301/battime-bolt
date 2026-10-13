@@ -5,7 +5,7 @@ import { GraduationCap, History } from 'lucide-react';
 import { User } from '@/lib/types';
 import {
   Users, Building2, Download, Settings, LogOut, TrendingUp, Palmtree,
-  AlertTriangle, CheckSquare, BarChart3,
+  AlertTriangle, CheckSquare, BarChart3, Mail,
 } from 'lucide-react';
 
 // Menu hamburger mobile de l'admin : identité + statut d'abonnement + les mêmes
@@ -71,6 +71,8 @@ interface AdminMobileMenuProps {
   onOpenTraces?: () => void;
   /** Lot 8 : versions du planning de la semaine affichée (bureau, migration passée). */
   onOpenVersions?: () => void;
+  /** Lot 19 : « Envoyer par e-mail » (planning de la semaine, message) — absent tant que la fonction n'existe pas. */
+  onOpenEmail?: () => void;
   /** Lot 7 : vrai pendant un guide pas à pas (et un instant après) — la fermeture du menu ne rend pas le focus au bouton, il quitterait la carte du guide. */
   holdFocus?: () => boolean;
   onSignOut: () => void;
@@ -82,7 +84,7 @@ export default function AdminMobileMenu({
   onOpenSalaries, onOpenChantiers, onOpenCost, onOpenStats, onOpenLeaves, pendingLeaves = 0,
   onOpenReserves, openReserves = 0, onOpenKiosk,
   onOpenExportTeam, onOpenSelect, onOpenSettings, onSignOut,
-  onOpenTrainings, onOpenTraces, onOpenVersions, holdFocus,
+  onOpenTrainings, onOpenTraces, onOpenVersions, onOpenEmail, holdFocus,
 }: AdminMobileMenuProps) {
   const go = (fn: () => void) => { onOpenChange(false); fn(); };
 
@@ -169,6 +171,13 @@ export default function AdminMobileMenu({
             <span className="bt-mm-icon"><Download className="h-4 w-4" /></span>
             <span className="bt-mm-label">Exporter</span>
           </button>
+
+          {onOpenEmail && (
+            <button className="bt-mm-item" onClick={() => go(onOpenEmail)} data-testid="mm-email">
+              <span className="bt-mm-icon"><Mail className="h-4 w-4" /></span>
+              <span className="bt-mm-label">Envoyer par e-mail</span>
+            </button>
+          )}
 
           {onOpenSelect && (
             <button className="bt-mm-item" onClick={() => go(onOpenSelect)} data-testid="mm-select" data-guide="bureau-nav.selection">

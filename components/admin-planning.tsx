@@ -66,6 +66,7 @@ import { addPlanningSlot, createWorksite, inviteWorker, setAbsence } from '@/lib
 import { useAiEnabled } from '@/lib/real-cost';
 import { reloadCompanySettings, useCompanySettings } from '@/lib/company-settings';
 import { useVisiblePoll } from '@/lib/use-visible-poll';
+import { useStaffEmailVisible } from '@/lib/staff-email-flag';
 import AdminMobileMenu from '@/components/admin-mobile-menu';
 import { CHANTIER_PALETTES, hashStr, LiveLine, PL_GRID_CSS, PlannedBubbleView, type ChantierPalette } from '@/components/planning-bubble';
 import { PlanningPrintSheet, PrintMenu, PRINT_MENU_CSS, printTitle, type PrintJob, type PrintOptions } from '@/components/planning-print';
@@ -118,6 +119,8 @@ const ImportWorkersDialog = lazyWindow(() => import('@/components/import-workers
 // Déjà conditionnées par kioskOn / trainingsOn : préchauffées seulement quand elles existent à l'écran.
 const KioskAdmin = lazyWindow(() => import('@/components/kiosk-admin'), { isOpen: (p) => p.open, priority: 11, warm: 'mounted' });
 const TrainingsAdmin = lazyWindow(() => import('@/components/trainings-admin'), { isOpen: (p) => p.open, priority: 12, warm: 'mounted' });
+// Lot 19 : « Envoyer par e-mail » — chargée à l'OUVERTURE seulement (jamais préchauffée), et ses lectures aussi.
+const StaffEmailDialog = lazyWindow(() => import('@/components/staff-email-dialog'), { isOpen: (p) => p.open, priority: 13, warm: 'never' });
 // Lot 18 : l'alerte de verrouillage de l'export d'équipe. Chargée à l'ouverture de la fenêtre « Exporter l'équipe »
 // (preload), pas au repos : la plupart des visites n'exportent jamais. Elle n'importe ni Excel ni jsPDF.
 const ExportVerrou = lazyWindow(() => import('@/components/export-verrou-dialog'), { isOpen: (p) => p.ask != null, close: (p) => p.onCancel(), warm: 'never' });
@@ -1555,6 +1558,10 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
   // échoué pour une autre raison (réseau) ; table absente : on ne redemande pas.
   const [trainingsOn, setTrainingsOn] = useState(false);
   const [trainingsOpen, setTrainingsOpen] = useState(false);
+  // Lot 19 : « Envoyer par e-mail ». Aucune lecture ici : la fenêtre lit tout à son ouverture, et
+  // les boutons se cachent d'eux-mêmes si la fonction n'existe pas encore (lib/staff-email-flag.ts).
+  const [emailOpen, setEmailOpen] = useState(false);
+  const emailVisible = useStaffEmailVisible();
   const trainingsMissing = useRef(false);
   useEffect(() => {
     if (!user?.company_id || trainingsOn || trainingsMissing.current) return;
@@ -3273,6 +3280,12 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
                     <button className="bt-pl-acct-item" onClick={() => { setAccountMenuOpen(false); setSettingsOpen(true); }} data-guide="bureau-nav.reglages">
                       <Settings className="h-4 w-4" /> Réglages de l&apos;entreprise
                     </button>
+                    {/* Lot 19 : planning de la semaine en PDF, ou un message, par e-mail aux salariés (fenêtre chargée à l'ouverture). */}
+                    {emailVisible && user?.role === 'admin' && workers.length > 0 && (
+                      <button className="bt-pl-acct-item" onClick={() => { setAccountMenuOpen(false); setEmailOpen(true); }} onPointerEnter={() => StaffEmailDialog.preload()} onFocus={() => StaffEmailDialog.preload()} data-testid="menu-email">
+                        <Mail className="h-4 w-4" /> Envoyer par e-mail
+                      </button>
+                    )}
                     <button className="bt-pl-acct-item danger" onClick={() => { setAccountMenuOpen(false); signOut(); }}>
                       <LogOut className="h-4 w-4" /> Déconnexion
                     </button>
@@ -3994,6 +4007,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
         onOpenTrainings={trainingsOn && user?.company_id ? () => setTrainingsOpen(true) : undefined}
         onOpenTraces={tracesOn && user?.company_id ? () => setTracesOpen(true) : undefined}
         onOpenVersions={versionsOn && user?.role === 'admin' ? () => setVersionsOpen(true) : undefined}
+        onOpenEmail={emailVisible && user?.role === 'admin' && workers.length > 0 ? () => { StaffEmailDialog.preload(); setEmailOpen(true); } : undefined}
         holdFocus={() => !!tour || Date.now() - tourEnd.current < 800}
       />
 
@@ -4236,6 +4250,12 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
       {/* Formations : `workers` (les vrais comptes), jamais displayWorkers (démo). */}
       {trainingsOn && user?.company_id && (
         <TrainingsAdmin open={trainingsOpen} onOpenChange={setTrainingsOpen} companyId={user.company_id} companyName={companyName} workers={workers} />
+      )}
+
+      {/* Lot 19 : montée tant qu'elle est ouverte, même si la fonction s'avère absente (le message neutre s'affiche). */}
+      {(emailVisible || emailOpen) && user?.company_id && user.role === 'admin' && (
+        <StaffEmailDialog open={emailOpen} onOpenChange={setEmailOpen} companyId={user.company_id} companyName={companyLabel}
+          workers={workers} monday={format(currentWeekStart, 'yyyy-MM-dd')} />
       )}
 
       {/* Chantiers — mobile equivalent of the desktop "Clients" dropdown (list +

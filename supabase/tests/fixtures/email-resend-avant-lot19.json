@@ -1,0 +1,41 @@
+[
+ {
+  "url": "https://api.resend.com/emails",
+  "method": "POST",
+  "headers": {
+   "Authorization": "Bearer cle-factice-de-test",
+   "Content-Type": "application/json",
+   "Idempotency-Key": "k1"
+  },
+  "body": "{\"from\":\"BEMEXO <notifications@bemexo.com>\",\"to\":[\"Jean@Example.com\"],\"cc\":[\"a@example.com\"],\"reply_to\":\"contact@bemexo.com\",\"subject\":\"Sujet\",\"html\":\"<p>Bonjour</p>\\n<p style=\\\"font-family:Arial,Helvetica,sans-serif;margin:0 auto;padding:0 16px 24px;max-width:560px;text-align:center;font-size:11px;line-height:1.5;color:#9a948a;\\\">\\n  Vous recevez le récap hebdomadaire de BEMEXO. <a href=\\\"https://bemexo.com/desabonnement?e=amVhbkBleGFtcGxlLmNvbQ&k=weekly-digest&t=Ut0rfMyHYA0tzJFWLVE3xajbno73I2cnGnEu519vZyQ\\\" style=\\\"color:#6E6A63;\\\">Se désabonner</a>\\n</p>\",\"text\":\"Bonjour\\n\\nVous recevez le récap hebdomadaire de BEMEXO. Se désabonner : https://bemexo.com/desabonnement?e=amVhbkBleGFtcGxlLmNvbQ&k=weekly-digest&t=Ut0rfMyHYA0tzJFWLVE3xajbno73I2cnGnEu519vZyQ\",\"headers\":{\"List-Unsubscribe\":\"<https://fake.supabase.test/functions/v1/email-unsubscribe?e=amVhbkBleGFtcGxlLmNvbQ&k=weekly-digest&t=Ut0rfMyHYA0tzJFWLVE3xajbno73I2cnGnEu519vZyQ>, <mailto:contact@bemexo.com?subject=D%C3%A9sabonnement%20weekly-digest>\",\"List-Unsubscribe-Post\":\"List-Unsubscribe=One-Click\"},\"attachments\":[{\"filename\":\"f.pdf\",\"content\":\"AAAA\"}]}"
+ },
+ {
+  "url": "https://api.resend.com/emails",
+  "method": "POST",
+  "headers": {
+   "Authorization": "Bearer cle-factice-de-test",
+   "Content-Type": "application/json"
+  },
+  "body": "{\"from\":\"BEMEXO <notifications@bemexo.com>\",\"to\":[\"x@example.com\"],\"reply_to\":\"contact@bemexo.com\",\"subject\":\"Sans famille\",\"html\":\"<p>Hi</p>\",\"text\":\"Hi\"}"
+ },
+ {
+  "url": "https://api.resend.com/emails",
+  "method": "POST",
+  "headers": {
+   "Authorization": "Bearer cle-factice-de-test",
+   "Content-Type": "application/json",
+   "Idempotency-Key": "budget-alerts-0e4f3fb3587f0bfb5fc4a62a469a56619c8128258b4691a92663e2444bb1a151"
+  },
+  "body": "{\"from\":\"F <f@example.com>\",\"to\":[\"b@example.com\"],\"reply_to\":\"r@example.com\",\"subject\":\"S\",\"html\":\"<p>x</p>\\n<p style=\\\"font-family:Arial,Helvetica,sans-serif;margin:0 auto;padding:0 16px 24px;max-width:560px;text-align:center;font-size:11px;line-height:1.5;color:#9a948a;\\\">\\n  Vous recevez les alertes de budget chantier de BEMEXO. <a href=\\\"https://bemexo.com/desabonnement?e=YkBleGFtcGxlLmNvbQ&k=budget-alerts&t=2tipDds10PGHddS4aqwmESBYDybqVI-qV7Zxe8g1mnE\\\" style=\\\"color:#6E6A63;\\\">Se désabonner</a>\\n</p>\",\"text\":\"x\\n\\nVous recevez les alertes de budget chantier de BEMEXO. Se désabonner : https://bemexo.com/desabonnement?e=YkBleGFtcGxlLmNvbQ&k=budget-alerts&t=2tipDds10PGHddS4aqwmESBYDybqVI-qV7Zxe8g1mnE\",\"headers\":{\"List-Unsubscribe\":\"<https://fake.supabase.test/functions/v1/email-unsubscribe?e=YkBleGFtcGxlLmNvbQ&k=budget-alerts&t=2tipDds10PGHddS4aqwmESBYDybqVI-qV7Zxe8g1mnE>, <mailto:contact@bemexo.com?subject=D%C3%A9sabonnement%20budget-alerts>\",\"List-Unsubscribe-Post\":\"List-Unsubscribe=One-Click\"}}"
+ },
+ {
+  "url": "https://api.resend.com/emails",
+  "method": "POST",
+  "headers": {
+   "Authorization": "Bearer cle-factice-de-test",
+   "Content-Type": "application/json",
+   "Idempotency-Key": "budget-alerts-2df4aeaf96d901e479c441af1e375018117780bcbaa04e5d94242669231f1396"
+  },
+  "body": "{\"from\":\"F <f@example.com>\",\"to\":[\"c@example.com\"],\"reply_to\":\"r@example.com\",\"subject\":\"S\",\"html\":\"<p>x</p>\\n<p style=\\\"font-family:Arial,Helvetica,sans-serif;margin:0 auto;padding:0 16px 24px;max-width:560px;text-align:center;font-size:11px;line-height:1.5;color:#9a948a;\\\">\\n  Vous recevez les alertes de budget chantier de BEMEXO. <a href=\\\"https://bemexo.com/desabonnement?e=Y0BleGFtcGxlLmNvbQ&k=budget-alerts&t=sP-4KBTFrE9t6wF7ZCK2OolSyh_8KuXrm8mo4f8ZPUo\\\" style=\\\"color:#6E6A63;\\\">Se désabonner</a>\\n</p>\",\"text\":\"x\\n\\nVous recevez les alertes de budget chantier de BEMEXO. Se désabonner : https://bemexo.com/desabonnement?e=Y0BleGFtcGxlLmNvbQ&k=budget-alerts&t=sP-4KBTFrE9t6wF7ZCK2OolSyh_8KuXrm8mo4f8ZPUo\",\"headers\":{\"List-Unsubscribe\":\"<https://fake.supabase.test/functions/v1/email-unsubscribe?e=Y0BleGFtcGxlLmNvbQ&k=budget-alerts&t=sP-4KBTFrE9t6wF7ZCK2OolSyh_8KuXrm8mo4f8ZPUo>, <mailto:contact@bemexo.com?subject=D%C3%A9sabonnement%20budget-alerts>\",\"List-Unsubscribe-Post\":\"List-Unsubscribe=One-Click\"}}"
+ }
+]
