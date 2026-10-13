@@ -174,6 +174,11 @@ const setup = async (ctx, uid, email, getD) => {
     if (url.pathname.startsWith('/auth/v1/')) return r.fulfill({ json: {} });
     if (url.pathname.startsWith('/storage/v1/object/sign')) return r.fulfill({ json: [] });
     if (url.pathname.startsWith('/storage/')) return r.fulfill({ json: {} });
+    // Lot 19 : « Envoyer par e-mail » lit l'état à l'ouverture (qui a une adresse, qui est désabonné) — une LECTURE, pas une écriture.
+    if (url.pathname.startsWith('/functions/v1/send-staff-email')) {
+      const us = (getD().users || []).filter((x) => x.role !== 'admin');
+      return r.fulfill({ json: { available: true, cap: 50, used: 3, remaining: 47, workers: us.map((x) => ({ id: x.id, has_email: !!x.email, unsubscribed: { 'planning-hebdo': x.id === 'u-sara', 'message-bureau': x.id === 'u-sara' } })) } });
+    }
     if (url.pathname.startsWith('/functions/v1/')) { writes.push(`fonction ${url.pathname.replace('/functions/v1/', '')}`); return r.fulfill({ json: {} }); }
     if (url.pathname.startsWith('/rest/v1/rpc/')) return r.fulfill({ json: [] });
     const t = url.pathname.replace('/rest/v1/', '');
@@ -301,6 +306,8 @@ const ADMIN = [
     await openSection(p, 'borne');
     return step(p, ['[data-testid=set-kiosk-open]'], ['[role=dialog] button', 'Relier la tablette'], ['[role=dialog] button', 'Gérer les bornes']);
   } },
+  // Lot 19 : « Envoyer par e-mail » (menu du compte ; entrée du menu ☰ sur téléphone). État lu à l'ouverture.
+  { id: 'envoi-email', name: 'Envoyer par e-mail', open: async (p, L) => (L === 'desk' ? (await step(p, ['.bt-pl-acct'])) && step(p, ['[data-testid=menu-email]']) : (await mobMenu(p)) && step(p, ['[data-testid=mm-email]'])) },
   { id: 'borne', name: '📟 Borne', open: async (p, L) => (L === 'desk' ? step(p, ['[data-testid=bar-kiosk]']) : (await mobMenu(p)) && step(p, ['[data-testid=mm-kiosk]'])) },
   { id: 'salaries', name: 'Salariés', open: openSalaries },
   { id: 'nouveau-salarie', name: 'Nouveau salarié', open: async (p, L) => (await openSalaries(p, L)) && step(p, ['[role=dialog] button', 'Nouveau salarié'], ['[role=dialog] button', 'Ajouter un salarié']) },

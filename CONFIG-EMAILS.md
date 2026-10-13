@@ -189,3 +189,25 @@ Infomaniak → **Domaines** → `bemexo.com` → **Zone DNS** → modifier l'enr
 | Version texte | absente | ajoutée à chaque e-mail envoyé par les fonctions |
 | Désabonnement (récap, rappels, alertes) | aucun | lien en pied d'e-mail + désabonnement en un clic dans Gmail / Outlook |
 | Nom de l'employeur dans l'invitation | absent | « Martin Menuiserie vous invite… » |
+
+---
+
+## Lot 19 — e-mails du bureau aux salariés (planning de la semaine, message)
+
+Le bureau peut envoyer le planning de la semaine (PDF) ou un court message, avec un
+plafond de 50 par jour et par entreprise, un journal et un lien de désabonnement.
+
+1. Migration (éditeur SQL) : `supabase/migrations/20261013190000_lot19_emails.sql`
+2. Site (déploiement habituel)
+3. Fonctions :
+
+```
+supabase functions deploy send-staff-email
+supabase functions deploy email-unsubscribe --no-verify-jwt
+```
+
+- `send-staff-email` : avec la vérification du jeton (le défaut).
+- `email-unsubscribe` : à redéployer pour qu'elle accepte les nouvelles familles ; toujours `--no-verify-jwt`.
+- Aucun nouveau secret : `RESEND_API_KEY` suffit.
+
+Détail, essais sans écrire à de vrais salariés, limites : `docs/emails-lot19.md`.

@@ -46,6 +46,7 @@
     "test:emails-fonction": "npx -y deno@2 test -A supabase/functions/_shared/staff-email-function.test.ts",
     "test:emails-db": "node --no-warnings supabase/tests/lot19_emails.mjs",
     "test:emails-moteur-db": "node --no-warnings supabase/tests/lot19_emails_moteur.mjs",
+    "test:emails-ecrans": "node scripts/tests/emails-lot19.mjs out docs/captures-emails-lot19 42700",
     "test:heures": "npx -y deno@2 test supabase/functions/_shared/day-hours.test.ts",
     "test:copie-planning": "npx -y deno@2 test supabase/functions/_shared/copy-slot.test.ts",
     "test:heures-ecrans": "node scripts/tests/heures-lot1.mjs out docs/captures-heures",
