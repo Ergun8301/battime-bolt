@@ -7,7 +7,7 @@
   },
   "groupes": {
     "/apercu/*": {
-      "max": 289
+      "max": 290
     }
   },
   "routes": {
@@ -85,8 +85,8 @@
       "max": 151
     },
     "/poseur": {
-      "mesure": 331.0,
-      "max": 341,
+      "mesure": 335.0,
+      "max": 345,
       "objectif": 300
     },
     "/suisse": {
