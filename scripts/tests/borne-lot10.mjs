@@ -5,7 +5,7 @@
 // Même simulation que scripts/tests/borne-lot9.mjs (fonction `kiosk` simulée,
 // horloge figée au jeudi 1er octobre 2026, 09:30 à Paris, page.clock).
 // Un MutationObserver est posé APRÈS le premier affichage ; on déclenche les
-// relectures (30 s, retour sur l'onglet, sync 5 min) avec des données
+// relectures (60 s depuis le lot 30 — 30 s avant —, retour sur l'onglet, sync 5 min) avec des données
 // IDENTIQUES et on compte ce qui bouge dans le DOM. Seules exceptions admises :
 // le texte de l'horloge (.kb-clock) et le QR (.kb-qr, .kb-bar, change chaque minute).
 import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path';
@@ -128,17 +128,17 @@ const report = {};
   await p.waitForTimeout(1000);
   check((await p.locator('[data-testid=kb-worker]').count()) === 6, '0) planning affiché (6 salariés)');
 
-  // A · relecture toutes les 30 s
+  // A · relecture toutes les 60 s (lot 30 : 30 s avant)
   await observe(p);
   let n0 = calls.filter((c) => c === 'board').length;
-  await p.clock.fastForward(30_000);
+  await p.clock.fastForward(60_000);
   await p.waitForTimeout(1200);
   let r = await collect(p);
   const polled = calls.filter((c) => c === 'board').length > n0;
   report.poll30 = { total: r.all.length, other: r.other.length };
-  console.log(`   A · 30 s : board relu=${polled}, mutations=${r.all.length} (hors exceptions : ${r.other.length})${r.other.length ? `\n      ${summary(r.other)}` : ''}`);
-  check(polled, 'A) le planning est bien relu au bout de 30 s');
-  check(r.other.length === 0, `A) relecture 30 s, données identiques : 0 mutation hors horloge/QR (${r.other.length})`);
+  console.log(`   A · 60 s : board relu=${polled}, mutations=${r.all.length} (hors exceptions : ${r.other.length})${r.other.length ? `\n      ${summary(r.other)}` : ''}`);
+  check(polled, 'A) le planning est bien relu au bout de 60 s');
+  check(r.other.length === 0, `A) relecture 60 s, données identiques : 0 mutation hors horloge/QR (${r.other.length})`);
   check(r.kept === r.marked, `A) aucun élément remonté (${r.kept}/${r.marked} gardés)`);
 
   // B · onglet caché puis de retour (après plus de 30 s : la borne relit)
@@ -175,7 +175,7 @@ const report = {};
   // D · un VRAI changement : seule la case de Lucas, aujourd'hui, bouge
   await observe(p);
   server.board = BOARD_LUCAS;
-  await p.clock.fastForward(30_000);
+  await p.clock.fastForward(60_000);
   await p.waitForTimeout(1200);
   r = await collect(p);
   const cells = [...new Set(r.other.map((m) => m.cell))];

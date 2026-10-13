@@ -420,11 +420,11 @@ const openBorne = async (p) => {
   await ctx.close();
 }
 {
-  // 403 seulement sur `board` (la relecture de 30 s) : même écran, rien d'effacé.
+  // 403 seulement sur `board` (la relecture de 60 s depuis le lot 30) : même écran, rien d'effacé.
   const { ctx, p, api } = await tablet({ api: { sync: 200, board: 200 } });
   await openBorne(p);
   api.board = 403; api.sync = 403;
-  await p.clock.fastForward(31_000);
+  await p.clock.fastForward(61_000);
   await p.waitForSelector('[data-testid=kb-suspended]', { timeout: 5000 }).catch(() => {});
   check(await p.locator('[data-testid=kb-suspended]').isVisible() && (await stored(p)) !== null, 'E) 403 sur la relecture du planning : suspendue, appairage gardé');
   await ctx.close();

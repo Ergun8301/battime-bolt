@@ -32,7 +32,10 @@
 //                       long sur le logo, puis « Oui, déconnecter »)
 //     sync            → « je suis toujours là » ; relit les réglages (et
 //                       l'ancien planning du jour, pour les tablettes qui ont
-//                       encore l'ancienne page en cache)
+//                       encore l'ancienne page en cache). Lot 30 : peut joindre
+//                       `client_state` (l'état de l'écran de la tablette :
+//                       verrou d'écran, icône installée, plein écran, en ligne,
+//                       version), validé puis écrit dans kiosks.client_state
 //     board           → lot 9 : le planning de la SEMAINE, lecture seule —
 //                       prénom, nom, chantier, ville, horaires prévus, « en
 //                       cours depuis » (voir _shared/kiosk-board.ts)
@@ -73,6 +76,14 @@
 // code à 6 chiffres. Le code à 6 chiffres (`pair`) et son compteur d'échecs
 // global (kiosk_pair_failures) ne sont PAS touchés. Voir « APPAIRAGE EN UN GESTE ».
 //
+// Lot 30 (borne robuste) — AVANT LA MIGRATION 20261013170000_lot30_borne_robuste.sql
+// (colonnes kiosks.client_state et client_state_at), `sync` répond exactement comme
+// avant : l'écriture groupée (« vu à » + état) échoue proprement (schemaMissing), le « vu à »
+// seul est écrit comme avant, et la fonction s'en souvient 10 minutes (pas d'erreur à chaque
+// sync) ; rien n'est journalisé ni visible. Un `client_state` invalide (pas un objet, trop
+// gros, champ mal typé) est ignoré en entier, sans refuser le `sync`. Jamais de
+// texte libre, de jeton ni de position : liste blanche dans _shared/kiosk-client-state.ts.
+//
 // L'interrupteur `companies.kiosk_enabled` est vérifié à CHAQUE action : une
 // entreprise qui ne l'a pas n'obtient rien, pas même un code.
 //
@@ -80,7 +91,7 @@
 // (la tablette et le premier appel du salarié n'ont pas de jeton ; les actions
 // qui en demandent un le vérifient elles-mêmes). Fichiers à emporter avec
 // index.ts : _shared/kiosk-code.ts, kiosk-rules.ts, fixed-qr.ts, kiosk-board.ts,
-// live-place.ts et (lot 11) kiosk-pair.ts.
+// live-place.ts, (lot 11) kiosk-pair.ts et (lot 30) kiosk-client-state.ts.
 //
 // Secret recommandé : KIOSK_SECRET (sinon la clé service sert de clé serveur ;
 // la changer obligerait à réappairer les tablettes).
@@ -108,6 +119,7 @@ import {
   buildBoard, parisWeek,
   type BoardPlanning, type BoardSession, type BoardUser, type BoardWorksite,
 } from '../_shared/kiosk-board.ts';
+import { parseClientState } from '../_shared/kiosk-client-state.ts';
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -974,12 +986,49 @@ async function unpair(admin: SupabaseClient, body: Record<string, unknown>) {
   return json({ success: true, revoked: true });
 }
 
+/** Lot 30 — colonnes d'état absentes (migration pas passée) : on ne retente qu'après ce délai. */
+const STATE_COLUMNS_RETRY_MS = 10 * 60 * 1000;
+/** Heure à laquelle on a appris que les colonnes manquent (0 = on ne sait pas, ou elles existent). */
+let stateColumnsAbsentAt = 0;
+
+/**
+ * « Vu à » de la tablette, et — Lot 30 — l'état de son écran, en UNE SEULE écriture de `kiosks`
+ * ({ last_seen_at, client_state, client_state_at } : 288 écritures par jour et par tablette, comme avant).
+ *
+ * Avant la migration (colonnes absentes, PGRST204 / 42703), l'écriture groupée échoue : on écrit alors le « vu à »
+ * seul — exactement l'écriture d'avant — et on s'en souvient 10 minutes, pour ne pas provoquer une erreur de la
+ * base à chaque `sync` ; rien n'est journalisé. Un état invalide est ignoré en entier (écriture d'avant). Toute
+ * autre erreur de l'écriture groupée (panne, droit retiré) est journalisée (le code seulement), et le « vu à »
+ * est quand même écrit. Ne lève que si l'écriture d'avant lèverait.
+ */
+async function touchKiosk(admin: SupabaseClient, kioskId: string, rawState: unknown) {
+  const at = new Date(Date.now()).toISOString();
+  const state = rawState === undefined ? null : parseClientState(rawState);
+  if (state) {
+    const sinceAbsent = Date.now() - stateColumnsAbsentAt;
+    // `sinceAbsent < 0` : l'horloge a reculé, on ne se fie pas à l'ancienne mémoire.
+    if (stateColumnsAbsentAt === 0 || sinceAbsent >= STATE_COLUMNS_RETRY_MS || sinceAbsent < 0) {
+      try {
+        const { error } = await admin.from('kiosks')
+          .update({ last_seen_at: at, client_state: state, client_state_at: at }).eq('id', kioskId);
+        if (!error) { stateColumnsAbsentAt = 0; return; }
+        if (schemaMissing(error)) stateColumnsAbsentAt = Date.now() || 1;
+        else console.error('[kiosk] client_state', error.code);
+      } catch (e) {
+        console.error('[kiosk] client_state', (e as { code?: string })?.code ?? 'erreur');
+      }
+    }
+  }
+  await admin.from('kiosks').update({ last_seen_at: at }).eq('id', kioskId);
+}
+
 async function sync(admin: SupabaseClient, body: Record<string, unknown>) {
   const k = await kioskFromToken(admin, body);
   if (!k) return json({ error: 'Borne inconnue', revoked: true }, 401);
   if (k.revoked_at) return json({ error: REFUSAL_MESSAGES.kiosk_revoked, revoked: true }, 410);
   if (!(await companyEnabled(admin, k.company_id))) return json({ error: REFUSAL_MESSAGES.kiosk_disabled, disabled: true }, 403);
-  await admin.from('kiosks').update({ last_seen_at: new Date().toISOString() }).eq('id', k.id);
+  // « Vu à » + (lot 30) l'état de l'écran, facultatif (une ancienne page n'en envoie pas) : une seule écriture.
+  await touchKiosk(admin, k.id, body.client_state);
 
   const settings = await loadSettings(admin, k.company_id);
   const { data: c } = await admin.from('companies').select('name').eq('id', k.company_id).maybeSingle();
