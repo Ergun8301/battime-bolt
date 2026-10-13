@@ -1,0 +1,13 @@
+# Fichiers hachés par Next : le nom change quand le contenu change, cache immuable sûr.
+/_next/static/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Fichiers de police : 30 jours, jamais immuable. Leur nom n'a pas de hash : remplacer une
+# police = changer le nom du fichier (versionner).
+# La règle vise `*.woff2` et NON `/fonts/*` : `/fonts/fonts.css` (la feuille de style chargée par
+# toutes les pages, nom fixe) doit rester sur le défaut de l'hébergeur (revalidation), sinon
+# une modification de la feuille n'arriverait chez les visiteurs qu'au bout de 30 jours.
+# Ne PAS ajouter de règle `/fonts/fonts.css` pour la « corriger » : sur Cloudflare Pages les
+# en-têtes de toutes les règles qui correspondent s'additionnent (`max-age=0, max-age=2592000`).
+/fonts/*.woff2
+  Cache-Control: public, max-age=2592000

@@ -1,0 +1,109 @@
+{
+  "_aide": "Budgets de poids (kB, First Load JS compressé) lus par scripts/check-bundle-budget.mjs. max = mesure arrondie au kB supérieur + marge (+10 pour /admin et /poseur, +5 ailleurs). 'objectif' est affiché mais ne bloque pas. Toute croissance de plus de 10 kB sur une route est à justifier dans la PR, puis à reporter ici.",
+  "default": 150,
+  "shared": {
+    "mesure": 88.6,
+    "max": 96
+  },
+  "groupes": {
+    "/apercu/*": {
+      "max": 290
+    }
+  },
+  "routes": {
+    "/": {
+      "mesure": 134.0,
+      "max": 139
+    },
+    "/_not-found": {
+      "mesure": 89.5,
+      "max": 95
+    },
+    "/admin": {
+      "mesure": 353.0,
+      "max": 363,
+      "objectif": 350
+    },
+    "/auth/confirm": {
+      "mesure": 141.0,
+      "max": 146
+    },
+    "/borne": {
+      "mesure": 167.0,
+      "max": 170
+    },
+    "/cgu": {
+      "mesure": 97.5,
+      "max": 103
+    },
+    "/cgv": {
+      "mesure": 97.5,
+      "max": 103
+    },
+    "/confidentialite": {
+      "mesure": 97.5,
+      "max": 103
+    },
+    "/connexion": {
+      "mesure": 150.0,
+      "max": 155
+    },
+    "/desabonnement": {
+      "mesure": 100.0,
+      "max": 105
+    },
+    "/fonctionnalites/export-paie": {
+      "mesure": 97.5,
+      "max": 103
+    },
+    "/fonctionnalites/planning-equipe": {
+      "mesure": 97.5,
+      "max": 103
+    },
+    "/fonctionnalites/pointage-chantier": {
+      "mesure": 97.5,
+      "max": 103
+    },
+    "/inscription": {
+      "mesure": 147.0,
+      "max": 152
+    },
+    "/landing": {
+      "mesure": 91.6,
+      "max": 97
+    },
+    "/mentions-legales": {
+      "mesure": 97.5,
+      "max": 103
+    },
+    "/mot-de-passe-oublie": {
+      "mesure": 142.0,
+      "max": 147
+    },
+    "/pointer": {
+      "mesure": 146.0,
+      "max": 151
+    },
+    "/poseur": {
+      "mesure": 335.0,
+      "max": 345,
+      "objectif": 300
+    },
+    "/suisse": {
+      "mesure": 97.5,
+      "max": 103
+    },
+    "/suisse/enregistrement-temps-de-travail": {
+      "mesure": 97.5,
+      "max": 103
+    },
+    "/suisse/timbrage-chantier": {
+      "mesure": 97.5,
+      "max": 103
+    },
+    "/support": {
+      "mesure": 149.0,
+      "max": 155
+    }
+  }
+}

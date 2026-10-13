@@ -1,0 +1,38 @@
+Route (app)                                  Size     First Load JS
+┌ ○ /                                        1.41 kB         134 kB
+├ ○ /_not-found                              880 B          88.7 kB
+├ ○ /admin                                   273 kB          766 kB
+├ ○ /apercu/acces-support                    6.76 kB         178 kB
+├ ○ /apercu/assistant                        5.93 kB         219 kB
+├ ○ /apercu/assistant-salarie                3.57 kB         274 kB
+├ ○ /apercu/cout-salarie                     5.28 kB         209 kB
+├ ○ /auth/confirm                            2.95 kB         141 kB
+├ ○ /borne                                   17.4 kB         163 kB
+├ ○ /cgu                                     210 B          96.8 kB
+├ ○ /cgv                                     210 B          96.8 kB
+├ ○ /confidentialite                         210 B          96.8 kB
+├ ○ /connexion                               8.76 kB         150 kB
+├ ○ /desabonnement                           2.91 kB        99.5 kB
+├ ○ /fonctionnalites/export-paie             210 B          96.8 kB
+├ ○ /fonctionnalites/planning-equipe         210 B          96.8 kB
+├ ○ /fonctionnalites/pointage-chantier       210 B          96.8 kB
+├ ○ /inscription                             8.43 kB         146 kB
+├ ○ /landing                                 2.98 kB        90.8 kB
+├ ○ /mentions-legales                        210 B          96.8 kB
+├ ○ /mot-de-passe-oublie                     4.01 kB         142 kB
+├ ○ /pointer                                 7.88 kB         146 kB
+├ ○ /poseur                                  55.6 kB         544 kB
+├ ○ /robots.txt                              0 B                0 B
+├ ○ /sitemap.xml                             0 B                0 B
+├ ○ /suisse                                  210 B          96.8 kB
+├ ○ /suisse/enregistrement-temps-de-travail  210 B          96.8 kB
+├ ○ /suisse/timbrage-chantier                210 B          96.8 kB
+└ ○ /support                                 1.8 kB          148 kB
++ First Load JS shared by all                87.8 kB
+  ├ chunks/6097-5ae9706a98825e30.js          32 kB
+  ├ chunks/b60da49f-7d0c614884ff255b.js      53.6 kB
+  └ other shared chunks (total)              2.23 kB
+
+
+○  (Static)  prerendered as static content
+

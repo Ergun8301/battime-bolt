@@ -8,33 +8,49 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Clock, CalendarDays, CalendarRange, History, LogOut, Check, ArrowLeft, Camera, Loader2, Palmtree, Bell, BellOff, Sparkles, Info, ScanLine } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAiEnabled } from '@/lib/real-cost';
 import { useCompanySettings } from '@/lib/company-settings';
 import { useVisiblePoll } from '@/lib/use-visible-poll';
-import QrScanner from '@/components/qr-scanner';
 import { GEO_INFO_LINK, GEO_INFO_TEXT, GEO_INFO_TITLE } from '@/lib/position-info';
 import { toast } from 'sonner';
 import { format, subDays, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { computeMissingDays } from '@/lib/work-status';
 import PoseurDay from '@/components/poseur-day';
-import PoseurWeek from '@/components/poseur-week';
-import PoseurMonth from '@/components/poseur-month';
-import PoseurHistory from '@/components/poseur-history';
-import LeaveRequestDialog from '@/components/leave-request-dialog';
-import WorkerAssistant from '@/components/worker-assistant';
 import { pushSupported, currentPushState, enablePush, disablePush } from '@/lib/push';
 import WorkerReserves, { type WorkerReserve } from '@/components/worker-reserves';
 import GuideTour, { type GuideStep } from '@/components/guide-tour';
 import { findWorkerTour, tourIdOf, type WorkerTour } from '@/supabase/functions/_shared/worker-tours';
 import { COUNTED_STATUSES } from '@/lib/status';
 import { keep } from '@/lib/same';
+import { lazyWindow, warmAll } from '@/lib/lazy-window';
+import { isPreviewHost } from '@/lib/hosting';
 import { RESERVES_CHANGED_EVENT } from '@/lib/reserve-lift';
 // Formations (lot 6, oct. 2026) : rien ne s'affiche tant que la migration n'est pas passée.
 import PoseurTrainings, { TrainingsBanner, useMyTrainings } from '@/components/poseur-trainings';
 import { GraduationCap } from 'lucide-react';
+
+// Lot 5 « site rapide 1 » : les onglets Semaine / Mois / Historique et les fenêtres fermées ne pèsent plus
+// dans le premier chargement. Ils arrivent au repos (file de préchauffage, lib/lazy-window.tsx) ou à
+// l'ouverture ; le JSX plus bas n'a pas changé. Tant que le code d'un onglet n'est pas là (économie de
+// données, iPhone dans la première seconde), il montre les mêmes blocs gris que l'onglet lui-même pendant
+// qu'il charge ses données : aucun écran blanc. Hors ligne, un écran jamais chargé affiche le message.
+type DayPickProps = { onSelectDay?: (date: string) => void };
+const NON_CHARGE = <p role="status" style={{ padding: 16, textAlign: 'center', fontSize: 14 }}>Cet écran n'a pas pu se charger. Vérifiez votre connexion puis rechargez la page.</p>;
+const PoseurWeek = lazyWindow<DayPickProps>(() => import('@/components/poseur-week'), { isOpen: () => true, priority: 1, errorFallback: NON_CHARGE,
+  loadingFallback: <div className="space-y-4"><Skeleton className="h-10 w-full" />{[1, 2, 3].map((i) => <Skeleton key={i} className="h-24 w-full" />)}</div> });
+const PoseurHistory = lazyWindow(() => import('@/components/poseur-history'), { isOpen: () => true, priority: 2, errorFallback: NON_CHARGE,
+  loadingFallback: <div className="space-y-4"><Skeleton className="h-12 w-48" />{[1, 2, 3].map((i) => <Skeleton key={i} className="h-32" />)}</div> });
+const PoseurMonth = lazyWindow<DayPickProps>(() => import('@/components/poseur-month'), { isOpen: () => true, priority: 3, errorFallback: NON_CHARGE,
+  loadingFallback: <div className="space-y-4"><Skeleton className="h-10 w-full" />{[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full" />)}</div> });
+const LeaveRequestDialog = lazyWindow(() => import('@/components/leave-request-dialog'), { isOpen: (p) => p.open, priority: 4 });
+// Assistant : monté dès que son code est là, même fermé (il garde la mémoire de la conversation).
+const WorkerAssistant = lazyWindow(() => import('@/components/worker-assistant'), { isOpen: (p) => !!p.open, priority: 5, warm: 'mounted', mount: 'warm' });
+// Le lecteur de QR ne se préchauffe pas et n'est jamais « collant » : démonté à la fermeture, la caméra s'éteint.
+const QrScanner = lazyWindow(() => import('@/components/qr-scanner'), { isOpen: () => true, close: (p) => p.onClose(), warm: 'never' });
 
 const TABS = [
   { value: 'day', label: 'Ma journée', icon: Clock },
@@ -49,7 +65,6 @@ const ALL_TABS = [...TABS, FORMATIONS_TAB];
 const MENU_GUIDE: Record<string, string> = { day: 'menu.journee', week: 'menu.semaine', month: 'menu.mois', history: 'menu.historique' };
 
 const POSEUR_CSS = `
-@import url('/fonts/fonts.css');
 
 .bt-poseur{font-family:'Archivo',sans-serif;color:#15120F;-webkit-font-smoothing:antialiased;background:#e7e0d2;display:flex;justify-content:center;height:100vh;height:100svh;height:100dvh;overflow:hidden}
 .bt-poseur *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -171,6 +186,8 @@ export default function PoseurPage() {
   // l'entreprise est allumé (ai_enabled / kiosk_enabled).
   const router = useRouter();
   const aiOn = useAiEnabled(user?.company_id);
+  // Démo des préviews (?demo=salarie) : l'assistant se monte même sans IA, comme dans worker-assistant.tsx.
+  const demoSalarie = typeof window !== 'undefined' && isPreviewHost() && new URLSearchParams(window.location.search).get('demo') === 'salarie';
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [kioskOn, setKioskOn] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
@@ -387,6 +404,7 @@ export default function PoseurPage() {
   const here = useRef({ view, selectedDate });
   here.current = { view, selectedDate };
   const tourStep = (s: GuideStep) => {
+    warmAll(); // le guide ne cherche sa cible que 1,5 s : les écrans différés doivent déjà être là
     setMenuOpen(s.ecran === 'menu');
     setHdrHidden(false); // l'en-tête peut porter la cible (votre nom, le scanner)
     const on = (v: string) => here.current.view === v && !here.current.selectedDate;
@@ -528,7 +546,7 @@ export default function PoseurPage() {
             </div>
 
             {kioskOn && (
-              <button type="button" className="bt-phdr-scan" onClick={() => setScanOpen(true)} aria-label="Scanner la borne" data-testid="scan-open" data-guide="entete.scanner">
+              <button type="button" className="bt-phdr-scan" onPointerDown={() => QrScanner.preload()} onClick={() => setScanOpen(true)} aria-label="Scanner la borne" data-testid="scan-open" data-guide="entete.scanner">
                 <ScanLine className="h-5 w-5" />
               </button>
             )}
@@ -632,7 +650,7 @@ export default function PoseurPage() {
             </div>
           </div>
         )}
-        <WorkerAssistant
+        {(aiOn || demoSalarie) && <WorkerAssistant
           open={assistantOpen}
           onOpenChange={setAssistantOpen}
           onSaved={() => { setDayKey((k) => k + 1); fetchPending(); }}
@@ -649,7 +667,7 @@ export default function PoseurPage() {
             // Lot 7 : « Me guider pas à pas » — l'assistant se replie, le guide entoure le vrai bouton. Fiche inconnue : rien.
             else if (tourIdOf(a)) { const t = findWorkerTour(tourIdOf(a)!); if (t) { setAssistantOpen(false); setTour(t); } }
           }}
-        />
+        />}
         {tour && (
           <GuideTour
             key={tour.id}

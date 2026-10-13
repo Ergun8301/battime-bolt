@@ -22,7 +22,6 @@ import { ASIDE_FULL } from './_illustrations';
 //    formulaire fluide (clamp/vh) qui s'adapte a la hauteur, + 100svh pour eviter
 //    le bug de scroll mobile du 100vh.
 const SIGNUP_CSS = `
-@import url('/fonts/fonts.css');
 .bt-auth{font-family:'Archivo',sans-serif;background:#F2EDE3;color:#15120F;-webkit-font-smoothing:antialiased;min-height:100vh;min-height:100svh}
 .bt-auth *{box-sizing:border-box}
 .bt-auth .mono{font-family:'JetBrains Mono',monospace}
