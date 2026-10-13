@@ -4,7 +4,8 @@
 //  b) ces chunks arrivent à l'ouverture du menu « Exporter ▾ » ou de la fenêtre d'export (et PAS avant) ; PDF / Excel / « Envoyer au comptable » téléchargent de vrais fichiers ;
 //  c) une fenêtre différée (Réglages, fiche salarié) s'ouvre SANS clignoter (jamais vide, jamais 1→0→1) et montre ses données ; 2e ouverture : aucun chunk de plus ;
 //  d) (chunk d'export qui ne charge pas) message d'erreur, AUCUNE écriture (pas de verrouillage sans fichier) ;
-//  e) onglets salarié (semaine, mois, historique), réseau coupé APRÈS le repos (tout se rouvre), chunk de fenêtre bloqué (message, pas d'erreur, réessai).
+//  e) onglets salarié (semaine, mois, historique), réseau coupé APRÈS le repos (tout se rouvre), chunk de fenêtre bloqué (message, pas d'erreur, réessai) ;
+//  f) téléphone (390 px) : chaque fenêtre du menu ☰ s'ouvre du premier coup, sans clignoter ni déborder.
 // Les chunks lourds sont reconnus dans out/ par une EMPREINTE de leur contenu (noms hachés = changent à chaque build).
 import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path'; import { createRequire } from 'node:module'; import { chromium } from 'playwright-core';
 const XLSX = createRequire(import.meta.url)('xlsx'); // lecture des classeurs téléchargés (même méthode que panier-lot3bis.mjs)
@@ -215,7 +216,6 @@ const admin = async (viewport = { width: 1280, height: 800 }, opts = {}) => {
   await dlg.locator('[data-testid=export-menu]').click();
   const arrived = await waitHeavy(seen, t0, 3, 5000);
   check(eager.length === 0 ? arrived : false, `b) les 3 chunks (xlsx, jspdf, autotable) arrivent à l'OUVERTURE du menu « Exporter ▾ », avant le choix (vu après le clic : ${heavyOf(seen, t0).join(',') || 'rien'})`);
-  await shot(pg, 'export-menu-ouvert.png');
   const pdf = await download(pg, () => pg.locator('[data-testid=export-menu-pdf]').click());
   check(/\.pdf$/.test(pdf.name) && pdf.buf.subarray(0, 5).toString() === '%PDF-', `b) PDF de la fiche : vrai fichier (${pdf.name}, ${pdf.buf.length} o)`);
   check(pdf.buf.toString('latin1').includes('BEMEXO'), 'b) PDF de la fiche : le titre BEMEXO est dans le fichier');
@@ -296,7 +296,6 @@ const admin = async (viewport = { width: 1280, height: 800 }, opts = {}) => {
       check(shown, `c) ${nom} (${fois}ʳᵉ ouverture) : la fenêtre s'ouvre avec ses données`);
       check(flicker(fr) === null, `c) ${nom} (${fois}ʳᵉ ouverture) : pas de clignotement (${flicker(fr) || 'ok'} ; ${fr.length} images)`);
       if (fois === 2) check(seen.length === before, `c) ${nom} : la 2ᵉ ouverture ne télécharge aucun script de plus (${seen.length - before})`);
-      if (fois === 1) await shot(pg, `fenetre-${nom.replace(/\W/g, '')}.png`);
       for (let i = 0; i < 3 && await pg.locator('[role=dialog]').count(); i++) { await pg.keyboard.press('Escape'); await pg.waitForTimeout(500); }
     }
   }
@@ -326,6 +325,8 @@ const LAZY = 'Impossible de charger cette fenêtre. Vérifiez votre connexion ou
 const dialogTexts = (pg) => pg.locator('[role=dialog]').allInnerTexts().then((a) => a.join(' | ')).catch(() => '');
 const waitText = async (pg, re, ms = 6000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (re.test(await dialogTexts(pg))) return true; await sleep(150); } return false; };
 const closeAll = async (pg) => { for (let i = 0; i < 3 && await pg.locator('[role=dialog]:visible').count(); i++) { await pg.keyboard.press('Escape'); await pg.waitForTimeout(450); } };
+/** La police Archivo est bien chargée (le @import retiré ne doit pas renvoyer l'écran en police système). */
+const archivoOk = (pg) => pg.evaluate(async () => { await document.fonts.ready; return [...document.fonts].some((f) => f.family.replace(/"/g, '') === 'Archivo' && f.status === 'loaded'); });
 const toasts = (pg) => pg.locator('[data-sonner-toast]').allInnerTexts().then((a) => a.join(' ')).catch(() => '');
 {
   // e1/e2) salarié : Ma semaine → Mon mois → Historique après 3 s de repos, puis RÉSEAU COUPÉ : tout se rouvre
@@ -343,6 +344,7 @@ const toasts = (pg) => pg.locator('[data-sonner-toast]').allInnerTexts().then((a
     if (label === 'Mon mois') await shot(pg, 'salarie-mon-mois.png');
   }
   check(errors.length === err0, `e1) salarié : aucune erreur JS en changeant d'onglet (${errors.slice(err0, err0 + 2).join(' | ')})`);
+  check(await archivoOk(pg), 'e1) /poseur : la police Archivo est chargée (feuille fonts.css en <link> du layout)');
   await pg.waitForTimeout(2500); // laisse finir la file de préchauffage
   await ctx.setOffline(true);
   await goTab('Ma journée'); await goTab('Mon mois');
@@ -392,6 +394,45 @@ const toasts = (pg) => pg.locator('[data-sonner-toast]').allInnerTexts().then((a
   await pg.locator('.bt-pl-out:visible', { hasText: 'Réserves' }).first().click();
   check(await waitText(pg, /Réserves de chantier/, 8000), 'e3) après déblocage, le clic suivant ouvre la fenêtre');
   check(errors.length === err0, `e3) aucune erreur JS après réessai (${errors.slice(err0, err0 + 2).join(' | ')})`);
+  await ctx.close();
+}
+// ═══ f) téléphone (390 px) : chaque fenêtre du menu ☰ s'ouvre du premier coup, sans clignoter ni déborder ═══════
+{
+  const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, locale: 'fr-FR', timezoneId: 'Europe/Paris', isMobile: true, hasTouch: true, acceptDownloads: true });
+  await setup(ctx, { accountant: true }); const pg = await ctx.newPage(); mon(pg); const err0 = errors.length;
+  await pg.goto(`http://localhost:${PORT}/admin`);
+  await pg.waitForSelector('button[aria-label="Menu"]', { timeout: 25000 });
+  // Pas de repos : on ouvre tout de suite, comme un patron pressé (le code des fenêtres peut ne pas être arrivé).
+  const noHScroll = () => pg.evaluate(() => { const d = [...document.querySelectorAll('[role=dialog]')].filter((x) => x.getClientRects().length && !x.closest('#cc-main')).pop(); return d ? d.scrollWidth <= d.clientWidth + 1 : true; });
+  const viaMenu = async (item, re, nom, snap, then) => {
+    await sampler(pg);
+    await pg.locator('button[aria-label="Menu"]:visible').first().click();
+    await pg.locator('.bt-mm-item', { hasText: item }).first().click();
+    const shown = await waitText(pg, re, 10000); await sleep(600);
+    const fr = await sampled(pg);
+    check(shown, `f) 390 px : ☰ → ${nom} s'ouvre avec son contenu`);
+    check(flicker(fr) === null, `f) 390 px : ☰ → ${nom} sans clignotement (${flicker(fr) || 'ok'} ; ${fr.length} images)`);
+    check(await noHScroll(), `f) 390 px : ☰ → ${nom} sans défilement horizontal`);
+    if (then) await then();
+    if (snap) await shot(pg, snap);
+    await closeAll(pg);
+  };
+  check(await archivoOk(pg), 'f) /admin : la police Archivo est chargée (feuille fonts.css en <link> du layout)');
+  await viaMenu('Réglages', /Pizzeria Exemple|Réglages/, 'Réglages', 'bureau-reglages-390.png');
+  await viaMenu('Coût chantiers', /Coût par chantier/, 'Coûts', 'bureau-couts-390.png');
+  await viaMenu('Statistiques', /Statistiques/, 'Statistiques');
+  await viaMenu('Demandes de congé', /Demandes de congé/, 'Congés');
+  await viaMenu('Réserves', /Réserves de chantier/, 'Réserves');
+  await viaMenu('Salariés', /Salariés/, 'Salariés', 'bureau-fiche-salarie-390.png', async () => {
+    await pg.locator('[role=dialog] button', { hasText: 'Lucas Petit' }).first().click();
+    check(await waitText(pg, /Lucas Petit/, 8000) && !/Salariés\s*\|/.test(await dialogTexts(pg)), 'f) 390 px : fiche salarié ouverte depuis la liste');
+    await sleep(700);
+  });
+  await viaMenu('Exporter', /Exporter|Cette semaine/, 'Exporter', 'bureau-exporter-390.png', async () => {
+    await pg.locator('[data-testid=team-export]').getByRole('button', { name: 'Cette semaine', exact: true }).click(); await sleep(300);
+    await pg.locator('[data-testid=team-export-menu]').click(); await sleep(500);
+  });
+  check(errors.length === err0, `f) 390 px : aucune erreur JS (${errors.slice(err0, err0 + 2).join(' | ')})`);
   await ctx.close();
 }
 console.log(`\n${ok} ✅ / ${ko} ❌`);
