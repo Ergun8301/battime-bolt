@@ -140,7 +140,7 @@
 --
 -- HISTORIQUE : si le fichier est collé dans l'éditeur SQL, inscrire ensuite :
 --   INSERT INTO supabase_migrations.schema_migrations (version, name)
---   VALUES ('20261013120000', 'lot24_documents_factures_categorie') ON CONFLICT DO NOTHING;
+--   VALUES ('20261013120200', 'lot24_documents_factures_categorie') ON CONFLICT DO NOTHING;
 -- ─────────────────────────────────────────────────────────────────────────────
 -- AVANT D'APPLIQUER (Ergun) : vérifier qu'aucune règle de mise à jour n'a été
 -- posée à la main sur documents (elle se combinerait en OU avec la nôtre ; le
@@ -148,6 +148,10 @@
 --   SELECT policyname, cmd FROM pg_policies WHERE tablename = 'documents';
 --   → 4 règles attendues : documents_select, documents_insert, documents_delete,
 --     support_read.
+-- Et que la fonction guard_document_write() est bien celle de l'étape 12 bis (ce
+-- fichier la remplace par la même, avec UNE condition de plus, § 10) :
+--   SELECT position('IF new.time_entry_id IS NOT NULL THEN' IN pg_get_functiondef('public.guard_document_write()'::regprocedure)) > 0 AS fonction_d_origine;
+--   → true.
 --
 -- POURQUOI. Décision D11 : les factures sont réservées au bureau (admin). Et le
 -- bureau doit pouvoir changer la catégorie d'un document après coup (jusqu'ici

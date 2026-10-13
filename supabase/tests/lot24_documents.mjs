@@ -254,13 +254,18 @@ const docsPrivBefore = await one(`SELECT has_table_privilege('authenticated', 'p
   has_table_privilege('authenticated', 'public.documents', 'DELETE') AS d, has_table_privilege('authenticated', 'public.documents', 'UPDATE') AS u, has_table_privilege('anon', 'public.documents', 'UPDATE') AS ua`);
 const trBefore = await myTrainingsDef();
 const gwBefore = await guardWriteDef();
+{
+  // Le contrôle « AVANT D'APPLIQUER » de l'en-tête (la fonction est bien celle de l'étape 12 bis) : exécuté tel quel, rend true avant la migration.
+  const m = /^--\s+(SELECT position\('IF new\.time_entry_id IS NOT NULL THEN'[^\n]*;)$/m.exec(SQL);
+  check(!!m && (await one(m[1])).fonction_d_origine === true, 'AVANT : la requête « fonction guard_document_write d’origine » de l’en-tête rend true');
+}
 const polsBefore = await rows(`SELECT policyname FROM pg_policies WHERE tablename = 'documents' ORDER BY 1`);
 check(docsPrivBefore.u && docsPrivBefore.ua, 'AVANT : documents a le droit UPDATE pour anon et authenticated (droits par défaut de production), mais aucune règle');
 // Droits PAR DÉFAUT de la production : tout objet neuf est ouvert à anon et authenticated.
 await db.exec(`ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated;
   ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated;
   ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon, authenticated;`);
-check(/^20261013120000_lot24_documents_factures_categorie\.sql$/.test(MIG_FILE) && MIG_FILE > '20261012100000_lot8_versions_planning.sql', `fichier ${MIG_FILE} (postérieur à 20261012100000)`);
+check(/^20261013120200_lot24_documents_factures_categorie\.sql$/.test(MIG_FILE) && MIG_FILE > '20261012100000_lot8_versions_planning.sql', `fichier ${MIG_FILE} (postérieur à 20261012100000)`);
 {
   // Contrôle automatique : le code (lignes hors commentaires, corps de fonctions et blocs DO compris).
   const code = SQL.split('\n').map((l) => l.replace(/--.*$/, '')).join('\n');
@@ -280,7 +285,7 @@ check(/^20261013120000_lot24_documents_factures_categorie\.sql$/.test(MIG_FILE) 
   check(SQL.includes(`position`) && /^-- RETOUR ARRIÈRE/m.test(SQL.slice(0, 1200)) && SQL.indexOf('-- VÉRIFICATION APRÈS APPLICATION') < SQL.indexOf('-- HISTORIQUE') && SQL.indexOf('-- HISTORIQUE') < SQL.indexOf('\nCREATE OR REPLACE FUNCTION'),
     'en-tête : RETOUR ARRIÈRE, VÉRIFICATION APRÈS APPLICATION, HISTORIQUE, avant le code');
   check(/CHANGEMENT NON ADDITIF DANS SES EFFETS/.test(SQL.slice(0, 600)) && /0 document en production/.test(SQL.slice(0, 900)), 'en-tête : « changement non additif dans ses effets » et « 0 document en production » écrits en toutes lettres');
-  check(/INSERT INTO supabase_migrations\.schema_migrations \(version, name\)\n--\s+VALUES \('20261013120000', 'lot24_documents_factures_categorie'\) ON CONFLICT DO NOTHING;/.test(SQL), 'HISTORIQUE : version et nom du fichier, ON CONFLICT DO NOTHING');
+  check(/INSERT INTO supabase_migrations\.schema_migrations \(version, name\)\n--\s+VALUES \('20261013120200', 'lot24_documents_factures_categorie'\) ON CONFLICT DO NOTHING;/.test(SQL), 'HISTORIQUE : version et nom du fichier, ON CONFLICT DO NOTHING');
   check(!!POST_SQL && !!ROLLBACK_SQL, 'le fichier contient la vérification après application et le retour arrière (blocs commentés)');
 }
 await db.exec(SQL);
@@ -710,16 +715,62 @@ let E1;
   const bad2 = await errOf(`UPDATE public.documents SET time_entry_id = $2 WHERE id = $1`, [L.id, teFor.id]);
   check(bad2 && /cette intervention n.est pas celle de ce chantier/.test(bad2.msg), 'rattacher un document existant à l’intervention d’un autre chantier (éditeur SQL) : toujours refusé');
   // Action de clé étrangère : supprimer une intervention qui porte un document ne doit pas être bloqué par le garde.
+  // (Vrais rôles, vraies règles de time_entries de production : le salarié ne supprime que SON brouillon, le bureau tout.)
   await root();
   const teDel = await one(`INSERT INTO public.time_entries (company_id, user_id, worksite_id, work_date, start_time, end_time, status) VALUES ($1, $2, $3, '2026-10-07', '08:00', '12:00', 'draft') RETURNING id`, [CO, SAM, WS]);
   const Fk = await addDoc({ cat: 'photo', by: SAM, te: teDel.id });
   const Fk2 = await addDoc({ cat: 'plan', by: SAM, te: teDel.id });
-  await rootAs(SAM);
+  const Fk3 = await addDoc({ cat: null, by: ALEX, te: teDel.id });
+  const fkBefore = await rows('SELECT id, category, label, file_path, worksite_id, work_date::text AS w, uploaded_by FROM public.documents WHERE id = ANY($1) ORDER BY id', [[Fk.id, Fk2.id, Fk3.id]]);
+  await as(SAM);
   const delErr = await errOf(`DELETE FROM public.time_entries WHERE id = $1`, [teDel.id]);
   await root();
-  const fkAfter = await rows('SELECT id, time_entry_id, category, label, uploaded_by FROM public.documents WHERE id = ANY($1) ORDER BY id', [[Fk.id, Fk2.id]]);
-  check(delErr === null && await count('SELECT count(*) n FROM public.time_entries WHERE id = $1', [teDel.id]) === 0, 'Sam supprime une intervention qui porte des documents : la suppression PASSE (action de clé étrangère non bloquée par le garde)');
-  check(fkAfter.length === 2 && fkAfter.every((r) => r.time_entry_id === null && r.uploaded_by === SAM) && fkAfter.find((r) => r.id === Fk.id).category === 'photo', 'les deux documents survivent : time_entry_id est passé à NULL, le reste est intact (catégorie, auteur)');
+  const fkAfter = await rows('SELECT id, time_entry_id, category, label, file_path, worksite_id, work_date::text AS w, uploaded_by FROM public.documents WHERE id = ANY($1) ORDER BY id', [[Fk.id, Fk2.id, Fk3.id]]);
+  check(delErr === null && await count('SELECT count(*) n FROM public.time_entries WHERE id = $1', [teDel.id]) === 0, 'Sam (salarié, requête réelle) supprime son brouillon d’intervention qui porte des documents : la suppression PASSE (action de clé étrangère non bloquée par le garde)');
+  check(fkAfter.length === 3 && fkAfter.every((r) => r.time_entry_id === null)
+    && fkAfter.every((r, i) => { const b = fkBefore[i]; return r.id === b.id && r.category === b.category && r.label === b.label && r.file_path === b.file_path && r.worksite_id === b.worksite_id && r.w === b.w && r.uploaded_by === b.uploaded_by; }),
+    'les 3 documents survivent : time_entry_id est passé à NULL, tout le reste est identique (catégorie, nom, fichier, chantier, jour, auteur)');
+  check((await logOf(Fk.id)).length === 0 && (await logOf(Fk2.id)).length === 0, '… et la suppression ne laisse aucune trace de « changement de catégorie » (la catégorie n’a pas bougé)');
+
+  // Le bureau supprime une intervention qui porte un document déjà passé en FACTURE : même résultat, la facture reste facture.
+  await root();
+  const teDel2 = await one(`INSERT INTO public.time_entries (company_id, user_id, worksite_id, work_date, start_time, end_time, status) VALUES ($1, $2, $3, '2026-10-08', '08:00', '12:00', 'submitted') RETURNING id`, [CO, SAM, WS]);
+  const Fb = await addDoc({ cat: 'facture', by: SAM, te: teDel2.id });
+  const Fb2 = await addDoc({ cat: 'photo', by: SAM, te: teDel2.id });
+  await as(SAM);
+  const sDel = await errOf(`DELETE FROM public.time_entries WHERE id = $1`, [teDel2.id]);
+  check(await count('SELECT count(*) n FROM public.time_entries WHERE id = $1', [teDel2.id]) === 1, 'contrôle : Sam ne supprime pas une journée déjà envoyée (règle de time_entries inchangée : 0 ligne)');
+  await as(ADMIN);
+  const bDel = await errOf(`DELETE FROM public.time_entries WHERE id = $1`, [teDel2.id]);
+  await root();
+  const bAfter = await rows('SELECT id, time_entry_id, category, uploaded_by FROM public.documents WHERE id = ANY($1) ORDER BY id', [[Fb.id, Fb2.id]]);
+  check(sDel === null && bDel === null && await count('SELECT count(*) n FROM public.time_entries WHERE id = $1', [teDel2.id]) === 0, 'le bureau (requête réelle) supprime l’intervention qui porte une facture et une photo : la suppression PASSE');
+  check(bAfter.length === 2 && bAfter.every((r) => r.time_entry_id === null && r.uploaded_by === SAM) && bAfter.find((r) => r.id === Fb.id).category === 'facture' && bAfter.find((r) => r.id === Fb2.id).category === 'photo',
+    '… les deux documents survivent, time_entry_id NULL, la facture reste « facture » et la photo « photo »');
+  check(!(await seesRow(SAM, Fb.id)) && await seesRow(ADMIN, Fb.id), '… la facture reste invisible du salarié et visible du bureau');
+  check((await logOf(Fb.id)).length === 0, '… sans trace de changement de catégorie');
+
+  // Un salarié ne passe PAS un document en facture « par ce chemin » : le passe-droit ne vaut que pour la mise à NULL faite par la base.
+  await root();
+  const teSneak = await one(`INSERT INTO public.time_entries (company_id, user_id, worksite_id, work_date, start_time, end_time, status) VALUES ($1, $2, $3, '2026-10-09', '08:00', '12:00', 'draft') RETURNING id`, [CO, SAM, WS]);
+  const Sn = await addDoc({ cat: 'photo', by: SAM, te: teSneak.id });
+  await rootAs(SAM); // garde seul (sans droits de colonne) : prouve que c'est le déclencheur qui refuse
+  const sn1 = await errOf(`UPDATE public.documents SET category = 'facture', time_entry_id = NULL WHERE id = $1`, [Sn.id]);
+  const sn2 = await errOf(`UPDATE public.documents SET time_entry_id = NULL WHERE id = $1`, [Sn.id]);
+  const sn3 = await errOf(`UPDATE public.documents SET category = 'facture' WHERE id = $1`, [Sn.id]);
+  const sn4 = await errOf(`UPDATE public.documents SET category = 'facture', uploaded_by = NULL WHERE id = $1`, [Sn.id]);
+  await root();
+  const snAfter = await one('SELECT category, time_entry_id, uploaded_by FROM public.documents WHERE id = $1', [Sn.id]);
+  check(sn1?.code === '42501' && sn2?.code === '42501' && sn3?.code === '42501' && sn4?.code === '42501' && snAfter.category === 'photo' && snAfter.time_entry_id === teSneak.id && snAfter.uploaded_by === SAM,
+    'Sam (garde seul) : catégorie « facture » + time_entry_id NULL, ou l’un des deux seul, ou avec uploaded_by NULL, par une requête directe : TOUJOURS refusé (42501), document inchangé');
+  await as(SAM);
+  const sn5 = await errOf(`UPDATE public.documents SET category = 'facture', time_entry_id = NULL WHERE id = $1`, [Sn.id]);
+  check(sn5?.code === '42501', 'Sam (vrais droits de colonne) : même requête refusée aussi');
+  // Sam supprime SON brouillon qui porte ce document : la catégorie reste « photo » (rien d’autre ne bouge dans la même opération).
+  const sn6 = await errOf(`DELETE FROM public.time_entries WHERE id = $1`, [teSneak.id]);
+  await root();
+  const sn7 = await one('SELECT category, time_entry_id FROM public.documents WHERE id = $1', [Sn.id]);
+  check(sn6 === null && sn7.category === 'photo' && sn7.time_entry_id === null, 'puis la suppression de son brouillon passe : catégorie toujours « photo », time_entry_id NULL');
   // …mais le même effet fait à la main, par un utilisateur connecté, reste refusé (profondeur 1).
   const Hand = await addDoc({ cat: 'photo', by: SAM });
   await as(ADMIN);
