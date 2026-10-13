@@ -486,8 +486,8 @@ function withFakeEnv<T>(fn: (calls: Call[], set: (s: number | Error | 'hang') =>
     const saved = { fetch: globalThis.fetch, key: Deno.env.get('RESEND_API_KEY'), url: Deno.env.get('SUPABASE_URL'), sec: Deno.env.get('EMAIL_UNSUBSCRIBE_SECRET') };
     const calls: Call[] = [];
     let answer: number | Error | 'hang' = 200;
-    if (opts.key !== false) Deno.env.set('RESEND_API_KEY', 'cle-factice-de-test'); else Deno.env.delete('RESEND_API_KEY');
-    if (opts.url !== false) Deno.env.set('SUPABASE_URL', 'https://projet-factice.supabase.test'); else Deno.env.delete('SUPABASE_URL');
+    if (opts.key !== false) Deno.env.set('RESEND_API_KEY', 'cle-factice-de-test'); else Deno.env.set('RESEND_API_KEY', ''); // vide = absent pour le code
+    if (opts.url !== false) Deno.env.set('SUPABASE_URL', 'https://projet-factice.supabase.test'); else Deno.env.set('SUPABASE_URL', '');
     Deno.env.set('EMAIL_UNSUBSCRIBE_SECRET', 'secret-de-test');
     globalThis.fetch = ((url: string, init: RequestInit) => {
       calls.push({ url: String(url), init });
@@ -497,7 +497,7 @@ function withFakeEnv<T>(fn: (calls: Call[], set: (s: number | Error | 'hang') =>
     }) as typeof fetch;
     try { await fn(calls, (s) => { answer = s; }); } finally {
       globalThis.fetch = saved.fetch;
-      for (const [k, v] of [['RESEND_API_KEY', saved.key], ['SUPABASE_URL', saved.url], ['EMAIL_UNSUBSCRIBE_SECRET', saved.sec]] as const) { if (v === undefined) Deno.env.delete(k); else Deno.env.set(k, v); }
+      for (const [k, v] of [['RESEND_API_KEY', saved.key], ['SUPABASE_URL', saved.url], ['EMAIL_UNSUBSCRIBE_SECRET', saved.sec]] as const) { Deno.env.set(k, v ?? ''); }
     }
   };
 }

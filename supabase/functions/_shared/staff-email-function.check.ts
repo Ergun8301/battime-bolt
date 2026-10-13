@@ -284,7 +284,7 @@ Deno.test({ ...OPTS, name: 'Migration pas appliquée : état « pas disponible �
 Deno.test({ ...OPTS, name: 'Clé d’envoi absente : refusé AVANT de réserver une place', async fn() {
   fresh();
   const key = Deno.env.get('RESEND_API_KEY');
-  Deno.env.delete('RESEND_API_KEY');
+  Deno.env.set('RESEND_API_KEY', ''); // vide = absent pour la fonction
   try {
     const r = await call({ action: 'message', user_ids: [LUCAS], message: 'Bonjour' });
     eq(r.status, 500, '500 « Envoi d’e-mail non configuré »');

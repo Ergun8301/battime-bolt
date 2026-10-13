@@ -137,6 +137,7 @@ export default function StaffEmailDialog({ open, onOpenChange, companyId, compan
   const [log, setLog] = useState<LogRow[] | null>(null);
   const [logState, setLogState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const run = useRef(0);
+  const sendingRef = useRef(false); // un seul envoi à la fois, même si le bouton est touché deux fois très vite
   const confirmRef = useRef<HTMLDivElement>(null);
   const doneRef = useRef<HTMLDivElement>(null);
 
@@ -196,7 +197,7 @@ export default function StaffEmailDialog({ open, onOpenChange, companyId, compan
 
   // Changer de mode : la sélection repart de zéro (les raisons d'exclusion ne sont pas les mêmes).
   const pickMode = (m: Mode) => { if (m !== mode) { setMode(m); setPicked(new Set()); setBanner(null); } };
-  const toggle = (id: string) => setPicked((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const toggle = (id: string) => setPicked((p) => new Set(p.has(id) ? Array.from(p).filter((x) => x !== id) : Array.from(p).concat(id)));
   const allOn = selectable.length > 0 && chosen.length === selectable.length;
   const toggleAll = () => setPicked(allOn ? new Set() : new Set(selectable.map((w) => w.id)));
 
@@ -224,7 +225,8 @@ export default function StaffEmailDialog({ open, onOpenChange, companyId, compan
   const nameOf = useMemo(() => new Map(people.map((w) => [w.id, fullName(w)])), [people]);
 
   async function send() {
-    if (blocker || phase !== 'confirm') return;
+    if (blocker || phase !== 'confirm' || sendingRef.current) return;
+    sendingRef.current = true;
     setPhase('sending'); setBanner(null);
     try {
       let body: Record<string, unknown>;
@@ -240,7 +242,7 @@ export default function StaffEmailDialog({ open, onOpenChange, companyId, compan
       }
       const r = await callStaffEmail<SendData>(body);
       if (r.kind === 'ok' || (r.kind === 'refused' && Array.isArray((r.data as Partial<SendData>).results))) {
-        const d = (r.kind === 'ok' ? r.data : r.data) as SendData;
+        const d = r.data as SendData;
         setResults(d.results);
         if (typeof d.used === 'number') setEtat((e) => (e ? { ...e, used: d.used, remaining: d.remaining } : e));
         if (r.kind === 'refused' && typeof d.error === 'string') setBanner({ tone: 'err', text: d.error });
@@ -259,6 +261,8 @@ export default function StaffEmailDialog({ open, onOpenChange, companyId, compan
     } catch (err) {
       setBanner({ tone: 'err', text: isExportLibError(err) ? 'Impossible de préparer les PDF (outil non chargé). Vérifiez votre connexion et réessayez. Rien n’est parti.' : 'Préparation impossible. Rien n’est parti.' });
       setPhase('ready');
+    } finally {
+      sendingRef.current = false;
     }
   }
 
@@ -272,7 +276,12 @@ export default function StaffEmailDialog({ open, onOpenChange, companyId, compan
   const loadingLog = logState === 'loading';
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) (document.activeElement as HTMLElement | null)?.blur?.(); onOpenChange(o); }}>
+    <Dialog open={open} onOpenChange={(o) => {
+      // Pendant l'envoi la fenêtre reste ouverte : la fermer ferait perdre le résultat (il reste dans « Derniers envois »).
+      if (!o && phase === 'sending') return;
+      if (!o) (document.activeElement as HTMLElement | null)?.blur?.();
+      onOpenChange(o);
+    }}>
       <DialogContent className="bt-skin max-w-lg" data-testid="staff-email-dialog">
         <style dangerouslySetInnerHTML={CSS_HTML} />
         <DialogHeader>

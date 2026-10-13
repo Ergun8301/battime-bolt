@@ -451,6 +451,31 @@ console.log('\n── 9) le journal');
   await h.ctx.close();
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+console.log('\n── 10) la page /desabonnement : les nouvelles familles, et les quatre anciennes qui marchent toujours');
+{
+  const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, locale: 'fr-FR', isMobile: true, hasTouch: true, serviceWorkers: 'block' });
+  const posts = [];
+  await ctx.route('**/*.supabase.co/**', (r) => { const u = new URL(r.request().url()); if (u.pathname.startsWith('/functions/v1/email-unsubscribe')) { posts.push({ m: r.request().method(), q: u.search }); return r.fulfill({ json: { success: true } }); } return r.fulfill({ json: {} }); });
+  const p = await ctx.newPage();
+  p.on('pageerror', (e) => { pageErrors.push(e.message); console.log('   [erreur page]', e.message); });
+  const email = Buffer.from('lucas@example.com').toString('base64url');
+  for (const [kind, phrase] of [['planning-hebdo', 'le planning de la semaine du bureau'], ['message-bureau', 'les messages du bureau'], ['weekly-digest', 'le récap hebdomadaire'], ['missing-days', 'les rappels de saisie des heures'], ['cert-expiry', 'les alertes d’habilitations'], ['budget-alerts', 'les alertes de budget chantier']]) {
+    posts.length = 0;
+    await p.goto(`${BASE}/desabonnement?e=${email}&k=${kind}&t=jeton-de-test`);
+    await p.waitForSelector('.el-btn', { timeout: 10000 });
+    const t = (await p.locator('.el-card').innerText()).replace(/\s+/g, ' ');
+    check(t.includes(`Vous ne recevrez plus ${phrase} par e-mail.`), `10) ${kind} : « Vous ne recevrez plus ${phrase} par e-mail. »`);
+    check(posts.length === 0, `10) ${kind} : l’ouverture de la page ne désabonne PAS (rien d’envoyé avant le clic)`);
+    await p.click('.el-btn'); await p.waitForSelector('.el-ok', { timeout: 10000 });
+    check(posts.length === 1 && posts[0].m === 'POST' && posts[0].q.includes(`k=${kind}`) && posts[0].q.includes('t=jeton-de-test'), `10) ${kind} : un POST signé vers email-unsubscribe, avec la famille (${posts.map((x) => x.m).join()})`);
+  }
+  await p.goto(`${BASE}/desabonnement?e=${email}&k=une-famille-inconnue&t=x`);
+  await p.waitForSelector('.el-card');
+  check(/Lien invalide/.test(await p.locator('.el-card').innerText()), '10) une famille inconnue : « Lien invalide »');
+  await ctx.close();
+}
+
 check(pageErrors.length === 0, `aucune erreur de page JavaScript (${pageErrors.slice(0, 2).join(' | ') || 'aucune'})`);
 console.log(`\n${ok} vérifications réussies, ${ko} échec(s).`);
 await b.close(); srv.close();

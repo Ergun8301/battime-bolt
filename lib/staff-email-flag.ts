@@ -11,7 +11,7 @@
 import { useSyncExternalStore } from 'react';
 
 const KEY = 'bemexo-emails-absents';
-const listeners = new Set<() => void>();
+let listeners: (() => void)[] = [];
 
 function readStored(): boolean {
   try { return typeof window !== 'undefined' && window.sessionStorage.getItem(KEY) === '1'; } catch { return false; }
@@ -25,7 +25,7 @@ export function markStaffEmailAbsent(): void {
   listeners.forEach((l) => l());
 }
 
-const subscribe = (l: () => void) => { listeners.add(l); return () => { listeners.delete(l); }; };
+const subscribe = (l: () => void) => { listeners = listeners.concat(l); return () => { listeners = listeners.filter((x) => x !== l); }; };
 
 /** Vrai tant que rien n'a montré que la fonction manque. */
 export function useStaffEmailVisible(): boolean {
