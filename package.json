@@ -91,6 +91,7 @@
     "test:qr-fixe-ecrans": "node scripts/tests/qr-fixe-lot12.mjs out docs/captures-qr-fixe",
     "test:videos": "npx -y deno@2 test --allow-read supabase/functions/_shared/training-videos.test.ts",
     "test:videos-db": "node supabase/tests/lot13_videos_envoi_direct.mjs",
+    "test:documents-db": "node supabase/tests/lot24_documents.mjs",
     "test:videos-ecrans": "node scripts/tests/videos-lot13.mjs out docs/captures-videos",
     "test:versions": "npx -y deno@2 test supabase/functions/_shared/planning-versions.test.ts",
     "test:versions-db": "node supabase/tests/lot8_versions_planning.mjs",
