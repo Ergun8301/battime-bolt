@@ -168,6 +168,7 @@ tests (voir plus bas), y compris en rafale.
 - Le plafond (50) est une constante unique, `DAILY_EMAIL_CAP`, dans
   `supabase/functions/_shared/staff-email-core.ts` ; il n'est pas réglable par
   entreprise. Le modifier = changer cette ligne et redéployer la fonction.
+- Si la fonction s'arrêtait en plein envoi (panne), la place prise reste comptée jusqu'à minuit (heure de Paris) : on préfère compter un envoi de trop que de dépasser le plafond.
 - Pas d'envoi différé ni de rappel automatique : tout part au clic de
   confirmation.
 - Réabonner quelqu'un n'est pas possible depuis l'écran (c'est la décision de la
