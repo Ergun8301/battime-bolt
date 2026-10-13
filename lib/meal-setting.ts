@@ -74,7 +74,12 @@ export function useMealEnabled(companyId: string | null | undefined): boolean | 
   const [cached, setCached] = useState<boolean | null>(null);
   useEffect(() => { setCached(companyId ? readCache(companyId) : null); }, [companyId]);
   if (!companyId) return true;
-  // Colonne absente (strictement : ni oui ni non) → oui, comme mealEnabledFrom.
-  if (settings) return typeof settings.mealEnabled === 'boolean' ? settings.mealEnabled : true;
+  if (settings) {
+    if (typeof settings.mealEnabled === 'boolean') return settings.mealEnabled;
+    // Ni oui ni non : colonne absente (le cache vient d'être oublié, voir company-settings) → oui ;
+    // lecture illisible (réseau, groupe en échec) → la dernière valeur gardée sur ce téléphone,
+    // comme mealEnabledFrom : un « non » du patron ne doit pas redevenir « oui » sur une erreur.
+    return readCache(companyId) ?? true;
+  }
   return cached;
 }

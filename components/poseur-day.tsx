@@ -21,7 +21,7 @@ import { insertWorkerEntry } from '@/lib/worker-entry';
 import { planningsToMaterialise, remainingPlannings, sendablePlannings, visiblePlannings } from '@/lib/work-status';
 import { copyLinesTo, materialisePlanned as materialiseDay, setDayMealOnline, submitDrafts } from '@/lib/worker-day';
 import { useMealEnabled } from '@/lib/meal-setting';
-import { useCompanySettings } from '@/lib/company-settings';
+import { loadCompanySettings, useCompanySettings } from '@/lib/company-settings';
 import { fmtHeure } from '@/lib/corrections';
 import { fetchEntryEdits, lastEdit, type EntryEdit } from '@/lib/office-edits';
 import { diffLabels } from '@/supabase/functions/_shared/office-edits';
@@ -1964,11 +1964,16 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
     if (!user?.company_id) return;
     const sansReseau = 'Pas de réseau : le pointage en direct en a besoin. Note tes heures avec le bouton +.';
     if (!navigator.onLine) { toast.error(sansReseau); return; }
-    if (positionActive && !infoVue && !geoInfoSeen(user.id)) { setGeoAsk({ worksiteId, planningId, key }); return; }
     setStarting(key);
     try {
+      // L'interrupteur « position au pointage » est relu AU GESTE (au plus une requête par 30 s) :
+      // le patron qui l'éteint pour réduire la collecte doit être suivi tout de suite, pas après
+      // des heures d'écran ouvert. Lecture impossible : on garde la valeur de l'écran.
+      const positionVoulue = (await loadCompanySettings(user.company_id, 'worker', { maxAgeMs: 30_000 }))
+        ?.positionTrackingEnabled ?? positionActive;
+      if (positionVoulue && !infoVue && !geoInfoSeen(user.id)) { setGeoAsk({ worksiteId, planningId, key }); return; }
       const r = await startLiveSession({
-        userId: user.id, companyId: user.company_id, worksiteId, planningId, workDate: date, positionActive,
+        userId: user.id, companyId: user.company_id, worksiteId, planningId, workDate: date, positionActive: positionVoulue,
       });
       // Relu dans tous les cas : un chrono déjà ouvert (23505) doit se montrer.
       announceLiveChange();

@@ -2403,6 +2403,19 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
       if (!exportRange) { toast.error('Choisissez une période'); return; }
       const from = format(exportRange.from, 'yyyy-MM-dd');
       const to = format(exportRange.to, 'yyyy-MM-dd');
+      // Lot 29 : les réglages de paie (heures de base, majorations, trajet payé, nom) sont relus
+      // MAINTENANT, comme le panier plus bas : l'écran ne les relit plus toutes les 60 s, et un
+      // autre administrateur a pu les changer. Illisibles : export annulé plutôt que fichier faux.
+      const reglages = await reloadCompanySettings(user.company_id);
+      if (!reglages) {
+        toast.error("Réglages de l'entreprise illisibles : export annulé plutôt que d'appliquer des heures ou des majorations périmées.");
+        return;
+      }
+      const heuresBase = reglages.weeklyHours ?? DEFAULT_WEEKLY_HOURS;
+      const tauxMajoration = {
+        tier1: reglages.overtimeRate1 ?? DEFAULT_OVERTIME_RATES.tier1,
+        tier2: reglages.overtimeRate2 ?? DEFAULT_OVERTIME_RATES.tier2,
+      };
       // Lecture PAGINÉE : au-delà du plafond PostgREST (1000 lignes par défaut),
       // une requête simple renverrait un jeu tronqué SANS erreur → export de paie
       // silencieusement incomplet. Et `select` réduit aux seuls champs utilisés :
@@ -2457,7 +2470,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
       // dans un export d'un mois passé, et doit garder son horaire de base.
       const weeklyHoursByWorker = new Map<string, number>(
         Array.from(new Set(recapEntries.map((e) => e.user_id)))
-          .map((id) => [id, weeklyHoursFor(overrides.get(id) ?? null, companyWeeklyHours)]),
+          .map((id) => [id, weeklyHoursFor(overrides.get(id) ?? null, heuresBase)]),
       );
 
       const entries = await fetchAllPaged<TimeEntryWithWorksite & { user: User }>((f, t2) => supabase
@@ -2478,12 +2491,12 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
         fileName: `bemexo-${kind === 'pdf' ? 'rapport' : kind === 'csv' ? 'paie' : 'export'}-${from}`,
         title: 'BEMEXO - Rapport hebdomadaire',
         periodLabel: `${format(exportRange.from, 'dd/MM/yyyy')} au ${format(exportRange.to, 'dd/MM/yyyy')}`,
-        companyName,
-        travelPaid,
+        companyName: reglages.name,
+        travelPaid: reglages.travelPaid,
         mealEnabled,
         weeklyHoursByWorker,
         recapEntries,
-        overtimeRates,
+        overtimeRates: tauxMajoration,
         payrollIdByWorker,
       };
       // Message final : dépend de ce que le serveur répond (envoyé / déjà parti).
@@ -2531,9 +2544,9 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
             ? `Déjà envoyé le ${format(new Date(r.alreadySentAt), 'dd/MM \'à\' HH:mm')} — non renvoyé`
             : 'Déjà envoyé — non renvoyé';
         } else if (r.previousSendAt) {
-          sentNote = `Envoyé à ${accountantEmail} — attention, un export de cette période était déjà parti le ${format(new Date(r.previousSendAt), 'dd/MM \'à\' HH:mm')}`;
+          sentNote = `Envoyé à ${reglages.accountantEmail || accountantEmail} — attention, un export de cette période était déjà parti le ${format(new Date(r.previousSendAt), 'dd/MM \'à\' HH:mm')}`;
         } else {
-          sentNote = `Envoyé à ${accountantEmail}`;
+          sentNote = `Envoyé à ${reglages.accountantEmail || accountantEmail}`;
         }
       } else if (kind === 'excel') {
         exportEntriesToExcel(entries, opts);

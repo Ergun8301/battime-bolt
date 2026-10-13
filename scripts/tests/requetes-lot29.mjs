@@ -60,7 +60,8 @@ const D = {
   time_entry_corrections: [], time_entry_positions: [], time_entry_edits: [],
 };
 const MISSING = new Set(); // colonnes « absentes » de la base simulée : toute lecture qui les demande répond 42703
-const resetDb = () => { D.companies = [{ ...COMPANY }]; D.documents = docs(3); MISSING.clear(); };
+let FAIL_COMPANIES = 0; // nombre de prochaines lectures `companies` qui échouent (réseau mobile : 500)
+const resetDb = () => { D.companies = [{ ...COMPANY }]; D.documents = docs(3); MISSING.clear(); FAIL_COMPANIES = 0; };
 
 // ─── Session simulée (profil lu sur `users?id=eq.<ME>`) ─────────────────────────
 const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
@@ -128,6 +129,7 @@ async function answer(r, e, session, who, rec) {
     return r.fulfill({ json: [] });
   }
   if (e.write) { rec.writes.push(`${e.method} ${e.name}`); rec.unexpected.push(`${e.method} ${e.name}`); return r.fulfill({ status: 201, json: {} }); }
+  if (e.name === 'companies' && FAIL_COMPANIES > 0) { FAIL_COMPANIES--; return r.fulfill({ status: 500, json: { message: 'panne simulée' } }); }
   if (e.name === 'companies' && [...MISSING].some((c) => e.select.split(',').includes(c))) {
     return r.fulfill({ status: 400, json: { code: '42703', message: 'column companies does not exist', details: null, hint: null } });
   }
@@ -187,8 +189,8 @@ async function hiddenFor(p, rec, ms) {
 }
 
 // ═════════════════════════ BUREAU ═════════════════════════
-async function adminSession(viewport, label, { missing = [] } = {}) {
-  resetDb(); for (const c of missing) MISSING.add(c);
+async function adminSession(viewport, label, { missing = [], fail = 0 } = {}) {
+  resetDb(); for (const c of missing) MISSING.add(c); FAIL_COMPANIES = fail;
   const session = sessionFor('u-admin', 'paul@exemple.fr');
   const ctx = await b.newContext({ viewport, locale: 'fr-FR', timezoneId: 'Europe/Paris', ...(viewport.width < 600 ? { deviceScaleFactor: 2, isMobile: true, hasTouch: true } : {}) });
   await ctx.clock.install({ time: NOW });
@@ -303,6 +305,47 @@ console.log('\n══ BUREAU, colonne absente (repli) ══');
   check(reads(r.afterReturn, 'companies').length === 6, `   repli collant : le retour après 6 min relit 6 groupes, sans nouvelle lecture groupée (${reads(r.afterReturn, 'companies').length})`);
   await ctx.close();
   COMPANY.logo_url = '';
+}
+
+// Première lecture des réglages en échec (réseau mobile) : l'écran se répare seul, avec les 13 colonnes
+console.log('\n══ BUREAU, première lecture des réglages en échec ══');
+{
+  // a) onglet visible : un nouvel essai au bout d'une minute, sans rechargement, puis plus rien
+  const { ctx, p, rec, list } = await adminSession({ width: 1440, height: 900 }, 'bureau, 1re lecture en échec', { fail: 1 });
+  check(reads(list, 'companies').length === 1, `   échec : une seule lecture au chargement, échouée (${reads(list, 'companies').length})`);
+  check(!(await p.locator('.bt-pl-acct-name').first().innerText()).includes('Pizzeria Exemple'), '   échec : le nom de l’entreprise n’est pas encore là');
+  let i = rec.all.length;
+  await p.clock.fastForward(61000); await p.waitForTimeout(1800);
+  let cl = reads(since(rec, i), 'companies');
+  check(cl.length === 1 && sameCols(cl[0].select, COLS_OFFICE), `   échec : au bout d’une minute, UN nouvel essai avec les 13 colonnes (${cl.length}; ${cl[0]?.select})`);
+  check((await p.locator('.bt-pl-acct-name').first().innerText()).includes('Pizzeria Exemple'), '   échec : le nom revient tout seul, sans recharger');
+  i = rec.all.length;
+  await p.clock.fastForward(61000); await p.waitForTimeout(1500);
+  check(reads(since(rec, i), 'companies').length === 0, '   échec : une fois lu, plus aucun nouvel essai');
+  await ctx.close();
+}
+{
+  // b) onglet caché pendant l'échec : zéro requête (même pas l'essai) ; au retour, relecture avec les 13 colonnes
+  // (une relecture « salarié » à 5 colonnes perdrait l'essai d'abonnement, le nom, le logo, les majorations)
+  const { ctx, p, rec } = await adminSession({ width: 1440, height: 900 }, 'bureau, 1re lecture en échec (caché)', { fail: 1 });
+  const r = await hiddenFor(p, rec, 4 * 65000);
+  check(r.duringHidden.length === 0, `   échec + caché ~4 min : ${r.duringHidden.length} requête(s)`);
+  const cl = reads(r.afterReturn, 'companies');
+  check(cl.length === 1 && sameCols(cl[0].select, COLS_OFFICE), `   échec + retour d’onglet : relecture avec les 13 colonnes, trial_ends_at compris (${cl.length}; ${cl[0]?.select})`);
+  check((await p.locator('.bt-pl-acct-name').first().innerText()).includes('Pizzeria Exemple'), '   échec + retour : le nom revient');
+  await ctx.close();
+}
+
+// Court passage en arrière-plan : la prochaine lecture garde son échéance (jamais plus d'une minute entre deux lectures)
+console.log('\n══ BUREAU, court passage en arrière-plan ══');
+{
+  const { ctx, p, rec } = await adminSession({ width: 1440, height: 900 }, 'bureau, court passage');
+  const r = await hiddenFor(p, rec, 25000);
+  check(count(r.afterReturn, EXTRAS) === 0, `   retour après 25 s : pas de rafale (${count(r.afterReturn, EXTRAS)} lecture des compteurs)`);
+  const i = rec.all.length;
+  await p.clock.fastForward(31000); await p.waitForTimeout(1500);
+  check(count(since(rec, i), EXTRAS) >= 1, `   … mais la lecture arrive à son échéance d’avant, pas une minute plus tard (${count(since(rec, i), EXTRAS)} lecture)`);
+  await ctx.close();
 }
 
 // 7) fetchAllPaged — frontières de pagination (documents : 500 pile, 501, 1203)
