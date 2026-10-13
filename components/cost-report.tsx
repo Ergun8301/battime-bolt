@@ -47,6 +47,9 @@ import type { DateRange } from 'react-day-picker';
 import { RealCostLine, REAL_COST_CSS } from '@/components/real-cost-card';
 import { InfoTip } from '@/components/ui/info-tip';
 import { ratesByUser, realLabourCost, supabaseCostSource, useAiEnabled } from '@/lib/real-cost';
+// Lot 23 : le bilan du chantier annonce les MÊMES chiffres que cet écran parce qu'il appelle les mêmes règles
+// (format des heures et des euros, catégories de dépenses, pourcentage de budget) : une seule copie.
+import { budgetProgress, EXPENSE_CATEGORIES as CATEGORIES, EXPENSE_LABEL as CATEGORY_LABEL, fmtEur, fmtH } from '@/supabase/functions/_shared/chantier-termine';
 
 interface Props { open: boolean; onOpenChange: (o: boolean) => void; companyId?: string }
 
@@ -61,14 +64,7 @@ interface SiteAgg {
 // chiffres doivent coïncider avec ceux des emails d'alerte (70/80/100 %).
 interface BudgetAgg { hours: number | null; amount: number | null; usedMinutes: number; usedCost: number; usedByUser?: Map<string, number> }
 
-const CATEGORIES = [
-  { key: 'materiaux', label: 'Matériaux' },
-  { key: 'sous_traitance', label: 'Sous-traitance' },
-  { key: 'location', label: 'Location' },
-  { key: 'autre', label: 'Divers' },
-] as const;
 type CategoryKey = typeof CATEGORIES[number]['key'];
-const CATEGORY_LABEL: Record<string, string> = Object.fromEntries(CATEGORIES.map((c) => [c.key, c.label]));
 
 interface Expense {
   id: string; worksite_id: string; spent_on: string; category: string;
@@ -137,12 +133,6 @@ const CR_CSS = `
 // Lot 10 (règle anti-flash) : objet FIXE au niveau du module — un `{ __html }`
 // neuf à chaque rendu fait réécrire la feuille de style par React.
 const CR_HTML = { __html: CR_CSS + REAL_COST_CSS };
-
-const fmtH = (min: number) => {
-  const h = Math.floor(min / 60), m = Math.round(min % 60);
-  return m ? `${h} h ${String(m).padStart(2, '0')}` : `${h} h`;
-};
-const fmtEur = (n: number) => Math.round(n).toLocaleString('fr-FR') + ' €';
 
 type Preset = 'month' | 'week' | 'custom';
 
@@ -494,15 +484,9 @@ export default function CostReport({ open, onOpenChange, companyId }: Props) {
                       {(() => {
                         const b = budgets.get(s.id);
                         if (!b) return null;
-                        const pcts: number[] = [];
-                        if (b.hours && b.hours > 0) pcts.push((b.usedMinutes / 60) / b.hours * 100);
-                        if (b.amount && b.amount > 0) pcts.push(b.usedCost / b.amount * 100);
-                        if (!pcts.length) return null;
-                        const pct = Math.max(...pcts);
-                        const tone = pct >= 100 ? 'over' : pct >= 80 ? 'warn' : pct >= 70 ? 'soft' : '';
-                        const label = b.hours && b.hours > 0
-                          ? `${fmtH(b.usedMinutes)} / ${b.hours} h`
-                          : `${fmtEur(b.usedCost)} / ${fmtEur(b.amount || 0)}`;
+                        const bp = budgetProgress({ hours: b.hours, amount: b.amount, usedMinutes: b.usedMinutes, usedCost: b.usedCost });
+                        if (!bp) return null;
+                        const { pct, tone, label } = bp;
                         return (
                           <div className="bt-cr-bud">
                             <div className="bt-cr-budhead">
