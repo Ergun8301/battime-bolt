@@ -124,11 +124,11 @@ export function cleanMessage(raw: unknown): { ok: true; text: string } | { ok: f
     .replace(/\n{3,}/g, '\n\n')
     .trim();
   if (!text) return { ok: false, error: 'Écrivez un message.' };
-  if ([...text].length > MAX_MESSAGE_CHARS) return { ok: false, error: `Message trop long (${MAX_MESSAGE_CHARS} caractères au plus).` };
+  if (Array.from(text).length > MAX_MESSAGE_CHARS) return { ok: false, error: `Message trop long (${MAX_MESSAGE_CHARS} caractères au plus).` };
   return { ok: true, text };
 }
 
-export const messageLength = (text: string) => [...text].length;
+export const messageLength = (text: string) => Array.from(text).length;
 
 export function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -194,9 +194,9 @@ export function checkPdf(mime: unknown, contentBase64: unknown, maxBytes = MAX_P
   if (approxBase64Bytes(contentBase64) > maxBytes) return { ok: false, reason: 'pdf-invalide' };
   const bytes = decodeBase64(contentBase64);
   if (!bytes || bytes.length < 16 || bytes.length > maxBytes) return { ok: false, reason: 'pdf-invalide' };
-  const head = String.fromCharCode(...bytes.subarray(0, 5));
+  const head = String.fromCharCode.apply(null, Array.from(bytes.subarray(0, 5)));
   if (head !== '%PDF-') return { ok: false, reason: 'pdf-invalide' };
-  const tail = String.fromCharCode(...bytes.subarray(Math.max(0, bytes.length - 1024)));
+  const tail = String.fromCharCode.apply(null, Array.from(bytes.subarray(Math.max(0, bytes.length - 1024))));
   if (!tail.includes('%%EOF')) return { ok: false, reason: 'pdf-invalide' };
   return { ok: true, bytes, base64: contentBase64 };
 }
@@ -235,7 +235,7 @@ export function pickRecipients(
   const seenEmails = new Set<string>();
   const candidates: Candidate[] = [];
   const skipped: Skipped[] = [];
-  for (const id of new Set(requestedIds)) { // le même salarié deux fois = une seule ligne
+  for (const id of Array.from(new Set(requestedIds))) { // le même salarié deux fois = une seule ligne
     const w = byId.get(id);
     if (!isContactable(w, companyId)) { skipped.push({ user_id: id, reason: 'inconnu' }); continue; }
     const email = normalizeEmail(w.email);
