@@ -1,0 +1,8 @@
+# Fichiers hachés par Next : le nom change quand le contenu change, cache immuable sûr.
+/_next/static/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Polices auto-hébergées SANS hash dans le nom : 30 jours, jamais immuable.
+# Remplacer une police = changer le nom du fichier (versionner).
+/fonts/*
+  Cache-Control: public, max-age=2592000
