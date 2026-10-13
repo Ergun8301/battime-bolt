@@ -350,8 +350,8 @@ const newCtx = async (uid, viewport, extra = {}) => {
   await ctx.addInitScript(([k, v]) => { localStorage.setItem(k, v); }, ['sb-sdperbcquvneohotjono-auth-token', JSON.stringify(session)]);
   await ctx.addInitScript(() => {
     // Espions du lot 14 : contraintes de la caméra, options du MediaRecorder, Wake Lock, pistes ouvertes.
-    const R = window.__rec = { gum: [], mr: [], wake: [], sentinels: [], tracks: [], recorders: [], fail: null, delay: 0, noData: false, inflate: 0, wakeMode: 'ok', sawCountdown: false, finished: 0 };
-    R.reset = () => { R.gum.length = 0; R.mr.length = 0; R.wake.length = 0; R.sentinels.length = 0; R.tracks.length = 0; R.recorders.length = 0; R.fail = null; R.delay = 0; R.noData = false; R.inflate = 0; R.wakeMode = 'ok'; R.sawCountdown = false; };
+    const R = window.__rec = { gum: [], mr: [], wake: [], sentinels: [], tracks: [], recorders: [], fail: null, delay: 0, noData: false, inflate: 0, wakeMode: 'ok', sawCountdown: false, counts: new Set(), announces: new Set(), finished: 0 };
+    R.reset = () => { R.gum.length = 0; R.mr.length = 0; R.wake.length = 0; R.sentinels.length = 0; R.tracks.length = 0; R.recorders.length = 0; R.fail = null; R.delay = 0; R.noData = false; R.inflate = 0; R.wakeMode = 'ok'; R.sawCountdown = false; R.counts.clear(); R.announces.clear(); };
     const md = navigator.mediaDevices;
     if (md && md.getUserMedia) {
       const real = md.getUserMedia.bind(md);
@@ -382,7 +382,13 @@ const newCtx = async (uid, viewport, extra = {}) => {
         return s;
       } };
     } });
-    new MutationObserver(() => { if (document.querySelector('[data-testid=tr-rec-countdown]')) R.sawCountdown = true; }).observe(document, { childList: true, subtree: true });
+    // Les textes sont relevés DANS la page à chaque changement du DOM : le test ne dépend plus de la cadence d'interrogation (machine chargée).
+    new MutationObserver(() => {
+      const c = document.querySelector('[data-testid=tr-rec-countdown]');
+      if (c) { R.sawCountdown = true; R.counts.add((c.textContent || '').trim()); }
+      const a = (document.querySelector('[data-testid=tr-rec-announce]')?.textContent || '').trim();
+      if (a) R.announces.add(a);
+    }).observe(document, { childList: true, subtree: true, characterData: true });
   });
   await ctx.addInitScript(() => {
     window.__toasts = [];
@@ -581,7 +587,7 @@ const MSG = {
 };
 const rec = (p) => p.evaluate(() => ({
   gum: window.__rec.gum, mr: window.__rec.mr, wake: window.__rec.wake, sentinels: window.__rec.sentinels.map((s) => s.released),
-  tracks: window.__rec.tracks.map((t) => t.readyState), recorders: window.__rec.recorders.map((r) => r.state), sawCountdown: window.__rec.sawCountdown,
+  tracks: window.__rec.tracks.map((t) => t.readyState), recorders: window.__rec.recorders.map((r) => r.state), sawCountdown: window.__rec.sawCountdown, counts: [...window.__rec.counts], announces: [...window.__rec.announces],
 }));
 const recReset = (p, patch = {}) => p.evaluate((x) => { window.__rec.reset(); Object.assign(window.__rec, x); }, patch);
 const fits = (p) => p.evaluate(() => {
@@ -777,19 +783,15 @@ if (want('R3')) {
   await startRecording();
   check((await txt(op.locator('[data-testid=tr-rec-max]'))) === 'Durée maximale : environ 10 s', 'pendant la prise : « Durée maximale : environ 10 s »');
   let sawTimer = false;
-  const vus = new Set(), annonces = new Set();
   const stopped = await waitFor(async () => {
     if (await op.locator('[data-testid=tr-rec-timer]').count()) sawTimer = true;
-    const c = op.locator('[data-testid=tr-rec-countdown]');
-    if (await c.count()) vus.add(await txt(c));
-    const a = await txt(op.locator('[data-testid=tr-rec-announce]'));
-    if (a) annonces.add(a);
     return (await op.locator('[data-testid=tr-rec-auto]').count()) > 0;
   }, 120000);
   check(stopped && sawTimer, `la prise s’arrête toute seule (${Math.round((Date.now() - t0) / 1000)} s)`);
   check((await txt(op.locator('[data-testid=tr-rec-auto]'))) === MSG.size, 'message : « … la taille maximale est atteinte. La vidéo est gardée. »');
   check((await rec(op)).sawCountdown, 'le compte à rebours « Arrêt automatique dans N s » a été visible avant l’arrêt');
-  check(annonces.size >= 1 && annonces.size <= 3 && annonces.size < vus.size, `lecteur d’écran : ${annonces.size} annonce(s) seulement (30, 10, 5 s) pour ${vus.size} textes affichés (${[...annonces].join(' | ')})`);
+  const fin = await rec(op);
+  check(fin.announces.length >= 1 && fin.announces.length <= 3 && fin.announces.length < fin.counts.length, `lecteur d’écran : ${fin.announces.length} annonce(s) seulement (30, 10, 5 s) pour ${fin.counts.length} textes affichés (${fin.announces.join(' | ')})`);
   await op.waitForSelector('[data-testid=tr-preview]');
   const size = Math.round(Number(String(await txt(op.locator('[data-testid=tr-file-meta]'))).match(/([\d,]+) Mo/)?.[1].replace(',', '.')) * MO);
   const last = uploads.length;

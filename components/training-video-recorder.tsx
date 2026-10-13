@@ -176,7 +176,8 @@ export default function TrainingVideoRecorder({ limits, onDone, onError, onCance
     const d = stopDecision({ bytes: bytes.current, elapsedS: nowS() - t0.current, rate: estimateRate(samples.current) }, recorderCapBytes(latest.current.limits));
     setRemaining(d.remainingS);
     const b = countdownBand(d.remainingS);
-    if (b !== band.current) { band.current = b; if (b !== null) setAnnounce(REC_COUNTDOWN(d.remainingS as number)); }
+    // À sens unique : l'estimation oscille autour de 30 / 10 / 5 s, une tranche déjà annoncée ne l'est jamais deux fois.
+    if (b !== null && (band.current === null || b < band.current)) { band.current = b; setAnnounce(REC_COUNTDOWN(d.remainingS as number)); }
     if (d.stop) stopWith(d.reason);
   };
 
