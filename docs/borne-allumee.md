@@ -70,7 +70,9 @@ Captures : `docs/captures-borne-allumee/` (`avant-…` = ancienne version,
 - Le verrou d'écran ne peut pas dépasser un refus du système : sur iPad avant
   iPadOS 18.4 (icône installée), seul le réglage « Verrouillage automatique :
   Jamais » garde l'écran allumé.
-- Le bureau ne voit pas encore si le verrou est tenu sur la tablette (il
-  faudrait l'envoyer avec `sync`, donc toucher la fonction `kiosk`).
-- Pas encore de démarrage hors ligne (pas de cache) : une tablette relancée
-  sans réseau n'affiche rien tant que le réseau n'est pas revenu.
+- ~~Le bureau ne voit pas encore si le verrou est tenu sur la tablette.~~ Fait au
+  lot 30 : la tablette envoie l'état de son écran avec `sync`, la fenêtre « Borne »
+  le dit (voir `docs/borne-robuste-lot30.md`).
+- ~~Pas encore de démarrage hors ligne.~~ Fait au lot 30 : un service worker limité
+  à `/borne` ouvre la borne sans réseau (même fichier).
+- La relecture du planning passe de 30 s à 60 s au lot 30.

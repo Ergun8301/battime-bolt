@@ -40,6 +40,7 @@ import { addDays, format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import type { Worksite } from '@/lib/types';
+import TermineLe from '@/components/termine-le'; // lot 23 : « Terminé le … » (le pointage en cours continue normalement)
 
 interface Props {
   userId: string;
@@ -212,6 +213,7 @@ export default function LiveTimer({ userId, session, today, worksites }: Props) 
             <span className="bt-lt-site">{site?.client_name || 'Chantier'}</span>
             <span className="bt-lt-since">depuis {format(parseISO(session.work_date), 'EEEE d', { locale: fr })} {startedHHmm}</span>
           </div>
+          <TermineLe ws={site} dark />
           <div className="bt-lt-ask">
             <div className="bt-lt-asklab">Tu as fini à quelle heure&nbsp;?</div>
             <TimeField value={endGuess} onChange={(v) => { setEndGuess(v); setEndBeforeStart(false); }} ariaLabel="Heure de fin" testId="lt-end" />
@@ -245,6 +247,7 @@ export default function LiveTimer({ userId, session, today, worksites }: Props) 
               <span className="bt-lt-site">{site?.client_name || 'Chantier'}</span>
               <span className="bt-lt-since bt-lt-el" title="Temps écoulé">{fmtElapsed(elapsed)}</span>
             </div>
+            <TermineLe ws={site} dark />
           </div>
           <button type="button" className="bt-lt-btn stop" disabled={busy} onClick={() => stop()} data-testid="lt-finish" data-guide="journee.terminer">
             {busy && <Loader2 className="h-4 w-4 animate-spin" />} Terminer ma journée

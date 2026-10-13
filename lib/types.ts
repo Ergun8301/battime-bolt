@@ -68,7 +68,10 @@ export interface Worksite {
   product_type?: string;
   is_active: boolean;
   created_at: string;
-  completed_at?: string;
+  // Lot 23 : chantier TERMINÉ (jour de fin écrit à midi UTC, posé par le bureau seulement ; vide = en cours).
+  // `undefined` = la colonne n'existe pas encore en base (migration pas appliquée) : la fonction reste cachée.
+  completed_at?: string | null;
+  completed_by?: string | null;
   // Budget de MAIN-D'ŒUVRE (facultatif) : sert aux alertes de dépassement à
   // 70/80/100 %. Les heures sont toujours exploitables ; les euros ne le sont
   // que si tous les salariés du chantier ont un taux horaire renseigné.
