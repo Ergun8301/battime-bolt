@@ -10,6 +10,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ChevronLeft, ChevronRight, MapPin, Clock, Send } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, addMonths, subMonths, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { termineLe } from '@/supabase/functions/_shared/chantier-statut'; // lot 23 : « Terminé le … »
 
 interface EntryW extends TimeEntry { worksite: Worksite | null }
 interface PlanW extends Planning { worksite: Worksite | null }
@@ -95,11 +96,11 @@ export default function PoseurMonth({ onSelectDay }: { onSelectDay?: (date: stri
                 <div className="mt-1 space-y-0.5">
                   {dPlan.map((p) => (
                     <p key={p.id} className="text-xs text-muted-foreground flex items-center gap-1 truncate">
-                      {p.absence_type ? (ABS[p.absence_type] || p.absence_type) : <><MapPin className="h-3 w-3 shrink-0" />{p.worksite?.client_name || 'Chantier'}</>}
+                      {p.absence_type ? (ABS[p.absence_type] || p.absence_type) : <><MapPin className="h-3 w-3 shrink-0" />{p.worksite?.client_name || 'Chantier'}{termineLe(p.worksite, true) ? ` · ${termineLe(p.worksite, true)}` : ''}</>}
                     </p>
                   ))}
                   {dEnt.map((e) => (
-                    <p key={e.id} className={`text-xs text-muted-foreground flex items-center gap-1 truncate${e.status === 'cancelled' ? ' line-through' : ''}`}><Clock className="h-3 w-3 shrink-0" />{e.worksite?.client_name || 'Chantier'} · {e.start_time?.substring(0, 5)}–{e.end_time?.substring(0, 5)}{e.status === 'cancelled' ? ' · retirée' : e.status === 'draft' ? ' · brouillon' : ''}</p>
+                    <p key={e.id} className={`text-xs text-muted-foreground flex items-center gap-1 truncate${e.status === 'cancelled' ? ' line-through' : ''}`}><Clock className="h-3 w-3 shrink-0" />{e.worksite?.client_name || 'Chantier'}{termineLe(e.worksite, true) ? ` · ${termineLe(e.worksite, true)}` : ''} · {e.start_time?.substring(0, 5)}–{e.end_time?.substring(0, 5)}{e.status === 'cancelled' ? ' · retirée' : e.status === 'draft' ? ' · brouillon' : ''}</p>
                   ))}
                 </div>
               </button>
