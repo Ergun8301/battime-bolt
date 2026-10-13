@@ -26,10 +26,10 @@
 // LE PLANNING passe UNIQUEMENT par la fonction kiosk (action `board`, avec le
 // jeton de la borne) : prénom, nom, chantier, ville, horaires prévus et « en
 // cours depuis ». Ni heure pointée, ni coût, ni motif d'absence. Relu toutes
-// les 30 s (écran visible, borne réveillée, en ligne), gardé en cache pour
+// les 60 s (écran visible, borne réveillée, en ligne), gardé en cache pour
 // rester affiché hors ligne. Les pastilles « en cours » s'effacent dès que ce
-// cache a plus de 2 minutes : une information « en direct » périmée serait
-// fausse. Si la fonction répond une erreur (ancienne version pas encore
+// cache a plus de 3 minutes (2 avant le lot 30 : la relecture est passée à 60 s) :
+// une information « en direct » périmée serait fausse. Si la fonction répond une erreur (ancienne version pas encore
 // redéployée…), on garde le dernier planning, sinon « Planning indisponible » —
 // le bouton « QR » marche dans tous les cas.
 //
@@ -72,7 +72,9 @@ import { callKiosk, type KioskBoard, type KioskPlanningRow, type KioskSettings }
 import KioskWeekGrid from '@/components/kiosk-week-grid';
 import { isPreviewHost } from '@/lib/hosting';
 import { KIOSK_STORE_KEY } from '@/lib/kiosk-device';
+import { buildClientState, clientStateKey, registerBorneServiceWorker, watchLoadedFiles } from '@/lib/kiosk-offline';
 import { NOTICE_FORGOTTEN, NOTICE_FORGOTTEN_QR, usePairQr, type KioskPairReply, type PairView } from './pair-qr';
+import { useNightReload } from './night-reload';
 
 const STORE_KEY = KIOSK_STORE_KEY;
 const SYNC_EVERY_MS = 5 * 60 * 1000;
@@ -80,9 +82,19 @@ const SYNC_EVERY_MS = 5 * 60 * 1000;
 const SUSPENDED_RETRY_MS = 60 * 1000;
 /** Lot 2 (IA) : vérification du verrou d'écran. */
 const WAKE_CHECK_MS = 60 * 1000;
-const BOARD_EVERY_MS = 30 * 1000;
-/** Au-delà, les « en cours depuis » du cache ne sont plus montrés. */
-const LIVE_FRESH_MS = 2 * 60 * 1000;
+/** Lot 30 : le planning est relu toutes les 60 s (30 s avant) — protège le quota gratuit Supabase (500 000 appels par mois). */
+const BOARD_EVERY_MS = 60 * 1000;
+/** Lot 30 : là où la réactivité compte (retour sur la page, toucher, réveil), on relit dès que le planning a plus de 20 s. */
+const RESUME_REFRESH_MS = 20 * 1000;
+/** Lot 30 : un changement d'état (verrou d'écran…) est envoyé au bureau 3 s plus tard, au plus une fois par minute. */
+const STATE_SYNC_DEBOUNCE_MS = 3 * 1000;
+const STATE_SYNC_MIN_GAP_MS = 60 * 1000;
+/**
+ * Au-delà, les « en cours depuis » du cache ne sont plus montrés. Lot 30 : 3 minutes (2 avant) — le planning
+ * n'est plus relu qu'à la minute : avec 2 minutes, une seule relecture ratée faisait déjà clignoter les
+ * pastilles ; avec 3, une ou deux relectures ratées ne se voient plus, il en faut trois de suite pour les effacer.
+ */
+const LIVE_FRESH_MS = 3 * 60 * 1000;
 /** Lot 11 : le QR reste affiché 30 s, puis la tablette revient au planning. */
 const QR_SHOW_MS = 30 * 1000;
 const WAKE_ON_TOUCH_MS = 60 * 1000;
@@ -286,6 +298,10 @@ const CSS = `
 /* Lot 2 (IA) : rappel discret quand l'écran n'est pas maintenu allumé (sous le QR et la veille). */
 .kb-wake{position:absolute;right:12px;bottom:10px;z-index:20;max-width:calc(100% - 24px);border:1px solid rgba(242,237,227,.18);background:rgba(21,18,15,.88);color:#a59c86;font:inherit;font-size:12px;font-weight:700;line-height:1.3;border-radius:99px;padding:5px 11px;cursor:pointer;text-align:left}
 .kb-wake b{color:#F2EDE3;font-weight:800}
+/* Lot 30 : plus de réseau — petite pastille en bas à gauche (sous le QR et la veille), au-dessus du rappel d'écran s'il est affiché. */
+.kb-net{position:absolute;left:12px;bottom:10px;z-index:20;max-width:calc(100% - 24px);display:flex;flex-direction:column;gap:2px;border:1.5px solid rgba(240,145,90,.55);background:rgba(21,18,15,.94);color:#cfc7b6;font-size:clamp(12px,1.7vmin,16px);font-weight:700;line-height:1.3;border-radius:14px;padding:8px 14px}
+.kb-net b{color:#F0915A;font-weight:900;font-size:clamp(14px,2.2vmin,20px)}
+.kb-net-up{bottom:52px}
 /* Lot 2 (IA) : borne en pause pour l'entreprise (403), la tablette reste reliée. */
 .kb-susp{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:32px;text-align:center}
 .kb-susp .kb-logo{height:clamp(18px,3vmin,26px);opacity:.85}
@@ -676,7 +692,7 @@ function TopBar({ main, companyName, online, stamp, dateText, hhmm, onQr, press 
   );
 }
 
-function Display({ paired, online, boardErr, awakeUntil, wake, onWake, onUnpair }: {
+function Display({ paired, online, boardErr, awakeUntil, wake, onWake, onUnpair, busyRef }: {
   paired: Paired;
   online: boolean;
   boardErr: boolean;
@@ -684,6 +700,8 @@ function Display({ paired, online, boardErr, awakeUntil, wake, onWake, onUnpair 
   wake: WakeState;
   onWake: (until: number) => void;
   onUnpair: () => void;
+  /** Lot 30 : vrai tant qu'un QR ou une confirmation est à l'écran (le rechargement de nuit attend). */
+  busyRef: { current: boolean };
 }) {
   const [now, setNow] = useState(() => Date.now());
   const [hideWake, setHideWake] = useState(false);
@@ -748,6 +766,9 @@ function Display({ paired, online, boardErr, awakeUntil, wake, onWake, onUnpair 
 
   const hhmm = parisTime(now);
   const qrOpen = qrUntil > 0;
+  // Lot 30 : un QR ou une confirmation à l'écran = quelqu'un est là, pas de rechargement de nuit.
+  busyRef.current = qrOpen || confirmUnpair;
+  useEffect(() => () => { busyRef.current = false; }, [busyRef]);
   const asleep = !qrOpen && isAsleep(hhmm, paired.settings.active_from, paired.settings.active_until) && now > awakeUntil;
   const secondsLeft = 60 - (Math.floor(now / 1000) % 60);
   const backIn = Math.max(0, Math.ceil((qrUntil - now) / 1000));
@@ -792,6 +813,14 @@ function Display({ paired, online, boardErr, awakeUntil, wake, onWake, onUnpair 
           title="La tablette peut se mettre en veille. Dans ses réglages, mettez le verrouillage automatique (ou la mise en veille de l’écran) sur « Jamais », et laissez-la branchée.">
           Écran non maintenu allumé · réglez la mise en veille sur <b>«&nbsp;Jamais&nbsp;»</b>
         </button>
+      )}
+
+      {/* Lot 30 : plus de réseau → la borne le dit, et reprend toute seule au retour du réseau. */}
+      {!online && !paired.demo && (
+        <div className={`kb-net${(wake === 'denied' || wake === 'unsupported') && !hideWake ? ' kb-net-up' : ''}`} role="status" data-testid="kb-offline">
+          <b>Pas de réseau — reprise automatique</b>
+          <span>Le QR continue de tourner. Le planning reviendra avec le réseau.</span>
+        </div>
       )}
 
       {qrOpen && (
@@ -926,6 +955,8 @@ export default function BornePage() {
   const [ready, setReady] = useState(false);
   const [online, setOnline] = useState(true);
   const [boardErr, setBoardErr] = useState(false);
+  const onlineRef = useRef(true);
+  onlineRef.current = online;
   const [notice, setNotice] = useState<string | null>(null);
   const [awakeUntil, setAwakeUntil] = useState(0);
   /** Lot 11 : code arrivé par le QR du bureau (/borne?code=…), pré-rempli. */
@@ -936,6 +967,12 @@ export default function BornePage() {
   const pairedRef = useRef<Paired | null>(null);
   const awakeRef = useRef(0);
   const suspendedRef = useRef(false);
+  // Lot 30 : ce que les boucles lisent sans se réinstaller — verrou d'écran, dernier état envoyé au bureau, écran occupé.
+  const wakeRef = useRef<WakeState>('pending');
+  const sentStateKeyRef = useRef('');
+  const lastStateSyncRef = useRef(0);
+  const displayBusyRef = useRef(false);
+  const qrWaitingRef = useRef(false);
   const suspend = useCallback((on: boolean) => {
     suspendedRef.current = on;
     setSuspendedAt(on ? Date.now() : null);
@@ -969,6 +1006,11 @@ export default function BornePage() {
     setReady(true);
     // Lot 2 (IA) : une tablette reliée AVANT ce lot le demande aussi (sans nouvel appairage).
     if (p && !p.demo) persistStorage();
+    // Lot 30 : ouverte sans réseau (tablette relancée dans un local sans wifi) : elle le dit tout de suite.
+    if (navigator.onLine === false) setOnline(false);
+    // Lot 30 : le service worker de la borne (portée /borne seule) : la prochaine ouverture marche sans réseau.
+    registerBorneServiceWorker();
+    watchLoadedFiles(); // pour connaître la version de l'appli (rechargement de nuit, état envoyé au bureau)
   }, []);
 
   // Lot 2 (IA) : pendant une pause (« Borne suspendue »), l'écran n'est plus
@@ -978,7 +1020,11 @@ export default function BornePage() {
   // Lot 11 (IA) : le QR d'appairage est à l'écran → l'écran reste allumé, il doit rester visible.
   const [qrWaiting, setQrWaiting] = useState(false);
   const wake = useWakeLock((!!paired && !suspended) || (!paired && qrWaiting));
+  wakeRef.current = wake;
+  qrWaitingRef.current = !paired && qrWaiting;
   useFullscreenOnFirstTouch(!!paired);
+  // Lot 30 : rechargement de nuit sûr (jamais en démo, jamais pendant un pointage — voir night-reload.ts).
+  useNightReload(!!paired && !paired.demo, useCallback(() => displayBusyRef.current || qrWaitingRef.current, []));
 
   // Déconnectée par le bureau ou remplacée par une autre tablette (410), ou
   // inconnue (401) : on oublie tout, tout de suite. Lot 2 (IA) : la borne
@@ -1003,9 +1049,13 @@ export default function BornePage() {
   const fetchBoardRef = useRef<(p: Paired) => Promise<void>>(async () => {});
   const sync = useCallback(async (p: Paired) => {
     if (p.demo) return;
+    // Lot 30 : l'état de l'écran (verrou, icône installée, plein écran, version) part avec le `sync`.
+    // Une fonction `kiosk` ou une base pas encore à jour l'ignorent sans rien dire.
+    const state = buildClientState(wakeRef.current);
+    sentStateKeyRef.current = clientStateKey(state);
     const { data, status } = await callKiosk<{
       revoked: boolean; kiosk_name: string; company_name: string; settings: KioskSettings;
-    }>({ action: 'sync', kiosk_id: p.kioskId, token: p.token });
+    }>({ action: 'sync', kiosk_id: p.kioskId, token: p.token, client_state: state });
     const cur = pairedRef.current;
     if (!cur || cur.kioskId !== p.kioskId) return;
     if (data && !data.revoked) {
@@ -1022,7 +1072,9 @@ export default function BornePage() {
     }
     if (status === 403) { suspend(true); setOnline(true); return; }
     if (status === 401 || status === 410) { forget(); return; }
-    setOnline(false);
+    // Lot 30 : « Pas de réseau » seulement quand l'appel n'a pas pu partir. Une erreur du serveur
+    // (fonction en panne ou pas à jour) n'est pas une panne de réseau : la borne ne le prétend pas.
+    if (!status) setOnline(false);
   }, [commit, forget, suspend]);
 
   const fetchBoard = useCallback(async (p: Paired) => {
@@ -1051,11 +1103,16 @@ export default function BornePage() {
     return Date.now() <= awakeRef.current || !isAsleep(parisTime(Date.now()), p.settings.active_from, p.settings.active_until);
   };
   const tickBoard = useRef<() => void>(() => {});
+  /** Lot 30 : heure du `board` en cours (0 = aucun) — un toucher en rafale ne lance pas dix relectures. */
+  const boardSince = useRef(0);
   tickBoard.current = () => {
     const p = pairedRef.current;
     if (!p || p.demo || suspendedRef.current) return;
     if (document.visibilityState !== 'visible' || !navigator.onLine || !awake()) return;
-    fetchBoard(p);
+    // Une relecture est déjà partie (moins de 30 s) : on attend sa réponse.
+    if (boardSince.current && Date.now() - boardSince.current < 30 * 1000) return;
+    boardSince.current = Date.now();
+    void fetchBoard(p).finally(() => { boardSince.current = 0; });
   };
 
   useEffect(() => {
@@ -1065,24 +1122,58 @@ export default function BornePage() {
     fetchBoard(p0);
     const idSync = setInterval(() => { const p = pairedRef.current; if (p) sync(p); }, SYNC_EVERY_MS);
     const idBoard = setInterval(() => tickBoard.current(), BOARD_EVERY_MS);
-    const onOnline = () => { const p = pairedRef.current; if (p) { sync(p); fetchBoard(p); } };
-    const onOffline = () => setOnline(false);
-    const onVis = () => {
+    // Lot 30 : le planning est relu toutes les 60 s, mais sans attendre là où la réactivité compte —
+    // retour du réseau, retour sur la page, toucher : dès qu'il a plus de 20 s.
+    const retries: ReturnType<typeof setTimeout>[] = [];
+    const onOnline = () => {
       const p = pairedRef.current;
-      if (document.visibilityState === 'visible' && p && (!p.boardAt || Date.now() - p.boardAt >= BOARD_EVERY_MS)) tickBoard.current();
+      if (!p) return;
+      sync(p); fetchBoard(p);
+      // Le réseau « revient » parfois avant que la résolution des noms ne marche : si l'écran dit
+      // encore « pas de réseau », deux nouveaux essais rapprochés (sinon la minute suivante).
+      for (const ms of [5 * 1000, 20 * 1000]) {
+        retries.push(setTimeout(() => {
+          const q = pairedRef.current;
+          if (q && !onlineRef.current && navigator.onLine !== false && !suspendedRef.current) { sync(q); fetchBoard(q); }
+        }, ms));
+      }
     };
+    const onOffline = () => setOnline(false);
+    const stale = () => { const p = pairedRef.current; return !!p && (!p.boardAt || Date.now() - p.boardAt >= RESUME_REFRESH_MS); };
+    const onVis = () => { if (document.visibilityState === 'visible' && stale()) tickBoard.current(); };
+    const onTouch = () => { if (stale()) tickBoard.current(); };
     window.addEventListener('online', onOnline);
     window.addEventListener('offline', onOffline);
     document.addEventListener('visibilitychange', onVis);
+    document.addEventListener('pointerdown', onTouch, true);
     return () => {
       clearInterval(idSync); clearInterval(idBoard);
+      retries.forEach(clearTimeout);
       window.removeEventListener('online', onOnline);
       window.removeEventListener('offline', onOffline);
       document.removeEventListener('visibilitychange', onVis);
+      document.removeEventListener('pointerdown', onTouch, true);
     };
     // Une seule boucle par appairage.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paired?.kioskId, sync, fetchBoard]);
+
+  // Lot 30 : un changement qui compte pour le bureau (verrou d'écran tenu / refusé, icône installée)
+  // part avec un `sync` 3 s plus tard (au plus un par minute), sans attendre les 5 minutes.
+  useEffect(() => {
+    const p = pairedRef.current;
+    if (!p || p.demo || suspended) return;
+    const changed = () => clientStateKey(buildClientState(wakeRef.current)) !== sentStateKeyRef.current;
+    if (!changed()) return;
+    const wait = Math.max(STATE_SYNC_DEBOUNCE_MS, lastStateSyncRef.current + STATE_SYNC_MIN_GAP_MS - Date.now());
+    const t = setTimeout(() => {
+      const cur = pairedRef.current;
+      if (!cur || cur.demo || suspendedRef.current || !changed()) return;
+      lastStateSyncRef.current = Date.now();
+      void sync(cur);
+    }, wait);
+    return () => clearTimeout(t);
+  }, [wake, paired?.kioskId, suspended, sync]);
 
   // Lot 2 (IA) : borne suspendue → on revérifie chaque minute (sans rien effacer).
   useEffect(() => {
@@ -1096,7 +1187,7 @@ export default function BornePage() {
     setAwakeUntil(until);
     // Réveillée après la veille : le planning a pu changer, on le relit sans attendre.
     const p = pairedRef.current;
-    if (p && !p.demo && (!p.boardAt || Date.now() - p.boardAt >= BOARD_EVERY_MS)) tickBoard.current();
+    if (p && !p.demo && (!p.boardAt || Date.now() - p.boardAt >= RESUME_REFRESH_MS)) tickBoard.current();
   }, []);
 
   if (!ready) return <style dangerouslySetInnerHTML={CSS_HTML} />;
@@ -1115,6 +1206,7 @@ export default function BornePage() {
           wake={wake}
           onWake={onWake}
           onUnpair={unpairHere}
+          busyRef={displayBusyRef}
         />
       ) : (
         <Pairing
