@@ -38,7 +38,7 @@ const pageErrors = [];
 const T = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.png': 'image/png', '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.txt': 'text/plain' };
 const PAGE_CHUNK_DIR = path.join(OUT, '_next/static/chunks/app/borne');
 const ORIG_PAGE = fs.readdirSync(PAGE_CHUNK_DIR).find((f) => /^page-[0-9a-f]+\.js$/.test(f));
-const site = { up: false, deploy: 1, slowMs: 0, fail: 0, swVersion: 1, hits: [] };
+const site = { up: false, deploy: 1, slowMs: 0, fail: 0, swVersion: 1, hits: [], redirect: false, sharedChunk: false, swBreak: false, alias: {} };
 let server; const sockets = new Set();
 /** Le HTML de /borne tel que le serveur le sert : « déploiement » n = autre empreinte du code de la page + un repère visible. */
 function bornePage() {
@@ -47,22 +47,37 @@ function bornePage() {
     html = html.replace(/app\/borne\/page-([0-9a-f]+)\.js/g, (m, h) => `app/borne/page-${site.deploy}${h.slice(1)}.js`)
       .replace('</head>', `<meta name="x-deploy" content="${site.deploy}"/></head>`);
   } else html = html.replace('</head>', '<meta name="x-deploy" content="1"/></head>');
+  // Déploiement qui ne change QU'UN morceau partagé (supabase-js, react-dom…) : même contenu sous un autre nom.
+  if (site.sharedChunk) {
+    const m = /\/_next\/static\/chunks\/(\d+)-([0-9a-f]{16})\.js/.exec(html);
+    if (m) {
+      const neu = `/_next/static/chunks/${m[1]}-eeeeeeeeeeeeeeee.js`;
+      site.alias[neu] = m[0];
+      html = html.split(m[0]).join(neu);
+    }
+  }
   return html;
 }
 async function onRequest(q, r) {
   const u = new URL(q.url, 'http://x'); let p = decodeURIComponent(u.pathname);
   site.hits.push({ path: p, search: u.search, mode: q.headers['sec-fetch-mode'] || '', dest: q.headers['sec-fetch-dest'] || '' });
+  // Hébergeur qui renvoie /borne vers /borne/ (redirection, la page est à l'adresse avec la barre).
+  if (site.redirect && p === '/borne') { r.writeHead(308, { Location: `/borne/${u.search}` }); return r.end(); }
   if (p === '/borne' || p === '/borne/') {
     if (site.slowMs) await sleep(site.slowMs);
     if (site.fail) { r.writeHead(site.fail, { 'Content-Type': 'text/plain' }); return r.end('panne'); }
     r.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); return r.end(bornePage());
   }
   if (p === '/borne-sw.js') {
-    const src = fs.readFileSync(path.join(OUT, 'borne-sw.js'), 'utf8').replace('const VERSION = 1;', `const VERSION = ${site.swVersion};`);
+    let src = fs.readFileSync(path.join(OUT, 'borne-sw.js'), 'utf8').replace('const VERSION = 1;', `const VERSION = ${site.swVersion};`);
+    // Variante « Cache Storage en panne » (disque plein, index abîmé) : caches.open rejette ; un repère permet de savoir qu'elle tourne.
+    if (site.swBreak) src = `Object.defineProperty(CacheStorage.prototype, 'open', { configurable: true, value: () => Promise.reject(new Error('disque plein')) });\n`
+      + `self.addEventListener('fetch', (e) => { if (new URL(e.request.url).pathname === '/__sw-casse') e.respondWith(new Response('casse')); });\n${src}`;
     r.writeHead(200, { 'Content-Type': 'text/javascript', 'Cache-Control': 'max-age=0, must-revalidate' }); return r.end(src);
   }
   // Le « nouveau » fichier de la page /borne d'un déploiement simulé : le même contenu sous un autre nom.
   if (/^\/_next\/static\/chunks\/app\/borne\/page-[0-9a-f]+\.js$/.test(p)) p = `/_next/static/chunks/app/borne/${ORIG_PAGE}`;
+  if (site.alias[p]) p = site.alias[p];
   for (const c of [p, p + '.html', path.join(p, 'index.html')]) {
     const f = path.join(OUT, c);
     if (fs.existsSync(f) && fs.statSync(f).isFile()) { r.writeHead(200, { 'Content-Type': T[path.extname(f)] || 'application/octet-stream' }); return fs.createReadStream(f).pipe(r); }
@@ -75,7 +90,7 @@ const startSite = () => new Promise((res) => {
   server.listen(PORT, () => { site.up = true; res(); });
 });
 const stopSite = () => new Promise((res) => { site.up = false; sockets.forEach((s) => s.destroy()); server.close(() => res()); });
-const resetSite = () => { site.deploy = 1; site.slowMs = 0; site.fail = 0; site.swVersion = 1; site.hits.length = 0; };
+const resetSite = () => { site.deploy = 1; site.slowMs = 0; site.fail = 0; site.swVersion = 1; site.redirect = false; site.sharedChunk = false; site.swBreak = false; site.hits.length = 0; };
 await startSite();
 
 // ── Données fictives ────────────────────────────────────────────────────────
@@ -148,7 +163,7 @@ async function tablet({ width = 1280, height = 800, sw = 'block', clock = NOW, c
     if (url.pathname.startsWith('/functions/v1/kiosk')) {
       const body = JSON.parse(r.request().postData() || '{}');
       if (body.action === 'sync') return api.sync === 200 ? r.fulfill({ json: { revoked: false, kiosk_name: 'Entrée du dépôt', company_name: 'Martin Menuiserie', settings: SETTINGS, planning: [] } }) : r.fulfill({ status: api.sync, json: { error: 'x' } });
-      if (body.action === 'board') return api.board === 200 ? r.fulfill({ json: BOARD }) : r.fulfill({ status: api.board, json: { error: 'x' } });
+      if (body.action === 'board') return api.board === 200 ? r.fulfill({ json: api.data || BOARD }) : r.fulfill({ status: api.board, json: { error: 'x' } });
       return r.fulfill({ status: 400, json: { error: 'Action inconnue' } });
     }
     return r.fulfill({ json: {} });
@@ -388,11 +403,13 @@ console.log('\n── C) déploiement simulé : page neuve en ligne, copie à jo
   await p.evaluate(async () => { await navigator.serviceWorker.register('/sw.js'); await navigator.serviceWorker.ready; });
   const t = await tablet({ ctx });
   await openBorne(t.p);
-  await until(async () => (await controller(t.p)) !== null, 6000);
+  // La page est d'abord tenue par /sw.js (portée « / ») ; elle passe à celui de la borne dès qu'il est actif (clients.claim).
+  await until(async () => (await controller(t.p)) === `${BASE}/borne-sw.js`, 10000);
   await t.p.reload(); await t.p.waitForTimeout(1200);
   const regs = await swState(t.p);
   check(regs.length === 2 && regs.some((r) => r.scope === `${BASE}/` && r.script.endsWith('/sw.js')) && regs.some((r) => r.scope === `${BASE}/borne`), 'C) deux inscriptions côte à côte : « / » (notifications) et « /borne »');
-  check(await controller(t.p) === `${BASE}/borne-sw.js`, 'C) /borne est contrôlée par SON service worker (portée la plus précise), jamais par celui des notifications');
+  const ctl = await controller(t.p);
+  check(ctl === `${BASE}/borne-sw.js`, `C) /borne est contrôlée par SON service worker (portée la plus précise), jamais par celui des notifications (${ctl})`);
   const other = await ctx.newPage(); await other.goto(`${BASE}/connexion`); await other.waitForTimeout(500);
   const c2 = await other.evaluate(() => navigator.serviceWorker.controller?.scriptURL || null);
   check(c2 === null || c2.endsWith('/sw.js'), `C) le reste du site n’est jamais contrôlé par le service worker de la borne (${c2 ? c2.replace(BASE, '') : 'aucun'})`);
@@ -588,6 +605,22 @@ const markerOf = (p) => p.evaluate(() => localStorage.getItem('bx_borne_night'))
   await t.ctx.close();
 }
 
+{
+  // D12 · un déploiement qui ne change QU'UN morceau partagé (supabase-js, react-dom…) : la version change, la borne se recharge
+  // (avec 4 fichiers comptés, la version restait la même et la borne gardait l'ancien code indéfiniment).
+  resetSite();
+  const t = await tablet({ clock: NIGHT });
+  await openBorne(t.p);
+  site.sharedChunk = true;
+  await step(t.p, 60_000, 12, 250);
+  check(await until(async () => (await t.loads()) === 2, 6000), 'D12) seul un morceau partagé a changé : la version diffère, la borne se recharge');
+  await t.p.waitForSelector('[data-testid=kb-week]', { timeout: 10000 }).catch(() => {});
+  const c0 = versionChecks();
+  await step(t.p, 60_000, 30, 60);
+  check(await t.loads() === 2 && versionChecks() === c0, 'D12) après le rechargement : même version, plus aucune vérification ni rechargement cette nuit');
+  await t.ctx.close();
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // E) RELECTURE TOUTES LES 60 s
 // ═══════════════════════════════════════════════════════════════════════════
@@ -679,9 +712,16 @@ const lastState = (t) => t.fn.filter((c) => c.action === 'sync').map((c) => c.cl
   check(/^[0-9a-f]{8}$/.test(later.version), `F) version de l’appli : ${later.version} (empreinte de 8 signes, envoyée une fois la page chargée)`);
   // Même version que celle que calcule le serveur à partir du HTML (c'est ce qui sert au rechargement de nuit) :
   // mêmes fichiers, même empreinte (FNV-1a de leurs noms triés).
-  const names = [...new Set([...bornePage().matchAll(/<script[^>]*?\bsrc="([^"]+)"/g)].map((m) => m[1]).filter((u) => /^\/_next\/static\/chunks\/(?:webpack|main-app|app\/layout|app\/borne\/page)-[0-9a-f]{8,}\.js$/.test(u)))].sort();
+  // Lot 30 (correctif) : TOUS les fichiers de code chargés d'emblée (chunks partagés compris) et la feuille de style ;
+  // pas les polyfills (nomodule), pas les chunks à la demande (nom avec un point).
+  const html = bornePage();
+  const refs = [
+    ...[...html.matchAll(/<script[^>]*?\bsrc="([^"]+)"/g)].map((m) => m[1]),
+    ...[...html.matchAll(/<link\b[^>]*>/g)].map((m) => m[0]).filter((tag) => /rel="stylesheet"/.test(tag)).map((tag) => (/href="([^"]+)"/.exec(tag) || [])[1]),
+  ];
+  const names = [...new Set(refs.filter((u) => u && /^\/_next\/static\/(?:chunks\/(?:[\w()[\]-]+\/)*(?!polyfills-)[\w-]+-[0-9a-f]{8,}\.js|css\/[0-9a-f]{8,}\.css)$/.test(u)))].sort();
   let h = 0x811c9dc5; for (const ch of names.join('|')) { h ^= ch.charCodeAt(0); h = Math.imul(h, 0x01000193) >>> 0; }
-  check(names.length === 4 && later.version === h.toString(16).padStart(8, '0'), `F) la version envoyée = l’empreinte des 4 fichiers de la borne cités par le HTML du serveur (${later.version})`);
+  check(names.length > 4 && later.version === h.toString(16).padStart(8, '0'), `F) la version envoyée = l’empreinte des ${names.length} fichiers de code et de styles chargés d'emblée, cités par le HTML du serveur (${later.version})`);
   // Le verrou devient connu : le bureau en est informé tout de suite (sync de démarrage ou sync de changement d'état).
   check(lastState(t)?.wake === 'held', `F) quelques secondes après l'ouverture : wake = held (${lastState(t)?.wake})`);
   // Stable : pas d'envoi superflu.
@@ -727,6 +767,78 @@ for (const [label, opts, expect] of [
   await openBorne(t.p);
   await step(t.p, 61_000, 1, 300);
   check(await t.p.locator('[data-testid=kb-week]').isVisible() && await t.p.locator('[data-testid=kb-pairing]').count() === 0, 'F) un sync refusé (fonction pas à jour) : la borne reste affichée, reliée, sans message');
+  await t.ctx.close();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// G) CORRECTIFS DE RELECTURE : cache en panne, plafond du cache, redirection de l'hébergeur
+// ═══════════════════════════════════════════════════════════════════════════
+console.log('\n── G) cache en panne, plafond du cache, redirection de l’hébergeur');
+{
+  // G1 · Cache Storage en panne (disque plein, index abîmé) : la borne s'ouvre quand même, EN LIGNE.
+  resetSite();
+  const t = await tablet({ sw: 'allow', clock: null });
+  await openBorne(t.p);
+  check(await until(async () => (await controller(t.p)) === `${BASE}/borne-sw.js`, 8000), 'G1) service worker installé et en place');
+  site.swBreak = true; site.swVersion = 2;
+  await t.p.evaluate(async () => { const r = await navigator.serviceWorker.getRegistration('/borne'); await r.update(); });
+  const swapped = await until(async () => (await t.p.evaluate(async () => { try { return await (await fetch('/__sw-casse')).text(); } catch { return ''; } })) === 'casse', 12000);
+  check(swapped, 'G1) le service worker « Cache Storage en panne » (caches.open rejette) est en place');
+  const e0 = pageErrors.length; site.hits.length = 0;
+  await t.p.reload({ timeout: 20000 }).catch((e) => console.log('   reload :', e.message.slice(0, 80)));
+  await t.p.waitForSelector('[data-testid=kb-week]', { timeout: 12000 }).catch(() => {});
+  check(await t.p.locator('[data-testid=kb-week]').isVisible().catch(() => false), 'G1) cache en panne, réseau OK : la page /borne se charge (la panne du cache ne bloque pas la navigation)');
+  check(site.hits.filter((h) => h.path.startsWith('/_next/static/')).length >= 5, `G1) … ses fichiers de code viennent du réseau (${site.hits.filter((h) => h.path.startsWith('/_next/static/')).length} demandes)`);
+  check(await t.p.evaluate(() => !!document.querySelector('[data-testid=kb-company]') && document.fonts.size > 0), 'G1) … avec ses polices et sa feuille de style (fonts.css n’échoue pas non plus)');
+  check(pageErrors.length === e0, 'G1) aucune erreur JavaScript');
+  await t.ctx.close();
+}
+{
+  // G2 · le plafond du cache ne retire jamais les polices.
+  resetSite();
+  const t = await tablet({ sw: 'allow', clock: null });
+  await openBorne(t.p);
+  check(await until(async () => { const d = await cacheDump(t.p); return (d['bx-borne-assets-v1'] || []).length > 25; }, 10000), 'G2) cache de fichiers rempli');
+  const FIXES = ['/fonts/fonts.css', '/fonts/archivo-latin.woff2', '/fonts/jetbrains-mono-latin.woff2', '/bemexo-wordmark-light.svg', '/cookies/cookieconsent.css'];
+  const paths = async () => ((await cacheDump(t.p))['bx-borne-assets-v1'] || []).map((u) => u.replace(BASE, ''));
+  check((await paths()).includes('/fonts/archivo-latin.woff2'), 'G2) avant : polices en cache');
+  // 170 anciens morceaux d'un vieux déploiement : le cache dépasse le plafond (160).
+  await t.p.evaluate(async () => { const c = await caches.open('bx-borne-assets-v1'); for (let i = 0; i < 170; i++) await c.put(`/_next/static/chunks/zz-ancien-${i}-0123456789abcdef.js`, new Response('x')); });
+  check((await paths()).filter((x) => x.includes('zz-ancien-')).length === 170, 'G2) 170 anciens morceaux ajoutés');
+  await t.p.reload();
+  check(await until(async () => !(await paths()).some((x) => x.includes('zz-ancien-')), 12000), 'G2) la page rechargée : le plafond retire les anciens morceaux du vieux déploiement');
+  const after = await paths();
+  check(FIXES.every((f) => after.includes(f)), `G2) … mais PAS les fichiers fixes : polices, logo, cookies toujours en cache (${FIXES.filter((f) => !after.includes(f)).join(', ') || 'tous présents'})`);
+  check(after.filter((x) => x.startsWith('/fonts/') && x.endsWith('.woff2')).length === 9, `G2) … les 9 polices (${after.filter((x) => x.endsWith('.woff2') && x.startsWith('/fonts/')).length})`);
+  const mustHave = [...bornePage().matchAll(/(?:src|href)="(\/_next\/static\/[^"]+)"/g)].map((m) => m[1]);
+  check(mustHave.every((m) => after.includes(m)), 'G2) … ni les fichiers de code que la page cite');
+  await t.ctx.close();
+}
+{
+  // G3 · l'hébergeur renvoie /borne vers /borne/ : la copie posée à l'installation doit servir hors ligne.
+  resetSite(); site.redirect = true;
+  const net = { off: false };
+  const t = await tablet({ sw: 'allow', clock: null, net });
+  await t.p.goto(`${BASE}/borne`);
+  await t.p.waitForSelector('[data-testid=kb-week]', { timeout: 12000 }).catch(() => {});
+  check(new URL(t.p.url()).pathname === '/borne/', 'G3) l’hébergeur redirige : la page est à /borne/');
+  check(await until(async () => (await controller(t.p)) === `${BASE}/borne-sw.js`, 8000), 'G3) service worker en place (portée /borne : /borne/ y est)');
+  const info = () => t.p.evaluate(async () => { const r = await (await caches.open('bx-borne-page-v1')).match('/borne'); return r ? { redirected: r.redirected, status: r.status, url: new URL(r.url).pathname } : null; });
+  check(await until(async () => !!(await info()), 8000), 'G3) une copie de la page est en cache');
+  const i = await info();
+  check(i && i.redirected === false && i.status === 200 && i.url === '/borne/', `G3) la copie n’est PAS une réponse redirigée (redirected=${i?.redirected}, ${i?.url})`);
+  // Hors ligne : la navigation vers /borne est servie par la copie (une copie redirigée donnerait ERR_FAILED).
+  await stopSite(); net.off = true;
+  const err = await t.p.goto(`${BASE}/borne`, { timeout: 15000 }).then(() => '', (e) => e.message.slice(0, 90));
+  await t.p.waitForSelector('[data-testid=kb-week]', { timeout: 12000 }).catch(() => {});
+  check(!err && await t.p.locator('[data-testid=kb-week]').isVisible().catch(() => false), `G3) hors ligne : la borne s’ouvre depuis la copie (${err || 'sans erreur de navigation'})`);
+  check(/Pas de réseau — reprise automatique/.test(await t.p.locator('[data-testid=kb-offline]').innerText().catch(() => '')), 'G3) … et le dit');
+  await startSite(); net.off = false;
+  // Réseau revenu : /borne puis la redirection : la borne s'ouvre (et la copie reste saine).
+  await t.p.goto(`${BASE}/borne`);
+  await t.p.waitForSelector('[data-testid=kb-week]', { timeout: 12000 }).catch(() => {});
+  check(await t.p.locator('[data-testid=kb-week]').isVisible(), 'G3) en ligne, /borne → /borne/ : la borne s’ouvre');
+  check(await until(async () => { const x = await info(); return !!x && x.redirected === false; }, 4000), 'G3) … et la copie reste une vraie page');
   await t.ctx.close();
 }
 

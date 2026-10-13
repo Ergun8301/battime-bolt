@@ -19,11 +19,15 @@ export function isBornePath(pathname: string): boolean {
 
 /**
  * Enregistre le service worker de la borne, une fois la page chargée (il ne
- * ralentit pas l'affichage). Seulement sur /borne. Navigateur sans service
- * worker, page non sécurisée, enregistrement refusé : rien, sans bruit.
+ * ralentit pas l'affichage). Seulement sur /borne, seulement sur le site construit
+ * (`NODE_ENV === 'production'`). Navigateur sans service worker, page non sécurisée,
+ * enregistrement refusé : rien, sans bruit.
  */
 export function registerBorneServiceWorker(): void {
   try {
+    // Jamais sous `next dev` : les fichiers n'y ont pas d'empreinte dans leur nom, le « cache d'abord »
+    // y servirait de l'ancien code. Seul le site construit (export statique) a un service worker.
+    if (process.env.NODE_ENV !== 'production') return;
     if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
     if (!isBornePath(window.location.pathname)) return;
     const go = () => {
@@ -76,6 +80,7 @@ export function readClientVersion(): string {
     if (document.readyState !== 'complete') return '';
     if (typeof PerformanceObserver !== 'undefined' && watching && !delivered) return ''; // la première livraison n'est pas arrivée
     const urls = Array.from(document.scripts).map((s) => s.getAttribute('src') || '').filter(Boolean);
+    document.querySelectorAll('link[rel="stylesheet"]').forEach((l) => { const h = l.getAttribute('href'); if (h) urls.push(h); });
     seenResources.forEach((u) => urls.push(u));
     try { performance.getEntriesByType('resource').forEach((e) => urls.push(e.name)); } catch { /* pas de Resource Timing */ }
     cachedVersion = buildVersion(urls);

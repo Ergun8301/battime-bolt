@@ -218,12 +218,15 @@ Deno.test('nuit — le marqueur du stockage : lecture sûre', () => {
 
 // ── 4) La version de l'appli ────────────────────────────────────────────────
 
-const HTML = (page: string, extra = '') => `<!DOCTYPE html><html><head>
+const HTML = (page: string, extra = '', shared = '6825-79f2aaaaaaaaaaaa') => `<!DOCTYPE html><html><head>
+<link rel="stylesheet" href="/_next/static/css/2b6d3227552170ff.css" data-precedence="next"/>
 <script src="/_next/static/chunks/webpack-11a74969070152a4.js" async=""></script>
 <script src="/_next/static/chunks/main-app-8684f186f476de43.js" async=""></script>
 <script src="/_next/static/chunks/app/layout-4cb7fbe93e602ed3.js" async=""></script>
 <script src="/_next/static/chunks/app/borne/page-${page}.js" async=""></script>
 <script src="/_next/static/chunks/6097-b6d9c8bc9e121be7.js" async=""></script>
+<script src="/_next/static/chunks/${shared}.js" async=""></script>
+<script src="/_next/static/chunks/polyfills-42372ed130431b0a.js" nomodule=""></script>
 <script src="/cookies/bemexo-consent.js" data-ga-id="G-X" defer=""></script>${extra}
 </head><body></body></html>`;
 
@@ -234,20 +237,40 @@ Deno.test('version — 8 signes hexadécimaux, stable, et elle change quand la p
   ok(versionFromHtml(HTML('aaaaaaaaaaaaaaaa')) !== a, 'autre empreinte du code de la page : autre version');
 });
 
-Deno.test('version — ni l’ordre, ni les doublons, ni un script d’hébergeur, ni un autre chargement ne la changent', () => {
+Deno.test('version — un déploiement qui ne change QU\'UN morceau partagé (supabase-js, react-dom, fournisseur de session…) change la version', () => {
+  // Constat d'une relecture : deux builds identiques sauf une constante de components/auth-provider.tsx ne changent
+  // que le morceau partagé « 6825-<empreinte> » du HTML ; avec seulement 4 fichiers comptés, la version restait la même
+  // et la borne gardait l'ancien code indéfiniment.
+  const avant = versionFromHtml(HTML('16b946fa55520278', '', '6825-79f2aaaaaaaaaaaa'));
+  const apres = versionFromHtml(HTML('16b946fa55520278', '', '6825-8b8bbbbbbbbbbbbb'));
+  ok(avant !== apres, `morceau partagé modifié : ${avant} → ${apres}`);
+  // Un morceau partagé de plus (ou de moins) change aussi la version.
+  ok(versionFromHtml(HTML('16b946fa55520278', '<script src="/_next/static/chunks/9999-ffffffffffffffff.js" async=""></script>')) !== avant, 'morceau initial ajouté : autre version');
+  // La feuille de style compte.
+  const css = HTML('16b946fa55520278').replace('2b6d3227552170ff', '3c7e4338663281aa');
+  ok(versionFromHtml(css) !== avant, 'autre feuille de style : autre version');
+  // Attributs dans un autre ordre pour la feuille de style.
+  eq(versionFromHtml(HTML('16b946fa55520278').replace('<link rel="stylesheet" href="/_next/static/css/2b6d3227552170ff.css" data-precedence="next"/>', '<link data-precedence="next" href="/_next/static/css/2b6d3227552170ff.css" rel="stylesheet">')), avant, 'ordre des attributs sans effet');
+});
+
+Deno.test('version — ni l’ordre, ni les doublons, ni un script d’hébergeur, ni un chargement différé, ni les polyfills ne la changent', () => {
   const a = versionFromHtml(HTML('16b946fa55520278'));
-  eq(versionFromHtml(HTML('16b946fa55520278', '<script src="https://www.googletagmanager.com/gtag/js?id=G-X"></script><script src="/_next/static/chunks/9999-ffffffffffffffff.js"></script>')), a, 'scripts hors liste');
-  eq(buildVersion(['/_next/static/chunks/app/borne/page-16b946fa55520278.js', '/_next/static/chunks/webpack-11a74969070152a4.js', '/_next/static/chunks/main-app-8684f186f476de43.js', '/_next/static/chunks/app/layout-4cb7fbe93e602ed3.js']), a, 'autre ordre');
-  eq(buildVersion([
-    'https://bemexo.com/_next/static/chunks/webpack-11a74969070152a4.js?v=1', '/_next/static/chunks/webpack-11a74969070152a4.js',
-    '/_next/static/chunks/main-app-8684f186f476de43.js', '/_next/static/chunks/app/layout-4cb7fbe93e602ed3.js', '/_next/static/chunks/app/borne/page-16b946fa55520278.js',
-  ]), a, 'adresses absolues, requêtes et doublons');
+  const sans = (frag: string) => versionFromHtml(HTML('16b946fa55520278', frag));
+  eq(sans('<script src="https://www.googletagmanager.com/gtag/js?id=G-X"></script>'), a, 'script d’hébergeur');
+  eq(sans('<script src="/_next/static/chunks/1283.0d33fe0e7f4d9014.js" async=""></script>'), a, 'chargement différé (nom avec un point : jamais dans la page au démarrage)');
+  eq(sans('<script src="/_next/static/chunks/polyfills-ffffffffffffffff.js" nomodule=""></script>'), a, 'polyfills (la page ne les charge pas dans un navigateur récent)');
+  eq(sans('<script src="/_next/static/media/e4af272ccee01ff0-s.p.woff2"></script><link rel="preload" href="/fonts/archivo-latin.woff2" as="font"/>'), a, 'polices');
+  eq(sans('<link rel="icon" href="/favicon.svg"/><link rel="manifest" href="/borne.webmanifest"/>'), a, 'autres liens');
+  const urls = ['/_next/static/css/2b6d3227552170ff.css', '/_next/static/chunks/app/borne/page-16b946fa55520278.js', '/_next/static/chunks/webpack-11a74969070152a4.js', '/_next/static/chunks/6097-b6d9c8bc9e121be7.js',
+    '/_next/static/chunks/6825-79f2aaaaaaaaaaaa.js', '/_next/static/chunks/main-app-8684f186f476de43.js', '/_next/static/chunks/app/layout-4cb7fbe93e602ed3.js'];
+  eq(buildVersion(urls), a, 'autre ordre');
+  eq(buildVersion([...urls.map((u) => `https://bemexo.com${u}?v=1`), ...urls, '/_next/static/chunks/polyfills-42372ed130431b0a.js']), a, 'adresses absolues, requêtes, doublons');
 });
 
 Deno.test('version — inconnue (chaîne vide) quand les fichiers attendus manquent', () => {
   eq(buildVersion([]), '', 'aucun script');
   eq(versionFromHtml('<html><body>Application indisponible</body></html>'), '', 'page d’erreur');
-  eq(buildVersion(['/static/js/bundle.js', '/_next/static/chunks/pages/_app.js']), '', 'serveur de développement');
+  eq(buildVersion(['/static/js/bundle.js', '/_next/static/chunks/pages/_app.js', '/_next/static/chunks/polyfills-42372ed130431b0a.js']), '', 'serveur de développement, polyfills seuls');
   eq(scriptSrcsFromHtml('<script src="/a.js"></script><script>inline()</script><SCRIPT SRC=\'/b.js\'></SCRIPT>'), ['/a.js', '/b.js'], 'extraction des src (guillemets simples, majuscules)');
 });
 
@@ -341,4 +364,22 @@ Deno.test('service worker — le fichier : cycle de vie, versions de cache, aucu
   eq(SW.NAV_TIMEOUT_MS, 4000, 'le réseau a 4 s pour répondre avant la copie');
   const push = Deno.readTextFileSync(new URL('../../../public/sw.js', import.meta.url));
   ok(/addEventListener\('push'/.test(push) && !/borne/i.test(push.split('\n').filter((l: string) => !l.trim().startsWith('//')).join('\n')), 'public/sw.js (push) est intact : il ne sait rien de la borne');
+});
+
+Deno.test('service worker — garde-fous : cache illisible, plafond du cache, redirection de l’hébergeur (le comportement réel est testé en navigateur)', () => {
+  const code = SW_TEXT.split('\n').filter((l: string) => !l.trim().startsWith('//')).join('\n');
+  // Un cache qui lève ne doit jamais empêcher d'ouvrir la borne en ligne : chaque respondWith retombe sur le réseau.
+  ok(/respondWith\(pageResponse\(event\)\.catch\(/.test(code) && /respondWith\(staticResponse\(event\)\.catch\(/.test(code) && /respondWith\(shellResponse\(event\)\.catch\(/.test(code), 'les trois respondWith ont un repli sur le réseau');
+  eq((code.match(/caches\.open\(/g) || []).length, 5, 'caches.open : 3 lectures protégées, précache, installation');
+  eq((code.match(/catch \(e\) \{ cache = null; (?:hit|cached) = null;? ?(?:cached = null; )?\}/g) || []).length, 3, 'les trois lectures de cache sont dans un try/catch');
+  // Le plafond du cache ne retire jamais les polices (fonts.css déjà en cache n'est pas relu : ses polices ne sont pas dans « keep »).
+  ok(/if \(!keep\[p\] && !isShellAsset\(p\)\) await cache\.delete\(req\)/.test(code), 'le plafond garde les fichiers fixes (polices, logos, cookies)');
+  // Une réponse redirigée ne se garde pas comme page, et l'installation va chercher la page à son adresse finale.
+  ok(/!res\.redirected/.test(code) && /res\.redirected && res\.url\) res = await fetch\(res\.url/.test(code), 'pas de copie redirigée ; page finale récupérée à l’installation');
+});
+
+Deno.test('page de la borne — le service worker ne s’enregistre que sur le site construit, jamais sous `next dev`', () => {
+  const lib = Deno.readTextFileSync(new URL('../../../lib/kiosk-offline.ts', import.meta.url));
+  const fn = lib.slice(lib.indexOf('export function registerBorneServiceWorker'));
+  ok(fn.indexOf("process.env.NODE_ENV !== 'production'") > 0 && fn.indexOf("process.env.NODE_ENV !== 'production'") < fn.indexOf('.register('), 'garde NODE_ENV avant register()');
 });

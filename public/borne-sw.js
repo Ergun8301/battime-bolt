@@ -105,8 +105,10 @@ function fontsFromCss(css) {
 
 // ── Réseau et caches ────────────────────────────────────────────────────────────
 
+// Une page à garder : 200, du site, du HTML, et PAS une réponse « redirigée » (un hébergeur qui renvoie /borne vers
+// /borne/ donnerait une copie redirected:true, que le navigateur refuse de servir à une navigation : ERR_FAILED hors ligne).
 const isGoodPage = (res) =>
-  res.status === 200 && res.type === 'basic' && /text\/html/i.test(res.headers.get('content-type') || '');
+  res.status === 200 && res.type === 'basic' && !res.redirected && /text\/html/i.test(res.headers.get('content-type') || '');
 const isGoodFile = (res) => res.ok && res.type === 'basic';
 
 /** L'écran sans réseau ni copie : se recharge tout seul dès que la borne répond. */
@@ -147,22 +149,30 @@ async function precacheFromHtml(html, extra) {
   };
   await Promise.all(wanted.map(one));
   // Plafond : si le cache a trop grossi (anciennes versions du site), on ne garde que ce que la page cite.
+  // Les fichiers fixes (polices, logos, cookies) restent toujours : fonts.css déjà en cache n'est pas relu,
+  // donc ses polices ne figurent pas dans `keep`.
   const keys = await cache.keys();
   if (keys.length > MAX_ASSETS) {
     for (const req of keys) {
       const p = new URL(req.url).pathname;
-      if (!keep[p]) await cache.delete(req);
+      if (!keep[p] && !isShellAsset(p)) await cache.delete(req);
     }
   }
 }
 
 /** Réseau d'abord, copie de secours (voir l'en-tête du fichier). */
 async function pageResponse(event) {
-  const cache = await caches.open(PAGE_CACHE);
-  const cached = await cache.match(PAGE_URL, { ignoreVary: true });
+  // Un cache qui ne s'ouvre pas (disque plein, index abîmé) ne doit JAMAIS empêcher d'ouvrir la borne en ligne :
+  // sans cache, c'est le réseau seul.
+  let cache = null;
+  let cached = null;
+  try {
+    cache = await caches.open(PAGE_CACHE);
+    cached = await cache.match(PAGE_URL, { ignoreVary: true });
+  } catch (e) { cache = null; cached = null; }
   const writes = [];
   const network = fetch(event.request).then((res) => {
-    if (isGoodPage(res)) {
+    if (cache && isGoodPage(res)) {
       // La copie est rangée sous « /borne » seul, jamais sous l'adresse demandée (« ?code=… »).
       const forCache = res.clone();
       const forRefs = res.clone();
@@ -187,20 +197,28 @@ async function pageResponse(event) {
 
 /** /_next/static : jamais modifié sous le même nom → cache d'abord. */
 async function staticResponse(event) {
-  const cache = await caches.open(ASSET_CACHE);
-  const hit = await cache.match(event.request, { ignoreVary: true });
+  let cache = null;
+  let hit = null;
+  try {
+    cache = await caches.open(ASSET_CACHE);
+    hit = await cache.match(event.request, { ignoreVary: true });
+  } catch (e) { cache = null; hit = null; }
   if (hit) return hit;
   const res = await fetch(event.request);
-  if (isGoodFile(res)) event.waitUntil(cache.put(event.request, res.clone()).catch(() => {}));
+  if (cache && isGoodFile(res)) event.waitUntil(cache.put(event.request, res.clone()).catch(() => {}));
   return res;
 }
 
 /** Polices, logos, cookies : cache d'abord, remis à jour en arrière-plan. */
 async function shellResponse(event) {
-  const cache = await caches.open(ASSET_CACHE);
-  const hit = await cache.match(event.request, { ignoreVary: true });
+  let cache = null;
+  let hit = null;
+  try {
+    cache = await caches.open(ASSET_CACHE);
+    hit = await cache.match(event.request, { ignoreVary: true });
+  } catch (e) { cache = null; hit = null; }
   const refresh = fetch(event.request).then((res) => {
-    if (isGoodFile(res)) return cache.put(event.request, res.clone()).then(() => res, () => res);
+    if (cache && isGoodFile(res)) return cache.put(event.request, res.clone()).then(() => res, () => res);
     return res;
   }, () => null);
   if (hit) { event.waitUntil(refresh); return hit; }
@@ -214,7 +232,10 @@ self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     try {
       // La borne est prête hors ligne dès l'installation, sans attendre un second chargement.
-      const res = await fetch(PAGE_URL, { cache: 'reload' });
+      let res = await fetch(PAGE_URL, { cache: 'reload' });
+      // L'hébergeur renvoie /borne vers /borne/ (ou l'inverse) : la réponse redirigée ne sert pas une navigation,
+      // on va chercher la page à son adresse finale.
+      if (res.redirected && res.url) res = await fetch(res.url, { cache: 'reload' });
       if (isGoodPage(res)) {
         const cache = await caches.open(PAGE_CACHE);
         await cache.put(PAGE_URL, res.clone());
@@ -241,9 +262,12 @@ self.addEventListener('fetch', (event) => {
   let url;
   try { url = new URL(req.url); } catch (e) { return; }
   const kind = classify(req.method, url, req.mode, self.location.origin);
-  if (kind === 'page') event.respondWith(pageResponse(event));
-  else if (kind === 'static') event.respondWith(staticResponse(event));
-  else if (kind === 'shell') event.respondWith(shellResponse(event));
+  // Filet de sécurité : si quoi que ce soit lève dans le service worker (cache illisible…), la demande part au
+  // réseau comme s'il n'existait pas ; la borne ne dépend jamais du cache pour s'ouvrir EN LIGNE.
+  const net = () => fetch(event.request);
+  if (kind === 'page') event.respondWith(pageResponse(event).catch(() => net().catch(() => offlinePage())));
+  else if (kind === 'static') event.respondWith(staticResponse(event).catch(net));
+  else if (kind === 'shell') event.respondWith(shellResponse(event).catch(net));
   // Toute autre demande : pas de respondWith, le navigateur la traite seul.
 });
 
