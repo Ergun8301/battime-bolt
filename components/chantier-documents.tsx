@@ -143,7 +143,7 @@ export default function ChantierDocuments({
 
   // Lot 24 : changer la catégorie après coup. Rien ne s'affiche tant que la migration manque.
   const office = user?.role === 'admin';
-  const catReady = useDocCategoryReady(open);
+  const { ready: catReady, settled: catSettled } = useDocCategoryReady(open);
   const [catDoc, setCatDoc] = useState<DocRow | null>(null);
   const canCat = (d: DocRow) => catReady && canEditCategory({ office, userId: user?.id, uploadedBy: d.uploaded_by, current: d.category });
 
@@ -360,7 +360,7 @@ export default function ChantierDocuments({
           </button>
         </div>
 
-        {loading ? (
+        {loading || !catSettled ? (
           <div className="bt-doc-empty">Chargement…</div>
         ) : shown.length === 0 ? (
           <div className="bt-doc-empty">
@@ -444,7 +444,8 @@ export default function ChantierDocuments({
             : <div className="bt-doc-send-note">Le message reprendra les {docs.length} pièces du chantier, photos et fichiers.</div>}
         </div>
         <DocumentCategorySheet doc={catDoc} office={office} onClose={() => setCatDoc(null)}
-          onChanged={(id, cat) => setDocs((p) => p.map((x) => (x.id === id ? { ...x, category: cat } : x)))} />
+          onChanged={(id, cat) => setDocs((p) => p.map((x) => (x.id === id ? { ...x, category: cat } : x)))}
+          onGone={() => { void fetchDocs(); }} />
       </DialogContent>
     </Dialog>
   );

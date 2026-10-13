@@ -7,14 +7,21 @@
 //  1) BUREAU (/admin, 390 px) : fiche chantier → Documents : un bouton de catégorie par ligne
 //     (≥ 44 px), « Sans catégorie ▾ » compris.
 //  2) Choix : 9 options (≥ 48 px) ; Facture → avertissement ; Enregistrer → UNE seule clé dans
-//     l'écriture ; message « Annuler » (8 s) → seconde écriture qui remet l'ancienne catégorie.
-//  3) Avertissements réserve → autre, facture → autre.
-//  4) Erreurs : 0 ligne, refus avec message, catégorie inconnue, coupure réseau puis « Réessayer ».
+//     l'écriture ; bandeau « Annuler » → seconde écriture qui remet l'ancienne catégorie ; le bouton
+//     garde un nom accessible pendant l'annulation.
+//  3) Avertissements réserve → autre, facture → autre, réserve → facture (les DEUX conséquences).
+//  4) Erreurs : 0 ligne (document disparu : fenêtre fermée, liste rechargée, message clair), refus avec
+//     message, catégorie inconnue, coupure réseau puis « Réessayer », réponse perdue puis « Annuler »
+//     (revient à la catégorie d'origine), annulation impossible (le message reste jusqu'à « Fermer »).
 //  5) SALARIÉ (/poseur) : la liste (RLS simulée) n'a pas de facture ; bouton sur SES documents
 //     légers seulement ; 6 options ; le message « Envoyer au client » ne cite aucune facture.
 //  6) Migration absente (fonction 404, ou réseau en panne) : rien de nouveau à l'écran, aucun message.
-//  7) Aucun défilement horizontal (390 et 1024), clavier : Tab, Entrée, Échap, retour du focus.
-//  8) Contrôle statique : aucun appel de suppression (navigateur) ni mot de suppression SQL ajouté hors commentaires.
+//  7) Aucun défilement horizontal (390 et 1024), clavier : Tab, Entrée, Échap, retour du focus,
+//     flèches / Début / Fin dans le choix (un seul arrêt de tabulation).
+//  8) Petits téléphones (360×640, 320×568, paysage 667×375) : « Enregistrer » toujours visible.
+//  9) Bandeau : plus de 8 s, arrêté tant qu'il a le focus ; pas de clignotement à la fermeture ;
+//     les boutons de catégorie sont là dès l'apparition de la liste (pas de décalage).
+// 10) Contrôle statique : aucun appel de suppression (navigateur) ni mot de suppression SQL ajouté hors commentaires.
 import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path'; import { execSync } from 'node:child_process';
 let chromium;
 try { ({ chromium } = await import('playwright-core')); } catch {
@@ -105,6 +112,8 @@ async function mount(ctx, S, me) {
       const fn = P.replace('/rest/v1/rpc/', '');
       S.rpc.push(fn);
       if (fn === 'document_category_ready') {
+        if (S.ready === 'hang') return; // ne répond jamais
+        if (S.readyDelay) await new Promise((res) => setTimeout(res, S.readyDelay));
         if (S.ready === 'network') return r.abort('failed');
         if (S.ready === 'missing') return r.fulfill({ status: 404, json: { code: 'PGRST202', message: 'Could not find the function public.document_category_ready without parameters in the schema cache', details: null, hint: null } });
         return r.fulfill({ json: true });
@@ -118,6 +127,7 @@ async function mount(ctx, S, me) {
     if (t === 'documents' && me.role !== 'admin') rows = rows.filter((x) => x.category !== 'facture' && x.category !== 'facture_payee');
     const single = (req.headers()['accept'] || '').includes('vnd.pgrst.object');
     if (method === 'GET' || method === 'HEAD') {
+      if (t === 'documents') S.docGets = (S.docGets || 0) + 1;
       if (single) return rows.length ? r.fulfill({ json: rows[0] }) : r.fulfill({ status: 406, json: { code: 'PGRST116', message: 'none' } });
       const off = Number(url.searchParams.get('offset') || 0); const lim = url.searchParams.get('limit');
       const page = rows.slice(off, lim ? off + Number(lim) : undefined);
@@ -126,7 +136,9 @@ async function mount(ctx, S, me) {
     if (t === 'documents' && method === 'PATCH') {
       const id = (url.searchParams.get('id') || '').replace(/^eq\./, '');
       S.patches.push({ id, body });
+      if (S.patchDelay) await new Promise((res) => setTimeout(res, S.patchDelay));
       if (S.offline) return r.abort('failed');
+      if (S.loseResponse) { for (const x of rows) Object.assign(x, body); return r.abort('failed'); } // la base a écrit, la réponse se perd
       if (S.patchError) return r.fulfill({ status: 403, json: { ...S.patchError, details: null, hint: null } });
       if (S.patchRows === 'none') return r.fulfill({ json: [] });
       for (const x of rows) Object.assign(x, body);
@@ -276,8 +288,14 @@ const S = freshState();
   const tb = await t1.boundingBox();
   check(ub.height >= 44 && ub.width >= 44 && tb.y + tb.height <= 844 && tb.y >= 0, `A2) « Annuler » ≥ 44 px (${Math.round(ub.width)}×${Math.round(ub.height)}), bandeau dans l’écran (bas à ${Math.round(tb.y + tb.height)} px sur 844)`);
   await p.screenshot({ path: `${SH}/04-bandeau-annuler.png` });
+  // Pendant l'annulation (réponse lente), le bouton n'a plus que son rond qui tourne : il garde un nom accessible.
+  S.patchDelay = 1500;
   await t1.locator('[data-testid=doc-cat-undo]').click();
-  await p.waitForTimeout(900);
+  await p.waitForTimeout(350);
+  const ubDuring = t1.locator('[data-testid=doc-cat-undo]');
+  check(await ubDuring.getAttribute('aria-label') === 'Annulation en cours' && await ubDuring.isDisabled() && norm(await ubDuring.innerText()) === '', 'A2) pendant l’annulation : le bouton a le nom accessible « Annulation en cours » (désactivé, seul le rond tourne)');
+  await p.waitForTimeout(1600);
+  S.patchDelay = 0;
   check(S.patches.length === 2 && S.patches[1].id === 'd-devis' && JSON.stringify(S.patches[1].body) === '{"category":"devis"}', `A2) « Annuler » : seconde écriture qui remet « devis » : ${JSON.stringify(S.patches[1])}`);
   check(norm(await row(p, LONG_NAME).locator('[data-testid=doc-cat-btn]').innerText()) === 'Devis ▾', 'A2) la ligne est revenue à « Devis ▾ »');
   check(norm(await done(p).innerText()) === 'Catégorie remise : Devis.', 'A2) bandeau « Catégorie remise : Devis. »');
@@ -289,6 +307,8 @@ const S = freshState();
   await sheet(p).waitFor();
   await pick(p, 'autre');
   check(norm(await sheet(p).locator('[data-testid=doc-cat-notice]').innerText()) === 'Ce document ne sera plus classé dans les réserves.', 'A3) réserve → autre : « Ce document ne sera plus classé dans les réserves. »');
+  await pick(p, 'facture');
+  check(norm(await sheet(p).locator('[data-testid=doc-cat-notice]').innerText()) === 'Les salariés ne verront plus ce document. Il ne sera plus classé dans les réserves.', 'A3) réserve → facture : les DEUX avertissements (les salariés ne le voient plus ET il sort des réserves)');
   await sheet(p).locator('[data-testid=doc-cat-cancel]').click();
   await p.waitForTimeout(400);
   check(await sheet(p).count() === 0 && S.patches.length === 2, 'A3) « Annuler » ferme sans rien écrire');
@@ -302,17 +322,33 @@ const S = freshState();
 
   // A4 · erreurs. (la fenêtre « facture » est ouverte)
   await pick(p, 'plan');
+  // Document devenu illisible pour cette personne (0 ligne) : « Réessayer » échouerait toujours. La fenêtre se ferme,
+  // la liste est relue, le message le dit clairement et reste jusqu'à « Fermer ».
   S.patchRows = 'none';
+  const getsBefore = S.docGets;
   await sheet(p).locator('[data-testid=doc-cat-save]').click();
-  await p.waitForTimeout(700);
-  let err = sheet(p).locator('[role=alert]');
-  check(await sheet(p).count() === 1 && norm(await err.innerText()) === 'Changement refusé : vous ne pouvez pas modifier ce document.', 'A4) 0 ligne : « Changement refusé : vous ne pouvez pas modifier ce document. » dans la fenêtre, restée ouverte');
+  await p.waitForTimeout(900);
+  const gone = done(p);
+  check(await sheet(p).count() === 0 && await gone.getAttribute('role') === 'alert' && norm(await gone.innerText()) === 'Ce document n’est plus disponible ou a été modifié par le bureau. Fermer',
+    `A4) 0 ligne : la fenêtre se ferme, message clair (« n’est plus disponible ou a été modifié par le bureau ») avec « Fermer » : ${norm(await gone.innerText().catch(() => ''))}`);
+  check(S.docGets > getsBefore, 'A4) 0 ligne : la liste des documents est relue (la ligne disparaîtrait si la base la cachait)');
+  await p.waitForTimeout(6500);
+  check(await gone.count() === 1, 'A4) 0 ligne : le message est encore là après 6,5 s (il demande de réagir : il reste jusqu’à « Fermer »)');
+  await gone.locator('[data-testid=doc-cat-close]').click();
+  await p.waitForTimeout(300);
+  check(await done(p).count() === 0, 'A4) « Fermer » retire le message');
+  S.patchRows = 'apply';
+  await p.waitForSelector('.bt-doc-row'); await p.waitForTimeout(300);
+  await row(p, 'Facture-0412').locator('[data-testid=doc-cat-btn]').click();
+  await sheet(p).waitFor(); await p.waitForTimeout(400);
+  await pick(p, 'plan');
+  const err = sheet(p).locator('[role=alert]');
+  S.patchError = { code: '42501', message: 'Cette catégorie est réservée au bureau.' };
+  await sheet(p).locator('[data-testid=doc-cat-save]').click(); await p.waitForTimeout(600);
+  check(await sheet(p).count() === 1 && norm(await err.innerText()) === 'Cette catégorie est réservée au bureau.', 'A4) 42501 : le message de la base, tel quel, dans la fenêtre restée ouverte');
   check(norm(await row(p, 'Facture-0412').locator('[data-testid=doc-cat-btn]').innerText()) === 'Facture ▾', 'A4) la ligne est restée « Facture ▾ »');
   check(norm(await sheet(p).locator('[data-testid=doc-cat-save]').innerText()) === 'Réessayer' && !(await sheet(p).locator('[data-testid=doc-cat-save]').isDisabled()), 'A4) bouton « Réessayer » actif');
   await p.screenshot({ path: `${SH}/03-erreur-refus.png` });
-  S.patchRows = 'apply'; S.patchError = { code: '42501', message: 'Cette catégorie est réservée au bureau.' };
-  await sheet(p).locator('[data-testid=doc-cat-save]').click(); await p.waitForTimeout(600);
-  check(norm(await err.innerText()) === 'Cette catégorie est réservée au bureau.', 'A4) 42501 : le message de la base, tel quel');
   S.patchError = { code: '23514', message: 'new row violates check constraint "documents_category_check"' };
   await sheet(p).locator('[data-testid=doc-cat-save]').click(); await p.waitForTimeout(600);
   check(norm(await err.innerText()) === 'Catégorie inconnue : rien n’a été changé.', 'A4) 23514 : « Catégorie inconnue : rien n’a été changé. »');
@@ -331,6 +367,41 @@ const S = freshState();
   check(S.documents.find((x) => x.id === 'd-fact').category === 'plan', 'A4) la base simulée a bien reçu « plan »');
   const allKeys = S.patches.map((x) => Object.keys(x.body).length);
   check(allKeys.every((n) => n === 1) && S.patches.every((x) => Object.keys(x.body)[0] === 'category'), `A4) ${S.patches.length} écritures envoyées, toutes avec la seule clé « category » (${allKeys.filter((n) => n === 1).length}/${allKeys.length})`);
+
+  // A4b · la base a écrit mais la réponse s'est perdue ; « Réessayer » réussit ; « Annuler » revient à la catégorie D'ORIGINE
+  // (et non à la « nouvelle », que la relecture aurait rendue).
+  S.patches.length = 0;
+  await row(p, LONG_NAME).locator('[data-testid=doc-cat-btn]').click();
+  await sheet(p).waitFor(); await p.waitForTimeout(400);
+  await pick(p, 'plan');
+  S.loseResponse = true;
+  await sheet(p).locator('[data-testid=doc-cat-save]').click(); await p.waitForTimeout(700);
+  check(await sheet(p).count() === 1 && norm(await err.innerText()) === 'Pas de connexion : rien n’a été changé. Réessayez.' && S.documents.find((x) => x.id === 'd-devis').category === 'plan',
+    'A4b) réponse perdue : message d’erreur dans la fenêtre, alors que la base a bien écrit « plan »');
+  S.loseResponse = false;
+  await sheet(p).locator('[data-testid=doc-cat-save]').click(); await p.waitForTimeout(900);
+  check(await sheet(p).count() === 0 && norm(await done(p).innerText()) === 'Catégorie changée : Plan. Annuler', 'A4b) « Réessayer » réussit (la base renvoie « plan » : rien de changé pour elle)');
+  S.patches.length = 0;
+  await done(p).locator('[data-testid=doc-cat-undo]').click(); await p.waitForTimeout(900);
+  check(S.patches.length === 1 && JSON.stringify(S.patches[0].body) === '{"category":"devis"}' && norm(await row(p, LONG_NAME).locator('[data-testid=doc-cat-btn]').innerText()) === 'Devis ▾',
+    `A4b) « Annuler » remet « devis » (la catégorie d’origine), pas « plan » : ${JSON.stringify(S.patches.map((x) => x.body))}`);
+
+  // A4c · annulation impossible : le message demande une action, il reste jusqu'à « Fermer » (il ne disparaît pas seul en 5 s).
+  await row(p, LONG_NAME).locator('[data-testid=doc-cat-btn]').click();
+  await sheet(p).waitFor(); await p.waitForTimeout(400);
+  await pick(p, 'autre');
+  await sheet(p).locator('[data-testid=doc-cat-save]').click(); await p.waitForTimeout(900);
+  S.patchError = { code: '42501', message: 'Cette catégorie est réservée au bureau.' };
+  await done(p).locator('[data-testid=doc-cat-undo]').click(); await p.waitForTimeout(700);
+  S.patchError = null;
+  const badUndo = done(p);
+  check(await badUndo.getAttribute('role') === 'alert' && norm(await badUndo.innerText()) === 'Annulation impossible : remettez l’ancienne catégorie à la main. Fermer', `A4c) annulation impossible : message d’alerte avec « Fermer » : ${norm(await badUndo.innerText().catch(() => ''))}`);
+  await p.waitForTimeout(6500);
+  check(await badUndo.count() === 1, 'A4c) … encore là après 6,5 s');
+  await badUndo.locator('[data-testid=doc-cat-close]').click(); await p.waitForTimeout(300);
+  check(await done(p).count() === 0, 'A4c) « Fermer » le retire');
+  const allKeys2 = S.patches.map((x) => Object.keys(x.body).length);
+  check(allKeys2.every((n) => n === 1) && S.patches.every((x) => Object.keys(x.body)[0] === 'category'), 'A4c) toujours la seule clé « category » dans chaque écriture');
 
   // A5 · 1024 px : toujours sans défilement horizontal.
   await p.waitForTimeout(500);
@@ -397,11 +468,12 @@ const S = freshState();
 // ════════════════════════════════════════════════════════════════════════════
 // C · MIGRATION ABSENTE : rien de nouveau, aucun message
 // ════════════════════════════════════════════════════════════════════════════
-for (const mode of ['missing', 'network']) {
+for (const mode of ['missing', 'network', 'hang']) {
   const SC = freshState({ ready: mode });
   const { ctx, p, errs } = await newPage(SC, ADMIN, { width: 390, height: 844 });
   const consoleErr = []; p.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) consoleErr.push(m.text()); });
-  check(await openAdminDocs(p), `C0) (${mode}) bureau : Documents ouvert`);
+  const tOpen = Date.now();
+  check(await openAdminDocs(p), `C0) (${mode}) bureau : Documents ouvert (liste visible en ${((Date.now() - tOpen) / 1000).toFixed(1)} s)`);
   await p.waitForTimeout(800);
   check(SC.rpc.includes('document_category_ready'), `C1) (${mode}) la fonction « prête ? » a bien été interrogée`);
   check(await p.locator('[data-testid=doc-cat-btn]').count() === 0, `C1) (${mode}) aucun bouton de catégorie`);
@@ -442,10 +514,180 @@ for (const mode of ['missing', 'network']) {
   await p.keyboard.press('Enter');
   await sheet(p).waitFor({ timeout: 3000 });
   check(true, 'D2) Entrée ouvre la fenêtre de choix');
+  // Groupe de boutons radio : UN seul arrêt de tabulation (l'option cochée) ; les flèches, Début et Fin changent le choix.
+  await p.waitForTimeout(400);
+  const tabbable = () => sheet(p).locator('[data-testid=doc-cat-opt][tabindex="0"]').evaluateAll((els) => els.map((e) => e.getAttribute('data-cat')));
+  const checkedOpt = () => sheet(p).locator('[data-testid=doc-cat-opt][aria-checked=true]').evaluateAll((els) => els.map((e) => e.getAttribute('data-cat')));
+  const focusedOpt = () => p.evaluate(() => document.activeElement?.getAttribute('data-cat') ?? null);
+  check(JSON.stringify(await tabbable()) === '["facture_payee"]', `D2b) un seul arrêt de tabulation dans le choix : l’option cochée (${JSON.stringify(await tabbable())})`);
+  await sheet(p).locator('[data-cat=facture_payee]').focus();
+  await p.keyboard.press('ArrowDown');
+  check(JSON.stringify(await checkedOpt()) === '["autre"]' && await focusedOpt() === 'autre', `D2b) flèche bas : « Autre » coché et focalisé (${await focusedOpt()})`);
+  await p.keyboard.press('ArrowDown');
+  check(JSON.stringify(await checkedOpt()) === '["none"]' && await focusedOpt() === 'none', 'D2b) flèche bas : « Sans catégorie »');
+  await p.keyboard.press('ArrowDown');
+  check(JSON.stringify(await checkedOpt()) === '["devis"]' && await focusedOpt() === 'devis', 'D2b) flèche bas au bout : retour à « Devis » (boucle)');
+  await p.keyboard.press('ArrowUp');
+  check(JSON.stringify(await checkedOpt()) === '["none"]', 'D2b) flèche haut : retour à « Sans catégorie »');
+  await p.keyboard.press('Home');
+  check(JSON.stringify(await checkedOpt()) === '["devis"]' && await focusedOpt() === 'devis', 'D2b) Début : première option');
+  await p.keyboard.press('End');
+  check(JSON.stringify(await checkedOpt()) === '["none"]' && await focusedOpt() === 'none', 'D2b) Fin : dernière option');
+  check(JSON.stringify(await tabbable()) === '["none"]' && !(await sheet(p).locator('[data-testid=doc-cat-save]').isDisabled()), 'D2b) l’arrêt de tabulation suit le choix ; « Enregistrer » devient actif');
+  await p.keyboard.press('Tab');
+  check(await p.evaluate(() => document.activeElement?.getAttribute('data-testid')) === 'doc-cat-cancel', 'D2b) Tab sort du groupe d’un seul coup (vers « Annuler »)');
+  check(SD.patches.length === 0, 'D2b) rien n’a été écrit par les flèches (écriture seulement à « Enregistrer »)');
   await p.keyboard.press('Escape'); await p.waitForTimeout(500);
   check(await sheet(p).count() === 0, 'D3) Échap ferme la fenêtre de choix seule');
   check(await p.locator('.bt-doc-row').first().isVisible(), 'D3) le panneau Documents reste ouvert');
   check(await p.evaluate(() => document.activeElement?.getAttribute('aria-label')?.includes('Facture-0388') ?? false), 'D3) le focus revient sur le bouton d’origine');
+  await ctx.close();
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// F · BANDEAU « ANNULER » : plus de 8 s, arrêté tant qu'il a le focus ou le survol (horloge simulée)
+// ════════════════════════════════════════════════════════════════════════════
+{
+  const SF = freshState();
+  const { ctx, p } = await newPage(SF, ADMIN, { width: 390, height: 844 });
+  await p.clock.install();
+  check(await openAdminDocs(p), 'F0) bandeau : Documents ouvert');
+  await tabFiles(p);
+  await row(p, 'Bon-de-livraison').locator('[data-testid=doc-cat-btn]').click();
+  await sheet(p).waitFor(); await p.waitForTimeout(400);
+  await pick(p, 'plan');
+  await sheet(p).locator('[data-testid=doc-cat-save]').click(); await p.waitForTimeout(900);
+  const bn = done(p);
+  check(await bn.count() === 1, 'F1) le bandeau « Annuler » apparaît');
+  await p.clock.runFor(9000);
+  check(await bn.count() === 1, 'F1) … encore là après 9 s (l’ancien délai de 8 s est dépassé)');
+  await bn.locator('[data-testid=doc-cat-undo]').focus();
+  await p.clock.runFor(30000);
+  check(await bn.count() === 1, 'F2) le focus est sur « Annuler » : le bandeau ne disparaît pas (30 s plus tard, toujours là)');
+  await bn.locator('[data-testid=doc-cat-undo]').evaluate((e) => e.blur());
+  await p.clock.runFor(19000);
+  check(await bn.count() === 1, 'F3) focus parti : le compte à rebours repart de 20 s (encore là à 19 s)');
+  await p.clock.runFor(2000);
+  check(await bn.count() === 0, 'F3) … et le bandeau s’efface à 20 s');
+  // Au survol (souris) : même arrêt.
+  await row(p, 'Bon-de-livraison').locator('[data-testid=doc-cat-btn]').click();
+  await sheet(p).waitFor(); await p.waitForTimeout(400);
+  await pick(p, 'devis');
+  await sheet(p).locator('[data-testid=doc-cat-save]').click(); await p.waitForTimeout(900);
+  await bn.hover();
+  await p.clock.runFor(30000);
+  check(await bn.count() === 1, 'F4) la souris est sur le bandeau : il ne disparaît pas');
+  await p.mouse.move(2, 2);
+  await p.clock.runFor(21000);
+  check(await bn.count() === 0, 'F4) souris partie : il s’efface après 20 s');
+  await ctx.close();
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// G · PETITS TÉLÉPHONES : « Enregistrer » reste visible (360×640, 320×568, paysage 667×375)
+// ════════════════════════════════════════════════════════════════════════════
+for (const vp of [{ width: 360, height: 640 }, { width: 320, height: 568 }, { width: 667, height: 375 }]) {
+  const tag = `${vp.width}×${vp.height}`;
+  const SG = freshState();
+  const { ctx, p } = await newPage(SG, ADMIN, vp);
+  check(await openAdminDocs(p), `G0) ${tag} : Documents ouvert`);
+  await tabFiles(p);
+  await row(p, LONG_NAME).locator('[data-testid=doc-cat-btn]').click();
+  await sheet(p).waitFor(); await p.waitForTimeout(500);
+  const measure = () => p.evaluate(() => {
+    const d = document.querySelector('[data-testid=doc-cat-sheet]'); const r = d.getBoundingClientRect();
+    const sv = d.querySelector('[data-testid=doc-cat-save]').getBoundingClientRect();
+    const cn = d.querySelector('[data-testid=doc-cat-cancel]').getBoundingClientRect();
+    const list = d.querySelector('.bt-cat-list');
+    return { vh: innerHeight, vw: innerWidth, top: r.top, bottom: r.bottom, left: r.left, right: r.right, svTop: sv.top, svBottom: sv.bottom, svH: sv.height, cnTop: cn.top, cnBottom: cn.bottom,
+      dialogScrolls: d.scrollHeight > d.clientHeight + 1, listScrolls: list.scrollHeight > list.clientHeight + 1, listH: Math.round(list.clientHeight), dh: Math.round(d.clientHeight) };
+  });
+  const m = await measure();
+  check(m.top >= -1 && m.bottom <= m.vh + 1 && m.left >= -1 && m.right <= m.vw + 1, `G1) ${tag} : la fenêtre de choix tient dans l’écran (${Math.round(m.top)}→${Math.round(m.bottom)} sur ${m.vh}, hauteur ${m.dh}, liste ${m.listH})`);
+  check(m.svTop >= 0 && m.svBottom <= m.vh + 1 && m.cnTop >= 0 && m.cnBottom <= m.vh + 1 && m.svH >= 44, `G1) ${tag} : « Enregistrer » et « Annuler » visibles sans rien faire défiler (bas à ${Math.round(m.svBottom)} sur ${m.vh}, ${Math.round(m.svH)} px de haut)`);
+  // On fait défiler la fenêtre jusqu'en bas : le pied ne bouge pas (collé en bas), le premier choix reste atteignable en haut.
+  await sheet(p).evaluate((e) => { e.scrollTop = e.scrollHeight; });
+  await p.waitForTimeout(150);
+  const m2 = await measure();
+  check(m2.svTop >= 0 && m2.svBottom <= m2.vh + 1, `G2) ${tag} : après défilement jusqu’en bas, le pied est toujours visible`);
+  await sheet(p).evaluate((e) => { e.scrollTop = 0; });
+  await p.waitForTimeout(150);
+  const first = await sheet(p).locator('[data-testid=doc-cat-opt]').first().boundingBox();
+  const m3 = await measure();
+  check(first.y >= 0 && m3.svBottom <= m3.vh + 1, `G3) ${tag} : en haut, le premier choix et le pied sont visibles ensemble`);
+  // Tout est atteignable : la dernière option se choisit et « Enregistrer » se touche.
+  await sheet(p).locator('[data-testid=doc-cat-opt]').last().scrollIntoViewIfNeeded();
+  await sheet(p).locator('[data-testid=doc-cat-opt]').last().click();
+  const mc = await sheet(p).locator('[data-testid=doc-cat-opt]').last().getAttribute('aria-checked');
+  const sb = await sheet(p).locator('[data-testid=doc-cat-save]').boundingBox();
+  check(mc === 'true' && sb.y >= 0 && sb.y + sb.height <= vp.height + 1, `G4) ${tag} : dernière option choisie, « Enregistrer » touchable`);
+  await p.screenshot({ path: `${SH}/${vp.width === 667 ? '10-paysage-667x375' : vp.width === 320 ? '09-petit-320x568' : '08-petit-360x640'}.png` });
+  await ctx.close();
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// H · PAS DE CLIGNOTEMENT à la fermeture : le nom, l'avertissement et le choix restent identiques pendant l'animation de sortie
+// ════════════════════════════════════════════════════════════════════════════
+{
+  const SH2 = freshState();
+  const { ctx, p } = await newPage(SH2, ADMIN, { width: 390, height: 844 });
+  check(await openAdminDocs(p), 'H0) clignotement : Documents ouvert');
+  await tabPhotos(p);
+  await row(p, 'Réserve levée').locator('[data-testid=doc-cat-btn]').click();
+  await sheet(p).waitFor(); await p.waitForTimeout(500);
+  await pick(p, 'autre');
+  await p.evaluate(() => {
+    window.__frames = [];
+    const loop = () => {
+      const s = document.querySelector('[data-testid=doc-cat-sheet]');
+      if (s) window.__frames.push({ state: s.getAttribute('data-state'), name: s.querySelector('[data-testid=doc-cat-name]')?.textContent || '', checked: [...s.querySelectorAll('[aria-checked=true]')].map((e) => e.getAttribute('data-cat')).join(','),
+        notice: s.querySelector('[data-testid=doc-cat-notice]')?.textContent || '', save: s.querySelector('[data-testid=doc-cat-save]')?.textContent || '', h: s.offsetHeight });
+      requestAnimationFrame(loop);
+    };
+    loop();
+  });
+  await sheet(p).locator('[data-testid=doc-cat-save]').click();
+  await p.waitForTimeout(900);
+  // Images prises à partir du clic sur « Enregistrer » (le texte du bouton passe alors à « Enregistrement… » : c'est voulu) ;
+  // la hauteur est celle de la mise en page (l'animation de sortie réduit la fenêtre de 5 %, ce n'est pas un saut).
+  const allFrames = await p.evaluate(() => window.__frames);
+  const frames = allFrames.slice(Math.max(0, allFrames.findIndex((f) => /Enregistrement/.test(f.save))));
+  const closing = frames.filter((f) => f.state === 'closed');
+  const uniq = (k) => [...new Set(frames.map((f) => f[k]))];
+  check(closing.length >= 3, `H1) l’animation de sortie a bien été observée (${closing.length} images sur ${frames.length})`);
+  check(uniq('name').length === 1 && uniq('name')[0].includes('Réserve levée'), `H1) le nom du document ne change pas pendant la fermeture (${JSON.stringify(uniq('name'))})`);
+  check(uniq('checked').length === 1 && uniq('checked')[0] === 'autre', `H1) le choix coché ne retombe pas sur « Sans catégorie » (${JSON.stringify(uniq('checked'))})`);
+  check(uniq('notice').length === 1 && uniq('notice')[0] === 'Ce document ne sera plus classé dans les réserves.', `H1) l’avertissement ne disparaît pas (${JSON.stringify(uniq('notice'))})`);
+  check(uniq('save').length === 1 && /Enregistrement/.test(uniq('save')[0]), `H1) le pied ne change pas de texte pendant la fermeture : il reste sur « Enregistrement… » (${JSON.stringify(uniq('save'))})`);
+  check(Math.max(...frames.map((f) => f.h)) - Math.min(...frames.map((f) => f.h)) <= 2, `H1) la hauteur de mise en page de la fenêtre ne saute pas pendant la fermeture (${Math.min(...frames.map((f) => f.h))}–${Math.max(...frames.map((f) => f.h))} px)`);
+  // Et la fenêtre suivante repart propre : le bouton d'enregistrement n'est pas resté sur « Enregistrement… ».
+  await row(p, 'Photo 1').locator('[data-testid=doc-cat-btn]').click();
+  await sheet(p).waitFor(); await p.waitForTimeout(500);
+  check(norm(await sheet(p).locator('[data-testid=doc-cat-save]').innerText()) === 'Enregistrer' && await sheet(p).locator('[data-cat=none]').getAttribute('aria-checked') === 'true' && (await sheet(p).locator('[data-testid=doc-cat-name]').innerText()).includes('Photo 1'),
+    'H2) la fenêtre suivante repart propre (nom du nouveau document, « Sans catégorie » coché, « Enregistrer »)');
+  await ctx.close();
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// I · PAS DE DÉCALAGE : quand la liste apparaît, les boutons de catégorie y sont déjà (même si la fonction « prête ? » est lente)
+// ════════════════════════════════════════════════════════════════════════════
+{
+  const SI = freshState({ readyDelay: 1200 });
+  const { ctx, p } = await newPage(SI, ADMIN, { width: 390, height: 844 });
+  await ctx.addInitScript(() => {
+    window.__first = null;
+    new MutationObserver(() => {
+      if (window.__first) return;
+      const rows = document.querySelectorAll('.bt-doc-row').length;
+      if (rows) window.__first = { rows, btns: document.querySelectorAll('[data-testid=doc-cat-btn]').length, at: Date.now() };
+    }).observe(document, { subtree: true, childList: true });
+  });
+  check(await openAdminDocs(p), 'I0) fonction « prête ? » lente (1,2 s) : Documents ouvert');
+  const first = await p.evaluate(() => window.__first);
+  check(first && first.rows > 0 && first.btns === first.rows, `I1) à l’apparition de la liste, chaque ligne a déjà son bouton de catégorie (${first?.btns}/${first?.rows}) : rien ne se décale ensuite`);
+  // Réouverture : la réponse est connue, la liste apparaît tout de suite avec ses boutons.
+  await p.keyboard.press('Escape'); await p.waitForTimeout(500);
   await ctx.close();
 }
 

@@ -7,7 +7,8 @@
 //   · Une fenêtre avec les choix, un avertissement léger quand le changement a
 //     des conséquences (facture : les salariés ne la voient plus ; réserve :
 //     elle sort du rapport), « Enregistrer » / « Annuler ».
-//   · Après l'enregistrement, un bandeau de 8 secondes avec « Annuler » : le
+//   · Après l'enregistrement, un bandeau de 20 secondes avec « Annuler » (le
+//     minuteur s'arrête tant qu'il est survolé ou qu'il a le focus) : le
 //     changement reste réversible, sans nouvelle question. Ce n'est PAS un
 //     message flottant (toast) : le panneau Documents est une fenêtre, qui rend
 //     inerte tout ce qui est derrière elle, y compris un message flottant — son
@@ -18,22 +19,29 @@
 // message (useDocCategoryReady reste faux). Le salarié ne se voit jamais proposer
 // une facture ni une réserve : la base les lui refuserait (règles dans
 // supabase/functions/_shared/doc-categories.ts).
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Check, Loader2, Tag } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { docCategoryReady, setDocumentCategory } from '@/lib/doc-category';
+import { docCategoryKnownReady, docCategoryReady, setDocumentCategory } from '@/lib/doc-category';
 import { categoryChangeNotice, categoryChoices, categoryErrorMessage, categoryText } from '@/supabase/functions/_shared/doc-categories';
 
-/** Vrai quand la migration du lot 24 est là. Vérifié à chaque ouverture du panneau ; faux = rien ne s'affiche, aucun message. */
-export function useDocCategoryReady(open: boolean): boolean {
-  const [ready, setReady] = useState(false);
+/**
+ * `ready` : vrai quand la migration du lot 24 est là (vérifié à l'ouverture du panneau ; faux = rien ne s'affiche, aucun message).
+ * `settled` : la réponse est connue (ou 3 s se sont écoulées). Le panneau attend `settled` avant d'afficher sa liste : sinon les boutons
+ * de catégorie arrivent après la liste et la décalent pendant que la personne vise une autre ligne.
+ */
+export function useDocCategoryReady(open: boolean): { ready: boolean; settled: boolean } {
+  const [ready, setReady] = useState(docCategoryKnownReady);
+  const [settled, setSettled] = useState(docCategoryKnownReady);
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    docCategoryReady().then((r) => { if (!cancelled) setReady(r); });
-    return () => { cancelled = true; };
+    if (!docCategoryKnownReady()) setSettled(false);
+    const t = setTimeout(() => { if (!cancelled) setSettled(true); }, 3000);
+    docCategoryReady().then((r) => { if (!cancelled) { setReady(r); setSettled(true); } });
+    return () => { cancelled = true; clearTimeout(t); };
   }, [open]);
-  return ready;
+  return { ready, settled };
 }
 
 const CAT_CSS = `
@@ -46,7 +54,7 @@ const CAT_CSS = `
 .bt-cat-sheet{display:flex;flex-direction:column;gap:12px;min-width:0}
 .bt-cat-doc{font-size:13.5px;font-weight:800;color:#15120F;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .bt-cat-ask{font-size:13px;font-weight:600;color:#6E6A63}
-.bt-cat-list{display:flex;flex-direction:column;gap:7px;max-height:50vh;overflow-y:auto;overflow-x:hidden;padding:1px}
+.bt-cat-list{display:flex;flex-direction:column;gap:7px;max-height:50vh;max-height:min(50dvh,340px);overflow-y:auto;overflow-x:hidden;padding:1px}
 .bt-cat-opt{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-height:48px;padding:8px 14px;border:1.5px solid rgba(21,18,15,.16);border-radius:12px;background:#fff;color:#15120F;font-family:inherit;font-size:14.5px;font-weight:800;text-align:left;cursor:pointer;touch-action:manipulation}
 .bt-cat-opt[aria-checked=true]{border-color:#15120F;background:#FFF2CC}
 .bt-cat-opt:focus-visible{outline:2px solid #15120F;outline-offset:2px}
@@ -60,7 +68,7 @@ const CAT_CSS = `
 .bt-cat-done button{flex:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;min-width:44px;padding:0 14px;border:none;border-radius:10px;background:#FFC21A;color:#15120F;font-family:inherit;font-size:14px;font-weight:900;cursor:pointer;touch-action:manipulation}
 .bt-cat-done button:disabled{opacity:.6;cursor:default}
 .bt-cat-done button:focus-visible{outline:2px solid #F2EDE3;outline-offset:2px}
-.bt-cat-foot{display:flex;gap:8px}
+.bt-cat-foot{position:sticky;bottom:-24px;z-index:1;display:flex;gap:8px;margin-bottom:-24px;padding:8px 0 24px;background:hsl(var(--background))}
 .bt-cat-foot button{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:44px;padding:0 12px;border-radius:11px;font-family:inherit;font-size:14px;font-weight:800;cursor:pointer;touch-action:manipulation;border:1.5px solid #15120F;background:#fff;color:#15120F}
 .bt-cat-foot button.go{background:#FFC21A;box-shadow:0 3px 0 #C99300}
 .bt-cat-foot button:disabled{opacity:.55;cursor:default;box-shadow:none}
@@ -92,13 +100,20 @@ export function DocCategoryButton({ label, current, docName, onClick }: { label:
 export interface CategoryDoc { id: string; label: string | null; file_name: string | null; category?: string | null }
 
 /** La fenêtre de choix. Ouverte quand `doc` n'est pas nul. Aucune écriture avant « Enregistrer ». */
-export function DocumentCategorySheet({ doc, office, onClose, onChanged }: {
+export function DocumentCategorySheet({ doc, office, onClose, onChanged, onGone }: {
   doc: CategoryDoc | null;
   office: boolean;
   onClose: () => void;
   onChanged: (id: string, category: string | null) => void;
+  /** La base ne rend plus le document (passé en facture par le bureau, supprimé…) : l'appelant recharge sa liste. */
+  onGone?: () => void;
 }) {
-  const current = doc?.category || null;
+  // Le dernier document non nul : pendant l'animation de sortie (200 ms) `doc` est déjà nul, mais le nom,
+  // l'avertissement et le choix ne doivent pas changer sous les yeux.
+  const lastDoc = useRef<CategoryDoc | null>(null);
+  if (doc) lastDoc.current = doc;
+  const shown = doc ?? lastDoc.current;
+  const current = shown?.category || null;
   const [chosen, setChosen] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -106,10 +121,13 @@ export function DocumentCategorySheet({ doc, office, onClose, onChanged }: {
   // Le bandeau d'après-coup : « changée » (avec Annuler), « remise » ou « impossible ».
   const [done, setDone] = useState<{ kind: 'changed'; id: string; category: string | null; previous: string | null } | { kind: 'info' | 'bad'; text: string } | null>(null);
   const [undoing, setUndoing] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const optRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const docId = doc?.id ?? null;
 
-  // Une fenêtre neuve à chaque document : le choix part de la catégorie actuelle.
+  // Une fenêtre neuve à chaque ouverture : le choix part de la catégorie actuelle. (Rien à la fermeture : l'état reste le temps de l'animation.)
   useEffect(() => {
+    if (!docId) return;
     setChosen(current);
     setError(null);
     setSaving(false);
@@ -126,12 +144,16 @@ export function DocumentCategorySheet({ doc, office, onClose, onChanged }: {
     return () => { window.removeEventListener('online', sync); window.removeEventListener('offline', sync); };
   }, [docId]);
 
-  // Le bandeau s'efface seul : 8 s tant qu'on peut annuler, 5 s ensuite.
+  // Un bandeau neuf repart sans pause (le bouton qui avait le focus a pu disparaître sans « blur »).
+  useEffect(() => { setPaused(false); }, [done]);
+
+  // Le bandeau s'efface seul : 20 s tant qu'on peut annuler (arrêt au survol et au focus : un utilisateur au clavier ou au
+  // lecteur d'écran doit avoir le temps de l'atteindre), 5 s pour une simple information. Un échec reste jusqu'à « Fermer ».
   useEffect(() => {
-    if (!done || undoing) return;
-    const t = setTimeout(() => setDone(null), done.kind === 'changed' ? 8000 : 5000);
+    if (!done || undoing || paused || done.kind === 'bad') return;
+    const t = setTimeout(() => setDone(null), done.kind === 'changed' ? 20000 : 5000);
     return () => clearTimeout(t);
-  }, [done, undoing]);
+  }, [done, undoing, paused]);
 
   // « Annuler » : remet l'ancienne catégorie par un second changement (la trace garde les deux).
   const undo = async (id: string, previous: string | null) => {
@@ -155,28 +177,57 @@ export function DocumentCategorySheet({ doc, office, onClose, onChanged }: {
       const r = await setDocumentCategory(doc.id, chosen);
       onChanged(doc.id, r.category);
       onClose();
-      setDone({ kind: 'changed', id: r.id, category: r.category, previous: r.previous });
+      // L'ancienne catégorie est celle affichée à l'ouverture, pas une relecture : après une réponse perdue puis « Réessayer »,
+      // une relecture rendrait déjà la nouvelle valeur et « Annuler » ne reviendrait pas en arrière.
+      // (`saving` reste vrai le temps de la fermeture : le pied de la fenêtre ne change pas sous les yeux.)
+      setDone({ kind: 'changed', id: r.id, category: r.category, previous: current });
     } catch (e) {
-      setError(categoryErrorMessage(e, typeof navigator === 'undefined' ? true : navigator.onLine));
-    } finally {
       setSaving(false);
+      const code = (e as { code?: string } | null)?.code;
+      if (code === 'GONE' || code === 'PGRST116') {
+        // Le document n'est plus lisible pour cette personne : réessayer échouerait toujours. On ferme et on recharge la liste.
+        onClose();
+        onGone?.();
+        setDone({ kind: 'bad', text: categoryErrorMessage(e) });
+        return;
+      }
+      setError(categoryErrorMessage(e, typeof navigator === 'undefined' ? true : navigator.onLine));
     }
   };
 
-  const notice = doc ? categoryChangeNotice(current, chosen, office) : null;
-  const name = doc ? doc.label || doc.file_name || 'Document' : '';
+  const notice = shown ? categoryChangeNotice(current, chosen, office) : null;
+  const name = shown ? shown.label || shown.file_name || 'Document' : '';
+  const choices = categoryChoices(office);
+  const chosenIdx = Math.max(0, choices.indexOf(chosen));
+
+  // Groupe de boutons radio (modèle WAI-ARIA) : un seul arrêt de tabulation (l'option cochée), les flèches changent le choix.
+  const onChoiceKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (saving) return;
+    let i = -1;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowRight') i = (chosenIdx + 1) % choices.length;
+    else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') i = (chosenIdx - 1 + choices.length) % choices.length;
+    else if (e.key === 'Home') i = 0;
+    else if (e.key === 'End') i = choices.length - 1;
+    if (i < 0) return;
+    e.preventDefault();
+    setChosen(choices[i]);
+    optRefs.current[i]?.focus();
+  };
 
   return (
     <>
       <style dangerouslySetInnerHTML={CAT_CSS_HTML} />
       {done && (
-        <div className={`bt-cat-done${done.kind === 'bad' ? ' bad' : ''}`} role={done.kind === 'bad' ? 'alert' : 'status'} data-testid="doc-cat-done">
+        <div className={`bt-cat-done${done.kind === 'bad' ? ' bad' : ''}`} role={done.kind === 'bad' ? 'alert' : 'status'} data-testid="doc-cat-done"
+          onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)} onFocus={() => setPaused(true)} onBlur={() => setPaused(false)}>
           <span className="bt-cat-done-t">{done.kind === 'changed' ? `Catégorie changée : ${categoryText(done.category)}.` : done.text}</span>
           {done.kind === 'changed' && (
-            <button type="button" onClick={() => { void undo(done.id, done.previous); }} disabled={undoing} data-testid="doc-cat-undo">
-              {undoing ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Annuler'}
+            <button type="button" onClick={() => { void undo(done.id, done.previous); }} disabled={undoing} data-testid="doc-cat-undo"
+              aria-label={undoing ? 'Annulation en cours' : undefined}>
+              {undoing ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : 'Annuler'}
             </button>
           )}
+          {done.kind === 'bad' && <button type="button" onClick={() => setDone(null)} data-testid="doc-cat-close">Fermer</button>}
         </div>
       )}
       <Dialog open={!!doc} onOpenChange={(o) => { if (!o && !saving) onClose(); }}>
@@ -192,11 +243,12 @@ export function DocumentCategorySheet({ doc, office, onClose, onChanged }: {
             <div className="bt-cat-doc" data-testid="doc-cat-name">{name}</div>
             <div className="bt-cat-ask" aria-hidden>Choisissez où ranger ce document.</div>
             {offline && <div className="bt-cat-warn" role="status">Pas de connexion : le changement ne pourra pas être enregistré.</div>}
-            <div className="bt-cat-list" role="radiogroup" aria-label="Catégorie">
-              {categoryChoices(office).map((c) => {
+            <div className="bt-cat-list" role="radiogroup" aria-label="Catégorie" onKeyDown={onChoiceKey}>
+              {choices.map((c, i) => {
                 const isNow = c === current;
                 return (
-                  <button key={c ?? 'none'} type="button" role="radio" aria-checked={chosen === c} className="bt-cat-opt"
+                  <button key={c ?? 'none'} ref={(el) => { optRefs.current[i] = el; }} type="button" role="radio" aria-checked={chosen === c}
+                    tabIndex={i === chosenIdx ? 0 : -1} className="bt-cat-opt"
                     data-testid="doc-cat-opt" data-cat={c ?? 'none'} disabled={saving}
                     aria-label={`${categoryText(c)}${isNow ? ' (actuelle)' : ''}`} onClick={() => setChosen(c)}>
                     <span className="bt-cat-opt-t">{categoryText(c)}</span>

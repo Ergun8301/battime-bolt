@@ -1,7 +1,7 @@
 // Catégorie d'un document de chantier (lot 24, oct. 2026), côté navigateur.
 //
 // DEUX RÈGLES :
-//   · AVANT LA MIGRATION (20261013120000), RIEN NE CHANGE : la fonction
+//   · AVANT LA MIGRATION (20261013120200), RIEN NE CHANGE : la fonction
 //     document_category_ready() manque, ou la requête échoue pour une raison
 //     quelconque → « pas prêt », sans message ni trace dans la console. Le panneau
 //     Documents reste exactement celui d'avant. Seul un « oui » est gardé pour la
@@ -12,9 +12,12 @@
 // RIEN NE S'EFFACE : aucun appel de suppression ici. « Annuler » = remettre
 // l'ancienne catégorie par un second changement (la base garde les deux dans sa trace).
 import { supabase } from '@/lib/supabase';
-import { REFUSED_TEXT } from '@/supabase/functions/_shared/doc-categories';
+import { GONE_TEXT } from '@/supabase/functions/_shared/doc-categories';
 
 let ready = false;
+
+/** La migration a-t-elle déjà répondu « oui » sur cette page ? Sert d'état de départ : le bouton est là dès le premier rendu. */
+export const docCategoryKnownReady = (): boolean => ready;
 
 /** La migration est-elle appliquée ? Faux au moindre doute, en silence. */
 export async function docCategoryReady(): Promise<boolean> {
@@ -26,15 +29,17 @@ export async function docCategoryReady(): Promise<boolean> {
   return ready;
 }
 
-export interface CategoryChange { id: string; category: string | null; previous: string | null }
+export interface CategoryChange { id: string; category: string | null }
 
-/** Change la catégorie d'UN document. Rend aussi l'ancienne, pour pouvoir annuler. L'erreur de la base est relancée telle quelle. */
+/**
+ * Change la catégorie d'UN document. L'ancienne valeur n'est pas relue ici : l'appelant garde celle qu'il a
+ * affichée à l'ouverture (sinon, après une réponse perdue puis « Réessayer », « Annuler » remettrait la
+ * nouvelle valeur). L'erreur de la base est relancée telle quelle.
+ */
 export async function setDocumentCategory(id: string, category: string | null): Promise<CategoryChange> {
-  const { data: before, error: readErr } = await supabase.from('documents').select('category').eq('id', id).single();
-  if (readErr) throw readErr;
   const { data, error } = await supabase.from('documents').update({ category }).eq('id', id).select('id, category');
   if (error) throw error;
-  // Aucune ligne rendue : la base a répondu « rien » (document d'un autre, archivé…) sans erreur.
-  if (!data || data.length === 0) throw Object.assign(new Error(REFUSED_TEXT), { code: 'REFUSED' });
-  return { id, category: (data[0].category as string | null) ?? null, previous: (before?.category as string | null) ?? null };
+  // Aucune ligne rendue : la base a répondu « rien » sans erreur (document passé en facture, supprimé, d'un autre…).
+  if (!data || data.length === 0) throw Object.assign(new Error(GONE_TEXT), { code: 'GONE' });
+  return { id, category: (data[0].category as string | null) ?? null };
 }

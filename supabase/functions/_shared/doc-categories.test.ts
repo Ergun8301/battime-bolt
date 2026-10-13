@@ -2,7 +2,7 @@
 //   npm run test:documents
 import {
   AUTHOR_CATEGORIES, canEditCategory, categoryChangeNotice, categoryChoices, categoryErrorMessage, categoryText, DOC_CATEGORY_NAMES, DOC_CATEGORY_TEXT,
-  INVOICE_CATEGORIES, isInvoiceCategory, NO_CATEGORY_TEXT, OFFLINE_TEXT, REFUSED_TEXT,
+  GONE_TEXT, INVOICE_CATEGORIES, isInvoiceCategory, NO_CATEGORY_TEXT, OFFLINE_TEXT, REFUSED_TEXT, WORKER_INVOICE_TEXT, workerInvoiceRefusal,
 } from './doc-categories.ts';
 import { DOC_CATEGORIES, DOC_CATEGORY_LABEL as WORKER_LABEL } from './worker-assistant-core.ts';
 import { DOC_CATEGORY_LABEL as OFFICE_LABEL } from './assistant-actions-core.ts';
@@ -110,7 +110,9 @@ Deno.test('categoryChangeNotice', () => {
   eq(categoryChangeNotice('facture_payee', null, true), 'Les salariés pourront voir ce document.', 'facture payée → sans catégorie');
   eq(categoryChangeNotice('facture', 'facture_payee', true), null, 'facture → facture payée : rien ne change pour les salariés');
   eq(categoryChangeNotice('reserve', 'autre', true), 'Ce document ne sera plus classé dans les réserves.', 'réserve → autre (bureau)');
-  eq(categoryChangeNotice('reserve', 'facture', true), 'Les salariés ne verront plus ce document.', 'réserve → facture : l’avertissement facture passe en premier');
+  eq(categoryChangeNotice('reserve', 'facture', true), 'Les salariés ne verront plus ce document. Il ne sera plus classé dans les réserves.', 'réserve → facture : les DEUX avertissements (invisible des salariés ET sort du rapport de réserves)');
+  eq(categoryChangeNotice('reserve', 'facture_payee', true), 'Les salariés ne verront plus ce document. Il ne sera plus classé dans les réserves.', 'réserve → facture payée : idem');
+  eq(categoryChangeNotice('facture', 'reserve', true), 'Les salariés pourront voir ce document.', 'facture → réserve : visible de nouveau, il entre dans les réserves (pas d’avertissement de sortie)');
   eq(categoryChangeNotice('reserve', null, false), 'Ce document ne sera plus classé dans les réserves.', 'réserve → rien (hors bureau)');
   eq(categoryChangeNotice('devis', 'plan', true), null, 'devis → plan');
   eq(categoryChangeNotice('devis', 'facture', false), null, 'hors bureau : pas d’avertissement facture');
@@ -131,7 +133,9 @@ Deno.test('categoryErrorMessage', () => {
   }
   eq(categoryErrorMessage({ code: '42501', message: 'permission denied for table documents' }), 'Changement refusé : vous ne pouvez pas modifier ce document.', '42501 sans message connu');
   eq(categoryErrorMessage({ code: '42501' }), REFUSED_TEXT, '42501 sans message');
-  eq(categoryErrorMessage(Object.assign(new Error(REFUSED_TEXT), { code: 'REFUSED' })), REFUSED_TEXT, 'aucune ligne rendue (code REFUSED de lib/doc-category.ts)');
+  eq(categoryErrorMessage(Object.assign(new Error(GONE_TEXT), { code: 'GONE' })), GONE_TEXT, 'aucune ligne rendue (code GONE de lib/doc-category.ts)');
+  eq(categoryErrorMessage({ code: 'PGRST116', message: 'The result contains 0 rows' }), GONE_TEXT, 'PGRST116 (ligne introuvable) : même texte, pas « réessayez »');
+  eq(GONE_TEXT, 'Ce document n’est plus disponible ou a été modifié par le bureau.', 'texte du document disparu');
   eq(REFUSED_TEXT, 'Changement refusé : vous ne pouvez pas modifier ce document.', 'texte du refus');
   eq(categoryErrorMessage({ code: 'PGRST301', message: 'JWT expired', status: 401 }), 'Changement impossible pour le moment. Réessayez dans un instant.', 'autre code : défaut, même en 401');
   eq(categoryErrorMessage({ code: '42501', message: 'x', status: 403 }), REFUSED_TEXT, 'jamais le statut HTTP : 403 sans texte connu');
@@ -139,4 +143,13 @@ Deno.test('categoryErrorMessage', () => {
   eq(categoryErrorMessage(undefined), 'Changement impossible pour le moment. Réessayez dans un instant.', 'undefined');
   eq(categoryErrorMessage(null), 'Changement impossible pour le moment. Réessayez dans un instant.', 'null');
   eq(categoryErrorMessage('texte'), 'Changement impossible pour le moment. Réessayez dans un instant.', 'chaîne');
+});
+
+Deno.test('workerInvoiceRefusal : l’assistant salarié ne range pas une facture (sans catégorie = visible de tous), mais rien ne change avant la migration', () => {
+  eq(workerInvoiceRefusal('facture', true), WORKER_INVOICE_TEXT, 'facture, migration là : refusé');
+  eq(workerInvoiceRefusal('facture_payee', true), WORKER_INVOICE_TEXT, 'facture payée, migration là : refusé');
+  eq(workerInvoiceRefusal('facture', false), null, 'facture, migration absente : comportement d’avant (la base accepte encore)');
+  eq(workerInvoiceRefusal('facture_payee'), null, 'migration inconnue : comportement d’avant');
+  for (const c of ['devis', 'plan', 'pv_reception', 'photo', 'reserve', 'autre', null, undefined, '']) eq(workerInvoiceRefusal(c as string | null | undefined, true), null, `${String(c)} : rangé comme d’habitude`);
+  ok(/bureau/.test(WORKER_INVOICE_TEXT) && /pas été rangé/.test(WORKER_INVOICE_TEXT), 'le message dit où donner le fichier et que rien n’est rangé');
 });

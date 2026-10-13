@@ -4,7 +4,7 @@
 //
 // Aucune fonction edge n'importe ce fichier : rien à redéployer.
 //
-// La base est le vrai garde (migration 20261013120000_lot24_documents_factures_
+// La base est le vrai garde (migration 20261013120200_lot24_documents_factures_
 // categorie.sql) ; ce fichier ne sert qu'à NE PAS PROPOSER ce que la base
 // refuserait, et à parler français quand elle refuse. Les listes ci-dessous sont
 // les jumelles de celles de la migration (le test les relit dans le fichier SQL).
@@ -42,15 +42,33 @@ export function canEditCategory(p: { office: boolean; userId?: string | null; up
   return !p.current || (AUTHOR_CATEGORIES as readonly string[]).includes(p.current);
 }
 
-/** Avertissement léger sous le choix (la « confirmation » : le changement reste annulable ensuite). */
+/**
+ * Avertissement léger sous le choix (la « confirmation » : le changement reste annulable ensuite).
+ * Les deux conséquences s'additionnent (réserve → facture : les salariés ne le voient plus ET il sort du rapport de réserves).
+ */
 export function categoryChangeNotice(from?: string | null, to?: string | null, office = false): string | null {
-  if (office && isInvoiceCategory(to) && !isInvoiceCategory(from)) return 'Les salariés ne verront plus ce document.';
-  if (office && isInvoiceCategory(from) && !isInvoiceCategory(to)) return 'Les salariés pourront voir ce document.';
-  if (from === 'reserve' && to !== 'reserve') return 'Ce document ne sera plus classé dans les réserves.';
-  return null;
+  let visibility = '';
+  if (office && isInvoiceCategory(to) && !isInvoiceCategory(from)) visibility = 'Les salariés ne verront plus ce document.';
+  else if (office && isInvoiceCategory(from) && !isInvoiceCategory(to)) visibility = 'Les salariés pourront voir ce document.';
+  const leavesReserves = from === 'reserve' && to !== 'reserve';
+  if (visibility && leavesReserves) return `${visibility} Il ne sera plus classé dans les réserves.`;
+  if (leavesReserves) return 'Ce document ne sera plus classé dans les réserves.';
+  return visibility || null;
 }
 
 export const REFUSED_TEXT = 'Changement refusé : vous ne pouvez pas modifier ce document.';
+/** Le document n'est plus lisible pour cette personne (passé en facture par le bureau, supprimé, déplacé…) : la base répond « aucune ligne ». */
+export const GONE_TEXT = 'Ce document n’est plus disponible ou a été modifié par le bureau.';
+/**
+ * L'assistant salarié range un fichier que l'IA a pris pour une « facture ». Une fois la migration là, la base
+ * refuserait cette catégorie, et le ranger SANS catégorie le montrerait à tous les collègues (l'inverse de ce qu'on
+ * veut pour une facture) : on ne le range pas, on le dit. Avant la migration (`migrationReady` faux), rien ne change :
+ * la base accepte encore la catégorie, l'ancien comportement reste.
+ */
+export const WORKER_INVOICE_TEXT = 'Les factures sont réservées au bureau : donnez ce fichier au bureau. Il n’a pas été rangé.';
+export function workerInvoiceRefusal(category?: string | null, migrationReady = false): string | null {
+  return migrationReady && isInvoiceCategory(category) ? WORKER_INVOICE_TEXT : null;
+}
 export const OFFLINE_TEXT = 'Pas de connexion : rien n’a été changé. Réessayez.';
 const UNKNOWN_TEXT = 'Catégorie inconnue : rien n’a été changé.';
 const FAILED_TEXT = 'Changement impossible pour le moment. Réessayez dans un instant.';
@@ -70,7 +88,7 @@ export function categoryErrorMessage(e: unknown, online = true): string {
   const msg = String(err?.message ?? '');
   if (e instanceof TypeError || /Failed to fetch|NetworkError|Load failed/i.test(msg)) return OFFLINE_TEXT;
   const code = String(err?.code ?? '');
-  if (code === 'REFUSED') return REFUSED_TEXT; // la base a répondu « aucune ligne » (lib/doc-category.ts)
+  if (code === 'GONE' || code === 'PGRST116') return GONE_TEXT; // la base a répondu « aucune ligne » (lib/doc-category.ts)
   if (code === '23514') return UNKNOWN_TEXT;
   if (code === '42501') return DB_MESSAGES.some((m) => msg.includes(m)) ? msg : REFUSED_TEXT;
   return FAILED_TEXT;

@@ -16,7 +16,8 @@ import { announceLiveChange, finishLiveSession, startLiveSession } from '@/lib/l
 import { parisHHmm } from '@/lib/utils';
 import { markEntryReserve, updateEntryTimes } from '@/lib/worker-entry';
 import { removeWorksiteDocument, uploadWorksiteDocument } from '@/lib/chantier-docs';
-import { isInvoiceCategory } from '@/supabase/functions/_shared/doc-categories';
+import { docCategoryReady } from '@/lib/doc-category';
+import { isInvoiceCategory, workerInvoiceRefusal } from '@/supabase/functions/_shared/doc-categories';
 import { copyLinesTo, sendWorkerDay, setDayMealOnline } from '@/lib/worker-day';
 import { createWorksiteSalarie } from '@/lib/worker-worksite';
 import { geoInfoSeen } from '@/lib/position-info';
@@ -198,15 +199,17 @@ export function makeWorkerExecutor(user: { id: string; company_id: string }): Wo
         case 'ranger_photo': {
           if (!attachment) return { ok: false, message: 'Aucun fichier joint.' };
           const line = d.lignes.find((l) => l.chantier_id === d.worksite_id);
-          // Lot 24 : les factures sont réservées au bureau (la base les refuse au salarié) →
-          // rangé SANS catégorie, et on le dit, au lieu d'un envoi refusé.
-          const invoice = isInvoiceCategory(d.categorie);
+          // Lot 24 (D11) : une facture est réservée au bureau, la base la refuse au salarié. On ne la range pas
+          // « sans catégorie » : elle serait alors visible de tous les collègues. Avant la migration, la base
+          // l'accepte encore : l'ancien comportement reste (rien ne change à l'écran tant qu'elle manque).
+          const refus = workerInvoiceRefusal(d.categorie, isInvoiceCategory(d.categorie) && await docCategoryReady());
+          if (refus) return { ok: false, message: refus };
           // Même envoi que le bouton « Documents » : rattaché au jour et à SA ligne s'il y en a une.
           const doc = await uploadWorksiteDocument({
             companyId: user.company_id, userId: user.id, worksiteId: d.worksite_id!, file: attachment, workDate: today(), timeEntryId: line?.id ?? null,
-            ...(d.categorie && !invoice ? { category: d.categorie } : {}),
+            ...(d.categorie ? { category: d.categorie } : {}),
           });
-          message = invoice ? 'Document rangé dans le chantier, sans catégorie : les factures sont réservées au bureau.' : 'Document rangé dans le chantier.';
+          message = 'Document rangé dans le chantier.';
           let reserved = false;
           if (d.reserve && line) {
             reserved = await markEntryReserve({ userId: user.id, entryId: line.id, detail: d.detail, wasSubmitted: line.envoyee });
