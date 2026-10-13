@@ -1,0 +1,1198 @@
+{
+ "_count": 47,
+ "b01": {
+  "ok": {
+   "answer": "ok",
+   "links": [
+    {
+     "label": "Voir le planning",
+     "action": "planning"
+    }
+   ]
+  },
+  "fiche": {
+   "answer": "Mettre quelqu’un sur un chantier :\n1. Sur le planning, cliquez la case du salarié et du jour.\n2. Choisissez le client (note pour le poseur si besoin).\n3. « Ajouter au planning ». Vous pouvez aussi glisser un client depuis « Clients ».",
+   "links": [
+    {
+     "label": "Voir le planning",
+     "action": "planning"
+    }
+   ]
+  },
+  "fiche_avec_lien": {
+   "answer": "Mettre quelqu’un sur un chantier :\n1. Sur le planning, cliquez la case du salarié et du jour.\n2. Choisissez le client (note pour le poseur si besoin).\n3. « Ajouter au planning ». Vous pouvez aussi glisser un client depuis « Clients ».",
+   "links": [
+    {
+     "label": "Voir le planning",
+     "action": "planning"
+    }
+   ]
+  }
+ },
+ "b02": {
+  "ok": {
+   "answer": "ok",
+   "links": [
+    {
+     "label": "Voir le planning",
+     "action": "planning"
+    }
+   ]
+  },
+  "fiche": {
+   "answer": "Mettre quelqu’un sur un chantier :\n1. Sur le planning, cliquez la case du salarié et du jour.\n2. Choisissez le client (note pour le poseur si besoin).\n3. « Ajouter au planning ». Vous pouvez aussi glisser un client depuis « Clients ».",
+   "links": [
+    {
+     "label": "Voir le planning",
+     "action": "planning"
+    }
+   ]
+  },
+  "fiche_avec_lien": {
+   "answer": "Mettre quelqu’un sur un chantier :\n1. Sur le planning, cliquez la case du salarié et du jour.\n2. Choisissez le client (note pour le poseur si besoin).\n3. « Ajouter au planning ». Vous pouvez aussi glisser un client depuis « Clients ».",
+   "links": [
+    {
+     "label": "Voir le planning",
+     "action": "planning"
+    }
+   ]
+  }
+ },
+ "b03": {
+  "ok": {
+   "answer": "ok",
+   "links": [
+    {
+     "label": "Voir le planning",
+     "action": "planning"
+    }
+   ]
+  },
+  "fiche": {
+   "answer": "Mettre quelqu’un sur un chantier :\n1. Sur le planning, cliquez la case du salarié et du jour.\n2. Choisissez le client (note pour le poseur si besoin).\n3. « Ajouter au planning ». Vous pouvez aussi glisser un client depuis « Clients ».",
+   "links": [
+    {
+     "label": "Voir le planning",
+     "action": "planning"
+    }
+   ]
+  },
+  "fiche_avec_lien": {
+   "answer": "Mettre quelqu’un sur un chantier :\n1. Sur le planning, cliquez la case du salarié et du jour.\n2. Choisissez le client (note pour le poseur si besoin).\n3. « Ajouter au planning ». Vous pouvez aussi glisser un client depuis « Clients ».",
+   "links": [
+    {
+     "label": "Voir le planning",
+     "action": "planning"
+    }
+   ]
+  }
+ },
+ "b04": {
+  "ok": {
+   "answer": "ok",
+   "links": []
+  },
+  "fiche": null,
+  "fiche_avec_lien": null
+ },
+ "b05": {
+  "ok": {
+   "answer": "ok",
+   "links": []
+  },
+  "fiche": null,
+  "fiche_avec_lien": null
+ },
+ "b06": {
+  "ok": {
+   "answer": "ok",
+   "links": [
+    {
+     "label": "Voir le planning",
+     "action": "planning"
+    }
+   ]
+  },
+  "fiche": {
+   "answer": "Mettre quelqu’un sur un chantier :\n1. Sur le planning, cliquez la case du salarié et du jour.\n2. Choisissez le client (note pour le poseur si besoin).\n3. « Ajouter au planning ». Vous pouvez aussi glisser un client depuis « Clients ».",
+   "links": [
+    {
+     "label": "Voir le planning",
+     "action": "planning"
+    }
+   ]
+  },
+  "fiche_avec_lien": {
+   "answer": "Mettre quelqu’un sur un chantier :\n1. Sur le planning, cliquez la case du salarié et du jour.\n2. Choisissez le client (note pour le poseur si besoin).\n3. « Ajouter au planning ». Vous pouvez aussi glisser un client depuis « Clients ».",
+   "links": [
+    {
+     "label": "Voir le planning",
+     "action": "planning"
+    }
+   ]
+  }
+ },
+ "b07": {
+  "ok": {
+   "answer": "ok",
+   "links": [
+    {
+     "label": "Voir le planning",
+     "action": "planning"
+    }
+   ]
+  },
+  "fiche": {
+   "answer": "Changer de semaine :\n1. Flèches ‹ et › à côté de la date.\n2. Le cadre « S-NN » revient à la semaine en cours.",
+   "links": [
+    {
+     "label": "Voir le planning",
+     "action": "planning"
+    }
+   ]
+  },
+  "fiche_avec_lien": {
+   "answer": "Changer de semaine :\n1. Flèches ‹ et › à côté de la date.\n2. Le cadre « S-NN » revient à la semaine en cours.",
+   "links": [
+    {
+     "label": "Voir le planning",
+     "action": "planning"
+    }
+   ]
+  }
+ },
+ "b08": {
+  "ok": {
+   "answer": "ok",
+   "links": [
+    {
+     "label": "Voir le planning",
+     "action": "planning"
+    }
+   ]
+  },
+  "fiche": {
+   "answer": "Poser un congé ou une absence :\n1. Sur le planning, cliquez le nom du salarié.\n2. Choisissez Congé, Arrêt maladie ou Intempérie.\n3. Choisissez les dates, puis « Enregistrer ».",
+   "links": [
+    {
+     "label": "Voir le planning",
+     "action": "planning"
+    }
+   ]
+  },
+  "fiche_avec_lien": {
+   "answer": "Poser un congé ou une absence :\n1. Sur le planning, cliquez le nom du salarié.\n2. Choisissez Congé, Arrêt maladie ou Intempérie.\n3. Choisissez les dates, puis « Enregistrer ».",
+   "links": [
+    {
+     "label": "Voir le planning",
+     "action": "planning"
+    }
+   ]
+  }
+ },
+ "b09": {
+  "ok": {
+   "answer": "ok",
+   "links": [
+    {
+     "label": "Voir le planning",
+     "action": "planning"
+    }
+   ]
+  },
+  "fiche": {
+   "answer": "Poser un congé ou une absence :\n1. Sur le planning, cliquez le nom du salarié.\n2. Choisissez Congé, Arrêt maladie ou Intempérie.\n3. Choisissez les dates, puis « Enregistrer ».",
+   "links": [
+    {
+     "label": "Voir le planning",
+     "action": "planning"
+    }
+   ]
+  },
+  "fiche_avec_lien": {
+   "answer": "Poser un congé ou une absence :\n1. Sur le planning, cliquez le nom du salarié.\n2. Choisissez Congé, Arrêt maladie ou Intempérie.\n3. Choisissez les dates, puis « Enregistrer ».",
+   "links": [
+    {
+     "label": "Voir le planning",
+     "action": "planning"
+    }
+   ]
+  }
+ },
+ "b10": {
+  "ok": {
+   "answer": "ok",
+   "links": [
+    {
+     "label": "Demandes de congé",
+     "action": "conges"
+    }
+   ]
+  },
+  "fiche": {
+   "answer": "Répondre à une demande de congé :\n1. « Salariés » → « Demandes de congé ».\n2. ✓ pour accepter (le planning se remplit tout seul).\n3. ✗ pour refuser, avec un motif si vous voulez.",
+   "links": [
+    {
+     "label": "Demandes de congé",
+     "action": "conges"
+    }
+   ]
+  },
+  "fiche_avec_lien": {
+   "answer": "Répondre à une demande de congé :\n1. « Salariés » → « Demandes de congé ».\n2. ✓ pour accepter (le planning se remplit tout seul).\n3. ✗ pour refuser, avec un motif si vous voulez.",
+   "links": [
+    {
+     "label": "Demandes de congé",
+     "action": "conges"
+    }
+   ]
+  }
+ },
+ "b11": {
+  "ok": {
+   "answer": "ok",
+   "links": [
+    {
+     "label": "Demandes de congé",
+     "action": "conges"
+    }
+   ]
+  },
+  "fiche": {
+   "answer": "Répondre à une demande de congé :\n1. « Salariés » → « Demandes de congé ».\n2. ✓ pour accepter (le planning se remplit tout seul).\n3. ✗ pour refuser, avec un motif si vous voulez.",
+   "links": [
+    {
+     "label": "Demandes de congé",
+     "action": "conges"
+    }
+   ]
+  },
+  "fiche_avec_lien": {
+   "answer": "Répondre à une demande de congé :\n1. « Salariés » → « Demandes de congé ».\n2. ✓ pour accepter (le planning se remplit tout seul).\n3. ✗ pour refuser, avec un motif si vous voulez.",
+   "links": [
+    {
+     "label": "Demandes de congé",
+     "action": "conges"
+    }
+   ]
+  }
+ },
+ "b12": {
+  "ok": {
+   "answer": "ok",
+   "links": [
+    {
+     "label": "Nouveau client",
+     "action": "nouveau_client"
+    }
+   ]
+  },
+  "fiche": {
+   "answer": "Créer un client / chantier :\n1. Bouton « Clients » → « Nouveau client ».\n2. Nom du client (obligatoire), ville, adresse, contact.\n3. « Créer le client », puis glissez-le sur le planning.",
+   "links": [
+    {
+     "label": "Nouveau client",
+     "action": "nouveau_client"
+    }
+   ]
+  },
+  "fiche_avec_lien": {
+   "answer": "Créer un client / chantier :\n1. Bouton « Clients » → « Nouveau client ».\n2. Nom du client (obligatoire), ville, adresse, contact.\n3. « Créer le client », puis glissez-le sur le planning.",
+   "links": [
+    {
+     "label": "Nouveau client",
+     "action": "nouveau_client"
+    }
+   ]
+  }
+ },
+ "b13": {
+  "ok": {
+   "answer": "ok",
+   "links": [
+    {
+     "label": "Nouveau client",
+     "action": "nouveau_client"
+    }
+   ]
+  },
+  "fiche": {
+   "answer": "Créer un client / chantier :\n1. Bouton « Clients » → « Nouveau client ».\n2. Nom du client (obligatoire), ville, adresse, contact.\n3. « Créer le client », puis glissez-le sur le planning.",
+   "links": [
+    {
+     "label": "Nouveau client",
+     "action": "nouveau_client"
+    }
+   ]
+  },
+  "fiche_avec_lien": {
+   "answer": "Créer un client / chantier :\n1. Bouton « Clients » → « Nouveau client ».\n2. Nom du client (obligatoire), ville, adresse, contact.\n3. « Créer le client », puis glissez-le sur le planning.",
+   "links": [
+    {
+     "label": "Nouveau client",
+     "action": "nouveau_client"
+    }
+   ]
+  }
+ },
+ "b14": {
+  "ok": {
+   "answer": "ok",
+   "links": [
+    {
+     "label": "Salariés",
+     "action": "salaries"
+    }
+   ]
+  },
+  "fiche": {
+   "answer": "Changer le rôle de quelqu’un :\n1. « Salariés ».\n2. Sur sa ligne : Salarié, Chef d’équipe ou Bureau.\n3. C’est enregistré tout de suite. Un chef d’équipe saisit, corrige et envoie les heures de toute l’équipe sur 7 jours (marquées « par le chef d’équipe »).",
+   "links": [
+    {
+     "label": "Salariés",
+     "action": "salaries"
+    }
+   ]
+  },
+  "fiche_avec_lien": {
+   "answer": "Changer le rôle de quelqu’un :\n1. « Salariés ».\n2. Sur sa ligne : Salarié, Chef d’équipe ou Bureau.\n3. C’est enregistré tout de suite. Un chef d’équipe saisit, corrige et envoie les heures de toute l’équipe sur 7 jours (marquées « par le chef d’équipe »).",
+   "links": [
+    {
+     "label": "Salariés",
+     "action": "salaries"
+    }
+   ]
+  }
+ },
+ "b15": {
+  "ok": {
+   "answer": "ok",
+   "links": []
+  },
+  "fiche": null,
+  "fiche_avec_lien": null
+ },
+ "b16": {
+  "ok": {
+   "answer": "ok",
+   "links": [
+    {
+     "label": "Coût chantiers",
+     "action": "couts"
+    }
+   ]
+  },
+  "fiche": {
+   "answer": "Voir les coûts et budgets des chantiers :\n1. Bouton « Coût chantiers » (« Coûts » sur tablette) : heures et coûts par chantier.\n2. Choisissez la période (mois, semaine…).\n3. Dépliez un chantier ; « Ajouter une dépense » si besoin.",
+   "links": [
+    {
+     "label": "Coût chantiers",
+     "action": "couts"
+    }
+   ]
+  },
+  "fiche_avec_lien": {
+   "answer": "Voir les coûts et budgets des chantiers :\n1. Bouton « Coût chantiers » (« Coûts » sur tablette) : heures et coûts par chantier.\n2. Choisissez la période (mois, semaine…).\n3. Dépliez un chantier ; « Ajouter une dépense » si besoin.",
+   "links": [
+    {
+     "label": "Coût chantiers",
+     "action": "couts"
+    }
+   ]
+  }
+ },
+ "b17": {
+  "ok": {
+   "answer": "ok",
+   "links": [
+    {
+     "label": "Voir le planning",
+     "action": "planning"
+    }
+   ]
+  },
+  "fiche": {
+   "answer": "Ajouter des photos ou documents à un chantier :\n1. Cliquez une bulle du planning → « Documents ».\n2. « Photo » ou « Fichier ».\n3. « Envoyer au client » pour les partager.",
+   "links": [
+    {
+     "label": "Voir le planning",
+     "action": "planning"
+    }
+   ]
+  },
+  "fiche_avec_lien": {
+   "answer": "Ajouter des photos ou documents à un chantier :\n1. Cliquez une bulle du planning → « Documents ».\n2. « Photo » ou « Fichier ».\n3. « Envoyer au client » pour les partager.",
+   "links": [
+    {
+     "label": "Voir le planning",
+     "action": "planning"
+    }
+   ]
+  }
+ },
+ "b18": {
+  "ok": {
+   "answer": "ok",
+   "links": []
+  },
+  "fiche": null,
+  "fiche_avec_lien": null
+ },
+ "b19": {
+  "ok": {
+   "answer": "ok",
+   "links": [
+    {
+     "label": "Nouveau client",
+     "action": "nouveau_client"
+    }
+   ]
+  },
+  "fiche": {
+   "answer": "Créer un client / chantier :\n1. Bouton « Clients » → « Nouveau client ».\n2. Nom du client (obligatoire), ville, adresse, contact.\n3. « Créer le client », puis glissez-le sur le planning.",
+   "links": [
+    {
+     "label": "Nouveau client",
+     "action": "nouveau_client"
+    }
+   ]
+  },
+  "fiche_avec_lien": {
+   "answer": "Créer un client / chantier :\n1. Bouton « Clients » → « Nouveau client ».\n2. Nom du client (obligatoire), ville, adresse, contact.\n3. « Créer le client », puis glissez-le sur le planning.",
+   "links": [
+    {
+     "label": "Nouveau client",
+     "action": "nouveau_client"
+    }
+   ]
+  }
+ },
+ "b20": {
+  "ok": {
+   "answer": "ok",
+   "links": [
+    {
+     "label": "Salariés",
+     "action": "salaries"
+    }
+   ]
+  },
+  "fiche": {
+   "answer": "Changer le rôle de quelqu’un :\n1. « Salariés ».\n2. Sur sa ligne : Salarié, Chef d’équipe ou Bureau.\n3. C’est enregistré tout de suite. Un chef d’équipe saisit, corrige et envoie les heures de toute l’équipe sur 7 jours (marquées « par le chef d’équipe »).",
+   "links": [
+    {
+     "label": "Salariés",
+     "action": "salaries"
+    }
+   ]
+  },
+  "fiche_avec_lien": {
+   "answer": "Changer le rôle de quelqu’un :\n1. « Salariés ».\n2. Sur sa ligne : Salarié, Chef d’équipe ou Bureau.\n3. C’est enregistré tout de suite. Un chef d’équipe saisit, corrige et envoie les heures de toute l’équipe sur 7 jours (marquées « par le chef d’équipe »).",
+   "links": [
+    {
+     "label": "Salariés",
+     "action": "salaries"
+    }
+   ]
+  }
+ },
+ "b21": {
+  "ok": {
+   "answer": "ok",
+   "links": [
+    {
+     "label": "Salariés",
+     "action": "salaries"
+    }
+   ]
+  },
+  "fiche": {
+   "answer": "Envoyer ou renvoyer une invitation :\n1. Au-dessus du planning : « Voir la liste » (salariés qui n’ont pas encore activé leur compte).\n2. « Envoyer l’invitation » ou « Renvoyer » sur la bonne ligne, ou « Envoyer toutes les invitations ».\n3. Vérifiez l’adresse e-mail si rien n’arrive.",
+   "links": [
+    {
+     "label": "Salariés",
+     "action": "salaries"
+    }
+   ]
+  },
+  "fiche_avec_lien": {
+   "answer": "Envoyer ou renvoyer une invitation :\n1. Au-dessus du planning : « Voir la liste » (salariés qui n’ont pas encore activé leur compte).\n2. « Envoyer l’invitation » ou « Renvoyer » sur la bonne ligne, ou « Envoyer toutes les invitations ».\n3. Vérifiez l’adresse e-mail si rien n’arrive.",
+   "links": [
+    {
+     "label": "Salariés",
+     "action": "salaries"
+    }
+   ]
+  }
+ },
+ "b22": {
+  "ok": {
+   "answer": "ok",
+   "links": [
+    {
+     "label": "Réglages",
+     "action": "reglages"
+    }
+   ]
+  },
+  "fiche": {
+   "answer": "Paramétrer l’entreprise :\n1. Menu en haut à gauche (logo) → « Réglages de l’entreprise ».\n2. Coordonnées, logo, heures sup, relances, comptable…\n3. « Enregistrer ».",
+   "links": [
+    {
+     "label": "Réglages",
+     "action": "reglages"
+    }
+   ]
+  },
+  "fiche_avec_lien": {
+   "answer": "Paramétrer l’entreprise :\n1. Menu en haut à gauche (logo) → « Réglages de l’entreprise ».\n2. Coordonnées, logo, heures sup, relances, comptable…\n3. « Enregistrer ».",
+   "links": [
+    {
+     "label": "Réglages",
+     "action": "reglages"
+    }
+   ]
+  }
+ },
+ "b23": {
+  "ok": {
+   "answer": "ok",
+   "links": [
+    {
+     "label": "Salariés",
+     "action": "salaries"
+    }
+   ]
+  },
+  "fiche": {
+   "answer": "Suivre les habilitations (CACES, carte BTP…) :\n1. Fiche du salarié → « Habilitations ».\n2. « Ajouter » : type et date d’expiration.\n3. Vous êtes prévenu avant l’échéance.",
+   "links": [
+    {
+     "label": "Salariés",
+     "action": "salaries"
+    }
+   ]
+  },
+  "fiche_avec_lien": {
+   "answer": "Suivre les habilitations (CACES, carte BTP…) :\n1. Fiche du salarié → « Habilitations ».\n2. « Ajouter » : type et date d’expiration.\n3. Vous êtes prévenu avant l’échéance.",
+   "links": [
+    {
+     "label": "Salariés",
+     "action": "salaries"
+    }
+   ]
+  }
+ },
+ "b24": {
+  "ok": {
+   "answer": "ok",
+   "links": []
+  },
+  "fiche": null,
+  "fiche_avec_lien": null
+ },
+ "b25": {
+  "ok": {
+   "answer": "ok",
+   "links": [
+    {
+     "label": "Nouveau salarié",
+     "action": "nouveau_salarie"
+    }
+   ]
+  },
+  "fiche": {
+   "answer": "Ajouter un salarié :\n1. Bouton « Salariés » en haut, puis « Nouveau salarié ».\n2. Prénom, nom, email (téléphone facultatif).\n3. « Envoyer l’invitation » : il reçoit un email pour créer son accès.",
+   "links": [
+    {
+     "label": "Nouveau salarié",
+     "action": "nouveau_salarie"
+    }
+   ]
+  },
+  "fiche_avec_lien": {
+   "answer": "Ajouter un salarié :\n1. Bouton « Salariés » en haut, puis « Nouveau salarié ».\n2. Prénom, nom, email (téléphone facultatif).\n3. « Envoyer l’invitation » : il reçoit un email pour créer son accès.",
+   "links": [
+    {
+     "label": "Nouveau salarié",
+     "action": "nouveau_salarie"
+    }
+   ]
+  }
+ },
+ "b26": {
+  "ok": {
+   "answer": "ok",
+   "links": [
+    {
+     "label": "Exporter / clôturer",
+     "action": "export"
+    }
+   ]
+  },
+  "fiche": {
+   "answer": "Clôturer le mois :\n1. « Exporter » (fenêtre « Exporter l’équipe »).\n2. Section « Clôture du mois » → « Clôturer ».\n3. « Rouvrir » annule si besoin.",
+   "links": [
+    {
+     "label": "Exporter / clôturer",
+     "action": "export"
+    }
+   ]
+  },
+  "fiche_avec_lien": {
+   "answer": "Clôturer le mois :\n1. « Exporter » (fenêtre « Exporter l’équipe »).\n2. Section « Clôture du mois » → « Clôturer ».\n3. « Rouvrir » annule si besoin.",
+   "links": [
+    {
+     "label": "Exporter / clôturer",
+     "action": "export"
+    }
+   ]
+  }
+ },
+ "b27": {
+  "ok": {
+   "answer": "ok",
+   "links": [
+    {
+     "label": "Exporter / clôturer",
+     "action": "export"
+    }
+   ]
+  },
+  "fiche": {
+   "answer": "Exporter les heures / envoyer au comptable :\n1. « Exporter » (la fenêtre « Exporter l’équipe » s’ouvre).\n2. Choisissez la période.\n3. « Exporter ▾ » : PDF, Excel ou CSV — ou « Envoyer à » votre comptable.",
+   "links": [
+    {
+     "label": "Exporter / clôturer",
+     "action": "export"
+    }
+   ]
+  },
+  "fiche_avec_lien": {
+   "answer": "Exporter les heures / envoyer au comptable :\n1. « Exporter » (la fenêtre « Exporter l’équipe » s’ouvre).\n2. Choisissez la période.\n3. « Exporter ▾ » : PDF, Excel ou CSV — ou « Envoyer à » votre comptable.",
+   "links": [
+    {
+     "label": "Exporter / clôturer",
+     "action": "export"
+    }
+   ]
+  }
+ },
+ "b28": {
+  "ok": {
+   "answer": "ok",
+   "links": [
+    {
+     "label": "Réserves",
+     "action": "reserves"
+    }
+   ]
+  },
+  "fiche": {
+   "answer": "Suivre les réserves de chantier :\n1. Bouton « Réserves ».\n2. Onglet « À traiter » (le salarié peut aussi lever depuis son téléphone).\n3. « Lever la réserve » : commentaire et photo facultatifs.",
+   "links": [
+    {
+     "label": "Réserves",
+     "action": "reserves"
+    }
+   ]
+  },
+  "fiche_avec_lien": {
+   "answer": "Suivre les réserves de chantier :\n1. Bouton « Réserves ».\n2. Onglet « À traiter » (le salarié peut aussi lever depuis son téléphone).\n3. « Lever la réserve » : commentaire et photo facultatifs.",
+   "links": [
+    {
+     "label": "Réserves",
+     "action": "reserves"
+    }
+   ]
+  }
+ },
+ "b29": {
+  "ok": {
+   "answer": "ok",
+   "links": [
+    {
+     "label": "Exporter / clôturer",
+     "action": "export"
+    }
+   ]
+  },
+  "fiche": {
+   "answer": "Télécharger les heures (Excel, PDF, CSV) :\n1. « Exporter » (équipe) ou la fiche d’un salarié.\n2. Choisissez la période.\n3. « Exporter ▾ » → « PDF », « Excel » ou « CSV » : le fichier se télécharge.",
+   "links": [
+    {
+     "label": "Exporter / clôturer",
+     "action": "export"
+    }
+   ]
+  },
+  "fiche_avec_lien": {
+   "answer": "Télécharger les heures (Excel, PDF, CSV) :\n1. « Exporter » (équipe) ou la fiche d’un salarié.\n2. Choisissez la période.\n3. « Exporter ▾ » → « PDF », « Excel » ou « CSV » : le fichier se télécharge.",
+   "links": [
+    {
+     "label": "Exporter / clôturer",
+     "action": "export"
+    }
+   ]
+  }
+ },
+ "b30": {
+  "ok": {
+   "answer": "ok",
+   "links": [
+    {
+     "label": "Réserves",
+     "action": "reserves"
+    }
+   ]
+  },
+  "fiche": {
+   "answer": "Suivre les réserves de chantier :\n1. Bouton « Réserves ».\n2. Onglet « À traiter » (le salarié peut aussi lever depuis son téléphone).\n3. « Lever la réserve » : commentaire et photo facultatifs.",
+   "links": [
+    {
+     "label": "Réserves",
+     "action": "reserves"
+    }
+   ]
+  },
+  "fiche_avec_lien": {
+   "answer": "Suivre les réserves de chantier :\n1. Bouton « Réserves ».\n2. Onglet « À traiter » (le salarié peut aussi lever depuis son téléphone).\n3. « Lever la réserve » : commentaire et photo facultatifs.",
+   "links": [
+    {
+     "label": "Réserves",
+     "action": "reserves"
+    }
+   ]
+  }
+ },
+ "b31": {
+  "ok": {
+   "answer": "ok",
+   "links": [
+    {
+     "label": "Voir le planning",
+     "action": "planning"
+    }
+   ]
+  },
+  "fiche": {
+   "answer": "Déplacer une intervention :\n1. Sur le planning, attrapez la bulle de l’intervention.\n2. Glissez-la sur la case du bon jour (ou d’un autre salarié).\n3. C’est enregistré tout de suite.",
+   "links": [
+    {
+     "label": "Voir le planning",
+     "action": "planning"
+    }
+   ]
+  },
+  "fiche_avec_lien": {
+   "answer": "Déplacer une intervention :\n1. Sur le planning, attrapez la bulle de l’intervention.\n2. Glissez-la sur la case du bon jour (ou d’un autre salarié).\n3. C’est enregistré tout de suite.",
+   "links": [
+    {
+     "label": "Voir le planning",
+     "action": "planning"
+    }
+   ]
+  }
+ },
+ "b32": {
+  "ok": {
+   "answer": "ok",
+   "links": [
+    {
+     "label": "Voir le planning",
+     "action": "planning"
+    }
+   ]
+  },
+  "fiche": {
+   "answer": "Déplacer une intervention :\n1. Sur le planning, attrapez la bulle de l’intervention.\n2. Glissez-la sur la case du bon jour (ou d’un autre salarié).\n3. C’est enregistré tout de suite.",
+   "links": [
+    {
+     "label": "Voir le planning",
+     "action": "planning"
+    }
+   ]
+  },
+  "fiche_avec_lien": {
+   "answer": "Déplacer une intervention :\n1. Sur le planning, attrapez la bulle de l’intervention.\n2. Glissez-la sur la case du bon jour (ou d’un autre salarié).\n3. C’est enregistré tout de suite.",
+   "links": [
+    {
+     "label": "Voir le planning",
+     "action": "planning"
+    }
+   ]
+  }
+ },
+ "b33": {
+  "ok": {
+   "answer": "ok",
+   "links": [
+    {
+     "label": "Salariés",
+     "action": "salaries"
+    }
+   ]
+  },
+  "fiche": {
+   "answer": "Corriger les heures d’un salarié :\n1. Ouvrez sa feuille d’heures (clic sur son nom → « Feuille d’heures »).\n2. Sur la journée envoyée : « Corriger les heures ».\n3. Nouvelles heures et un motif (obligatoire) → « Corriger et prévenir » : il est averti.",
+   "links": [
+    {
+     "label": "Salariés",
+     "action": "salaries"
+    }
+   ]
+  },
+  "fiche_avec_lien": {
+   "answer": "Corriger les heures d’un salarié :\n1. Ouvrez sa feuille d’heures (clic sur son nom → « Feuille d’heures »).\n2. Sur la journée envoyée : « Corriger les heures ».\n3. Nouvelles heures et un motif (obligatoire) → « Corriger et prévenir » : il est averti.",
+   "links": [
+    {
+     "label": "Salariés",
+     "action": "salaries"
+    }
+   ]
+  }
+ },
+ "b34": {
+  "ok": {
+   "answer": "ok",
+   "links": [
+    {
+     "label": "Voir le planning",
+     "action": "planning"
+    }
+   ]
+  },
+  "fiche": {
+   "answer": "Mettre quelqu’un sur un chantier :\n1. Sur le planning, cliquez la case du salarié et du jour.\n2. Choisissez le client (note pour le poseur si besoin).\n3. « Ajouter au planning ». Vous pouvez aussi glisser un client depuis « Clients ».",
+   "links": [
+    {
+     "label": "Voir le planning",
+     "action": "planning"
+    }
+   ]
+  },
+  "fiche_avec_lien": {
+   "answer": "Mettre quelqu’un sur un chantier :\n1. Sur le planning, cliquez la case du salarié et du jour.\n2. Choisissez le client (note pour le poseur si besoin).\n3. « Ajouter au planning ». Vous pouvez aussi glisser un client depuis « Clients ».",
+   "links": [
+    {
+     "label": "Voir le planning",
+     "action": "planning"
+    }
+   ]
+  }
+ },
+ "b35": {
+  "ok": {
+   "answer": "ok",
+   "links": [
+    {
+     "label": "Voir le planning",
+     "action": "planning"
+    }
+   ]
+  },
+  "fiche": {
+   "answer": "Changer de semaine :\n1. Flèches ‹ et › à côté de la date.\n2. Le cadre « S-NN » revient à la semaine en cours.",
+   "links": [
+    {
+     "label": "Voir le planning",
+     "action": "planning"
+    }
+   ]
+  },
+  "fiche_avec_lien": {
+   "answer": "Changer de semaine :\n1. Flèches ‹ et › à côté de la date.\n2. Le cadre « S-NN » revient à la semaine en cours.",
+   "links": [
+    {
+     "label": "Voir le planning",
+     "action": "planning"
+    }
+   ]
+  }
+ },
+ "b36": {
+  "ok": {
+   "answer": "ok",
+   "links": [
+    {
+     "label": "Voir le planning",
+     "action": "planning"
+    }
+   ]
+  },
+  "fiche": {
+   "answer": "Mettre quelqu’un sur un chantier :\n1. Sur le planning, cliquez la case du salarié et du jour.\n2. Choisissez le client (note pour le poseur si besoin).\n3. « Ajouter au planning ». Vous pouvez aussi glisser un client depuis « Clients ».",
+   "links": [
+    {
+     "label": "Voir le planning",
+     "action": "planning"
+    }
+   ]
+  },
+  "fiche_avec_lien": {
+   "answer": "Mettre quelqu’un sur un chantier :\n1. Sur le planning, cliquez la case du salarié et du jour.\n2. Choisissez le client (note pour le poseur si besoin).\n3. « Ajouter au planning ». Vous pouvez aussi glisser un client depuis « Clients ».",
+   "links": [
+    {
+     "label": "Voir le planning",
+     "action": "planning"
+    }
+   ]
+  }
+ },
+ "b37": {
+  "ok": {
+   "answer": "ok",
+   "links": [
+    {
+     "label": "Voir le planning",
+     "action": "planning"
+    }
+   ]
+  },
+  "fiche": {
+   "answer": "Poser un congé ou une absence :\n1. Sur le planning, cliquez le nom du salarié.\n2. Choisissez Congé, Arrêt maladie ou Intempérie.\n3. Choisissez les dates, puis « Enregistrer ».",
+   "links": [
+    {
+     "label": "Voir le planning",
+     "action": "planning"
+    }
+   ]
+  },
+  "fiche_avec_lien": {
+   "answer": "Poser un congé ou une absence :\n1. Sur le planning, cliquez le nom du salarié.\n2. Choisissez Congé, Arrêt maladie ou Intempérie.\n3. Choisissez les dates, puis « Enregistrer ».",
+   "links": [
+    {
+     "label": "Voir le planning",
+     "action": "planning"
+    }
+   ]
+  }
+ },
+ "b38": {
+  "ok": {
+   "answer": "ok",
+   "links": []
+  },
+  "fiche": null,
+  "fiche_avec_lien": null
+ },
+ "b39": {
+  "ok": {
+   "answer": "ok",
+   "links": [
+    {
+     "label": "Coût chantiers",
+     "action": "couts"
+    }
+   ]
+  },
+  "fiche": {
+   "answer": "Voir les coûts et budgets des chantiers :\n1. Bouton « Coût chantiers » (« Coûts » sur tablette) : heures et coûts par chantier.\n2. Choisissez la période (mois, semaine…).\n3. Dépliez un chantier ; « Ajouter une dépense » si besoin.",
+   "links": [
+    {
+     "label": "Coût chantiers",
+     "action": "couts"
+    }
+   ]
+  },
+  "fiche_avec_lien": {
+   "answer": "Voir les coûts et budgets des chantiers :\n1. Bouton « Coût chantiers » (« Coûts » sur tablette) : heures et coûts par chantier.\n2. Choisissez la période (mois, semaine…).\n3. Dépliez un chantier ; « Ajouter une dépense » si besoin.",
+   "links": [
+    {
+     "label": "Coût chantiers",
+     "action": "couts"
+    }
+   ]
+  }
+ },
+ "b40": {
+  "ok": {
+   "answer": "ok",
+   "links": [
+    {
+     "label": "Salariés",
+     "action": "salaries"
+    }
+   ]
+  },
+  "fiche": {
+   "answer": "Corriger les heures d’un salarié :\n1. Ouvrez sa feuille d’heures (clic sur son nom → « Feuille d’heures »).\n2. Sur la journée envoyée : « Corriger les heures ».\n3. Nouvelles heures et un motif (obligatoire) → « Corriger et prévenir » : il est averti.",
+   "links": [
+    {
+     "label": "Salariés",
+     "action": "salaries"
+    }
+   ]
+  },
+  "fiche_avec_lien": {
+   "answer": "Corriger les heures d’un salarié :\n1. Ouvrez sa feuille d’heures (clic sur son nom → « Feuille d’heures »).\n2. Sur la journée envoyée : « Corriger les heures ».\n3. Nouvelles heures et un motif (obligatoire) → « Corriger et prévenir » : il est averti.",
+   "links": [
+    {
+     "label": "Salariés",
+     "action": "salaries"
+    }
+   ]
+  }
+ },
+ "b41": {
+  "ok": {
+   "answer": "ok",
+   "links": [
+    {
+     "label": "Salariés",
+     "action": "salaries"
+    }
+   ]
+  },
+  "fiche": {
+   "answer": "Suivre les habilitations (CACES, carte BTP…) :\n1. Fiche du salarié → « Habilitations ».\n2. « Ajouter » : type et date d’expiration.\n3. Vous êtes prévenu avant l’échéance.",
+   "links": [
+    {
+     "label": "Salariés",
+     "action": "salaries"
+    }
+   ]
+  },
+  "fiche_avec_lien": {
+   "answer": "Suivre les habilitations (CACES, carte BTP…) :\n1. Fiche du salarié → « Habilitations ».\n2. « Ajouter » : type et date d’expiration.\n3. Vous êtes prévenu avant l’échéance.",
+   "links": [
+    {
+     "label": "Salariés",
+     "action": "salaries"
+    }
+   ]
+  }
+ },
+ "b42": {
+  "ok": {
+   "answer": "ok",
+   "links": [
+    {
+     "label": "Salariés",
+     "action": "salaries"
+    }
+   ]
+  },
+  "fiche": {
+   "answer": "Annuler une invitation :\n1. Au-dessus du planning : « Voir la liste ».\n2. La croix ✕ sur la bonne ligne, puis confirmez.\n3. Le compte jamais utilisé est retiré.",
+   "links": [
+    {
+     "label": "Salariés",
+     "action": "salaries"
+    }
+   ]
+  },
+  "fiche_avec_lien": {
+   "answer": "Annuler une invitation :\n1. Au-dessus du planning : « Voir la liste ».\n2. La croix ✕ sur la bonne ligne, puis confirmez.\n3. Le compte jamais utilisé est retiré.",
+   "links": [
+    {
+     "label": "Salariés",
+     "action": "salaries"
+    }
+   ]
+  }
+ },
+ "b43": {
+  "ok": {
+   "answer": "ok",
+   "links": [
+    {
+     "label": "Réglages",
+     "action": "reglages"
+    }
+   ]
+  },
+  "fiche": {
+   "answer": "Paramétrer l’entreprise :\n1. Menu en haut à gauche (logo) → « Réglages de l’entreprise ».\n2. Coordonnées, logo, heures sup, relances, comptable…\n3. « Enregistrer ».",
+   "links": [
+    {
+     "label": "Réglages",
+     "action": "reglages"
+    }
+   ]
+  },
+  "fiche_avec_lien": {
+   "answer": "Paramétrer l’entreprise :\n1. Menu en haut à gauche (logo) → « Réglages de l’entreprise ».\n2. Coordonnées, logo, heures sup, relances, comptable…\n3. « Enregistrer ».",
+   "links": [
+    {
+     "label": "Réglages",
+     "action": "reglages"
+    }
+   ]
+  }
+ },
+ "b44": {
+  "ok": {
+   "answer": "ok",
+   "links": [
+    {
+     "label": "Voir le planning",
+     "action": "planning"
+    }
+   ]
+  },
+  "fiche": {
+   "answer": "Mettre quelqu’un sur un chantier :\n1. Sur le planning, cliquez la case du salarié et du jour.\n2. Choisissez le client (note pour le poseur si besoin).\n3. « Ajouter au planning ». Vous pouvez aussi glisser un client depuis « Clients ».",
+   "links": [
+    {
+     "label": "Voir le planning",
+     "action": "planning"
+    }
+   ]
+  },
+  "fiche_avec_lien": {
+   "answer": "Mettre quelqu’un sur un chantier :\n1. Sur le planning, cliquez la case du salarié et du jour.\n2. Choisissez le client (note pour le poseur si besoin).\n3. « Ajouter au planning ». Vous pouvez aussi glisser un client depuis « Clients ».",
+   "links": [
+    {
+     "label": "Voir le planning",
+     "action": "planning"
+    }
+   ]
+  }
+ },
+ "b45": {
+  "ok": {
+   "answer": "ok",
+   "links": [
+    {
+     "label": "Voir le planning",
+     "action": "planning"
+    }
+   ]
+  },
+  "fiche": {
+   "answer": "Ajouter des photos ou documents à un chantier :\n1. Cliquez une bulle du planning → « Documents ».\n2. « Photo » ou « Fichier ».\n3. « Envoyer au client » pour les partager.",
+   "links": [
+    {
+     "label": "Voir le planning",
+     "action": "planning"
+    }
+   ]
+  },
+  "fiche_avec_lien": {
+   "answer": "Ajouter des photos ou documents à un chantier :\n1. Cliquez une bulle du planning → « Documents ».\n2. « Photo » ou « Fichier ».\n3. « Envoyer au client » pour les partager.",
+   "links": [
+    {
+     "label": "Voir le planning",
+     "action": "planning"
+    }
+   ]
+  }
+ },
+ "b46": {
+  "ok": {
+   "answer": "ok",
+   "links": []
+  },
+  "fiche": null,
+  "fiche_avec_lien": null
+ },
+ "b47": {
+  "ok": {
+   "answer": "ok",
+   "links": []
+  },
+  "fiche": null,
+  "fiche_avec_lien": null
+ }
+}

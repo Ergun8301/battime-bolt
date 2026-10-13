@@ -22,6 +22,8 @@
 import { calendarForPrompt, cleanName, cleanSpoken, cleanTitle, dateAVenir, dayPart, parseDateFr, parseTimeFr, plageAVenir } from './fr-langue.ts';
 import { REASON_MAX, reasonOk } from './office-edits.ts';
 import { OFFICE_DOMAINS, pickTools } from './tool-domains.ts';
+import { hasAdminTour } from './admin-tours.ts';
+import { TOUR_LABEL, tourAction } from './worker-tours.ts';
 
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -1638,6 +1640,20 @@ export interface LocalReply { answer: string; links: { label: string; action: st
 
 const navLink = (a: NavAction) => ({ label: NAV_ACTIONS[a], action: a });
 
+/** L'intention « comment / où / explique » de la voie LOCALE. */
+export const GUIDE_INTENT = /\b(comment|ou |ou est|je veux|je voudrais|aide|expliqu|montre|a quoi sert|quoi sert|c est quoi|ca sert)/;
+/** Plus stricte pour la voie MODÈLE : sans « ou », « aide », « je veux », « montre » (trop de faux positifs : « mets Martin ou Karim… »). */
+export const GUIDE_INTENT_MODELE = /\b(comment|expliqu|a quoi sert|quoi sert|c est quoi|ca sert|ou (est|se trouve|se met|je trouve))/;
+/** Le SEUL endroit qui fabrique le bouton « Me guider pas à pas » du bureau : jamais choisi par le modèle. */
+export function guideButton(g: GuideEntry): { label: string; action: string } | null {
+  return hasAdminTour(g.id) ? { label: TOUR_LABEL, action: tourAction(g.id) } : null;
+}
+/** Les liens d'une réponse « guide » : le raccourci d'écran, puis « Me guider pas à pas » si la fiche existe. */
+export function guideLinks(g: GuideEntry): { label: string; action: string }[] {
+  const b = guideButton(g);
+  return b ? [navLink(g.lien), b] : [navLink(g.lien)];
+}
+
 /**
  * Ce qui se règle sans IA (suggestions de démarrage, « comment je… »).
  * null → l'IA prend le relais (questions chiffrées, phrases détaillées).
@@ -1669,9 +1685,9 @@ export function handleActionLocally(text: string, ctx: ActionContext): LocalRepl
   if (!detailed && /\b(poser|pose|mettre|enregistr)\w*\b.*\b(conge|absence|arret|maladie)/.test(n) && !/\bcomment\b/.test(n)) {
     return { answer: 'Choisissez le salarié et les dates.', links: [], action: prepare('poser_absence', {}, ctx)! };
   }
-  if (/\b(comment|ou |ou est|je veux|je voudrais|aide|expliqu|montre|a quoi sert|quoi sert|c est quoi|ca sert)/.test(n)) {
+  if (GUIDE_INTENT.test(n)) {
     const g = findGuide(n);
-    if (g) return { answer: guideAnswer(g), links: [navLink(g.lien)] };
+    if (g) return { answer: guideAnswer(g), links: guideLinks(g) };
   }
   return null;
 }
@@ -1680,9 +1696,12 @@ export function handleActionLocally(text: string, ctx: ActionContext): LocalRepl
 export function fromFunctionCall(name: string, args: Record<string, unknown>, ctx: ActionContext, entries: EntryChoice[] = []): LocalReply {
   if (name === 'repondre') {
     let answer = str(args.reponse, 700) || 'Je n’ai pas compris. Reformulez, ou choisissez une suggestion.';
+    // La fiche dont le texte est AFFICHÉ à la place d'un refus : son bouton « Me guider pas à pas » suit.
+    let shown: GuideEntry | null = null;
     // L'assistant peut guider partout : jamais de « je n'ai pas accès ».
     if (/(je n[’']?ai pas acc[eè]s|je ne peux pas (acc[eé]der|le faire|faire [cç]a)|je n[’']?ai pas la possibilit[eé]|pas autoris[eé] [àa])/i.test(answer)) {
       const g = findGuide(answer);
+      if (g) shown = g;
       answer = g ? guideAnswer(g) : 'Dites-moi ce que vous voulez faire : je vous guide, ou je le prépare pour vous.';
     }
     const links: { label: string; action: string }[] = [];
@@ -1700,6 +1719,18 @@ export function fromFunctionCall(name: string, args: Record<string, unknown>, ct
       const g = findGuide(ctx.demande ?? '') ?? findGuide(answer);
       if (g) links.push(navLink(g.lien));
     }
+    // « Me guider pas à pas » : seulement quand la réponse EST le guide d'une fiche (jamais celui d'une autre,
+    // jamais sur une question de précision ni sur une réponse chiffrée), juste après le raccourci de cette fiche.
+    const g0 = shown ?? findGuide(ctx.demande ?? '');
+    const gt = shown
+      ?? (g0 && GUIDE_INTENT_MODELE.test(norm(ctx.demande ?? ''))
+          && !/\?\s*$/.test(answer.trim())
+          && !links.some((l) => l.action.startsWith('salarie:'))
+          && findGuide(answer)?.id === g0.id
+        ? g0 : null);
+    const bouton = gt ? guideButton(gt) : null;
+    const at = gt && bouton ? links.findIndex((l) => l.action === gt.lien) : -1;
+    if (bouton && at >= 0) links.splice(at + 1, 0, bouton);
     return { answer, links: links.filter((l, i) => links.findIndex((x) => x.action === l.action) === i) };
   }
   const a = prepare(name, args, ctx, entries);

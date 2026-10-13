@@ -123,16 +123,18 @@ const SECS_INIT: Record<SecKey, boolean> = { entreprise: true, paie: false, born
  * valeurs tapées, les interrupteurs et les sous-réglages (caisse de congés,
  * support) gardent leur état, et le bouton « Enregistrer » du bas lit tout.
  */
-function SetSection({ id, testId, title, hint, icon, open, onToggle, children }: {
+function SetSection({ id, testId, title, hint, icon, open, onToggle, guide, children }: {
   id: string; testId: string; title: string; hint: string; icon: ReactNode;
   open: boolean; onToggle: () => void; children: ReactNode;
+  /** Ancre du guide pas à pas (lot 7) : l'attribut data-guide du bouton de la rubrique, rien d'autre. */
+  guide?: string;
 }) {
   const btnId = `${id}-btn`;
   const panelId = `${id}-panel`;
   return (
     <section className={`bt-set-sec${open ? ' open' : ''}`} data-testid={testId}>
       <h3 className="bt-set-sec-h">
-        <button type="button" id={btnId} className="bt-set-sec-btn" aria-expanded={open} aria-controls={panelId} onClick={onToggle}>
+        <button type="button" id={btnId} className="bt-set-sec-btn" aria-expanded={open} aria-controls={panelId} onClick={onToggle} data-guide={guide}>
           <span className="bt-set-sec-ico" aria-hidden="true">{icon}</span>
           <span className="bt-set-sec-txt">
             <span className="bt-set-sec-t">{title}</span>
@@ -574,7 +576,7 @@ export default function CompanySettings({ open, onOpenChange, onSaved, onOpenTra
                   </p>
                 </div>
                 {(subStatus === 'active' || subStatus === 'canceled') && (
-                  <button type="button" className="bt-set-btn" onClick={openPortal} disabled={portalBusy}>
+                  <button type="button" className="bt-set-btn" onClick={openPortal} disabled={portalBusy} data-guide="bureau-reglages.abonnement">
                     {portalBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />} Gérer mon abonnement
                   </button>
                 )}
@@ -585,7 +587,7 @@ export default function CompanySettings({ open, onOpenChange, onSaved, onOpenTra
               id={`${secId}-paie`} testId="set-sec-paie" title="Heures & paie"
               hint={`Horaire, heures supplémentaires, route, ${mealOn !== null ? 'panier repas, ' : ''}comptable${aiOn ? ', caisse de congés' : ''}`}
               icon={<Clock className="h-4 w-4" />}
-              open={secs.paie} onToggle={() => toggleSec('paie')}
+              open={secs.paie} onToggle={() => toggleSec('paie')} guide="bureau-reglages.rub-heures"
             >
               {/* Horaire hebdomadaire de base — la seule référence qui décide
                   ce qui est une heure supplémentaire. Calcul à la semaine. */}
@@ -685,14 +687,14 @@ export default function CompanySettings({ open, onOpenChange, onSaved, onOpenTra
                 </div>
               </div>
 
-              {aiOn && user?.company_id && <LeaveFundSetting source={costSource} companyId={user.company_id} />}
+              {aiOn && user?.company_id && <LeaveFundSetting source={costSource} companyId={user.company_id} guide="bureau-reglages.caisse" />}
             </SetSection>
 
             <SetSection
               id={`${secId}-borne`} testId="set-sec-borne" title="Borne & pointage"
               hint={`${kioskEnabled ? 'Borne, e' : 'E'}ndroit au pointage${colleagues !== null ? ', planning des collègues' : ''}`}
               icon={<MonitorSmartphone className="h-4 w-4" />}
-              open={secs.borne} onToggle={() => toggleSec('borne')}
+              open={secs.borne} onToggle={() => toggleSec('borne')} guide="bureau-reglages.rub-borne"
             >
               {/* Borne de pointage QR (lot 1) — seulement si l'entreprise l'a. */}
               {kioskEnabled && (
@@ -795,7 +797,7 @@ export default function CompanySettings({ open, onOpenChange, onSaved, onOpenTra
                     <p className="bt-set-substate">Prénom, chantier et horaires prévus — rien d&apos;autre.</p>
                   </div>
                   <div className="bt-set-rowbtns" style={{ marginTop: 8 }}>
-                    <button type="button" className={`bt-set-btn${colleagues ? ' ghost' : ''}`} disabled={colSaving} onClick={() => toggleColleagues(!colleagues)}>
+                    <button type="button" className={`bt-set-btn${colleagues ? ' ghost' : ''}`} disabled={colSaving} onClick={() => toggleColleagues(!colleagues)} data-guide="bureau-reglages.collegues">
                       {colSaving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                       {colleagues ? 'Désactiver' : 'Activer'}
                     </button>
@@ -809,7 +811,7 @@ export default function CompanySettings({ open, onOpenChange, onSaved, onOpenTra
               id={`${secId}-notif`} testId="set-sec-notif" title="Notifications & support"
               hint={`Relance des heures, alertes de budget, emails${supportEnabled ? ', support BEMEXO' : ''}`}
               icon={<Bell className="h-4 w-4" />}
-              open={secs.notif} onToggle={() => toggleSec('notif')}
+              open={secs.notif} onToggle={() => toggleSec('notif')} guide="bureau-reglages.rub-notif"
             >
               {/* Relance automatique : le salarié en retard est prévenu directement
                   (notification, ou email s'il n'a pas activé les notifications) —
@@ -863,7 +865,7 @@ export default function CompanySettings({ open, onOpenChange, onSaved, onOpenTra
                   <p className="bt-set-substate">Récap le lundi à 7 h, habilitations à 30 j et 7 j.</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <button type="button" className="bt-set-btn" onClick={sendDigestNow} disabled={digestBusy}>
+                  <button type="button" className="bt-set-btn" onClick={sendDigestNow} disabled={digestBusy} data-guide="bureau-reglages.recap">
                     {digestBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />} Envoyer le récap maintenant
                   </button>
                   <button type="button" className="bt-set-btn" onClick={checkCertsNow} disabled={certBusy}>
@@ -892,7 +894,7 @@ export default function CompanySettings({ open, onOpenChange, onSaved, onOpenTra
             {err && <div className="bt-set-err">{err}</div>}
             <div className="bt-set-foot">
               <p className="bt-set-note">Tous les champs sont facultatifs.</p>
-              <button type="button" className="bt-set-save" onClick={save} disabled={saving || uploading}>
+              <button type="button" className="bt-set-save" onClick={save} disabled={saving || uploading} data-guide="bureau-reglages.enregistrer">
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Enregistrer
               </button>
             </div>

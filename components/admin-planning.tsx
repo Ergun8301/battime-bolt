@@ -56,6 +56,9 @@ import { erasePlanning, isDisposableDraft, prepareMove, undoErase, undoMovePrep,
 import { fetchCompanyClosures, closedFor } from '@/lib/worker-closure';
 import CompanySettings from '@/components/company-settings';
 import AssistantPanel from '@/components/assistant-panel';
+import GuideTour, { type GuideStep } from '@/components/guide-tour';
+import { adminStepsFor, findAdminTour, type AdminScreen } from '@/supabase/functions/_shared/admin-tours';
+import { tourIdOf } from '@/supabase/functions/_shared/worker-tours';
 import PendingInvitations from '@/components/pending-invitations';
 import { attributeEntries, closeMonth as closeMonthWrite, logHoursReminder, sendHoursReminder, setUserRole, setWorksiteActive, updatePlanningSlot, updateWorksite } from '@/lib/admin-writes';
 import { addPlanningSlot, createWorksite, inviteWorker, setAbsence } from '@/lib/planning-writes';
@@ -325,7 +328,7 @@ function DraggableBubble({
   const drop = useDroppable({ id: `bub|${p.id}` });
   return (
     <div ref={drop.setNodeRef} className={sel ? selClass(sel) : drop.isOver ? 'bt-pl-bub-over' : ''}
-      data-sel={sel ? selAttr(sel) : undefined} data-pid={sel ? p.id : undefined} data-bub={p.id}>
+      data-sel={sel ? selAttr(sel) : undefined} data-pid={sel ? p.id : undefined} data-bub={p.id} data-guide="bureau-planning.bulle">
       <div
         ref={drag.setNodeRef}
         {...drag.attributes}
@@ -343,8 +346,10 @@ function DraggableBubble({
 
 // Lot 11 : « Horaire prévu : début – fin » — saisie simple (« 14h », « 14:30 » ou
 // liste au quart d'heure), plus de roulette. Préréglages en un toucher.
-function ScheduleRow({ start, end, onStart, onEnd, testId, onBadChange }: {
+function ScheduleRow({ start, end, onStart, onEnd, testId, onBadChange, guide }: {
   start: string; end: string; onStart: (v: string) => void; onEnd: (v: string) => void; testId: string;
+  /** Ancre du guide pas à pas (lot 7) : l'attribut data-guide de la ligne, rien d'autre. */
+  guide?: string;
   /** Une heure tapée mais illisible : l'enregistrement est bloqué (sinon l'ancienne heure partirait en silence). */
   onBadChange?: (bad: boolean) => void;
 }) {
@@ -356,7 +361,7 @@ function ScheduleRow({ start, end, onStart, onEnd, testId, onBadChange }: {
   useEffect(() => { onBadChange?.(bad); }, [bad]); // eslint-disable-line react-hooks/exhaustive-deps
   const err = bad ? `Heure non comprise. ${TIME_HINT}` : scheduleError(start, end);
   return (
-    <div className="space-y-1.5" data-testid={testId}>
+    <div className="space-y-1.5" data-testid={testId} data-guide={guide}>
       <div className="flex items-center gap-1.5">
         <Label>Horaire prévu</Label>
         <span className="text-xs text-muted-foreground">facultatif</span>
@@ -952,6 +957,8 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const [accountMenuOpen, setAccountMenuOpen] = useState(false); // menu compte (entreprise → Déconnexion)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false); // menu hamburger mobile (Sheet)
   const [assistantOpen, setAssistantOpen] = useState(false); // lot 6 : ✨ dans la barre / l'en-tête
+  const [tour, setTour] = useState<{ id: string; etapes: GuideStep[] } | null>(null); // lot 7 : « Me guider pas à pas »
+  const tourEnd = useRef(0); // quand le dernier guide s'est arrêté (le menu ☰ met un instant à se démonter)
   const [mobileChantiersOpen, setMobileChantiersOpen] = useState(false); // liste « Chantiers » mobile (équivalent du dropdown Clients desktop)
   const [importOpen, setImportOpen] = useState(false); // import CSV/Excel de clients/chantiers
   const [costOpen, setCostOpen] = useState(false); // rapport coût & heures par chantier
@@ -2934,6 +2941,58 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     );
   };
 
+  // Lot 7 (suite) : « Me guider pas à pas ». Le guide MONTRE, il ne FAIT jamais : un écran demandé par une
+  // étape est de la NAVIGATION seulement (menus, fenêtres de lecture), jamais un geste qui agit.
+  // Sous 1024 px (téléphone ET tablette) la mise en page est celle du menu ☰ (CSS : max-width 1023 px).
+  const narrow = () => window.matchMedia('(max-width: 1023px)').matches;
+  const tourStep = (s: GuideStep) => {
+    // Une étape sans écran ne ferme et n'ouvre RIEN : le patron vient peut-être d'ouvrir la fenêtre lui-même.
+    if (!s.ecran) return;
+    const small = narrow();
+    const want = (s.ecran === 'compte' && small ? 'menu' : s.ecran) as AdminScreen; // sous 1024 px, le « compte » est le menu ☰
+    const open: Partial<Record<AdminScreen, boolean>> = {
+      menu: mobileMenuOpen, compte: accountMenuOpen, salaries: salariesOpen, 'nouveau-salarie': workerOpen,
+      clients: small ? mobileChantiersOpen : chantierMenuOpen, 'nouveau-client': clientOpen, conges: leaveOpen, export: exportOpen,
+      couts: costOpen, reserves: reservesOpen, reglages: settingsOpen, versions: versionsOpen,
+    };
+    // On ferme la NAVIGATION sans saisie qui n'est pas l'écran demandé (même si lui est déjà ouvert : « Précédent » puis « Suivant »
+    // ne doit pas laisser « Salariés » par-dessus le formulaire). JAMAIS une fenêtre qui peut contenir une saisie non enregistrée
+    // (nouveau salarié, nouveau client, réglages, fiches, modification, ajout, absence, documents, attribution), ni l'écran demandé lui-même.
+    const navigation: Partial<Record<AdminScreen, () => void>> = {
+      menu: () => setMobileMenuOpen(false), compte: () => setAccountMenuOpen(false),
+      clients: () => { setChantierMenuOpen(false); setMobileChantiersOpen(false); },
+      salaries: () => setSalariesOpen(false), conges: () => setLeaveOpen(false), export: () => setExportOpen(false),
+      couts: () => setCostOpen(false), reserves: () => setReservesOpen(false), versions: () => setVersionsOpen(false),
+    };
+    for (const k of Object.keys(navigation) as AdminScreen[]) if (k !== want) navigation[k]!();
+    setStatusTarget(null);
+    setExportWorkerOpen(false); // « Un seul salarié ? » remplace l'export d'équipe : l'étape suivante doit le retrouver
+    if (open[want]) return; // le patron vient peut-être de l'ouvrir lui-même : on ne le lui rouvre pas
+    if (want === 'menu') setMobileMenuOpen(true);
+    else if (want === 'compte') setAccountMenuOpen(true);
+    else if (want === 'salaries') setSalariesOpen(true);
+    else if (want === 'nouveau-salarie') setWorkerOpen(true);
+    else if (want === 'clients') { if (small) setMobileChantiersOpen(true); else { setClientsQuery(''); setChantierMenuOpen(true); } }
+    else if (want === 'nouveau-client') setClientOpen(true);
+    else if (want === 'conges') setLeaveOpen(true);
+    else if (want === 'export') setExportOpen(true);
+    else if (want === 'couts') setCostOpen(true);
+    else if (want === 'reserves') setReservesOpen(true);
+    else if (want === 'reglages') setSettingsOpen(true);
+    else if (want === 'versions') { if (versionsOn) setVersionsOpen(true); }
+  };
+  const closeTour = () => { tourEnd.current = Date.now(); setTour(null); setMobileMenuOpen(false); setAccountMenuOpen(false); setChantierMenuOpen(false); };
+  // L'assistant s'ouvre : le guide s'arrête (les deux se gêneraient).
+  useEffect(() => { if (assistantOpen && tour) closeTour(); }, [assistantOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Les étapes sont écrites pour une mise en page (ordinateur OU petit écran, voir adminStepsFor) : si la fenêtre franchit
+  // 1024 px pendant un guide (tablette qu'on tourne, fenêtre redimensionnée), les étapes ne correspondraient plus à l'écran.
+  useEffect(() => {
+    if (!tour) return;
+    const mq = window.matchMedia('(max-width: 1023px)');
+    mq.addEventListener('change', closeTour);
+    return () => mq.removeEventListener('change', closeTour);
+  }, [tour]); // eslint-disable-line react-hooks/exhaustive-deps
+
   /** Lot 11 : les lignes « À relancer » (panneau du cockpit ET fenêtre mobile). */
   const renderRelanceRows = (onOpen: () => void) => (
     waitingByWorker.length === 0 ? (
@@ -2993,7 +3052,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
               « en cours depuis » restent, nourries par le seul vrai pointage.) */}
           <div className="bt-pl-stats">
             <div className="bt-pl-statwrap">
-              <button className={`bt-pl-stat${cockpitStats.waiting > 0 ? ' warn' : ''}`} aria-expanded={statPanel === 'waiting'} data-testid="stat-waiting"
+              <button className={`bt-pl-stat${cockpitStats.waiting > 0 ? ' warn' : ''}`} aria-expanded={statPanel === 'waiting'} data-testid="stat-waiting" data-guide="bureau-stat.relance"
                 title={cockpitStats.waiting === 0 ? `Tout est envoyé en ${monthLabel}` : `${cockpitStats.waiting} ${plural(cockpitStats.waiting, 'journée planifiée non envoyée', 'journées planifiées non envoyées')} en ${monthLabel} — cliquez pour savoir qui`}
                 onClick={() => setStatPanel((p) => (p === 'waiting' ? null : 'waiting'))}>
                 <span className="sd" style={{ background: cockpitStats.waiting > 0 ? '#E0A21C' : '#4a453d' }} /><span className="v">{fmtStat(cockpitStats.waiting)} j</span><span className="l">à relancer</span><span className="ch">▾</span>
@@ -3001,7 +3060,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
               {statPanel === 'waiting' && (
                 <div className="bt-pl-sp" data-testid="relance-panel">
                   <div className="bt-pl-sp-h">À relancer · {monthLabel} <span className="n">{cockpitStats.waiting} j</span></div>
-                  <div className="bt-pl-sp-list">{renderRelanceRows(() => setStatPanel(null))}</div>
+                  <div className="bt-pl-sp-list" data-guide="bureau-stat.liste">{renderRelanceRows(() => setStatPanel(null))}</div>
                   <div className="bt-pl-sp-foot">Journées planifiées sans heures envoyées (ce mois-ci et le mois dernier, sauf mois clôturé).</div>
                 </div>
               )}
@@ -3067,13 +3126,13 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
           </div>
           <div className="bt-pl-cockpit-right">
             {trial?.inTrial && !trial.expired && trial.daysLeft !== null && (
-              <div className="bt-pl-trial"><span className="d" /> Essai · <b>{trial.daysLeft} j</b> <button className="cta" onClick={onSubscribe}>S&apos;abonner</button></div>
+              <div className="bt-pl-trial"><span className="d" /> Essai · <b>{trial.daysLeft} j</b> <button className="cta" onClick={onSubscribe} data-guide="bureau-nav.abonner">S&apos;abonner</button></div>
             )}
             {trial?.inTrial && trial.expired && (
-              <div className="bt-pl-trial expired"><span className="d" /> Essai terminé <button className="cta" onClick={onSubscribe}>S&apos;abonner</button></div>
+              <div className="bt-pl-trial expired"><span className="d" /> Essai terminé <button className="cta" onClick={onSubscribe} data-guide="bureau-nav.abonner">S&apos;abonner</button></div>
             )}
           <div className="bt-pl-acctwrap">
-              <button className="bt-pl-acct" onClick={() => setAccountMenuOpen((o) => !o)} title="Compte entreprise">
+              <button className="bt-pl-acct" onClick={() => setAccountMenuOpen((o) => !o)} title="Compte entreprise" data-guide="bureau-nav.compte">
                 <span className="bt-pl-acct-av">
                   {companyLogo ? <img className="bt-pl-acct-av-img" src={companyLogo} alt="" /> : companyInitials}
                 </span>
@@ -3088,7 +3147,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                       <div className="bt-pl-acctmenu-co">{companyLabel}</div>
                       <div className="bt-pl-acctmenu-u">{user?.first_name} {user?.last_name}</div>
                     </div>
-                    <button className="bt-pl-acct-item" onClick={() => { setAccountMenuOpen(false); setSettingsOpen(true); }}>
+                    <button className="bt-pl-acct-item" onClick={() => { setAccountMenuOpen(false); setSettingsOpen(true); }} data-guide="bureau-nav.reglages">
                       <Settings className="h-4 w-4" /> Réglages de l&apos;entreprise
                     </button>
                     <button className="bt-pl-acct-item danger" onClick={() => { setAccountMenuOpen(false); signOut(); }}>
@@ -3143,16 +3202,16 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
           </span>
           <div className="bt-pl-ddwrap">
             <div className="bt-pl-seg">
-              <button className="bt-pl-segbtn" onClick={() => setSalariesOpen(true)}>
+              <button className="bt-pl-segbtn" onClick={() => setSalariesOpen(true)} data-guide="bureau-nav.salaries">
                 <Users className="h-3.5 w-3.5" /> Salariés
                 {pendingLeaves > 0 && <span className="bt-pl-badge" title={`${pendingLeaves} demande(s) de congé en attente`}>{pendingLeaves}</span>}
               </button>
               <span className="bt-pl-segdiv" aria-hidden="true" />
-              <button className="bt-pl-segbtn" onClick={() => { setChantierMenuOpen((o) => !o); setClientsQuery(''); }}><Building2 className="h-3.5 w-3.5" /> Clients</button>
+              <button className="bt-pl-segbtn" onClick={() => { setChantierMenuOpen((o) => !o); setClientsQuery(''); }} data-guide="bureau-nav.clients"><Building2 className="h-3.5 w-3.5" /> Clients</button>
               <span className="bt-pl-segdiv" aria-hidden="true" />
               {/* Lot 11 : cocher des interventions une par une (ou « Tout sélectionner »),
                   puis « Supprimer (N) » — « Annuler » remet tout. */}
-              <button className="bt-pl-segbtn" aria-pressed={selectMode} data-testid="bar-select"
+              <button className="bt-pl-segbtn" aria-pressed={selectMode} data-testid="bar-select" data-guide="bureau-nav.selection"
                 title={selectMode ? 'Terminer la sélection' : 'Cocher des interventions pour les supprimer'}
                 onClick={() => (selectMode ? exitSelect() : enterSelect())}>
                 <CheckSquare className="h-3.5 w-3.5" /> Sélectionner
@@ -3172,14 +3231,14 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                     ) : filteredClients.map((ws) => (
                       <div key={ws.id} className="bt-pl-clientrow">
                         <PaletteRow worksite={ws} color={colorForWorksite(ws.id).bar} />
-                        <button className="bt-pl-clientedit" title="Modifier la fiche" onClick={() => { setChantierMenuOpen(false); openClientFiche(ws); }}><Pencil className="h-3.5 w-3.5" /></button>
+                        <button className="bt-pl-clientedit" title="Modifier la fiche" onClick={() => { setChantierMenuOpen(false); openClientFiche(ws); }} data-guide="bureau-clients.crayon"><Pencil className="h-3.5 w-3.5" /></button>
                       </div>
                     ))}
                   </div>
-                  <button className="bt-pl-ddcreate" onClick={() => { setChantierMenuOpen(false); setClientOpen(true); }}>
+                  <button className="bt-pl-ddcreate" onClick={() => { setChantierMenuOpen(false); setClientOpen(true); }} data-guide="bureau-clients.nouveau">
                     <span className="bt-pl-ddcreate-ico">＋</span> Nouveau client
                   </button>
-                  <button className="bt-pl-ddcreate" onClick={() => { setChantierMenuOpen(false); setImportOpen(true); }}>
+                  <button className="bt-pl-ddcreate" onClick={() => { setChantierMenuOpen(false); setImportOpen(true); }} data-guide="bureau-clients.importer">
                     <span className="bt-pl-ddcreate-ico"><FileSpreadsheet className="h-3.5 w-3.5" /></span> Importer (CSV/Excel)
                   </button>
                 </div>
@@ -3187,7 +3246,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
             )}
           </div>
           </div>
-          <div className="bt-pl-datenav">
+          <div className="bt-pl-datenav" data-guide="bureau-semaine.nav">
             <button className="bt-pl-datearr" aria-label="Semaine précédente" onClick={() => changeWeek(subWeeks(currentWeekStart, 1))}>‹</button>
             <button
               className="bt-pl-datebox"
@@ -3203,21 +3262,21 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
           <div className="bt-pl-group">
           {/* Lot 6 : l'assistant est ICI, dans la barre — plus de bouton flottant sur le planning. */}
           {aiOn && user?.role === 'admin' && (
-            <button className="bt-pl-out bt-pl-ai" onClick={() => setAssistantOpen(true)} title="Assistant BEMEXO" aria-label="Assistant BEMEXO" data-testid="bar-assistant">
+            <button className="bt-pl-out bt-pl-ai" onClick={() => setAssistantOpen(true)} title="Assistant BEMEXO" aria-label="Assistant BEMEXO" data-testid="bar-assistant" data-guide="bureau-nav.assistant">
               <Sparkles className="h-4 w-4" />
             </button>
           )}
-          <button className="bt-pl-out" onClick={() => setReservesOpen(true)} title="Réserves de chantier à traiter">
+          <button className="bt-pl-out" onClick={() => setReservesOpen(true)} title="Réserves de chantier à traiter" data-guide="bureau-nav.reserves">
             <AlertTriangle className="h-4 w-4" /> Réserves
             {openReserves > 0 && <span className="bt-pl-outbadge">{openReserves}</span>}
           </button>
           {kioskOn && user?.company_id && (
-            <button className="bt-pl-out" onClick={() => setKioskOpen(true)} title="Tablette de pointage : code pour la relier, état" aria-label="Borne" data-testid="bar-kiosk">
+            <button className="bt-pl-out" onClick={() => setKioskOpen(true)} title="Tablette de pointage : code pour la relier, état" aria-label="Borne" data-testid="bar-kiosk" data-guide="bureau-nav.borne">
               <span aria-hidden="true">📟</span><span className="bt-pl-lbl-borne">Borne</span>
             </button>
           )}
           {/* « Coût chantiers » (« Coûts » sous 1280 px) : les heures par chantier y sont. */}
-          <button className="bt-pl-out" onClick={() => setCostOpen(true)} title="Heures et coût par chantier" data-testid="bar-cost"><TrendingUp className="h-4 w-4" /> <span className="bt-pl-lbl-long">Coût chantiers</span><span className="bt-pl-lbl-short">Coûts</span></button>
+          <button className="bt-pl-out" onClick={() => setCostOpen(true)} title="Heures et coût par chantier" data-testid="bar-cost" data-guide="bureau-nav.couts"><TrendingUp className="h-4 w-4" /> <span className="bt-pl-lbl-long">Coût chantiers</span><span className="bt-pl-lbl-short">Coûts</span></button>
           {/* Lot 3 : « Imprimer » — une icône seule ; le menu choisit la période (lot 3bis :
               semaine, jour ou mois, par défaut celle de l'écran), toute l'équipe ou un
               salarié, et la colonne signature. N'écrit rien. */}
@@ -3238,7 +3297,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
           {/* Lot 11 : « Exporter » ouvre directement l'export de l'équipe (un seul
               menu « Exporter ▾ » ensuite : PDF, Excel, CSV). Un seul salarié : lien
               discret dans la fenêtre. */}
-          <button className="bt-pl-fill" onClick={() => setExportOpen(true)} data-testid="bar-export"><Download className="h-4 w-4" /> Exporter</button>
+          <button className="bt-pl-fill" onClick={() => setExportOpen(true)} data-testid="bar-export" data-guide="bureau-nav.exporter"><Download className="h-4 w-4" /> Exporter</button>
           </div>
         </div>
 
@@ -3265,7 +3324,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                   {/* Lot 8 : « Versions » dans le coin de la semaine qu'il concerne — la barre du haut n'a plus
                       une once de place au pire cas (lot 3 : « une seule ligne » à 1280 px). */}
                   {versionsOn && user?.role === 'admin' && (
-                    <button type="button" className="bt-pl-corner-ver" onClick={() => setVersionsOpen(true)} title="Versions du planning de cette semaine" aria-label="Versions du planning de cette semaine" data-testid="corner-versions">
+                    <button type="button" className="bt-pl-corner-ver" onClick={() => setVersionsOpen(true)} title="Versions du planning de cette semaine" aria-label="Versions du planning de cette semaine" data-testid="corner-versions" data-guide="bureau-nav.versions">
                       <History className="h-3.5 w-3.5" />
                     </button>
                   )}
@@ -3305,7 +3364,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                               onClick={() => (selectMode
                                 ? toggleGroup(selectableIn((p) => p.user_id === worker.id))
                                 : setStatusTarget({ worker, fromStr: todayStr }))}
-                              className="bt-pl-namebtn"
+                              className="bt-pl-namebtn" data-guide="bureau-planning.nom"
                               title={selectMode ? 'Cocher toute sa semaine' : 'Cliquer pour le statut / la disponibilité'}
                             >
                               <span className="bt-pl-nametop">
@@ -3368,6 +3427,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                                 })() : (
                                   <div
                                     className="bt-pl-cellfill"
+                                    data-guide={chantiers.length === 0 && extra.length === 0 && !liveChip && !missionChips ? 'bureau-planning.case' : undefined}
                                     onClick={selectMode ? undefined : () => openAdd(worker.id, dateStr)}
                                     title={selectMode ? undefined : 'Cliquer pour ajouter une intervention'}
                                   >
@@ -3381,7 +3441,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                                           type="button"
                                           onClick={(e) => { e.stopPropagation(); if (selectMode) { toast('Heures ajoutées par le salarié — non supprimable'); return; } setExtraTarget({ userId: worker.id, dateStr, worksiteId: x.worksiteId, name: x.name, minutes: x.minutes }); }}
                                           title={selectMode ? 'Heures ajoutées par le salarié — non supprimable' : 'Ajouté par le salarié — cliquer pour les documents / attribuer un client'}
-                                          className="bt-pl-extra"
+                                          className="bt-pl-extra" data-guide={x.worksiteId ? undefined : 'bureau-planning.autre'}
                                         >
                                           <span className="bt-pl-bub-bar" style={{ background: x.pending ? '#8a8378' : '#B5472E' }} />
                                           <span className="bt-pl-extra-top">
@@ -3462,18 +3522,18 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                   <span className="bt-pl-m-co" title={companyLabel}>{companyLabel}</span>
                 </div>
                 {trial?.inTrial && !trial.expired && trial.daysLeft !== null && (
-                  <div className="bt-pl-trial"><span className="d" /> <b>{trial.daysLeft} j</b> <button className="cta" onClick={onSubscribe}>S&apos;abonner</button></div>
+                  <div className="bt-pl-trial"><span className="d" /> <b>{trial.daysLeft} j</b> <button className="cta" onClick={onSubscribe} data-guide="bureau-nav.abonner">S&apos;abonner</button></div>
                 )}
                 {trial?.inTrial && trial.expired && (
-                  <div className="bt-pl-trial expired"><span className="d" /> <button className="cta" onClick={onSubscribe}>S&apos;abonner</button></div>
+                  <div className="bt-pl-trial expired"><span className="d" /> <button className="cta" onClick={onSubscribe} data-guide="bureau-nav.abonner">S&apos;abonner</button></div>
                 )}
                 <div className="bt-pl-m-actions">
                   {aiOn && user?.role === 'admin' && (
-                    <button className="bt-pl-m-ibtn bt-pl-ai" aria-label="Assistant BEMEXO" title="Assistant BEMEXO" onClick={() => setAssistantOpen(true)} data-testid="m-assistant">
+                    <button className="bt-pl-m-ibtn bt-pl-ai" aria-label="Assistant BEMEXO" title="Assistant BEMEXO" onClick={() => setAssistantOpen(true)} data-testid="m-assistant" data-guide="bureau-nav.assistant">
                       <Sparkles className="h-4 w-4" />
                     </button>
                   )}
-                  <button className="bt-pl-m-ibtn" aria-label="Menu" title="Menu" onClick={() => setMobileMenuOpen(true)}>
+                  <button className="bt-pl-m-ibtn" aria-label="Menu" title="Menu" onClick={() => setMobileMenuOpen(true)} data-guide="bureau-nav.menu">
                     <Menu className="h-4 w-4" />
                   </button>
                 </div>
@@ -3481,7 +3541,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
               {/* Lot 11 : les deux indicateurs, compacts. « À relancer » ouvre la même
                   liste que sur ordinateur, avec « Relancer » sur chaque ligne. */}
               <div className="bt-pl-m-stats">
-                <button type="button" className={`bt-pl-m-stat${cockpitStats.waiting > 0 ? ' warn' : ''}`} data-testid="m-stat-waiting"
+                <button type="button" className={`bt-pl-m-stat${cockpitStats.waiting > 0 ? ' warn' : ''}`} data-testid="m-stat-waiting" data-guide="bureau-stat.relance"
                   title={cockpitStats.waiting === 0 ? `Tout est envoyé en ${monthLabel}` : `${cockpitStats.waiting} ${plural(cockpitStats.waiting, 'journée planifiée non envoyée', 'journées planifiées non envoyées')} en ${monthLabel}`}
                   onClick={() => setRelanceOpen(true)}>
                   <b><span className="dot" style={{ background: cockpitStats.waiting > 0 ? '#E0A21C' : '#4a453d' }} />{fmtStat(cockpitStats.waiting)} j</b><small>à relancer</small>
@@ -3497,7 +3557,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                 </div>
                 <div className="bt-pl-nav">
                   <button className="bt-pl-m-ibtn" aria-label="Semaine précédente" onClick={() => changeWeek(subWeeks(currentWeekStart, 1))}>‹</button>
-                  <button className="bt-pl-m-ibtn" aria-label="Semaine suivante" onClick={() => changeWeek(addWeeks(currentWeekStart, 1))}>›</button>
+                  <button className="bt-pl-m-ibtn" aria-label="Semaine suivante" onClick={() => changeWeek(addWeeks(currentWeekStart, 1))} data-guide="bureau-semaine.nav">›</button>
                   <button className="bt-pl-m-ibtn" aria-label="Déconnexion" title="Déconnexion" onClick={signOut}><LogOut className="h-4 w-4" /></button>
                 </div>
               </div>
@@ -3577,7 +3637,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                   <div key={worker.id} className={`bt-pl-m-card${liveHere ? ' bt-pl-cell-live' : ''}`} data-live={liveHere ? '1' : undefined}>
                     {/* Taper le salarié → présence / absence / fiche (même dialogue que le clic
                         sur le nom côté desktop : setStatusTarget). */}
-                    <button type="button" className="bt-pl-m-top"
+                    <button type="button" className="bt-pl-m-top" data-guide="bureau-planning.nom"
                       onClick={() => (selectMode
                         ? toggleGroup(selectableIn((p) => p.user_id === worker.id && p.work_date === dateStr))
                         : setStatusTarget({ worker, fromStr: dateStr }))}
@@ -3606,7 +3666,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                               const sel = selFor(p);
                               const act = () => (sel ? toggleOne(p, sel.lock) : openEdit(p));
                               return (
-                                <div key={p.id} className={`bt-pl-m-bubbtn${sel ? ` ${selClass(sel)}` : ''}`} role="button" tabIndex={0}
+                                <div key={p.id} className={`bt-pl-m-bubbtn${sel ? ` ${selClass(sel)}` : ''}`} role="button" tabIndex={0} data-guide="bureau-planning.bulle"
                                   data-sel={sel ? selAttr(sel) : undefined} data-pid={sel ? p.id : undefined}
                                   onClick={act} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); act(); } }}>
                                   <BubbleContent p={p} palette={paletteFor(p)} real={realForPlanning(p)} draft={draftForPlanning(p)} docCount={docsByWorksite.get(p.worksite_id || '') || 0} live={liveForBubble(p)} withdrawn={withdrawnIds.has(p.id)} />
@@ -3617,7 +3677,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                             {/* Taper une intervention ajoutée par le salarié → attribution / documents. */}
                             {extra.map((x, i) => {
                               const chip = (
-                                <button type="button" key={`mx${i}`} className="bt-pl-extra" onClick={() => (selectMode ? toast('Heures ajoutées par le salarié — non supprimable') : setExtraTarget({ userId: worker.id, dateStr, worksiteId: x.worksiteId, name: x.name, minutes: x.minutes }))}>
+                                <button type="button" key={`mx${i}`} className="bt-pl-extra" data-guide={x.worksiteId ? undefined : 'bureau-planning.autre'} onClick={() => (selectMode ? toast('Heures ajoutées par le salarié — non supprimable') : setExtraTarget({ userId: worker.id, dateStr, worksiteId: x.worksiteId, name: x.name, minutes: x.minutes }))}>
                                   <span className="bt-pl-bub-bar" style={{ background: x.pending ? '#8a8378' : '#B5472E' }} />
                                   <span className="bt-pl-extra-top"><span className="bt-pl-extra-name">{x.name}</span></span>
                                   <span className="bt-pl-extra-by" style={x.pending ? { color: '#6E6A63' } : undefined}><UserIcon className="h-2.5 w-2.5 shrink-0" /> {formatMinutes(x.minutes)} · {x.pending ? 'saisi, à envoyer' : 'ajouté par le salarié'}</span>
@@ -3633,7 +3693,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                         )}
                         {/* Ajouter un chantier à ce salarié pour ce jour (openAdd → même dialogue que
                             le glisser-déposer côté desktop, sans le drag). */}
-                        <button type="button" className="bt-pl-m-add" onClick={() => openAdd(worker.id, dateStr)}>
+                        <button type="button" className="bt-pl-m-add" onClick={() => openAdd(worker.id, dateStr)} data-guide="bureau-planning.ajouter">
                           <Plus className="h-3.5 w-3.5" /> Ajouter un chantier
                         </button>
                       </>
@@ -3687,13 +3747,13 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
             {selectMode && (
               <div className="bt-pl-selbar" role="toolbar" aria-label="Sélection" data-testid="sel-bar">
                 <span className="bt-pl-selbar-n" data-testid="sel-count">{n} sélectionnée{n > 1 ? 's' : ''}</span>
-                <button type="button" className="bt-pl-selbar-btn wk" data-testid="sel-all" onClick={() => toggleGroup(weekIds)}>
+                <button type="button" className="bt-pl-selbar-btn wk" data-testid="sel-all" data-guide="bureau-selection.tout" onClick={() => toggleGroup(weekIds)}>
                   {allOn(weekIds) ? 'Tout désélectionner' : 'Tout sélectionner'}
                 </button>
-                <button type="button" className="bt-pl-selbar-btn dy" data-testid="sel-all-day" onClick={() => toggleGroup(dayIds)}>
+                <button type="button" className="bt-pl-selbar-btn dy" data-testid="sel-all-day" data-guide="bureau-selection.tout" onClick={() => toggleGroup(dayIds)}>
                   {allOn(dayIds) ? 'Tout désélectionner' : 'Tout sélectionner'}
                 </button>
-                <button type="button" className="bt-pl-selbar-del" data-testid="sel-delete" disabled={n === 0 || eraseBusy} onClick={() => deleteSelected()}>
+                <button type="button" className="bt-pl-selbar-del" data-testid="sel-delete" data-guide="bureau-selection.supprimer" disabled={n === 0 || eraseBusy} onClick={() => deleteSelected()}>
                   {eraseBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />} Supprimer ({n})
                 </button>
                 <button type="button" className="bt-pl-selbar-btn bt-pl-selbar-ok" data-testid="sel-done" onClick={exitSelect}>Terminer</button>
@@ -3741,7 +3801,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       <Dialog open={relanceOpen} onOpenChange={setRelanceOpen}>
         <DialogContent className="bt-skin max-w-sm">
           <DialogHeader><DialogTitle>À relancer · {monthLabel}</DialogTitle></DialogHeader>
-          <div className="bt-pl-sp-list overflow-hidden rounded-lg border" data-testid="relance-list">{renderRelanceRows(() => setRelanceOpen(false))}</div>
+          <div className="bt-pl-sp-list overflow-hidden rounded-lg border" data-testid="relance-list" data-guide="bureau-stat.liste">{renderRelanceRows(() => setRelanceOpen(false))}</div>
           <p className="text-xs text-muted-foreground">Journées planifiées sans heures envoyées (ce mois-ci et le mois dernier, sauf mois clôturé).</p>
         </DialogContent>
       </Dialog>
@@ -3755,8 +3815,8 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
             </DialogTitle>
           </DialogHeader>
           {statusTarget && (
-            <div className="space-y-2 pt-1">
-              <Button variant="outline" className="w-full justify-start h-11 text-[15px]" onClick={() => { setPresentFrom(statusTarget.worker.id, statusTarget.fromStr); setStatusTarget(null); }}>
+            <div className="space-y-2 pt-1" data-guide="bureau-statut.absences">
+              <Button variant="outline" className="w-full justify-start h-11 text-[15px]" data-guide="bureau-statut.present" onClick={() => { setPresentFrom(statusTarget.worker.id, statusTarget.fromStr); setStatusTarget(null); }}>
                 <span className="h-3 w-3 rounded-full mr-3" style={{ background: '#1D9E75' }} /> Présent
               </Button>
               {ABSENCE_OPTIONS.map(opt => (
@@ -3765,7 +3825,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                 </Button>
               ))}
               <div className="border-t pt-2 mt-1">
-                <Button variant="ghost" className="w-full justify-start text-muted-foreground" onClick={() => { setFicheMode('hours'); setFicheWorker(statusTarget.worker); setStatusTarget(null); }}>
+                <Button variant="ghost" className="w-full justify-start text-muted-foreground" data-guide="bureau-statut.feuille" onClick={() => { setFicheMode('hours'); setFicheWorker(statusTarget.worker); setStatusTarget(null); }}>
                   <FileText className="h-4 w-4 mr-2" /> Feuille d'heures
                 </Button>
               </div>
@@ -3810,6 +3870,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         onOpenTrainings={trainingsOn && user?.company_id ? () => setTrainingsOpen(true) : undefined}
         onOpenTraces={tracesOn && user?.company_id ? () => setTracesOpen(true) : undefined}
         onOpenVersions={versionsOn && user?.role === 'admin' ? () => setVersionsOpen(true) : undefined}
+        holdFocus={() => !!tour || Date.now() - tourEnd.current < 800}
       />
 
       {/* Lot 3 : lecture seule ; `workers` (les vrais comptes), jamais la démo. */}
@@ -3847,13 +3908,13 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         <DialogContent className="bt-skin max-w-md max-h-[80vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Salariés</DialogTitle></DialogHeader>
           <div className="pt-1">
-            <Button size="sm" className="mb-2 w-full font-bold" onClick={() => { setSalariesOpen(false); setWorkerOpen(true); }}>
+            <Button size="sm" className="mb-2 w-full font-bold" data-guide="bureau-salaries.nouveau" onClick={() => { setSalariesOpen(false); setWorkerOpen(true); }}>
               <UserPlus className="h-4 w-4 mr-1.5" /> Nouveau salarié
             </Button>
-            <Button size="sm" variant="outline" className="mb-2 w-full font-bold" onClick={() => { setSalariesOpen(false); setImportWorkersOpen(true); }}>
+            <Button size="sm" variant="outline" className="mb-2 w-full font-bold" data-guide="bureau-salaries.importer" onClick={() => { setSalariesOpen(false); setImportWorkersOpen(true); }}>
               <FileSpreadsheet className="h-4 w-4 mr-1.5" /> Importer (CSV/Excel)
             </Button>
-            <Button size="sm" variant="outline" className="mb-2 w-full font-bold" onClick={() => { setSalariesOpen(false); setLeaveOpen(true); }}>
+            <Button size="sm" variant="outline" className="mb-2 w-full font-bold" data-guide="bureau-salaries.conges" onClick={() => { setSalariesOpen(false); setLeaveOpen(true); }}>
               <Palmtree className="h-4 w-4 mr-1.5" /> Demandes de congé
               {pendingLeaves > 0 && <span className="bt-pl-badge ml-1.5">{pendingLeaves}</span>}
             </Button>
@@ -3901,7 +3962,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
             </div>
 
             <Input placeholder="Rechercher un salarié…" value={salariesQuery} onChange={(e) => setSalariesQuery(e.target.value)} className="mb-2" />
-            <div className="space-y-1">
+            <div className="space-y-1" data-guide="bureau-salaries.liste">
               {workers.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-6 text-center">Aucun salarié pour le moment — cliquez sur « Nouveau salarié » ci-dessus pour envoyer la première invitation.</p>
               ) : filteredWorkers.length === 0 ? (
@@ -3912,7 +3973,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                   const closedUntil = workerClosures.get(w.id);
                   return (
                     <div key={w.id} className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
-                      <button className="flex min-w-0 flex-1 items-center gap-1.5 text-left" onClick={() => { setSalariesOpen(false); setFicheMode('manage'); setFicheWorker(w); }}>
+                      <button className="flex min-w-0 flex-1 items-center gap-1.5 text-left" data-guide="bureau-salaries.nom" onClick={() => { setSalariesOpen(false); setFicheMode('manage'); setFicheWorker(w); }}>
                         <span className="font-medium truncate">{w.first_name} {w.last_name}</span>
                         {w.role === 'lead' && <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold" style={{ background: '#F1E8D6', color: '#6b5a2e' }}>CHEF</span>}
                         {/* Lot 11 : « Clôturer jusqu'au… » — on voit d'un coup d'œil qui est parti. */}
@@ -3968,7 +4029,16 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
           onOpenChange={setAssistantOpen}
           launcher={false}
           onNavigate={(action) => {
-            if (action === 'couts') setCostOpen(true);
+            // Lot 7 : « Me guider pas à pas » — l'assistant se replie, le guide entoure le vrai bouton.
+            // Fiche inconnue (y compris « guide: » seul) : rien.
+            if (tourIdOf(action) !== null) {
+              const t = findAdminTour(tourIdOf(action)!);
+              if (!t) return;
+              setAssistantOpen(false);
+              if (t.ordi && narrow()) { toast.info('Ce guide se fait sur ordinateur : le glisser-déposer n’existe pas sur téléphone ni sur tablette.'); return; }
+              setTour({ id: t.id, etapes: adminStepsFor(t, narrow()) });
+            }
+            else if (action === 'couts') setCostOpen(true);
             else if (action === 'conges') setLeaveOpen(true);
             else if (action === 'salaries') setSalariesOpen(true);
             else if (action === 'nouveau_salarie') setWorkerOpen(true);
@@ -4002,6 +4072,17 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
               }}
             />
           )}
+        />
+      )}
+
+      {/* Lot 7 : le guide pas à pas (hors du bloc de l'assistant : il vit tout seul une fois lancé). */}
+      {tour && (
+        <GuideTour
+          key={tour.id}
+          steps={tour.etapes}
+          onStepEnter={tourStep}
+          onClose={closeTour}
+          returnFocus={() => document.querySelector<HTMLElement>('[data-guide="bureau-nav.assistant"]')}
         />
       )}
 
@@ -4051,10 +4132,10 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         <DialogContent className="bt-skin max-w-md max-h-[80vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Chantiers</DialogTitle></DialogHeader>
           <div className="pt-1">
-            <Button size="sm" className="mb-2 w-full font-bold" onClick={() => { setMobileChantiersOpen(false); setClientOpen(true); }}>
+            <Button size="sm" className="mb-2 w-full font-bold" data-guide="bureau-clients.nouveau" onClick={() => { setMobileChantiersOpen(false); setClientOpen(true); }}>
               <Building2 className="h-4 w-4 mr-1.5" /> Nouveau client
             </Button>
-            <Button size="sm" variant="outline" className="mb-2 w-full font-bold" onClick={() => { setMobileChantiersOpen(false); setImportOpen(true); }}>
+            <Button size="sm" variant="outline" className="mb-2 w-full font-bold" data-guide="bureau-clients.importer" onClick={() => { setMobileChantiersOpen(false); setImportOpen(true); }}>
               <FileSpreadsheet className="h-4 w-4 mr-1.5" /> Importer (CSV/Excel)
             </Button>
             <Input placeholder="Rechercher un client…" value={clientsQuery} onChange={(e) => setClientsQuery(e.target.value)} className="mb-2" />
@@ -4069,7 +4150,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                   return (
                     <button
                       key={ws.id}
-                      className="flex w-full items-center gap-2 rounded-md border px-3 py-2 text-sm text-left"
+                      className="flex w-full items-center gap-2 rounded-md border px-3 py-2 text-sm text-left" data-guide="bureau-clients.crayon"
                       onClick={() => { setMobileChantiersOpen(false); openClientFiche(ws); }}
                     >
                       <span className="min-w-0 flex-1">
@@ -4122,7 +4203,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                 onClick={() => { const ws = worksites.find((w) => w.id === extraTarget.worksiteId); if (ws) { setDocsWorksite({ ws, day: extraTarget.dateStr }); setExtraTarget(null); } }}>
                 <FileText className="h-4 w-4 mr-2" /> Documents du chantier
               </Button>
-              <Button variant="outline" className="w-full justify-start"
+              <Button variant="outline" className="w-full justify-start" data-guide="bureau-planning.attribuer"
                 onClick={() => { setAttributeTarget({ userId: extraTarget.userId, dateStr: extraTarget.dateStr, worksiteId: extraTarget.worksiteId, label: extraTarget.name }); setExtraTarget(null); }}>
                 <Building2 className="h-4 w-4 mr-2" /> Attribuer / changer le client
               </Button>
@@ -4155,14 +4236,14 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
               ? <p className="text-center text-sm font-medium capitalize">{format(exportRange.from, 'd MMM', { locale: fr })} → {format(exportRange.to, 'd MMM yyyy', { locale: fr })}</p>
               : <p className="text-center text-sm text-muted-foreground">Choisissez une période.</p>}
             <div className="flex">
-              <ExportMenu onPick={(k) => runExport(k)} disabled={exporting || !exportRange} busy={exporting} align="start" testId="team-export-menu" />
+              <ExportMenu onPick={(k) => runExport(k)} disabled={exporting || !exportRange} busy={exporting} align="start" testId="team-export-menu" guide="bureau-export.menu" />
             </div>
             <Button
               variant="outline"
               className="w-full min-w-0 justify-start"
               onClick={() => runExport('comptable')}
               disabled={exporting || !exportRange || !accountantEmail}
-              data-testid="send-accountant"
+              data-testid="send-accountant" data-guide="bureau-export.comptable"
               title={accountantEmail
                 ? `Envoyer le tableur à ${accountantEmail}`
                 : "Enregistrez l'adresse de votre comptable dans les réglages"}
@@ -4180,7 +4261,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
 
             {/* Clôture du mois — après l'export, on ferme. Un salarié ne peut
                 alors plus rien écrire sur ce mois ; le bureau, si. */}
-            <div className="border-t pt-3 space-y-2">
+            <div className="border-t pt-3 space-y-2" data-guide="bureau-export.mois">
               <p className="text-sm font-semibold">Clôture du mois</p>
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <span>Les salariés ne pourront plus rien y changer.</span>
@@ -4205,7 +4286,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
               })}
             </div>
             <div className="text-center">
-              <button type="button" className="text-xs font-semibold text-muted-foreground underline hover:text-foreground" data-testid="export-one-worker"
+              <button type="button" className="text-xs font-semibold text-muted-foreground underline hover:text-foreground" data-testid="export-one-worker" data-guide="bureau-export.un-salarie"
                 onClick={() => { setExportOpen(false); setExportWorkerOpen(true); }}>
                 Un seul salarié ?
               </button>
@@ -4312,7 +4393,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
               <Label>Note pour le poseur (optionnel)</Label>
               <Textarea value={addNote} onChange={(e) => setAddNote(e.target.value)} rows={2} placeholder="Ex : code portail 1234…" />
             </div>
-            <Button type="submit" className="w-full" disabled={addSaving}>
+            <Button type="submit" className="w-full" disabled={addSaving} data-guide="bureau-planning.ajouter-valider">
               {addSaving && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Ajouter au planning
             </Button>
           </form>
@@ -4354,7 +4435,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                 <Button variant="outline" className="flex-1" onClick={() => { setStatusTarget({ worker: pendingAbsence.worker, fromStr: pendingAbsence.fromStr }); setPendingAbsence(null); }}>
                   <ChevronLeft className="h-4 w-4 mr-1" /> Retour
                 </Button>
-                <Button className="flex-1" onClick={confirmAbsence} disabled={absSaving || !absRange?.from}>
+                <Button className="flex-1" onClick={confirmAbsence} disabled={absSaving || !absRange?.from} data-guide="bureau-absence.enregistrer">
                   {absSaving && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer
                 </Button>
               </div>
@@ -4386,7 +4467,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                     <Button variant="outline" size="sm" className="justify-start h-8" onClick={() => openClientFiche(editing.worksite)}>
                       <Pencil className="h-3.5 w-3.5 mr-1.5" /> Fiche
                     </Button>
-                    <Button variant="outline" size="sm" className="justify-start h-8" onClick={() => { if (editing.worksite) setDocsWorksite({ ws: editing.worksite, day: editing.work_date }); }}>
+                    <Button variant="outline" size="sm" className="justify-start h-8" data-guide="bureau-edit.documents" onClick={() => { if (editing.worksite) setDocsWorksite({ ws: editing.worksite, day: editing.work_date }); }}>
                       <FileText className="h-3.5 w-3.5 mr-1.5" /> Documents
                     </Button>
                   </div>
@@ -4394,7 +4475,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
               </div>
 
               {/* Lot 11 : « Horaire prévu : début – fin » (facultatifs), plus de roulette. */}
-              <ScheduleRow start={editStart} end={editEnd} onStart={setEditStart} onEnd={setEditEnd} testId="edit-time" onBadChange={setEditTimeBad} />
+              <ScheduleRow start={editStart} end={editEnd} onStart={setEditStart} onEnd={setEditEnd} testId="edit-time" onBadChange={setEditTimeBad} guide="bureau-edit.horaire" />
 
               {/* Note for the poseur */}
               <div className="space-y-1.5">
@@ -4441,10 +4522,10 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
               </div>
 
               <div className="flex gap-2">
-                <Button className="flex-1" onClick={saveAffectation} disabled={savingEdit}>
+                <Button className="flex-1" onClick={saveAffectation} disabled={savingEdit} data-guide="bureau-edit.enregistrer">
                   {savingEdit && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer
                 </Button>
-                <Button variant="outline" className="text-destructive" onClick={() => deleteAffectation()} disabled={deletingEdit} data-testid="edit-delete">
+                <Button variant="outline" className="text-destructive" onClick={() => deleteAffectation()} disabled={deletingEdit} data-testid="edit-delete" data-guide="bureau-edit.supprimer">
                   {deletingEdit ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Trash2 className="h-4 w-4 mr-2" />} Supprimer
                 </Button>
               </div>
@@ -4477,7 +4558,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                   explicite : comparer un budget total aux seules heures ne
                   déclencherait jamais d'alerte. Heures mises en avant car
                   toujours exploitables, même sans taux horaire renseigné. */}
-              <div className="rounded-md border bg-muted/30 p-2 space-y-2">
+              <div className="rounded-md border bg-muted/30 p-2 space-y-2" data-guide="bureau-clients.budget">
                 <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                   <span>Budget main-d&apos;œuvre — <span className="italic">facultatif</span> · alerte à 70 %, 80 % et 100 %</span>
                   <InfoTip text="Hors matériaux et sous-traitance. Le montant en € n'est juste que si tous les salariés ont un taux horaire — sinon, utilisez les heures." />
@@ -4495,16 +4576,16 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
               </div>
 
               <div className="flex flex-wrap gap-2 pt-1">
-                <Button onClick={saveClientFiche} disabled={savingWs}>
+                <Button onClick={saveClientFiche} disabled={savingWs} data-guide="bureau-clients.enregistrer">
                   {savingWs && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer
                 </Button>
                 <Button variant="outline" onClick={() => setDocsWorksite({ ws: clientFiche, day: null })}>
                   <FileText className="h-4 w-4 mr-1" /> Documents
                 </Button>
-                <Button variant="outline" onClick={archiveClientFiche} disabled={wsBusy}>
+                <Button variant="outline" onClick={archiveClientFiche} disabled={wsBusy} data-guide="bureau-clients.archiver">
                   <Archive className="h-4 w-4 mr-1" /> Archiver
                 </Button>
-                <Button variant="ghost" className="text-destructive" onClick={deleteClientFiche} disabled={wsBusy} title="Supprimer (seulement si aucune donnée rattachée)">
+                <Button variant="ghost" className="text-destructive" onClick={deleteClientFiche} disabled={wsBusy} data-guide="bureau-clients.supprimer" title="Supprimer (seulement si aucune donnée rattachée)">
                   <Trash2 className="h-4 w-4 mr-1" /> Supprimer
                 </Button>
               </div>
@@ -4541,7 +4622,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
               <div className="space-y-2"><Label>Adresse</Label><Input value={cAddress} onChange={(e) => setCAddress(e.target.value)} disabled={cSaving} /></div>
             </div>
             <div className="space-y-2"><Label>Description</Label><Textarea value={cDesc} onChange={(e) => setCDesc(e.target.value)} rows={2} disabled={cSaving} /></div>
-            <Button type="submit" className="w-full" disabled={cSaving}>
+            <Button type="submit" className="w-full" disabled={cSaving} data-guide="bureau-clients.creer">
               {cSaving && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Créer le client
             </Button>
           </form>
@@ -4559,7 +4640,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
             </div>
             <div className="space-y-2"><Label>Email *</Label><Input type="email" value={wEmail} onChange={(e) => setWEmail(e.target.value)} required disabled={wSaving} /></div>
             <div className="space-y-2"><Label>Téléphone</Label><Input type="tel" value={wPhone} onChange={(e) => setWPhone(e.target.value)} disabled={wSaving} /></div>
-            <Button type="submit" className="w-full font-bold" disabled={wSaving}>
+            <Button type="submit" className="w-full font-bold" disabled={wSaving} data-guide="bureau-salaries.envoyer">
               {wSaving && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Envoyer l'invitation
             </Button>
           </form>

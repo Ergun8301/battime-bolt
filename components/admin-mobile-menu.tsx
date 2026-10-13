@@ -71,6 +71,8 @@ interface AdminMobileMenuProps {
   onOpenTraces?: () => void;
   /** Lot 8 : versions du planning de la semaine affichée (bureau, migration passée). */
   onOpenVersions?: () => void;
+  /** Lot 7 : vrai pendant un guide pas à pas (et un instant après) — la fermeture du menu ne rend pas le focus au bouton, il quitterait la carte du guide. */
+  holdFocus?: () => boolean;
   onSignOut: () => void;
 }
 
@@ -80,13 +82,13 @@ export default function AdminMobileMenu({
   onOpenSalaries, onOpenChantiers, onOpenCost, onOpenStats, onOpenLeaves, pendingLeaves = 0,
   onOpenReserves, openReserves = 0, onOpenKiosk,
   onOpenExportTeam, onOpenSelect, onOpenSettings, onSignOut,
-  onOpenTrainings, onOpenTraces, onOpenVersions,
+  onOpenTrainings, onOpenTraces, onOpenVersions, holdFocus,
 }: AdminMobileMenuProps) {
   const go = (fn: () => void) => { onOpenChange(false); fn(); };
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="bt-skin bt-mm-sheet">
+      <SheetContent side="right" className="bt-skin bt-mm-sheet" onCloseAutoFocus={(e) => { if (holdFocus?.()) e.preventDefault(); }}>
         <style dangerouslySetInnerHTML={MM_CSS_HTML} />
         <SheetHeader className="sr-only"><SheetTitle>Menu</SheetTitle></SheetHeader>
 
@@ -115,12 +117,12 @@ export default function AdminMobileMenu({
         <nav className="bt-mm-body">
           <div className="bt-mm-kicker">Gestion</div>
 
-          <button className="bt-mm-item" onClick={() => go(onOpenSalaries)}>
+          <button className="bt-mm-item" onClick={() => go(onOpenSalaries)} data-guide="bureau-nav.salaries">
             <span className="bt-mm-icon"><Users className="h-4 w-4" /></span>
             <span className="bt-mm-label">Salariés</span>
           </button>
 
-          <button className="bt-mm-item" onClick={() => go(onOpenChantiers)}>
+          <button className="bt-mm-item" onClick={() => go(onOpenChantiers)} data-guide="bureau-nav.clients">
             <span className="bt-mm-icon"><Building2 className="h-4 w-4" /></span>
             <span className="bt-mm-label">Chantiers</span>
           </button>
@@ -138,20 +140,20 @@ export default function AdminMobileMenu({
             </button>
           )}
 
-          <button className="bt-mm-item" onClick={() => go(onOpenReserves)}>
+          <button className="bt-mm-item" onClick={() => go(onOpenReserves)} data-guide="bureau-nav.reserves">
             <span className="bt-mm-icon"><AlertTriangle className="h-4 w-4" /></span>
             <span className="bt-mm-label">Réserves de chantier</span>
             {openReserves > 0 && <span className="bt-mm-badge">{openReserves}</span>}
           </button>
 
           {onOpenKiosk && (
-            <button className="bt-mm-item" onClick={() => go(onOpenKiosk)} data-testid="mm-kiosk">
+            <button className="bt-mm-item" onClick={() => go(onOpenKiosk)} data-testid="mm-kiosk" data-guide="bureau-nav.borne">
               <span className="bt-mm-icon" aria-hidden>📟</span>
               <span className="bt-mm-label">Borne</span>
             </button>
           )}
 
-          <button className="bt-mm-item" onClick={() => go(onOpenCost)}>
+          <button className="bt-mm-item" onClick={() => go(onOpenCost)} data-guide="bureau-nav.couts">
             <span className="bt-mm-icon"><TrendingUp className="h-4 w-4" /></span>
             <span className="bt-mm-label">Coût chantiers</span>
           </button>
@@ -163,25 +165,25 @@ export default function AdminMobileMenu({
             </button>
           )}
 
-          <button className="bt-mm-item" onClick={() => go(onOpenExportTeam)} data-testid="mm-export">
+          <button className="bt-mm-item" onClick={() => go(onOpenExportTeam)} data-testid="mm-export" data-guide="bureau-nav.exporter">
             <span className="bt-mm-icon"><Download className="h-4 w-4" /></span>
             <span className="bt-mm-label">Exporter</span>
           </button>
 
           {onOpenSelect && (
-            <button className="bt-mm-item" onClick={() => go(onOpenSelect)} data-testid="mm-select">
+            <button className="bt-mm-item" onClick={() => go(onOpenSelect)} data-testid="mm-select" data-guide="bureau-nav.selection">
               <span className="bt-mm-icon"><CheckSquare className="h-4 w-4" /></span>
               <span className="bt-mm-label">Sélectionner des interventions</span>
             </button>
           )}
 
-          <button className="bt-mm-item" onClick={() => go(onOpenSettings)}>
+          <button className="bt-mm-item" onClick={() => go(onOpenSettings)} data-guide="bureau-nav.reglages">
             <span className="bt-mm-icon"><Settings className="h-4 w-4" /></span>
             <span className="bt-mm-label">Réglages de l&apos;entreprise</span>
           </button>
 
           {onOpenVersions && (
-            <button className="bt-mm-item" onClick={() => go(onOpenVersions)} data-testid="mm-versions">
+            <button className="bt-mm-item" onClick={() => go(onOpenVersions)} data-testid="mm-versions" data-guide="bureau-nav.versions">
               <span className="bt-mm-icon"><History className="h-4 w-4" /></span>
               <span className="bt-mm-label">Versions du planning (semaine affichée)</span>
             </button>

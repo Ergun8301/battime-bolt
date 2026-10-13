@@ -7,10 +7,18 @@
 // Une ligne discrète « IA : formule essai / payant » n'apparaît qu'aux étapes
 // « ready » et « inside », donc seulement après les trois vérifications (compte
 // support, double vérification). Aucun patron ni salarié n'y arrive.
+//
+// Le bouton « Me guider pas à pas » (lot 7) montre sans rien faire : la fiche est dans
+// admin-tours.ts (supportStepsFor), les boutons entourés portent un attribut data-guide.
+// Le guide n'appelle jamais onLogin, onVerify, onEnter ni onExit : « Entrer » et « Quitter »
+// s'écrivent dans le journal du client, c'est au support de les toucher lui-même.
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Loader2, LifeBuoy, ShieldCheck, LogIn, ArrowRight, KeyRound, Eye, EyeOff } from 'lucide-react';
+import GuideTour, { type GuideStep } from '@/components/guide-tour';
 import type { SupportCompany } from '@/lib/support';
+import { supportStepsFor } from '@/supabase/functions/_shared/admin-tours';
+import { TOUR_LABEL } from '@/supabase/functions/_shared/worker-tours';
 
 export type ConsoleStep =
   | { kind: 'loading' }
@@ -25,9 +33,11 @@ export type ConsoleStep =
 const CSS = `
 .sc{min-height:100vh;background:#F4F1EA;display:flex;justify-content:center;padding:32px 16px;font-family:inherit}
 .sc-card{width:100%;max-width:460px;background:#fff;border:1px solid rgba(21,18,15,.1);border-radius:18px;padding:22px;box-shadow:0 10px 30px rgba(21,18,15,.06);align-self:flex-start}
-.sc-head{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.sc-head{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin-bottom:14px}
+.sc-guide{margin-left:auto;display:inline-flex;align-items:center;min-height:44px;padding:0 12px;white-space:nowrap;border:1.5px solid rgba(21,18,15,.2);border-radius:11px;background:#fff;color:#15120F;font:inherit;font-size:13px;font-weight:800;cursor:pointer}
+@media (max-width:480px){.sc-guide{margin-left:0;width:100%;justify-content:center}}
 .sc-ico{width:34px;height:34px;border-radius:10px;background:#15120F;color:#FFC21A;display:flex;align-items:center;justify-content:center}
-.sc h1{font-size:18px;font-weight:900;margin:0;color:#15120F}
+.sc h1{font-size:18px;font-weight:900;margin:0;color:#15120F;white-space:nowrap}
 .sc h2{font-size:15px;font-weight:900;margin:0 0 6px;color:#15120F}
 .sc p{font-size:13.5px;color:#56514a;line-height:1.5;margin:0 0 12px}
 .sc-steps{display:flex;gap:6px;margin:0 0 16px}
@@ -61,10 +71,10 @@ function CodeForm({ onVerify }: { onVerify: (code: string) => Promise<void> }) {
   return (
     <form className="sc-code" onSubmit={async (e) => { e.preventDefault(); setBusy(true); await onVerify(code); setBusy(false); setCode(''); }}>
       <input
-        inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="••••••" value={code}
+        data-guide="support-console.code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="••••••" value={code}
         onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} aria-label="Code à 6 chiffres" autoFocus
       />
-      <button type="submit" className="sc-btn" disabled={code.length !== 6 || busy}>
+      <button type="submit" className="sc-btn" disabled={code.length !== 6 || busy} data-guide="support-console.valider">
         {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />} Valider
       </button>
     </form>
@@ -89,6 +99,13 @@ interface Props {
 
 export default function SupportConsoleView({ step, companies, error, ia, onLogin, onVerify, onEnter, onBack, onExit }: Props) {
   const [showSecret, setShowSecret] = useState(false);
+  // Le guide ne vit que pour l'état où il a été lancé : un changement d'état (code validé, « Quitter »…) le ferme.
+  // La largeur n'est lue QUE au clic (la page est exportée en statique : rien de `window` au rendu), et les étapes
+  // sont rangées dans l'état : <GuideTour> repart de zéro si ses étapes sont de nouveaux objets à chaque rendu.
+  const [tour, setTour] = useState<{ kind: ConsoleStep['kind']; steps: GuideStep[] } | null>(null);
+  const guideBtn = useRef<HTMLButtonElement>(null);
+  useEffect(() => { setTour(null); }, [step.kind]);
+  const openTour = () => setTour({ kind: step.kind, steps: supportStepsFor(step.kind, window.matchMedia('(max-width: 1023px)').matches) });
   const level = step.kind === 'enroll' || step.kind === 'challenge' ? 2 : step.kind === 'ready' || step.kind === 'inside' ? 3 : 1;
   return (
     <main className="sc" data-testid="support-console">
@@ -97,6 +114,9 @@ export default function SupportConsoleView({ step, companies, error, ia, onLogin
         <div className="sc-head">
           <span className="sc-ico"><LifeBuoy className="h-4 w-4" /></span>
           <h1>Support BEMEXO</h1>
+          {supportStepsFor(step.kind, false).length > 0 && (
+            <button type="button" className="sc-guide" ref={guideBtn} onClick={openTour} data-testid="support-guide-open">{TOUR_LABEL}</button>
+          )}
         </div>
         <div className="sc-steps" aria-hidden><span className="on" /><span className={level >= 2 ? 'on' : ''} /><span className={level >= 3 ? 'on' : ''} /></div>
 
@@ -105,7 +125,7 @@ export default function SupportConsoleView({ step, companies, error, ia, onLogin
         {step.kind === 'signed-out' && (<>
           <h2>1. Connexion</h2>
           <p>Connectez-vous avec le <strong>compte support</strong>, puis revenez sur cette page.</p>
-          <button type="button" className="sc-btn" onClick={onLogin}><LogIn className="h-4 w-4" /> Se connecter</button>
+          <button type="button" className="sc-btn" onClick={onLogin} data-guide="support-console.connexion"><LogIn className="h-4 w-4" /> Se connecter</button>
         </>)}
 
         {step.kind === 'not-staff' && (<>
@@ -117,7 +137,7 @@ export default function SupportConsoleView({ step, companies, error, ia, onLogin
           <h2>2. Activer la double vérification</h2>
           <p>Scannez ce QR code avec une application d’authentification (Google Authenticator, Microsoft Authenticator, 1Password…), puis tapez le code à 6 chiffres qu’elle affiche.</p>
           {/* eslint-disable-next-line @next/next/no-img-element -- QR en data: URL, rien à optimiser */}
-          <div className="sc-qr"><img src={qrSrc(step.qr)} alt="QR code de double vérification" /></div>
+          <div className="sc-qr" data-guide="support-console.qr"><img src={qrSrc(step.qr)} alt="QR code de double vérification" /></div>
           <div className="sc-secret">
             <KeyRound className="h-4 w-4" style={{ flex: 'none' }} />
             <span style={{ flex: 1 }}>{showSecret ? step.secret : 'Clé manuelle masquée'}</span>
@@ -136,8 +156,8 @@ export default function SupportConsoleView({ step, companies, error, ia, onLogin
 
         {step.kind === 'ready' && (<>
           <h2>3. Entreprises qui vous ont autorisé</h2>
-          {companies.length === 0 ? <p>Aucune pour l’instant. Le patron doit cliquer « Autoriser le support BEMEXO » dans ses Réglages.</p> : (
-            <div className="sc-list">
+          {companies.length === 0 ? <p data-guide="support-console.entreprises">Aucune pour l’instant. Le patron doit cliquer « Autoriser le support BEMEXO » dans ses Réglages.</p> : (
+            <div className="sc-list" data-guide="support-console.entreprises">
               {companies.map((c) => (
                 <div className="sc-co" key={c.company_id}>
                   <div><b>{c.name}</b><small>Autorisé jusqu’au {until(c.expires_at)}</small></div>
@@ -152,7 +172,7 @@ export default function SupportConsoleView({ step, companies, error, ia, onLogin
           <h2>Vous êtes dans « {step.name} »</h2>
           <div className="flex flex-wrap gap-2">
             <button type="button" className="sc-btn" onClick={onBack}>Revenir à son espace <ArrowRight className="h-4 w-4" /></button>
-            <button type="button" className="sc-btn ghost" onClick={() => onExit(step.companyId)}>Quitter</button>
+            <button type="button" className="sc-btn ghost" onClick={() => onExit(step.companyId)} data-guide="support-console.quitter">Quitter</button>
           </div>
         </>)}
 
@@ -162,6 +182,7 @@ export default function SupportConsoleView({ step, companies, error, ia, onLogin
           <p className="sc-ia" data-testid="support-ia">{iaLabel(ia)}</p>
         )}
       </div>
+      {tour && tour.kind === step.kind && <GuideTour key={step.kind} steps={tour.steps} onClose={() => setTour(null)} returnFocus={() => guideBtn.current} />}
     </main>
   );
 }
