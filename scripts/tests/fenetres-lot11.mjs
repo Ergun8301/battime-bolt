@@ -178,7 +178,7 @@ const setup = async (ctx, uid, email, getD) => {
     if (url.pathname.startsWith('/rest/v1/rpc/')) return r.fulfill({ json: [] });
     const t = url.pathname.replace('/rest/v1/', '');
     if (m !== 'GET' && m !== 'HEAD') { writes.push(`${m} ${t}`); return r.fulfill({ status: 201, json: {} }); }
-    // offset / limit respectés : une lecture paginée (fetchAllPaged) s'arrête sur une page vide.
+    // offset / limit respectés : une lecture paginée (fetchAllPaged) s'arrête sur une page plus courte que la taille demandée.
     const all = filterRows(getD()[t] || [], url.searchParams);
     const off = Number(url.searchParams.get('offset') || 0); const lim = url.searchParams.has('limit') ? Number(url.searchParams.get('limit')) : Infinity;
     const rows = all.slice(off, off + lim);

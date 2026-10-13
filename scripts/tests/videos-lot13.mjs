@@ -584,7 +584,8 @@ section('V2 · « Vidéo (téléphone ou fichier) » : jauge, « Filmer », « C
   check(film.accept === 'video/*' && film.capture === 'environment', `« Filmer » : accept="video/*" capture="environment" (${JSON.stringify(film)})`);
   check((await op.locator('[data-testid=tr-file]').getAttribute('accept')).includes('video/mp4') && !(await op.locator('[data-testid=tr-file]').getAttribute('capture')), '« Choisir un fichier » : vidéos, sans caméra imposée');
   const h = await op.locator('label:has([data-testid=tr-film])').evaluate((e) => e.getBoundingClientRect().height);
-  check(h <= 30, `boutons discrets (${h} px de haut)`);
+  // Lot 14 (relecture « écran ») : les boutons se touchent avec le doigt sur un chantier, 44 px au moins (c'était 28 px, « discrets »).
+  check(h >= 44, `boutons à toucher du doigt (${h} px de haut, 44 au moins)`);
   check((await txt(op.locator('[data-testid=tr-upload]'))).includes('MP4, MOV ou WebM · 50 Mo maximum'), 'rappel : « MP4, MOV ou WebM · 50 Mo maximum »');
   const gps = await txt(op.locator('[data-testid=tr-gps-note]'));
   check(gps === 'Attention : une vidéo filmée au téléphone peut contenir la position GPS du lieu, lisible par tous ceux qui la reçoivent. Désactivez la localisation de l’appareil photo avant de filmer.',

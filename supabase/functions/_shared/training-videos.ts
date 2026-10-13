@@ -139,3 +139,72 @@ export function uploadErrorMessage(r: { kind?: 'network' | 'abort' | 'timeout'; 
 /** Combien de fois on re-signe après une erreur de lecture, avant de dire « impossible » (pas de boucle). */
 export const PLAY_RESIGN_MAX = 1;
 export const PLAY_FAILED = 'Lecture impossible sur cet appareil. Réessayez plus tard, ou demandez la vidéo au bureau.';
+
+// ─── Fichiers à vérifier (lot 14, oct. 2026) — détection SEULEMENT ────────────
+// Lecture de video_files_audit() (migration 20261013143711) : (a) les fichiers du
+// dossier privé « formations » de l'entreprise qu'aucune formation n'utilise ;
+// (b) les formations publiées dont le fichier manque. Rien n'est supprimé (D12) :
+// on montre, le bureau décide avec BEMEXO.
+export interface FileAuditRow {
+  kind: 'fichier_sans_formation' | 'formation_sans_fichier';
+  video_id: string | null;
+  title: string | null;
+  file_path: string;
+  real_bytes: number;
+  occurred_at: string | null;
+  archived: boolean | null;
+}
+export interface FileAudit { orphans: FileAuditRow[]; orphanTotal: number; orphanBytes: number; missing: FileAuditRow[]; missingTotal: number }
+
+/** La réponse de video_files_audit en listes prêtes à afficher ; null si elle est illisible ou si les deux listes sont vides. Ne lève jamais. */
+export function parseFileAudit(data: unknown): FileAudit | null {
+  if (!Array.isArray(data)) return null;
+  const orphans: FileAuditRow[] = [], missing: FileAuditRow[] = [];
+  let orphanTotal: number | null = null, orphanBytes: number | null = null, missingTotal: number | null = null;
+  const num = (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? n : null; };
+  for (const raw of data) {
+    if (!raw || typeof raw !== 'object') continue;
+    const r = raw as Record<string, unknown>;
+    if (r.kind !== 'fichier_sans_formation' && r.kind !== 'formation_sans_fichier') continue;
+    const row: FileAuditRow = {
+      kind: r.kind, video_id: typeof r.video_id === 'string' ? r.video_id : null, title: typeof r.title === 'string' ? r.title : null,
+      file_path: String(r.file_path ?? ''), real_bytes: num(r.real_bytes) ?? 0, occurred_at: typeof r.occurred_at === 'string' ? r.occurred_at : null,
+      archived: typeof r.archived === 'boolean' ? r.archived : null,
+    };
+    if (r.kind === 'fichier_sans_formation') {
+      if (!orphans.length) { orphanTotal = num(r.total_n); orphanBytes = num(r.total_bytes); }
+      orphans.push(row);
+    } else {
+      if (!missing.length) missingTotal = num(r.total_n);
+      missing.push(row);
+    }
+  }
+  const out: FileAudit = {
+    orphans, orphanTotal: orphanTotal ?? orphans.length, orphanBytes: orphanBytes ?? orphans.reduce((s, o) => s + o.real_bytes, 0),
+    missing, missingTotal: missingTotal ?? missing.length,
+  };
+  return out.orphanTotal === 0 && out.missingTotal === 0 ? null : out;
+}
+
+/** Date courte « 14/10 » (heure locale) ; '' si illisible. */
+export function shortDate(iso: string | null | undefined): string {
+  const d = iso ? new Date(iso) : null;
+  if (!d || Number.isNaN(d.getTime())) return '';
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+export const AUDIT_LINK = (n: number, open: boolean) => (open ? 'Masquer les fichiers vidéo à vérifier' : `Fichiers vidéo à vérifier (${n})`);
+export const AUDIT_NOTE = 'Rien n’est supprimé automatiquement : ces fichiers sont seulement signalés. Pour en retirer un, contactez BEMEXO.';
+export const AUDIT_ORPHANS_TITLE = (n: number) => `Fichiers sans formation (${n})`;
+export const AUDIT_ORPHANS_NOTE = (quota: number) => `Le fichier est dans votre dossier vidéo, mais aucune formation ne l’utilise. Il compte dans les ${formatMo(quota)}.`;
+export const AUDIT_ORPHAN_ROW = (r: Pick<FileAuditRow, 'real_bytes' | 'occurred_at' | 'file_path'>) =>
+  // La date et la taille d'abord (le titre de la section dit déjà « Fichiers sans formation »), la référence technique en fin de ligne.
+  [shortDate(r.occurred_at) || null, formatMo(r.real_bytes), `réf. ${r.file_path.slice(-8)}`].filter(Boolean).join(' · ');
+export const AUDIT_MISSING_TITLE = (n: number) => `Formations dont le fichier manque (${n})`;
+export const AUDIT_MISSING_NOTE = 'Les salariés ne peuvent pas lire ces vidéos : le fichier est introuvable.';
+export const AUDIT_MISSING_ROW = (r: Pick<FileAuditRow, 'title' | 'occurred_at' | 'archived'>) => {
+  const d = shortDate(r.occurred_at);
+  return `${r.title || 'Vidéo'}${d ? ` · publiée le ${d}` : ''}${r.archived ? ' · retirée' : ''}`;
+};
+export const AUDIT_MORE = (n: number) => `+ ${n} autre${n > 1 ? 's' : ''}`;
+export const AUDIT_BYTES = (n: number) => `Ensemble : ${formatMo(n)}`;

@@ -224,6 +224,11 @@ const openDialog = async (p) => { await p.click('[data-testid=bar-kiosk]'); awai
   await openDialog(p);
   check((await statusText(p)).trim() === 'Tablette reliée — vue il y a 4 min', `A6) deux tablettes d’avant le lot 11 : l’état suit la plus récente (${(await statusText(p)).trim()})`);
   check(calls('revoke').length === 0, 'A6) ouvrir la fenêtre ne déconnecte rien');
+  // Lot 11 (IA) : avec une tablette reliée, AUCUN code n'est créé à l'ouverture ; il faut « Relier une autre tablette ».
+  check(calls('create_pairing').length === 0 && await p.locator('[data-testid=ka-code-block]').count() === 0, 'A6) tablette reliée : aucun code créé à l’ouverture');
+  await p.click('[data-testid=ka-link-another]');
+  await p.waitForTimeout(900);
+  check(calls('create_pairing').length === 1 && (await codeText(p)).trim() === '123456', 'A6) « Relier une autre tablette » : un code est créé');
   // La tablette tape le code : une nouvelle tablette apparaît.
   state.D.kiosks.push({ id: 'k-new', company_id: CO, revoked_at: null, created_at: new Date(Date.now() + state.offset).toISOString(), last_seen_at: new Date(Date.now() + state.offset).toISOString() });
   await ff(5200);
@@ -231,7 +236,7 @@ const openDialog = async (p) => { await p.click('[data-testid=bar-kiosk]'); awai
   check(await p.locator('[data-sonner-toast]', { hasText: 'Tablette reliée' }).count() >= 1, 'A6) toast « Tablette reliée »');
   const rv = calls('revoke').map((c) => c.kiosk_id).sort();
   check(JSON.stringify(rv) === JSON.stringify(['k-a', 'k-b']), `A6) les anciennes tablettes sont déconnectées, la nouvelle reste (${rv.join(', ')})`);
-  check(calls('create_pairing').length === 2 && (await codeText(p)).trim() === '654321', 'A6) le code a servi : un nouveau code s’affiche');
+  check(calls('create_pairing').length === 1 && calls('cancel_pairing').some((c) => c.pairing_id === 'pair-1') && await p.locator('[data-testid=ka-link-another]').count() === 1, 'A6) le code a servi : il est périmé, la fenêtre se replie (aucun nouveau code)');
   check((await statusText(p)).trim() === 'Tablette reliée — vue à l’instant', `A6) « Tablette reliée — vue à l’instant » (${(await statusText(p)).trim()})`);
   // Plusieurs tablettes encore actives (cas de la prod) : « Déconnecter » les retire toutes.
   state.D.kiosks.push({ id: 'k-x', company_id: CO, revoked_at: null, created_at: isoAgo(10), last_seen_at: isoAgo(10) });
@@ -271,12 +276,15 @@ const openDialog = async (p) => { await p.click('[data-testid=bar-kiosk]'); awai
   await p.waitForTimeout(500);
   await p.click('[data-testid=mm-kiosk]');
   await p.waitForTimeout(1000);
+  // Lot 11 (IA) : avec une tablette reliée, le code est caché derrière « Relier une autre tablette ».
+  await p.click('[data-testid=ka-link-another]');
+  await p.waitForTimeout(900);
   const m = await p.evaluate(() => {
     const d = document.querySelector('[role=dialog]');
     const over = [...d.querySelectorAll('*')].filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && (r.right > window.innerWidth + 0.5 || r.left < -0.5); }).map((e) => e.className || e.tagName).slice(0, 5);
     return { sw: d.scrollWidth, cw: d.clientWidth, page: document.documentElement.scrollWidth <= window.innerWidth, over };
   });
-  check(/\d{6}/.test(await codeText(p)) && (await statusText(p)).includes('Tablette reliée'), 'A7) 390×844 (menu → Borne) : code et état affichés');
+  check(/\d{6}/.test(await codeText(p)) && (await statusText(p)).includes('Tablette reliée'), 'A7) 390×844 (menu → Borne → Relier une autre tablette) : code et état affichés');
   check(m.sw <= m.cw + 1 && m.page && m.over.length === 0, `A7) 390×844 : aucun défilement horizontal ${JSON.stringify(m)}`);
   await p.screenshot({ path: `${SH}/borne-admin-390x844.png` });
   await ctx.close();
@@ -585,7 +593,7 @@ async function phone({ session = null } = {}) {
   check(clip2 === `${BASE}/borne`, `L13-3) « Copier le lien » copie « ${clip2} »`);
   check((await p.locator('[data-testid=ka-copy-link]').innerText()).includes('Copié'), 'L13-3) le bouton affiche « Copié »');
   // 4) Légende du QR, et le QR encode bien /borne?code=… (même SVG que celui généré pour cette adresse).
-  check((await p.locator('[data-testid=ka-qr-caption]').innerText()).trim() === 'Ou scannez avec la tablette', 'L13-4) légende « Ou scannez avec la tablette » sous le QR');
+  check((await p.locator('[data-testid=ka-qr-caption]').innerText()).trim() === 'Secours : à scanner avec la tablette', 'L13-4) légende « Secours : à scanner avec la tablette » sous le QR (lot 11 IA : le code est le secours)');
   const qrUrl = await p.locator('[data-testid=ka-qr]').getAttribute('data-url');
   const { createRequire } = await import('node:module');
   const qrcode = createRequire(`${process.cwd()}/package.json`)('qrcode-generator');
