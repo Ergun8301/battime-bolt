@@ -10,8 +10,8 @@
 -- rien à migrer, personne ne perd rien aujourd'hui.
 --
 -- RETOUR ARRIÈRE — on retire ce qui a été ajouté, dans CET ordre (la règle du
--- stockage dépend de la fonction) et on recolle la définition d'origine de
--- my_trainings() (lot 6). Après retour arrière : les salariés revoient les
+-- stockage dépend de la fonction) et on recolle les définitions d'origine de
+-- my_trainings() (lot 6) et de guard_document_write() (étape 12 bis). Après retour arrière : les salariés revoient les
 -- factures, la catégorie n'est plus modifiable et le bouton disparaît de
 -- l'application (la fonction « suis-je prête ? » n'existe plus). La table
 -- public.document_category_log et son contenu sont GARDÉS (rien n'est effacé) ;
@@ -57,9 +57,68 @@
 -- $fn$;
 -- REVOKE ALL ON FUNCTION public.my_trainings() FROM PUBLIC, anon;
 -- GRANT EXECUTE ON FUNCTION public.my_trainings() TO authenticated;
+-- -- Définition d'origine de public.guard_document_write() (étape 12 bis, 20260920200500), recollée :
+-- CREATE OR REPLACE FUNCTION public.guard_document_write()
+--  RETURNS trigger
+--  LANGUAGE plpgsql
+--  SECURITY DEFINER
+--  SET search_path TO ''
+-- AS $fn$
+-- DECLARE
+--   v_company uuid;
+--   v_worksite uuid;
+--   v_date date;
+--   v_no int;
+-- BEGIN
+--   -- Le chantier appartient bien à l'entreprise de la pièce.
+--   IF NOT EXISTS (SELECT 1 FROM public.worksites w
+--                  WHERE w.id = new.worksite_id AND w.company_id = new.company_id) THEN
+--     RAISE EXCEPTION 'documents: chantier hors de votre entreprise';
+--   END IF;
+--
+--   IF new.time_entry_id IS NOT NULL THEN
+--     SELECT t.company_id, t.worksite_id, t.work_date
+--       INTO v_company, v_worksite, v_date
+--       FROM public.time_entries t WHERE t.id = new.time_entry_id;
+--     IF v_company IS NULL THEN
+--       RAISE EXCEPTION 'documents: intervention introuvable';
+--     END IF;
+--     IF v_company <> new.company_id OR v_worksite IS DISTINCT FROM new.worksite_id THEN
+--       RAISE EXCEPTION 'documents: cette intervention n''est pas celle de ce chantier';
+--     END IF;
+--     -- Le jour est celui de l'intervention, point. On le rectifie au lieu de
+--     -- refuser : le navigateur n'a pas à être la source de cette date.
+--     new.work_date := v_date;
+--   END IF;
+--
+--   -- Nom automatique d'une photo. Un fichier choisi par la personne garde le nom
+--   -- qu'elle lui a donné : le navigateur l'envoie, et on n'y touche pas.
+--   IF TG_OP = 'INSERT'
+--      AND nullif(btrim(coalesce(new.label, '')), '') IS NULL
+--      AND coalesce(new.mime_type, '') LIKE 'image/%' THEN
+--
+--     -- Un seul attributeur à la fois pour ce chantier, le temps de la
+--     -- transaction. Sans ça, deux téléphones lisent le même MAX.
+--     PERFORM pg_advisory_xact_lock(hashtextextended(new.worksite_id::text, 0));
+--
+--     SELECT COALESCE(max(d.photo_no), 0) + 1 INTO v_no
+--     FROM public.documents d
+--     WHERE d.worksite_id = new.worksite_id
+--       AND COALESCE(d.work_date, DATE '0001-01-01') = COALESCE(new.work_date, DATE '0001-01-01');
+--
+--     new.photo_no := v_no;
+--     new.label := 'Photo ' || v_no
+--                  || CASE WHEN new.work_date IS NOT NULL
+--                          THEN ' — ' || to_char(new.work_date, 'DD/MM/YYYY')
+--                          ELSE '' END;
+--   END IF;
+--
+--   RETURN new;
+-- END;
+-- $fn$;
 -- ── FIN DU RETOUR ARRIÈRE ──
 --
--- VÉRIFICATION APRÈS APPLICATION — LECTURE SEULE, une ligne, 13 colonnes à
+-- VÉRIFICATION APRÈS APPLICATION — LECTURE SEULE, une ligne, 14 colonnes à
 -- true (le test l'exécute telle quelle).
 -- ── DÉBUT DE LA VÉRIFICATION ──
 -- SELECT
@@ -75,7 +134,8 @@
 --   (SELECT count(*) = 2 AND bool_and(p.prosecdef AND array_to_string(p.proconfig, ',') = 'search_path=""' AND NOT has_function_privilege('anon', p.oid, 'EXECUTE') AND NOT has_function_privilege('authenticated', p.oid, 'EXECUTE')) FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname IN ('guard_document_category', 'log_document_category')) AS v10_declencheurs_fermes,
 --   (SELECT count(*) = 2 AND bool_and(array_to_string(p.proconfig, ',') = 'search_path=""' AND has_function_privilege('authenticated', p.oid, 'EXECUTE') AND NOT has_function_privilege('anon', p.oid, 'EXECUTE') AND (p.prosecdef OR p.proname = 'document_category_ready')) FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname IN ('chantier_doc_readable', 'document_category_ready')) AS v11_fonctions_ouvertes_aux_connectes,
 --   EXISTS (SELECT 1 FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid WHERE c.relname = 'documents_facture_path_idx' AND i.indrelid = 'public.documents'::regclass AND i.indpred IS NOT NULL) AS v12_index_partiel,
---   position('facture_payee' in pg_get_functiondef('public.my_trainings()'::regprocedure)) > 0 AS v13_formations_sans_factures;
+--   position('facture_payee' in pg_get_functiondef('public.my_trainings()'::regprocedure)) > 0 AS v13_formations_sans_factures,
+--   position('new.company_id IS DISTINCT FROM old.company_id' in pg_get_functiondef('public.guard_document_write()'::regprocedure)) > 0 AS v14_recalage_seulement_si_lien_change;
 -- ── FIN DE LA VÉRIFICATION ──
 --
 -- HISTORIQUE : si le fichier est collé dans l'éditeur SQL, inscrire ensuite :
@@ -95,7 +155,8 @@
 -- l'action « modifier_document » de l'assistant bureau échouait sans erreur).
 --
 -- CE QUE FAIT CE FICHIER (rien d'existant n'est remplacé, sauf my_trainings()
--- qui reçoit UN filtre, non destructif) :
+-- qui reçoit UN filtre, et guard_document_write() qui reçoit UNE condition,
+-- tous deux non destructifs) :
 --   1. document_category_ready() : la fonction « suis-je prête ? » ; l'écran
 --      l'appelle et cache le bouton « catégorie » tant qu'elle manque.
 --   2. document_category_log : la trace de chaque changement de catégorie
@@ -108,7 +169,10 @@
 --      documents, dans {sans catégorie, photo, plan, devis, pv_reception,
 --      autre}, jamais vers ni depuis « facture » / « reserve ». Il porte un nom
 --      qui passe AVANT documents_guard_write (ordre alphabétique) pour voir ce
---      que le navigateur a envoyé avant le recalage de work_date.
+--      que le navigateur a envoyé avant le recalage de work_date. Il laisse passer
+--      la mise à NULL de time_entry_id / uploaded_by faite par la base elle-même
+--      (action « SET NULL » des clés étrangères) : sans cela, supprimer une
+--      intervention qui porte un document échouerait.
 --   4. documents_z_category_log (APRÈS UPDATE OF category) : écrit la trace.
 --   5. documents_factures_bureau : règle RESTRICTIVE de lecture sur documents
 --      (se combine en ET avec documents_select et support_read) : une facture
@@ -132,6 +196,12 @@
 --   9. my_trainings() : même signature, même corps, UN filtre de plus dans la
 --      jointure : un document devenu facture n'est plus rendu (nom + chemin hors
 --      sécurité de ligne : seul chemin SQL qui aurait contourné la règle 5).
+--  10. guard_document_write() : le contrôle du rattachement à l'intervention et le
+--      recalage de work_date ne jouent plus qu'à l'envoi ou quand time_entry_id,
+--      worksite_id ou company_id change. Avant, time_entries.worksite_id (ou
+--      work_date) modifié depuis l'envoi rendait le document intouchable : le bureau
+--      ne pouvait plus le passer en facture (erreur P0001), et tout changement de
+--      catégorie déplaçait le document de journée.
 --
 -- AUCUNE règle d'insertion ni de suppression de documents n'est touchée, aucun
 -- ALTER POLICY, aucun DROP POLICY : le lot 29 modifie documents_insert et
@@ -144,9 +214,9 @@
 -- LIMITES CONNUES. L'éditeur SQL et la clé de service (pas d'auth.uid()) ne sont
 -- pas contrôlés par le déclencheur (même choix que guard_time_entry_write) ;
 -- aucune fonction edge n'écrit dans documents. Les liens signés déjà émis
--- restent valables jusqu'à leur expiration. Si time_entries.work_date a changé
--- depuis l'envoi, guard_document_write recale work_date lors d'un changement de
--- catégorie (comportement existant). Rejouable : IF NOT EXISTS / OR REPLACE.
+-- restent valables jusqu'à leur expiration. Si l'intervention rattachée a changé de
+-- jour ou de chantier depuis l'envoi, work_date et le chantier du document ne
+-- bougent pas lors d'un changement de catégorie (§ 10). Rejouable : IF NOT EXISTS / OR REPLACE.
 
 -- ── 1) « Suis-je prête ? » ─────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.document_category_ready()
@@ -212,6 +282,18 @@ BEGIN
   END IF;
 
   -- UPDATE
+  -- Action de clé étrangère (« SET NULL » de time_entry_id ou de uploaded_by) : la base
+  -- elle-même met la colonne à NULL quand l'intervention ou l'utilisateur disparaît, avec
+  -- l'auth.uid() de l'appelant. Ce n'est pas une modification du document : on laisse passer
+  -- (sinon supprimer une intervention qui porte un document échouerait). Seul ce cas : colonne
+  -- à NULL, tout le reste identique, et profondeur d'imbrication > 1 (un UPDATE du navigateur
+  -- est à la profondeur 1 et reste soumis aux contrôles ci-dessous).
+  IF pg_trigger_depth() > 1
+     AND (to_jsonb(new) - 'time_entry_id' - 'uploaded_by') IS NOT DISTINCT FROM (to_jsonb(old) - 'time_entry_id' - 'uploaded_by')
+     AND (new.time_entry_id IS NOT DISTINCT FROM old.time_entry_id OR new.time_entry_id IS NULL)
+     AND (new.uploaded_by IS NOT DISTINCT FROM old.uploaded_by OR new.uploaded_by IS NULL) THEN
+    RETURN new;
+  END IF;
   v_office := coalesce(public.is_admin() AND old.company_id = public.get_my_company_id(), false);
   -- Robuste aux colonnes futures : tout ce qui n'est pas dans la liste doit être identique.
   IF (to_jsonb(new) - CASE WHEN v_office THEN ARRAY['category', 'label'] ELSE ARRAY['category'] END)
@@ -350,3 +432,76 @@ $fn$;
 -- Droits du lot 6, répétés à l'identique par prudence.
 REVOKE ALL ON FUNCTION public.my_trainings() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.my_trainings() TO authenticated;
+
+-- ── 10) guard_document_write() : le recalage ne joue plus à chaque mise à jour ─
+-- Même signature, même corps que l'étape 12 bis, à UNE différence : la condition du
+-- bloc « intervention » (voir le commentaire dans le corps). Droits inchangés
+-- (CREATE OR REPLACE les garde). Retour arrière : la définition d'origine est
+-- recollable depuis l'en-tête.
+CREATE OR REPLACE FUNCTION public.guard_document_write()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $fn$
+DECLARE
+  v_company uuid;
+  v_worksite uuid;
+  v_date date;
+  v_no int;
+BEGIN
+  -- Le chantier appartient bien à l'entreprise de la pièce.
+  IF NOT EXISTS (SELECT 1 FROM public.worksites w
+                 WHERE w.id = new.worksite_id AND w.company_id = new.company_id) THEN
+    RAISE EXCEPTION 'documents: chantier hors de votre entreprise';
+  END IF;
+
+  -- Lot 24 : le rattachement n'est contrôlé (et work_date recalé d'après l'intervention) qu'à
+  -- l'envoi, ou quand il change. Sinon, l'intervention a pu changer de chantier ou de jour
+  -- depuis l'envoi (time_entries.worksite_id et work_date sont modifiables) : le bureau
+  -- n'aurait plus pu changer la catégorie du document (donc le passer en facture), et un simple
+  -- changement de catégorie aurait déplacé le document de journée.
+  IF new.time_entry_id IS NOT NULL
+     AND (TG_OP = 'INSERT'
+          OR new.time_entry_id IS DISTINCT FROM old.time_entry_id
+          OR new.worksite_id IS DISTINCT FROM old.worksite_id
+          OR new.company_id IS DISTINCT FROM old.company_id) THEN
+    SELECT t.company_id, t.worksite_id, t.work_date
+      INTO v_company, v_worksite, v_date
+      FROM public.time_entries t WHERE t.id = new.time_entry_id;
+    IF v_company IS NULL THEN
+      RAISE EXCEPTION 'documents: intervention introuvable';
+    END IF;
+    IF v_company <> new.company_id OR v_worksite IS DISTINCT FROM new.worksite_id THEN
+      RAISE EXCEPTION 'documents: cette intervention n''est pas celle de ce chantier';
+    END IF;
+    -- Le jour est celui de l'intervention, point. On le rectifie au lieu de
+    -- refuser : le navigateur n'a pas à être la source de cette date.
+    new.work_date := v_date;
+  END IF;
+
+  -- Nom automatique d'une photo. Un fichier choisi par la personne garde le nom
+  -- qu'elle lui a donné : le navigateur l'envoie, et on n'y touche pas.
+  IF TG_OP = 'INSERT'
+     AND nullif(btrim(coalesce(new.label, '')), '') IS NULL
+     AND coalesce(new.mime_type, '') LIKE 'image/%' THEN
+
+    -- Un seul attributeur à la fois pour ce chantier, le temps de la
+    -- transaction. Sans ça, deux téléphones lisent le même MAX.
+    PERFORM pg_advisory_xact_lock(hashtextextended(new.worksite_id::text, 0));
+
+    SELECT COALESCE(max(d.photo_no), 0) + 1 INTO v_no
+    FROM public.documents d
+    WHERE d.worksite_id = new.worksite_id
+      AND COALESCE(d.work_date, DATE '0001-01-01') = COALESCE(new.work_date, DATE '0001-01-01');
+
+    new.photo_no := v_no;
+    new.label := 'Photo ' || v_no
+                 || CASE WHEN new.work_date IS NOT NULL
+                         THEN ' — ' || to_char(new.work_date, 'DD/MM/YYYY')
+                         ELSE '' END;
+  END IF;
+
+  RETURN new;
+END;
+$fn$;

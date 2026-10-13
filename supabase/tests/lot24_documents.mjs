@@ -23,11 +23,13 @@
 // envoyer. Le déclencheur seul est atteint sous `root` avec un faux auth.uid().
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const migDir = path.join(here, '..', 'migrations');
+const md5js = (t) => crypto.createHash('md5').update(t).digest('hex');
 const mig = (f) => fs.readFileSync(path.join(migDir, f), 'utf8');
 const MIG_FILE = fs.readdirSync(migDir).find((f) => f.endsWith('_lot24_documents_factures_categorie.sql'));
 const SQL = mig(MIG_FILE);
@@ -224,7 +226,7 @@ let T = {};
 // ═══ La migration : additive, sans DROP ni DELETE, rejouable ════════════════
 section('Migration : additive, aucun DROP ni DELETE exécuté, aucune règle existante modifiée, rejouable, droits repris');
 const fnPrint = async () => (await one(`SELECT string_agg(n.nspname || '.' || p.proname || ':' || md5(pg_get_functiondef(p.oid)), ',' ORDER BY n.nspname, p.proname) AS s
-  FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname IN ('public', 'storage', 'auth') AND NOT (p.proname = ANY($1)) AND p.proname <> 'my_trainings'`, [NEW_FNS])).s;
+  FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname IN ('public', 'storage', 'auth') AND NOT (p.proname = ANY($1)) AND p.proname NOT IN ('my_trainings', 'guard_document_write')`, [NEW_FNS])).s;
 const polPrint = async () => (await one(`SELECT string_agg(schemaname || '.' || tablename || '.' || policyname || ':' || permissive || ':' || cmd || ':' || md5(coalesce(qual, '') || '|' || coalesce(with_check, '')), ',' ORDER BY schemaname, tablename, policyname) AS s
   FROM pg_policies WHERE NOT (policyname = ANY($1))`, [NEW_POLICIES])).s;
 const trgPrint = async () => (await one(`SELECT coalesce(string_agg(tgname || ':' || md5(pg_get_triggerdef(oid)), ',' ORDER BY tgname), '') AS s FROM pg_trigger WHERE NOT tgisinternal AND NOT (tgname = ANY($1))`, [NEW_TRIGGERS])).s;
@@ -244,11 +246,14 @@ const dataPrint = async () => JSON.stringify(await rows(`SELECT (SELECT json_agg
 const prints = async () => ({ fn: await fnPrint(), pol: await polPrint(), trg: await trgPrint(), col: await colPrint(), con: await conPrint(), idx: await idxPrint(), priv: await privPrint(), data: await dataPrint() });
 const myTrainingsDef = async () => one(`SELECT md5(pg_get_functiondef(p.oid)) AS def, pg_get_function_result(p.oid) AS res, p.prosecdef, array_to_string(p.proconfig, ',') AS cfg, p.proacl::text AS acl, p.provolatile
   FROM pg_proc p WHERE p.oid = 'public.my_trainings()'::regprocedure`);
+const guardWriteDef = async () => one(`SELECT pg_get_functiondef(p.oid) AS src, md5(pg_get_functiondef(p.oid)) AS def, p.prosecdef, array_to_string(p.proconfig, ',') AS cfg, p.proacl::text AS acl
+  FROM pg_proc p WHERE p.oid = 'public.guard_document_write()'::regprocedure`);
 await root();
 const before = await prints();
 const docsPrivBefore = await one(`SELECT has_table_privilege('authenticated', 'public.documents', 'SELECT') AS s, has_table_privilege('authenticated', 'public.documents', 'INSERT') AS i,
   has_table_privilege('authenticated', 'public.documents', 'DELETE') AS d, has_table_privilege('authenticated', 'public.documents', 'UPDATE') AS u, has_table_privilege('anon', 'public.documents', 'UPDATE') AS ua`);
 const trBefore = await myTrainingsDef();
+const gwBefore = await guardWriteDef();
 const polsBefore = await rows(`SELECT policyname FROM pg_policies WHERE tablename = 'documents' ORDER BY 1`);
 check(docsPrivBefore.u && docsPrivBefore.ua, 'AVANT : documents a le droit UPDATE pour anon et authenticated (droits par défaut de production), mais aucune règle');
 // Droits PAR DÉFAUT de la production : tout objet neuf est ouvert à anon et authenticated.
@@ -271,7 +276,7 @@ check(/^20261013120000_lot24_documents_factures_categorie\.sql$/.test(MIG_FILE) 
   const trgs = [...code.matchAll(/CREATE TRIGGER (\w+)/g)].map((m) => m[1]);
   check(trgs.length === 2 && trgs.every((t) => new RegExp(`IF NOT EXISTS \\(SELECT 1 FROM pg_trigger WHERE tgname = '${t}'`).test(code)), 'les 2 déclencheurs sont créés seulement s’ils manquent');
   const fns = [...code.matchAll(/CREATE OR REPLACE FUNCTION public\.(\w+)/g)].map((m) => m[1]).sort();
-  check(JSON.stringify(fns) === JSON.stringify([...NEW_FNS, 'my_trainings'].sort()), `fonctions créées ou remplacées : les 4 neuves + my_trainings (${fns.join(', ')})`);
+  check(JSON.stringify(fns) === JSON.stringify([...NEW_FNS, 'my_trainings', 'guard_document_write'].sort()), `fonctions créées ou remplacées : les 4 neuves + my_trainings + guard_document_write (${fns.join(', ')})`);
   check(SQL.includes(`position`) && /^-- RETOUR ARRIÈRE/m.test(SQL.slice(0, 1200)) && SQL.indexOf('-- VÉRIFICATION APRÈS APPLICATION') < SQL.indexOf('-- HISTORIQUE') && SQL.indexOf('-- HISTORIQUE') < SQL.indexOf('\nCREATE OR REPLACE FUNCTION'),
     'en-tête : RETOUR ARRIÈRE, VÉRIFICATION APRÈS APPLICATION, HISTORIQUE, avant le code');
   check(/CHANGEMENT NON ADDITIF DANS SES EFFETS/.test(SQL.slice(0, 600)) && /0 document en production/.test(SQL.slice(0, 900)), 'en-tête : « changement non additif dans ses effets » et « 0 document en production » écrits en toutes lettres');
@@ -308,6 +313,11 @@ check(before.data === after.data, 'données existantes inchangées (documents, f
   const tr = await myTrainingsDef();
   check(tr.res === trBefore.res && tr.prosecdef === trBefore.prosecdef && tr.cfg === trBefore.cfg && tr.acl === trBefore.acl && tr.provolatile === trBefore.provolatile && tr.def !== trBefore.def,
     'my_trainings() : même signature, mêmes colonnes, SECURITY DEFINER, search_path vide, mêmes droits, STABLE ; seul le corps change');
+  const gw = await guardWriteDef();
+  // Une seule condition de plus : on la retire, on retrouve MOT POUR MOT le corps de l'étape 12 bis.
+  const gwBack = gw.src.replace(/  -- Lot 24 : le rattachement[\s\S]*?THEN/, '  IF new.time_entry_id IS NOT NULL THEN');
+  check(gw.def !== gwBefore.def && md5js(gwBack) === md5js(gwBefore.src) && gw.prosecdef === gwBefore.prosecdef && gw.cfg === gwBefore.cfg && gw.acl === gwBefore.acl,
+    'guard_document_write() : même corps que l’étape 12 bis, une seule condition ajoutée (retirée, on retrouve l’original mot pour mot) ; mêmes droits, SECURITY DEFINER, search_path vide');
   const d = await one(`SELECT has_table_privilege('authenticated', 'public.documents', 'SELECT') AS s, has_table_privilege('authenticated', 'public.documents', 'INSERT') AS i,
     has_table_privilege('authenticated', 'public.documents', 'DELETE') AS d, has_table_privilege('authenticated', 'public.documents', 'UPDATE') AS u, has_table_privilege('anon', 'public.documents', 'UPDATE') AS ua,
     has_column_privilege('authenticated', 'public.documents', 'category', 'UPDATE') AS c, has_column_privilege('authenticated', 'public.documents', 'label', 'UPDATE') AS l,
@@ -319,7 +329,7 @@ check(before.data === after.data, 'données existantes inchangées (documents, f
 {
   const v = await one(POST_SQL);
   const bad = Object.entries(v).filter(([, x]) => x !== true).map(([k]) => k);
-  check(Object.keys(v).length === 13 && bad.length === 0, `vérification après application : 13 × true${bad.length ? ` (faux : ${bad.join(', ')})` : ''}`);
+  check(Object.keys(v).length === 14 && bad.length === 0, `vérification après application : 14 × true${bad.length ? ` (faux : ${bad.join(', ')})` : ''}`);
   const fns = await one(`SELECT count(*)::int AS n, bool_and(prosecdef) AS d, bool_and(array_to_string(proconfig, ',') = 'search_path=""') AS s,
     bool_or(has_function_privilege('anon', oid, 'EXECUTE')) AS a FROM pg_proc WHERE pronamespace = 'public'::regnamespace AND proname = ANY($1)`, [NEW_FNS.filter((f) => f !== 'document_category_ready')]);
   check(fns.n === 3 && fns.d && fns.s && !fns.a, '3 fonctions SECURITY DEFINER à search_path vide, anon exclu (malgré les droits par défaut)');
@@ -675,7 +685,56 @@ let E1;
   const r = await setCatN(SAM, L.id, 'plan');
   await root();
   const w = (await one('SELECT work_date::text AS w, category FROM public.documents WHERE id = $1', [L.id]));
-  check(r.n === 1 && !r.e && w.category === 'plan' && w.w === '2026-10-02', 'le jour de l’intervention a changé depuis l’envoi : Sam change la catégorie SANS erreur (le contrôle passe avant) et work_date est recalé comme avant (2026-10-02)');
+  check(r.n === 1 && !r.e && w.category === 'plan' && w.w === '2026-10-01', 'le jour de l’intervention a changé depuis l’envoi : Sam change la catégorie SANS erreur et work_date NE BOUGE PAS (2026-10-01) : seule la catégorie change');
+
+  // L'intervention est déplacée vers un autre chantier : le bureau doit pouvoir passer le document en facture.
+  const te2 = await one(`INSERT INTO public.time_entries (company_id, user_id, worksite_id, work_date, start_time, end_time, status) VALUES ($1, $2, $3, '2026-10-03', '08:00', '12:00', 'draft') RETURNING id`, [CO, SAM, WS]);
+  const M = await addDoc({ cat: 'photo', by: SAM, te: te2.id });
+  await db.query(`UPDATE public.time_entries SET worksite_id = $2, work_date = '2026-10-05' WHERE id = $1`, [te2.id, WS_B]);
+  const mv = await setCatN(ADMIN, M.id, 'facture');
+  await root();
+  const mw = await one('SELECT category, worksite_id, work_date::text AS w, time_entry_id FROM public.documents WHERE id = $1', [M.id]);
+  check(mv.n === 1 && !mv.e && mw.category === 'facture' && mw.worksite_id === WS && mw.w === '2026-10-03' && mw.time_entry_id === te2.id,
+    'intervention déplacée vers un autre chantier ET de jour : le bureau passe le document en facture (plus d’erreur P0001) ; chantier, jour et rattachement ne bougent pas');
+  check(!(await seesRow(SAM, M.id)), '… et Sam ne le voit plus');
+  const mv2 = await setCatN(ADMIN, M.id, 'devis');
+  check(mv2.n === 1 && !mv2.e, 'le bureau le repasse en devis : accepté aussi');
+
+  // Les contrôles d'ENVOI restent entiers (le rattachement est vérifié à l'INSERT).
+  await root();
+  const teFor = await one(`INSERT INTO public.time_entries (company_id, user_id, worksite_id, work_date, start_time, end_time, status) VALUES ($1, $2, $3, '2026-10-06', '08:00', '12:00', 'draft') RETURNING id`, [CO, SAM, WS_B]);
+  await as(SAM);
+  const bad = await errOf(`INSERT INTO public.documents (company_id, worksite_id, uploaded_by, file_path, time_entry_id) VALUES ($1, $2, $3, 'x/y/z.pdf', $4)`, [CO, WS, SAM, teFor.id]);
+  check(bad && /cette intervention n.est pas celle de ce chantier/.test(bad.msg), 'dépôt d’un document rattaché à l’intervention d’un autre chantier : toujours refusé');
+  await root();
+  const bad2 = await errOf(`UPDATE public.documents SET time_entry_id = $2 WHERE id = $1`, [L.id, teFor.id]);
+  check(bad2 && /cette intervention n.est pas celle de ce chantier/.test(bad2.msg), 'rattacher un document existant à l’intervention d’un autre chantier (éditeur SQL) : toujours refusé');
+  // Action de clé étrangère : supprimer une intervention qui porte un document ne doit pas être bloqué par le garde.
+  await root();
+  const teDel = await one(`INSERT INTO public.time_entries (company_id, user_id, worksite_id, work_date, start_time, end_time, status) VALUES ($1, $2, $3, '2026-10-07', '08:00', '12:00', 'draft') RETURNING id`, [CO, SAM, WS]);
+  const Fk = await addDoc({ cat: 'photo', by: SAM, te: teDel.id });
+  const Fk2 = await addDoc({ cat: 'plan', by: SAM, te: teDel.id });
+  await rootAs(SAM);
+  const delErr = await errOf(`DELETE FROM public.time_entries WHERE id = $1`, [teDel.id]);
+  await root();
+  const fkAfter = await rows('SELECT id, time_entry_id, category, label, uploaded_by FROM public.documents WHERE id = ANY($1) ORDER BY id', [[Fk.id, Fk2.id]]);
+  check(delErr === null && await count('SELECT count(*) n FROM public.time_entries WHERE id = $1', [teDel.id]) === 0, 'Sam supprime une intervention qui porte des documents : la suppression PASSE (action de clé étrangère non bloquée par le garde)');
+  check(fkAfter.length === 2 && fkAfter.every((r) => r.time_entry_id === null && r.uploaded_by === SAM) && fkAfter.find((r) => r.id === Fk.id).category === 'photo', 'les deux documents survivent : time_entry_id est passé à NULL, le reste est intact (catégorie, auteur)');
+  // …mais le même effet fait à la main, par un utilisateur connecté, reste refusé (profondeur 1).
+  const Hand = await addDoc({ cat: 'photo', by: SAM });
+  await as(ADMIN);
+  const hand = await errOf(`UPDATE public.documents SET uploaded_by = NULL WHERE id = $1`, [Hand.id]);
+  check(hand?.code === '42501', 'mettre uploaded_by à NULL à la main (bureau, requête directe) : toujours refusé (le passe-droit ne vaut que pour les actions de clé étrangère)');
+  // uploaded_by : la suppression d'un utilisateur sous un jeton connecté (fonction SECURITY DEFINER d'un admin) ne bloque pas non plus.
+  await root();
+  const GONE = '90000000-0000-0000-0000-000000000009';
+  await db.query(`INSERT INTO public.users VALUES ($1, $2, 'worker', true, 'Parti', 'Test')`, [GONE, CO]);
+  const Gd = await addDoc({ cat: 'autre', by: GONE });
+  await rootAs(ADMIN);
+  const delUser = await errOf(`DELETE FROM public.users WHERE id = $1`, [GONE]);
+  await root();
+  const gd = await one('SELECT uploaded_by, category FROM public.documents WHERE id = $1', [Gd.id]);
+  check(delUser === null && gd.uploaded_by === null && gd.category === 'autre', 'suppression d’un utilisateur sous un jeton connecté : le document survit, uploaded_by passe à NULL, sans blocage du garde');
 }
 
 // ═══ F. Trace ═══════════════════════════════════════════════════════════════
@@ -788,20 +847,22 @@ section('A — Retour arrière (extrait des commentaires du fichier) puis remise
   check(g.tr && await count('SELECT count(*) n FROM public.document_category_log') === logN, 'la trace et son contenu sont GARDÉS');
   const tr = await myTrainingsDef();
   check(tr.def === trBefore.def && tr.acl === trBefore.acl, 'my_trainings() redevient celle du lot 6 (définition et droits identiques à avant)');
+  const gwRb = await guardWriteDef();
+  check(gwRb.def === gwBefore.def && gwRb.acl === gwBefore.acl, 'guard_document_write() redevient celle de l’étape 12 bis (définition et droits identiques à avant)');
   await as(SAM);
   check(await count(`SELECT count(*) n FROM public.documents WHERE ${INV}`) === 3 || await count(`SELECT count(*) n FROM public.documents WHERE ${INV}`) >= 3, 'après retour arrière les salariés revoient les factures (comportement d’avant)');
   check(await canReadFile(SAM, D.fact.file_path), '… et leurs fichiers');
   await root();
   await db.exec('ROLLBACK');
   const v0 = await one(POST_SQL);
-  check(Object.values(v0).every((x) => x === true), 'retour arrière jeté (transaction annulée) : la vérification redonne 13 × true');
+  check(Object.values(v0).every((x) => x === true), 'retour arrière jeté (transaction annulée) : la vérification redonne 14 × true');
   // 2) Pour de vrai : retrait validé, puis remise de la migration.
   await db.exec(ROLLBACK_SQL);
   const vOff = await one(POST_SQL);
-  check(Object.values(vOff).filter((x) => x === true).length < 13, 'retour arrière appliqué : la vérification n’est plus à 13 × true');
+  check(Object.values(vOff).filter((x) => x === true).length < 14, 'retour arrière appliqué : la vérification n’est plus à 14 × true');
   check(!(await errExec(SQL)), 'la migration se recharge après le retour arrière');
   const v = await one(POST_SQL);
-  check(Object.keys(v).length === 13 && Object.values(v).every((x) => x === true), 'remise de la migration : vérification de nouveau 13 × true');
+  check(Object.keys(v).length === 14 && Object.values(v).every((x) => x === true), 'remise de la migration : vérification de nouveau 14 × true');
   await as(SAM);
   check(await count(`SELECT count(*) n FROM public.documents WHERE ${INV}`) === 0 && !(await canReadFile(SAM, D.fact.file_path)), 'remise : Sam ne voit plus ni les factures ni leurs fichiers');
   await root();
