@@ -6,7 +6,7 @@ import { addCertification, setWorkerActive, updateWorkerIdentity } from '@/lib/a
 import { useAuth } from '@/components/auth-provider';
 import { corrigerHeures, fmtHeure } from '@/lib/corrections';
 import { User, Worksite, Certification, CertificationType } from '@/lib/types';
-import { ExportEntry, exportEntriesToExcel, exportEntriesToPDF, exportEntriesToCSV } from '@/lib/export-utils';
+import { ExportEntry, exportEntriesToExcel, exportEntriesToPDF, exportEntriesToCSV, isExportLibError } from '@/lib/export-utils';
 import { readMealEnabled, showMealCorrection, useMealEnabled } from '@/lib/meal-setting';
 import { fetchCompanyClosures, closeWorkerUntil, reopenWorker } from '@/lib/worker-closure';
 import { fetchAllPaged } from '@/lib/fetch-all';
@@ -691,18 +691,18 @@ export default function WorkerDetailDialog({ worker, mode = 'hours', onOpenChang
         // Le matricule ENREGISTRÉ, comme à l'export de l'équipe.
         payrollIdByWorker: savedMatricule ? new Map([[worker.id, savedMatricule]]) : undefined,
       };
-      if (kind === 'excel') exportEntriesToExcel(countedEntries, opts);
+      if (kind === 'excel') await exportEntriesToExcel(countedEntries, opts);
       else if (kind === 'csv') {
         // Exactement le CSV de l'équipe, réduit à ce salarié : semaines
         // entières pour CLASSER les heures (normales / sup.), mais seuls les
         // jours de la période sont PAYÉS (payPeriod) — deux exports qui se
         // suivent ne paient jamais deux fois le même jour.
         exportEntriesToCSV({ ...opts, fileName: `${fileName}-paie`, payPeriod: { from: fromStr, to: toStr } });
-      } else exportEntriesToPDF(countedEntries, opts);
+      } else await exportEntriesToPDF(countedEntries, opts);
       toast.success(kind === 'csv' ? 'CSV de paie téléchargé (sans verrou)' : 'Export téléchargé');
     } catch (err) {
       console.error('Error exporting worker:', err);
-      toast.error("Erreur lors de l'export");
+      toast.error(isExportLibError(err) ? "Impossible de charger l'outil d'export. Vérifiez votre connexion ou rechargez la page." : "Erreur lors de l'export");
     } finally {
       setExporting(false);
     }

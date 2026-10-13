@@ -41,7 +41,7 @@ import { toast } from 'sonner';
 import { missingWindowStart } from '@/lib/work-status';
 import { missingDaysFrom, type PlanRowLike, type UserDayLike } from '@/supabase/functions/_shared/team-stats-core';
 import { isExitToComplete, type QrFields } from '@/lib/qr-entry';
-import { exportEntriesToExcel, exportEntriesToPDF, exportEntriesToCSV, excelAsBase64 } from '@/lib/export-utils';
+import { exportEntriesToExcel, exportEntriesToPDF, exportEntriesToCSV, excelAsBase64, isExportLibError } from '@/lib/export-utils';
 import { readMealEnabled } from '@/lib/meal-setting';
 import { fetchAllPaged, chunk } from '@/lib/fetch-all';
 import { isPreviewHost } from '@/lib/hosting';
@@ -50,7 +50,7 @@ import ChantierDocuments from '@/components/chantier-documents';
 import { TimeField, TIME_HINT } from '@/components/time-field';
 import { TIME_PRESETS } from '@/lib/time-input';
 import { InfoTip } from '@/components/ui/info-tip';
-import { ExportMenu } from '@/components/export-menu';
+import { ExportMenu, ExportPreload } from '@/components/export-menu';
 import { ActionDone, type UndoResult } from '@/components/action-done';
 import { erasePlanning, isDisposableDraft, prepareMove, undoErase, undoMovePrep, type EraseResult, type MovePrep } from '@/lib/erase';
 import { fetchCompanyClosures, closedFor } from '@/lib/worker-closure';
@@ -2493,7 +2493,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         // recliquer après une coupure renvoie la même clé, donc le serveur
         // reconnaît l'envoi au lieu d'en faire un second. Un export refait
         // après correction des heures donne une autre clé, et part bien.
-        const content = excelAsBase64(entries, opts);
+        const content = await excelAsBase64(entries, opts);
         const idempotencyKey = await sendKey(user.company_id, from, to, content);
         const { data: sendData, error: sendErr } = await supabase.functions.invoke('send-payroll-export', {
           body: {
@@ -2532,7 +2532,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
           sentNote = `Envoyé à ${accountantEmail}`;
         }
       } else if (kind === 'excel') {
-        exportEntriesToExcel(entries, opts);
+        await exportEntriesToExcel(entries, opts);
       } else if (kind === 'csv') {
         // Le CSV se construit sur les SEMAINES ENTIÈRES (recapEntries), pas sur
         // les jours de la période : sans ça, une période qui commence un jeudi
@@ -2550,7 +2550,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         // puisqu'il ne porte que sur la période. Trouvé par Codex sur la PR 104.
         exportEntriesToCSV({ ...opts, payPeriod: { from, to } });
       } else {
-        exportEntriesToPDF(entries, opts);
+        await exportEntriesToPDF(entries, opts);
       }
 
       // Verrouillage PAR LOTS : un `.in('id', [...])` avec des centaines d'UUID
@@ -2573,7 +2573,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
           : `Export téléchargé — ${lockLabel}`);
     } catch (err) {
       console.error('Error exporting team:', err);
-      toast.error("Erreur lors de l'export");
+      toast.error(isExportLibError(err) ? "Impossible de charger l'outil d'export. Vérifiez votre connexion ou rechargez la page." : "Erreur lors de l'export");
     } finally {
       setExporting(false);
     }
@@ -4235,6 +4235,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
             {exportRange
               ? <p className="text-center text-sm font-medium capitalize">{format(exportRange.from, 'd MMM', { locale: fr })} → {format(exportRange.to, 'd MMM yyyy', { locale: fr })}</p>
               : <p className="text-center text-sm text-muted-foreground">Choisissez une période.</p>}
+            <ExportPreload />
             <div className="flex">
               <ExportMenu onPick={(k) => runExport(k)} disabled={exporting || !exportRange} busy={exporting} align="start" testId="team-export-menu" guide="bureau-export.menu" />
             </div>

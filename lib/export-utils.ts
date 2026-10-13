@@ -2,9 +2,6 @@
 // and the per-employee fiche export (worker-detail). Generation only — locking
 // of exported entries stays in the caller (only the payroll export locks).
 
-import * as XLSX from 'xlsx';
-import { jsPDF } from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import { format, parseISO } from 'date-fns';
 import { TimeEntryWithWorksite, User } from '@/lib/types';
 import { routeMinutesByEntry, DEFAULT_OVERTIME_RATES, TIER_1_MINUTES, type OvertimeRates } from '@/lib/overtime';
@@ -12,6 +9,32 @@ import { weekStart, weekEnd } from '@/lib/week';
 import { showMealColumn } from '@/supabase/functions/_shared/meal-setting';
 
 export type ExportEntry = TimeEntryWithWorksite & { user?: User };
+
+// ─── Chargement à la demande d'Excel et du PDF ───────────────────────────────
+//
+// xlsx (≈ 137 kB) et jsPDF + autotable (≈ 140 kB) pesaient dans le premier
+// chargement de /admin et /poseur alors qu'on s'en sert une fois par semaine.
+// Ils arrivent maintenant au clic, et sont préchauffés à l'ouverture du menu
+// « Exporter » pour que le clic reste instantané.
+let xlsxP: Promise<typeof import('xlsx')> | null = null;
+let pdfP: Promise<{ jsPDF: typeof import('jspdf').jsPDF; autoTable: typeof import('jspdf-autotable').default }> | null = null;
+
+export const EXPORT_LIB_ERROR = 'EXPORT_LIB_ERROR';
+const libFail = (e: unknown) => { const err = new Error(EXPORT_LIB_ERROR); (err as Error & { cause?: unknown }).cause = e; return err; };
+/** Vrai si l'export a échoué faute d'avoir pu télécharger l'outil (hors ligne, fichier introuvable). */
+export const isExportLibError = (e: unknown) => e instanceof Error && e.message === EXPORT_LIB_ERROR;
+
+/** Une promesse rejetée n'est JAMAIS gardée : le clic suivant réessaie. */
+export const loadXlsx = () => (xlsxP ??= import('xlsx').catch((e) => { xlsxP = null; throw libFail(e); }));
+export const loadPdf = () => (pdfP ??= Promise.all([import('jspdf'), import('jspdf-autotable')])
+  .then(([j, a]) => ({ jsPDF: j.jsPDF, autoTable: a.default }))
+  .catch((e) => { pdfP = null; throw libFail(e); }));
+
+/** Préchauffage : avale ses erreurs (les vraies erreurs viennent du clic). */
+export function preloadExportLibs(kind: 'all' | 'excel' | 'pdf' = 'all'): void {
+  if (kind !== 'pdf') void loadXlsx().catch(() => {});
+  if (kind !== 'excel') void loadPdf().catch(() => {});
+}
 
 /** Une ligne du récapitulatif : un salarié, une semaine. */
 export interface RecapRow {
@@ -210,7 +233,7 @@ function statusLabel(status: string): string {
  * part en téléchargement ET en pièce jointe au comptable, sans risque que les
  * deux divergent.
  */
-function buildWorkbook(entries: ExportEntry[], opts: ExportOptions) {
+function buildWorkbook(XLSX: typeof import('xlsx'), entries: ExportEntry[], opts: ExportOptions) {
   const includeWorker = !opts.singleWorkerName;
   const meal = showMealColumn(opts.mealEnabled !== false, entries);
 
@@ -288,13 +311,15 @@ function buildWorkbook(entries: ExportEntry[], opts: ExportOptions) {
   return wb;
 }
 
-export function exportEntriesToExcel(entries: ExportEntry[], opts: ExportOptions): void {
-  XLSX.writeFile(buildWorkbook(entries, opts), `${opts.fileName}.xlsx`);
+export async function exportEntriesToExcel(entries: ExportEntry[], opts: ExportOptions): Promise<void> {
+  const XLSX = await loadXlsx();
+  XLSX.writeFile(buildWorkbook(XLSX, entries, opts), `${opts.fileName}.xlsx`);
 }
 
 /** Le même classeur, encodé pour être joint à un e-mail. */
-export function excelAsBase64(entries: ExportEntry[], opts: ExportOptions): string {
-  return XLSX.write(buildWorkbook(entries, opts), { type: 'base64', bookType: 'xlsx' });
+export async function excelAsBase64(entries: ExportEntry[], opts: ExportOptions): Promise<string> {
+  const XLSX = await loadXlsx();
+  return XLSX.write(buildWorkbook(XLSX, entries, opts), { type: 'base64', bookType: 'xlsx' });
 }
 
 // ─── CSV pour le logiciel de paie ────────────────────────────────────────────
@@ -379,7 +404,8 @@ export function exportEntriesToCSV(opts: ExportOptions): void {
   URL.revokeObjectURL(url);
 }
 
-export function exportEntriesToPDF(entries: ExportEntry[], opts: ExportOptions): void {
+export async function exportEntriesToPDF(entries: ExportEntry[], opts: ExportOptions): Promise<void> {
+  const { jsPDF, autoTable } = await loadPdf();
   const includeWorker = !opts.singleWorkerName;
   const meal = showMealColumn(opts.mealEnabled !== false, entries);
   const doc = new jsPDF('landscape');

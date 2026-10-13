@@ -16,8 +16,7 @@ import { FileText, MapPin, Clock, Utensils, Loader2, Send } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
-import { jsPDF } from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import { loadPdf, preloadExportLibs, isExportLibError } from '@/lib/export-utils';
 
 // Lot 3 : la liste n'est chargée que si on l'ouvre.
 const TracesDialog = dynamic(() => import('@/components/traces-dialog'), { ssr: false });
@@ -48,6 +47,19 @@ export default function PoseurHistory() {
   useEffect(() => {
     fetchData();
   }, [user]);
+
+  // jsPDF n'est plus dans le premier chargement : on le charge au repos, pour que
+  // le clic sur « PDF » ne l'attende pas (sur iOS, le téléchargement doit rester
+  // lié au geste de l'utilisateur).
+  useEffect(() => {
+    const id = typeof requestIdleCallback === 'function'
+      ? requestIdleCallback(() => preloadExportLibs('pdf'), { timeout: 1500 })
+      : window.setTimeout(() => preloadExportLibs('pdf'), 300);
+    return () => {
+      if (typeof requestIdleCallback === 'function') cancelIdleCallback(id);
+      else clearTimeout(id);
+    };
+  }, []);
 
   useEffect(() => {
     if (!user?.company_id) return;
@@ -96,6 +108,7 @@ export default function PoseurHistory() {
 
     setExporting(true);
     try {
+      const { jsPDF, autoTable } = await loadPdf();
       const doc = new jsPDF();
 
       doc.setFontSize(18);
@@ -163,7 +176,7 @@ export default function PoseurHistory() {
       toast.success('PDF telecharge');
     } catch (err) {
       console.error('Error exporting PDF:', err);
-      toast.error('Erreur lors de l\'export');
+      toast.error(isExportLibError(err) ? "Impossible de charger l'outil d'export. Vérifiez votre connexion ou rechargez la page." : 'Erreur lors de l\'export');
     } finally {
       setExporting(false);
     }
