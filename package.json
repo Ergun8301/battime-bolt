@@ -100,6 +100,8 @@
     "test:videos-db": "node supabase/tests/lot13_videos_envoi_direct.mjs",
     "test:documents-db": "node supabase/tests/lot24_documents.mjs",
     "test:documents": "npx -y deno@2 test --allow-read supabase/functions/_shared/doc-categories.test.ts",
+    "test:chantier-termine": "npx -y deno@2 test --allow-read supabase/functions/_shared/chantier-termine.test.ts",
+    "test:chantier-termine-db": "node --no-warnings supabase/tests/lot23_chantier_termine.mjs",
     "test:documents-ecrans": "node scripts/tests/documents-lot24.mjs out docs/captures-documents-categories",
     "test:videos-ecrans": "node scripts/tests/videos-lot13.mjs out docs/captures-videos",
     "test:versions": "npx -y deno@2 test supabase/functions/_shared/planning-versions.test.ts",
