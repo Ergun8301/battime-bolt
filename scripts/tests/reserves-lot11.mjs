@@ -145,7 +145,7 @@ async function mount(ctx, S, me) {
     const single = (req.headers()['accept'] || '').includes('vnd.pgrst.object');
     if (method === 'GET' || method === 'HEAD') {
       if (single) return rows.length ? r.fulfill({ json: rows[0] }) : r.fulfill({ status: 406, json: { code: 'PGRST116', message: 'none' } });
-      // Pagination (.range → offset/limit) : lib/fetch-all.ts lit jusqu'à une page vide.
+      // Pagination (.range → offset/limit) : lib/fetch-all.ts s'arrête sur une page plus courte que la taille demandée.
       const off = Number(url.searchParams.get('offset') || 0);
       const lim = url.searchParams.get('limit');
       const page = rows.slice(off, lim ? off + Number(lim) : undefined);

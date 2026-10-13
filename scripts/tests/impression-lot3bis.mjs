@@ -630,7 +630,9 @@ if (AVANT) {
   const g9 = gets.length;
   await printWith(p, { kind: 'month', signature: true });
   const offs = getsOf('planning', g9).map((g) => Number(g.p.get('offset'))).sort((x, y) => x - y);
-  const want = []; for (let o = 0; o < octRows.length; o += 500) want.push(o); want.push(octRows.length);
+  // Lot 29 : la lecture s'arrête sur une page plus courte que 500 ; une dernière page (vide) ne part que si la précédente était pleine.
+  const want = []; for (let o = 0; o < octRows.length; o += 500) want.push(o);
+  if (octRows.length % 500 === 0) want.push(octRows.length);
   check(same(offs, want), `I9 planning lu par pages de 500 : offsets ${offs.join(', ')} (${octRows.length} lignes)`);
   await paper(p, async () => {
     const r = await p.evaluate(() => ({

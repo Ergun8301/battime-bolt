@@ -73,6 +73,7 @@ const D = {};
 let MEAL = true;
 let failMeal = false;     // set_meal_enabled répond 400 (B4)
 let mealNetFail = false;  // la lecture de meal_enabled échoue (réseau coupé)
+let groupedBroken = false; // lot 29 : la lecture GROUPÉE des réglages échoue en 42703 (une autre colonne manque) → repli par groupes
 let assistantReply = null;
 const freshDb = (meal = MEAL) => {
   MEAL = meal;
@@ -197,6 +198,7 @@ const newCtx = async (uid, email, viewport) => {
     if (m === 'GET' || m === 'HEAD') {
       // Comme PostgREST : une colonne inconnue fait échouer la requête (et seulement elle).
       if (t === 'companies' && /meal_enabled/.test(url.searchParams.get('select') || '')) {
+        if (groupedBroken && (url.searchParams.get('select') || '').includes(',')) { mealReads.push(400); return r.fulfill({ status: 400, json: { code: '42703', message: 'column companies.position_tracking_enabled does not exist', details: null, hint: null } }); }
         if (mealNetFail) { mealReads.push('réseau'); return r.abort('failed'); }
         if (MEAL === 'absent') { mealReads.push(400); return r.fulfill({ status: 400, json: { code: '42703', message: 'column companies.meal_enabled does not exist', details: null, hint: null } }); }
         mealReads.push(200);
@@ -723,6 +725,17 @@ console.log('\n═══ C8 · hors ligne : la dernière valeur connue');
   await openWorker(wp);
   check(await tile(wp).isVisible(), 'C8 lecture impossible, rien de gardé : comme avant (case visible)');
   mealNetFail = false;
+}
+
+console.log('\n═══ C9 · une autre colonne manque (repli par groupes) ET la lecture du panier échoue');
+{
+  freshDb(false);
+  D.time_entries = [row({ id: 'e1', worksite_id: ATELIER.id, start_time: '13:00', end_time: '16:30' })];
+  await openWorker(wp); // garde « non »
+  groupedBroken = true; mealNetFail = true;
+  await openWorker(wp);
+  check(await tile(wp).count() === 0, 'C9 le groupe « panier » illisible ne remet pas « oui » : le « non » gardé sur le téléphone s’applique, case cachée');
+  groupedBroken = false; mealNetFail = false;
 }
 
 check(pageErrors.length === 0, `aucune erreur de page${pageErrors.length ? ' — ' + pageErrors.join(' | ') : ''}`);

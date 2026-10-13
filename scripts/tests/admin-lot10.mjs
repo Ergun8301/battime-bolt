@@ -89,7 +89,7 @@ const filterRows = (rows, params) => {
   }
   return rows;
 };
-const log = { liveGets: 0, planningGets: 0, extrasGets: 0, profileGets: 0, writes: 0 };
+const log = { liveGets: 0, planningGets: 0, extrasGets: 0, companyGets: 0, profileGets: 0, writes: 0 };
 const setup = async (ctx) => {
   await ctx.clock.install({ time: NOW }); // lot 11 : horloge du contexte (page.clock la pilote)
   await ctx.addInitScript(([k, v]) => { localStorage.setItem(k, v); }, ['sb-sdperbcquvneohotjono-auth-token', JSON.stringify(session)]);
@@ -103,6 +103,8 @@ const setup = async (ctx) => {
       const body = JSON.parse(r.request().postData() || '{}');
       if (body.action === 'create_pairing') { log.kioskCodes = (log.kioskCodes || 0) + 1; return r.fulfill({ json: { code: '123456', expires_at: new Date(Date.now() + 600000).toISOString(), pairing_id: 'pp-1' } }); }
       if (body.action === 'cancel_pairing') return r.fulfill({ json: { success: true } });
+      // Lecture seule du lot 12 (QR fixe) : la fenêtre « Borne » la demande à l'ouverture, ce n'est pas une écriture.
+      if (body.action === 'fixed_status') return r.fulfill({ json: { available: false } });
     }
     if (url.pathname.startsWith('/functions/v1/')) { log.writes++; return r.fulfill({ json: {} }); }
     if (url.pathname.startsWith('/rest/v1/rpc/')) return r.fulfill({ json: [] });
@@ -111,7 +113,9 @@ const setup = async (ctx) => {
     if (m !== 'GET' && m !== 'HEAD') { log.writes++; console.log('   écriture', m, t); return r.fulfill({ status: 201, json: {} }); }
     if (t === 'active_sessions') log.liveGets++;
     if (t === 'planning' && (url.searchParams.get('select') || '').includes('worksite:worksites')) log.planningGets++;
-    if (t === 'companies' && (url.searchParams.get('select') || '').includes('logo_url')) log.extrasGets++;
+    // Lot 29 : fetchExtras relit les invitations à chaque sondage ; la ligne `companies` n'est plus relue.
+    if (t === 'invitations') log.extrasGets++;
+    if (t === 'companies') log.companyGets++;
     if (t === 'users' && url.searchParams.get('id') === 'eq.u-admin') log.profileGets++;
     const rows = filterRows(D[t] || [], url.searchParams);
     if ((r.request().headers()['accept'] || '').includes('vnd.pgrst.object')) return rows.length ? r.fulfill({ json: rows[0] }) : r.fulfill({ status: 406, json: { code: 'PGRST116', message: 'none' } });
@@ -204,10 +208,11 @@ const setVis = (pg, state) => pg.evaluate((s) => {
   check(m.length === 0, `1a) sondage 30 s sans changement : ${m.length} mutation(s) (attendu 0)`);
 
   // 1b) sondage des compteurs (60 s) — fetchExtras + fetchLive
-  g = log.extrasGets;
+  g = log.extrasGets; const co0 = log.companyGets;
   await p.clock.fastForward(31000); await p.waitForTimeout(1500);
   m = await takeMuts(p); RESULTS['sondage 60 s'] = m.length;
-  check(log.extrasGets > g, `1b) le sondage 60 s a bien relu l'entreprise et les compteurs (${log.extrasGets - g})`);
+  check(log.extrasGets > g, `1b) le sondage 60 s a bien relu les compteurs (${log.extrasGets - g})`);
+  check(log.companyGets === co0, `1b) le sondage 60 s ne relit PAS l'entreprise (${log.companyGets - co0} lecture)`);
   report('1b) sondage 60 s, rien de changé', m);
   check(m.length === 0, `1b) sondage 60 s sans changement : ${m.length} mutation(s) (attendu 0)`);
 

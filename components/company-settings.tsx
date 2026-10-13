@@ -462,6 +462,7 @@ export default function CompanySettings({ open, onOpenChange, onSaved, onOpenTra
           setMealInit(mealOn); rememberMealEnabled(user.company_id, mealOn);
         } catch {
           setErr('Panier repas : réglage non enregistré. Réessayez.');
+          onSaved?.(); // le reste (nom, trajet, heures…) EST enregistré : l'écran doit le montrer
           return;
         }
       }

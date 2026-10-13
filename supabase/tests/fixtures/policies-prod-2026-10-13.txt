@@ -1,0 +1,42 @@
+# Définitions RÉELLES en production (pg_policies, schéma public) des 33 règles d'accès signalées par l'outil d'analyse Supabase (lint 0003 auth_rls_initplan : auth.uid() appelé ligne par ligne). Export du 2026-10-13, lecture seule.
+# Format : table | règle | commande | rôles | PERMISSIVE | USING | WITH CHECK   (\n = retour à la ligne de la définition d'origine)
+# Les sous-requêtes EXISTS (...) sont recopiées telles quelles.
+active_sessions | active_sessions_delete | DELETE | authenticated | USING ((company_id = get_my_company_id()) AND (is_admin() OR (user_id = auth.uid())))
+active_sessions | active_sessions_insert_own | INSERT | authenticated | CHECK ((user_id = auth.uid()) AND (company_id = get_my_company_id()))
+active_sessions | active_sessions_select | SELECT | authenticated | USING ((company_id = get_my_company_id()) AND (is_admin() OR (user_id = auth.uid())))
+assistant_journal | assistant_journal_read | SELECT | authenticated | USING ((company_id = get_my_company_id()) AND (is_admin() OR (actor_id = auth.uid())))
+day_tasks | day_tasks_admin_insert | INSERT | authenticated | CHECK ((company_id = get_my_company_id()) AND is_admin() AND (created_by = auth.uid()) AND (EXISTS ( SELECT 1 FROM users u WHERE ((u.id = day_tasks.user_id) AND (u.company_id = day_tasks.company_id) AND (u.is_active IS DISTINCT FROM false) AND ((u.role)::text = ANY (ARRAY['worker'::text, 'lead'::text]))))))
+day_tasks | day_tasks_select | SELECT | authenticated | USING ((company_id = get_my_company_id()) AND (is_admin() OR (user_id = auth.uid())))
+documents | documents_delete | DELETE | authenticated | USING ((company_id = get_my_company_id()) AND (is_admin() OR (uploaded_by = auth.uid())))
+documents | documents_insert | INSERT | authenticated | CHECK ((company_id = get_my_company_id()) AND (uploaded_by = auth.uid()))
+leave_requests | leave_requests_delete | DELETE | authenticated | USING ((company_id = get_my_company_id()) AND (is_admin() OR ((user_id = auth.uid()) AND (status = 'pending'::text))))
+leave_requests | leave_requests_select | SELECT | authenticated | USING ((company_id = get_my_company_id()) AND (is_admin() OR (user_id = auth.uid())))
+meeting_participants | meeting_participants_select | SELECT | authenticated | USING ((company_id = get_my_company_id()) AND (is_admin() OR (user_id = auth.uid())))
+meetings | meetings_select | SELECT | authenticated | USING ((company_id = get_my_company_id()) AND (is_admin() OR all_team OR (EXISTS ( SELECT 1 FROM meeting_participants mp WHERE ((mp.meeting_id = meetings.id) AND (mp.user_id = auth.uid()))))))
+month_closures | month_closures_admin_write | ALL | authenticated | USING ((company_id = get_my_company_id()) AND is_admin()) | CHECK ((company_id = get_my_company_id()) AND is_admin() AND ((closed_by IS NULL) OR (closed_by = auth.uid())))
+planning | planning_worker_select_own | SELECT | authenticated | USING ((company_id = get_my_company_id()) AND (is_admin() OR (user_id = auth.uid()) OR is_my_team_member(user_id, work_date)))
+push_subscriptions | push_subscriptions_own_delete | DELETE | authenticated | USING (user_id = auth.uid())
+push_subscriptions | push_subscriptions_own_select | SELECT | authenticated | USING (user_id = auth.uid())
+task_templates | task_templates_admin_insert | INSERT | authenticated | CHECK ((company_id = get_my_company_id()) AND is_admin() AND (created_by = auth.uid()))
+time_entries | time_entries_select_company_admin_or_own_worker | SELECT | authenticated | USING ((company_id = get_my_company_id()) AND (is_admin() OR (user_id = auth.uid()) OR is_my_team_member(user_id, work_date)))
+time_entries | time_entries_worker_delete_own_draft | DELETE | authenticated | USING ((user_id = auth.uid()) AND (company_id = get_my_company_id()) AND (status = 'draft'::text) AND (locked = false))
+time_entries | time_entries_worker_insert | INSERT | authenticated | CHECK ((user_id = auth.uid()) AND (company_id = get_my_company_id()) AND (status = 'draft'::text))
+time_entries | time_entries_worker_update | UPDATE | authenticated | USING ((user_id = auth.uid()) AND (company_id = get_my_company_id()) AND (status = ANY (ARRAY['draft'::text, 'submitted'::text])) AND (locked = false)) | CHECK ((user_id = auth.uid()) AND (company_id = get_my_company_id()) AND (status = ANY (ARRAY['draft'::text, 'submitted'::text, 'cancelled'::text])) AND (locked = false))
+time_entry_corrections | time_entry_corrections_insert | INSERT | public | CHECK ((company_id = get_my_company_id()) AND (corrected_by = auth.uid()) AND (is_admin() OR is_my_team_member(worker_id, work_date)))
+time_entry_corrections | time_entry_corrections_select | SELECT | public | USING ((company_id = get_my_company_id()) AND (is_admin() OR (worker_id = auth.uid()) OR (corrected_by = auth.uid())))
+time_entry_corrections | time_entry_corrections_update_notify | UPDATE | public | USING ((company_id = get_my_company_id()) AND (corrected_by = auth.uid()) AND (notified_at IS NULL)) | CHECK ((company_id = get_my_company_id()) AND (corrected_by = auth.uid()))
+time_entry_edits | time_entry_edits_select | SELECT | authenticated | USING ((company_id = get_my_company_id()) AND (is_admin() OR (worker_id = auth.uid())))
+time_entry_positions | time_entry_positions_select | SELECT | public | USING ((company_id = get_my_company_id()) AND (is_admin() OR (user_id = auth.uid())))
+traces | traces_select_own | SELECT | authenticated | USING ((company_id = get_my_company_id()) AND (object_table = ANY (ARRAY['planning'::text, 'time_entries'::text, 'active_sessions'::text, 'day_tasks'::text, 'meetings'::text])) AND ((user_id = auth.uid()) OR ((user_id IS NULL) AND (object_table = 'meetings'::text) AND ((before IS NULL) OR ((before ->> 'all_team'::text) = 'true'::text)) AND ((after IS NULL) OR ((after ->> 'all_team'::text) = 'true'::text)))))
+training_video_views | training_video_views_select | SELECT | authenticated | USING ((company_id = get_my_company_id()) AND (is_admin() OR (user_id = auth.uid())))
+training_views | training_views_select | SELECT | authenticated | USING ((company_id = get_my_company_id()) AND (is_admin() OR (user_id = auth.uid())))
+user_closures | user_closures_admin_insert | INSERT | authenticated | CHECK ((company_id = get_my_company_id()) AND is_admin() AND ((closed_by IS NULL) OR (closed_by = auth.uid())) AND (EXISTS ( SELECT 1 FROM users u WHERE ((u.id = user_closures.user_id) AND (u.company_id = user_closures.company_id)))))
+user_closures | user_closures_admin_update | UPDATE | authenticated | USING ((company_id = get_my_company_id()) AND is_admin()) | CHECK ((company_id = get_my_company_id()) AND is_admin() AND (EXISTS ( SELECT 1 FROM users u WHERE ((u.id = user_closures.user_id) AND (u.company_id = user_closures.company_id)))) AND ((closed_by IS NULL) OR (closed_by = auth.uid()) OR (EXISTS ( SELECT 1 FROM users b WHERE ((b.id = user_closures.closed_by) AND (b.company_id = user_closures.company_id))))))
+user_closures | user_closures_select | SELECT | authenticated | USING ((company_id = get_my_company_id()) AND (is_admin() OR (user_id = auth.uid())))
+users | users_select_company | SELECT | authenticated | USING ((company_id = get_my_company_id()) OR (id = auth.uid()))
+
+# Autres constats de l'analyse (même jour) :
+# - 42 clés étrangères sans index (INFO). Plan du lot : 4 index composites seulement : planning(company_id, work_date), time_entries(company_id, work_date), worksite_expenses(worksite_id), active_sessions(planning_id).
+# - 22 tables avec plusieurs règles PERMISSIVES pour le même rôle et la même commande (dont support_read) : NE PAS y toucher (changer la fusion des règles change les droits).
+# - 17 index jamais utilisés (INFO) : NE PAS les retirer (aucune suppression).
+# - Les fonctions get_my_company_id(), is_admin(), is_my_team_member(uuid, date) sont appelées nues dans ~69 règles : les entourer de (SELECT ...) quand l'appel ne dépend d'aucune colonne de la ligne (get_my_company_id(), is_admin(), auth.uid()) ; JAMAIS is_my_team_member(user_id, work_date) (dépend de la ligne).

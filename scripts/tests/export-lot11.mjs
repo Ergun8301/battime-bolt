@@ -151,8 +151,11 @@ const setup = async (ctx, { closures = 'ok' } = {}) => {
       }
       return r.fulfill({ status: 201, json: {} });
     }
+    // Lot 29 : lecture des réglages en échec (réseau) tant que db.failCompanies > 0.
+    if (t === 'companies' && db.failCompanies > 0) { db.failCompanies--; return r.fulfill({ status: 500, json: { message: 'boom' } }); }
+    if (t === 'companies') db.companiesReads = (db.companiesReads || 0) + 1;
     let rows = filterRows(db[t] || [], url.searchParams);
-    // .range() → offset/limit (fetchAllPaged s'arrête sur une page vide).
+    // .range() → offset/limit (fetchAllPaged s'arrête sur une page plus courte que la taille demandée).
     const off = Number(url.searchParams.get('offset') || 0); const lim = url.searchParams.get('limit');
     if (off || lim) rows = rows.slice(off, lim ? off + Number(lim) : undefined);
     if ((req.headers()['accept'] || '').includes('vnd.pgrst.object')) return rows.length ? r.fulfill({ json: rows[0] }) : r.fulfill({ status: 406, json: { code: 'PGRST116', message: 'none' } });
@@ -344,6 +347,42 @@ const centi = (min) => (min / 60).toFixed(2).replace('.', ',');
   check(parseCsv(csvTeam.text)[0].join(';') === HEAD, 'A) équipe : même en-tête');
   check(JSON.stringify(teamLucas) === JSON.stringify(rowsT.slice(1)),
     `A) CSV fiche = CSV équipe réduit à Lucas (${JSON.stringify(rowsT.slice(1))} / ${JSON.stringify(teamLucas)})`);
+  await ctx.close();
+}
+
+// ═══ A bis) Lot 29 : l'export de paie relit les réglages AU CLIC ════════════════
+// L'écran ne les relit plus toutes les 60 s : un autre administrateur a pu changer les heures de
+// base ou les majorations. Un export ne doit jamais sortir avec des valeurs périmées, ni avec les
+// valeurs par défaut quand la lecture échoue.
+{
+  const ctx = await b.newContext({ viewport: { width: 1280, height: 800 }, locale: 'fr-FR', timezoneId: 'Europe/Paris', acceptDownloads: true });
+  const { db } = await setup(ctx);
+  const pg = await openAdmin(ctx);
+  await pg.locator('.bt-pl-fill:visible', { hasText: 'Exporter' }).first().click();
+  const teamItem = pg.getByRole('button', { name: /Exporter l.équipe/ });
+  if (await teamItem.count()) await teamItem.first().click();
+  const team = pg.locator('[role=dialog]').filter({ has: pg.locator('h2', { hasText: /Exporter l.équipe/ }) });
+  await team.waitFor();
+  await team.getByRole('button', { name: "Aujourd'hui", exact: true }).click();
+  const csvAvant = await (async () => { await team.locator('[data-testid=team-export-menu]').click(); return download(pg, () => pg.locator('[data-testid=team-export-menu-csv]').click()); })();
+  const baseAvant = parseCsv(csvAvant.text).find((r) => r[0] === '00042')?.[10];
+  // Un autre administrateur change les heures de base : l'onglet n'en sait rien.
+  db.companies[0].weekly_hours = 20;
+  const lecturesAvant = db.companiesReads || 0;
+  await team.locator('[data-testid=team-export-menu]').click();
+  const csvApres = await download(pg, () => pg.locator('[data-testid=team-export-menu-csv]').click());
+  const baseApres = parseCsv(csvApres.text).find((r) => r[0] === '00042')?.[10];
+  check(baseAvant !== baseApres && /^20([,.]0+)?$/.test(baseApres || ''), `A bis) le CSV de paie sort avec les heures de base RELUES au clic (${baseAvant} → ${baseApres})`);
+  check((db.companiesReads || 0) > lecturesAvant, `A bis) l'export relit la ligne companies (${(db.companiesReads || 0) - lecturesAvant} lecture(s))`);
+  // Lecture des réglages en échec : export annulé avec un message, aucun fichier.
+  db.failCompanies = 1;
+  await team.locator('[data-testid=team-export-menu]').click();
+  let telecharge = false;
+  pg.once('download', () => { telecharge = true; });
+  await pg.locator('[data-testid=team-export-menu-csv]').click();
+  await pg.getByText(/Réglages de l.entreprise illisibles/).first().waitFor({ timeout: 5000 }).catch(() => {});
+  await pg.waitForTimeout(500);
+  check(await pg.getByText(/Réglages de l.entreprise illisibles/).count() >= 1 && !telecharge, `A bis) réglages illisibles : export annulé avec un message, aucun fichier (téléchargé : ${telecharge})`);
   await ctx.close();
 }
 
