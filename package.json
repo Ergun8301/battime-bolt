@@ -92,7 +92,8 @@
     "test:videos-ecrans": "node scripts/tests/videos-lot13.mjs out docs/captures-videos",
     "test:versions": "npx -y deno@2 test supabase/functions/_shared/planning-versions.test.ts",
     "test:versions-db": "node supabase/tests/lot8_versions_planning.mjs",
-    "test:versions-ecrans": "node scripts/tests/versions-lot8.mjs out docs/captures-versions"
+    "test:versions-ecrans": "node scripts/tests/versions-lot8.mjs out docs/captures-versions",
+    "test:appairage-db": "node supabase/tests/lot11_appairage_un_geste.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
