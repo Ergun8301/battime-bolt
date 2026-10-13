@@ -94,7 +94,8 @@
     "test:versions-db": "node supabase/tests/lot8_versions_planning.mjs",
     "test:versions-ecrans": "node scripts/tests/versions-lot8.mjs out docs/captures-versions",
     "test:appairage": "npx -y deno@2 test --allow-env supabase/functions/_shared/kiosk-pair.test.ts",
-    "test:appairage-db": "node supabase/tests/lot11_appairage_un_geste.mjs"
+    "test:appairage-db": "node supabase/tests/lot11_appairage_un_geste.mjs",
+    "test:appairage-ecrans": "node scripts/tests/appairage-un-geste.mjs out docs/captures-appairage-lot11"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
