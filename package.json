@@ -93,6 +93,7 @@
     "test:versions": "npx -y deno@2 test supabase/functions/_shared/planning-versions.test.ts",
     "test:versions-db": "node supabase/tests/lot8_versions_planning.mjs",
     "test:versions-ecrans": "node scripts/tests/versions-lot8.mjs out docs/captures-versions",
+    "test:appairage": "npx -y deno@2 test --allow-env supabase/functions/_shared/kiosk-pair.test.ts",
     "test:appairage-db": "node supabase/tests/lot11_appairage_un_geste.mjs"
   },
   "dependencies": {
