@@ -249,7 +249,7 @@ async function call(body: Row, opts: { token?: string; ip?: string; headers?: Re
       headers: {
         'Content-Type': 'application/json',
         ...(opts.token ? { Authorization: `Bearer ${opts.token}` } : {}),
-        ...(opts.ip === '' ? {} : { 'x-forwarded-for': opts.ip || '203.0.113.1' }),
+        ...(opts.ip === '' ? {} : { 'x-forwarded-for': opts.ip || '203.0.113.1', 'cf-connecting-ip': opts.ip || '203.0.113.1' }),
         ...(opts.headers || {}),
       },
       body: JSON.stringify(body),
@@ -1147,9 +1147,13 @@ Deno.test({
       [200, 'approved', first.json.token, first.json.seed, first.json.kiosk_id], 'rejeu : le même jeton, la même graine, la même tablette');
     for (const k of ['step', 'digits', 'kiosk_name', 'company_name', 'settings']) eq(again.json[k], first.json[k], `rejeu : « ${k} » identique`);
     eq(db.kiosks.length, 1, 'une seule ligne kiosks');
-    advance(3 * 60_000 + 5_000);
+    // La tablette a servi (un appel avec son jeton après sa création) : plus de rejeu au-delà de 3 minutes.
+    // (`sync` pose `last_seen_at` avec l'horloge réelle ; le harnais ne simule que `Date.now`.)
+    advance(60_000);
+    db.kiosks[0].last_seen_at = new Date(Date.now()).toISOString();
+    advance(2 * 60_000 + 5_000);
     const late = await pairStatus(q.rid, q.secret);
-    eq([late.json.status, 'token' in late.json], ['used', false], 'après 3 minutes : « servie », sans jeton');
+    eq([late.json.status, 'token' in late.json], ['used', false], 'après 3 minutes, tablette servie : « servie », sans jeton');
   },
 });
 
@@ -1260,17 +1264,28 @@ Deno.test({
     advance(5 * 60_000);
     eq((await pairStatus(q.rid, q.secret)).json.status, 'pending', 'à 5 min : en attente');
     advance(5 * 60_000 + 2_000);
-    eq((await pairStatus(q.rid, q.secret)).json.status, 'expired', '> 10 min sans confirmation : expirée');
+    eq((await pairStatus(q.rid, q.secret)).json.status, 'expired', '> 10 min sans confirmation : expirée (côté tablette)');
+    // Le patron qui a scanné un QR proche de sa fin (la tablette l'a déjà renouvelé) a encore 2 min pour se connecter.
+    const late = await lookup(q.rid);
+    eq([late.status, late.json.available], [200, true], 'pair_lookup à exp + 2 s : encore accepté (marge de 2 min)');
+    advance(2 * 60_000);
     const lk = await lookup(q.rid), cf = await confirmCode(q.rid, q.code);
-    eq([lk.status, lk.json.code, cf.status, cf.json.code], [410, 'pair_request_expired', 410, 'pair_request_expired'], 'pair_lookup et pair_confirm : 410');
+    eq([lk.status, lk.json.code, cf.status, cf.json.code], [410, 'pair_request_expired', 410, 'pair_request_expired'], 'pair_lookup et pair_confirm après exp + 2 min : 410');
     eq(lk.json.error, 'Ce QR a expiré. Scannez celui qui s’affiche sur la tablette.', 'texte exact');
     eq(approvalRows().length, 0, 'rien n’a été écrit');
+
+    // Confirmée à exp + 1 min 50 s (marge du patron qui se connecte), remise à exp + 2 min 50 s : livrée.
+    const qLate = await pairRequest();
+    advance(Date.parse(String(qLate.res.expires_at)) + 110_000 - Date.now());
+    eq((await confirmCode(qLate.rid, qLate.code)).status, 200, 'confirmation à exp + 1 min 50 s : acceptée');
+    advance(60_000);
+    eq((await pairStatus(qLate.rid, qLate.secret)).json.status, 'approved', 'remise à exp + 2 min 50 s : livrée (la marge de confirmation reste sous celle de la remise)');
 
     // Confirmée à exp − 1 s, remise à exp + 2 min : livrée.
     const q2 = await pairRequest();
     const exp2 = Date.parse(String(q2.res.expires_at));
     advance(exp2 - 1_000 - Date.now());
-    eq((await confirmCode(q2.rid, q2.code)).status, 200, 'confirmation à exp − 1 s : acceptée');
+    eq((await confirmCode(q2.rid, q2.code, 'jwt-admin', { replace: true })).status, 200, 'confirmation à exp − 1 s : acceptée');
     advance(60_000 + 1_000 + 60_000);
     const st = await pairStatus(q2.rid, q2.secret);
     eq([st.json.status, typeof st.json.token], ['approved', 'string'], 'remise à exp + 2 min : livrée');
@@ -1469,6 +1484,92 @@ Deno.test({
 });
 
 Deno.test({
+  name: 'Lot 11 appairage — plusieurs tablettes actives (reliquat) : une tablette neuve et muette ne masque pas une plus ancienne vivante',
+  sanitizeOps: false, sanitizeResources: false,
+  async fn() {
+    pairDb();
+    const vivante = await addKiosk(CO, 't-ancienne-vivante', ago(3 * 24 * 60), { last_seen_at: ago(2) });
+    await addKiosk(CO, 't-recente-morte', ago(60), { last_seen_at: ago(50) });
+    const q = await pairRequest();
+    const rep = (await lookup(q.rid)).json.replaces as Row;
+    eq(rep.alive, true, 'une seule vivante suffit : tablette en service');
+    ok(Number(rep.seen_ago_s) >= 118 && Number(rep.seen_ago_s) <= 125, `ancienneté de la plus récemment vue (${rep.seen_ago_s})`);
+    const one = await confirmCode(q.rid, q.code);
+    eq([one.status, one.json.code], [409, 'replace_required'], 'sans second geste : refusé, la vivante n’est pas révoquée en silence');
+    eq((await confirmCode(q.rid, q.code, 'jwt-admin', { replace: true })).status, 200, 'avec le second geste : confirmée');
+    ok(vivante.revoked_at == null, 'la confirmation ne révoque rien');
+  },
+});
+
+Deno.test({
+  name: 'Lot 11 appairage — plafond illisible (42501) avec une adresse connue : « indisponible », pas de plafond perdu en silence',
+  sanitizeOps: false, sanitizeResources: false,
+  async fn() {
+    pairDb();
+    readError.kiosk_pair_throttle = { status: 403, body: { code: '42501', message: 'permission denied' } };
+    const { result: r, out } = await spyConsole(async () => ({
+      req: await call({ action: 'pair_request' }, { ip: '198.51.100.5' }),
+      lk: await lookup('A'.repeat(60)),
+    }));
+    eq([r.req.status, r.req.json], [200, { available: false }], 'pair_request : indisponible');
+    eq([r.lk.status, r.lk.json], [200, { available: false }], 'pair_lookup : indisponible aussi (plafond d’entreprise)');
+    eq(out, '', 'rien dans les journaux');
+    // Toute autre panne de lecture reste « jamais bloquant ».
+    readError.kiosk_pair_throttle = { status: 500, body: { code: 'XX000', message: 'panne' } };
+    const { result: other } = await spyConsole(() => call({ action: 'pair_request' }, { ip: '198.51.100.5' }));
+    eq([other.status, other.json.available], [200, true], 'autre panne : la demande passe (fail-open)');
+  },
+});
+
+Deno.test({
+  name: 'Lot 11 appairage — réponse perdue puis tablette hors ligne : la remise se rejoue tant que la tablette n’a jamais servi (30 min)',
+  sanitizeOps: false, sanitizeResources: false,
+  async fn() {
+    pairDb();
+    const q = await confirmedRequest();
+    const first = await pairStatus(q.rid, q.secret); // la réponse se perd, la tablette reste hors ligne
+    eq(first.json.status, 'approved', 'première remise');
+    advance(10 * 60_000);
+    const again = await pairStatus(q.rid, q.secret);
+    eq([again.json.status, again.json.token, again.json.kiosk_id], ['approved', first.json.token, first.json.kiosk_id], 'après 10 min, tablette jamais servie : même jeton, même ligne');
+    eq(db.kiosks.length, 1, 'toujours une seule ligne kiosks (aucune tablette fantôme)');
+    advance(21 * 60_000);
+    eq(((await pairStatus(q.rid, q.secret)).json as Row).status, 'used', 'après 30 min : « servie »');
+
+    // Une tablette qui a servi (appel avec son jeton après sa création) n'est plus rejouée après 3 min.
+    pairDb();
+    const q2 = await confirmedRequest();
+    const got = await pairStatus(q2.rid, q2.secret);
+    advance(60_000);
+    eq((await call({ action: 'sync', kiosk_id: got.json.kiosk_id, token: got.json.token })).status, 200, 'la tablette se synchronise');
+    db.kiosks[0].last_seen_at = new Date(Date.now()).toISOString(); // `sync` pose l'horloge réelle, le harnais ne simule que Date.now
+    advance(4 * 60_000);
+    eq((await pairStatus(q2.rid, q2.secret)).json.status, 'used', 'tablette déjà servie, > 3 min : « servie », sans jeton');
+  },
+});
+
+Deno.test({
+  name: 'Lot 11 appairage — une tablette vivante reliée entre la confirmation et la remise n’est pas révoquée en silence',
+  sanitizeOps: false, sanitizeResources: false,
+  async fn() {
+    pairDb();
+    const q = await confirmedRequest(); // aucune tablette : un seul geste suffit
+    advance(30_000);
+    const code = await addKiosk(CO, 't-par-code', new Date(Date.now()).toISOString(), { last_seen_at: new Date(Date.now()).toISOString() }); // reliée par code à 6 chiffres entre-temps
+    const st = await pairStatus(q.rid, q.secret);
+    eq(st.json.status, 'cancelled', 'la remise est refusée : la tablette reçoit un QR neuf');
+    ok(code.revoked_at == null && db.kiosks.length === 1, 'la tablette reliée par code reste active, aucune ligne créée');
+    ok(approvalRows()[0].claimed_at === null, 'la confirmation n’est pas consommée');
+    // Le patron reconfirme un QR neuf : cette fois la tablette vivante demande le second geste.
+    const q2 = await pairRequest();
+    eq((await confirmCode(q2.rid, q2.code)).json.code, 'replace_required', 'nouvelle confirmation : second geste demandé');
+    eq((await confirmCode(q2.rid, q2.code, 'jwt-admin', { replace: true })).status, 200, 'avec le second geste');
+    eq((await pairStatus(q2.rid, q2.secret)).json.status, 'approved', 'remise');
+    ok(code.revoked_at, 'la tablette est révoquée, en connaissance de cause');
+  },
+});
+
+Deno.test({
   name: 'Lot 11 appairage — l’entreprise vient de la base : l’admin de CO2 relie à CO2, jamais à CO',
   sanitizeOps: false, sanitizeResources: false,
   async fn() {
@@ -1565,6 +1666,14 @@ Deno.test({
     // cf-connecting-ip prime sur x-forwarded-for.
     eq((await call({ action: 'pair_request' }, { ip: A, headers: { 'cf-connecting-ip': '198.51.100.99' } })).status, 200, 'x-forwarded-for « pleine » mais cf-connecting-ip différent : acceptée');
     eq((await call({ action: 'pair_request' }, { ip: '198.51.100.77', headers: { 'cf-connecting-ip': A } })).status, 429, 'cf-connecting-ip « pleine » : refusée malgré un autre x-forwarded-for');
+    // Le premier x-forwarded-for est écrit par le client : seul cf-connecting-ip compte. Un client qui le
+    // fait tourner ne contourne rien (et ne vise pas le seau d'un autre) : sans cf-connecting-ip, pas de plafond d'adresse.
+    const bucketsBefore = (db.kiosk_pair_throttle || []).length;
+    for (let i = 0; i < 40; i++) {
+      const r = await call({ action: 'pair_request' }, { ip: '', headers: { 'x-forwarded-for': `192.0.2.${i}, 203.0.113.9` } });
+      if (r.status !== 200) throw new Error(`x-forwarded-for seul : pair_request n° ${i + 1} → ${r.status}`);
+    }
+    eq((db.kiosk_pair_throttle || []).length, bucketsBefore, 'x-forwarded-for seul : aucun seau lu ni écrit (rien à faire tourner)');
     // Le plafond se desserre après 10 minutes.
     advance(10 * 60_000 + 1_000);
     eq((await call({ action: 'pair_request' }, { ip: A })).status, 200, 'après 10 minutes : de nouveau permis');

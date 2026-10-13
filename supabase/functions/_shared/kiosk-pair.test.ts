@@ -5,7 +5,7 @@
 import {
   buildChoices, displayCodeFromBytes, formatDisplayCode, hammingDistance, isDeviceSecret, minutesLabel, normalizeDisplayCode,
   pairBucket, pairThrottleFull, pairThrottleNext, pairUrl, pickDecoys, ridBody, ridDecode, ridEncode, secretFingerprint,
-  MAX_PAIR_ADMIN_OPS_PER_COMPANY, MAX_PAIR_REQUESTS_PER_BUCKET, PAIR_CLAIM_GRACE_MS, PAIR_CO_BUCKET_BASE, PAIR_CODE_ALPHABET,
+  MAX_PAIR_ADMIN_OPS_PER_COMPANY, MAX_PAIR_REQUESTS_PER_BUCKET, PAIR_CLAIM_GRACE_MS, PAIR_CO_BUCKET_BASE, PAIR_CONFIRM_GRACE_MS, PAIR_REPLAY_UNSEEN_MS, PAIR_CODE_ALPHABET,
   PAIR_FRAGMENT_RE, PAIR_REFUSAL_MESSAGES, PAIR_REPLACE_ALIVE_MS, PAIR_REPLAY_WINDOW_MS, PAIR_REQ_BUCKET_BASE, PAIR_REQUEST_TTL_MS,
   PAIR_RID_LENGTH, PAIR_THROTTLE_WINDOW_MS, SUPPORT_READONLY_MESSAGE,
 } from './kiosk-pair.ts';
@@ -201,4 +201,11 @@ Deno.test('messages de refus : aucun texte vide, support_readonly identique côt
     ['pair_code_wrong', 'pair_request_expired', 'pair_request_invalid', 'pair_request_used', 'pair_throttled', 'replace_required', 'support_readonly'], 'les 7 refus du chemin');
   eq(PAIR_REFUSAL_MESSAGES.support_readonly, SUPPORT_READONLY_MESSAGE, 'support_readonly');
   eq(SUPPORT_READONLY_MESSAGE, 'Compte support BEMEXO : lecture seule. Utilisez le compte du patron pour associer une tablette.', 'texte exact');
+});
+
+Deno.test('marges : une confirmation acceptée reste livrable, un rejeu long couvre le court', () => {
+  ok(PAIR_CONFIRM_GRACE_MS > 0 && PAIR_CONFIRM_GRACE_MS < PAIR_CLAIM_GRACE_MS, 'confirmation tardive < remise tardive (toujours livrable)');
+  eq(PAIR_CONFIRM_GRACE_MS, 2 * 60 * 1000, '2 min');
+  ok(PAIR_REPLAY_UNSEEN_MS > PAIR_REPLAY_WINDOW_MS, 'rejeu d’une tablette jamais servie > rejeu normal');
+  eq(PAIR_REPLAY_UNSEEN_MS, 30 * 60 * 1000, '30 min');
 });

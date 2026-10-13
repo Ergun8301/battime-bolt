@@ -32,8 +32,21 @@ import { ticketBucket } from './kiosk-rules.ts';
 export const PAIR_REQUEST_TTL_MS = 10 * 60 * 1000;
 /** Une demande CONFIRMÉE reste livrable jusqu'à exp + 3 min (la tablette l'interroge jusque-là). */
 export const PAIR_CLAIM_GRACE_MS = 3 * 60 * 1000;
+/**
+ * Le patron qui a scanné un QR proche de sa fin doit avoir le temps de se connecter :
+ * `pair_lookup` et `pair_confirm` acceptent l'identifiant jusqu'à exp + 2 min (la
+ * tablette renouvelle son QR 60 s avant la fin, le patron scanne l'ancien). Reste
+ * inférieur à PAIR_CLAIM_GRACE_MS : une confirmation acceptée est toujours livrable.
+ */
+export const PAIR_CONFIRM_GRACE_MS = 2 * 60 * 1000;
 /** Après la remise, le détenteur du secret peut la rejouer 3 min (réponse perdue). */
 export const PAIR_REPLAY_WINDOW_MS = 3 * 60 * 1000;
+/**
+ * … et jusqu'à 30 min tant que la ligne `kiosks` dérivée n'a jamais servi (la
+ * réponse s'est perdue et la tablette est restée hors ligne : wifi de chantier,
+ * iPad en veille) : sinon une tablette fantôme resterait active, sans détenteur.
+ */
+export const PAIR_REPLAY_UNSEEN_MS = 30 * 60 * 1000;
 /** Une tablette est « en service » si elle a été vue il y a moins de 15 min. */
 export const PAIR_REPLACE_ALIVE_MS = 15 * 60 * 1000;
 export const PAIR_THROTTLE_WINDOW_MS = 10 * 60 * 1000;

@@ -101,8 +101,8 @@ import {
 import {
   buildChoices, displayCodeFromBytes, formatDisplayCode, normalizeDisplayCode, pairBucket, pairThrottleFull,
   pairThrottleNext, pickDecoys, ridBody, ridDecode, ridEncode, secretFingerprint, isDeviceSecret,
-  MAX_PAIR_ADMIN_OPS_PER_COMPANY, MAX_PAIR_REQUESTS_PER_BUCKET, PAIR_CLAIM_GRACE_MS, PAIR_REFUSAL_MESSAGES, PAIR_REPLACE_ALIVE_MS,
-  PAIR_REPLAY_WINDOW_MS, PAIR_REQUEST_TTL_MS, type PairThrottleRow,
+  MAX_PAIR_ADMIN_OPS_PER_COMPANY, MAX_PAIR_REQUESTS_PER_BUCKET, PAIR_CLAIM_GRACE_MS, PAIR_CONFIRM_GRACE_MS, PAIR_REFUSAL_MESSAGES, PAIR_REPLACE_ALIVE_MS,
+  PAIR_REPLAY_UNSEEN_MS, PAIR_REPLAY_WINDOW_MS, PAIR_REQUEST_TTL_MS, type PairThrottleRow,
 } from '../_shared/kiosk-pair.ts';
 import {
   buildBoard, parisWeek,
@@ -622,9 +622,12 @@ const ridMac = async (body: Uint8Array) => (await hmacBytes(`bemexo-pair-rid|${t
 /** Le code de vérification : le même pour tous les identifiants d'un même secret d'appareil (`sh`). */
 const ridCode = async (sh: string) => displayCodeFromBytes(await hmacBytes(`bemexo-pair-code|${sh}`));
 const pairToken = async (rid: string, deviceSecret: string) => toBase64Url(await hmacBytes(`bemexo-pair-token|${rid}|${deviceSecret}`));
-/** `cf-connecting-ip` d'abord, sinon le premier `x-forwarded-for`, sinon « inconnue » (alors aucun plafond d'adresse). */
-const pairClientIp = (req: Request) =>
-  (req.headers.get('cf-connecting-ip') || '').trim() || (req.headers.get('x-forwarded-for') || '').split(',')[0].trim() || 'inconnue';
+/**
+ * `cf-connecting-ip` seul, posé par la passerelle : le premier `x-forwarded-for`
+ * est écrit par le client et ferait tourner le plafond. Sans lui : « inconnue »
+ * (alors aucun plafond d'adresse). L'en-tête réel est à confirmer sur la plateforme.
+ */
+const pairClientIp = (req: Request) => (req.headers.get('cf-connecting-ip') || '').trim() || 'inconnue';
 
 /** L'identifiant de demande s'il est bien formé ET signé par nous, sinon `null`. */
 async function parseRid(value: unknown) {
@@ -633,12 +636,15 @@ async function parseRid(value: unknown) {
   return { rid: value as string, exp: d.exp, sh: d.sh };
 }
 
+/** Table absente (migration pas passée) ou droit retiré (42501) : la voie est « indisponible », jamais un plafond silencieusement perdu. */
+const pairUnavailable = (error: { code?: string } | null | undefined) => schemaMissing(error) || error?.code === '42501';
+
 /** Plafond de débit par seau (voir kiosk-pair.ts) : jamais bloquant sur une panne, jamais lié à kiosk_pair_failures. */
 async function throttleHit(admin: SupabaseClient, scope: 'req' | 'co', key: string, max: number): Promise<'ok' | 'throttled' | 'missing'> {
   const bucket = pairBucket(scope, await hmacB64(`pair-throttle|${scope}|${key}`));
   const { data, error } = await admin.from('kiosk_pair_throttle').select('hits, window_start').eq('bucket', bucket).maybeSingle();
   if (error) {
-    if (schemaMissing(error)) return 'missing';
+    if (pairUnavailable(error)) return 'missing';
     console.error('[kiosk] pair throttle', error.code);
     return 'ok';
   }
@@ -647,7 +653,7 @@ async function throttleHit(admin: SupabaseClient, scope: 'req' | 'co', key: stri
   if (pairThrottleFull(row, now, max)) return 'throttled'; // plein : plus aucune écriture
   const { error: werr } = await admin.from('kiosk_pair_throttle').upsert({ bucket, ...pairThrottleNext(row, now) }, { onConflict: 'bucket' });
   if (werr) {
-    if (schemaMissing(werr)) return 'missing';
+    if (pairUnavailable(werr)) return 'missing';
     console.error('[kiosk] pair throttle', werr.code);
   }
   return 'ok';
@@ -702,7 +708,8 @@ type CheckedPairRequest = { response: Response } | { response?: undefined; rid: 
 async function checkPairRequest(admin: SupabaseClient, body: Record<string, unknown>): Promise<CheckedPairRequest> {
   const parsed = await parseRid(body.request_id);
   if (!parsed) return { response: refuse('pair_request_invalid', 400) };
-  if (Date.now() >= parsed.exp * 1000) return { response: refuse('pair_request_expired', 410) };
+  // Un peu de marge après la fin : le patron scanne un QR que la tablette vient de renouveler, puis se connecte.
+  if (Date.now() >= parsed.exp * 1000 + PAIR_CONFIRM_GRACE_MS) return { response: refuse('pair_request_expired', 410) };
   const ridHash = await sha256Hex(parsed.rid);
   const row = await readApproval(admin, ridHash);
   if (row === 'missing') return { response: json({ available: false }) };
@@ -710,26 +717,42 @@ async function checkPairRequest(admin: SupabaseClient, body: Record<string, unkn
   return { ...parsed, ridHash };
 }
 
+/** Une tablette active de l'entreprise : sa dernière activité (vue, sinon créée) et si elle est « en service » (vue il y a moins de 15 min). */
+interface ActiveTablet { createdMs: number; seenMs: number; alive: boolean }
+
 /**
- * La tablette actuelle de l'entreprise (la plus récente, non retirée) : « en
- * service » si vue il y a moins de 15 min. `null` = aucune. L'ancienneté est
- * calculée ici (horloge du serveur), pas par le navigateur.
+ * TOUTES les tablettes actives de l'entreprise (la règle « une seule » est née
+ * après des tablettes déjà reliées : il peut en rester plusieurs, et la remise
+ * les révoque toutes). Une seule vivante suffit à parler d'une tablette en service.
  */
-async function currentTablet(admin: SupabaseClient, companyId: string): Promise<{ alive: boolean; seen_ago_s: number | null } | null> {
+async function activeTablets(admin: SupabaseClient, companyId: string): Promise<ActiveTablet[]> {
   const read = (onlyTablets: boolean) => {
     let q = admin.from('kiosks').select('created_at, last_seen_at').eq('company_id', companyId).is('revoked_at', null);
     if (onlyTablets) q = q.eq('kind', 'tablette');
-    return q.order('created_at', { ascending: false }).limit(1).maybeSingle();
+    return q.order('created_at', { ascending: false }).limit(50);
   };
   let { data, error } = await read(true);
   if (schemaMissing(error)) ({ data, error } = await read(false));
   if (error) throw new Error(`pair: lecture des tablettes (${error.code})`);
-  const k = data as { created_at: string; last_seen_at: string | null } | null;
-  if (!k) return null;
-  const seen = Date.parse(k.last_seen_at || k.created_at);
+  const now = Date.now();
+  return ((data || []) as { created_at: string; last_seen_at: string | null }[]).map((k) => {
+    const createdMs = Date.parse(k.created_at);
+    const seenMs = Date.parse(k.last_seen_at || k.created_at);
+    return { createdMs, seenMs, alive: Number.isFinite(seenMs) && now - seenMs < PAIR_REPLACE_ALIVE_MS };
+  });
+}
+
+/**
+ * La tablette actuelle de l'entreprise : « en service » si l'une des actives a
+ * été vue il y a moins de 15 min. `null` = aucune. L'ancienneté (de la plus
+ * récemment vue) est calculée ici (horloge du serveur), pas par le navigateur.
+ */
+async function currentTablet(admin: SupabaseClient, companyId: string): Promise<{ alive: boolean; seen_ago_s: number | null } | null> {
+  const tablets = await activeTablets(admin, companyId);
+  if (tablets.length === 0) return null;
+  const seen = Math.max(...tablets.map((t) => t.seenMs).filter(Number.isFinite));
   if (!Number.isFinite(seen)) return { alive: false, seen_ago_s: null };
-  const agoMs = Math.max(0, Date.now() - seen);
-  return { alive: agoMs < PAIR_REPLACE_ALIVE_MS, seen_ago_s: Math.round(agoMs / 1000) };
+  return { alive: tablets.some((t) => t.alive), seen_ago_s: Math.round(Math.max(0, Date.now() - seen) / 1000) };
 }
 
 /** Les 4 codes montrés au patron — déterministes (calculés de `sh`) : on ne les élimine pas en comparant plusieurs appels. */
@@ -752,7 +775,7 @@ async function pairRequest(admin: SupabaseClient, req: Request, body: Record<str
   // jamais aboutir n'est jamais affiché (la tablette garde alors son écran du code).
   const probe = await admin.from('kiosk_pair_approvals').select('rid_hash').limit(1);
   if (probe.error) {
-    if (schemaMissing(probe.error) || probe.error.code === '42501') return json({ available: false });
+    if (pairUnavailable(probe.error)) return json({ available: false });
     console.error('[kiosk] pair_request', probe.error.code);
     return json({ error: 'Erreur serveur' }, 500);
   }
@@ -766,7 +789,7 @@ async function pairRequest(admin: SupabaseClient, req: Request, body: Record<str
     if (hit === 'throttled') return refuse('pair_throttled', 429);
   } else {
     const throttleProbe = await admin.from('kiosk_pair_throttle').select('bucket').limit(1);
-    if (throttleProbe.error && (schemaMissing(throttleProbe.error) || throttleProbe.error.code === '42501')) return json({ available: false });
+    if (throttleProbe.error && pairUnavailable(throttleProbe.error)) return json({ available: false });
   }
 
   // La tablette renvoie son secret à chaque renouvellement du QR : le code de
@@ -815,6 +838,13 @@ async function pairStatus(admin: SupabaseClient, body: Record<string, unknown>) 
   if (!(await companyEnabled(admin, row.company_id))) return json({ status: 'suspended' });
   if (row.claimed_at) return await replayDelivery(admin, row, rid, deviceSecret, now);
 
+  // Une tablette VIVANTE reliée depuis la confirmation (par code à 6 chiffres, par exemple) :
+  // la remise la révoquerait sans que le patron l'ait vue. La demande est annulée côté
+  // tablette (un QR neuf), il reconfirmera avec le second geste. Les tablettes muettes
+  // qui se réveillent ne sont pas distinguées (rien ne dit si le patron a accepté de les remplacer).
+  const approvedMs = Date.parse(row.approved_at || '');
+  if ((await activeTablets(admin, row.company_id)).some((t) => t.alive && t.createdMs > approvedMs && t.createdMs <= now)) return json({ status: 'cancelled' });
+
   // Remise atomique : une seule interrogation gagne.
   const claimedAt = new Date(now).toISOString();
   const { data: won, error: claimErr } = await admin.from('kiosk_pair_approvals').update({ claimed_at: claimedAt })
@@ -841,18 +871,26 @@ async function pairStatus(admin: SupabaseClient, body: Record<string, unknown>) 
   return json({ status: 'approved', ...tablet });
 }
 
-/** Réponse perdue : le détenteur du secret redemande (3 min) et reçoit le MÊME jeton, sans créer une deuxième tablette. */
+/** Écart toléré entre la création et le premier `last_seen_at` (la création le pose elle-même, à quelques millisecondes près). */
+const PAIR_NEVER_SERVED_MS = 5 * 1000;
+/** Aucun appel de la tablette depuis sa création. */
+const neverServed = (k: { created_at: string; last_seen_at: string | null }) =>
+  !k.last_seen_at || Date.parse(k.last_seen_at) - Date.parse(k.created_at) < PAIR_NEVER_SERVED_MS;
+
+/** Réponse perdue : le détenteur du secret redemande (3 min, 30 min si la tablette n'a jamais servi) et reçoit le MÊME jeton, sans créer une deuxième tablette. */
 async function replayDelivery(admin: SupabaseClient, row: ApprovalRow, rid: string, deviceSecret: string, now: number) {
   const claimedMs = Date.parse(row.claimed_at || '');
-  if (!Number.isFinite(claimedMs) || now - claimedMs >= PAIR_REPLAY_WINDOW_MS) return json({ status: 'used' });
+  if (!Number.isFinite(claimedMs) || now - claimedMs >= PAIR_REPLAY_UNSEEN_MS) return json({ status: 'used' });
   const token = await pairToken(rid, deviceSecret);
-  const { data, error } = await admin.from('kiosks').select('id, company_id, name, seed_salt, revoked_at')
+  const { data, error } = await admin.from('kiosks').select('id, company_id, name, seed_salt, revoked_at, created_at, last_seen_at')
     .eq('token_hash', await sha256Hex(token)).maybeSingle();
   if (error) throw new Error(`pair: lecture des tablettes (${error.code})`);
-  const k = data as { id: string; company_id: string; name: string; seed_salt: string; revoked_at: string | null } | null;
+  const k = data as { id: string; company_id: string; name: string; seed_salt: string; revoked_at: string | null; created_at: string; last_seen_at: string | null } | null;
   // Pas encore visible : l'autre interrogation est peut-être en train de la créer.
   if (!k) return json({ status: now - claimedMs < PAIR_CLAIM_IN_FLIGHT_MS ? 'pending' : 'used' });
   if (k.revoked_at) return json({ status: 'used' }); // remplacée entre-temps : le jeton ne sert plus
+  // Au-delà de 3 min, seulement une tablette qui n'a jamais servi (aucun appel depuis sa création) : celle-là n'a pas de détenteur.
+  if (now - claimedMs >= PAIR_REPLAY_WINDOW_MS && !neverServed(k)) return json({ status: 'used' });
   return json({ status: 'approved', ...(await tabletReply(admin, k, token)) });
 }
 
