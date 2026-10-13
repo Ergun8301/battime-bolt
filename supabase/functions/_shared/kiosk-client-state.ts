@@ -88,7 +88,7 @@ export interface KioskNotice {
   help?: boolean;
 }
 
-export const NOTICE_WAKE = 'L’écran de la tablette peut s’éteindre : réglez Verrouillage auto sur Jamais.';
+export const NOTICE_WAKE = 'L’écran de la tablette peut s’éteindre : réglez la mise en veille (verrouillage automatique) sur « Jamais ».';
 export const NOTICE_INSTALL = 'Ouvrez la borne depuis l’icône installée.';
 export const NOTICE_OFFLINE_HINT = 'Réseau coupé ou écran éteint.';
 

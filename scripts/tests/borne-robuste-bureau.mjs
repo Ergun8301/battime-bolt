@@ -2,7 +2,7 @@
 // Lancer : node scripts/tests/borne-robuste-bureau.mjs out docs/captures-borne-robuste-lot30 42501 (après npm run build).
 //
 //  1) État RÉCENT (moins de 15 min) : « L'écran de la tablette peut s'éteindre : réglez
-//     Verrouillage auto sur Jamais » (verrou refusé ou non pris en charge), « Ouvrez la
+//     la mise en veille (verrouillage automatique) sur Jamais » (verrou refusé ou non pris en charge), « Ouvrez la
 //     borne depuis l'icône installée » (pas installée) ; rien quand tout va bien.
 //  2) État PÉRIMÉ : « Tablette hors ligne depuis HH:MM » (hier, date…) et rien d'autre.
 //  3) État ABSENT (ancienne page, fonction ou migration pas en ligne) : rien, comme avant.
@@ -110,7 +110,7 @@ async function bureau({ width = 390, height = 844, kiosks = [kiosk()], cols = 'a
 }
 const notices = (p) => p.locator('[data-testid=ka-notices] li').evaluateAll((els) => els.map((e) => ({ id: e.getAttribute('data-testid').replace('ka-notice-', ''), text: e.querySelector('.kh-txt')?.textContent || '', hint: e.querySelector('.kh-hint')?.textContent || '', button: !!e.querySelector('button') }))).catch(() => []);
 const hscroll = (p) => p.evaluate(() => { const d = document.querySelector('[role=dialog]'); return d.scrollWidth - d.clientWidth <= 1 && document.documentElement.scrollWidth <= innerWidth; });
-const WAKE = 'L’écran de la tablette peut s’éteindre : réglez Verrouillage auto sur Jamais.';
+const WAKE = 'L’écran de la tablette peut s’éteindre : réglez la mise en veille (verrouillage automatique) sur « Jamais ».';
 const INSTALL = 'Ouvrez la borne depuis l’icône installée.';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -124,11 +124,14 @@ console.log('\n── 1) état récent');
   const sizes = await p.locator('[data-testid=ka-notices] button').evaluateAll((els) => els.map((e) => { const r = e.getBoundingClientRect(); return { h: Math.round(r.height), w: Math.round(r.width), name: e.textContent.trim() }; }));
   check(sizes.length === 2 && sizes.every((s) => s.h >= 44 && s.w >= 44 && s.name === 'Voir comment'), `1) boutons « Voir comment » de 44 px au moins (${sizes.map((s) => `${s.w}×${s.h}`).join(', ')})`);
   check(await hscroll(p), '1) 390 px : aucun défilement horizontal');
+  const names = await p.locator('[data-testid=ka-notices] button').evaluateAll((els) => els.map((e) => e.getAttribute('aria-label')));
+  check(names.length === 2 && new Set(names).size === 2 && names.every((n) => /^Voir comment : /.test(n)) && /écran de la tablette allumé/.test(names[0]) && /icône installée/.test(names[1]),
+    `1) les deux boutons ont un nom accessible DISTINCT, qui commence par le texte visible (${names.join(' | ')})`);
   const region = await p.locator('[data-testid=ka-notices]').evaluate((e) => ({ role: e.getAttribute('role'), label: e.getAttribute('aria-label') }));
   check(region.role === 'status' && /tablette/i.test(region.label), `1) zone annoncée aux lecteurs d’écran (role=status, « ${region.label} »)`);
   check(await p.locator('[data-testid=ka-notices] .kh-ic').evaluateAll((els) => els.every((e) => e.getAttribute('aria-hidden') === 'true')), '1) l’icône est décorative (aria-hidden) : le sens est dans la phrase');
   // Les phrases ne dépendent pas d'une couleur : le texte entier est lisible, sans pastille seule.
-  check(await p.locator('[data-testid=ka-notices]').evaluate((e) => e.innerText.replace(/\s+/g, ' ').includes('Verrouillage auto sur Jamais')), '1) la consigne « Verrouillage auto sur Jamais » est écrite en clair');
+  check(await p.locator('[data-testid=ka-notices]').evaluate((e) => e.innerText.replace(/\s+/g, ' ').includes('la mise en veille (verrouillage automatique) sur « Jamais »')), '1) la consigne « mise en veille (verrouillage automatique) sur Jamais » est écrite en clair, avec des mots qui valent pour iPad ET Android');
   await p.screenshot({ path: `${SH}/bureau-etat-ecran-390x844.png` });
   check(S.fn.filter((c) => !/^fixed_/.test(c.action)).length === 0, '1) aucun appel à la fonction kiosk pour lire l’état (lecture sous RLS seulement ; seul fixed_status, la section QR fixe du lot 12, appelle la fonction)');
   // Clavier : le bouton est atteignable et son focus se voit.
@@ -141,7 +144,7 @@ console.log('\n── 1) état récent');
   await p.click('[data-testid=ka-notice-help-wake]');
   await sleep(400);
   const help = await p.locator('[data-testid=ka-install]').evaluate((e) => ({ open: e.open, text: e.innerText.replace(/\s+/g, ' ') }));
-  check(help.open && /verrouillage automatique sur « Jamais »/.test(help.text), '1) « Voir comment » ouvre l’aide (étape « verrouillage automatique sur Jamais »)');
+  check(help.open && /mise en veille de l’écran sur « Jamais »/.test(help.text) && /iPad : Réglages › Luminosité et affichage › verrouillage automatique/.test(help.text) && /Android : Paramètres › Affichage › Mise en veille de l’écran/.test(help.text), '1) « Voir comment » ouvre l’aide (étape « mise en veille de l’écran sur Jamais », avec le chemin iPad ET le chemin Android)');
   check(await p.locator('[data-testid=ka-install] summary').isVisible() && await p.locator('[data-testid=ka-install] ol li').first().isVisible(), '1) … et elle est visible à l’écran');
   await p.click('[data-testid=ka-install] summary'); await sleep(200);
   check(await p.locator('[data-testid=ka-install]').evaluate((e) => e.open) === false, '1) l’aide se referme toujours avec son titre');

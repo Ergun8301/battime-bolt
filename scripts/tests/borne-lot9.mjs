@@ -201,7 +201,7 @@ const onTop = (p, sel) => p.evaluate((s) => { const el = document.querySelector(
   await p.goto(`http://localhost:${PORT}/borne`);
   await p.waitForTimeout(1500);
   check((await p.locator('[data-testid=kb-worker]').count()) === 6, '6) avec cache : le planning reste affiché');
-  check((await p.locator('[data-testid=bubble-live]').count()) === 0 && (await p.locator('[data-testid=live-extra]').count()) === 0 && (await p.locator('.bt-pl-cell-live').count()) === 0, '6) cache de plus de 2 min : aucune pastille « en cours »');
+  check((await p.locator('[data-testid=bubble-live]').count()) === 0 && (await p.locator('[data-testid=live-extra]').count()) === 0 && (await p.locator('.bt-pl-cell-live').count()) === 0, '6) cache de plus de 3 min (2 min avant le lot 30) : aucune pastille « en cours »');
   check(/Planning du/.test(await bodyText(p)), '6) l’heure du planning affiché est indiquée');
   await ctx.close();
 }

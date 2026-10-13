@@ -27,7 +27,7 @@
 // Plus de liste, plus de « Ajouter une borne », plus de lieu ni de nom, plus de GPS.
 //
 // Lot 30 — l'ÉTAT DE L'ÉCRAN de la tablette, en clair sous « Tablette reliée » :
-// « L'écran de la tablette peut s'éteindre : réglez Verrouillage auto sur
+// « L'écran de la tablette peut s'éteindre : réglez la mise en veille sur
 // Jamais », « Ouvrez la borne depuis l'icône installée », « Tablette hors ligne
 // depuis … » (components/kiosk-health.tsx). Seulement si la tablette a envoyé son
 // état (migration + fonction `kiosk` + page à jour) ; sinon rien, comme avant.
@@ -604,7 +604,7 @@ export default function KioskAdmin({ open, onOpenChange, companyId }: Props) {
             <ol>
               <li>Sur la tablette, ouvrez <b>{borneLabel}</b>, puis <b>Ajouter à l’écran d’accueil</b> <span className="ka-muted">(iPad : bouton Partager ; Android : menu ⋮ → Installer l’application)</span>.</li>
               <li>Ouvrez la borne <b>depuis l’icône installée</b> et reliez-la : elle affiche un QR à scanner avec votre téléphone ou, à défaut, un code à 6 chiffres (ci-dessus). Sur iPad, l’icône a sa propre mémoire : reliez-la depuis l’icône, pas depuis Safari.</li>
-              <li>Réglez le <b>verrouillage automatique sur « Jamais »</b> <span className="ka-muted">(iPad : Réglages › Luminosité et affichage ; Android : Paramètres › Affichage › Mise en veille de l’écran, au maximum)</span> et laissez la tablette branchée.</li>
+              <li>Réglez la <b>mise en veille de l’écran sur « Jamais »</b> <span className="ka-muted">(iPad : Réglages › Luminosité et affichage › verrouillage automatique sur « Jamais » ; Android : Paramètres › Affichage › Mise en veille de l’écran, au maximum)</span> et laissez la tablette branchée.</li>
               <li>Facultatif : <b>Accès guidé</b> (iPad) ou <b>Épinglage d’application</b> (Android) pour que la tablette reste sur la borne.</li>
               <li>Déjà une ancienne icône BEMEXO sur la tablette ? Supprimez-la et ajoutez-la de nouveau depuis {borneLabel} : elle ouvrira directement la borne, en plein écran.</li>
             </ol>

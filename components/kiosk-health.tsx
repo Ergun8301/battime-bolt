@@ -28,6 +28,12 @@ const CSS = `
 `;
 const CSS_HTML = { __html: CSS };
 
+/** Le nom accessible de chaque bouton commence par le texte visible (« Voir comment ») et dit de QUOI il s'agit : deux boutons au même nom seraient indiscernables au lecteur d'écran. */
+const HELP_LABEL: Record<string, string> = {
+  wake: 'garder l’écran de la tablette allumé',
+  install: 'ouvrir la borne depuis l’icône installée',
+};
+
 export function KioskNotices({ notices, onHelp }: { notices: KioskNotice[]; onHelp: () => void }) {
   if (!notices.length) return null;
   return (
@@ -43,7 +49,7 @@ export function KioskNotices({ notices, onHelp }: { notices: KioskNotice[]; onHe
               {n.hint && <span className="kh-hint">{n.hint}</span>}
             </span>
             {n.help && (
-              <button type="button" className="kh-btn" data-testid={`ka-notice-help-${n.id}`} onClick={onHelp}>
+              <button type="button" className="kh-btn" data-testid={`ka-notice-help-${n.id}`} aria-label={`Voir comment : ${HELP_LABEL[n.id] ?? n.text}`} onClick={onHelp}>
                 Voir comment
               </button>
             )}

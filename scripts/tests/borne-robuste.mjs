@@ -668,6 +668,27 @@ console.log('\n── E) planning relu toutes les 60 s ; sans attendre au retour
   await t.ctx.close();
 }
 {
+  // Pastilles « en cours depuis » : fraîches 3 minutes (2 avant). Avec une relecture par minute, il faut TROIS ratées de suite pour les masquer.
+  resetSite();
+  const LIVE = JSON.parse(JSON.stringify(BOARD));
+  LIVE.slots.find((x) => x.w === 'w2' && x.date === DAYS[3]).live = '07:42';
+  const t = await tablet({ api: { sync: 200, board: 200, data: LIVE } });
+  await openBorne(t.p);
+  const live = () => t.p.locator('[data-testid=bubble-live]').count();
+  check(await live() >= 1, 'E) pastille « en cours depuis 07:42 » affichée (planning frais)');
+  t.api.board = 500;
+  await step(t.p, 61_000, 1, 300);
+  check(await live() >= 1, 'E) une relecture ratée (planning de 61 s) : la pastille reste');
+  await step(t.p, 60_000, 1, 300);
+  check(await live() >= 1, 'E) deux relectures ratées (planning de ~2 min, la limite d’avant) : la pastille reste (3 min depuis le lot 30)');
+  await step(t.p, 60_000, 1, 300);
+  check(await live() === 0, 'E) trois relectures ratées (planning de plus de 3 min) : la pastille s’efface');
+  t.api.board = 200;
+  await step(t.p, 60_000, 1, 400);
+  check(await live() >= 1, 'E) la relecture réussit de nouveau : la pastille revient');
+  await t.ctx.close();
+}
+{
   // Réseau qui « revient » avant que les noms ne marchent : deux nouveaux essais rapprochés (5 s, 20 s).
   resetSite();
   const net = { off: false };

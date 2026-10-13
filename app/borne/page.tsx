@@ -26,10 +26,10 @@
 // LE PLANNING passe UNIQUEMENT par la fonction kiosk (action `board`, avec le
 // jeton de la borne) : prénom, nom, chantier, ville, horaires prévus et « en
 // cours depuis ». Ni heure pointée, ni coût, ni motif d'absence. Relu toutes
-// les 30 s (écran visible, borne réveillée, en ligne), gardé en cache pour
+// les 60 s (écran visible, borne réveillée, en ligne), gardé en cache pour
 // rester affiché hors ligne. Les pastilles « en cours » s'effacent dès que ce
-// cache a plus de 2 minutes : une information « en direct » périmée serait
-// fausse. Si la fonction répond une erreur (ancienne version pas encore
+// cache a plus de 3 minutes (2 avant le lot 30 : la relecture est passée à 60 s) :
+// une information « en direct » périmée serait fausse. Si la fonction répond une erreur (ancienne version pas encore
 // redéployée…), on garde le dernier planning, sinon « Planning indisponible » —
 // le bouton « QR » marche dans tous les cas.
 //
@@ -89,8 +89,12 @@ const RESUME_REFRESH_MS = 20 * 1000;
 /** Lot 30 : un changement d'état (verrou d'écran…) est envoyé au bureau 3 s plus tard, au plus une fois par minute. */
 const STATE_SYNC_DEBOUNCE_MS = 3 * 1000;
 const STATE_SYNC_MIN_GAP_MS = 60 * 1000;
-/** Au-delà, les « en cours depuis » du cache ne sont plus montrés. */
-const LIVE_FRESH_MS = 2 * 60 * 1000;
+/**
+ * Au-delà, les « en cours depuis » du cache ne sont plus montrés. Lot 30 : 3 minutes (2 avant) — le planning
+ * n'est plus relu qu'à la minute : avec 2 minutes, une seule relecture ratée faisait déjà clignoter les
+ * pastilles ; avec 3, une ou deux relectures ratées ne se voient plus, il en faut trois de suite pour les effacer.
+ */
+const LIVE_FRESH_MS = 3 * 60 * 1000;
 /** Lot 11 : le QR reste affiché 30 s, puis la tablette revient au planning. */
 const QR_SHOW_MS = 30 * 1000;
 const WAKE_ON_TOUCH_MS = 60 * 1000;

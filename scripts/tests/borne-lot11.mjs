@@ -457,7 +457,7 @@ for (const [w, h, mobile] of [[1280, 800, false], [1024, 768, false], [768, 1024
     const a = st.getBoundingClientRect(); const c = ck.getBoundingClientRect(); const br = document.querySelector('[data-testid=kb-brand]').getBoundingClientRect();
     return { text: st.textContent, w: a.width, inside: a.right <= br.right + 0.5, clear: a.right < c.left };
   });
-  check(!!s && /^Planning du 1 oct\. à 09:25$/.test(s.text) && s.w > 100 && s.inside && s.clear, `B4) planning de plus de 2 min : « ${s?.text} » lisible dans la barre, sans toucher l’heure`);
+  check(!!s && /^Planning du 1 oct\. à 09:25$/.test(s.text) && s.w > 100 && s.inside && s.clear, `B4) planning de plus de 3 min (2 min avant le lot 30) : « ${s?.text} » lisible dans la barre, sans toucher l’heure`);
   check(await p.locator('[data-testid=bubble-live]').count() === 0, 'B4) et plus aucune pastille « en cours » (lot 9)');
   await p.screenshot({ path: `${SH}/borne-planning-ancien-1024x768.png` });
   await ctx.close();

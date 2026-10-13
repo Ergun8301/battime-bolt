@@ -89,7 +89,7 @@ Deno.test('bureau — état récent : verrou refusé ou non pris en charge → �
     eq(n[0].text, NOTICE_WAKE, 'phrase');
     ok(n[0].help === true, 'avec un bouton « Voir comment »');
   }
-  eq(NOTICE_WAKE, 'L’écran de la tablette peut s’éteindre : réglez Verrouillage auto sur Jamais.', 'texte exact');
+  eq(NOTICE_WAKE, 'L’écran de la tablette peut s’éteindre : réglez la mise en veille (verrouillage automatique) sur « Jamais ».', 'texte exact : des mots qui valent pour iPad ET Android');
   eq(kioskNotices({ client_state: { wake: 'held', standalone: true }, client_state_at: minAgo(1) }, NOW), [], 'verrou tenu et icône installée : rien');
 });
 

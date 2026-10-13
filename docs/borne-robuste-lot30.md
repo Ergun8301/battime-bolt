@@ -14,7 +14,7 @@ le front de la tablette (`/borne`) et la fenêtre « Borne » du bureau.
 |---|---|---|---|
 | A | Tablette | Relancée sans réseau, elle n'affichait rien | Elle s'ouvre sur son planning (le dernier reçu), dit « **Pas de réseau — reprise automatique** » (« Le QR continue de tourner. Le planning reviendra avec le réseau. »), et reprend seule au retour du réseau |
 | B | Tablette | Elle faisait tourner l'ancienne version du site jusqu'à ce qu'on la recharge à la main | Une fois par nuit (02:00–04:00, heure de Paris), si elle est en ligne, au calme depuis 10 minutes et que le serveur sert une autre version, elle se recharge |
-| C | Bureau | Rien sur l'écran de la tablette | Sous « Tablette reliée » : « L'écran de la tablette peut s'éteindre : réglez Verrouillage auto sur Jamais », « Ouvrez la borne depuis l'icône installée », « Tablette hors ligne depuis 14:32 » — seulement si l'état est récent (voir plus bas) |
+| C | Bureau | Rien sur l'écran de la tablette | Sous « Tablette reliée » : « L'écran de la tablette peut s'éteindre : réglez la mise en veille (verrouillage automatique) sur « Jamais » », « Ouvrez la borne depuis l'icône installée », « Tablette hors ligne depuis 14:32 » — seulement si l'état est récent (voir plus bas) |
 | D | Quota | `board` toutes les 30 s | `board` toutes les 60 s ; reprise immédiate au retour du réseau, au retour sur la page et au toucher |
 | E | Mise en ligne | — | Chaque ordre intermédiaire est sans casse (tableau plus bas) |
 
@@ -51,7 +51,23 @@ caches sont **versionnés** (`bx-borne-page-v1`, `bx-borne-assets-v1`) ; une
 nouvelle version de ce fichier retire les anciens caches `bx-borne-…` (et eux
 seuls) à son activation. **C'est, avec le plafond du cache de fichiers, la seule
 suppression de ce lot** (`cache.delete`, jamais de `.delete()` / `.remove()` sur
-des données).
+des données). Le plafond (160 fichiers) ne retire que d'anciens fichiers de code
+que la page ne cite plus ; **les polices, les logos et les scripts de cookies ne sont
+jamais retirés** (la feuille des polices, déjà en cache, n'est pas relue : ses polices
+ne figurent pas parmi les fichiers cités, on ne doit donc pas les juger périmées).
+
+Trois cas rudes, testés en navigateur :
+
+- **L'hébergeur renvoie `/borne` vers `/borne/`** (ou l'inverse). Une réponse
+  « redirigée » rangée en cache serait refusée par le navigateur pour une navigation
+  (écran d'erreur hors ligne). Le service worker ne range jamais une telle réponse et,
+  à l'installation, va chercher la page à son adresse finale.
+- **Le stockage du navigateur refuse** (disque plein, index abîmé : `caches.open`
+  échoue). Le service worker se comporte alors comme s'il n'existait pas : la page
+  vient du réseau, rien n'est cassé en ligne ; hors ligne, écran de secours.
+- **Serveur de développement** : le service worker n'est enregistré qu'en production
+  (`NODE_ENV === 'production'`). `npm run dev` ne le voit jamais (il garderait des
+  fichiers de développement et gênerait le rechargement à chaud).
 
 ### Ce qui marche hors ligne, et ce qui ne marche pas
 
@@ -65,7 +81,7 @@ recalculé chaque minute (`kiosk-code.ts`, HMAC-SHA-256, 8 chiffres). Donc :
   identique). Un salarié peut pointer **si son téléphone a du réseau** : c'est le
   serveur qui vérifie le QR, pas la tablette.
 - **Ne marche pas hors ligne** : la mise à jour du planning et des pastilles « en
-  cours depuis » (elles s'effacent au bout de 2 minutes, comme avant) ; la
+  cours depuis » (elles s'effacent au bout de 3 minutes ; 2 avant ce lot, voir « D ») ; la
   détection d'une borne retirée par le bureau ou suspendue par BEMEXO (la tablette
   continue d'afficher un QR que le serveur refusera ; elle le saura au retour du
   réseau). **Le message ne promet donc rien sur la validité du QR.**
@@ -105,11 +121,19 @@ déterminée (d'un côté ou de l'autre), on retombe sur le comportement demand�
 un rechargement par nuit.
 
 **La version** (`supabase/functions/_shared/kiosk-version.ts`) est l'empreinte
-(FNV-1a, 8 signes) des noms des quatre fichiers qui font la borne (`webpack`,
-`main-app`, `app/layout`, `app/borne/page` : leurs noms portent l'empreinte de
-leur contenu). Aucun numéro à tenir à la main, rien à ajouter au build. Elle se lit
-sur la page ouverte (les `<script>` et les fichiers que le navigateur a chargés, via
-`PerformanceObserver`) et dans le HTML frais du serveur.
+(FNV-1a, 8 signes) des noms de **tous les fichiers de code et de styles chargés
+d'emblée par la page** : les « chunks » `<numéro>-<empreinte16>.js` (dont les chunks
+partagés entre pages, où vit le code des composants), `webpack`, `main-app`,
+`app/layout`, `app/borne/page`, et la feuille de style `css/<empreinte>.css`. Leurs
+noms portent l'empreinte de leur contenu : un composant modifié change donc la
+version. Ne comptent pas : les chunks chargés à la demande (nom avec un point), les
+`polyfills` (marqués `nomodule`, jamais chargés par un navigateur récent), les
+polices, les scripts d'hébergement et de cookies. Aucun numéro à tenir à la main,
+rien à ajouter au build. Elle se lit sur la page ouverte (les `<script>`, les feuilles
+de style et les fichiers que le navigateur a chargés, via `PerformanceObserver`,
+une fois la page entièrement chargée) et dans le HTML frais du serveur. Un seul
+fichier d'écart suffit pour qu'une tablette se recharge la nuit suivante ; un
+déploiement qui ne change aucun de ces noms ne recharge rien.
 
 ## C. L'état de l'écran, du bureau à la tablette
 
@@ -138,7 +162,7 @@ de cette écriture n'empêche jamais le `sync` (seul le code d'erreur est journa
 
 | Situation | Phrase |
 |---|---|
-| État de moins de **15 minutes**, verrou refusé ou non pris en charge | « L'écran de la tablette peut s'éteindre : réglez Verrouillage auto sur Jamais. » + bouton « Voir comment » |
+| État de moins de **15 minutes**, verrou refusé ou non pris en charge | « L'écran de la tablette peut s'éteindre : réglez la mise en veille (verrouillage automatique) sur « Jamais ». » + bouton « Voir comment » (les deux boutons ont un nom accessible distinct, qui commence par le texte visible : « Voir comment : garder l'écran de la tablette allumé » / « Voir comment : ouvrir la borne depuis l'icône installée ») |
 | État de moins de 15 minutes, icône non installée | « Ouvrez la borne depuis l'icône installée. » + bouton « Voir comment » |
 | État de **15 minutes ou plus** | « Tablette hors ligne depuis 14:32 » (« depuis hier 21:05 », « depuis le 11 oct. à 21:05 ») + « Réseau coupé ou écran éteint. » ; les autres phrases ne sont plus vraies : rien |
 | Jamais d'état (ancienne page, fonction ou migration pas en ligne), ou état illisible | **Rien**, la fenêtre est celle d'avant |
@@ -157,8 +181,11 @@ sans défilement horizontal. Le mode support (lecture seule) voit les mêmes phr
 « pas de réseau »), retour sur la page, toucher — dès que le planning a plus de
 20 s ; une rafale de touchers ne lance qu'**une** relecture.
 
-Les pastilles « en cours depuis » restent effacées au bout de 2 minutes (inchangé :
-une seule relecture ratée les masque jusqu'à la suivante).
+Les pastilles « en cours depuis » s'effacent au bout de **3 minutes** (2 avant ce
+lot). La relecture étant passée à la minute, avec 2 minutes une seule relecture ratée
+faisait déjà clignoter les pastilles ; avec 3, une ou deux relectures ratées ne se
+voient plus, il en faut **trois de suite** pour les effacer (testé). Un planning de
+plus de 3 minutes n'est jamais montré comme actuel.
 
 ### Quota (Supabase gratuit : 500 000 appels de fonction par mois)
 
@@ -169,8 +196,13 @@ une seule relecture ratée les masque jusqu'à la suivante).
 | Tablettes tenables dans le quota | ~5 (24 h/24) | **~9** (24 h/24), ~15 (13 h/jour) |
 
 Le rechargement de nuit ne compte pas : il demande le HTML statique, pas la fonction.
-Chaque `sync` fait maintenant deux écritures sur `kiosks` (« vu à », puis l'état) :
-576 par jour et par tablette.
+Chaque `sync` fait **une seule** écriture sur `kiosks` (« vu à » et l'état dans la
+même requête) : 288 par jour et par tablette, comme avant ce lot (le `sync` reste
+toutes les 5 minutes). Sans la migration, la première écriture est refusée
+(colonne inconnue) ; la fonction retombe aussitôt sur « vu à » seul et s'en souvient
+10 minutes (une écriture par `sync`, pas de nouvelle tentative ni d'erreur dans le
+journal), puis réessaie : la migration passée pendant que la fonction tourne est
+prise en compte au plus 10 minutes plus tard.
 
 ## Mise en ligne : migration → front → fonction `kiosk`
 
@@ -179,7 +211,7 @@ Chaque `sync` fait maintenant deux écritures sur `kiosks` (« vu à », puis l'
 | Migration seule | Rien ne l'utilise |
 | Migration + front, fonction ancienne | La tablette envoie `client_state`, l'ancienne fonction l'ignore ; le bureau n'a rien à dire (colonnes vides) : comme avant. Le service worker, le rechargement de nuit et les 60 s marchent déjà |
 | Front sans migration, fonction ancienne | Comme avant, plus le service worker, le rechargement de nuit et les 60 s. La fenêtre « Borne » tente les colonnes neuves, reçoit « colonne inconnue » (42703), retombe sur la lecture d'avant et s'en souvient : une requête par relecture, sans message |
-| Fonction nouvelle, migration absente | L'écriture de l'état échoue proprement (colonne inconnue), rien n'est journalisé, `sync` répond comme avant |
+| Fonction nouvelle, migration absente | La première écriture échoue proprement (colonne inconnue), la fonction retombe sur « vu à » seul et s'en souvient 10 minutes ; rien n'est journalisé, `sync` répond comme avant |
 | Fonction nouvelle, front ancien | Aucun état reçu : rien de nouveau |
 | Tout en place | Voie complète |
 
@@ -218,7 +250,8 @@ Chaque `sync` fait maintenant deux écritures sur `kiosks` (« vu à », puis l'
 4. **Après un déploiement** : mettre en ligne une nouvelle version, rouvrir la borne
    en ligne → elle affiche la nouvelle version du premier coup. Mode avion, relancer
    → c'est la nouvelle version qui s'ouvre.
-5. **Fenêtre du bureau** : sur la tablette, mettre Verrouillage auto sur « 2 minutes »
+5. **Fenêtre du bureau** : sur la tablette, régler la mise en veille (iPad : verrouillage
+   automatique ; Android : mise en veille de l'écran) sur une courte durée
    et ouvrir la borne **dans Safari** (pas depuis l'icône) : au bout de quelques
    minutes, le bureau dit « Ouvrez la borne depuis l'icône installée » et, si le
    verrou est refusé, « L'écran de la tablette peut s'éteindre… ». Éteindre le wifi
@@ -233,17 +266,34 @@ Chaque `sync` fait maintenant deux écritures sur `kiosks` (« vu à », puis l'
 
 | Commande | Ce qu'elle couvre |
 |---|---|
-| `npm run test:borne-robuste` | règles pures : état envoyé (liste blanche, taille, types, `__proto__`), phrases du bureau (récent, périmé, absent, 15 min pile, hier), rechargement de nuit (plage, heure d'été et d'hiver, 10 minutes, une seule fois en 48 h, hors ligne), version, règles du service worker (ce qu'il touche, ce qu'il ne touche jamais) |
-| `npm run test:kiosk-fonction` | la fonction de bout en bout : avant la migration (réponse identique, rien de visible ni journalisé), après (copie nettoyée, date du serveur, remplacement), état invalide / trop gros, secrets, entreprise étrangère, tablette retirée ou coupée, panne de la base, aucune autre action n'écrit l'état |
-| `npm run test:borne-robuste-db` | la migration sur PGlite : additive, rejouable, contrainte de taille, droits (bureau de l'entreprise / autre entreprise / salarié / anonyme, droits par défaut de production), retour arrière puis rechargement, **8 × true** |
-| `npm run test:borne-robuste-ecrans` (après `npm run build`) | navigateur réel : service worker (portée, caches, rien de Supabase, cohabitation avec le push), démarrage sans réseau (QR comparé à un QR de référence), déploiement simulé, réseau lent, panne, écran de secours, nouvelle version du service worker, rechargement de nuit (11 scénarios), relecture à 60 s, état envoyé avec `sync` |
+| `npm run test:borne-robuste` | règles pures : état envoyé (liste blanche, taille, types, `__proto__`), phrases du bureau (récent, périmé, absent, 15 min pile, hier), rechargement de nuit (plage, heure d'été et d'hiver, 10 minutes, une seule fois en 48 h, hors ligne), version (un chunk partagé ou la feuille de style qui change change la version ; chunks à la demande, `polyfills`, polices ignorés), règles du service worker (ce qu'il touche, ce qu'il ne touche jamais), garde-fous du fichier (aucun accès au cache sans `try`, aucune réponse redirigée rangée, polices jamais retirées, enregistrement réservé à la production) |
+| `npm run test:kiosk-fonction` | la fonction de bout en bout : avant la migration (réponse identique, rien de visible ni journalisé), après (copie nettoyée, date du serveur, remplacement), **une seule écriture par `sync`**, repli puis mémoire de 10 minutes si les colonnes manquent (sans erreur répétée), migration passée pendant que la fonction tourne, état invalide / trop gros, secrets, entreprise étrangère, tablette retirée ou coupée, panne de la base, aucune autre action n'écrit l'état |
+| `npm run test:borne-robuste-db` | la migration sur PGlite : additive, rejouable, contrainte de taille, droits (bureau de l'entreprise / autre entreprise / salarié / anonyme, droits par défaut de production), retour arrière puis rechargement, **8 × true** ; la vérification elle-même est éprouvée : un droit `SELECT` ou `UPDATE` retiré à `service_role` la fait passer à `false` |
+| `npm run test:borne-robuste-ecrans` (après `npm run build`) | navigateur réel : service worker (portée, caches, rien de Supabase, cohabitation avec le push), démarrage sans réseau (QR comparé à un QR de référence), déploiement simulé, réseau lent, panne, écran de secours, nouvelle version du service worker, rechargement de nuit (12 scénarios, dont un déploiement qui ne change qu'un chunk partagé), relecture à 60 s, pastille « en direct » à 3 minutes, état envoyé avec `sync`, service worker éprouvé (cache cassé, polices conservées par le plafond, `/borne` redirigée vers `/borne/` y compris hors ligne) |
 | `npm run test:borne-robuste-bureau` (après `npm run build`) | la fenêtre « Borne » : état récent / périmé / absent, le temps qui passe, repli (42703, 42501, panne), 390 px, 360 px, tablette, accessibilité, mode support |
 
-Deux tests existants ont été mis à jour pour la cadence de 60 s (`borne-lot10.mjs`,
-sections A et D ; `borne-allumee.mjs`, section E) : leurs assertions ne sont pas
-affaiblies, seules les durées passent de 30 à 60 s.
+Des tests existants ont été mis à jour : pour la cadence de 60 s (`borne-lot10.mjs`,
+sections A et D ; `borne-allumee.mjs`, section E), seules les durées passent de 30 à
+60 s ; pour les pastilles « en direct » à 3 minutes au lieu de 2 (`borne-lot9.mjs`,
+`borne-lot11.mjs`), seul le libellé du test change (« plus de 3 min ») ; les
+assertions ne sont pas affaiblies.
 
 Captures (390 px et tablette) : `docs/captures-borne-robuste-lot30/`.
+
+## Poids de la page `/borne`
+
+`npm run budget` (lot 5) mesure le JavaScript du premier chargement (compressé) :
+`/borne` est à **170,0 kB pour un plafond de 170 kB** (`scripts/bundle-budgets.json` :
+mesure 167,0 avant ce lot) : **marge nulle**. Ce lot ajoute environ 3 kB compressés
+à la page (enregistrement du service worker, rechargement de nuit et sa version,
+état envoyé, pastille hors ligne). Le plafond n'est **pas relevé** (un test du lot 5
+l'interdit) ; le budget est tenu, mais le prochain ajout à `/borne` devra être
+compensé par un gain équivalent (ou le plafond rediscuté, avec son test).
+
+*Piste écartée* : charger le rechargement de nuit à la demande (environ 1 kB de moins
+au premier chargement). Une tablette ouverte avant un déploiement ne retrouverait plus
+ce morceau sous son ancien nom (404) au moment précis où elle doit se recharger : le
+gain ne vaut pas ce risque.
 
 ## Limites connues
 
@@ -278,6 +328,10 @@ Captures (390 px et tablette) : `docs/captures-borne-robuste-lot30/`.
   réseau (`updateViaCache: 'none'`), mais `/borne` ne doit jamais recevoir un
   `Cache-Control: immutable` (le lot 5 pose des en-têtes sur `/_next/static` : sans
   conséquence). Aucun fichier d'en-têtes n'a été modifié dans ce lot.
+- **Budget de poids de `/borne`** : la page est à la limite de son plafond
+  (voir « Poids » ci-dessous) ; la marge est nulle. Le plafond n'est pas relevé (un
+  test du lot 5 l'interdit) : tout ajout futur à `/borne` doit s'accompagner d'un
+  gain équivalent.
 - Au chargement, la page fait deux fois `sync` + `board` (comportement antérieur à ce
   lot, inchangé).
 
