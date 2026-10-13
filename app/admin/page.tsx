@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/auth-provider';
 import { supabase } from '@/lib/supabase';
+import { reloadCompanySettings, useCompanySettings } from '@/lib/company-settings';
 import AdminPlanning from '@/components/admin-planning';
 import SubscribePanel from '@/components/subscribe-panel';
 import { isPreviewHost } from '@/lib/hosting';
@@ -79,40 +80,12 @@ export default function AdminPage() {
   const [activating, setActivating] = useState(false);
   const [workerCount, setWorkerCount] = useState(0); // salariés actifs → forfait adapté (panneau d'abonnement)
 
-  // Nombre de salariés actifs de l'entreprise (pour recommander/verrouiller le
-  // bon forfait dans le panneau d'abonnement). Lecture seule.
+  // Essai / abonnement : lus avec les autres réglages de l'entreprise (une seule lecture
+  // pour tout l'écran, lot 29 — voir lib/company-settings.ts).
+  const settings = useCompanySettings(user?.company_id);
   useEffect(() => {
-    if (!user?.company_id) return;
-    let on = true;
-    supabase
-      .from('users')
-      .select('id', { count: 'exact', head: true })
-      .eq('company_id', user.company_id)
-      // Chefs d'équipe COMPRIS : ce sont des salariés de l'entreprise. Les
-      // oublier ferait proposer — et vendre — un forfait trop petit.
-      .in('role', ['worker', 'lead'])
-      .eq('is_active', true)
-      .then(({ count }) => { if (on) setWorkerCount(count ?? 0); });
-    return () => { on = false; };
-  }, [user?.company_id]);
-
-  const loadCompany = useCallback(async () => {
-    if (!user?.company_id) return null;
-    const { data } = await supabase
-      .from('companies')
-      .select('trial_ends_at, subscription_status')
-      .eq('id', user.company_id)
-      .maybeSingle();
-    if (data) {
-      setTrial({
-        ends: (data as { trial_ends_at: string | null }).trial_ends_at,
-        status: (data as { subscription_status: string }).subscription_status,
-      });
-    }
-    return data as { trial_ends_at: string | null; subscription_status: string } | null;
-  }, [user?.company_id]);
-
-  useEffect(() => { loadCompany(); }, [loadCompany]);
+    if (settings) setTrial({ ends: settings.trialEndsAt, status: settings.subscriptionStatus ?? '' });
+  }, [settings]);
 
   // Retour de paiement Stripe : ?subscribed=1. Le webhook bascule
   // subscription_status='active' côté serveur ; on attend qu'il soit pris en
@@ -125,10 +98,11 @@ export default function AdminPage() {
     let tries = 0;
     let stop = false;
     const tick = async () => {
-      const data = await loadCompany();
+      // Lecture FRAÎCHE : on attend que le webhook ait basculé l'abonnement.
+      const data = await reloadCompanySettings(user.company_id as string);
       tries += 1;
       if (stop) return;
-      if ((data && data.subscription_status === 'active') || tries >= 8) {
+      if (data?.subscriptionStatus === 'active' || tries >= 8) {
         setActivating(false);
         window.history.replaceState({}, '', '/admin');
         return;
@@ -137,7 +111,7 @@ export default function AdminPage() {
     };
     tick();
     return () => { stop = true; };
-  }, [user?.company_id, loadCompany]);
+  }, [user?.company_id]);
 
   const now = Date.now();
   const endsMs = trial?.ends ? new Date(trial.ends).getTime() : null;
@@ -158,6 +132,24 @@ export default function AdminPage() {
   const paywallEnforced = process.env.NEXT_PUBLIC_PAYWALL_ENFORCED === 'true';
   const isPreview = isPreviewHost();
   const blocked = expired && (paywallEnforced || isPreview);
+
+  // Nombre de salariés actifs (forfait recommandé). Quand le planning est affiché, c'est lui qui le
+  // fournit (onWorkerCount, plus de requête à part) ; seul l'écran de blocage d'essai, qui n'affiche
+  // pas le planning, le lit ici. Lecture seule.
+  useEffect(() => {
+    if (!blocked || !user?.company_id) return;
+    let on = true;
+    supabase
+      .from('users')
+      .select('id', { count: 'exact', head: true })
+      .eq('company_id', user.company_id)
+      // Chefs d'équipe COMPRIS : ce sont des salariés de l'entreprise. Les
+      // oublier ferait proposer — et vendre — un forfait trop petit.
+      .in('role', ['worker', 'lead'])
+      .eq('is_active', true)
+      .then(({ count }) => { if (on) setWorkerCount(count ?? 0); });
+    return () => { on = false; };
+  }, [blocked, user?.company_id]);
 
   return (
     <div className="bt-admin">
@@ -196,7 +188,7 @@ export default function AdminPage() {
           </div>
         </div>
       ) : (
-        <AdminPlanning trial={{ inTrial, expired, daysLeft }} onSubscribe={() => setSubOpen(true)} />
+        <AdminPlanning trial={{ inTrial, expired, daysLeft }} onSubscribe={() => setSubOpen(true)} onWorkerCount={setWorkerCount} />
       )}
 
       <Dialog open={subOpen} onOpenChange={setSubOpen}>

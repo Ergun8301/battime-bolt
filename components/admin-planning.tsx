@@ -66,6 +66,8 @@ import { supabaseAssistantSource } from '@/lib/assistant';
 import AssistantActionCard from '@/components/assistant-action-card';
 import { makeActionExecutor, makeRemovalPreview, type ActionExtra } from '@/lib/assistant-actions';
 import { useAiEnabled } from '@/lib/real-cost';
+import { reloadCompanySettings, useCompanySettings } from '@/lib/company-settings';
+import { useVisiblePoll } from '@/lib/use-visible-poll';
 import AdminMobileMenu from '@/components/admin-mobile-menu';
 import ImportDialog from '@/components/import-dialog';
 import CostReport from '@/components/cost-report';
@@ -896,8 +898,10 @@ const PL_STYLE = { __html: PL_CSS };
 interface AdminPlanningProps {
   trial?: { inTrial: boolean; expired: boolean; daysLeft: number | null };
   onSubscribe?: () => void;
+  /** Lot 29 : nombre de salariés actifs (forfait), fourni par fetchData — plus de requête à part. */
+  onWorkerCount?: (n: number) => void;
 }
-export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps = {}) {
+export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: AdminPlanningProps = {}) {
   const { user, signOut } = useAuth();
   const [workers, setWorkers] = useState<User[]>([]);
   // Les personnes du BUREAU (rôle admin). Séparées des salariés : elles ne
@@ -1254,6 +1258,8 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
 
   // ─── data ──────────────────────────────────────────────────────────────────
 
+  const onWorkerCountRef = useRef(onWorkerCount);
+  onWorkerCountRef.current = onWorkerCount;
   const fetchData = useCallback(async () => {
     if (!user?.company_id) return;
     try {
@@ -1270,6 +1276,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       if (worksitesRes.error) throw worksitesRes.error;
       // Lot 10 : keep() garde l'objet déjà affiché quand rien n'a changé (aucun redessin).
       setWorkers((prev) => keep(prev, (workersRes.data || []) as User[]));
+      onWorkerCountRef.current?.(workersRes.data?.length ?? 0);
       if (!officeRes.error) setOfficeUsers((prev) => keep(prev, (officeRes.data || []) as User[]));
       setWorksites((prev) => keep(prev, (worksitesRes.data || []) as Worksite[]));
     } catch (err) {
@@ -1361,10 +1368,10 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     // posées 90 jours à l'avance et auraient rempli la lecture pour rien.
     const windowStart = missingWindowStart();
     const todayKey = format(new Date(), 'yyyy-MM-dd');
-    const [planRes, entRes, compRes, invRes, docRes, leaveRes, resRes, closures, cancelledRes] = await Promise.all([
+    const [planRes, entRes, invRes, docRes, leaveRes, resRes, closures, cancelledRes, incRes] = await Promise.all([
       supabase.from('planning').select('id, user_id, work_date, absence_type').eq('company_id', user.company_id).gte('work_date', windowStart).lte('work_date', todayKey),
       supabase.from('time_entries').select('user_id, work_date').eq('company_id', user.company_id).in('status', ['submitted', 'validated']).gte('work_date', windowStart).lte('work_date', todayKey),
-      supabase.from('companies').select('name, logo_url, travel_paid, weekly_hours, accountant_email, overtime_rate_1, overtime_rate_2').eq('id', user.company_id).maybeSingle(),
+      // (companies : lue UNE fois pour tout l'écran par lib/company-settings, plus ici.)
       supabase.from('invitations').select('*').eq('company_id', user.company_id).is('accepted_at', null).gt('expires_at', new Date().toISOString()).order('created_at', { ascending: false }),
       // Paginé, pour la même raison que la liste détaillée : au-delà de 1000
       // documents, la pastille 📎 et le total « pièces » se figeaient à 1000
@@ -1388,6 +1395,12 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       // lui réclamer pour elles.
       supabase.from('time_entries').select('planning_id').eq('company_id', user.company_id).eq('status', 'cancelled')
         .not('planning_id', 'is', null).gte('work_date', windowStart).lte('work_date', todayKey),
+      // Lot 12 : une sortie oubliée « à compléter » compte aussi. Lecture silencieuse
+      // (colonne absente tant que la migration n'est pas passée). Lot 29 : dans le même
+      // lot que les autres — elle ne dépend d'aucune d'elles, inutile de l'attendre après.
+      supabase.from('time_entries').select('user_id, work_date, start_time, end_time, exit_forgotten')
+        .eq('company_id', user.company_id).eq('exit_forgotten', true).eq('status', 'draft')
+        .gte('work_date', windowStart).lte('work_date', todayKey),
       // (active_sessions : lu par son propre sondage de 30 s, voir fetchLive.)
     ]);
     if (closures) setWorkerClosures((prev) => keep(prev, closures));
@@ -1410,11 +1423,6 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     // L'absence du jour (teinte de la case).
     const today = new Map<string, string>();
     for (const p of planRes.data || []) if (p.absence_type && p.work_date === todayKey) today.set(p.user_id, p.absence_type);
-    // Lot 12 : une sortie oubliée « à compléter » compte aussi. Lecture à part,
-    // silencieuse (colonne absente tant que la migration n'est pas passée).
-    const incRes = await supabase.from('time_entries').select('user_id, work_date, start_time, end_time, exit_forgotten')
-      .eq('company_id', user.company_id).eq('exit_forgotten', true).eq('status', 'draft')
-      .gte('work_date', windowStart).lte('work_date', todayKey);
     // « À relancer » : une case planifiée qui n'est ni une absence ni RETIRÉE par le
     // salarié réclame ses heures (une autre case du même jour, elle, les réclame
     // toujours) ; un jour d'absence ne réclame rien ; plus les sorties oubliées.
@@ -1430,16 +1438,6 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     });
     setTodayAbsence((prev) => keep(prev, today));
     setMissingByWorker((prev) => keep(prev, miss));
-    setCompanyName(compRes.data?.name || '');
-    const comp = compRes.data as { travel_paid?: boolean; weekly_hours?: number | null; accountant_email?: string | null; overtime_rate_1?: number | null; overtime_rate_2?: number | null } | null;
-    setTravelPaid(!!comp?.travel_paid);
-    setCompanyWeeklyHours(comp?.weekly_hours ?? DEFAULT_WEEKLY_HOURS);
-    setOvertimeRates((prev) => keep(prev, {
-      tier1: comp?.overtime_rate_1 ?? DEFAULT_OVERTIME_RATES.tier1,
-      tier2: comp?.overtime_rate_2 ?? DEFAULT_OVERTIME_RATES.tier2,
-    }));
-    setAccountantEmail((comp?.accountant_email || '').trim());
-    setCompanyLogo((compRes.data as { logo_url?: string | null } | null)?.logo_url || '');
     setInvitations((prev) => keep(prev, (invRes.data || []) as Invitation[]));
   }, [user?.company_id]);
 
@@ -1452,11 +1450,25 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, [fetchMissions]);
+  // Lot 29 : en pause quand l'onglet est caché, relu au retour (après 30 s au moins).
+  useVisiblePoll(fetchExtras, 60000, { key: user?.company_id });
+
+  // Lot 29 : nom, logo, trajet, heures, majorations, e-mail du comptable : UNE lecture de la
+  // ligne `companies` pour tout l'écran (lib/company-settings), plus relue à chaque sondage.
+  // Aucune remise à zéro : une lecture en échec laisse les valeurs connues.
+  const cs = useCompanySettings(user?.company_id);
   useEffect(() => {
-    fetchExtras();
-    const id = setInterval(fetchExtras, 60000);
-    return () => clearInterval(id);
-  }, [fetchExtras]);
+    if (!cs) return;
+    setCompanyName(cs.name);
+    setTravelPaid(cs.travelPaid);
+    setCompanyWeeklyHours(cs.weeklyHours ?? DEFAULT_WEEKLY_HOURS);
+    setOvertimeRates((prev) => keep(prev, {
+      tier1: cs.overtimeRate1 ?? DEFAULT_OVERTIME_RATES.tier1,
+      tier2: cs.overtimeRate2 ?? DEFAULT_OVERTIME_RATES.tier2,
+    }));
+    setAccountantEmail(cs.accountantEmail);
+    setCompanyLogo(cs.logoUrl);
+  }, [cs]);
 
   // ─── Lot 9 : « en cours depuis » — sondage dédié des chronos ouverts ─────────
   // Toutes les 30 s, en pause quand l'onglet est caché, relu tout de suite au
@@ -1511,17 +1523,9 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
 
   useEffect(() => { fetchClosures(); }, [fetchClosures]);
 
-  // Interrupteur de la borne : lecture SÉPARÉE, comme dans les réglages — tant que
-  // la colonne n'existe pas en base, la requête échoue seule et rien ne s'affiche.
-  useEffect(() => {
-    if (!user?.company_id) return;
-    let stale = false;
-    supabase.from('companies').select('kiosk_enabled').eq('id', user.company_id).maybeSingle()
-      .then(({ data }) => {
-        if (!stale) setKioskOn(!!(data as { kiosk_enabled?: boolean } | null)?.kiosk_enabled);
-      });
-    return () => { stale = true; };
-  }, [user?.company_id]);
+  // Interrupteur de la borne : lu avec les autres réglages (`cs`, plus haut). Tant que la
+  // colonne n'existe pas en base, le repli de lib/company-settings la lit seule : rien ne s'affiche.
+  useEffect(() => { if (cs) setKioskOn(cs.kioskEnabled); }, [cs?.kioskEnabled]);
 
   // Formations : lecture SÉPARÉE — tant que la table n'existe pas, rien ne s'affiche.
   // Revérifiée à l'ouverture de « Salariés » / du menu seulement si elle avait
@@ -3842,7 +3846,8 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         onChanged={() => { fetchData(); refresh(); }}
       />
 
-      <CompanySettings open={settingsOpen} onOpenChange={setSettingsOpen} onSaved={fetchData}
+      <CompanySettings open={settingsOpen} onOpenChange={setSettingsOpen}
+        onSaved={() => { fetchData(); if (user?.company_id) reloadCompanySettings(user.company_id); }}
         onOpenTraces={tracesOn && user?.company_id ? () => setTracesOpen(true) : undefined} />
 
       <AdminMobileMenu
@@ -4062,7 +4067,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
               ctl={ctl}
               execute={makeActionExecutor({ id: user.id, company_id: user.company_id })}
               preview={makeRemovalPreview({ company_id: user.company_id })}
-              onDone={() => { fetchData(); fetchExtras(); }}
+              onDone={() => { fetchData(); fetchExtras(); if (user?.company_id) reloadCompanySettings(user.company_id); }}
               onOpenVersions={(monday) => {
                 // Lot 8 : « Versions de la semaine » — la semaine de l'action, puis la liste.
                 changeWeek(weekStartOf(new Date(`${monday}T12:00:00`)));

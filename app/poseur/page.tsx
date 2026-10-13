@@ -11,6 +11,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Clock, CalendarDays, CalendarRange, History, LogOut, Check, ArrowLeft, Camera, Loader2, Palmtree, Bell, BellOff, Sparkles, Info, ScanLine } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAiEnabled } from '@/lib/real-cost';
+import { useCompanySettings } from '@/lib/company-settings';
+import { useVisiblePoll } from '@/lib/use-visible-poll';
 import QrScanner from '@/components/qr-scanner';
 import { GEO_INFO_LINK, GEO_INFO_TEXT, GEO_INFO_TITLE } from '@/lib/position-info';
 import { toast } from 'sonner';
@@ -178,24 +180,21 @@ export default function PoseurPage() {
   const [tour, setTour] = useState<WorkerTour | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const tourEnd = useRef(0); // quand le dernier guide s'est arrêté (le menu met un instant à se démonter)
+  // Lot 12 : l'icône du scanner ne s'affiche que si une tablette est VRAIMENT
+  // reliée (company_has_kiosk : borne allumée ET une tablette non retirée).
+  // Un QR fixe imprimé actif compte aussi (c'est une ligne « fixe » de kiosks).
+  // Fonction absente (migration du lot 12 pas encore passée) ou lecture en
+  // échec : comportement d'avant, l'interrupteur de l'entreprise seul.
+  // Lot 29 : l'interrupteur vient de la lecture commune des réglages (lib/company-settings).
+  const kioskEnabled = useCompanySettings(user?.company_id)?.kioskEnabled;
   useEffect(() => {
-    if (!user?.company_id) return;
+    if (!kioskEnabled) { setKioskOn(false); return; }
     let stale = false;
-    // Lot 12 : l'icône du scanner ne s'affiche que si une tablette est VRAIMENT
-    // reliée (company_has_kiosk : borne allumée ET une tablette non retirée).
-    // Un QR fixe imprimé actif compte aussi (c'est une ligne « fixe » de kiosks).
-    // Fonction absente (migration du lot 12 pas encore passée) ou lecture en
-    // échec : comportement d'avant, l'interrupteur de l'entreprise seul.
-    supabase.from('companies').select('kiosk_enabled').eq('id', user.company_id).maybeSingle()
-      .then(async ({ data }) => {
-        const enabled = !!(data as { kiosk_enabled?: boolean } | null)?.kiosk_enabled;
-        if (!enabled) { if (!stale) setKioskOn(false); return; }
-        const r = await supabase.rpc('company_has_kiosk');
-        if (stale) return;
-        setKioskOn(r.error || typeof r.data !== 'boolean' ? true : r.data);
-      });
+    supabase.rpc('company_has_kiosk').then((r) => {
+      if (!stale) setKioskOn(r.error || typeof r.data !== 'boolean' ? true : r.data);
+    });
     return () => { stale = true; };
-  }, [user?.company_id]);
+  }, [kioskEnabled]);
   // Notifications push : 'unsupported' (navigateur/iOS non compatible), 'denied'
   // (refusé au niveau navigateur), 'on'/'off'. On n'affiche l'item que si utile.
   const [pushState, setPushState] = useState<'unsupported' | 'denied' | 'on' | 'off'>('unsupported');
@@ -209,14 +208,26 @@ export default function PoseurPage() {
     if (!user) return;
     // Look back far enough to catch any planned-but-not-declared day still open.
     const windowStart = format(subDays(new Date(), 60), 'yyyy-MM-dd');
-    const [planRes, entRes] = await Promise.all([
+    // Lot 29 : UN seul saut. Les heures déjà envoyées/validées ET les brouillons viennent de la
+    // même lecture (triés ensuite ici) ; les réserves ne dépendent d'aucune des deux.
+    // Lot 11 : réserves à lever — envoyées (comme le registre du bureau), ni
+    // levées par le bureau ni par moi (définition partagée : lib/reserves.ts).
+    // Une lecture en échec garde le bandeau tel quel (pas de « 0 » à tort).
+    const [planRes, entRes, { data: res, error: resErr }] = await Promise.all([
       supabase.from('planning').select('work_date, absence_type').eq('user_id', user.id).gte('work_date', windowStart),
-      supabase.from('time_entries').select('work_date').eq('user_id', user.id).in('status', ['submitted', 'validated']).gte('work_date', windowStart),
+      supabase.from('time_entries').select('work_date, status').eq('user_id', user.id).in('status', ['draft', 'submitted', 'validated']).gte('work_date', windowStart),
+      supabase.from('time_entries')
+        .select('id, work_date, observation, worksite_id, worksite:worksites(client_name, city)')
+        .eq('user_id', user.id).eq('reception', 'avec')
+        .in('status', COUNTED_STATUSES as unknown as string[])
+        .is('reserve_resolved_at', null).is('reserve_fixed_at', null)
+        .order('work_date', { ascending: false }).limit(50),
     ]);
     const rows = (planRes.data || []) as { work_date: string; absence_type: string | null }[];
     const absenceDays = new Set(rows.filter((p) => p.absence_type).map((p) => p.work_date));
     const planned = rows.filter((p) => !p.absence_type && !absenceDays.has(p.work_date)).map((p) => p.work_date);
-    const declared = new Set<string>((entRes.data || []).map((e: { work_date: string }) => e.work_date));
+    const entries = (entRes.data || []) as { work_date: string; status: string }[];
+    const declared = new Set<string>(entries.filter((e) => e.status !== 'draft').map((e) => e.work_date));
     const missing = computeMissingDays(planned, declared);
     setPending((prev) => (sameList(prev, missing) ? prev : missing));
 
@@ -225,22 +236,10 @@ export default function PoseurPage() {
     // Borné à aujourd'hui : « Dupliquer cette journée » prépare des brouillons
     // sur des jours à venir, ce n'est pas un oubli et ça n'a rien à faire ici.
     const todayStr = format(new Date(), 'yyyy-MM-dd');
-    const { data: drafts } = await supabase.from('time_entries')
-      .select('work_date').eq('user_id', user.id).eq('status', 'draft')
-      .gte('work_date', windowStart).lte('work_date', todayStr)
-      .order('work_date', { ascending: false });
-    const unsent = Array.from(new Set(((drafts || []) as { work_date: string }[]).map((d) => d.work_date)));
+    const unsent = Array.from(new Set(entries.filter((e) => e.status === 'draft' && e.work_date <= todayStr).map((e) => e.work_date)))
+      .sort((a, b) => (a < b ? 1 : a > b ? -1 : 0)); // plus récent d'abord, comme avant
     setUnsentDays((prev) => (sameList(prev, unsent) ? prev : unsent));
 
-    // Lot 11 : réserves à lever — envoyées (comme le registre du bureau), ni
-    // levées par le bureau ni par moi (définition partagée : lib/reserves.ts).
-    // Une lecture en échec garde le bandeau tel quel (pas de « 0 » à tort).
-    const { data: res, error: resErr } = await supabase.from('time_entries')
-      .select('id, work_date, observation, worksite_id, worksite:worksites(client_name, city)')
-      .eq('user_id', user.id).eq('reception', 'avec')
-      .in('status', COUNTED_STATUSES as unknown as string[])
-      .is('reserve_resolved_at', null).is('reserve_fixed_at', null)
-      .order('work_date', { ascending: false }).limit(50);
     if (!resErr) {
       const one = <T,>(v: T | T[] | null | undefined): T | null => (Array.isArray(v) ? v[0] ?? null : v ?? null);
       const next = ((res || []) as { id: string; work_date: string; observation: string | null; worksite_id: string | null; worksite?: unknown }[])
@@ -253,12 +252,12 @@ export default function PoseurPage() {
     }
   }, [user]);
 
+  // Lot 29 : en pause quand l'onglet est caché, relu au retour (après 30 s au moins).
+  useVisiblePoll(fetchPending, 60000, { key: user?.id });
+  // Une réserve levée depuis une carte de « Ma journée » : le bandeau suit.
   useEffect(() => {
-    fetchPending();
-    const id = setInterval(fetchPending, 60000);
-    // Une réserve levée depuis une carte de « Ma journée » : le bandeau suit.
     window.addEventListener(RESERVES_CHANGED_EVENT, fetchPending);
-    return () => { clearInterval(id); window.removeEventListener(RESERVES_CHANGED_EVENT, fetchPending); };
+    return () => window.removeEventListener(RESERVES_CHANGED_EVENT, fetchPending);
   }, [fetchPending]);
 
   // Photo de profil du salarié (depuis users.photo_url).

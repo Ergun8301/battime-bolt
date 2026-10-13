@@ -130,7 +130,7 @@ const embed = (t, row, sel) => {
   }
   return out;
 };
-const log = { writes: [], pushes: [], liveGets: 0, extrasGets: 0 };
+const log = { writes: [], pushes: [], liveGets: 0, extrasGets: 0, companyGets: 0 };
 let seq = 0;
 const setup = async (ctx) => {
   await ctx.clock.install({ time: NOW });
@@ -165,7 +165,9 @@ const setup = async (ctx) => {
       return r.fulfill({ json: hit });
     }
     if (t === 'active_sessions') log.liveGets++;
-    if (t === 'companies' && sel.includes('logo_url')) log.extrasGets++;
+    // Lot 29 : fetchExtras relit les invitations à chaque sondage ; la ligne `companies` n'est plus relue.
+    if (t === 'invitations') log.extrasGets++;
+    if (t === 'companies') log.companyGets++;
     const all = filterRows(D[t], url.searchParams).map((x) => embed(t, x, sel));
     if (single) return all.length ? r.fulfill({ json: all[0] }) : r.fulfill({ status: 406, json: { code: 'PGRST116', message: 'none' } });
     // Pagination (fetchAllPaged : offset / limit) — sinon la lecture paginée boucle.
@@ -279,9 +281,10 @@ const settle = async (pg) => { await pg.clock.fastForward(8000); await pg.waitFo
   let g = log.liveGets; await p.clock.fastForward(31000); await p.waitForTimeout(1500);
   let mu = await takeMuts(p);
   check(log.liveGets > g && mu.length === 0, `6) sondage 30 s, rien de changé : ${mu.length} mutation(s) (attendu 0)`);
-  g = log.extrasGets; await p.clock.fastForward(31000); await p.waitForTimeout(1500);
+  g = log.extrasGets; const co0 = log.companyGets; await p.clock.fastForward(31000); await p.waitForTimeout(1500);
   mu = await takeMuts(p);
   check(log.extrasGets > g && mu.length === 0, `6) sondage 60 s, rien de changé : ${mu.length} mutation(s) (attendu 0)`);
+  check(log.companyGets === co0, `6) le sondage 60 s ne relit PAS l'entreprise (${log.companyGets - co0} lecture)`);
 
   // 3) Sélectionner
   const w0 = log.writes.length;

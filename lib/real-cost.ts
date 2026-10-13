@@ -7,6 +7,7 @@
 //     des préviews. Aucune requête ne part.
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useCompanySettings } from '@/lib/company-settings';
 import { isPreviewHost } from '@/lib/hosting';
 import {
   BTP_LEAVE_DEFAULT_RATE, DEMO_FIGURES, realHourlyCost, type LeaveFund, type PayslipFigures,
@@ -40,21 +41,19 @@ export function isCostDemo(): boolean {
 }
 
 /**
- * `companies.ai_enabled`, lu À PART : tant que la colonne n'existe pas
- * (migration pas encore appliquée), la requête échoue seule et la réponse est
- * « non » — les écrans existants ne voient rien.
+ * `companies.ai_enabled`. Lot 29 : lu avec les autres réglages de l'entreprise (une seule
+ * requête pour tout l'écran, voir lib/company-settings.ts). Tant que la colonne n'existe pas
+ * (migration pas encore appliquée), le repli du magasin la lit seule et la réponse est « non »
+ * — les écrans existants ne voient rien. Une erreur réseau après une première lecture réussie
+ * garde la dernière valeur.
  */
 export function useAiEnabled(companyId: string | null | undefined): boolean {
-  const [on, setOn] = useState(false);
-  useEffect(() => {
-    if (isCostDemo()) { setOn(true); return; }
-    if (!companyId) { setOn(false); return; }
-    let stale = false;
-    supabase.from('companies').select('ai_enabled').eq('id', companyId).maybeSingle()
-      .then(({ data, error }) => { if (!stale) setOn(!error && !!(data as { ai_enabled?: boolean } | null)?.ai_enabled); });
-    return () => { stale = true; };
-  }, [companyId]);
-  return on;
+  // Le mode démo est connu après l'hydratation (comme avant : pas d'écart serveur/navigateur) ;
+  // la démo ne lit rien, donc on n'ouvre la lecture qu'une fois la réponse connue.
+  const [mode, setMode] = useState<'inconnu' | 'demo' | 'reel'>('inconnu');
+  useEffect(() => { setMode(isCostDemo() ? 'demo' : 'reel'); }, []);
+  const settings = useCompanySettings(mode === 'reel' ? companyId : null);
+  return mode === 'demo' || !!settings?.aiEnabled;
 }
 
 /** Coût horaire réel par salarié (moyenne des 3 derniers bulletins, congés BTP compris). */
