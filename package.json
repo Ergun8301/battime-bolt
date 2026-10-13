@@ -49,6 +49,8 @@
     "test:planning-lot3": "node scripts/tests/planning-lot3.mjs out docs/captures-planning-lot3",
     "test:brouillons": "node scripts/tests/brouillons-lot2.mjs out docs/captures-lot2",
     "test:reserves-lot11": "node scripts/tests/reserves-lot11.mjs out docs/captures-lot11",
+    "test:pointage-regles": "npx -y deno@2 test supabase/functions/_shared/live-clash.test.ts supabase/functions/_shared/after-scan.test.ts",
+    "test:pointage-ecrans": "node scripts/tests/pointage-lot10.mjs out docs/captures-pointage-lot10",
     "test:fin-pointage": "node supabase/tests/lot9_fin_pointage.mjs",
     "test:cloture-salarie": "node supabase/tests/lot11_cloture_salarie.mjs",
     "test:salarie-lot9": "node scripts/tests/salarie-lot9.mjs out docs/captures-lot9",
