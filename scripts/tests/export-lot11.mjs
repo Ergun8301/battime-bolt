@@ -222,6 +222,9 @@ const hScroll = (pg) => pg.evaluate(() => {
 const parseCsv = (text) => text.replace(/^﻿/, '').trim().split(/\r\n/).map((l) => l.split(';'));
 const HEAD = 'Matricule;Nom;Prenom;Semaine du;Semaine au;Heures normales;Heures sup 25%;Heures sup 50%;Dont route payee;Total heures;Base hebdo;Controle h:min';
 const centi = (min) => (min / 60).toFixed(2).replace('.', ',');
+// Lot 18 : l'export d'ÉQUIPE passe par l'alerte « Cet export va verrouiller… » : on la CONFIRME (« Exporter et verrouiller » =
+// le comportement d'avant), puis tout le reste est inchangé (même fichier, mêmes assertions).
+const confirmerAlerte = async (pg) => { const c = pg.locator('[data-testid=export-verrou-confirm]'); await c.waitFor({ timeout: 10000 }); await c.click(); };
 
 // ═══ A) Fiche salarié — 1280×800 : menu, CSV, clôture, Rouvrir ═════════════════
 {
@@ -342,7 +345,7 @@ const centi = (min) => (min / 60).toFixed(2).replace('.', ',');
   await teamMenu.click();
   const itemsTeam = await menuItems(pg);
   check(JSON.stringify(itemsTeam) === JSON.stringify(itemsFiche), `A) équipe : le MÊME menu que la fiche (${itemsTeam.join(', ')})`);
-  const csvTeam = await download(pg, () => pg.locator('[data-testid=team-export-menu-csv]').click());
+  const csvTeam = await download(pg, async () => { await pg.locator('[data-testid=team-export-menu-csv]').click(); await confirmerAlerte(pg); });
   const teamLucas = parseCsv(csvTeam.text).filter((r) => r[0] === '00042');
   check(parseCsv(csvTeam.text)[0].join(';') === HEAD, 'A) équipe : même en-tête');
   check(JSON.stringify(teamLucas) === JSON.stringify(rowsT.slice(1)),
@@ -364,13 +367,13 @@ const centi = (min) => (min / 60).toFixed(2).replace('.', ',');
   const team = pg.locator('[role=dialog]').filter({ has: pg.locator('h2', { hasText: /Exporter l.équipe/ }) });
   await team.waitFor();
   await team.getByRole('button', { name: "Aujourd'hui", exact: true }).click();
-  const csvAvant = await (async () => { await team.locator('[data-testid=team-export-menu]').click(); return download(pg, () => pg.locator('[data-testid=team-export-menu-csv]').click()); })();
+  const csvAvant = await (async () => { await team.locator('[data-testid=team-export-menu]').click(); return download(pg, async () => { await pg.locator('[data-testid=team-export-menu-csv]').click(); await confirmerAlerte(pg); }); })();
   const baseAvant = parseCsv(csvAvant.text).find((r) => r[0] === '00042')?.[10];
   // Un autre administrateur change les heures de base : l'onglet n'en sait rien.
   db.companies[0].weekly_hours = 20;
   const lecturesAvant = db.companiesReads || 0;
   await team.locator('[data-testid=team-export-menu]').click();
-  const csvApres = await download(pg, () => pg.locator('[data-testid=team-export-menu-csv]').click());
+  const csvApres = await download(pg, async () => { await pg.locator('[data-testid=team-export-menu-csv]').click(); await confirmerAlerte(pg); });
   const baseApres = parseCsv(csvApres.text).find((r) => r[0] === '00042')?.[10];
   check(baseAvant !== baseApres && /^20([,.]0+)?$/.test(baseApres || ''), `A bis) le CSV de paie sort avec les heures de base RELUES au clic (${baseAvant} → ${baseApres})`);
   check((db.companiesReads || 0) > lecturesAvant, `A bis) l'export relit la ligne companies (${(db.companiesReads || 0) - lecturesAvant} lecture(s))`);
@@ -380,6 +383,7 @@ const centi = (min) => (min / 60).toFixed(2).replace('.', ',');
   let telecharge = false;
   pg.once('download', () => { telecharge = true; });
   await pg.locator('[data-testid=team-export-menu-csv]').click();
+  await confirmerAlerte(pg); // la lecture des réglages ne se fait qu'APRÈS la confirmation : l'alerte s'ouvre quand même
   await pg.getByText(/Réglages de l.entreprise illisibles/).first().waitFor({ timeout: 5000 }).catch(() => {});
   await pg.waitForTimeout(500);
   check(await pg.getByText(/Réglages de l.entreprise illisibles/).count() >= 1 && !telecharge, `A bis) réglages illisibles : export annulé avec un message, aucun fichier (téléchargé : ${telecharge})`);

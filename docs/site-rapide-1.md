@@ -28,6 +28,8 @@ Le site pèse moins au premier chargement : `/admin` passe de **774 à 353 kB** 
 
 `exportEntriesToExcel`, `exportEntriesToPDF` et `excelAsBase64` sont devenues asynchrones ; chaque appelant les **attend avant** de verrouiller les heures. Le CSV reste synchrone.
 
+Lot 18 : l'export d'équipe ouvre d'abord une alerte « Cet export va verrouiller N lignes… » (voir `docs/alerte-export.md`). Elle est un petit fichier à part (`components/export-verrou-dialog.tsx`, chargé à l'ouverture de « Exporter l'équipe » par `lazyWindow`, jamais au repos) qui n'importe ni `xlsx` ni `jspdf` : le menu « Exporter ▾ » reste seul à les préchauffer, et l'ordre « fichier d'abord, verrou ensuite » ne change pas.
+
 ## Poids avant / après (First Load JS, kB, compressé)
 
 Mesures de cette machine (`next build`, Next 14.2.33), un build après chaque étape.
