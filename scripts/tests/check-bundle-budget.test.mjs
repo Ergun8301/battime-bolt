@@ -143,15 +143,33 @@ test('_headers : /_next/static/* immuable, un an', () => {
   assert.match(r, /Cache-Control: public, max-age=31536000, immutable/);
 });
 
-test('_headers : /fonts/* 30 jours, jamais immuable (noms de fichiers sans hash)', () => {
-  const r = regle('/fonts/*');
-  assert.ok(r, 'règle /fonts/* absente');
+test('_headers : polices *.woff2 sur 30 jours, jamais immuable (noms de fichiers sans hash)', () => {
+  const r = regle('/fonts/*.woff2');
+  assert.ok(r, 'règle /fonts/*.woff2 absente');
   assert.match(r, /max-age=2592000/);
   assert.doesNotMatch(r, /immutable/);
 });
 
+// Simule l'hébergeur : `*` = n'importe quoi ; les règles qui correspondent se CUMULENT (Cloudflare Pages
+// additionne les valeurs d'un même en-tête, Netlify garde la dernière) : on exige donc au plus UNE valeur.
+const cacheControlPour = (chemin) => regles
+  .filter((b) => new RegExp('^' + b.split('\n')[0].trim().split('*').map((x) => x.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$').test(chemin))
+  .map((b) => b.match(/Cache-Control:\s*(.+)/)?.[1].trim());
+
+test('_headers : fonts.css (nom fixe, feuille bloquante) ne reçoit AUCUN cache long', () => {
+  assert.deepEqual(cacheControlPour('/fonts/fonts.css'), []);
+});
+
+test('_headers : chaque police de public/fonts reçoit exactement une valeur de 30 jours', () => {
+  const polices = fs.readdirSync(new URL('../../public/fonts/', import.meta.url)).filter((f) => f.endsWith('.woff2'));
+  assert.ok(polices.length >= 9, 'polices introuvables');
+  for (const f of polices) assert.deepEqual(cacheControlPour('/fonts/' + f), ['public, max-age=2592000'], f);
+  assert.deepEqual(cacheControlPour('/_next/static/chunks/main-abc123.js'), ['public, max-age=31536000, immutable']);
+  for (const p of ['/admin', '/admin/index.html', '/poseur', '/sw.js', '/']) assert.deepEqual(cacheControlPour(p), [], p);
+});
+
 test('_headers : aucune règle sur le HTML, sur tout le site, ni sur sw.js', () => {
   const chemins = regles.map((b) => b.split('\n')[0].trim());
-  assert.deepEqual(chemins.sort(), ['/_next/static/*', '/fonts/*']);
+  assert.deepEqual(chemins.sort(), ['/_next/static/*', '/fonts/*.woff2']);
   for (const interdit of ['/*', '*.html', '/sw.js', '/cookies/*']) assert.ok(!chemins.includes(interdit), interdit);
 });
