@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/auth-provider';
@@ -21,11 +21,24 @@ export default function AdminLayout({
   const { user, loading, signOut } = useAuth();
   const router = useRouter();
   const [pairPending, setPairPending] = useState(false);
+  // Change à chaque nouveau QR scanné dans ce document : la fenêtre repart sur le dernier.
+  const [pairKey, setPairKey] = useState(0);
+  const adminRef = useRef(false);
 
   // Le patron qui scanne le QR d'une tablette arrive sur /admin#borne=… souvent
   // DÉCONNECTÉ : le fragment est gardé (et retiré de l'adresse) AVANT la
-  // redirection vers /connexion, et repris une fois connecté.
-  useEffect(() => { stashPairRequestFromHash(); }, []);
+  // redirection vers /connexion, et repris une fois connecté. Un lien ouvert dans
+  // un /admin déjà chargé (appli installée, adresse collée) ne recharge rien :
+  // c'est `hashchange` qui le rattrape.
+  useEffect(() => {
+    stashPairRequestFromHash();
+    const onHash = () => {
+      stashPairRequestFromHash();
+      if (adminRef.current && peekPairRequest()) { setPairKey((k) => k + 1); setPairPending(true); }
+    };
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
 
   // Un compte archivé n'a plus accès : on le déconnecte.
   const archived = !!user && user.is_active === false;
@@ -44,6 +57,7 @@ export default function AdminLayout({
 
   // Connecté en administrateur actif et un QR de tablette attend : la fenêtre s'ouvre.
   const admin = !loading && user?.role === 'admin' && !archived;
+  adminRef.current = admin;
   useEffect(() => { if (admin && peekPairRequest()) setPairPending(true); }, [admin]);
 
   if (loading) {
@@ -58,5 +72,5 @@ export default function AdminLayout({
     return null;
   }
 
-  return <><SupportBanner />{children}{pairPending && <KioskPairConfirm onClose={() => setPairPending(false)} />}</>;
+  return <><SupportBanner />{children}{pairPending && <KioskPairConfirm key={pairKey} onClose={() => setPairPending(false)} />}</>;
 }

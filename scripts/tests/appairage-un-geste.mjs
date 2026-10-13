@@ -118,6 +118,7 @@ async function tablet({ width = 1280, height = 800, isMobile = false, cache = nu
   const waitQr = () => p.waitForSelector('[data-testid=kb-pair-qr]', { timeout: 8000 }).catch(() => {});
   return { ctx, p, fn, S, errs, calls, adv, jump, open, waitQr };
 }
+const jump21 = async (p) => { await p.clock.fastForward(21_000); await sleep(250); };
 const qrCount = (p) => p.locator('[data-testid=kb-pair-qr]').count();
 const bodyText = (p) => p.evaluate(() => document.body.innerText);
 const legacyScreen = async (p, tag) => {
@@ -197,15 +198,35 @@ const legacyScreen = async (p, tag) => {
   await p.click('.kp-code'); await p.keyboard.type('123');
   release(); await sleep(500);
   check(await calls('pair_request').length === 1 && await qrCount(p) === 0 && await p.inputValue('.kp-code') === '123', 'T2) 3 chiffres tapés, la demande arrive : le QR n’est PAS affiché, la saisie est gardée');
+  // Clavier encore ouvert (champ focalisé, chiffres tapés) : 20 s de pause ne font pas sauter l'écran.
   await jump(21_000);
+  await sleep(200);
+  check(await qrCount(p) === 0 && await p.inputValue('.kp-code') === '123' && await p.evaluate(() => document.activeElement?.classList.contains('kp-code')),
+    'T2) 20 s de pause, champ encore actif : le QR n’est PAS affiché, le focus (clavier) et la saisie sont gardés');
+  // Au bout de 2 min sans toucher à rien, le QR apparaît quand même (tablette laissée avec une saisie).
+  await jump(100_000);
   await p.waitForSelector('[data-testid=kb-pair-qr]', { timeout: 5000 }).catch(() => {});
-  check(await qrCount(p) === 1, 'T2) 20 s sans frappe : le QR apparaît');
+  check(await qrCount(p) === 1, 'T2) 2 min de silence, champ actif : le QR apparaît');
   check(await p.locator('[data-testid=kb-code-fallback]').getAttribute('open') !== null && await p.inputValue('.kp-code') === '123', 'T2) le secours s’ouvre et contient toujours les 3 chiffres');
   // Taper dans le secours ne fait pas disparaître le QR.
   await p.focus('.kp-code'); await p.keyboard.press('End'); await p.keyboard.type('45');
   await sleep(200);
   check(await qrCount(p) === 1 && await p.inputValue('.kp-code') === '12345', 'T2) taper dans le secours : le QR reste affiché');
   check(errs.length === 0, 'T2) aucune erreur de page');
+  await ctx.close();
+}
+{
+  // Champ quitté avec des chiffres : 20 s suffisent.
+  const { ctx, p, S, open } = await tablet();
+  let release; S.gate = new Promise((res) => { release = res; });
+  await open();
+  await p.waitForSelector('.kp-code', { timeout: 8000 });
+  await p.click('.kp-code'); await p.keyboard.type('123');
+  release(); await sleep(500);
+  await p.evaluate(() => document.querySelector('.kp-code').blur());
+  await jump21(p);
+  await p.waitForSelector('[data-testid=kb-pair-qr]', { timeout: 5000 }).catch(() => {});
+  check(await qrCount(p) === 1 && await p.inputValue('.kp-code') === '123', 'T2) champ quitté avec des chiffres : 20 s plus tard, le QR apparaît, la saisie est gardée');
   await ctx.close();
 }
 {
@@ -292,6 +313,88 @@ const legacyScreen = async (p, tag) => {
   await p.waitForSelector('[data-testid=kb-pair-qr]', { timeout: 5000 }).catch(() => {});
   check(calls('pair_request').length === r0 + 1 && await qrCount(p) === 1 && calls('pair').length === 0 && await p.locator('[data-testid=kb-pairing]').count() === 1, 'T3) « Afficher un nouveau QR » : une nouvelle demande, le formulaire n’est pas soumis');
   check(errs.length === 0, `T3) aucune erreur de page (${errs.join(' | ')})`);
+  await ctx.close();
+}
+
+// ── T3b · pannes passagères, hors ligne, borne suspendue, erreur du secours ─
+{
+  // Une confirmation ne se perd pas sur une panne passagère : un sondage a déjà répondu, puis 5xx, puis « approved ».
+  const { ctx, p, S, errs, calls, adv, open, waitQr } = await tablet({ width: 1024, height: 768 });
+  let n = 0;
+  S.status = () => { n++; return n <= 2 ? { json: { status: 'pending' } } : n <= 4 ? { status: 500, json: { error: 'Appairage impossible' } } : { json: APPROVED }; };
+  await open(); await waitQr();
+  await adv(40_000, 2000);
+  await p.waitForSelector('[data-testid=kb-week]', { timeout: 8000 }).catch(() => {});
+  check(await p.locator('[data-testid=kb-week]').isVisible(), `T3b) « pending » puis 2 × 500 « Appairage impossible » puis « approved » : la tablette se relie quand même (${calls('pair_status').length} sondages)`);
+  check(errs.length === 0, 'T3b) … sans erreur de page');
+  await ctx.close();
+}
+{
+  // Pendant le recouvrement de deux identifiants, UNE rafale de 5xx (les deux sondages d'un même tour) ne fait pas abandonner.
+  const { ctx, p, S, errs, calls, adv, jump, open, waitQr } = await tablet({ width: 1024, height: 768 });
+  await open(); await waitQr();
+  await adv(7000);
+  await jump(541_000);
+  await sleep(500);
+  let burst = 2;
+  S.status = () => (burst-- > 0 ? { status: 503, json: { error: 'Service indisponible' } } : { json: APPROVED });
+  await adv(30_000, 2000);
+  await p.waitForSelector('[data-testid=kb-week]', { timeout: 8000 }).catch(() => {});
+  check(calls('pair_request').length === 2 && await p.locator('[data-testid=kb-week]').isVisible(), 'T3b) deux sondages en 503 dans le MÊME tour (recouvrement) : un seul échec compté, la tablette se relie ensuite');
+  check(errs.length === 0, 'T3b) … sans erreur de page');
+  await ctx.close();
+}
+{
+  // Borne suspendue sur l'ancien identifiant : le QR renouvelé ne l'efface pas.
+  const { ctx, p, S, calls, adv, jump, open, waitQr } = await tablet({ width: 390, height: 844, isMobile: true });
+  await open(); await waitQr();
+  const rid1 = (await p.locator('[data-testid=kb-pair-qr]').getAttribute('data-url')).split('#borne=')[1];
+  S.status = (body) => ({ json: { status: body.request_id === rid1 ? 'suspended' : 'pending' } });
+  await adv(7000);
+  await jump(541_000);
+  await sleep(500);
+  await adv(9000);
+  const rid2 = (await p.locator('[data-testid=kb-pair-qr]').getAttribute('data-url')).split('#borne=')[1];
+  check(calls('pair_request').length === 2 && rid2 !== rid1 && (await p.locator('[data-testid=kb-pair-status]').innerText()).trim() === SUSPENDED_TEXT,
+    'T3b) l’ancien QR est « suspendu », le nouveau répond « en attente » : l’écran garde « Borne suspendue… »');
+  S.status = () => ({ json: { status: 'pending' } });
+  await adv(9000);
+  check((await p.locator('[data-testid=kb-pair-status]').innerText()).trim() === WAITING_TEXT, 'T3b) réactivée : de nouveau « En attente… »');
+  await ctx.close();
+}
+{
+  // Hors ligne : le texte le dit, le QR périmé disparaît tout seul, le retour du réseau le remet.
+  const { ctx, p, errs, calls, adv, jump, open, waitQr } = await tablet({ width: 1024, height: 768 });
+  await open(); await waitQr();
+  await ctx.setOffline(true);
+  await adv(2000);
+  check((await p.locator('[data-testid=kb-pair-status]').innerText()).trim() === 'La tablette n’a plus de réseau. Reconnectez-la au wifi.', 'T3b) hors ligne : « La tablette n’a plus de réseau. Reconnectez-la au wifi. »');
+  await p.screenshot({ path: `${SH}/tablette-hors-ligne-1024x768.png` });
+  const before = calls('pair_status').length;
+  await adv(10_000, 2000);
+  check(calls('pair_status').length === before, 'T3b) hors ligne : aucun appel');
+  await jump(11 * 60_000);
+  await adv(2000);
+  check(await qrCount(p) === 0 && await p.locator('.kp-code').count() === 1, 'T3b) hors ligne plus de 10 min : le QR périmé disparaît (écran du code à 6 chiffres)');
+  await ctx.setOffline(false);
+  await p.evaluate(() => window.dispatchEvent(new Event('online')));
+  await p.waitForSelector('[data-testid=kb-pair-qr]', { timeout: 8000 }).catch(() => {});
+  check(await qrCount(p) === 1 && (await p.locator('[data-testid=kb-pair-status]').innerText()).trim() === WAITING_TEXT, 'T3b) réseau revenu : un QR neuf, « En attente… »');
+  check(errs.length === 0, 'T3b) aucune erreur de page');
+  await ctx.close();
+}
+for (const [w, h, mobile] of [[390, 844, true], [768, 1024, false]]) {
+  // Un code refusé dans le secours : l'erreur s'affiche juste sous « Relier », dans l'écran.
+  const { ctx, p, errs, open, waitQr } = await tablet({ width: w, height: h, isMobile: mobile });
+  await open(); await waitQr();
+  await p.click('[data-testid=kb-code-fallback] summary');
+  await p.fill('.kp-code', '999999');
+  await p.click('.kp-btn');
+  await p.waitForSelector('.kp-err-fallback', { timeout: 5000 }).catch(() => {});
+  const m = await p.evaluate(() => { const e = document.querySelector('.kp-err-fallback'); if (!e) return null; const r = e.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, vh: innerHeight, text: e.textContent, role: e.getAttribute('role'), inTop: !!document.querySelector('.kp > .kp-card > .kp-err') }; });
+  check(!!m && m.top >= 0 && m.bottom <= m.vh && m.text === 'Code incorrect ou expiré.' && m.role === 'alert' && !m.inTop, `T3b) ${w}×${h} : « Code incorrect ou expiré. » est visible à l’écran, sous « Relier » (haut ${Math.round(m?.top)} / bas ${Math.round(m?.bottom)} sur ${h}), pas en haut de la carte`);
+  if (w === 390) await p.screenshot({ path: `${SH}/tablette-secours-erreur-390x844.png` });
+  check(errs.length === 0, `T3b) ${w}×${h} : aucune erreur de page`);
   await ctx.close();
 }
 
@@ -512,7 +615,8 @@ async function adminPage({ width = 390, height = 844, isMobile = true, kiosks = 
   if (session) await ctx.addInitScript(([k, v]) => { localStorage.setItem(k, v); }, [AUTH_KEY, JSON.stringify(session)]);
   if (support) await ctx.addInitScript((v) => { sessionStorage.setItem('bemexo-support', JSON.stringify(v)); }, { staffId: 'u-admin', companyId: CO, name: 'Martin Menuiserie', expiresAt: '2030-01-01T10:00:00Z' });
   if (stash) await ctx.addInitScript(([k, v]) => { if (!sessionStorage.getItem('stash-done')) { sessionStorage.setItem(k, JSON.stringify({ rid: v, at: Date.now() })); sessionStorage.setItem('stash-done', '1'); } }, ['bx_borne_req', stash]);
-  const answer = (r, a) => (a === 'abort' ? r.abort('failed') : r.fulfill({ status: a.status || 200, json: a.json }));
+  // `wait` : promesse qui retient la réponse (pour voir l'écran « Envoi… »).
+  const answer = async (r, a) => { if (a !== 'abort' && a.wait) await a.wait; return a === 'abort' ? r.abort('failed') : r.fulfill({ status: a.status || 200, json: a.json }); };
   await ctx.route('**/*.supabase.co/**', async (r) => {
     const url = new URL(r.request().url());
     if (url.pathname.startsWith('/auth/v1/user')) return state.session ? r.fulfill({ json: state.session.user }) : r.fulfill({ status: 401, json: {} });
@@ -786,6 +890,109 @@ for (const [status, message] of [[401, 'Non authentifié'], [403, "Réservé à 
     check(await kpc(p).count() === 0 && state.fn.length === 0, `B6) fragment invalide (${bad.slice(0, 12)}…${bad.length} car.) : rien ne s’ouvre`);
     await ctx.close();
   }
+}
+
+// ── B6b · pannes passagères, lien dans un /admin déjà ouvert, envoi, focus, ✕ ──
+const USED = [409, 'Ce QR a déjà servi. Scannez celui qui s’affiche sur la tablette.'];
+{
+  // Réponse perdue pendant la confirmation : le QR est gardé, « Réessayer », puis « a déjà servi » = c'est la nôtre.
+  let n = 0;
+  const { ctx, p, state, ff, calls } = await adminPage({
+    hash: `#borne=${RID_A}`,
+    confirm: () => (++n === 1 ? 'abort' : { status: USED[0], json: { error: USED[1], code: 'pair_request_used' } }),
+  });
+  await waitKpc(p);
+  await p.locator('[data-testid=kpc-choice]').first().click();
+  await sleep(600);
+  check((await p.locator('[data-testid=kpc-error]').innerText()).trim() === 'Connexion impossible. Vérifiez internet et réessayez.' && await p.locator('button', { hasText: 'Réessayer' }).count() === 1,
+    'B6b) confirmation sans réponse : « Connexion impossible… » + « Réessayer »');
+  check(JSON.parse(await p.evaluate(() => sessionStorage.getItem('bx_borne_req')) || '{}').rid === RID_A, 'B6b) … et la mémoire du QR est GARDÉE (elle ne servait plus à rien d’effacée)');
+  await p.click('button:has-text("Réessayer")');
+  await sleep(600);
+  const cf = calls('pair_confirm');
+  check(cf.length === 2 && JSON.stringify(cf[0]) === JSON.stringify(cf[1]), 'B6b) « Réessayer » renvoie la même confirmation');
+  check(await p.locator('[data-testid=kpc-done]').count() === 1 && await p.locator('[data-testid=kpc-error]').count() === 0, 'B6b) « a déjà servi » après une réponse perdue : « C’est confirmé… » (pas d’erreur sèche)');
+  check(/Vérification…/.test(await kpcText(p)) && await p.locator('button', { hasText: 'Terminé' }).count() === 1, 'B6b) « Terminé » est là dès la vérification');
+  check(await p.evaluate(() => document.activeElement?.getAttribute('data-testid')) === 'kpc-done', 'B6b) le focus passe à la phrase de confirmation (annoncée)');
+  state.D.kiosks.push({ id: 'k-neuve', company_id: CO, revoked_at: null, kind: 'tablette', created_at: new Date(Date.now() + state.offset).toISOString(), last_seen_at: null });
+  await ff(3200);
+  check(/Tablette reliée\./.test(await kpcText(p)), 'B6b) la vérification de bout en bout trouve la tablette neuve');
+  await ctx.close();
+}
+{
+  // « A déjà servi » SANS panne avant : une vraie erreur, rien à réessayer.
+  const { ctx, p } = await adminPage({ hash: `#borne=${RID_A}`, confirm: () => ({ status: USED[0], json: { error: USED[1], code: 'pair_request_used' } }) });
+  await waitKpc(p);
+  await p.locator('[data-testid=kpc-choice]').first().click();
+  await sleep(500);
+  check((await p.locator('[data-testid=kpc-error]').innerText()).trim() === USED[1] && await p.locator('button', { hasText: 'Réessayer' }).count() === 0
+    && await p.evaluate(() => sessionStorage.getItem('bx_borne_req')) === null, 'B6b) 409 « a déjà servi » d’emblée : erreur du serveur, pas de « Réessayer », mémoire nettoyée');
+  await ctx.close();
+}
+for (const [status, message] of [[401, 'Non authentifié'], [429, 'Trop d’essais. Réessayez dans quelques minutes.'], [500, 'Erreur serveur']]) {
+  // 401 (jeton pas encore rafraîchi), 429, 5xx : le QR est encore valable, on le garde et on propose « Réessayer ».
+  let n = 0;
+  const { ctx, p, calls } = await adminPage({ hash: `#borne=${RID_A}`, lookup: () => (++n === 1 ? { status, json: { error: message } } : { json: LOOKUP }) });
+  await waitKpc(p);
+  check((await p.locator('[data-testid=kpc-error]').innerText()).trim() === message && await p.locator('button', { hasText: 'Réessayer' }).count() === 1
+    && JSON.parse(await p.evaluate(() => sessionStorage.getItem('bx_borne_req')) || '{}').rid === RID_A, `B6b) pair_lookup ${status} : « ${message} », « Réessayer » et la mémoire du QR est gardée`);
+  await p.click('button:has-text("Réessayer")');
+  await sleep(700);
+  check(calls('pair_lookup').length === 2 && await p.locator('[data-testid=kpc-choice]').count() === 4, `B6b) pair_lookup ${status} : « Réessayer » ouvre le choix`);
+  await ctx.close();
+}
+{
+  // Le premier code est focalisé à l'ouverture du choix ; le ✕ est large et en français.
+  const { ctx, p } = await adminPage({ hash: `#borne=${RID_A}` });
+  await waitKpc(p);
+  check(await p.evaluate(() => document.activeElement?.getAttribute('data-testid')) === 'kpc-choice', 'B6b) le focus passe au premier code quand le choix s’affiche');
+  const x = await p.evaluate(() => { const b = document.querySelector('[role=dialog] .kpc-x'); const r = b?.getBoundingClientRect(); const visible = [...document.querySelectorAll('[role=dialog] button')].filter((e) => getComputedStyle(e).display !== 'none'); return { w: r?.width, h: r?.height, label: b?.getAttribute('aria-label'), english: visible.some((e) => /^Close$/.test(e.textContent.trim())), allVisible: visible.filter((e) => e.matches('.kpc-x')).length }; });
+  check(x.w >= 44 && x.h >= 44 && x.label === 'Fermer' && !x.english && x.allVisible === 1, `B6b) croix de fermeture : ${x.w}×${x.h} px, libellé « ${x.label} », une seule croix visible`);
+  await p.click('.kpc-x');
+  await sleep(300);
+  check(await p.locator('[role=dialog]').count() === 0, 'B6b) la croix ferme la fenêtre');
+  await ctx.close();
+}
+{
+  // « Non, ce n’est pas ma tablette » : un double toucher n'envoie qu'un refus, tout est bloqué pendant l'envoi.
+  let release; const gate = new Promise((res) => { release = res; });
+  const { ctx, p, calls } = await adminPage({ hash: `#borne=${RID_A}`, confirm: () => ({ json: { ok: true, declined: true }, wait: gate }) });
+  await waitKpc(p);
+  const no = p.locator('button', { hasText: 'Non, ce n’est pas ma tablette' });
+  await no.click();
+  await no.click({ force: true, timeout: 1500 }).catch(() => {});
+  await sleep(400);
+  const dis = await p.evaluate(() => [...document.querySelectorAll('[data-testid=kpc-choice], .kpc-text')].map((e) => e.disabled));
+  check(calls('pair_confirm').length === 1 && dis.length === 5 && dis.every(Boolean) && /Envoi…/.test(await kpcText(p)), `B6b) refus en cours : un seul pair_confirm, les 4 codes et « Non » désactivés, « Envoi… » affiché (${calls('pair_confirm').length} appel)`);
+  release(); await sleep(500);
+  check(await p.locator('[role=dialog]').count() === 0, 'B6b) le refus abouti ferme la fenêtre');
+  await ctx.close();
+}
+{
+  // Pendant « Envoi… » d'une confirmation : la ligne d'état est là.
+  let release; const gate = new Promise((res) => { release = res; });
+  const { ctx, p } = await adminPage({ hash: `#borne=${RID_A}`, confirm: () => ({ json: { ok: true, company_name: 'Martin Menuiserie', replaces: false }, wait: gate }) });
+  await waitKpc(p);
+  await p.locator('[data-testid=kpc-choice]').first().click();
+  await sleep(400);
+  check(await p.locator('[role=dialog] [role=status]', { hasText: 'Envoi…' }).count() === 1, 'B6b) confirmation en cours : « Envoi… » (role="status")');
+  release(); await sleep(400);
+  await ctx.close();
+}
+{
+  // Un lien /admin#borne=… ouvert dans un /admin DÉJÀ chargé (PWA, adresse collée) : pas de rechargement, la fenêtre s'ouvre quand même.
+  const { ctx, p, calls } = await adminPage({});
+  await sleep(2500);
+  check(await kpc(p).count() === 0, 'B6b) /admin sans fragment : aucune fenêtre');
+  await p.evaluate((h) => { location.hash = h; }, `#borne=${RID_A}`);
+  await waitKpc(p);
+  check(await kpc(p).count() === 1 && calls('pair_lookup').length === 1 && calls('pair_lookup')[0].request_id === RID_A
+    && await p.evaluate(() => location.hash) === '' && await p.evaluate(() => sessionStorage.getItem('bx_borne_req')) !== null, 'B6b) le fragment arrive dans le document déjà chargé : fenêtre ouverte, un pair_lookup, fragment retiré de l’adresse');
+  // Un second QR scanné pendant que la fenêtre est ouverte : elle repart sur le dernier.
+  await p.evaluate((h) => { location.hash = h; }, `#borne=${RID_B}`);
+  await sleep(1200);
+  check(calls('pair_lookup').length === 2 && calls('pair_lookup')[1].request_id === RID_B && await kpc(p).count() === 1, 'B6b) un nouveau QR scanné : la fenêtre repart sur le dernier');
+  await ctx.close();
 }
 
 // ── B7 · bannière cookies : les 4 codes restent touchables ──────────────────

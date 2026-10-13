@@ -343,6 +343,7 @@ const CSS = `
 .kp-btn{margin-top:16px;width:100%;border:none;cursor:pointer;background:#FFC21A;color:#15120F;font-family:inherit;font-weight:900;font-size:18px;padding:16px;border-radius:14px;box-shadow:0 4px 0 #C99300}
 .kp-btn:disabled{opacity:.6;cursor:default}
 .kp-err{background:#fce8e6;border:1px solid #f3b4ad;color:#9a2820;font-size:14px;font-weight:700;border-radius:12px;padding:11px 14px;margin:0 0 14px;text-align:left}
+.kp-err-fallback{margin:14px 0 0}
 .kp-note{font-size:13px;color:#9a948a;font-weight:600;margin:16px 0 0;line-height:1.45}
 `;
 
@@ -466,9 +467,15 @@ function persistStorage() {
   try { void navigator.storage?.persist?.().catch(() => {}); } catch { /* non pris en charge */ }
 }
 
-/** Lot 11 (IA) : tant qu'on tape un code à 6 chiffres, le QR n'apparaît pas sous les doigts. */
+/**
+ * Lot 11 (IA) : tant qu'on tape un code à 6 chiffres, le QR n'apparaît pas sous
+ * les doigts. Champ encore actif (clavier ouvert) : 2 min de silence ; champ
+ * quitté : 20 s. Un patron qui lit son téléphone ne perd ni le clavier ni sa saisie.
+ */
 const TYPING_QUIET_MS = 20 * 1000;
+const TYPING_FOCUSED_QUIET_MS = 2 * 60 * 1000;
 const WAITING_TEXT = 'En attente de votre confirmation sur le téléphone…';
+const OFFLINE_TEXT = 'La tablette n’a plus de réseau. Reconnectez-la au wifi.';
 const SUSPENDED_TEXT = 'Borne suspendue pour votre entreprise. La liaison reprendra dès qu’elle sera réactivée.';
 
 /** Le QR de l'appairage (bloc blanc, noir sur blanc, jamais inversé). */
@@ -499,6 +506,7 @@ function Pairing({ onPaired, notice, initialCode, onWaiting }: {
   const [latched, setLatched] = useState(false);
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const codeInput = useRef<HTMLInputElement>(null);
+  const fallbackErrRef = useRef<HTMLDivElement>(null);
 
   const toPaired = (d: KioskPairReply): Paired => ({
     kioskId: d.kiosk_id, token: d.token, seed: d.seed,
@@ -525,15 +533,25 @@ function Pairing({ onPaired, notice, initialCode, onWaiting }: {
   useEffect(() => { if (showQr) codeInput.current?.blur(); }, [showQr]);
   useEffect(() => () => { if (typingTimer.current) clearTimeout(typingTimer.current); }, []);
 
+  /** (Re)lance le silence au bout duquel la saisie n'est plus « en cours ». */
+  const armTyping = (quietMs: number) => {
+    if (typingTimer.current) clearTimeout(typingTimer.current);
+    setTyping(true);
+    typingTimer.current = setTimeout(() => setTyping(false), quietMs);
+  };
   const onCode = (raw: string) => {
     const v = raw.replace(/\D/g, '').slice(0, 6);
     setCode(v);
-    if (typingTimer.current) clearTimeout(typingTimer.current);
-    if (!v) { setTyping(false); return; }
+    if (!v) {
+      if (typingTimer.current) clearTimeout(typingTimer.current);
+      setTyping(false);
+      return;
+    }
     setFallbackOpen(true);
-    setTyping(true);
-    typingTimer.current = setTimeout(() => setTyping(false), TYPING_QUIET_MS);
+    armTyping(TYPING_FOCUSED_QUIET_MS);
   };
+  // Le champ est quitté avec des chiffres : on laisse 20 s, pas plus, avant de montrer le QR.
+  const onCodeBlur = () => { if (code && typing) armTyping(TYPING_QUIET_MS); };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -548,14 +566,21 @@ function Pairing({ onPaired, notice, initialCode, onWaiting }: {
 
   // Le bandeau « déconnectée par le bureau » ne parle pas de taper un code quand le QR est là.
   const banner = showQr && err === NOTICE_FORGOTTEN ? NOTICE_FORGOTTEN_QR : err;
+  // Avec le QR, le secours est tout en bas : l'erreur d'un code refusé s'y affiche, sous « Relier »
+  // (en haut de la carte elle serait hors de l'écran). Le bandeau du haut ne garde que « déconnectée ».
+  const topBanner = showQr && err !== NOTICE_FORGOTTEN ? null : banner;
+  const fallbackErr = showQr && err !== NOTICE_FORGOTTEN ? err : null;
+  // Le clavier ou le bas de l'écran peut cacher le dessous du bouton : l'erreur est ramenée dans l'écran.
+  useEffect(() => { if (fallbackErr) fallbackErrRef.current?.scrollIntoView?.({ block: 'nearest' }); }, [fallbackErr]);
   const fields = (
     <>
       <input
         ref={codeInput} className="kp-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} autoFocus={!initialCode}
         aria-label="Code à 6 chiffres" placeholder="000000"
-        value={code} onChange={(e) => onCode(e.target.value)}
+        value={code} onChange={(e) => onCode(e.target.value)} onBlur={onCodeBlur}
       />
       <button className="kp-btn" type="submit" autoFocus={!!initialCode} disabled={busy || code.length !== 6}>{busy ? 'Liaison…' : 'Relier'}</button>
+      {fallbackErr && <div ref={fallbackErrRef} className="kp-err kp-err-fallback" role="alert">{fallbackErr}</div>}
       <p className="kp-note">Une seule tablette par entreprise : en relier une nouvelle déconnecte l&apos;ancienne.</p>
     </>
   );
@@ -566,7 +591,7 @@ function Pairing({ onPaired, notice, initialCode, onWaiting }: {
         <div className="kp-logo"><img src="/bemexo-wordmark-light.svg" alt="BEMEXO" /></div>
         {showQr && qr.view ? (
           <>
-            {banner && <div className="kp-err" role="alert">{banner}</div>}
+            {topBanner && <div className="kp-err" role="alert">{topBanner}</div>}
             <div className="kp-pair">
               <PairQrImage view={qr.view} />
               <div className="kp-pair-info">
@@ -574,7 +599,7 @@ function Pairing({ onPaired, notice, initialCode, onWaiting }: {
                 <p className="kp-p">Scannez ce QR avec votre téléphone, connectez-vous à BEMEXO si besoin, puis touchez le même code de vérification que celui-ci.</p>
                 <p className="kp-vlabel">Code de vérification</p>
                 <div className="kp-vcode" data-testid="kb-pair-code" aria-live="polite">{qr.view.code}</div>
-                <p className="kp-status" role="status" data-testid="kb-pair-status">{qr.suspended ? SUSPENDED_TEXT : WAITING_TEXT}</p>
+                <p className="kp-status" role="status" data-testid="kb-pair-status">{qr.offline ? OFFLINE_TEXT : qr.suspended ? SUSPENDED_TEXT : WAITING_TEXT}</p>
               </div>
             </div>
             <details className="kp-fallback" data-testid="kb-code-fallback" open={fallbackOpen} onToggle={(e) => setFallbackOpen(e.currentTarget.open)}>

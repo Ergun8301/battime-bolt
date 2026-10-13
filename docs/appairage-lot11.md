@@ -57,7 +57,16 @@ continue de demander et la remise réussit une fois la borne rallumée).
   rejouable** 3 min : si la réponse HTTP se perd (wifi de chantier, iPad en
   veille), la tablette redemande, le serveur retrouve la ligne par l'empreinte
   du jeton recalculé et rend le même jeton et la même graine, sans créer de
-  deuxième tablette ni laisser une ligne orpheline.
+  deuxième tablette ni laisser une ligne orpheline. Tant que la tablette n'a
+  **jamais servi** (aucun appel avec son jeton depuis sa création), le rejeu
+  reste possible jusqu'à **30 min** : une tablette restée hors ligne plus de
+  3 min ne laisse pas une ligne fantôme que personne ne détient (et qui aurait
+  déjà révoqué l'ancienne).
+- **Marge de confirmation de 2 min** : `pair_lookup` et `pair_confirm` acceptent
+  l'identifiant jusqu'à `exp + 2 min`. La tablette renouvelle son QR 60 s avant
+  la fin ; le patron qui a scanné l'ancien met souvent plus de temps à se
+  connecter (mot de passe, 2FA). La marge reste sous celle de la remise
+  (`exp + 3 min`) : une confirmation acceptée est toujours livrable.
 - **Le code de vérification est stable pendant tout un épisode** : il vient de
   l'empreinte du secret d'appareil (pas du nonce de la demande) et la tablette
   renvoie son secret à chaque renouvellement du QR. Les trois leurres et la
@@ -82,10 +91,12 @@ phrases qu'avant.
   téléphone : une seule colonne. Le QR est visible sans défiler en 1280×800,
   1024×768 et 768×1024 ; à hauteur réduite (clavier à l'écran), l'écran
   **défile** (avant, il était coupé).
-- Le QR **ne passe jamais devant les doigts** : si quelqu'un tape un code
-  (moins de 20 s depuis la dernière frappe), le QR attend ; il apparaît ensuite,
-  le secours s'ouvre et la saisie est gardée. Le champ perd le focus quand le QR
-  apparaît (le clavier de l'iPad cacherait la moitié du QR).
+- Le QR **ne passe jamais devant les doigts** : si quelqu'un tape un code, le QR
+  attend tant que le champ reste actif (2 min de silence au plus) ou 20 s après
+  qu'il a été quitté ; il apparaît ensuite, le secours s'ouvre et la saisie est
+  gardée. Le champ perd le focus quand le QR apparaît sur un champ vide (le
+  clavier de l'iPad cacherait la moitié du QR). Un code refusé dans le secours
+  s'affiche **sous « Relier »** (pas en haut de la carte, hors de l'écran).
 - Le QR est renouvelé 60 s avant sa fin (10 min de vie), **avec le même secret
   d'appareil** : le code de vérification ne change pas. La tablette interroge
   `pair_status` toutes les 3 s pendant 3 min, puis toutes les 8 s ; rien
@@ -99,11 +110,21 @@ phrases qu'avant.
   entreprise. La liaison reprendra dès qu’elle sera réactivée. », rien n'est
   effacé, la liaison aboutit une fois la borne rallumée.
 - **Repli sans un mot** : fonction ou migration pas encore en ligne (`400 Action
-  inconnue`, `404`, `501`, `available:false`), ou deux `5xx` de suite sur le
-  sondage → la tablette garde **exactement** son écran d'avant (code à
-  6 chiffres), sans message, et ne rappelle plus rien jusqu'au rechargement.
+  inconnue`, `404`, `501`, `available:false`), ou deux tours de `5xx` de suite
+  sur un sondage qui n'a **jamais** répondu → la tablette garde **exactement**
+  son écran d'avant (code à 6 chiffres), sans message, et ne rappelle plus rien
+  jusqu'au rechargement. Dès qu'un sondage a répondu, un `5xx` (démarrage à froid,
+  remise qui échoue et sera réessayée) est **passager** : on sonde à 5 s, 15 s
+  puis 60 s sans jamais lâcher une confirmation. Un tour de sondage compte une
+  seule fois, même quand deux QR sont interrogés ensemble.
   Réseau coupé, `429`, `5xx` sur la demande : écran d'avant, nouvel essai après
   5 s, 15 s puis 60 s (60 s pour un `429`), et tout de suite au retour du réseau.
+- **Hors ligne** : le QR affiché dit « La tablette n’a plus de réseau.
+  Reconnectez-la au wifi. » (navigateur hors ligne, ou deux appels de suite sans
+  réponse) ; un QR périmé disparaît tout seul, même sans réseau.
+- **Borne suspendue** : « suspendue » vaut tant que l'une des demandes suivies le
+  dit (le QR renouvelé répond « en attente » alors que la confirmation de
+  l'ancien attend la réactivation).
 - `/borne?code=123456` (lien ou QR de la fenêtre « Borne ») : **aucune** demande
   de QR, comportement du lot précédent inchangé.
 - Tablette déconnectée par le bureau : le bandeau dit « … Tapez un nouveau code
@@ -133,15 +154,26 @@ souvent déconnecté** : c'est le cas normal.
    service ? » ; rien n'est envoyé avant le bouton « Remplacer la tablette en
    service » (le serveur l'impose aussi). Tablette muette depuis longtemps : un
    seul geste, avec « La tablette actuelle (vue il y a 2 h) sera déconnectée. ».
+   Toutes les tablettes actives comptent (un reliquat d'avant la règle « une par
+   entreprise » ne masque pas une tablette vivante).
 5. Après la confirmation, la fenêtre **vérifie de bout en bout** : elle relit les
    tablettes (lecture sous RLS, toutes les 3 s, 30 s au plus, aucun appel à la
    fonction) et dit « Tablette reliée. » ou « La tablette n’a pas répondu :
    réveillez-la, sinon scannez de nouveau son QR. ». Si la lecture est
-   impossible, le texte de confirmation reste seul.
+   impossible, le texte de confirmation reste seul. « Terminé » est disponible
+   pendant la vérification.
 6. Les refus du serveur sont affichés **mot pour mot** (QR expiré, déjà servi,
    mauvais code, trop d'essais, borne coupée, compte support, `401`
    « Non authentifié », `403` « Réservé à l'administrateur »). « Non, ce n’est
-   pas ma tablette » refuse la demande. Échap et ✕ ferment.
+   pas ma tablette » refuse la demande (un seul envoi, tout est bloqué pendant
+   « Envoi… »). Échap et ✕ (44 px, « Fermer ») ferment.
+   **Une panne passagère ne fait pas perdre le QR** : réseau coupé, `401` juste
+   après la connexion, `429`, `5xx` → la mémoire du QR est gardée et « Réessayer »
+   est proposé. Après une confirmation restée sans réponse (elle a peut-être
+   abouti), un « a déjà servi » au nouvel essai mène à la vérification de bout en
+   bout au lieu d'une erreur.
+   Un lien `/admin#borne=…` ouvert dans un `/admin` déjà chargé (appli installée,
+   adresse collée) est rattrapé (`hashchange`) : la fenêtre s'ouvre.
 7. **Compte BEMEXO Support** (mode lecture seule) : la fenêtre refuse sans
    aucun appel, avec le texte du compte support.
 8. Un salarié qui scanne atterrit sur son espace : la mémoire expire seule. Sans
@@ -267,10 +299,13 @@ Autres décisions :
 Table `kiosk_pair_throttle`, un « seau » par empreinte HMAC (aucune adresse
 gardée, 4 096 lignes au plus, réécrites toutes les 10 min, rien à purger) :
 
-- `pair_request` : **30 par seau d'adresse et par 10 min** (`cf-connecting-ip`,
-  sinon le premier `x-forwarded-for`). Sans adresse lisible, **aucun plafond
-  d'adresse** : la sécurité de cette voie n'en dépend pas, et un en-tête absent
-  ne doit pas bloquer toutes les tablettes.
+- `pair_request` : **30 par seau d'adresse et par 10 min** (`cf-connecting-ip`
+  seul : le premier `x-forwarded-for` est écrit par le client et ferait tourner
+  le plafond). Sans adresse lisible, **aucun plafond d'adresse** : la sécurité de
+  cette voie n'en dépend pas, et un en-tête absent ne doit pas bloquer toutes les
+  tablettes. Un plafond illisible (droit retiré, `42501`) rend la voie
+  « indisponible » (la tablette garde son écran) au lieu de perdre le plafond en
+  silence.
 - `pair_lookup` + `pair_confirm` : **20 par seau d'entreprise et par 10 min**.
 - Espaces séparés : seaux 0 à 2047 = demandes anonymes ; 2048 à 4095 =
   opérations du bureau. Un déluge de demandes anonymes ne peut donc jamais
@@ -367,8 +402,9 @@ appui long qui la déconnecte.
   (1 chance sur 2 048) partagent un compteur de 20 ; un client malveillant
   pourrait gêner 10 min l'appairage par QR d'une autre entreprise tombée dans
   son seau. Le secours (code à 6 chiffres) reste disponible.
-- **Adresse du client** : `cf-connecting-ip` / `x-forwarded-for` n'ont pas été
-  vérifiés sur la plateforme (la sécurité de cette voie n'en dépend pas).
+- **Adresse du client** : `cf-connecting-ip` n'a pas été vérifié sur la plateforme
+  (la sécurité de cette voie n'en dépend pas). S'il est absent, il n'y a pas de
+  plafond d'adresse (jamais un plafond que le client peut contourner).
   Conséquence possible : un tiers qui connaît l'adresse publique d'un magasin
   peut bloquer 10 min le QR de ses tablettes (elles retombent sur le code à 6
   chiffres, sans message).
@@ -377,6 +413,14 @@ appui long qui la déconnecte.
   jusqu'à 3 min après l'expiration de l'identifiant (4 min au minimum). Au-delà,
   la fenêtre du patron le dit (« La tablette n'a pas répondu… ») ; rien n'est
   cassé, l'ancienne tablette n'est révoquée qu'à la remise.
+- **« Remplacer la tablette en service » n'est vérifié qu'à la confirmation** :
+  l'ancienne tablette n'est révoquée qu'à la remise, jusqu'à 13 min plus tard. Une
+  tablette **vivante reliée entre-temps** (par code à 6 chiffres, par exemple)
+  annule la remise (la tablette affiche un QR neuf, le patron reconfirme avec le
+  second geste). Reste un trou : une tablette **muette qui se réveille** entre la
+  confirmation et la remise est révoquée sans second geste (le serveur ne garde
+  pas si le patron a accepté de remplacer). Fermer ce trou demanderait une
+  colonne de plus dans `kiosk_pair_approvals`.
 - **Fragment `#borne=`** : retiré de la barre d'adresse dès le premier rendu de
   `/admin`. S'il part dans GA4 avant ce retrait, il ne donne rien (sans le
   secret d'appareil, l'identifiant ne rend aucun jeton, et il expire en 10 min).
@@ -394,7 +438,10 @@ appui long qui la déconnecte.
 - **Guide « bureau-borne »** (`_shared/admin-tours.ts`, non modifié) : ses ancres
   `bureau-borne.code` et `bureau-borne.deconnecter` étaient déjà absentes fenêtre
   fermée ; avec une tablette reliée, `bureau-borne.code` est maintenant absente
-  aussi fenêtre ouverte (le code est replié).
+  aussi fenêtre ouverte (le code est replié). Le bouton « Relier une autre
+  tablette » porte désormais cette ancre, donc le guide le montre ; le texte de
+  l'étape (« tapez ce code à 6 chiffres ») est resté celui d'avant : à adapter
+  dans un lot qui touche `admin-tours.ts`.
 - Le toast « Tablette reliée » peut s'afficher deux fois si la fenêtre « Borne »
   (sondage de 5 s) et la fenêtre « Associer » sont ouvertes dans le même onglet.
 - Le texte « Confirmé. Connexion de la tablette… » prévu pour la tablette n'est
@@ -406,8 +453,8 @@ appui long qui la déconnecte.
 
 ## À vérifier par Cowork après la mise en ligne (sans toucher aux données de production)
 
-1. L'en-tête qui donne l'adresse du client (`cf-connecting-ip`, puis
-   `x-forwarded-for`) sur la plateforme.
+1. L'en-tête qui donne l'adresse du client (`cf-connecting-ip`) sur la
+   plateforme : s'il est absent, la voie fonctionne mais sans plafond d'adresse.
 2. Si GA4 reçoit `/admin#borne=` ; exclusion à poser dans l'analytics
    (`public/cookies/bemexo-consent.js`, hors de ce lot).
 3. Poser `frame-ancestors` et la politique de référent chez l'hébergeur (aucun
