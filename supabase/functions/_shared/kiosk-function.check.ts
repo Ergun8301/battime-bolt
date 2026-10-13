@@ -42,6 +42,17 @@
 //     plafonds (adresse, entreprise) séparés du compteur du code à 6 chiffres,
 //     aucun secret en base ni dans les journaux, aucun DELETE.
 
+// Lot 30 (borne robuste), en toute fin de fichier :
+//   · `sync` accepte un `client_state` (l'état de l'écran de la tablette) : AVANT la
+//     migration (colonnes kiosks.client_state / client_state_at absentes, simulées par
+//     PGRST204 / 42703) la réponse est identique, rien n'est visible ni journalisé ;
+//     APRÈS, seuls les cinq champs de la liste blanche sont écrits (copie nettoyée),
+//     avec la date du serveur, et remplacent l'état précédent ;
+//   · état invalide, mal typé, trop gros : ignoré en entier, `sync` répond pareil ;
+//   · aucun jeton, aucune graine, aucun texte libre en base ni dans les journaux ;
+//   · un jeton ne peut écrire que SA tablette (entreprise étrangère, tablette
+//     coupée ou retirée : rien d'écrit) ; une panne de la base n'empêche pas `sync`.
+
 type Row = Record<string, unknown>;
 type Db = Record<string, Row[]>;
 
@@ -79,6 +90,11 @@ let insertError: Record<string, { status: number; body: unknown } | undefined> =
 // production aujourd'hui) : toute requête qui cite une colonne neuve reçoit
 // l'erreur de PostgREST, la table neuve est « introuvable ».
 let qrFixeMigrated = false;
+// Lot 30 : les colonnes kiosks.client_state / client_state_at existent-elles ? Par défaut NON (production aujourd'hui).
+let lot30Migrated = false;
+const LOT30_COLS = ['client_state', 'client_state_at'];
+/** Lot 30 : panne simulée de l'écriture de l'état (PATCH de kiosks qui porte client_state). */
+let clientStateFail: { status: number; body: unknown } | undefined;
 // Lot 11 (appairage) : les deux tables neuves sont-elles là ? Par défaut NON ; support_staff aussi absente.
 const pairTables: Record<string, boolean> = { kiosk_pair_approvals: false, kiosk_pair_throttle: false, support_staff: false };
 /** Lectures qui échouent (panne simulée), par table. */
@@ -114,7 +130,7 @@ function matches(row: Row, params: URLSearchParams): boolean {
   return true;
 }
 const DEFAULTS: Record<string, () => Row> = {
-  kiosks: () => ({ revoked_at: null, last_seen_at: null, ...(qrFixeMigrated ? { kind: 'tablette' } : {}) }),
+  kiosks: () => ({ revoked_at: null, last_seen_at: null, ...(qrFixeMigrated ? { kind: 'tablette' } : {}), ...(lot30Migrated ? { client_state: null, client_state_at: null } : {}) }),
   kiosk_pairings: () => ({ used_at: null, kiosk_id: null }),
   kiosk_settings: (): Row => (qrFixeMigrated ? { fixed_qr_radius_m: 200, fixed_qr_latitude: null, fixed_qr_longitude: null } : {}),
   // Lot 11 : ni `id` ni `created_at` automatiques pour ces deux tables (elles n'ont pas de colonne `id`).
@@ -167,6 +183,20 @@ async function fakeFetch(input: string | URL | Request, init?: RequestInit): Pro
           : reply(400, { code: '42703', message: `column ${table}.${hit} does not exist` });
       }
     }
+  }
+  if (table === 'kiosks') {
+    const written = Object.keys((Array.isArray(body) ? body[0] : body) || {});
+    // Lot 30 : migration pas passée → toute requête qui cite les colonnes neuves reçoit l'erreur de PostgREST.
+    if (!lot30Migrated) {
+      const cited = [...params.keys(), ...(params.get('select') || '').split(',').map((c) => c.trim()), ...written];
+      const hit = LOT30_COLS.find((c) => cited.includes(c));
+      if (hit) {
+        return (method === 'POST' || method === 'PATCH') && written.includes(hit)
+          ? reply(400, { code: 'PGRST204', message: `Could not find the '${hit}' column of 'kiosks' in the schema cache` })
+          : reply(400, { code: '42703', message: `column kiosks.${hit} does not exist` });
+      }
+    }
+    if (method === 'PATCH' && clientStateFail && written.includes('client_state')) return reply(clientStateFail.status, clientStateFail.body);
   }
   const rows = (db[table] ||= []);
   const wantObject = accept.includes('vnd.pgrst.object');
@@ -277,6 +307,7 @@ function freshDb(): Db {
   readError = {};
   rpcResult = defaultRpc;
   qrFixeMigrated = false;
+  lot30Migrated = false; clientStateFail = undefined;
   // Lot 11 : horloge remise à l'heure, tables de l'appairage et support_staff absentes.
   clockOffset = 0; tick = 0;
   for (const t of Object.keys(pairTables)) pairTables[t] = false;
@@ -309,7 +340,7 @@ async function addKiosk(company: string, token: string, createdAt: string, extra
     id: uuid(), company_id: company, name: 'Borne', worksite_id: company === CO ? AUTRE : null,
     token_hash: await sha256Hex(token), seed_salt: 'sel', latitude: null, longitude: null, accuracy_m: null,
     created_at: createdAt, last_seen_at: createdAt, revoked_at: null,
-    ...(qrFixeMigrated ? { kind: 'tablette' } : {}), ...extra,
+    ...(qrFixeMigrated ? { kind: 'tablette' } : {}), ...(lot30Migrated ? { client_state: null, client_state_at: null } : {}), ...extra,
   };
   db.kiosks.push(row);
   return row;
@@ -1785,5 +1816,229 @@ Deno.test({
     // Les nouvelles actions n'écrivent que dans leurs tables (et la remise dans kiosks) — jamais kiosk_pairings ni kiosk_pair_failures.
     const written = new Set(calls.filter((c) => c.method !== 'GET' && c.method !== 'HEAD' && !c.table.startsWith('rpc:')).map((c) => c.table));
     ok([...written].every((t) => ['kiosk_pair_approvals', 'kiosk_pair_throttle', 'kiosks'].includes(t)), `tables écrites : ${[...written].join(', ')}`);
+  },
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// LOT 30 — l'état de l'écran de la tablette (client_state), joint à `sync`
+// ════════════════════════════════════════════════════════════════════════════
+
+/** Passe la base simulée « après la migration du lot 30 » (les deux colonnes existent, NULL partout). */
+function migrate30() {
+  lot30Migrated = true;
+  for (const k of db.kiosks) if (!('client_state' in k)) { k.client_state = null; k.client_state_at = null; }
+}
+const GOOD_STATE = { wake: 'held', standalone: true, fullscreen: false, online: true, version: 'a3f09c1d' };
+const syncOf = (k: Row, token: string, state?: unknown, extra: Row = {}) =>
+  call({ action: 'sync', kiosk_id: k.id, token, ...(state !== undefined ? { client_state: state } : {}), ...extra });
+const kioskPatches = () => calls.filter((c) => c.table === 'kiosks' && c.method === 'PATCH');
+const statePatches = () => kioskPatches().filter((c) => 'client_state' in ((c.body as Row) || {}));
+
+Deno.test({
+  name: 'Lot 30 — AVANT la migration : sync identique avec ou sans client_state, rien de visible, rien de journalisé',
+  sanitizeOps: false, sanitizeResources: false,
+  async fn() {
+    db = freshDb();
+    const k = await addKiosk(CO, 't-k', ago(60), { last_seen_at: ago(30) });
+    const base = await syncOf(k, 't-k');
+    eq(base.status, 200, 'sync sans état');
+    eq(kioskPatches().length, 1, 'sans état : une seule écriture (le « vu à »), exactement comme avant');
+    calls.length = 0;
+    const seenBefore = String(k.last_seen_at);
+    advance(60_000);
+    const { result: withState, out } = await spyConsole(() => syncOf(k, 't-k', GOOD_STATE));
+    eq(withState.status, 200, 'sync avec état, colonnes absentes');
+    eq(withState.json, base.json, 'réponse identique, octet pour octet');
+    eq(withState.headers.get('Cache-Control'), 'no-store', 'Cache-Control: no-store');
+    ok(String(k.last_seen_at) > seenBefore, 'le « vu à » est bien écrit');
+    ok(!('client_state' in k) && !('client_state_at' in k), 'aucune colonne ni valeur n’apparaît en base');
+    eq(out, '', 'rien n’est journalisé (ni erreur, ni avertissement)');
+    eq(statePatches().length, 1, 'une tentative d’écriture, refusée proprement par la base (PGRST204)');
+    eq(kioskPatches().length, 2, 'deux écritures en tout : le « vu à », puis la tentative');
+    // Plus de tentative si la tablette n'envoie rien (ancienne page).
+    calls.length = 0;
+    await syncOf(k, 't-k');
+    eq(statePatches().length, 0, 'ancienne page (sans état) : aucune tentative');
+  },
+});
+
+Deno.test({
+  name: 'Lot 30 — APRÈS la migration : l’état est écrit (copie nettoyée), avec la date du serveur ; un nouvel état REMPLACE l’ancien',
+  sanitizeOps: false, sanitizeResources: false,
+  async fn() {
+    db = freshDb();
+    const k = await addKiosk(CO, 't-k', ago(60), { last_seen_at: ago(30) });
+    migrate30();
+    const base = await syncOf(k, 't-k');
+    calls.length = 0;
+    const { result: r, out } = await spyConsole(() => syncOf(k, 't-k', GOOD_STATE));
+    eq(r.status, 200, 'sync');
+    eq(r.json, base.json, 'la réponse ne change pas (la tablette n’a rien de nouveau à lire)');
+    eq(k.client_state, GOOD_STATE, 'client_state écrit');
+    ok(Math.abs(Date.parse(String(k.client_state_at)) - Date.now()) < 5000, `client_state_at = l’heure du serveur (${k.client_state_at})`);
+    eq(out, '', 'rien n’est journalisé');
+    const at1 = String(k.client_state_at);
+    advance(7 * 60_000);
+    await syncOf(k, 't-k', { wake: 'denied', standalone: false });
+    eq(k.client_state, { wake: 'denied', standalone: false }, 'le nouvel état remplace l’ancien (aucun champ périmé n’est gardé)');
+    ok(String(k.client_state_at) > at1, 'la date avance');
+    // Un `sync` sans état (ancienne page) ne touche pas à l'état gardé.
+    const keepAt = String(k.client_state_at);
+    await syncOf(k, 't-k');
+    eq([k.client_state, k.client_state_at], [{ wake: 'denied', standalone: false }, keepAt], 'sans client_state : l’état gardé est laissé tel quel');
+    // Le « vu à » a été écrit à part : un `sync` ne mêle jamais les deux écritures.
+    ok(kioskPatches().every((c) => ('last_seen_at' in (c.body as Row)) !== ('client_state' in (c.body as Row))), 'deux écritures distinctes : le « vu à » ne dépend jamais de l’état');
+    // Une tablette qui n'a jamais rien envoyé garde NULL.
+    const other = await addKiosk(CO2, 't-o', ago(60));
+    eq([other.client_state, other.client_state_at], [null, null], 'une autre tablette : NULL tant qu’elle n’a rien envoyé');
+  },
+});
+
+Deno.test({
+  name: 'Lot 30 — état invalide, mal typé ou trop gros : ignoré en entier, sync répond pareil, aucune écriture, aucun journal',
+  sanitizeOps: false, sanitizeResources: false,
+  async fn() {
+    db = freshDb();
+    const k = await addKiosk(CO, 't-k', ago(60));
+    migrate30();
+    const base = await syncOf(k, 't-k');
+    const big: Row = { ...GOOD_STATE };
+    for (let i = 0; i < 400; i++) big[`k${i}`] = 'x'.repeat(30);
+    const bads: [string, unknown][] = [
+      ['un tableau', [GOOD_STATE]], ['un texte', 'wake=held'], ['un nombre', 42], ['null', null], ['un booléen', true], ['objet vide', {}],
+      ['verrou inconnu', { wake: 'peut-etre' }], ['verrou numérique', { wake: 1 }], ['booléen en texte', { standalone: 'true' }], ['booléen en nombre', { online: 1 }],
+      ['version avec espace', { version: 'a b' }], ['version trop longue', { version: 'x'.repeat(25) }], ['version non texte', { version: 12345678 }], ['version avec balise', { version: '<script>' }],
+      ['champs inconnus seulement', { token: 'x', note: 'texte libre' }], ['plusieurs milliers de signes', big], ['un seul gros champ', { ...GOOD_STATE, blob: 'x'.repeat(10_000) }],
+      ['un champ valable + un mal typé', { ...GOOD_STATE, fullscreen: 'oui' }],
+    ];
+    for (const [label, bad] of bads) {
+      calls.length = 0;
+      const { result: r, out } = await spyConsole(() => syncOf(k, 't-k', bad));
+      eq(r.status, 200, `${label} : sync répond 200`);
+      eq(r.json, base.json, `${label} : réponse identique`);
+      eq([k.client_state, k.client_state_at], [null, null], `${label} : rien d’écrit`);
+      eq(statePatches().length, 0, `${label} : aucune tentative d’écriture`);
+      eq(out, '', `${label} : rien de journalisé`);
+    }
+    // Les types exotiques arrivés par le JSON du corps (jamais d'erreur 500).
+    const exotic = JSON.parse('{"__proto__":{"wake":"held"},"standalone":true,"wake":{"a":[1,2,3]}}');
+    const raw = await syncOf(k, 't-k', exotic);
+    eq(raw.status, 200, '« __proto__ » et valeur imbriquée : 200, pas de 500');
+    eq([k.client_state, k.client_state_at], [null, null], '… et rien d’écrit (verrou mal formé)');
+  },
+});
+
+Deno.test({
+  name: 'Lot 30 — secrets : ni jeton, ni graine, ni texte libre, ni position dans la base ni dans les journaux',
+  sanitizeOps: false, sanitizeResources: false,
+  async fn() {
+    db = freshDb();
+    const k = await addKiosk(CO, 't-jeton-secret-42', ago(60));
+    migrate30();
+    const evil = { ...GOOD_STATE, token: 't-jeton-secret-42', seed: 'graine-secrete-99', note: 'texte libre à ne pas garder', lat: 48.8566, lng: 2.3522, kiosk_id: String(k.id) };
+    const { result: r, out } = await spyConsole(() => syncOf(k, 't-jeton-secret-42', evil));
+    eq(r.status, 200, 'sync');
+    eq(k.client_state, GOOD_STATE, 'seule la liste blanche est gardée');
+    eq(Object.keys(k.client_state as Row).sort(), ['fullscreen', 'online', 'standalone', 'version', 'wake'], 'cinq champs, pas un de plus');
+    const stored = JSON.stringify(k.client_state);
+    for (const secret of ['jeton-secret', 'graine-secrete', 'texte libre', '48.85', '2.35']) {
+      ok(!stored.includes(secret), `base : « ${secret} » n’est pas dans l’état écrit`);
+      ok(!out.includes(secret), `journaux : « ${secret} » n’est jamais écrit`);
+    }
+    ok(JSON.stringify(k.client_state).length <= 256, `état écrit : ${JSON.stringify(k.client_state).length} octets ≤ 256 (la base le refuserait au-delà)`);
+    const sent = JSON.stringify(statePatches().map((c) => c.body));
+    ok(!sent.includes('graine') && !sent.includes('texte libre') && !sent.includes('jeton-secret'), 'le corps envoyé à la base ne contient que la copie nettoyée');
+  },
+});
+
+Deno.test({
+  name: 'Lot 30 — entreprise étrangère : un jeton n’écrit que SA tablette ; coupée, retirée ou inconnue : rien',
+  sanitizeOps: false, sanitizeResources: false,
+  async fn() {
+    db = freshDb();
+    const a = await addKiosk(CO, 't-a', ago(60));
+    const b = await addKiosk(CO2, 't-b', ago(60));
+    migrate30();
+    // Le jeton de A avec l'identifiant de B : refusé, B inchangée.
+    const x = await call({ action: 'sync', kiosk_id: b.id, token: 't-a', client_state: GOOD_STATE });
+    eq(x.status, 401, 'jeton de A + tablette de B → 401');
+    eq([a.client_state, b.client_state], [null, null], 'ni A ni B n’ont reçu d’état');
+    // Un jeton d'administrateur n'est pas un jeton de tablette.
+    const adm = await call({ action: 'sync', kiosk_id: a.id, token: 'jwt-admin', client_state: GOOD_STATE });
+    eq(adm.status, 401, 'le JWT d’un administrateur n’écrit pas l’état d’une tablette');
+    eq(a.client_state, null, 'A inchangée');
+    // Chacun écrit le sien.
+    eq((await syncOf(a, 't-a', { wake: 'held' })).status, 200, 'A écrit');
+    eq((await syncOf(b, 't-b', { wake: 'denied' })).status, 200, 'B écrit');
+    eq([a.client_state, b.client_state], [{ wake: 'held' }, { wake: 'denied' }], 'chacune a SON état');
+    // Un corps qui prétend une autre entreprise ne change rien : l'entreprise vient de la tablette.
+    await syncOf(a, 't-a', { wake: 'unsupported' }, { company_id: CO2 });
+    eq([a.client_state, b.client_state], [{ wake: 'unsupported' }, { wake: 'denied' }], 'un company_id dans le corps est sans effet');
+    // Tablette retirée : 410, rien d'écrit.
+    const before = JSON.stringify(a.client_state);
+    a.revoked_at = new Date().toISOString();
+    calls.length = 0;
+    const gone = await syncOf(a, 't-a', GOOD_STATE);
+    eq(gone.status, 410, 'tablette retirée → 410');
+    eq([JSON.stringify(a.client_state), statePatches().length], [before, 0], 'retirée : état inchangé, aucune écriture');
+    // Borne coupée par BEMEXO : 403, rien d'écrit.
+    a.revoked_at = null;
+    (db.companies.find((c) => c.id === CO) as Row).kiosk_enabled = false;
+    calls.length = 0;
+    const off = await syncOf(a, 't-a', GOOD_STATE);
+    eq(off.status, 403, 'borne coupée → 403');
+    eq([JSON.stringify(a.client_state), statePatches().length], [before, 0], 'coupée : état inchangé, aucune écriture');
+    // Jeton inconnu.
+    const bad = await call({ action: 'sync', kiosk_id: a.id, token: 'pas-le-bon', client_state: GOOD_STATE });
+    eq([bad.status, statePatches().length], [401, 0], 'jeton inconnu → 401, aucune écriture');
+  },
+});
+
+Deno.test({
+  name: 'Lot 30 — panne de la base à l’écriture de l’état : sync reste 200, seul le code de l’erreur est journalisé',
+  sanitizeOps: false, sanitizeResources: false,
+  async fn() {
+    db = freshDb();
+    const k = await addKiosk(CO, 't-k-secret', ago(60));
+    migrate30();
+    const base = await syncOf(k, 't-k-secret');
+    clientStateFail = { status: 500, body: { code: 'XX000', message: 'boom t-k-secret a3f09c1d' } };
+    const { result: r, out } = await spyConsole(() => syncOf(k, 't-k-secret', GOOD_STATE));
+    eq(r.status, 200, 'sync répond 200 malgré la panne');
+    eq(r.json, base.json, 'réponse identique');
+    ok(/client_state/.test(out) && /XX000/.test(out), `journal : « ${out.trim()} »`);
+    ok(!out.includes('t-k-secret') && !out.includes('a3f09c1d') && !out.includes('boom'), 'le journal ne cite ni jeton, ni état, ni message de la base');
+    eq(k.client_state, null, 'rien d’écrit');
+    clientStateFail = { status: 403, body: { code: '42501', message: 'permission denied for column client_state' } };
+    const { result: r2, out: out2 } = await spyConsole(() => syncOf(k, 't-k-secret', GOOD_STATE));
+    eq(r2.status, 200, 'droit refusé : sync reste 200');
+    ok(/42501/.test(out2), 'droit refusé : le code est journalisé (une migration mal posée se voit)');
+  },
+});
+
+Deno.test({
+  name: 'Lot 30 — seul `sync` écrit l’état ; aucune autre action, aucun DELETE',
+  sanitizeOps: false, sanitizeResources: false,
+  async fn() {
+    db = freshDb();
+    const k = await addKiosk(CO, 't-k', ago(60));
+    migrate30();
+    calls.length = 0;
+    const withState = { client_state: GOOD_STATE };
+    await call({ action: 'board', kiosk_id: k.id, token: 't-k', ...withState });
+    await call({ action: 'settings', active_from: '06:00', active_until: '20:00', ...withState }, { token: 'jwt-admin' });
+    await call({ action: 'create_pairing', ...withState }, { token: 'jwt-admin' });
+    await call({ action: 'pair_request', ...withState });
+    await call({ action: 'ticket', k: k.id, c: '00000000', ...withState });
+    await call({ action: 'revoke', kiosk_id: 'inconnu', ...withState }, { token: 'jwt-admin' });
+    eq(statePatches().length, 0, 'board, settings, create_pairing, pair_request, ticket, revoke : aucune écriture de client_state');
+    eq(k.client_state, null, 'l’état de la tablette est resté NULL');
+    await call({ action: 'unpair', kiosk_id: k.id, token: 't-k', ...withState });
+    eq(statePatches().length, 0, 'unpair non plus');
+    ok(!calls.some((c) => c.method === 'DELETE'), 'aucun DELETE');
+    const k2 = await addKiosk(CO, 't-k2', ago(30));
+    await syncOf(k2, 't-k2', GOOD_STATE);
+    eq(statePatches().length, 1, 'sync : une écriture');
+    eq((statePatches()[0].body as Row).client_state, GOOD_STATE, 'avec la copie nettoyée');
   },
 });

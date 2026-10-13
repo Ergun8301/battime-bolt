@@ -32,7 +32,10 @@
 //                       long sur le logo, puis « Oui, déconnecter »)
 //     sync            → « je suis toujours là » ; relit les réglages (et
 //                       l'ancien planning du jour, pour les tablettes qui ont
-//                       encore l'ancienne page en cache)
+//                       encore l'ancienne page en cache). Lot 30 : peut joindre
+//                       `client_state` (l'état de l'écran de la tablette :
+//                       verrou d'écran, icône installée, plein écran, en ligne,
+//                       version), validé puis écrit dans kiosks.client_state
 //     board           → lot 9 : le planning de la SEMAINE, lecture seule —
 //                       prénom, nom, chantier, ville, horaires prévus, « en
 //                       cours depuis » (voir _shared/kiosk-board.ts)
@@ -73,6 +76,13 @@
 // code à 6 chiffres. Le code à 6 chiffres (`pair`) et son compteur d'échecs
 // global (kiosk_pair_failures) ne sont PAS touchés. Voir « APPAIRAGE EN UN GESTE ».
 //
+// Lot 30 (borne robuste) — AVANT LA MIGRATION 20261013170000_lot30_borne_robuste.sql
+// (colonnes kiosks.client_state et client_state_at), `sync` répond exactement comme
+// avant : l'écriture de l'état est tentée, échoue proprement (schemaMissing) et
+// n'est ni journalisée ni visible. Un `client_state` invalide (pas un objet, trop
+// gros, champ mal typé) est ignoré en entier, sans refuser le `sync`. Jamais de
+// texte libre, de jeton ni de position : liste blanche dans _shared/kiosk-client-state.ts.
+//
 // L'interrupteur `companies.kiosk_enabled` est vérifié à CHAQUE action : une
 // entreprise qui ne l'a pas n'obtient rien, pas même un code.
 //
@@ -80,7 +90,7 @@
 // (la tablette et le premier appel du salarié n'ont pas de jeton ; les actions
 // qui en demandent un le vérifient elles-mêmes). Fichiers à emporter avec
 // index.ts : _shared/kiosk-code.ts, kiosk-rules.ts, fixed-qr.ts, kiosk-board.ts,
-// live-place.ts et (lot 11) kiosk-pair.ts.
+// live-place.ts, (lot 11) kiosk-pair.ts et (lot 30) kiosk-client-state.ts.
 //
 // Secret recommandé : KIOSK_SECRET (sinon la clé service sert de clé serveur ;
 // la changer obligerait à réappairer les tablettes).
@@ -108,6 +118,7 @@ import {
   buildBoard, parisWeek,
   type BoardPlanning, type BoardSession, type BoardUser, type BoardWorksite,
 } from '../_shared/kiosk-board.ts';
+import { parseClientState } from '../_shared/kiosk-client-state.ts';
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -974,12 +985,31 @@ async function unpair(admin: SupabaseClient, body: Record<string, unknown>) {
   return json({ success: true, revoked: true });
 }
 
+/**
+ * Lot 30 — l'état de l'écran de la tablette, écrit APRÈS le « vu à » et à part :
+ * migration pas passée (colonnes absentes) = rien d'écrit, rien de journalisé, le
+ * `sync` répond comme avant. Un état invalide est ignoré en entier. Ne lève jamais.
+ */
+async function saveClientState(admin: SupabaseClient, kioskId: string, raw: unknown) {
+  const state = parseClientState(raw);
+  if (!state) return;
+  try {
+    const { error } = await admin.from('kiosks')
+      .update({ client_state: state, client_state_at: new Date(Date.now()).toISOString() }).eq('id', kioskId);
+    if (error && !schemaMissing(error)) console.error('[kiosk] client_state', error.code);
+  } catch (e) {
+    console.error('[kiosk] client_state', (e as { code?: string })?.code ?? 'erreur');
+  }
+}
+
 async function sync(admin: SupabaseClient, body: Record<string, unknown>) {
   const k = await kioskFromToken(admin, body);
   if (!k) return json({ error: 'Borne inconnue', revoked: true }, 401);
   if (k.revoked_at) return json({ error: REFUSAL_MESSAGES.kiosk_revoked, revoked: true }, 410);
   if (!(await companyEnabled(admin, k.company_id))) return json({ error: REFUSAL_MESSAGES.kiosk_disabled, disabled: true }, 403);
   await admin.from('kiosks').update({ last_seen_at: new Date().toISOString() }).eq('id', k.id);
+  // Lot 30 : l'état de l'écran (facultatif : une ancienne page n'en envoie pas).
+  if (body.client_state !== undefined) await saveClientState(admin, k.id, body.client_state);
 
   const settings = await loadSettings(admin, k.company_id);
   const { data: c } = await admin.from('companies').select('name').eq('id', k.company_id).maybeSingle();
