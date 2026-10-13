@@ -36,7 +36,8 @@
 -- ne peut donc pas produire de faux signalement.
 -- Lecture seule : aucune écriture, aucune suppression, aucun appel réseau.
 -- Au plus 100 lignes par sorte ; total_n et total_bytes comptent TOUT.
--- Les « .emptyFolderPlaceholder » créés par le tableau de bord sont ignorés.
+-- Les « .emptyFolderPlaceholder » créés par le tableau de bord (à la racine du dossier
+-- ou dans un sous-dossier) sont ignorés : un faux signalement qu'on ne peut pas lever.
 -- ─────────────────────────────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.video_files_audit()
  RETURNS TABLE (kind text, video_id uuid, title text, file_path text, real_bytes bigint,
@@ -56,7 +57,7 @@ BEGIN
              FROM storage.objects o
             WHERE o.bucket_id = 'formations'
               AND o.name LIKE v_co::text || '/%'
-              AND o.name <> v_co::text || '/.emptyFolderPlaceholder'
+              AND o.name NOT LIKE '%/.emptyFolderPlaceholder'
               AND NOT EXISTS (SELECT 1 FROM public.training_videos v WHERE v.file_path = o.name)) f
     ORDER BY f.created_at DESC
     LIMIT 100)

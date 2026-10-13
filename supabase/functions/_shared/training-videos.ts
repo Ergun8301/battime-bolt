@@ -197,10 +197,9 @@ export const AUDIT_LINK = (n: number, open: boolean) => (open ? 'Masquer les fic
 export const AUDIT_NOTE = 'Rien n’est supprimé automatiquement : ces fichiers sont seulement signalés. Pour en retirer un, contactez BEMEXO.';
 export const AUDIT_ORPHANS_TITLE = (n: number) => `Fichiers sans formation (${n})`;
 export const AUDIT_ORPHANS_NOTE = (quota: number) => `Le fichier est dans votre dossier vidéo, mais aucune formation ne l’utilise. Il compte dans les ${formatMo(quota)}.`;
-export const AUDIT_ORPHAN_ROW = (r: Pick<FileAuditRow, 'real_bytes' | 'occurred_at' | 'file_path'>) => {
-  const d = shortDate(r.occurred_at);
-  return ['Fichier sans formation', formatMo(r.real_bytes), d ? `envoyé le ${d}` : null, `réf. ${r.file_path.slice(-8)}`].filter(Boolean).join(' · ');
-};
+export const AUDIT_ORPHAN_ROW = (r: Pick<FileAuditRow, 'real_bytes' | 'occurred_at' | 'file_path'>) =>
+  // La date et la taille d'abord (le titre de la section dit déjà « Fichiers sans formation »), la référence technique en fin de ligne.
+  [shortDate(r.occurred_at) || null, formatMo(r.real_bytes), `réf. ${r.file_path.slice(-8)}`].filter(Boolean).join(' · ');
 export const AUDIT_MISSING_TITLE = (n: number) => `Formations dont le fichier manque (${n})`;
 export const AUDIT_MISSING_NOTE = 'Les salariés ne peuvent pas lire ces vidéos : le fichier est introuvable.';
 export const AUDIT_MISSING_ROW = (r: Pick<FileAuditRow, 'title' | 'occurred_at' | 'archived'>) => {

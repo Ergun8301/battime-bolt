@@ -6,25 +6,32 @@
 //  - minuteur, compte à rebours, arrêt automatique avant 50 Mo ou 4 minutes ;
 //  - écran maintenu allumé pendant la prise (Wake Lock) ;
 //  - la caméra et le micro sont coupés dès l'arrêt, l'abandon, ou si le composant
-//    disparaît (fermeture de la fenêtre, changement d'onglet du formulaire).
+//    disparaît (démontage). Pendant la prise, le formulaire parent verrouille ses
+//    onglets, « Annuler » et la fermeture de la fenêtre (onRecording) : une prise de
+//    plusieurs minutes ne se perd pas d'un seul toucher, et « Abandonner » demande
+//    une confirmation.
 // Rien n'est créé ni envoyé ici : la prise devient un File remis à onDone, puis suit le
 // chemin du lot 13 (mêmes contrôles de taille et de type, aperçu, « Ajouter »).
 // Le minuteur utilise performance.now() (jamais Date.now()).
 import { useEffect, useRef, useState } from 'react';
 import {
-  baseMime, estimateRate, formatClock, pickRecorderMime, REC_ABORT, REC_AUDIO_BPS, REC_BACK, REC_COUNTDOWN, REC_COUNTDOWN_SECONDS, REC_FAILED, REC_FPS, REC_HEIGHT,
-  REC_MAX_LABEL, REC_OPENING, REC_READY, REC_RUNNING, REC_START, REC_STOP, REC_TIMESLICE_MS, REC_VIDEO_BPS, REC_WIDTH, recorderCapBytes, recorderErrorMessage,
-  recorderFileName, stopDecision,
+  baseMime, countdownBand, estimateRate, formatClock, pickRecorderMime, REC_ABORT, REC_ABORT_ASK, REC_ABORT_NO, REC_ABORT_YES, REC_AUDIO_BPS, REC_BACK, REC_COUNTDOWN,
+  REC_COUNTDOWN_SECONDS, REC_FAILED, REC_FPS, REC_HEIGHT, REC_OPENING, REC_READY, REC_RUNNING, REC_START, REC_STOP, REC_TIMESLICE_MS, REC_VIDEO_BPS, REC_WIDTH,
+  recorderCapBytes, recorderErrorMessage, recorderFileName, recorderMaxLabel, recorderMaxSeconds, stopDecision,
 } from '@/supabase/functions/_shared/video-recorder';
 import type { Limits } from '@/supabase/functions/_shared/training-videos';
 
 type Auto = 'size' | 'time' | 'cut' | null;
+/** Avant ce délai (secondes), « Abandonner » jette la prise sans demander : il n'y a encore rien à perdre. */
+const CONFIRM_AFTER_S = 3;
 
 const CSS = `
 .bt-fo-rec{display:flex;flex-direction:column;gap:8px;min-width:0}
 .bt-fo-rec-live{display:block;width:100%;max-height:52vh;object-fit:contain;background:#15120F;border-radius:10px}
 .bt-fo-rec-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 .bt-fo-rec-row .bt-fo-btn{min-height:44px}
+.bt-fo-rec-abort{margin-top:14px}
+.bt-fo-rec-ask{font-size:13px;font-weight:800}
 .bt-fo-rec .bt-fo-link{min-height:44px;padding:0 8px}
 .bt-fo-rec-dot{flex:none;width:12px;height:12px;border-radius:50%;background:#D62B1F;animation:bt-fo-rec-pulse 1.2s ease-in-out infinite}
 .bt-fo-rec-time{font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:800;min-width:3.2ch}
@@ -38,21 +45,28 @@ const CSS_HTML = { __html: CSS };
 
 type WakeSentinel = { released?: boolean; release: () => Promise<void> };
 
-export default function TrainingVideoRecorder({ limits, onDone, onError, onCancel }: {
+export default function TrainingVideoRecorder({ limits, onDone, onError, onCancel, onRecording }: {
   /** Relu à chaque rendu : la jauge peut arriver pendant la prise. */
   limits: Limits;
   onDone: (file: File, durationS: number, auto: Auto) => void;
   /** Le panneau ferme l'enregistreur et montre le message. */
   onError: (message: string) => void;
   onCancel: () => void;
+  /** Vrai pendant la prise : le parent verrouille ce qui la jetterait sans prévenir (onglets du formulaire, « Annuler », fermeture). */
+  onRecording?: (recording: boolean) => void;
 }) {
   const [phase, setPhase] = useState<'opening' | 'ready' | 'recording'>('opening');
   const [elapsed, setElapsed] = useState(0);
   const [remaining, setRemaining] = useState<number | null>(null);
-  const latest = useRef({ limits, onDone, onError, onCancel });
-  latest.current = { limits, onDone, onError, onCancel };
+  const [announce, setAnnounce] = useState(''); // lu à voix haute à 30, 10 et 5 s seulement
+  const [confirming, setConfirming] = useState(false); // « Jeter cette prise ? »
+  const latest = useRef({ limits, onDone, onError, onCancel, onRecording });
+  latest.current = { limits, onDone, onError, onCancel, onRecording };
+  const band = useRef<number | null>(null);
   const videoEl = useRef<HTMLVideoElement | null>(null);
   const startBtn = useRef<HTMLButtonElement | null>(null);
+  const stopBtn = useRef<HTMLButtonElement | null>(null);
+  const keepBtn = useRef<HTMLButtonElement | null>(null);
   const stream = useRef<MediaStream | null>(null);
   const recorder = useRef<MediaRecorder | null>(null);
   const chunks = useRef<Blob[]>([]);
@@ -136,6 +150,20 @@ export default function TrainingVideoRecorder({ limits, onDone, onError, onCance
     if (phase === 'ready') startBtn.current?.focus();
   }, [phase]);
 
+  // Le focus suit le bouton qui remplace le précédent (« Démarrer » → « Arrêter » → question « Jeter ? »).
+  useEffect(() => {
+    if (phase === 'recording') (confirming ? keepBtn : stopBtn).current?.focus();
+  }, [phase, confirming]);
+
+  // Pendant la prise : le parent verrouille la sortie, et fermer l'onglet du navigateur demande confirmation.
+  useEffect(() => {
+    if (phase !== 'recording') return;
+    latest.current.onRecording?.(true);
+    const leave = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', leave);
+    return () => { window.removeEventListener('beforeunload', leave); latest.current.onRecording?.(false); };
+  }, [phase]);
+
   // Écran allumé : redemandé au retour sur la page (le système le relâche quand elle est cachée).
   useEffect(() => {
     if (phase !== 'recording') return;
@@ -147,6 +175,8 @@ export default function TrainingVideoRecorder({ limits, onDone, onError, onCance
   const decide = () => {
     const d = stopDecision({ bytes: bytes.current, elapsedS: nowS() - t0.current, rate: estimateRate(samples.current) }, recorderCapBytes(latest.current.limits));
     setRemaining(d.remainingS);
+    const b = countdownBand(d.remainingS);
+    if (b !== band.current) { band.current = b; if (b !== null) setAnnounce(REC_COUNTDOWN(d.remainingS as number)); }
     if (d.stop) stopWith(d.reason);
   };
 
@@ -186,7 +216,8 @@ export default function TrainingVideoRecorder({ limits, onDone, onError, onCance
     rec.onerror = () => fail(REC_FAILED);
     rec.onstop = () => {
       const end = nowS();
-      const why = auto.current;
+      // Arrêt venu ni du bouton ni d'une décision (ordre des événements variable d'un navigateur à l'autre quand la caméra se coupe) : prise écourtée.
+      const why = auto.current ?? (stopping.current ? null : 'cut');
       release();
       if (discard.current || closed.current) { chunks.current = []; return; }
       closed.current = true;
@@ -201,9 +232,13 @@ export default function TrainingVideoRecorder({ limits, onDone, onError, onCance
     t0.current = nowS();
     void requestWake(); // au geste « Démarrer »
     rec.start(REC_TIMESLICE_MS);
+    band.current = null; setAnnounce(''); setConfirming(false);
     setElapsed(0); setRemaining(null); setPhase('recording');
     timer.current = setInterval(() => { setElapsed(Math.floor(nowS() - t0.current)); decide(); }, 250);
   };
+
+  /** « Abandonner » : après quelques secondes de prise, on demande avant de jeter. */
+  const askAbort = () => { if (nowS() - t0.current >= CONFIRM_AFTER_S) setConfirming(true); else abort(); };
 
   const abort = () => {
     if (closed.current) return;
@@ -217,7 +252,13 @@ export default function TrainingVideoRecorder({ limits, onDone, onError, onCance
     <div className="bt-fo-rec" data-testid="tr-rec">
       <style dangerouslySetInnerHTML={CSS_HTML} />
       {phase === 'opening' ? (
-        <p className="bt-fo-muted" role="status" data-testid="tr-rec-opening">{REC_OPENING}</p>
+        <>
+          <p className="bt-fo-muted" role="status" data-testid="tr-rec-opening">{REC_OPENING}</p>
+          {/* Sortie possible si la demande d'autorisation reste sans réponse. */}
+          <div className="bt-fo-rec-row">
+            <button type="button" className="bt-fo-btn ghost" onClick={abort} data-testid="tr-rec-cancel">{REC_BACK}</button>
+          </div>
+        </>
       ) : (
         <>
           <video ref={videoEl} className="bt-fo-rec-live" muted playsInline autoPlay aria-label="Aperçu de la caméra" data-testid="tr-rec-live" />
@@ -236,12 +277,27 @@ export default function TrainingVideoRecorder({ limits, onDone, onError, onCance
                 <span className="bt-fo-rec-time" aria-live="off" data-testid="tr-rec-timer">{formatClock(elapsed)}</span>
                 <span role="status" className="bt-fo-rec-state">{REC_RUNNING}</span>
               </div>
-              <span className="bt-fo-muted">{REC_MAX_LABEL}</span>
-              {countdown && <p className="bt-fo-rec-count" role="status" aria-live="polite" data-testid="tr-rec-countdown">{REC_COUNTDOWN(remaining as number)}</p>}
-              <div className="bt-fo-rec-row">
-                <button type="button" className="bt-fo-btn" onClick={() => stopWith(null)} data-testid="tr-rec-stop">{REC_STOP}</button>
-                <button type="button" className="bt-fo-link" onClick={abort} data-testid="tr-rec-abort">{REC_ABORT}</button>
-              </div>
+              <span className="bt-fo-muted" data-testid="tr-rec-max">{recorderMaxLabel(recorderMaxSeconds(limits))}</span>
+              {/* Le texte qui change chaque seconde est muet pour les lecteurs d'écran : ils n'entendent que les paliers de la zone ci-dessous. */}
+              {countdown && <p className="bt-fo-rec-count" aria-hidden="true" data-testid="tr-rec-countdown">{REC_COUNTDOWN(remaining as number)}</p>}
+              <p className="sr-only" role="status" data-testid="tr-rec-announce">{announce}</p>
+              {confirming ? (
+                <div className="bt-fo-rec-row" role="group" aria-label={REC_ABORT_ASK}>
+                  <span className="bt-fo-rec-ask">{REC_ABORT_ASK}</span>
+                  <button ref={keepBtn} type="button" className="bt-fo-btn" onClick={() => setConfirming(false)} data-testid="tr-rec-abort-no">{REC_ABORT_NO}</button>
+                  <button type="button" className="bt-fo-btn danger" onClick={abort} data-testid="tr-rec-abort-yes">{REC_ABORT_YES}</button>
+                </div>
+              ) : (
+                <>
+                  <div className="bt-fo-rec-row">
+                    <button ref={stopBtn} type="button" className="bt-fo-btn" onClick={() => stopWith(null)} data-testid="tr-rec-stop">{REC_STOP}</button>
+                  </div>
+                  {/* À part d'« Arrêter » : une main qui tremble ou des gants ne doivent pas jeter la prise. */}
+                  <div className="bt-fo-rec-row bt-fo-rec-abort">
+                    <button type="button" className="bt-fo-link" onClick={askAbort} data-testid="tr-rec-abort">{REC_ABORT}</button>
+                  </div>
+                </>
+              )}
             </>
           )}
         </>

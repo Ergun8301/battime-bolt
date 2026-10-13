@@ -10,17 +10,20 @@ Un enregistreur intégré à l'appli, à côté de « Filmer » et de « Choisir
 
 - **Image 720p** (1280 × 720 environ, 30 images par seconde), **1,5 Mbit/s** pour l'image + 64 kbit/s pour le son : environ **11,2 Mo par minute**, donc **environ 4 minutes** sous la limite de 50 Mo. Le fichier est lisible partout (MP4 H.264 sur iPhone / Safari ; WebM sinon).
 - **Caméra arrière** par défaut (demandée, pas imposée : un ordinateur utilise sa webcam).
-- **Minuteur**, puis **compte à rebours** (« Arrêt automatique dans 27 s ») sous 30 secondes. L'enregistrement **s'arrête tout seul** à 4 minutes, ou avant le plafond de taille (50 Mo moins 6 %, ou la place restante de l'entreprise si elle est plus petite). La vidéo est gardée, avec un message.
+- **Minuteur**, puis **compte à rebours** (« Arrêt automatique dans 27 s ») sous 30 secondes ; un lecteur d'écran ne l'annonce qu'à 30, 10 et 5 secondes. L'enregistrement **s'arrête tout seul** à 4 minutes, ou avant le plafond de taille (50 Mo moins 6 %, ou la place restante de l'entreprise si elle est plus petite). La vidéo est gardée, avec un message. La **durée maximale affichée est la vraie** : « 4 min » avec la place entière, « environ 40 s » s'il ne reste que 8 Mo (même chose dans la phrase d'aide).
+- **Une prise ne se perd pas d'un toucher** : « Abandonner » est à part du bouton « Arrêter » ; après 3 secondes de prise il demande « Jeter cette prise ? » (« Non, continuer » / « Oui, jeter »). Pendant la prise, les onglets du formulaire, son « Annuler » et la fermeture de la fenêtre (croix, Échap) sont **inactifs** ; fermer l'onglet du navigateur demande confirmation. Pendant « Ouverture de la caméra… », « Fermer la caméra » permet d'en sortir (pas de délai automatique : il couperait l'invite d'autorisation du navigateur). Le focus clavier suit les boutons.
+- Si la caméra se coupe en pleine prise (appel, verrouillage), ce qui est filmé est gardé, avec le message « caméra interrompue », quel que soit l'ordre des événements du navigateur.
 - **L'écran reste allumé** pendant la prise (si le téléphone le permet ; sinon on filme quand même, sans message).
 - **Autorisation refusée** : message en français simple, avec le chemin sur iPhone (bouton « aA » de la barre d'adresse, « Réglages du site »). « Filmer » et « Choisir un fichier » restent utilisables.
 - **Aperçu avant envoi**, puis « Ajouter » : l'envoi passe par **exactement le chemin du lot 13** (mêmes contrôles de taille et de type, même barre de progression, même publication). Rien ne quitte l'appareil avant « Ajouter ».
 - **Aucune position GPS** n'est ajoutée à la vidéo (l'enregistreur n'en écrit pas).
-- La caméra et le micro sont **coupés** dès l'arrêt, l'abandon, la fermeture de la fenêtre ou le changement d'onglet du formulaire.
+- La caméra et le micro sont **coupés** dès l'arrêt, l'abandon ou la fermeture de la caméra, et si l'écran disparaît.
+- Les boutons de choix de la vidéo (« Filmer dans BEMEXO », « Filmer », « Choisir un fichier »), « Changer de vidéo » et le lien « Fichiers vidéo à vérifier » font **au moins 44 px de haut** (usage au doigt sur chantier).
 - Le bouton n'apparaît que s'il peut marcher : appareil avec caméra, connexion sécurisée (HTTPS), au moins 2 Mo de place restante. Sinon (ou dans un navigateur intégré à une autre appli) on ne voit que « Filmer » et « Choisir un fichier ».
 
 ### 2. Alerte HEVC
 
-Un fichier choisi (par « Filmer » ou « Choisir un fichier ») dont le codec vidéo est **HEVC** (le format récent des iPhone, `hvc1` / `hev1`) reçoit, **avant l'envoi**, un message : « Cette vidéo est au format HEVC… » avec le conseil « Changer de vidéo, puis Filmer dans BEMEXO ». L'alerte est **informative** : « Ajouter » reste possible (le bureau lit très bien du HEVC). Le fichier est lu par morceaux dans le navigateur (les quelques premiers octets de chaque « boîte » MP4 / MOV, puis le bloc `moov` : 4 Mo au plus) ; rien n'est envoyé pour cela.
+Un fichier choisi (par « Filmer » ou « Choisir un fichier ») dont le codec vidéo est **HEVC** (le format récent des iPhone, `hvc1` / `hev1`) reçoit, **avant l'envoi**, un encadré d'avertissement (icône, fond jaune) : le constat en gras, puis le conseil « Changer de vidéo, puis Filmer dans BEMEXO » (ou le réglage « Le plus compatible » de l'iPhone quand le bouton n'est pas là : navigateur sans enregistreur **ou moins de 2 Mo de place**), puis « Vous pouvez quand même ajouter cette vidéo ». L'alerte est **informative** : « Ajouter » reste possible (le bureau lit très bien du HEVC). Le fichier est lu par morceaux dans le navigateur (les quelques premiers octets de chaque « boîte » MP4 / MOV, puis le bloc `moov` : 4 Mo au plus) ; rien n'est envoyé pour cela.
 
 ### 3. Fichiers à vérifier (détection seulement, rien n'est supprimé)
 
@@ -29,7 +32,7 @@ Sous la liste des formations, un lien **« Fichiers vidéo à vérifier (N) »**
 - les **fichiers du dossier privé** de l'entreprise qu'**aucune formation n'utilise** (ils comptent dans les 100 Mo) ;
 - les **formations publiées dont le fichier manque** (les salariés verraient « Lecture impossible »).
 
-La liste est **en lecture seule** : aucun bouton, aucun lien de suppression. Elle dit « Pour en retirer un, contactez BEMEXO ». Au plus 5 lignes par sorte (puis « + N autres »), et le total en Mo. Les envois non terminés restent là où ils étaient (« Envoi non terminé », lot 13).
+La liste est **en lecture seule** : aucun bouton, aucun lien de suppression. Elle dit « Pour en retirer un, contactez BEMEXO ». Chaque ligne commence par la date et la taille (« 11/10 · 2 Mo · réf. 6ff54c3f »), la référence technique en fin de ligne. Les dossiers vides créés par le tableau de bord (`.emptyFolderPlaceholder`, à la racine ou dans un sous-dossier) ne sont jamais signalés. Au plus 5 lignes par sorte (puis « + N autres »), et le total en Mo. Si deux chargements de la fenêtre se croisent, seule la lecture la plus récente compte. Les envois non terminés restent là où ils étaient (« Envoi non terminé », lot 13).
 
 ## Ce qui n'est PAS fait
 
@@ -87,11 +90,11 @@ Rien de ceci n'est vérifiable dans Chromium de test (les prises du test viennen
 |---|---|---|
 | `npm run test:videos` (règles du lot 13) | 8 tests | 11 tests (+ liste « à vérifier » et textes) |
 | `npm run test:videos-db` (SQL du lot 13) | 168 ok | 168 ok (inchangé) |
-| `npm run test:videos-ecrans` (écrans du lot 13) | 106 ✅ | 106 ✅ (script non modifié) |
-| Nouveaux : `test:enregistreur` / `test:videos-audit-db` / `test:enregistreur-ecrans` | | 17 tests / 49 ok / 174 ✅ |
+| `npm run test:videos-ecrans` (écrans du lot 13) | 106 ✅ | 106 ✅ (une assertion changée : les boutons de choix de la vidéo font désormais 44 px au lieu de « ≤ 30 px ») |
+| Nouveaux : `test:enregistreur` / `test:videos-audit-db` / `test:enregistreur-ecrans` | | 19 tests / 49 ok / 215 ✅ |
 | `npm run build`, route `/admin` (là où vit la fenêtre « Formations ») | 273 kB, First Load 766 kB | 273 kB, First Load 766 kB (écart nul : tout est chargé à la demande) |
-| Morceau JS du panneau d'envoi (chargé au choix de « Vidéo ») | 5,9 Ko | 13,7 Ko (bouton, alerte HEVC, détecteur) |
-| Nouveaux morceaux JS, chargés seulement à l'ouverture | | enregistreur 6,6 Ko (2,5 Ko compressé) ; liste « à vérifier » 2,1 Ko (0,9 Ko compressé) |
+| Morceau JS du panneau d'envoi (chargé au choix de « Vidéo ») | 5,9 Ko | 15,2 Ko (bouton, alerte HEVC, détecteur) |
+| Nouveaux morceaux JS, chargés seulement à l'ouverture | | enregistreur 8,3 Ko (2,9 Ko compressé) ; liste « à vérifier » 2,2 Ko (1,0 Ko compressé) |
 | Lectures à l'ouverture de la fenêtre « Formations » | N | N + 1 (`rpc/video_files_audit`, en GET, seulement si le lot 13 est actif) |
 | Poids d'une prise de test (caméra factice de Chromium, WebM VP8) | | 150 à 190 Ko pour 3 s, soit 50 à 63 Ko/s observés (image de test très simple) contre 195,5 Ko/s nominaux (≈ 11,2 Mo par minute) : une vraie scène pèsera davantage, à mesurer sur téléphone |
 

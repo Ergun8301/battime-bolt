@@ -20,6 +20,10 @@ export const REC_COUNTDOWN_SECONDS = 30;
 export const REC_MARGIN = 0.06;
 /** Sous 2 Mo de place restante, l'enregistreur n'est pas proposé. */
 export const REC_MIN_ROOM_BYTES = 2 * 1024 * 1024;
+/** Octets par seconde du débit demandé (vidéo + son) : 195 500. */
+const REC_NOMINAL_BYTES_PER_S = (REC_VIDEO_BPS + REC_AUDIO_BPS) / 8;
+/** Le lecteur d'écran n'annonce le compte à rebours qu'à ces paliers (secondes restantes). */
+export const REC_ANNOUNCE_AT = [5, 10, REC_COUNTDOWN_SECONDS] as const;
 /** Un morceau de fichier reçu par seconde (dataavailable). */
 export const REC_TIMESLICE_MS = 1000;
 /**
@@ -56,6 +60,20 @@ export const recorderCapBytes = (l: Limits): number =>
 
 /** Assez de place pour filmer (au moins 2 Mo) ? */
 export const recorderAvailable = (l: Limits): boolean => Math.min(l.maxBytes, l.quotaBytes - l.usedBytes) >= REC_MIN_ROOM_BYTES;
+
+/** Durée réellement possible : 4 minutes au plus, moins quand la place restante est petite (arrondi à 5 s en dessous de 4 min). */
+export function recorderMaxSeconds(l: Limits): number {
+  const bySize = Math.floor(recorderCapBytes(l) / REC_NOMINAL_BYTES_PER_S);
+  return bySize >= REC_MAX_SECONDS ? REC_MAX_SECONDS : Math.floor(bySize / 5) * 5;
+}
+
+/** « 40 s », « 2 min », « 2 min 30 s ». */
+const durationText = (sec: number): string => (sec < 60 ? `${sec} s` : `${Math.floor(sec / 60)} min${sec % 60 ? ` ${sec % 60} s` : ''}`);
+
+/** Le palier (30, 10 ou 5 s) où en est le compte à rebours : on ne l'annonce à voix haute qu'en changeant de palier. */
+export function countdownBand(remainingS: number | null): number | null {
+  return remainingS === null ? null : REC_ANNOUNCE_AT.find((t) => remainingS <= t) ?? null;
+}
 
 /** Octets par seconde sur les `windowS` dernières secondes. `t` en secondes, `bytes` cumulés. 0 si moins de 2 points. */
 export function estimateRate(samples: { t: number; bytes: number }[], windowS = 5): number {
@@ -100,16 +118,25 @@ export function formatClock(seconds: number): string {
 
 // ─── Textes ──────────────────────────────────────────────────────────────────
 export const REC_BUTTON = 'Filmer dans BEMEXO';
-export const REC_HINT = '« Filmer dans BEMEXO » : image 720p, jusqu’à 4 minutes, lisible partout. « Filmer » : l’appareil photo du téléphone, qualité maximale mais fichier plus lourd.';
+const hint = (dur: string) => `« Filmer dans BEMEXO » : image 720p, jusqu’à ${dur}, lisible partout. « Filmer » : l’appareil photo du téléphone, qualité maximale mais fichier plus lourd.`;
+export const REC_HINT = hint('4 minutes');
+/** Même aide avec la durée réelle quand la place restante la réduit sous 4 minutes. */
+export const recorderHint = (maxSeconds: number): string => (maxSeconds >= REC_MAX_SECONDS ? REC_HINT : hint(`environ ${durationText(maxSeconds)}`));
 export const REC_OPENING = 'Ouverture de la caméra…';
 export const REC_READY = 'Cadrez, puis touchez « Démarrer ». Tenez le téléphone dans le même sens pendant toute la prise.';
 export const REC_START = 'Démarrer';
 export const REC_STOP = 'Arrêter';
 export const REC_ABORT = 'Abandonner';
-export const REC_BACK = 'Annuler';
+export const REC_ABORT_ASK = 'Jeter cette prise ?';
+export const REC_ABORT_YES = 'Oui, jeter';
+export const REC_ABORT_NO = 'Non, continuer';
+/** Pas « Annuler » : le formulaire du dessous a déjà un bouton « Annuler ». */
+export const REC_BACK = 'Fermer la caméra';
 export const REC_RUNNING = 'Enregistrement en cours';
 export const REC_DONE = 'Enregistrement terminé';
 export const REC_MAX_LABEL = 'Durée maximale : 4 min';
+/** « Durée maximale : environ 40 s » quand la place restante réduit la prise. */
+export const recorderMaxLabel = (maxSeconds: number): string => (maxSeconds >= REC_MAX_SECONDS ? REC_MAX_LABEL : `Durée maximale : environ ${durationText(maxSeconds)}`);
 export const REC_COUNTDOWN = (n: number) => `Arrêt automatique dans ${n} s`;
 export const REC_AUTO_SIZE = 'L’enregistrement s’est arrêté tout seul : la taille maximale est atteinte. La vidéo est gardée.';
 export const REC_AUTO_TIME = 'L’enregistrement s’est arrêté tout seul : 4 minutes atteintes. La vidéo est gardée.';

@@ -174,9 +174,10 @@ Deno.test('fichiers à vérifier : textes exacts', () => {
   eq(shortDate('2026-10-12T12:00:00Z'), '12/10', 'date courte');
   eq(shortDate('pas une date'), '', 'date illisible');
   eq(shortDate(null), '', 'date absente');
+  // La date et la taille d'abord (le titre de la section dit déjà « Fichiers sans formation »), la référence en fin de ligne.
   eq(AUDIT_ORPHAN_ROW({ real_bytes: 5 * MO, occurred_at: '2026-10-12T12:00:00Z', file_path: 'c0/aaaaaaaa-0000-4000-8000-0000deadbeef' }),
-    'Fichier sans formation · 5 Mo · envoyé le 12/10 · réf. deadbeef', 'ligne fichier');
-  eq(AUDIT_ORPHAN_ROW({ real_bytes: 1.5 * MO, occurred_at: null, file_path: 'c0/abcdefgh12345678' }), 'Fichier sans formation · 1,5 Mo · réf. 12345678', 'ligne fichier sans date');
+    '12/10 · 5 Mo · réf. deadbeef', 'ligne fichier');
+  eq(AUDIT_ORPHAN_ROW({ real_bytes: 1.5 * MO, occurred_at: null, file_path: 'c0/abcdefgh12345678' }), '1,5 Mo · réf. 12345678', 'ligne fichier sans date');
   eq(AUDIT_MISSING_ROW({ title: 'Gestes et postures', occurred_at: '2026-10-13T12:00:00Z', archived: false }), 'Gestes et postures · publiée le 13/10', 'ligne formation');
   eq(AUDIT_MISSING_ROW({ title: 'Ancienne consigne', occurred_at: '2026-10-13T12:00:00Z', archived: true }), 'Ancienne consigne · publiée le 13/10 · retirée', 'ligne formation retirée');
 });

@@ -224,6 +224,7 @@ const ORPH = `${CO}/${uuid(4)}`; await addObject(ORPH, 5 * MO, '2026-10-12T09:00
 const EN_COURS = await addVideo(CO, 5, { published: false, size: 6 * MO });                    // 4. envoi non terminé : ligne non publiée + fichier
 const RESERVEE = await addVideo(CO, 6, { published: false, file: false });                     // 5. place réservée, fichier pas arrivé
 await addObject(`${CO}/.emptyFolderPlaceholder`, 0);                                           // 6. dossier vide du tableau de bord
+await addObject(`${CO}/sous-dossier/.emptyFolderPlaceholder`, 0);                              // 6 bis. dossier vide créé DANS un sous-dossier
 const ORPH_B = `${CO2}/${uuid(7)}`; await addObject(ORPH_B, 3 * MO);                           // 7. fichier sans ligne de l’entreprise B
 await addVideo(CO2, 8, { file: false, title: 'Formation de B sans fichier' });
 await root();
@@ -237,7 +238,7 @@ await root();
   check(o.length === 1 && o[0].file_path === ORPH && Number(o[0].real_bytes) === 5 * MO && o[0].video_id === null && o[0].title === null, '3. fichier sans ligne : « fichier_sans_formation » avec sa taille');
   check(!r.some((x) => x.file_path === EN_COURS.path), '4. envoi non terminé (ligne non publiée + fichier) : ABSENT (il reste dans training_video_leftovers)');
   check(!r.some((x) => x.file_path === RESERVEE.path), '5. place réservée sans fichier : absente');
-  check(!r.some((x) => x.file_path.includes('.emptyFolderPlaceholder')), '6. « .emptyFolderPlaceholder » ignoré');
+  check(!r.some((x) => x.file_path.includes('.emptyFolderPlaceholder')), '6. « .emptyFolderPlaceholder » ignoré (à la racine et dans un sous-dossier : sinon un faux signalement impossible à lever)');
   check(m.length === 2 && Number(m[0].total_n) === 2 && o.length === 1 && Number(o[0].total_n) === 1 && Number(o[0].total_bytes) === 5 * MO, 'totaux : 1 fichier (5 Mo), 2 formations');
   await as(ADMIN);
   const lo = await rows('SELECT file_path FROM public.training_video_leftovers()');
@@ -295,8 +296,8 @@ section('Lecture seule : rien ne bouge');
   for (const who of [ADMIN, ADMIN_B, ADMIN2, ADMIN3]) await audit(who);
   await root();
   check(await snap() === s0, 'lignes de training_videos et objets du stockage identiques avant / après (4 appels)');
-  check(await count(`SELECT count(*) n FROM public.training_videos`) === 6 && await count(`SELECT count(*) n FROM storage.objects WHERE bucket_id = 'formations'`) === 155,
-    'aucune ligne ni fichier effacé ou ajouté (6 vidéos, 155 fichiers dont le dossier vide)');
+  check(await count(`SELECT count(*) n FROM public.training_videos`) === 6 && await count(`SELECT count(*) n FROM storage.objects WHERE bucket_id = 'formations'`) === 156,
+    'aucune ligne ni fichier effacé ou ajouté (6 vidéos, 156 fichiers dont les dossiers vides)');
   check(await count('SELECT count(*) n FROM public.time_entries') === 0 && await count('SELECT count(*) n FROM public.active_sessions') === 0, 'aucune heure, aucun chrono écrit');
 }
 
@@ -309,7 +310,7 @@ await root();
   check(await count(`SELECT count(*) n FROM pg_proc WHERE proname = 'video_files_audit'`) === 0, 'la fonction a disparu');
   const back = { t: await tableCount(), c: await colPrint(), p: await polPrint(), g: await trgPrint(), f: await fnPrint() };
   check(back.t === before.t && back.c === before.c && back.p === before.p && back.g === before.g && back.f === before.f, 'tables, colonnes, policies, triggers et fonctions existants identiques à avant la migration');
-  check(await count('SELECT count(*) n FROM public.training_videos') === 6 && await count(`SELECT count(*) n FROM storage.objects WHERE bucket_id = 'formations'`) === 155,
+  check(await count('SELECT count(*) n FROM public.training_videos') === 6 && await count(`SELECT count(*) n FROM storage.objects WHERE bucket_id = 'formations'`) === 156,
     'les fichiers, lignes et fonctions du lot 13 sont intacts');
   check(await count(`SELECT count(*) n FROM pg_proc WHERE pronamespace = 'public'::regnamespace AND proname LIKE '%training_video%'`) === 12, 'les 12 fonctions du lot 13 sont là');
   const e2 = await errExec(SQL);

@@ -1,9 +1,9 @@
 // « Filmer dans BEMEXO » (lot 14, oct. 2026) : règles pures de l'enregistreur.
 //   npm run test:enregistreur
 import {
-  baseMime, estimateRate, formatClock, pickRecorderMime, REC_ABORT, REC_AUDIO_BPS, REC_AUTO_SIZE, REC_AUTO_TIME, REC_BACK, REC_BUTTON, REC_COUNTDOWN, REC_COUNTDOWN_SECONDS,
+  baseMime, countdownBand, estimateRate, formatClock, pickRecorderMime, REC_ABORT, REC_ABORT_ASK, REC_ABORT_NO, REC_ABORT_YES, REC_AUDIO_BPS, REC_AUTO_SIZE, REC_AUTO_TIME, REC_BACK, REC_BUTTON, REC_COUNTDOWN, REC_COUNTDOWN_SECONDS,
   REC_CUT, REC_FAILED, REC_HINT, REC_MAX_LABEL, REC_MAX_SECONDS, REC_MIME_CANDIDATES, REC_MIN_ROOM_BYTES, REC_NO_GPS, REC_OPENING, REC_READY, REC_RUNNING, REC_START, REC_STOP,
-  REC_TIMESLICE_MS, REC_VIDEO_BPS, recorderAvailable, recorderCapBytes, recorderErrorMessage, recorderFileName, stopDecision,
+  REC_TIMESLICE_MS, REC_VIDEO_BPS, recorderAvailable, recorderCapBytes, recorderErrorMessage, recorderFileName, recorderHint, recorderMaxLabel, recorderMaxSeconds, stopDecision,
 } from './video-recorder.ts';
 import { VIDEO_MAX_BYTES, VIDEO_QUOTA_BYTES } from './training-videos.ts';
 
@@ -107,7 +107,8 @@ Deno.test('textes exacts', () => {
   eq(REC_HINT, '« Filmer dans BEMEXO » : image 720p, jusqu’à 4 minutes, lisible partout. « Filmer » : l’appareil photo du téléphone, qualité maximale mais fichier plus lourd.', 'aide');
   eq(REC_OPENING, 'Ouverture de la caméra…', 'ouverture');
   eq(REC_READY, 'Cadrez, puis touchez « Démarrer ». Tenez le téléphone dans le même sens pendant toute la prise.', 'prêt');
-  eq([REC_START, REC_STOP, REC_ABORT, REC_BACK], ['Démarrer', 'Arrêter', 'Abandonner', 'Annuler'], 'boutons');
+  eq([REC_START, REC_STOP, REC_ABORT, REC_BACK], ['Démarrer', 'Arrêter', 'Abandonner', 'Fermer la caméra'], 'boutons (« Fermer la caméra » ne se confond pas avec « Annuler » du formulaire)');
+  eq([REC_ABORT_ASK, REC_ABORT_YES, REC_ABORT_NO], ['Jeter cette prise ?', 'Oui, jeter', 'Non, continuer'], 'confirmation avant de jeter une prise');
   eq(REC_RUNNING, 'Enregistrement en cours', 'en cours');
   eq(REC_MAX_LABEL, 'Durée maximale : 4 min', 'durée maximale');
   eq(REC_COUNTDOWN(12), 'Arrêt automatique dans 12 s', 'compte à rebours');
@@ -131,4 +132,31 @@ Deno.test('refus d’autorisation et pannes : un message clair par cas', () => {
   const autre = 'La caméra n’a pas pu démarrer. Touchez « Filmer » ou « Choisir un fichier ».';
   eq(recorderErrorMessage('TypeError'), autre, 'erreur inconnue');
   eq(recorderErrorMessage(undefined), autre, 'sans nom');
+});
+
+Deno.test('durée annoncée : le chiffre réel, pas toujours « 4 min »', () => {
+  const place = (reste: number) => ({ maxBytes: VIDEO_MAX_BYTES, quotaBytes: VIDEO_QUOTA_BYTES, usedBytes: VIDEO_QUOTA_BYTES - reste });
+  eq(recorderMaxSeconds(L), REC_MAX_SECONDS, 'forfait entier : 4 minutes');
+  eq(recorderMaxLabel(recorderMaxSeconds(L)), 'Durée maximale : 4 min', 'libellé 4 min');
+  eq(recorderHint(recorderMaxSeconds(L)), REC_HINT, 'aide inchangée à 4 min');
+  // 8 Mo de place : (8 Mo × 0,94) / 195 500 octets par seconde ≈ 40 s.
+  eq(recorderMaxSeconds(place(8 * MO)), 40, '8 Mo de place : environ 40 s');
+  eq(recorderMaxLabel(40), 'Durée maximale : environ 40 s', 'libellé en secondes');
+  eq(recorderHint(40), REC_HINT.replace('jusqu’à 4 minutes', 'jusqu’à environ 40 s'), 'aide : le chiffre réel');
+  eq(recorderMaxSeconds(place(2 * MO)), 10, '2 Mo de place : environ 10 s');
+  // 30 Mo de place : 30 × 0,94 Mo / 195 500 ≈ 150 s, soit 2 min 30 s.
+  eq(recorderMaxSeconds(place(30 * MO)), 150, '30 Mo de place : 150 s');
+  eq(recorderMaxLabel(150), 'Durée maximale : environ 2 min 30 s', 'libellé minutes et secondes');
+  eq(recorderMaxLabel(120), 'Durée maximale : environ 2 min', 'libellé minutes rondes');
+  eq(recorderMaxSeconds({ maxBytes: 8 * MO, quotaBytes: VIDEO_QUOTA_BYTES, usedBytes: 0 }), 40, 'le plafond par fichier compte aussi');
+  eq(recorderMaxSeconds(place(0)), 0, 'plus de place : 0');
+  ok(recorderMaxSeconds(place(46 * MO)) < REC_MAX_SECONDS && recorderMaxSeconds(place(60 * MO)) === REC_MAX_SECONDS, 'plafond de 4 minutes jamais dépassé');
+});
+
+Deno.test('compte à rebours lu à voix haute : seulement à 30, 10 et 5 s', () => {
+  eq([null, 31, 30, 29, 11, 10, 6, 5, 0].map(countdownBand), [null, null, 30, 30, 30, 10, 10, 5, 5], 'paliers');
+  // Un compte à rebours qui descend d'une seconde à la fois ne change de palier que trois fois.
+  const paliers = new Set<number | null>();
+  for (let n = 40; n >= 0; n--) paliers.add(countdownBand(n));
+  eq([...paliers], [null, 30, 10, 5], 'trois annonces seulement');
 });

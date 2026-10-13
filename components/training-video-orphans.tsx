@@ -16,6 +16,7 @@ const SHOWN = 5;
 
 const CSS = `
 .bt-fo-audit{display:flex;flex-direction:column;gap:8px}
+.bt-fo-audit .bt-fo-link{display:inline-flex;align-items:center;min-height:44px}
 .bt-fo-audit-box{display:flex;flex-direction:column;gap:8px;border:1px solid rgba(21,18,15,.12);border-radius:12px;padding:10px;background:#FBF8F2}
 .bt-fo-audit-sec{display:flex;flex-direction:column;gap:4px;min-width:0}
 .bt-fo-audit-h{font-size:12.5px;font-weight:800;color:#15120F}

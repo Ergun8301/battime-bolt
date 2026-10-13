@@ -28,7 +28,8 @@
 //   R8  minuteur sous horloge figée
 //   R9  alerte HEVC : fixtures binaires fabriquées ici
 //   R10 fichiers à vérifier : lecture seule
-//   R11 captures à 390 px
+//   R11 captures à 390 px (zones de toucher de 44 px)
+//   R12 une prise refusée ne laisse pas son message d’arrêt au fichier suivant
 import http from 'node:http'; import https from 'node:https'; import fs from 'node:fs'; import path from 'node:path'; import os from 'node:os';
 import { execFileSync } from 'node:child_process'; import crypto from 'node:crypto';
 let chromium;
@@ -86,6 +87,7 @@ const VIDEOS = [vid('0f0e0d0c-0b0a-4909-8807-060504030201', 'Montage de l’éch
 let MIG = 'oui';
 let AUDIT = 'oui'; // 'non' : migration du lot 14 pas appliquée (video_files_audit → 404 PGRST202)
 const auditCalls = []; // chaque lecture de video_files_audit et la réponse donnée
+const auditDelays = []; // délais (ms) imposés aux prochaines réponses : une lecture lente qui arrive après une plus récente
 let pushSent = 1;
 let UP_MODE = 'normal'; // 'normal' | 'hold' | 'cut'
 let holdRelease = null;
@@ -212,7 +214,7 @@ function archiveVideo(uid, { p_id, p_archived }) {
 /** video_files_audit : les règles du SQL rejouées (supabase/tests/videos_fichiers_audit.mjs les prouve sur un vrai Postgres). */
 function auditRows(uid) {
   if (!isAdmin(uid)) throw new Refus('Réservé au bureau de l\'entreprise.', '42501', 403);
-  const orph = [...OBJ].filter(([p]) => p.startsWith(`${CO}/`) && p !== `${CO}/.emptyFolderPlaceholder` && !D.training_videos.some((v) => v.file_path === p))
+  const orph = [...OBJ].filter(([p]) => p.startsWith(`${CO}/`) && !p.endsWith('/.emptyFolderPlaceholder') && !D.training_videos.some((v) => v.file_path === p))
     .map(([p, o]) => ({ p, size: o.size, at: OBJ_AT.get(p) || NOW.toISOString() })).sort((a, z) => z.at.localeCompare(a.at));
   const sum = orph.reduce((s, o) => s + o.size, 0);
   const miss = D.training_videos.filter((v) => v.company_id === CO && v.published_at && !OBJ.has(v.file_path)).sort((a, z) => z.published_at.localeCompare(a.published_at));
@@ -348,8 +350,8 @@ const newCtx = async (uid, viewport, extra = {}) => {
   await ctx.addInitScript(([k, v]) => { localStorage.setItem(k, v); }, ['sb-sdperbcquvneohotjono-auth-token', JSON.stringify(session)]);
   await ctx.addInitScript(() => {
     // Espions du lot 14 : contraintes de la caméra, options du MediaRecorder, Wake Lock, pistes ouvertes.
-    const R = window.__rec = { gum: [], mr: [], wake: [], sentinels: [], tracks: [], recorders: [], fail: null, delay: 0, noData: false, wakeMode: 'ok', sawCountdown: false, finished: 0 };
-    R.reset = () => { R.gum.length = 0; R.mr.length = 0; R.wake.length = 0; R.sentinels.length = 0; R.tracks.length = 0; R.recorders.length = 0; R.fail = null; R.delay = 0; R.noData = false; R.wakeMode = 'ok'; R.sawCountdown = false; };
+    const R = window.__rec = { gum: [], mr: [], wake: [], sentinels: [], tracks: [], recorders: [], fail: null, delay: 0, noData: false, inflate: 0, wakeMode: 'ok', sawCountdown: false, finished: 0 };
+    R.reset = () => { R.gum.length = 0; R.mr.length = 0; R.wake.length = 0; R.sentinels.length = 0; R.tracks.length = 0; R.recorders.length = 0; R.fail = null; R.delay = 0; R.noData = false; R.inflate = 0; R.wakeMode = 'ok'; R.sawCountdown = false; };
     const md = navigator.mediaDevices;
     if (md && md.getUserMedia) {
       const real = md.getUserMedia.bind(md);
@@ -366,7 +368,7 @@ const newCtx = async (uid, viewport, extra = {}) => {
     if (Orig) {
       window.MediaRecorder = class extends Orig {
         constructor(s, o) { super(s, o); R.mr.push(o ? JSON.parse(JSON.stringify(o)) : null); R.recorders.push(this); }
-        set ondataavailable(f) { super.ondataavailable = R.noData ? (e) => f({ data: new Blob([]) }) : f; }
+        set ondataavailable(f) { super.ondataavailable = R.noData ? (e) => f({ data: new Blob([]) }) : R.inflate ? (e) => f({ data: new Blob([e.data, new Uint8Array(R.inflate)]) }) : f; }
         get ondataavailable() { return super.ondataavailable; }
       };
     }
@@ -446,7 +448,11 @@ const newCtx = async (uid, viewport, extra = {}) => {
       if (m === 'GET' || m === 'HEAD') gets.push({ t: `rpc/${fn}`, by: uid, missing: LOT13_FNS.has(fn) && MIG !== 'oui' }); else writes.push({ m: 'RPC', t: fn, body, by: uid });
       if (fn === 'video_files_audit') {
         if (AUDIT !== 'oui') { auditCalls.push({ by: uid, answer: 'PGRST202' }); return r.fulfill(MISSING_FN(fn)); }
-        try { const rows = auditRows(uid); auditCalls.push({ by: uid, answer: 'ok', n: rows.length }); return r.fulfill({ json: rows }); } catch (e) { auditCalls.push({ by: uid, answer: e.code }); return fail(e); }
+        try {
+          const rows = auditRows(uid); auditCalls.push({ by: uid, answer: 'ok', n: rows.length });
+          const wait = auditDelays.shift() || 0; if (wait) await new Promise((res) => setTimeout(res, wait)); // réponse calculée maintenant, livrée plus tard
+          return r.fulfill({ json: rows });
+        } catch (e) { auditCalls.push({ by: uid, answer: e.code }); return fail(e); }
       }
       if (fn === 'my_trainings') return r.fulfill({ json: myTrainings(uid) });
       if (fn === 'set_training_seen') return r.fulfill({ json: NOW.toISOString() });
@@ -599,6 +605,13 @@ const startRecording = async (p = op) => {
   await p.click('[data-testid=tr-rec-start]');
   await p.waitForSelector('[data-testid=tr-rec-stop]');
 };
+/** « Abandonner » : après quelques secondes de prise, la question « Jeter cette prise ? » demande une confirmation. */
+const abandon = async (p = op) => {
+  await p.click('[data-testid=tr-rec-abort]');
+  if (await waitFor(async () => (await p.locator('[data-testid=tr-rec-abort-yes]').count()) > 0, 400)) await p.click('[data-testid=tr-rec-abort-yes]');
+};
+const focusId = (p = op) => p.evaluate(() => document.activeElement?.getAttribute('data-testid') || document.activeElement?.tagName);
+const heightOf = (loc) => loc.evaluate((e) => (e.closest('label') || e).getBoundingClientRect().height);
 const uuid = () => crypto.randomUUID();
 /** Un fichier arrivé dans le dossier de l'entreprise, sans formation. */
 const orphan = (size, at, co = CO) => { const p = `${co}/${uuid()}`; OBJ.set(p, { size, mime: 'video/webm', bytes: null }); OBJ_AT.set(p, at); return p; };
@@ -697,10 +710,12 @@ let takeBytes = 0;
   await op.waitForSelector('[data-testid=tr-rec-start]', { timeout: 10000 });
   const live = await op.locator('[data-testid=tr-rec-live]').evaluate((v) => ({ muted: v.muted, inline: v.hasAttribute('playsinline'), auto: v.autoplay, src: !!v.srcObject, label: v.getAttribute('aria-label'), w: v.getBoundingClientRect().width }));
   check(live.muted && live.inline && live.auto && live.src && live.label === 'Aperçu de la caméra', `aperçu direct muted, playsInline, autoplay (${JSON.stringify(live)})`);
-  check(await op.evaluate(() => document.activeElement?.getAttribute('data-testid')) === 'tr-rec-start', 'le focus est sur « Démarrer »');
+  check(await focusId() === 'tr-rec-start', 'le focus est sur « Démarrer »');
+  check((await txt(op.locator('[data-testid=tr-rec-cancel]'))) === 'Fermer la caméra' && (await txt(op.locator('[data-testid=tr-cancel]'))) === 'Annuler', 'deux boutons qui ne se confondent pas : « Fermer la caméra » (caméra) et « Annuler » (formulaire)');
   check((await rec(op)).wake.length === 0, 'écran allumé : rien n’est demandé à l’ouverture de la caméra');
   await op.click('[data-testid=tr-rec-start]');
   await op.waitForSelector('[data-testid=tr-rec-stop]');
+  check(await focusId() === 'tr-rec-stop', 'le focus passe sur « Arrêter » quand « Démarrer » disparaît');
   check((await txt(op.locator('[data-testid=tr-upload]'))).includes('Durée maximale : 4 min') && (await txt(op.locator('[data-testid=tr-upload]'))).includes('Enregistrement en cours'), '« Enregistrement en cours » et « Durée maximale : 4 min »');
   check(await op.locator('[data-testid=tr-rec-countdown]').count() === 0, 'pas de compte à rebours au début');
   await op.waitForTimeout(3000);
@@ -708,6 +723,7 @@ let takeBytes = 0;
   check(/^0:0[2-4]$/.test(t3), `minuteur après ~3 s : « ${t3} »`);
   await op.click('[data-testid=tr-rec-stop]');
   await op.waitForSelector('[data-testid=tr-preview]', { timeout: 10000 });
+  check(await focusId() === 'tr-file-change', 'la prise terminée : le focus passe sur « Changer de vidéo »');
   await waitFor(async () => /\d s/.test(await txt(op.locator('[data-testid=tr-file-meta]'))), 4000);
   const meta = await txt(op.locator('[data-testid=tr-file-meta]'));
   const secs = Number(/^(\d+) s/.exec(meta)?.[1]);
@@ -756,12 +772,24 @@ if (want('R3')) {
   await fresh({ maxBytes: SMALL_MAX });
   await openOffice(); await openTrainings(); await openUpload(); await recReset(op);
   const t0 = Date.now();
+  // 2,2 Mo de place : la durée annoncée est la vraie (10 s), pas « 4 minutes ».
+  check((await txt(op.locator('[data-testid=tr-rec-hint]'))).includes('jusqu’à environ 10 s') && !(await txt(op.locator('[data-testid=tr-rec-hint]'))).includes('4 minutes'), 'aide : « jusqu’à environ 10 s » quand la place restante est petite');
   await startRecording();
+  check((await txt(op.locator('[data-testid=tr-rec-max]'))) === 'Durée maximale : environ 10 s', 'pendant la prise : « Durée maximale : environ 10 s »');
   let sawTimer = false;
-  const stopped = await waitFor(async () => { if (await op.locator('[data-testid=tr-rec-timer]').count()) sawTimer = true; return (await op.locator('[data-testid=tr-rec-auto]').count()) > 0; }, 120000);
+  const vus = new Set(), annonces = new Set();
+  const stopped = await waitFor(async () => {
+    if (await op.locator('[data-testid=tr-rec-timer]').count()) sawTimer = true;
+    const c = op.locator('[data-testid=tr-rec-countdown]');
+    if (await c.count()) vus.add(await txt(c));
+    const a = await txt(op.locator('[data-testid=tr-rec-announce]'));
+    if (a) annonces.add(a);
+    return (await op.locator('[data-testid=tr-rec-auto]').count()) > 0;
+  }, 120000);
   check(stopped && sawTimer, `la prise s’arrête toute seule (${Math.round((Date.now() - t0) / 1000)} s)`);
   check((await txt(op.locator('[data-testid=tr-rec-auto]'))) === MSG.size, 'message : « … la taille maximale est atteinte. La vidéo est gardée. »');
   check((await rec(op)).sawCountdown, 'le compte à rebours « Arrêt automatique dans N s » a été visible avant l’arrêt');
+  check(annonces.size >= 1 && annonces.size <= 3 && annonces.size < vus.size, `lecteur d’écran : ${annonces.size} annonce(s) seulement (30, 10, 5 s) pour ${vus.size} textes affichés (${[...annonces].join(' | ')})`);
   await op.waitForSelector('[data-testid=tr-preview]');
   const size = Math.round(Number(String(await txt(op.locator('[data-testid=tr-file-meta]'))).match(/([\d,]+) Mo/)?.[1].replace(',', '.')) * MO);
   const last = uploads.length;
@@ -789,6 +817,7 @@ if (want('R4')) {
     check((await txt(e)) === msg && (await e.getAttribute('role')) === 'alert', `${name} : message exact, role=alert`);
     check(await op.locator('[data-testid=tr-film]').count() === 1 && await op.locator('[data-testid=tr-file]').count() === 1 && await op.locator('[data-testid=tr-rec-open]').isVisible(), `${name} : « Filmer », « Choisir un fichier » et le bouton sont de nouveau là`);
     check((await rec(op)).tracks.every((x) => x === 'ended'), `${name} : aucune piste restée ouverte`);
+    check(await focusId() === 'tr-rec-open', `${name} : le focus revient sur « Filmer dans BEMEXO »`);
     if (name === 'NotAllowedError') await shot(dlg(), 'enregistreur-refus');
   }
   await recReset(op, { fail: 'NotAllowedError' });
@@ -801,6 +830,12 @@ if (want('R4')) {
   check(!(await op.locator('[data-testid=tr-save]').isDisabled()), '« Ajouter » est actif');
   await op.click('[data-testid=tr-file-change]');
   check(await op.locator('[data-testid=tr-rec-error]').count() === 0, '« Changer de vidéo » : le message de refus n’est pas ressorti');
+  // Refus de la caméra, puis un fichier REFUSÉ par le contrôle de taille : l'ancien message de la caméra ne reste pas à côté.
+  await recReset(op, { fail: 'NotAllowedError' });
+  await op.click('[data-testid=tr-rec-open]'); await op.waitForSelector('[data-testid=tr-rec-error]');
+  await op.setInputFiles('[data-testid=tr-file]', F_HEAVY);
+  await op.waitForSelector('[data-testid=tr-file-error]');
+  check(await op.locator('[data-testid=tr-rec-error]').count() === 0, 'refus de la caméra puis fichier trop lourd refusé : le message de la caméra ne reste pas à côté');
   await recReset(op);
   await op.click('[data-testid=tr-cancel]'); await closeDlg();
 }
@@ -822,6 +857,14 @@ if (want('R5')) {
   await shot(dlg(), 'enregistreur-camera-coupee');
   await op.click('[data-testid=tr-file-change]');
   check(await op.locator('[data-testid=tr-rec-auto]').count() === 0, '« Changer de vidéo » : le message d’arrêt disparaît');
+  // L'enregistreur s'arrête de lui-même AVANT que la piste n'annonce sa fin (l'ordre des événements varie selon le navigateur) : prise écourtée signalée aussi.
+  await recReset(op);
+  await startRecording();
+  await op.waitForTimeout(2200);
+  await op.evaluate(() => window.__rec.recorders[0].stop());
+  await op.waitForSelector('[data-testid=tr-preview]', { timeout: 8000 });
+  check((await txt(op.locator('[data-testid=tr-rec-auto]'))) === MSG.cut, 'arrêt spontané de l’enregistreur : même message « caméra interrompue, ce qui a été filmé est gardé »');
+  await op.click('[data-testid=tr-file-change]');
   // Aucun octet reçu : échec clair.
   await recReset(op, { noData: true });
   await startRecording();
@@ -852,15 +895,54 @@ if (want('R6')) {
     check(noCam(s), `${nom} : pistes arrêtées, enregistreur inactif, écran allumé relâché (${JSON.stringify({ t: s.tracks, r: s.recorders, w: s.sentinels })})`);
     check(await op.locator('[data-testid=tr-preview]').count() === 0 && await op.locator('[data-testid=tr-file-ready]').count() === 0, `${nom} : aucune prise gardée (onDone jamais appelé)`);
   };
-  await scenario('fermer la fenêtre (Échap)', async () => { await closeDlg(); });
-  await scenario('changer d’onglet du formulaire', async () => { await op.click('[data-testid=tr-kind-video]'); });
-  await scenario('« Annuler » du formulaire', async () => { await op.click('[data-testid=tr-cancel]'); });
-  await scenario('« Abandonner »', async () => { await op.click('[data-testid=tr-rec-abort]'); });
+  // Avant la prise (caméra prête) : tout ce qui quitte l'écran relâche la caméra.
+  await scenario('fermer la fenêtre (Échap)', async () => { await closeDlg(); }, { recording: false });
+  await scenario('changer d’onglet du formulaire', async () => { await op.click('[data-testid=tr-kind-video]'); }, { recording: false });
+  await scenario('« Annuler » du formulaire', async () => { await op.click('[data-testid=tr-cancel]'); }, { recording: false });
+  await scenario('« Fermer la caméra » avant la prise', async () => { await op.click('[data-testid=tr-rec-cancel]'); }, { recording: false });
+  check(await op.locator('[data-testid=tr-rec-open]').isVisible() && await focusId() === 'tr-rec-open', '« Fermer la caméra » : retour aux boutons, le focus sur « Filmer dans BEMEXO »');
+  // Pendant la prise : « Abandonner » dans les 3 premières secondes jette tout de suite (rien à perdre).
+  await scenario('« Abandonner » dans les 3 premières secondes', async () => { await op.click('[data-testid=tr-rec-abort]'); });
   check(await op.locator('[data-testid=tr-rec-open]').isVisible() && await op.locator('[data-testid=tr-rec-error]').count() === 0, '« Abandonner » : retour aux boutons, sans message');
-  await scenario('« Annuler » avant la prise', async () => { await op.click('[data-testid=tr-rec-cancel]'); }, { recording: false });
-  check(await op.locator('[data-testid=tr-rec-open]').isVisible(), '« Annuler » : retour aux boutons');
+  // Après 3 secondes : confirmation en deux temps.
+  await scenario('« Abandonner » puis « Oui, jeter »', async () => {
+    await op.waitForTimeout(2200);
+    await op.click('[data-testid=tr-rec-abort]');
+    await op.waitForSelector('[data-testid=tr-rec-abort-yes]');
+    await op.click('[data-testid=tr-rec-abort-yes]');
+  });
+  // Pendant la prise, ce qui la jetterait sans prévenir est verrouillé.
+  await closeDlg(); await openTrainings(); await openUpload(); await recReset(op);
+  await startRecording();
+  await op.waitForTimeout(3300);
+  const lock = await op.evaluate(() => ['tr-kind-video', 'tr-kind-document', 'tr-cancel'].map((id) => document.querySelector(`[data-testid=${id}]`).disabled));
+  check(lock.every((x) => x === true), `pendant la prise : les onglets du formulaire et « Annuler » sont inactifs (${lock.join(',')})`);
+  await op.keyboard.press('Escape'); await op.waitForTimeout(400);
+  check(await op.locator('[data-testid=trainings-dialog]').count() === 1 && (await rec(op)).tracks.every((x) => x === 'live'), 'pendant la prise : Échap ne ferme pas la fenêtre, la prise continue');
+  const gap = await op.evaluate(() => { const a = document.querySelector('[data-testid=tr-rec-stop]').getBoundingClientRect(), b = document.querySelector('[data-testid=tr-rec-abort]').getBoundingClientRect(); return { dy: b.top - a.bottom, h: b.height }; });
+  check(gap.dy >= 12 && gap.h >= 44, `« Abandonner » est à part d’« Arrêter » (${Math.round(gap.dy)} px d’écart, ${Math.round(gap.h)} px de haut)`);
+  await op.click('[data-testid=tr-rec-abort]');
+  await op.waitForSelector('[data-testid=tr-rec-abort-yes]');
+  check((await txt(op.locator('[data-testid=tr-rec]'))).includes('Jeter cette prise ?') && await focusId() === 'tr-rec-abort-no', 'après 3 s : « Jeter cette prise ? », le focus sur « Non, continuer »');
+  check((await rec(op)).tracks.every((x) => x === 'live') && (await rec(op)).recorders.every((x) => x === 'recording'), 'la prise continue pendant la question');
+  await op.click('[data-testid=tr-rec-abort-no]');
+  check(await op.locator('[data-testid=tr-rec-stop]').isVisible() && await focusId() === 'tr-rec-stop' && (await rec(op)).tracks.every((x) => x === 'live'), '« Non, continuer » : la prise continue, le focus revient sur « Arrêter »');
+  await op.click('[data-testid=tr-rec-stop]'); await op.waitForSelector('[data-testid=tr-preview]');
+  const unlocked = await op.evaluate(() => ['tr-kind-video', 'tr-kind-document', 'tr-cancel'].map((id) => document.querySelector(`[data-testid=${id}]`).disabled));
+  check(unlocked.every((x) => x === false), 'la prise terminée : les onglets et « Annuler » sont de nouveau actifs');
+  await closeDlg();
+  check(await op.locator('[data-testid=trainings-dialog]').count() === 0, 'la prise terminée : Échap ferme la fenêtre');
+  // Caméra lente : « Ouverture de la caméra… » avec une sortie.
+  await openTrainings(); await openUpload(); await recReset(op, { delay: 1500 });
+  await op.click('[data-testid=tr-rec-open]');
+  check(await op.locator('[data-testid=tr-rec-opening]').count() === 1 && await op.locator('[data-testid=tr-rec-cancel]').isVisible(), 'caméra lente : « Ouverture de la caméra… » et un bouton « Fermer la caméra »');
+  await op.click('[data-testid=tr-rec-cancel]');
+  check(await op.locator('[data-testid=tr-rec-open]').isVisible(), 'caméra lente : on peut en sortir sans attendre');
+  await op.waitForTimeout(2200);
+  const lateC = await rec(op);
+  check(lateC.tracks.length > 0 && lateC.tracks.every((x) => x === 'ended'), 'caméra ouverte APRÈS la sortie : aussitôt arrêtée');
   // Caméra lente : la fenêtre se ferme avant qu'elle ne s'ouvre.
-  await closeDlg(); await openTrainings(); await openUpload(); await recReset(op, { delay: 1500 });
+  await recReset(op, { delay: 1500 });
   await op.click('[data-testid=tr-rec-open]');
   check(await op.locator('[data-testid=tr-rec-opening]').count() === 1, 'caméra lente : « Ouverture de la caméra… »');
   await closeDlg();
@@ -917,7 +999,7 @@ if (want('R8')) {
   const b2 = await txt(op.locator('[data-testid=tr-rec-timer]'));
   check(a === '0:00' && /^0:0[1-3]$/.test(b2), `le minuteur avance (« ${a} » puis « ${b2} »)`);
   check(await op.locator('[data-testid=tr-rec-timer]').getAttribute('aria-live') === 'off', 'minuteur muet pour les lecteurs d’écran (aria-live="off")');
-  await op.click('[data-testid=tr-rec-abort]');
+  await abandon();
   await recReset(op);
   await op.click('[data-testid=tr-cancel]'); await closeDlg();
 }
@@ -942,7 +1024,12 @@ if (want('R9')) {
       check((await txt(a)) === attendu && (await a.getAttribute('role')) === 'status', `${nom} : alerte, texte exact, avec le conseil « Filmer dans BEMEXO »`);
       await op.fill('[data-testid=tr-title]', 'Test HEVC');
       check(!(await op.locator('[data-testid=tr-save]').isDisabled()), `${nom} : « Ajouter » reste actif`);
-      if (f === FIX.movFin) { await shot(dlg(), 'enregistreur-alerte-hevc'); }
+      if (f === FIX.movFin) {
+        const v = await a.evaluate((el) => ({ bg: getComputedStyle(el).backgroundColor, icon: !!el.querySelector('svg[aria-hidden=true]'),
+          constat: el.querySelector('strong').getBoundingClientRect().top, conseil: el.querySelectorAll('span')[0].getBoundingClientRect().top, garde: el.querySelectorAll('span')[1].getBoundingClientRect().top }));
+        check(v.bg !== 'rgba(0, 0, 0, 0)' && v.icon && v.conseil > v.constat && v.garde > v.conseil, `alerte HEVC : fond d’avertissement, icône, constat puis conseil puis « Vous pouvez quand même… » sur des lignes séparées (${JSON.stringify(v)})`);
+        await shot(dlg(), 'enregistreur-alerte-hevc');
+      }
     } else {
       check(await a.count() === 0, `${nom} : aucune alerte`);
     }
@@ -969,6 +1056,14 @@ if (want('R9')) {
   await op.waitForSelector('[data-testid=tr-hevc-alert]', { timeout: 4000 });
   check((await txt(op.locator('[data-testid=tr-hevc-alert]'))) === `${MSG.hevc} ${MSG.hevcNoRec} ${MSG.hevcKeep}`, 'sans enregistreur : le conseil devient « Réglages > Appareil photo > Formats > Le plus compatible »');
   await op.click('[data-testid=tr-cancel]'); await closeDlg();
+  // Le navigateur sait enregistrer, mais il reste moins de 2 Mo de place : le bouton « Filmer dans BEMEXO » est absent, le conseil ne doit pas y renvoyer.
+  await fresh({ limitsLie: 99 * MO });
+  await openOffice(); await openTrainings(); await openUpload();
+  check(await op.locator('[data-testid=tr-rec-open]').count() === 0, 'faute de place : pas de bouton « Filmer dans BEMEXO »');
+  await op.setInputFiles('[data-testid=tr-file]', FIX.mp4Hevc);
+  await op.waitForSelector('[data-testid=tr-hevc-alert]', { timeout: 4000 });
+  check((await txt(op.locator('[data-testid=tr-hevc-alert]'))) === `${MSG.hevc} ${MSG.hevcNoRec} ${MSG.hevcKeep}`, 'faute de place : le conseil n’envoie pas vers un bouton absent (réglage de l’iPhone)');
+  await op.click('[data-testid=tr-cancel]'); await closeDlg();
 }
 
 // ═══ R10 · fichiers à vérifier ══════════════════════════════════════════════
@@ -983,6 +1078,7 @@ if (want('R10')) {
   const tailles = [3 * MO, 5 * MO, 1.5 * MO, 7 * MO, 2 * MO, 4 * MO, 0.5 * MO];
   const orphans = tailles.map((t, i) => orphan(Math.round(t), `2026-10-${String(5 + i).padStart(2, '0')}T09:00:00Z`));
   OBJ.set(`${CO}/.emptyFolderPlaceholder`, { size: 0, mime: 'application/octet-stream', bytes: null });
+  OBJ.set(`${CO}/sous-dossier/.emptyFolderPlaceholder`, { size: 0, mime: 'application/octet-stream', bytes: null }); // dossier vide créé dans un sous-dossier : jamais signalé
   const autre = orphan(9 * MO, '2026-10-12T09:00:00Z', CO2);
   D.training_videos.push(vid('11111111-1111-4111-8111-111111111111', 'Gestes et postures (fichier manquant)', { file_path: `${CO}/11111111-1111-4111-8111-111111111111`, published_at: '2026-10-08T08:00:00Z' }));
   D.training_videos.push(vid('22222222-2222-4222-8222-222222222222', 'Ancienne consigne', { file_path: `${CO}/22222222-2222-4222-8222-222222222222`, published_at: '2026-10-06T08:00:00Z', archived_at: '2026-10-09T08:00:00Z' }));
@@ -1009,7 +1105,9 @@ if (want('R10')) {
   const tailleDe = (p) => OBJ.get(p).size;
   const mo = (n) => { const x = n / MO; return x > 0 && x < 10 ? `${(Math.round(x * 10) / 10).toString().replace('.', ',')} Mo` : `${Math.round(x)} Mo`; };
   const j = (p) => `${String(new Date(OBJ_AT.get(p)).getDate()).padStart(2, '0')}/10`;
-  check(recents.every((p, i) => lignes[i] === `Fichier sans formation · ${mo(tailleDe(p))} · envoyé le ${j(p)} · réf. ${p.slice(-8)}`), `lignes des fichiers : les plus récents d’abord, avec la taille, la date et la référence (« ${lignes[0]} »)`);
+  check(recents.every((p, i) => lignes[i] === `${j(p)} · ${mo(tailleDe(p))} · réf. ${p.slice(-8)}`), `lignes des fichiers : les plus récents d’abord, la date et la taille d’abord, la référence en fin de ligne (« ${lignes[0]} »)`);
+  check(!lignes.some((l) => /Fichier sans formation|emptyFolder|sous-dossier/.test(l)), 'aucune ligne ne répète « Fichier sans formation » ; les dossiers vides (racine et sous-dossier) ne sont pas signalés');
+  check(await tg.evaluate((e) => e.getBoundingClientRect().height) >= 44, 'le lien « Masquer les fichiers vidéo à vérifier » fait au moins 44 px de haut');
   check(lignes[5] === 'Gestes et postures (fichier manquant) · publiée le 08/10' && lignes[6] === 'Ancienne consigne · publiée le 06/10 · retirée', `lignes des formations, la retirée marquée (« ${lignes[5]} » / « ${lignes[6]} »)`);
   check(t.includes('+ 2 autres'), '« + 2 autres » pour les fichiers au-delà de 5');
   const somme = orphans.reduce((s, p) => s + tailleDe(p), 0);
@@ -1030,6 +1128,35 @@ if (want('R10')) {
   await openTrainings(); await op.waitForTimeout(600);
   check(auditCalls.length === n0 + 1, 'rouvrir la fenêtre : une lecture de plus, pas deux');
   await closeDlg();
+  // Deux chargements qui se croisent : la réponse la plus ancienne, arrivée en dernier, ne remplace pas la plus récente.
+  await fresh();
+  orphan(3 * MO, '2026-10-10T09:00:00Z');
+  auditDelays.length = 0; auditDelays.push(4500); // 1re lecture : 1 fichier, livrée tard
+  await openOffice(); await openTrainings();
+  for (let i = 0; i < 6; i++) orphan((i + 1) * MO, `2026-10-1${i}T09:00:00Z`);
+  await closeDlg(); await openTrainings(); // 2e lecture : 7 fichiers, livrée tout de suite
+  check(await waitFor(async () => /\(7\)$/.test(await txt(op.locator('[data-testid=tr-audit-toggle]'))), 6000), `la lecture récente s’affiche : ${await txt(op.locator('[data-testid=tr-audit-toggle]'))}`);
+  await op.waitForTimeout(4500);
+  check(/\(7\)$/.test(await txt(op.locator('[data-testid=tr-audit-toggle]'))), `la lecture ancienne arrivée en retard est ignorée (« ${await txt(op.locator('[data-testid=tr-audit-toggle]'))} »)`);
+  auditDelays.length = 0;
+  await closeDlg();
+}
+
+// ═══ R12 · messages résiduels : une prise refusée ne laisse pas son message au fichier suivant ═════════
+section('R12 · une prise arrêtée toute seule puis REFUSÉE ne laisse pas « s’est arrêté tout seul » sous un autre fichier');
+if (want('R12')) {
+  await fresh({ maxBytes: SMALL_MAX });
+  await openOffice(); await openTrainings(); await openUpload();
+  await recReset(op, { inflate: 3 * MO }); // chaque morceau reçu est gonflé : la prise dépasse le plafond et sera refusée par le contrôle de taille
+  await startRecording().catch(() => {});
+  await op.waitForSelector('[data-testid=tr-file-error]', { timeout: 20000 });
+  check(await op.locator('[data-testid=tr-file-ready]').count() === 0 && await op.locator('[data-testid=tr-rec-auto]').count() === 0, 'prise refusée : aucun fichier, pas de message d’arrêt sous rien');
+  await recReset(op);
+  await op.setInputFiles('[data-testid=tr-file]', F_FILM);
+  await op.waitForSelector('[data-testid=tr-file-ready]');
+  check(await op.locator('[data-testid=tr-rec-auto]').count() === 0, 'le fichier choisi ensuite n’affiche pas « L’enregistrement s’est arrêté tout seul… »');
+  await op.click('[data-testid=tr-file-change]');
+  await op.click('[data-testid=tr-cancel]'); await closeDlg();
 }
 
 // ═══ R11 · captures à 390 px ════════════════════════════════════════════════
@@ -1047,6 +1174,8 @@ if (want('R11')) {
   await openUpload(mp);
   check(await fits(mp), '390 px · panneau avec les trois boutons : pas de défilement horizontal');
   check(await mp.locator('[data-testid=tr-rec-open]').isVisible() && await mp.locator('[data-testid=tr-film]').count() === 1 && await mp.locator('[data-testid=tr-file]').count() === 1, '390 px · les trois boutons sont là');
+  const hs = { rec: await heightOf(mp.locator('[data-testid=tr-rec-open]')), film: await heightOf(mp.locator('[data-testid=tr-film]')), file: await heightOf(mp.locator('[data-testid=tr-file]')) };
+  check(Object.values(hs).every((h) => h >= 44), `390 px · « Filmer dans BEMEXO », « Filmer », « Choisir un fichier » : au moins 44 px de haut (${Object.entries(hs).map(([k, h]) => `${k} ${Math.round(h)}`).join(', ')})`);
   await shot(mp, 'enregistreur-390-panneau');
   await mp.click('[data-testid=tr-rec-open]'); await mp.waitForSelector('[data-testid=tr-rec-start]'); await mp.waitForTimeout(700);
   check(await fits(mp), '390 px · caméra prête : pas de défilement horizontal');
@@ -1060,7 +1189,7 @@ if (want('R11')) {
   const sh = await mp.locator('[data-testid=tr-rec-stop]').evaluate((e) => e.getBoundingClientRect().height);
   check(sh >= 44, `bouton « Arrêter » : ${Math.round(sh)} px de haut (≥ 44)`);
   await shot(mp, 'enregistreur-390-en-cours');
-  await mp.click('[data-testid=tr-rec-abort]'); await mp.waitForSelector('[data-testid=tr-rec-open]');
+  await abandon(mp); await mp.waitForSelector('[data-testid=tr-rec-open]');
   await recReset(mp, { fail: 'NotAllowedError' });
   await mp.click('[data-testid=tr-rec-open]'); await mp.waitForSelector('[data-testid=tr-rec-error]');
   check(await fits(mp), '390 px · refus d’autorisation : pas de défilement horizontal');
@@ -1068,6 +1197,8 @@ if (want('R11')) {
   await recReset(mp);
   await mp.setInputFiles('[data-testid=tr-file]', FIX.movFin); await mp.waitForSelector('[data-testid=tr-hevc-alert]', { timeout: 4000 });
   check(await fits(mp), '390 px · alerte HEVC : pas de défilement horizontal');
+  const hc = await heightOf(mp.locator('[data-testid=tr-file-change]'));
+  check(hc >= 44, `390 px · « Changer de vidéo » : ${Math.round(hc)} px de haut (≥ 44)`);
   await mp.locator('[data-testid=tr-hevc-alert]').scrollIntoViewIfNeeded(); await mp.waitForTimeout(200);
   await shot(mp, 'enregistreur-390-alerte-hevc');
   await mp.click('[data-testid=tr-cancel]');
@@ -1075,6 +1206,8 @@ if (want('R11')) {
   await mp.click('[data-testid=tr-audit-toggle]'); await mp.waitForSelector('[data-testid=tr-audit]');
   await mp.locator('[data-testid=tr-audit]').scrollIntoViewIfNeeded(); await mp.waitForTimeout(250);
   check(await fits(mp), '390 px · fichiers à vérifier dépliés : pas de défilement horizontal');
+  const ha = await heightOf(mp.locator('[data-testid=tr-audit-toggle]'));
+  check(ha >= 44, `390 px · le lien des fichiers à vérifier : ${Math.round(ha)} px de haut (≥ 44)`);
   await shot(mp, 'enregistreur-390-fichiers-a-verifier');
   // Le compte à rebours et l'arrêt automatique : une petite place (2,2 Mo) pour que ça arrive dans la minute.
   MAXB = SMALL_MAX;
