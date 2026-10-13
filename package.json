@@ -98,6 +98,9 @@
     "test:versions": "npx -y deno@2 test supabase/functions/_shared/planning-versions.test.ts",
     "test:versions-db": "node supabase/tests/lot8_versions_planning.mjs",
     "test:versions-ecrans": "node scripts/tests/versions-lot8.mjs out docs/captures-versions",
+    "test:appairage": "npx -y deno@2 test --allow-env supabase/functions/_shared/kiosk-pair.test.ts",
+    "test:appairage-db": "node supabase/tests/lot11_appairage_un_geste.mjs",
+    "test:appairage-ecrans": "node scripts/tests/appairage-un-geste.mjs out docs/captures-appairage-lot11",
     "test:enregistreur": "npx -y deno@2 test --allow-read supabase/functions/_shared/video-recorder.test.ts supabase/functions/_shared/video-sniff.test.ts",
     "test:videos-audit-db": "node supabase/tests/videos_fichiers_audit.mjs",
     "test:enregistreur-ecrans": "node scripts/tests/enregistreur-lot14.mjs out docs/captures-enregistreur 42110"

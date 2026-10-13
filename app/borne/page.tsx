@@ -6,7 +6,10 @@
 //   1. pas encore reliée → un champ pour le code à 6 chiffres affiché par le
 //      bureau (bouton 📟 Borne). Lot 11 : le QR du bureau ouvre /borne?code=…
 //      → code déjà rempli, un toucher sur « Relier ». UNE tablette par
-//      entreprise : en relier une nouvelle déconnecte l'ancienne ;
+//      entreprise : en relier une nouvelle déconnecte l'ancienne. Lot 11 (IA) :
+//      l'écran affiche d'abord un QR + un code de vérification (le patron le
+//      scanne avec son téléphone et touche le même code : app/borne/pair-qr.tsx),
+//      le code à 6 chiffres devient le secours (replié sous le QR) ;
 //   2. reliée → le PLANNING DE LA SEMAINE, en lecture seule (la même grille
 //      que le bureau), sous UNE barre fine (lot 11) : à gauche le logo BEMEXO
 //      et le nom de l'entreprise (même taille) avec un petit point de
@@ -69,6 +72,7 @@ import { callKiosk, type KioskBoard, type KioskPlanningRow, type KioskSettings }
 import KioskWeekGrid from '@/components/kiosk-week-grid';
 import { isPreviewHost } from '@/lib/hosting';
 import { KIOSK_STORE_KEY } from '@/lib/kiosk-device';
+import { NOTICE_FORGOTTEN, NOTICE_FORGOTTEN_QR, usePairQr, type KioskPairReply, type PairView } from './pair-qr';
 
 const STORE_KEY = KIOSK_STORE_KEY;
 const SYNC_EVERY_MS = 5 * 60 * 1000;
@@ -302,9 +306,33 @@ const CSS = `
   .kb-date,.kb-stamp{display:none}
   .kb-top{gap:10px}
 }
-/* Appairage */
-.kp{position:fixed;inset:0;background:#F2EDE3;color:#15120F;font-family:'Archivo',system-ui,sans-serif;display:flex;align-items:center;justify-content:center;padding:24px}
-.kp-card{width:100%;max-width:520px;background:#fff;border:1px solid rgba(21,18,15,.12);border-radius:22px;padding:clamp(24px,5vw,40px);box-shadow:0 30px 60px -30px rgba(21,18,15,.35);text-align:center}
+/* Appairage. Lot 11 (IA) : l'écran défile (clavier à l'écran, hauteur réduite) ;
+   la carte se centre par « margin:auto » : un contenu plus haut que l'écran
+   défile au lieu d'être coupé en haut et en bas. */
+.kp{position:fixed;inset:0;background:#F2EDE3;color:#15120F;font-family:'Archivo',system-ui,sans-serif;display:flex;padding:24px;overflow-y:auto;-webkit-overflow-scrolling:touch}
+/* QR affiché : 56 px libres en haut à droite pour l'icône plein écran (fixe). */
+.kp.kp-qr-on{padding-top:56px}
+.kp-card{width:100%;max-width:520px;margin:auto;background:#fff;border:1px solid rgba(21,18,15,.12);border-radius:22px;padding:clamp(24px,5vw,40px);box-shadow:0 30px 60px -30px rgba(21,18,15,.35);text-align:center}
+.kp-card.kp-wide{max-width:960px}
+.kp-pair{display:flex;flex-direction:column;align-items:center;gap:18px;margin-bottom:18px}
+.kp-pair-qr{width:min(52vmin,440px);aspect-ratio:1/1;flex:none;background:#fff;border-radius:14px;border:1px solid rgba(21,18,15,.14)}
+.kp-pair-qr svg{width:100%;height:100%;display:block}
+.kp-pair-info{min-width:0}
+.kp-vlabel{font-size:13px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#6E6A63;margin:0 0 6px}
+.kp-vcode{display:inline-block;font-family:'JetBrains Mono',monospace;font-size:clamp(34px,7vmin,56px);font-weight:700;letter-spacing:.14em;line-height:1.1;color:#15120F;background:#FBF8F2;border:2px solid rgba(21,18,15,.18);border-radius:16px;padding:10px 18px 10px calc(18px + .14em);user-select:none;-webkit-user-select:none}
+.kp-status{margin:14px 0 0;font-size:15px;font-weight:700;color:#6E6A63;line-height:1.4}
+.kp-inactive{margin:0 0 18px}
+.kp-inactive p{margin:0 0 12px;font-size:16px;font-weight:700;color:#6E6A63}
+.kp-inactive button{border:none;cursor:pointer;background:#FFC21A;color:#15120F;font-family:inherit;font-weight:900;font-size:18px;min-height:48px;padding:12px 22px;border-radius:14px;box-shadow:0 4px 0 #C99300}
+.kp-fallback{border-top:1px solid rgba(21,18,15,.12);padding-top:14px;text-align:center}
+.kp-fallback summary{cursor:pointer;list-style:none;min-height:44px;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;color:#6E6A63;text-decoration:underline;text-underline-offset:3px}
+.kp-fallback summary::-webkit-details-marker{display:none}
+.kp-fallback[open] summary{margin-bottom:10px}
+/* Paysage large : le QR à gauche, le code de vérification à droite. */
+@media (min-aspect-ratio:1/1) and (min-width:760px){
+  .kp-pair{flex-direction:row;gap:clamp(28px,5vw,56px);text-align:left}
+  .kp-pair-info{flex:1}
+}
 .kp-logo{display:inline-flex;background:#15120F;border-radius:14px;padding:13px 22px;margin-bottom:22px}
 .kp-logo img{width:150px;height:auto;display:block}
 .kp-h1{font-size:clamp(24px,4vw,32px);font-weight:900;letter-spacing:-.02em;margin:0 0 8px}
@@ -314,6 +342,7 @@ const CSS = `
 .kp-btn{margin-top:16px;width:100%;border:none;cursor:pointer;background:#FFC21A;color:#15120F;font-family:inherit;font-weight:900;font-size:18px;padding:16px;border-radius:14px;box-shadow:0 4px 0 #C99300}
 .kp-btn:disabled{opacity:.6;cursor:default}
 .kp-err{background:#fce8e6;border:1px solid #f3b4ad;color:#9a2820;font-size:14px;font-weight:700;border-radius:12px;padding:11px 14px;margin:0 0 14px;text-align:left}
+.kp-err-fallback{margin:14px 0 0}
 .kp-note{font-size:13px;color:#9a948a;font-weight:600;margin:16px 0 0;line-height:1.45}
 `;
 
@@ -437,44 +466,161 @@ function persistStorage() {
   try { void navigator.storage?.persist?.().catch(() => {}); } catch { /* non pris en charge */ }
 }
 
-function Pairing({ onPaired, notice, initialCode }: { onPaired: (p: Paired) => void; notice: string | null; initialCode: string }) {
+/**
+ * Lot 11 (IA) : tant qu'on tape un code à 6 chiffres, le QR n'apparaît pas sous
+ * les doigts. Champ encore actif (clavier ouvert) : 2 min de silence ; champ
+ * quitté : 20 s. Un patron qui lit son téléphone ne perd ni le clavier ni sa saisie.
+ */
+const TYPING_QUIET_MS = 20 * 1000;
+const TYPING_FOCUSED_QUIET_MS = 2 * 60 * 1000;
+const WAITING_TEXT = 'En attente de votre confirmation sur le téléphone…';
+const OFFLINE_TEXT = 'La tablette n’a plus de réseau. Reconnectez-la au wifi.';
+const SUSPENDED_TEXT = 'Borne suspendue pour votre entreprise. La liaison reprendra dès qu’elle sera réactivée.';
+
+/** Le QR de l'appairage (bloc blanc, noir sur blanc, jamais inversé). */
+function PairQrImage({ view }: { view: PairView }) {
+  const html = useMemo(() => {
+    const qr = qrcode(0, 'M');
+    qr.addData(view.url);
+    qr.make();
+    return { __html: qr.createSvgTag({ cellSize: 8, margin: 4, scalable: true }) };
+  }, [view.url]);
+  return <div className="kp-pair-qr" data-testid="kb-pair-qr" data-url={view.url} role="img" aria-label="QR pour relier cette tablette" dangerouslySetInnerHTML={html} />;
+}
+
+function Pairing({ onPaired, notice, initialCode, onWaiting }: {
+  onPaired: (p: Paired) => void;
+  notice: string | null;
+  initialCode: string;
+  /** Un QR est à l'écran (la tablette attend le patron) : l'écran reste allumé. */
+  onWaiting: (waiting: boolean) => void;
+}) {
   // Lot 11 : ouverte depuis le QR du bureau (/borne?code=123456), le code est
   // déjà rempli : un seul toucher sur « Relier ».
   const [code, setCode] = useState(initialCode);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(notice);
+  const [typing, setTyping] = useState(false);
+  const [fallbackOpen, setFallbackOpen] = useState(false);
+  const [latched, setLatched] = useState(false);
+  const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const codeInput = useRef<HTMLInputElement>(null);
+  const fallbackErrRef = useRef<HTMLDivElement>(null);
+
+  const toPaired = (d: KioskPairReply): Paired => ({
+    kioskId: d.kiosk_id, token: d.token, seed: d.seed,
+    companyName: d.company_name, kioskName: d.kiosk_name,
+    settings: d.settings, board: null, boardAt: null, syncedAt: Date.now(),
+  });
+
+  // Lot 11 (IA) : le QR n'est demandé que pour l'écran « normal » (pas pour
+  // /borne?code=…, déjà rempli par le bureau).
+  const qr = usePairQr(initialCode === '', (d) => onPaired(toPaired(d)));
+  // Une saisie en cours (moins de 20 s) retarde l'apparition du QR ; une fois
+  // affiché il reste, même si on tape dans le secours.
+  useEffect(() => {
+    if (!qr.view) setLatched(false);
+    else if (!typing) setLatched(true);
+  }, [qr.view, typing]);
+  const showQr = !!qr.view && (latched || !typing);
+  const waiting = !!qr.view;
+  useEffect(() => {
+    onWaiting(waiting);
+    return () => onWaiting(false);
+  }, [waiting, onWaiting]);
+  // Le clavier de l'iPad cacherait la moitié du QR : le champ perd le focus.
+  useEffect(() => { if (showQr) codeInput.current?.blur(); }, [showQr]);
+  useEffect(() => () => { if (typingTimer.current) clearTimeout(typingTimer.current); }, []);
+
+  /** (Re)lance le silence au bout duquel la saisie n'est plus « en cours ». */
+  const armTyping = (quietMs: number) => {
+    if (typingTimer.current) clearTimeout(typingTimer.current);
+    setTyping(true);
+    typingTimer.current = setTimeout(() => setTyping(false), quietMs);
+  };
+  const onCode = (raw: string) => {
+    const v = raw.replace(/\D/g, '').slice(0, 6);
+    setCode(v);
+    if (!v) {
+      if (typingTimer.current) clearTimeout(typingTimer.current);
+      setTyping(false);
+      return;
+    }
+    setFallbackOpen(true);
+    armTyping(TYPING_FOCUSED_QUIET_MS);
+  };
+  // Le champ est quitté avec des chiffres : on laisse 20 s, pas plus, avant de montrer le QR.
+  const onCodeBlur = () => { if (code && typing) armTyping(TYPING_QUIET_MS); };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (code.length !== 6) { setErr('Le code fait 6 chiffres.'); return; }
     setBusy(true); setErr(null);
     // Lot 11 : plus de position (plus de contrôle « sur place »).
-    const { data, error } = await callKiosk<{
-      kiosk_id: string; token: string; seed: string; kiosk_name: string; company_name: string; settings: KioskSettings;
-    }>({ action: 'pair', code });
+    const { data, error } = await callKiosk<KioskPairReply>({ action: 'pair', code });
     setBusy(false);
     if (!data) { setErr(error || 'Liaison impossible.'); return; }
-    onPaired({
-      kioskId: data.kiosk_id, token: data.token, seed: data.seed,
-      companyName: data.company_name, kioskName: data.kiosk_name,
-      settings: data.settings, board: null, boardAt: null, syncedAt: Date.now(),
-    });
+    onPaired(toPaired(data));
   };
 
+  // Le bandeau « déconnectée par le bureau » ne parle pas de taper un code quand le QR est là.
+  const banner = showQr && err === NOTICE_FORGOTTEN ? NOTICE_FORGOTTEN_QR : err;
+  // Avec le QR, le secours est tout en bas : l'erreur d'un code refusé s'y affiche, sous « Relier »
+  // (en haut de la carte elle serait hors de l'écran). Le bandeau du haut ne garde que « déconnectée ».
+  const topBanner = showQr && err !== NOTICE_FORGOTTEN ? null : banner;
+  const fallbackErr = showQr && err !== NOTICE_FORGOTTEN ? err : null;
+  // Le clavier ou le bas de l'écran peut cacher le dessous du bouton : l'erreur est ramenée dans l'écran.
+  useEffect(() => { if (fallbackErr) fallbackErrRef.current?.scrollIntoView?.({ block: 'nearest' }); }, [fallbackErr]);
+  const fields = (
+    <>
+      <input
+        ref={codeInput} className="kp-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} autoFocus={!initialCode}
+        aria-label="Code à 6 chiffres" placeholder="000000"
+        value={code} onChange={(e) => onCode(e.target.value)} onBlur={onCodeBlur}
+      />
+      <button className="kp-btn" type="submit" autoFocus={!!initialCode} disabled={busy || code.length !== 6}>{busy ? 'Liaison…' : 'Relier'}</button>
+      {fallbackErr && <div ref={fallbackErrRef} className="kp-err kp-err-fallback" role="alert">{fallbackErr}</div>}
+      <p className="kp-note">Une seule tablette par entreprise : en relier une nouvelle déconnecte l&apos;ancienne.</p>
+    </>
+  );
+
   return (
-    <div className="kp">
-      <form className="kp-card" onSubmit={submit} data-testid="kb-pairing">
+    <div className={`kp${showQr ? ' kp-qr-on' : ''}`}>
+      <form className={`kp-card${showQr ? ' kp-wide' : ''}`} onSubmit={submit} data-testid="kb-pairing">
         <div className="kp-logo"><img src="/bemexo-wordmark-light.svg" alt="BEMEXO" /></div>
-        <h1 className="kp-h1">Relier cette tablette</h1>
-        <p className="kp-p">Tapez le code à 6 chiffres affiché dans BEMEXO (bouton 📟 Borne).</p>
-        {err && <div className="kp-err" role="alert">{err}</div>}
-        <input
-          className="kp-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} autoFocus={!initialCode}
-          aria-label="Code à 6 chiffres" placeholder="000000"
-          value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-        />
-        <button className="kp-btn" type="submit" autoFocus={!!initialCode} disabled={busy || code.length !== 6}>{busy ? 'Liaison…' : 'Relier'}</button>
-        <p className="kp-note">Une seule tablette par entreprise : en relier une nouvelle déconnecte l&apos;ancienne.</p>
+        {showQr && qr.view ? (
+          <>
+            {topBanner && <div className="kp-err" role="alert">{topBanner}</div>}
+            <div className="kp-pair">
+              <PairQrImage view={qr.view} />
+              <div className="kp-pair-info">
+                <h1 className="kp-h1">Relier cette tablette</h1>
+                <p className="kp-p">Scannez ce QR avec votre téléphone, connectez-vous à BEMEXO si besoin, puis touchez le même code de vérification que celui-ci.</p>
+                <p className="kp-vlabel">Code de vérification</p>
+                <div className="kp-vcode" data-testid="kb-pair-code" aria-live="polite">{qr.view.code}</div>
+                <p className="kp-status" role="status" data-testid="kb-pair-status">{qr.offline ? OFFLINE_TEXT : qr.suspended ? SUSPENDED_TEXT : WAITING_TEXT}</p>
+              </div>
+            </div>
+            <details className="kp-fallback" data-testid="kb-code-fallback" open={fallbackOpen} onToggle={(e) => setFallbackOpen(e.currentTarget.open)}>
+              <summary>Pas de téléphone sous la main ? Taper un code à 6 chiffres</summary>
+              <p className="kp-p">Tapez le code à 6 chiffres affiché dans BEMEXO (bouton 📟 Borne).</p>
+              {fields}
+            </details>
+          </>
+        ) : (
+          <>
+            <h1 className="kp-h1">Relier cette tablette</h1>
+            <p className="kp-p">Tapez le code à 6 chiffres affiché dans BEMEXO (bouton 📟 Borne).</p>
+            {qr.inactive && (
+              <div className="kp-inactive">
+                <p>Ce QR n’est plus actif.</p>
+                <button type="button" data-testid="kb-pair-restart" onClick={qr.restart}>Afficher un nouveau QR</button>
+              </div>
+            )}
+            {banner && <div className="kp-err" role="alert">{banner}</div>}
+            {fields}
+          </>
+        )}
       </form>
     </div>
   );
@@ -829,7 +975,9 @@ export default function BornePage() {
   // forcé allumé : la tablette peut se mettre en veille, la boucle d'une minute
   // suffit pour repartir.
   const suspended = suspendedAt !== null;
-  const wake = useWakeLock(!!paired && !suspended);
+  // Lot 11 (IA) : le QR d'appairage est à l'écran → l'écran reste allumé, il doit rester visible.
+  const [qrWaiting, setQrWaiting] = useState(false);
+  const wake = useWakeLock((!!paired && !suspended) || (!paired && qrWaiting));
   useFullscreenOnFirstTouch(!!paired);
 
   // Déconnectée par le bureau ou remplacée par une autre tablette (410), ou
@@ -839,7 +987,7 @@ export default function BornePage() {
   const forget = useCallback(() => {
     suspend(false);
     commit(null);
-    setNotice('Tablette déconnectée par le bureau (ou remplacée par une autre). Tapez un nouveau code pour la relier.');
+    setNotice(NOTICE_FORGOTTEN);
   }, [commit, suspend]);
 
   // Lot 11 : « Oui, déconnecter » sur la tablette. On prévient le serveur
@@ -974,6 +1122,7 @@ export default function BornePage() {
           initialCode={urlCode}
           onPaired={(p) => { commit(p); suspend(false); setNotice(null); setBoardErr(false); setUrlCode(''); persistStorage(); }}
           notice={notice}
+          onWaiting={setQrWaiting}
         />
       )}
       <FullscreenToggle />
