@@ -45,8 +45,6 @@ import { exportEntriesToExcel, exportEntriesToPDF, exportEntriesToCSV, excelAsBa
 import { readMealEnabled } from '@/lib/meal-setting';
 import { fetchAllPaged, chunk } from '@/lib/fetch-all';
 import { isPreviewHost } from '@/lib/hosting';
-import WorkerDetailDialog from '@/components/worker-detail';
-import ChantierDocuments from '@/components/chantier-documents';
 import { TimeField, TIME_HINT } from '@/components/time-field';
 import { TIME_PRESETS } from '@/lib/time-input';
 import { InfoTip } from '@/components/ui/info-tip';
@@ -54,26 +52,14 @@ import { ExportMenu, ExportPreload } from '@/components/export-menu';
 import { ActionDone, type UndoResult } from '@/components/action-done';
 import { erasePlanning, isDisposableDraft, prepareMove, undoErase, undoMovePrep, type EraseResult, type MovePrep } from '@/lib/erase';
 import { fetchCompanyClosures, closedFor } from '@/lib/worker-closure';
-import CompanySettings from '@/components/company-settings';
-import AssistantPanel from '@/components/assistant-panel';
 import GuideTour, { type GuideStep } from '@/components/guide-tour';
 import { adminStepsFor, findAdminTour, type AdminScreen } from '@/supabase/functions/_shared/admin-tours';
 import { tourIdOf } from '@/supabase/functions/_shared/worker-tours';
 import PendingInvitations from '@/components/pending-invitations';
 import { attributeEntries, closeMonth as closeMonthWrite, logHoursReminder, sendHoursReminder, setUserRole, setWorksiteActive, updatePlanningSlot, updateWorksite } from '@/lib/admin-writes';
 import { addPlanningSlot, createWorksite, inviteWorker, setAbsence } from '@/lib/planning-writes';
-import { supabaseAssistantSource } from '@/lib/assistant';
-import AssistantActionCard from '@/components/assistant-action-card';
-import { makeActionExecutor, makeRemovalPreview, type ActionExtra } from '@/lib/assistant-actions';
 import { useAiEnabled } from '@/lib/real-cost';
 import AdminMobileMenu from '@/components/admin-mobile-menu';
-import ImportDialog from '@/components/import-dialog';
-import CostReport from '@/components/cost-report';
-// Lot 5 : statistiques de l'équipe (lecture seule).
-import TeamStats from '@/components/team-stats';
-import ReservesReport from '@/components/reserves-report';
-import ImportWorkersDialog from '@/components/import-workers-dialog';
-import LeaveAdminDialog from '@/components/leave-admin-dialog';
 import { CHANTIER_PALETTES, hashStr, LiveLine, PL_GRID_CSS, PlannedBubbleView, type ChantierPalette } from '@/components/planning-bubble';
 import { PlanningPrintSheet, PrintMenu, PRINT_MENU_CSS, printTitle, type PrintJob, type PrintOptions } from '@/components/planning-print';
 import { absenceCode, periodDays, periodRange, withinPeriod, worksiteCodes, type PrintPeriod } from '@/supabase/functions/_shared/print-period';
@@ -89,10 +75,9 @@ import {
 import { DAY_PARTS, dayPartTint } from '@/supabase/functions/_shared/day-part';
 import { cellKey, parisDay, placeLive, type LivePlace, type LiveSessionLike } from '@/supabase/functions/_shared/live-place';
 import { copyRefusal, targetRefusal } from '@/supabase/functions/_shared/copy-slot';
-import KioskAdmin from '@/components/kiosk-admin';
 import { keep } from '@/lib/same';
+import { lazyWindow, warmAll } from '@/lib/lazy-window';
 // Formations (lot 6, oct. 2026) : depuis « Salariés » et le menu du téléphone, seulement si la migration est passée.
-import TrainingsAdmin from '@/components/trainings-admin';
 import { trainingsAvailable } from '@/lib/trainings';
 // Lot 3 : « Interventions supprimées ou décalées » (lecture seule).
 import { tracesAvailable } from '@/lib/traces';
@@ -104,6 +89,24 @@ const TracesDialog = dynamic(() => import('@/components/traces-dialog'), { ssr: 
 // Lot 8 : « Versions du planning » (bureau), chargée à l'ouverture seulement.
 import { versionsAvailable } from '@/lib/planning-versions';
 const PlanningVersionsDialog = dynamic(() => import('@/components/planning-versions-dialog'), { ssr: false });
+
+// Lot 5 « site rapide 1 » : les fenêtres fermées ne pèsent plus dans le premier chargement. Chacune est
+// chargée au repos (file de préchauffage, voir lib/lazy-window.tsx), au démarrage d'un guide, ou à son
+// ouverture. Le JSX plus bas n'a pas changé. PlanningPrintSheet et PrintMenu restent statiques (Ctrl+P).
+const ReservesReport = lazyWindow(() => import('@/components/reserves-report'), { isOpen: (p) => p.open, priority: 1 });
+const CompanySettings = lazyWindow(() => import('@/components/company-settings'), { isOpen: (p) => p.open, priority: 3 });
+const CostReport = lazyWindow(() => import('@/components/cost-report'), { isOpen: (p) => p.open, priority: 4 });
+const LeaveAdminDialog = lazyWindow(() => import('@/components/leave-admin-dialog'), { isOpen: (p) => p.open, priority: 5 });
+const TeamStats = lazyWindow(() => import('@/components/team-stats'), { isOpen: (p) => p.open, priority: 6 });
+const WorkerDetailDialog = lazyWindow(() => import('@/components/worker-detail'), { isOpen: (p) => p.worker != null, close: (p) => p.onOpenChange(false), priority: 7 });
+const ChantierDocuments = lazyWindow(() => import('@/components/chantier-documents'), { isOpen: (p) => p.open, priority: 8 });
+const ImportDialog = lazyWindow(() => import('@/components/import-dialog'), { isOpen: (p) => p.open, priority: 9 });
+const ImportWorkersDialog = lazyWindow(() => import('@/components/import-workers-dialog'), { isOpen: (p) => p.open, priority: 10 });
+// Déjà conditionnées par kioskOn / trainingsOn : préchauffées seulement quand elles existent à l'écran.
+const KioskAdmin = lazyWindow(() => import('@/components/kiosk-admin'), { isOpen: (p) => p.open, priority: 11, warm: 'mounted' });
+const TrainingsAdmin = lazyWindow(() => import('@/components/trainings-admin'), { isOpen: (p) => p.open, priority: 12, warm: 'mounted' });
+// L'assistant garde la mémoire de sa conversation : monté dès que son code est là, même fermé (comme avant).
+const AssistantBureau = lazyWindow(() => import('@/components/assistant-bureau'), { isOpen: (p) => p.open, priority: 2, warm: 'mounted', mount: 'warm' });
 
 // ─── helpers / constants ──────────────────────────────────────────────────────
 
@@ -2946,6 +2949,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   // Sous 1024 px (téléphone ET tablette) la mise en page est celle du menu ☰ (CSS : max-width 1023 px).
   const narrow = () => window.matchMedia('(max-width: 1023px)').matches;
   const tourStep = (s: GuideStep) => {
+    warmAll(); // le guide ne cherche sa cible que 1,5 s : les fenêtres différées doivent déjà être là
     // Une étape sans écran ne ferme et n'ouvre RIEN : le patron vient peut-être d'ouvrir la fenêtre lui-même.
     if (!s.ecran) return;
     const small = narrow();
@@ -4021,13 +4025,10 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       <TeamStats open={statsOpen} onOpenChange={setStatsOpen} companyId={user?.company_id} />
 
       {aiOn && user?.role === 'admin' && (
-        <AssistantPanel
-          source={supabaseAssistantSource}
-          memoryKey={`bureau:${user.id}`}
-          attachments
+        <AssistantBureau
+          user={user}
           open={assistantOpen}
           onOpenChange={setAssistantOpen}
-          launcher={false}
           onNavigate={(action) => {
             // Lot 7 : « Me guider pas à pas » — l'assistant se replie, le guide entoure le vrai bouton.
             // Fiche inconnue (y compris « guide: » seul) : rien.
@@ -4056,22 +4057,14 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
               if (w) { setFicheMode('hours'); setFicheWorker(w); }
             }
           }}
-          renderExtra={(extra, ctl) => (
-            <AssistantActionCard
-              extra={extra as ActionExtra}
-              ctl={ctl}
-              execute={makeActionExecutor({ id: user.id, company_id: user.company_id })}
-              preview={makeRemovalPreview({ company_id: user.company_id })}
-              onDone={() => { fetchData(); fetchExtras(); }}
-              onOpenVersions={(monday) => {
-                // Lot 8 : « Versions de la semaine » — la semaine de l'action, puis la liste.
-                changeWeek(weekStartOf(new Date(`${monday}T12:00:00`)));
-                setVersionsOn(true);
-                setVersionsOpen(true);
-                if (window.matchMedia('(max-width: 640px)').matches) setAssistantOpen(false);
-              }}
-            />
-          )}
+          onDone={() => { fetchData(); fetchExtras(); }}
+          onOpenVersions={(monday) => {
+            // Lot 8 : « Versions de la semaine » — la semaine de l'action, puis la liste.
+            changeWeek(weekStartOf(new Date(`${monday}T12:00:00`)));
+            setVersionsOn(true);
+            setVersionsOpen(true);
+            if (window.matchMedia('(max-width: 640px)').matches) setAssistantOpen(false);
+          }}
         />
       )}
 
