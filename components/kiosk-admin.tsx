@@ -26,6 +26,13 @@
 // (icône d'écran d'accueil, verrouillage automatique sur « Jamais »…).
 // Plus de liste, plus de « Ajouter une borne », plus de lieu ni de nom, plus de GPS.
 //
+// Lot 30 — l'ÉTAT DE L'ÉCRAN de la tablette, en clair sous « Tablette reliée » :
+// « L'écran de la tablette peut s'éteindre : réglez Verrouillage auto sur
+// Jamais », « Ouvrez la borne depuis l'icône installée », « Tablette hors ligne
+// depuis … » (components/kiosk-health.tsx). Seulement si la tablette a envoyé son
+// état (migration + fonction `kiosk` + page à jour) ; sinon rien, comme avant.
+// La lecture tente les colonnes neuves, puis retombe sur celles d'avant (42703).
+//
 // Lot 12 — « QR fixe à imprimer » (option, désactivée par défaut) : une section
 // repliée sous les horaires (components/kiosk-fixed-qr.tsx, chargée seulement
 // quand la fenêtre s'ouvre). Le QR fixe est une ligne « fixe » de `kiosks` :
@@ -49,13 +56,25 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { InfoTip } from '@/components/ui/info-tip';
 import { TimeField } from '@/components/time-field';
 import { callKiosk, type KioskPairingCode, type KioskSettings } from '@/lib/kiosk-client';
+import { kioskNotices } from '../supabase/functions/_shared/kiosk-client-state';
+import { KioskNotices } from '@/components/kiosk-health';
 
 // Lot 12 : la section du QR fixe, chargée seulement à l'ouverture de la fenêtre.
 const KioskFixedQr = dynamic(() => import('@/components/kiosk-fixed-qr'), { ssr: false });
 
 interface Props { open: boolean; onOpenChange: (o: boolean) => void; companyId: string }
 
-interface KioskRow { id: string; created_at: string; last_seen_at: string | null; kind?: string | null }
+interface KioskRow {
+  id: string; created_at: string; last_seen_at: string | null; kind?: string | null;
+  /** Lot 30 : l'état de l'écran de la tablette (absent tant que la migration n'est pas passée). */
+  client_state?: unknown; client_state_at?: string | null;
+}
+/** Lot 30 : colonnes lues, de la plus complète à la lecture d'avant (colonne absente = 42703, on descend d'un cran). */
+const KIOSK_COLUMNS = [
+  'id, created_at, last_seen_at, kind, client_state, client_state_at',
+  'id, created_at, last_seen_at, kind',
+  'id, created_at, last_seen_at',
+];
 interface Pairing extends KioskPairingCode { receivedAt: number }
 
 /** Durée de vie d'un code côté serveur (fonction kiosk : PAIRING_TTL_MS). */
@@ -193,6 +212,11 @@ export default function KioskAdmin({ open, onOpenChange, companyId }: Props) {
   const wantCodeRef = useRef(false);
   /** Lot 9 : relu puis renvoyé tel quel (une ancienne fonction écrirait sinon « faux »). */
   const showPlanning = useRef<boolean | undefined>(undefined);
+  /** Lot 30 : colonnes qui répondent (0 = tout, 2 = lecture d'avant) ; remis à zéro à chaque ouverture. */
+  const columnsLevel = useRef(0);
+  /** Lot 30 : l'aide « Installer la tablette » (ouverte aussi par « Voir comment »). */
+  const [helpOpen, setHelpOpen] = useState(false);
+  const helpRef = useRef<HTMLDetailsElement>(null);
 
   // Mode support : lecture seule, aucun code (le serveur refuse aussi).
   const support = useMemo(() => open && !!readSupportSession(), [open]);
@@ -206,10 +230,17 @@ export default function KioskAdmin({ open, onOpenChange, companyId }: Props) {
       .select(cols)
       .eq('company_id', companyId).is('revoked_at', null).order('created_at', { ascending: true });
     // Lot 12 : avec le type, pour écarter le QR fixe (ce n'est pas une tablette).
-    // Colonne absente (42703 : migration pas passée, donc aucun QR fixe) : la
-    // lecture d'avant. Toute autre erreur : comme avant (rien).
-    let { data, error } = await read('id, created_at, last_seen_at, kind');
-    if (error?.code === '42703') ({ data, error } = await read('id, created_at, last_seen_at'));
+    // Lot 30 : et l'état de l'écran. Colonne absente (42703 : migration pas passée)
+    // ou pas ouverte (42501) : on descend d'un cran, jusqu'à la lecture d'avant, et
+    // on s'en souvient (pas deux requêtes à chaque relecture de 5 s). Toute autre
+    // erreur : comme avant (rien).
+    let level = columnsLevel.current;
+    let { data, error } = await read(KIOSK_COLUMNS[level]);
+    while ((error?.code === '42703' || (level === 0 && error?.code === '42501')) && level < KIOSK_COLUMNS.length - 1) {
+      level += 1;
+      columnsLevel.current = level;
+      ({ data, error } = await read(KIOSK_COLUMNS[level]));
+    }
     if (error) return null;
     return ((data || []) as unknown as KioskRow[]).filter((r) => r.kind !== 'fixe');
   }, [companyId]);
@@ -286,6 +317,8 @@ export default function KioskAdmin({ open, onOpenChange, companyId }: Props) {
     openRef.current = true;
     knownIds.current = null;
     renewPending.current = false;
+    columnsLevel.current = 0;
+    setHelpOpen(false);
     setKiosks(null); setPairing(null); setCodeErr(null); setHours(null); setHoursState('idle');
     setConfirmDisc(false); setDiscBusy(false); setMinute(Math.floor(Date.now() / 60000));
     setReadState('loading'); setReveal(false);
@@ -431,6 +464,13 @@ export default function KioskAdmin({ open, onOpenChange, companyId }: Props) {
   const seenAgo = latest ? Date.now() - new Date(latest.last_seen_at || latest.created_at).getTime() : 0;
   const late = !!latest && seenAgo > LATE_MS;
   const alwaysOn = !!hours && !hours.from && !hours.until;
+  // Lot 30 : ce que la tablette dit de son écran (rien tant qu'elle n'a rien envoyé).
+  const notices = latest ? kioskNotices(latest, Date.now()) : [];
+  const showHelp = () => {
+    setHelpOpen(true);
+    // Une fois l'aide ouverte, on la ramène à l'écran (la fenêtre défile sur un petit téléphone).
+    setTimeout(() => helpRef.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' }), 50);
+  };
 
   // Fermer (Échap, ✕, clic à côté) quitte d'abord le champ d'heure en cours :
   // l'heure tapée est enregistrée, pas perdue.
@@ -464,6 +504,8 @@ export default function KioskAdmin({ open, onOpenChange, companyId }: Props) {
               </span>
             )}
           </div>
+
+          {notices.length > 0 && <KioskNotices notices={notices} onHelp={showHelp} />}
 
           {support ? (
             <p className="ka-intro" data-testid="ka-support-note">Mode support : lecture seule, impossible de relier une tablette.</p>
@@ -557,7 +599,7 @@ export default function KioskAdmin({ open, onOpenChange, companyId }: Props) {
           </div>
 
           {/* Lot 2 (IA) : aide d'installation, repliée par défaut. */}
-          <details className="ka-help" data-testid="ka-install">
+          <details ref={helpRef} className="ka-help" data-testid="ka-install" open={helpOpen} onToggle={(e) => setHelpOpen(e.currentTarget.open)}>
             <summary>Installer la tablette <small>(aide)</small></summary>
             <ol>
               <li>Sur la tablette, ouvrez <b>{borneLabel}</b>, puis <b>Ajouter à l’écran d’accueil</b> <span className="ka-muted">(iPad : bouton Partager ; Android : menu ⋮ → Installer l’application)</span>.</li>
