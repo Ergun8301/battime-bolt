@@ -32,28 +32,28 @@ Le site pèse moins au premier chargement : `/admin` passe de **766 à 351 kB** 
 
 Mesures de cette machine (`next build`, Next 14.2.33), un build après chaque étape.
 
-| Route | Audit d'origine | Avant le lot | Après V1 (Excel/PDF) | **Après V1 + V2 (final)** | Budget | Objectif du plan |
-|---|---|---|---|---|---|---|
-| `/admin` | 722 | 766 | 489 | **351** | 361 | 350 |
-| `/poseur` | 487 | 544 | 410 | **329** | 339 | 300 |
-| `/borne` | 161 | 163 | 163 | 164 | 169 | 170 |
-| `/pointer` | 142 | 146 | 146 | 146 | 151 | 170 |
-| `/connexion` | 149 | 150 | 150 | 150 | 155 | 150 |
-| `/inscription` | 146 | 146 | 146 | 147 | 152 | 150 |
-| `/support` | n/m | 148 | 148 | 149 | 155 | 150 |
-| `/` | 133 | 134 | 134 | 134 | 139 | 150 |
-| `/landing` | 90 | 90.8 | 90.9 | 91.5 | 97 | 150 |
-| `/cgu` (pages légales) | n/m | 96.8 | 96.9 | 97.4 | 103 | 150 |
-| `/apercu/*` (démos internes) | n/m | 178 à 274 | 178 à 274 | 179 à 277 | 287 | n/a |
-| Partagé par toutes les pages | 87.7 | 87.8 | 88.0 | 88.5 | 96 | n/a |
+| Route | Audit d'origine | Avant le lot (`d3cda09`) | Base actuelle (`d8bc044`, lots 11 et 14 compris) | Après V1 (Excel/PDF) | **Final (V1 + V2, base fusionnée)** | Budget | Objectif du plan |
+|---|---|---|---|---|---|---|---|
+| `/admin` | 722 | 766 | 769 | 489 | **351** | 361 | 350 |
+| `/poseur` | 487 | 544 | 545 | 410 | **329** | 339 | 300 |
+| `/borne` | 161 | 163 | 167 | 163 | 167 | 170 | 170 |
+| `/pointer` | 142 | 146 | 146 | 146 | 146 | 151 | 170 |
+| `/connexion` | 149 | 150 | 150 | 150 | 150 | 155 | 150 |
+| `/inscription` | 146 | 146 | 146 | 146 | 147 | 152 | 150 |
+| `/support` | n/m | 148 | 148 | 148 | 149 | 155 | 150 |
+| `/` | 133 | 134 | 134 | 134 | 134 | 139 | 150 |
+| `/landing` | 90 | 90.8 | 91 | 90.9 | 91.6 | 97 | 150 |
+| `/cgu` (pages légales) | n/m | 96.8 | 97 | 96.9 | 97.5 | 103 | 150 |
+| `/apercu/*` (démos internes) | n/m | 178 à 274 | 178 à 274 | 178 à 274 | 179 à 277 | 287 | n/a |
+| Partagé par toutes les pages | 87.7 | 87.8 | 88.0 | 88.0 | 88.6 | 96 | n/a |
 
 n/m = non mesuré à l'audit. Journaux : `build-avant.log`, `build-v1.log`, `build-final.log` (notes jetables).
 
-La colonne « final » est mesurée après la fusion de `integration/bemexo-ia` (lot 14, enregistreur vidéo) et des corrections de relecture (états d'attente des onglets, nouvelle tentative) : `/admin` 350 → 351 et `/poseur` 328 → 329 par rapport au build d'avant la fusion, les autres routes ne bougent pas. La base `integration/bemexo-ia` seule, mesurée de la même façon, donne les mêmes chiffres « avant » à 0,1 kB près (766 / 544, partagé 87.9).
+La colonne « final » est mesurée après la fusion de `integration/bemexo-ia` (lots 11 et 14 : appairage en un geste, enregistreur vidéo) et des corrections de relecture (états d'attente des onglets, nouvelle tentative). La colonne « base actuelle » est un `next build` de `integration/bemexo-ia` seule, sans ce lot : c'est la comparaison à lire pour savoir ce que le lot 5 change maintenant (`/admin` 769 → 351, `/poseur` 545 → 329, `/borne` inchangée). `/borne` est à 167 kB depuis le lot 11 (`app/borne/pair-qr.tsx`, +4 kB sur 163) ; ce lot n'y touche pas : son budget est plafonné à 170 kB, soit 3 kB de marge seulement.
 
 - **Sorties du premier chargement de `/admin`** : `xlsx` ≈ 139 kB, `jsPDF` et ses aides ≈ 105 kB, `jspdf-autotable` (une partie de 10 kB), le code des fenêtres et de l'assistant.
 - Le JavaScript partagé grossit de 0,7 kB (redécoupage de webpack) : toutes les pages le portent, d'où +0,5 à +0,7 kB sur les routes qui n'ont pas bougé.
-- **Cibles du plan** : `/admin` ≤ 350 kB est manquée de 1 kB (351 après la fusion du lot 14 ; objectif affiché, non bloquant : le budget est à 361). `/poseur` ≤ 300 kB ne l'est pas (329) : `components/poseur-day.tsx` (lot 29) importe encore `ChantierDocuments` en statique, et `lib/assistant-actions` reste lié à l'assistant. Gain restant à prendre dans un lot suivant. `/connexion` et `/support` sont au bord de la cible « pages publiques ≤ 150 » : budget 155.
+- **Cibles du plan** : `/admin` ≤ 350 kB est manquée de 1 kB (351 sur la base fusionnée ; objectif affiché, non bloquant : le budget est à 361). `/poseur` ≤ 300 kB ne l'est pas (329) : `components/poseur-day.tsx` (lot 29) importe encore `ChantierDocuments` en statique, et `lib/assistant-actions` reste lié à l'assistant. Gain restant à prendre dans un lot suivant. `/connexion` et `/support` sont au bord de la cible « pages publiques ≤ 150 » : budget 155.
 - `/apercu/cout-salarie` importe `SET_CSS` de `company-settings` : cette page de démonstration reste lourde (212 kB).
 - `node_modules` de la machine de développement a `xlsx` 0.18.5 alors que le lock demande 0.20.3 ; `xlsx` quittant le premier chargement, l'écart est négligeable, mais les budgets sont à re-contrôler sur la CI / la préview.
 
