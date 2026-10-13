@@ -6,12 +6,14 @@
 //  a) la réponse de l'assistant porte « Me guider pas à pas » ; un clic replie l'assistant et lance le guide ;
 //     une action « guide:constructor » ou « guide: » ne fait rien ; « deplacer » sur petit écran = un message, pas de guide ;
 //  b) parcours complets au vrai clic (anneau PILE sur la cible) : ajouter_salarie, creer_client, export, demandes_conge
-//     (anneau sur la LISTE, jamais sur ✓), reglages, support, abonnement, borne (aucun appel kiosk), selection (mode PAS armé),
+//     (anneau sur la LISTE des DEUX demandes, jamais sur ✓), reglages, support, abonnement, borne (aucun appel kiosk), selection (mode PAS armé),
 //     versions, absence, semaine ; cases vides (affecter), puce « Autre » sans client (attribuer), deplacer (« Suivant » seul) ;
 //  c) « Suivant » seul sur TOUTES les fiches à 1280 et à 390 : aucune erreur JS, aucune écriture ;
 //  d) saisies préservées (Précédent / Suivant ne vide ni « Nouveau salarié » ni « Réglages ») ; Échap ne ferme que le guide ;
 //     réseau coupé après le démarrage ;
 //  e) AUCUNE ÉCRITURE à partir de l'apparition de la carte du guide (liste blanche nommée des seules lectures par RPC) ;
+//  f) (ONLY=f) écarts de la revue : « Un seul salarié ? » puis l'export d'équipe (telecharger), la liste des réserves (2 chantiers),
+//     la caisse de congés (ancre sur sa ligne) ; g) (ONLY=g) la fenêtre franchit 1024 px pendant un guide : il se ferme ;
 //  s) (ONLY=s) console du SUPPORT (/support, /apercu/acces-support?demo=support) : le bouton « Me guider pas à pas » aux états
 //     signed-out, enroll, challenge, ready, inside — jamais en loading ni not-staff ; l'anneau sur « Se connecter », le QR, le
 //     champ du code, « Valider », la LISTE des entreprises (jamais « Entrer »), « Quitter » ; « Entrer » n'est jamais cliqué.
@@ -47,9 +49,13 @@ const fresh = () => ({
   planning: [slot('p1', 'u-dupont', D_(19), W1), slot('p2', 'u-dupont', D_(20), W1), slot('p3', 'u-dupont', D_(21), W1), slot('p4', 'u-martin', D_(20), W2)],
   // Léa : heures hors planning, une chez un client (lundi), une SANS client (jeudi) — « Autre ».
   time_entries: [entry('e1', 'u-martin', D_(19), W1, 'submitted', 120), entry('e2', 'u-martin', D_(22), null, 'submitted', 120),
-    entry('e3', 'u-dupont', D_(13), W2, 'submitted', 60, { reception: 'avec', observation: 'Joint à reprendre' })],
+    entry('e3', 'u-dupont', D_(13), W2, 'submitted', 60, { reception: 'avec', observation: 'Joint à reprendre' }),
+    // Deux chantiers avec une réserve : l'anneau de « Lever la réserve » doit couvrir LA LISTE, pas le premier chantier.
+    entry('e4', 'u-martin', D_(14), W1, 'submitted', 60, { reception: 'avec', observation: 'Fissure à reprendre' })],
   active_sessions: [], month_closures: [], user_closures: [],
-  leave_requests: [{ id: 'lr1', company_id: CO, user_id: 'u-dupont', type: 'conge', status: 'pending', start_date: D_(26), end_date: D_(27), created_at: '2026-10-10T08:00:00Z' }],
+  // Deux demandes en attente : l'anneau doit couvrir LA LISTE, jamais la première demande avec ses boutons ✓ ✗.
+  leave_requests: [{ id: 'lr1', company_id: CO, user_id: 'u-dupont', type: 'conge', status: 'pending', start_date: D_(26), end_date: D_(27), created_at: '2026-10-10T08:00:00Z' },
+    { id: 'lr2', company_id: CO, user_id: 'u-martin', type: 'conge', status: 'pending', start_date: D_(28), end_date: D_(29), created_at: '2026-10-11T08:00:00Z' }],
   invitations: [
     { id: 'i1', company_id: CO, email: 'marc@exemple.fr', first_name: 'Marc', last_name: 'Durand', role: 'worker', token: 't1', created_at: '2026-10-10T08:00:00Z', expires_at: '2030-01-01T00:00:00Z', accepted_at: null, created_by: 'u-admin' },
     { id: 'i2', company_id: CO, email: 'nina@exemple.fr', first_name: 'Nina', last_name: 'Morel', role: 'worker', token: 't2', created_at: '2026-10-11T08:00:00Z', expires_at: '2030-01-01T00:00:00Z', accepted_at: null, created_by: 'u-admin' },
@@ -287,8 +293,11 @@ if (run('a')) {
   await walk(p, 'demandes_conge', [
     { cible: 'bureau-nav.salaries', via: 'touch' }, { cible: 'bureau-salaries.conges', via: 'touch' },
     { cible: 'bureau-conges.liste', via: 'next', after: async () => {
-      const t = await targetRect(p, 'bureau-conges.liste'); check(!!t && t.tag === 'div', `A · l’anneau des congés est sur la ligne de la demande (<${t?.tag}>), pas sur un bouton`);
-      check((await p.locator('[data-guide="bureau-conges.liste"] button[title=Accepter]').count()) === 1, 'A · le bouton ✓ est DANS la ligne entourée, sans ancre propre');
+      const t = await targetRect(p, 'bureau-conges.liste'); check(!!t && t.tag === 'div', `A · l’anneau des congés est sur la liste (<${t?.tag}>), pas sur un bouton`);
+      const lignes = await p.locator('.bt-la-row').evaluateAll((l) => l.map((e) => { const r = e.getBoundingClientRect(); return { y: r.y, h: r.height }; }));
+      check(lignes.length === 2 && !!t && t.y <= lignes[0].y && t.y + t.h >= lignes[1].y + lignes[1].h, `A · l’anneau des congés couvre les DEUX demandes (liste ${t ? Math.round(t.y) : '?'}–${t ? Math.round(t.y + t.h) : '?'}, lignes ${lignes.map((x) => `${Math.round(x.y)}–${Math.round(x.y + x.h)}`).join(' / ')})`);
+      check(!!t && t.h > lignes[0].h * 1.8, 'A · l’anneau des congés est bien plus haut que la première demande seule');
+      check((await p.locator('[data-guide="bureau-conges.liste"] button[title=Accepter]').count()) === 2 && (await p.locator('.bt-la-row[data-guide]').count()) === 0, 'A · les boutons ✓ sont DANS la liste entourée, sans ancre propre ni sur les lignes');
     } },
   ], 'A ordi'); noWrite(f, 'A demandes_conge'); await reset(p, READY);
 
@@ -485,6 +494,9 @@ for (const vp of [{ n: '1280', w: 1280, h: 800, m: false }, { n: '390', w: 390, 
   }
   check(errors.length === e0, `C ${vp.n} · aucune erreur JS sur les ${TOUR_IDS.length} fiches`);
   console.log(`   (${vp.n}) étapes sans anneau avec « Suivant » seul (attendu : celles qui demandent un clic du patron avant) : ${manquants.join(', ')}`);
+  // « Suivant » seul ouvre les Réglages (les rubriques repliées restent au patron) et retrouve l'export d'équipe.
+  const interdits = ['support#3', 'recap#3', 'caisse#3', 'collegues#3', 'telecharger#3', 'reglages#3'];
+  check(interdits.every((x) => !manquants.includes(x)), `C ${vp.n} · « Suivant » seul mène aux rubriques des Réglages et à l’export d’équipe (manque : ${interdits.filter((x) => manquants.includes(x)).join(', ') || 'rien'})`);
   await ctx.close();
 }
 
@@ -549,6 +561,61 @@ if (run('e')) {
   const f = await startGuide(p, 'couts');
   await walk(p, 'couts', [{ cible: 'bureau-nav.couts', via: 'touch' }, { cible: 'bureau-cout.periodes', via: 'next' }], 'E 1100');
   noWrite(f, 'E couts'); await ctx.close();
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// F · Écarts de la revue : « Un seul salarié ? » puis l'export d'équipe, la liste des réserves (2 chantiers), la caisse de congés
+// ═════════════════════════════════════════════════════════════════════════
+if (run('f')) {
+  const READY = '[data-testid=stat-waiting]';
+  const { ctx, p } = await newPage(1280, 800);
+  // telecharger : on fait ce que dit l'étape 2 (« Un seul salarié ? »), l'étape 3 retrouve la fenêtre d'export d'équipe
+  let f = await startGuide(p, 'telecharger');
+  await walk(p, 'telecharger', [
+    { cible: 'bureau-nav.exporter', via: 'touch' }, { cible: 'bureau-export.un-salarie', via: 'touch' },
+    { cible: 'bureau-export.menu', via: 'next', after: async () => {
+      check((await p.locator('h2', { hasText: /^Exporter un salarié$/ }).count()) === 0, 'F · telecharger : « Exporter un salarié » est refermée, l’export d’équipe est de retour');
+    } },
+  ], 'F ordi'); noWrite(f, 'F telecharger'); await reset(p, READY);
+  // lever_reserve : l'anneau couvre la liste des DEUX chantiers, pas le premier chantier avec son bouton
+  f = await startGuide(p, 'lever_reserve');
+  await walk(p, 'lever_reserve', [
+    { cible: 'bureau-nav.reserves', via: 'touch' },
+    { cible: 'bureau-reserves.liste', via: 'next', after: async () => {
+      const t = await targetRect(p, 'bureau-reserves.liste');
+      const sites = await p.locator('.bt-rr-site').evaluateAll((l) => l.map((e) => { const r = e.getBoundingClientRect(); return { y: r.y, h: r.height }; }));
+      check(sites.length === 2 && !!t && t.tag === 'div' && t.y <= sites[0].y && t.y + t.h >= sites[1].y + sites[1].h, `F · l’anneau des réserves couvre les DEUX chantiers (liste ${t ? Math.round(t.y) : '?'}–${t ? Math.round(t.y + t.h) : '?'}, chantiers ${sites.map((x) => `${Math.round(x.y)}–${Math.round(x.y + x.h)}`).join(' / ')})`);
+      check((await p.locator('.bt-rr-site[data-guide]').count()) === 0, 'F · aucune ancre sur un chantier seul');
+    } },
+    { cible: 'reserves.valider', via: 'next', phase: 'missing' },
+  ], 'F ordi'); noWrite(f, 'F lever_reserve'); await reset(p, READY);
+  // caisse : l'anneau est pile sur la ligne « Caisse de congés BTP » (4 px de marge sinon)
+  f = await startGuide(p, 'caisse');
+  await p.locator(G.next).click(); await p.waitForTimeout(250); await p.locator(G.next).click(); await p.waitForTimeout(250);
+  await p.locator(G.next).click(); await p.waitForFunction(() => document.querySelector('[data-testid=guide-count]')?.textContent?.trim() === 'Étape 4 sur 4');
+  await p.locator('[data-guide="bureau-reglages.rub-heures"]').click(); await p.waitForTimeout(400);
+  const tc = await checkRing(p, 'bureau-reglages.caisse', 'F ordi caisse 4');
+  check(!!tc && (await p.evaluate(() => document.querySelector('[data-guide="bureau-reglages.caisse"]')?.className)) === 'bt-set-sub bt-set-rem', 'F · caisse : l’ancre est sur la ligne « bt-set-sub bt-set-rem » elle-même');
+  await p.locator(G.close).click(); await reset(p, READY);
+  await ctx.close();
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// G · La fenêtre franchit 1024 px pendant un guide : le guide se ferme (ses étapes ne correspondraient plus à l'écran)
+// ═════════════════════════════════════════════════════════════════════════
+if (run('g')) {
+  for (const [de, vers] of [[{ width: 1280, height: 800 }, { width: 768, height: 1024 }], [{ width: 768, height: 1024 }, { width: 1280, height: 800 }]]) {
+    const { ctx, p } = await newPage(de.width, de.height, de.width < 1024);
+    const e0 = errors.length;
+    await startGuide(p, 'ajouter_salarie');
+    // Une largeur qui reste du même côté de 1024 px ne ferme rien.
+    await p.setViewportSize({ width: de.width < 1024 ? 900 : 1200, height: de.height }); await p.waitForTimeout(500);
+    check(await guideOpen(p), `G · ${de.width} → ${p.viewportSize().width} : même mise en page, le guide reste`);
+    await p.setViewportSize(vers); await p.waitForTimeout(700);
+    check(!(await guideOpen(p)), `G · ${de.width} → ${vers.width} : le guide se ferme au changement de mise en page`);
+    check(errors.length === e0, 'G · aucune erreur JS');
+    await ctx.close();
+  }
 }
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -629,6 +696,8 @@ if (run('s')) {
     check((await p.locator(GUIDE_BTN).count()) === 1 && (await p.locator(GUIDE_BTN).innerText()).trim() === 'Me guider pas à pas', `S signed-out ${vp.n} · le bouton « Me guider pas à pas » est là`);
     const bb = await boxOf(p, GUIDE_BTN), hb = await boxOf(p, `${SC} .sc-head`), cb = await boxOf(p, `${SC} .sc-card`);
     check(!!bb && bb.h >= 44 && bb.x + bb.w <= cb.x + cb.w + 0.5 && bb.x >= hb.x, `S signed-out ${vp.n} · bouton d’au moins 44 px, dans la carte (${bb ? [bb.x, bb.y, bb.w, bb.h].map(Math.round) : '?'})`);
+    // Sous 480 px titre et bouton ne tiennent pas sur une ligne : le bouton prend toute la largeur sous le titre (pas seul, collé à droite).
+    if (vp.m) check(!!bb && !!hb && bb.w >= hb.w - 2 && Math.abs(bb.x - hb.x) <= 2, `S signed-out ${vp.n} · le bouton est pleine largeur sous le titre (${bb ? Math.round(bb.w) : '?'} px sur ${hb ? Math.round(hb.w) : '?'})`);
     const html = await p.content();
     check(['support-console.qr', 'support-console.code', 'support-console.valider', 'support-console.entreprises', 'support-console.quitter'].every((a) => !html.includes(a)) && html.includes('support-console.connexion'), `S signed-out ${vp.n} · le DOM ne contient que l’ancre de la connexion`);
     const f = await supportStart(p);
@@ -651,6 +720,7 @@ if (run('s')) {
     await supportOpen(p);
     check((await p.locator('img[alt="QR code de double vérification"]').count()) === 1, `S enroll ${vp.n} · la console est à l’étape du QR code`);
     const f = await supportStart(p);
+    { const tx = await stepText(p); check(vp.m ? /œil/.test(tx) && !/cliqu/i.test(tx) : !/œil/.test(tx), `S enroll ${vp.n} · ${tx}`); } // on ne scanne pas l'écran qu'on tient
     if (vp.n === '390') { await waitPhase(p, 'ring'); await p.waitForTimeout(400); await shot(p, '06-support-enroll'); }
     await walk(p, 'support-enroll', [
       { cible: 'support-console.qr', via: 'next' },

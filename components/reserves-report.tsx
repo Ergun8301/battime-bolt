@@ -297,45 +297,49 @@ export default function ReservesReport({ open, onOpenChange, companyId, onOpenDo
         ) : tab === 'open' ? (
           bySite.length === 0 ? (
             <div className="bt-rr-empty">Aucune réserve à traiter.</div>
-          ) : bySite.map((site) => (
-            <div key={site.worksiteId || site.name} className="bt-rr-site" data-guide="bureau-reserves.liste">
-              <div className="bt-rr-sitehead">
-                <Building2 className="h-4 w-4 shrink-0" style={{ color: '#9a948a' }} />
-                <span className="bt-rr-sitename" title={site.name}>{site.name}</span>
-                {site.city && <span className="bt-rr-sitecity" title={site.city}>{site.city}</span>}
-                {site.worksiteId && onOpenDocs && (
-                  <button className="bt-rr-docs" onClick={() => onOpenDocs(site.worksiteId!, site.name)}>
-                    <FileText className="h-3.5 w-3.5" /> Photos
-                  </button>
-                )}
-              </div>
-
-              {site.items.map((r) => (
-                <div key={r.id} className="bt-rr-card" data-testid="rr-open-card">
-                  <div className="bt-rr-meta">
-                    <span className="bt-rr-date">{fmtDay(r.work_date)}</span>
-                    <span>· {r.worker}</span>
+          ) : (
+            <div className="grid grid-cols-[minmax(0,1fr)] gap-4" data-guide="bureau-reserves.liste">
+              {bySite.map((site) => (
+                <div key={site.worksiteId || site.name} className="bt-rr-site">
+                  <div className="bt-rr-sitehead">
+                    <Building2 className="h-4 w-4 shrink-0" style={{ color: '#9a948a' }} />
+                    <span className="bt-rr-sitename" title={site.name}>{site.name}</span>
+                    {site.city && <span className="bt-rr-sitecity" title={site.city}>{site.city}</span>}
+                    {site.worksiteId && onOpenDocs && (
+                      <button className="bt-rr-docs" onClick={() => onOpenDocs(site.worksiteId!, site.name)}>
+                        <FileText className="h-3.5 w-3.5" /> Photos
+                      </button>
+                    )}
                   </div>
-                  {r.observation
-                    ? <div className="bt-rr-obs">{r.observation}</div>
-                    : <div className="bt-rr-noobs">Sans détail écrit — voir les photos du chantier.</div>}
-
-                  {resolving === r.id ? (
-                    <ReserveLiftForm
-                      onSubmit={(note, photo) => lift(r, note, photo)}
-                      onCancel={() => setResolving(null)}
-                    />
-                  ) : (
-                    <div className="bt-rr-acts">
-                      <Button size="sm" disabled={busy} onClick={() => setResolving(r.id)}>
-                        <CheckCircle2 className="h-4 w-4 mr-1.5" /> Lever la réserve
-                      </Button>
+    
+                  {site.items.map((r) => (
+                    <div key={r.id} className="bt-rr-card" data-testid="rr-open-card">
+                      <div className="bt-rr-meta">
+                        <span className="bt-rr-date">{fmtDay(r.work_date)}</span>
+                        <span>· {r.worker}</span>
+                      </div>
+                      {r.observation
+                        ? <div className="bt-rr-obs">{r.observation}</div>
+                        : <div className="bt-rr-noobs">Sans détail écrit — voir les photos du chantier.</div>}
+    
+                      {resolving === r.id ? (
+                        <ReserveLiftForm
+                          onSubmit={(note, photo) => lift(r, note, photo)}
+                          onCancel={() => setResolving(null)}
+                        />
+                      ) : (
+                        <div className="bt-rr-acts">
+                          <Button size="sm" disabled={busy} onClick={() => setResolving(r.id)}>
+                            <CheckCircle2 className="h-4 w-4 mr-1.5" /> Lever la réserve
+                          </Button>
+                        </div>
+                      )}
                     </div>
-                  )}
+                  ))}
                 </div>
               ))}
             </div>
-          ))
+          )
         ) : doneRows.length === 0 ? (
           <div className="bt-rr-empty">Aucune réserve levée pour le moment.</div>
         ) : (

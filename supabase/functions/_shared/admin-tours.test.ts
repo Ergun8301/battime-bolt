@@ -79,6 +79,7 @@ const SANS_FICHE = ['position', 'sortie_oubliee']; // rien à entourer à l'écr
 const BANNED = [
   'brouillon', 'statut', 'synchronis', 'synchro', 'onglet', 'interface', 'paramétr', 'session', 'serveur',
   'base de données', 'identifiant', 'modale', 'popup', 'pop-up', 'menu déroulant', 'dropdown', 'application web',
+  'anneau', // mot interne du composant : le patron voit un cadre jaune
 ];
 // Lettres accentuées comprises (\b ne les voit pas : « êtes » contiendrait « tes »).
 const TUTOIEMENT = /(?<![\p{L}])(tu|ton|ta|tes|toi|touche|appuie|clique|ouvre|mets|choisis|écris|fais)(?![\p{L}])/iu;
@@ -132,6 +133,29 @@ Deno.test('Guides bureau : 1 à 5 étapes sur ordinateur ET sous 1024 px, une ph
   }
 });
 
+// « Cliquez sur A, puis sur B » dérivé donnait « Touchez A, puis sur B » : le « sur » restant est fautif en français.
+const SUR_RESTANT = /touch\w*\s+(d’abord\s+)?sur\b|\b(puis|ou|et)\s+sur\b/i;
+Deno.test('Guides bureau : les phrases sous 1024 px sont du bon français (pas de « touchez sur », « puis sur », « ou sur »)', () => {
+  for (const t of ADMIN_TOURS) for (const e of adminStepsFor(t, true)) {
+    if (SUR_RESTANT.test(e.texte)) throw new Error(`${t.id} : « sur » de trop sous 1024 px — ${e.texte}`);
+  }
+  for (const k of ETATS) for (const e of supportStepsFor(k, true)) {
+    if (SUR_RESTANT.test(e.texte)) throw new Error(`support ${k} : « sur » de trop sous 1024 px — ${e.texte}`);
+  }
+  // …et le test voit le défaut (la dérivation seule des trois phrases relevées le produisait).
+  for (const fautive of ['touchez la coche ✓ pour accepter ou sur la croix', 'touchez d’abord sur « Exporter »', 'Touchez « Habilitations », puis sur « Ajouter ».']) {
+    if (!SUR_RESTANT.test(fautive)) throw new Error(`le contrôle ne repère pas « ${fautive} »`);
+  }
+});
+
+Deno.test('Guides bureau : sous 1024 px, un libellé cité pour une ligne du menu ☰ est celui du menu ☰ (pas le « Coûts » de la barre)', async () => {
+  const menu = N(await Deno.readTextFile('components/admin-mobile-menu.tsx'));
+  for (const t of ADMIN_TOURS) for (const e of adminStepsFor(t, true).filter((x) => x.ecran === 'menu' && x.cible !== 'bureau-nav.menu')) {
+    for (const label of quoted(e.texte)) if (!menu.includes(N(label))) throw new Error(`${t.id} : « ${label} » n’est pas dans le menu ☰ — ${e.texte}`);
+  }
+  if (adminStepsFor(findAdminTour('couts')!, true).some((e) => /Coûts/.test(e.texte))) throw new Error('couts : le ☰ n’a pas le libellé court « Coûts »');
+});
+
 Deno.test('Guides bureau : « Cliquez » devient « Touchez » sous 1024 px, la majuscule est gardée', () => {
   const one = (texte: string, extra: Partial<AdminTour['etapes'][0]> = {}) => adminStepsFor({ id: 'essai', etapes: [{ cible: 'x.y', texte, ...extra }] }, true)[0].texte;
   const cas: [string, string][] = [
@@ -177,6 +201,22 @@ Deno.test('Guides bureau : sous 1024 px les boutons de la barre sont des lignes 
   if (MENU_CIBLES.includes('bureau-nav.abonner')) throw new Error('abonner ne fait pas partie du ☰');
 });
 
+Deno.test('Guides bureau : « Suivant » seul mène aux Réglages (l’étape qui suit « Réglages de l’entreprise » ouvre la fenêtre)', () => {
+  for (const t of ADMIN_TOURS) for (const narrow of [false, true]) {
+    const e = adminStepsFor(t, narrow);
+    const i = e.findIndex((s) => s.cible === 'bureau-nav.reglages');
+    if (i < 0) continue;
+    const suite = e[i + 1];
+    if (suite && suite.ecran !== 'reglages') throw new Error(`${t.id} (${narrow ? 'mobile' : 'ordi'}) : l’étape « ${suite.cible} » après « Réglages » doit préparer l’écran reglages`);
+    // Toute étape qui vise un bouton des Réglages a la fenêtre ouverte avant elle.
+    e.forEach((s, j) => { if (/^bureau-reglages\./.test(s.cible) && !e.slice(0, j + 1).some((x) => x.ecran === 'reglages')) throw new Error(`${t.id} : « ${s.cible} » sans écran reglages avant`); });
+  }
+  // « Un seul salarié ? » remplace la fenêtre d’export d’équipe : l’étape suivante la rouvre.
+  const tel = findAdminTour('telecharger')!.etapes;
+  const i = tel.findIndex((s) => s.cible === 'bureau-export.un-salarie');
+  if (tel[i + 1]?.cible !== 'bureau-export.menu' || tel[i + 1]?.ecran !== 'export') throw new Error('telecharger : l’étape « toute l’équipe » doit préparer l’écran export');
+});
+
 Deno.test('Guides bureau : chaque cible existe comme data-guide dans le code des écrans', async () => {
   const found = anchors(await sources());
   const missing: string[] = [];
@@ -204,7 +244,8 @@ Deno.test('Guides bureau : une ancre n’a qu’un seul élément, sauf celles p
 });
 
 Deno.test('Guides bureau : aucun geste qui agit sur une ligne précise n’est entouré (la LISTE l’est, et la phrase le dit)', async () => {
-  const found = anchors(await sources());
+  const src0 = await sources();
+  const found = anchors(src0);
   const used = allCibles();
   for (const a of AGIT_PAR_LIGNE) {
     if (used.has(a)) throw new Error(`une fiche vise « ${a} » : geste qui agit sur UNE ligne, entourez la liste`);
@@ -213,6 +254,21 @@ Deno.test('Guides bureau : aucun geste qui agit sur une ligne précise n’est e
   for (const t of ADMIN_TOURS) for (const e of t.etapes.filter((s) => LISTES.includes(s.cible))) {
     if (!/(bonne|voulu|à côté|Repérez|Choisissez|Regardez)/.test(e.texte)) throw new Error(`${t.id} : l’étape sur la liste « ${e.cible} » doit dire de choisir la bonne ligne — ${e.texte}`);
   }
+  // Le crayon est répété (un par client) : la phrase dit lequel, car l'étape suivante peut être « Archiver » ou « Supprimer ».
+  for (const t of ADMIN_TOURS) for (const narrow of [false, true]) for (const e of adminStepsFor(t, narrow).filter((x) => x.cible === 'bureau-clients.crayon')) {
+    if (!/(voulu|concerné)/.test(e.texte)) throw new Error(`${t.id} (${narrow ? 'mobile' : 'ordi'}) : le client n’est pas nommé « voulu » — ${e.texte}`);
+  }
+  // L'ancre d'une LISTE est sur UN conteneur, jamais sur chaque ligne (sinon l'anneau désigne la première demande / le premier chantier
+  // avec ses boutons ✓ ✗ « Lever la réserve » dedans). Le conteneur reprend la mise en page de la fenêtre (grid gap-4) : aucun changement d'écran.
+  const lignesDe = (file: string, ancre: string) => (src0[file] ?? '').split('\n').filter((l) => l.includes(`data-guide="${ancre}"`));
+  for (const [file, ancre, ligne] of [['components/leave-admin-dialog.tsx', 'bureau-conges.liste', 'bt-la-row'], ['components/reserves-report.tsx', 'bureau-reserves.liste', 'bt-rr-site']]) {
+    const l = lignesDe(file, ancre);
+    eq(l.length, 1, `${ancre} : une seule ancre dans ${file}`);
+    if (l[0].includes(ligne) || !l[0].includes('grid grid-cols-[minmax(0,1fr)] gap-4')) throw new Error(`${ancre} : sur le conteneur de la liste (div grid), pas sur une ligne « ${ligne} » — ${l[0].trim()}`);
+  }
+  // La caisse de congés : l'ancre est un attribut de la ligne elle-même (pas un div autour qui décale l'anneau de 4 px).
+  if (/<div[^>]*data-guide="bureau-reglages\.caisse"/.test(src0['components/company-settings.tsx'])) throw new Error('bureau-reglages.caisse : pas de div autour de LeaveFundSetting');
+  if (!/<div className="bt-set-sub bt-set-rem" data-guide=\{guide\}>/.test(src0['components/leave-fund-setting.tsx'])) throw new Error('LeaveFundSetting : data-guide={guide} sur sa ligne');
   // La feuille imprimée n'a aucune ancre (elle n'est pas à l'écran).
   const src = await sources();
   if (/data-guide/.test(src['components/planning-print.tsx'] ?? '')) throw new Error('planning-print.tsx : pas d’ancre sur la feuille imprimée');
@@ -250,6 +306,7 @@ Deno.test('Guides bureau : verrous de sécurité sur les textes (verrouillage, a
   if (!/à partir/.test(texte('present', 'bureau-statut.present'))) throw new Error('present : « à partir » du jour écrit en haut');
   const sup = texte('support', 'bureau-reglages.support');
   if (!/durée/.test(sup) || !/lecture seule/.test(sup) || !/retire/.test(sup)) throw new Error(`support : durée, lecture seule, retrait — ${sup}`);
+  if (!texte('deplacer', 'bureau-planning.case').includes('cadre jaune')) throw new Error('deplacer : « cadre jaune » (pas « anneau »)');
   if (!texte('deplacer', 'bureau-planning.bulle').includes('Ne cliquez pas')) throw new Error('deplacer : « Ne cliquez pas » dessus');
   if (!findAdminTour('deplacer')!.ordi) throw new Error('deplacer : ordinateur seulement');
   for (const t of ADMIN_TOURS) if (t.ordi && t.id !== 'deplacer') throw new Error(`${t.id} : seul le glisser-déposer est réservé à l’ordinateur`);
@@ -381,6 +438,10 @@ Deno.test('Guides bureau : une seule fabrique du bouton, et le guide ne fait rie
   const from = page.indexOf('const tourStep');
   const body = from < 0 ? '' : bare(page.slice(from, page.indexOf('const closeTour', from)));
   if (!body) throw new Error('tourStep introuvable dans components/admin-planning.tsx');
+  if (!/setExportWorkerOpen\(false\)/.test(body)) throw new Error('tourStep : doit fermer « Exporter un salarié » (navigation) pour retrouver l’export d’équipe');
+  if (!/mq\.addEventListener\('change', closeTour\)/.test(bare(page)) || !/mq\.removeEventListener\('change', closeTour\)/.test(bare(page))) {
+    throw new Error('admin-planning.tsx : le guide doit se fermer quand la largeur franchit 1024 px (matchMedia change)');
+  }
   for (const bad of [/\breset[A-Z]\w*\(/, /setKioskOpen/, /enterSelect/, /exitSelect/, /setSelectMode/, /setAssistantOpen\(true/, /supabase/, /\.click\(/, /\bfetch\(/, /functions\.invoke/, /window\.open/, /\.(insert|update|upsert|delete)\(/]) {
     if (bad.test(body)) throw new Error(`tourStep (bureau) ne doit pas appeler ${bad}`);
   }
@@ -420,6 +481,8 @@ Deno.test('Guide du support : phrases courtes, simples, au vouvoiement, « Touch
     if (!narrow && /touch|appuy/i.test(e.texte.replace(/«[^»]*»/g, ''))) throw new Error(`${at} : « touchez » à l’ordinateur — ${e.texte}`);
     if (/Sortir/.test(e.texte)) throw new Error(`${at} : le bouton s’appelle « Quitter », « Sortir » n’existe nulle part`);
   });
+  // On ne scanne pas le QR code affiché sur l'écran qu'on tient : la phrase mobile parle de la clé (l'œil de la page).
+  if (!/œil/.test(supportStepsFor('enroll', true)[0].texte) || /œil/.test(supportStepsFor('enroll', false)[0].texte)) throw new Error('enroll : la phrase mobile parle de l’œil, pas la phrase ordinateur');
   eq(supportStepsFor('inside', true)[0].texte, 'Vous êtes en lecture seule. Touchez « Quitter » quand vous avez fini.', 'inside sous 1024 px');
   eq(supportStepsFor('signed-out', true)[0].texte, 'Touchez « Se connecter » avec le compte support, puis revenez sur cette page.', 'signed-out sous 1024 px');
 });
@@ -443,7 +506,7 @@ Deno.test('Guide du support : les libellés cités et les ancres existent dans s
   const code = src[SUPPORT_FILE];
   if (!code) throw new Error(`${SUPPORT_FILE} introuvable`);
   const texte = N(code);
-  for (const e of SUPPORT_TOUR) for (const label of quoted(e.texte)) if (!texte.includes(N(label))) throw new Error(`${e.cible} : « ${label} » absent de ${SUPPORT_FILE}`);
+  for (const e of SUPPORT_TOUR) for (const label of [...quoted(e.texte), ...quoted(e.mobile ?? '')]) if (!texte.includes(N(label))) throw new Error(`${e.cible} : « ${label} » absent de ${SUPPORT_FILE}`);
   for (const label of ['Se connecter', 'Valider', 'Entrer', 'Quitter']) if (!texte.includes(N(label))) throw new Error(`« ${label} » absent de ${SUPPORT_FILE}`);
   if (/Sortir/.test(code)) throw new Error('« Sortir » n’existe pas dans la console (le bouton est « Quitter »)');
   // Chaque ancre est posée, une fois — sauf la liste des entreprises : la liste OU la ligne « Aucune pour l'instant ».
@@ -472,6 +535,8 @@ Deno.test('Guide du support : le bouton ne fait que lancer l’affichage (rien l
   if (!css) throw new Error('CSS introuvable');
   if (/['’]/.test(css)) throw new Error('le CSS de la console ne doit contenir aucune apostrophe');
   if (!/\.sc-guide\{/.test(css)) throw new Error('classe sc-guide absente du CSS');
+  // Sous 480 px titre et bouton ne tiennent pas sur une ligne : le bouton prend toute la largeur sous le titre (pas seul à droite).
+  if (!/@media \(max-width:480px\)\{\.sc-guide\{margin-left:0;width:100%/.test(css)) throw new Error('.sc-guide doit passer pleine largeur sous 480 px');
   const nu = bare(code);
   // matchMedia / window : seulement dans le gestionnaire du clic (la page est exportée en statique).
   const lignesWindow = nu.split('\n').filter((l) => /\bwindow\b|matchMedia|\bdocument\b/.test(l));

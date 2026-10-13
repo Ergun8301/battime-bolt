@@ -687,7 +687,7 @@ export default function CompanySettings({ open, onOpenChange, onSaved, onOpenTra
                 </div>
               </div>
 
-              {aiOn && user?.company_id && <div data-guide="bureau-reglages.caisse"><LeaveFundSetting source={costSource} companyId={user.company_id} /></div>}
+              {aiOn && user?.company_id && <LeaveFundSetting source={costSource} companyId={user.company_id} guide="bureau-reglages.caisse" />}
             </SetSection>
 
             <SetSection

@@ -2966,6 +2966,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     };
     for (const k of Object.keys(navigation) as AdminScreen[]) if (k !== want) navigation[k]!();
     setStatusTarget(null);
+    setExportWorkerOpen(false); // « Un seul salarié ? » remplace l'export d'équipe : l'étape suivante doit le retrouver
     if (open[want]) return; // le patron vient peut-être de l'ouvrir lui-même : on ne le lui rouvre pas
     if (want === 'menu') setMobileMenuOpen(true);
     else if (want === 'compte') setAccountMenuOpen(true);
@@ -2983,6 +2984,14 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const closeTour = () => { tourEnd.current = Date.now(); setTour(null); setMobileMenuOpen(false); setAccountMenuOpen(false); setChantierMenuOpen(false); };
   // L'assistant s'ouvre : le guide s'arrête (les deux se gêneraient).
   useEffect(() => { if (assistantOpen && tour) closeTour(); }, [assistantOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Les étapes sont écrites pour une mise en page (ordinateur OU petit écran, voir adminStepsFor) : si la fenêtre franchit
+  // 1024 px pendant un guide (tablette qu'on tourne, fenêtre redimensionnée), les étapes ne correspondraient plus à l'écran.
+  useEffect(() => {
+    if (!tour) return;
+    const mq = window.matchMedia('(max-width: 1023px)');
+    mq.addEventListener('change', closeTour);
+    return () => mq.removeEventListener('change', closeTour);
+  }, [tour]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Lot 11 : les lignes « À relancer » (panneau du cockpit ET fenêtre mobile). */
   const renderRelanceRows = (onOpen: () => void) => (

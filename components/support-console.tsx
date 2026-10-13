@@ -35,6 +35,7 @@ const CSS = `
 .sc-card{width:100%;max-width:460px;background:#fff;border:1px solid rgba(21,18,15,.1);border-radius:18px;padding:22px;box-shadow:0 10px 30px rgba(21,18,15,.06);align-self:flex-start}
 .sc-head{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin-bottom:14px}
 .sc-guide{margin-left:auto;display:inline-flex;align-items:center;min-height:44px;padding:0 12px;white-space:nowrap;border:1.5px solid rgba(21,18,15,.2);border-radius:11px;background:#fff;color:#15120F;font:inherit;font-size:13px;font-weight:800;cursor:pointer}
+@media (max-width:480px){.sc-guide{margin-left:0;width:100%;justify-content:center}}
 .sc-ico{width:34px;height:34px;border-radius:10px;background:#15120F;color:#FFC21A;display:flex;align-items:center;justify-content:center}
 .sc h1{font-size:18px;font-weight:900;margin:0;color:#15120F;white-space:nowrap}
 .sc h2{font-size:15px;font-weight:900;margin:0 0 6px;color:#15120F}

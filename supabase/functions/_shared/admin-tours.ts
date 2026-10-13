@@ -46,7 +46,7 @@ export interface AdminTour { id: string; ordi?: true; etapes: AdminStep[] }
 const NAV_SAL: AdminStep = { cible: 'bureau-nav.salaries', texte: 'Cliquez sur « Salariés ».' };
 const NAV_CLI: AdminStep = { cible: 'bureau-nav.clients', texte: 'Cliquez sur « Clients ».', mobile: 'Touchez « Chantiers ».' };
 const NAV_EXP: AdminStep = { cible: 'bureau-nav.exporter', texte: 'Cliquez sur « Exporter ».' };
-const NAV_COUT: AdminStep = { cible: 'bureau-nav.couts', texte: 'Cliquez sur « Coût chantiers » (« Coûts » sur un écran étroit).' };
+const NAV_COUT: AdminStep = { cible: 'bureau-nav.couts', texte: 'Cliquez sur « Coût chantiers » (« Coûts » sur un écran étroit).', mobile: 'Touchez « Coût chantiers ».' }; // le ☰ n'a pas le libellé court
 const NAV_RES: AdminStep = { cible: 'bureau-nav.reserves', texte: 'Cliquez sur « Réserves ».', mobile: 'Touchez « Réserves de chantier ».' };
 const NAV_ABO: AdminStep = { ecran: 'planning', cible: 'bureau-nav.abonner', texte: 'Si vous êtes en essai, cliquez sur « S’abonner », en haut de l’écran.' };
 // Les Réglages : sur grand écran par le nom de l'entreprise, sous 1024 px par le menu ☰.
@@ -57,9 +57,9 @@ const REGLAGES: AdminStep[] = [
 ];
 const NOM: AdminStep = { cible: 'bureau-planning.nom', texte: 'Cliquez sur le nom du salarié concerné.' };
 const NOM_SAL: AdminStep = { ecran: 'salaries', cible: 'bureau-salaries.nom', texte: 'Cliquez sur le nom du salarié concerné.' };
-const CRAYON: AdminStep = { ecran: 'clients', cible: 'bureau-clients.crayon', texte: 'Cliquez sur le crayon à côté du client.', mobile: 'Touchez la ligne du client.' };
+const CRAYON: AdminStep = { ecran: 'clients', cible: 'bureau-clients.crayon', texte: 'Cliquez sur le crayon à côté du client voulu.', mobile: 'Touchez la ligne du client voulu.' };
 const BULLE: AdminStep = { cible: 'bureau-planning.bulle', texte: 'Cliquez sur l’intervention (la bulle) concernée.' };
-const RUB_NOTIF: AdminStep = { cible: 'bureau-reglages.rub-notif', texte: 'Ouvrez la rubrique « Notifications & support » (si elle est fermée).' };
+const RUB_NOTIF: AdminStep = { ecran: 'reglages', cible: 'bureau-reglages.rub-notif', texte: 'Ouvrez la rubrique « Notifications & support » (si elle est fermée).' };
 
 /**
  * Les 48 fiches. Les écrans (`ecran`) servent aux étapes qu'on ne peut pas atteindre autrement ;
@@ -97,7 +97,8 @@ export const ADMIN_TOURS: AdminTour[] = [
   { id: 'demandes_conge', etapes: [
     NAV_SAL,
     { ecran: 'salaries', cible: 'bureau-salaries.conges', texte: 'Cliquez sur « Demandes de congé ».' },
-    { ecran: 'conges', cible: 'bureau-conges.liste', texte: 'Repérez la bonne demande, puis cliquez sur la coche ✓ pour accepter ou sur la croix ✗ pour refuser.' },
+    { ecran: 'conges', cible: 'bureau-conges.liste', texte: 'Repérez la bonne demande, puis cliquez sur la coche ✓ pour accepter ou sur la croix ✗ pour refuser.',
+      mobile: 'Repérez la bonne demande, puis touchez la coche ✓ pour accepter ou la croix ✗ pour refuser.' },
   ] },
   { id: 'corriger', etapes: [
     NOM,
@@ -150,7 +151,7 @@ export const ADMIN_TOURS: AdminTour[] = [
   ] },
   { id: 'deplacer', ordi: true, etapes: [
     { cible: 'bureau-planning.bulle', texte: 'Repérez l’intervention à déplacer. Ne cliquez pas dessus : attrapez-la.' },
-    { cible: 'bureau-planning.case', texte: 'Maintenez le clic, glissez-la sur le bon salarié et le bon jour, puis relâchez. L’anneau n’est qu’un exemple de case.' },
+    { cible: 'bureau-planning.case', texte: 'Maintenez le clic, glissez-la sur le bon salarié et le bon jour, puis relâchez. Le cadre jaune n’est qu’un exemple de case.' },
   ] },
   { id: 'heure_note', etapes: [
     BULLE,
@@ -216,7 +217,8 @@ export const ADMIN_TOURS: AdminTour[] = [
   { id: 'cloture_salarie', etapes: [
     NOM,
     { cible: 'bureau-statut.feuille', texte: 'Cliquez sur « Feuille d’heures ».' },
-    { cible: 'bureau-fiche.exporter', texte: 'Pour récupérer ses heures, cliquez d’abord sur « Exporter » (cela ne verrouille rien).' },
+    { cible: 'bureau-fiche.exporter', texte: 'Pour récupérer ses heures, cliquez d’abord sur « Exporter » (cela ne verrouille rien).',
+      mobile: 'Pour récupérer ses heures, touchez d’abord « Exporter » (cela ne verrouille rien).' },
     { cible: 'bureau-fiche.cloturer', texte: 'Puis cliquez sur « Clôturer jusqu’au… » et choisissez la date de fin.' },
   ] },
   { id: 'feuille', etapes: [
@@ -226,7 +228,7 @@ export const ADMIN_TOURS: AdminTour[] = [
   { id: 'habilitations', etapes: [
     NAV_SAL,
     NOM_SAL,
-    { cible: 'bureau-fiche.habilitations', texte: 'Cliquez sur « Habilitations », puis sur « Ajouter ».' },
+    { cible: 'bureau-fiche.habilitations', texte: 'Cliquez sur « Habilitations », puis sur « Ajouter ».', mobile: 'Touchez « Habilitations », puis « Ajouter ».' },
   ] },
   { id: 'cout_reel', etapes: [
     NAV_SAL,
@@ -240,7 +242,7 @@ export const ADMIN_TOURS: AdminTour[] = [
   { id: 'telecharger', etapes: [
     NAV_EXP,
     { ecran: 'export', cible: 'bureau-export.un-salarie', texte: 'Pour télécharger sans rien verrouiller, cliquez sur « Un seul salarié ? » et choisissez-le.' },
-    { cible: 'bureau-export.menu', texte: 'Pour toute l’équipe : période, puis « Exporter ». Attention : cela verrouille les heures de la période.' },
+    { ecran: 'export', cible: 'bureau-export.menu', texte: 'Pour toute l’équipe : période, puis « Exporter ». Attention : cela verrouille les heures de la période.' },
   ] },
   { id: 'lever_reserve', etapes: [
     NAV_RES,
@@ -270,7 +272,7 @@ export const ADMIN_TOURS: AdminTour[] = [
   { id: 'abonnement', etapes: [
     NAV_ABO,
     ...REGLAGES,
-    { cible: 'bureau-reglages.abonnement', texte: 'Sinon, cliquez sur « Gérer mon abonnement ».' },
+    { ecran: 'reglages', cible: 'bureau-reglages.abonnement', texte: 'Sinon, cliquez sur « Gérer mon abonnement ».' },
   ] },
   { id: 'recap', etapes: [
     ...REGLAGES,
@@ -279,12 +281,12 @@ export const ADMIN_TOURS: AdminTour[] = [
   ] },
   { id: 'caisse', etapes: [
     ...REGLAGES,
-    { cible: 'bureau-reglages.rub-heures', texte: 'Ouvrez la rubrique « Heures & paie » (si elle est fermée).' },
+    { ecran: 'reglages', cible: 'bureau-reglages.rub-heures', texte: 'Ouvrez la rubrique « Heures & paie » (si elle est fermée).' },
     { cible: 'bureau-reglages.caisse', texte: 'Réglez ici la « Caisse de congés BTP ».' },
   ] },
   { id: 'collegues', etapes: [
     ...REGLAGES,
-    { cible: 'bureau-reglages.rub-borne', texte: 'Ouvrez la rubrique « Borne & pointage » (si elle est fermée).' },
+    { ecran: 'reglages', cible: 'bureau-reglages.rub-borne', texte: 'Ouvrez la rubrique « Borne & pointage » (si elle est fermée).' },
     { cible: 'bureau-reglages.collegues', texte: 'Activez ou coupez « Les salariés voient le planning de leurs collègues ».' },
   ] },
   { id: 'assistant', etapes: [
@@ -336,11 +338,12 @@ export function adminStepsFor(t: AdminTour, narrow: boolean): { cible: string; t
 // bureau ne la lance jamais. Chaque étape dit dans quels états de la console elle s'affiche ;
 // le guide MONTRE, il ne se connecte pas, ne valide aucun code et n'entre chez aucun client.
 export type ConsoleKind = 'loading' | 'signed-out' | 'not-staff' | 'enroll' | 'challenge' | 'ready' | 'inside';
-export interface SupportStep { etats: ConsoleKind[]; cible: string; texte: string }
+export interface SupportStep { etats: ConsoleKind[]; cible: string; texte: string; /** Phrase des petits écrans si elle diffère (sinon dérivée). */ mobile?: string }
 
 export const SUPPORT_TOUR: SupportStep[] = [
   { etats: ['signed-out'], cible: 'support-console.connexion', texte: 'Cliquez sur « Se connecter » avec le compte support, puis revenez sur cette page.' },
-  { etats: ['enroll'], cible: 'support-console.qr', texte: 'Scannez ce QR code avec votre application d’authentification.' },
+  { etats: ['enroll'], cible: 'support-console.qr', texte: 'Scannez ce QR code avec votre application d’authentification.',
+    mobile: 'Scannez ce QR code avec un autre appareil, ou touchez l’œil pour voir la clé et la recopier dans votre application.' }, // on ne scanne pas l'écran qu'on tient
   { etats: ['enroll'], cible: 'support-console.code', texte: 'Tapez le code à 6 chiffres dans la case entourée.' },
   { etats: ['challenge'], cible: 'support-console.code', texte: 'Tapez le code à 6 chiffres de votre application d’authentification.' },
   { etats: ['enroll', 'challenge'], cible: 'support-console.valider', texte: 'Cliquez sur « Valider ». Le bouton s’active quand les 6 chiffres sont tapés.' },
@@ -351,5 +354,5 @@ export const SUPPORT_TOUR: SupportStep[] = [
 
 /** Les étapes à donner à <GuideTour> pour l'état de la console ; vide pour `loading` et `not-staff` (pas de guide). */
 export function supportStepsFor(kind: ConsoleKind, narrow: boolean): { cible: string; texte: string }[] {
-  return SUPPORT_TOUR.filter((e) => e.etats.includes(kind)).map((e) => ({ cible: e.cible, texte: narrow ? touchez(e.texte) : e.texte }));
+  return SUPPORT_TOUR.filter((e) => e.etats.includes(kind)).map((e) => ({ cible: e.cible, texte: narrow ? e.mobile ?? touchez(e.texte) : e.texte }));
 }
