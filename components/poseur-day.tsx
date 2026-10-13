@@ -2953,9 +2953,9 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
                   <p>Terminer le pointage à une heure précise n&apos;est pas disponible pour l&apos;instant. Corrigez les heures, ou fermez cette fiche et touchez « Terminer ma journée ».</p>
                 )}
               </div>
-              <div className="grid gap-2 pt-1" aria-busy={liveBusy}>
+              <div className="grid gap-2 pt-1">
                 {liveAsk.result.can === 'finish' && (
-                  <Button className="min-h-11 h-auto py-2 whitespace-normal text-center font-black" data-testid="live-clash-finish" disabled={liveBusy} onClick={finishThenSave}>
+                  <Button className="min-h-11 h-auto py-2 whitespace-normal text-center font-black" data-testid="live-clash-finish" disabled={liveBusy} aria-busy={liveBusy} onClick={finishThenSave}>
                     {liveBusy
                       ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Un instant…</>
                       : `Terminer le pointage à ${liveAsk.result.at}, puis ${liveAsk.action === 'add' ? 'ajouter' : 'enregistrer'}`}
