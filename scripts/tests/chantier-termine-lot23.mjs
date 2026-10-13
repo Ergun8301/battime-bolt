@@ -11,7 +11,7 @@
 //  B · BILAN en lecture seule : période, heures par salarié (= Coût chantiers), dépenses, réserves, documents
 //      (factures comprises), budget prévu / réel ; aucune écriture, aucun bouton d'écriture ; pas de défilement horizontal.
 //  C · MÊMES CHIFFRES que « Coût chantiers » (heures, route, budget) pour le même jeu de données.
-//  D · Avant la migration : rien (fonction absente, réseau coupé, colonne absente) — aucun message, aucune erreur.
+//  D · Avant la migration (ou après son retour arrière) : rien (fonction absente ou refusée, réseau coupé, colonne absente) — aucun message, aucune erreur.
 //  E · Mode support : le bilan se lit, aucun bouton Terminer / Rouvrir, les heures ne sont pas inventées.
 //  F · Chargement à l'ouverture : aucune lecture du bilan au chargement de la page.
 //  G · SALARIÉ (/poseur, 390 px) : chantier terminé absent de « + » (nouvelle intervention), nom et heures intacts sur
@@ -143,6 +143,7 @@ async function mount(ctx, S, me) {
       if (fn === 'worksite_completion_ready') {
         if (S.ready === 'hang') return;
         if (S.ready === 'network') return r.abort('failed');
+        if (S.ready === 'forbidden') return r.fulfill({ status: 403, json: { code: '42501', message: 'permission denied for function worksite_completion_ready', details: null, hint: null } });
         if (S.ready === 'missing') return r.fulfill({ status: 404, json: { code: 'PGRST202', message: 'Could not find the function public.worksite_completion_ready without parameters in the schema cache', details: null, hint: null } });
         return r.fulfill({ json: true });
       }
@@ -492,7 +493,7 @@ const S = freshState();
 // ════════════════════════════════════════════════════════════════════════════
 // D · AVANT LA MIGRATION : rien, sans message
 // ════════════════════════════════════════════════════════════════════════════
-for (const [label, extra] of [['fonction absente (404)', { ready: 'missing' }], ['réseau coupé', { ready: 'network' }], ['colonne absente', { column: false }], ['pas de réponse', { ready: 'hang' }]]) {
+for (const [label, extra] of [['fonction absente (404)', { ready: 'missing' }], ['fonction neutralisée par le retour arrière (403)', { ready: 'forbidden' }], ['réseau coupé', { ready: 'network' }], ['colonne absente', { column: false }], ['pas de réponse', { ready: 'hang' }]]) {
   const SD = freshState(extra);
   const { ctx, p, errs } = await newPage(SD, ADMIN, { width: 390, height: 844 });
   await loadAdmin(p);

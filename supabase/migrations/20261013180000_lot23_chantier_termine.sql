@@ -26,21 +26,23 @@
 --    WHERE table_schema = 'public' AND table_name = 'worksites' AND column_name IN ('completed_at', 'completed_by');
 --   → completed_at (timestamptz) peut déjà être là ; completed_by ne l'est pas.
 --
--- RETOUR ARRIÈRE — on retire les trois fonctions et le déclencheur, dans CET
--- ordre. Les colonnes completed_at et completed_by sont GARDÉES (rien n'est
--- effacé, et completed_at existait peut-être avant ce lot : ne pas la retirer).
--- Après retour arrière : le bouton « Terminer » et le bilan disparaissent de
--- l'application (la fonction « suis-je prête ? » n'existe plus), mais un chantier
--- déjà marqué terminé reste masqué dans les listes de choix du salarié (c'est la
--- donnée qui décide). Pour le rouvrir : UPDATE public.worksites SET completed_at = NULL,
--- completed_by = NULL WHERE id = '…'; (éditeur SQL).
+-- RETOUR ARRIÈRE — on NEUTRALISE, sans rien retirer : les deux fonctions du lot ne
+-- sont plus appelables par personne (ni connecté, ni anonyme). L'application cache
+-- de nouveau tout (la fonction « suis-je prête ? » refuse : plus de bouton
+-- « Terminer », plus de bilan, aucun message) et plus personne ne peut poser ou
+-- retirer le statut. Le déclencheur de garde reste en place (il ne gêne personne et
+-- continue de protéger le statut). Les colonnes completed_at et completed_by sont
+-- GARDÉES avec leurs valeurs (rien n'est effacé ; completed_at existait peut-être
+-- avant ce lot). Un chantier déjà marqué terminé reste masqué dans les listes de
+-- choix du salarié (c'est la donnée qui décide) ; pour le rouvrir à la main :
+-- UPDATE public.worksites SET completed_at = NULL, completed_by = NULL WHERE id = '…';
+-- Rejouer ce fichier rend les droits (REVOKE puis GRANT en bas du fichier). Retirer
+-- vraiment ces objets n'est pas fait ici : décision à prendre à part, avec Ergun.
 -- Copier les lignes ENTRE « DÉBUT » et « FIN » en retirant au début de chaque
 -- ligne « -- » ET l'espace qui suit.
 -- ── DÉBUT DU RETOUR ARRIÈRE ──
--- DROP TRIGGER IF EXISTS worksites_guard_completion ON public.worksites;
--- DROP FUNCTION IF EXISTS public.guard_worksite_completion();
--- DROP FUNCTION IF EXISTS public.set_worksite_completed(uuid, date);
--- DROP FUNCTION IF EXISTS public.worksite_completion_ready();
+-- REVOKE ALL ON FUNCTION public.worksite_completion_ready() FROM PUBLIC, anon, authenticated;
+-- REVOKE ALL ON FUNCTION public.set_worksite_completed(uuid, date) FROM PUBLIC, anon, authenticated;
 -- ── FIN DU RETOUR ARRIÈRE ──
 --
 -- VÉRIFICATION APRÈS APPLICATION — LECTURE SEULE, une ligne, 9 colonnes à true
@@ -67,8 +69,8 @@
 --   1. worksites.completed_at (timestamptz) : le jour de fin, écrit à MIDI UTC
 --      (le jour choisi s'affiche donc le même partout en Europe) ; NULL = en cours.
 --      worksites.completed_by (uuid) : qui l'a posé. SANS clé étrangère, exprès :
---      une clé sans « suppression en cascade » bloquerait la suppression d'un compte,
---      une avec « mise à NULL » ferait perdre la trace. Ici, la trace survit.
+--      une clé ordinaire bloquerait la suppression d'un compte, une clé qui remet à
+--      NULL ferait perdre la trace. Ici, la trace survit.
 --   2. worksite_completion_ready() : la fonction « suis-je prête ? » ; l'écran
 --      l'appelle et cache TOUT (bouton, bilan) tant qu'elle manque.
 --   3. set_worksite_completed(chantier, jour) : réservée au bureau DE L'ENTREPRISE

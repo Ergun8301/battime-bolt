@@ -59,7 +59,7 @@ Le bilan couvre **toute la vie du chantier** (pas une période choisie). Il lit 
 
 ## 3. Ce que fait la migration
 
-`supabase/migrations/20261013180000_lot23_chantier_termine.sql` — **additive**, rejouable, sans `DROP`, `DELETE`, `TRUNCATE`, `CASCADE` ni clé étrangère.
+`supabase/migrations/20261013180000_lot23_chantier_termine.sql` — **additive**, rejouable, sans `DROP`, `DELETE`, `TRUNCATE`, `CASCADE` ni clé étrangère (aucun de ces mots, même dans les commentaires).
 
 | Objet | Rôle |
 |---|---|
@@ -86,9 +86,9 @@ Le **mode support** (lecture seule, lot 5) : le bilan se lit, aucun bouton « Te
 4. Inscrire l'historique (ligne `INSERT` du bloc « HISTORIQUE », nom `lot23_chantier_termine`).
 5. **Ensuite seulement**, mettre en ligne l'application.
 
-**Tant que la migration n'est pas appliquée**, l'application est exactement celle d'avant : pas de bloc dans la fiche client, pas de « Terminé le … », aucun message, aucune erreur (l'écran interroge `worksite_completion_ready()` et se tait si elle manque ou si la colonne n'est pas dans la ligne lue). Le test le prouve : fonction absente, réseau coupé, colonne absente, absence de réponse.
+**Tant que la migration n'est pas appliquée** (ou après son retour arrière), l'application est exactement celle d'avant : pas de bloc dans la fiche client, pas de « Terminé le … » dans les fiches, aucun message, aucune erreur (l'écran interroge `worksite_completion_ready()` et se tait si elle manque, est refusée ou si la colonne n'est pas dans la ligne lue). Le test le prouve : fonction absente, fonction refusée, réseau coupé, colonne absente, absence de réponse.
 
-**Retour arrière** : bloc « RETOUR ARRIÈRE » de l'en-tête (en commentaire). Les colonnes sont **gardées** (rien n'est effacé). Un chantier déjà terminé reste masqué des listes de choix des salariés (c'est la donnée qui décide) ; pour le rouvrir à la main : `UPDATE public.worksites SET completed_at = NULL, completed_by = NULL WHERE id = '…';`.
+**Retour arrière** : bloc « RETOUR ARRIÈRE » de l'en-tête (en commentaire). Il **neutralise sans rien retirer** : deux `REVOKE` rendent les fonctions inappelables, l'application cache de nouveau tout (sans message) et plus personne ne peut poser ou retirer le statut. Le déclencheur de garde reste en place, les colonnes et leurs valeurs sont **gardées** (rien n'est effacé ; le fichier ne contient aucun `DROP`, même en commentaire). Rejouer le fichier rend les droits. Un chantier déjà terminé reste masqué des listes de choix des salariés (c'est la donnée qui décide) ; pour le rouvrir à la main : `UPDATE public.worksites SET completed_at = NULL, completed_by = NULL WHERE id = '…';`. Retirer vraiment les objets serait une décision à part.
 
 ## 5. À tester sur téléphone (Ergun)
 
@@ -118,9 +118,9 @@ Après la migration et la mise en ligne, sur un chantier **de test** (pas un vra
 
 | Commande | Ce qu'elle prouve |
 |---|---|
-| `npm run test:chantier-termine-db` | la migration sur une vraie base jetable (PGlite), **rejouée avec la colonne absente puis déjà présente** : additive, rejouable, retour arrière, vérification 9 × true, abus (salarié, chef d'équipe, bureau désactivé, autre entreprise, compte support, anonyme, insertion avec statut forcé), date future refusée, aucun blocage des écritures, bilan = sommes SQL indépendantes (heures, route, brouillons, réserves, dépenses, documents, budget). 227 vérifications |
+| `npm run test:chantier-termine-db` | la migration sur une vraie base jetable (PGlite), **rejouée avec la colonne absente puis déjà présente** : additive, rejouable, retour arrière, vérification 9 × true, abus (salarié, chef d'équipe, bureau désactivé, autre entreprise, compte support, anonyme, insertion avec statut forcé), date future refusée, aucun blocage des écritures, bilan = sommes SQL indépendantes (heures, route, brouillons, réserves, dépenses, documents, budget). 237 vérifications |
 | `npm run test:chantier-termine` | les règles pures (Deno) : date, avertissements, comptages, formats et budget identiques à « Coût chantiers », bilan complet |
-| `npm run test:chantier-termine-ecrans` (après `npm run build`) | les vraies pages à 390 px : fiche, terminer avec ses quatre avertissements, erreurs, rouvrir, bilan, mêmes chiffres que « Coût chantiers », fonction cachée avant la migration, mode support, salarié et chef d'équipe. 91 vérifications |
+| `npm run test:chantier-termine-ecrans` (après `npm run build`) | les vraies pages à 390 px : fiche, terminer avec ses quatre avertissements, erreurs, rouvrir, bilan, mêmes chiffres que « Coût chantiers », fonction cachée avant la migration, mode support, salarié et chef d'équipe. 95 vérifications |
 
 Captures à 390 px : `docs/captures-chantier-termine/` (fiche, terminer avec avertissements, bilan haut et bas, journée du salarié, choix de chantier sans le chantier terminé).
 

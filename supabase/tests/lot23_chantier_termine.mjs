@@ -160,6 +160,9 @@ section(`Fichier ${MIG_FILE}`);
   const found = (re) => (code.match(re) || []).length;
   check(/^20261013180000_lot23_chantier_termine\.sql$/.test(MIG_FILE), 'nom du fichier : 20261013180000_lot23_chantier_termine.sql');
   check(found(/DROP|DELETE|TRUNCATE|CASCADE|ON DELETE/gi) === 0, 'grep DROP / DELETE / TRUNCATE / CASCADE / ON DELETE sur le fichier sans commentaires (corps de fonctions compris) : 0 résultat');
+  // Lecture la plus stricte de la consigne : on retire aussi les « -- » de TOUTES les lignes (le retour arrière et la vérification deviennent du code).
+  const decommented = SQL.split('\n').map((l) => l.replace(/^-- ?/, '')).join('\n');
+  check((decommented.match(/DROP|DELETE|TRUNCATE|CASCADE|ON DELETE/gi) || []).length === 0, 'et AUCUN de ces mots non plus après retrait des « -- » de tout le fichier (retour arrière non destructif : REVOKE seulement)');
   check(found(/\bCREATE\s+POLICY\b/gi) === 0 && found(/\bALTER\s+POLICY\b/gi) === 0 && found(/\bENABLE\s+ROW\s+LEVEL/gi) === 0, 'aucune règle de lignes créée, modifiée ni activée : les règles de worksites ne sont pas touchées');
   const alters = (code.match(/\bALTER\s+\w+[^;]*/gi) || []).map((a) => a.trim().replace(/\s+/g, ' '));
   check(alters.length === 2 && alters.every((a) => /^ALTER TABLE public\.worksites ADD COLUMN IF NOT EXISTS completed_(at timestamptz|by uuid)$/.test(a)), `ALTER : seulement deux « ADD COLUMN IF NOT EXISTS » sur worksites (${alters.join(' ; ')})`);
@@ -175,7 +178,9 @@ section(`Fichier ${MIG_FILE}`);
     'en-tête : RETOUR ARRIÈRE, VÉRIFICATION APRÈS APPLICATION, HISTORIQUE, avant le code');
   check(/INSERT INTO supabase_migrations\.schema_migrations \(version, name\)\n--\s+VALUES \('20261013180000', 'lot23_chantier_termine'\) ON CONFLICT DO NOTHING;/.test(SQL), 'HISTORIQUE : version et nom d’enregistrement (nom du fichier sans .sql)');
   check(!!POST_SQL && !!ROLLBACK_SQL, 'le fichier contient la vérification (une requête) et le retour arrière (blocs commentés)');
-  check(/completed_at existait peut-être|déjà dans la base de production|dans la base de production/.test(SQL) && /ne pas la retirer/.test(SQL), 'le retour arrière garde les colonnes et dit pourquoi (completed_at existe peut-être déjà)');
+  check(/NEUTRALISE, sans rien retirer/.test(SQL) && /GARDÉES/.test(SQL) && /existait peut-être/.test(SQL) && !/^-- (DROP|DELETE|ALTER)/m.test(ROLLBACK_SQL ? SQL.slice(SQL.indexOf('DÉBUT DU RETOUR'), SQL.indexOf('FIN DU RETOUR')) : ''),
+    'le retour arrière neutralise sans rien retirer, garde les colonnes et dit pourquoi (completed_at existe peut-être déjà)');
+  check(ROLLBACK_SQL.split('\n').filter(Boolean).every((l) => /^REVOKE ALL ON FUNCTION public\.\w+\(.*\) FROM PUBLIC, anon, authenticated;$/.test(l)) && ROLLBACK_SQL.split('\n').filter(Boolean).length === 2, 'le retour arrière : deux REVOKE, rien d’autre');
 }
 
 // ═══ Le jeu de données fictif ═══════════════════════════════════════════════
@@ -507,21 +512,30 @@ INSERT INTO public.worksite_expenses (company_id, worksite_id, spent_on, categor
   ck(await dataPrint() === dataBefore, 'et l’essai annulé n’a rien laissé');
 
   // ═══ Retour arrière puis rejouée ═══════════════════════════════════════
-  section(`Retour arrière, puis migration rejouée — ${titre}`);
+  section(`Retour arrière (neutralisation), puis migration rejouée — ${titre}`);
   await root();
   const stateBefore = JSON.stringify(await rows(`SELECT id, completed_at, completed_by FROM public.worksites ORDER BY id`));
   const dataMid = await dataPrint();
   ck(!(await errExec(ROLLBACK_SQL)), 'le RETOUR ARRIÈRE de l’en-tête, copié tel quel (sans « -- »), s’exécute sans erreur');
   {
     const r = await one(`SELECT (SELECT count(*) FROM pg_proc WHERE proname = ANY($1))::int AS f, (SELECT count(*) FROM pg_trigger WHERE tgname = ANY($2))::int AS t,
-      (SELECT count(*) FROM information_schema.columns WHERE table_name = 'worksites' AND column_name IN ('completed_at','completed_by'))::int AS c`, [NEW_FNS, NEW_TRIGGERS]);
-    ck(r.f === 0 && r.t === 0, 'après retour arrière : plus de fonction du lot, plus de déclencheur (l’application cache tout : « prête » n’existe plus)');
-    ck(r.c === 2, 'les deux colonnes sont GARDÉES (rien n’est effacé ; completed_at existait peut-être avant)');
+      (SELECT count(*) FROM information_schema.columns WHERE table_name = 'worksites' AND column_name IN ('completed_at','completed_by'))::int AS c,
+      has_function_privilege('authenticated', 'public.worksite_completion_ready()', 'EXECUTE') AS ra, has_function_privilege('anon', 'public.worksite_completion_ready()', 'EXECUTE') AS rn,
+      has_function_privilege('authenticated', 'public.set_worksite_completed(uuid, date)', 'EXECUTE') AS sa, has_function_privilege('anon', 'public.set_worksite_completed(uuid, date)', 'EXECUTE') AS sn`, [NEW_FNS, NEW_TRIGGERS]);
+    ck(r.f === 3 && r.t === 1 && r.c === 2, 'rien n’est retiré : les 3 fonctions, le déclencheur et les 2 colonnes sont toujours là');
+    ck(!r.ra && !r.rn && !r.sa && !r.sn, 'mais « prête » et « terminer » ne sont plus appelables par personne (connectés comme anonymes)');
     ck(JSON.stringify(await rows(`SELECT id, completed_at, completed_by FROM public.worksites ORDER BY id`)) === stateBefore && await dataPrint() === dataMid, 'les chantiers déjà terminés le restent, les données sont intactes');
     ck(await otherFns() === fnsBefore && await otherTriggers() === trgBefore, 'les fonctions et déclencheurs d’origine sont toujours identiques');
     await as(SAM);
-    ck((await errOf('SELECT public.worksite_completion_ready()'))?.code === '42883', 'après retour arrière : « prête » répond « fonction inconnue » (la fonction se recache sans message)');
-    ck(core.isWorksiteFinished({ completed_at: (await rows(`SELECT completed_at FROM public.worksites WHERE id = $1`, [WS_B]))[0].completed_at }), 'et un chantier terminé reste masqué des listes de choix du salarié (c’est la donnée qui décide)');
+    ck((await errOf('SELECT public.worksite_completion_ready()'))?.code === '42501', 'après retour arrière : « prête » est refusée à un connecté (l’application se recache sans message : toute erreur = « pas prête »)');
+    await as(ADMIN);
+    ck((await errOf(`SELECT public.set_worksite_completed($1, '2026-10-09')`, [WS]))?.code === '42501' && (await errOf(`SELECT public.set_worksite_completed($1, NULL)`, [WS_B]))?.code === '42501', 'plus personne, pas même le bureau, ne peut poser ou retirer le statut par la fonction');
+    await as(SAM);
+    ck(core.isWorksiteFinished({ completed_at: (await rows(`SELECT completed_at FROM public.worksites WHERE id = $1`, [WS_B]))[0].completed_at }), 'un chantier terminé reste masqué des listes de choix du salarié (c’est la donnée qui décide)');
+    const ins = await one(`INSERT INTO public.worksites (company_id, client_name, completed_at) VALUES ($1, 'Encore né terminé ?', '2026-10-01') RETURNING completed_at`, [CO]);
+    ck(ins.completed_at === null, 'le garde reste actif : un salarié qui insère un chantier avec un statut forcé le voit remis à vide');
+    await as(ADMIN);
+    ck(await affected(`UPDATE public.worksites SET city = 'Lyon 4' WHERE id = $1`, [WS]) === 1, 'le bureau modifie toujours la fiche client comme avant');
   }
   await root();
   ck(!(await errExec(SQL)), 'la migration se rejoue après un retour arrière');
@@ -529,7 +543,9 @@ INSERT INTO public.worksite_expenses (company_id, worksite_id, spent_on, categor
     const v = await one(POST_SQL.replace(/;\s*$/, ''));
     const vals = Object.values(v);
     ck(vals.length === 9 && vals.every((x) => x === true), `et la VÉRIFICATION rend de nouveau ${vals.length} × true`);
-    ck(JSON.stringify(await rows(`SELECT id, completed_at, completed_by FROM public.worksites ORDER BY id`)) === stateBefore, 'les statuts posés avant le retour arrière sont toujours là');
+    ck(JSON.stringify(await rows(`SELECT id, completed_at, completed_by FROM public.worksites WHERE id = ANY($1) ORDER BY id`, [[WS, WS_B, WS2]])) === JSON.stringify(JSON.parse(stateBefore).filter((x) => [WS, WS_B, WS2].includes(x.id)).map((x) => ({ ...x, completed_at: x.completed_at ? new Date(x.completed_at) : null }))), 'les statuts posés avant le retour arrière sont toujours là');
+    await as(SAM);
+    ck((await one('SELECT public.worksite_completion_ready() AS r')).r === true, '« prête » répond de nouveau true');
     await as(ADMIN);
     const back = await one(`SELECT public.set_worksite_completed($1, NULL) AS at`, [WS_B]);
     ck(back.at === null && (await status(WS_B)).completed_at === null, 'et le bureau peut de nouveau rouvrir');
