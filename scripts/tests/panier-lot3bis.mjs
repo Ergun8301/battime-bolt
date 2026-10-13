@@ -308,7 +308,11 @@ const teamExport = async (op, kind) => {
   await team.waitFor();
   await team.getByRole('button', { name: "Aujourd'hui", exact: true }).click();
   await team.locator('[data-testid=team-export-menu]').click();
-  return download(op, () => op.locator(`[data-testid=team-export-menu-${kind}]`).click());
+  // Lot 18 : l'export d'équipe passe par l'alerte « Cet export va verrouiller… » : on la confirme (comportement d'avant), le fichier est le même.
+  return download(op, async () => {
+    await op.locator(`[data-testid=team-export-menu-${kind}]`).click();
+    const c = op.locator('[data-testid=export-verrou-confirm]'); await c.waitFor({ timeout: 10000 }); await c.click();
+  });
 };
 
 // ── « Ma journée » (salarié) ──

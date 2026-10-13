@@ -246,7 +246,9 @@ const admin = async (viewport = { width: 1280, height: 800 }, opts = {}) => {
   await team.getByRole('button', { name: 'Cette semaine', exact: true }).click(); await pg.waitForTimeout(300);
   await team.locator('[data-testid=team-export-menu]').click();
   const w0 = writes.length;
-  const x = await download(pg, () => pg.locator('[data-testid=team-export-menu-excel]').click());
+  // Lot 18 : l'export d'équipe passe par l'alerte « Cet export va verrouiller… » : on la confirme (« Exporter et verrouiller » = le comportement d'avant).
+  const confirmer = async () => { const c = pg.locator('[data-testid=export-verrou-confirm]'); await c.waitFor({ timeout: 10000 }); await c.click(); };
+  const x = await download(pg, async () => { await pg.locator('[data-testid=team-export-menu-excel]').click(); await confirmer(); });
   check(/\.xlsx$/.test(x.name) && XLSX.read(x.buf, { type: 'buffer' }).SheetNames.includes('Détail'), `b) équipe : Excel lisible (${x.name})`);
   await pg.waitForTimeout(800);
   check(writes.slice(w0).some((w) => w.m === 'PATCH' && w.t === 'time_entries'), 'b) équipe : le verrouillage des heures part APRÈS le fichier (comme avant)');
@@ -258,7 +260,7 @@ const admin = async (viewport = { width: 1280, height: 800 }, opts = {}) => {
   const send = pg.locator('[data-testid=send-accountant]');
   if (await send.count()) {
     const w1 = writes.length;
-    await send.first().click(); await pg.waitForTimeout(1500);
+    await send.first().click(); await confirmer(); await pg.waitForTimeout(1500);
     const fn = writes.slice(w1).filter((w) => w.m === 'FN' && /send-payroll-export/.test(w.t));
     const sent = fn[0]?.body; const xb = sent?.contentBase64 ? Buffer.from(sent.contentBase64, 'base64') : null;
     check(fn.length === 1 && !!xb && xb.subarray(0, 2).toString() === 'PK' && XLSX.read(xb, { type: 'buffer' }).SheetNames.includes('Détail') && /\.xlsx$/.test(sent.fileName || ''),
@@ -278,7 +280,10 @@ const admin = async (viewport = { width: 1280, height: 800 }, opts = {}) => {
     await team.locator('[data-testid=team-export-menu]').click(); await pg.waitForTimeout(800);
     const w0 = writes.length; let got = null;
     pg.once('download', (d) => { got = d; });
-    await pg.locator('[data-testid=team-export-menu-excel]').click(); await pg.waitForTimeout(2500);
+    await pg.locator('[data-testid=team-export-menu-excel]').click();
+    // Lot 18 : l'alerte s'ouvre (elle n'a pas besoin d'Excel) ; c'est APRÈS « Exporter et verrouiller » que l'outil manque.
+    { const c = pg.locator('[data-testid=export-verrou-confirm]'); await c.waitFor({ timeout: 10000 }); await c.click(); }
+    await pg.waitForTimeout(2500);
     check(!got, 'd) chunk Excel bloqué : aucun téléchargement');
     check(writes.slice(w0).filter((w) => w.m !== 'GET' && w.t === 'time_entries').length === 0, 'd) chunk Excel bloqué : AUCUN verrouillage des heures (pas de verrou sans fichier)');
     check(/Impossible de charger l.outil d.export/i.test(await pg.locator('[data-sonner-toast]').allInnerTexts().then((a) => a.join(' ')).catch(() => '')), 'd) chunk Excel bloqué : un message d\'erreur est affiché');
