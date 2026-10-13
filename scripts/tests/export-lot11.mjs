@@ -152,7 +152,7 @@ const setup = async (ctx, { closures = 'ok' } = {}) => {
       return r.fulfill({ status: 201, json: {} });
     }
     let rows = filterRows(db[t] || [], url.searchParams);
-    // .range() → offset/limit (fetchAllPaged s'arrête sur une page vide).
+    // .range() → offset/limit (fetchAllPaged s'arrête sur une page plus courte que la taille demandée).
     const off = Number(url.searchParams.get('offset') || 0); const lim = url.searchParams.get('limit');
     if (off || lim) rows = rows.slice(off, lim ? off + Number(lim) : undefined);
     if ((req.headers()['accept'] || '').includes('vnd.pgrst.object')) return rows.length ? r.fulfill({ json: rows[0] }) : r.fulfill({ status: 406, json: { code: 'PGRST116', message: 'none' } });
