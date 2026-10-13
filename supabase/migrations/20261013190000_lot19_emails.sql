@@ -29,24 +29,26 @@
 -- DROP TABLE IF EXISTS public.email_unsubscribes_v2;
 -- ── FIN DU RETOUR ARRIÈRE COMPLET ──
 --
--- VÉRIFICATION APRÈS APPLICATION — LECTURE SEULE, une ligne, 9 × true :
+-- VÉRIFICATION APRÈS APPLICATION — LECTURE SEULE, une ligne, 10 × true :
 -- SELECT
---   (SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'staff_email_log'
---      AND column_name IN ('id', 'company_id', 'kind', 'user_id', 'recipient_mask', 'recipient_hash', 'content_hash', 'day', 'status', 'reason', 'sent_by', 'created_at', 'finished_at')) = 13 AS v1_journal_colonnes,
---   (SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'email_unsubscribes_v2'
---      AND column_name IN ('email', 'kind', 'created_at')) = 3 AS v2_desabonnements_colonnes,
+--   (SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'staff_email_log') = 13
+--   AND (SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'staff_email_log'
+--      AND column_name IN ('id', 'company_id', 'kind', 'user_id', 'recipient_mask', 'recipient_hash', 'content_hash', 'day', 'status', 'reason', 'sent_by', 'created_at', 'finished_at')) = 13 AS v1_journal_exactement_13_colonnes,
+--   (SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'email_unsubscribes_v2') = 3
+--   AND (SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'email_unsubscribes_v2'
+--      AND column_name IN ('email', 'kind', 'created_at')) = 3 AS v2_desabonnements_exactement_3_colonnes,
 --   (SELECT count(*) FROM pg_class WHERE oid IN ('public.staff_email_log'::regclass, 'public.email_unsubscribes_v2'::regclass) AND relrowsecurity) = 2 AS v3_rls_active_deux_tables,
 --   has_table_privilege('authenticated', 'public.staff_email_log', 'SELECT')
---   AND NOT has_table_privilege('authenticated', 'public.staff_email_log', 'INSERT')
---   AND NOT has_table_privilege('authenticated', 'public.staff_email_log', 'UPDATE')
---   AND NOT has_table_privilege('anon', 'public.staff_email_log', 'SELECT')
---   AND NOT has_table_privilege('anon', 'public.staff_email_log', 'INSERT') AS v4_journal_lu_par_le_bureau_ecrit_par_personne,
---   NOT has_table_privilege('authenticated', 'public.email_unsubscribes_v2', 'SELECT')
---   AND NOT has_table_privilege('authenticated', 'public.email_unsubscribes_v2', 'INSERT')
---   AND NOT has_table_privilege('anon', 'public.email_unsubscribes_v2', 'SELECT')
---   AND NOT has_table_privilege('anon', 'public.email_unsubscribes_v2', 'INSERT') AS v5_desabonnements_fermes_au_navigateur,
---   has_table_privilege('service_role', 'public.staff_email_log', 'SELECT')
---   AND has_table_privilege('service_role', 'public.email_unsubscribes_v2', 'INSERT') AS v6_cle_service_ecrit,
+--   AND NOT has_table_privilege('authenticated', 'public.staff_email_log', 'INSERT,UPDATE,DELETE,TRUNCATE')
+--   AND NOT has_any_column_privilege('authenticated', 'public.staff_email_log', 'INSERT,UPDATE')
+--   AND NOT has_table_privilege('anon', 'public.staff_email_log', 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE')
+--   AND NOT has_any_column_privilege('anon', 'public.staff_email_log', 'SELECT,INSERT,UPDATE') AS v4_journal_lu_par_le_bureau_rien_d_autre,
+--   NOT has_table_privilege('authenticated', 'public.email_unsubscribes_v2', 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE')
+--   AND NOT has_any_column_privilege('authenticated', 'public.email_unsubscribes_v2', 'SELECT,INSERT,UPDATE')
+--   AND NOT has_table_privilege('anon', 'public.email_unsubscribes_v2', 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE')
+--   AND NOT has_any_column_privilege('anon', 'public.email_unsubscribes_v2', 'SELECT,INSERT,UPDATE') AS v5_desabonnements_fermes_au_navigateur,
+--   has_table_privilege('service_role', 'public.staff_email_log', 'SELECT,INSERT,UPDATE')
+--   AND has_table_privilege('service_role', 'public.email_unsubscribes_v2', 'SELECT,INSERT,UPDATE') AS v6_cle_service_lit_et_ecrit,
 --   (SELECT count(*) FROM pg_policies WHERE schemaname = 'public' AND tablename IN ('staff_email_log', 'email_unsubscribes_v2')) = 1
 --   AND EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'staff_email_log' AND policyname = 'staff_email_log_admin_select' AND cmd = 'SELECT') AS v7_une_seule_regle_lecture_bureau,
 --   (SELECT count(*) FROM pg_proc WHERE pronamespace = 'public'::regnamespace
@@ -58,7 +60,9 @@
 --   AND NOT has_function_privilege('authenticated', 'public.staff_email_used_today(uuid)', 'EXECUTE')
 --   AND has_function_privilege('service_role', 'public.staff_email_reserve(uuid, uuid, text, integer, jsonb)', 'EXECUTE') AS v8_fonctions_chemin_vide_service_seulement,
 --   (SELECT count(*) FROM pg_constraint WHERE conrelid = 'public.email_unsubscribes'::regclass AND contype = 'c'
---      AND pg_get_constraintdef(oid) LIKE '%weekly-digest%' AND pg_get_constraintdef(oid) LIKE '%budget-alerts%') = 1 AS v9_ancienne_table_a_ses_quatre_familles;
+--      AND pg_get_constraintdef(oid) LIKE '%weekly-digest%' AND pg_get_constraintdef(oid) LIKE '%budget-alerts%') = 1 AS v9_ancienne_table_a_ses_quatre_familles,
+--   NOT has_table_privilege('service_role', 'public.staff_email_log', 'DELETE,TRUNCATE')
+--   AND NOT has_table_privilege('service_role', 'public.email_unsubscribes_v2', 'DELETE,TRUNCATE') AS v10_meme_la_cle_service_n_efface_rien;
 --
 -- HISTORIQUE : si le fichier est collé dans l'éditeur SQL, inscrire ensuite :
 --   INSERT INTO supabase_migrations.schema_migrations (version, name)

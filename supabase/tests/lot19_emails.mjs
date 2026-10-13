@@ -6,7 +6,7 @@
 //   Puis :      npm run test:emails-db
 //
 // Ce qui est prouvé :
-//   · le fichier : nom = nom d'enregistrement, en-tête (retour arrière, vérification 9 × true,
+//   · le fichier : nom = nom d'enregistrement, en-tête (retour arrière, vérification 10 × true,
 //     historique), AUCUN des mots DROP / DELETE / TRUNCATE / CASCADE / ON DELETE hors commentaires ;
 //   · additif et rejouable (chargé deux fois, rien d'existant ne change) ; droits PAR DÉFAUT de
 //     production (tout pour anon / authenticated sur les objets neufs) repris ;
@@ -171,7 +171,7 @@ async function main() {
   check(await errExec(SQL) === null, 'rechargée une 2e fois, sans erreur (rejouable)');
   check(await fingerprint() === before, 'rien d’existant n’a changé (fonctions, colonnes, contraintes, droits de companies / users / email_unsubscribes)');
   const post = await one(POST_SQL);
-  check(Object.keys(post).length === 9 && Object.values(post).every((v) => v === true), `la vérification livrée dit 9 × true (${Object.entries(post).filter(([, v]) => v !== true).map(([k]) => k).join(', ') || 'toutes vraies'})`);
+  check(Object.keys(post).length === 10 && Object.values(post).every((v) => v === true), `la vérification livrée dit 10 × true (${Object.entries(post).filter(([, v]) => v !== true).map(([k]) => k).join(', ') || 'toutes vraies'})`);
   const pol = await rows(`SELECT tablename, policyname, cmd FROM pg_policies WHERE schemaname = 'public' AND tablename IN ('staff_email_log', 'email_unsubscribes_v2')`);
   check(pol.length === 1 && pol[0].policyname === 'staff_email_log_admin_select' && pol[0].cmd === 'SELECT', 'une seule règle de ligne, en lecture, sur le journal');
   check(await err(`SELECT 1`) === null, 'base saine après chargement');
@@ -322,6 +322,32 @@ async function main() {
   check(await err(`SELECT public.staff_email_used_today($1)`, [CO]) === '42501', 'anonyme : staff_email_used_today est fermée');
   await root();
 
+  // ═══ La vérification livrée voit les dérives (mutations, puis retour à l'état d'origine) ═════
+  section('La vérification « 10 × true » détecte une dérive des droits ou des colonnes');
+  const falseKeys = async () => Object.entries(await one(POST_SQL)).filter(([, v]) => v !== true).map(([k]) => k.split('_')[0]);
+  const mutate = async (label, doSql, undoSql, expected) => {
+    await root();
+    await db.exec(doSql);
+    const got = await falseKeys();
+    await db.exec(undoSql);
+    const back = await falseKeys();
+    check(JSON.stringify(got) === JSON.stringify(expected) && back.length === 0, `${label} → ${expected.join(', ')} passe à false (obtenu : ${got.join(', ') || 'rien'}) ; après retour : tout vrai`);
+  };
+  check((await falseKeys()).length === 0, 'point de départ : tout est vrai');
+  await mutate('GRANT DELETE sur le journal au bureau', 'GRANT DELETE ON public.staff_email_log TO authenticated', 'REVOKE DELETE ON public.staff_email_log FROM authenticated', ['v4']);
+  await mutate('GRANT TRUNCATE sur le journal au bureau (TRUNCATE ignore la RLS)', 'GRANT TRUNCATE ON public.staff_email_log TO authenticated', 'REVOKE TRUNCATE ON public.staff_email_log FROM authenticated', ['v4']);
+  await mutate('GRANT UPDATE (une seule colonne) sur le journal au bureau', 'GRANT UPDATE (reason) ON public.staff_email_log TO authenticated', 'REVOKE UPDATE (reason) ON public.staff_email_log FROM authenticated', ['v4']);
+  await mutate('GRANT SELECT sur le journal à anon', 'GRANT SELECT ON public.staff_email_log TO anon', 'REVOKE SELECT ON public.staff_email_log FROM anon', ['v4']);
+  await mutate('GRANT UPDATE sur la liste des désabonnés au bureau', 'GRANT UPDATE ON public.email_unsubscribes_v2 TO authenticated', 'REVOKE UPDATE ON public.email_unsubscribes_v2 FROM authenticated', ['v5']);
+  await mutate('GRANT SELECT sur la liste des désabonnés à anon', 'GRANT SELECT ON public.email_unsubscribes_v2 TO anon', 'REVOKE SELECT ON public.email_unsubscribes_v2 FROM anon', ['v5']);
+  await mutate('GRANT DELETE sur la liste des désabonnés au bureau', 'GRANT DELETE ON public.email_unsubscribes_v2 TO authenticated', 'REVOKE DELETE ON public.email_unsubscribes_v2 FROM authenticated', ['v5']);
+  await mutate('GRANT DELETE sur le journal à la clé service', 'GRANT DELETE ON public.staff_email_log TO service_role', 'REVOKE DELETE ON public.staff_email_log FROM service_role', ['v10']);
+  await mutate('GRANT TRUNCATE sur la liste des désabonnés à la clé service', 'GRANT TRUNCATE ON public.email_unsubscribes_v2 TO service_role', 'REVOKE TRUNCATE ON public.email_unsubscribes_v2 FROM service_role', ['v10']);
+  await mutate('une colonne de plus dans le journal', 'ALTER TABLE public.staff_email_log ADD COLUMN extra text', 'ALTER TABLE public.staff_email_log DROP COLUMN extra', ['v1']);
+  await mutate('une colonne de plus dans la liste des désabonnés', 'ALTER TABLE public.email_unsubscribes_v2 ADD COLUMN extra text', 'ALTER TABLE public.email_unsubscribes_v2 DROP COLUMN extra', ['v2']);
+  await mutate('la RLS désactivée sur le journal', 'ALTER TABLE public.staff_email_log DISABLE ROW LEVEL SECURITY', 'ALTER TABLE public.staff_email_log ENABLE ROW LEVEL SECURITY', ['v3']);
+  await root();
+
   // ═══ Retours arrière ════════════════════════════════════════════════════
   section('Retours arrière (décommentés puis exécutés), puis rechargement');
   const nFns = async () => Number((await one(`SELECT count(*) AS n FROM pg_proc WHERE pronamespace = 'public'::regnamespace AND proname LIKE 'staff_email%'`)).n);
@@ -330,12 +356,12 @@ async function main() {
   check(await errExec(ROLLBACK_SOFT) === null && await nFns() === 0, 'retour DOUX : les trois fonctions disparaissent');
   check(await hasTable('staff_email_log') && await hasTable('email_unsubscribes_v2') && Number((await one(`SELECT count(*) AS n FROM public.staff_email_log`)).n) === logRows, `…le journal (${logRows} lignes) et la liste des désabonnés sont GARDÉS`);
   check(await errExec(SQL) === null && await nFns() === 3, 'la migration rechargée remet les fonctions');
-  check(Object.values(await one(POST_SQL)).every((v) => v === true), '…et la vérification redit 9 × true');
+  check(Object.values(await one(POST_SQL)).every((v) => v === true), '…et la vérification redit 10 × true');
   check(Number((await one(`SELECT count(*) AS n FROM public.staff_email_log`)).n) === logRows, '…sans toucher aux lignes du journal');
   check(await errExec(ROLLBACK_FULL) === null && await nFns() === 0 && !(await hasTable('staff_email_log')) && !(await hasTable('email_unsubscribes_v2')), 'retour COMPLET : fonctions et deux tables disparaissent');
   check(await hasTable('email_unsubscribes') && Number((await one(`SELECT count(*) AS n FROM public.email_unsubscribes`)).n) === 4, 'l’ancienne table des désabonnements (quatre familles) n’est PAS touchée par le retour complet');
   check(await fingerprint() === before, 'après le retour complet : tout ce qui existait avant est identique (fonctions, colonnes, contraintes, droits)');
-  check(await errExec(SQL) === null && await nFns() === 3 && Object.values(await one(POST_SQL)).every((v) => v === true), 'rechargée après le retour complet : tout est revenu, 9 × true');
+  check(await errExec(SQL) === null && await nFns() === 3 && Object.values(await one(POST_SQL)).every((v) => v === true), 'rechargée après le retour complet : tout est revenu, 10 × true');
 
   console.log(`\n${ok} vérifications réussies, ${ko} échec(s).`);
   await db.close();
