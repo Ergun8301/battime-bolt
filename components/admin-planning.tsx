@@ -44,6 +44,11 @@ import { isExitToComplete, type QrFields } from '@/lib/qr-entry';
 import { exportEntriesToExcel, exportEntriesToPDF, exportEntriesToCSV, excelAsBase64, isExportLibError } from '@/lib/export-utils';
 import { readMealEnabled } from '@/lib/meal-setting';
 import { fetchAllPaged, chunk } from '@/lib/fetch-all';
+// Lot 18 : alerte avant l'export d'équipe qui verrouille (règles pures, filtre unique des heures exportées, support = lecture seule).
+import { alerteNecessaire, compterVerrou, libellePeriode, memeCompte, messageFinExport, type CompteVerrou, type ExportEquipe } from '@/lib/export-verrou';
+import { lignesExportees, lireCompteVerrou } from '@/lib/export-lignes';
+import { readSupportSession } from '@/lib/support';
+import type { VerrouAsk } from '@/components/export-verrou-dialog';
 import { isPreviewHost } from '@/lib/hosting';
 import { TimeField, TIME_HINT } from '@/components/time-field';
 import { TIME_PRESETS } from '@/lib/time-input';
@@ -107,6 +112,9 @@ const ImportWorkersDialog = lazyWindow(() => import('@/components/import-workers
 // Déjà conditionnées par kioskOn / trainingsOn : préchauffées seulement quand elles existent à l'écran.
 const KioskAdmin = lazyWindow(() => import('@/components/kiosk-admin'), { isOpen: (p) => p.open, priority: 11, warm: 'mounted' });
 const TrainingsAdmin = lazyWindow(() => import('@/components/trainings-admin'), { isOpen: (p) => p.open, priority: 12, warm: 'mounted' });
+// Lot 18 : l'alerte de verrouillage de l'export d'équipe. Chargée à l'ouverture de la fenêtre « Exporter l'équipe »
+// (preload), pas au repos : la plupart des visites n'exportent jamais. Elle n'importe ni Excel ni jsPDF.
+const ExportVerrou = lazyWindow(() => import('@/components/export-verrou-dialog'), { isOpen: (p) => p.ask != null, close: (p) => p.onCancel(), warm: 'never' });
 // L'assistant garde la mémoire de sa conversation : monté dès que son code est là, même fermé (comme avant).
 const AssistantBureau = lazyWindow(() => import('@/components/assistant-bureau'), { isOpen: (p) => p.open, priority: 2, warm: 'mounted', mount: 'warm' });
 
@@ -1064,6 +1072,11 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
   const [extraTarget, setExtraTarget] = useState<{ userId: string; dateStr: string; worksiteId: string | null; name: string; minutes: number } | null>(null);
   const [attrBusy, setAttrBusy] = useState(false);
   const [exporting, setExporting] = useState(false);
+  // Lot 18 : l'alerte « cet export va verrouiller N lignes… » (null = fermée) et son bouton en cours.
+  const [verrouAsk, setVerrouAsk] = useState<VerrouAsk | null>(null);
+  const [verrouBusy, setVerrouBusy] = useState(false);
+  // Le code de l'alerte se charge à l'ouverture de « Exporter l'équipe » (pas au repos : la plupart des visites n'exportent pas).
+  useEffect(() => { if (exportOpen) ExportVerrou.preload(); }, [exportOpen]);
 
   // invitation row actions
   const [remindingId, setRemindingId] = useState<string | null>(null);
@@ -2398,8 +2411,20 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
 
   // ─── team export (locks) ──────────────────────────────────────────────────────
 
-  const runExport = async (kind: 'excel' | 'pdf' | 'csv' | 'comptable') => {
+  // Mode support (lot 5) : le compte connecté est celui qui « est entré » dans l'entreprise (même test que withSupportCompany).
+  const enModeSupport = () => { const s = readSupportSession(); return !!s && s.staffId === user?.id; };
+
+  // Lot 18 : AVANT tout fichier, on dit au bureau ce que l'export va verrouiller (demanderExport, plus bas).
+  // `verrouiller` (défaut : oui, comme avant le lot 18) = poser le verrou APRÈS le fichier ; faux = export de
+  // contrôle, rien n'est écrit en base. `annonce` = les chiffres de l'alerte : s'ils ont bougé entre l'alerte
+  // et le clic, on ne fait rien et on renvoie les chiffres à jour (`change`) pour les remontrer.
+  const runExport = async (
+    kind: ExportEquipe,
+    o: { verrouiller?: boolean; annonce?: CompteVerrou } = {},
+  ): Promise<{ change?: CompteVerrou } | void> => {
     if (!user?.company_id) { toast.error('Profil non chargé'); return; }
+    // Mode support : lecture seule, la base refuse toute écriture. Le fichier sort, rien n'est verrouillé.
+    const verrouiller = (o.verrouiller ?? true) && !enModeSupport();
     setExporting(true);
     try {
       if (!exportRange) { toast.error('Choisissez une période'); return; }
@@ -2475,15 +2500,18 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
           .map((id) => [id, weeklyHoursFor(overrides.get(id) ?? null, heuresBase)]),
       );
 
-      const entries = await fetchAllPaged<TimeEntryWithWorksite & { user: User }>((f, t2) => supabase
-        .from('time_entries')
-        .select('id, user_id, work_date, start_time, end_time, break_minutes, total_minutes, meal_allowance, status, observation, gap_before, worksite:worksites(client_name, city), user:users!user_id(first_name, last_name)')
-        .eq('company_id', user.company_id)
-        .in('status', ['submitted', 'validated'])
-        .gte('work_date', from).lte('work_date', to)
+      // Lot 18 : le filtre (statuts, entreprise, période) est celui de l'alerte (lib/export-lignes.ts) ; `locked` s'y
+      // ajoute pour recompter ce que le verrou va toucher. Rien d'autre ne change : même lignes, même ordre.
+      const entries = await fetchAllPaged<TimeEntryWithWorksite & { user: User }>((f, t2) => lignesExportees(user.company_id, from, to,
+        'id, user_id, work_date, start_time, end_time, break_minutes, total_minutes, meal_allowance, status, observation, gap_before, locked, worksite:worksites(client_name, city), user:users!user_id(first_name, last_name)')
         .order('work_date', { ascending: false }).order('user_id')
         .range(f, t2) as unknown as PromiseLike<{ data: (TimeEntryWithWorksite & { user: User })[] | null; error: { message: string } | null }>);
       if (entries.length === 0) { toast.error(`Aucune saisie du ${format(exportRange.from, 'dd/MM')} au ${format(exportRange.to, 'dd/MM')}`); return; }
+      // Lot 18 : les chiffres de l'alerte doivent être EXACTEMENT ce que le verrou va toucher. Un salarié a pu envoyer
+      // (ou le bureau verrouiller) pendant que l'alerte était ouverte : on remontre les chiffres, sans rien exporter.
+      // Si plus rien ne reste à verrouiller, on continue : le bureau avait accepté de verrouiller, il n'y a plus de surprise.
+      const aVerrouiller = compterVerrou(entries);
+      if (verrouiller && o.annonce && aVerrouiller.lignes > 0 && !memeCompte(aVerrouiller, o.annonce)) return { change: aVerrouiller };
 
       // Lot 3 bis : le réglage panier relu AU CLIC (lecture seule, à part) — couvre
       // Excel, PDF et l'envoi au comptable. Changer le réglage change le fichier :
@@ -2576,25 +2604,66 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
       // dépasse la longueur d'URL admise par la passerelle et échoue. L'erreur
       // n'était pas vérifiée : le mois s'affichait « clôturé » alors que rien
       // n'était verrouillé. On découpe, et on remonte toute erreur.
-      const stamp = new Date().toISOString();
-      for (const ids of chunk(entries.map((e) => e.id), 200)) {
-        const { error: lockErr } = await supabase.from('time_entries')
-          .update({ exported_at: stamp, locked: true })
-          .in('id', ids).eq('company_id', user.company_id);
-        if (lockErr) throw lockErr;
+      // Lot 18 : « Exporter sans verrouiller » (et le mode support) s'arrêtent ICI : le fichier est sorti,
+      // aucune écriture n'est partie vers la base.
+      if (verrouiller) {
+        const stamp = new Date().toISOString();
+        for (const ids of chunk(entries.map((e) => e.id), 200)) {
+          const { error: lockErr } = await supabase.from('time_entries')
+            .update({ exported_at: stamp, locked: true })
+            .in('id', ids).eq('company_id', user.company_id);
+          if (lockErr) throw lockErr;
+        }
       }
 
-      const lockLabel = `${entries.length} saisie${entries.length > 1 ? 's' : ''} verrouillée${entries.length > 1 ? 's' : ''}`;
-      toast.success(kind === 'comptable'
-        ? `${sentNote} — ${lockLabel}`
-        : kind === 'csv'
-          ? `CSV de paie téléchargé — ${lockLabel}`
-          : `Export téléchargé — ${lockLabel}`);
+      // Le message reprend le chiffre de l'alerte (les lignes verrouillées par CET export) ; si tout l'était déjà, le total.
+      toast.success(messageFinExport({ kind, verrouille: verrouiller, saisies: aVerrouiller.lignes > 0 ? aVerrouiller.lignes : entries.length, envoi: sentNote }));
     } catch (err) {
       console.error('Error exporting team:', err);
       toast.error(isExportLibError(err) ? "Impossible de charger l'outil d'export. Vérifiez votre connexion ou rechargez la page." : "Erreur lors de l'export");
     } finally {
       setExporting(false);
+    }
+  };
+
+  // Lot 18 : le point d'entrée de « Exporter » (menu et « Envoyer au comptable »). On COMPTE au clic ce que l'export
+  // verrouillerait (même filtre que le verrou, lib/export-lignes.ts) ; s'il y a au moins une ligne, l'alerte s'ouvre et
+  // rien ne part avant le choix du bureau. Rien à verrouiller (ou mode support, lecture seule) : l'export part comme avant.
+  // `retour` = data-testid du bouton à qui l'alerte rend le focus.
+  const demanderExport = async (kind: ExportEquipe, retour: string) => {
+    if (!user?.company_id) { toast.error('Profil non chargé'); return; }
+    if (!exportRange) { toast.error('Choisissez une période'); return; }
+    if (enModeSupport()) { await runExport(kind); return; }
+    const from = format(exportRange.from, 'yyyy-MM-dd');
+    const to = format(exportRange.to, 'yyyy-MM-dd');
+    setExporting(true);
+    let compte: CompteVerrou;
+    try {
+      compte = await lireCompteVerrou(user.company_id, from, to);
+    } catch (err) {
+      console.error('Error counting rows to lock:', err);
+      // Sans compte exact, pas d'export : le bureau ne doit jamais verrouiller à l'aveugle.
+      toast.error('Impossible de vérifier les heures qui seraient verrouillées. Rien n’a été exporté ni verrouillé. Réessayez.');
+      return;
+    } finally {
+      setExporting(false);
+    }
+    if (!alerteNecessaire(compte, { support: false })) { await runExport(kind); return; }
+    setVerrouAsk({ kind, compte, periode: libellePeriode(from, to), retour, destinataire: kind === 'comptable' ? accountantEmail || undefined : undefined });
+  };
+
+  // Les trois choix de l'alerte : « Exporter et verrouiller » (verrouiller = true : exactement l'export d'avant le lot 18),
+  // « Exporter sans verrouiller » (false : même fichier, aucune écriture). « Annuler » ne passe pas ici (rien ne part).
+  const choisirVerrou = async (verrouiller: boolean) => {
+    const ask = verrouAsk;
+    if (!ask || verrouBusy) return;
+    setVerrouBusy(true);
+    try {
+      const r = await runExport(ask.kind, { verrouiller, annonce: verrouiller ? ask.compte : undefined });
+      if (r && r.change) { setVerrouAsk({ ...ask, compte: r.change, change: true }); return; }
+      setVerrouAsk(null);
+    } finally {
+      setVerrouBusy(false);
     }
   };
 
@@ -4247,12 +4316,12 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
               : <p className="text-center text-sm text-muted-foreground">Choisissez une période.</p>}
             <ExportPreload />
             <div className="flex">
-              <ExportMenu onPick={(k) => runExport(k)} disabled={exporting || !exportRange} busy={exporting} align="start" testId="team-export-menu" guide="bureau-export.menu" />
+              <ExportMenu onPick={(k) => demanderExport(k, 'team-export-menu')} disabled={exporting || !exportRange} busy={exporting} align="start" testId="team-export-menu" guide="bureau-export.menu" />
             </div>
             <Button
               variant="outline"
               className="w-full min-w-0 justify-start"
-              onClick={() => runExport('comptable')}
+              onClick={() => demanderExport('comptable', 'send-accountant')}
               disabled={exporting || !exportRange || !accountantEmail}
               data-testid="send-accountant" data-guide="bureau-export.comptable"
               title={accountantEmail
@@ -4267,7 +4336,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
             )}
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <span>Exporter verrouille les heures de la période.</span>
-              <InfoTip text="Excel, PDF ou CSV pour la paie : les heures exportées sont verrouillées, les salariés ne peuvent plus les modifier. Vous gardez la main." />
+              <InfoTip text="Excel, PDF ou CSV pour la paie : les heures exportées sont verrouillées, les salariés ne peuvent plus les modifier. Une alerte vous dit combien de lignes avant de verrouiller, et vous pouvez aussi exporter sans verrouiller. Vous gardez la main." />
             </div>
 
             {/* Clôture du mois — après l'export, on ferme. Un salarié ne peut
@@ -4305,6 +4374,9 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Lot 18 : « Cet export va verrouiller N lignes d'heures de M salariés » — avant tout fichier. */}
+      <ExportVerrou ask={verrouAsk} busy={verrouBusy} onChoose={choisirVerrou} onCancel={() => setVerrouAsk(null)} />
 
       {/* Confirmation de clôture : on annonce ce qui restera bloqué. */}
       <Dialog open={!!closureTarget} onOpenChange={(o) => { if (!o) setClosureTarget(null); }}>
