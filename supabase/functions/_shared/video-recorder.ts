@@ -118,7 +118,7 @@ export function formatClock(seconds: number): string {
 
 // ─── Textes ──────────────────────────────────────────────────────────────────
 export const REC_OPENING = 'Ouverture de la caméra…';
-export const REC_READY = 'Cadrez, puis touchez « Démarrer ». Tenez le téléphone dans le même sens pendant toute la prise.';
+// Aucune consigne « Cadrez… » avant la prise (décision du patron : personne ne lit ces textes) ; seul « Démarrer » est écrit.
 export const REC_START = 'Démarrer';
 export const REC_STOP = 'Arrêter';
 export const REC_ABORT = 'Abandonner';

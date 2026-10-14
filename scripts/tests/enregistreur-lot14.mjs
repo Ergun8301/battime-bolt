@@ -96,6 +96,7 @@ let holdRelease = null;
 let MEDIA_FAIL = 0; // les N prochaines lectures du fichier échouent (lien expiré)
 let PUBLISH_FAIL = 0; // les N prochaines publications échouent (réseau coupé après l'arrivée du fichier)
 let LIMITS_LIE = null; // la jauge affiche moins que la vérité (pour prouver la garde de la base)
+let LIMITS_DELAY = 0; // la jauge arrive en retard (ms) : l'appui sur « Filmer » précède la lecture de la place
 let VIDEO_BYTES = Buffer.alloc(0); // une vraie petite vidéo WebM (fabriquée au début)
 const D = {};
 const OBJ = new Map(); // stockage « formations » : chemin → { size, mime, bytes }
@@ -113,7 +114,7 @@ const freshDb = () => {
   });
   OBJ.clear();
   OBJ.set(VID_PATH, { size: 38 * MO, mime: 'video/webm', bytes: null });
-  UP_MODE = 'normal'; MEDIA_FAIL = 0; LIMITS_LIE = null; PUBLISH_FAIL = 0; MAXB = 50 * MO; OBJ_AT.clear();
+  UP_MODE = 'normal'; MEDIA_FAIL = 0; LIMITS_LIE = null; PUBLISH_FAIL = 0; MAXB = 50 * MO; OBJ_AT.clear(); LIMITS_DELAY = 0;
 };
 freshDb();
 const LOT13_TABLES = new Set(['training_videos', 'training_video_views']);
@@ -467,7 +468,7 @@ const newCtx = async (uid, viewport, extra = {}) => {
       if (LOT13_FNS.has(fn)) {
         if (MIG !== 'oui') return r.fulfill(MISSING_FN(fn));
         try {
-          if (fn === 'training_video_limits') { const l = limitsOf(uid); limitsReads++; return r.fulfill({ json: l }); }
+          if (fn === 'training_video_limits') { const l = limitsOf(uid); limitsReads++; if (LIMITS_DELAY) await new Promise((res) => setTimeout(res, LIMITS_DELAY)); return r.fulfill({ json: l }); }
           if (fn === 'start_training_video') return r.fulfill({ json: startVideo(uid, body) });
           if (fn === 'publish_training_video') { if (PUBLISH_FAIL > 0) { PUBLISH_FAIL--; return r.abort('connectionfailed'); } return r.fulfill({ json: publishVideo(uid, body) }); }
           if (fn === 'training_video_leftovers') return r.fulfill({ json: leftovers(uid) });
@@ -578,7 +579,7 @@ const openUpload = async (p = op, kind = 'file') => {
 // ONLY=R2,R3 rejoue seulement ces scénarios (mise au point) ; sans ONLY, tout est rejoué.
 const want = (id) => !process.env.ONLY || process.env.ONLY.split(',').includes(id);
 // Phrases supprimées du formulaire (décision du patron, oct. 2026) : plus jamais à l'écran.
-const REMOVED = /Une vidéo filmée au téléphone|Le salarié l’ouvre et coche|Aucune formation|Ajoutez un lien|Place disponible|image 720p|jusqu’à 4 minutes|jusqu’à environ|MP4, MOV ou WebM ·|50 Mo maximum|position GPS|Désactivez la localisation|aucune position GPS|YouTube, Vimeo ou Google Drive\. La vidéo|reste chez eux|Aucun document|ajoutez-le d’abord|qualité maximale mais fichier plus lourd/;
+const REMOVED = /Une vidéo filmée au téléphone|Le salarié l’ouvre et coche|Aucune formation|Ajoutez un lien|Place disponible|image 720p|jusqu’à 4 minutes|jusqu’à environ|MP4, MOV ou WebM ·|50 Mo maximum|position GPS|Désactivez la localisation|aucune position GPS|YouTube, Vimeo ou Google Drive\. La vidéo|reste chez eux|Aucun document|ajoutez-le d’abord|qualité maximale mais fichier plus lourd|Cadrez, puis touchez|même sens pendant/;
 const MSG = {
   refus: 'L’appareil photo ou le micro est refusé. Autorisez-les pour BEMEXO dans les réglages du navigateur (sur iPhone : le bouton « aA » de la barre d’adresse, puis « Réglages du site »), puis réessayez. Vous pouvez aussi toucher « Fichier ».',
   absente: 'Aucune caméra n’a été trouvée sur cet appareil. Touchez « Fichier ».',
@@ -1323,6 +1324,7 @@ if (want('S')) {
     check(!(await chooser), `${label} · « Filmer » : un appui ouvre l’enregistreur, aucun explorateur de fichiers`);
     check(await pg.locator('[data-testid=tr-kind-record][aria-checked=true]').count() === 1 && await pg.locator('[data-testid=tr-file-ready]').count() === 0, `${label} · « Filmer » remplace le fichier précédent`);
     await pg.waitForTimeout(500);
+    check(!REMOVED.test(await txt(D1())) && await pg.locator('[data-testid=tr-rec] .bt-fo-muted').count() === 0, `${label} · enregistreur prêt : aucune consigne écrite (« Cadrez… »), seulement l’image et « Démarrer »`);
     await shotS(D1(), `enregistreur-${label}`);
     await pg.click('[data-testid=tr-rec-cancel]');
     await pg.waitForTimeout(300);
@@ -1409,6 +1411,45 @@ if (want('S')) {
     await openWindow(dp2, false); await dp2.waitForSelector('[data-testid=tr-form]');
     check((await chipTexts(dp2)).join('|') === 'Filmer|Fichier|Lien|Document', 'avec un document : « Document » est proposé');
     await dc2.close();
+  }
+
+  // S10 · la disponibilité de « Filmer » ne défait jamais un choix déjà engagé (prise prête, enregistreur ouvert)
+  {
+    // a) une prise est prête ; un autre compte remplit la place ; l'envoi est refusé et la jauge relue : la prise reste
+    await emptyDb();
+    const kc = await newCtx(ADMIN, { width: 1280, height: 900 });
+    const kp = track(await kc.newPage(), 'prise puis quota');
+    await openWindow(kp, false); await kp.waitForSelector('[data-testid=tr-form]');
+    await waitFor(async () => (await kp.locator('[data-testid=tr-kind-record]').count()) === 1, 4000);
+    await recReset(kp);
+    await kp.click('[data-testid=tr-kind-record]'); await kp.waitForSelector('[data-testid=tr-rec-start]', { timeout: 10000 });
+    await kp.click('[data-testid=tr-rec-start]'); await kp.waitForSelector('[data-testid=tr-rec-stop]'); await kp.waitForTimeout(1300);
+    await kp.click('[data-testid=tr-rec-stop]'); await kp.waitForSelector('[data-testid=tr-file-ready]', { timeout: 15000 });
+    await kp.fill('[data-testid=tr-title]', 'Prise sans place');
+    orphan(Math.round(99.97 * MO), '2026-10-14T08:00:00Z'); // un autre compte du bureau a rempli la place entre-temps (il ne reste que ~30 Ko)
+    const reads = limitsReads;
+    await kp.click('[data-testid=tr-save]');
+    await kp.waitForSelector('[data-testid=tr-error]', { timeout: 10000 });
+    await waitFor(async () => limitsReads > reads, 4000); await kp.waitForTimeout(500);
+    check((await txt(kp.locator('[data-testid=tr-error]'))).startsWith('Plus assez de place'), `quota : le refus est dit (« ${await txt(kp.locator('[data-testid=tr-error]'))} »)`);
+    check(await kp.locator('[data-testid=tr-file-ready]').count() === 1 && await kp.locator('[data-testid=tr-kind-record][aria-checked=true]').count() === 1,
+      'quota refusé après une prise : la prise est toujours là et « Filmer » reste coché (la jauge relue ne la jette pas)');
+    await kc.close();
+
+    // b) la jauge arrive APRÈS l'appui sur « Filmer » et dit qu'il reste moins de 2 Mo : l'enregistreur ouvert ne se ferme pas tout seul
+    await emptyDb({ limitsLie: 99 * MO }); LIMITS_DELAY = 2500;
+    const lc = await newCtx(ADMIN, { width: 1280, height: 900 });
+    const lp = track(await lc.newPage(), 'jauge en retard');
+    await openWindow(lp, false); await lp.waitForSelector('[data-testid=tr-form]');
+    await recReset(lp);
+    const before = limitsReads;
+    await lp.click('[data-testid=tr-kind-record]'); await lp.waitForSelector('[data-testid=tr-rec]', { timeout: 10000 });
+    await waitFor(async () => limitsReads > before, 8000); await lp.waitForTimeout(1200);
+    check(await lp.locator('[data-testid=tr-rec]').count() === 1 && await lp.locator('[data-testid=tr-kind-record][aria-checked=true]').count() === 1,
+      'jauge lue après l’appui sur « Filmer » : l’enregistreur ouvert reste ouvert et « Filmer » reste coché');
+    LIMITS_DELAY = 0;
+    await lp.click('[data-testid=tr-rec-cancel]').catch(() => {});
+    await lc.close();
   }
 
   // S9 · 320 px de large : aucun défilement horizontal

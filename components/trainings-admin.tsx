@@ -283,7 +283,10 @@ export default function TrainingsAdmin({ open, onOpenChange, companyId, companyN
   // Les choix proposés, dans l'ordre : Filmer · Fichier · Lien · Document.
   // « Filmer » : l'enregistreur intégré (place d'au moins 2 Mo comprise) ; à défaut la caméra native sur un écran tactile ; sinon rien
   // (jamais un « Filmer » qui ouvrirait l'explorateur de fichiers d'un ordinateur).
-  const cam: 'rec' | 'native' | 'none' = canRec && (!limits || recorderAvailable(limits)) ? 'rec' : coarse ? 'native' : 'none';
+  // Un choix déjà engagé n'est jamais défait par la lecture de la jauge : tant que l'enregistreur est ouvert ou qu'une prise est prête, « Filmer »
+  // reste (un autre compte du bureau a pu remplir la place après la prise, ou la jauge arrive après l'appui : la prise ne se perd pas).
+  const takeEngaged = recOpen || file?.source === 'recorder';
+  const cam: 'rec' | 'native' | 'none' = canRec && (takeEngaged || !limits || recorderAvailable(limits)) ? 'rec' : coarse ? 'native' : 'none';
   const allowed: Kind[] = [...(videosOn && cam !== 'none' ? ['record' as const] : []), ...(videosOn ? ['file' as const] : []), 'link', ...(docsOn ? ['document' as const] : [])];
   // Rien de choisi : « Lien » sans les vidéos, aucun contenu sinon. Un choix devenu impossible (« Document » sans document…) retombe sur « Lien ».
   const eff: Kind | null = kind === null ? (videosOn ? null : 'link') : allowed.includes(kind) ? kind : 'link';

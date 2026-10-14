@@ -16,7 +16,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   baseMime, countdownBand, estimateRate, formatClock, pickRecorderMime, REC_ABORT, REC_ABORT_ASK, REC_ABORT_NO, REC_ABORT_YES, REC_AUDIO_BPS, REC_BACK, REC_COUNTDOWN,
-  REC_COUNTDOWN_SECONDS, REC_FAILED, REC_FPS, REC_HEIGHT, REC_OPENING, REC_READY, REC_RUNNING, REC_START, REC_STOP, REC_TIMESLICE_MS, REC_VIDEO_BPS, REC_WIDTH,
+  REC_COUNTDOWN_SECONDS, REC_FAILED, REC_FPS, REC_HEIGHT, REC_OPENING, REC_RUNNING, REC_START, REC_STOP, REC_TIMESLICE_MS, REC_VIDEO_BPS, REC_WIDTH,
   recorderCapBytes, recorderErrorMessage, recorderFileName, recorderMaxLabel, recorderMaxSeconds, stopDecision,
 } from '@/supabase/functions/_shared/video-recorder';
 import type { Limits } from '@/supabase/functions/_shared/training-videos';
@@ -265,7 +265,6 @@ export default function TrainingVideoRecorder({ limits, onDone, onError, onCance
           <video ref={videoEl} className="bt-fo-rec-live" muted playsInline autoPlay aria-label="Aperçu de la caméra" data-testid="tr-rec-live" />
           {phase === 'ready' ? (
             <>
-              <p className="bt-fo-muted">{REC_READY}</p>
               <div className="bt-fo-rec-row">
                 <button ref={startBtn} type="button" className="bt-fo-btn" onClick={start} data-testid="tr-rec-start">{REC_START}</button>
                 <button type="button" className="bt-fo-btn ghost" onClick={abort} data-testid="tr-rec-cancel">{REC_BACK}</button>

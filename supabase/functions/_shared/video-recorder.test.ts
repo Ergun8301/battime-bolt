@@ -2,7 +2,7 @@
 //   npm run test:enregistreur
 import {
   baseMime, countdownBand, estimateRate, formatClock, pickRecorderMime, REC_ABORT, REC_ABORT_ASK, REC_ABORT_NO, REC_ABORT_YES, REC_AUDIO_BPS, REC_AUTO_SIZE, REC_AUTO_TIME, REC_AUTO_TEXT, REC_BACK, REC_COUNTDOWN, REC_COUNTDOWN_SECONDS,
-  REC_CUT, REC_FAILED, REC_MAX_LABEL, REC_MAX_SECONDS, REC_MIME_CANDIDATES, REC_MIN_ROOM_BYTES, REC_OPENING, REC_READY, REC_RUNNING, REC_START, REC_STOP,
+  REC_CUT, REC_FAILED, REC_MAX_LABEL, REC_MAX_SECONDS, REC_MIME_CANDIDATES, REC_MIN_ROOM_BYTES, REC_OPENING, REC_RUNNING, REC_START, REC_STOP,
   REC_TIMESLICE_MS, REC_VIDEO_BPS, recorderAvailable, recorderCapBytes, recorderErrorMessage, recorderFileName, recorderMaxLabel, recorderMaxSeconds, stopDecision,
 } from './video-recorder.ts';
 import { VIDEO_MAX_BYTES, VIDEO_QUOTA_BYTES } from './training-videos.ts';
@@ -104,7 +104,6 @@ Deno.test('nom du fichier, minuteur', () => {
 
 Deno.test('textes exacts', () => {
   eq(REC_OPENING, 'Ouverture de la caméra…', 'ouverture');
-  eq(REC_READY, 'Cadrez, puis touchez « Démarrer ». Tenez le téléphone dans le même sens pendant toute la prise.', 'prêt');
   eq([REC_START, REC_STOP, REC_ABORT, REC_BACK], ['Démarrer', 'Arrêter', 'Abandonner', 'Fermer la caméra'], 'boutons (« Fermer la caméra » ne se confond pas avec « Annuler » du formulaire)');
   eq([REC_ABORT_ASK, REC_ABORT_YES, REC_ABORT_NO], ['Jeter cette prise ?', 'Oui, jeter', 'Non, continuer'], 'confirmation avant de jeter une prise');
   eq(REC_RUNNING, 'Enregistrement en cours', 'en cours');
