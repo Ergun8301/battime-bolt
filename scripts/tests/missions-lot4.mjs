@@ -379,7 +379,7 @@ const printWith = async (p, { kind = 'week', moves = 0, who = 'all', tasks = nul
   await p.waitForTimeout(200);
 };
 const closePrint = (p) => p.evaluate(() => window.dispatchEvent(new Event('afterprint')));
-const paper = async (p, fn, { w = 1062, h = 733 } = {}) => {
+const paper = async (p, fn, { w = 1047, h = 718 } = {}) => {
   const vp = p.viewportSize();
   await p.setViewportSize({ width: w, height: h }); await p.emulateMedia({ media: 'print' }); await p.waitForTimeout(300);
   try { return await fn(); } finally { await p.emulateMedia({ media: null }); await p.setViewportSize(vp); await p.waitForTimeout(200); }

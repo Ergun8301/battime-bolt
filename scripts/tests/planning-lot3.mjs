@@ -270,8 +270,8 @@ const printWith = async (p, { scope = 'week', date = null, who = 'all', signatur
 };
 /** La boîte d'impression se referme (ce que fait le navigateur après l'impression). */
 const closePrint = (p) => p.evaluate(() => window.dispatchEvent(new Event('afterprint')));
-/** Rendu « papier » à l'écran : largeur imprimable d'un A4 paysage (281 mm ≈ 1062 px). */
-const paper = async (p, fn, { w = 1062, h = 733 } = {}) => {
+/** Rendu « papier » à l'écran : zone imprimable d'un A4 paysage, marges de 10 mm (277 × 190 mm ≈ 1047 × 718 px). */
+const paper = async (p, fn, { w = 1047, h = 718 } = {}) => {
   const vp = p.viewportSize();
   await p.setViewportSize({ width: w, height: h }); await p.emulateMedia({ media: 'print' }); await p.waitForTimeout(300);
   // media: null (et non 'screen') : sinon page.pdf() garderait le rendu écran.
@@ -389,7 +389,7 @@ if (AVANT) {
     check(what === 'Planning · semaine 43 · 19 – 25 octobre 2026' && /Imprimé le 21 oct\. 2026 à 10:00/.test(await p.locator('.bt-print-at').innerText()), `P3 en-tête : « ${what} », « Imprimé le … »`);
     check(await p.locator('.bt-print-leg .bt-print-sw').count() === 3 && /Noir : heures envoyées/.test(await p.locator('.bt-print-leg').innerText()), 'P3 légende des couleurs en tête de feuille');
     const tb = await p.locator('.bt-print .bt-pl-table').boundingBox();
-    check(tb.width <= 1062 + 1, `P3 la grille tient dans la largeur d’un A4 paysage (${Math.round(tb.width)} px)`);
+    check(tb.width <= 1047 + 1, `P3 la grille tient dans la largeur d’un A4 paysage (${Math.round(tb.width)} px)`);
     await shot(p, 'apres-impression-semaine-equipe.png', { fullPage: true });
   });
   await closePrint(p); await p.waitForTimeout(150);
@@ -403,7 +403,7 @@ if (AVANT) {
     const sig = await p.locator('.bt-print tbody tr').evaluateAll((trs) => trs.map((tr) => { const td = tr.lastElementChild; return { cls: td.classList.contains('bt-print-sig'), empty: td.textContent.trim() === '' && td.children.length === 0, w: td.getBoundingClientRect().width }; }));
     check(sig.length === 9 && sig.every((x) => x.cls && x.empty && x.w >= 80), `P4 chaque ligne finit par une case vide ≥ 80 px (${Math.round(Math.min(...sig.map((x) => x.w)))} px)`);
     const tb = await p.locator('.bt-print .bt-pl-table').boundingBox();
-    check(tb.width <= 1062 + 1, `P4 avec signature, la grille tient en largeur (${Math.round(tb.width)} px)`);
+    check(tb.width <= 1047 + 1, `P4 avec signature, la grille tient en largeur (${Math.round(tb.width)} px)`);
     await shot(p, 'apres-impression-semaine-signature.png', { fullPage: true });
   });
   const titleBefore = await p.evaluate(() => window.__title);
