@@ -3,6 +3,8 @@
 //   npm run test:assistant-eval
 // Avec une clé : GEMINI_API_KEY=… deno run -A supabase/functions/assistant-eval/cli.ts v2
 import { runEval } from './run.ts';
+import { envEvaluation, resumeEvaluation } from './config.ts';
+import { callFunction, modeleServi, readConfig, reposReinit } from '../_shared/ai-provider.ts';
 import { CASES, LIVE_VIDE, sansLibellesEcran, WORKER_LIVE, type Outcome } from './cases.ts';
 
 Deno.test('Jeu d’évaluation : les 80 phrases d’origine (dans l’ordre) + les phrases longues du salarié, bureau ET salarié', () => {
@@ -334,4 +336,73 @@ Deno.test('st05 : un libellé d’écran entre guillemets n’est pas du frança
     ["Voir 'Ma semaine' et « Ma journée » pour les détails complets.", /pas en turc/],
   ];
   for (const [a, re] of ko) { const why = String(cas5(rep(a))); if (!re.test(why)) throw new Error(`doit échouer (${re}) : ${a} → ${why}`); }
+});
+
+// ── aiConfig : essayer Claude pendant que la production reste sur Gemini ─────────
+const PROD = { get: (k: string) => ({ AI_CONFIG: '{"formule":"payant","rapide":"gemini:gemini-3.5-flash-lite"}', AI_API_KEY: 'cle-g', ANTHROPIC_API_KEY: 'cle-a', AUTRE: 'x' } as Record<string, string>)[k] };
+const CLAUDE = '{"formule":"payant","rapide":"anthropic:claude-sonnet-5-5","documents":"anthropic:claude-sonnet-5-5","secours":"gemini:gemini-3.1-flash-lite"}';
+
+Deno.test('aiConfig : absent ou null → l’environnement tel quel (rien ne change pour la production) ; fourni → remplace AI_CONFIG et rien d’autre', () => {
+  for (const v of [undefined, null]) {
+    const e = envEvaluation(PROD, v);
+    if (!e.ok || e.env !== PROD || e.surcharge) throw new Error('sans aiConfig : même environnement');
+  }
+  for (const v of [CLAUDE, ` ${CLAUDE} `, JSON.parse(CLAUDE)]) {
+    const e = envEvaluation(PROD, v);
+    if (!e.ok || !e.surcharge) throw new Error(`aiConfig refusé : ${JSON.stringify(v)}`);
+    if (e.env.get('AI_API_KEY') !== 'cle-g' || e.env.get('ANTHROPIC_API_KEY') !== 'cle-a' || e.env.get('AUTRE') !== 'x') throw new Error('les clés et le reste restent ceux de l’environnement');
+    const c = readConfig(e.env);
+    if (c.rapide.fournisseur !== 'anthropic' || c.documents.model !== 'claude-sonnet-5-5' || c.secours.fournisseur !== 'gemini') throw new Error(JSON.stringify(c));
+  }
+  // Raccourci : « payant » = la formule avec les modèles par défaut (Gemini), validée comme en production.
+  const p = envEvaluation(PROD, 'payant');
+  if (!p.ok || readConfig(p.env).rapide.model !== 'gemini-3.5-flash-lite' || readConfig(p.env).plafonds !== null) throw new Error('raccourci payant');
+  // La production, elle, n’a pas bougé.
+  if (readConfig(PROD).rapide.fournisseur !== 'gemini') throw new Error('la config de la prod ne doit pas changer');
+});
+
+Deno.test('aiConfig invalide = erreur explicite (400), JAMAIS un repli silencieux sur le défaut', () => {
+  const mauvais: unknown[] = [
+    '{pas du json', '', '   ', 'gratuit', '[]', '42', 42, true, [], ['payant'],
+    '{"rapide":"anthropic:claude-opus-5-5"}', '{"rapide":"anthropic:claude-fable-5-1"}', '{"documents":"anthropic:claude-mythos-5-1"}',
+    '{"rapide":"anthropic:claude-sonnet-5-5-20260401"}', '{"rapide":"openai:gpt-5"}', '{"modele":"x"}', '{"rapide":"gemini:gemini-test-pro"}',
+    '{"plafonds":{"rapide":0,"documents":1}}', { rapide: 'anthropic:claude-opus-5-5' },
+  ];
+  for (const v of mauvais) {
+    const e = envEvaluation(PROD, v);
+    if (e.ok || !/^aiConfig invalide/.test(e.error)) throw new Error(`devait être refusé : ${JSON.stringify(v)} → ${JSON.stringify(e)}`);
+    if (e.error.length > 100 || (typeof v === 'string' && v.length > 8 && e.error.includes(v.slice(2, 12)))) throw new Error(`la raison ne répète pas le contenu : ${e.error}`);
+  }
+});
+
+Deno.test('Évaluation avec aiConfig : les appels partent chez Claude, la réponse dit quel modèle a servi chaque cas ; en panne de Claude, c’est le secours Gemini qui est compté', async () => {
+  const claudeOk = () => new Response(JSON.stringify({ content: [{ type: 'tool_use', id: 't', name: 'repondre', input: { reponse: 'ok' } }], stop_reason: 'tool_use' }), { status: 200 });
+  const geminiOk = () => new Response(JSON.stringify({ candidates: [{ content: { parts: [{ functionCall: { name: 'repondre', args: { reponse: 'ok' } } }] } }] }), { status: 200 });
+  const lancer = async (claudeStatus: number) => {
+    reposReinit();
+    const urls: string[] = [];
+    const fetchImpl = (url: string) => { urls.push(url); return Promise.resolve(url.includes('anthropic') ? (claudeStatus === 200 ? claudeOk() : new Response('{}', { status: claudeStatus })) : geminiOk()); };
+    const ev = envEvaluation(PROD, CLAUDE);
+    if (!ev.ok) throw new Error('aiConfig');
+    const r = await runEval('v2', (req) => callFunction(req, ev.env, fetchImpl), CASES.slice(0, 12).map((c) => c.id), 1, 0);
+    return { r, urls, ev };
+  };
+  const a = await lancer(200);
+  const iaA = a.r.temps.length;
+  if (!iaA) throw new Error('au moins un cas passe par le modèle');
+  if (JSON.stringify(a.r.modeles) !== JSON.stringify([{ modele: 'anthropic:claude-sonnet-5-5', n: iaA }])) throw new Error(JSON.stringify(a.r.modeles));
+  if (a.urls.length < iaA || a.urls.some((u) => !u.startsWith('https://api.anthropic.com/'))) throw new Error('tout chez Claude');
+  const b = await lancer(529);
+  if (JSON.stringify(b.r.modeles) !== JSON.stringify([{ modele: 'gemini:gemini-3.1-flash-lite', n: b.r.temps.length }])) throw new Error(`le secours n’est pas Claude : ${JSON.stringify(b.r.modeles)}`);
+  // Résumé de la passe : ce qui a réellement servi, et si les clés sont posées (jamais les clés).
+  const res = resumeEvaluation(a.ev.env, a.ev.surcharge);
+  if (JSON.stringify(res) !== JSON.stringify({ surcharge: true, formule: 'payant', rapide: 'anthropic:claude-sonnet-5-5', documents: 'anthropic:claude-sonnet-5-5', secours: 'gemini:gemini-3.1-flash-lite', cles: { gemini: true, anthropic: true } })) throw new Error(JSON.stringify(res));
+  if (JSON.stringify(res).includes('cle-a') || JSON.stringify(res).includes('cle-g')) throw new Error('aucune clé dans la réponse');
+  // Sans aiConfig : la config de l’environnement, surcharge: false.
+  const prod = resumeEvaluation(PROD, false);
+  if (prod.surcharge || prod.rapide !== 'gemini:gemini-3.5-flash-lite') throw new Error(JSON.stringify(prod));
+  // Un cas sans appel au modèle n’a pas de « modele ».
+  const c = await runEval('v2', async () => ({ ok: false, reason: 'provider_error' }), ['b01']);
+  if (c.modeles.some((m) => m.modele !== 'aucun')) throw new Error('un cas sans réponse du modèle est compté « aucun »');
+  if (modeleServi({}) !== undefined) throw new Error('inconnu');
 });

@@ -2,8 +2,8 @@
 //
 // DÉPLOIEMENT : `supabase functions deploy worker-assistant` (JWT vérifié),
 // APRÈS la migration 20261012090000_lot6_couche_ia_v2.sql.
-// Secrets : AI_CONFIG (formule, modèles, plafonds) et AI_API_KEY (repli :
-// GEMINI_API_KEY), voir _shared/ai-provider.ts ; WORKER_ASSISTANT_DAILY_LIMIT
+// Secrets : AI_CONFIG (formule, modèles — Gemini ou Claude —, plafonds), AI_API_KEY (clé Gemini ; repli :
+// GEMINI_API_KEY) et ANTHROPIC_API_KEY (clé Claude), voir _shared/ai-provider.ts ; WORKER_ASSISTANT_DAILY_LIMIT
 // (facultatif, 20 par défaut : demandes par salarié et par jour).
 // AI_MODEL, AI_ACTION_MODEL et AI_FALLBACK_MODEL ne sont plus lus.
 //
@@ -31,7 +31,7 @@
 // Une demande = une unité de quota, quel que soit le nombre d'appels. Sans `multi: true`
 // (ancien navigateur), le comportement est exactement celui d'avant.
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { aiKey, callFunction, formuleNom, PAUSE_MESSAGE, plafondProjet, readAttachment, tierFor } from '../_shared/ai-provider.ts';
+import { aiDisponible, callFunction, formuleNom, PAUSE_MESSAGE, plafondProjet, readAttachment, tierFor } from '../_shared/ai-provider.ts';
 import { loadAssistantContext } from '../_shared/assistant-context.ts';
 import { WORKER_TEXT_MAX } from '../_shared/saisie-profil.ts';
 import {
@@ -143,7 +143,7 @@ Deno.serve(async (req) => {
 
     // Le tour (lecteur local, ou IA en profil court / long) est le MÊME code que celui du banc de mesure.
     const t = await runWorkerTurn({
-      text, file: att.file, snapshot, live, tier, iaDisponible: !!aiKey(Deno.env), multiOk: body.multi === true,
+      text, file: att.file, snapshot, live, tier, iaDisponible: aiDisponible(Deno.env, tier), multiOk: body.multi === true,
       call: (req) => callFunction(req, Deno.env),
     });
     if (t.via === 'erreur') {

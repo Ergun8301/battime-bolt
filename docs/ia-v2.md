@@ -21,12 +21,13 @@ Toujours derrière **`companies.ai_enabled`** (rien ne change pour les autres).
 >
 > Contrôle : la console `/support` doit afficher « IA : formule payant ».
 
-### Les deux secrets (Supabase → Edge Functions → Secrets)
+### Les secrets (Supabase → Edge Functions → Secrets)
 
 | Secret | Rôle |
 |---|---|
 | `AI_CONFIG` | **Le seul réglage** (JSON) : la formule, le modèle de chaque niveau, les plafonds du jour. |
-| `AI_API_KEY` | **La seule clé.** `GEMINI_API_KEY` reste lue en repli : rien ne casse tant que les nouveaux secrets ne sont pas posés. |
+| `AI_API_KEY` | La clé de **Gemini**. `GEMINI_API_KEY` reste lue en repli : rien ne casse tant que les nouveaux secrets ne sont pas posés. |
+| `ANTHROPIC_API_KEY` | La clé de **Claude** (fournisseur `anthropic`), lue seulement si un niveau de `AI_CONFIG` utilise Claude. Voir la section « Claude Sonnet 5.5 » plus bas. |
 
 Exemple à copier-coller dans `AI_CONFIG` (c'est aussi la valeur par défaut) :
 
@@ -40,12 +41,12 @@ Exemple à copier-coller dans `AI_CONFIG` (c'est aussi la valeur par défaut) :
 }
 ```
 
-- Tous les champs sont facultatifs. `formule` : `essai` (défaut) ou `payant`. Modèle : `fournisseur:modèle` (seul `gemini` est branché).
+- Tous les champs sont facultatifs. `formule` : `essai` (défaut) ou `payant`. Modèle : `fournisseur:modèle` (`gemini` ou `anthropic`, mélange permis d'un niveau à l'autre).
 - `plafonds` : demandes par jour pour **tout le projet**, par niveau. Par défaut 400 / 15 en `essai` (sous le gratuit de Google, à ajuster d'après les limites
   affichées dans Google AI Studio), aucun en `payant`. Pour passer en payant, une fois la facturation activée sur la clé : `{"formule":"payant"}`.
 - Raccourci : la seule valeur `payant` (ou `essai`), sans JSON, donne la formule avec les modèles par défaut.
 - **Absent ou invalide** : les réglages par défaut ci-dessus, sans jamais planter. Une seule ligne courte part dans les logs
-  (`[ai] AI_CONFIG invalide (raison) : réglage par défaut`), jamais le contenu du secret. Un modèle Pro est refusé.
+  (`[ai] AI_CONFIG invalide (raison) : réglage par défaut`), jamais le contenu du secret. Un modèle Gemini Pro est refusé ; chez Claude, seuls `claude-sonnet-5-5`, `claude-sonnet-5` et `claude-haiku-5-5` sont admis (voir plus bas).
 - **Anciens secrets non lus** : `AI_MODEL`, `AI_ACTION_MODEL`, `AI_FALLBACK_MODEL`, `AI_PROVIDER`, `AI_TIMEOUT_MS`, `AI_ACTION_WAIT_MS` ne sont
   plus lus du tout (on peut les supprimer) : un vieux secret ne peut pas ramener un modèle retiré par Google.
 
@@ -124,6 +125,81 @@ si l'ancienne version est encore déployée. Pas de chiffre du compteur (il est 
 Aucune migration. Un patron ou un salarié qui ouvre `/support` voit « Accès réservé » et la fonction n'est même pas interrogée. Test : `npm run test:ia-formule-ecrans`.
 
 **Mise en ligne du retrait** : le front seulement (site statique). Aucune migration, aucun secret, **aucune fonction à redéployer** (côté fonctions, seuls des commentaires ont changé).
+
+### Claude Sonnet 5.5 (étape 1 : l'Assistant sur Claude, Gemini en secours)
+
+**Rien ne change tant que `AI_CONFIG` n'est pas modifié** : le défaut reste exactement celui d'avant (tout Gemini). Le code sait seulement parler à Claude en plus.
+L'assistant du bureau (`assistant`), celui du salarié (`worker-assistant`) et la lecture des bulletins (`payslip-read`) passent tous par le même adaptateur
+(`_shared/ai-provider.ts`, avec `_shared/ai-anthropic.ts` pour Claude) : un seul réglage les fait basculer ensemble.
+
+**1. Poser la clé** (une fois) : Supabase → Edge Functions → Secrets → `ANTHROPIC_API_KEY` (déjà enregistrée). La clé de Gemini reste en place : c'est elle qui sert au secours.
+
+**2. Essayer SANS toucher la production** : le banc d'évaluation accepte un réglage de remplacement pour sa seule passe (voir « Évaluer Claude » plus bas).
+
+**3. Basculer** : `AI_CONFIG` =
+
+```json
+{
+  "formule": "payant",
+  "rapide": "anthropic:claude-sonnet-5-5",
+  "documents": "anthropic:claude-sonnet-5-5",
+  "secours": "gemini:gemini-3.1-flash-lite"
+}
+```
+
+**Variante prudente** (le niveau « documents » reste sur Gemini, parce que Claude ne lit pas les photos HEIC/HEIF, voir « Limites ») :
+`{"formule":"payant","rapide":"anthropic:claude-sonnet-5-5","documents":"gemini:gemini-3.8-flash","secours":"gemini:gemini-3.1-flash-lite"}`.
+C'est aussi la variante à choisir tant que la lecture des bulletins n'est pas mesurée sur Claude.
+
+**4. Revenir à Gemini en UN réglage** : supprimer le secret `AI_CONFIG` (retour exact au défaut d'avant : formule `essai`, plafonds 400 / 15 par jour pour le projet),
+ou mettre `{"formule":"payant"}` (Gemini payant, sans plafond du projet). Aucun redéploiement ; `ANTHROPIC_API_KEY` peut rester posée, elle n'est plus lue.
+Si `AI_CONFIG` est mal écrit (ou nomme un modèle refusé), l'appli retombe d'elle-même sur le défaut Gemini et une ligne le dit dans les logs.
+
+**Ce que « payant » change exactement** : les `plafonds` du projet. En `essai`, 400 demandes « rapide » et 15 « documents » par jour pour TOUT le projet (le gratuit de Google) ;
+en `payant`, aucun plafond global (`plafonds: null`), sauf si on en écrit un (`"plafonds":{"rapide":N,"documents":N}`). Claude est payant au volume, sans « gratuit » à ménager.
+Rien d'autre ne bouge : les quotas par entreprise et par salarié (`ASSISTANT_DAILY_LIMIT` 50, `WORKER_ASSISTANT_DAILY_LIMIT` 20, `PAYSLIP_DAILY_LIMIT` 100) restent la limite de coût, et le compteur
+`ai_project_usage` continue de compter. Pour un garde-fou de dépense, ajouter `plafonds` ET régler une alerte de budget dans la console Anthropic.
+
+**Modèles admis chez Claude** (liste blanche stricte, sans date) : `claude-sonnet-5-5`, `claude-sonnet-5`, `claude-haiku-5-5`. Refusés avec le défaut Gemini à la place (et une ligne sans contenu dans les logs) :
+Opus, Fable, Mythos (coût), tout identifiant daté, tout autre nom, un fournisseur inconnu. Même esprit que « jamais de Pro » chez Gemini.
+
+**Clés par fournisseur** : `anthropic` lit `ANTHROPIC_API_KEY` ; `gemini` lit `AI_API_KEY` puis `GEMINI_API_KEY`. Un niveau dont le fournisseur n'a pas de clé est sauté, comme en cas de panne,
+si le secours a SA clé (`aiDisponible(env, niveau)`) ; sans aucune clé utile, l'assistant répond comme avant « indisponible » / « lecture automatique indisponible » (les messages n'ont pas changé).
+
+**Réflexion, vitesse et délais** (points de départ, À RÉGLER avec l'évaluation réelle) :
+
+| Niveau / profil | Claude : `output_config.effort` | Gemini (inchangé) | Délais Claude (1er appel / total) | Délais Gemini (inchangés) |
+|---|---|---|---|---|
+| rapide (questions, ordres) | `low` | `minimal` | 9 s / 14 s | 5 s / 8 s |
+| documents (fichier joint, bulletin) | `medium` | `low` | 20 s / 35 s | 12 s / 25 s |
+| profil long (phrases longues, plusieurs actions, turc) | `medium` (secours `low`) | `medium` (secours `low`) | 18 s / 28 s | 14 s / 22 s |
+
+- Pourquoi pas le défaut `high` : sur Sonnet 5.5 il ajoute une réflexion avant presque chaque réponse, trop lent pour un chat. `low` saute la réflexion sur les demandes simples ; `medium` garde de quoi
+  comprendre plusieurs actions dans une phrase (mesuré sur Gemini : 11/11 en `medium` contre 4/11 en `minimal`). Le profil long ne change pas le quota (une demande = une unité).
+- `thinking` est **omis** (réflexion adaptative) : `{"type":"disabled"}` est refusé (400) sur Sonnet 5.5 et `{"type":"between_tools"}` n'existe que sur ce modèle (400 sur Sonnet 5 et Haiku 5.5, qui sont admis) et couperait la réflexion dont le profil long a besoin.
+- Jamais de `temperature`, `top_p`, `top_k`, ni de `budget_tokens` (400). Pas de `tool_choice` forcé (400) : `tool_choice: {"type":"auto"}` (+ `disable_parallel_tool_use` quand un seul appel est accepté)
+  et la consigne « réponds UNIQUEMENT en appelant une des fonctions fournies ». Si Claude répond par du texte sans appeler de fonction : réponse illisible (`bad_response`), sans second appel (comme pour Gemini).
+- Les totaux restent bornés (la fonction Edge a une limite d'exécution et la base est lue avant l'appel). Les valeurs vivent dans `DELAIS_ANTHROPIC` et `PROFIL_LONG_ANTHROPIC` ; celles de Gemini n'ont pas bougé.
+- Outils : les déclarations (format Gemini) sont converties en JSON Schema pour Claude (types en minuscules, `nullable` → type + `null`, mots-clés inconnus retirés, objets fermés) ; un test passe TOUTES les déclarations réelles du bureau et du salarié
+  dans un validateur. `strict: true` n'est posé que dans les limites de l'API (20 outils stricts, 24 paramètres facultatifs au total) : sur les 34 outils du bureau, 19 le sont ; les autres restent valides et le code revérifie tout de toute façon.
+  La première demande d'un jeu d'outils strict peut être un peu plus lente (l'API compile le schéma puis le garde 24 h). `STRICT_ACTIF = false` dans `ai-anthropic.ts` retire `strict` si l'API en refusait un.
+- Lecture d'un bulletin (`extractJson`) : sortie structurée de l'API (`output_config.format`, `json_schema`) plutôt qu'un outil unique, car elle garantit un JSON conforme sans `tool_choice` forcé.
+- Réponse `refusal` de Claude : traitée comme une panne du niveau (le secours Gemini répond), sans mise au repos du niveau « documents » (un refus tient au contenu, pas au modèle). `max_tokens` atteint : jamais exécuté (arguments peut-être coupés).
+- Pas de `cache_control` pour l'instant (étape suivante) : la requête est rangée dans l'ordre du cache (`tools`, `system`, `messages`). Pas non plus de « fallbacks » côté serveur d'Anthropic : le secours entre fournisseurs joue ce rôle.
+
+**Limites connues**
+- **HEIC / HEIF** : l'écran accepte ces photos d'iPhone, Claude non (JPEG, PNG, GIF, WebP et PDF seulement). Avec un niveau Claude, un tel fichier n'est PAS envoyé : le niveau échoue proprement et le **secours Gemini** le lit (`secours: true`,
+  « à vérifier » pour un bulletin). Même chose pour une image de plus de 10 Mo en base64. Si le secours est aussi Claude, la lecture échoue comme une panne.
+- Les délais, l'effort et le taux de réussite de Claude sur le jeu d'évaluation ne sont **pas encore mesurés** : le jeu est prêt, la mesure se fait avec la vraie clé (ci-dessous).
+- Données : avec Claude, les données de l'entreprise (celles que l'assistant envoyait déjà à Gemini) partent chez Anthropic. Avant un vrai client : sous-traitant Anthropic à ajouter à la politique de confidentialité, comme Google.
+- Prix de départ (à vérifier sur la page tarifs d'Anthropic) : environ 2 $ par million de jetons en entrée et 10 $ en sortie pour Sonnet 5.5.
+
+**Évaluer Claude sans toucher la production** : `POST /functions/v1/assistant-eval` (en-tête `x-cron-secret` inchangé) avec, en plus des champs habituels, `aiConfig` (la chaîne JSON de `AI_CONFIG`, un objet JSON, ou le raccourci `payant`) :
+`{"version":"v2","prodPath":true,"repeat":3,"aiConfig":"{\"formule\":\"payant\",\"rapide\":\"anthropic:claude-sonnet-5-5\",\"documents\":\"anthropic:claude-sonnet-5-5\",\"secours\":\"gemini:gemini-3.1-flash-lite\"}"}`.
+- Validé par la **même fonction** que la production : un `aiConfig` invalide est une erreur **400** explicite (jamais un repli silencieux qui ferait croire que Claude a été testé).
+- Il remplace `AI_CONFIG` pour cette passe seulement ; les clés restent celles de l'environnement (`ANTHROPIC_API_KEY` doit donc être posée).
+- La réponse porte `config` (le `fournisseur:modèle` de chaque niveau, `surcharge: true`, et si les clés sont posées) et `modeles` (combien de cas ont été servis par chaque `fournisseur:modèle`, **secours compris** : un cas servi par Gemini ne compte jamais pour Claude).
+  Un `modele` figure aussi sur chaque cas. Regarder `modeles` avant de lire le score.
 
 ### Mise en ligne (dans CET ordre)
 

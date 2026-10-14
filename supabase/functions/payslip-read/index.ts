@@ -2,8 +2,8 @@
 //
 // DÉPLOIEMENT : `supabase functions deploy payslip-read` (JWT vérifié : il faut
 // être connecté), APRÈS la migration 20261012090000_lot6_couche_ia_v2.sql.
-// Secrets : AI_CONFIG (formule, modèles, plafonds) et AI_API_KEY (repli :
-// GEMINI_API_KEY), voir _shared/ai-provider.ts ; PAYSLIP_DAILY_LIMIT
+// Secrets : AI_CONFIG (formule, modèles — Gemini ou Claude —, plafonds), AI_API_KEY (clé Gemini ; repli :
+// GEMINI_API_KEY) et ANTHROPIC_API_KEY (clé Claude), voir _shared/ai-provider.ts ; PAYSLIP_DAILY_LIMIT
 // (facultatif, 100 par défaut : lectures par entreprise et par jour).
 // AI_MODEL n’est plus lu : la lecture d'un bulletin utilise le modèle « documents ».
 //
@@ -23,7 +23,7 @@
 //
 // Réservée à un ADMIN actif d'une entreprise dont `ai_enabled` est vrai.
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { aiKey, extractJson, formuleNom, PAUSE_MESSAGE, plafondProjet } from '../_shared/ai-provider.ts';
+import { aiDisponible, extractJson, formuleNom, PAUSE_MESSAGE, plafondProjet } from '../_shared/ai-provider.ts';
 import { loadAssistantContext } from '../_shared/assistant-context.ts';
 import { PAYSLIP_PROMPT, PAYSLIP_SCHEMA, payslipReply } from '../_shared/payslip-core.ts';
 
@@ -56,7 +56,7 @@ Deno.serve(async (req) => {
     if (!MIMES.has(mime)) return json({ error: 'Déposez un PDF ou une photo (JPEG, PNG).' }, 400);
     if (!b64 || b64.length * 0.75 > MAX_BYTES) return json({ error: 'Fichier trop lourd (10 Mo maximum).' }, 413);
 
-    if (!aiKey(Deno.env)) return json({ available: false, message: UNAVAILABLE });
+    if (!aiDisponible(Deno.env, 'documents')) return json({ available: false, message: UNAVAILABLE });
 
     // Qui appelle, avec SON jeton (bureau actif, ai_enabled), quota de lectures et plafond global.
     const db = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_ANON_KEY') ?? '', {

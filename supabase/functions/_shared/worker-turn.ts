@@ -31,7 +31,7 @@ export interface WorkerTurnInput {
   tier: Tier;
   /** Production : (r) => callFunction(r, Deno.env) ; banc : le `call` reçu (avec réessais). */
   call: (req: ToolsRequest) => Promise<ToolsResult>;
-  /** Production : !!aiKey(Deno.env) ; banc : true. */
+  /** Production : aiDisponible(Deno.env, tier) ; banc : true. */
   iaDisponible: boolean;
   /** Production : body.multi === true ; banc : true. Faux → profil TOUJOURS « court » (un ancien navigateur ne sait pas afficher la fiche). */
   multiOk: boolean;
