@@ -83,6 +83,10 @@ import {
 import { DAY_PARTS, dayPartTint } from '@/supabase/functions/_shared/day-part';
 import { cellKey, parisDay, placeLive, type LivePlace, type LiveSessionLike } from '@/supabase/functions/_shared/live-place';
 import { copyRefusal, targetRefusal } from '@/supabase/functions/_shared/copy-slot';
+import type { PlannedLike } from '@/supabase/functions/_shared/day-hours';
+// Copier une case simplement : astuce visible, rangée « Actions » de la fenêtre de modification, choix des jours (fenêtre chargée à l'ouverture).
+import { CopyTip, CopyTipHelp, SlotActions } from '@/components/planning-copier';
+import type { CopyRow, CopySource, CopyTarget } from '@/components/planning-copy-dialog';
 import { keep } from '@/lib/same';
 import { lazyWindow, warmAll } from '@/lib/lazy-window';
 // Lot 23 : chantier terminé. Le bloc de la fiche est petit (premier chargement) ; le contrôle avant de terminer
@@ -115,6 +119,8 @@ const WorkerDetailDialog = lazyWindow(() => import('@/components/worker-detail')
 const ChantierDocuments = lazyWindow(() => import('@/components/chantier-documents'), { isOpen: (p) => p.open, priority: 8 });
 const ChantierTermine = lazyWindow(() => import('@/components/chantier-termine'), { isOpen: (p) => p.target != null, close: (p) => p.onClose(), priority: 13 });
 const ImportDialog = lazyWindow(() => import('@/components/import-dialog'), { isOpen: (p) => p.open, priority: 9 });
+// « Copier vers un autre jour… » : le choix des jours, chargé à l'ouverture d'une fenêtre de modification (jamais au repos).
+const CopyDialog = lazyWindow(() => import('@/components/planning-copy-dialog'), { isOpen: (p) => p.source != null, close: (p) => p.onClose(), warm: 'never' });
 const ImportWorkersDialog = lazyWindow(() => import('@/components/import-workers-dialog'), { isOpen: (p) => p.open, priority: 10 });
 // Déjà conditionnées par kioskOn / trainingsOn : préchauffées seulement quand elles existent à l'écran.
 const KioskAdmin = lazyWindow(() => import('@/components/kiosk-admin'), { isOpen: (p) => p.open, priority: 11, warm: 'mounted' });
@@ -357,7 +363,9 @@ function DraggableBubble({
         {...drag.listeners}
         onClick={(e) => { e.stopPropagation(); if (sel) onToggle?.(p, sel.lock); else onEdit(p); }}
         className={`bt-pl-grab ${drag.isDragging ? 'bt-pl-dragging' : ''}`}
-        title={sel ? (sel.lock || (sel.on ? 'Cliquer pour décocher' : 'Cliquer pour cocher')) : 'Glisser pour déplacer · Ctrl ou Alt (⌥) + glisser pour copier · cliquer pour modifier'}
+        // `title=""` (et non « absent ») : un attribut absent laisse hériter le title de la case (« Cliquer pour ajouter une
+        // intervention »), qui serait faux ici — le clic ouvre la modification. Un title vide coupe l'héritage.
+        title={sel ? (sel.lock || (sel.on ? 'Cliquer pour décocher' : 'Cliquer pour cocher')) : ''}
       >
         <BubbleContent p={p} palette={palette} real={real} draft={draft} docCount={docCount} live={live} withdrawn={withdrawn} />
       </div>
@@ -903,7 +911,25 @@ ${MISSIONS_CSS}
 .bt-pl-undo{position:relative;width:380px;max-width:100%;background:#fff;border-radius:16px;padding:0 36px 10px 10px;box-shadow:0 22px 50px -18px rgba(21,18,15,.6);border:1px solid rgba(21,18,15,.1)}
 .bt-pl-undo-x{position:absolute;top:8px;right:8px;width:26px;height:26px;border-radius:8px;border:0;background:transparent;color:#6E6A63;font-size:14px;line-height:1;cursor:pointer;font-family:inherit}
 .bt-pl-undo-x:hover{background:rgba(21,18,15,.06);color:#15120F}
-.bt-pl-m-tools{display:flex;justify-content:flex-end;margin:-3px 0 -2px}
+.bt-pl-m-tools{display:flex;justify-content:flex-end;align-items:center;gap:6px;margin:-3px 0 -2px}
+/* Ajouter une tâche à un salarié déjà planifié (case remplie) : visible, 44 px au doigt. */
+.bt-pl-cellfill--task{position:relative;padding-bottom:12px}
+.bt-pl-cellfill--task.chips{padding-bottom:22px}
+/* Souris : une petite pastille posée dans le coin bas-droit de la case (elle recouvre le bas, vide, de la dernière bulle) — la case ne grandit
+   que de 12 px au lieu de ~31. Doigt : voir plus bas, 44 px dans le fil de la case. */
+.bt-pl-addtask{position:absolute;right:0;bottom:0;display:inline-flex;align-items:center;gap:3px;height:19px;padding:0 8px;border:1.5px dashed rgba(21,18,15,.3);border-radius:7px;background:#fff;color:#3D382F;font:inherit;font-size:11px;font-weight:800;line-height:1;cursor:pointer;white-space:nowrap}
+.bt-pl-addtask:hover{border-color:#15120F;background:#FFF8E1;color:#15120F}
+.bt-pl-addtask:focus-visible,.bt-pl-m-addtask:focus-visible{outline:2px solid #15120F;outline-offset:1px}
+@media (pointer:coarse){.bt-pl-cellfill--task,.bt-pl-cellfill--task.chips{padding-bottom:0}.bt-pl-addtask{position:static;align-self:flex-start;height:auto;min-height:44px;padding:0 14px;font-size:13px;border-radius:8px}}
+.bt-pl-m-addrow{display:flex;gap:8px;margin-top:11px}
+.bt-pl-m-addrow .bt-pl-m-add{margin-top:0;flex:1 1 auto;min-height:44px;min-width:0}
+.bt-pl-m-addtask{flex:none;display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 14px;border:1.5px dashed rgba(21,18,15,.3);border-radius:11px;background:#fff;color:#15120F;font:inherit;font-weight:800;font-size:12.5px;cursor:pointer;white-space:nowrap}
+.bt-pl-m-addtask:active{background:rgba(21,18,15,.04)}
+.bt-pl--select .bt-pl-m-addtask,.bt-pl--select .bt-pl-m-addrow{display:none}
+/* « Formations » dans la barre : seulement quand elle a la place (voir le commentaire du bouton). */
+.bt-pl-trainbtn,.bt-pl-lbl-train{display:none}
+@media (min-width:1440px){.bt-pl-trainbtn{display:inline-flex}}
+@media (min-width:1700px){.bt-pl-lbl-train{display:inline}}
 .bt-pl-m-selbtn{display:inline-flex;align-items:center;gap:6px;border:1.5px solid rgba(21,18,15,.2);background:#fff;color:#15120F;border-radius:10px;padding:6px 11px;font-family:inherit;font-size:12.5px;font-weight:800;cursor:pointer}
 `;
 
@@ -1121,6 +1147,11 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
   const [editNote, setEditNote] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
   const [deletingEdit, setDeletingEdit] = useState(false);
+  // Copier une case simplement : « Copier vers un autre jour… » (la case copiée) et l'écriture en cours.
+  const [copyFor, setCopyFor] = useState<PlanningWithWorksite | null>(null);
+  const [copyBusy, setCopyBusy] = useState(false);
+  // « Ajouter une tâche à ce créneau » : heures de la case, pré-remplies dans l'onglet Tâche (modifiables).
+  const [taskPrefill, setTaskPrefill] = useState<{ start: string; end: string } | null>(null);
 
   // Lot 11 : « Sélectionner » → cocher des bulles → « Supprimer (N) » → « Annuler ».
   // La sélection n'existe qu'en mode sélection ; elle n'est jamais « nettoyée » par
@@ -2039,16 +2070,24 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
    * planning neuve, par le même chemin que « Ajouter au planning » : chantier,
    * horaire prévu et note. Jamais les heures du salarié, ni ses documents, ni
    * l'ordre, ni « ajoutée par le salarié ». L'original n'est pas touché.
+   *
+   * Copier simplement (« Copier vers… », « Dupliquer au lendemain ») passe par la
+   * MÊME écriture : copyOne. `rows` = la case visée lue en base, quand elle n'est
+   * pas dans la semaine affichée ; absent, c'est la case telle que l'écran la montre.
    */
-  const copySlot = async (src: PlanningWithWorksite, tWorker: string, tDate: string, overBubbleId: string | null) => {
-    if (!user?.company_id || !src.worksite_id) return;
-    const cell = cellChantiers(tWorker, tDate);
-    const refusal = copyRefusal(src, cell, {
-      absent: !!absenceForDay(tWorker, tDate),
+  const copyRefusalAt = (src: PlannedLike, tWorker: string, tDate: string, rows?: CopyRow[]) => {
+    const mine = rows?.filter((r) => r.work_date === tDate);
+    return copyRefusal(src, mine ? mine.filter((r) => !r.absence_type) : cellChantiers(tWorker, tDate), {
+      absent: mine ? mine.some((r) => !!r.absence_type) : !!absenceForDay(tWorker, tDate),
       monthClosed: closedMonths.has(tDate.slice(0, 7)),
       workerClosed: !!closedFor(workerClosures, tWorker, tDate),
     });
-    if (refusal) { toast.error(refusal.message); return; }
+  };
+  const copyOne = async (src: PlanningWithWorksite, tWorker: string, tDate: string, overBubbleId: string | null, rows?: CopyRow[]): Promise<{ id: string } | { error: string }> => {
+    if (!user?.company_id || !src.worksite_id) return { error: '' };
+    const cell = rows ? [] : cellChantiers(tWorker, tDate);
+    const refusal = copyRefusalAt(src, tWorker, tDate, rows);
+    if (refusal) return { error: refusal.message };
     let newId: string;
     try {
       newId = await addPlanningSlot({
@@ -2057,8 +2096,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
       });
     } catch (err) {
       console.error('Error copying planning:', err);
-      toast.error('Impossible de copier : rien n’a été ajouté.');
-      return;
+      return { error: 'Impossible de copier : rien n’a été ajouté.' };
     }
     // Déposée SUR une bulle : la copie prend sa place, comme un déplacement.
     if (overBubbleId) {
@@ -2067,6 +2105,13 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
       ids.splice(i < 0 ? ids.length : i, 0, newId);
       await persistOrder(ids);
     }
+    return { id: newId };
+  };
+  const copySlot = async (src: PlanningWithWorksite, tWorker: string, tDate: string, overBubbleId: string | null) => {
+    if (!user?.company_id || !src.worksite_id) return;
+    const r = await copyOne(src, tWorker, tDate, overBubbleId);
+    if ('error' in r) { toast.error(r.error); return; }
+    const newId = r.id;
     const who = workers.find((w) => w.id === tWorker)?.first_name || 'Salarié';
     const companyId = user.company_id;
     setUndoCard({
@@ -2117,6 +2162,74 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
       },
     });
     fetchPlanning();
+  };
+
+  // ─── Copier une case simplement (fenêtre de modification : « Copier vers… », « Dupliquer au lendemain ») ────
+  // Aucune écriture à part : copyOne (ci-dessus) = celle du glisser avec Ctrl ou Alt. Pas de bouton « Annuler »
+  // ici : le message dit ce qui a été fait ; une copie en trop se retire avec « Supprimer » (même confirmation).
+
+  /** Les cases d'un salarié sur une période, lues en base (jours hors de la semaine affichée). null = illisible. */
+  const loadCopyRows = async (workerId: string, from: string, to: string): Promise<CopyRow[] | null> => {
+    if (!user?.company_id) return null;
+    const { data, error } = await supabase.from('planning').select('id, user_id, work_date, worksite_id, estimated_start, estimated_end, absence_type')
+      .eq('company_id', user.company_id).eq('user_id', workerId).gte('work_date', from).lte('work_date', to);
+    return error ? null : ((data ?? []) as CopyRow[]);
+  };
+  /** Le refus de la copie, dit sans la fin « rien n’a été copié » (la copie n'est pas encore partie). */
+  const copyWhy = (src: PlanningWithWorksite, workerId: string, date: string, rows?: CopyRow[]): string | null => {
+    const r = copyRefusalAt(src, workerId, date, rows);
+    return r ? r.message.replace(/ : rien n’a été copié\.$/, '').replace(/\.$/, '') : null;
+  };
+  /** « mar. 21 et mer. 22 » (avec le mois quand les jours n'en partagent pas un seul). */
+  const daysText = (dates: string[]) => {
+    const sameMonth = dates.every((d) => d.slice(0, 7) === dates[0].slice(0, 7));
+    const t = dates.map((d) => format(parseISO(d), sameMonth ? 'EEE d' : 'EEE d MMM', { locale: fr }));
+    return t.length > 1 ? `${t.slice(0, -1).join(', ')} et ${t[t.length - 1]}` : t[0];
+  };
+  /** Copie la case sur ces jours, un par un. Rend vrai si au moins une copie est partie. */
+  const copyToDays = async (src: PlanningWithWorksite, targets: CopyTarget[]): Promise<boolean> => {
+    if (!user?.company_id || !src.worksite_id || !targets.length) return false;
+    setCopyBusy(true);
+    const done: CopyTarget[] = [];
+    try {
+      for (const t of [...targets].sort((a, b) => a.date.localeCompare(b.date))) {
+        // Hors de la semaine affichée, l'écran ne sait rien de la case visée : on la lit en base (au moment de copier).
+        const onScreen = weekDays.some((d) => format(d, 'yyyy-MM-dd') === t.date);
+        let rows: CopyRow[] | undefined;
+        if (!onScreen) {
+          const r = await loadCopyRows(t.workerId, t.date, t.date);
+          if (!r) { toast.error(`${daysText([t.date])} : lecture du planning impossible, rien n’a été copié.`); continue; }
+          rows = r;
+        }
+        const r = await copyOne(src, t.workerId, t.date, null, rows);
+        if ('error' in r) { if (r.error) toast.error(`${daysText([t.date])} : ${r.error}`); continue; }
+        done.push(t);
+      }
+    } finally {
+      setCopyBusy(false);
+    }
+    if (!done.length) return false;
+    const who = done[0].workerId !== src.user_id ? ` chez ${workers.find((w) => w.id === done[0].workerId)?.first_name || 'ce salarié'}` : '';
+    toast.success(`Case copiée${who} sur ${daysText(done.map((d) => d.date))}`);
+    fetchPlanning();
+    return true;
+  };
+  /** « Dupliquer au lendemain » : un geste, même salarié, jour suivant. */
+  const duplicateNextDay = async () => {
+    if (!editing || copyBusy) return;
+    const src = editing;
+    const next = format(addDays(parseISO(src.work_date), 1), 'yyyy-MM-dd');
+    if (await copyToDays(src, [{ workerId: src.user_id, date: next }])) closeEdit();
+  };
+  const openCopyTo = () => {
+    if (!editing) return;
+    const src = editing;
+    closeEdit();
+    setCopyFor(src);
+  };
+  const confirmCopyTo = async (targets: CopyTarget[]) => {
+    if (!copyFor) return;
+    if (await copyToDays(copyFor, targets)) setCopyFor(null);
   };
 
   const handleDragEnd = async (e: DragEndEvent) => {
@@ -2231,20 +2344,30 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
     setAddWorksite(paletteWorksiteId || '');
     setAddNote('');
     setAddStart(''); setAddEnd('');
-    setAddKind('intervention'); setAddLocked(false); setAddAbsent(false); setEditMeeting(null);
+    setAddKind('intervention'); setAddLocked(false); setAddAbsent(false); setEditMeeting(null); setTaskPrefill(null);
     setAddOpen(true);
   };
   // Lot 4 : le compteur de tâches d'une case (relu à l'ouverture : « Fait » à jour).
   const openTasks = (workerId: string, dateStr: string, absent: boolean) => {
     setAddTarget({ workerId, date: dateStr });
-    setAddKind('tache'); setAddLocked(true); setAddAbsent(absent); setEditMeeting(null);
+    setAddKind('tache'); setAddLocked(true); setAddAbsent(absent); setEditMeeting(null); setTaskPrefill(null);
+    setAddOpen(true);
+    fetchMissions();
+  };
+  // Ajouter une tâche à un salarié DÉJÀ planifié : la même fenêtre « + », sur l'onglet Tâche (les pastilles
+  // restent : on peut passer à Intervention). `hours` = l'horaire du créneau, pré-rempli dans « Heure de … à … »
+  // (modifiable : une tâche peut être avant, pendant ou après le créneau).
+  const openTaskAdd = (workerId: string, dateStr: string, hours?: { start: string; end: string } | null) => {
+    setAddTarget({ workerId, date: dateStr });
+    setAddKind('tache'); setAddLocked(false); setAddAbsent(false); setEditMeeting(null);
+    setTaskPrefill(hours ?? null);
     setAddOpen(true);
     fetchMissions();
   };
   // Lot 4 : la pastille d'une réunion → la même fenêtre, sur la réunion.
   const openMeeting = (m: Meeting, workerId: string) => {
     setAddTarget({ workerId, date: m.meeting_date });
-    setAddKind('reunion'); setAddLocked(true); setAddAbsent(false); setEditMeeting(m);
+    setAddKind('reunion'); setAddLocked(true); setAddAbsent(false); setEditMeeting(m); setTaskPrefill(null);
     setAddOpen(true);
   };
   // Le titre suit l'onglet : « Ajouter une intervention » ne change pas (lot 11).
@@ -2271,6 +2394,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
       toast.success('Ajouté au planning');
       setAddOpen(false);
       setAddTarget(null);
+      setTaskPrefill(null);
       refresh();
     } catch (err) {
       console.error('Error adding planning:', err);
@@ -2715,6 +2839,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
   // ─── affectation popup (this day only) ──────────────────────────────────────
 
   const openEdit = (p: PlanningWithWorksite) => {
+    CopyDialog.preload(); // « Copier vers… » est chargée ici, avant d'être demandée (réseau lent : pas de fenêtre muette)
     setEditing(p);
     setEditStart(p.estimated_start ? p.estimated_start.slice(0, 5) : '');
     setEditEnd(p.estimated_start && p.estimated_end ? p.estimated_end.slice(0, 5) : '');
@@ -2992,6 +3117,10 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
   const filteredWorkers = sq ? workers.filter((w) => `${w.first_name} ${w.last_name}`.toLowerCase().includes(sq)) : workers;
 
   const editRealAgg = editing ? realForPlanning(editing) : undefined;
+  // Une modification pas encore enregistrée (mêmes valeurs de départ qu'openEdit).
+  const editDirty = !!editing && (editStart !== (editing.estimated_start ? editing.estimated_start.slice(0, 5) : '')
+    || editEnd !== (editing.estimated_start && editing.estimated_end ? editing.estimated_end.slice(0, 5) : '')
+    || editNote !== (editing.notes || ''));
 
   // Lot 3 : une case de la feuille imprimée — les MÊMES bulles que l'écran, sans ce qui
   // n'a de sens qu'à l'écran : ni « en cours », ni « + », ni sélection, ni bouton.
@@ -3280,6 +3409,12 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
                     <button className="bt-pl-acct-item" onClick={() => { setAccountMenuOpen(false); setSettingsOpen(true); }} data-guide="bureau-nav.reglages">
                       <Settings className="h-4 w-4" /> Réglages de l&apos;entreprise
                     </button>
+                    {/* « Formations » : aussi ici (avant, cachée dans « Salariés » et le menu ☰), seulement si elles existent. */}
+                    {trainingsOn && user?.company_id && (
+                      <button className="bt-pl-acct-item" onClick={() => { setAccountMenuOpen(false); setTrainingsOpen(true); }} onPointerEnter={() => TrainingsAdmin.preload()} onFocus={() => TrainingsAdmin.preload()} data-testid="menu-trainings">
+                        <GraduationCap className="h-4 w-4" /> Formations
+                      </button>
+                    )}
                     {/* Lot 19 : planning de la semaine en PDF, ou un message, par e-mail aux salariés (fenêtre chargée à l'ouverture). */}
                     {emailVisible && user?.role === 'admin' && workers.length > 0 && (
                       <button className="bt-pl-acct-item" onClick={() => { setAccountMenuOpen(false); setEmailOpen(true); }} onPointerEnter={() => StaffEmailDialog.preload()} onFocus={() => StaffEmailDialog.preload()} data-testid="menu-email">
@@ -3411,6 +3546,16 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
               <span aria-hidden="true">📟</span><span className="bt-pl-lbl-borne">Borne</span>
             </button>
           )}
+          {/* « Formations » : visible dans la barre (avant, seulement dans « Salariés » et le menu ☰). Seulement quand les
+              formations existent (trainingsOn, comme partout). La barre n'a plus une once de place sous 1440 px (lot 3 : « une
+              seule ligne » à 1280 avec Borne, assistant, congés et réserves) : là, « Formations » est dans le menu du compte
+              (en haut à droite) et dans « Salariés ». De 1440 px, l'icône ; de 1700 px, l'icône et le mot (le rappel des couleurs, dès 1600, prend la place). */}
+          {trainingsOn && user?.company_id && (
+            <button className="bt-pl-out bt-pl-trainbtn" onClick={() => setTrainingsOpen(true)} onPointerEnter={() => TrainingsAdmin.preload()} onFocus={() => TrainingsAdmin.preload()}
+              title="Formations : vidéos et documents pour l’équipe" aria-label="Formations" data-testid="bar-trainings">
+              <GraduationCap className="h-4 w-4" /><span className="bt-pl-lbl-train">Formations</span>
+            </button>
+          )}
           {/* « Coût chantiers » (« Coûts » sous 1280 px) : les heures par chantier y sont. */}
           <button className="bt-pl-out" onClick={() => setCostOpen(true)} title="Heures et coût par chantier" data-testid="bar-cost" data-guide="bureau-nav.couts"><TrendingUp className="h-4 w-4" /> <span className="bt-pl-lbl-long">Coût chantiers</span><span className="bt-pl-lbl-short">Coûts</span></button>
           {/* Lot 3 : « Imprimer » — une icône seule ; le menu choisit la période (lot 3bis :
@@ -3449,6 +3594,10 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
           </div>
         )}
 
+        {/* Astuce « Copier une case » : visible, fermable, mémorisée (components/planning-copier.tsx). Cachée sur téléphone
+            (sa propre carte, plus bas). Le « ? » qui la réaffiche est dans le coin de la grille. */}
+        {workers.length > 0 && !selectMode && <div className="bt-cp-desk"><CopyTip variant="desk" /></div>}
+
         {/* GRILLE — desktop (glisser-déposer) */}
         <div className="bt-pl-gridwrap" ref={gridRef}>
           <table className="bt-pl-table">
@@ -3457,6 +3606,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
                 <th className="bt-pl-th-name">
                   <span className="bt-pl-corner-wk">S-{getISOWeek(currentWeekStart)}</span>
                   <span className="bt-pl-corner-sal">Salarié</span>
+                  {workers.length > 0 && <CopyTipHelp variant="corner" afterVersions={versionsOn && user?.role === 'admin'} />}
                   {/* Lot 8 : « Versions » dans le coin de la semaine qu'il concerne — la barre du haut n'a plus
                       une once de place au pire cas (lot 3 : « une seule ligne » à 1280 px). */}
                   {versionsOn && user?.role === 'admin' && (
@@ -3539,6 +3689,8 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
                                 {tasks.length > 0 && <TasksBadge tasks={tasks} inert={selectMode} onOpen={() => openTasks(worker.id, dateStr, !!absence)} />}
                               </>
                             ) : null;
+                            // « ＋ Tâche » : seulement sur une case déjà remplie, quand les tâches existent, hors sélection.
+                            const taskBtn = chantiers.length > 0 && missions.tasksOn && !selectMode && !worker.id.startsWith('demo-');
                             return (
                               <DroppableCell key={dateStr} workerId={worker.id} dateStr={dateStr} isToday={dateStr === todayStr} live={liveHere}>
                                 {absence ? (() => {
@@ -3562,7 +3714,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
                                   );
                                 })() : (
                                   <div
-                                    className="bt-pl-cellfill"
+                                    className={`bt-pl-cellfill${taskBtn ? ` bt-pl-cellfill--task${liveChip || missionChips ? ' chips' : ''}` : ''}`}
                                     data-guide={chantiers.length === 0 && extra.length === 0 && !liveChip && !missionChips ? 'bureau-planning.case' : undefined}
                                     onClick={selectMode ? undefined : () => openAdd(worker.id, dateStr)}
                                     title={selectMode ? undefined : 'Cliquer pour ajouter une intervention'}
@@ -3592,6 +3744,12 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
                                     })}
                                     {liveChip}
                                     {missionChips}
+                                    {/* Une tâche pour ce salarié ce jour-là, sans chercher le vide de la case (qui n'existe plus quand elle est pleine). */}
+                                    {taskBtn && (
+                                      <button type="button" className="bt-pl-addtask" title="Ajouter une tâche" data-testid="cell-add-task"
+                                        aria-label={`Ajouter une tâche à ${worker.first_name} ${worker.last_name}, ${format(day, 'EEEE d MMMM', { locale: fr })}`}
+                                        onClick={(e) => { e.stopPropagation(); openTaskAdd(worker.id, dateStr); }}>＋ Tâche</button>
+                                    )}
                                     {chantiers.length === 0 && extra.length === 0 && !liveChip && <div className="bt-pl-add">+</div>}
                                   </div>
                                 )}
@@ -3717,9 +3875,12 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
               </div>
             )}
             <div className="bt-pl-m-list">
+              {/* Astuce « Copier une case » : touchez la case, puis « Copier vers… » (planning-copier.tsx). */}
+              {workers.length > 0 && !selectMode && <CopyTip variant="mobile" />}
               {/* Lot 11 : « Sélectionner » aussi sur téléphone (« Tout sélectionner » = le jour affiché). */}
               {workers.length > 0 && !selectMode && (
                 <div className="bt-pl-m-tools">
+                  <CopyTipHelp variant="mobile" />
                   <button type="button" className="bt-pl-m-selbtn" onClick={enterSelect} data-testid="m-select">
                     <CheckSquare className="h-3.5 w-3.5" /> Sélectionner
                   </button>
@@ -3829,9 +3990,16 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
                         )}
                         {/* Ajouter un chantier à ce salarié pour ce jour (openAdd → même dialogue que
                             le glisser-déposer côté desktop, sans le drag). */}
-                        <button type="button" className="bt-pl-m-add" onClick={() => openAdd(worker.id, dateStr)} data-guide="bureau-planning.ajouter">
-                          <Plus className="h-3.5 w-3.5" /> Ajouter un chantier
-                        </button>
+                        <div className="bt-pl-m-addrow">
+                          <button type="button" className="bt-pl-m-add" onClick={() => openAdd(worker.id, dateStr)} data-guide="bureau-planning.ajouter">
+                            <Plus className="h-3.5 w-3.5" /> Ajouter un chantier
+                          </button>
+                          {chantiers.length > 0 && missions.tasksOn && !selectMode && (
+                            <button type="button" className="bt-pl-m-addtask" data-testid="m-add-task"
+                              aria-label={`Ajouter une tâche à ${worker.first_name} ${worker.last_name}`}
+                              onClick={() => openTaskAdd(worker.id, dateStr)}>＋ Tâche</button>
+                          )}
+                        </div>
                       </>
                     )}
                   </div>
@@ -4494,16 +4662,16 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
 
       {/* Cell add — a client on a specific day. Lot 4 : la même fenêtre pose aussi une
           tâche ou une réunion (pastilles en tête) ; le titre suit ce qui est choisi. */}
-      <Dialog open={addOpen} onOpenChange={(o) => { setAddOpen(o); if (!o) { setAddTarget(null); setEditMeeting(null); } }}>
+      <Dialog open={addOpen} onOpenChange={(o) => { setAddOpen(o); if (!o) { setAddTarget(null); setEditMeeting(null); setTaskPrefill(null); } }}>
         <DialogContent className="bt-skin max-w-sm">
           <DialogHeader><DialogTitle>{addTitleOf()}</DialogTitle></DialogHeader>
           {!addLocked && (missions.tasksOn || missions.meetingsOn) && (
             <AddKindSwitch value={addKind} onChange={setAddKind} tasksOn={missions.tasksOn && !addTarget?.workerId.startsWith('demo-')} meetingsOn={missions.meetingsOn} />
           )}
           {addKind === 'tache' && addTarget && user?.company_id && (
-            <DayTasksPanel key={`${addTarget.workerId}|${addTarget.date}`} companyId={user.company_id} workerId={addTarget.workerId} date={addTarget.date}
+            <DayTasksPanel key={`${addTarget.workerId}|${addTarget.date}|${taskPrefill?.start ?? ''}`} companyId={user.company_id} workerId={addTarget.workerId} date={addTarget.date}
               tasks={cells.tasks(addTarget.workerId, addTarget.date)} canAdd={!addAbsent} onChanged={fetchMissions}
-              timesOn={missions.taskTimesOn}
+              timesOn={missions.taskTimesOn} defaultStart={taskPrefill?.start} defaultEnd={taskPrefill?.end}
               slots={planning.filter((p) => p.user_id === addTarget.workerId && p.work_date === addTarget.date && !p.absence_type)
                 .map((p) => ({ start: p.estimated_start, end: p.estimated_end }))} />
           )}
@@ -4513,7 +4681,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
               date={addTarget.date} defaultWorkerId={addTarget.workerId.startsWith('demo-') ? null : addTarget.workerId}
               meeting={editMeeting} participants={editMeeting ? (missions.participants[editMeeting.id] || []) : undefined}
               companyName={companyName}
-              onSaved={async () => { await fetchMissions(); setAddOpen(false); setAddTarget(null); setEditMeeting(null); }} />
+              onSaved={async () => { await fetchMissions(); setAddOpen(false); setAddTarget(null); setEditMeeting(null); setTaskPrefill(null); }} />
           )}
           {addKind === 'intervention' && (
           <form onSubmit={confirmAdd} className="space-y-4 pt-2" data-testid="add-form">
@@ -4663,14 +4831,42 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
                 <Button className="flex-1" onClick={saveAffectation} disabled={savingEdit} data-guide="bureau-edit.enregistrer">
                   {savingEdit && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer
                 </Button>
-                <Button variant="outline" className="text-destructive" onClick={() => deleteAffectation()} disabled={deletingEdit} data-testid="edit-delete" data-guide="bureau-edit.supprimer">
-                  {deletingEdit ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Trash2 className="h-4 w-4 mr-2" />} Supprimer
-                </Button>
               </div>
+
+              {/* Actions sur la case (ordinateur, pavé tactile ET doigt). « Supprimer » est le bouton de toujours — même
+                  clic, même confirmation « Supprimer ? », mêmes garde-fous — rangé ici, en plus grand. Les copies reprennent
+                  la case telle qu'elle est ENREGISTRÉE : une modification en cours doit d'abord être enregistrée. */}
+              <SlotActions
+                busy={copyBusy}
+                blockedWhy={editDirty ? 'Enregistrez d’abord vos changements : la copie reprend l’intervention telle qu’elle est enregistrée.' : null}
+                onCopyTo={openCopyTo}
+                onDuplicate={duplicateNextDay}
+                onAddTask={missions.tasksOn && !editing.user_id.startsWith('demo-') ? () => {
+                  const w = editing;
+                  closeEdit();
+                  openTaskAdd(w.user_id, w.work_date, w.estimated_start && w.estimated_end ? { start: w.estimated_start.slice(0, 5), end: w.estimated_end.slice(0, 5) } : null);
+                } : undefined}
+              >
+                <Button variant="outline" className="text-destructive" onClick={() => deleteAffectation()} disabled={deletingEdit} data-testid="edit-delete" data-guide="bureau-edit.supprimer">
+                  {deletingEdit ? <Loader2 className="h-4 w-4 animate-spin mr-2 shrink-0" /> : <Trash2 className="h-4 w-4 mr-2 shrink-0" />} Supprimer
+                </Button>
+              </SlotActions>
             </div>
           )}
         </DialogContent>
       </Dialog>
+
+      {/* « Copier vers un autre jour… » : le choix des jours (la fenêtre n'écrit rien ; l'écran copie avec la règle du glisser). */}
+      <CopyDialog
+        source={copyFor ? { id: copyFor.id, title: copyFor.worksite?.client_name || 'Intervention', hours: plannedHoursOf(copyFor), workerId: copyFor.user_id, date: copyFor.work_date } satisfies CopySource : null}
+        workers={workers.map((w) => ({ id: w.id, name: `${w.first_name} ${w.last_name}`.trim() }))}
+        weekStart={format(currentWeekStart, 'yyyy-MM-dd')}
+        check={(w, d, rows) => (copyFor ? copyWhy(copyFor, w, d, rows) : null)}
+        loadRows={loadCopyRows}
+        busy={copyBusy}
+        onClose={() => setCopyFor(null)}
+        onConfirm={confirmCopyTo}
+      />
 
       {/* Client fiche — permanent client data (separate) */}
       <Dialog open={!!clientFiche} onOpenChange={(o) => { if (!o) setClientFiche(null); }}>
