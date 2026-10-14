@@ -109,7 +109,7 @@ Deno.test('lectures : jamais dans mdat, jamais plus de 4 Mo, moov de 5 Mo coupé
 
 Deno.test('textes exacts', () => {
   eq(HEVC_ALERT, 'Cette vidéo est au format HEVC (le format récent des iPhone). Elle peut ne pas se lire sur certains téléphones Android ou ordinateurs.', 'alerte');
-  eq(HEVC_TIP_REC, 'Conseil : touchez « Changer de vidéo », puis « Filmer dans BEMEXO », qui produit un format lisible partout.', 'conseil avec le bouton');
+  eq(HEVC_TIP_REC, 'Conseil : touchez « Changer de vidéo », puis « Filmer », qui produit un format lisible partout.', 'conseil avec l’enregistreur');
   eq(HEVC_TIP_NO_REC, 'Conseil : sur l’iPhone, choisissez Réglages > Appareil photo > Formats > « Le plus compatible », puis filmez à nouveau.', 'conseil sans le bouton');
   eq(HEVC_KEEP, 'Vous pouvez quand même ajouter cette vidéo.', 'on peut quand même ajouter');
 });

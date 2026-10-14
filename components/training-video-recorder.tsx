@@ -1,7 +1,7 @@
 'use client';
 
-// « Filmer dans BEMEXO » (lot 14, oct. 2026) — l'enregistreur intégré du panneau
-// « Vidéo (téléphone ou fichier) » (components/training-video-upload.tsx).
+// « Filmer » (enregistreur intégré, lot 14, oct. 2026) — ouvert par le bouton « Filmer » du formulaire,
+// affiché dans le panneau d'envoi (components/training-video-upload.tsx).
 //  - getUserMedia (caméra arrière si possible, 720p) + MediaRecorder ;
 //  - minuteur, compte à rebours, arrêt automatique avant 50 Mo ou 4 minutes ;
 //  - écran maintenu allumé pendant la prise (Wake Lock) ;
@@ -16,7 +16,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   baseMime, countdownBand, estimateRate, formatClock, pickRecorderMime, REC_ABORT, REC_ABORT_ASK, REC_ABORT_NO, REC_ABORT_YES, REC_AUDIO_BPS, REC_BACK, REC_COUNTDOWN,
-  REC_COUNTDOWN_SECONDS, REC_FAILED, REC_FPS, REC_HEIGHT, REC_OPENING, REC_READY, REC_RUNNING, REC_START, REC_STOP, REC_TIMESLICE_MS, REC_VIDEO_BPS, REC_WIDTH,
+  REC_COUNTDOWN_SECONDS, REC_FAILED, REC_FPS, REC_HEIGHT, REC_OPENING, REC_RUNNING, REC_START, REC_STOP, REC_TIMESLICE_MS, REC_VIDEO_BPS, REC_WIDTH,
   recorderCapBytes, recorderErrorMessage, recorderFileName, recorderMaxLabel, recorderMaxSeconds, stopDecision,
 } from '@/supabase/functions/_shared/video-recorder';
 import type { Limits } from '@/supabase/functions/_shared/training-videos';
@@ -265,7 +265,6 @@ export default function TrainingVideoRecorder({ limits, onDone, onError, onCance
           <video ref={videoEl} className="bt-fo-rec-live" muted playsInline autoPlay aria-label="Aperçu de la caméra" data-testid="tr-rec-live" />
           {phase === 'ready' ? (
             <>
-              <p className="bt-fo-muted">{REC_READY}</p>
               <div className="bt-fo-rec-row">
                 <button ref={startBtn} type="button" className="bt-fo-btn" onClick={start} data-testid="tr-rec-start">{REC_START}</button>
                 <button type="button" className="bt-fo-btn ghost" onClick={abort} data-testid="tr-rec-cancel">{REC_BACK}</button>

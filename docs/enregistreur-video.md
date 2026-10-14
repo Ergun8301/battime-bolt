@@ -1,5 +1,7 @@
 # « Filmer dans BEMEXO », alerte HEVC et fichiers à vérifier (lot 14)
 
+> **Mise à jour « formations simplifiées » (oct. 2026, décision du patron).** La fenêtre « Formations » du bureau n'a plus aucun texte d'aide ni d'état vide, et le formulaire est devenu : titre, **une rangée de gros boutons « Filmer » · « Fichier » · « Lien » · « Document »**, puis « Pour ». « Filmer » = l'enregistreur intégré (un seul appui) ; s'il est indisponible : la caméra du téléphone sous le même mot sur un écran tactile, rien du tout sur un ordinateur (jamais un « Filmer » qui ouvre l'explorateur de fichiers). « Fichier » ouvre le sélecteur de vidéos. « Document » n'existe que s'il y a un document à proposer. Liste vide : le formulaire est là d'office (sans « Annuler »). La jauge de place n'apparaît qu'à partir de 80 %. Plus d'avertissement GPS à l'écran. Les passages ci-dessous qui parlent des anciens boutons (« Filmer dans BEMEXO », « Filmer », « Choisir un fichier », « Vidéo (téléphone ou fichier) ») et de ces textes décrivent l'état d'avant.
+
 Suite du lot 13 (envoi direct d'une vidéo de formation : voir `docs/videos.md`). Le lot 13 reste tel quel : « Filmer » (l'appareil photo du téléphone), « Choisir un fichier », la barre de progression, le lecteur, les liens YouTube / Vimeo / Drive.
 
 ## Ce que ça fait

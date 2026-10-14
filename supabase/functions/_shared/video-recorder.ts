@@ -1,4 +1,4 @@
-// « Filmer dans BEMEXO » (lot 14, oct. 2026) — les règles PURES de l'enregistreur
+// « Filmer » (enregistreur intégré, lot 14, oct. 2026) — les règles PURES de l'enregistreur
 // de vidéos de formation (components/training-video-recorder.tsx) : type de
 // fichier, plafond d'octets, arrêt automatique, nom du fichier, textes.
 // Sans DOM, sans réseau : testé en Deno (video-recorder.test.ts).
@@ -117,20 +117,15 @@ export function formatClock(seconds: number): string {
 }
 
 // ─── Textes ──────────────────────────────────────────────────────────────────
-export const REC_BUTTON = 'Filmer dans BEMEXO';
-const hint = (dur: string) => `« Filmer dans BEMEXO » : image 720p, jusqu’à ${dur}, lisible partout. « Filmer » : l’appareil photo du téléphone, qualité maximale mais fichier plus lourd.`;
-export const REC_HINT = hint('4 minutes');
-/** Même aide avec la durée réelle quand la place restante la réduit sous 4 minutes. */
-export const recorderHint = (maxSeconds: number): string => (maxSeconds >= REC_MAX_SECONDS ? REC_HINT : hint(`environ ${durationText(maxSeconds)}`));
 export const REC_OPENING = 'Ouverture de la caméra…';
-export const REC_READY = 'Cadrez, puis touchez « Démarrer ». Tenez le téléphone dans le même sens pendant toute la prise.';
+// Aucune consigne « Cadrez… » avant la prise (décision du patron : personne ne lit ces textes) ; seul « Démarrer » est écrit.
 export const REC_START = 'Démarrer';
 export const REC_STOP = 'Arrêter';
 export const REC_ABORT = 'Abandonner';
 export const REC_ABORT_ASK = 'Jeter cette prise ?';
 export const REC_ABORT_YES = 'Oui, jeter';
 export const REC_ABORT_NO = 'Non, continuer';
-/** Pas « Annuler » : le formulaire du dessous a déjà un bouton « Annuler ». */
+/** Pas « Annuler » : le formulaire du dessous peut avoir un bouton « Annuler ». */
 export const REC_BACK = 'Fermer la caméra';
 export const REC_RUNNING = 'Enregistrement en cours';
 export const REC_DONE = 'Enregistrement terminé';
@@ -141,22 +136,24 @@ export const REC_COUNTDOWN = (n: number) => `Arrêt automatique dans ${n} s`;
 export const REC_AUTO_SIZE = 'L’enregistrement s’est arrêté tout seul : la taille maximale est atteinte. La vidéo est gardée.';
 export const REC_AUTO_TIME = 'L’enregistrement s’est arrêté tout seul : 4 minutes atteintes. La vidéo est gardée.';
 export const REC_CUT = 'L’enregistrement s’est arrêté (caméra interrompue). Ce qui a été filmé est gardé.';
-export const REC_FAILED = 'L’enregistrement a échoué. Réessayez, ou touchez « Filmer ».';
-export const REC_NO_GPS = 'Filmée dans BEMEXO : aucune position GPS n’est ajoutée à la vidéo.';
+/** Pourquoi la prise s'est arrêtée toute seule, et le message gardé à côté du fichier. */
+export type RecAuto = 'size' | 'time' | 'cut';
+export const REC_AUTO_TEXT: Record<RecAuto, string> = { size: REC_AUTO_SIZE, time: REC_AUTO_TIME, cut: REC_CUT };
+export const REC_FAILED = 'L’enregistrement a échoué. Réessayez, ou touchez « Fichier ».';
 
 /** Refus d'autorisation et pannes de caméra, en français simple. */
 export function recorderErrorMessage(name: string | undefined): string {
   switch (name) {
     case 'NotAllowedError':
     case 'SecurityError':
-      return 'L’appareil photo ou le micro est refusé. Autorisez-les pour BEMEXO dans les réglages du navigateur (sur iPhone : le bouton « aA » de la barre d’adresse, puis « Réglages du site »), puis réessayez. Vous pouvez aussi toucher « Filmer » ou « Choisir un fichier ».';
+      return 'L’appareil photo ou le micro est refusé. Autorisez-les pour BEMEXO dans les réglages du navigateur (sur iPhone : le bouton « aA » de la barre d’adresse, puis « Réglages du site »), puis réessayez. Vous pouvez aussi toucher « Fichier ».';
     case 'NotFoundError':
     case 'OverconstrainedError':
-      return 'Aucune caméra n’a été trouvée sur cet appareil. Touchez « Choisir un fichier ».';
+      return 'Aucune caméra n’a été trouvée sur cet appareil. Touchez « Fichier ».';
     case 'NotReadableError':
     case 'AbortError':
       return 'La caméra est déjà utilisée par une autre application. Fermez-la, puis réessayez.';
     default:
-      return 'La caméra n’a pas pu démarrer. Touchez « Filmer » ou « Choisir un fichier ».';
+      return 'La caméra n’a pas pu démarrer. Touchez « Fichier ».';
   }
 }
