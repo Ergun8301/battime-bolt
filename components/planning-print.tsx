@@ -17,9 +17,15 @@
 // les tâches du jour sous chaque case ; les réunions, elles, sont toujours
 // imprimées (couleur à part, légende « Réunion »). Le mois n'imprime ni l'un ni l'autre.
 //
+// Mise en page papier (A4 paysage) : marges de 10 mm identiques sur les 4 côtés (une
+// imprimante rogne 4 à 6 mm), tableau centré sur toute la largeur utile avec un CADRE noir
+// franc, haut / bas / gauche / droite, refermé en bas de chaque page ; quelques salariés
+// seulement → le tableau descend vers le bas de la page. Les COULEURS, motifs (rayures des
+// congés), pointillés et fonds des cases sont ceux de l'écran, jamais modifiés ici.
+//
 // Rien ici n'écrit en base, et rien ne touche à « Exporter » (qui, lui, verrouille
 // les heures de la période) : imprimer ne change aucune donnée.
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { format, getISOWeek, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Loader2, Printer } from 'lucide-react';
@@ -225,18 +231,37 @@ export function PrintMenu({ displayed, workers, busy, onPrint, onClose, tasksOn 
 export const PRINT_SHEET_CSS = `
 @media screen{.bt-print{display:none!important}}
 @media print{
-  @page{size:A4 landscape;margin:8mm}
+  /* 10 mm sur les 4 côtés : une imprimante rogne 4 à 6 mm de chaque bord, le cadre du
+     tableau doit rester en deçà. Marges identiques partout = tableau centré sur la page. */
+  @page{size:A4 landscape;margin:10mm}
   html,body{background:#fff!important;margin:0!important;padding:0!important;height:auto!important;min-height:0!important;overflow:visible!important}
   /* L'appli, les fenêtres (portails Radix) et les petits messages : rien d'autre que la feuille. */
   body>*:not(.bt-print){display:none!important}
-  .bt-print{display:block!important;font-family:'Archivo',sans-serif;color:#15120F;background:#fff}
-  .bt-print--week{zoom:.8}
+  .bt-print{display:block!important;box-sizing:border-box;width:100%;max-width:100%;margin:0 auto;font-family:'Archivo',sans-serif;color:#15120F;background:#fff;--bt-z:1}
+  .bt-print--week{--bt-z:.8;zoom:var(--bt-z)}
   /* Sans « graphiques d'arrière-plan », Chrome efface les fonds : les bulles noires
      (heures envoyées) deviendraient du texte pâle sur blanc, les hachures disparaîtraient. */
   .bt-print,.bt-print *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  .bt-print .bt-pl-table{min-width:0;width:100%}
+  .bt-print .bt-pl-table{min-width:0;width:100%;max-width:100%;box-sizing:border-box}
   .bt-print thead{display:table-header-group}
   .bt-print tr{break-inside:avoid;page-break-inside:avoid}
+  /* CADRE extérieur : un trait noir franc (4 px sur la semaine, zoomée à .8, soit 3 px ; 3 px sur le
+     jour et le mois) à gauche, à droite, en haut (sous le titre) et en bas — plus épais que les traits
+     internes (1 px), donc visible même en noir et blanc. Le titre et la légende restent au-dessus.
+     Le pied vide (tfoot) referme le cadre en bas de CHAQUE page quand le tableau en compte plusieurs. */
+  .bt-print{--bt-frame:3px}
+  .bt-print--week{--bt-frame:4px}
+  .bt-print table{border-collapse:collapse}
+  .bt-print table thead tr:not(.bt-print-title)>*{border-top:var(--bt-frame) solid #15120F}
+  .bt-print table thead tr:not(.bt-print-title)>:first-child,.bt-print table tbody tr>:first-child{border-left:var(--bt-frame) solid #15120F}
+  .bt-print table thead tr:not(.bt-print-title)>:last-child,.bt-print table tbody tr>:last-child{border-right:var(--bt-frame) solid #15120F}
+  .bt-print table tbody:last-of-type tr:last-child>td{border-bottom:var(--bt-frame) solid #15120F}
+  .bt-print tfoot{display:table-footer-group}
+  .bt-print tfoot td{height:0;padding:0;border:0;border-top:var(--bt-frame) solid #15120F;line-height:0;font-size:0}
+  /* Peu de salariés : le tableau descend vers le bas de la page (la hauteur utile moins une marge
+     de sécurité), sans jamais dépasser ~45 mm par ligne ; avec beaucoup de salariés, c'est une hauteur
+     MINIMALE : le contenu garde sa taille et passe sur la page suivante. --bt-n = nombre de lignes. */
+  .bt-print--week .bt-pl-table,.bt-print--day .bt-pl-table{height:min(calc(182mm / var(--bt-z)),calc((30mm + var(--bt-n,1) * 45mm) / var(--bt-z)))}
   /* Coin « S-43 / Salarié » : ses deux étiquettes sont placées en absolu dans la case. */
   .bt-print .bt-pl-th-name{position:relative;width:auto}
   .bt-print .bt-pl-namecell{position:static}
@@ -257,7 +282,7 @@ export const PRINT_SHEET_CSS = `
   td.bt-print-sig{height:56px}
   .bt-print--day .bt-pl-cellfill{flex-direction:row;flex-wrap:wrap;align-items:flex-start}
   .bt-print--day .bt-pl-cellfill>*{flex:0 0 230px}
-  /* Lot 3bis — le MOIS : une ligne par salarié, une colonne par jour, sur 1062 px
+  /* Lot 3bis — le MOIS : une ligne par salarié, une colonne par jour, sur 1047 px
      utiles (A4 paysage). Dans une case : un petit bloc par intervention, le code du
      chantier (clé en tête de chaque page), la couleur du créneau, noir = envoyé. */
   .bt-print--month .bt-print-title>th{padding-bottom:4px}
@@ -269,9 +294,9 @@ export const PRINT_SHEET_CSS = `
   .bt-print--month .bt-print-sw{width:9px;height:9px;border-radius:2px;margin-right:3px}
   .bt-print-m-key{margin-top:3px;font-size:8.5px;font-weight:600;color:#57524A;line-height:1.35}
   .bt-print-m-key b{font-weight:900;color:#15120F}
-  .bt-print-m{width:100%;border-collapse:collapse;table-layout:fixed}
-  .bt-print-m col.n{width:32mm}
-  .bt-print-m col.sig{width:17mm}
+  .bt-print-m{width:100%;border-collapse:collapse;table-layout:fixed;height:min(182mm,calc(42mm + var(--bt-n,1) * 16mm))}
+  .bt-print-m col.n{width:30mm}
+  .bt-print-m col.sig{width:16mm}
   .bt-print-m th.d{padding:2px 0 3px;text-align:center;border:1px solid rgba(21,18,15,.25);border-bottom:1.5px solid #15120F;line-height:1;font-weight:400}
   .bt-print-m .wd{display:block;font-size:7px;font-weight:700;color:#6E6A63;text-transform:uppercase}
   .bt-print-m .dn{display:block;font-size:9.5px;font-weight:900;margin-top:1px}
@@ -315,6 +340,10 @@ export function PlanningPrintSheet({ job, company, rows, renderCell, codes, hasM
   const weekNo = getISOWeek(days[0]);
   const one = job.who !== 'all' ? rows[0]?.name : null;
   const cols = 1 + days.length + (job.signature ? 1 : 0);
+  // Nombre de lignes pour la CSS : peu de salariés → le tableau descend vers le bas de la page.
+  const rowsVar = { '--bt-n': Math.max(1, rows.length) } as CSSProperties;
+  // Pied vide : referme le cadre en bas de chaque page (ne contient rien, ne s'imprime que comme un trait).
+  const frameEnd = <tfoot className="bt-print-end"><tr><td colSpan={cols} /></tr></tfoot>;
   const head = (what: string, extra?: ReactNode) => (
     <tr className="bt-print-title">
       <th colSpan={cols}>
@@ -341,7 +370,7 @@ export function PlanningPrintSheet({ job, company, rows, renderCell, codes, hasM
     // chaque page, et une ligne (tr) n'est jamais coupée entre deux pages.
     const key = Array.from((codes || new Map<string, string>()).entries()).sort((a, b) => a[1].localeCompare(b[1], 'fr'));
     return (
-      <div className="bt-print bt-print--month" data-testid="print-sheet">
+      <div className="bt-print bt-print--month" data-testid="print-sheet" style={rowsVar}>
         <style dangerouslySetInnerHTML={PRINT_SHEET_STYLE} />
         <table className={`bt-print-m${job.signature ? ' with-sig' : ''}`} data-testid="print-month">
           <colgroup>
@@ -386,6 +415,7 @@ export function PlanningPrintSheet({ job, company, rows, renderCell, codes, hasM
               </tr>
             ))}
           </tbody>
+          {frameEnd}
         </table>
       </div>
     );
@@ -395,7 +425,7 @@ export function PlanningPrintSheet({ job, company, rows, renderCell, codes, hasM
     ? `Planning · semaine ${weekNo} · ${rangeLabel(days)}`
     : `${cap(format(days[0], 'EEEE d MMMM yyyy', { locale: fr }))} · semaine ${weekNo}`;
   return (
-    <div className={`bt-print bt-print--${kind}`} data-testid="print-sheet">
+    <div className={`bt-print bt-print--${kind}`} data-testid="print-sheet" style={rowsVar}>
       <style dangerouslySetInnerHTML={PRINT_SHEET_STYLE} />
       <table className="bt-pl-table">
         {/* Largeurs explicites : en table-layout:fixed, la ligne de titre (colspan) en
@@ -446,6 +476,7 @@ export function PlanningPrintSheet({ job, company, rows, renderCell, codes, hasM
             </tr>
           ))}
         </tbody>
+        {frameEnd}
       </table>
     </div>
   );
