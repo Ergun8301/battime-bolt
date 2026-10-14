@@ -184,7 +184,9 @@ const planningWrites = (n) => writesSince(n).filter((x) => x.t === 'planning');
 let ok = 0, ko = 0; const check = (c, m) => { if (c) { ok++; console.log('✅', m); } else { ko++; console.log('❌', m); } };
 const note = (m) => console.log('ℹ️ ', m);
 const newPage = async () => {
-  const ctx = await b.newContext({ viewport: { width: 1440, height: 900 }, locale: 'fr-FR', timezoneId: 'Europe/Paris' });
+  // Copier simplement : l'astuce visible (47 px) et « ＋ Tâche » sur les cases remplies allongent la grille. Écran de 900 px de haut, les
+  // dernières lignes passaient sous le bord et dnd-kit faisait défiler la page pendant les glissers (cible ratée) : l'écran de test est plus haut.
+  const ctx = await b.newContext({ viewport: { width: 1440, height: 1200 }, locale: 'fr-FR', timezoneId: 'Europe/Paris' });
   await setup(ctx); const p = await ctx.newPage();
   p.on('pageerror', (e) => console.log('   [erreur page]', e.message));
   await p.goto(`http://localhost:${PORT}/admin`);
@@ -271,7 +273,10 @@ if (AVANT) {
 // ═══ APRÈS ═══════════════════════════════════════════════════════════════════════
 {
   const { ctx, p } = await newPage();
-  check(await bub(p, 'ps-mon').getAttribute('title') === 'Glisser pour déplacer · Ctrl ou Alt (⌥) + glisser pour copier · cliquer pour modifier', 'infobulle : « Glisser pour déplacer · Ctrl ou Alt (⌥) + glisser pour copier · cliquer pour modifier »');
+  // Copier simplement : l'info-bulle du navigateur (qui ne restait pas une seconde) est remplacée par une astuce VISIBLE sous la barre
+  // (components/planning-copier.tsx). Même fond : l'indice « glisser avec Ctrl ou ⌥ pour copier » est écrit, lisible, et la bulle n'a plus de title.
+  // title="" (et non absent) : un title absent laisserait hériter celui de la case (« Cliquer pour ajouter une intervention »), qui serait faux ici.
+  check(await bub(p, 'ps-mon').evaluate((e) => { let n = e; while (n) { if (n.hasAttribute && n.hasAttribute('title')) return n.getAttribute('title'); n = n.parentElement; } return null; }) === '' && /Copier une case : cliquez dessus puis « Copier vers… », ou glissez-la en maintenant Ctrl \(Windows\) ou ⌥ Option \(Mac\)\./.test((await p.locator('[data-testid=copy-tip]').innerText()).replace(/\s+/g, ' ')), 'astuce visible : « … glissez-la en maintenant Ctrl (Windows) ou ⌥ Option (Mac). » (plus d’infobulle)');
   check(await p.locator('[data-bub]').count() >= 10, `repère data-bub posé sur chaque bulle (${await p.locator('[data-bub]').count()})`);
 
   // D1 + D4 (sans touche) — glisser simple : déplacement

@@ -40,8 +40,8 @@ La vidéo est dans la même liste « Formations » que les liens et les document
 
 | Limite | Valeur | Ce qui se passe quand on l'atteint |
 |---|---|---|
-| Taille d'un fichier | **50 Mo** (limite du forfait, non modifiable en Free) | L'écran refuse avant l'envoi. S'il est contourné, le bucket refuse lui-même : 50 Mo et types vidéo sont réglés **au niveau du bucket**. 50 Mo, c'est environ 50 s filmées en 1080p sur iPhone (HEVC), 75 s en 720p, ou 23 s en « Le plus compatible » (H.264). |
-| Place par entreprise | **100 Mo** (décision D8) | « Filmer » et « Choisir » disparaissent, avec un message. La **base** refuse toute nouvelle réservation, même si l'écran est contourné (borne exacte plus bas). Les liens YouTube / Vimeo / Drive restent possibles. Retirer une vidéo **ne libère pas** la place : le fichier est gardé. Le nettoyage se fera avec confirmation, au lot 14, avec l'accord d'Ergun. |
+| Taille d'un fichier | **50 Mo** (limite du forfait, non modifiable en Free) | L'écran refuse avant l'envoi. S'il est contourné, le bucket refuse lui-même : 50 Mo et types vidéo sont réglés **au niveau du bucket**. 50 Mo, c'est environ 50 s filmées en 1080p sur iPhone (HEVC), 75 s en 720p, ou 23 s en « Le plus compatible » (H.264) ; **environ 4 minutes avec « Filmer dans BEMEXO »** (720p, lot 14). |
+| Place par entreprise | **100 Mo** (décision D8) | « Filmer » et « Choisir » disparaissent, avec un message. La **base** refuse toute nouvelle réservation, même si l'écran est contourné (borne exacte plus bas). Les liens YouTube / Vimeo / Drive restent possibles. Retirer une vidéo **ne libère pas** la place : le fichier est gardé. Le nettoyage n'est pas fait : les fichiers sans formation sont seulement **signalés** (« Fichiers vidéo à vérifier », lot 14, `docs/enregistreur-video.md`) ; aucune suppression sans l'accord d'Ergun (D12). |
 | Stockage de tout le projet | **1 Go** (3,7 Mo utilisés aujourd'hui) | 5 entreprises × 100 Mo = 500 Mo, ce qui laisse de la place pour les documents. Au-delà de 1 Go, Supabase prévient, puis peut restreindre **tout le projet**, documents et photos compris. C'est pour cela que le quota par entreprise existe. |
 | Transfert sortant | **5 Go par mois** (+ 5 Go en cache), partagés avec la base et les fonctions | Une vidéo de 25 Mo vue en entier par 15 salariés consomme 375 Mo. Compter environ une vidéo courte par mois et par entreprise. Rien n'est téléchargé avant « Regarder » (`preload="metadata"`). Au-delà, Supabase peut limiter tout le projet. |
 | Mise en pause | Après 7 jours sans activité | Le projet entier s'endort, pas seulement les vidéos. |
@@ -68,7 +68,7 @@ La vidéo est dans la même liste « Formations » que les liens et les document
 
 Fermer cette borne à 100 Mo pile pour un navigateur trafiqué demande l'une de ces deux choses, **non faites ici** : (1) un service intermédiaire (une fonction qui reçoit le fichier, le pèse, puis le dépose) ou un stockage payant ; (2) un déclencheur (trigger) sur `storage.objects` qui refuserait un fichier trop gros, ou un écrasement, au moment de son écriture. Le déclencheur est simple, mais il modifie une table gérée par Supabase et il n'a pas pu être vérifié qu'on peut le poser en production : à décider avec Ergun.
 
-**Format.** Une vidéo filmée en HEVC sur iPhone (réglage « Haute efficacité », par défaut) peut ne pas se lire sur certains Android ou PC. Conseil : régler l'iPhone sur « Le plus compatible », ou passer par un lien YouTube. L'alerte HEVC et l'enregistreur 720p sont prévus au lot 14.
+**Format.** Une vidéo filmée en HEVC sur iPhone (réglage « Haute efficacité », par défaut) peut ne pas se lire sur certains Android ou PC. Conseil : régler l'iPhone sur « Le plus compatible », ou passer par un lien YouTube. Depuis le lot 14 : l'**alerte HEVC** s'affiche avant l'envoi d'un fichier HEVC, et **« Filmer dans BEMEXO »** (enregistreur 720p) produit un format lisible partout (`docs/enregistreur-video.md`).
 
 ## Pourquoi un bucket et une table neufs (et pas « Documents »)
 
@@ -96,7 +96,7 @@ Un MP4 ou un MOV filmé au téléphone peut contenir la **position GPS** du lieu
 
 - **Ce que fait le lot** : l'avertissement affiché dans le formulaire (voir plus haut). Rien n'est retiré du fichier.
 - **À faire** : mentionner dans la politique de confidentialité que les vidéos sont hébergées par Supabase (UE, eu-west-3) et qu'une vidéo filmée peut contenir une position.
-- **Plus tard (lot 14)** : retirer les boîtes de localisation du MP4 / MOV dans le navigateur avant l'envoi (sans réencodage), ou l'enregistreur 720p (`MediaRecorder`) déjà prévu, qui n'écrit pas de position. Non fait ici : analyser un MP4 de 50 Mo dans le navigateur n'est pas assez simple pour être sûr, sans nouvelle dépendance.
+- **Lot 14** : l'enregistreur « Filmer dans BEMEXO » (`MediaRecorder`) n'écrit **aucune position GPS**. Le retrait des boîtes de localisation d'un fichier **choisi** (MP4 / MOV, sans réencodage) reste **non fait** : analyser un MP4 de 50 Mo dans le navigateur n'est pas assez simple pour être sûr, sans nouvelle dépendance.
 - **Pas vérifié sur un vrai appareil** : iOS peut retirer la position dans certains parcours (sélecteur Photos), pas forcément avec « Filmer ».
 
 ## Migration

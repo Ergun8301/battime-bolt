@@ -3,7 +3,6 @@
 // Une seule feuille de style, pour que ces écrans ne divergent plus (la page
 // « mot de passe oublié » était restée sur l'ancien design, sans accents).
 const AUTH_CSS = `
-@import url('/fonts/fonts.css');
 .bt-auth{font-family:'Archivo',sans-serif;background:#F2EDE3;color:#15120F;-webkit-font-smoothing:antialiased;min-height:100vh;min-height:100svh}
 .bt-auth *{box-sizing:border-box}
 .bt-auth .mono{font-family:'JetBrains Mono',monospace}

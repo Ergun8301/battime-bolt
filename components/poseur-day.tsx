@@ -21,6 +21,7 @@ import { insertWorkerEntry } from '@/lib/worker-entry';
 import { planningsToMaterialise, remainingPlannings, sendablePlannings, visiblePlannings } from '@/lib/work-status';
 import { copyLinesTo, materialisePlanned as materialiseDay, setDayMealOnline, submitDrafts } from '@/lib/worker-day';
 import { useMealEnabled } from '@/lib/meal-setting';
+import { loadCompanySettings, useCompanySettings } from '@/lib/company-settings';
 import { fmtHeure } from '@/lib/corrections';
 import { fetchEntryEdits, lastEdit, type EntryEdit } from '@/lib/office-edits';
 import { diffLabels } from '@/supabase/functions/_shared/office-edits';
@@ -46,6 +47,9 @@ import ReserveLiftForm from '@/components/reserve-lift-form';
 import { liftReserve, undoWorkerLift, liftErrorMessage, announceReservesChanged, RESERVES_CHANGED_EVENT } from '@/lib/reserve-lift';
 import { fetchMyClosure } from '@/lib/worker-closure';
 import { isReserveLifted } from '@/lib/reserves';
+// Lot 23 : chantier terminé — plus proposé dans les listes de choix, « Terminé le … » sur ses cartes.
+import TermineLe from '@/components/termine-le';
+import { choosableWorksites } from '@/supabase/functions/_shared/chantier-statut';
 // Lot 4 : les réunions et les tâches du jour (lecture à part, rien sur les heures).
 import { MyMeetings, MyTasks, useMyMissions } from '@/components/missions-worker';
 
@@ -710,15 +714,11 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
     return () => { stale = true; };
   }, [user?.id]);
 
+  // Réglages de l'entreprise : UNE lecture partagée par tout l'écran (lot 29, lib/company-settings.ts).
+  // Avant, cet écran relisait la ligne `companies` deux fois à chaque affichage de « Ma journée ».
+  const cs = useCompanySettings(user?.company_id);
   // Le temps de route est-il payé ? Réglage de l'entreprise, pas du logiciel.
-  const [travelPaid, setTravelPaid] = useState(false);
-  useEffect(() => {
-    if (!user?.company_id) return;
-    let stale = false;
-    supabase.from('companies').select('travel_paid').eq('id', user.company_id).maybeSingle()
-      .then(({ data }) => { if (!stale && data) setTravelPaid(!!(data as { travel_paid?: boolean }).travel_paid); });
-    return () => { stale = true; };
-  }, [user?.company_id]);
+  const travelPaid = !!cs?.travelPaid;
 
   // Lot 3 bis : l'entreprise utilise-t-elle le panier repas ? Lecture À PART
   // (lib/meal-setting.ts). « Non » explicite : la case disparaît et l'écran
@@ -729,23 +729,11 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
   /**
    * L'entreprise enregistre-t-elle l'endroit au pointage ? (étape 26)
    *
-   * REQUÊTE SÉPARÉE, ET C'EST VOLONTAIRE. L'ajouter au `select` ci-dessus
-   * aurait été plus économique — et aurait fait échouer la requête ENTIÈRE tant
-   * que la colonne n'existe pas, emportant avec elle `travel_paid`, donc le
-   * temps de route. Un réglage neuf ne doit pas pouvoir casser un réglage qui
-   * marche. Ici, si la colonne manque, cette requête seule échoue, `false`
-   * reste, et l'application se comporte exactement comme avant.
+   * Lu avec les autres réglages (lib/company-settings.ts), dont la lecture REPLIE sur de petits
+   * groupes si une colonne manque : un réglage neuf ne peut pas casser un réglage qui marche
+   * (`travel_paid` reste lu même si `position_tracking_enabled` n'existe pas encore).
    */
-  const [positionActive, setPositionActive] = useState(false);
-  useEffect(() => {
-    if (!user?.company_id) return;
-    let stale = false;
-    supabase.from('companies').select('position_tracking_enabled').eq('id', user.company_id).maybeSingle()
-      .then(({ data }) => {
-        if (!stale && data) setPositionActive(!!(data as { position_tracking_enabled?: boolean }).position_tracking_enabled);
-      });
-    return () => { stale = true; };
-  }, [user?.company_id]);
+  const positionActive = !!cs?.positionTrackingEnabled;
 
   // L'ÉCRAN PLEIN ÉCRAN D'INFORMATION A ÉTÉ RETIRÉ (étape 28). Un mur noir
   // avant de pouvoir pointer faisait peur et freinait, pour une obligation qui
@@ -786,14 +774,26 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
 
       setEntries(keep<TimeEntryWithWorksite[]>(entriesRes.data || []));
 
-      // Les corrections des lignes du jour. La RLS ne me montre que les
-      // miennes : pas besoin de filtrer par salarié ici.
+      // Les corrections des lignes du jour, le journal du bureau et les endroits enregistrés :
+      // trois lectures qui ne dépendent que des lignes du jour (lot 29 : EN PARALLÈLE, un seul
+      // aller-retour au lieu de trois à la file).
       const idsDuJour = ((entriesRes.data || []) as TimeEntryWithWorksite[]).map((e) => e.id);
       if (idsDuJour.length > 0) {
-        const { data: corr } = await supabase.from('time_entry_corrections')
-          .select('id, entry_id, old_start, old_end, new_start, new_end, corrected_at, corrected_by_role')
-          .in('entry_id', idsDuJour)
-          .order('corrected_at', { ascending: true });
+        const [{ data: corr }, ret, { data: pos }] = await Promise.all([
+          // La RLS ne me montre que les miennes : pas besoin de filtrer par salarié ici.
+          supabase.from('time_entry_corrections')
+            .select('id, entry_id, old_start, old_end, new_start, new_end, corrected_at, corrected_by_role')
+            .in('entry_id', idsDuJour)
+            .order('corrected_at', { ascending: true }),
+          // Lot 2 : le journal du bureau (motifs, renvoi). Requête à part, erreurs
+          // ignorées : table absente → carte et journée exactement comme avant.
+          fetchEntryEdits(supabase as never, idsDuJour),
+          // Requête à part : tant que la table n'existe pas, celle-ci échoue
+          // seule, la carte reste vide, et la journée s'affiche normalement.
+          supabase.from('time_entry_positions')
+            .select('id, entry_id, moment, latitude, longitude, accuracy_m, captured_at')
+            .in('entry_id', idsDuJour),
+        ]);
         const m = new Map<string, CorrectionVue[]>();
         for (const c of (corr || []) as CorrectionVue[]) {
           const l = m.get(c.entry_id) || [];
@@ -801,18 +801,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
           m.set(c.entry_id, l);
         }
         setMesCorrections(keep(m));
-
-        // Lot 2 : le journal du bureau (motifs, renvoi). Requête à part, erreurs
-        // ignorées : table absente → carte et journée exactement comme avant.
-        const ret = await fetchEntryEdits(supabase as never, idsDuJour);
         setMesRetouches(keep(ret.byEntry));
-
-        // Les endroits enregistrés sur ces mêmes journées. Requête à part de
-        // la précédente : tant que la table n'existe pas, celle-ci échoue
-        // seule, la carte reste vide, et la journée s'affiche normalement.
-        const { data: pos } = await supabase.from('time_entry_positions')
-          .select('id, entry_id, moment, latitude, longitude, accuracy_m, captured_at')
-          .in('entry_id', idsDuJour);
         const mp = new Map<string, PositionVue[]>();
         for (const p of (pos || []) as PositionVue[]) {
           const l = mp.get(p.entry_id) || [];
@@ -1923,15 +1912,19 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
     if (b.client_name === OTHER_NAME) return 1;
     return a.client_name.localeCompare(b.client_name);
   });
+  // Lot 23 : un chantier TERMINÉ n'est plus proposé pour une nouvelle intervention ni un nouveau pointage — sauf pour un jour
+  // qui n'est pas après sa fin (journée oubliée) ; « Autre » reste toujours proposé. Seules les listes de CHOIX sont
+  // filtrées : `worksites` / `sortedWorksites` gardent tout (noms des cartes, pointage en cours).
+  const choosable = choosableWorksites(sortedWorksites, [fWorksiteId], date);
   const cq = chantierQuery.trim().toLowerCase();
   const filteredWorksites = cq
-    ? sortedWorksites.filter((w) => w.client_name.toLowerCase().includes(cq) || (w.city || '').toLowerCase().includes(cq))
-    : sortedWorksites;
+    ? choosable.filter((w) => w.client_name.toLowerCase().includes(cq) || (w.city || '').toLowerCase().includes(cq))
+    : choosable;
   const autreId = worksites.find((w) => w.client_name === OTHER_NAME)?.id || '';
   const pq = pickQuery.trim().toLowerCase();
   const pickWorksites = pq
-    ? sortedWorksites.filter((w) => w.client_name.toLowerCase().includes(pq) || (w.city || '').toLowerCase().includes(pq))
-    : sortedWorksites;
+    ? choosable.filter((w) => w.client_name.toLowerCase().includes(pq) || (w.city || '').toLowerCase().includes(pq))
+    : choosable;
 
   /**
    * « Autre » nommé : on en fait un vrai chantier.
@@ -1978,11 +1971,16 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
     if (!user?.company_id) return;
     const sansReseau = 'Pas de réseau : le pointage en direct en a besoin. Note tes heures avec le bouton +.';
     if (!navigator.onLine) { toast.error(sansReseau); return; }
-    if (positionActive && !infoVue && !geoInfoSeen(user.id)) { setGeoAsk({ worksiteId, planningId, key }); return; }
     setStarting(key);
     try {
+      // L'interrupteur « position au pointage » est relu AU GESTE (au plus une requête par 30 s) :
+      // le patron qui l'éteint pour réduire la collecte doit être suivi tout de suite, pas après
+      // des heures d'écran ouvert. Lecture impossible : on garde la valeur de l'écran.
+      const positionVoulue = (await loadCompanySettings(user.company_id, 'worker', { maxAgeMs: 30_000 }))
+        ?.positionTrackingEnabled ?? positionActive;
+      if (positionVoulue && !infoVue && !geoInfoSeen(user.id)) { setGeoAsk({ worksiteId, planningId, key }); return; }
       const r = await startLiveSession({
-        userId: user.id, companyId: user.company_id, worksiteId, planningId, workDate: date, positionActive,
+        userId: user.id, companyId: user.company_id, worksiteId, planningId, workDate: date, positionActive: positionVoulue,
       });
       // Relu dans tous les cas : un chrono déjà ouvert (23505) doit se montrer.
       announceLiveChange();
@@ -2286,6 +2284,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
                   <span className="bt-iv-name">{ws?.client_name || 'Chantier'}</span>
                 </div>
                 {ws?.city && <div className="bt-iv-city">{ws.city}</div>}
+                <TermineLe ws={ws} />
                 <LiveLine since={item.data.since} />
               </div>
             );
@@ -2307,6 +2306,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div className="bt-iv-name">{p.worksite?.client_name}</div>
                     {p.worksite?.city && <div className="bt-iv-city">{p.worksite.city}</div>}
+                    <TermineLe ws={p.worksite} />
                   </div>
                   {p.worksite?.id && (docsByWorksite.get(p.worksite.id) || 0) > 0 && (
                     <span className="bt-iv-docs"><Paperclip className="h-3 w-3" />{docsByWorksite.get(p.worksite.id)}</span>
@@ -2348,6 +2348,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
                     <div className="bt-badge bt-badge-wait">● À envoyer</div>
                   ) : null}
                 </div>
+                <TermineLe ws={entry.worksite} />
                 <div className="bt-iv-times">
                   {entry.worksite?.city && <span className="bt-iv-city">{entry.worksite.city}</span>}
                   {isExitToComplete(entry)

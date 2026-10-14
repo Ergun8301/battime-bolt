@@ -196,14 +196,16 @@ const PARTS: { key: TaskPart; label: string }[] = [{ key: null, label: '—' }, 
  * `slots` = les interventions prévues du salarié ce jour-là : une tâche qui en
  * sort demande « Ajouter quand même ? » (jamais bloquant).
  */
-export function DayTasksPanel({ companyId, workerId, date, tasks, canAdd, onChanged, timesOn = false, slots = [] }: {
+export function DayTasksPanel({ companyId, workerId, date, tasks, canAdd, onChanged, timesOn = false, slots = [], defaultStart = '', defaultEnd = '' }: {
   companyId: string; workerId: string; date: string; tasks: DayTask[]; canAdd: boolean; onChanged: () => Promise<void> | void;
   timesOn?: boolean; slots?: PlannedSlot[];
+  /** « Ajouter une tâche à ce créneau » : l'horaire du créneau, pré-rempli dans « Heure de … à … » (modifiable). */
+  defaultStart?: string; defaultEnd?: string;
 }) {
   const [text, setText] = useState('');
   const [pickedPart, setPart] = useState<TaskPart>(null);
-  const [start, setStart] = useState('');
-  const [end, setEnd] = useState('');
+  const [start, setStart] = useState(timesOn ? defaultStart : '');
+  const [end, setEnd] = useState(timesOn ? defaultEnd : '');
   const [badS, setBadS] = useState(false);
   const [badE, setBadE] = useState(false);
   // Une tâche qui sort du créneau, en attente de « Ajouter quand même ».
@@ -315,6 +317,7 @@ export function DayTasksPanel({ companyId, workerId, date, tasks, canAdd, onChan
                 à <span className="f"><TimeField value={end} onChange={(v) => { setEnd(v); setPending(null); }} ariaLabel="Fin de la tâche" placeholder="fin" testId="task-end" onBadChange={setBadE} /></span>
               </div>
             )}
+            {timesOn && <p className="bt-ms-muted" data-testid="task-hours-help">Une tâche peut être avant, pendant ou après le créneau du salarié.</p>}
             {pending && (
               <div className="bt-ms-warn" role="alert" data-testid="task-outside">
                 <span>{pending.message}</span>

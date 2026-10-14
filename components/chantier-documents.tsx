@@ -37,6 +37,8 @@ import { DOC_CATEGORY_LABEL } from '@/supabase/functions/_shared/worker-assistan
 import { DOC_MAX_BYTES, uploadWorksiteDocument } from '@/lib/chantier-docs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { InfoTip } from '@/components/ui/info-tip';
+import { DocCategoryButton, DocumentCategorySheet, useDocCategoryReady } from '@/components/document-category';
+import { canEditCategory, categoryText } from '@/supabase/functions/_shared/doc-categories';
 import {
   Loader2, Trash2, FileText, FolderOpen, Download, Mail, Copy, Camera, Paperclip, Link2,
 } from 'lucide-react';
@@ -138,6 +140,12 @@ export default function ChantierDocuments({
   const [tab, setTab] = useState<Tab>('photos');
   const photoRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Lot 24 : changer la catégorie après coup. Rien ne s'affiche tant que la migration manque.
+  const office = user?.role === 'admin';
+  const { ready: catReady, settled: catSettled } = useDocCategoryReady(open);
+  const [catDoc, setCatDoc] = useState<DocRow | null>(null);
+  const canCat = (d: DocRow) => catReady && canEditCategory({ office, userId: user?.id, uploadedBy: d.uploaded_by, current: d.category });
 
   // ── Envoi au client — salarié OU secrétaire, via sa propre messagerie ──
   const [clientEmail, setClientEmail] = useState<string | null>(null);
@@ -352,7 +360,7 @@ export default function ChantierDocuments({
           </button>
         </div>
 
-        {loading ? (
+        {loading || !catSettled ? (
           <div className="bt-doc-empty">Chargement…</div>
         ) : shown.length === 0 ? (
           <div className="bt-doc-empty">
@@ -377,7 +385,7 @@ export default function ChantierDocuments({
                       </a>
                       <div className="bt-doc-meta">
                         <a className="bt-doc-name" href={url} target="_blank" rel="noopener noreferrer">{d.label || d.file_name || 'Document'}</a>
-                        {d.category && d.category !== 'photo' && (
+                        {!canCat(d) && d.category && d.category !== 'photo' && (
                           <span style={{ display: 'inline-block', marginLeft: 6, fontSize: 10.5, fontWeight: 800, padding: '1px 7px', borderRadius: 999, background: d.category === 'facture_payee' ? '#E3F5EA' : '#FFF2CC', color: '#15120F' }}>
                             {DOC_CATEGORY_LABEL[d.category] ?? d.category}
                           </span>
@@ -389,6 +397,9 @@ export default function ChantierDocuments({
                           {who ? `${who} · ` : ''}
                           {new Date(d.created_at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                         </div>
+                        {canCat(d) && (
+                          <DocCategoryButton label={categoryText(d.category)} current={d.category} docName={d.label || d.file_name || 'Document'} onClick={() => setCatDoc(d)} />
+                        )}
                       </div>
                       {url && (
                         <a className="bt-doc-act" href={url} target="_blank" rel="noopener noreferrer" title="Ouvrir / télécharger"><Download className="h-4 w-4" /></a>
@@ -432,6 +443,9 @@ export default function ChantierDocuments({
             ? <div className="bt-doc-send-note">Ajoutez au moins un document à envoyer.</div>
             : <div className="bt-doc-send-note">Le message reprendra les {docs.length} pièces du chantier, photos et fichiers.</div>}
         </div>
+        <DocumentCategorySheet doc={catDoc} office={office} onClose={() => setCatDoc(null)}
+          onChanged={(id, cat) => setDocs((p) => p.map((x) => (x.id === id ? { ...x, category: cat } : x)))}
+          onGone={() => { void fetchDocs(); }} />
       </DialogContent>
     </Dialog>
   );

@@ -16,6 +16,9 @@ const LABELS: Record<string, string> = {
   'missing-days': 'les rappels de saisie des heures',
   'cert-expiry': 'les alertes d’habilitations',
   'budget-alerts': 'les alertes de budget chantier',
+  // Lot 19 : e-mails envoyés par le bureau (supabase/functions/send-staff-email).
+  'planning-hebdo': 'le planning de la semaine du bureau',
+  'message-bureau': 'les messages du bureau',
 };
 
 type State = 'loading' | 'ready' | 'sending' | 'done' | 'invalid' | 'error';

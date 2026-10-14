@@ -67,7 +67,7 @@ const LONG = {
 };
 
 // ─── Base simulée du BUREAU ────────────────────────────────────────────────────
-const WL = { id: 'w-long', company_id: CO, client_name: LONG.client, city: LONG.city, address: LONG.address, postal_code: '69370', client_email: LONG.clientMail, client_phone: '+33 6 12 34 56 78 90', product_type: 'Rénovation complète salle de bains, cuisine et menuiseries extérieures', description: LONG.reserve, is_active: true, budget_hours: 120, budget_amount: 18500 };
+const WL = { id: 'w-long', company_id: CO, client_name: LONG.client, city: LONG.city, address: LONG.address, postal_code: '69370', client_email: LONG.clientMail, client_phone: '+33 6 12 34 56 78 90', product_type: 'Rénovation complète salle de bains, cuisine et menuiseries extérieures', description: LONG.reserve, is_active: true, budget_hours: 120, budget_amount: 18500, completed_at: null, completed_by: null };
 const W1 = { id: 'w1', company_id: CO, client_name: 'Villa Dupont', city: 'Lyon', is_active: true };
 const u = (id, first, last, role = 'worker', extra = {}) => ({ id, company_id: CO, first_name: first, last_name: last, role, email: `${id}@x.fr`, is_active: true, created_at: '2026-01-01', ...extra });
 const slot = (id, user_id, work_date, ws, extra = {}) => ({ id, company_id: CO, user_id, worksite_id: ws?.id ?? null, work_date, absence_type: null, estimated_start: '08:00:00', estimated_end: '17:00:00', notes: null, created_at: `${work_date}T06:00:00Z`, worksite: ws ?? null, ...extra });
@@ -174,11 +174,17 @@ const setup = async (ctx, uid, email, getD) => {
     if (url.pathname.startsWith('/auth/v1/')) return r.fulfill({ json: {} });
     if (url.pathname.startsWith('/storage/v1/object/sign')) return r.fulfill({ json: [] });
     if (url.pathname.startsWith('/storage/')) return r.fulfill({ json: {} });
+    // Lot 19 : « Envoyer par e-mail » lit l'état à l'ouverture (qui a une adresse, qui est désabonné) — une LECTURE, pas une écriture.
+    if (url.pathname.startsWith('/functions/v1/send-staff-email')) {
+      const us = (getD().users || []).filter((x) => x.role !== 'admin');
+      return r.fulfill({ json: { available: true, cap: 50, used: 3, remaining: 47, can_reply: true, workers: us.map((x) => ({ id: x.id, has_email: !!x.email, invalid_email: false, unsubscribed: { 'planning-hebdo': x.id === 'u-sara', 'message-bureau': x.id === 'u-sara' } })) } });
+    }
     if (url.pathname.startsWith('/functions/v1/')) { writes.push(`fonction ${url.pathname.replace('/functions/v1/', '')}`); return r.fulfill({ json: {} }); }
-    if (url.pathname.startsWith('/rest/v1/rpc/')) return r.fulfill({ json: [] });
+    // Lot 23 : la fonction « suis-je prête ? » du chantier terminé répond oui (le bloc de la fiche client et le bilan sont mesurés).
+    if (url.pathname.startsWith('/rest/v1/rpc/')) return r.fulfill({ json: url.pathname.endsWith('/worksite_completion_ready') ? true : [] });
     const t = url.pathname.replace('/rest/v1/', '');
     if (m !== 'GET' && m !== 'HEAD') { writes.push(`${m} ${t}`); return r.fulfill({ status: 201, json: {} }); }
-    // offset / limit respectés : une lecture paginée (fetchAllPaged) s'arrête sur une page vide.
+    // offset / limit respectés : une lecture paginée (fetchAllPaged) s'arrête sur une page plus courte que la taille demandée.
     const all = filterRows(getD()[t] || [], url.searchParams);
     const off = Number(url.searchParams.get('offset') || 0); const lim = url.searchParams.has('limit') ? Number(url.searchParams.get('limit')) : Infinity;
     const rows = all.slice(off, off + lim);
@@ -301,6 +307,8 @@ const ADMIN = [
     await openSection(p, 'borne');
     return step(p, ['[data-testid=set-kiosk-open]'], ['[role=dialog] button', 'Relier la tablette'], ['[role=dialog] button', 'Gérer les bornes']);
   } },
+  // Lot 19 : « Envoyer par e-mail » (menu du compte ; entrée du menu ☰ sur téléphone). État lu à l'ouverture.
+  { id: 'envoi-email', name: 'Envoyer par e-mail', open: async (p, L) => (L === 'desk' ? (await step(p, ['.bt-pl-acct'])) && step(p, ['[data-testid=menu-email]']) : (await mobMenu(p)) && step(p, ['[data-testid=mm-email]'])) },
   { id: 'borne', name: '📟 Borne', open: async (p, L) => (L === 'desk' ? step(p, ['[data-testid=bar-kiosk]']) : (await mobMenu(p)) && step(p, ['[data-testid=mm-kiosk]'])) },
   { id: 'salaries', name: 'Salariés', open: openSalaries },
   { id: 'nouveau-salarie', name: 'Nouveau salarié', open: async (p, L) => (await openSalaries(p, L)) && step(p, ['[role=dialog] button', 'Nouveau salarié'], ['[role=dialog] button', 'Ajouter un salarié']) },
@@ -323,6 +331,13 @@ const ADMIN = [
   { id: 'import-clients-colonnes', name: 'Importer des clients — correspondance des colonnes', shot: true, open: async (p, L) => (await openClients(p, L))
     && (await step(p, ['.bt-pl-ddcreate', 'Importer'], ['[role=dialog] button', 'Importer'])) && upload(p, 'export-clients-ancien-logiciel-de-devis-2026-complet.csv', CSV_CLIENTS) },
   { id: 'fiche-client', name: 'Fiche client', open: async (p, L) => (await openClients(p, L)) && step(p, ['.bt-pl-clientrow:has-text("Jardins Suspendus") .bt-pl-clientedit'], ['[role=dialog] [title="Modifier la fiche"]'], ['[role=dialog] button', 'Jardins Suspendus']) },
+  // Lot 23 : terminer un chantier (avec ses avertissements) et son bilan, sur le chantier aux noms interminables.
+  { id: 'chantier-terminer', name: 'Terminer le chantier (avertissements)', open: async (p, L) => (await openClients(p, L))
+      && (await step(p, ['.bt-pl-clientrow:has-text("Jardins Suspendus") .bt-pl-clientedit'], ['[role=dialog] [title="Modifier la fiche"]'], ['[role=dialog] button', 'Jardins Suspendus']))
+      && step(p, ['[data-testid=ct-terminer]']) },
+  { id: 'chantier-bilan', name: 'Bilan du chantier', shot: true, open: async (p, L) => (await openClients(p, L))
+      && (await step(p, ['.bt-pl-clientrow:has-text("Jardins Suspendus") .bt-pl-clientedit'], ['[role=dialog] [title="Modifier la fiche"]'], ['[role=dialog] button', 'Jardins Suspendus']))
+      && (await step(p, ['[data-testid=ct-bilan]'])) && (await p.waitForSelector('[data-testid=bilan]', { timeout: 5000 }).then(() => true).catch(() => false)) },
   { id: 'documents', name: 'Documents du chantier', shot: true, open: async (p, L) => (await openClients(p, L))
     && (await step(p, ['.bt-pl-clientrow:has-text("Jardins Suspendus") .bt-pl-clientedit'], ['[role=dialog] [title="Modifier la fiche"]'], ['[role=dialog] button', 'Jardins Suspendus']))
     && step(p, ['[role=dialog] button', 'Documents'], ['[role=dialog] button', 'Pièces']) },

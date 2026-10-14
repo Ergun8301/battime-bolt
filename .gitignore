@@ -38,3 +38,6 @@ next-env.d.ts
 
 # claude code — réglages locaux (permissions perso, non versionnés)
 .claude/settings.local.json
+
+# journal de build local (npm run budget -- build.log)
+build.log

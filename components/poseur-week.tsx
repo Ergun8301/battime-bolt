@@ -20,6 +20,7 @@ import { slotLabel } from '@/lib/slot';
 import { formatPause } from '@/supabase/functions/_shared/pause';
 import { fetchMyMissions, type DayTask, type Meeting } from '@/lib/missions';
 import { MEETING_TINT, meetingsFor, meetingTimeLabel, taskTimeLabel, tasksFor } from '@/supabase/functions/_shared/missions';
+import TermineLe from '@/components/termine-le'; // lot 23 : « Terminé le … »
 
 /**
  * Horaire prévu, lisible (lot 11). Créneau habituel → « Matin » / « Après-midi »
@@ -208,6 +209,7 @@ export default function PoseurWeek({ onSelectDay }: { onSelectDay?: (date: strin
                       <div className="flex-1 min-w-0">
                         <span className="font-medium truncate block">{p.worksite?.client_name || 'Chantier'}</span>
                         {p.worksite?.city && <span className="text-[#9a7c14] text-xs">{p.worksite.city}</span>}
+                        <TermineLe ws={p.worksite} />
                       </div>
                       {plannedLabel(p.estimated_start, p.estimated_end) && (
                         <span className="text-[#9a7c14] text-xs shrink-0">
@@ -254,6 +256,7 @@ export default function PoseurWeek({ onSelectDay }: { onSelectDay?: (date: strin
                     <Clock className="h-4 w-4 shrink-0 mt-0.5" />
                     <div className="flex-1 min-w-0">
                       <span className="font-medium truncate block">{entry.worksite?.client_name || 'Autre'}</span>
+                      <TermineLe ws={entry.worksite} />
                       <span className="text-xs opacity-75">
                         {entry.start_time?.substring(0, 5)}–{entry.end_time?.substring(0, 5)}
                         {/* Lot 3bis : « pause 1 h 15 », plus « pause 75min ». */}
@@ -325,6 +328,7 @@ export default function PoseurWeek({ onSelectDay }: { onSelectDay?: (date: strin
                         <MapPin className="h-3 w-3 shrink-0" />
                         <span className="truncate font-medium">{p.worksite?.client_name || 'Chantier'}</span>
                       </div>
+                      <TermineLe ws={p.worksite} court />
                       {plannedLabel(p.estimated_start, p.estimated_end) && (
                         <div className="text-[#9a7c14] mt-0.5">{plannedLabel(p.estimated_start, p.estimated_end)}</div>
                       )}
@@ -364,6 +368,7 @@ export default function PoseurWeek({ onSelectDay }: { onSelectDay?: (date: strin
                         <Clock className="h-3 w-3 shrink-0" />
                         <span className="truncate font-medium">{entry.worksite?.client_name || 'Chantier'}</span>
                       </div>
+                      <TermineLe ws={entry.worksite} court />
                       <div className="flex items-center justify-between mt-0.5">
                         <span className="opacity-75">{entry.start_time?.substring(0, 5)}–{entry.end_time?.substring(0, 5)}</span>
                         <span className="font-semibold">{formatMinutes(entry.total_minutes)}</span>

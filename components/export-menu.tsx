@@ -2,9 +2,11 @@
 
 // Lot 11 — le MÊME menu « Exporter ▾ » partout (équipe et fiche salarié) :
 // PDF, Excel, CSV, toujours dans cet ordre, une ligne chacun.
+import { useEffect } from 'react';
 import { ChevronDown, Download, FileSpreadsheet, FileText, Loader2, Table } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { preloadExportLibs } from '@/lib/export-utils';
 
 export type ExportKind = 'pdf' | 'excel' | 'csv';
 
@@ -13,6 +15,16 @@ const ITEMS: { kind: ExportKind; label: string; sub: string; Icon: typeof FileTe
   { kind: 'excel', label: 'Excel', sub: 'Tableau détaillé', Icon: FileSpreadsheet },
   { kind: 'csv', label: 'CSV', sub: 'Pour le logiciel de paie', Icon: Table },
 ];
+
+/**
+ * Monté dans une fenêtre qui propose des exports : charge Excel et PDF dès son
+ * ouverture, pour que le clic ne les attende pas (ils ne sont plus dans le
+ * premier chargement de la page).
+ */
+export function ExportPreload({ kind = 'all' }: { kind?: 'all' | 'excel' | 'pdf' }) {
+  useEffect(() => { preloadExportLibs(kind); }, [kind]);
+  return null;
+}
 
 export function ExportMenu({ onPick, disabled = false, busy = false, align = 'end', testId = 'export-menu', guide }: {
   onPick: (k: ExportKind) => void;
@@ -24,9 +36,10 @@ export function ExportMenu({ onPick, disabled = false, busy = false, align = 'en
   guide?: string;
 }) {
   return (
-    <DropdownMenu>
+    <DropdownMenu onOpenChange={(o) => { if (o) preloadExportLibs(); }}>
       <DropdownMenuTrigger asChild>
-        <Button type="button" disabled={disabled || busy} data-testid={testId} data-guide={guide} className="gap-1.5">
+        <Button type="button" disabled={disabled || busy} data-testid={testId} data-guide={guide} className="gap-1.5"
+          onPointerEnter={() => preloadExportLibs()} onFocus={() => preloadExportLibs()}>
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
           Exporter <ChevronDown className="h-4 w-4" />
         </Button>

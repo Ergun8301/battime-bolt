@@ -41,39 +41,33 @@ import { toast } from 'sonner';
 import { missingWindowStart } from '@/lib/work-status';
 import { missingDaysFrom, type PlanRowLike, type UserDayLike } from '@/supabase/functions/_shared/team-stats-core';
 import { isExitToComplete, type QrFields } from '@/lib/qr-entry';
-import { exportEntriesToExcel, exportEntriesToPDF, exportEntriesToCSV, excelAsBase64 } from '@/lib/export-utils';
+import { exportEntriesToExcel, exportEntriesToPDF, exportEntriesToCSV, excelAsBase64, isExportLibError } from '@/lib/export-utils';
 import { readMealEnabled } from '@/lib/meal-setting';
 import { fetchAllPaged, chunk } from '@/lib/fetch-all';
+// Lot 18 : alerte avant l'export d'équipe qui verrouille (règles pures, filtre unique des heures exportées, support = lecture seule).
+import { alerteNecessaire, compterVerrou, libellePeriode, memeCompte, messageEchecVerrou, messageFinExport, STATUTS_EXPORTES, type CompteVerrou, type ExportEquipe } from '@/lib/export-verrou';
+import { lignesExportees, lireCompteVerrou } from '@/lib/export-lignes';
+import { readSupportSession } from '@/lib/support';
+import type { VerrouAsk } from '@/components/export-verrou-dialog';
 import { isPreviewHost } from '@/lib/hosting';
-import WorkerDetailDialog from '@/components/worker-detail';
-import ChantierDocuments from '@/components/chantier-documents';
 import { TimeField, TIME_HINT } from '@/components/time-field';
 import { TIME_PRESETS } from '@/lib/time-input';
 import { InfoTip } from '@/components/ui/info-tip';
-import { ExportMenu } from '@/components/export-menu';
+import { ExportMenu, ExportPreload } from '@/components/export-menu';
 import { ActionDone, type UndoResult } from '@/components/action-done';
 import { erasePlanning, isDisposableDraft, prepareMove, undoErase, undoMovePrep, type EraseResult, type MovePrep } from '@/lib/erase';
 import { fetchCompanyClosures, closedFor } from '@/lib/worker-closure';
-import CompanySettings from '@/components/company-settings';
-import AssistantPanel from '@/components/assistant-panel';
 import GuideTour, { type GuideStep } from '@/components/guide-tour';
 import { adminStepsFor, findAdminTour, type AdminScreen } from '@/supabase/functions/_shared/admin-tours';
 import { tourIdOf } from '@/supabase/functions/_shared/worker-tours';
 import PendingInvitations from '@/components/pending-invitations';
 import { attributeEntries, closeMonth as closeMonthWrite, logHoursReminder, sendHoursReminder, setUserRole, setWorksiteActive, updatePlanningSlot, updateWorksite } from '@/lib/admin-writes';
 import { addPlanningSlot, createWorksite, inviteWorker, setAbsence } from '@/lib/planning-writes';
-import { supabaseAssistantSource } from '@/lib/assistant';
-import AssistantActionCard from '@/components/assistant-action-card';
-import { makeActionExecutor, makeRemovalPreview, type ActionExtra } from '@/lib/assistant-actions';
 import { useAiEnabled } from '@/lib/real-cost';
+import { reloadCompanySettings, useCompanySettings } from '@/lib/company-settings';
+import { useVisiblePoll } from '@/lib/use-visible-poll';
+import { useStaffEmailVisible } from '@/lib/staff-email-flag';
 import AdminMobileMenu from '@/components/admin-mobile-menu';
-import ImportDialog from '@/components/import-dialog';
-import CostReport from '@/components/cost-report';
-// Lot 5 : statistiques de l'équipe (lecture seule).
-import TeamStats from '@/components/team-stats';
-import ReservesReport from '@/components/reserves-report';
-import ImportWorkersDialog from '@/components/import-workers-dialog';
-import LeaveAdminDialog from '@/components/leave-admin-dialog';
 import { CHANTIER_PALETTES, hashStr, LiveLine, PL_GRID_CSS, PlannedBubbleView, type ChantierPalette } from '@/components/planning-bubble';
 import { PlanningPrintSheet, PrintMenu, PRINT_MENU_CSS, printTitle, type PrintJob, type PrintOptions } from '@/components/planning-print';
 import { absenceCode, periodDays, periodRange, withinPeriod, worksiteCodes, type PrintPeriod } from '@/supabase/functions/_shared/print-period';
@@ -89,10 +83,18 @@ import {
 import { DAY_PARTS, dayPartTint } from '@/supabase/functions/_shared/day-part';
 import { cellKey, parisDay, placeLive, type LivePlace, type LiveSessionLike } from '@/supabase/functions/_shared/live-place';
 import { copyRefusal, targetRefusal } from '@/supabase/functions/_shared/copy-slot';
-import KioskAdmin from '@/components/kiosk-admin';
+import type { PlannedLike } from '@/supabase/functions/_shared/day-hours';
+// Copier une case simplement : astuce visible, rangée « Actions » de la fenêtre de modification, choix des jours (fenêtre chargée à l'ouverture).
+import { CopyTip, CopyTipHelp, SlotActions } from '@/components/planning-copier';
+import type { CopyRow, CopySource, CopyTarget } from '@/components/planning-copy-dialog';
 import { keep } from '@/lib/same';
+import { lazyWindow, warmAll } from '@/lib/lazy-window';
+// Lot 23 : chantier terminé. Le bloc de la fiche est petit (premier chargement) ; le contrôle avant de terminer
+// et le bilan sont dans une fenêtre chargée à l'ouverture.
+import ChantierTermineBar, { type TermineMode } from '@/components/chantier-termine-bar';
+import type { TermineTarget } from '@/components/chantier-termine';
+import { termineLe } from '@/supabase/functions/_shared/chantier-statut';
 // Formations (lot 6, oct. 2026) : depuis « Salariés » et le menu du téléphone, seulement si la migration est passée.
-import TrainingsAdmin from '@/components/trainings-admin';
 import { trainingsAvailable } from '@/lib/trainings';
 // Lot 3 : « Interventions supprimées ou décalées » (lecture seule).
 import { tracesAvailable } from '@/lib/traces';
@@ -104,6 +106,32 @@ const TracesDialog = dynamic(() => import('@/components/traces-dialog'), { ssr: 
 // Lot 8 : « Versions du planning » (bureau), chargée à l'ouverture seulement.
 import { versionsAvailable } from '@/lib/planning-versions';
 const PlanningVersionsDialog = dynamic(() => import('@/components/planning-versions-dialog'), { ssr: false });
+
+// Lot 5 « site rapide 1 » : les fenêtres fermées ne pèsent plus dans le premier chargement. Chacune est
+// chargée au repos (file de préchauffage, voir lib/lazy-window.tsx), au démarrage d'un guide, ou à son
+// ouverture. Le JSX plus bas n'a pas changé. PlanningPrintSheet et PrintMenu restent statiques (Ctrl+P).
+const ReservesReport = lazyWindow(() => import('@/components/reserves-report'), { isOpen: (p) => p.open, priority: 1 });
+const CompanySettings = lazyWindow(() => import('@/components/company-settings'), { isOpen: (p) => p.open, priority: 3 });
+const CostReport = lazyWindow(() => import('@/components/cost-report'), { isOpen: (p) => p.open, priority: 4 });
+const LeaveAdminDialog = lazyWindow(() => import('@/components/leave-admin-dialog'), { isOpen: (p) => p.open, priority: 5 });
+const TeamStats = lazyWindow(() => import('@/components/team-stats'), { isOpen: (p) => p.open, priority: 6 });
+const WorkerDetailDialog = lazyWindow(() => import('@/components/worker-detail'), { isOpen: (p) => p.worker != null, close: (p) => p.onOpenChange(false), priority: 7 });
+const ChantierDocuments = lazyWindow(() => import('@/components/chantier-documents'), { isOpen: (p) => p.open, priority: 8 });
+const ChantierTermine = lazyWindow(() => import('@/components/chantier-termine'), { isOpen: (p) => p.target != null, close: (p) => p.onClose(), priority: 13 });
+const ImportDialog = lazyWindow(() => import('@/components/import-dialog'), { isOpen: (p) => p.open, priority: 9 });
+// « Copier vers un autre jour… » : le choix des jours, chargé à l'ouverture d'une fenêtre de modification (jamais au repos).
+const CopyDialog = lazyWindow(() => import('@/components/planning-copy-dialog'), { isOpen: (p) => p.source != null, close: (p) => p.onClose(), warm: 'never' });
+const ImportWorkersDialog = lazyWindow(() => import('@/components/import-workers-dialog'), { isOpen: (p) => p.open, priority: 10 });
+// Déjà conditionnées par kioskOn / trainingsOn : préchauffées seulement quand elles existent à l'écran.
+const KioskAdmin = lazyWindow(() => import('@/components/kiosk-admin'), { isOpen: (p) => p.open, priority: 11, warm: 'mounted' });
+const TrainingsAdmin = lazyWindow(() => import('@/components/trainings-admin'), { isOpen: (p) => p.open, priority: 12, warm: 'mounted' });
+// Lot 19 : « Envoyer par e-mail » — chargée à l'OUVERTURE seulement (jamais préchauffée), et ses lectures aussi.
+const StaffEmailDialog = lazyWindow(() => import('@/components/staff-email-dialog'), { isOpen: (p) => p.open, priority: 13, warm: 'never' });
+// Lot 18 : l'alerte de verrouillage de l'export d'équipe. Chargée à l'ouverture de la fenêtre « Exporter l'équipe »
+// (preload), pas au repos : la plupart des visites n'exportent jamais. Elle n'importe ni Excel ni jsPDF.
+const ExportVerrou = lazyWindow(() => import('@/components/export-verrou-dialog'), { isOpen: (p) => p.ask != null, close: (p) => p.onCancel(), warm: 'never' });
+// L'assistant garde la mémoire de sa conversation : monté dès que son code est là, même fermé (comme avant).
+const AssistantBureau = lazyWindow(() => import('@/components/assistant-bureau'), { isOpen: (p) => p.open, priority: 2, warm: 'mounted', mount: 'warm' });
 
 // ─── helpers / constants ──────────────────────────────────────────────────────
 
@@ -335,7 +363,9 @@ function DraggableBubble({
         {...drag.listeners}
         onClick={(e) => { e.stopPropagation(); if (sel) onToggle?.(p, sel.lock); else onEdit(p); }}
         className={`bt-pl-grab ${drag.isDragging ? 'bt-pl-dragging' : ''}`}
-        title={sel ? (sel.lock || (sel.on ? 'Cliquer pour décocher' : 'Cliquer pour cocher')) : 'Glisser pour déplacer · Ctrl ou Alt (⌥) + glisser pour copier · cliquer pour modifier'}
+        // `title=""` (et non « absent ») : un attribut absent laisse hériter le title de la case (« Cliquer pour ajouter une
+        // intervention »), qui serait faux ici — le clic ouvre la modification. Un title vide coupe l'héritage.
+        title={sel ? (sel.lock || (sel.on ? 'Cliquer pour décocher' : 'Cliquer pour cocher')) : ''}
       >
         <BubbleContent p={p} palette={palette} real={real} draft={draft} docCount={docCount} live={live} withdrawn={withdrawn} />
       </div>
@@ -419,9 +449,10 @@ function PaletteRow({ worksite, color }: { worksite: Worksite; color: string }) 
   // c'est qu'elle a été saisie à la main — elle ne décrit alors plus rien, et
   // on ne la montre pas. Le salarié qui le choisit peut, lui, le nommer.
   const isOther = worksite.client_name === 'Autre';
-  const sub = isOther
-    ? 'Chantier non listé — le salarié le nomme'
-    : [worksite.product_type, worksite.city].filter(Boolean).join(' · ');
+  const sub = [
+    isOther ? 'Chantier non listé — le salarié le nomme' : [worksite.product_type, worksite.city].filter(Boolean).join(' · '),
+    termineLe(worksite, true), // lot 23 : « Terminé le 12/10/2026 » (vide tant que le chantier est en cours)
+  ].filter(Boolean).join(' · ');
   return (
     <div
       ref={setNodeRef}
@@ -495,7 +526,6 @@ const ABSENCE_VISUAL: Record<string, { icon: string; bg: string; fg: string }> =
 
 // Scoped noir/jaune styling for the planning. Logic-free — appearance only.
 const PL_CSS = `
-@import url('/fonts/fonts.css');
 .bt-pl{font-family:'Archivo',sans-serif;color:#15120F;flex:1 0 auto;display:flex;flex-direction:column;border-radius:16px;box-shadow:0 26px 64px -36px rgba(21,18,15,.6)}
 .bt-pl *{box-sizing:border-box}
 .bt-pl .mono{font-family:'JetBrains Mono',monospace}
@@ -881,7 +911,25 @@ ${MISSIONS_CSS}
 .bt-pl-undo{position:relative;width:380px;max-width:100%;background:#fff;border-radius:16px;padding:0 36px 10px 10px;box-shadow:0 22px 50px -18px rgba(21,18,15,.6);border:1px solid rgba(21,18,15,.1)}
 .bt-pl-undo-x{position:absolute;top:8px;right:8px;width:26px;height:26px;border-radius:8px;border:0;background:transparent;color:#6E6A63;font-size:14px;line-height:1;cursor:pointer;font-family:inherit}
 .bt-pl-undo-x:hover{background:rgba(21,18,15,.06);color:#15120F}
-.bt-pl-m-tools{display:flex;justify-content:flex-end;margin:-3px 0 -2px}
+.bt-pl-m-tools{display:flex;justify-content:flex-end;align-items:center;gap:6px;margin:-3px 0 -2px}
+/* Ajouter une tâche à un salarié déjà planifié (case remplie) : visible, 44 px au doigt. */
+.bt-pl-cellfill--task{position:relative;padding-bottom:12px}
+.bt-pl-cellfill--task.chips{padding-bottom:22px}
+/* Souris : une petite pastille posée dans le coin bas-droit de la case (elle recouvre le bas, vide, de la dernière bulle) — la case ne grandit
+   que de 12 px au lieu de ~31. Doigt : voir plus bas, 44 px dans le fil de la case. */
+.bt-pl-addtask{position:absolute;right:0;bottom:0;display:inline-flex;align-items:center;gap:3px;height:19px;padding:0 8px;border:1.5px dashed rgba(21,18,15,.3);border-radius:7px;background:#fff;color:#3D382F;font:inherit;font-size:11px;font-weight:800;line-height:1;cursor:pointer;white-space:nowrap}
+.bt-pl-addtask:hover{border-color:#15120F;background:#FFF8E1;color:#15120F}
+.bt-pl-addtask:focus-visible,.bt-pl-m-addtask:focus-visible{outline:2px solid #15120F;outline-offset:1px}
+@media (pointer:coarse){.bt-pl-cellfill--task,.bt-pl-cellfill--task.chips{padding-bottom:0}.bt-pl-addtask{position:static;align-self:flex-start;height:auto;min-height:44px;padding:0 14px;font-size:13px;border-radius:8px}}
+.bt-pl-m-addrow{display:flex;gap:8px;margin-top:11px}
+.bt-pl-m-addrow .bt-pl-m-add{margin-top:0;flex:1 1 auto;min-height:44px;min-width:0}
+.bt-pl-m-addtask{flex:none;display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 14px;border:1.5px dashed rgba(21,18,15,.3);border-radius:11px;background:#fff;color:#15120F;font:inherit;font-weight:800;font-size:12.5px;cursor:pointer;white-space:nowrap}
+.bt-pl-m-addtask:active{background:rgba(21,18,15,.04)}
+.bt-pl--select .bt-pl-m-addtask,.bt-pl--select .bt-pl-m-addrow{display:none}
+/* « Formations » dans la barre : seulement quand elle a la place (voir le commentaire du bouton). */
+.bt-pl-trainbtn,.bt-pl-lbl-train{display:none}
+@media (min-width:1440px){.bt-pl-trainbtn{display:inline-flex}}
+@media (min-width:1700px){.bt-pl-lbl-train{display:inline}}
 .bt-pl-m-selbtn{display:inline-flex;align-items:center;gap:6px;border:1.5px solid rgba(21,18,15,.2);background:#fff;color:#15120F;border-radius:10px;padding:6px 11px;font-family:inherit;font-size:12.5px;font-weight:800;cursor:pointer}
 `;
 
@@ -896,8 +944,10 @@ const PL_STYLE = { __html: PL_CSS };
 interface AdminPlanningProps {
   trial?: { inTrial: boolean; expired: boolean; daysLeft: number | null };
   onSubscribe?: () => void;
+  /** Lot 29 : nombre de salariés actifs (forfait), fourni par fetchData — plus de requête à part. */
+  onWorkerCount?: (n: number) => void;
 }
-export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps = {}) {
+export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: AdminPlanningProps = {}) {
   const { user, signOut } = useAuth();
   const [workers, setWorkers] = useState<User[]>([]);
   // Les personnes du BUREAU (rôle admin). Séparées des salariés : elles ne
@@ -1058,6 +1108,11 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const [extraTarget, setExtraTarget] = useState<{ userId: string; dateStr: string; worksiteId: string | null; name: string; minutes: number } | null>(null);
   const [attrBusy, setAttrBusy] = useState(false);
   const [exporting, setExporting] = useState(false);
+  // Lot 18 : l'alerte « cet export va verrouiller N lignes… » (null = fermée) et son bouton en cours.
+  const [verrouAsk, setVerrouAsk] = useState<VerrouAsk | null>(null);
+  const [verrouBusy, setVerrouBusy] = useState(false);
+  // Le code de l'alerte se charge à l'ouverture de « Exporter l'équipe » (pas au repos : la plupart des visites n'exportent pas).
+  useEffect(() => { if (exportOpen) ExportVerrou.preload(); }, [exportOpen]);
 
   // invitation row actions
   const [remindingId, setRemindingId] = useState<string | null>(null);
@@ -1092,6 +1147,11 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const [editNote, setEditNote] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
   const [deletingEdit, setDeletingEdit] = useState(false);
+  // Copier une case simplement : « Copier vers un autre jour… » (la case copiée) et l'écriture en cours.
+  const [copyFor, setCopyFor] = useState<PlanningWithWorksite | null>(null);
+  const [copyBusy, setCopyBusy] = useState(false);
+  // « Ajouter une tâche à ce créneau » : heures de la case, pré-remplies dans l'onglet Tâche (modifiables).
+  const [taskPrefill, setTaskPrefill] = useState<{ start: string; end: string } | null>(null);
 
   // Lot 11 : « Sélectionner » → cocher des bulles → « Supprimer (N) » → « Annuler ».
   // La sélection n'existe qu'en mode sélection ; elle n'est jamais « nettoyée » par
@@ -1107,6 +1167,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
 
   // separate client fiche (permanent data)
   const [clientFiche, setClientFiche] = useState<Worksite | null>(null);
+  const [termineTarget, setTermineTarget] = useState<TermineTarget | null>(null); // lot 23 : terminer / rouvrir / bilan
   // Panneau Documents : le chantier, et le JOUR quand on l'ouvre depuis une
   // case du planning. Depuis la fiche client, il n'y a pas de jour — et lui
   // coller la date d'aujourd'hui inventerait une information.
@@ -1254,6 +1315,8 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
 
   // ─── data ──────────────────────────────────────────────────────────────────
 
+  const onWorkerCountRef = useRef(onWorkerCount);
+  onWorkerCountRef.current = onWorkerCount;
   const fetchData = useCallback(async () => {
     if (!user?.company_id) return;
     try {
@@ -1270,6 +1333,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       if (worksitesRes.error) throw worksitesRes.error;
       // Lot 10 : keep() garde l'objet déjà affiché quand rien n'a changé (aucun redessin).
       setWorkers((prev) => keep(prev, (workersRes.data || []) as User[]));
+      onWorkerCountRef.current?.(workersRes.data?.length ?? 0);
       if (!officeRes.error) setOfficeUsers((prev) => keep(prev, (officeRes.data || []) as User[]));
       setWorksites((prev) => keep(prev, (worksitesRes.data || []) as Worksite[]));
     } catch (err) {
@@ -1361,10 +1425,10 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     // posées 90 jours à l'avance et auraient rempli la lecture pour rien.
     const windowStart = missingWindowStart();
     const todayKey = format(new Date(), 'yyyy-MM-dd');
-    const [planRes, entRes, compRes, invRes, docRes, leaveRes, resRes, closures, cancelledRes] = await Promise.all([
+    const [planRes, entRes, invRes, docRes, leaveRes, resRes, closures, cancelledRes, incRes] = await Promise.all([
       supabase.from('planning').select('id, user_id, work_date, absence_type').eq('company_id', user.company_id).gte('work_date', windowStart).lte('work_date', todayKey),
       supabase.from('time_entries').select('user_id, work_date').eq('company_id', user.company_id).in('status', ['submitted', 'validated']).gte('work_date', windowStart).lte('work_date', todayKey),
-      supabase.from('companies').select('name, logo_url, travel_paid, weekly_hours, accountant_email, overtime_rate_1, overtime_rate_2').eq('id', user.company_id).maybeSingle(),
+      // (companies : lue UNE fois pour tout l'écran par lib/company-settings, plus ici.)
       supabase.from('invitations').select('*').eq('company_id', user.company_id).is('accepted_at', null).gt('expires_at', new Date().toISOString()).order('created_at', { ascending: false }),
       // Paginé, pour la même raison que la liste détaillée : au-delà de 1000
       // documents, la pastille 📎 et le total « pièces » se figeaient à 1000
@@ -1388,6 +1452,12 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       // lui réclamer pour elles.
       supabase.from('time_entries').select('planning_id').eq('company_id', user.company_id).eq('status', 'cancelled')
         .not('planning_id', 'is', null).gte('work_date', windowStart).lte('work_date', todayKey),
+      // Lot 12 : une sortie oubliée « à compléter » compte aussi. Lecture silencieuse
+      // (colonne absente tant que la migration n'est pas passée). Lot 29 : dans le même
+      // lot que les autres — elle ne dépend d'aucune d'elles, inutile de l'attendre après.
+      supabase.from('time_entries').select('user_id, work_date, start_time, end_time, exit_forgotten')
+        .eq('company_id', user.company_id).eq('exit_forgotten', true).eq('status', 'draft')
+        .gte('work_date', windowStart).lte('work_date', todayKey),
       // (active_sessions : lu par son propre sondage de 30 s, voir fetchLive.)
     ]);
     if (closures) setWorkerClosures((prev) => keep(prev, closures));
@@ -1410,11 +1480,6 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     // L'absence du jour (teinte de la case).
     const today = new Map<string, string>();
     for (const p of planRes.data || []) if (p.absence_type && p.work_date === todayKey) today.set(p.user_id, p.absence_type);
-    // Lot 12 : une sortie oubliée « à compléter » compte aussi. Lecture à part,
-    // silencieuse (colonne absente tant que la migration n'est pas passée).
-    const incRes = await supabase.from('time_entries').select('user_id, work_date, start_time, end_time, exit_forgotten')
-      .eq('company_id', user.company_id).eq('exit_forgotten', true).eq('status', 'draft')
-      .gte('work_date', windowStart).lte('work_date', todayKey);
     // « À relancer » : une case planifiée qui n'est ni une absence ni RETIRÉE par le
     // salarié réclame ses heures (une autre case du même jour, elle, les réclame
     // toujours) ; un jour d'absence ne réclame rien ; plus les sorties oubliées.
@@ -1430,16 +1495,6 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     });
     setTodayAbsence((prev) => keep(prev, today));
     setMissingByWorker((prev) => keep(prev, miss));
-    setCompanyName(compRes.data?.name || '');
-    const comp = compRes.data as { travel_paid?: boolean; weekly_hours?: number | null; accountant_email?: string | null; overtime_rate_1?: number | null; overtime_rate_2?: number | null } | null;
-    setTravelPaid(!!comp?.travel_paid);
-    setCompanyWeeklyHours(comp?.weekly_hours ?? DEFAULT_WEEKLY_HOURS);
-    setOvertimeRates((prev) => keep(prev, {
-      tier1: comp?.overtime_rate_1 ?? DEFAULT_OVERTIME_RATES.tier1,
-      tier2: comp?.overtime_rate_2 ?? DEFAULT_OVERTIME_RATES.tier2,
-    }));
-    setAccountantEmail((comp?.accountant_email || '').trim());
-    setCompanyLogo((compRes.data as { logo_url?: string | null } | null)?.logo_url || '');
     setInvitations((prev) => keep(prev, (invRes.data || []) as Invitation[]));
   }, [user?.company_id]);
 
@@ -1452,11 +1507,25 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, [fetchMissions]);
+  // Lot 29 : en pause quand l'onglet est caché, relu au retour (après 30 s au moins).
+  useVisiblePoll(fetchExtras, 60000, { key: user?.company_id });
+
+  // Lot 29 : nom, logo, trajet, heures, majorations, e-mail du comptable : UNE lecture de la
+  // ligne `companies` pour tout l'écran (lib/company-settings), plus relue à chaque sondage.
+  // Aucune remise à zéro : une lecture en échec laisse les valeurs connues.
+  const cs = useCompanySettings(user?.company_id);
   useEffect(() => {
-    fetchExtras();
-    const id = setInterval(fetchExtras, 60000);
-    return () => clearInterval(id);
-  }, [fetchExtras]);
+    if (!cs) return;
+    setCompanyName(cs.name);
+    setTravelPaid(cs.travelPaid);
+    setCompanyWeeklyHours(cs.weeklyHours ?? DEFAULT_WEEKLY_HOURS);
+    setOvertimeRates((prev) => keep(prev, {
+      tier1: cs.overtimeRate1 ?? DEFAULT_OVERTIME_RATES.tier1,
+      tier2: cs.overtimeRate2 ?? DEFAULT_OVERTIME_RATES.tier2,
+    }));
+    setAccountantEmail(cs.accountantEmail);
+    setCompanyLogo(cs.logoUrl);
+  }, [cs]);
 
   // ─── Lot 9 : « en cours depuis » — sondage dédié des chronos ouverts ─────────
   // Toutes les 30 s, en pause quand l'onglet est caché, relu tout de suite au
@@ -1511,23 +1580,19 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
 
   useEffect(() => { fetchClosures(); }, [fetchClosures]);
 
-  // Interrupteur de la borne : lecture SÉPARÉE, comme dans les réglages — tant que
-  // la colonne n'existe pas en base, la requête échoue seule et rien ne s'affiche.
-  useEffect(() => {
-    if (!user?.company_id) return;
-    let stale = false;
-    supabase.from('companies').select('kiosk_enabled').eq('id', user.company_id).maybeSingle()
-      .then(({ data }) => {
-        if (!stale) setKioskOn(!!(data as { kiosk_enabled?: boolean } | null)?.kiosk_enabled);
-      });
-    return () => { stale = true; };
-  }, [user?.company_id]);
+  // Interrupteur de la borne : lu avec les autres réglages (`cs`, plus haut). Tant que la
+  // colonne n'existe pas en base, le repli de lib/company-settings la lit seule : rien ne s'affiche.
+  useEffect(() => { if (cs) setKioskOn(cs.kioskEnabled); }, [cs?.kioskEnabled]);
 
   // Formations : lecture SÉPARÉE — tant que la table n'existe pas, rien ne s'affiche.
   // Revérifiée à l'ouverture de « Salariés » / du menu seulement si elle avait
   // échoué pour une autre raison (réseau) ; table absente : on ne redemande pas.
   const [trainingsOn, setTrainingsOn] = useState(false);
   const [trainingsOpen, setTrainingsOpen] = useState(false);
+  // Lot 19 : « Envoyer par e-mail ». Aucune lecture ici : la fenêtre lit tout à son ouverture, et
+  // les boutons se cachent d'eux-mêmes si la fonction n'existe pas encore (lib/staff-email-flag.ts).
+  const [emailOpen, setEmailOpen] = useState(false);
+  const emailVisible = useStaffEmailVisible();
   const trainingsMissing = useRef(false);
   useEffect(() => {
     if (!user?.company_id || trainingsOn || trainingsMissing.current) return;
@@ -2005,16 +2070,24 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
    * planning neuve, par le même chemin que « Ajouter au planning » : chantier,
    * horaire prévu et note. Jamais les heures du salarié, ni ses documents, ni
    * l'ordre, ni « ajoutée par le salarié ». L'original n'est pas touché.
+   *
+   * Copier simplement (« Copier vers… », « Dupliquer au lendemain ») passe par la
+   * MÊME écriture : copyOne. `rows` = la case visée lue en base, quand elle n'est
+   * pas dans la semaine affichée ; absent, c'est la case telle que l'écran la montre.
    */
-  const copySlot = async (src: PlanningWithWorksite, tWorker: string, tDate: string, overBubbleId: string | null) => {
-    if (!user?.company_id || !src.worksite_id) return;
-    const cell = cellChantiers(tWorker, tDate);
-    const refusal = copyRefusal(src, cell, {
-      absent: !!absenceForDay(tWorker, tDate),
+  const copyRefusalAt = (src: PlannedLike, tWorker: string, tDate: string, rows?: CopyRow[]) => {
+    const mine = rows?.filter((r) => r.work_date === tDate);
+    return copyRefusal(src, mine ? mine.filter((r) => !r.absence_type) : cellChantiers(tWorker, tDate), {
+      absent: mine ? mine.some((r) => !!r.absence_type) : !!absenceForDay(tWorker, tDate),
       monthClosed: closedMonths.has(tDate.slice(0, 7)),
       workerClosed: !!closedFor(workerClosures, tWorker, tDate),
     });
-    if (refusal) { toast.error(refusal.message); return; }
+  };
+  const copyOne = async (src: PlanningWithWorksite, tWorker: string, tDate: string, overBubbleId: string | null, rows?: CopyRow[]): Promise<{ id: string } | { error: string }> => {
+    if (!user?.company_id || !src.worksite_id) return { error: '' };
+    const cell = rows ? [] : cellChantiers(tWorker, tDate);
+    const refusal = copyRefusalAt(src, tWorker, tDate, rows);
+    if (refusal) return { error: refusal.message };
     let newId: string;
     try {
       newId = await addPlanningSlot({
@@ -2023,8 +2096,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       });
     } catch (err) {
       console.error('Error copying planning:', err);
-      toast.error('Impossible de copier : rien n’a été ajouté.');
-      return;
+      return { error: 'Impossible de copier : rien n’a été ajouté.' };
     }
     // Déposée SUR une bulle : la copie prend sa place, comme un déplacement.
     if (overBubbleId) {
@@ -2033,6 +2105,13 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       ids.splice(i < 0 ? ids.length : i, 0, newId);
       await persistOrder(ids);
     }
+    return { id: newId };
+  };
+  const copySlot = async (src: PlanningWithWorksite, tWorker: string, tDate: string, overBubbleId: string | null) => {
+    if (!user?.company_id || !src.worksite_id) return;
+    const r = await copyOne(src, tWorker, tDate, overBubbleId);
+    if ('error' in r) { toast.error(r.error); return; }
+    const newId = r.id;
     const who = workers.find((w) => w.id === tWorker)?.first_name || 'Salarié';
     const companyId = user.company_id;
     setUndoCard({
@@ -2083,6 +2162,74 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       },
     });
     fetchPlanning();
+  };
+
+  // ─── Copier une case simplement (fenêtre de modification : « Copier vers… », « Dupliquer au lendemain ») ────
+  // Aucune écriture à part : copyOne (ci-dessus) = celle du glisser avec Ctrl ou Alt. Pas de bouton « Annuler »
+  // ici : le message dit ce qui a été fait ; une copie en trop se retire avec « Supprimer » (même confirmation).
+
+  /** Les cases d'un salarié sur une période, lues en base (jours hors de la semaine affichée). null = illisible. */
+  const loadCopyRows = async (workerId: string, from: string, to: string): Promise<CopyRow[] | null> => {
+    if (!user?.company_id) return null;
+    const { data, error } = await supabase.from('planning').select('id, user_id, work_date, worksite_id, estimated_start, estimated_end, absence_type')
+      .eq('company_id', user.company_id).eq('user_id', workerId).gte('work_date', from).lte('work_date', to);
+    return error ? null : ((data ?? []) as CopyRow[]);
+  };
+  /** Le refus de la copie, dit sans la fin « rien n’a été copié » (la copie n'est pas encore partie). */
+  const copyWhy = (src: PlanningWithWorksite, workerId: string, date: string, rows?: CopyRow[]): string | null => {
+    const r = copyRefusalAt(src, workerId, date, rows);
+    return r ? r.message.replace(/ : rien n’a été copié\.$/, '').replace(/\.$/, '') : null;
+  };
+  /** « mar. 21 et mer. 22 » (avec le mois quand les jours n'en partagent pas un seul). */
+  const daysText = (dates: string[]) => {
+    const sameMonth = dates.every((d) => d.slice(0, 7) === dates[0].slice(0, 7));
+    const t = dates.map((d) => format(parseISO(d), sameMonth ? 'EEE d' : 'EEE d MMM', { locale: fr }));
+    return t.length > 1 ? `${t.slice(0, -1).join(', ')} et ${t[t.length - 1]}` : t[0];
+  };
+  /** Copie la case sur ces jours, un par un. Rend vrai si au moins une copie est partie. */
+  const copyToDays = async (src: PlanningWithWorksite, targets: CopyTarget[]): Promise<boolean> => {
+    if (!user?.company_id || !src.worksite_id || !targets.length) return false;
+    setCopyBusy(true);
+    const done: CopyTarget[] = [];
+    try {
+      for (const t of [...targets].sort((a, b) => a.date.localeCompare(b.date))) {
+        // Hors de la semaine affichée, l'écran ne sait rien de la case visée : on la lit en base (au moment de copier).
+        const onScreen = weekDays.some((d) => format(d, 'yyyy-MM-dd') === t.date);
+        let rows: CopyRow[] | undefined;
+        if (!onScreen) {
+          const r = await loadCopyRows(t.workerId, t.date, t.date);
+          if (!r) { toast.error(`${daysText([t.date])} : lecture du planning impossible, rien n’a été copié.`); continue; }
+          rows = r;
+        }
+        const r = await copyOne(src, t.workerId, t.date, null, rows);
+        if ('error' in r) { if (r.error) toast.error(`${daysText([t.date])} : ${r.error}`); continue; }
+        done.push(t);
+      }
+    } finally {
+      setCopyBusy(false);
+    }
+    if (!done.length) return false;
+    const who = done[0].workerId !== src.user_id ? ` chez ${workers.find((w) => w.id === done[0].workerId)?.first_name || 'ce salarié'}` : '';
+    toast.success(`Case copiée${who} sur ${daysText(done.map((d) => d.date))}`);
+    fetchPlanning();
+    return true;
+  };
+  /** « Dupliquer au lendemain » : un geste, même salarié, jour suivant. */
+  const duplicateNextDay = async () => {
+    if (!editing || copyBusy) return;
+    const src = editing;
+    const next = format(addDays(parseISO(src.work_date), 1), 'yyyy-MM-dd');
+    if (await copyToDays(src, [{ workerId: src.user_id, date: next }])) closeEdit();
+  };
+  const openCopyTo = () => {
+    if (!editing) return;
+    const src = editing;
+    closeEdit();
+    setCopyFor(src);
+  };
+  const confirmCopyTo = async (targets: CopyTarget[]) => {
+    if (!copyFor) return;
+    if (await copyToDays(copyFor, targets)) setCopyFor(null);
   };
 
   const handleDragEnd = async (e: DragEndEvent) => {
@@ -2197,20 +2344,30 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
     setAddWorksite(paletteWorksiteId || '');
     setAddNote('');
     setAddStart(''); setAddEnd('');
-    setAddKind('intervention'); setAddLocked(false); setAddAbsent(false); setEditMeeting(null);
+    setAddKind('intervention'); setAddLocked(false); setAddAbsent(false); setEditMeeting(null); setTaskPrefill(null);
     setAddOpen(true);
   };
   // Lot 4 : le compteur de tâches d'une case (relu à l'ouverture : « Fait » à jour).
   const openTasks = (workerId: string, dateStr: string, absent: boolean) => {
     setAddTarget({ workerId, date: dateStr });
-    setAddKind('tache'); setAddLocked(true); setAddAbsent(absent); setEditMeeting(null);
+    setAddKind('tache'); setAddLocked(true); setAddAbsent(absent); setEditMeeting(null); setTaskPrefill(null);
+    setAddOpen(true);
+    fetchMissions();
+  };
+  // Ajouter une tâche à un salarié DÉJÀ planifié : la même fenêtre « + », sur l'onglet Tâche (les pastilles
+  // restent : on peut passer à Intervention). `hours` = l'horaire du créneau, pré-rempli dans « Heure de … à … »
+  // (modifiable : une tâche peut être avant, pendant ou après le créneau).
+  const openTaskAdd = (workerId: string, dateStr: string, hours?: { start: string; end: string } | null) => {
+    setAddTarget({ workerId, date: dateStr });
+    setAddKind('tache'); setAddLocked(false); setAddAbsent(false); setEditMeeting(null);
+    setTaskPrefill(hours ?? null);
     setAddOpen(true);
     fetchMissions();
   };
   // Lot 4 : la pastille d'une réunion → la même fenêtre, sur la réunion.
   const openMeeting = (m: Meeting, workerId: string) => {
     setAddTarget({ workerId, date: m.meeting_date });
-    setAddKind('reunion'); setAddLocked(true); setAddAbsent(false); setEditMeeting(m);
+    setAddKind('reunion'); setAddLocked(true); setAddAbsent(false); setEditMeeting(m); setTaskPrefill(null);
     setAddOpen(true);
   };
   // Le titre suit l'onglet : « Ajouter une intervention » ne change pas (lot 11).
@@ -2237,6 +2394,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       toast.success('Ajouté au planning');
       setAddOpen(false);
       setAddTarget(null);
+      setTaskPrefill(null);
       refresh();
     } catch (err) {
       console.error('Error adding planning:', err);
@@ -2392,13 +2550,41 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
 
   // ─── team export (locks) ──────────────────────────────────────────────────────
 
-  const runExport = async (kind: 'excel' | 'pdf' | 'csv' | 'comptable') => {
+  // Mode support (lot 5) : le compte connecté est celui qui « est entré » dans l'entreprise (même test que withSupportCompany).
+  const enModeSupport = () => { const s = readSupportSession(); return !!s && s.staffId === user?.id; };
+
+  // Lot 18 : AVANT tout fichier, on dit au bureau ce que l'export va verrouiller (demanderExport, plus bas).
+  // `verrouiller` (défaut : oui, comme avant le lot 18) = poser le verrou APRÈS le fichier ; faux = export de
+  // contrôle, rien n'est écrit en base. `annonce` = les chiffres annoncés au bureau (ceux de l'alerte, ou « aucune
+  // ligne à verrouiller » quand il n'y a pas eu d'alerte) : s'ils ont bougé depuis, on ne fait rien et on renvoie les
+  // chiffres à jour (`change`) pour les remontrer. `range` = la période ANNONCÉE : l'export porte toujours dessus,
+  // même si l'écran a changé de période entre-temps.
+  const runExport = async (
+    kind: ExportEquipe,
+    o: { verrouiller?: boolean; annonce?: CompteVerrou; range?: { from: Date; to: Date } } = {},
+  ): Promise<{ change?: CompteVerrou } | void> => {
     if (!user?.company_id) { toast.error('Profil non chargé'); return; }
+    // Mode support : lecture seule, la base refuse toute écriture. Le fichier sort, rien n'est verrouillé.
+    const verrouiller = (o.verrouiller ?? true) && !enModeSupport();
     setExporting(true);
     try {
-      if (!exportRange) { toast.error('Choisissez une période'); return; }
-      const from = format(exportRange.from, 'yyyy-MM-dd');
-      const to = format(exportRange.to, 'yyyy-MM-dd');
+      const range = o.range ?? exportRange;
+      if (!range) { toast.error('Choisissez une période'); return; }
+      const from = format(range.from, 'yyyy-MM-dd');
+      const to = format(range.to, 'yyyy-MM-dd');
+      // Lot 29 : les réglages de paie (heures de base, majorations, trajet payé, nom) sont relus
+      // MAINTENANT, comme le panier plus bas : l'écran ne les relit plus toutes les 60 s, et un
+      // autre administrateur a pu les changer. Illisibles : export annulé plutôt que fichier faux.
+      const reglages = await reloadCompanySettings(user.company_id);
+      if (!reglages) {
+        toast.error("Réglages de l'entreprise illisibles : export annulé plutôt que d'appliquer des heures ou des majorations périmées.");
+        return;
+      }
+      const heuresBase = reglages.weeklyHours ?? DEFAULT_WEEKLY_HOURS;
+      const tauxMajoration = {
+        tier1: reglages.overtimeRate1 ?? DEFAULT_OVERTIME_RATES.tier1,
+        tier2: reglages.overtimeRate2 ?? DEFAULT_OVERTIME_RATES.tier2,
+      };
       // Lecture PAGINÉE : au-delà du plafond PostgREST (1000 lignes par défaut),
       // une requête simple renverrait un jeu tronqué SANS erreur → export de paie
       // silencieusement incomplet. Et `select` réduit aux seuls champs utilisés :
@@ -2442,10 +2628,12 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         .from('time_entries')
         .select('id, user_id, work_date, start_time, end_time, total_minutes, status, gap_before, user:users!user_id(first_name, last_name)')
         .eq('company_id', user.company_id)
-        .in('status', ['submitted', 'validated'])
-        .gte('work_date', format(weekStartOf(exportRange.from), 'yyyy-MM-dd'))
-        .lte('work_date', format(weekEndOf(exportRange.to), 'yyyy-MM-dd'))
-        .order('work_date').order('user_id')
+        .in('status', [...STATUTS_EXPORTES])
+        .gte('work_date', format(weekStartOf(range.from), 'yyyy-MM-dd'))
+        .lte('work_date', format(weekEndOf(range.to), 'yyyy-MM-dd'))
+        // Lot 18 : ordre COMPLET (heure de début, puis id) : sans départage, deux pages de 500 lignes pouvaient se
+        // recouvrir ou laisser un trou quand un salarié a deux chantiers le même jour. Le récapitulatif ne dépend pas de l'ordre.
+        .order('work_date').order('user_id').order('start_time').order('id')
         .range(f, t2) as unknown as PromiseLike<{ data: (TimeEntryWithWorksite & { user: User })[] | null; error: { message: string } | null }>);
 
       // La table est construite sur les salariés PRÉSENTS dans la période, pas
@@ -2453,18 +2641,23 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       // dans un export d'un mois passé, et doit garder son horaire de base.
       const weeklyHoursByWorker = new Map<string, number>(
         Array.from(new Set(recapEntries.map((e) => e.user_id)))
-          .map((id) => [id, weeklyHoursFor(overrides.get(id) ?? null, companyWeeklyHours)]),
+          .map((id) => [id, weeklyHoursFor(overrides.get(id) ?? null, heuresBase)]),
       );
 
-      const entries = await fetchAllPaged<TimeEntryWithWorksite & { user: User }>((f, t2) => supabase
-        .from('time_entries')
-        .select('id, user_id, work_date, start_time, end_time, break_minutes, total_minutes, meal_allowance, status, observation, gap_before, worksite:worksites(client_name, city), user:users!user_id(first_name, last_name)')
-        .eq('company_id', user.company_id)
-        .in('status', ['submitted', 'validated'])
-        .gte('work_date', from).lte('work_date', to)
-        .order('work_date', { ascending: false }).order('user_id')
+      // Lot 18 : le filtre (statuts, entreprise, période) est celui de l'alerte (lib/export-lignes.ts) ; `locked` s'y
+      // ajoute pour recompter ce que le verrou va toucher. Rien d'autre ne change : même lignes, même ordre.
+      const entries = await fetchAllPaged<TimeEntryWithWorksite & { user: User }>((f, t2) => lignesExportees(user.company_id, from, to,
+        'id, user_id, work_date, start_time, end_time, break_minutes, total_minutes, meal_allowance, status, observation, gap_before, locked, worksite:worksites(client_name, city), user:users!user_id(first_name, last_name)')
+        // Même ordre qu'avant, avec un départage COMPLET pour les égalités (même jour, même salarié : heure de début, puis id) :
+        // les pages se suivent sans doublon ni trou, et le détail d'une journée sort dans l'ordre des heures.
+        .order('work_date', { ascending: false }).order('user_id').order('start_time').order('id')
         .range(f, t2) as unknown as PromiseLike<{ data: (TimeEntryWithWorksite & { user: User })[] | null; error: { message: string } | null }>);
-      if (entries.length === 0) { toast.error(`Aucune saisie du ${format(exportRange.from, 'dd/MM')} au ${format(exportRange.to, 'dd/MM')}`); return; }
+      if (entries.length === 0) { toast.error(`Aucune saisie du ${format(range.from, 'dd/MM')} au ${format(range.to, 'dd/MM')}`); return; }
+      // Lot 18 : les chiffres de l'alerte doivent être EXACTEMENT ce que le verrou va toucher. Un salarié a pu envoyer
+      // (ou le bureau verrouiller) pendant que l'alerte était ouverte : on remontre les chiffres, sans rien exporter.
+      // Si plus rien ne reste à verrouiller, on continue : le bureau avait accepté de verrouiller, il n'y a plus de surprise.
+      const aVerrouiller = compterVerrou(entries);
+      if (verrouiller && o.annonce && aVerrouiller.lignes > 0 && !memeCompte(aVerrouiller, o.annonce)) return { change: aVerrouiller };
 
       // Lot 3 bis : le réglage panier relu AU CLIC (lecture seule, à part) — couvre
       // Excel, PDF et l'envoi au comptable. Changer le réglage change le fichier :
@@ -2473,13 +2666,13 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       const opts = {
         fileName: `bemexo-${kind === 'pdf' ? 'rapport' : kind === 'csv' ? 'paie' : 'export'}-${from}`,
         title: 'BEMEXO - Rapport hebdomadaire',
-        periodLabel: `${format(exportRange.from, 'dd/MM/yyyy')} au ${format(exportRange.to, 'dd/MM/yyyy')}`,
-        companyName,
-        travelPaid,
+        periodLabel: `${format(range.from, 'dd/MM/yyyy')} au ${format(range.to, 'dd/MM/yyyy')}`,
+        companyName: reglages.name,
+        travelPaid: reglages.travelPaid,
         mealEnabled,
         weeklyHoursByWorker,
         recapEntries,
-        overtimeRates,
+        overtimeRates: tauxMajoration,
         payrollIdByWorker,
       };
       // Message final : dépend de ce que le serveur répond (envoyé / déjà parti).
@@ -2493,7 +2686,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         // recliquer après une coupure renvoie la même clé, donc le serveur
         // reconnaît l'envoi au lieu d'en faire un second. Un export refait
         // après correction des heures donne une autre clé, et part bien.
-        const content = excelAsBase64(entries, opts);
+        const content = await excelAsBase64(entries, opts);
         const idempotencyKey = await sendKey(user.company_id, from, to, content);
         const { data: sendData, error: sendErr } = await supabase.functions.invoke('send-payroll-export', {
           body: {
@@ -2527,12 +2720,12 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
             ? `Déjà envoyé le ${format(new Date(r.alreadySentAt), 'dd/MM \'à\' HH:mm')} — non renvoyé`
             : 'Déjà envoyé — non renvoyé';
         } else if (r.previousSendAt) {
-          sentNote = `Envoyé à ${accountantEmail} — attention, un export de cette période était déjà parti le ${format(new Date(r.previousSendAt), 'dd/MM \'à\' HH:mm')}`;
+          sentNote = `Envoyé à ${reglages.accountantEmail || accountantEmail} — attention, un export de cette période était déjà parti le ${format(new Date(r.previousSendAt), 'dd/MM \'à\' HH:mm')}`;
         } else {
-          sentNote = `Envoyé à ${accountantEmail}`;
+          sentNote = `Envoyé à ${reglages.accountantEmail || accountantEmail}`;
         }
       } else if (kind === 'excel') {
-        exportEntriesToExcel(entries, opts);
+        await exportEntriesToExcel(entries, opts);
       } else if (kind === 'csv') {
         // Le CSV se construit sur les SEMAINES ENTIÈRES (recapEntries), pas sur
         // les jours de la période : sans ça, une période qui commence un jeudi
@@ -2550,32 +2743,92 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         // puisqu'il ne porte que sur la période. Trouvé par Codex sur la PR 104.
         exportEntriesToCSV({ ...opts, payPeriod: { from, to } });
       } else {
-        exportEntriesToPDF(entries, opts);
+        await exportEntriesToPDF(entries, opts);
       }
 
       // Verrouillage PAR LOTS : un `.in('id', [...])` avec des centaines d'UUID
       // dépasse la longueur d'URL admise par la passerelle et échoue. L'erreur
       // n'était pas vérifiée : le mois s'affichait « clôturé » alors que rien
       // n'était verrouillé. On découpe, et on remonte toute erreur.
-      const stamp = new Date().toISOString();
-      for (const ids of chunk(entries.map((e) => e.id), 200)) {
-        const { error: lockErr } = await supabase.from('time_entries')
-          .update({ exported_at: stamp, locked: true })
-          .in('id', ids).eq('company_id', user.company_id);
-        if (lockErr) throw lockErr;
+      // Lot 18 : « Exporter sans verrouiller » (et le mode support) s'arrêtent ICI : le fichier est sorti,
+      // aucune écriture n'est partie vers la base.
+      if (verrouiller) {
+        const stamp = new Date().toISOString();
+        let poses = 0;
+        try {
+          for (const ids of chunk(entries.map((e) => e.id), 200)) {
+            const { error: lockErr } = await supabase.from('time_entries')
+              .update({ exported_at: stamp, locked: true })
+              .in('id', ids).eq('company_id', user.company_id);
+            if (lockErr) throw lockErr;
+            poses += ids.length;
+          }
+        } catch (err) {
+          // Le fichier est DÉJÀ sorti (ou l'e-mail déjà parti) : on le dit, et on dit ce qui reste modifiable.
+          // « Erreur lors de l'export » ferait croire que rien n'a été fait.
+          console.error('Error locking exported rows:', err);
+          toast.error(messageEchecVerrou({ kind, poses, total: entries.length }), { duration: 12000 });
+          return;
+        }
       }
 
-      const lockLabel = `${entries.length} saisie${entries.length > 1 ? 's' : ''} verrouillée${entries.length > 1 ? 's' : ''}`;
-      toast.success(kind === 'comptable'
-        ? `${sentNote} — ${lockLabel}`
-        : kind === 'csv'
-          ? `CSV de paie téléchargé — ${lockLabel}`
-          : `Export téléchargé — ${lockLabel}`);
+      // Le message reprend le chiffre de l'alerte (les lignes verrouillées par CET export) ; si tout l'était déjà, le total.
+      toast.success(messageFinExport({ kind, verrouille: verrouiller, saisies: aVerrouiller.lignes > 0 ? aVerrouiller.lignes : entries.length, envoi: sentNote }));
     } catch (err) {
       console.error('Error exporting team:', err);
-      toast.error("Erreur lors de l'export");
+      toast.error(isExportLibError(err) ? "Impossible de charger l'outil d'export. Vérifiez votre connexion ou rechargez la page." : "Erreur lors de l'export");
     } finally {
       setExporting(false);
+    }
+  };
+
+  // Lot 18 : le point d'entrée de « Exporter » (menu et « Envoyer au comptable »). On COMPTE au clic ce que l'export
+  // verrouillerait (même filtre que le verrou, lib/export-lignes.ts) ; s'il y a au moins une ligne, l'alerte s'ouvre et
+  // rien ne part avant le choix du bureau. Rien à verrouiller (ou mode support, lecture seule) : l'export part comme avant.
+  // `retour` = data-testid du bouton à qui l'alerte rend le focus.
+  const demanderExport = async (kind: ExportEquipe, retour: string) => {
+    if (!user?.company_id) { toast.error('Profil non chargé'); return; }
+    if (!exportRange) { toast.error('Choisissez une période'); return; }
+    // La période est figée ICI : l'alerte, le comptage et l'export portent tous sur elle.
+    const range = { from: exportRange.from, to: exportRange.to };
+    if (enModeSupport()) { await runExport(kind, { range }); return; }
+    const from = format(range.from, 'yyyy-MM-dd');
+    const to = format(range.to, 'yyyy-MM-dd');
+    setExporting(true);
+    let compte: CompteVerrou;
+    try {
+      compte = await lireCompteVerrou(user.company_id, from, to);
+    } catch (err) {
+      console.error('Error counting rows to lock:', err);
+      // Sans compte exact, pas d'export : le bureau ne doit jamais verrouiller à l'aveugle.
+      toast.error('Impossible de vérifier les heures qui seraient verrouillées. Rien n’a été exporté ni verrouillé. Réessayez.');
+      return;
+    } finally {
+      setExporting(false);
+    }
+    const base = { kind, periode: libellePeriode(from, to), retour, range, destinataire: kind === 'comptable' ? accountantEmail || undefined : undefined };
+    if (!alerteNecessaire(compte, { support: false })) {
+      // Rien à verrouiller : pas d'alerte. Mais « rien » est lui aussi annoncé : si une ligne arrive pendant les lectures
+      // de l'export (un salarié envoie sa journée), elle ne doit pas être verrouillée sans prévenir → on ouvre l'alerte.
+      const r = await runExport(kind, { range, annonce: compte });
+      if (r && r.change) setVerrouAsk({ ...base, compte: r.change, change: true });
+      return;
+    }
+    setVerrouAsk({ ...base, compte });
+  };
+
+  // Les trois choix de l'alerte : « Exporter et verrouiller » (verrouiller = true : exactement l'export d'avant le lot 18),
+  // « Exporter sans verrouiller » (false : même fichier, aucune écriture). « Annuler » ne passe pas ici (rien ne part).
+  const choisirVerrou = async (verrouiller: boolean) => {
+    const ask = verrouAsk;
+    if (!ask || verrouBusy) return;
+    setVerrouBusy(true);
+    try {
+      const r = await runExport(ask.kind, { verrouiller, annonce: verrouiller ? ask.compte : undefined, range: ask.range });
+      if (r && r.change) { setVerrouAsk({ ...ask, compte: r.change, change: true }); return; }
+      setVerrouAsk(null);
+    } finally {
+      setVerrouBusy(false);
     }
   };
 
@@ -2586,6 +2839,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   // ─── affectation popup (this day only) ──────────────────────────────────────
 
   const openEdit = (p: PlanningWithWorksite) => {
+    CopyDialog.preload(); // « Copier vers… » est chargée ici, avant d'être demandée (réseau lent : pas de fenêtre muette)
     setEditing(p);
     setEditStart(p.estimated_start ? p.estimated_start.slice(0, 5) : '');
     setEditEnd(p.estimated_start && p.estimated_end ? p.estimated_end.slice(0, 5) : '');
@@ -2863,6 +3117,10 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   const filteredWorkers = sq ? workers.filter((w) => `${w.first_name} ${w.last_name}`.toLowerCase().includes(sq)) : workers;
 
   const editRealAgg = editing ? realForPlanning(editing) : undefined;
+  // Une modification pas encore enregistrée (mêmes valeurs de départ qu'openEdit).
+  const editDirty = !!editing && (editStart !== (editing.estimated_start ? editing.estimated_start.slice(0, 5) : '')
+    || editEnd !== (editing.estimated_start && editing.estimated_end ? editing.estimated_end.slice(0, 5) : '')
+    || editNote !== (editing.notes || ''));
 
   // Lot 3 : une case de la feuille imprimée — les MÊMES bulles que l'écran, sans ce qui
   // n'a de sens qu'à l'écran : ni « en cours », ni « + », ni sélection, ni bouton.
@@ -2946,6 +3204,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
   // Sous 1024 px (téléphone ET tablette) la mise en page est celle du menu ☰ (CSS : max-width 1023 px).
   const narrow = () => window.matchMedia('(max-width: 1023px)').matches;
   const tourStep = (s: GuideStep) => {
+    warmAll(); // le guide ne cherche sa cible que 1,5 s : les fenêtres différées doivent déjà être là
     // Une étape sans écran ne ferme et n'ouvre RIEN : le patron vient peut-être d'ouvrir la fenêtre lui-même.
     if (!s.ecran) return;
     const small = narrow();
@@ -3150,6 +3409,18 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                     <button className="bt-pl-acct-item" onClick={() => { setAccountMenuOpen(false); setSettingsOpen(true); }} data-guide="bureau-nav.reglages">
                       <Settings className="h-4 w-4" /> Réglages de l&apos;entreprise
                     </button>
+                    {/* « Formations » : aussi ici (avant, cachée dans « Salariés » et le menu ☰), seulement si elles existent. */}
+                    {trainingsOn && user?.company_id && (
+                      <button className="bt-pl-acct-item" onClick={() => { setAccountMenuOpen(false); setTrainingsOpen(true); }} onPointerEnter={() => TrainingsAdmin.preload()} onFocus={() => TrainingsAdmin.preload()} data-testid="menu-trainings">
+                        <GraduationCap className="h-4 w-4" /> Formations
+                      </button>
+                    )}
+                    {/* Lot 19 : planning de la semaine en PDF, ou un message, par e-mail aux salariés (fenêtre chargée à l'ouverture). */}
+                    {emailVisible && user?.role === 'admin' && workers.length > 0 && (
+                      <button className="bt-pl-acct-item" onClick={() => { setAccountMenuOpen(false); setEmailOpen(true); }} onPointerEnter={() => StaffEmailDialog.preload()} onFocus={() => StaffEmailDialog.preload()} data-testid="menu-email">
+                        <Mail className="h-4 w-4" /> Envoyer par e-mail
+                      </button>
+                    )}
                     <button className="bt-pl-acct-item danger" onClick={() => { setAccountMenuOpen(false); signOut(); }}>
                       <LogOut className="h-4 w-4" /> Déconnexion
                     </button>
@@ -3275,6 +3546,16 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
               <span aria-hidden="true">📟</span><span className="bt-pl-lbl-borne">Borne</span>
             </button>
           )}
+          {/* « Formations » : visible dans la barre (avant, seulement dans « Salariés » et le menu ☰). Seulement quand les
+              formations existent (trainingsOn, comme partout). La barre n'a plus une once de place sous 1440 px (lot 3 : « une
+              seule ligne » à 1280 avec Borne, assistant, congés et réserves) : là, « Formations » est dans le menu du compte
+              (en haut à droite) et dans « Salariés ». De 1440 px, l'icône ; de 1700 px, l'icône et le mot (le rappel des couleurs, dès 1600, prend la place). */}
+          {trainingsOn && user?.company_id && (
+            <button className="bt-pl-out bt-pl-trainbtn" onClick={() => setTrainingsOpen(true)} onPointerEnter={() => TrainingsAdmin.preload()} onFocus={() => TrainingsAdmin.preload()}
+              title="Formations : vidéos et documents pour l’équipe" aria-label="Formations" data-testid="bar-trainings">
+              <GraduationCap className="h-4 w-4" /><span className="bt-pl-lbl-train">Formations</span>
+            </button>
+          )}
           {/* « Coût chantiers » (« Coûts » sous 1280 px) : les heures par chantier y sont. */}
           <button className="bt-pl-out" onClick={() => setCostOpen(true)} title="Heures et coût par chantier" data-testid="bar-cost" data-guide="bureau-nav.couts"><TrendingUp className="h-4 w-4" /> <span className="bt-pl-lbl-long">Coût chantiers</span><span className="bt-pl-lbl-short">Coûts</span></button>
           {/* Lot 3 : « Imprimer » — une icône seule ; le menu choisit la période (lot 3bis :
@@ -3313,6 +3594,10 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
           </div>
         )}
 
+        {/* Astuce « Copier une case » : visible, fermable, mémorisée (components/planning-copier.tsx). Cachée sur téléphone
+            (sa propre carte, plus bas). Le « ? » qui la réaffiche est dans le coin de la grille. */}
+        {workers.length > 0 && !selectMode && <div className="bt-cp-desk"><CopyTip variant="desk" /></div>}
+
         {/* GRILLE — desktop (glisser-déposer) */}
         <div className="bt-pl-gridwrap" ref={gridRef}>
           <table className="bt-pl-table">
@@ -3321,6 +3606,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                 <th className="bt-pl-th-name">
                   <span className="bt-pl-corner-wk">S-{getISOWeek(currentWeekStart)}</span>
                   <span className="bt-pl-corner-sal">Salarié</span>
+                  {workers.length > 0 && <CopyTipHelp variant="corner" afterVersions={versionsOn && user?.role === 'admin'} />}
                   {/* Lot 8 : « Versions » dans le coin de la semaine qu'il concerne — la barre du haut n'a plus
                       une once de place au pire cas (lot 3 : « une seule ligne » à 1280 px). */}
                   {versionsOn && user?.role === 'admin' && (
@@ -3403,6 +3689,8 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                                 {tasks.length > 0 && <TasksBadge tasks={tasks} inert={selectMode} onOpen={() => openTasks(worker.id, dateStr, !!absence)} />}
                               </>
                             ) : null;
+                            // « ＋ Tâche » : seulement sur une case déjà remplie, quand les tâches existent, hors sélection.
+                            const taskBtn = chantiers.length > 0 && missions.tasksOn && !selectMode && !worker.id.startsWith('demo-');
                             return (
                               <DroppableCell key={dateStr} workerId={worker.id} dateStr={dateStr} isToday={dateStr === todayStr} live={liveHere}>
                                 {absence ? (() => {
@@ -3426,7 +3714,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                                   );
                                 })() : (
                                   <div
-                                    className="bt-pl-cellfill"
+                                    className={`bt-pl-cellfill${taskBtn ? ` bt-pl-cellfill--task${liveChip || missionChips ? ' chips' : ''}` : ''}`}
                                     data-guide={chantiers.length === 0 && extra.length === 0 && !liveChip && !missionChips ? 'bureau-planning.case' : undefined}
                                     onClick={selectMode ? undefined : () => openAdd(worker.id, dateStr)}
                                     title={selectMode ? undefined : 'Cliquer pour ajouter une intervention'}
@@ -3456,6 +3744,12 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                                     })}
                                     {liveChip}
                                     {missionChips}
+                                    {/* Une tâche pour ce salarié ce jour-là, sans chercher le vide de la case (qui n'existe plus quand elle est pleine). */}
+                                    {taskBtn && (
+                                      <button type="button" className="bt-pl-addtask" title="Ajouter une tâche" data-testid="cell-add-task"
+                                        aria-label={`Ajouter une tâche à ${worker.first_name} ${worker.last_name}, ${format(day, 'EEEE d MMMM', { locale: fr })}`}
+                                        onClick={(e) => { e.stopPropagation(); openTaskAdd(worker.id, dateStr); }}>＋ Tâche</button>
+                                    )}
                                     {chantiers.length === 0 && extra.length === 0 && !liveChip && <div className="bt-pl-add">+</div>}
                                   </div>
                                 )}
@@ -3581,9 +3875,12 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
               </div>
             )}
             <div className="bt-pl-m-list">
+              {/* Astuce « Copier une case » : touchez la case, puis « Copier vers… » (planning-copier.tsx). */}
+              {workers.length > 0 && !selectMode && <CopyTip variant="mobile" />}
               {/* Lot 11 : « Sélectionner » aussi sur téléphone (« Tout sélectionner » = le jour affiché). */}
               {workers.length > 0 && !selectMode && (
                 <div className="bt-pl-m-tools">
+                  <CopyTipHelp variant="mobile" />
                   <button type="button" className="bt-pl-m-selbtn" onClick={enterSelect} data-testid="m-select">
                     <CheckSquare className="h-3.5 w-3.5" /> Sélectionner
                   </button>
@@ -3693,9 +3990,16 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                         )}
                         {/* Ajouter un chantier à ce salarié pour ce jour (openAdd → même dialogue que
                             le glisser-déposer côté desktop, sans le drag). */}
-                        <button type="button" className="bt-pl-m-add" onClick={() => openAdd(worker.id, dateStr)} data-guide="bureau-planning.ajouter">
-                          <Plus className="h-3.5 w-3.5" /> Ajouter un chantier
-                        </button>
+                        <div className="bt-pl-m-addrow">
+                          <button type="button" className="bt-pl-m-add" onClick={() => openAdd(worker.id, dateStr)} data-guide="bureau-planning.ajouter">
+                            <Plus className="h-3.5 w-3.5" /> Ajouter un chantier
+                          </button>
+                          {chantiers.length > 0 && missions.tasksOn && !selectMode && (
+                            <button type="button" className="bt-pl-m-addtask" data-testid="m-add-task"
+                              aria-label={`Ajouter une tâche à ${worker.first_name} ${worker.last_name}`}
+                              onClick={() => openTaskAdd(worker.id, dateStr)}>＋ Tâche</button>
+                          )}
+                        </div>
                       </>
                     )}
                   </div>
@@ -3842,7 +4146,8 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         onChanged={() => { fetchData(); refresh(); }}
       />
 
-      <CompanySettings open={settingsOpen} onOpenChange={setSettingsOpen} onSaved={fetchData}
+      <CompanySettings open={settingsOpen} onOpenChange={setSettingsOpen}
+        onSaved={() => { fetchData(); if (user?.company_id) reloadCompanySettings(user.company_id); }}
         onOpenTraces={tracesOn && user?.company_id ? () => setTracesOpen(true) : undefined} />
 
       <AdminMobileMenu
@@ -3870,6 +4175,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         onOpenTrainings={trainingsOn && user?.company_id ? () => setTrainingsOpen(true) : undefined}
         onOpenTraces={tracesOn && user?.company_id ? () => setTracesOpen(true) : undefined}
         onOpenVersions={versionsOn && user?.role === 'admin' ? () => setVersionsOpen(true) : undefined}
+        onOpenEmail={emailVisible && user?.role === 'admin' && workers.length > 0 ? () => { StaffEmailDialog.preload(); setEmailOpen(true); } : undefined}
         holdFocus={() => !!tour || Date.now() - tourEnd.current < 800}
       />
 
@@ -4021,13 +4327,10 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
       <TeamStats open={statsOpen} onOpenChange={setStatsOpen} companyId={user?.company_id} />
 
       {aiOn && user?.role === 'admin' && (
-        <AssistantPanel
-          source={supabaseAssistantSource}
-          memoryKey={`bureau:${user.id}`}
-          attachments
+        <AssistantBureau
+          user={user}
           open={assistantOpen}
           onOpenChange={setAssistantOpen}
-          launcher={false}
           onNavigate={(action) => {
             // Lot 7 : « Me guider pas à pas » — l'assistant se replie, le guide entoure le vrai bouton.
             // Fiche inconnue (y compris « guide: » seul) : rien.
@@ -4056,22 +4359,14 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
               if (w) { setFicheMode('hours'); setFicheWorker(w); }
             }
           }}
-          renderExtra={(extra, ctl) => (
-            <AssistantActionCard
-              extra={extra as ActionExtra}
-              ctl={ctl}
-              execute={makeActionExecutor({ id: user.id, company_id: user.company_id })}
-              preview={makeRemovalPreview({ company_id: user.company_id })}
-              onDone={() => { fetchData(); fetchExtras(); }}
-              onOpenVersions={(monday) => {
-                // Lot 8 : « Versions de la semaine » — la semaine de l'action, puis la liste.
-                changeWeek(weekStartOf(new Date(`${monday}T12:00:00`)));
-                setVersionsOn(true);
-                setVersionsOpen(true);
-                if (window.matchMedia('(max-width: 640px)').matches) setAssistantOpen(false);
-              }}
-            />
-          )}
+          onDone={() => { fetchData(); fetchExtras(); if (user?.company_id) reloadCompanySettings(user.company_id); }}
+          onOpenVersions={(monday) => {
+            // Lot 8 : « Versions de la semaine » — la semaine de l'action, puis la liste.
+            changeWeek(weekStartOf(new Date(`${monday}T12:00:00`)));
+            setVersionsOn(true);
+            setVersionsOpen(true);
+            if (window.matchMedia('(max-width: 640px)').matches) setAssistantOpen(false);
+          }}
         />
       )}
 
@@ -4125,6 +4420,12 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
         <TrainingsAdmin open={trainingsOpen} onOpenChange={setTrainingsOpen} companyId={user.company_id} companyName={companyName} workers={workers} />
       )}
 
+      {/* Lot 19 : montée tant qu'elle est ouverte, même si la fonction s'avère absente (le message neutre s'affiche). */}
+      {(emailVisible || emailOpen) && user?.company_id && user.role === 'admin' && (
+        <StaffEmailDialog open={emailOpen} onOpenChange={setEmailOpen} companyId={user.company_id} companyName={companyLabel}
+          workers={workers} monday={format(currentWeekStart, 'yyyy-MM-dd')} />
+      )}
+
       {/* Chantiers — mobile equivalent of the desktop "Clients" dropdown (list +
           search + edit fiche + create). Same data/functions as desktop, no drag
           (placement on the grid is a desktop-only, mouse-drag interaction). */}
@@ -4146,7 +4447,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                 <p className="text-sm text-muted-foreground py-6 text-center">Aucun résultat</p>
               ) : (
                 filteredClients.map((ws) => {
-                  const sub = [ws.product_type, ws.city].filter(Boolean).join(' · ');
+                  const sub = [ws.product_type, ws.city, termineLe(ws, true)].filter(Boolean).join(' · ');
                   return (
                     <button
                       key={ws.id}
@@ -4219,11 +4520,12 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
           <DialogHeader><DialogTitle>Exporter l&apos;équipe</DialogTitle></DialogHeader>
           <div className="space-y-4 pt-1">
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" onClick={() => { const t = new Date(); setExportRange({ from: t, to: t }); }}>Aujourd'hui</Button>
-              <Button variant="outline" size="sm" onClick={() => setExportRange({ from: currentWeekStart, to: addDays(currentWeekStart, DAYS_IN_WEEK - 1) })}>Cette semaine</Button>
+              {/* Lot 18 : la période ne change pas pendant un export (comptage, lectures) : l'alerte annonce celle-ci. */}
+              <Button variant="outline" size="sm" disabled={exporting} onClick={() => { const t = new Date(); setExportRange({ from: t, to: t }); }}>Aujourd'hui</Button>
+              <Button variant="outline" size="sm" disabled={exporting} onClick={() => setExportRange({ from: currentWeekStart, to: addDays(currentWeekStart, DAYS_IN_WEEK - 1) })}>Cette semaine</Button>
               <Popover>
                 <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm"><CalendarRange className="h-4 w-4 mr-1" /> Créneau</Button>
+                  <Button variant="outline" size="sm" disabled={exporting}><CalendarRange className="h-4 w-4 mr-1" /> Créneau</Button>
                 </PopoverTrigger>
                 <PopoverContent className="bt-skin w-auto p-0" align="end">
                   <Calendar mode="range" numberOfMonths={1} locale={fr}
@@ -4235,13 +4537,14 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
             {exportRange
               ? <p className="text-center text-sm font-medium capitalize">{format(exportRange.from, 'd MMM', { locale: fr })} → {format(exportRange.to, 'd MMM yyyy', { locale: fr })}</p>
               : <p className="text-center text-sm text-muted-foreground">Choisissez une période.</p>}
+            <ExportPreload />
             <div className="flex">
-              <ExportMenu onPick={(k) => runExport(k)} disabled={exporting || !exportRange} busy={exporting} align="start" testId="team-export-menu" guide="bureau-export.menu" />
+              <ExportMenu onPick={(k) => demanderExport(k, 'team-export-menu')} disabled={exporting || !exportRange} busy={exporting} align="start" testId="team-export-menu" guide="bureau-export.menu" />
             </div>
             <Button
               variant="outline"
               className="w-full min-w-0 justify-start"
-              onClick={() => runExport('comptable')}
+              onClick={() => demanderExport('comptable', 'send-accountant')}
               disabled={exporting || !exportRange || !accountantEmail}
               data-testid="send-accountant" data-guide="bureau-export.comptable"
               title={accountantEmail
@@ -4256,7 +4559,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
             )}
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <span>Exporter verrouille les heures de la période.</span>
-              <InfoTip text="Excel, PDF ou CSV pour la paie : les heures exportées sont verrouillées, les salariés ne peuvent plus les modifier. Vous gardez la main." />
+              <InfoTip text="Excel, PDF ou CSV pour la paie : les heures exportées sont verrouillées, les salariés ne peuvent plus les modifier. Une alerte vous dit combien de lignes avant de verrouiller, et vous pouvez aussi exporter sans verrouiller. Vous gardez la main." />
             </div>
 
             {/* Clôture du mois — après l'export, on ferme. Un salarié ne peut
@@ -4294,6 +4597,9 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Lot 18 : « Cet export va verrouiller N lignes d'heures de M salariés » — avant tout fichier. */}
+      <ExportVerrou ask={verrouAsk} busy={verrouBusy} onChoose={choisirVerrou} onCancel={() => setVerrouAsk(null)} />
 
       {/* Confirmation de clôture : on annonce ce qui restera bloqué. */}
       <Dialog open={!!closureTarget} onOpenChange={(o) => { if (!o) setClosureTarget(null); }}>
@@ -4356,16 +4662,16 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
 
       {/* Cell add — a client on a specific day. Lot 4 : la même fenêtre pose aussi une
           tâche ou une réunion (pastilles en tête) ; le titre suit ce qui est choisi. */}
-      <Dialog open={addOpen} onOpenChange={(o) => { setAddOpen(o); if (!o) { setAddTarget(null); setEditMeeting(null); } }}>
+      <Dialog open={addOpen} onOpenChange={(o) => { setAddOpen(o); if (!o) { setAddTarget(null); setEditMeeting(null); setTaskPrefill(null); } }}>
         <DialogContent className="bt-skin max-w-sm">
           <DialogHeader><DialogTitle>{addTitleOf()}</DialogTitle></DialogHeader>
           {!addLocked && (missions.tasksOn || missions.meetingsOn) && (
             <AddKindSwitch value={addKind} onChange={setAddKind} tasksOn={missions.tasksOn && !addTarget?.workerId.startsWith('demo-')} meetingsOn={missions.meetingsOn} />
           )}
           {addKind === 'tache' && addTarget && user?.company_id && (
-            <DayTasksPanel key={`${addTarget.workerId}|${addTarget.date}`} companyId={user.company_id} workerId={addTarget.workerId} date={addTarget.date}
+            <DayTasksPanel key={`${addTarget.workerId}|${addTarget.date}|${taskPrefill?.start ?? ''}`} companyId={user.company_id} workerId={addTarget.workerId} date={addTarget.date}
               tasks={cells.tasks(addTarget.workerId, addTarget.date)} canAdd={!addAbsent} onChanged={fetchMissions}
-              timesOn={missions.taskTimesOn}
+              timesOn={missions.taskTimesOn} defaultStart={taskPrefill?.start} defaultEnd={taskPrefill?.end}
               slots={planning.filter((p) => p.user_id === addTarget.workerId && p.work_date === addTarget.date && !p.absence_type)
                 .map((p) => ({ start: p.estimated_start, end: p.estimated_end }))} />
           )}
@@ -4375,7 +4681,7 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
               date={addTarget.date} defaultWorkerId={addTarget.workerId.startsWith('demo-') ? null : addTarget.workerId}
               meeting={editMeeting} participants={editMeeting ? (missions.participants[editMeeting.id] || []) : undefined}
               companyName={companyName}
-              onSaved={async () => { await fetchMissions(); setAddOpen(false); setAddTarget(null); setEditMeeting(null); }} />
+              onSaved={async () => { await fetchMissions(); setAddOpen(false); setAddTarget(null); setEditMeeting(null); setTaskPrefill(null); }} />
           )}
           {addKind === 'intervention' && (
           <form onSubmit={confirmAdd} className="space-y-4 pt-2" data-testid="add-form">
@@ -4525,14 +4831,42 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                 <Button className="flex-1" onClick={saveAffectation} disabled={savingEdit} data-guide="bureau-edit.enregistrer">
                   {savingEdit && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer
                 </Button>
-                <Button variant="outline" className="text-destructive" onClick={() => deleteAffectation()} disabled={deletingEdit} data-testid="edit-delete" data-guide="bureau-edit.supprimer">
-                  {deletingEdit ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Trash2 className="h-4 w-4 mr-2" />} Supprimer
-                </Button>
               </div>
+
+              {/* Actions sur la case (ordinateur, pavé tactile ET doigt). « Supprimer » est le bouton de toujours — même
+                  clic, même confirmation « Supprimer ? », mêmes garde-fous — rangé ici, en plus grand. Les copies reprennent
+                  la case telle qu'elle est ENREGISTRÉE : une modification en cours doit d'abord être enregistrée. */}
+              <SlotActions
+                busy={copyBusy}
+                blockedWhy={editDirty ? 'Enregistrez d’abord vos changements : la copie reprend l’intervention telle qu’elle est enregistrée.' : null}
+                onCopyTo={openCopyTo}
+                onDuplicate={duplicateNextDay}
+                onAddTask={missions.tasksOn && !editing.user_id.startsWith('demo-') ? () => {
+                  const w = editing;
+                  closeEdit();
+                  openTaskAdd(w.user_id, w.work_date, w.estimated_start && w.estimated_end ? { start: w.estimated_start.slice(0, 5), end: w.estimated_end.slice(0, 5) } : null);
+                } : undefined}
+              >
+                <Button variant="outline" className="text-destructive" onClick={() => deleteAffectation()} disabled={deletingEdit} data-testid="edit-delete" data-guide="bureau-edit.supprimer">
+                  {deletingEdit ? <Loader2 className="h-4 w-4 animate-spin mr-2 shrink-0" /> : <Trash2 className="h-4 w-4 mr-2 shrink-0" />} Supprimer
+                </Button>
+              </SlotActions>
             </div>
           )}
         </DialogContent>
       </Dialog>
+
+      {/* « Copier vers un autre jour… » : le choix des jours (la fenêtre n'écrit rien ; l'écran copie avec la règle du glisser). */}
+      <CopyDialog
+        source={copyFor ? { id: copyFor.id, title: copyFor.worksite?.client_name || 'Intervention', hours: plannedHoursOf(copyFor), workerId: copyFor.user_id, date: copyFor.work_date } satisfies CopySource : null}
+        workers={workers.map((w) => ({ id: w.id, name: `${w.first_name} ${w.last_name}`.trim() }))}
+        weekStart={format(currentWeekStart, 'yyyy-MM-dd')}
+        check={(w, d, rows) => (copyFor ? copyWhy(copyFor, w, d, rows) : null)}
+        loadRows={loadCopyRows}
+        busy={copyBusy}
+        onClose={() => setCopyFor(null)}
+        onConfirm={confirmCopyTo}
+      />
 
       {/* Client fiche — permanent client data (separate) */}
       <Dialog open={!!clientFiche} onOpenChange={(o) => { if (!o) setClientFiche(null); }}>
@@ -4575,6 +4909,9 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
                 </div>
               </div>
 
+              {/* Lot 23 : chantier terminé + bilan (caché tant que la migration n'est pas appliquée). */}
+              <ChantierTermineBar worksite={clientFiche} onOpen={(mode: TermineMode) => setTermineTarget({ ws: clientFiche, mode })} />
+
               <div className="flex flex-wrap gap-2 pt-1">
                 <Button onClick={saveClientFiche} disabled={savingWs} data-guide="bureau-clients.enregistrer">
                   {savingWs && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Enregistrer
@@ -4593,6 +4930,13 @@ export default function AdminPlanning({ trial, onSubscribe }: AdminPlanningProps
           )}
         </DialogContent>
       </Dialog>
+
+      <ChantierTermine
+        target={termineTarget}
+        companyId={user?.company_id || ''}
+        onClose={() => setTermineTarget(null)}
+        onChanged={(patch) => { setClientFiche((f) => (f ? { ...f, ...patch } : f)); fetchData(); fetchPlanning(); }}
+      />
 
       <ChantierDocuments
         worksiteId={docsWorksite?.ws.id || null}

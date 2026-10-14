@@ -286,8 +286,8 @@ const printWith = async (p, { kind = 'week', moves = 0, date = null, tomorrow = 
   return p.evaluate(() => window.__title);
 };
 const closePrint = (p) => p.evaluate(() => window.dispatchEvent(new Event('afterprint')));
-/** Rendu « papier » à l'écran : largeur imprimable d'un A4 paysage (281 mm ≈ 1062 px). */
-const paper = async (p, fn, { w = 1062, h = 733 } = {}) => {
+/** Rendu « papier » à l'écran : zone imprimable d'un A4 paysage, marges de 10 mm (277 × 190 mm ≈ 1047 × 718 px). */
+const paper = async (p, fn, { w = 1047, h = 718 } = {}) => {
   const vp = p.viewportSize();
   await p.setViewportSize({ width: w, height: h }); await p.emulateMedia({ media: 'print' }); await p.waitForTimeout(300);
   try { return await fn(); } finally { await p.emulateMedia({ media: null }); await p.setViewportSize(vp); await p.waitForTimeout(200); }
@@ -515,7 +515,7 @@ if (AVANT) {
   });
   await closePrint(p);
 
-  // I8 tient en largeur : octobre + signature, papier 1062 × 733
+  // I8 tient en largeur : octobre + signature, papier 1047 × 718 (marges de 10 mm)
   await printWith(p, { kind: 'month', signature: true });
   await paper(p, async () => {
     const r = await p.evaluate(() => {
@@ -525,7 +525,7 @@ if (AVANT) {
       const clipped = [...document.querySelectorAll('[data-testid=print-m-slot], [data-testid=print-m-abs]')].filter((e) => e.scrollWidth > e.clientWidth + 0.5).length;
       return { w: t.width, dmin: Math.min(...ths), last: last.textContent.trim(), lw: last.getBoundingClientRect().width, clipped, rows: [...document.querySelectorAll('[data-testid=print-m-row]')].map((e) => e.getBoundingClientRect().height) };
     });
-    check(r.w <= 1062 + 1, `I8 la grille du mois tient dans un A4 paysage (${Math.round(r.w)} px ≤ 1062)`);
+    check(r.w <= 1047 + 1, `I8 la grille du mois tient dans un A4 paysage (${Math.round(r.w)} px ≤ 1047)`);
     check(r.dmin >= 28, `I8 colonne d’un jour ≥ 28 px avec signature (${r.dmin.toFixed(1)} px)`);
     check(r.clipped === 0, `I8 aucun code coupé (${r.clipped})`);
     check(r.last === 'Signature' && r.lw >= 60, `I8 dernière colonne « Signature », ${Math.round(r.lw)} px`);
@@ -630,7 +630,9 @@ if (AVANT) {
   const g9 = gets.length;
   await printWith(p, { kind: 'month', signature: true });
   const offs = getsOf('planning', g9).map((g) => Number(g.p.get('offset'))).sort((x, y) => x - y);
-  const want = []; for (let o = 0; o < octRows.length; o += 500) want.push(o); want.push(octRows.length);
+  // Lot 29 : la lecture s'arrête sur une page plus courte que 500 ; une dernière page (vide) ne part que si la précédente était pleine.
+  const want = []; for (let o = 0; o < octRows.length; o += 500) want.push(o);
+  if (octRows.length % 500 === 0) want.push(octRows.length);
   check(same(offs, want), `I9 planning lu par pages de 500 : offsets ${offs.join(', ')} (${octRows.length} lignes)`);
   await paper(p, async () => {
     const r = await p.evaluate(() => ({
@@ -642,7 +644,7 @@ if (AVANT) {
     }));
     check(r.rows === 40 && r.thead === 'table-header-group' && r.avoid, `I9 40 lignes, en-tête répété (${r.thead}), aucune ligne coupée (break-inside: avoid)`);
     check(r.blocks === octRows.length && r.real === db.time_entries.length, `I9 rien de tronqué : ${r.blocks} blocs = ${octRows.length} interventions, ${r.real} envoyées`);
-    await shot(p, 'impression-apres-mois-40-salaries-ecran.png', { clip: { x: 0, y: 0, width: 1062, height: 733 } });
+    await shot(p, 'impression-apres-mois-40-salaries-ecran.png', { clip: { x: 0, y: 0, width: 1047, height: 718 } });
   });
   const pdf9 = await p.pdf(PDF_OPTS);
   const i9 = pdfInfo(pdf9);

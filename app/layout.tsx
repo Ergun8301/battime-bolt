@@ -5,7 +5,9 @@ import { Toaster } from '@/components/ui/sonner';
 import { AuthProvider } from '@/components/auth-provider';
 import SiteAnalytics from '@/components/site-analytics';
 
-const inter = Inter({ subsets: ['latin'] });
+// Inter reste la police du corps de page, mais sans préchargement : la police réellement vue sur les
+// écrans de l'appli est Archivo (préchargée ci-dessous), et Inter ne doit pas lui voler la bande passante.
+const inter = Inter({ subsets: ['latin'], preload: false });
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://bemexo.com'),
@@ -70,6 +72,11 @@ export default function RootLayout({
         <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
         <link rel="icon" type="image/png" href="/favicon.png" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+        {/* Polices : le fichier d'Archivo réellement utilisé est demandé tout de suite, et la feuille
+            fonts.css est un <link> (plus de @import dans chaque écran, qui ne la découvrait qu'après le CSS).
+            crossOrigin est obligatoire pour une police, sinon elle est téléchargée deux fois. */}
+        <link rel="preload" href="/fonts/archivo-latin.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
+        <link rel="stylesheet" href="/fonts/fonts.css" />
         <meta name="theme-color" content="#15120F" />
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(LD_ORGANIZATION) }} />
       </head>

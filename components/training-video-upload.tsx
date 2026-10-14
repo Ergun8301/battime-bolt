@@ -5,17 +5,30 @@
 // Chargé SEULEMENT quand on choisit cette option (next/dynamic) : l'écran du
 // bureau ne grossit pas pour ceux qui ne s'en servent pas.
 //  - la jauge « 23 Mo utilisés sur 100 Mo » ;
-//  - « Filmer » (caméra du téléphone) et « Choisir un fichier » ;
+//  - « Filmer dans BEMEXO » (lot 14 : enregistreur intégré en 720p, jusqu'à 4 minutes), « Filmer »
+//    (caméra du téléphone) et « Choisir un fichier » ;
+//  - l'alerte HEVC (lot 14) : un fichier d'iPhone au format récent peut ne pas se lire partout ;
 //  - l'aperçu, la durée, la taille ; le refus clair (trop lourd, format, quota) ;
 //  - la barre de progression RÉELLE de l'envoi (octets partis) et « Annuler l'envoi ».
 // L'envoi lui-même (réserver, envoyer, publier) reste dans le formulaire.
-import { useEffect, useRef } from 'react';
-import { Camera, FolderOpen } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
+import { AlertTriangle, Camera, FolderOpen, Loader2, Video } from 'lucide-react';
 import {
   formatDuration, formatMo, GPS_NOTE, QUOTA_FULL, quotaFull, quotaLabel, quotaRatio, VIDEO_MAX_BYTES, VIDEO_QUOTA_BYTES, type Limits, type VideoMime,
 } from '@/supabase/functions/_shared/training-videos';
+import { pickRecorderMime, REC_AUTO_SIZE, REC_AUTO_TIME, REC_BUTTON, REC_CUT, REC_DONE, REC_NO_GPS, recorderAvailable, recorderHint, recorderMaxSeconds } from '@/supabase/functions/_shared/video-recorder';
+import { HEVC_ALERT, HEVC_KEEP, HEVC_TIP_NO_REC, HEVC_TIP_REC, sniffVideoCodec, type VideoCodec } from '@/supabase/functions/_shared/video-sniff';
 
-export interface PickedVideo { file: File; mime: VideoMime; url: string; duration: number | null }
+// Lot 14 : l'enregistreur ne se charge qu'à son ouverture.
+const Recorder = dynamic(() => import('@/components/training-video-recorder'), {
+  ssr: false,
+  loading: () => <p className="bt-fo-muted"><Loader2 className="inline h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> Chargement…</p>,
+});
+
+/** `source: 'recorder'` = filmé dans BEMEXO (durée mesurée par le minuteur, format lisible partout : pas d'alerte HEVC). */
+export interface PickedVideo { file: File; mime: VideoMime; url: string; duration: number | null; source?: 'recorder' }
+const REC_AUTO_TEXT = { size: REC_AUTO_SIZE, time: REC_AUTO_TIME, cut: REC_CUT } as const;
 
 const CSS = `
 .bt-fo-up{display:flex;flex-direction:column;gap:8px}
@@ -38,6 +51,12 @@ const CSS = `
 .bt-fo-prog .bt-fo-bar i{background:#2F7A4B;transition:width .2s linear}
 .bt-fo-progline{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;font-weight:700;flex-wrap:wrap}
 .bt-fo-note{font-size:12.5px;font-weight:700;color:#6E6A63}
+.bt-fo-warn{display:flex;gap:8px;align-items:flex-start;padding:8px 10px;border-radius:10px;background:#FFF6D9;border:1px solid #FFC21A;font-size:12.5px;color:#15120F}
+.bt-fo-warn svg{flex:none;margin-top:1px;color:#B45309}
+.bt-fo-warn strong{font-weight:800}
+.bt-fo-warn span{display:block;margin-top:3px;font-weight:600}
+.bt-fo-up .bt-fo-pick .bt-fo-btn{height:auto;min-height:44px;padding:0 14px}
+.bt-fo-up .bt-fo-link{display:inline-flex;align-items:center;min-height:44px}
 @media (prefers-reduced-motion:reduce){.bt-fo-bar i,.bt-fo-prog .bt-fo-bar i{transition:none}}
 `;
 const CSS_HTML = { __html: CSS };
@@ -64,16 +83,18 @@ function probeDuration(url: string): Promise<number | null> {
   });
 }
 
-export default function TrainingVideoUpload({ limits, file, fileError, progress, note, onPick, onClear, onCancel, onDuration }: {
+export default function TrainingVideoUpload({ limits, file, fileError, progress, note, onPick, onClear, onCancel, onDuration, onRecording }: {
   limits: Limits | null;
   file: PickedVideo | null;
   fileError: string | null;
   progress: { loaded: number; total: number } | null;
   note: string | null;
-  onPick: (f: File | null | undefined) => void;
+  onPick: (f: File | null | undefined, durationS?: number) => void;
   onClear: () => void;
   onCancel: () => void;
   onDuration: (url: string, seconds: number | null) => void;
+  /** Lot 14 : vrai pendant une prise de « Filmer dans BEMEXO » (le formulaire verrouille alors ce qui la jetterait). */
+  onRecording?: (recording: boolean) => void;
 }) {
   const lim = limits || NO_LIMITS;
   const full = quotaFull(lim);
@@ -86,6 +107,41 @@ export default function TrainingVideoUpload({ limits, file, fileError, progress,
     probed.current = file.url;
     probeDuration(file.url).then((d) => onDuration(file.url, d));
   }, [file, onDuration]);
+  // Lot 14 : « Filmer dans BEMEXO » (appareil, contexte sécurisé et type de fichier compris), message d'arrêt ou de refus.
+  const [canRec, setCanRec] = useState(false);
+  const [recOpen, setRecOpen] = useState(false);
+  const [recError, setRecError] = useState<string | null>(null);
+  const [recAuto, setRecAuto] = useState<string | null>(null);
+  useEffect(() => {
+    setCanRec(typeof MediaRecorder !== 'undefined' && !!navigator.mediaDevices?.getUserMedia && window.isSecureContext
+      && pickRecorderMime((t) => MediaRecorder.isTypeSupported(t)) !== null);
+  }, []);
+  // Alerte HEVC : le codec du fichier choisi, lu une fois par fichier (jamais pour une prise de l'enregistreur).
+  const [codec, setCodec] = useState<VideoCodec | null>(null);
+  const sniffed = useRef<string | null>(null);
+  useEffect(() => {
+    if (!file || file.source === 'recorder') { sniffed.current = null; setCodec(null); return; }
+    if (sniffed.current === file.url) return;
+    const url = file.url, f = file.file;
+    sniffed.current = url;
+    setCodec(null);
+    sniffVideoCodec(async (a, b) => new Uint8Array(await f.slice(a, b).arrayBuffer()), f.size).then((c) => { if (sniffed.current === url) setCodec(c); });
+  }, [file]);
+  const clear = () => { setRecAuto(null); setRecError(null); onClear(); };
+  // Un fichier choisi ailleurs ne reprend pas le message de la prise précédente (refusée ou non).
+  const pick = (f: File | null | undefined) => { setRecAuto(null); setRecError(null); onPick(f); };
+  // Le bouton et son explication seulement s'il reste au moins 2 Mo de place. `recPossible` : il serait là sans l'envoi en cours
+  // (l'alerte HEVC y renvoie : « Changer de vidéo » le fait revenir).
+  const recPossible = canRec && recorderAvailable(lim);
+  const showRec = recPossible && !busy;
+  // Le focus suit : retour du bouton après l'enregistreur, ou « Changer de vidéo » quand la prise est devenue la vidéo choisie.
+  const openBtn = useRef<HTMLButtonElement | null>(null);
+  const changeBtn = useRef<HTMLButtonElement | null>(null);
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (wasOpen.current && !recOpen) (changeBtn.current ?? openBtn.current)?.focus();
+    wasOpen.current = recOpen;
+  }, [recOpen, file]);
 
   return (
     <div className="bt-fo-up" data-testid="tr-upload">
@@ -96,21 +152,32 @@ export default function TrainingVideoUpload({ limits, file, fileError, progress,
       </div>
       {full && !file ? (
         <p className="bt-fo-err" data-testid="tr-quota-full">{QUOTA_FULL(lim.usedBytes, lim.quotaBytes)}</p>
+      ) : !file && recOpen ? (
+        <Recorder limits={lim}
+          onDone={(f, d, a) => { setRecOpen(false); setRecAuto(a ? REC_AUTO_TEXT[a] : null); onPick(f, d); }}
+          onError={(m) => { setRecOpen(false); setRecError(m); }}
+          onCancel={() => setRecOpen(false)} onRecording={onRecording} />
       ) : !file ? (
         <>
           <div className="bt-fo-pick">
+            {showRec && (
+              <button ref={openBtn} type="button" className="bt-fo-btn ghost sm" onClick={() => { setRecError(null); setRecAuto(null); setRecOpen(true); }} data-testid="tr-rec-open">
+                <Video className="h-3.5 w-3.5" aria-hidden="true" /> {REC_BUTTON}
+              </button>
+            )}
             <label className="bt-fo-btn ghost sm" aria-disabled={busy}>
               <Camera className="h-3.5 w-3.5" aria-hidden="true" /> Filmer
               {/* capture : ouvre la caméra sur un téléphone ; ignoré sur un ordinateur (comme les photos de « Documents »). */}
               <input type="file" accept="video/*" capture="environment" className="bt-fo-filein" disabled={busy} aria-label="Filmer une vidéo"
-                onChange={(e) => { onPick(e.target.files?.[0]); e.target.value = ''; }} data-testid="tr-film" />
+                onChange={(e) => { pick(e.target.files?.[0]); e.target.value = ''; }} data-testid="tr-film" />
             </label>
             <label className="bt-fo-btn ghost sm" aria-disabled={busy}>
               <FolderOpen className="h-3.5 w-3.5" aria-hidden="true" /> Choisir un fichier
               <input type="file" accept="video/mp4,video/quicktime,video/webm,.mp4,.m4v,.mov,.webm" className="bt-fo-filein" disabled={busy} aria-label="Choisir un fichier vidéo"
-                onChange={(e) => { onPick(e.target.files?.[0]); e.target.value = ''; }} data-testid="tr-file" />
+                onChange={(e) => { pick(e.target.files?.[0]); e.target.value = ''; }} data-testid="tr-file" />
             </label>
           </div>
+          {showRec && <span className="bt-fo-muted" data-testid="tr-rec-hint">{recorderHint(recorderMaxSeconds(lim))}</span>}
           <span className="bt-fo-muted">MP4, MOV ou WebM · {formatMo(lim.maxBytes)} maximum (environ 50 s filmées en 1080p sur iPhone, plus en 720p).</span>
         </>
       ) : (
@@ -119,11 +186,20 @@ export default function TrainingVideoUpload({ limits, file, fileError, progress,
           <div className="bt-fo-fmeta">
             <span className="bt-fo-fname">{file.file.name || 'Vidéo'}</span>
             <span className="bt-fo-muted" data-testid="tr-file-meta">{[formatDuration(file.duration), formatMo(file.file.size)].filter(Boolean).join(' · ')}</span>
-            {!busy && <button type="button" className="bt-fo-link" onClick={onClear} data-testid="tr-file-change">Changer de vidéo</button>}
+            {!busy && <button ref={changeBtn} type="button" className="bt-fo-link" onClick={clear} data-testid="tr-file-change">Changer de vidéo</button>}
           </div>
         </div>
       )}
-      {!full && !busy && <p className="bt-fo-muted" data-testid="tr-gps-note">{GPS_NOTE}</p>}
+      {file?.source === 'recorder' && <span className="sr-only" role="status">{REC_DONE}</span>}
+      {file && recAuto && <p className="bt-fo-note" role="status" data-testid="tr-rec-auto">{recAuto}</p>}
+      {file && codec === 'hevc' && (
+        <div className="bt-fo-warn" role="status" data-testid="tr-hevc-alert">
+          <AlertTriangle className="h-4 w-4" aria-hidden="true" />
+          <div><strong>{HEVC_ALERT}</strong> <span>{recPossible ? HEVC_TIP_REC : HEVC_TIP_NO_REC}</span> <span>{HEVC_KEEP}</span></div>
+        </div>
+      )}
+      {!file && recError && <p className="bt-fo-err" role="alert" data-testid="tr-rec-error">{recError}</p>}
+      {!full && !busy && !recOpen && <p className="bt-fo-muted" data-testid="tr-gps-note">{file?.source === 'recorder' ? REC_NO_GPS : GPS_NOTE}</p>}
       {fileError && <p className="bt-fo-err" role="alert" data-testid="tr-file-error">{fileError}</p>}
       {progress && (
         <div className="bt-fo-prog" data-testid="tr-progress">

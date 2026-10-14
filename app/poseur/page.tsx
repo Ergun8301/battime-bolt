@@ -8,31 +8,49 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Clock, CalendarDays, CalendarRange, History, LogOut, Check, ArrowLeft, Camera, Loader2, Palmtree, Bell, BellOff, Sparkles, Info, ScanLine } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAiEnabled } from '@/lib/real-cost';
-import QrScanner from '@/components/qr-scanner';
+import { useCompanySettings } from '@/lib/company-settings';
+import { useVisiblePoll } from '@/lib/use-visible-poll';
 import { GEO_INFO_LINK, GEO_INFO_TEXT, GEO_INFO_TITLE } from '@/lib/position-info';
 import { toast } from 'sonner';
 import { format, subDays, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { computeMissingDays } from '@/lib/work-status';
 import PoseurDay from '@/components/poseur-day';
-import PoseurWeek from '@/components/poseur-week';
-import PoseurMonth from '@/components/poseur-month';
-import PoseurHistory from '@/components/poseur-history';
-import LeaveRequestDialog from '@/components/leave-request-dialog';
-import WorkerAssistant from '@/components/worker-assistant';
 import { pushSupported, currentPushState, enablePush, disablePush } from '@/lib/push';
 import WorkerReserves, { type WorkerReserve } from '@/components/worker-reserves';
 import GuideTour, { type GuideStep } from '@/components/guide-tour';
 import { findWorkerTour, tourIdOf, type WorkerTour } from '@/supabase/functions/_shared/worker-tours';
 import { COUNTED_STATUSES } from '@/lib/status';
 import { keep } from '@/lib/same';
+import { lazyWindow, warmAll } from '@/lib/lazy-window';
+import { isPreviewHost } from '@/lib/hosting';
 import { RESERVES_CHANGED_EVENT } from '@/lib/reserve-lift';
 // Formations (lot 6, oct. 2026) : rien ne s'affiche tant que la migration n'est pas passée.
 import PoseurTrainings, { TrainingsBanner, useMyTrainings } from '@/components/poseur-trainings';
 import { GraduationCap } from 'lucide-react';
+
+// Lot 5 « site rapide 1 » : les onglets Semaine / Mois / Historique et les fenêtres fermées ne pèsent plus
+// dans le premier chargement. Ils arrivent au repos (file de préchauffage, lib/lazy-window.tsx) ou à
+// l'ouverture ; le JSX plus bas n'a pas changé. Tant que le code d'un onglet n'est pas là (économie de
+// données, iPhone dans la première seconde), il montre les mêmes blocs gris que l'onglet lui-même pendant
+// qu'il charge ses données : aucun écran blanc. Hors ligne, un écran jamais chargé affiche le message.
+type DayPickProps = { onSelectDay?: (date: string) => void };
+const NON_CHARGE = <p role="status" style={{ padding: 16, textAlign: 'center', fontSize: 14 }}>Cet écran n'a pas pu se charger. Vérifiez votre connexion puis rechargez la page.</p>;
+const PoseurWeek = lazyWindow<DayPickProps>(() => import('@/components/poseur-week'), { isOpen: () => true, priority: 1, errorFallback: NON_CHARGE,
+  loadingFallback: <div className="space-y-4"><Skeleton className="h-10 w-full" />{[1, 2, 3].map((i) => <Skeleton key={i} className="h-24 w-full" />)}</div> });
+const PoseurHistory = lazyWindow(() => import('@/components/poseur-history'), { isOpen: () => true, priority: 2, errorFallback: NON_CHARGE,
+  loadingFallback: <div className="space-y-4"><Skeleton className="h-12 w-48" />{[1, 2, 3].map((i) => <Skeleton key={i} className="h-32" />)}</div> });
+const PoseurMonth = lazyWindow<DayPickProps>(() => import('@/components/poseur-month'), { isOpen: () => true, priority: 3, errorFallback: NON_CHARGE,
+  loadingFallback: <div className="space-y-4"><Skeleton className="h-10 w-full" />{[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full" />)}</div> });
+const LeaveRequestDialog = lazyWindow(() => import('@/components/leave-request-dialog'), { isOpen: (p) => p.open, priority: 4 });
+// Assistant : monté dès que son code est là, même fermé (il garde la mémoire de la conversation).
+const WorkerAssistant = lazyWindow(() => import('@/components/worker-assistant'), { isOpen: (p) => !!p.open, priority: 5, warm: 'mounted', mount: 'warm' });
+// Le lecteur de QR ne se préchauffe pas et n'est jamais « collant » : démonté à la fermeture, la caméra s'éteint.
+const QrScanner = lazyWindow(() => import('@/components/qr-scanner'), { isOpen: () => true, close: (p) => p.onClose(), warm: 'never' });
 
 const TABS = [
   { value: 'day', label: 'Ma journée', icon: Clock },
@@ -47,7 +65,6 @@ const ALL_TABS = [...TABS, FORMATIONS_TAB];
 const MENU_GUIDE: Record<string, string> = { day: 'menu.journee', week: 'menu.semaine', month: 'menu.mois', history: 'menu.historique' };
 
 const POSEUR_CSS = `
-@import url('/fonts/fonts.css');
 
 .bt-poseur{font-family:'Archivo',sans-serif;color:#15120F;-webkit-font-smoothing:antialiased;background:#e7e0d2;display:flex;justify-content:center;height:100vh;height:100svh;height:100dvh;overflow:hidden}
 .bt-poseur *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -169,6 +186,8 @@ export default function PoseurPage() {
   // l'entreprise est allumé (ai_enabled / kiosk_enabled).
   const router = useRouter();
   const aiOn = useAiEnabled(user?.company_id);
+  // Démo des préviews (?demo=salarie) : l'assistant se monte même sans IA, comme dans worker-assistant.tsx.
+  const demoSalarie = typeof window !== 'undefined' && isPreviewHost() && new URLSearchParams(window.location.search).get('demo') === 'salarie';
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [kioskOn, setKioskOn] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
@@ -178,24 +197,21 @@ export default function PoseurPage() {
   const [tour, setTour] = useState<WorkerTour | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const tourEnd = useRef(0); // quand le dernier guide s'est arrêté (le menu met un instant à se démonter)
+  // Lot 12 : l'icône du scanner ne s'affiche que si une tablette est VRAIMENT
+  // reliée (company_has_kiosk : borne allumée ET une tablette non retirée).
+  // Un QR fixe imprimé actif compte aussi (c'est une ligne « fixe » de kiosks).
+  // Fonction absente (migration du lot 12 pas encore passée) ou lecture en
+  // échec : comportement d'avant, l'interrupteur de l'entreprise seul.
+  // Lot 29 : l'interrupteur vient de la lecture commune des réglages (lib/company-settings).
+  const kioskEnabled = useCompanySettings(user?.company_id)?.kioskEnabled;
   useEffect(() => {
-    if (!user?.company_id) return;
+    if (!kioskEnabled) { setKioskOn(false); return; }
     let stale = false;
-    // Lot 12 : l'icône du scanner ne s'affiche que si une tablette est VRAIMENT
-    // reliée (company_has_kiosk : borne allumée ET une tablette non retirée).
-    // Un QR fixe imprimé actif compte aussi (c'est une ligne « fixe » de kiosks).
-    // Fonction absente (migration du lot 12 pas encore passée) ou lecture en
-    // échec : comportement d'avant, l'interrupteur de l'entreprise seul.
-    supabase.from('companies').select('kiosk_enabled').eq('id', user.company_id).maybeSingle()
-      .then(async ({ data }) => {
-        const enabled = !!(data as { kiosk_enabled?: boolean } | null)?.kiosk_enabled;
-        if (!enabled) { if (!stale) setKioskOn(false); return; }
-        const r = await supabase.rpc('company_has_kiosk');
-        if (stale) return;
-        setKioskOn(r.error || typeof r.data !== 'boolean' ? true : r.data);
-      });
+    supabase.rpc('company_has_kiosk').then((r) => {
+      if (!stale) setKioskOn(r.error || typeof r.data !== 'boolean' ? true : r.data);
+    });
     return () => { stale = true; };
-  }, [user?.company_id]);
+  }, [kioskEnabled]);
   // Notifications push : 'unsupported' (navigateur/iOS non compatible), 'denied'
   // (refusé au niveau navigateur), 'on'/'off'. On n'affiche l'item que si utile.
   const [pushState, setPushState] = useState<'unsupported' | 'denied' | 'on' | 'off'>('unsupported');
@@ -209,14 +225,26 @@ export default function PoseurPage() {
     if (!user) return;
     // Look back far enough to catch any planned-but-not-declared day still open.
     const windowStart = format(subDays(new Date(), 60), 'yyyy-MM-dd');
-    const [planRes, entRes] = await Promise.all([
+    // Lot 29 : UN seul saut. Les heures déjà envoyées/validées ET les brouillons viennent de la
+    // même lecture (triés ensuite ici) ; les réserves ne dépendent d'aucune des deux.
+    // Lot 11 : réserves à lever — envoyées (comme le registre du bureau), ni
+    // levées par le bureau ni par moi (définition partagée : lib/reserves.ts).
+    // Une lecture en échec garde le bandeau tel quel (pas de « 0 » à tort).
+    const [planRes, entRes, { data: res, error: resErr }] = await Promise.all([
       supabase.from('planning').select('work_date, absence_type').eq('user_id', user.id).gte('work_date', windowStart),
-      supabase.from('time_entries').select('work_date').eq('user_id', user.id).in('status', ['submitted', 'validated']).gte('work_date', windowStart),
+      supabase.from('time_entries').select('work_date, status').eq('user_id', user.id).in('status', ['draft', 'submitted', 'validated']).gte('work_date', windowStart),
+      supabase.from('time_entries')
+        .select('id, work_date, observation, worksite_id, worksite:worksites(client_name, city)')
+        .eq('user_id', user.id).eq('reception', 'avec')
+        .in('status', COUNTED_STATUSES as unknown as string[])
+        .is('reserve_resolved_at', null).is('reserve_fixed_at', null)
+        .order('work_date', { ascending: false }).limit(50),
     ]);
     const rows = (planRes.data || []) as { work_date: string; absence_type: string | null }[];
     const absenceDays = new Set(rows.filter((p) => p.absence_type).map((p) => p.work_date));
     const planned = rows.filter((p) => !p.absence_type && !absenceDays.has(p.work_date)).map((p) => p.work_date);
-    const declared = new Set<string>((entRes.data || []).map((e: { work_date: string }) => e.work_date));
+    const entries = (entRes.data || []) as { work_date: string; status: string }[];
+    const declared = new Set<string>(entries.filter((e) => e.status !== 'draft').map((e) => e.work_date));
     const missing = computeMissingDays(planned, declared);
     setPending((prev) => (sameList(prev, missing) ? prev : missing));
 
@@ -225,22 +253,10 @@ export default function PoseurPage() {
     // Borné à aujourd'hui : « Dupliquer cette journée » prépare des brouillons
     // sur des jours à venir, ce n'est pas un oubli et ça n'a rien à faire ici.
     const todayStr = format(new Date(), 'yyyy-MM-dd');
-    const { data: drafts } = await supabase.from('time_entries')
-      .select('work_date').eq('user_id', user.id).eq('status', 'draft')
-      .gte('work_date', windowStart).lte('work_date', todayStr)
-      .order('work_date', { ascending: false });
-    const unsent = Array.from(new Set(((drafts || []) as { work_date: string }[]).map((d) => d.work_date)));
+    const unsent = Array.from(new Set(entries.filter((e) => e.status === 'draft' && e.work_date <= todayStr).map((e) => e.work_date)))
+      .sort((a, b) => (a < b ? 1 : a > b ? -1 : 0)); // plus récent d'abord, comme avant
     setUnsentDays((prev) => (sameList(prev, unsent) ? prev : unsent));
 
-    // Lot 11 : réserves à lever — envoyées (comme le registre du bureau), ni
-    // levées par le bureau ni par moi (définition partagée : lib/reserves.ts).
-    // Une lecture en échec garde le bandeau tel quel (pas de « 0 » à tort).
-    const { data: res, error: resErr } = await supabase.from('time_entries')
-      .select('id, work_date, observation, worksite_id, worksite:worksites(client_name, city)')
-      .eq('user_id', user.id).eq('reception', 'avec')
-      .in('status', COUNTED_STATUSES as unknown as string[])
-      .is('reserve_resolved_at', null).is('reserve_fixed_at', null)
-      .order('work_date', { ascending: false }).limit(50);
     if (!resErr) {
       const one = <T,>(v: T | T[] | null | undefined): T | null => (Array.isArray(v) ? v[0] ?? null : v ?? null);
       const next = ((res || []) as { id: string; work_date: string; observation: string | null; worksite_id: string | null; worksite?: unknown }[])
@@ -253,12 +269,12 @@ export default function PoseurPage() {
     }
   }, [user]);
 
+  // Lot 29 : en pause quand l'onglet est caché, relu au retour (après 30 s au moins).
+  useVisiblePoll(fetchPending, 60000, { key: user?.id });
+  // Une réserve levée depuis une carte de « Ma journée » : le bandeau suit.
   useEffect(() => {
-    fetchPending();
-    const id = setInterval(fetchPending, 60000);
-    // Une réserve levée depuis une carte de « Ma journée » : le bandeau suit.
     window.addEventListener(RESERVES_CHANGED_EVENT, fetchPending);
-    return () => { clearInterval(id); window.removeEventListener(RESERVES_CHANGED_EVENT, fetchPending); };
+    return () => window.removeEventListener(RESERVES_CHANGED_EVENT, fetchPending);
   }, [fetchPending]);
 
   // Photo de profil du salarié (depuis users.photo_url).
@@ -388,6 +404,7 @@ export default function PoseurPage() {
   const here = useRef({ view, selectedDate });
   here.current = { view, selectedDate };
   const tourStep = (s: GuideStep) => {
+    warmAll(); // le guide ne cherche sa cible que 1,5 s : les écrans différés doivent déjà être là
     setMenuOpen(s.ecran === 'menu');
     setHdrHidden(false); // l'en-tête peut porter la cible (votre nom, le scanner)
     const on = (v: string) => here.current.view === v && !here.current.selectedDate;
@@ -529,7 +546,7 @@ export default function PoseurPage() {
             </div>
 
             {kioskOn && (
-              <button type="button" className="bt-phdr-scan" onClick={() => setScanOpen(true)} aria-label="Scanner la borne" data-testid="scan-open" data-guide="entete.scanner">
+              <button type="button" className="bt-phdr-scan" onPointerDown={() => QrScanner.preload()} onClick={() => setScanOpen(true)} aria-label="Scanner la borne" data-testid="scan-open" data-guide="entete.scanner">
                 <ScanLine className="h-5 w-5" />
               </button>
             )}
@@ -633,7 +650,7 @@ export default function PoseurPage() {
             </div>
           </div>
         )}
-        <WorkerAssistant
+        {(aiOn || demoSalarie) && <WorkerAssistant
           open={assistantOpen}
           onOpenChange={setAssistantOpen}
           onSaved={() => { setDayKey((k) => k + 1); fetchPending(); }}
@@ -650,7 +667,7 @@ export default function PoseurPage() {
             // Lot 7 : « Me guider pas à pas » — l'assistant se replie, le guide entoure le vrai bouton. Fiche inconnue : rien.
             else if (tourIdOf(a)) { const t = findWorkerTour(tourIdOf(a)!); if (t) { setAssistantOpen(false); setTour(t); } }
           }}
-        />
+        />}
         {tour && (
           <GuideTour
             key={tour.id}
