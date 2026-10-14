@@ -14,14 +14,18 @@
 // Salarié (phrases longues, français ET turc) : limite de saisie relevée (`maxChars`), sélecteur de langue de
 // dictée (`dictationLangs`), indice d'attente après 4 s (`slowHint`) et phrase remise dans le champ quand
 // l'assistant n'a pas pu répondre (`restoreOnFailure`). Le bureau n'en passe aucune : rien ne change pour lui.
+// Étape 2 « chat avec mémoire » : à chaque demande l'écran envoie les derniers messages TEXTE (`history`) pour que l'assistant
+// comprenne « et pour Lucas aussi ? » ; « Nouveau chat » repart d'une page blanche ; avec `chats`, chaque tour complet est
+// enregistré (texte seulement, privé, 30 jours) et « Historique » rouvre — pour la CONTINUER — une ancienne conversation.
 // Rien ici ne parle de la formule IA (essai / payant) : à la demande d'Ergun, le
 // panneau n'affiche aucun bandeau ; seul le support BEMEXO la voit (app/support).
 
-import { useCallback, useEffect, useReducer, useRef, useState, type ReactNode } from 'react';
-import { Sparkles, X, Mic, Square, ArrowUp, Loader2, ArrowRight, Paperclip, FileText } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
+import { Sparkles, X, Mic, Square, ArrowUp, Loader2, ArrowRight, Paperclip, FileText, Plus, Clock, Trash2, ArrowLeft } from 'lucide-react';
 import { Dictation, speechCtor } from '@/lib/dictation';
 import { ATTACH_ACCEPT, ATTACH_MAX_BYTES, attachmentError, compressAttachment } from '@/lib/attachment';
 import { ASSISTANT_SUGGESTIONS, type AssistantLink, type AssistantSource } from '@/lib/assistant';
+import { historyOf, jourRelatif, type ChatMessage, type ChatStore, type ChatSummary } from '@/lib/assistant-chats';
 import { isNewRequest as isNewRequestFr } from '@/supabase/functions/_shared/fr-langue';
 
 export interface ExtraControl {
@@ -30,28 +34,76 @@ export interface ExtraControl {
   /** Action finie : texte de la bulle (facultatif) et fin de la question en attente. */
   settle: (text?: string | null) => void;
 }
-type Msg = { who: 'me' | 'bot'; text: string; links?: AssistantLink[]; notice?: boolean; extra?: unknown; file?: string };
+/** `lost` (une question) : sa réponse a été une notice (erreur, quota) — elle n'est ni envoyée comme contexte ni enregistrée. */
+type Msg = { who: 'me' | 'bot'; text: string; links?: AssistantLink[]; notice?: boolean; extra?: unknown; file?: string; lost?: boolean };
 
 // Lot 7 : une conversation par écran (bureau, salarié…), gardée en mémoire.
-interface Convo { msgs: Msg[]; busy: boolean; pending: string | null; open: boolean; remaining: number | null; listeners: Set<() => void> }
+// Étape 2 : `chatId` = la conversation enregistrée où vont les prochains tours (null = pas encore enregistrée) ;
+// `gen` change à chaque fois que la conversation est vidée ou rouverte (une réponse en vol d'AVANT ne doit pas atterrir dans la nouvelle) ;
+// `sauve` met les enregistrements en file : deux tours rapprochés ne doivent pas ouvrir deux conversations.
+interface Convo {
+  msgs: Msg[]; busy: boolean; pending: string | null; open: boolean; remaining: number | null; chatId: string | null; gen: number; sauve: Promise<void>; listeners: Set<() => void>;
+}
 const CONVOS = new Map<string, Convo>();
 function convoOf(key: string): Convo {
   let c = CONVOS.get(key);
-  if (!c) { c = { msgs: [], busy: false, pending: null, open: false, remaining: null, listeners: new Set() }; CONVOS.set(key, c); }
+  if (!c) { c = { msgs: [], busy: false, pending: null, open: false, remaining: null, chatId: null, gen: 0, sauve: Promise.resolve(), listeners: new Set() }; CONVOS.set(key, c); }
   return c;
 }
 function changed(c: Convo) { c.listeners.forEach((f) => f()); }
+/** « Nouveau chat » (ou la conversation à l'écran vient d'être supprimée) : page blanche, plus de question en attente, plus de chat courant. */
+function resetConvo(c: Convo) { c.msgs = []; c.pending = null; c.chatId = null; c.gen++; changed(c); }
+/**
+ * Enregistre un tour COMPLET (jamais une notice). Les erreurs sont avalées SANS rien écrire dans la console : l'assistant doit marcher
+ * même si l'enregistrement échoue, et le contenu d'un chat n'a rien à faire dans un journal.
+ */
+function enregistrer(c: Convo, chats: ChatStore, gen: number, question: string, answer: string, links: AssistantLink[]) {
+  c.sauve = c.sauve.then(async () => {
+    try {
+      if (c.gen !== gen) return; // la conversation a été vidée ou supprimée entre-temps : ce tour n'a plus de chat où aller
+      const id = await chats.append(c.chatId, question, answer, links);
+      if (id && c.gen === gen) c.chatId = id;
+    } catch { /* sans enregistrement, l'assistant répond quand même */ }
+  });
+}
 
 
 const CSS = `
 .as-fab{position:fixed;right:20px;bottom:20px;z-index:60;display:inline-flex;align-items:center;gap:8px;background:#15120F;color:#FBF8F2;border:none;border-radius:999px;padding:12px 18px 12px 14px;font-weight:800;font-size:14px;cursor:pointer;box-shadow:0 10px 30px rgba(21,18,15,.28);font-family:inherit}
 .as-fab svg{color:#FFC21A}
 .as-panel{position:fixed;top:0;right:0;bottom:0;z-index:70;width:min(420px,100vw);background:#FBF8F2;border-left:1px solid rgba(21,18,15,.12);box-shadow:-20px 0 50px rgba(21,18,15,.14);display:flex;flex-direction:column;font-family:inherit}
-.as-head{display:flex;align-items:center;gap:10px;padding:16px 18px;border-bottom:1px solid rgba(21,18,15,.08)}
+.as-head{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:16px 18px;border-bottom:1px solid rgba(21,18,15,.08)}
 .as-head b{font-size:16px;font-weight:900;color:#15120F;flex:1}
 .as-head .ico{width:30px;height:30px;border-radius:9px;background:#15120F;color:#FFC21A;display:flex;align-items:center;justify-content:center}
 .as-x{border:none;background:transparent;color:#6E6A63;cursor:pointer;padding:6px;border-radius:8px}
+.as-tools{flex:1 0 100%;display:flex;gap:8px}
+.as-tool{flex:1;min-height:40px;display:inline-flex;align-items:center;justify-content:center;gap:7px;border:1.5px solid rgba(21,18,15,.16);background:#fff;border-radius:12px;padding:6px 10px;font-family:inherit;font-size:14px;font-weight:800;color:#15120F;cursor:pointer}
+.as-tool:hover:not(:disabled){border-color:#15120F}
+.as-tool[aria-pressed=true]{background:#15120F;color:#FBF8F2;border-color:#15120F}
+.as-tool:disabled{opacity:.45;cursor:default}
+.as-tool:focus-visible,.as-x:focus-visible,.as-hback:focus-visible,.as-hopen:focus-visible,.as-hdel:focus-visible,.as-hbtn:focus-visible,.as-hclear:focus-visible{outline:2px solid #FFC21A;outline-offset:2px}
 .as-body{flex:1;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:12px}
+.as-hback{align-self:flex-start;display:inline-flex;align-items:center;gap:6px;min-height:40px;border:none;background:transparent;color:#15120F;font-family:inherit;font-size:14px;font-weight:800;cursor:pointer;padding:6px 10px 6px 4px;margin:-8px 0 -2px -4px;border-radius:10px}
+.as-hlist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.as-hitem{display:flex;align-items:stretch;background:#fff;border:1px solid rgba(21,18,15,.12);border-radius:12px;overflow:hidden}
+.as-hopen{flex:1;min-width:0;min-height:56px;text-align:left;border:none;background:transparent;padding:10px 13px;font-family:inherit;color:#15120F;cursor:pointer;display:flex;flex-direction:column;justify-content:center;gap:2px}
+.as-hopen:hover:not(:disabled){background:#FBF8F2}
+.as-hopen:disabled{opacity:.55;cursor:default}
+.as-hname{font-size:14.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.as-hdate{font-size:12.5px;color:#6E6A63}
+.as-hdel{flex:none;width:48px;border:none;border-left:1px solid rgba(21,18,15,.08);background:transparent;color:#6E6A63;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.as-hdel:hover:not(:disabled){color:#B42318;background:#FDF0EE}
+.as-hdel:disabled{opacity:.45;cursor:default}
+.as-hconf{flex:1;min-width:0;display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 12px}
+.as-hconf p{flex:1 1 100%;margin:0;min-width:0;font-size:14px;font-weight:800;color:#15120F}
+.as-hconf p span{display:block;font-weight:600;font-size:12.5px;color:#6E6A63;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.as-hbtn{flex:1;min-height:44px;min-width:84px;border:1.5px solid rgba(21,18,15,.16);background:#fff;border-radius:12px;padding:6px 14px;font-family:inherit;font-size:14px;font-weight:800;color:#15120F;cursor:pointer}
+.as-hbtn.danger{background:#B42318;border-color:#B42318;color:#fff}
+.as-hclear{align-self:flex-start;display:inline-flex;align-items:center;gap:7px;min-height:44px;border:none;background:transparent;color:#B42318;font-family:inherit;font-size:14px;font-weight:800;cursor:pointer;padding:6px 4px;border-radius:10px}
+.as-hclear:disabled{opacity:.45;cursor:default}
+.as-hconf-all{border:1px solid #F1D48A;background:#FFF6E0;border-radius:12px}
+.as-hnote{margin:0;font-size:13px;line-height:1.45;color:#56514a}
+.as-hnote.err{color:#B42318;font-weight:700}
 .as-hello{color:#15120F;font-weight:800;font-size:20px;letter-spacing:-.01em;margin:6px 0 2px}
 .as-sub{color:#6E6A63;font-size:13.5px;margin:0 0 10px;line-height:1.45}
 .as-sugg{display:flex;flex-direction:column;gap:8px}
@@ -91,7 +143,7 @@ const CSS = `
 .as-rec i{width:8px;height:8px;border-radius:50%;background:#E5484D;animation:as-blink 1s infinite}
 @keyframes as-blink{50%{opacity:.25}}
 @media (prefers-reduced-motion:reduce){.as-mic.on,.as-rec i{animation:none}}
-@media(max-width:640px){.as-fab{right:14px;bottom:14px}}
+@media(max-width:640px){.as-fab{right:14px;bottom:14px}.as-tool{min-height:44px}.as-x{min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center}.as-hdel{width:52px}}
 `;
 
 interface Props {
@@ -128,6 +180,8 @@ interface Props {
   isNewRequest?: (text: string) => boolean;
   /** Vrai pour une carte longue (fiche à plusieurs éléments) : le panneau montre le HAUT de la réponse, pas sa fin. */
   showFromTop?: (extra: unknown) => boolean;
+  /** Étape 2 : l'historique des conversations (privé, 30 jours). Sans lui, pas de bouton « Historique » et rien n'est enregistré ; « Nouveau chat » existe toujours. */
+  chats?: ChatStore;
 }
 
 const SLOW_MS = 4000;
@@ -136,7 +190,7 @@ const LANG_KEY = (memoryKey: string) => `bemexo:dictee-langue:${memoryKey}`;
 
 export default function AssistantPanel({
   source, onNavigate, defaultOpen = false, suggestions = ASSISTANT_SUGGESTIONS, intro, renderExtra, footNote = 'Actions simples faites tout de suite · « Annuler » en un clic', attachments = false, open: openProp, onOpenChange,
-  launcher = true, memoryKey = 'assistant', maxChars = 500, dictationLangs, slowHint, restoreOnFailure = false, isNewRequest = isNewRequestFr, showFromTop,
+  launcher = true, memoryKey = 'assistant', maxChars = 500, dictationLangs, slowHint, restoreOnFailure = false, isNewRequest = isNewRequestFr, showFromTop, chats,
 }: Props) {
   const convo = convoOf(memoryKey);
   const [, redraw] = useReducer((x: number) => x + 1, 0);
@@ -155,6 +209,10 @@ export default function AssistantPanel({
   const remaining = convo.remaining;
   const setRemaining = (v: number) => { convo.remaining = v; changed(convo); };
   const [text, setText] = useState('');
+  // Étape 2 : le corps du panneau est le chat, ou la liste des conversations (« Historique »). Panneau refermé : retour au chat.
+  const [view, setView] = useState<'chat' | 'history'>('chat');
+  useEffect(() => { if (!open) setView('chat'); }, [open]);
+  const histBtnRef = useRef<HTMLButtonElement>(null);
   const [listening, setListening] = useState(false);
   const [canSpeak, setCanSpeak] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
@@ -184,6 +242,8 @@ export default function AssistantPanel({
   // Défilement : vers le bas (la dernière bulle) ; mais une fiche longue s'ouvre sur son HAUT (titre, jour, chantier à créer), là où se vérifie
   // ce qu'on va confirmer — pas sur son bouton. Seulement quand un message vient d'arriver (pas à chaque retouche de la carte).
   const nbMsgs = useRef(msgs.length);
+  // Une conversation rouverte depuis l'historique arrive d'un coup, tout en bas : pas de défilement animé depuis le haut.
+  const jump = useRef(false);
   useEffect(() => {
     const body = bodyRef.current;
     if (!body) return;
@@ -193,17 +253,22 @@ export default function AssistantPanel({
     const bulles = body.querySelectorAll<HTMLElement>('.as-bot');
     const haut = nouveau && !busy && dernier?.who === 'bot' && dernier.extra != null && showFromTop?.(dernier.extra) ? bulles[bulles.length - 1] : null;
     if (haut) body.scrollTo({ top: body.scrollTop + haut.getBoundingClientRect().top - body.getBoundingClientRect().top - 8, behavior: 'smooth' });
-    else body.scrollTo({ top: body.scrollHeight, behavior: 'smooth' });
-  }, [msgs, busy, showFromTop]);
+    else body.scrollTo({ top: body.scrollHeight, behavior: jump.current ? 'auto' : 'smooth' });
+    jump.current = false;
+  }, [msgs, busy, showFromTop, view]);
 
   const ask = useCallback(async (q: string) => {
     const question = q.trim() || (file ? 'Regarde ce fichier.' : '');
     if (!question || busy) return;
     // « Envoyer » pendant la dictée : on coupe net, le texte affiché part tel quel.
     dictRef.current?.abort();
+    // Étape 2 : ce que l'assistant doit savoir de la conversation (les derniers messages TEXTE, avant cette question).
+    const history = historyOf(convo.msgs);
+    const gen = convo.gen;
     const sent = file;
     setText(''); setFile(null);
-    setMsgs((m) => [...m, { who: 'me', text: question, file: sent?.name }]);
+    const mine: Msg = { who: 'me', text: question, file: sent?.name };
+    setMsgs((m) => [...m, mine]);
     setBusy(true);
     // La réponse à la question en attente s'ajoute à la demande : c'est la FIN (la réponse) qui compte si le total dépasse la limite.
     // (Le bureau, à 500, garde sa règle d'avant : la demande en attente entière, coupée ensuite par le serveur.)
@@ -212,9 +277,11 @@ export default function AssistantPanel({
     // Une phrase longue peut demander plusieurs secondes : au bout de 4 s, on le dit.
     const wait = slowHint?.(full) ?? null;
     const timer = wait ? setTimeout(() => setHint(wait), SLOW_MS) : null;
-    const r = await source.ask(full, sent ?? undefined);
+    const r = await source.ask(full, sent ?? undefined, history);
     if (timer) clearTimeout(timer);
     setHint(null);
+    // La conversation a été vidée pendant l'attente (le chat à l'écran vient d'être supprimé) : cette réponse n'a plus de question à côté d'elle.
+    if (convo.gen !== gen) { setBusy(false); if (typeof r.remaining === 'number') setRemaining(r.remaining); return; }
     pendingRef.current = r.followUp ? full : null;
     setBusy(false);
     // L'assistant n'a pas pu répondre : la phrase revient dans le champ (300 à 1 500 caractères à redicter, sinon).
@@ -222,9 +289,32 @@ export default function AssistantPanel({
     // Le fichier reste DANS L'ÉCRAN, joint à la carte : il ne sera rangé
     // (documents du chantier) qu'après « Confirmer ».
     const extra = r.extra && sent && typeof r.extra === 'object' ? { ...(r.extra as object), attachment: sent } : r.extra;
+    if (r.notice) mine.lost = true;
     setMsgs((m) => [...m, { who: 'bot', text: r.answer, links: r.links, notice: r.notice, extra }]);
     if (typeof r.remaining === 'number') setRemaining(r.remaining);
-  }, [busy, source, file, maxChars, slowHint, restoreOnFailure, isNewRequest]);
+    // Un tour COMPLET (hors erreur / quota) s'enregistre, avec le texte que l'utilisateur a tapé — pas la demande en attente recollée à sa réponse.
+    if (chats && !r.notice) enregistrer(convo, chats, gen, question, r.answer, r.links ?? []);
+  }, [busy, source, file, maxChars, slowHint, restoreOnFailure, isNewRequest, chats, convo]);
+
+  // « Nouveau chat » : page blanche. Refusé pendant une réponse en cours (elle atterrirait dans la nouvelle conversation).
+  const newChat = () => {
+    if (busy) return;
+    resetConvo(convo);
+    setHint(null);
+    setView('chat');
+  };
+  const backToChat = () => { setView('chat'); setTimeout(() => histBtnRef.current?.focus(), 0); };
+  // Une conversation choisie dans l'historique : on la rouvre en texte (liens compris) et on peut la CONTINUER, le prochain message s'y ajoute.
+  const reopen = (id: string, rows: ChatMessage[]) => {
+    dictRef.current?.abort();
+    convo.msgs = rows.map((m) => ({ who: m.who, text: m.text, ...(m.links ? { links: m.links } : {}) }));
+    convo.pending = null; convo.chatId = id; convo.gen++;
+    jump.current = true;
+    changed(convo);
+    setView('chat');
+  };
+  // Un chat (ou tous) vient d'être supprimé : si c'était celui de l'écran, l'écran repart à blanc.
+  const removed = (id: string | null) => { if (convo.chatId && (id === null || id === convo.chatId)) resetConvo(convo); };
 
   const pickFile = async (f: File | undefined) => {
     if (fileRef.current) fileRef.current.value = '';
@@ -278,7 +368,17 @@ export default function AssistantPanel({
             <span className="ico"><Sparkles className="h-4 w-4" /></span>
             <b>Assistant BEMEXO</b>
             <button type="button" className="as-x" onClick={() => { dictRef.current?.abort(); setOpen(false); }} aria-label="Fermer"><X className="h-5 w-5" /></button>
+            <div className="as-tools">
+              <button type="button" className="as-tool" onClick={newChat} disabled={busy} data-testid="assistant-newchat" aria-label="Nouveau chat"><Plus className="h-4 w-4" aria-hidden="true" /> Nouveau chat</button>
+              {chats && (
+                <button type="button" className="as-tool" ref={histBtnRef} aria-pressed={view === 'history'} aria-label="Historique des conversations" data-testid="assistant-history"
+                  onClick={() => { if (view === 'history') { setView('chat'); return; } dictRef.current?.abort(); setView('history'); }}><Clock className="h-4 w-4" aria-hidden="true" /> Historique</button>
+              )}
+            </div>
           </div>
+          {view === 'history' && chats ? (
+            <HistoryView chats={chats} busy={busy} onBack={backToChat} onOpen={reopen} onRemoved={removed} />
+          ) : (<>
           <div className="as-body" ref={bodyRef}>
             {msgs.length === 0 && (
               <>
@@ -364,8 +464,115 @@ export default function AssistantPanel({
               {remaining != null && <span>{remaining} question{remaining > 1 ? 's' : ''} restante{remaining > 1 ? 's' : ''} aujourd’hui</span>}
             </div>
           </div>
+          </>)}
         </aside>
       )}
     </>
+  );
+}
+
+/**
+ * La liste des conversations enregistrées (étape 2). Monté à l'ouverture de « Historique », démonté au retour : il relit la liste à chaque fois.
+ * Balisage volontairement simple (button, ul/li) : le design sera repris plus tard. Les confirmations se font ICI, dans la ligne
+ * (« Supprimer ? Oui / Non ») — pas de fenêtre du navigateur.
+ */
+type Demande = { kind: 'un'; id: string } | { kind: 'tout' };
+function HistoryView({ chats, busy, onBack, onOpen, onRemoved }: {
+  chats: ChatStore; busy: boolean; onBack: () => void; onOpen: (id: string, rows: ChatMessage[]) => void; onRemoved: (id: string | null) => void;
+}) {
+  const [list, setList] = useState<ChatSummary[] | 'chargement' | 'erreur'>('chargement');
+  const [demande, setDemande] = useState<Demande | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const [acting, setActing] = useState(false);
+  const now = useMemo(() => new Date(), []);
+  const backRef = useRef<HTMLButtonElement>(null);
+  const req = useRef(0);
+  const charge = useCallback(async () => {
+    const mine = ++req.current;
+    setList('chargement'); setNote(null);
+    try {
+      const items = await chats.list();
+      if (mine === req.current) setList(items);
+    } catch { if (mine === req.current) setList('erreur'); }
+  }, [chats]);
+  useEffect(() => { charge(); backRef.current?.focus(); }, [charge]);
+
+  const rouvrir = async (id: string) => {
+    if (busy || acting) return;
+    setActing(true); setNote(null);
+    try {
+      const rows = await chats.load(id);
+      if (!rows.length) throw new Error('vide');
+      onOpen(id, rows);
+    } catch {
+      setActing(false);
+      setNote('Cette conversation n’a pas pu être ouverte. Réessayez.');
+    }
+  };
+  const confirmer = async () => {
+    const d = demande;
+    if (!d || acting) return;
+    setDemande(null); setActing(true); setNote(null);
+    const ok = await (d.kind === 'tout' ? chats.clear() : chats.remove(d.id)).catch(() => false);
+    setActing(false);
+    if (!ok) { setNote(d.kind === 'tout' ? 'Impossible de tout effacer pour le moment. Réessayez.' : 'Suppression impossible pour le moment. Réessayez.'); return; }
+    setList((l) => (d.kind === 'tout' ? [] : Array.isArray(l) ? l.filter((c) => c.id !== d.id) : l));
+    onRemoved(d.kind === 'tout' ? null : d.id);
+  };
+  const items = Array.isArray(list) ? list : [];
+
+  return (
+    <div className="as-body" data-testid="assistant-history-view">
+      <button type="button" className="as-hback" ref={backRef} onClick={onBack} aria-label="Retour au chat" data-testid="assistant-history-back"><ArrowLeft className="h-4 w-4" aria-hidden="true" /> Retour</button>
+      <h2 className="as-hello">Conversations</h2>
+      <p className="as-sub">Gardées 30 jours · visibles de vous seul</p>
+      {list === 'chargement' && <p className="as-typing" role="status" data-testid="assistant-history-loading"><Loader2 className="h-4 w-4 animate-spin" /> Chargement…</p>}
+      {list === 'erreur' && (
+        <div role="alert" data-testid="assistant-history-error">
+          <p className="as-hnote err">Historique indisponible</p>
+          <p className="as-hnote">L’assistant reste utilisable : revenez au chat.</p>
+          <button type="button" className="as-hbtn" onClick={charge} data-testid="assistant-history-retry">Réessayer</button>
+        </div>
+      )}
+      {Array.isArray(list) && items.length === 0 && (
+        <div data-testid="assistant-history-empty">
+          <p className="as-hnote"><b>Aucune conversation pour l’instant</b></p>
+          <p className="as-hnote">Vos prochaines conversations apparaîtront ici.</p>
+        </div>
+      )}
+      {items.length > 0 && (
+        <ul className="as-hlist" aria-label="Conversations enregistrées">
+          {items.map((c) => (
+            <li key={c.id} className="as-hitem" data-testid="assistant-history-item">
+              {demande?.kind === 'un' && demande.id === c.id ? (
+                <div className="as-hconf" role="group" aria-label="Confirmer la suppression">
+                  <p>Supprimer ?<span>{c.title}</span></p>
+                  <button type="button" className="as-hbtn danger" onClick={confirmer} data-testid="assistant-history-confirm-yes">Oui</button>
+                  <button type="button" className="as-hbtn" onClick={() => setDemande(null)} data-testid="assistant-history-confirm-no">Non</button>
+                </div>
+              ) : (<>
+                <button type="button" className="as-hopen" onClick={() => rouvrir(c.id)} disabled={busy || acting}>
+                  <span className="as-hname">{c.title}</span>
+                  <span className="as-hdate">{jourRelatif(c.updatedAt, now)}</span>
+                </button>
+                <button type="button" className="as-hdel" onClick={() => { setNote(null); setDemande({ kind: 'un', id: c.id }); }} disabled={acting}
+                  aria-label={`Supprimer la conversation « ${c.title} »`} data-testid="assistant-history-delete"><Trash2 className="h-4 w-4" aria-hidden="true" /></button>
+              </>)}
+            </li>
+          ))}
+        </ul>
+      )}
+      {busy && items.length > 0 && <p className="as-hnote">Une réponse est en cours : attendez-la pour ouvrir une autre conversation.</p>}
+      {note && <p className="as-hnote err" role="alert" data-testid="assistant-history-note">{note}</p>}
+      {items.length > 0 && (demande?.kind === 'tout' ? (
+        <div className="as-hconf as-hconf-all" role="group" aria-label="Confirmer l’effacement de tout l’historique">
+          <p>Tout effacer ?<span>Toutes vos conversations seront supprimées.</span></p>
+          <button type="button" className="as-hbtn danger" onClick={confirmer} data-testid="assistant-history-confirm-yes">Oui</button>
+          <button type="button" className="as-hbtn" onClick={() => setDemande(null)} data-testid="assistant-history-confirm-no">Non</button>
+        </div>
+      ) : (
+        <button type="button" className="as-hclear" onClick={() => { setNote(null); setDemande({ kind: 'tout' }); }} disabled={acting} data-testid="assistant-history-clear"><Trash2 className="h-4 w-4" aria-hidden="true" /> Tout effacer</button>
+      ))}
+    </div>
   );
 }

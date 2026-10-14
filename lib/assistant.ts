@@ -24,8 +24,10 @@ export interface AssistantReply {
   /** Lot 7 : une question a été posée — la prochaine réponse complète la MÊME demande. */
   followUp?: boolean;
 }
+/** Étape 2 (chat avec mémoire) : les derniers messages TEXTE de la conversation, envoyés avec la demande pour comprendre « et pour Lucas aussi ? ». */
+export type AssistantHistory = { who: 'me' | 'bot'; text: string }[];
 export interface AssistantSource {
-  demo: boolean; ask(question: string, file?: File): Promise<AssistantReply>;
+  demo: boolean; ask(question: string, file?: File, history?: AssistantHistory): Promise<AssistantReply>;
 }
 
 /** Démo : uniquement sur une preview, jamais sur bemexo.com. */
@@ -48,9 +50,10 @@ const toReply = (d: ServerReply): AssistantReply => ({
 
 export const supabaseAssistantSource: AssistantSource = {
   demo: false,
-  async ask(question, file) {
+  async ask(question, file, history) {
     try {
-      const body = file ? { question, file: await attachmentPayload(file) } : { question };
+      // `history` (étape 2) : omis quand la conversation vient de commencer, la requête reste alors celle d'avant.
+      const body = { question, ...(file ? { file: await attachmentPayload(file) } : {}), ...(history?.length ? { history } : {}) };
       const { data, error } = await supabase.functions.invoke('assistant', { body });
       if (error) {
         const ctx = (error as { context?: Response }).context;
@@ -123,7 +126,8 @@ export function demoAssistantSource(): AssistantSource {
   const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
   return {
     demo: true,
-    async ask(q, file) {
+    // La démo accepte l'historique et l'ignore : ses réponses viennent de la phrase seule.
+    async ask(q, file, _history) {
       await wait(600);
       left = Math.max(0, left - 1);
       const t = q.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');

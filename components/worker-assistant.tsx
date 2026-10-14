@@ -14,6 +14,7 @@ import { demoWorkerExecutor, makeWorkerErasePreview, makeWorkerExecutor } from '
 import { demoMultiDeps, makeMultiDeps } from '@/lib/worker-multi';
 import { isNewRequest } from '@/supabase/functions/_shared/fr-langue';
 import { nouvelleDemandeSalarie, profilSaisie, WORKER_TEXT_MAX } from '@/supabase/functions/_shared/saisie-profil';
+import { memoryChatStore, supabaseChatStore } from '@/lib/assistant-chats';
 import { useAiEnabled } from '@/lib/real-cost';
 import { useMealEnabled } from '@/lib/meal-setting';
 import {
@@ -32,6 +33,9 @@ const slowHint = (t: string) => (profilSaisie(t).long ? 'Je lis votre message…
 const isNewWorkerRequest = (t: string) => isNewRequest(t) || nouvelleDemandeSalarie(t);
 /** Une fiche à plusieurs actions est longue : le panneau l'ouvre sur son HAUT (titre, jour, chantier à créer), pas sur son bouton. */
 const isMultiExtra = (extra: unknown) => !!(extra as MultiExtra).multi;
+// Démo (préviews seulement) : l'historique reste en mémoire, rien ne part vers la base. Un seul exemplaire pour la page :
+// la conversation gardée par le panneau doit retrouver le même historique si l'écran se redessine.
+const DEMO_CHATS = memoryChatStore();
 
 export default function WorkerAssistant({ onSaved, onNavigate, defaultOpen = false, open, onOpenChange }: {
   onSaved?: () => void; onNavigate?: (action: string) => void; defaultOpen?: boolean;
@@ -45,12 +49,14 @@ export default function WorkerAssistant({ onSaved, onNavigate, defaultOpen = fal
   // Le serveur (non redéployé) peut encore proposer l'action : le navigateur la refuse.
   const meal = useMealEnabled(demo ? null : user?.company_id);
   const source = useMemo(() => (demo ? demoWorkerSource() : supabaseWorkerSource), [demo]);
+  const chats = demo ? DEMO_CHATS : supabaseChatStore;
   const isWorker = user?.role === 'worker' || user?.role === 'lead';
   if (!demo && !(ai && isWorker)) return null;
 
   return (
     <AssistantPanel
       source={source}
+      chats={chats}
       memoryKey={`salarie:${user?.id ?? 'demo'}`}
       attachments
       defaultOpen={defaultOpen}

@@ -53,8 +53,19 @@ Un format vraiment illisible se dit clairement, jamais en silence.
 
 ## 6. Mémoire et chat
 
-Conversation continue (il se souvient du sujet), bouton « Nouveau chat », historique des conversations (par utilisateur,
-privé : ni le patron ni BEMEXO ne lisent le chat d'un salarié). Titre automatique, durée de conservation à décider.
+Conversation continue (il se souvient du sujet), bouton « Nouveau chat », historique des conversations. **Décidé le 14 octobre 2026** :
+
+- **Mémoire** : à chaque demande, l'écran envoie les derniers messages de la conversation (7 au plus, 600 caractères chacun, 3000 en tout) et le serveur
+  les met dans la consigne du modèle, pour comprendre « et pour Lucas aussi ? », « pareil demain », « annule ça ».
+- **Privé, par utilisateur** : seul l'auteur lit son historique. Ni le patron, ni un administrateur de la même entreprise, ni le support BEMEXO ne lisent le
+  chat d'un salarié : la base filtre sur l'auteur (pas sur l'entreprise) et la clé de service n'a pas accès à ces tables.
+- **Texte seul** : on enregistre le texte des messages (et les liens de navigation de la réponse). Jamais une pièce jointe, jamais une carte d'action (un ancien
+  chat rouvert montre du texte ; les cartes d'action ne reviennent pas), jamais un message d'erreur ou de quota. Si l'enregistrement échoue, l'assistant répond
+  quand même, et le contenu n'est écrit dans aucune console ni aucun journal.
+- **Conservation : 30 jours après la dernière activité**, puis suppression automatique (tâche quotidienne). Un chat où l'on écrit encore ne disparaît pas.
+  L'utilisateur peut aussi supprimer un chat, ou tout effacer, quand il veut.
+- **Titre automatique** : le début de la première question (60 caractères, espaces réduits), sans appel IA en plus.
+- **Bornes** : 200 messages par chat, 100 chats par utilisateur (les moins récemment utilisés partent), 4000 caractères par message.
 
 ## 7. Règle anti-oubli (la plus importante)
 

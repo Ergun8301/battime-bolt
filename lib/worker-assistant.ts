@@ -66,10 +66,11 @@ const toReply = (d: ServerReply): AssistantReply => {
 
 export const supabaseWorkerSource: AssistantSource = {
   demo: false,
-  async ask(text, file) {
+  async ask(text, file, history) {
     try {
       // `multi: true` : ce navigateur sait afficher la fiche à plusieurs éléments (sans lui, le serveur répond comme avant).
-      const body = file ? { text, file: await attachmentPayload(file), multi: true } : { text, multi: true };
+      // `history` (étape 2, chat avec mémoire) : omis quand la conversation vient de commencer.
+      const body = { text, ...(file ? { file: await attachmentPayload(file) } : {}), multi: true, ...(history?.length ? { history } : {}) };
       const { data, error } = await supabase.functions.invoke('worker-assistant', { body });
       if (error) {
         const ctx = (error as { context?: Response }).context;
@@ -117,7 +118,8 @@ export function demoWorkerSource(): AssistantSource {
   let left = 20;
   return {
     demo: true,
-    async ask(text, file) {
+    // La démo accepte l'historique et l'ignore : ses réponses viennent de la phrase seule.
+    async ask(text, file, _history) {
       await new Promise((r) => setTimeout(r, 500));
       left = Math.max(0, left - 1);
       // 📎 Photo jointe : l'IA est SIMULÉE, le contrôle est le vrai.
