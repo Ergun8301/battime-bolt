@@ -81,12 +81,12 @@ export function videoSummary(v: { duration_s?: number | null; size_bytes?: numbe
 }
 
 export interface Limits { maxBytes: number; quotaBytes: number; usedBytes: number }
-/**
- * Vie privée : un MP4 ou un MOV filmé au téléphone peut contenir la position GPS
- * du lieu de tournage ; le fichier part tel quel et chaque destinataire peut le
- * lire. Montré sous « Filmer » / « Choisir un fichier ».
- */
-export const GPS_NOTE = 'Attention : une vidéo filmée au téléphone peut contenir la position GPS du lieu, lisible par tous ceux qui la reçoivent. Désactivez la localisation de l’appareil photo avant de filmer.';
+// Vie privée : une vidéo filmée au téléphone (fichier de la galerie ou caméra native) peut contenir la position GPS du lieu ;
+// les prises de l'enregistreur intégré n'en ont aucune. Décision du patron (oct. 2026) : plus aucune mise en garde affichée
+// à l'écran (personne ne les lit). Rien n'est donc dit sur le GPS : ne pas remettre un texte statique ici.
+/** La jauge « x Mo utilisés sur 100 Mo » n'est montrée qu'à partir de 80 % de la place (décision du patron : pas de chiffre tant qu'il reste largement de la place). */
+export const QUOTA_NEAR_RATIO = 0.8;
+export const quotaNear = (l: Limits): boolean => quotaRatio(l.usedBytes, l.quotaBytes) >= QUOTA_NEAR_RATIO;
 /** Un fichier arrivé dont la vidéo n'a jamais été publiée : gardé, et compté dans la place. */
 export const leftoverSummary = (bytes: number | null | undefined, closed: boolean) =>
   ['Envoi non terminé', bytes ? formatMo(bytes) : null, closed ? 'place fermée' : null, 'fichier gardé'].filter(Boolean).join(' · ');

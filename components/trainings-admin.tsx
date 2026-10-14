@@ -1,24 +1,28 @@
 'use client';
 
-// Formations (lot 6, oct. 2026) — côté BUREAU : la fenêtre « Formations »,
-// ouverte depuis « Salariés » (et le menu du téléphone). Aucun bouton de barre.
-//  - « + Ajouter » : un titre, puis un lien YouTube / Vimeo / Google Drive OU un
-//    document déjà téléversé dans « Documents » d'un chantier ; pour toute
-//    l'équipe ou certains salariés. Notification aux destinataires (jamais
-//    d'e-mail). Pas de modification en V1 : on retire, on remet.
-//  - la liste : « x/y vues » ; un clic montre qui l'a vue (✓ date) et qui pas
-//    encore ; « Ouvrir ↗ » (nouvel onglet) ; « Retirer » (les « Vue » restent).
+// Formations (lot 6, oct. 2026) — côté BUREAU : la fenêtre « Formations », ouverte depuis « Salariés »
+// (et le menu du téléphone). Aucun bouton de barre.
+// Formations simplifiées (oct. 2026, décision du patron : « trop de petits textes, trop de boutons ») :
+//  - AUCUN texte d'aide statique (ni introduction, ni « aucune formation… », ni rappel de taille, de GPS ou de lien).
+//    Ne restent que les messages conditionnels : refus, alerte HEVC, arrêt automatique, progression, erreurs.
+//  - liste vide : le formulaire est là tout de suite (sans « + Ajouter » ni « Annuler » : on ferme avec la croix) ;
+//    liste non vide : « + Ajouter » en haut à droite, puis la liste.
+//  - UNE rangée de gros boutons de choix sous le titre : « Filmer » · « Fichier » · « Lien » · « Document » (un appui = l'action).
+//    « Filmer » = l'enregistreur intégré (lot 14) ; s'il est indisponible, la caméra native sur un écran tactile, rien sur un ordinateur
+//    (jamais un « Filmer » qui ouvre l'explorateur de fichiers). « Document » n'existe que s'il y a un document à proposer.
+//  - la jauge de place n'apparaît qu'à partir de 80 % ; « Retirer » demande seulement « Retirer cette formation ? ».
+//  - « Ajouter » : un titre, puis une vidéo (filmée ou fichier), un lien YouTube / Vimeo / Google Drive OU un document déjà
+//    téléversé dans « Documents » d'un chantier ; pour toute l'équipe ou certains salariés. Notification aux destinataires
+//    (jamais d'e-mail). Pas de modification en V1 : on retire, on remet.
+//  - la liste : « x/y vues » ; un clic montre qui l'a vue (✓ date) et qui pas encore ; « Ouvrir ↗ » (nouvel onglet) ; « Retirer ».
 // Les écritures sont dans lib/trainings.ts. Jamais d'iframe.
-//  - Lot 13 (lib/training-videos.ts) : « Vidéo (téléphone ou fichier) » —
-//    « Filmer » ou « Choisir un fichier », aperçu, durée, taille, refus clair
-//    au-delà de 50 Mo ou du quota (« 23 Mo utilisés sur 100 Mo »), barre de
-//    progression réelle avec « Annuler ». Hébergée dans le bucket privé
-//    « formations » (forfait gratuit) ; lue dans l'appli (« Regarder »).
-//    Tant que la migration du lot 13 manque, l'option n'existe pas.
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+//  - Lot 13 (lib/training-videos.ts) : vidéo filmée ou fichier, aperçu, durée, taille, refus clair au-delà de 50 Mo ou du quota,
+//    barre de progression réelle avec « Annuler l'envoi ». Hébergée dans le bucket privé « formations » (forfait gratuit) ;
+//    lue dans l'appli (« Regarder »). Tant que la migration du lot 13 manque, « Filmer » et « Fichier » n'existent pas.
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { format, parseISO } from 'date-fns';
 import dynamic from 'next/dynamic';
-import { CirclePlay, FileText, Loader2 } from 'lucide-react';
+import { CirclePlay, FileText, FolderOpen, Link2, Loader2, Video, type LucideIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import type { User } from '@/lib/types';
@@ -34,18 +38,23 @@ import {
 } from '@/lib/training-videos';
 import type { PickedVideo } from '@/components/training-video-upload';
 import {
-  checkVideoFile, formatMo, leftoverNote, leftoverSummary, VIDEO_MAX_BYTES, VIDEO_QUOTA_BYTES, videoSummary, type FileAudit, type Limits,
+  checkVideoFile, leftoverNote, leftoverSummary, quotaFull, quotaNear, VIDEO_MAX_BYTES, VIDEO_QUOTA_BYTES, videoSummary, type FileAudit, type Limits,
 } from '@/supabase/functions/_shared/training-videos';
+import { pickRecorderMime, REC_AUTO_TEXT, recorderAvailable, type RecAuto } from '@/supabase/functions/_shared/video-recorder';
 
 // Lot 13 : le panneau d'envoi et le lecteur ne se chargent qu'à l'ouverture.
 const Waiting = () => <p className="bt-fo-muted"><Loader2 className="inline h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> Chargement…</p>;
-const UploadPanel = dynamic(() => import('@/components/training-video-upload'), { ssr: false, loading: Waiting });
+const loadUploadPanel = () => import('@/components/training-video-upload');
+const UploadPanel = dynamic(loadUploadPanel, { ssr: false, loading: Waiting });
 const TrainingVideoPlayer = dynamic(() => import('@/components/training-video-player'), { ssr: false, loading: Waiting });
 const VideoOrphans = dynamic(() => import('@/components/training-video-orphans'), { ssr: false, loading: Waiting });
 
+// useLayoutEffect côté navigateur seulement : ce que l'appareil sait faire est connu avant le premier affichage des boutons (pas de clignotement).
+const useBrowserLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
+
 const CSS = `
 .bt-fo{display:flex;flex-direction:column;gap:12px;font-size:13px;color:#15120F;min-width:0}
-.bt-fo-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.bt-fo-top{display:flex;align-items:center;justify-content:flex-end;gap:10px}
 .bt-fo-muted{font-size:12px;color:#6E6A63;font-weight:600;line-height:1.35}
 .bt-fo-err{font-size:12.5px;font-weight:700;color:#C0461F}
 .bt-fo-ok{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:999px;background:#E3F5EA;color:#15120F;font-size:11.5px;font-weight:800}
@@ -54,11 +63,18 @@ const CSS = `
 .bt-fo-btn.ghost{background:#fff;color:#15120F;border:1.5px solid rgba(21,18,15,.2)}
 .bt-fo-btn.danger{background:#fff;color:#C0461F;border:1.5px solid rgba(192,70,31,.45)}
 .bt-fo-btn.sm{height:28px;padding:0 10px;font-size:12px}
-.bt-fo-btn:focus-visible,.bt-fo-pill:focus-visible,.bt-fo-head:focus-visible,.bt-fo-link:focus-visible,.bt-fo-open:focus-visible{outline:2px solid #FFC21A;outline-offset:1px}
+.bt-fo-btn.lg{height:44px;padding:0 16px;font-size:13.5px}
+.bt-fo-btn:focus-visible,.bt-fo-chip:focus-visible,.bt-fo-pill:focus-visible,.bt-fo-head:focus-visible,.bt-fo-link:focus-visible,.bt-fo-open:focus-visible{outline:2px solid #FFC21A;outline-offset:1px}
 .bt-fo-form{display:flex;flex-direction:column;gap:10px;border:1px solid rgba(21,18,15,.14);border-radius:12px;padding:12px;background:#FBF8F2}
 .bt-fo-lbl{display:block;font-size:12px;font-weight:800;color:#15120F;margin-bottom:4px}
-.bt-fo-input,.bt-fo-select{width:100%;height:34px;border-radius:9px;border:1.5px solid rgba(21,18,15,.18);background:#fff;font:inherit;font-size:13px;font-weight:600;color:#15120F;padding:0 10px;outline:none;min-width:0}
+.bt-fo-input,.bt-fo-select{width:100%;height:40px;border-radius:9px;border:1.5px solid rgba(21,18,15,.18);background:#fff;font:inherit;font-size:13px;font-weight:600;color:#15120F;padding:0 10px;outline:none;min-width:0}
 .bt-fo-input:focus,.bt-fo-select:focus{border-color:#15120F}
+.bt-fo-chips{display:flex;gap:6px}
+.bt-fo-chip{flex:1 1 0;min-width:0;min-height:56px;padding:6px 2px;border-radius:12px;border:1.5px solid rgba(21,18,15,.2);background:#fff;font:inherit;font-size:12px;font-weight:800;color:#15120F;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;white-space:nowrap}
+.bt-fo-chip[aria-checked="true"]{background:#15120F;border-color:#15120F;color:#FFC21A}
+.bt-fo-chip:disabled{opacity:.5;cursor:default}
+@media (max-width:360px){.bt-fo-form{padding:8px}.bt-fo-chips{gap:3px}.bt-fo-chip{font-size:11px;padding:6px 0;letter-spacing:-.01em}}
+.bt-fo-hidden{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);opacity:0;pointer-events:none}
 .bt-fo-pills{display:flex;flex-wrap:wrap;gap:5px}
 .bt-fo-pill{height:26px;padding:0 10px;border-radius:999px;border:1.5px solid rgba(21,18,15,.16);background:#fff;font:inherit;font-size:12px;font-weight:700;color:#15120F;cursor:pointer;white-space:nowrap}
 .bt-fo-pill[aria-pressed="true"]{border-color:#15120F;box-shadow:inset 0 0 0 1px #15120F;background:#FFF6D9}
@@ -95,7 +111,16 @@ const CSS = `
 `;
 const CSS_HTML = { __html: CSS };
 
-type Kind = 'video' | 'document' | 'upload';
+/** Les choix de contenu. `record` = « Filmer » (enregistreur intégré, ou caméra native), `file` = « Fichier ». */
+type Kind = 'record' | 'file' | 'link' | 'document';
+const isVideoKind = (k: Kind | null) => k === 'record' || k === 'file';
+// Texte visible court, libellé accessible complet (il contient toujours le mot visible).
+const CHOICES: { kind: Kind; label: string; aria: string; Icon: LucideIcon }[] = [
+  { kind: 'record', label: 'Filmer', aria: 'Filmer une vidéo', Icon: Video },
+  { kind: 'file', label: 'Fichier', aria: 'Choisir un fichier vidéo', Icon: FolderOpen },
+  { kind: 'link', label: 'Lien', aria: 'Coller un lien', Icon: Link2 },
+  { kind: 'document', label: 'Document', aria: 'Choisir un document', Icon: FileText },
+];
 /** Une ligne de la liste : formation du lot 6, ou vidéo envoyée (lot 13). */
 type Item = { src: 'link'; t: OfficeTraining; at: string } | { src: 'upload'; v: OfficeVideo; at: string } | { src: 'left'; l: OfficeLeftover; at: string };
 const NO_LIMITS: Limits = { maxBytes: VIDEO_MAX_BYTES, quotaBytes: VIDEO_QUOTA_BYTES, usedBytes: 0 };
@@ -120,10 +145,10 @@ export default function TrainingsAdmin({ open, onOpenChange, companyId, companyN
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
-  // Le formulaire.
+  // Le formulaire. `adding` = ouvert par « + Ajouter » ; il est aussi affiché d'office quand la liste (lue) est vide.
   const [adding, setAdding] = useState(false);
   const [title, setTitle] = useState('');
-  const [kind, setKind] = useState<Kind>('video');
+  const [kind, setKind] = useState<Kind | null>(null); // null = rien choisi encore (vidéos activées)
   const [link, setLink] = useState('');
   const [docs, setDocs] = useState<PickableDoc[] | null>(null);
   const [docsLoading, setDocsLoading] = useState(false);
@@ -133,7 +158,7 @@ export default function TrainingsAdmin({ open, onOpenChange, companyId, companyN
   const [query, setQuery] = useState('');
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  // Lot 13 : vidéos envoyées. `vids` null = migration absente (ou pas encore lue) : option cachée.
+  // Lot 13 : vidéos envoyées. `vids` null = migration absente (ou pas encore lue) : « Filmer » et « Fichier » cachés.
   const [vids, setVids] = useState<{ videos: OfficeVideo[]; views: ViewRow[]; leftovers: OfficeLeftover[] } | null>(null);
   const [limits, setLimits] = useState<Limits | null>(null);
   const [file, setFile] = useState<PickedVideo | null>(null);
@@ -143,9 +168,17 @@ export default function TrainingsAdmin({ open, onOpenChange, companyId, companyN
   const [playing, setPlaying] = useState<string | null>(null);
   const [audit, setAudit] = useState<FileAudit | null>(null); // lot 14 : fichiers à vérifier (lecture seule)
   const auditSeq = useRef(0);
-  const [recording, setRecording] = useState(false); // lot 14 : prise en cours dans « Filmer dans BEMEXO » (ce qui la jetterait est verrouillé)
+  const [recording, setRecording] = useState(false); // lot 14 : prise en cours dans « Filmer » (ce qui la jetterait est verrouillé)
+  const [recOpen, setRecOpen] = useState(false); // l'enregistreur est ouvert
+  const [recAuto, setRecAuto] = useState<string | null>(null); // message d'arrêt automatique de la dernière prise
+  const [recError, setRecError] = useState<string | null>(null); // refus de la caméra
+  const [canRec, setCanRec] = useState(false); // l'appareil sait enregistrer (MediaRecorder, contexte sécurisé, type de fichier compris)
+  const [coarse, setCoarse] = useState(false); // écran tactile
   const uploadRef = useRef<UploadRun | null>(null);
   const fileUrlRef = useRef<string | null>(null);
+  const chipRefs = useRef<Partial<Record<Kind, HTMLButtonElement | null>>>({});
+  const filmInput = useRef<HTMLInputElement | null>(null);
+  const fileInput = useRef<HTMLInputElement | null>(null);
 
   const load = useCallback(async () => {
     const [r, v] = await Promise.all([fetchOfficeTrainings(companyId), fetchOfficeVideos(companyId)]);
@@ -172,23 +205,50 @@ export default function TrainingsAdmin({ open, onOpenChange, companyId, companyN
     load();
   }, [open, load]);
 
+  // Formations du lot 6 et vidéos envoyées, une seule liste, plus récentes d'abord.
+  const items: Item[] = useMemo(() => [
+    ...(list?.trainings || []).map((t): Item => ({ src: 'link', t, at: t.created_at })),
+    ...(vids?.videos || []).map((v): Item => ({ src: 'upload', v, at: v.published_at || v.created_at })),
+    // Fichiers arrivés mais jamais publiés : gardés, comptés dans la place, donc montrés (avec les formations retirées).
+    ...(vids?.leftovers || []).map((l): Item => ({ src: 'left', l, at: l.reserved_at })),
+  ].sort((a, z) => z.at.localeCompare(a.at)), [list, vids]);
+  const isArchived = (i: Item) => i.src === 'left' || !!(i.src === 'link' ? i.t.archived_at : i.v.archived_at);
+  const active = items.filter((i) => !isArchived(i));
+  const archived = items.filter(isArchived);
+  // Le formulaire : ouvert par « + Ajouter », ou d'office quand la liste est lue, sans erreur, et vide. Jamais pendant le chargement.
+  const formOpen = adding || (list !== null && !loadError && active.length === 0);
+
   const clearFile = useCallback(() => {
     if (fileUrlRef.current) { URL.revokeObjectURL(fileUrlRef.current); fileUrlRef.current = null; }
-    setFile(null); setFileError(null);
+    // Un autre fichier ne reprend pas les messages de la prise précédente (arrêt automatique, refus de la caméra).
+    setFile(null); setFileError(null); setRecAuto(null); setRecError(null);
   }, []);
   const resetForm = useCallback(() => {
     // Un envoi en cours est coupé (rien n'est publié ; la place sera reprise au prochain envoi).
     uploadRef.current?.cancel(); uploadRef.current = null;
-    setAdding(false); setTitle(''); setKind('video'); setLink(''); setDocId(''); setAllTeam(true); setPicked([]); setQuery(''); setFormError(null);
+    setAdding(false); setTitle(''); setKind(null); setLink(''); setDocId(''); setAllTeam(true); setPicked([]); setQuery(''); setFormError(null); setRecOpen(false);
     // La jauge est relue à chaque nouveau formulaire (un autre compte du bureau a pu envoyer entre-temps).
     clearFile(); setProgress(null); setUploadNote(null); setLimits(null);
   }, [clearFile]);
   useEffect(() => { if (!open) { resetForm(); setDocs(null); setExpanded(null); setConfirmId(null); setShowArchived(false); setDocUrls({}); setPlaying(null); } }, [open, resetForm]); // liens signés 1 h : resignés à la réouverture
   useEffect(() => () => { uploadRef.current?.cancel(); if (fileUrlRef.current) URL.revokeObjectURL(fileUrlRef.current); }, []);
 
-  // La jauge n'est lue qu'au choix de « Vidéo (téléphone ou fichier) ».
-  useEffect(() => { if (open && adding && kind === 'upload' && videosOn && !limits) refreshLimits(); }, [open, adding, kind, videosOn, limits, refreshLimits]);
+  // Ce que l'appareil sait faire pour « Filmer », relevé à chaque ouverture du formulaire.
+  useBrowserLayoutEffect(() => {
+    if (!open || !formOpen) return;
+    setCanRec(typeof MediaRecorder !== 'undefined' && !!navigator.mediaDevices?.getUserMedia && window.isSecureContext
+      && pickRecorderMime((t) => MediaRecorder.isTypeSupported(t)) !== null);
+    setCoarse(typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches);
+  }, [open, formOpen]);
+
+  // La jauge est lue dès que le formulaire est là (elle décide aussi si l'enregistreur a assez de place) ; le panneau d'envoi est préchargé.
+  useEffect(() => {
+    if (!(open && formOpen && videosOn)) return;
+    if (!limits) refreshLimits();
+    void loadUploadPanel();
+  }, [open, formOpen, videosOn, limits, refreshLimits]);
   const lim = limits || NO_LIMITS;
+  const full = !!limits && quotaFull(limits);
   // Fichier choisi avant l'arrivée de la jauge : revérifié avec la vraie place restante.
   useEffect(() => {
     if (!limits || !file || progress) return;
@@ -204,7 +264,7 @@ export default function TrainingsAdmin({ open, onOpenChange, companyId, companyN
     if (!c.ok) { setFileError(c.error); return; }
     const url = URL.createObjectURL(f);
     fileUrlRef.current = url;
-    // Lot 14 : une prise de « Filmer dans BEMEXO » arrive avec sa durée (le minuteur ; un WebM de navigateur n'en porte pas).
+    // Lot 14 : une prise de « Filmer » arrive avec sa durée (le minuteur ; un WebM de navigateur n'en porte pas).
     setFile({ file: f, mime: c.mime, url, duration: durationS ?? null, source: durationS != null ? 'recorder' : undefined });
   };
   // Durée lue par le panneau (aperçu) : gardée si c'est toujours le même fichier.
@@ -212,17 +272,74 @@ export default function TrainingsAdmin({ open, onOpenChange, companyId, companyN
     setFile((prev) => (prev && prev.url === url ? { ...prev, duration: d } : prev));
   }, []);
 
-  // Les documents ne sont lus qu'au premier choix de « Document ».
+  // Les documents sont lus à l'ouverture du formulaire : « Document » n'existe que s'il y en a au moins un.
   useEffect(() => {
-    if (!open || kind !== 'document' || docs !== null || docsLoading) return;
+    if (!open || !formOpen || docs !== null || docsLoading) return;
     setDocsLoading(true);
     fetchPickableDocuments(companyId).then((d) => { setDocs(d || []); setDocsLoading(false); });
-  }, [open, kind, docs, docsLoading, companyId]);
+  }, [open, formOpen, docs, docsLoading, companyId]);
+  const docsOn = !!docs && docs.length > 0;
+
+  // Les choix proposés, dans l'ordre : Filmer · Fichier · Lien · Document.
+  // « Filmer » : l'enregistreur intégré (place d'au moins 2 Mo comprise) ; à défaut la caméra native sur un écran tactile ; sinon rien
+  // (jamais un « Filmer » qui ouvrirait l'explorateur de fichiers d'un ordinateur).
+  const cam: 'rec' | 'native' | 'none' = canRec && (!limits || recorderAvailable(limits)) ? 'rec' : coarse ? 'native' : 'none';
+  const allowed: Kind[] = [...(videosOn && cam !== 'none' ? ['record' as const] : []), ...(videosOn ? ['file' as const] : []), 'link', ...(docsOn ? ['document' as const] : [])];
+  // Rien de choisi : « Lien » sans les vidéos, aucun contenu sinon. Un choix devenu impossible (« Document » sans document…) retombe sur « Lien ».
+  const eff: Kind | null = kind === null ? (videosOn ? null : 'link') : allowed.includes(kind) ? kind : 'link';
+  const effRef = useRef(eff);
+  effRef.current = eff;
+  const isVideo = isVideoKind(eff);
+  // Passer d'un choix à un autre nettoie l'état du précédent (fichier + URL objet, prise, lien, document) : rien ne fuit.
+  const prevEff = useRef<Kind | null>(eff);
+  useEffect(() => {
+    const p = prevEff.current;
+    prevEff.current = eff;
+    if (p === eff) return;
+    if (isVideoKind(p) && !isVideoKind(eff)) { clearFile(); setRecOpen(false); setUploadNote(null); }
+    if (p === 'link') setLink('');
+    if (p === 'document') setDocId('');
+  }, [eff, clearFile]);
+
+  const focusChip = useCallback(() => { const k = effRef.current; if (k) chipRefs.current[k]?.focus(); }, []);
+  // L'enregistreur se ferme sans rendre de fichier (« Fermer la caméra », refus) : le focus revient sur « Filmer ».
+  const wasRec = useRef(false);
+  useEffect(() => {
+    if (wasRec.current && !recOpen && !file) focusChip();
+    wasRec.current = recOpen;
+  }, [recOpen, file, focusChip]);
+
+  // Un appui sur un choix = l'action : « Filmer » ouvre l'enregistreur (ou la caméra native), « Fichier » le sélecteur de fichiers.
+  // Les sélecteurs sont dans le formulaire (pas dans le panneau chargé à la demande) : ils doivent s'ouvrir dans le même geste.
+  const choose = (k: Kind) => {
+    if (progress || recording) return;
+    setKind(k);
+    if (k === 'record') {
+      if (full) return; // plus de place : le panneau le dit, rien à ouvrir
+      if (cam === 'rec') { clearFile(); setRecOpen(true); } else filmInput.current?.click();
+    } else {
+      setRecOpen(false);
+      if (k === 'file' && !full) fileInput.current?.click();
+    }
+  };
+  // Flèches : le focus passe d'un choix à l'autre (sans rien ouvrir) ; Espace ou Entrée choisit.
+  const onChoiceKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (!['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp', 'Home', 'End'].includes(e.key)) return;
+    const btns = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'));
+    if (!btns.length) return;
+    const i = btns.indexOf(document.activeElement as HTMLButtonElement);
+    const n = e.key === 'Home' ? 0 : e.key === 'End' ? btns.length - 1 : (i + (e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : -1) + btns.length) % btns.length;
+    e.preventDefault();
+    btns[n].focus();
+  };
+  const changeVideo = () => { clearFile(); focusChip(); };
 
   const linkCheck = useMemo(() => (link.trim() ? parseTrainingLink(link) : null), [link]);
   const titleCheck = checkTrainingTitle(title);
-  const sourceOk = kind === 'video' ? !!linkCheck?.ok : kind === 'document' ? !!docId : !!file && !fileError;
+  const sourceOk = eff === 'link' ? !!linkCheck?.ok : eff === 'document' ? !!docId : isVideo ? !!file && !fileError : false;
   const valid = titleCheck.ok && sourceOk && (allTeam || picked.length > 0) && !progress;
+  // Le panneau d'envoi ne se montre que s'il a quelque chose à dire (enregistreur, fichier prêt, refus, progression, jauge à 80 % ou plus).
+  const showPanel = isVideo && (!!file || recOpen || !!fileError || !!progress || !!uploadNote || !!recError || (!!limits && (full || quotaNear(limits))));
 
   const docGroups = useMemo(() => {
     const groups = new Map<string, { name: string; docs: PickableDoc[] }>();
@@ -261,27 +378,27 @@ export default function TrainingsAdmin({ open, onOpenChange, companyId, companyN
     if (!p.ok) { setFormError(p.message || 'La vidéo n’est pas publiée.'); return; }
     const push = await notifyTraining({ userIds: allTeam ? team.map((w) => w.id) : ids, companyName, title: titleText, trainingId: s.id });
     toast.success(`Vidéo ajoutée${push.sent > 0 ? ` · ${push.sent} appareil${push.sent > 1 ? 's' : ''} prévenu${push.sent > 1 ? 's' : ''}` : ''}`);
+    await load(); // la liste est relue AVANT de refermer : un formulaire d'office (liste vide) ne réapparaît pas une seconde
     resetForm();
-    await load();
   };
 
   const save = async () => {
     if (!valid || saving || !titleCheck.ok) return;
     setSaving(true); setFormError(null);
-    if (kind === 'upload') {
+    if (isVideo) {
       try { await saveUpload(titleCheck.title, allTeam ? [] : picked.filter((id) => team.some((w) => w.id === id))); } finally { setSaving(false); }
       return;
     }
     try {
-      const videoUrl = kind === 'video' && linkCheck?.ok ? linkCheck.url : null;
+      const videoUrl = eff === 'link' && linkCheck?.ok ? linkCheck.url : null;
       const ids = allTeam ? [] : picked.filter((id) => team.some((w) => w.id === id));
-      const r = await createTraining({ companyId, title: titleCheck.title, kind, videoUrl, documentId: kind === 'document' ? docId : null, allTeam, assigneeIds: ids });
+      const r = await createTraining({ companyId, title: titleCheck.title, kind: eff === 'document' ? 'document' : 'video', videoUrl, documentId: eff === 'document' ? docId : null, allTeam, assigneeIds: ids });
       if (!r.ok || !r.id) { setFormError(r.message || 'Impossible d’ajouter la formation.'); return; }
       // Notification aux destinataires (bonus, jamais bloquant, jamais d'e-mail).
       const push = await notifyTraining({ userIds: allTeam ? team.map((w) => w.id) : ids, companyName, title: titleCheck.title, trainingId: r.id });
       toast.success(`Formation ajoutée${push.sent > 0 ? ` · ${push.sent} appareil${push.sent > 1 ? 's' : ''} prévenu${push.sent > 1 ? 's' : ''}` : ''}`);
-      resetForm();
       await load();
+      resetForm();
     } finally {
       setSaving(false);
     }
@@ -330,17 +447,6 @@ export default function TrainingsAdmin({ open, onOpenChange, companyId, companyN
     }
   };
 
-  // Formations du lot 6 et vidéos envoyées, une seule liste, plus récentes d'abord.
-  const items: Item[] = useMemo(() => [
-    ...(list?.trainings || []).map((t): Item => ({ src: 'link', t, at: t.created_at })),
-    ...(vids?.videos || []).map((v): Item => ({ src: 'upload', v, at: v.published_at || v.created_at })),
-    // Fichiers arrivés mais jamais publiés : gardés, comptés dans la place, donc montrés (avec les formations retirées).
-    ...(vids?.leftovers || []).map((l): Item => ({ src: 'left', l, at: l.reserved_at })),
-  ].sort((a, z) => z.at.localeCompare(a.at)), [list, vids]);
-  const isArchived = (i: Item) => i.src === 'left' || !!(i.src === 'link' ? i.t.archived_at : i.v.archived_at);
-  const active = items.filter((i) => !isArchived(i));
-  const archived = items.filter(isArchived);
-
   const row = (t: OfficeTraining) => {
     const sum = seenSummary(t, team, list?.views || []);
     const isDoc = t.kind === 'document';
@@ -387,7 +493,7 @@ export default function TrainingsAdmin({ open, onOpenChange, companyId, companyN
                 <button type="button" className="bt-fo-btn ghost sm" disabled={busyId === t.id} onClick={() => archive(t, false)} data-testid="tr-restore">Remettre</button>
               ) : confirmId === t.id ? (
                 <span className="bt-fo-confirm">
-                  <span>Les salariés ne la verront plus ; les « Vue » restent.</span>
+                  <span>Retirer cette formation ?</span>
                   <button type="button" className="bt-fo-btn danger sm" disabled={busyId === t.id} onClick={() => archive(t, true)} data-testid="tr-archive-yes">Retirer</button>
                   <button type="button" className="bt-fo-btn ghost sm" onClick={() => setConfirmId(null)}>Annuler</button>
                 </span>
@@ -442,7 +548,7 @@ export default function TrainingsAdmin({ open, onOpenChange, companyId, companyN
                 <button type="button" className="bt-fo-btn ghost sm" disabled={busyId === v.id} onClick={() => archiveVideo(v, false)} data-testid="tr-restore">Remettre</button>
               ) : confirmId === v.id ? (
                 <span className="bt-fo-confirm">
-                  <span>Les salariés ne la verront plus ; les « Vue » restent. Le fichier est gardé : il compte toujours dans les {formatMo(lim.quotaBytes)}.</span>
+                  <span>Retirer cette formation ?</span>
                   <button type="button" className="bt-fo-btn danger sm" disabled={busyId === v.id} onClick={() => archiveVideo(v, true)} data-testid="tr-archive-yes">Retirer</button>
                   <button type="button" className="bt-fo-btn ghost sm" onClick={() => setConfirmId(null)}>Annuler</button>
                 </span>
@@ -483,20 +589,21 @@ export default function TrainingsAdmin({ open, onOpenChange, companyId, companyN
   };
   const renderItem = (i: Item) => (i.src === 'link' ? row(i.t) : i.src === 'upload' ? videoRow(i.v) : leftoverRow(i.l));
 
+  const locked = !!progress || recording; // envoi ou prise en cours : les choix et « Annuler » ne bougent plus
+  const firstChoice = allowed[0];
+
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o && recording) return; onOpenChange(o); }}>
-      <DialogContent className="bt-skin max-w-lg max-h-[85vh] overflow-y-auto" data-testid="trainings-dialog">
+      <DialogContent className="bt-skin max-w-lg max-h-[85vh] overflow-y-auto max-sm:p-4" data-testid="trainings-dialog">
         <style dangerouslySetInnerHTML={CSS_HTML} />
         <DialogHeader><DialogTitle>Formations</DialogTitle></DialogHeader>
         <div className="bt-fo">
-          {!adding ? (
+          {!formOpen && !loadError && active.length > 0 && (
             <div className="bt-fo-top">
-              <span className="bt-fo-muted">{videosOn
-                ? 'Une vidéo filmée au téléphone, un lien YouTube, Vimeo ou Google Drive, ou un document déjà téléversé. Le salarié l’ouvre et coche « Vue ».'
-                : 'Une vidéo YouTube, Vimeo ou Google Drive, ou un document déjà téléversé. Le salarié l’ouvre et coche « Vue ».'}</span>
-              <button type="button" className="bt-fo-btn ghost sm" onClick={() => setAdding(true)} data-testid="tr-add-open">+ Ajouter</button>
+              <button type="button" className="bt-fo-btn ghost lg" onClick={() => setAdding(true)} data-testid="tr-add-open">+ Ajouter</button>
             </div>
-          ) : (
+          )}
+          {formOpen && (
             <form className="bt-fo-form" data-testid="tr-form" onSubmit={(e) => { e.preventDefault(); save(); }}>
               <div>
                 <label className="bt-fo-lbl" htmlFor="tr-title">Titre</label>
@@ -504,52 +611,62 @@ export default function TrainingsAdmin({ open, onOpenChange, companyId, companyN
                   onChange={(e) => setTitle(e.target.value)} data-testid="tr-title" autoComplete="off" />
                 {title.trim() !== '' && !titleCheck.ok && <div className="bt-fo-err" style={{ marginTop: 4 }}>{titleCheck.error}</div>}
               </div>
-              <div className="bt-fo-pills" role="radiogroup" aria-label="Contenu">
-                <button type="button" role="radio" className="bt-fo-pill" aria-checked={kind === 'video'} aria-pressed={kind === 'video'} disabled={!!progress || recording} onClick={() => setKind('video')} data-testid="tr-kind-video">Lien vidéo</button>
-                <button type="button" role="radio" className="bt-fo-pill" aria-checked={kind === 'document'} aria-pressed={kind === 'document'} disabled={!!progress || recording} onClick={() => setKind('document')} data-testid="tr-kind-document">Document</button>
-                {videosOn && (
-                  <button type="button" role="radio" className="bt-fo-pill" aria-checked={kind === 'upload'} aria-pressed={kind === 'upload'} disabled={!!progress}
-                    onClick={() => setKind('upload')} data-testid="tr-kind-upload">Vidéo (téléphone ou fichier)</button>
-                )}
-              </div>
-              {kind === 'upload' ? (
-                <UploadPanel limits={limits} file={file} fileError={fileError} progress={progress} note={uploadNote}
-                  onPick={pickFile} onClear={clearFile} onCancel={() => uploadRef.current?.cancel()} onDuration={onDuration} onRecording={setRecording} />
-              ) : kind === 'video' ? (
+              {allowed.length > 1 && (
+                <div className="bt-fo-chips" role="radiogroup" aria-label="Contenu" onKeyDown={onChoiceKey}>
+                  {CHOICES.filter((c) => allowed.includes(c.kind)).map(({ kind: k, label, aria, Icon }) => (
+                    <button key={k} ref={(el) => { chipRefs.current[k] = el; }} type="button" role="radio" className="bt-fo-chip" aria-checked={eff === k} aria-label={aria}
+                      tabIndex={eff === k || (eff === null && k === firstChoice) ? 0 : -1} disabled={locked} onClick={() => choose(k)} data-testid={`tr-kind-${k}`}>
+                      <Icon className="h-5 w-5" aria-hidden="true" />
+                      <span>{label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {videosOn && (
+                <>
+                  {cam === 'native' && (
+                    <input ref={filmInput} type="file" accept="video/*" capture="environment" className="bt-fo-hidden" tabIndex={-1} aria-hidden="true" disabled={!!progress}
+                      onChange={(e) => { pickFile(e.target.files?.[0]); e.target.value = ''; }} data-testid="tr-film" />
+                  )}
+                  <input ref={fileInput} type="file" accept="video/mp4,video/quicktime,video/webm,.mp4,.m4v,.mov,.webm" className="bt-fo-hidden" tabIndex={-1} aria-hidden="true" disabled={!!progress}
+                    onChange={(e) => { pickFile(e.target.files?.[0]); e.target.value = ''; }} data-testid="tr-file" />
+                </>
+              )}
+              {isVideo ? (
+                showPanel && (
+                  <UploadPanel limits={limits} file={file} fileError={fileError} progress={progress} note={uploadNote} recOpen={recOpen} recAuto={recAuto} recError={recError} recAvailable={cam === 'rec'}
+                    onClear={changeVideo} onCancel={() => uploadRef.current?.cancel()} onDuration={onDuration} onRecording={setRecording}
+                    onRecDone={(f, d, a: RecAuto | null) => { setRecOpen(false); pickFile(f, d); setRecAuto(a ? REC_AUTO_TEXT[a] : null); }}
+                    onRecError={(m) => { setRecOpen(false); setRecError(m); }} onRecClose={() => setRecOpen(false)} />
+                )
+              ) : eff === 'link' ? (
                 <div>
                   <input className="bt-fo-input" value={link} maxLength={TRAINING_URL_MAX + 50} inputMode="url" autoComplete="off" aria-label="Lien de la vidéo"
                     placeholder="https://youtu.be/… · vimeo.com/… · drive.google.com/…" onChange={(e) => setLink(e.target.value)} data-testid="tr-link" />
-                  <div className="bt-fo-line">
-                    {linkCheck?.ok ? (
-                      <span className="bt-fo-ok" data-testid="tr-link-ok">{PROVIDER_LABEL[linkCheck.provider]} ✓</span>
-                    ) : linkCheck ? (
-                      <span className="bt-fo-err" data-testid="tr-link-error">{linkCheck.error}</span>
-                    ) : (
-                      <span className="bt-fo-muted">YouTube, Vimeo ou Google Drive. La vidéo reste chez eux.</span>
-                    )}
-                    {linkCheck?.ok && linkCheck.provider === 'drive' && (
-                      <span className="bt-fo-muted" data-testid="tr-drive-hint">Partage du fichier : « Tous les utilisateurs disposant du lien ».</span>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <div>
-                  {docsLoading || docs === null ? (
-                    <span className="bt-fo-muted"><Loader2 className="inline h-3.5 w-3.5 animate-spin" /> Documents…</span>
-                  ) : docs.length === 0 ? (
-                    <p className="bt-fo-muted" data-testid="tr-doc-empty">Aucun document : ajoutez-le d’abord dans « Documents » d’un chantier.</p>
-                  ) : (
-                    <select className="bt-fo-select" value={docId} onChange={(e) => setDocId(e.target.value)} aria-label="Document" data-testid="tr-doc">
-                      <option value="">Choisir un document…</option>
-                      {docGroups.map(([wid, g]) => (
-                        <optgroup key={wid} label={g.name}>
-                          {g.docs.map((d) => <option key={d.id} value={d.id}>{docName(d)} · {ddmm(d.created_at)}</option>)}
-                        </optgroup>
-                      ))}
-                    </select>
+                  {linkCheck && (
+                    <div className="bt-fo-line">
+                      {linkCheck.ok ? (
+                        <span className="bt-fo-ok" data-testid="tr-link-ok">{PROVIDER_LABEL[linkCheck.provider]} ✓</span>
+                      ) : (
+                        <span className="bt-fo-err" data-testid="tr-link-error">{linkCheck.error}</span>
+                      )}
+                      {/* Seulement pour un lien Google Drive reconnu : c'est ce qui évite une formation que personne ne peut ouvrir. */}
+                      {linkCheck.ok && linkCheck.provider === 'drive' && (
+                        <span className="bt-fo-muted" data-testid="tr-drive-hint">Partage du fichier : « Tous les utilisateurs disposant du lien ».</span>
+                      )}
+                    </div>
                   )}
                 </div>
-              )}
+              ) : eff === 'document' ? (
+                <select className="bt-fo-select" value={docId} onChange={(e) => setDocId(e.target.value)} aria-label="Document" data-testid="tr-doc">
+                  <option value="">Choisir un document…</option>
+                  {docGroups.map(([wid, g]) => (
+                    <optgroup key={wid} label={g.name}>
+                      {g.docs.map((d) => <option key={d.id} value={d.id}>{docName(d)} · {ddmm(d.created_at)}</option>)}
+                    </optgroup>
+                  ))}
+                </select>
+              ) : null}
               <div>
                 <span className="bt-fo-lbl">Pour</span>
                 <div className="bt-fo-pills" role="radiogroup" aria-label="Pour">
@@ -579,9 +696,12 @@ export default function TrainingsAdmin({ open, onOpenChange, companyId, companyN
               </div>
               {formError && <p className="bt-fo-err" data-testid="tr-error">{formError}</p>}
               <div className="bt-fo-foot">
-                <button type="button" className="bt-fo-btn ghost sm" onClick={resetForm} disabled={!!progress || recording} data-testid="tr-cancel">Annuler</button>
-                <button type="submit" className="bt-fo-btn sm" disabled={!valid || saving} data-testid="tr-save">
-                  {saving && !progress && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Ajouter
+                {/* Liste vide : le formulaire est d'office là, on le ferme avec la croix de la fenêtre (pas d'« Annuler »). */}
+                {adding && (
+                  <button type="button" className="bt-fo-btn ghost lg" onClick={resetForm} disabled={locked} data-testid="tr-cancel">Annuler</button>
+                )}
+                <button type="submit" className="bt-fo-btn lg" disabled={!valid || saving} data-testid="tr-save">
+                  {saving && !progress && <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />} Ajouter
                 </button>
               </div>
             </form>
@@ -590,12 +710,10 @@ export default function TrainingsAdmin({ open, onOpenChange, companyId, companyN
           {loadError ? (
             <p className="bt-fo-err" data-testid="tr-load-error">{loadError}</p>
           ) : list === null ? (
-            <p className="bt-fo-muted"><Loader2 className="inline h-3.5 w-3.5 animate-spin" /> Chargement…</p>
-          ) : active.length === 0 ? (
-            <p className="bt-fo-muted" data-testid="tr-empty">Aucune formation. Ajoutez un lien YouTube, Vimeo ou Google Drive, ou un document déjà téléversé.</p>
-          ) : (
+            <p className="bt-fo-muted"><Loader2 className="inline h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> Chargement…</p>
+          ) : active.length > 0 ? (
             <div className="bt-fo-list" data-testid="tr-list">{active.map(renderItem)}</div>
-          )}
+          ) : null}
 
           {archived.length > 0 && (
             <>

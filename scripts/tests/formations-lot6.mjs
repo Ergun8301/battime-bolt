@@ -21,7 +21,8 @@
 //   O2 « Formations » (même hauteur que « Demandes de congé ») ; liste « x/y vues »
 //   O3 lien : javascript: refusé sur place ; youtu.be → « YouTube ✓ » ; « Certains
 //      salariés » ; POST (colonnes permises) ; send-push aux 2 seulement ; aucun e-mail
-//   O4 document : liste par chantier, sans photo ni facture ; « Toute l'équipe » ; vide
+//   O4 document : liste par chantier, sans photo ni facture ; « Toute l'équipe » ; bouton absent sans document
+//   O10 formations simplifiées : liste vide = formulaire d'office (ni « + Ajouter » ni « Annuler »), aucun texte d'aide, « Document » seulement avec un document
 //   O5 « qui l'a vue » : ✓ date / — pas encore ; « Ouvrir ↗ » (nouvel onglet, noopener)
 //   O6 « Retirer » (confirmation) → PATCH archived_at ; « retirées (1) » ; « Remettre »
 //   O7 téléphone : menu « Formations », fenêtre sans défilement horizontal (titres longs)
@@ -483,6 +484,7 @@ const WO = writes.length; // O8 : à partir d'ici, aucune écriture planning / h
 {
   await op.click('[data-testid=tr-add-open]');
   const save = op.locator('[data-testid=tr-save]');
+  check(await op.locator('[data-testid=tr-cancel]').count() === 1 && await op.locator('[data-testid=tr-link-ok], [data-testid=tr-link-error], [data-testid=tr-drive-hint]').count() === 0 && !/YouTube, Vimeo ou Google Drive\. La vidéo reste chez eux/.test(await txt(dlg())), 'liste non vide : « + Ajouter » ouvre le formulaire avec « Annuler » ; rien d’écrit sous le champ du lien');
   await op.fill('[data-testid=tr-title]', 'x');
   check(await save.isDisabled(), 'titre d’un caractère : « Ajouter » désactivé');
   await op.fill('[data-testid=tr-title]', '  Consignes   échafaudage ');
@@ -496,7 +498,7 @@ const WO = writes.length; // O8 : à partir d'ici, aucune écriture planning / h
   await op.fill('[data-testid=tr-link]', 'https://drive.google.com/file/d/ID/view');
   check(await op.locator('[data-testid=tr-drive-hint]').count() === 1, 'Google Drive : rappel « Tous les utilisateurs disposant du lien »');
   await op.fill('[data-testid=tr-link]', 'youtu.be/abc');
-  check((await txt(op.locator('[data-testid=tr-link-ok]'))) === 'YouTube ✓', 'youtu.be/abc → « YouTube ✓ »');
+  check((await txt(op.locator('[data-testid=tr-link-ok]'))) === 'YouTube ✓' && await op.locator('[data-testid=tr-drive-hint]').count() === 0, 'youtu.be/abc → « YouTube ✓ », sans indication de partage (réservée à Google Drive)');
   await op.click('[data-testid=tr-pick]');
   check(await save.isDisabled(), '« Certains salariés » sans personne : « Ajouter » désactivé');
   const people = await op.locator('[data-testid=tr-person]').evaluateAll((els) => els.map((e) => e.getAttribute('data-id')));
@@ -544,6 +546,7 @@ section('O4 · document déjà téléversé : par chantier, ni photo ni facture 
   check(await op.locator('[data-testid=tr-save]').isDisabled(), 'aucun document choisi : « Ajouter » désactivé');
   await op.selectOption('[data-testid=tr-doc]', 'd-plan');
   check(await op.locator('[data-testid=tr-all]').getAttribute('aria-pressed') === 'true', '« Toute l’équipe » par défaut');
+  check(await op.locator('[data-testid=tr-kind-document][aria-checked=true]').count() === 1, '« Document » est le choix en cours (bouton sélectionné)');
   await shot(dlg(), 'apres-bureau-ajout-document');
   const n = writes.length;
   await op.click('[data-testid=tr-save]'); await op.waitForTimeout(1300);
@@ -557,15 +560,50 @@ section('O4 · document déjà téléversé : par chantier, ni photo ni facture 
   D.documents = D.documents.filter((d) => ['d-photo', 'd-facture', 'd-devis', 'd-autre'].includes(d.id));
   for (const t of D.trainings) if (t.document_id && !D.documents.some((d) => d.id === t.document_id)) t.document_id = null;
   await openTrainings();
-  await op.click('[data-testid=tr-add-open]'); await op.click('[data-testid=tr-kind-document]');
-  await op.waitForSelector('[data-testid=tr-doc-empty]');
-  check((await txt(op.locator('[data-testid=tr-doc-empty]'))) === 'Aucun document : ajoutez-le d’abord dans « Documents » d’un chantier.', 'aucun document proposable : « ajoutez-le d’abord dans « Documents » d’un chantier »');
+  await op.click('[data-testid=tr-add-open]'); await op.waitForSelector('[data-testid=tr-form]'); await op.waitForTimeout(500);
+  check(await op.locator('[data-testid=tr-kind-document]').count() === 0 && !/Aucun document|ajoutez-le/.test(await txt(dlg())), 'aucun document proposable : pas de bouton « Document », aucune explication');
   const gone = op.locator('[data-testid=tr-item]', { hasText: 'Livret sécurité chantier' });
   check((await txt(gone.locator('[data-testid=tr-doc-gone]'))) === 'document retiré', 'document supprimé depuis : « document retiré » au bureau');
   await op.click('[data-testid=tr-cancel]');
   await closeDlg();
   D.documents = DOCS.map((x) => ({ ...x }));
   D.trainings.find((t) => t.id === 't-livret').document_id = 'd-livret';
+}
+
+// ═══ O10 · formations simplifiées ═════════════════════════════════════════════
+section('O10 · liste vide : le formulaire d’office, sans « + Ajouter » ni « Annuler » ni texte d’aide ; « Document » seulement avec un document');
+{
+  const saveTr = D.trainings; const saveDocs = D.documents;
+  D.trainings = []; // aucune formation : la fenêtre s'ouvre directement sur le formulaire
+  await openOffice(); await openTrainings();
+  await op.waitForSelector('[data-testid=tr-form]', { timeout: 5000 });
+  check(await op.locator('[data-testid=tr-form]').count() === 1 && await op.locator('[data-testid=tr-add-open]').count() === 0, 'liste vide : le formulaire est là sans clic, pas de « + Ajouter »');
+  check(await op.locator('[data-testid=tr-cancel]').count() === 0 && await op.locator('[data-testid=tr-save]').count() === 1, 'liste vide : pas d’« Annuler » (on ferme avec la croix)');
+  const t = await txt(dlg());
+  check(!/Aucune formation|Ajoutez un lien|Le salarié l’ouvre|Une vidéo YouTube|YouTube, Vimeo ou Google Drive\. La vidéo|Aucun document|ajoutez-le d’abord|reste chez eux/.test(t), `aucun texte d’aide ni d’état vide (« ${t.slice(0, 160)} »)`);
+  check(await op.locator('[data-testid=tr-list], [data-testid=tr-empty]').count() === 0, 'ni liste ni phrase d’état vide');
+  check(await op.locator('[data-testid=tr-link]').count() === 1 && await op.locator('[data-testid=tr-kind-document]').count() === 1, 'migration des vidéos absente : le champ du lien est là, « Document » est proposé car il y a des documents');
+  const chips = (await op.locator('.bt-fo-chip').allInnerTexts()).map((x) => x.trim());
+  check(chips.join('|') === 'Lien|Document', `une seule rangée de choix : ${chips.join(' · ')}`);
+  const hs = await op.locator('.bt-fo-chip').evaluateAll((els) => els.map((e) => e.getBoundingClientRect().height));
+  check(hs.every((h) => h >= 44), `boutons de choix d’au moins 44 px (${hs.map(Math.round).join(', ')})`);
+  await shot(dlg(), 'apres-bureau-liste-vide');
+  // Ajouter une formation depuis ce formulaire d'office : il se referme, la liste apparaît sans que le formulaire revienne.
+  await op.fill('[data-testid=tr-title]', 'Première consigne');
+  await op.fill('[data-testid=tr-link]', 'https://youtu.be/premiere');
+  await op.click('[data-testid=tr-save]');
+  await op.waitForSelector('[data-testid=tr-list]', { timeout: 5000 });
+  await op.waitForTimeout(500);
+  check(await op.locator('[data-testid=tr-form]').count() === 0 && await op.locator('[data-testid=tr-add-open]').count() === 1 && await op.locator('[data-testid=tr-item]').count() === 1, 'après l’ajout : formulaire refermé, la liste a 1 formation, « + Ajouter » apparaît');
+  await closeDlg();
+  // Sans aucun document : « Document » n'est pas proposé, et un seul choix possible = pas de rangée du tout.
+  D.trainings = []; D.documents = [];
+  await openTrainings();
+  await op.waitForSelector('[data-testid=tr-form]'); await op.waitForTimeout(500);
+  check(await op.locator('[data-testid=tr-kind-document]').count() === 0 && await op.locator('.bt-fo-chips').count() === 0 && await op.locator('[data-testid=tr-link]').count() === 1, 'sans document : pas de « Document », pas de rangée (un seul choix) : le champ du lien seulement');
+  await shot(dlg(), 'apres-bureau-liste-vide-sans-document');
+  await closeDlg();
+  D.trainings = saveTr; D.documents = saveDocs;
 }
 
 // ═══ O5 · qui l'a vue ═════════════════════════════════════════════════════════
@@ -596,7 +634,7 @@ section('O6 · « Retirer » (confirmation) puis « Remettre » ; rien ne s’ef
   const row = op.locator('[data-testid=tr-item]', { hasText: 'Habilitation nacelle' });
   await row.locator('[data-testid=tr-head]').click(); await op.waitForTimeout(300);
   await row.locator('[data-testid=tr-archive]').click();
-  check((await txt(row.locator('.bt-fo-confirm'))).startsWith('Les salariés ne la verront plus ; les « Vue » restent.'), 'confirmation : « Les salariés ne la verront plus ; les « Vue » restent. »');
+  check((await txt(row.locator('.bt-fo-confirm'))).startsWith('Retirer cette formation ?') && await row.locator('[data-testid=tr-archive-yes]').count() === 1, 'confirmation courte : « Retirer cette formation ? » avec « Retirer » / « Annuler »');
   const n = writes.length;
   await row.locator('[data-testid=tr-archive-yes]').click(); await op.waitForTimeout(1000);
   const patch = of(since(n), 'PATCH', 'trainings');

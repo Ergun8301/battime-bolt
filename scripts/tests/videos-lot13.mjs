@@ -26,13 +26,13 @@
 //
 //   V0 sans migration : pas d'option vidéo, textes identiques au build d'avant ; une seule lecture en échec
 //   V1 la liste mélange liens, documents et vidéos envoyées (« Vidéo · 2 min 10 · 38 Mo »)
-//   V2 « Vidéo (téléphone ou fichier) » : jauge « 38 Mo utilisés sur 100 Mo », « Filmer » (capture), « Choisir »
+//   V2 formulaire simplifié : rangée « Filmer · Fichier · Lien · Document » (≥ 44 px), aucun texte d'aide, jauge cachée sous 80 %, jamais de « Filmer » natif sur PC
 //   V3 refus clairs AVANT tout envoi : > 50 Mo, PDF ; aucune écriture
-//   V4 « Filmer » : aperçu, durée, taille ; réserver → URL signée → XHR → publier ; notification
+//   V4 fichier choisi : aperçu, durée, taille ; réserver → URL signée → XHR → publier ; notification
 //   V5 barre de progression réelle ; « Annuler l'envoi » ; la même place est reprise
 //   V6 réseau coupé : message clair, rien de publié ; « Ajouter » de nouveau : ça part
 //   V7 la base refuse le quota même si l'écran l'a laissé passer (garde serveur)
-//   V8 quota plein : plus de « Filmer » ni « Choisir », message ; le lien YouTube reste possible
+//   V8 quota plein : message « Plus assez de place », rien ne s'ouvre ; le lien YouTube reste possible
 //   V9 « Regarder » (bureau) ; « Retirer » (le fichier est gardé) ; « Remettre »
 //   W1 salarié : la vidéo dans la liste ; rien n'est signé avant « Regarder »
 //   W2 « Regarder » : lecteur intégré <video controls preload="metadata">, lien signé à l'ouverture
@@ -41,7 +41,7 @@
 //   R  animations réduites : aucune transition sur les barres
 //   X1 un envoi arrivé mais jamais publié : montré au bureau (« Envoi non terminé »), gardé, compté
 //   X2 au plus 3 nouvelles places par tranche de 3 h : message clair, rien n'est envoyé
-//   T  téléphone de 360 px : bureau (envoi non terminé, aperçu, avertissement GPS) et salarié, sans défilement horizontal
+//   T  téléphone de 360 px : bureau (envoi non terminé, aperçu) et salarié, sans défilement horizontal
 import http from 'node:http'; import https from 'node:https'; import fs from 'node:fs'; import path from 'node:path'; import os from 'node:os';
 import { execFileSync } from 'node:child_process'; import crypto from 'node:crypto';
 let chromium;
@@ -103,6 +103,7 @@ let holdRelease = null;
 let MEDIA_FAIL = 0; // les N prochaines lectures du fichier échouent (lien expiré)
 let PUBLISH_FAIL = 0; // les N prochaines publications échouent (réseau coupé après l'arrivée du fichier)
 let LIMITS_LIE = null; // la jauge affiche moins que la vérité (pour prouver la garde de la base)
+let limitsReads = 0; let lastLimits = null; // lectures de la jauge servies, et la dernière réponse (la jauge n'est visible qu'à partir de 80 %)
 let VIDEO_BYTES = Buffer.alloc(0); // une vraie petite vidéo WebM (fabriquée au début)
 const D = {};
 const OBJ = new Map(); // stockage « formations » : chemin → { size, mime, bytes }
@@ -410,7 +411,7 @@ const newCtx = async (uid, viewport, extra = {}) => {
       if (LOT13_FNS.has(fn)) {
         if (MIG !== 'oui') return r.fulfill(MISSING_FN(fn));
         try {
-          if (fn === 'training_video_limits') return r.fulfill({ json: limitsOf(uid) });
+          if (fn === 'training_video_limits') { const l = limitsOf(uid); limitsReads++; lastLimits = l[0]; return r.fulfill({ json: l }); }
           if (fn === 'start_training_video') return r.fulfill({ json: startVideo(uid, body) });
           if (fn === 'publish_training_video') { if (PUBLISH_FAIL > 0) { PUBLISH_FAIL--; return r.abort('connectionfailed'); } return r.fulfill({ json: publishVideo(uid, body) }); }
           if (fn === 'training_video_leftovers') return r.fulfill({ json: leftovers(uid) });
@@ -506,10 +507,15 @@ const openWorkerTrainings = async (p = wp) => {
   await p.getByRole('button', { name: 'Mon compte et menu' }).click(); await p.waitForSelector('[role=menu]'); await p.waitForTimeout(250);
   await p.click('[data-testid=menu-formations]'); await p.waitForSelector('[data-testid=trainings-list]'); await p.waitForTimeout(700);
 };
-const openUpload = async (p = op) => {
-  await p.click('[data-testid=tr-add-open]'); await p.click('[data-testid=tr-kind-upload]');
-  await p.waitForSelector('[data-testid=tr-upload]'); await waitFor(async () => !(await txt(p.locator('[data-testid=tr-quota]'))).includes('…'));
+// Ouvre le formulaire (« + Ajouter » si la liste n'est pas vide), attend la lecture de la jauge, puis choisit « Fichier » (ou `kind`).
+const openUpload = async (p = op, kind = 'file') => {
+  const n = limitsReads;
+  if (await p.locator('[data-testid=tr-add-open]').count()) await p.click('[data-testid=tr-add-open]');
+  await p.waitForSelector('[data-testid=tr-form]');
+  await waitFor(async () => limitsReads > n); await p.waitForTimeout(250);
+  if (kind) await p.click(`[data-testid=tr-kind-${kind}]`);
 };
+const usedMo = () => Math.round((Number(lastLimits?.used_bytes || 0) + Number(lastLimits?.reserved_bytes || 0)) / MO);
 
 // ═══ AVANT / V0 : textes de la migration absente ═════════════════════════════
 const TEXTS = path.join(SH, 'avant-textes.json');
@@ -521,6 +527,7 @@ const domTexts = async () => {
   await op.click('[data-testid=tr-add-open]'); await op.waitForTimeout(300);
   out.formulaire = await txt(dlg());
   out.pastilles = (await op.locator('[data-testid=tr-form] [role=radiogroup][aria-label=Contenu] [role=radio]').allInnerTexts()).map((s) => s.trim());
+  out.pastillesFilmer = await op.locator('[data-testid=tr-kind-record], [data-testid=tr-kind-file]').count();
   await shot(dlg(), `${AVANT ? 'avant' : 'sans-migration'}-bureau-ajouter`);
   await closeDlg();
   await openWorker(); await openWorkerTrainings();
@@ -540,15 +547,14 @@ section('V0 · migration pas appliquée : aucune option vidéo, tout comme avant
 {
   const W0 = writes.length;
   const sans = await domTexts();
-  check(!sans.pastilles.includes('Vidéo (téléphone ou fichier)') && sans.pastilles.join('|') === 'Lien vidéo|Document', `formulaire : « ${sans.pastilles.join(' / ')} » seulement`);
+  check(sans.pastillesFilmer === 0 && sans.pastilles.join('|') === 'Lien|Document', `formulaire : « ${sans.pastilles.join(' / ')} » seulement, ni « Filmer » ni « Fichier »`);
   check(gets.filter((g) => g.t === 'training_videos' && g.missing).length === 1, 'bureau : une seule lecture de training_videos (404 PGRST205), pas une de plus à l’ajout');
   check(gets.some((g) => g.t === 'rpc/my_training_videos' && g.missing), 'salarié : my_training_videos lue par un GET, reçoit « fonction absente » (PGRST202)');
   check(!since(W0).some((w) => LOT13_FNS.has(w.t) || LOT13_TABLES.has(w.t) || w.t === 'formations'), 'aucune écriture du lot, aucun appel de stockage « formations »');
   check(!(await wp.locator('[data-testid=training-watch]').count()), 'salarié : aucun « Regarder »');
   if (fs.existsSync(TEXTS)) {
     const avant = JSON.parse(fs.readFileSync(TEXTS, 'utf8'));
-    check(avant.liste === sans.liste, '« Formations » (bureau) : même texte que le build d’avant');
-    check(avant.formulaire === sans.formulaire, '« Ajouter une formation » : même texte que le build d’avant');
+    // Le bureau a changé exprès (formations simplifiées) : seul le côté salarié doit rester identique au build d'avant.
     check(avant.salarie === sans.salarie, 'liste du salarié : même texte que le build d’avant');
   } else {
     console.log('   (pas de textes « avant » : lancer d’abord AVANT=1 sur le build d’avant)');
@@ -569,27 +575,31 @@ await openOffice(); await openTrainings();
   const row = op.locator('[data-testid=tr-item][data-kind=upload]');
   check((await txt(row.locator('.bt-fo-s'))) === 'Vidéo · 2 min 10 · 38 Mo · Toute l’équipe · 13/10', `vidéo envoyée : « ${await txt(row.locator('.bt-fo-s'))} »`);
   check((await txt(row.locator('[data-testid=tr-count]'))) === '1/4 vue', 'vidéo envoyée : « 1/4 vue » (Alex)');
-  check((await txt(op.locator('.bt-fo-top .bt-fo-muted'))).startsWith('Une vidéo filmée au téléphone, un lien YouTube'), 'l’explication cite la vidéo filmée');
+  check(await op.locator('.bt-fo-top .bt-fo-muted').count() === 0 && await op.locator('[data-testid=tr-add-open]').count() === 1, 'plus d’explication en haut de la fenêtre : seulement « + Ajouter »');
   await shot(dlg(), 'apres-bureau-liste');
 }
 
 // ═══ V2 · l'option ═══════════════════════════════════════════════════════════
-section('V2 · « Vidéo (téléphone ou fichier) » : jauge, « Filmer », « Choisir un fichier »');
+section('V2 · formulaire simplifié : Filmer · Fichier · Lien · Document, aucun texte d’aide, jauge cachée sous 80 %');
 {
   const n = gets.length;
-  await openUpload();
-  check(gets.slice(n).some((g) => g.t === 'rpc/training_video_limits'), 'la jauge est lue au choix de l’option (GET training_video_limits)');
-  check((await txt(op.locator('[data-testid=tr-quota]'))) === '38 Mo utilisés sur 100 Mo', `jauge : « ${await txt(op.locator('[data-testid=tr-quota]'))} »`);
-  const film = await op.locator('[data-testid=tr-film]').evaluate((e) => ({ accept: e.accept, capture: e.getAttribute('capture') }));
-  check(film.accept === 'video/*' && film.capture === 'environment', `« Filmer » : accept="video/*" capture="environment" (${JSON.stringify(film)})`);
-  check((await op.locator('[data-testid=tr-file]').getAttribute('accept')).includes('video/mp4') && !(await op.locator('[data-testid=tr-file]').getAttribute('capture')), '« Choisir un fichier » : vidéos, sans caméra imposée');
-  const h = await op.locator('label:has([data-testid=tr-film])').evaluate((e) => e.getBoundingClientRect().height);
-  // Lot 14 (relecture « écran ») : les boutons se touchent avec le doigt sur un chantier, 44 px au moins (c'était 28 px, « discrets »).
-  check(h >= 44, `boutons à toucher du doigt (${h} px de haut, 44 au moins)`);
-  check((await txt(op.locator('[data-testid=tr-upload]'))).includes('MP4, MOV ou WebM · 50 Mo maximum'), 'rappel : « MP4, MOV ou WebM · 50 Mo maximum »');
-  const gps = await txt(op.locator('[data-testid=tr-gps-note]'));
-  check(gps === 'Attention : une vidéo filmée au téléphone peut contenir la position GPS du lieu, lisible par tous ceux qui la reçoivent. Désactivez la localisation de l’appareil photo avant de filmer.',
-    `avertissement vie privée sous « Filmer » : « ${gps} »`);
+  await openUpload(op, null);
+  check(gets.slice(n).some((g) => g.t === 'rpc/training_video_limits'), 'la jauge est lue à l’ouverture du formulaire (GET training_video_limits)');
+  const chips = (await op.locator('[data-testid=tr-form] [role=radiogroup][aria-label=Contenu] [role=radio]').allInnerTexts()).map((x) => x.trim());
+  check(chips.join('|') === 'Filmer|Fichier|Lien|Document', `une seule rangée de choix : ${chips.join(' · ')}`);
+  check(await op.locator('[data-testid=tr-kind-file][aria-checked=true], [data-testid=tr-kind-record][aria-checked=true]').count() === 0, 'vidéos activées : aucun contenu pré-sélectionné');
+  const hs = await op.locator('.bt-fo-chip').evaluateAll((els) => els.map((e) => e.getBoundingClientRect().height));
+  check(hs.length === 4 && hs.every((h) => h >= 44), `gros boutons tactiles (${hs.map((h) => Math.round(h)).join(', ')} px de haut, 44 au moins)`);
+  const labels = await op.locator('.bt-fo-chip').evaluateAll((els) => els.map((e) => e.getAttribute('aria-label')));
+  check(labels.join('|') === 'Filmer une vidéo|Choisir un fichier vidéo|Coller un lien|Choisir un document', `libellés accessibles complets (${labels.join(' | ')})`);
+  check(await op.locator('input[type=file][capture]').count() === 0 && await op.locator('[data-testid=tr-film]').count() === 0, 'ordinateur (écran non tactile) : aucun sélecteur de fichier avec « capture »');
+  const file = await op.locator('[data-testid=tr-file]').evaluate((e) => ({ accept: e.accept, capture: e.getAttribute('capture') }));
+  check(file.accept.includes('video/mp4') && file.accept.includes('video/webm') && !file.capture, '« Fichier » : MP4, MOV, WebM, sans caméra imposée');
+  await op.click('[data-testid=tr-kind-file]');
+  const t = await txt(dlg());
+  check(await op.locator('[data-testid=tr-quota]').count() === 0 && usedMo() === 38, `jauge cachée à 38 % (${usedMo()} Mo sur 100 lus)`);
+  check(!/MP4, MOV ou WebM|50 Mo maximum|GPS|localisation|Place disponible|720p|Collez|reste chez eux|Une vidéo filmée|Aucune formation/.test(t), 'aucun texte d’aide, de rappel de taille ni d’avertissement GPS');
+  check(await op.locator('[data-testid=tr-upload]').count() === 0, 'rien sous la rangée tant qu’il ne se passe rien');
   await shot(dlg(), 'apres-bureau-option-video');
 }
 
@@ -610,17 +620,17 @@ section('V3 · refus clairs AVANT tout envoi (plus de 50 Mo, PDF)');
 }
 
 // ═══ V4 · Filmer et envoyer ══════════════════════════════════════════════════
-section('V4 · « Filmer » : aperçu, durée, taille ; réserver → URL signée → envoi réel → publier');
+section('V4 · fichier choisi : aperçu, durée, taille ; réserver → URL signée → envoi réel → publier');
 {
   await openUpload();
   await op.fill('[data-testid=tr-title]', '  Port du   harnais ');
-  await op.setInputFiles('[data-testid=tr-film]', F_FILM);
+  await op.setInputFiles('[data-testid=tr-file]', F_FILM);
   await op.waitForSelector('[data-testid=tr-preview]');
   await waitFor(async () => /\d s/.test(await txt(op.locator('[data-testid=tr-file-meta]'))), 6000);
   const meta = await txt(op.locator('[data-testid=tr-file-meta]'));
   check(/^2 s · 0,\d Mo$/.test(meta), `aperçu : durée et taille (« ${meta} »)`);
   check(await op.locator('[data-testid=tr-preview]').evaluate((v) => v.tagName === 'VIDEO' && v.getAttribute('preload') === 'metadata' && v.src.startsWith('blob:')), 'aperçu : <video> local (blob:), rien n’est encore parti');
-  check(await op.locator('[data-testid=tr-gps-note]').count() === 1, 'l’avertissement GPS reste affiché quand un fichier est choisi (un fichier de la galerie peut déjà contenir une position)');
+  check(await op.locator('[data-testid=tr-gps-note]').count() === 0 && !/GPS|position/.test(await txt(dlg())), 'aucun avertissement GPS à l’écran, même avec un fichier choisi (décision du patron)');
   await op.click('[data-testid=tr-pick]');
   await op.locator(`[data-testid=tr-person][data-id=${SAM}]`).check();
   await shot(dlg(), 'apres-bureau-filmer-apercu');
@@ -667,7 +677,7 @@ let pathV5;
   const label = await txt(op.locator('[data-testid=tr-progress-text]'));
   check(pct > 0 && pct < 100, `en cours : ${pct} % (barre role="progressbar")`);
   check(/^Envoi… \d+ % \(\d+(,\d)? Mo sur 24 Mo\)$/.test(label), `texte : « ${label} »`);
-  check(await op.locator('[data-testid=tr-save]').isDisabled() && await op.locator('[data-testid=tr-kind-video]').isDisabled(), 'pendant l’envoi : « Ajouter » et le choix du contenu sont bloqués');
+  check(await op.locator('[data-testid=tr-save]').isDisabled() && await op.locator('[data-testid=tr-kind-link]').isDisabled() && await op.locator('[data-testid=tr-kind-file]').isDisabled() && await op.locator('[data-testid=tr-cancel]').isDisabled(), 'pendant l’envoi : « Ajouter », le choix du contenu et « Annuler » sont bloqués');
   await shot(dlg(), 'apres-bureau-progression');
   const rec = uploads[uploads.length - 1];
   check(rec && rec.received > 0 && rec.received < 24 * MO && !rec.done, `le serveur reçoit vraiment les octets (${(rec.received / MO).toFixed(1)} Mo sur 24)`);
@@ -697,7 +707,7 @@ let pathV5;
 section('V6 · réseau coupé pendant l’envoi : message clair, rien de publié');
 {
   await openUpload();
-  check((await txt(op.locator('[data-testid=tr-quota]'))) === `${Math.round((38 * MO + VIDEO_BYTES.length + 24 * MO) / MO)} Mo utilisés sur 100 Mo`, `la jauge suit (« ${await txt(op.locator('[data-testid=tr-quota]'))} »)`);
+  check(usedMo() === Math.round((38 * MO + VIDEO_BYTES.length + 24 * MO) / MO) && await op.locator('[data-testid=tr-quota]').count() === 0, `la jauge suit (${usedMo()} Mo lus, à jour) mais reste cachée sous 80 %`);
   await op.fill('[data-testid=tr-title]', 'Rangement du dépôt');
   await op.setInputFiles('[data-testid=tr-file]', F_MID);
   await op.waitForSelector('[data-testid=tr-file-ready]');
@@ -733,16 +743,19 @@ section('V7 · la base refuse le quota même si l’écran l’a laissé passer'
 }
 
 // ═══ V8 · quota plein ════════════════════════════════════════════════════════
-section('V8 · quota plein : plus de « Filmer » ni « Choisir », message ; un lien YouTube reste possible');
+section('V8 · quota plein : le message, rien ne s’ouvre ; un lien YouTube reste possible');
 {
   OBJ.set(`${CO}/00000000-0000-4000-8000-0000000000ff`, { size: 40 * MO, mime: 'video/mp4', bytes: null }); // fichier d'une vidéo retirée : compte toujours
   await openUpload();
   const q = await txt(op.locator('[data-testid=tr-quota]'));
-  check(/^1\d\d Mo utilisés sur 100 Mo$/.test(q), `jauge : « ${q} »`);
-  check(await op.locator('[data-testid=tr-film]').count() === 0 && await op.locator('[data-testid=tr-file]').count() === 0, 'ni « Filmer » ni « Choisir un fichier »');
+  check(/^1\d\d Mo utilisés sur 100 Mo$/.test(q), `jauge visible (plein) : « ${q} »`);
+  check(await op.locator('[data-testid=tr-preview]').count() === 0 && await op.locator('[data-testid=tr-rec]').count() === 0, 'plein : ni aperçu ni enregistreur, rien ne s’ouvre');
+  check(await op.locator('[data-testid=tr-kind-record]').count() === 0 && await op.locator('[data-testid=tr-quota-full]').count() === 1, 'plein : plus de « Filmer » sur ordinateur (moins de 2 Mo de place), le message reste');
+  await op.click('[data-testid=tr-kind-file]'); await op.waitForTimeout(200);
+  check(await op.locator('[data-testid=tr-preview]').count() === 0 && await op.locator('[data-testid=tr-quota-full]').count() === 1, 'plein : « Fichier » n’ouvre rien de plus, le message reste');
   check((await txt(op.locator('[data-testid=tr-quota-full]'))).startsWith('Plus assez de place :') && (await txt(op.locator('[data-testid=tr-quota-full]'))).includes('lien YouTube'), 'message : plus de place, collez plutôt un lien');
   await shot(dlg(), 'apres-bureau-quota-plein');
-  await op.click('[data-testid=tr-kind-video]');
+  await op.click('[data-testid=tr-kind-link]');
   await op.fill('[data-testid=tr-title]', 'Sécurité en hauteur');
   await op.fill('[data-testid=tr-link]', 'youtu.be/abc');
   check((await txt(op.locator('[data-testid=tr-link-ok]'))) === 'YouTube ✓' && !(await op.locator('[data-testid=tr-save]').isDisabled()), 'lien YouTube : toujours possible (inchangé)');
@@ -761,7 +774,7 @@ section('V9 · bureau : « Regarder », « Retirer » (le fichier est gardé), �
   await shot(dlg(), 'apres-bureau-regarder');
   const n = writes.length;
   await row.locator('[data-testid=tr-archive]').click();
-  check((await txt(row.locator('.bt-fo-confirm'))).includes('Le fichier est gardé : il compte toujours dans les 100 Mo.'), 'confirmation : le fichier est gardé et compte toujours');
+  check((await txt(row.locator('.bt-fo-confirm'))).startsWith('Retirer cette formation ?') && !(await txt(row.locator('.bt-fo-confirm'))).includes('gardé'), 'confirmation courte : « Retirer cette formation ? » (Retirer / Annuler)');
   await shot(dlg(), 'apres-bureau-retirer-confirmation');
   await row.locator('[data-testid=tr-archive-yes]').click(); await op.waitForTimeout(900);
   const a = of(since(n), 'RPC', 'set_training_video_archived');
@@ -854,9 +867,11 @@ section('R · animations réduites : aucune transition sur les barres');
   const rm = await newCtx(ADMIN, { width: 1366, height: 900 }, { reducedMotion: 'reduce' });
   const rp = track(await rm.newPage(), 'bureau (animations réduites)');
   OBJ.delete(`${CO}/00000000-0000-4000-8000-0000000000ff`);
+  LIMITS_LIE = 85 * MO; // la jauge n'est visible qu'à partir de 80 %
   await openOffice(rp); await openTrainings(rp); await openUpload(rp);
   const tr = await rp.locator('.bt-fo-quota .bt-fo-bar i').evaluate((e) => getComputedStyle(e).transitionDuration);
   check(/^0s(, 0s)*$/.test(tr), `jauge sans transition (${tr})`);
+  LIMITS_LIE = null;
   await rm.close();
 }
 
@@ -868,7 +883,7 @@ let LEFT_PATH = null;
   await openOffice(); await openTrainings();
   await openUpload();
   await op.fill('[data-testid=tr-title]', 'Isolation des combles');
-  await op.setInputFiles('[data-testid=tr-film]', F_FILM);
+  await op.setInputFiles('[data-testid=tr-file]', F_FILM);
   await op.waitForSelector('[data-testid=tr-file-ready]');
   PUBLISH_FAIL = 1; // le fichier arrive, puis le réseau coupe avant la publication
   const n = writes.length;
@@ -912,9 +927,8 @@ let LEFT_PATH = null;
   await op.click('[data-testid=tr-cancel]').catch(() => {});
   await closeDlg(); await openTrainings();
   await openUpload();
-  const gauge = await txt(op.locator('[data-testid=tr-quota]'));
   const want = Math.round((38 * MO + VIDEO_BYTES.length * 2 + 24 * MO + 24 * MO) / MO);
-  check(gauge === `${want} Mo utilisés sur 100 Mo`, `la jauge compte le fichier gardé : « ${gauge} »`);
+  check(usedMo() === want, `la jauge compte le fichier gardé : ${usedMo()} Mo lus (attendu ${want})`);
   await op.click('[data-testid=tr-cancel]');
   await closeDlg();
 }
@@ -934,11 +948,9 @@ section('T · téléphone de 360 px : le bureau et le salarié tiennent sans dé
   await mp.locator('[data-kind=leftover] [data-testid=tr-leftover-note]').scrollIntoViewIfNeeded(); await mp.waitForTimeout(200);
   await shot(mp, 'apres-bureau-telephone-envoi-non-termine');
   await openUpload(mp);
-  check(await mp.locator('[data-testid=tr-gps-note]').isVisible(), 'avertissement GPS visible sur le téléphone');
-  await mp.setInputFiles('[data-testid=tr-film]', F_FILM); await mp.waitForSelector('[data-testid=tr-preview]'); await mp.waitForTimeout(600);
-  check(await fitsD(), 'fenêtre d’envoi (aperçu et avertissement compris) : pas de défilement horizontal (360 px)');
-  const inView = await mp.locator('[data-testid=tr-gps-note]').evaluate((e) => { const r = e.getBoundingClientRect(); return r.left >= 0 && r.right <= window.innerWidth; });
-  check(inView, 'l’avertissement tient dans la largeur de l’écran');
+  check(await fitsD(), 'rangée de choix : pas de défilement horizontal (360 px)');
+  await mp.setInputFiles('[data-testid=tr-file]', F_FILM); await mp.waitForSelector('[data-testid=tr-preview]'); await mp.waitForTimeout(600);
+  check(await fitsD(), 'fenêtre d’envoi (aperçu compris) : pas de défilement horizontal (360 px)');
   await shot(mp, 'apres-bureau-telephone');
   await mob.close();
 
@@ -962,7 +974,7 @@ section('X2 · au plus 3 nouvelles places par tranche de 3 h : message clair, ri
   const send = async (titre) => {
     await openUpload();
     await op.fill('[data-testid=tr-title]', titre);
-    await op.setInputFiles('[data-testid=tr-film]', F_FILM);
+    await op.setInputFiles('[data-testid=tr-file]', F_FILM);
     await op.waitForSelector('[data-testid=tr-file-ready]');
     await op.click('[data-testid=tr-save]');
   };

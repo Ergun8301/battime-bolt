@@ -1,9 +1,9 @@
-// « Filmer dans BEMEXO » (lot 14, oct. 2026) : règles pures de l'enregistreur.
+// « Filmer » (enregistreur intégré, lot 14, oct. 2026) : règles pures de l'enregistreur.
 //   npm run test:enregistreur
 import {
-  baseMime, countdownBand, estimateRate, formatClock, pickRecorderMime, REC_ABORT, REC_ABORT_ASK, REC_ABORT_NO, REC_ABORT_YES, REC_AUDIO_BPS, REC_AUTO_SIZE, REC_AUTO_TIME, REC_BACK, REC_BUTTON, REC_COUNTDOWN, REC_COUNTDOWN_SECONDS,
-  REC_CUT, REC_FAILED, REC_HINT, REC_MAX_LABEL, REC_MAX_SECONDS, REC_MIME_CANDIDATES, REC_MIN_ROOM_BYTES, REC_NO_GPS, REC_OPENING, REC_READY, REC_RUNNING, REC_START, REC_STOP,
-  REC_TIMESLICE_MS, REC_VIDEO_BPS, recorderAvailable, recorderCapBytes, recorderErrorMessage, recorderFileName, recorderHint, recorderMaxLabel, recorderMaxSeconds, stopDecision,
+  baseMime, countdownBand, estimateRate, formatClock, pickRecorderMime, REC_ABORT, REC_ABORT_ASK, REC_ABORT_NO, REC_ABORT_YES, REC_AUDIO_BPS, REC_AUTO_SIZE, REC_AUTO_TIME, REC_AUTO_TEXT, REC_BACK, REC_COUNTDOWN, REC_COUNTDOWN_SECONDS,
+  REC_CUT, REC_FAILED, REC_MAX_LABEL, REC_MAX_SECONDS, REC_MIME_CANDIDATES, REC_MIN_ROOM_BYTES, REC_OPENING, REC_READY, REC_RUNNING, REC_START, REC_STOP,
+  REC_TIMESLICE_MS, REC_VIDEO_BPS, recorderAvailable, recorderCapBytes, recorderErrorMessage, recorderFileName, recorderMaxLabel, recorderMaxSeconds, stopDecision,
 } from './video-recorder.ts';
 import { VIDEO_MAX_BYTES, VIDEO_QUOTA_BYTES } from './training-videos.ts';
 
@@ -103,8 +103,6 @@ Deno.test('nom du fichier, minuteur', () => {
 });
 
 Deno.test('textes exacts', () => {
-  eq(REC_BUTTON, 'Filmer dans BEMEXO', 'bouton');
-  eq(REC_HINT, '« Filmer dans BEMEXO » : image 720p, jusqu’à 4 minutes, lisible partout. « Filmer » : l’appareil photo du téléphone, qualité maximale mais fichier plus lourd.', 'aide');
   eq(REC_OPENING, 'Ouverture de la caméra…', 'ouverture');
   eq(REC_READY, 'Cadrez, puis touchez « Démarrer ». Tenez le téléphone dans le même sens pendant toute la prise.', 'prêt');
   eq([REC_START, REC_STOP, REC_ABORT, REC_BACK], ['Démarrer', 'Arrêter', 'Abandonner', 'Fermer la caméra'], 'boutons (« Fermer la caméra » ne se confond pas avec « Annuler » du formulaire)');
@@ -115,21 +113,21 @@ Deno.test('textes exacts', () => {
   eq(REC_AUTO_SIZE, 'L’enregistrement s’est arrêté tout seul : la taille maximale est atteinte. La vidéo est gardée.', 'arrêt taille');
   eq(REC_AUTO_TIME, 'L’enregistrement s’est arrêté tout seul : 4 minutes atteintes. La vidéo est gardée.', 'arrêt durée');
   eq(REC_CUT, 'L’enregistrement s’est arrêté (caméra interrompue). Ce qui a été filmé est gardé.', 'caméra coupée');
-  eq(REC_FAILED, 'L’enregistrement a échoué. Réessayez, ou touchez « Filmer ».', 'échec');
-  eq(REC_NO_GPS, 'Filmée dans BEMEXO : aucune position GPS n’est ajoutée à la vidéo.', 'GPS');
+  eq(REC_FAILED, 'L’enregistrement a échoué. Réessayez, ou touchez « Fichier ».', 'échec');
+  eq(REC_AUTO_TEXT, { size: REC_AUTO_SIZE, time: REC_AUTO_TIME, cut: REC_CUT }, 'message gardé selon la cause de l’arrêt');
 });
 
 Deno.test('refus d’autorisation et pannes : un message clair par cas', () => {
-  const refus = 'L’appareil photo ou le micro est refusé. Autorisez-les pour BEMEXO dans les réglages du navigateur (sur iPhone : le bouton « aA » de la barre d’adresse, puis « Réglages du site »), puis réessayez. Vous pouvez aussi toucher « Filmer » ou « Choisir un fichier ».';
+  const refus = 'L’appareil photo ou le micro est refusé. Autorisez-les pour BEMEXO dans les réglages du navigateur (sur iPhone : le bouton « aA » de la barre d’adresse, puis « Réglages du site »), puis réessayez. Vous pouvez aussi toucher « Fichier ».';
   eq(recorderErrorMessage('NotAllowedError'), refus, 'NotAllowedError');
   eq(recorderErrorMessage('SecurityError'), refus, 'SecurityError');
-  const absente = 'Aucune caméra n’a été trouvée sur cet appareil. Touchez « Choisir un fichier ».';
+  const absente = 'Aucune caméra n’a été trouvée sur cet appareil. Touchez « Fichier ».';
   eq(recorderErrorMessage('NotFoundError'), absente, 'NotFoundError');
   eq(recorderErrorMessage('OverconstrainedError'), absente, 'OverconstrainedError');
   const prise = 'La caméra est déjà utilisée par une autre application. Fermez-la, puis réessayez.';
   eq(recorderErrorMessage('NotReadableError'), prise, 'NotReadableError');
   eq(recorderErrorMessage('AbortError'), prise, 'AbortError');
-  const autre = 'La caméra n’a pas pu démarrer. Touchez « Filmer » ou « Choisir un fichier ».';
+  const autre = 'La caméra n’a pas pu démarrer. Touchez « Fichier ».';
   eq(recorderErrorMessage('TypeError'), autre, 'erreur inconnue');
   eq(recorderErrorMessage(undefined), autre, 'sans nom');
 });
@@ -138,11 +136,9 @@ Deno.test('durée annoncée : le chiffre réel, pas toujours « 4 min »', () =>
   const place = (reste: number) => ({ maxBytes: VIDEO_MAX_BYTES, quotaBytes: VIDEO_QUOTA_BYTES, usedBytes: VIDEO_QUOTA_BYTES - reste });
   eq(recorderMaxSeconds(L), REC_MAX_SECONDS, 'forfait entier : 4 minutes');
   eq(recorderMaxLabel(recorderMaxSeconds(L)), 'Durée maximale : 4 min', 'libellé 4 min');
-  eq(recorderHint(recorderMaxSeconds(L)), REC_HINT, 'aide inchangée à 4 min');
   // 8 Mo de place : (8 Mo × 0,94) / 195 500 octets par seconde ≈ 40 s.
   eq(recorderMaxSeconds(place(8 * MO)), 40, '8 Mo de place : environ 40 s');
   eq(recorderMaxLabel(40), 'Durée maximale : environ 40 s', 'libellé en secondes');
-  eq(recorderHint(40), REC_HINT.replace('jusqu’à 4 minutes', 'jusqu’à environ 40 s'), 'aide : le chiffre réel');
   eq(recorderMaxSeconds(place(2 * MO)), 10, '2 Mo de place : environ 10 s');
   // 30 Mo de place : 30 × 0,94 Mo / 195 500 ≈ 150 s, soit 2 min 30 s.
   eq(recorderMaxSeconds(place(30 * MO)), 150, '30 Mo de place : 150 s');

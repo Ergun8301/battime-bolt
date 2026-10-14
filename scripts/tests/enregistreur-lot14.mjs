@@ -1,4 +1,4 @@
-// « Filmer dans BEMEXO », alerte HEVC et fichiers à vérifier (lot 14, oct. 2026), sur
+// « Filmer » (enregistreur intégré), alerte HEVC et fichiers à vérifier (lot 14, oct. 2026) et formulaire simplifié (oct. 2026), sur
 // la VRAIE page « Formations » du bureau (/admin). Copié du décor du lot 13
 // (scripts/tests/videos-lot13.mjs, qui n'est pas modifié) : base simulée partagée
 // par les navigateurs, faux stockage HTTPS qui reçoit de vrais octets, règles du SQL
@@ -18,10 +18,10 @@
 // playwright-core doit être résoluble ; openssl sert à fabriquer un certificat jetable.)
 //
 //   R0  sans la migration du lot 14 : une lecture de video_files_audit (404 PGRST202), aucune section, le lot 13 intact
-//   R1  présence du bouton « Filmer dans BEMEXO » (et ses absences) ; « Filmer » et « Choisir un fichier » intacts
+//   R1  présence du bouton « Filmer » (enregistreur) et ses absences : jamais de « Filmer » natif sur ordinateur ; « Fichier » intact
 //   R2  prise complète : contraintes, options, aperçu, durée, envoi par le chemin du lot 13
 //   R3  arrêt automatique par la taille, avec compte à rebours
-//   R4  autorisations refusées : messages exacts, repli sur « Choisir un fichier »
+//   R4  autorisations refusées : messages exacts, repli sur « Fichier »
 //   R5  caméra coupée en cours de prise : la prise est gardée ; aucun octet : échec clair
 //   R6  nettoyage : fermeture, changement d'onglet, « Annuler », « Abandonner », caméra lente
 //   R7  écran allumé (Wake Lock) : au clic, redemandé, relâché ; refus et API absente sans bruit
@@ -30,6 +30,8 @@
 //   R10 fichiers à vérifier : lecture seule
 //   R11 captures à 390 px (zones de toucher de 44 px)
 //   R12 une prise refusée ne laisse pas son message d’arrêt au fichier suivant
+//   S   formations simplifiées : liste vide = formulaire d’office, aucun texte d’aide, « + Ajouter » seulement avec une liste, « Document » seulement avec un document,
+//       « Filmer » unique (jamais d’explorateur de fichiers sur PC ; caméra native sur écran tactile sans enregistreur), jauge à 80 %, 320 px, captures 1280 et 390
 import http from 'node:http'; import https from 'node:https'; import fs from 'node:fs'; import path from 'node:path'; import os from 'node:os';
 import { execFileSync } from 'node:child_process'; import crypto from 'node:crypto';
 let chromium;
@@ -465,7 +467,7 @@ const newCtx = async (uid, viewport, extra = {}) => {
       if (LOT13_FNS.has(fn)) {
         if (MIG !== 'oui') return r.fulfill(MISSING_FN(fn));
         try {
-          if (fn === 'training_video_limits') return r.fulfill({ json: limitsOf(uid) });
+          if (fn === 'training_video_limits') { const l = limitsOf(uid); limitsReads++; return r.fulfill({ json: l }); }
           if (fn === 'start_training_video') return r.fulfill({ json: startVideo(uid, body) });
           if (fn === 'publish_training_video') { if (PUBLISH_FAIL > 0) { PUBLISH_FAIL--; return r.abort('connectionfailed'); } return r.fulfill({ json: publishVideo(uid, body) }); }
           if (fn === 'training_video_leftovers') return r.fulfill({ json: leftovers(uid) });
@@ -509,11 +511,11 @@ const newCtx = async (uid, viewport, extra = {}) => {
 let ok = 0, ko = 0; const fails = [];
 const check = (c, m) => { if (c) { ok++; console.log('  ✅', m); } else { ko++; fails.push(m); console.log('  ❌', m); } };
 const section = (t) => { console.log(`\n═══ ${t}`); };
-const shot = async (loc, name) => {
+const shot = async (loc, name, dir = SH) => {
   const page = typeof loc.page === 'function' ? loc.page() : loc;
   await page.evaluate(() => document.querySelectorAll('[data-sonner-toaster]').forEach((t) => { t.style.visibility = 'hidden'; })).catch(() => {});
   await new Promise((r) => setTimeout(r, 150));
-  await loc.screenshot({ path: path.join(SH, `${name}.png`) }).catch((e) => console.log('   (capture impossible :', e.message.split('\n')[0], ')'));
+  await loc.screenshot({ path: path.join(dir, `${name}.png`) }).catch((e) => console.log('   (capture impossible :', e.message.split('\n')[0], ')'));
   await page.evaluate(() => document.querySelectorAll('[data-sonner-toaster]').forEach((t) => { t.style.visibility = ''; })).catch(() => {});
 };
 const since = (n) => writes.slice(n);
@@ -561,27 +563,32 @@ const openWorkerTrainings = async (p = wp) => {
   await p.getByRole('button', { name: 'Mon compte et menu' }).click(); await p.waitForSelector('[role=menu]'); await p.waitForTimeout(250);
   await p.click('[data-testid=menu-formations]'); await p.waitForSelector('[data-testid=trainings-list]'); await p.waitForTimeout(700);
 };
-const openUpload = async (p = op) => {
-  await p.click('[data-testid=tr-add-open]'); await p.click('[data-testid=tr-kind-upload]');
-  await p.waitForSelector('[data-testid=tr-upload]'); await waitFor(async () => !(await txt(p.locator('[data-testid=tr-quota]'))).includes('…'));
+// Ouvre le formulaire (« + Ajouter » si la liste n'est pas vide), attend la lecture de la jauge, puis choisit `kind` (« Fichier » par défaut ; null = rien).
+let limitsReads = 0;
+const openUpload = async (p = op, kind = 'file') => {
+  const n = limitsReads;
+  if (await p.locator('[data-testid=tr-add-open]').count()) await p.click('[data-testid=tr-add-open]');
+  await p.waitForSelector('[data-testid=tr-form]');
+  await waitFor(async () => limitsReads > n); await p.waitForTimeout(250);
+  if (kind) await p.click(`[data-testid=tr-kind-${kind}]`);
 };
 
 
 // ─── Outils du lot 14 ─────────────────────────────────────────────────────────
 // ONLY=R2,R3 rejoue seulement ces scénarios (mise au point) ; sans ONLY, tout est rejoué.
 const want = (id) => !process.env.ONLY || process.env.ONLY.split(',').includes(id);
+// Phrases supprimées du formulaire (décision du patron, oct. 2026) : plus jamais à l'écran.
+const REMOVED = /Une vidéo filmée au téléphone|Le salarié l’ouvre et coche|Aucune formation|Ajoutez un lien|Place disponible|image 720p|jusqu’à 4 minutes|jusqu’à environ|MP4, MOV ou WebM ·|50 Mo maximum|position GPS|Désactivez la localisation|aucune position GPS|YouTube, Vimeo ou Google Drive\. La vidéo|reste chez eux|Aucun document|ajoutez-le d’abord|qualité maximale mais fichier plus lourd/;
 const MSG = {
-  refus: 'L’appareil photo ou le micro est refusé. Autorisez-les pour BEMEXO dans les réglages du navigateur (sur iPhone : le bouton « aA » de la barre d’adresse, puis « Réglages du site »), puis réessayez. Vous pouvez aussi toucher « Filmer » ou « Choisir un fichier ».',
-  absente: 'Aucune caméra n’a été trouvée sur cet appareil. Touchez « Choisir un fichier ».',
+  refus: 'L’appareil photo ou le micro est refusé. Autorisez-les pour BEMEXO dans les réglages du navigateur (sur iPhone : le bouton « aA » de la barre d’adresse, puis « Réglages du site »), puis réessayez. Vous pouvez aussi toucher « Fichier ».',
+  absente: 'Aucune caméra n’a été trouvée sur cet appareil. Touchez « Fichier ».',
   prise: 'La caméra est déjà utilisée par une autre application. Fermez-la, puis réessayez.',
-  autre: 'La caméra n’a pas pu démarrer. Touchez « Filmer » ou « Choisir un fichier ».',
-  echec: 'L’enregistrement a échoué. Réessayez, ou touchez « Filmer ».',
+  autre: 'La caméra n’a pas pu démarrer. Touchez « Fichier ».',
+  echec: 'L’enregistrement a échoué. Réessayez, ou touchez « Fichier ».',
   cut: 'L’enregistrement s’est arrêté (caméra interrompue). Ce qui a été filmé est gardé.',
   size: 'L’enregistrement s’est arrêté tout seul : la taille maximale est atteinte. La vidéo est gardée.',
-  gps: 'Filmée dans BEMEXO : aucune position GPS n’est ajoutée à la vidéo.',
-  hint: '« Filmer dans BEMEXO » : image 720p, jusqu’à 4 minutes, lisible partout. « Filmer » : l’appareil photo du téléphone, qualité maximale mais fichier plus lourd.',
   hevc: 'Cette vidéo est au format HEVC (le format récent des iPhone). Elle peut ne pas se lire sur certains téléphones Android ou ordinateurs.',
-  hevcRec: 'Conseil : touchez « Changer de vidéo », puis « Filmer dans BEMEXO », qui produit un format lisible partout.',
+  hevcRec: 'Conseil : touchez « Changer de vidéo », puis « Filmer », qui produit un format lisible partout.',
   hevcNoRec: 'Conseil : sur l’iPhone, choisissez Réglages > Appareil photo > Formats > « Le plus compatible », puis filmez à nouveau.',
   hevcKeep: 'Vous pouvez quand même ajouter cette vidéo.',
 };
@@ -606,7 +613,7 @@ const beginUpload = async (p = op, { reload = true } = {}) => {
   await openUpload(p);
 };
 const startRecording = async (p = op) => {
-  await p.click('[data-testid=tr-rec-open]');
+  await p.click('[data-testid=tr-kind-record]');
   await p.waitForSelector('[data-testid=tr-rec-start]', { timeout: 10000 });
   await p.click('[data-testid=tr-rec-start]');
   await p.waitForSelector('[data-testid=tr-rec-stop]');
@@ -658,7 +665,7 @@ if (want('R0')) {
   const titles = await op.locator('[data-testid=tr-item] [data-testid=tr-title-text]').allInnerTexts();
   check(titles.join('|') === 'Montage de l’échafaudage|Gestes et postures|Livret sécurité chantier', `la liste du lot 13 est là (${titles.join(' · ')})`);
   await op.click('[data-testid=tr-add-open]');
-  check((await op.locator('[data-testid=tr-kind-upload]').count()) === 1, 'l’option « Vidéo (téléphone ou fichier) » existe toujours');
+  check((await op.locator('[data-testid=tr-kind-file]').count()) === 1 && (await op.locator('[data-testid=tr-kind-link]').count()) === 1, 'les choix « Fichier » et « Lien » existent toujours');
   await closeDlg();
   const t0 = gets.filter((g) => g.t === 'training_videos').length;
   await openTrainings();
@@ -669,30 +676,29 @@ if (want('R0')) {
 }
 
 // ═══ R1 · le bouton ═════════════════════════════════════════════════════════
-section('R1 · « Filmer dans BEMEXO » : présent, et absent quand il ne peut pas marcher');
+section('R1 · « Filmer » (enregistreur) : présent, et absent quand il ne peut pas marcher ; jamais un « Filmer » qui ouvre l’explorateur');
 if (want('R1')) {
   await fresh();
   await openOffice(); await openTrainings(); await openUpload();
-  check(await op.locator('[data-testid=tr-rec-open]').isVisible(), 'bouton visible');
-  check((await txt(op.locator('[data-testid=tr-rec-open]'))) === 'Filmer dans BEMEXO', 'libellé « Filmer dans BEMEXO »');
-  check((await txt(op.locator('[data-testid=tr-rec-hint]'))) === MSG.hint, 'explication sous les boutons');
-  const order = await op.locator('.bt-fo-pick > *').evaluateAll((els) => els.map((e) => e.getAttribute('data-testid') || e.querySelector('[data-testid]')?.getAttribute('data-testid')));
-  check(order.join('|') === 'tr-rec-open|tr-film|tr-file', `ordre : Filmer dans BEMEXO, Filmer, Choisir un fichier (${order.join(' | ')})`);
-  const film = await op.locator('[data-testid=tr-film]').evaluate((e) => ({ accept: e.accept, capture: e.getAttribute('capture'), label: e.closest('label').innerText.trim() }));
-  check(film.accept === 'video/*' && film.capture === 'environment' && film.label === 'Filmer', `« Filmer » inchangé (${JSON.stringify(film)})`);
-  check((await op.locator('[data-testid=tr-file]').getAttribute('accept')).includes('video/mp4') && !(await op.locator('[data-testid=tr-file]').getAttribute('capture')), '« Choisir un fichier » inchangé');
-  check((await txt(op.locator('[data-testid=tr-upload]'))).includes('MP4, MOV ou WebM · 50 Mo maximum'), 'le rappel « MP4, MOV ou WebM · 50 Mo maximum » reste');
+  check(await op.locator('[data-testid=tr-kind-record]').isVisible(), 'bouton visible');
+  check((await txt(op.locator('[data-testid=tr-kind-record]'))) === 'Filmer', 'libellé « Filmer » (un seul)');
+  const order = await op.locator('.bt-fo-chips > *').evaluateAll((els) => els.map((e) => e.getAttribute('data-testid')));
+  check(order.join('|') === 'tr-kind-record|tr-kind-file|tr-kind-link|tr-kind-document', `ordre : Filmer, Fichier, Lien, Document (${order.join(' | ')})`);
+  check(await op.locator('[data-testid=tr-film]').count() === 0 && await op.locator('input[type=file][capture]').count() === 0, 'ordinateur : aucun sélecteur de fichier avec « capture », donc aucun « Filmer » qui ouvre l’explorateur');
+  check((await op.locator('[data-testid=tr-file]').getAttribute('accept')).includes('video/mp4') && !(await op.locator('[data-testid=tr-file]').getAttribute('capture')), '« Fichier » : vidéos, sans caméra imposée');
+  await op.click('[data-testid=tr-kind-file]'); await op.waitForTimeout(200);
+  const t0 = await txt(dlg());
+  check(!REMOVED.test(t0) && await op.locator('[data-testid=tr-rec-hint]').count() === 0, 'aucune explication sous la rangée, aucun rappel de taille ni de GPS');
   await op.click('[data-testid=tr-cancel]'); await closeDlg();
 
   const absent = async (nom, prepare, opts = {}) => {
     await fresh(opts);
     await openOffice(); await openTrainings();
     await prepare();
-    await op.click('[data-testid=tr-add-open]'); await op.click('[data-testid=tr-kind-upload]');
-    await op.waitForSelector('[data-testid=tr-upload]'); await waitFor(async () => !(await txt(op.locator('[data-testid=tr-quota]'))).includes('…'));
+    await openUpload(op);
     await op.waitForTimeout(250);
-    check(await op.locator('[data-testid=tr-rec-open]').count() === 0 && await op.locator('[data-testid=tr-rec-hint]').count() === 0, `${nom} : ni bouton ni explication`);
-    check(await op.locator('[data-testid=tr-film]').count() === 1 && await op.locator('[data-testid=tr-file]').count() === 1, `${nom} : « Filmer » et « Choisir un fichier » restent`);
+    check(await op.locator('[data-testid=tr-kind-record]').count() === 0 && await op.locator('[data-testid=tr-film]').count() === 0 && await op.locator('input[type=file][capture]').count() === 0, `${nom} : ordinateur, donc aucun « Filmer » du tout (ni enregistreur, ni capture)`);
+    check(await op.locator('[data-testid=tr-kind-file]').count() === 1 && await op.locator('[data-testid=tr-file]').count() === 1, `${nom} : « Fichier » reste`);
     await op.click('[data-testid=tr-cancel]'); await closeDlg();
   };
   await absent('MediaRecorder absent', () => op.evaluate(() => { delete window.MediaRecorder; }));
@@ -712,7 +718,7 @@ let takeBytes = 0;
   await openOffice(); await openTrainings(); await openUpload();
   await recReset(op);
   const W0 = writes.length;
-  await op.click('[data-testid=tr-rec-open]');
+  await op.click('[data-testid=tr-kind-record]');
   await op.waitForSelector('[data-testid=tr-rec-start]', { timeout: 10000 });
   const live = await op.locator('[data-testid=tr-rec-live]').evaluate((v) => ({ muted: v.muted, inline: v.hasAttribute('playsinline'), auto: v.autoplay, src: !!v.srcObject, label: v.getAttribute('aria-label'), w: v.getBoundingClientRect().width }));
   check(live.muted && live.inline && live.auto && live.src && live.label === 'Aperçu de la caméra', `aperçu direct muted, playsInline, autoplay (${JSON.stringify(live)})`);
@@ -736,7 +742,7 @@ let takeBytes = 0;
   check(secs >= 2 && secs <= 6, `durée mesurée par le minuteur : « ${meta} »`);
   const name = await txt(op.locator('.bt-fo-fname'));
   check(/^filmer-bemexo-20261014-1000\.webm$/.test(name), `nom du fichier : « ${name} » (heure locale, horloge figée)`);
-  check((await txt(op.locator('[data-testid=tr-gps-note]'))) === MSG.gps, 'note : « Filmée dans BEMEXO : aucune position GPS n’est ajoutée à la vidéo. »');
+  check(await op.locator('[data-testid=tr-gps-note]').count() === 0 && !/GPS/.test(await txt(dlg())), 'aucune note GPS à l’écran (décision du patron : les prises n’ont de toute façon aucune position)');
   check(await op.locator('[data-testid=tr-hevc-alert]').count() === 0, 'aucune alerte HEVC sur une prise de l’enregistreur');
   check(await op.locator('[data-testid=tr-rec-auto]').count() === 0, 'arrêt manuel : pas de message d’arrêt automatique');
   const s = await rec(op);
@@ -778,8 +784,7 @@ if (want('R3')) {
   await fresh({ maxBytes: SMALL_MAX });
   await openOffice(); await openTrainings(); await openUpload(); await recReset(op);
   const t0 = Date.now();
-  // 2,2 Mo de place : la durée annoncée est la vraie (10 s), pas « 4 minutes ».
-  check((await txt(op.locator('[data-testid=tr-rec-hint]'))).includes('jusqu’à environ 10 s') && !(await txt(op.locator('[data-testid=tr-rec-hint]'))).includes('4 minutes'), 'aide : « jusqu’à environ 10 s » quand la place restante est petite');
+  check(await op.locator('[data-testid=tr-rec-hint]').count() === 0 && !/4 minutes|environ 10 s/.test(await txt(dlg())), 'avant la prise : aucune aide sur la durée (elle n’apparaît qu’une fois la prise lancée)');
   await startRecording();
   check((await txt(op.locator('[data-testid=tr-rec-max]'))) === 'Durée maximale : environ 10 s', 'pendant la prise : « Durée maximale : environ 10 s »');
   let sawTimer = false;
@@ -806,24 +811,24 @@ if (want('R3')) {
 }
 
 // ═══ R4 · autorisations refusées ═════════════════════════════════════════════
-section('R4 · refus d’autorisation : messages exacts, repli sur « Choisir un fichier »');
+section('R4 · refus d’autorisation : messages exacts, repli sur « Fichier »');
 if (want('R4')) {
   await fresh();
   await openOffice(); await openTrainings(); await openUpload();
   for (const [name, msg] of [['NotAllowedError', MSG.refus], ['SecurityError', MSG.refus], ['NotFoundError', MSG.absente], ['OverconstrainedError', MSG.absente],
     ['NotReadableError', MSG.prise], ['AbortError', MSG.prise], ['TypeError', MSG.autre]]) {
     await recReset(op, { fail: name });
-    await op.click('[data-testid=tr-rec-open]');
+    await op.click('[data-testid=tr-kind-record]');
     await op.waitForSelector('[data-testid=tr-rec-error]', { timeout: 8000 });
     const e = op.locator('[data-testid=tr-rec-error]');
     check((await txt(e)) === msg && (await e.getAttribute('role')) === 'alert', `${name} : message exact, role=alert`);
-    check(await op.locator('[data-testid=tr-film]').count() === 1 && await op.locator('[data-testid=tr-file]').count() === 1 && await op.locator('[data-testid=tr-rec-open]').isVisible(), `${name} : « Filmer », « Choisir un fichier » et le bouton sont de nouveau là`);
+    check(await op.locator('[data-testid=tr-kind-file]').count() === 1 && await op.locator('[data-testid=tr-kind-record]').isVisible() && await op.locator('[data-testid=tr-film]').count() === 0, `${name} : « Filmer » et « Fichier » sont de nouveau là (aucun « Filmer » natif sur ordinateur)`);
     check((await rec(op)).tracks.every((x) => x === 'ended'), `${name} : aucune piste restée ouverte`);
-    check(await focusId() === 'tr-rec-open', `${name} : le focus revient sur « Filmer dans BEMEXO »`);
+    check(await focusId() === 'tr-kind-record', `${name} : le focus revient sur « Filmer »`);
     if (name === 'NotAllowedError') await shot(dlg(), 'enregistreur-refus');
   }
   await recReset(op, { fail: 'NotAllowedError' });
-  await op.click('[data-testid=tr-rec-open]');
+  await op.click('[data-testid=tr-kind-record]');
   await op.waitForSelector('[data-testid=tr-rec-error]');
   await op.setInputFiles('[data-testid=tr-file]', F_FILM);
   await op.waitForSelector('[data-testid=tr-file-ready]');
@@ -834,7 +839,7 @@ if (want('R4')) {
   check(await op.locator('[data-testid=tr-rec-error]').count() === 0, '« Changer de vidéo » : le message de refus n’est pas ressorti');
   // Refus de la caméra, puis un fichier REFUSÉ par le contrôle de taille : l'ancien message de la caméra ne reste pas à côté.
   await recReset(op, { fail: 'NotAllowedError' });
-  await op.click('[data-testid=tr-rec-open]'); await op.waitForSelector('[data-testid=tr-rec-error]');
+  await op.click('[data-testid=tr-kind-record]'); await op.waitForSelector('[data-testid=tr-rec-error]');
   await op.setInputFiles('[data-testid=tr-file]', F_HEAVY);
   await op.waitForSelector('[data-testid=tr-file-error]');
   check(await op.locator('[data-testid=tr-rec-error]').count() === 0, 'refus de la caméra puis fichier trop lourd refusé : le message de la caméra ne reste pas à côté');
@@ -873,7 +878,7 @@ if (want('R5')) {
   await op.waitForTimeout(600);
   await op.evaluate(() => window.__rec.tracks[0].dispatchEvent(new Event('ended')));
   await op.waitForSelector('[data-testid=tr-rec-error]', { timeout: 8000 });
-  check((await txt(op.locator('[data-testid=tr-rec-error]'))) === MSG.echec && await op.locator('[data-testid=tr-file-ready]').count() === 0, 'aucun octet : « L’enregistrement a échoué. Réessayez, ou touchez « Filmer ». »');
+  check((await txt(op.locator('[data-testid=tr-rec-error]'))) === MSG.echec && await op.locator('[data-testid=tr-file-ready]').count() === 0, 'aucun octet : « L’enregistrement a échoué. Réessayez, ou touchez « Fichier ». »');
   check((await rec(op)).tracks.every((x) => x === 'ended'), 'caméra relâchée aussi');
   await recReset(op);
   await op.click('[data-testid=tr-cancel]'); await closeDlg();
@@ -887,7 +892,7 @@ if (want('R6')) {
   const scenario = async (nom, leave, { recording = true } = {}) => {
     if (await op.locator('[data-testid=trainings-dialog]').count()) await closeDlg();
     await openTrainings(); await openUpload(); await recReset(op);
-    if (recording) await startRecording(); else { await op.click('[data-testid=tr-rec-open]'); await op.waitForSelector('[data-testid=tr-rec-start]'); }
+    if (recording) await startRecording(); else { await op.click('[data-testid=tr-kind-record]'); await op.waitForSelector('[data-testid=tr-rec-start]'); }
     await op.waitForTimeout(1200);
     const mid = await rec(op);
     check(mid.tracks.length > 0 && mid.tracks.every((x) => x === 'live'), `${nom} : la caméra est bien allumée avant de partir`);
@@ -899,13 +904,13 @@ if (want('R6')) {
   };
   // Avant la prise (caméra prête) : tout ce qui quitte l'écran relâche la caméra.
   await scenario('fermer la fenêtre (Échap)', async () => { await closeDlg(); }, { recording: false });
-  await scenario('changer d’onglet du formulaire', async () => { await op.click('[data-testid=tr-kind-video]'); }, { recording: false });
+  await scenario('changer d’onglet du formulaire', async () => { await op.click('[data-testid=tr-kind-link]'); }, { recording: false });
   await scenario('« Annuler » du formulaire', async () => { await op.click('[data-testid=tr-cancel]'); }, { recording: false });
   await scenario('« Fermer la caméra » avant la prise', async () => { await op.click('[data-testid=tr-rec-cancel]'); }, { recording: false });
-  check(await op.locator('[data-testid=tr-rec-open]').isVisible() && await focusId() === 'tr-rec-open', '« Fermer la caméra » : retour aux boutons, le focus sur « Filmer dans BEMEXO »');
+  check(await op.locator('[data-testid=tr-kind-record]').isVisible() && await op.locator('[data-testid=tr-rec]').count() === 0 && await focusId() === 'tr-kind-record', '« Fermer la caméra » : l’enregistreur se ferme, le focus revient sur « Filmer »');
   // Pendant la prise : « Abandonner » dans les 3 premières secondes jette tout de suite (rien à perdre).
   await scenario('« Abandonner » dans les 3 premières secondes', async () => { await op.click('[data-testid=tr-rec-abort]'); });
-  check(await op.locator('[data-testid=tr-rec-open]').isVisible() && await op.locator('[data-testid=tr-rec-error]').count() === 0, '« Abandonner » : retour aux boutons, sans message');
+  check(await op.locator('[data-testid=tr-kind-record]').isVisible() && await op.locator('[data-testid=tr-rec]').count() === 0 && await op.locator('[data-testid=tr-rec-error]').count() === 0, '« Abandonner » : l’enregistreur se ferme, sans message');
   // Après 3 secondes : confirmation en deux temps.
   await scenario('« Abandonner » puis « Oui, jeter »', async () => {
     await op.waitForTimeout(2200);
@@ -917,8 +922,8 @@ if (want('R6')) {
   await closeDlg(); await openTrainings(); await openUpload(); await recReset(op);
   await startRecording();
   await op.waitForTimeout(3300);
-  const lock = await op.evaluate(() => ['tr-kind-video', 'tr-kind-document', 'tr-cancel'].map((id) => document.querySelector(`[data-testid=${id}]`).disabled));
-  check(lock.every((x) => x === true), `pendant la prise : les onglets du formulaire et « Annuler » sont inactifs (${lock.join(',')})`);
+  const lock = await op.evaluate(() => ['tr-kind-record', 'tr-kind-file', 'tr-kind-link', 'tr-kind-document', 'tr-cancel'].map((id) => document.querySelector(`[data-testid=${id}]`).disabled));
+  check(lock.every((x) => x === true), `pendant la prise : les choix du formulaire et « Annuler » sont inactifs (${lock.join(',')})`);
   await op.keyboard.press('Escape'); await op.waitForTimeout(400);
   check(await op.locator('[data-testid=trainings-dialog]').count() === 1 && (await rec(op)).tracks.every((x) => x === 'live'), 'pendant la prise : Échap ne ferme pas la fenêtre, la prise continue');
   const gap = await op.evaluate(() => { const a = document.querySelector('[data-testid=tr-rec-stop]').getBoundingClientRect(), b = document.querySelector('[data-testid=tr-rec-abort]').getBoundingClientRect(); return { dy: b.top - a.bottom, h: b.height }; });
@@ -930,22 +935,22 @@ if (want('R6')) {
   await op.click('[data-testid=tr-rec-abort-no]');
   check(await op.locator('[data-testid=tr-rec-stop]').isVisible() && await focusId() === 'tr-rec-stop' && (await rec(op)).tracks.every((x) => x === 'live'), '« Non, continuer » : la prise continue, le focus revient sur « Arrêter »');
   await op.click('[data-testid=tr-rec-stop]'); await op.waitForSelector('[data-testid=tr-preview]');
-  const unlocked = await op.evaluate(() => ['tr-kind-video', 'tr-kind-document', 'tr-cancel'].map((id) => document.querySelector(`[data-testid=${id}]`).disabled));
+  const unlocked = await op.evaluate(() => ['tr-kind-record', 'tr-kind-file', 'tr-kind-link', 'tr-kind-document', 'tr-cancel'].map((id) => document.querySelector(`[data-testid=${id}]`).disabled));
   check(unlocked.every((x) => x === false), 'la prise terminée : les onglets et « Annuler » sont de nouveau actifs');
   await closeDlg();
   check(await op.locator('[data-testid=trainings-dialog]').count() === 0, 'la prise terminée : Échap ferme la fenêtre');
   // Caméra lente : « Ouverture de la caméra… » avec une sortie.
   await openTrainings(); await openUpload(); await recReset(op, { delay: 1500 });
-  await op.click('[data-testid=tr-rec-open]');
+  await op.click('[data-testid=tr-kind-record]');
   check(await op.locator('[data-testid=tr-rec-opening]').count() === 1 && await op.locator('[data-testid=tr-rec-cancel]').isVisible(), 'caméra lente : « Ouverture de la caméra… » et un bouton « Fermer la caméra »');
   await op.click('[data-testid=tr-rec-cancel]');
-  check(await op.locator('[data-testid=tr-rec-open]').isVisible(), 'caméra lente : on peut en sortir sans attendre');
+  check(await op.locator('[data-testid=tr-kind-record]').isVisible() && await op.locator('[data-testid=tr-rec]').count() === 0, 'caméra lente : on peut en sortir sans attendre');
   await op.waitForTimeout(2200);
   const lateC = await rec(op);
   check(lateC.tracks.length > 0 && lateC.tracks.every((x) => x === 'ended'), 'caméra ouverte APRÈS la sortie : aussitôt arrêtée');
   // Caméra lente : la fenêtre se ferme avant qu'elle ne s'ouvre.
   await recReset(op, { delay: 1500 });
-  await op.click('[data-testid=tr-rec-open]');
+  await op.click('[data-testid=tr-kind-record]');
   check(await op.locator('[data-testid=tr-rec-opening]').count() === 1, 'caméra lente : « Ouverture de la caméra… »');
   await closeDlg();
   await op.waitForTimeout(2600);
@@ -959,7 +964,7 @@ section('R7 · écran allumé : demandé au clic « Démarrer », redemandé au 
 if (want('R7')) {
   await fresh();
   await openOffice(); await openTrainings(); await openUpload(); await recReset(op);
-  await op.click('[data-testid=tr-rec-open]'); await op.waitForSelector('[data-testid=tr-rec-start]');
+  await op.click('[data-testid=tr-kind-record]'); await op.waitForSelector('[data-testid=tr-rec-start]');
   check((await rec(op)).wake.length === 0, 'rien à l’ouverture de la caméra');
   await op.click('[data-testid=tr-rec-start]'); await op.waitForSelector('[data-testid=tr-rec-stop]'); await op.waitForTimeout(300);
   let s = await rec(op);
@@ -1023,7 +1028,7 @@ if (want('R9')) {
     await waitFor(async () => (await op.locator('[data-testid=tr-hevc-alert]').count()) > 0, hevc ? 4000 : 900);
     const a = op.locator('[data-testid=tr-hevc-alert]');
     if (hevc) {
-      check((await txt(a)) === attendu && (await a.getAttribute('role')) === 'status', `${nom} : alerte, texte exact, avec le conseil « Filmer dans BEMEXO »`);
+      check((await txt(a)) === attendu && (await a.getAttribute('role')) === 'status', `${nom} : alerte, texte exact, avec le conseil « Filmer »`);
       await op.fill('[data-testid=tr-title]', 'Test HEVC');
       check(!(await op.locator('[data-testid=tr-save]').isDisabled()), `${nom} : « Ajouter » reste actif`);
       if (f === FIX.movFin) {
@@ -1038,11 +1043,6 @@ if (want('R9')) {
     check(writes.length === n, `${nom} : aucune écriture avant « Ajouter »`);
     await op.click('[data-testid=tr-file-change]');
   }
-  // « Filmer » (appli caméra du téléphone) : même contrôle.
-  await op.setInputFiles('[data-testid=tr-film]', FIX.movFin);
-  await op.waitForSelector('[data-testid=tr-hevc-alert]', { timeout: 4000 });
-  check((await txt(op.locator('[data-testid=tr-hevc-alert]'))) === attendu, '« Filmer » (appareil du téléphone) : même alerte');
-  await op.click('[data-testid=tr-file-change]');
   // Un changement de fichier ne garde pas l'alerte du précédent.
   await op.setInputFiles('[data-testid=tr-file]', FIX.movFin);
   await op.waitForSelector('[data-testid=tr-hevc-alert]');
@@ -1053,7 +1053,7 @@ if (want('R9')) {
   await op.click('[data-testid=tr-cancel]'); await closeDlg();
   // Sans « Filmer dans BEMEXO » : le conseil change.
   await openTrainings(); await op.evaluate(() => { delete window.MediaRecorder; });
-  await op.click('[data-testid=tr-add-open]'); await op.click('[data-testid=tr-kind-upload]'); await op.waitForSelector('[data-testid=tr-upload]');
+  await openUpload(op);
   await op.setInputFiles('[data-testid=tr-file]', FIX.movFin);
   await op.waitForSelector('[data-testid=tr-hevc-alert]', { timeout: 4000 });
   check((await txt(op.locator('[data-testid=tr-hevc-alert]'))) === `${MSG.hevc} ${MSG.hevcNoRec} ${MSG.hevcKeep}`, 'sans enregistreur : le conseil devient « Réglages > Appareil photo > Formats > Le plus compatible »');
@@ -1061,7 +1061,7 @@ if (want('R9')) {
   // Le navigateur sait enregistrer, mais il reste moins de 2 Mo de place : le bouton « Filmer dans BEMEXO » est absent, le conseil ne doit pas y renvoyer.
   await fresh({ limitsLie: 99 * MO });
   await openOffice(); await openTrainings(); await openUpload();
-  check(await op.locator('[data-testid=tr-rec-open]').count() === 0, 'faute de place : pas de bouton « Filmer dans BEMEXO »');
+  check(await op.locator('[data-testid=tr-kind-record]').count() === 0, 'faute de place : pas de bouton « Filmer »');
   await op.setInputFiles('[data-testid=tr-file]', FIX.mp4Hevc);
   await op.waitForSelector('[data-testid=tr-hevc-alert]', { timeout: 4000 });
   check((await txt(op.locator('[data-testid=tr-hevc-alert]'))) === `${MSG.hevc} ${MSG.hevcNoRec} ${MSG.hevcKeep}`, 'faute de place : le conseil n’envoie pas vers un bouton absent (réglage de l’iPhone)');
@@ -1174,12 +1174,12 @@ if (want('R11')) {
   await mp.locator('button[aria-label="Menu"]').first().click(); await mp.waitForSelector('.bt-mm-sheet'); await mp.waitForTimeout(400);
   await mp.click('[data-testid=mm-trainings]'); await mp.waitForSelector('[data-testid=trainings-dialog]'); await mp.waitForTimeout(900);
   await openUpload(mp);
-  check(await fits(mp), '390 px · panneau avec les trois boutons : pas de défilement horizontal');
-  check(await mp.locator('[data-testid=tr-rec-open]').isVisible() && await mp.locator('[data-testid=tr-film]').count() === 1 && await mp.locator('[data-testid=tr-file]').count() === 1, '390 px · les trois boutons sont là');
-  const hs = { rec: await heightOf(mp.locator('[data-testid=tr-rec-open]')), film: await heightOf(mp.locator('[data-testid=tr-film]')), file: await heightOf(mp.locator('[data-testid=tr-file]')) };
-  check(Object.values(hs).every((h) => h >= 44), `390 px · « Filmer dans BEMEXO », « Filmer », « Choisir un fichier » : au moins 44 px de haut (${Object.entries(hs).map(([k, h]) => `${k} ${Math.round(h)}`).join(', ')})`);
+  check(await fits(mp), '390 px · rangée de choix : pas de défilement horizontal');
+  check(await mp.locator('[data-testid=tr-kind-record]').isVisible() && await mp.locator('[data-testid=tr-kind-file]').isVisible() && await mp.locator('[data-testid=tr-film]').count() === 0, '390 px · « Filmer » (enregistreur, un seul) et « Fichier » sont là');
+  const hs = { filmer: await heightOf(mp.locator('[data-testid=tr-kind-record]')), fichier: await heightOf(mp.locator('[data-testid=tr-kind-file]')), lien: await heightOf(mp.locator('[data-testid=tr-kind-link]')), document: await heightOf(mp.locator('[data-testid=tr-kind-document]')) };
+  check(Object.values(hs).every((h) => h >= 44), `390 px · « Filmer », « Fichier », « Lien », « Document » : au moins 44 px de haut (${Object.entries(hs).map(([k, h]) => `${k} ${Math.round(h)}`).join(', ')})`);
   await shot(mp, 'enregistreur-390-panneau');
-  await mp.click('[data-testid=tr-rec-open]'); await mp.waitForSelector('[data-testid=tr-rec-start]'); await mp.waitForTimeout(700);
+  await mp.click('[data-testid=tr-kind-record]'); await mp.waitForSelector('[data-testid=tr-rec-start]'); await mp.waitForTimeout(700);
   check(await fits(mp), '390 px · caméra prête : pas de défilement horizontal');
   const vb = await mp.locator('[data-testid=tr-rec-live]').evaluate((v) => { const r = v.getBoundingClientRect(); return { l: r.left, r: r.right, h: r.height, vh: window.innerHeight, fit: getComputedStyle(v).objectFit }; });
   check(vb.l >= 0 && vb.r <= 390 && vb.h <= vb.vh * 0.52 + 1 && vb.fit === 'contain', `390 px · aperçu dans l’écran, au plus 52 % de la hauteur (${JSON.stringify(vb)})`);
@@ -1191,9 +1191,9 @@ if (want('R11')) {
   const sh = await mp.locator('[data-testid=tr-rec-stop]').evaluate((e) => e.getBoundingClientRect().height);
   check(sh >= 44, `bouton « Arrêter » : ${Math.round(sh)} px de haut (≥ 44)`);
   await shot(mp, 'enregistreur-390-en-cours');
-  await abandon(mp); await mp.waitForSelector('[data-testid=tr-rec-open]');
+  await abandon(mp); await mp.waitForSelector('[data-testid=tr-kind-record]');
   await recReset(mp, { fail: 'NotAllowedError' });
-  await mp.click('[data-testid=tr-rec-open]'); await mp.waitForSelector('[data-testid=tr-rec-error]');
+  await mp.click('[data-testid=tr-kind-record]'); await mp.waitForSelector('[data-testid=tr-rec-error]');
   check(await fits(mp), '390 px · refus d’autorisation : pas de défilement horizontal');
   await shot(mp, 'enregistreur-390-refus');
   await recReset(mp);
@@ -1215,7 +1215,7 @@ if (want('R11')) {
   MAXB = SMALL_MAX;
   await mp.locator('[data-testid=trainings-dialog]').evaluate((el) => { el.scrollTop = 0; });
   await openUpload(mp);
-  await mp.click('[data-testid=tr-rec-open]'); await mp.waitForSelector('[data-testid=tr-rec-start]'); await mp.click('[data-testid=tr-rec-start]');
+  await mp.click('[data-testid=tr-kind-record]'); await mp.waitForSelector('[data-testid=tr-rec-start]'); await mp.click('[data-testid=tr-rec-start]');
   const vu = await waitFor(async () => (await mp.locator('[data-testid=tr-rec-countdown]').count()) > 0, 90000);
   check(vu, '390 px · le compte à rebours s’affiche');
   if (vu) {
@@ -1228,6 +1228,210 @@ if (want('R11')) {
   check(await fits(mp) && (await txt(mp.locator('[data-testid=tr-rec-auto]'))) === MSG.size, '390 px · aperçu après l’arrêt automatique : message d’arrêt, pas de défilement horizontal');
   await shot(mp, 'enregistreur-390-apercu');
   await mob.close();
+}
+
+// ═══ S · formations simplifiées (oct. 2026) ═════════════════════════════════════
+section('S · formations simplifiées : formulaire d’office, aucun texte d’aide, un seul « Filmer », jauge à 80 %, 320 px, captures 1280 et 390');
+const SIMPLE = path.join('docs', 'captures-formations-simples');
+if (want('S')) {
+  fs.mkdirSync(SIMPLE, { recursive: true });
+  const shotS = (loc, name) => shot(loc, name, SIMPLE);
+  /** Aucune formation ni vidéo : la fenêtre s'ouvre sur le formulaire (il y a un document à proposer). */
+  const emptyDb = async (opts = {}) => { await fresh(opts); OBJ.clear(); D.trainings = []; D.training_videos = []; D.training_views = []; D.training_video_views = []; };
+  const openMobileTrainings = async (mp) => {
+    await mp.goto(`http://localhost:${PORT}/admin`); await mp.waitForSelector('.bt-pl-m-card, .bt-pl-m-ibtn', { timeout: 25000 }); await mp.waitForTimeout(1200);
+    await mp.locator('button[aria-label="Menu"]').first().click(); await mp.waitForSelector('.bt-mm-sheet'); await mp.waitForTimeout(400);
+    await mp.click('[data-testid=mm-trainings]'); await mp.waitForSelector('[data-testid=trainings-dialog]'); await mp.waitForTimeout(900);
+  };
+  const chipTexts = async (p) => (await p.locator('.bt-fo-chip').allInnerTexts()).map((x) => x.trim());
+  /** Ouvre la fenêtre (bureau ou menu du téléphone) et attend la jauge si le formulaire est d'office là. */
+  const openWindow = async (p, mobile) => {
+    const n = limitsReads;
+    if (mobile) await openMobileTrainings(p); else { await openOffice(p); await openTrainings(p); }
+    await p.waitForTimeout(500);
+    return n;
+  };
+
+  for (const [vp, label] of [[{ width: 1280, height: 900 }, '1280'], [{ width: 390, height: 844 }, '390']]) {
+    const mobile = vp.width < 500;
+    const ctx = await newCtx(ADMIN, vp);
+    const pg = track(await ctx.newPage(), `bureau ${label}`);
+    const D1 = () => pg.locator('[data-testid=trainings-dialog]');
+    const fitsAll = () => fits(pg);
+
+    // S1 · fenêtre vide : le formulaire d'office
+    await emptyDb();
+    await openWindow(pg, mobile);
+    await pg.waitForSelector('[data-testid=tr-form]');
+    check(await pg.locator('[data-testid=tr-form]').count() === 1 && await pg.locator('[data-testid=tr-add-open]').count() === 0 && await pg.locator('[data-testid=tr-cancel]').count() === 0, `${label} · liste vide : le formulaire est là sans clic, ni « + Ajouter » ni « Annuler »`);
+    const t1 = await txt(D1());
+    check(!REMOVED.test(t1) && await pg.locator('[data-testid=tr-empty], [data-testid=tr-list]').count() === 0 && await pg.locator('.bt-fo-muted').count() === 0, `${label} · liste vide : aucune phrase d’introduction, d’état vide ni d’aide (« ${t1} »)`);
+    check((await chipTexts(pg)).join('|') === 'Filmer|Fichier|Lien|Document', `${label} · une seule rangée : ${(await chipTexts(pg)).join(' · ')}`);
+    const hs = await pg.locator('.bt-fo-chip').evaluateAll((els) => els.map((e) => e.getBoundingClientRect().height));
+    const rows = await pg.locator('.bt-fo-chip').evaluateAll((els) => new Set(els.map((e) => Math.round(e.getBoundingClientRect().top))).size);
+    check(hs.length === 4 && hs.every((h) => h >= 44) && rows === 1, `${label} · quatre gros boutons sur une seule ligne, au moins 44 px (${hs.map(Math.round).join(', ')})`);
+    check(await pg.locator('[data-testid=tr-form] [role=radiogroup][aria-label=Contenu]').count() === 1 && await pg.locator('.bt-fo-chip[aria-checked=true]').count() === 0 && await pg.locator('.bt-fo-chip[tabindex="0"]').count() === 1, `${label} · groupe radio : rien de pré-sélectionné, un seul bouton dans l’ordre de tabulation`);
+    check(await pg.locator('input[type=file][capture]').count() === (mobile ? 0 : 0) && (await chipTexts(pg)).filter((x) => x === 'Filmer').length === 1, `${label} · un seul « Filmer », enregistreur intégré, aucun sélecteur de fichier avec « capture »`);
+    check(await fitsAll(), `${label} · pas de défilement horizontal`);
+    await shotS(D1(), `vide-${label}`);
+
+    // Les flèches déplacent le focus sans rien ouvrir.
+    await pg.locator('.bt-fo-chip[tabindex="0"]').focus();
+    await pg.keyboard.press('ArrowRight');
+    check(await focusId(pg) === 'tr-kind-file' && await pg.locator('[data-testid=tr-rec]').count() === 0, `${label} · flèche droite : le focus passe à « Fichier » sans rien ouvrir`);
+    await pg.keyboard.press('End');
+    check(await focusId(pg) === 'tr-kind-document', `${label} · « Fin » : dernier bouton`);
+
+    // S2 · « Lien » avec un lien Google Drive reconnu
+    await pg.click('[data-testid=tr-kind-link]');
+    check(await pg.locator('.bt-fo-chip[aria-checked=true]').evaluate((e) => e.getAttribute('data-testid')) === 'tr-kind-link' && await pg.locator('[data-testid=tr-link]').isVisible(), `${label} · « Lien » : sélection bien visible, champ de l’adresse`);
+    const sel = await pg.locator('.bt-fo-chip[aria-checked=true]').evaluate((e) => ({ bg: getComputedStyle(e).backgroundColor, other: getComputedStyle(document.querySelector('[data-testid=tr-kind-file]')).backgroundColor }));
+    check(sel.bg !== sel.other, `${label} · le bouton choisi se distingue des autres (${sel.bg} / ${sel.other})`);
+    check(await pg.locator('[data-testid=tr-link]').getAttribute('placeholder') !== null && await pg.locator('[data-testid=tr-link-ok], [data-testid=tr-link-error], [data-testid=tr-drive-hint]').count() === 0 && !REMOVED.test(await txt(D1())), `${label} · « Lien » : un champ avec son exemple, aucune ligne d’aide dessous`);
+    await pg.fill('[data-testid=tr-link]', 'youtu.be/abc');
+    check((await txt(pg.locator('[data-testid=tr-link-ok]'))) === 'YouTube ✓' && await pg.locator('[data-testid=tr-drive-hint]').count() === 0, `${label} · lien YouTube valide : badge « YouTube ✓ », pas d’indication de partage`);
+    await pg.fill('[data-testid=tr-link]', 'https://evil.example/x');
+    check(await pg.locator('[data-testid=tr-link-error]').count() === 1, `${label} · lien refusé : l’erreur sur place`);
+    await pg.fill('[data-testid=tr-link]', 'https://drive.google.com/file/d/ID/view');
+    check((await txt(pg.locator('[data-testid=tr-link-ok]'))) === 'Google Drive ✓' && await pg.locator('[data-testid=tr-drive-hint]').count() === 1, `${label} · lien Google Drive reconnu : « Google Drive ✓ » et l’indication de partage (la seule)`);
+    await shotS(D1(), `lien-drive-${label}`);
+
+    // S3 · « Fichier » : un appui ouvre le sélecteur ; fichier prêt (aperçu) ; changer de choix nettoie
+    await pg.evaluate(() => { window.__revoked = 0; const r = URL.revokeObjectURL.bind(URL); URL.revokeObjectURL = (u) => { window.__revoked++; r(u); }; });
+    check(await pg.locator('[data-testid=tr-link]').inputValue() !== '', `${label} · (avant de quitter « Lien » le champ contient l’adresse)`);
+    const [fc] = await Promise.all([pg.waitForEvent('filechooser', { timeout: 4000 }), pg.click('[data-testid=tr-kind-file]')]);
+    check(!fc.isMultiple(), `${label} · « Fichier » : un seul appui ouvre le sélecteur de fichiers`);
+    await fc.setFiles(F_FILM);
+    await pg.waitForSelector('[data-testid=tr-preview]');
+    await waitFor(async () => /\d s/.test(await txt(pg.locator('[data-testid=tr-file-meta]'))), 6000);
+    check(await pg.locator('[data-testid=tr-link]').count() === 0, `${label} · « Fichier » choisi : le champ du lien a disparu`);
+    await pg.fill('[data-testid=tr-title]', 'Consigne du matin');
+    check(!(await pg.locator('[data-testid=tr-save]').isDisabled()), `${label} · fichier prêt : « Ajouter » actif`);
+    await shotS(D1(), `fichier-pret-${label}`);
+    await pg.click('[data-testid=tr-kind-link]'); await pg.waitForTimeout(200);
+    check(await pg.locator('[data-testid=tr-file-ready]').count() === 0 && (await pg.evaluate(() => window.__revoked)) >= 1 && await pg.locator('[data-testid=tr-link]').inputValue() === '', `${label} · passer à « Lien » : fichier choisi jeté (URL objet révoquée), champ du lien vide`);
+    await pg.click('[data-testid=tr-kind-document]'); await pg.waitForSelector('[data-testid=tr-doc]');
+    const opts = await pg.locator('[data-testid=tr-doc] option').count();
+    check(opts >= 2 && !REMOVED.test(await txt(D1())), `${label} · « Document » : la liste des documents, sans explication (${opts} lignes)`);
+    await pg.click('[data-testid=tr-kind-file]').catch(() => {}); await pg.waitForTimeout(200);
+
+    // S4 · « Filmer » : un appui ouvre l'enregistreur, jamais l'explorateur de fichiers
+    await recReset(pg);
+    const chooser = pg.waitForEvent('filechooser', { timeout: 1200 }).then(() => true, () => false);
+    await pg.click('[data-testid=tr-kind-record]');
+    await pg.waitForSelector('[data-testid=tr-rec-start]', { timeout: 10000 });
+    check(!(await chooser), `${label} · « Filmer » : un appui ouvre l’enregistreur, aucun explorateur de fichiers`);
+    check(await pg.locator('[data-testid=tr-kind-record][aria-checked=true]').count() === 1 && await pg.locator('[data-testid=tr-file-ready]').count() === 0, `${label} · « Filmer » remplace le fichier précédent`);
+    await pg.waitForTimeout(500);
+    await shotS(D1(), `enregistreur-${label}`);
+    await pg.click('[data-testid=tr-rec-cancel]');
+    await pg.waitForTimeout(300);
+    check(await focusId(pg) === 'tr-kind-record', `${label} · « Fermer la caméra » : le focus revient sur « Filmer »`);
+    await recReset(pg);
+    await closeDlg(pg);
+
+    // S5 · liste non vide : « + Ajouter » seulement ici
+    await fresh();
+    await openWindow(pg, mobile);
+    await pg.waitForSelector('[data-testid=tr-list]');
+    check(await pg.locator('[data-testid=tr-add-open]').count() === 1 && await pg.locator('[data-testid=tr-form]').count() === 0, `${label} · liste non vide : « + Ajouter » seulement, le formulaire est fermé`);
+    const topTxt = await txt(pg.locator('.bt-fo-top'));
+    check(topTxt === '+ Ajouter', `${label} · en haut de la fenêtre : « ${topTxt} » et rien d’autre`);
+    const addBox = await pg.locator('[data-testid=tr-add-open]').evaluate((e) => { const r = e.getBoundingClientRect(), d = document.querySelector('[data-testid=trainings-dialog]').getBoundingClientRect(); return { right: d.right - r.right, h: r.height }; });
+    check(addBox.right < 40 && addBox.h >= 44, `${label} · « + Ajouter » en haut à droite, au moins 44 px (${Math.round(addBox.right)} px du bord, ${Math.round(addBox.h)} de haut)`);
+    await shotS(D1(), `liste-ajouter-${label}`);
+    await pg.click('[data-testid=tr-add-open]');
+    await pg.waitForSelector('[data-testid=tr-form]');
+    check(await pg.locator('[data-testid=tr-cancel]').count() === 1 && await pg.locator('[data-testid=tr-add-open]').count() === 0, `${label} · « + Ajouter » ouvre le formulaire avec « Annuler »`);
+    await pg.click('[data-testid=tr-cancel]');
+    check(await pg.locator('[data-testid=tr-form]').count() === 0 && await pg.locator('[data-testid=tr-add-open]').count() === 1, `${label} · « Annuler » referme le formulaire`);
+    await closeDlg(pg);
+
+    // S6 · la jauge : cachée sous 80 %, visible à 80 % et au-delà
+    for (const [used, visible] of [[79, false], [80, true], [85, true], [100, true]]) {
+      await emptyDb({ limitsLie: used * MO });
+      await openWindow(pg, mobile);
+      await pg.waitForSelector('[data-testid=tr-form]');
+      await pg.click('[data-testid=tr-kind-file]'); await pg.waitForTimeout(300);
+      const q = await pg.locator('[data-testid=tr-quota]').count();
+      check((q === 1) === visible, `${label} · ${used} Mo sur 100 : jauge ${visible ? 'visible' : 'cachée'}${q ? ` (« ${await txt(pg.locator('[data-testid=tr-quota]'))} »)` : ''}`);
+      if (used === 85) await shotS(D1(), `jauge-${label}`);
+      if (used === 100) check(await pg.locator('[data-testid=tr-quota-full]').count() === 1 && (await txt(pg.locator('[data-testid=tr-quota-full]'))).includes('Collez plutôt un lien'), `${label} · plein : le message « Plus assez de place… Collez plutôt un lien » reste`);
+      await closeDlg(pg);
+    }
+    await ctx.close();
+  }
+
+  // S7 · écran tactile : « Filmer » = l'enregistreur ; sans enregistreur, la caméra native sous le MÊME mot ; PC sans enregistreur : rien
+  {
+    await emptyDb();
+    const touch = await newCtx(ADMIN, { width: 390, height: 844 });
+    const tp = track(await touch.newPage(), 'tactile avec enregistreur');
+    await openWindow(tp, true); await tp.waitForSelector('[data-testid=tr-form]');
+    check((await chipTexts(tp)).filter((x) => x === 'Filmer').length === 1 && await tp.locator('[data-testid=tr-film]').count() === 0 && await tp.locator('input[type=file][capture]').count() === 0,
+      'écran tactile avec enregistreur : un seul « Filmer », c’est l’enregistreur (aucun sélecteur « capture »)');
+    check(await tp.evaluate(() => matchMedia('(pointer: coarse)').matches), 'décor : l’écran tactile émulé est bien « pointer: coarse »');
+    await touch.close();
+
+    const nat = await newCtx(ADMIN, { width: 390, height: 844 });
+    await nat.addInitScript(() => { delete window.MediaRecorder; });
+    const np = track(await nat.newPage(), 'tactile sans enregistreur');
+    await openWindow(np, true); await np.waitForSelector('[data-testid=tr-form]');
+    check((await chipTexts(np)).join('|') === 'Filmer|Fichier|Lien|Document', `écran tactile sans enregistreur : « Filmer » reste, sous le même mot (${(await chipTexts(np)).join(' · ')})`);
+    const film = await np.locator('[data-testid=tr-film]').evaluate((e) => ({ type: e.type, accept: e.accept, capture: e.getAttribute('capture') }));
+    check(await np.locator('[data-testid=tr-film]').count() === 1 && film.accept === 'video/*' && film.capture === 'environment', `écran tactile sans enregistreur : « Filmer » = la caméra native (capture="environment") (${JSON.stringify(film)})`);
+    const [fc] = await Promise.all([np.waitForEvent('filechooser', { timeout: 4000 }), np.click('[data-testid=tr-kind-record]')]);
+    check(!!fc && await np.locator('[data-testid=tr-rec]').count() === 0, 'écran tactile sans enregistreur : un appui sur « Filmer » ouvre directement la caméra du téléphone');
+    await fc.setFiles(FIX.movFin);
+    await np.waitForSelector('[data-testid=tr-hevc-alert]', { timeout: 4000 });
+    check((await txt(np.locator('[data-testid=tr-hevc-alert]'))) === `${MSG.hevc} ${MSG.hevcNoRec} ${MSG.hevcKeep}`, 'caméra native : même alerte HEVC, avec le conseil sans « Filmer » (ce n’est pas l’enregistreur)');
+    await nat.close();
+
+    const pcNo = await newCtx(ADMIN, { width: 1280, height: 900 });
+    await pcNo.addInitScript(() => { delete window.MediaRecorder; });
+    const pp = track(await pcNo.newPage(), 'PC sans enregistreur');
+    await openWindow(pp, false); await pp.waitForSelector('[data-testid=tr-form]');
+    check((await chipTexts(pp)).join('|') === 'Fichier|Lien|Document' && await pp.locator('input[type=file][capture]').count() === 0, `PC sans enregistreur : aucun « Filmer » du tout (${(await chipTexts(pp)).join(' · ')}), aucun sélecteur « capture »`);
+    await pcNo.close();
+  }
+
+  // S8 · « Document » : absent sans document, présent avec
+  {
+    await emptyDb(); D.documents = [];
+    const dc = await newCtx(ADMIN, { width: 1280, height: 900 });
+    const dp = track(await dc.newPage(), 'sans document');
+    await openWindow(dp, false); await dp.waitForSelector('[data-testid=tr-form]');
+    check((await chipTexts(dp)).join('|') === 'Filmer|Fichier|Lien' && await dp.locator('[data-testid=tr-kind-document]').count() === 0 && !REMOVED.test(await txt(dp.locator('[data-testid=trainings-dialog]'))), 'sans document : pas de bouton « Document », aucune explication');
+    await dc.close();
+    await emptyDb();
+    const dc2 = await newCtx(ADMIN, { width: 1280, height: 900 });
+    const dp2 = track(await dc2.newPage(), 'avec document');
+    await openWindow(dp2, false); await dp2.waitForSelector('[data-testid=tr-form]');
+    check((await chipTexts(dp2)).join('|') === 'Filmer|Fichier|Lien|Document', 'avec un document : « Document » est proposé');
+    await dc2.close();
+  }
+
+  // S9 · 320 px de large : aucun défilement horizontal
+  {
+    await emptyDb();
+    const nar = await newCtx(ADMIN, { width: 320, height: 700 });
+    const np = track(await nar.newPage(), 'bureau 320');
+    await openWindow(np, true); await np.waitForSelector('[data-testid=tr-form]');
+    check(await fits(np), '320 px · formulaire d’office avec les quatre boutons : pas de défilement horizontal');
+    const ch = await np.locator('.bt-fo-chip').evaluateAll((els) => els.map((e) => { const r = e.getBoundingClientRect(); const t = e.querySelector('span').getBoundingClientRect(); return { l: r.left, r: r.right, h: r.height, over: t.width > r.width - 2 || e.scrollWidth > e.clientWidth + 1, tw: Math.round(t.width) }; }));
+    check(ch.length === 4 && ch.every((c) => c.l >= 0 && c.r <= 320 && c.h >= 44 && !c.over), `320 px · les quatre boutons tiennent sur une ligne, mots entiers, au moins 44 px (${ch.map((c) => `${Math.round(c.r - c.l)}×${Math.round(c.h)} mot ${c.tw}`).join(', ')})`);
+    await np.click('[data-testid=tr-kind-link]'); await np.fill('[data-testid=tr-link]', 'https://drive.google.com/file/d/ID/view');
+    check(await fits(np), '320 px · « Lien » Drive reconnu : pas de défilement horizontal');
+    const [fc] = await Promise.all([np.waitForEvent('filechooser', { timeout: 4000 }), np.click('[data-testid=tr-kind-file]')]);
+    await fc.setFiles(FIX.movFin); await np.waitForSelector('[data-testid=tr-hevc-alert]', { timeout: 4000 });
+    check(await fits(np), '320 px · fichier prêt avec alerte HEVC : pas de défilement horizontal');
+    await np.click('[data-testid=tr-file-change]');
+    await recReset(np);
+    await np.click('[data-testid=tr-kind-record]'); await np.waitForSelector('[data-testid=tr-rec-start]', { timeout: 10000 }); await np.waitForTimeout(500);
+    check(await fits(np), '320 px · enregistreur ouvert : pas de défilement horizontal');
+    await np.click('[data-testid=tr-rec-cancel]');
+    await nar.close();
+  }
 }
 
 // ═══ Fin ═════════════════════════════════════════════════════════════════════

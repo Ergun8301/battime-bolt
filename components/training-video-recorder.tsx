@@ -1,7 +1,7 @@
 'use client';
 
-// « Filmer dans BEMEXO » (lot 14, oct. 2026) — l'enregistreur intégré du panneau
-// « Vidéo (téléphone ou fichier) » (components/training-video-upload.tsx).
+// « Filmer » (enregistreur intégré, lot 14, oct. 2026) — ouvert par le bouton « Filmer » du formulaire,
+// affiché dans le panneau d'envoi (components/training-video-upload.tsx).
 //  - getUserMedia (caméra arrière si possible, 720p) + MediaRecorder ;
 //  - minuteur, compte à rebours, arrêt automatique avant 50 Mo ou 4 minutes ;
 //  - écran maintenu allumé pendant la prise (Wake Lock) ;
