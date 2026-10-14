@@ -29,6 +29,7 @@
     "test:assistant-eval": "npx -y deno@2 test --allow-env supabase/functions/assistant-eval/eval.test.ts",
     "test:fr-langue": "npx -y deno@2 test --allow-env supabase/functions/_shared/fr-langue.test.ts",
     "test:ai-provider": "npx -y deno@2 test --allow-env supabase/functions/_shared/ai-provider.test.ts",
+    "test:ai-anthropic": "npx -y deno@2 test --allow-env --allow-read supabase/functions/_shared/ai-anthropic.test.ts",
     "test:ia-config": "npx -y deno@2 test -A supabase/functions/_shared/ai-config.test.ts",
     "test:ia-domaines": "npx -y deno@2 test --allow-env --allow-read supabase/functions/_shared/tool-domains.test.ts",
     "test:saisie-profil": "npx -y deno@2 test --allow-env --allow-read supabase/functions/_shared/saisie-profil.test.ts",

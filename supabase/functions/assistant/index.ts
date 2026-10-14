@@ -2,8 +2,8 @@
 //
 // DÉPLOIEMENT : `supabase functions deploy assistant` (JWT vérifié), APRÈS la
 // migration 20261012090000_lot6_couche_ia_v2.sql.
-// Secrets : AI_CONFIG (formule, modèles, plafonds) et AI_API_KEY (repli :
-// GEMINI_API_KEY), voir _shared/ai-provider.ts ; ASSISTANT_DAILY_LIMIT
+// Secrets : AI_CONFIG (formule, modèles — Gemini ou Claude —, plafonds), AI_API_KEY (clé Gemini ; repli :
+// GEMINI_API_KEY) et ANTHROPIC_API_KEY (clé Claude), voir _shared/ai-provider.ts ; ASSISTANT_DAILY_LIMIT
 // (facultatif, 50 par défaut : demandes par entreprise et par jour).
 // AI_MODEL, AI_ACTION_MODEL et AI_FALLBACK_MODEL ne sont plus lus.
 //
@@ -31,7 +31,7 @@
 // compteur du quota ; aucune question ni réponse dans les logs.
 // Réservé à un ADMIN actif d'une entreprise dont `ai_enabled` est vrai.
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { aiKey, callFunction, formuleNom, PAUSE_MESSAGE, plafondProjet, readAttachment, tierFor } from '../_shared/ai-provider.ts';
+import { aiDisponible, callFunction, formuleNom, PAUSE_MESSAGE, plafondProjet, readAttachment, tierFor } from '../_shared/ai-provider.ts';
 import { loadAssistantContext } from '../_shared/assistant-context.ts';
 import { DEFAULT_DAILY_LIMIT, MAX_QUESTION_CHARS, buildSnapshot, previousDay, type RawData } from '../_shared/assistant-core.ts';
 import {
@@ -165,7 +165,7 @@ Deno.serve(async (req) => {
     if (local) return reply(local, ctx, remaining);
 
     // 2. Sans clé : on guide quand même.
-    if (!aiKey(Deno.env)) {
+    if (!aiDisponible(Deno.env, tier)) {
       if (att.file) return json({ unavailable: true, answer: 'Lecture de fichier indisponible pour le moment.', links: [] });
       const g = findGuide(question);
       return reply(g ? { answer: guideAnswer(g), links: guideLinks(g) }

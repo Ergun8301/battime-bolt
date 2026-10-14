@@ -520,3 +520,25 @@ Deno.test('Aucun bandeau « Mode essai » dans les écrans (retiré à la demand
   const sup = await Deno.readTextFile(new URL('app/support/page.tsx', racine));
   if (!/iaFormule\('assistant'\)/.test(sup)) throw new Error('app/support/page.tsx : la console du support doit lire la formule');
 });
+
+Deno.test('assistant-eval/index.ts : l’authentification (x-cron-secret) n’a pas changé ; aiConfig est validé AVANT toute passe et renvoie 400', async () => {
+  const idx = await Deno.readTextFile(new URL('../assistant-eval/index.ts', import.meta.url));
+  if (!/req\.headers\.get\('x-cron-secret'\)/.test(idx) || !/verify_cron_secret/.test(idx) || !/'Non autorisé'/.test(idx)) throw new Error('authentification par x-cron-secret');
+  const iSecret = idx.indexOf('secretOk(secret)'), iCfg = idx.indexOf('envEvaluation('), iRun = idx.indexOf('runEval(');
+  if (iSecret < 0 || iCfg < iSecret || iRun < iCfg) throw new Error('ordre : secret, puis aiConfig, puis la passe');
+  if (!/if \(!ev\.ok\) return json\(\{ error: ev\.error \}, 400\)/.test(idx)) throw new Error('400 explicite');
+  if (/callFunction\(r, Deno\.env\)/.test(idx)) throw new Error('tous les appels passent par l’environnement enveloppé');
+});
+
+Deno.test('Les trois fonctions demandent « l’IA est-elle configurée ? » par aiDisponible(env, niveau) (clé du fournisseur du niveau ou du secours), plus par la seule clé Gemini', async () => {
+  const attendu: Record<string, RegExp> = {
+    assistant: /aiDisponible\(Deno\.env, tier\)/, 'worker-assistant': /iaDisponible: aiDisponible\(Deno\.env, tier\)/, 'payslip-read': /aiDisponible\(Deno\.env, 'documents'\)/,
+  };
+  for (const [dir, re] of Object.entries(attendu)) {
+    const code = (await Deno.readTextFile(new URL(`../${dir}/index.ts`, import.meta.url))).split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
+    if (!re.test(code) || /\baiKey\(/.test(code)) throw new Error(`${dir}/index.ts : aiDisponible attendu, aiKey interdit`);
+    // Les messages affichés quand l'IA n'est pas configurée ne changent pas.
+    if (dir === 'payslip-read' && !code.includes('Lecture automatique indisponible, saisissez les chiffres.')) throw new Error('message payslip-read');
+    if (dir === 'assistant' && !code.includes('L’assistant est indisponible pour le moment.')) throw new Error('message assistant');
+  }
+});

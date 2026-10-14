@@ -5,7 +5,7 @@
 // puis les MÊMES contrôles. Rien n'est lu ni écrit en base.
 // Salarié v2 : le tour est LE MÊME code que la vraie fonction (_shared/worker-turn.ts : lecteur local,
 // profil court ou long), pour que la mesure soit fidèle à la production.
-import { tierFor, type ToolsRequest, type ToolsResult } from '../_shared/ai-provider.ts';
+import { modeleServi, tierFor, type ToolsRequest, type ToolsResult } from '../_shared/ai-provider.ts';
 import * as A2 from '../_shared/assistant-actions-core.ts';
 import * as W2 from '../_shared/worker-assistant-core.ts';
 import { runWorkerTurn } from '../_shared/worker-turn.ts';
@@ -22,6 +22,8 @@ export interface CaseResult {
   appels?: number;
   /** Le modèle de secours a répondu. */
   secours?: boolean;
+  /** « fournisseur:modèle » qui a réellement répondu (Claude ou son secours Gemini) : on ne les confond jamais. */
+  modele?: string;
 }
 
 type AnyReply = { answer?: string; links?: { action: string }[]; action?: { draft: { type: string }; problems: string[] } };
@@ -55,7 +57,10 @@ function fromWorker(r: AnyWorker | null): Outcome {
   return { kind: 'answer', answer: r.answer, links: (r.links ?? []).map((l) => l.action) };
 }
 
-async function runOne(c: EvalCase, version: 'v1' | 'v2', call: Call): Promise<CaseResult> {
+async function runOne(c: EvalCase, version: 'v1' | 'v2', appel: Call): Promise<CaseResult> {
+  // Chaque cas note quel modèle a servi (le dernier appel), pour que le rapport dise Claude ou secours.
+  let servi: string | undefined;
+  const call: Call = async (req) => { const r = await appel(req); servi = modeleServi(r) ?? servi; return r; };
   const base = { id: c.id, cote: c.cote, categorie: c.categorie, phrase: c.phrase };
   const t0 = Date.now();
   const file = c.file ? FILES[c.file] : undefined;
@@ -94,9 +99,9 @@ async function runOne(c: EvalCase, version: 'v1' | 'v2', call: Call): Promise<Ca
     }
     const why = c.check(out);
     // Diagnostic : pour un échec, ce que l'assistant a réellement préparé (jeu fictif, rien d'une vraie entreprise).
-    return { ...base, ok: !why, why, via, ms: Date.now() - t0, ...suite, ...(why ? { sortie: out } : {}) };
+    return { ...base, ok: !why, why, via, ms: Date.now() - t0, ...suite, ...(servi ? { modele: servi } : {}), ...(why ? { sortie: out } : {}) };
   } catch (e) {
-    return { ...base, ok: false, why: `erreur : ${(e as Error).message}`, via: 'erreur' };
+    return { ...base, ok: false, why: `erreur : ${(e as Error).message}`, via: 'erreur', ...(servi ? { modele: servi } : {}) };
   }
 }
 
@@ -129,6 +134,9 @@ export async function runEval(version: 'v1' | 'v2', call: Call, ids?: string[], 
     const rs = results.filter((r) => r.profil === profil && r.via === 'ia');
     return { profil, n: rs.length, ok: rs.filter((r) => r.ok).length, medianeMs: mediane(rs.map((r) => r.ms ?? 0)), maxMs: Math.max(0, ...rs.map((r) => r.ms ?? 0)), secours: rs.filter((r) => r.secours).length };
   });
+  // Qui a servi les cas passés par l'IA (« anthropic:claude-sonnet-5-5 », « gemini:… » = le secours) ; « aucun » = erreur de bout en bout.
+  const compte = new Map<string, number>();
+  for (const r of results.filter((x) => x.via === 'ia')) compte.set(r.modele ?? 'aucun', (compte.get(r.modele ?? 'aucun') ?? 0) + 1);
   return {
     version, repeat, total: results.length, ok, pct: Math.round((ok / Math.max(1, results.length)) * 1000) / 10,
     categories: Array.from(byCat.entries()).map(([categorie, v]) => ({ categorie, ...v, pct: Math.round((v.ok / v.n) * 100) })),
@@ -138,5 +146,6 @@ export async function runEval(version: 'v1' | 'v2', call: Call, ids?: string[], 
     // Lot 7 (lenteur) : temps par phrase passée par l'IA ; profils court / long : réussite, médiane, maximum, réponses du secours.
     temps: results.filter((r) => r.via === 'ia').map((r) => ({ id: r.id, ms: r.ms })),
     profils,
+    modeles: Array.from(compte.entries()).map(([modele, n]) => ({ modele, n })),
   };
 }
