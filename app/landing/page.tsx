@@ -121,7 +121,15 @@ const STYLES = `.lp{font-family:'Archivo',sans-serif;background:#F2EDE3;color:#1
 .lp-sign a:hover,.lp-sign a:focus-visible{color:#FFC21A}
 .lp-sign a:hover span,.lp-sign a:focus-visible span{border-bottom-color:rgba(255,194,26,.6)}
 @media(max-width:560px){
- .lp-hide-sm{display:none !important}
+ /* « Se connecter » reste visible sur téléphone (avant : caché sous 560 px,
+    donc un client déjà inscrit ne voyait que « Essayer gratuitement »). On
+    resserre le bandeau et on abrège le bouton pour que les deux tiennent. */
+ .lp-head-in{padding:12px 16px !important;gap:10px !important}
+ .lp-head-right{gap:12px !important}
+ .lp-login{font-size:14px !important}
+ .lp-head-cta{padding:10px 13px !important;font-size:14px !important}
+ .lp-cta-long{display:none !important}
+ .lp-cta-short{display:inline !important}
  .lp h1{font-size:34px !important;line-height:1.05 !important}
  .lp h2{font-size:26px !important}
  .lp-tarif-inner{padding:34px 18px 44px !important}
@@ -129,7 +137,7 @@ const STYLES = `.lp{font-family:'Archivo',sans-serif;background:#F2EDE3;color:#1
 
 const BODY = `<!-- ============ HEADER ============ -->
   <header style="position:sticky;top:0;z-index:50;background:rgba(242,237,227,.85);backdrop-filter:blur(10px);border-bottom:1px solid rgba(21,18,15,.12)">
-    <div style="max-width:1200px;margin:0 auto;padding:16px 28px;display:flex;align-items:center;justify-content:space-between;gap:24px">
+    <div class="lp-head-in" style="max-width:1200px;margin:0 auto;padding:16px 28px;display:flex;align-items:center;justify-content:space-between;gap:24px">
       <div style="display:flex;align-items:center;gap:11px">
         <img src="/bemexo-wordmark-dark.svg" alt="BEMEXO" style="height:30px;width:auto;display:block" />
       </div>
@@ -139,9 +147,9 @@ const BODY = `<!-- ============ HEADER ============ -->
         <a href="#metiers" style="color:inherit;text-decoration:none">Pour qui</a>
         <a href="#tarif" style="color:inherit;text-decoration:none">Tarif</a>
       </nav>
-      <div style="display:flex;align-items:center;gap:14px">
-        <a href="/connexion" class="lp-hide-sm" style="font-size:14.5px;font-weight:700;color:#15120F;text-decoration:none">Se connecter</a>
-        <a href="/inscription" data-cta-position="header" style="background:#FFC21A;color:#15120F;font-weight:800;font-size:14.5px;padding:11px 18px;border-radius:9px;text-decoration:none;box-shadow:0 2px 0 #C99300">Essayer gratuitement</a>
+      <div class="lp-head-right" style="display:flex;align-items:center;gap:14px">
+        <a href="/connexion" class="lp-login" style="font-size:14.5px;font-weight:700;color:#15120F;text-decoration:none;white-space:nowrap">Se connecter</a>
+        <a href="/inscription" class="lp-head-cta" data-cta-position="header" style="background:#FFC21A;color:#15120F;font-weight:800;font-size:14.5px;padding:11px 18px;border-radius:9px;text-decoration:none;box-shadow:0 2px 0 #C99300;white-space:nowrap"><span class="lp-cta-long">Essayer gratuitement</span><span class="lp-cta-short" style="display:none">Essai gratuit</span></a>
       </div>
     </div>
   </header>

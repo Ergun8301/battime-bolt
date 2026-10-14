@@ -19,6 +19,8 @@ const CSS = `
 .sp-head-in{max-width:1000px;margin:0 auto;padding:13px 24px;display:flex;align-items:center;justify-content:space-between;gap:16px}
 .sp-brand{display:inline-flex;align-items:center;border-bottom:none}
 .sp-brand img{height:27px;width:auto;display:block}
+.sp-head-right{display:flex;align-items:center;gap:16px}
+.sp-head-login{font-size:14px;font-weight:700;color:#15120F;text-decoration:none;white-space:nowrap}
 .sp-head-cta{display:inline-flex;align-items:center;gap:8px;background:#FFC21A;color:#15120F;font-weight:800;font-size:14px;padding:9px 16px;border-radius:9px;text-decoration:none;box-shadow:0 2px 0 #C99300;white-space:nowrap}
 /* fil d'ariane */
 .sp-crumb{max-width:820px;margin:0 auto;padding:22px 24px 0;font-family:'JetBrains Mono',monospace;font-size:12px;color:#8a8378;font-weight:600}
@@ -86,6 +88,8 @@ const CSS = `
      donc il ne peut pas se replier) : on resserre le bandeau plutôt que de
      rogner le bouton. */
   .sp-head-in{padding:11px 16px;gap:10px}
+  .sp-head-right{gap:12px}
+  .sp-head-login{font-size:13px}
   .sp-brand img{height:24px}
 }
 `;
@@ -113,7 +117,10 @@ export default function SeoPage({
             <Link href="/landing" className="sp-brand" aria-label="BEMEXO — accueil">
               <img src="/bemexo-wordmark-dark.svg" alt="BEMEXO" />
             </Link>
-            <Link href="/inscription" data-cta-position="header" className="sp-head-cta">Essayer gratuitement</Link>
+            <div className="sp-head-right">
+              <Link href="/connexion" className="sp-head-login">Se connecter</Link>
+              <Link href="/inscription" data-cta-position="header" className="sp-head-cta">Essayer gratuitement</Link>
+            </div>
           </div>
         </header>
 
