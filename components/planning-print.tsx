@@ -4,7 +4,7 @@
 // ou à faire signer. Deux pièces :
 //  - PrintMenu : le petit menu d'options sous l'icône 🖨 de la barre (la période,
 //    toute l'équipe ou un salarié, colonne signature) ;
-//  - PlanningPrintSheet : la grille imprimée, montée dans <body> UNIQUEMENT pendant
+//  - PlanningPrintSheet (planning-print-sheet.tsx) : la grille imprimée, montée dans <body> UNIQUEMENT pendant
 //    l'impression (cachée à l'écran). Elle reprend les classes et les bulles de
 //    l'écran (PL_GRID_CSS, BubbleContent) : le papier ressemble à l'écran, sans ce
 //    qui ne sert qu'à l'écran (boutons, « + », sélection, direct, jour J, statuts).
@@ -17,20 +17,15 @@
 // les tâches du jour sous chaque case ; les réunions, elles, sont toujours
 // imprimées (couleur à part, légende « Réunion »). Le mois n'imprime ni l'un ni l'autre.
 //
-// Mise en page papier (A4 paysage) : marges de 10 mm identiques sur les 4 côtés (une
-// imprimante rogne 4 à 6 mm), tableau centré sur toute la largeur utile avec un CADRE noir
-// franc, haut / bas / gauche / droite, refermé en bas de chaque page ; quelques salariés
-// seulement → le tableau descend vers le bas de la page. Les COULEURS, motifs (rayures des
-// congés), pointillés et fonds des cases sont ceux de l'écran, jamais modifiés ici.
+// Mise en page papier : voir components/planning-print-sheet.tsx (chargé à la demande, hors du
+// premier affichage) — la feuille est le planning de l'écran, sans la barre d'outils.
 //
 // Rien ici n'écrit en base, et rien ne touche à « Exporter » (qui, lui, verrouille
 // les heures de la période) : imprimer ne change aucune donnée.
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { format, getISOWeek, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Loader2, Printer } from 'lucide-react';
-import { DAY_PARTS } from '@/supabase/functions/_shared/day-part';
-import { MEETING_TINT } from '@/supabase/functions/_shared/missions';
 import { addDaysISO, ISO_DAY, normalizePeriod, periodDays, shiftPeriod, switchKind, type PeriodKind, type PrintPeriod } from '@/supabase/functions/_shared/print-period';
 import type { PrintData } from '@/lib/planning-print-data';
 
@@ -49,7 +44,7 @@ export interface PrintJob extends PrintOptions {
   auto?: boolean;
   printedAt: Date;
 }
-export interface PrintRow { id: string; name: string; initials: string; tint: { background: string; color: string } }
+export interface PrintRow { id: string; name: string; initials: string; tint: { background: string; color: string }; /** Sa photo, si l'écran en montre une. */ photo?: string | null }
 
 // Seules la signature et « Avec les tâches » (lot 4) sont retenues. La période part
 // toujours de celle de l'écran (lot 3bis), et le salarié revient toujours à « Toute
@@ -67,15 +62,7 @@ function savePrefs(p: Partial<Prefs>) {
   try { localStorage.setItem(STORE_KEY, JSON.stringify({ ...readPrefs(), ...p })); } catch { /* stockage indisponible : réglage pour la session */ }
 }
 
-const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-const dayFull = (d: Date) => cap(format(d, 'EEEE', { locale: fr }));
-/** « 19 – 25 octobre 2026 », « 26 octobre – 1 novembre 2026 », « 28 décembre 2026 – 3 janvier 2027 ». */
-function rangeLabel(days: Date[]): string {
-  const a = days[0], b = days[days.length - 1];
-  if (a.getFullYear() !== b.getFullYear()) return `${format(a, 'd MMMM yyyy', { locale: fr })} – ${format(b, 'd MMMM yyyy', { locale: fr })}`;
-  if (a.getMonth() !== b.getMonth()) return `${format(a, 'd MMMM', { locale: fr })} – ${format(b, 'd MMMM yyyy', { locale: fr })}`;
-  return `${format(a, 'd')} – ${format(b, 'd MMMM yyyy', { locale: fr })}`;
-}
+export const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /**
  * Libellé court du menu : « S-43 · 19 – 25 oct. », « S-44 · 26 oct. – 1 nov. »
@@ -225,259 +212,3 @@ export function PrintMenu({ displayed, workers, busy, onPrint, onClose, tasksOn 
   );
 }
 
-// La feuille n'existe qu'à l'impression : cachée à l'écran, seule visible sur papier.
-// Le @page n'existe que tant qu'elle est montée : Ctrl+P ailleurs reste inchangé.
-// Les règles de grille (PL_GRID_CSS) viennent de la page, qui reste montée.
-export const PRINT_SHEET_CSS = `
-@media screen{.bt-print{display:none!important}}
-@media print{
-  /* 10 mm sur les 4 côtés : une imprimante rogne 4 à 6 mm de chaque bord, le cadre du
-     tableau doit rester en deçà. Marges identiques partout = tableau centré sur la page. */
-  @page{size:A4 landscape;margin:10mm}
-  html,body{background:#fff!important;margin:0!important;padding:0!important;height:auto!important;min-height:0!important;overflow:visible!important}
-  /* L'appli, les fenêtres (portails Radix) et les petits messages : rien d'autre que la feuille. */
-  body>*:not(.bt-print){display:none!important}
-  .bt-print{display:block!important;box-sizing:border-box;width:100%;max-width:100%;margin:0 auto;font-family:'Archivo',sans-serif;color:#15120F;background:#fff;--bt-z:1}
-  .bt-print--week{--bt-z:.8;zoom:var(--bt-z)}
-  /* Sans « graphiques d'arrière-plan », Chrome efface les fonds : les bulles noires
-     (heures envoyées) deviendraient du texte pâle sur blanc, les hachures disparaîtraient. */
-  .bt-print,.bt-print *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  .bt-print .bt-pl-table{min-width:0;width:100%;max-width:100%;box-sizing:border-box}
-  .bt-print thead{display:table-header-group}
-  .bt-print tr{break-inside:avoid;page-break-inside:avoid}
-  /* CADRE extérieur : un trait noir franc (4 px sur la semaine, zoomée à .8, soit 3 px ; 3 px sur le
-     jour et le mois) à gauche, à droite, en haut (sous le titre) et en bas — plus épais que les traits
-     internes (1 px), donc visible même en noir et blanc. Le titre et la légende restent au-dessus.
-     Le pied vide (tfoot) referme le cadre en bas de CHAQUE page quand le tableau en compte plusieurs. */
-  .bt-print{--bt-frame:3px}
-  .bt-print--week{--bt-frame:4px}
-  .bt-print table{border-collapse:collapse}
-  .bt-print table thead tr:not(.bt-print-title)>*{border-top:var(--bt-frame) solid #15120F}
-  .bt-print table thead tr:not(.bt-print-title)>:first-child,.bt-print table tbody tr>:first-child{border-left:var(--bt-frame) solid #15120F}
-  .bt-print table thead tr:not(.bt-print-title)>:last-child,.bt-print table tbody tr>:last-child{border-right:var(--bt-frame) solid #15120F}
-  .bt-print table tbody:last-of-type tr:last-child>td{border-bottom:var(--bt-frame) solid #15120F}
-  .bt-print tfoot{display:table-footer-group}
-  .bt-print tfoot td{height:0;padding:0;border:0;border-top:var(--bt-frame) solid #15120F;line-height:0;font-size:0}
-  /* Peu de salariés : le tableau descend vers le bas de la page (la hauteur utile moins une marge
-     de sécurité), sans jamais dépasser ~45 mm par ligne ; avec beaucoup de salariés, c'est une hauteur
-     MINIMALE : le contenu garde sa taille et passe sur la page suivante. --bt-n = nombre de lignes. */
-  .bt-print--week .bt-pl-table,.bt-print--day .bt-pl-table{height:min(calc(182mm / var(--bt-z)),calc((30mm + var(--bt-n,1) * 45mm) / var(--bt-z)))}
-  /* Coin « S-43 / Salarié » : ses deux étiquettes sont placées en absolu dans la case. */
-  .bt-print .bt-pl-th-name{position:relative;width:auto}
-  .bt-print .bt-pl-namecell{position:static}
-  .bt-print .bt-pl-namebtn{padding:10px 8px;cursor:default}
-  /* Le nom ENTIER sur la feuille (elle se signe) : il passe à la ligne, jamais « … ». */
-  .bt-print .bt-pl-name{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;line-height:1.15}
-  .bt-print .bt-pl-cellinner{min-height:0}
-  .bt-print .bt-pl-cellfill{cursor:default}
-  .bt-print-title>th{border:0;padding:0 0 6px;text-align:left;font-weight:400;background:#fff}
-  .bt-print-tl{display:flex;align-items:baseline;justify-content:space-between;gap:16px}
-  .bt-print-co{font-size:15px;font-weight:900}
-  .bt-print-what{font-size:13px;font-weight:800;text-align:center}
-  .bt-print-at{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#6E6A63;white-space:nowrap}
-  .bt-print-leg{display:flex;flex-wrap:wrap;gap:12px;margin-top:4px;font-size:10px;font-weight:600;color:#57524A}
-  .bt-print-sw{display:inline-block;width:11px;height:11px;border-radius:3px;border:1px dashed;margin-right:4px;vertical-align:-1px}
-  .bt-print-sig{border-left:2px solid #15120F}
-  th.bt-print-sig .bt-pl-th-day{font-size:13px}
-  td.bt-print-sig{height:56px}
-  .bt-print--day .bt-pl-cellfill{flex-direction:row;flex-wrap:wrap;align-items:flex-start}
-  .bt-print--day .bt-pl-cellfill>*{flex:0 0 230px}
-  /* Lot 3bis — le MOIS : une ligne par salarié, une colonne par jour, sur 1047 px
-     utiles (A4 paysage). Dans une case : un petit bloc par intervention, le code du
-     chantier (clé en tête de chaque page), la couleur du créneau, noir = envoyé. */
-  .bt-print--month .bt-print-title>th{padding-bottom:4px}
-  .bt-print--month .bt-print-tl{gap:12px}
-  .bt-print--month .bt-print-co{font-size:13px}
-  .bt-print--month .bt-print-what{font-size:12px}
-  .bt-print--month .bt-print-at{font-size:8.5px}
-  .bt-print--month .bt-print-leg{gap:10px;margin-top:3px;font-size:8.5px}
-  .bt-print--month .bt-print-sw{width:9px;height:9px;border-radius:2px;margin-right:3px}
-  .bt-print-m-key{margin-top:3px;font-size:8.5px;font-weight:600;color:#57524A;line-height:1.35}
-  .bt-print-m-key b{font-weight:900;color:#15120F}
-  .bt-print-m{width:100%;border-collapse:collapse;table-layout:fixed;height:min(182mm,calc(42mm + var(--bt-n,1) * 16mm))}
-  .bt-print-m col.n{width:30mm}
-  .bt-print-m col.sig{width:16mm}
-  .bt-print-m th.d{padding:2px 0 3px;text-align:center;border:1px solid rgba(21,18,15,.25);border-bottom:1.5px solid #15120F;line-height:1;font-weight:400}
-  .bt-print-m .wd{display:block;font-size:7px;font-weight:700;color:#6E6A63;text-transform:uppercase}
-  .bt-print-m .dn{display:block;font-size:9.5px;font-weight:900;margin-top:1px}
-  .bt-print-m th.sig .dn{font-size:7.5px}
-  .bt-print-m th.n{text-align:left;padding:2px 5px;font-size:9px;font-weight:900;border:1px solid rgba(21,18,15,.25);border-right:1.5px solid #15120F;border-bottom:1.5px solid #15120F}
-  .bt-print-m .we{background:#F4F1EA}
-  .bt-print-m .mon{border-left:1.5px solid #15120F}
-  .bt-print-m td{border:1px solid rgba(21,18,15,.22);padding:1px;vertical-align:top}
-  .bt-print-m td.n{padding:3px 5px;font-size:9px;font-weight:800;line-height:1.12;overflow-wrap:anywhere;border-right:1.5px solid #15120F;vertical-align:middle}
-  .bt-print-m.with-sig tbody td{height:8mm}
-  .bt-print-m .sig{border-left:1.5px solid #15120F}
-  .bt-print-m-b{display:block;height:11px;line-height:11px;margin-bottom:1px;border-radius:2px;border-left:2px solid;font-size:7.5px;font-weight:800;text-align:center;white-space:nowrap;overflow:hidden;color:#15120F;letter-spacing:-.02em}
-  .bt-print-m-b:last-child{margin-bottom:0}
-  .bt-print-m-b.is-real{background:#15120F;color:#F2EDE3}
-  .bt-print-m-b.is-white{border:1px dashed;border-left-width:2px}
-  .bt-print-m-b.is-off{opacity:.55;text-decoration:line-through}
-  .bt-print-m-abs{display:flex;align-items:center;justify-content:center;min-height:12px;height:100%;font-size:8.5px;font-weight:900;border-radius:2px}
-}
-/* Navigateur qui ignore @page (Firefox, Safari) et imprime en portrait : le mois reste une grille. */
-@media print and (orientation:portrait){.bt-print--month{zoom:.67}}
-`;
-// Objet FIXE, comme PL_STYLE (admin-planning) : un nouvel objet à chaque rendu
-// ferait réécrire la feuille de style par React.
-const PRINT_SHEET_STYLE = { __html: PRINT_SHEET_CSS };
-// Permet à un enfant `height:100%` de suivre la hauteur de la ligne (comme à l'écran).
-const CELL_HEIGHT_HACK = { height: '1px' } as const;
-
-/** La grille imprimée. Uniquement des div/span : aucun bouton, rien de cliquable. */
-export function PlanningPrintSheet({ job, company, rows, renderCell, codes, hasMeetings = false }: {
-  job: PrintJob;
-  company: string;
-  rows: PrintRow[];
-  renderCell: (workerId: string, iso: string) => ReactNode;
-  /** Mois : code de chaque chantier imprimé (titre → code), pour la clé « Chantiers : ». */
-  codes?: Map<string, string>;
-  /** Lot 4 : au moins une réunion sur la feuille → « 👥 Réunion » dans la légende. */
-  hasMeetings?: boolean;
-}) {
-  const kind = job.period.kind;
-  const days = periodDays(job.period).map((d) => parseISO(d));
-  const weekNo = getISOWeek(days[0]);
-  const one = job.who !== 'all' ? rows[0]?.name : null;
-  const cols = 1 + days.length + (job.signature ? 1 : 0);
-  // Nombre de lignes pour la CSS : peu de salariés → le tableau descend vers le bas de la page.
-  const rowsVar = { '--bt-n': Math.max(1, rows.length) } as CSSProperties;
-  // Pied vide : referme le cadre en bas de chaque page (ne contient rien, ne s'imprime que comme un trait).
-  const frameEnd = <tfoot className="bt-print-end"><tr><td colSpan={cols} /></tr></tfoot>;
-  const head = (what: string, extra?: ReactNode) => (
-    <tr className="bt-print-title">
-      <th colSpan={cols}>
-        <div className="bt-print-tl">
-          <span className="bt-print-co">{company}</span>
-          <span className="bt-print-what" data-testid="print-what">{what}{one ? ` · ${one}` : ''}</span>
-          <span className="bt-print-at">Imprimé le {format(job.printedAt, "d MMM yyyy 'à' HH:mm", { locale: fr })}</span>
-        </div>
-        <div className="bt-print-leg">
-          {DAY_PARTS.map((d) => (
-            <span key={d.key}><span className="bt-print-sw" style={{ background: d.bg, borderColor: d.edge }} />{d.label} · {d.hint}</span>
-          ))}
-          <span>Blanc : journée entière ou sans horaire · Noir : heures envoyées{kind === 'month' ? ' · C congé · I intempérie · A absent · R repos' : ''}</span>
-          {hasMeetings && kind !== 'month' && (
-            <span data-testid="print-leg-meeting"><span className="bt-print-sw" style={{ background: MEETING_TINT.bg, borderColor: MEETING_TINT.edge, borderStyle: 'solid' }} />👥 Réunion · ne compte pas dans les heures</span>
-          )}
-        </div>
-        {extra}
-      </th>
-    </tr>
-  );
-  if (kind === 'month') {
-    // La clé et l'en-tête des jours sont dans <thead> : Chrome les répète en haut de
-    // chaque page, et une ligne (tr) n'est jamais coupée entre deux pages.
-    const key = Array.from((codes || new Map<string, string>()).entries()).sort((a, b) => a[1].localeCompare(b[1], 'fr'));
-    return (
-      <div className="bt-print bt-print--month" data-testid="print-sheet" style={rowsVar}>
-        <style dangerouslySetInnerHTML={PRINT_SHEET_STYLE} />
-        <table className={`bt-print-m${job.signature ? ' with-sig' : ''}`} data-testid="print-month">
-          <colgroup>
-            <col className="n" />
-            {days.map((d) => <col key={d.toISOString()} />)}
-            {job.signature && <col className="sig" />}
-          </colgroup>
-          <thead>
-            {head(`Planning · ${format(days[0], 'MMMM yyyy', { locale: fr })}`, key.length > 0 && (
-              <div className="bt-print-m-key" data-testid="print-m-key">
-                Chantiers :{' '}
-                {key.map(([title, code], i) => <span key={code} data-code={code}>{i ? ' · ' : ''}<b>{code}</b> {title}</span>)}
-              </div>
-            ))}
-            <tr>
-              <th className="n">Salarié</th>
-              {days.map((d) => {
-                const wd = (d.getDay() + 6) % 7;
-                return (
-                  <th key={d.toISOString()} className={`d${wd >= 5 ? ' we' : ''}${wd === 0 ? ' mon' : ''}`} data-testid="print-m-day">
-                    <span className="wd">{format(d, 'EEEEE', { locale: fr })}</span><span className="dn">{format(d, 'd')}</span>
-                  </th>
-                );
-              })}
-              {job.signature && <th className="d sig"><span className="dn">Signature</span></th>}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.id} data-testid="print-m-row">
-                <td className="n">{r.name}</td>
-                {days.map((d) => {
-                  const iso = format(d, 'yyyy-MM-dd');
-                  const wd = (d.getDay() + 6) % 7;
-                  return (
-                    <td key={iso} className={`${wd >= 5 ? 'we' : ''}${wd === 0 ? ' mon' : ''}`.trim() || undefined} data-day={iso} style={CELL_HEIGHT_HACK}>
-                      {renderCell(r.id, iso)}
-                    </td>
-                  );
-                })}
-                {job.signature && <td className="sig" />}
-              </tr>
-            ))}
-          </tbody>
-          {frameEnd}
-        </table>
-      </div>
-    );
-  }
-  const week = kind === 'week';
-  const what = week
-    ? `Planning · semaine ${weekNo} · ${rangeLabel(days)}`
-    : `${cap(format(days[0], 'EEEE d MMMM yyyy', { locale: fr }))} · semaine ${weekNo}`;
-  return (
-    <div className={`bt-print bt-print--${kind}`} data-testid="print-sheet" style={rowsVar}>
-      <style dangerouslySetInnerHTML={PRINT_SHEET_STYLE} />
-      <table className="bt-pl-table">
-        {/* Largeurs explicites : en table-layout:fixed, la ligne de titre (colspan) en
-            premier rendrait toutes les colonnes égales et couperait les noms. */}
-        <colgroup>
-          <col style={{ width: week ? 170 : 200 }} />
-          {days.map((d) => <col key={d.toISOString()} />)}
-          {job.signature && <col style={{ width: week ? 110 : 180 }} />}
-        </colgroup>
-        <thead>
-          {head(what)}
-          <tr>
-            <th className="bt-pl-th-name">
-              <span className="bt-pl-corner-wk">S-{weekNo}</span>
-              <span className="bt-pl-corner-sal">Salarié</span>
-            </th>
-            {days.map((d) => (
-              <th key={d.toISOString()} className="bt-pl-th">
-                <div className="bt-pl-th-cell">
-                  <span className="bt-pl-th-day">{dayFull(d)}</span>
-                  <span className="bt-pl-th-num">{format(d, 'd')}</span>
-                </div>
-              </th>
-            ))}
-            {job.signature && <th className="bt-pl-th bt-print-sig"><span className="bt-pl-th-day">Signature</span></th>}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.id}>
-              <td className="bt-pl-namecell" style={CELL_HEIGHT_HACK}>
-                <div className="bt-pl-namebtn">
-                  <span className="bt-pl-nametop">
-                    <span className="bt-pl-avatar" style={r.tint}>{r.initials}</span>
-                    <span className="bt-pl-name">{r.name}</span>
-                  </span>
-                </div>
-              </td>
-              {days.map((d) => {
-                const iso = format(d, 'yyyy-MM-dd');
-                return (
-                  <td key={iso} className="bt-pl-cell" style={CELL_HEIGHT_HACK}>
-                    <div className="bt-pl-cellinner">{renderCell(r.id, iso)}</div>
-                  </td>
-                );
-              })}
-              {job.signature && <td className="bt-pl-cell bt-print-sig" />}
-            </tr>
-          ))}
-        </tbody>
-        {frameEnd}
-      </table>
-    </div>
-  );
-}

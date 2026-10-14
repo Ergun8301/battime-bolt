@@ -286,7 +286,7 @@ const printWith = async (p, { kind = 'week', moves = 0, date = null, tomorrow = 
   return p.evaluate(() => window.__title);
 };
 const closePrint = (p) => p.evaluate(() => window.dispatchEvent(new Event('afterprint')));
-/** Rendu « papier » à l'écran : zone imprimable d'un A4 paysage, marges de 10 mm (277 × 190 mm ≈ 1047 × 718 px). */
+/** Rendu « papier » à l'écran : la feuille fait 277 mm de large (A4 paysage moins 10 mm de chaque côté ; @page margin:0, les marges sont celles de la feuille) ≈ 1047 px — la largeur testée ici ; 190 mm ≈ 718 px de haut. */
 const paper = async (p, fn, { w = 1047, h = 718 } = {}) => {
   const vp = p.viewportSize();
   await p.setViewportSize({ width: w, height: h }); await p.emulateMedia({ media: 'print' }); await p.waitForTimeout(300);
