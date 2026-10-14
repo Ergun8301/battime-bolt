@@ -73,6 +73,7 @@
     "test:panier-ecrans": "node scripts/tests/panier-lot3bis.mjs out docs/captures-lot3bis",
     "test:impression": "npx -y deno@2 test supabase/functions/_shared/print-period.test.ts supabase/functions/_shared/planning-cells.test.ts",
     "test:impression-ecrans": "node scripts/tests/impression-lot3bis.mjs out docs/captures-lot3bis",
+    "test:impression-cadre": "node scripts/tests/impression-cadre.mjs out",
     "test:invitation-entreprise": "node supabase/tests/lot7_invitation_entreprise.mjs",
     "test:formations": "npx -y deno@2 test --allow-read supabase/functions/_shared/trainings.test.ts",
     "test:formations-db": "node supabase/tests/lot6_formations.mjs",
