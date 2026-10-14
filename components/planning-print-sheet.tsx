@@ -13,7 +13,9 @@
 // ligne vide.
 // UNE page quand elle tient : la feuille est mesurée (fitSheet) et réduite proportionnellement
 // (jamais sous 0,75 : le nom d'une carte reste à 7 pt) ; sinon plusieurs pages, l'en-tête des colonnes
-// répété et une ligne jamais coupée.
+// répété et une ligne jamais coupée. PLANCHER DE LISIBILITÉ : AUCUN texte sous 7 pt sur le papier — les petits textes de
+// l'écran (heures, sous-titres, annotations, légende, mois) sont relevés à 7 pt (max(taille de l'écran, 7 pt / échelle)) ;
+// tout texte déjà assez grand garde exactement la taille de l'écran.
 // MARGES : @page margin:0 — Chrome n'a alors aucune marge où écrire sa date, son titre, l'adresse et
 // « 1/1 » (ils disparaissent sans que le patron ait à décocher « En-têtes et pieds de page »). Les 10 mm
 // de marge sont ceux de la FEUILLE : 277 mm de large centrés, et deux lignes vides de 10 mm, l'une en tête de
@@ -23,10 +25,12 @@
 // IMAGES : Ctrl+P monte la feuille et imprime aussitôt, sans rien attendre. Le logo BEMEXO est donc
 // un data: URI (une image data: se charge sur-le-champ), tiré du fichier de /public ; une photo ou le
 // logo de l'entreprise ne remplace les initiales / le nom qu'une fois CHARGÉS : jamais un rond vide.
+// Elles sont donc préparées à l'avance (preloadPrintImages : au repos, à l'ouverture du menu) en petites images data: :
+// montées par Ctrl+P, elles sont déjà là à la création de la balise et s'impriment comme à l'écran (même photo, réduite).
 // Le bouton « Imprimer », lui, attend les images (settlePrintSheet) avant window.print().
 //
 // Rien ici n'écrit en base : imprimer ne change aucune donnée.
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
 import { format, getISOWeek, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -114,8 +118,8 @@ export const PRINT_SHEET_CSS = `
 .bt-print-co.has-logo{padding-left:4px}
 .bt-print-co-av{width:24px;height:24px;border-radius:50%;background:#FFC21A;overflow:hidden;flex:none}
 .bt-print-co-av img{width:100%;height:100%;object-fit:cover;display:block}
-.bt-print-leg{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;margin-top:6px;font-size:10px;font-weight:600;color:#57524A}
-.bt-print-at{margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:9px;color:#6E6A63;white-space:nowrap}
+.bt-print-leg{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;margin-top:6px;font-size:max(10px,var(--bt-fs));font-weight:600;color:#57524A}
+.bt-print-at{margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:max(9px,var(--bt-fs));color:#6E6A63;white-space:nowrap}
 .bt-print-sw{display:inline-block;width:11px;height:11px;border-radius:3px;border:1px dashed;margin-right:4px;vertical-align:-1px}
 .bt-print-sig{border-left:2px solid #15120F}
 th.bt-print-sig .bt-pl-th-day{font-size:13px}
@@ -129,32 +133,47 @@ td.bt-print-sig{height:56px}
    il reste de la place), sans hauteur imposée au tableau. */
 .bt-print--month .bt-print-title>th{padding-bottom:4px}
 .bt-print--month .bt-print-bar{gap:12px}
-.bt-print--month .bt-print-leg{gap:3px 10px;margin-top:4px;font-size:8.5px}
-.bt-print--month .bt-print-at{font-size:8px}
+.bt-print--month .bt-print-leg{gap:3px 10px;margin-top:4px;font-size:max(8.5px,var(--bt-fs))}
+.bt-print--month .bt-print-at{font-size:max(8px,var(--bt-fs))}
 .bt-print--month .bt-print-sw{width:9px;height:9px;border-radius:2px;margin-right:3px}
-.bt-print-m-key{margin-top:3px;font-size:8.5px;font-weight:600;color:#57524A;line-height:1.35}
+.bt-print-m-key{margin-top:3px;font-size:max(8.5px,var(--bt-fs));font-weight:600;color:#57524A;line-height:1.35}
 .bt-print-m-key b{font-weight:900;color:#15120F}
 .bt-print-m{width:100%;border-collapse:collapse;table-layout:fixed}
 .bt-print-m tbody tr{height:var(--bt-rowmin,7mm)}
-.bt-print-m.with-sig tbody tr{height:var(--bt-rowmin,8mm)}
+.bt-print-m.with-sig tbody tr{height:var(--bt-rowmin,7.5mm)}
 .bt-print-m col.n{width:30mm}
 .bt-print-m col.sig{width:16mm}
 .bt-print-m th.d{padding:2px 0 3px;text-align:center;border:1px solid rgba(21,18,15,.25);border-bottom:1.5px solid #15120F;line-height:1;font-weight:400}
-.bt-print-m .wd{display:block;font-size:7px;font-weight:700;color:#6E6A63;text-transform:uppercase}
+.bt-print-m .wd{display:block;font-size:max(7px,var(--bt-fs));font-weight:700;color:#6E6A63;text-transform:uppercase}
 .bt-print-m .dn{display:block;font-size:9.5px;font-weight:900;margin-top:1px}
-.bt-print-m th.sig .dn{font-size:7.5px}
-.bt-print-m th.n{text-align:left;padding:2px 5px;font-size:9px;font-weight:900;border:1px solid rgba(21,18,15,.25);border-right:1.5px solid #15120F;border-bottom:1.5px solid #15120F}
+.bt-print-m th.sig .dn{font-size:max(7.5px,var(--bt-fs))}
+.bt-print-m th.n{text-align:left;padding:2px 5px;font-size:max(9px,var(--bt-fs));font-weight:900;border:1px solid rgba(21,18,15,.25);border-right:1.5px solid #15120F;border-bottom:1.5px solid #15120F}
 .bt-print-m .we{background:#F4F1EA}
 .bt-print-m .mon{border-left:1.5px solid #15120F}
 .bt-print-m td{border:1px solid rgba(21,18,15,.22);padding:1px;vertical-align:top}
-.bt-print-m td.n{padding:3px 5px;font-size:9px;font-weight:800;line-height:1.12;overflow-wrap:anywhere;border-right:1.5px solid #15120F;vertical-align:middle}
+.bt-print-m td.n{padding:3px 5px;font-size:max(9px,var(--bt-fs));font-weight:800;line-height:1.12;overflow-wrap:anywhere;border-right:1.5px solid #15120F;vertical-align:middle}
 .bt-print-m .sig{border-left:1.5px solid #15120F}
-.bt-print-m-b{display:block;height:11px;line-height:11px;margin-bottom:1px;border-radius:2px;border-left:2px solid;font-size:7.5px;font-weight:800;text-align:center;white-space:nowrap;overflow:hidden;color:#15120F;letter-spacing:-.02em}
+.bt-print-m-b{display:block;height:12px;line-height:12px;margin-bottom:1px;border-radius:2px;border-left:2px solid;font-size:max(7.5px,var(--bt-fs));font-weight:800;text-align:center;white-space:nowrap;overflow:hidden;color:#15120F;letter-spacing:-.03em}
 .bt-print-m-b:last-child{margin-bottom:0}
 .bt-print-m-b.is-real{background:#15120F;color:#F2EDE3}
 .bt-print-m-b.is-white{border:1px dashed;border-left-width:2px}
 .bt-print-m-b.is-off{opacity:.55;text-decoration:line-through}
-.bt-print-m-abs{display:flex;align-items:center;justify-content:center;min-height:12px;height:100%;font-size:8.5px;font-weight:900;border-radius:2px}
+.bt-print-m-abs{display:flex;align-items:center;justify-content:center;min-height:14px;height:100%;font-size:max(8.5px,var(--bt-fs));font-weight:900;border-radius:2px}
+/* PLANCHER DE LISIBILITÉ : sur le papier, AUCUN texte sous 7 pt (9,35 px effectifs, soit 9,35 / échelle dans la feuille réduite).
+   Les textes plus grands restent EXACTEMENT à la taille de l'écran (max() ne change rien pour eux) ; seuls les petits textes de
+   l'écran (heures, sous-titres, annotations : 8,5 à 11 px) sont relevés jusqu'à 7 pt — à l'écran ils sont lus de près, sur une
+   feuille réduite et lue à bout de bras, non. */
+.bt-print-z{--bt-fs:calc(9.35px / var(--bt-z,1))}
+.bt-print .bt-pl-bub-sub,.bt-print .bt-pl-bub-draft,.bt-print .bt-print-tasks{font-size:max(10.5px,var(--bt-fs))}
+.bt-print .bt-pl-hour{font-size:max(10px,var(--bt-fs))}
+.bt-print .bt-pl-real-txt,.bt-print .bt-pl-abs-lbl{font-size:max(11px,var(--bt-fs))}
+.bt-print .bt-pl-bub-docs,.bt-print .bt-pl-check,.bt-print .bt-print-tasks .k{font-size:max(9px,var(--bt-fs))}
+.bt-print .bt-pl-tag,.bt-print .bt-pl-extra-by{font-size:max(8.5px,var(--bt-fs))}
+.bt-print .bt-pl-extra-name{font-size:max(12px,var(--bt-fs))}
+.bt-print .bt-pl-meet{font-size:max(11.5px,var(--bt-fs))}
+.bt-print .bt-pl-meet.big{font-size:max(12.5px,var(--bt-fs))}
+.bt-print .bt-pl-meet .h{font-size:max(10.5px,var(--bt-fs))}
+.bt-print .bt-print-tasks .tm{font-size:max(9.5px,var(--bt-fs))}
 `;
 // Objet FIXE, comme PL_STYLE (admin-planning) : un nouvel objet à chaque rendu
 // ferait réécrire la feuille de style par React.
@@ -206,7 +225,7 @@ function fitSheet(root: HTMLElement, kind: PeriodKind): Fit {
     // Mois, une page : il reste de la place → toutes les lignes grandissent ENSEMBLE (même minimum), jusqu'à 13 mm.
     if (one && kind === 'month') {
       const n = root.querySelectorAll('tbody tr').length || 1;
-      const base = (root.querySelector('.with-sig') ? 8 : 7) * MM;
+      const base = (root.querySelector('.with-sig') ? 7.5 : 7) * MM;
       return { z, one, rowmin: Math.min(13 * MM, base + Math.max(0, ROOM - h) / n) };
     }
     return { z, one };
@@ -229,31 +248,85 @@ export async function settlePrintSheet(): Promise<void> {
   root.dispatchEvent(new Event('bt-refit'));
 }
 
+// Images demandées à l'avance (photos des salariés, logo de l'entreprise), gardées sous forme de PETITES images data: —
+// seule une image data: est prête à la création de la balise : Ctrl+P monte la feuille et imprime aussitôt, et une
+// image « http » même déjà vue à l'écran n'est chargée qu'après coup (jamais à temps : le PDF aurait les initiales).
+const warmImages = new Map<string, string>();
+const warmAsked = new Set<string>();
+/** Réduit une image (photo ou logo) à ~128 px sur son petit côté, en data: URI ; null si elle ne se lit pas (autre site sans CORS, SVG…). */
+async function shrinkImage(url: string): Promise<string | null> {
+  const r = await fetch(url, { credentials: 'omit', signal: typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(10000) : undefined });
+  if (!r.ok) return null;
+  const blob = await r.blob();
+  const bmp = await createImageBitmap(blob);
+  try {
+    const k = Math.min(1, 128 / Math.min(bmp.width, bmp.height), 512 / Math.max(bmp.width, bmp.height));
+    const cv = document.createElement('canvas');
+    cv.width = Math.max(1, Math.round(bmp.width * k)); cv.height = Math.max(1, Math.round(bmp.height * k));
+    const g = cv.getContext('2d');
+    if (!g) return null;
+    g.drawImage(bmp, 0, 0, cv.width, cv.height);
+    // JPEG pour une photo ; PNG si l'image peut être transparente (logo, pastille jaune derrière).
+    return /jpe?g/.test(blob.type) ? cv.toDataURL('image/jpeg', 0.88) : cv.toDataURL('image/png');
+  } finally { bmp.close(); }
+}
+/**
+ * Prépare à l'avance (au repos, ou à l'ouverture du menu 🖨) les photos des salariés et le logo de l'entreprise — ceux de
+ * l'écran — en petites images data: : la feuille montée par Ctrl+P (beforeprint, sans attente) les trouve prêtes et les
+ * imprime comme l'écran. Une image qui ne se lit pas est laissée telle quelle : initiales / nom seul sur Ctrl+P, et le
+ * bouton « Imprimer » (settlePrintSheet) attend l'image d'origine.
+ */
+export async function preloadPrintImages(urls: (string | null | undefined)[]): Promise<void> {
+  const queue = Array.from(new Set(urls)).filter((u): u is string => !!u && !u.startsWith('data:') && !warmAsked.has(u));
+  queue.forEach((u) => warmAsked.add(u));
+  // Quatre à la fois au plus : jamais une rafale au repos, et une image qui traîne ne bloque pas les autres.
+  await Promise.all(Array.from({ length: Math.min(4, queue.length) }, async () => {
+    for (let url = queue.shift(); url; url = queue.shift()) {
+      try {
+        const small = await shrinkImage(url);
+        if (small) warmImages.set(url, small);
+      } catch { /* l'image d'origine sera utilisée */ }
+    }
+  }));
+}
+const printSrc = (url: string) => warmImages.get(url) ?? url;
+
+/**
+ * Une image de la feuille : `ready` devient vrai quand elle est chargée — tout de suite pour une image préparée (data:),
+ * ou déjà complète à la pose de la balise. `bad` : elle ne vient pas (on garde les initiales / le nom seul).
+ */
+function useSheetImage(src: string | null | undefined) {
+  const [ready, setReady] = useState(() => !!src && src.startsWith('data:'));
+  const [bad, setBad] = useState(false);
+  const ref = useCallback((el: HTMLImageElement | null) => { if (el && el.complete && el.naturalWidth > 0) setReady(true); }, []);
+  return { ready, bad, ref, onLoad: () => setReady(true), onError: () => setBad(true) };
+}
+
 /**
  * La photo du salarié si l'écran en montre une (même image), sinon ses initiales. La photo se pose PAR-DESSUS
  * les initiales, qui ne disparaissent qu'une fois la photo chargée : une photo pas encore arrivée (Ctrl+P
  * n'attend rien) ou qui ne vient pas laisse les initiales, jamais un rond vide.
  */
 function PrintAvatar({ r }: { r: PrintRow }) {
-  const [ok, setOk] = useState(false);
-  const [bad, setBad] = useState(false);
-  const photo = r.photo && !bad ? r.photo : null;
+  const src = r.photo ? printSrc(r.photo) : null;
+  const img = useSheetImage(src);
+  const photo = src && !img.bad ? src : null;
   return (
     <span className="bt-pl-avatar" style={r.tint}>
-      {photo && <img className="bt-pl-avatar-img" src={photo} alt="" onLoad={() => setOk(true)} onError={() => setBad(true)} />}
-      {!(photo && ok) && r.initials}
+      {photo && <img ref={img.ref} className="bt-pl-avatar-img" src={photo} alt="" onLoad={img.onLoad} onError={img.onError} />}
+      {!(photo && img.ready) && r.initials}
     </span>
   );
 }
 
 /** La pastille de l'entreprise du bandeau : son logo (une fois chargé) et son nom, sinon son nom seul. */
 function CompanyPill({ name, logo }: { name: string; logo?: string }) {
-  const [ok, setOk] = useState(false);
-  const [bad, setBad] = useState(false);
-  const has = !!logo && !bad;
+  const src = logo ? printSrc(logo) : null;
+  const img = useSheetImage(src);
+  const has = !!src && !img.bad;
   return (
-    <span className={`bt-print-co${has && ok ? ' has-logo' : ''}`} data-testid="print-company">
-      {has && <span className="bt-print-co-av" hidden={!ok}><img src={logo} alt="" onLoad={() => setOk(true)} onError={() => setBad(true)} /></span>}
+    <span className={`bt-print-co${has && img.ready ? ' has-logo' : ''}`} data-testid="print-company">
+      {has && <span className="bt-print-co-av" hidden={!img.ready}><img ref={img.ref} src={src!} alt="" onLoad={img.onLoad} onError={img.onError} /></span>}
       <span>{name}</span>
     </span>
   );

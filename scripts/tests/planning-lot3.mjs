@@ -495,7 +495,8 @@ if (AVANT) {
   await printWith(p, { signature: true });
   const rows = await p.locator('.bt-print tbody tr').count();
   const info = pdfInfo(await p.pdf(PDF_OPTS));
-  check(rows === 15 && info.pages <= 4, `P7 15 salariés dont 6 à 3 interventions par jour, avec signature : ${info.pages} pages`);
+  // ≤ 5 pages : le plancher de lisibilité (aucun texte sous 7 pt : heures et sous-titres relevés) coûte une page à ce pire cas (4 pages avant).
+  check(rows === 15 && info.pages <= 5, `P7 15 salariés dont 6 à 3 interventions par jour, avec signature : ${info.pages} pages`);
   await ctx.close();
 }
 

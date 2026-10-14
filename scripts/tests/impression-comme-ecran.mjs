@@ -26,6 +26,7 @@
 import http from 'node:http'; import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path'; import zlib from 'node:zlib'; import { chromium } from 'playwright-core';
 const [,, OUT, SH = fs.mkdtempSync(path.join(os.tmpdir(), 'impression-comme-ecran-')), PORT = '5323'] = process.argv; fs.mkdirSync(SH, { recursive: true });
 const AVANT = process.env.AVANT === '1';
+const ONLY = process.env.ONLY; // ONLY=<id d'un cas> : ne joue que ce cas (mise au point)
 const T = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.png': 'image/png', '.json': 'application/json', '.webmanifest': 'application/json' };
 const srv = http.createServer((q, r) => { const p = decodeURIComponent(new URL(q.url, 'http://x').pathname); for (const c of [p, p + '.html', path.join(p, 'index.html')]) { const f = path.join(OUT, c); if (fs.existsSync(f) && fs.statSync(f).isFile()) { r.writeHead(200, { 'Content-Type': T[path.extname(f)] || 'application/octet-stream' }); return fs.createReadStream(f).pipe(r); } } r.writeHead(404); r.end(); });
 await new Promise((r) => srv.listen(Number(PORT), r));
@@ -43,7 +44,7 @@ const W1 = ws('w1', 'Villa Exemple', 'Lyon', 'Fenêtres'), W2 = ws('w2', 'Résid
 const WS = { w1: W1, w2: W2, w3: W3, w4: W4 };
 const u = (id, first_name, last_name, role = 'worker', extra = {}) => ({ id, company_id: CO, first_name, last_name, role, email: `${id}@exemple.fr`, is_active: true, created_at: '2026-01-01', ...extra });
 const LONG = 'Maximilien-Alexandre De La Fontaine-Beaumarchais';
-const PHOTO = { ok: '/apple-touch-icon.png', lente: '/photo-lente.png', bloquee: '/photo-bloquee.png', cassee: '/photo-cassee.png' };
+const PHOTO = { ok: '/apple-touch-icon.png', cors: 'https://photos.exemple.test/cors/photo.png', sanscors: 'https://photos.exemple.test/sans/photo.png', lente: '/photo-lente.png', bloquee: '/photo-bloquee.png', cassee: '/photo-cassee.png' };
 
 let seq = 0;
 const slotAt = (id, user_id, date, w, start, end, extra = {}) => ({ id, company_id: CO, user_id, worksite_id: w?.id ?? null, work_date: date, absence_type: null, estimated_start: start, estimated_end: end,
@@ -95,11 +96,11 @@ const SLOTS_EQS = [
   slotAt('s1', 'u-alex', D_(19), W1, '07:00:00', '09:00:00'), slotAt('s2', 'u-alex', D_(19), W2, '13:30:00', '17:00:00'), slotAt('s3', 'u-alex', D_(20), W3, '08:00:00', '12:00:00'),
   slotAt('s4', 'u-alex', D_(22), W4, '18:00:00', '21:00:00'), slotAt('s5', 'u-alex', D_(23), W1, null, null),
 ];
-// « tight » : juste trop haut pour une page à l'échelle .8, mais qui tient à .75 (Alex : 5 cartes le lundi, Bruno : 4 le mardi, Chloé : 2 le lundi).
+// « tight » : juste trop haut pour une page à l'échelle .8, mais qui tient à .75 (Alex : 5 cartes le lundi, Bruno : 4 le mardi, Chloé : 1 le lundi).
 const SLOTS_TIGHT = [
   ...SLOTS_EQ.filter((x) => x.work_date === D_(19)),
   slotAt('t1', 'u-bruno', D_(20), W1, '07:00:00', '09:00:00'), slotAt('t2', 'u-bruno', D_(20), W2, '09:30:00', '12:00:00'), slotAt('t3', 'u-bruno', D_(20), W3, '13:30:00', '17:00:00'), slotAt('t4', 'u-bruno', D_(20), W4, '18:00:00', '21:00:00'),
-  slotAt('t5', 'u-chloe', D_(19), W2, '08:00:00', '12:00:00'), slotAt('t6', 'u-chloe', D_(19), W3, '13:30:00', '17:00:00'),
+  slotAt('t5', 'u-chloe', D_(19), W2, '08:00:00', '12:00:00'),
 ];
 const SCEN = {
   eq: { users: EQ, slots: SLOTS_EQ, entries: ENTRIES_EQ },
@@ -113,7 +114,7 @@ let companyLogo = null;
 const fresh = (mode, photos = {}) => {
   const sc = SCEN[mode], ids = new Set(sc.users.map((x) => x.id));
   return {
-    users: [u('u-admin', 'Sam', 'Test', 'admin'), ...sc.users.map((x) => (photos[x.id] ? { ...x, photo_url: `http://localhost:${PORT}${photos[x.id]}` } : x))],
+    users: [u('u-admin', 'Sam', 'Test', 'admin'), ...sc.users.map((x) => (photos[x.id] ? { ...x, photo_url: photos[x.id].startsWith('http') ? photos[x.id] : `http://localhost:${PORT}${photos[x.id]}` } : x))],
     companies: [{ ...COMPANY }], worksites: Object.values(WS),
     planning: sc.slots.filter((s) => ids.has(s.user_id)).map((s) => ({ ...s })), time_entries: sc.entries.filter((e) => ids.has(e.user_id)).map((e) => ({ ...e })),
     active_sessions: [], documents: [], leave_requests: [], invitations: [], month_closures: [], user_closures: [], certifications: [], push_subscriptions: [], kiosks: [], kiosk_settings: [], worksite_expenses: [], user_payroll: [],
@@ -162,11 +163,23 @@ const setup = async (ctx, mode, photos) => {
       window.__printAvatars = [...document.querySelectorAll('.bt-print .bt-pl-avatar')].map((a) => ({ img: !!a.querySelector('img'), txt: a.textContent.trim() }));
     };
   });
-  await ctx.route('**/photo-lente.png', async (r) => { photoHits.push({ k: 'lente', t: Date.now() }); await sleep(900); await r.fulfill({ status: 200, contentType: 'image/png', body: PNG, headers: { 'cache-control': 'no-store' } }).catch(() => {}); });
+  // La photo « lente » n'est pas encore préparée au moment d'imprimer : la préparation à l'avance (fetch) traîne bien plus
+  // longtemps que l'image de la page — la feuille doit alors attendre l'image elle-même (bouton « Imprimer »).
+  await ctx.route('**/photo-lente.png', async (r) => { photoHits.push({ k: 'lente', t: Date.now() }); await sleep(r.request().resourceType() === 'fetch' ? 6000 : 900); await r.fulfill({ status: 200, contentType: 'image/png', body: PNG, headers: { 'cache-control': 'no-store' } }).catch(() => {}); });
   await ctx.route('**/photo-bloquee.png', async (r) => { photoHits.push({ k: 'bloquee', t: Date.now() }); await sleep(8000); await r.abort().catch(() => {}); });
   await ctx.route('**/photo-cassee.png', async (r) => { photoHits.push({ k: 'cassee', t: Date.now() }); await r.fulfill({ status: 404, body: 'non' }).catch(() => {}); });
+  // La photo « ok » est servie comme en vrai : avec un cache (Cache-Control max-age=3600), déjà chargée par l'écran.
+  await ctx.route('**/apple-touch-icon.png', (r) => r.fulfill({ status: 200, contentType: 'image/png', body: PNG, headers: { 'cache-control': 'public, max-age=3600' } }).catch(() => {}));
   await ctx.route('**/logo-entreprise.png', (r) => r.fulfill({ status: 200, contentType: 'image/png', body: PNG }).catch(() => {}));
   await ctx.route((url) => url.hostname !== 'localhost' && !url.hostname.endsWith('.supabase.co'), (r) => r.abort());
+  // Photos hébergées AILLEURS que la page (comme le stockage de Supabase) : l'une répond avec CORS (« access-control-allow-origin: * »), l'autre sans.
+  await ctx.route('https://photos.exemple.test/**', (r) => {
+    const cors = r.request().url().includes('/cors/');
+    // Sans CORS, le navigateur refuse la LECTURE (fetch) d'une image d'un autre site, tout en l'affichant dans une balise <img> :
+    // Playwright ajoute lui-même les en-têtes CORS aux réponses simulées, on simule donc le refus en coupant le fetch.
+    if (!cors && r.request().resourceType() === 'fetch') return r.abort().catch(() => {});
+    r.fulfill({ status: 200, contentType: 'image/png', body: PNG, headers: { 'cache-control': 'public, max-age=3600', ...(cors ? { 'access-control-allow-origin': '*' } : {}) } }).catch(() => {});
+  });
   await ctx.route('**/*.supabase.co/**', async (r) => {
     const url = new URL(r.request().url()); const m = r.request().method();
     if (url.pathname.startsWith('/auth/v1/user')) return r.fulfill({ json: session.user });
@@ -317,7 +330,17 @@ const readSheet = () => {
   const txt = sh.innerText;
   const heads = [...sh.querySelectorAll('thead th.bt-pl-th')].map((e) => ({ bg: cs(e).backgroundColor, sh: cs(e).boxShadow }));
   const title = sh.querySelector('.bt-pl-bub-title');
+  // Tout texte de la feuille, à sa taille EFFECTIVE sur le papier (taille calculée × échelle) : liste de ceux qui font moins de 7 pt.
+  const zz = Number(cs(z).getPropertyValue('--bt-z')), small = new Set(); let nText = 0, minPx = 1e9;
+  const walker = document.createTreeWalker(sh, NodeFilter.SHOW_TEXT);
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    const e = n.parentElement;
+    if (!n.textContent.trim() || !e || e.closest('style')) continue;
+    const px = parseFloat(cs(e).fontSize) * zz; nText++; minPx = Math.min(minPx, px);
+    if (px * 72 / 96 < 6.95) small.add(`${(e.className && String(e.className)) || e.tagName} ${(px * 72 / 96).toFixed(1)} pt`);
+  }
   return {
+    small: [...small], nText, minPt: minPx * 72 / 96,
     zoom: Number(cs(z).getPropertyValue('--bt-z')), pages: sh.getAttribute('data-pages'), cls: sh.className,
     bar: { bg: cs(bar).backgroundColor, radius: parseFloat(cs(bar).borderTopLeftRadius), r: R(bar) },
     logo: { alt: logo.getAttribute('alt'), src: logo.getAttribute('src').slice(0, 24), ok: logo.complete && logo.naturalWidth > 0, r: R(logo) },
@@ -368,7 +391,7 @@ if (AVANT) {
 }
 
 let screenBar = null;
-for (const c of CASES) {
+for (const c of CASES.filter((x) => !ONLY || x.id === ONLY)) {
   const { ctx, p } = await newPage(c.mode);
   if (c.cap) await p.screenshot({ path: path.join(SH, `ecran-${c.id}.png`), fullPage: true }); // l'écran, à côté du PDF (C7)
   if (!screenBar) screenBar = await p.evaluate(readScreenBar);
@@ -389,8 +412,9 @@ for (const c of CASES) {
     const bad = ['à relancer', 'pièces', 'statistiques', 'Exporter', 'Salariés', 'Clients', 'en attente', 'À jour', 'Tâche', 'Aujourd', 'Congés', 'Versions'].filter((w) => r.txt.includes(w));
     check(bad.length === 0 && !/(^|\s)\+(\s|$)/.test(r.txt), `C1 ${W} : aucun texte de barre d'outils ni de statut (${bad.join(', ') || 'rien'}), aucun « + »`);
     if (c.opts.kind !== 'month') check(r.heads.length > 0 && r.heads.every((h) => h.bg === 'rgb(255, 255, 255)' && h.sh === 'none'), `C1 ${W} : aucune colonne du jour surlignée (en-têtes tous blancs, sans trait jaune)`);
-    check(r.leg.h <= 26 * r.zoom + 6 && r.leg.sw === 3 && /^Imprimé le 21 oct\. 2026 à 10:00$/.test(r.leg.at) && r.leg.atSize <= 10, `C1 ${W} : légende sur UNE ligne (${Math.round(r.leg.h)} px), « ${r.leg.at} » discret (${r.leg.atSize}px)`);
+    check(r.leg.h <= 26 * r.zoom + 6 && r.leg.sw === 3 && /^Imprimé le 21 oct\. 2026 à 10:00$/.test(r.leg.at) && r.leg.atSize * r.zoom <= 10, `C1 ${W} : légende sur UNE ligne (${Math.round(r.leg.h)} px), « ${r.leg.at} » discret (${(r.leg.atSize * r.zoom).toFixed(1)} px effectifs, 7 pt)`);
     check(r.page <= 1 && Math.abs(r.sheetL - (r.vw - r.sheetL - r.sheetW)) <= 1.5 && Math.abs(r.sheetW - 277 * MM) <= 1.5, `C3 ${W} : feuille de 277 mm centrée sur le papier, aucun débordement (gauche ${r.sheetL.toFixed(1)} px, largeur ${r.sheetW.toFixed(0)} px)`);
+    check(r.small.length === 0 && r.nText > 20, `C3 ${W} : tout texte de la feuille fait au moins 7 pt sur le papier (${r.nText} textes, le plus petit ${r.minPt.toFixed(2)} pt)${r.small.length ? `\n   trop petits : ${r.small.slice(0, 8).join(' ; ')}` : ''}`);
     if (c.opts.kind !== 'month') check(r.zoom >= 0.75 && r.zoom <= (c.opts.kind === 'week' ? 0.8 : 1) && (!r.titleEff || r.titleEff >= 7 * 96 / 72 - 0.05), `C3 ${W} : échelle ${r.zoom.toFixed(3)}, nom d'une carte à ${r.titleEff ? (r.titleEff * 72 / 96).toFixed(2) : '—'} pt (≥ 7 pt)`);
     if (c.reduced) check(r.zoom < 0.8 && r.zoom >= 0.75 && r.pages === '1', `C3 ${W} : réduite à ${r.zoom.toFixed(3)} (< .8) pour tenir sur UNE page`);
     if (c.opts.kind === 'month') {
@@ -404,6 +428,8 @@ for (const c of CASES) {
   if (c.cap) fs.writeFileSync(path.join(SH, `impression-${c.id}.pdf`), pdf);
   const info = pdfInfo(pdf), pages = pdfPages(pdf);
   check(a4Land(info) && info.pages === pages.length && (c.pages ? info.pages === c.pages : info.pages >= c.minPages), `C3 ${W} : PDF A4 paysage, ${info.pages} page(s)${c.pages === 1 ? ' (UNE page)' : ''}`);
+  const minPdf = Math.min(...pages.flatMap((pg) => pg.texts.map((t) => t.pt)));
+  check(pages.every((pg) => pg.texts.length > 20) && minPdf >= 6.95, `C3 ${W} : dans le PDF réel, aucun texte sous 7 pt (le plus petit : ${minPdf.toFixed(2)} pt sur ${pages.reduce((n, pg) => n + pg.texts.length, 0)} textes)`);
   const edges = pages.map(inkEdges);
   // Marges de 10 mm sur CHAQUE page (0,6 mm de tolérance : la moitié extérieure du trait du cadre déborde) et dessin centré.
   check(edges.every((e) => e.l >= 9.4 && e.r >= 9.4 && e.t >= 9.4 && e.b >= 9.4 && Math.abs(e.l - e.r) <= 1), `C3 ${W} : marges de 10 mm sur chaque page, mesurées sur le dessin (g/d/h/b mm) : ${edges.map((e) => [e.l, e.r, e.t, e.b].map((v) => v.toFixed(1)).join('/')).join(' ; ')}`);
@@ -429,6 +455,7 @@ for (const c of CASES) {
   await closePrint(p); await ctx.close();
 }
 
+if (ONLY) { console.log(`\n${ok} ✅ / ${ko} ❌ (cas ${ONLY} seulement)`); await b.close(); srv.close(); process.exit(ko ? 1 : 0); }
 // ═══ C1 (suite) : la pastille de l'entreprise avec son logo ; barre de l'écran = bandeau ═══════
 {
   companyLogo = `http://localhost:${PORT}/logo-entreprise.png`;
@@ -508,6 +535,55 @@ for (const [id, mode, opts] of [['semaine-5-cartes', 'eq', { kind: 'week' }], ['
     check(bp.length === 1 && bp[0].logo && bp[0].av.length === 9 && bp[0].av.every(Boolean), `C5 Ctrl+P : la feuille est montée et imprimée aussitôt — logo prêt, aucune pastille vide (${bp[0]?.av.filter(Boolean).length}/9)`);
     check(bp[0]?.margin === '@page{size:A4 landscape;margin:0}' && pdfInfo(pdf).pages === 2 && pdfPages(pdf).every((pg) => bandText(pg) === 0), `C5 Ctrl+P : @page margin:0 aussi sur plusieurs pages (${bp[0]?.margin}), PDF de 2 pages`);
     await ctx.close();
+  }
+}
+
+// ═══ C5 (suite) : Ctrl+P avec des photos que l'écran montre DÉJÀ ═════════════════════
+// Le cas du patron : l'écran affiche la photo d'Alex et de Bruno et le logo de l'entreprise (déjà chargés). Ctrl+P monte la feuille
+// et imprime aussitôt, sans rien attendre : le PDF doit contenir les photos et le logo, comme le bouton « Imprimer » — pas les initiales.
+// Compte des images du PDF : objets « /Subtype /Image » du fichier (le logo BEMEXO est un SVG : dessin vectoriel, pas une image).
+{
+  const images = (buf) => (buf.toString('latin1').match(/\/Subtype\s*\/Image/g) || []).length;
+  companyLogo = `http://localhost:${PORT}/logo-entreprise.png`;
+  // Sans photo ni logo d'entreprise (témoin) : aucune image dans le PDF.
+  let base;
+  {
+    companyLogo = null;
+    const { ctx, p } = await newPage('eq');
+    base = images(await p.pdf(PDF_OPTS));
+    await ctx.close();
+    companyLogo = `http://localhost:${PORT}/logo-entreprise.png`;
+  }
+  const { ctx, p } = await newPage('eq', { photos: { 'u-alex': PHOTO.ok, 'u-bruno': PHOTO.ok } });
+  await p.evaluate(() => { window.__bp = []; window.addEventListener('beforeprint', () => window.__bp.push({
+    av: [...document.querySelectorAll('.bt-print .bt-pl-avatar')].map((a) => ({ txt: a.textContent.trim(), img: (() => { const i = a.querySelector('img'); return !!i && i.complete && i.naturalWidth > 0; })() })),
+    pill: (() => { const i = document.querySelector('.bt-print .bt-print-co img'); return { img: !!i && i.complete && i.naturalWidth > 0, txt: document.querySelector('.bt-print .bt-print-co').textContent.trim() }; })(),
+  })); });
+  const pdf = await p.pdf(PDF_OPTS);
+  const bp = await p.evaluate(() => window.__bp), n = images(pdf);
+  check(bp.length === 1 && bp[0].av[0].img && bp[0].av[0].txt === '' && bp[0].av[1].img && bp[0].av[1].txt === '' && bp[0].av[2].txt === 'CE' && !bp[0].av[2].img,
+    `C5 Ctrl+P, photos déjà vues à l'écran : à l'instant d'imprimer, Alex et Bruno ont leur photo chargée (plus d'initiales), Chloé, sans photo, ses initiales ${JSON.stringify(bp[0]?.av)}`);
+  check(bp[0]?.pill.img, `C5 Ctrl+P, logo de l'entreprise déjà vu à l'écran : le logo est chargé dans la pastille du bandeau (${JSON.stringify(bp[0]?.pill)})`);
+  check(base === 0 && n >= 2, `C5 Ctrl+P : le PDF contient les photos et le logo (${n} image(s), contre ${base} pour la même feuille sans photo ni logo)`);
+  // Le bouton « Imprimer » donne la même feuille (mêmes images).
+  await printWith(p, { kind: 'week' });
+  const n2 = images(await p.pdf(PDF_OPTS));
+  check(n2 >= n, `C5 le bouton « Imprimer » : au moins autant d'images dans le PDF (${n2} contre ${n} par Ctrl+P)`);
+  await closePrint(p); await ctx.close();
+  companyLogo = null;
+  // Photos hébergées sur un AUTRE site (le stockage) : avec CORS, Ctrl+P a la photo ; sans CORS, elle ne se lit pas à l'avance —
+  // Ctrl+P garde les initiales (jamais un rond vide), le bouton « Imprimer » attend l'image elle-même et l'imprime.
+  {
+    const { ctx, p } = await newPage('eq', { photos: { 'u-alex': PHOTO.cors, 'u-bruno': PHOTO.sanscors } });
+    await p.evaluate(() => { window.__bp = []; window.addEventListener('beforeprint', () => window.__bp.push([...document.querySelectorAll('.bt-print .bt-pl-avatar')].map((a) => { const i = a.querySelector('img'); return { txt: a.textContent.trim(), img: !!i && i.complete && i.naturalWidth > 0 }; }))); });
+    const nCors = images(await p.pdf(PDF_OPTS));
+    const bp = await p.evaluate(() => window.__bp);
+    check(bp.length === 1 && bp[0][0].img && bp[0][0].txt === '' && !bp[0][1].img && bp[0][1].txt === 'BE' && nCors >= 1,
+      `C5 Ctrl+P, photos sur un autre site : avec CORS la photo d'Alex est prête et imprimée (${nCors} image(s) dans le PDF) ; sans CORS Bruno garde ses initiales, jamais un rond vide ${JSON.stringify(bp[0])}`);
+    await printWith(p, { kind: 'week' });
+    const m = await p.evaluate(() => window.__printAvatars);
+    check(m[0].img && m[0].txt === '' && m[1].img && m[1].txt === '', `C5 bouton « Imprimer », photos sur un autre site : la photo de Bruno (sans CORS) est attendue puis imprimée comme celle d'Alex`);
+    await closePrint(p); await ctx.close();
   }
 }
 

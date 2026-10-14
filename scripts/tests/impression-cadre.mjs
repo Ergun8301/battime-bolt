@@ -353,14 +353,25 @@ for (const c of CASES) {
       const bg = (arr, sel2) => new Set(arr.flat().filter((x) => x.k === sel2).map((x) => x.st['background-color'] + '|' + x.st['background-image']));
       const sc = Object.values(a), pr = Object.values(bb);
       check(same([...bg(sc, '.bt-pl-bub')].sort(), [...bg(pr, '.bt-pl-bub')].sort()) && bg(pr, '.bt-pl-bub').size >= 4 && bg(pr, '.bt-pl-abs').size >= 1 && [...bg(pr, '.bt-pl-abs')].every((x) => /repeating-linear-gradient/.test(x)), `K5 ${W} : mêmes fonds de cases qu'à l'écran (${bg(pr, '.bt-pl-bub').size} fonds de bulles, rayures des congés « repeating-linear-gradient »)`);
-      // Les textes : police, taille, graisse, interligne… identiques (la maladie « Absent » est comparée à part, comme plus haut).
+      // Les textes : police, graisse, couleur, casse… identiques à l'écran, et la TAILLE aussi — sauf le plancher de lisibilité :
+      // la taille sur la feuille est max(taille de l'écran, 7 pt / échelle), jamais autre chose (un texte assez grand est à la taille de l'écran ;
+      // interligne et espacement des lettres suivent la taille, comme à l'écran, en proportion). La maladie « Absent » est comparée à part.
+      const geom = await p.evaluate(readGeom, 'print');
       const gotT = await p.evaluate(readStyles, ['print', TEXT_SEL, TEXT_PROPS]);
       const stripT = (g) => Object.fromEntries(Object.entries(g).map(([n, l]) => [n, l.filter((x) => !(x.k === '.bt-pl-abs-lbl' && /Maladie|Absent/.test(x.t)))]));
-      const aT = stripT(screenText), bT = stripT(gotT), badT = [];
+      const FLOOR = 9.35 / geom.z; // 7 pt effectifs, en px de la feuille avant réduction
+      const prop = (st, wanted) => {
+        const fs = wanted ?? parseFloat(st['font-size']), o = { ...st };
+        o['font-size'] = fs.toFixed(2);
+        for (const q of ['line-height', 'letter-spacing']) o[q] = /px$/.test(st[q]) ? (parseFloat(st[q]) / parseFloat(st['font-size'])).toFixed(3) : st[q];
+        return o;
+      };
+      const aT = Object.fromEntries(Object.entries(stripT(screenText)).map(([n, l]) => [n, l.map((x) => ({ ...x, st: prop(x.st, Math.max(parseFloat(x.st['font-size']), FLOOR)) }))]));
+      const bT = Object.fromEntries(Object.entries(stripT(gotT)).map(([n, l]) => [n, l.map((x) => ({ ...x, st: prop(x.st) }))])), badT = [];
       for (const n of Object.keys(aT)) { if (!same(aT[n], bT[n])) badT.push(`${n} : ${JSON.stringify(firstDiff(aT[n], bT[n]))}`); }
       const kindsT = new Set(Object.values(aT).flat().map((x) => x.k));
-      check(badT.length === 0 && kindsT.size >= 7, `K5 ${W} : polices, tailles, graisses, interlignes IDENTIQUES à l'écran sur ${Object.values(aT).flat().length} textes (${kindsT.size} sortes)${badT.length ? `\n   ${badT.slice(0, 3).join('\n   ')}` : ''}`);
-      const geom = await p.evaluate(readGeom, 'print');
+      const raised = Object.values(stripT(screenText)).flat().filter((x) => parseFloat(x.st['font-size']) < FLOOR - 0.01).length;
+      check(badT.length === 0 && kindsT.size >= 7, `K5 ${W} : polices, graisses, couleurs, interlignes IDENTIQUES à l'écran et tailles IDENTIQUES ou relevées à 7 pt (max(écran, 9,35 px / ${geom.z.toFixed(2)} = ${FLOOR.toFixed(2)} px)) sur ${Object.values(aT).flat().length} textes (${kindsT.size} sortes, ${raised} relevés)${badT.length ? `\n   ${badT.slice(0, 3).join('\n   ')}` : ''}`);
       check(Math.abs(geom.txt / screenGeom.txt - 1) <= 0.15 && Math.abs(geom.card - screenGeom.card) <= 0.03, `K5 ${W} : taille relative comme à l'écran : texte / largeur du tableau ${geom.txt.toFixed(5)} (écran ${screenGeom.txt.toFixed(5)}), carte / colonne ${geom.card.toFixed(3)} (écran ${screenGeom.card.toFixed(3)})`);
       // Le pointillé de 1,5 px de l'écran (affiché 1 px sur un écran à 1×) suit l'échelle de la feuille : 1,5 × .8 = 1,2 px.
       check(Math.abs(geom.bw - 1.5 * geom.z) <= 0.25 && screenGeom.bw >= 1 && screenGeom.bw <= 1.5, `K5 ${W} : épaisseur du pointillé des cartes proportionnelle à l'échelle (${geom.bw}px = 1,5 × ${geom.z.toFixed(2)} ; écran ${screenGeom.bw}px)`);

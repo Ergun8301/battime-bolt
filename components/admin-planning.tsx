@@ -1312,11 +1312,15 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
   }, []);
 
   // La feuille imprimée se charge au repos (0,8 s après l'affichage), et tout de suite à l'ouverture du menu 🖨.
+  // Avec elle, les photos des salariés et le logo de l'entreprise (ceux de l'écran, déjà demandés par la page) sont
+  // gardés prêts en mémoire : Ctrl+P monte la feuille et imprime aussitôt, sans rien attendre — la photo doit déjà être là.
+  const printImgKey = `${companyLogo}|${workers.map((w) => w.photo_url || '').join('|')}`;
+  const warmPrintImages = () => { void loadPrintSheet().then((m) => m.preloadPrintImages([companyLogo, ...workers.map((w) => w.photo_url)])).catch(() => undefined); };
   useEffect(() => {
-    const t = window.setTimeout(() => { void loadPrintSheet().catch(() => undefined); }, 800);
+    const t = window.setTimeout(warmPrintImages, 800);
     return () => window.clearTimeout(t);
-  }, []);
-  useEffect(() => { if (printOpen) void loadPrintSheet().catch(() => undefined); }, [printOpen]);
+  }, [printImgKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (printOpen) warmPrintImages(); }, [printOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Démo (preview UNIQUEMENT) : ?demo=N affiche N salariés fictifs — AUCUNE écriture en
   // base (prod intacte). Sert juste à visualiser le planning rempli.
