@@ -83,7 +83,7 @@ export async function sniffVideoCodec(read: Read, size: number): Promise<VideoCo
 
 // ─── Textes ──────────────────────────────────────────────────────────────────
 export const HEVC_ALERT = 'Cette vidéo est au format HEVC (le format récent des iPhone). Elle peut ne pas se lire sur certains téléphones Android ou ordinateurs.';
-/** Le bouton « Filmer dans BEMEXO » existe. */
-export const HEVC_TIP_REC = 'Conseil : touchez « Changer de vidéo », puis « Filmer dans BEMEXO », qui produit un format lisible partout.';
+/** L'enregistreur intégré (« Filmer ») est proposé. */
+export const HEVC_TIP_REC = 'Conseil : touchez « Changer de vidéo », puis « Filmer », qui produit un format lisible partout.';
 export const HEVC_TIP_NO_REC = 'Conseil : sur l’iPhone, choisissez Réglages > Appareil photo > Formats > « Le plus compatible », puis filmez à nouveau.';
 export const HEVC_KEEP = 'Vous pouvez quand même ajouter cette vidéo.';

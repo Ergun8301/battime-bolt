@@ -1,7 +1,7 @@
 // Vidéos de formation envoyées directement (lot 13, oct. 2026) : règles pures.
 //   npm run test:videos
 import {
-  BAD_FORMAT, checkVideoFile, formatDuration, formatMo, GPS_NOTE, leftoverNote, leftoverSummary, PLAY_RESIGN_MAX, QUOTA_FULL, quotaFull, quotaLabel, quotaRatio, TOO_BIG,
+  BAD_FORMAT, checkVideoFile, formatDuration, formatMo, leftoverNote, leftoverSummary, PLAY_RESIGN_MAX, QUOTA_FULL, QUOTA_NEAR_RATIO, quotaFull, quotaLabel, quotaNear, quotaRatio, TOO_BIG,
   UPLOAD_CANCELLED, UPLOAD_CUT, uploadErrorMessage, VIDEO_MAX_BYTES, VIDEO_MIME_BUCKET_SQL, VIDEO_MIME_SQL, VIDEO_MIME_TYPES, VIDEO_NEW_PLACES_MAX, VIDEO_QUOTA_BYTES,
   VIDEO_SIGN_SECONDS, VIDEO_WINDOW_HOURS, videoMimeOf, videoPathOk, videoSummary,
   AUDIT_BYTES, AUDIT_LINK, AUDIT_MISSING_NOTE, AUDIT_MISSING_ROW, AUDIT_MISSING_TITLE, AUDIT_MORE, AUDIT_NOTE, AUDIT_ORPHAN_ROW, AUDIT_ORPHANS_NOTE, AUDIT_ORPHANS_TITLE,
@@ -54,8 +54,7 @@ Deno.test('lien de lecture court ; plafond de nouvelles places et fenêtre : mê
   ok(!/FOR UPDATE TO|FOR DELETE|FOR ALL/.test(sql.replace(/^--.*$/gm, '').replace(/SELECT[^;]*FOR UPDATE;/g, '')), 'aucune policy UPDATE, DELETE ni ALL');
 });
 
-Deno.test('vie privée et fichiers non terminés : textes clairs', () => {
-  ok(/position GPS/.test(GPS_NOTE) && /localisation/.test(GPS_NOTE) && /tous ceux qui/.test(GPS_NOTE), 'avertissement GPS : position, localisation, destinataires');
+Deno.test('fichiers non terminés : textes clairs', () => {
   eq(leftoverSummary(45 * MO, false), 'Envoi non terminé · 45 Mo · fichier gardé', 'envoi non terminé (place ouverte)');
   eq(leftoverSummary(6 * MO, true), 'Envoi non terminé · 6 Mo · place fermée · fichier gardé', 'envoi non terminé (place fermée)');
   eq(leftoverNote(VIDEO_QUOTA_BYTES), 'Ce fichier est arrivé, mais la vidéo n’a pas été publiée : les salariés ne la voient pas. Le fichier est gardé et compte dans les 100 Mo.', 'explication');
@@ -100,6 +99,12 @@ Deno.test('affichage : Mo, jauge, durée, résumé', () => {
   eq(quotaRatio(23 * MO, 100 * MO), 0.23, 'ratio');
   eq(quotaRatio(140 * MO, 100 * MO), 1, 'ratio plafonné à 1');
   eq(quotaRatio(1, 0), 1, 'quota nul : plein');
+  // La jauge n'est montrée qu'à partir de 80 % de la place (décision du patron : formations simplifiées).
+  const at = (used: number) => ({ maxBytes: VIDEO_MAX_BYTES, quotaBytes: VIDEO_QUOTA_BYTES, usedBytes: used });
+  eq(QUOTA_NEAR_RATIO, 0.8, 'seuil de la jauge : 80 %');
+  eq([0, 23 * MO, 79 * MO, 79.9 * MO].map((u) => quotaNear(at(u))), [false, false, false, false], 'sous 80 % : pas de jauge');
+  eq([80 * MO, 85 * MO, 100 * MO, 140 * MO].map((u) => quotaNear(at(u))), [true, true, true, true], '80 % et plus (plein compris) : jauge');
+  ok(quotaFull(at(100 * MO)) && quotaNear(at(100 * MO)), 'plein : la jauge est aussi montrée');
   eq(formatDuration(45), '45 s', '45 s');
   eq(formatDuration(130), '2 min 10', '2 min 10');
   eq(formatDuration(120), '2 min', '2 min');

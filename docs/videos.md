@@ -1,5 +1,7 @@
 # Vidéos de formation : envoi direct (lot 13, oct. 2026)
 
+> **Mise à jour « formations simplifiées » (oct. 2026, décision du patron).** La fenêtre « Formations » du bureau n'a plus aucun texte d'aide ni d'état vide, et le formulaire est devenu : titre, **une rangée de gros boutons « Filmer » · « Fichier » · « Lien » · « Document »**, puis « Pour ». « Filmer » = l'enregistreur intégré (un seul appui) ; s'il est indisponible : la caméra du téléphone sous le même mot sur un écran tactile, rien du tout sur un ordinateur (jamais un « Filmer » qui ouvre l'explorateur de fichiers). « Fichier » ouvre le sélecteur de vidéos. « Document » n'existe que s'il y a un document à proposer. Liste vide : le formulaire est là d'office (sans « Annuler »). La jauge de place n'apparaît qu'à partir de 80 %. Plus d'avertissement GPS à l'écran. Les passages ci-dessous qui parlent des anciens boutons (« Filmer dans BEMEXO », « Filmer », « Choisir un fichier », « Vidéo (téléphone ou fichier) ») et de ces textes décrivent l'état d'avant.
+
 Demande d'Ergun : « 100 % gratuit, sans carte, jusqu'aux 5 premiers clients ». Le bureau filme une consigne au téléphone (ou choisit un fichier) et l'envoie telle quelle. Le salarié la regarde **dans l'appli**. Tout reste sur le forfait **Supabase Free** déjà en place : aucune carte bancaire, aucun service en plus.
 
 Les liens YouTube / Vimeo / Google Drive et les documents du lot 6 marchent **exactement comme avant**.
