@@ -21,7 +21,7 @@ Un seul bouton « Assistant BEMEXO » (admin). On écrit, ou on appuie sur 🎤 
 ## Mise en service (après feu vert)
 
 1. Migration `supabase/migrations/20260929160000_lot3_assistant_bureau.sql`
-2. Secrets : `AI_API_KEY` ou `GEMINI_API_KEY` (déjà là pour le lot 2), `AI_CONFIG` (facultatif, lot 6), `ASSISTANT_DAILY_LIMIT` (facultatif)
+2. Secrets : `AI_API_KEY` ou `GEMINI_API_KEY` (déjà là pour le lot 2 ; `ANTHROPIC_API_KEY` en plus, ou à la place, si `AI_CONFIG` utilise Claude : voir `docs/ia-v2.md`), `AI_CONFIG` (facultatif, lot 6), `ASSISTANT_DAILY_LIMIT` (facultatif)
 3. `supabase functions deploy assistant`
 
 ## Tests

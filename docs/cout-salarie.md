@@ -27,7 +27,7 @@ connaît le **vrai coût horaire** du salarié et la **vraie rentabilité** des 
 ## IA
 
 - `supabase/functions/_shared/ai-provider.ts` : seul fichier à changer pour un autre fournisseur.
-- Modèle « documents » d'`AI_CONFIG` (lot 6, voir `docs/ia-v2.md` : `AI_MODEL` n'est plus lu), clé `AI_API_KEY` (repli `GEMINI_API_KEY`). Quota : 100 lectures par entreprise et par jour (`PAYSLIP_DAILY_LIMIT`). Aucun bandeau à l'écran (retiré à la demande d'Ergun) : l'avertissement « Gemini gratuit = données fictives » vit dans `docs/ia-v2.md`.
+- Modèle « documents » d'`AI_CONFIG` (lot 6, voir `docs/ia-v2.md` : `AI_MODEL` n'est plus lu), clé `AI_API_KEY` (repli `GEMINI_API_KEY`), ou `ANTHROPIC_API_KEY` si ce niveau est sur Claude. Quota : 100 lectures par entreprise et par jour (`PAYSLIP_DAILY_LIMIT`). Aucun bandeau à l'écran (retiré à la demande d'Ergun) : l'avertissement « Gemini gratuit = données fictives » vit dans `docs/ia-v2.md`.
 - Clé AI Studio : format « AQ.… » (auth key, depuis le 28/05/2026) ou ancien « AIza… » — les deux marchent. Envoyée dans l'en-tête `x-goog-api-key`, jamais dans l'URL, jamais dans les logs (test dédié).
 - Réponse JSON imposée + contrôle : total employeur > brut, heures entre 1 et 250 ; sinon champ vide « à vérifier ».
 - Sans clé : « Lecture automatique indisponible, saisissez les chiffres » — la saisie manuelle marche.
@@ -39,7 +39,7 @@ connaît le **vrai coût horaire** du salarié et la **vraie rentabilité** des 
 ## Mise en service (après feu vert)
 
 1. Migration `supabase/migrations/20260929140000_lot2_cout_salarie.sql`
-2. Secrets : `AI_API_KEY` ou `GEMINI_API_KEY` (obligatoire pour la lecture auto), `AI_CONFIG` (facultatif, lot 6)
+2. Secrets : `AI_API_KEY` ou `GEMINI_API_KEY` (obligatoire pour la lecture auto, ou `ANTHROPIC_API_KEY` si le niveau « documents » d'`AI_CONFIG` est sur Claude), `AI_CONFIG` (facultatif, lot 6)
 3. Fonction : `supabase functions deploy payslip-read`
 4. `UPDATE public.companies SET ai_enabled = true WHERE id = '…';`
 
