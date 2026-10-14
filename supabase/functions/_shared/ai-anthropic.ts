@@ -26,8 +26,10 @@
 //   · tool_choice FORCÉ (any / tool) = 400 sur Sonnet 5.5. Gemini utilisait le mode ANY : ici tool_choice
 //     {type:'auto'} (+ disable_parallel_tool_use quand un seul appel est accepté) et la consigne « réponds
 //     UNIQUEMENT en appelant une des fonctions fournies » ; un texte sans appel de fonction = 'bad_response'.
-//   · tools {name, description, input_schema} ; `strict: true` seulement tant que les LIMITES de l'API le
-//     permettent (20 outils stricts, 24 paramètres facultatifs au total, 16 unions : voir outilsClaude).
+//   · tools {name, description, input_schema}. PAS de `strict: true` (STRICT_ACTIF = false) : mesuré le 14/10/2026 sur la vraie
+//     API avec les 14 outils du bureau, la toute première requête a pris 33,5 s (compilation de la grammaire des schémas
+//     stricts, puis 24 h de cache) contre 2,8 s sans strict, donc la requête dépassait le plafond de temps et partait au secours.
+//     Le code qui lit l'appel revérifie de toute façon chaque argument (noms autorisés, types, valeurs).
 //
 // PAS de cache_control pour l'instant (étape ultérieure) : la requête est rangée dans l'ordre du cache
 // (tools, puis system, puis messages), la consigne stable est dans `system` (un tableau de blocs, où un
@@ -103,8 +105,12 @@ export function versSchemaClaude(node: unknown): Json {
 
 /** Limites de l'API pour `strict: true` (par requête, tous les outils stricts ensemble). */
 export const LIMITES_STRICT = { outils: 20, facultatifs: 24, unions: 16 } as const;
-/** Mettre à false pour envoyer tous les outils sans `strict` (repli si l'API refusait un schéma). */
-export const STRICT_ACTIF = true;
+/**
+ * FAUX : `strict: true` fait compiler à l'API une grammaire par jeu d'outils (33,5 s mesurés pour 12 outils stricts au premier appel,
+ * puis cache 24 h) : bien au-delà des plafonds de temps de l'assistant. Sans `strict`, la même requête répond en 2,8 s et les
+ * arguments sont revérifiés par le code appelant. La sélection « stricte » reste disponible (paramètre de outilsClaude) pour plus tard.
+ */
+export const STRICT_ACTIF = false;
 
 /** Paramètres facultatifs (hors `required`) et unions (anyOf, type en tableau) d'un schéma, imbriqués compris. */
 export function coutStrict(schema: unknown): { facultatifs: number; unions: number } {
@@ -131,13 +137,13 @@ export interface OutilClaude { name: string; description: string; input_schema: 
  * (le code qui lit l'appel revérifie tout de toute façon). Même liste d'outils → mêmes outils stricts (le schéma
  * strict est compilé une fois par l'API puis gardé 24 h : la toute première demande d'un jeu d'outils peut être un peu plus lente).
  */
-export function outilsClaude(functions: readonly Decl[]): OutilClaude[] {
+export function outilsClaude(functions: readonly Decl[], strict: boolean = STRICT_ACTIF): OutilClaude[] {
   const outils = functions.map((f) => {
     const schema = versSchemaClaude({ ...(f.parameters ?? {}), type: 'object' });
     return { f, schema, cout: coutStrict(schema) };
   });
   const stricts = new Set<number>();
-  if (STRICT_ACTIF) {
+  if (strict) {
     let n = 0, fac = 0, uni = 0;
     [...outils.keys()].sort((a, b) => outils[a].cout.facultatifs - outils[b].cout.facultatifs || a - b).forEach((i) => {
       const c = outils[i].cout;

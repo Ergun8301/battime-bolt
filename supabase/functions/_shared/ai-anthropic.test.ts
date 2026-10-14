@@ -6,8 +6,8 @@ import {
   PROFIL_LONG, PROFIL_LONG_ANTHROPIC, readConfig, REPOS_MS, reposReinit, type ToolsResult,
 } from './ai-provider.ts';
 import {
-  ANTHROPIC_AUTORISES, ANTHROPIC_URL, ANTHROPIC_VERSION, appelClaude, blocFichier, coutStrict, IMAGE_MAX_BASE64, LIMITES_STRICT, MAX_TOKENS, outilsClaude, refusModeleAnthropic,
-  versSchemaClaude,
+  ANTHROPIC_AUTORISES, ANTHROPIC_URL, ANTHROPIC_VERSION, appelClaude, blocFichier, corpsOutils, coutStrict, IMAGE_MAX_BASE64, LIMITES_STRICT, MAX_TOKENS, outilsClaude, refusModeleAnthropic,
+  STRICT_ACTIF, versSchemaClaude,
 } from './ai-anthropic.ts';
 import { ASSISTANT_FUNCTIONS, functionsFor } from './assistant-actions-core.ts';
 import { PAYSLIP_SCHEMA } from './payslip-core.ts';
@@ -78,7 +78,7 @@ Deno.test('Requête Claude : adresse, en-têtes, modèle, system / user séparé
   if (!Array.isArray(b.system) || b.system.length !== 1 || b.system[0].type !== 'text' || !/UNIQUEMENT en appelant une des fonctions/.test(b.system[0].text) || !/UNE seule fonction/.test(b.system[0].text)) throw new Error(`system : ${JSON.stringify(b.system)}`);
   if (JSON.stringify(b.messages) !== JSON.stringify([{ role: 'user', content: [{ type: 'text', text: 'Combien d’heures cette semaine ?' }] }])) throw new Error(`messages : ${JSON.stringify(b.messages)}`);
   if (JSON.stringify(b.tool_choice) !== '{"type":"auto","disable_parallel_tool_use":true}') throw new Error(`tool_choice : ${JSON.stringify(b.tool_choice)}`);
-  if (b.tools.length !== 1 || b.tools[0].name !== 'repondre' || b.tools[0].description !== 'Répondre.' || b.tools[0].strict !== true) throw new Error(JSON.stringify(b.tools));
+  if (b.tools.length !== 1 || b.tools[0].name !== 'repondre' || b.tools[0].description !== 'Répondre.' || 'strict' in b.tools[0]) throw new Error(JSON.stringify(b.tools));
   if (JSON.stringify(b.tools[0].input_schema) !== '{"type":"object","properties":{"reponse":{"type":"string","description":"x"}},"required":["reponse"],"additionalProperties":false}') throw new Error(JSON.stringify(b.tools[0].input_schema));
 });
 
@@ -507,20 +507,30 @@ Deno.test('Schémas : CHAQUE déclaration réelle (bureau et salarié, courtes e
   if (n < 150) throw new Error(`jeu trop petit : ${n} outils vérifiés`);
 });
 
-Deno.test('Schémas : strict:true seulement dans les limites de l’API (20 outils, 24 facultatifs, 16 unions), jamais sur un schéma qui les dépasse', () => {
-  let stricts = 0, total = 0;
+Deno.test('Schémas : par défaut AUCUN outil strict (mesuré : 33,5 s au premier appel avec 12 outils stricts, 2,8 s sans) ; la requête complète n’en porte aucun', () => {
+  if (STRICT_ACTIF !== false) throw new Error('STRICT_ACTIF doit rester faux tant que la compilation stricte dépasse les plafonds de temps');
   for (const [nom, fns] of REELLES) {
     const outils = outilsClaude(fns);
+    if (outils.some((o) => 'strict' in o)) throw new Error(`${nom} : un outil strict par défaut`);
+  }
+  const corps = corpsOutils({ model: 'claude-sonnet-5-5', effort: 'low', prompt: 'x', functions: ASSISTANT_FUNCTIONS, maxCalls: 1 }) as { tools: Record<string, unknown>[] };
+  if (corps.tools.some((o) => 'strict' in o)) throw new Error('la requête de production ne doit porter aucun strict');
+});
+
+Deno.test('Schémas (mode strict, facultatif et désactivé par défaut) : seulement dans les limites de l’API (20 outils, 24 facultatifs, 16 unions), jamais sur un schéma qui les dépasse', () => {
+  let stricts = 0, total = 0;
+  for (const [nom, fns] of REELLES) {
+    const outils = outilsClaude(fns, true);
     const s = outils.filter((o) => o.strict);
     const fac = s.reduce((a, o) => a + coutStrict(o.input_schema).facultatifs, 0), uni = s.reduce((a, o) => a + coutStrict(o.input_schema).unions, 0);
     if (s.length > LIMITES_STRICT.outils || fac > LIMITES_STRICT.facultatifs || uni > LIMITES_STRICT.unions) throw new Error(`${nom} : ${s.length} stricts, ${fac} facultatifs, ${uni} unions`);
     for (const o of s) if (o.input_schema.additionalProperties !== false || !Array.isArray(o.input_schema.required)) throw new Error(`${nom}/${o.name} : strict sans schéma fermé`);
-    if (JSON.stringify(outils) !== JSON.stringify(outilsClaude(fns))) throw new Error('déterministe');
+    if (JSON.stringify(outils) !== JSON.stringify(outilsClaude(fns, true))) throw new Error('déterministe');
     stricts += s.length; total += outils.length;
   }
   if (!stricts || stricts === total) throw new Error(`les 37 outils du bureau ne peuvent pas tous être stricts (${stricts}/${total})`);
   // Le bureau complet dépasse les limites : certains outils restent non stricts (sans quoi l’API répondrait 400).
-  const tous = outilsClaude(ASSISTANT_FUNCTIONS);
+  const tous = outilsClaude(ASSISTANT_FUNCTIONS, true);
   if (tous.every((o) => o.strict) || !tous.some((o) => o.strict)) throw new Error('mélange attendu pour les 37 outils');
 });
 
