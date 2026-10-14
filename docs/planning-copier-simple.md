@@ -10,13 +10,13 @@ Maintenant :
    - Sur ordinateur : « Copier une case : cliquez dessus puis « Copier vers… », ou glissez-la en maintenant Ctrl (Windows) ou ⌥ Option (Mac). »
    - Sur téléphone et tablette : « Copier une case : touchez-la puis « Copier vers… ». » (pas de Ctrl : le doigt n'en a pas)
    - Le petit **?** la réaffiche (dans le coin en haut à gauche de la grille ; sur téléphone, à côté de « Sélectionner »).
-   - L'ancienne bulle d'aide du navigateur (qui disparaissait en une seconde) n'existe plus.
+   - L'ancienne bulle d'aide du navigateur (qui disparaissait en une seconde) n'existe plus, et plus aucune bulle trompeuse n'apparaît au survol d'une intervention.
 2. **Cliquez (ou touchez) une intervention** : la fenêtre s'ouvre comme avant. En bas, une rangée **Actions** :
    - **Copier vers un autre jour…** : vous choisissez un ou plusieurs jours (même une autre semaine, même un autre salarié), puis « Copier ».
    - **Dupliquer au lendemain** : un seul geste, la case est copiée sur le jour suivant.
    - **Ajouter une tâche à ce créneau** : ouvre la fenêtre des tâches, avec les heures du créneau déjà écrites (vous les changez si besoin). Une tâche peut être avant, pendant ou après le créneau.
    - **Supprimer** : le même bouton qu'avant, avec les mêmes questions et les mêmes protections. Il est seulement rangé ici, plus grand.
-3. **« ＋ Tâche »** apparaît sur chaque case qui contient déjà une intervention (ordinateur et téléphone). Un clic ouvre la fenêtre des tâches pour ce salarié et ce jour. Il n'apparaît pas un jour d'absence, ni en mode « Sélectionner », ni si les tâches ne sont pas activées.
+3. **« ＋ Tâche »** apparaît sur chaque case qui contient déjà une intervention (ordinateur et téléphone) : une petite pastille en bas à droite de la case à la souris, un bouton de 44 px au doigt. Un clic ouvre la fenêtre des tâches pour ce salarié et ce jour. Il n'apparaît pas un jour d'absence, ni en mode « Sélectionner », ni si les tâches ne sont pas activées.
 4. **« Formations »** se voit enfin : dans le menu du compte (en haut à droite) et, sur les grands écrans (1440 px et plus), dans la barre du haut. L'entrée dans « Salariés » reste.
 
 Rien d'autre ne change : mêmes couleurs, même grille, mêmes règles, même impression. **Ctrl ou ⌥ + glisser** marche exactement comme avant (avec son message « Annuler »).
@@ -47,7 +47,7 @@ Une case dont les **heures sont déjà envoyées** peut être copiée (comme ave
 2. Cliquez une intervention, puis **Dupliquer au lendemain** : la copie apparaît le lendemain. Un message vert le dit.
 3. Cliquez une intervention, puis **Copier vers un autre jour…** : cliquez deux ou trois jours (ils deviennent jaunes), puis **Copier sur ces jours**. Essayez les flèches ‹ › pour la semaine suivante.
 4. Essayez un jour où la personne est absente : il est grisé, la raison est écrite.
-5. Dans la fenêtre, changez l'horaire **sans enregistrer** : « Copier » et « Dupliquer » attendent (« Enregistrez d'abord… »).
+5. Dans la fenêtre, changez l'horaire **sans enregistrer** : « Copier », « Dupliquer » et « Ajouter une tâche » attendent (« Enregistrez d'abord… »).
 6. Sur une case aux heures envoyées : « Supprimer » est refusé, « Dupliquer » marche.
 7. Sur une case de salarié déjà planifié, cliquez **＋ Tâche** : la fenêtre s'ouvre sur « Tâche ». Ou, dans la fenêtre d'une intervention, **Ajouter une tâche à ce créneau** (08:00 → 12:00 déjà écrits). Une tâche 10:00–11:00 passe sans alerte ; 13:00–14:00 demande « Ajouter quand même ? ».
 8. En haut à droite, le menu de l'entreprise propose **Formations**.
