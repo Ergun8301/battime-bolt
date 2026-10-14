@@ -101,7 +101,7 @@ export const MISSIONS_CSS = `
 .bt-print-tasks .tm{font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:800}
 .bt-print .bt-pl-meet{cursor:default}
 .bt-print .bt-pl-meet .nm{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
-@media print{.bt-print--day .bt-pl-cellfill>.bt-print-tasks{flex:0 0 100%}}
+.bt-print--day .bt-pl-cellfill>.bt-print-tasks{flex:0 0 100%}
 `;
 
 /** Les trois pastilles de la fenêtre « + ». Une pastille par table présente. */

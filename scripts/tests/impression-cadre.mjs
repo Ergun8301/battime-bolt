@@ -6,16 +6,19 @@
 // Mise en page de l'impression du planning (A4 paysage) — feuille réelle de la page /admin
 // (base simulée, horloge figée au mercredi 21 octobre 2026, 10:00 à Paris ; aucun appel réseau
 // réel, rien n'est écrit) :
-//   K1 marges : @page ≥ 10 mm sur les 4 côtés (les imprimantes rognent 4 à 6 mm), égales à gauche
-//      et à droite (semaine, jour, mois) ;
+//   K1 @page : margin:0 (Chrome n'a plus de marge où écrire sa date, son titre, l'adresse et « 1/1 »),
+//      A4 paysage ; les 10 mm de marge sont ceux de la FEUILLE (K3, K6) ;
 //   K2 cadre : trait extérieur gauche / droite / haut / bas, plus épais que les traits internes,
 //      noir franc, sur la semaine, le jour (avec signature) et le mois ;
-//   K3 centrage : le tableau occupe toute la largeur utile, écarts gauche / droite égaux à 1 mm près,
-//      aucun débordement — peu de salariés, 9 salariés (nom très long), 22 salariés (plusieurs pages) ;
+//   K3 centrage : la feuille fait 277 mm (10 mm de chaque côté), le tableau occupe toute sa largeur, écarts
+//      gauche / droite égaux à 1 mm près, aucun débordement — peu de salariés, 9 salariés (nom très long),
+//      22 salariés (plusieurs pages) ; lignes équilibrées (aucune hauteur imposée au tableau) ;
 //   K4 pages : en-tête répété, aucune ligne coupée, un salarié aux noms très longs en entier ;
-//   K5 couleurs et textures IDENTIQUES à l'écran (fond, motif de rayures des congés, bordures
-//      pointillées, barre du chantier, pastilles) et print-color-adjust: exact partout ;
-//   K6 PDF réel : A4 paysage, nombre de pages, marges et centrage mesurés sur le dessin du PDF.
+//   K5 couleurs, textures, POLICES et tailles IDENTIQUES à l'écran, carte par carte (fond, motif de rayures
+//      des congés, bordures pointillées, barre du chantier, pastilles, police, taille, interligne, marges,
+//      rayons) et print-color-adjust: exact partout ;
+//   K6 PDF réel : A4 paysage, nombre de pages, marges (10 mm sur chaque page) et centrage mesurés sur le
+//      dessin du PDF.
 import http from 'node:http'; import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path'; import zlib from 'node:zlib'; import { chromium } from 'playwright-core';
 const [,, OUT, SH = fs.mkdtempSync(path.join(os.tmpdir(), 'impression-cadre-')), PORT = '5322'] = process.argv; fs.mkdirSync(SH, { recursive: true });
 const AVANT = process.env.AVANT === '1';
@@ -189,8 +192,8 @@ const pageMargins = (p) => p.evaluate(() => {
   }
   return null;
 });
-const mmOf = (v) => (typeof v === 'string' && /mm$/.test(v) ? parseFloat(v) : NaN);
-/** Rendu « papier » à l'écran : la zone utile d'un A4 paysage (297 × 210 mm moins les marges de l'@page). */
+const mmOf = (v) => (typeof v === 'string' && /^-?[\d.]+(mm|px)?$/.test(v) ? (v.endsWith('px') ? parseFloat(v) / MM : parseFloat(v)) : NaN);
+/** Rendu « papier » à l'écran : la zone utile d'un A4 paysage (297 × 210 mm moins les marges de l'@page : 0 — les 10 mm sont ceux de la feuille). */
 const paper = async (p, fn) => {
   const m = await pageMargins(p); const vp = p.viewportSize();
   const ml = mmOf(m?.left), mr = mmOf(m?.right), mt = mmOf(m?.top), mb = mmOf(m?.bottom);
@@ -221,14 +224,18 @@ const measureSheet = (long) => {
     l: side(left), r: side(right), t: side(top), b: side(bottom), innerMax: Math.max(0, ...inner.map((e) => e.w)),
     thead: cs(table.tHead).display, avoid: body.every((r) => cs(r).breakInside === 'avoid'),
     tfoot: tf ? { display: cs(tf).display, w: parseFloat(cs(tf.rows[0].cells[0]).borderTopWidth) || 0 } : null,
-    rows: body.length,
+    rows: body.length, rowH: body.map((r) => r.getBoundingClientRect().height),
     // Le nom très long s'imprime en entier (il passe à la ligne, jamais « … » ni coupé).
     longName: (() => { const e = [...sheet.querySelectorAll('.bt-pl-name, td.n')].find((x) => x.textContent.trim() === long); return e ? { cut: e.scrollWidth > e.clientWidth + 1 || e.scrollHeight > e.clientHeight + 1, ellipsis: cs(e).textOverflow === 'ellipsis' } : null; })(),
   };
 };
 /** Styles calculés des cases, par salarié : mêmes sélecteurs à l'écran et sur papier (K5). */
 const STYLE_SEL = ['.bt-pl-bub', '.bt-pl-bub-bar', '.bt-pl-bub-title', '.bt-pl-bub-sub', '.bt-pl-bub-real', '.bt-pl-real-txt', '.bt-pl-bub-draft', '.bt-pl-check', '.bt-pl-extra', '.bt-pl-abs', '.bt-pl-avatar'];
-const STYLE_PROPS = ['background-color', 'background-image', 'border-top-style', 'border-top-color', 'border-right-style', 'border-right-color', 'border-bottom-style', 'border-bottom-color', 'border-left-style', 'border-left-color', 'color', 'border-top-left-radius', 'opacity'];
+const STYLE_PROPS = ['background-color', 'background-image', 'border-top-style', 'border-top-color', 'border-right-style', 'border-right-color', 'border-bottom-style', 'border-bottom-color', 'border-left-style', 'border-left-color', 'color', 'border-top-left-radius', 'border-top-right-radius', 'border-bottom-left-radius', 'border-bottom-right-radius', 'opacity',
+  'padding-top', 'padding-right', 'padding-bottom', 'padding-left', 'box-shadow']; // (l'épaisseur du pointillé : à part, elle suit l'échelle — K5 taille relative)
+// Les textes : police, taille, graisse, interligne, espacement, soulignement — identiques à l'écran (la feuille n'est réduite que par l'échelle, jamais par une autre taille).
+const TEXT_SEL = ['.bt-pl-bub-title', '.bt-pl-bub-sub', '.bt-pl-hour', '.bt-pl-real-txt', '.bt-pl-bub-draft', '.bt-pl-extra-name', '.bt-pl-extra-by', '.bt-pl-abs-lbl'];
+const TEXT_PROPS = ['font-family', 'font-size', 'font-weight', 'font-style', 'line-height', 'letter-spacing', 'text-transform', 'text-decoration-line', 'color'];
 const readStyles = ([where, sel, props]) => {
   const rows = where === 'print' ? document.querySelectorAll('.bt-print tbody tr') : document.querySelectorAll('.bt-pl-gridwrap tbody:not(.bt-pl-ghostbody) tr');
   const out = {};
@@ -256,7 +263,8 @@ const pdfFills = (buf) => {
   return out;
 };
 /** Dessin réel du PDF : pour chaque page, bord gauche et bord droit (mm depuis le bord du papier) de ce qui est peint
- *  (remplissages et traits, le texte exclu) — le cadre du tableau en est le point le plus à l'extérieur. */
+ *  (remplissages et traits, le texte et les fonds BLANCS exclus : la marge de la feuille est blanche) — le cadre du tableau
+ *  en est le point le plus à l'extérieur. */
 const pdfPaintEdges = (buf) => {
   const s = buf.toString('latin1'), W = Number(/\/MediaBox\s*\[\s*0\s+0\s+([\d.]+)/.exec(s)?.[1]);
   const content = (n) => {
@@ -267,22 +275,30 @@ const pdfPaintEdges = (buf) => {
   const mul = (a, b) => [a[0] * b[0] + a[1] * b[2], a[0] * b[1] + a[1] * b[3], a[2] * b[0] + a[3] * b[2], a[2] * b[1] + a[3] * b[3], a[4] * b[0] + a[5] * b[2] + b[4], a[4] * b[1] + a[5] * b[3] + b[5]];
   return [...s.matchAll(/\d+ 0 obj\s*<<\s*\/Type\s*\/Page(?!s)([\s\S]*?)endobj/g)].map((pg) => {
     const t = content(Number(/\/Contents\s+(\d+)\s+0\s+R/.exec(pg[1])?.[1]));
-    let ctm = [1, 0, 0, 1, 0, 0], nums = [], path = [], x0 = Infinity, x1 = -Infinity; const stack = [];
+    let ctm = [1, 0, 0, 1, 0, 0], nums = [], path = [], x0 = Infinity, x1 = -Infinity, white = false; const stack = [];
     const pt = (x, y) => ctm[0] * x + ctm[2] * y + ctm[4];
     for (const k of t.match(/[-+]?\d*\.?\d+(?:e[-+]?\d+)?|[A-Za-z*']+/g) || []) {
       if (/^[-+]?\d*\.?\d+(?:e[-+]?\d+)?$/.test(k)) { nums.push(Number(k)); continue; }
       const n = nums;
-      if (k === 'q') stack.push(ctm); else if (k === 'Q') ctm = stack.pop() || ctm; else if (k === 'cm') ctm = mul(n.slice(-6), ctm);
+      if (k === 'q') stack.push([ctm, white]); else if (k === 'Q') { const o = stack.pop(); if (o) [ctm, white] = o; } else if (k === 'cm') ctm = mul(n.slice(-6), ctm);
+      else if (k === 'rg') white = n.slice(-3).every((v) => v > 0.99);
       else if (k === 'm' || k === 'l') path.push(pt(n.at(-2), n.at(-1)));
       else if (k === 'c') path.push(pt(n.at(-6), n.at(-5)), pt(n.at(-4), n.at(-3)), pt(n.at(-2), n.at(-1)));
       else if (k === 're') path.push(pt(n.at(-4), n.at(-3)), pt(n.at(-4) + n.at(-2), n.at(-3) + n.at(-1)));
-      else if (/^(f|F|f\*|S|s|B|B\*|b|b\*)$/.test(k)) { for (const x of path) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); } path = []; } else if (k === 'n') path = [];
+      else if (/^(f|F|f\*|S|s|B|B\*|b|b\*)$/.test(k)) { if (!(white && /^(f|F|f\*)$/.test(k))) for (const x of path) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); } path = []; } else if (k === 'n') path = [];
       nums = [];
     }
     return { left: x0 * 25.4 / 72, right: (W - x1) * 25.4 / 72 };
   });
 };
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+/** Le premier élément qui diffère et SEULEMENT ses propriétés qui diffèrent : { sorte, texte, propriété : [écran, feuille] }. */
+const firstDiff = (a, b) => {
+  const i = a.findIndex((x, j) => !same(x, b?.[j]));
+  if (i < 0) return [a.length, b?.length];
+  const x = a[i], y = b?.[i];
+  return { k: x.k, t: x.t, ...(y ? Object.fromEntries(Object.keys(x.st).filter((q) => x.st[q] !== y.st[q]).map((q) => [q, [x.st[q], y.st[q]]])) : { absent: true }) };
+};
 const MM1 = MM; // 1 mm en px
 
 // ─── Les cas imprimés ─────────────────────────────────────────────────────────────
@@ -297,26 +313,33 @@ const CASES = [
 ];
 // Couleurs de remplissage attendues dans le PDF (RGB de l'écran : matin, après-midi, soir, noir « envoyé »).
 const FILLS = { matin: '218,237,251', 'après-midi': '253,227,202', soir: '223,204,238', 'noir (envoyé)': '21,18,15' };
-let screenStyles = null;
+let screenStyles = null, screenText = null, screenGeom = null;
+/** Taille relative : la taille du texte d'une carte rapportée à la largeur du tableau, la largeur d'une carte rapportée à sa colonne. */
+const readGeom = (where) => {
+  const root = where === 'print' ? document.querySelector('.bt-print') : document.querySelector('.bt-pl-gridwrap');
+  const t = root.querySelector('.bt-pl-bub[data-creneau] .bt-pl-bub-title'), tb = root.querySelector('.bt-pl-table'), bub = t.closest('.bt-pl-bub'), td = bub.closest('td');
+  const z = where === 'print' ? Number(getComputedStyle(root.querySelector('.bt-print-z')).getPropertyValue('--bt-z')) : 1;
+  return { txt: parseFloat(getComputedStyle(t).fontSize) * z / tb.getBoundingClientRect().width, card: bub.getBoundingClientRect().width / td.getBoundingClientRect().width, bw: parseFloat(getComputedStyle(bub).borderTopWidth), z };
+};
 for (const c of CASES) {
   const { ctx, p } = await newPage(c.mode);
   if (c.screen) await p.locator('.bt-pl-gridwrap').screenshot({ path: path.join(SH, `ecran-${c.id}.png`) });
-  if (c.styles && !AVANT) screenStyles = await p.evaluate(readStyles, ['screen', STYLE_SEL, STYLE_PROPS]);
+  if (c.styles && !AVANT) { screenStyles = await p.evaluate(readStyles, ['screen', STYLE_SEL, STYLE_PROPS]); screenText = await p.evaluate(readStyles, ['screen', TEXT_SEL, TEXT_PROPS]); screenGeom = await p.evaluate(readGeom, 'screen'); }
   await printWith(p, c.opts);
   if (!AVANT) await paper(p, async (area) => {
     const m = area.margins, W = `${c.id} (${c.what})`;
     const sides = ['top', 'right', 'bottom', 'left'].map((k) => mmOf(m?.[k]));
-    check(sides.every((v) => v >= 10), `K1 ${W} : marges de l'@page ≥ 10 mm sur les 4 côtés (${sides.join(' / ')} mm)`);
-    check(sides[1] === sides[3] && sides[0] === sides[2] && /a4 landscape/i.test(m?.size || ''), `K1 ${W} : marges égales gauche = droite, haut = bas, A4 paysage (« ${m?.size} »)`);
+    check(sides.every((v) => v === 0) && /a4 landscape/i.test(m?.size || ''), `K1 ${W} : @page margin:0, A4 paysage (« ${m?.size} », marges ${sides.join(' / ')} mm) — le navigateur n'a plus de marge où écrire son en-tête et son pied`);
     const r = await p.evaluate(measureSheet, LONG);
-    check(Math.abs(r.left - (r.vw - r.right)) <= MM1 && Math.abs(r.width - r.vw) <= MM1, `K3 ${W} : tableau centré et pleine largeur utile (gauche ${r.left.toFixed(1)} px, droite ${(r.vw - r.right).toFixed(1)} px, largeur ${r.width.toFixed(0)} / ${r.vw} px)`);
+    const inset = (r.vw - 277 * MM) / 2;
+    check(Math.abs(r.left - inset) <= MM1 && Math.abs(r.left - (r.vw - r.right)) <= MM1 && Math.abs(r.width - 277 * MM) <= MM1, `K3 ${W} : feuille de 277 mm, 10 mm de chaque côté, tableau centré sur toute sa largeur (gauche ${r.left.toFixed(1)} px, droite ${(r.vw - r.right).toFixed(1)} px, largeur ${r.width.toFixed(0)} px)`);
     check(r.over <= MM1, `K3 ${W} : aucun débordement horizontal (${r.over} px)`);
     const fr = [['gauche', r.l], ['droite', r.r], ['haut', r.t], ['bas', r.b]];
     check(fr.every(([, e]) => e.min >= 2 && e.ok) && fr.every(([, e]) => e.min > r.innerMax), `K2 ${W} : cadre noir sur les 4 côtés, plus épais que les traits internes (${fr.map(([n, e]) => `${n} ${e.min}px`).join(', ')} > ${r.innerMax}px)`);
     check(r.tfoot && r.tfoot.display === 'table-footer-group' && r.tfoot.w >= 2, `K2 ${W} : pied de tableau qui referme le cadre en bas de chaque page (${JSON.stringify(r.tfoot)})`);
     check(r.thead === 'table-header-group' && r.avoid, `K4 ${W} : en-tête répété (${r.thead}), aucune ligne coupée (break-inside: avoid)`);
     if (c.mode !== 'few') check(r.longName && !r.longName.cut && !r.longName.ellipsis, `K4 ${W} : le nom très long « ${LONG} » s'imprime en entier, sans « … » (${JSON.stringify(r.longName)})`);
-    if (c.id === 'semaine-peu') check(r.height >= 0.75 * area.h, `K3 ${W} : peu de salariés, le tableau occupe ${(100 * r.height / area.h).toFixed(0)} % de la hauteur utile (≥ 75 %)`);
+    if (c.id === 'semaine-peu') check(Math.max(...r.rowH) <= 2.2 * Math.min(...r.rowH), `K3 ${W} : aucune hauteur imposée au tableau, lignes équilibrées : ${r.rowH.map((v) => v.toFixed(0)).join(' / ')} px (la plus haute ≤ 2,2 × la plus petite)`);
     const adj = await p.evaluate(readAdjust);
     check(adj.bad.length === 0 && adj.painted > 0, `K5 ${W} : print-color-adjust: exact sur la feuille et ses ${adj.n} éléments (${adj.painted} avec fond ou motif) ${JSON.stringify(adj.bad)}`);
     if (c.styles) {
@@ -324,12 +347,34 @@ for (const c of CASES) {
       // La maladie s'imprime « Absent » (neutre, voulu depuis le lot 3) : on la compare à part.
       const strip = (g) => Object.fromEntries(Object.entries(g).map(([n, l]) => [n, l.filter((x) => !(x.k === '.bt-pl-abs' && /Maladie|Absent/.test(x.t)))]));
       const a = strip(screenStyles), bb = strip(got), bad = [];
-      for (const n of Object.keys(a)) { if (!same(a[n], bb[n])) bad.push(`${n} : ${JSON.stringify(a[n].map((x, i) => [x.k, x.st, bb[n]?.[i]?.st]).find(([, s1, s2]) => !same(s1, s2)) || [a[n].length, bb[n]?.length])}`); }
+      for (const n of Object.keys(a)) { if (!same(a[n], bb[n])) bad.push(`${n} : ${JSON.stringify(firstDiff(a[n], bb[n]))}`); }
       const kinds = new Set(Object.values(a).flat().map((x) => x.k));
       check(bad.length === 0 && Object.keys(a).length === 9 && kinds.has('.bt-pl-abs') && kinds.has('.bt-pl-extra') && kinds.has('.bt-pl-check'), `K5 ${W} : fonds, motifs, bordures, couleurs de texte IDENTIQUES à l'écran sur ${Object.values(a).flat().length} éléments (${[...kinds].length} sortes)${bad.length ? `\n   ${bad.slice(0, 3).join('\n   ')}` : ''}`);
       const bg = (arr, sel2) => new Set(arr.flat().filter((x) => x.k === sel2).map((x) => x.st['background-color'] + '|' + x.st['background-image']));
       const sc = Object.values(a), pr = Object.values(bb);
       check(same([...bg(sc, '.bt-pl-bub')].sort(), [...bg(pr, '.bt-pl-bub')].sort()) && bg(pr, '.bt-pl-bub').size >= 4 && bg(pr, '.bt-pl-abs').size >= 1 && [...bg(pr, '.bt-pl-abs')].every((x) => /repeating-linear-gradient/.test(x)), `K5 ${W} : mêmes fonds de cases qu'à l'écran (${bg(pr, '.bt-pl-bub').size} fonds de bulles, rayures des congés « repeating-linear-gradient »)`);
+      // Les textes : police, graisse, couleur, casse… identiques à l'écran, et la TAILLE aussi — sauf le plancher de lisibilité :
+      // la taille sur la feuille est max(taille de l'écran, 7 pt / échelle), jamais autre chose (un texte assez grand est à la taille de l'écran ;
+      // interligne et espacement des lettres suivent la taille, comme à l'écran, en proportion). La maladie « Absent » est comparée à part.
+      const geom = await p.evaluate(readGeom, 'print');
+      const gotT = await p.evaluate(readStyles, ['print', TEXT_SEL, TEXT_PROPS]);
+      const stripT = (g) => Object.fromEntries(Object.entries(g).map(([n, l]) => [n, l.filter((x) => !(x.k === '.bt-pl-abs-lbl' && /Maladie|Absent/.test(x.t)))]));
+      const FLOOR = 9.35 / geom.z; // 7 pt effectifs, en px de la feuille avant réduction
+      const prop = (st, wanted) => {
+        const fs = wanted ?? parseFloat(st['font-size']), o = { ...st };
+        o['font-size'] = fs.toFixed(2);
+        for (const q of ['line-height', 'letter-spacing']) o[q] = /px$/.test(st[q]) ? (parseFloat(st[q]) / parseFloat(st['font-size'])).toFixed(3) : st[q];
+        return o;
+      };
+      const aT = Object.fromEntries(Object.entries(stripT(screenText)).map(([n, l]) => [n, l.map((x) => ({ ...x, st: prop(x.st, Math.max(parseFloat(x.st['font-size']), FLOOR)) }))]));
+      const bT = Object.fromEntries(Object.entries(stripT(gotT)).map(([n, l]) => [n, l.map((x) => ({ ...x, st: prop(x.st) }))])), badT = [];
+      for (const n of Object.keys(aT)) { if (!same(aT[n], bT[n])) badT.push(`${n} : ${JSON.stringify(firstDiff(aT[n], bT[n]))}`); }
+      const kindsT = new Set(Object.values(aT).flat().map((x) => x.k));
+      const raised = Object.values(stripT(screenText)).flat().filter((x) => parseFloat(x.st['font-size']) < FLOOR - 0.01).length;
+      check(badT.length === 0 && kindsT.size >= 7, `K5 ${W} : polices, graisses, couleurs, interlignes IDENTIQUES à l'écran et tailles IDENTIQUES ou relevées à 7 pt (max(écran, 9,35 px / ${geom.z.toFixed(2)} = ${FLOOR.toFixed(2)} px)) sur ${Object.values(aT).flat().length} textes (${kindsT.size} sortes, ${raised} relevés)${badT.length ? `\n   ${badT.slice(0, 3).join('\n   ')}` : ''}`);
+      check(Math.abs(geom.txt / screenGeom.txt - 1) <= 0.15 && Math.abs(geom.card - screenGeom.card) <= 0.03, `K5 ${W} : taille relative comme à l'écran : texte / largeur du tableau ${geom.txt.toFixed(5)} (écran ${screenGeom.txt.toFixed(5)}), carte / colonne ${geom.card.toFixed(3)} (écran ${screenGeom.card.toFixed(3)})`);
+      // Le pointillé de 1,5 px de l'écran (affiché 1 px sur un écran à 1×) suit l'échelle de la feuille : 1,5 × .8 = 1,2 px.
+      check(Math.abs(geom.bw - 1.5 * geom.z) <= 0.25 && screenGeom.bw >= 1 && screenGeom.bw <= 1.5, `K5 ${W} : épaisseur du pointillé des cartes proportionnelle à l'échelle (${geom.bw}px = 1,5 × ${geom.z.toFixed(2)} ; écran ${screenGeom.bw}px)`);
       const sw = await p.evaluate(() => [...document.querySelectorAll('.bt-print-sw')].map((e) => getComputedStyle(e).backgroundColor));
       check(same(sw, ['rgb(218, 237, 251)', 'rgb(253, 227, 202)', 'rgb(223, 204, 238)']), `K5 ${W} : pastilles de la légende = couleurs matin / après-midi / soir de l'écran (${sw.join(' ; ')})`);
     }

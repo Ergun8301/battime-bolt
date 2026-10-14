@@ -69,7 +69,7 @@ import { useVisiblePoll } from '@/lib/use-visible-poll';
 import { useStaffEmailVisible } from '@/lib/staff-email-flag';
 import AdminMobileMenu from '@/components/admin-mobile-menu';
 import { CHANTIER_PALETTES, hashStr, LiveLine, PL_GRID_CSS, PlannedBubbleView, type ChantierPalette } from '@/components/planning-bubble';
-import { PlanningPrintSheet, PrintMenu, PRINT_MENU_CSS, printTitle, type PrintJob, type PrintOptions } from '@/components/planning-print';
+import { PrintMenu, PRINT_MENU_CSS, printTitle, type PrintJob, type PrintOptions } from '@/components/planning-print';
 import { absenceCode, periodDays, periodRange, withinPeriod, worksiteCodes, type PrintPeriod } from '@/supabase/functions/_shared/print-period';
 import { loadPrintData } from '@/lib/planning-print-data';
 // Lot 4 : tâches du jour et réunions (tables à part : jamais des heures).
@@ -130,6 +130,15 @@ const StaffEmailDialog = lazyWindow(() => import('@/components/staff-email-dialo
 // Lot 18 : l'alerte de verrouillage de l'export d'équipe. Chargée à l'ouverture de la fenêtre « Exporter l'équipe »
 // (preload), pas au repos : la plupart des visites n'exportent jamais. Elle n'importe ni Excel ni jsPDF.
 const ExportVerrou = lazyWindow(() => import('@/components/export-verrou-dialog'), { isOpen: (p) => p.ask != null, close: (p) => p.onCancel(), warm: 'never' });
+// La feuille imprimée (« Imprimer comme à l'écran ») : chargée à part, au repos — elle ne pèse rien au premier
+// affichage. Ctrl+P a besoin d'elle sur-le-champ (rien à attendre) : tant qu'elle n'est pas là, le navigateur
+// imprime comme avant ; le bouton « Imprimer », lui, la charge si besoin (« Préparation… »).
+type PrintSheetMod = typeof import('@/components/planning-print-sheet');
+let sheetMod: PrintSheetMod | null = null;
+let sheetLoad: Promise<PrintSheetMod> | null = null;
+const loadPrintSheet = (): Promise<PrintSheetMod> => (sheetLoad ??= import('@/components/planning-print-sheet')
+  .then(async (m) => { await m.warmPrintLogo(); sheetMod = m; return m; })
+  .catch((e) => { sheetLoad = null; throw e; }));
 // L'assistant garde la mémoire de sa conversation : monté dès que son code est là, même fermé (comme avant).
 const AssistantBureau = lazyWindow(() => import('@/components/assistant-bureau'), { isOpen: (p) => p.open, priority: 2, warm: 'mounted', mount: 'warm' });
 
@@ -1068,11 +1077,23 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
   const closePrintMenu = useCallback(() => { printSeq.current++; setPrintBusy(false); setPrintOpen(false); }, []);
   const startPrint = async (o: PrintOptions) => {
     const seq = ++printSeq.current;
+    // La feuille n'est pas encore chargée (menu ouvert tout de suite après le démarrage) : on la charge d'abord.
+    if (!sheetMod) {
+      setPrintBusy(true);
+      try { await loadPrintSheet(); } catch (err) {
+        if (seq !== printSeq.current) return;
+        console.error('Error loading print sheet:', err);
+        setPrintBusy(false);
+        toast.error("Impossible de préparer l'impression. Réessayez.");
+        return;
+      }
+      if (seq !== printSeq.current) return;
+    }
     const weekISO = format(currentWeekStart, 'yyyy-MM-dd');
     // La période est à l'écran (sa semaine, ou un de ses jours) : ses données, comme au lot 3.
     const missionsReady = (!missions.meetingsOn && !(o.tasks && missions.tasksOn)) || missionsWeek === weekISO;
     if (withinPeriod(o.period, { kind: 'week', start: weekISO }) && loadedWeek === weekISO && missionsReady) {
-      setPrintOpen(false); setPrintJob({ ...o, data: null, printedAt: new Date() });
+      setPrintBusy(false); setPrintOpen(false); setPrintJob({ ...o, data: null, printedAt: new Date() });
       return;
     }
     if (!user?.company_id) return;
@@ -1242,8 +1263,9 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
   }, [loading, workers.length]);
 
   // ── Lot 3 : impression. Bouton « Imprimer » : la feuille est montée, on attend les
-  //    polices (une feuille cachée à l'écran ne les déclenche pas) et deux rafraîchissements
-  //    d'écran, puis window.print(). On ne range QU'À « afterprint » : sur iPhone print()
+  //    polices (une feuille cachée à l'écran ne les déclenche pas), les images de la feuille
+  //    (photos des salariés, logos : 2 s au plus) et deux rafraîchissements d'écran, puis
+  //    window.print(). On ne range QU'À « afterprint » : sur iPhone print()
   //    rend la main tout de suite, et les tests le remplacent.
   useEffect(() => {
     if (!printJob || printJob.auto) return;
@@ -1253,6 +1275,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
         await Promise.all(["800 13px Archivo", "900 15px Archivo", "700 10px 'JetBrains Mono'"].map((f) => document.fonts.load(f)));
         await document.fonts.ready;
       } catch { /* imprime quand même, avec la police de secours */ }
+      await sheetMod?.settlePrintSheet().catch(() => undefined); // images décodées, page(s) remesurée(s) ; sinon on imprime quand même
       await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
       if (!off) window.print();
     })();
@@ -1272,6 +1295,8 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
     const before = () => {
       const dialogOpen = Array.from(document.querySelectorAll('[role=dialog],[role=alertdialog]')).some((d) => !d.closest('#cc-main'));
       if (printJobRef.current || dialogOpen) return;
+      // La feuille n'est pas encore chargée (tout début de la session) : le navigateur imprime comme avant.
+      if (!sheetMod) { void loadPrintSheet().catch(() => undefined); return; }
       printSeq.current++;
       const shown = displayedRef.current;
       const period: PrintPeriod = window.innerWidth < 1024 ? { kind: 'day', start: shown.day } : { kind: 'week', start: shown.week };
@@ -1285,6 +1310,17 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
     window.addEventListener('afterprint', after);
     return () => { window.removeEventListener('beforeprint', before); window.removeEventListener('afterprint', after); };
   }, []);
+
+  // La feuille imprimée se charge au repos (0,8 s après l'affichage), et tout de suite à l'ouverture du menu 🖨.
+  // Avec elle, les photos des salariés et le logo de l'entreprise (ceux de l'écran, déjà demandés par la page) sont
+  // gardés prêts en mémoire : Ctrl+P monte la feuille et imprime aussitôt, sans rien attendre — la photo doit déjà être là.
+  const printImgKey = `${companyLogo}|${workers.map((w) => w.photo_url || '').join('|')}`;
+  const warmPrintImages = () => { void loadPrintSheet().then((m) => m.preloadPrintImages([companyLogo, ...workers.map((w) => w.photo_url)])).catch(() => undefined); };
+  useEffect(() => {
+    const t = window.setTimeout(warmPrintImages, 800);
+    return () => window.clearTimeout(t);
+  }, [printImgKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (printOpen) warmPrintImages(); }, [printOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Démo (preview UNIQUEMENT) : ?demo=N affiche N salariés fictifs — AUCUNE écriture en
   // base (prod intacte). Sert juste à visualiser le planning rempli.
@@ -4193,11 +4229,12 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
       )}
 
       {/* Lot 3 : la feuille imprimée, directement dans <body> (le CSS d'impression cache
-          tout le reste) et seulement le temps d'imprimer. Photos : initiales seules. */}
-      {printJob && printSrc && createPortal(
-        <PlanningPrintSheet job={printJob} company={companyLabel} codes={printCodes} hasMeetings={printHasMeetings}
+          tout le reste) et seulement le temps d'imprimer. Comme l'écran : la photo du salarié
+          (même image) ou ses initiales, et la pastille de l'entreprise (nom + logo). */}
+      {printJob && printSrc && sheetMod && createPortal(
+        <sheetMod.PlanningPrintSheet job={printJob} company={companyLabel} companyLogo={companyLogo || undefined} codes={printCodes} hasMeetings={printHasMeetings}
           rows={printRows.map((w) => ({
-            id: w.id, name: `${w.first_name} ${w.last_name}`, initials: `${w.first_name?.[0] || ''}${w.last_name?.[0] || ''}`, tint: avatarTint(w.id, false),
+            id: w.id, name: `${w.first_name} ${w.last_name}`, initials: `${w.first_name?.[0] || ''}${w.last_name?.[0] || ''}`, tint: avatarTint(w.id, false), photo: w.photo_url,
           }))}
           renderCell={printJob.period.kind === 'month' ? (u, d) => renderMonthCell(printSrc, printCodes || new Map(), u, d) : (u, d) => renderPrintCell(printSrc, u, d)} />,
         document.body,
