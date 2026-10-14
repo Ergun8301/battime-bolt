@@ -363,7 +363,9 @@ function DraggableBubble({
         {...drag.listeners}
         onClick={(e) => { e.stopPropagation(); if (sel) onToggle?.(p, sel.lock); else onEdit(p); }}
         className={`bt-pl-grab ${drag.isDragging ? 'bt-pl-dragging' : ''}`}
-        title={sel ? (sel.lock || (sel.on ? 'Cliquer pour décocher' : 'Cliquer pour cocher')) : undefined}
+        // `title=""` (et non « absent ») : un attribut absent laisse hériter le title de la case (« Cliquer pour ajouter une
+        // intervention »), qui serait faux ici — le clic ouvre la modification. Un title vide coupe l'héritage.
+        title={sel ? (sel.lock || (sel.on ? 'Cliquer pour décocher' : 'Cliquer pour cocher')) : ''}
       >
         <BubbleContent p={p} palette={palette} real={real} draft={draft} docCount={docCount} live={live} withdrawn={withdrawn} />
       </div>
@@ -911,10 +913,14 @@ ${MISSIONS_CSS}
 .bt-pl-undo-x:hover{background:rgba(21,18,15,.06);color:#15120F}
 .bt-pl-m-tools{display:flex;justify-content:flex-end;align-items:center;gap:6px;margin:-3px 0 -2px}
 /* Ajouter une tâche à un salarié déjà planifié (case remplie) : visible, 44 px au doigt. */
-.bt-pl-addtask{align-self:flex-start;display:inline-flex;align-items:center;gap:3px;min-height:24px;padding:0 9px;border:1.5px dashed rgba(21,18,15,.3);border-radius:8px;background:#fff;color:#3D382F;font:inherit;font-size:11.5px;font-weight:800;cursor:pointer;white-space:nowrap}
+.bt-pl-cellfill--task{position:relative;padding-bottom:12px}
+.bt-pl-cellfill--task.chips{padding-bottom:22px}
+/* Souris : une petite pastille posée dans le coin bas-droit de la case (elle recouvre le bas, vide, de la dernière bulle) — la case ne grandit
+   que de 12 px au lieu de ~31. Doigt : voir plus bas, 44 px dans le fil de la case. */
+.bt-pl-addtask{position:absolute;right:0;bottom:0;display:inline-flex;align-items:center;gap:3px;height:19px;padding:0 8px;border:1.5px dashed rgba(21,18,15,.3);border-radius:7px;background:#fff;color:#3D382F;font:inherit;font-size:11px;font-weight:800;line-height:1;cursor:pointer;white-space:nowrap}
 .bt-pl-addtask:hover{border-color:#15120F;background:#FFF8E1;color:#15120F}
 .bt-pl-addtask:focus-visible,.bt-pl-m-addtask:focus-visible{outline:2px solid #15120F;outline-offset:1px}
-@media (pointer:coarse){.bt-pl-addtask{min-height:44px;padding:0 14px;font-size:13px}}
+@media (pointer:coarse){.bt-pl-cellfill--task,.bt-pl-cellfill--task.chips{padding-bottom:0}.bt-pl-addtask{position:static;align-self:flex-start;height:auto;min-height:44px;padding:0 14px;font-size:13px;border-radius:8px}}
 .bt-pl-m-addrow{display:flex;gap:8px;margin-top:11px}
 .bt-pl-m-addrow .bt-pl-m-add{margin-top:0;flex:1 1 auto;min-height:44px;min-width:0}
 .bt-pl-m-addtask{flex:none;display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 14px;border:1.5px dashed rgba(21,18,15,.3);border-radius:11px;background:#fff;color:#15120F;font:inherit;font-weight:800;font-size:12.5px;cursor:pointer;white-space:nowrap}
@@ -2338,13 +2344,13 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
     setAddWorksite(paletteWorksiteId || '');
     setAddNote('');
     setAddStart(''); setAddEnd('');
-    setAddKind('intervention'); setAddLocked(false); setAddAbsent(false); setEditMeeting(null);
+    setAddKind('intervention'); setAddLocked(false); setAddAbsent(false); setEditMeeting(null); setTaskPrefill(null);
     setAddOpen(true);
   };
   // Lot 4 : le compteur de tâches d'une case (relu à l'ouverture : « Fait » à jour).
   const openTasks = (workerId: string, dateStr: string, absent: boolean) => {
     setAddTarget({ workerId, date: dateStr });
-    setAddKind('tache'); setAddLocked(true); setAddAbsent(absent); setEditMeeting(null);
+    setAddKind('tache'); setAddLocked(true); setAddAbsent(absent); setEditMeeting(null); setTaskPrefill(null);
     setAddOpen(true);
     fetchMissions();
   };
@@ -2361,7 +2367,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
   // Lot 4 : la pastille d'une réunion → la même fenêtre, sur la réunion.
   const openMeeting = (m: Meeting, workerId: string) => {
     setAddTarget({ workerId, date: m.meeting_date });
-    setAddKind('reunion'); setAddLocked(true); setAddAbsent(false); setEditMeeting(m);
+    setAddKind('reunion'); setAddLocked(true); setAddAbsent(false); setEditMeeting(m); setTaskPrefill(null);
     setAddOpen(true);
   };
   // Le titre suit l'onglet : « Ajouter une intervention » ne change pas (lot 11).
@@ -2388,6 +2394,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
       toast.success('Ajouté au planning');
       setAddOpen(false);
       setAddTarget(null);
+      setTaskPrefill(null);
       refresh();
     } catch (err) {
       console.error('Error adding planning:', err);
@@ -2832,6 +2839,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
   // ─── affectation popup (this day only) ──────────────────────────────────────
 
   const openEdit = (p: PlanningWithWorksite) => {
+    CopyDialog.preload(); // « Copier vers… » est chargée ici, avant d'être demandée (réseau lent : pas de fenêtre muette)
     setEditing(p);
     setEditStart(p.estimated_start ? p.estimated_start.slice(0, 5) : '');
     setEditEnd(p.estimated_start && p.estimated_end ? p.estimated_end.slice(0, 5) : '');
@@ -3681,6 +3689,8 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
                                 {tasks.length > 0 && <TasksBadge tasks={tasks} inert={selectMode} onOpen={() => openTasks(worker.id, dateStr, !!absence)} />}
                               </>
                             ) : null;
+                            // « ＋ Tâche » : seulement sur une case déjà remplie, quand les tâches existent, hors sélection.
+                            const taskBtn = chantiers.length > 0 && missions.tasksOn && !selectMode && !worker.id.startsWith('demo-');
                             return (
                               <DroppableCell key={dateStr} workerId={worker.id} dateStr={dateStr} isToday={dateStr === todayStr} live={liveHere}>
                                 {absence ? (() => {
@@ -3704,7 +3714,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
                                   );
                                 })() : (
                                   <div
-                                    className="bt-pl-cellfill"
+                                    className={`bt-pl-cellfill${taskBtn ? ` bt-pl-cellfill--task${liveChip || missionChips ? ' chips' : ''}` : ''}`}
                                     data-guide={chantiers.length === 0 && extra.length === 0 && !liveChip && !missionChips ? 'bureau-planning.case' : undefined}
                                     onClick={selectMode ? undefined : () => openAdd(worker.id, dateStr)}
                                     title={selectMode ? undefined : 'Cliquer pour ajouter une intervention'}
@@ -3735,8 +3745,8 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
                                     {liveChip}
                                     {missionChips}
                                     {/* Une tâche pour ce salarié ce jour-là, sans chercher le vide de la case (qui n'existe plus quand elle est pleine). */}
-                                    {chantiers.length > 0 && missions.tasksOn && !selectMode && !worker.id.startsWith('demo-') && (
-                                      <button type="button" className="bt-pl-addtask" data-testid="cell-add-task"
+                                    {taskBtn && (
+                                      <button type="button" className="bt-pl-addtask" title="Ajouter une tâche" data-testid="cell-add-task"
                                         aria-label={`Ajouter une tâche à ${worker.first_name} ${worker.last_name}, ${format(day, 'EEEE d MMMM', { locale: fr })}`}
                                         onClick={(e) => { e.stopPropagation(); openTaskAdd(worker.id, dateStr); }}>＋ Tâche</button>
                                     )}
@@ -4671,7 +4681,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
               date={addTarget.date} defaultWorkerId={addTarget.workerId.startsWith('demo-') ? null : addTarget.workerId}
               meeting={editMeeting} participants={editMeeting ? (missions.participants[editMeeting.id] || []) : undefined}
               companyName={companyName}
-              onSaved={async () => { await fetchMissions(); setAddOpen(false); setAddTarget(null); setEditMeeting(null); }} />
+              onSaved={async () => { await fetchMissions(); setAddOpen(false); setAddTarget(null); setEditMeeting(null); setTaskPrefill(null); }} />
           )}
           {addKind === 'intervention' && (
           <form onSubmit={confirmAdd} className="space-y-4 pt-2" data-testid="add-form">

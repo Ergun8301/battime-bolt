@@ -187,6 +187,9 @@ const newPage = async ({ w = 1280, h = 800, touch = false, mobile = false, flags
   await setup(ctx, { blockTipStorage: storageBlocked });
   const p = await ctx.newPage();
   p.on('pageerror', (e) => console.log('   [erreur page]', e.message));
+  // Les morceaux de code reçus (pour vérifier que « Copier vers… » est chargée AVANT d'être demandée).
+  p.chunkTexts = [];
+  p.on('response', (r) => { if (r.url().includes('/_next/static/chunks/')) p.chunkTexts.push(r.text().catch(() => '')); });
   await p.goto(`http://localhost:${PORT}/admin`);
   await p.waitForSelector(mobile || w < 1024 ? '.bt-pl-m-card' : '.bt-pl-gridwrap .bt-pl-grab', { timeout: 20000 });
   await p.waitForTimeout(1500);
@@ -226,6 +229,8 @@ const heightOf = async (loc) => (await loc.boundingBox())?.height ?? 0;
 const widthOf = async (loc) => (await loc.boundingBox())?.width ?? 0;
 const noHScroll = (p) => p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);
 const shotTo = async (p, name, opts = {}) => { await p.screenshot({ path: `${SH}/${name}`, ...opts }); };
+// Le title qui s'applique à un élément : le sien, sinon celui de l'ancêtre le plus proche (un title ABSENT laisse hériter ; title="" coupe).
+const inheritedTitle = (loc) => loc.evaluate((e) => { let n = e; while (n) { if (n.hasAttribute && n.hasAttribute('title')) return n.getAttribute('title'); n = n.parentElement; } return null; });
 const dayChips = (p) => p.locator('[data-testid=copy-day]');
 const chipState = async (p) => (await dayChips(p).evaluateAll((els) => els.map((e) => ({ date: e.getAttribute('data-date'), off: e.disabled, on: e.getAttribute('aria-pressed') === 'true' }))));
 const offDates = async (p) => (await chipState(p)).filter((c) => c.off).map((c) => c.date.slice(8)).join(',');
@@ -241,8 +246,10 @@ section('T · astuce visible, fermable, mémorisée');
   const tip = p.locator('[data-testid=copy-tip]');
   check(await tip.isVisible(), 'T1 l’astuce est visible dès l’arrivée sur le planning');
   check(norm(await tip.locator('p').innerText()) === TIP_PC, `T1 la phrase PC : « ${norm(await tip.locator('p').innerText())} »`);
-  const titles = await p.locator('.bt-pl-grab').evaluateAll((els) => els.filter((e) => e.hasAttribute('title')).length);
-  check(titles === 0 && await p.locator('.bt-pl-grab').count() >= 8, `T1 plus d’info-bulle sur les bulles (${titles} avec title sur ${await p.locator('.bt-pl-grab').count()})`);
+  // Un title ABSENT laisserait hériter celui de la case (« Cliquer pour ajouter une intervention ») : faux, le clic ouvre la modification.
+  const inh = []; for (const id of ['ps-mon', 'ps-tue', 'ps-fri', 'pl-mon']) inh.push(await inheritedTitle(bub(p, id)));
+  check(inh.every((t) => t === '') && await p.locator('.bt-pl-grab').count() >= 8, `T1 plus aucune info-bulle trompeuse au survol d’une bulle : title effectif ${JSON.stringify(inh)}`);
+  check(await inheritedTitle(cell(p, 'Sam', MON).locator('[data-testid=cell-add-task]')) === 'Ajouter une tâche' && await inheritedTitle(cell(p, 'Sam', THU).locator('.bt-pl-add')) === 'Cliquer pour ajouter une intervention', 'T1 « ＋ Tâche » dit « Ajouter une tâche » ; le vide de la case garde « Cliquer pour ajouter une intervention »');
   const pos = await p.evaluate(() => { const t = document.querySelector('[data-testid=copy-tip]').getBoundingClientRect(); const g = document.querySelector('.bt-pl-gridwrap').getBoundingClientRect(); const bar = document.querySelector('.bt-pl-bar').getBoundingClientRect(); return { aboveGrid: t.bottom <= g.top + 1, belowBar: t.top >= bar.bottom - 1, width: t.width, h: t.height, inView: t.bottom <= innerHeight }; });
   check(pos.aboveGrid && pos.belowBar && pos.inView && pos.h < 60, `T1 bandeau fin entre la barre et la grille (${Math.round(pos.h)} px de haut)`);
   check(await p.locator('[data-testid=copy-tip-help]').count() === 0, 'T1 pas de « ? » tant que l’astuce est là');
@@ -266,6 +273,7 @@ section('T · astuce visible, fermable, mémorisée');
   // Au clavier
   await p.locator('[data-testid=copy-tip-ok]').focus(); await p.keyboard.press('Enter'); await p.waitForTimeout(200);
   check(await tip.count() === 0, 'T3 « Compris » se commande au clavier');
+  check(await p.evaluate(() => document.activeElement?.getAttribute('data-testid')) === 'copy-tip-help', `T3 le focus passe au « ? » (pas perdu sur la page) : ${await p.evaluate(() => document.activeElement?.tagName + ' ' + (document.activeElement?.getAttribute('data-testid') || ''))}`);
   // Le « ? » ne gêne pas le bouton de versions du coin
   await ctx.close();
 }
@@ -304,6 +312,7 @@ section('T · astuce visible, fermable, mémorisée');
   await shotTo(ph.p, 'planning-390.png');
   await okB.tap(); await ph.p.waitForTimeout(250);
   const hm = ph.p.locator('[data-testid=copy-tip-help-m]');
+  check(await ph.p.evaluate(() => document.activeElement?.getAttribute('data-testid')) === 'copy-tip-help-m', 'T6 téléphone : après « Compris », le focus passe au « ? »');
   check(await ph.p.locator('[data-testid=copy-tip-m]').count() === 0 && await heightOf(hm) >= 44 && await widthOf(hm) >= 44, `T6 téléphone : fermée, « ? » de ${Math.round(await widthOf(hm))}×${Math.round(await heightOf(hm))} px`);
   await hm.tap(); await ph.p.waitForTimeout(250);
   check(await ph.p.locator('[data-testid=copy-tip-m]').isVisible(), 'T6 téléphone : « ? » réaffiche l’astuce');
@@ -316,7 +325,10 @@ section('A · la rangée « Actions » de la fenêtre de modification');
   const { ctx, p } = await newPage();
   await p.click('[data-testid=copy-tip-ok]');
   // Un clic ouvre toujours la fenêtre de modification d'avant.
-  await bub(p, 'ps-mon').click(); await p.waitForSelector('[data-testid=edit-actions]'); await p.waitForTimeout(250);
+  const hasCopyChunk = async () => (await Promise.all(p.chunkTexts)).some((t) => t.includes('copy-week-prev'));
+  check(!(await hasCopyChunk()), 'A1 avant d’ouvrir une case, le code de « Copier vers… » n’est pas chargé (rien au repos)');
+  await bub(p, 'ps-mon').click(); await p.waitForSelector('[data-testid=edit-actions]'); await p.waitForTimeout(900);
+  check(await hasCopyChunk(), 'A1 en ouvrant la fenêtre de modification, « Copier vers… » est déjà chargée (réseau lent : pas de fenêtre muette)');
   const d = dlg(p);
   check(await d.locator('text=Horaire prévu').count() >= 1 && await d.locator('text=Note pour le poseur').count() === 1 && await d.locator('text=Heures déclarées').count() === 1, 'A1 cliquer une case ouvre la fenêtre de modification (horaire, note, heures) comme avant');
   const act = d.locator('[data-testid=edit-actions]');
@@ -381,9 +393,10 @@ section('A · la rangée « Actions » de la fenêtre de modification');
   check(await d.locator('[data-testid=edit-copy-to]').isEnabled() && await d.locator('[data-testid=edit-duplicate]').isEnabled() && await d.locator('[data-testid=edit-actions-note]').count() === 0, 'A4 case inchangée : copier et dupliquer actifs');
   const ta = d.locator('textarea'); const old = await ta.inputValue();
   await ta.fill(old + ' !'); await p.waitForTimeout(200);
+  check(!(await d.locator('[data-testid=edit-add-task]').isEnabled()), 'A4 modification en cours : « Ajouter une tâche à ce créneau » attend aussi (sinon la fenêtre se fermerait et la saisie serait jetée)');
   check(!(await d.locator('[data-testid=edit-copy-to]').isEnabled()) && !(await d.locator('[data-testid=edit-duplicate]').isEnabled()) && /Enregistrez d’abord/.test(await d.locator('[data-testid=edit-actions-note]').innerText()) && await d.locator('[data-testid=edit-delete]').isEnabled(), 'A4 modification en cours : copier et dupliquer attendent « Enregistrez d’abord… » ; Supprimer reste là');
   await ta.fill(old); await p.waitForTimeout(200);
-  check(await d.locator('[data-testid=edit-copy-to]').isEnabled(), 'A4 modification annulée à la main : actifs de nouveau');
+  check(await d.locator('[data-testid=edit-copy-to]').isEnabled() && await d.locator('[data-testid=edit-add-task]').isEnabled(), 'A4 modification annulée à la main : actifs de nouveau');
   await ctx.close();
 }
 {
@@ -629,6 +642,68 @@ section('K · « ＋ Tâche » et « Ajouter une tâche à ce créneau »');
   check(await p.locator('[data-testid=cell-add-task]').count() === 0, 'K7 tâches absentes : aucun « ＋ Tâche » sur les cases');
   await bub(p, 'ps-mon').click(); await p.waitForSelector('[data-testid=edit-actions]'); await p.waitForTimeout(250);
   check(await dlg(p).locator('[data-testid=edit-add-task]').count() === 0 && await dlg(p).locator('[data-testid=edit-copy-to]').count() === 1, 'K7 tâches absentes : pas de « Ajouter une tâche à ce créneau », copier et dupliquer restent');
+  await ctx.close();
+}
+
+{
+  // K8 · les heures pré-remplies ne restent pas : après un ajout d'intervention (fermeture par le programme), « ＋ Tâche » repart vide
+  const { ctx, p } = await newPage();
+  await p.click('[data-testid=copy-tip-ok]');
+  await bub(p, 'ps-mon').click(); await p.waitForSelector('[data-testid=edit-actions]'); await p.waitForTimeout(250);
+  await dlg(p).locator('[data-testid=edit-add-task]').click(); await p.waitForSelector('[data-testid=tasks-panel]'); await p.waitForTimeout(400);
+  const d = dlg(p);
+  check(await d.locator('[data-testid=task-start]').inputValue() === '08:00', 'K8 (départ) heures du créneau pré-remplies');
+  await d.locator('[data-testid=add-kind-intervention]').click(); await p.waitForTimeout(250);
+  await d.locator('[data-testid=add-form] [role=combobox]').click(); await p.waitForTimeout(200);
+  await p.getByRole('option', { name: /Dépôt/ }).click(); await p.waitForTimeout(200);
+  await d.locator('[data-testid=add-form] button[type=submit]').click(); await p.waitForTimeout(1200);
+  check(await p.locator('[role=dialog]').count() === 0 && D.planning.filter((x) => x.user_id === 'u-sam' && x.work_date === D_(19)).length === 2, 'K8 l’intervention est ajoutée, la fenêtre se ferme toute seule');
+  // Le « + » du vide d'une case, puis l'onglet Tâche : heures vides (avant, celles du créneau d'avant revenaient)
+  await cell(p, 'Sam', THU).locator('.bt-pl-cellfill').click(); await p.waitForSelector('[data-testid=add-form]'); await p.waitForTimeout(300);
+  await dlg(p).locator('[data-testid=add-kind-tache]').click(); await p.waitForSelector('[data-testid=tasks-panel]'); await p.waitForTimeout(300);
+  check(await dlg(p).locator('[data-testid=task-start]').inputValue() === '' && await dlg(p).locator('[data-testid=task-end]').inputValue() === '', 'K8 « + » puis onglet Tâche : heures vides (pas celles du créneau d’avant)');
+  await p.keyboard.press('Escape'); await p.waitForTimeout(400);
+  await cell(p, 'Sam', TUE).locator('[data-testid=cell-add-task]').click(); await p.waitForSelector('[data-testid=tasks-panel]'); await p.waitForTimeout(400);
+  check(await dlg(p).locator('[data-testid=task-start]').inputValue() === '' && await dlg(p).locator('[data-testid=task-end]').inputValue() === '', 'K8 « ＋ Tâche » suivant : heures vides');
+  await p.keyboard.press('Escape'); await p.waitForTimeout(400);
+  await cell(p, 'Sam', MON).locator('[data-testid=cell-add-task]').click(); await p.waitForSelector('[data-testid=tasks-panel]'); await p.waitForTimeout(400);
+  check(await dlg(p).locator('[data-testid=task-start]').inputValue() === '', 'K8 idem après une fermeture à la main');
+  await ctx.close();
+}
+
+// ═══ D · densité de la grille et glisser à 1366×768 ════════════════════════════════
+section('D · 1366×768 : densité et glisser');
+{
+  const { ctx, p } = await newPage({ w: 1366, h: 768 });
+  const rows = () => p.evaluate(() => [...document.querySelectorAll('.bt-pl-table tbody tr')].map((r) => Math.round(r.getBoundingClientRect().height)));
+  const doc = () => p.evaluate(() => document.documentElement.scrollHeight);
+  const tipBox = await p.locator('[data-testid=copy-tip]').boundingBox();
+  const withAll = { rows: await rows(), doc: await doc() };
+  await p.addStyleTag({ content: '.bt-cp-desk{display:none!important}' });
+  const noTip = { rows: await rows(), doc: await doc() };
+  await p.addStyleTag({ content: '.bt-pl-addtask{display:none!important}.bt-pl-cellfill--task,.bt-pl-cellfill--task.chips{padding-bottom:0!important}' });
+  const old = { rows: await rows(), doc: await doc() };
+  const deltas = withAll.rows.map((h, i) => h - old.rows[i]);
+  note(`1366×768 · lignes avant ${JSON.stringify(old.rows)} · après ${JSON.stringify(noTip.rows)} (astuce fermée) · delta par ligne ${JSON.stringify(deltas)} · page : avant ${old.doc} px, astuce fermée ${noTip.doc} px, astuce ouverte ${withAll.doc} px (écran ${768} px)`);
+  const dNoTip = noTip.rows.map((h, i) => h - old.rows[i]);
+  check(dNoTip.every((x) => x <= 12), `D1 « ＋ Tâche » ajoute au plus 12 px par ligne remplie (${JSON.stringify(dNoTip)})`);
+  const tipH = Math.round(tipBox?.height ?? 0);
+  check(tipH > 0 && tipH <= 40 && withAll.doc <= 768, `D1 l’astuce ouverte occupe ${tipH} px (≤ 40) et la page tient dans l’écran de 768 px (${withAll.doc} px)`);
+  await p.reload(); await p.waitForSelector('.bt-pl-gridwrap .bt-pl-grab'); await p.waitForTimeout(1200);
+  // Astuce ouverte (cas d'une première visite) : Ctrl + glisser copie, glisser simple déplace, la page ne défile pas
+  const sy = () => p.evaluate(() => scrollY);
+  const y0 = await sy();
+  let w = log.writes.length;
+  await drag(p, bub(p, 'ps-mon'), cell(p, 'Lou', WED), { key: 'Control' });
+  let pw = planningWrites(w); const r0 = pw[0]?.rows?.[0] || {};
+  check(pw.length === 1 && pw[0].m === 'POST' && r0.user_id === 'u-lou' && r0.work_date === D_(21) && r0.worksite_id === 'w1', `D2 1366×768 : Ctrl + glisser (Sam lun. → Lou mer.) copie : ${JSON.stringify(pw.map((x) => x.m))}`);
+  await settle(p);
+  w = log.writes.length;
+  await drag(p, bub(p, 'ps-fri'), cell(p, 'Sam', THU));
+  pw = planningWrites(w);
+  const mv = pw.filter((x) => x.body?.work_date);
+  check(mv.length === 1 && mv[0].m === 'PATCH' && mv[0].ids[0] === 'ps-fri' && mv[0].body.work_date === D_(22) && pw.every((x) => x.m === 'PATCH'), 'D2 1366×768 : glisser simple (Sam ven. → jeu.) déplace');
+  check(await sy() === y0, `D2 la page n’a pas défilé pendant les glissers (scrollY ${y0} → ${await sy()})`);
   await ctx.close();
 }
 

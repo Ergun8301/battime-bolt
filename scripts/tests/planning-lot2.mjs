@@ -275,7 +275,8 @@ if (AVANT) {
   const { ctx, p } = await newPage();
   // Copier simplement : l'info-bulle du navigateur (qui ne restait pas une seconde) est remplacée par une astuce VISIBLE sous la barre
   // (components/planning-copier.tsx). Même fond : l'indice « glisser avec Ctrl ou ⌥ pour copier » est écrit, lisible, et la bulle n'a plus de title.
-  check(await bub(p, 'ps-mon').getAttribute('title') === null && /Copier une case : cliquez dessus puis « Copier vers… », ou glissez-la en maintenant Ctrl \(Windows\) ou ⌥ Option \(Mac\)\./.test((await p.locator('[data-testid=copy-tip]').innerText()).replace(/\s+/g, ' ')), 'astuce visible : « … glissez-la en maintenant Ctrl (Windows) ou ⌥ Option (Mac). » (plus d’infobulle)');
+  // title="" (et non absent) : un title absent laisserait hériter celui de la case (« Cliquer pour ajouter une intervention »), qui serait faux ici.
+  check(await bub(p, 'ps-mon').evaluate((e) => { let n = e; while (n) { if (n.hasAttribute && n.hasAttribute('title')) return n.getAttribute('title'); n = n.parentElement; } return null; }) === '' && /Copier une case : cliquez dessus puis « Copier vers… », ou glissez-la en maintenant Ctrl \(Windows\) ou ⌥ Option \(Mac\)\./.test((await p.locator('[data-testid=copy-tip]').innerText()).replace(/\s+/g, ' ')), 'astuce visible : « … glissez-la en maintenant Ctrl (Windows) ou ⌥ Option (Mac). » (plus d’infobulle)');
   check(await p.locator('[data-bub]').count() >= 10, `repère data-bub posé sur chaque bulle (${await p.locator('[data-bub]').count()})`);
 
   // D1 + D4 (sans touche) — glisser simple : déplacement

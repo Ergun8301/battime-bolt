@@ -14,13 +14,15 @@
 //                   rangé ici, plus grand. Ces boutons ne font RIEN eux-mêmes : l'écran du planning écrit.
 //
 // Le choix des jours (fenêtre « Copier vers… ») est dans components/planning-copy-dialog.tsx, chargée à l'ouverture.
-import { useSyncExternalStore, type ReactNode } from 'react';
+import { useEffect, useRef, useSyncExternalStore, type ReactNode } from 'react';
 import { Copy, CopyPlus, ListPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 // ─── Mémoire de l'astuce (localStorage, dans un try/catch : l'écran marche sans) ──────────────────────
 export const TIP_KEY = 'bemexo-astuce-copier-case';
 let hidden: boolean | null = null; // null = pas encore lu
+// « Compris » fait disparaître le bouton qui a le focus : le focus passe au « ? » (sinon il tombe sur la page, au clavier on est perdu).
+let focusHelpNext = false;
 const subs = new Set<() => void>();
 function readHidden(): boolean {
   if (hidden === null) {
@@ -57,14 +59,15 @@ export const TIP_TEXT_TOUCH = 'Copier une case : touchez-la puis « Copier vers�
 
 // Objets FIXES (règle anti-flash du lot 10 : le contenu d'un <style> ne change jamais d'identité).
 const TIP_STYLE = { __html: `
-.bt-cp-tip{display:flex;align-items:center;gap:10px;margin:0;padding:8px 14px;background:#FFF8E1;border-bottom:1px solid rgba(255,194,26,.55);color:#15120F;font-family:'Archivo',sans-serif;font-size:13px;font-weight:600;line-height:1.4}
+.bt-cp-tip{display:flex;align-items:center;gap:10px;margin:0;padding:5px 14px;background:#FFF8E1;border-bottom:1px solid rgba(255,194,26,.55);color:#15120F;font-family:'Archivo',sans-serif;font-size:13px;font-weight:600;line-height:1.4}
 .bt-cp-tip p{margin:0;flex:1;min-width:0}
 .bt-cp-tip b{font-weight:800}
-.bt-cp-tip-ok{flex:none;min-height:30px;padding:0 12px;border-radius:9px;border:1.5px solid rgba(21,18,15,.28);background:#fff;color:#15120F;font:inherit;font-size:12.5px;font-weight:800;cursor:pointer}
+.bt-cp-tip-ok{flex:none;min-height:26px;padding:0 12px;border-radius:9px;border:1.5px solid rgba(21,18,15,.28);background:#fff;color:#15120F;font:inherit;font-size:12.5px;font-weight:800;cursor:pointer}
 .bt-cp-tip-ok:hover{border-color:#15120F}
 .bt-cp-tip-ok:focus-visible{outline:2px solid #15120F;outline-offset:2px}
 .bt-cp-help:focus-visible>span{outline:2px solid #15120F;outline-offset:2px}
 .bt-cp-tip--m{margin:0 0 2px;border:1px solid rgba(255,194,26,.6);border-radius:12px;padding:10px 12px;align-items:flex-start}
+@media (pointer:coarse){.bt-cp-tip-ok{min-height:44px}}
 .bt-cp-tip--m .bt-cp-tip-ok{min-height:44px;padding:0 14px}
 .bt-cp-help{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;padding:0;border:0;background:transparent;cursor:pointer;font-family:inherit}
 .bt-cp-help>span{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;border:1.5px solid rgba(21,18,15,.3);background:#fff;color:#56514a;font-size:13px;font-weight:900;line-height:1}
@@ -93,7 +96,7 @@ export function CopyTip({ variant }: { variant: 'desk' | 'mobile' }) {
     <div className={`bt-cp-tip${mobile ? ' bt-cp-tip--m' : ''}`} role="note" data-testid={mobile ? 'copy-tip-m' : 'copy-tip'}>
       <style dangerouslySetInnerHTML={TIP_STYLE} />
       <p><span aria-hidden="true">💡 </span><b>{head} :</b> {rest.join(' : ')}</p>
-      <button type="button" className="bt-cp-tip-ok" onClick={() => setHidden(true)} data-testid={mobile ? 'copy-tip-ok-m' : 'copy-tip-ok'}>Compris</button>
+      <button type="button" className="bt-cp-tip-ok" onClick={() => { focusHelpNext = true; setHidden(true); }} data-testid={mobile ? 'copy-tip-ok-m' : 'copy-tip-ok'}>Compris</button>
     </div>
   );
 }
@@ -101,11 +104,18 @@ export function CopyTip({ variant }: { variant: 'desk' | 'mobile' }) {
 /** Le petit « ? » qui réaffiche l'astuce (n'existe que tant qu'elle est fermée). */
 export function CopyTipHelp({ variant, afterVersions = false }: { variant: 'corner' | 'mobile'; afterVersions?: boolean }) {
   const closed = useTipHidden();
+  const ref = useRef<HTMLButtonElement>(null);
+  // Le « ? » de la mise en page cachée (écran bureau / téléphone) ne peut pas prendre le focus : celui qui le peut le prend.
+  useEffect(() => {
+    if (!closed || !focusHelpNext) return;
+    ref.current?.focus();
+    if (document.activeElement === ref.current) focusHelpNext = false;
+  }, [closed]);
   if (!closed) return null;
   return (
     <>
       <style dangerouslySetInnerHTML={TIP_STYLE} />
-      <button type="button" className={`bt-cp-help bt-cp-help--${variant === 'corner' ? 'corner' : 'm'}${variant === 'corner' && afterVersions ? ' after-ver' : ''}`}
+      <button ref={ref} type="button" className={`bt-cp-help bt-cp-help--${variant === 'corner' ? 'corner' : 'm'}${variant === 'corner' && afterVersions ? ' after-ver' : ''}`}
         aria-label="Afficher l’astuce pour copier une case" data-testid={variant === 'corner' ? 'copy-tip-help' : 'copy-tip-help-m'}
         onClick={(e) => { e.stopPropagation(); setHidden(false); }}>
         <span aria-hidden="true">?</span>
@@ -125,9 +135,10 @@ const ACT_STYLE = { __html: `
 ` };
 
 /**
- * « Actions » sur une case : copier, dupliquer, supprimer. `children` = le bouton « Supprimer » de la fenêtre
- * (ni doublé ni remplacé : même clic, même confirmation). `blockedWhy` : une modification pas encore enregistrée —
- * la copie reprend la case telle qu'elle est ENREGISTRÉE, on le dit au lieu de copier à moitié.
+ * « Actions » sur une case : copier, dupliquer, ajouter une tâche, supprimer. `children` = le bouton « Supprimer » de la
+ * fenêtre (ni doublé ni remplacé : même clic, même confirmation). `blockedWhy` : une modification pas encore enregistrée —
+ * la copie reprend la case telle qu'elle est ENREGISTRÉE, et « Ajouter une tâche » ferme la fenêtre (la saisie serait jetée) :
+ * on le dit au lieu de copier à moitié ou de perdre la saisie.
  */
 export function SlotActions({ onCopyTo, onDuplicate, onAddTask, busy, blockedWhy, children }: {
   onCopyTo: () => void; onDuplicate: () => void;
@@ -148,7 +159,7 @@ export function SlotActions({ onCopyTo, onDuplicate, onAddTask, busy, blockedWhy
           <CopyPlus className="h-4 w-4 mr-2 shrink-0" /> Dupliquer au lendemain
         </Button>
         {onAddTask && (
-          <Button type="button" variant="outline" onClick={onAddTask} data-testid="edit-add-task">
+          <Button type="button" variant="outline" disabled={off} onClick={onAddTask} data-testid="edit-add-task">
             <ListPlus className="h-4 w-4 mr-2 shrink-0" /> Ajouter une tâche à ce créneau
           </Button>
         )}
