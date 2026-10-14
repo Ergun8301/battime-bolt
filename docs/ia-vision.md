@@ -34,7 +34,9 @@ Option (gratuite si simple) : le même assistant en lecture seule dans l'accès 
 | 2. Fait, annulable | Actions courantes et réversibles (créer une intervention, une tâche, un client, une absence, affecter, corriger un pointage…) | Exécuté tout de suite, avec « Annuler » / « Modifier » (comportement du lot 7) |
 | 3. Dernier clic humain | Actions importantes ou difficiles à défaire : envoi des heures au comptable / export (verrouille les heures), envoi des journées, clôture d'un mois, suppression définitive, envoi d'e-mails à plusieurs personnes, abonnement et paiement, droits d'accès | L'assistant prépare tout ; l'utilisateur fait LE dernier clic (« j'envoie ou pas ? ») |
 
-La liste du niveau 3 est décidée par le patron ; en cas de doute sur une action nouvelle, elle va au niveau 3 jusqu'à décision.
+Liste du niveau 3 VALIDÉE par le patron le 14 octobre 2026 : envoi des heures au comptable / export, envoi des journées, clôture d'un mois,
+suppression définitive, e-mails groupés, abonnement et paiement. Tout le reste est au niveau 2 (fait, avec « Annuler »). En cas de doute sur
+une action nouvelle, elle va au niveau 3 jusqu'à décision du patron.
 
 ## 4. Garde-fous qui ne changent pas
 
