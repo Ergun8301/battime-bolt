@@ -283,14 +283,15 @@ Deno.test('masquer : mêmes longueur et lignes ; regex, apostrophe de texte JSX,
     "const u = \"http://exemple.fr/ // pas un commentaire\"; supabase.rpc('apres_url');",                   // 7
     "const v = '\\'' + \"\\\"\"; supabase.rpc('apres_echappements');",                                      // 8
     "if (x) { /* un commentaire */ } supabase.rpc('apres_bloc'); // et une fin de ligne",                   // 9
+    "<p>l'écran {supabase.rpc('meme_ligne')} d'aujourd'hui</p>",                                            // 10 apostrophes de texte AVANT du code, sur la même ligne
   );
   const m = masquer(texte);
   egal([m.code.length, m.nu.length], [texte.length, texte.length], 'mêmes longueurs');
   egal(m.nu.split('\n').length, texte.split('\n').length, 'mêmes lignes');
   const res = scan({ 'lib/x.ts': texte });
   egal(cles(res, 'rpc'), [
-    'rpc:apres_apostrophe', 'rpc:apres_bloc', 'rpc:apres_division', 'rpc:apres_echappements', 'rpc:apres_regex', 'rpc:apres_url', 'rpc:entre_balises', 'rpc:imbrique',
-  ], 'huit appels, tous vus malgré les pièges du lexique');
+    'rpc:apres_apostrophe', 'rpc:apres_bloc', 'rpc:apres_division', 'rpc:apres_echappements', 'rpc:apres_regex', 'rpc:apres_url', 'rpc:entre_balises', 'rpc:imbrique', 'rpc:meme_ligne',
+  ], 'neuf appels, tous vus malgré les pièges du lexique');
   egal(m.commentaires.map((c) => c.texte), ['/* un commentaire */', '// et une fin de ligne'], 'les deux seuls commentaires');
 });
 

@@ -1,0 +1,231 @@
+{
+  "methode": "SHA-256 (hex) du JSON.stringify de la déclaration { name, description, parameters } telle que le modèle la reçoit aujourd'hui ; « liste » = celui du tableau entier, dans l'ordre actuel (celui de JSON.stringify(functionsFor(…)) sans filtre). GELÉ : fichier généré par scripts/registre-outils-gen.ts, jamais édité à la main.",
+  "sources": {
+    "bureau": "supabase/functions/_shared/assistant-actions-core.ts : ASSISTANT_FUNCTIONS",
+    "salarie": "supabase/functions/_shared/worker-assistant-core.ts : WORKER_FUNCTIONS"
+  },
+  "bureau": {
+    "nombre": 34,
+    "liste": "8433667bf14f790523540f63223208c52687465118c96575f24d9a7ff8837fd0",
+    "outils": [
+      {
+        "nom": "repondre",
+        "sha256": "3c65496390bf4337d8727aa842e551fd079d788cb61879e0d736189957e3cc9f"
+      },
+      {
+        "nom": "inviter_salarie",
+        "sha256": "4320cd13618b474a56d64b5aa728ed0195c79dc74a597aae0b1bc29022377b6d"
+      },
+      {
+        "nom": "creer_chantier",
+        "sha256": "992936feab0bd34a10308c62ceb5fecd9049f74ca05ec3c233105776110e19d4"
+      },
+      {
+        "nom": "ranger_document",
+        "sha256": "8c41b316c5c075f17fdd4a018c9908bdc86b86709fe673c289acf92d4e578835"
+      },
+      {
+        "nom": "poser_absence",
+        "sha256": "50da9d28da4a4902df6a5ba1efe6f59731feb558f98dd717f74108ab444bac2f"
+      },
+      {
+        "nom": "affecter_planning",
+        "sha256": "03e6274f5ed05a57aa9b696fb00d390992280f68ed2d53ab7304847c8b2dff26"
+      },
+      {
+        "nom": "planning_semaine",
+        "sha256": "f25bbdcf673a4e68471dcd1313c57796e04f5e9ab9e0affff802ef9c79a7d246"
+      },
+      {
+        "nom": "corriger_pointage",
+        "sha256": "7e00e20b86741e8747390990eedc6eacc7ff3888175f3a6a5c69b92792d96afb"
+      },
+      {
+        "nom": "modifier_intervention",
+        "sha256": "ad7e010410f687fd2d82d90bdf49242c9e8e0611f9d68b367133f7cb5a9dec14"
+      },
+      {
+        "nom": "repondre_conge",
+        "sha256": "a6eb921277f7aa89170267f6c4ed0f2cd56a038057007a24d603a10c7de2a35d"
+      },
+      {
+        "nom": "lever_reserve",
+        "sha256": "bdfc710e41fd3c20b55c7a143ae35b200129a6217982440e2332867e584455b4"
+      },
+      {
+        "nom": "ajouter_depense",
+        "sha256": "ecea820ec21dff92af7335ad3b2f933c80b7aca2e25546f8e55ba8609fcf5da6"
+      },
+      {
+        "nom": "modifier_client",
+        "sha256": "e475a01305a9fb6d5594a86c5f8a4c8637cfff124c0bb86af8703684bfb07e12"
+      },
+      {
+        "nom": "archiver_client",
+        "sha256": "6ad0a642289d1ba927f2830b8d745b6f7a4e39a33be939f4052a395dc0ded169"
+      },
+      {
+        "nom": "changer_role",
+        "sha256": "014087be6f92bfa4ee40c99d023990df8cc8eee4c423f7bacb54a16ec1781126"
+      },
+      {
+        "nom": "relancer_invitation",
+        "sha256": "5d9bd151e13d18b5ada6d713bb1672d0e05fa09b08a216566cf6bd288ec6f2a8"
+      },
+      {
+        "nom": "envoyer_rappel",
+        "sha256": "b6800401920cf686b9cac98322f1b331797f685e31d60df41db3d57a50e8026a"
+      },
+      {
+        "nom": "cloturer_mois",
+        "sha256": "18a77ea954c394535790693528a80c9a5b1888bb1ad990cb1dfcc473b0403333"
+      },
+      {
+        "nom": "attribuer_client",
+        "sha256": "b5bbccf54b4e88f568987c2839c2d582dbddeda0db74cab780e8eaa2f6c1d2af"
+      },
+      {
+        "nom": "ajouter_habilitation",
+        "sha256": "da5e99e3e2e4e6133b6f03916a9055fab6b3e7d31086495dedd4cb65c20a1ea2"
+      },
+      {
+        "nom": "modifier_salarie",
+        "sha256": "ff06dab74c1855fc0167a061d76a34377c03614fae1098b836420afac441adeb"
+      },
+      {
+        "nom": "archiver_salarie",
+        "sha256": "21f359049c879aa0a8e3a0867e0c26cbf5f2e0ce37fea25ce6ce5d8c0b535c60"
+      },
+      {
+        "nom": "cout_reel",
+        "sha256": "3f6179090583d2bb7a7168c1541309da10f9c3b3c368f7372ae559f249d07e25"
+      },
+      {
+        "nom": "modifier_reglages",
+        "sha256": "2c33a6e0083994be07b404018ad983f172df639505ff3b1af72a68585319a293"
+      },
+      {
+        "nom": "supprimer_intervention",
+        "sha256": "bfabe58cecd9437d1b599e0ef29bd39dc535470397baf371538713602558f8ce"
+      },
+      {
+        "nom": "effacer_planning",
+        "sha256": "9d4879efceddb4e0429a5fb2f47977b24acfb3a24658ec42af890c2b5b5a103c"
+      },
+      {
+        "nom": "supprimer_absence",
+        "sha256": "6cc9a678aee1e564e7e432f90f5b19942d76796117e044852a2c32d6143b78de"
+      },
+      {
+        "nom": "supprimer_document",
+        "sha256": "64e6c77fa0448e5ef7e9bd0db812f614c5a8deeeae43d91175cc0de23f9ccceb"
+      },
+      {
+        "nom": "modifier_document",
+        "sha256": "63fa5bad67da62931f94652e114410210adc8336b4385789232e6ae0ae91df87"
+      },
+      {
+        "nom": "supprimer_depense",
+        "sha256": "b7e1d67792b2f6edf5dfd6d4c0ccea2305114298976f71478a944c34319dab2d"
+      },
+      {
+        "nom": "modifier_depense",
+        "sha256": "8418075a7cacefe3dbbc500f1ee6bc10673044fa2cc194fd9edfcecce981e58a"
+      },
+      {
+        "nom": "supprimer_habilitation",
+        "sha256": "632d0a63e7be6880d6f1a7327532ea25637f365d2243f44660399dce7a8feaad"
+      },
+      {
+        "nom": "modifier_habilitation",
+        "sha256": "4658e3ca71b25a3ece70c4ca037cc82ca44391a9d8fd0d7b26ed7c4b2adf65d7"
+      },
+      {
+        "nom": "annuler_invitation",
+        "sha256": "1d98fd9e5f939292c320f2c337ad59d16c1e88083daf58195164237436bd0e98"
+      }
+    ]
+  },
+  "salarie": {
+    "nombre": 19,
+    "liste": "70f4ea05929ef7dbb56fcdbf458669992d508fb7f744944cfe44af6f33299cad",
+    "outils": [
+      {
+        "nom": "effacer_heures",
+        "sha256": "ea8eeaf975379e8c2517f7b190ff249be30c70fbaec3fdb0fe2d6bc569903fa4"
+      },
+      {
+        "nom": "annuler_conge",
+        "sha256": "304c3d5fa6f3e366c1b9a775ab25f0823b3b0d6e29cd2682b8cb63c2ad460b56"
+      },
+      {
+        "nom": "modifier_conge",
+        "sha256": "5d9318424227cbeae7f96aa5c33b3e17b56572c9c691e633bfd2705860f529d1"
+      },
+      {
+        "nom": "retirer_photo",
+        "sha256": "56e03c8287c20d501fe1eef2b7980edde7dcc311fab8b94d8947b16289f2cf92"
+      },
+      {
+        "nom": "retirer_reserve",
+        "sha256": "eea869e0362579a3b29e4bfece26e7b9bb3db90587132691a6b0463b50426176"
+      },
+      {
+        "nom": "repondre",
+        "sha256": "cb9b2c92521d4e7412e0ea951bb3d51936b82f0bec971eb3e39b30d7060f2e8a"
+      },
+      {
+        "nom": "declarer_heures",
+        "sha256": "f192df2dbd7635c7304e91fafc16017756eeead56c4cf710475f4236ca2f8b26"
+      },
+      {
+        "nom": "demander_conge",
+        "sha256": "f3946371efff1f93779ee98e780e9d071d3c44452360ae2afb1f0e5c327ef0f1"
+      },
+      {
+        "nom": "terminer_pointage",
+        "sha256": "8275e655cf80ba657f003dfd8ec32afe89004bed22f84bd923526596fd0896cb"
+      },
+      {
+        "nom": "ranger_photo",
+        "sha256": "0a0c907e1a7f0f5e26c512631698a1901d19ee6e7686a4c6775177f9d3f6a7f3"
+      },
+      {
+        "nom": "signaler_reserve",
+        "sha256": "1f74e516b091a8b48a783b8c723d94a04b85fb65cd7b5fcc28eaed69c48f072d"
+      },
+      {
+        "nom": "envoyer_journee",
+        "sha256": "06cf609170de894cb9787d8c2239dadf404545ec3c1c834c8c7a0e1492aec394"
+      },
+      {
+        "nom": "modifier_heures",
+        "sha256": "e36b8f79ee2991860dbbef8d93cccdbcb28fbfdda27466d7baadbe7ab69a13bb"
+      },
+      {
+        "nom": "panier_repas",
+        "sha256": "46db84b7ca30e518d9d1f4927ca51914720048a8535775a6b27be06e7231efe7"
+      },
+      {
+        "nom": "copier_journee",
+        "sha256": "b9f6856cf7ee913986c06e4dd680aead27c0b0933f6cd67a51a0eda6782b9c85"
+      },
+      {
+        "nom": "reserve_corrigee",
+        "sha256": "5a93ecc91584ea75aaeb3c40c31a73bda657b4e7f2de31360ff600ded46d7580"
+      },
+      {
+        "nom": "nouveau_chantier",
+        "sha256": "c5ead4707bbeba49d76f7649392f3850a92c9daeb1ef1afbdacc9d6d2aaa9c3a"
+      },
+      {
+        "nom": "email_client",
+        "sha256": "b7c94a736828e87c3fa2ed4e5cd5d2b1f1ac2f9c18f3f97b6d578cf294445b00"
+      },
+      {
+        "nom": "planning_collegues",
+        "sha256": "e5e7e9c140f93b3278035d47ff805e5e911c21b5393bf4a9c8e7aadd03975650"
+      }
+    ]
+  }
+}

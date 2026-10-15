@@ -13,9 +13,9 @@
 //   · `code` : les commentaires effacés, les chaînes intactes (pour LIRE un nom de RPC) ;
 //   · `nu`   : les commentaires effacés ET le contenu des chaînes effacé (pour CHERCHER une forme : `.rpc(` n'y
 //              apparaît que s'il s'agit d'un vrai appel).
-// Limite dite : le lexeur ne comprend pas le JSX ; l'apostrophe d'un texte (`l'écran`) est traitée comme le début
-// d'une chaîne qui s'arrête à la fin de la ligne, au pire elle cache du code sur la MÊME ligne. Le test sur le
-// dépôt réel compare le résultat à un décompte indépendant pour que cela se voie.
+// Limite dite : le lexeur ne comprend pas le JSX. L'apostrophe d'un texte français (`l'écran`, collée à une lettre)
+// n'ouvre pas de chaîne ; une apostrophe isolée en ouvre une qui s'arrête à la fin de la ligne et peut cacher du code
+// sur la MÊME ligne. Le test sur le dépôt réel compare le résultat à un décompte indépendant pour que cela se voie.
 import type { ClicsSnapshot } from './registre/types.ts';
 
 // ── Résultat ────────────────────────────────────────────────────────────────
@@ -129,6 +129,9 @@ export function masquer(texte: string): Masque {
           }
         }
         note('/'); i++; continue;
+      }
+      if (c === "'" && i > 0 && MOT.test(texte[i - 1]) && !MOTS_AVANT_REGEX.has(dernierMot)) {
+        note(c); i++; continue;            // `l'écran`, `aujourd'hui` : l'apostrophe d'un texte JSX, collée à une lettre ; une vraie chaîne n'en suit jamais une
       }
       if (c === '"' || c === "'") {
         let k = i + 1; let trouve = false;
