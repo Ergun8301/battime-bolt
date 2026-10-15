@@ -37,7 +37,6 @@ export const INTERNE_SALARIE: EntreeInterne[] = [
 
   // ── Détails de présentation ───────────────────────────────────────────────
   { cle: 'dialogue:components/time-field#open', raison: "Liste déroulante des quarts d'heure d'un champ d'heure, réutilisée par plusieurs formulaires (pointage oublié, Mon équipe, et au bureau). Un détail de saisie : les capacités sont celles des formulaires qui l'emploient." },
-  { cle: 'dialogue:components/poseur-day#pickStart', raison: "Fenêtre « Sur quel chantier ? » du démarrage du chrono au téléphone : code inatteignable depuis le lot 12 (canStartLive vaut toujours faux), retiré volontairement (fonctions-salarie §8.1). À supprimer du code ; à reclasser seulement si le démarrage au téléphone revenait." },
 ];
 
 /**

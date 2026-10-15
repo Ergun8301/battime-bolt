@@ -8,6 +8,11 @@ import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import SupportBanner from '@/components/support-banner';
 import { peekPairRequest, stashPairRequestFromHash } from '@/lib/kiosk-pair-stash';
+// Feuilles de style de composants que le bureau charge à l'ouverture (fiche salarié, réserves, documents du chantier) : elles
+// étaient des <style> écrits dans leur TSX (plan d'intégration du design salarié, étape 1) ; au niveau de la route, pas du morceau différé.
+import '@/components/pause-picker.css';
+import '@/components/reserve-lift-form.css';
+import '@/components/chantier-documents.css';
 
 // Lot 11 (IA) : « Associer cette tablette ? », chargée seulement quand un QR de
 // tablette attend (le poids du site ne bouge pas pour les autres visites).

@@ -31,7 +31,7 @@ import { lazyWindow, warmAll } from '@/lib/lazy-window';
 import { isPreviewHost } from '@/lib/hosting';
 import { RESERVES_CHANGED_EVENT } from '@/lib/reserve-lift';
 // Formations (lot 6, oct. 2026) : rien ne s'affiche tant que la migration n'est pas passée.
-import PoseurTrainings, { TrainingsBanner, useMyTrainings } from '@/components/poseur-trainings';
+import { TrainingsBanner, useMyTrainings } from '@/components/poseur-trainings';
 import { GraduationCap } from 'lucide-react';
 
 // Lot 5 « site rapide 1 » : les onglets Semaine / Mois / Historique et les fenêtres fermées ne pèsent plus
@@ -47,6 +47,9 @@ const PoseurHistory = lazyWindow(() => import('@/components/poseur-history'), { 
   loadingFallback: <div className="space-y-4"><Skeleton className="h-12 w-48" />{[1, 2, 3].map((i) => <Skeleton key={i} className="h-32" />)}</div> });
 const PoseurMonth = lazyWindow<DayPickProps>(() => import('@/components/poseur-month'), { isOpen: () => true, priority: 3, errorFallback: NON_CHARGE,
   loadingFallback: <div className="space-y-4"><Skeleton className="h-10 w-full" />{[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full" />)}</div> });
+// Formations : la liste (components/poseur-trainings-list.tsx) se charge à l'ouverture de l'onglet ; le hook et le bandeau restent dans la page.
+const PoseurTrainings = lazyWindow(() => import('@/components/poseur-trainings-list'), { isOpen: () => true, priority: 6, errorFallback: NON_CHARGE,
+  loadingFallback: <div className="space-y-2">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-20 w-full" />)}</div> });
 const LeaveRequestDialog = lazyWindow(() => import('@/components/leave-request-dialog'), { isOpen: (p) => p.open, priority: 4 });
 // Assistant : monté dès que son code est là, même fermé (il garde la mémoire de la conversation).
 const WorkerAssistant = lazyWindow(() => import('@/components/worker-assistant'), { isOpen: (p) => !!p.open, priority: 5, warm: 'mounted', mount: 'warm' });
@@ -64,96 +67,6 @@ const FORMATIONS_TAB = { value: 'formations', label: 'Formations', icon: Graduat
 const ALL_TABS = [...TABS, FORMATIONS_TAB];
 // Lot 7 : les ancres des guides pas à pas (components/guide-tour.tsx) sur les entrées du menu.
 const MENU_GUIDE: Record<string, string> = { day: 'menu.journee', week: 'menu.semaine', month: 'menu.mois', history: 'menu.historique' };
-
-const POSEUR_CSS = `
-
-.bt-poseur{font-family:'Archivo',sans-serif;color:#15120F;-webkit-font-smoothing:antialiased;background:#e7e0d2;display:flex;justify-content:center;height:100vh;height:100svh;height:100dvh;overflow:hidden}
-.bt-poseur *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-.bt-poseur .mono{font-family:'JetBrains Mono',monospace}
-.bt-phone{width:100%;max-width:480px;height:100%;display:flex;flex-direction:column;background:#F2EDE3;overflow:hidden;position:relative}
-.bt-phone.wide{max-width:920px}
-
-/* ===== EN-TÊTE NOIR ===== */
-.bt-phdr{background:#15120F;color:#F2EDE3;flex:none;padding:calc(env(safe-area-inset-top) + 12px) 16px 12px;position:relative;z-index:30;margin-bottom:calc(-1 * var(--phdr-h, 132px));transition:transform .3s cubic-bezier(.33,.72,0,1);will-change:transform}
-.bt-phdr.is-hidden{transform:translateY(-100%)}
-@media (prefers-reduced-motion:reduce){.bt-phdr{transition:none}}
-.bt-phdr-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
-.bt-phdr-left{display:flex;align-items:center;gap:10px;min-width:0}
-.bt-phdr-logo{width:32px;height:32px;flex:none;display:block}
-.bt-phdr-date{font-size:22px;font-weight:900;letter-spacing:-.02em;line-height:1.1;text-transform:capitalize;min-width:0}
-.bt-phdr-back{display:flex;align-items:center;gap:10px;background:transparent;border:none;color:#F2EDE3;cursor:pointer;padding:0;text-align:left;min-width:0}
-/* Bouton identité (nom + rond photo/initiales) = déclencheur du menu */
-.bt-phdr-scan{flex:none;width:40px;height:40px;border-radius:999px;border:1.5px solid rgba(242,237,227,.25);background:transparent;color:#F2EDE3;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;margin-left:auto}
-.bt-info-bg{position:fixed;inset:0;z-index:95;background:rgba(21,18,15,.45);display:flex;align-items:flex-end;justify-content:center;padding:16px}
-.bt-info{width:100%;max-width:420px;background:#FBF8F2;border-radius:18px;padding:18px;margin-bottom:env(safe-area-inset-bottom)}
-.bt-info h2{display:flex;align-items:center;gap:8px;font-size:16px;font-weight:900;margin:0 0 10px;color:#15120F}
-.bt-info h3{font-size:13.5px;font-weight:900;margin:0 0 4px;color:#15120F}
-.bt-info p{font-size:14px;line-height:1.5;color:#3d3833;margin:0 0 8px}
-.bt-info a{font-size:13px;font-weight:700;color:#6E6A63;text-decoration:underline}
-.bt-info button{width:100%;margin-top:14px;border:none;background:#15120F;color:#FBF8F2;border-radius:13px;padding:13px;font-weight:900;font-size:15px;cursor:pointer;font-family:inherit}
-.bt-phdr-id{display:inline-flex;align-items:center;gap:9px;flex:none;max-width:62%;background:transparent;border:none;cursor:pointer;font-family:inherit;padding:3px 3px 3px 11px;border-radius:999px;transition:background .14s ease}
-.bt-phdr-id:hover{background:rgba(242,237,227,.08)}
-.bt-phdr-id:active{background:rgba(242,237,227,.15)}
-.bt-phdr-id-name{font-size:14px;font-weight:800;color:#F2EDE3;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
-.bt-phdr-id-last{display:none}
-.bt-phdr-id-av{width:32px;height:32px;border-radius:50%;flex:none;overflow:hidden;background:#2a2620;border:1.5px solid rgba(242,237,227,.4);display:flex;align-items:center;justify-content:center}
-.bt-phdr-id-av img{width:100%;height:100%;object-fit:cover;display:block}
-.bt-phdr-id-ini{font-family:'Archivo',sans-serif;font-weight:800;font-size:13px;color:#FFC21A;line-height:1}
-@media (min-width:768px){.bt-phdr-id-last{display:inline}}
-/* En-tête du menu : photo/initiales + nom complet */
-.bt-phdr-menuhead{display:flex;align-items:center;gap:10px;padding:9px 8px 11px}
-.bt-phdr-menuhead-av{width:38px;height:38px;border-radius:50%;flex:none;overflow:hidden;background:#15120F;display:flex;align-items:center;justify-content:center}
-.bt-phdr-menuhead-av img{width:100%;height:100%;object-fit:cover;display:block}
-.bt-phdr-menuhead-name{font-size:14.5px;font-weight:800;color:#15120F;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-
-/* rappel « jours oubliés » : maintenant en tête de liste sur fond crème (plus dans
-   l'en-tête noir) → texte noir lisible + fond ambré ; plus fin qu'avant mais reste
-   pleine largeur pour rester facile à toucher avec des gants. */
-.bt-alert{display:flex;align-items:center;gap:10px;margin:0 0 12px;width:100%;background:rgba(255,194,26,.16);border:1px solid rgba(255,194,26,.55);border-radius:12px;padding:8px 14px;cursor:pointer;text-align:left}
-.bt-alert-badge{width:20px;height:20px;flex:none;background:#FFC21A;color:#15120F;border-radius:6px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:12px;font-family:'JetBrains Mono',monospace}
-.bt-alert-txt{font-size:13.5px;font-weight:800;color:#15120F;flex:1}
-.bt-alert-chev{font-size:17px;color:#15120F}
-
-/* ===== CORPS ===== */
-.bt-phbody{flex:1;min-height:0;display:flex;flex-direction:column;position:relative}
-.bt-phscroll{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:calc(var(--phdr-h, 132px) + 16px) 16px 16px}
-
-/* ============================================================
-   .bt-skin — même thème noir/jaune que le reste du produit (admin,
-   fenêtres). Appliqué aux écrans hérités semaine/mois/historique et aux
-   menus déroulants (portails Radix) : on surcharge les variables shadcn
-   pour que Card/Button/Badge et les couleurs « primaires » deviennent
-   crème + jaune + noir, au lieu du thème bleu par défaut.
-   ============================================================ */
-.bt-skin{
-  --background:40 33% 95%;
-  --foreground:36 16% 7%;
-  --card:0 0% 100%;
-  --card-foreground:36 16% 7%;
-  --popover:40 33% 96%;
-  --popover-foreground:36 16% 7%;
-  --primary:43 100% 55%;
-  --primary-foreground:36 16% 7%;
-  --secondary:40 24% 90%;
-  --secondary-foreground:36 16% 12%;
-  --muted:40 22% 91%;
-  --muted-foreground:40 6% 42%;
-  --accent:42 58% 88%;
-  --accent-foreground:36 16% 12%;
-  --destructive:14 72% 44%;
-  --destructive-foreground:40 33% 97%;
-  --border:38 16% 82%;
-  --input:38 16% 80%;
-  --ring:43 100% 55%;
-  font-family:'Archivo',sans-serif;
-}
-.bt-skin .mono,.bt-skin .tabular{font-variant-numeric:tabular-nums}
-`;
-
-// Toujours le MÊME objet (lot 10) : un nouvel objet `dangerouslySetInnerHTML`
-// à chaque rendu faisait réécrire la feuille par React, qui rechargeait alors son
-// `@import` des polices — le texte clignotait à chaque relecture automatique.
-const POSEUR_CSS_HTML = { __html: POSEUR_CSS };
 
 /** Même liste qu'avant ? On garde l'ancienne (aucun rendu pour rien, toutes les minutes). */
 const sameList = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
@@ -544,7 +457,6 @@ export default function PoseurPage() {
 
   return (
     <div className="bt-poseur">
-      <style dangerouslySetInnerHTML={POSEUR_CSS_HTML} />
       <div ref={phoneRef} className={`bt-phone${wide ? ' wide' : ''}`}>
 
         {/* ===== EN-TÊTE NOIR ===== */}

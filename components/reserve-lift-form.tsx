@@ -13,6 +13,8 @@
 
 import { useEffect, useId, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
+// Sa feuille de style est components/reserve-lift-form.css, importée au niveau des ROUTES qui l'affichent (app/poseur/layout.tsx, app/admin/layout.tsx) :
+// un import ici ferait une feuille chargée à part avec chaque morceau différé (et alourdirait le chargeur de TOUTES les pages).
 
 interface Props {
   /** Lève la réserve. Rejeter (throw) garde le formulaire ouvert, tel quel. */
@@ -55,7 +57,6 @@ export default function ReserveLiftForm({ onSubmit, onCancel, tu = false }: Prop
 
   return (
     <div className="bt-rlf" data-testid="reserve-lift-form" onClick={(e) => e.stopPropagation()}>
-      <style dangerouslySetInnerHTML={RLF_CSS_HTML} />
       <label className="bt-rlf-l" htmlFor={id}>Commentaire (facultatif)</label>
       <textarea
         id={id} className="bt-rlf-ta" rows={2} maxLength={500} value={note} disabled={busy}
@@ -89,23 +90,3 @@ export default function ReserveLiftForm({ onSubmit, onCancel, tu = false }: Prop
   );
 }
 
-const RLF_CSS = `
-.bt-rlf{margin-top:9px;padding:10px 11px;background:#FBFAF7;border:1px solid rgba(21,18,15,.12);border-radius:11px;max-width:100%;min-width:0;box-sizing:border-box;cursor:default;text-align:left}
-.bt-rlf *{box-sizing:border-box}
-.bt-rlf-l{display:block;font-size:12px;font-weight:800;color:#3a352f;margin:0 0 5px}
-.bt-rlf-ta{display:block;width:100%;max-width:100%;min-height:54px;resize:vertical;border:1.5px solid rgba(21,18,15,.18);border-radius:9px;background:#fff;padding:8px 10px;font-family:inherit;font-size:16px;line-height:1.35;color:#15120F;outline:none}
-.bt-rlf-ta:focus{border-color:#15120F}
-.bt-rlf-photo{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:8px;min-width:0}
-.bt-rlf-pbtn{display:inline-flex;align-items:center;gap:6px;border:1.5px dashed rgba(21,18,15,.3);background:#fff;color:#15120F;border-radius:9px;padding:8px 12px;font-family:inherit;font-size:13.5px;font-weight:800;cursor:pointer;max-width:100%}
-.bt-rlf-thumb{position:relative;width:86px;height:86px;border-radius:10px;overflow:hidden;border:1px solid rgba(21,18,15,.15);background:#ECE6D9;flex:none}
-.bt-rlf-thumb img{width:100%;height:100%;object-fit:cover;display:block}
-.bt-rlf-x{position:absolute;top:4px;right:4px;width:26px;height:26px;border-radius:50%;border:none;background:rgba(21,18,15,.78);color:#fff;font-size:13px;font-weight:900;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center}
-.bt-rlf-bad{font-size:12px;font-weight:700;color:#C0461F}
-.bt-rlf-acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
-.bt-rlf-go{flex:1 1 160px;display:inline-flex;align-items:center;justify-content:center;gap:7px;border:none;background:#15120F;color:#F2EDE3;border-radius:10px;padding:10px 14px;font-family:inherit;font-size:14px;font-weight:900;cursor:pointer;min-height:42px}
-.bt-rlf-no{flex:0 1 auto;border:1.5px solid rgba(21,18,15,.18);background:#fff;color:#15120F;border-radius:10px;padding:10px 14px;font-family:inherit;font-size:14px;font-weight:800;cursor:pointer;min-height:42px}
-.bt-rlf button:disabled{opacity:.55;cursor:default}
-`;
-// Objet FIXE (règle du lot 10) : un `{ __html }` neuf à chaque rendu ferait
-// réécrire la feuille de style par React.
-const RLF_CSS_HTML = { __html: RLF_CSS };

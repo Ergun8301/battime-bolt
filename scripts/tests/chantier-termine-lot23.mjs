@@ -18,6 +18,7 @@
 //      ses cartes avec « Terminé le … », pointage en cours qui se termine normalement, avant migration tout est proposé.
 //  H · Contrôle statique : aucune suppression ajoutée (navigateur).
 import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path';
+import { ouvrirVue } from './navigation-salarie.mjs';
 let chromium;
 try { ({ chromium } = await import('playwright-core')); } catch {
   ({ chromium } = await import(`${process.env.PW_CORE || '/opt/node22/lib/node_modules/playwright/node_modules/playwright-core'}/index.mjs`));
@@ -658,14 +659,12 @@ const openDay = async (p) => { await p.goto(`${BASE}/poseur`); await p.waitForSe
   const SW = workerState();
   const { ctx, p } = await newPage(SW, SAM, { width: 390, height: 844 });
   await openDay(p);
-  await p.locator('button[aria-label="Mon compte et menu"]').click();
-  await p.getByRole('menuitem', { name: 'Historique' }).click();
+  await ouvrirVue(p, 'Historique');
   await p.waitForSelector('h2:has-text("Historique")', { timeout: 10000 });
   await p.waitForTimeout(1200);
   const hist = norm(await p.locator('body').innerText());
   check(hist.includes('Maison Martin') && hist.includes(`Terminé le ${frDay(FIN_DAY)}`), 'G4) Historique : le chantier terminé garde ses lignes et affiche « Terminé le … »');
-  await p.locator('button[aria-label="Mon compte et menu"]').click();
-  await p.getByRole('menuitem', { name: 'Ma semaine' }).click();
+  await ouvrirVue(p, 'Ma semaine');
   await p.waitForTimeout(1500);
   const wk = norm(await p.locator('body').innerText());
   check(wk.includes('Maison Martin') && /Terminé le/.test(wk), 'G4) Ma semaine : idem');
@@ -704,8 +703,7 @@ const openDay = async (p) => { await p.goto(`${BASE}/poseur`); await p.waitForSe
   const { ctx, p } = await newPage(SW, SAM, { width: 390, height: 844 });
   await openDay(p);
   const optionsOf = async (d) => {
-    await p.locator('button[aria-label="Mon compte et menu"]').click();
-    await p.getByRole('menuitem', { name: 'Ma semaine' }).click();
+    await ouvrirVue(p, 'Ma semaine');
     await p.waitForTimeout(900);
     await p.locator('div.flex.items-center.justify-between button:has(svg.lucide-chevron-left)').first().click();
     await p.waitForTimeout(900);

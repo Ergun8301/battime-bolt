@@ -1,0 +1,226 @@
+.bt-day{display:flex;flex-direction:column;height:100%;min-height:0;flex:1}
+.bt-day-scroll{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:calc(var(--phdr-h, 132px) + 16px) 16px 6px}
+.bt-day:has(.bt-net) .bt-day-scroll{padding-top:12px}
+.bt-day-scroll::-webkit-scrollbar{display:none}
+
+.bt-net{flex:none;color:#fff;padding:7px 18px;display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;margin-top:var(--phdr-h, 132px);position:relative;z-index:20}
+.bt-net-off{background:#C0461F}
+.bt-net-sync{background:#2a2620;color:#FFC21A}
+.bt-net-dot{width:7px;height:7px;background:currentColor;border-radius:50%;flex:none}
+
+.bt-total{background:#15120F;color:#F2EDE3;border-radius:20px;padding:20px;position:relative;overflow:hidden}
+.bt-total-ruban{position:absolute;top:0;right:0;width:88px;height:9px;background:repeating-linear-gradient(45deg,#15120F 0 7px,#FFC21A 7px 14px)}
+.bt-total-k{font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:#a59c86;margin-bottom:8px}
+.bt-total-big{font-family:'JetBrains Mono',monospace;font-size:52px;font-weight:700;letter-spacing:-.02em;line-height:.9}
+.bt-total-unit{font-size:15px;font-weight:700;color:#a59c86;margin-left:4px}
+/* Lot 1 : le prévu du bureau s'affiche À PART — ce ne sont pas des heures faites. */
+.bt-total-prevu{margin-top:8px;font-size:12.5px;font-weight:700;color:#FFC21A}
+.bt-stats{display:flex;gap:8px;margin-top:16px}
+.bt-stat{flex:1;background:#211D19;border-radius:11px;padding:10px 12px}
+.bt-stat-n{font-family:'JetBrains Mono',monospace;font-size:19px;font-weight:700;color:#F2EDE3;line-height:1}
+.bt-stat-l{font-size:11px;font-weight:600;color:#a59c86;margin-top:2px}
+.bt-stat.on{background:#FFC21A}
+.bt-stat.on .bt-stat-n{color:#15120F;font-family:'Archivo',sans-serif;font-size:16px;font-weight:900;line-height:1.1}
+.bt-stat.on .bt-stat-l{color:#7a5e00;font-weight:700}
+/* Lot 9 : la case « Panier » du bloc noir EST l'interrupteur (la ligne blanche
+   « Panier repas » a disparu). Un vrai bouton : grande cible, gants compris. */
+button.bt-stat{border:none;text-align:left;font-family:inherit;cursor:pointer;color:inherit;transition:background .15s,transform .06s}
+button.bt-stat span{display:block}
+button.bt-stat:active{transform:scale(.97)}
+button.bt-stat:disabled{cursor:default;opacity:.55}
+button.bt-stat:focus-visible{outline:2px solid #FFC21A;outline-offset:2px}
+
+.bt-sec{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#9a8a3a;font-weight:700;margin:24px 4px 12px}
+
+.bt-iv{background:#fff;border:1px solid rgba(21,18,15,.1);border-radius:14px;padding:12px 14px;margin-bottom:9px}
+.bt-iv.draft{box-shadow:inset 4px 0 0 #C0461F}
+.bt-iv.sent{box-shadow:inset 4px 0 0 #2FA36B}
+.bt-iv.ok{box-shadow:inset 4px 0 0 #1F7A4D}
+.bt-iv.off{background:#FFFBF4;border:1.5px dashed #C0461F}
+.bt-iv-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:5px}
+.bt-iv-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:16px;font-weight:800;letter-spacing:-.01em;color:#15120F}
+.bt-iv-city{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;color:#6E6A63;font-weight:600}
+.bt-iv-tap{cursor:pointer;transition:border-color .14s ease,transform .06s ease}
+.bt-iv-tap:hover{border-color:rgba(21,18,15,.35)}
+.bt-iv-tap:active{transform:scale(.995)}
+.bt-iv-row{display:flex;align-items:center;gap:10px}
+.bt-iv-cta{flex:none;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;color:#a87c1e;white-space:nowrap}
+.bt-badge{flex:none;display:flex;align-items:center;gap:5px;border-radius:7px;padding:4px 9px;font-size:11px;font-weight:800;white-space:nowrap}
+.bt-badge-sent{background:#E4F2E9;border:1px solid #B7DCC4;color:#1F7A4D}
+.bt-badge-sent .dot{width:14px;height:14px;background:#2FA36B;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px;font-weight:900}
+.bt-badge-draft{background:#FFF1CC;border:1px solid #E8CE7A;color:#8a6d05}
+.bt-badge-off{background:#FBE3D8;border:1px solid #E8B79E;color:#9a3b14}
+.bt-badge-wait{background:#FCEADF;border:1px solid #F0C49A;color:#C0461F}
+.bt-badge-ok{background:#1F7A4D;border:1px solid #1A6A43;color:#fff}
+.bt-badge-ok .dot{width:14px;height:14px;background:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#1F7A4D;font-size:9px;font-weight:900}
+.bt-iv-docs{flex:none;display:inline-flex;align-items:center;gap:2px;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;color:#6E6A63}
+.bt-iv-times{display:flex;align-items:center;justify-content:space-between;gap:10px;font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:#15120F}
+.bt-iv-times-v{flex:none;white-space:nowrap}
+.bt-iv-times .dot{width:4px;height:4px;background:#c4bdae;border-radius:50%}
+/* Correction reçue du bureau : visible sans être alarmante. Le salarié doit la
+   REMARQUER, pas croire qu'il a fait une faute. */
+.bt-iv-corr{margin-top:8px;display:flex;align-items:center;gap:7px;background:#FFF6E0;border:1px solid #EAD08A;border-radius:9px;padding:6px 9px}
+.bt-iv-corr-t{font-size:12.5px;font-weight:800;color:#6b5a2e;line-height:1.35}
+.bt-iv-corr-v{font-family:'JetBrains Mono',monospace;font-weight:700}
+/* Lot 2 : journée renvoyée par le bureau. Même ton que la correction : il doit
+   la VOIR (et lire le motif), pas croire qu'il a fait une faute grave. */
+.bt-retour{display:flex;align-items:flex-start;gap:8px;background:#FFF6E0;border:1px solid #EAD08A;border-radius:12px;padding:10px 12px;margin:0 0 12px;font-size:13px;font-weight:700;color:#6b5a2e;line-height:1.4}
+.bt-retour svg{flex:none;margin-top:2px;color:#8a6d05}
+/* L'endroit enregistré. Gris, discret, factuel : ce n'est ni une alerte ni une
+   récompense, c'est le compte-rendu de ce qui a été gardé sur lui. */
+.bt-iv-geo{margin-top:8px;display:flex;align-items:flex-start;gap:7px;font-size:12px;color:#6E6A63;font-weight:600;line-height:1.45}
+.bt-iv-geo svg{flex:none;margin-top:1px;color:#9a948a}
+.bt-iv-geo-v{font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#3a352f}
+.bt-iv-note{font-size:13px;color:#6E6A63;margin-top:8px}
+.bt-iv-reserve{display:inline-flex;align-items:center;gap:5px;margin-top:7px;font-size:12px;font-weight:800;border-radius:7px;padding:3px 9px}
+.bt-iv-reserve.avec{background:#FCEADF;border:1px solid #F0C49A;color:#C0461F}
+.bt-iv-reserve.sans{background:#EAF6EF;border:1px solid #BBE0CC;color:#1F7A4D}
+.bt-iv-reserve.encours{background:#FFF6E0;border:1px solid #EAD08A;color:#8a6d05}
+.bt-iv-reserve.corrige{background:#EAF6EF;border:1px solid #BBE0CC;color:#1F7A4D}
+.bt-iv-reserve.levee{background:#EFEDE8;border:1px solid #D6D1C6;color:#5c574f}
+.bt-iv-fixbtn{display:inline-flex;align-items:center;gap:6px;margin-top:7px;border:1.5px solid #1F7A4D;background:#fff;color:#1F7A4D;border-radius:9px;padding:8px 13px;font-family:inherit;font-weight:800;font-size:13.5px;cursor:pointer;min-height:36px}
+.bt-iv-fixbtn:disabled{opacity:.55}
+.bt-iv-acts{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.bt-iv-mod{flex:1;min-width:110px;border:1.5px solid #15120F;background:transparent;border-radius:10px;padding:10px;font-weight:800;font-size:13.5px;color:#15120F;cursor:pointer;font-family:inherit}
+.bt-iv-doc{flex:none;border:1.5px solid rgba(21,18,15,.18);background:#fff;border-radius:10px;padding:10px 12px;font-weight:800;font-size:13.5px;color:#15120F;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.bt-iv-doc:hover{border-color:#15120F;background:#FBF6EA}
+.bt-plan-doc{width:100%;justify-content:center;margin-top:8px}
+.bt-iv-del{flex:none;border:none;background:#15120F;border-radius:10px;padding:10px 13px;font-weight:800;font-size:13.5px;color:#F2EDE3;cursor:pointer;font-family:inherit}
+
+.bt-iv-cancel{background:transparent;border:1px solid rgba(21,18,15,.12);border-radius:16px;padding:13px 15px;margin-bottom:11px;opacity:.55;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.bt-cancel-name{font-size:16px;font-weight:800;color:#6E6A63;text-decoration:line-through}
+.bt-cancel-time{font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#9a948a;font-weight:600;text-decoration:line-through}
+.bt-cancel-badge{flex:none;font-size:11px;font-weight:800;color:#9a948a;border:1px solid rgba(21,18,15,.18);border-radius:7px;padding:4px 9px;white-space:nowrap}
+
+.bt-iv-plan{background:transparent;border:1.5px dashed rgba(21,18,15,.28);border-radius:14px;padding:12px 14px;margin-bottom:9px}
+.bt-plan-k{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#9a8a3a;font-weight:700;margin-bottom:4px}
+.bt-plan-btn{width:100%;border:none;background:#15120F;border-radius:11px;padding:13px;font-weight:800;font-size:14.5px;color:#FFC21A;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;margin-top:12px;font-family:inherit}
+
+/* Lot 9 : « Je commence » sur la carte du chantier. Le chantier est celui
+   qu'on touche : plus de liste déroulante à part. */
+.bt-iv-go{display:inline-flex;align-items:center;gap:7px;margin-top:10px;border:none;background:#FFC21A;color:#15120F;border-radius:10px;padding:9px 15px;font-family:inherit;font-weight:900;font-size:14px;cursor:pointer;box-shadow:0 3px 0 #C99300}
+.bt-iv-go:active{transform:translateY(2px);box-shadow:none}
+.bt-iv-go:disabled{opacity:.6;cursor:default}
+/* Le chantier où le chrono tourne : vert, « ● en cours depuis 07:45 ». Pas
+   d'éditeur dessus — les heures s'écrivent à « J'ai fini », pas deux fois. */
+.bt-iv.live,.bt-iv-plan.live{background:#E7F6EE;border:1.5px solid #2FA36B;box-shadow:none}
+.bt-iv-live-k{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#1F7A4D;font-weight:700;margin-bottom:4px}
+.bt-pl-bub-live{display:flex;align-items:center;gap:6px;margin-top:6px;font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:800;color:#1F7A4D}
+.bt-pl-live-dot{width:8px;height:8px;border-radius:50%;background:#2FA36B;flex:none;animation:bt-pl-pulse 1.6s ease-in-out infinite}
+@keyframes bt-pl-pulse{0%,100%{opacity:1}50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.bt-pl-live-dot{animation:none}}
+
+.bt-gap{display:flex;align-items:center;gap:10px;padding:8px 12px;margin:6px 0;border-left:2px dashed rgba(21,18,15,.22);background:rgba(21,18,15,.03);border-radius:0 10px 10px 0}
+.bt-gap-t{flex:1;min-width:0;font-size:12.5px;font-weight:600;color:#56514a}
+.bt-gap-d{font-family:'JetBrains Mono',monospace;font-weight:700;color:#15120F}
+.bt-gap-btns{display:flex;gap:6px;flex:none}
+.bt-gap-b{border:1.5px solid rgba(21,18,15,.2);background:#fff;border-radius:8px;padding:6px 10px;font-family:inherit;font-size:12px;font-weight:800;color:#15120F;cursor:pointer}
+.bt-gap-b.on{background:#15120F;color:#FFC21A;border-color:#15120F}
+.bt-gap-ask{color:#9a3b14;font-weight:800}
+
+.bt-empty{text-align:center;font-size:13.5px;color:#6E6A63;font-weight:600;padding:18px 0 4px}
+.bt-ghostbtn{display:inline-flex;align-items:center;gap:8px;margin-top:12px;background:transparent;border:1.5px solid rgba(21,18,15,.2);color:#15120F;border-radius:11px;padding:11px 16px;font-weight:800;font-size:13.5px;cursor:pointer;font-family:inherit}
+.bt-dup{display:inline-flex;align-items:center;gap:7px;margin:6px auto 4px;background:transparent;border:1px solid rgba(21,18,15,.16);color:#6E6A63;border-radius:10px;padding:9px 15px;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit}
+.bt-sentnote{text-align:center;font-size:12.5px;color:#9a948a;font-weight:600;padding:4px 0 2px}
+
+.bt-day-dock{flex:none;padding:14px 16px calc(env(safe-area-inset-bottom) + 16px);background:#F2EDE3;border-top:1px solid rgba(21,18,15,.1);display:flex;gap:10px}
+.bt-fab{flex:none;width:58px;border:2px solid #15120F;background:#F2EDE3;border-radius:15px;font-weight:900;font-size:26px;color:#15120F;display:flex;align-items:center;justify-content:center;cursor:pointer;font-family:inherit}
+.bt-day-dock.with-ai .bt-send{font-size:15px;padding:17px 10px;white-space:nowrap;gap:6px}
+.bt-ai{flex:none;width:58px;height:58px;align-self:center;border:none;background:#15120F;color:#FFC21A;border-radius:999px;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 0 #000}
+.bt-send{flex:1;min-width:0;border:none;background:#FFC21A;border-radius:15px;padding:17px;font-weight:900;font-size:17px;color:#15120F;box-shadow:0 4px 0 #C99300;display:flex;align-items:center;justify-content:center;gap:9px;cursor:pointer;font-family:inherit}
+.bt-send:disabled{background:#e7ddc4;color:#9a948a;box-shadow:0 4px 0 #cfc4a5;cursor:default}
+.bt-send.done{background:#E4F2E9;color:#1F7A4D;box-shadow:0 4px 0 #b7dcc4}
+
+/* ===== ÉDITEUR PLEIN ÉCRAN ===== */
+.bt-ed{position:fixed;inset:0;z-index:40;display:flex;justify-content:center;background:rgba(21,18,15,.35)}
+.bt-ed-inner{width:100%;max-width:480px;height:100vh;height:100svh;height:100dvh;background:#F2EDE3;display:flex;flex-direction:column;position:relative;overflow:hidden}
+.bt-ed-hdr{background:#15120F;color:#F2EDE3;flex:none;padding:calc(env(safe-area-inset-top) + 16px) 18px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.bt-ed-cancel{border:none;background:transparent;color:#a59c86;font-size:15px;font-weight:700;padding:6px 2px;cursor:pointer;font-family:inherit;flex:none;min-width:54px;text-align:left}
+.bt-ed-title{font-size:17px;font-weight:900;letter-spacing:-.01em;text-align:center;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bt-ed-scroll{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 18px 18px}
+.bt-ed-scroll::-webkit-scrollbar{display:none}
+.bt-ed-dock{flex:none;padding:13px 18px calc(env(safe-area-inset-bottom) + 18px);background:#F2EDE3;border-top:1px solid rgba(21,18,15,.12);box-shadow:0 -10px 24px -12px rgba(21,18,15,.18)}
+
+.bt-site-search{width:100%;font-family:'Archivo',sans-serif;font-size:15px;font-weight:500;padding:11px 13px;border:1.5px solid rgba(21,18,15,.18);border-radius:12px;background:#fff;outline:none;color:#15120F;margin-bottom:9px}
+.bt-site-search::placeholder{color:#b3aca0}
+.bt-site-search:focus{border-color:#15120F}
+.bt-site-empty{padding:16px;text-align:center;color:#9a948a;font-weight:600;font-size:13px}
+.bt-site{border:1px solid rgba(21,18,15,.14);text-align:left;background:#fff;color:#15120F;border-radius:13px;padding:14px 15px;display:flex;align-items:center;gap:12px;width:100%;cursor:pointer;margin-bottom:8px;font-family:inherit}
+.bt-site.on{background:#15120F;color:#F2EDE3;border-color:#15120F}
+.bt-site.other{border-style:dashed;border-color:rgba(21,18,15,.3)}
+.bt-site-name{display:block;font-size:16px;font-weight:800;letter-spacing:-.01em}
+.bt-site-city{display:block;font-size:13px;font-weight:600;color:#6E6A63}
+.bt-site.on .bt-site-city{color:#a59c86}
+.bt-rdo{flex:none;width:22px;height:22px;border:2px solid rgba(21,18,15,.2);border-radius:50%;display:flex;align-items:center;justify-content:center}
+.bt-site.on .bt-rdo{width:26px;height:26px;border:none;background:#FFC21A;color:#15120F;font-weight:900;font-size:14px;border-radius:50%}
+.bt-rdo-plus{flex:none;width:26px;height:26px;background:#15120F;color:#FFC21A;border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:17px}
+
+/* « Autre » choisi : on demande de quoi il s'agit. Facultatif — un nom qui
+   manque ne doit jamais retenir des heures. Rempli, il devient un vrai
+   chantier, visible du bureau comme les autres. */
+.bt-nommer{margin:-2px 0 10px;padding:13px 14px;border:1.5px dashed rgba(21,18,15,.3);border-radius:13px;background:#FBF8F1}
+.bt-nommer-t{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#6E6A63;font-weight:700;margin-bottom:9px}
+.bt-nommer-in{width:100%;font-family:'Archivo',sans-serif;font-size:15px;font-weight:600;padding:11px 13px;border:1.5px solid rgba(21,18,15,.18);border-radius:11px;background:#fff;outline:none;color:#15120F;margin-bottom:8px}
+.bt-nommer-in::placeholder{color:#b3aca0;font-weight:500}
+.bt-nommer-in:focus{border-color:#15120F}
+.bt-nommer-go{width:100%;border:0;background:#15120F;color:#FFC21A;border-radius:11px;padding:12px;font-family:inherit;font-size:14.5px;font-weight:800;cursor:pointer}
+.bt-nommer-go:disabled{background:#d9d3c7;color:#8a8378;cursor:default}
+.bt-nommer-s{display:block;font-size:12px;font-weight:500;color:#8a8378;margin-top:8px;line-height:1.4}
+
+.bt-times{display:flex;gap:9px;align-items:stretch}
+.bt-timecard{flex:1;border:1.5px solid rgba(21,18,15,.16);background:#fff;border-radius:13px;padding:11px 14px;display:flex;flex-direction:column;gap:3px;cursor:pointer;text-align:left;font-family:inherit}
+.bt-timecard:active{border-color:#15120F}
+.bt-timecard .k{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#9a948a;font-weight:700}
+.bt-timecard .v{font-family:'JetBrains Mono',monospace;font-size:25px;font-weight:700;color:#15120F;line-height:1}
+.bt-dur{flex:none;width:84px;background:#15120F;border-radius:13px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#FFC21A}
+.bt-dur .k{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:#a59c86;font-weight:700}
+.bt-dur .v{font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:700}
+.bt-times-hint{text-align:center;font-size:12.5px;color:#9a948a;font-weight:600;margin-top:8px}
+
+.bt-pause-auto{display:flex;align-items:center;gap:8px;margin-top:16px;background:rgba(255,194,26,.12);border:1px solid rgba(255,194,26,.4);border-radius:12px;padding:11px 13px;font-size:12.5px;font-weight:700;color:#7a5e00}
+/* Lot 1 : la pause se déclare dans la fiche (et se demande à l'envoi après 6 h d'affilée).
+   Lot 3bis : ses puces vivent dans components/pause-picker.tsx (fiche, question, bureau). */
+.bt-plan-warn{margin-top:6px;font-size:12px;font-weight:700;color:#9a3b14}
+
+.bt-recep{display:flex;gap:8px}
+.bt-recep-b{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:5px;border:1.5px solid rgba(21,18,15,.16);background:#fff;border-radius:13px;padding:11px 6px;font-weight:800;font-size:12.5px;color:#6E6A63;cursor:pointer;font-family:inherit;text-align:center;line-height:1.1}
+.bt-recep-b svg{opacity:.65}
+.bt-recep-b.encours.on{border-color:#C98A12;background:#FFF6E0;color:#8a6d05}
+.bt-recep-b.sans.on{border-color:#1F7A4D;background:#EAF6EF;color:#1F7A4D}
+.bt-recep-b.avec.on{border-color:#C0461F;background:#FCEADF;color:#C0461F}
+.bt-recep-b.on svg{opacity:1}
+.bt-recep-hint{margin-top:8px;font-size:12.5px;font-weight:600;color:#C0461F;background:#FCEADF;border:1px solid #F0C49A;border-radius:11px;padding:10px 12px}
+.bt-recep-hint strong{font-weight:900}
+.bt-note{width:100%;font-family:inherit;font-size:15.5px;font-weight:500;color:#15120F;padding:14px 15px;border:1.5px solid rgba(21,18,15,.16);border-radius:13px;background:#fff;outline:none;resize:none}
+
+.bt-save{width:100%;border:none;background:#FFC21A;border-radius:13px;padding:15px;font-weight:900;font-size:16px;color:#15120F;box-shadow:0 4px 0 #C99300;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;font-family:inherit}
+.bt-save:disabled{opacity:.6;cursor:default}
+.bt-retire{width:100%;background:transparent;border:none;color:#C0461F;font-weight:800;font-size:14px;padding:10px;cursor:pointer;margin-bottom:8px;font-family:inherit}
+.bt-ed-dock-row{display:flex;gap:8px;margin-bottom:9px}
+.bt-ed-doc{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:7px;border:1.5px solid #15120F;background:#fff;border-radius:12px;padding:12px;font-weight:800;font-size:14px;color:#15120F;cursor:pointer;font-family:inherit}
+.bt-ed-doc:active{transform:translateY(1px)}
+.bt-ed-trash{flex:none;width:50px;display:inline-flex;align-items:center;justify-content:center;border:1.5px solid rgba(192,70,31,.45);background:#fff;color:#C0461F;border-radius:12px;cursor:pointer}
+.bt-ed-trash:hover{background:#F4D9D1}
+.bt-ed-trash:disabled{opacity:.5}
+
+/* ===== TIROIR MOLETTE ===== */
+.bt-overlay{position:absolute;inset:0;background:rgba(21,18,15,.5);z-index:8;opacity:0;pointer-events:none;transition:opacity .25s ease}
+.bt-overlay.open{opacity:1;pointer-events:auto}
+.bt-sheet{position:absolute;left:0;right:0;bottom:0;background:#15120F;border-radius:24px 24px 0 0;z-index:9;padding:12px 16px calc(env(safe-area-inset-bottom) + 22px);transform:translateY(106%);transition:transform .32s cubic-bezier(.22,1,.36,1)}
+.bt-sheet.open{transform:translateY(0)}
+.bt-grip{width:42px;height:5px;background:#3a352f;border-radius:3px;margin:2px auto 12px}
+.bt-seg{display:flex;background:#211D19;border-radius:11px;padding:4px;gap:4px;margin-bottom:8px}
+.bt-segb{flex:1;border:none;background:transparent;color:#a59c86;border-radius:8px;padding:9px;font-weight:800;font-size:13px;cursor:pointer;text-align:center;font-family:inherit}
+.bt-segb .lbl{display:block}
+.bt-segb .v{font-family:'JetBrains Mono',monospace;font-size:17px;font-weight:700;color:#6E6A63;display:block;margin-top:1px}
+.bt-segb.on{background:#000}
+.bt-segb.on .lbl{color:#FFC21A}
+.bt-segb.on .v{color:#F2EDE3}
+.bt-sheet-dur{display:flex;align-items:center;justify-content:center;gap:7px;margin-bottom:2px}
+.bt-sheet-dur .k{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#a59c86;font-weight:700}
+.bt-sheet-dur .v{font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700;color:#FFC21A}
+.bt-molette{display:flex;justify-content:center;padding:4px 0 2px}
+/* L'heure exacte (pointage à la minute) quand la molette, elle, n'affiche que
+   les quarts d'heure. Tant qu'on ne tourne pas la molette, c'est elle qui reste. */
+.bt-molette-exact{text-align:center;font-size:12px;font-weight:700;color:#a59c86;margin-top:4px}
+.bt-molette-exact b{font-family:'JetBrains Mono',monospace;color:#FFC21A}

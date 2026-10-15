@@ -44,6 +44,7 @@
 //   T  téléphone de 360 px : bureau (envoi non terminé, aperçu) et salarié, sans défilement horizontal
 import http from 'node:http'; import https from 'node:https'; import fs from 'node:fs'; import path from 'node:path'; import os from 'node:os';
 import { execFileSync } from 'node:child_process'; import crypto from 'node:crypto';
+import { ouvrirMenuCompte } from './navigation-salarie.mjs';
 let chromium;
 try { ({ chromium } = await import('playwright-core')); } catch {
   ({ chromium } = await import(`${process.env.PW_CORE || '/opt/node22/lib/node_modules/playwright/node_modules/playwright-core'}/index.mjs`));
@@ -504,7 +505,7 @@ const dlg = (p = op) => p.locator('[data-testid=trainings-dialog]');
 const closeDlg = async (p = op) => { await p.keyboard.press('Escape'); await p.waitForTimeout(350); };
 const openWorker = async (p = wp) => { await p.goto(`http://localhost:${PORT}/poseur`); await p.waitForSelector('.bt-total', { timeout: 20000 }); await p.waitForTimeout(1200); };
 const openWorkerTrainings = async (p = wp) => {
-  await p.getByRole('button', { name: 'Mon compte et menu' }).click(); await p.waitForSelector('[role=menu]'); await p.waitForTimeout(250);
+  await ouvrirMenuCompte(p, { menu: true, attente: 250 });
   await p.click('[data-testid=menu-formations]'); await p.waitForSelector('[data-testid=trainings-list]'); await p.waitForTimeout(700);
 };
 // Ouvre le formulaire (« + Ajouter » si la liste n'est pas vide), attend la lecture de la jauge, puis choisit « Fichier » (ou `kind`).

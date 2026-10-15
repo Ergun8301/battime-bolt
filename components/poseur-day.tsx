@@ -6,9 +6,8 @@ import { supabase } from '@/lib/supabase';
 import { TimeEntry, Worksite, Planning } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Calendar } from '@/components/ui/calendar';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Loader2, Copy, AlertTriangle, FolderOpen, Trash2, Paperclip, Hammer, CheckCircle2, MapPin, Sparkles, Play } from 'lucide-react';
+import { Loader2, Copy, AlertTriangle, FolderOpen, Trash2, Paperclip, Hammer, CheckCircle2, MapPin, Sparkles } from 'lucide-react';
 import { format, subDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -21,7 +20,7 @@ import { insertWorkerEntry } from '@/lib/worker-entry';
 import { planningsToMaterialise, remainingPlannings, sendablePlannings, visiblePlannings } from '@/lib/work-status';
 import { copyLinesTo, materialisePlanned as materialiseDay, setDayMealOnline, submitDrafts } from '@/lib/worker-day';
 import { useMealEnabled } from '@/lib/meal-setting';
-import { loadCompanySettings, useCompanySettings } from '@/lib/company-settings';
+import { useCompanySettings } from '@/lib/company-settings';
 import { fmtHeure } from '@/lib/corrections';
 import { fetchEntryEdits, lastEdit, type EntryEdit } from '@/lib/office-edits';
 import { diffLabels } from '@/supabase/functions/_shared/office-edits';
@@ -29,10 +28,8 @@ import { positionUtile, fmtPrecision, fmtCoord } from '@/lib/position';
 import { parisHHmm } from '@/lib/utils';
 import { TimeCylinder, snapToGrid } from '@/components/time-cylinder';
 import LiveTimer from '@/components/live-timer';
-import { useOwnLiveSession, startLiveSession, announceLiveChange, readOwnLiveSession, type OwnLiveSession } from '@/lib/live-session';
+import { useOwnLiveSession, announceLiveChange, readOwnLiveSession, type OwnLiveSession } from '@/lib/live-session';
 import { finishLiveAt } from '@/lib/live-end-at';
-import { geoInfoSeen, markGeoInfoSeen } from '@/lib/position-info';
-import GeoInfoDialog from '@/components/geo-info-dialog';
 import { isExitToComplete, EXIT_TO_COMPLETE_MSG } from '@/lib/qr-entry';
 import { bestPlanningFor, findOverlap, firstBlockingOverlap, isEmptyDraft, keptBreak, pauseAsks, spanMinutes, type PauseAsk, type PlannedState, type Span } from '@/supabase/functions/_shared/day-hours';
 import { pauseError } from '@/supabase/functions/_shared/pause';
@@ -41,9 +38,9 @@ import { parseAfterScan, afterScanSpan, AFTER_SCAN_USE_MS, type AfterScanParams 
 import PausePicker from '@/components/pause-picker';
 import { LiveLine } from '@/components/planning-bubble';
 import { placeLive, cellKey } from '@/supabase/functions/_shared/live-place';
-import TeamDay from '@/components/team-day';
-import ChantierDocuments from '@/components/chantier-documents';
-import ReserveLiftForm from '@/components/reserve-lift-form';
+import { ReserveLiftForm } from '@/components/reserve-lift-lazy';
+import { lazyWindow } from '@/lib/lazy-window';
+import type { CalendarProps } from '@/components/ui/calendar';
 import { liftReserve, undoWorkerLift, liftErrorMessage, announceReservesChanged, RESERVES_CHANGED_EVENT } from '@/lib/reserve-lift';
 import { fetchMyClosure } from '@/lib/worker-closure';
 import { isReserveLifted } from '@/lib/reserves';
@@ -52,6 +49,16 @@ import TermineLe from '@/components/termine-le';
 import { choosableWorksites } from '@/supabase/functions/_shared/chantier-statut';
 // Lot 4 : les réunions et les tâches du jour (lecture à part, rien sur les heures).
 import { MyMeetings, MyTasks, useMyMissions } from '@/components/missions-worker';
+
+// Chargés à l'ouverture, pas au premier affichage de /poseur (étape 1 du plan d'intégration du design salarié : le
+// premier chargement ne porte plus ni le calendrier, ni les documents, ni « Mon équipe »). Même rendu qu'avant :
+//  · « Mon équipe » : chef d'équipe seulement, donc préchauffé SEULEMENT quand il est monté (warm: 'mounted') ;
+//  · les documents du chantier : fenêtre ouverte depuis la fiche (isOpen = open), préchauffée au repos ;
+//  · le calendrier de « Dupliquer cette journée » (react-day-picker, ≈ 10 kB) : pas de préchauffage automatique,
+//    le bouton « Dupliquer » le demande dès le doigt posé (CalendarLazy.preload) ; la fenêtre le montre dès qu'il est là.
+const TeamDay = lazyWindow(() => import('@/components/team-day'), { isOpen: () => true, priority: 7, warm: 'mounted' });
+const ChantierDocuments = lazyWindow(() => import('@/components/chantier-documents'), { isOpen: (p) => p.open, priority: 9 });
+const CalendarLazy = lazyWindow<CalendarProps>(() => import('@/components/ui/calendar').then((m) => ({ default: m.Calendar })), { isOpen: () => true, warm: 'never' });
 
 /** Une correction reçue du bureau, telle que la journée du salarié l'affiche. */
 interface CorrectionVue {
@@ -199,240 +206,6 @@ function computePauses(slots: GapSlot[]): Gap[] {
   }
   return out;
 }
-
-const DAY_CSS = `
-.bt-day{display:flex;flex-direction:column;height:100%;min-height:0;flex:1}
-.bt-day-scroll{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:calc(var(--phdr-h, 132px) + 16px) 16px 6px}
-.bt-day:has(.bt-net) .bt-day-scroll{padding-top:12px}
-.bt-day-scroll::-webkit-scrollbar{display:none}
-
-.bt-net{flex:none;color:#fff;padding:7px 18px;display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;margin-top:var(--phdr-h, 132px);position:relative;z-index:20}
-.bt-net-off{background:#C0461F}
-.bt-net-sync{background:#2a2620;color:#FFC21A}
-.bt-net-dot{width:7px;height:7px;background:currentColor;border-radius:50%;flex:none}
-
-.bt-total{background:#15120F;color:#F2EDE3;border-radius:20px;padding:20px;position:relative;overflow:hidden}
-.bt-total-ruban{position:absolute;top:0;right:0;width:88px;height:9px;background:repeating-linear-gradient(45deg,#15120F 0 7px,#FFC21A 7px 14px)}
-.bt-total-k{font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:#a59c86;margin-bottom:8px}
-.bt-total-big{font-family:'JetBrains Mono',monospace;font-size:52px;font-weight:700;letter-spacing:-.02em;line-height:.9}
-.bt-total-unit{font-size:15px;font-weight:700;color:#a59c86;margin-left:4px}
-/* Lot 1 : le prévu du bureau s'affiche À PART — ce ne sont pas des heures faites. */
-.bt-total-prevu{margin-top:8px;font-size:12.5px;font-weight:700;color:#FFC21A}
-.bt-stats{display:flex;gap:8px;margin-top:16px}
-.bt-stat{flex:1;background:#211D19;border-radius:11px;padding:10px 12px}
-.bt-stat-n{font-family:'JetBrains Mono',monospace;font-size:19px;font-weight:700;color:#F2EDE3;line-height:1}
-.bt-stat-l{font-size:11px;font-weight:600;color:#a59c86;margin-top:2px}
-.bt-stat.on{background:#FFC21A}
-.bt-stat.on .bt-stat-n{color:#15120F;font-family:'Archivo',sans-serif;font-size:16px;font-weight:900;line-height:1.1}
-.bt-stat.on .bt-stat-l{color:#7a5e00;font-weight:700}
-/* Lot 9 : la case « Panier » du bloc noir EST l'interrupteur (la ligne blanche
-   « Panier repas » a disparu). Un vrai bouton : grande cible, gants compris. */
-button.bt-stat{border:none;text-align:left;font-family:inherit;cursor:pointer;color:inherit;transition:background .15s,transform .06s}
-button.bt-stat span{display:block}
-button.bt-stat:active{transform:scale(.97)}
-button.bt-stat:disabled{cursor:default;opacity:.55}
-button.bt-stat:focus-visible{outline:2px solid #FFC21A;outline-offset:2px}
-
-.bt-sec{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#9a8a3a;font-weight:700;margin:24px 4px 12px}
-
-.bt-iv{background:#fff;border:1px solid rgba(21,18,15,.1);border-radius:14px;padding:12px 14px;margin-bottom:9px}
-.bt-iv.draft{box-shadow:inset 4px 0 0 #C0461F}
-.bt-iv.sent{box-shadow:inset 4px 0 0 #2FA36B}
-.bt-iv.ok{box-shadow:inset 4px 0 0 #1F7A4D}
-.bt-iv.off{background:#FFFBF4;border:1.5px dashed #C0461F}
-.bt-iv-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:5px}
-.bt-iv-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:16px;font-weight:800;letter-spacing:-.01em;color:#15120F}
-.bt-iv-city{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;color:#6E6A63;font-weight:600}
-.bt-iv-tap{cursor:pointer;transition:border-color .14s ease,transform .06s ease}
-.bt-iv-tap:hover{border-color:rgba(21,18,15,.35)}
-.bt-iv-tap:active{transform:scale(.995)}
-.bt-iv-row{display:flex;align-items:center;gap:10px}
-.bt-iv-cta{flex:none;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;color:#a87c1e;white-space:nowrap}
-.bt-badge{flex:none;display:flex;align-items:center;gap:5px;border-radius:7px;padding:4px 9px;font-size:11px;font-weight:800;white-space:nowrap}
-.bt-badge-sent{background:#E4F2E9;border:1px solid #B7DCC4;color:#1F7A4D}
-.bt-badge-sent .dot{width:14px;height:14px;background:#2FA36B;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px;font-weight:900}
-.bt-badge-draft{background:#FFF1CC;border:1px solid #E8CE7A;color:#8a6d05}
-.bt-badge-off{background:#FBE3D8;border:1px solid #E8B79E;color:#9a3b14}
-.bt-badge-wait{background:#FCEADF;border:1px solid #F0C49A;color:#C0461F}
-.bt-badge-ok{background:#1F7A4D;border:1px solid #1A6A43;color:#fff}
-.bt-badge-ok .dot{width:14px;height:14px;background:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#1F7A4D;font-size:9px;font-weight:900}
-.bt-iv-docs{flex:none;display:inline-flex;align-items:center;gap:2px;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;color:#6E6A63}
-.bt-iv-times{display:flex;align-items:center;justify-content:space-between;gap:10px;font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:#15120F}
-.bt-iv-times-v{flex:none;white-space:nowrap}
-.bt-iv-times .dot{width:4px;height:4px;background:#c4bdae;border-radius:50%}
-/* Correction reçue du bureau : visible sans être alarmante. Le salarié doit la
-   REMARQUER, pas croire qu'il a fait une faute. */
-.bt-iv-corr{margin-top:8px;display:flex;align-items:center;gap:7px;background:#FFF6E0;border:1px solid #EAD08A;border-radius:9px;padding:6px 9px}
-.bt-iv-corr-t{font-size:12.5px;font-weight:800;color:#6b5a2e;line-height:1.35}
-.bt-iv-corr-v{font-family:'JetBrains Mono',monospace;font-weight:700}
-/* Lot 2 : journée renvoyée par le bureau. Même ton que la correction : il doit
-   la VOIR (et lire le motif), pas croire qu'il a fait une faute grave. */
-.bt-retour{display:flex;align-items:flex-start;gap:8px;background:#FFF6E0;border:1px solid #EAD08A;border-radius:12px;padding:10px 12px;margin:0 0 12px;font-size:13px;font-weight:700;color:#6b5a2e;line-height:1.4}
-.bt-retour svg{flex:none;margin-top:2px;color:#8a6d05}
-/* L'endroit enregistré. Gris, discret, factuel : ce n'est ni une alerte ni une
-   récompense, c'est le compte-rendu de ce qui a été gardé sur lui. */
-.bt-iv-geo{margin-top:8px;display:flex;align-items:flex-start;gap:7px;font-size:12px;color:#6E6A63;font-weight:600;line-height:1.45}
-.bt-iv-geo svg{flex:none;margin-top:1px;color:#9a948a}
-.bt-iv-geo-v{font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#3a352f}
-.bt-iv-note{font-size:13px;color:#6E6A63;margin-top:8px}
-.bt-iv-reserve{display:inline-flex;align-items:center;gap:5px;margin-top:7px;font-size:12px;font-weight:800;border-radius:7px;padding:3px 9px}
-.bt-iv-reserve.avec{background:#FCEADF;border:1px solid #F0C49A;color:#C0461F}
-.bt-iv-reserve.sans{background:#EAF6EF;border:1px solid #BBE0CC;color:#1F7A4D}
-.bt-iv-reserve.encours{background:#FFF6E0;border:1px solid #EAD08A;color:#8a6d05}
-.bt-iv-reserve.corrige{background:#EAF6EF;border:1px solid #BBE0CC;color:#1F7A4D}
-.bt-iv-reserve.levee{background:#EFEDE8;border:1px solid #D6D1C6;color:#5c574f}
-.bt-iv-fixbtn{display:inline-flex;align-items:center;gap:6px;margin-top:7px;border:1.5px solid #1F7A4D;background:#fff;color:#1F7A4D;border-radius:9px;padding:8px 13px;font-family:inherit;font-weight:800;font-size:13.5px;cursor:pointer;min-height:36px}
-.bt-iv-fixbtn:disabled{opacity:.55}
-.bt-iv-acts{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
-.bt-iv-mod{flex:1;min-width:110px;border:1.5px solid #15120F;background:transparent;border-radius:10px;padding:10px;font-weight:800;font-size:13.5px;color:#15120F;cursor:pointer;font-family:inherit}
-.bt-iv-doc{flex:none;border:1.5px solid rgba(21,18,15,.18);background:#fff;border-radius:10px;padding:10px 12px;font-weight:800;font-size:13.5px;color:#15120F;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
-.bt-iv-doc:hover{border-color:#15120F;background:#FBF6EA}
-.bt-plan-doc{width:100%;justify-content:center;margin-top:8px}
-.bt-iv-del{flex:none;border:none;background:#15120F;border-radius:10px;padding:10px 13px;font-weight:800;font-size:13.5px;color:#F2EDE3;cursor:pointer;font-family:inherit}
-
-.bt-iv-cancel{background:transparent;border:1px solid rgba(21,18,15,.12);border-radius:16px;padding:13px 15px;margin-bottom:11px;opacity:.55;display:flex;align-items:center;justify-content:space-between;gap:10px}
-.bt-cancel-name{font-size:16px;font-weight:800;color:#6E6A63;text-decoration:line-through}
-.bt-cancel-time{font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#9a948a;font-weight:600;text-decoration:line-through}
-.bt-cancel-badge{flex:none;font-size:11px;font-weight:800;color:#9a948a;border:1px solid rgba(21,18,15,.18);border-radius:7px;padding:4px 9px;white-space:nowrap}
-
-.bt-iv-plan{background:transparent;border:1.5px dashed rgba(21,18,15,.28);border-radius:14px;padding:12px 14px;margin-bottom:9px}
-.bt-plan-k{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#9a8a3a;font-weight:700;margin-bottom:4px}
-.bt-plan-btn{width:100%;border:none;background:#15120F;border-radius:11px;padding:13px;font-weight:800;font-size:14.5px;color:#FFC21A;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;margin-top:12px;font-family:inherit}
-
-/* Lot 9 : « Je commence » sur la carte du chantier. Le chantier est celui
-   qu'on touche : plus de liste déroulante à part. */
-.bt-iv-go{display:inline-flex;align-items:center;gap:7px;margin-top:10px;border:none;background:#FFC21A;color:#15120F;border-radius:10px;padding:9px 15px;font-family:inherit;font-weight:900;font-size:14px;cursor:pointer;box-shadow:0 3px 0 #C99300}
-.bt-iv-go:active{transform:translateY(2px);box-shadow:none}
-.bt-iv-go:disabled{opacity:.6;cursor:default}
-/* Le chantier où le chrono tourne : vert, « ● en cours depuis 07:45 ». Pas
-   d'éditeur dessus — les heures s'écrivent à « J'ai fini », pas deux fois. */
-.bt-iv.live,.bt-iv-plan.live{background:#E7F6EE;border:1.5px solid #2FA36B;box-shadow:none}
-.bt-iv-live-k{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#1F7A4D;font-weight:700;margin-bottom:4px}
-.bt-pl-bub-live{display:flex;align-items:center;gap:6px;margin-top:6px;font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:800;color:#1F7A4D}
-.bt-pl-live-dot{width:8px;height:8px;border-radius:50%;background:#2FA36B;flex:none;animation:bt-pl-pulse 1.6s ease-in-out infinite}
-@keyframes bt-pl-pulse{0%,100%{opacity:1}50%{opacity:.35}}
-@media (prefers-reduced-motion:reduce){.bt-pl-live-dot{animation:none}}
-
-.bt-gap{display:flex;align-items:center;gap:10px;padding:8px 12px;margin:6px 0;border-left:2px dashed rgba(21,18,15,.22);background:rgba(21,18,15,.03);border-radius:0 10px 10px 0}
-.bt-gap-t{flex:1;min-width:0;font-size:12.5px;font-weight:600;color:#56514a}
-.bt-gap-d{font-family:'JetBrains Mono',monospace;font-weight:700;color:#15120F}
-.bt-gap-btns{display:flex;gap:6px;flex:none}
-.bt-gap-b{border:1.5px solid rgba(21,18,15,.2);background:#fff;border-radius:8px;padding:6px 10px;font-family:inherit;font-size:12px;font-weight:800;color:#15120F;cursor:pointer}
-.bt-gap-b.on{background:#15120F;color:#FFC21A;border-color:#15120F}
-.bt-gap-ask{color:#9a3b14;font-weight:800}
-
-.bt-empty{text-align:center;font-size:13.5px;color:#6E6A63;font-weight:600;padding:18px 0 4px}
-.bt-ghostbtn{display:inline-flex;align-items:center;gap:8px;margin-top:12px;background:transparent;border:1.5px solid rgba(21,18,15,.2);color:#15120F;border-radius:11px;padding:11px 16px;font-weight:800;font-size:13.5px;cursor:pointer;font-family:inherit}
-.bt-dup{display:inline-flex;align-items:center;gap:7px;margin:6px auto 4px;background:transparent;border:1px solid rgba(21,18,15,.16);color:#6E6A63;border-radius:10px;padding:9px 15px;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit}
-.bt-sentnote{text-align:center;font-size:12.5px;color:#9a948a;font-weight:600;padding:4px 0 2px}
-
-.bt-day-dock{flex:none;padding:14px 16px calc(env(safe-area-inset-bottom) + 16px);background:#F2EDE3;border-top:1px solid rgba(21,18,15,.1);display:flex;gap:10px}
-.bt-fab{flex:none;width:58px;border:2px solid #15120F;background:#F2EDE3;border-radius:15px;font-weight:900;font-size:26px;color:#15120F;display:flex;align-items:center;justify-content:center;cursor:pointer;font-family:inherit}
-.bt-day-dock.with-ai .bt-send{font-size:15px;padding:17px 10px;white-space:nowrap;gap:6px}
-.bt-ai{flex:none;width:58px;height:58px;align-self:center;border:none;background:#15120F;color:#FFC21A;border-radius:999px;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 0 #000}
-.bt-send{flex:1;min-width:0;border:none;background:#FFC21A;border-radius:15px;padding:17px;font-weight:900;font-size:17px;color:#15120F;box-shadow:0 4px 0 #C99300;display:flex;align-items:center;justify-content:center;gap:9px;cursor:pointer;font-family:inherit}
-.bt-send:disabled{background:#e7ddc4;color:#9a948a;box-shadow:0 4px 0 #cfc4a5;cursor:default}
-.bt-send.done{background:#E4F2E9;color:#1F7A4D;box-shadow:0 4px 0 #b7dcc4}
-
-/* ===== ÉDITEUR PLEIN ÉCRAN ===== */
-.bt-ed{position:fixed;inset:0;z-index:40;display:flex;justify-content:center;background:rgba(21,18,15,.35)}
-.bt-ed-inner{width:100%;max-width:480px;height:100vh;height:100svh;height:100dvh;background:#F2EDE3;display:flex;flex-direction:column;position:relative;overflow:hidden}
-.bt-ed-hdr{background:#15120F;color:#F2EDE3;flex:none;padding:calc(env(safe-area-inset-top) + 16px) 18px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px}
-.bt-ed-cancel{border:none;background:transparent;color:#a59c86;font-size:15px;font-weight:700;padding:6px 2px;cursor:pointer;font-family:inherit;flex:none;min-width:54px;text-align:left}
-.bt-ed-title{font-size:17px;font-weight:900;letter-spacing:-.01em;text-align:center;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.bt-ed-scroll{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 18px 18px}
-.bt-ed-scroll::-webkit-scrollbar{display:none}
-.bt-ed-dock{flex:none;padding:13px 18px calc(env(safe-area-inset-bottom) + 18px);background:#F2EDE3;border-top:1px solid rgba(21,18,15,.12);box-shadow:0 -10px 24px -12px rgba(21,18,15,.18)}
-
-.bt-site-search{width:100%;font-family:'Archivo',sans-serif;font-size:15px;font-weight:500;padding:11px 13px;border:1.5px solid rgba(21,18,15,.18);border-radius:12px;background:#fff;outline:none;color:#15120F;margin-bottom:9px}
-.bt-site-search::placeholder{color:#b3aca0}
-.bt-site-search:focus{border-color:#15120F}
-.bt-site-empty{padding:16px;text-align:center;color:#9a948a;font-weight:600;font-size:13px}
-.bt-site{border:1px solid rgba(21,18,15,.14);text-align:left;background:#fff;color:#15120F;border-radius:13px;padding:14px 15px;display:flex;align-items:center;gap:12px;width:100%;cursor:pointer;margin-bottom:8px;font-family:inherit}
-.bt-site.on{background:#15120F;color:#F2EDE3;border-color:#15120F}
-.bt-site.other{border-style:dashed;border-color:rgba(21,18,15,.3)}
-.bt-site-name{display:block;font-size:16px;font-weight:800;letter-spacing:-.01em}
-.bt-site-city{display:block;font-size:13px;font-weight:600;color:#6E6A63}
-.bt-site.on .bt-site-city{color:#a59c86}
-.bt-rdo{flex:none;width:22px;height:22px;border:2px solid rgba(21,18,15,.2);border-radius:50%;display:flex;align-items:center;justify-content:center}
-.bt-site.on .bt-rdo{width:26px;height:26px;border:none;background:#FFC21A;color:#15120F;font-weight:900;font-size:14px;border-radius:50%}
-.bt-rdo-plus{flex:none;width:26px;height:26px;background:#15120F;color:#FFC21A;border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:17px}
-
-/* « Autre » choisi : on demande de quoi il s'agit. Facultatif — un nom qui
-   manque ne doit jamais retenir des heures. Rempli, il devient un vrai
-   chantier, visible du bureau comme les autres. */
-.bt-nommer{margin:-2px 0 10px;padding:13px 14px;border:1.5px dashed rgba(21,18,15,.3);border-radius:13px;background:#FBF8F1}
-.bt-nommer-t{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#6E6A63;font-weight:700;margin-bottom:9px}
-.bt-nommer-in{width:100%;font-family:'Archivo',sans-serif;font-size:15px;font-weight:600;padding:11px 13px;border:1.5px solid rgba(21,18,15,.18);border-radius:11px;background:#fff;outline:none;color:#15120F;margin-bottom:8px}
-.bt-nommer-in::placeholder{color:#b3aca0;font-weight:500}
-.bt-nommer-in:focus{border-color:#15120F}
-.bt-nommer-go{width:100%;border:0;background:#15120F;color:#FFC21A;border-radius:11px;padding:12px;font-family:inherit;font-size:14.5px;font-weight:800;cursor:pointer}
-.bt-nommer-go:disabled{background:#d9d3c7;color:#8a8378;cursor:default}
-.bt-nommer-s{display:block;font-size:12px;font-weight:500;color:#8a8378;margin-top:8px;line-height:1.4}
-
-.bt-times{display:flex;gap:9px;align-items:stretch}
-.bt-timecard{flex:1;border:1.5px solid rgba(21,18,15,.16);background:#fff;border-radius:13px;padding:11px 14px;display:flex;flex-direction:column;gap:3px;cursor:pointer;text-align:left;font-family:inherit}
-.bt-timecard:active{border-color:#15120F}
-.bt-timecard .k{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#9a948a;font-weight:700}
-.bt-timecard .v{font-family:'JetBrains Mono',monospace;font-size:25px;font-weight:700;color:#15120F;line-height:1}
-.bt-dur{flex:none;width:84px;background:#15120F;border-radius:13px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#FFC21A}
-.bt-dur .k{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:#a59c86;font-weight:700}
-.bt-dur .v{font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:700}
-.bt-times-hint{text-align:center;font-size:12.5px;color:#9a948a;font-weight:600;margin-top:8px}
-
-.bt-pause-auto{display:flex;align-items:center;gap:8px;margin-top:16px;background:rgba(255,194,26,.12);border:1px solid rgba(255,194,26,.4);border-radius:12px;padding:11px 13px;font-size:12.5px;font-weight:700;color:#7a5e00}
-/* Lot 1 : la pause se déclare dans la fiche (et se demande à l'envoi après 6 h d'affilée).
-   Lot 3bis : ses puces vivent dans components/pause-picker.tsx (fiche, question, bureau). */
-.bt-plan-warn{margin-top:6px;font-size:12px;font-weight:700;color:#9a3b14}
-
-.bt-recep{display:flex;gap:8px}
-.bt-recep-b{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:5px;border:1.5px solid rgba(21,18,15,.16);background:#fff;border-radius:13px;padding:11px 6px;font-weight:800;font-size:12.5px;color:#6E6A63;cursor:pointer;font-family:inherit;text-align:center;line-height:1.1}
-.bt-recep-b svg{opacity:.65}
-.bt-recep-b.encours.on{border-color:#C98A12;background:#FFF6E0;color:#8a6d05}
-.bt-recep-b.sans.on{border-color:#1F7A4D;background:#EAF6EF;color:#1F7A4D}
-.bt-recep-b.avec.on{border-color:#C0461F;background:#FCEADF;color:#C0461F}
-.bt-recep-b.on svg{opacity:1}
-.bt-recep-hint{margin-top:8px;font-size:12.5px;font-weight:600;color:#C0461F;background:#FCEADF;border:1px solid #F0C49A;border-radius:11px;padding:10px 12px}
-.bt-recep-hint strong{font-weight:900}
-.bt-note{width:100%;font-family:inherit;font-size:15.5px;font-weight:500;color:#15120F;padding:14px 15px;border:1.5px solid rgba(21,18,15,.16);border-radius:13px;background:#fff;outline:none;resize:none}
-
-.bt-save{width:100%;border:none;background:#FFC21A;border-radius:13px;padding:15px;font-weight:900;font-size:16px;color:#15120F;box-shadow:0 4px 0 #C99300;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;font-family:inherit}
-.bt-save:disabled{opacity:.6;cursor:default}
-.bt-retire{width:100%;background:transparent;border:none;color:#C0461F;font-weight:800;font-size:14px;padding:10px;cursor:pointer;margin-bottom:8px;font-family:inherit}
-.bt-ed-dock-row{display:flex;gap:8px;margin-bottom:9px}
-.bt-ed-doc{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:7px;border:1.5px solid #15120F;background:#fff;border-radius:12px;padding:12px;font-weight:800;font-size:14px;color:#15120F;cursor:pointer;font-family:inherit}
-.bt-ed-doc:active{transform:translateY(1px)}
-.bt-ed-trash{flex:none;width:50px;display:inline-flex;align-items:center;justify-content:center;border:1.5px solid rgba(192,70,31,.45);background:#fff;color:#C0461F;border-radius:12px;cursor:pointer}
-.bt-ed-trash:hover{background:#F4D9D1}
-.bt-ed-trash:disabled{opacity:.5}
-
-/* ===== TIROIR MOLETTE ===== */
-.bt-overlay{position:absolute;inset:0;background:rgba(21,18,15,.5);z-index:8;opacity:0;pointer-events:none;transition:opacity .25s ease}
-.bt-overlay.open{opacity:1;pointer-events:auto}
-.bt-sheet{position:absolute;left:0;right:0;bottom:0;background:#15120F;border-radius:24px 24px 0 0;z-index:9;padding:12px 16px calc(env(safe-area-inset-bottom) + 22px);transform:translateY(106%);transition:transform .32s cubic-bezier(.22,1,.36,1)}
-.bt-sheet.open{transform:translateY(0)}
-.bt-grip{width:42px;height:5px;background:#3a352f;border-radius:3px;margin:2px auto 12px}
-.bt-seg{display:flex;background:#211D19;border-radius:11px;padding:4px;gap:4px;margin-bottom:8px}
-.bt-segb{flex:1;border:none;background:transparent;color:#a59c86;border-radius:8px;padding:9px;font-weight:800;font-size:13px;cursor:pointer;text-align:center;font-family:inherit}
-.bt-segb .lbl{display:block}
-.bt-segb .v{font-family:'JetBrains Mono',monospace;font-size:17px;font-weight:700;color:#6E6A63;display:block;margin-top:1px}
-.bt-segb.on{background:#000}
-.bt-segb.on .lbl{color:#FFC21A}
-.bt-segb.on .v{color:#F2EDE3}
-.bt-sheet-dur{display:flex;align-items:center;justify-content:center;gap:7px;margin-bottom:2px}
-.bt-sheet-dur .k{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#a59c86;font-weight:700}
-.bt-sheet-dur .v{font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700;color:#FFC21A}
-.bt-molette{display:flex;justify-content:center;padding:4px 0 2px}
-/* L'heure exacte (pointage à la minute) quand la molette, elle, n'affiche que
-   les quarts d'heure. Tant qu'on ne tourne pas la molette, c'est elle qui reste. */
-.bt-molette-exact{text-align:center;font-size:12px;font-weight:700;color:#a59c86;margin-top:4px}
-.bt-molette-exact b{font-family:'JetBrains Mono',monospace;color:#FFC21A}
-`;
-
-// Toujours le MÊME objet (lot 10) : React réécrit le contenu d'un <style> dès que
-// l'objet `dangerouslySetInnerHTML` change — la feuille entière était reparsée à
-// chaque rendu de la journée (relectures, chrono…), d'où des saccades.
-const DAY_CSS_HTML = { __html: DAY_CSS };
 
 /**
  * Même contenu ? (lot 10) Les relectures automatiques (chrono, retour sur
@@ -592,14 +365,6 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
   const [docsWs, setDocsWs] = useState<{ id: string; name: string; entryId: string | null } | null>(null);
   // Lot 11 : la carte dont le formulaire « Lever la réserve » est ouvert.
   const [liftingId, setLiftingId] = useState<string | null>(null);
-  // « Je commence » sur une carte (lot 9) : la carte en cours de démarrage, et
-  // le départ mis en attente derrière l'information sur l'endroit (CNIL).
-  const [starting, setStarting] = useState<string | null>(null);
-  const [geoAsk, setGeoAsk] = useState<{ worksiteId: string; planningId: string | null; key: string } | null>(null);
-  // « Je commence sur un autre chantier » : le choix du chantier quand aucune
-  // carte ne convient (journée vide, chantier non prévu, pas de planning).
-  const [pickStart, setPickStart] = useState(false);
-  const [pickQuery, setPickQuery] = useState('');
   // Suppression d'une intervention : jamais sans confirmation (gant de chantier,
   // écran mouillé — un appui involontaire ne doit pas effacer une demi-journée).
   const [confirmDel, setConfirmDel] = useState<
@@ -1768,7 +1533,6 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
   const pendingTotal = pendingEntries.reduce((s, e) => s + e.total_minutes, 0);
   const totalMinutes = serverTotal + pendingTotal;
   const nbChantiers = liveEntries.length + pendingEntries.length;
-  const hasDrafts = liveEntries.some((e) => e.status === 'draft') || pendingEntries.length > 0;
   const hasRealDrafts = liveEntries.some((e) => e.status === 'draft' && !e.locked);
   const allSubmitted = liveEntries.length > 0 && liveEntries.every((e) => e.status !== 'draft') && pendingEntries.length === 0;
   const frozen = allSubmitted; // a sent day stays frozen; every change re-asks to confirm
@@ -1825,13 +1589,6 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
   const liveSlotId = livePlace?.slotId ?? null;
   const liveSince = livePlace?.since ?? '';
   const liveSynthetic = !!livePlace && !liveSlotId;
-  // Un seul chrono par salarié : « Je commence » n'apparaît que sur le jour
-  // courant, en ligne, mois ouvert, et quand on SAIT qu'aucun chrono ne tourne.
-  // Lot 12 : le téléphone ne COMMENCE plus de journée. Avec une tablette, on
-  // commence en scannant le QR ; sans tablette, on saisit ses heures (« + »).
-  // Un pointage ouvert se termine sur la petite carte (LiveTimer).
-  const canStartLive = false as boolean;
-
   /**
    * Les chantiers prévus par le bureau que le salarié n'a pas ouverts : ils
    * partent AVEC le reste de la feuille.
@@ -1921,10 +1678,6 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
     ? choosable.filter((w) => w.client_name.toLowerCase().includes(cq) || (w.city || '').toLowerCase().includes(cq))
     : choosable;
   const autreId = worksites.find((w) => w.client_name === OTHER_NAME)?.id || '';
-  const pq = pickQuery.trim().toLowerCase();
-  const pickWorksites = pq
-    ? choosable.filter((w) => w.client_name.toLowerCase().includes(pq) || (w.city || '').toLowerCase().includes(pq))
-    : choosable;
 
   /**
    * « Autre » nommé : on en fait un vrai chantier.
@@ -1952,62 +1705,6 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
       setCreationChantier(false);
     }
   };
-
-  /**
-   * « Je commence » sur la carte d'un chantier (lot 9).
-   *
-   * Remplace le bloc « Pointer en direct » (liste déroulante + bouton) : le
-   * chantier est celui qu'on touche. Le chrono passe par lib/live-session.ts,
-   * exactement comme l'Assistant BEMEXO et comme avant.
-   *
-   * L'INFORMATION SUR L'ENDROIT RESTE AVANT LA PREMIÈRE COLLECTE (lot 6, CNIL) :
-   * elle est attachée au chrono, et au chrono seulement. « + » (heures à la
-   * main, sans chrono) ne demande jamais l'endroit, donc ne l'affiche pas.
-   *
-   * Sans réseau, pas de chrono : l'heure de départ est posée par le serveur,
-   * jamais par l'horloge du téléphone. On renvoie vers « + ».
-   */
-  const startOnCard = async (worksiteId: string, planningId: string | null, key: string, infoVue = false) => {
-    if (!user?.company_id) return;
-    const sansReseau = 'Pas de réseau : le pointage en direct en a besoin. Note tes heures avec le bouton +.';
-    if (!navigator.onLine) { toast.error(sansReseau); return; }
-    setStarting(key);
-    try {
-      // L'interrupteur « position au pointage » est relu AU GESTE (au plus une requête par 30 s) :
-      // le patron qui l'éteint pour réduire la collecte doit être suivi tout de suite, pas après
-      // des heures d'écran ouvert. Lecture impossible : on garde la valeur de l'écran.
-      const positionVoulue = (await loadCompanySettings(user.company_id, 'worker', { maxAgeMs: 30_000 }))
-        ?.positionTrackingEnabled ?? positionActive;
-      if (positionVoulue && !infoVue && !geoInfoSeen(user.id)) { setGeoAsk({ worksiteId, planningId, key }); return; }
-      const r = await startLiveSession({
-        userId: user.id, companyId: user.company_id, worksiteId, planningId, workDate: date, positionActive: positionVoulue,
-      });
-      // Relu dans tous les cas : un chrono déjà ouvert (23505) doit se montrer.
-      announceLiveChange();
-      if (r.running) { toast.error('Un pointage est déjà en cours.'); return; }
-      toast.success('Pointage démarré');
-    } catch (e) {
-      const msg = (e as { message?: string })?.message || '';
-      toast.error(!navigator.onLine || /failed to fetch|network/i.test(msg) ? sansReseau : msg || 'Impossible de démarrer le pointage.');
-    } finally {
-      setStarting(null);
-    }
-  };
-
-  /** Le bouton « Je commence » d'une carte. `stopPropagation` : la carte, elle, ouvre la fiche. */
-  const startButton = (worksiteId: string | null | undefined, planningId: string | null, key: string) => (
-    canStartLive && worksiteId ? (
-      <button
-        type="button"
-        className="bt-iv-go"
-        data-testid="card-start"
-        disabled={starting !== null}
-        onClick={(ev) => { ev.stopPropagation(); startOnCard(worksiteId, planningId, key); }}
-      >
-        {starting === key ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" fill="currentColor" />} Je commence
-      </button>
-    ) : null
-  );
 
   /** La carte où le chrono tourne n'ouvre pas de fiche : ses heures s'écrivent à « J'ai fini ». */
   const tapLive = () => toast.message('Pointage en cours : touche « J’ai fini » en haut quand tu as terminé.');
@@ -2113,7 +1810,6 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
   if (loading) {
     return (
       <div className="bt-day">
-        <style dangerouslySetInnerHTML={DAY_CSS_HTML} />
         <div className="bt-day-scroll space-y-3">
           <Skeleton className="h-28 w-full rounded-2xl" />
           <Skeleton className="h-16 w-full rounded-2xl" />
@@ -2125,7 +1821,6 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
 
   return (
     <div className="bt-day">
-      <style dangerouslySetInnerHTML={DAY_CSS_HTML} />
 
       {/* ===== BANDEAU RÉSEAU ===== */}
       {!isOnline && (
@@ -2320,7 +2015,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
                 {!isLive && p.state === 'incomplete' && (
                   <div className="bt-plan-warn" data-testid="card-planned-incomplete">Heures à préciser : ouvre-le pour les mettre.</div>
                 )}
-                {isLive ? <LiveLine since={liveSince} /> : startButton(p.worksite_id, p.id, item.key)}
+                {isLive ? <LiveLine since={liveSince} /> : null}
               </div>
             );
           }
@@ -2457,10 +2152,6 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
                 {entry.reception === 'sans' && <div className="bt-iv-reserve sans">✓ Sans réserve</div>}
                 {entry.reception === 'en_cours' && <div className="bt-iv-reserve encours">🔨 Chantier en cours</div>}
                 {entry.observation && <div className="bt-iv-note">{entry.observation}</div>}
-                {/* Reprendre ce chantier (l'après-midi, après la pause) : un
-                    nouveau chrono, rattaché au prévu restant de ce chantier s'il
-                    y en a un. La ligne déjà notée, elle, ne bouge pas. */}
-                {startButton(entry.worksite_id, plannedTodo.find((p) => p.worksite_id === entry.worksite_id)?.id ?? entry.planning_id ?? null, item.key)}
               </div>
             );
           }
@@ -2517,25 +2208,10 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
         {/* Lot 4 : les tâches du jour ajoutées par le bureau, « Fait » à cocher. */}
         <MyTasks tasks={missions.tasks} online={isOnline} busyId={missions.busyId} onToggle={missions.toggle} />
 
-        {/* Journée SANS AUCUNE carte (pas de planning, rien de saisi) : le
-            chrono se lance quand même, SANS écrire d'heures à la main (« + »
-            puis « Je commence » ferait deux lignes pour le même travail). Même
-            chemin et mêmes garde-fous que sur une carte. Dès qu'il y a une
-            carte, « Je commence » est sur la carte (demande d'Ergun : pas de
-            liste de chantiers sous les cartes). */}
-        {canStartLive && isEmpty && plannedTodo.length === 0 && (
-          <div style={{ textAlign: 'center' }}>
-            <button type="button" className="bt-ghostbtn" data-testid="start-other" disabled={starting !== null}
-              onClick={() => { setPickQuery(''); setPickStart(true); }}>
-              {starting?.startsWith('o:') ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" fill="currentColor" />} Je commence sur un autre chantier
-            </button>
-          </div>
-        )}
-
         {/* Dupliquer cette journée */}
         {!isEmpty && !monthLocked && (
           <div style={{ textAlign: 'center' }}>
-            <button type="button" className="bt-dup" data-guide="journee.copier" onClick={() => { setCopyDates([]); setRepeatOpen(true); }}>
+            <button type="button" className="bt-dup" data-guide="journee.copier" onPointerDown={() => CalendarLazy.preload()} onClick={() => { setCopyDates([]); setRepeatOpen(true); }}>
               <Copy className="h-4 w-4" /> Dupliquer cette journée
             </button>
           </div>
@@ -2811,7 +2487,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
           </DialogHeader>
           <p className="text-sm text-muted-foreground">Choisis les jours où copier cette journée (mêmes chantiers + heures).</p>
           <div className="flex justify-center">
-            <Calendar mode="multiple" selected={copyDates} onSelect={(d) => setCopyDates(d || [])} locale={fr} weekStartsOn={1} disabled={{ before: new Date() }} />
+            <CalendarLazy mode="multiple" selected={copyDates} onSelect={(d) => setCopyDates(d || [])} locale={fr} weekStartsOn={1} disabled={{ before: new Date() }} />
           </div>
           <Button className="w-full h-11" data-guide="copier.valider" disabled={copying || copyTargetStrs.length === 0} onClick={() => copyToDates(copyTargetStrs)}>
             {copying ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Copy className="h-4 w-4 mr-2" />}
@@ -3028,47 +2704,6 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
           </div>
         </DialogContent>
       </Dialog>
-
-      {/* Le chantier du chrono, quand aucune carte ne convient. Le planning du
-          jour sur ce chantier est rattaché s'il existe (même règle que les
-          cartes), sinon aucun : la carte verte « à part » le montrera. */}
-      <Dialog open={pickStart} onOpenChange={setPickStart}>
-        <DialogContent className="max-w-sm" data-testid="start-other-sheet">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><Play className="h-5 w-5" /> Sur quel chantier&nbsp;?</DialogTitle>
-          </DialogHeader>
-          <input className="bt-site-search" placeholder="Rechercher un chantier…" value={pickQuery} onChange={(e) => setPickQuery(e.target.value)} />
-          <div style={{ maxHeight: '52vh', overflowY: 'auto' }}>
-            {pickWorksites.length === 0 && <div className="bt-site-empty">Aucun chantier trouvé</div>}
-            {pickWorksites.map((ws) => {
-              const isOther = ws.client_name === OTHER_NAME;
-              const planningId = plannedTodo.find((p) => p.worksite_id === ws.id)?.id
-                ?? planning.find((p) => p.worksite_id === ws.id && !p.absence_type)?.id ?? null;
-              return (
-                <button key={ws.id} type="button" className={`bt-site${isOther ? ' other' : ''}`}
-                  onClick={() => { setPickStart(false); startOnCard(ws.id, planningId, `o:${ws.id}`); }}>
-                  <span style={{ flex: 1, minWidth: 0 }}>
-                    <span className="bt-site-name">{isOther ? 'Autre chantier' : ws.client_name}</span>
-                    <span className="bt-site-city">{isOther ? 'Travail non prévu, à préciser' : (ws.city || '')}</span>
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-          <p className="text-xs text-muted-foreground">Le chrono démarre tout de suite&nbsp;; rien n&apos;est compté avant « J&apos;ai fini ».</p>
-        </DialogContent>
-      </Dialog>
-
-      {/* L'information sur l'endroit, UNE fois, avant le premier chrono (lot 6) :
-          le départ attend « J'ai compris », puis repart tout seul. */}
-      {geoAsk && user && (
-        <GeoInfoDialog onOk={() => {
-          markGeoInfoSeen(user.id);
-          const g = geoAsk;
-          setGeoAsk(null);
-          startOnCard(g.worksiteId, g.planningId, g.key, true);
-        }} />
-      )}
 
       {/* La pièce est rattachée au jour affiché, et à l'intervention quand elle
           existe déjà en base. Un créneau prévu ou une saisie encore hors ligne

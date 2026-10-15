@@ -31,6 +31,7 @@
 //   P1  impression semaine, jour + salarié (feuille de mission) : heures imprimées, triées
 //   M1  390 px : la fenêtre « + » et « Ma journée » sans débordement
 import http from 'node:http'; import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
+import { ouvrirVue } from './navigation-salarie.mjs';
 let chromium;
 try { ({ chromium } = await import('playwright-core')); } catch {
   ({ chromium } = await import(`${process.env.PW_CORE || '/opt/node22/lib/node_modules/playwright/node_modules/playwright-core'}/index.mjs`));
@@ -364,8 +365,7 @@ const dlg = (p = op) => p.locator('[role=dialog]').last();
 const closeDlg = async (p = op) => { await p.keyboard.press('Escape'); await p.waitForTimeout(350); };
 const openWorker = async () => { await wp.goto(`http://localhost:${PORT}/poseur`); await wp.waitForSelector('.bt-total', { timeout: 20000 }); await wp.waitForTimeout(1100); };
 const openWeek = async () => {
-  await wp.getByRole('button', { name: 'Mon compte et menu' }).click();
-  await wp.getByRole('menuitem', { name: 'Ma semaine' }).click(); await wp.waitForTimeout(1500);
+  await ouvrirVue(wp, 'Ma semaine', { apres: 1500 });
 };
 const stats = async () => txt(op.locator('.bt-pl-stats').first());
 const setTime = async (p, loc, v) => { await loc.fill(v); await loc.press('Tab'); await p.waitForTimeout(150); };
@@ -636,7 +636,7 @@ section('S2 · « Ma semaine » : « 10:00–11:30 · Texte », au bon jour');
   const wide = await worker.newPage(); await wide.setViewportSize({ width: 1280, height: 800 });
   wide.on('pageerror', (e) => errors.push(`salarié large : ${e.message}`));
   await wide.goto(`http://localhost:${PORT}/poseur`); await wide.waitForSelector('.bt-total', { timeout: 20000 }); await wide.waitForTimeout(900);
-  await wide.getByRole('button', { name: 'Mon compte et menu' }).click(); await wide.getByRole('menuitem', { name: 'Ma semaine' }).click(); await wide.waitForTimeout(1500);
+  await ouvrirVue(wide, 'Ma semaine', { apres: 1500 });
   const g = (await wide.locator('[data-testid=week-task]:visible').allInnerTexts()).map((s) => s.replace(/\s+/g, ' ').trim());
   check(g.length === 4 && g[0].includes('Appeler le client') && g[0].includes('08:00–08:30') && g[3] === '☐ Ranger le dépôt', `grille large : 4 tâches, triées (${g.join(' / ')})`);
   await wide.close();
@@ -651,7 +651,7 @@ section('S3 · « Ma semaine » : une panne de lecture des tâches n’emporte p
   const wk = await worker.newPage();
   wk.on('pageerror', (e) => errors.push(`salarié (panne) : ${e.message}`));
   await wk.goto(`http://localhost:${PORT}/poseur`); await wk.waitForSelector('.bt-total', { timeout: 20000 }); await wk.waitForTimeout(900);
-  await wk.getByRole('button', { name: 'Mon compte et menu' }).click(); await wk.getByRole('menuitem', { name: 'Ma semaine' }).click(); await wk.waitForTimeout(1500);
+  await ouvrirVue(wk, 'Ma semaine', { apres: 1500 });
   const meet = (await wk.locator('[data-testid=week-meeting]:visible').allInnerTexts()).map((x) => x.replace(/\s+/g, ' ').trim());
   check(meet.length === 1 && meet[0].includes('Réunion d’équipe'), `la réunion de jeudi reste affichée (${meet.join(' / ') || 'aucune'})`);
   check(await wk.locator('[data-testid=week-task]:visible').count() === 0, 'pas de tâche affichée (lecture en panne), sans erreur');

@@ -21,6 +21,7 @@
 // des fenêtres sautées est donnée à la fin. Échec si un débordement est trouvé, ou si trop peu de
 // fenêtres ont pu être mesurées (sonde aveugle).
 import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path';
+import { BOUTON_MENU_COMPTE } from './navigation-salarie.mjs';
 let chromium;
 try { ({ chromium } = await import('playwright-core')); } catch {
   ({ chromium } = await import(`${process.env.PW_CORE || '/opt/node22/lib/node_modules/playwright/node_modules/playwright-core'}/index.mjs`));
@@ -364,7 +365,7 @@ const ADMIN = [
 // ─── Les fenêtres du SALARIÉ (/poseur) ─────────────────────────────────────────
 const tapEntry = (p) => step(p, ['[data-testid=card-entry]']);
 const WORKER = [
-  { id: 'conges-salarie', name: 'Mes congés (salarié)', shot: true, open: async (p) => (await step(p, ['button[aria-label="Mon compte et menu"]']))
+  { id: 'conges-salarie', name: 'Mes congés (salarié)', shot: true, open: async (p) => (await step(p, [BOUTON_MENU_COMPTE]))
     && (await step(p, ['[role=menuitem]', 'Mes congés']))
     && (await step(p, ['[role=dialog] button', 'Faire une demande']) || true) },
   { id: 'dupliquer', name: 'Dupliquer cette journée', shot: true, open: (p) => step(p, ['.bt-dup']) },

@@ -40,6 +40,7 @@
 //   W4  « Ma semaine » : la ligne de la réunion, au bon jour
 //   W5  tâche retirée par le bureau pendant qu'on coche : message, liste relue
 import http from 'node:http'; import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
+import { ouvrirVue } from './navigation-salarie.mjs';
 let chromium;
 try { ({ chromium } = await import('playwright-core')); } catch {
   ({ chromium } = await import(`${process.env.PW_CORE || '/opt/node22/lib/node_modules/playwright/node_modules/playwright-core'}/index.mjs`));
@@ -361,8 +362,7 @@ const closeDlg = async (p = op) => { await p.keyboard.press('Escape'); await p.w
 const refreshOffice = async () => { await op.evaluate(() => document.dispatchEvent(new Event('visibilitychange'))); await op.waitForTimeout(900); };
 const openWorker = async () => { await wp.goto(`http://localhost:${PORT}/poseur`); await wp.waitForSelector('.bt-total', { timeout: 20000 }); await wp.waitForTimeout(1100); };
 const openWeek = async () => {
-  await wp.getByRole('button', { name: 'Mon compte et menu' }).click();
-  await wp.getByRole('menuitem', { name: 'Ma semaine' }).click(); await wp.waitForTimeout(1500);
+  await ouvrirVue(wp, 'Ma semaine', { apres: 1500 });
 };
 const stats = async () => txt(op.locator('.bt-pl-stats').first());
 const setTime = async (loc, v) => { await loc.fill(v); await loc.press('Tab'); await op.waitForTimeout(120); };
