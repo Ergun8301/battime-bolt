@@ -1,9 +1,14 @@
 name: CI
 
-# Gate every PR targeting main with a typecheck + production build + page-weight budgets.
+# Contrôle de chaque PR qui vise main OU une branche d'intégration : typecheck + build de production + budgets de poids, et (job « deno »)
+# les tests du registre de l'assistant. Il n'existe pas de branche « integration » seule : les lots sont fusionnés dans integration/<nom>
+# (integration/bemexo-ia, integration/chantier-3a-4…), d'où le motif integration/**. Pour que ces contrôles BLOQUENT, il faut aussi activer
+# « Require status checks to pass » sur main et sur integration/** (réglage du dépôt GitHub, hors de ce fichier) : sans cela ils avertissent
+# seulement.
 on:
   pull_request:
-    branches: [main]
+    # main (production) et toutes les branches d'intégration ; les guillemets sont obligatoires, « ** » est un caractère spécial en YAML.
+    branches: [main, 'integration/**']
 
 jobs:
   typecheck-build:
@@ -33,3 +38,45 @@ jobs:
 
       - name: Budgets de poids
         run: npm run budget -- build.log
+
+  # Le registre de l'assistant : le test de couverture (T1 à T11), le scanner de l'interface et les outils existants. Sans réseau, sans base,
+  # sans npm ci : seul Deno (téléchargé par npx, comme les scripts « test:* » de package.json) lit les sources du dépôt.
+  deno:
+    name: Registre de l'assistant (Deno)
+    runs-on: ubuntu-latest
+    steps:
+      # L'historique complet : l'étape suivante compare la PR à sa branche de base (git diff base...HEAD), ce que le clone superficiel ne permet pas.
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # npx a besoin de Node, déjà présent sur ubuntu-latest ; la version est fixée comme dans le job précédent pour que les deux se comportent pareil.
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Une dette dont l'échéance est passée bloque seulement les PR qui touchent le registre ou l'interface (conception §2.3, T3) : un correctif
+      # de sécurité sans rapport ne doit pas tomber le jour de l'échéance. On le décide ici ; le test lit REGISTRE_DETTES_PERIMEES.
+      - name: La PR touche-t-elle le registre ou l'interface ?
+        id: touche
+        shell: bash
+        run: |
+          base="origin/${{ github.base_ref }}"
+          if git diff --name-only "$base"...HEAD | grep -Eq '^(supabase/functions/_shared/registre|app/|components/|lib/|hooks/)'; then
+            echo "dettes=bloquer" >> "$GITHUB_OUTPUT"
+          else
+            echo "dettes=avertir" >> "$GITHUB_OUTPUT"
+          fi
+
+      # --allow-read : les tests lisent le code (app/, components/, lib/) ; --allow-env : réglages REGISTRE_* du test de couverture. Rien d'autre :
+      # ni réseau, ni écriture. Les trois fichiers sont ceux de « npm run test:couverture » et « npm run test:registre » (package.json).
+      - name: Tests du registre
+        env:
+          REGISTRE_DETTES_PERIMEES: ${{ steps.touche.outputs.dettes }}
+        run: >-
+          npx -y deno@2 test --allow-env --allow-read
+          supabase/functions/_shared/registre-couverture.test.ts
+          supabase/functions/_shared/registre-surfaces.test.ts
+          supabase/functions/_shared/registre-outils.test.ts

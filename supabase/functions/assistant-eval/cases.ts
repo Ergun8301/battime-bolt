@@ -16,6 +16,13 @@
 // Deux phrases LONGUES portent aussi `history` (sl17 français à « demi-heure de pause », st14 turc « Yarın da aynısı ») : le profil long,
 // lui aussi, voit la conversation. sc13 et sc14 sont la RÉPONSE à une question de l'assistant que l'écran recolle à la demande d'origine
 // (« Mets Karim demain, Villa Dupont ») ; sc15 est une plage horaire nue, sans « pareil » (« Et l'après-midi de 13h à 16h30 »).
+//
+// Livraison 3a de l'étape 3 (docs/ia-etape3/00-conception-etape3.md §2.5) : 34 cas AJOUTÉS EN FIN DE JEU : be01–be19 (bureau), se01–se06 (salarié),
+// ov01–ov05 (OUVRIR un écran, bureau et salarié) et st15–st18 (turc, profil long : un id st, tool-domains.test.ts l'exige). Pas de b48 ni de s34 : saisie-profil.test.ts
+// et worker-turn.test.ts reconnaissent « les 80 phrases d'origine » à leur id b/s et exigent qu'elles restent 80. Les 126 d'avant ne bougent pas, ni leur ordre. Aucun comportement de production ne change : ces cas MESURENT l'assistant tel qu'il est, pour que 3b (ouvrir un
+// écran), 3c (lire) et 3d (écrire) aient un « avant » chiffré. Ils couvrent : les 5 outils du bureau qui n'avaient AUCUN cas ; le côté mince des paires
+// d'outils « proches » du registre ; l'OUVERTURE d'un écran (« ouvre la fiche de Karim »), qui aujourd'hui répond par un LIEN ou un guide, jamais par
+// une écriture ; les « Réserves » du salarié ; du turc côté salarié.
 
 import type { MessageHistorique } from '../_shared/assistant-history.ts';
 
@@ -27,6 +34,11 @@ export const FILES = {
   facture: { mime: 'application/pdf', base64: 'JVBERi0xLjQKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50IDEgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCA1OTUgODQyXSAvQ29udGVudHMgNCAwIFIgL1Jlc291cmNlcyA8PCAvRm9udCA8PCAvRjEgNSAwIFIgPj4gPj4gPj4KZW5kb2JqCjQgMCBvYmoKPDwgL0xlbmd0aCAyNTkgPj4Kc3RyZWFtCkJUIC9GMSAxNCBUZiA1MCA3ODAgVGQgMTggVEwgKFBMT01CRVJJRSBNQVJUSU4gU0FSTCkgVGogVCogKEZBQ1RVUkUgTi4gMjAyNi0xMTgpIFRqIFQqIChDbGllbnQgOiBQaWVycmUtUGF1bCBKYWNxdWVzLCBWaXJpYXQpIFRqIFQqIChSZW1wbGFjZW1lbnQgY2hhdWZmZS1lYXUgMjAwIEwpIFRqIFQqIChUb3RhbCBUVEMgOiAxIDI0MCwwMCBFVVIpIFRqIFQqIChBQ1FVSVRURUUgLSBQYXllZSBsZSAyOC8wOS8yMDI2IHBhciB2aXJlbWVudCkgVGogVCogRVQKZW5kc3RyZWFtCmVuZG9iago1IDAgb2JqCjw8IC9UeXBlIC9Gb250IC9TdWJ0eXBlIC9UeXBlMSAvQmFzZUZvbnQgL0hlbHZldGljYSA+PgplbmRvYmoKeHJlZgowIDYKMDAwMDAwMDAwMCA2NTUzNSBmIAowMDAwMDAwMDA5IDAwMDAwIG4gCjAwMDAwMDAwNTggMDAwMDAgbiAKMDAwMDAwMDExNSAwMDAwMCBuIAowMDAwMDAwMjQxIDAwMDAwIG4gCjAwMDAwMDA1NTEgMDAwMDAgbiAKdHJhaWxlcgo8PCAvU2l6ZSA2IC9Sb290IDEgMCBSID4+CnN0YXJ0eHJlZgo2MjEKJSVFT0YK' },
   devis: { mime: 'application/pdf', base64: 'JVBERi0xLjQKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50IDEgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCA1OTUgODQyXSAvQ29udGVudHMgNCAwIFIgL1Jlc291cmNlcyA8PCAvRm9udCA8PCAvRjEgNSAwIFIgPj4gPj4gPj4KZW5kb2JqCjQgMCBvYmoKPDwgL0xlbmd0aCAyNzEgPj4Kc3RyZWFtCkJUIC9GMSAxNCBUZiA1MCA3ODAgVGQgMTggVEwgKEJBVEktUkVOT1YpIFRqIFQqIChERVZJUyBOLiBELTA0MTIpIFRqIFQqIChDbGllbnQgOiBNYWlzb24gR2FybmllciwgMTIgcnVlIGRlcyBMaWxhcywgNjkzMDAgQ2FsdWlyZSkgVGogVCogKFJlbm92YXRpb24gc2FsbGUgZGUgYmFpbikgVGogVCogKFRvdGFsIEhUIDogMTggNDAwLDAwIEVVUikgVGogVCogKE1haW4gZCBvZXV2cmUgZXN0aW1lZSA6IDE2MCBoZXVyZXMpIFRqIFQqIChWYWxhYmxlIDMgbW9pcykgVGogVCogRVQKZW5kc3RyZWFtCmVuZG9iago1IDAgb2JqCjw8IC9UeXBlIC9Gb250IC9TdWJ0eXBlIC9UeXBlMSAvQmFzZUZvbnQgL0hlbHZldGljYSA+PgplbmRvYmoKeHJlZgowIDYKMDAwMDAwMDAwMCA2NTUzNSBmIAowMDAwMDAwMDA5IDAwMDAwIG4gCjAwMDAwMDAwNTggMDAwMDAgbiAKMDAwMDAwMDExNSAwMDAwMCBuIAowMDAwMDAwMjQxIDAwMDAwIG4gCjAwMDAwMDA1NjMgMDAwMDAgbiAKdHJhaWxlcgo8PCAvU2l6ZSA2IC9Sb290IDEgMCBSID4+CnN0YXJ0eHJlZgo2MzMKJSVFT0YK' },
   photo: { mime: 'image/png', base64: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==' },
+  // Livraison 3a — deux BULLETINS DE PAIE FICTIFS (PDF d'une page, texte seul) : l'un d'un salarié qui existe (Karim, septembre), l'autre d'un
+  // futur salarié (Lucas, août). Employeur, noms et montants sont inventés ; le « n° de sécurité sociale » est un gabarit impossible (mois « 99 »),
+  // là pour vérifier qu'il n'entre JAMAIS dans un brouillon. Si Q7 (§8 du contrat) retire l'envoi du bulletin au modèle, les cas qui les utilisent changent.
+  bulletin: { mime: 'application/pdf', base64: 'JVBERi0xLjQKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50IDEgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCA1OTUgODQyXSAvQ29udGVudHMgNCAwIFIgL1Jlc291cmNlcyA8PCAvRm9udCA8PCAvRjEgNSAwIFIgPj4gPj4gPj4KZW5kb2JqCjQgMCBvYmoKPDwgL0xlbmd0aCA0MzMgPj4Kc3RyZWFtCkJUIC9GMSAxNCBUZiA1MCA3ODAgVGQgMTggVEwgKEJBVEktRVhFTVBMRSBTQVJMIC0gQlVMTEVUSU4gREUgUEFJRSkgVGogVCogKFBlcmlvZGUgOiBzZXB0ZW1icmUgMjAyNiAoZHUgMDEvMDkvMjAyNiBhdSAzMC8wOS8yMDI2KSkgVGogVCogKFNhbGFyaWUgOiBLYXJpbSBCRU5BTEkgLSBQb3NldXIpIFRqIFQqIChOLiBkZSBzZWN1cml0ZSBzb2NpYWxlIDogMSA5OSA5OSA5OSA5OTkgOTk5IDk5KSBUaiBUKiAoSGV1cmVzIHBheWVlcyA6IDE1MSw2NykgVGogVCogKFNhbGFpcmUgYnJ1dCA6IDIgMzEwLDQwIEVVUikgVGogVCogKENvdGlzYXRpb25zIHNhbGFyaWFsZXMgOiA1MDgsMjkgRVVSKSBUaiBUKiAoTmV0IGEgcGF5ZXIgYXZhbnQgaW1wb3QgOiAxIDgwMiwxMSBFVVIpIFRqIFQqIChDb3V0IHRvdGFsIGVtcGxveWV1ciA6IDMgMjgwLDE1IEVVUikgVGogRVQKZW5kc3RyZWFtCmVuZG9iago1IDAgb2JqCjw8IC9UeXBlIC9Gb250IC9TdWJ0eXBlIC9UeXBlMSAvQmFzZUZvbnQgL0hlbHZldGljYSA+PgplbmRvYmoKeHJlZgowIDYKMDAwMDAwMDAwMCA2NTUzNSBmIAowMDAwMDAwMDA5IDAwMDAwIG4gCjAwMDAwMDAwNTggMDAwMDAgbiAKMDAwMDAwMDExNSAwMDAwMCBuIAowMDAwMDAwMjQxIDAwMDAwIG4gCjAwMDAwMDA3MjUgMDAwMDAgbiAKdHJhaWxlcgo8PCAvU2l6ZSA2IC9Sb290IDEgMCBSID4+CnN0YXJ0eHJlZgo3OTUKJSVFT0YK' },
+  bulletinNouveau: { mime: 'application/pdf', base64: 'JVBERi0xLjQKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50IDEgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCA1OTUgODQyXSAvQ29udGVudHMgNCAwIFIgL1Jlc291cmNlcyA8PCAvRm9udCA8PCAvRjEgNSAwIFIgPj4gPj4gPj4KZW5kb2JqCjQgMCBvYmoKPDwgL0xlbmd0aCA0MjcgPj4Kc3RyZWFtCkJUIC9GMSAxNCBUZiA1MCA3ODAgVGQgMTggVEwgKEJBVEktRVhFTVBMRSBTQVJMIC0gQlVMTEVUSU4gREUgUEFJRSkgVGogVCogKFBlcmlvZGUgOiBhb3V0IDIwMjYgKGR1IDAxLzA4LzIwMjYgYXUgMzEvMDgvMjAyNikpIFRqIFQqIChTYWxhcmllIDogTHVjYXMgTU9SRUFVIC0gTWFjb24pIFRqIFQqIChOLiBkZSBzZWN1cml0ZSBzb2NpYWxlIDogMSA5OSA5OSA5OSA5OTkgOTk5IDk5KSBUaiBUKiAoSGV1cmVzIHBheWVlcyA6IDE1MSw2NykgVGogVCogKFNhbGFpcmUgYnJ1dCA6IDIgMTUwLDAwIEVVUikgVGogVCogKENvdGlzYXRpb25zIHNhbGFyaWFsZXMgOiA0NzMsMDAgRVVSKSBUaiBUKiAoTmV0IGEgcGF5ZXIgYXZhbnQgaW1wb3QgOiAxIDY3NywwMCBFVVIpIFRqIFQqIChDb3V0IHRvdGFsIGVtcGxveWV1ciA6IDMgMDUzLDI1IEVVUikgVGogRVQKZW5kc3RyZWFtCmVuZG9iago1IDAgb2JqCjw8IC9UeXBlIC9Gb250IC9TdWJ0eXBlIC9UeXBlMSAvQmFzZUZvbnQgL0hlbHZldGljYSA+PgplbmRvYmoKeHJlZgowIDYKMDAwMDAwMDAwMCA2NTUzNSBmIAowMDAwMDAwMDA5IDAwMDAwIG4gCjAwMDAwMDAwNTggMDAwMDAgbiAKMDAwMDAwMDExNSAwMDAwMCBuIAowMDAwMDAwMjQxIDAwMDAwIG4gCjAwMDAwMDA3MTkgMDAwMDAgbiAKdHJhaWxlcgo8PCAvU2l6ZSA2IC9Sb290IDEgMCBSID4+CnN0YXJ0eHJlZgo3ODkKJSVFT0YK' },
 };
 
 const C = 'co-eval';
@@ -340,6 +352,25 @@ const apresMidiDeSuite = (site: string, matin: [string, string], apresMidi: [str
   return vues === seul || vues === avecMatin ? null : `lignes : ${vues} (attendu « ${seul} » ou « ${avecMatin} » : le matin n'est qu'un brouillon, le chantier est celui d'avant)`;
 };
 
+// ── Livraison 3a : contrôles communs à plusieurs cas (le contrôle lui-même reste écrit dans le cas : act('x', …)) ──
+/**
+ * Le banc ne donne pas à `prepare` les lignes d'heures ENVOYÉES d'un salarié (son paramètre `entries`) : une correction d'heures porte donc
+ * toujours ce problème, et c'est la réponse voulue (comme « Choisissez l’intervention. » pour b47). On contrôle ce que le modèle a LU : salarié,
+ * jour, heures, motif. Si le banc fournit un jour ces lignes, ces trois cas devront attendre `[]`.
+ */
+const AUCUNE_LIGNE = 'Aucune heure envoyée ce jour-là à corriger.';
+/** Un n° de sécurité sociale (13 à 15 chiffres, espaces permis) n'entre JAMAIS dans un brouillon, quel que soit le champ. */
+const sansNir = (d: Record<string, unknown>) => (/[12](?:[\s.-]?\d){12,14}/.test(JSON.stringify(d)) ? 'un n° de sécurité sociale est entré dans le brouillon' : null);
+/** Un nombre, quelle que soit son écriture (2310.4, « 2310.40 ») : le modèle recopie un montant d'un PDF, sa mise en forme ne compte pas. */
+const nb = (d: Record<string, unknown>, k: string, v: number) => (Number(d[k]) === v ? null : `${k} = ${JSON.stringify(d[k])} (attendu ${v})`);
+/** FILES.bulletin : le bulletin de septembre 2026 de Karim, recopié tel quel (mois, brut, coût employeur, heures payées). */
+const coutDeKarim = (d: Record<string, unknown>) => all(eq(d, 'user_id', 'u-karim'), eq(d, 'mois', '2026-09'), nb(d, 'brut', 2310.4), nb(d, 'cout_employeur', 3280.15), nb(d, 'heures_payees', 151.67), sansNir(d));
+/** FILES.bulletinNouveau : le bulletin d'août 2026 d'un futur salarié, recopié dans le brouillon d'invitation (`bulletin`). */
+const bulletinDeLucas = (d: Record<string, unknown>) => {
+  const b = d.bulletin as Record<string, unknown> | null;
+  return b ? all(eq(b, 'mois', '2026-08'), nb(b, 'brut', 2150), nb(b, 'cout_employeur', 3053.25), nb(b, 'heures_payees', 151.67)) : 'bulletin = null (attendu les chiffres du bulletin)';
+};
+
 export const CASES: EvalCase[] = [
   // ════ BUREAU ════
   // Planning / interventions
@@ -598,4 +629,91 @@ export const CASES: EvalCase[] = [
   { id: 'sc15', cote: 'salarie', categorie: 'Suite de conversation', live: 'vide', phrase: 'Et l’après-midi de 13h à 16h30',
     history: tour(['me', 'Ce matin 7h30-12h chez Martin'], ['bot', 'Brouillon : 07:30–12:00 Bureau Martin. Vérifiez, puis enregistrez.']),
     check: draft(apresMidiDeSuite(W.martin, ['07:30', '12:00'], ['13:00', '16:30'])) },
+
+  // ════ LIVRAISON 3a DE L'ÉTAPE 3 : 34 cas ajoutés en fin de jeu (be, se, ov, st15–st18) ════
+  // ── Bureau (be01–be19) : les 5 outils qui n'avaient AUCUN cas ──
+  // corriger_pointage (« Réglages » = « Réglages / paie / réserves » de b26–b28) : le salarié lit le motif, donc il est toujours demandé. Hier = 2026-09-30.
+  { id: 'be01', cote: 'bureau', categorie: 'Réglages', phrase: 'karim a oublié de badger hier matin, corrige ses heures : 7h30 à 16h, motif badge oublié',
+    check: actAvecProblemes('corriger_pointage', [AUCUNE_LIGNE], (d) => all(eq(d, 'user_id', 'u-karim'), eq(d, 'date', '2026-09-30'), eq(d, 'debut', '07:30'), eq(d, 'fin', '16:00'), has(d, 'motif', /badge/i))) },
+  { id: 'be02', cote: 'bureau', categorie: 'Réglages', phrase: 'kevin hier c’était 8h-17h30 et pas 8h-16h, corrige ses heures, il a prolongé pour finir le chantier',
+    check: actAvecProblemes('corriger_pointage', [AUCUNE_LIGNE], (d) => all(eq(d, 'user_id', 'u-kevin'), eq(d, 'date', '2026-09-30'), eq(d, 'debut', '08:00'), eq(d, 'fin', '17:30'), has(d, 'motif', /prolong|finir|chantier/i))) },
+  { id: 'be03', cote: 'bureau', categorie: 'Réglages', phrase: 'corige le pointage de sofiane d’hier : 6h30 15h, motif : chantier commencé plus tot',
+    check: actAvecProblemes('corriger_pointage', [AUCUNE_LIGNE], (d) => all(eq(d, 'user_id', 'u-sofiane'), eq(d, 'date', '2026-09-30'), eq(d, 'debut', '06:30'), eq(d, 'fin', '15:00'), has(d, 'motif', /t[oô]t|commenc/i))) },
+  // attribuer_client : des heures notées sur « Autre » (ou sans chantier) passent au vrai client.
+  { id: 'be04', cote: 'bureau', categorie: 'Réglages', phrase: 'les heures de kevin hier étaient notées sur Autre, mets les sur villa dupont',
+    check: act('attribuer_client', (d) => all(eq(d, 'user_id', 'u-kevin'), eq(d, 'date', '2026-09-30'), eq(d, 'worksite_id', W.dupont))) },
+  // Deux « Pizzeria Exemple » : la ville dite (Mâcon) départage.
+  { id: 'be05', cote: 'bureau', categorie: 'Réglages', phrase: 'kevin a travaillé chez pizzeria exemple à mâcon hier mais il a mis autre, rectifie',
+    check: act('attribuer_client', (d) => all(eq(d, 'user_id', 'u-kevin'), eq(d, 'date', '2026-09-30'), eq(d, 'worksite_id', W.macon))) },
+  // cout_reel : bulletin d'un salarié qui EXISTE (FILES.bulletin). Change avec Q7 (le bulletin ne partirait plus au modèle).
+  { id: 'be06', cote: 'bureau', categorie: 'Réglages', file: 'bulletin', phrase: 'voilà le bulletin de paie de karim de septembre, enregistre son coût réel',
+    check: act('cout_reel', coutDeKarim) },
+  { id: 'be07', cote: 'bureau', categorie: 'Réglages', file: 'bulletin', phrase: 'bulletin karim sept, tu peux rentrer le cout reel stp',
+    check: act('cout_reel', coutDeKarim) },
+  // modifier_salarie : prénom, nom ou téléphone d'un salarié (jamais le n° de sécurité sociale). Le téléphone d'un salarié n'est pas celui d'un client (b14).
+  { id: 'be08', cote: 'bureau', categorie: 'Salariés', phrase: 'change le téléphone de karim : 06 11 22 33 44',
+    check: act('modifier_salarie', (d) => all(eq(d, 'user_id', 'u-karim'), has(d, 'telephone', /06 ?11 ?22 ?33 ?44/))) },
+  // Le modèle peut redonner le prénom inchangé : sans effet sur la carte, donc toléré ; ce qui compte est le nouveau nom.
+  { id: 'be09', cote: 'bureau', categorie: 'Salariés', phrase: 'corrige le nom de famille de kevin, c’est Rousselet pas Roussel',
+    check: act('modifier_salarie', (d) => all(eq(d, 'user_id', 'u-kevin'), eq(d, 'nom', 'Rousselet'), d.prenom === '' || d.prenom === 'Kevin' ? null : `prenom = ${JSON.stringify(d.prenom)} (vide ou inchangé attendu)`)) },
+  { id: 'be10', cote: 'bureau', categorie: 'Salariés', phrase: 'j’ai mal écrit le prénom de sofiane, c’est Soufiane avec un u',
+    check: act('modifier_salarie', (d) => all(eq(d, 'user_id', 'u-sofiane'), eq(d, 'prenom', 'Soufiane'))) },
+  // modifier_habilitation : la date ou le libellé d'une habilitation qui EXISTE (le CACES de Karim, c-caces) ; ajouter_habilitation en crée une (b23).
+  { id: 'be11', cote: 'bureau', categorie: 'Salariés', phrase: 'change la date d’expiration du caces de karim : 15 mai 2027',
+    check: act('modifier_habilitation', (d) => all(eq(d, 'user_id', 'u-karim'), eq(d, 'cert_id', 'c-caces'), eq(d, 'expiration', '2027-05-15'))) },
+  { id: 'be12', cote: 'bureau', categorie: 'Salariés', phrase: 'précise sur le caces de karim que c’est le R489 catégorie 3',
+    check: act('modifier_habilitation', (d) => all(eq(d, 'user_id', 'u-karim'), eq(d, 'cert_id', 'c-caces'), has(d, 'libelle', /R489/i))) },
+  // ── Bureau (suite) : le côté mince des paires d'outils proches ──
+  // modifier_intervention ↔ affecter_planning : une intervention qui EXISTE (la case de Karim demain, p-karim-4) change d'heure, de salarié ou de note ; on n'en crée pas une deuxième.
+  { id: 'be13', cote: 'bureau', categorie: 'Interventions', phrase: 'mets karim à 10h au lieu de 8h demain chez dupont',
+    check: act('modifier_intervention', (d) => all(eq(d, 'user_id', 'u-karim'), eq(d, 'date', '2026-10-02'), eq(d, 'planning_id', 'p-karim-4'), eq(d, 'debut', '10:00'))) },
+  { id: 'be14', cote: 'bureau', categorie: 'Interventions', phrase: 'karim ne peut pas vendredi, donne son intervention à sofiane',
+    check: act('modifier_intervention', (d) => all(eq(d, 'user_id', 'u-karim'), eq(d, 'date', '2026-10-02'), eq(d, 'planning_id', 'p-karim-4'), eq(d, 'nouveau_user_id', 'u-sofiane'))) },
+  { id: 'be15', cote: 'bureau', categorie: 'Interventions', phrase: 'change la note de l’intervention de karim vendredi : prévoir l’échafaudage',
+    check: act('modifier_intervention', (d) => all(eq(d, 'user_id', 'u-karim'), eq(d, 'planning_id', 'p-karim-4'), has(d, 'note', /chafaudage/i))) },
+  // relancer_invitation ↔ envoyer_rappel : le même mot « relance », deux destinataires (une invitation en attente / un salarié qui n'a pas envoyé ses heures).
+  { id: 'be16', cote: 'bureau', categorie: 'Salariés', phrase: 'relance marc, il a pas encore créé son compte',
+    check: act('relancer_invitation', (d) => eq(d, 'email', 'marc.durand@gmail.com')) },
+  { id: 'be17', cote: 'bureau', categorie: 'Salariés', phrase: 'relance kevin, il a pas envoyé ses heures',
+    check: act('envoyer_rappel', (d) => eq(d, 'user_id', 'u-kevin')) },
+  // inviter_salarie ↔ cout_reel : un bulletin de paie joint, mais d'un salarié qui n'existe pas encore (FILES.bulletinNouveau) → on l'invite. Change avec Q7.
+  { id: 'be18', cote: 'bureau', categorie: 'Salariés', file: 'bulletinNouveau', phrase: 'nouveau salarié : Lucas Moreau, lucas.moreau@exemple.fr, voilà son dernier bulletin de paie',
+    check: act('inviter_salarie', (d) => all(eq(d, 'prenom', 'Lucas'), eq(d, 'nom', 'Moreau'), eq(d, 'email', 'lucas.moreau@exemple.fr'), bulletinDeLucas(d), sansNir(d))) },
+  // ajouter_depense ↔ ranger_document : même facture jointe que b17/b18, mais on demande la DÉPENSE (le montant passe en « Coût chantiers »), pas le classement.
+  { id: 'be19', cote: 'bureau', categorie: 'Documents', file: 'facture', phrase: 'mets cette facture en dépense sur le chantier de viriat',
+    check: act('ajouter_depense', (d) => all(eq(d, 'worksite_id', W.ppj), nb(d, 'montant', 1240))) },
+
+  // ── Salarié, français (se01–se06) ──
+  // « Réserves » (1 → 5) : signaler ≠ lever ≠ retirer. Seule la ligne de Bureau Martin (e2) a une réserve ouverte ; Villa Dupont (e1) n'en a pas.
+  { id: 'se01', cote: 'salarie', categorie: 'Réserves', phrase: 'ya une grosse fuite chez dupont, note une réserve',
+    check: act('signaler_reserve', (d) => all(eq(d, 'entry_id', 'e1'), has(d, 'detail', /fuite/i))) },
+  { id: 'se02', cote: 'salarie', categorie: 'Réserves', phrase: 'c’est réglé chez martin, tu peux lever la réserve', check: act('reserve_corrigee', (d) => eq(d, 'entry_id', 'e2')) },
+  { id: 'se03', cote: 'salarie', categorie: 'Réserves', phrase: 'j’ai refait le joint chez martin, la réserve est levée', check: act('reserve_corrigee', (d) => eq(d, 'entry_id', 'e2')) },
+  { id: 'se04', cote: 'salarie', categorie: 'Réserves', phrase: 'j’ai mis une réserve chez martin par erreur, enlève la', check: act('retirer_reserve', (d) => eq(d, 'entry_id', 'e2')) },
+  // modifier_heures ↔ declarer_heures : une ligne DÉJÀ notée (Bureau Martin, e2) change d'horaire ; on n'en déclare pas une autre. copier_journee : la journée d'hier (09-30) sur demain.
+  { id: 'se05', cote: 'salarie', categorie: 'Ma journée', phrase: 'corrige ma ligne de martin, 13h15 16h45',
+    check: act('modifier_heures', (d) => all(eq(d, 'entry_id', 'e2'), eq(d, 'debut', '13:15'), eq(d, 'fin', '16:45'))) },
+  { id: 'se06', cote: 'salarie', categorie: 'Ma journée', phrase: 'refais la même journée qu’hier pour demain',
+    check: act('copier_journee', (d) => all(eq(d, 'depuis', '2026-09-30'), eq(d, 'vers', ['2026-10-02']))) },
+
+  // ── OUVRIR un écran (catégorie « Aide », comme b29, b30 et b33 qui contrôlent aussi un lien). Aujourd'hui : un LIEN de navigation (ou un guide) dans une réponse,
+  // jamais une écriture ; 3b en fera une ouverture pré-remplie, et ces cinq cas (plus st18, en turc) devront alors attendre l'ouverture. ──
+  // ov01 : la fiche D'UN salarié (lien « salarie » + son id), pas la liste des salariés. ov02 : le guide des réserves, lu sans modèle. ov03 : « les demandes de congé »
+  // est un écran à ouvrir, pas des demandes auxquelles répondre (repondre_conge). ov04 : « les réglages » s'ouvrent, on n'en modifie aucun (modifier_reglages).
+  { id: 'ov01', cote: 'bureau', categorie: 'Aide', phrase: 'ouvre la fiche de Karim', check: answer('salarie:u-karim') },
+  { id: 'ov02', cote: 'bureau', categorie: 'Aide', phrase: 'montre-moi les réserves', check: answer('reserves') },
+  { id: 'ov03', cote: 'bureau', categorie: 'Aide', phrase: 'emmène-moi sur les demandes de congé', check: answer('conges') },
+  { id: 'ov04', cote: 'bureau', categorie: 'Aide', phrase: 'va dans les réglages', check: answer('reglages') },
+  // ov05 : côté salarié, le lien « Ma semaine » (écran à ouvrir, pas des heures à déclarer).
+  { id: 'ov05', cote: 'salarie', categorie: 'Aide', phrase: 'ouvre ma semaine', check: answer('semaine') },
+
+  // ── Salarié, turc (st15–st18 ; profil LONG, comme tout message turc de 2 indices ou plus) ──
+  // st15–st17 : une fiche ou une carte à confirmer (un geste « direct » ne s'exécute jamais seul en profil long) ; st18 : une réponse en turc qui porte le lien (ouvrir « Ma semaine »).
+  { id: 'st15', cote: 'salarie', categorie: 'Long TR', phrase: 'Martin ofisindeki rezervi yerinde düzelttim, lütfen bugün kapatın.',
+    check: fiche(['reserve_corrigee'], (it) => annexe(it, 'reserve_corrigee', (d) => eq(d, 'entry_id', 'e2'))) },
+  { id: 'st16', cote: 'salarie', categorie: 'Long TR', phrase: 'Dupont villasında çatıda sızıntı var, rezerv ekle.',
+    check: fiche(['signaler_reserve'], (it) => annexe(it, 'signaler_reserve', (d) => all(eq(d, 'entry_id', 'e1'), /sizinti|cati|fuite|toit|infiltr/.test(fold(d.detail)) ? null : `detail = « ${d.detail} » (attendu la fuite du toit)`))) },
+  { id: 'st17', cote: 'salarie', categorie: 'Long TR', phrase: 'Bugünkü Dupont satırımı değiştir lütfen: 7’den 11:30’a kadar.',
+    check: act('modifier_heures', (d) => all(eq(d, 'entry_id', 'e1'), eq(d, 'debut', '07:00'), eq(d, 'fin', '11:30'))) },
+  { id: 'st18', cote: 'salarie', categorie: 'Long TR', phrase: 'Haftalık ekranımı aç lütfen.', check: (o) => enTurc(o) ?? answer('semaine')(o) },
 ];

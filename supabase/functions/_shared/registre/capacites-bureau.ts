@@ -1377,4 +1377,25 @@ export const CAPACITES_BUREAU: Capacite[] = [
       note: 'Outil lire_derniers_envois_email : type, destinataire masqué, statut, date.',
     },
   },
+  // B139 · humain · niveau 3
+  // Ajoutée au remplissage de SURFACES : surface réelle (page /support, bandeau « Mode support ») sans capacité dans le cahier,
+  // qui ne décrit que le côté du patron (B63). Ici c'est l'agent de BEMEXO.
+  {
+    id: 'B139', cote: 'bureau', libelle: 'Console du support BEMEXO : un agent se connecte (double vérification), entre chez une entreprise autorisée, en lecture seule, puis quitte',
+    genre: 'humain', niveau: 3,
+    humain: {
+      categorie: 'securite',
+      raison: "Sécurité : la console (/support) est celle d'un agent de BEMEXO, pas celle du patron. Connexion, double vérification par code à 6 chiffres et entrée chez un client sont des gestes de ce compte, jamais de l'assistant du bureau, qui ne sert que le patron de l'entreprise.",
+    },
+  },
+  // B140 · lire · niveau 1
+  // Ajoutée au remplissage de SURFACES : volet de la fenêtre Formations (components/training-video-orphans.tsx) absent du cahier.
+  {
+    id: 'B140', cote: 'bureau', libelle: 'Voir les fichiers vidéo à vérifier : fichiers sans formation, formations dont le fichier manque (détail de B57)',
+    genre: 'lire', niveau: 1,
+    dette: {
+      livraison: '3c', avant: '2027-02-28',
+      note: "Volet de lire_formations (B57) : nombre de fichiers du dossier privé sans formation et de formations publiées dont le fichier manque, avec les premières lignes. Lecture seule comme à l'écran : aucun bouton de suppression.",
+    },
+  },
 ];

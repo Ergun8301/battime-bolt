@@ -5,22 +5,28 @@
 import { runEval } from './run.ts';
 import { envEvaluation, resumeEvaluation } from './config.ts';
 import { callFunction, modeleServi, readConfig, reposReinit } from '../_shared/ai-provider.ts';
-import { ADMIN_RAW, CASES, LIVE_VIDE, ME, sansLibellesEcran, WORKER_LIVE, WORKER_RAW, type Outcome } from './cases.ts';
+import { ADMIN_RAW, CASES, FILES, LIVE_VIDE, ME, sansLibellesEcran, WORKER_LIVE, WORKER_RAW, type Outcome } from './cases.ts';
 import { actionPrompt, buildActionContext, guideForPrompt, type ActionContext } from '../_shared/assistant-actions-core.ts';
 import { buildWorkerSnapshot, workerFunctionPrompt, type WorkerLive, type WorkerSnapshot } from '../_shared/worker-assistant-core.ts';
 import { blocHistorique, nettoyerHistorique, sansDemandeRecollee } from '../_shared/assistant-history.ts';
 import { detecteTurc } from '../_shared/saisie-profil.ts';
 import { workerProfile } from '../_shared/worker-turn.ts';
 
-Deno.test('Jeu d’évaluation : les 80 phrases d’origine (dans l’ordre) + les phrases longues du salarié + les suites de conversation, bureau ET salarié', () => {
+Deno.test('Jeu d’évaluation : les 80 phrases d’origine (dans l’ordre) + les phrases longues du salarié + les suites de conversation + les 34 cas de la livraison 3a, bureau ET salarié', () => {
   if (new Set(CASES.map((c) => c.id)).size !== CASES.length) throw new Error('identifiants en double');
   if (!CASES.some((c) => c.cote === 'bureau') || !CASES.some((c) => c.cote === 'salarie')) throw new Error('un côté manque');
   const anciens = [...Array.from({ length: 47 }, (_, i) => `b${String(i + 1).padStart(2, '0')}`), ...Array.from({ length: 33 }, (_, i) => `s${String(i + 1).padStart(2, '0')}`)];
   if (JSON.stringify(CASES.slice(0, 80).map((c) => c.id)) !== JSON.stringify(anciens)) throw new Error('les 80 phrases b01–b47, s01–s33 doivent rester en tête, dans l’ordre');
   const longs = CASES.filter((c) => /^(sl|st)\d\d$/.test(c.id));
   const suites = CASES.filter((c) => /^sc\d\d$/.test(c.id));
-  if (longs.length < 14 || longs.length !== CASES.length - 80 - suites.length) throw new Error(`${longs.length} phrases longues (au moins 14 ; 31 attendues)`);
-  if (longs.filter((c) => c.categorie === 'Long FR').length !== 17 || longs.filter((c) => c.categorie === 'Long TR').length !== 14 || longs.some((c) => c.cote !== 'salarie')) throw new Error('17 « Long FR » et 14 « Long TR », côté salarié');
+  // Livraison 3a : 30 cas en fin de jeu, dans cet ordre : be01–be19 (bureau), se01–se06 (salarié), ov01–ov05 (ouvrir un écran). Leurs ids ne sont JAMAIS b01–s33 :
+  // saisie-profil.test.ts et worker-turn.test.ts reconnaissent « les phrases d'origine » à cet id et exigent qu'elles restent 80 (33 côté salarié). Les quatre
+  // phrases longues turques de 3a (st15–st18) comptent parmi `longs` : tool-domains.test.ts veut un id st pour tout profil long.
+  const ajouts3a = CASES.filter((c) => /^(be|se|ov)\d\d$/.test(c.id));
+  const num = (p: string, n: number) => Array.from({ length: n }, (_, i) => `${p}${String(i + 1).padStart(2, '0')}`);
+  if (ajouts3a.map((c) => c.id).join() !== [...num('be', 19), ...num('se', 6), ...num('ov', 5)].join()) throw new Error(`livraison 3a : be01–be19, se01–se06 puis ov01–ov05 attendus, obtenu ${ajouts3a.map((c) => c.id).join()}`);
+  if (longs.length < 14 || longs.length !== CASES.length - 80 - suites.length - ajouts3a.length) throw new Error(`${longs.length} phrases longues (au moins 14 ; 35 attendues : 31 d’avant + st15–st18)`);
+  if (longs.filter((c) => c.categorie === 'Long FR').length !== 17 || longs.filter((c) => c.categorie === 'Long TR').length !== 18 || longs.some((c) => c.cote !== 'salarie')) throw new Error('17 « Long FR » et 18 « Long TR » (14 d’avant + st15–st18), côté salarié');
   // La phrase exacte d'Ergun (retour réel d'un salarié) est le cas sl01.
   const ergun = "Ajoute-moi une intervention. J'ai travaillé aujourd'hui de 8h à midi, puis pause d'1h, puis de 13h à 17h sur un nouveau chantier : prénom Pierrick, nom Dupont, à Montagna 01250, pour la pose d'un store banne.";
   if (CASES.find((c) => c.id === 'sl01')?.phrase !== ergun) throw new Error('sl01 : la phrase exacte d’Ergun');
@@ -233,9 +239,9 @@ Deno.test('repeat : N passes par cas, total et réussites comptent des essais, p
   if (un.total !== 1 || un.repeat !== 1) throw new Error('par défaut : une passe');
 });
 
-// ── Les 31 phrases longues avec une sortie PLAUSIBLE du modèle (y compris ses défauts mesurés) : toutes passent ──
+// ── Les 35 phrases longues avec une sortie PLAUSIBLE du modèle (y compris ses défauts mesurés) : toutes passent ──
 // C'est le test de bout en bout du code (redécoupage, pause, rattachement, annexes) ; la vraie réussite se mesure sur le vrai modèle.
-Deno.test('31 phrases longues : une sortie plausible du modèle (créneaux fusionnés, pause doublée, civilité devant le nom…) passe par le MÊME chemin que la production', async () => {
+Deno.test('35 phrases longues : une sortie plausible du modèle (créneaux fusionnés, pause doublée, civilité devant le nom…) passe par le MÊME chemin que la production', async () => {
   type Appel = { name: string; args: Record<string, unknown> };
   const T = '2026-10-01';
   const nc = (nom: string, ville: string, code_postal: string, description: string, adresse = '') => ({ nom, adresse, code_postal, ville, description });
@@ -278,6 +284,11 @@ Deno.test('31 phrases longues : une sortie plausible du modèle (créneaux fusio
     st12: [h([l('nouveau', '09:00', '12:00'), l('nouveau', '14:00', '17:00')], nc('Ayhan Demir', '', '69500', 'montage d’une pergola', 'Bron'))],
     st13: [h([l('', '08:00', '12:00'), l('Martin', '13:00', '17:00')])],
     st14: [h([l('Martin', '08:00', '17:00')], undefined, '2026-10-02')],
+    // Livraison 3a : du turc hors heures. Un geste « direct » (lever la réserve, changer une ligne) ne s'exécute jamais seul en profil long ; l'ouverture d'un écran reste une réponse.
+    st15: [{ name: 'reserve_corrigee', args: { chantier: 'Martin', commentaire: 'Yerinde düzeltildi' } }],
+    st16: [reserve('çatıda sızıntı', 'Dupont')],
+    st17: [{ name: 'modifier_heures', args: { chantier: 'Dupont', debut: '07:00', fin: '11:30' } }],
+    st18: [{ name: 'repondre', args: { reponse: '« Ma semaine » ekranını açıyorum.', lien: 'semaine' } }],
   };
   const ids = CASES.filter((c) => /^(sl|st)\d\d$/.test(c.id)).map((c) => c.id);
   if (Object.keys(plausibles).sort().join() !== ids.slice().sort().join()) throw new Error('une sortie plausible par phrase longue');
@@ -441,10 +452,10 @@ Deno.test('Suites de conversation : 15 cas (8 bureau, 5 salarié FR, 2 salarié 
   }
   for (const c of salarie) if (workerProfile(c.phrase, false) !== 'court') throw new Error(`${c.id} : relance salarié en profil court`);
   // Les anciens cas (80 + 27 phrases longues) n'ont pas d'historique : leur consigne est celle d'avant. Seules sl17 et st14 (phrases LONGUES qui
-  // renvoient à la conversation) en portent un : le profil long, lui aussi, voit la conversation.
+  // renvoient à la conversation) en portent un : le profil long, lui aussi, voit la conversation. Les cas de la livraison 3a n'en ont pas non plus.
   const avecHistorique = CASES.filter((c) => c.history).map((c) => c.id).filter((id) => !/^sc\d\d$/.test(id));
   if (avecHistorique.join() !== 'sl17,st14') throw new Error(`cas non « sc » avec historique : ${avecHistorique.join()} (sl17 et st14 seulement)`);
-  if (CASES.length !== 111 + 15) throw new Error(`${CASES.length} cas (126 attendus : 80 + 31 phrases longues + 15 suites)`);
+  if (CASES.length !== 111 + 15 + 34) throw new Error(`${CASES.length} cas (160 attendus : 80 + 31 phrases longues + 15 suites + 34 de la livraison 3a)`);
   // sl17 et st14 sont bien LONGUES (jamais le lecteur local, la consigne du profil long) et renvoient à leur historique.
   for (const id of ['sl17', 'st14']) {
     const c = CASES.find((x) => x.id === id)!;
@@ -603,4 +614,168 @@ Deno.test('sl17 / st14 (phrases LONGUES qui renvoient à la conversation) : le c
     const why = await passe(id, call);
     if (!why || !re.test(why)) throw new Error(`${id} ${JSON.stringify(call.args).slice(0, 90)} devrait échouer avec ${re} : ${why}`);
   }
+});
+
+// ── Livraison 3a de l'étape 3 : 34 cas ajoutés en fin de jeu (docs/ia-etape3/00-conception-etape3.md §2.5) ──
+// Ils mesurent l'assistant tel qu'il est (aucun changement de production) : les 5 outils du bureau qui n'avaient aucun cas, le côté mince des paires
+// d'outils « proches » du registre, l'ouverture d'un écran (aujourd'hui un lien ou un guide, jamais une écriture), les réserves et du turc côté salarié.
+const CAS_3A = CASES.filter((c) => /^(be|se|ov)\d\d$/.test(c.id)).concat(CASES.filter((c) => /^st1[5-8]$/.test(c.id)));
+
+Deno.test('Livraison 3a : 34 cas ajoutés (23 bureau, 11 salarié), comptes par catégorie du jeu complet figés (aucune nouvelle catégorie)', () => {
+  if (CAS_3A.length !== 34 || CAS_3A.filter((c) => c.cote === 'bureau').length !== 23 || CAS_3A.filter((c) => c.cote === 'salarie').length !== 11) throw new Error(`${CAS_3A.length} cas de la livraison 3a (34 : 23 bureau + 11 salarié)`);
+  const compte = new Map<string, number>();
+  for (const c of CASES) compte.set(`${c.cote} · ${c.categorie}`, (compte.get(`${c.cote} · ${c.categorie}`) ?? 0) + 1);
+  // « Réglages » = « Réglages / paie / réserves » (b26–b28) : 3 + les corrections d'heures, l'attribution d'un client et le coût réel. Seul « Réserves » du salarié reste sous 10, par choix du contrat (1 → 5).
+  const voulu: Record<string, number> = {
+    'bureau · Interventions': 10, 'bureau · Congés': 4, 'bureau · Clients': 5, 'bureau · Documents': 4, 'bureau · Salariés': 14, 'bureau · Réglages': 10, 'bureau · Aide': 9, 'bureau · Effacer': 14, 'bureau · Suite de conversation': 8,
+    'salarie · Heures': 4, 'salarie · Pointage': 3, 'salarie · Congés': 2, 'salarie · Ma journée': 9, 'salarie · Réserves': 5, 'salarie · Documents': 2, 'salarie · Collègues': 3, 'salarie · Aide': 4,
+    'salarie · Effacer': 8, 'salarie · Long FR': 17, 'salarie · Long TR': 18, 'salarie · Suite de conversation': 7,
+  };
+  if (JSON.stringify([...compte.entries()].sort()) !== JSON.stringify(Object.entries(voulu).sort())) throw new Error(`comptes par catégorie : ${JSON.stringify([...compte.entries()].sort())}`);
+  if (compte.size !== 21) throw new Error(`${compte.size} catégories (21 : aucune n’est ajoutée)`);
+});
+
+type Appel3a = { name: string; args: Record<string, unknown> };
+/** Pour chaque cas de 3a qui passe par le modèle : la sortie PLAUSIBLE (un bon modèle) ; ov02, se02, se04 et se06 sont lus sans lui (voir plus bas). */
+const BONNES_3A: Record<string, Appel3a> = {
+  be01: { name: 'corriger_pointage', args: { salarie: 'Karim', date: '2026-09-30', debut: '07:30', fin: '16:00', motif: 'Badge oublié' } },
+  be02: { name: 'corriger_pointage', args: { salarie: 'Kevin', date: '2026-09-30', debut: '08:00', fin: '17:30', motif: 'A prolongé pour finir le chantier' } },
+  be03: { name: 'corriger_pointage', args: { salarie: 'Sofiane', date: '2026-09-30', debut: '06:30', fin: '15:00', motif: 'Chantier commencé plus tôt' } },
+  be04: { name: 'attribuer_client', args: { salarie: 'Kevin', date: '2026-09-30', chantier: 'Villa Dupont' } },
+  be05: { name: 'attribuer_client', args: { salarie: 'Kevin', date: '2026-09-30', chantier: 'Pizzeria Exemple Mâcon' } },
+  be06: { name: 'cout_reel', args: { salarie: 'Karim', mois: '2026-09', brut: 2310.4, cout_employeur: 3280.15, heures_payees: 151.67 } },
+  be07: { name: 'cout_reel', args: { salarie: 'Karim Benali', mois: '2026-09', brut: '2 310,40', cout_employeur: '3 280,15', heures_payees: '151,67' } },
+  be08: { name: 'modifier_salarie', args: { salarie: 'Karim', telephone: '06 11 22 33 44' } },
+  be09: { name: 'modifier_salarie', args: { salarie: 'Kevin', nom: 'Rousselet' } },
+  be10: { name: 'modifier_salarie', args: { salarie: 'Sofiane', prenom: 'Soufiane' } },
+  be11: { name: 'modifier_habilitation', args: { salarie: 'Karim', quoi: 'CACES', expiration: '2027-05-15' } },
+  be12: { name: 'modifier_habilitation', args: { salarie: 'Karim', quoi: 'CACES', nouveau_libelle: 'CACES R489 cat. 3' } },
+  be13: { name: 'modifier_intervention', args: { salarie: 'Karim', date: '2026-10-02', chantier: 'Villa Dupont', heure: '10:00' } },
+  be14: { name: 'modifier_intervention', args: { salarie: 'Karim', date: '2026-10-02', nouveau_salarie: 'Sofiane' } },
+  be15: { name: 'modifier_intervention', args: { salarie: 'Karim', date: '2026-10-02', note: 'Prévoir l’échafaudage' } },
+  be16: { name: 'relancer_invitation', args: { personne: 'Marc' } },
+  be17: { name: 'envoyer_rappel', args: { salarie: 'Kevin' } },
+  be18: { name: 'inviter_salarie', args: { prenom: 'Lucas', nom: 'Moreau', email: 'lucas.moreau@exemple.fr', bulletin_mois: '2026-08', bulletin_brut: 2150, bulletin_cout_employeur: 3053.25, bulletin_heures_payees: 151.67 } },
+  be19: { name: 'ajouter_depense', args: { chantier: 'Pierre-Paul Jacques Viriat', montant: 1240, libelle: 'Plomberie', categorie: 'sous_traitance' } },
+  ov01: { name: 'repondre', args: { reponse: 'Voici la fiche de Karim.', liens: ['salarie'], salarie_id: 'u-karim' } },
+  ov03: { name: 'repondre', args: { reponse: 'Voici les demandes de congé.', liens: ['conges'] } },
+  ov04: { name: 'repondre', args: { reponse: 'Voici les réglages.', liens: ['reglages'] } },
+  se01: { name: 'signaler_reserve', args: { chantier: 'Dupont', detail: 'Grosse fuite' } },
+  se03: { name: 'reserve_corrigee', args: { chantier: 'Martin', commentaire: 'Joint refait' } },
+  se05: { name: 'modifier_heures', args: { chantier: 'Martin', debut: '13:15', fin: '16:45' } },
+  ov05: { name: 'repondre', args: { reponse: 'Voici votre semaine.', lien: 'semaine' } },
+  st15: { name: 'reserve_corrigee', args: { chantier: 'Martin' } },
+  st16: { name: 'signaler_reserve', args: { chantier: 'Dupont', detail: 'Çatıda sızıntı' } },
+  st17: { name: 'modifier_heures', args: { chantier: 'Dupont', debut: '07:00', fin: '11:30' } },
+  st18: { name: 'repondre', args: { reponse: '« Ma semaine » ekranını açıyorum.', lien: 'semaine' } },
+};
+const LOCAUX_3A = ['ov02', 'se02', 'se04', 'se06'];
+
+Deno.test('Livraison 3a : chaque cas a sa sortie plausible, qui PASSE ; les 5 outils sans cas en ont au moins 2 ; les lecteurs locaux traitent ov02, se02, se04 et se06 sans modèle', async () => {
+  const attendus = CAS_3A.map((c) => c.id).filter((id) => !LOCAUX_3A.includes(id)).sort();
+  if (Object.keys(BONNES_3A).sort().join() !== attendus.join()) throw new Error(`une sortie plausible par cas de 3a (hors lecteur local) : ${Object.keys(BONNES_3A).sort().join()}`);
+  for (const [id, call] of Object.entries(BONNES_3A)) {
+    const why = await passe(id, call);
+    if (why) throw new Error(`${id} devrait passer : ${why}`);
+  }
+  // Le registre dit que ces 5 outils n'avaient aucun cas (contrat §0.2) : il leur en faut au moins 2 (le contrat en demande 3 ; voir le rapport).
+  for (const outil of ['corriger_pointage', 'attribuer_client', 'modifier_salarie', 'cout_reel', 'modifier_habilitation']) {
+    const n = Object.values(BONNES_3A).filter((c) => c.name === outil).length;
+    if (n < 2) throw new Error(`${outil} : ${n} cas (2 au moins)`);
+  }
+  // ov02 « montre-moi les réserves » (guide), se02 / se04 (réserve), se06 (copie d'hier) : le lecteur local seul, jamais le modèle.
+  const r = await runEval('v2', async () => ({ ok: false, reason: 'provider_error' }), LOCAUX_3A);
+  if (r.ok !== LOCAUX_3A.length || r.temps.length !== 0 || r.echecs.length) throw new Error(`lecteur local : ${r.ok}/${LOCAUX_3A.length}, ${r.temps.length} via le modèle, ${JSON.stringify(r.echecs.map((e) => [e.id, e.why]))}`);
+});
+
+Deno.test('Livraison 3a : les mauvaises lectures (outil voisin, mauvais salarié, mauvaise date, écriture à la place d’un lien) ÉCHOUENT', async () => {
+  const ko: [string, Appel3a, RegExp][] = [
+    // corriger_pointage : la bonne action, mais le jour, le salarié ou le motif faux ; ou l'outil voisin.
+    ['be01', { name: 'corriger_pointage', args: { salarie: 'Karim', date: '2026-10-01', debut: '07:30', fin: '16:00', motif: 'Badge oublié' } }, /date = "2026-10-01"/],
+    ['be01', { name: 'corriger_pointage', args: { salarie: 'Karim', date: '2026-09-30', debut: '07:30', fin: '16:00' } }, /problèmes = .*Indiquez un motif/],
+    ['be01', { name: 'modifier_intervention', args: { salarie: 'Karim', date: '2026-09-30', heure: '07:30' } }, /attendu corriger_pointage, obtenu modifier_intervention/],
+    ['be02', { name: 'corriger_pointage', args: { salarie: 'Karim', date: '2026-09-30', debut: '08:00', fin: '17:30', motif: 'Fini tard' } }, /user_id/],
+    ['be03', { name: 'corriger_pointage', args: { salarie: 'Sofiane', date: '2026-09-30', debut: '06:30', fin: '15:30', motif: 'Plus tôt' } }, /fin = "15:30"/],
+    // attribuer_client : le client DIT, le jour DIT.
+    ['be04', { name: 'attribuer_client', args: { salarie: 'Kevin', date: '2026-09-30', chantier: 'Bureau Martin' } }, /worksite_id/],
+    ['be04', { name: 'attribuer_client', args: { salarie: 'Kevin', chantier: 'Villa Dupont' } }, /date = "2026-10-01"/],
+    ['be05', { name: 'attribuer_client', args: { salarie: 'Kevin', date: '2026-09-30', chantier: 'Pizzeria Exemple Bourg-en-Bresse' } }, /worksite_id/],
+    // cout_reel : le bon salarié, le bon mois, les chiffres du bulletin (pas le net) ; l'outil voisin (inviter) est faux pour un salarié qui existe.
+    ['be06', { name: 'cout_reel', args: { salarie: 'Kevin', mois: '2026-09', brut: 2310.4, cout_employeur: 3280.15, heures_payees: 151.67 } }, /user_id/],
+    ['be06', { name: 'cout_reel', args: { salarie: 'Karim', mois: '2026-08', brut: 2310.4, cout_employeur: 3280.15, heures_payees: 151.67 } }, /mois/],
+    ['be06', { name: 'cout_reel', args: { salarie: 'Karim', mois: '2026-09', brut: 1802.11, cout_employeur: 3280.15, heures_payees: 151.67 } }, /brut/],
+    ['be07', { name: 'inviter_salarie', args: { prenom: 'Karim', nom: 'Benali', email: 'karim@exemple.fr' } }, /attendu cout_reel, obtenu inviter_salarie/],
+    // modifier_salarie : un salarié n'est pas un client (b14), et ne change que ce qui est dit.
+    ['be08', { name: 'modifier_client', args: { chantier: 'Bureau Martin', telephone: '06 11 22 33 44' } }, /attendu modifier_salarie, obtenu modifier_client/],
+    ['be08', { name: 'modifier_salarie', args: { salarie: 'Kevin', telephone: '06 11 22 33 44' } }, /user_id/],
+    ['be09', { name: 'modifier_salarie', args: { salarie: 'Kevin', nom: 'Roussel' } }, /nom = "Roussel"/],
+    ['be09', { name: 'modifier_salarie', args: { salarie: 'Kevin', prenom: 'Rousselet', nom: 'Rousselet' } }, /prenom/],
+    ['be10', { name: 'modifier_salarie', args: { salarie: 'Sofiane', prenom: 'Sofian' } }, /prenom = "Sofian"/],
+    // modifier_habilitation : celle qui EXISTE (c-caces), pas une nouvelle ; une date lisible.
+    ['be11', { name: 'ajouter_habilitation', args: { salarie: 'Karim', type: 'caces', expiration: '2027-05-15' } }, /attendu modifier_habilitation, obtenu ajouter_habilitation/],
+    ['be11', { name: 'modifier_habilitation', args: { salarie: 'Karim', quoi: 'CACES', expiration: '2027-03-15' } }, /expiration/],
+    ['be12', { name: 'modifier_habilitation', args: { salarie: 'Karim', quoi: 'CACES' } }, /pas prête : Que faut-il changer/],
+    // modifier_intervention ↔ affecter_planning : on déplace la case qui existe, on n'en crée pas une deuxième.
+    ['be13', { name: 'affecter_planning', args: { salarie: 'Karim', chantier: 'Villa Dupont', dates: ['2026-10-02'], debut: '10:00' } }, /attendu modifier_intervention, obtenu affecter_planning/],
+    ['be13', { name: 'modifier_intervention', args: { salarie: 'Karim', date: '2026-10-02', heure: '08:00' } }, /debut/],
+    ['be14', { name: 'poser_absence', args: { salarie: 'Karim', type: 'conge', du: '2026-10-02' } }, /attendu modifier_intervention, obtenu poser_absence/],
+    ['be14', { name: 'modifier_intervention', args: { salarie: 'Karim', date: '2026-10-02', nouveau_salarie: 'Kevin' } }, /nouveau_user_id/],
+    ['be15', { name: 'modifier_intervention', args: { salarie: 'Karim', date: '2026-10-02' } }, /pas prête : Que faut-il changer/],
+    // relancer_invitation ↔ envoyer_rappel : le même mot « relance », deux destinataires.
+    ['be16', { name: 'envoyer_rappel', args: { salarie: 'Marc' } }, /attendu relancer_invitation, obtenu envoyer_rappel/],
+    ['be16', { name: 'relancer_invitation', args: { personne: 'Paul' } }, /pas prête : Choisissez l’invitation/],
+    ['be17', { name: 'relancer_invitation', args: { personne: 'Kevin' } }, /attendu envoyer_rappel, obtenu relancer_invitation/],
+    ['be17', { name: 'envoyer_rappel', args: { salarie: 'Karim' } }, /user_id/],
+    // inviter_salarie avec un bulletin ↔ cout_reel : un salarié qui n'existe pas encore s'invite ; le bulletin se recopie.
+    ['be18', { name: 'cout_reel', args: { salarie: 'Lucas Moreau', mois: '2026-08', brut: 2150, cout_employeur: 3053.25, heures_payees: 151.67 } }, /attendu inviter_salarie, obtenu cout_reel/],
+    ['be18', { name: 'inviter_salarie', args: { prenom: 'Lucas', nom: 'Moreau', email: 'lucas.moreau@exemple.fr' } }, /bulletin = null/],
+    ['be18', { name: 'inviter_salarie', args: { prenom: 'Lucas', nom: 'Moreau', email: 'lucas.moreau@exemple.fr', bulletin_mois: '2026-08', bulletin_brut: 1677, bulletin_cout_employeur: 3053.25, bulletin_heures_payees: 151.67 } }, /brut = "1677"/],
+    // ajouter_depense ↔ ranger_document : la facture jointe devient une dépense, au bon chantier, du bon montant.
+    ['be19', { name: 'ranger_document', args: { chantier: 'Viriat', categorie: 'facture_payee' } }, /attendu ajouter_depense, obtenu ranger_document/],
+    ['be19', { name: 'ajouter_depense', args: { chantier: 'Villa Dupont', montant: 1240 } }, /worksite_id/],
+    ['be19', { name: 'ajouter_depense', args: { chantier: 'Viriat', montant: 1000 } }, /montant = "1000"/],
+    // Ouvrir un écran : un lien, jamais une écriture ; le bon écran, la bonne fiche.
+    ['ov01', { name: 'repondre', args: { reponse: 'Voici la liste des salariés.', liens: ['salaries'] } }, /lien salarie:u-karim manquant/],
+    ['ov01', { name: 'repondre', args: { reponse: 'Voici la fiche de Karim.', liens: ['salarie'] } }, /lien salarie:u-karim manquant/],
+    ['ov01', { name: 'modifier_salarie', args: { salarie: 'Karim' } }, /attendu une réponse, obtenu action/],
+    ['ov03', { name: 'repondre_conge', args: { decision: 'accepter' } }, /attendu une réponse, obtenu action/],
+    ['ov03', { name: 'repondre', args: { reponse: 'Voici les réserves.', liens: ['reserves'] } }, /lien conges manquant/],
+    ['ov04', { name: 'modifier_reglages', args: {} }, /attendu une réponse, obtenu action/],
+    ['ov04', { name: 'repondre', args: { reponse: 'Voici le planning.', liens: ['planning'] } }, /lien reglages manquant/],
+    // Salarié : signaler ≠ lever ≠ retirer une réserve ; modifier une ligne ≠ en déclarer une.
+    ['se01', { name: 'reserve_corrigee', args: { chantier: 'Dupont' } }, /attendu signaler_reserve, obtenu reserve_corrigee/],
+    ['se01', { name: 'signaler_reserve', args: { chantier: 'Martin', detail: 'Grosse fuite' } }, /entry_id/],
+    ['se03', { name: 'signaler_reserve', args: { chantier: 'Martin', detail: 'Joint refait' } }, /attendu reserve_corrigee, obtenu signaler_reserve/],
+    ['se03', { name: 'retirer_reserve', args: { chantier: 'Martin' } }, /attendu reserve_corrigee, obtenu retirer_reserve/],
+    ['se05', { name: 'declarer_heures', args: { lignes: [{ chantier: 'Martin', debut: '13:15', fin: '16:45' }] } }, /attendu l'action modifier_heures, obtenu draft/],
+    ['se05', { name: 'modifier_heures', args: { chantier: 'Dupont', debut: '13:15', fin: '16:45' } }, /entry_id/],
+    ['ov05', { name: 'repondre', args: { reponse: 'Voici votre journée.', lien: 'journee' } }, /lien semaine manquant/],
+    ['ov05', { name: 'declarer_heures', args: { lignes: [{ chantier: 'Dupont', debut: '08:00', fin: '12:00' }] } }, /attendu une réponse, obtenu draft/],
+    // Turc (profil long) : la fiche porte le bon geste ; une réponse en français ou sans lien échoue.
+    ['st15', { name: 'signaler_reserve', args: { chantier: 'Martin' } }, /éléments = signaler_reserve/],
+    ['st16', { name: 'reserve_corrigee', args: { chantier: 'Dupont' } }, /éléments = reserve_corrigee/],
+    ['st17', { name: 'declarer_heures', args: { lignes: [{ chantier: 'Dupont', debut: '07:00', fin: '11:30' }] } }, /attendu l'action modifier_heures/],
+    ['st18', { name: 'repondre', args: { reponse: 'Voici votre semaine, vous pouvez la consulter ici.', lien: 'semaine' } }, /pas en turc|mêlée/],
+    ['st18', { name: 'repondre', args: { reponse: '« Ma semaine » ekranını açıyorum.', lien: 'journee' } }, /lien semaine manquant/],
+  ];
+  for (const [id, call, re] of ko) {
+    const why = await passe(id, call);
+    if (!why || !re.test(why)) throw new Error(`${id} ${JSON.stringify(call.args).slice(0, 90)} devrait échouer avec ${re} : ${why}`);
+  }
+});
+
+Deno.test('Livraison 3a : les bulletins de paie sont des PDF FICTIFS (gabarit de n° de sécurité sociale impossible) et aucun n° de sécurité sociale n’entre dans un brouillon', () => {
+  for (const [nom, attendu] of [['bulletin', ['Karim BENALI', 'septembre 2026', '2 310,40', '3 280,15', '151,67']], ['bulletinNouveau', ['Lucas MOREAU', 'aout 2026', '2 150,00', '3 053,25', '151,67']]] as const) {
+    const pdf = atob(FILES[nom].base64);
+    if (FILES[nom].mime !== 'application/pdf' || !pdf.startsWith('%PDF-1.4') || !pdf.trimEnd().endsWith('%%EOF')) throw new Error(`${nom} : un PDF attendu`);
+    for (const m of attendu) if (!pdf.includes(m)) throw new Error(`${nom} : « ${m} » absent du bulletin`);
+    // Le gabarit « 1 99 99 99 999 999 99 » (mois « 99 ») ne peut être le numéro de personne : il sert seulement à vérifier qu'il ne ressort jamais.
+    if (!pdf.includes('1 99 99 99 999 999 99')) throw new Error(`${nom} : le gabarit de n° de sécurité sociale doit y figurer`);
+  }
+  // Le contrôle mord : un brouillon qui garde ce numéro (ici dans le libellé du salarié) échoue, même si tous les chiffres du bulletin sont justes.
+  const sortie = (extra: Record<string, unknown>): Outcome => ({ kind: 'action', type: 'cout_reel', problems: [], draft: { type: 'cout_reel', user_id: 'u-karim', salarie_texte: 'Karim', mois: '2026-09', brut: '2310.4', cout_employeur: '3280.15', heures_payees: '151.67', ...extra } });
+  const be06 = cas('be06').check;
+  if (be06(sortie({}))) throw new Error(`le bon brouillon doit passer : ${be06(sortie({}))}`);
+  if (!/sécurité sociale/.test(String(be06(sortie({ salarie_texte: 'Karim 1 99 99 99 999 999 99' }))))) throw new Error('un n° de sécurité sociale dans le brouillon doit échouer');
+  if (!/brut/.test(String(be06(sortie({ brut: '1802.11' }))))) throw new Error('le net à la place du brut doit échouer');
 });

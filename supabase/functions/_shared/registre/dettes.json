@@ -1,8 +1,8 @@
 {
   "max": {
-    "dette": 85,
+    "dette": 86,
     "ecart": 92,
-    "interne": 0,
-    "ecritures_non_assistees": 0
+    "interne": 24,
+    "ecritures_non_assistees": 1
   }
 }
