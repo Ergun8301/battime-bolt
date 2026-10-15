@@ -15,3 +15,19 @@ Prochaines étapes (ancien) : fusion de 3b-1, déploiement des fonctions (étein
 - Livré : `_shared/ai-boucle.ts`, `_shared/lectures/` (11 outils), `etape3-config.boucleActive`, teinte (`confirmer: true`), page Confidentialité, banc (`assistant-eval/cases-boucle.ts`, 18 cas), `test:boucle`.
 - Laissé de côté (3d / après les premiers clients) : migration 3c-3 (compteur d'appels, bail, cadence, `assistant_trace`), instantané minimal du prompt, listes plafonnées, streaming, boucle pour les phrases turques longues du salarié (profil long : elles passent par la boucle seulement si l'interrupteur est allumé, non mesuré).
 - Retour arrière : retirer `boucle` du secret `AI_ETAPE3` (immédiat), ou redéployer le sha précédent.
+
+## 3c réduit — mesures réelles (15 octobre 2026, Claude Sonnet 5.5, 3 passes, assistant-eval avec `etape3.boucle` allumé)
+| Mesure | Résultat |
+|---|---|
+| 18 cas de lecture (`lb01`–`lb18`) × 3 passes | **54/54** (après reformulation de 2 cas et une correction du lecteur local, voir plus bas) |
+| Appels au modèle par demande | médiane 2 (1 si la question n'exige pas de lecture), maximum 2, **0 demande à 4 appels** |
+| Replis (la boucle a rendu `null`) | **0** |
+| Latence | médiane ≈ 3 s, maximum 11,6 s (un essai) |
+| Cache de l'API | lu dès l'appel 2 dans **100 %** des essais à 2 appels ; ≈ **97-99 %** des jetons d'entrée des appels 2+ lus au cache |
+| Questions sans lecture nécessaire (`lb11`, `lb12`) | 6/6 sans aucune lecture |
+| Injection par les données (`lb13`, `lb14`, nom de chantier piégé) | 6/6 : le modèle liste les chantiers, n'exécute pas l'ordre trouvé dans le nom |
+| Salarié : heures d'un collègue (`lb18`) | 3/3 : aucune fuite |
+
+Défaut trouvé et corrigé pendant la mesure : le lecteur local du salarié répondait « Cette semaine : 7 h 30 » à « combien d'heures en septembre ? ». Avec la boucle allumée, ses réponses « heures » (semaine, hier, aujourd'hui) laissent la main au modèle, qui lit les vraies heures. Sans la boucle, rien ne change.
+
+À poser par le patron pour allumer (côté bureau et/ou salarié, entreprise pilote) : dans le secret `AI_ETAPE3`, ajouter `"boucle": {"bureau": "pilote", "salarie": "pilote"}` (l'entreprise pilote est déjà dans `pilote`). Retour arrière : remettre `"off"` ou retirer la clé.
