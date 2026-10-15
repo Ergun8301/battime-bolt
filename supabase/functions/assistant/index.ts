@@ -17,6 +17,12 @@
 // Lot 7 : la réponse porte aussi `question` (UNE question s'il manque une info
 // à une action directe) ; l'écran exécute les actions simples tout de suite.
 //
+// Étape 2 (chat avec mémoire) : le corps peut porter `history` (les derniers messages de la conversation, texte seul).
+// Il est nettoyé (_shared/assistant-history.ts : 7 messages, 600 caractères chacun, 3000 en tout, tout le reste ignoré) puis mis
+// dans la consigne du modèle pour comprendre « et pour Kevin aussi ? », « pareil lundi », « annule ça ». Une relance de ce genre saute
+// le lecteur local (qui n'a pas le contexte) quand le modèle est disponible. Le texte de l'historique n'est JAMAIS journalisé ;
+// une demande reste une demande : le quota ne change pas.
+//
 // CE QU'ELLE FAIT : répondre (chiffres de l'entreprise), GUIDER (où cliquer,
 // 3 étapes au plus) et PRÉPARER une action de la liste blanche (inviter,
 // créer un client, poser une absence, affecter, proposer le planning,
@@ -33,6 +39,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { aiDisponible, callFunction, formuleNom, PAUSE_MESSAGE, plafondProjet, readAttachment, tierFor } from '../_shared/ai-provider.ts';
 import { loadAssistantContext } from '../_shared/assistant-context.ts';
+import { nettoyerHistorique, sansDemandeRecollee } from '../_shared/assistant-history.ts';
 import { DEFAULT_DAILY_LIMIT, MAX_QUESTION_CHARS, buildSnapshot, previousDay, type RawData } from '../_shared/assistant-core.ts';
 import {
   actionPrompt, addDays, avertirSecours, buildActionContext, fromFunctionCall, functionsFor, handleActionLocally, mondayOf, questionFor,
@@ -73,7 +80,7 @@ Deno.serve(async (req) => {
   try {
     const jwt = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
     if (!jwt) return json({ error: 'Non authentifié' }, 401);
-    const body = await req.json().catch(() => ({})) as { question?: string; file?: unknown; statut?: boolean };
+    const body = await req.json().catch(() => ({})) as { question?: string; file?: unknown; statut?: boolean; history?: unknown };
     // Lot 6 : à l'ouverture du panneau, l'écran demande seulement la formule (rien n'est compté).
     if (body.statut === true) return json({ formule: FORMULE });
     const question = String(body.question ?? '').trim().slice(0, MAX_QUESTION_CHARS);
@@ -90,6 +97,7 @@ Deno.serve(async (req) => {
     // Qui je suis + quota AVANT tout travail (même compteur que le lot 3), en un aller-retour.
     const limit = Number(Deno.env.get('ASSISTANT_DAILY_LIMIT')) || DEFAULT_DAILY_LIMIT;
     const tier = tierFor(!!att.file);
+    const iaOk = aiDisponible(Deno.env, tier);
     const me = await loadAssistantContext(db, 'bureau', { limit, tier, globalLimit: plafondProjet(Deno.env, tier) });
     if (!me.ok) {
       switch (me.raison) {
@@ -159,13 +167,16 @@ Deno.serve(async (req) => {
     });
     ctx.me = user.id;
     ctx.demande = question;
+    // Étape 2 : la conversation, seulement si le modèle peut la lire (sans clé, le lecteur local répond comme avant). Une demande que
+    // l'écran vient de recoller à sa réponse (« Mets Karim demain, Villa Dupont ») n'est pas répétée dans le bloc : la DEMANDE la porte.
+    if (iaOk) ctx.historique = sansDemandeRecollee(nettoyerHistorique(body.history), question);
 
-    // 1. Les demandes courantes se règlent sans IA (sauf s'il y a un fichier à lire).
+    // 1. Les demandes courantes se règlent sans IA (sauf s'il y a un fichier à lire, ou une relance qui renvoie à la conversation).
     const local = att.file ? null : handleActionLocally(question, ctx);
     if (local) return reply(local, ctx, remaining);
 
     // 2. Sans clé : on guide quand même.
-    if (!aiDisponible(Deno.env, tier)) {
+    if (!iaOk) {
       if (att.file) return json({ unavailable: true, answer: 'Lecture de fichier indisponible pour le moment.', links: [] });
       const g = findGuide(question);
       return reply(g ? { answer: guideAnswer(g), links: guideLinks(g) }
@@ -176,7 +187,7 @@ Deno.serve(async (req) => {
     const snapshot = buildSnapshot(raw);
     // Lot 6 : seulement les outils du domaine de la demande ; UN appel (rapide, ou documents si fichier).
     const r = await callFunction({
-      prompt: actionPrompt(ctx, JSON.stringify(snapshot), guideForPrompt(), question), functions: functionsFor(!!att.file, question), file: att.file, tier,
+      prompt: actionPrompt(ctx, JSON.stringify(snapshot), guideForPrompt(), question), functions: functionsFor(!!att.file, question, ctx.historique), file: att.file, tier,
     }, Deno.env);
     if (!r.ok) return json({ unavailable: true, answer: 'L’assistant n’a pas pu répondre. Réessayez dans un instant.', links: [] });
 

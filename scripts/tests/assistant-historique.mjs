@@ -21,7 +21,14 @@
 //  H10 historique indisponible : « Historique indisponible », l'assistant reste utilisable ; état « Chargement… »
 //  M   téléphone 390 px : pas de défilement horizontal, boutons ≥ 40 px, captures
 //  S   salarié (/poseur, 390 px) : `history` dans le corps de worker-assistant, « Historique », rouvrir et continuer
-//  C   captures : docs/captures-assistant-historique/ (390 px et 1280 px : accueil, chat en cours, historique, suppression, vide)
+//  D   démo /apercu/assistant-salarie : l'historique reste en mémoire (memoryChatStore), aucune requête vers supabase.co
+//  R1  une carte ÉCRIT (« Je le fais… ») : « Nouveau chat », rouvrir et supprimer le chat affiché sont refusés, la carte montre son résultat ;
+//      une fiche pas encore confirmée : « Abandonner cette action ? » (Garder / Abandonner), pour « Nouveau chat » et pour rouvrir une conversation
+//  R2  course au chargement : « Retour » puis une question pendant la lecture d'une ancienne conversation → l'écran ne bascule PAS sur l'ancien chat
+//  R3  supprimer le chat affiché pendant qu'une réponse arrive → l'écran ne reste pas bloqué ; délai maximal d'une demande (60 s, bureau ET salarié)
+//  R4  le chat courant a disparu (supprimé ailleurs) ou est plein (54000) → le tour va dans un NOUVEAU chat, une ligne discrète le dit, une seule fois
+//  R5  clavier : le focus ne retombe jamais sur le haut de la page (confirmation → « Non », Oui → ligne suivante, rouvrir → champ de saisie), « Conversation supprimée » annoncée
+//  C   captures : docs/captures-assistant-historique/ (390 px et 1280 px : accueil, chat en cours, historique, suppression, vide, action en cours, abandon, ligne discrète)
 import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path';
 let chromium;
 try { ({ chromium } = await import('playwright-core')); } catch {
@@ -74,6 +81,11 @@ const msgsOf = (chatId) => DB.messages.filter((m) => m.chat_id === chatId);
 // ── Ce que l'écran a envoyé, et les pannes simulées ──
 const calls = { append: [], list: [], load: [], del: [], clear: 0, assistant: [], worker: [], otherWrites: [] };
 let failAppend = false, failList = false, listDelay = 0;
+let loadDelay = 0;            // lenteur de la LECTURE d'une conversation (ms)
+let writeDelay = 0;           // lenteur des écritures métier (planning…) : une carte qui écrit reste « Je le fais… »
+const fullChats = new Set();  // chats « pleins » (200 messages) : la fonction SQL répond 54000
+const sleep = (ms) => new Promise((x) => setTimeout(x, ms));
+const resetCalls = () => { calls.append.length = 0; calls.list.length = 0; calls.load.length = 0; calls.del.length = 0; calls.clear = 0; calls.assistant.length = 0; calls.worker.length = 0; calls.otherWrites.length = 0; };
 let replyFn = (body) => ({ answer: `Réponse à : ${body.question}`, links: [], remaining: 40 });
 let workerFn = (body) => ({ kind: 'answer', answer: `Réponse à : ${body.text}`, remaining: 19 });
 
@@ -104,6 +116,7 @@ const route = (session) => async (r) => {
   if (p === '/rest/v1/rpc/assistant_chat_append') {
     calls.append.push({ me, body });
     if (failAppend) return r.fulfill({ status: 500, json: { message: 'panne simulée' } });
+    if (body.p_chat_id && fullChats.has(body.p_chat_id)) return r.fulfill({ status: 400, json: { code: '54000', message: 'Cette conversation est pleine (200 messages au plus) : ouvrez un nouveau chat.' } });
     let chat = null;
     if (body.p_chat_id) {
       chat = DB.chats.find((c) => c.id === body.p_chat_id && c.user_id === me);
@@ -144,19 +157,24 @@ const route = (session) => async (r) => {
   if (p === '/rest/v1/assistant_chat_messages' && m === 'GET') {
     const id = (u.searchParams.get('chat_id') || '').replace(/^eq\./, '');
     calls.load.push({ id, order: u.searchParams.get('order') });
+    if (loadDelay) await sleep(loadDelay);
     const mine = DB.chats.some((c) => c.id === id && c.user_id === me);
     return r.fulfill({ json: mine ? msgsOf(id).sort((a, c) => a.id - c.id).map(({ who, text, links }) => ({ who, text, links })) : [] });
   }
   // ── le reste de l'application (planning, salariés…) : lecture seule, rien n'est écrit ──
   const t = p.replace('/rest/v1/', '');
   const rows = filt(D[t] || [], u.searchParams);
-  if (m !== 'GET' && m !== 'HEAD') { calls.otherWrites.push(`${m} ${t}`); return r.fulfill({ status: 201, json: rows.length ? rows[0] : { id: 'new-1' } }); }
+  if (m !== 'GET' && m !== 'HEAD') { calls.otherWrites.push(`${m} ${t}`); if (writeDelay) await sleep(writeDelay); return r.fulfill({ status: 201, json: rows.length ? rows[0] : { id: 'new-1' } }); }
   if ((req.headers().accept || '').includes('vnd.pgrst.object')) return rows.length ? r.fulfill({ json: rows[0] }) : r.fulfill({ status: 406, json: { code: 'PGRST116', message: 'none' } });
   return r.fulfill({ json: rows, headers: { 'content-range': `0-${Math.max(0, rows.length - 1)}/${rows.length}` } });
 };
 
 let ok = 0, ko = 0;
 const check = (c, msg) => { if (c) { ok++; console.log('✅', msg); } else { ko++; console.log('❌', msg); } };
+// Un scénario qui échoue (délai d'attente, élément absent) est compté comme un ❌ et n'empêche pas les suivants de tourner.
+const section = async (name, fn) => {
+  try { await fn(); } catch (e) { ko++; console.log(`❌ ${name} : le scénario n’a pas pu aller au bout (${String(e.message).split('\n')[0]})`); } finally { writeDelay = 0; loadDelay = 0; }
+};
 const same = (a, b2) => JSON.stringify(a) === JSON.stringify(b2);
 const flat = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
 const shot = (name) => `${SH}/${name}.png`;
@@ -434,10 +452,326 @@ await openHistory(p);
 check(await rows(p).count() >= 1 && await tid(p, 'assistant-history-error').count() === 0, 'H10 la liste revient quand la lecture revient');
 await tid(p, 'assistant-history-back').click();
 
+// ════════════════════════ REVUE · les garde-fous de l'écran (R1 à R5) ════════════════════════
+// Chaque section prend une page neuve (la conversation vit en mémoire de la page) et une base neuve.
+const normalReply = (body) => scripted[body.question] ?? { answer: `Réponse à : ${body.question}`, links: [], remaining: 38 };
+/** Réponses fixées par question (objet, ou fonction éventuellement lente) ; toute autre question reçoit « Réponse à : … ». */
+const special = {};
+const replyWithSpecial = async (body) => { const sp = special[body.question]; return sp ? (typeof sp === 'function' ? await sp(body) : sp) : normalReply(body); };
+replyFn = replyWithSpecial;
+/** Où est le focus : le data-testid de l'élément, sinon son aria-label (« open » pour la zone d'une ligne), avec @rang dans la liste. BODY = retombé en haut de la page. */
+const where = async (pg) => {
+  await pg.waitForTimeout(90); // le focus est rendu après le dessin (setTimeout 0)
+  return pg.evaluate(() => {
+    const a = document.activeElement; if (!a) return null;
+    const li = a.closest('[data-testid=assistant-history-item]');
+    const idx = li ? [...document.querySelectorAll('[data-testid=assistant-history-item]')].indexOf(li) : -1;
+    const id = a.getAttribute('data-testid') || (a.classList.contains('as-hopen') ? 'open' : a.getAttribute('aria-label')) || a.tagName;
+    return idx >= 0 ? `${id}@${idx}` : id;
+  });
+};
+const reset = () => { fresh(); resetCalls(); failAppend = false; failList = false; listDelay = 0; loadDelay = 0; writeDelay = 0; fullChats.clear(); for (const k of Object.keys(special)) delete special[k]; };
+const DIRECT = {
+  answer: 'Je mets Kevin sur Villa Dupont.', links: [], remaining: 30,
+  action: { draft: { type: 'affecter_planning', user_id: 'u-kevin', salarie_texte: 'Kevin', worksite_id: 'w1', chantier_texte: 'Villa Dupont', dates: [today], note: '', debut: '', fin: '' }, problems: [], summary: 'Kevin · Villa Dupont', question: null },
+  options: pendingReply.options,
+};
+// Une fiche qui attend « Confirmer » (clôturer le mois : jamais faite d'office).
+const CLOTURE = {
+  answer: 'Je prépare la clôture.', links: [], remaining: 29,
+  action: { draft: { type: 'cloturer_mois', mois: today.slice(0, 7) }, problems: [], summary: 'Clôturer le mois', question: null },
+  options: pendingReply.options,
+};
+
+// ════════ R1 · une carte écrit : rien ne vide l'écran avant son résultat ════════
+await section('R1', async () => {
+  console.log('\n═══ R1 · une carte écrit (« Je le fais… ») : « Nouveau chat », rouvrir et supprimer le chat affiché sont refusés');
+  reset();
+  special['Mets Kevin sur Villa Dupont aujourd’hui'] = DIRECT;
+  special['Clôture le mois'] = CLOTURE;
+  seedChat(ADMIN, 'Un autre chat', 2, [{ who: 'me', text: 'Un autre chat' }, { who: 'bot', text: 'Autre réponse.' }]);
+  const q = await dctx.newPage(); watch(q, 'bureau 1280 (R1)');
+  await openAdmin(q);
+  writeDelay = 2500;
+  await ask(q, 'Mets Kevin sur Villa Dupont aujourd’hui');
+  check(/Je le fais/.test(flat(await panel(q).innerText())), 'R1 la carte écrit : « Je le fais… » à l’écran');
+  check(await tid(q, 'assistant-newchat').isDisabled(), 'R1 « Nouveau chat » est grisé pendant que la carte écrit');
+  await panel(q).screenshot({ path: shot('1280-6-action-en-cours') });
+  await tid(q, 'assistant-newchat').click({ force: true, timeout: 2000 }).catch(() => {});
+  check((await bubbles(q)).me.length === 1 && /Je le fais/.test(flat(await panel(q).innerText())), 'R1 un clic forcé sur « Nouveau chat » ne vide pas l’écran');
+  await openHistory(q);
+  check(same(await rowTitles(q), ['Mets Kevin sur Villa Dupont aujourd’hui', 'Un autre chat']), `R1 historique : le chat de l’écran est enregistré (${(await rowTitles(q)).join(' | ')})`);
+  check(await q.locator('.as-hopen').nth(1).isDisabled(), 'R1 historique : une autre conversation ne s’ouvre pas pendant l’écriture');
+  check(await tid(q, 'assistant-history-delete').nth(0).isDisabled() && await tid(q, 'assistant-history-delete').nth(1).isEnabled(), 'R1 historique : le chat de l’écran ne se supprime pas (les autres, si)');
+  check(await tid(q, 'assistant-history-clear').isDisabled(), 'R1 historique : « Tout effacer » non plus');
+  check(await tid(q, 'assistant-history-verrou').isVisible(), 'R1 historique : une ligne dit pourquoi');
+  await panel(q).screenshot({ path: shot('1280-6b-historique-verrou') });
+  await tid(q, 'assistant-history-back').click();
+  await q.waitForSelector('[data-testid=action-done]', { timeout: 9000 });
+  check(/Fait/.test(flat(await tid(q, 'action-done').innerText())) && await tid(q, 'action-undo').isVisible(), 'R1 la carte a montré son résultat : « Fait » + Annuler (jamais perdue)');
+  check(calls.otherWrites.includes('POST planning'), `R1 l’écriture est partie une fois (${calls.otherWrites.filter((x) => x === 'POST planning').length} × POST planning)`);
+  check(await tid(q, 'assistant-newchat').isEnabled(), 'R1 « Nouveau chat » est de nouveau actif dès que la carte a fini');
+  writeDelay = 0;
+
+  console.log('\n═══ R1 · une fiche pas encore confirmée : « Abandonner cette action ? »');
+  await tid(q, 'assistant-newchat').click();
+  check(await tid(q, 'assistant-abandon').count() === 0 && /Bonjour 👋/.test(await q.locator('.as-hello').innerText()), 'R1 sans fiche en attente (la carte est faite), « Nouveau chat » vide tout de suite');
+  await ask(q, 'Clôture le mois');
+  check(await q.locator('[data-testid=action-card]').count() === 1 && await tid(q, 'action-confirm').isEnabled(), 'R1 une fiche à confirmer est à l’écran');
+  const wFiche = calls.otherWrites.length;
+  await tid(q, 'assistant-newchat').click();
+  await q.waitForSelector('[data-testid=assistant-abandon]', { timeout: 3000 });
+  check(/Abandonner cette action \?/.test(flat(await tid(q, 'assistant-abandon').innerText())), 'R1 « Nouveau chat » demande « Abandonner cette action ? »');
+  check(await where(q) === 'assistant-abandon-no', 'R1 le focus est sur « Garder » (le choix sûr)');
+  check(await q.locator('[data-testid=action-card]').count() === 1 && (await bubbles(q)).me.length === 1, 'R1 la fiche est toujours à l’écran tant qu’on n’a pas répondu');
+  await panel(q).screenshot({ path: shot('1280-7-abandon') });
+  await q.keyboard.press('Escape');
+  check(await tid(q, 'assistant-abandon').count() === 0 && await q.locator('[data-testid=action-card]').count() === 1 && await where(q) === 'assistant-newchat', 'R1 Échap = « Garder » : la fiche reste, le focus revient sur « Nouveau chat »');
+  await tid(q, 'assistant-newchat').click();
+  await tid(q, 'assistant-abandon-no').click();
+  check(await tid(q, 'assistant-abandon').count() === 0 && await q.locator('[data-testid=action-card]').count() === 1, 'R1 « Garder » : la fiche reste');
+  await tid(q, 'assistant-newchat').click();
+  await tid(q, 'assistant-abandon-yes').click();
+  await q.waitForTimeout(200);
+  check((await bubbles(q)).me.length === 0 && await q.locator('[data-testid=action-card]').count() === 0 && /Bonjour 👋/.test(await q.locator('.as-hello').innerText()) && await tid(q, 'assistant-abandon').count() === 0, 'R1 « Abandonner » : page blanche, plus de fiche');
+  check(calls.otherWrites.length === wFiche, `R1 abandonner n’écrit rien (${calls.otherWrites.length - wFiche} écriture)`);
+
+  console.log('\n═══ R1 · rouvrir une conversation (ou supprimer celle de l’écran) alors qu’une fiche attend');
+  await ask(q, 'Clôture le mois');
+  await openHistory(q);
+  const iAutre = (await rowTitles(q)).indexOf('Un autre chat');
+  const nLoad1 = calls.load.length;
+  await rows(q).nth(iAutre).locator('.as-hopen').click();
+  check(/Abandonner l’action en attente \?/.test(flat(await rows(q).nth(iAutre).innerText())), 'R1 rouvrir : la ligne demande d’abord « Abandonner l’action en attente ? »');
+  check(await where(q) === `assistant-history-confirm-no@${iAutre}` && calls.load.length === nLoad1, 'R1 rouvrir : focus sur « Garder », rien n’est encore lu');
+  await tid(q, 'assistant-history-confirm-no').click();
+  check(await tid(q, 'assistant-history-confirm-no').count() === 0 && await where(q) === `open@${iAutre}` && await tid(q, 'assistant-history-view').count() === 1, 'R1 « Garder » : on reste dans l’historique, focus rendu à la ligne');
+  await tid(q, 'assistant-history-delete').nth(0).click();
+  check(/L’action en attente à l’écran sera abandonnée/.test(flat(await rows(q).nth(0).innerText())), 'R1 supprimer le chat de l’écran : la confirmation prévient que la fiche sera abandonnée');
+  await tid(q, 'assistant-history-confirm-no').click();
+  await rows(q).nth(iAutre).locator('.as-hopen').click();
+  await tid(q, 'assistant-history-confirm-yes').click();
+  await q.waitForFunction(() => [...document.querySelectorAll('.as-bot')].some((x) => x.textContent.includes('Autre réponse.')), null, { timeout: 5000 });
+  check(same((await bubbles(q)).me, ['Un autre chat']) && await q.locator('[data-testid=action-card]').count() === 0, 'R1 « Abandonner » : la conversation s’ouvre, la fiche est partie');
+});
+
+// ════════ R2 · « Retour » pendant la lecture d'une ancienne conversation ════════
+await section('R2', async () => {
+  console.log('\n═══ R2 · « Retour » + une question pendant la lecture : l’ancienne conversation ne remplace pas l’écran');
+  reset();
+  const vieux = seedChat(ADMIN, 'Vieux chat', 5, [{ who: 'me', text: 'Ancienne question' }, { who: 'bot', text: 'Ancienne réponse' }]);
+  const r2 = await dctx.newPage(); watch(r2, 'bureau 1280 (R2)');
+  await openAdmin(r2);
+  loadDelay = 2500;
+  await openHistory(r2);
+  await rows(r2).first().locator('.as-hopen').click();
+  await until(() => calls.load.length === 1);
+  await r2.waitForTimeout(200);
+  await tid(r2, 'assistant-history-back').click();
+  await ask(r2, 'Ma question pendant le chargement');
+  check(same((await bubbles(r2)).me, ['Ma question pendant le chargement']), 'R2 la question posée pendant la lecture est à l’écran, avec sa réponse');
+  await r2.waitForTimeout(3000); // la lecture se termine
+  const b2 = await bubbles(r2);
+  check(same(b2.me, ['Ma question pendant le chargement']) && same(b2.bot, ['Réponse à : Ma question pendant le chargement']) && !JSON.stringify(b2).includes('Ancienne'),
+    `R2 …et y reste quand la lecture se termine (${JSON.stringify(b2)})`);
+  check(await tid(r2, 'assistant-history-view').count() === 0, 'R2 l’historique n’est pas revenu');
+  check(calls.append.at(-1).body.p_chat_id === null && calls.append.at(-1).body.p_user_text === 'Ma question pendant le chargement' && msgsOf(vieux).length === 2, 'R2 le tour est enregistré dans un NOUVEAU chat (le vieux chat n’a pas bougé)');
+  await ask(r2, 'Deuxième question');
+  check(same(calls.assistant.at(-1).history, [{ who: 'me', text: 'Ma question pendant le chargement' }, { who: 'bot', text: 'Réponse à : Ma question pendant le chargement' }]) && calls.append.at(-1).body.p_chat_id !== vieux && calls.append.at(-1).body.p_chat_id !== null,
+    'R2 la suite part avec l’historique de la conversation vécue (pas celui du vieux chat), dans le chat nouveau');
+
+  console.log('\n═══ R2 · variante lente : la réponse arrive après la fin de la lecture');
+  await tid(r2, 'assistant-newchat').click();
+  special['Question lente'] = async () => { await sleep(4500); return { answer: 'Réponse lente.', links: [], remaining: 20 }; };
+  await openHistory(r2);
+  const nLoad2 = calls.load.length, nApp2 = calls.append.length;
+  await rows(r2).filter({ hasText: 'Vieux chat' }).locator('.as-hopen').click();
+  await until(() => calls.load.length > nLoad2);
+  await r2.waitForTimeout(200);
+  await tid(r2, 'assistant-history-back').click();
+  await r2.fill('.as-bar textarea', 'Question lente'); await r2.click('button[aria-label="Envoyer"]');
+  await r2.waitForSelector('.as-typing');
+  await r2.waitForTimeout(2800); // lecture finie (2,5 s), réponse pas encore là (4,5 s)
+  check(await r2.locator('.as-typing').isVisible() && same((await bubbles(r2)).me, ['Question lente']) && !flat(await panel(r2).innerText()).includes('Ancienne'),
+    'R2 lente : la lecture finie, l’écran montre toujours la question vécue et « Je regarde… » (pas l’ancien chat)');
+  await r2.waitForFunction(() => document.querySelectorAll('.as-bot').length > 0, null, { timeout: 8000 });
+  await until(() => calls.append.length > nApp2);
+  check(same((await bubbles(r2)).bot, ['Réponse lente.']) && calls.append.at(-1).body.p_user_text === 'Question lente', 'R2 lente : la réponse arrive à l’écran et le tour est enregistré (rien n’est jeté)');
+
+  console.log('\n═══ R2 · pendant une réponse en route, aucune conversation ne s’ouvre');
+  special['Question en route'] = async () => { await sleep(2500); return { answer: 'Voilà.', links: [], remaining: 19 }; };
+  await tid(r2, 'assistant-newchat').click();
+  await r2.fill('.as-bar textarea', 'Question en route'); await r2.click('button[aria-label="Envoyer"]');
+  await r2.waitForSelector('.as-typing');
+  await tid(r2, 'assistant-history').click(); await r2.waitForSelector('[data-testid=assistant-history-view]');
+  await r2.waitForFunction(() => !document.querySelector('[data-testid=assistant-history-loading]'), null, { timeout: 5000 });
+  check(await r2.locator('.as-hopen').first().isDisabled(), 'R2 réponse en route : les conversations ne s’ouvrent pas');
+  await r2.waitForFunction(() => !document.querySelector('.as-hopen:disabled'), null, { timeout: 6000 });
+  check(await r2.locator('.as-hopen').first().isEnabled(), 'R2 …elles se rouvrent quand la réponse est arrivée');
+});
+
+// ════════ R3 · supprimer le chat affiché pendant qu'une réponse arrive ; délai maximal ════════
+await section('R3a', async () => {
+  console.log('\n═══ R3 · supprimer le chat de l’écran pendant une réponse : l’écran n’est pas bloqué');
+  reset();
+  const r3 = await dctx.newPage(); watch(r3, 'bureau 1280 (R3)');
+  await openAdmin(r3);
+  await ask(r3, 'Premier tour');
+  let liberer = null;
+  special['Question restée sans réponse'] = () => new Promise((res) => { liberer = () => res({ answer: 'Réponse tardive', links: [], remaining: 11 }); });
+  await r3.fill('.as-bar textarea', 'Question restée sans réponse'); await r3.click('button[aria-label="Envoyer"]');
+  await r3.waitForSelector('.as-typing');
+  await until(() => !!liberer);
+  await openHistory(r3);
+  check(await tid(r3, 'assistant-history-delete').first().isEnabled(), 'R3 pendant la réponse, la corbeille du chat de l’écran reste utilisable');
+  await tid(r3, 'assistant-history-delete').first().click();
+  await tid(r3, 'assistant-history-confirm-yes').click();
+  await until(() => calls.del.length === 1);
+  await r3.waitForTimeout(250);
+  await tid(r3, 'assistant-history-back').click();
+  check(/Bonjour 👋/.test(await r3.locator('.as-hello').innerText()) && await r3.locator('.as-typing').count() === 0, 'R3 l’écran est blanc et « Je regarde… » a disparu');
+  await r3.fill('.as-bar textarea', 'Autre question');
+  check(await r3.locator('button[aria-label="Envoyer"]').isEnabled() && await tid(r3, 'assistant-newchat').isEnabled(), 'R3 Envoyer et « Nouveau chat » sont actifs (rien n’attend la réponse périmée)');
+  await r3.screenshot({ path: shot('1280-9-apres-suppression-pendant-reponse'), clip: { x: 1280 - 420, y: 0, width: 420, height: 900 } });
+  await r3.click('button[aria-label="Envoyer"]');
+  await r3.waitForFunction(() => document.querySelectorAll('.as-bot').length === 1, null, { timeout: 5000 });
+  await until(() => calls.append.some((c) => c.body.p_user_text === 'Autre question'));
+  liberer(); // la réponse périmée arrive enfin
+  await r3.waitForTimeout(500);
+  const b3 = await bubbles(r3);
+  check(same(b3.me, ['Autre question']) && same(b3.bot, ['Réponse à : Autre question']), `R3 la réponse périmée n’apparaît pas à l’écran (${JSON.stringify(b3)})`);
+  check(!calls.append.some((c) => c.body.p_user_text === 'Question restée sans réponse' || c.body.p_bot_text === 'Réponse tardive'), 'R3 le tour périmé n’est pas enregistré');
+  check(/11 questions restantes/.test(flat(await panel(r3).innerText())), 'R3 le quota consommé est quand même compté (« 11 questions restantes »)');
+});
+
+await section('R3b', async () => {
+  console.log('\n═══ R3 · délai maximal : 60 s sans réponse, l’écran rend la main (bureau)');
+  const tctx = await b.newContext({ viewport: { width: 1280, height: 900 }, locale: 'fr-FR', timezoneId: 'Europe/Paris' });
+  await tctx.addInitScript(([k, v]) => { localStorage.setItem(k, v); }, ['sb-sdperbcquvneohotjono-auth-token', JSON.stringify(adminSession)]);
+  await tctx.route('**/*.supabase.co/**', route(adminSession));
+  const tp = await tctx.newPage(); watch(tp, 'bureau (délai)');
+  await tp.clock.install();
+  await openAdmin(tp);
+  special['Question sans réponse'] = () => new Promise(() => {}); // le serveur ne répond jamais
+  const nAsk = calls.assistant.length, nAppT = calls.append.length;
+  await tp.fill('.as-bar textarea', 'Question sans réponse'); await tp.click('button[aria-label="Envoyer"]');
+  await tp.waitForSelector('.as-typing');
+  await until(() => calls.assistant.length > nAsk);
+  await tp.clock.fastForward(50_000);
+  check(await tp.locator('.as-typing').isVisible(), 'R3 après 50 s, la réponse est encore attendue');
+  await tp.clock.fastForward(11_000);
+  await tp.waitForFunction(() => !document.querySelector('.as-typing'), null, { timeout: 5000 });
+  const bt = await bubbles(tp);
+  check(same(bt.bot, ['L’assistant met trop de temps à répondre. Réessayez.']) && await tp.locator('.as-bot.notice').count() === 1, `R3 au-delà de 60 s : une notice claire (${JSON.stringify(bt.bot)})`);
+  await tp.fill('.as-bar textarea', 'On réessaie');
+  check(await tp.locator('button[aria-label="Envoyer"]').isEnabled() && await tid(tp, 'assistant-newchat').isEnabled(), 'R3 Envoyer et « Nouveau chat » sont de nouveau actifs');
+  check(calls.append.length === nAppT, 'R3 la notice n’est pas enregistrée');
+  await tp.click('button[aria-label="Envoyer"]');
+  await tp.waitForFunction(() => document.querySelectorAll('.as-bot').length === 2, null, { timeout: 5000 });
+  check((await bubbles(tp)).bot.at(-1) === 'Réponse à : On réessaie', 'R3 la demande suivante répond normalement');
+  check(same(calls.assistant.at(-1).history ?? [], []), 'R3 la question sans réponse ne part pas comme contexte');
+});
+
+// ════════ R4 · le chat courant n'existe plus, ou est plein ════════
+await section('R4', async () => {
+  console.log('\n═══ R4 · chat supprimé depuis un autre onglet : le tour va dans un nouveau chat, une ligne discrète le dit');
+  reset();
+  const r4 = await dctx.newPage(); watch(r4, 'bureau 1280 (R4)');
+  await openAdmin(r4);
+  await ask(r4, 'Tour A');
+  const X = DB.chats[0].id;
+  DB.chats = []; DB.messages = []; // « un autre onglet » vient de supprimer ce chat
+  const nA4 = calls.append.length;
+  await r4.fill('.as-bar textarea', 'Tour B'); await r4.click('button[aria-label="Envoyer"]');
+  await r4.waitForFunction(() => document.querySelectorAll('.as-bot').length === 2, null, { timeout: 5000 });
+  await until(() => calls.append.length >= nA4 + 2);
+  await r4.waitForTimeout(300);
+  check(calls.append.length === nA4 + 2 && calls.append[nA4].body.p_chat_id === X && calls.append[nA4 + 1].body.p_chat_id === null && calls.append[nA4 + 1].body.p_user_text === 'Tour B',
+    `R4 chat introuvable (42501) : le tour est réessayé UNE fois sur un nouveau chat (${calls.append.slice(nA4).map((c) => c.body.p_chat_id === null ? 'null' : 'X').join(' → ')})`);
+  const Y = DB.chats[0]?.id;
+  check(DB.chats.length === 1 && Y !== X && msgsOf(Y).length === 2, `R4 le tour est en base (${DB.chats.length} chat, ${DB.messages.length} messages) au lieu d’être perdu`);
+  check(await tid(r4, 'assistant-note').count() === 1 && /n’est plus dans l’historique : la suite est enregistrée dans un nouveau chat/.test(flat(await tid(r4, 'assistant-note').innerText())), 'R4 une ligne discrète le dit');
+  check(await r4.locator('.as-bot').count() === 2, 'R4 ce n’est pas une bulle de l’assistant');
+  await panel(r4).screenshot({ path: shot('1280-8-ligne-discrete') });
+  await ask(r4, 'Tour C');
+  check(calls.append.at(-1).body.p_chat_id === Y && msgsOf(Y).length === 4 && await tid(r4, 'assistant-note').count() === 1, 'R4 le tour suivant va au nouveau chat, sans nouvelle ligne (une seule fois)');
+  check(!calls.assistant.at(-1).history.some((h) => /nouveau chat/.test(h.text)) && calls.assistant.at(-1).history.length === 4, 'R4 la ligne discrète ne part pas comme contexte');
+
+  console.log('\n═══ R4 · chat plein (54000) : même chose, avec le bon mot');
+  fullChats.add(Y);
+  const nA5 = calls.append.length;
+  await r4.fill('.as-bar textarea', 'Tour D'); await r4.click('button[aria-label="Envoyer"]');
+  await r4.waitForFunction(() => document.querySelectorAll('.as-bot').length === 4, null, { timeout: 5000 });
+  await until(() => calls.append.length >= nA5 + 2);
+  await r4.waitForTimeout(300);
+  const Z = DB.chats.find((c) => c.id !== Y)?.id;
+  check(calls.append[nA5].body.p_chat_id === Y && calls.append[nA5 + 1].body.p_chat_id === null && !!Z && msgsOf(Z).length === 2, 'R4 chat plein : le tour est réessayé sur un nouveau chat');
+  check(await tid(r4, 'assistant-note').count() === 2 && /pleine \(200 messages\)/.test(flat(await tid(r4, 'assistant-note').last().innerText())), 'R4 la ligne dit que la conversation est pleine');
+  fullChats.clear();
+
+  console.log('\n═══ R4 · panne passagère (500) sur un chat connu : pas de nouveau chat, pas de ligne');
+  failAppend = true;
+  const nA6 = calls.append.length;
+  await r4.fill('.as-bar textarea', 'Tour E'); await r4.click('button[aria-label="Envoyer"]');
+  await r4.waitForFunction(() => document.querySelectorAll('.as-bot').length === 5, null, { timeout: 5000 });
+  await until(() => calls.append.length > nA6);
+  await r4.waitForTimeout(500);
+  check(calls.append.length === nA6 + 1 && await tid(r4, 'assistant-note').count() === 2, 'R4 panne passagère : un seul essai, aucune ligne ajoutée');
+  failAppend = false;
+  await ask(r4, 'Tour F');
+  check(calls.append.at(-1).body.p_chat_id === Z && DB.chats.length === 2, 'R4 la panne passée, le tour suivant va au MÊME chat (pas de chat en trop)');
+});
+
+// ════════ R5 · clavier et lecteur d'écran ════════
+await section('R5', async () => {
+  console.log('\n═══ R5 · le focus ne retombe jamais en haut de la page');
+  reset();
+  seedChat(ADMIN, 'Conversation un', 0, [{ who: 'me', text: 'Conversation un' }, { who: 'bot', text: 'Réponse un.' }]);
+  seedChat(ADMIN, 'Conversation deux', 1, [{ who: 'me', text: 'Conversation deux' }, { who: 'bot', text: 'Réponse deux.' }]);
+  seedChat(ADMIN, 'Conversation trois', 2, [{ who: 'me', text: 'Conversation trois' }, { who: 'bot', text: 'Réponse trois.' }]);
+  const r5 = await dctx.newPage(); watch(r5, 'bureau 1280 (R5)');
+  await openAdmin(r5);
+  await openHistory(r5);
+  check(await where(r5) === 'assistant-history-back', 'R5 ouverture de l’historique : focus sur « Retour »');
+  await r5.keyboard.press('Tab');
+  check(await where(r5) === 'open@0', 'R5 Tab : la 1re conversation');
+  await r5.keyboard.press('Enter');
+  await r5.waitForSelector('.as-bot', { timeout: 5000 });
+  check(await r5.evaluate(() => document.activeElement?.tagName === 'TEXTAREA' && document.activeElement.getAttribute('aria-label') === 'Votre question'), 'R5 conversation rouverte : le focus est dans le champ de saisie');
+  await openHistory(r5);
+  await r5.keyboard.press('Tab'); await r5.keyboard.press('Tab');
+  check(await where(r5) === 'assistant-history-delete@0', 'R5 Tab Tab : la corbeille de la 1re ligne');
+  await r5.keyboard.press('Enter');
+  check(await where(r5) === 'assistant-history-confirm-no@0', 'R5 corbeille : le focus va sur « Non » (le choix sûr), pas en haut de la page');
+  await r5.keyboard.press('Enter');
+  check(await where(r5) === 'assistant-history-delete@0' && await tid(r5, 'assistant-history-confirm-no').count() === 0, 'R5 « Non » : le focus revient sur la corbeille d’origine');
+  await r5.keyboard.press('Enter');
+  await r5.keyboard.press('Escape');
+  check(await where(r5) === 'assistant-history-delete@0' && await tid(r5, 'assistant-history-confirm-no').count() === 0 && calls.del.length === 0, 'R5 Échap = « Non »');
+  await r5.keyboard.press('Enter');
+  await r5.keyboard.press('Shift+Tab');
+  check(await where(r5) === 'assistant-history-confirm-yes@0', 'R5 Maj+Tab depuis « Non » : « Oui »');
+  await r5.keyboard.press('Enter');
+  await until(() => calls.del.length === 1); await r5.waitForTimeout(250);
+  check(await where(r5) === 'open@0' && !(await rowTitles(r5)).includes('Conversation un'), `R5 « Oui » : le focus va sur la ligne suivante (${await where(r5)})`);
+  check(/Conversation supprimée/.test(flat(await tid(r5, 'assistant-history-status').textContent())) && await r5.locator('[data-testid=assistant-history-status][role=status]').count() === 1, 'R5 « Conversation supprimée. » est annoncé (zone role=status)');
+  await tid(r5, 'assistant-history-delete').nth(1).focus();
+  await r5.keyboard.press('Enter'); await r5.keyboard.press('Shift+Tab'); await r5.keyboard.press('Enter');
+  await until(() => calls.del.length === 2); await r5.waitForTimeout(250);
+  check(await where(r5) === 'open@0' && (await rowTitles(r5)).length === 1, `R5 dernière ligne supprimée : le focus va sur la précédente (${await where(r5)})`);
+  await tid(r5, 'assistant-history-clear').focus();
+  await r5.keyboard.press('Enter');
+  check(await where(r5) === 'assistant-history-confirm-no', 'R5 « Tout effacer » : le focus va sur « Non »');
+  await r5.keyboard.press('Enter');
+  check(await where(r5) === 'assistant-history-clear', 'R5 « Non » : le focus revient sur « Tout effacer »');
+  await r5.keyboard.press('Enter'); await r5.keyboard.press('Shift+Tab'); await r5.keyboard.press('Enter');
+  await until(() => calls.clear === 1); await r5.waitForTimeout(250);
+  check(await where(r5) === 'assistant-history-back' && /Toutes les conversations ont été supprimées/.test(flat(await tid(r5, 'assistant-history-status').textContent())), 'R5 « Tout effacer » confirmé : le focus va sur « Retour » et c’est annoncé');
+});
+
 // ════════════════════════ BUREAU · téléphone 390 × 844 ════════════════════════
 console.log('\n═══ M · téléphone 390 px : pas de défilement horizontal, boutons ≥ 40 px, captures');
-fresh(); calls.append.length = 0; calls.assistant.length = 0; calls.del.length = 0; calls.clear = 0; failAppend = false;
-replyFn = (body) => scripted[body.question] ?? { answer: `Réponse à : ${body.question}`, links: [], remaining: 38 };
+reset();
 const mctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, locale: 'fr-FR', timezoneId: 'Europe/Paris' });
 await mctx.addInitScript(([k, v]) => { localStorage.setItem(k, v); }, ['sb-sdperbcquvneohotjono-auth-token', JSON.stringify(adminSession)]);
 await mctx.route('**/*.supabase.co/**', route(adminSession));
@@ -476,6 +810,19 @@ await until(() => calls.clear === 1); await m.waitForTimeout(250);
 check(await tid(m, 'assistant-history-empty').isVisible() && await noHScroll(m), 'M état vide : visible, pas de défilement horizontal');
 await panel(m).screenshot({ path: shot('390-5-vide') });
 await tid(m, 'assistant-history-back').click();
+await section('M-abandon', async () => {
+  // « Abandonner cette action ? » (une fiche attend son « Confirmer ») : tient dans 390 px, boutons ≥ 40 px.
+  special['Clôture le mois'] = CLOTURE;
+  await ask(m, 'Clôture le mois');
+  await tid(m, 'assistant-newchat').click();
+  await m.waitForSelector('[data-testid=assistant-abandon]', { timeout: 3000 });
+  check(await noHScroll(m), 'M « Abandonner cette action ? » : pas de défilement horizontal');
+  for (const [id, label] of [['assistant-abandon-yes', 'Abandonner'], ['assistant-abandon-no', 'Garder']]) {
+    const r = await bigEnough(tid(m, id)); check(r === true, `M « ${label} » : zone ≥ 40 px (${r === true ? 'ok' : r})`);
+  }
+  await panel(m).screenshot({ path: shot('390-6-abandon') });
+  await tid(m, 'assistant-abandon-yes').click();
+});
 
 // ════════════════════════ SALARIÉ · /poseur 390 × 844 ════════════════════════
 console.log('\n═══ S · salarié (/poseur) : `history` dans le corps de worker-assistant, historique, rouvrir et continuer');
@@ -505,6 +852,68 @@ await ask(w, 'Merci');
 check(calls.worker.at(-1).history.length === 4 && calls.append.at(-1).body.p_chat_id === DB.chats[0].id && DB.chats.length === 1, 'S continuée : 4 messages envoyés, tour ajouté au même chat');
 await tid(w, 'assistant-newchat').click();
 check((await bubbles(w)).me.length === 0, 'S « Nouveau chat » côté salarié : écran vide');
+await section('S-fiche', async () => {
+  // Une fiche d'heures qui s'enregistre (« Je note vos heures… ») ne se laisse pas démonter non plus.
+  const FICHE = { kind: 'draft', answer: 'Voici vos heures.', remaining: 17, chantiers: [{ id: 'w1', nom: 'Villa Dupont', ville: 'Lyon' }],
+    draft: { date: today, errors: [], lines: [{ worksite_id: 'w1', worksite_text: 'Villa Dupont', start: '08:00', end: '12:00', break_minutes: 0 }] } };
+  workerFn = (body) => (body.text === 'Heures du matin' ? FICHE : { kind: 'answer', answer: `Réponse à : ${body.text}`, remaining: 19 });
+  writeDelay = 2500;
+  await ask(w, 'Heures du matin');
+  check(/Je note vos heures/.test(flat(await panel(w).innerText())) && await tid(w, 'assistant-newchat').isDisabled(), 'S la fiche d’heures s’enregistre : « Nouveau chat » est grisé');
+  await w.waitForSelector('[data-testid=action-done]', { timeout: 9000 });
+  check(/Fait/.test(flat(await tid(w, 'action-done').innerText())) && await tid(w, 'assistant-newchat').isEnabled(), 'S la fiche montre « Fait » et « Nouveau chat » redevient actif');
+  check(calls.otherWrites.includes('POST time_entries'), `S l’enregistrement des heures est bien parti (${calls.otherWrites.join(', ')})`);
+  writeDelay = 0;
+});
+
+await section('S-délai', async () => {
+  // Délai maximal côté salarié (même garde-fou que le bureau, autre fonction) : la phrase revient dans le champ.
+  console.log('\n═══ S · délai maximal : 60 s sans réponse de worker-assistant, l’écran rend la main et la phrase revient dans le champ');
+  reset();
+  const wtctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, locale: 'fr-FR', timezoneId: 'Europe/Paris' });
+  await wtctx.addInitScript(([k, v]) => { localStorage.setItem(k, v); }, ['sb-sdperbcquvneohotjono-auth-token', JSON.stringify(samSession)]);
+  await wtctx.route('**/*.supabase.co/**', route(samSession));
+  const wt = await wtctx.newPage(); watch(wt, 'salarié (délai)');
+  await wt.clock.install();
+  await openWorker(wt);
+  workerFn = () => new Promise(() => {}); // le serveur ne répond jamais
+  const PHRASE = 'Ce matin 7h30-12h Villa Dupont';
+  await wt.fill('.as-bar textarea', PHRASE); await wt.click('button[aria-label="Envoyer"]');
+  await wt.waitForSelector('.as-typing');
+  await until(() => calls.worker.length === 1);
+  await wt.clock.fastForward(59_000);
+  check(await wt.locator('.as-typing').isVisible(), 'S après 59 s, la réponse est encore attendue');
+  await wt.clock.fastForward(2_000);
+  await wt.waitForFunction(() => !document.querySelector('.as-typing'), null, { timeout: 5000 });
+  check(same((await bubbles(wt)).bot, ['L’assistant met trop de temps à répondre. Réessayez.']) && await wt.locator('.as-bot.notice').count() === 1, 'S au-delà de 60 s : une notice claire');
+  check(await wt.inputValue('.as-bar textarea') === PHRASE, 'S la phrase revient dans le champ (pas à redicter)');
+  check(await tid(wt, 'assistant-newchat').isEnabled() && await wt.locator('button[aria-label="Envoyer"]').isEnabled() && calls.append.length === 0, 'S « Nouveau chat » et Envoyer sont actifs, rien n’est enregistré');
+});
+
+// ════════════════════════ DÉMO · /apercu/assistant-salarie (historique en mémoire, aucune base) ════════════════════════
+console.log('\n═══ D · démo salarié : l’historique reste en mémoire, aucune requête vers la base');
+const hits = [];
+const dctx2 = await b.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, locale: 'fr-FR', timezoneId: 'Europe/Paris' });
+const dm = await dctx2.newPage(); watch(dm, 'démo');
+dm.on('request', (q) => { if (q.url().includes('.supabase.co')) hits.push(q.url()); });
+await dm.goto(`http://localhost:${PORT}/apercu/assistant-salarie?demo=salarie`); await dm.waitForTimeout(1200);
+await dm.locator('[data-testid=assistant-open]').click(); await dm.waitForSelector('[data-testid=assistant-panel]'); await dm.waitForTimeout(300);
+check(await tid(dm, 'assistant-newchat').isVisible() && await tid(dm, 'assistant-history').isVisible(), 'D « Nouveau chat » et « Historique » présents en démo');
+for (const q of ['Bonjour', 'Merci']) {
+  const bots = await dm.locator('.as-bot').count();
+  await dm.fill('.as-bar textarea', q); await dm.click('button[aria-label="Envoyer"]');
+  await dm.waitForFunction((k) => document.querySelectorAll('.as-bot').length > k, bots, { timeout: 10000 }); await dm.waitForTimeout(200);
+}
+await openHistory(dm);
+check(same(await rowTitles(dm), ['Bonjour']) && same(await rowDates(dm), ['aujourd’hui']), `D l’historique en mémoire a la conversation (${(await rowTitles(dm)).join(' | ')})`);
+await tid(dm, 'assistant-newchat').click();
+await dm.fill('.as-bar textarea', 'Autre sujet'); await dm.click('button[aria-label="Envoyer"]');
+await dm.waitForSelector('.as-bot', { timeout: 10000 }); await dm.waitForTimeout(300);
+await openHistory(dm);
+check(same(await rowTitles(dm), ['Autre sujet', 'Bonjour']), `D 2e conversation en tête (${(await rowTitles(dm)).join(' | ')})`);
+await rows(dm).nth(1).click(); await dm.waitForSelector('.as-me', { timeout: 5000 });
+check(same((await bubbles(dm)).me, ['Bonjour', 'Merci']), 'D la conversation « Bonjour » se rouvre (2 questions)');
+check(hits.length === 0, `D AUCUNE requête vers supabase.co en démo (${hits.length})`);
 
 // ── Bilan ──
 check(pageErrors.length === 0, `aucune erreur de page sur tout le parcours (${pageErrors.length})`);

@@ -7,20 +7,28 @@
 // des messages et leurs liens : jamais une pièce jointe, jamais une carte d'action (un chat rouvert montre du
 // texte, les cartes ne reviennent pas), jamais un message d'erreur ou de quota.
 //
-// L'assistant doit marcher même si l'enregistrement échoue : `append` n'échoue jamais (il rend null) et
+// L'assistant doit marcher même si l'enregistrement échoue : `append` n'échoue jamais (il rend `{ id: null, why }`) et
 // n'écrit RIEN dans la console — le contenu d'un chat ne doit apparaître dans aucun journal.
 import { supabase } from '@/lib/supabase';
 import type { AssistantHistory, AssistantLink } from '@/lib/assistant';
 
 export interface ChatSummary { id: string; title: string; updatedAt: string }
 export interface ChatMessage { who: 'me' | 'bot'; text: string; links?: AssistantLink[] }
+/**
+ * Ce que rend `append`. Rien n'a été enregistré quand `id` est null, et `why` dit s'il sert à quelque chose de réessayer SUR LE MÊME chat :
+ *  · 'introuvable' : ce chat n'existe plus (supprimé depuis un autre onglet ou un autre appareil, « Tout effacer » fait ailleurs) ;
+ *  · 'pleine'      : ce chat a atteint 200 messages ;
+ *  · 'echec'       : tout le reste (panne passagère, texte refusé…) — l'écran ne change rien, le tour suivant réessaiera.
+ * Dans les deux premiers cas, réécrire sur ce chat échouera à chaque tour : l'écran doit en ouvrir un autre (`chatId` null).
+ */
+export type AppendResult = { id: string } | { id: null; why: 'introuvable' | 'pleine' | 'echec' };
 export interface ChatStore {
   /** Les 50 conversations les plus récentes (la plus récente d'abord). Rejette si la lecture échoue : l'écran dit « Historique indisponible ». */
   list(): Promise<ChatSummary[]>;
   /** Les messages d'une conversation, dans l'ordre. Rejette si la lecture échoue. */
   load(id: string): Promise<ChatMessage[]>;
-  /** Ajoute un tour COMPLET (question + réponse). `chatId` null = ouvre une conversation. Rend l'identifiant de la conversation, ou null si rien n'a pu être enregistré (jamais d'exception). */
-  append(chatId: string | null, userText: string, botText: string, links: AssistantLink[]): Promise<string | null>;
+  /** Ajoute un tour COMPLET (question + réponse). `chatId` null = ouvre une conversation. Rend l'identifiant de la conversation, ou la raison pour laquelle rien n'a pu être enregistré (jamais d'exception). */
+  append(chatId: string | null, userText: string, botText: string, links: AssistantLink[]): Promise<AppendResult>;
   /** Supprime une conversation. Faux si la suppression a échoué. */
   remove(id: string): Promise<boolean>;
   /** Supprime TOUTES les conversations de l'utilisateur. Faux si ça a échoué. */
@@ -33,6 +41,7 @@ export const HISTORY_MAX_CHARS = 600;
 /** Même plafond que la base (text de 1 à 4000 caractères) : un texte plus long ferait refuser le tour entier. */
 const TEXT_MAX = 4000;
 const LINKS_MAX = 10;
+const LINKS_JSON_MAX = 3500; // la base compte 4000 caractères sur le texte de jsonb, un peu plus aéré que JSON.stringify
 const LIST_MAX = 50;
 
 /**
@@ -92,12 +101,20 @@ export const supabaseChatStore: ChatStore = {
     try {
       const p_user_text = userText.trim().slice(0, TEXT_MAX);
       const p_bot_text = botText.trim().slice(0, TEXT_MAX);
-      if (!p_user_text || !p_bot_text) return null; // la base exige 1 à 4000 caractères de chaque côté
-      const { data, error } = await supabase.rpc('assistant_chat_append', {
-        p_chat_id: chatId, p_user_text, p_bot_text, p_links: cleanLinks(links),
-      });
-      return error || typeof data !== 'string' ? null : data;
-    } catch { return null; }
+      if (!p_user_text || !p_bot_text) return { id: null, why: 'echec' }; // la base exige 1 à 4000 caractères de chaque côté
+      // La base refuse des liens de plus de 4000 caractères : mieux vaut un tour sans ses boutons que pas de tour.
+      const clean = cleanLinks(links);
+      const p_links = JSON.stringify(clean).length <= LINKS_JSON_MAX ? clean : [];
+      const { data, error } = await supabase.rpc('assistant_chat_append', { p_chat_id: chatId, p_user_text, p_bot_text, p_links });
+      if (!error && typeof data === 'string') return { id: data };
+      // Les codes de la fonction SQL : 54000 = conversation pleine (200 messages) ; 42501 = « Conversation introuvable » (un chat inconnu ou qui
+      // n'est pas le mien donne la MÊME erreur) — mais 42501 dit aussi « session invalide » / « assistant non activé » : on ne conclut « introuvable »
+      // que lorsqu'on visait un chat précis, et si c'était autre chose, l'essai suivant (sur un nouveau chat) échouera pareil, sans rien casser.
+      const code = (error as { code?: unknown } | null)?.code;
+      if (chatId !== null && code === '54000') return { id: null, why: 'pleine' };
+      if (chatId !== null && code === '42501') return { id: null, why: 'introuvable' };
+      return { id: null, why: 'echec' };
+    } catch { return { id: null, why: 'echec' }; }
   },
   async remove(id) {
     try {
@@ -133,10 +150,10 @@ export function memoryChatStore(): ChatStore {
     async append(chatId, userText, botText, links) {
       const u = userText.trim().slice(0, TEXT_MAX);
       const b = botText.trim().slice(0, TEXT_MAX);
-      if (!u || !b) return null;
+      if (!u || !b) return { id: null, why: 'echec' };
       let c = chatId === null ? undefined : chats.get(chatId);
-      if (chatId !== null && !c) return null; // une conversation qui n'est pas la nôtre (ou supprimée) : refusé, comme la base (42501)
-      if (c && c.msgs.length + 2 > 200) return null;
+      if (chatId !== null && !c) return { id: null, why: 'introuvable' }; // une conversation qui n'est pas la nôtre (ou supprimée) : refusé, comme la base (42501)
+      if (c && c.msgs.length + 2 > 200) return { id: null, why: 'pleine' };
       if (!c) {
         c = { id: `mem-${++seq}`, title: titleOf(u), at: 0, seq, msgs: [] };
         chats.set(c.id, c);
@@ -147,7 +164,7 @@ export function memoryChatStore(): ChatStore {
       c.msgs.push({ who: 'me', text: u }, { who: 'bot', text: b, ...(l.length ? { links: l } : {}) });
       c.at = Date.now();
       c.seq = ++seq;
-      return c.id;
+      return { id: c.id };
     },
     async remove(id) { chats.delete(id); return true; },
     async clear() { chats.clear(); return true; },

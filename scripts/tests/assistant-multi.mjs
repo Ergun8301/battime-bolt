@@ -76,8 +76,9 @@ let replyDelay = 0;             // lenteur simulée de worker-assistant (ms)
 const log = [];
 const fnBodies = [];             // corps envoyés à worker-assistant
 const supabaseHits = [];         // toute requête vers *.supabase.co (démo)
-// Une écriture en base : ni les appels de fonction, ni les lectures, ni le rafraîchissement de l'écran (ensure_other_worksite).
-const isWrite = (x) => x.m !== 'GET' && x.m !== 'HEAD' && x.m !== 'FN' && x.t !== 'ensure_other_worksite';
+// Une écriture en base : ni les appels de fonction, ni les lectures, ni le rafraîchissement de l'écran (ensure_other_worksite),
+// ni l'enregistrement du chat après chaque tour (assistant_chat_append : étape 2, c'est du texte d'historique, pas une écriture métier).
+const isWrite = (x) => x.m !== 'GET' && x.m !== 'HEAD' && x.m !== 'FN' && x.t !== 'ensure_other_worksite' && x.t !== 'assistant_chat_append';
 const writes = (n) => log.slice(n).filter(isWrite);
 const names = (w) => w.map((x) => `${x.m} ${x.t}`).join(' → ');
 

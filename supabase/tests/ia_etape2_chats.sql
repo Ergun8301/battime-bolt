@@ -7,7 +7,11 @@
 -- n'écrit directement ; (e) append crée le chat avec le bon titre puis ajoute à un chat existant ;
 -- (f) append sur le chat d'un autre = 42501 ; (g) entreprise sans IA refusée ; (h) 201e message refusé ;
 -- (i) le 101e chat supprime le moins récent ; (j) clear ne supprime que MES chats ; (k) la purge à 30 jours ;
--- (l) cascade utilisateur / entreprise ; (m) texte vide ou trop long refusé, sans jamais citer le texte.
+-- (l) cascade utilisateur / entreprise ; (m) texte vide ou trop long refusé, sans jamais citer le texte ;
+-- (n) la politique de confidentialité (app/confidentialite/page.tsx, section 14) dit que le texte des chats est
+-- conservé 30 jours, visible du seul auteur, effaçable — et plus « ni votre question, ni la réponse » ; la liste
+-- « à mettre en ligne avec la migration » et la fiche du registre des traitements existent (docs/ia-vision.md §6).
+-- (n) lit des fichiers du dépôt : à lancer depuis la racine, et il passe en dernier.
 \set ON_ERROR_STOP on
 
 -- La base jetable peut être en SQL_ASCII (locale POSIX du poste) : char_length() et left() compteraient des
@@ -427,3 +431,58 @@ SET ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub', :'w1', false);
 SELECT pg_temp.expect(public.assistant_chat_append(NULL, 'Après le rejeu', 'Ça marche.') IS NOT NULL, 'rejeu : append fonctionne encore');
 RESET ROLE;
+
+-- ═══ (n) Information des personnes : la politique de confidentialité dit la vérité ═══
+-- Dès que cette migration est appliquée et que l'écran enregistre, le TEXTE des questions et des réponses est gardé
+-- 30 jours. La page app/confidentialite/page.tsx (section 14, ligne « Ce que BEMEXO conserve ») ne doit plus affirmer
+-- « ni votre question, ni la réponse » (RGPD art. 13 : l'information donnée aux personnes doit être exacte). Cette
+-- section lit des fichiers du dépôt (le test se lance depuis la racine, voir l'en-tête) et passe EN DERNIER : si elle
+-- échoue, tout ce qui précède a déjà passé. La page se corrige dans la même mise en ligne que le front (docs/ia-vision.md §6.1).
+\set migration_txt `cat supabase/migrations/20261014090000_ia_etape2_chats.sql 2>/dev/null`
+\set vision_txt `cat docs/ia-vision.md 2>/dev/null`
+\set page_txt `cat app/confidentialite/page.tsx 2>/dev/null`
+
+-- Texte « à plat » d'un fichier de page : commentaires JSX retirés, balises retirées, &apos; en apostrophe, blancs réduits.
+CREATE FUNCTION pg_temp.a_plat(brut text) RETURNS text LANGUAGE sql IMMUTABLE AS $$
+  SELECT btrim(regexp_replace(
+    replace(replace(
+      regexp_replace(regexp_replace(coalesce(brut, ''), '\{/\*.*?\*/\}', ' ', 'g'), '<[^>]*>', ' ', 'g'),
+      '&apos;', chr(39)), '&nbsp;', ' '),
+    '\s+', ' ', 'g'))
+$$;
+
+-- (n1) Le correctif est tracé là où Ergun le lira : l'en-tête de la migration (liste « à mettre en ligne avec la
+-- migration ») et le document de décision (liste + texte de la ligne + fiche du registre des traitements).
+SELECT pg_temp.expect(length(:'migration_txt') > 1000, '(n) fichiers lus (test lancé depuis la racine du dépôt)');
+SELECT pg_temp.expect(position('À METTRE EN LIGNE AVEC CETTE MIGRATION' in :'migration_txt') > 0
+  AND position('app/confidentialite/page.tsx' in :'migration_txt') > 0
+  AND position('registre des traitements' in :'migration_txt') > 0, '(n) l''en-tête de la migration met la page Confidentialité et le registre dans la liste « à mettre en ligne avec la migration »');
+SELECT pg_temp.expect(position('### 6.1 À mettre en ligne avec la migration' in :'vision_txt') > 0
+  AND position('app/confidentialite/page.tsx' in :'vision_txt') > 0
+  AND position('jamais après' in :'vision_txt') > 0, '(n) docs/ia-vision.md §6.1 : la page Confidentialité est dans la liste, avec le front, jamais après');
+SELECT pg_temp.expect(position('### 6.2 Information des personnes' in :'vision_txt') > 0
+  AND position('Fiche pour le registre des traitements' in :'vision_txt') > 0
+  AND position('30 jours après la dernière activité' in :'vision_txt') > 0, '(n) docs/ia-vision.md §6.2 : le texte de la ligne et la fiche du registre des traitements (30 jours après la dernière activité)');
+
+-- (n2) La durée annoncée est celle que la purge applique : on la lit dans la fonction (son comportement exact à
+-- 29 / 31 jours est déjà prouvé en (k)), puis on exige la même durée dans la page.
+SELECT coalesce(substring(pg_get_functiondef('public.purge_old_assistant_chats()'::regprocedure) from 'interval ''(\d+) days'''), '') AS jours_purge \gset
+SELECT pg_temp.expect(:'jours_purge' = '30', '(n) la purge de la base supprime après 30 jours (la durée que la page doit annoncer)');
+
+-- (n3) LA PAGE. Les contrôles sont volontairement larges sur la formulation : ils exigent la vérité, pas des mots précis.
+SELECT pg_temp.a_plat(:'page_txt') AS page_plat \gset
+SELECT coalesce(substring(:'page_plat' from '14\. L''assistant BEMEXO.*?15\. Contact'), '') AS section14 \gset
+SELECT pg_temp.expect(length(:'page_plat') > 2000, '(n) la page Confidentialité est lisible (app/confidentialite/page.tsx)');
+SELECT pg_temp.expect(length(:'section14') > 500, '(n) la section 14 « L''assistant BEMEXO » existe dans la page');
+SELECT pg_temp.expect(position('ni votre question' in :'page_plat') = 0,
+  '(n) la page n''affirme plus « ni votre question, ni la réponse » : le texte des conversations EST conservé');
+SELECT pg_temp.expect(:'section14' ~ ('conserv[^.]{0,250}' || :'jours_purge' || ' jours|' || :'jours_purge' || ' jours[^.]{0,250}conserv'),
+  '(n) la page dit que le texte est conservé pendant la durée de la purge (30 jours)');
+SELECT pg_temp.expect(position('dernière activité' in :'section14') > 0,
+  '(n) la page précise que les 30 jours courent depuis la dernière activité (un chat où l''on écrit encore reste)');
+SELECT pg_temp.expect(:'section14' ~ '(visible|lisible|accessible|consultable)[^.]{0,120}(seul|uniquement|exclusivement)|(seul|uniquement|exclusivement)[^.]{0,120}(visible|lisible|accessible|consultable)',
+  '(n) la page dit que la conversation n''est visible que de son auteur');
+SELECT pg_temp.expect(:'section14' ~ '(pouvez|peut|possibilité|droit)[^.]{0,120}(effa[cç]|supprim)|(effa[cç]|supprim)[^.]{0,80}(à tout moment|à tout instant|quand vous)|effa[cç]able',
+  '(n) la page dit que l''utilisateur peut effacer ses conversations quand il veut (et pas seulement « supprimé automatiquement »)');
+SELECT pg_temp.expect(:'section14' ~ 'pièces jointes',
+  '(n) la page parle toujours des pièces jointes (jamais conservées)');

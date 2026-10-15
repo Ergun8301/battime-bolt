@@ -9,7 +9,7 @@ import { isPreviewHost } from '@/lib/hosting';
 import { attachmentPayload } from '@/lib/attachment';
 import { generateLocalId, getPendingEntries, removePendingEntry } from '@/lib/offline-store';
 import { insertWorkerEntry } from '@/lib/worker-entry';
-import type { AssistantReply, AssistantSource } from '@/lib/assistant';
+import { ASK_TIMEOUT_MESSAGE, invokeAssistant, type AssistantReply, type AssistantSource } from '@/lib/assistant';
 import {
   formatColleagues, fromWorkerCall, handleWorkerLocally, norm, shiftMinutes, type ColleagueRow, type Draft, type DraftLine, type WorkerAction, type WorkerLive, type WorkerSnapshot,
 } from '@/supabase/functions/_shared/worker-assistant-core';
@@ -71,7 +71,9 @@ export const supabaseWorkerSource: AssistantSource = {
       // `multi: true` : ce navigateur sait afficher la fiche à plusieurs éléments (sans lui, le serveur répond comme avant).
       // `history` (étape 2, chat avec mémoire) : omis quand la conversation vient de commencer.
       const body = { text, ...(file ? { file: await attachmentPayload(file) } : {}), multi: true, ...(history?.length ? { history } : {}) };
-      const { data, error } = await supabase.functions.invoke('worker-assistant', { body });
+      // Délai maximal (voir invokeAssistant) : sans lui, un serveur qui ne répond pas bloquerait le panneau jusqu'au rechargement.
+      const { data, error, timedOut } = await invokeAssistant('worker-assistant', body);
+      if (timedOut) return toReply({ error: ASK_TIMEOUT_MESSAGE });
       if (error) {
         const ctx = (error as { context?: Response }).context;
         const body = ctx && typeof ctx.json === 'function' ? await ctx.json().catch(() => ({})) : {};

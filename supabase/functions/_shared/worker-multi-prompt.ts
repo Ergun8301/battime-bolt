@@ -10,11 +10,17 @@
 //
 // Aucun console.* : le texte et les arguments contiennent des noms et adresses de particuliers.
 import { calendarForPrompt } from './fr-langue.ts';
-import { WORKER_DOMAINS, pickTools } from './tool-domains.ts';
+import { WORKER_DOMAINS, domainTools, pickTools } from './tool-domains.ts';
 import { WORKER_FUNCTIONS, WORKER_GUIDE, fmtMin, type WorkerLive, type WorkerSnapshot } from './worker-assistant-core.ts';
 import { WORKER_TEXT_MAX } from './saisie-profil.ts';
+import { blocAvantDemande, textePourOutils, type MessageHistorique } from './assistant-history.ts';
 
-/** La consigne du profil long. Le bloc DONNÉES est celui du profil court (un test les compare). */
+/**
+ * La consigne du profil long. Le bloc DONNÉES est celui du profil court (un test les compare).
+ * Étape 2 : avec un historique (`snapshot.historique`), le bloc de conversation précède JUSTE la ligne MESSAGE, comme dans le profil court
+ * (workerFunctionPrompt) : une relance turque (« Yarın da aynısı ») ou française à autocorrection (« Non plutôt de 9h à 12h ») est longue
+ * et doit, elle aussi, voir la conversation. Sans historique : la consigne est celle d'avant, octet pour octet.
+ */
 export function workerMultiPrompt(snapshot: WorkerSnapshot, live: WorkerLive, text: string): string {
   return `Tu es l'Assistant BEMEXO d'un salarié (bâtiment, restauration…), dans son appli de pointage. Aujourd'hui : ${snapshot.aujourdhui}.
 Tu te comportes comme un vrai assistant : tu FAIS le travail complet du premier coup, tu ne poses une question qu'en dernier recours. Réponds en appelant la ou LES fonctions nécessaires : UNE fonction par action demandée (au plus 4 dans le même message ; s'il y en a davantage, appelle les 4 premières dans l'ordre de la phrase), dans l’ordre de la phrase. Le salarié parle librement, en français ou en turc (ou les deux), avec des phrases longues et des hésitations : comprends-le et extrais TOUTES les informations (plusieurs créneaux, pause, nouveau chantier avec nom du client, adresse, code postal, ville et type de travaux, panier, congé, réserve…). Quand tu réponds par écrit (repondre), écris dans SA langue.
@@ -42,7 +48,7 @@ DONNÉES : ${JSON.stringify({
     prevu_par_le_bureau: snapshot.planning,
     en_cours: live.enCours, lignes_du_jour: live.lignes.map((l) => ({ chantier: l.chantier, debut: l.debut, fin: l.fin })),
   })}
-MESSAGE : ${text.slice(0, WORKER_TEXT_MAX)}`;
+${blocAvantDemande(snapshot.historique, '\n')}MESSAGE : ${text.slice(0, WORKER_TEXT_MAX)}`;
 }
 
 // ── Outils du profil long ───────────────────────────────────────────────────
@@ -94,9 +100,11 @@ const SOCLE = ['declarer_heures', 'nouveau_chantier', 'panier_repas', 'envoyer_j
 /**
  * Outils du profil long : ceux du domaine de la phrase (mesuré 11/11) + le socle (une phrase turque qui
  * contient « mail » ou « photo » ne doit pas perdre declarer_heures). Jamais ranger_photo : pas de fichier ici.
+ * Étape 2 : avec un historique, les domaines du dernier échange s'ajoutent à ceux de la phrase (comme workerFunctionsFor), jamais l'inverse.
  */
-export function workerFunctionsForLong(text: string) {
-  const names = new Set([...pickTools(WORKER_FUNCTIONS, text, WORKER_DOMAINS).map((f) => f.name), ...SOCLE]);
+export function workerFunctionsForLong(text: string, historique?: MessageHistorique[]) {
+  const quoi = text && domainTools(text, WORKER_DOMAINS) ? textePourOutils(text, historique) : text;
+  const names = new Set([...pickTools(WORKER_FUNCTIONS, quoi, WORKER_DOMAINS).map((f) => f.name), ...SOCLE]);
   names.delete('ranger_photo');
   return WORKER_FUNCTIONS_LONG.filter((f) => names.has(f.name));
 }

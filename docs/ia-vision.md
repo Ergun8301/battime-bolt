@@ -67,6 +67,50 @@ Conversation continue (il se souvient du sujet), bouton « Nouveau chat », hist
 - **Titre automatique** : le début de la première question (60 caractères, espaces réduits), sans appel IA en plus.
 - **Bornes** : 200 messages par chat, 100 chats par utilisateur (les moins récemment utilisés partent), 4000 caractères par message.
 
+### 6.1 À mettre en ligne avec la migration
+
+La migration `supabase/migrations/20261014090000_ia_etape2_chats.sql` ne se met pas en ligne seule :
+
+1. **La migration**, puis sa requête de vérification (8 × true, en tête du fichier).
+2. **Les fonctions** `assistant` et `worker-assistant` (elles lisent `history` ; avant leur redéploiement elles l'ignorent, rien ne casse).
+3. **Le front** : l'écran du chat, qui enregistre par `assistant_chat_append`.
+4. **La page Confidentialité** (`app/confidentialite/page.tsx`, section 14), **dans la même mise en ligne que le front, jamais après** : voir 6.2. C'est le même site
+   statique ; la page doit donc être corrigée dans le même commit que l'écran.
+5. **Le registre des traitements** : la fiche de 6.2 (le registre est tenu hors du dépôt, c'est à Ergun de l'y reporter).
+
+Garde-fou : le test `npm run test:assistant-chats-rls`, dernière section (n), ÉCHOUE tant que la page dit encore « ni votre question, ni la réponse » ou n'annonce pas
+les 30 jours que la purge applique.
+
+### 6.2 Information des personnes (RGPD art. 13) et registre des traitements (art. 30)
+
+Avant l'étape 2, la politique de confidentialité disait la vérité en écrivant « Ce que BEMEXO conserve : ni votre question, ni la réponse, ni les pièces jointes ».
+Dès que l'écran enregistre, **c'est faux** : le texte des questions et des réponses est gardé 30 jours. L'entreprise cliente (responsable de traitement) s'appuie sur ce texte.
+
+**Ligne à mettre dans la section 14 de la page** (à la place de la ligne actuelle) :
+
+> **Ce que BEMEXO conserve** : le texte de vos conversations avec l'assistant (vos questions, ses réponses et les liens de navigation qu'elles contiennent) est conservé
+> **30 jours après la dernière activité**, puis supprimé automatiquement. Il n'est visible que de vous seul dans l'application (ni votre employeur, ni vos collègues, ni le
+> support de BEMEXO) et vous pouvez l'effacer à tout moment, une conversation ou tout l'historique. Les pièces jointes ne sont jamais conservées. Un journal garde seulement
+> l'action effectuée (qui, quoi, quand, annulée ou non), sans le texte de votre demande, ainsi qu'un compteur quotidien par entreprise pour limiter l'usage.
+
+Dans la même section, la ligne « Ce qui est envoyé » gagne aussi : « … et les derniers messages de la conversation en cours (7 au plus), pour que l'assistant comprenne
+« et pour Lucas aussi ? » ». C'est la mémoire du §6, elle part chez les mêmes sous-traitants. Le commentaire de la page qui demande cette relecture (« étape 2 ») peut alors être retiré.
+
+**Fiche pour le registre des traitements** — « Historique des conversations de l'assistant » :
+
+| Rubrique | Contenu |
+|---|---|
+| Finalité | Permettre à l'utilisateur de retrouver et de continuer ses conversations avec l'assistant (« Nouveau chat », historique). |
+| Base légale | Exécution du contrat (fournir le service), comme le reste de l'assistant. |
+| Rôles | Entreprise cliente : responsable de traitement. BEMEXO : sous-traitant (art. 28). |
+| Personnes concernées | Les utilisateurs de l'assistant (employeur, secrétaire, salariés) des entreprises qui l'ont activé (`ai_enabled`). |
+| Données | Texte des questions et des réponses (4000 caractères au plus chacun), liens de navigation de la réponse, titre (début de la 1re question), date, côté (bureau ou salarié), identifiants de l'utilisateur et de l'entreprise. Le texte est libre : il peut citer des collègues, des clients, des chantiers. Jamais de pièce jointe, de carte d'action, de message d'erreur ou de quota. |
+| Destinataires | Aucun pour l'enregistrement. (Le contenu d'une demande part chez Anthropic et, en secours, Google pour obtenir la réponse : traitement « assistant IA », section 14 de la politique.) Hébergement : Supabase, Union européenne. |
+| Accès | L'auteur seul, dans l'application. Ni l'employeur, ni un administrateur de l'entreprise, ni le support BEMEXO, ni la clé de service. Seul le propriétaire de la base (éditeur SQL) garde l'accès technique que toute table a. |
+| Durée | 30 jours après la dernière activité, puis suppression automatique (tâche quotidienne, 03:45 UTC). Suppression immédiate avec le compte du salarié ou l'entreprise. |
+| Droits | L'utilisateur supprime une conversation ou tout son historique quand il veut, même si l'entreprise coupe l'assistant. |
+| Sécurité | Règles d'accès au niveau base de données (filtre sur l'auteur) ; aucune écriture directe par l'application (une seule fonction) ; le contenu n'est écrit dans aucun journal ni message d'erreur. |
+
 ## 7. Règle anti-oubli (la plus importante)
 
 Pour qu'une fonction ne soit jamais « oubliée parce qu'on ne l'a pas dite à l'IA » :

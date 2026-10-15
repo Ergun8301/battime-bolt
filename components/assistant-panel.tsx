@@ -17,10 +17,15 @@
 // Étape 2 « chat avec mémoire » : à chaque demande l'écran envoie les derniers messages TEXTE (`history`) pour que l'assistant
 // comprenne « et pour Lucas aussi ? » ; « Nouveau chat » repart d'une page blanche ; avec `chats`, chaque tour complet est
 // enregistré (texte seulement, privé, 30 jours) et « Historique » rouvre — pour la CONTINUER — une ancienne conversation.
+// Garde-fous (revue de l'étape 2) : tant qu'une carte ÉCRIT (« Je le fais… ») ou qu'une réponse est en route, « Nouveau chat », la réouverture d'une
+// ancienne conversation et la suppression du chat affiché sont refusés (la carte serait démontée avant d'avoir montré son résultat) ; une fiche
+// pas encore confirmée demande « Abandonner cette action ? » ; une réponse qui dépasse 60 s rend la main (lib/assistant.ts) ; un chat disparu
+// ou plein est remplacé par un nouveau (jamais de tours perdus en silence) ; le clavier ne retombe plus sur le haut de la page.
 // Rien ici ne parle de la formule IA (essai / payant) : à la demande d'Ergun, le
 // panneau n'affiche aucun bandeau ; seul le support BEMEXO la voit (app/support).
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
+import { flushSync } from 'react-dom';
 import { Sparkles, X, Mic, Square, ArrowUp, Loader2, ArrowRight, Paperclip, FileText, Plus, Clock, Trash2, ArrowLeft } from 'lucide-react';
 import { Dictation, speechCtor } from '@/lib/dictation';
 import { ATTACH_ACCEPT, ATTACH_MAX_BYTES, attachmentError, compressAttachment } from '@/lib/attachment';
@@ -33,36 +38,87 @@ export interface ExtraControl {
   text: (text: string | null) => void;
   /** Action finie : texte de la bulle (facultatif) et fin de la question en attente. */
   settle: (text?: string | null) => void;
+  /**
+   * La carte ÉCRIT en ce moment (« Je le fais… », ou « Confirmer » cliqué) : `working(true)` au départ, `working(false)` à la fin — quoi qu'il arrive,
+   * même si la carte a été démontée entre-temps (le panneau fermé, l'historique ouvert). Tant que `working`, le panneau refuse « Nouveau chat »,
+   * la réouverture d'une ancienne conversation et la suppression du chat affiché : sinon la carte disparaît, l'écriture part quand même et
+   * son résultat (« C'est fait », Annuler) n'est jamais montré.
+   */
+  working: (on: boolean) => void;
+  /**
+   * La carte attend un « Confirmer » (fiche à vérifier ou à remplir) : `waiting(true)` ; `waiting(false)` dès qu'elle est confirmée, abandonnée ou
+   * faite. Vider l'écran demande alors « Abandonner cette action ? » au lieu de la faire disparaître sans un mot. Reste vrai si la carte est
+   * démontée (historique ouvert) : la fiche existe toujours dans la conversation.
+   */
+  waiting: (on: boolean) => void;
 }
-/** `lost` (une question) : sa réponse a été une notice (erreur, quota) — elle n'est ni envoyée comme contexte ni enregistrée. */
-type Msg = { who: 'me' | 'bot'; text: string; links?: AssistantLink[]; notice?: boolean; extra?: unknown; file?: string; lost?: boolean };
+/**
+ * `lost` (une question) : sa réponse a été une notice (erreur, quota) — elle n'est ni envoyée comme contexte ni enregistrée.
+ * `note` (avec `notice`) : une ligne discrète de l'écran lui-même (« la suite est enregistrée dans un nouveau chat »), pas une bulle de l'assistant.
+ */
+type Msg = { who: 'me' | 'bot'; text: string; links?: AssistantLink[]; notice?: boolean; extra?: unknown; file?: string; lost?: boolean; note?: boolean };
 
 // Lot 7 : une conversation par écran (bureau, salarié…), gardée en mémoire.
 // Étape 2 : `chatId` = la conversation enregistrée où vont les prochains tours (null = pas encore enregistrée) ;
 // `gen` change à chaque fois que la conversation est vidée ou rouverte (une réponse en vol d'AVANT ne doit pas atterrir dans la nouvelle) ;
 // `sauve` met les enregistrements en file : deux tours rapprochés ne doivent pas ouvrir deux conversations.
+// `working` / `waiting` : les cartes qui écrivent en ce moment / qui attendent un « Confirmer » (voir ExtraControl), repérées par l'objet `extra` de leur réponse.
 interface Convo {
-  msgs: Msg[]; busy: boolean; pending: string | null; open: boolean; remaining: number | null; chatId: string | null; gen: number; sauve: Promise<void>; listeners: Set<() => void>;
+  msgs: Msg[]; busy: boolean; pending: string | null; open: boolean; remaining: number | null; chatId: string | null; gen: number; sauve: Promise<void>;
+  working: Set<unknown>; waiting: Set<unknown>; listeners: Set<() => void>;
 }
 const CONVOS = new Map<string, Convo>();
 function convoOf(key: string): Convo {
   let c = CONVOS.get(key);
-  if (!c) { c = { msgs: [], busy: false, pending: null, open: false, remaining: null, chatId: null, gen: 0, sauve: Promise.resolve(), listeners: new Set() }; CONVOS.set(key, c); }
+  if (!c) { c = { msgs: [], busy: false, pending: null, open: false, remaining: null, chatId: null, gen: 0, sauve: Promise.resolve(), working: new Set(), waiting: new Set(), listeners: new Set() }; CONVOS.set(key, c); }
   return c;
 }
 function changed(c: Convo) { c.listeners.forEach((f) => f()); }
-/** « Nouveau chat » (ou la conversation à l'écran vient d'être supprimée) : page blanche, plus de question en attente, plus de chat courant. */
-function resetConvo(c: Convo) { c.msgs = []; c.pending = null; c.chatId = null; c.gen++; changed(c); }
+/** Une carte écrit (ou n'écrit plus) / attend (ou n'attend plus) : le panneau se redessine pour griser, ou dégriser, « Nouveau chat ». */
+function marquer(c: Convo, quoi: 'working' | 'waiting', cle: unknown, on: boolean) {
+  const s = c[quoi];
+  if (s.has(cle) === on) return;
+  if (on) s.add(cle); else s.delete(cle);
+  changed(c);
+}
+/** Vrai tant qu'une réponse est en route OU qu'une carte écrit : on ne vide pas, ne remplace pas la conversation à l'écran. */
+const occupee = (c: Convo) => c.busy || c.working.size > 0;
+/**
+ * « Nouveau chat » (ou la conversation à l'écran vient d'être supprimée) : page blanche, plus de question en attente, plus de chat courant.
+ * `busy` repart à faux : la réponse encore en route (si la conversation est supprimée pendant qu'elle arrive) sera jetée par la garde `gen`, et
+ * ne doit pas laisser « Je regarde… » ni Envoyer grisés jusqu'à son arrivée — qui peut ne jamais venir.
+ */
+function resetConvo(c: Convo) { c.msgs = []; c.pending = null; c.chatId = null; c.busy = false; c.working.clear(); c.waiting.clear(); c.gen++; changed(c); }
+/** Une ligne discrète de l'écran (pas de l'assistant), jamais envoyée comme contexte ni enregistrée. */
+function noter(c: Convo, gen: number, text: string) {
+  if (c.gen !== gen) return;
+  c.msgs = [...c.msgs, { who: 'bot', text, notice: true, note: true }];
+  changed(c);
+}
 /**
  * Enregistre un tour COMPLET (jamais une notice). Les erreurs sont avalées SANS rien écrire dans la console : l'assistant doit marcher
  * même si l'enregistrement échoue, et le contenu d'un chat n'a rien à faire dans un journal.
+ * Si le chat courant n'existe plus (supprimé depuis un autre onglet ou appareil) ou est plein (200 messages), réécrire dessus échouerait à
+ * chaque tour sans que personne le sache : le tour est alors enregistré dans un NOUVEAU chat, et une ligne discrète le dit, une seule fois.
  */
 function enregistrer(c: Convo, chats: ChatStore, gen: number, question: string, answer: string, links: AssistantLink[]) {
   c.sauve = c.sauve.then(async () => {
     try {
       if (c.gen !== gen) return; // la conversation a été vidée ou supprimée entre-temps : ce tour n'a plus de chat où aller
-      const id = await chats.append(c.chatId, question, answer, links);
-      if (id && c.gen === gen) c.chatId = id;
+      const cible = c.chatId;
+      const r = await chats.append(cible, question, answer, links);
+      if (c.gen !== gen) return;
+      if (r.id !== null) { c.chatId = r.id; return; }
+      if (cible === null || r.why === 'echec') return; // panne passagère (ou rien à rattraper) : le tour suivant réessaiera
+      c.chatId = null;
+      const r2 = await chats.append(null, question, answer, links);
+      if (c.gen !== gen) return;
+      if (r2.id !== null) {
+        c.chatId = r2.id;
+        noter(c, gen, r.why === 'pleine'
+          ? 'Cette conversation est pleine (200 messages) : la suite est enregistrée dans un nouveau chat.'
+          : 'Cette conversation n’est plus dans l’historique : la suite est enregistrée dans un nouveau chat.');
+      }
     } catch { /* sans enregistrement, l'assistant répond quand même */ }
   });
 }
@@ -81,7 +137,7 @@ const CSS = `
 .as-tool:hover:not(:disabled){border-color:#15120F}
 .as-tool[aria-pressed=true]{background:#15120F;color:#FBF8F2;border-color:#15120F}
 .as-tool:disabled{opacity:.45;cursor:default}
-.as-tool:focus-visible,.as-x:focus-visible,.as-hback:focus-visible,.as-hopen:focus-visible,.as-hdel:focus-visible,.as-hbtn:focus-visible,.as-hclear:focus-visible{outline:2px solid #FFC21A;outline-offset:2px}
+.as-tool:focus-visible,.as-x:focus-visible,.as-hconf .as-hbtn:focus-visible,.as-warn .as-hbtn:focus-visible,.as-hback:focus-visible,.as-hopen:focus-visible,.as-hdel:focus-visible,.as-hbtn:focus-visible,.as-hclear:focus-visible{outline:2px solid #FFC21A;outline-offset:2px}
 .as-body{flex:1;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:12px}
 .as-hback{align-self:flex-start;display:inline-flex;align-items:center;gap:6px;min-height:40px;border:none;background:transparent;color:#15120F;font-family:inherit;font-size:14px;font-weight:800;cursor:pointer;padding:6px 10px 6px 4px;margin:-8px 0 -2px -4px;border-radius:10px}
 .as-hlist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
@@ -103,6 +159,10 @@ const CSS = `
 .as-hclear:disabled{opacity:.45;cursor:default}
 .as-hconf-all{border:1px solid #F1D48A;background:#FFF6E0;border-radius:12px}
 .as-hnote{margin:0;font-size:13px;line-height:1.45;color:#56514a}
+.as-warn{flex:1 0 100%;display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 12px;border:1px solid #F1D48A;background:#FFF6E0;border-radius:12px}
+.as-warn p{flex:1 1 100%;margin:0;font-size:14px;font-weight:800;color:#15120F}
+.as-warn p span{display:block;font-weight:600;font-size:12.5px;color:#56514a}
+.as-sysnote{align-self:center;max-width:92%;margin:0;text-align:center;font-size:12.5px;line-height:1.4;color:#6E6A63}
 .as-hnote.err{color:#B42318;font-weight:700}
 .as-hello{color:#15120F;font-weight:800;font-size:20px;letter-spacing:-.01em;margin:6px 0 2px}
 .as-sub{color:#6E6A63;font-size:13.5px;margin:0 0 10px;line-height:1.45}
@@ -276,12 +336,15 @@ export default function AssistantPanel({
     const full = attente && !sent && !isNewRequest(question) ? `${attente}, ${question}` : question;
     // Une phrase longue peut demander plusieurs secondes : au bout de 4 s, on le dit.
     const wait = slowHint?.(full) ?? null;
-    const timer = wait ? setTimeout(() => setHint(wait), SLOW_MS) : null;
+    // (Si la conversation est vidée entre-temps, l'indice de CETTE demande n'a plus rien à faire à l'écran.)
+    const timer = wait ? setTimeout(() => { if (convo.gen === gen) setHint(wait); }, SLOW_MS) : null;
     const r = await source.ask(full, sent ?? undefined, history);
     if (timer) clearTimeout(timer);
-    setHint(null);
     // La conversation a été vidée pendant l'attente (le chat à l'écran vient d'être supprimé) : cette réponse n'a plus de question à côté d'elle.
-    if (convo.gen !== gen) { setBusy(false); if (typeof r.remaining === 'number') setRemaining(r.remaining); return; }
+    // `busy` et l'indice appartiennent déjà à autre chose (resetConvo les a remis à zéro, une nouvelle demande a pu partir depuis) : on n'y touche pas.
+    // Le quota, lui, a bien été consommé : le compteur se met à jour.
+    if (convo.gen !== gen) { if (typeof r.remaining === 'number') setRemaining(r.remaining); return; }
+    setHint(null);
     pendingRef.current = r.followUp ? full : null;
     setBusy(false);
     // L'assistant n'a pas pu répondre : la phrase revient dans le champ (300 à 1 500 caractères à redicter, sinon).
@@ -296,25 +359,61 @@ export default function AssistantPanel({
     if (chats && !r.notice) enregistrer(convo, chats, gen, question, r.answer, r.links ?? []);
   }, [busy, source, file, maxChars, slowHint, restoreOnFailure, isNewRequest, chats, convo]);
 
-  // « Nouveau chat » : page blanche. Refusé pendant une réponse en cours (elle atterrirait dans la nouvelle conversation).
-  const newChat = () => {
-    if (busy) return;
+  // Le champ de saisie reçoit le focus quand on revient dans le chat sans l'avoir cliqué (conversation rouverte) : le clavier repart de là.
+  // (Le champ n'existe qu'une fois la vue « chat » dessinée : le focus est donné par un effet, pas par un minuteur qui pourrait passer avant.)
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const focusInput = useRef(false);
+  useEffect(() => {
+    if (view === 'chat' && focusInput.current) { focusInput.current = false; inputRef.current?.focus({ preventScroll: true }); }
+  }, [view, msgs]);
+  // Une fiche pas encore confirmée est à l'écran : « Nouveau chat » demande d'abord « Abandonner cette action ? » (jamais de fiche qui disparaît sans un mot).
+  const [abandon, setAbandon] = useState(false);
+  const keepRef = useRef<HTMLButtonElement>(null);
+  const newChatRef = useRef<HTMLButtonElement>(null);
+  const attente = convo.waiting.size > 0;
+  const occupe = occupee(convo);
+  const demanderAbandon = abandon && view === 'chat' && attente && !occupe;
+  useEffect(() => { setAbandon(false); }, [view, open]);
+  useEffect(() => { if (demanderAbandon) keepRef.current?.focus(); }, [demanderAbandon]);
+  const vider = () => {
+    setAbandon(false);
     resetConvo(convo);
     setHint(null);
     setView('chat');
   };
+  // « Nouveau chat » : page blanche. Refusé tant qu'une réponse est en route (elle atterrirait dans la nouvelle conversation) ou qu'une carte écrit
+  // (elle serait démontée avant d'avoir montré son résultat). On relit l'état de la conversation, pas celui du dernier dessin.
+  const newChat = () => {
+    if (occupee(convo)) return;
+    if (convo.waiting.size > 0) { setAbandon(true); return; }
+    vider();
+  };
+  const keepAction = () => { setAbandon(false); setTimeout(() => newChatRef.current?.focus(), 0); };
   const backToChat = () => { setView('chat'); setTimeout(() => histBtnRef.current?.focus(), 0); };
   // Une conversation choisie dans l'historique : on la rouvre en texte (liens compris) et on peut la CONTINUER, le prochain message s'y ajoute.
-  const reopen = (id: string, rows: ChatMessage[]) => {
+  // Rend 'occupe' si une réponse arrive ou si une carte écrit (la lecture de la conversation peut avoir pris du temps : on relit l'état ICI), et
+  // 'confirmer' si une fiche attend un « Confirmer » et que l'abandon n'a pas encore été accepté.
+  const reopen = (id: string, rows: ChatMessage[], abandonOk = false): 'ok' | 'occupe' | 'confirmer' => {
+    if (occupee(convo)) return 'occupe';
+    if (convo.waiting.size > 0 && !abandonOk) return 'confirmer';
     dictRef.current?.abort();
     convo.msgs = rows.map((m) => ({ who: m.who, text: m.text, ...(m.links ? { links: m.links } : {}) }));
-    convo.pending = null; convo.chatId = id; convo.gen++;
+    convo.pending = null; convo.chatId = id; convo.working.clear(); convo.waiting.clear(); convo.gen++;
     jump.current = true;
     changed(convo);
+    setHint(null);
+    focusInput.current = true;
     setView('chat');
+    return 'ok';
   };
-  // Un chat (ou tous) vient d'être supprimé : si c'était celui de l'écran, l'écran repart à blanc.
-  const removed = (id: string | null) => { if (convo.chatId && (id === null || id === convo.chatId)) resetConvo(convo); };
+  // Un chat (ou tous) vient d'être supprimé : si c'était celui de l'écran, l'écran repart à blanc — sauf si une carte écrit encore (elle montrera
+  // son résultat) : l'écran reste, mais n'est plus un chat enregistré, le prochain tour en ouvrira un autre.
+  const removed = (id: string | null) => {
+    if (!convo.chatId || (id !== null && id !== convo.chatId)) return;
+    if (convo.working.size > 0) { convo.chatId = null; changed(convo); return; }
+    resetConvo(convo);
+    setHint(null);
+  };
 
   const pickFile = async (f: File | undefined) => {
     if (fileRef.current) fileRef.current.value = '';
@@ -369,15 +468,24 @@ export default function AssistantPanel({
             <b>Assistant BEMEXO</b>
             <button type="button" className="as-x" onClick={() => { dictRef.current?.abort(); setOpen(false); }} aria-label="Fermer"><X className="h-5 w-5" /></button>
             <div className="as-tools">
-              <button type="button" className="as-tool" onClick={newChat} disabled={busy} data-testid="assistant-newchat" aria-label="Nouveau chat"><Plus className="h-4 w-4" aria-hidden="true" /> Nouveau chat</button>
+              <button type="button" className="as-tool" ref={newChatRef} onClick={newChat} disabled={occupe} data-testid="assistant-newchat" aria-label="Nouveau chat"
+                title={busy ? 'Une réponse est en cours' : occupe ? 'Une action est en cours' : undefined}><Plus className="h-4 w-4" aria-hidden="true" /> Nouveau chat</button>
               {chats && (
                 <button type="button" className="as-tool" ref={histBtnRef} aria-pressed={view === 'history'} aria-label="Historique des conversations" data-testid="assistant-history"
                   onClick={() => { if (view === 'history') { setView('chat'); return; } dictRef.current?.abort(); setView('history'); }}><Clock className="h-4 w-4" aria-hidden="true" /> Historique</button>
               )}
             </div>
+            {demanderAbandon && (
+              <div className="as-warn" role="group" aria-label="Abandonner l’action en attente" data-testid="assistant-abandon"
+                onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); keepAction(); } }}>
+                <p>Abandonner cette action ?<span>Elle n’a pas été confirmée : rien n’a été fait.</span></p>
+                <button type="button" className="as-hbtn danger" onClick={vider} data-testid="assistant-abandon-yes">Abandonner</button>
+                <button type="button" className="as-hbtn" ref={keepRef} onClick={keepAction} data-testid="assistant-abandon-no">Garder</button>
+              </div>
+            )}
           </div>
           {view === 'history' && chats ? (
-            <HistoryView chats={chats} busy={busy} onBack={backToChat} onOpen={reopen} onRemoved={removed} />
+            <HistoryView chats={chats} busy={busy} verrou={convo.working.size > 0} attente={attente} courant={convo.chatId} onBack={backToChat} onOpen={reopen} onRemoved={removed} />
           ) : (<>
           <div className="as-body" ref={bodyRef}>
             {msgs.length === 0 && (
@@ -393,6 +501,7 @@ export default function AssistantPanel({
             )}
             {msgs.map((m, i) => (m.who === 'me'
               ? <div key={i} className="as-me">{m.file && <span className="as-file"><FileText className="h-3.5 w-3.5" /> {m.file}</span>}{m.text}</div>
+              : m.note ? <p key={i} className="as-sysnote" role="status" data-testid="assistant-note">{m.text}</p>
               : (
                 <div key={i} className={`as-bot${m.notice ? ' notice' : ''}`}>
                   {m.text}
@@ -407,6 +516,8 @@ export default function AssistantPanel({
                       pendingRef.current = null;
                       if (t !== undefined) setMsgs((all) => all.map((x, j) => (j === i ? { ...x, text: t ?? '' } : x)));
                     },
+                    working: (on) => marquer(convo, 'working', m.extra, on),
+                    waiting: (on) => marquer(convo, 'waiting', m.extra, on),
                   }) : null}
                 </div>
               )))}
@@ -440,7 +551,7 @@ export default function AssistantPanel({
             )}
             <form className="as-bar" onSubmit={(e) => { e.preventDefault(); ask(text); }}>
               <textarea
-                className={maxChars > 500 ? 'long' : undefined} lang={langs ? lang.slice(0, 2) : undefined}
+                ref={inputRef} className={maxChars > 500 ? 'long' : undefined} lang={langs ? lang.slice(0, 2) : undefined}
                 rows={listening || text.length > 60 ? (maxChars > 500 && text.length > 300 ? 6 : 3) : 1} value={text} placeholder={listening ? 'Parlez, le texte s’écrit ici…' : 'Votre question…'} maxLength={maxChars}
                 onChange={(e) => { setText(e.target.value); dictRef.current?.edit(e.target.value); }}
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ask(text); } }}
@@ -475,18 +586,47 @@ export default function AssistantPanel({
  * La liste des conversations enregistrées (étape 2). Monté à l'ouverture de « Historique », démonté au retour : il relit la liste à chaque fois.
  * Balisage volontairement simple (button, ul/li) : le design sera repris plus tard. Les confirmations se font ICI, dans la ligne
  * (« Supprimer ? Oui / Non ») — pas de fenêtre du navigateur.
+ * Clavier et lecteur d'écran : une action qui démonte le bouton focalisé ne doit jamais envoyer le focus sur le haut de la page. La confirmation
+ * reçoit le focus sur le choix SÛR (« Non » / « Garder ») ; « Non » rend le focus au bouton d'origine ; après « Oui », le focus va à la ligne
+ * suivante (sinon la précédente, sinon « Retour ») et une zone `role="status"` annonce « Conversation supprimée » ; une conversation rouverte
+ * donne le focus au champ de saisie (c'est le panneau qui s'en charge).
  */
-type Demande = { kind: 'un'; id: string } | { kind: 'tout' };
-function HistoryView({ chats, busy, onBack, onOpen, onRemoved }: {
-  chats: ChatStore; busy: boolean; onBack: () => void; onOpen: (id: string, rows: ChatMessage[]) => void; onRemoved: (id: string | null) => void;
+type Demande = { kind: 'un'; id: string } | { kind: 'tout' } | { kind: 'ouvrir'; id: string };
+function HistoryView({ chats, busy, verrou, attente, courant, onBack, onOpen, onRemoved }: {
+  chats: ChatStore;
+  /** Une réponse est en route. */
+  busy: boolean;
+  /** Une carte écrit : le chat affiché ne se supprime pas (son résultat n'aurait plus d'écran où s'afficher), et aucune conversation ne s'ouvre à sa place. */
+  verrou: boolean;
+  /** Une fiche attend un « Confirmer » : la remplacer, ou supprimer son chat, demande d'abord de l'abandonner. */
+  attente: boolean;
+  /** Le chat de l'écran (null = pas encore enregistré). */
+  courant: string | null;
+  onBack: () => void;
+  onOpen: (id: string, rows: ChatMessage[], abandonOk?: boolean) => 'ok' | 'occupe' | 'confirmer';
+  onRemoved: (id: string | null) => void;
 }) {
   const [list, setList] = useState<ChatSummary[] | 'chargement' | 'erreur'>('chargement');
   const [demande, setDemande] = useState<Demande | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  // Annoncé aux lecteurs d'écran (zone toujours présente, texte ajouté après coup), invisible à l'écran : on voit la ligne partir.
+  const [statut, setStatut] = useState('');
   const [acting, setActing] = useState(false);
   const now = useMemo(() => new Date(), []);
   const backRef = useRef<HTMLButtonElement>(null);
+  const nonRef = useRef<HTMLButtonElement>(null);
+  const clearRef = useRef<HTMLButtonElement>(null);
+  const trashRefs = useRef(new Map<string, HTMLButtonElement>());
+  const openRefs = useRef(new Map<string, HTMLButtonElement>());
   const req = useRef(0);
+  // Faux dès que la vue est quittée (Retour, Historique, panneau fermé) : une lecture qui se termine après ne doit plus toucher à l'écran.
+  const vivant = useRef(true);
+  useEffect(() => { vivant.current = true; return () => { vivant.current = false; }; }, []);
+  // Le focus est donné quand la vue a RÉELLEMENT changé. Dans un clic, React dessine avant le minuteur (focusSoon). Après un `await`, les mises à jour
+  // d'état ne sont dessinées que plus tard, et un bouton encore « disabled » (action en cours) ne reçoit pas le focus : ces mises à jour sont donc
+  // faites dans un `flushSync`, puis `focusAfter` donne le focus.
+  const focusSoon = (f: () => void) => { setTimeout(() => { if (vivant.current) f(); }, 0); };
+  const focusAfter = (cible: () => HTMLElement | null | undefined) => { if (vivant.current) cible()?.focus(); };
   const charge = useCallback(async () => {
     const mine = ++req.current;
     setList('chargement'); setNote(null);
@@ -496,36 +636,75 @@ function HistoryView({ chats, busy, onBack, onOpen, onRemoved }: {
     } catch { if (mine === req.current) setList('erreur'); }
   }, [chats]);
   useEffect(() => { charge(); backRef.current?.focus(); }, [charge]);
+  // Une confirmation s'ouvre : le focus va sur le choix sûr.
+  useEffect(() => { if (demande) nonRef.current?.focus(); }, [demande]);
 
-  const rouvrir = async (id: string) => {
-    if (busy || acting) return;
+  const items = Array.isArray(list) ? list : [];
+  const retour = (d: Demande) => (d.kind === 'tout' ? clearRef.current : d.kind === 'un' ? trashRefs.current.get(d.id) : openRefs.current.get(d.id));
+
+  const rouvrir = async (id: string, abandonOk = false) => {
+    if (busy || verrou || acting) return;
+    // Une fiche attend son « Confirmer » : on demande d'abord, dans la ligne, avant de remplacer l'écran.
+    if (attente && !abandonOk) { setNote(null); setDemande({ kind: 'ouvrir', id }); return; }
     setActing(true); setNote(null);
     try {
       const rows = await chats.load(id);
+      // L'utilisateur est revenu au chat (et a peut-être posé une question) pendant la lecture : cette conversation ne doit PAS remplacer l'écran.
+      if (!vivant.current) return;
       if (!rows.length) throw new Error('vide');
-      onOpen(id, rows);
+      const r = onOpen(id, rows, abandonOk);
+      if (r === 'ok') return; // la vue est remplacée par le chat
+      flushSync(() => {
+        setActing(false);
+        if (r === 'confirmer') setDemande({ kind: 'ouvrir', id });
+        else setNote('Une réponse ou une action est en cours : attendez qu’elle soit finie, puis réessayez.');
+      });
+      if (r !== 'confirmer') focusAfter(() => openRefs.current.get(id));
     } catch {
-      setActing(false);
-      setNote('Cette conversation n’a pas pu être ouverte. Réessayez.');
+      if (!vivant.current) return;
+      flushSync(() => { setActing(false); setNote('Cette conversation n’a pas pu être ouverte. Réessayez.'); });
+      focusAfter(() => openRefs.current.get(id));
     }
+  };
+  const annuler = () => {
+    const d = demande;
+    setDemande(null);
+    if (d) focusSoon(() => retour(d)?.focus());
   };
   const confirmer = async () => {
     const d = demande;
-    if (!d || acting) return;
-    setDemande(null); setActing(true); setNote(null);
+    if (!d || d.kind === 'ouvrir' || acting) return;
+    // La ligne qui prendra la place de celle qui part : la suivante, sinon la précédente (sinon « Retour »).
+    const rang = d.kind === 'un' ? items.findIndex((c) => c.id === d.id) : -1;
+    const voisin = d.kind === 'un' && rang >= 0 ? (items[rang + 1] ?? items[rang - 1])?.id ?? null : null;
+    setDemande(null); setActing(true); setNote(null); setStatut('');
     const ok = await (d.kind === 'tout' ? chats.clear() : chats.remove(d.id)).catch(() => false);
-    setActing(false);
-    if (!ok) { setNote(d.kind === 'tout' ? 'Impossible de tout effacer pour le moment. Réessayez.' : 'Suppression impossible pour le moment. Réessayez.'); return; }
-    setList((l) => (d.kind === 'tout' ? [] : Array.isArray(l) ? l.filter((c) => c.id !== d.id) : l));
+    if (!ok) {
+      flushSync(() => {
+        setActing(false);
+        setNote(d.kind === 'tout' ? 'Impossible de tout effacer pour le moment. Réessayez.' : 'Suppression impossible pour le moment. Réessayez.');
+      });
+      focusAfter(() => retour(d));
+      return;
+    }
+    flushSync(() => {
+      setList((l) => (d.kind === 'tout' ? [] : Array.isArray(l) ? l.filter((c) => c.id !== d.id) : l));
+      setActing(false);
+      setStatut(d.kind === 'tout' ? 'Toutes les conversations ont été supprimées.' : 'Conversation supprimée.');
+    });
+    // Même si la vue a été quittée entre-temps, la suppression a eu lieu : l'écran du chat doit le savoir.
     onRemoved(d.kind === 'tout' ? null : d.id);
+    focusAfter(() => (voisin ? openRefs.current.get(voisin) : backRef.current));
   };
-  const items = Array.isArray(list) ? list : [];
+  // Le chat de l'écran ne se supprime pas pendant qu'une carte y écrit ; « Tout effacer » non plus tant qu'il en fait partie.
+  const verrouille = (id: string) => verrou && id === courant;
 
   return (
     <div className="as-body" data-testid="assistant-history-view">
       <button type="button" className="as-hback" ref={backRef} onClick={onBack} aria-label="Retour au chat" data-testid="assistant-history-back"><ArrowLeft className="h-4 w-4" aria-hidden="true" /> Retour</button>
       <h2 className="as-hello">Conversations</h2>
       <p className="as-sub">Gardées 30 jours · visibles de vous seul</p>
+      <p className="as-sr" role="status" data-testid="assistant-history-status">{statut}</p>
       {list === 'chargement' && <p className="as-typing" role="status" data-testid="assistant-history-loading"><Loader2 className="h-4 w-4 animate-spin" /> Chargement…</p>}
       {list === 'erreur' && (
         <div role="alert" data-testid="assistant-history-error">
@@ -544,18 +723,24 @@ function HistoryView({ chats, busy, onBack, onOpen, onRemoved }: {
         <ul className="as-hlist" aria-label="Conversations enregistrées">
           {items.map((c) => (
             <li key={c.id} className="as-hitem" data-testid="assistant-history-item">
-              {demande?.kind === 'un' && demande.id === c.id ? (
-                <div className="as-hconf" role="group" aria-label="Confirmer la suppression">
-                  <p>Supprimer ?<span>{c.title}</span></p>
-                  <button type="button" className="as-hbtn danger" onClick={confirmer} data-testid="assistant-history-confirm-yes">Oui</button>
-                  <button type="button" className="as-hbtn" onClick={() => setDemande(null)} data-testid="assistant-history-confirm-no">Non</button>
+              {demande && demande.kind !== 'tout' && demande.id === c.id ? (
+                <div className="as-hconf" role="group" aria-label={demande.kind === 'un' ? 'Confirmer la suppression' : 'Confirmer l’abandon de l’action en attente'}
+                  onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); annuler(); } }}>
+                  {demande.kind === 'un'
+                    ? <p>Supprimer ?<span>{c.title}</span>{attente && c.id === courant && <span>L’action en attente à l’écran sera abandonnée.</span>}</p>
+                    : <p>Abandonner l’action en attente ?<span>Elle n’a pas été confirmée : rien n’a été fait.</span></p>}
+                  <button type="button" className="as-hbtn danger" data-testid="assistant-history-confirm-yes"
+                    onClick={demande.kind === 'un' ? confirmer : () => { setDemande(null); rouvrir(c.id, true); }}>{demande.kind === 'un' ? 'Oui' : 'Abandonner'}</button>
+                  <button type="button" className="as-hbtn" ref={nonRef} onClick={annuler} data-testid="assistant-history-confirm-no">{demande.kind === 'un' ? 'Non' : 'Garder'}</button>
                 </div>
               ) : (<>
-                <button type="button" className="as-hopen" onClick={() => rouvrir(c.id)} disabled={busy || acting}>
+                <button type="button" className="as-hopen" onClick={() => rouvrir(c.id)} disabled={busy || verrou || acting}
+                  ref={(el) => { if (el) openRefs.current.set(c.id, el); else openRefs.current.delete(c.id); }}>
                   <span className="as-hname">{c.title}</span>
                   <span className="as-hdate">{jourRelatif(c.updatedAt, now)}</span>
                 </button>
-                <button type="button" className="as-hdel" onClick={() => { setNote(null); setDemande({ kind: 'un', id: c.id }); }} disabled={acting}
+                <button type="button" className="as-hdel" onClick={() => { setNote(null); setDemande({ kind: 'un', id: c.id }); }} disabled={acting || verrouille(c.id)}
+                  ref={(el) => { if (el) trashRefs.current.set(c.id, el); else trashRefs.current.delete(c.id); }}
                   aria-label={`Supprimer la conversation « ${c.title} »`} data-testid="assistant-history-delete"><Trash2 className="h-4 w-4" aria-hidden="true" /></button>
               </>)}
             </li>
@@ -563,15 +748,17 @@ function HistoryView({ chats, busy, onBack, onOpen, onRemoved }: {
         </ul>
       )}
       {busy && items.length > 0 && <p className="as-hnote">Une réponse est en cours : attendez-la pour ouvrir une autre conversation.</p>}
+      {!busy && verrou && items.length > 0 && <p className="as-hnote" data-testid="assistant-history-verrou">Une action est en cours : attendez qu’elle soit finie pour ouvrir une autre conversation ou supprimer celle de l’écran.</p>}
       {note && <p className="as-hnote err" role="alert" data-testid="assistant-history-note">{note}</p>}
       {items.length > 0 && (demande?.kind === 'tout' ? (
-        <div className="as-hconf as-hconf-all" role="group" aria-label="Confirmer l’effacement de tout l’historique">
-          <p>Tout effacer ?<span>Toutes vos conversations seront supprimées.</span></p>
+        <div className="as-hconf as-hconf-all" role="group" aria-label="Confirmer l’effacement de tout l’historique"
+          onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); annuler(); } }}>
+          <p>Tout effacer ?<span>Toutes vos conversations seront supprimées.</span>{attente && courant !== null && <span>L’action en attente à l’écran sera abandonnée.</span>}</p>
           <button type="button" className="as-hbtn danger" onClick={confirmer} data-testid="assistant-history-confirm-yes">Oui</button>
-          <button type="button" className="as-hbtn" onClick={() => setDemande(null)} data-testid="assistant-history-confirm-no">Non</button>
+          <button type="button" className="as-hbtn" ref={nonRef} onClick={annuler} data-testid="assistant-history-confirm-no">Non</button>
         </div>
       ) : (
-        <button type="button" className="as-hclear" onClick={() => { setNote(null); setDemande({ kind: 'tout' }); }} disabled={acting} data-testid="assistant-history-clear"><Trash2 className="h-4 w-4" aria-hidden="true" /> Tout effacer</button>
+        <button type="button" className="as-hclear" ref={clearRef} onClick={() => { setNote(null); setDemande({ kind: 'tout' }); }} disabled={acting || (verrou && courant !== null)} data-testid="assistant-history-clear"><Trash2 className="h-4 w-4" aria-hidden="true" /> Tout effacer</button>
       ))}
     </div>
   );

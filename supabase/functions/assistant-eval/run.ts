@@ -5,8 +5,12 @@
 // puis les MÊMES contrôles. Rien n'est lu ni écrit en base.
 // Salarié v2 : le tour est LE MÊME code que la vraie fonction (_shared/worker-turn.ts : lecteur local,
 // profil court ou long), pour que la mesure soit fidèle à la production.
+// Suites de conversation (étape 2) : un cas qui porte `history` la passe EXACTEMENT comme les vraies fonctions
+// (assistant : ctx.historique ; worker-assistant : snapshot.historique, après nettoyerHistorique et sansDemandeRecollee) : même consigne,
+// même choix des outils, et le lecteur local s'efface pour une relance. La version v1 (copie figée d'avant le lot 7) ignore `history`.
 import { modeleServi, tierFor, type ToolsRequest, type ToolsResult } from '../_shared/ai-provider.ts';
 import * as A2 from '../_shared/assistant-actions-core.ts';
+import { nettoyerHistorique, sansDemandeRecollee } from '../_shared/assistant-history.ts';
 import * as W2 from '../_shared/worker-assistant-core.ts';
 import { runWorkerTurn } from '../_shared/worker-turn.ts';
 import * as A1 from './v1/assistant-actions-core.ts';
@@ -71,17 +75,18 @@ async function runOne(c: EvalCase, version: 'v1' | 'v2', appel: Call): Promise<C
     if (c.cote === 'bureau') {
       const A = version === 'v2' ? A2 : A1;
       const ctx = A.buildActionContext(ADMIN_RAW as Parameters<typeof A2.buildActionContext>[0]) as A2.ActionContext;
-      if (version === 'v2') { ctx.me = ME; ctx.demande = c.phrase; }
+      if (version === 'v2') { ctx.me = ME; ctx.demande = c.phrase; if (c.history) ctx.historique = sansDemandeRecollee(nettoyerHistorique(c.history), c.phrase); }
       const local = file ? null : A.handleActionLocally(c.phrase, ctx as never);
       if (local) out = fromAdmin(local as AnyReply);
       else {
         via = 'ia';
-        const r = await call({ prompt: A.actionPrompt(ctx as never, '{}', A.guideForPrompt(), c.phrase), functions: version === 'v2' ? A2.functionsFor(!!file, c.phrase) : A.ASSISTANT_FUNCTIONS, file });
+        const r = await call({ prompt: A.actionPrompt(ctx as never, '{}', A.guideForPrompt(), c.phrase), functions: version === 'v2' ? A2.functionsFor(!!file, c.phrase, ctx.historique) : A.ASSISTANT_FUNCTIONS, file });
         out = r.ok ? fromAdmin(A.fromFunctionCall(r.call.name, r.call.args, ctx as never) as AnyReply) : { kind: 'none', answer: `IA : ${r.reason}` };
       }
     } else if (version === 'v2') {
       const snap = W2.buildWorkerSnapshot(WORKER_RAW as never) as W2.WorkerSnapshot;
       const live = { ...(c.live === 'vide' ? LIVE_VIDE : WORKER_LIVE), enCours: c.enCours ? LIVE_EN_COURS : null } as W2.WorkerLive;
+      if (c.history) snap.historique = sansDemandeRecollee(nettoyerHistorique(c.history), c.phrase);
       const t = await runWorkerTurn({ text: c.phrase, file, snapshot: snap, live, tier: tierFor(!!file), call, iaDisponible: true, multiOk: true });
       via = t.via === 'local' ? 'local' : 'ia';
       suite = { profil: t.profil, ...(t.via === 'ia' ? { appels: t.appels, ...(t.secours ? { secours: true } : {}) } : {}) };

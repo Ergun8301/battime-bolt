@@ -49,6 +49,19 @@
 -- HISTORIQUE : si le fichier est collé dans l'éditeur SQL, inscrire ensuite :
 --   INSERT INTO supabase_migrations.schema_migrations (version, name)
 --   VALUES ('20261014090000', 'ia_etape2_chats') ON CONFLICT DO NOTHING;
+--
+-- À METTRE EN LIGNE AVEC CETTE MIGRATION (détail : docs/ia-vision.md §6) :
+--   1. ce fichier d'abord, puis la vérification ci-dessus (8 × true) ;
+--   2. les fonctions assistant et worker-assistant (elles lisent `history`) ;
+--   3. le front : l'écran du chat, qui enregistre par assistant_chat_append ;
+--   4. LA PAGE CONFIDENTIALITÉ, dans la MÊME mise en ligne que le front, jamais après :
+--      app/confidentialite/page.tsx, section 14, ligne « Ce que BEMEXO conserve ».
+--      Dès que ce fichier est appliqué et que l'écran enregistre, le TEXTE des questions
+--      et des réponses est gardé 30 jours : l'ancienne phrase « ni votre question, ni la
+--      réponse » serait fausse (information des personnes, RGPD art. 13). Le test (n) de
+--      supabase/tests/ia_etape2_chats.sql échoue tant que la page dit encore cela ;
+--   5. la fiche « Historique des conversations de l'assistant » dans le
+--      registre des traitements (tenu hors du dépôt ; texte : docs/ia-vision.md §6.2).
 -- ─────────────────────────────────────────────────────────────────────────────
 -- POURQUOI : l'assistant (bureau et salarié) devient un vrai chat, avec une
 -- mémoire de conversation. L'écran se souvient du sujet (« et pour Lucas aussi ? ») en
