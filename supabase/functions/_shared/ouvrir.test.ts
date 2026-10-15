@@ -193,3 +193,95 @@ Deno.test('Salarié : jour.date (date obligatoire) et formations.ouvrir ; la jou
   egal(ouvre({ id: 'formations.ouvrir' }, CTX({ demande: 'montre-moi mes formations' }), 'salarie', 'worker').links.map((l) => l.action), ['ouvrir:formations.ouvrir'], 'formations');
   egal(ouvre({ id: 'formations.ouvrir', valeurs: { salarie: 'Karim' } }, c, 'salarie', 'worker').links.map((l) => l.action), ['ouvrir:formations.ouvrir'], 'aucune clé inconnue');
 });
+
+// ── 3b-1bis : le texte construit par le serveur suit la langue de la demande ────────────────────────────────────────────────────────────────
+const MOTS_FR_REPONSE = /\b(ouvre|voici|pr[ée]-?rempli|v[ée]rifiez|enregistrer|salari[ée]s?|client|chantier|semaine|pr[ée]cisez|lequel|dites|rien n)\b|[«»]/i;
+const turc = (s: string) => /[ğşıİĞŞ]/.test(s);
+
+Deno.test('Turc : jour.date et formations.ouvrir répondent en turc (titre traduit, date « 30 Eylül Çarşamba »), en français sinon, sans point doublé', () => {
+  const ctx = (demande: string) => CTX({ today: '2026-10-01', demande });
+  const jt = ouvre({ id: 'jour.date', valeurs: { date: '2026-09-30' } }, ctx('Dünkü günümü aç lütfen, saatlerime bakacağım.'), 'salarie', 'worker');
+  egal(jt.answer, 'Başka bir gün açılıyor. Önceden dolduruldu: 30 Eylül Çarşamba.', 'jour.date TR');
+  egal(jt.links, [{ label: 'Başka bir gün', action: 'ouvrir:jour.date?date=2026-09-30' }], 'le lien (action) ne change pas');
+  vrai(jt.auto === true, 'auto inchangé');
+  const ft = ouvre({ id: 'formations.ouvrir' }, ctx('Eğitimlerimi aç lütfen.'), 'salarie', 'worker');
+  egal(ft.answer, 'Eğitimlerim açılıyor.', 'formations TR');
+  egal(ft.links[0].action, 'ouvrir:formations.ouvrir', 'lien formations');
+  // Sans verbe d'ouverture (pas d'auto) : « İşte … ».
+  egal(ouvre({ id: 'formations.ouvrir' }, ctx('Bana eğitimlerimi göster lütfen, izlemem gereken video var mı?'), 'salarie', 'worker').answer, 'Eğitimlerim açılıyor.', 'göster = verbe d’ouverture');
+  egal(ouvre({ id: 'formations.ouvrir' }, ctx('eğitimlerim nerede lütfen'), 'salarie', 'worker').answer, 'İşte Eğitimlerim.', 'sans verbe');
+  for (const r of [jt, ft]) vrai(!MOTS_FR_REPONSE.test(r.answer), `mot français dans « ${r.answer} »`);
+  // Français : même texte qu'avant, sans le second point.
+  const jf = ouvre({ id: 'jour.date', valeurs: { date: '2026-09-30' } }, ctx('ouvre le 30 septembre'), 'salarie', 'worker');
+  egal(jf.answer, 'J’ouvre « Une autre journée ». Pré-rempli : mer. 30 sept.', 'jour.date FR : un seul point');
+  egal(ouvre({ id: 'formations.ouvrir' }, ctx('ouvre mes formations'), 'salarie', 'worker').answer, 'J’ouvre « Mes formations ».', 'formations FR');
+  vrai(!/\.\./.test(jf.answer), 'pas de point doublé');
+  // Dates : plusieurs jours de la semaine et mois.
+  for (const [iso, tr] of [['2026-09-28', '28 Eylül Pazartesi'], ['2026-10-02', '2 Ekim Cuma'], ['2026-12-27', '27 Aralık Pazar'], ['2026-02-03', '3 Şubat Salı'], ['2026-08-15', '15 Ağustos Cumartesi']]) {
+    vrai(ouvre({ id: 'jour.date', valeurs: { date: iso } }, ctx('günümü aç lütfen'), 'salarie', 'worker').answer.endsWith(`Önceden dolduruldu: ${tr}.`), `date ${iso} → ${tr}`);
+  }
+});
+
+Deno.test('Turc : tous les ouvreurs ont un titre turc, et chaque ouvreur répond en turc (sans mot français) quand la demande est turque', () => {
+  for (const o of OUVREURS) {
+    const cote = o.cote; const role = o.roles[0];
+    const valeurs: Record<string, string> = {};
+    for (const [n, p] of Object.entries(o.params)) {
+      if (p.kind === 'salarie') valeurs[n] = 'Karim'; else if (p.kind === 'chantier') valeurs[n] = 'dupont'; else if (p.kind === 'date' || p.kind === 'lundi') valeurs[n] = '2026-09-30'; else if (p.kind === 'mois') valeurs[n] = '2026-09';
+    }
+    const fr = ouvre({ id: o.id, valeurs }, CTX({ demande: 'ouvre ' + o.titre.toLowerCase() }), cote, role);
+    const tr = ouvre({ id: o.id, valeurs }, CTX({ demande: o.niveau === 3 ? `lütfen ${(o.declencheur ? 'dışa aktar kapat' : '')}` : 'lütfen şunu aç, göster' }), cote, role);
+    vrai(fr.links.length >= 1 || fr.answer.length > 0, `${o.id} FR répond`);
+    if (o.niveau === 3) continue; // refus turc testé à part
+    vrai(tr.links.length === 1, `${o.id} TR : un lien`);
+    vrai(turc(tr.answer) || /açılıyor|İşte/.test(tr.answer), `${o.id} TR : réponse en turc (« ${tr.answer} »)`);
+    vrai(!MOTS_FR_REPONSE.test(tr.answer), `${o.id} TR : mot français dans « ${tr.answer} »`);
+    egal(tr.links[0].action, ouvre({ id: o.id, valeurs }, CTX({ demande: 'ouvre' }), cote, role).links[0].action, `${o.id} : le lien est identique quelle que soit la langue`);
+    vrai(tr.auto === true && fr.auto === true, `${o.id} : auto identique`);
+  }
+});
+
+Deno.test('Turc, bureau : questions, refus, niveau 3 et clôture en turc ; une demande française reste française', () => {
+  const t = (demande: string) => CTX({ demande });
+  const ok = (s: string) => vrai(!MOTS_FR_REPONSE.test(s) && /[a-zçğıöşü]/i.test(s), `mot français dans « ${s} »`);
+  // 1. Fiche d'un salarié : titre traduit, nom propre conservé.
+  const k = ouvre({ id: 'salarie.fiche', valeurs: { salarie: 'Karim' } }, t('Karim’in kartını aç'));
+  egal(k.answer, 'Çalışan kartı açılıyor. Önceden dolduruldu: Karim Benali. Kaydetmeden önce kontrol edin.', 'ot01');
+  egal(k.links[0].label, 'Çalışan kartı · Karim Benali', 'étiquette TR');
+  // 2. Sans paramètre.
+  egal(ouvre({ id: 'client.nouveau' }, t('yeni müşteri formunu aç')).answer, 'Yeni müşteri açılıyor. Kaydetmeden önce kontrol edin.', 'ot02');
+  egal(ouvre({ id: 'salaries.liste' }, t('çalışanların listesini aç')).answer, 'Çalışanlar açılıyor.', 'ot04');
+  egal(ouvre({ id: 'reserves.registre' }, t('rezervleri göster')).answer, 'Çekinceler açılıyor.', 'ot05 (demande courte)');
+  egal(ouvre({ id: 'conges.demandes' }, t('izin taleplerini göster')).answer, 'İzin talepleri açılıyor.', 'ot06');
+  egal(ouvre({ id: 'planning.versions' }, t('planlamanın sürümlerini aç')).answer, 'Planlama sürümleri açılıyor.', 'ot10 (une seule lettre turque)');
+  egal(ouvre({ id: 'stats.equipe' }, t('ekibin istatistiklerini göster')).answer, 'Ekip istatistikleri açılıyor.', 'ot12');
+  // 3. Date et plage.
+  const a = ouvre({ id: 'absence.poser', valeurs: { salarie: 'Sofiane', du: '2026-10-12', au: '2026-10-16' } }, t('Sofiane için 12’den 16’ya izin formunu aç'));
+  egal(a.answer, 'Devamsızlık girişi açılıyor. Önceden dolduruldu: Sofiane Merabet, başlangıç 12 Ekim Pazartesi, bitiş 16 Ekim Cuma. Kaydetmeden önce kontrol edin.', 'ot08');
+  egal(ouvre({ id: 'planning.semaine', valeurs: { lundi: '2026-10-07' } }, t('gelecek haftanın planlamasını göster')).answer, 'Haftalık planlama açılıyor. Önceden dolduruldu: 5 Ekim Pazartesi haftası.', 'ot09');
+  // 4. Question : nom inconnu / ambigu / valeur manquante.
+  const q = ouvre({ id: 'salarie.fiche', valeurs: { salarie: 'Zzz' } }, t('Zzz’nin kartını aç lütfen'));
+  egal(q.answer, '“Zzz” adlı bir çalışan bulamıyorum. Adı belirtin.', 'inconnu TR'); ok(q.answer);
+  const amb = ouvre({ id: 'chantier.documents', valeurs: { chantier: 'Pizzeria' } }, t('Pizzeria şantiyesinin belgelerini aç lütfen'));
+  vrai(amb.answer.endsWith('hangisi?') && amb.links.length === 2, 'ambigu TR'); ok(amb.answer);
+  const m = ouvre({ id: 'salarie.fiche' }, t('çalışan kartını aç lütfen'));
+  egal(m.answer, 'Hangi çalışan için? Öğrenir öğrenmez “Çalışan kartı” ekranını açarım.', 'manque TR'); ok(m.answer);
+  // 5. Refus : écran inconnu, niveau 3 sans évocation, teinté, clôture hors mois.
+  ok(ouvre({ id: 'nimporte.quoi' }, t('şunu aç lütfen')).answer);
+  egal(ouvre({ id: 'nimporte.quoi' }, CTX({ demande: 'ouvre autre chose' })).answer, 'Je ne peux pas ouvrir cet écran.', 'refus FR inchangé');
+  const e = ouvre({ id: 'export.equipe', valeurs: {} }, t('çalışanlar için bir şey aç lütfen'));
+  egal(e.answer, '“Ekibi dışa aktarma” ekranını açmam için açıkça söyleyin (örneğin “Ekibi dışa aktarma aç”).', 'niveau 3 non évoqué TR'); ok(e.answer);
+  const e2 = ouvre({ id: 'export.equipe', valeurs: { du: '2026-09-01', au: '2026-09-30' } }, t('eylül ayı export dosyasını hazırla lütfen'));
+  egal(e2.answer, 'İşte “Ekibi dışa aktarma”. Onaylamak için siz tıklarsınız: o zamana kadar hiçbir şey yapılmaz. Önceden dolduruldu: başlangıç 1 Eylül Salı, bitiş 30 Eylül Çarşamba.', 'ot03'); ok(e2.answer);
+  vrai(e2.auto === undefined, 'niveau 3 : pas d’auto');
+  const c = ouvre({ id: 'cloture.mois', valeurs: { mois: '2026-03' } }, t('mart ayını clôture lütfen'));
+  egal(c.answer, 'Mart 2026 ayı burada kapatılamaz: yalnızca önceki ay (Eylül 2026) ya da içinde bulunulan ay (Ekim 2026).', 'clôture TR'); ok(c.answer);
+  const t3 = ouvre({ id: 'export.equipe' }, CTX({ demande: 'şunu aç lütfen', teinte: true }));
+  egal(t3.answer, 'Bu istekte bu ekranı açmıyorum. Doğrudan, kendi sözlerinizle söyleyin.', 'teinté TR');
+  // 6. Français : jamais de turc.
+  for (const r of [ouvre({ id: 'salarie.fiche', valeurs: { salarie: 'Karim' } }, t('ouvre la fiche de Karim')), ouvre({ id: 'absence.poser', valeurs: { salarie: 'Sofiane', du: '2026-10-12' } }, t('ouvre une absence pour Sofiane le 12')), ouvre({ id: 'salarie.fiche', valeurs: { salarie: 'Yılmaz' } }, t('ouvre la fiche de Yılmaz'))]) {
+    vrai(!/açılıyor|Önceden|İşte|başlangıç/.test(r.answer), `turc dans une réponse française : « ${r.answer} »`);
+  }
+  egal(ouvre({ id: 'absence.poser', valeurs: { salarie: 'Sofiane', du: '2026-10-12', au: '2026-10-16' } }, t('ouvre le formulaire d’absence pour Sofiane du 12 au 16')).answer,
+    'J’ouvre « Poser une absence ». Pré-rempli : Sofiane Merabet, du lun. 12 oct., au ven. 16 oct. Vérifiez avant d’enregistrer.', 'FR stable');
+});
