@@ -33,6 +33,9 @@ import { RESERVES_CHANGED_EVENT } from '@/lib/reserve-lift';
 // Formations (lot 6, oct. 2026) : rien ne s'affiche tant que la migration n'est pas passée.
 import { TrainingsBanner, useMyTrainings } from '@/components/poseur-trainings';
 import { GraduationCap } from 'lucide-react';
+// Design salarié, étape 3 : la coque v2 (visible seulement avec ?ui=2 sur un aperçu, voir components/design/salarie/shell-v2.tsx).
+import { BandeJours, Kicker, OngletsBas, useUi2, type OngletBas } from '@/components/design/salarie/shell-v2';
+import { bandeJours, etatJour, type JourBrut } from '@/supabase/functions/_shared/salarie-vue';
 
 // Lot 5 « site rapide 1 » : les onglets Semaine / Mois / Historique et les fenêtres fermées ne pèsent plus
 // dans le premier chargement. Ils arrivent au repos (file de préchauffage, lib/lazy-window.tsx) ou à
@@ -81,6 +84,11 @@ export default function PoseurPage() {
   const [view, setView] = useState('day');
   const [selectedDate, setSelectedDate] = useState<string | null>(null); // declare a specific day
   const [pending, setPending] = useState<string[]>([]); // jours planifiés sans heures envoyées
+  // Coque v2 (?ui=2, aperçus seulement) : de quoi dessiner la bande des 7 jours, lu dans les MÊMES requêtes que les bandeaux (aucune requête de plus).
+  const ui2 = useUi2();
+  const ui2Ref = useRef(false);
+  ui2Ref.current = ui2;
+  const [joursBrut, setJoursBrut] = useState<Record<string, Omit<JourBrut, 'date'>>>({});
   // Jours qui portent des heures jamais parties. Le travail est fait, il manque
   // le geste d'envoi. C'est le piège le plus fréquent — celui qui a fait
   // disparaître 11 h un dimanche. Fusionné avec `pending` dans un seul bandeau.
@@ -146,7 +154,7 @@ export default function PoseurPage() {
     // Une lecture en échec garde le bandeau tel quel (pas de « 0 » à tort).
     const [planRes, entRes, { data: res, error: resErr }] = await Promise.all([
       supabase.from('planning').select('work_date, absence_type').eq('user_id', user.id).gte('work_date', windowStart),
-      supabase.from('time_entries').select('work_date, status').eq('user_id', user.id).in('status', ['draft', 'submitted', 'validated']).gte('work_date', windowStart),
+      supabase.from('time_entries').select(ui2Ref.current ? 'work_date, status, submitted_at, locked, exported_at, exit_forgotten, start_time, end_time' : 'work_date, status').eq('user_id', user.id).in('status', ['draft', 'submitted', 'validated']).gte('work_date', windowStart),
       supabase.from('time_entries')
         .select('id, work_date, observation, worksite_id, worksite:worksites(client_name, city)')
         .eq('user_id', user.id).eq('reception', 'avec')
@@ -157,7 +165,7 @@ export default function PoseurPage() {
     const rows = (planRes.data || []) as { work_date: string; absence_type: string | null }[];
     const absenceDays = new Set(rows.filter((p) => p.absence_type).map((p) => p.work_date));
     const planned = rows.filter((p) => !p.absence_type && !absenceDays.has(p.work_date)).map((p) => p.work_date);
-    const entries = (entRes.data || []) as { work_date: string; status: string }[];
+    const entries = (entRes.data || []) as unknown as { work_date: string; status: string; submitted_at?: string | null; locked?: boolean | null; exported_at?: string | null; exit_forgotten?: boolean | null; start_time?: string | null; end_time?: string | null }[];
     const declared = new Set<string>(entries.filter((e) => e.status !== 'draft').map((e) => e.work_date));
     const missing = computeMissingDays(planned, declared);
     setPending((prev) => (sameList(prev, missing) ? prev : missing));
@@ -167,6 +175,13 @@ export default function PoseurPage() {
     // Borné à aujourd'hui : « Dupliquer cette journée » prépare des brouillons
     // sur des jours à venir, ce n'est pas un oubli et ça n'a rien à faire ici.
     const todayStr = format(new Date(), 'yyyy-MM-dd');
+    if (ui2Ref.current) {
+      const brut: Record<string, Omit<JourBrut, 'date'>> = {};
+      const jour = (d: string) => (brut[d] ??= { lignes: [] });
+      for (const r of rows) { const j = jour(r.work_date); if (r.absence_type) j.absence = r.absence_type; else j.prevu = true; }
+      for (const e of entries) jour(e.work_date).lignes.push(e);
+      setJoursBrut((prev) => (JSON.stringify(prev) === JSON.stringify(brut) ? prev : brut));
+    }
     const unsent = Array.from(new Set(entries.filter((e) => e.status === 'draft' && e.work_date <= todayStr).map((e) => e.work_date)))
       .sort((a, b) => (a < b ? 1 : a > b ? -1 : 0)); // plus récent d'abord, comme avant
     setUnsentDays((prev) => (sameList(prev, unsent) ? prev : unsent));
@@ -190,6 +205,9 @@ export default function PoseurPage() {
     window.addEventListener(RESERVES_CHANGED_EVENT, fetchPending);
     return () => window.removeEventListener(RESERVES_CHANGED_EVENT, fetchPending);
   }, [fetchPending]);
+
+  // La coque v2 vient d'être allumée : la bande des jours se remplit tout de suite (pas dans la minute).
+  useEffect(() => { if (ui2) fetchPending(); }, [ui2, fetchPending]);
 
   // Photo de profil du salarié (depuis users.photo_url).
   useEffect(() => { setPhotoUrl(user?.photo_url || ''); }, [user?.photo_url]);
@@ -455,8 +473,16 @@ export default function PoseurPage() {
     </button>
   ) : null;
 
+  // Coque v2 : la bande de la semaine du jour affiché, et les repères de l'en-tête et de la barre du bas.
+  const todayIso = format(new Date(), 'yyyy-MM-dd');
+  const bande = ui2 ? bandeJours(selectedDate || todayIso, todayIso, new Map(Object.entries(joursBrut))) : [];
+  const jourAffiche = selectedDate || todayIso;
+  const etatAffiche = ui2 ? etatJour({ date: jourAffiche, ...(joursBrut[jourAffiche] ?? { lignes: [] }) }) : 'vide';
+  const ongletActif: OngletBas | null = selectedDate || view === 'day' ? 'day' : view === 'week' ? 'week' : view === 'month' ? 'month' : 'plus';
+  const allerOnglet = (o: OngletBas) => { if (o === 'day') goHome(); else if (o === 'plus') setMenuOpen(true); else goTo(o); };
+
   return (
-    <div className="bt-poseur">
+    <div className={`bt-poseur${ui2 ? ' bt-ui2' : ''}`}>
       <div ref={phoneRef} className={`bt-phone${wide ? ' wide' : ''}`}>
 
         {/* ===== EN-TÊTE NOIR ===== */}
@@ -465,7 +491,10 @@ export default function PoseurPage() {
             <div className="bt-phdr-left">
               <img src="/favicon.svg" alt="BEMEXO" className="bt-phdr-logo" />
               {isToday ? (
-                <div className="bt-phdr-date">{todayLabel}</div>
+                <div>
+                  {ui2 && <Kicker date={todayIso} aujourdhui etat={etatAffiche} />}
+                  <div className="bt-phdr-date">{todayLabel}</div>
+                </div>
               ) : (
                 <button onClick={goHome} className="bt-phdr-back" aria-label="Retour à ma journée">
                   <ArrowLeft className="h-5 w-5 shrink-0" />
@@ -542,6 +571,7 @@ export default function PoseurPage() {
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
+          {ui2 && <BandeJours jours={bande} onSelect={openDay} />}
         </header>
 
         {/* ===== CORPS ===== */}
@@ -564,6 +594,8 @@ export default function PoseurPage() {
             </div>
           )}
         </div>
+
+        {ui2 && <OngletsBas actif={ongletActif} onGo={allerOnglet} badgePlus={trainings.unseen} />}
 
         <LeaveRequestDialog open={leaveOpen} onOpenChange={setLeaveOpen} userId={user?.id} />
         {/* Lot 12 : un QR fixe (/pointer#f=…) s'ouvre par une vraie navigation, pour que la page lise le fragment. */}
