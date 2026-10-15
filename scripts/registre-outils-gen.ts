@@ -585,7 +585,8 @@ function texteTete(cote: Cote, outils: Record<string, unknown>[], coms: string[]
   const corps = outils.map((o, i) => texteEntree(o, coms[i])).join('\n');
   const vocab = vocabCourant.filter((v) => vocabUtilises.has(v.nom)).map((v) => v.nom).sort();
   const importVocab = vocab.length ? `import { ${vocab.join(', ')} } from './vocab.ts';\n` : '';
-  return `${entete}\nimport type { Outil } from './types.ts';\n${importVocab}\nexport const ${nom}: Outil[] = [\n${corps}\n${REPERE}\n`;
+  // 3b-1 : `outilOuvrir` (les outils des livraisons suivantes, après le repère) s'importe en tête : l'en-tête appartient au générateur.
+  return `${entete}\nimport { outilOuvrir } from './outil-ouvrir.ts';\nimport type { Outil } from './types.ts';\n${importVocab}\nexport const ${nom}: Outil[] = [\n${corps}\n${REPERE}\n`;
 }
 
 /** Le fichier à écrire : la tête du script + ce qui suit le repère dans le fichier actuel (outils des livraisons suivantes), intact. */

@@ -25,6 +25,7 @@
 // a en outre deux déclarations à lui (DECLARER_HEURES_LONG, NOUVEAU_CHANTIER_LONG, worker-multi-prompt.ts) que ce registre ne porte pas
 // encore : `variantes` (§2.3) ne prévoit que l'extension d'un outil par une livraison, pas un profil. 3a-2 ne les déplace pas : elles restent écrites
 // dans worker-multi-prompt.ts, à trancher avec la boucle d'outils (3c).
+import { outilOuvrir } from './outil-ouvrir.ts';
 import type { Outil } from './types.ts';
 import { DOC_CATEGORIES, LEAVE_KINDS, WORKER_NAV } from './vocab.ts';
 
@@ -348,4 +349,7 @@ export const OUTILS_SALARIE: Outil[] = [
     limites: { lignes: 0, car: 0, ms: 0 },
   },
   // ── fin des outils de la livraison 3a (ci-dessus : généré par scripts/registre-outils-gen.ts ; les outils des livraisons suivantes s'ajoutent APRÈS ce repère) ──
+
+  // ── Livraison 3b-1 (à la main, GÉNÉRÉ depuis les ouvreurs) : `ouvrir_fenetre`, servi seulement si l'interrupteur `ouvrir` est allumé. ──
+  outilOuvrir('salarie'),
 ];

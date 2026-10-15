@@ -20,6 +20,8 @@
     "test:couverture": "npx -y deno@2.9.6 test --allow-env --allow-read supabase/functions/_shared/registre-couverture.test.ts",
     "test:registre": "npx -y deno@2.9.6 test --allow-env --allow-read supabase/functions/_shared/registre-couverture.test.ts supabase/functions/_shared/registre-surfaces.test.ts supabase/functions/_shared/registre-outils.test.ts supabase/functions/_shared/registre-listes.test.ts",
     "test:registre-mutations": "node scripts/tests/registre-mutations.mjs",
+    "test:ouvrir": "npx -y deno@2.9.6 test --allow-env --allow-read supabase/functions/_shared/ouvrir.test.ts",
+    "test:ouvreurs": "npx -y deno@2.9.6 test --allow-env --allow-read supabase/functions/_shared/registre-ouvreurs.test.ts",
     "test:etape3-config": "npx -y deno@2.9.6 test --allow-env --allow-read supabase/functions/_shared/etape3-config.test.ts",
     "test:etape3-eteint": "npx -y deno@2.9.6 test --allow-env --allow-read supabase/functions/_shared/etape3-eteint.test.ts",
     "test:assistant-actions": "npx -y deno@2 test --allow-env supabase/functions/_shared/assistant-actions.test.ts",

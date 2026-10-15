@@ -764,17 +764,21 @@ const plageJours = (du: unknown, au: unknown, ctx: ActionContext) => plageAVenir
  * l'utilisateur choisit dans la carte, l'assistant ne devine jamais).
  */
 function resolve<T extends { id: string }>(text: string, list: T[], label: (x: T) => string): string | null {
+  const scored = candidats(text, list, label);
+  if (!scored.length) return null;
+  if (scored.length > 1 && scored[1].hits === scored[0].hits) return null;
+  return scored[0].id;
+}
+/** Les candidats d'un nom dit, du meilleur au moins bon (aucun = inconnu ; deux à égalité en tête = ambigu). `resolve` en est la lecture stricte ; 3b-1 (ouvrir) s'en sert pour poser UNE question avec choix. */
+export function candidats<T extends { id: string }>(text: string, list: T[], label: (x: T) => string): { id: string; hits: number }[] {
   const q = norm(text).split(/[^a-z0-9]+/).filter((w) => w.length > 1);
-  if (!q.length) return null;
-  const scored = list.map((x) => {
+  if (!q.length) return [];
+  return list.map((x) => {
     const name = norm(label(x)).split(/[^a-z0-9]+/).filter(Boolean);
     // Exact = 2 points, début de mot = 1 (jamais sur une initiale : « Ergun K. » n'est pas « Karim »).
     const hits = q.reduce((t, w) => t + (name.includes(w) ? 2 : name.some((n) => (w.length >= 4 && n.startsWith(w)) || (n.length >= 3 && w.length >= 4 && w.startsWith(n))) ? 1 : 0), 0);
     return { id: x.id, hits };
   }).filter((x) => x.hits > 0).sort((a, b) => b.hits - a.hits);
-  if (!scored.length) return null;
-  if (scored.length > 1 && scored[1].hits === scored[0].hits) return null;
-  return scored[0].id;
 }
 export const resolveSalarie = (t: string, ctx: ActionContext) => resolve(t, ctx.salaries, fullName);
 export const resolveChantier = (t: string, ctx: ActionContext) => resolve(t, ctx.chantiers, (c) => `${c.nom} ${c.ville ?? ''}`);
