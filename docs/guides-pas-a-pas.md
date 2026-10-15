@@ -118,7 +118,7 @@ Une seule fiche par entrée : **« Cliquez »** à l'ordinateur, **« Touchez »
 
 `docs/guides-bureau-avant-apres-ia/` (`node docs/guides-bureau-avant-apres-ia/comparer.mjs`) :
 
-- `guideForPrompt()` : **11 200 octets, SHA-256 `8e2b61c3…959e6a`, identique** ; la consigne complète ne contient ni « Me guider pas à pas » ni `guide:` (verrouillé par `npm run test:guides-bureau`) ;
+- `guideForPrompt()` : **11 200 octets, SHA-256 `8e2b61c3…959e6a`, identique** (au lot 7 ; **depuis 3b-0, 2026-10-15 : 12 791 octets, SHA-256 `308fecf4…6a3f`**, empreinte déclarée dans `admin-tours.test.ts`) ; la consigne complète ne contient ni « Me guider pas à pas » ni `guide:` (verrouillé par `npm run test:guides-bureau`) ;
 - **voie locale**, 44 phrases bureau sans fichier : 4 sorties changent, un bouton en plus à la fin : **b29** (`export` → + `guide:telecharger`), **b30** (`reserves` → + `guide:reserves`), **b31** (`planning` → + `guide:deplacer`), **b33** (`salaries` → + `guide:corriger`) ;
 - **voie modèle**, 47 phrases × 3 réponses simulées : le bouton n'est inséré que pour **b30** et **b31** (réponse = texte de la fiche + intention « à quoi sert » / « explique … comment »). b29 et b33 n'ont que le raccourci (leur réponse écrite se rapproche d'une autre fiche) ;
 - **b17, b18, b19** (phrases avec fichier) ne passent **jamais** par la voie locale (`assistant/index.ts` : `att.file ? null : handleActionLocally`) ; rejouées par la voie modèle, aucun bouton ;
