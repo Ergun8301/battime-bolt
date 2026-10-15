@@ -6,12 +6,12 @@
 - Tout le cœur métier (pointage, validation, export, clôture, borne, formations…) est déjà en production : **le produit est vendable tel quel** ; le reste est de l'amélioration.
 
 ## Ce qui est EN COURS / ARRÊTÉ (rien n'est cassé, rien de fusionné)
-- Intégration du design salarié (plan : docs/design-brief/audit-salarie/03-plan-integration.md ; audit final : 05-audit-final.md). Étapes 0-1 (filets + alléger, invisibles) **partiellement faites, non fusionnées** sur la branche `claude/determined-mayer-dnhach` (commits WIP). Décision : design FIGÉ, on s'appuie sur la planche finale du designer, on corrige soi-même focus/portail Radix/requêtes.
+- Intégration du design salarié (plan : docs/design-brief/audit-salarie/03-plan-integration.md ; audit final : 05-audit-final.md). Étapes 0-1 (filets + alléger, invisibles) **FUSIONNÉES dans main (PR #205, 15 oct.)** : /poseur 335 → 269 kB JS, 14 scripts navigateur verts. Prochaine étape : 2 (logique pure + séparation modèle/vue). Décision : design FIGÉ, on s'appuie sur la planche finale du designer, on corrige soi-même focus/portail Radix/requêtes.
 - IA 3c (lire les données + boucle d'outils) : agent arrêté très tôt ; worktree local `worktree-agent-a487badefd04615f2` (peut avoir disparu). Spec : docs/ia-etape3/00-conception-etape3.md §4.
 
 ## Défauts connus à traiter (petits)
-1. « Ajoute un salarié, son prénom c'est pierre, son nom c'est Xavier » : le modèle renvoie parfois des champs vides (formulaire vide). Ancien défaut. Piste : améliorer la consigne et mesurer sur le vrai modèle (PAS de règles de mots-clés). Rapport : scratchpad `enquete-salarie-nouveau.md` (perdu avec la session ; résumé : prepare l.1022 prend seulement les arguments du modèle).
-2. CI GitHub Actions ne se déclenche plus depuis la PR #201 (aperçus Netlify/Cloudflare OK) : probable quota/facturation Actions ; à vérifier dans l'onglet Actions de GitHub.
+1. (corrigé par la PR #204 : raccourci local réservé aux demandes nues) « Ajoute un salarié, son prénom c'est pierre, son nom c'est Xavier » : le modèle renvoie parfois des champs vides (formulaire vide). Ancien défaut. Piste : améliorer la consigne et mesurer sur le vrai modèle (PAS de règles de mots-clés). Rapport : scratchpad `enquete-salarie-nouveau.md` (perdu avec la session ; résumé : prepare l.1022 prend seulement les arguments du modèle).
+2. CI GitHub Actions : le workflow est actif et a réussi sur les PR #201 à #203 (runs 349 à 351) : ce n'est PAS un quota. Sur #204 (branche créée dans une autre session), aucun run n'est parti avant un vrai push ; voir l'état dans la PR.
 3. test:assistant-aide a été réparé et ajouté à la CI ; `borne.gestion` et `historique.supprimees` reportés.
 
 ## Décisions de cap (patron + avis externes)
@@ -20,9 +20,3 @@
 - IA : finir 3c version réduite (≈ 8 lectures bureau + 3 salarié) puis geler ; 3d (écritures niveau 2/3 généralisées) après les premiers clients.
 - Design : finir le salarié ; bureau limité au cœur (planning, validation, export, clôture) tant que le dossier B1–B72 n'est pas livré.
 - Le patron a donné l'autorisation permanente d'agir sur GitHub, Supabase, Cloudflare, Netlify pour BEMEXO (fusion, déploiement, migrations additives) ; les SECRETS restent posés par lui.
-
-## Plan et définition de « fini » (ajouté après les avis externes de 3 autres IA)
-Cap CHANGÉ : on arrête de perfectionner, on livre. Avis retenus : un seul agent à la fois ; relectures adverses seulement pour sécurité/paie/suppressions ; évaluation sur le vrai modèle une fois par lot ; geler l'IA après la lecture des données ; design bureau limité au cœur ; réparer la CI. Avis REFUSÉS : arrêter tous les tests (la relecture a trouvé un vrai bug) ; remplacer la compréhension par des questions de désambiguïsation partout.
-Ordre : 1) formulaire « ajouter un salarié » vide (consigne du modèle, pas de règles de mots-clés) ; 2) CI GitHub (dépôt public : ce n'est pas un quota) ; 3) design salarié version courte : filets (étape 0), alléger (1), séparer logique/vue (2), nouvelle coque + journée (3-4), feuilles (5) ; montrer des captures réelles au patron à l'étape 3 ; 4) IA : 8 lectures bureau + 3 salarié (3c réduit) puis GEL ; 5) bureau : planning, validation, export, clôture quand Claude Design livre B1–B72.
-« Fini » pour cette période = les points 1 à 4 en production, tests verts, patron a vu les captures du design salarié et validé. Ensuite seulement : 3d (écritures niveau 2/3), reste du design, statistiques.
-Le patron est TDAH : réponses courtes, visuelles, une seule question à la fin ; il autorise tout (GitHub, Supabase, Cloudflare, Netlify), ne pas lui demander de permission ; les secrets, c'est lui.
