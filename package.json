@@ -31,6 +31,7 @@
     "test:assistant-actions-rls": "bash supabase/tests/run-rls.sh supabase/tests/lot3bis_assistant_actions.sql",
     "test:assistant-journal": "bash supabase/tests/run-rls.sh supabase/tests/lot7_assistant_journal.sql",
     "test:assistant-chats-rls": "bash supabase/tests/run-rls.sh supabase/tests/ia_etape2_chats.sql",
+    "test:assistant-chats-securite-rls": "bash supabase/tests/run-rls.sh supabase/tests/ia_3c0_chats_securite.sql",
     "test:assistant-historique-serveur": "npx -y deno@2 test --allow-env --allow-read supabase/functions/_shared/assistant-history.test.ts",
     "test:assistant-historique": "node scripts/tests/assistant-historique.mjs out docs/captures-assistant-historique",
     "test:collegues": "bash supabase/tests/run-rls.sh supabase/tests/lot7_collegues_documents.sql",

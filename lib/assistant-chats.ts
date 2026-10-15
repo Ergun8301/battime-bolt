@@ -82,53 +82,61 @@ function titleOf(text: string): string {
   return text.replace(/\s+/g, ' ').trim().slice(0, 60).trim() || 'Conversation';
 }
 
-/** Les vraies requêtes, sous RLS, + les deux fonctions SQL. Rien n'est écrit dans la console : le contenu d'un chat n'a rien à faire dans un journal. */
-export const supabaseChatStore: ChatStore = {
-  async list() {
-    const { data, error } = await supabase.from('assistant_chats').select('id, title, side, updated_at').order('updated_at', { ascending: false }).limit(LIST_MAX);
-    if (error) throw new Error('historique indisponible');
-    return (data ?? []).map((r: { id: string; title: string; updated_at: string }) => ({ id: r.id, title: r.title, updatedAt: r.updated_at }));
-  },
-  async load(id) {
-    const { data, error } = await supabase.from('assistant_chat_messages').select('who, text, links').eq('chat_id', id).order('id', { ascending: true });
-    if (error) throw new Error('conversation illisible');
-    return (data ?? []).map((r: { who: string; text: string; links: unknown }) => {
-      const links = cleanLinks(r.links);
-      return { who: r.who === 'me' ? 'me' : 'bot', text: r.text, ...(links.length ? { links } : {}) } as ChatMessage;
-    });
-  },
-  async append(chatId, userText, botText, links) {
-    try {
-      const p_user_text = userText.trim().slice(0, TEXT_MAX);
-      const p_bot_text = botText.trim().slice(0, TEXT_MAX);
-      if (!p_user_text || !p_bot_text) return { id: null, why: 'echec' }; // la base exige 1 à 4000 caractères de chaque côté
-      // La base refuse des liens de plus de 4000 caractères : mieux vaut un tour sans ses boutons que pas de tour.
-      const clean = cleanLinks(links);
-      const p_links = JSON.stringify(clean).length <= LINKS_JSON_MAX ? clean : [];
-      const { data, error } = await supabase.rpc('assistant_chat_append', { p_chat_id: chatId, p_user_text, p_bot_text, p_links });
-      if (!error && typeof data === 'string') return { id: data };
-      // Les codes de la fonction SQL : 54000 = conversation pleine (200 messages) ; 42501 = « Conversation introuvable » (un chat inconnu ou qui
-      // n'est pas le mien donne la MÊME erreur) — mais 42501 dit aussi « session invalide » / « assistant non activé » : on ne conclut « introuvable »
-      // que lorsqu'on visait un chat précis, et si c'était autre chose, l'essai suivant (sur un nouveau chat) échouera pareil, sans rien casser.
-      const code = (error as { code?: unknown } | null)?.code;
-      if (chatId !== null && code === '54000') return { id: null, why: 'pleine' };
-      if (chatId !== null && code === '42501') return { id: null, why: 'introuvable' };
-      return { id: null, why: 'echec' };
-    } catch { return { id: null, why: 'echec' }; }
-  },
-  async remove(id) {
-    try {
-      const { error } = await supabase.from('assistant_chats').delete().eq('id', id);
-      return !error;
-    } catch { return false; }
-  },
-  async clear() {
-    try {
-      const { error } = await supabase.rpc('assistant_chat_clear');
-      return !error;
-    } catch { return false; }
-  },
-};
+/**
+ * Les vraies requêtes, sous RLS, + les deux fonctions SQL. Rien n'est écrit dans la console : le contenu d'un chat n'a rien à faire dans un journal.
+ * `side` : l'historique d'un écran ne montre que les chats de SON côté (un administrateur qui a été salarié a des chats des deux côtés ;
+ * la base, elle, cache déjà les chats « bureau » à qui n'est plus administrateur : migration IA 3c-0).
+ */
+function supabaseChatStoreFor(side: 'bureau' | 'salarie'): ChatStore {
+  return {
+    async list() {
+      const { data, error } = await supabase.from('assistant_chats').select('id, title, side, updated_at').eq('side', side).order('updated_at', { ascending: false }).limit(LIST_MAX);
+      if (error) throw new Error('historique indisponible');
+      return (data ?? []).map((r: { id: string; title: string; updated_at: string }) => ({ id: r.id, title: r.title, updatedAt: r.updated_at }));
+    },
+    async load(id) {
+      const { data, error } = await supabase.from('assistant_chat_messages').select('who, text, links').eq('chat_id', id).order('id', { ascending: true });
+      if (error) throw new Error('conversation illisible');
+      return (data ?? []).map((r: { who: string; text: string; links: unknown }) => {
+        const links = cleanLinks(r.links);
+        return { who: r.who === 'me' ? 'me' : 'bot', text: r.text, ...(links.length ? { links } : {}) } as ChatMessage;
+      });
+    },
+    async append(chatId, userText, botText, links) {
+      try {
+        const p_user_text = userText.trim().slice(0, TEXT_MAX);
+        const p_bot_text = botText.trim().slice(0, TEXT_MAX);
+        if (!p_user_text || !p_bot_text) return { id: null, why: 'echec' }; // la base exige 1 à 4000 caractères de chaque côté
+        // La base refuse des liens de plus de 4000 caractères : mieux vaut un tour sans ses boutons que pas de tour.
+        const clean = cleanLinks(links);
+        const p_links = JSON.stringify(clean).length <= LINKS_JSON_MAX ? clean : [];
+        const { data, error } = await supabase.rpc('assistant_chat_append', { p_chat_id: chatId, p_user_text, p_bot_text, p_links });
+        if (!error && typeof data === 'string') return { id: data };
+        // Les codes de la fonction SQL : 54000 = conversation pleine (200 messages) ; 42501 = « Conversation introuvable » (un chat inconnu ou qui
+        // n'est pas le mien donne la MÊME erreur) — mais 42501 dit aussi « session invalide » / « assistant non activé » : on ne conclut « introuvable »
+        // que lorsqu'on visait un chat précis, et si c'était autre chose, l'essai suivant (sur un nouveau chat) échouera pareil, sans rien casser.
+        const code = (error as { code?: unknown } | null)?.code;
+        if (chatId !== null && code === '54000') return { id: null, why: 'pleine' };
+        if (chatId !== null && code === '42501') return { id: null, why: 'introuvable' };
+        return { id: null, why: 'echec' };
+      } catch { return { id: null, why: 'echec' }; }
+    },
+    async remove(id) {
+      try {
+        const { error } = await supabase.from('assistant_chats').delete().eq('id', id);
+        return !error;
+      } catch { return false; }
+    },
+    async clear() {
+      try {
+        const { error } = await supabase.rpc('assistant_chat_clear');
+        return !error;
+      } catch { return false; }
+    },
+  };
+}
+export const supabaseChatStoreBureau: ChatStore = supabaseChatStoreFor('bureau');
+export const supabaseChatStoreSalarie: ChatStore = supabaseChatStoreFor('salarie');
 
 /**
  * Historique EN MÉMOIRE : démo, préviews et tests sans base. Mêmes règles que la base (titre, 200 messages par

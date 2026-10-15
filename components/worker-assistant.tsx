@@ -14,7 +14,7 @@ import { demoWorkerExecutor, makeWorkerErasePreview, makeWorkerExecutor } from '
 import { demoMultiDeps, makeMultiDeps } from '@/lib/worker-multi';
 import { isNewRequest } from '@/supabase/functions/_shared/fr-langue';
 import { nouvelleDemandeSalarie, profilSaisie, WORKER_TEXT_MAX } from '@/supabase/functions/_shared/saisie-profil';
-import { memoryChatStore, supabaseChatStore } from '@/lib/assistant-chats';
+import { memoryChatStore, supabaseChatStoreSalarie } from '@/lib/assistant-chats';
 import { useAiEnabled } from '@/lib/real-cost';
 import { useMealEnabled } from '@/lib/meal-setting';
 import {
@@ -49,7 +49,7 @@ export default function WorkerAssistant({ onSaved, onNavigate, defaultOpen = fal
   // Le serveur (non redéployé) peut encore proposer l'action : le navigateur la refuse.
   const meal = useMealEnabled(demo ? null : user?.company_id);
   const source = useMemo(() => (demo ? demoWorkerSource() : supabaseWorkerSource), [demo]);
-  const chats = demo ? DEMO_CHATS : supabaseChatStore;
+  const chats = demo ? DEMO_CHATS : supabaseChatStoreSalarie;
   const isWorker = user?.role === 'worker' || user?.role === 'lead';
   if (!demo && !(ai && isWorker)) return null;
 
