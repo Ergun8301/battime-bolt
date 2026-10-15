@@ -32,6 +32,7 @@ import { ATTACH_ACCEPT, ATTACH_MAX_BYTES, attachmentError, compressAttachment } 
 import { ASSISTANT_SUGGESTIONS, type AssistantLink, type AssistantSource } from '@/lib/assistant';
 import { historyOf, jourRelatif, type ChatMessage, type ChatStore, type ChatSummary } from '@/lib/assistant-chats';
 import { isNewRequest as isNewRequestFr } from '@/supabase/functions/_shared/fr-langue';
+import { isNarrow, messageOuverture, openLink } from '@/lib/openers';
 
 export interface ExtraControl {
   /** Change le texte de la bulle (null = l'efface), la question en attente reste ouverte. */
@@ -317,6 +318,15 @@ export default function AssistantPanel({
     jump.current = false;
   }, [msgs, busy, showFromTop, view]);
 
+  /** Ouvre un lien `ouvrir:…` ; si rien ne s'ouvre, une bulle le dit (occupé, fonction non activée, écran trop petit, écran inconnu de cette page). */
+  const ouvrirLien = (action: string) => {
+    const msg = messageOuverture(openLink(action));
+    if (msg) setMsgs((m) => [...m, { who: 'bot', text: msg, notice: true }]);
+    else if (isNarrow()) setOpen(false);
+  };
+  const ouvrirRef = useRef(ouvrirLien);
+  ouvrirRef.current = ouvrirLien;
+
   const ask = useCallback(async (q: string) => {
     const question = q.trim() || (file ? 'Regarde ce fichier.' : '');
     if (!question || busy) return;
@@ -354,6 +364,8 @@ export default function AssistantPanel({
     const extra = r.extra && sent && typeof r.extra === 'object' ? { ...(r.extra as object), attachment: sent } : r.extra;
     if (r.notice) mine.lost = true;
     setMsgs((m) => [...m, { who: 'bot', text: r.answer, links: r.links, notice: r.notice, extra }]);
+    // Étape 3 : le SERVEUR a dit « ouvrir sans toucher » (verbe d'ouverture, niveau 1) : sur 1024 px et plus, la fenêtre s'ouvre seule et le panneau reste visible ; sous 1024 px, un bouton.
+    if (r.auto && !isNarrow() && r.links && r.links[0] && r.links[0].action.startsWith('ouvrir:')) ouvrirRef.current(r.links[0].action);
     if (typeof r.remaining === 'number') setRemaining(r.remaining);
     // Un tour COMPLET (hors erreur / quota) s'enregistre, avec le texte que l'utilisateur a tapé — pas la demande en attente recollée à sa réponse.
     if (chats && !r.notice) enregistrer(convo, chats, gen, question, r.answer, r.links ?? []);
@@ -449,6 +461,8 @@ export default function AssistantPanel({
   const go = (action: string) => {
     // « ask:… » : une question toute prête, posée ici même.
     if (action.startsWith('ask:')) { ask(action.slice(4)); return; }
+    // Étape 3 (3b-1) : « ouvrir:<écran>?… » — la page l'ouvre (lib/openers.ts) ; sous 1024 px le panneau se replie pour laisser voir la fenêtre. Rien d'ouvert : on le dit.
+    if (action.startsWith('ouvrir:')) { ouvrirLien(action); return; }
     onNavigate(action);
     if (window.matchMedia('(max-width: 640px)').matches) setOpen(false);
   };

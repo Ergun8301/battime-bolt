@@ -377,9 +377,9 @@ Deno.test('Dépôt réel : comptes comparés au §0.2 (écarts expliqués)', asy
   if (!reel.dialoguesDeFenetre.some((o) => o.fichier === 'components/kiosk-pair-confirm.tsx')) throw new Error('le `open` nu de kiosk-pair-confirm doit être vu');
 
   egal([parType.rpc.cles, parType.rpc.occurrences], [49, 65], 'RPC : 49 noms, 65 appels (§0.2 : 49)');
-  // 10 fonctions Edge (§0.2) + `fn:?` : lib/assistant.ts:69 (invokeAssistant(name)) et lib/ia-formule.ts:16 (iaFormule(fn)) passent le nom en variable.
+  // 10 fonctions Edge (§0.2) + `fn:?` : lib/assistant.ts:72 (invokeAssistant(name)) et lib/ia-formule.ts:16 (iaFormule(fn)) passent le nom en variable.
   egal([parType.fn.cles - 1, parType.fn.occurrences], [10, 22], 'fonctions Edge : 10 noms + fn:? (22 appels dont 2 de nom calculé)');
-  egal(lieux(reel, 'fn:?'), ['lib/assistant.ts:69', 'lib/ia-formule.ts:16'], 'fn:? : les deux appels à nom calculé');
+  egal(lieux(reel, 'fn:?'), ['lib/assistant.ts:72', 'lib/ia-formule.ts:16'], 'fn:? : les deux appels à nom calculé');
   // 42 couples (§0.2) sur 21 tables + `table:?` : lib/erase.ts:282 (upsert) et :291 (delete), annoncés par le §2.3.
   const couples = reel.occurrences.filter((o) => o.type === 'table' && !o.cle.startsWith('table:?'));
   egal([new Set(couples.map((o) => o.cle)).size, new Set(couples.map((o) => o.cle.split(':')[1])).size], [42, 21], 'tables : 42 couples sur 21 tables');

@@ -67,7 +67,7 @@ export const SURFACES_BUREAU: Record<string, string[]> = {
     'ancre:bureau-edit.enregistrer',
     'ancre:bureau-edit.horaire',
     'ancre:bureau-planning.bulle',
-    'ancre-dynamique:components/admin-planning.tsx:403',
+    'ancre-dynamique:components/admin-planning.tsx:404',
   ],
   // B18 · Déplacer, réordonner par glisser
   // prepareMove défait ce qui bloque un déplacement (brouillon vide effacé, ligne retirée détachée) avant que la case

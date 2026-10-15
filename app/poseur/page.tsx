@@ -11,6 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Skeleton } from '@/components/ui/skeleton';
 import { Clock, CalendarDays, CalendarRange, History, LogOut, Check, ArrowLeft, Camera, Loader2, Palmtree, Bell, BellOff, Sparkles, Info, ScanLine } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import type { PoigneesSalarie } from '@/lib/openers-salarie';
 import { useAiEnabled } from '@/lib/real-cost';
 import { useCompanySettings } from '@/lib/company-settings';
 import { useVisiblePoll } from '@/lib/use-visible-poll';
@@ -398,6 +399,22 @@ export default function PoseurPage() {
   const openDay = (d: string) => { setSelectedDate(d); setPendingOpen(false); };
   const goHome = () => { setSelectedDate(null); setView('day'); fetchPending(); };
   const goTo = (v: string) => { setSelectedDate(null); setView(v); };
+
+  // Étape 3 (3b-1) : « ouvrir un écran » depuis l'assistant (lib/openers-salarie.ts, chargé à la demande). La page prête ses poignées dans une ref, lue au moment d'ouvrir.
+  // Une couche de la journée ouverte (fiche d'heures, documents…) pose `btLayer` dans l'historique : on n'ouvre rien par-dessus.
+  const ouvH = useRef<PoigneesSalarie | null>(null);
+  ouvH.current = {
+    role: user?.role ?? 'worker', formations: trainingsMenu,
+    occupe: () => leaveOpen || !!(typeof window !== 'undefined' && window.history.state && (window.history.state as { btLayer?: boolean }).btLayer),
+    fermer: () => { setMenuOpen(false); setInfoOpen(false); setScanOpen(false); setPendingOpen(false); },
+    jour: openDay, voirFormations: () => goTo('formations'),
+  };
+  useEffect(() => {
+    if (!user) return;
+    let off: (() => void) | undefined; let fin = false;
+    import('@/lib/openers-salarie').then((m) => { if (!fin) off = m.registerSalarie(ouvH); }, () => { /* hors ligne : rien */ });
+    return () => { fin = true; if (off) off(); };
+  }, [user?.role]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Lot 7 : l'écran que demande une étape du guide. De la NAVIGATION seulement (menu, page, fenêtre
   // « Mes congés » / « Informations ») : jamais un geste qui agit (notifications, photo, scanner).

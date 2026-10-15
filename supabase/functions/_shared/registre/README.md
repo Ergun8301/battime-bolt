@@ -22,10 +22,22 @@ Contrat : `docs/ia-etape3/00-conception-etape3.md` (§1, §2). Aucune seconde li
 | `surfaces*.ts`, `interne*.ts`, `*.snapshot.json`, `dettes.json` | test de couverture et scanner `../registre-surfaces.ts` |
 | `mesures.json` | banc d'évaluation et test T7 |
 | `config.ts`, `types.ts` | tout le registre |
+| `ouvreurs.ts`, `outil-ouvrir.ts`, `ouvreurs-gen.ts` (3b) | fonctions Edge (`ouvrir.ts`, `guide-etape3.ts`, `outils-pour.ts`) et tests ; jamais le navigateur |
+| `ouvreurs-leger-bureau.ts`, `ouvreurs-leger-salarie.ts` (**GÉNÉRÉS**) | **module léger** par côté : `/admin` et `/poseur` (via `lib/openers-bureau.ts`, `lib/openers-salarie.ts`, chargés à la demande) |
 | `outils-pour.ts` (`outilsPour`), `listes.ts` | fonctions Edge via `../assistant-outils.ts` (`ASSISTANT_FUNCTIONS`, `functionsFor`) et `../worker-outils.ts` (`WORKER_FUNCTIONS`, `workerFunctionsFor`) ; générateur et tests |
 | `vocab.ts` (`NAV_ACTIONS`, `WORKER_NAV`, `ABSENCE_KINDS`, `LEAVE_KINDS`, `DOC_CATEGORIES`) | **module léger** : déclarations d'outils, AC et WC (qui le ré-exportent), donc le navigateur |
 | `../outils-listes-bureau.ts`, `../outils-listes-salarie.ts` | **GÉNÉRÉS** (ne pas éditer), **légers** et sans import : AC, WC, `tool-domains.ts`, donc le navigateur |
 | `avant-3a2.snapshot.json` | étalon GELÉ de ce que la production avait avant 3a-2 : `registre-listes.test.ts`, `scripts/registre-outils-gen.ts` |
+
+## Régénérer ce qui est généré (commandes officielles)
+| Fichier | Quand | Commande |
+|---|---|---|
+| `../outils-listes-bureau.ts`, `../outils-listes-salarie.ts` (listes d'outils) et `ouvreurs-leger-bureau.ts`, `ouvreurs-leger-salarie.ts` (ouvreurs légers) | on change un outil (`outils-*.ts`) ou un ouvreur (`ouvreurs.ts`) | `npm run registre:generer` |
+| les mêmes, sans rien écrire (CI, relecture) | avant une PR | `npm run registre:verifier` (sort en erreur si un fichier n'est pas celui que le registre produit) |
+| `dettes.json`, `clics.snapshot.json`, `ids.snapshot.json` | on ferme une dette, on ajoute un bouton, on crée une capacité | `REGISTRE_REGENERER=dettes,clics,ids npx -y deno@2.9.6 test --allow-env --allow-read --allow-write supabase/functions/_shared/registre-couverture.test.ts` |
+| `avant-3a2.snapshot.json`, `avant-3b1.snapshot.json`, `outils-empreintes.json` | **jamais** : étalons gelés (production d'avant 3a-2 / d'avant 3b-1, SHA-256 des outils) | — |
+
+Les tests échouent tant qu'un fichier généré n'est pas à jour (`registre-listes.test.ts`, `registre-ouvreurs.test.ts`, T9). `npm run test:registre` lance toute la famille (couverture, scanner, outils, listes, ouvreurs, interrupteur, éteint à l'octet, ouvrir).
 
 ## La règle : le navigateur n'importe jamais `index.ts`
 Le site est exporté en statique : tout le JavaScript d'un chunk est public. `index.ts` tire les textes du modèle, les noms de RPC et de tables et les raisons de sécurité. Rien dans `app/`, `components/`, `lib/` ni `hooks/` ne doit l'atteindre, même par un import transitif (test T8). Le navigateur ne lit que les modules légers par côté (livraison 3b).

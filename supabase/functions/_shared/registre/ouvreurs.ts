@@ -62,7 +62,7 @@ export const OUVREURS_BUREAU: Ouvreur[] = [
   {
     id: 'planning.versions', cote: 'bureau', roles: ['admin'], titre: 'Versions du planning', decrit: 'Les versions enregistrées du planning d’une semaine (par défaut la semaine affichée).',
     params: { lundi: { kind: 'lundi', aide: 'un jour de la semaine voulue (aaaa-mm-jj ou « lundi prochain »)' } }, niveau: 1, dispo: 'versions',
-    composants: ['planning-versions-dialog'], etats: ['versionsOpen', 'versionsOn', 'currentWeekStart'], ancres: ['bureau-nav.versions', 'bureau-versions.liste'],
+    composants: ['planning-versions-dialog'], etats: ['versionsOpen', 'versionsOn', 'currentWeekStart'], ancres: ['bureau-nav.versions', 'bureau-versions.liste'], alias: ['versions'],
   },
   {
     id: 'formations.gestion', cote: 'bureau', roles: ['admin'], titre: 'Formations', decrit: 'Les formations de l’entreprise (vidéos, qui les a vues).',

@@ -51,6 +51,8 @@ type ServerReply = {
   /** Profil long : une fiche à plusieurs éléments (kind 'multi'). */
   items?: MultiItem[]; ignores?: MultiIgnore[]; non_prepare?: string[]; incertain?: boolean; deja_notees?: WorkerMultiReply['deja_notees'];
   note?: string; date?: string; aujourdhui?: string; confirmer?: boolean;
+  /** Étape 3 : ouvrir l'écran du premier lien sans attendre le toucher (décidé par le serveur). */
+  auto?: boolean;
 };
 const toReply = (d: ServerReply): AssistantReply => {
   const multi = d.kind === 'multi' && Array.isArray(d.items) && d.items.length > 0;
@@ -61,6 +63,7 @@ const toReply = (d: ServerReply): AssistantReply => {
       : d.kind === 'action' && d.action ? ({ workerAction: d.action, chantiers: d.chantiers || [], ...(d.confirmer ? { confirmer: true as const } : {}) } as WorkerActionExtra)
       : undefined,
     followUp: !multi && (!!d.question || (d.kind === 'draft' && !!d.draft && d.draft.lines.some((l) => !l.worksite_id))),
+    ...(d.auto ? { auto: true } : {}),
   };
 };
 
@@ -70,7 +73,8 @@ export const supabaseWorkerSource: AssistantSource = {
     try {
       // `multi: true` : ce navigateur sait afficher la fiche à plusieurs éléments (sans lui, le serveur répond comme avant).
       // `history` (étape 2, chat avec mémoire) : omis quand la conversation vient de commencer.
-      const body = { text, ...(file ? { file: await attachmentPayload(file) } : {}), multi: true, ...(history?.length ? { history } : {}) };
+      // `caps` (étape 3) : `ouvrir1` = cet écran sait ouvrir un lien `ouvrir:…` ; sans lui le serveur n'en envoie aucun.
+      const body = { text, ...(file ? { file: await attachmentPayload(file) } : {}), multi: true, ...(history?.length ? { history } : {}), caps: ['ouvrir1'] };
       // Délai maximal (voir invokeAssistant) : sans lui, un serveur qui ne répond pas bloquerait le panneau jusqu'au rechargement.
       const { data, error, timedOut } = await invokeAssistant('worker-assistant', body);
       if (timedOut) return toReply({ error: ASK_TIMEOUT_MESSAGE });

@@ -74,7 +74,11 @@ Deno.test('Jamais de levée : environnement qui lève, objets étranges, fonctio
   const atomes: unknown[] = ['on', 'off', 'pct', 'pilote', 1, 0, -3, 100, null, true, [], {}, '__proto__', 'x', '*', [CO], ['a_b']];
   for (let i = 0; i < 4000; i++) {
     const o: Record<string, unknown> = {};
-    for (const k of ['ouvrir', 'boucle', 'ecritures', 'pilote', 'pct', 'outils_coupes', 'zzz', '__proto__']) if (alea() < 0.5) o[k] = alea() < 0.5 ? atomes[Math.floor(alea() * atomes.length)] : { bureau: atomes[Math.floor(alea() * atomes.length)], salarie: atomes[Math.floor(alea() * atomes.length)], modes_actuel: atomes[Math.floor(alea() * atomes.length)] };
+    for (const k of ['ouvrir', 'boucle', 'ecritures', 'pilote', 'pct', 'outils_coupes', 'zzz', '__proto__']) {
+      if (alea() >= 0.5) continue;
+      const v = alea() < 0.5 ? atomes[Math.floor(alea() * atomes.length)] : { bureau: atomes[Math.floor(alea() * atomes.length)], salarie: atomes[Math.floor(alea() * atomes.length)], modes_actuel: atomes[Math.floor(alea() * atomes.length)] };
+      Object.defineProperty(o, k, { value: v, enumerable: true, configurable: true, writable: true }); // `o['__proto__'] = …` changerait le prototype : on veut une VRAIE clé
+    }
     const texte = alea() < 0.1 ? JSON.stringify(o).slice(0, Math.floor(alea() * 60)) : JSON.stringify(o);
     const env = avec(texte);
     for (const f of FONCTIONS) for (const c of COTES) etat(env, f, c, alea() < 0.5 ? CO : undefined);

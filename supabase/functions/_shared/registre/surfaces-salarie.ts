@@ -140,7 +140,7 @@ export const SURFACES_SALARIE: Record<string, string[]> = {
   S75: ['ancre:menu.infos', 'ancre:infos.fermer'],
   // Les entrées du menu (journée, semaine, mois, historique) portent un `data-guide` calculé (MENU_GUIDE[t.value]) : le scanner n'en voit
   // qu'une expression, clé `ancre-dynamique:<fichier>:<ligne>` (la ligne bougera si le fichier est remanié au-dessus : T2 le signalera).
-  S77: ['ancre-dynamique:app/poseur/page.tsx:599', 'route:/poseur'],
+  S77: ['ancre-dynamique:app/poseur/page.tsx:616', 'route:/poseur'],
 
   // ── O12 · Sans réseau ─────────────────────────────────────────────────────
   // Le transfert des saisies gardées sur le téléphone, automatique au retour du réseau : insère les lignes, puis les bascule (S105 : le bouton).

@@ -188,6 +188,15 @@ const MUTATIONS = [
   { id: 'M63', attendu: 'T3', mode: 'avertit', titre: 'Dette échue mais PR sans rapport (REGISTRE_DETTES_PERIMEES=avertir) : avertit sans bloquer', modifs: [], env: { REGISTRE_AUJOURDHUI: '2027-03-01', REGISTRE_DETTES_PERIMEES: 'avertir' } },
   { id: 'M64', attendu: 'T7', titre: 'À la livraison (REGISTRE_A_LA_LIVRAISON=1) : des cas jamais mesurés bloquent', modifs: [], env: { REGISTRE_A_LA_LIVRAISON: '1' } },
 
+  // ── 3b-1 : les ouvreurs ──
+  { id: 'M67', attendu: 'T1 ouvreurs', titre: "Un ouvreur cite un composant que rien ne charge (reserves-report → reserves-report-x)", modifs: [remplace(`${REG}/ouvreurs.ts`, "composants: ['reserves-report']", "composants: ['reserves-report-x']")] },
+  { id: 'M68', attendu: 'T1 ouvreurs', titre: "Une action de lien d'avant perd son ouvreur (l'alias « clients » est retiré)", modifs: [remplace(`${REG}/ouvreurs.ts`, "alias: ['clients']", 'alias: []')] },
+  { id: 'M69', attendu: 'T6', titre: "Un ouvreur livré n'a plus de clé littérale dans registerOpeners (borne.gestion renommé)", modifs: [remplace('lib/openers-bureau.ts', "'borne.gestion': () =>", "'borne.gestion_x': () =>")] },
+  { id: 'M70', attendu: 'T8 hygiène :', titre: 'components/ importe registre/ouvreurs.ts (le registre lourd des ouvreurs)', modifs: [prefixe('components/action-done.tsx', "import { OUVREURS } from '@/supabase/functions/_shared/registre/ouvreurs';\n")] },
+  { id: 'M71', attendu: 'T8 hygiène :', titre: "/poseur importe l'ouvreur léger du bureau", modifs: [prefixe('app/poseur/page.tsx', "import { OUVREURS_LEGER_BUREAU } from '@/supabase/functions/_shared/registre/ouvreurs-leger-bureau';\n")] },
+  { id: 'M72', attendu: 'T8 hygiène (build)', titre: "Build : le chunk de /poseur contient un id d'ouvreur du bureau", modifs: buildFactice('x="planning.semaine"', 'x=1') },
+  { id: 'M73', attendu: 'T11', titre: '.at() dans lib/openers-bureau.ts', modifs: [ajoute('lib/openers-bureau.ts', 'export const dernierMois = (l: string[]) => l.at(-1);\n')] },
+
   // ── Garde-fous du dépôt ──
   { id: 'M60', attendu: 'Garde-fous', titre: 'Le job « deno » est retiré de la CI', modifs: [apres('.github/workflows/ci.yml', '  # Le registre de l\'assistant :', /[\s\S]*$/, '')] },
   { id: 'M61', attendu: 'Garde-fous', titre: 'Le modèle de PR perd la case clics.snapshot', modifs: [remplace('.github/pull_request_template.md', /clics\.snapshot/g, 'clics')] },

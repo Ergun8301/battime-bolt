@@ -35,6 +35,7 @@ import { format, addDays, addWeeks, subWeeks, subMonths, endOfMonth, parseISO, g
 import { DAYS_IN_WEEK, weekDays as buildWeekDays, weekDayIndex, weekStart } from '@/lib/week';
 import { DEFAULT_WEEKLY_HOURS, DEFAULT_OVERTIME_RATES, weeklyHoursFor } from '@/lib/overtime';
 import { weekStart as weekStartOf, weekEnd as weekEndOf } from '@/lib/week';
+import type { PoigneesBureau } from '@/lib/openers-bureau';
 import { fr } from 'date-fns/locale';
 import type { DateRange } from 'react-day-picker';
 import { toast } from 'sonner';
@@ -2823,6 +2824,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
   // rien ne part avant le choix du bureau. Rien à verrouiller (ou mode support, lecture seule) : l'export part comme avant.
   // `retour` = data-testid du bouton à qui l'alerte rend le focus.
   const demanderExport = async (kind: ExportEquipe, retour: string) => {
+    if (Date.now() < garde3.current) return; // ouvert par l'assistant il y a un instant : le doigt est peut-être encore là
     if (!user?.company_id) { toast.error('Profil non chargé'); return; }
     if (!exportRange) { toast.error('Choisissez une période'); return; }
     // La période est figée ICI : l'alerte, le comptage et l'export portent tous sur elle.
@@ -3234,6 +3236,44 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
       </>
     );
   };
+
+  // Étape 3 (3b-1) : « ouvrir un écran » depuis l'assistant. Les 26 implémentations vivent dans lib/openers-bureau.ts, chargé à la demande (elles ne pèsent pas dans le premier
+  // chargement) ; la page leur PRÊTE ses poignées dans une ref, lue au moment d'ouvrir. Un ouvreur pose des états, il n'enregistre jamais.
+  const [pre, setPre] = useState<string | null>(null); // la fenêtre pré-remplie par l'assistant (ligne « vérifiez avant d'enregistrer »)
+  const garde3 = useRef(0);                            // niveau 3 : les clics qui exportent ou clôturent sont ignorés 700 ms après l'ouverture
+  const ouvH = useRef<PoigneesBureau | null>(null);
+  ouvH.current = {
+    pret: !loading, workers, worksites, tracesOn, versionsOn, trainingsOn, kioskOn,
+    occupe: () => workerOpen || clientOpen || !!ficheWorker || !!clientFiche || !!pendingAbsence || addOpen || !!docsWorksite || settingsOpen || !!editing || importOpen
+      || importWorkersOpen || !!attributeTarget || !!extraTarget || !!termineTarget || emailOpen || !!copyFor,
+    fermer: () => {
+      setMobileMenuOpen(false); setAccountMenuOpen(false); setChantierMenuOpen(false); setMobileChantiersOpen(false); setSalariesOpen(false); setLeaveOpen(false);
+      setExportOpen(false); setCostOpen(false); setReservesOpen(false); setVersionsOpen(false); setStatsOpen(false); setTracesOpen(false); setTrainingsOpen(false);
+      setKioskOpen(false); setExportWorkerOpen(false); setRelanceOpen(false); setStatPanel(null); setStatusTarget(null);
+    },
+    pre: setPre, garde: () => { garde3.current = Date.now() + 700; },
+    salaries: { query: setSalariesQuery, open: setSalariesOpen, importer: setImportWorkersOpen },
+    clients: { query: setClientsQuery, menu: setChantierMenuOpen, liste: setMobileChantiersOpen, importer: setImportOpen },
+    fenetres: { reserves: setReservesOpen, conges: setLeaveOpen, stats: setStatsOpen, traces: setTracesOpen, versions: setVersionsOpen, formations: setTrainingsOpen, borne: setKioskOpen },
+    relances: { panneau: setStatPanel, liste: setRelanceOpen },
+    selection: enterSelect,
+    semaine: { aller: (iso) => changeWeek(weekStartOf(new Date(`${iso}T12:00:00`))), jour: setMobileDayIdx },
+    fiche: { salarie: (w) => setFicheWorker(w as User | null), mode: setFicheMode, client: (ws) => openClientFiche(ws as Worksite), documents: (v) => setDocsWorksite(v as { ws: Worksite; day: string | null }) },
+    nouveauClient: { champs: [setCName, setCProduct, setCPhone, setCEmail, setCCity, setCAddress, setCDesc], open: setClientOpen },
+    nouveauSalarie: { champs: [setWFirst, setWLast, setWEmail, setWPhone], open: setWorkerOpen },
+    exporter: { periode: setExportRange, open: setExportOpen, salarie: setExportWorkerOpen, cloture: askClosure },
+    ajouter: { ouvrir: openAdd, champs: [setAddWorksite, setAddStart, setAddEnd, setAddNote], type: (k) => { if (missions.tasksOn) setAddKind(k); } },
+    statut: (v) => setStatusTarget({ worker: v.worker as User, fromStr: v.fromStr }),
+    absence: (w, type, fromStr) => chooseAbsence(w as User, type, fromStr),
+    absenceFin: (iso) => setAbsRange((r) => (r ? { from: r.from, to: iso ? new Date(`${iso}T00:00:00`) : undefined } : r)),
+  };
+  useEffect(() => {
+    let off: (() => void) | undefined; let fin = false;
+    import('@/lib/openers-bureau').then((m) => { if (!fin) off = m.registerBureau(ouvH); }, () => { /* hors ligne : pas d'ouverture par l'assistant, rien d'autre ne change */ });
+    return () => { fin = true; if (off) off(); };
+  }, []);
+  // Les données sont là : une ouverture mise en attente (10 s au plus) se rejoue.
+  useEffect(() => { if (!loading) import('@/lib/openers').then((m) => m.rejouerOuvreurs(), () => {}); }, [loading]);
 
   // Lot 7 (suite) : « Me guider pas à pas ». Le guide MONTRE, il ne FAIT jamais : un écran demandé par une
   // étape est de la NAVIGATION seulement (menus, fenêtres de lecture), jamais un geste qui agit.
@@ -4658,7 +4698,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
             )}
             <div className="flex gap-2">
               <Button variant="outline" className="flex-1" onClick={() => setClosureTarget(null)}>Annuler</Button>
-              <Button className="flex-1" disabled={closureBusy} onClick={() => closureTarget && closeMonth(closureTarget.month)}>
+              <Button className="flex-1" disabled={closureBusy} onClick={() => closureTarget && Date.now() >= garde3.current && closeMonth(closureTarget.month)}>
                 {closureBusy ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null} Clôturer
               </Button>
             </div>
@@ -4699,7 +4739,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
 
       {/* Cell add — a client on a specific day. Lot 4 : la même fenêtre pose aussi une
           tâche ou une réunion (pastilles en tête) ; le titre suit ce qui est choisi. */}
-      <Dialog open={addOpen} onOpenChange={(o) => { setAddOpen(o); if (!o) { setAddTarget(null); setEditMeeting(null); setTaskPrefill(null); } }}>
+      <Dialog open={addOpen} onOpenChange={(o) => { setAddOpen(o); if (!o) { setAddTarget(null); setEditMeeting(null); setTaskPrefill(null); setPre(null); } }}>
         <DialogContent className="bt-skin max-w-sm">
           <DialogHeader><DialogTitle>{addTitleOf()}</DialogTitle></DialogHeader>
           {!addLocked && (missions.tasksOn || missions.meetingsOn) && (
@@ -4721,7 +4761,8 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
               onSaved={async () => { await fetchMissions(); setAddOpen(false); setAddTarget(null); setEditMeeting(null); setTaskPrefill(null); }} />
           )}
           {addKind === 'intervention' && (
-          <form onSubmit={confirmAdd} className="space-y-4 pt-2" data-testid="add-form">
+          <form onSubmit={confirmAdd} onInput={() => setPre(null)} className="space-y-4 pt-2" data-testid="add-form">
+            {pre === 'planning.ajouter' && <p role="status" aria-live="polite" className="text-xs text-muted-foreground" data-testid="pre-note">Pré-rempli par l’assistant : vérifiez avant d’enregistrer.</p>}
             <div className="space-y-2">
               <Label>Client</Label>
               <Select value={addWorksite} onValueChange={setAddWorksite}>
@@ -4745,7 +4786,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
       </Dialog>
 
       {/* Absence start — optional end date via calendar */}
-      <Dialog open={!!pendingAbsence} onOpenChange={(o) => { if (!o) setPendingAbsence(null); }}>
+      <Dialog open={!!pendingAbsence} onOpenChange={(o) => { if (!o) { setPendingAbsence(null); setPre(null); } }}>
         <DialogContent className="bt-skin max-w-sm">
           <DialogHeader>
             <DialogTitle>
@@ -4754,6 +4795,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
           </DialogHeader>
           {pendingAbsence && (
             <div className="space-y-3 pt-2">
+              {pre === 'absence.poser' && <p role="status" aria-live="polite" className="text-xs text-muted-foreground" data-testid="pre-note">Pré-rempli par l’assistant : vérifiez avant d’enregistrer.</p>}
               <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
                 <span>Touchez le 1er jour, puis le dernier.</span>
                 <InfoTip text="Sans dernier jour : jusqu'au retour « Présent »." />
@@ -4988,10 +5030,11 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
           (recherche + clients glissables + crayon d'édition + création). */}
 
       {/* Nouveau client */}
-      <Dialog open={clientOpen} onOpenChange={(o) => { setClientOpen(o); if (!o) resetClient(); }}>
+      <Dialog open={clientOpen} onOpenChange={(o) => { setClientOpen(o); if (!o) { resetClient(); setPre(null); } }}>
         <DialogContent className="bt-skin max-w-md">
           <DialogHeader><DialogTitle>Nouveau client / chantier</DialogTitle></DialogHeader>
-          <form onSubmit={createClient} className="space-y-3 pt-2">
+          <form onSubmit={createClient} onInput={() => setPre(null)} className="space-y-3 pt-2">
+            {pre === 'client.nouveau' && <p role="status" aria-live="polite" className="text-xs text-muted-foreground" data-testid="pre-note">Pré-rempli par l’assistant : vérifiez avant d’enregistrer.</p>}
             <div className="space-y-2"><Label>Nom du client *</Label><Input value={cName} onChange={(e) => setCName(e.target.value)} required disabled={cSaving} /></div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-2"><Label>Type de produit</Label><Input placeholder="Stores, volets…" value={cProduct} onChange={(e) => setCProduct(e.target.value)} disabled={cSaving} /></div>
@@ -5011,10 +5054,11 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
       </Dialog>
 
       {/* Nouveau salarié */}
-      <Dialog open={workerOpen} onOpenChange={(o) => { setWorkerOpen(o); if (!o) resetWorker(); }}>
+      <Dialog open={workerOpen} onOpenChange={(o) => { setWorkerOpen(o); if (!o) { resetWorker(); setPre(null); } }}>
         <DialogContent className="bt-skin max-w-md">
           <DialogHeader><DialogTitle>Nouveau salarié</DialogTitle></DialogHeader>
-          <form onSubmit={createWorker} className="space-y-4 pt-2">
+          <form onSubmit={createWorker} onInput={() => setPre(null)} className="space-y-4 pt-2">
+            {pre === 'salarie.nouveau' && <p role="status" aria-live="polite" className="text-xs text-muted-foreground" data-testid="pre-note">Pré-rempli par l’assistant : vérifiez avant d’enregistrer.</p>}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-2"><Label>Prénom *</Label><Input value={wFirst} onChange={(e) => setWFirst(e.target.value)} required disabled={wSaving} /></div>
               <div className="space-y-2"><Label>Nom *</Label><Input value={wLast} onChange={(e) => setWLast(e.target.value)} required disabled={wSaving} /></div>

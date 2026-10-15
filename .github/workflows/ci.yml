@@ -90,3 +90,8 @@ jobs:
           supabase/functions/_shared/registre-surfaces.test.ts
           supabase/functions/_shared/registre-outils.test.ts
           supabase/functions/_shared/registre-listes.test.ts
+          supabase/functions/_shared/registre-ouvreurs.test.ts
+          supabase/functions/_shared/etape3-config.test.ts
+          supabase/functions/_shared/etape3-eteint.test.ts
+          supabase/functions/_shared/etape3-ouvrir.test.ts
+          supabase/functions/_shared/ouvrir.test.ts
