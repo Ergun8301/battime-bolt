@@ -43,3 +43,5 @@
 .bt-ui2 .dz-frise-ticks{position:relative;height:16px;margin-top:4px;font:600 11px/1 'JetBrains Mono',ui-monospace,monospace;color:rgba(242,237,227,.75)}
 .bt-ui2 .dz-frise-ticks span{position:absolute;transform:translateX(-50%);white-space:nowrap}
 .bt-ui2 .dz-frise-ticks span:first-child{transform:none}
+/* Étape 4 — une ligne renvoyée par le bureau : « À corriger » en orange (le brouillon qui a déjà été envoyé une fois). */
+.bt-ui2 .dz-badge-renvoye{background:#FFE3D6;color:#8A2A0A;border-color:#FF6B3D}

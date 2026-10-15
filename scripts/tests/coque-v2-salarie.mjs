@@ -174,6 +174,16 @@ query = '?ui=1'; await open();
 verifie((await p.locator('[data-testid=dz-frise]').count()) === 0, 'E) sans ?ui=2 : pas de frise');
 D.active_sessions = []; D.time_entries = []; D.planning = [];
 
+
+// F · Une ligne renvoyée par le bureau (brouillon déjà envoyé une fois) : « À corriger » avec ?ui=2, « À envoyer » sans
+D.time_entries = [J('2026-10-14', W1, '08:00', '12:00', { id: 'e-renvoyee', status: 'draft', submitted_at: '2026-10-13T12:05:00Z' })];
+query = '?ui=2'; await open('.dz-bande');
+await p.waitForSelector('[data-testid=card-entry]', { timeout: 10000 });
+verifie((await p.locator('[data-testid=badge-renvoyee]').textContent()) === '● À corriger', 'F) avec ?ui=2 : « À corriger » sur la ligne renvoyée');
+query = '?ui=1'; await open(); await p.waitForSelector('[data-testid=card-entry]', { timeout: 10000 });
+verifie((await p.locator('[data-testid=badge-renvoyee]').count()) === 0 && ((await p.locator('.bt-badge-wait').first().textContent()) || '').includes('À envoyer'), 'F) sans ?ui=2 : « À envoyer » comme avant');
+D.time_entries = [];
+
 // D · Le mode est mémorisé pour la session ; ?ui=1 l'éteint
 query = '?ui=2'; await open('.dz-bande');
 query = ''; await open('.dz-bande');
