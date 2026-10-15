@@ -119,7 +119,7 @@ export function registerBureau(ref: { current: PoigneesBureau | null }): () => v
     },
     'cloture.mois': (p) => {
       if (!p.mois || moisClotures().indexOf(p.mois) < 0) return 'indisponible';
-      debut(); H().garde(); H().exporter.cloture(p.mois);
+      debut(); H().exporter.cloture(p.mois);                              // la garde de 700 ms est armée par la page quand la confirmation apparaît (après le comptage)
     },
     'planning.ajouter': (p) => {
       if (attend()) return 'file';

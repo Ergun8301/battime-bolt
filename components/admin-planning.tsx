@@ -1694,7 +1694,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
   // Avant de clôturer : compter ce qui resterait bloqué. Une journée en
   // brouillon dans un mois clos ne pourra plus jamais être envoyée par le
   // salarié — il faut le dire avant, pas après.
-  const askClosure = async (month: string) => {
+  const askClosure = async (month: string, parAssistant = false) => {
     if (!user?.company_id) return;
     const from = `${month}-01`;
     const to = format(endOfMonth(new Date(`${from}T00:00:00`)), 'yyyy-MM-dd');
@@ -1702,6 +1702,8 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
       .select('id', { count: 'exact', head: true })
       .eq('company_id', user.company_id).eq('status', 'draft')
       .gte('work_date', from).lte('work_date', to);
+    // Ouverte par l'assistant : la garde de 700 ms court depuis l'APPARITION de la confirmation (après le comptage, qui prend du temps sur un réseau lent), pas depuis le toucher.
+    if (parAssistant) garde3.current = Date.now() + 700;
     setClosureTarget({ month, drafts: count || 0 });
   };
 
@@ -3261,7 +3263,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
     fiche: { salarie: (w) => setFicheWorker(w as User | null), mode: setFicheMode, client: (ws) => openClientFiche(ws as Worksite), documents: (v) => setDocsWorksite(v as { ws: Worksite; day: string | null }) },
     nouveauClient: { champs: [setCName, setCProduct, setCPhone, setCEmail, setCCity, setCAddress, setCDesc], open: setClientOpen },
     nouveauSalarie: { champs: [setWFirst, setWLast, setWEmail, setWPhone], open: setWorkerOpen },
-    exporter: { periode: setExportRange, open: setExportOpen, salarie: setExportWorkerOpen, cloture: askClosure },
+    exporter: { periode: setExportRange, open: setExportOpen, salarie: setExportWorkerOpen, cloture: (m) => { void askClosure(m, true); } },
     ajouter: { ouvrir: openAdd, champs: [setAddWorksite, setAddStart, setAddEnd, setAddNote], type: (k) => { if (missions.tasksOn) setAddKind(k); } },
     statut: (v) => setStatusTarget({ worker: v.worker as User, fromStr: v.fromStr }),
     absence: (w, type, fromStr) => chooseAbsence(w as User, type, fromStr),
