@@ -30,9 +30,16 @@
 // lecteur local, et rend UNE fiche `multi` à confirmer en un clic (rien n'est écrit ici).
 // Une demande = une unité de quota, quel que soit le nombre d'appels. Sans `multi: true`
 // (ancien navigateur), le comportement est exactement celui d'avant.
+//
+// Étape 2 (chat avec mémoire) : le corps peut porter `history` (les derniers messages de la conversation, texte seul). Il est nettoyé
+// (_shared/assistant-history.ts : 7 messages, 600 caractères chacun, 3000 en tout, tout le reste ignoré), posé sur le snapshot
+// (`snapshot.historique`, comme `snapshot.demande`) et mis dans la consigne du modèle pour comprendre « et la pause c'était 30 minutes »,
+// « et Kevin ? ». Une relance de ce genre saute le lecteur local (qui n'a pas le contexte) quand le modèle est disponible.
+// Le texte de l'historique n'est JAMAIS journalisé ; une demande reste une demande : le quota ne change pas.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { aiDisponible, callFunction, formuleNom, PAUSE_MESSAGE, plafondProjet, readAttachment, tierFor } from '../_shared/ai-provider.ts';
 import { loadAssistantContext } from '../_shared/assistant-context.ts';
+import { nettoyerHistorique, sansDemandeRecollee } from '../_shared/assistant-history.ts';
 import { WORKER_TEXT_MAX } from '../_shared/saisie-profil.ts';
 import {
   buildWorkerSnapshot, DEFAULT_WORKER_DAILY_LIMIT, formatColleagues, mondayOf, workerQuestionFor,
@@ -61,7 +68,7 @@ Deno.serve(async (req) => {
   try {
     const jwt = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
     if (!jwt) return json({ error: 'Non authentifié' }, 401);
-    const body = await req.json().catch(() => ({})) as { text?: string; file?: unknown; statut?: boolean; multi?: boolean };
+    const body = await req.json().catch(() => ({})) as { text?: string; file?: unknown; statut?: boolean; multi?: boolean; history?: unknown };
     // Lot 6 : à l'ouverture du panneau, l'écran demande seulement la formule (rien n'est compté).
     if (body.statut === true) return json({ formule: FORMULE });
     const text = String(body.text ?? '').trim().slice(0, WORKER_TEXT_MAX);
@@ -110,6 +117,10 @@ Deno.serve(async (req) => {
       planning: (plan.data ?? []) as WorkerRaw['planning'],
     });
     snapshot.demande = text;
+    // Étape 2 : la conversation, seulement si le modèle peut la lire (sans clé, le lecteur local répond comme avant). Une demande que
+    // l'écran vient de recoller à sa réponse (« J'ai travaillé de 8h à 12h, chez Martin ») n'est pas répétée dans le bloc : le MESSAGE la porte.
+    const iaOk = aiDisponible(Deno.env, tier);
+    if (iaOk) snapshot.historique = sansDemandeRecollee(nettoyerHistorique(body.history), text);
     const remaining = Math.max(0, ctxR.remaining ?? 0);
     // Lot 3 bis : ce qu'il faut pour préparer un pointage ou une réserve (SES lignes).
     const siteName = (id: string | null) => snapshot.chantiers.find((c) => c.id === id)?.nom ?? 'Chantier';

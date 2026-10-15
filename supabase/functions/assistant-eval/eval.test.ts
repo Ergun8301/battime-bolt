@@ -5,16 +5,22 @@
 import { runEval } from './run.ts';
 import { envEvaluation, resumeEvaluation } from './config.ts';
 import { callFunction, modeleServi, readConfig, reposReinit } from '../_shared/ai-provider.ts';
-import { CASES, LIVE_VIDE, sansLibellesEcran, WORKER_LIVE, type Outcome } from './cases.ts';
+import { ADMIN_RAW, CASES, LIVE_VIDE, ME, sansLibellesEcran, WORKER_LIVE, WORKER_RAW, type Outcome } from './cases.ts';
+import { actionPrompt, buildActionContext, guideForPrompt, type ActionContext } from '../_shared/assistant-actions-core.ts';
+import { buildWorkerSnapshot, workerFunctionPrompt, type WorkerLive, type WorkerSnapshot } from '../_shared/worker-assistant-core.ts';
+import { blocHistorique, nettoyerHistorique, sansDemandeRecollee } from '../_shared/assistant-history.ts';
+import { detecteTurc } from '../_shared/saisie-profil.ts';
+import { workerProfile } from '../_shared/worker-turn.ts';
 
-Deno.test('Jeu d’évaluation : les 80 phrases d’origine (dans l’ordre) + les phrases longues du salarié, bureau ET salarié', () => {
+Deno.test('Jeu d’évaluation : les 80 phrases d’origine (dans l’ordre) + les phrases longues du salarié + les suites de conversation, bureau ET salarié', () => {
   if (new Set(CASES.map((c) => c.id)).size !== CASES.length) throw new Error('identifiants en double');
   if (!CASES.some((c) => c.cote === 'bureau') || !CASES.some((c) => c.cote === 'salarie')) throw new Error('un côté manque');
   const anciens = [...Array.from({ length: 47 }, (_, i) => `b${String(i + 1).padStart(2, '0')}`), ...Array.from({ length: 33 }, (_, i) => `s${String(i + 1).padStart(2, '0')}`)];
   if (JSON.stringify(CASES.slice(0, 80).map((c) => c.id)) !== JSON.stringify(anciens)) throw new Error('les 80 phrases b01–b47, s01–s33 doivent rester en tête, dans l’ordre');
   const longs = CASES.filter((c) => /^(sl|st)\d\d$/.test(c.id));
-  if (longs.length < 14 || longs.length !== CASES.length - 80) throw new Error(`${longs.length} phrases longues (au moins 14 ; 29 attendues)`);
-  if (longs.filter((c) => c.categorie === 'Long FR').length !== 16 || longs.filter((c) => c.categorie === 'Long TR').length !== 13 || longs.some((c) => c.cote !== 'salarie')) throw new Error('16 « Long FR » et 13 « Long TR », côté salarié');
+  const suites = CASES.filter((c) => /^sc\d\d$/.test(c.id));
+  if (longs.length < 14 || longs.length !== CASES.length - 80 - suites.length) throw new Error(`${longs.length} phrases longues (au moins 14 ; 31 attendues)`);
+  if (longs.filter((c) => c.categorie === 'Long FR').length !== 17 || longs.filter((c) => c.categorie === 'Long TR').length !== 14 || longs.some((c) => c.cote !== 'salarie')) throw new Error('17 « Long FR » et 14 « Long TR », côté salarié');
   // La phrase exacte d'Ergun (retour réel d'un salarié) est le cas sl01.
   const ergun = "Ajoute-moi une intervention. J'ai travaillé aujourd'hui de 8h à midi, puis pause d'1h, puis de 13h à 17h sur un nouveau chantier : prénom Pierrick, nom Dupont, à Montagna 01250, pour la pose d'un store banne.";
   if (CASES.find((c) => c.id === 'sl01')?.phrase !== ergun) throw new Error('sl01 : la phrase exacte d’Ergun');
@@ -227,9 +233,9 @@ Deno.test('repeat : N passes par cas, total et réussites comptent des essais, p
   if (un.total !== 1 || un.repeat !== 1) throw new Error('par défaut : une passe');
 });
 
-// ── Les 29 phrases longues avec une sortie PLAUSIBLE du modèle (y compris ses défauts mesurés) : toutes passent ──
+// ── Les 31 phrases longues avec une sortie PLAUSIBLE du modèle (y compris ses défauts mesurés) : toutes passent ──
 // C'est le test de bout en bout du code (redécoupage, pause, rattachement, annexes) ; la vraie réussite se mesure sur le vrai modèle.
-Deno.test('29 phrases longues : une sortie plausible du modèle (créneaux fusionnés, pause doublée, civilité devant le nom…) passe par le MÊME chemin que la production', async () => {
+Deno.test('31 phrases longues : une sortie plausible du modèle (créneaux fusionnés, pause doublée, civilité devant le nom…) passe par le MÊME chemin que la production', async () => {
   type Appel = { name: string; args: Record<string, unknown> };
   const T = '2026-10-01';
   const nc = (nom: string, ville: string, code_postal: string, description: string, adresse = '') => ({ nom, adresse, code_postal, ville, description });
@@ -256,6 +262,8 @@ Deno.test('29 phrases longues : une sortie plausible du modèle (créneaux fusio
     sl14: [h([l('Dupont', '07:30', '12:00')])],
     sl15: [h([l('Dupont', '08:00', '12:00'), l('Dupont', '13:00', '17:00')]), panier, reserve('fissure au plafond'), conge, envoi],
     sl16: [h([l('Martin', '08:00', '16:30', 60)])],
+    // Étape 2 : deux phrases longues qui renvoient à la conversation (le chantier est celui d'avant, la date est demain).
+    sl17: [h([l('Martin', '08:00', '16:30', 30)], undefined, '2026-10-02')],
     st01: [h([l('nouveau', '08:00', '17:00', 60)], nc('Pierrick Dupont', 'Montagna', '01250', 'montage d’un store à bras'))],
     st02: [h(matin3)],
     st03: [conge, panier, envoi],
@@ -269,6 +277,7 @@ Deno.test('29 phrases longues : une sortie plausible du modèle (créneaux fusio
     st11: [h([l('Dupont', '08:00', '12:00'), l('Martin', '13:00', '17:00')]), panier],
     st12: [h([l('nouveau', '09:00', '12:00'), l('nouveau', '14:00', '17:00')], nc('Ayhan Demir', '', '69500', 'montage d’une pergola', 'Bron'))],
     st13: [h([l('', '08:00', '12:00'), l('Martin', '13:00', '17:00')])],
+    st14: [h([l('Martin', '08:00', '17:00')], undefined, '2026-10-02')],
   };
   const ids = CASES.filter((c) => /^(sl|st)\d\d$/.test(c.id)).map((c) => c.id);
   if (Object.keys(plausibles).sort().join() !== ids.slice().sort().join()) throw new Error('une sortie plausible par phrase longue');
@@ -405,4 +414,193 @@ Deno.test('Évaluation avec aiConfig : les appels partent chez Claude, la répon
   const c = await runEval('v2', async () => ({ ok: false, reason: 'provider_error' }), ['b01']);
   if (c.modeles.some((m) => m.modele !== 'aucun')) throw new Error('un cas sans réponse du modèle est compté « aucun »');
   if (modeleServi({}) !== undefined) throw new Error('inconnu');
+});
+
+// ── Suites de conversation (étape 2 : le chat se souvient) ──────────────────────
+// Le banc passe `history` EXACTEMENT comme les vraies fonctions (consigne, outils, lecteur local) ; ici, sans modèle.
+const SUITES = CASES.filter((c) => /^sc\d\d$/.test(c.id));
+
+Deno.test('Suites de conversation : 15 cas (8 bureau, 5 salarié FR, 2 salarié TR), tous avec leur historique ; les anciens cas sans (hors deux phrases longues)', () => {
+  const ids = SUITES.map((c) => c.id);
+  if (ids.join() !== Array.from({ length: 15 }, (_, i) => `sc${String(i + 1).padStart(2, '0')}`).join()) throw new Error(`ids : ${ids.join()}`);
+  if (SUITES.some((c) => c.categorie !== 'Suite de conversation')) throw new Error('une seule catégorie : « Suite de conversation »');
+  const bureau = SUITES.filter((c) => c.cote === 'bureau'), salarie = SUITES.filter((c) => c.cote === 'salarie');
+  if (bureau.map((c) => c.id).join() !== 'sc01,sc02,sc03,sc04,sc05,sc06,sc07,sc13') throw new Error('8 cas bureau (sc01–sc07, sc13 : la réponse à une question)');
+  if (salarie.map((c) => c.id).join() !== 'sc08,sc09,sc10,sc11,sc12,sc14,sc15') throw new Error('7 cas salarié (sc08–sc10 + sc14–sc15 FR, sc11–sc12 TR)');
+  for (const c of SUITES) {
+    const h = c.history ?? [];
+    if (!h.length || h[0].who !== 'me' || h.some((m, i) => m.who !== (i % 2 === 0 ? 'me' : 'bot'))) throw new Error(`${c.id} : l’historique alterne « me » / « bot » en commençant par l’utilisateur`);
+    // Les cas respectent déjà les bornes du contrat : rien n'est coupé ni écarté par le nettoyage.
+    if (JSON.stringify(nettoyerHistorique(h).map((m) => m.text)) !== JSON.stringify(h.map((m) => m.text.replace(/\s+/g, ' ').trim()))) throw new Error(`${c.id} : l’historique n’est pas conservé tel quel par le nettoyage`);
+    if (c.file) throw new Error(`${c.id} : pas de fichier dans une suite`);
+  }
+  // Turc : la phrase d'avant est bien turque ; la relance reste « courte » (tool-domains.test.ts l'exige des cas hors sl/st).
+  for (const id of ['sc11', 'sc12']) {
+    const c = SUITES.find((x) => x.id === id)!;
+    if (!detecteTurc(c.history![0].text)) throw new Error(`${id} : la phrase d’avant doit être en turc`);
+  }
+  for (const c of salarie) if (workerProfile(c.phrase, false) !== 'court') throw new Error(`${c.id} : relance salarié en profil court`);
+  // Les anciens cas (80 + 27 phrases longues) n'ont pas d'historique : leur consigne est celle d'avant. Seules sl17 et st14 (phrases LONGUES qui
+  // renvoient à la conversation) en portent un : le profil long, lui aussi, voit la conversation.
+  const avecHistorique = CASES.filter((c) => c.history).map((c) => c.id).filter((id) => !/^sc\d\d$/.test(id));
+  if (avecHistorique.join() !== 'sl17,st14') throw new Error(`cas non « sc » avec historique : ${avecHistorique.join()} (sl17 et st14 seulement)`);
+  if (CASES.length !== 111 + 15) throw new Error(`${CASES.length} cas (126 attendus : 80 + 31 phrases longues + 15 suites)`);
+  // sl17 et st14 sont bien LONGUES (jamais le lecteur local, la consigne du profil long) et renvoient à leur historique.
+  for (const id of ['sl17', 'st14']) {
+    const c = CASES.find((x) => x.id === id)!;
+    if (workerProfile(c.phrase, false) !== 'long') throw new Error(`${id} : phrase longue attendue`);
+    if (!c.history?.length || c.history[0].who !== 'me') throw new Error(`${id} : historique attendu`);
+  }
+  if (!detecteTurc(CASES.find((x) => x.id === 'st14')!.phrase)) throw new Error('st14 : phrase turque');
+});
+
+Deno.test('Suites de conversation : la consigne envoyée au modèle porte l’historique JUSTE avant la demande (même constructeur que la production) ; jamais pour les anciens cas', async () => {
+  const vus = new Map<string, { prompt: string; outils: string[] }>();
+  let courant = '';
+  const espion = async (req: Parameters<Parameters<typeof runEval>[1]>[0]) => { vus.set(courant, { prompt: req.prompt, outils: req.functions.map((f) => f.name) }); return { ok: false as const, reason: 'provider_error' as const }; };
+  for (const c of CASES.filter((x) => /^(sc\d\d|b01|b05|b29|s01|s02|s26|st05)$/.test(x.id))) { courant = c.id; await runEval('v2', espion, [c.id]); }
+  for (const c of SUITES) {
+    const v = vus.get(c.id);
+    if (!v) { throw new Error(`${c.id} : jamais passé par le modèle (le lecteur local l’a traité ?)`); }
+    // sc13 et sc14 : la demande d'origine est recollée à la réponse (« Mets Karim demain, Villa Dupont ») : le bloc ne la répète pas (la question de l'assistant reste).
+    const recollee = c.id === 'sc13' || c.id === 'sc14';
+    const bloc = blocHistorique(recollee ? c.history!.slice(1) : c.history);
+    if (JSON.stringify(sansDemandeRecollee(nettoyerHistorique(c.history), c.phrase)) !== JSON.stringify(nettoyerHistorique(recollee ? c.history!.slice(1) : c.history))) throw new Error(`${c.id} : seules sc13 et sc14 perdent leur première ligne (la demande recollée)`);
+    if (recollee && (v.prompt.includes(`Utilisateur : ${c.history![0].text}`) || !v.prompt.includes(`Assistant : ${c.history![1].text}`))) throw new Error(`${c.id} : la demande recollée ne doit plus figurer dans le bloc, la question de l’assistant oui`);
+    const fin = c.cote === 'bureau' ? `${bloc}\n\nDEMANDE : ${c.phrase}` : `${bloc}\nMESSAGE : ${c.phrase}`;
+    if (!v.prompt.endsWith(fin)) throw new Error(`${c.id} : le bloc d’historique doit précéder immédiatement la demande, qui reste la DERNIÈRE ligne`);
+    if (v.prompt.split('<conversation>').length !== 2) throw new Error(`${c.id} : un seul bloc de conversation`);
+  }
+  // Bit pour bit le prompt de la vraie fonction : bureau (sc01) et salarié profil court (sc09).
+  const sc01 = SUITES.find((c) => c.id === 'sc01')!;
+  const ctx = buildActionContext(ADMIN_RAW as Parameters<typeof buildActionContext>[0]) as ActionContext;
+  ctx.me = ME; ctx.demande = sc01.phrase; ctx.historique = nettoyerHistorique(sc01.history);
+  if (vus.get('sc01')!.prompt !== actionPrompt(ctx, '{}', guideForPrompt(), sc01.phrase)) throw new Error('sc01 : le banc n’utilise pas actionPrompt de la production');
+  const sc09 = SUITES.find((c) => c.id === 'sc09')!;
+  const snap = buildWorkerSnapshot(WORKER_RAW as never) as WorkerSnapshot;
+  snap.demande = sc09.phrase; snap.historique = nettoyerHistorique(sc09.history);
+  if (vus.get('sc09')!.prompt !== workerFunctionPrompt(snap, LIVE_VIDE as unknown as WorkerLive, sc09.phrase)) throw new Error('sc09 : le banc n’utilise pas workerFunctionPrompt de la production');
+  // Les anciens cas qui passent par le modèle : aucun bloc d'historique.
+  const anciens = Array.from(vus.entries()).filter(([id]) => !id.startsWith('sc'));
+  if (!anciens.length || anciens.some(([, v]) => v.prompt.includes('CONVERSATION EN COURS') || v.prompt.includes('<conversation>'))) throw new Error('les anciens cas gardent leur consigne d’avant');
+  // Les outils tiennent compte de la phrase d'avant : « Non, retire ça » garde les outils de planning.
+  if (!vus.get('sc03')!.outils.includes('supprimer_intervention')) throw new Error('sc03 : supprimer_intervention doit être proposé');
+});
+
+Deno.test('Suites de conversation : une relance qui contient un mot-clé du lecteur local (sc05 « pose-le en maladie », sc08 « 13h à 16h30 pareil »), ou une plage horaire NUE (sc15, sans « pareil »), va au MODÈLE', async () => {
+  const r = await runEval('v2', async () => ({ ok: false, reason: 'provider_error' }), ['sc05', 'sc08', 'sc15']);
+  if (r.temps.length !== 3 || r.echecs.some((e) => e.via !== 'ia')) throw new Error(`sc05, sc08 et sc15 doivent passer par le modèle : ${JSON.stringify(r.echecs.map((e) => [e.id, e.via]))}`);
+  // Sans le modèle (banc sans IA), AUCUNE suite n'est lue de travers par le lecteur local.
+  const toutes = await runEval('v2', async () => ({ ok: false, reason: 'provider_error' }), SUITES.map((c) => c.id));
+  if (toutes.echecs.some((e) => e.via === 'local')) throw new Error('un cas de suite lu par le lecteur local ?');
+  if (toutes.temps.length !== 15) throw new Error(`${toutes.temps.length} suites sur 15 passent par le modèle`);
+});
+
+Deno.test('Suites de conversation : une sortie plausible PASSE ; la mauvaise lecture (refaire l’action d’avant, mauvaise date, mauvais salarié, réponse hors sujet) ÉCHOUE', async () => {
+  type Appel = { name: string; args: Record<string, unknown> };
+  const ok: Record<string, Appel> = {
+    sc01: { name: 'affecter_planning', args: { salarie: 'Kevin', chantier: 'Villa Dupont', dates: ['2026-10-02'] } },
+    sc02: { name: 'affecter_planning', args: { salarie: 'Karim', chantier: 'Villa Dupont', dates: ['2026-10-05'] } },
+    sc03: { name: 'supprimer_intervention', args: { salarie: 'Karim', date: '2026-10-02', chantier: 'Villa Dupont' } },
+    sc04: { name: 'repondre', args: { reponse: 'Villa Dupont : 152 h au total depuis le début du chantier.' } },
+    sc05: { name: 'poser_absence', args: { salarie: 'Sofiane', type: 'maladie', du: '2026-10-01', au: '2026-10-02' } },
+    sc06: { name: 'affecter_planning', args: { salarie: 'moi', chantier: '', lieu: 'Lyon', dates: ['2026-10-02'], debut: '14:00', fin: '18:00' } },
+    sc07: { name: 'repondre', args: { reponse: 'Pour supprimer une intervention : cliquez la case sur le planning, puis « Supprimer ».' } },
+    sc08: { name: 'declarer_heures', args: { date: '2026-10-01', lignes: [{ chantier: 'Dupont', debut: '13:00', fin: '16:30' }] } },
+    sc09: { name: 'declarer_heures', args: { date: '2026-10-01', lignes: [{ chantier: 'Martin', debut: '08:00', fin: '16:30', pause: 30 }] } },
+    sc10: { name: 'planning_collegues', args: { qui: 'Kevin', date: '2026-10-02' } },
+    sc11: { name: 'declarer_heures', args: { date: '2026-10-01', lignes: [{ chantier: 'Martin', debut: '08:00', fin: '17:00', pause: 60 }] } },
+    sc12: { name: 'repondre', args: { reponse: 'Dün toplam 7 saat 30 dakika çalıştınız.' } },
+    // La réponse à une question de l'assistant : l'ACTION complète (Karim, Villa Dupont, demain), la réserve de la ligne e1.
+    sc13: { name: 'affecter_planning', args: { salarie: 'Karim', chantier: 'Villa Dupont', dates: ['2026-10-02'] } },
+    sc14: { name: 'signaler_reserve', args: { chantier: 'Villa Dupont', detail: 'fissure au plafond' } },
+    sc15: { name: 'declarer_heures', args: { date: '2026-10-01', lignes: [{ chantier: 'Martin', debut: '13:00', fin: '16:30' }] } },
+  };
+  // sc12 : la langue de la réponse n'est pas contrôlée (profil court) ; une réponse française qui reprend les 7 h 30 passe aussi.
+  if (await passe('sc12', { name: 'repondre', args: { reponse: 'Hier : 7 h 30 déclarées.' } })) throw new Error('sc12 : la réponse française qui reprend les 7 h 30 est une bonne lecture');
+  for (const [id, call] of Object.entries(ok)) {
+    const why = await passe(id, call);
+    if (why) throw new Error(`${id} devrait passer : ${why}`);
+  }
+  const ko: [string, Appel, RegExp][] = [
+    ['sc01', { name: 'affecter_planning', args: { salarie: 'Karim', chantier: 'Villa Dupont', dates: ['2026-10-02'] } }, /user_id/],
+    ['sc01', { name: 'affecter_planning', args: { salarie: 'Kevin', chantier: 'Villa Dupont', dates: ['2026-10-05'] } }, /dates/],
+    ['sc02', { name: 'affecter_planning', args: { salarie: 'Karim', chantier: 'Villa Dupont', dates: ['2026-10-02'] } }, /dates/],
+    ['sc03', { name: 'affecter_planning', args: { salarie: 'Karim', chantier: 'Villa Dupont', dates: ['2026-10-02'] } }, /attendu supprimer_intervention/],
+    ['sc03', { name: 'supprimer_intervention', args: { salarie: 'Kevin', date: '2026-10-02' } }, /pas prête/],
+    ['sc03', { name: 'repondre', args: { reponse: 'C’est fait.' } }, /ni action ni question/],
+    ['sc04', { name: 'repondre', args: { reponse: 'Je ne sais pas de quel chantier vous parlez.' } }, /ne reprend pas/],
+    ['sc05', { name: 'poser_absence', args: { salarie: 'Sofiane', type: 'conge', du: '2026-10-01', au: '2026-10-02' } }, /absence_type/],
+    ['sc05', { name: 'poser_absence', args: { salarie: 'Kevin', type: 'maladie', du: '2026-10-01', au: '2026-10-02' } }, /user_id/],
+    ['sc06', { name: 'affecter_planning', args: { salarie: 'moi', chantier: '', lieu: 'Lyon', dates: ['2026-10-02'], debut: '08:00', fin: '12:00' } }, /debut/],
+    ['sc07', { name: 'supprimer_intervention', args: { salarie: 'Karim', date: '2026-10-02' } }, /attendu une réponse/],
+    // sc08 : le matin n'est qu'un BROUILLON (rien n'est enregistré) : « l'après-midi seul » ET « matin + après-midi » sont toutes deux de bonnes lectures (voir plus bas) ;
+    // une seule ligne 07:30-16:30, un autre chantier ou un autre créneau échouent.
+    ['sc08', { name: 'declarer_heures', args: { date: '2026-10-01', lignes: [{ chantier: 'Dupont', debut: '07:30', fin: '16:30' }] } }, /lignes/],
+    ['sc08', { name: 'declarer_heures', args: { date: '2026-10-01', lignes: [{ chantier: 'Dupont', debut: '07:30', fin: '12:00' }, { chantier: 'Martin', debut: '13:00', fin: '16:30' }] } }, /lignes/],
+    ['sc08', { name: 'declarer_heures', args: { date: '2026-10-01', lignes: [{ chantier: 'Martin', debut: '13:00', fin: '16:30' }] } }, /lignes/],
+    ['sc08', { name: 'declarer_heures', args: { date: '2026-10-01', lignes: [{ chantier: 'Dupont', debut: '14:00', fin: '16:30' }] } }, /lignes/],
+    ['sc08', { name: 'declarer_heures', args: { date: '2026-10-02', lignes: [{ chantier: 'Dupont', debut: '13:00', fin: '16:30' }] } }, /2026-10-02/],
+    ['sc09', { name: 'declarer_heures', args: { date: '2026-10-01', lignes: [{ chantier: 'Martin', debut: '08:00', fin: '16:30' }] } }, /pause 30/],
+    ['sc09', { name: 'terminer_pointage', args: {} }, /attendu des heures/],
+    ['sc10', { name: 'planning_collegues', args: { qui: 'Kevin', date: '2026-10-01' } }, /date = 2026-10-01/],
+    ['sc10', { name: 'planning_collegues', args: { qui: 'Sofiane', date: '2026-10-02' } }, /qui = « Sofiane »/],
+    ['sc11', { name: 'declarer_heures', args: { date: '2026-10-01', lignes: [{ chantier: 'Martin', debut: '08:00', fin: '17:00', pause: 30 }] } }, /pause 60/],
+    ['sc12', { name: 'repondre', args: { reponse: 'Dün çok çalıştınız ve bildirdiniz.' } }, /ne reprend pas/],
+    ['sc12', { name: 'declarer_heures', args: { date: '2026-09-30', lignes: [{ chantier: 'Martin', debut: '08:00', fin: '16:30' }] } }, /attendu une réponse/],
+    // sc13 : traiter « Villa Dupont » seul, ou répondre « c'est déjà fait », ne sont PAS l'action demandée ; un autre salarié, un autre jour non plus.
+    ['sc13', { name: 'repondre', args: { reponse: 'Karim est déjà sur Villa Dupont demain, c’est fait.' } }, /attendu l'action affecter_planning/],
+    ['sc13', { name: 'repondre', args: { reponse: 'Villa Dupont est un chantier à Lyon.' } }, /attendu l'action affecter_planning/],
+    ['sc13', { name: 'affecter_planning', args: { salarie: 'Kevin', chantier: 'Villa Dupont', dates: ['2026-10-02'] } }, /user_id/],
+    ['sc13', { name: 'affecter_planning', args: { salarie: 'Karim', chantier: 'Villa Dupont', dates: ['2026-10-05'] } }, /dates/],
+    ['sc13', { name: 'affecter_planning', args: { salarie: 'Karim', chantier: 'Bureau Martin', dates: ['2026-10-02'] } }, /worksite_id/],
+    // sc14 : la réserve de la bonne ligne (Villa Dupont = e1), pas une réponse ; pas la ligne de Bureau Martin.
+    ['sc14', { name: 'repondre', args: { reponse: 'Une fissure au plafond, c’est déjà noté.' } }, /attendu l'action signaler_reserve/],
+    ['sc14', { name: 'signaler_reserve', args: { chantier: 'Bureau Martin', detail: 'fissure au plafond' } }, /entry_id/],
+    // sc15 : le chantier est CELUI D'AVANT (Martin), jamais celui du planning (Dupont) ; une ligne de 07:30 à 16:30 n'est pas les deux créneaux.
+    ['sc15', { name: 'declarer_heures', args: { date: '2026-10-01', lignes: [{ chantier: 'Dupont', debut: '13:00', fin: '16:30' }] } }, /lignes/],
+    ['sc15', { name: 'declarer_heures', args: { date: '2026-10-01', lignes: [{ chantier: '', debut: '13:00', fin: '16:30' }] } }, /lignes|chantier/],
+    ['sc15', { name: 'declarer_heures', args: { date: '2026-10-01', lignes: [{ chantier: 'Martin', debut: '07:30', fin: '16:30' }] } }, /lignes/],
+  ];
+  for (const [id, call, re] of ko) {
+    const why = await passe(id, call);
+    if (!why || !re.test(why)) throw new Error(`${id} ${JSON.stringify(call.args).slice(0, 80)} devrait échouer avec ${re} : ${why}`);
+  }
+  // sc08 et sc15 : l'après-midi SEUL ou matin + après-midi sont deux bonnes lectures (le matin n'est qu'un brouillon : lignes_du_jour est vide).
+  const matinEtAprem = (chantier: string) => ({ name: 'declarer_heures', args: { date: '2026-10-01', lignes: [{ chantier, debut: '07:30', fin: '12:00' }, { chantier, debut: '13:00', fin: '16:30' }] } });
+  for (const [id, chantier] of [['sc08', 'Dupont'], ['sc15', 'Martin']] as const) {
+    const why = await passe(id, matinEtAprem(chantier));
+    if (why) throw new Error(`${id} : matin (brouillon) + après-midi est une bonne lecture : ${why}`);
+  }
+  // sc03 : une QUESTION pour savoir quoi annuler est acceptée, et la famille « effacer le planning » de Karim demain aussi.
+  if (await passe('sc03', { name: 'repondre', args: { reponse: 'Quelle intervention voulez-vous annuler ?' } })) throw new Error('sc03 : une question est une bonne réponse');
+  if (await passe('sc03', { name: 'effacer_planning', args: { salarie: 'Karim', du: '2026-10-02', au: '2026-10-02' } })) throw new Error('sc03 : effacer_planning de Karim demain est la bonne famille');
+  if (!(await passe('sc03', { name: 'effacer_planning', args: { salarie: 'Karim', du: '2026-10-02', au: '2026-10-09' } }))) throw new Error('sc03 : effacer toute une semaine, non');
+});
+
+Deno.test('sl17 / st14 (phrases LONGUES qui renvoient à la conversation) : le chantier d’AVANT, la date de demain, la pause comptée UNE fois — le planning, un autre chantier ou la mauvaise date ÉCHOUENT', async () => {
+  const h = (date: string, lignes: unknown[]): { name: string; args: Record<string, unknown> } => ({ name: 'declarer_heures', args: { date, lignes } });
+  const l = (chantier: string, debut: string, fin: string, pause?: number) => ({ chantier, debut, fin, ...(pause !== undefined ? { pause } : {}) });
+  const DEMAIN = '2026-10-02';
+  for (const [id, bon] of [['sl17', h(DEMAIN, [l('Martin', '08:00', '16:30', 30)])], ['st14', h(DEMAIN, [l('Martin', '08:00', '17:00')])]] as const) {
+    const why = await passe(id, bon);
+    if (why) throw new Error(`${id} devrait passer : ${why}`);
+  }
+  const ko: [string, ReturnType<typeof h>, RegExp][] = [
+    // Le chantier « deviné » (Villa Dupont : celui du planning d'aujourd'hui, jamais dit par l'utilisateur) ou absent : la ligne n'est pas chez Bureau Martin.
+    ['sl17', h(DEMAIN, [l('Dupont', '08:00', '16:30', 30)]), /chantier/],
+    ['sl17', h(DEMAIN, [l('', '08:00', '16:30', 30)]), /chantier/],
+    ['sl17', h('2026-10-01', [l('Martin', '08:00', '16:30', 30)]), /date = 2026-10-01/],
+    ['sl17', h(DEMAIN, [l('Martin', '08:00', '16:30')]), /net = 510/],
+    ['sl17', h(DEMAIN, [l('Martin', '08:00', '17:00', 30)]), /créneaux/],
+    ['st14', h(DEMAIN, [l('Dupont', '08:00', '17:00')]), /chantier/],
+    ['st14', h(DEMAIN, [l('', '08:00', '17:00')]), /chantier/],
+    ['st14', h('2026-10-01', [l('Martin', '08:00', '17:00')]), /date = 2026-10-01/],
+    ['st14', h(DEMAIN, [l('Martin', '08:00', '16:00')]), /créneaux/],
+    ['st14', { name: 'repondre', args: { reponse: 'Yarın için aynı taslak hazır.' } }, /éléments/],
+  ];
+  for (const [id, call, re] of ko) {
+    const why = await passe(id, call);
+    if (!why || !re.test(why)) throw new Error(`${id} ${JSON.stringify(call.args).slice(0, 90)} devrait échouer avec ${re} : ${why}`);
+  }
 });

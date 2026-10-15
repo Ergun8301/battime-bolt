@@ -61,12 +61,12 @@ export async function runWorkerTurn(i: WorkerTurnInput): Promise<WorkerTurnOut> 
 
   if (profil === 'court') {
     // Exactement l'ancien appel : seulement les outils du domaine de la phrase, UN appel.
-    const r = await i.call({ prompt: workerFunctionPrompt(i.snapshot, i.live, text), functions: workerFunctionsFor(!!i.file, text), file: i.file, tier: i.tier });
+    const r = await i.call({ prompt: workerFunctionPrompt(i.snapshot, i.live, text), functions: workerFunctionsFor(!!i.file, text, i.snapshot.historique), file: i.file, tier: i.tier });
     if (!r.ok) return { via: 'erreur', profil, raison: r.reason };
     return { via: 'ia', profil, reply: fromWorkerCall(r.call.name, r.call.args, i.snapshot, i.live), appels: 1, ...(r.secours ? { secours: true as const } : {}) };
   }
 
-  const r = await i.call({ prompt: workerMultiPrompt(i.snapshot, i.live, text), functions: workerFunctionsForLong(text), tier: i.tier, profil: 'long', maxCalls: 4 });
+  const r = await i.call({ prompt: workerMultiPrompt(i.snapshot, i.live, text), functions: workerFunctionsForLong(text, i.snapshot.historique), tier: i.tier, profil: 'long', maxCalls: 4 });
   if (!r.ok) return { via: 'erreur', profil, raison: r.reason };
   const calls = r.calls ?? [r.call];
   return { via: 'ia', profil, reply: buildLongReply(calls, text, i.snapshot, i.live, { secours: !!r.secours, rognes: r.rognes ?? 0 }), appels: calls.length, ...(r.secours ? { secours: true as const } : {}) };

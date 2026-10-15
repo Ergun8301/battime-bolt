@@ -514,7 +514,10 @@ export function normaliserHeures(args: Record<string, unknown>, text: string, sn
   const classees = brutes.map((l) => classer(l.chantier, nc.nom ? nc : null, existant?.id, snapshot));
 
   // R2. Un chantier DEVINÉ n'est pas un chantier dit : le créneau est SANS NOM (le modèle a rendu « Villa Dupont » pour « Pierrick Dupont »).
-  const tousJetons = jetonsDe(text);
+  // Étape 2 : un chantier que l'UTILISATEUR a dit dans l'un de ses deux derniers messages compte comme dit (« Yarın da aynısı », « Et pareil demain ») ;
+  // jamais le texte de l'assistant. Sans historique : exactement la phrase, comme avant.
+  const avant = (snapshot.historique ?? []).filter((m) => m.who === 'me').slice(-2).map((m) => m.text).join(' ');
+  const tousJetons = jetonsDe(avant ? `${text} ${avant}` : text);
   const reste = tousJetons.slice();
   if (nc.nom) for (const w of [...jetonsDe(nc.nom), ...jetonsDe(nc.ville)]) { const k = reste.indexOf(w); if (k >= 0) reste.splice(k, 1); }
   const ncMots = new Set(nc.nom ? jetonsDe(nc.nom) : []);

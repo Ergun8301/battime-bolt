@@ -24,8 +24,10 @@ export interface AssistantReply {
   /** Lot 7 : une question a été posée — la prochaine réponse complète la MÊME demande. */
   followUp?: boolean;
 }
+/** Étape 2 (chat avec mémoire) : les derniers messages TEXTE de la conversation, envoyés avec la demande pour comprendre « et pour Lucas aussi ? ». */
+export type AssistantHistory = { who: 'me' | 'bot'; text: string }[];
 export interface AssistantSource {
-  demo: boolean; ask(question: string, file?: File): Promise<AssistantReply>;
+  demo: boolean; ask(question: string, file?: File, history?: AssistantHistory): Promise<AssistantReply>;
 }
 
 /** Démo : uniquement sur une preview, jamais sur bemexo.com. */
@@ -46,12 +48,37 @@ const toReply = (d: ServerReply): AssistantReply => ({
   followUp: !!d.action?.question,
 });
 
+/**
+ * Délai maximal d'UNE demande à l'assistant (étape 2). `supabase.functions.invoke` n'en a aucun : une requête qui traîne ou se bloque laissait le
+ * panneau « Je regarde… » (Envoyer et « Nouveau chat » grisés) jusqu'au rechargement de la page. Les réponses les plus lentes mesurées sont de
+ * l'ordre de 30 s (premier appel d'un modèle) : 60 s laisse de la marge, sans laisser l'écran bloqué.
+ */
+export const ASK_TIMEOUT_MS = 60_000;
+export const ASK_TIMEOUT_MESSAGE = 'L’assistant met trop de temps à répondre. Réessayez.';
+
+/**
+ * `supabase.functions.invoke` avec un délai maximal. Au bout de `ms`, la requête est abandonnée (`AbortController`) ET l'attente s'arrête, même si
+ * le client ne tenait pas compte du signal : on rend alors `{ timedOut: true }` et une réponse arrivée après est ignorée. Ne lève jamais.
+ */
+export async function invokeAssistant(name: string, body: unknown, ms: number = ASK_TIMEOUT_MS): Promise<{ data: unknown; error: unknown; timedOut: boolean }> {
+  const stop = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<{ data: unknown; error: unknown; timedOut: boolean }>((resolve) => {
+    timer = setTimeout(() => { stop.abort(); resolve({ data: null, error: null, timedOut: true }); }, ms);
+  });
+  const call = supabase.functions.invoke(name, { body: body as Record<string, unknown>, signal: stop.signal })
+    .then((r) => ({ data: r.data as unknown, error: r.error as unknown, timedOut: false }), (e: unknown) => ({ data: null, error: e, timedOut: false }));
+  try { return await Promise.race([call, late]); } finally { if (timer) clearTimeout(timer); }
+}
+
 export const supabaseAssistantSource: AssistantSource = {
   demo: false,
-  async ask(question, file) {
+  async ask(question, file, history) {
     try {
-      const body = file ? { question, file: await attachmentPayload(file) } : { question };
-      const { data, error } = await supabase.functions.invoke('assistant', { body });
+      // `history` (étape 2) : omis quand la conversation vient de commencer, la requête reste alors celle d'avant.
+      const body = { question, ...(file ? { file: await attachmentPayload(file) } : {}), ...(history?.length ? { history } : {}) };
+      const { data, error, timedOut } = await invokeAssistant('assistant', body);
+      if (timedOut) return { answer: ASK_TIMEOUT_MESSAGE, links: [], notice: true };
       if (error) {
         const ctx = (error as { context?: Response }).context;
         const body = ctx && typeof ctx.json === 'function' ? await ctx.json().catch(() => ({})) : {};
@@ -123,7 +150,8 @@ export function demoAssistantSource(): AssistantSource {
   const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
   return {
     demo: true,
-    async ask(q, file) {
+    // La démo accepte l'historique et l'ignore : ses réponses viennent de la phrase seule.
+    async ask(q, file, _history) {
       await wait(600);
       left = Math.max(0, left - 1);
       const t = q.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');

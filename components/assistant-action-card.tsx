@@ -249,16 +249,27 @@ export default function AssistantActionCard({ extra, execute, onDone, ctl, previ
   useEffect(() => { if (phase === 'question') ctl?.text(null); }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (phase === 'done') ctl?.settle('C’est fait.'); }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (cancelled) ctl?.settle(); }, [cancelled]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Étape 2 : la fiche attend un « Confirmer » tant qu'elle est ouverte (le panneau demande « Abandonner cette action ? » avant de vider l'écran).
+  useEffect(() => { ctl?.waiting(phase === 'form' && !cancelled); }, [phase, cancelled]); // eslint-disable-line react-hooks/exhaustive-deps
   // Lot 1 : au-dessus de la carte d'une suppression, jamais « C'est fait » avant le clic
   // (même si un serveur pas encore redéployé l'annonçait).
   useEffect(() => { if (removal && phase === 'form' && !result) ctl?.text(confirmText(extra.action.draft)); }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Étape 2 : tant que la carte écrit, le panneau refuse « Nouveau chat », la réouverture d'une ancienne conversation et la suppression du chat affiché
+  // (la carte serait démontée avant d'avoir montré « C'est fait »). `working(false)` part TOUJOURS à la fin, même si la carte a été démontée entre-temps.
   const run = async (draft: ActionDraft) => {
+    ctl?.working(true); ctl?.waiting(false);
+    let retourFiche = false;
+    try { retourFiche = await runOnce(draft); } finally { ctl?.working(false); }
+    if (retourFiche) ctl?.waiting(true); // l'écriture a échoué : la fiche reste à l'écran, de nouveau en attente de « Confirmer »
+  };
+  /** Vrai si la fiche reste à l'écran (échec : elle attend de nouveau un « Confirmer »). */
+  const runOnce = async (draft: ActionDraft): Promise<boolean> => {
     setBusy(true); setErr(null);
     if (editOf.current) {
       const undoFn = editOf.current;
       const u = await undoFn();
-      if (!u.ok) { setBusy(false); setErr(u.message); return; }
+      if (!u.ok) { setBusy(false); setErr(u.message); return true; }
       editOf.current = null;
       // Lot 1 : une case est restée (des heures dessus) → on ne refait pas l'action :
       // l'ancienne case et la nouvelle coexisteraient, en double.
@@ -266,7 +277,7 @@ export default function AssistantActionCard({ extra, execute, onDone, ctl, previ
         setBusy(false);
         undoneMemory.set(undoFn, `${u.message} La modification n’est pas faite : reprenez-la depuis le planning.`);
         setPhase('done');
-        return;
+        return false;
       }
     }
     // Lot 1 : seules les cases que la carte a montrées partent.
@@ -276,8 +287,9 @@ export default function AssistantActionCard({ extra, execute, onDone, ctl, previ
     setBusy(false);
     // Noté AVANT l'affichage : si le panneau a été redessiné entre-temps, la
     // nouvelle carte reprend ce résultat.
-    if (r.ok) { writeCard(extra, { phase: 'done', result: r, doneSummary: summary, d: draft }); setResult(r); setDoneSummary(summary); setD(draft); setPhase('done'); onDone?.(); }
-    else { writeCard(extra, { phase: 'form', d: draft }); setErr(r.message); setD(draft); setPhase('form'); }
+    if (r.ok) { writeCard(extra, { phase: 'done', result: r, doneSummary: summary, d: draft }); setResult(r); setDoneSummary(summary); setD(draft); setPhase('done'); onDone?.(); return false; }
+    writeCard(extra, { phase: 'form', d: draft }); setErr(r.message); setD(draft); setPhase('form');
+    return true;
   };
 
   useEffect(() => {

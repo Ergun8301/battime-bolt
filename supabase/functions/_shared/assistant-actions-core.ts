@@ -21,9 +21,10 @@
 // reste disponible après.
 import { calendarForPrompt, cleanName, cleanSpoken, cleanTitle, dateAVenir, dayPart, parseDateFr, parseTimeFr, plageAVenir } from './fr-langue.ts';
 import { REASON_MAX, reasonOk } from './office-edits.ts';
-import { OFFICE_DOMAINS, pickTools } from './tool-domains.ts';
+import { OFFICE_DOMAINS, domainTools, pickTools } from './tool-domains.ts';
 import { hasAdminTour } from './admin-tours.ts';
 import { TOUR_LABEL, tourAction } from './worker-tours.ts';
+import { blocAvantDemande, doitSauterLeCheminLocal, textePourOutils, type MessageHistorique } from './assistant-history.ts';
 
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -410,6 +411,12 @@ export interface ActionContext {
   me?: string;
   /** Lot 7 : la phrase dite, pour vérifier que le client a bien été NOMMÉ. */
   demande?: string;
+  /**
+   * Étape 2 (chat) : les derniers messages de la conversation, déjà nettoyés (assistant-history.ts). Ils servent au modèle
+   * (consigne + choix des outils) et à écarter le lecteur local pour une relance (« pareil pour Kevin, pose-le en maladie »).
+   * L'appelant ne le pose que si le modèle est disponible ; absent ou vide : tout se passe comme avant.
+   */
+  historique?: MessageHistorique[];
   /** Lot 8 : ce qui peut être retiré ou modifié (documents, dépenses, habilitations). */
   documents?: { id: string; worksite_id: string; nom: string; categorie: string; date: string }[];
   depenses?: { id: string; worksite_id: string; libelle: string; montant: number; categorie: string; date: string }[];
@@ -778,6 +785,19 @@ function resolve<T extends { id: string }>(text: string, list: T[], label: (x: T
 }
 export const resolveSalarie = (t: string, ctx: ActionContext) => resolve(t, ctx.salaries, fullName);
 export const resolveChantier = (t: string, ctx: ActionContext) => resolve(t, ctx.chantiers, (c) => `${c.nom} ${c.ville ?? ''}`);
+/**
+ * Étape 2 : l'UTILISATEUR a-t-il NOMMÉ ce client, en ENTIER, dans l'un de ses deux derniers messages ? (« Et Kevin aussi » reprend le client
+ * nommé juste avant.) Jamais le texte de l'assistant (une liste de chantiers n'est pas un choix de l'utilisateur), jamais un seul mot du nom
+ * (« villa » ne désigne pas Villa Dupont), jamais un message plus ancien : plus la conversation est longue, plus ce garde-fou doit rester strict.
+ */
+function nommeAvant(w: { nom: string }, ctx: ActionContext): boolean {
+  const mots = norm(w.nom).split(/[^a-z0-9]+/).filter((n) => n.length > 2);
+  if (!mots.length) return false;
+  return (ctx.historique ?? []).filter((m) => m.who === 'me').slice(-2).some((m) => {
+    const dits = norm(m.text).split(/[^a-z0-9]+/);
+    return mots.every((n) => dits.includes(n));
+  });
+}
 /** Le nom dit ressemble-t-il à AU MOINS un client connu (même s'il y en a plusieurs) ? */
 function matchesSomeChantier(t: string, ctx: ActionContext): boolean {
   const q = norm(t).split(/[^a-z0-9]+/).filter((w) => w.length > 2);
@@ -1039,7 +1059,8 @@ export function prepare(type: string, raw: Record<string, unknown>, ctx: ActionC
       // en « Villa Dupont (Lyon) » redevient un lieu.
       let place = lieu || cleanName(c);
       const w = worksite ? ctx.chantiers.find((x) => x.id === worksite) : undefined;
-      if (w && ctx.demande && !matchesSomeChantier(ctx.demande, { ...ctx, chantiers: [w] })) {
+      // Étape 2 : « Et Kevin aussi » reprend le client que l'utilisateur vient de nommer en entier : il compte comme DIT (nommeAvant).
+      if (w && ctx.demande && !matchesSomeChantier(ctx.demande, { ...ctx, chantiers: [w] }) && !nommeAvant(w, ctx)) {
         place = lieu || w.ville || '';
         worksite = null;
       }
@@ -1631,9 +1652,12 @@ export const ATTACHMENT_FUNCTIONS = ASSISTANT_FUNCTIONS.filter((f) => (ATTACHMEN
 /**
  * Les outils proposés au modèle : ceux des documents s'il y a un fichier ;
  * sinon, lot 6, ceux du DOMAINE de la demande (tous si aucun n'est reconnu).
+ * Étape 2 : avec un historique, les domaines du dernier échange S'AJOUTENT à ceux de la demande (« annule ça » ne dit rien du planning,
+ * la phrase d'avant oui). Jamais l'inverse : une demande sans domaine reconnu garde TOUS les outils, comme avant.
  */
-export const functionsFor = (hasFile: boolean, question?: string) =>
-  (hasFile ? ATTACHMENT_FUNCTIONS : pickTools(ASSISTANT_FUNCTIONS, question, OFFICE_DOMAINS));
+export const functionsFor = (hasFile: boolean, question?: string, historique?: MessageHistorique[]) =>
+  (hasFile ? ATTACHMENT_FUNCTIONS
+    : pickTools(ASSISTANT_FUNCTIONS, question && domainTools(question, OFFICE_DOMAINS) ? textePourOutils(question, historique) : question, OFFICE_DOMAINS));
 
 // ── Sans IA : les demandes courantes, tout de suite ─────────────────────────
 export interface LocalReply { answer: string; links: { label: string; action: string }[]; action?: AssistantAction }
@@ -1661,6 +1685,10 @@ export function guideLinks(g: GuideEntry): { label: string; action: string }[] {
 /** Lot 8 : ce qui ne s'efface JAMAIS, dit en une phrase. */
 export const REFUS_EFFACEMENT = 'Impossible : les heures envoyées ou validées, les mois clôturés et les exports de paie ne s’effacent pas. Pour une erreur d’heures, demandez « Corrige les heures de … ».';
 export function handleActionLocally(text: string, ctx: ActionContext): LocalReply | null {
+  // Étape 2 : une relance qui renvoie à la conversation (« pareil pour Sofiane, pose-le en maladie ») va au modèle, qui voit
+  // l'historique ; ce lecteur par mots-clés n'a pas le contexte et rendrait un formulaire vide. Sans historique : rien ne change.
+  // « aussi » ne suffit pas quand la phrase nomme déjà un salarié ou un chantier connu (« Ajoute Kevin comme salarié aussi ») : demande complète.
+  if (doitSauterLeCheminLocal(text, ctx.historique, () => !!resolveSalarie(text, ctx) || matchesSomeChantier(text, ctx))) return null;
   const n = norm(text);
   const efface = /\b(supprim|effac|enleve|enlever|retir|vire|annul|vide)\w*/.test(n);
   if (efface && /\b(heures?|pointages?|pointe(es)?|export\w*|paie|fiche de paie|mois clotur\w*|cloture)\b/.test(n) && !/\b(planning|intervention|conge|absence|document|depense)\b/.test(n)) {
@@ -1804,5 +1832,5 @@ SALARIÉS : ${JSON.stringify(ctx.salaries.map((s) => ({ id: s.id, nom: fullName(
 CHANTIERS : ${JSON.stringify(ctx.chantiers.map((c) => ({ id: c.id, nom: c.nom, ville: c.ville })))}
 DONNÉES : ${snapshotJson}
 
-DEMANDE : ${question.slice(0, 500)}`;
+${blocAvantDemande(ctx.historique)}DEMANDE : ${question.slice(0, 500)}`;
 }

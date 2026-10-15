@@ -175,6 +175,8 @@ export default function WorkerMultiCard({ extra, deps, meal, onDone, ctl }: Prop
     if (x.run) setRun(x.run);
   });
   useEffect(() => { if (phase === 'done' || phase === 'dismissed') ctl?.settle(null); }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Étape 2 : la fiche attend « Tout confirmer » tant qu'elle est en édition (le panneau demande « Abandonner cette action ? » avant de vider l'écran).
+  useEffect(() => { ctl?.waiting(phase === 'edit'); }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Ce qui est recalculé à chaque modification ────────────────────────────────────────────────
   const actif = (id: string) => removed.indexOf(id) < 0;
@@ -262,6 +264,9 @@ export default function WorkerMultiCard({ extra, deps, meal, onDone, ctl }: Prop
       return it;
     }).filter((it) => !(it.kind === 'heures' && !it.draft.lines.length));
     let out: MultiRun;
+    // Étape 2 : tant que la fiche écrit, le panneau refuse « Nouveau chat », la réouverture d'une ancienne conversation et la suppression du chat affiché
+    // (la fiche serait démontée avant d'avoir montré son résultat). `working(false)` part TOUJOURS à la fin, même si la fiche a été démontée entre-temps.
+    ctl?.working(true); ctl?.waiting(false);
     try {
       out = await runMulti({ items, date, aujourdhui: m.aujourdhui, chantiers: m.chantiers, dejaNotees: m.deja_notees, meal, worksites: readCard<Memo>(extra).worksites }, {
         ...deps,
@@ -271,12 +276,15 @@ export default function WorkerMultiCard({ extra, deps, meal, onDone, ctl }: Prop
     } catch {
       // runMulti ne lève pas : par prudence, on ne sait pas ce qui est parti.
       out = { results: [], worksites: {}, wrote: true, sent: false, message: 'Un problème est survenu : vérifiez dans « Ma journée » avant de recommencer.' };
+    } finally {
+      ctl?.working(false);
     }
     if (out.stopped) {
       // Rien n'a été écrit : la fiche reste modifiable.
       running.delete(extra);
       writeCard(extra, { phase: 'edit' });
       setStopped(out.stopped); setProgress(null); setPhase('edit');
+      ctl?.waiting(true);
       return;
     }
     writeCard(extra, { phase: 'done', run: out });

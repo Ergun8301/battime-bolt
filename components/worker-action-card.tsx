@@ -208,23 +208,34 @@ export default function WorkerActionCard({ extra, execute, onDone, ctl, preview 
   useEffect(() => { if (phase === 'question') ctl?.text(null); }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (phase === 'done') ctl?.settle('C’est fait.'); }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (cancelled) ctl?.settle(); }, [cancelled]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Étape 2 : la fiche attend un « Confirmer » tant qu'elle est ouverte (le panneau demande « Abandonner cette action ? » avant de vider l'écran).
+  useEffect(() => { ctl?.waiting(phase === 'form' && !cancelled); }, [phase, cancelled]); // eslint-disable-line react-hooks/exhaustive-deps
   // Lot 1 : au-dessus de la carte d'une suppression, jamais « C'est fait » avant le clic.
   useEffect(() => { if (removal && phase === 'form' && !result) ctl?.text(workerConfirmText(extra.workerAction.draft)); }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
   const editOf = useRef<WorkerActionResult['undo'] | null>(null);
 
+  // Étape 2 : tant que la carte écrit, le panneau refuse « Nouveau chat », la réouverture d'une ancienne conversation et la suppression du chat affiché
+  // (la carte serait démontée avant d'avoir montré « C'est fait »). `working(false)` part TOUJOURS à la fin, même si la carte a été démontée entre-temps.
   const run = async (draft: WorkerActionDraft = d) => {
+    ctl?.working(true); ctl?.waiting(false);
+    let retourFiche = false;
+    try { retourFiche = await runOnce(draft); } finally { ctl?.working(false); }
+    if (retourFiche) ctl?.waiting(true); // l'écriture a échoué (ou demande une précision) : la fiche reste à l'écran, de nouveau en attente
+  };
+  /** Vrai si la fiche reste à l'écran (échec : elle attend de nouveau un « Confirmer »). */
+  const runOnce = async (draft: WorkerActionDraft): Promise<boolean> => {
     setBusy(true); setErr(null);
     if (editOf.current) {
       const undoFn = editOf.current;
       const u = await undoFn();
-      if (!u.ok) { setBusy(false); setErr(u.message); return; }
+      if (!u.ok) { setBusy(false); setErr(u.message); return true; }
       editOf.current = null;
       // Lot 1 : une partie est restée → on ne refait pas l'action (elle serait en double).
       if (u.partial) {
         setBusy(false);
         undoneMemory.set(undoFn, `${u.message} La modification n’est pas faite : reprenez-la dans « Ma journée ».`);
         setPhase('done');
-        return;
+        return false;
       }
     }
     // Lot 1 : seules les heures que la carte a montrées partent.
@@ -232,9 +243,10 @@ export default function WorkerActionCard({ extra, execute, onDone, ctl, preview 
     const r = await execute(draft, extra.attachment);
     setBusy(false);
     setD(draft);
-    if (r.geoInfoFor) { setGeoFor(r.geoInfoFor); setPhase('form'); return; }
-    if (r.ok) { writeCard(extra, { phase: 'done', result: r, done: r.message, d: draft }); setResult(r); setDone(r.message); setPhase('done'); onDone?.(); }
-    else { writeCard(extra, { phase: 'form', d: draft }); setErr(r.message); setPhase('form'); }
+    if (r.geoInfoFor) { setGeoFor(r.geoInfoFor); setPhase('form'); return true; }
+    if (r.ok) { writeCard(extra, { phase: 'done', result: r, done: r.message, d: draft }); setResult(r); setDone(r.message); setPhase('done'); onDone?.(); return false; }
+    writeCard(extra, { phase: 'form', d: draft }); setErr(r.message); setPhase('form');
+    return true;
   };
 
   useEffect(() => {

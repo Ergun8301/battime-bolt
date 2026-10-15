@@ -104,6 +104,8 @@ export default function WorkerDraftCard({ extra, save, onSaved, ctl }: Props) {
   // Enregistré : plus de « Vérifiez, puis enregistrez. » au-dessus de « Fait ».
   useEffect(() => { if (phase === 'question') ctl?.text(null); }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (phase === 'done') ctl?.settle(null); }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Étape 2 : la fiche attend un « Enregistrer » tant qu'elle est ouverte (le panneau demande « Abandonner cette action ? » avant de vider l'écran).
+  useEffect(() => { ctl?.waiting(phase === 'form'); }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
   // Les mêmes contrôles que le serveur, à chaque modification. Avant toute
   // retouche, on montre aussi ce que le serveur n'a pas pu lire.
   const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
@@ -125,19 +127,28 @@ export default function WorkerDraftCard({ extra, save, onSaved, ctl }: Props) {
   const dateLabel = date === today ? 'Aujourd’hui'
     : new Date(`${date}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
 
+  // Étape 2 : tant que la carte écrit, le panneau refuse « Nouveau chat », la réouverture d'une ancienne conversation et la suppression du chat affiché
+  // (la carte serait démontée avant d'avoir montré « Fait »). `working(false)` part TOUJOURS à la fin, même si la carte a été démontée entre-temps.
   const doSave = async (ls: DraftLine[]) => {
+    ctl?.working(true); ctl?.waiting(false);
+    let retourFiche = false;
+    try { retourFiche = await saveOnce(ls); } finally { ctl?.working(false); }
+    if (retourFiche) ctl?.waiting(true); // l'ancienne saisie n'a pas pu être défaite : la fiche reste à l'écran
+  };
+  /** Vrai si la fiche reste à l'écran (retour à la fiche). */
+  const saveOnce = async (ls: DraftLine[]): Promise<boolean> => {
     setBusy(true);
     if (editOf.current) {
       const undoFn = editOf.current;
       const u = await undoFn();
-      if (!u.ok) { setBusy(false); setDone(null); setPhase('form'); return; }
+      if (!u.ok) { setBusy(false); setDone(null); setPhase('form'); return true; }
       editOf.current = null;
       // Lot 1 : une ligne retouchée ou envoyée depuis est restée → on ne renote pas (elle serait en double).
       if (u.partial) {
         setBusy(false);
         undoneMemory.set(undoFn, `${u.message} La modification n’est pas faite : reprenez-la dans « Ma journée ».`);
         setPhase('done');
-        return;
+        return false;
       }
     }
     const r = await save(date, ls);
@@ -149,6 +160,7 @@ export default function WorkerDraftCard({ extra, save, onSaved, ctl }: Props) {
     setDone(msg);
     setPhase('done');
     onSaved?.();
+    return false;
   };
   useEffect(() => {
     if (phase !== 'auto' || launched.has(extra)) return;

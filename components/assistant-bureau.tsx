@@ -6,6 +6,7 @@
 import AssistantPanel from '@/components/assistant-panel';
 import AssistantActionCard from '@/components/assistant-action-card';
 import { supabaseAssistantSource } from '@/lib/assistant';
+import { supabaseChatStore } from '@/lib/assistant-chats';
 import { makeActionExecutor, makeRemovalPreview, type ActionExtra } from '@/lib/assistant-actions';
 
 export default function AssistantBureau({ user, open, onOpenChange, onNavigate, onDone, onOpenVersions }: {
@@ -20,6 +21,8 @@ export default function AssistantBureau({ user, open, onOpenChange, onNavigate, 
   return (
     <AssistantPanel
       source={supabaseAssistantSource}
+      // Ici la source est toujours la vraie fonction : l'historique est donc le vrai aussi (la démo du bureau, /apercu/assistant, monte le panneau elle-même).
+      chats={supabaseChatStore}
       memoryKey={`bureau:${user.id}`}
       attachments
       open={open}

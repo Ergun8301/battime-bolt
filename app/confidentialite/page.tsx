@@ -58,7 +58,7 @@ export default function ConfidentialitePage() {
 
         <main className="ml-main">
           <h1>Politique de confidentialité</h1>
-          <div className="ml-updated">Dernière mise à jour : 14 octobre 2026</div>
+          <div className="ml-updated">Dernière mise à jour : 15 octobre 2026</div>
 
           <p className="ml-intro">
             La présente politique explique comment BEMEXO traite les données personnelles dans le cadre de son service
@@ -276,10 +276,10 @@ export default function ConfidentialitePage() {
             Aucun autre cookie publicitaire ou de traçage n&apos;est utilisé.
           </p>
 
-          {/* ASSISTANT IA — ajouté quand l'assistant est passé sur Claude (Anthropic).
-              À RELIRE à chaque changement de fournisseur (secret AI_CONFIG) et quand
-              l'assistant garde des conversations (étape 2 : « Nouveau chat » + historique) :
-              la ligne « Ce que BEMEXO conserve » doit alors dire la vérité. */}
+          {/* ASSISTANT IA — Claude (Anthropic) + Gemini (Google) en secours ; chats gardés 30 jours (étape 2).
+              À RELIRE à chaque changement de fournisseur (secret AI_CONFIG) ou de durée de conservation
+              (purge_old_assistant_chats, migration 20261014090000) : cette section doit rester vraie.
+              Le test `npm run test:assistant-chats-rls` (section n) échoue si elle ne dit plus « 30 jours ». */}
           <h2 id="assistant">14. L&apos;assistant BEMEXO (intelligence artificielle)</h2>
           <p>
             L&apos;assistant BEMEXO répond à vos questions, remplit des fiches à votre demande et vous guide dans
@@ -290,8 +290,9 @@ export default function ConfidentialitePage() {
             <li>
               <strong>Ce qui est envoyé</strong> : votre question (écrite ou dictée), les éléments de votre espace
               nécessaires pour y répondre (par exemple vos heures et votre planning pour un salarié ; les chantiers,
-              le planning et l&apos;équipe pour l&apos;employeur) et les documents que vous joignez vous-même (photo, PDF).
-              L&apos;assistant <strong>n&apos;a jamais plus de droits que vous</strong> : ce que vous ne pouvez pas voir
+              le planning et l&apos;équipe pour l&apos;employeur), les derniers messages de la conversation en cours
+              (7 au plus, pour qu&apos;il comprenne « et pour Lucas aussi ? ») et les documents que vous joignez
+              vous-même (photo, PDF). L&apos;assistant <strong>n&apos;a jamais plus de droits que vous</strong> : ce que vous ne pouvez pas voir
               dans BEMEXO, il ne le voit pas.
             </li>
             <li>
@@ -311,9 +312,14 @@ export default function ConfidentialitePage() {
               commerciales, ils n&apos;utilisent pas ces demandes pour entraîner leurs modèles.
             </li>
             <li>
-              <strong>Ce que BEMEXO conserve</strong> : ni votre question, ni la réponse, ni les pièces jointes. Un
-              journal garde seulement l&apos;action effectuée (qui, quoi, quand, annulée ou non), sans le texte de votre
-              demande, ainsi qu&apos;un compteur quotidien par entreprise pour limiter l&apos;usage.
+              <strong>Ce que BEMEXO conserve</strong> : le texte de vos conversations avec l&apos;assistant (vos
+              questions, ses réponses et les liens de navigation qu&apos;elles contiennent) est conservé{' '}
+              <strong>30 jours après la dernière activité</strong>, puis supprimé automatiquement. Il n&apos;est visible
+              que de vous seul dans l&apos;application (ni votre employeur, ni vos collègues, ni le support de BEMEXO) et
+              vous pouvez l&apos;effacer à tout moment, une conversation ou tout l&apos;historique. Les pièces jointes ne
+              sont jamais conservées. Un journal garde seulement l&apos;action effectuée (qui, quoi, quand, annulée ou
+              non), sans le texte de votre demande, ainsi qu&apos;un compteur quotidien par entreprise pour limiter
+              l&apos;usage.
             </li>
             <li>
               <strong>Ce que l&apos;assistant fait dans BEMEXO</strong> apparaît à l&apos;écran, avec la possibilité de

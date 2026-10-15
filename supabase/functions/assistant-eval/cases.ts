@@ -7,6 +7,17 @@
 // Phrases libres du SALARIÉ (sl01… français, st01… turc) : UNE fiche à confirmer pour plusieurs
 // actions (heures avec tous les créneaux et la pause, nouveau chantier, panier, réserve, congé,
 // envoi). Les 80 cas b01–b47 et s01–s33 ne bougent pas.
+//
+// Suites de conversation (sc01… : 7 bureau, 3 salarié en français, 2 salarié en turc) : la phrase est une RELANCE
+// (« Et Kevin aussi », « Pareil mais lundi », « Non, retire ça ») et le cas porte `history`, les messages d'avant,
+// que le banc passe au MÊME constructeur de consigne que la vraie fonction (étape 2, _shared/assistant-history.ts).
+// Les relances turques restent « courtes » au sens de saisie-profil.ts (un seul indice de turc) : sc11 et sc12 passent donc
+// par la consigne du profil court, comme tool-domains.test.ts l'exige de tout cas dont l'id n'est pas sl/st.
+// Deux phrases LONGUES portent aussi `history` (sl17 français à « demi-heure de pause », st14 turc « Yarın da aynısı ») : le profil long,
+// lui aussi, voit la conversation. sc13 et sc14 sont la RÉPONSE à une question de l'assistant que l'écran recolle à la demande d'origine
+// (« Mets Karim demain, Villa Dupont ») ; sc15 est une plage horaire nue, sans « pareil » (« Et l'après-midi de 13h à 16h30 »).
+
+import type { MessageHistorique } from '../_shared/assistant-history.ts';
 
 export const TODAY = '2026-10-01';
 export const ME = 'u-ergun';
@@ -135,11 +146,13 @@ const eq = (d: Record<string, unknown>, k: string, v: unknown) => (JSON.stringif
 const all = (...r: (string | null)[]) => r.find((x) => x) ?? null;
 const has = (d: Record<string, unknown>, k: string, re: RegExp) => (re.test(String(d[k] ?? '')) ? null : `${k} = « ${d[k]} » (attendu ${re})`);
 const clean = (d: Record<string, unknown>, k: string) => (/^(euh|alors|bon|du coup|c'est|pour)\b/i.test(String(d[k] ?? '').trim()) || /^[a-zà-ÿ]/.test(String(d[k] ?? '')) ? `${k} mal formé : « ${d[k]} »` : null);
-const answer = (link?: string): Check => (o) => {
+const answer = (link?: string, mention?: RegExp): Check => (o) => {
   if (o.kind !== 'answer') return `attendu une réponse, obtenu ${o.kind} ${o.type ?? ''}`;
   if (!o.answer || o.answer.length < 10) return 'réponse vide';
   if (/je n.?ai pas acc[eè]s|je ne peux pas/i.test(o.answer)) return `refus : « ${o.answer.slice(0, 60)} »`;
   if (link && !(o.links ?? []).includes(link)) return `lien ${link} manquant (${(o.links ?? []).join(',')})`;
+  // Suites de conversation : la réponse doit montrer que la référence (« ce chantier », « la supprimer ») a été comprise.
+  if (mention && !mention.test(o.answer)) return `la réponse ne reprend pas ce qui précède (attendu ${mention}) : « ${o.answer.slice(0, 70)} »`;
   return null;
 };
 const draft = (f: (lines: Record<string, unknown>[], date: string) => string | null): Check => (o) => {
@@ -262,7 +275,12 @@ const enTurc: Check = (o) => {
 const unSeul = (m: string | null, ...autres: (string | null)[]) => m ?? autres.find((x) => x) ?? null;
 
 /** `live: 'vide'` : aucune ligne notée aujourd'hui (LIVE_VIDE). */
-export interface EvalCase { id: string; cote: 'bureau' | 'salarie'; categorie: string; phrase: string; file?: keyof typeof FILES; enCours?: boolean; live?: 'vide'; check: Check }
+export interface EvalCase {
+  id: string; cote: 'bureau' | 'salarie'; categorie: string; phrase: string; file?: keyof typeof FILES; enCours?: boolean; live?: 'vide';
+  /** Suite de conversation : les messages d'AVANT la phrase (du plus ancien au plus récent), comme l'écran les envoie dans `history`. Absent = première question, consigne d'avant. */
+  history?: MessageHistorique[];
+  check: Check;
+}
 
 // sl13 : la journée complète en un message (4 appels au plus) : heures sur trois chantiers dont un NOUVEAU, panier, réserve, envoi.
 const recapitulatifComplet = fiche(['heures', 'panier_repas', 'signaler_reserve', 'envoyer_journee'], (it) => {
@@ -289,6 +307,37 @@ const cinqActions: Check = (o) => {
     rienDeSilencieux(['panier_repas', 'signaler_reserve', 'demander_conge', 'envoyer_journee'])(o),
     envoi >= 0 && envoi !== items.length - 1 ? 'l’envoi doit être le DERNIER élément' : null,
   );
+};
+
+// ── Suites de conversation ──────────────────────────────────────────────────
+const tour = (...messages: ['me' | 'bot', string][]): MessageHistorique[] => messages.map(([who, text]) => ({ who, text }));
+// La conversation d'avant de sc01–sc03 : une affectation déjà faite (aujourd'hui du jeu = jeudi 2026-10-01, demain = 2026-10-02, la case de Karim ce jour-là = p-karim-4).
+const KARIM_DEMAIN = tour(['me', 'Mets Karim sur Villa Dupont demain'], ['bot', 'Karim sera sur Villa Dupont demain.']);
+/**
+ * sc03 « Non, retire ça » : la bonne FAMILLE d'action (retirer CETTE case de Karim, demain) OU une question pour savoir quoi annuler.
+ * Jamais une nouvelle affectation : l'action d'avant est déjà traitée, on ne la refait pas.
+ */
+const annulerAffectation: Check = (o) => {
+  if (o.kind === 'answer') return /\?/.test(o.answer ?? '') ? null : `ni action ni question : « ${(o.answer ?? '').slice(0, 60)} »`;
+  if (o.kind !== 'action') return `attendu retirer la case de Karim (ou une question), obtenu ${o.kind}`;
+  if (o.problems?.length) return `pas prête : ${o.problems.join(' / ')}`;
+  const d = o.draft ?? {};
+  if (o.type === 'supprimer_intervention') return all(eq(d, 'user_id', 'u-karim'), eq(d, 'date', '2026-10-02'), eq(d, 'planning_id', 'p-karim-4'));
+  if (o.type === 'effacer_planning') return all(eq(d, 'user_id', 'u-karim'), eq(d, 'du', '2026-10-02'), eq(d, 'au', '2026-10-02'));
+  return `attendu supprimer_intervention (ou effacer_planning de Karim demain), obtenu ${o.type}`;
+};
+
+/**
+ * La suite « l'après-midi » d'un matin resté BROUILLON (rien n'est enregistré : lignes_du_jour est vide). Deux lectures sont défendables et
+ * comptent toutes les deux : l'après-midi seul, OU le matin puis l'après-midi (le matin n'étant pas enregistré). Dans les deux cas, le
+ * chantier est CELUI D'AVANT (`site`) : jamais celui du planning, jamais un autre. Une seule ligne 07:30-16:30 échoue (les créneaux sont deux).
+ */
+const apresMidiDeSuite = (site: string, matin: [string, string], apresMidi: [string, string]) => (l: Record<string, unknown>[], date: string): string | null => {
+  const vues = l.map((x) => `${x.worksite_id} ${x.start}-${x.end}`).join(' | ');
+  const seul = `${site} ${apresMidi[0]}-${apresMidi[1]}`;
+  const avecMatin = `${site} ${matin[0]}-${matin[1]} | ${site} ${apresMidi[0]}-${apresMidi[1]}`;
+  if (date !== TODAY) return `${date} (attendu ${TODAY})`;
+  return vues === seul || vues === avecMatin ? null : `lignes : ${vues} (attendu « ${seul} » ou « ${avecMatin} » : le matin n'est qu'un brouillon, le chantier est celui d'avant)`;
 };
 
 export const CASES: EvalCase[] = [
@@ -460,6 +509,10 @@ export const CASES: EvalCase[] = [
     check: cinqActions },
   { id: 'sl16', cote: 'salarie', categorie: 'Long FR', live: 'vide', phrase: "Aujourd'hui de 8h à 16h30 chez Martin avec une heure de pause.",
     check: fiche(['heures'], heures(TODAY, [['08:00', '16:30']], 450, [W.martin], (h) => (h.lignes[0].pause === 60 ? null : `pause = ${h.lignes[0].pause} (attendu 60)`))) },
+  // Étape 2 : une phrase LONGUE (pause en lettres) qui renvoie à la conversation : le chantier est celui d'avant (Bureau Martin), pas le planning de demain.
+  { id: 'sl17', cote: 'salarie', categorie: 'Long FR', live: 'vide', phrase: 'Et pareil demain de 8h à 16h30 avec une demi-heure de pause.',
+    history: tour(['me', 'J’ai travaillé de 8h à 17h chez Martin'], ['bot', 'Brouillon : 08:00–17:00 Bureau Martin. Vérifiez, puis enregistrez.']),
+    check: fiche(['heures'], heures('2026-10-02', [['08:00', '16:30']], 480, [W.martin])) },
   { id: 'st01', cote: 'salarie', categorie: 'Long TR', live: 'vide', phrase: "Bugün sabah 8’den 12’ye kadar çalıştım, sonra bir saat mola verdim, sonra öğleden sonra 13’ten 17’ye kadar yeni bir şantiyede çalıştım: müşteri Pierrick Dupont, adres Montagna 01250, kollu tente montajı için.",
     check: fiche(['heures'], heures(TODAY, [['08:00', '12:00'], ['13:00', '17:00']], 480, ['NOUVEAU', 'NOUVEAU'], (h) => unSeul(ecarts([null, 'pause'])(h), nouveauChantier({ nom: 'Pierrick Dupont', ville: 'Montagna', cp: '01250', travaux: /tente|store/ })(h)))) },
   { id: 'st02', cote: 'salarie', categorie: 'Long TR', live: 'vide', phrase: "Bu sabah 7’den 10’a kadar Dupont’ta, sonra 10:30’dan 12’ye kadar Martin ofisinde, öğleden sonra da 13’ten 16:30’a kadar tekrar Dupont’ta çalıştım.",
@@ -487,4 +540,62 @@ export const CASES: EvalCase[] = [
     check: fiche(['heures'], heures(TODAY, [['09:00', '12:00'], ['14:00', '17:00']], 360, ['NOUVEAU', 'NOUVEAU'], nouveauChantier({ nom: 'Ayhan Demir', ville: 'Bron', cp: '69500', travaux: /pergola/ }))) },
   { id: 'st13', cote: 'salarie', categorie: 'Long TR', live: 'vide', phrase: "Bugün sabah 8’den 12’ye kadar, öğleden sonra da 13’ten 17’ye kadar çalıştım, hepsi Martin’de.",
     check: fiche(['heures'], heures(TODAY, [['08:00', '12:00'], ['13:00', '17:00']], 480, [W.martin, W.martin])) },
+  // Étape 2 : « Yarın da aynısı » (« demain pareil ») est une phrase TURQUE donc longue : elle doit voir la conversation pour savoir à quoi « aynısı » renvoie.
+  { id: 'st14', cote: 'salarie', categorie: 'Long TR', live: 'vide', phrase: 'Yarın da aynısı.',
+    history: tour(['me', 'Bugün Martin ofisinde 8’den 17’ye kadar çalıştım'], ['bot', 'Taslak hazır: 08:00–17:00 Martin ofisi. Kontrol edip kaydedin.']),
+    check: fiche(['heures'], heures('2026-10-02', [['08:00', '17:00']], 540, [W.martin])) },
+  // ════ SUITES DE CONVERSATION (étape 2 : le chat se souvient) ════
+  // Chaque phrase est une relance qui n'a de sens qu'avec `history`. Avec les noms du jeu (Karim, Sofiane, Kevin ; pas de « Lucas »).
+  // Bureau : demain = 2026-10-02, lundi = 2026-10-05 (aujourd'hui est un jeudi : « jeudi » seul serait aujourd'hui, d'où « lundi »).
+  { id: 'sc01', cote: 'bureau', categorie: 'Suite de conversation', history: KARIM_DEMAIN, phrase: 'Et Kevin aussi',
+    check: act('affecter_planning', (d) => all(eq(d, 'user_id', 'u-kevin'), eq(d, 'worksite_id', W.dupont), eq(d, 'dates', ['2026-10-02']))) },
+  { id: 'sc02', cote: 'bureau', categorie: 'Suite de conversation', history: KARIM_DEMAIN, phrase: 'Pareil mais lundi',
+    check: act('affecter_planning', (d) => all(eq(d, 'user_id', 'u-karim'), eq(d, 'worksite_id', W.dupont), eq(d, 'dates', ['2026-10-05']))) },
+  { id: 'sc03', cote: 'bureau', categorie: 'Suite de conversation', history: KARIM_DEMAIN, phrase: 'Non, retire ça', check: annulerAffectation },
+  { id: 'sc04', cote: 'bureau', categorie: 'Suite de conversation', phrase: 'Combien d’heures sur ce chantier ?',
+    history: tour(['me', 'Quel est le chantier qui a le plus d’heures ?'], ['bot', 'C’est Villa Dupont à Lyon : 152 h au total depuis le début.']),
+    check: answer(undefined, /dupont|152/i) },
+  // Le lecteur local lirait « pose » + « maladie » et rendrait un formulaire VIDE : la relance (« pareil », « -le ») saute le lecteur local.
+  { id: 'sc05', cote: 'bureau', categorie: 'Suite de conversation', phrase: 'Pareil pour Sofiane, pose-le en maladie',
+    history: tour(['me', 'Kevin est malade aujourd’hui et demain'], ['bot', 'C’est noté : Kevin en arrêt maladie du 1er au 2 octobre.']),
+    check: act('poser_absence', (d) => all(eq(d, 'user_id', 'u-sofiane'), eq(d, 'absence_type', 'maladie'), eq(d, 'du', TODAY), eq(d, 'au', '2026-10-02'))) },
+  { id: 'sc06', cote: 'bureau', categorie: 'Suite de conversation', phrase: 'Et l’après-midi de 14h à 18h',
+    history: tour(['me', 'Rajoute-moi une intervention à Lyon demain de 8h à 12h'], ['bot', 'C’est fait : intervention à Lyon demain de 08:00 à 12:00.']),
+    check: act('affecter_planning', (d) => all(eq(d, 'user_id', ME), eq(d, 'worksite_id', W.autre), eq(d, 'dates', ['2026-10-02']), eq(d, 'debut', '14:00'), eq(d, 'fin', '18:00'), has(d, 'note', /lyon/i))) },
+  // Un « comment » qui continue un guide est une QUESTION (repondre), pas l'ordre de supprimer.
+  { id: 'sc07', cote: 'bureau', categorie: 'Suite de conversation', phrase: 'Et pour la supprimer ?',
+    history: tour(['me', 'Comment je déplace une intervention ?'], ['bot', 'Déplacer une intervention :\n1. Sur le planning, cliquez la case.\n2. Choisissez la nouvelle date.\n3. Enregistrez.']),
+    check: answer(undefined, /supprim|retir|effac|corbeille|croix/i) },
+  // Salarié, français. Journée vide : les heures de ce matin ne sont qu'un brouillon (le cas n'est pas « Déjà noté aujourd'hui »).
+  { id: 'sc08', cote: 'salarie', categorie: 'Suite de conversation', live: 'vide', phrase: 'Et l’après-midi de 13h à 16h30 pareil',
+    history: tour(['me', 'Ce matin 7h30-12h chez Dupont'], ['bot', 'Brouillon : 07:30–12:00 Villa Dupont. Vérifiez, puis enregistrez.']),
+    check: draft(apresMidiDeSuite(W.dupont, ['07:30', '12:00'], ['13:00', '16:30'])) },
+  { id: 'sc09', cote: 'salarie', categorie: 'Suite de conversation', live: 'vide', phrase: 'et la pause c’était 30 minutes',
+    history: tour(['me', 'J’ai travaillé de 8h à 16h30 chez Martin'], ['bot', 'Brouillon : 08:00–16:30 Bureau Martin. Vérifiez, puis enregistrez.']),
+    check: draft((l) => (l.length === 1 && l[0].worksite_id === W.martin && l[0].start === '08:00' && l[0].end === '16:30' && l[0].break_minutes === 30 ? null : `lignes : ${JSON.stringify(l.map((x) => [x.worksite_id, x.start, x.end, x.break_minutes]))} (attendu UNE ligne 08:00-16:30 Bureau Martin, pause 30)`)) },
+  { id: 'sc10', cote: 'salarie', categorie: 'Suite de conversation', phrase: 'Et Kevin ?',
+    history: tour(['me', 'Où est Sofiane demain ?'], ['bot', 'Demain — Sofiane : Pizzeria Exemple (Mâcon), 8h–12h']),
+    check: coll('kevin', '2026-10-02') },
+  // Salarié, turc : relances courtes (un seul indice de turc, donc profil court), sur une phrase turque d'avant.
+  { id: 'sc11', cote: 'salarie', categorie: 'Suite de conversation', live: 'vide', phrase: 'Mola bir saatti.',
+    history: tour(['me', 'Bugün Martin ofisinde 8’den 17’ye kadar çalıştım'], ['bot', 'Taslak hazır: 08:00–17:00 Martin ofisi. Kontrol edip kaydedin.']),
+    check: draft((l) => (l.length === 1 && l[0].worksite_id === W.martin && l[0].start === '08:00' && l[0].end === '17:00' && l[0].break_minutes === 60 ? null : `lignes : ${JSON.stringify(l.map((x) => [x.worksite_id, x.start, x.end, x.break_minutes]))} (attendu UNE ligne 08:00-17:00 Bureau Martin, pause 60)`)) },
+  // La réponse doit REPRENDRE les 7 h 30 d'hier (la relance est comprise) ; sa langue n'est pas contrôlée ici : un seul indice de turc
+  // = profil court, dont la consigne répond en français (le turc complet, lui, passe par le profil long et le contrôle `enTurc` de st05).
+  { id: 'sc12', cote: 'salarie', categorie: 'Suite de conversation', phrase: 'Peki ya dün?',
+    history: tour(['me', 'Bu hafta kaç saat çalıştım?'], ['bot', 'Bu hafta toplam 7 saat 30 dakika çalıştınız.']),
+    check: answer(undefined, /7/) },
+  // La RÉPONSE à une question de l'assistant : l'écran recolle la demande d'origine à la réponse (« demande, réponse »), alors que `history` porte déjà
+  // la demande. Attendu : l'ACTION complète, jamais une réponse du genre « c'est déjà fait » ni un traitement de « Villa Dupont » seul.
+  { id: 'sc13', cote: 'bureau', categorie: 'Suite de conversation', phrase: 'Mets Karim demain, Villa Dupont',
+    history: tour(['me', 'Mets Karim demain'], ['bot', 'Sur quel chantier ?']),
+    check: act('affecter_planning', (d) => all(eq(d, 'user_id', 'u-karim'), eq(d, 'worksite_id', W.dupont), eq(d, 'dates', ['2026-10-02']))) },
+  // Salarié : la réserve de « Villa Dupont » (la ligne e1 du jeu), pas une réponse.
+  { id: 'sc14', cote: 'salarie', categorie: 'Suite de conversation', phrase: 'Il y a une fissure au plafond, Villa Dupont',
+    history: tour(['me', 'Il y a une fissure au plafond'], ['bot', 'Sur quel chantier ?']),
+    check: act('signaler_reserve', (d) => all(eq(d, 'entry_id', 'e1'), has(d, 'detail', /fissure/i))) },
+  // Plage horaire NUE (ni « pareil » ni chantier dit) : le chantier est celui de ce matin (Bureau Martin), pas celui du planning (Villa Dupont).
+  { id: 'sc15', cote: 'salarie', categorie: 'Suite de conversation', live: 'vide', phrase: 'Et l’après-midi de 13h à 16h30',
+    history: tour(['me', 'Ce matin 7h30-12h chez Martin'], ['bot', 'Brouillon : 07:30–12:00 Bureau Martin. Vérifiez, puis enregistrez.']),
+    check: draft(apresMidiDeSuite(W.martin, ['07:30', '12:00'], ['13:00', '16:30'])) },
 ];
