@@ -372,10 +372,11 @@ Deno.test('Dépôt réel : comptes comparés au §0.2 (écarts expliqués)', asy
   egal([fenetres.length, parType.fenetre.cles], [38, 34], 'fenêtres : 38 appels (27 + 11) pour 34 modules');
   if (!modulesVia('dynamic').has('fenetre:training-video-upload')) throw new Error('dynamic(loadUploadPanel) doit être résolu');
 
-  // 55 `open={…}` JSX (§0.2) = 33 « dialogue » + 22 d'un module fenêtre ; le 56e est `<Dialog open …>` sans accolades
+  // 55 `open={…}` JSX (§0.2) = 33 « dialogue » + 22 d'un module fenêtre (étape 1 du plan d'intégration du design salarié : 32 depuis
+  // le retrait de la fenêtre morte « Sur quel chantier ? » de poseur-day.tsx) ; le 56e est `<Dialog open …>` sans accolades
   // (components/kiosk-pair-confirm.tsx:239, toujours ouverte), un `open=` que le §0.2 ne compte pas. components/ui/info-tip.tsx est hors compte.
-  egal([parType.dialogue.occurrences, reel.dialoguesDeFenetre.length], [33, 23], 'dialogues : 33 gardés, 23 exclus (modules fenêtres)');
-  egal(parType.dialogue.cles, 33, 'dialogues : 33 clés (§0.2 : ≈ 35 sur 55)');
+  egal([parType.dialogue.occurrences, reel.dialoguesDeFenetre.length], [32, 23], 'dialogues : 32 gardés, 23 exclus (modules fenêtres)');
+  egal(parType.dialogue.cles, 32, 'dialogues : 32 clés (§0.2 : ≈ 35 sur 55 ; −1 avec la fenêtre morte de poseur-day.tsx)');
   if (!reel.dialoguesDeFenetre.some((o) => o.fichier === 'components/kiosk-pair-confirm.tsx')) throw new Error('le `open` nu de kiosk-pair-confirm doit être vu');
 
   egal([parType.rpc.cles, parType.rpc.occurrences], [49, 65], 'RPC : 49 noms, 65 appels (§0.2 : 49)');
@@ -474,9 +475,9 @@ Deno.test('Dépôt réel : les deux .from(variable) de lib/erase.ts se déclaren
   }
 });
 
-Deno.test('Dépôt réel : T10 — 557 gestionnaires onClick / onSelect / onSubmit dans 73 fichiers, tous dans app/ ou components/', async () => {
+Deno.test('Dépôt réel : T10 — 554 gestionnaires onClick / onSelect / onSubmit dans 73 fichiers, tous dans app/ ou components/', async () => {
   const { reel } = await depot();
-  egal([Object.keys(reel.clics).length, Object.values(reel.clics).reduce((a, b) => a + b, 0)], [73, 557], 'clics.snapshot de départ (étape 1 : la liste des formations a son fichier)');
+  egal([Object.keys(reel.clics).length, Object.values(reel.clics).reduce((a, b) => a + b, 0)], [73, 554], 'clics.snapshot de départ (étape 1 : −3 avec le code mort de poseur-day.tsx, la liste des formations a son fichier)');
   const dehors = Object.keys(reel.clics).filter((f) => !/^(app|components)\//.test(f));
   egal(dehors, [], 'aucun gestionnaire JSX hors app/ et components/');
 });

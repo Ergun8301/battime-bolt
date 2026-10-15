@@ -7,7 +7,7 @@ import { TimeEntry, Worksite, Planning } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Loader2, Copy, AlertTriangle, FolderOpen, Trash2, Paperclip, Hammer, CheckCircle2, MapPin, Sparkles, Play } from 'lucide-react';
+import { Loader2, Copy, AlertTriangle, FolderOpen, Trash2, Paperclip, Hammer, CheckCircle2, MapPin, Sparkles } from 'lucide-react';
 import { format, subDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -20,7 +20,7 @@ import { insertWorkerEntry } from '@/lib/worker-entry';
 import { planningsToMaterialise, remainingPlannings, sendablePlannings, visiblePlannings } from '@/lib/work-status';
 import { copyLinesTo, materialisePlanned as materialiseDay, setDayMealOnline, submitDrafts } from '@/lib/worker-day';
 import { useMealEnabled } from '@/lib/meal-setting';
-import { loadCompanySettings, useCompanySettings } from '@/lib/company-settings';
+import { useCompanySettings } from '@/lib/company-settings';
 import { fmtHeure } from '@/lib/corrections';
 import { fetchEntryEdits, lastEdit, type EntryEdit } from '@/lib/office-edits';
 import { diffLabels } from '@/supabase/functions/_shared/office-edits';
@@ -28,10 +28,8 @@ import { positionUtile, fmtPrecision, fmtCoord } from '@/lib/position';
 import { parisHHmm } from '@/lib/utils';
 import { TimeCylinder, snapToGrid } from '@/components/time-cylinder';
 import LiveTimer from '@/components/live-timer';
-import { useOwnLiveSession, startLiveSession, announceLiveChange, readOwnLiveSession, type OwnLiveSession } from '@/lib/live-session';
+import { useOwnLiveSession, announceLiveChange, readOwnLiveSession, type OwnLiveSession } from '@/lib/live-session';
 import { finishLiveAt } from '@/lib/live-end-at';
-import { geoInfoSeen, markGeoInfoSeen } from '@/lib/position-info';
-import GeoInfoDialog from '@/components/geo-info-dialog';
 import { isExitToComplete, EXIT_TO_COMPLETE_MSG } from '@/lib/qr-entry';
 import { bestPlanningFor, findOverlap, firstBlockingOverlap, isEmptyDraft, keptBreak, pauseAsks, spanMinutes, type PauseAsk, type PlannedState, type Span } from '@/supabase/functions/_shared/day-hours';
 import { pauseError } from '@/supabase/functions/_shared/pause';
@@ -367,14 +365,6 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
   const [docsWs, setDocsWs] = useState<{ id: string; name: string; entryId: string | null } | null>(null);
   // Lot 11 : la carte dont le formulaire « Lever la réserve » est ouvert.
   const [liftingId, setLiftingId] = useState<string | null>(null);
-  // « Je commence » sur une carte (lot 9) : la carte en cours de démarrage, et
-  // le départ mis en attente derrière l'information sur l'endroit (CNIL).
-  const [starting, setStarting] = useState<string | null>(null);
-  const [geoAsk, setGeoAsk] = useState<{ worksiteId: string; planningId: string | null; key: string } | null>(null);
-  // « Je commence sur un autre chantier » : le choix du chantier quand aucune
-  // carte ne convient (journée vide, chantier non prévu, pas de planning).
-  const [pickStart, setPickStart] = useState(false);
-  const [pickQuery, setPickQuery] = useState('');
   // Suppression d'une intervention : jamais sans confirmation (gant de chantier,
   // écran mouillé — un appui involontaire ne doit pas effacer une demi-journée).
   const [confirmDel, setConfirmDel] = useState<
@@ -1543,7 +1533,6 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
   const pendingTotal = pendingEntries.reduce((s, e) => s + e.total_minutes, 0);
   const totalMinutes = serverTotal + pendingTotal;
   const nbChantiers = liveEntries.length + pendingEntries.length;
-  const hasDrafts = liveEntries.some((e) => e.status === 'draft') || pendingEntries.length > 0;
   const hasRealDrafts = liveEntries.some((e) => e.status === 'draft' && !e.locked);
   const allSubmitted = liveEntries.length > 0 && liveEntries.every((e) => e.status !== 'draft') && pendingEntries.length === 0;
   const frozen = allSubmitted; // a sent day stays frozen; every change re-asks to confirm
@@ -1600,13 +1589,6 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
   const liveSlotId = livePlace?.slotId ?? null;
   const liveSince = livePlace?.since ?? '';
   const liveSynthetic = !!livePlace && !liveSlotId;
-  // Un seul chrono par salarié : « Je commence » n'apparaît que sur le jour
-  // courant, en ligne, mois ouvert, et quand on SAIT qu'aucun chrono ne tourne.
-  // Lot 12 : le téléphone ne COMMENCE plus de journée. Avec une tablette, on
-  // commence en scannant le QR ; sans tablette, on saisit ses heures (« + »).
-  // Un pointage ouvert se termine sur la petite carte (LiveTimer).
-  const canStartLive = false as boolean;
-
   /**
    * Les chantiers prévus par le bureau que le salarié n'a pas ouverts : ils
    * partent AVEC le reste de la feuille.
@@ -1696,10 +1678,6 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
     ? choosable.filter((w) => w.client_name.toLowerCase().includes(cq) || (w.city || '').toLowerCase().includes(cq))
     : choosable;
   const autreId = worksites.find((w) => w.client_name === OTHER_NAME)?.id || '';
-  const pq = pickQuery.trim().toLowerCase();
-  const pickWorksites = pq
-    ? choosable.filter((w) => w.client_name.toLowerCase().includes(pq) || (w.city || '').toLowerCase().includes(pq))
-    : choosable;
 
   /**
    * « Autre » nommé : on en fait un vrai chantier.
@@ -1727,62 +1705,6 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
       setCreationChantier(false);
     }
   };
-
-  /**
-   * « Je commence » sur la carte d'un chantier (lot 9).
-   *
-   * Remplace le bloc « Pointer en direct » (liste déroulante + bouton) : le
-   * chantier est celui qu'on touche. Le chrono passe par lib/live-session.ts,
-   * exactement comme l'Assistant BEMEXO et comme avant.
-   *
-   * L'INFORMATION SUR L'ENDROIT RESTE AVANT LA PREMIÈRE COLLECTE (lot 6, CNIL) :
-   * elle est attachée au chrono, et au chrono seulement. « + » (heures à la
-   * main, sans chrono) ne demande jamais l'endroit, donc ne l'affiche pas.
-   *
-   * Sans réseau, pas de chrono : l'heure de départ est posée par le serveur,
-   * jamais par l'horloge du téléphone. On renvoie vers « + ».
-   */
-  const startOnCard = async (worksiteId: string, planningId: string | null, key: string, infoVue = false) => {
-    if (!user?.company_id) return;
-    const sansReseau = 'Pas de réseau : le pointage en direct en a besoin. Note tes heures avec le bouton +.';
-    if (!navigator.onLine) { toast.error(sansReseau); return; }
-    setStarting(key);
-    try {
-      // L'interrupteur « position au pointage » est relu AU GESTE (au plus une requête par 30 s) :
-      // le patron qui l'éteint pour réduire la collecte doit être suivi tout de suite, pas après
-      // des heures d'écran ouvert. Lecture impossible : on garde la valeur de l'écran.
-      const positionVoulue = (await loadCompanySettings(user.company_id, 'worker', { maxAgeMs: 30_000 }))
-        ?.positionTrackingEnabled ?? positionActive;
-      if (positionVoulue && !infoVue && !geoInfoSeen(user.id)) { setGeoAsk({ worksiteId, planningId, key }); return; }
-      const r = await startLiveSession({
-        userId: user.id, companyId: user.company_id, worksiteId, planningId, workDate: date, positionActive: positionVoulue,
-      });
-      // Relu dans tous les cas : un chrono déjà ouvert (23505) doit se montrer.
-      announceLiveChange();
-      if (r.running) { toast.error('Un pointage est déjà en cours.'); return; }
-      toast.success('Pointage démarré');
-    } catch (e) {
-      const msg = (e as { message?: string })?.message || '';
-      toast.error(!navigator.onLine || /failed to fetch|network/i.test(msg) ? sansReseau : msg || 'Impossible de démarrer le pointage.');
-    } finally {
-      setStarting(null);
-    }
-  };
-
-  /** Le bouton « Je commence » d'une carte. `stopPropagation` : la carte, elle, ouvre la fiche. */
-  const startButton = (worksiteId: string | null | undefined, planningId: string | null, key: string) => (
-    canStartLive && worksiteId ? (
-      <button
-        type="button"
-        className="bt-iv-go"
-        data-testid="card-start"
-        disabled={starting !== null}
-        onClick={(ev) => { ev.stopPropagation(); startOnCard(worksiteId, planningId, key); }}
-      >
-        {starting === key ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" fill="currentColor" />} Je commence
-      </button>
-    ) : null
-  );
 
   /** La carte où le chrono tourne n'ouvre pas de fiche : ses heures s'écrivent à « J'ai fini ». */
   const tapLive = () => toast.message('Pointage en cours : touche « J’ai fini » en haut quand tu as terminé.');
@@ -2093,7 +2015,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
                 {!isLive && p.state === 'incomplete' && (
                   <div className="bt-plan-warn" data-testid="card-planned-incomplete">Heures à préciser : ouvre-le pour les mettre.</div>
                 )}
-                {isLive ? <LiveLine since={liveSince} /> : startButton(p.worksite_id, p.id, item.key)}
+                {isLive ? <LiveLine since={liveSince} /> : null}
               </div>
             );
           }
@@ -2230,10 +2152,6 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
                 {entry.reception === 'sans' && <div className="bt-iv-reserve sans">✓ Sans réserve</div>}
                 {entry.reception === 'en_cours' && <div className="bt-iv-reserve encours">🔨 Chantier en cours</div>}
                 {entry.observation && <div className="bt-iv-note">{entry.observation}</div>}
-                {/* Reprendre ce chantier (l'après-midi, après la pause) : un
-                    nouveau chrono, rattaché au prévu restant de ce chantier s'il
-                    y en a un. La ligne déjà notée, elle, ne bouge pas. */}
-                {startButton(entry.worksite_id, plannedTodo.find((p) => p.worksite_id === entry.worksite_id)?.id ?? entry.planning_id ?? null, item.key)}
               </div>
             );
           }
@@ -2289,21 +2207,6 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
 
         {/* Lot 4 : les tâches du jour ajoutées par le bureau, « Fait » à cocher. */}
         <MyTasks tasks={missions.tasks} online={isOnline} busyId={missions.busyId} onToggle={missions.toggle} />
-
-        {/* Journée SANS AUCUNE carte (pas de planning, rien de saisi) : le
-            chrono se lance quand même, SANS écrire d'heures à la main (« + »
-            puis « Je commence » ferait deux lignes pour le même travail). Même
-            chemin et mêmes garde-fous que sur une carte. Dès qu'il y a une
-            carte, « Je commence » est sur la carte (demande d'Ergun : pas de
-            liste de chantiers sous les cartes). */}
-        {canStartLive && isEmpty && plannedTodo.length === 0 && (
-          <div style={{ textAlign: 'center' }}>
-            <button type="button" className="bt-ghostbtn" data-testid="start-other" disabled={starting !== null}
-              onClick={() => { setPickQuery(''); setPickStart(true); }}>
-              {starting?.startsWith('o:') ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" fill="currentColor" />} Je commence sur un autre chantier
-            </button>
-          </div>
-        )}
 
         {/* Dupliquer cette journée */}
         {!isEmpty && !monthLocked && (
@@ -2801,47 +2704,6 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
           </div>
         </DialogContent>
       </Dialog>
-
-      {/* Le chantier du chrono, quand aucune carte ne convient. Le planning du
-          jour sur ce chantier est rattaché s'il existe (même règle que les
-          cartes), sinon aucun : la carte verte « à part » le montrera. */}
-      <Dialog open={pickStart} onOpenChange={setPickStart}>
-        <DialogContent className="max-w-sm" data-testid="start-other-sheet">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><Play className="h-5 w-5" /> Sur quel chantier&nbsp;?</DialogTitle>
-          </DialogHeader>
-          <input className="bt-site-search" placeholder="Rechercher un chantier…" value={pickQuery} onChange={(e) => setPickQuery(e.target.value)} />
-          <div style={{ maxHeight: '52vh', overflowY: 'auto' }}>
-            {pickWorksites.length === 0 && <div className="bt-site-empty">Aucun chantier trouvé</div>}
-            {pickWorksites.map((ws) => {
-              const isOther = ws.client_name === OTHER_NAME;
-              const planningId = plannedTodo.find((p) => p.worksite_id === ws.id)?.id
-                ?? planning.find((p) => p.worksite_id === ws.id && !p.absence_type)?.id ?? null;
-              return (
-                <button key={ws.id} type="button" className={`bt-site${isOther ? ' other' : ''}`}
-                  onClick={() => { setPickStart(false); startOnCard(ws.id, planningId, `o:${ws.id}`); }}>
-                  <span style={{ flex: 1, minWidth: 0 }}>
-                    <span className="bt-site-name">{isOther ? 'Autre chantier' : ws.client_name}</span>
-                    <span className="bt-site-city">{isOther ? 'Travail non prévu, à préciser' : (ws.city || '')}</span>
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-          <p className="text-xs text-muted-foreground">Le chrono démarre tout de suite&nbsp;; rien n&apos;est compté avant « J&apos;ai fini ».</p>
-        </DialogContent>
-      </Dialog>
-
-      {/* L'information sur l'endroit, UNE fois, avant le premier chrono (lot 6) :
-          le départ attend « J'ai compris », puis repart tout seul. */}
-      {geoAsk && user && (
-        <GeoInfoDialog onOk={() => {
-          markGeoInfoSeen(user.id);
-          const g = geoAsk;
-          setGeoAsk(null);
-          startOnCard(g.worksiteId, g.planningId, g.key, true);
-        }} />
-      )}
 
       {/* La pièce est rattachée au jour affiché, et à l'intervention quand elle
           existe déjà en base. Un créneau prévu ou une saisie encore hors ligne
