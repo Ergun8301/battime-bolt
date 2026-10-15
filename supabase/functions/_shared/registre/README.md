@@ -33,3 +33,21 @@ Le site est exporté en statique : tout le JavaScript d'un chunk est public. `in
 Depuis 3a-2, les 34 + 19 déclarations que reçoit le modèle ne sont plus écrites dans `assistant-actions-core.ts` ni `worker-assistant-core.ts` (atteints par le navigateur) : `outils-pour.ts` les rend depuis `outils-*.ts`, et seuls `assistant-outils.ts` / `worker-outils.ts` (serveur) les exposent. Les listes d'identifiants que le navigateur lit aussi (retraits, pièces jointes…) passent par les modules légers générés `outils-listes-*.ts`.
 
 Les fichiers `*.snapshot.json`, `dettes.json` et `outils-listes-*.ts` sont générés : on ne les édite pas à la main (`avant-3a2.snapshot.json` est gelé : on ne le régénère jamais).
+
+## Ouvrir un écran (livraison 3b-1) : fichiers et budget de poids
+Écrit AVANT le code du navigateur (kB compressés, comme `npm run budget` : First Load JS ; les modules chargés à la demande ne comptent pas). Mesure de départ (origin/main 0edb2a4) : `/admin` 358 (budget 363), `/poseur` 335 (345), `/apercu/assistant` 230 et `/apercu/assistant-salarie` 282 (290). On ne relève JAMAIS un budget : si la mesure dépasse, on découpe en import dynamique.
+
+| Fichier | Où il pèse | Budget |
+|---|---|---|
+| `lib/openers.ts` (registre de la page, `openLink`, file de 10 s, `isNarrow`, validation) | chunk de l'assistant (chargé à la demande) et `/apercu/assistant*` | ≤ 1,6 |
+| `registre/ouvreurs-leger-bureau.ts` | chargé à la demande depuis `/admin` | ≤ 1,0 |
+| `registre/ouvreurs-leger-salarie.ts` | chargé à la demande depuis `/poseur` | ≤ 0,3 |
+| `lib/openers-bureau.ts` (les 26 implémentations) | chargé à la demande depuis `/admin` | ≤ 3,0 |
+| `lib/openers-salarie.ts` (les 2 implémentations) | chargé à la demande depuis `/poseur` | ≤ 0,8 |
+| ajouts à `components/admin-planning.tsx` (l'objet de poignées + l'effet) | `/admin`, premier chargement | ≤ 0,7 |
+| ajout à `app/admin/page.tsx` (abonnement) | `/admin`, premier chargement | ≤ 0,15 |
+| ajouts à `app/poseur/page.tsx` | `/poseur`, premier chargement | ≤ 0,4 |
+| `assistant-actions-core.ts` (variante du GUIDE, branche `ouvrir_fenetre`) | `/admin` et `/apercu/assistant` | ≤ 0,3 |
+| panneau (`go()`, ouverture automatique) + `lib/assistant.ts`, `lib/worker-assistant.ts` (`caps`, `auto`) | chunk de l'assistant | ≤ 0,5 |
+
+Total attendu au premier chargement : `/admin` ≈ +1,2 (≤ 363), `/poseur` ≈ +0,4 (≤ 345), `/apercu/*` ≈ +2,5 (≤ 290). Mesures réelles et vérification : voir le message du commit « budget » de la livraison.
