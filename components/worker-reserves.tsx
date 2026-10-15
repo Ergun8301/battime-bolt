@@ -11,7 +11,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/components/auth-provider';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import ReserveLiftForm from '@/components/reserve-lift-form';
+import { ReserveLiftForm } from '@/components/reserve-lift-lazy';
 import { AlertTriangle } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';

@@ -6,7 +6,6 @@ import { supabase } from '@/lib/supabase';
 import { TimeEntry, Worksite, Planning } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Calendar } from '@/components/ui/calendar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Loader2, Copy, AlertTriangle, FolderOpen, Trash2, Paperclip, Hammer, CheckCircle2, MapPin, Sparkles, Play } from 'lucide-react';
 import { format, subDays } from 'date-fns';
@@ -41,9 +40,9 @@ import { parseAfterScan, afterScanSpan, AFTER_SCAN_USE_MS, type AfterScanParams 
 import PausePicker from '@/components/pause-picker';
 import { LiveLine } from '@/components/planning-bubble';
 import { placeLive, cellKey } from '@/supabase/functions/_shared/live-place';
-import TeamDay from '@/components/team-day';
-import ChantierDocuments from '@/components/chantier-documents';
-import ReserveLiftForm from '@/components/reserve-lift-form';
+import { ReserveLiftForm } from '@/components/reserve-lift-lazy';
+import { lazyWindow } from '@/lib/lazy-window';
+import type { CalendarProps } from '@/components/ui/calendar';
 import { liftReserve, undoWorkerLift, liftErrorMessage, announceReservesChanged, RESERVES_CHANGED_EVENT } from '@/lib/reserve-lift';
 import { fetchMyClosure } from '@/lib/worker-closure';
 import { isReserveLifted } from '@/lib/reserves';
@@ -52,6 +51,16 @@ import TermineLe from '@/components/termine-le';
 import { choosableWorksites } from '@/supabase/functions/_shared/chantier-statut';
 // Lot 4 : les réunions et les tâches du jour (lecture à part, rien sur les heures).
 import { MyMeetings, MyTasks, useMyMissions } from '@/components/missions-worker';
+
+// Chargés à l'ouverture, pas au premier affichage de /poseur (étape 1 du plan d'intégration du design salarié : le
+// premier chargement ne porte plus ni le calendrier, ni les documents, ni « Mon équipe »). Même rendu qu'avant :
+//  · « Mon équipe » : chef d'équipe seulement, donc préchauffé SEULEMENT quand il est monté (warm: 'mounted') ;
+//  · les documents du chantier : fenêtre ouverte depuis la fiche (isOpen = open), préchauffée au repos ;
+//  · le calendrier de « Dupliquer cette journée » (react-day-picker, ≈ 10 kB) : pas de préchauffage automatique,
+//    le bouton « Dupliquer » le demande dès le doigt posé (CalendarLazy.preload) ; la fenêtre le montre dès qu'il est là.
+const TeamDay = lazyWindow(() => import('@/components/team-day'), { isOpen: () => true, priority: 7, warm: 'mounted' });
+const ChantierDocuments = lazyWindow(() => import('@/components/chantier-documents'), { isOpen: (p) => p.open, priority: 9 });
+const CalendarLazy = lazyWindow<CalendarProps>(() => import('@/components/ui/calendar').then((m) => ({ default: m.Calendar })), { isOpen: () => true, warm: 'never' });
 
 /** Une correction reçue du bureau, telle que la journée du salarié l'affiche. */
 interface CorrectionVue {
@@ -2299,7 +2308,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
         {/* Dupliquer cette journée */}
         {!isEmpty && !monthLocked && (
           <div style={{ textAlign: 'center' }}>
-            <button type="button" className="bt-dup" data-guide="journee.copier" onClick={() => { setCopyDates([]); setRepeatOpen(true); }}>
+            <button type="button" className="bt-dup" data-guide="journee.copier" onPointerDown={() => CalendarLazy.preload()} onClick={() => { setCopyDates([]); setRepeatOpen(true); }}>
               <Copy className="h-4 w-4" /> Dupliquer cette journée
             </button>
           </div>
@@ -2575,7 +2584,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
           </DialogHeader>
           <p className="text-sm text-muted-foreground">Choisis les jours où copier cette journée (mêmes chantiers + heures).</p>
           <div className="flex justify-center">
-            <Calendar mode="multiple" selected={copyDates} onSelect={(d) => setCopyDates(d || [])} locale={fr} weekStartsOn={1} disabled={{ before: new Date() }} />
+            <CalendarLazy mode="multiple" selected={copyDates} onSelect={(d) => setCopyDates(d || [])} locale={fr} weekStartsOn={1} disabled={{ before: new Date() }} />
           </div>
           <Button className="w-full h-11" data-guide="copier.valider" disabled={copying || copyTargetStrs.length === 0} onClick={() => copyToDates(copyTargetStrs)}>
             {copying ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Copy className="h-4 w-4 mr-2" />}

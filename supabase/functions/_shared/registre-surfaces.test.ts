@@ -361,13 +361,15 @@ Deno.test('Dépôt réel : le lexeur lit les 245 fichiers sans perdre une accola
  */
 Deno.test('Dépôt réel : comptes comparés au §0.2 (écarts expliqués)', async () => {
   const { reel, parType } = await depot();
-  // 22 lazyWindow (§0.2 : 22) + 8 dynamic (§0.2 : 7). L'écart : trainings-admin.tsx:48 écrit `dynamic(loadUploadPanel, …)` avec
+  // 26 lazyWindow (§0.2 : 22 ; +4 depuis l'étape 1 du plan d'intégration du design salarié : « Mon équipe », le calendrier de
+  // « Dupliquer », le formulaire de réserve et la liste des formations passent en chargement à l'ouverture ; les documents du chantier
+  // avaient déjà leur clé côté bureau) + 8 dynamic (§0.2 : 7). L'écart : trainings-admin.tsx:48 écrit `dynamic(loadUploadPanel, …)` avec
   // `const loadUploadPanel = () => import('@/components/training-video-upload')` ; une expression régulière sur
   // `dynamic(() => import(` ne le voit pas, le scanner résout le chargeur nommé du même fichier.
   const fenetres = reel.occurrences.filter((o) => o.type === 'fenetre');
   const modulesVia = (v: string) => new Set(fenetres.filter((o) => o.via === v).map((o) => o.cle));
-  egal([modulesVia('lazyWindow').size, modulesVia('dynamic').size], [22, 8], 'fenêtres : 22 lazyWindow + 8 dynamic (7 selon §0.2)');
-  egal([fenetres.length, parType.fenetre.cles], [33, 30], 'fenêtres : 33 appels (22 + 11) pour 30 modules');
+  egal([modulesVia('lazyWindow').size, modulesVia('dynamic').size], [26, 8], 'fenêtres : 26 lazyWindow + 8 dynamic (7 selon §0.2)');
+  egal([fenetres.length, parType.fenetre.cles], [38, 34], 'fenêtres : 38 appels (27 + 11) pour 34 modules');
   if (!modulesVia('dynamic').has('fenetre:training-video-upload')) throw new Error('dynamic(loadUploadPanel) doit être résolu');
 
   // 55 `open={…}` JSX (§0.2) = 33 « dialogue » + 22 d'un module fenêtre ; le 56e est `<Dialog open …>` sans accolades
@@ -472,9 +474,9 @@ Deno.test('Dépôt réel : les deux .from(variable) de lib/erase.ts se déclaren
   }
 });
 
-Deno.test('Dépôt réel : T10 — 557 gestionnaires onClick / onSelect / onSubmit dans 72 fichiers, tous dans app/ ou components/', async () => {
+Deno.test('Dépôt réel : T10 — 557 gestionnaires onClick / onSelect / onSubmit dans 73 fichiers, tous dans app/ ou components/', async () => {
   const { reel } = await depot();
-  egal([Object.keys(reel.clics).length, Object.values(reel.clics).reduce((a, b) => a + b, 0)], [72, 557], 'clics.snapshot de départ');
+  egal([Object.keys(reel.clics).length, Object.values(reel.clics).reduce((a, b) => a + b, 0)], [73, 557], 'clics.snapshot de départ (étape 1 : la liste des formations a son fichier)');
   const dehors = Object.keys(reel.clics).filter((f) => !/^(app|components)\//.test(f));
   egal(dehors, [], 'aucun gestionnaire JSX hors app/ et components/');
 });

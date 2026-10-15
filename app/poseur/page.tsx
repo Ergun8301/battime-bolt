@@ -31,7 +31,7 @@ import { lazyWindow, warmAll } from '@/lib/lazy-window';
 import { isPreviewHost } from '@/lib/hosting';
 import { RESERVES_CHANGED_EVENT } from '@/lib/reserve-lift';
 // Formations (lot 6, oct. 2026) : rien ne s'affiche tant que la migration n'est pas passée.
-import PoseurTrainings, { TrainingsBanner, useMyTrainings } from '@/components/poseur-trainings';
+import { TrainingsBanner, useMyTrainings } from '@/components/poseur-trainings';
 import { GraduationCap } from 'lucide-react';
 
 // Lot 5 « site rapide 1 » : les onglets Semaine / Mois / Historique et les fenêtres fermées ne pèsent plus
@@ -47,6 +47,9 @@ const PoseurHistory = lazyWindow(() => import('@/components/poseur-history'), { 
   loadingFallback: <div className="space-y-4"><Skeleton className="h-12 w-48" />{[1, 2, 3].map((i) => <Skeleton key={i} className="h-32" />)}</div> });
 const PoseurMonth = lazyWindow<DayPickProps>(() => import('@/components/poseur-month'), { isOpen: () => true, priority: 3, errorFallback: NON_CHARGE,
   loadingFallback: <div className="space-y-4"><Skeleton className="h-10 w-full" />{[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full" />)}</div> });
+// Formations : la liste (components/poseur-trainings-list.tsx) se charge à l'ouverture de l'onglet ; le hook et le bandeau restent dans la page.
+const PoseurTrainings = lazyWindow(() => import('@/components/poseur-trainings-list'), { isOpen: () => true, priority: 6, errorFallback: NON_CHARGE,
+  loadingFallback: <div className="space-y-2">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-20 w-full" />)}</div> });
 const LeaveRequestDialog = lazyWindow(() => import('@/components/leave-request-dialog'), { isOpen: (p) => p.open, priority: 4 });
 // Assistant : monté dès que son code est là, même fermé (il garde la mémoire de la conversation).
 const WorkerAssistant = lazyWindow(() => import('@/components/worker-assistant'), { isOpen: (p) => !!p.open, priority: 5, warm: 'mounted', mount: 'warm' });

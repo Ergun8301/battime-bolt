@@ -58,7 +58,7 @@ export const SURFACES_SALARIE: Record<string, string[]> = {
   // Copier / dupliquer : insère des brouillons ; « Annuler » de l'assistant ne retire que les copies restées telles quelles.
   S33: ['ancre:journee.copier', 'ecriture:lib/worker-day#copyLinesTo', 'table:time_entries:insert', 'table:time_entries:delete'],
   S34: [
-    'dialogue:components/poseur-day#repeatOpen', 'ancre:copier.valider', 'ancre:journee.copier',
+    'dialogue:components/poseur-day#repeatOpen', 'fenetre:ui/calendar', 'ancre:copier.valider', 'ancre:journee.copier',
     'ecriture:lib/worker-day#copyLinesTo', 'table:time_entries:insert', 'table:time_entries:delete',
   ],
   // La carte d'une ligne montre son état (brouillon, envoyée, chez le comptable, retirée) : c'est aussi ce que touche le guide.
@@ -97,12 +97,12 @@ export const SURFACES_SALARIE: Record<string, string[]> = {
 
   // ── O7 · Réserves ─────────────────────────────────────────────────────────
   S59: ['dialogue:components/worker-reserves#open', 'ancre:reserves.bandeau'],
-  S60: ['ancre:reserves.lever', 'ancre:reserves.valider', 'rpc:mark_reserve_fixed', 'ecriture:lib/reserve-lift#liftReserve'],
+  S60: ['ancre:reserves.lever', 'ancre:reserves.valider', 'fenetre:reserve-lift-form', 'rpc:mark_reserve_fixed', 'ecriture:lib/reserve-lift#liftReserve'],
   S61: ['rpc:mark_reserve_fixed', 'ecriture:lib/reserve-lift#undoWorkerLift'],
 
   // ── O8 · Formations ───────────────────────────────────────────────────────
   // Les `ecriture:` de lecture (`fetchMy*`) y figurent parce que le scanner compte tout export de lib/ qui appelle `.rpc(` (même en lecture).
-  S62: ['rpc:my_trainings', 'rpc:my_training_videos', 'ecriture:lib/trainings#fetchMyTrainings', 'ecriture:lib/training-videos#fetchMyVideos'],
+  S62: ['fenetre:poseur-trainings-list', 'rpc:my_trainings', 'rpc:my_training_videos', 'ecriture:lib/trainings#fetchMyTrainings', 'ecriture:lib/training-videos#fetchMyVideos'],
   S63: ['fenetre:training-video-player'],
   S64: ['rpc:set_training_seen', 'rpc:set_training_video_seen', 'ecriture:lib/trainings#setTrainingSeen', 'ecriture:lib/training-videos#setVideoSeen'],
 
@@ -122,7 +122,7 @@ export const SURFACES_SALARIE: Record<string, string[]> = {
   S68: ['ancre:docs.envoyer', 'rpc:set_worksite_client_email'],
 
   // ── O10 · Chef d'équipe ───────────────────────────────────────────────────
-  S69: ['ancre:equipe.jour', 'ancre:equipe.salarie'],
+  S69: ['fenetre:team-day', 'ancre:equipe.jour', 'ancre:equipe.salarie'],
   // Corriger du déjà envoyé : journal + heures dans une transaction (`correct_time_entry`), puis notification du salarié (`send-push`).
   S70: [
     'ancre:equipe.corriger', 'ancre:equipe.ok', 'rpc:correct_time_entry', 'rpc:lead_send_entries',
@@ -140,7 +140,7 @@ export const SURFACES_SALARIE: Record<string, string[]> = {
   S75: ['ancre:menu.infos', 'ancre:infos.fermer'],
   // Les entrées du menu (journée, semaine, mois, historique) portent un `data-guide` calculé (MENU_GUIDE[t.value]) : le scanner n'en voit
   // qu'une expression, clé `ancre-dynamique:<fichier>:<ligne>` (la ligne bougera si le fichier est remanié au-dessus : T2 le signalera).
-  S77: ['ancre-dynamique:app/poseur/page.tsx:525', 'route:/poseur'],
+  S77: ['ancre-dynamique:app/poseur/page.tsx:528', 'route:/poseur'],
 
   // ── O12 · Sans réseau ─────────────────────────────────────────────────────
   // Le transfert des saisies gardées sur le téléphone, automatique au retour du réseau : insère les lignes, puis les bascule (S105 : le bouton).
