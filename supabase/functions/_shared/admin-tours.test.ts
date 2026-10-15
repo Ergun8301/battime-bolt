@@ -415,11 +415,15 @@ Deno.test('Guides bureau : les phrases avec fichier (b17, b18, b19) n’ont jama
 // répond plus par « Archiver » ; la fiche « borne » dit où est le bouton et ce que fait la fenêtre) et deux fiches sont ajoutées (« Imprimer le planning »,
 // « Terminer un chantier »). `[lien:…]` était DÉJÀ imprimé avant 3b-0 : il n'est pour rien dans le changement. Le prochain déplacement sera 3b-1 (variante de GUIDE
 // derrière le secret) ; ce test se met alors à jour de la même façon, avec sa date, jamais en le contournant.
-Deno.test('Guides bureau : la consigne envoyée au modèle porte l’empreinte déclarée de 3b-0, et ne parle pas des guides', async () => {
+// EMPREINTE DÉCLARÉE, correction de relecture 3b-1 (2026-10-15). Avant : 12 791 octets, SHA-256 308fecf4…6a3f. Après : 12 778 octets, SHA-256 5766f6e9…3198.
+// Pourquoi elle bouge, exprès : la PR #200 avait mis 4 étapes dans quatre fiches (archiver_client, terminer_chantier, telecharger, imprimer_planning) alors que la règle
+// de assistant-aide.test.ts est « 3 étapes au plus » (et citait un libellé « Télécharger les heures » qui n'est un bouton nulle part). Les étapes sont fusionnées,
+// sans perdre d'information, et le renvoi pointe le vrai bouton « Exporter ». Aucune autre fiche ne change.
+Deno.test('Guides bureau : la consigne envoyée au modèle porte l’empreinte déclarée (3b-0, corrigée à la relecture 3b-1), et ne parle pas des guides', async () => {
   const bytes = new TextEncoder().encode(guideForPrompt());
-  if (bytes.length !== 12791) throw new Error(`guideForPrompt : ${bytes.length} octets (12791 attendus)`);
+  if (bytes.length !== 12778) throw new Error(`guideForPrompt : ${bytes.length} octets (12778 attendus)`);
   const sha = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))).map((b) => b.toString(16).padStart(2, '0')).join('');
-  eq(sha, '308fecf470fb75d8132b997e2f11e0bc528000cdcf0730974e911c24645b6a3f', 'SHA-256 de guideForPrompt');
+  eq(sha, '5766f6e975044b6dd3cd6964b8ab2b1414b51fd9ae7b89aa6002fa44d0273198', 'SHA-256 de guideForPrompt');
   const prompt = actionPrompt(CTX, '{}', guideForPrompt(), 'x');
   if (/Me guider pas à pas|guide:/.test(prompt)) throw new Error('la consigne ne doit pas contenir les guides pas à pas');
 });

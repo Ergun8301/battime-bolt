@@ -19,6 +19,7 @@
 // navigateur ; `code` : fichiers de lib/ réellement appelés par ce `case` (l'exécuteur lui-même quand il écrit aussi en ligne) ; `retrait` :
 // REMOVAL_TYPES ; `pieceJointe` : ATTACHMENT_ACTIONS ; `domaines` : tool-domains.ts (ces trois listes sont maintenant générées d'ici : outils-listes-*.ts). Les lignes « note » justifient une valeur sûre mais peu
 // évidente, les lignes « incertain » signalent une valeur à confirmer.
+import { outilOuvrir } from './outil-ouvrir.ts';
 import type { Outil } from './types.ts';
 import { ABSENCE_KINDS, DOC_CATEGORIES, NAV_ACTIONS } from './vocab.ts';
 
@@ -688,4 +689,7 @@ export const OUTILS_BUREAU: Outil[] = [
     executeur: 'annuler_invitation', code: ['lib/admin-writes.ts', 'lib/assistant-actions.ts'],
   },
   // ── fin des outils de la livraison 3a (ci-dessus : généré par scripts/registre-outils-gen.ts ; les outils des livraisons suivantes s'ajoutent APRÈS ce repère) ──
+
+  // ── Livraison 3b-1 (à la main, GÉNÉRÉ depuis les ouvreurs) : `ouvrir_fenetre`, servi seulement si l'interrupteur `ouvrir` est allumé. ──
+  outilOuvrir('bureau'),
 ];

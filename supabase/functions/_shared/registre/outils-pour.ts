@@ -39,10 +39,18 @@ export function declarer(o: Outil, livraison: Livraison): FunctionDecl {
 }
 
 /** Les outils d'un côté servis à `livraison` (les suivants restent éteints), avec `fichier` : ceux qui lisent un document joint. */
-export function outilsServisPour(outils: readonly Outil[], cote: Cote, o: { fichier?: boolean; livraison?: Livraison } = {}): FunctionDecl[] {
+export function outilsServisPour(
+  outils: readonly Outil[], cote: Cote, o: { fichier?: boolean; livraison?: Livraison; etat?: { ouvrir?: boolean }; coupes?: readonly string[] } = {},
+): FunctionDecl[] {
   const livraison = o.livraison ?? LIVRAISON_COURANTE;
   return outils
-    .filter((x) => x.cote === cote && livraisonAtteinte(x.livraison, livraison) && (!o.fichier || !!x.pieceJointe))
+    .filter((x) => x.cote === cote
+      // Un outil à interrupteur (`ouvrir_fenetre`) n'est servi que si CET interrupteur est allumé, quelle que soit la livraison, et jamais avec un fichier
+      // joint (un PDF piégé ne doit pas pouvoir ouvrir un écran) ; les autres suivent leur livraison, comme avant 3b-1.
+      && (x.interrupteur ? !!o.etat?.[x.interrupteur] && !o.fichier : livraisonAtteinte(x.livraison, livraison))
+      && (!o.fichier || !!x.pieceJointe)
+      // `outils_coupes` (AI_ETAPE3) : arrêt d'urgence d'un outil par son nom. `repondre` ne se coupe pas (rien ne répondrait plus).
+      && (x.id === 'repondre' || !(o.coupes ?? []).includes(x.id)))
     .map((x) => declarer(x, livraison));
 }
 

@@ -25,15 +25,16 @@ import { ASSISTANT_FUNCTIONS } from './assistant-outils.ts';
 import { WORKER_ATTACHMENT_ACTIONS, WORKER_GUIDE, WORKER_NAV, WORKER_REMOVAL_TYPES, workerActionMode } from './worker-assistant-core.ts';
 import { WORKER_FUNCTIONS } from './worker-outils.ts';
 import { OFFICE_DOMAINS, WORKER_DOMAINS } from './tool-domains.ts';
-import { ADMIN_TOURS } from './admin-tours.ts';
+import { ADMIN_SCREENS, ADMIN_TOURS } from './admin-tours.ts';
 import { WORKER_TOURS } from './worker-tours.ts';
 import { CASES } from '../assistant-eval/cases.ts';
 import { grouperParCle, masquer, scannerSurfaces, type ResultatScan } from './registre-surfaces.ts';
 import { lireSources, RACINE_DEPOT } from './registre-surfaces-cli.ts';
+import { ALIAS_SANS_OUVREUR, OUVREURS, OUVREURS_REPORTES } from './registre/ouvreurs.ts';
 import {
   CAPACITES_BUREAU, CAPACITES_SALARIE, ECRITURES_NON_ASSISTEES, HORIZON_DETTES, INTERNE, LIVRAISON_COURANTE, livraisonAtteinte, lireDettes,
   ORDRE_LIVRAISONS, OUTILS_BUREAU, OUTILS_SALARIE, SURFACES, SURFACES_EN_MIGRATION,
-  type Capacite, type CategorieHumain, type ClicsSnapshot, type Cote, type DettesMax, type EntreeInterne, type Livraison, type Outil,
+  type Capacite, type CategorieHumain, type ClicsSnapshot, type Cote, type DettesMax, type EntreeInterne, type Livraison, type Outil, type Ouvreur,
 } from './registre/index.ts';
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -217,18 +218,82 @@ interface ContexteT1 {
   navBloquant: boolean;
 }
 
+/**
+ * Les clés de surface que les ouvreurs LIVRÉS couvrent (3b-1) : leurs fenêtres (`composants` → `fenetre:`), leurs ancres (`ancre:`), et les actions de lien d'avant
+ * qu'ils reprennent en `alias` (`nav:`), plus les actions « sans ouvreur » dites avec leur raison. Seules les clés qui existent vraiment sont rendues : un alias comme
+ * `salarie:` ou `nouveau-client` n'est pas une entrée de NAV_ACTIONS (T2 y verrait une clé périmée).
+ */
+export function clesOuvreursDe(ouvreurs: readonly Ouvreur[], sansOuvreur: readonly { cote: Cote; alias: string }[], clesNav: readonly string[]): string[] {
+  const cles = new Set<string>();
+  for (const o of ouvreurs) {
+    for (const c of o.composants ?? []) cles.add(`fenetre:${c}`);
+    for (const a of o.ancres ?? []) cles.add(`ancre:${a}`);
+    for (const a of o.alias ?? []) if (clesNav.includes(`nav:${o.cote}:${a}`)) cles.add(`nav:${o.cote}:${a}`);
+  }
+  for (const a of sansOuvreur) if (clesNav.includes(`nav:${a.cote}:${a.alias}`)) cles.add(`nav:${a.cote}:${a.alias}`);
+  return Array.from(cles).sort();
+}
+
+/** Les pages où vivent les états d'un côté (T1 ouvreurs : un état cité par un ouvreur existe en `useState`). */
+const PAGES_ETATS: Record<Cote, readonly string[]> = {
+  bureau: ['components/admin-planning.tsx', 'app/admin/page.tsx'],
+  salarie: ['app/poseur/page.tsx', 'components/poseur-day.tsx'],
+};
+
+export interface ContexteOuvreurs {
+  ouvreurs: readonly Ouvreur[];
+  sansOuvreur: readonly { cote: Cote; alias: string; raison: string }[];
+  sources: Readonly<Record<string, string>>;
+  /** Toutes les clés que le scanner a trouvées dans le code (fenetre:, ancre:…). */
+  cles: ReadonlySet<string>;
+  /** Les actions de lien d'avant, par côté : NAV_ACTIONS / WORKER_NAV, `lien` de chaque fiche, écrans des guides pas à pas. */
+  liens: Record<Cote, readonly string[]>;
+}
+
+/**
+ * T1 étendu (3b, §3.4) : chaque ouvreur référence des composants, états et ancres qui EXISTENT ; chaque action de lien d'avant (NAV_ACTIONS, WORKER_NAV, `lien` d'une
+ * fiche, `AdminScreen`, `TourScreen`) est l'alias d'un ouvreur livré ou une entrée « sans ouvreur » avec sa raison — sinon ce lien n'a plus d'ouvreur et l'ouvreur d'après
+ * ne sera pas écrit. Un ouvreur ne se range pas à la fois dans OUVREURS et dans OUVREURS_REPORTES.
+ */
+export function verifierT1Ouvreurs(c: ContexteOuvreurs): string[] {
+  const p: string[] = [];
+  for (const o of c.ouvreurs) {
+    for (const m of o.composants ?? []) {
+      if (!c.cles.has(`fenetre:${m}`)) p.push(`ouvreur « ${o.id} »  → composant « ${m} » : aucun lazyWindow / dynamic ne charge components/${m}.tsx (renommé ? corrigez composants dans registre/ouvreurs.ts)`);
+    }
+    for (const a of o.ancres ?? []) {
+      if (!c.cles.has(`ancre:${a}`)) p.push(`ouvreur « ${o.id} »  → ancre « ${a} » : aucun data-guide ne la porte (renommée ? corrigez ancres dans registre/ouvreurs.ts)`);
+    }
+    for (const e of o.etats ?? []) {
+      const ici = PAGES_ETATS[o.cote].some((f) => new RegExp(`const\\s*\\[\\s*${e}\\s*,`).test(c.sources[f] ?? ''));
+      if (!ici) p.push(`ouvreur « ${o.id} »  → état « ${e} » : pas de \`const [${e}, …] = useState\` dans ${PAGES_ETATS[o.cote].join(' ni ')} (renommé ? corrigez etats dans registre/ouvreurs.ts)`);
+    }
+  }
+  for (const cote of ['bureau', 'salarie'] as const) {
+    const alias = new Set<string>([...c.ouvreurs.filter((o) => o.cote === cote).flatMap((o) => o.alias ?? []), ...c.sansOuvreur.filter((a) => a.cote === cote).map((a) => a.alias)]);
+    for (const l of Array.from(new Set(c.liens[cote]))) {
+      if (l.indexOf('ask:') === 0 || alias.has(l)) continue;
+      p.push(`lien « ${l} » (${cote})  → ni l'alias d'un ouvreur livré, ni dans ALIAS_SANS_OUVREUR : ajoutez-le à \`alias\` de l'ouvreur qui l'ouvre, ou à ALIAS_SANS_OUVREUR avec sa raison (registre/ouvreurs.ts)`);
+    }
+  }
+  const ids = new Set(c.ouvreurs.map((o) => o.id));
+  for (const r of OUVREURS_REPORTES) if (ids.has(r.id)) p.push(`ouvreur « ${r.id} »  → déclaré livré ET reporté : retirez-le de OUVREURS_REPORTES`);
+  return p;
+}
+
 function contexteReel(): ContexteT1 {
   const guidesDe = (cote: Cote) => new Set(REGISTRE.capacites.filter((c) => c.cote === cote).flatMap((c) => c.guides ?? []));
   const gb = guidesDe('bureau'); const gs = guidesDe('salarie');
   const ancres = new Set<string>();
   for (const t of ADMIN_TOURS) if (gb.has(t.id)) for (const e of t.etapes) ancres.add(`ancre:${e.cible}`);
   for (const t of WORKER_TOURS) if (gs.has(t.id)) for (const e of t.etapes) ancres.add(`ancre:${e.cible}`);
+  const clesNav = [...Object.keys(NAV_ACTIONS).map((k) => `nav:bureau:${k}`), ...Object.keys(WORKER_NAV).map((k) => `nav:salarie:${k}`)];
   return {
-    clesOuvreurs: [],
+    clesOuvreurs: clesOuvreursDe(OUVREURS, ALIAS_SANS_OUVREUR, clesNav),
     ancresParcours: ancres,
     nomsCalcules: NOMS_CALCULES_ACCEPTES,
     guidesSansCapaciteConnus: GUIDES_SANS_CAPACITE_CONNUS,
-    clesNav: [...Object.keys(NAV_ACTIONS).map((k) => `nav:bureau:${k}`), ...Object.keys(WORKER_NAV).map((k) => `nav:salarie:${k}`)],
+    clesNav,
     guidesDuCode: [...GUIDE.map((g) => ({ cote: 'bureau' as const, id: g.id })), ...WORKER_GUIDE.map((g) => ({ cote: 'salarie' as const, id: g.id }))],
     navBloquant: livraisonAtteinte('3b'),
   };
@@ -738,6 +803,9 @@ export function outilsAttendus(src: string, id: string, cote: string): string[] 
   if (at < 0) return [];
   const next = src.indexOf("{ id: '", at + 5);
   let chunk = src.slice(at, next < 0 ? undefined : next);
+  // 3b-1 : ouvre('x', …) → l'outil ouvrir_fenetre (turc : enTurc(o) ?? ouvre(…)(o)) ; sansOuvrir / sansFiche (ni écran ouvert, ni refus) → repondre. Lus AVANT les contrôles nommés.
+  if (/check: (\(o\) => enTurc\(o\) \?\? )?ouvre\(/.test(chunk)) return ['ouvrir_fenetre'];
+  if (/check: sans(Ouvrir|Fiche)\b/.test(chunk)) return ['repondre'];
   const nomme = /check: (\w+) \}/.exec(chunk);
   if (nomme) { const d = src.indexOf(`const ${nomme[1]}`); if (d >= 0) chunk = src.slice(d, src.indexOf('\n};', d) + 3); }
   const fiche = /fiche\(\[([^\]]*)\]/.exec(chunk);
@@ -798,7 +866,7 @@ const DOSSIERS_NAVIGATEUR = /^(app|components|lib|hooks)\//;
 /** Les seuls fichiers du registre que le navigateur a le droit d'atteindre : types (effacés), réglages, vocabulaires fermés, ouvreurs légers PAR CÔTÉ. */
 const REGISTRE_AUTORISE = /^supabase\/functions\/_shared\/registre\/(types|config|vocab|ouvreurs-leger-(bureau|salarie))\.ts$/;
 const estRegistreInterdit = (chemin: string) => chemin.startsWith(RACINE_REGISTRE) && !REGISTRE_AUTORISE.test(chemin);
-const COTE_DU_MODULE = /(?:^|\/)(?:registre-exec|ouvreurs-leger)-(bureau|salarie)\.tsx?$/;
+const COTE_DU_MODULE = /(?:^|\/)(?:registre-exec|ouvreurs-leger|openers)-(bureau|salarie)\.tsx?$/;
 
 function joindre(dossier: string, relatif: string): string {
   const parts = dossier ? dossier.split('/') : [];
@@ -990,7 +1058,7 @@ export function verifierSyntaxeNavigateur(fichier: string, texte: string): strin
   return p;
 }
 const estFichierNavigateur = (c: string) => /^supabase\/functions\/_shared\/registre\/(?:ouvreurs-leger-[a-z]+|vocab)\.ts$/.test(c)
-  || /^lib\/(?:openers|use-seed-on-open)\.tsx?$/.test(c) || /^lib\/registre-exec-[a-z]+\.tsx?$/.test(c);
+  || /^lib\/(?:openers(?:-[a-z]+)?|use-seed-on-open)\.tsx?$/.test(c) || /^lib\/registre-exec-[a-z]+\.tsx?$/.test(c);
 
 // ════════════════════════════════════════════════════════════════════════════
 // Lecture du dépôt réel (une fois)
@@ -1063,6 +1131,18 @@ Deno.test('T1 couverture : toute entrée de l’interface (fenêtre, dialogue, R
     echoue(`T1 couverture : ${pl(problemes.length, 'entrée d\'interface sans capacité', 'entrées d\'interface sans capacité')}`, problemes,
       '  Une capacité par geste : capacites-<côté>.ts (outil, humain + raison, ou dette datée) ; ses clés dans surfaces-<côté>.ts ; ce qui n\'est PAS une capacité (menu, légende, route publique) dans interne-<côté>.ts. Lecture complète : npx -y deno@2 run --allow-read supabase/functions/_shared/registre-surfaces-cli.ts');
   }
+});
+
+Deno.test('T1 ouvreurs (3b) : chaque ouvreur référence des composants, états et ancres qui existent ; chaque action de lien d\'avant (NAV_ACTIONS, WORKER_NAV, fiches du GUIDE, AdminScreen, TourScreen) a son ouvreur ou sa raison', async () => {
+  const { scan } = await depot();
+  const sources = await sourcesDuGraphe();
+  const liensBureau = [...Object.keys(NAV_ACTIONS), ...GUIDE.map((g) => g.lien as string), ...ADMIN_SCREENS as string[]];
+  const ecransSalarie = Array.from(new Set(WORKER_TOURS.flatMap((t) => t.etapes.map((e) => e.ecran).filter((e): e is NonNullable<typeof e> => !!e))));
+  const p = verifierT1Ouvreurs({
+    ouvreurs: OUVREURS, sansOuvreur: ALIAS_SANS_OUVREUR, sources, cles: new Set(scan.occurrences.map((o) => o.cle)),
+    liens: { bureau: liensBureau, salarie: [...Object.keys(WORKER_NAV), ...WORKER_GUIDE.map((g) => g.lien as string), ...ecransSalarie] },
+  });
+  if (p.length) echoue(`T1 ouvreurs : ${pl(p.length, 'référence cassée', 'références cassées')}`, p, '  registre/ouvreurs.ts : composants, états et ancres sont lus dans le code ; les alias sont les anciennes actions de lien (les chats gardés 30 jours en contiennent encore).');
 });
 
 Deno.test('T2 périmé : toute clé déclarée (SURFACES, interne, écritures non assistées, fiches d’aide) existe encore dans le code', async () => {
@@ -1142,8 +1222,9 @@ Deno.test('T6 liaison : l’exécuteur de chaque outil d’écriture existe, ses
     if (sources[rel] === undefined) continue;                  // pas encore livré (3d)
     p.push(...verifierExecRegistre(rel, sources[rel], REGISTRE.outils.filter((o) => o.cote === cote && o.kind === 'ecriture' && livraisonAtteinte(o.livraison)).map((o) => o.id)));
   }
-  // Les ouvreurs livrés (aucun en 3a) : une clé littérale dans registerOpeners({…}) d'une page.
-  p.push(...verifierOuvreursEnregistres(Object.fromEntries(Object.entries(sources).filter(([f]) => f.startsWith('app/'))), []));
+  // Les ouvreurs livrés : une clé littérale dans registerOpeners({…}).
+  // 3b-1 : les ouvreurs LIVRÉS ; leurs implémentations vivent dans lib/openers-<côté>.ts (chargé à la demande par la page) et dans app/admin/page.tsx (abonnement).
+  p.push(...verifierOuvreursEnregistres(Object.fromEntries(Object.entries(sources).filter(([f]) => /^(app|components|lib)\//.test(f))), OUVREURS.map((o) => o.id)));
   if (p.length) echoue(`T6 liaison : ${pl(p.length, 'problème')}`, p);
 });
 
@@ -1152,7 +1233,8 @@ Deno.test('T7 évaluation : chaque outil livré a un cas d’évaluation, les pa
   const mesures = await lireJson<{ mesures?: { cas?: Record<string, unknown> | string[] }[]; reference?: Record<string, unknown> }>(`${RACINE_REGISTRE}mesures.json`);
   const dernier = mesures?.mesures?.[mesures.mesures.length - 1]?.cas;
   const vus = Array.isArray(dernier) ? dernier : dernier ? Object.keys(dernier) : [];
-  const servis = REGISTRE.outils.filter((o) => livraisonAtteinte(o.livraison));
+  // 3b-1 : un outil derrière un interrupteur (`ouvrir_fenetre`) est livré, allumable : il lui faut ses cas, même si le serveur ne le sert qu'allumé.
+  const servis = REGISTRE.outils.filter((o) => livraisonAtteinte(o.livraison) || !!o.interrupteur);
   const { problemes, avertissements } = verifierT7(servis, CASES.map((c) => ({ id: c.id, cote: c.cote as Cote })), src, {
     cas: mesures ? vus : null, exigerMesures: env('REGISTRE_A_LA_LIVRAISON') === '1',
   });
@@ -1175,7 +1257,8 @@ Deno.test('T8 hygiène (build) : out/ — le chunk de /poseur n’a aucun nom d�
   const build = await lireBuild();
   if (!build && Deno.env.get('REGISTRE_BUILD_OBLIGATOIRE') === '1') echoue('T8 build : out/ absent alors que le build est obligatoire (CI)', ['lancez  npm run build  avant ce test']);
   if (!build) { console.log('T8 build : out/ absent, contrôle ignoré (lancez  npm run build  pour le faire ; le job CI ne construit pas dans ce job)'); return; }
-  const p = verifierT8Build(build, REGISTRE.outils);
+  const idsOuvreurs: Record<Cote, string[]> = { bureau: OUVREURS.filter((o) => o.cote === 'bureau').map((o) => o.id), salarie: OUVREURS.filter((o) => o.cote === 'salarie').map((o) => o.id) };
+  const p = verifierT8Build(build, REGISTRE.outils, idsOuvreurs);
   if (p.length) echoue(`T8 hygiène (build out/) : ${pl(p.length, 'fuite', 'fuites')}`, p);
 });
 
@@ -1210,7 +1293,7 @@ Deno.test('Garde-fous du dépôt : le job CI « deno » lance ces tests sur main
   const ci = (await lireTexte('.github/workflows/ci.yml').catch(() => '')).split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
   if (!ci) p.push('.github/workflows/ci.yml  → introuvable');
   else {
-    for (const t of ['registre-couverture.test.ts', 'registre-surfaces.test.ts', 'registre-outils.test.ts', 'registre-listes.test.ts']) if (!ci.includes(t)) p.push(`ci.yml  → ne lance plus ${t} : sans le job CI, T1 à T11 ne bloquent personne`);
+    for (const t of ['registre-couverture.test.ts', 'registre-surfaces.test.ts', 'registre-outils.test.ts', 'registre-listes.test.ts', 'assistant-aide.test.ts']) if (!ci.includes(t)) p.push(`ci.yml  → ne lance plus ${t} : sans le job CI, T1 à T11 ne bloquent personne`);
     if (!/deno@2(\.\d+\.\d+)?\s+test\b/.test(ci)) p.push('ci.yml  → plus de commande « npx -y deno@2.9.6 test … » : le job Deno a disparu');
     if (!/branches:\s*\[\s*main\s*,\s*['"]integration\/\*\*['"]\s*\]/.test(ci)) p.push("ci.yml  → le filtre de branches n'est plus [main, 'integration/**'] : les lots fusionnés dans integration/* ne seraient plus contrôlés");
   }
@@ -1285,6 +1368,27 @@ Deno.test('T1 couverture (fixtures) : une écriture dans interne est refusée ; 
   vrai(a.avertissements.some((l) => l.includes('guide:bureau:connu')), 'la fiche connue avertit');
   const b = verifierT1(r, scan, { ...ctx, navBloquant: true });
   vrai(b.problemes.join('\n').includes('nav:bureau:planning'), 'nav échoue à partir de 3b');
+});
+
+Deno.test('T1 ouvreurs (fixtures) : composant, ancre, état et lien d\'avant sans ouvreur sont signalés ; un alias, un « sans ouvreur » et ask: ne le sont pas ; un ouvreur à la fois livré et reporté non plus', () => {
+  const o = (x: Partial<Ouvreur> & { id: string }): Ouvreur => ({ cote: 'bureau', roles: ['admin'], titre: 'Titre', decrit: 'Une phrase claire.', params: {}, niveau: 1, ...x });
+  const base: ContexteOuvreurs = {
+    ouvreurs: [o({ id: 'a.b', composants: ['reserves-report'], ancres: ['bureau-nav.reserves'], etats: ['reservesOpen'], alias: ['reserves'] })],
+    sansOuvreur: [{ cote: 'bureau', alias: 'couts', raison: 'x'.repeat(30) }],
+    sources: { 'components/admin-planning.tsx': 'const [reservesOpen, setReservesOpen] = useState(false);' },
+    cles: new Set(['fenetre:reserves-report', 'ancre:bureau-nav.reserves']),
+    liens: { bureau: ['reserves', 'couts', 'ask:Où ?'], salarie: [] },
+  };
+  egal(verifierT1Ouvreurs(base), [], 'tout va bien');
+  const un = (c: Partial<ContexteOuvreurs>) => verifierT1Ouvreurs({ ...base, ...c }).join('\n');
+  vrai(un({ cles: new Set(['ancre:bureau-nav.reserves']) }).includes('composant « reserves-report »'), 'composant sans fenêtre');
+  vrai(un({ cles: new Set(['fenetre:reserves-report']) }).includes('ancre « bureau-nav.reserves »'), 'ancre disparue');
+  vrai(un({ sources: { 'components/admin-planning.tsx': 'const [autre, setAutre] = useState(0);' } }).includes('état « reservesOpen »'), 'état renommé');
+  vrai(un({ sources: { 'components/poseur-day.tsx': 'const [reservesOpen, x] = useState(0);' } }).includes('état « reservesOpen »'), 'un état d\'une page d\'un AUTRE côté ne compte pas');
+  vrai(un({ liens: { bureau: ['reserves', 'couts', 'clients'], salarie: [] } }).includes('lien « clients » (bureau)'), 'lien sans ouvreur');
+  vrai(un({ liens: { bureau: [], salarie: ['journee'] } }).includes('lien « journee » (salarie)'), 'lien du salarié sans ouvreur (l\'alias du bureau ne le couvre pas)');
+  vrai(un({ ouvreurs: [o({ id: 'historique.supprimees' })] }).includes('livré ET reporté'), 'livré et reporté à la fois');
+  egal(clesOuvreursDe(base.ouvreurs, base.sansOuvreur, ['nav:bureau:reserves', 'nav:bureau:couts', 'nav:bureau:clients']), ['ancre:bureau-nav.reserves', 'fenetre:reserves-report', 'nav:bureau:couts', 'nav:bureau:reserves'], 'clés couvertes : seulement celles qui existent');
 });
 
 Deno.test('T2 périmé (fixtures) : une clé renommée dit ce qu’elle est devenue, une ligne de surfaces ; une fiche d’aide disparue est signalée', () => {

@@ -19,6 +19,9 @@ function expectedTools(id: string, cote: string): string[] {
   const at = SRC.indexOf(`id: '${id}'`);
   const next = SRC.indexOf("{ id: '", at + 5);
   let chunk = SRC.slice(at, next < 0 ? undefined : next);
+  // 3b-1 : ouvre('x', …) → l'outil ouvrir_fenetre (turc : enTurc(o) ?? ouvre(…)(o)) ; sansOuvrir / sansFiche (ni écran ouvert, ni refus) → repondre. Lus AVANT les contrôles nommés.
+  if (/check: (\(o\) => enTurc\(o\) \?\? )?ouvre\(/.test(chunk)) return ['ouvrir_fenetre'];
+  if (/check: sans(Ouvrir|Fiche)\b/.test(chunk)) return ['repondre'];
   // Un contrôle nommé (const recapitulatifComplet = fiche([...])) : on lit sa déclaration.
   const nomme = /check: (\w+) \}/.exec(chunk);
   if (nomme) { const d = SRC.indexOf(`const ${nomme[1]}`); chunk = SRC.slice(d, SRC.indexOf('\n};', d) + 3); }
@@ -60,7 +63,8 @@ Deno.test('Jeu d’évaluation : l’outil attendu reste proposé, pour CHAQUE p
       const ctx = buildActionContext(ADMIN_RAW as Parameters<typeof buildActionContext>[0]) as ActionContext;
       ctx.me = ME; ctx.demande = c.phrase;
       local = !c.file && !!handleActionLocally(c.phrase, ctx);
-      fns = functionsFor(!!c.file, c.phrase).map((f) => f.name);
+      // 3b-1 : un cas « Ouvrir » se joue interrupteur allumé : l'outil ouvrir_fenetre est proposé en plus.
+      fns = functionsFor(!!c.file, c.phrase, undefined, c.etape3 ? { ouvrir: true } : undefined).map((f) => f.name);
       all = c.file ? ATTACHMENT_FUNCTIONS.length : ASSISTANT_FUNCTIONS.length;
     } else {
       salarie++;
@@ -71,7 +75,8 @@ Deno.test('Jeu d’évaluation : l’outil attendu reste proposé, pour CHAQUE p
       const long = workerProfile(c.phrase, !!c.file) === 'long';
       if (long !== /^(sl|st)\d\d$/.test(c.id)) throw new Error(`${c.id} : profil ${long ? 'long' : 'court'} inattendu`);
       local = !long && !c.file && !!handleWorkerLocally(c.phrase, snap, live);
-      fns = (long ? workerFunctionsForLong(c.phrase) : workerFunctionsFor(!!c.file, c.phrase)).map((f) => f.name);
+      const o3 = c.etape3 ? { ouvrir: true } : undefined;
+      fns = (long ? workerFunctionsForLong(c.phrase, undefined, o3) : workerFunctionsFor(!!c.file, c.phrase, undefined, o3)).map((f) => f.name);
       all = c.file ? WORKER_ATTACHMENT_FUNCTIONS.length : WORKER_FUNCTIONS.length;
     }
     // Vérifié pour TOUTES les phrases : si le lecteur local ne la prenait plus, le modèle verrait quand même l'outil attendu.

@@ -78,6 +78,12 @@ export default function AdminPage() {
   const [subOpen, setSubOpen] = useState(false);
   const [activating, setActivating] = useState(false);
   const [workerCount, setWorkerCount] = useState(0); // salariés actifs → forfait adapté (panneau d'abonnement)
+  // Étape 3 (3b-1) : l'assistant peut ouvrir « Choisissez votre abonnement » (lib/openers-bureau.ts, chargé à la demande). Le paiement reste un geste de la personne.
+  useEffect(() => {
+    let off: (() => void) | undefined; let fin = false;
+    import('@/lib/openers-bureau').then((m) => { if (!fin) off = m.registerAbonnement(() => setSubOpen(true)); }, () => { /* hors ligne : rien */ });
+    return () => { fin = true; if (off) off(); };
+  }, []);
 
   // Essai / abonnement : lus avec les autres réglages de l'entreprise (une seule lecture
   // pour tout l'écran, lot 29 — voir lib/company-settings.ts).

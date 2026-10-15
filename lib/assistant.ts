@@ -23,6 +23,8 @@ export interface AssistantReply {
   answer: string; links: AssistantLink[]; remaining?: number; notice?: boolean; extra?: unknown;
   /** Lot 7 : une question a été posée — la prochaine réponse complète la MÊME demande. */
   followUp?: boolean;
+  /** Étape 3 : le serveur a décidé d'ouvrir l'écran du premier lien sans attendre le toucher (verbe d'ouverture, niveau 1). */
+  auto?: boolean;
 }
 /** Étape 2 (chat avec mémoire) : les derniers messages TEXTE de la conversation, envoyés avec la demande pour comprendre « et pour Lucas aussi ? ». */
 export type AssistantHistory = { who: 'me' | 'bot'; text: string }[];
@@ -38,7 +40,7 @@ export function isAssistantDemo(): boolean {
 
 type ServerReply = {
   answer?: string; links?: AssistantLink[]; remaining?: number; quota?: boolean; unavailable?: boolean;
-  action?: ActionExtra['action']; options?: ActionExtra['options'];
+  action?: ActionExtra['action']; options?: ActionExtra['options']; auto?: boolean;
   /** Interne (support BEMEXO) : la fonction la renvoie toujours, l'écran ne l'affiche jamais. */
   formule?: string | null;
 };
@@ -46,6 +48,7 @@ const toReply = (d: ServerReply): AssistantReply => ({
   answer: d.answer || '…', links: d.links || [], remaining: d.remaining, notice: !!(d.quota || d.unavailable),
   extra: d.action && d.options ? ({ action: d.action, options: d.options } as ActionExtra) : undefined,
   followUp: !!d.action?.question,
+  ...(d.auto ? { auto: true } : {}),
 });
 
 /**
@@ -71,12 +74,14 @@ export async function invokeAssistant(name: string, body: unknown, ms: number = 
   try { return await Promise.race([call, late]); } finally { if (timer) clearTimeout(timer); }
 }
 
+const CAPS = ['ouvrir1'];
 export const supabaseAssistantSource: AssistantSource = {
   demo: false,
   async ask(question, file, history) {
     try {
       // `history` (étape 2) : omis quand la conversation vient de commencer, la requête reste alors celle d'avant.
-      const body = { question, ...(file ? { file: await attachmentPayload(file) } : {}), ...(history?.length ? { history } : {}) };
+      // `caps` : ce que cet écran sait faire (étape 3) — `ouvrir1` = ouvrir un écran depuis un lien `ouvrir:…` ; sans lui le serveur n'en envoie aucun.
+      const body = { question, ...(file ? { file: await attachmentPayload(file) } : {}), ...(history?.length ? { history } : {}), caps: CAPS };
       const { data, error, timedOut } = await invokeAssistant('assistant', body);
       if (timedOut) return { answer: ASK_TIMEOUT_MESSAGE, links: [], notice: true };
       if (error) {

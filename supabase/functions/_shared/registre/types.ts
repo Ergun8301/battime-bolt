@@ -39,7 +39,7 @@ export interface Capacite {
 
 interface OutilBase { id: string; cote: Cote; roles: ('admin'|'worker'|'lead')[]; description: string /* français, lue par le modèle */;
   parametres: Record<string, unknown> /* format FunctionDecl.parameters actuel */; domaines: string[]; livraison: Livraison;
-  pieceJointe?: boolean; dispo?: Dispo[]; proches?: string[] /* à ne pas confondre : ≥ 2 phrases d'évaluation les distinguent */;
+  pieceJointe?: boolean; /** Servi SEULEMENT si cet interrupteur est allumé (AI_ETAPE3), quelle que soit la livraison. */ interrupteur?: 'ouvrir'; dispo?: Dispo[]; proches?: string[] /* à ne pas confondre : ≥ 2 phrases d'évaluation les distinguent */;
   variantes?: { livraison: Livraison; parametres?: Record<string, unknown>; description?: string }[] /* extension d'un outil EXISTANT (nouveau paramètre) : servie seulement si l'interrupteur de sa livraison est allumé ; sinon `outilsPour` rend la déclaration gelée */ }
 export type Outil =
   | (OutilBase & { kind: 'reponse'; niveau: 1 })
@@ -61,7 +61,45 @@ export interface FunctionDecl { name: string; description: string; parameters: R
  * corps laisserait compiler un import qui échouerait à l'exécution ; en 3a-2 la
  * vraie fonction s'écrira `export const outilsPour: OutilsPour = …` sans conflit de nom.
  */
-export type OutilsPour = (cote: Cote, o?: { fichier?: boolean; livraison?: Livraison }) => FunctionDecl[];
+export type OutilsPour = (cote: Cote, o?: { fichier?: boolean; livraison?: Livraison; etat?: { ouvrir?: boolean }; coupes?: readonly string[] }) => FunctionDecl[];
+
+// ── Ouvreurs (livraison 3b) : les écrans que l'assistant sait ouvrir, pré-remplis, sans jamais enregistrer (§3.3) ──
+
+/** Le type d'une valeur de pré-remplissage : ce que le serveur résout (salarié, chantier, date…) et ce que le navigateur revalide. */
+export type KindParam = 'salarie' | 'chantier' | 'date' | 'lundi' | 'mois' | 'heure' | 'enum' | 'texte' | 'liste_dates';
+export interface ParamOuvreur { kind: KindParam; requis?: boolean; valeurs?: readonly string[]; aide: string }
+export interface Ouvreur {
+  /** Stable, jamais renommé : 'salarie.fiche'. */
+  id: string; cote: Cote; roles: ('admin' | 'worker' | 'lead')[];
+  /** Libellé du bouton (français). */
+  titre: string;
+  /** Une phrase claire, lue par le modèle. */
+  decrit: string;
+  params: Record<string, ParamOuvreur>;
+  /** 3 = ouvre la confirmation ou le formulaire d'un geste qui compte : le dernier clic reste humain, jamais ouvert d'office. */
+  niveau: 1 | 3;
+  dispo?: Dispo;
+  ecran?: 'grand' | 'petit' | 'tous';
+  /** Fenêtre à saisie : jamais ouverte par-dessus une autre fenêtre à saisie (réponse « occupé »), aucune saisie perdue. */
+  formulaire?: boolean;
+  /** Peut s'ouvrir par-dessus une autre fenêtre (documents). */
+  empile?: boolean;
+  /** Modules `components/` chargés par lazyWindow / dynamic que cet ouvreur ouvre (T1 : ils existent). */
+  composants?: string[];
+  /** États React que l'ouvreur pose (T1 : ils existent dans la page du côté). */
+  etats?: string[];
+  /** Ancres data-guide qui mènent à cet écran (T1 : elles existent). */
+  ancres?: string[];
+  /** Anciennes actions de lien (`salaries`, `nouveau_client`, `salarie:`…) : les chats gardés 30 jours en contiennent encore. */
+  alias?: string[];
+  /** Niveau 3 seulement : expression (sur la demande normalisée de la personne) qui doit s'y trouver. Une donnée du prompt (nom de chantier, texte d'un PDF) ne peut pas ouvrir un écran que la personne n'a pas évoqué. */
+  declencheur?: string;
+}
+/** La forme LÉGÈRE (module GÉNÉRÉ, lu par le navigateur) : ids, rôles, paramètres typés, drapeaux. Jamais de texte lu par le modèle. */
+export interface OuvreurLeger {
+  id: string; roles: readonly ('admin' | 'worker' | 'lead')[]; niveau: 1 | 3; dispo?: Dispo; ecran?: 'grand' | 'petit' | 'tous'; formulaire?: boolean; empile?: boolean;
+  params: Readonly<Record<string, { kind: KindParam; valeurs?: readonly string[] }>>;
+}
 
 // ── Surfaces : ce que parcourt le test de couverture (§2.3, tableau « Clés de surface ») ──
 

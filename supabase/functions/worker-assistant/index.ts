@@ -47,6 +47,9 @@ import {
 } from '../_shared/worker-assistant-core.ts';
 import type { LongLegacy } from '../_shared/worker-multi.ts';
 import { runWorkerTurn, type WorkerMultiReply } from '../_shared/worker-turn.ts';
+import { ouvrirActif, outilsCoupes } from '../_shared/etape3-config.ts';
+import { brancherOuvrirSalarie } from '../_shared/ouvrir.ts';
+import type { OptionsOutilsSalarie } from '../_shared/worker-outils.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -68,7 +71,7 @@ Deno.serve(async (req) => {
   try {
     const jwt = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
     if (!jwt) return json({ error: 'Non authentifié' }, 401);
-    const body = await req.json().catch(() => ({})) as { text?: string; file?: unknown; statut?: boolean; multi?: boolean; history?: unknown };
+    const body = await req.json().catch(() => ({})) as { text?: string; file?: unknown; statut?: boolean; multi?: boolean; history?: unknown; caps?: unknown };
     // Lot 6 : à l'ouverture du panneau, l'écran demande seulement la formule (rien n'est compté).
     if (body.statut === true) return json({ formule: FORMULE });
     const text = String(body.text ?? '').trim().slice(0, WORKER_TEXT_MAX);
@@ -122,6 +125,12 @@ Deno.serve(async (req) => {
     const iaOk = aiDisponible(Deno.env, tier);
     if (iaOk) snapshot.historique = sansDemandeRecollee(nettoyerHistorique(body.history), text);
     const remaining = Math.max(0, ctxR.remaining ?? 0);
+    // Étape 3 (3b-1) : `ouvrir` (profils court et long) seulement si le secret AI_ETAPE3 le dit pour cette entreprise, que l'écran annonce `ouvrir1` et qu'AUCUN fichier
+    // n'est joint. Éteint : consigne, outils et liens d'avant, octet pour octet.
+    const ouvrirOn = ouvrirActif(Deno.env, 'salarie', me.company_id, body.caps, !!att.file);
+    if (ouvrirOn) brancherOuvrirSalarie(snapshot, ctxR.role === 'lead' ? 'lead' : 'worker');
+    const coupes = outilsCoupes(Deno.env);
+    const etape3: OptionsOutilsSalarie | undefined = ouvrirOn || coupes.length ? { ouvrir: ouvrirOn, coupes } : undefined;
     // Lot 3 bis : ce qu'il faut pour préparer un pointage ou une réserve (SES lignes).
     const siteName = (id: string | null) => snapshot.chantiers.find((c) => c.id === id)?.nom ?? 'Chantier';
     const s0 = sess.data as { worksite_id: string; started_at: string } | null;
@@ -155,6 +164,7 @@ Deno.serve(async (req) => {
     // Le tour (lecteur local, ou IA en profil court / long) est le MÊME code que celui du banc de mesure.
     const t = await runWorkerTurn({
       text, file: att.file, snapshot, live, tier, iaDisponible: aiDisponible(Deno.env, tier), multiOk: body.multi === true,
+      ...(etape3 ? { etape3 } : {}),
       call: (req) => callFunction(req, Deno.env),
     });
     if (t.via === 'erreur') {
