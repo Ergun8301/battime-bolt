@@ -285,3 +285,11 @@ Deno.test('Turc, bureau : questions, refus, niveau 3 et clôture en turc ; une d
   egal(ouvre({ id: 'absence.poser', valeurs: { salarie: 'Sofiane', du: '2026-10-12', au: '2026-10-16' } }, t('ouvre le formulaire d’absence pour Sofiane du 12 au 16')).answer,
     'J’ouvre « Poser une absence ». Pré-rempli : Sofiane Merabet, du lun. 12 oct., au ven. 16 oct. Vérifiez avant d’enregistrer.', 'FR stable');
 });
+
+Deno.test('Ouvrir niveau 3 : les mots turcs de l’export et de la clôture sont reconnus, une demande sans rapport ne l’est pas', () => {
+  const exp = trouverOuvreur('export.equipe', 'bureau')!;
+  const clo = trouverOuvreur('cloture.mois', 'bureau')!;
+  for (const p of ['eylül ayı için dışa aktarımı hazırla', 'ekibin saatlerini dışa aktar', 'bordro için ihracat ekranını aç', 'muhasebe için hazırla']) vrai(evoque(exp, p), `export non reconnu : ${p}`);
+  for (const p of ['eylül ayını kapat', 'ay kapanışını aç', 'ayı kilitle']) vrai(evoque(clo, p), `clôture non reconnue : ${p}`);
+  for (const p of ['Karim’in kartını aç', 'rezervleri göster', 'planlamanın sürümlerini aç']) vrai(!evoque(exp, p) && !evoque(clo, p), `faux positif : ${p}`);
+});

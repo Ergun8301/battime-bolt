@@ -126,13 +126,13 @@ export const OUVREURS_BUREAU: Ouvreur[] = [
   {
     id: 'export.equipe', cote: 'bureau', roles: ['admin'], titre: 'Exporter l’équipe', decrit: 'L’export de toute l’équipe pour une période : exporter VERROUILLE les heures, donc la personne choisit elle-même le format et clique. Jamais ouvert sans qu’elle l’ait demandé.',
     params: { du: D('premier jour de la période', false), au: D('dernier jour de la période', false) }, niveau: 3,
-    declencheur: 'export|paie|comptable|telecharg|heures de l equipe',
+    declencheur: 'export|paie|comptable|telecharg|heures de l equipe|d[ıi]sa aktar|ihrac|bordro|muhasebe|ekip(?:in)? saat',
     etats: ['exportOpen', 'exportRange'], ancres: ['bureau-nav.exporter', 'bureau-export.menu'], alias: ['export'],
   },
   {
     id: 'cloture.mois', cote: 'bureau', roles: ['admin'], titre: 'Clôturer un mois', decrit: 'La confirmation « Clôturer le mois » (le mois précédent ou le mois en cours seulement) : clôturer verrouille les heures, la personne clique elle-même.',
     params: { mois: { kind: 'mois', requis: true, aide: 'aaaa-mm, le mois précédent ou le mois en cours' } }, niveau: 3,
-    declencheur: 'clotur|cloture|verrouill',
+    declencheur: 'clotur|cloture|verrouill|kapan[ıi]s|kapat|kilitle',
     etats: ['closureTarget'], ancres: ['bureau-export.mois'],
   },
   {
