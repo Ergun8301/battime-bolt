@@ -155,7 +155,27 @@ await p.locator('[data-testid=dz-onglet-day]').click();
 await p.waitForSelector('.dz-kicker');
 verifie((await p.locator('[data-testid=dz-kicker]').textContent()) === 'AUJOURD’HUI', 'C) retour à la journée');
 
+
+// E · Mini-frise de la journée (étape 4) : fait, en cours, à envoyer, prévu — et absente sans ?ui=2
+D.time_entries = [
+  J('2026-10-14', W1, '07:00', '08:30', { id: 'e-fait', status: 'submitted', submitted_at: '2026-10-14T06:35:00Z' }),
+  J('2026-10-14', W2, '13:00', '15:00', { id: 'e-draft', status: 'draft' }),
+];
+D.planning = [{ ...plan('p-soir', W3, '16:00', '17:00'), work_date: '2026-10-14' }];
+D.active_sessions = [{ user_id: ME, company_id: CO, worksite_id: 'w1', planning_id: null, work_date: today, started_at: new Date(FIXED.getTime() - 60 * 60000).toISOString() }];
+query = '?ui=2'; await open('.dz-bande');
+await p.waitForSelector('[data-testid=dz-frise]', { timeout: 10000 });
+for (const t of ['fait', 'en-cours', 'a-envoyer', 'prevu']) verifie((await p.locator(`[data-testid=dz-frise-seg-${t}]`).count()) === 1, `E) la frise montre un segment « ${t} »`);
+const larg = await p.evaluate(() => [...document.querySelectorAll('.dz-frise-seg')].map((e) => Math.round(e.getBoundingClientRect().width)));
+verifie(larg.every((w) => w >= 6), `E) aucun segment invisible (largeurs ${larg.join(', ')} px)`);
+verifie(((await p.locator('[data-testid=dz-frise]').getAttribute('aria-label')) || '').includes('en cours'), 'E) la frise a une description pour les lecteurs d’écran');
+await shot('e-frise');
+query = '?ui=1'; await open();
+verifie((await p.locator('[data-testid=dz-frise]').count()) === 0, 'E) sans ?ui=2 : pas de frise');
+D.active_sessions = []; D.time_entries = []; D.planning = [];
+
 // D · Le mode est mémorisé pour la session ; ?ui=1 l'éteint
+query = '?ui=2'; await open('.dz-bande');
 query = ''; await open('.dz-bande');
 verifie((await p.locator('.dz-bande').count()) === 1, 'D) ?ui=2 est mémorisé pour la session');
 query = '?ui=1'; await open();

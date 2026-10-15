@@ -29,3 +29,17 @@
 .bt-ui2 .dz-onglet.is-on{background:#15120F;color:#FFC21A}
 .bt-ui2 .dz-onglet-badge{position:absolute;top:6px;right:14px;min-width:20px;height:20px;padding:0 5px;border-radius:999px;background:#E53935;color:#fff;font:800 12px/20px Archivo,system-ui,sans-serif}
 @media (prefers-reduced-motion:reduce){.bt-ui2 *{transition:none!important}}
+/* Étape 4 — mini-frise de la journée (dans la carte « Total aujourd'hui »). */
+.bt-ui2 .dz-frise{margin-top:14px}
+.bt-ui2 .dz-frise-piste{position:relative;height:18px;border-radius:9px;background:rgba(242,237,227,.14);overflow:hidden}
+.bt-ui2 .dz-frise-seg{position:absolute;top:2px;bottom:2px;border-radius:7px;min-width:6px}
+.bt-ui2 .dz-frise-fait{background:#2ED3A0}
+.bt-ui2 .dz-frise-a-envoyer{background:#FFC21A}
+.bt-ui2 .dz-frise-prevu{background:repeating-linear-gradient(135deg,rgba(242,237,227,.55) 0 4px,rgba(242,237,227,.18) 4px 8px)}
+.bt-ui2 .dz-frise-en-cours{background:#2FA36B;box-shadow:0 0 0 2px rgba(46,211,160,.45)}
+.bt-ui2 .dz-frise-oublie{background:#FF6B3D}
+.bt-ui2 .dz-frise-seg.is-point{width:8px;border-radius:999px}
+.bt-ui2 .dz-frise-minuit{position:absolute;top:0;bottom:0;width:2px;background:#F2EDE3}
+.bt-ui2 .dz-frise-ticks{position:relative;height:16px;margin-top:4px;font:600 11px/1 'JetBrains Mono',ui-monospace,monospace;color:rgba(242,237,227,.75)}
+.bt-ui2 .dz-frise-ticks span{position:absolute;transform:translateX(-50%);white-space:nowrap}
+.bt-ui2 .dz-frise-ticks span:first-child{transform:none}
