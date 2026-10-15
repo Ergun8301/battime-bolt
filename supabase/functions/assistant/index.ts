@@ -45,7 +45,9 @@ import {
   actionPrompt, addDays, avertirSecours, buildActionContext, fromFunctionCall, handleActionLocally, mondayOf, questionFor,
   resolveSalarie, summarize, findGuide, guideAnswer, guideForPrompt, guideLinks, type EntryChoice, type LocalReply, type ActionContext,
 } from '../_shared/assistant-actions-core.ts';
-import { functionsFor } from '../_shared/assistant-outils.ts';
+import { functionsFor, type OptionsOutils } from '../_shared/assistant-outils.ts';
+import { ouvrirActif, outilsCoupes } from '../_shared/etape3-config.ts';
+import { brancherOuvrirBureau } from '../_shared/ouvrir.ts';
 
 
 const corsHeaders = {
@@ -66,6 +68,8 @@ const parisToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Pa
 function reply(r: LocalReply, ctx: ActionContext, remaining: number): Response {
   return json({
     answer: r.answer, links: r.links, remaining,
+    // 3b-1 : « ouvrir sans toucher », décidé par ouvrir.ts seulement (absent = comme avant).
+    ...(r.auto ? { auto: true } : {}),
     action: r.action ? { ...r.action, summary: summarize(r.action.draft, ctx), question: questionFor(r.action.draft, r.action.problems, ctx) } : undefined,
     options: r.action ? {
       salaries: ctx.salaries.filter((s) => s.role !== 'admin' || r.action!.draft.type === 'poser_absence')
@@ -81,7 +85,7 @@ Deno.serve(async (req) => {
   try {
     const jwt = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
     if (!jwt) return json({ error: 'Non authentifié' }, 401);
-    const body = await req.json().catch(() => ({})) as { question?: string; file?: unknown; statut?: boolean; history?: unknown };
+    const body = await req.json().catch(() => ({})) as { question?: string; file?: unknown; statut?: boolean; history?: unknown; caps?: unknown };
     // Lot 6 : à l'ouverture du panneau, l'écran demande seulement la formule (rien n'est compté).
     if (body.statut === true) return json({ formule: FORMULE });
     const question = String(body.question ?? '').trim().slice(0, MAX_QUESTION_CHARS);
@@ -168,6 +172,12 @@ Deno.serve(async (req) => {
     });
     ctx.me = user.id;
     ctx.demande = question;
+    // Étape 3 (3b-1) : `ouvrir` n'est allumé que si le secret AI_ETAPE3 le dit pour cette entreprise, que l'écran annonce `ouvrir1` (un onglet resté ouvert avec l'ancien
+    // code n'a pas de bouton pour un lien `ouvrir:`) et qu'AUCUN fichier n'est joint. Éteint : consigne, outils et liens d'avant, octet pour octet.
+    const ouvrirOn = ouvrirActif(Deno.env, 'bureau', cid, body.caps, !!att.file);
+    if (ouvrirOn) brancherOuvrirBureau(ctx);
+    const coupes = outilsCoupes(Deno.env);
+    const optsOutils: OptionsOutils | undefined = ouvrirOn || coupes.length ? { ouvrir: ouvrirOn, coupes } : undefined;
     // Étape 2 : la conversation, seulement si le modèle peut la lire (sans clé, le lecteur local répond comme avant). Une demande que
     // l'écran vient de recoller à sa réponse (« Mets Karim demain, Villa Dupont ») n'est pas répétée dans le bloc : la DEMANDE la porte.
     if (iaOk) ctx.historique = sansDemandeRecollee(nettoyerHistorique(body.history), question);
@@ -188,7 +198,8 @@ Deno.serve(async (req) => {
     const snapshot = buildSnapshot(raw);
     // Lot 6 : seulement les outils du domaine de la demande ; UN appel (rapide, ou documents si fichier).
     const r = await callFunction({
-      prompt: actionPrompt(ctx, JSON.stringify(snapshot), guideForPrompt(), question), functions: functionsFor(!!att.file, question, ctx.historique), file: att.file, tier,
+      prompt: actionPrompt(ctx, JSON.stringify(snapshot), ouvrirOn ? guideForPrompt('etape3', ctx.guideLiens) : guideForPrompt(), question),
+      functions: optsOutils ? functionsFor(!!att.file, question, ctx.historique, optsOutils) : functionsFor(!!att.file, question, ctx.historique), file: att.file, tier,
     }, Deno.env);
     if (!r.ok) return json({ unavailable: true, answer: 'L’assistant n’a pas pu répondre. Réessayez dans un instant.', links: [] });
 

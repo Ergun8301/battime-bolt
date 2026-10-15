@@ -121,6 +121,10 @@ export const LIVE_VIDE = { ...WORKER_LIVE, lignes: [] as typeof WORKER_LIVE.lign
 
 // ── Résultat normalisé (quelle que soit la version) ─────────────────────────
 export interface Outcome {
+  /** 3b-1 : le banc a joué ce cas avec l'interrupteur `ouvrir` allumé (les contrôles d'« ouvrir » en ont besoin, ceux des cas d'avant lisent aussi cet état). */
+  etape3?: boolean;
+  /** 3b-1 : la réponse porte `auto` (ouvrir sans toucher), décidé par le serveur. */
+  auto?: boolean;
   kind: 'action' | 'answer' | 'draft' | 'collegues' | 'none' | 'multi' | 'chantier';
   type?: string;
   draft?: Record<string, unknown>;
@@ -291,6 +295,11 @@ export interface EvalCase {
   id: string; cote: 'bureau' | 'salarie'; categorie: string; phrase: string; file?: keyof typeof FILES; enCours?: boolean; live?: 'vide';
   /** Suite de conversation : les messages d'AVANT la phrase (du plus ancien au plus récent), comme l'écran les envoie dans `history`. Absent = première question, consigne d'avant. */
   history?: MessageHistorique[];
+  /**
+   * 3b-1 (ouvrir) : le cas ne se joue que quand l'interrupteur `ouvrir` est ALLUMÉ dans le banc (corps `etape3`) ; éteint, il est ignoré — les cas d'avant
+   * restent mesurés « éteint », comme la production d'aujourd'hui.
+   */
+  etape3?: 'ouvrir';
   check: Check;
 }
 

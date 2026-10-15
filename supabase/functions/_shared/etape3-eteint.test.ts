@@ -59,9 +59,10 @@ export async function empreinteDuCas(c: (typeof CASES)[number], extra: { bureau?
     ctx.me = ME; ctx.demande = c.phrase;
     if (c.history) ctx.historique = sansDemandeRecollee(nettoyerHistorique(c.history), c.phrase);
     extra.bureau?.(ctx);
+    const eteint = extra.options === 'eteint';
     const local = file ? null : handleActionLocally(c.phrase, ctx);
-    const prompt = actionPrompt(ctx, '{}', guideForPrompt(), c.phrase);
-    const outils = functionsFor(!!file, c.phrase, ctx.historique);
+    const prompt = actionPrompt(ctx, '{}', eteint ? guideForPrompt('courante', ctx.guideLiens) : guideForPrompt(), c.phrase);
+    const outils = eteint ? functionsFor(!!file, c.phrase, ctx.historique, { ouvrir: false, coupes: [] }) : functionsFor(!!file, c.phrase, ctx.historique);
     const r1 = fromFunctionCall('repondre', { reponse: 'Voici comment faire.', liens: [...Object.keys(NAV_ACTIONS), 'salarie'], salarie_id: 'u-karim' }, ctx);
     const r2 = fromFunctionCall('repondre', { reponse: c.phrase }, ctx);
     return { id: c.id, prompt: await sha256(prompt), outils: await sha256(J(outils)), reponses: await sha256(J({ local, r1, r2 })) };
@@ -70,7 +71,7 @@ export async function empreinteDuCas(c: (typeof CASES)[number], extra: { bureau?
   const live = { ...(c.live === 'vide' ? LIVE_VIDE : WORKER_LIVE), enCours: c.enCours ? LIVE_EN_COURS : null } as WorkerLive;
   if (c.history) snap.historique = sansDemandeRecollee(nettoyerHistorique(c.history), c.phrase);
   const vues: ToolsRequest[] = [];
-  const t = await runWorkerTurn({ text: c.phrase, file, snapshot: snap, live, tier: tierFor(!!file), call: modeleSimule(vues), iaDisponible: true, multiOk: true });
+  const t = await runWorkerTurn({ text: c.phrase, file, snapshot: snap, live, tier: tierFor(!!file), call: modeleSimule(vues), iaDisponible: true, multiOk: true, ...(extra.options === 'eteint' ? { etape3: { ouvrir: false, coupes: [] } } : {}) });
   const reponse = t.via === 'erreur' ? t : { via: t.via, profil: t.profil, reply: t.reply };
   const direct = fromWorkerCall('repondre', { reponse: c.phrase, lien: 'semaine' }, snap, live);
   return {
@@ -115,7 +116,7 @@ Deno.test({
 Deno.test('Éteint = octet pour octet (1/3) : les 165 cas du banc donnent la consigne, les outils et les liens de la production d\'avant 3b-1', async () => {
   const etalon = await etalonLu();
   if (!etalon) throw new Error('registre/avant-3b1.snapshot.json absent');
-  if (etalon.cas.length !== CASES.filter((c) => !(c as { etape3?: unknown }).etape3).length) throw new Error(`${etalon.cas.length} empreintes gelées pour ${CASES.filter((c) => !(c as { etape3?: unknown }).etape3).length} cas hors « Ouvrir »`);
+  if (etalon.cas.length !== CASES.filter((c) => !c.etape3).length) throw new Error(`${etalon.cas.length} empreintes gelées pour ${CASES.filter((c) => !c.etape3).length} cas hors « Ouvrir »`);
   const ecarts: string[] = [];
   for (const gel of etalon.cas) {
     const c = CASES.find((x) => x.id === gel.id);
@@ -141,7 +142,7 @@ Deno.test('Éteint = octet pour octet (3/3) : le même résultat, SANS option, q
   const ecarts: string[] = [];
   for (const gel of etalon.cas) {
     const c = CASES.find((x) => x.id === gel.id)!;
-    const neuf = await empreinteDuCas(c, { options: 'eteint', bureau: (ctx) => { (ctx as ActionContext & { etape3?: { ouvrir: boolean } }).etape3 = { ouvrir: false }; } });
+    const neuf = await empreinteDuCas(c, { options: 'eteint', bureau: (ctx) => { ctx.ouvrir = undefined; ctx.guideLiens = undefined; } });
     for (const k of ['prompt', 'outils', 'reponses'] as const) if (neuf[k] !== gel[k]) ecarts.push(`${gel.id} : ${k} ≠ étalon`);
   }
   if (ecarts.length) throw new Error(`${ecarts.length} écart(s) :\n  ${ecarts.slice(0, 20).join('\n  ')}`);

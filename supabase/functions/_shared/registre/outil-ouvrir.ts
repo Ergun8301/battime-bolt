@@ -28,7 +28,7 @@ export function parametresOuvrir(cote: Cote): Record<string, unknown> {
     noms.set(nom, aides);
   }
   const properties: Record<string, unknown> = {};
-  for (const [nom, aides] of noms) properties[nom] = { type: 'string', description: aides.size === 1 ? Array.from(aides)[0] : 'voir l’écran choisi' };
+  noms.forEach((aides, nom) => { properties[nom] = { type: 'string', description: aides.size === 1 ? Array.from(aides)[0] : 'voir l’écran choisi' }; });
   return {
     type: 'object',
     properties: {

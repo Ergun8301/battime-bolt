@@ -15,8 +15,9 @@
 // ne garde que `label` et `action`.
 //
 // SERVEUR SEULEMENT (il lit ouvreurs.ts, le registre lourd).
-import { addDays, candidats, findGuide, frDate, guideLinks, mondayOf, norm, scrubNir } from './assistant-actions-core.ts';
-import { findWorkerGuide, workerGuideLinks } from './worker-assistant-core.ts';
+import { addDays, candidats, findGuide, frDate, guideLinks, mondayOf, norm, scrubNir, type ActionContext } from './assistant-actions-core.ts';
+import { findWorkerGuide, workerGuideLinks, type WorkerSnapshot } from './worker-assistant-core.ts';
+import { GUIDE_LIENS_ETAPE3 } from './guide-etape3.ts';
 import { parseDateFr, parseTimeFr } from './fr-langue.ts';
 import { trouverOuvreur } from './registre/ouvreurs.ts';
 import { VALEURS_MAX } from './registre/outil-ouvrir.ts';
@@ -256,3 +257,23 @@ export function ouvrirDepuisAppel(args: Record<string, unknown>, ctx: CtxOuvrir,
 
 /** Pour les tests et le banc : les mois clôturables et le lundi d'une date (mêmes calculs que l'écran). */
 export const _calculs = { moisClotures, mondayOf, addDays };
+
+/**
+ * Allume `ouvrir` pour UNE requête du bureau : `ctx.ouvrir` traite l'appel `ouvrir_fenetre`, `ctx.guideLiens` pose la seconde variante du GUIDE. À appeler
+ * seulement si l'interrupteur est allumé, l'écran annonce `ouvrir1` et aucun fichier n'est joint (assistant/index.ts, banc d'essai). Sans appel : l'assistant d'avant.
+ */
+export function brancherOuvrirBureau(ctx: ActionContext, teinte = false): void {
+  ctx.ouvrir = (args) => {
+    const r = ouvrirDepuisAppel(args, { today: ctx.today, salaries: ctx.salaries, chantiers: ctx.chantiers, demande: ctx.demande, teinte }, 'bureau', 'admin');
+    return { answer: r.answer, links: r.links, ...(r.auto ? { auto: true as const } : {}) };
+  };
+  ctx.guideLiens = GUIDE_LIENS_ETAPE3;
+}
+
+/** Idem côté salarié (profils court et long) : `snapshot.ouvrir` traite l'appel `ouvrir_fenetre`. */
+export function brancherOuvrirSalarie(snapshot: WorkerSnapshot, role: 'worker' | 'lead', teinte = false): void {
+  snapshot.ouvrir = (args) => {
+    const r = ouvrirDepuisAppel(args, { today: snapshot.aujourdhui, chantiers: snapshot.chantiers, demande: snapshot.demande, teinte }, 'salarie', role);
+    return { kind: 'guide', answer: r.answer, links: r.links, ...(r.auto ? { auto: true as const } : {}) };
+  };
+}

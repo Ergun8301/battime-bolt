@@ -14,6 +14,8 @@ import { functionsFor } from '../_shared/assistant-outils.ts';
 import { nettoyerHistorique, sansDemandeRecollee } from '../_shared/assistant-history.ts';
 import * as W2 from '../_shared/worker-assistant-core.ts';
 import { runWorkerTurn } from '../_shared/worker-turn.ts';
+import { ouvrirActif, outilsCoupes, type Etape3Env } from '../_shared/etape3-config.ts';
+import { brancherOuvrirBureau, brancherOuvrirSalarie } from '../_shared/ouvrir.ts';
 import * as A1 from './v1/assistant-actions-core.ts';
 import * as W1 from './v1/worker-assistant-core.ts';
 import { ADMIN_RAW, CASES, FILES, LIVE_EN_COURS, LIVE_VIDE, ME, WORKER_LIVE, WORKER_RAW, type EvalCase, type Outcome } from './cases.ts';
@@ -31,14 +33,14 @@ export interface CaseResult {
   modele?: string;
 }
 
-type AnyReply = { answer?: string; links?: { action: string }[]; action?: { draft: { type: string }; problems: string[] } };
+type AnyReply = { answer?: string; links?: { action: string }[]; action?: { draft: { type: string }; problems: string[] }; auto?: boolean };
 function fromAdmin(r: AnyReply | null): Outcome {
   if (!r) return { kind: 'none' };
   if (r.action) return { kind: 'action', type: r.action.draft.type, draft: r.action.draft as unknown as Record<string, unknown>, problems: r.action.problems };
-  return { kind: 'answer', answer: r.answer, links: (r.links ?? []).map((l) => l.action) };
+  return { kind: 'answer', answer: r.answer, links: (r.links ?? []).map((l) => l.action), ...(r.auto ? { auto: true } : {}) };
 }
 type AnyWorker = {
-  kind: string; answer?: string; links?: { action: string }[]; action?: { draft: { type: string }; problems: string[] }; draft?: unknown; qui?: string; date?: string;
+  kind: string; answer?: string; links?: { action: string }[]; action?: { draft: { type: string }; problems: string[] }; draft?: unknown; qui?: string; date?: string; auto?: boolean;
   // fiche à plusieurs éléments
   items?: (Record<string, unknown> & { kind: string })[]; ignores?: { name: string }[]; non_prepare?: string[]; incertain?: boolean; note?: string;
 };
@@ -59,16 +61,20 @@ function fromWorker(r: AnyWorker | null): Outcome {
   if (r.kind === 'action' && r.action) return { kind: 'action', type: r.action.draft.type, draft: r.action.draft as unknown as Record<string, unknown>, problems: r.action.problems };
   if (r.kind === 'draft') return { kind: 'draft', draft: r.draft as Record<string, unknown> };
   if (r.kind === 'collegues') return { kind: 'collegues', qui: r.qui, date: r.date };
-  return { kind: 'answer', answer: r.answer, links: (r.links ?? []).map((l) => l.action) };
+  return { kind: 'answer', answer: r.answer, links: (r.links ?? []).map((l) => l.action), ...(r.auto ? { auto: true } : {}) };
 }
 
-async function runOne(c: EvalCase, version: 'v1' | 'v2', appel: Call): Promise<CaseResult> {
+async function runOne(c: EvalCase, version: 'v1' | 'v2', appel: Call, e3: Etape3Env): Promise<CaseResult> {
   // Chaque cas note quel modèle a servi (le dernier appel), pour que le rapport dise Claude ou secours.
   let servi: string | undefined;
   const call: Call = async (req) => { const r = await appel(req); servi = modeleServi(r) ?? servi; return r; };
   const base = { id: c.id, cote: c.cote, categorie: c.categorie, phrase: c.phrase };
   const t0 = Date.now();
   const file = c.file ? FILES[c.file] : undefined;
+  // Étape 3 : `ouvrir` allumé pour CE cas ? Les mêmes quatre conditions que la production (ouvrirActif) ; le banc annonce toujours `ouvrir1`. Éteint : rien ne change.
+  const ouvrirOn = version === 'v2' && ouvrirActif(e3, c.cote, ADMIN_RAW.companyId, ['ouvrir1'], !!file);
+  const coupes = version === 'v2' ? outilsCoupes(e3) : [];
+  const optsOutils = ouvrirOn || coupes.length ? { ouvrir: ouvrirOn, coupes } : undefined;
   try {
     let out: Outcome;
     let via: CaseResult['via'] = 'local';
@@ -77,18 +83,23 @@ async function runOne(c: EvalCase, version: 'v1' | 'v2', appel: Call): Promise<C
       const A = version === 'v2' ? A2 : A1;
       const ctx = A.buildActionContext(ADMIN_RAW as Parameters<typeof A2.buildActionContext>[0]) as A2.ActionContext;
       if (version === 'v2') { ctx.me = ME; ctx.demande = c.phrase; if (c.history) ctx.historique = sansDemandeRecollee(nettoyerHistorique(c.history), c.phrase); }
+      if (ouvrirOn) brancherOuvrirBureau(ctx);
       const local = file ? null : A.handleActionLocally(c.phrase, ctx as never);
       if (local) out = fromAdmin(local as AnyReply);
       else {
         via = 'ia';
-        const r = await call({ prompt: A.actionPrompt(ctx as never, '{}', A.guideForPrompt(), c.phrase), functions: version === 'v2' ? functionsFor(!!file, c.phrase, ctx.historique) : A1.ASSISTANT_FUNCTIONS, file });
+        const r = await call({
+          prompt: A.actionPrompt(ctx as never, '{}', ouvrirOn ? A2.guideForPrompt('etape3', ctx.guideLiens) : A.guideForPrompt(), c.phrase),
+          functions: version === 'v2' ? (optsOutils ? functionsFor(!!file, c.phrase, ctx.historique, optsOutils) : functionsFor(!!file, c.phrase, ctx.historique)) : A1.ASSISTANT_FUNCTIONS, file,
+        });
         out = r.ok ? fromAdmin(A.fromFunctionCall(r.call.name, r.call.args, ctx as never) as AnyReply) : { kind: 'none', answer: `IA : ${r.reason}` };
       }
     } else if (version === 'v2') {
       const snap = W2.buildWorkerSnapshot(WORKER_RAW as never) as W2.WorkerSnapshot;
       const live = { ...(c.live === 'vide' ? LIVE_VIDE : WORKER_LIVE), enCours: c.enCours ? LIVE_EN_COURS : null } as W2.WorkerLive;
       if (c.history) snap.historique = sansDemandeRecollee(nettoyerHistorique(c.history), c.phrase);
-      const t = await runWorkerTurn({ text: c.phrase, file, snapshot: snap, live, tier: tierFor(!!file), call, iaDisponible: true, multiOk: true });
+      if (ouvrirOn) brancherOuvrirSalarie(snap, 'worker');
+      const t = await runWorkerTurn({ text: c.phrase, file, snapshot: snap, live, tier: tierFor(!!file), call, iaDisponible: true, multiOk: true, ...(optsOutils ? { etape3: optsOutils } : {}) });
       via = t.via === 'local' ? 'local' : 'ia';
       suite = { profil: t.profil, ...(t.via === 'ia' ? { appels: t.appels, ...(t.secours ? { secours: true } : {}) } : {}) };
       out = t.via === 'erreur' ? { kind: 'none', answer: `IA : ${t.raison}` } : fromWorker(t.reply as AnyWorker);
@@ -103,6 +114,7 @@ async function runOne(c: EvalCase, version: 'v1' | 'v2', appel: Call): Promise<C
         out = r.ok ? fromWorker(W1.fromWorkerCall(r.call.name, r.call.args, snap as never, live as never) as AnyWorker) : { kind: 'none', answer: `IA : ${r.reason}` };
       }
     }
+    if (ouvrirOn) out = { ...out, etape3: true };
     const why = c.check(out);
     // Diagnostic : pour un échec, ce que l'assistant a réellement préparé (jeu fictif, rien d'une vraie entreprise).
     return { ...base, ok: !why, why, via, ms: Date.now() - t0, ...suite, ...(servi ? { modele: servi } : {}), ...(why ? { sortie: out } : {}) };
@@ -117,14 +129,16 @@ const mediane = (xs: number[]) => { const s = [...xs].sort((a, b) => a - b); ret
  * `opts.repeat` : chaque cas est passé N fois (le modèle n'est plus à température fixe : 3 passes par cas donnent la vraie
  * réussite). `total` et `ok` comptent alors des ESSAIS ; `parCas` dit, pour chaque cas, combien d'essais ont réussi.
  */
-export async function runEval(version: 'v1' | 'v2', call: Call, ids?: string[], parallel = 6, gapMs = 0, opts: { repeat?: number } = {}) {
+export async function runEval(version: 'v1' | 'v2', call: Call, ids?: string[], parallel = 6, gapMs = 0, opts: { repeat?: number; etape3?: Etape3Env } = {}) {
   const repeat = Math.max(1, Math.floor(opts.repeat ?? 1));
-  const cases = CASES.filter((c) => !ids?.length || ids.includes(c.id));
+  // Étape 3 : sans `etape3` (ou éteint) le banc est TOUT ÉTEINT ; un cas « Ouvrir » ne se joue que si son interrupteur est allumé (jamais en v1).
+  const e3: Etape3Env = opts.etape3 ?? { get: () => undefined };
+  const cases = CASES.filter((c) => !ids?.length || ids.includes(c.id)).filter((c) => !c.etape3 || (version === 'v2' && ouvrirActif(e3, c.cote, ADMIN_RAW.companyId, ['ouvrir1'], !!c.file)));
   const essais = cases.flatMap((c) => Array.from({ length: repeat }, () => c));
   const results: CaseResult[] = [];
   for (let i = 0; i < essais.length; i += parallel) {
     if (i && gapMs) await new Promise((r) => setTimeout(r, gapMs));
-    results.push(...await Promise.all(essais.slice(i, i + parallel).map((c) => runOne(c, version, call))));
+    results.push(...await Promise.all(essais.slice(i, i + parallel).map((c) => runOne(c, version, call, e3))));
   }
   const byCat = new Map<string, { ok: number; n: number }>();
   for (const r of results) {

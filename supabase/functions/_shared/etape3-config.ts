@@ -179,3 +179,32 @@ export function modesActuel(env: Etape3Env | null | undefined, courante: Livrais
     return '*';
   }
 }
+
+/** Les outils coupés en urgence (`outils_coupes`) : une liste de noms, vide sans secret ou avec un secret illisible. Ne lève jamais. */
+export function outilsCoupes(env: Etape3Env | null | undefined): readonly string[] {
+  try { return configDe(env).outils_coupes; } catch { return []; }
+}
+
+/**
+ * Les capacités que l'écran annonce dans le corps de la requête (`caps: ['ouvrir1', …]`, précédent `multi: true`). Un ancien onglet (PWA en cache) n'en
+ * envoie pas : le serveur n'émet alors aucun lien `ouvrir:` et ne propose pas `ouvrir_fenetre`. Au plus 8 mots de 2 à 12 caractères ; le reste est ignoré.
+ */
+export function lireCaps(brut: unknown): string[] {
+  if (!Array.isArray(brut)) return [];
+  const out: string[] = [];
+  for (const c of brut.slice(0, 8)) if (typeof c === 'string' && /^[a-z0-9]{2,12}$/.test(c) && !out.includes(c)) out.push(c);
+  return out;
+}
+
+/**
+ * `ouvrir` est-il actif pour CETTE requête ? Quatre conditions, toutes nécessaires (§1.3, §3.2) : l'interrupteur est allumé pour ce côté et cette entreprise ; l'écran
+ * annonce `ouvrir1` (sinon un ancien onglet recevrait un lien qu'il ne sait pas ouvrir) ; aucun fichier n'est joint (un PDF piégé ne doit rien pouvoir ouvrir) ;
+ * `ouvrir_fenetre` n'est pas coupé en urgence. Ne lève jamais. UN seul endroit : les deux fonctions Edge et le banc d'essai l'appellent.
+ */
+export function ouvrirActif(env: Etape3Env | null | undefined, cote: Cote, companyId: string | null | undefined, caps: unknown, fichierJoint: boolean): boolean {
+  try {
+    return !fichierJoint && lireCaps(caps).includes('ouvrir1') && etat(env, 'ouvrir', cote, companyId) && !outilCoupe(env, 'ouvrir_fenetre');
+  } catch {
+    return false;
+  }
+}

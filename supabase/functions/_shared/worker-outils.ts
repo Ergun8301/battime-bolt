@@ -19,10 +19,23 @@ export const WORKER_FUNCTIONS = outilsPour('salarie') as DeclarationOutil[];
  */
 export const WORKER_ATTACHMENT_FUNCTIONS = outilsPour('salarie', { fichier: true }) as DeclarationOutil[];
 
+/** Étape 3 (3b-1) : voir assistant-outils.ts (`OptionsOutils`). Sans option, la liste est EXACTEMENT celle d'avant. */
+export interface OptionsOutilsSalarie { ouvrir?: boolean; coupes?: readonly string[] }
+
+/** La déclaration de `ouvrir_fenetre` du salarié, générée depuis les ouvreurs (registre/outil-ouvrir.ts). */
+export const OUVRIR_FENETRE_SALARIE = outilsPour('salarie', { etat: { ouvrir: true } }).filter((f) => f.name === 'ouvrir_fenetre') as DeclarationOutil[];
+
+/** Ajoute `ouvrir_fenetre` (si l'interrupteur est allumé) et retire les outils coupés. Sans option : la même liste, le même tableau. */
+export function avecOptionsSalarie<T extends { name: string }>(base: T[], hasFile: boolean, opts?: OptionsOutilsSalarie): T[] {
+  if (!opts || (!opts.ouvrir && !(opts.coupes ?? []).length)) return base;
+  const avec = opts.ouvrir && !hasFile ? [...base, ...(OUVRIR_FENETRE_SALARIE as unknown as T[])] : base;
+  return (opts.coupes ?? []).length ? avec.filter((f) => f.name === 'repondre' || !opts.coupes!.includes(f.name)) : avec;
+}
+
 /**
  * Lot 6 : sans fichier, seulement les outils du DOMAINE de la phrase (tous si aucun n'est reconnu).
  * Étape 2 : avec un historique, les domaines du dernier échange s'ajoutent à ceux de la phrase, jamais l'inverse.
  */
-export const workerFunctionsFor = (hasFile: boolean, text?: string, historique?: MessageHistorique[]) =>
-  (hasFile ? WORKER_ATTACHMENT_FUNCTIONS
-    : pickTools(WORKER_FUNCTIONS, text && domainTools(text, WORKER_DOMAINS) ? textePourOutils(text, historique) : text, WORKER_DOMAINS));
+export const workerFunctionsFor = (hasFile: boolean, text?: string, historique?: MessageHistorique[], opts?: OptionsOutilsSalarie) =>
+  avecOptionsSalarie(hasFile ? WORKER_ATTACHMENT_FUNCTIONS
+    : pickTools(WORKER_FUNCTIONS, text && domainTools(text, WORKER_DOMAINS) ? textePourOutils(text, historique) : text, WORKER_DOMAINS), hasFile, opts);

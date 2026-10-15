@@ -15,7 +15,7 @@
 import type { AiFile, Tier, ToolsRequest, ToolsResult } from './ai-provider.ts';
 import { WORKER_TEXT_MAX, profilSaisie } from './saisie-profil.ts';
 import { fromWorkerCall, handleWorkerLocally, workerFunctionPrompt, type WorkerFullReply, type WorkerLive, type WorkerSnapshot } from './worker-assistant-core.ts';
-import { workerFunctionsFor } from './worker-outils.ts';
+import { workerFunctionsFor, type OptionsOutilsSalarie } from './worker-outils.ts';
 import { buildLongReply, type LongLegacy, type WorkerMultiReply } from './worker-multi.ts';
 import { workerFunctionsForLong, workerMultiPrompt } from './worker-multi-prompt.ts';
 
@@ -36,6 +36,8 @@ export interface WorkerTurnInput {
   iaDisponible: boolean;
   /** Production : body.multi === true ; banc : true. Faux → profil TOUJOURS « court » (un ancien navigateur ne sait pas afficher la fiche). */
   multiOk: boolean;
+  /** 3b-1 : ce que les interrupteurs changent dans les outils (`ouvrir_fenetre`, `outils_coupes`). Absent : les outils d'avant, octet pour octet. */
+  etape3?: OptionsOutilsSalarie;
 }
 
 export type WorkerTurnOut =
@@ -62,12 +64,12 @@ export async function runWorkerTurn(i: WorkerTurnInput): Promise<WorkerTurnOut> 
 
   if (profil === 'court') {
     // Exactement l'ancien appel : seulement les outils du domaine de la phrase, UN appel.
-    const r = await i.call({ prompt: workerFunctionPrompt(i.snapshot, i.live, text), functions: workerFunctionsFor(!!i.file, text, i.snapshot.historique), file: i.file, tier: i.tier });
+    const r = await i.call({ prompt: workerFunctionPrompt(i.snapshot, i.live, text), functions: workerFunctionsFor(!!i.file, text, i.snapshot.historique, i.etape3), file: i.file, tier: i.tier });
     if (!r.ok) return { via: 'erreur', profil, raison: r.reason };
     return { via: 'ia', profil, reply: fromWorkerCall(r.call.name, r.call.args, i.snapshot, i.live), appels: 1, ...(r.secours ? { secours: true as const } : {}) };
   }
 
-  const r = await i.call({ prompt: workerMultiPrompt(i.snapshot, i.live, text), functions: workerFunctionsForLong(text, i.snapshot.historique), tier: i.tier, profil: 'long', maxCalls: 4 });
+  const r = await i.call({ prompt: workerMultiPrompt(i.snapshot, i.live, text), functions: workerFunctionsForLong(text, i.snapshot.historique, i.etape3), tier: i.tier, profil: 'long', maxCalls: 4 });
   if (!r.ok) return { via: 'erreur', profil, raison: r.reason };
   const calls = r.calls ?? [r.call];
   return { via: 'ia', profil, reply: buildLongReply(calls, text, i.snapshot, i.live, { secours: !!r.secours, rognes: r.rognes ?? 0 }), appels: calls.length, ...(r.secours ? { secours: true as const } : {}) };
