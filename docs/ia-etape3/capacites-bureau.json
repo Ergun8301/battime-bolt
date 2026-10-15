@@ -1,0 +1,2348 @@
+[
+  {
+    "id": "B1",
+    "libelle": "Voir la semaine, salarié par jour",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [
+      "NAV_ACTION:planning"
+    ],
+    "exposition": "PARTIEL — Outil de lecture lire_planning(du, au, salarie?, chantier?) qui rend case par case les interventions (client, ville, horaire prévu, note). La fonction lit déjà le planning de -14 à +13 jours pour retrouver les noms et identifiants, mais ne l'envoie PAS au modèle (l'instantané ne contient pas de planning). Aujourd'hui seul NAV_ACTION:planning ramène à l'écran.",
+    "ecran": "Planning (grille de la semaine : une ligne par salarié, une case par jour)",
+    "parametres": [
+      "du",
+      "au",
+      "salarie (facultatif)",
+      "chantier (facultatif)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:3639 ; supabase/functions/assistant/index.ts:118 ; supabase/functions/_shared/assistant-core.ts:28 ; components/admin-planning.tsx:4390"
+  },
+  {
+    "id": "B2",
+    "libelle": "Lire une intervention : client, lieu, horaire prévu, créneau",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "Même outil lire_planning : client (pour « Autre », la note), produit · ville, horaire prévu, créneau matin / après-midi / soir / journée calculé sur l'horaire (day-part.ts). Aucune lecture de ce genre n'existe aujourd'hui.",
+    "ecran": "Planning (bulle d'intervention)",
+    "parametres": [
+      "salarie",
+      "jour",
+      "chantier (si plusieurs ce jour-là)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:262 ; components/admin-planning.tsx:229 ; supabase/functions/_shared/day-part.ts:32"
+  },
+  {
+    "id": "B3",
+    "libelle": "Distinguer prévue / à envoyer / envoyée",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "lire_planning rend aussi l'état des heures de chaque case : prévue, saisie « à envoyer » (brouillon, ne compte pas), envoyée (début–fin et durée). Jamais de coût ni de taux. Les heures envoyées ne sont pas dans l'instantané actuel (seul le total du mois par salarié y est).",
+    "ecran": "Planning (bulle : état des heures)",
+    "parametres": [
+      "salarie",
+      "jour"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:1859 ; components/admin-planning.tsx:1863 ; supabase/functions/_shared/assistant-core.ts:31"
+  },
+  {
+    "id": "B4",
+    "libelle": "Voir « retirée », « ajoutée par le salarié », heures hors planning",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "lire_planning signale les cases retirées par le salarié, les interventions « ajoutées par le salarié » et les heures déclarées hors planning (client, durée, « saisi, à envoyer »).",
+    "ecran": "Planning (bulle et pastille « ajouté par le salarié »)",
+    "parametres": [
+      "salarie",
+      "jour"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:1876 ; components/admin-planning.tsx:978"
+  },
+  {
+    "id": "B5",
+    "libelle": "Voir la réception (sans, réserve à traiter, levée, en cours)",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "lire_planning rend la réception de la journée (sans réserve / avec réserve à traiter / levée / chantier en cours). Les réserves ouvertes sont lues par la fonction (assistant/index.ts) mais ne servent qu'à choisir la ligne d'un lever_reserve : le modèle ne les voit pas comme donnée.",
+    "ecran": "Planning (bulle) et fenêtre Intervention",
+    "parametres": [
+      "salarie",
+      "jour",
+      "chantier"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:285 ; supabase/functions/assistant/index.ts:135"
+  },
+  {
+    "id": "B6",
+    "libelle": "Voir le nombre de documents d'un chantier",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "lire_documents(chantier?) rend le nombre et la liste (nom, catégorie, date). La fonction lit 150 documents pour retrouver un fichier à supprimer ou modifier, sans les donner au modèle comme donnée.",
+    "ecran": "Planning (pastille 📎 de la bulle) et panneau « pièces »",
+    "parametres": [
+      "chantier"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:979 ; supabase/functions/assistant/index.ts:139"
+  },
+  {
+    "id": "B7",
+    "libelle": "Voir qui pointe en direct, depuis quand",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [
+      "repondre"
+    ],
+    "exposition": "Déjà couvert : le champ en_cours de l'instantané (salarié, chantier, depuis HH:MM) est lu par « repondre ». Seuls les pointages d'aujourd'hui existent (work_date = aujourd'hui), comme à l'écran.",
+    "ecran": "Planning (case verte « en cours depuis HH:MM »)",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "supabase/functions/_shared/assistant-core.ts:33 ; supabase/functions/assistant/index.ts:127 ; supabase/functions/_shared/assistant-actions-core.ts:1418"
+  },
+  {
+    "id": "B8",
+    "libelle": "Voir l'absence du jour de chaque salarié",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [
+      "repondre"
+    ],
+    "exposition": "PARTIEL — Aujourd'hui seulement : absents_aujourdhui (salarié, motif) dans l'instantané. Les absences des autres jours de la semaine passent par lire_planning.",
+    "ecran": "Planning (case hachurée et libellé sous le nom)",
+    "parametres": [
+      "jour (facultatif)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "supabase/functions/_shared/assistant-core.ts:34 ; components/admin-planning.tsx:3142"
+  },
+  {
+    "id": "B9",
+    "libelle": "Voir « N jours en attente » / « À jour » par salarié",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [
+      "repondre"
+    ],
+    "exposition": "PARTIEL — L'instantané ne dit que « qui n'a pas pointé HIER » (pas_pointe_hier). L'écran compte les journées planifiées sans heures envoyées sur le mois précédent et le mois en cours, hors absences, cases retirées, mois et salariés clôturés (missingWindowStart, missingDaysFrom) : outil lire_a_relancer (voir B137).",
+    "ecran": "Planning (pastille sous le nom) et bandeau « à relancer »",
+    "parametres": [
+      "salarie (facultatif)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "supabase/functions/_shared/assistant-core.ts:32 ; components/admin-planning.tsx:1775 ; components/admin-planning.tsx:1457"
+  },
+  {
+    "id": "B10",
+    "libelle": "Voir réunions et tâches (x/y), même un jour d'absence",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "Outil lire_taches_reunions(salarie?, du, au) : réunions (titre, heure, lieu, participants) et tâches (texte, créneau, fait ou non). Fonction masquée tant que les tables n'existent pas (options « si dispo »).",
+    "ecran": "Planning (pastilles réunion et compteur de tâches)",
+    "parametres": [
+      "salarie",
+      "jour"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:1445 ; lib/missions.ts:141"
+  },
+  {
+    "id": "B11",
+    "libelle": "Consulter la légende des codes visuels (ordinateur, papier)",
+    "genre": "guider",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "Fiche d'aide « Légende » (couleurs matin / après-midi / soir, ✓ heures déclarées, ⋯ saisi non envoyé, réception, ajouté par le salarié, 📎, en cours, réunion). Aucune fiche ne la décrit aujourd'hui (GUIDE n'a pas de « legende »). L'écran du téléphone n'a pas ce bouton.",
+    "ecran": "Planning (bouton ⓘ « Légende des icônes », ordinateur seulement)",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:3472 ; supabase/functions/_shared/assistant-actions-core.ts:161"
+  },
+  {
+    "id": "B12",
+    "libelle": "Changer de semaine, revenir à l'actuelle, lire S-NN",
+    "genre": "naviguer",
+    "niveau": 1,
+    "actions_existantes": [
+      "guide:semaine",
+      "NAV_ACTION:planning"
+    ],
+    "exposition": "PARTIEL — Outil aller_a_date(date | « actuelle » | ±n semaines) qui appelle changeWeek et, sur téléphone, choisit aussi le jour (B13). Aujourd'hui l'assistant EXPLIQUE (fiche « semaine » + visite guidée) mais ne change pas la semaine ; le mécanisme existe côté écran (onOpenVersions appelle changeWeek).",
+    "ecran": "Planning (flèches ‹ › et cadre « S-NN »)",
+    "parametres": [
+      "date ou décalage en semaines",
+      "« semaine actuelle »"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:1975 ; components/admin-planning.tsx:4400 ; supabase/functions/_shared/assistant-actions-core.ts:161"
+  },
+  {
+    "id": "B13",
+    "libelle": "Téléphone : voir et agir sur la journée de son choix pour chaque salarié (aujourd'hui : un jour à la fois, une carte par salarié)",
+    "genre": "naviguer",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "Même outil aller_a_date : sur téléphone il fixe le jour affiché (mobileDayIdx) ; sur ordinateur il ne fait que changer de semaine.",
+    "ecran": "Planning téléphone (7 pastilles de jours, une carte par salarié)",
+    "parametres": [
+      "jour"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:3896 ; components/admin-planning.tsx:1011"
+  },
+  {
+    "id": "B14",
+    "libelle": "Rechercher un client, un salarié",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [
+      "repondre"
+    ],
+    "exposition": "Déjà couvert par la consigne : la liste complète des salariés et des chantiers (id, nom, ville) est écrite dans chaque demande ; « repondre » peut dire si « Dupont » existe et lequel. Les noms ambigus sont départagés par resolve (jamais devinés).",
+    "ecran": "Liste Clients et fenêtre Salariés (champs « Rechercher… »)",
+    "parametres": [
+      "nom (client ou salarié)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "supabase/functions/_shared/assistant-actions-core.ts:1831 ; components/admin-planning.tsx:3532 ; components/admin-planning.tsx:4307"
+  },
+  {
+    "id": "B15",
+    "libelle": "Créer une intervention (case, téléphone)",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "affecter_planning",
+      "guide:affecter"
+    ],
+    "exposition": "Outil existant affecter_planning, fait tout de suite avec « Annuler » (actionMode direct). Refus propres : salarié absent ce jour-là, client non nommé (devient « Autre » + lieu), jour hors période. Une fin exige un début côté écran ; le préréglage Matin / Après-midi / Journée est géré par « moment ».",
+    "ecran": "Planning (clic sur une case) → fenêtre « Ajouter une intervention »",
+    "parametres": [
+      "salarie",
+      "chantier",
+      "jours (jusqu'à 31)",
+      "debut",
+      "fin",
+      "moment (matin / après-midi / journée)",
+      "objet / note pour le poseur",
+      "lieu (si aucun client nommé)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:2417 ; supabase/functions/_shared/assistant-actions-core.ts:1469 ; lib/assistant-actions.ts:188"
+  },
+  {
+    "id": "B16",
+    "libelle": "Créer une intervention en glissant un client",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "affecter_planning"
+    ],
+    "exposition": "Même outil que B15 (le geste de glisser n'est pas reproduit, il n'apporte rien de plus : client + salarié + jour, sans horaire). Le glisser lui-même reste un geste d'écran sans équivalent clavier.",
+    "ecran": "Liste Clients (lignes glissables) → case du planning",
+    "parametres": [
+      "salarie",
+      "chantier",
+      "jour"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:2292 ; supabase/functions/_shared/assistant-actions-core.ts:1469"
+  },
+  {
+    "id": "B17",
+    "libelle": "Modifier horaire et note ; lire heures déclarées, photos",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "modifier_intervention",
+      "guide:heure_note"
+    ],
+    "exposition": "PARTIEL — Outil existant modifier_intervention (jour, salarié, heure, note ; direct + Annuler). Écarts : il ne règle que le DÉBUT (la fin existante est gardée si elle reste après, sinon retirée) — pas de fin explicite ni de bouton « Effacer l'horaire » ; la lecture des heures déclarées et des photos est à faire par lire_planning (B3) et lire_documents (B6).",
+    "ecran": "Fenêtre Intervention (Horaire prévu, Note pour le poseur, Heures déclarées)",
+    "parametres": [
+      "salarie",
+      "jour",
+      "chantier",
+      "heure de début",
+      "heure de fin",
+      "note"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:2902 ; supabase/functions/_shared/assistant-actions-core.ts:1498 ; lib/assistant-actions.ts:255"
+  },
+  {
+    "id": "B18",
+    "libelle": "Déplacer, réordonner par glisser",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "modifier_intervention",
+      "guide:deplacer"
+    ],
+    "exposition": "PARTIEL — Déplacer : outil existant modifier_intervention (nouvelle_date, nouveau_salarie), avec les mêmes refus que le glisser (heures envoyées ou notées, pointage en cours, mois ou salarié clôturé : prepareMove). Réordonner dans la case : voir B79 (non couvert).",
+    "ecran": "Planning (glisser une bulle vers une autre case ou dans la case)",
+    "parametres": [
+      "salarie",
+      "jour actuel",
+      "nouveau jour",
+      "nouveau salarié"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:2271 ; lib/assistant-actions.ts:240 ; lib/erase.ts:326"
+  },
+  {
+    "id": "B19",
+    "libelle": "Copier par glisser (Ctrl / Alt / Option / ⌘)",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "affecter_planning"
+    ],
+    "exposition": "PARTIEL — Outil copier_intervention(source, cibles[]) : reprend client, horaire prévu et note (jamais les heures) et applique copyRefusal (absence, mois ou salarié clôturé, doublon, chevauchement). affecter_planning permet seulement de recréer à la main une intervention sans lire la case source ni appliquer ces refus.",
+    "ecran": "Planning (glisser avec Ctrl, Alt/Option ou ⌘)",
+    "parametres": [
+      "salarie source",
+      "jour source",
+      "chantier (si plusieurs)",
+      "salarie cible",
+      "jours cibles"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:2146 ; supabase/functions/_shared/copy-slot.ts:52"
+  },
+  {
+    "id": "B20",
+    "libelle": "Copier vers d'autres jours ; dupliquer au lendemain",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "affecter_planning"
+    ],
+    "exposition": "PARTIEL — Même outil copier_intervention (B19), « dupliquer au lendemain » = un jour de plus, même salarié. Écart : pas de lecture de la case source ni de refus motivés avec affecter_planning seul.",
+    "ecran": "Fenêtre Intervention → « Copier vers un autre jour… » / « Dupliquer au lendemain »",
+    "parametres": [
+      "salarie source",
+      "jour source",
+      "salarie(s) cible(s)",
+      "jours cibles (semaines -4 à +26)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:2226 ; components/admin-planning.tsx:2254"
+  },
+  {
+    "id": "B21",
+    "libelle": "Comprendre un refus (verrou, absence, mois clôturé)",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "Outil lire_verrous(case) qui rend la raison exacte (heures envoyées, heures notées, pointage en cours, sortie oubliée, mois clôturé, salarié clôturé, absence) avec les mêmes règles que hardLock / moveLock / copyRefusal. Aujourd'hui seuls les refus des propres outils de l'assistant sont dits (checkAction : « Ce mois est clôturé… », « Ce salarié est absent… »).",
+    "ecran": "Planning (messages de refus, 🔒 en mode Sélectionner)",
+    "parametres": [
+      "salarie",
+      "jour",
+      "chantier"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:1910 ; components/admin-planning.tsx:1934 ; supabase/functions/_shared/assistant-actions-core.ts:947"
+  },
+  {
+    "id": "B22",
+    "libelle": "Supprimer une intervention (confirmation si heures retirées)",
+    "genre": "ecrire",
+    "niveau": 3,
+    "actions_existantes": [
+      "supprimer_intervention",
+      "guide:retirer"
+    ],
+    "exposition": "Outil existant supprimer_intervention : carte « Vérifiez ce qui sera retiré, puis confirmez » (décision D3 du lot 1), puis « Annuler » restaure à l'identique. Niveau 3 retenu (suppression, doute) alors que « Annuler » est exact : candidat au niveau 2. À TRANCHER : Suppressions que « Annuler » restaure à l'identique (intervention, jours d'absence, dépense, habilitation, document, brouillon vide) : niveau 3 par prudence (ia-vision.md:37-39) ou niveau 2 ? La décision D3 du lot 1 (assistant-actions-core.ts:506-515) impose aujourd'hui la carte.",
+    "ecran": "Fenêtre Intervention → Supprimer ; fenêtre « Supprimer ? »",
+    "parametres": [
+      "salarie",
+      "jour",
+      "chantier",
+      "lieu"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:2923 ; supabase/functions/_shared/assistant-actions-core.ts:1580 ; lib/assistant-actions.ts:381 ; supabase/functions/_shared/assistant-actions-core.ts:507"
+  },
+  {
+    "id": "B23",
+    "libelle": "Annuler une suppression ou une copie par glisser",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [],
+    "exposition": "Outil annuler_derniere_action : chaque action de l'assistant porte déjà sa fonction d'annulation (result.undo), branchée seulement sur le bouton « Annuler » de la carte. Dire « annule ça » ou « non, retire ça » au chat (cas évalué sc03, ia-v2.md, section I) ne la déclenche pas : le modèle prépare une nouvelle suppression. Les annulations des gestes faits à la main restent le bouton de la carte de l'écran.",
+    "ecran": "Planning (carte « N supprimée(s) · Annuler », bandeau 20 s des catégories)",
+    "parametres": [
+      "(aucun : la dernière action)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:1987 ; lib/assistant-actions.ts:512"
+  },
+  {
+    "id": "B24",
+    "libelle": "Sélectionner plusieurs interventions (jour au téléphone) et les supprimer",
+    "genre": "ecrire",
+    "niveau": 3,
+    "actions_existantes": [
+      "effacer_planning",
+      "guide:selection"
+    ],
+    "exposition": "PARTIEL — Outil existant effacer_planning (un salarié ou l'équipe, une période ou une semaine ; 62 jours au plus), avec carte de confirmation et « Annuler ». Une sélection libre de cases dispersées se fait par plusieurs supprimer_intervention (boucle d'outils, une seule fiche de validation à prévoir). Le mode « Sélectionner » est un état d'écran sans objet pour l'assistant. Suppression que « Annuler » restaure à l'identique : niveau 3 par prudence (décision D3, voir B22), candidat au niveau 2.",
+    "ecran": "Planning (mode « Sélectionner », barre « Supprimer (N) »)",
+    "parametres": [
+      "salarie (vide = toute l'équipe)",
+      "du",
+      "au",
+      "semaine"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:2007 ; supabase/functions/_shared/assistant-actions-core.ts:1588 ; lib/assistant-actions.ts:382"
+  },
+  {
+    "id": "B25",
+    "libelle": "Poser une absence (plage ou jusqu'au retour)",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "poser_absence",
+      "guide:absence"
+    ],
+    "exposition": "PARTIEL — Outil existant poser_absence, direct + Annuler (undoAbsence rend les absences remplacées). Écart : sans date de fin l'écran pose 90 jours « jusqu'au retour Présent » (HORIZON_DAYS) alors que l'outil pose UN seul jour (au = du) ; 90 jours au plus par appel. « Repos » est refusé (la base ne l'accepte pas).",
+    "ecran": "Fenêtre Statut → Congé / Arrêt maladie / Intempérie → fenêtre Absence (calendrier)",
+    "parametres": [
+      "salarie",
+      "type (congé, maladie, intempérie)",
+      "du",
+      "au (facultatif)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:2481 ; components/admin-planning.tsx:206 ; supabase/functions/_shared/assistant-actions-core.ts:1460 ; lib/assistant-actions.ts:182"
+  },
+  {
+    "id": "B26",
+    "libelle": "Remettre « Présent »",
+    "genre": "ecrire",
+    "niveau": 3,
+    "actions_existantes": [
+      "supprimer_absence",
+      "guide:present"
+    ],
+    "exposition": "PARTIEL — Outil existant supprimer_absence(salarie, du, au) avec carte et « Annuler ». Écart : « Présent » de l'écran ne retire que l'absence EN COURS dès la date (absenceRunFrom) et laisse les absences posées plus tard en le disant ; l'outil retire toute la plage donnée. Niveau 3 car c'est une suppression de jours d'absence (même question D3 que B22).",
+    "ecran": "Fenêtre Statut → Présent ; fenêtre « Retirer ? »",
+    "parametres": [
+      "salarie",
+      "à partir du"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:2452 ; supabase/functions/_shared/assistant-actions-core.ts:1596 ; lib/assistant-actions.ts:383"
+  },
+  {
+    "id": "B27",
+    "libelle": "Gérer les tâches du jour et les réunions",
+    "genre": "ouvrir",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "Ouverture d'écran ouvrir_fenetre(ajouter, onglet=tâche|réunion, salarié, jour, heures) pré-rempli, sans écriture. Les écritures sont des entrées à part : B111 à B116. Options « si dispo » : masquées tant que les tables n'existent pas.",
+    "ecran": "Fenêtre « Ajouter » (onglets Intervention | Tâche | Réunion), compteur de tâches, pastille réunion",
+    "parametres": [
+      "salarie",
+      "jour",
+      "onglet (tâche ou réunion)",
+      "heures (facultatif)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:2396 ; components/admin-planning.tsx:2404 ; components/missions-office.tsx:199"
+  },
+  {
+    "id": "B28",
+    "libelle": "Attribuer un client à des heures « ajoutées par le salarié » ou sur « Autre »",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "attribuer_client",
+      "guide:attribuer"
+    ],
+    "exposition": "PARTIEL — Outil existant attribuer_client, aujourd'hui en carte à confirmer sans « Annuler ». Écarts : il ne part que du client nommé exactement « Autre » (ou sans chantier), alors que l'écran sait aussi « changer le client » d'heures déjà attribuées ; « Créer un nouveau client… » puis attribuer = deux outils (boucle d'outils).",
+    "ecran": "Planning (pastille « ajouté par le salarié ») → fenêtre « Attribuer un client » ; fiche salarié (ligne sur « Autre »)",
+    "parametres": [
+      "salarie",
+      "date",
+      "client à attribuer"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:2033 ; components/worker-detail.tsx:449 ; supabase/functions/_shared/assistant-actions-core.ts:1541 ; lib/assistant-actions.ts:349"
+  },
+  {
+    "id": "B29",
+    "libelle": "Inviter un salarié ; en importer par CSV/Excel",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "inviter_salarie",
+      "NAV_ACTION:nouveau_salarie",
+      "guide:ajouter_salarie"
+    ],
+    "exposition": "Outil existant inviter_salarie (compte + e-mail d'invitation). Aujourd'hui carte à confirmer ; en niveau 2 « Annuler » = annuler_invitation (retire le compte jamais connecté, outil existant). Un e-mail parti ne se rappelle pas. L'import par fichier est B89. À TRANCHER : Inviter un salarié envoie un e-mail à une personne (pas un envoi groupé) : niveau 2 avec « Annuler » = révoquer l'invitation, ou niveau 3 ? Dans le code actuel : carte à confirmer.",
+    "ecran": "Fenêtre Salariés → « Nouveau salarié » ; « Importer (CSV/Excel) »",
+    "parametres": [
+      "prenom",
+      "nom",
+      "email",
+      "telephone (facultatif)",
+      "date d'entrée, contrat, taux, heures hebdo (facultatifs, depuis un bulletin joint)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:3059 ; supabase/functions/_shared/assistant-actions-core.ts:1431 ; lib/assistant-actions.ts:129 ; supabase/functions/_shared/assistant-actions-core.ts:39"
+  },
+  {
+    "id": "B30",
+    "libelle": "Gérer les invitations en attente",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "relancer_invitation",
+      "guide:relancer"
+    ],
+    "exposition": "PARTIEL — Outil existant relancer_invitation (envoie ou renvoie UNE invitation ; le renvoi invalide l'ancien lien). Les autres gestes de la liste sont des entrées à part : lire la liste (B86), supprimer une invitation (B87), tout envoyer (B88). Message envoyé : pas d'« Annuler » possible.",
+    "ecran": "Ligne repliée « N salariés n'ont pas encore activé leur compte » → liste (Envoyer / Renvoyer)",
+    "parametres": [
+      "personne (nom ou e-mail)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/pending-invitations.tsx:179 ; supabase/functions/_shared/assistant-actions-core.ts:1537 ; lib/assistant-actions.ts:330"
+  },
+  {
+    "id": "B31",
+    "libelle": "Changer un rôle (confirmation des droits)",
+    "genre": "ecrire",
+    "niveau": 3,
+    "actions_existantes": [
+      "changer_role",
+      "guide:role"
+    ],
+    "exposition": "Outil existant changer_role, carte à confirmer. Niveau 3 : « droits d'accès » figure dans le tableau du §3 (ia-vision.md:35) mais pas dans la liste validée (ia-vision.md:37) : à confirmer. Le serveur refuse de retirer le dernier accès bureau (message affiché tel quel). À TRANCHER : Les « droits d'accès » (changement de rôle) sont dans le tableau du §3 mais absents de la liste validée du 14 octobre : niveau 3 retenu, à confirmer par le patron.",
+    "ecran": "Fenêtre Salariés (liste déroulante Salarié / Chef d'équipe / Bureau, bouton « Retirer »)",
+    "parametres": [
+      "salarie",
+      "role (salarié, chef d'équipe, bureau)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:2516 ; supabase/functions/_shared/assistant-actions-core.ts:1533 ; lib/assistant-actions.ts:326 ; docs/ia-vision.md:35"
+  },
+  {
+    "id": "B32",
+    "libelle": "Modifier la fiche salarié (identité, paie)",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "modifier_salarie",
+      "guide:fiche_salarie"
+    ],
+    "exposition": "PARTIEL — Outil existant modifier_salarie : prénom, nom, téléphone seulement (jamais le n° de sécurité sociale). Les infos de paie (taux horaire, horaire propre, date d'embauche, contrat, matricule) sont B90 ; le n° de sécurité sociale est B91 (réservé).",
+    "ecran": "Fiche salarié → « Gérer le salarié »",
+    "parametres": [
+      "salarie",
+      "prenom",
+      "nom",
+      "telephone"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/worker-detail.tsx:713 ; supabase/functions/_shared/assistant-actions-core.ts:1553 ; lib/assistant-actions.ts:361"
+  },
+  {
+    "id": "B33",
+    "libelle": "Gérer les habilitations ; valider un bulletin pour le coût réel (si IA)",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "ajouter_habilitation",
+      "guide:habilitations"
+    ],
+    "exposition": "Outil existant ajouter_habilitation (alertes e-mail à 30 j et 7 j créées par le serveur). « Annuler » = supprimer_habilitation (outil existant). Supprimer : B94 ; lire : B95 ; coût réel : B136. Remarque : modifier_habilitation n'a pas d'équivalent à l'écran (l'écran ne sait qu'ajouter et supprimer).",
+    "ecran": "Fiche salarié → Habilitations → « Ajouter »",
+    "parametres": [
+      "salarie",
+      "type (CACES, carte BTP, habilitation électrique, visite médicale, travail en hauteur, autre)",
+      "libelle (si « autre »)",
+      "date d'expiration"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/worker-detail.tsx:306 ; supabase/functions/_shared/assistant-actions-core.ts:1546 ; lib/assistant-actions.ts:357"
+  },
+  {
+    "id": "B34",
+    "libelle": "Archiver, réactiver, supprimer un salarié ; clôturer (et archiver) / rouvrir ses heures",
+    "genre": "ecrire",
+    "niveau": 3,
+    "actions_existantes": [
+      "archiver_salarie",
+      "guide:archiver_salarie"
+    ],
+    "exposition": "PARTIEL — Outil existant archiver_salarie (ses heures restent, il ne peut plus se connecter), carte à confirmer. Niveau 3 par doute : l'archivage coupe l'accès de la personne (« droits d'accès »). Réactiver (B92), supprimer (B93), clôturer / rouvrir ses heures (B81, B82) sont des entrées à part. À TRANCHER : Archiver un salarié coupe son accès : niveau 3 retenu (doute) ; il est réversible (Réactiver) et pourrait être au niveau 2 avec « Annuler ».",
+    "ecran": "Fiche salarié → Archiver / Réactiver / Supprimer / Clôturer jusqu'au…",
+    "parametres": [
+      "salarie"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/worker-detail.tsx:820 ; supabase/functions/_shared/assistant-actions-core.ts:1557 ; lib/assistant-actions.ts:368"
+  },
+  {
+    "id": "B35",
+    "libelle": "Créer un client ; en importer par CSV/Excel",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "creer_chantier",
+      "NAV_ACTION:nouveau_client",
+      "guide:creer_client"
+    ],
+    "exposition": "PARTIEL — Outil existant creer_chantier, direct (sans budget) + Annuler (supprime le client, ou l'archive s'il a servi). Écart : le champ « Type de produit » de l'écran n'existe pas dans l'outil. Avec devis joint (heures ou montant), l'outil passe en carte. L'import par fichier est B100.",
+    "ecran": "Liste Clients → « Nouveau client » ; fenêtre « Nouveau client / chantier »",
+    "parametres": [
+      "nom du client",
+      "type de produit",
+      "telephone",
+      "email",
+      "ville",
+      "adresse",
+      "description",
+      "heures prévues (si devis en heures)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:3030 ; supabase/functions/_shared/assistant-actions-core.ts:1442 ; lib/assistant-actions.ts:147 ; lib/planning-writes.ts:34"
+  },
+  {
+    "id": "B36",
+    "libelle": "Modifier la fiche client et son budget ; l'archiver ou la supprimer",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "modifier_client",
+      "guide:fiche_client",
+      "guide:budget"
+    ],
+    "exposition": "PARTIEL — Outil existant modifier_client (seuls les champs remplis changent ; aujourd'hui carte à confirmer, sans « Annuler »). Écart : pas de « Type de produit ». Archiver : B98 ; supprimer : B99.",
+    "ecran": "Fiche client (nom, produit, téléphone, e-mail, ville, adresse, description, budget main-d'œuvre)",
+    "parametres": [
+      "chantier",
+      "nouveau nom",
+      "ville",
+      "adresse",
+      "telephone",
+      "email",
+      "description",
+      "heures prévues",
+      "montant prévu"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:2949 ; supabase/functions/_shared/assistant-actions-core.ts:1524 ; lib/assistant-actions.ts:313"
+  },
+  {
+    "id": "B37",
+    "libelle": "Gérer les documents d'un chantier (catégories, droits) ; les envoyer au client",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "ranger_document",
+      "guide:documents"
+    ],
+    "exposition": "PARTIEL — Outil existant ranger_document : ne fonctionne qu'avec un fichier joint au chat (JPEG, PNG, WebP, HEIC ou PDF, 8 Mo au plus : ATTACH_ACCEPT et ATTACH_MAX_BYTES), classé dans un chantier existant avec sa catégorie dite ou devinée ; direct + Annuler. Les droits (le salarié ne voit pas les factures ; catégories permises) sont tenus par la base. Autres gestes : catégorie ou nom (B103), supprimer (B104), envoyer au client (B105), ouvrir la fenêtre (B78).",
+    "ecran": "Fenêtre Documents du chantier (onglets Photos / Fichiers)",
+    "parametres": [
+      "chantier",
+      "fichier joint au chat (photo ou PDF, 8 Mo au plus)",
+      "categorie",
+      "libelle"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/chantier-documents.tsx:255 ; supabase/functions/_shared/assistant-actions-core.ts:1451 ; lib/assistant-actions.ts:172 ; lib/attachment.ts:7"
+  },
+  {
+    "id": "B38",
+    "libelle": "Terminer, rouvrir un chantier ; lire son bilan",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [],
+    "exposition": "Outil à créer terminer_chantier(chantier, date) : avertissements jamais bloquants (réserves, pointages en cours, brouillons, interventions à venir : loadFinishCheck) à dire avant d'agir ; rien n'est supprimé ; « Annuler » = rouvrir (B101) ; bilan (B102). Attention : la fiche d'aide « archiver_client » répond aujourd'hui aussi à « chantier terminé » alors que « Terminer » et « Archiver » sont deux fonctions distinctes depuis le lot 23.",
+    "ecran": "Fiche client → bloc « Chantier en cours / Terminé le… » → fenêtre « Terminer le chantier »",
+    "parametres": [
+      "chantier",
+      "date de fin (aujourd'hui ou avant)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/chantier-termine.tsx:95 ; lib/chantier-termine.ts:40 ; supabase/functions/_shared/assistant-actions-core.ts:218"
+  },
+  {
+    "id": "B39",
+    "libelle": "Lire la feuille d'heures d'un salarié",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [
+      "guide:feuille",
+      "NAV_ACTION:salarie"
+    ],
+    "exposition": "PARTIEL — Outil lire_heures(salarie, du, au) : total, heures supplémentaires, lignes (date, client, début–fin, durée, pause, panier, route, état brouillon / envoyée / corrigée / QR / sortie oubliée), SANS taux ni coût (ia-vision.md:44). Aujourd'hui : le lien « Fiche de X » ouvre la feuille d'heures (mode hours) et la fiche d'aide « feuille » la décrit ; l'instantané ne donne que le total d'heures du MOIS par salarié.",
+    "ecran": "Fiche salarié (mode « Feuille d'heures » : période, total, semaine par semaine, lignes)",
+    "parametres": [
+      "salarie",
+      "du",
+      "au"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/worker-detail.tsx:1071 ; supabase/functions/_shared/assistant-actions-core.ts:1741 ; supabase/functions/_shared/assistant-core.ts:31"
+  },
+  {
+    "id": "B40",
+    "libelle": "Corriger des heures (motif, salarié prévenu) ; renvoyer une journée ; supprimer un brouillon vide",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "corriger_pointage",
+      "guide:corriger"
+    ],
+    "exposition": "PARTIEL — Outil existant corriger_pointage (début, fin, motif ; même chemin que la fiche : office_correct_entry, salarié prévenu). « Corriger un pointage » est cité au niveau 2 (ia-vision.md:34) mais le code le traite en carte à confirmer, sans « Annuler » : écart à combler (Annuler = remettre les anciennes heures, salarié prévenu). Pause, panier, route : B84 ; renvoyer : B83 ; brouillon vide : B85.",
+    "ecran": "Fiche salarié → ligne envoyée → « Corriger les heures » (motif obligatoire, « Corriger et prévenir »)",
+    "parametres": [
+      "salarie",
+      "date",
+      "ligne (si plusieurs)",
+      "debut",
+      "fin",
+      "motif (3 caractères au moins, lu par le salarié)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/worker-detail.tsx:344 ; supabase/functions/_shared/assistant-actions-core.ts:1489 ; lib/assistant-actions.ts:219"
+  },
+  {
+    "id": "B41",
+    "libelle": "Relancer (à la main ou automatiquement) ; détail de « à relancer »",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "envoyer_rappel",
+      "guide:rappel"
+    ],
+    "exposition": "PARTIEL — Outil existant envoyer_rappel (notification sur le téléphone du salarié ; carte à confirmer). Écart : sans notification activée, l'outil échoue (« utilisez la cloche ») alors que l'écran prépare un e-mail (mailto) ; pas d'« Annuler » possible (message envoyé). La relance automatique est un réglage (B62) ; le détail est B137. À TRANCHER : Un rappel (notification à un salarié) n'est pas annulable : niveau 2 sans « Annuler », ou niveau 3 ?",
+    "ecran": "Bandeau « à relancer » → « Relancer » ; Salariés → cloche",
+    "parametres": [
+      "salarie"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:2550 ; supabase/functions/_shared/assistant-actions-core.ts:1538 ; lib/assistant-actions.ts:337"
+  },
+  {
+    "id": "B42",
+    "libelle": "Accepter ou refuser un congé",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "repondre_conge",
+      "NAV_ACTION:conges",
+      "guide:demandes_conge"
+    ],
+    "exposition": "Outil existant repondre_conge (accepter pose l'absence au planning et prévient le salarié ; refuser prévient avec le motif). Aujourd'hui carte à confirmer, sans « Annuler » ; la notification part et ne se rappelle pas. À TRANCHER : Répondre à un congé prévient le salarié : niveau 2 sans « Annuler » vrai (l'absence posée peut être retirée, pas la notification), ou niveau 3 ?",
+    "ecran": "Fenêtre « Demandes de congé » (En attente / Traitées)",
+    "parametres": [
+      "salarie (si plusieurs demandes)",
+      "decision (accepter, refuser)",
+      "motif du refus (facultatif)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/leave-admin-dialog.tsx:82 ; supabase/functions/_shared/assistant-actions-core.ts:1506 ; lib/assistant-actions.ts:298"
+  },
+  {
+    "id": "B43",
+    "libelle": "Exporter l'équipe (PDF, Excel, CSV)",
+    "genre": "humain",
+    "niveau": 3,
+    "actions_existantes": [
+      "NAV_ACTION:export",
+      "guide:export",
+      "guide:telecharger"
+    ],
+    "exposition": "PARTIEL — Outil à créer preparer_export(periode, format) : ouvre « Exporter l'équipe » avec la période choisie, dit combien de lignes de combien de salariés seraient verrouillées (B135) et s'arrête : l'humain fait le clic « Exporter ▾ » puis le choix de l'alerte. Aujourd'hui : NAV_ACTION:export ouvre la fenêtre sans période, et deux fiches d'aide expliquent.",
+    "ecran": "Fenêtre « Exporter l'équipe » → « Exporter ▾ »",
+    "parametres": [
+      "periode (aujourd'hui, cette semaine, créneau)",
+      "format (PDF, Excel, CSV paie)"
+    ],
+    "raison_humaine": "Export qui verrouille les heures de la période (liste du niveau 3 validée, ia-vision.md:37). Le fichier est fabriqué dans le navigateur par runExport (admin-planning.tsx), pas par un outil côté serveur : l'assistant prépare, l'humain clique.",
+    "verifie_dans": "components/admin-planning.tsx:2598 ; components/admin-planning.tsx:2825 ; docs/ia-vision.md:37"
+  },
+  {
+    "id": "B44",
+    "libelle": "Envoyer l'export au comptable sans doublon",
+    "genre": "humain",
+    "niveau": 3,
+    "actions_existantes": [
+      "NAV_ACTION:export",
+      "guide:export"
+    ],
+    "exposition": "PARTIEL — Outil preparer_export(periode, destination=comptable) : ouvre la fenêtre, dit si l'adresse du comptable est enregistrée (sinon le bouton est désactivé) et si la période est déjà partie (avertissement du serveur) ; l'humain clique « Envoyer à… ». L'anti-doublon par empreinte du fichier (sendKey) reste côté écran/serveur.",
+    "ecran": "Fenêtre « Exporter l'équipe » → « Envoyer à {comptable} »",
+    "parametres": [
+      "periode"
+    ],
+    "raison_humaine": "Envoi des heures au comptable : e-mail externe avec pièce jointe, verrouille les heures, non rappelable (liste du niveau 3 validée, ia-vision.md:37).",
+    "verifie_dans": "components/admin-planning.tsx:2716 ; components/admin-planning.tsx:4586 ; components/admin-planning.tsx:170"
+  },
+  {
+    "id": "B45",
+    "libelle": "Choisir le verrou avant l'export",
+    "genre": "humain",
+    "niveau": 3,
+    "actions_existantes": [],
+    "exposition": "Aucun outil ne choisit à la place du bureau. L'assistant peut seulement LIRE le compte (B135) et le dire avant d'ouvrir la fenêtre ; l'alerte et ses trois boutons restent à l'écran.",
+    "ecran": "Alerte « Cet export va verrouiller N lignes d'heures de M salariés » (Exporter et verrouiller / Exporter sans verrouiller / Annuler)",
+    "parametres": [],
+    "raison_humaine": "C'est le garde-fou de l'export (décision de verrouiller ou non, lot 18) : le choix est le dernier clic humain par construction.",
+    "verifie_dans": "components/admin-planning.tsx:2858 ; components/admin-planning.tsx:4639"
+  },
+  {
+    "id": "B46",
+    "libelle": "Clôturer / rouvrir un mois",
+    "genre": "ecrire",
+    "niveau": 3,
+    "actions_existantes": [
+      "cloturer_mois",
+      "NAV_ACTION:export",
+      "guide:cloture"
+    ],
+    "exposition": "PARTIEL — Outil existant cloturer_mois : carte à confirmer qui donne le mois ; le nombre de journées en brouillon qui resteront bloquées (askClosure) est affiché par l'écran mais PAS par la carte de l'assistant (à ajouter avant le clic). Rouvrir un mois : B80.",
+    "ecran": "Fenêtre « Exporter l'équipe » → section « Clôture du mois » → « Clôturer {mois} ? »",
+    "parametres": [
+      "mois (mois précédent ou mois en cours)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:1707 ; components/admin-planning.tsx:1696 ; supabase/functions/_shared/assistant-actions-core.ts:1539 ; lib/assistant-actions.ts:345 ; components/assistant-action-card.tsx:629"
+  },
+  {
+    "id": "B47",
+    "libelle": "Exporter un seul salarié, sans verrou",
+    "genre": "ouvrir",
+    "niveau": 1,
+    "actions_existantes": [
+      "NAV_ACTION:salarie",
+      "guide:telecharger",
+      "guide:feuille"
+    ],
+    "exposition": "PARTIEL — Ouverture d'écran ouvrir_fenetre(feuille_heures, salarié, période) : la fiche s'ouvre sur la bonne période, la personne touche « Exporter ▾ ». Aucun verrou, aucun envoi : pas de niveau 3. Aujourd'hui le lien « Fiche de X » ouvre la fiche sans choisir la période.",
+    "ecran": "Fenêtre « Exporter un salarié » → fiche salarié (période, « Exporter ▾ »)",
+    "parametres": [
+      "salarie",
+      "periode",
+      "format"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:4672 ; components/worker-detail.tsx:669 ; components/worker-detail.tsx:1093"
+  },
+  {
+    "id": "B48",
+    "libelle": "Imprimer le planning en A4 paysage (semaine, jour, mois ; options ; Ctrl/Cmd+P)",
+    "genre": "ouvrir",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "Ouverture d'écran ouvrir_fenetre(imprimer, période, salarié|équipe, signature, tâches) : le menu s'ouvre pré-rempli, ou l'impression est lancée jusqu'à l'écran du navigateur (ia-vision.md:19). N'écrit rien. ATTENTION : la fiche d'aide « telecharger » a le mot « imprimer » mais décrit l'export des heures, pas l'impression du planning : réponse fausse à corriger.",
+    "ecran": "Barre du planning → icône 🖨 → menu « Imprimer le planning »",
+    "parametres": [
+      "periode (semaine, jour, mois)",
+      "date",
+      "toute l'équipe ou un salarié",
+      "colonne signature",
+      "avec les tâches"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:1078 ; components/planning-print.tsx:121 ; supabase/functions/_shared/assistant-actions-core.ts:264"
+  },
+  {
+    "id": "B49",
+    "libelle": "Versions d'une semaine : voir, revenir, annuler, garder",
+    "genre": "ouvrir",
+    "niveau": 1,
+    "actions_existantes": [
+      "guide:versions"
+    ],
+    "exposition": "PARTIEL — Ouverture d'écran ouvrir_fenetre(versions, semaine). Aujourd'hui : après une action en bloc de l'assistant, un lien « Versions de la semaine » (versionsWeek → onOpenVersions) ouvre la fenêtre ; sinon la fiche « versions ». NAV_ACTIONS n'a pas d'entrée « versions ». Revenir : B130 ; garder : B131. Fenêtre « si dispo » (table des versions).",
+    "ecran": "Coin de la grille (⟲) ou menu ☰ → « Versions du planning » (V1, essais de l'assistant, versions gardées)",
+    "parametres": [
+      "semaine"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:1661 ; components/planning-versions-dialog.tsx:129 ; lib/assistant-actions.ts:65"
+  },
+  {
+    "id": "B50",
+    "libelle": "Lire l'historique des suppressions et décalages",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "Outil lire_journal_suppressions(salarie?, période) : qui, quand, avant → après (planning, heures, tâches, réunions). Fenêtre « si dispo » (table des traces). Aucune entrée NAV ni fiche d'aide aujourd'hui.",
+    "ecran": "Réglages (lien « Voir ») ou menu ☰ → « Interventions supprimées ou décalées » (lecture seule)",
+    "parametres": [
+      "salarie (filtre)",
+      "semaine ou mois"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:1645 ; components/traces-dialog.tsx:84 ; components/company-settings.tsx:884"
+  },
+  {
+    "id": "B51",
+    "libelle": "Statistiques (heures, heures sup, absences, oublis, coût)",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [
+      "repondre"
+    ],
+    "exposition": "PARTIEL — Outil lire_stats(periode, date, métrique, salarié?) sur team-stats-core. Aujourd'hui seul le total d'heures du MOIS par salarié est dans l'instantané. Le coût par salarié est volontairement absent (jamais envoyé au modèle, assistant-core.ts:8-9) : à ne rendre qu'en total par chantier. Pas d'entrée NAV « statistiques ».",
+    "ecran": "Cockpit → lien « statistiques » ; menu ☰ → Statistiques (Semaine / Mois / Année)",
+    "parametres": [
+      "periode (semaine, mois, année)",
+      "date",
+      "metrique (heures, heures sup, absences, oublis)",
+      "salarie (facultatif)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:3414 ; components/team-stats.tsx:113 ; supabase/functions/_shared/team-stats-core.ts:47"
+  },
+  {
+    "id": "B52",
+    "libelle": "Coût par chantier et dépenses",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [
+      "repondre",
+      "NAV_ACTION:couts",
+      "guide:couts"
+    ],
+    "exposition": "PARTIEL — Déjà : heures totales, budget, main-d'œuvre en euros et avancement par chantier (instantané, sur toute la vie du chantier) et lien « Coût chantiers ». Manque : la période (ce mois / semaine / créneau), la route, la liste et le total des dépenses, « taux manquant : coût incomplet » → outil lire_cout_chantier(chantier, période). Écritures sur les dépenses : B106, B107.",
+    "ecran": "Fenêtre « Coût par chantier » (Ce mois / Cette semaine / Créneau ; heures dont route, main-d'œuvre, dépenses, total, budget)",
+    "parametres": [
+      "chantier",
+      "periode"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/cost-report.tsx:187 ; supabase/functions/_shared/assistant-core.ts:38 ; supabase/functions/_shared/assistant-actions-core.ts:43"
+  },
+  {
+    "id": "B53",
+    "libelle": "Voir les pièces jointes de l'entreprise par chantier",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "Outil lire_documents(chantier?, catégorie?) : total, détail par chantier (nom, catégorie, date). Voir aussi B6 et B78.",
+    "ecran": "Cockpit → « pièces » (total et détail par chantier)",
+    "parametres": [
+      "chantier (facultatif)",
+      "categorie (facultatif)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:1815 ; components/admin-planning.tsx:3365"
+  },
+  {
+    "id": "B54",
+    "libelle": "Registre des réserves : lever, rouvrir",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "lever_reserve",
+      "NAV_ACTION:reserves",
+      "guide:reserves",
+      "guide:lever_reserve"
+    ],
+    "exposition": "PARTIEL — Outil existant lever_reserve (note facultative), aujourd'hui carte à confirmer sans « Annuler ». Écarts : la photo facultative de l'écran n'existe pas dans l'outil ; l'outil écrit par setReserveResolution (admin-writes) alors que l'écran passe par liftReserve (reserve-lift) : deux chemins d'écriture à unifier avant de générer l'outil depuis le registre. Rouvrir : B108 ; lire : B109.",
+    "ecran": "Fenêtre « Réserves de chantier » (À traiter / Levées)",
+    "parametres": [
+      "chantier",
+      "salarie qui l'a signalée",
+      "note (facultatif)",
+      "photo (facultatif)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/reserves-report.tsx:243 ; supabase/functions/_shared/assistant-actions-core.ts:1511 ; lib/assistant-actions.ts:305 ; lib/admin-writes.ts:201"
+  },
+  {
+    "id": "B55",
+    "libelle": "Relier une tablette (QR ou code), la remplacer, la déconnecter ; régler ses horaires, lire son état",
+    "genre": "humain",
+    "niveau": 3,
+    "actions_existantes": [
+      "guide:borne"
+    ],
+    "exposition": "PARTIEL — Ouverture d'écran ouvrir_fenetre(borne) + fiche d'aide « borne » (visite guidée). L'assistant n'affiche ni ne saisit le code à 6 chiffres. Déconnecter : B124 ; horaires : B125 ; état : B126. Option « si dispo » (kiosk_enabled).",
+    "ecran": "Barre → 📟 Borne (fenêtre KioskAdmin) ; « Associer cette tablette ? » (#borne=…)",
+    "parametres": [],
+    "raison_humaine": "Appairage d'un appareil : le code est affiché à l'écran de la tablette, le QR est scanné avec le téléphone du patron et « Associer cette tablette ? » se confirme à l'écran — c'est la preuve de présence physique (ia-v2.md:257 : « Accès support, borne : sécurité, code affiché à l'écran »).",
+    "verifie_dans": "components/kiosk-admin.tsx:251 ; components/kiosk-pair-confirm.tsx:164 ; app/admin/layout.tsx:37"
+  },
+  {
+    "id": "B56",
+    "libelle": "Gérer le QR fixe imprimable",
+    "genre": "humain",
+    "niveau": 3,
+    "actions_existantes": [],
+    "exposition": "Ouverture d'écran + explication seulement (ouvrir_fenetre(borne)). L'assistant peut lire l'état (activé ou non) mais ne touche à rien.",
+    "ecran": "Fenêtre Borne → section « QR fixe » (Activer, Imprimer, Régénérer, Désactiver, point de référence, rayon) ; dans les Réglages seulement quand la borne est coupée et qu'un QR fixe reste actif",
+    "parametres": [],
+    "raison_humaine": "Activation avec avertissement légal à confirmer (« Activer le QR fixe… »), impression d'un QR physique, régénération qui invalide l'ancien QR, point de référence pris avec la position de l'appareil du patron (geolocation) : gestes d'écran à confirmer un par un.",
+    "verifie_dans": "components/kiosk-fixed-qr.tsx:171 ; components/kiosk-fixed-qr.tsx:182 ; components/kiosk-admin.tsx:612 ; components/company-settings.tsx:715"
+  },
+  {
+    "id": "B57",
+    "libelle": "Gérer les formations (ajouter, suivre qui a vu quoi, retirer / remettre, quota vidéo)",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "Outil lire_formations(formation?, salarié?) : titre, type (vidéo, lien, document), destinataires, x/y vues avec qui et quand, quota vidéo utilisé. La fenêtre montre aussi, en lecture seule et sans bouton, les « Fichiers vidéo à vérifier » (training-video-orphans.tsx, monté depuis trainings-admin.tsx). Écritures : B127 à B129. Fenêtre « si dispo » (table des formations). Aucune entrée NAV ni fiche d'aide aujourd'hui.",
+    "ecran": "Fenêtre « Formations » (menu du compte, barre, Salariés ; x/y vues, qui l'a vue, quota 100 Mo)",
+    "parametres": [
+      "formation (facultatif)",
+      "salarie (facultatif)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/trainings-admin.tsx:428 ; lib/trainings.ts:97 ; components/admin-planning.tsx:3591 ; components/training-video-orphans.tsx:3"
+  },
+  {
+    "id": "B58",
+    "libelle": "Envoyer planning PDF ou message aux salariés",
+    "genre": "humain",
+    "niveau": 3,
+    "actions_existantes": [],
+    "exposition": "Outil preparer_email_salaries(mode, destinataires, semaine, texte) : ouvre la fenêtre avec les destinataires cochés et le texte écrit, dit ceux qui ne peuvent pas être choisis (sans adresse, adresse invalide) et le quota du jour ; l'humain clique « Envoyer N e-mails ». Lecture du journal « Derniers envois » : B138. Option « si dispo » (fonction send-staff-email).",
+    "ecran": "Menu du compte / ☰ → « Envoyer par e-mail » (Planning (PDF) ou Message de 500 caractères)",
+    "parametres": [
+      "mode (planning ou message)",
+      "destinataires",
+      "semaine",
+      "texte (500 caractères)"
+    ],
+    "raison_humaine": "E-mails groupés (liste du niveau 3 validée, ia-vision.md:37) : plusieurs personnes, 50 e-mails par jour au plus, non rappelables ; la fenêtre impose déjà une confirmation « Envoyer N e-mails ? ».",
+    "verifie_dans": "components/staff-email-dialog.tsx:232 ; components/admin-planning.tsx:3456 ; supabase/functions/_shared/staff-email-core.ts:16 ; supabase/functions/_shared/staff-email-core.ts:18"
+  },
+  {
+    "id": "B59",
+    "libelle": "Régler l'entreprise (logo, coordonnées)",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "modifier_reglages",
+      "NAV_ACTION:reglages",
+      "guide:reglages"
+    ],
+    "exposition": "PARTIEL — Outil existant modifier_reglages : téléphone, e-mail, adresse, code postal, ville (carte à confirmer aujourd'hui, sans « Annuler »). Manquent le nom, le SIRET, la TVA intracom. et le logo (B117).",
+    "ecran": "Réglages → rubrique « Entreprise »",
+    "parametres": [
+      "telephone",
+      "email",
+      "adresse",
+      "code postal",
+      "ville"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/company-settings.tsx:433 ; supabase/functions/_shared/assistant-actions-core.ts:1567 ; lib/assistant-actions.ts:482"
+  },
+  {
+    "id": "B60",
+    "libelle": "Régler heures & paie",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "modifier_reglages",
+      "guide:reglages"
+    ],
+    "exposition": "PARTIEL — Outil existant modifier_reglages : horaire de base, majorations, route payée. Manquent le panier repas (B118) et la caisse de congés BTP (B119) ; l'adresse du comptable est traitée à part (B122, destinataire de la paie). Ces réglages changent le calcul de l'export de paie : niveau 2 à confirmer (ia-v2.md, section 2 : coût / paie, rôle et clôture sont en carte à confirmer). À TRANCHER : Horaire de base et majorations changent le calcul des heures supplémentaires de l'export de paie : niveau 2 (Annuler) retenu, ou niveau 3 ?",
+    "ecran": "Réglages → rubrique « Heures & paie »",
+    "parametres": [
+      "horaire hebdomadaire",
+      "majoration 1er taux",
+      "majoration 2e taux",
+      "route payée"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/company-settings.tsx:597 ; supabase/functions/_shared/assistant-actions-core.ts:1567 ; lib/assistant-actions.ts:482"
+  },
+  {
+    "id": "B61",
+    "libelle": "Régler borne & pointage",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "modifier_reglages",
+      "guide:collegues",
+      "guide:position"
+    ],
+    "exposition": "PARTIEL — Outil existant modifier_reglages pour « Les salariés voient le planning de leurs collègues » (effet immédiat, RPC set_colleagues_planning). Manque : désactiver l'endroit au pointage (B120). La borne est B55, le QR fixe B56.",
+    "ecran": "Réglages → rubrique « Borne & pointage »",
+    "parametres": [
+      "planning des collègues (activer / désactiver)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/company-settings.tsx:280 ; lib/assistant-actions.ts:498"
+  },
+  {
+    "id": "B62",
+    "libelle": "Régler notifications et alertes",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "modifier_reglages",
+      "guide:recap"
+    ],
+    "exposition": "PARTIEL — Outil existant modifier_reglages : relance automatique, heure, alertes de budget. Manquent « Envoyer le récap maintenant » (B121) et « Vérifier les habilitations » (B96) ; le support BEMEXO est B63.",
+    "ecran": "Réglages → rubrique « Notifications & support »",
+    "parametres": [
+      "relance automatique (oui / non)",
+      "heure de relance (6 h à 21 h)",
+      "alertes de budget (oui / non)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/company-settings.tsx:822 ; supabase/functions/_shared/assistant-actions-core.ts:482"
+  },
+  {
+    "id": "B63",
+    "libelle": "Autoriser ou retirer le support BEMEXO ; lire son journal ; voir le mode support",
+    "genre": "humain",
+    "niveau": 3,
+    "actions_existantes": [
+      "guide:support"
+    ],
+    "exposition": "PARTIEL — Fiche d'aide « support » + visite guidée, et ouverture des Réglages ; l'assistant n'autorise rien. Lire le journal : B123.",
+    "ecran": "Réglages → Notifications & support → « Support BEMEXO » (durée 1 h / 24 h / 7 j, « Retirer l'accès ») ; bandeau de mode support",
+    "parametres": [
+      "duree (1 h, 24 h, 7 jours)"
+    ],
+    "raison_humaine": "Droits d'accès : donner à un tiers (le support BEMEXO) l'accès à l'entreprise (tableau du niveau 3, ia-vision.md:35). Le patron doit faire ce clic lui-même.",
+    "verifie_dans": "components/support-access.tsx:97 ; lib/support.ts:36 ; supabase/functions/_shared/assistant-actions-core.ts:305"
+  },
+  {
+    "id": "B64",
+    "libelle": "Voir l'essai, s'abonner, gérer l'abonnement ; subir le blocage d'essai",
+    "genre": "humain",
+    "niveau": 3,
+    "actions_existantes": [
+      "guide:abonnement",
+      "NAV_ACTION:reglages"
+    ],
+    "exposition": "PARTIEL — Outil ouvrir_fenetre(abonnement) qui ouvre « Choisissez votre abonnement » (forfait recommandé selon le nombre de salariés) ; l'humain choisit et paie sur la page Stripe. Aujourd'hui : fiche d'aide « abonnement » et Réglages, sans ouvrir la fenêtre d'abonnement. L'état (jours d'essai) est B132, la gestion (portail) B133.",
+    "ecran": "Cockpit « Essai · N j » → « S'abonner » → fenêtre « Choisissez votre abonnement » ; écran de blocage d'essai",
+    "parametres": [
+      "forfait (3 forfaits lus en base)"
+    ],
+    "raison_humaine": "Abonnement et paiement (liste du niveau 3 validée, ia-vision.md:37) : paiement sur page Stripe hébergée (stripe-checkout), jamais d'action de l'assistant.",
+    "verifie_dans": "app/admin/page.tsx:198 ; components/subscribe-panel.tsx:93 ; supabase/functions/_shared/assistant-actions-core.ts:311"
+  },
+  {
+    "id": "B65",
+    "libelle": "Ouvrir le menu du compte ; se déconnecter",
+    "genre": "ouvrir",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "Ouverture d'écran ouvrir_fenetre(compte) (menu du compte, ou ☰ sur téléphone). Se déconnecter : B134.",
+    "ecran": "Cockpit → nom de l'entreprise (menu : Réglages, Formations, Envoyer par e-mail, Déconnexion) ; téléphone : menu ☰",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:3440 ; components/admin-planning.tsx:3430"
+  },
+  {
+    "id": "B66",
+    "libelle": "Dialoguer avec l'assistant (écrit, voix, pièce jointe)",
+    "genre": "guider",
+    "niveau": 1,
+    "actions_existantes": [
+      "guide:assistant"
+    ],
+    "exposition": "Déjà couvert : la fiche « assistant » explique le panneau (écrire, dicter, joindre). Le panneau lui-même est l'interface de l'assistant, pas une capacité à lui faire exécuter.",
+    "ecran": "Barre → ✨ Assistant BEMEXO (panneau : champ 500 caractères, 🎤, 📎 photo ou PDF 8 Mo, 4 suggestions)",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:3572 ; components/assistant-panel.tsx:561 ; supabase/functions/_shared/assistant-actions-core.ts:335"
+  },
+  {
+    "id": "B67",
+    "libelle": "Faire agir l'assistant (Annuler / Modifier, confirmations)",
+    "genre": "humain",
+    "niveau": 3,
+    "actions_existantes": [],
+    "exposition": "Mécanisme déjà en place, pas un outil : actionMode décide direct ou carte (assistant-actions-core.ts), l'exécution est dans le navigateur avec « Annuler » (assistant-actions.ts). Le registre devra porter le niveau de chaque action et c'est lui qui décidera de ces deux comportements.",
+    "ecran": "Cartes de l'assistant (« Fait — … » + Annuler / Modifier ; fiches « Confirmer »)",
+    "parametres": [],
+    "raison_humaine": "Le clic « Confirmer », « Annuler » ou « Modifier » d'une carte est le dernier clic humain lui-même (ia-vision.md:35) : il ne peut pas être fait par l'assistant.",
+    "verifie_dans": "supabase/functions/_shared/assistant-actions-core.ts:527 ; lib/assistant-actions.ts:115"
+  },
+  {
+    "id": "B68",
+    "libelle": "Guide pas à pas ; nouveau chat, historique (à venir, non fusionné)",
+    "genre": "guider",
+    "niveau": 1,
+    "actions_existantes": [
+      "guide:ajouter_salarie",
+      "guide:importer_salaries",
+      "guide:creer_client",
+      "guide:importer_clients",
+      "guide:affecter",
+      "guide:absence",
+      "guide:demandes_conge",
+      "guide:corriger",
+      "guide:export",
+      "guide:cloture",
+      "guide:couts",
+      "guide:budget",
+      "guide:reserves",
+      "guide:role",
+      "guide:reglages",
+      "guide:documents",
+      "guide:relancer",
+      "guide:semaine",
+      "guide:deplacer",
+      "guide:heure_note",
+      "guide:retirer",
+      "guide:selection",
+      "guide:versions",
+      "guide:present",
+      "guide:attribuer",
+      "guide:annuler_invitation",
+      "guide:rappel",
+      "guide:fiche_client",
+      "guide:archiver_client",
+      "guide:supprimer_client",
+      "guide:fiche_salarie",
+      "guide:archiver_salarie",
+      "guide:cloture_salarie",
+      "guide:feuille",
+      "guide:habilitations",
+      "guide:cout_reel",
+      "guide:reouvrir",
+      "guide:telecharger",
+      "guide:lever_reserve",
+      "guide:depense",
+      "guide:envoyer_client",
+      "guide:borne",
+      "guide:support",
+      "guide:abonnement",
+      "guide:recap",
+      "guide:caisse",
+      "guide:collegues",
+      "guide:assistant"
+    ],
+    "exposition": "Déjà couvert : 48 visites guidées (admin-tours.ts) qui entourent le vrai bouton sans rien faire ; elles se lancent depuis le bouton d'une réponse d'aide (onNavigate « guide:… »). « Nouveau chat » et « Historique » sont en ligne (étape 2) : le cahier les donnait « à venir, non fusionné », ce n'est plus vrai.",
+    "ecran": "Bouton « Me guider pas à pas » des réponses d'aide ; panneau : « Nouveau chat », « Historique »",
+    "parametres": [
+      "fiche de guide"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:4374 ; supabase/functions/_shared/admin-tours.ts:68 ; components/assistant-panel.tsx:471 ; components/assistant-panel.tsx:474"
+  },
+  {
+    "id": "B69",
+    "libelle": "Être aidé : démarrage, astuce de copie, infobulles, saisie d'heure",
+    "genre": "guider",
+    "niveau": 1,
+    "actions_existantes": [
+      "guide:ajouter_salarie",
+      "guide:creer_client"
+    ],
+    "exposition": "PARTIEL — L'aide de démarrage (Ajoutez un salarié, Créez un client) correspond aux fiches « ajouter_salarie » et « creer_client ». L'astuce de copie n'a pas de fiche (lien avec B19, B20) ; infobulles et champ d'heure (« 14h », « 14:30 ») sont des aides passives : l'assistant les remplace par ses réponses, rien à exposer.",
+    "ecran": "Coach « Pour démarrer · Deux étapes », astuce « Copier une case », infobulles (i), champ d'heure",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:3828 ; components/planning-copier.tsx:57 ; components/admin-planning.tsx:388"
+  },
+  {
+    "id": "B70",
+    "libelle": "Voir invitations, congés, réserves, pièces en attente",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [
+      "repondre",
+      "NAV_ACTION:conges",
+      "NAV_ACTION:reserves"
+    ],
+    "exposition": "PARTIEL — Déjà : congés en attente (instantané, liste avec dates) et liens vers Congés et Réserves. Manquent le nombre de réserves à traiter, d'invitations non activées et de pièces comme données lisibles : lire_reserves (B109), lire_invitations (B86), lire_documents (B53).",
+    "ecran": "Compteurs : Salariés (congés), Réserves, ligne « N salariés n'ont pas encore activé leur compte », « pièces »",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:1500 ; components/admin-planning.tsx:1503 ; supabase/functions/_shared/assistant-core.ts:40"
+  },
+  {
+    "id": "B71",
+    "libelle": "Gérer les états : chargement, erreurs, messages d'action, hors ligne, vide, essai, lecture seule, options absentes",
+    "genre": "humain",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "Pas une action : des états que l'assistant doit connaître. Le registre doit porter une condition de disponibilité par action (tâches, réunions, formations, versions, traces, e-mails, borne, panier, assistant, chantier terminé : masqués sans message tant que leur migration manque ; mode support : toutes les écritures refusées par la base ; essai expiré avec blocage). Sans cela l'assistant proposerait des fonctions absentes.",
+    "ecran": "Tout l'écran (chargement, erreurs, hors ligne, essai, lecture seule du mode support, fonctions « si dispo »)",
+    "parametres": [],
+    "raison_humaine": "États d'écran, pas des capacités : l'assistant ne les pilote pas, il les subit ; en mode support (lecture seule) les écritures sont refusées par la base elle-même.",
+    "verifie_dans": "components/admin-planning.tsx:2590 ; components/admin-planning.tsx:1626 ; components/admin-planning.tsx:1029"
+  },
+  {
+    "id": "B72",
+    "libelle": "Téléphone : atteindre depuis un point d'entrée unique toutes les fonctions de la barre du bureau, avec leurs intitulés",
+    "genre": "ouvrir",
+    "niveau": 1,
+    "actions_existantes": [
+      "NAV_ACTION:salaries",
+      "NAV_ACTION:clients",
+      "NAV_ACTION:conges",
+      "NAV_ACTION:reserves",
+      "NAV_ACTION:couts",
+      "NAV_ACTION:export",
+      "NAV_ACTION:reglages"
+    ],
+    "exposition": "PARTIEL — Un seul outil ouvrir_fenetre(cible) qui couvre tout le menu. Aujourd'hui 11 cibles NAV existent (dont 7 sont des entrées du menu ☰ : Salariés, Chantiers, Demandes de congé, Réserves, Coût chantiers, Exporter, Réglages) ; manquent Formations, Borne, Statistiques, Envoyer par e-mail, Sélectionner, Versions, Interventions supprimées, Déconnexion. Les liens de l'assistant ne sont compris que par un seul gestionnaire de l'écran (onNavigate, admin-planning.tsx) : à étendre depuis le registre.",
+    "ecran": "Menu ☰ (Salariés, Chantiers, Demandes de congé, Formations, Réserves, Borne, Coût chantiers, Statistiques, Exporter, Envoyer par e-mail, Sélectionner, Réglages, Versions, Interventions supprimées, Déconnexion)",
+    "parametres": [
+      "fenêtre"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-mobile-menu.tsx:122 ; components/admin-planning.tsx:4371 ; supabase/functions/_shared/assistant-actions-core.ts:37"
+  },
+  {
+    "id": "B73",
+    "libelle": "Ouvrir le statut d'un salarié (Présent, Congé, Arrêt maladie, Intempérie, Feuille d'heures) (fenêtre, détail de B25 et B26)",
+    "genre": "ouvrir",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "ouvrir_fenetre(statut, salarié, jour) : la fenêtre s'ouvre au bon salarié et au bon jour, sans rien écrire (pré-remplir est libre, ia-vision.md:33). Les écritures sont B25 et B26.",
+    "ecran": "Fenêtre « Statut de {prénom} à partir d'aujourd'hui / du {jour} »",
+    "parametres": [
+      "salarie",
+      "à partir du"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:4154 ; components/admin-planning.tsx:3688"
+  },
+  {
+    "id": "B74",
+    "libelle": "Ouvrir une intervention pour la modifier (fenêtre Intervention : client, adresse, Fiche, Documents, horaire, note, heures déclarées)",
+    "genre": "ouvrir",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "ouvrir_fenetre(intervention, salarié, jour, chantier). Les actions de la fenêtre (Enregistrer, Copier, Dupliquer, Ajouter une tâche, Supprimer) sont B17, B20, B27, B22.",
+    "ecran": "Fenêtre Intervention",
+    "parametres": [
+      "salarie",
+      "jour",
+      "chantier"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:2877 ; components/admin-planning.tsx:4794"
+  },
+  {
+    "id": "B75",
+    "libelle": "Ouvrir « Ajouter » pré-rempli sur une case (salarié, jour, client, horaire, note)",
+    "genre": "ouvrir",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "ouvrir_fenetre(ajouter, …) : montre la fiche remplie et laisse l'humain valider avec « Ajouter au planning ». C'est la version « pré-remplir » de B15, utile quand on veut voir avant d'enregistrer.",
+    "ecran": "Fenêtre « Ajouter une intervention » (clic sur une case vide ; téléphone : « Ajouter un chantier »)",
+    "parametres": [
+      "salarie",
+      "jour",
+      "client",
+      "debut",
+      "fin",
+      "note"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:2378 ; components/admin-planning.tsx:4724"
+  },
+  {
+    "id": "B76",
+    "libelle": "Ouvrir la fiche d'un client (nom, produit, téléphone, e-mail, ville, adresse, description, budget, chantier terminé)",
+    "genre": "ouvrir",
+    "niveau": 1,
+    "actions_existantes": [
+      "NAV_ACTION:clients",
+      "guide:fiche_client"
+    ],
+    "exposition": "PARTIEL — ouvrir_fenetre(fiche_client, chantier). Aujourd'hui NAV_ACTION:clients n'ouvre que la LISTE (menu déroulant, ou « Chantiers » sur téléphone), jamais la fiche d'un client précis.",
+    "ecran": "Fiche client (crayon dans la liste Clients ; téléphone : ligne de « Chantiers »)",
+    "parametres": [
+      "chantier"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:2887 ; components/admin-planning.tsx:4391"
+  },
+  {
+    "id": "B77",
+    "libelle": "Ouvrir la fiche d'un salarié (Gérer le salarié, ou Feuille d'heures)",
+    "genre": "ouvrir",
+    "niveau": 1,
+    "actions_existantes": [
+      "NAV_ACTION:salarie",
+      "guide:fiche_salarie",
+      "guide:feuille"
+    ],
+    "exposition": "PARTIEL — ouvrir_fenetre(fiche_salarie, salarié, mode, période). Aujourd'hui : le lien « Fiche de X » (action salarie:<id>, posé par « repondre » avec salarie_id) ouvre TOUJOURS la feuille d'heures (setFicheMode('hours')), jamais « Gérer le salarié ».",
+    "ecran": "Fiche salarié (modes « manage » et « hours »)",
+    "parametres": [
+      "salarie",
+      "mode (gérer ou feuille d'heures)",
+      "periode"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:4394 ; supabase/functions/_shared/assistant-actions-core.ts:1741 ; components/admin-planning.tsx:4319"
+  },
+  {
+    "id": "B78",
+    "libelle": "Ouvrir les documents d'un chantier (onglets Photos / Fichiers par jour)",
+    "genre": "ouvrir",
+    "niveau": 1,
+    "actions_existantes": [
+      "guide:documents"
+    ],
+    "exposition": "PARTIEL — ouvrir_fenetre(documents, chantier, jour?). Aujourd'hui seule la fiche d'aide « documents » dit comment faire ; aucun lien ne l'ouvre.",
+    "ecran": "Fenêtre Documents du chantier (depuis la fiche client, la bulle, le panneau « pièces », une réserve)",
+    "parametres": [
+      "chantier",
+      "jour (facultatif)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:4813 ; components/chantier-documents.tsx:132"
+  },
+  {
+    "id": "B79",
+    "libelle": "Réordonner les interventions d'une même case (détail de B18)",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [],
+    "exposition": "Outil reordonner_interventions(salarié, jour, ordre[]). Écrit la colonne position, sans effet sur les heures. Faible priorité (ia-v2.md:258 : geste d'écran non branché).",
+    "ecran": "Planning (glisser une bulle dans sa case ; l'ordre est mémorisé)",
+    "parametres": [
+      "salarie",
+      "jour",
+      "ordre des chantiers"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:2088"
+  },
+  {
+    "id": "B80",
+    "libelle": "Rouvrir un mois clôturé (détail de B46)",
+    "genre": "ecrire",
+    "niveau": 3,
+    "actions_existantes": [
+      "guide:reouvrir"
+    ],
+    "exposition": "PARTIEL — Outil rouvrir_mois(mois) en carte à confirmer. Aujourd'hui seule la fiche d'aide « reouvrir » le dit ; l'écran rouvre en un clic, sans confirmation, et supprime la ligne de clôture. Niveau 3 par symétrie avec la clôture (doute : rend la saisie aux salariés sur tout un mois).",
+    "ecran": "Fenêtre « Exporter l'équipe » → « Clôture du mois » → Rouvrir",
+    "parametres": [
+      "mois"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:1721 ; supabase/functions/_shared/assistant-actions-core.ts:258"
+  },
+  {
+    "id": "B81",
+    "libelle": "Clôturer les heures d'un salarié jusqu'à une date, avec archivage en un geste pour une fin de contrat (détail de B34)",
+    "genre": "ecrire",
+    "niveau": 3,
+    "actions_existantes": [
+      "guide:cloture_salarie"
+    ],
+    "exposition": "PARTIEL — Outil cloturer_heures_salarie(salarié, date, archiver?) en carte : dire avant le nombre de brouillons qui resteront bloqués. Refus du serveur à relayer tels quels (« après aujourd'hui », « pointage encore ouvert »). Aujourd'hui seule la fiche d'aide « cloture_salarie » existe. À TRANCHER : Clôturer les heures d'un salarié bloque sa saisie jusqu'à une date, comme la clôture d'un mois : niveau 3 retenu par analogie (doute), à confirmer.",
+    "ecran": "Fiche salarié → « Clôturer jusqu'au… » → « Clôturer {prénom} jusqu'au… ? »",
+    "parametres": [
+      "salarie",
+      "date de fin",
+      "archiver en même temps (oui / non)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/worker-detail.tsx:769 ; lib/worker-closure.ts:37"
+  },
+  {
+    "id": "B82",
+    "libelle": "Rouvrir les heures d'un salarié clôturées (détail de B34)",
+    "genre": "ecrire",
+    "niveau": 3,
+    "actions_existantes": [],
+    "exposition": "Outil rouvrir_heures_salarie(salarié) en carte ; ne supprime rien (reopened_at). Niveau 3 par symétrie avec B81.",
+    "ecran": "Fiche salarié → pastille « clôturé au jj/mm » → « Rouvrir »",
+    "parametres": [
+      "salarie"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/worker-detail.tsx:796 ; lib/worker-closure.ts:46"
+  },
+  {
+    "id": "B83",
+    "libelle": "Renvoyer une journée au salarié : elle repasse en brouillon, avec un motif (détail de B40)",
+    "genre": "ecrire",
+    "niveau": 3,
+    "actions_existantes": [],
+    "exposition": "Outil renvoyer_journee(salarié, date, motif) en carte : la journée ne compte plus tant que le salarié ne la renvoie pas, et il est prévenu. Le serveur refuse si la journée est déjà chez le comptable ou si le mois ou le salarié est clôturé (message à relayer tel quel). À TRANCHER : Renvoyer une journée retire des heures envoyées de la paie et prévient le salarié : niveau 3 par doute (nouvelle action).",
+    "ecran": "Fiche salarié → ligne envoyée → « Corriger les heures » → « Renvoyer au salarié »",
+    "parametres": [
+      "salarie",
+      "date",
+      "motif (3 à 500 caractères)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/worker-detail.tsx:397 ; lib/office-edits.ts:147"
+  },
+  {
+    "id": "B84",
+    "libelle": "Corriger la pause, le panier ou la route d'une journée envoyée (détail de B40)",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [],
+    "exposition": "Étendre corriger_pointage (aujourd'hui début et fin seulement : assistant-actions-core.ts, outil corriger_pointage) aux champs break_minutes, meal_allowance et gap_before de correctOfficeEntry. Même niveau et mêmes écarts que B40 (carte aujourd'hui, pas d'« Annuler »).",
+    "ecran": "Fiche salarié → « Corriger les heures » (début, fin, pause, panier, route ou pause avant)",
+    "parametres": [
+      "salarie",
+      "date",
+      "ligne",
+      "pause (minutes)",
+      "panier (oui / non)",
+      "trou avant : route ou pause",
+      "motif"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/worker-detail.tsx:1504 ; lib/office-edits.ts:122 ; supabase/functions/_shared/assistant-actions-core.ts:1489"
+  },
+  {
+    "id": "B85",
+    "libelle": "Supprimer un brouillon vide (0 minute) du salarié (détail de B40)",
+    "genre": "ecrire",
+    "niveau": 3,
+    "actions_existantes": [],
+    "exposition": "Outil supprimer_brouillon_vide(salarié, date) : relu et revérifié avant (des heures tapées entre-temps le gardent) ; « Annuler » existant (restoreDrafts). Niveau 3 seulement parce que c'est une suppression (D3) ; c'est le plus bénin des cas.",
+    "ecran": "Fiche salarié → badge « brouillon vide » → Supprimer",
+    "parametres": [
+      "salarie",
+      "date"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/worker-detail.tsx:422 ; lib/erase.ts:266"
+  },
+  {
+    "id": "B86",
+    "libelle": "Lire la liste des invitations en attente (nom, e-mail, « Invitée le JJ/MM ») (détail de B30)",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "Outil lire_invitations() : qui n'a pas activé son compte, depuis quand, envoyée ou non. La fonction lit déjà ces lignes (assistant/index.ts) pour retrouver l'invitation à renvoyer, sans les donner au modèle comme donnée.",
+    "ecran": "Ligne repliée sous la barre → « Voir la liste »",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "components/pending-invitations.tsx:288 ; supabase/functions/assistant/index.ts:134"
+  },
+  {
+    "id": "B87",
+    "libelle": "Supprimer une invitation en attente : retire le compte jamais connecté (détail de B30)",
+    "genre": "ecrire",
+    "niveau": 3,
+    "actions_existantes": [
+      "annuler_invitation",
+      "guide:annuler_invitation"
+    ],
+    "exposition": "Outil existant annuler_invitation, carte à confirmer ; « Annuler » existant (renvoie l'invitation). Niveau 3 : suppression d'un compte (D3).",
+    "ecran": "Liste des invitations → croix ✕ (confirmation)",
+    "parametres": [
+      "nom ou e-mail de la personne"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/pending-invitations.tsx:204 ; supabase/functions/_shared/assistant-actions-core.ts:1637 ; lib/assistant-actions.ts:473"
+  },
+  {
+    "id": "B88",
+    "libelle": "Envoyer toutes les invitations non envoyées d'un coup (envoi groupé) (détail de B30)",
+    "genre": "humain",
+    "niveau": 3,
+    "actions_existantes": [
+      "guide:relancer"
+    ],
+    "exposition": "PARTIEL — Ouvrir la liste et dire combien d'invitations partiraient ; l'humain clique « Envoyer toutes… » puis confirme la fenêtre du navigateur. Fiche d'aide « relancer » existante.",
+    "ecran": "Liste des invitations → « Envoyer toutes les invitations »",
+    "parametres": [],
+    "raison_humaine": "E-mails groupés (liste du niveau 3 validée, ia-vision.md:37) : un e-mail par salarié, envoi un par un avec arrêt à la première erreur, confirmation « Envoyer N e-mails ? ».",
+    "verifie_dans": "components/pending-invitations.tsx:230"
+  },
+  {
+    "id": "B89",
+    "libelle": "Importer des salariés par fichier CSV/Excel : un compte et un e-mail d'invitation par ligne (détail de B29)",
+    "genre": "humain",
+    "niveau": 3,
+    "actions_existantes": [
+      "guide:importer_salaries",
+      "NAV_ACTION:salaries"
+    ],
+    "exposition": "PARTIEL — Ouvrir la fenêtre d'import et guider. NAV_ACTIONS n'a pas de cible « import_salaries » (seulement import_clients) : le guide ouvre « Salariés », pas l'import.",
+    "ecran": "Fenêtre Salariés → « Importer (CSV/Excel) » (Prénom*, Nom*, Email*, Téléphone)",
+    "parametres": [
+      "fichier"
+    ],
+    "raison_humaine": "E-mails groupés (une invitation par ligne) et correspondance des colonnes à contrôler à l'écran (ia-v2.md:255 : « Imports CSV : correspondance des colonnes à l'écran → lien »).",
+    "verifie_dans": "components/import-workers-dialog.tsx:219 ; components/admin-planning.tsx:4257 ; supabase/functions/_shared/assistant-actions-core.ts:71"
+  },
+  {
+    "id": "B90",
+    "libelle": "Modifier les infos de paie d'un salarié : taux horaire, horaire hebdomadaire propre, date d'embauche, type de contrat, matricule de paie (détail de B32)",
+    "genre": "ecrire",
+    "niveau": 3,
+    "actions_existantes": [],
+    "exposition": "Outil modifier_paie_salarie en carte. Aujourd'hui l'assistant ne peut renseigner contrat, taux et heures hebdo qu'à la CRÉATION du salarié (inviter_salarie, savePayrollBasics), jamais les modifier ensuite. Le matricule : unicité vérifiée par la base (« déjà attribué »). Le n° de sécurité sociale est exclu (B91). À TRANCHER : Données de paie (taux horaire, matricule) : niveau 3 par doute et parce que le §4 interdit d'envoyer de la paie sensible au modèle (ia-vision.md:44) ; le taux ne doit jamais être relu en retour.",
+    "ecran": "Fiche salarié → « Gérer le salarié » → « Infos paie — facultatif »",
+    "parametres": [
+      "salarie",
+      "taux horaire (coût chargé)",
+      "horaire hebdomadaire",
+      "date d'embauche",
+      "type de contrat",
+      "matricule de paie"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/worker-detail.tsx:725 ; lib/planning-writes.ts:147 ; lib/assistant-actions.ts:139"
+  },
+  {
+    "id": "B91",
+    "libelle": "Saisir ou modifier le n° de sécurité sociale d'un salarié (détail de B32)",
+    "genre": "humain",
+    "niveau": 3,
+    "actions_existantes": [],
+    "exposition": "Aucun outil : l'assistant dit où le saisir (fiche du salarié) et rien d'autre. Tout n° de sécurité sociale qui apparaîtrait dans une demande ou un fichier est effacé avant le modèle (scrubNir).",
+    "ecran": "Fiche salarié → « Infos paie » → N° de sécurité sociale",
+    "parametres": [],
+    "raison_humaine": "Donnée de paie sensible : jamais lue, jamais écrite ni envoyée au modèle (ia-vision.md:44 ; assistant-actions-core.ts scrubNir). Le salarié ou le bureau la tape à l'écran.",
+    "verifie_dans": "components/worker-detail.tsx:965 ; supabase/functions/_shared/assistant-actions-core.ts:727"
+  },
+  {
+    "id": "B92",
+    "libelle": "Réactiver un salarié archivé (détail de B34)",
+    "genre": "ecrire",
+    "niveau": 3,
+    "actions_existantes": [],
+    "exposition": "Outil reactiver_salarie en carte (redonne l'accès : « droits d'accès », niveau 3). Manque d'écran : la fiche d'un archivé est inatteignable depuis la liste Salariés (cahier §2F) ; l'assistant devrait pouvoir la retrouver par son nom.",
+    "ecran": "Fiche salarié (bouton Archiver / Réactiver) ; la liste des archivés n'existe pas à l'écran",
+    "parametres": [
+      "salarie"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/worker-detail.tsx:1050 ; lib/admin-writes.ts:72"
+  },
+  {
+    "id": "B93",
+    "libelle": "Supprimer un salarié qui n'a aucune donnée (détail de B34)",
+    "genre": "humain",
+    "niveau": 3,
+    "actions_existantes": [],
+    "exposition": "L'assistant propose l'archivage (archiver_salarie) à la place et montre la fiche ; la suppression définitive d'un compte est le clic de l'humain.",
+    "ecran": "Fiche salarié → Supprimer (seulement si aucune heure ni planning)",
+    "parametres": [
+      "salarie"
+    ],
+    "raison_humaine": "Suppression définitive (liste du niveau 3 validée) d'un compte, sans « Annuler » possible ; règle actuelle de la consigne : « Clients, chantiers et salariés : archiver, jamais supprimer » (assistant-actions-core.ts).",
+    "verifie_dans": "components/worker-detail.tsx:838 ; supabase/functions/_shared/assistant-actions-core.ts:1818"
+  },
+  {
+    "id": "B94",
+    "libelle": "Supprimer une habilitation d'un salarié (détail de B33)",
+    "genre": "ecrire",
+    "niveau": 3,
+    "actions_existantes": [
+      "supprimer_habilitation"
+    ],
+    "exposition": "Outil existant supprimer_habilitation, carte à confirmer ; « Annuler » existant (remet la ligne). L'écran supprime sans confirmation ni « Annuler ». Suppression que « Annuler » restaure à l'identique : niveau 3 par prudence (décision D3, voir B22), candidat au niveau 2.",
+    "ecran": "Fiche salarié → Habilitations → corbeille",
+    "parametres": [
+      "salarie",
+      "laquelle (CACES, carte BTP, visite médicale…)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/worker-detail.tsx:324 ; supabase/functions/_shared/assistant-actions-core.ts:1627 ; lib/assistant-actions.ts:456"
+  },
+  {
+    "id": "B95",
+    "libelle": "Lire les habilitations d'un salarié et leurs échéances (« expire dans N j ») (détail de B33)",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "Outil lire_habilitations(salarié?, dans_jours?) : « qui a un CACES qui expire bientôt ». La fonction lit 300 habilitations pour retrouver celle à modifier ou supprimer, sans les donner au modèle comme donnée.",
+    "ecran": "Fiche salarié → Habilitations",
+    "parametres": [
+      "salarie (facultatif)",
+      "échéance dans N jours"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/worker-detail.tsx:295 ; supabase/functions/assistant/index.ts:141"
+  },
+  {
+    "id": "B96",
+    "libelle": "Vérifier les habilitations maintenant : e-mail d'alerte tout de suite (détail de B62)",
+    "genre": "ecrire",
+    "niveau": 3,
+    "actions_existantes": [],
+    "exposition": "Outil verifier_habilitations_maintenant : déclenche la fonction cert-expiry-alerts (e-mail d'alerte) ; réponse « Rien à signaler » ou nombre d'alertes. Niveau 3 par doute (envoi d'e-mail, nouvelle action pour l'assistant).",
+    "ecran": "Réglages → Notifications & support → « Vérifier les habilitations »",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "components/company-settings.tsx:418"
+  },
+  {
+    "id": "B97",
+    "libelle": "Lire les demandes de congé, en attente et traitées (détail de B42)",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [
+      "repondre",
+      "NAV_ACTION:conges",
+      "guide:demandes_conge"
+    ],
+    "exposition": "PARTIEL — Déjà : les congés EN ATTENTE sont dans l'instantané (conges_en_attente) et le lien « Demandes de congé » existe. Manquent les demandes déjà traitées (acceptées, refusées, motif) : lire_conges(statut, salarié?).",
+    "ecran": "Fenêtre « Demandes de congé » (En attente (N), Traitées)",
+    "parametres": [
+      "salarie (facultatif)",
+      "statut"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/leave-admin-dialog.tsx:58 ; supabase/functions/_shared/assistant-core.ts:40"
+  },
+  {
+    "id": "B98",
+    "libelle": "Archiver un client (il sort des listes, ses heures et documents restent) (détail de B36)",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "archiver_client",
+      "guide:archiver_client"
+    ],
+    "exposition": "Outil existant archiver_client, aujourd'hui en carte à confirmer sans « Annuler » ; « Annuler » = remettre actif (setWorksiteActive(…, true), même fonction). Ne pas confondre avec « Terminer le chantier » (B38).",
+    "ecran": "Fiche client → Archiver",
+    "parametres": [
+      "chantier"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:2980 ; supabase/functions/_shared/assistant-actions-core.ts:1531 ; lib/assistant-actions.ts:322"
+  },
+  {
+    "id": "B99",
+    "libelle": "Supprimer un client qui n'a aucune donnée liée (détail de B36)",
+    "genre": "humain",
+    "niveau": 3,
+    "actions_existantes": [
+      "guide:supprimer_client"
+    ],
+    "exposition": "La fiche d'aide « supprimer_client » explique et renvoie vers la fiche ; l'assistant propose d'archiver. La suppression est le clic de l'humain.",
+    "ecran": "Fiche client → Supprimer (« Archivez-le plutôt » si le client a servi)",
+    "parametres": [
+      "chantier"
+    ],
+    "raison_humaine": "Suppression définitive (liste du niveau 3 validée) sans « Annuler » ; règle de la consigne : « jamais supprimer » un client (assistant-actions-core.ts). L'écran écrit directement dans la table worksites (hors lib/*-writes.ts).",
+    "verifie_dans": "components/admin-planning.tsx:2997 ; supabase/functions/_shared/assistant-actions-core.ts:223 ; supabase/functions/_shared/assistant-actions-core.ts:1818"
+  },
+  {
+    "id": "B100",
+    "libelle": "Importer des clients par fichier CSV/Excel (détail de B35)",
+    "genre": "humain",
+    "niveau": 3,
+    "actions_existantes": [
+      "NAV_ACTION:import_clients",
+      "guide:importer_clients"
+    ],
+    "exposition": "Déjà couvert pour ce que fait l'assistant : le lien « Importer des clients » ouvre la fenêtre et la fiche d'aide guide. Le fichier est choisi et l'import lancé par l'humain.",
+    "ecran": "Liste Clients → « Importer (CSV/Excel) » (Nom du client* + 7 colonnes, « Ignorer les clients déjà présents »)",
+    "parametres": [
+      "fichier"
+    ],
+    "raison_humaine": "Correspondance des colonnes et contrôle des lignes à l'écran (ia-v2.md:255), création en masse (par paquets de 200) sans « Annuler » ni passage par lib/*-writes.ts.",
+    "verifie_dans": "components/import-dialog.tsx:203 ; supabase/functions/_shared/assistant-actions-core.ts:41 ; components/admin-planning.tsx:4386"
+  },
+  {
+    "id": "B101",
+    "libelle": "Rouvrir un chantier terminé (détail de B38)",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [],
+    "exposition": "Outil rouvrir_chantier(chantier) : il redevient proposé aux salariés ; rien d'autre ne change. Sert d'« Annuler » à terminer_chantier.",
+    "ecran": "Fiche client → « Rouvrir » → « Rouvrir le chantier ? »",
+    "parametres": [
+      "chantier"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/chantier-termine.tsx:163 ; lib/chantier-termine.ts:40"
+  },
+  {
+    "id": "B102",
+    "libelle": "Lire le bilan d'un chantier (lecture seule) (détail de B38)",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "Outil lire_bilan_chantier(chantier) : ce que la fenêtre affiche (loadBilan/buildBilan) — heures validées, route, heures en attente (brouillons), heures par salarié, main-d'œuvre (total), dépenses par catégorie, réserves ouvertes/levées, nombre de documents par catégorie, avancement du budget, coût total. L'écran n'affiche aucun taux ni coût par salarié (seulement le total main-d'œuvre) : l'outil doit s'en tenir là.",
+    "ecran": "Fiche client → « Bilan » (fenêtre Bilan du chantier)",
+    "parametres": [
+      "chantier"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/chantier-termine.tsx:349 ; lib/chantier-termine.ts:99"
+  },
+  {
+    "id": "B103",
+    "libelle": "Changer la catégorie ou le nom d'un document de chantier (Devis, Plan, PV de réception, Photo, Réserve, Facture, Facture payée, Autre) (détail de B37)",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "modifier_document"
+    ],
+    "exposition": "Outil existant modifier_document, aujourd'hui en carte à confirmer (REMOVAL_TYPES) alors que « Annuler » existe (restaure catégorie et nom) : prêt pour le niveau 2. Le renommage n'a pas d'équivalent à l'écran (seule la catégorie y change).",
+    "ecran": "Fenêtre Documents → bouton de catégorie → feuille de choix (bandeau « Annuler » 20 s)",
+    "parametres": [
+      "chantier",
+      "quel document",
+      "nouvelle catégorie",
+      "nouveau nom"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/document-category.tsx:33 ; lib/doc-category.ts:39 ; supabase/functions/_shared/assistant-actions-core.ts:1606 ; lib/assistant-actions.ts:429"
+  },
+  {
+    "id": "B104",
+    "libelle": "Supprimer un document ou une photo de chantier (détail de B37)",
+    "genre": "ecrire",
+    "niveau": 3,
+    "actions_existantes": [
+      "supprimer_document"
+    ],
+    "exposition": "Outil existant supprimer_document, carte à confirmer ; « Annuler » existant (le fichier est gardé en mémoire de l'écran le temps de la session et redéposé). L'écran supprime avec un simple confirm() et sans « Annuler ». Suppression que « Annuler » restaure à l'identique : niveau 3 par prudence (décision D3, voir B22), candidat au niveau 2. À TRANCHER : L'« Annuler » d'un document supprimé n'existe que tant que la page reste ouverte (le fichier est gardé en mémoire) : c'est le seul cas où « Annuler » n'est pas durable.",
+    "ecran": "Fenêtre Documents du chantier → Supprimer",
+    "parametres": [
+      "chantier",
+      "quel document (« la facture », « la dernière photo », son nom)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/chantier-documents.tsx:276 ; supabase/functions/_shared/assistant-actions-core.ts:1601 ; lib/assistant-actions.ts:408"
+  },
+  {
+    "id": "B105",
+    "libelle": "Envoyer les documents d'un chantier au client : adresse enregistrée une fois, e-mail préparé avec des liens valables 7 jours (détail de B37)",
+    "genre": "humain",
+    "niveau": 3,
+    "actions_existantes": [
+      "guide:envoyer_client"
+    ],
+    "exposition": "PARTIEL — L'assistant enregistre l'adresse (modifier_client, champ email, même effet que « OK » de la fenêtre), ouvre la fenêtre Documents et s'arrête avant « Ouvrir l'e-mail ». Aujourd'hui : fiche d'aide « envoyer_client » seule.",
+    "ecran": "Fenêtre Documents → « Envoyer au client » (« Ouvrir l'e-mail », « Copier »)",
+    "parametres": [
+      "chantier",
+      "e-mail du client"
+    ],
+    "raison_humaine": "Envoi de documents à un tiers : l'application ne l'envoie pas, elle ouvre la messagerie du patron avec le message prêt (mailto) ; le patron relit et envoie. Les liens signés valent 7 jours.",
+    "verifie_dans": "components/chantier-documents.tsx:235 ; components/chantier-documents.tsx:207 ; supabase/functions/_shared/assistant-actions-core.ts:282"
+  },
+  {
+    "id": "B106",
+    "libelle": "Ajouter une dépense à un chantier : chantier, catégorie, montant, date, libellé (détail de B52)",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "ajouter_depense",
+      "guide:depense"
+    ],
+    "exposition": "Outil existant ajouter_depense, aujourd'hui en carte à confirmer et sans « Annuler » : « Annuler » = supprimer_depense (outil existant, même table).",
+    "ecran": "Fenêtre « Coût par chantier » → « Ajouter une dépense »",
+    "parametres": [
+      "chantier",
+      "montant (négatif = avoir)",
+      "libelle",
+      "categorie (matériaux, sous-traitance, location, divers)",
+      "date"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/cost-report.tsx:323 ; supabase/functions/_shared/assistant-actions-core.ts:1516 ; lib/assistant-actions.ts:309"
+  },
+  {
+    "id": "B107",
+    "libelle": "Supprimer une dépense (détail de B52)",
+    "genre": "ecrire",
+    "niveau": 3,
+    "actions_existantes": [
+      "supprimer_depense"
+    ],
+    "exposition": "Outil existant supprimer_depense, carte à confirmer ; « Annuler » existant. L'écran supprime après un confirm() et sans « Annuler ». Remarque : modifier_depense n'a pas d'équivalent à l'écran (l'écran ne sait qu'ajouter et supprimer). Suppression que « Annuler » restaure à l'identique : niveau 3 par prudence (décision D3, voir B22), candidat au niveau 2.",
+    "ecran": "Fenêtre « Coût par chantier » → corbeille d'une dépense",
+    "parametres": [
+      "chantier",
+      "montant",
+      "laquelle (libellé, « la dernière »)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/cost-report.tsx:350 ; supabase/functions/_shared/assistant-actions-core.ts:1614 ; lib/assistant-actions.ts:440"
+  },
+  {
+    "id": "B108",
+    "libelle": "Rouvrir une réserve levée : elle repasse « À traiter » (détail de B54)",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [],
+    "exposition": "Outil rouvrir_reserve(réserve) ; sert d'« Annuler » à lever_reserve. Aujourd'hui seule la fiche d'aide « lever_reserve » mentionne « Rouvrir ».",
+    "ecran": "Fenêtre « Réserves de chantier » → onglet « Levées » → Rouvrir (une confirmation « Oui, rouvrir »)",
+    "parametres": [
+      "chantier",
+      "salarie",
+      "date"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/reserves-report.tsx:261 ; lib/reserve-lift.ts:93"
+  },
+  {
+    "id": "B109",
+    "libelle": "Lire les réserves de chantier, à traiter et levées, groupées par chantier (détail de B54)",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [
+      "NAV_ACTION:reserves",
+      "guide:reserves"
+    ],
+    "exposition": "PARTIEL — Outil lire_reserves(statut, chantier?) : détail, date, salarié, comment elle a été levée (qui, quand, note, photo). Aujourd'hui : lien « Réserves » et fiches d'aide ; la fonction lit 50 réserves ouvertes pour lever_reserve mais ne les donne pas au modèle comme donnée.",
+    "ecran": "Fenêtre « Réserves de chantier » (À traiter, Levées) ; badge dans la barre",
+    "parametres": [
+      "chantier (facultatif)",
+      "statut (à traiter ou levée)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/reserves-report.tsx:121 ; supabase/functions/assistant/index.ts:136"
+  },
+  {
+    "id": "B110",
+    "libelle": "Prévenir par notification les participants d'une réunion (option « Prévenir par notification ») (détail de B27)",
+    "genre": "ecrire",
+    "niveau": 3,
+    "actions_existantes": [],
+    "exposition": "Option de enregistrer_reunion (B115) : l'assistant crée la réunion SANS prévenir par défaut ; la notification aux participants est une étape à part, en carte (plusieurs personnes). notifyMeeting dit ce qui a changé. À TRANCHER : La notification d'une réunion part à plusieurs personnes (push, pas e-mail) : niveau 3 par doute (« e-mails groupés » est la seule catégorie validée), ou niveau 2 ?",
+    "ecran": "Fenêtre « Ajouter » → onglet Réunion → case « Prévenir par notification »",
+    "parametres": [
+      "reunion",
+      "participants",
+      "prévenir (oui / non)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "lib/missions.ts:257 ; components/missions-office.tsx:393"
+  },
+  {
+    "id": "B111",
+    "libelle": "Ajouter une tâche au jour d'un salarié : texte, moment ou heures de…à… (détail de B27)",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [],
+    "exposition": "Outil ajouter_tache(salarié, jour, texte, créneau?). Pas d'ajout un jour d'absence ; une tâche hors créneau demande « Ajouter quand même ? » (non bloquant) ; jamais dans les heures. Option « si dispo » (table des tâches).",
+    "ecran": "Fenêtre « Ajouter » → onglet Tâche (ou « + Tâche » d'une case)",
+    "parametres": [
+      "salarie",
+      "jour",
+      "texte",
+      "moment ou heures (début, fin)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "lib/missions.ts:185 ; components/missions-office.tsx:228"
+  },
+  {
+    "id": "B112",
+    "libelle": "Retirer une tâche (retrait confirmé) (détail de B27)",
+    "genre": "ecrire",
+    "niveau": 3,
+    "actions_existantes": [],
+    "exposition": "Outil retirer_tache en carte (suppression, D3). L'écran demande une confirmation et n'offre pas d'« Annuler » : le registre devrait en créer un (redéposer le texte, le créneau et l'état « fait »).",
+    "ecran": "Fenêtre « Ajouter » → onglet Tâche → retirer",
+    "parametres": [
+      "salarie",
+      "jour",
+      "laquelle"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "lib/missions.ts:204 ; components/missions-office.tsx:249"
+  },
+  {
+    "id": "B113",
+    "libelle": "Ajouter une tâche habituelle (modèle réutilisable) (détail de B27)",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [],
+    "exposition": "Outil ajouter_tache avec garder_comme_habituelle=oui (addTemplate), ou outil séparé. Faible priorité.",
+    "ecran": "Fenêtre « Ajouter » → onglet Tâche → « tâches habituelles »",
+    "parametres": [
+      "texte"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "lib/missions.ts:217"
+  },
+  {
+    "id": "B114",
+    "libelle": "Retirer une tâche habituelle (détail de B27)",
+    "genre": "ecrire",
+    "niveau": 3,
+    "actions_existantes": [],
+    "exposition": "Outil retirer_tache_habituelle en carte (suppression, D3). Faible priorité.",
+    "ecran": "Fenêtre « Ajouter » → onglet Tâche → tâches habituelles → retirer",
+    "parametres": [
+      "texte"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "lib/missions.ts:224"
+  },
+  {
+    "id": "B115",
+    "libelle": "Créer ou modifier une réunion : titre, date, heure, fin et lieu facultatifs, toute l'équipe ou participants (détail de B27)",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [],
+    "exposition": "Outil enregistrer_reunion(…) créée sans notification (la notification est B110). Jamais dans les heures ; imprimée. Option « si dispo » (table des réunions).",
+    "ecran": "Fenêtre « Ajouter » → onglet Réunion",
+    "parametres": [
+      "titre",
+      "date",
+      "heure",
+      "fin",
+      "lieu",
+      "participants (équipe entière ou liste)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "lib/missions.ts:230 ; components/missions-office.tsx:359"
+  },
+  {
+    "id": "B116",
+    "libelle": "Retirer une réunion (confirmé) (détail de B27)",
+    "genre": "ecrire",
+    "niveau": 3,
+    "actions_existantes": [],
+    "exposition": "Outil retirer_reunion en carte (suppression, D3), sans « Annuler » à l'écran.",
+    "ecran": "Fenêtre « Ajouter » → onglet Réunion → retirer",
+    "parametres": [
+      "reunion"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "lib/missions.ts:245 ; components/missions-office.tsx:416"
+  },
+  {
+    "id": "B117",
+    "libelle": "Régler le nom de l'entreprise, le SIRET, la TVA intracom. et le logo (détail de B59)",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [],
+    "exposition": "Étendre modifier_reglages à ces champs (aujourd'hui absents : modifier_reglages n'a ni nom, ni SIRET, ni TVA, ni logo). Le logo pourrait venir d'une image jointe au chat (comme ranger_document).",
+    "ecran": "Réglages → rubrique « Entreprise » (logo PNG, JPG ou SVG de 2 Mo au plus)",
+    "parametres": [
+      "nom",
+      "SIRET",
+      "TVA intracom.",
+      "logo (fichier joint)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/company-settings.tsx:353 ; lib/admin-writes.ts:217 ; supabase/functions/_shared/assistant-actions-core.ts:1567"
+  },
+  {
+    "id": "B118",
+    "libelle": "Activer ou couper le panier repas (détail de B60)",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [],
+    "exposition": "Étendre modifier_reglages (panier_repas) via saveMealEnabled. Décoché : la case « Panier » disparaît chez les salariés, les paniers déjà notés restent dans les exports. Option « si dispo » (colonne meal_enabled).",
+    "ecran": "Réglages → Heures & paie → « Utiliser le panier repas »",
+    "parametres": [
+      "panier repas (oui / non)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/company-settings.tsx:659 ; lib/admin-writes.ts:242"
+  },
+  {
+    "id": "B119",
+    "libelle": "Régler la caisse de congés BTP (taux ajouté au coût réel) (détail de B60)",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "guide:caisse"
+    ],
+    "exposition": "PARTIEL — Étendre modifier_reglages. Aujourd'hui seule la fiche d'aide « caisse » existe.",
+    "ecran": "Réglages → Heures & paie → « Caisse de congés BTP » (seulement si l'assistant est activé)",
+    "parametres": [
+      "caisse de congés (oui / non)",
+      "taux"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/leave-fund-setting.tsx:12 ; components/company-settings.tsx:691"
+  },
+  {
+    "id": "B120",
+    "libelle": "Désactiver l'endroit au pointage (on ne peut que le désactiver) (détail de B61)",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "guide:position"
+    ],
+    "exposition": "PARTIEL — Outil desactiver_position : effet immédiat, sans confirmation à l'écran (réduire une collecte de données personnelles ne mérite aucun frein). L'ACTIVATION n'est plus proposée par l'écran (cahier §2N : « ne pas dessiner de parcours d'activation ») : l'assistant ne doit pas en proposer non plus. Fiche d'aide « position » existante, sans visite guidée.",
+    "ecran": "Réglages → Borne & pointage → « Endroit au pointage en direct » (visible seulement s'il est actif)",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "components/company-settings.tsx:334 ; supabase/functions/_shared/assistant-actions-core.ts:293"
+  },
+  {
+    "id": "B121",
+    "libelle": "Envoyer le récap hebdomadaire maintenant, par e-mail (détail de B62)",
+    "genre": "ecrire",
+    "niveau": 3,
+    "actions_existantes": [
+      "guide:recap"
+    ],
+    "exposition": "PARTIEL — Outil envoyer_recap_maintenant : déclenche la fonction weekly-digest (récap du lundi) ; message « Récap envoyé (N destinataire(s)) ». Niveau 3 par doute (envoi d'e-mail, nouvelle action pour l'assistant) ; candidat au niveau 2 (e-mail au bureau lui-même). Aujourd'hui seule la fiche d'aide « recap » existe.",
+    "ecran": "Réglages → Notifications & support → « Envoyer le récap maintenant »",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "components/company-settings.tsx:402 ; supabase/functions/_shared/assistant-actions-core.ts:317"
+  },
+  {
+    "id": "B122",
+    "libelle": "Changer l'adresse e-mail du comptable, destinataire de l'export de paie (détail de B60)",
+    "genre": "ecrire",
+    "niveau": 3,
+    "actions_existantes": [
+      "modifier_reglages"
+    ],
+    "exposition": "Outil existant modifier_reglages (champ email_comptable), carte à confirmer. À garder au niveau 3 même si le reste de modifier_reglages passe en niveau 2 : l'adresse décide qui reçoit le tableur de paie (le serveur relit l'adresse dans les réglages, jamais celle de l'écran) ; une adresse changée par erreur (phrase mal comprise) enverrait la paie à un tiers. modifier_reglages n'est pas proposé quand un fichier est joint (ATTACHMENT_ACTIONS). À TRANCHER : Le même outil modifier_reglages devra porter deux niveaux : 2 pour la plupart des champs, 3 pour l'adresse du comptable (destinataire de la paie).",
+    "ecran": "Réglages → Heures & paie → « Adresse de votre comptable »",
+    "parametres": [
+      "adresse e-mail du comptable"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/company-settings.tsx:678 ; components/admin-planning.tsx:2719 ; supabase/functions/_shared/assistant-actions-core.ts:1567 ; supabase/functions/_shared/assistant-actions-core.ts:1650"
+  },
+  {
+    "id": "B123",
+    "libelle": "Lire le journal des accès du support BEMEXO (détail de B63)",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "Outil lire_journal_support : qui est entré, quand, autorisé ou retiré. Visible seulement si le support est activé pour l'entreprise (supportEnabled) et jamais en session support.",
+    "ecran": "Réglages → Notifications & support → « Journal des accès »",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "components/support-access.tsx:106 ; lib/support.ts:23"
+  },
+  {
+    "id": "B124",
+    "libelle": "Déconnecter la tablette de pointage : ses QR ne fonctionnent plus (détail de B55)",
+    "genre": "humain",
+    "niveau": 3,
+    "actions_existantes": [
+      "guide:borne"
+    ],
+    "exposition": "PARTIEL — Fiche d'aide « borne » (visite guidée qui entoure « Déconnecter la tablette ») ; l'assistant ouvre la fenêtre Borne et ne déconnecte rien.",
+    "ecran": "Fenêtre Borne → « Déconnecter la tablette » → « Non / Oui »",
+    "parametres": [],
+    "raison_humaine": "Droit d'accès d'un appareil : la tablette est coupée et ses QR ne fonctionnent plus (message de l'écran) ; confirmation « Non / Oui » à l'écran (ia-v2.md:257, sécurité de la borne).",
+    "verifie_dans": "components/kiosk-admin.tsx:393 ; supabase/functions/_shared/admin-tours.ts:262"
+  },
+  {
+    "id": "B125",
+    "libelle": "Régler les horaires d'ouverture de la borne (détail de B55)",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [],
+    "exposition": "Outil regler_horaires_borne(de, à) : enregistré dès que les deux heures sont données (ou aucune). Option « si dispo » (kiosk_enabled).",
+    "ecran": "Fenêtre Borne → horaires (de… à…, « toujours allumée »)",
+    "parametres": [
+      "de",
+      "à",
+      "toujours allumée"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/kiosk-admin.tsx:411"
+  },
+  {
+    "id": "B126",
+    "libelle": "Lire l'état de la borne : tablette reliée, vue il y a… (détail de B55)",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "Outil lire_etat_borne : reliée ou non, vue il y a… (seenLabel), horaires. Aucune donnée de pointage.",
+    "ecran": "Fenêtre Borne (état de la tablette, dernier signe de vie)",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "components/kiosk-admin.tsx:90 ; components/admin-planning.tsx:3581"
+  },
+  {
+    "id": "B127",
+    "libelle": "Ajouter une formation par lien ou par document, pour l'équipe entière ou certains salariés (détail de B57)",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [],
+    "exposition": "Outil ajouter_formation(titre, lien|document, destinataires). La notification aux destinataires (notifyTraining) est un bonus jamais bloquant, jamais par e-mail : par défaut, l'assistant ne prévient personne sans l'avoir dit. Option « si dispo ».",
+    "ecran": "Fenêtre Formations → formulaire d'ajout (titre, lien ou document, destinataires)",
+    "parametres": [
+      "titre",
+      "lien ou document",
+      "équipe entière ou salariés",
+      "prévenir (notification)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/trainings-admin.tsx:388 ; lib/trainings.ts:132"
+  },
+  {
+    "id": "B128",
+    "libelle": "Ajouter une formation en vidéo : filmer ou déposer un fichier de 50 Mo au plus (quota vidéo de l'entreprise 100 Mo) (détail de B57)",
+    "genre": "humain",
+    "niveau": 3,
+    "actions_existantes": [],
+    "exposition": "L'assistant ouvre la fenêtre Formations et dit le quota restant (lire_formations, B57) ; la prise de vue ou le choix du fichier sont à l'écran.",
+    "ecran": "Fenêtre Formations → vidéo (enregistreur caméra/micro, ou fichier)",
+    "parametres": [],
+    "raison_humaine": "Gestes d'appareil (caméra, micro, choix et envoi d'un gros fichier vidéo) qui ne passent pas par le chat ; hors liste du niveau 3 mais non faisables par l'assistant.",
+    "verifie_dans": "components/trainings-admin.tsx:362 ; components/training-video-recorder.tsx:48 ; supabase/functions/_shared/training-videos.ts:28"
+  },
+  {
+    "id": "B129",
+    "libelle": "Retirer ou remettre une formation ou une vidéo (détail de B57)",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [],
+    "exposition": "Outil retirer_ou_remettre_formation : c'est un archivage réversible (rien n'est effacé), « Annuler » = l'opération inverse. Niveau 2 pour cette raison.",
+    "ecran": "Fenêtre Formations → ligne déployée → Retirer / Remettre (confirmé)",
+    "parametres": [
+      "formation",
+      "retirer ou remettre"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/trainings-admin.tsx:439 ; lib/trainings.ts:150"
+  },
+  {
+    "id": "B130",
+    "libelle": "Revenir à une version d'avant du planning d'une semaine : « Revenir à la V{n} » après aperçu (détail de B49)",
+    "genre": "ecrire",
+    "niveau": 3,
+    "actions_existantes": [
+      "guide:versions"
+    ],
+    "exposition": "PARTIEL — Outil revenir_version_planning(semaine, version) en carte : montrer l'aperçu (« N remises, N retirées, N gardées »), garder d'abord l'état actuel ; refait l'aperçu si le planning a bougé. Ni heures ni absences touchées. Aujourd'hui fiche d'aide « versions » seule. À TRANCHER : Revenir à une version remplace en bloc le planning d'une semaine (avec « Annuler » réel) : niveau 3 par doute ; l'assistant crée déjà ces versions à chaque action en bloc.",
+    "ecran": "Fenêtre Versions du planning → Voir → « Revenir à cette version » → Confirmer",
+    "parametres": [
+      "semaine",
+      "version"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/planning-versions-dialog.tsx:143 ; lib/planning-versions.ts:306"
+  },
+  {
+    "id": "B131",
+    "libelle": "Garder la version actuelle du planning d'une semaine (« Garder cette version ») (détail de B49)",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [],
+    "exposition": "Outil garder_version_planning(semaine) : enregistre une version « manuelle » sans toucher au planning ; inoffensif.",
+    "ecran": "Fenêtre Versions du planning → « Garder cette version »",
+    "parametres": [
+      "semaine"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/planning-versions-dialog.tsx:172 ; lib/planning-versions.ts:107"
+  },
+  {
+    "id": "B132",
+    "libelle": "Lire l'état de l'abonnement : essai (jours restants), terminé, actif (détail de B64)",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "Outil lire_etat_abonnement : jours d'essai restants, abonné ou non (réglages de l'entreprise : trial_ends_at, subscription_status). La fiche d'aide « abonnement » dit comment faire mais pas où en est l'entreprise.",
+    "ecran": "Cockpit « Essai · N j » ; Réglages → « Abonnement actif / Essai gratuit en cours »",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "app/admin/page.tsx:131 ; components/admin-planning.tsx:3423 ; components/company-settings.tsx:573"
+  },
+  {
+    "id": "B133",
+    "libelle": "Gérer mon abonnement : portail Stripe (résilier, factures, moyen de paiement) (détail de B64)",
+    "genre": "humain",
+    "niveau": 3,
+    "actions_existantes": [
+      "guide:abonnement",
+      "NAV_ACTION:reglages"
+    ],
+    "exposition": "PARTIEL — Ouvrir les Réglages et guider (fiche d'aide « abonnement », visite guidée). L'assistant ne résilie ni ne change rien.",
+    "ecran": "Réglages → Entreprise → « Gérer mon abonnement »",
+    "parametres": [],
+    "raison_humaine": "Abonnement et paiement (liste du niveau 3 validée, ia-vision.md:37) : page hébergée par Stripe, hors de l'application.",
+    "verifie_dans": "components/company-settings.tsx:378 ; supabase/functions/_shared/assistant-actions-core.ts:311"
+  },
+  {
+    "id": "B134",
+    "libelle": "Se déconnecter (détail de B65)",
+    "genre": "humain",
+    "niveau": 3,
+    "actions_existantes": [],
+    "exposition": "L'assistant montre où est le bouton (ouvrir_fenetre(compte), B65) mais ne coupe pas la session.",
+    "ecran": "Menu du compte → Déconnexion ; téléphone : ☰ ou icône de l'en-tête",
+    "parametres": [],
+    "raison_humaine": "Geste de sécurité de session : un « ferme » mal compris ne doit pas déconnecter la personne au milieu d'une saisie.",
+    "verifie_dans": "components/admin-planning.tsx:3460"
+  },
+  {
+    "id": "B135",
+    "libelle": "Lire ce qu'un export d'équipe va verrouiller : N lignes d'heures de M salariés sur la période (détail de B45)",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "Outil lire_verrou_export(période) sur lireCompteVerrou (lecture seule, même filtre que l'export). Permet à l'assistant de dire « 142 lignes de 6 salariés seraient verrouillées » avant d'ouvrir la fenêtre ; il ne verrouille rien.",
+    "ecran": "Alerte « Cet export va verrouiller N lignes d'heures de M salariés » (+ lignes déjà verrouillées)",
+    "parametres": [
+      "periode"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "lib/export-lignes.ts:25 ; components/admin-planning.tsx:2836"
+  },
+  {
+    "id": "B136",
+    "libelle": "Renseigner le coût réel d'un salarié à partir d'un bulletin de paie, chiffres vérifiés puis « Valider » (détail de B33)",
+    "genre": "ecrire",
+    "niveau": 3,
+    "actions_existantes": [
+      "cout_reel",
+      "guide:cout_reel"
+    ],
+    "exposition": "Outil existant cout_reel (bulletin joint ; carte à confirmer ; secours Gemini = chiffres « à vérifier »). Le bulletin n'est jamais conservé. Niveau 3 par doute : paie sensible. À TRANCHER : cout_reel envoie un bulletin de paie au modèle pour lire brut, coût employeur et heures, alors que le §4 dit « aucune donnée de paie sensible envoyée au modèle » (ia-vision.md:44) : à confirmer avec le patron (le n° de sécurité sociale, lui, est toujours écarté).",
+    "ecran": "Fiche salarié → bloc « Coût réel » (si l'assistant est activé) → Déposer un bulletin / Saisir à la main",
+    "parametres": [
+      "salarie",
+      "mois",
+      "salaire brut",
+      "coût total employeur",
+      "heures payées",
+      "bulletin joint"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/real-cost-card.tsx:73 ; supabase/functions/_shared/assistant-actions-core.ts:1559 ; lib/assistant-actions.ts:372 ; docs/ia-vision.md:44"
+  },
+  {
+    "id": "B137",
+    "libelle": "Lire le détail de « à relancer » : qui, quels jours, mois précédent et mois en cours (détail de B41)",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [
+      "repondre"
+    ],
+    "exposition": "PARTIEL — Outil lire_a_relancer : mêmes journées que l'écran (journées planifiées sans heures envoyées, hors absences, cases retirées, mois et salariés clôturés, plus les sorties oubliées). Aujourd'hui l'instantané ne contient que « pas pointé hier ».",
+    "ecran": "Cockpit → « à relancer » (liste par salarié, N j) ; téléphone : fenêtre « À relancer »",
+    "parametres": [
+      "salarie (facultatif)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/admin-planning.tsx:3292 ; lib/work-status.ts:31 ; supabase/functions/_shared/assistant-core.ts:32"
+  },
+  {
+    "id": "B138",
+    "libelle": "Lire le journal « Derniers envois » des e-mails aux salariés (détail de B58)",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "Outil lire_derniers_envois_email : type, destinataire masqué, statut, date. Permet de vérifier qu'un envoi est parti avant de recommencer (réponse perdue).",
+    "ecran": "Fenêtre « Envoyer par e-mail » → « Derniers envois »",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "components/staff-email-dialog.tsx:274 ; lib/staff-email.ts:172"
+  }
+]

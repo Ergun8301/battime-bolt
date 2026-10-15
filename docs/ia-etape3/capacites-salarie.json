@@ -1,0 +1,1621 @@
+[
+  {
+    "id": "S1",
+    "libelle": "Jour affiché ; retour à aujourd'hui",
+    "genre": "naviguer",
+    "niveau": 1,
+    "actions_existantes": [
+      "WORKER_NAV:journee"
+    ],
+    "exposition": "PARTIEL — WORKER_NAV:journee (« Ma journée ») ramène à aujourd'hui (goHome). Ouvrir UN AUTRE jour précis (openDay) n'existe pas côté assistant : WORKER_NAV n'a que 9 écrans et aucun paramètre de date. À créer : ouvrir_ecran(ecran:'journee', jour).",
+    "ecran": "Ma journée (en-tête : date du jour ou flèche de retour)",
+    "parametres": [
+      "jour:aaaa-mm-jj (à créer ; aujourd'hui par défaut)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "app/poseur/page.tsx:398-400 ; app/poseur/page.tsx:427-429 ; app/poseur/page.tsx:538-545 ; app/poseur/page.tsx:657-666 ; supabase/functions/_shared/worker-assistant-core.ts:438-449"
+  },
+  {
+    "id": "S2",
+    "libelle": "Créneaux prévus, distincts des heures saisies",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [
+      "instantane:prevu_par_le_bureau",
+      "instantane:heures_notees",
+      "local:answerSimpleQuestion"
+    ],
+    "exposition": "COUVERT — le modèle reçoit le planning du salarié de -2 à +1 jour sous le nom prevu_par_le_bureau, séparé de heures_notees et de lignes_du_jour, avec la consigne « le planning n'est PAS du travail fait » ; le lecteur local répond à « mon planning demain ? » sans modèle. Au-delà de demain : rien (voir S49, S50).",
+    "ecran": "Ma journée (cartes « Prévu »)",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "supabase/functions/worker-assistant/index.ts:105 ; supabase/functions/_shared/worker-assistant-core.ts:1145 ; supabase/functions/_shared/worker-assistant-core.ts:1151-1157 ; supabase/functions/_shared/worker-assistant-core.ts:299-306 ; components/poseur-day.tsx:1793-1809 ; components/poseur-day.tsx:2293-2326"
+  },
+  {
+    "id": "S3",
+    "libelle": "Noter ses heures sur un créneau prévu",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "declarer_heures"
+    ],
+    "exposition": "PARTIEL — noter des heures = declarer_heures : le chantier non dit est repris du planning (plannedWorksite, fillUnsaid) et la ligne est rattachée au planning le plus recouvert (bestPlanningFor). « Confirmer les horaires prévus tels quels » (le « Oui » de la fenêtre « Horaires prévus par le bureau ») n'a pas d'outil : sendWorkerDay n'envoie jamais le prévu. À créer : confirmer_prevu (prépare des brouillons depuis le planning, niveau 2 avec Annuler ; l'envoi reste S39).",
+    "ecran": "Ma journée (carte « Prévu » → éditeur d'intervention)",
+    "parametres": [
+      "date:aaaa-mm-jj",
+      "chantier:texte dit (sinon repris du planning)",
+      "debut:HH:MM",
+      "fin:HH:MM",
+      "pause:minutes",
+      "confirmer_prevu: planning_id ou chantier (à créer)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "supabase/functions/_shared/worker-assistant-core.ts:137-179 ; lib/worker-assistant.ts:172-239 ; lib/worker-day.ts:139-146 ; supabase/functions/_shared/worker-assistant-core.ts:826 ; components/poseur-day.tsx:1317-1319 ; components/poseur-day.tsx:2855-2877"
+  },
+  {
+    "id": "S4",
+    "libelle": "Savoir qu'un créneau prévu ne partira pas",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "À CRÉER — l'état d'un prévu (couvert, chevauche, heures à préciser) est calculé par l'écran (visiblePlannings, plannedState) ; l'assistant ne le reçoit pas et ne peut pas dire pourquoi un prévu ne partira pas. À créer : lire_ma_journee(date) qui rend cet état.",
+    "ecran": "Ma journée (cartes « Prévu » : « Chevauche tes heures notées », « Heures à préciser »)",
+    "parametres": [
+      "date:aaaa-mm-jj"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/poseur-day.tsx:1793-1809 ; components/poseur-day.tsx:2317-2322 ; lib/work-status.ts:177 ; supabase/functions/_shared/day-hours.ts:128"
+  },
+  {
+    "id": "S5",
+    "libelle": "Nombre de documents d'un chantier",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "À CRÉER — le compte vient de la table documents de l'entreprise (tous auteurs, par chantier). L'assistant ne lit que SES documents récents (14 jours, 20 au plus) pour pouvoir les retirer. À créer : lire_mes_documents(chantier) avec le nombre et la liste.",
+    "ecran": "Ma journée (pastille 📎 sur les cartes prévues et saisies)",
+    "parametres": [
+      "chantier:texte"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/poseur-day.tsx:753-763 ; components/poseur-day.tsx:2311-2313 ; components/poseur-day.tsx:2337-2339 ; supabase/functions/worker-assistant/index.ts:111"
+  },
+  {
+    "id": "S6",
+    "libelle": "Réunions du jour",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "À CRÉER — le prompt ne contient ni réunions ni tâches (fetchMyMissions n'est appelé que par l'écran). À créer : lire_taches_et_reunions(date) (titre, heures, lieu, équipe ; jamais additionnées aux heures).",
+    "ecran": "Ma journée (cartes roses « Réunion · … » au-dessus des chantiers)",
+    "parametres": [
+      "date:aaaa-mm-jj"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/missions-worker.tsx:101-117 ; lib/missions.ts:285-337 ; components/poseur-day.tsx:2240 ; supabase/functions/_shared/worker-assistant-core.ts:1151-1157"
+  },
+  {
+    "id": "S7",
+    "libelle": "Tâches du jour et compteur",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "À CRÉER — même lecture que S6 : texte, heure ou moment, fait ou non, compteur fait/total (« 1/3 »). Aucun outil ni donnée dans le prompt.",
+    "ecran": "Ma journée (bloc « Tâches du jour »)",
+    "parametres": [
+      "date:aaaa-mm-jj"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/missions-worker.tsx:120-148 ; lib/missions.ts:298-337 ; components/poseur-day.tsx:2518"
+  },
+  {
+    "id": "S8",
+    "libelle": "Cocher une tâche (réseau requis)",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [],
+    "exposition": "À CRÉER — set_day_task_done (setTaskDone) n'agit que sur MA tâche ; réversible (décocher) donc niveau 2 avec Annuler. Hors réseau la case est grisée (disabled={!online}) ; l'assistant est de toute façon indisponible sans réseau. À créer : cocher_tache.",
+    "ecran": "Ma journée (case « Fait » d'une tâche)",
+    "parametres": [
+      "tache:texte ou id",
+      "fait:bool"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/missions-worker.tsx:71-95 ; components/missions-worker.tsx:139-140 ; lib/missions.ts:339-348"
+  },
+  {
+    "id": "S9",
+    "libelle": "« Terminé le … » sur un chantier terminé",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "À CRÉER — la lecture des chantiers de l'assistant ne demande pas completed_at : il ignore qu'un chantier est terminé, et choosableWorksites (qui retire les chantiers terminés des choix pour un jour après leur fin) n'est pas appliquée à ses listes. Écart de règle déjà consigné (docs/chantier-termine.md, section des assistants) : l'assistant peut encore proposer des heures sur un chantier terminé que l'écran n'offrirait plus ; correctif prévu = filtre completed_at IS NULL dans la lecture de worker-assistant.",
+    "ecran": "Cartes de la journée, pointage en cours, Semaine, Mois, Historique (mention « Terminé le … »)",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "supabase/functions/worker-assistant/index.ts:103 ; supabase/functions/_shared/chantier-statut.ts:38 ; supabase/functions/_shared/chantier-statut.ts:63 ; components/poseur-day.tsx:1915-1921 ; components/termine-le.tsx:7-12 ; docs/chantier-termine.md:107"
+  },
+  {
+    "id": "S10",
+    "libelle": "Pointer en scannant le QR de la tablette",
+    "genre": "humain",
+    "niveau": 3,
+    "actions_existantes": [
+      "guide:pointer",
+      "repondre"
+    ],
+    "exposition": "RÉSERVÉ À L'HUMAIN — le pointage naît au scan physique du QR de la tablette (page /pointer) ; arrivée ou départ sont décidés par le serveur. L'assistant guide (fiche et parcours « pointer ») et répond « le pointage commence en scannant le QR de la tablette ; sans tablette, notez vos heures avec + » (QR_START_ANSWER). Démarrer ou annuler un pointage depuis le téléphone n'existe plus : commencer_pointage et annuler_pointage répondent par texte.",
+    "ecran": "Page /pointer (appareil photo du téléphone)",
+    "parametres": [],
+    "raison_humaine": "Règle métier du lot 12 : le téléphone ne démarre plus de pointage ; seul le scan du QR de la tablette pointe, et l'heure vient du serveur (jamais de l'horloge du téléphone). Geste physique et preuve de présence : à ne jamais faire à la place du salarié.",
+    "verifie_dans": "supabase/functions/_shared/worker-assistant-core.ts:774-784 ; supabase/functions/_shared/worker-assistant-core.ts:999-1002 ; supabase/functions/_shared/worker-assistant-core.ts:1139 ; supabase/functions/_shared/worker-assistant-core.ts:1183-1184 ; components/poseur-day.tsx:1828-1833 ; lib/live-session.ts:38-48 ; supabase/functions/_shared/worker-tours.ts:62-66 ; app/pointer/page.tsx:225-246"
+  },
+  {
+    "id": "S11",
+    "libelle": "Scanner ce QR depuis l'application",
+    "genre": "ouvrir",
+    "niveau": 1,
+    "actions_existantes": [
+      "WORKER_NAV:borne"
+    ],
+    "exposition": "COUVERT — WORKER_NAV:borne (« Scanner la borne ») ouvre le lecteur (setScanOpen) ; l'autorisation de la caméra et la visée du QR restent des gestes humains (demande du système). Écart : l'écran n'affiche l'icône que si une tablette est vraiment reliée (kioskOn), l'assistant ouvre le lecteur sans ce contrôle.",
+    "ecran": "En-tête (icône scanner) → lecteur QR plein écran",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "app/poseur/page.tsx:206-214 ; app/poseur/page.tsx:548-552 ; app/poseur/page.tsx:665 ; components/qr-scanner.tsx:28-39 ; components/qr-scanner.tsx:52-54 ; supabase/functions/_shared/worker-assistant-core.ts:447"
+  },
+  {
+    "id": "S12",
+    "libelle": "Pointage en cours (chantier, début, durée)",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [
+      "instantane:en_cours"
+    ],
+    "exposition": "COUVERT — le prompt reçoit en_cours {chantier, depuis}, lu dans active_sessions avec le jeton du salarié : le modèle répond à « depuis quand suis-je pointé ? ». Le temps écoulé en direct n'est qu'un affichage.",
+    "ecran": "Ma journée (carte « Tu es pointé depuis … »)",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "supabase/functions/worker-assistant/index.ts:106 ; supabase/functions/worker-assistant/index.ts:127-129 ; supabase/functions/_shared/worker-assistant-core.ts:1156 ; components/live-timer.tsx:243-255"
+  },
+  {
+    "id": "S13",
+    "libelle": "Terminer le pointage en cours",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "terminer_pointage",
+      "local:handleWorkerLocally"
+    ],
+    "exposition": "COUVERT — terminer_pointage appelle la même fonction serveur (finish_active_session) que « Terminer ma journée » ; fait tout de suite avec Annuler (l'annulation relance d'abord le chrono, puis retire la ligne) ; moins d'une minute = pointage annulé sans erreur. Sans réseau l'assistant est indisponible, comme le bouton. En profil long le geste attend « Confirmer ».",
+    "ecran": "Ma journée (carte du pointage → « Terminer ma journée »)",
+    "parametres": [
+      "fin:HH:MM facultatif (voir S14)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "lib/worker-actions.ts:109-184 ; supabase/functions/_shared/worker-assistant-core.ts:624-631 ; supabase/functions/_shared/worker-assistant-core.ts:994-998 ; lib/worker-assistant.ts:38-42 ; components/live-timer.tsx:159-195 ; lib/live-session.ts:111-151"
+  },
+  {
+    "id": "S14",
+    "libelle": "Pointage oublié : indiquer la fin (nuit comprise)",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "terminer_pointage"
+    ],
+    "exposition": "PARTIEL — l'exécuteur gère le pointage resté ouvert (il demande l'heure de fin, accepte la fin le lendemain comme l'écran) mais la déclaration envoyée au modèle n'a aucun paramètre « fin » (properties vide) alors que prepareWorkerAction le lit : seule la phrase « j'ai fini à 17h », lue par le lecteur local, le porte. À créer : paramètre fin dans terminer_pointage (ou completer_sortie_oubliee).",
+    "ecran": "Ma journée (carte « Sortie oubliée — Tu as fini à quelle heure ? »)",
+    "parametres": [
+      "fin:HH:MM (lu par prepareWorkerAction, absent de WORKER_FUNCTIONS)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "lib/worker-actions.ts:116-125 ; supabase/functions/_shared/worker-assistant-core.ts:801-806 ; supabase/functions/_shared/worker-assistant-core.ts:1072 ; supabase/functions/_shared/worker-assistant-core.ts:994-998 ; components/live-timer.tsx:143-165 ; components/live-timer.tsx:209-241"
+  },
+  {
+    "id": "S15",
+    "libelle": "Voir et compléter une « sortie oubliée »",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "guide:sortie-oubliee"
+    ],
+    "exposition": "PARTIEL — seule la fiche d'aide (et son parcours) existe. Les lignes lues par l'assistant sont celles d'AUJOURD'HUI : la ligne « sortie oubliée » (créée la nuit, fin à compléter) est d'un jour précédent, donc invisible pour modifier_heures. À l'envoi l'écran ouvre cette ligne ; sendWorkerDay ne la nomme pas. À créer : lire_ma_journee(date) qui la signale et completer_sortie_oubliee(jour, fin), niveau 2 avec Annuler.",
+    "ecran": "Ma journée (carte « ⚠ Sortie oubliée — mets ton heure de fin »)",
+    "parametres": [
+      "jour:aaaa-mm-jj (à créer)",
+      "fin:HH:MM (à créer)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/poseur-day.tsx:2358-2363 ; components/poseur-day.tsx:1583-1595 ; lib/qr-entry.ts:22-25 ; supabase/functions/worker-assistant/index.ts:107 ; supabase/functions/_shared/worker-assistant-core.ts:507-508 ; supabase/functions/_shared/worker-tours.ts:126-132 ; lib/worker-day.ts:167-178"
+  },
+  {
+    "id": "S16",
+    "libelle": "Pointage rattaché au chantier et au total",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [
+      "instantane:en_cours",
+      "instantane:heures_notees"
+    ],
+    "exposition": "PARTIEL — le chantier du pointage est connu (en_cours.chantier). Le total « travaillées » de l'écran inclut les minutes du pointage en cours ; les totaux de l'assistant (heures_notees, « combien d'heures aujourd'hui ? ») n'additionnent que les lignes notées : deux chiffres différents pour la même journée. À créer : lire_ma_journee(date) qui reprend le calcul de l'écran (lignes + file du téléphone + chrono).",
+    "ecran": "Ma journée (bloc « Total aujourd'hui »)",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "components/poseur-day.tsx:1871-1874 ; components/poseur-day.tsx:2180-2186 ; supabase/functions/_shared/worker-assistant-core.ts:289-298 ; supabase/functions/_shared/worker-assistant-core.ts:410-414 ; supabase/functions/worker-assistant/index.ts:104"
+  },
+  {
+    "id": "S17",
+    "libelle": "Ajouter une intervention à la main",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "declarer_heures",
+      "multi"
+    ],
+    "exposition": "COUVERT — declarer_heures prépare les lignes (une phrase, plusieurs créneaux, pause, nouveau chantier) puis la carte les enregistre par le même chemin que l'éditeur (insertWorkerEntry : brouillon, repli hors ligne) ; fait tout de suite avec Annuler quand tout est clair, sinon une question ou la fiche à corriger ; phrases longues ou plusieurs actions = fiche « Tout confirmer ». Manque : ouvrir l'éditeur déjà rempli (ouvrir_ecran) pour que l'utilisateur termine lui-même.",
+    "ecran": "Ma journée → « + » → éditeur plein écran",
+    "parametres": [
+      "date:aaaa-mm-jj (-31 j à +1 j)",
+      "lignes[]:{chantier:texte dit ou « nouveau », debut:HH:MM, fin:HH:MM, pause:minutes}",
+      "nouveau_chantier:{nom, adresse, code_postal, ville, description} (profil long)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "supabase/functions/_shared/worker-assistant-core.ts:1065-1069 ; supabase/functions/_shared/worker-assistant-core.ts:192-216 ; lib/worker-assistant.ts:172-239 ; lib/worker-entry.ts:16-37 ; components/poseur-day.tsx:1102-1128 ; components/poseur-day.tsx:1192-1352 ; supabase/functions/_shared/worker-multi.ts:71"
+  },
+  {
+    "id": "S18",
+    "libelle": "Choisir le chantier (recherche, « Autre chantier »)",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [
+      "instantane:chantiers"
+    ],
+    "exposition": "PARTIEL — la liste des chantiers actifs de l'entreprise est dans le prompt et resolveWorksite apparie un nom dit (jamais d'invention ; ambigu = question avec puces) ; un lieu sans chantier connu va sur « Autre » avec le lieu en note. Écart : l'écran retire les chantiers terminés des choix (choosableWorksites), l'assistant ne sait pas qu'ils sont terminés (voir S9).",
+    "ecran": "Éditeur d'intervention (1 · Chantier)",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "supabase/functions/_shared/worker-assistant-core.ts:119-130 ; supabase/functions/_shared/worker-assistant-core.ts:157-179 ; supabase/functions/_shared/worker-assistant-core.ts:635-656 ; supabase/functions/worker-assistant/index.ts:103 ; components/poseur-day.tsx:1907-1927 ; components/poseur-day.tsx:2606-2631 ; docs/chantier-termine.md:107"
+  },
+  {
+    "id": "S19",
+    "libelle": "Créer un « Autre chantier »",
+    "genre": "ecrire",
+    "niveau": 3,
+    "actions_existantes": [
+      "nouveau_chantier",
+      "multi"
+    ],
+    "exposition": "COUVERT — nouveau_chantier (nom, ville ; adresse, code postal et travaux dits en profil long) passe par une carte « Confirmer » et n'a pas d'Annuler : le salarié ne peut pas supprimer un chantier (le bureau l'archive). L'écran, lui, le crée sans confirmation (« Ajouter ce chantier »). Niveau 3 retenu en attendant la décision du patron (vision §3 : en cas de doute, niveau 3).",
+    "ecran": "Éditeur d'intervention (« C'était quoi ? » → « Ajouter ce chantier »)",
+    "parametres": [
+      "nom:texte (80 car.)",
+      "ville:texte (60 car.)",
+      "adresse, code_postal, description (facultatifs)"
+    ],
+    "raison_humaine": "Un chantier créé est visible du bureau et des autres salariés et ne peut être ni modifié ni supprimé par le salarié (droit d'insertion seulement) : le geste n'est pas annulable, l'utilisateur confirme (niveau 3 par prudence, décision du patron à prendre).",
+    "verifie_dans": "supabase/functions/_shared/worker-assistant-core.ts:707-710 ; supabase/functions/_shared/worker-assistant-core.ts:627 ; lib/worker-actions.ts:307-313 ; lib/worker-worksite.ts:1-41 ; components/poseur-day.tsx:1936-1954 ; components/poseur-day.tsx:2635-2663 ; supabase/functions/_shared/worker-multi-run.ts:311"
+  },
+  {
+    "id": "S20",
+    "libelle": "Régler début et fin ; heure exacte gardée",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "declarer_heures",
+      "modifier_heures"
+    ],
+    "exposition": "COUVERT — l'assistant écrit les heures exactement comme dites (HH:MM, jamais arrondies au quart d'heure) ; modifier_heures change début et fin d'une ligne d'AUJOURD'HUI (direct avec Annuler ; carte « Confirmer » si la ligne est déjà envoyée, ce qui prévient la secrétaire comme l'écran). La molette « Réglage de l'heure » est un geste d'écran sans équivalent à créer. Autre jour : voir S27.",
+    "ecran": "Éditeur d'intervention (2 · Horaires) + fenêtre « Réglage de l'heure »",
+    "parametres": [
+      "debut:HH:MM",
+      "fin:HH:MM",
+      "chantier:texte (désigne la ligne)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "supabase/functions/_shared/worker-assistant-core.ts:690-695 ; lib/worker-actions.ts:239-249 ; lib/worker-entry.ts:68-81 ; components/poseur-day.tsx:1073-1079 ; components/poseur-day.tsx:2675-2691 ; components/poseur-day.tsx:2764-2800"
+  },
+  {
+    "id": "S21",
+    "libelle": "Durée nette (pause déduite)",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [
+      "instantane:heures_notees"
+    ],
+    "exposition": "PARTIEL — le calcul existe côté assistant (shiftMinutes, nuit comprise ; heures_notees par jour est net de pause) mais lignes_du_jour ne donne au modèle que chantier, début et fin, sans la pause ni la durée nette de chaque ligne. À créer : lire_ma_journee(date) avec durée nette, pause et état de chaque ligne.",
+    "ecran": "Éditeur d'intervention (Durée) et cartes de la journée",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "supabase/functions/_shared/worker-assistant-core.ts:102-106 ; supabase/functions/_shared/worker-assistant-core.ts:410-414 ; supabase/functions/_shared/worker-assistant-core.ts:1156 ; components/poseur-day.tsx:2059 ; components/poseur-day.tsx:2356"
+  },
+  {
+    "id": "S22",
+    "libelle": "Total des pauses de la ligne, contrôlé",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "declarer_heures"
+    ],
+    "exposition": "PARTIEL — declarer_heures porte « pause » (minutes) à la création, contrôlée comme l'écran (pause strictement plus courte que la ligne). Changer la pause d'une ligne EXISTANTE n'a pas d'outil : modifier_heures ne prend que chantier, début, fin. La lecture libre du format (« 1h30 », « 1:15 ») est faite par le modèle, qui rend des minutes. À créer : poser_pause(ligne, minutes), niveau 2 avec Annuler, mêmes bornes que l'écran (plus court que la ligne, 12 h au plus).",
+    "ecran": "Éditeur d'intervention (Total des pauses)",
+    "parametres": [
+      "pause:minutes (par ligne)",
+      "ligne:chantier ou id (à créer)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "supabase/functions/_shared/worker-assistant-core.ts:198-201 ; supabase/functions/_shared/worker-assistant-core.ts:1083 ; components/poseur-day.tsx:1217-1218 ; components/poseur-day.tsx:2697-2707 ; supabase/functions/_shared/pause.ts:21 ; supabase/functions/_shared/pause.ts:51 ; components/pause-picker.tsx:71"
+  },
+  {
+    "id": "S23",
+    "libelle": "Statut du chantier (réserve ou non)",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "signaler_reserve",
+      "retirer_reserve",
+      "reserve_corrigee"
+    ],
+    "exposition": "PARTIEL — « Avec réserve » : signaler_reserve (direct, Annuler) ; retirer la réserve : retirer_reserve (carte, Annuler, journée non envoyée). « En cours » et « Sans réserve » n'ont aucun outil. Les lignes visées sont celles d'aujourd'hui. À créer : un paramètre statut (en_cours | sans | avec) dans un outil de correction de ligne.",
+    "ecran": "Éditeur d'intervention (3 · Statut du chantier)",
+    "parametres": [
+      "chantier:texte",
+      "statut: en_cours|sans|avec (à créer)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "lib/worker-actions.ts:185-198 ; lib/worker-actions.ts:420-433 ; lib/worker-entry.ts:46-61 ; components/poseur-day.tsx:2709-2721 ; components/poseur-day.tsx:2457-2458"
+  },
+  {
+    "id": "S24",
+    "libelle": "Note ou détail des réserves",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "signaler_reserve"
+    ],
+    "exposition": "PARTIEL — le détail d'une réserve se dit avec signaler_reserve (« detail », 500 caractères, écrit dans la note de la ligne). La note libre d'une intervention (hors réserve) ne se pose qu'à la création, sous forme de lieu (« Intervention à Lyon ») ; lire ou modifier la note d'une ligne existante : non. À créer : champ note dans l'outil de correction de ligne.",
+    "ecran": "Éditeur d'intervention (4 · Note / Détail des réserves)",
+    "parametres": [
+      "detail:texte (500 car.)",
+      "note:texte (à créer)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "lib/worker-entry.ts:46-52 ; supabase/functions/_shared/worker-assistant-core.ts:807-812 ; components/poseur-day.tsx:2723-2732 ; components/poseur-day.tsx:2459"
+  },
+  {
+    "id": "S25",
+    "libelle": "Documents du chantier depuis l'éditeur",
+    "genre": "ouvrir",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "À CRÉER — aucune navigation vers la fenêtre « Documents » (WORKER_NAV n'a que 9 écrans) ; l'assistant n'agit sur les documents que par ranger_photo (pièce jointe) et retirer_photo. À créer : ouvrir_ecran(ecran:'documents', chantier, ligne).",
+    "ecran": "Éditeur d'intervention → bouton « Documents »",
+    "parametres": [
+      "chantier:texte",
+      "ligne:id (facultatif)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/poseur-day.tsx:2739-2743 ; components/poseur-day.tsx:3076-3083 ; supabase/functions/_shared/worker-assistant-core.ts:438-449"
+  },
+  {
+    "id": "S26",
+    "libelle": "Enregistrer avec contrôles (dont pointage en cours)",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "declarer_heures"
+    ],
+    "exposition": "PARTIEL — contrôles de l'assistant : horaire lisible, 14 h au plus, pause < durée, pas de chevauchement ENTRE les lignes du brouillon, date de -31 j à +1 j. Absents en profil court : chevauchement avec les lignes DÉJÀ notées (la fiche « Tout confirmer » du profil long le fait, verifierFiche), recoupement du pointage en cours (« Votre pointage est encore en cours »), mois ou heures clôturés (S46). Une écriture refusée par la base est mise en file sur le téléphone (insertWorkerEntry) au lieu d'être dite. À créer : les contrôles de saveSlot dans le chemin court, avec un refus parlant.",
+    "ecran": "Éditeur d'intervention (« OK ») + fenêtre « Votre pointage est encore en cours »",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "supabase/functions/_shared/worker-assistant-core.ts:192-216 ; supabase/functions/_shared/worker-multi.ts:251-273 ; components/worker-draft-card.tsx:112 ; lib/worker-entry.ts:28-36 ; components/poseur-day.tsx:1208-1218 ; components/poseur-day.tsx:1230-1262 ; components/poseur-day.tsx:2957-3012"
+  },
+  {
+    "id": "S27",
+    "libelle": "Corriger une intervention (même envoyée)",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "modifier_heures"
+    ],
+    "exposition": "PARTIEL — modifier_heures corrige début et fin d'une ligne d'AUJOURD'HUI (désignée par son chantier) ; sur une ligne déjà envoyée, une carte « Confirmer » précède et la secrétaire est prévenue (modified_at, modified_by) comme sur l'écran. Pas d'outil pour la pause, la note, le statut du chantier, ni pour une autre date ; chantier figé comme sur l'écran. La carte de confirmation est plus prudente que la vision (niveau 2 = fait + Annuler) : à arbitrer.",
+    "ecran": "Ma journée → toucher une carte → éditeur",
+    "parametres": [
+      "chantier:texte",
+      "debut:HH:MM",
+      "fin:HH:MM",
+      "jour:aaaa-mm-jj (à créer)",
+      "pause, note, statut (à créer)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "supabase/functions/_shared/worker-assistant-core.ts:624-631 ; supabase/functions/_shared/worker-assistant-core.ts:828-834 ; lib/worker-actions.ts:239-249 ; lib/worker-entry.ts:68-81 ; supabase/functions/worker-assistant/index.ts:107 ; components/poseur-day.tsx:1272-1287 ; components/poseur-day.tsx:2841-2852"
+  },
+  {
+    "id": "S28",
+    "libelle": "Retirer une intervention (confirmation)",
+    "genre": "ecrire",
+    "niveau": 3,
+    "actions_existantes": [
+      "effacer_heures"
+    ],
+    "exposition": "PARTIEL — effacer_heures retire UNE ligne ou toute la journée, brouillons seulement : carte d'aperçu (« Vérifiez ce qui sera effacé »), puis Annuler qui réinsère. Les heures déjà envoyées ne s'effacent jamais côté assistant (consigne + checkWorkerAction), alors que l'écran sait « Retirer » une ligne envoyée (statut annulé, visible « Retiré », secrétaire prévenue) : cette annulation douce n'a pas d'outil. Décision patron : l'assistant peut-il retirer une ligne envoyée (carte + niveau 3) ou renvoie-t-il à l'écran ?",
+    "ecran": "Éditeur d'intervention (corbeille) → fenêtre « Retirer ce chantier ? »",
+    "parametres": [
+      "date:aaaa-mm-jj",
+      "chantier:texte (vide = toute la journée)"
+    ],
+    "raison_humaine": "Suppression (vision §3, niveau 3) et règle D3 « heures sûres » : rien ne s'efface sans carte de confirmation ; les heures envoyées ne sont jamais effacées. L'utilisateur fait le dernier clic.",
+    "verifie_dans": "lib/worker-actions.ts:315-342 ; lib/worker-actions.ts:471-484 ; supabase/functions/_shared/worker-assistant-core.ts:612-615 ; supabase/functions/_shared/worker-assistant-core.ts:716-724 ; supabase/functions/_shared/worker-assistant-core.ts:1141 ; components/poseur-day.tsx:1447-1470 ; components/poseur-day.tsx:2468-2479 ; components/poseur-day.tsx:2924-2952"
+  },
+  {
+    "id": "S29",
+    "libelle": "Fermer l'éditeur sans enregistrer",
+    "genre": "humain",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "RÉSERVÉ À L'HUMAIN — « Annuler » de l'éditeur ne touche aucune donnée ; l'assistant n'ouvre pas l'éditeur aujourd'hui, il n'a donc rien à fermer.",
+    "ecran": "Éditeur d'intervention (en-tête « Annuler », sans confirmation)",
+    "parametres": [],
+    "raison_humaine": "Geste d'écran sans effet sur les données (cancelSlot) : rien à protéger, rien à faire par l'assistant.",
+    "verifie_dans": "components/poseur-day.tsx:1129 ; components/poseur-day.tsx:2598-2602"
+  },
+  {
+    "id": "S30",
+    "libelle": "Terminer le pointage recouvert par une intervention",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "terminer_pointage",
+      "declarer_heures"
+    ],
+    "exposition": "PARTIEL — les deux étapes existent séparément (terminer le pointage, puis noter les heures) mais ni la règle de recoupement (liveClash) ni l'enchaînement « Terminer le pointage à HH:MM, puis ajouter » (finishLiveAt) : en profil long terminer_pointage n'est même pas admis dans une fiche (MULTI_AUTORISES). À créer : dans declarer_heures, détecter le recouvrement avec en_cours et proposer cette double action en une seule carte.",
+    "ecran": "Fenêtre « Votre pointage est encore en cours »",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "components/poseur-day.tsx:1369-1438 ; components/poseur-day.tsx:2957-3012 ; supabase/functions/_shared/live-clash.ts:53 ; lib/live-end-at.ts:16 ; supabase/functions/_shared/worker-multi.ts:71"
+  },
+  {
+    "id": "S31",
+    "libelle": "Qualifier un trou : Route ou Pause",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "declarer_heures",
+      "guide:route-pause"
+    ],
+    "exposition": "PARTIEL — en profil long, une pause DITE entre deux créneaux est écrite avec la ligne qui suit (gap_before = pause) ; répondre « c'était de la route / une pause » sur un trou déjà noté (setGapKind) n'a pas d'outil, seulement la fiche d'aide et son parcours « route-pause ». À créer : qualifier_trou(ligne, route | pause), niveau 2 avec Annuler.",
+    "ecran": "Ma journée (question « c'était quoi ? » entre deux chantiers : Route / Pause)",
+    "parametres": [
+      "ligne:chantier ou id (à créer)",
+      "type: route|pause (à créer)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/poseur-day.tsx:840-874 ; components/poseur-day.tsx:2256-2271 ; lib/worker-assistant.ts:195-197 ; supabase/functions/_shared/worker-multi.ts:279-291 ; supabase/functions/_shared/worker-assistant-core.ts:500-501 ; supabase/functions/_shared/worker-tours.ts:113-115"
+  },
+  {
+    "id": "S32",
+    "libelle": "Panier du jour (cocher / décocher)",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "panier_repas"
+    ],
+    "exposition": "PARTIEL — panier_repas coche ou retire le panier d'AUJOURD'HUI (une seule ligne cochée par jour ; refus poli si l'entreprise n'utilise pas le panier), direct avec Annuler. Écarts : sur une journée sans ligne l'assistant refuse (« notez d'abord vos heures ») alors que l'écran garde l'intention et la pose sur la première ligne (S81) ; autre jour : non ; journée déjà envoyée : l'écran passe par « Journée déjà envoyée » et prévient la secrétaire (flagModified), l'assistant n'envoie pas ce drapeau.",
+    "ecran": "Ma journée (case « Panier » du bloc noir)",
+    "parametres": [
+      "valeur:bool"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "lib/worker-actions.ts:250-260 ; supabase/functions/_shared/worker-assistant-core.ts:696-698 ; lib/worker-day.ts:84-104 ; components/poseur-day.tsx:1004-1044 ; components/poseur-day.tsx:2216-2235"
+  },
+  {
+    "id": "S33",
+    "libelle": "Copier la journée d'hier",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "copier_journee",
+      "local:handleWorkerLocally"
+    ],
+    "exposition": "COUVERT — copier_journee (« pareil qu'hier »), par copyLinesTo comme le bouton : brouillons « à envoyer », planning du jour rattaché, panier et lignes retirées jamais copiés, lignes de 0 minute ignorées ; direct avec Annuler partiel (une copie retouchée ou envoyée est gardée). L'écran ne propose cette copie que sur une journée vide, en ligne, mois ouvert ; l'assistant ne le vérifie pas.",
+    "ecran": "Ma journée (journée vide → « Copier la journée d'hier »)",
+    "parametres": [
+      "depuis:aaaa-mm-jj (défaut hier)",
+      "vers:[aaaa-mm-jj] (défaut aujourd'hui)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "lib/worker-actions.ts:261-293 ; lib/worker-day.ts:106-137 ; supabase/functions/_shared/worker-assistant-core.ts:699-703 ; supabase/functions/_shared/worker-assistant-core.ts:980-983 ; components/poseur-day.tsx:1482-1506 ; components/poseur-day.tsx:2505-2515"
+  },
+  {
+    "id": "S34",
+    "libelle": "Dupliquer la journée sur d'autres jours",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "copier_journee"
+    ],
+    "exposition": "PARTIEL — copier_journee(depuis, vers[]) copie sur 14 jours au plus, mais la plage admise est de -31 j à +1 j alors que le calendrier de l'écran n'offre qu'aujourd'hui et le futur (disabled before today) : l'assistant ne peut pas dupliquer sur la semaine prochaine, l'écran ne peut pas dupliquer vers le passé. Même défaut que l'écran : aucun contrôle de chevauchement, de jour envoyé ou clôturé. Ouvrir le calendrier prérempli : non.",
+    "ecran": "Ma journée → « Dupliquer cette journée » (calendrier à sélection multiple)",
+    "parametres": [
+      "depuis:aaaa-mm-jj",
+      "vers:[aaaa-mm-jj]"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "supabase/functions/_shared/worker-assistant-core.ts:699-703 ; supabase/functions/_shared/worker-assistant-core.ts:838-843 ; components/poseur-day.tsx:1510-1537 ; components/poseur-day.tsx:2535-2542 ; components/poseur-day.tsx:2806-2821 ; lib/worker-day.ts:118-137"
+  },
+  {
+    "id": "S35",
+    "libelle": "Corrections du bureau / du chef et leur motif",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "À CRÉER — « Le bureau a corrigé : 08:00–12:00 → 08:00–12:30 » + motif vient de time_entry_corrections et du journal du bureau (fetchEntryEdits) ; l'assistant ne les lit pas. À créer : lire_ma_journee(date) avec les corrections et leurs motifs (lecture seule, droits du salarié).",
+    "ecran": "Ma journée (carte d'intervention, ligne marteau)",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "components/poseur-day.tsx:782-796 ; components/poseur-day.tsx:2364-2397 ; lib/office-edits.ts:47"
+  },
+  {
+    "id": "S36",
+    "libelle": "« Endroit noté » (anciennes lignes)",
+    "genre": "humain",
+    "niveau": 3,
+    "actions_existantes": [
+      "WORKER_NAV:infos",
+      "guide:infos"
+    ],
+    "exposition": "RÉSERVÉ À L'HUMAIN — coordonnées GPS et précision d'un départ ou d'une fin sur d'anciennes lignes (time_entry_positions) : jamais lues ni envoyées au modèle. L'assistant renvoie vers « Informations » (WORKER_NAV:infos) pour expliquer la règle.",
+    "ecran": "Ma journée (carte d'intervention, ligne « Endroit noté »)",
+    "parametres": [],
+    "raison_humaine": "Donnée de localisation (CNIL) : le salarié la consulte à l'écran ; vision §4, aucune donnée sensible envoyée au modèle. Texte « L'endroit au pointage » à faire valider par le métier (n'est plus exact depuis le lot 12).",
+    "verifie_dans": "components/poseur-day.tsx:793-811 ; components/poseur-day.tsx:2398-2430 ; lib/position-info.ts:9-13 ; supabase/functions/_shared/worker-assistant-core.ts:518-519"
+  },
+  {
+    "id": "S37",
+    "libelle": "État de chaque intervention",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [
+      "instantane:lignes_du_jour"
+    ],
+    "exposition": "PARTIEL — le serveur connaît envoyée oui/non (live.lignes.envoyee) mais le prompt ne montre au modèle que chantier, début et fin ; « chez le comptable » (verrouillé), « retiré » (exclu de la lecture) et « sur le téléphone » (file locale du navigateur) n'existent pas côté assistant. À créer : lire_ma_journee(date) avec l'état de chaque ligne.",
+    "ecran": "Ma journée (pastilles des cartes), Historique, Semaine",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "supabase/functions/worker-assistant/index.ts:107 ; supabase/functions/worker-assistant/index.ts:130-135 ; supabase/functions/_shared/worker-assistant-core.ts:1156 ; components/poseur-day.tsx:2343-2349 ; components/poseur-day.tsx:2468-2479 ; components/poseur-day.tsx:2490"
+  },
+  {
+    "id": "S38",
+    "libelle": "État d'une réserve ; la lever",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "reserve_corrigee",
+      "retirer_reserve"
+    ],
+    "exposition": "PARTIEL — lever : reserve_corrigee (même fonction serveur mark_reserve_fixed, commentaire facultatif, direct avec Annuler qui remet « à lever »). Limites : seulement les lignes d'AUJOURD'HUI (le bandeau de l'écran couvre tous les jours, 50 au plus) ; l'état (à lever / levée par le bureau / levée le …) est lu par le serveur mais pas montré au modèle ; la photo facultative du formulaire n'est pas jointe à la levée.",
+    "ecran": "Ma journée (carte « ⚠ Avec réserve » → « ✓ Lever la réserve »)",
+    "parametres": [
+      "chantier:texte",
+      "commentaire:texte (500 car.)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "lib/worker-actions.ts:294-306 ; supabase/functions/_shared/worker-assistant-core.ts:844-852 ; supabase/functions/worker-assistant/index.ts:107 ; supabase/functions/worker-assistant/index.ts:134 ; components/poseur-day.tsx:1152-1182 ; components/poseur-day.tsx:2431-2456 ; lib/reserves.ts:18"
+  },
+  {
+    "id": "S39",
+    "libelle": "« Envoyer ma journée » et ses 5 états",
+    "genre": "ecrire",
+    "niveau": 3,
+    "actions_existantes": [
+      "envoyer_journee",
+      "multi",
+      "local:handleWorkerLocally"
+    ],
+    "exposition": "PARTIEL — envoyer_journee est toujours une carte « Confirmer » (jamais faite d'office), puis sendWorkerDay bascule les brouillons d'AUJOURD'HUI : l'utilisateur fait donc le dernier clic. Contrôles repris : chevauchement bloquant, plus de 6 h d'affilée sans pause (renvoi vers l'écran), rien à envoyer ; le prévu non confirmé n'est jamais envoyé. Manquent : une journée d'un autre jour (S47), la question « prévu » (S40), la pause (S41), le contrôle de plus de 10 h (S42), la file « Envoyer ce qui reste » (S105), l'envoi différé hors ligne (assistant indisponible sans réseau). Dans une fiche « Tout confirmer » l'envoi part dans la même exécution que les heures : un seul clic pour tout, à arbitrer.",
+    "ecran": "Ma journée (bouton « Envoyer ma journée → » du bas)",
+    "parametres": [],
+    "raison_humaine": "Niveau 3 (vision §3, validé le 14 octobre 2026) : l'envoi rend les heures visibles du bureau et toute correction ensuite prévient la secrétaire. L'assistant prépare (contrôles, carte « Envoyer ma journée ») ; l'utilisateur fait le dernier clic. Les heures envoyées ne sont jamais effacées.",
+    "verifie_dans": "supabase/functions/_shared/worker-assistant-core.ts:823-827 ; supabase/functions/_shared/worker-assistant-core.ts:627 ; supabase/functions/_shared/worker-assistant-core.ts:972-975 ; lib/worker-actions.ts:227-238 ; lib/worker-day.ts:139-179 ; supabase/functions/_shared/worker-multi-run.ts:240-275 ; components/poseur-day.tsx:1583-1595 ; components/poseur-day.tsx:1688-1754 ; components/poseur-day.tsx:2568-2582"
+  },
+  {
+    "id": "S40",
+    "libelle": "Confirmer / corriger les horaires prévus",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [],
+    "exposition": "À CRÉER — la question « Tu as travaillé exactement ces horaires ? » (Oui / Non, je corrige / Envoyer seulement mes heures notées) n'existe pas côté assistant, qui n'envoie jamais le prévu (message « Rien à envoyer : les heures prévues par le bureau ne comptent qu'une fois confirmées dans Ma journée »). À créer : confirmer_prevu (prépare des brouillons depuis le planning, niveau 2 avec Annuler ; l'envoi reste S39, niveau 3).",
+    "ecran": "Fenêtre « Horaires prévus par le bureau » (au moment d'envoyer)",
+    "parametres": [
+      "planning_id ou chantier (à créer)",
+      "pause:minutes (à créer)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "supabase/functions/_shared/worker-assistant-core.ts:560 ; supabase/functions/_shared/worker-assistant-core.ts:568-572 ; lib/worker-day.ts:139-146 ; components/poseur-day.tsx:1593 ; components/poseur-day.tsx:1606-1614 ; components/poseur-day.tsx:2855-2877"
+  },
+  {
+    "id": "S41",
+    "libelle": "Répondre à « Tu as pris une pause ? »",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [],
+    "exposition": "À CRÉER — plus de 6 h d'affilée sans pause : l'écran pose la question avant l'envoi et écrit la pause sur la plus longue ligne de la plage ; l'assistant s'arrête sur « envoie ta journée depuis Ma journée, la pause y est demandée ». Aucun outil ne pose une pause sur une ligne existante (voir S22). À créer : poser_pause(ligne, minutes), appelable aussi depuis la carte d'envoi.",
+    "ecran": "Fenêtre « Tu as pris une pause ? » (Non / 15 min à 2 h / Autre)",
+    "parametres": [
+      "ligne ou plage",
+      "minutes:0-720"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/poseur-day.tsx:1616-1655 ; components/poseur-day.tsx:2879-2904 ; lib/worker-day.ts:172-177 ; supabase/functions/_shared/worker-multi-run.ts:96 ; supabase/functions/_shared/day-hours.ts:194"
+  },
+  {
+    "id": "S42",
+    "libelle": "Confirmer une journée de plus de 10 h",
+    "genre": "ecrire",
+    "niveau": 3,
+    "actions_existantes": [],
+    "exposition": "À CRÉER — l'écran affiche « Vérification » (Corriger / Confirmer l'envoi) quand le total qui va partir dépasse 10 h ; sendWorkerDay n'a pas ce contrôle. À créer : dans la carte d'envoyer_journee, le même avertissement chiffré avec second bouton.",
+    "ecran": "Fenêtre « Vérification » (avant l'envoi)",
+    "parametres": [],
+    "raison_humaine": "Contrôle de cohérence avant un envoi de niveau 3 : l'humain voit le total et confirme.",
+    "verifie_dans": "components/poseur-day.tsx:1541-1563 ; components/poseur-day.tsx:1665-1666 ; components/poseur-day.tsx:2906-2921 ; lib/worker-day.ts:147-179"
+  },
+  {
+    "id": "S43",
+    "libelle": "Arrêt avant envoi (chevauchement…)",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [
+      "envoyer_journee"
+    ],
+    "exposition": "PARTIEL — sendWorkerDay refuse un chevauchement corrigeable (avec les heures en cause) et la plage de plus de 6 h sans pause ; la sortie oubliée sans fin n'est pas nommée (la base refuse) alors que l'écran ouvre la ligne pour la compléter ; « Ajoute un chantier » (journée vide) devient « Rien à envoyer : notez d'abord vos heures ». Les refus sont dits en une phrase dans la carte.",
+    "ecran": "Ma journée (messages au toucher d'« Envoyer ma journée »)",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "lib/worker-day.ts:171-177 ; supabase/functions/_shared/worker-multi-run.ts:94-98 ; supabase/functions/_shared/worker-assistant-core.ts:687-689 ; components/poseur-day.tsx:1584-1603 ; components/poseur-day.tsx:1661-1664"
+  },
+  {
+    "id": "S44",
+    "libelle": "Modifier une journée envoyée (« Journée déjà envoyée »)",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "modifier_heures"
+    ],
+    "exposition": "PARTIEL — corriger une ligne envoyée passe par une carte « Confirmer », puis la secrétaire est prévenue (modified_at) : équivalent de la fenêtre. Pas d'équivalent pour retirer une ligne envoyée (S28) ni pour changer le panier en prévenant la secrétaire (flagModified non transmis).",
+    "ecran": "Fenêtre « Journée déjà envoyée » (Annuler / Continuer)",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "supabase/functions/_shared/worker-assistant-core.ts:624-631 ; lib/worker-entry.ts:68-81 ; lib/worker-actions.ts:256-258 ; components/poseur-day.tsx:1131-1139 ; components/poseur-day.tsx:1273-1283 ; components/poseur-day.tsx:2841-2852"
+  },
+  {
+    "id": "S45",
+    "libelle": "Journée renvoyée par le bureau, avec motif",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "À CRÉER — « Le bureau t'a renvoyé cette journée : « motif » » vient du journal du bureau (fetchEntryEdits, genre « return ») ; absent du prompt. À créer : lire_ma_journee(date) avec le renvoi et son motif.",
+    "ecran": "Ma journée (encart en haut des cartes)",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "components/poseur-day.tsx:1762-1766 ; components/poseur-day.tsx:2245-2252 ; lib/office-edits.ts:47"
+  },
+  {
+    "id": "S46",
+    "libelle": "Clôture et ce qu'elle bloque",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "À CRÉER — les mois clôturés (month_closures) et « heures clôturées jusqu'au … » (fetchMyClosure) ne sont pas lus par l'assistant. Conséquence : une ligne dite pour un mois clôturé est refusée par la base, puis gardée sur le téléphone (insertWorkerEntry met en file toute erreur) et finit « ne part pas » après 5 essais, au lieu d'un refus clair comme « Mois clôturé ». À créer : lire_ma_journee(date).cloture et refus avant écriture.",
+    "ecran": "Ma journée (fenêtre « Mois clôturé » / « Heures clôturées »)",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "components/poseur-day.tsx:645-659 ; components/poseur-day.tsx:697-715 ; components/poseur-day.tsx:2824-2838 ; lib/worker-entry.ts:28-36 ; lib/offline-sync.ts:24 ; lib/worker-closure.ts:23"
+  },
+  {
+    "id": "S47",
+    "libelle": "Rappels « journée(s) à envoyer » ; ouvrir le jour",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "À CRÉER — la liste (jours planifiés passés sans heures envoyées + jours ≤ aujourd'hui avec lignes à envoyer, sur 60 jours) est calculée par l'écran ; l'assistant ne l'a pas. Pire : tous les gestes de journée de l'assistant (envoyer, panier, réserve, modifier) visent AUJOURD'HUI seulement : il ne peut pas envoyer la journée oubliée d'hier. À créer : lire_mes_journees_a_envoyer, envoyer_journee(date) (niveau 3) et ouvrir_ecran(jour).",
+    "ecran": "Ma journée (bandeau « N journées à envoyer ›» et sa liste)",
+    "parametres": [
+      "date:aaaa-mm-jj (à créer)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "app/poseur/page.tsx:224-270 ; app/poseur/page.tsx:449-499 ; supabase/functions/_shared/worker-assistant-core.ts:826 ; supabase/functions/worker-assistant/index.ts:107 ; lib/work-status.ts:17"
+  },
+  {
+    "id": "S48",
+    "libelle": "Après un scan : raccourcis ajouter / envoyer",
+    "genre": "humain",
+    "niveau": 1,
+    "actions_existantes": [
+      "declarer_heures",
+      "envoyer_journee"
+    ],
+    "exposition": "RÉSERVÉ À L'HUMAIN — les raccourcis « Ajouter une intervention faite avant » et « Envoyer ma journée » sont sur la page /pointer, qui n'héberge pas l'assistant ; ils ne font qu'ouvrir /poseur (valable 3 min, même compte, jour courant). L'assistant couvre les mêmes gestes (declarer_heures, envoyer_journee en carte).",
+    "ecran": "Page /pointer (écran « Arrivée / Départ enregistré ») → /poseur",
+    "parametres": [],
+    "raison_humaine": "Raccourcis de la page /pointer, sans aucune écriture : l'équivalent côté assistant est déjà couvert, et « Envoyer ma journée » y garde sa question « Envoyer votre journée maintenant ? ».",
+    "verifie_dans": "app/pointer/page.tsx:172-188 ; app/pointer/page.tsx:306-319 ; components/poseur-day.tsx:2061-2111 ; components/poseur-day.tsx:3014-3030 ; supabase/functions/_shared/after-scan.ts:14"
+  },
+  {
+    "id": "S49",
+    "libelle": "Ma semaine (7 jours visibles)",
+    "genre": "naviguer",
+    "niveau": 1,
+    "actions_existantes": [
+      "WORKER_NAV:semaine"
+    ],
+    "exposition": "PARTIEL — WORKER_NAV:semaine ouvre l'onglet. Lire une semaine précise à la voix ne marche pas : le prompt a les heures de la semaine en cours (lundi → aujourd'hui) et le planning de -2 à +1 jour. À créer : lire_mon_planning(du, au) et lire_mes_heures(du, au).",
+    "ecran": "Menu du compte → Ma semaine",
+    "parametres": [
+      "du, au:aaaa-mm-jj (à créer)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "app/poseur/page.tsx:659 ; components/poseur-week.tsx:62-164 ; supabase/functions/worker-assistant/index.ts:104-105 ; supabase/functions/_shared/worker-assistant-core.ts:283-306"
+  },
+  {
+    "id": "S50",
+    "libelle": "Mon mois",
+    "genre": "naviguer",
+    "niveau": 1,
+    "actions_existantes": [
+      "WORKER_NAV:mois"
+    ],
+    "exposition": "PARTIEL — WORKER_NAV:mois ouvre l'onglet ; même limite que S49 pour lire un mois précis (total envoyé, jours à envoyer / à déclarer, planning). À créer : lire_mes_heures(du, au).",
+    "ecran": "Menu du compte → Mon mois",
+    "parametres": [
+      "du, au:aaaa-mm-jj (à créer)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "app/poseur/page.tsx:660 ; components/poseur-month.tsx:25-68 ; components/poseur-month.tsx:87 ; supabase/functions/worker-assistant/index.ts:104-105"
+  },
+  {
+    "id": "S51",
+    "libelle": "Historique",
+    "genre": "naviguer",
+    "niveau": 1,
+    "actions_existantes": [
+      "WORKER_NAV:historique",
+      "guide:historique"
+    ],
+    "exposition": "PARTIEL — WORKER_NAV:historique ouvre l'onglet (et un parcours pas à pas existe). Lire l'historique (toutes les interventions, sans période ni pagination, états Envoye / Brouillon / Retirée) : non. À créer : lire_mes_heures(du, au).",
+    "ecran": "Menu du compte → Historique",
+    "parametres": [
+      "du, au:aaaa-mm-jj (à créer)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "app/poseur/page.tsx:661 ; components/poseur-history.tsx:72-99 ; components/poseur-history.tsx:283-287 ; supabase/functions/_shared/worker-assistant-core.ts:485-486"
+  },
+  {
+    "id": "S52",
+    "libelle": "Export PDF de l'historique",
+    "genre": "ouvrir",
+    "niveau": 1,
+    "actions_existantes": [
+      "WORKER_NAV:historique"
+    ],
+    "exposition": "PARTIEL — WORKER_NAV:historique amène à l'écran où se trouve le bouton « PDF ». Le PDF (heures envoyées seulement, jsPDF) est fabriqué dans le composant : l'assistant ne peut pas le déclencher. À créer : une carte « Télécharger mon PDF » (le navigateur exige un geste de l'utilisateur, qui reste donc le dernier clic).",
+    "ecran": "Historique (bouton « PDF »)",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "components/poseur-history.tsx:101-180 ; components/poseur-history.tsx:210-212"
+  },
+  {
+    "id": "S53",
+    "libelle": "« Interventions supprimées »",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "À CRÉER — fenêtre en lecture seule : 60 jours de planning, heures, tâches et réunions supprimés ou décalés, avec auteur et avant → après (affichée seulement si la base a la table des traces). L'assistant ne la lit pas et ne l'ouvre pas. À créer : lire_traces et ouvrir_ecran(ecran:'traces').",
+    "ecran": "Historique (bouton « Interventions supprimées »)",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "components/poseur-history.tsx:44-46 ; components/poseur-history.tsx:215-225 ; components/traces-dialog.tsx:1-20 ; lib/traces.ts:40"
+  },
+  {
+    "id": "S54",
+    "libelle": "Ouvrir un jour depuis semaine, mois ou rappel",
+    "genre": "naviguer",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "À CRÉER — toucher un jour de Semaine ou de Mois, ou un rappel, ouvre « Ma journée » sur ce jour (openDay). Aucune navigation de l'assistant ne prend une date. À créer : ouvrir_ecran(ecran:'journee', jour).",
+    "ecran": "Semaine, Mois, bandeau « journées à envoyer »",
+    "parametres": [
+      "jour:aaaa-mm-jj (à créer)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "app/poseur/page.tsx:398 ; components/poseur-week.tsx:183-184 ; components/poseur-month.tsx:87 ; app/poseur/page.tsx:463-499"
+  },
+  {
+    "id": "S55",
+    "libelle": "Faire une demande",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "demander_conge",
+      "WORKER_NAV:conges",
+      "guide:conge"
+    ],
+    "exposition": "COUVERT — demander_conge (type conge | maladie | intemperie, du, au, note) appelle la même fonction serveur request_leave que le formulaire ; direct avec Annuler (supprime la demande tant qu'elle attend) ; en profil long, dans une fiche. WORKER_NAV:conges ouvre « Mes congés » mais vide : préremplir le formulaire n'existe pas (ouvrir_ecran).",
+    "ecran": "Menu du compte → Mes congés → « Faire une demande »",
+    "parametres": [
+      "type: conge|maladie|intemperie",
+      "du:aaaa-mm-jj",
+      "au:aaaa-mm-jj (fin non avant début)",
+      "note:texte"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "lib/worker-actions.ts:74-87 ; supabase/functions/_shared/worker-assistant-core.ts:666-670 ; lib/leave.ts:7-12 ; components/leave-request-dialog.tsx:120-150 ; app/poseur/page.tsx:662"
+  },
+  {
+    "id": "S56",
+    "libelle": "Mes demandes : états, motif de refus",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [
+      "WORKER_NAV:conges"
+    ],
+    "exposition": "PARTIEL — WORKER_NAV:conges ouvre la liste. Le serveur lit les demandes EN ATTENTE (pour les annuler) mais ni leur état ni le motif de refus ne sont dans le prompt : « ma demande a-t-elle été acceptée ? » reste sans réponse. À créer : lire_mes_conges.",
+    "ecran": "Mes congés (liste « Mes demandes » : En attente / Acceptée / Refusée + motif)",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "components/leave-request-dialog.tsx:160-175 ; supabase/functions/worker-assistant/index.ts:110 ; supabase/functions/worker-assistant/index.ts:137 ; app/poseur/page.tsx:662 ; supabase/functions/_shared/worker-assistant-core.ts:1151-1157"
+  },
+  {
+    "id": "S57",
+    "libelle": "Annuler une demande en attente",
+    "genre": "ecrire",
+    "niveau": 3,
+    "actions_existantes": [
+      "annuler_conge",
+      "modifier_conge",
+      "guide:annuler-conge"
+    ],
+    "exposition": "COUVERT — annuler_conge (carte « Confirmer », puis Annuler qui renvoie la même demande) et modifier_conge (nouvelle demande d'abord, ancienne retirée ensuite) ; demande déjà traitée = refus clair. L'écran annule sans confirmation : la carte est plus prudente (règle D3). Niveau 3 retenu (suppression), à arbitrer car l'annulation est réversible.",
+    "ecran": "Mes congés (corbeille d'une demande « En attente »)",
+    "parametres": [
+      "ancienne_date:aaaa-mm-jj (si plusieurs demandes)",
+      "du, au:aaaa-mm-jj (modifier_conge)"
+    ],
+    "raison_humaine": "Suppression d'une demande (vision §3, niveau 3) et règle D3 : confirmation avant tout retrait, même annulable. L'utilisateur fait le dernier clic.",
+    "verifie_dans": "lib/worker-actions.ts:343-385 ; supabase/functions/_shared/worker-assistant-core.ts:612-615 ; supabase/functions/_shared/worker-assistant-core.ts:725-733 ; components/leave-request-dialog.tsx:89-107 ; components/leave-request-dialog.tsx:171-176"
+  },
+  {
+    "id": "S58",
+    "libelle": "Absences posées par le bureau",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [
+      "instantane:prevu_par_le_bureau",
+      "local:answerSimpleQuestion"
+    ],
+    "exposition": "PARTIEL — une absence du planning (congé, maladie, intempérie, repos) figure dans prevu_par_le_bureau pour -2 à +1 jour ; Semaine et Mois la montrent sans limite. Au-delà de demain : non (voir S49, S50).",
+    "ecran": "Semaine et Mois (absence + note)",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "supabase/functions/worker-assistant/index.ts:105 ; supabase/functions/_shared/worker-assistant-core.ts:40 ; supabase/functions/_shared/worker-assistant-core.ts:304-305 ; components/poseur-week.tsx:200-204 ; components/poseur-month.tsx:99"
+  },
+  {
+    "id": "S59",
+    "libelle": "Rappel « N réserves à lever » et liste",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "À CRÉER — le bandeau liste les interventions envoyées « avec réserve » ni levées par le bureau ni par le salarié, tous jours confondus (50 au plus) ; l'assistant ne lit que les lignes d'aujourd'hui et ne reçoit pas cette liste. À créer : lire_mes_reserves (date, chantier, détail ou « Sans détail écrit ») et ouvrir_ecran(ecran:'reserves').",
+    "ecran": "Ma journée (bandeau « ⚠ N réserves à lever ›» → liste)",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "app/poseur/page.tsx:236-268 ; app/poseur/page.tsx:501-503 ; components/worker-reserves.tsx:30-127 ; supabase/functions/worker-assistant/index.ts:107"
+  },
+  {
+    "id": "S60",
+    "libelle": "Lever une réserve (commentaire, photo)",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "reserve_corrigee"
+    ],
+    "exposition": "PARTIEL — reserve_corrigee lève la réserve d'une ligne d'AUJOURD'HUI par mark_reserve_fixed, avec un commentaire facultatif (500 caractères), direct avec Annuler. La photo facultative du formulaire n'est pas jointe à la levée (ranger_photo avec réserve POSE une réserve, il ne la lève pas) ; les réserves des jours précédents ne sont pas atteignables.",
+    "ecran": "Formulaire « Lever la réserve » (carte du jour ou liste du bandeau)",
+    "parametres": [
+      "chantier:texte",
+      "commentaire:texte (500 car.)",
+      "photo (à créer)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "lib/worker-actions.ts:294-306 ; supabase/functions/_shared/worker-assistant-core.ts:844-852 ; components/reserve-lift-form.tsx:61-65 ; lib/reserve-lift.ts:41-67"
+  },
+  {
+    "id": "S61",
+    "libelle": "Annuler la levée (10 s)",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "reserve_corrigee"
+    ],
+    "exposition": "COUVERT — après reserve_corrigee, le « Annuler » de la carte remet la réserve « à lever » (mark_reserve_fixed faux) ; la fonction serveur refuse si le bureau l'a levée entre-temps. Pas de délai de 10 s côté assistant (tant que la carte est là). Annuler une levée faite à l'écran : non.",
+    "ecran": "Ma journée (retour passager « Réserve levée » + Annuler)",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "lib/worker-actions.ts:301-305 ; lib/reserve-lift.ts:76-83 ; components/poseur-day.tsx:1160-1174"
+  },
+  {
+    "id": "S62",
+    "libelle": "Rappel « N formations à voir », menu avec compteur",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "À CRÉER — le rappel et le compteur du menu viennent de my_trainings (fetchMyTrainings) ; le prompt n'en contient rien et WORKER_NAV n'a pas d'entrée « Formations ». À créer : lire_mes_formations et WORKER_NAV:formations.",
+    "ecran": "Ma journée (bandeau) et menu du compte (entrée « Formations » + compteur)",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "app/poseur/page.tsx:178-179 ; app/poseur/page.tsx:505 ; app/poseur/page.tsx:604-610 ; components/poseur-trainings.tsx:39-82 ; lib/trainings.ts:188"
+  },
+  {
+    "id": "S63",
+    "libelle": "Ouvrir un lien ou document, regarder une vidéo",
+    "genre": "ouvrir",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "À CRÉER — « Ouvrir ↗ » (lien externe, nouvel onglet) ou « ▶ Regarder » (vidéo du bureau, lecteur intégré, lien signé créé à l'ouverture) : aucune navigation de l'assistant n'y mène. À créer : ouvrir_ecran(ecran:'formations', formation).",
+    "ecran": "Formations (liste)",
+    "parametres": [
+      "formation:titre ou id (à créer)"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/poseur-trainings.tsx:116-214 ; components/poseur-trainings.tsx:83-115 ; components/training-video-player.tsx:24"
+  },
+  {
+    "id": "S64",
+    "libelle": "Marquer « Vue » (annulable)",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [],
+    "exposition": "À CRÉER — « ○ Vue » appelle set_training_seen (ma ligne seulement, date posée par le serveur) ; « Annuler » possible 10 minutes. Réversible, donc niveau 2 avec Annuler. À créer : marquer_formation_vue(formation, vue).",
+    "ecran": "Formations (bouton « ○ Vue » / « ✓ Vue le jj/mm »)",
+    "parametres": [
+      "formation:titre ou id",
+      "vue:bool"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/poseur-trainings.tsx:36-37 ; components/poseur-trainings.tsx:147-173 ; components/poseur-trainings.tsx:211-214 ; lib/trainings.ts:206-212"
+  },
+  {
+    "id": "S65",
+    "libelle": "Ajouter une photo ou un fichier (15 Mo)",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "ranger_photo"
+    ],
+    "exposition": "COUVERT — ranger_photo (photo ou PDF joint à la question) appelle uploadWorksiteDocument, le même code que les boutons « Photo » et « Fichier » : rattaché au chantier, au jour et à la ligne d'origine, catégorie dite ou devinée, « Avec réserve » si demandé ; fait tout de suite avec Annuler (retire le document). Limites volontaires : pièce jointe de 8 Mo au plus, images et PDF (l'écran accepte 15 Mo et tout fichier) ; une facture est refusée au salarié (réservée au bureau).",
+    "ecran": "Fenêtre « Documents » (boutons « Photo » et « Fichier »)",
+    "parametres": [
+      "chantier:texte (+ ville)",
+      "categorie: facture_payee|facture|devis|reserve|photo|plan|pv_reception|autre",
+      "reserve:bool",
+      "detail:texte",
+      "fichier joint"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "lib/worker-actions.ts:199-225 ; supabase/functions/_shared/worker-assistant-core.ts:1073-1077 ; supabase/functions/_shared/worker-assistant-core.ts:1100-1101 ; lib/chantier-docs.ts:6-42 ; components/chantier-documents.tsx:255-274 ; lib/attachment.ts:6-7"
+  },
+  {
+    "id": "S66",
+    "libelle": "Parcourir par journée, ouvrir, supprimer",
+    "genre": "ecrire",
+    "niveau": 3,
+    "actions_existantes": [
+      "retirer_photo"
+    ],
+    "exposition": "PARTIEL — supprimer : retirer_photo (carte « Confirmer », Annuler qui re-téléverse le fichier), seulement SES documents des 14 derniers jours (20 au plus), comme la base l'impose. Parcourir (Photos / Fichiers, par journée, aperçu, auteur, date) et ouvrir ou télécharger : aucun outil. À créer : lire_mes_documents(chantier) et ouvrir_ecran(ecran:'documents').",
+    "ecran": "Fenêtre « Documents » (listes Photos / Fichiers, ouvrir, corbeille)",
+    "parametres": [
+      "chantier:texte",
+      "quoi:nom ou « la dernière photo »"
+    ],
+    "raison_humaine": "Suppression d'une pièce (le fichier est effacé du stockage) : niveau 3, carte puis dernier clic de l'utilisateur ; Annuler re-téléverse.",
+    "verifie_dans": "lib/worker-actions.ts:401-419 ; supabase/functions/_shared/worker-assistant-core.ts:894-903 ; supabase/functions/worker-assistant/index.ts:111 ; components/chantier-documents.tsx:276-300 ; components/chantier-documents.tsx:306-315 ; components/chantier-documents.tsx:372-410"
+  },
+  {
+    "id": "S67",
+    "libelle": "Changer la catégorie",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [],
+    "exposition": "À CRÉER — l'auteur d'une pièce peut changer sa catégorie (Photo, Plan, Devis, PV…), annulable ; les factures sont réservées au bureau (canEditCategory). L'assistant ne donne la catégorie qu'au dépôt (ranger_photo). À créer : modifier_categorie_document, niveau 2 avec Annuler.",
+    "ecran": "Fenêtre « Documents » (bouton de catégorie de chaque pièce)",
+    "parametres": [
+      "document:nom ou id",
+      "categorie: facture_payee|facture|devis|reserve|photo|plan|pv_reception|autre"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/chantier-documents.tsx:148 ; components/chantier-documents.tsx:400-402 ; components/chantier-documents.tsx:446-448 ; supabase/functions/_shared/doc-categories.ts:39 ; components/document-category.tsx:86 ; components/document-category.tsx:103"
+  },
+  {
+    "id": "S68",
+    "libelle": "Envoyer les documents au client par e-mail",
+    "genre": "ecrire",
+    "niveau": 3,
+    "actions_existantes": [
+      "email_client",
+      "guide:envoyer-client"
+    ],
+    "exposition": "PARTIEL — email_client enregistre l'e-mail du client du chantier (set_worksite_client_email) après une carte « Confirmer », sans Annuler. « Ouvrir l'e-mail » (mailto avec les liens signés valables 7 jours, toutes les pièces du chantier) et « Copier » n'existent pas côté assistant, qui n'a que la fiche d'aide et son parcours. À créer : preparer_email_client (ouvre la messagerie, l'envoi reste à l'utilisateur) ; Annuler pour email_client.",
+    "ecran": "Fenêtre « Documents » (bloc « Envoyer au client » : e-mail, « Ouvrir l'e-mail », « Copier »)",
+    "parametres": [
+      "chantier:texte",
+      "email:adresse"
+    ],
+    "raison_humaine": "E-mail à un tiers (le client) : l'assistant prépare le message, l'utilisateur l'envoie depuis sa messagerie (mailto) ; BEMEXO n'envoie rien lui-même.",
+    "verifie_dans": "lib/worker-actions.ts:434-439 ; supabase/functions/_shared/worker-assistant-core.ts:711-714 ; components/chantier-documents.tsx:209-253 ; components/chantier-documents.tsx:416-445 ; supabase/functions/_shared/worker-assistant-core.ts:511-512"
+  },
+  {
+    "id": "S69",
+    "libelle": "« Mon équipe » : jour, salarié, interventions",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [
+      "guide:equipe"
+    ],
+    "exposition": "À CRÉER — seule la fiche d'aide et son parcours existent (rôle chef d'équipe seulement). La consigne et la lecture du serveur interdisent aujourd'hui toute donnée d'un collègue (« jamais les heures pointées d'un collègue ») : un chef d'équipe a pourtant le droit de les voir (RLS, 7 derniers jours). Décision du patron nécessaire avant de créer lire_mon_equipe (réservé au rôle lead).",
+    "ecran": "Ma journée (bloc « Mon équipe », chef d'équipe, jour courant)",
+    "parametres": [
+      "jour:aaaa-mm-jj (7 derniers jours)",
+      "salarie:prénom"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/team-day.tsx:70 ; components/team-day.tsx:132-156 ; components/team-day.tsx:270-307 ; supabase/functions/_shared/worker-assistant-core.ts:1146 ; supabase/functions/worker-assistant/index.ts:21-22 ; supabase/functions/_shared/worker-assistant-core.ts:516-517"
+  },
+  {
+    "id": "S70",
+    "libelle": "Corriger / envoyer l'intervention d'un coéquipier",
+    "genre": "ecrire",
+    "niveau": 3,
+    "actions_existantes": [
+      "guide:equipe"
+    ],
+    "exposition": "À CRÉER — « Corriger » une ligne (début, fin ; si elle est déjà envoyée, corrigerHeures prévient le salarié) puis « OK » l'envoie au bureau (lead_send_entries, journée « par le chef d'équipe ») ; un brouillon noté par le salarié s'envoie avec « Envoyer ». Rien de tout cela côté assistant. À créer : corriger_heures_equipe et envoyer_heures_equipe, niveau 3 car l'envoi engage le chef.",
+    "ecran": "Mon équipe (bouton « Corriger », puis « OK — envoyer au bureau »)",
+    "parametres": [
+      "salarie:prénom",
+      "jour:aaaa-mm-jj",
+      "chantier",
+      "debut:HH:MM",
+      "fin:HH:MM"
+    ],
+    "raison_humaine": "Les heures d'un coéquipier partent au bureau sous la responsabilité du chef d'équipe (envoi, niveau 3) : l'assistant prépare, le chef fait le dernier clic.",
+    "verifie_dans": "components/team-day.tsx:62-68 ; components/team-day.tsx:185-235 ; components/team-day.tsx:246-259 ; components/team-day.tsx:298-302 ; lib/corrections.ts:60"
+  },
+  {
+    "id": "S71",
+    "libelle": "Ajouter des heures pour un coéquipier",
+    "genre": "ecrire",
+    "niveau": 3,
+    "actions_existantes": [
+      "guide:equipe"
+    ],
+    "exposition": "À CRÉER — « Ajouter des heures pour {prénom} » : chantier, début, fin ; une ligne existante sur le même chantier est corrigée, jamais doublée ; « OK » enregistre et envoie. Rien côté assistant. À créer : ajouter_heures_equipe, niveau 3 (même envoi que S70).",
+    "ecran": "Mon équipe (bouton « Ajouter des heures pour … »)",
+    "parametres": [
+      "salarie:prénom",
+      "jour:aaaa-mm-jj",
+      "chantier",
+      "debut:HH:MM",
+      "fin:HH:MM"
+    ],
+    "raison_humaine": "Même raison que S70 : l'envoi au bureau des heures d'un autre salarié est un geste de niveau 3, fait par le chef.",
+    "verifie_dans": "components/team-day.tsx:167-175 ; components/team-day.tsx:185-235 ; components/team-day.tsx:307 ; components/team-day.tsx:345"
+  },
+  {
+    "id": "S72",
+    "libelle": "Nom, photo, menu du compte",
+    "genre": "humain",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "RÉSERVÉ À L'HUMAIN — identité (prénom, nom sur grand écran, photo ou initiales) et déclencheur du menu du compte ; chaque entrée du menu est couverte une à une (S73 à S77). Le guide pas à pas ouvre ce menu lui-même (étape « Touchez votre nom »).",
+    "ecran": "En-tête (bouton nom + photo)",
+    "parametres": [],
+    "raison_humaine": "Affichage d'identité et déclencheur de menu : aucune donnée à agir ; les entrées du menu ont chacune leur ligne.",
+    "verifie_dans": "app/poseur/page.tsx:553-575 ; app/poseur/page.tsx:564-614 ; supabase/functions/_shared/worker-tours.ts:39"
+  },
+  {
+    "id": "S73",
+    "libelle": "Changer sa photo",
+    "genre": "ouvrir",
+    "niveau": 1,
+    "actions_existantes": [
+      "WORKER_NAV:photo",
+      "guide:photo-profil"
+    ],
+    "exposition": "COUVERT — WORKER_NAV:photo (« Changer ma photo ») ouvre le sélecteur de fichier ; le choix de l'image (JPG ou PNG, 6 Mo au plus) est un sélecteur du système, geste humain, puis l'envoi (stockage worker-photos + update_my_photo) est celui de l'écran. Le guide pas à pas ne l'ouvre jamais (geste qui agit).",
+    "ecran": "Menu du compte → « Changer ma photo »",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "app/poseur/page.tsx:370-396 ; app/poseur/page.tsx:554 ; app/poseur/page.tsx:573-575 ; app/poseur/page.tsx:664 ; supabase/functions/_shared/worker-assistant-core.ts:446 ; supabase/functions/_shared/worker-tours.ts:96-99"
+  },
+  {
+    "id": "S74",
+    "libelle": "Activer / couper les notifications",
+    "genre": "ouvrir",
+    "niveau": 1,
+    "actions_existantes": [
+      "WORKER_NAV:notifications",
+      "guide:notifications"
+    ],
+    "exposition": "PARTIEL — WORKER_NAV:notifications lance l'activation (enablePush) si elles ne sont pas déjà actives ; si elles le sont, rien ne se passe (le code n'appelle jamais la coupure, contrairement à ce que dit l'inventaire interne « bascule »). La demande de permission du navigateur est un geste humain (demande du système). À créer : couper_notifications, niveau 2 (réversible).",
+    "ecran": "Menu du compte → « Activer / Couper les notifications » (absent si l'appareil ne les gère pas)",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "app/poseur/page.tsx:287-301 ; app/poseur/page.tsx:589-596 ; app/poseur/page.tsx:663 ; lib/push.ts:43 ; lib/push.ts:78"
+  },
+  {
+    "id": "S75",
+    "libelle": "« L'endroit au pointage » et confidentialité",
+    "genre": "ouvrir",
+    "niveau": 1,
+    "actions_existantes": [
+      "WORKER_NAV:infos",
+      "guide:infos"
+    ],
+    "exposition": "COUVERT — WORKER_NAV:infos ouvre « Informations » (texte « L'endroit au pointage » et lien « Politique de confidentialité ») ; la fiche « infos » et son parcours existent. Le texte affiché n'est plus exact depuis le lot 12 (le téléphone ne relève plus l'endroit) : à faire valider par le métier avant que l'assistant ne le répète.",
+    "ecran": "Menu du compte → Informations",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "app/poseur/page.tsx:642-652 ; lib/position-info.ts:9-13 ; supabase/functions/_shared/worker-assistant-core.ts:518-519 ; supabase/functions/_shared/worker-tours.ts:154-158"
+  },
+  {
+    "id": "S76",
+    "libelle": "Se déconnecter",
+    "genre": "humain",
+    "niveau": 3,
+    "actions_existantes": [],
+    "exposition": "RÉSERVÉ À L'HUMAIN — entrée « Déconnexion » du menu (signOut) : l'assistant ne coupe pas la session de la personne.",
+    "ecran": "Menu du compte → Déconnexion",
+    "parametres": [],
+    "raison_humaine": "Fin de session : l'assistant agit avec le jeton de la personne (vision §4) et ne se retire pas lui-même ce jeton ; droits d'accès = niveau 3 (vision §3). À confirmer par le patron.",
+    "verifie_dans": "app/poseur/page.tsx:612 ; app/poseur/page.tsx:161"
+  },
+  {
+    "id": "S77",
+    "libelle": "Naviguer entre les vues",
+    "genre": "naviguer",
+    "niveau": 1,
+    "actions_existantes": [
+      "WORKER_NAV:journee",
+      "WORKER_NAV:semaine",
+      "WORKER_NAV:mois",
+      "WORKER_NAV:historique"
+    ],
+    "exposition": "PARTIEL — les 4 vues du menu s'ouvrent par WORKER_NAV:* ; la vue « Formations » (entrée du menu s'il y en a au moins une) n'a pas de navigation, ni l'ouverture d'un jour précis (S54). Le modèle ne choisit que les 9 clés de WORKER_NAV (jamais guide:<id>).",
+    "ecran": "Menu du compte (Ma journée, Ma semaine, Mon mois, Historique, Formations)",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "app/poseur/page.tsx:598-610 ; app/poseur/page.tsx:657-666 ; supabase/functions/_shared/worker-assistant-core.ts:438-449 ; supabase/functions/_shared/worker-assistant-core.ts:1063-1064"
+  },
+  {
+    "id": "S78",
+    "libelle": "Ajouter, modifier, retirer ses heures sans réseau",
+    "genre": "humain",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "RÉSERVÉ À L'HUMAIN — l'assistant est un service en ligne (fonction worker-assistant) : sans réseau il répond « Connexion impossible » ; la saisie se fait à l'écran (cartes « Sur le téléphone », Modifier, Retirer, « + »). Il ne lit ni n'écrit la file locale.",
+    "ecran": "Ma journée (cartes « ● Sur le téléphone », bande « Hors-ligne, tout est gardé »)",
+    "parametres": [],
+    "raison_humaine": "Règle d'or « l'heure n'est jamais bloquée faute de réseau » : tenue par l'écran et la file du navigateur (battime_offline_<id>), hors de portée d'un service en ligne.",
+    "verifie_dans": "lib/offline-store.ts:6 ; lib/offline-store.ts:95-140 ; lib/worker-entry.ts:16-37 ; components/poseur-day.tsx:1698-1718 ; components/poseur-day.tsx:2481-2502 ; lib/worker-assistant.ts:67-86"
+  },
+  {
+    "id": "S79",
+    "libelle": "État hors-ligne et nombre en attente",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "À CRÉER — « Hors-ligne, tout est gardé · N en attente » et la bande « N chantiers pas encore partis » viennent de la file du navigateur (localStorage) : le serveur ne la voit pas. Seul un outil exécuté dans le navigateur pourrait la lire (lire_file_telephone). Utilité faible : sans réseau l'assistant ne répond pas.",
+    "ecran": "Ma journée (bandeau réseau) et bande « chantiers pas encore partis »",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "components/poseur-day.tsx:2131-2144 ; app/poseur/page.tsx:509-526 ; lib/offline-store.ts:126-138 ; lib/use-offline-sync.ts:27-44"
+  },
+  {
+    "id": "S80",
+    "libelle": "Transfert au retour du réseau, relance, échecs signalés",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [],
+    "exposition": "À CRÉER — le transfert est automatique (retour du réseau, retour au premier plan) ; après 5 essais ou un refus définitif la bande dit « N chantier(s) du jj/mm ne part(ent) pas. Préviens le bureau. » et un toucher relance. Pas d'outil de relance (même outil exécuté dans le navigateur que S105).",
+    "ecran": "Ma journée (bande « appuyer pour réessayer ») et toast « ne part pas »",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "lib/offline-sync.ts:24 ; lib/offline-sync.ts:112-224 ; lib/use-offline-sync.ts:27-44 ; app/poseur/page.tsx:509-526 ; components/poseur-day.tsx:881-898"
+  },
+  {
+    "id": "S81",
+    "libelle": "Panier d'une journée encore vide",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "panier_repas"
+    ],
+    "exposition": "PARTIEL — l'écran garde le choix (une intention par jour, posée sur la première ligne qui apparaît) ; panier_repas répond « Aucune ligne aujourd'hui : notez d'abord vos heures ». Dans une fiche « Tout confirmer » le panier suit les heures de la même fiche (ordre heures → panier). À créer : mémoriser l'intention comme l'écran, ou refuser clairement.",
+    "ecran": "Ma journée (case « Panier » sur une journée vide)",
+    "parametres": [
+      "valeur:bool"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/poseur-day.tsx:155-166 ; components/poseur-day.tsx:1020-1031 ; components/poseur-day.tsx:1046-1069 ; supabase/functions/_shared/worker-assistant-core.ts:696-698 ; supabase/functions/_shared/worker-multi-run.ts:240-275"
+  },
+  {
+    "id": "S82",
+    "libelle": "Ouvrir l'assistant (si IA activée)",
+    "genre": "guider",
+    "niveau": 1,
+    "actions_existantes": [
+      "guide:assistant"
+    ],
+    "exposition": "COUVERT — la fiche d'aide « assistant » explique le bouton ✨ de la barre du bas. Ce bouton et l'entrée « Assistant BEMEXO » du menu n'existent que si l'entreprise a activé l'IA (ai_enabled). L'assistant est déjà ouvert quand il répond : il n'a rien à ouvrir. Cette fiche n'a pas de parcours pas à pas.",
+    "ecran": "Barre du bas (✨) et menu du compte",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "components/poseur-day.tsx:2584-2591 ; app/poseur/page.tsx:579-583 ; app/poseur/page.tsx:653-656 ; supabase/functions/worker-assistant/index.ts:88-98 ; supabase/functions/_shared/worker-assistant-core.ts:522-523"
+  },
+  {
+    "id": "S83",
+    "libelle": "Écrire ou dicter (français, turc)",
+    "genre": "guider",
+    "niveau": 1,
+    "actions_existantes": [
+      "guide:assistant"
+    ],
+    "exposition": "COUVERT — la fiche « assistant » explique 🎤 (un appui démarre, un appui arrête) et 📎. Saisie : 1 500 caractères ; dictée du navigateur en fr-FR ou tr-TR au choix (mémorisée), le micro étant une demande du système, donc un geste humain. L'assistant comprend le français et le turc (profil long, mémento turc) ; cartes, boutons et messages restent en français.",
+    "ecran": "Assistant (champ de saisie, 🎤, sélecteur « Dictée : Français / Türkçe »)",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "components/worker-assistant.tsx:25-29 ; components/worker-assistant.tsx:68-69 ; components/assistant-panel.tsx:537-547 ; components/assistant-panel.tsx:555 ; components/assistant-panel.tsx:567 ; supabase/functions/_shared/saisie-profil.ts:13 ; supabase/functions/_shared/worker-assistant-core.ts:522-523"
+  },
+  {
+    "id": "S84",
+    "libelle": "Joindre une photo ou un PDF",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "ranger_photo"
+    ],
+    "exposition": "COUVERT — la pièce jointe (JPEG, PNG, WebP, HEIC ou PDF, 8 Mo au plus, compressée avant l'envoi, jamais conservée) fait passer la demande au niveau « documents » et ne laisse au modèle que ranger_photo et repondre : un PDF piégé ne peut ni effacer ni envoyer. Le choix du fichier reste un sélecteur du système.",
+    "ecran": "Assistant (trombone 📎)",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "components/assistant-panel.tsx:424 ; components/assistant-panel.tsx:561 ; lib/attachment.ts:6-7 ; supabase/functions/_shared/worker-assistant-core.ts:1100-1101 ; supabase/functions/worker-assistant/index.ts:76-78"
+  },
+  {
+    "id": "S85",
+    "libelle": "Suggestions de départ",
+    "genre": "guider",
+    "niveau": 1,
+    "actions_existantes": [
+      "WORKER_ACTION_SUGGESTIONS"
+    ],
+    "exposition": "COUVERT — 4 suggestions (« Ce matin 7h30-12h, après-midi 13h-16h30 », « J'ai fini ma journée », « Demander un congé », « Comment je signale une réserve ? »). Écart à vérifier : « J'ai fini ma journée » est lue par le lecteur local comme terminer_pointage ; sans pointage ouvert (cas général hors tablette, le téléphone ne pointe plus) la carte dit « Aucun pointage en cours » au lieu de proposer l'envoi de la journée (point ouvert du cahier §6 : aligner libellé et assistant).",
+    "ecran": "Assistant (accueil « Bonjour »)",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "supabase/functions/_shared/worker-assistant-core.ts:1190-1195 ; components/worker-assistant.tsx:67 ; supabase/functions/_shared/worker-assistant-core.ts:994-998 ; supabase/functions/_shared/worker-assistant-core.ts:675-677 ; supabase/functions/_shared/worker-assistant-core.ts:928-938"
+  },
+  {
+    "id": "S86",
+    "libelle": "Heures dites en une phrase, Annuler / Modifier",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [
+      "declarer_heures",
+      "local:parseHoursText"
+    ],
+    "exposition": "COUVERT — plage horaire lue sans modèle (parseHoursText) ou declarer_heures ; lignes enregistrées tout de suite si tout est clair (chantier, horaires), « Sur quel chantier ? » avec puces sinon, fiche à corriger en cas d'erreur ; « Annuler » retire les lignes restées telles quelles (une ligne retouchée ou envoyée est gardée), « Modifier » rouvre la fiche. 71 cas salarié (français et turc) dans l'évaluation.",
+    "ecran": "Assistant (carte « Fait » + Annuler / Modifier)",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "supabase/functions/_shared/worker-assistant-core.ts:236-280 ; supabase/functions/_shared/worker-assistant-core.ts:1065-1069 ; lib/worker-assistant.ts:172-239 ; components/worker-draft-card.tsx:90 ; components/action-done.tsx:34"
+  },
+  {
+    "id": "S87",
+    "libelle": "Actions (congé, terminer le pointage ouvert, réserve, document, envoi…) : simples ou à confirmer",
+    "genre": "ecrire",
+    "niveau": 3,
+    "actions_existantes": [
+      "declarer_heures",
+      "demander_conge",
+      "terminer_pointage",
+      "signaler_reserve",
+      "ranger_photo",
+      "envoyer_journee",
+      "modifier_heures",
+      "panier_repas",
+      "copier_journee",
+      "reserve_corrigee",
+      "nouveau_chantier",
+      "email_client",
+      "effacer_heures",
+      "annuler_conge",
+      "modifier_conge",
+      "retirer_photo",
+      "retirer_reserve",
+      "planning_collegues"
+    ],
+    "exposition": "COUVERT — 18 outils (+ repondre) : directs avec Annuler (declarer_heures, demander_conge, terminer_pointage, signaler_reserve, ranger_photo, modifier_heures sur une ligne non envoyée, panier_repas, copier_journee, reserve_corrigee) ; à confirmer d'abord (envoyer_journee, nouveau_chantier, email_client, modifier_heures sur une ligne envoyée, et toute suppression : effacer_heures, annuler_conge, modifier_conge, retirer_photo, retirer_reserve). commencer_pointage et annuler_pointage existent encore dans l'exécuteur mais répondent par texte. Parmi la liste de niveau 3 de la vision, seul envoyer_journee existe ; les suppressions et nouveau_chantier y sont classés par prudence.",
+    "ecran": "Assistant (cartes d'action)",
+    "parametres": [],
+    "raison_humaine": "Niveau 3 = envoyer_journee (dernier clic sur la carte), suppressions et nouveau_chantier ; tout le reste est au niveau 2 avec Annuler.",
+    "verifie_dans": "supabase/functions/_shared/worker-assistant-core.ts:574-631 ; supabase/functions/_shared/worker-assistant-core.ts:1051-1093 ; lib/worker-actions.ts:48-55 ; lib/worker-actions.ts:68-460 ; supabase/functions/_shared/worker-assistant-core.ts:781-784"
+  },
+  {
+    "id": "S88",
+    "libelle": "Fiche « Tout confirmer » / « Ignorer »",
+    "genre": "ecrire",
+    "niveau": 3,
+    "actions_existantes": [
+      "multi"
+    ],
+    "exposition": "COUVERT — phrase longue, turc ou plusieurs actions : jusqu'à 4 appels du modèle rassemblés en UNE fiche (chantier → heures → panier → réserve → congé → envoi), corrigée en code (pause, créneaux, ville, chantier deviné) ; rien n'est écrit avant « Tout confirmer ». Seuls panier, réserve (poser / lever), congé et envoi sont admis comme annexes — jamais un effacement, un retrait ni une copie. « Annuler » défait dans l'ordre inverse ; le chantier créé et la demande de congé restent. L'envoi part avec le reste, en un seul clic : à arbitrer.",
+    "ecran": "Assistant (fiche récapitulative à plusieurs éléments)",
+    "parametres": [],
+    "raison_humaine": "Le clic « Tout confirmer » est le dernier clic de l'utilisateur, y compris pour l'envoi de la journée (niveau 3) ; à arbitrer : exiger un second clic dédié à l'envoi.",
+    "verifie_dans": "supabase/functions/_shared/worker-multi.ts:71 ; supabase/functions/_shared/worker-multi.ts:671 ; supabase/functions/_shared/worker-multi-run.ts:122-279 ; supabase/functions/_shared/worker-multi-run.ts:296-317 ; lib/worker-multi.ts:14-33 ; components/worker-multi-card.tsx:117"
+  },
+  {
+    "id": "S89",
+    "libelle": "Raccourcis vers les écrans, « Me guider pas à pas »",
+    "genre": "guider",
+    "niveau": 1,
+    "actions_existantes": [
+      "repondre",
+      "WORKER_NAV:*",
+      "guide:*"
+    ],
+    "exposition": "COUVERT — repondre renvoie une réponse courte (3 étapes au plus) avec un raccourci d'écran (9 clés de WORKER_NAV) ; la fiche d'aide trouvée y ajoute « Me guider pas à pas » (25 fiches, 23 parcours ; « collegues » et « assistant » n'en ont pas). Le modèle ne choisit jamais guide:<id> : ce bouton est fabriqué par le code. Aucun raccourci ne peut encore ouvrir une fenêtre ni un jour précis.",
+    "ecran": "Assistant (boutons sous la réponse)",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "supabase/functions/_shared/worker-assistant-core.ts:456-466 ; supabase/functions/_shared/worker-assistant-core.ts:469-524 ; supabase/functions/_shared/worker-assistant-core.ts:526-537 ; supabase/functions/_shared/worker-assistant-core.ts:1162-1174 ; supabase/functions/_shared/worker-tours.ts:42-159 ; app/poseur/page.tsx:657-669"
+  },
+  {
+    "id": "S90",
+    "libelle": "Questions heures, planning, collègues (si autorisé)",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [
+      "instantane:heures_notees",
+      "instantane:prevu_par_le_bureau",
+      "local:answerSimpleQuestion",
+      "planning_collegues"
+    ],
+    "exposition": "PARTIEL — heures de la semaine en cours, planning de -2 à +1 jour, lignes du jour ; collègues par la fonction SQL limitée colleagues_planning (prénom, chantier (ville), horaires prévus ; « absent » sans motif ; jamais les heures pointées ; réglage de l'entreprise), lue côté serveur : le modèle ne revoit pas le résultat. Hors horizon (semaine passée, mois, planning de la semaine prochaine) : non.",
+    "ecran": "Assistant (questions) — aucun écran pour les collègues",
+    "parametres": [
+      "qui:prénom (vide = tous)",
+      "date:aaaa-mm-jj"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "supabase/functions/worker-assistant/index.ts:104-105 ; supabase/functions/worker-assistant/index.ts:144-150 ; supabase/functions/_shared/worker-assistant-core.ts:283-308 ; supabase/functions/_shared/worker-assistant-core.ts:1091-1092 ; supabase/functions/_shared/worker-assistant-core.ts:1111-1134 ; supabase/migrations/20261001100000_lot7_collegues_documents.sql:21-35"
+  },
+  {
+    "id": "S91",
+    "libelle": "Questions restantes du jour",
+    "genre": "humain",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "RÉSERVÉ À L'HUMAIN — le quota (20 demandes par salarié et par jour, plafond SQL 50) est consommé avant tout travail et le reste revient dans chaque réponse (« N questions restantes aujourd'hui ») : compteur affiché par l'écran, que le modèle n'a pas à connaître.",
+    "ecran": "Assistant (pied du panneau)",
+    "parametres": [],
+    "raison_humaine": "Garde-fou de coût tenu par le serveur (vision §4, quotas par jour) : l'assistant ne le lit ni ne le modifie.",
+    "verifie_dans": "supabase/functions/worker-assistant/index.ts:86-98 ; supabase/functions/worker-assistant/index.ts:124 ; supabase/functions/worker-assistant/index.ts:152 ; components/assistant-panel.tsx:575"
+  },
+  {
+    "id": "S92",
+    "libelle": "« Nouveau chat », « Historique » (pas en service)",
+    "genre": "humain",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "RÉSERVÉ À L'HUMAIN — EN SERVICE depuis l'étape 2 (le cahier S92 dit « pas en service » : écart à corriger) : « Nouveau chat » et « Historique » (50 conversations, gardées 30 jours, visibles de leur auteur seul, texte seul) sont des gestes d'écran sur les conversations de l'utilisateur.",
+    "ecran": "Assistant (en-tête : « Nouveau chat », « Historique »)",
+    "parametres": [],
+    "raison_humaine": "Conversations privées par utilisateur (vision §6) : seul l'auteur les lit, les rouvre ou les efface ; le modèle n'a pas à y toucher.",
+    "verifie_dans": "components/assistant-panel.tsx:471-475 ; components/worker-assistant.tsx:52 ; components/worker-assistant.tsx:59 ; lib/assistant-chats.ts:25 ; docs/ia-vision.md:54-69"
+  },
+  {
+    "id": "S93",
+    "libelle": "Guide pas à pas",
+    "genre": "guider",
+    "niveau": 1,
+    "actions_existantes": [
+      "guide:reserve",
+      "guide:photo-document",
+      "guide:conge",
+      "guide:pointer",
+      "guide:envoyer-journee",
+      "guide:noter-heures",
+      "guide:planning",
+      "guide:historique",
+      "guide:copier-journee",
+      "guide:notifications",
+      "guide:photo-profil",
+      "guide:panier",
+      "guide:modifier-heures",
+      "guide:retirer-ligne",
+      "guide:route-pause",
+      "guide:lever-reserve",
+      "guide:annuler-conge",
+      "guide:sortie-oubliee",
+      "guide:autre-chantier",
+      "guide:envoyer-client",
+      "guide:borne",
+      "guide:equipe",
+      "guide:infos"
+    ],
+    "exposition": "COUVERT — 23 parcours : le guide ouvre au besoin le menu, la vue ou la fenêtre, entoure le vrai bouton (44 ancres data-guide, toutes présentes dans le code), une étape à la fois, et ne touche jamais à la place du salarié (aucune étape n'ouvre notifications, photo ni scanner). Les fiches « collegues » et « assistant » n'ont pas de parcours.",
+    "ecran": "Toute l'application (couche de guidage au-dessus de l'écran)",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "supabase/functions/_shared/worker-tours.ts:16-36 ; supabase/functions/_shared/worker-tours.ts:42-159 ; app/poseur/page.tsx:406-420 ; app/poseur/page.tsx:668 ; app/poseur/page.tsx:671-679 ; components/guide-tour.tsx:115"
+  },
+  {
+    "id": "S94",
+    "libelle": "Vérifier le QR ; se connecter sur place",
+    "genre": "humain",
+    "niveau": 3,
+    "actions_existantes": [],
+    "exposition": "RÉSERVÉ À L'HUMAIN — le code du QR est vérifié et échangé contre un ticket de 5 minutes, puis connexion sur place si besoin (entreprise nommée, e-mail, mot de passe, « Se connecter et pointer », « Mot de passe oublié ? »). La page /pointer n'héberge pas l'assistant.",
+    "ecran": "Page /pointer (attente, connexion sur place)",
+    "parametres": [],
+    "raison_humaine": "Identifiants : saisie humaine seulement (droits d'accès, vision §3 niveau 3) ; l'assistant ne voit ni ne manipule jamais un mot de passe.",
+    "verifie_dans": "app/pointer/page.tsx:105-143 ; app/pointer/page.tsx:218-246 ; app/pointer/page.tsx:277-278"
+  },
+  {
+    "id": "S95",
+    "libelle": "Information et position du QR fixe (refus possible)",
+    "genre": "humain",
+    "niveau": 3,
+    "actions_existantes": [],
+    "exposition": "RÉSERVÉ À L'HUMAIN — avant le premier scan d'un QR fixe, par compte : pourquoi, une seule lecture, rien de gardé, refus possible (« Continuer » / « Je refuse ») ; la position est lue une fois juste avant le pointage.",
+    "ecran": "Page /pointer (« Ce QR demande votre position »)",
+    "parametres": [],
+    "raison_humaine": "Consentement à la lecture de la position (CNIL) : décision strictement personnelle, refus libre et sans conséquence.",
+    "verifie_dans": "app/pointer/page.tsx:145-165 ; app/pointer/page.tsx:190-206 ; app/pointer/page.tsx:257-263 ; supabase/functions/_shared/fixed-qr.ts:57"
+  },
+  {
+    "id": "S96",
+    "libelle": "Arrivée + « Ajouter une intervention faite avant »",
+    "genre": "humain",
+    "niveau": 3,
+    "actions_existantes": [
+      "declarer_heures"
+    ],
+    "exposition": "RÉSERVÉ À L'HUMAIN — écran « Arrivée enregistrée » (heure, « Bonne journée, {prénom} ! », chantier) après le scan physique ; le raccourci « Ajouter une intervention faite avant » ouvre /poseur (équivalent assistant : declarer_heures).",
+    "ecran": "Page /pointer (écran vert « Arrivée enregistrée »)",
+    "parametres": [],
+    "raison_humaine": "Le pointage est un geste physique de présence décidé par le serveur ; le raccourci n'écrit rien (S48).",
+    "verifie_dans": "app/pointer/page.tsx:291-308 ; app/pointer/page.tsx:172-188"
+  },
+  {
+    "id": "S97",
+    "libelle": "Départ + « Envoyer ma journée », « Ajouter une intervention »",
+    "genre": "humain",
+    "niveau": 3,
+    "actions_existantes": [
+      "envoyer_journee",
+      "declarer_heures"
+    ],
+    "exposition": "RÉSERVÉ À L'HUMAIN — écran « Départ enregistré » (heure, « Heures enregistrées : début → fin ») ; « Envoyer ma journée » n'y fait qu'ouvrir une demande de confirmation sur /poseur (équivalent assistant : carte envoyer_journee).",
+    "ecran": "Page /pointer (écran noir « Départ enregistré »)",
+    "parametres": [],
+    "raison_humaine": "Le départ est un geste physique de présence décidé par le serveur ; l'envoi de la journée garde sa confirmation (S39, niveau 3).",
+    "verifie_dans": "app/pointer/page.tsx:291-321 ; components/poseur-day.tsx:3014-3030"
+  },
+  {
+    "id": "S98",
+    "libelle": "Pointage annulé (< 1 min) ; « Rien à enregistrer »",
+    "genre": "humain",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "RÉSERVÉ À L'HUMAIN — départ scanné moins d'une minute après l'arrivée, ou pointages trop proches : rien n'est enregistré, écran neutre, « Ouvrir mon espace ».",
+    "ecran": "Page /pointer (écrans neutres)",
+    "parametres": [],
+    "raison_humaine": "Résultat décidé par le serveur et affiché sur une page qui n'héberge pas l'assistant : rien à agir.",
+    "verifie_dans": "app/pointer/page.tsx:279-289 ; app/pointer/page.tsx:322-329"
+  },
+  {
+    "id": "S99",
+    "libelle": "Pointage non enregistré, refus du QR fixe, « Réessayer » (si ticket connu)",
+    "genre": "humain",
+    "niveau": 3,
+    "actions_existantes": [],
+    "exposition": "RÉSERVÉ À L'HUMAIN — messages du serveur (QR ou lien expiré, borne retirée, autre entreprise, compte inactif, heures clôturées, pointage d'un autre jour resté ouvert) ou raison du refus du QR fixe (position refusée, imprécise, hors zone…) avec « Ajouter mon intervention à la main » ; « Réessayer » seulement si un ticket est connu.",
+    "ecran": "Page /pointer (« Pointage non enregistré »)",
+    "parametres": [],
+    "raison_humaine": "« Réessayer » relance la lecture de la position : nouveau consentement à donner par la personne (CNIL).",
+    "verifie_dans": "app/pointer/page.tsx:213-215 ; app/pointer/page.tsx:264-276 ; app/pointer/page.tsx:330-339"
+  },
+  {
+    "id": "S100",
+    "libelle": "« Ouvrir mon espace »",
+    "genre": "humain",
+    "niveau": 1,
+    "actions_existantes": [
+      "WORKER_NAV:journee"
+    ],
+    "exposition": "RÉSERVÉ À L'HUMAIN — lien de la page /pointer vers /poseur ; l'assistant est déjà dans /poseur (WORKER_NAV:journee y ramène à « Ma journée »).",
+    "ecran": "Page /pointer (bouton jaune)",
+    "parametres": [],
+    "raison_humaine": "Lien d'une page qui n'héberge pas l'assistant : aucune donnée, rien à agir.",
+    "verifie_dans": "app/pointer/page.tsx:288 ; app/pointer/page.tsx:305 ; app/pointer/page.tsx:327 ; app/pointer/page.tsx:337"
+  },
+  {
+    "id": "S101",
+    "libelle": "Retour du téléphone referme la couche ouverte",
+    "genre": "humain",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "RÉSERVÉ À L'HUMAIN — le retour d'Android referme l'éditeur, le réglage d'heure, les confirmations et Documents au lieu de quitter l'application (pas pour l'assistant, les congés, les informations ni le scanner).",
+    "ecran": "Toute l'application (bouton retour du téléphone)",
+    "parametres": [],
+    "raison_humaine": "Comportement de l'appareil et de l'historique du navigateur, sans donnée.",
+    "verifie_dans": "components/poseur-day.tsx:959-999 ; components/poseur-day.tsx:964-981"
+  },
+  {
+    "id": "S102",
+    "libelle": "Accès : compte archivé, rôle refusé, chargement",
+    "genre": "humain",
+    "niveau": 3,
+    "actions_existantes": [],
+    "exposition": "RÉSERVÉ À L'HUMAIN — compte archivé = message « Ce compte a été archivé par votre entreprise. » puis déconnexion ; autre rôle = connexion ; chargement et échec « Impossible de charger tes données ». L'assistant applique les mêmes refus (non connecté 401, hors rôle « Réservé aux salariés » 403, IA coupée « Assistant non activé » 403) et ne change jamais un statut de compte.",
+    "ecran": "Garde d'accès de /poseur (avant tout écran)",
+    "parametres": [],
+    "raison_humaine": "Droits d'accès et statut du compte (vision §3 niveau 3) : décidés par le bureau et le serveur ; l'assistant n'a jamais plus de droits que la personne (vision §4).",
+    "verifie_dans": "app/poseur/layout.tsx:17-48 ; supabase/functions/worker-assistant/index.ts:89-98 ; components/poseur-day.tsx:827-832 ; app/poseur/page.tsx:42"
+  },
+  {
+    "id": "S103",
+    "libelle": "Retours passagers visibles et touchables",
+    "genre": "humain",
+    "niveau": 1,
+    "actions_existantes": [],
+    "exposition": "RÉSERVÉ À L'HUMAIN — messages brefs (toasts) et « Annuler » de 10 s au-dessus de toute barre ou tiroir ; les cartes de l'assistant portent leur propre « Annuler » et « Modifier ».",
+    "ecran": "Toute l'application (retours passagers)",
+    "parametres": [],
+    "raison_humaine": "Présentation d'écran : rien à agir ; l'annulation d'un geste de l'assistant est dans sa carte (ActionDone).",
+    "verifie_dans": "app/layout.tsx:87 ; components/poseur-day.tsx:1160-1174 ; components/action-done.tsx:34"
+  },
+  {
+    "id": "S104",
+    "libelle": "Total du jour, prévu non confirmé, compteurs (chantiers, pauses à préciser, route, panier)",
+    "genre": "lire",
+    "niveau": 1,
+    "actions_existantes": [
+      "instantane:heures_notees",
+      "instantane:lignes_du_jour",
+      "instantane:prevu_par_le_bureau"
+    ],
+    "exposition": "PARTIEL — le modèle peut additionner les lignes du jour et lire le prévu, mais il n'a ni la pause de chaque ligne, ni le pointage en cours dans le total, ni les « pauses à préciser », la route (payée ou non), le panier pris, ni l'état « prévu non confirmé » calculé par l'écran : ses chiffres peuvent différer de ceux de l'écran. À créer : lire_ma_journee(date) qui reprend les calculs partagés (day-hours, work-status) comme seule source des chiffres.",
+    "ecran": "Ma journée (bloc noir « Total aujourd'hui »)",
+    "parametres": [
+      "date:aaaa-mm-jj"
+    ],
+    "raison_humaine": "",
+    "verifie_dans": "components/poseur-day.tsx:1767-1775 ; components/poseur-day.tsx:1848-1895 ; components/poseur-day.tsx:2180-2237 ; supabase/functions/_shared/worker-assistant-core.ts:289-298 ; supabase/functions/_shared/worker-assistant-core.ts:1156"
+  },
+  {
+    "id": "S105",
+    "libelle": "Transférer les saisies gardées sur le téléphone (« Envoyer ce qui reste (N) »)",
+    "genre": "ecrire",
+    "niveau": 2,
+    "actions_existantes": [],
+    "exposition": "À CRÉER — capacité réelle absente de l'annexe (elle est rangée dans « les 5 états » du geste S39) : quand des lignes attendent sur le téléphone, le bouton du bas devient « Envoyer ce qui reste (N) » et ne fait QUE transférer les saisies (elles arrivent « à envoyer ») ; un second geste envoie la journée (S39, niveau 3). À créer : envoyer_saisies_telephone, outil exécuté dans le navigateur (la file est dans localStorage), niveau 2 : rien n'est envoyé au bureau.",
+    "ecran": "Ma journée (bouton du bas) et bande « N chantiers pas encore partis — appuyer pour envoyer »",
+    "parametres": [],
+    "raison_humaine": "",
+    "verifie_dans": "components/poseur-day.tsx:881-898 ; components/poseur-day.tsx:2570-2573 ; app/poseur/page.tsx:509-526 ; lib/offline-sync.ts:112-224 ; lib/offline-store.ts:6"
+  }
+]
