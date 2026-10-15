@@ -97,3 +97,4 @@ jobs:
           supabase/functions/_shared/ouvrir.test.ts
           supabase/functions/_shared/assistant-aide.test.ts
           supabase/functions/_shared/ai-boucle.test.ts
+          supabase/functions/_shared/salarie-vue.test.ts

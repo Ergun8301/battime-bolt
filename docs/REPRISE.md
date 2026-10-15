@@ -22,3 +22,4 @@
 - Le patron a donné l'autorisation permanente d'agir sur GitHub, Supabase, Cloudflare, Netlify pour BEMEXO (fusion, déploiement, migrations additives) ; les SECRETS restent posés par lui.
 
 - Le patron a donné TOUTES les autorisations sur ce projet (15 oct. 2026) : ne plus lui demander de permission. Prochain chantier : design salarié étape 2 (logique pure + séparation modèle/vue), IA gelée.
+- Design salarié étape 2 (partie sûre) FAITE : `supabase/functions/_shared/salarie-vue.ts` (+ test, `npm run test:salarie-vue`) = règles pures (état d'une ligne et d'un jour, bande des 7 jours, semaine ISO, kicker, aide d'envoi, raison d'échec, axe de la mini-frise) ; pas encore branchées sur l'écran. Reste de l'étape 2 : `usePoseurDay()` / `JourneeV1` (éclatement de poseur-day.tsx), à faire avec les 31 scripts rejoués sans modification.

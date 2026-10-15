@@ -25,6 +25,7 @@
     "registre:verifier": "npx -y deno@2 run --allow-read scripts/registre-listes-gen.ts --verifier && npx -y deno@2 run --allow-read scripts/registre-ouvreurs-gen.ts --verifier",
     "test:ouvrir": "npx -y deno@2.9.6 test --allow-env --allow-read supabase/functions/_shared/ouvrir.test.ts",
     "test:ouvreurs": "npx -y deno@2.9.6 test --allow-env --allow-read supabase/functions/_shared/registre-ouvreurs.test.ts",
+    "test:salarie-vue": "npx -y deno@2.9.6 test supabase/functions/_shared/salarie-vue.test.ts",
     "test:boucle": "npx -y deno@2.9.6 test --allow-env --allow-read supabase/functions/_shared/ai-boucle.test.ts",
     "test:etape3-config": "npx -y deno@2.9.6 test --allow-env --allow-read supabase/functions/_shared/etape3-config.test.ts",
     "test:etape3-eteint": "npx -y deno@2.9.6 test --allow-env --allow-read supabase/functions/_shared/etape3-eteint.test.ts",
