@@ -14,11 +14,15 @@ import { functionsFor } from '../_shared/assistant-outils.ts';
 import { nettoyerHistorique, sansDemandeRecollee } from '../_shared/assistant-history.ts';
 import * as W2 from '../_shared/worker-assistant-core.ts';
 import { runWorkerTurn } from '../_shared/worker-turn.ts';
-import { ouvrirActif, outilsCoupes, type Etape3Env } from '../_shared/etape3-config.ts';
+import { boucleActive, ouvrirActif, outilsCoupes, type Etape3Env } from '../_shared/etape3-config.ts';
+import { boucleOutils, type ResultatBoucle, type TraceBoucle } from '../_shared/ai-boucle.ts';
+import { LECTURES_BUREAU } from '../_shared/lectures/bureau.ts';
+import { LECTURES_SALARIE } from '../_shared/lectures/salarie.ts';
+import { CASES_BOUCLE, lecteurFictif } from './cases-boucle.ts';
 import { brancherOuvrirBureau, brancherOuvrirSalarie } from '../_shared/ouvrir.ts';
 import * as A1 from './v1/assistant-actions-core.ts';
 import * as W1 from './v1/worker-assistant-core.ts';
-import { ADMIN_RAW, CASES, FILES, LIVE_EN_COURS, LIVE_VIDE, ME, WORKER_LIVE, WORKER_RAW, type EvalCase, type Outcome } from './cases.ts';
+import { ADMIN_RAW, CASES, FILES, LIVE_EN_COURS, LIVE_VIDE, ME, TODAY, WORKER_LIVE, WORKER_RAW, type EvalCase, type Outcome } from './cases.ts';
 
 export type Call = (req: ToolsRequest) => Promise<ToolsResult>;
 export interface CaseResult {
@@ -31,9 +35,14 @@ export interface CaseResult {
   secours?: boolean;
   /** « fournisseur:modèle » qui a réellement répondu (Claude ou son secours Gemini) : on ne les confond jamais. */
   modele?: string;
+  /** 3c : appels au modèle, lectures, jetons et cache de la boucle (nombres seulement). Absent hors boucle ou si la boucle a rendu `null` (repli). */
+  boucle?: TraceBoucle;
+  /** 3c : la boucle a rendu `null` (panne, budget…) : le cas est passé par le chemin d'avant. */
+  repli?: boolean;
 }
 
 type AnyReply = { answer?: string; links?: { action: string }[]; action?: { draft: { type: string }; problems: string[] }; auto?: boolean };
+type Env = { get(key: string): string | undefined };
 function fromAdmin(r: AnyReply | null): Outcome {
   if (!r) return { kind: 'none' };
   if (r.action) return { kind: 'action', type: r.action.draft.type, draft: r.action.draft as unknown as Record<string, unknown>, problems: r.action.problems };
@@ -64,7 +73,7 @@ function fromWorker(r: AnyWorker | null): Outcome {
   return { kind: 'answer', answer: r.answer, links: (r.links ?? []).map((l) => l.action), ...(r.auto ? { auto: true } : {}) };
 }
 
-async function runOne(c: EvalCase, version: 'v1' | 'v2', appel: Call, e3: Etape3Env): Promise<CaseResult> {
+async function runOne(c: EvalCase, version: 'v1' | 'v2', appel: Call, e3: Etape3Env, env?: Env): Promise<CaseResult> {
   // Chaque cas note quel modèle a servi (le dernier appel), pour que le rapport dise Claude ou secours.
   let servi: string | undefined;
   const call: Call = async (req) => { const r = await appel(req); servi = modeleServi(r) ?? servi; return r; };
@@ -75,6 +84,14 @@ async function runOne(c: EvalCase, version: 'v1' | 'v2', appel: Call, e3: Etape3
   const ouvrirOn = version === 'v2' && ouvrirActif(e3, c.cote, ADMIN_RAW.companyId, ['ouvrir1'], !!file);
   const coupes = version === 'v2' ? outilsCoupes(e3) : [];
   const optsOutils = ouvrirOn || coupes.length ? { ouvrir: ouvrirOn, coupes } : undefined;
+  // 3c : `boucle` allumé pour CE cas ? Mêmes conditions que la production (boucleActive) ; le banc annonce toujours `boucle1`. Il lui faut l'environnement (clé et modèle de la passe).
+  const boucleOn = version === 'v2' && !!env && boucleActive(e3, c.cote, ADMIN_RAW.companyId, ['boucle1'], !!file);
+  let bouclee: ResultatBoucle | null = null, bouclePasse = false;
+  const boucle = boucleOn ? async (req: ToolsRequest): Promise<ResultatBoucle | null> => {
+    bouclePasse = true;
+    bouclee = await boucleOutils({ req, lectures: c.cote === 'bureau' ? LECTURES_BUREAU : LECTURES_SALARIE, env: env!, ctx: { db: lecteurFictif(), cote: c.cote, companyId: ADMIN_RAW.companyId, userId: c.cote === 'bureau' ? ME : WORKER_RAW.userId, today: TODAY } });
+    return bouclee;
+  } : undefined;
   try {
     let out: Outcome;
     let via: CaseResult['via'] = 'local';
@@ -88,10 +105,11 @@ async function runOne(c: EvalCase, version: 'v1' | 'v2', appel: Call, e3: Etape3
       if (local) out = fromAdmin(local as AnyReply);
       else {
         via = 'ia';
-        const r = await call({
+        const requete = {
           prompt: A.actionPrompt(ctx as never, '{}', ouvrirOn ? A2.guideForPrompt('etape3', ctx.guideLiens) : A.guideForPrompt(), c.phrase),
           functions: version === 'v2' ? (optsOutils ? functionsFor(!!file, c.phrase, ctx.historique, optsOutils) : functionsFor(!!file, c.phrase, ctx.historique)) : A1.ASSISTANT_FUNCTIONS, file,
-        });
+        };
+        const r = (boucle && await boucle(requete)) || await call(requete);
         out = r.ok ? fromAdmin(A.fromFunctionCall(r.call.name, r.call.args, ctx as never) as AnyReply) : { kind: 'none', answer: `IA : ${r.reason}` };
       }
     } else if (version === 'v2') {
@@ -99,7 +117,7 @@ async function runOne(c: EvalCase, version: 'v1' | 'v2', appel: Call, e3: Etape3
       const live = { ...(c.live === 'vide' ? LIVE_VIDE : WORKER_LIVE), enCours: c.enCours ? LIVE_EN_COURS : null } as W2.WorkerLive;
       if (c.history) snap.historique = sansDemandeRecollee(nettoyerHistorique(c.history), c.phrase);
       if (ouvrirOn) brancherOuvrirSalarie(snap, 'worker');
-      const t = await runWorkerTurn({ text: c.phrase, file, snapshot: snap, live, tier: tierFor(!!file), call, iaDisponible: true, multiOk: true, ...(optsOutils ? { etape3: optsOutils } : {}) });
+      const t = await runWorkerTurn({ text: c.phrase, file, snapshot: snap, live, tier: tierFor(!!file), call, iaDisponible: true, multiOk: true, ...(optsOutils ? { etape3: optsOutils } : {}), ...(boucle ? { boucle } : {}) });
       via = t.via === 'local' ? 'local' : 'ia';
       suite = { profil: t.profil, ...(t.via === 'ia' ? { appels: t.appels, ...(t.secours ? { secours: true } : {}) } : {}) };
       out = t.via === 'erreur' ? { kind: 'none', answer: `IA : ${t.raison}` } : fromWorker(t.reply as AnyWorker);
@@ -115,9 +133,10 @@ async function runOne(c: EvalCase, version: 'v1' | 'v2', appel: Call, e3: Etape3
       }
     }
     if (ouvrirOn) out = { ...out, etape3: true };
+    if (boucleOn) out = { ...out, lectures: bouclee ? (bouclee as ResultatBoucle).trace.lectures.map((l) => l.nom) : [], teinte: !!(bouclee && (bouclee as ResultatBoucle).teinte) };
     const why = c.check(out);
     // Diagnostic : pour un échec, ce que l'assistant a réellement préparé (jeu fictif, rien d'une vraie entreprise).
-    return { ...base, ok: !why, why, via, ms: Date.now() - t0, ...suite, ...(servi ? { modele: servi } : {}), ...(why ? { sortie: out } : {}) };
+    return { ...base, ok: !why, why, via, ms: Date.now() - t0, ...suite, ...(servi ? { modele: servi } : {}), ...(bouclee ? { boucle: (bouclee as ResultatBoucle).trace } : {}), ...(bouclePasse && !bouclee ? { repli: true } : {}), ...(why ? { sortie: out } : {}) };
   } catch (e) {
     return { ...base, ok: false, why: `erreur : ${(e as Error).message}`, via: 'erreur', ...(servi ? { modele: servi } : {}) };
   }
@@ -129,16 +148,18 @@ const mediane = (xs: number[]) => { const s = [...xs].sort((a, b) => a - b); ret
  * `opts.repeat` : chaque cas est passé N fois (le modèle n'est plus à température fixe : 3 passes par cas donnent la vraie
  * réussite). `total` et `ok` comptent alors des ESSAIS ; `parCas` dit, pour chaque cas, combien d'essais ont réussi.
  */
-export async function runEval(version: 'v1' | 'v2', call: Call, ids?: string[], parallel = 6, gapMs = 0, opts: { repeat?: number; etape3?: Etape3Env } = {}) {
+export async function runEval(version: 'v1' | 'v2', call: Call, ids?: string[], parallel = 6, gapMs = 0, opts: { repeat?: number; etape3?: Etape3Env; env?: Env } = {}) {
   const repeat = Math.max(1, Math.floor(opts.repeat ?? 1));
   // Étape 3 : sans `etape3` (ou éteint) le banc est TOUT ÉTEINT ; un cas « Ouvrir » ne se joue que si son interrupteur est allumé (jamais en v1).
   const e3: Etape3Env = opts.etape3 ?? { get: () => undefined };
-  const cases = CASES.filter((c) => !ids?.length || ids.includes(c.id)).filter((c) => !c.etape3 || (version === 'v2' && ouvrirActif(e3, c.cote, ADMIN_RAW.companyId, ['ouvrir1'], !!c.file)));
+  // Les cas de la boucle (cases-boucle.ts) ne se jouent que si `boucle` est allumé pour leur côté ET que la passe a un environnement (clé, modèle) ; sinon ils sont ignorés, comme les cas « Ouvrir ».
+  const boucleOk = (c: EvalCase) => version === 'v2' && !!opts.env && boucleActive(e3, c.cote, ADMIN_RAW.companyId, ['boucle1'], false);
+  const cases = [...CASES, ...CASES_BOUCLE].filter((c) => !ids?.length || ids.includes(c.id)).filter((c) => !c.etape3 || (version === 'v2' && ouvrirActif(e3, c.cote, ADMIN_RAW.companyId, ['ouvrir1'], !!c.file))).filter((c) => !c.boucle || boucleOk(c));
   const essais = cases.flatMap((c) => Array.from({ length: repeat }, () => c));
   const results: CaseResult[] = [];
   for (let i = 0; i < essais.length; i += parallel) {
     if (i && gapMs) await new Promise((r) => setTimeout(r, gapMs));
-    results.push(...await Promise.all(essais.slice(i, i + parallel).map((c) => runOne(c, version, call, e3))));
+    results.push(...await Promise.all(essais.slice(i, i + parallel).map((c) => runOne(c, version, call, e3, opts.env))));
   }
   const byCat = new Map<string, { ok: number; n: number }>();
   for (const r of results) {
@@ -166,6 +187,27 @@ export async function runEval(version: 'v1' | 'v2', call: Call, ids?: string[], 
     // Lot 7 (lenteur) : temps par phrase passée par l'IA ; profils court / long : réussite, médiane, maximum, réponses du secours.
     temps: results.filter((r) => r.via === 'ia').map((r) => ({ id: r.id, ms: r.ms })),
     profils,
+    // 3c : la boucle, mesurée — appels (médiane, max), lectures, latence, cache (part des jetons d'entrée relus au cache aux appels 2+), replis (la boucle a rendu null).
+    boucle: resumeBoucle(results),
     modeles: Array.from(compte.entries()).map(([modele, n]) => ({ modele, n })),
+  };
+}
+
+/** Résumé de la boucle sur les essais qui l'ont jouée (nombres seulement). */
+function resumeBoucle(results: CaseResult[]) {
+  const rs = results.filter((r) => r.boucle || r.repli);
+  if (!rs.length) return null;
+  const avec = rs.filter((r) => r.boucle);
+  const appels = avec.map((r) => r.boucle!.appels);
+  const suite = avec.flatMap((r) => r.boucle!.usage.slice(1));
+  const entree = suite.reduce((s, u) => s + u.input + u.cacheLu + u.cacheEcrit, 0);
+  return {
+    essais: rs.length, repli: rs.filter((r) => r.repli).length,
+    appelsMediane: mediane(appels), appelsMax: Math.max(0, ...appels), a4Appels: appels.filter((n) => n >= 4).length,
+    lecturesMoyenne: avec.length ? Math.round((avec.reduce((s, r) => s + r.boucle!.lectures.length, 0) / avec.length) * 10) / 10 : 0,
+    msMediane: mediane(avec.map((r) => r.ms ?? 0)), msMax: Math.max(0, ...avec.map((r) => r.ms ?? 0)),
+    cacheLuAppel2: avec.filter((r) => r.boucle!.appels >= 2).length ? avec.filter((r) => r.boucle!.appels >= 2 && r.boucle!.usage[1].cacheLu > 0).length : null,
+    partCacheAppels2plus: entree ? Math.round((suite.reduce((s, u) => s + u.cacheLu, 0) / entree) * 100) : null,
+    jetons: { entree: avec.reduce((s, r) => s + r.boucle!.usage.reduce((a, u) => a + u.input + u.cacheEcrit + u.cacheLu, 0), 0), sortie: avec.reduce((s, r) => s + r.boucle!.usage.reduce((a, u) => a + u.sortie, 0), 0) },
   };
 }

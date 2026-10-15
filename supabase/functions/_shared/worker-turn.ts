@@ -13,6 +13,7 @@
 //
 // Aucun console.* ici : le texte et les arguments du modèle contiennent des noms et adresses de particuliers.
 import type { AiFile, Tier, ToolsRequest, ToolsResult } from './ai-provider.ts';
+import type { ResultatBoucle } from './ai-boucle.ts';
 import { WORKER_TEXT_MAX, profilSaisie } from './saisie-profil.ts';
 import { fromWorkerCall, handleWorkerLocally, workerFunctionPrompt, type WorkerFullReply, type WorkerLive, type WorkerSnapshot } from './worker-assistant-core.ts';
 import { workerFunctionsFor, type OptionsOutilsSalarie } from './worker-outils.ts';
@@ -38,11 +39,17 @@ export interface WorkerTurnInput {
   multiOk: boolean;
   /** 3b-1 : ce que les interrupteurs changent dans les outils (`ouvrir_fenetre`, `outils_coupes`). Absent : les outils d'avant, octet pour octet. */
   etape3?: OptionsOutilsSalarie;
+  /**
+   * 3c (lectures à la demande) : présent SEULEMENT si l'interrupteur `boucle` est allumé et que l'écran annonce `boucle1` (worker-assistant/index.ts ; le banc le branche pour ses cas).
+   * Essayée AVANT `call` pour l'appel au modèle ; `null` = « fais comme avant » (panne, pas Claude, budget) et `call` est alors appelé, exactement comme sans boucle.
+   */
+  boucle?: (req: ToolsRequest) => Promise<ResultatBoucle | null>;
 }
 
 export type WorkerTurnOut =
   | { via: 'local'; profil: 'court'; reply: WorkerFullReply }
-  | { via: 'ia'; profil: 'court' | 'long'; reply: WorkerFullReply | WorkerMultiReply | LongLegacy; appels: number; secours?: true }
+  | { via: 'ia'; profil: 'court' | 'long'; reply: WorkerFullReply | WorkerMultiReply | LongLegacy; appels: number; secours?: true;
+      /** 3c : le modèle a LU des données avant de répondre — l'appelant ne laisse alors aucun geste s'exécuter sans « Confirmer ». */ teinte?: true }
   | { via: 'erreur'; profil: 'court' | 'long'; raison: 'sans_cle' | 'not_configured' | 'provider_error' | 'bad_response' };
 
 /** Un fichier joint force « court » (outils restreints à ranger_photo / repondre : un PDF piégé ne peut rien d'autre) ; sans multiOk aussi. */
@@ -64,13 +71,17 @@ export async function runWorkerTurn(i: WorkerTurnInput): Promise<WorkerTurnOut> 
 
   if (profil === 'court') {
     // Exactement l'ancien appel : seulement les outils du domaine de la phrase, UN appel.
-    const r = await i.call({ prompt: workerFunctionPrompt(i.snapshot, i.live, text), functions: workerFunctionsFor(!!i.file, text, i.snapshot.historique, i.etape3), file: i.file, tier: i.tier });
+    const req: ToolsRequest = { prompt: workerFunctionPrompt(i.snapshot, i.live, text), functions: workerFunctionsFor(!!i.file, text, i.snapshot.historique, i.etape3), file: i.file, tier: i.tier };
+    const b = i.boucle && !i.file ? await i.boucle(req) : null;
+    const r = b ?? await i.call(req);
     if (!r.ok) return { via: 'erreur', profil, raison: r.reason };
-    return { via: 'ia', profil, reply: fromWorkerCall(r.call.name, r.call.args, i.snapshot, i.live), appels: 1, ...(r.secours ? { secours: true as const } : {}) };
+    return { via: 'ia', profil, reply: fromWorkerCall(r.call.name, r.call.args, i.snapshot, i.live), appels: 1, ...(r.secours ? { secours: true as const } : {}), ...(b?.teinte ? { teinte: true as const } : {}) };
   }
 
-  const r = await i.call({ prompt: workerMultiPrompt(i.snapshot, i.live, text), functions: workerFunctionsForLong(text, i.snapshot.historique, i.etape3), tier: i.tier, profil: 'long', maxCalls: 4 });
+  const reqLong: ToolsRequest = { prompt: workerMultiPrompt(i.snapshot, i.live, text), functions: workerFunctionsForLong(text, i.snapshot.historique, i.etape3), tier: i.tier, profil: 'long', maxCalls: 4 };
+  const b = i.boucle ? await i.boucle(reqLong) : null;
+  const r = b ?? await i.call(reqLong);
   if (!r.ok) return { via: 'erreur', profil, raison: r.reason };
   const calls = r.calls ?? [r.call];
-  return { via: 'ia', profil, reply: buildLongReply(calls, text, i.snapshot, i.live, { secours: !!r.secours, rognes: r.rognes ?? 0 }), appels: calls.length, ...(r.secours ? { secours: true as const } : {}) };
+  return { via: 'ia', profil, reply: buildLongReply(calls, text, i.snapshot, i.live, { secours: !!r.secours, rognes: r.rognes ?? 0 }), appels: calls.length, ...(r.secours ? { secours: true as const } : {}), ...(b?.teinte ? { teinte: true as const } : {}) };
 }

@@ -47,6 +47,8 @@ export interface ActionOptions {
 export interface ActionExtra {
   action: { draft: ActionDraft; problems: string[]; summary: string; question?: ActionQuestion | null };
   options: ActionOptions;
+  /** 3c : le modèle a LU des données avant de répondre — même une action « directe » attend « Confirmer » (jamais d'exécution au montage). */
+  confirmer?: true;
   /** 📎 Le fichier joint, resté dans l'écran jusqu'à l'exécution. */
   attachment?: File;
   /** Lot 7 : la question posée s'il manque une info (le panneau garde la demande). */

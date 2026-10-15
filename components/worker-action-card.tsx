@@ -269,7 +269,7 @@ export default function WorkerActionCard({ extra, execute, onDone, ctl, preview 
         const p2 = checkWorkerAction(nd, snap, live);
         setD(nd);
         // Lot 1 : une suppression complétée va sur la carte de confirmation, jamais directement.
-        if (!p2.length) { if (removal) { setPhase('form'); return; } launched.add(extra); setPhase('auto'); run(nd); return; }
+        if (!p2.length) { if (removal || extra.confirmer) { setPhase('form'); return; } launched.add(extra); setPhase('auto'); run(nd); return; }
         const q2 = workerQuestionFor(nd, p2, snap);
         if (q2) setQuestion(q2); else setPhase('form');
       }} />

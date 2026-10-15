@@ -208,3 +208,16 @@ export function ouvrirActif(env: Etape3Env | null | undefined, cote: Cote, compa
     return false;
   }
 }
+
+/**
+ * 3c : la BOUCLE (lectures à la demande) est-elle active pour CETTE requête ? Interrupteur `boucle` allumé pour ce côté et cette entreprise ; l'écran annonce `boucle1`
+ * (= il sait afficher une carte à confirmer quand l'assistant a lu des données : un ancien onglet exécuterait une action « directe » sans clic) ; aucun fichier joint.
+ * Ne lève jamais.
+ */
+export function boucleActive(env: Etape3Env | null | undefined, cote: Cote, companyId: string | null | undefined, caps: unknown, fichierJoint: boolean): boolean {
+  try {
+    return !fichierJoint && lireCaps(caps).includes('boucle1') && etat(env, 'boucle', cote, companyId);
+  } catch {
+    return false;
+  }
+}

@@ -125,6 +125,8 @@ export interface Outcome {
   etape3?: boolean;
   /** 3b-1 : la réponse porte `auto` (ouvrir sans toucher), décidé par le serveur. */
   auto?: boolean;
+  /** 3c (boucle) : noms des outils de lecture appelés, et `teinte` (au moins une lecture : l'écran exige « Confirmer »). Absent hors boucle. */
+  lectures?: string[]; teinte?: boolean;
   kind: 'action' | 'answer' | 'draft' | 'collegues' | 'none' | 'multi' | 'chantier';
   type?: string;
   draft?: Record<string, unknown>;
@@ -337,6 +339,8 @@ export interface EvalCase {
    * restent mesurés « éteint », comme la production d'aujourd'hui.
    */
   etape3?: 'ouvrir';
+  /** 3c : le cas ne se joue que quand l'interrupteur `boucle` est ALLUMÉ dans le banc (cases-boucle.ts). */
+  boucle?: true;
   check: Check;
 }
 

@@ -296,8 +296,18 @@ export default function ConfidentialitePage() {
               dans BEMEXO, il ne le voit pas.
             </li>
             <li>
+              <strong>Consultation à la demande</strong> : pour répondre à une question précise, l&apos;assistant peut
+              consulter, <strong>avec vos droits</strong>, une partie de votre espace : pour un salarié, ses propres
+              heures, sa journée et son planning ; pour l&apos;employeur, le planning, les heures par salarié et par
+              chantier, les pointages du jour, l&apos;avancement des chantiers, les demandes de congé (<strong>sans leur
+              motif et sans aucune donnée de santé</strong>), les réserves, les noms des documents et les dépenses de
+              chantier. Seul le résultat nécessaire à la réponse est transmis à Anthropic, <strong>jamais à Google</strong> :
+              si Anthropic est indisponible, la demande est traitée sans ces consultations. Une action proposée après
+              une consultation attend toujours votre confirmation.
+            </li>
+            <li>
               <strong>Ce qui n&apos;est jamais envoyé à l&apos;assistant</strong> : le numéro de sécurité sociale, le taux
-              horaire et les bulletins de paie.
+              horaire, le coût par salarié, les adresses e-mail et téléphones, les positions de pointage et les bulletins de paie.
             </li>
             <li>
               <strong>Une seule exception, voulue par l&apos;employeur</strong> : la fonction « Coût réel » d&apos;une fiche
