@@ -529,3 +529,8 @@ Deno.test('Dates : une ABSENCE ou un congé peut être rétroactif — la date p
     for (const k of ['du', 'au']) if (/PROCHAIN|jamais un jour/.test(props[k]?.description ?? '')) throw new Error(`${nom}.${k} : la règle « prochain jour » ne s’applique pas aux absences`);
   }
 });
+
+Deno.test('Ajouter un salarié : demande nue → fiche vide ; phrase avec prénom et nom → le modèle la lit (jamais une fiche vide)', () => {
+  eq(handleActionLocally('Ajoute un salarié', CTX)?.action?.draft.type, 'inviter_salarie', 'demande nue → fiche');
+  eq(handleActionLocally('Ajoute un salarié, son prénom c’est Pierre, son nom c’est Xavier', CTX), null, 'prénom et nom dits → pas de raccourci local');
+});
