@@ -2064,6 +2064,8 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
                     <div className="bt-badge bt-badge-ok"><span className="dot">✓</span> Chez le comptable</div>
                   ) : entry.status === 'submitted' ? (
                     <div className="bt-badge bt-badge-sent"><span className="dot">✓</span> Envoyé</div>
+                  ) : isDraft && ui2 && etatLigne(entry) === 'renvoyee' ? (
+                    <div className="bt-badge bt-badge-wait dz-badge-renvoye" data-testid="badge-renvoyee">● À corriger</div>
                   ) : isDraft ? (
                     <div className="bt-badge bt-badge-wait">● À envoyer</div>
                   ) : null}
