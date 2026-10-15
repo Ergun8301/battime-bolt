@@ -19,6 +19,7 @@ import { addDays, candidats, findGuide, frDate, guideLinks, mondayOf, norm, scru
 import { findWorkerGuide, workerGuideLinks, type WorkerSnapshot } from './worker-assistant-core.ts';
 import { GUIDE_LIENS_ETAPE3 } from './guide-etape3.ts';
 import { parseDateFr, parseTimeFr } from './fr-langue.ts';
+import { dateTr, demandeTurque, moisTr, TITRES_TR } from './ouvrir-tr.ts';
 import { trouverOuvreur } from './registre/ouvreurs.ts';
 import { VALEURS_MAX } from './registre/outil-ouvrir.ts';
 import type { Cote, Ouvreur } from './registre/types.ts';
@@ -106,7 +107,7 @@ function objetValeurs(brut: unknown): Record<string, unknown> {
   return out;
 }
 
-function lire(o: Ouvreur, brut: unknown, ctx: CtxOuvrir): Lecture {
+function lire(o: Ouvreur, brut: unknown, ctx: CtxOuvrir, tr = false): Lecture {
   const entrees = objetValeurs(brut);
   const valeurs: Valeurs = Object.create(null);
   const dit: string[] = [];
@@ -122,10 +123,10 @@ function lire(o: Ouvreur, brut: unknown, ctx: CtxOuvrir): Lecture {
     switch (p.kind) {
       case 'salarie': {
         const c = candidats(texte, [...(ctx.salaries ?? [])], fullName);
-        if (!c.length) { demande(`Je ne trouve pas de salarié « ${aplatir(texte)} ». Précisez le nom.`, nom); break; }
+        if (!c.length) { demande(tr ? `“${aplatir(texte)}” adlı bir çalışan bulamıyorum. Adı belirtin.` : `Je ne trouve pas de salarié « ${aplatir(texte)} ». Précisez le nom.`, nom); break; }
         if (c.length > 1 && c[1].hits === c[0].hits) {
           const tetes = c.filter((x) => x.hits === c[0].hits);
-          demande(`Plusieurs salariés correspondent à « ${aplatir(texte)} »${tetes.length > LIENS_MAX ? ` (${tetes.length}, voici les ${LIENS_MAX} premiers : précisez le nom)` : ''} : lequel ?`, nom,
+          demande(tr ? `“${aplatir(texte)}” için birden fazla çalışan var${tetes.length > LIENS_MAX ? ` (${tetes.length}, ilk ${LIENS_MAX} tanesi burada: adı belirtin)` : ''}: hangisi?` : `Plusieurs salariés correspondent à « ${aplatir(texte)} »${tetes.length > LIENS_MAX ? ` (${tetes.length}, voici les ${LIENS_MAX} premiers : précisez le nom)` : ''} : lequel ?`, nom,
             tetes.slice(0, LIENS_MAX).map((x) => ({ id: x.id, label: fullName((ctx.salaries ?? []).find((s) => s.id === x.id)!) })));
           break;
         }
@@ -135,10 +136,10 @@ function lire(o: Ouvreur, brut: unknown, ctx: CtxOuvrir): Lecture {
       }
       case 'chantier': {
         const c = candidats(texte, [...(ctx.chantiers ?? [])], (x) => `${x.nom} ${x.ville ?? ''}`);
-        if (!c.length) { demande(`Je ne trouve pas de client ni de chantier « ${aplatir(texte)} ». Précisez le nom.`, nom); break; }
+        if (!c.length) { demande(tr ? `“${aplatir(texte)}” adlı bir müşteri ya da şantiye bulamıyorum. Adı belirtin.` : `Je ne trouve pas de client ni de chantier « ${aplatir(texte)} ». Précisez le nom.`, nom); break; }
         if (c.length > 1 && c[1].hits === c[0].hits) {
           const tetes = c.filter((x) => x.hits === c[0].hits);
-          demande(`Plusieurs clients ou chantiers correspondent à « ${aplatir(texte)} »${tetes.length > LIENS_MAX ? ` (${tetes.length}, voici les ${LIENS_MAX} premiers : précisez le nom)` : ''} : lequel ?`, nom,
+          demande(tr ? `“${aplatir(texte)}” için birden fazla müşteri ya da şantiye var${tetes.length > LIENS_MAX ? ` (${tetes.length}, ilk ${LIENS_MAX} tanesi burada: adı belirtin)` : ''}: hangisi?` : `Plusieurs clients ou chantiers correspondent à « ${aplatir(texte)} »${tetes.length > LIENS_MAX ? ` (${tetes.length}, voici les ${LIENS_MAX} premiers : précisez le nom)` : ''} : lequel ?`, nom,
             tetes.slice(0, LIENS_MAX).map((x) => ({ id: x.id, label: nomChantier((ctx.chantiers ?? []).find((s) => s.id === x.id)!) })));
           break;
         }
@@ -151,21 +152,22 @@ function lire(o: Ouvreur, brut: unknown, ctx: CtxOuvrir): Lecture {
         if (!estDateValide(d)) break;
         const jour = p.kind === 'lundi' ? mondayOf(d) : d;
         valeurs[nom] = jour;
-        dit.push(p.kind === 'lundi' ? `semaine du ${frDate(jour)}` : nom === 'du' || nom === 'au' ? `${nom} ${frDate(jour)}` : frDate(jour));
+        if (tr) { const j = dateTr(jour); dit.push(p.kind === 'lundi' ? `${j} haftası` : nom === 'du' ? `başlangıç ${j}` : nom === 'au' ? `bitiş ${j}` : j); }
+        else dit.push(p.kind === 'lundi' ? `semaine du ${frDate(jour)}` : nom === 'du' || nom === 'au' ? `${nom} ${frDate(jour)}` : frDate(jour));
         break;
       }
       case 'mois': {
         const m = lireMois(texte, ctx.today);
         if (!m) break;
         valeurs[nom] = m;
-        dit.push(`mois ${m}`);
+        dit.push(tr ? moisTr(m) : `mois ${m}`);
         break;
       }
       case 'heure': {
         const h = parseTimeFr(texte);
         if (!h) break;
         valeurs[nom] = h;
-        dit.push(`${nom === 'debut' ? 'de' : 'à'} ${h}`);
+        dit.push(tr ? `${nom === 'debut' ? 'başlangıç' : 'bitiş'} ${h}` : `${nom === 'debut' ? 'de' : 'à'} ${h}`);
         break;
       }
       case 'enum': {
@@ -213,45 +215,58 @@ function ficheProche(cote: Cote, demande: string | undefined): LienOuvrir[] {
 }
 
 export function ouvrirDepuisAppel(args: Record<string, unknown>, ctx: CtxOuvrir, cote: Cote, role: RoleOuvrir): RepOuvrir {
+  // La langue du texte construit ici : celle de la demande (turc ou français). N'influence ni le lien, ni les valeurs, ni `auto`.
+  const tr = demandeTurque(ctx.demande);
   // 1. L'id : égalité dans un tableau, du bon côté et du bon rôle.
   const o = trouverOuvreur(args?.id, cote);
   if (!o || !o.roles.includes(role)) {
-    return refuser('Je ne peux pas ouvrir cet écran.', ficheProche(cote, ctx.demande));
+    return refuser(tr ? 'Bu ekranı açamıyorum.' : 'Je ne peux pas ouvrir cet écran.', ficheProche(cote, ctx.demande));
   }
+  const titre = tr ? TITRES_TR[o.id] ?? o.titre : o.titre;
   // 2. Un écran de niveau 3 : seulement si la personne l'a évoqué, jamais sur une requête teintée.
   if (o.niveau === 3) {
-    if (ctx.teinte) return refuser('Je n’ouvre pas cet écran sur cette demande. Dites-le-moi directement, avec vos mots.');
-    if (!evoque(o, ctx.demande)) return refuser(`Pour ouvrir « ${o.titre} », dites-le-moi clairement (par exemple « ouvre ${o.titre.toLowerCase()} »).`, ficheProche(cote, ctx.demande));
+    if (ctx.teinte) return refuser(tr ? 'Bu istekte bu ekranı açmıyorum. Doğrudan, kendi sözlerinizle söyleyin.' : 'Je n’ouvre pas cet écran sur cette demande. Dites-le-moi directement, avec vos mots.');
+    if (!evoque(o, ctx.demande)) return refuser(tr ? `“${titre}” ekranını açmam için açıkça söyleyin (örneğin “${titre} aç”).` : `Pour ouvrir « ${o.titre} », dites-le-moi clairement (par exemple « ouvre ${o.titre.toLowerCase()} »).`, ficheProche(cote, ctx.demande));
   }
   // 3. Les valeurs.
-  const lu = lire(o, args.valeurs, ctx);
+  const lu = lire(o, args.valeurs, ctx, tr);
   const ordre = Object.keys(o.params);
   // Le mois de clôture : seulement le précédent ou celui en cours (le navigateur le recontrôle).
   if (o.id === 'cloture.mois' && lu.valeurs.mois && !moisClotures(ctx.today).includes(lu.valeurs.mois)) {
-    return refuser(`Le mois ${lu.valeurs.mois} ne peut pas être clôturé ici : seulement le mois précédent (${moisClotures(ctx.today)[0]}) ou le mois en cours (${moisClotures(ctx.today)[1]}).`);
+    return refuser(tr ? `${moisTr(lu.valeurs.mois)} ayı burada kapatılamaz: yalnızca önceki ay (${moisTr(moisClotures(ctx.today)[0])}) ya da içinde bulunulan ay (${moisTr(moisClotures(ctx.today)[1])}).` : `Le mois ${lu.valeurs.mois} ne peut pas être clôturé ici : seulement le mois précédent (${moisClotures(ctx.today)[0]}) ou le mois en cours (${moisClotures(ctx.today)[1]}).`);
   }
   // 4. Une valeur obligatoire manque, ou un nom est inconnu / ambigu : UNE question, jamais un identifiant deviné.
   const manque = ordre.filter((n) => o.params[n].requis && !Object.prototype.hasOwnProperty.call(lu.valeurs, n));
   if (lu.question) {
     const q = lu.question;
     // Un choix par candidat (3 au plus) : le MÊME écran avec ce salarié / ce chantier. Nom inconnu : l'écran sans cette valeur, s'il peut s'ouvrir ainsi.
-    const choix = q.choix.map((c) => ({ label: `${o.titre.length > 28 ? '' : `${o.titre} · `}${c.label}`.slice(0, 60), action: lienOuvrir(o.id, { ...lu.valeurs, [q.param]: c.id }, ordre) }));
-    const sans = !q.choix.length && !manque.some((n) => n !== q.param) && !o.params[q.param].requis ? [{ label: o.titre.slice(0, 60), action: lienOuvrir(o.id, lu.valeurs, ordre) }] : [];
+    const choix = q.choix.map((c) => ({ label: `${titre.length > 28 ? '' : `${titre} · `}${c.label}`.slice(0, 60), action: lienOuvrir(o.id, { ...lu.valeurs, [q.param]: c.id }, ordre) }));
+    const sans = !q.choix.length && !manque.some((n) => n !== q.param) && !o.params[q.param].requis ? [{ label: titre.slice(0, 60), action: lienOuvrir(o.id, lu.valeurs, ordre) }] : [];
     return refuser(q.texte, [...choix, ...sans]);
   }
   if (manque.length) {
     const k = o.params[manque[0]].kind;
+    if (tr) {
+      const quoiTr = k === 'salarie' ? 'Hangi çalışan için?' : k === 'chantier' ? 'Hangi müşteri ya da şantiye için?' : k === 'mois' ? 'Hangi ay?' : k === 'date' ? 'Hangi gün için?' : 'Eksik bir bilgi var, lütfen belirtin.';
+      return refuser(`${quoiTr} Öğrenir öğrenmez “${titre}” ekranını açarım.`);
+    }
     const quoi = k === 'salarie' ? 'Pour quel salarié ?' : k === 'chantier' ? 'Pour quel client ou chantier ?' : k === 'mois' ? 'Quel mois ?' : k === 'date' ? 'Pour quel jour ?' : `Précisez : ${o.params[manque[0]].aide}.`;
     return refuser(`${quoi} Je vous ouvre « ${o.titre} » dès que je le sais.`);
   }
   // 5. Le lien, la phrase, et `auto`.
   const action = lienOuvrir(o.id, lu.valeurs, ordre);
-  const label = `${o.titre}${lu.dit[0] && (o.params.salarie || o.params.chantier) ? ` · ${lu.dit[0]}` : ''}`.slice(0, 60);
+  const label = `${titre}${lu.dit[0] && (o.params.salarie || o.params.chantier) ? ` · ${lu.dit[0]}` : ''}`.slice(0, 60);
   const auto = o.niveau === 1 && !ctx.teinte && verbeOuverture(ctx.demande);
-  const prerempli = lu.dit.length ? ` Pré-rempli : ${lu.dit.join(', ')}.` : '';
-  const answer = o.niveau === 3
-    ? `Voici « ${o.titre} ». C’est vous qui cliquez pour valider : rien n’est fait avant.${prerempli}`
-    : `${auto ? 'J’ouvre' : 'Voici'} « ${o.titre} ».${prerempli}${o.formulaire ? ' Vérifiez avant d’enregistrer.' : ''}`;
+  // Le dernier mot d'une date française finit par un point (« sept. ») : pas de second point derrière.
+  const dits = lu.dit.join(', ').replace(/\.+$/, '');
+  const prerempli = lu.dit.length ? (tr ? ` Önceden dolduruldu: ${dits}.` : ` Pré-rempli : ${dits}.`) : '';
+  const answer = tr
+    ? o.niveau === 3
+      ? `İşte “${titre}”. Onaylamak için siz tıklarsınız: o zamana kadar hiçbir şey yapılmaz.${prerempli}`
+      : `${auto ? `${titre} açılıyor.` : `İşte ${titre}.`}${prerempli}${o.formulaire ? ' Kaydetmeden önce kontrol edin.' : ''}`
+    : o.niveau === 3
+      ? `Voici « ${o.titre} ». C’est vous qui cliquez pour valider : rien n’est fait avant.${prerempli}`
+      : `${auto ? 'J’ouvre' : 'Voici'} « ${o.titre} ».${prerempli}${o.formulaire ? ' Vérifiez avant d’enregistrer.' : ''}`;
   return { answer: answer.slice(0, REPONSE_MAX), links: [{ label, action }], ...(auto ? { auto: true as const } : {}) };
 }
 
