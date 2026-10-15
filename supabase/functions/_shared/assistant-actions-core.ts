@@ -204,9 +204,16 @@ export const GUIDE: GuideEntry[] = [
     etapes: ['« Clients », puis le crayon sur le client.', 'Changez nom, adresse, contact, description ou budget.', '« Enregistrer ».'], lien: 'clients'
   },
   {
-    id: 'archiver_client', mots: ['archiver client', 'chantier termine', 'cacher un client', 'client fini'],
-    titre: 'Archiver un client (chantier terminé)',
-    etapes: ['« Clients », crayon sur le client.', '« Archiver ».', 'Il disparaît des listes ; ses heures et documents restent.'], lien: 'clients'
+    id: 'archiver_client', mots: ['archiver client', 'cacher un client', 'client fini'],
+    titre: 'Archiver un client',
+    etapes: ['« Clients », crayon sur le client.', '« Archiver ».', 'Il disparaît des listes ; ses heures et documents restent.', 'Archiver n’est pas « Terminer le chantier » : ce sont deux boutons de la même fiche (voir « Terminer un chantier »).'], lien: 'clients'
+  },
+  // 3b-0 : « chantier terminé » n’est PAS « archiver » (components/chantier-termine-bar.tsx, chantier-termine.tsx : « Terminer le chantier »,
+  // « Rouvrir le chantier », « Bilan du chantier » ; admin-planning.tsx : « Archiver » = setWorksiteActive(false)). Fiche ajoutée, sans fiche pas à pas (SANS_FICHE).
+  {
+    id: 'terminer_chantier', mots: ['chantier termine', 'terminer chantier', 'terminer un chantier', 'chantier fini', 'bilan du chantier', 'rouvrir un chantier'],
+    titre: 'Terminer un chantier (et lire son bilan)',
+    etapes: ['« Clients », crayon sur le client : le bloc « Chantier en cours » est dans sa fiche.', '« Terminer le chantier », avec la date de fin (les avertissements ne bloquent jamais : « Terminer quand même »).', 'Rien n’est supprimé et aucune heure ne change : le chantier n’est plus proposé aux salariés pour une nouvelle intervention. « Rouvrir le chantier » le remet comme avant ; « Bilan du chantier » le résume.', 'Pour le ranger hors des listes, c’est « Archiver », dans la même fiche.'], lien: 'clients'
   },
   {
     id: 'supprimer_client', mots: ['supprimer client', 'effacer client'],
@@ -250,10 +257,17 @@ export const GUIDE: GuideEntry[] = [
     lien: 'export',
   },
   {
-    id: 'telecharger', mots: ['telecharger', 'fichier des heures', 'tableur', 'imprimer'],
+    id: 'telecharger', mots: ['telecharger', 'fichier des heures', 'tableur'],
     titre: 'Télécharger les heures (Excel, PDF, CSV)',
-    etapes: ['« Exporter » (équipe) ou la fiche d’un salarié.', 'Choisissez la période.', '« Exporter ▾ » → « PDF », « Excel » ou « CSV » : le fichier se télécharge.'],
+    etapes: ['« Exporter » (équipe) ou la fiche d’un salarié.', 'Choisissez la période.', '« Exporter ▾ » → « PDF », « Excel » ou « CSV » : le fichier se télécharge.', 'Ce n’est pas l’impression du planning (voir « Imprimer le planning »).'],
     lien: 'export',
+  },
+  // 3b-0 : « imprimer » n’est PAS l’export des heures (components/planning-print.tsx : menu « Imprimer le planning » ; admin-planning.tsx : icône de la barre, Ctrl+P).
+  {
+    id: 'imprimer_planning', mots: ['imprimer', 'imprimer le planning', 'impression du planning', 'feuille a4'],
+    titre: 'Imprimer le planning',
+    etapes: ['Sur ordinateur, l’icône imprimante dans la barre du planning (« Imprimer le planning »).', 'Choisissez la période (semaine, jour ou mois), toute l’équipe ou un salarié, avec ou sans colonne signature.', '« Imprimer » : la feuille A4 paysage s’ouvre dans l’impression de votre navigateur. Ctrl+P (⌘P) imprime directement la période affichée.', 'Les heures pour la paie ne s’impriment pas d’ici : « Exporter ▾ » → « PDF » (voir « Télécharger les heures »).'],
+    lien: 'planning',
   },
   {
     id: 'lever_reserve', mots: ['lever reserve', 'reserve reglee', 'rouvrir reserve'],
@@ -275,7 +289,8 @@ export const GUIDE: GuideEntry[] = [
   {
     id: 'borne', mots: ['borne', 'tablette', 'qr code', 'pointeuse'],
     titre: 'Relier la tablette de pointage (borne)',
-    etapes: ['Bouton « Borne » du planning : le code à 6 chiffres s’affiche tout de suite.', 'Sur la tablette, ouvrez bemexo.com/borne et tapez le code (ou scannez le QR).', 'Une nouvelle tablette remplace l’ancienne. « Déconnecter la tablette » pour la retirer.'],
+    etapes: ['Bouton « Borne » dans la barre du planning (ou Réglages → « Borne & pointage » → « Relier la tablette »). Il n’existe que si la borne est activée pour l’entreprise.', 'Le plus simple : la tablette affiche son QR, scannez-le avec votre téléphone et confirmez. Sinon, le code à 6 chiffres est dans la fenêtre : sur la tablette, ouvrez bemexo.com/borne et tapez-le.', 'Si une tablette est déjà reliée, le code reste caché derrière « Relier une autre tablette » ; la nouvelle remplace l’ancienne. « Déconnecter la tablette » pour la retirer.'],
+    // 3b-0 : aucun écran « borne » n’existe encore dans NAV_ACTIONS (3b-1) ; le bouton « Borne » est dans la barre du planning, le lien reste donc « planning » (prudent).
     lien: 'planning',
   },
   {

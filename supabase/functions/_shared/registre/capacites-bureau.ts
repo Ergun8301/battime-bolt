@@ -363,6 +363,7 @@ export const CAPACITES_BUREAU: Capacite[] = [
   {
     id: 'B38', cote: 'bureau', libelle: 'Terminer, rouvrir un chantier ; lire son bilan',
     genre: 'ecrire', niveau: 2,
+    guides: ['terminer_chantier'],
     dette: {
       livraison: '3d2', avant: '2027-06-30',
       note: "Outil à créer terminer_chantier(chantier, date) : avertissements jamais bloquants (réserves, pointages en cours, brouillons, interventions à venir : loadFinishCheck) à dire avant d'agir ; rien n'est supprimé ; « Annuler » = rouvrir (B101) ; bilan (B102).",
@@ -475,6 +476,7 @@ export const CAPACITES_BUREAU: Capacite[] = [
   {
     id: 'B48', cote: 'bureau', libelle: 'Imprimer le planning en A4 paysage (semaine, jour, mois ; options ; Ctrl/Cmd+P)',
     genre: 'ouvrir', niveau: 1,
+    guides: ['imprimer_planning'],
     dette: {
       livraison: '3b', avant: '2027-01-31',
       note: "Ouverture d'écran ouvrir_fenetre(imprimer, période, salarié|équipe, signature, tâches) : le menu s'ouvre pré-rempli, ou l'impression est lancée jusqu'à l'écran du navigateur (ia-vision.md:19).",
