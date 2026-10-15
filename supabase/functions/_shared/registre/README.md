@@ -37,6 +37,8 @@ Contrat : `docs/ia-etape3/00-conception-etape3.md` (§1, §2). Aucune seconde li
 | `dettes.json`, `clics.snapshot.json`, `ids.snapshot.json` | on ferme une dette, on ajoute un bouton, on crée une capacité | `REGISTRE_REGENERER=dettes,clics,ids npx -y deno@2.9.6 test --allow-env --allow-read --allow-write supabase/functions/_shared/registre-couverture.test.ts` |
 | `avant-3a2.snapshot.json`, `avant-3b1.snapshot.json`, `outils-empreintes.json` | **jamais** : étalons gelés (production d'avant 3a-2 / d'avant 3b-1, SHA-256 des outils) | — |
 
+Exception documentée (2026-10-15, relecture 3b-1) : `avant-3b1.snapshot.json` a été régénéré UNE fois, volontairement, parce que le texte de quatre fiches du GUIDE bureau a changé (étapes fusionnées pour respecter « 3 étapes au plus » ; PR #200). Commande : supprimer le fichier puis `ETAPE3_ETALON=ecrire … etape3-eteint.test.ts`. Écart prouvé : seuls `guides.bureau`, `global`, les consignes qui portent le GUIDE (83 cas) et 5 réponses du lecteur local « Aide » (b29, gu01, gu02, gu04, gu05) bougent ; outils, liens et GUIDE salarié sont identiques.
+
 Les tests échouent tant qu'un fichier généré n'est pas à jour (`registre-listes.test.ts`, `registre-ouvreurs.test.ts`, T9). `npm run test:registre` lance toute la famille (couverture, scanner, outils, listes, ouvreurs, interrupteur, éteint à l'octet, ouvrir).
 
 ## La règle : le navigateur n'importe jamais `index.ts`
