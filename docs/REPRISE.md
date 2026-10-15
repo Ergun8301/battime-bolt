@@ -20,3 +20,9 @@
 - IA : finir 3c version réduite (≈ 8 lectures bureau + 3 salarié) puis geler ; 3d (écritures niveau 2/3 généralisées) après les premiers clients.
 - Design : finir le salarié ; bureau limité au cœur (planning, validation, export, clôture) tant que le dossier B1–B72 n'est pas livré.
 - Le patron a donné l'autorisation permanente d'agir sur GitHub, Supabase, Cloudflare, Netlify pour BEMEXO (fusion, déploiement, migrations additives) ; les SECRETS restent posés par lui.
+
+## Plan et définition de « fini » (ajouté après les avis externes de 3 autres IA)
+Cap CHANGÉ : on arrête de perfectionner, on livre. Avis retenus : un seul agent à la fois ; relectures adverses seulement pour sécurité/paie/suppressions ; évaluation sur le vrai modèle une fois par lot ; geler l'IA après la lecture des données ; design bureau limité au cœur ; réparer la CI. Avis REFUSÉS : arrêter tous les tests (la relecture a trouvé un vrai bug) ; remplacer la compréhension par des questions de désambiguïsation partout.
+Ordre : 1) formulaire « ajouter un salarié » vide (consigne du modèle, pas de règles de mots-clés) ; 2) CI GitHub (dépôt public : ce n'est pas un quota) ; 3) design salarié version courte : filets (étape 0), alléger (1), séparer logique/vue (2), nouvelle coque + journée (3-4), feuilles (5) ; montrer des captures réelles au patron à l'étape 3 ; 4) IA : 8 lectures bureau + 3 salarié (3c réduit) puis GEL ; 5) bureau : planning, validation, export, clôture quand Claude Design livre B1–B72.
+« Fini » pour cette période = les points 1 à 4 en production, tests verts, patron a vu les captures du design salarié et validé. Ensuite seulement : 3d (écritures niveau 2/3), reste du design, statistiques.
+Le patron est TDAH : réponses courtes, visuelles, une seule question à la fin ; il autorise tout (GitHub, Supabase, Cloudflare, Netlify), ne pas lui demander de permission ; les secrets, c'est lui.
