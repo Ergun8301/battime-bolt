@@ -238,7 +238,7 @@ function copierDepot(dest) {
     if (existsSync(join(RACINE, d))) cpSync(join(RACINE, d), join(dest, d), { recursive: true, filter: filtre });
   }
   mkdirSync(join(dest, 'scripts'), { recursive: true });
-  for (const f of ['scripts/registre-outils-gen.ts']) if (existsSync(join(RACINE, f))) cpSync(join(RACINE, f), join(dest, f));
+  for (const f of ['scripts/registre-outils-gen.ts', 'package.json']) if (existsSync(join(RACINE, f))) cpSync(join(RACINE, f), join(dest, f));
 }
 
 const aLancer = MUTATIONS.filter((m) => !SEULEMENT || SEULEMENT.includes(m.id));

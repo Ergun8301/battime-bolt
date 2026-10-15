@@ -19,7 +19,7 @@
 //   REGISTRE_REGENERER=1               réécrit dettes.json, clics.snapshot.json et complète ids.snapshot.json (exige --allow-write) ;
 //                                      ou une liste « dettes,clics,ids » pour n'en régénérer que certains
 //
-//   npm run test:couverture   (npx -y deno@2 test --allow-env --allow-read supabase/functions/_shared/registre-couverture.test.ts)
+//   npm run test:couverture   (npx -y deno@2.9.6 test --allow-env --allow-read supabase/functions/_shared/registre-couverture.test.ts)
 import {
   ACTION_TYPES, actionMode, ASSISTANT_FUNCTIONS, ATTACHMENT_ACTIONS, GUIDE, NAV_ACTIONS, REMOVAL_TYPES,
 } from './assistant-actions-core.ts';
@@ -79,7 +79,7 @@ function avertir(test: string, lignes: string[]): void {
 }
 
 /** La commande qui réécrit les fichiers générés (dettes, clics, ids) : donnée telle quelle dans les messages, pour qu'on la colle. */
-const REGENERER = (quoi: string) => `REGISTRE_REGENERER=${quoi} npx -y deno@2 test --allow-env --allow-read --allow-write supabase/functions/_shared/registre-couverture.test.ts`;
+const REGENERER = (quoi: string) => `REGISTRE_REGENERER=${quoi} npx -y deno@2.9.6 test --allow-env --allow-read --allow-write supabase/functions/_shared/registre-couverture.test.ts`;
 
 /** « 1 problème », « 3 problèmes » : le titre d'un échec dit COMBIEN. */
 const pl = (n: number, un: string, plusieurs = `${un}s`) => `${n} ${n === 1 ? un : plusieurs}`;
@@ -1089,6 +1089,7 @@ Deno.test('T8 hygiène : le navigateur (app/, components/, lib/, hooks/, imports
 
 Deno.test('T8 hygiène (build) : out/ — le chunk de /poseur n’a aucun nom d’outil du bureau, celui de /admin aucun du salarié, et window.__openLink n’existe pas en production', async () => {
   const build = await lireBuild();
+  if (!build && Deno.env.get('REGISTRE_BUILD_OBLIGATOIRE') === '1') echoue('T8 build : out/ absent alors que le build est obligatoire (CI)', ['lancez  npm run build  avant ce test']);
   if (!build) { console.log('T8 build : out/ absent, contrôle ignoré (lancez  npm run build  pour le faire ; le job CI ne construit pas dans ce job)'); return; }
   const p = verifierT8Build(build, REGISTRE.outils);
   if (p.length) echoue(`T8 hygiène (build out/) : ${pl(p.length, 'fuite', 'fuites')}`, p);
@@ -1122,13 +1123,15 @@ Deno.test('T11 navigateur : les fichiers atteignables par le navigateur (ouvreur
 
 Deno.test('Garde-fous du dépôt : le job CI « deno » lance ces tests sur main et integration/**, et le modèle de PR pose la question du registre', async () => {
   const p: string[] = [];
-  const ci = await lireTexte('.github/workflows/ci.yml').catch(() => '');
+  const ci = (await lireTexte('.github/workflows/ci.yml').catch(() => '')).split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
   if (!ci) p.push('.github/workflows/ci.yml  → introuvable');
   else {
     for (const t of ['registre-couverture.test.ts', 'registre-surfaces.test.ts', 'registre-outils.test.ts']) if (!ci.includes(t)) p.push(`ci.yml  → ne lance plus ${t} : sans le job CI, T1 à T11 ne bloquent personne`);
-    if (!/deno@2\s+test\b/.test(ci)) p.push('ci.yml  → plus de commande « npx -y deno@2 test … » : le job Deno a disparu');
+    if (!/deno@2(\.\d+\.\d+)?\s+test\b/.test(ci)) p.push('ci.yml  → plus de commande « npx -y deno@2.9.6 test … » : le job Deno a disparu');
     if (!/branches:\s*\[\s*main\s*,\s*['"]integration\/\*\*['"]\s*\]/.test(ci)) p.push("ci.yml  → le filtre de branches n'est plus [main, 'integration/**'] : les lots fusionnés dans integration/* ne seraient plus contrôlés");
   }
+  const pkg = await lireTexte('package.json').catch(() => '');
+  for (const sc of ['test:couverture', 'test:registre']) if (!pkg.includes(`"${sc}"`)) p.push(`package.json  → script « ${sc} » absent (cité par le modèle de PR et le README du registre)`);
   const modele = await lireTexte('.github/pull_request_template.md').catch(() => '');
   if (!modele) p.push('.github/pull_request_template.md  → introuvable');
   else {
