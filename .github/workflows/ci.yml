@@ -95,3 +95,4 @@ jobs:
           supabase/functions/_shared/etape3-eteint.test.ts
           supabase/functions/_shared/etape3-ouvrir.test.ts
           supabase/functions/_shared/ouvrir.test.ts
+          supabase/functions/_shared/assistant-aide.test.ts

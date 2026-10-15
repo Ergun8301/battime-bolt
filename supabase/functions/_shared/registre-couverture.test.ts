@@ -1293,7 +1293,7 @@ Deno.test('Garde-fous du dépôt : le job CI « deno » lance ces tests sur main
   const ci = (await lireTexte('.github/workflows/ci.yml').catch(() => '')).split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
   if (!ci) p.push('.github/workflows/ci.yml  → introuvable');
   else {
-    for (const t of ['registre-couverture.test.ts', 'registre-surfaces.test.ts', 'registre-outils.test.ts', 'registre-listes.test.ts']) if (!ci.includes(t)) p.push(`ci.yml  → ne lance plus ${t} : sans le job CI, T1 à T11 ne bloquent personne`);
+    for (const t of ['registre-couverture.test.ts', 'registre-surfaces.test.ts', 'registre-outils.test.ts', 'registre-listes.test.ts', 'assistant-aide.test.ts']) if (!ci.includes(t)) p.push(`ci.yml  → ne lance plus ${t} : sans le job CI, T1 à T11 ne bloquent personne`);
     if (!/deno@2(\.\d+\.\d+)?\s+test\b/.test(ci)) p.push('ci.yml  → plus de commande « npx -y deno@2.9.6 test … » : le job Deno a disparu');
     if (!/branches:\s*\[\s*main\s*,\s*['"]integration\/\*\*['"]\s*\]/.test(ci)) p.push("ci.yml  → le filtre de branches n'est plus [main, 'integration/**'] : les lots fusionnés dans integration/* ne seraient plus contrôlés");
   }
