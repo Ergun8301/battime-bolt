@@ -74,7 +74,7 @@ export const supabaseWorkerSource: AssistantSource = {
       // `multi: true` : ce navigateur sait afficher la fiche à plusieurs éléments (sans lui, le serveur répond comme avant).
       // `history` (étape 2, chat avec mémoire) : omis quand la conversation vient de commencer.
       // `caps` (étape 3) : `ouvrir1` = cet écran sait ouvrir un lien `ouvrir:…` ; sans lui le serveur n'en envoie aucun.
-      const body = { text, ...(file ? { file: await attachmentPayload(file) } : {}), multi: true, ...(history?.length ? { history } : {}), caps: ['ouvrir1'] };
+      const body = { text, ...(file ? { file: await attachmentPayload(file) } : {}), multi: true, ...(history?.length ? { history } : {}), caps: ['ouvrir1', 'boucle1'] };
       // Délai maximal (voir invokeAssistant) : sans lui, un serveur qui ne répond pas bloquerait le panneau jusqu'au rechargement.
       const { data, error, timedOut } = await invokeAssistant('worker-assistant', body);
       if (timedOut) return toReply({ error: ASK_TIMEOUT_MESSAGE });

@@ -40,13 +40,13 @@ export function isAssistantDemo(): boolean {
 
 type ServerReply = {
   answer?: string; links?: AssistantLink[]; remaining?: number; quota?: boolean; unavailable?: boolean;
-  action?: ActionExtra['action']; options?: ActionExtra['options']; auto?: boolean;
+  action?: ActionExtra['action']; options?: ActionExtra['options']; auto?: boolean; confirmer?: boolean;
   /** Interne (support BEMEXO) : la fonction la renvoie toujours, l'écran ne l'affiche jamais. */
   formule?: string | null;
 };
 const toReply = (d: ServerReply): AssistantReply => ({
   answer: d.answer || '…', links: d.links || [], remaining: d.remaining, notice: !!(d.quota || d.unavailable),
-  extra: d.action && d.options ? ({ action: d.action, options: d.options } as ActionExtra) : undefined,
+  extra: d.action && d.options ? ({ action: d.action, options: d.options, ...(d.confirmer ? { confirmer: true as const } : {}) } as ActionExtra) : undefined,
   followUp: !!d.action?.question,
   ...(d.auto ? { auto: true } : {}),
 });
@@ -74,7 +74,8 @@ export async function invokeAssistant(name: string, body: unknown, ms: number = 
   try { return await Promise.race([call, late]); } finally { if (timer) clearTimeout(timer); }
 }
 
-const CAPS = ['ouvrir1'];
+// `boucle1` = cet écran attend « Confirmer » quand l'assistant a lu des données (`confirmer: true`) ; sans lui le serveur ne lit rien à la demande.
+const CAPS = ['ouvrir1', 'boucle1'];
 export const supabaseAssistantSource: AssistantSource = {
   demo: false,
   async ask(question, file, history) {

@@ -47,7 +47,9 @@ import {
 } from '../_shared/worker-assistant-core.ts';
 import type { LongLegacy } from '../_shared/worker-multi.ts';
 import { runWorkerTurn, type WorkerMultiReply } from '../_shared/worker-turn.ts';
-import { ouvrirActif, outilsCoupes } from '../_shared/etape3-config.ts';
+import { boucleActive, ouvrirActif, outilsCoupes } from '../_shared/etape3-config.ts';
+import { boucleOutils } from '../_shared/ai-boucle.ts';
+import { LECTURES_SALARIE } from '../_shared/lectures/salarie.ts';
 import { brancherOuvrirSalarie } from '../_shared/ouvrir.ts';
 import type { OptionsOutilsSalarie } from '../_shared/worker-outils.ts';
 
@@ -147,8 +149,11 @@ Deno.serve(async (req) => {
       documents: ((myDocs.data ?? []) as { id: string; label: string | null; file_name: string | null; worksite_id: string; created_at: string }[])
         .map((x) => ({ id: x.id, nom: (x.label || x.file_name || 'Document').slice(0, 60), chantier: siteName(x.worksite_id), date: x.created_at.slice(0, 10) })),
     };
+    // 3c : lectures à la demande, seulement si `boucle` est allumé pour cette entreprise, que l'écran annonce `boucle1` et qu'AUCUN fichier n'est joint. Éteint : rien ne change.
+    const boucleOn = boucleActive(Deno.env, 'salarie', me.company_id, body.caps, !!att.file);
     // Réponse : la fiche `multi`, l'action (et la question s'il manque une info), ou le planning des collègues.
-    const send = async (r: WorkerFullReply | WorkerMultiReply | LongLegacy): Promise<Response> => {
+    // `teinte` : le modèle a lu des données (noms de chantier écrits par d'autres) → aucun geste « direct », l'écran attend « Confirmer », et rien ne s'ouvre tout seul.
+    const send = async (r: WorkerFullReply | WorkerMultiReply | LongLegacy, teinte = false): Promise<Response> => {
       if (r.kind === 'multi') return json({ ...r, chantiers: snapshot.chantiers, remaining });
       if (r.kind === 'collegues') {
         const { data, error } = await db.rpc('colleagues_planning', { p_from: r.date, p_to: r.date });
@@ -158,7 +163,7 @@ Deno.serve(async (req) => {
         return json({ kind: 'answer', answer, chantiers: snapshot.chantiers, remaining });
       }
       const question = r.kind === 'action' ? workerQuestionFor(r.action.draft, r.action.problems, snapshot) : null;
-      return json({ ...r, ...(question ? { question } : {}), chantiers: snapshot.chantiers, remaining });
+      return json({ ...r, ...(question ? { question } : {}), ...(teinte && r.kind === 'action' ? { confirmer: true } : {}), ...(teinte ? { auto: false } : {}), chantiers: snapshot.chantiers, remaining });
     };
 
     // Le tour (lecteur local, ou IA en profil court / long) est le MÊME code que celui du banc de mesure.
@@ -166,6 +171,7 @@ Deno.serve(async (req) => {
       text, file: att.file, snapshot, live, tier, iaDisponible: aiDisponible(Deno.env, tier), multiOk: body.multi === true,
       ...(etape3 ? { etape3 } : {}),
       call: (req) => callFunction(req, Deno.env),
+      ...(boucleOn ? { boucle: (req: Parameters<typeof callFunction>[0]) => boucleOutils({ req, lectures: LECTURES_SALARIE, ctx: { db, cote: 'salarie', companyId: me.company_id, userId: user.id, today }, env: Deno.env }) } : {}),
     });
     if (t.via === 'erreur') {
       if (t.raison === 'sans_cle') {
@@ -176,7 +182,7 @@ Deno.serve(async (req) => {
       }
       return json({ kind: 'answer', notice: true, answer: 'L’assistant n’a pas pu répondre. Utilisez la saisie habituelle.', remaining });
     }
-    return send(t.reply);
+    return send(t.reply, t.via === 'ia' && !!t.teinte);
   } catch {
     console.error('[worker-assistant] erreur interne');
     return json({ error: 'Erreur serveur' }, 500);

@@ -46,7 +46,9 @@ import {
   resolveSalarie, summarize, findGuide, guideAnswer, guideForPrompt, guideLinks, type EntryChoice, type LocalReply, type ActionContext,
 } from '../_shared/assistant-actions-core.ts';
 import { functionsFor, type OptionsOutils } from '../_shared/assistant-outils.ts';
-import { ouvrirActif, outilsCoupes } from '../_shared/etape3-config.ts';
+import { boucleActive, ouvrirActif, outilsCoupes } from '../_shared/etape3-config.ts';
+import { boucleOutils } from '../_shared/ai-boucle.ts';
+import { LECTURES_BUREAU } from '../_shared/lectures/bureau.ts';
 import { brancherOuvrirBureau } from '../_shared/ouvrir.ts';
 
 
@@ -65,11 +67,13 @@ const URL_ = Deno.env.get('SUPABASE_URL') ?? '';
 const parisToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 
 /** Réponse envoyée à l'écran : le brouillon, son résumé, et les listes pour le modifier. */
-function reply(r: LocalReply, ctx: ActionContext, remaining: number): Response {
+function reply(r: LocalReply, ctx: ActionContext, remaining: number, teinte = false): Response {
   return json({
     answer: r.answer, links: r.links, remaining,
     // 3b-1 : « ouvrir sans toucher », décidé par ouvrir.ts seulement (absent = comme avant).
-    ...(r.auto ? { auto: true } : {}),
+    ...(r.auto && !teinte ? { auto: true } : {}),
+    // 3c : le modèle a LU des données (noms de chantier, observations écrits par d'autres) → aucune action ne s'exécute sans « Confirmer ».
+    ...(teinte && r.action ? { confirmer: true } : {}),
     action: r.action ? { ...r.action, summary: summarize(r.action.draft, ctx), question: questionFor(r.action.draft, r.action.problems, ctx) } : undefined,
     options: r.action ? {
       salaries: ctx.salaries.filter((s) => s.role !== 'admin' || r.action!.draft.type === 'poser_absence')
@@ -197,10 +201,17 @@ Deno.serve(async (req) => {
     // 3. L'IA choisit UNE fonction de la liste blanche.
     const snapshot = buildSnapshot(raw);
     // Lot 6 : seulement les outils du domaine de la demande ; UN appel (rapide, ou documents si fichier).
-    const r = await callFunction({
+    const requete = {
       prompt: actionPrompt(ctx, JSON.stringify(snapshot), ouvrirOn ? guideForPrompt('etape3', ctx.guideLiens) : guideForPrompt(), question),
       functions: optsOutils ? functionsFor(!!att.file, question, ctx.historique, optsOutils) : functionsFor(!!att.file, question, ctx.historique), file: att.file, tier,
-    }, Deno.env);
+    };
+    // 3c : lectures à la demande, seulement si `boucle` est allumé pour cette entreprise, que l'écran annonce `boucle1` et qu'AUCUN fichier n'est joint.
+    // `null` = « fais comme avant » (panne, pas Claude, budget) : le chemin d'avant, intact.
+    const boucle = boucleActive(Deno.env, 'bureau', cid, body.caps, !!att.file)
+      ? await boucleOutils({ req: requete, lectures: LECTURES_BUREAU, ctx: { db, cote: 'bureau', companyId: cid, userId: user.id, today }, env: Deno.env })
+      : null;
+    const r = boucle ?? await callFunction(requete, Deno.env);
+    const teinte = !!boucle?.teinte;
     if (!r.ok) return json({ unavailable: true, answer: 'L’assistant n’a pas pu répondre. Réessayez dans un instant.', links: [] });
 
     // Correction : on lit SES lignes envoyées ce jour-là (jeton du patron).
@@ -220,7 +231,7 @@ Deno.serve(async (req) => {
     }
     const out = fromFunctionCall(r.call.name, r.call.args, ctx, choices);
     // Un bulletin lu par le modèle de secours (plus léger) : à vérifier avant de confirmer.
-    return reply(avertirSecours(out, !!r.secours), ctx, remaining);
+    return reply(avertirSecours(out, !!r.secours), ctx, remaining, teinte);
   } catch {
     console.error('[assistant] erreur interne');
     return json({ error: 'Erreur serveur' }, 500);

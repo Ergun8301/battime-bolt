@@ -356,7 +356,7 @@ const stable = (v: unknown): string => (Array.isArray(v) ? `[${v.map(stable).joi
   : v && typeof v === 'object' ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${stable((v as Record<string, unknown>)[k])}`).join(',')}}` : JSON.stringify(v) ?? 'null');
 
 /** Les appels de fonction rendus par le modèle (Gemini ou Claude, dans l'ordre) → le résultat, avec les MÊMES règles pour les deux. */
-function choisirAppels(brutes: { name?: string; args?: unknown }[], allowed: Set<string>, max: number): ToolsResult {
+export function choisirAppels(brutes: { name?: string; args?: unknown }[], allowed: Set<string>, max: number): ToolsResult {
   if (max === 1) {
     const fc = brutes[0];
     if (!fc?.name || !allowed.has(fc.name)) return { ok: false, reason: 'bad_response' };

@@ -22,8 +22,9 @@
 // après une erreur (le chemin exact des clients).
 import { callFunction } from '../_shared/ai-provider.ts';
 import { envEtape3, envEvaluation, resumeEvaluation } from './config.ts';
-import { ouvrirActif } from '../_shared/etape3-config.ts';
+import { boucleActive, ouvrirActif } from '../_shared/etape3-config.ts';
 import { ADMIN_RAW, CASES } from './cases.ts';
+import { CASES_BOUCLE } from './cases-boucle.ts';
 import { runEval } from './run.ts';
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -49,7 +50,8 @@ Deno.serve(async (req) => {
   const version = body.version === 'v1' ? 'v1' : 'v2';
   const ids = Array.isArray(body.ids) ? body.ids.map(String) : undefined;
   if (ids && ids.length > 200) return json({ error: '200 ids au plus' }, 400);
-  const connus = new Set(CASES.map((c) => c.id));
+  const TOUS = [...CASES, ...CASES_BOUCLE];
+  const connus = new Set(TOUS.map((c) => c.id));
   const inconnus = ids?.filter((id) => !connus.has(id)) ?? [];
   if (inconnus.length) return json({ error: `ids inconnus : ${inconnus.slice(0, 10).join(', ')}` }, 400);
   // Réglage de la passe : celui de l'environnement, ou `aiConfig` (validé comme en production, sinon 400).
@@ -60,13 +62,16 @@ Deno.serve(async (req) => {
   const e3 = envEtape3(body.etape3);
   if (!e3.ok) return json({ error: e3.error }, 400);
   // Un cas « Ouvrir » ne se joue que si l'interrupteur de son côté est allumé : l'inverse fausserait la mesure en silence.
-  const faux = (ids ?? []).filter((id) => { const c = CASES.find((x) => x.id === id); return !!c?.etape3 && !ouvrirActif(e3.env, c.cote, ADMIN_RAW.companyId, ['ouvrir1'], false); });
+  const faux = (ids ?? []).filter((id) => { const c = TOUS.find((x) => x.id === id); return !!c?.etape3 && !ouvrirActif(e3.env, c.cote, ADMIN_RAW.companyId, ['ouvrir1'], false); });
   if (faux.length) return json({ error: `cas « Ouvrir » sans interrupteur allumé (etape3.ouvrir) : ${faux.slice(0, 10).join(', ')}` }, 400);
+  // Même garde pour la boucle : un cas de lecture sans l'interrupteur `boucle` (de son côté) fausserait la mesure en silence.
+  const fauxBoucle = (ids ?? []).filter((id) => { const c = TOUS.find((x) => x.id === id); return !!c?.boucle && !boucleActive(e3.env, c.cote, ADMIN_RAW.companyId, ['boucle1'], false); });
+  if (fauxBoucle.length) return json({ error: `cas « Lecture » sans interrupteur allumé (etape3.boucle) : ${fauxBoucle.slice(0, 10).join(', ')}` }, 400);
   const config = resumeEvaluation(env, ev.surcharge);
   const gapMs = Math.min(Math.max(Number(body.gapMs) || 0, 0), 20_000);
   const repeat = Math.min(Math.max(Math.floor(Number(body.repeat) || 1), 1), 5);
   // prodPath : EXACTEMENT le chemin des clients, sans nouvel essai après une erreur.
-  if (body.prodPath) return json({ config, etape3: e3.allume, ...await runEval('v2', (r) => callFunction(r, env), ids, 1, gapMs, { repeat, etape3: e3.env }) });
+  if (body.prodPath) return json({ config, etape3: e3.allume, ...await runEval('v2', (r) => callFunction(r, env), ids, 1, gapMs, { repeat, etape3: e3.env, env }) });
   // Sinon : la clé est partagée avec la prod, on va doucement et on réessaie après un
   // refus « trop de requêtes » (le banc d'essai ne doit pas mesurer le quota).
   const call = async (r: Parameters<typeof callFunction>[0]) => {
@@ -78,5 +83,5 @@ Deno.serve(async (req) => {
     return res;
   };
   const parallel = Math.min(Math.max(Number(body.parallel) || 1, 1), 6);
-  return json({ config, etape3: e3.allume, ...await runEval(version, call, ids, parallel, gapMs, { repeat, etape3: e3.env }) });
+  return json({ config, etape3: e3.allume, ...await runEval(version, call, ids, parallel, gapMs, { repeat, etape3: e3.env, env }) });
 });

@@ -208,7 +208,7 @@ export default function AssistantActionCard({ extra, execute, onDone, ctl, previ
   const problems = useMemo(() => checkAction(d, ctx), [d, ctx]);
   const set = (patch: Partial<ActionDraft>) => setD((x) => ({ ...x, ...patch } as ActionDraft));
 
-  const direct = actionMode(extra.action.draft) === 'direct';
+  const direct = !extra.confirmer && actionMode(extra.action.draft) === 'direct';
   // Lot 1 : une suppression pose sa question s'il le faut, puis montre la carte de confirmation.
   const removal = isRemoval(extra.action.draft);
   const [phase, setPhase] = useState<Phase>(() => {
@@ -317,7 +317,7 @@ export default function AssistantActionCard({ extra, execute, onDone, ctl, previ
         const p2 = checkAction(nd, ctx);
         setD(nd);
         // Lot 1 : une suppression complétée va sur la carte de confirmation, jamais directement.
-        if (!p2.length) { if (removal) { setPhase('form'); return; } launched.add(extra); run(nd); setPhase('auto'); return; }
+        if (!p2.length) { if (removal || extra.confirmer) { setPhase('form'); return; } launched.add(extra); run(nd); setPhase('auto'); return; }
         const q2 = questionFor(nd, p2, ctx);
         if (q2) setQuestion(q2); else setPhase('form');
       }} />
