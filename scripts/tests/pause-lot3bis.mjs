@@ -10,6 +10,7 @@
 // Captures « avant » (build de 5657373, captures seulement, aucune vérification) :
 //   AVANT=1 node scripts/tests/pause-lot3bis.mjs <out-avant> docs/captures-lot3bis [port]
 import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path';
+import { ouvrirEditeur, ouvrirVue } from './navigation-salarie.mjs';
 let chromium;
 try { ({ chromium } = await import('playwright-core')); } catch {
   ({ chromium } = await import(`${process.env.PW_CORE || '/opt/node22/lib/node_modules/playwright/node_modules/playwright-core'}/index.mjs`));
@@ -274,8 +275,7 @@ const setEnd = async (end) => {
 };
 /** « + » → chantier → heures, fiche laissée ouverte. */
 const newLine = async (start, end) => {
-  await wp.locator('.bt-fab').click();
-  await wp.waitForSelector('.bt-ed');
+  await ouvrirEditeur(wp, wp.locator('.bt-fab'));
   await wp.locator('.bt-site', { hasText: 'Chantier Test' }).first().click();
   await wp.waitForTimeout(250);
   await setTimes(start, end);
@@ -360,8 +360,7 @@ if (AVANT) {
   freshDb(); D.time_entries = [row({ id: 'e-75', start_time: '08:00', end_time: '17:00', break_minutes: 75 })];
   await openWorker();
   await shot(wp.locator('.bt-stats'), 'journee-stat');
-  await wp.getByRole('button', { name: 'Mon compte et menu' }).click();
-  await wp.getByRole('menuitem', { name: 'Ma semaine' }).click(); await wp.waitForTimeout(1500);
+  await ouvrirVue(wp, 'Ma semaine', { apres: 1500 });
   await shot(wp, 'semaine');
   console.log(`Captures « avant » écrites dans ${SH}`);
   await b.close(); srv.close();
@@ -587,8 +586,7 @@ await openWorker();
     break_minutes: 0, total_minutes: 540, meal_allowance: false, observation: null, reception: null, _worksite_name: 'Chantier Test', _worksite_city: 'Lyon', _saved_at: NOW.getTime() };
   await wp.evaluate(([k, v]) => localStorage.setItem(k, v), [`battime_offline_${ME}`, JSON.stringify([pe])]);
   await openWorker();
-  await wp.locator('.bt-iv-mod', { hasText: 'Modifier' }).first().click();
-  await wp.waitForSelector('.bt-ed'); await showPause();
+  await ouvrirEditeur(wp, wp.locator('.bt-iv-mod', { hasText: 'Modifier' }).first()); await showPause();
   check(JSON.stringify(await chipTexts(wp, 'ed-pause')) === JSON.stringify(['0', ...CHIPS]), 'P10 ligne en file : la fiche a les mêmes puces');
   await wp.locator('[data-testid=ed-pause-autre]').click();
   await wp.locator('[data-testid=ed-pause-input]').fill('1:15'); await wp.waitForTimeout(150);
@@ -717,8 +715,7 @@ await openWorker();
   const stat = wp.locator('.bt-stat', { hasText: 'pause' }).first();
   check(await txt(stat.locator('.bt-stat-n')) === '1:15', `P14 journée : « ${await txt(stat)} »`);
   await shot(wp.locator('.bt-stats'), 'journee-stat');
-  await wp.getByRole('button', { name: 'Mon compte et menu' }).click();
-  await wp.getByRole('menuitem', { name: 'Ma semaine' }).click(); await wp.waitForTimeout(1500);
+  await ouvrirVue(wp, 'Ma semaine', { apres: 1500 });
   const body = await txt(wp.locator('body'));
   check(body.includes('pause 1 h 15') && !body.includes('pause 75min'), 'P14 semaine : « pause 1 h 15 » (avant : « pause 75min »)');
   await shot(wp, 'semaine');

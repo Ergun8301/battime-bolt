@@ -21,6 +21,7 @@
 //     « Prévu · 14:00 » (journée et semaine).
 //  C) Aucun défilement horizontal des fenêtres à 390, 1024 et 1280 px.
 import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path';
+import { ouvrirVue } from './navigation-salarie.mjs';
 let chromium;
 try { ({ chromium } = await import('playwright-core')); } catch {
   ({ chromium } = await import(`${process.env.PW_CORE || '/opt/node22/lib/node_modules/playwright/node_modules/playwright-core'}/index.mjs`));
@@ -537,8 +538,7 @@ async function makePng(ctx) {
   await p.setViewportSize({ width: 390, height: 844 });
 
   // B8 · « Ma semaine » : « Prévu · 16:30 ».
-  await p.getByRole('button', { name: 'Mon compte et menu' }).click();
-  await p.getByRole('menuitem', { name: 'Ma semaine' }).click();
+  await ouvrirVue(p, 'Ma semaine');
   await p.waitForTimeout(1500);
   check((await bodyText()).includes('Prévu · 16:30'), 'B8) « Ma semaine » : « Prévu · 16:30 » (heure de début seule)');
   await ctx.close();

@@ -21,6 +21,7 @@
 // Plus les règles du lot 11 sur la nouvelle ligne de réglage (ⓘ à côté du libellé,
 // lignes ≤ 90 caractères, feuille de style figée, aucun défilement horizontal).
 import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path'; import { createRequire } from 'node:module';
+import { ouvrirEditeur, ouvrirVue } from './navigation-salarie.mjs';
 let chromium;
 try { ({ chromium } = await import('playwright-core')); } catch {
   ({ chromium } = await import(`${process.env.PW_CORE || '/opt/node22/lib/node_modules/playwright/node_modules/playwright-core'}/index.mjs`));
@@ -331,8 +332,7 @@ const send = async (wp) => {
 };
 const openHistory = async (wp) => {
   await openWorker(wp);
-  await wp.locator('button[aria-label="Mon compte et menu"]').click();
-  await wp.getByRole('menuitem', { name: 'Historique' }).click();
+  await ouvrirVue(wp, 'Historique');
   await wp.waitForSelector('h2:has-text("Historique")', { timeout: 10000 });
   await wp.waitForTimeout(900);
 };
@@ -521,8 +521,8 @@ D.time_entries = [
 await openWorker(wp);
 {
   const n = writes.length;
-  await wp.locator('[data-testid=card-entry]').filter({ hasText: 'Atelier' }).click();
-  await wp.waitForSelector('.bt-ed'); await wp.locator('.bt-save', { hasText: 'OK' }).click(); await wp.waitForTimeout(1500);
+  await ouvrirEditeur(wp, wp.locator('[data-testid=card-entry]').filter({ hasText: 'Atelier' }));
+  await wp.locator('.bt-save', { hasText: 'OK' }).click(); await wp.waitForTimeout(1500);
   check(mealWrites(since(n)).length > 0, `B5 « oui » : OK sur une ligne range le panier (${mealWrites(since(n)).length} écriture(s) meal_allowance) — la contre-épreuve de C2`);
 }
 D.time_entries = [row({ id: 'e-s1', start_time: '08:00', end_time: '12:00', status: 'submitted' })];
@@ -581,17 +581,16 @@ console.log('\n═══ C2/C3 · copier hier, OK, ligne prévue, retirer, envoy
   D.planning = [{ id: 'p1', company_id: CO, user_id: ME, worksite_id: DEPOT.id, work_date: today, absence_type: null, estimated_start: '18:00:00', estimated_end: '19:00:00', notes: null, worksite: DEPOT, created_at: NOW.toISOString() }];
   await openWorker(wp);
   n = writes.length;
-  await wp.locator('[data-testid=card-entry]').filter({ hasText: 'Atelier' }).first().click();
-  await wp.waitForSelector('.bt-ed'); await wp.locator('.bt-save', { hasText: 'OK' }).click(); await wp.waitForTimeout(1500);
+  await ouvrirEditeur(wp, wp.locator('[data-testid=card-entry]').filter({ hasText: 'Atelier' }).first());
+  await wp.locator('.bt-save', { hasText: 'OK' }).click(); await wp.waitForTimeout(1500);
   check(of(since(n), 'PATCH', 'time_entries').length >= 1 && mealWrites(since(n)).length === 0, 'C2 OK sur le matin : la ligne est enregistrée, le panier de l’après-midi n’est PAS déplacé');
   n = writes.length;
-  await wp.locator('[data-testid=card-planned]').first().click();
-  await wp.waitForSelector('.bt-ed'); await wp.locator('.bt-save', { hasText: 'OK' }).click(); await wp.waitForTimeout(1500);
+  await ouvrirEditeur(wp, wp.locator('[data-testid=card-planned]').first());
+  await wp.locator('.bt-save', { hasText: 'OK' }).click(); await wp.waitForTimeout(1500);
   const pPosts = of(since(n), 'POST', 'time_entries');
   check(pPosts.length === 1 && mealWrites(since(n)).length === 0, `C2 ligne prévue confirmée : 1 insertion (meal_allowance=${pPosts[0]?.body?.meal_allowance ?? (Array.isArray(pPosts[0]?.body) ? pPosts[0].body[0]?.meal_allowance : '?')}), aucune écriture du panier`);
   n = writes.length;
-  await wp.locator('[data-testid=card-entry]').filter({ hasText: '17:00' }).filter({ hasText: '17:30' }).first().click();
-  await wp.waitForSelector('.bt-ed');
+  await ouvrirEditeur(wp, wp.locator('[data-testid=card-entry]').filter({ hasText: '17:00' }).filter({ hasText: '17:30' }).first());
   await wp.locator('button[aria-label="Retirer ce chantier"]').click();
   await wp.getByRole('button', { name: 'Oui, retirer' }).click(); await wp.waitForTimeout(1500);
   check(of(since(n), 'DELETE', 'time_entries').length === 1 && mealWrites(since(n)).length === 0, 'C2 retirer une ligne : supprimée, aucune écriture du panier');

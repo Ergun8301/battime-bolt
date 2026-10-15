@@ -38,6 +38,7 @@
 //   W8 pas de réseau sur « Vue » : la case revient, message
 //   W9 formation retirée pendant la session : message, la liste se relit
 import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path';
+import { ouvrirMenuCompte } from './navigation-salarie.mjs';
 let chromium;
 try { ({ chromium } = await import('playwright-core')); } catch {
   ({ chromium } = await import(`${process.env.PW_CORE || '/opt/node22/lib/node_modules/playwright/node_modules/playwright-core'}/index.mjs`));
@@ -391,7 +392,7 @@ const openMobileOffice = async (ctx) => {
 };
 const openMobileMenu = async (mp) => { await mp.locator('button[aria-label="Menu"]').first().click(); await mp.waitForSelector('.bt-mm-sheet'); await mp.waitForTimeout(500); };
 const openWorker = async (p = wp) => { await p.goto(`http://localhost:${PORT}/poseur`); await p.waitForSelector('.bt-total', { timeout: 20000 }); await p.waitForTimeout(1200); };
-const openWorkerMenu = async (p = wp) => { await p.getByRole('button', { name: 'Mon compte et menu' }).click(); await p.waitForSelector('[role=menu]'); await p.waitForTimeout(300); };
+const openWorkerMenu = async (p = wp) => { await ouvrirMenuCompte(p, { menu: true, attente: 300 }); };
 const menuTexts = async (p = wp) => (await p.locator('[role=menu] [role=menuitem]').allInnerTexts()).map((s) => s.replace(/\s+/g, ' ').trim());
 const stats = async () => txt(op.locator('.bt-pl-stats').first());
 const workerTotal = async (p = wp) => txt(p.locator('.bt-total').first());

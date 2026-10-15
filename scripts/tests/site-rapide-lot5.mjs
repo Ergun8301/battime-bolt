@@ -9,6 +9,7 @@
 //  f) téléphone (390 px) : chaque fenêtre du menu ☰ s'ouvre du premier coup, sans clignoter ni déborder.
 // Les chunks lourds sont reconnus dans out/ par une EMPREINTE de leur contenu (noms hachés = changent à chaque build).
 import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path'; import { createRequire } from 'node:module'; import { chromium } from 'playwright-core';
+import { lireToasts, ouvrirVue } from './navigation-salarie.mjs';
 const XLSX = createRequire(import.meta.url)('xlsx'); // lecture des classeurs téléchargés (même méthode que panier-lot3bis.mjs)
 const [,, OUT = 'out', SH = 'docs/captures-site-rapide-1', PORT = '42250'] = process.argv; fs.mkdirSync(SH, { recursive: true });
 const T = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.png': 'image/png', '.json': 'application/json', '.webmanifest': 'application/json' };
@@ -286,7 +287,7 @@ const admin = async (viewport = { width: 1280, height: 800 }, opts = {}) => {
     await pg.waitForTimeout(2500);
     check(!got, 'd) chunk Excel bloqué : aucun téléchargement');
     check(writes.slice(w0).filter((w) => w.m !== 'GET' && w.t === 'time_entries').length === 0, 'd) chunk Excel bloqué : AUCUN verrouillage des heures (pas de verrou sans fichier)');
-    check(/Impossible de charger l.outil d.export/i.test(await pg.locator('[data-sonner-toast]').allInnerTexts().then((a) => a.join(' ')).catch(() => '')), 'd) chunk Excel bloqué : un message d\'erreur est affiché');
+    check(/Impossible de charger l.outil d.export/i.test(await lireToasts(pg).then((a) => a.join(' ')).catch(() => '')), 'd) chunk Excel bloqué : un message d\'erreur est affiché');
   }
   await ctx.close();
 }
@@ -321,8 +322,7 @@ const admin = async (viewport = { width: 1280, height: 800 }, opts = {}) => {
   const pg = await ctx.newPage(); mon(pg); const seen = watch(pg);
   await pg.goto(`http://localhost:${PORT}/poseur`); await pg.waitForSelector('.bt-total', { timeout: 25000 }); await pg.waitForTimeout(3000);
   check(heavyOf(seen).length === 0, `a) /poseur : aucune requête xlsx / jsPDF / autotable au chargement + 3 s de repos (vu : ${heavyOf(seen).join(',') || 'rien'} ; ${seen.length} scripts)`);
-  await pg.locator('button[aria-label="Mon compte et menu"]').click(); await pg.waitForTimeout(250);
-  await pg.getByRole('menuitem', { name: 'Historique' }).click();
+  await ouvrirVue(pg, 'Historique', { attente: 250 });
   await pg.waitForSelector('h2:has-text("Historique")', { timeout: 10000 }); await pg.waitForTimeout(900);
   const t0 = Date.now(); const pre = heavyOf(seen);
   console.log(`   (info) Historique ouvert : chunks PDF déjà demandés avant le clic « PDF » : ${pre.join(',') || 'aucun'}`);
@@ -338,7 +338,7 @@ const waitText = async (pg, re, ms = 6000) => { const t0 = Date.now(); while (Da
 const closeAll = async (pg) => { for (let i = 0; i < 3 && await pg.locator('[role=dialog]:visible').count(); i++) { await pg.keyboard.press('Escape'); await pg.waitForTimeout(450); } };
 /** La police Archivo est bien chargée (le @import retiré ne doit pas renvoyer l'écran en police système). */
 const archivoOk = (pg) => pg.evaluate(async () => { await document.fonts.ready; return [...document.fonts].some((f) => f.family.replace(/"/g, '') === 'Archivo' && f.status === 'loaded'); });
-const toasts = (pg) => pg.locator('[data-sonner-toast]').allInnerTexts().then((a) => a.join(' ')).catch(() => '');
+const toasts = (pg) => lireToasts(pg).then((a) => a.join(' ')).catch(() => '');
 {
   // e1/e2) salarié : Ma semaine → Mon mois → Historique après 3 s de repos, puis RÉSEAU COUPÉ : tout se rouvre
   const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, locale: 'fr-FR', timezoneId: 'Europe/Paris', isMobile: true, hasTouch: true });
@@ -346,7 +346,7 @@ const toasts = (pg) => pg.locator('[data-sonner-toast]').allInnerTexts().then((a
   const pg = await ctx.newPage(); mon(pg);
   const err0 = errors.length;
   await pg.goto(`http://localhost:${PORT}/poseur`); await pg.waitForSelector('.bt-total', { timeout: 25000 }); await pg.waitForTimeout(3000);
-  const goTab = async (label) => { await pg.locator('button[aria-label="Mon compte et menu"]').click(); await pg.waitForTimeout(250); await pg.getByRole('menuitem', { name: label }).click(); await pg.waitForTimeout(700); };
+  const goTab = async (label) => { await ouvrirVue(pg, label, { attente: 250, apres: 700 }); };
   const bodyText = () => pg.evaluate(() => document.body.innerText);
   for (const [label, titre] of [['Ma semaine', /semaine/i], ['Mon mois', /mois/i], ['Historique', /Historique/]]) {
     await goTab(label);
@@ -363,8 +363,7 @@ const toasts = (pg) => pg.locator('[data-sonner-toast]').allInnerTexts().then((a
   check(/mois/i.test(tm) && tm.length > 200 && !tm.includes("Cet écran n'a pas pu se charger"), 'e2) salarié hors ligne : « Mon mois » se rouvre');
   await goTab('Historique'); await goTab('Ma semaine');
   check((await bodyText()).length > 200, 'e2) salarié hors ligne : « Ma semaine » se rouvre');
-  await pg.locator('button[aria-label="Mon compte et menu"]').click(); await pg.waitForTimeout(250);
-  await pg.getByRole('menuitem', { name: 'Mes congés' }).click();
+  await ouvrirVue(pg, 'Mes congés', { attente: 250 });
   check(await waitText(pg, /Mes congés/), 'e2) salarié hors ligne : la fenêtre « Mes congés » s\'ouvre');
   check(!/Impossible de charger/.test(await toasts(pg)), 'e2) salarié hors ligne : aucun message d\'échec de chargement');
   await shot(pg, 'salarie-conges-hors-ligne.png');
@@ -422,7 +421,7 @@ const salarie = async (opts = {}, route) => {
   await pg.goto(`http://localhost:${PORT}/poseur`); await pg.waitForSelector('.bt-total', { timeout: 25000 });
   return { ctx, pg };
 };
-const goTab = async (pg, label) => { await pg.locator('button[aria-label="Mon compte et menu"]').click(); await pg.waitForTimeout(250); await pg.getByRole('menuitem', { name: label }).click(); await pg.waitForTimeout(700); }; // 700 ms : laisse le menu se refermer avant de le rouvrir
+const goTab = async (pg, label) => { await ouvrirVue(pg, label, { attente: 250, apres: 700 }); }; // 700 ms : laisse le menu se refermer avant de le rouvrir
 const zone = (pg) => pg.evaluate(() => { const z = document.querySelector('.bt-phscroll'); return z ? { text: z.innerText, gris: z.querySelectorAll('.animate-pulse').length, statut: [...z.querySelectorAll('[role=status]')].map((e) => e.innerText).join(' ') } : null; });
 const waitZone = async (pg, pred, ms = 8000) => { const t0 = Date.now(); let z = null; while (Date.now() - t0 < ms) { z = await zone(pg); if (z && pred(z)) return z; await sleep(150); } return z; };
 const ANNEE = String(new Date(FIXED_NOW).getFullYear());

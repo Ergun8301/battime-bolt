@@ -55,3 +55,24 @@ Conditions de la baseline : build de production de `61a1b87` copié à part (`ou
 Lecture : 29 scripts sont verts. Deux ne le sont pas **avant** tout changement, et resteront à 1 ❌ après : `guides-lot7` (un contrôle de géométrie qui change d'une passe à l'autre) et `documents-lot24` (E1, qui compare `git diff` à une branche d'intégration de l'environnement). `requetes-lot29` : « 18 requêtes au chargement (budget ≤ 18) », chaîne `month_closures → time_entry_edits` = 2.
 
 Les captures que ces scripts écrivent dans `docs/captures-*` ne sont pas versionnées par cette étape (certains scripts réécrivent des PNG déjà suivis : ils ont été remis tels quels).
+
+## Après l'étape 0 : helper de navigation commun
+
+`scripts/tests/navigation-salarie.mjs` (`ouvrirMenuCompte`, `ouvrirVue`, `ouvrirEditeur`, `lireToasts`, `BOUTON_MENU_COMPTE`) remplace les gestes écrits à la main dans les 12 scripts qui passent par le menu du compte : même sélecteurs, mêmes attentes (les pauses sont passées en options), aucun changement de comportement. Quand le menu changera de forme (nouvelle barre du bas, page « Plus »), il n'y aura qu'un fichier à adapter. Les 12 scripts, rejoués contre le **même** build d'avant :
+
+| Script | ✅ / ❌ avant | ✅ / ❌ avec le helper | Identique | Remarque |
+|---|---|---|---|---|
+| `chantier-termine-lot23` | 111 / 0 | 111 / 0 | oui | 1re passe 110 ✅ / 1 ❌ (A2, ≥ 44 px, géométrie sous charge) ; rejoué seul : 111 ✅ / 0 ❌. |
+| `enregistreur-lot14` | 300 / 0 | 300 / 0 | oui |  |
+| `fenetres-lot11` | 120 / 0 | 120 / 0 | oui |  |
+| `formations-lot6` | 115 / 0 | 115 / 0 | oui |  |
+| `missions-lot4` | 148 / 0 | 148 / 0 | oui |  |
+| `panier-lot3bis` | 76 / 0 | 76 / 0 | oui | 1re passe : délai à l'alerte d'export du bureau (le script d'origine échoue pareil à ce moment-là) ; rejoué seul : 76 ✅ / 0 ❌. |
+| `pause-lot3bis` | 79 / 0 | 79 / 0 | oui |  |
+| `reserves-lot11` | 68 / 0 | 68 / 0 | oui |  |
+| `site-rapide-lot5` | 94 / 0 | 94 / 0 | oui |  |
+| `taches-heures-lot9` | 75 / 0 | 75 / 0 | oui |  |
+| `traces-lot3` | 65 / 0 | 65 / 0 | oui |  |
+| `videos-lot13` | 110 / 0 | 110 / 0 | oui |  |
+
+**12 / 12 scripts identiques** à l'état d'avant.

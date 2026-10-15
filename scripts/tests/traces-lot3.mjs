@@ -37,6 +37,7 @@
 //      réunion « Toute l'équipe » devenue restreinte : Sam lit « Réunion retirée »
 //      (l'avant seulement), jamais le résumé ni les nouveaux détails
 import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path';
+import { ouvrirMenuCompte, ouvrirVue } from './navigation-salarie.mjs';
 let chromium;
 try { ({ chromium } = await import('playwright-core')); } catch {
   ({ chromium } = await import(`${process.env.PW_CORE || '/opt/node22/lib/node_modules/playwright/node_modules/playwright-core'}/index.mjs`));
@@ -290,8 +291,7 @@ const openMobileOffice = async (ctx) => {
 const openMobileMenu = async (mp) => { await mp.locator('button[aria-label="Menu"]').first().click(); await mp.waitForSelector('.bt-mm-sheet'); await mp.waitForTimeout(500); };
 const openHistory = async (p = wp) => {
   await p.goto(`http://localhost:${PORT}/poseur`); await p.waitForSelector('.bt-total', { timeout: 20000 }); await p.waitForTimeout(1000);
-  await p.getByRole('button', { name: 'Mon compte et menu' }).click(); await p.waitForSelector('[role=menu]'); await p.waitForTimeout(250);
-  await p.getByRole('menuitem', { name: 'Historique' }).click();
+  await ouvrirVue(p, 'Historique', { menu: true, attente: 250 });
   await p.waitForSelector('h2:has-text("Historique")', { timeout: 10000 });
   await p.waitForTimeout(900);
 };
@@ -307,7 +307,7 @@ await openHistory();
 check(await wp.locator('[data-testid=history-traces]').count() === 0, 'pas de lien « Interventions supprimées »');
 check(!(await txt(wp.locator('body'))).includes('Interventions supprimées'), 'aucun texte du lot 3 à l’écran');
 check(tracesGets(g0, SAM).length === 1 && tracesGets(g0, SAM).every((g) => g.missing), `une seule question à la base (table absente : PGRST205), sans suite (${tracesGets(g0, SAM).length})`);
-await wp.getByRole('button', { name: 'Mon compte et menu' }).click(); await wp.waitForTimeout(300); await wp.keyboard.press('Escape'); await wp.waitForTimeout(300);
+await ouvrirMenuCompte(wp, { attente: 300 }); await wp.keyboard.press('Escape'); await wp.waitForTimeout(300);
 check(tracesGets(g0, SAM).length === 1, 'rien de plus en restant sur l’Historique');
 check(writesSince(w0).length === 0, `aucune écriture (${JSON.stringify(writesSince(w0).map((w) => `${w.m} ${w.t}`))})`);
 await shot(wp, 'sans-migration-salarie-historique');
