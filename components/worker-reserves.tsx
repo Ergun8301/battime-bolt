@@ -85,7 +85,6 @@ export default function WorkerReserves({ items, onChanged }: { items: WorkerRese
       )}
       <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) setLiftingId(null); }}>
         <DialogContent className="bt-skin max-w-md max-h-[86vh] overflow-y-auto" data-testid="reserves-dialog">
-          <style dangerouslySetInnerHTML={WR_CSS_HTML} />
           <DialogHeader><DialogTitle>Réserves à lever</DialogTitle></DialogHeader>
           <div className="bt-wr-list">
             {items.map((r) => (
@@ -113,15 +112,3 @@ export default function WorkerReserves({ items, onChanged }: { items: WorkerRese
   );
 }
 
-const WR_CSS = `
-.bt-wr-list{display:flex;flex-direction:column;gap:8px;min-width:0}
-.bt-wr-item{background:#fff;border:1px solid rgba(21,18,15,.1);border-left:3px solid #C0461F;border-radius:12px;padding:11px 12px;min-width:0}
-.bt-wr-meta{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 6px;font-size:13px;font-weight:800;color:#15120F;min-width:0}
-.bt-wr-date{font-family:'JetBrains Mono',monospace;font-size:12px;flex:none}
-.bt-wr-site{min-width:0;overflow-wrap:anywhere}
-.bt-wr-obs{font-size:14px;font-weight:600;color:#3a352f;margin-top:4px;line-height:1.4;white-space:pre-wrap;overflow-wrap:anywhere}
-.bt-wr-noobs{font-size:13px;font-weight:600;color:#9a948a;font-style:italic;margin-top:4px}
-.bt-wr-go{display:inline-flex;align-items:center;gap:6px;margin-top:9px;border:1.5px solid #1F7A4D;background:#fff;color:#1F7A4D;border-radius:9px;padding:8px 13px;font-family:inherit;font-weight:800;font-size:13.5px;cursor:pointer;min-height:36px}
-`;
-// Objet FIXE (règle du lot 10).
-const WR_CSS_HTML = { __html: WR_CSS };

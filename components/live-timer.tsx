@@ -62,51 +62,6 @@ interface Props {
   positionActive?: boolean;
 }
 
-const LT_CSS = `
-.bt-lt{background:#15120F;color:#F2EDE3;border-radius:16px;padding:14px 15px;margin-bottom:10px}
-.bt-lt.on{background:#1C2A1F;border:1px solid rgba(70,194,129,.35)}
-.bt-lt.late{background:#2A1E16;border:1px solid rgba(240,145,90,.45)}
-.bt-lt-k{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:#a59c86;font-weight:700;display:flex;align-items:center;gap:6px}
-.bt-lt{padding:10px 12px}
-.bt-lt-one{display:flex;flex-direction:column;gap:8px}
-.bt-lt-txt{min-width:0}
-.bt-lt-line{display:flex;align-items:baseline;gap:8px;min-width:0;margin-top:3px}
-.bt-lt-site{font-size:14.5px;font-weight:900;letter-spacing:-.01em;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.bt-lt-since{flex:none;font-family:'JetBrains Mono',monospace;font-size:12px;color:#a59c86;font-weight:600}
-.bt-lt-one .bt-lt-btn{width:100%;padding:10px 12px;font-size:14.5px;white-space:nowrap}
-.bt-lt-one .bt-lt-k{font-family:inherit;font-size:13px;letter-spacing:0;text-transform:none;color:#cfe9d9;font-weight:800}
-.bt-lt-big{font-family:'JetBrains Mono',monospace;font-size:34px;font-weight:700;color:#2FD584;letter-spacing:-.02em;line-height:1.05;margin-top:6px}
-.bt-lt-big.late{color:#F0915A}
-.bt-lt-row{display:flex;gap:8px;margin-top:11px}
-.bt-lt-btn{flex:none;display:inline-flex;align-items:center;justify-content:center;gap:7px;border:none;border-radius:11px;padding:11px 18px;font-family:inherit;font-weight:900;font-size:15px;cursor:pointer;background:#FFC21A;color:#15120F;box-shadow:0 3px 0 #C99300}
-.bt-lt-btn.stop{background:#F2EDE3;color:#15120F;box-shadow:0 3px 0 #b5ae9f;flex:1;min-width:0}
-.bt-lt-btn:active{transform:translateY(2px);box-shadow:none}
-.bt-lt-btn:disabled{opacity:.6}
-.bt-lt-note{font-size:12px;color:#a59c86;font-weight:600;margin-top:9px;line-height:1.45}
-.bt-lt-note b{color:#FFC21A}
-/* Bouton de sortie : présent, lisible, mais jamais plus attirant que « J'ai
-   fini ». Annuler perd le temps écoulé — c'est le but, pas un accident. */
-.bt-lt-btn.ghost{background:transparent;color:#F2EDE3;box-shadow:none;border:1.5px solid rgba(242,237,227,.34);font-weight:800;flex:none}
-.bt-lt-btn.ghost:active{transform:translateY(1px)}
-.bt-lt-btn.danger{background:#F2EDE3;color:#8a2a1c;box-shadow:0 3px 0 #b5ae9f}
-.bt-lt-note.warn{color:#F0915A}
-.bt-lt-ask{margin-top:11px;background:rgba(242,237,227,.06);border-radius:12px;padding:10px}
-.bt-lt-asklab{font-size:13.5px;font-weight:800;margin-bottom:6px}
-/* L'endroit : dit clairement, sans dramatiser. Ni rouge (ce n'est pas une
-   alerte), ni invisible (une donnée personnelle collectée en silence est une
-   donnée collectée illégalement). */
-.bt-lt-geo{display:flex;align-items:flex-start;gap:7px;margin-top:9px;font-size:12px;color:#a59c86;font-weight:600;line-height:1.45}
-.bt-lt-geo svg{flex:none;margin-top:1px}
-/* Le lien est lisible sans attirer l'œil : celui qui veut savoir le trouve,
-   celui qui vient pointer ne le remarque même pas. */
-.bt-lt-geo-a{color:#F2EDE3;text-decoration:underline;text-underline-offset:2px;white-space:nowrap}
-`;
-
-// Toujours le MÊME objet (lot 10) : le chrono se redessine chaque seconde, et un
-// nouvel objet `dangerouslySetInnerHTML` faisait réécrire cette feuille de style
-// à chaque seconde. Seul le texte des secondes doit bouger.
-const LT_CSS_HTML = { __html: LT_CSS };
-
 const fmtElapsed = (ms: number) => {
   const total = Math.max(0, Math.floor(ms / 1000));
   const h = Math.floor(total / 3600);
@@ -205,7 +160,6 @@ export default function LiveTimer({ userId, session, today, worksites }: Props) 
 
   return (
     <div className={`bt-lt ${stale ? 'late' : 'on'}`} data-testid="live-timer">
-      <style dangerouslySetInnerHTML={LT_CSS_HTML} />
       {stale ? (
         <>
           <div className="bt-lt-k"><AlertTriangle className="h-3.5 w-3.5" /> Sortie oubliée</div>

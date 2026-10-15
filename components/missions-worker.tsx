@@ -16,30 +16,7 @@ import { Check, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { fetchMyMissions, setTaskDone, type DayTask, type Meeting } from '@/lib/missions';
 import { keep } from '@/lib/same';
-import { MEETING_TINT, meetingsFor, meetingTimeLabel, sortTasks, taskPartInfo, taskTimeLabel } from '@/supabase/functions/_shared/missions';
-
-const CSS = `
-.bt-meet{background:${MEETING_TINT.bg};border:1.5px solid ${MEETING_TINT.edge};border-radius:14px;padding:11px 14px;margin-bottom:9px}
-.bt-meet-k{font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:${MEETING_TINT.edge};font-weight:800;margin-bottom:3px}
-.bt-meet-t{font-size:15.5px;font-weight:800;letter-spacing:-.01em;color:#15120F;overflow-wrap:anywhere}
-.bt-meet-s{font-size:12.5px;font-weight:600;color:${MEETING_TINT.ink};margin-top:2px;overflow-wrap:anywhere}
-.bt-tasks{margin:14px 0 6px}
-.bt-tasks-h{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
-.bt-tasks-n{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:800;color:#6E6A63}
-.bt-task{display:flex;align-items:center;gap:9px;background:#fff;border:1px solid rgba(21,18,15,.12);border-radius:12px;padding:8px 8px 8px 12px;margin-bottom:7px}
-.bt-task.done{background:#F7F4EC}
-.bt-task.done .bt-task-t{color:#6E6A63;text-decoration:line-through}
-.bt-task-t{flex:1;min-width:0;font-size:14px;font-weight:700;color:#15120F;overflow-wrap:anywhere;line-height:1.25}
-.bt-task-p{flex:none;font-size:10.5px;font-weight:800;padding:2px 6px;border-radius:6px;border:1px solid;color:#15120F}
-.bt-task-p.tm{font-family:'JetBrains Mono',monospace;font-size:11px;background:#fff;border-color:rgba(21,18,15,.25)}
-.bt-task-ok{flex:none;display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 11px;border-radius:10px;border:1.5px solid rgba(21,18,15,.25);background:#fff;font-family:inherit;font-size:13px;font-weight:800;color:#15120F;cursor:pointer}
-.bt-task-ok .bx{width:16px;height:16px;border-radius:4px;border:1.5px solid #15120F;display:inline-flex;align-items:center;justify-content:center;background:#fff}
-.bt-task-ok[aria-pressed="true"]{border-color:#15120F}
-.bt-task-ok[aria-pressed="true"] .bx{background:#15120F;color:#FFC21A}
-.bt-task-ok:disabled{opacity:.55;cursor:default}
-.bt-tasks-off{font-size:12px;font-weight:600;color:#6E6A63;margin:0 0 7px}
-`;
-const CSS_HTML = { __html: CSS };
+import { meetingsFor, meetingTimeLabel, sortTasks, taskPartInfo, taskTimeLabel } from '@/supabase/functions/_shared/missions';
 
 interface State { on: boolean; tasks: DayTask[]; meetings: Meeting[]; participants: Record<string, string[]> }
 const EMPTY: State = { on: false, tasks: [], meetings: [], participants: {} };
@@ -102,7 +79,6 @@ export function MyMeetings({ meetings }: { meetings: Meeting[] }) {
   if (!meetings.length) return null;
   return (
     <div data-testid="my-meetings">
-      <style dangerouslySetInnerHTML={CSS_HTML} />
       {meetings.map((m) => (
         <div key={m.id} className="bt-meet" data-testid="my-meeting">
           <div className="bt-meet-k"><span aria-hidden="true">👥 </span>Réunion · {meetingTimeLabel(m.start_time, m.end_time)}</div>
@@ -122,7 +98,6 @@ export function MyTasks({ tasks, online, busyId, onToggle }: { tasks: DayTask[];
   const done = tasks.filter((t) => t.done_at).length;
   return (
     <div className="bt-tasks" data-testid="my-tasks">
-      <style dangerouslySetInnerHTML={CSS_HTML} />
       <div className="bt-tasks-h">
         <div className="bt-sec">Tâches du jour</div>
         <span className="bt-tasks-n">{done}/{tasks.length}</span>

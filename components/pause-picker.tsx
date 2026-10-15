@@ -6,41 +6,12 @@
 // (h:mm). Lecture, affichage et règle « plus courte que la ligne » :
 // supabase/functions/_shared/pause.ts.
 //
-// CSS autonome, en constante {__html} : la question à l'envoi est rendue dans
-// un portail Radix, hors de la feuille de style de « Ma journée ».
+// CSS autonome (pause-picker.css, importé plus bas) : la question à l'envoi est
+// rendue dans un portail Radix, hors de la feuille de style de « Ma journée ».
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { formatPause, formatPauseInput, parsePauseInput, pauseFits, readPauseInput, PAUSE_QUICK, PAUSE_TOO_LONG } from '@/supabase/functions/_shared/pause';
-
-const PP_CSS = `
-.bt-pp-label{font-size:13px;font-weight:800;color:#15120F;margin:0 2px 2px}
-.bt-pp-hint{font-size:12px;font-weight:600;color:#8a8378;margin:0 2px 8px;line-height:1.35}
-.bt-pp-s{display:inline-block}
-.bt-pp-b,.bt-pp-ok{font-family:inherit;cursor:pointer;border:1.5px solid rgba(21,18,15,.16);background:#fff;color:#6E6A63;font-weight:800;min-width:0;white-space:nowrap}
-.bt-pp-b.on{background:#15120F;border-color:#15120F;color:#FFC21A}
-.bt-pp-b:disabled,.bt-pp-ok:disabled{opacity:.35;cursor:default}
-.bt-pp-other{display:flex;align-items:center;gap:8px;margin-top:8px}
-.bt-pp-in{font-family:'JetBrains Mono',ui-monospace,monospace;font-weight:700;color:#15120F;background:#fff;border:1.5px solid rgba(21,18,15,.25);outline:none;min-width:0}
-.bt-pp-in:focus{border-color:#15120F}
-.bt-pp-in[aria-invalid=true]{border-color:#C0461F}
-.bt-pp-preview{font-size:13px;font-weight:800;color:#15120F;white-space:nowrap}
-.bt-pp-ok{background:#15120F;border-color:#15120F;color:#FFC21A;margin-left:auto}
-.bt-pp-err{margin-top:6px;font-size:12px;font-weight:700;color:#9a3b14}
-.bt-pp--phone .bt-pp-chips{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
-.bt-pp--phone .bt-pp-b{border-radius:12px;padding:10px 4px;font-size:13px}
-.bt-pp--phone .bt-pp-in{width:96px;font-size:16px;padding:8px 10px;border-radius:10px}
-.bt-pp--phone .bt-pp-ok{border-radius:10px;padding:8px 16px;font-size:14px}
-.bt-pp--compact .bt-pp-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;margin-bottom:4px}
-.bt-pp--compact .bt-pp-label{font-size:12px;font-weight:700;margin:0}
-.bt-pp--compact .bt-pp-hint{font-size:11px;margin:0}
-.bt-pp--compact .bt-pp-chips{display:flex;flex-wrap:wrap;gap:4px}
-.bt-pp--compact .bt-pp-b{height:28px;padding:0 8px;border-radius:6px;font-size:12px;border-width:1px}
-.bt-pp--compact .bt-pp-other{margin-top:6px}
-.bt-pp--compact .bt-pp-in{width:76px;height:28px;font-size:13px;padding:0 8px;border-radius:6px;border-width:1px}
-.bt-pp--compact .bt-pp-preview{font-size:12px}
-.bt-pp--compact .bt-pp-ok{height:28px;padding:0 10px;border-radius:6px;font-size:12px}
-`;
-// Objet FIXE : un nouvel objet à chaque rendu ferait réécrire la feuille de style par React.
-const PP_STYLE = { __html: PP_CSS };
+// Sa feuille de style est components/pause-picker.css, importée au niveau des ROUTES qui l'affichent (app/poseur/layout.tsx, app/admin/layout.tsx) :
+// un import ici ferait une feuille chargée à part avec chaque morceau différé (et alourdirait le chargeur de TOUTES les pages).
 
 const isQuick = (m: number | null | undefined) => m != null && (PAUSE_QUICK as readonly number[]).includes(m);
 /** L'indice, phrase par phrase : « Additionne-les » ne se coupe plus au trait d'union, ni « ? » de son mot. */
@@ -157,7 +128,6 @@ export default function PausePicker({
 
   return (
     <div className={`bt-pp bt-pp--${variant}`} role="group" aria-label={label ?? 'Total des pauses'} data-testid={testId}>
-      <style dangerouslySetInnerHTML={PP_STYLE} />
       {head}
       <div className="bt-pp-chips">
         {PAUSE_QUICK.map((m) => {

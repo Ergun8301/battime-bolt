@@ -255,3 +255,14 @@ Deno.test('réunion : jamais prise pour un chantier (barres et pastilles mesuré
   ok(nearBar > 8 && nearBar < 12, `bordure / barre la plus proche : ΔE ${nearBar.toFixed(1)} (connu, accepté)`);
   ok(nearAvatar > 4 && nearAvatar < 6, `fond / pastille d’initiales la plus proche : ΔE ${nearAvatar.toFixed(1)} (connu, accepté : pas au même endroit)`);
 });
+
+Deno.test('réunion : le CSS de la carte (components/missions-worker.css) reprend exactement MEETING_TINT', async () => {
+  // Le CSS n'est plus écrit dans le TSX avec `${MEETING_TINT.…}` : les trois couleurs y sont recopiées. Cette vérification
+  // empêche qu'elles dérivent de la source (day-part.ts pour l'encre).
+  const css = await Deno.readTextFile(new URL('../../../components/missions-worker.css', import.meta.url));
+  const rule = (sel: string) => (css.match(new RegExp(`^${sel.replace(/\./g, '\\.')}\\{([^}]*)\\}`, 'm')) ?? [])[1] ?? '';
+  ok(rule('.bt-meet').includes(`background:${MEETING_TINT.bg};`) && rule('.bt-meet').includes(`border:1.5px solid ${MEETING_TINT.edge};`), 'carte : fond et bordure');
+  ok(rule('.bt-meet-k').includes(`color:${MEETING_TINT.edge};`), 'étiquette : couleur de la bordure');
+  ok(rule('.bt-meet-s').includes(`color:${MEETING_TINT.ink};`), 'sous-titre : encre');
+  ok(!css.includes('${'), 'aucune interpolation restée dans le CSS');
+});

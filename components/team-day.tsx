@@ -70,42 +70,6 @@ async function sendForWorker(ids: string[]): Promise<'ok' | 'missing'> {
 /** Lot 14 : 7 derniers jours, aujourd'hui compris (même fenêtre qu'en base). */
 export const LEAD_DAYS = 7;
 
-const TD_CSS = `
-.bt-td{background:#fff;border:1px solid rgba(21,18,15,.12);border-radius:16px;padding:13px 14px;margin-bottom:10px}
-.bt-td-h{display:flex;align-items:center;gap:7px;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:#6E6A63;font-weight:700}
-.bt-td-sub{font-size:12px;color:#9a948a;font-weight:600;margin-top:3px;line-height:1.45}
-.bt-td-days{display:flex;gap:6px;overflow-x:auto;margin:10px -2px 0;padding:2px;scrollbar-width:none}
-.bt-td-days::-webkit-scrollbar{display:none}
-.bt-td-day{flex:none;border:1.5px solid rgba(21,18,15,.18);background:#fff;border-radius:10px;padding:6px 9px;font-family:inherit;font-weight:800;font-size:12.5px;color:#15120F;cursor:pointer;white-space:nowrap;text-align:center;line-height:1.2}
-.bt-td-day small{display:block;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;color:#9a948a}
-.bt-td-day[aria-pressed=true]{background:#15120F;border-color:#15120F;color:#FFC21A}
-.bt-td-day[aria-pressed=true] small{color:#cfc7b6}
-.bt-td-pick{margin-top:10px}
-.bt-td-lab{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#6E6A63;font-weight:700;margin-bottom:3px}
-.bt-td-sel{width:100%;height:42px;border:1.5px solid rgba(21,18,15,.25);border-radius:10px;background:#fff;padding:0 10px;font-family:inherit;font-size:15px;font-weight:700;color:#15120F}
-.bt-td-row{display:flex;align-items:center;gap:9px;padding:9px 0;border-bottom:1px solid rgba(21,18,15,.07)}
-.bt-td-row:last-child{border-bottom:none}
-.bt-td-name{flex:1;min-width:0;font-weight:800;font-size:14px;color:#15120F;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.bt-td-h2{font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:700;color:#3a352f;flex:none}
-.bt-td-tag{font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:800;text-transform:uppercase;border-radius:6px;padding:2px 6px;flex:none}
-.bt-td-tag.envoye{background:#EAF6EF;color:#1F7A4D}
-.bt-td-tag.aenvoyer{background:#FFF6E0;color:#8a6d05}
-.bt-td-tag.verrou{background:#EFEDE8;color:#5c574f}
-.bt-td-edit{flex:none;border:1.5px solid rgba(21,18,15,.2);background:#fff;border-radius:8px;padding:5px 9px;font-family:inherit;font-weight:800;font-size:12px;color:#15120F;cursor:pointer}
-.bt-td-edit:disabled{opacity:.45}
-.bt-td-edit.send{background:#FFC21A;border-color:#FFC21A}
-.bt-td-add{margin-top:8px;width:100%;border:1.5px dashed rgba(21,18,15,.3);background:#FBF8F2;border-radius:10px;padding:9px;font-family:inherit;font-weight:800;font-size:13px;color:#15120F;cursor:pointer}
-.bt-td-empty{font-size:13px;color:#9a948a;font-weight:600;padding:10px 0 2px;line-height:1.5}
-.bt-td-form{margin-top:10px;padding-top:10px;border-top:1px solid rgba(21,18,15,.09)}
-.bt-td-formh{display:flex;align-items:center;justify-content:space-between;font-weight:800;font-size:13.5px;margin-bottom:8px}
-.bt-td-close{border:none;background:none;color:#9a948a;cursor:pointer;padding:2px}
-.bt-td-two{display:flex;gap:10px;margin-top:8px}
-.bt-td-two > div{flex:1;min-width:0}
-.bt-td-save{width:100%;margin-top:10px;border:none;border-radius:11px;padding:11px;background:#FFC21A;color:#15120F;font-family:inherit;font-weight:900;font-size:15px;cursor:pointer;box-shadow:0 3px 0 #C99300}
-.bt-td-save:disabled{opacity:.6}
-.bt-td-note{font-size:11.5px;color:#9a948a;font-weight:600;margin-top:8px;line-height:1.4}
-`;
-
 const fmtHM = (min: number) => {
   const h = Math.floor(min / 60), m = Math.round(min % 60);
   return m ? `${h} h ${String(m).padStart(2, '0')}` : `${h} h`;
@@ -263,7 +227,6 @@ export default function TeamDay({ me, today, worksites, onChanged }: Props) {
 
   return (
     <div className="bt-td" data-testid="team-day">
-      <style dangerouslySetInnerHTML={TD_CSS_HTML} />
       <div className="bt-td-h"><Users className="h-3.5 w-3.5" /> Mon équipe</div>
       <div className="bt-td-sub">Tu saisis ou corriges les heures de l&apos;équipe (7 derniers jours). <strong>« OK » les envoie au bureau</strong>, marquées « par le chef d&apos;équipe ».</div>
 
@@ -352,6 +315,3 @@ export default function TeamDay({ me, today, worksites, onChanged }: Props) {
   );
 }
 
-// Objet FIXE : un `{ __html }` neuf à chaque rendu fait réécrire la feuille
-// de style par React (re-calcul de la page, polices rechargées → flash).
-const TD_CSS_HTML = { __html: TD_CSS };
