@@ -54,7 +54,7 @@ Les fichiers `*.snapshot.json`, `dettes.json` et `outils-listes-*.ts` sont gén�
 | `lib/openers.ts` (registre de la page, `openLink`, file de 10 s, `isNarrow`, validation) | chunk de l'assistant (chargé à la demande) et `/apercu/assistant*` | ≤ 1,6 |
 | `registre/ouvreurs-leger-bureau.ts` | chargé à la demande depuis `/admin` | ≤ 1,0 |
 | `registre/ouvreurs-leger-salarie.ts` | chargé à la demande depuis `/poseur` | ≤ 0,3 |
-| `lib/openers-bureau.ts` (les 26 implémentations) | chargé à la demande depuis `/admin` | ≤ 3,0 |
+| `lib/openers-bureau.ts` (les 25 implémentations) | chargé à la demande depuis `/admin` | ≤ 3,0 |
 | `lib/openers-salarie.ts` (les 2 implémentations) | chargé à la demande depuis `/poseur` | ≤ 0,8 |
 | ajouts à `components/admin-planning.tsx` (l'objet de poignées + l'effet) | `/admin`, premier chargement | ≤ 0,7 |
 | ajout à `app/admin/page.tsx` (abonnement) | `/admin`, premier chargement | ≤ 0,15 |

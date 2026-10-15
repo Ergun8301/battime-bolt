@@ -62,7 +62,7 @@ Deno.test('Non-régression : les 33 phrases salarié d’origine sont « courtes
 });
 
 Deno.test('Ancien navigateur (multiOk faux) : TOUJOURS le chemin d’avant, même pour la phrase d’Ergun (lecteur local d’abord, ancienne consigne, aucun champ de plus)', async () => {
-  for (const c of CASES.filter((x) => /^(sl|st)\d\d$/.test(x.id))) {
+  for (const c of CASES.filter((x) => !x.etape3 && /^(sl|st)\d\d$/.test(x.id))) {
     if (workerProfile(c.phrase, false, false) !== 'court') throw new Error(`${c.id} : court sans multiOk`);
     const live = (c.live === 'vide' ? LIVE_VIDE : WORKER_LIVE) as WorkerLive;
     const s0 = snap(); s0.demande = c.phrase;
@@ -92,7 +92,7 @@ Deno.test('Un fichier joint force le profil court (outils restreints à ranger_p
 });
 
 Deno.test('Profil long : JAMAIS le lecteur local, le palier de quota reste « rapide », requête profil:long + maxCalls:4, une demande = un appel au modèle', async () => {
-  for (const c of CASES.filter((x) => /^(sl|st)\d\d$/.test(x.id))) {
+  for (const c of CASES.filter((x) => !x.etape3 && /^(sl|st)\d\d$/.test(x.id))) {
     const rec = recorder(repondre);
     const live = (c.live === 'vide' ? LIVE_VIDE : WORKER_LIVE) as WorkerLive;
     const t = await runWorkerTurn(entree({ text: c.phrase, live, call: rec.call }));

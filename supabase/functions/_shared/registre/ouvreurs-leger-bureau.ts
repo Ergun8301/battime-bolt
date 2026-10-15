@@ -20,7 +20,6 @@ export const OUVREURS_LEGER_BUREAU = [
   { id: 'abonnement.choisir', roles: ['admin'], niveau: 1, params: {} },
   { id: 'relances.liste', roles: ['admin'], niveau: 1, params: {} },
   { id: 'planning.selection', roles: ['admin'], niveau: 1, params: {} },
-  { id: 'borne.gestion', roles: ['admin'], niveau: 1, dispo: 'borne', params: {} },
   { id: 'clients.liste', roles: ['admin'], niveau: 1, params: { recherche: { kind: 'texte' } } },
   { id: 'planning.semaine', roles: ['admin'], niveau: 1, params: { lundi: { kind: 'lundi' }, jour: { kind: 'date' } } },
   { id: 'salarie.fiche', roles: ['admin'], niveau: 1, formulaire: true, params: { salarie: { kind: 'salarie' }, mode: { kind: 'enum', valeurs: ['hours', 'manage'] } } },

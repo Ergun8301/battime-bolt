@@ -324,8 +324,10 @@ export default function AssistantPanel({
     if (msg) setMsgs((m) => [...m, { who: 'bot', text: msg, notice: true }]);
     else if (isNarrow()) setOpen(false);
   };
-  const ouvrirRef = useRef(ouvrirLien);
-  ouvrirRef.current = ouvrirLien;
+  // Ouverture SANS toucher : un écran de niveau 3 est refusé par openLink ; si une fenêtre à saisie est ouverte, on le dit ; le reste (écran inconnu, fonction non activée) se tait,
+  // le bouton de la réponse est là.
+  const autoRef = useRef((action: string) => { void action; });
+  autoRef.current = (action: string) => { if (openLink(action, true) === 'occupe') setMsgs((m) => [...m, { who: 'bot', text: messageOuverture('occupe') ?? '', notice: true }]); };
 
   const ask = useCallback(async (q: string) => {
     const question = q.trim() || (file ? 'Regarde ce fichier.' : '');
@@ -365,7 +367,7 @@ export default function AssistantPanel({
     if (r.notice) mine.lost = true;
     setMsgs((m) => [...m, { who: 'bot', text: r.answer, links: r.links, notice: r.notice, extra }]);
     // Étape 3 : le SERVEUR a dit « ouvrir sans toucher » (verbe d'ouverture, niveau 1) : sur 1024 px et plus, la fenêtre s'ouvre seule et le panneau reste visible ; sous 1024 px, un bouton.
-    if (r.auto && !isNarrow() && r.links && r.links[0] && r.links[0].action.startsWith('ouvrir:')) ouvrirRef.current(r.links[0].action);
+    if (r.auto && !isNarrow() && r.links && r.links[0] && r.links[0].action.startsWith('ouvrir:')) autoRef.current(r.links[0].action);
     if (typeof r.remaining === 'number') setRemaining(r.remaining);
     // Un tour COMPLET (hors erreur / quota) s'enregistre, avec le texte que l'utilisateur a tapé — pas la demande en attente recollée à sa réponse.
     if (chats && !r.notice) enregistrer(convo, chats, gen, question, r.answer, r.links ?? []);

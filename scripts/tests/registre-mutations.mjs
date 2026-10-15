@@ -191,7 +191,7 @@ const MUTATIONS = [
   // ── 3b-1 : les ouvreurs ──
   { id: 'M67', attendu: 'T1 ouvreurs', titre: "Un ouvreur cite un composant que rien ne charge (reserves-report → reserves-report-x)", modifs: [remplace(`${REG}/ouvreurs.ts`, "composants: ['reserves-report']", "composants: ['reserves-report-x']")] },
   { id: 'M68', attendu: 'T1 ouvreurs', titre: "Une action de lien d'avant perd son ouvreur (l'alias « clients » est retiré)", modifs: [remplace(`${REG}/ouvreurs.ts`, "alias: ['clients']", 'alias: []')] },
-  { id: 'M69', attendu: 'T6', titre: "Un ouvreur livré n'a plus de clé littérale dans registerOpeners (borne.gestion renommé)", modifs: [remplace('lib/openers-bureau.ts', "'borne.gestion': () =>", "'borne.gestion_x': () =>")] },
+  { id: 'M69', attendu: 'T6', titre: "Un ouvreur livré n'a plus de clé littérale dans registerOpeners (stats.equipe renommé)", modifs: [remplace('lib/openers-bureau.ts', "'stats.equipe': () =>", "'stats.equipe_x': () =>")] },
   { id: 'M70', attendu: 'T8 hygiène :', titre: 'components/ importe registre/ouvreurs.ts (le registre lourd des ouvreurs)', modifs: [prefixe('components/action-done.tsx', "import { OUVREURS } from '@/supabase/functions/_shared/registre/ouvreurs';\n")] },
   { id: 'M71', attendu: 'T8 hygiène :', titre: "/poseur importe l'ouvreur léger du bureau", modifs: [prefixe('app/poseur/page.tsx', "import { OUVREURS_LEGER_BUREAU } from '@/supabase/functions/_shared/registre/ouvreurs-leger-bureau';\n")] },
   { id: 'M72', attendu: 'T8 hygiène (build)', titre: "Build : le chunk de /poseur contient un id d'ouvreur du bureau", modifs: buildFactice('x="planning.semaine"', 'x=1') },

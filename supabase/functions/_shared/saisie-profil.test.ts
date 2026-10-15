@@ -36,7 +36,7 @@ Deno.test('(a) Les 80 phrases de mesure existantes restent « courtes » (aucune
 });
 
 Deno.test('(b) Les phrases libres (français, turc) sont « longues » : les cas sl…/st…, les 11 phrases du diagnostic, le turc sans accents', () => {
-  const nouveaux = CASES.filter((c) => /^(sl|st)\d\d$/.test(c.id));
+  const nouveaux = CASES.filter((c) => !c.etape3 && /^(sl|st)\d\d$/.test(c.id));
   if (nouveaux.length < 27) throw new Error(`${nouveaux.length} cas sl…/st… (27 attendus)`);
   const pas = nouveaux.filter((c) => !long(c.phrase)).map((c) => c.id);
   if (pas.length) throw new Error(`pas « longues » : ${pas.join(', ')}`);

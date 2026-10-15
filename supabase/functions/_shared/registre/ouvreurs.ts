@@ -21,7 +21,7 @@ const D = (aide = 'aaaa-mm-jj, ou un jour dit (« lundi », « demain »)', requ
 const T = (aide: string): ParamOuvreur => ({ kind: 'texte', aide });
 const E = (valeurs: readonly string[], aide: string): ParamOuvreur => ({ kind: 'enum', valeurs, aide });
 
-/** Les 26 ouvreurs du bureau livrés en 3b-1. Ordre = ordre de l'enum de l'outil `ouvrir_fenetre` du bureau. */
+/** Les 25 ouvreurs du bureau livrés en 3b-1. Ordre = ordre de l'enum de l'outil `ouvrir_fenetre` du bureau. */
 export const OUVREURS_BUREAU: Ouvreur[] = [
   // ── Vague 1 : sans paramètre (ou un filtre de recherche, déjà un état) ──
   {
@@ -83,11 +83,6 @@ export const OUVREURS_BUREAU: Ouvreur[] = [
     id: 'planning.selection', cote: 'bureau', roles: ['admin'], titre: 'Sélectionner des interventions', decrit: 'Le mode « Sélectionner » du planning (cocher des interventions ; la suppression reste un geste de la personne).',
     params: {}, niveau: 1,
     etats: ['selectMode'], ancres: ['bureau-nav.selection'],
-  },
-  {
-    id: 'borne.gestion', cote: 'bureau', roles: ['admin'], titre: 'Tablette de pointage', decrit: 'La gestion de la borne : code pour relier la tablette, état. Le code s’affiche à la personne, jamais à l’assistant.',
-    params: {}, niveau: 1, dispo: 'borne',
-    composants: ['kiosk-admin'], etats: ['kioskOpen', 'kioskOn'], ancres: ['bureau-nav.borne'],
   },
   {
     id: 'clients.liste', cote: 'bureau', roles: ['admin'], titre: 'Clients', decrit: 'La liste des clients et chantiers (nouveau client, import, fiche), avec une recherche par nom.',
@@ -193,6 +188,7 @@ export const trouverOuvreur = (id: unknown, cote: Cote): Ouvreur | null => (type
  * salarié (components/poseur-day.tsx), que le redesign du bureau (tâche n°70) remanie ; ne pas les démarrer pendant cette intégration (§0.2).
  */
 export const OUVREURS_REPORTES: readonly { id: string; cote: Cote; vague: 1 | 3 | 4 | 5; raison: string }[] = [
+  { id: 'borne.gestion', cote: 'bureau', vague: 1, raison: 'Ouvrir la fenêtre « Borne de pointage » (kiosk-admin.tsx) DEMANDE un code d’appairage au serveur dès l’ouverture (POST kiosk create_pairing, newCode) : ce n’est plus une ouverture pure. Il faut d’abord un code à la demande dans cette fenêtre (état interne, prop `init`), donc vague 3 ; en attendant la fiche « borne » garde son lien d’avant.' },
   { id: 'salarie.fiche#periode', cote: 'bureau', vague: 3, raison: 'La période de la feuille d’heures est un état interne de WorkerDetail (worker-detail.tsx) : prop `init`.' },
   { id: 'couts.chantiers', cote: 'bureau', vague: 3, raison: 'Période et chantier déplié sont des états internes de CostReport : prop `init`.' },
   { id: 'reglages.entreprise', cote: 'bureau', vague: 3, raison: 'La rubrique est un accordéon interne de CompanySettings : prop `init`.' },

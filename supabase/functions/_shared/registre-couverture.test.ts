@@ -803,6 +803,9 @@ export function outilsAttendus(src: string, id: string, cote: string): string[] 
   if (at < 0) return [];
   const next = src.indexOf("{ id: '", at + 5);
   let chunk = src.slice(at, next < 0 ? undefined : next);
+  // 3b-1 : ouvre('x', …) → l'outil ouvrir_fenetre (turc : enTurc(o) ?? ouvre(…)(o)) ; sansOuvrir / sansFiche (ni écran ouvert, ni refus) → repondre. Lus AVANT les contrôles nommés.
+  if (/check: (\(o\) => enTurc\(o\) \?\? )?ouvre\(/.test(chunk)) return ['ouvrir_fenetre'];
+  if (/check: sans(Ouvrir|Fiche)\b/.test(chunk)) return ['repondre'];
   const nomme = /check: (\w+) \}/.exec(chunk);
   if (nomme) { const d = src.indexOf(`const ${nomme[1]}`); if (d >= 0) chunk = src.slice(d, src.indexOf('\n};', d) + 3); }
   const fiche = /fiche\(\[([^\]]*)\]/.exec(chunk);
@@ -1230,7 +1233,8 @@ Deno.test('T7 évaluation : chaque outil livré a un cas d’évaluation, les pa
   const mesures = await lireJson<{ mesures?: { cas?: Record<string, unknown> | string[] }[]; reference?: Record<string, unknown> }>(`${RACINE_REGISTRE}mesures.json`);
   const dernier = mesures?.mesures?.[mesures.mesures.length - 1]?.cas;
   const vus = Array.isArray(dernier) ? dernier : dernier ? Object.keys(dernier) : [];
-  const servis = REGISTRE.outils.filter((o) => livraisonAtteinte(o.livraison));
+  // 3b-1 : un outil derrière un interrupteur (`ouvrir_fenetre`) est livré, allumable : il lui faut ses cas, même si le serveur ne le sert qu'allumé.
+  const servis = REGISTRE.outils.filter((o) => livraisonAtteinte(o.livraison) || !!o.interrupteur);
   const { problemes, avertissements } = verifierT7(servis, CASES.map((c) => ({ id: c.id, cote: c.cote as Cote })), src, {
     cas: mesures ? vus : null, exigerMesures: env('REGISTRE_A_LA_LIVRAISON') === '1',
   });

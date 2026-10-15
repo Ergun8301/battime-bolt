@@ -3243,7 +3243,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
   const garde3 = useRef(0);                            // niveau 3 : les clics qui exportent ou clôturent sont ignorés 700 ms après l'ouverture
   const ouvH = useRef<PoigneesBureau | null>(null);
   ouvH.current = {
-    pret: !loading, workers, worksites, tracesOn, versionsOn, trainingsOn, kioskOn,
+    pret: !loading, workers, worksites, tracesOn, versionsOn, trainingsOn,
     occupe: () => workerOpen || clientOpen || !!ficheWorker || !!clientFiche || !!pendingAbsence || addOpen || !!docsWorksite || settingsOpen || !!editing || importOpen
       || importWorkersOpen || !!attributeTarget || !!extraTarget || !!termineTarget || emailOpen || !!copyFor,
     fermer: () => {
@@ -3254,7 +3254,7 @@ export default function AdminPlanning({ trial, onSubscribe, onWorkerCount }: Adm
     pre: setPre, garde: () => { garde3.current = Date.now() + 700; },
     salaries: { query: setSalariesQuery, open: setSalariesOpen, importer: setImportWorkersOpen },
     clients: { query: setClientsQuery, menu: setChantierMenuOpen, liste: setMobileChantiersOpen, importer: setImportOpen },
-    fenetres: { reserves: setReservesOpen, conges: setLeaveOpen, stats: setStatsOpen, traces: setTracesOpen, versions: setVersionsOpen, formations: setTrainingsOpen, borne: setKioskOpen },
+    fenetres: { reserves: setReservesOpen, conges: setLeaveOpen, stats: setStatsOpen, traces: setTracesOpen, versions: setVersionsOpen, formations: setTrainingsOpen },
     relances: { panneau: setStatPanel, liste: setRelanceOpen },
     selection: enterSelect,
     semaine: { aller: (iso) => changeWeek(weekStartOf(new Date(`${iso}T12:00:00`))), jour: setMobileDayIdx },

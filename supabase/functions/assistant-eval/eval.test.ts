@@ -12,27 +12,30 @@ import { blocHistorique, nettoyerHistorique, sansDemandeRecollee } from '../_sha
 import { detecteTurc } from '../_shared/saisie-profil.ts';
 import { workerProfile } from '../_shared/worker-turn.ts';
 
+// 3b-1 : les cas « Ouvrir » (etape3) ne se jouent qu'avec l'interrupteur allumé ; les 165 cas d'avant sont comptés à part, INCHANGÉS (leur nombre, leurs catégories, leur ordre).
+const ANCIENS = CASES.filter((c) => !c.etape3);
+
 Deno.test('Jeu d’évaluation : les 80 phrases d’origine (dans l’ordre) + les phrases longues du salarié + les suites de conversation + les 34 cas de la livraison 3a, bureau ET salarié', () => {
   if (new Set(CASES.map((c) => c.id)).size !== CASES.length) throw new Error('identifiants en double');
-  if (!CASES.some((c) => c.cote === 'bureau') || !CASES.some((c) => c.cote === 'salarie')) throw new Error('un côté manque');
+  if (!ANCIENS.some((c) => c.cote === 'bureau') || !ANCIENS.some((c) => c.cote === 'salarie')) throw new Error('un côté manque');
   const anciens = [...Array.from({ length: 47 }, (_, i) => `b${String(i + 1).padStart(2, '0')}`), ...Array.from({ length: 33 }, (_, i) => `s${String(i + 1).padStart(2, '0')}`)];
-  if (JSON.stringify(CASES.slice(0, 80).map((c) => c.id)) !== JSON.stringify(anciens)) throw new Error('les 80 phrases b01–b47, s01–s33 doivent rester en tête, dans l’ordre');
-  const longs = CASES.filter((c) => /^(sl|st)\d\d$/.test(c.id));
-  const suites = CASES.filter((c) => /^sc\d\d$/.test(c.id));
+  if (JSON.stringify(ANCIENS.slice(0, 80).map((c) => c.id)) !== JSON.stringify(anciens)) throw new Error('les 80 phrases b01–b47, s01–s33 doivent rester en tête, dans l’ordre');
+  const longs = ANCIENS.filter((c) => /^(sl|st)\d\d$/.test(c.id));
+  const suites = ANCIENS.filter((c) => /^sc\d\d$/.test(c.id));
   // Livraison 3a : 30 cas en fin de jeu, dans cet ordre : be01–be19 (bureau), se01–se06 (salarié), ov01–ov05 (ouvrir un écran). Leurs ids ne sont JAMAIS b01–s33 :
   // saisie-profil.test.ts et worker-turn.test.ts reconnaissent « les phrases d'origine » à cet id et exigent qu'elles restent 80 (33 côté salarié). Les quatre
   // phrases longues turques de 3a (st15–st18) comptent parmi `longs` : tool-domains.test.ts veut un id st pour tout profil long.
-  const ajouts3a = CASES.filter((c) => /^(be|se|ov)\d\d$/.test(c.id));
+  const ajouts3a = ANCIENS.filter((c) => /^(be|se|ov)\d\d$/.test(c.id));
   const num = (p: string, n: number) => Array.from({ length: n }, (_, i) => `${p}${String(i + 1).padStart(2, '0')}`);
   if (ajouts3a.map((c) => c.id).join() !== [...num('be', 19), ...num('se', 6), ...num('ov', 5)].join()) throw new Error(`livraison 3a : be01–be19, se01–se06 puis ov01–ov05 attendus, obtenu ${ajouts3a.map((c) => c.id).join()}`);
   // Livraison 3b-0 : 5 cas gu01–gu05 en toute fin de jeu (les trois fiches du GUIDE corrigées).
-  const ajouts3b0 = CASES.filter((c) => /^gu\d\d$/.test(c.id));
-  if (ajouts3b0.map((c) => c.id).join() !== ['gu01', 'gu02', 'gu03', 'gu04', 'gu05'].join() || CASES.slice(-5).map((c) => c.id).join() !== 'gu01,gu02,gu03,gu04,gu05') throw new Error('livraison 3b-0 : gu01–gu05 attendus, en fin de jeu');
-  if (longs.length < 14 || longs.length !== CASES.length - 80 - suites.length - ajouts3a.length - ajouts3b0.length) throw new Error(`${longs.length} phrases longues (au moins 14 ; 35 attendues : 31 d’avant + st15–st18)`);
+  const ajouts3b0 = ANCIENS.filter((c) => /^gu\d\d$/.test(c.id));
+  if (ajouts3b0.map((c) => c.id).join() !== ['gu01', 'gu02', 'gu03', 'gu04', 'gu05'].join() || ANCIENS.slice(-5).map((c) => c.id).join() !== 'gu01,gu02,gu03,gu04,gu05') throw new Error('livraison 3b-0 : gu01–gu05 attendus, en fin de jeu');
+  if (longs.length < 14 || longs.length !== ANCIENS.length - 80 - suites.length - ajouts3a.length - ajouts3b0.length) throw new Error(`${longs.length} phrases longues (au moins 14 ; 35 attendues : 31 d’avant + st15–st18)`);
   if (longs.filter((c) => c.categorie === 'Long FR').length !== 17 || longs.filter((c) => c.categorie === 'Long TR').length !== 18 || longs.some((c) => c.cote !== 'salarie')) throw new Error('17 « Long FR » et 18 « Long TR » (14 d’avant + st15–st18), côté salarié');
   // La phrase exacte d'Ergun (retour réel d'un salarié) est le cas sl01.
   const ergun = "Ajoute-moi une intervention. J'ai travaillé aujourd'hui de 8h à midi, puis pause d'1h, puis de 13h à 17h sur un nouveau chantier : prénom Pierrick, nom Dupont, à Montagna 01250, pour la pose d'un store banne.";
-  if (CASES.find((c) => c.id === 'sl01')?.phrase !== ergun) throw new Error('sl01 : la phrase exacte d’Ergun');
+  if (ANCIENS.find((c) => c.id === 'sl01')?.phrase !== ergun) throw new Error('sl01 : la phrase exacte d’Ergun');
 });
 
 Deno.test('Banc : tourne sans IA ; ce que le lecteur local traite est juste', async () => {
@@ -41,14 +44,14 @@ Deno.test('Banc : tourne sans IA ; ce que le lecteur local traite est juste', as
   console.log(`Sans IA : ${r.ok}/${r.total} (${r.pct} %) — le reste passe par le modèle.`);
   if (localKo.length) throw new Error(`Lecteur local faux :\n${localKo.map((e) => `${e.id} ${e.phrase} → ${e.why}`).join('\n')}`);
   // Les 80 phrases d'origine : 31 sont lues par le lecteur local, exactement comme avant.
-  const anciens = await runEval('v2', async () => ({ ok: false, reason: 'provider_error' }), CASES.slice(0, 80).map((c) => c.id));
+  const anciens = await runEval('v2', async () => ({ ok: false, reason: 'provider_error' }), ANCIENS.slice(0, 80).map((c) => c.id));
   if (anciens.total - anciens.temps.length !== 31) throw new Error(`${anciens.total - anciens.temps.length} phrases locales sur 80 (31 attendues)`);
 });
 
 Deno.test('Phrases longues : JAMAIS le lecteur local (c’est lui qui déformait la phrase d’Ergun), toujours le modèle, en profil long', async () => {
   const vus: { profil?: string; functions: string[]; maxCalls?: number; tier?: string }[] = [];
   const espion = async (req: Parameters<Parameters<typeof runEval>[1]>[0]) => { vus.push({ profil: req.profil, functions: req.functions.map((f) => f.name), maxCalls: req.maxCalls, tier: req.tier }); return { ok: false as const, reason: 'provider_error' as const }; };
-  const ids = CASES.filter((c) => /^(sl|st)\d\d$/.test(c.id)).map((c) => c.id);
+  const ids = ANCIENS.filter((c) => /^(sl|st)\d\d$/.test(c.id)).map((c) => c.id);
   const r = await runEval('v2', espion, ids, 1, 0);
   if (r.temps.length !== ids.length || vus.length !== ids.length) throw new Error(`${r.temps.length} phrases sur ${ids.length} sont passées par le modèle`);
   if (vus.some((v) => v.profil !== 'long' || v.maxCalls !== 4 || v.tier !== 'rapide')) throw new Error(`requête : ${JSON.stringify(vus.find((v) => v.profil !== 'long' || v.maxCalls !== 4 || v.tier !== 'rapide'))}`);
@@ -293,7 +296,7 @@ Deno.test('35 phrases longues : une sortie plausible du modèle (créneaux fusio
     st17: [{ name: 'modifier_heures', args: { chantier: 'Dupont', debut: '07:00', fin: '11:30' } }],
     st18: [{ name: 'repondre', args: { reponse: '« Ma semaine » ekranını açıyorum.', lien: 'semaine' } }],
   };
-  const ids = CASES.filter((c) => /^(sl|st)\d\d$/.test(c.id)).map((c) => c.id);
+  const ids = ANCIENS.filter((c) => /^(sl|st)\d\d$/.test(c.id)).map((c) => c.id);
   if (Object.keys(plausibles).sort().join() !== ids.slice().sort().join()) throw new Error('une sortie plausible par phrase longue');
   const ko: string[] = [];
   for (const id of ids) {
@@ -432,7 +435,7 @@ Deno.test('Évaluation avec aiConfig : les appels partent chez Claude, la répon
 
 // ── Suites de conversation (étape 2 : le chat se souvient) ──────────────────────
 // Le banc passe `history` EXACTEMENT comme les vraies fonctions (consigne, outils, lecteur local) ; ici, sans modèle.
-const SUITES = CASES.filter((c) => /^sc\d\d$/.test(c.id));
+const SUITES = ANCIENS.filter((c) => /^sc\d\d$/.test(c.id));
 
 Deno.test('Suites de conversation : 15 cas (8 bureau, 5 salarié FR, 2 salarié TR), tous avec leur historique ; les anciens cas sans (hors deux phrases longues)', () => {
   const ids = SUITES.map((c) => c.id);
@@ -456,9 +459,9 @@ Deno.test('Suites de conversation : 15 cas (8 bureau, 5 salarié FR, 2 salarié 
   for (const c of salarie) if (workerProfile(c.phrase, false) !== 'court') throw new Error(`${c.id} : relance salarié en profil court`);
   // Les anciens cas (80 + 27 phrases longues) n'ont pas d'historique : leur consigne est celle d'avant. Seules sl17 et st14 (phrases LONGUES qui
   // renvoient à la conversation) en portent un : le profil long, lui aussi, voit la conversation. Les cas de la livraison 3a n'en ont pas non plus.
-  const avecHistorique = CASES.filter((c) => c.history).map((c) => c.id).filter((id) => !/^sc\d\d$/.test(id));
+  const avecHistorique = ANCIENS.filter((c) => c.history).map((c) => c.id).filter((id) => !/^sc\d\d$/.test(id));
   if (avecHistorique.join() !== 'sl17,st14') throw new Error(`cas non « sc » avec historique : ${avecHistorique.join()} (sl17 et st14 seulement)`);
-  if (CASES.length !== 111 + 15 + 34 + 5) throw new Error(`${CASES.length} cas (165 attendus : 80 + 31 phrases longues + 15 suites + 34 de la livraison 3a + 5 de la livraison 3b-0)`);
+  if (ANCIENS.length !== 111 + 15 + 34 + 5) throw new Error(`${ANCIENS.length} cas (165 attendus : 80 + 31 phrases longues + 15 suites + 34 de la livraison 3a + 5 de la livraison 3b-0)`);
   // sl17 et st14 sont bien LONGUES (jamais le lecteur local, la consigne du profil long) et renvoient à leur historique.
   for (const id of ['sl17', 'st14']) {
     const c = CASES.find((x) => x.id === id)!;
@@ -627,7 +630,7 @@ const CAS_3A = CASES.filter((c) => /^(be|se|ov)\d\d$/.test(c.id)).concat(CASES.f
 Deno.test('Livraison 3a : 34 cas ajoutés (23 bureau, 11 salarié), comptes par catégorie du jeu complet figés (aucune nouvelle catégorie)', () => {
   if (CAS_3A.length !== 34 || CAS_3A.filter((c) => c.cote === 'bureau').length !== 23 || CAS_3A.filter((c) => c.cote === 'salarie').length !== 11) throw new Error(`${CAS_3A.length} cas de la livraison 3a (34 : 23 bureau + 11 salarié)`);
   const compte = new Map<string, number>();
-  for (const c of CASES) compte.set(`${c.cote} · ${c.categorie}`, (compte.get(`${c.cote} · ${c.categorie}`) ?? 0) + 1);
+  for (const c of ANCIENS) compte.set(`${c.cote} · ${c.categorie}`, (compte.get(`${c.cote} · ${c.categorie}`) ?? 0) + 1);
   // 3b-0 : « bureau · Aide » passe de 9 à 14 (gu01–gu05, aucune nouvelle catégorie). « Réglages » = « Réglages / paie / réserves » (b26–b28) : 3 + les corrections d'heures, l'attribution d'un client et le coût réel. Seul « Réserves » du salarié reste sous 10, par choix du contrat (1 → 5).
   const voulu: Record<string, number> = {
     'bureau · Interventions': 10, 'bureau · Congés': 4, 'bureau · Clients': 5, 'bureau · Documents': 4, 'bureau · Salariés': 14, 'bureau · Réglages': 10, 'bureau · Aide': 14, 'bureau · Effacer': 14, 'bureau · Suite de conversation': 8,
@@ -798,4 +801,83 @@ Deno.test('Livraison 3a : les bulletins de paie sont des PDF FICTIFS (gabarit de
   if (be06(sortie({}))) throw new Error(`le bon brouillon doit passer : ${be06(sortie({}))}`);
   if (!/sécurité sociale/.test(String(be06(sortie({ salarie_texte: 'Karim 1 99 99 99 999 999 99' }))))) throw new Error('un n° de sécurité sociale dans le brouillon doit échouer');
   if (!/brut/.test(String(be06(sortie({ brut: '1802.11' }))))) throw new Error('le net à la place du brut doit échouer');
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// Livraison 3b-1 : les cas « Ouvrir » (docs/ia-etape3/00-conception-etape3.md §3.4)
+// ════════════════════════════════════════════════════════════════════════════
+const OUVRIR = CASES.filter((c) => c.etape3);
+const ALLUME = { get: (k: string) => (k === 'AI_ETAPE3' ? JSON.stringify({ ouvrir: { bureau: 'on', salarie: 'on' } }) : undefined) };
+
+Deno.test('Ouvrir : 94 cas ajoutés EN FIN DE JEU, quatre catégories, les 165 cas d’avant intacts, un cas français au moins par écran livré', async () => {
+  const { OUVREURS_BUREAU, OUVREURS_SALARIE } = await import('../_shared/registre/ouvreurs.ts');
+  if (ANCIENS.length !== 165) throw new Error(`${ANCIENS.length} cas d’avant (165 attendus, inchangés)`);
+  if (OUVRIR.length !== 94 || CASES.length !== 165 + 94) throw new Error(`${OUVRIR.length} cas Ouvrir (94 attendus)`);
+  if (CASES.slice(0, 165).some((c) => c.etape3) || !CASES.slice(165).every((c) => c.etape3)) throw new Error('les cas Ouvrir viennent APRÈS les 165 cas d’avant');
+  const compte = new Map<string, number>();
+  for (const c of OUVRIR) compte.set(`${c.cote} · ${c.categorie}`, (compte.get(`${c.cote} · ${c.categorie}`) ?? 0) + 1);
+  const voulu: Record<string, number> = {
+    'bureau · Ouvrir FR': 30, 'bureau · Ouvrir TR': 12, 'bureau · Ouvrir pré-remplir': 12, 'bureau · Ouvrir refus': 10,
+    'salarie · Ouvrir FR': 10, 'salarie · Ouvrir TR': 10, 'salarie · Ouvrir refus': 10,
+  };
+  if (JSON.stringify([...compte.entries()].sort()) !== JSON.stringify(Object.entries(voulu).sort())) throw new Error(`comptes par catégorie : ${JSON.stringify([...compte.entries()].sort())}`);
+  // Chaque écran livré est ouvert par un cas français au moins (le texte du cas dit `ouvre('<id>'`).
+  const src = await Deno.readTextFile(new URL('./cases.ts', import.meta.url));
+  for (const [cote, liste] of [['bureau', OUVREURS_BUREAU], ['salarie', OUVREURS_SALARIE]] as const) {
+    for (const o of liste) {
+      const ids = OUVRIR.filter((c) => c.cote === cote && c.categorie === 'Ouvrir FR').map((c) => c.id);
+      const vu = ids.some((id) => { const at = src.indexOf(`id: '${id}'`); return src.slice(at, src.indexOf("{ id: '", at + 5) < 0 ? undefined : src.indexOf("{ id: '", at + 5)).includes(`ouvre('${o.id}'`); });
+      if (!vu) throw new Error(`${cote}/${o.id} : aucun cas « Ouvrir FR »`);
+    }
+  }
+  // Les cas turcs du salarié passent par le profil LONG (id st…), les autres par le profil court.
+  for (const c of OUVRIR.filter((x) => x.cote === 'salarie')) {
+    const long = workerProfile(c.phrase, false) === 'long';
+    if (long !== /^st\d\d$/.test(c.id)) throw new Error(`${c.id} : profil ${long ? 'long' : 'court'} inattendu`);
+  }
+});
+
+Deno.test('Ouvrir : sans interrupteur le banc ne joue AUCUN cas Ouvrir ; allumé, il les joue (jamais en v1, jamais avec un fichier)', async () => {
+  const vus: string[] = [];
+  const espion = async (req: Parameters<Parameters<typeof runEval>[1]>[0]) => { vus.push(req.functions.map((f) => f.name).join(',')); return { ok: false as const, reason: 'provider_error' as const }; };
+  const eteint = await runEval('v2', espion, OUVRIR.map((c) => c.id));
+  if (eteint.total !== 0 || vus.length) throw new Error(`éteint : ${eteint.total} cas joués`);
+  const tous = await runEval('v2', async () => ({ ok: false, reason: 'provider_error' }));
+  if (tous.total !== 165) throw new Error(`éteint : ${tous.total} cas sur 165`);
+  const v1 = await runEval('v1', async () => ({ ok: false, reason: 'provider_error' }), OUVRIR.map((c) => c.id), 1, 0, { etape3: ALLUME });
+  if (v1.total !== 0) throw new Error('v1 ne joue jamais un cas Ouvrir');
+  const on = await runEval('v2', espion, OUVRIR.map((c) => c.id), 1, 0, { etape3: ALLUME });
+  if (on.total !== 94) throw new Error(`allumé : ${on.total} cas joués (94 attendus)`);
+  // Ce que le lecteur local traite (sans modèle) reste juste, interrupteur allumé : « montre-moi … » est lu par lui (guide) ; les cas ne s'y trouvent pas.
+  const localKo = on.echecs.filter((e) => e.via === 'local');
+  if (localKo.length) throw new Error(`Lecteur local faux, allumé :\n${localKo.map((e) => `${e.id} ${e.phrase} → ${e.why}`).join('\n')}`);
+  if (!vus.length || !vus.every((v) => v.split(',').includes('ouvrir_fenetre'))) throw new Error('allumé : l’outil ouvrir_fenetre est proposé à chaque cas qui passe par le modèle');
+});
+
+Deno.test('Ouvrir : une sortie plausible du modèle passe, une mauvaise échoue (mauvais écran, valeur fausse, niveau 3 ouvert d’office, écran du bureau pour un salarié)', async () => {
+  const ouvrirAvec = (id: string, valeurs?: Record<string, string>) => async () => ({ ok: true as const, call: { name: 'ouvrir_fenetre', args: { id, ...(valeurs ? { valeurs } : {}) } } });
+  const jouer = async (cas: string, call: Parameters<typeof runEval>[1]) => (await runEval('v2', call, [cas], 1, 0, { etape3: ALLUME })).echecs[0]?.why ?? null;
+  // Plausible.
+  for (const [cas, id, v] of [
+    ['ou01', 'salaries.liste', undefined], ['ou15', 'salarie.fiche', { salarie: 'u-karim' }], ['ou14', 'planning.semaine', { lundi: '2026-10-05' }],
+    ['ou20', 'export.equipe', { du: '2026-09-01', au: '2026-09-30' }], ['ou21', 'cloture.mois', { mois: '2026-09' }], ['os01', 'jour.date', { date: '2026-09-30' }], ['os06', 'formations.ouvrir', undefined],
+  ] as [string, string, Record<string, string> | undefined][]) {
+    const why = await jouer(cas, ouvrirAvec(id, v));
+    if (why) throw new Error(`${cas} devrait passer : ${why}`);
+  }
+  // Mauvais écran, valeur fausse, valeur absente : échec.
+  if (!/ouvrir:salaries\.liste manquant/.test(String(await jouer('ou01', ouvrirAvec('clients.liste'))))) throw new Error('mauvais écran : doit échouer');
+  if (!/salarie = /.test(String(await jouer('ou15', ouvrirAvec('salarie.fiche', { salarie: 'u-kevin' }))))) throw new Error('mauvais salarié : doit échouer');
+  if (!/manquant \(aucun lien\)/.test(String(await jouer('ou15', ouvrirAvec('salarie.fiche'))))) throw new Error('salarié absent : doit échouer');
+  if (!/lundi = /.test(String(await jouer('ou14', ouvrirAvec('planning.semaine', { lundi: '2026-10-12' }))))) throw new Error('mauvais lundi : doit échouer');
+  // Une réponse qui ne fait qu'expliquer n'ouvre rien.
+  const parle = async () => ({ ok: true as const, call: { name: 'repondre', args: { reponse: 'Vous trouverez la liste dans le menu Salariés.' } } });
+  if (!/manquant/.test(String(await jouer('ou01', parle)))) throw new Error('une explication n’est pas une ouverture');
+  // Refus : « crée le client … » / « mets Sofiane en congé … » se FONT (l'outil d'écriture) ; ouvrir le formulaire à la place échoue. (« comment j'ouvre … ? » est lu par le lecteur local : sans modèle.)
+  if (!/attendu l.action creer_chantier|attendu .*creer_chantier/.test(String(await jouer('or05', ouvrirAvec('client.nouveau', { nom: 'Maison Garnier' }))))) throw new Error('or05 : ouvrir le formulaire à la place de créer doit échouer');
+  if (!(await jouer('or03', ouvrirAvec('absence.poser', { salarie: 'u-sofiane', du: '2026-10-12', au: '2026-10-16' })))) throw new Error('or03 : ouvrir le formulaire à la place de poser doit échouer');
+  // Le salarié ne reçoit jamais un écran du bureau : l'outil du salarié n'a pas `export.equipe`, le serveur refuse, le cas échoue ; une explication, elle, passe.
+  if (!(await jouer('or12', ouvrirAvec('export.equipe')))) throw new Error('or12 : un écran du bureau demandé par un salarié doit échouer');
+  const explique = async () => ({ ok: true as const, call: { name: 'repondre', args: { reponse: 'Cet écran est réservé au bureau : demandez à votre responsable.' } } });
+  if (await jouer('or12', explique)) throw new Error('or12 : expliquer doit passer');
 });

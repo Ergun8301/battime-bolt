@@ -84,7 +84,7 @@ export async function empreinteDuCas(c: (typeof CASES)[number], extra: { bureau?
 
 export async function calculerEtalon(): Promise<Omit<Etalon, '_aide' | 'commit'>> {
   const cas: Empreinte[] = [];
-  for (const c of CASES) cas.push(await empreinteDuCas(c));
+  for (const c of CASES.filter((x) => !x.etape3)) cas.push(await empreinteDuCas(c));
   const guides = {
     bureau: await sha256(guideForPrompt()),
     // Le salarié : le GUIDE entier, tel qu'il entre dans les deux consignes (court et long), pour un salarié sans historique.

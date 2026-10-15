@@ -162,11 +162,26 @@ const eq = (d: Record<string, unknown>, k: string, v: unknown) => (JSON.stringif
 const all = (...r: (string | null)[]) => r.find((x) => x) ?? null;
 const has = (d: Record<string, unknown>, k: string, re: RegExp) => (re.test(String(d[k] ?? '')) ? null : `${k} = « ${d[k]} » (attendu ${re})`);
 const clean = (d: Record<string, unknown>, k: string) => (/^(euh|alors|bon|du coup|c'est|pour)\b/i.test(String(d[k] ?? '').trim()) || /^[a-zà-ÿ]/.test(String(d[k] ?? '')) ? `${k} mal formé : « ${d[k]} »` : null);
+/**
+ * 3b-1 : quand le banc joue un cas avec l'interrupteur `ouvrir` ALLUMÉ (`o.etape3`), l'écran d'un ancien lien (`reserves`, `export`, `salarie:<id>`…) s'ouvre par son ouvreur
+ * (`ouvrir:reserves.registre`…) : le lien neuf vaut l'ancien. Éteint, RIEN ne change : l'ancien lien reste exigé, à la lettre.
+ */
+const OUVREUR_DE: Record<string, string> = {
+  salaries: 'salaries.liste', nouveau_salarie: 'salarie.nouveau', nouveau_client: 'client.nouveau', import_clients: 'clients.importer', conges: 'conges.demandes',
+  reserves: 'reserves.registre', export: 'export.equipe', planning: 'planning.semaine', clients: 'clients.liste',
+};
+const ouvreEquivalent = (link: string, o: Outcome): boolean => {
+  if (!o.etape3) return false;
+  const liens = o.links ?? [];
+  if (link.startsWith('salarie:')) return liens.some((l) => l === `ouvrir:salarie.fiche?salarie=${link.slice(8)}` || l.startsWith(`ouvrir:salarie.fiche?salarie=${link.slice(8)}&`));
+  const id = OUVREUR_DE[link];
+  return !!id && liens.some((l) => l === `ouvrir:${id}` || l.startsWith(`ouvrir:${id}?`));
+};
 const answer = (link?: string, mention?: RegExp): Check => (o) => {
   if (o.kind !== 'answer') return `attendu une réponse, obtenu ${o.kind} ${o.type ?? ''}`;
   if (!o.answer || o.answer.length < 10) return 'réponse vide';
   if (/je n.?ai pas acc[eè]s|je ne peux pas/i.test(o.answer)) return `refus : « ${o.answer.slice(0, 60)} »`;
-  if (link && !(o.links ?? []).includes(link)) return `lien ${link} manquant (${(o.links ?? []).join(',')})`;
+  if (link && !(o.links ?? []).includes(link) && !ouvreEquivalent(link, o)) return `lien ${link} manquant (${(o.links ?? []).join(',')})`;
   // Suites de conversation : la réponse doit montrer que la référence (« ce chantier », « la supprimer ») a été comprise.
   if (mention && !mention.test(o.answer)) return `la réponse ne reprend pas ce qui précède (attendu ${mention}) : « ${o.answer.slice(0, 70)} »`;
   return null;
@@ -180,6 +195,28 @@ const draft = (f: (lines: Record<string, unknown>[], date: string) => string | n
 };
 /** Lot 8 : l'effacement interdit est dit en une phrase. */
 const refus = (): Check => (o) => (o.kind === 'answer' && /ne s.efface|impossible|pas possible/i.test(o.answer ?? '') ? null : `attendu un refus en une phrase, obtenu ${o.kind} ${o.type ?? ''} « ${(o.answer ?? '').slice(0, 60)} »`);
+/** 3b-1 : le paramètre `k` d'un lien `ouvrir:<id>?k=v&…` (null s'il n'y est pas). */
+const paramDuLien = (l: string, k: string) => new URLSearchParams(l.includes('?') ? l.slice(l.indexOf('?') + 1) : '').get(k);
+/**
+ * 3b-1 (ouvrir) : l'assistant OUVRE l'écran `id` (lien `ouvrir:<id>?…` résolu par le serveur), avec ces valeurs (texte exact ou expression). Ni une écriture, ni un simple guide.
+ * `auto: false` = écran de niveau 3 : la réponse ne doit JAMAIS porter `auto` (ouvrir sans toucher). Le cas ne se joue qu'avec l'interrupteur allumé (`etape3`).
+ */
+const ouvre = (id: string, vals: Record<string, string | RegExp> = {}, opts: { auto?: boolean } = {}): Check => (o) => {
+  if (!o.etape3) return 'cas « Ouvrir » joué sans l’interrupteur ouvrir (le banc doit recevoir etape3)';
+  if (o.kind !== 'answer') return `attendu l’ouverture de ${id}, obtenu ${o.kind} ${o.type ?? ''}`;
+  const l = (o.links ?? []).find((x) => x === `ouvrir:${id}` || x.startsWith(`ouvrir:${id}?`));
+  if (!l) return `lien ouvrir:${id} manquant (${(o.links ?? []).join(', ') || 'aucun lien'}) — « ${(o.answer ?? '').slice(0, 70)} »`;
+  for (const [k, v] of Object.entries(vals)) {
+    const got = paramDuLien(l, k);
+    if (got === null || (typeof v === 'string' ? got !== v : !v.test(got))) return `${k} = ${JSON.stringify(got)} (attendu ${String(v)})`;
+  }
+  if (opts.auto === false && o.auto) return 'ouverture d’office (auto) d’un écran de niveau 3';
+  return null;
+};
+/** 3b-1 : la réponse n'ouvre AUCUN écran (expliquer, refuser, ou renvoyer au bureau) — et ne dit pas « je n'ai pas accès ». */
+const sansOuvrir: Check = (o) => answer()(o) ?? ((o.links ?? []).some((l) => l.startsWith('ouvrir:')) ? `un écran a été ouvert : ${(o.links ?? []).filter((l) => l.startsWith('ouvrir:')).join(', ')}` : null);
+/** 3b-1 : un salarié qui n'existe pas n'a pas de fiche : la réponse n'ouvre jamais ouvrir:salarie.fiche (elle peut proposer la liste). */
+const sansFiche: Check = (o) => (o.kind === 'answer' && !(o.links ?? []).some((l) => l.startsWith('ouvrir:salarie.fiche?salarie=')) ? null : 'a deviné un salarié qui n’existe pas');
 const coll = (qui: string, date: string): Check => (o) => (o.kind !== 'collegues' ? `attendu le planning des collègues, obtenu ${o.kind} ${o.type ?? ''}`
   : (o.qui ?? '').toLowerCase() !== qui ? `qui = « ${o.qui} » (attendu « ${qui} »)` : o.date !== date ? `date = ${o.date} (attendu ${date})` : null);
 
@@ -734,4 +771,118 @@ export const CASES: EvalCase[] = [
   { id: 'gu03', cote: 'bureau', categorie: 'Aide', phrase: 'où est la borne ?', check: answer('planning', /^Relier la tablette[\s\S]*Relier une autre tablette/) },
   { id: 'gu04', cote: 'bureau', categorie: 'Aide', phrase: 'comment je termine le chantier villa dupont ?', check: answer('clients', /^Terminer un chantier/) },
   { id: 'gu05', cote: 'bureau', categorie: 'Aide', phrase: 'comment j’archive le client bureau martin ?', check: answer('clients', /^Archiver un client :/) },
+
+  // ── Livraison 3b-1 : OUVRIR un écran, pré-rempli, sans rien enregistrer (docs/ia-etape3/00-conception-etape3.md §3.4). ──
+  // Ces cas ne se jouent que quand l'interrupteur `ouvrir` est ALLUMÉ dans le banc (corps `etape3`) : éteint, ils sont ignorés, et les 165 cas d'avant restent mesurés « éteint ».
+  // Quatre catégories nouvelles (≥ 10 cas chacune, par côté) : « Ouvrir FR » (un cas au moins par écran livré), « Ouvrir TR », « Ouvrir pré-remplir » (valeurs dites, résolues en
+  // identifiants / dates ISO), « Ouvrir refus » (expliquer ≠ ouvrir ≠ faire ; un salarié ne reçoit pas un écran du bureau ; un niveau 3 n'est jamais ouvert d'office).
+  // Date figée : jeudi 1er octobre 2026 (hier = 30/09, demain = 02/10, lundi prochain = 05/10). Les cas turcs du salarié passent par le profil LONG (id « st »).
+  // 3b-1 livre 25 écrans du bureau et 2 du salarié (vagues 1 et 2 de §3.1 : sans `init` sur une fenêtre à état interne) ; la borne et « Mes interventions supprimées » sont reportées.
+
+  // ── Bureau, français : un écran par cas (25), ouvert par « ouvre », « montre-moi », « emmène-moi » ──
+  { id: 'ou01', cote: 'bureau', categorie: 'Ouvrir FR', etape3: 'ouvrir', phrase: 'ouvre la liste des salariés', check: ouvre('salaries.liste') },
+  { id: 'ou02', cote: 'bureau', categorie: 'Ouvrir FR', etape3: 'ouvrir', phrase: 'ouvre l’import de salariés, je vais choisir mon fichier excel', check: ouvre('salaries.importer') },
+  { id: 'ou03', cote: 'bureau', categorie: 'Ouvrir FR', etape3: 'ouvrir', phrase: 'ouvre l’import de mes clients', check: ouvre('clients.importer') },
+  { id: 'ou04', cote: 'bureau', categorie: 'Ouvrir FR', etape3: 'ouvrir', phrase: 'emmène-moi aux réserves', check: ouvre('reserves.registre') },
+  { id: 'ou05', cote: 'bureau', categorie: 'Ouvrir FR', etape3: 'ouvrir', phrase: 'montre-moi les demandes de congé', check: ouvre('conges.demandes') },
+  { id: 'ou06', cote: 'bureau', categorie: 'Ouvrir FR', etape3: 'ouvrir', phrase: 'ouvre les statistiques de l’équipe', check: ouvre('stats.equipe') },
+  { id: 'ou07', cote: 'bureau', categorie: 'Ouvrir FR', etape3: 'ouvrir', phrase: 'ouvre les interventions supprimées', check: ouvre('planning.supprimees') },
+  { id: 'ou08', cote: 'bureau', categorie: 'Ouvrir FR', etape3: 'ouvrir', phrase: 'ouvre les versions du planning', check: ouvre('planning.versions') },
+  { id: 'ou09', cote: 'bureau', categorie: 'Ouvrir FR', etape3: 'ouvrir', phrase: 'ouvre les formations', check: ouvre('formations.gestion') },
+  { id: 'ou10', cote: 'bureau', categorie: 'Ouvrir FR', etape3: 'ouvrir', phrase: 'ouvre le choix de l’abonnement', check: ouvre('abonnement.choisir') },
+  { id: 'ou11', cote: 'bureau', categorie: 'Ouvrir FR', etape3: 'ouvrir', phrase: 'ouvre les journées à relancer', check: ouvre('relances.liste') },
+  { id: 'ou12', cote: 'bureau', categorie: 'Ouvrir FR', etape3: 'ouvrir', phrase: 'passe le planning en mode sélection', check: ouvre('planning.selection') },
+  { id: 'ou13', cote: 'bureau', categorie: 'Ouvrir FR', etape3: 'ouvrir', phrase: 'ouvre la liste des clients', check: ouvre('clients.liste') },
+  { id: 'ou14', cote: 'bureau', categorie: 'Ouvrir FR', etape3: 'ouvrir', phrase: 'va sur le planning de la semaine prochaine', check: ouvre('planning.semaine', { lundi: '2026-10-05' }) },
+  { id: 'ou15', cote: 'bureau', categorie: 'Ouvrir FR', etape3: 'ouvrir', phrase: 'ouvre la fiche de Karim', check: ouvre('salarie.fiche', { salarie: 'u-karim' }) },
+  { id: 'ou16', cote: 'bureau', categorie: 'Ouvrir FR', etape3: 'ouvrir', phrase: 'ouvre la fiche du client Villa Dupont', check: ouvre('client.fiche', { chantier: W.dupont }) },
+  { id: 'ou17', cote: 'bureau', categorie: 'Ouvrir FR', etape3: 'ouvrir', phrase: 'ouvre les documents du chantier Bureau Martin', check: ouvre('chantier.documents', { chantier: W.martin }) },
+  { id: 'ou18', cote: 'bureau', categorie: 'Ouvrir FR', etape3: 'ouvrir', phrase: 'ouvre le formulaire pour créer un nouveau client', check: ouvre('client.nouveau') },
+  { id: 'ou19', cote: 'bureau', categorie: 'Ouvrir FR', etape3: 'ouvrir', phrase: 'ouvre le formulaire d’invitation d’un salarié', check: ouvre('salarie.nouveau') },
+  { id: 'ou20', cote: 'bureau', categorie: 'Ouvrir FR', etape3: 'ouvrir', phrase: 'prépare l’export des heures de septembre', check: ouvre('export.equipe', { du: '2026-09-01', au: '2026-09-30' }, { auto: false }) },
+  { id: 'ou21', cote: 'bureau', categorie: 'Ouvrir FR', etape3: 'ouvrir', phrase: 'ouvre la clôture de septembre', check: ouvre('cloture.mois', { mois: '2026-09' }, { auto: false }) },
+  { id: 'ou22', cote: 'bureau', categorie: 'Ouvrir FR', etape3: 'ouvrir', phrase: 'ouvre le formulaire d’ajout d’une intervention pour Karim demain', check: ouvre('planning.ajouter', { salarie: 'u-karim', date: '2026-10-02' }) },
+  { id: 'ou23', cote: 'bureau', categorie: 'Ouvrir FR', etape3: 'ouvrir', phrase: 'ouvre le statut de Kevin', check: ouvre('salarie.statut', { salarie: 'u-kevin' }) },
+  { id: 'ou24', cote: 'bureau', categorie: 'Ouvrir FR', etape3: 'ouvrir', phrase: 'ouvre le formulaire d’absence pour Sofiane du 12 au 16', check: ouvre('absence.poser', { salarie: 'u-sofiane', du: '2026-10-12', au: '2026-10-16' }) },
+  { id: 'ou25', cote: 'bureau', categorie: 'Ouvrir FR', etape3: 'ouvrir', phrase: 'ouvre l’export des heures d’un seul salarié', check: ouvre('export.salarie') },
+  // Quelques façons de le dire en plus (les plus fréquentes).
+  { id: 'ou26', cote: 'bureau', categorie: 'Ouvrir FR', etape3: 'ouvrir', phrase: 'emmène-moi sur la fiche de Sofiane', check: ouvre('salarie.fiche', { salarie: 'u-sofiane' }) },
+  { id: 'ou27', cote: 'bureau', categorie: 'Ouvrir FR', etape3: 'ouvrir', phrase: 'je veux voir la fiche de Villa Dupont, ouvre-la', check: ouvre('client.fiche', { chantier: W.dupont }) },
+  { id: 'ou28', cote: 'bureau', categorie: 'Ouvrir FR', etape3: 'ouvrir', phrase: 'ouvre-moi le planning de lundi prochain', check: ouvre('planning.semaine', { lundi: '2026-10-05' }) },
+  { id: 'ou29', cote: 'bureau', categorie: 'Ouvrir FR', etape3: 'ouvrir', phrase: 'affiche les congés à valider', check: ouvre('conges.demandes') },
+  { id: 'ou30', cote: 'bureau', categorie: 'Ouvrir FR', etape3: 'ouvrir', phrase: 'emmène-moi sur la liste de mes salariés', check: ouvre('salaries.liste') },
+
+  // ── Bureau, turc (12) : le patron (ou sa secrétaire) écrit en turc ; la réponse porte le même lien ──
+  { id: 'ot01', cote: 'bureau', categorie: 'Ouvrir TR', etape3: 'ouvrir', phrase: 'Karim’in kartını aç', check: ouvre('salarie.fiche', { salarie: 'u-karim' }) },
+  { id: 'ot02', cote: 'bureau', categorie: 'Ouvrir TR', etape3: 'ouvrir', phrase: 'yeni müşteri formunu aç', check: ouvre('client.nouveau') },
+  { id: 'ot03', cote: 'bureau', categorie: 'Ouvrir TR', etape3: 'ouvrir', phrase: 'eylül ayı için dışa aktarımı hazırla', check: ouvre('export.equipe', { du: '2026-09-01', au: '2026-09-30' }, { auto: false }) },
+  { id: 'ot04', cote: 'bureau', categorie: 'Ouvrir TR', etape3: 'ouvrir', phrase: 'çalışanların listesini aç', check: ouvre('salaries.liste') },
+  { id: 'ot05', cote: 'bureau', categorie: 'Ouvrir TR', etape3: 'ouvrir', phrase: 'rezervleri göster', check: ouvre('reserves.registre') },
+  { id: 'ot06', cote: 'bureau', categorie: 'Ouvrir TR', etape3: 'ouvrir', phrase: 'izin taleplerini göster', check: ouvre('conges.demandes') },
+  { id: 'ot07', cote: 'bureau', categorie: 'Ouvrir TR', etape3: 'ouvrir', phrase: 'yeni çalışan formunu aç', check: ouvre('salarie.nouveau') },
+  { id: 'ot08', cote: 'bureau', categorie: 'Ouvrir TR', etape3: 'ouvrir', phrase: 'Sofiane için 12’den 16’ya izin formunu aç', check: ouvre('absence.poser', { salarie: 'u-sofiane', du: '2026-10-12', au: '2026-10-16' }) },
+  { id: 'ot09', cote: 'bureau', categorie: 'Ouvrir TR', etape3: 'ouvrir', phrase: 'gelecek haftanın planlamasını göster', check: ouvre('planning.semaine', { lundi: '2026-10-05' }) },
+  { id: 'ot10', cote: 'bureau', categorie: 'Ouvrir TR', etape3: 'ouvrir', phrase: 'planlamanın sürümlerini aç', check: ouvre('planning.versions') },
+  { id: 'ot11', cote: 'bureau', categorie: 'Ouvrir TR', etape3: 'ouvrir', phrase: 'müşteri listesini aç', check: ouvre('clients.liste') },
+  { id: 'ot12', cote: 'bureau', categorie: 'Ouvrir TR', etape3: 'ouvrir', phrase: 'ekibin istatistiklerini göster', check: ouvre('stats.equipe') },
+
+  // ── Bureau, pré-remplir (12) : ce que la personne DIT devient identifiant, date ISO ou texte ; ce qu'elle ne dit pas reste vide ──
+  { id: 'op01', cote: 'bureau', categorie: 'Ouvrir pré-remplir', etape3: 'ouvrir', phrase: 'ouvre un nouveau salarié : Marc Durand, marc.durand@gmail.com', check: ouvre('salarie.nouveau', { prenom: /^Marc$/i, nom: /^Durand$/i, email: 'marc.durand@gmail.com' }) },
+  { id: 'op02', cote: 'bureau', categorie: 'Ouvrir pré-remplir', etape3: 'ouvrir', phrase: 'ouvre un nouveau client Maison Garnier à Caluire, 06 12 34 56 78', check: ouvre('client.nouveau', { nom: /garnier/i, ville: /caluire/i, telephone: /06.?12.?34.?56.?78/ }) },
+  { id: 'op03', cote: 'bureau', categorie: 'Ouvrir pré-remplir', etape3: 'ouvrir', phrase: 'ouvre l’ajout d’une intervention pour Sofiane lundi chez Villa Dupont de 8h30 à 12h', check: ouvre('planning.ajouter', { salarie: 'u-sofiane', date: '2026-10-05', chantier: W.dupont, debut: '08:30', fin: '12:00' }) },
+  { id: 'op04', cote: 'bureau', categorie: 'Ouvrir pré-remplir', etape3: 'ouvrir', phrase: 'ouvre l’absence maladie de Kevin du 5 au 7', check: ouvre('absence.poser', { salarie: 'u-kevin', type: 'maladie', du: '2026-10-05', au: '2026-10-07' }) },
+  { id: 'op05', cote: 'bureau', categorie: 'Ouvrir pré-remplir', etape3: 'ouvrir', phrase: 'ouvre la gestion de la fiche de Karim', check: ouvre('salarie.fiche', { salarie: 'u-karim', mode: 'manage' }) },
+  { id: 'op06', cote: 'bureau', categorie: 'Ouvrir pré-remplir', etape3: 'ouvrir', phrase: 'prépare l’export du 1er au 15 septembre', check: ouvre('export.equipe', { du: '2026-09-01', au: '2026-09-15' }, { auto: false }) },
+  { id: 'op07', cote: 'bureau', categorie: 'Ouvrir pré-remplir', etape3: 'ouvrir', phrase: 'ouvre la liste des salariés et cherche Karim', check: ouvre('salaries.liste', { recherche: /karim/i }) },
+  { id: 'op08', cote: 'bureau', categorie: 'Ouvrir pré-remplir', etape3: 'ouvrir', phrase: 'ouvre la liste des clients et cherche Dupont', check: ouvre('clients.liste', { recherche: /dupont/i }) },
+  { id: 'op09', cote: 'bureau', categorie: 'Ouvrir pré-remplir', etape3: 'ouvrir', phrase: 'ouvre les documents du chantier Villa Dupont du 30 septembre', check: ouvre('chantier.documents', { chantier: W.dupont, jour: '2026-09-30' }) },
+  { id: 'op10', cote: 'bureau', categorie: 'Ouvrir pré-remplir', etape3: 'ouvrir', phrase: 'ouvre le statut de Kevin à partir de lundi', check: ouvre('salarie.statut', { salarie: 'u-kevin', date: '2026-10-05' }) },
+  { id: 'op11', cote: 'bureau', categorie: 'Ouvrir pré-remplir', etape3: 'ouvrir', phrase: 'ouvre les versions du planning de la semaine dernière', check: ouvre('planning.versions', { lundi: '2026-09-21' }) },
+  { id: 'op12', cote: 'bureau', categorie: 'Ouvrir pré-remplir', etape3: 'ouvrir', phrase: 'ouvre la clôture du mois dernier', check: ouvre('cloture.mois', { mois: '2026-09' }, { auto: false }) },
+
+  // ── Bureau, refus (10) : expliquer ≠ ouvrir ≠ faire ; un niveau 3 n'est jamais ouvert d'office ; un écran qui n'est pas livré garde son ancien lien ──
+  { id: 'or01', cote: 'bureau', categorie: 'Ouvrir refus', etape3: 'ouvrir', phrase: 'comment j’ouvre la fiche d’un salarié ?', check: sansOuvrir },
+  { id: 'or02', cote: 'bureau', categorie: 'Ouvrir refus', etape3: 'ouvrir', phrase: 'à quoi sert le mode sélection du planning ?', check: sansOuvrir },
+  { id: 'or03', cote: 'bureau', categorie: 'Ouvrir refus', etape3: 'ouvrir', phrase: 'mets Sofiane en congé du 12 au 16', check: act('poser_absence', (d) => all(eq(d, 'user_id', 'u-sofiane'), eq(d, 'du', '2026-10-12'), eq(d, 'au', '2026-10-16'))) },
+  { id: 'or04', cote: 'bureau', categorie: 'Ouvrir refus', etape3: 'ouvrir', phrase: 'ajoute Karim chez Villa Dupont demain matin', check: act('affecter_planning', (d) => all(eq(d, 'user_id', 'u-karim'), eq(d, 'worksite_id', W.dupont))) },
+  { id: 'or05', cote: 'bureau', categorie: 'Ouvrir refus', etape3: 'ouvrir', phrase: 'crée le client Maison Garnier à Caluire', check: act('creer_chantier', (d) => has(d, 'nom_client', /garnier/i)) },
+  { id: 'or06', cote: 'bureau', categorie: 'Ouvrir refus', etape3: 'ouvrir', phrase: 'prépare l’export de septembre', check: ouvre('export.equipe', {}, { auto: false }) },
+  { id: 'or07', cote: 'bureau', categorie: 'Ouvrir refus', etape3: 'ouvrir', phrase: 'emmène-moi à la clôture de septembre', check: ouvre('cloture.mois', { mois: '2026-09' }, { auto: false }) },
+  { id: 'or08', cote: 'bureau', categorie: 'Ouvrir refus', etape3: 'ouvrir', phrase: 'va dans les réglages', check: answer('reglages') },
+  { id: 'or09', cote: 'bureau', categorie: 'Ouvrir refus', etape3: 'ouvrir', phrase: 'ouvre le coût des chantiers', check: answer('couts') },
+  { id: 'or10', cote: 'bureau', categorie: 'Ouvrir refus', etape3: 'ouvrir', phrase: 'ouvre la fiche d’Aïcha', check: sansFiche },
+
+  // ── Salarié, français (10) : ses journées passées ou à venir, ses formations ; « aujourd'hui », la semaine, le mois restent les liens d'avant ──
+  { id: 'os01', cote: 'salarie', categorie: 'Ouvrir FR', etape3: 'ouvrir', phrase: 'ouvre ma journée d’hier', check: ouvre('jour.date', { date: '2026-09-30' }) },
+  { id: 'os02', cote: 'salarie', categorie: 'Ouvrir FR', etape3: 'ouvrir', phrase: 'montre-moi ma journée du 28 septembre', check: ouvre('jour.date', { date: '2026-09-28' }) },
+  { id: 'os03', cote: 'salarie', categorie: 'Ouvrir FR', etape3: 'ouvrir', phrase: 'affiche mes heures de lundi dernier', check: ouvre('jour.date', { date: '2026-09-28' }) },
+  { id: 'os04', cote: 'salarie', categorie: 'Ouvrir FR', etape3: 'ouvrir', phrase: 'emmène-moi sur ma journée du 21 septembre', check: ouvre('jour.date', { date: '2026-09-21' }) },
+  { id: 'os05', cote: 'salarie', categorie: 'Ouvrir FR', etape3: 'ouvrir', phrase: 'ouvre ma journée de mardi', check: ouvre('jour.date', { date: '2026-09-29' }) },
+  { id: 'os06', cote: 'salarie', categorie: 'Ouvrir FR', etape3: 'ouvrir', phrase: 'ouvre mes formations', check: ouvre('formations.ouvrir') },
+  { id: 'os07', cote: 'salarie', categorie: 'Ouvrir FR', etape3: 'ouvrir', phrase: 'montre-moi mes formations', check: ouvre('formations.ouvrir') },
+  { id: 'os08', cote: 'salarie', categorie: 'Ouvrir FR', etape3: 'ouvrir', phrase: 'emmène-moi aux formations à voir', check: ouvre('formations.ouvrir') },
+  { id: 'os09', cote: 'salarie', categorie: 'Ouvrir FR', etape3: 'ouvrir', phrase: 'j’ai des vidéos de formation à regarder, ouvre-les', check: ouvre('formations.ouvrir') },
+  { id: 'os10', cote: 'salarie', categorie: 'Ouvrir FR', etape3: 'ouvrir', phrase: 'ouvre-moi ma journée du 25 septembre', check: ouvre('jour.date', { date: '2026-09-25' }) },
+  // ── Salarié, turc (10) : profil LONG (au moins deux indices de turc) ──
+  { id: 'st19', cote: 'salarie', categorie: 'Ouvrir TR', etape3: 'ouvrir', phrase: 'Dünkü günümü aç lütfen, saatlerime bakacağım.', check: (o) => enTurc(o) ?? ouvre('jour.date', { date: '2026-09-30' })(o) },
+  { id: 'st20', cote: 'salarie', categorie: 'Ouvrir TR', etape3: 'ouvrir', phrase: '28 Eylül günümü göster lütfen, saatlerime bakacağım.', check: (o) => enTurc(o) ?? ouvre('jour.date', { date: '2026-09-28' })(o) },
+  { id: 'st21', cote: 'salarie', categorie: 'Ouvrir TR', etape3: 'ouvrir', phrase: 'Geçen pazartesi günümü göster, saatlerime bakacağım.', check: (o) => enTurc(o) ?? ouvre('jour.date', { date: '2026-09-28' })(o) },
+  { id: 'st22', cote: 'salarie', categorie: 'Ouvrir TR', etape3: 'ouvrir', phrase: 'Eğitimlerimi aç lütfen.', check: (o) => enTurc(o) ?? ouvre('formations.ouvrir')(o) },
+  { id: 'st23', cote: 'salarie', categorie: 'Ouvrir TR', etape3: 'ouvrir', phrase: 'Bana eğitimlerimi göster lütfen, izlemem gereken video var mı?', check: (o) => enTurc(o) ?? ouvre('formations.ouvrir')(o) },
+  { id: 'st24', cote: 'salarie', categorie: 'Ouvrir TR', etape3: 'ouvrir', phrase: 'Evvelsi günkü günümü göster lütfen.', check: (o) => enTurc(o) ?? ouvre('jour.date', { date: '2026-09-29' })(o) },
+  { id: 'st25', cote: 'salarie', categorie: 'Ouvrir TR', etape3: 'ouvrir', phrase: 'Eğitim videolarımı aç lütfen.', check: (o) => enTurc(o) ?? ouvre('formations.ouvrir')(o) },
+  { id: 'st26', cote: 'salarie', categorie: 'Ouvrir TR', etape3: 'ouvrir', phrase: '21 Eylül günümü aç lütfen, saatlerime bakacağım.', check: (o) => enTurc(o) ?? ouvre('jour.date', { date: '2026-09-21' })(o) },
+  { id: 'st27', cote: 'salarie', categorie: 'Ouvrir TR', etape3: 'ouvrir', phrase: 'Dünkü günümü aç lütfen, bir şeyi kontrol edeceğim.', check: (o) => enTurc(o) ?? ouvre('jour.date', { date: '2026-09-30' })(o) },
+  { id: 'st28', cote: 'salarie', categorie: 'Ouvrir TR', etape3: 'ouvrir', phrase: 'Cuma günümü göster lütfen.', check: (o) => enTurc(o) ?? ouvre('jour.date', { date: '2026-10-02' })(o) },
+  // ── Salarié, refus (10) : jamais un écran du bureau ; expliquer ≠ ouvrir ≠ faire ──
+  { id: 'or11', cote: 'salarie', categorie: 'Ouvrir refus', etape3: 'ouvrir', phrase: 'ouvre les réglages de l’entreprise', check: sansOuvrir },
+  { id: 'or12', cote: 'salarie', categorie: 'Ouvrir refus', etape3: 'ouvrir', phrase: 'ouvre l’export des heures de toute l’entreprise', check: sansOuvrir },
+  { id: 'or13', cote: 'salarie', categorie: 'Ouvrir refus', etape3: 'ouvrir', phrase: 'montre-moi la liste des salariés', check: sansOuvrir },
+  { id: 'or14', cote: 'salarie', categorie: 'Ouvrir refus', etape3: 'ouvrir', phrase: 'ouvre la clôture du mois', check: sansOuvrir },
+  { id: 'or15', cote: 'salarie', categorie: 'Ouvrir refus', etape3: 'ouvrir', phrase: 'ouvre la fiche de Sofiane', check: sansOuvrir },
+  { id: 'or16', cote: 'salarie', categorie: 'Ouvrir refus', etape3: 'ouvrir', phrase: 'comment je retrouve ma journée d’hier ?', check: sansOuvrir },
+  { id: 'or17', cote: 'salarie', categorie: 'Ouvrir refus', etape3: 'ouvrir', phrase: 'ouvre ma semaine', check: answer('semaine') },
+  { id: 'or18', cote: 'salarie', categorie: 'Ouvrir refus', etape3: 'ouvrir', phrase: 'ouvre mes congés', check: answer('conges') },
+  { id: 'or19', cote: 'salarie', categorie: 'Ouvrir refus', etape3: 'ouvrir', phrase: 'j’ai fini à 17h chez Dupont, note-le', enCours: true, check: act('terminer_pointage') },
+  { id: 'st29', cote: 'salarie', categorie: 'Ouvrir refus', etape3: 'ouvrir', phrase: 'Dupont’ta çalıştım, saatleri defterime yaz.', check: (o) => enTurc(o) ?? (o.kind === 'draft' || o.kind === 'multi' || o.kind === 'action' ? null : `attendu l’écriture des heures, obtenu ${o.kind}`) },
 ];

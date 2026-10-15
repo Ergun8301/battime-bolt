@@ -30,7 +30,7 @@ export interface OptionsOuvreurs {
 interface Registre { cote: string; impls: Record<string, ImplOuvreur>; opts: OptionsOuvreurs }
 const registres: Registre[] = [];
 /** La demande qui attend que la page soit prête : une seule, 10 secondes au plus (comme afterScanPending de la journée du salarié). */
-let attente: { action: string; jusqua: number } | null = null;
+let attente: { action: string; jusqua: number; auto?: boolean } | null = null;
 export const ATTENTE_MS = 10000;
 
 const ID = /^[a-z_]+\.[a-z_]+$/;
@@ -111,30 +111,39 @@ export function registerOpeners(cote: string, impls: Record<string, ImplOuvreur>
   return () => { const i = registres.indexOf(r); if (i >= 0) registres.splice(i, 1); };
 }
 
-function ouvrir(action: string, jusqua: number): StatutOuverture {
+function ouvrir(action: string, jusqua: number, auto: boolean): StatutOuverture {
   const premier = registres[0];
-  if (!premier) { attente = { action, jusqua }; return 'file'; }          // aucune page prête : la file attend
+  if (!premier) { attente = { action, jusqua, auto }; return 'file'; }          // aucune page prête : la file attend
   let lu: { o: OuvreurLeger; p: Record<string, string> } | null = null;
   let reg: Registre | null = null;
-  for (let i = 0; i < registres.length && !lu; i++) { const x = lireLien(action, registres[i].opts.table); if (x) { lu = x; reg = registres[i]; } }
-  if (!lu || !reg) return 'inconnu';                                      // id inconnu, jamais enregistré sur CETTE page, ou autre côté
+  let impl: ImplOuvreur | null = null;
+  // La page et son parent peuvent chacun enregistrer des écrans (/admin : la grille et l'abonnement) : on prend celui qui connaît l'id ET sait l'ouvrir.
+  for (let i = 0; i < registres.length && !impl; i++) {
+    const x = lireLien(action, registres[i].opts.table);
+    if (x && Object.prototype.hasOwnProperty.call(registres[i].impls, x.o.id)) { lu = x; reg = registres[i]; impl = registres[i].impls[x.o.id]; }
+  }
+  if (!lu || !reg || !impl) return 'inconnu';                             // id inconnu, jamais enregistré sur CETTE page, ou autre côté
   const { o, p } = lu;
-  const impl = Object.prototype.hasOwnProperty.call(reg.impls, o.id) ? reg.impls[o.id] : null;
-  if (!impl || o.roles.indexOf(reg.opts.role as never) < 0) return 'inconnu';
+  if (o.roles.indexOf(reg.opts.role as never) < 0) return 'inconnu';
   if (o.dispo && reg.opts.dispo && !reg.opts.dispo(o.dispo)) return 'indisponible';
+  // « Ouvrir sans toucher » (`auto`) : jamais un écran de niveau 3 (export, clôture…), même si une réponse l'exigeait. Le serveur ne le demande pas ; ici on ne s'y fie pas.
+  if (auto && o.niveau === 3) return 'indisponible';
   if (o.ecran === 'grand' && isNarrow()) return 'indisponible';
   if (reg.opts.occupe && reg.opts.occupe() && !o.empile) return 'occupe';
   let s: StatutOuverture | void;
   try { s = impl(p); } catch { return 'indisponible'; }
-  if (s === 'file') { attente = { action, jusqua }; return 'file'; }
+  if (s === 'file') { attente = { action, jusqua, auto }; return 'file'; }
   return s || 'ouvert';
 }
 
-/** Ouvre l'écran d'un lien `ouvrir:…`. Ne lève jamais. Les autres actions (`couts`, `salarie:<id>`, `guide:<id>`, `ask:…`) ne passent pas ici : la page les traite comme avant. */
-export function openLink(action: string): StatutOuverture {
+/**
+ * Ouvre l'écran d'un lien `ouvrir:…`. Ne lève jamais. Les autres actions (`couts`, `salarie:<id>`, `guide:<id>`, `ask:…`) ne passent pas ici : la page les traite comme avant.
+ * `auto` = ouverture SANS toucher (le serveur l'a décidée) : refusée pour un écran de niveau 3.
+ */
+export function openLink(action: string, auto = false): StatutOuverture {
   try {
     attente = null;
-    return ouvrir(action, Date.now() + ATTENTE_MS);
+    return ouvrir(action, Date.now() + ATTENTE_MS, auto);
   } catch {
     return 'indisponible';
   }
@@ -145,7 +154,7 @@ export function rejouerOuvreurs(): void {
   const a = attente;
   attente = null;
   if (!a || Date.now() > a.jusqua) return;
-  try { ouvrir(a.action, a.jusqua); } catch { /* rien : la personne retouche le bouton */ }
+  try { ouvrir(a.action, a.jusqua, !!a.auto); } catch { /* rien : la personne retouche le bouton */ }
 }
 
 /** Le message à montrer quand le lien n'a rien ouvert (null = ouvert, ou en attente d'une page pas prête). */

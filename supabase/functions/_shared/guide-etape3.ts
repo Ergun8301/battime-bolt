@@ -23,7 +23,6 @@ export const FICHE_VERS_OUVREUR: Readonly<Record<string, string>> = {
   versions: 'planning.versions',
   semaine: 'planning.semaine',
   rappel: 'relances.liste',
-  borne: 'borne.gestion',
   abonnement: 'abonnement.choisir',
 };
 

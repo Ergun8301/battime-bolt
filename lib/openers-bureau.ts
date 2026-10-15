@@ -1,6 +1,6 @@
 // Les OUVREURS du bureau, côté navigateur (étape 3, livraison 3b-1) : vagues 1 et 2 de docs/ia-etape3/00-conception-etape3.md §3.1.
 //
-// CHARGÉ À LA DEMANDE par components/admin-planning.tsx (`import('@/lib/openers-bureau')`, après l'affichage) : ces 26 implémentations ne pèsent pas dans le premier
+// CHARGÉ À LA DEMANDE par components/admin-planning.tsx (`import('@/lib/openers-bureau')`, après l'affichage) : ces 25 implémentations ne pèsent pas dans le premier
 // chargement de /admin (budget : voir registre/README.md). La page lui prête ses poignées (`PoigneesBureau` : ses setters et deux ou trois fonctions) dans une `ref` ; chaque
 // ouvreur les lit AU MOMENT d'ouvrir, donc jamais sur des données périmées.
 //
@@ -15,7 +15,7 @@ export interface PoigneesBureau {
   /** Les données sont lues (« Chargement du planning… » terminé) : sinon un ouvreur qui a besoin d'un salarié ou d'un chantier répond `file`. */
   pret: boolean;
   workers: Identifie[]; worksites: Identifie[];
-  tracesOn: boolean; versionsOn: boolean; trainingsOn: boolean; kioskOn: boolean;
+  tracesOn: boolean; versionsOn: boolean; trainingsOn: boolean;
   /** Une fenêtre à saisie est ouverte ? */
   occupe: () => boolean;
   /** Ferme la navigation sans saisie (listes, panneaux, menus). */
@@ -26,7 +26,7 @@ export interface PoigneesBureau {
   garde: () => void;
   salaries: { query: (q: string) => void; open: (o: boolean) => void; importer: (o: boolean) => void };
   clients: { query: (q: string) => void; menu: (o: boolean) => void; liste: (o: boolean) => void; importer: (o: boolean) => void };
-  fenetres: { reserves: (o: boolean) => void; conges: (o: boolean) => void; stats: (o: boolean) => void; traces: (o: boolean) => void; versions: (o: boolean) => void; formations: (o: boolean) => void; borne: (o: boolean) => void };
+  fenetres: { reserves: (o: boolean) => void; conges: (o: boolean) => void; stats: (o: boolean) => void; traces: (o: boolean) => void; versions: (o: boolean) => void; formations: (o: boolean) => void };
   relances: { panneau: (v: 'waiting' | null) => void; liste: (o: boolean) => void };
   selection: () => void;
   semaine: { aller: (iso: string) => void; jour: (i: number) => void };
@@ -71,7 +71,6 @@ export function registerBureau(ref: { current: PoigneesBureau | null }): () => v
     'formations.gestion': () => { debut(); H().fenetres.formations(true); },
     'relances.liste': () => { debut(); if (isNarrow()) H().relances.liste(true); else H().relances.panneau('waiting'); },
     'planning.selection': () => { debut(); H().selection(); },
-    'borne.gestion': () => { debut(); H().fenetres.borne(true); },
     'clients.liste': (p) => { debut(); H().clients.query(p.recherche || ''); if (isNarrow()) H().clients.liste(true); else H().clients.menu(true); },
     // ── Vague 2 ──
     'planning.semaine': (p) => {
@@ -155,7 +154,7 @@ export function registerBureau(ref: { current: PoigneesBureau | null }): () => v
   } as Record<string, ImplOuvreur>, {
     table: OUVREURS_LEGER_BUREAU,
     role: 'admin',
-    dispo: (d) => (d === 'traces' ? H().tracesOn : d === 'versions' ? H().versionsOn : d === 'formations' ? H().trainingsOn : d === 'borne' ? H().kioskOn : true),
+    dispo: (d) => (d === 'traces' ? H().tracesOn : d === 'versions' ? H().versionsOn : d === 'formations' ? H().trainingsOn : true),
     occupe: () => H().occupe(),
   });
 }

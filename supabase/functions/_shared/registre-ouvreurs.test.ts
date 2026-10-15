@@ -23,8 +23,8 @@ const egal = (obtenu: unknown, attendu: unknown, msg: string) => {
 const vrai = (cond: boolean, msg: string) => { if (!cond) throw new Error(msg); };
 const lire = (rel: string) => Deno.readTextFile(new URL(rel, import.meta.url));
 
-Deno.test('Forme : 26 ouvreurs du bureau + 2 du salarié, ids stables, rôles du bon côté, paramètres typés, niveau 3 déclenché', () => {
-  egal([OUVREURS_BUREAU.length, OUVREURS_SALARIE.length], [26, 2], 'comptes');
+Deno.test('Forme : 25 ouvreurs du bureau + 2 du salarié, ids stables, rôles du bon côté, paramètres typés, niveau 3 déclenché', () => {
+  egal([OUVREURS_BUREAU.length, OUVREURS_SALARIE.length], [25, 2], 'comptes');
   const ids = OUVREURS.map((o) => o.id);
   egal(new Set(ids).size, ids.length, 'id en double');
   for (const o of OUVREURS) {
