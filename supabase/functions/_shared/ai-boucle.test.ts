@@ -6,6 +6,7 @@
 // (même avec un jeton de chef d'équipe) ; (7) un nom de chantier piégé est une donnée marquée `non_fiable` et la réponse est « teintée » ; (8) l'interrupteur et `boucle1` ; (9) aucun console.*.
 import { boucleOutils, BUDGET, type ReqBoucle } from './ai-boucle.ts';
 import { boucleActive } from './etape3-config.ts';
+import { answerSimpleQuestion, buildWorkerSnapshot } from './worker-assistant-core.ts';
 import { LECTURES_BUREAU } from './lectures/bureau.ts';
 import { LECTURES_SALARIE } from './lectures/salarie.ts';
 import type { ContexteLecture, Lecteur } from './lectures/lecteur.ts';
@@ -332,4 +333,14 @@ Deno.test('Colonnes lues : aucune colonne sensible dans un select() des lectures
     for (const m of src.matchAll(/select\('([^']+)'/g)) vrai(!sensibles.test(m[1]), `${f} : select('${m[1]}')`);
     for (const m of src.matchAll(/'((?:[a-z_]+, )+[a-z_]+)'/g)) vrai(!sensibles.test(m[1]), `${f} : colonnes '${m[1]}'`);
   }
+});
+
+// ── 6. Le lecteur local ne répond plus « cette semaine » à une autre période quand la boucle est allumée ───────────
+Deno.test('Lecteur local : « combien d’heures en septembre ? » → null avec la boucle (le modèle lit), l’ancienne réponse sans', () => {
+  const snap = buildWorkerSnapshot({ userId: 'u', companyId: 'c', today: '2026-10-01', worksites: [], entries: [{ user_id: 'u', work_date: '2026-09-30', start_time: '07:30:00', end_time: '16:00:00', break_minutes: 60, status: 'submitted' }], planning: [] } as never);
+  const q = 'Combien d’heures j’ai faites en septembre ?';
+  vrai(/Cette semaine/.test(answerSimpleQuestion(q, snap) ?? ''), 'sans boucle : comme avant');
+  egal(answerSimpleQuestion(q, snap, { sansHeures: true }), null, 'avec la boucle : le modèle répond');
+  egal(answerSimpleQuestion('Combien d’heures aujourd’hui ?', snap, { sansHeures: true }), null, 'aujourd’hui aussi');
+  vrai(!!answerSimpleQuestion('les heures de mes collègues ?', snap, { sansHeures: true }), 'le refus pour les collègues reste instantané');
 });

@@ -7,7 +7,7 @@
 
 ## Ce qui est EN COURS / ARRÊTÉ (rien n'est cassé, rien de fusionné)
 - Intégration du design salarié (plan : docs/design-brief/audit-salarie/03-plan-integration.md ; audit final : 05-audit-final.md). Étapes 0-1 (filets + alléger, invisibles) **FUSIONNÉES dans main (PR #205, 15 oct.)** : /poseur 335 → 269 kB JS, 14 scripts navigateur verts. Prochaine étape : 2 (logique pure + séparation modèle/vue). Décision : design FIGÉ, on s'appuie sur la planche finale du designer, on corrige soi-même focus/portail Radix/requêtes.
-- IA 3c (lire les données + boucle d'outils) : agent arrêté très tôt ; worktree local `worktree-agent-a487badefd04615f2` (peut avoir disparu). Spec : docs/ia-etape3/00-conception-etape3.md §4.
+- IA 3c réduit (8 lectures bureau + 3 salarié + boucle d'outils) : PR #207, ÉTEINT par défaut (secret `AI_ETAPE3.boucle` à poser par le patron, côté `bureau` et/ou `salarie`, en `pilote`). Mesures et détails : docs/ia-etape3/05-journal.md. Après cette livraison : l'IA est GELÉE (3d, écritures niveau 2/3 généralisées, seulement après les premiers clients).
 
 ## Défauts connus à traiter (petits)
 1. (corrigé par la PR #204 : raccourci local réservé aux demandes nues) « Ajoute un salarié, son prénom c'est pierre, son nom c'est Xavier » : le modèle renvoie parfois des champs vides (formulaire vide). Ancien défaut. Piste : améliorer la consigne et mesurer sur le vrai modèle (PAS de règles de mots-clés). Rapport : scratchpad `enquete-salarie-nouveau.md` (perdu avec la session ; résumé : prepare l.1022 prend seulement les arguments du modèle).

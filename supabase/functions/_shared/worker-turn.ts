@@ -64,7 +64,7 @@ export async function runWorkerTurn(i: WorkerTurnInput): Promise<WorkerTurnOut> 
 
   // Profil court : le lecteur local d'abord, comme avant. Profil long : jamais.
   if (profil === 'court' && !i.file) {
-    const local = handleWorkerLocally(text, i.snapshot, i.live);
+    const local = handleWorkerLocally(text, i.snapshot, i.live, i.boucle ? { sansHeures: true } : undefined);
     if (local) return { via: 'local', profil, reply: local };
   }
   if (!i.iaDisponible) return { via: 'erreur', profil, raison: 'sans_cle' };

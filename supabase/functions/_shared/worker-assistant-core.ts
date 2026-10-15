@@ -286,18 +286,22 @@ export function parseHoursText(text: string, snapshot: WorkerSnapshot): Draft | 
 }
 
 // ── Questions simples sur SES données ───────────────────────────────────────
-export function answerSimpleQuestion(text: string, snapshot: WorkerSnapshot): string | null {
+/**
+ * `sansHeures` (3c, boucle allumée) : les réponses « heures » du lecteur local (« Cette semaine : … », « Aujourd'hui : … ») ne sont justes que pour la semaine en cours
+ * et ignorent toute autre période (« combien en septembre ? » recevait le total de la semaine) : avec la boucle, le modèle lit les vraies heures. Sans option : comme avant.
+ */
+export function answerSimpleQuestion(text: string, snapshot: WorkerSnapshot, opts?: { sansHeures?: boolean }): string | null {
   const n = norm(text);
   const today = snapshot.aujourdhui;
   if (/\b(cout|salaire|paie|taux|combien je gagne)\b/.test(n) || (/\b(collegues?|les autres|equipe)\b/.test(n) && /\b(heures?|pointe|gagne|conge)\b/.test(n))) {
     return 'Je ne peux répondre que sur vos propres heures ; pour vos collègues, seulement où ils sont au planning.';
   }
-  if (/\bheures?\b/.test(n) && /\b(semaine|combien)\b/.test(n) && !/\b(hier|aujourd)/.test(n)) {
+  if (!opts?.sansHeures && /\bheures?\b/.test(n) && /\b(semaine|combien)\b/.test(n) && !/\b(hier|aujourd)/.test(n)) {
     const total = snapshot.semaine.reduce((s, d) => s + d.minutes, 0);
     const days = snapshot.semaine.filter((d) => d.minutes > 0).length;
     return `Cette semaine : ${fmtMin(total)} déclarées sur ${days} jour${days > 1 ? 's' : ''}.`;
   }
-  if (/\bheures?\b/.test(n) && /\b(hier|aujourd)/.test(n)) {
+  if (!opts?.sansHeures && /\bheures?\b/.test(n) && /\b(hier|aujourd)/.test(n)) {
     const d = /\bhier\b/.test(n) ? addDays(today, -1) : today;
     const m = snapshot.semaine.find((x) => x.date === d)?.minutes ?? 0;
     return `${d === today ? 'Aujourd’hui' : 'Hier'} : ${m ? fmtMin(m) : 'aucune heure'} déclarée${m ? 's' : ''}.`;
@@ -314,10 +318,10 @@ export function answerSimpleQuestion(text: string, snapshot: WorkerSnapshot): st
 }
 
 /** Tout ce qui se règle sans IA. null → l'IA prend le relais. */
-export function handleLocally(text: string, snapshot: WorkerSnapshot): WorkerReply | null {
+export function handleLocally(text: string, snapshot: WorkerSnapshot, opts?: { sansHeures?: boolean }): WorkerReply | null {
   const draft = parseHoursText(text, snapshot);
   if (draft) return { kind: 'draft', draft, answer: draftSummary(draft) };
-  const a = answerSimpleQuestion(text, snapshot);
+  const a = answerSimpleQuestion(text, snapshot, opts);
   return a ? { kind: 'answer', answer: a } : null;
 }
 
@@ -938,7 +942,7 @@ function actionAnswer(a: WorkerAction, snapshot?: WorkerSnapshot): string {
  * Tout ce qui se règle sans IA, pour le salarié : pointage, congé, réserve,
  * « comment… », puis les heures et les questions du lot 4. null → IA.
  */
-export function handleWorkerLocally(text: string, snapshot: WorkerSnapshot, live: WorkerLive): WorkerFullReply | null {
+export function handleWorkerLocally(text: string, snapshot: WorkerSnapshot, live: WorkerLive, opts?: { sansHeures?: boolean }): WorkerFullReply | null {
   // Étape 2 : une relance qui renvoie à la conversation (« et l'après-midi 13h-17h pareil ») va au modèle, qui voit l'historique ;
   // ce lecteur n'a pas le contexte (le chantier de ce matin lui échappe). Sans historique : rien ne change.
   // « aussi » ne suffit pas quand la phrase nomme déjà un chantier connu (« Mets 8h-12h chez Dupont aussi ») : demande complète.
@@ -1015,7 +1019,7 @@ export function handleWorkerLocally(text: string, snapshot: WorkerSnapshot, live
       if (g) return { kind: 'guide', answer: workerGuideAnswer(g), links: workerGuideLinks(g) };
     }
   }
-  const r = handleLocally(text, snapshot);
+  const r = handleLocally(text, snapshot, opts);
   // Étape 2 : une plage horaire SANS chantier dit, dans une conversation qui parle déjà d'heures (« Et l'après-midi de 13h à 16h30 »,
   // « Plutôt 8h-12h »), est une SUITE : le chantier est celui d'avant, que ce lecteur ne connaît pas (il prendrait celui du planning, ou
   // ferait de « plutôt » un lieu). Le modèle, qui voit la conversation, la comprend. Sans historique : rien ne change.
