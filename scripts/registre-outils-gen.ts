@@ -2,8 +2,13 @@
 //
 //   npx -y deno@2 run --allow-read --allow-write --allow-env scripts/registre-outils-gen.ts [--verifier] [--regenerer-empreintes]
 //
-// Il lit les deux listes de déclarations que le modèle reçoit AUJOURD'HUI (ASSISTANT_FUNCTIONS, WORKER_FUNCTIONS), les listes
-// qui les entourent (REMOVAL_TYPES, ATTACHMENT_ACTIONS, actionMode, tool-domains.ts) et le code des exécuteurs du navigateur
+// 3a-2 : le registre est devenu la SOURCE de ces listes (registre/outils-pour.ts). Ce programme ne lit donc plus le code VIVANT pour
+// les déclarations, il lirait ce qu'il a lui-même écrit : il lit l'instantané GELÉ de ce que la production avait avant 3a-2
+// (registre/avant-3a2.snapshot.json : ASSISTANT_FUNCTIONS, WORKER_FUNCTIONS, retraits, pièces jointes, domaines). Il sert
+// désormais de preuve non circulaire (registre-outils.test.ts, test « Dérive ») et à régénérer la tête des fichiers.
+//
+// Il lit les deux listes de déclarations que le modèle recevait AVANT 3a-2 (instantané), actionMode / workerActionMode (code vivant,
+// écrits à la main) et le code des exécuteurs du navigateur
 // (lib/assistant-actions.ts, lib/worker-actions.ts, makeWorkerSaver de lib/worker-assistant.ts), puis écrit :
 //   · supabase/functions/_shared/registre/outils-bureau.ts   (34 : `repondre` + 33 outils)
 //   · supabase/functions/_shared/registre/outils-salarie.ts  (19 : `repondre` + 18 outils)
@@ -22,9 +27,9 @@
 // et à prouver, avec --verifier, qu'ils décrivent encore le code. Les empreintes sont GELÉES : il refuse de les réécrire si les
 // déclarations ont changé, sauf avec --regenerer-empreintes (changement voulu, à écrire dans la PR).
 
-import { actionMode, ASSISTANT_FUNCTIONS, ATTACHMENT_ACTIONS, REMOVAL_TYPES } from '../supabase/functions/_shared/assistant-actions-core.ts';
-import { WORKER_ATTACHMENT_ACTIONS, WORKER_FUNCTIONS, WORKER_REMOVAL_TYPES, workerActionMode } from '../supabase/functions/_shared/worker-assistant-core.ts';
-import { OFFICE_DOMAINS, WORKER_DOMAINS } from '../supabase/functions/_shared/tool-domains.ts';
+import { actionMode } from '../supabase/functions/_shared/assistant-actions-core.ts';
+import { workerActionMode } from '../supabase/functions/_shared/worker-assistant-core.ts';
+import { ABSENCE_KINDS, DOC_CATEGORIES, LEAVE_KINDS, NAV_ACTIONS, WORKER_NAV } from '../supabase/functions/_shared/registre/vocab.ts';
 import type { Outil } from '../supabase/functions/_shared/registre/types.ts';
 
 // ── Types locaux ────────────────────────────────────────────────────────────
@@ -69,7 +74,36 @@ export const FICHIERS = {
   bureau: new URL('outils-bureau.ts', DOSSIER_REGISTRE),
   salarie: new URL('outils-salarie.ts', DOSSIER_REGISTRE),
   empreintes: new URL('outils-empreintes.json', DOSSIER_REGISTRE),
+  avant3a2: new URL('avant-3a2.snapshot.json', DOSSIER_REGISTRE),
 };
+
+/** Ce que la production avait AVANT 3a-2, lu dans l'instantané gelé (voir l'en-tête). */
+interface Avant3a2 {
+  bureau: { ASSISTANT_FUNCTIONS: Declaration[]; REMOVAL_TYPES: string[]; ATTACHMENT_ACTIONS: string[]; DOMAINES: Record<string, string[]> };
+  salarie: { WORKER_FUNCTIONS: Declaration[]; WORKER_REMOVAL_TYPES: string[]; WORKER_ATTACHMENT_ACTIONS: string[]; DOMAINES: Record<string, string[]> };
+}
+interface CodeAvant { domaines: Record<string, { tools: readonly string[] }>; retraits: readonly string[]; joints: readonly string[] }
+const enDomaines = (d: Record<string, string[]>) => Object.fromEntries(Object.keys(d).map((k) => [k, { tools: d[k] }]));
+
+/**
+ * Les mots du registre qui se lisent dans un vocabulaire fermé (registre/vocab.ts) : une énumération égale à l'un d'eux est écrite
+ * comme l'EXPRESSION (\`[...ABSENCE_KINDS]\`) et non recopiée, pour que changer le vocabulaire change la déclaration (et l'empreinte
+ * gelée le signale). Même valeur évaluée, donc même JSON : rien ne change pour le modèle.
+ */
+const VOCABULAIRES: Record<Cote, { nom: string; valeur: string[]; expr: string }[]> = {
+  bureau: [
+    { nom: 'NAV_ACTIONS', valeur: [...Object.keys(NAV_ACTIONS), 'salarie'], expr: "[...Object.keys(NAV_ACTIONS), 'salarie']" },
+    { nom: 'ABSENCE_KINDS', valeur: [...ABSENCE_KINDS], expr: '[...ABSENCE_KINDS]' },
+    { nom: 'DOC_CATEGORIES', valeur: [...DOC_CATEGORIES], expr: '[...DOC_CATEGORIES]' },
+  ],
+  salarie: [
+    { nom: 'WORKER_NAV', valeur: Object.keys(WORKER_NAV), expr: 'Object.keys(WORKER_NAV)' },
+    { nom: 'LEAVE_KINDS', valeur: [...LEAVE_KINDS], expr: '[...LEAVE_KINDS]' },
+    { nom: 'DOC_CATEGORIES', valeur: [...DOC_CATEGORIES], expr: '[...DOC_CATEGORIES]' },
+  ],
+};
+let vocabCourant: { nom: string; valeur: string[]; expr: string }[] = [];
+const vocabUtilises = new Set<string>();
 const EXECUTEUR = { bureau: 'lib/assistant-actions.ts', salarie: 'lib/worker-actions.ts' } as const;
 const SAUVEUR = 'lib/worker-assistant.ts';
 
@@ -328,6 +362,10 @@ function lit(v: unknown, ind: string, largeur = 120): string {
     const e = Object.keys(v as object).map((k) => {
       const x = (v as Record<string, unknown>)[k];
       if (x === undefined) throw new Error(`valeur « undefined » à la clé ${k} : JSON.stringify la perdrait`);
+      if (k === 'enum' && Array.isArray(x)) {
+        const v = vocabCourant.find((c) => JSON.stringify(c.valeur) === JSON.stringify(x));
+        if (v) { vocabUtilises.add(v.nom); return `${cle(k)}: ${v.expr}`; }
+      }
       return `${cle(k)}: ${lit(x, `${ind}  `, largeur)}`;
     });
     if (!e.length) return '{}';
@@ -405,12 +443,10 @@ function verifierDeclarations(decls: Declaration[], cote: Cote) {
   }
 }
 
-async function construireCote(cote: Cote, decls: Declaration[]) {
+async function construireCote(cote: Cote, decls: Declaration[], code: CodeAvant) {
   verifierDeclarations(decls, cote);
   const fiches = cote === 'bureau' ? FICHES_BUREAU : FICHES_SALARIE;
-  const domaines = cote === 'bureau' ? OFFICE_DOMAINS : WORKER_DOMAINS;
-  const retraits = (cote === 'bureau' ? REMOVAL_TYPES : WORKER_REMOVAL_TYPES) as readonly string[];
-  const joints = (cote === 'bureau' ? ATTACHMENT_ACTIONS : WORKER_ATTACHMENT_ACTIONS) as readonly string[];
+  const { domaines, retraits, joints } = code;
 
   // Aucune fiche en trop ni en moins : un outil ajouté au code sans fiche fait échouer ici, pas en silence.
   const noms = decls.map((d) => d.name);
@@ -507,13 +543,15 @@ async function construireCote(cote: Cote, decls: Declaration[]) {
 
 const ENTETE_COMMUN = (cote: Cote, total: number, hors: number) => `// Outils de l'assistant du ${cote === 'bureau' ? 'BUREAU' : 'SALARIÉ'} qui EXISTENT aujourd'hui (${total} déclarations : \`repondre\` + ${hors} outils) : ce que le modèle voit (description et
 // paramètres, mot pour mot) et la règle de chaque outil (niveau, mode, « Annuler », exécuteur). Couche STABLE du registre.
-// Contrat : docs/ia-etape3/00-conception-etape3.md §2.3. Ordre = celui de ${cote === 'bureau' ? 'ASSISTANT_FUNCTIONS (assistant-actions-core.ts)' : 'WORKER_FUNCTIONS (worker-assistant-core.ts)'} : il fait
-// partie de ce que le modèle reçoit, donc de l'empreinte.
+// Contrat : docs/ia-etape3/00-conception-etape3.md §2.3. Ordre = celui de ${cote === 'bureau' ? 'ASSISTANT_FUNCTIONS' : 'WORKER_FUNCTIONS'} : il fait
+// partie de ce que le modèle reçoit, donc de l'empreinte. Depuis 3a-2 ces listes sont GÉNÉRÉES d'ici (registre/outils-pour.ts, \`outilsPour\`) ;
+// assistant-actions-core.ts / worker-assistant-core.ts ne les écrivent plus.
 //
-// Les entrées jusqu'au repère « fin des outils de la livraison 3a » sont GÉNÉRÉES par scripts/registre-outils-gen.ts d'après le code : pour
-// changer un jugement (« Annuler », outils proches…), éditer les FICHES du script et le relancer, pas ce fichier. Le script disparaît en 3a-2,
-// quand les listes de AC sortent du registre. Après le repère, les outils des livraisons suivantes (3b, 3c, 3d) s'écrivent à la main ; le script
-// les laisse intacts. POURQUOI GÉNÉRÉ : des descriptions recopiées à la main finiraient par différer d'un caractère de celles sur lesquelles la
+// Les entrées jusqu'au repère « fin des outils de la livraison 3a » ont été GÉNÉRÉES par scripts/registre-outils-gen.ts d'après le code d'avant 3a-2
+// (instantané registre/avant-3a2.snapshot.json) : pour changer un jugement (« Annuler », outils proches…), éditer les FICHES du script et le
+// relancer, pas ce fichier. Depuis 3a-2 ces entrées sont la SOURCE (le code les lit) ; le script ne sert plus qu'à prouver, par le test « Dérive »,
+// qu'elles décrivent toujours ce que la production recevait. Après le repère, les outils des livraisons suivantes (3b, 3c, 3d) s'écrivent à la
+// main ; le script les laisse intacts. POURQUOI GÉNÉRÉ : des descriptions recopiées à la main finiraient par différer d'un caractère de celles sur lesquelles la
 // consigne a été réglée. La preuve du contraire est outils-empreintes.json (SHA-256 gelés) et registre-outils.test.ts : les outils
 // \`livraison: '3a'\`, ré-assemblés en { name, description, parameters }, redonnent la liste d'aujourd'hui. Changer un mot d'une description ou
 // d'un schéma fait donc échouer ce test : c'est voulu, c'est une livraison à empreinte déclarée (3b-0), jamais une retouche en passant.
@@ -522,14 +560,15 @@ const ENTETE_COMMUN = (cote: Cote, total: number, hors: number) => `// Outils de
 // comportement) ; \`annuler\` : oui = l'inverse exact, partiel = « Annuler » existe mais peut ne pas tout défaire, non = rien à rejouer ;
 // \`notifie\` : le résultat prévient un tiers ; \`champsCarte\` : paramètres de CHAMPS_CARTE (§1.2) ; \`executeur\` : le \`case\` de l'exécuteur du
 // navigateur ; \`code\` : fichiers de lib/ réellement appelés par ce \`case\` (l'exécuteur lui-même quand il écrit aussi en ligne) ; \`retrait\` :
-// REMOVAL_TYPES ; \`pieceJointe\` : ATTACHMENT_ACTIONS ; \`domaines\` : tool-domains.ts. Les lignes « note » justifient une valeur sûre mais peu
+// REMOVAL_TYPES ; \`pieceJointe\` : ATTACHMENT_ACTIONS ; \`domaines\` : tool-domains.ts (ces trois listes sont maintenant générées d'ici : outils-listes-*.ts). Les lignes « note » justifient une valeur sûre mais peu
 // évidente, les lignes « incertain » signalent une valeur à confirmer.`;
 
 const ENTETE_SALARIE_PLUS = `//
 // PROFIL LONG (phrase libre de ≥ 120 caractères, turc, plusieurs actions : saisie-profil.ts) : tout geste \`direct\` ci-dessous y passe par une
 // fiche à confirmer (worker-multi.ts, \`confirmer: true\`). \`mode\` décrit le profil court, le seul que workerActionMode connaisse. Le profil long
 // a en outre deux déclarations à lui (DECLARER_HEURES_LONG, NOUVEAU_CHANTIER_LONG, worker-multi-prompt.ts) que ce registre ne porte pas
-// encore : \`variantes\` (§2.3) ne prévoit que l'extension d'un outil par une livraison, pas un profil : à trancher avant 3a-2.`;
+// encore : \`variantes\` (§2.3) ne prévoit que l'extension d'un outil par une livraison, pas un profil. 3a-2 ne les déplace pas : elles restent écrites
+// dans worker-multi-prompt.ts, à trancher avec la boucle d'outils (3c).`;
 
 /**
  * Le repère après lequel le script ne touche à rien : les outils des livraisons suivantes (3b, 3c, 3d) s'écrivent à la main
@@ -540,10 +579,13 @@ const REPERE_DEBUT = '\n  // ── fin des outils de la livraison 3a';   // ave
 
 function texteTete(cote: Cote, outils: Record<string, unknown>[], coms: string[][]): string {
   const total = outils.length;
+  vocabCourant = VOCABULAIRES[cote]; vocabUtilises.clear();
   const nom = cote === 'bureau' ? 'OUTILS_BUREAU' : 'OUTILS_SALARIE';
   const entete = ENTETE_COMMUN(cote, total, total - 1) + (cote === 'salarie' ? `\n${ENTETE_SALARIE_PLUS}` : '');
   const corps = outils.map((o, i) => texteEntree(o, coms[i])).join('\n');
-  return `${entete}\nimport type { Outil } from './types.ts';\n\nexport const ${nom}: Outil[] = [\n${corps}\n${REPERE}\n`;
+  const vocab = vocabCourant.filter((v) => vocabUtilises.has(v.nom)).map((v) => v.nom).sort();
+  const importVocab = vocab.length ? `import { ${vocab.join(', ')} } from './vocab.ts';\n` : '';
+  return `${entete}\nimport type { Outil } from './types.ts';\n${importVocab}\nexport const ${nom}: Outil[] = [\n${corps}\n${REPERE}\n`;
 }
 
 /** Le fichier à écrire : la tête du script + ce qui suit le repère dans le fichier actuel (outils des livraisons suivantes), intact. */
@@ -561,17 +603,19 @@ export function assembler(tete: string, existant: string | null): string {
 /** Preuve de génération : la tête écrite, évaluée comme du JavaScript, redonne exactement les objets et les déclarations d'origine. */
 function verifierRelecture(cote: Cote, tete: string, outils: Record<string, unknown>[], decls: Declaration[]) {
   const i = tete.indexOf('= [\n');
-  const lu = new Function(`return ${tete.slice(i + 2)}]`)() as Record<string, unknown>[];
+  // Les vocabulaires (registre/vocab.ts) sont cités par leur nom dans le texte : on les fournit à l'évaluation.
+  const lu = new Function('NAV_ACTIONS', 'WORKER_NAV', 'ABSENCE_KINDS', 'LEAVE_KINDS', 'DOC_CATEGORIES', `return ${tete.slice(i + 2)}]`)(NAV_ACTIONS, WORKER_NAV, ABSENCE_KINDS, LEAVE_KINDS, DOC_CATEGORIES) as Record<string, unknown>[];
   if (JSON.stringify(lu) !== JSON.stringify(outils)) throw new Error(`${cote} : le texte écrit ne redonne pas les outils en mémoire`);
   const rassemble = lu.map((o) => ({ name: o.id, description: o.description, parameters: o.parametres }));
   if (JSON.stringify(rassemble) !== JSON.stringify(decls)) throw new Error(`${cote} : les outils ré-assemblés diffèrent des déclarations`);
 }
 
 export async function construire(): Promise<Registre> {
-  const dB = ASSISTANT_FUNCTIONS as unknown as Declaration[];
-  const dS = WORKER_FUNCTIONS as unknown as Declaration[];
-  const b = await construireCote('bureau', dB);
-  const s = await construireCote('salarie', dS);
+  const avant = JSON.parse(await deno.readTextFile(FICHIERS.avant3a2)) as Avant3a2;
+  const dB = avant.bureau.ASSISTANT_FUNCTIONS;
+  const dS = avant.salarie.WORKER_FUNCTIONS;
+  const b = await construireCote('bureau', dB, { domaines: enDomaines(avant.bureau.DOMAINES), retraits: avant.bureau.REMOVAL_TYPES, joints: avant.bureau.ATTACHMENT_ACTIONS });
+  const s = await construireCote('salarie', dS, { domaines: enDomaines(avant.salarie.DOMAINES), retraits: avant.salarie.WORKER_REMOVAL_TYPES, joints: avant.salarie.WORKER_ATTACHMENT_ACTIONS });
   const teteBureau = texteTete('bureau', b.outils, b.coms);
   const teteSalarie = texteTete('salarie', s.outils, s.coms);
   verifierRelecture('bureau', teteBureau, b.outils, dB);
