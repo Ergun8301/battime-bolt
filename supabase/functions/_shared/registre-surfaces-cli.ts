@@ -20,11 +20,14 @@ export const RACINE_DEPOT = new URL('../../../', import.meta.url);
 
 /** { chemin relatif au dépôt: texte } de tous les .ts / .tsx des dossiers scannés. */
 export async function lireSources(racine: URL | string = RACINE_DEPOT, dossiers: readonly string[] = DOSSIERS_SCANNES): Promise<Record<string, string>> {
-  const base = (racine instanceof URL ? racine.pathname : racine).replace(/\/?$/, '/');
+  const base = (racine instanceof URL ? decodeURIComponent(racine.pathname) : racine).replace(/\/?$/, '/');
   const sources: Record<string, string> = {};
   const parcourir = async (relatif: string) => {
     let entrees: Deno.DirEntry[];
-    try { entrees = await Array.fromAsync(Deno.readDir(base + relatif)); } catch { return; }   // un dossier absent n'est pas une erreur
+    try { entrees = await Array.fromAsync(Deno.readDir(base + relatif)); } catch (e) {
+      if (e instanceof Deno.errors.NotFound) return;   // un dossier absent (hooks/ d'un autre dépôt) n'est pas une erreur ; une permission refusée, si
+      throw e;
+    }
     for (const e of entrees) {
       const chemin = `${relatif}/${e.name}`;
       if (e.isDirectory) { if (!DOSSIERS_IGNORES.has(e.name)) await parcourir(chemin); }
@@ -41,7 +44,7 @@ const TITRES: Record<TypeCle, string> = {
   rpc: 'rpc       — .rpc(\'nom\')',
   fn: 'fn        — functions.invoke(\'nom\')',
   table: 'table     — .from(\'t\') suivi de insert / update / delete / upsert (« ? » = nom calculé, à déclarer)',
-  ecriture: 'ecriture  — exports de lib/ dont la tranche écrit ou appelle .rpc(',
+  ecriture: 'ecriture  — exports de lib/ dont le corps (aides du fichier comprises) écrit ou appelle .rpc(',
   ancre: 'ancre     — data-guide / guide= littéraux',
   'ancre-dynamique': 'ancre-dynamique — data-guide / guide= dont la valeur est une expression',
   route: 'route     — app/**/page.tsx',

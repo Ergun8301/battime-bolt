@@ -397,7 +397,7 @@ function moduleDe(chemin: string): string {
   return chemin.replace(/^@\/components\//, '').replace(/\.[tj]sx?$/, '');
 }
 
-interface Fichier { chemin: string; texte: string; m: Masque; ligne: (decalage: number) => number }
+interface Fichier { chemin: string; m: Masque; ligne: (decalage: number) => number }
 
 /**
  * Le cœur : toutes les clés de surface et le compteur de gestionnaires. `sources` = { chemin: texte } ; les fichiers de
@@ -410,7 +410,7 @@ export function scannerSurfaces(sources: Record<string, string>): ResultatScan {
   for (const [brut, texte] of Object.entries(sources)) {
     const chemin = normaliser(brut);
     if (!/\.[tj]sx?$/.test(chemin) || estFichierDeTest(chemin)) continue;
-    fichiers.push({ chemin, texte, m: masquer(texte), ligne: indexLignes(texte) });
+    fichiers.push({ chemin, m: masquer(texte), ligne: indexLignes(texte) });
   }
   const dialoguesDeFenetre: Occurrence[] = [];
   const ajoute = (type: TypeCle, cle: string, f: Fichier, decalage: number, via?: Occurrence['via']) =>
@@ -438,7 +438,13 @@ export function scannerSurfaces(sources: Record<string, string>): ResultatScan {
         const nom = /^([A-Za-z_$][\w$]*)\s*[,)]/.exec(nu.slice(p, p + 80));
         if (nom && chargeurs.has(nom[1])) chemin = chargeurs.get(nom[1])!;
       }
-      if (chemin === null) continue;
+      if (chemin === null) {
+        // Un chargeur qu'on ne sait pas lire (`lazyWindow(unChargeurImporte)`, un bloc `{ return import(…) }`) : jamais
+        // un oubli silencieux. Sont exclus la DÉFINITION (`function lazyWindow(`) et un `.dynamic(` d'un autre objet.
+        const avant = nu.slice(Math.max(0, w.index! - 24), w.index!);
+        if (!/\bfunction\s*\*?\s*$/.test(avant) && !/\.\s*$/.test(avant)) ajoute('fenetre', 'fenetre:?', f, w.index!, w[1] as 'lazyWindow' | 'dynamic');
+        continue;
+      }
       const module = moduleDe(chemin);
       modulesFenetre.add(module);
       ajoute('fenetre', `fenetre:${module}`, f, w.index!, w[1] as 'lazyWindow' | 'dynamic');

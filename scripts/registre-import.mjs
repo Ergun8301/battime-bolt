@@ -90,7 +90,7 @@ const LIVRAISON_PAR_GENRE = { lire: '3c', ouvrir: '3b', naviguer: '3b', guider: 
 
 /**
  * Livraison des capacités `ecrire` en dette ou en écart : §5.1, une ligne par sous-livraison. Pas de repli par
- * genre pour elles (trois sous-livraisons différentes) : un id absent de cette table fait ÉCHOUER l'import au
+ * genre pour elles (3d1 à 3d6 se distinguent par le travail, pas par le genre) : un id absent de cette table fait ÉCHOUER l'import au
  * lieu d'être rangé au hasard. Les cas que le §5.1 ne nomme pas vont en 3d5 (« le reste », objectif 0 dette).
  */
 const LIVRAISON_ECRITURE = {
@@ -439,15 +439,17 @@ function lireJson(chemin, repli) {
   return JSON.parse(readFileSync(chemin, 'utf8'));
 }
 
-function ecrireSiBesoin(chemin, contenu, { protege }) {
+/**
+ * Décide ce qu'il faut faire d'un fichier, sans rien écrire : 'identique' (rien), 'ecrire' ou 'refuse'.
+ * Écrire plus tard, en bloc, seulement si AUCUN fichier n'est refusé : un capacites-bureau.ts modifié à la main
+ * et un dettes.json réécrit avec d'autres comptes feraient un dépôt incohérent.
+ */
+function planifier(chemin, contenu, { protege }) {
   const actuel = existsSync(chemin) ? readFileSync(chemin, 'utf8') : null;
-  if (actuel === contenu) return 'identique';
+  if (actuel === contenu) return { chemin, contenu, statut: 'identique' };
   const gabarit = actuel !== null && /Capacite\[\] = \[\];\s*$/.test(actuel); // le socle vide de 3a-1
-  if (protege && actuel !== null && !gabarit && !ecraser) {
-    return 'refuse'; // modifié depuis la génération : une capacité B139+ ajoutée à la main serait perdue
-  }
-  if (!aBlanc) { mkdirSync(dirname(chemin), { recursive: true }); writeFileSync(chemin, contenu); }
-  return aBlanc ? 'a_ecrire' : 'ecrit';
+  if (protege && actuel !== null && !gabarit && !ecraser) return { chemin, contenu, statut: 'refuse' }; // une capacité B139+ ajoutée à la main serait perdue
+  return { chemin, contenu, statut: 'ecrire' };
 }
 
 // ── Vérification contre le code (avertit, ne bloque pas) ────────────────────
@@ -489,27 +491,37 @@ function main() {
   }
 
   const parCote = { bureau: construire('bureau', brut.bureau), salarie: construire('salarie', brut.salarie) };
-  const sorties = [];
+  const plans = [];
   for (const cote of ['bureau', 'salarie']) {
-    const chemin = join(REGISTRE, `capacites-${cote}.ts`);
-    sorties.push([`capacites-${cote}.ts`, ecrireSiBesoin(chemin, fichierTs(cote, parCote[cote]), { protege: true })]);
+    plans.push(planifier(join(REGISTRE, `capacites-${cote}.ts`), fichierTs(cote, parCote[cote]), { protege: true }));
   }
 
   // ids.snapshot.json : union de ce qui existe déjà et des ids importés, triée (un id publié ne disparaît jamais)
   const cheminIds = join(REGISTRE, 'ids.snapshot.json');
   const deja = lireJson(cheminIds, []);
   const tous = [...new Set([...deja, ...parCote.bureau.map((r) => r.capacite.id), ...parCote.salarie.map((r) => r.capacite.id)])].sort(idCompare);
-  sorties.push(['ids.snapshot.json', ecrireSiBesoin(cheminIds, `${JSON.stringify(tous, null, 2)}\n`, { protege: false })]);
+  plans.push(planifier(cheminIds, `${JSON.stringify(tous, null, 2)}\n`, { protege: false }));
 
   // dettes.json : seuls dette et ecart viennent d'ici ; interne et ecritures_non_assistees appartiennent à d'autres étapes
   const compte = (cle) => [...parCote.bureau, ...parCote.salarie].filter((r) => r.capacite[cle]).length;
   const cheminDettes = join(REGISTRE, 'dettes.json');
   const avant = lireJson(cheminDettes, { max: {} }).max ?? {};
   const dettes = { max: { dette: compte('dette'), ecart: compte('ecart'), interne: avant.interne ?? 0, ecritures_non_assistees: avant.ecritures_non_assistees ?? 0 } };
-  sorties.push(['dettes.json', ecrireSiBesoin(cheminDettes, `${JSON.stringify(dettes, null, 2)}\n`, { protege: false })]);
+  plans.push(planifier(cheminDettes, `${JSON.stringify(dettes, null, 2)}\n`, { protege: false }));
+
+  const refuse = plans.some((p) => p.statut === 'refuse');
+  const sorties = plans.map((p) => {
+    const nom = p.chemin.slice(REGISTRE.length + 1);
+    if (p.statut === 'ecrire' && !refuse && !aBlanc) {
+      mkdirSync(dirname(p.chemin), { recursive: true });
+      writeFileSync(p.chemin, p.contenu);
+      return [nom, 'ecrit'];
+    }
+    return [nom, p.statut === 'ecrire' && (refuse || aBlanc) ? (refuse ? 'non écrit (un fichier est refusé)' : 'a_ecrire') : p.statut];
+  });
 
   rapport(parCote, sorties, dettes);
-  if (sorties.some(([, s]) => s === 'refuse')) process.exitCode = 1;
+  if (refuse) process.exitCode = 1;
 }
 
 function rapport(parCote, sorties, dettes) {
