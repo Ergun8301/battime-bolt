@@ -81,12 +81,12 @@
       "max": 147
     },
     "/pointer": {
-      "mesure": 146.0,
+      "mesure": 147.0,
       "max": 151
     },
     "/poseur": {
-      "mesure": 335.0,
-      "max": 345,
+      "mesure": 269.0,
+      "max": 280,
       "objectif": 300
     },
     "/suisse": {
@@ -107,19 +107,19 @@
     }
   },
   "css": {
-    "_aide": "Budget du CSS du premier chargement (kB, gzip niveau 9 des feuilles /_next/static/css/ de la page exportée), lu par scripts/check-css-budget.mjs (npm run budget:css après npm run build). Le « First Load JS » ci-dessus ne voit pas le CSS : depuis que le CSS de l'écran salarié est en fichiers .css (plan d'intégration du design salarié, étape 1), il est mesuré ici. max = mesure arrondie au kB supérieur + 5.",
+    "_aide": "Budget du CSS du premier chargement (kB, gzip niveau 9 des feuilles /_next/static/css/ de la page exportée), lu par scripts/check-css-budget.mjs (npm run budget:css après npm run build). Le « First Load JS » ci-dessus ne voit pas le CSS : depuis que le CSS de l'écran salarié est en fichiers .css (plan d'intégration du design salarié, étape 1 : /poseur 12,1 → 22,0 kB gzip de CSS, pour ≈ 66 kB de JavaScript de moins au premier chargement), il est mesuré ici. max = mesure arrondie au kB supérieur + 5.",
     "routes": {
       "/poseur": {
-        "mesure": 12.1,
-        "max": 18
+        "mesure": 22.0,
+        "max": 27
       },
       "/pointer": {
         "mesure": 12.1,
         "max": 18
       },
       "/admin": {
-        "mesure": 12.1,
-        "max": 18
+        "mesure": 14.2,
+        "max": 20
       }
     }
   }
