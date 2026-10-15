@@ -79,6 +79,7 @@ const embed = (row, sel) => {
 // Toutes les requêtes qui partent : { method, path, rpc, fn, body }.
 const calls = [];
 let REPLY = { answer: 'Voici.', links: [] };    // ce que répondent `assistant` et `worker-assistant`
+let LENT = 0;                                    // le comptage des brouillons (time_entries, HEAD) se fait attendre : réseau lent
 let DELAY = 0;                                   // la réponse de l'assistant se fait attendre (formulaire ouvert entre-temps)
 let TRAININGS = [];                              // my_trainings (salarié)
 let NO_TABLES = new Set();                       // tables « absentes » (migration pas passée) : la fonction qui en dépend se cache
@@ -114,6 +115,7 @@ async function setup(ctx, session) {
     if (url.pathname.startsWith('/rest/v1/rpc/')) return r.fulfill({ json: [] });
     const t = url.pathname.replace('/rest/v1/', '');
     if (NO_TABLES.has(t)) return r.fulfill({ status: 404, json: { code: '42P01', message: `relation "public.${t}" does not exist` } });
+    if (LENT && t === 'time_entries' && m === 'HEAD') await sleep(LENT);
     D[t] = D[t] || [];
     const sel = url.searchParams.get('select') || '*';
     const single = (r.request().headers()['accept'] || '').includes('vnd.pgrst.object');
@@ -131,7 +133,7 @@ const SESSION_ADMIN = sessionDe('u-admin', 'paul@exemple.fr');
 const SESSION_KARIM = sessionDe('u-karim', 'karim@exemple.fr');
 const LARGEURS = [[1280, 800], [768, 1024], [390, 844]];
 async function newPage(w, h, cote = 'bureau') {
-  D = fresh(); NO_TABLES = new Set(); REPLY = { answer: 'Voici.', links: [] }; DELAY = 0;
+  D = fresh(); NO_TABLES = new Set(); REPLY = { answer: 'Voici.', links: [] }; DELAY = 0; LENT = 0;
   const mobile = w <= 500;
   const ctx = await b.newContext({ viewport: { width: w, height: h }, locale: 'fr-FR', timezoneId: 'Europe/Paris', ...(mobile ? { deviceScaleFactor: 2, isMobile: true, hasTouch: true } : {}) });
   await setup(ctx, cote === 'bureau' ? SESSION_ADMIN : SESSION_KARIM);
@@ -376,6 +378,26 @@ if (run('d')) {
     await q.waitForTimeout(250);
     check(calls.slice(avant2).filter((x) => x.method !== 'GET' && x.method !== 'HEAD').length === 0 && calls.slice(avant2).filter((x) => /time_entries/.test(x.path)).length === 0, 'd · export : « Envoyer au comptable » touché dans les 700 ms ne lit ni n’écrit rien');
     await c6.close();
+  }
+  // Réseau LENT : le comptage des brouillons met ~1 s. La garde de 700 ms court depuis l'apparition du bouton « Clôturer », pas depuis le toucher.
+  {
+    const { ctx: c8, p: q } = await newPage(1280, 800, 'bureau');
+    LENT = 1000;
+    await demander(q, 'bureau', [{ label: 'Clôture', action: 'ouvrir:cloture.mois?mois=2026-10' }]);
+    const avant = mark();
+    await boutonLien(q).click();
+    const d = dlg(q, /Clôturer octobre 2026/); await d.waitFor({ state: 'visible', timeout: 8000 });
+    await d.getByRole('button', { name: 'Clôturer' }).click({ force: true });  // le bouton vient d'apparaître : ce clic est ignoré
+    await q.waitForTimeout(250);
+    check(ecritures(avant).length === 0 && (await d.count()) === 1, 'd · clôture LENTE : un clic dans les 700 ms qui suivent l’apparition du bouton n’écrit rien');
+    await q.keyboard.press('Enter'); await q.waitForTimeout(200);
+    check(ecritures(avant).length === 0, 'd · clôture LENTE : Entrée sans effet');
+    await q.waitForTimeout(900);
+    await d.getByRole('button', { name: 'Clôturer' }).click();
+    await q.waitForTimeout(400);
+    check(ecritures(avant).length > 0, 'd · clôture LENTE : un clic après les 700 ms est pris en compte');
+    LENT = 0;
+    await c8.close();
   }
   // Un salarié ne reçoit jamais un écran du bureau : sur /poseur, tout lien du bureau est refusé.
   {
