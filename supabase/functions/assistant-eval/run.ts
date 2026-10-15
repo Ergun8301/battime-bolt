@@ -10,6 +10,7 @@
 // même choix des outils, et le lecteur local s'efface pour une relance. La version v1 (copie figée d'avant le lot 7) ignore `history`.
 import { modeleServi, tierFor, type ToolsRequest, type ToolsResult } from '../_shared/ai-provider.ts';
 import * as A2 from '../_shared/assistant-actions-core.ts';
+import { functionsFor } from '../_shared/assistant-outils.ts';
 import { nettoyerHistorique, sansDemandeRecollee } from '../_shared/assistant-history.ts';
 import * as W2 from '../_shared/worker-assistant-core.ts';
 import { runWorkerTurn } from '../_shared/worker-turn.ts';
@@ -80,7 +81,7 @@ async function runOne(c: EvalCase, version: 'v1' | 'v2', appel: Call): Promise<C
       if (local) out = fromAdmin(local as AnyReply);
       else {
         via = 'ia';
-        const r = await call({ prompt: A.actionPrompt(ctx as never, '{}', A.guideForPrompt(), c.phrase), functions: version === 'v2' ? A2.functionsFor(!!file, c.phrase, ctx.historique) : A.ASSISTANT_FUNCTIONS, file });
+        const r = await call({ prompt: A.actionPrompt(ctx as never, '{}', A.guideForPrompt(), c.phrase), functions: version === 'v2' ? functionsFor(!!file, c.phrase, ctx.historique) : A1.ASSISTANT_FUNCTIONS, file });
         out = r.ok ? fromAdmin(A.fromFunctionCall(r.call.name, r.call.args, ctx as never) as AnyReply) : { kind: 'none', answer: `IA : ${r.reason}` };
       }
     } else if (version === 'v2') {

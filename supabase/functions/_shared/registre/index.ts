@@ -13,3 +13,6 @@ export * from './outils-bureau.ts';
 export * from './outils-salarie.ts';
 export * from './surfaces.ts';
 export * from './interne.ts';
+export * from './vocab.ts';
+export * from './outils-pour.ts';
+export * from './listes.ts';

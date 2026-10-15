@@ -3,6 +3,7 @@ import {
   answerSimpleQuestion, buildWorkerSnapshot, checkDraft, handleLocally, mondayOf, parseHoursText, resolveWorksite, sanitizeWorkerAi,
   workerPrompt, WORKER_SCHEMA, type WorkerSnapshot,
 } from './worker-assistant-core.ts';
+import { WORKER_FUNCTIONS, WORKER_ATTACHMENT_FUNCTIONS, workerFunctionsFor } from './worker-outils.ts';
 import { extractJson } from './ai-provider.ts';
 
 function eq(a: unknown, b: unknown, msg: string) {
@@ -152,9 +153,7 @@ Deno.test('Instantané : jamais les heures ni le planning d’un collègue', () 
 });
 
 // ═══ Lot 3 bis — guide et actions du salarié ════════════════════════════════
-import {
-  checkWorkerAction, fromWorkerCall, handleWorkerLocally, prepareWorkerAction, WORKER_FUNCTIONS, type WorkerLive,
-} from './worker-assistant-core.ts';
+import { checkWorkerAction, fromWorkerCall, handleWorkerLocally, prepareWorkerAction, type WorkerLive } from './worker-assistant-core.ts';
 import { callFunction } from './ai-provider.ts';
 
 const IDLE: WorkerLive = { enCours: null, lignes: [{ id: 'e1', chantier: 'Villa Dupont', debut: '07:30', fin: '12:00', envoyee: false }, { id: 'e2', chantier: 'Bureau Martin', debut: '13:00', fin: '16:30', envoyee: true }] };
@@ -268,7 +267,7 @@ Deno.test('Lot 1 — Assistant salarié : le prévu du bureau ne compte ni dans 
 });
 
 // ═══ Lot 1 (heures sûres) — effacer ou retirer : la carte d'abord, « Annuler » après ═══
-import { isWorkerRemoval, WORKER_A_CONFIRMER, WORKER_A_CONFIRMER_REMPLACE, WORKER_ATTACHMENT_FUNCTIONS, workerConfirmText, WORKER_REMOVAL_TYPES, workerActionMode, workerFunctionsFor, workerQuestionFor } from './worker-assistant-core.ts';
+import { isWorkerRemoval, WORKER_A_CONFIRMER, WORKER_A_CONFIRMER_REMPLACE, workerConfirmText, WORKER_REMOVAL_TYPES, workerActionMode, workerQuestionFor } from './worker-assistant-core.ts';
 
 Deno.test('Lot 1 — salarié : toute suppression passe par la carte de confirmation', () => {
   const LIVE: WorkerLive = {

@@ -18,10 +18,11 @@
 // salarié peut demander où sont ses collègues (prénom, chantier, horaires).
 import { calendarForPrompt, cleanName, cleanSpoken, cleanTitle, dayPart, looksLikeAction, low, parseDateFr, parseDateRangeFr, parseTimeFr } from './fr-langue.ts';
 import { plannedState } from './day-hours.ts';
-import { WORKER_DOMAINS, domainTools, pickTools } from './tool-domains.ts';
+import { DOC_CATEGORIES, LEAVE_KINDS, WORKER_NAV } from './registre/vocab.ts';
+import { WORKER_ATTACHMENT_ACTIONS as GENERE_WORKER_ATTACHMENT_ACTIONS, WORKER_REMOVAL_TYPES as GENERE_WORKER_REMOVAL_TYPES } from './outils-listes-salarie.ts';
 import { WORKER_TEXT_MAX } from './saisie-profil.ts';
 import { hasWorkerTour, TOUR_LABEL, tourAction } from './worker-tours.ts';
-import { blocAvantDemande, doitSauterLeCheminLocal, textePourOutils, type MessageHistorique } from './assistant-history.ts';
+import { blocAvantDemande, doitSauterLeCheminLocal, type MessageHistorique } from './assistant-history.ts';
 export { looksLikeAction };
 
 export interface WorkerSnapshot {
@@ -435,18 +436,8 @@ export function buildWorkerSnapshot(raw: WorkerRaw): WorkerSnapshot {
 // Jamais les données d'un collègue, jamais de coût.
 // ════════════════════════════════════════════════════════════════════════════
 
-export const WORKER_NAV = {
-  journee: 'Ma journée',
-  semaine: 'Ma semaine',
-  mois: 'Mon mois',
-  historique: 'Historique',
-  conges: 'Mes congés',
-  // Lot 7 : chaque fiche d'aide a son bouton raccourci.
-  notifications: 'Activer les notifications',
-  photo: 'Changer ma photo',
-  borne: 'Scanner la borne',
-  infos: 'Informations',
-} as const;
+// Le vocabulaire vit dans registre/vocab.ts (module léger, lu aussi par les déclarations d'outils) ; ré-exporté ici.
+export { WORKER_NAV };
 export type WorkerNav = keyof typeof WORKER_NAV;
 
 /** Bouton raccourci : un écran, ou « ask:… » = une question toute prête posée à l'assistant. */
@@ -537,7 +528,7 @@ export function findWorkerGuide(text: string): WorkerGuideEntry | null {
 export const workerGuideAnswer = (g: WorkerGuideEntry) => `${g.titre} :\n${g.etapes.map((e, i) => `${i + 1}. ${e}`).join('\n')}`;
 
 // ── Actions ─────────────────────────────────────────────────────────────────
-export const LEAVE_KINDS = ['conge', 'maladie', 'intemperie'] as const;
+export { LEAVE_KINDS };
 export const LEAVE_LABEL: Record<string, string> = { conge: 'Congé', maladie: 'Arrêt maladie', intemperie: 'Intempérie' };
 
 /** Ce que l'écran doit savoir en plus pour les actions (lu avec SA session). */
@@ -609,9 +600,10 @@ export type WorkerActionDraft =
  * part (quelles lignes, combien d'heures, quel jour), rien n'est écrit avant
  * « Confirmer » ; « Annuler » reste ensuite.
  */
-export const WORKER_REMOVAL_TYPES: readonly WorkerActionDraft['type'][] = [
-  'effacer_heures', 'annuler_conge', 'modifier_conge', 'annuler_pointage', 'retirer_photo', 'retirer_reserve',
-];
+// 3a-2 : la liste est GÉNÉRÉE depuis le registre (retrait des outils du salarié, plus `annuler_pointage`, type désactivé
+// au lot 12 qui n'a plus d'outil : voir registre/outils-salarie.ts, TYPES_SANS_OUTIL_SALARIE). Le type fait vérifier que
+// chaque nom est bien un type d'action du salarié.
+export const WORKER_REMOVAL_TYPES: readonly WorkerActionDraft['type'][] = GENERE_WORKER_REMOVAL_TYPES;
 export const isWorkerRemoval = (d: { type: string }) => (WORKER_REMOVAL_TYPES as readonly string[]).includes(d.type);
 
 /**
@@ -749,7 +741,7 @@ export function checkWorkerAction(d: WorkerActionDraft, snapshot: WorkerSnapshot
 }
 
 /** Catégories des documents de chantier (lot 7, colonne `documents.category`). */
-export const DOC_CATEGORIES = ['facture_payee', 'facture', 'devis', 'reserve', 'photo', 'plan', 'pv_reception', 'autre'] as const;
+export { DOC_CATEGORIES };
 export const DOC_CATEGORY_LABEL: Record<string, string> = {
   facture_payee: 'Facture payée', facture: 'Facture', devis: 'Devis', reserve: 'Réserve', photo: 'Photo', plan: 'Plan', pv_reception: 'PV de réception', autre: 'Autre',
 };
@@ -1046,66 +1038,18 @@ function chantierNonDit(lines: DraftLine[]): boolean {
     || (!!l.observation && !/(?:^|\s)(?:a|au|aux|chez|sur|vers)\s/.test(norm(l.worksite_text))));
 }
 
-// ── IA : appel de fonctions (liste blanche du salarié) ─────────────────────
-const S = (description: string) => ({ type: 'string', description });
-export const WORKER_FUNCTIONS = [
-  // ── Lot 8 : effacer ce qu'il a saisi (jamais ce qui est envoyé) ──
-  { name: 'effacer_heures', description: 'Effacer SES heures NON envoyées : toute sa journée, ou la ligne d’un chantier.',
-    parameters: { type: 'object', properties: { date: S('Jour, aaaa-mm-jj (défaut : aujourd’hui)'), chantier: S('Chantier de la ligne à effacer ; vide = toute la journée') }, required: [] } },
-  { name: 'annuler_conge', description: 'Annuler SA demande de congé encore EN ATTENTE.',
-    parameters: { type: 'object', properties: { ancienne_date: S('Un jour de la demande, s’il y en a plusieurs') }, required: [] } },
-  { name: 'modifier_conge', description: 'Changer les dates de SA demande de congé encore en attente.',
-    parameters: { type: 'object', properties: { ancienne_date: S('Un jour de la demande actuelle'), du: S('Nouveau début, aaaa-mm-jj'), au: S('Nouvelle fin, aaaa-mm-jj') }, required: ['du'] } },
-  { name: 'retirer_photo', description: 'Retirer une photo ou un document qu’il a ajouté.',
-    parameters: { type: 'object', properties: { chantier: S('Chantier'), quoi: S('Laquelle (« la dernière photo », son nom)') }, required: [] } },
-  { name: 'retirer_reserve', description: 'Retirer la réserve qu’il a signalée aujourd’hui (journée pas encore envoyée).',
-    parameters: { type: 'object', properties: { chantier: S('Chantier') }, required: [] } },
-  { name: 'repondre', description: 'Répondre sur SES heures / SON planning, ou expliquer comment faire dans l’appli (3 étapes au plus).',
-    parameters: { type: 'object', properties: { reponse: S('Réponse courte en français'), lien: { type: 'string', enum: Object.keys(WORKER_NAV) } }, required: ['reponse'] } },
-  { name: 'declarer_heures', description: 'Préparer la déclaration de SES heures.',
-    parameters: { type: 'object', properties: {
-      date: S('aaaa-mm-jj'),
-      lignes: { type: 'array', items: { type: 'object', properties: { chantier: S('tel que dit'), debut: S('HH:MM'), fin: S('HH:MM'), pause: { type: 'number' } }, required: ['debut', 'fin'] } },
-    }, required: ['lignes'] } },
-  { name: 'demander_conge', description: 'Préparer une demande de congé / absence au bureau.',
-    parameters: { type: 'object', properties: { type: { type: 'string', enum: [...LEAVE_KINDS] }, du: S('aaaa-mm-jj'), au: S('aaaa-mm-jj'), note: S('Mot pour le bureau') }, required: ['du'] } },
-  { name: 'terminer_pointage', description: 'Préparer la fin du pointage en cours.', parameters: { type: 'object', properties: {}, required: [] } },
-  { name: 'ranger_photo', description: 'Un FICHIER est joint : le ranger dans les documents du chantier, avec sa catégorie (dite, sinon devinée d’après le contenu), et « Avec réserve » s’il s’agit d’une réserve.',
-    parameters: { type: 'object', properties: {
-      chantier: S('Chantier tel que dit, avec la ville si dite'), categorie: { type: 'string', enum: [...DOC_CATEGORIES] },
-      reserve: { type: 'boolean', description: 'Il y a une réserve' }, detail: S('Détail de la réserve (facultatif)'),
-    }, required: [] } },
-  { name: 'signaler_reserve', description: 'Préparer une réserve sur un chantier du jour (détail facultatif).',
-    parameters: { type: 'object', properties: { chantier: S('Chantier'), detail: S('Détail (facultatif)') }, required: [] } },
-  // ── Lot 7 : tous les boutons de « Ma journée » + le planning des collègues ──
-  { name: 'envoyer_journee', description: '« Envoyer ma journée » : envoie ses heures du jour au bureau.', parameters: { type: 'object', properties: {}, required: [] } },
-  { name: 'modifier_heures', description: 'Changer les horaires d’une de SES lignes du jour.',
-    parameters: { type: 'object', properties: { chantier: S('Chantier de la ligne'), debut: S('HH:MM'), fin: S('HH:MM') }, required: ['debut', 'fin'] } },
-  { name: 'panier_repas', description: 'Cocher (ou retirer) le panier repas du jour.', parameters: { type: 'object', properties: { valeur: { type: 'boolean' } }, required: ['valeur'] } },
-  { name: 'copier_journee', description: 'Copier une journée (par défaut hier) sur un ou plusieurs jours (par défaut aujourd’hui).',
-    parameters: { type: 'object', properties: { depuis: S('Jour à copier aaaa-mm-jj'), vers: { type: 'array', items: S('aaaa-mm-jj') } }, required: [] } },
-  { name: 'reserve_corrigee', description: '« Lever la réserve » d’un chantier du jour (réglée sur place), avec un commentaire facultatif.', parameters: { type: 'object', properties: { chantier: S('Chantier'), commentaire: S('Ce qui a été fait (facultatif)') }, required: [] } },
-  { name: 'nouveau_chantier', description: 'Ajouter un chantier qui n’est pas dans la liste.', parameters: { type: 'object', properties: { nom: S('Nom du client / chantier'), ville: S('Ville') }, required: ['nom'] } },
-  { name: 'email_client', description: 'Enregistrer l’email du client d’un chantier (pour lui envoyer les documents).',
-    parameters: { type: 'object', properties: { chantier: S('Chantier'), email: S('Email') }, required: ['email'] } },
-  { name: 'planning_collegues', description: 'Où sont / que font ses collègues (tous ou un seul), un jour donné : prénom, chantier, horaires.',
-    parameters: { type: 'object', properties: { qui: S('Prénom du collègue, vide = tous'), date: S('aaaa-mm-jj (défaut aujourd’hui)') }, required: [] } },
-];
+// ── IA : appel de fonctions (liste blanche du salarié) ──
+// 3a-2 : elles ne sont plus écrites ici. Le registre (registre/outils-salarie.ts) est la SEULE source de ce que le modèle lit ;
+// `WORKER_FUNCTIONS`, `WORKER_ATTACHMENT_FUNCTIONS` et `workerFunctionsFor` sont générés par registre/outils-pour.ts et exportés
+// par worker-outils.ts (côté serveur seulement). Ce fichier-ci est atteint par le navigateur : il n'importe rien de registre/outils-*.ts (test T8).
 
 /**
  * Lot 1 : un FICHIER est joint → le modèle ne voit que « ranger » et
  * « répondre ». Un PDF piégé ne peut donc demander ni d'effacer des heures, ni
  * d'envoyer la journée, ni de retirer une demande de congé.
+ * 3a-2 : la liste est générée (champ `pieceJointe` des outils du registre).
  */
-export const WORKER_ATTACHMENT_ACTIONS = ['ranger_photo', 'repondre'] as const;
-export const WORKER_ATTACHMENT_FUNCTIONS = WORKER_FUNCTIONS.filter((f) => (WORKER_ATTACHMENT_ACTIONS as readonly string[]).includes(f.name));
-/**
- * Lot 6 : sans fichier, seulement les outils du DOMAINE de la phrase (tous si aucun n'est reconnu).
- * Étape 2 : avec un historique, les domaines du dernier échange s'ajoutent à ceux de la phrase, jamais l'inverse.
- */
-export const workerFunctionsFor = (hasFile: boolean, text?: string, historique?: MessageHistorique[]) =>
-  (hasFile ? WORKER_ATTACHMENT_FUNCTIONS
-    : pickTools(WORKER_FUNCTIONS, text && domainTools(text, WORKER_DOMAINS) ? textePourOutils(text, historique) : text, WORKER_DOMAINS));
+export const WORKER_ATTACHMENT_ACTIONS = GENERE_WORKER_ATTACHMENT_ACTIONS;
 
 // ── Lot 7 : le planning des collègues (lecture limitée côté base) ──────────
 export interface ColleagueRow { prenom: string; date: string; chantier: string | null; ville: string | null; debut: string | null; fin: string | null; absent: boolean }

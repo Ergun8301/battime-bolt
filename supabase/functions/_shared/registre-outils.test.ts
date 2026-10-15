@@ -5,8 +5,10 @@
 // JSON.stringify(ASSISTANT_FUNCTIONS) / JSON.stringify(WORKER_FUNCTIONS). Le reste vérifie que ce que le registre dit AUTOUR de la déclaration
 // (mode, retrait, pièce jointe, domaines, exécuteur, « Annuler ») est vrai du code, et applique à ces entrées les règles de niveau du §1.2 (T4).
 //   npm run test:registre-outils   (npx -y deno@2 test --allow-env --allow-read supabase/functions/_shared/registre-outils.test.ts)
-import { actionMode, ASSISTANT_FUNCTIONS, ATTACHMENT_ACTIONS, REMOVAL_TYPES } from './assistant-actions-core.ts';
-import { WORKER_ATTACHMENT_ACTIONS, WORKER_FUNCTIONS, WORKER_REMOVAL_TYPES, workerActionMode } from './worker-assistant-core.ts';
+import { actionMode, ATTACHMENT_ACTIONS, REMOVAL_TYPES } from './assistant-actions-core.ts';
+import { ASSISTANT_FUNCTIONS } from './assistant-outils.ts';
+import { WORKER_ATTACHMENT_ACTIONS, WORKER_REMOVAL_TYPES, workerActionMode } from './worker-assistant-core.ts';
+import { WORKER_FUNCTIONS } from './worker-outils.ts';
 import { OFFICE_DOMAINS, WORKER_DOMAINS } from './tool-domains.ts';
 import { OUTILS_BUREAU } from './registre/outils-bureau.ts';
 import { OUTILS_SALARIE } from './registre/outils-salarie.ts';

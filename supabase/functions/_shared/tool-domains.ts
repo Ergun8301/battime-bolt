@@ -14,8 +14,13 @@
 // Fichier joint : ce n'est PAS ce filtre qui décide, mais la liste « documents »
 // de chaque assistant (lot 1), plus courte et plus sûre.
 //
+// Étape 3, 3a-2 : les listes `tools` de chaque domaine ne sont plus écrites ici, elles sont GÉNÉRÉES depuis le registre
+// (outils-listes-*.ts, via le champ `domaines` de chaque outil). Les mots qui déclenchent un domaine restent écrits ici, à la main.
+//
 // Sans réseau ni base : identique côté serveur et navigateur.
 import { low } from './fr-langue.ts';
+import { DOMAINES_OUTILS as OUTILS_BUREAU } from './outils-listes-bureau.ts';
+import { DOMAINES_OUTILS as OUTILS_SALARIE } from './outils-listes-salarie.ts';
 
 type Domain = { re: RegExp; tools: readonly string[] };
 
@@ -26,27 +31,27 @@ const HEURE = '\\d{1,2}\\s*h\\b|\\d{1,2}\\s*h\\s*\\d{2}|\\d{1,2}:\\d{2}';
 export const OFFICE_DOMAINS: Record<string, Domain> = {
   planning: {
     re: new RegExp(`planning|intervention|rendez|rdv|affect|\\bmets?\\b|\\bmettre\\b|\\bplace|decal|deplac|avance|recule|\\bchez\\b|${JOURS}|${HEURE}|enleve|retire|vide|efface|conge|vacance|malad|absen|arret|rtt|ferie|formation`),
-    tools: ['affecter_planning', 'planning_semaine', 'modifier_intervention', 'supprimer_intervention', 'effacer_planning', 'poser_absence', 'supprimer_absence', 'repondre_conge'],
+    tools: OUTILS_BUREAU.planning,
   },
   heures: {
     re: new RegExp(`heure|pointage|pointe|badge|corrig|rappel|relanc|clotur|\\bmois\\b|septembre|octobre|novembre|decembre|janvier|fevrier|mars|avril|mai|juin|juillet|aout|reserve|attribu|\\bautre\\b|${HEURE}`),
-    tools: ['corriger_pointage', 'attribuer_client', 'envoyer_rappel', 'cloturer_mois', 'lever_reserve'],
+    tools: OUTILS_BUREAU.heures,
   },
   salaries: {
     re: /salari|employe|ouvrier|equipe|chef|role|bureau|admin|invit|embauch|recrut|relanc|annule|habilit|caces|carte btp|visite med|aipr|sst|archiv|quitt|parti|depart|demission|licenci|prenom|\bnom\b|telephone|\btel\b|portable|bulletin|paie|salaire|cout|brut|@/,
-    tools: ['inviter_salarie', 'changer_role', 'relancer_invitation', 'annuler_invitation', 'ajouter_habilitation', 'modifier_salarie', 'archiver_salarie', 'supprimer_habilitation', 'modifier_habilitation', 'cout_reel', 'envoyer_rappel'],
+    tools: OUTILS_BUREAU.salaries,
   },
   chantiers: {
     re: /client|chantier|depense|achat|euro|€|\d\s*e\b|montant|facture|location|materi|placo|fourniture|budget|devis|archiv|fini|termine|adresse|telephone|\btel\b|ville|email|mail|@|reserve|attribu|nouveau|cree|creer|renomm/,
-    tools: ['creer_chantier', 'modifier_client', 'archiver_client', 'ajouter_depense', 'supprimer_depense', 'modifier_depense', 'lever_reserve', 'attribuer_client'],
+    tools: OUTILS_BUREAU.chantiers,
   },
   documents: {
     re: /document|\bdoc\b|photo|image|facture|devis|pdf|\bplan\b|\bpv\b|proces-verbal|reception|fichier|classe|range|categorie|piece/,
-    tools: ['ranger_document', 'supprimer_document', 'modifier_document'],
+    tools: OUTILS_BUREAU.documents,
   },
   reglages: {
     re: /reglage|parametr|comptable|compta|majoration|heures sup|relance auto|alerte|trajet|hebdo|35 ?h|39 ?h|entreprise|societe|siret|collegue|notre|nos /,
-    tools: ['modifier_reglages', 'cloturer_mois'],
+    tools: OUTILS_BUREAU.reglages,
   },
 };
 
@@ -54,19 +59,19 @@ export const OFFICE_DOMAINS: Record<string, Domain> = {
 export const WORKER_DOMAINS: Record<string, Domain> = {
   heures: {
     re: new RegExp(`heure|pointage|pointe|commenc|demarr|fini|termin|arret|bosse|travaill|fait|envoi|envoy|journee|copie|pareil|meme chose|comme hier|panier|repas|pause|efface|supprim|ligne|horaire|change|modifi|corrig|${JOURS}|${HEURE}`),
-    tools: ['declarer_heures', 'modifier_heures', 'copier_journee', 'effacer_heures', 'envoyer_journee', 'terminer_pointage', 'panier_repas'],
+    tools: OUTILS_SALARIE.heures,
   },
   conges: {
     re: /conge|vacance|malad|absen|arret|rtt|repos|enfant malade|demande/,
-    tools: ['demander_conge', 'annuler_conge', 'modifier_conge'],
+    tools: OUTILS_SALARIE.conges,
   },
   chantier: {
     re: /chantier|client|reserve|fissure|defaut|probleme|souci|photo|image|document|facture|devis|range|classe|retire|enleve|email|mail|@|nouveau|corrig|repar|leve/,
-    tools: ['signaler_reserve', 'reserve_corrigee', 'retirer_reserve', 'ranger_photo', 'retirer_photo', 'nouveau_chantier', 'email_client'],
+    tools: OUTILS_SALARIE.chantier,
   },
   collegues: {
     re: /collegue|equipe|\bou (est|sont)\b|que fait|qui (est|travaille|bosse)|les autres|avec qui/,
-    tools: ['planning_collegues'],
+    tools: OUTILS_SALARIE.collegues,
   },
 };
 

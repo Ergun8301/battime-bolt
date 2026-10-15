@@ -1,12 +1,14 @@
 // Outils de l'assistant du BUREAU qui EXISTENT aujourd'hui (34 déclarations : `repondre` + 33 outils) : ce que le modèle voit (description et
 // paramètres, mot pour mot) et la règle de chaque outil (niveau, mode, « Annuler », exécuteur). Couche STABLE du registre.
-// Contrat : docs/ia-etape3/00-conception-etape3.md §2.3. Ordre = celui de ASSISTANT_FUNCTIONS (assistant-actions-core.ts) : il fait
-// partie de ce que le modèle reçoit, donc de l'empreinte.
+// Contrat : docs/ia-etape3/00-conception-etape3.md §2.3. Ordre = celui de ASSISTANT_FUNCTIONS : il fait
+// partie de ce que le modèle reçoit, donc de l'empreinte. Depuis 3a-2 ces listes sont GÉNÉRÉES d'ici (registre/outils-pour.ts, `outilsPour`) ;
+// assistant-actions-core.ts / worker-assistant-core.ts ne les écrivent plus.
 //
-// Les entrées jusqu'au repère « fin des outils de la livraison 3a » sont GÉNÉRÉES par scripts/registre-outils-gen.ts d'après le code : pour
-// changer un jugement (« Annuler », outils proches…), éditer les FICHES du script et le relancer, pas ce fichier. Le script disparaît en 3a-2,
-// quand les listes de AC sortent du registre. Après le repère, les outils des livraisons suivantes (3b, 3c, 3d) s'écrivent à la main ; le script
-// les laisse intacts. POURQUOI GÉNÉRÉ : des descriptions recopiées à la main finiraient par différer d'un caractère de celles sur lesquelles la
+// Les entrées jusqu'au repère « fin des outils de la livraison 3a » ont été GÉNÉRÉES par scripts/registre-outils-gen.ts d'après le code d'avant 3a-2
+// (instantané registre/avant-3a2.snapshot.json) : pour changer un jugement (« Annuler », outils proches…), éditer les FICHES du script et le
+// relancer, pas ce fichier. Depuis 3a-2 ces entrées sont la SOURCE (le code les lit) ; le script ne sert plus qu'à prouver, par le test « Dérive »,
+// qu'elles décrivent toujours ce que la production recevait. Après le repère, les outils des livraisons suivantes (3b, 3c, 3d) s'écrivent à la
+// main ; le script les laisse intacts. POURQUOI GÉNÉRÉ : des descriptions recopiées à la main finiraient par différer d'un caractère de celles sur lesquelles la
 // consigne a été réglée. La preuve du contraire est outils-empreintes.json (SHA-256 gelés) et registre-outils.test.ts : les outils
 // `livraison: '3a'`, ré-assemblés en { name, description, parameters }, redonnent la liste d'aujourd'hui. Changer un mot d'une description ou
 // d'un schéma fait donc échouer ce test : c'est voulu, c'est une livraison à empreinte déclarée (3b-0), jamais une retouche en passant.
@@ -15,9 +17,10 @@
 // comportement) ; `annuler` : oui = l'inverse exact, partiel = « Annuler » existe mais peut ne pas tout défaire, non = rien à rejouer ;
 // `notifie` : le résultat prévient un tiers ; `champsCarte` : paramètres de CHAMPS_CARTE (§1.2) ; `executeur` : le `case` de l'exécuteur du
 // navigateur ; `code` : fichiers de lib/ réellement appelés par ce `case` (l'exécuteur lui-même quand il écrit aussi en ligne) ; `retrait` :
-// REMOVAL_TYPES ; `pieceJointe` : ATTACHMENT_ACTIONS ; `domaines` : tool-domains.ts. Les lignes « note » justifient une valeur sûre mais peu
+// REMOVAL_TYPES ; `pieceJointe` : ATTACHMENT_ACTIONS ; `domaines` : tool-domains.ts (ces trois listes sont maintenant générées d'ici : outils-listes-*.ts). Les lignes « note » justifient une valeur sûre mais peu
 // évidente, les lignes « incertain » signalent une valeur à confirmer.
 import type { Outil } from './types.ts';
+import { ABSENCE_KINDS, DOC_CATEGORIES, NAV_ACTIONS } from './vocab.ts';
 
 export const OUTILS_BUREAU: Outil[] = [
   // repondre · réponse · niveau 1 · toujours proposé
@@ -33,23 +36,7 @@ export const OUTILS_BUREAU: Outil[] = [
         },
         liens: {
           type: 'array',
-          items: {
-            type: 'string',
-            enum: [
-              'salaries',
-              'nouveau_salarie',
-              'nouveau_client',
-              'import_clients',
-              'conges',
-              'couts',
-              'reserves',
-              'export',
-              'reglages',
-              'planning',
-              'clients',
-              'salarie',
-            ],
-          },
+          items: { type: 'string', enum: [...Object.keys(NAV_ACTIONS), 'salarie'] },
           description: 'Écrans à proposer (« M’y emmener »).',
         },
         salarie_id: { type: 'string', description: 'Si un lien « salarie » : l’id du salarié (présent dans les données).' },
@@ -122,10 +109,7 @@ export const OUTILS_BUREAU: Outil[] = [
       type: 'object',
       properties: {
         chantier: { type: 'string', description: 'Chantier / client tel que dit (avec la ville si dite)' },
-        categorie: {
-          type: 'string',
-          enum: ['facture_payee', 'facture', 'devis', 'reserve', 'photo', 'plan', 'pv_reception', 'autre'],
-        },
+        categorie: { type: 'string', enum: [...DOC_CATEGORIES] },
         libelle: { type: 'string', description: 'Nom court et lisible du document (ex. « Facture Plomberie Martin – 1 240 € »)' },
       },
       required: ['chantier'],
@@ -142,7 +126,7 @@ export const OUTILS_BUREAU: Outil[] = [
       type: 'object',
       properties: {
         salarie: { type: 'string', description: 'Nom du salarié tel que dit' },
-        type: { type: 'string', enum: ['conge', 'maladie', 'intemperie'] },
+        type: { type: 'string', enum: [...ABSENCE_KINDS] },
         du: { type: 'string', description: 'aaaa-mm-jj' },
         au: { type: 'string', description: 'aaaa-mm-jj' },
       },
@@ -600,10 +584,7 @@ export const OUTILS_BUREAU: Outil[] = [
       properties: {
         chantier: { type: 'string', description: 'Chantier' },
         quoi: { type: 'string', description: 'Quel document' },
-        nouvelle_categorie: {
-          type: 'string',
-          enum: ['facture_payee', 'facture', 'devis', 'reserve', 'photo', 'plan', 'pv_reception', 'autre'],
-        },
+        nouvelle_categorie: { type: 'string', enum: [...DOC_CATEGORIES] },
         nouveau_nom: { type: 'string', description: 'Nouveau nom, court' },
       },
       required: [],

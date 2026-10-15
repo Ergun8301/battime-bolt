@@ -8,8 +8,10 @@ import {
   blocAvantDemande, blocHistorique, doitSauterLeCheminLocal, estUneRelance, HISTORIQUE_MAX_MESSAGES, HISTORIQUE_MAX_PAR_MESSAGE, HISTORIQUE_MAX_TOTAL,
   nettoyerHistorique, sansDemandeRecollee, textePourOutils, type MessageHistorique,
 } from './assistant-history.ts';
-import { actionPrompt, ASSISTANT_FUNCTIONS, ATTACHMENT_FUNCTIONS, buildActionContext, fromFunctionCall, functionsFor, guideForPrompt, handleActionLocally, type ActionContext } from './assistant-actions-core.ts';
-import { buildWorkerSnapshot, handleWorkerLocally, workerFunctionPrompt, workerFunctionsFor, workerPrompt, WORKER_FUNCTIONS, type WorkerLive, type WorkerSnapshot } from './worker-assistant-core.ts';
+import { actionPrompt, buildActionContext, fromFunctionCall, guideForPrompt, handleActionLocally, type ActionContext } from './assistant-actions-core.ts';
+import { ASSISTANT_FUNCTIONS, ATTACHMENT_FUNCTIONS, functionsFor } from './assistant-outils.ts';
+import { buildWorkerSnapshot, handleWorkerLocally, workerFunctionPrompt, workerPrompt, type WorkerLive, type WorkerSnapshot } from './worker-assistant-core.ts';
+import { workerFunctionsFor, WORKER_FUNCTIONS } from './worker-outils.ts';
 import { workerFunctionsForLong, workerMultiPrompt } from './worker-multi-prompt.ts';
 import { runWorkerTurn, workerProfile } from './worker-turn.ts';
 import type { ToolsRequest } from './ai-provider.ts';

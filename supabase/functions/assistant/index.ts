@@ -42,9 +42,10 @@ import { loadAssistantContext } from '../_shared/assistant-context.ts';
 import { nettoyerHistorique, sansDemandeRecollee } from '../_shared/assistant-history.ts';
 import { DEFAULT_DAILY_LIMIT, MAX_QUESTION_CHARS, buildSnapshot, previousDay, type RawData } from '../_shared/assistant-core.ts';
 import {
-  actionPrompt, addDays, avertirSecours, buildActionContext, fromFunctionCall, functionsFor, handleActionLocally, mondayOf, questionFor,
+  actionPrompt, addDays, avertirSecours, buildActionContext, fromFunctionCall, handleActionLocally, mondayOf, questionFor,
   resolveSalarie, summarize, findGuide, guideAnswer, guideForPrompt, guideLinks, type EntryChoice, type LocalReply, type ActionContext,
 } from '../_shared/assistant-actions-core.ts';
+import { functionsFor } from '../_shared/assistant-outils.ts';
 
 
 const corsHeaders = {

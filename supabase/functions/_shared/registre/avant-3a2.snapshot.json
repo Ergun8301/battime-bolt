@@ -1,0 +1,1645 @@
+{
+ "_aide": "Instantané GELÉ des listes écrites à la main AVANT la livraison 3a-2 (commit 37d6785 = origin/main, assistant-actions-core.ts, worker-assistant-core.ts, tool-domains.ts), évaluées puis copiées en dur. Sert de preuve « octet pour octet » (registre-listes.test.ts) et d'entrée au générateur d'outils. Fichier GELÉ : jamais édité à la main, jamais régénéré.",
+ "bureau": {
+  "ASSISTANT_FUNCTIONS": [
+   {
+    "name": "repondre",
+    "description": "Répondre à une question (chiffres de l’entreprise) ou expliquer comment faire dans BEMEXO, avec des boutons pour ouvrir le bon écran.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "reponse": {
+       "type": "string",
+       "description": "Réponse en français, courte. Pour un « comment faire » : 3 étapes numérotées au plus."
+      },
+      "liens": {
+       "type": "array",
+       "items": {
+        "type": "string",
+        "enum": [
+         "salaries",
+         "nouveau_salarie",
+         "nouveau_client",
+         "import_clients",
+         "conges",
+         "couts",
+         "reserves",
+         "export",
+         "reglages",
+         "planning",
+         "clients",
+         "salarie"
+        ]
+       },
+       "description": "Écrans à proposer (« M’y emmener »)."
+      },
+      "salarie_id": {
+       "type": "string",
+       "description": "Si un lien « salarie » : l’id du salarié (présent dans les données)."
+      }
+     },
+     "required": [
+      "reponse"
+     ]
+    }
+   },
+   {
+    "name": "inviter_salarie",
+    "description": "Préparer l’invitation d’un nouveau salarié (email obligatoire pour l’envoyer ; laisser vide ce qui n’est pas dit). Avec un bulletin de paie joint : recopier les champs de paie ci-dessous, JAMAIS le numéro de sécurité sociale.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "prenom": {
+       "type": "string",
+       "description": "Prénom"
+      },
+      "nom": {
+       "type": "string",
+       "description": "Nom"
+      },
+      "email": {
+       "type": "string",
+       "description": "Email"
+      },
+      "telephone": {
+       "type": "string",
+       "description": "Téléphone"
+      },
+      "date_entree": {
+       "type": "string",
+       "description": "Date d’entrée, aaaa-mm-jj"
+      },
+      "contrat": {
+       "type": "string",
+       "description": "Type de contrat (CDI, CDD…)"
+      },
+      "taux_horaire": {
+       "type": "number",
+       "description": "Taux horaire brut"
+      },
+      "heures_hebdo": {
+       "type": "number",
+       "description": "Heures par semaine"
+      },
+      "bulletin_mois": {
+       "type": "string",
+       "description": "Mois du bulletin, aaaa-mm"
+      },
+      "bulletin_brut": {
+       "type": "number",
+       "description": "Salaire brut du mois"
+      },
+      "bulletin_cout_employeur": {
+       "type": "number",
+       "description": "Coût total employeur du mois"
+      },
+      "bulletin_heures_payees": {
+       "type": "number",
+       "description": "Heures payées du mois"
+      }
+     },
+     "required": []
+    }
+   },
+   {
+    "name": "creer_chantier",
+    "description": "Préparer la création d’un client / chantier. Avec un devis joint : client, adresse du chantier, contact, montant HT du devis, et les heures de main-d’œuvre si le devis les donne EN HEURES.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "nom_client": {
+       "type": "string",
+       "description": "Nom du client"
+      },
+      "ville": {
+       "type": "string",
+       "description": "Ville"
+      },
+      "adresse": {
+       "type": "string",
+       "description": "Adresse"
+      },
+      "telephone": {
+       "type": "string",
+       "description": "Téléphone"
+      },
+      "email": {
+       "type": "string",
+       "description": "Email"
+      },
+      "description": {
+       "type": "string",
+       "description": "Description"
+      },
+      "montant_devis": {
+       "type": "number",
+       "description": "Montant total HT du devis (affiché pour information, ce n’est PAS un budget main-d’œuvre)"
+      },
+      "budget_heures": {
+       "type": "number",
+       "description": "Heures de main-d’œuvre prévues, seulement si elles sont écrites en heures"
+      }
+     },
+     "required": [
+      "nom_client"
+     ]
+    }
+   },
+   {
+    "name": "ranger_document",
+    "description": "Ranger le fichier joint (photo, PDF) dans les documents d’un chantier existant, avec sa catégorie (dite, sinon devinée d’après le contenu du document).",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "chantier": {
+       "type": "string",
+       "description": "Chantier / client tel que dit (avec la ville si dite)"
+      },
+      "categorie": {
+       "type": "string",
+       "enum": [
+        "facture_payee",
+        "facture",
+        "devis",
+        "reserve",
+        "photo",
+        "plan",
+        "pv_reception",
+        "autre"
+       ]
+      },
+      "libelle": {
+       "type": "string",
+       "description": "Nom court et lisible du document (ex. « Facture Plomberie Martin – 1 240 € »)"
+      }
+     },
+     "required": [
+      "chantier"
+     ]
+    }
+   },
+   {
+    "name": "poser_absence",
+    "description": "Préparer un congé ou une absence pour un salarié, sur des dates.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "salarie": {
+       "type": "string",
+       "description": "Nom du salarié tel que dit"
+      },
+      "type": {
+       "type": "string",
+       "enum": [
+        "conge",
+        "maladie",
+        "intemperie"
+       ]
+      },
+      "du": {
+       "type": "string",
+       "description": "aaaa-mm-jj"
+      },
+      "au": {
+       "type": "string",
+       "description": "aaaa-mm-jj"
+      }
+     },
+     "required": [
+      "salarie",
+      "type",
+      "du"
+     ]
+    }
+   },
+   {
+    "name": "affecter_planning",
+    "description": "Ajouter une intervention au planning : un salarié sur un chantier / client existant, un ou plusieurs jours (« ajoute une intervention », « mets Karim chez Dupont jeudi »).",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "salarie": {
+       "type": "string",
+       "description": "Nom du salarié ; « moi » si la personne parle d’elle-même (« rajoute-moi »)"
+      },
+      "chantier": {
+       "type": "string",
+       "description": "Nom du chantier / client EXISTANT, tel que dans CHANTIERS (vide si seul un lieu est dit)"
+      },
+      "dates": {
+       "type": "array",
+       "items": {
+        "type": "string",
+        "description": "aaaa-mm-jj (voir CALENDRIER)"
+       }
+      },
+      "objet": {
+       "type": "string",
+       "description": "Objet COURT de l’intervention, 2 à 6 mots, sans le nom du client ni la date, sans « euh » (ex. « Remplacement chauffe-eau », « Pose carrelage cuisine »). Vide si rien n’est dit."
+      },
+      "lieu": {
+       "type": "string",
+       "description": "Ville ou lieu dit (« à Lyon ») quand aucun client n’est nommé"
+      },
+      "debut": {
+       "type": "string",
+       "description": "Heure de début HH:MM si dite (« 14h » → 14:00)"
+      },
+      "fin": {
+       "type": "string",
+       "description": "Heure de fin HH:MM si dite (« jusqu’à 18h »)"
+      },
+      "moment": {
+       "type": "string",
+       "description": "matin, après-midi ou journée, si dit"
+      }
+     },
+     "required": [
+      "salarie",
+      "chantier",
+      "dates"
+     ]
+    }
+   },
+   {
+    "name": "planning_semaine",
+    "description": "Préparer une PROPOSITION de planning pour une semaine (par défaut la semaine prochaine), en tenant compte des congés et du planning actuel.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "semaine_du": {
+       "type": "string",
+       "description": "Un jour de la semaine voulue, aaaa-mm-jj (facultatif)"
+      }
+     },
+     "required": []
+    }
+   },
+   {
+    "name": "corriger_pointage",
+    "description": "Préparer la correction des heures envoyées par un salarié, un jour donné, avec le motif (le salarié le lit).",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "salarie": {
+       "type": "string",
+       "description": "Nom du salarié"
+      },
+      "date": {
+       "type": "string",
+       "description": "aaaa-mm-jj"
+      },
+      "debut": {
+       "type": "string",
+       "description": "HH:MM"
+      },
+      "fin": {
+       "type": "string",
+       "description": "HH:MM"
+      },
+      "motif": {
+       "type": "string",
+       "description": "Pourquoi on corrige, tel que dit (ex. « oubli de pause », « badge oublié »). Vide si rien n’est dit : l’écran le demandera."
+      }
+     },
+     "required": [
+      "salarie",
+      "date",
+      "debut",
+      "fin"
+     ]
+    }
+   },
+   {
+    "name": "modifier_intervention",
+    "description": "Modifier une intervention DÉJÀ au planning : la déplacer (autre jour, autre salarié), changer l’heure ou la note.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "salarie": {
+       "type": "string",
+       "description": "Salarié actuellement prévu"
+      },
+      "date": {
+       "type": "string",
+       "description": "Jour actuel, aaaa-mm-jj"
+      },
+      "chantier": {
+       "type": "string",
+       "description": "Chantier, s’il y en a plusieurs ce jour-là"
+      },
+      "nouvelle_date": {
+       "type": "string",
+       "description": "Nouveau jour, aaaa-mm-jj"
+      },
+      "nouveau_salarie": {
+       "type": "string",
+       "description": "Nouveau salarié"
+      },
+      "heure": {
+       "type": "string",
+       "description": "Nouvelle heure HH:MM"
+      },
+      "note": {
+       "type": "string",
+       "description": "Nouvelle note, courte"
+      }
+     },
+     "required": [
+      "salarie",
+      "date"
+     ]
+    }
+   },
+   {
+    "name": "repondre_conge",
+    "description": "Accepter ou refuser une demande de congé EN ATTENTE (le salarié est prévenu).",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "salarie": {
+       "type": "string",
+       "description": "Salarié"
+      },
+      "decision": {
+       "type": "string",
+       "enum": [
+        "accepter",
+        "refuser"
+       ]
+      },
+      "motif": {
+       "type": "string",
+       "description": "Motif du refus (facultatif)"
+      }
+     },
+     "required": [
+      "decision"
+     ]
+    }
+   },
+   {
+    "name": "lever_reserve",
+    "description": "Lever une réserve de chantier ouverte (réglée).",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "chantier": {
+       "type": "string",
+       "description": "Chantier"
+      },
+      "salarie": {
+       "type": "string",
+       "description": "Salarié qui l’a signalée"
+      },
+      "note": {
+       "type": "string",
+       "description": "Comment elle a été réglée (facultatif)"
+      }
+     },
+     "required": []
+    }
+   },
+   {
+    "name": "ajouter_depense",
+    "description": "Ajouter une dépense (achat, facture) sur un chantier, dans « Coût chantiers ».",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "chantier": {
+       "type": "string",
+       "description": "Chantier"
+      },
+      "montant": {
+       "type": "number",
+       "description": "Montant en € (négatif = avoir)"
+      },
+      "libelle": {
+       "type": "string",
+       "description": "Libellé court (ex. « Plaques BA13 »)"
+      },
+      "categorie": {
+       "type": "string",
+       "enum": [
+        "materiaux",
+        "sous_traitance",
+        "location",
+        "autre"
+       ]
+      },
+      "date": {
+       "type": "string",
+       "description": "Date de la dépense aaaa-mm-jj (défaut : aujourd’hui)"
+      }
+     },
+     "required": [
+      "chantier",
+      "montant"
+     ]
+    }
+   },
+   {
+    "name": "modifier_client",
+    "description": "Modifier la fiche d’un client / chantier existant (coordonnées, description, budget). Ne remplir QUE ce qui change.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "chantier": {
+       "type": "string",
+       "description": "Client / chantier à modifier"
+      },
+      "nouveau_nom": {
+       "type": "string",
+       "description": "Nouveau nom"
+      },
+      "ville": {
+       "type": "string",
+       "description": "Ville"
+      },
+      "adresse": {
+       "type": "string",
+       "description": "Adresse"
+      },
+      "telephone": {
+       "type": "string",
+       "description": "Téléphone"
+      },
+      "email": {
+       "type": "string",
+       "description": "Email"
+      },
+      "description": {
+       "type": "string",
+       "description": "Description"
+      },
+      "budget_heures": {
+       "type": "number",
+       "description": "Heures prévues"
+      },
+      "budget_montant": {
+       "type": "number",
+       "description": "Montant prévu € HT"
+      }
+     },
+     "required": [
+      "chantier"
+     ]
+    }
+   },
+   {
+    "name": "archiver_client",
+    "description": "Archiver un client / chantier terminé (il disparaît des listes, rien n’est supprimé).",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "chantier": {
+       "type": "string",
+       "description": "Client / chantier"
+      }
+     },
+     "required": [
+      "chantier"
+     ]
+    }
+   },
+   {
+    "name": "changer_role",
+    "description": "Changer le rôle d’une personne : salarié, chef d’équipe ou bureau.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "salarie": {
+       "type": "string",
+       "description": "Personne"
+      },
+      "role": {
+       "type": "string",
+       "enum": [
+        "worker",
+        "lead",
+        "admin"
+       ]
+      }
+     },
+     "required": [
+      "salarie",
+      "role"
+     ]
+    }
+   },
+   {
+    "name": "relancer_invitation",
+    "description": "Renvoyer l’email d’une invitation en attente.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "personne": {
+       "type": "string",
+       "description": "Nom ou email de l’invité"
+      }
+     },
+     "required": []
+    }
+   },
+   {
+    "name": "envoyer_rappel",
+    "description": "Envoyer à un salarié le rappel « Pense à envoyer tes heures ».",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "salarie": {
+       "type": "string",
+       "description": "Salarié"
+      }
+     },
+     "required": [
+      "salarie"
+     ]
+    }
+   },
+   {
+    "name": "cloturer_mois",
+    "description": "Clôturer un mois (plus aucune modification des heures).",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "mois": {
+       "type": "string",
+       "description": "Mois aaaa-mm"
+      }
+     },
+     "required": [
+      "mois"
+     ]
+    }
+   },
+   {
+    "name": "attribuer_client",
+    "description": "Attribuer un client aux heures qu’un salarié a notées sur « Autre » (ou sans chantier), un jour donné.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "salarie": {
+       "type": "string",
+       "description": "Salarié"
+      },
+      "date": {
+       "type": "string",
+       "description": "aaaa-mm-jj"
+      },
+      "chantier": {
+       "type": "string",
+       "description": "Client à attribuer"
+      }
+     },
+     "required": [
+      "salarie",
+      "chantier"
+     ]
+    }
+   },
+   {
+    "name": "ajouter_habilitation",
+    "description": "Ajouter une habilitation / un document à suivre à un salarié (CACES, carte BTP, visite médicale…), avec sa date d’expiration.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "salarie": {
+       "type": "string",
+       "description": "Salarié"
+      },
+      "type": {
+       "type": "string",
+       "enum": [
+        "caces",
+        "carte_btp",
+        "habilitation_electrique",
+        "visite_medicale",
+        "travail_hauteur",
+        "autre"
+       ]
+      },
+      "libelle": {
+       "type": "string",
+       "description": "Précision (ex. « CACES R489 cat. 3 »)"
+      },
+      "expiration": {
+       "type": "string",
+       "description": "Date d’expiration aaaa-mm-jj"
+      }
+     },
+     "required": [
+      "salarie",
+      "type",
+      "expiration"
+     ]
+    }
+   },
+   {
+    "name": "modifier_salarie",
+    "description": "Corriger le prénom, le nom ou le téléphone d’un salarié (jamais le n° de sécurité sociale).",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "salarie": {
+       "type": "string",
+       "description": "Salarié"
+      },
+      "prenom": {
+       "type": "string",
+       "description": "Nouveau prénom"
+      },
+      "nom": {
+       "type": "string",
+       "description": "Nouveau nom"
+      },
+      "telephone": {
+       "type": "string",
+       "description": "Nouveau téléphone"
+      }
+     },
+     "required": [
+      "salarie"
+     ]
+    }
+   },
+   {
+    "name": "archiver_salarie",
+    "description": "Archiver un salarié parti (ses heures restent, il ne peut plus se connecter).",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "salarie": {
+       "type": "string",
+       "description": "Salarié"
+      }
+     },
+     "required": [
+      "salarie"
+     ]
+    }
+   },
+   {
+    "name": "cout_reel",
+    "description": "Avec un bulletin de paie joint d’un salarié EXISTANT : recopier le coût réel du mois (jamais le n° de sécurité sociale).",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "salarie": {
+       "type": "string",
+       "description": "Salarié"
+      },
+      "mois": {
+       "type": "string",
+       "description": "Mois aaaa-mm"
+      },
+      "brut": {
+       "type": "number",
+       "description": "Salaire brut"
+      },
+      "cout_employeur": {
+       "type": "number",
+       "description": "Coût total employeur"
+      },
+      "heures_payees": {
+       "type": "number",
+       "description": "Heures payées"
+      }
+     },
+     "required": [
+      "salarie"
+     ]
+    }
+   },
+   {
+    "name": "modifier_reglages",
+    "description": "Changer un réglage de l’entreprise. Ne remplir QUE ce qui change.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "heures_hebdo": {
+       "type": "number",
+       "description": "Horaire hebdomadaire"
+      },
+      "email_comptable": {
+       "type": "string",
+       "description": "Email du comptable"
+      },
+      "relance_auto": {
+       "type": "boolean",
+       "description": "Relance automatique des heures"
+      },
+      "heure_relance": {
+       "type": "number",
+       "description": "Heure de la relance (0-23)"
+      },
+      "alertes_budget": {
+       "type": "boolean",
+       "description": "Alertes de budget"
+      },
+      "trajet_paye": {
+       "type": "boolean",
+       "description": "Trajet payé"
+      },
+      "majoration_1": {
+       "type": "number",
+       "description": "Taux heures sup 1 (%)"
+      },
+      "majoration_2": {
+       "type": "number",
+       "description": "Taux heures sup 2 (%)"
+      },
+      "telephone": {
+       "type": "string",
+       "description": "Téléphone de l’entreprise"
+      },
+      "email": {
+       "type": "string",
+       "description": "Email de l’entreprise"
+      },
+      "adresse": {
+       "type": "string",
+       "description": "Adresse"
+      },
+      "code_postal": {
+       "type": "string",
+       "description": "Code postal"
+      },
+      "ville": {
+       "type": "string",
+       "description": "Ville"
+      },
+      "planning_collegues": {
+       "type": "boolean",
+       "description": "Les salariés voient le planning de leurs collègues"
+      }
+     },
+     "required": []
+    }
+   },
+   {
+    "name": "supprimer_intervention",
+    "description": "Retirer / enlever / supprimer UNE intervention (une case) du planning : un salarié (ou un chantier) et UN seul jour, par exemple « retire Marc du planning mardi », « enlève Sofiane de la Pizzeria Exemple jeudi ». « Vide / efface le planning », plusieurs jours, une période, une semaine, toute l’équipe → effacer_planning.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "salarie": {
+       "type": "string",
+       "description": "Salarié prévu (« moi » pour la personne qui parle)"
+      },
+      "date": {
+       "type": "string",
+       "description": "Jour, aaaa-mm-jj. Un nom de jour seul (« mardi ») = le PROCHAIN jour de ce nom du CALENDRIER, aujourd’hui compris ; jamais un jour déjà passé, sauf s’il est dit (« dernier », « hier »)."
+      },
+      "chantier": {
+       "type": "string",
+       "description": "Client ou chantier, s’il est dit"
+      },
+      "lieu": {
+       "type": "string",
+       "description": "Lieu ou ville dit (« l’intervention à Lyon »)"
+      }
+     },
+     "required": []
+    }
+   },
+   {
+    "name": "effacer_planning",
+    "description": "Effacer / VIDER le planning (les interventions, pas les absences) d’UN salarié sur plusieurs jours, une période ou une semaine, ou de TOUTE l’équipe (même un seul jour) : « vide », « efface le planning ». « Retire / enlève <salarié> du planning <un jour> » (UN seul jour, une case) → supprimer_intervention, pas cet outil.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "salarie": {
+       "type": "string",
+       "description": "Salarié ; vide = toute l’équipe"
+      },
+      "du": {
+       "type": "string",
+       "description": "Premier jour, aaaa-mm-jj. Un nom de jour seul (« mardi ») = le PROCHAIN jour de ce nom du CALENDRIER, aujourd’hui compris ; jamais un jour déjà passé, sauf s’il est dit (« dernier », « hier »)."
+      },
+      "au": {
+       "type": "string",
+       "description": "Dernier jour, aaaa-mm-jj (même règle : le PROCHAIN jour de ce nom du CALENDRIER, jamais un jour déjà passé)."
+      },
+      "semaine": {
+       "type": "string",
+       "description": "« prochaine », « en cours » ou un jour de la semaine voulue, si c’est une semaine entière"
+      }
+     },
+     "required": []
+    }
+   },
+   {
+    "name": "supprimer_absence",
+    "description": "Retirer un congé, un arrêt ou une absence posé au planning (le salarié redevient présent ces jours-là).",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "salarie": {
+       "type": "string",
+       "description": "Salarié"
+      },
+      "du": {
+       "type": "string",
+       "description": "Premier jour, aaaa-mm-jj"
+      },
+      "au": {
+       "type": "string",
+       "description": "Dernier jour, aaaa-mm-jj"
+      }
+     },
+     "required": [
+      "salarie"
+     ]
+    }
+   },
+   {
+    "name": "supprimer_document",
+    "description": "Supprimer un document ou une photo rangé sur un chantier.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "chantier": {
+       "type": "string",
+       "description": "Chantier"
+      },
+      "quoi": {
+       "type": "string",
+       "description": "Quel document : « la facture », « le devis », « la dernière photo », son nom…"
+      }
+     },
+     "required": []
+    }
+   },
+   {
+    "name": "modifier_document",
+    "description": "Changer la catégorie ou le nom d’un document de chantier.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "chantier": {
+       "type": "string",
+       "description": "Chantier"
+      },
+      "quoi": {
+       "type": "string",
+       "description": "Quel document"
+      },
+      "nouvelle_categorie": {
+       "type": "string",
+       "enum": [
+        "facture_payee",
+        "facture",
+        "devis",
+        "reserve",
+        "photo",
+        "plan",
+        "pv_reception",
+        "autre"
+       ]
+      },
+      "nouveau_nom": {
+       "type": "string",
+       "description": "Nouveau nom, court"
+      }
+     },
+     "required": []
+    }
+   },
+   {
+    "name": "supprimer_depense",
+    "description": "Supprimer une dépense d’un chantier.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "chantier": {
+       "type": "string",
+       "description": "Chantier"
+      },
+      "montant": {
+       "type": "number",
+       "description": "Montant en euros, s’il est dit"
+      },
+      "quoi": {
+       "type": "string",
+       "description": "Quelle dépense (libellé, « la dernière »)"
+      }
+     },
+     "required": []
+    }
+   },
+   {
+    "name": "modifier_depense",
+    "description": "Corriger une dépense d’un chantier (montant, libellé, catégorie).",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "chantier": {
+       "type": "string",
+       "description": "Chantier"
+      },
+      "montant": {
+       "type": "number",
+       "description": "Montant ACTUEL, s’il est dit"
+      },
+      "quoi": {
+       "type": "string",
+       "description": "Quelle dépense"
+      },
+      "nouveau_montant": {
+       "type": "number",
+       "description": "Nouveau montant"
+      },
+      "nouveau_libelle": {
+       "type": "string",
+       "description": "Nouveau libellé"
+      },
+      "nouvelle_categorie": {
+       "type": "string",
+       "enum": [
+        "materiaux",
+        "sous_traitance",
+        "location",
+        "autre"
+       ]
+      }
+     },
+     "required": []
+    }
+   },
+   {
+    "name": "supprimer_habilitation",
+    "description": "Supprimer une habilitation / un document suivi d’un salarié (CACES, carte BTP…).",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "salarie": {
+       "type": "string",
+       "description": "Salarié"
+      },
+      "quoi": {
+       "type": "string",
+       "description": "Laquelle (CACES, carte BTP, visite médicale…)"
+      }
+     },
+     "required": [
+      "salarie"
+     ]
+    }
+   },
+   {
+    "name": "modifier_habilitation",
+    "description": "Changer la date d’expiration ou le libellé d’une habilitation.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "salarie": {
+       "type": "string",
+       "description": "Salarié"
+      },
+      "quoi": {
+       "type": "string",
+       "description": "Laquelle"
+      },
+      "expiration": {
+       "type": "string",
+       "description": "Nouvelle date d’expiration, aaaa-mm-jj"
+      },
+      "nouveau_libelle": {
+       "type": "string",
+       "description": "Nouveau libellé"
+      }
+     },
+     "required": [
+      "salarie"
+     ]
+    }
+   },
+   {
+    "name": "annuler_invitation",
+    "description": "Annuler une invitation de salarié en attente.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "nom": {
+       "type": "string",
+       "description": "Nom de la personne invitée"
+      },
+      "email": {
+       "type": "string",
+       "description": "Son email"
+      }
+     },
+     "required": []
+    }
+   }
+  ],
+  "ATTACHMENT_FUNCTIONS": [
+   "repondre",
+   "inviter_salarie",
+   "creer_chantier",
+   "ranger_document",
+   "ajouter_depense",
+   "cout_reel"
+  ],
+  "ACTION_TYPES": [
+   "inviter_salarie",
+   "creer_chantier",
+   "poser_absence",
+   "affecter_planning",
+   "planning_semaine",
+   "corriger_pointage",
+   "ranger_document",
+   "modifier_intervention",
+   "repondre_conge",
+   "lever_reserve",
+   "ajouter_depense",
+   "modifier_client",
+   "archiver_client",
+   "changer_role",
+   "relancer_invitation",
+   "envoyer_rappel",
+   "cloturer_mois",
+   "attribuer_client",
+   "ajouter_habilitation",
+   "modifier_salarie",
+   "archiver_salarie",
+   "cout_reel",
+   "modifier_reglages",
+   "supprimer_intervention",
+   "effacer_planning",
+   "supprimer_absence",
+   "supprimer_document",
+   "modifier_document",
+   "supprimer_depense",
+   "modifier_depense",
+   "supprimer_habilitation",
+   "modifier_habilitation",
+   "annuler_invitation"
+  ],
+  "REMOVAL_TYPES": [
+   "supprimer_intervention",
+   "effacer_planning",
+   "supprimer_absence",
+   "supprimer_document",
+   "supprimer_depense",
+   "supprimer_habilitation",
+   "modifier_document",
+   "modifier_depense",
+   "modifier_habilitation",
+   "annuler_invitation"
+  ],
+  "ATTACHMENT_ACTIONS": [
+   "repondre",
+   "ranger_document",
+   "creer_chantier",
+   "ajouter_depense",
+   "inviter_salarie",
+   "cout_reel"
+  ],
+  "DOMAINES": {
+   "planning": [
+    "affecter_planning",
+    "planning_semaine",
+    "modifier_intervention",
+    "supprimer_intervention",
+    "effacer_planning",
+    "poser_absence",
+    "supprimer_absence",
+    "repondre_conge"
+   ],
+   "heures": [
+    "corriger_pointage",
+    "attribuer_client",
+    "envoyer_rappel",
+    "cloturer_mois",
+    "lever_reserve"
+   ],
+   "salaries": [
+    "inviter_salarie",
+    "changer_role",
+    "relancer_invitation",
+    "annuler_invitation",
+    "ajouter_habilitation",
+    "modifier_salarie",
+    "archiver_salarie",
+    "supprimer_habilitation",
+    "modifier_habilitation",
+    "cout_reel",
+    "envoyer_rappel"
+   ],
+   "chantiers": [
+    "creer_chantier",
+    "modifier_client",
+    "archiver_client",
+    "ajouter_depense",
+    "supprimer_depense",
+    "modifier_depense",
+    "lever_reserve",
+    "attribuer_client"
+   ],
+   "documents": [
+    "ranger_document",
+    "supprimer_document",
+    "modifier_document"
+   ],
+   "reglages": [
+    "modifier_reglages",
+    "cloturer_mois"
+   ]
+  },
+  "NAV_ACTIONS": {
+   "salaries": "Salariés",
+   "nouveau_salarie": "Nouveau salarié",
+   "nouveau_client": "Nouveau client",
+   "import_clients": "Importer des clients",
+   "conges": "Demandes de congé",
+   "couts": "Coût chantiers",
+   "reserves": "Réserves",
+   "export": "Exporter / clôturer",
+   "reglages": "Réglages",
+   "planning": "Voir le planning",
+   "clients": "Clients"
+  },
+  "ABSENCE_KINDS": [
+   "conge",
+   "maladie",
+   "intemperie"
+  ]
+ },
+ "salarie": {
+  "WORKER_FUNCTIONS": [
+   {
+    "name": "effacer_heures",
+    "description": "Effacer SES heures NON envoyées : toute sa journée, ou la ligne d’un chantier.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "date": {
+       "type": "string",
+       "description": "Jour, aaaa-mm-jj (défaut : aujourd’hui)"
+      },
+      "chantier": {
+       "type": "string",
+       "description": "Chantier de la ligne à effacer ; vide = toute la journée"
+      }
+     },
+     "required": []
+    }
+   },
+   {
+    "name": "annuler_conge",
+    "description": "Annuler SA demande de congé encore EN ATTENTE.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "ancienne_date": {
+       "type": "string",
+       "description": "Un jour de la demande, s’il y en a plusieurs"
+      }
+     },
+     "required": []
+    }
+   },
+   {
+    "name": "modifier_conge",
+    "description": "Changer les dates de SA demande de congé encore en attente.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "ancienne_date": {
+       "type": "string",
+       "description": "Un jour de la demande actuelle"
+      },
+      "du": {
+       "type": "string",
+       "description": "Nouveau début, aaaa-mm-jj"
+      },
+      "au": {
+       "type": "string",
+       "description": "Nouvelle fin, aaaa-mm-jj"
+      }
+     },
+     "required": [
+      "du"
+     ]
+    }
+   },
+   {
+    "name": "retirer_photo",
+    "description": "Retirer une photo ou un document qu’il a ajouté.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "chantier": {
+       "type": "string",
+       "description": "Chantier"
+      },
+      "quoi": {
+       "type": "string",
+       "description": "Laquelle (« la dernière photo », son nom)"
+      }
+     },
+     "required": []
+    }
+   },
+   {
+    "name": "retirer_reserve",
+    "description": "Retirer la réserve qu’il a signalée aujourd’hui (journée pas encore envoyée).",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "chantier": {
+       "type": "string",
+       "description": "Chantier"
+      }
+     },
+     "required": []
+    }
+   },
+   {
+    "name": "repondre",
+    "description": "Répondre sur SES heures / SON planning, ou expliquer comment faire dans l’appli (3 étapes au plus).",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "reponse": {
+       "type": "string",
+       "description": "Réponse courte en français"
+      },
+      "lien": {
+       "type": "string",
+       "enum": [
+        "journee",
+        "semaine",
+        "mois",
+        "historique",
+        "conges",
+        "notifications",
+        "photo",
+        "borne",
+        "infos"
+       ]
+      }
+     },
+     "required": [
+      "reponse"
+     ]
+    }
+   },
+   {
+    "name": "declarer_heures",
+    "description": "Préparer la déclaration de SES heures.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "date": {
+       "type": "string",
+       "description": "aaaa-mm-jj"
+      },
+      "lignes": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "properties": {
+         "chantier": {
+          "type": "string",
+          "description": "tel que dit"
+         },
+         "debut": {
+          "type": "string",
+          "description": "HH:MM"
+         },
+         "fin": {
+          "type": "string",
+          "description": "HH:MM"
+         },
+         "pause": {
+          "type": "number"
+         }
+        },
+        "required": [
+         "debut",
+         "fin"
+        ]
+       }
+      }
+     },
+     "required": [
+      "lignes"
+     ]
+    }
+   },
+   {
+    "name": "demander_conge",
+    "description": "Préparer une demande de congé / absence au bureau.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "type": {
+       "type": "string",
+       "enum": [
+        "conge",
+        "maladie",
+        "intemperie"
+       ]
+      },
+      "du": {
+       "type": "string",
+       "description": "aaaa-mm-jj"
+      },
+      "au": {
+       "type": "string",
+       "description": "aaaa-mm-jj"
+      },
+      "note": {
+       "type": "string",
+       "description": "Mot pour le bureau"
+      }
+     },
+     "required": [
+      "du"
+     ]
+    }
+   },
+   {
+    "name": "terminer_pointage",
+    "description": "Préparer la fin du pointage en cours.",
+    "parameters": {
+     "type": "object",
+     "properties": {},
+     "required": []
+    }
+   },
+   {
+    "name": "ranger_photo",
+    "description": "Un FICHIER est joint : le ranger dans les documents du chantier, avec sa catégorie (dite, sinon devinée d’après le contenu), et « Avec réserve » s’il s’agit d’une réserve.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "chantier": {
+       "type": "string",
+       "description": "Chantier tel que dit, avec la ville si dite"
+      },
+      "categorie": {
+       "type": "string",
+       "enum": [
+        "facture_payee",
+        "facture",
+        "devis",
+        "reserve",
+        "photo",
+        "plan",
+        "pv_reception",
+        "autre"
+       ]
+      },
+      "reserve": {
+       "type": "boolean",
+       "description": "Il y a une réserve"
+      },
+      "detail": {
+       "type": "string",
+       "description": "Détail de la réserve (facultatif)"
+      }
+     },
+     "required": []
+    }
+   },
+   {
+    "name": "signaler_reserve",
+    "description": "Préparer une réserve sur un chantier du jour (détail facultatif).",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "chantier": {
+       "type": "string",
+       "description": "Chantier"
+      },
+      "detail": {
+       "type": "string",
+       "description": "Détail (facultatif)"
+      }
+     },
+     "required": []
+    }
+   },
+   {
+    "name": "envoyer_journee",
+    "description": "« Envoyer ma journée » : envoie ses heures du jour au bureau.",
+    "parameters": {
+     "type": "object",
+     "properties": {},
+     "required": []
+    }
+   },
+   {
+    "name": "modifier_heures",
+    "description": "Changer les horaires d’une de SES lignes du jour.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "chantier": {
+       "type": "string",
+       "description": "Chantier de la ligne"
+      },
+      "debut": {
+       "type": "string",
+       "description": "HH:MM"
+      },
+      "fin": {
+       "type": "string",
+       "description": "HH:MM"
+      }
+     },
+     "required": [
+      "debut",
+      "fin"
+     ]
+    }
+   },
+   {
+    "name": "panier_repas",
+    "description": "Cocher (ou retirer) le panier repas du jour.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "valeur": {
+       "type": "boolean"
+      }
+     },
+     "required": [
+      "valeur"
+     ]
+    }
+   },
+   {
+    "name": "copier_journee",
+    "description": "Copier une journée (par défaut hier) sur un ou plusieurs jours (par défaut aujourd’hui).",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "depuis": {
+       "type": "string",
+       "description": "Jour à copier aaaa-mm-jj"
+      },
+      "vers": {
+       "type": "array",
+       "items": {
+        "type": "string",
+        "description": "aaaa-mm-jj"
+       }
+      }
+     },
+     "required": []
+    }
+   },
+   {
+    "name": "reserve_corrigee",
+    "description": "« Lever la réserve » d’un chantier du jour (réglée sur place), avec un commentaire facultatif.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "chantier": {
+       "type": "string",
+       "description": "Chantier"
+      },
+      "commentaire": {
+       "type": "string",
+       "description": "Ce qui a été fait (facultatif)"
+      }
+     },
+     "required": []
+    }
+   },
+   {
+    "name": "nouveau_chantier",
+    "description": "Ajouter un chantier qui n’est pas dans la liste.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "nom": {
+       "type": "string",
+       "description": "Nom du client / chantier"
+      },
+      "ville": {
+       "type": "string",
+       "description": "Ville"
+      }
+     },
+     "required": [
+      "nom"
+     ]
+    }
+   },
+   {
+    "name": "email_client",
+    "description": "Enregistrer l’email du client d’un chantier (pour lui envoyer les documents).",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "chantier": {
+       "type": "string",
+       "description": "Chantier"
+      },
+      "email": {
+       "type": "string",
+       "description": "Email"
+      }
+     },
+     "required": [
+      "email"
+     ]
+    }
+   },
+   {
+    "name": "planning_collegues",
+    "description": "Où sont / que font ses collègues (tous ou un seul), un jour donné : prénom, chantier, horaires.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "qui": {
+       "type": "string",
+       "description": "Prénom du collègue, vide = tous"
+      },
+      "date": {
+       "type": "string",
+       "description": "aaaa-mm-jj (défaut aujourd’hui)"
+      }
+     },
+     "required": []
+    }
+   }
+  ],
+  "WORKER_ATTACHMENT_FUNCTIONS": [
+   "repondre",
+   "ranger_photo"
+  ],
+  "WORKER_REMOVAL_TYPES": [
+   "effacer_heures",
+   "annuler_conge",
+   "modifier_conge",
+   "annuler_pointage",
+   "retirer_photo",
+   "retirer_reserve"
+  ],
+  "WORKER_ATTACHMENT_ACTIONS": [
+   "ranger_photo",
+   "repondre"
+  ],
+  "DOMAINES": {
+   "heures": [
+    "declarer_heures",
+    "modifier_heures",
+    "copier_journee",
+    "effacer_heures",
+    "envoyer_journee",
+    "terminer_pointage",
+    "panier_repas"
+   ],
+   "conges": [
+    "demander_conge",
+    "annuler_conge",
+    "modifier_conge"
+   ],
+   "chantier": [
+    "signaler_reserve",
+    "reserve_corrigee",
+    "retirer_reserve",
+    "ranger_photo",
+    "retirer_photo",
+    "nouveau_chantier",
+    "email_client"
+   ],
+   "collegues": [
+    "planning_collegues"
+   ]
+  },
+  "WORKER_NAV": {
+   "journee": "Ma journée",
+   "semaine": "Ma semaine",
+   "mois": "Mon mois",
+   "historique": "Historique",
+   "conges": "Mes congés",
+   "notifications": "Activer les notifications",
+   "photo": "Changer ma photo",
+   "borne": "Scanner la borne",
+   "infos": "Informations"
+  },
+  "LEAVE_KINDS": [
+   "conge",
+   "maladie",
+   "intemperie"
+  ],
+  "DOC_CATEGORIES": [
+   "facture_payee",
+   "facture",
+   "devis",
+   "reserve",
+   "photo",
+   "plan",
+   "pv_reception",
+   "autre"
+  ]
+ }
+}

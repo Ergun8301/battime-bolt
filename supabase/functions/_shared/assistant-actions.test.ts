@@ -2,11 +2,8 @@
 // L'IA est SIMULÉE : on vérifie la chaîne complète « appel de fonction →
 // brouillon contrôlé », pour chaque action de la liste blanche.
 import { callFunction, reposReinit } from './ai-provider.ts';
-import {
-  ABSENCE_KINDS, ABSENCE_LABEL, ACTION_TYPES, A_CONFIRMER, A_CONFIRMER_REMPLACE, ASSISTANT_FUNCTIONS, ATTACHMENT_FUNCTIONS, MOTIF_MANQUANT, REFUS_REPOS, REMOVAL_TYPES, SECOURS_BULLETIN, actionAnswer, actionMode,
-  actionPrompt, addDays, avertirSecours, buildActionContext, checkAction, confirmText, findGuide, fromFunctionCall, functionsFor, guideForPrompt, handleActionLocally, isRemoval, mondayOf,
-  prepare, proposeWeek, questionFor, summarize, type ActionContext, type ActionDraft,
-} from './assistant-actions-core.ts';
+import { ABSENCE_KINDS, ABSENCE_LABEL, ACTION_TYPES, A_CONFIRMER, A_CONFIRMER_REMPLACE, MOTIF_MANQUANT, REFUS_REPOS, REMOVAL_TYPES, SECOURS_BULLETIN, actionAnswer, actionMode, actionPrompt, addDays, avertirSecours, buildActionContext, checkAction, confirmText, findGuide, fromFunctionCall, guideForPrompt, handleActionLocally, isRemoval, mondayOf, prepare, proposeWeek, questionFor, summarize, type ActionContext, type ActionDraft } from './assistant-actions-core.ts';
+import { ASSISTANT_FUNCTIONS, ATTACHMENT_FUNCTIONS, functionsFor } from './assistant-outils.ts';
 
 function eq(a: unknown, b: unknown, msg: string) {
   if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error(`${msg} — attendu ${JSON.stringify(b)}, obtenu ${JSON.stringify(a)}`);

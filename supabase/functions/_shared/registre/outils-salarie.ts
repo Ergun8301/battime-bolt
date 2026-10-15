@@ -1,12 +1,14 @@
 // Outils de l'assistant du SALARIÉ qui EXISTENT aujourd'hui (19 déclarations : `repondre` + 18 outils) : ce que le modèle voit (description et
 // paramètres, mot pour mot) et la règle de chaque outil (niveau, mode, « Annuler », exécuteur). Couche STABLE du registre.
-// Contrat : docs/ia-etape3/00-conception-etape3.md §2.3. Ordre = celui de WORKER_FUNCTIONS (worker-assistant-core.ts) : il fait
-// partie de ce que le modèle reçoit, donc de l'empreinte.
+// Contrat : docs/ia-etape3/00-conception-etape3.md §2.3. Ordre = celui de WORKER_FUNCTIONS : il fait
+// partie de ce que le modèle reçoit, donc de l'empreinte. Depuis 3a-2 ces listes sont GÉNÉRÉES d'ici (registre/outils-pour.ts, `outilsPour`) ;
+// assistant-actions-core.ts / worker-assistant-core.ts ne les écrivent plus.
 //
-// Les entrées jusqu'au repère « fin des outils de la livraison 3a » sont GÉNÉRÉES par scripts/registre-outils-gen.ts d'après le code : pour
-// changer un jugement (« Annuler », outils proches…), éditer les FICHES du script et le relancer, pas ce fichier. Le script disparaît en 3a-2,
-// quand les listes de AC sortent du registre. Après le repère, les outils des livraisons suivantes (3b, 3c, 3d) s'écrivent à la main ; le script
-// les laisse intacts. POURQUOI GÉNÉRÉ : des descriptions recopiées à la main finiraient par différer d'un caractère de celles sur lesquelles la
+// Les entrées jusqu'au repère « fin des outils de la livraison 3a » ont été GÉNÉRÉES par scripts/registre-outils-gen.ts d'après le code d'avant 3a-2
+// (instantané registre/avant-3a2.snapshot.json) : pour changer un jugement (« Annuler », outils proches…), éditer les FICHES du script et le
+// relancer, pas ce fichier. Depuis 3a-2 ces entrées sont la SOURCE (le code les lit) ; le script ne sert plus qu'à prouver, par le test « Dérive »,
+// qu'elles décrivent toujours ce que la production recevait. Après le repère, les outils des livraisons suivantes (3b, 3c, 3d) s'écrivent à la
+// main ; le script les laisse intacts. POURQUOI GÉNÉRÉ : des descriptions recopiées à la main finiraient par différer d'un caractère de celles sur lesquelles la
 // consigne a été réglée. La preuve du contraire est outils-empreintes.json (SHA-256 gelés) et registre-outils.test.ts : les outils
 // `livraison: '3a'`, ré-assemblés en { name, description, parameters }, redonnent la liste d'aujourd'hui. Changer un mot d'une description ou
 // d'un schéma fait donc échouer ce test : c'est voulu, c'est une livraison à empreinte déclarée (3b-0), jamais une retouche en passant.
@@ -15,14 +17,16 @@
 // comportement) ; `annuler` : oui = l'inverse exact, partiel = « Annuler » existe mais peut ne pas tout défaire, non = rien à rejouer ;
 // `notifie` : le résultat prévient un tiers ; `champsCarte` : paramètres de CHAMPS_CARTE (§1.2) ; `executeur` : le `case` de l'exécuteur du
 // navigateur ; `code` : fichiers de lib/ réellement appelés par ce `case` (l'exécuteur lui-même quand il écrit aussi en ligne) ; `retrait` :
-// REMOVAL_TYPES ; `pieceJointe` : ATTACHMENT_ACTIONS ; `domaines` : tool-domains.ts. Les lignes « note » justifient une valeur sûre mais peu
+// REMOVAL_TYPES ; `pieceJointe` : ATTACHMENT_ACTIONS ; `domaines` : tool-domains.ts (ces trois listes sont maintenant générées d'ici : outils-listes-*.ts). Les lignes « note » justifient une valeur sûre mais peu
 // évidente, les lignes « incertain » signalent une valeur à confirmer.
 //
 // PROFIL LONG (phrase libre de ≥ 120 caractères, turc, plusieurs actions : saisie-profil.ts) : tout geste `direct` ci-dessous y passe par une
 // fiche à confirmer (worker-multi.ts, `confirmer: true`). `mode` décrit le profil court, le seul que workerActionMode connaisse. Le profil long
 // a en outre deux déclarations à lui (DECLARER_HEURES_LONG, NOUVEAU_CHANTIER_LONG, worker-multi-prompt.ts) que ce registre ne porte pas
-// encore : `variantes` (§2.3) ne prévoit que l'extension d'un outil par une livraison, pas un profil : à trancher avant 3a-2.
+// encore : `variantes` (§2.3) ne prévoit que l'extension d'un outil par une livraison, pas un profil. 3a-2 ne les déplace pas : elles restent écrites
+// dans worker-multi-prompt.ts, à trancher avec la boucle d'outils (3c).
 import type { Outil } from './types.ts';
+import { DOC_CATEGORIES, LEAVE_KINDS, WORKER_NAV } from './vocab.ts';
 
 export const OUTILS_SALARIE: Outil[] = [
   // effacer_heures · écriture · niveau 3 (carte) · Annuler : oui · retrait
@@ -111,10 +115,7 @@ export const OUTILS_SALARIE: Outil[] = [
       type: 'object',
       properties: {
         reponse: { type: 'string', description: 'Réponse courte en français' },
-        lien: {
-          type: 'string',
-          enum: ['journee', 'semaine', 'mois', 'historique', 'conges', 'notifications', 'photo', 'borne', 'infos'],
-        },
+        lien: { type: 'string', enum: Object.keys(WORKER_NAV) },
       },
       required: ['reponse'],
     },
@@ -160,7 +161,7 @@ export const OUTILS_SALARIE: Outil[] = [
     parametres: {
       type: 'object',
       properties: {
-        type: { type: 'string', enum: ['conge', 'maladie', 'intemperie'] },
+        type: { type: 'string', enum: [...LEAVE_KINDS] },
         du: { type: 'string', description: 'aaaa-mm-jj' },
         au: { type: 'string', description: 'aaaa-mm-jj' },
         note: { type: 'string', description: 'Mot pour le bureau' },
@@ -191,10 +192,7 @@ export const OUTILS_SALARIE: Outil[] = [
       type: 'object',
       properties: {
         chantier: { type: 'string', description: 'Chantier tel que dit, avec la ville si dite' },
-        categorie: {
-          type: 'string',
-          enum: ['facture_payee', 'facture', 'devis', 'reserve', 'photo', 'plan', 'pv_reception', 'autre'],
-        },
+        categorie: { type: 'string', enum: [...DOC_CATEGORIES] },
         reserve: { type: 'boolean', description: 'Il y a une réserve' },
         detail: { type: 'string', description: 'Détail de la réserve (facultatif)' },
       },

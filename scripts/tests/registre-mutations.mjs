@@ -146,7 +146,9 @@ const MUTATIONS = [
   { id: 'M35', attendu: 'T5', titre: "Outil renommé au registre (modifier_client → modifier_client_x)", modifs: [apres(OUT_B, "id: 'modifier_client'", "id: 'modifier_client'", "id: 'modifier_client_x'")] },
   { id: 'M36', attendu: 'T5', titre: 'Retrait oublié (supprimer_depense sans retrait: true)', modifs: [apres(OUT_B, "id: 'supprimer_depense'", 'retrait: true, ', '')] },
   { id: 'M37', attendu: 'T5', titre: 'Pièce jointe déclarée à tort (lever_reserve)', modifs: [apres(OUT_B, "id: 'lever_reserve'", "livraison: '3a'", "livraison: '3a', pieceJointe: true")] },
-  { id: 'M38', attendu: 'T5', titre: 'NAV_ACTIONS étendu dans le code sans toucher le registre', modifs: [remplace('supabase/functions/_shared/assistant-actions-core.ts', "  clients: 'Clients',\n} as const;", "  clients: 'Clients',\n  fantome: 'Fantôme',\n} as const;")] },
+  { id: 'M38', attendu: 'T5', titre: 'NAV_ACTIONS étendu dans le code sans toucher le registre', modifs: [remplace(`${REG}/vocab.ts`, "  clients: 'Clients',\n} as const;", "  clients: 'Clients',\n  fantome: 'Fantôme',\n} as const;")] },   // 3a-2 : NAV_ACTIONS vit dans registre/vocab.ts (AC le ré-exporte)
+  { id: 'M65', attendu: 'T5', titre: "3a-2 : un type d'écriture sans case dans checkAction (le case de cout_reel n'est plus un littéral dans checkAction)", modifs: [apres('supabase/functions/_shared/assistant-actions-core.ts', 'export function checkAction(', "case 'cout_reel':", "case ('cout_reel') as never:")] },
+  { id: 'M66', attendu: 'T5', titre: "3a-2 : un case sans outil dans checkWorkerAction (type fantôme)", modifs: [apres('supabase/functions/_shared/worker-assistant-core.ts', 'export function checkWorkerAction(', "case 'effacer_heures':", "case 'fantome_x' as never:")] },
   { id: 'M39', attendu: 'T5', titre: 'Domaine différent de tool-domains.ts (poser_absence → heures)', modifs: [apres(OUT_B, "id: 'poser_absence'", "domaines: ['planning']", "domaines: ['heures']")] },
 
   // ── T6 : liaison ──
@@ -178,7 +180,7 @@ const MUTATIONS = [
 
   // ── T11 : syntaxe hors cible du navigateur ──
   { id: 'M57', attendu: 'T11', titre: '.at() dans lib/openers.ts', modifs: [cree('lib/openers.ts', 'export const dernier = (l: number[]) => l.at(-1);\n')] },
-  { id: 'M58', attendu: 'T11', titre: 'Assertion arrière (lookbehind) dans registre/vocab.ts', modifs: [cree(`${REG}/vocab.ts`, 'export const RE = /(?<=a)b/;\n')] },
+  { id: 'M58', attendu: 'T11', titre: 'Assertion arrière (lookbehind) dans registre/vocab.ts', modifs: [ajoute(`${REG}/vocab.ts`, 'export const RE = /(?<=a)b/;\n')] },   // 3a-2 : vocab.ts existe, on y AJOUTE (cree l\'écraserait)
   { id: 'M59', attendu: 'T11', titre: 'replaceAll dans lib/use-seed-on-open.ts', modifs: [cree('lib/use-seed-on-open.ts', "export const net = (s: string) => s.replaceAll('a', 'b');\n")] },
 
   // ── Réglages (variables d'environnement du test) : chacun doit changer le verdict comme annoncé ──

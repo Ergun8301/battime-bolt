@@ -21,10 +21,11 @@
 // reste disponible après.
 import { calendarForPrompt, cleanName, cleanSpoken, cleanTitle, dateAVenir, dayPart, parseDateFr, parseTimeFr, plageAVenir } from './fr-langue.ts';
 import { REASON_MAX, reasonOk } from './office-edits.ts';
-import { OFFICE_DOMAINS, domainTools, pickTools } from './tool-domains.ts';
+import { ABSENCE_KINDS, NAV_ACTIONS } from './registre/vocab.ts';
+import { ACTION_TYPES, ATTACHMENT_ACTIONS, REMOVAL_TYPES } from './outils-listes-bureau.ts';
 import { hasAdminTour } from './admin-tours.ts';
 import { TOUR_LABEL, tourAction } from './worker-tours.ts';
-import { blocAvantDemande, doitSauterLeCheminLocal, textePourOutils, type MessageHistorique } from './assistant-history.ts';
+import { blocAvantDemande, doitSauterLeCheminLocal, type MessageHistorique } from './assistant-history.ts';
 
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -34,20 +35,8 @@ import { blocAvantDemande, doitSauterLeCheminLocal, textePourOutils, type Messag
 // « comment je… » courants. `lien` = un écran que « M'y emmener » sait ouvrir.
 // Si un libellé change à l'écran, il faut le changer ICI aussi.
 // ════════════════════════════════════════════════════════════════════════════
-export const NAV_ACTIONS = {
-  salaries: 'Salariés',
-  nouveau_salarie: 'Nouveau salarié',
-  nouveau_client: 'Nouveau client',
-  import_clients: 'Importer des clients',
-  conges: 'Demandes de congé',
-  couts: 'Coût chantiers',
-  reserves: 'Réserves',
-  export: 'Exporter / clôturer',
-  reglages: 'Réglages',
-  // Lot 7 : chaque fiche d'aide a son bouton raccourci.
-  planning: 'Voir le planning',
-  clients: 'Clients',
-} as const;
+// Le vocabulaire vit dans registre/vocab.ts (module léger, lu aussi par les déclarations d'outils) ; ré-exporté ici.
+export { NAV_ACTIONS };
 export type NavAction = keyof typeof NAV_ACTIONS;
 
 export interface GuideEntry {
@@ -368,20 +357,12 @@ export function guideForPrompt(): string {
   return GUIDE.map((g) => `- ${g.titre}${g.lien ? ` [lien:${g.lien}]` : ''} : ${g.etapes.join(' / ')}`).join('\n');
 }
 
-export const ACTION_TYPES = [
-  'inviter_salarie', 'creer_chantier', 'poser_absence', 'affecter_planning', 'planning_semaine', 'corriger_pointage', 'ranger_document',
-  // Lot 7 : « l'IA a accès à tous les boutons » (hors suppressions et paiement).
-  'modifier_intervention', 'repondre_conge', 'lever_reserve', 'ajouter_depense', 'modifier_client', 'archiver_client',
-  'changer_role', 'relancer_invitation', 'envoyer_rappel', 'cloturer_mois', 'attribuer_client', 'ajouter_habilitation',
-  'modifier_salarie', 'archiver_salarie', 'cout_reel', 'modifier_reglages',
-  // Lot 8 : revenir en arrière. Clients, chantiers et salariés s'ARCHIVENT (jamais effacés).
-  'supprimer_intervention', 'effacer_planning', 'supprimer_absence', 'supprimer_document', 'modifier_document',
-  'supprimer_depense', 'modifier_depense', 'supprimer_habilitation', 'modifier_habilitation', 'annuler_invitation',
-] as const;
+// 3a-2 : la liste des types d'écriture est GÉNÉRÉE depuis le registre (registre/outils-*.ts → outils-listes-bureau.ts, voir registre/README.md).
+export { ACTION_TYPES };
 export type ActionType = typeof ACTION_TYPES[number];
 // Lot 2 : « repos » retiré — la base ne l'accepte pas (planning_absence_type_check :
 // conge, maladie, intemperie), l'écran ne le propose plus. L'Assistant non plus.
-export const ABSENCE_KINDS = ['conge', 'maladie', 'intemperie'] as const;
+export { ABSENCE_KINDS };
 export const ABSENCE_LABEL: Record<string, string> = { conge: 'Congé', maladie: 'Arrêt maladie', intemperie: 'Intempérie' };
 /** « Repos » demandé : on le dit clairement, plutôt qu'une erreur brute de la base (ou un congé deviné). */
 export const REFUS_REPOS = 'Repos n’est pas un type d’absence : congé, maladie ou intempérie.';
@@ -508,10 +489,7 @@ export interface AssistantAction { draft: ActionDraft; problems: string[] }
  * Jamais fait d'office : une carte dit d'abord ce qui part (quoi, combien,
  * quel jour), rien n'est écrit avant « Confirmer » ; « Annuler » reste ensuite.
  */
-export const REMOVAL_TYPES: readonly ActionType[] = [
-  'supprimer_intervention', 'effacer_planning', 'supprimer_absence', 'supprimer_document', 'supprimer_depense',
-  'supprimer_habilitation', 'modifier_document', 'modifier_depense', 'modifier_habilitation', 'annuler_invitation',
-];
+export { REMOVAL_TYPES };
 export const isRemoval = (d: { type: string }) => (REMOVAL_TYPES as readonly string[]).includes(d.type);
 
 /**
@@ -1411,234 +1389,11 @@ export function summarize(d: ActionDraft, ctx: ActionContext): string {
   }
 }
 
-// ── Déclarations pour l'IA (appel de fonctions, liste blanche) ──────────────
-const S = (description: string) => ({ type: 'string', description });
-export const ASSISTANT_FUNCTIONS = [
-  {
-    name: 'repondre',
-    description: 'Répondre à une question (chiffres de l’entreprise) ou expliquer comment faire dans BEMEXO, avec des boutons pour ouvrir le bon écran.',
-    parameters: {
-      type: 'object',
-      properties: {
-        reponse: S('Réponse en français, courte. Pour un « comment faire » : 3 étapes numérotées au plus.'),
-        liens: { type: 'array', items: { type: 'string', enum: [...Object.keys(NAV_ACTIONS), 'salarie'] }, description: 'Écrans à proposer (« M’y emmener »).' },
-        salarie_id: S('Si un lien « salarie » : l’id du salarié (présent dans les données).'),
-      },
-      required: ['reponse'],
-    },
-  },
-  {
-    name: 'inviter_salarie',
-    description: 'Préparer l’invitation d’un nouveau salarié (email obligatoire pour l’envoyer ; laisser vide ce qui n’est pas dit). Avec un bulletin de paie joint : recopier les champs de paie ci-dessous, JAMAIS le numéro de sécurité sociale.',
-    parameters: { type: 'object', properties: {
-      prenom: S('Prénom'), nom: S('Nom'), email: S('Email'), telephone: S('Téléphone'),
-      date_entree: S('Date d’entrée, aaaa-mm-jj'), contrat: S('Type de contrat (CDI, CDD…)'),
-      taux_horaire: { type: 'number', description: 'Taux horaire brut' }, heures_hebdo: { type: 'number', description: 'Heures par semaine' },
-      bulletin_mois: S('Mois du bulletin, aaaa-mm'), bulletin_brut: { type: 'number', description: 'Salaire brut du mois' },
-      bulletin_cout_employeur: { type: 'number', description: 'Coût total employeur du mois' }, bulletin_heures_payees: { type: 'number', description: 'Heures payées du mois' },
-    }, required: [] },
-  },
-  {
-    name: 'creer_chantier',
-    description: 'Préparer la création d’un client / chantier. Avec un devis joint : client, adresse du chantier, contact, montant HT du devis, et les heures de main-d’œuvre si le devis les donne EN HEURES.',
-    parameters: { type: 'object', properties: {
-      nom_client: S('Nom du client'), ville: S('Ville'), adresse: S('Adresse'), telephone: S('Téléphone'), email: S('Email'), description: S('Description'),
-      montant_devis: { type: 'number', description: 'Montant total HT du devis (affiché pour information, ce n’est PAS un budget main-d’œuvre)' },
-      budget_heures: { type: 'number', description: 'Heures de main-d’œuvre prévues, seulement si elles sont écrites en heures' },
-    }, required: ['nom_client'] },
-  },
-  {
-    name: 'ranger_document',
-    description: 'Ranger le fichier joint (photo, PDF) dans les documents d’un chantier existant, avec sa catégorie (dite, sinon devinée d’après le contenu du document).',
-    parameters: { type: 'object', properties: {
-      chantier: S('Chantier / client tel que dit (avec la ville si dite)'),
-      categorie: { type: 'string', enum: ['facture_payee', 'facture', 'devis', 'reserve', 'photo', 'plan', 'pv_reception', 'autre'] },
-      libelle: S('Nom court et lisible du document (ex. « Facture Plomberie Martin – 1 240 € »)'),
-    }, required: ['chantier'] },
-  },
-  {
-    name: 'poser_absence',
-    description: 'Préparer un congé ou une absence pour un salarié, sur des dates.',
-    parameters: {
-      type: 'object',
-      properties: { salarie: S('Nom du salarié tel que dit'), type: { type: 'string', enum: [...ABSENCE_KINDS] }, du: S('aaaa-mm-jj'), au: S('aaaa-mm-jj') },
-      required: ['salarie', 'type', 'du'],
-    },
-  },
-  {
-    name: 'affecter_planning',
-    description: 'Ajouter une intervention au planning : un salarié sur un chantier / client existant, un ou plusieurs jours (« ajoute une intervention », « mets Karim chez Dupont jeudi »).',
-    parameters: {
-      type: 'object',
-      properties: {
-        salarie: S('Nom du salarié ; « moi » si la personne parle d’elle-même (« rajoute-moi »)'), chantier: S('Nom du chantier / client EXISTANT, tel que dans CHANTIERS (vide si seul un lieu est dit)'),
-        dates: { type: 'array', items: S('aaaa-mm-jj (voir CALENDRIER)') },
-        objet: S('Objet COURT de l’intervention, 2 à 6 mots, sans le nom du client ni la date, sans « euh » (ex. « Remplacement chauffe-eau », « Pose carrelage cuisine »). Vide si rien n’est dit.'),
-        lieu: S('Ville ou lieu dit (« à Lyon ») quand aucun client n’est nommé'),
-        debut: S('Heure de début HH:MM si dite (« 14h » → 14:00)'), fin: S('Heure de fin HH:MM si dite (« jusqu’à 18h »)'), moment: S('matin, après-midi ou journée, si dit'),
-      },
-      required: ['salarie', 'chantier', 'dates'],
-    },
-  },
-  {
-    name: 'planning_semaine',
-    description: 'Préparer une PROPOSITION de planning pour une semaine (par défaut la semaine prochaine), en tenant compte des congés et du planning actuel.',
-    parameters: { type: 'object', properties: { semaine_du: S('Un jour de la semaine voulue, aaaa-mm-jj (facultatif)') }, required: [] },
-  },
-  {
-    name: 'corriger_pointage',
-    description: 'Préparer la correction des heures envoyées par un salarié, un jour donné, avec le motif (le salarié le lit).',
-    parameters: { type: 'object', properties: {
-      salarie: S('Nom du salarié'), date: S('aaaa-mm-jj'), debut: S('HH:MM'), fin: S('HH:MM'),
-      motif: S('Pourquoi on corrige, tel que dit (ex. « oubli de pause », « badge oublié »). Vide si rien n’est dit : l’écran le demandera.'),
-    }, required: ['salarie', 'date', 'debut', 'fin'] },
-  },
-  // ── Lot 7 : tous les boutons du bureau (hors suppressions et paiement) ──
-  {
-    name: 'modifier_intervention',
-    description: 'Modifier une intervention DÉJÀ au planning : la déplacer (autre jour, autre salarié), changer l’heure ou la note.',
-    parameters: { type: 'object', properties: {
-      salarie: S('Salarié actuellement prévu'), date: S('Jour actuel, aaaa-mm-jj'), chantier: S('Chantier, s’il y en a plusieurs ce jour-là'),
-      nouvelle_date: S('Nouveau jour, aaaa-mm-jj'), nouveau_salarie: S('Nouveau salarié'), heure: S('Nouvelle heure HH:MM'), note: S('Nouvelle note, courte'),
-    }, required: ['salarie', 'date'] },
-  },
-  {
-    name: 'repondre_conge',
-    description: 'Accepter ou refuser une demande de congé EN ATTENTE (le salarié est prévenu).',
-    parameters: { type: 'object', properties: { salarie: S('Salarié'), decision: { type: 'string', enum: ['accepter', 'refuser'] }, motif: S('Motif du refus (facultatif)') }, required: ['decision'] },
-  },
-  {
-    name: 'lever_reserve',
-    description: 'Lever une réserve de chantier ouverte (réglée).',
-    parameters: { type: 'object', properties: { chantier: S('Chantier'), salarie: S('Salarié qui l’a signalée'), note: S('Comment elle a été réglée (facultatif)') }, required: [] },
-  },
-  {
-    name: 'ajouter_depense',
-    description: 'Ajouter une dépense (achat, facture) sur un chantier, dans « Coût chantiers ».',
-    parameters: { type: 'object', properties: {
-      chantier: S('Chantier'), montant: { type: 'number', description: 'Montant en € (négatif = avoir)' }, libelle: S('Libellé court (ex. « Plaques BA13 »)'),
-      categorie: { type: 'string', enum: Object.keys(EXPENSE_LABEL) }, date: S('Date de la dépense aaaa-mm-jj (défaut : aujourd’hui)'),
-    }, required: ['chantier', 'montant'] },
-  },
-  {
-    name: 'modifier_client',
-    description: 'Modifier la fiche d’un client / chantier existant (coordonnées, description, budget). Ne remplir QUE ce qui change.',
-    parameters: { type: 'object', properties: {
-      chantier: S('Client / chantier à modifier'), nouveau_nom: S('Nouveau nom'), ville: S('Ville'), adresse: S('Adresse'), telephone: S('Téléphone'), email: S('Email'),
-      description: S('Description'), budget_heures: { type: 'number', description: 'Heures prévues' }, budget_montant: { type: 'number', description: 'Montant prévu € HT' },
-    }, required: ['chantier'] },
-  },
-  { name: 'archiver_client', description: 'Archiver un client / chantier terminé (il disparaît des listes, rien n’est supprimé).', parameters: { type: 'object', properties: { chantier: S('Client / chantier') }, required: ['chantier'] } },
-  {
-    name: 'changer_role',
-    description: 'Changer le rôle d’une personne : salarié, chef d’équipe ou bureau.',
-    parameters: { type: 'object', properties: { salarie: S('Personne'), role: { type: 'string', enum: ['worker', 'lead', 'admin'] } }, required: ['salarie', 'role'] },
-  },
-  { name: 'relancer_invitation', description: 'Renvoyer l’email d’une invitation en attente.', parameters: { type: 'object', properties: { personne: S('Nom ou email de l’invité') }, required: [] } },
-  { name: 'envoyer_rappel', description: 'Envoyer à un salarié le rappel « Pense à envoyer tes heures ».', parameters: { type: 'object', properties: { salarie: S('Salarié') }, required: ['salarie'] } },
-  { name: 'cloturer_mois', description: 'Clôturer un mois (plus aucune modification des heures).', parameters: { type: 'object', properties: { mois: S('Mois aaaa-mm') }, required: ['mois'] } },
-  {
-    name: 'attribuer_client',
-    description: 'Attribuer un client aux heures qu’un salarié a notées sur « Autre » (ou sans chantier), un jour donné.',
-    parameters: { type: 'object', properties: { salarie: S('Salarié'), date: S('aaaa-mm-jj'), chantier: S('Client à attribuer') }, required: ['salarie', 'chantier'] },
-  },
-  {
-    name: 'ajouter_habilitation',
-    description: 'Ajouter une habilitation / un document à suivre à un salarié (CACES, carte BTP, visite médicale…), avec sa date d’expiration.',
-    parameters: { type: 'object', properties: {
-      salarie: S('Salarié'), type: { type: 'string', enum: Object.keys(CERT_LABEL) }, libelle: S('Précision (ex. « CACES R489 cat. 3 »)'), expiration: S('Date d’expiration aaaa-mm-jj'),
-    }, required: ['salarie', 'type', 'expiration'] },
-  },
-  {
-    name: 'modifier_salarie',
-    description: 'Corriger le prénom, le nom ou le téléphone d’un salarié (jamais le n° de sécurité sociale).',
-    parameters: { type: 'object', properties: { salarie: S('Salarié'), prenom: S('Nouveau prénom'), nom: S('Nouveau nom'), telephone: S('Nouveau téléphone') }, required: ['salarie'] },
-  },
-  { name: 'archiver_salarie', description: 'Archiver un salarié parti (ses heures restent, il ne peut plus se connecter).', parameters: { type: 'object', properties: { salarie: S('Salarié') }, required: ['salarie'] } },
-  {
-    name: 'cout_reel',
-    description: 'Avec un bulletin de paie joint d’un salarié EXISTANT : recopier le coût réel du mois (jamais le n° de sécurité sociale).',
-    parameters: { type: 'object', properties: {
-      salarie: S('Salarié'), mois: S('Mois aaaa-mm'), brut: { type: 'number', description: 'Salaire brut' },
-      cout_employeur: { type: 'number', description: 'Coût total employeur' }, heures_payees: { type: 'number', description: 'Heures payées' },
-    }, required: ['salarie'] },
-  },
-  {
-    name: 'modifier_reglages',
-    description: 'Changer un réglage de l’entreprise. Ne remplir QUE ce qui change.',
-    parameters: { type: 'object', properties: {
-      heures_hebdo: { type: 'number', description: 'Horaire hebdomadaire' }, email_comptable: S('Email du comptable'),
-      relance_auto: { type: 'boolean', description: 'Relance automatique des heures' }, heure_relance: { type: 'number', description: 'Heure de la relance (0-23)' },
-      alertes_budget: { type: 'boolean', description: 'Alertes de budget' }, trajet_paye: { type: 'boolean', description: 'Trajet payé' },
-      majoration_1: { type: 'number', description: 'Taux heures sup 1 (%)' }, majoration_2: { type: 'number', description: 'Taux heures sup 2 (%)' },
-      telephone: S('Téléphone de l’entreprise'), email: S('Email de l’entreprise'), adresse: S('Adresse'), code_postal: S('Code postal'), ville: S('Ville'),
-      planning_collegues: { type: 'boolean', description: 'Les salariés voient le planning de leurs collègues' },
-    }, required: [] },
-  },
-  // ── Lot 8 : revenir en arrière ──
-  {
-    name: 'supprimer_intervention',
-    description: 'Retirer / enlever / supprimer UNE intervention (une case) du planning : un salarié (ou un chantier) et UN seul jour, par exemple « retire Marc du planning mardi », « enlève Sofiane de la Pizzeria Exemple jeudi ». « Vide / efface le planning », plusieurs jours, une période, une semaine, toute l’équipe → effacer_planning.',
-    parameters: { type: 'object', properties: {
-      salarie: S('Salarié prévu (« moi » pour la personne qui parle)'), date: S('Jour, aaaa-mm-jj. Un nom de jour seul (« mardi ») = le PROCHAIN jour de ce nom du CALENDRIER, aujourd’hui compris ; jamais un jour déjà passé, sauf s’il est dit (« dernier », « hier »).'),
-      chantier: S('Client ou chantier, s’il est dit'), lieu: S('Lieu ou ville dit (« l’intervention à Lyon »)'),
-    }, required: [] },
-  },
-  {
-    name: 'effacer_planning',
-    description: 'Effacer / VIDER le planning (les interventions, pas les absences) d’UN salarié sur plusieurs jours, une période ou une semaine, ou de TOUTE l’équipe (même un seul jour) : « vide », « efface le planning ». « Retire / enlève <salarié> du planning <un jour> » (UN seul jour, une case) → supprimer_intervention, pas cet outil.',
-    parameters: { type: 'object', properties: {
-      salarie: S('Salarié ; vide = toute l’équipe'), du: S('Premier jour, aaaa-mm-jj. Un nom de jour seul (« mardi ») = le PROCHAIN jour de ce nom du CALENDRIER, aujourd’hui compris ; jamais un jour déjà passé, sauf s’il est dit (« dernier », « hier »).'), au: S('Dernier jour, aaaa-mm-jj (même règle : le PROCHAIN jour de ce nom du CALENDRIER, jamais un jour déjà passé).'),
-      semaine: S('« prochaine », « en cours » ou un jour de la semaine voulue, si c’est une semaine entière'),
-    }, required: [] },
-  },
-  {
-    name: 'supprimer_absence',
-    description: 'Retirer un congé, un arrêt ou une absence posé au planning (le salarié redevient présent ces jours-là).',
-    parameters: { type: 'object', properties: { salarie: S('Salarié'), du: S('Premier jour, aaaa-mm-jj'), au: S('Dernier jour, aaaa-mm-jj') }, required: ['salarie'] },
-  },
-  {
-    name: 'supprimer_document',
-    description: 'Supprimer un document ou une photo rangé sur un chantier.',
-    parameters: { type: 'object', properties: { chantier: S('Chantier'), quoi: S('Quel document : « la facture », « le devis », « la dernière photo », son nom…') }, required: [] },
-  },
-  {
-    name: 'modifier_document',
-    description: 'Changer la catégorie ou le nom d’un document de chantier.',
-    parameters: { type: 'object', properties: {
-      chantier: S('Chantier'), quoi: S('Quel document'),
-      nouvelle_categorie: { type: 'string', enum: Object.keys(DOC_CATEGORY_LABEL) }, nouveau_nom: S('Nouveau nom, court'),
-    }, required: [] },
-  },
-  {
-    name: 'supprimer_depense',
-    description: 'Supprimer une dépense d’un chantier.',
-    parameters: { type: 'object', properties: { chantier: S('Chantier'), montant: { type: 'number', description: 'Montant en euros, s’il est dit' }, quoi: S('Quelle dépense (libellé, « la dernière »)') }, required: [] },
-  },
-  {
-    name: 'modifier_depense',
-    description: 'Corriger une dépense d’un chantier (montant, libellé, catégorie).',
-    parameters: { type: 'object', properties: {
-      chantier: S('Chantier'), montant: { type: 'number', description: 'Montant ACTUEL, s’il est dit' }, quoi: S('Quelle dépense'),
-      nouveau_montant: { type: 'number', description: 'Nouveau montant' }, nouveau_libelle: S('Nouveau libellé'), nouvelle_categorie: { type: 'string', enum: Object.keys(EXPENSE_LABEL) },
-    }, required: [] },
-  },
-  {
-    name: 'supprimer_habilitation',
-    description: 'Supprimer une habilitation / un document suivi d’un salarié (CACES, carte BTP…).',
-    parameters: { type: 'object', properties: { salarie: S('Salarié'), quoi: S('Laquelle (CACES, carte BTP, visite médicale…)') }, required: ['salarie'] },
-  },
-  {
-    name: 'modifier_habilitation',
-    description: 'Changer la date d’expiration ou le libellé d’une habilitation.',
-    parameters: { type: 'object', properties: { salarie: S('Salarié'), quoi: S('Laquelle'), expiration: S('Nouvelle date d’expiration, aaaa-mm-jj'), nouveau_libelle: S('Nouveau libellé') }, required: ['salarie'] },
-  },
-  {
-    name: 'annuler_invitation',
-    description: 'Annuler une invitation de salarié en attente.',
-    parameters: { type: 'object', properties: { nom: S('Nom de la personne invitée'), email: S('Son email') }, required: [] },
-  },
-];
+// ── Déclarations pour l'IA (appel de fonctions, liste blanche) ──
+// 3a-2 : elles ne sont plus écrites ici. Le registre (registre/outils-bureau.ts) est la SEULE source de ce que le modèle lit ;
+// `ASSISTANT_FUNCTIONS`, `ATTACHMENT_FUNCTIONS` et `functionsFor` sont générés par registre/outils-pour.ts et exportés par
+// assistant-outils.ts (côté serveur seulement). Ce fichier-ci est atteint par le navigateur (cartes de confirmation, lib/) :
+// il ne doit rien importer de registre/outils-*.ts, qui contient les textes lus par le modèle (test T8).
 
 /**
  * Lot 1 : un FICHIER est joint → le modèle ne voit que les outils qui lisent un
@@ -1646,18 +1401,9 @@ export const ASSISTANT_FUNCTIONS = [
  * facture, le salarié ou le coût d'un bulletin). Un PDF piégé (« supprime tout
  * le planning ») ne peut donc demander ni suppression, ni relance, ni rappel.
  * Chacun de ces outils passe de toute façon par la carte ou par « Annuler ».
+ * 3a-2 : la liste est générée (champ `pieceJointe` des outils du registre).
  */
-export const ATTACHMENT_ACTIONS = ['repondre', 'ranger_document', 'creer_chantier', 'ajouter_depense', 'inviter_salarie', 'cout_reel'] as const;
-export const ATTACHMENT_FUNCTIONS = ASSISTANT_FUNCTIONS.filter((f) => (ATTACHMENT_ACTIONS as readonly string[]).includes(f.name));
-/**
- * Les outils proposés au modèle : ceux des documents s'il y a un fichier ;
- * sinon, lot 6, ceux du DOMAINE de la demande (tous si aucun n'est reconnu).
- * Étape 2 : avec un historique, les domaines du dernier échange S'AJOUTENT à ceux de la demande (« annule ça » ne dit rien du planning,
- * la phrase d'avant oui). Jamais l'inverse : une demande sans domaine reconnu garde TOUS les outils, comme avant.
- */
-export const functionsFor = (hasFile: boolean, question?: string, historique?: MessageHistorique[]) =>
-  (hasFile ? ATTACHMENT_FUNCTIONS
-    : pickTools(ASSISTANT_FUNCTIONS, question && domainTools(question, OFFICE_DOMAINS) ? textePourOutils(question, historique) : question, OFFICE_DOMAINS));
+export { ATTACHMENT_ACTIONS };
 
 // ── Sans IA : les demandes courantes, tout de suite ─────────────────────────
 export interface LocalReply { answer: string; links: { label: string; action: string }[]; action?: AssistantAction }

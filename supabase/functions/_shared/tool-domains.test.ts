@@ -1,8 +1,10 @@
 // Lot 6 — outils envoyés au modèle par DOMAINE : plus légers, sans perdre une
 // action. CHAQUE phrase du jeu d'évaluation (bureau et salarié) doit garder
 // l'outil attendu dans la sélection.   npm run test:ia-domaines
-import { actionPrompt, ASSISTANT_FUNCTIONS, ATTACHMENT_FUNCTIONS, buildActionContext, functionsFor, guideForPrompt, handleActionLocally, type ActionContext } from './assistant-actions-core.ts';
-import { WORKER_ATTACHMENT_FUNCTIONS, WORKER_FUNCTIONS, buildWorkerSnapshot, handleWorkerLocally, workerFunctionsFor, type WorkerLive, type WorkerSnapshot } from './worker-assistant-core.ts';
+import { actionPrompt, buildActionContext, guideForPrompt, handleActionLocally, type ActionContext } from './assistant-actions-core.ts';
+import { ASSISTANT_FUNCTIONS, ATTACHMENT_FUNCTIONS, functionsFor } from './assistant-outils.ts';
+import { buildWorkerSnapshot, handleWorkerLocally, type WorkerLive, type WorkerSnapshot } from './worker-assistant-core.ts';
+import { WORKER_ATTACHMENT_FUNCTIONS, WORKER_FUNCTIONS, workerFunctionsFor } from './worker-outils.ts';
 import { domainTools, OFFICE_DOMAINS, WORKER_DOMAINS } from './tool-domains.ts';
 import { low } from './fr-langue.ts';
 import { workerFunctionsForLong } from './worker-multi-prompt.ts';

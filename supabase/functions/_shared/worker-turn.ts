@@ -14,7 +14,8 @@
 // Aucun console.* ici : le texte et les arguments du modèle contiennent des noms et adresses de particuliers.
 import type { AiFile, Tier, ToolsRequest, ToolsResult } from './ai-provider.ts';
 import { WORKER_TEXT_MAX, profilSaisie } from './saisie-profil.ts';
-import { fromWorkerCall, handleWorkerLocally, workerFunctionPrompt, workerFunctionsFor, type WorkerFullReply, type WorkerLive, type WorkerSnapshot } from './worker-assistant-core.ts';
+import { fromWorkerCall, handleWorkerLocally, workerFunctionPrompt, type WorkerFullReply, type WorkerLive, type WorkerSnapshot } from './worker-assistant-core.ts';
+import { workerFunctionsFor } from './worker-outils.ts';
 import { buildLongReply, type LongLegacy, type WorkerMultiReply } from './worker-multi.ts';
 import { workerFunctionsForLong, workerMultiPrompt } from './worker-multi-prompt.ts';
 

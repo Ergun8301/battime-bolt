@@ -3,9 +3,8 @@
 //   npm run test:worker-turn
 import { tierFor, type ToolsRequest, type ToolsResult } from './ai-provider.ts';
 import { WORKER_TEXT_MAX } from './saisie-profil.ts';
-import {
-  buildWorkerSnapshot, fromWorkerCall, handleWorkerLocally, workerFunctionPrompt, workerFunctionsFor, type WorkerLive, type WorkerSnapshot,
-} from './worker-assistant-core.ts';
+import { buildWorkerSnapshot, fromWorkerCall, handleWorkerLocally, workerFunctionPrompt, type WorkerLive, type WorkerSnapshot } from './worker-assistant-core.ts';
+import { workerFunctionsFor } from './worker-outils.ts';
 import type { WorkerMultiReply } from './worker-multi.ts';
 import { workerFunctionsForLong, workerMultiPrompt } from './worker-multi-prompt.ts';
 import { runWorkerTurn, workerProfile, type WorkerTurnInput } from './worker-turn.ts';
