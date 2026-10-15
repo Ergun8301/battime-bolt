@@ -11,7 +11,8 @@
 // Aucun console.* : le texte et les arguments contiennent des noms et adresses de particuliers.
 import { calendarForPrompt } from './fr-langue.ts';
 import { WORKER_DOMAINS, domainTools, pickTools } from './tool-domains.ts';
-import { WORKER_FUNCTIONS, WORKER_GUIDE, fmtMin, type WorkerLive, type WorkerSnapshot } from './worker-assistant-core.ts';
+import { WORKER_GUIDE, fmtMin, type WorkerLive, type WorkerSnapshot } from './worker-assistant-core.ts';
+import { WORKER_FUNCTIONS } from './worker-outils.ts';
 import { WORKER_TEXT_MAX } from './saisie-profil.ts';
 import { blocAvantDemande, textePourOutils, type MessageHistorique } from './assistant-history.ts';
 

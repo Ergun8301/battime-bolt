@@ -22,7 +22,7 @@ import { DOC_CATEGORIES, LEAVE_KINDS, WORKER_NAV } from './registre/vocab.ts';
 import { WORKER_ATTACHMENT_ACTIONS as GENERE_WORKER_ATTACHMENT_ACTIONS, WORKER_REMOVAL_TYPES as GENERE_WORKER_REMOVAL_TYPES } from './outils-listes-salarie.ts';
 import { WORKER_TEXT_MAX } from './saisie-profil.ts';
 import { hasWorkerTour, TOUR_LABEL, tourAction } from './worker-tours.ts';
-import { blocAvantDemande, doitSauterLeCheminLocal, textePourOutils, type MessageHistorique } from './assistant-history.ts';
+import { blocAvantDemande, doitSauterLeCheminLocal, type MessageHistorique } from './assistant-history.ts';
 export { looksLikeAction };
 
 export interface WorkerSnapshot {

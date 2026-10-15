@@ -1,6 +1,6 @@
 // Registre : réglages communs (livraison en cours, échéance des dettes, plafond de dettes).
 // TypeScript pur : aucun import de Deno ni de React. Contrat : conception étape 3 §2.3.
-import type { DettesMax, FichierDettes, Livraison } from './types.ts';
+import type { Cote, DettesMax, FichierDettes, Livraison } from './types.ts';
 
 /**
  * La livraison de l'étape 3 actuellement mise en ligne. Les tests s'en servent
@@ -73,3 +73,25 @@ export function dettesMax(): Readonly<DettesMax> {
   plafond = lireDettes(deno.readTextFileSync(new URL('./dettes.json', import.meta.url)));
   return plafond;
 }
+
+// ── Ce que le registre ne peut pas déduire des outils (3a-2) ────────────────
+
+/**
+ * Types d'action qui existent encore dans le code d'un côté mais n'ont plus d'OUTIL (le modèle ne les appelle pas), et que les
+ * listes générées doivent pourtant garder pour que le comportement soit celui d'avant. Seul cas : `annuler_pointage` du salarié,
+ * désactivé au lot 12 (NO_CANCEL_ANSWER) ; son exécuteur et son type de retrait restent dans le code, sans outil.
+ */
+export const TYPES_SANS_OUTIL: Readonly<Record<Cote, { retrait: readonly string[] }>> = {
+  bureau: { retrait: [] },
+  salarie: { retrait: ['annuler_pointage'] },
+};
+
+/**
+ * Les domaines de tool-domains.ts, dans l'ordre où ce fichier les déclare (celui de `Object.keys(OFFICE_DOMAINS)`). Le champ
+ * `domaines` d'un outil en cite plusieurs dans cet ordre (T5 le vérifie) ; les listes `tools` générées s'écrivent dans le même ordre.
+ * Les mots qui déclenchent un domaine (les expressions régulières) restent écrits à la main dans tool-domains.ts.
+ */
+export const DOMAINES_ORDRE: Readonly<Record<Cote, readonly string[]>> = {
+  bureau: ['planning', 'heures', 'salaries', 'chantiers', 'documents', 'reglages'],
+  salarie: ['heures', 'conges', 'chantier', 'collegues'],
+};
