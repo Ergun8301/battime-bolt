@@ -25,7 +25,10 @@ Deno.test('Jeu d’évaluation : les 80 phrases d’origine (dans l’ordre) + l
   const ajouts3a = CASES.filter((c) => /^(be|se|ov)\d\d$/.test(c.id));
   const num = (p: string, n: number) => Array.from({ length: n }, (_, i) => `${p}${String(i + 1).padStart(2, '0')}`);
   if (ajouts3a.map((c) => c.id).join() !== [...num('be', 19), ...num('se', 6), ...num('ov', 5)].join()) throw new Error(`livraison 3a : be01–be19, se01–se06 puis ov01–ov05 attendus, obtenu ${ajouts3a.map((c) => c.id).join()}`);
-  if (longs.length < 14 || longs.length !== CASES.length - 80 - suites.length - ajouts3a.length) throw new Error(`${longs.length} phrases longues (au moins 14 ; 35 attendues : 31 d’avant + st15–st18)`);
+  // Livraison 3b-0 : 5 cas gu01–gu05 en toute fin de jeu (les trois fiches du GUIDE corrigées).
+  const ajouts3b0 = CASES.filter((c) => /^gu\d\d$/.test(c.id));
+  if (ajouts3b0.map((c) => c.id).join() !== ['gu01', 'gu02', 'gu03', 'gu04', 'gu05'].join() || CASES.slice(-5).map((c) => c.id).join() !== 'gu01,gu02,gu03,gu04,gu05') throw new Error('livraison 3b-0 : gu01–gu05 attendus, en fin de jeu');
+  if (longs.length < 14 || longs.length !== CASES.length - 80 - suites.length - ajouts3a.length - ajouts3b0.length) throw new Error(`${longs.length} phrases longues (au moins 14 ; 35 attendues : 31 d’avant + st15–st18)`);
   if (longs.filter((c) => c.categorie === 'Long FR').length !== 17 || longs.filter((c) => c.categorie === 'Long TR').length !== 18 || longs.some((c) => c.cote !== 'salarie')) throw new Error('17 « Long FR » et 18 « Long TR » (14 d’avant + st15–st18), côté salarié');
   // La phrase exacte d'Ergun (retour réel d'un salarié) est le cas sl01.
   const ergun = "Ajoute-moi une intervention. J'ai travaillé aujourd'hui de 8h à midi, puis pause d'1h, puis de 13h à 17h sur un nouveau chantier : prénom Pierrick, nom Dupont, à Montagna 01250, pour la pose d'un store banne.";
@@ -455,7 +458,7 @@ Deno.test('Suites de conversation : 15 cas (8 bureau, 5 salarié FR, 2 salarié 
   // renvoient à la conversation) en portent un : le profil long, lui aussi, voit la conversation. Les cas de la livraison 3a n'en ont pas non plus.
   const avecHistorique = CASES.filter((c) => c.history).map((c) => c.id).filter((id) => !/^sc\d\d$/.test(id));
   if (avecHistorique.join() !== 'sl17,st14') throw new Error(`cas non « sc » avec historique : ${avecHistorique.join()} (sl17 et st14 seulement)`);
-  if (CASES.length !== 111 + 15 + 34) throw new Error(`${CASES.length} cas (160 attendus : 80 + 31 phrases longues + 15 suites + 34 de la livraison 3a)`);
+  if (CASES.length !== 111 + 15 + 34 + 5) throw new Error(`${CASES.length} cas (165 attendus : 80 + 31 phrases longues + 15 suites + 34 de la livraison 3a + 5 de la livraison 3b-0)`);
   // sl17 et st14 sont bien LONGUES (jamais le lecteur local, la consigne du profil long) et renvoient à leur historique.
   for (const id of ['sl17', 'st14']) {
     const c = CASES.find((x) => x.id === id)!;
@@ -625,9 +628,9 @@ Deno.test('Livraison 3a : 34 cas ajoutés (23 bureau, 11 salarié), comptes par 
   if (CAS_3A.length !== 34 || CAS_3A.filter((c) => c.cote === 'bureau').length !== 23 || CAS_3A.filter((c) => c.cote === 'salarie').length !== 11) throw new Error(`${CAS_3A.length} cas de la livraison 3a (34 : 23 bureau + 11 salarié)`);
   const compte = new Map<string, number>();
   for (const c of CASES) compte.set(`${c.cote} · ${c.categorie}`, (compte.get(`${c.cote} · ${c.categorie}`) ?? 0) + 1);
-  // « Réglages » = « Réglages / paie / réserves » (b26–b28) : 3 + les corrections d'heures, l'attribution d'un client et le coût réel. Seul « Réserves » du salarié reste sous 10, par choix du contrat (1 → 5).
+  // 3b-0 : « bureau · Aide » passe de 9 à 14 (gu01–gu05, aucune nouvelle catégorie). « Réglages » = « Réglages / paie / réserves » (b26–b28) : 3 + les corrections d'heures, l'attribution d'un client et le coût réel. Seul « Réserves » du salarié reste sous 10, par choix du contrat (1 → 5).
   const voulu: Record<string, number> = {
-    'bureau · Interventions': 10, 'bureau · Congés': 4, 'bureau · Clients': 5, 'bureau · Documents': 4, 'bureau · Salariés': 14, 'bureau · Réglages': 10, 'bureau · Aide': 9, 'bureau · Effacer': 14, 'bureau · Suite de conversation': 8,
+    'bureau · Interventions': 10, 'bureau · Congés': 4, 'bureau · Clients': 5, 'bureau · Documents': 4, 'bureau · Salariés': 14, 'bureau · Réglages': 10, 'bureau · Aide': 14, 'bureau · Effacer': 14, 'bureau · Suite de conversation': 8,
     'salarie · Heures': 4, 'salarie · Pointage': 3, 'salarie · Congés': 2, 'salarie · Ma journée': 9, 'salarie · Réserves': 5, 'salarie · Documents': 2, 'salarie · Collègues': 3, 'salarie · Aide': 4,
     'salarie · Effacer': 8, 'salarie · Long FR': 17, 'salarie · Long TR': 18, 'salarie · Suite de conversation': 7,
   };
@@ -686,6 +689,23 @@ Deno.test('Livraison 3a : chaque cas a sa sortie plausible, qui PASSE ; les 5 ou
   // ov02 « montre-moi les réserves » (guide), se02 / se04 (réserve), se06 (copie d'hier) : le lecteur local seul, jamais le modèle.
   const r = await runEval('v2', async () => ({ ok: false, reason: 'provider_error' }), LOCAUX_3A);
   if (r.ok !== LOCAUX_3A.length || r.temps.length !== 0 || r.echecs.length) throw new Error(`lecteur local : ${r.ok}/${LOCAUX_3A.length}, ${r.temps.length} via le modèle, ${JSON.stringify(r.echecs.map((e) => [e.id, e.why]))}`);
+});
+
+Deno.test('Livraison 3b-0 : gu01–gu05 (imprimer, chantier terminé, borne) sont lus par le lecteur local, sans modèle, et PASSENT ; les anciennes réponses fausses ÉCHOUENT', async () => {
+  const ids = ['gu01', 'gu02', 'gu03', 'gu04', 'gu05'];
+  const r = await runEval('v2', async () => ({ ok: false, reason: 'provider_error' }), ids);
+  if (r.ok !== ids.length || r.temps.length !== 0 || r.echecs.length) throw new Error(`3b-0 : ${r.ok}/${ids.length}, ${r.temps.length} via le modèle, ${JSON.stringify(r.echecs.map((e) => [e.id, e.why]))}`);
+  // Les anciennes fiches (avant 3b-0) : « imprimer » répondait par l'export, « chantier terminé » par « Archiver un client (chantier terminé) », la borne par un code « tout de suite ».
+  const faux: [string, string, string[]][] = [
+    ['gu01', 'Télécharger les heures (Excel, PDF, CSV) :\n1. « Exporter » (équipe) ou la fiche d’un salarié.\n2. « Exporter ▾ » → « PDF », « Excel » ou « CSV » : le fichier se télécharge.', ['export']],
+    ['gu02', 'Archiver un client (chantier terminé) :\n1. « Clients », crayon sur le client.\n2. « Archiver ».', ['clients']],
+    ['gu03', 'Relier la tablette de pointage (borne) :\n1. Bouton « Borne » du planning : le code à 6 chiffres s’affiche tout de suite.', ['planning']],
+    ['gu05', 'Archiver un client (chantier terminé) :\n1. « Clients », crayon sur le client.\n2. « Archiver ».', ['clients']],
+  ];
+  for (const [id, answer, links] of faux) {
+    const why = CASES.find((c) => c.id === id)!.check({ kind: 'answer', answer, links } as never);
+    if (!why) throw new Error(`${id} : l’ancienne réponse fausse devrait ÉCHOUER`);
+  }
 });
 
 Deno.test('Livraison 3a : les mauvaises lectures (outil voisin, mauvais salarié, mauvaise date, écriture à la place d’un lien) ÉCHOUENT', async () => {

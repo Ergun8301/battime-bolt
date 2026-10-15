@@ -75,7 +75,9 @@ const AGIT_PAR_LIGNE = [
 ];
 // …l'ancre est alors sur la LISTE, et la phrase dit de choisir la bonne ligne.
 const LISTES = ['bureau-conges.liste', 'bureau-stat.liste', 'bureau-invit.liste', 'bureau-reserves.liste', 'bureau-versions.liste', 'bureau-export.mois', 'bureau-salaries.liste'];
-const SANS_FICHE = ['position', 'sortie_oubliee']; // rien à entourer à l'écran
+// 3b-0 (2026-10-15) : deux fiches de GUIDE ajoutées pour corriger les réponses fausses (« imprimer » ≠ export, « chantier terminé » ≠ archiver) : elles n'ont pas
+// de parcours pas à pas (aucune ancre data-guide ne les porte encore ; en ajouter toucherait les écrans, hors de cette livraison).
+const SANS_FICHE = ['position', 'sortie_oubliee', 'imprimer_planning', 'terminer_chantier']; // rien à entourer à l'écran (ou pas encore de fiche)
 
 const BANNED = [
   'brouillon', 'statut', 'synchronis', 'synchro', 'onglet', 'interface', 'paramétr', 'session', 'serveur',
@@ -87,9 +89,9 @@ const TUTOIEMENT = /(?<![\p{L}])(tu|ton|ta|tes|toi|touche|appuie|clique|ouvre|me
 const stepsOf = (t: AdminTour) => [...adminStepsFor(t, false), ...adminStepsFor(t, true)];
 const allCibles = () => new Set(ADMIN_TOURS.flatMap(stepsOf).map((s) => s.cible));
 
-Deno.test('Guides bureau : une fiche par entrée de GUIDE (sauf deux), id stable, sans doublon', () => {
+Deno.test('Guides bureau : une fiche par entrée de GUIDE (sauf quatre), id stable, sans doublon', () => {
   const ids = GUIDE.map((g) => g.id);
-  if (ids.length !== 50 || new Set(ids).size !== 50) throw new Error(`GUIDE : ${ids.length} entrées, ${new Set(ids).size} ids uniques (50 attendus : les ids sont figés)`);
+  if (ids.length !== 52 || new Set(ids).size !== 52) throw new Error(`GUIDE : ${ids.length} entrées, ${new Set(ids).size} ids uniques (52 attendus : les ids sont figés ; 50 + imprimer_planning et terminer_chantier, 3b-0)`);
   for (const g of GUIDE) if (!/^[a-z]+(_[a-z]+)*$/.test(g.id)) throw new Error(`${g.titre} : id « ${g.id} » de forme inattendue`);
   const tours = ADMIN_TOURS.map((t) => t.id);
   if (tours.length !== 48) throw new Error(`${tours.length} fiches (48 attendues)`);
@@ -408,11 +410,16 @@ Deno.test('Guides bureau : les phrases avec fichier (b17, b18, b19) n’ont jama
   ]) eq(actions(fromFunctionCall('repondre', { reponse: 'ok' }, avec(phrase))).filter((a) => a.startsWith('guide:')), [], phrase);
 });
 
-Deno.test('Guides bureau : la consigne envoyée au modèle ne change pas d’un octet, et ne parle pas des guides', async () => {
+// EMPREINTE DÉCLARÉE, livraison 3b-0 (2026-10-15). Avant : 11 200 octets, SHA-256 8e2b61c3…959e6a. Après : 12 791 octets, SHA-256 308fecf4…6a3f.
+// Pourquoi elle bouge, exprès : trois fiches fausses du GUIDE sont corrigées (« imprimer » ne répond plus par l'export des heures ; « chantier terminé » ne
+// répond plus par « Archiver » ; la fiche « borne » dit où est le bouton et ce que fait la fenêtre) et deux fiches sont ajoutées (« Imprimer le planning »,
+// « Terminer un chantier »). `[lien:…]` était DÉJÀ imprimé avant 3b-0 : il n'est pour rien dans le changement. Le prochain déplacement sera 3b-1 (variante de GUIDE
+// derrière le secret) ; ce test se met alors à jour de la même façon, avec sa date, jamais en le contournant.
+Deno.test('Guides bureau : la consigne envoyée au modèle porte l’empreinte déclarée de 3b-0, et ne parle pas des guides', async () => {
   const bytes = new TextEncoder().encode(guideForPrompt());
-  if (bytes.length !== 11200) throw new Error(`guideForPrompt : ${bytes.length} octets (11200 attendus)`);
+  if (bytes.length !== 12791) throw new Error(`guideForPrompt : ${bytes.length} octets (12791 attendus)`);
   const sha = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))).map((b) => b.toString(16).padStart(2, '0')).join('');
-  eq(sha, '8e2b61c308d69d70e8f44f7804a4633da1bfd6b45e3e99e46d91530c9e959e6a', 'SHA-256 de guideForPrompt');
+  eq(sha, '308fecf470fb75d8132b997e2f11e0bc528000cdcf0730974e911c24645b6a3f', 'SHA-256 de guideForPrompt');
   const prompt = actionPrompt(CTX, '{}', guideForPrompt(), 'x');
   if (/Me guider pas à pas|guide:/.test(prompt)) throw new Error('la consigne ne doit pas contenir les guides pas à pas');
 });

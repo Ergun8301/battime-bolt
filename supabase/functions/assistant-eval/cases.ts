@@ -716,4 +716,13 @@ export const CASES: EvalCase[] = [
   { id: 'st17', cote: 'salarie', categorie: 'Long TR', phrase: 'Bugünkü Dupont satırımı değiştir lütfen: 7’den 11:30’a kadar.',
     check: act('modifier_heures', (d) => all(eq(d, 'entry_id', 'e1'), eq(d, 'debut', '07:00'), eq(d, 'fin', '11:30'))) },
   { id: 'st18', cote: 'salarie', categorie: 'Long TR', phrase: 'Haftalık ekranımı aç lütfen.', check: (o) => enTurc(o) ?? answer('semaine')(o) },
+
+  // ── Livraison 3b-0 : les trois fiches du GUIDE corrigées (imprimer ≠ exporter, chantier terminé ≠ archiver, la borne a sa fenêtre). Cinq cas « Aide », lus par le lecteur
+  // local sans modèle (comme ov02) : ils vérifient le LIEN et ce que la fiche DIT, et que l'ancienne réponse fausse ne revient pas. ──
+  // La mention porte sur le TITRE de la fiche : c'est lui qui distingue la bonne fiche de l'ancienne (« Télécharger les heures… », « Archiver un client (chantier terminé) »).
+  { id: 'gu01', cote: 'bureau', categorie: 'Aide', phrase: 'comment j’imprime le planning ?', check: answer('planning', /^Imprimer le planning :/) },
+  { id: 'gu02', cote: 'bureau', categorie: 'Aide', phrase: 'le chantier villa dupont est terminé, comment je le range ?', check: answer('clients', /^Terminer un chantier/) },
+  { id: 'gu03', cote: 'bureau', categorie: 'Aide', phrase: 'où est la borne ?', check: answer('planning', /^Relier la tablette[\s\S]*Relier une autre tablette/) },
+  { id: 'gu04', cote: 'bureau', categorie: 'Aide', phrase: 'comment je termine le chantier villa dupont ?', check: answer('clients', /^Terminer un chantier/) },
+  { id: 'gu05', cote: 'bureau', categorie: 'Aide', phrase: 'comment j’archive le client bureau martin ?', check: answer('clients', /^Archiver un client :/) },
 ];

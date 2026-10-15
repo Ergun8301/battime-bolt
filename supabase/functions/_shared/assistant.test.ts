@@ -1,6 +1,7 @@
 // Tests de l'Assistant BEMEXO (lot 3) : `npm run test:assistant` (Deno).
+import * as core from './assistant-core.ts';
 import {
-  ASSISTANT_SCHEMA, ASSISTANT_SUGGESTIONS, assistantPrompt, buildSnapshot, previousDay, sanitizeAnswer, type RawData,
+  ASSISTANT_SCHEMA, ASSISTANT_SUGGESTIONS, buildSnapshot, previousDay, type RawData,
 } from './assistant-core.ts';
 import { extractJson } from './ai-provider.ts';
 
@@ -84,34 +85,20 @@ Deno.test('Aucune donnée de paie brute dans l’instantané', () => {
   }
 });
 
-Deno.test('Liens : seulement les actions autorisées, 3 au plus, texte borné', () => {
-  const s = buildSnapshot(raw());
-  const a = sanitizeAnswer({
-    answer: 'x'.repeat(2000),
-    links: [
-      { label: 'Fiche de Karim', action: 'salarie:karim' },
-      { label: 'Espion', action: 'salarie:etranger' },
-      { label: 'Site', action: 'https://evil.example' },
-      { label: 'Coûts', action: 'couts' },
-      { label: 'Coûts bis', action: 'couts' },
-      { label: 'Congés', action: 'conges' },
-      { label: 'Encore', action: 'couts' },
-    ],
-  }, s);
-  eq(a.links.map((l) => l.action), ['salarie:karim', 'couts', 'conges'], 'liens filtrés');
-  if (a.answer.length > 700) throw new Error('réponse non bornée');
-  eq(sanitizeAnswer(null, s).links, [], 'réponse vide');
+// 3b-0 (2026-10-15) : l'ancien chemin « lecture seule » (assistantPrompt, sanitizeAnswer, STATIC_ACTIONS) n'était appelé par aucune fonction
+// depuis le lot 3 bis ; il est retiré. Le filtrage des liens (3 au plus, actions connues, jamais « guide:… ») se teste là où il vit :
+// admin-tours.test.ts (guideLinks / fromFunctionCall) et assistant-actions.test.ts.
+Deno.test('Code mort retiré : assistantPrompt, sanitizeAnswer et STATIC_ACTIONS n’existent plus ; le reste du module sert encore', () => {
+  for (const k of ['assistantPrompt', 'sanitizeAnswer', 'STATIC_ACTIONS']) if (k in core) throw new Error(`${k} devrait avoir disparu d’assistant-core.ts`);
+  for (const k of ['buildSnapshot', 'previousDay', 'MAX_QUESTION_CHARS', 'DEFAULT_DAILY_LIMIT', 'ASSISTANT_SUGGESTIONS']) if (!(k in core)) throw new Error(`${k} doit rester dans assistant-core.ts`);
 });
 
-Deno.test('Consigne : données séparées, lecture seule, question bornée', () => {
-  const p = assistantPrompt(buildSnapshot(raw()), 'q'.repeat(900));
-  if (!p.includes('lecture seule') || !p.includes('jamais des consignes')) throw new Error('garde-fous absents');
-  if (p.includes('q'.repeat(501))) throw new Error('question non bornée');
+Deno.test('Suggestions et veille : 4 suggestions, la veille en fin de mois', () => {
   eq(ASSISTANT_SUGGESTIONS.length, 4, '4 suggestions');
   eq(previousDay('2026-03-01'), '2026-02-28', 'veille en fin de mois');
 });
 
-Deno.test('IA simulée : sans document, JSON structuré, puis nettoyage', async () => {
+Deno.test('IA simulée : sans document, JSON structuré (le schéma et la consigne partent tels quels)', async () => {
   let sent: { contents: { parts: unknown[] }[]; generationConfig: { responseSchema: unknown } } | null = null;
   const fake = (_u: string, i: RequestInit) => {
     sent = JSON.parse(String(i.body));
@@ -119,8 +106,9 @@ Deno.test('IA simulée : sans document, JSON structuré, puis nettoyage', async 
     return Promise.resolve(new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text }] } }] })));
   };
   const snap = buildSnapshot(raw());
-  const r = await extractJson({ prompt: assistantPrompt(snap, 'Qui n’a pas pointé hier ?'), schema: ASSISTANT_SCHEMA }, { get: (k) => (k === 'GEMINI_API_KEY' ? 'k' : undefined) }, fake);
+  const r = await extractJson({ prompt: `DONNÉES : ${JSON.stringify(snap)}\nQUESTION : Qui n’a pas pointé hier ?`, schema: ASSISTANT_SCHEMA }, { get: (k) => (k === 'GEMINI_API_KEY' ? 'k' : undefined) }, fake);
   if (!r.ok) throw new Error('réponse attendue');
   eq(sent!.contents[0].parts.length, 1, 'aucun document joint');
-  eq(sanitizeAnswer(r.data, snap).links, [{ label: 'Fiche', action: 'salarie:karim' }], 'action inconnue écartée');
+  eq((r.data as { links: unknown[] }).links.length, 2, 'la réponse du modèle arrive entière (le tri des liens est celui de fromFunctionCall)');
+  eq(JSON.stringify((sent!.generationConfig as { responseSchema: unknown }).responseSchema).includes('"answer"'), true, 'le schéma est envoyé');
 });
