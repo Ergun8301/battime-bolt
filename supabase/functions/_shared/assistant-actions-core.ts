@@ -1491,7 +1491,8 @@ export function handleActionLocally(text: string, ctx: ActionContext): LocalRepl
     const a = proposeWeek(ctx, addDays(mondayOf(ctx.today), 7));
     return { answer: 'Voici une proposition. Ajustez si besoin, puis « Appliquer ».', links: [], action: a };
   }
-  if (!detailed && /\b(ajout|nouveau|nouvel|inviter|embauch|cree)\w*\b.*\b(salarie|ouvrier|employe|poseur|compagnon)/.test(n) && !/\bcomment\b/.test(n)) {
+  // Fiche vide seulement pour une demande NUE (courte) : dès que la phrase en dit plus (« son prénom c'est Pierre, son nom… »), c'est le modèle qui la lit.
+  if (!detailed && n.split(/\s+/).length <= 8 && /\b(ajout|nouveau|nouvel|inviter|embauch|cree)\w*\b.*\b(salarie|ouvrier|employe|poseur|compagnon)/.test(n) && !/\bcomment\b/.test(n)) {
     return { answer: 'Remplissez la fiche : il recevra une invitation par email.', links: [], action: prepare('inviter_salarie', {}, ctx)! };
   }
   // Lot 2 : « mets Sam en repos » — pas un type d'absence, on le dit (la base le refuserait).
