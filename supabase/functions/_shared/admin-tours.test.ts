@@ -13,6 +13,7 @@ import {
   type AdminTour, type ConsoleKind,
 } from './admin-tours.ts';
 import { TOUR_LABEL, tourAction, tourIdOf } from './worker-tours.ts';
+import { ASSISTANT_FUNCTIONS } from './assistant-outils.ts';
 
 const ROOTS = ['app', 'components'];
 async function sources(): Promise<Record<string, string>> {
@@ -425,8 +426,15 @@ Deno.test('Guides bureau : une seule fabrique du bouton, et le guide ne fait rie
     if (/links: \[\{ label: NAV_ACTIONS\[/.test(code)) throw new Error(`${f} : lien de guide fabriqué à la main`);
   }
   if (/links: \[\{ label: NAV_ACTIONS\[/.test(core)) throw new Error('assistant-actions-core.ts : lien de guide fabriqué à la main');
-  // Le schéma de l'outil du modèle ne propose pas « guide:… ».
-  if (/guide:/.test(core.slice(core.indexOf('export const ASSISTANT_FUNCTIONS'), core.indexOf('export const ATTACHMENT_ACTIONS')))) throw new Error('le modèle ne choisit pas les guides');
+  // Le schéma de l'outil du modèle ne propose pas « guide:… ». Étape 3, 3a-2 : les déclarations ne sont plus écrites dans le source
+  // d'assistant-actions-core.ts (on y lisait le texte entre `export const ASSISTANT_FUNCTIONS` et `export const ATTACHMENT_ACTIONS`) mais
+  // générées depuis le registre : on lit donc les déclarations ELLES-MÊMES, celles que le modèle reçoit, et non un morceau de source.
+  const declarations = JSON.stringify(ASSISTANT_FUNCTIONS);
+  if (/guide:/.test(declarations)) throw new Error('le modèle ne choisit pas les guides');
+  const liens = ASSISTANT_FUNCTIONS.find((f) => f.name === 'repondre')?.parameters.properties.liens as { items: { enum: string[] } } | undefined;
+  if (!liens || !liens.items.enum.length || liens.items.enum.some((l) => l.startsWith('guide'))) throw new Error('les liens proposés au modèle (repondre.liens) ne contiennent aucun guide');
+  // …et la liste n'est plus tenue à la main dans le cœur : assistant-actions-core.ts ne déclare plus d'outil.
+  if (/export const ASSISTANT_FUNCTIONS|name: 'repondre'/.test(core)) throw new Error('assistant-actions-core.ts : les déclarations d’outils vivent au registre (registre/outils-bureau.ts)');
   // Le composant commun n'a pas bougé : aucun appel réseau, aucun clic, aucun stockage.
   const src = await sources();
   const tour = bare(src['components/guide-tour.tsx']);

@@ -20,12 +20,10 @@
 //                                      ou une liste « dettes,clics,ids » pour n'en régénérer que certains
 //
 //   npm run test:couverture   (npx -y deno@2.9.6 test --allow-env --allow-read supabase/functions/_shared/registre-couverture.test.ts)
-import {
-  ACTION_TYPES, actionMode, ASSISTANT_FUNCTIONS, ATTACHMENT_ACTIONS, GUIDE, NAV_ACTIONS, REMOVAL_TYPES,
-} from './assistant-actions-core.ts';
-import {
-  WORKER_ATTACHMENT_ACTIONS, WORKER_FUNCTIONS, WORKER_GUIDE, WORKER_NAV, WORKER_REMOVAL_TYPES, workerActionMode,
-} from './worker-assistant-core.ts';
+import { ACTION_TYPES, actionMode, ATTACHMENT_ACTIONS, GUIDE, NAV_ACTIONS, REMOVAL_TYPES } from './assistant-actions-core.ts';
+import { ASSISTANT_FUNCTIONS } from './assistant-outils.ts';
+import { WORKER_ATTACHMENT_ACTIONS, WORKER_GUIDE, WORKER_NAV, WORKER_REMOVAL_TYPES, workerActionMode } from './worker-assistant-core.ts';
+import { WORKER_FUNCTIONS } from './worker-outils.ts';
 import { OFFICE_DOMAINS, WORKER_DOMAINS } from './tool-domains.ts';
 import { ADMIN_TOURS } from './admin-tours.ts';
 import { WORKER_TOURS } from './worker-tours.ts';
@@ -584,6 +582,89 @@ export function verifierT5(cote: Cote, servis: readonly Outil[], code: CodeDuCot
   return p;
 }
 
+
+/**
+ * Les `case '…':` du commutateur `switch (type)` / `switch (d.type)` d'une fonction du code, lus sur le texte masqué (un `case` écrit dans un
+ * commentaire ou une chaîne n'est pas une étiquette). Seul le niveau 1 du commutateur compte : un `switch` imbriqué ne ment pas sur les types.
+ * `null` si la fonction ou son commutateur est introuvable (forme du code changée : T5 le dit au lieu de se taire).
+ */
+export function casesDeFonction(texte: string, signature: string): string[] | null {
+  const m = masquer(texte); const nu = m.nu;
+  const i = nu.indexOf(signature);
+  if (i < 0) return null;
+  let prof = 0; let j = nu.indexOf('(', i);
+  for (; j < nu.length; j++) { if (nu[j] === '(') prof++; else if (nu[j] === ')') { prof--; if (!prof) break; } }
+  const debut = nu.indexOf('{', j);
+  if (debut < 0) return null;
+  prof = 0; let fin = debut;
+  for (; fin < nu.length; fin++) { if (nu[fin] === '{') prof++; else if (nu[fin] === '}') { prof--; if (!prof) break; } }
+  const sw = /\bswitch\s*\(\s*(?:d\.)?type\s*\)\s*\{/.exec(nu.slice(debut, fin + 1));
+  if (!sw) return null;
+  const ouvre = debut + sw.index + sw[0].length - 1;
+  const etiquettes: string[] = [];
+  prof = 0;
+  for (let e = ouvre; e < nu.length; e++) {
+    const c = nu[e];
+    if (c === '{') prof++;
+    else if (c === '}') { prof--; if (!prof) break; }
+    else if (prof === 1 && c === 'c' && !/[\w$.]/.test(nu[e - 1] ?? ' ')) {
+      const mot = /^case\s+/.exec(nu.slice(e, e + 12));
+      const ch = mot ? m.chaines.get(e + mot[0].length) : undefined;
+      if (ch && !ch.interpolee) etiquettes.push(ch.valeur);
+    }
+  }
+  return etiquettes;
+}
+
+/** Types d'action que le code du salarié traite encore alors que le modèle ne les appelle plus (lot 12, WC:781 : QR de la tablette obligatoire). */
+const CASES_SALARIE_SANS_OUTIL = ['commencer_pointage', 'annuler_pointage'];
+/** `declarer_heures` n'est pas un type de `prepareWorkerAction` : ses lignes passent par le brouillon multi-lignes (worker-multi.ts, makeWorkerSaver). */
+const SALARIE_SANS_CASE_DE_PREPARATION = ['declarer_heures'];
+
+/**
+ * T5 (3a-2) : ce qui reste écrit À LA MAIN dans AC / WC — `prepare`, `checkAction`, `summarize`, `actionMode` (salarié : `prepareWorkerAction`,
+ * `checkWorkerAction`, `workerActionMode`) — traite exactement les outils d'écriture du registre. Une écriture ajoutée au registre sans son
+ * `case` serait préparée par rien (« action inconnue ») ; un `case` sans outil est du code mort que le modèle ne peut pas déclencher.
+ * `actionMode` n'énumère que les EXCEPTIONS à son défaut (bureau : défaut « confirmer » ; salarié : défaut « direct », retraits déjà traités avant).
+ */
+export function verifierT5Cases(cote: Cote, servis: readonly Outil[], sources: { texte: string; fonctions: Record<string, string> }): string[] {
+  const p: string[] = [];
+  const ecritures = servis.filter((o) => o.kind === 'ecriture') as Extract<Outil, { kind: 'ecriture' }>[];
+  const ids = ecritures.map((o) => o.id);
+  const nomDeFichier = cote === 'bureau' ? 'assistant-actions-core.ts' : 'worker-assistant-core.ts';
+  const lire = (nom: string) => {
+    const c = casesDeFonction(sources.texte, sources.fonctions[nom]);
+    if (!c) p.push(`${nomDeFichier}  → ${nom}() ou son commutateur « switch (type) » est introuvable : T5 ne sait plus comparer ses types au registre (forme du code changée ?)`);
+    return c;
+  };
+  const exact = (nom: string, attendus: readonly string[], pourquoi: string) => {
+    const c = lire(nom); if (!c) return;
+    for (const a of attendus) if (!c.includes(a)) p.push(`${cote}/${a}  → écriture du registre sans « case '${a}' » dans ${nom}() : ${pourquoi}`);
+    for (const e of c) if (!attendus.includes(e)) p.push(`${cote}/${e}  → « case '${e}' » dans ${nom}() mais ce n'est pas une écriture du registre (outils-${cote}.ts) : type mort, ou outil oublié au registre`);
+  };
+  if (cote === 'bureau') {
+    for (const f of ['prepare', 'checkAction', 'summarize']) exact(f, ids, 'le modèle l\'appellerait et rien ne le préparerait');
+    exact('actionMode', ecritures.filter((o) => o.mode !== 'carte').map((o) => o.id), 'seuls les outils « direct » ou « conditionnel » sont des exceptions au défaut « confirmer »');
+  } else {
+    exact('prepareWorkerAction', [...ids.filter((i) => !SALARIE_SANS_CASE_DE_PREPARATION.includes(i)), ...CASES_SALARIE_SANS_OUTIL], 'le modèle l\'appellerait et rien ne le préparerait');
+    exact('checkWorkerAction', [...ids.filter((i) => !SALARIE_SANS_CASE_DE_PREPARATION.includes(i)), ...CASES_SALARIE_SANS_OUTIL], 'rien ne le contrôlerait avant la carte');
+    const retraits = ecritures.filter((o) => o.retrait).map((o) => o.id);
+    exact('workerActionMode', ecritures.filter((o) => o.mode !== 'direct' && retraits.indexOf(o.id) < 0).map((o) => o.id), 'seuls les outils « à confirmer » hors retraits (déjà confirmés avant le commutateur) sont des exceptions au défaut « direct »');
+  }
+  return p;
+}
+
+const FONCTIONS_A_LA_MAIN: Record<Cote, { fichier: string; fonctions: Record<string, string> }> = {
+  bureau: {
+    fichier: 'supabase/functions/_shared/assistant-actions-core.ts',
+    fonctions: { prepare: 'export function prepare(', checkAction: 'export function checkAction(', summarize: 'export function summarize(', actionMode: 'export function actionMode(' },
+  },
+  salarie: {
+    fichier: 'supabase/functions/_shared/worker-assistant-core.ts',
+    fonctions: { prepareWorkerAction: 'export function prepareWorkerAction(', checkWorkerAction: 'export function checkWorkerAction(', workerActionMode: 'export function workerActionMode(' },
+  },
+};
+
 // ════════════════════════════════════════════════════════════════════════════
 // T6 liaison (exécuteurs, lectures, ouvreurs)
 // ════════════════════════════════════════════════════════════════════════════
@@ -1033,7 +1114,10 @@ for (const cote of ['bureau', 'salarie'] as const) {
       if (duRegistre !== gel[cote].liste) p.push(`${cote}  → le registre ré-assemblé (livraison 3a) ne redonne plus l'empreinte gelée de outils-empreintes.json : une description ou un schéma a changé. Si c'est voulu, c'est une livraison à empreinte déclarée (3b-0), pas une retouche`);
       if (duCode !== gel[cote].liste) p.push(`${cote}  → le code (${cote === 'bureau' ? 'ASSISTANT_FUNCTIONS' : 'WORKER_FUNCTIONS'}) ne redonne plus l'empreinte gelée : il a changé depuis le gel de outils-empreintes.json`);
     }
-    if (p.length) echoue(`T5 cohérence (${cote}) : ${pl(p.length, 'écart')} avec le code`, p, '  Jusqu\'à 3a-2 le code reste la source des listes ; ensuite le registre les génère et ce test compare à l\'empreinte gelée.');
+    // 3a-2 : les listes sont générées depuis le registre ; reste à la main ce que le code fait de chaque type d'écriture.
+    const src = FONCTIONS_A_LA_MAIN[cote];
+    p.push(...verifierT5Cases(cote, servis, { texte: await lireTexte(src.fichier), fonctions: src.fonctions }));
+    if (p.length) echoue(`T5 cohérence (${cote}) : ${pl(p.length, 'écart')} avec le code`, p, '  Depuis 3a-2 le registre GÉNÈRE les listes (ASSISTANT_FUNCTIONS, ACTION_TYPES, REMOVAL_TYPES, ATTACHMENT_ACTIONS, domaines) : ce test compare l\'empreinte gelée et ce qui reste écrit à la main (prepare, checkAction, summarize, actionMode).');
   });
 }
 
@@ -1126,7 +1210,7 @@ Deno.test('Garde-fous du dépôt : le job CI « deno » lance ces tests sur main
   const ci = (await lireTexte('.github/workflows/ci.yml').catch(() => '')).split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
   if (!ci) p.push('.github/workflows/ci.yml  → introuvable');
   else {
-    for (const t of ['registre-couverture.test.ts', 'registre-surfaces.test.ts', 'registre-outils.test.ts']) if (!ci.includes(t)) p.push(`ci.yml  → ne lance plus ${t} : sans le job CI, T1 à T11 ne bloquent personne`);
+    for (const t of ['registre-couverture.test.ts', 'registre-surfaces.test.ts', 'registre-outils.test.ts', 'registre-listes.test.ts']) if (!ci.includes(t)) p.push(`ci.yml  → ne lance plus ${t} : sans le job CI, T1 à T11 ne bloquent personne`);
     if (!/deno@2(\.\d+\.\d+)?\s+test\b/.test(ci)) p.push('ci.yml  → plus de commande « npx -y deno@2.9.6 test … » : le job Deno a disparu');
     if (!/branches:\s*\[\s*main\s*,\s*['"]integration\/\*\*['"]\s*\]/.test(ci)) p.push("ci.yml  → le filtre de branches n'est plus [main, 'integration/**'] : les lots fusionnés dans integration/* ne seraient plus contrôlés");
   }
@@ -1305,6 +1389,44 @@ Deno.test('T5 cohérence (fixtures) : un outil renommé, un mode, un retrait, un
     const t = verifierT5('bureau', outils, code).join('\n');
     vrai(motif.test(t), `T5 doit signaler « ${nom} », obtenu : ${t || '(rien)'}`);
   }
+});
+
+Deno.test('T5 cohérence (fixtures, 3a-2) : un type d\'écriture sans case dans prepare / checkAction / summarize / actionMode, ou un case sans outil, est signalé', () => {
+  const AC = `
+    export function prepare(type: string, raw: Record<string, unknown>): X | null { let d; switch (type) { case 'a': d = 1; break; case 'b': { switch (raw.k) { case 'zz': break; } break; } } return d; }
+    export function checkAction(d: D, ctx: C): string[] { const p = []; switch (d.type) { case 'a': break; case 'b': break; } return p; }
+    export function summarize(d: D, ctx: C): string { switch (d.type) { case 'a': return 'x'; case 'b': return "y"; } }
+    export function actionMode(d: D): 'direct' | 'confirm' { switch (d.type) { case 'a': return 'direct'; default: return 'confirm'; } }
+    // case 'fantome': dans un commentaire
+  `;
+  const sources = { texte: AC, fonctions: FONCTIONS_A_LA_MAIN.bureau.fonctions };
+  const a = ecriture({ id: 'a', niveau: 2, mode: 'direct', modeActuel: 'direct' });
+  const b = ecriture({ id: 'b', niveau: 3, mode: 'carte', modeActuel: 'carte' });
+  egal(verifierT5Cases('bureau', [a, b], sources), [], 'cohérent (le switch imbriqué et le commentaire ne comptent pas)');
+  const c = ecriture({ id: 'c', niveau: 3, mode: 'carte', modeActuel: 'carte' });
+  const defauts: [string, Outil[], string, RegExp][] = [
+    ['écriture sans case', [a, b, c], AC, /bureau\/c\s+→ écriture du registre sans « case 'c' » dans prepare\(\)/],
+    ['case sans outil', [a], AC, /bureau\/b\s+→ « case 'b' » dans prepare\(\) mais ce n'est pas une écriture/],
+    ['actionMode : direct oublié', [ecriture({ id: 'a', niveau: 3, mode: 'carte', modeActuel: 'carte' }), b], AC, /bureau\/a\s+→ « case 'a' » dans actionMode\(\)/],
+    ['actionMode : exception absente', [a, b, ecriture({ id: 'c', niveau: 2, mode: 'direct', modeActuel: 'direct' })], AC.replace("case 'a': return 'direct'; ", ''), /bureau\/a\s+→ écriture du registre sans « case 'a' » dans actionMode\(\)/],
+    ['fonction introuvable', [a, b], AC.replace('export function summarize(', 'export function resume('), /summarize\(\) ou son commutateur « switch \(type\) » est introuvable/],
+  ];
+  for (const [nom, outils, texte, motif] of defauts) {
+    const r = verifierT5Cases('bureau', outils, { ...sources, texte }).join('\n');
+    vrai(motif.test(r), `T5 doit signaler « ${nom} », obtenu : ${r || '(rien)'}`);
+  }
+  // Salarié : defaut « direct », retraits déjà confirmés avant le commutateur ; declarer_heures et les deux types désactivés sont les exceptions déclarées.
+  const WC = `
+    export function prepareWorkerAction(type: string): W | null { switch (type) { case 'x': break; case 'y': break; case 'r': break; case 'commencer_pointage': break; case 'annuler_pointage': break; } return null; }
+    export function checkWorkerAction(d: W): string[] { switch (d.type) { case 'x': break; case 'y': break; case 'r': break; case 'commencer_pointage': break; case 'annuler_pointage': break; } return []; }
+    export function workerActionMode(d: W): 'direct' | 'confirm' { if (isWorkerRemoval(d)) return 'confirm'; switch (d.type) { case 'y': return 'confirm'; default: return 'direct'; } }
+  `;
+  const x = ecriture({ id: 'x', cote: 'salarie', niveau: 2, mode: 'direct', modeActuel: 'direct' } as never);
+  const y = ecriture({ id: 'y', cote: 'salarie', niveau: 3, mode: 'carte', modeActuel: 'carte' } as never);
+  const r = ecriture({ id: 'r', cote: 'salarie', niveau: 3, mode: 'carte', modeActuel: 'carte', retrait: true } as never);
+  const dh = ecriture({ id: 'declarer_heures', cote: 'salarie', niveau: 2, mode: 'direct', modeActuel: 'direct' } as never);
+  egal(verifierT5Cases('salarie', [x, y, r, dh], { texte: WC, fonctions: FONCTIONS_A_LA_MAIN.salarie.fonctions }), [], 'salarié cohérent');
+  vrai(verifierT5Cases('salarie', [x, y, r, dh, ecriture({ id: 'z', cote: 'salarie', niveau: 3, mode: 'carte', modeActuel: 'carte' } as never)], { texte: WC, fonctions: FONCTIONS_A_LA_MAIN.salarie.fonctions }).join('\n').includes('salarie/z  → écriture du registre sans « case \'z\' » dans prepareWorkerAction()'), 'salarié : écriture sans case');
 });
 
 Deno.test('T6 liaison (fixtures) : exécuteur introuvable, lib/registre-exec-<côté>.ts sans clé ou sans default qui lève, ouvreur sans clé littérale', () => {

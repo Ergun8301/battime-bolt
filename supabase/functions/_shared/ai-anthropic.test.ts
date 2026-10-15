@@ -5,13 +5,14 @@ import {
   aiDisponible, callFunction, cleDe, DELAIS, DELAIS_ANTHROPIC, extractJson, libelleModele, modeleServi, MODELES_PAR_DEFAUT, PLAFONDS_ESSAI,
   PROFIL_LONG, PROFIL_LONG_ANTHROPIC, readConfig, REPOS_MS, reposReinit, type ToolsResult,
 } from './ai-provider.ts';
+import { ASSISTANT_FUNCTIONS, functionsFor } from './assistant-outils.ts';
 import {
   ANTHROPIC_AUTORISES, ANTHROPIC_URL, ANTHROPIC_VERSION, appelClaude, blocFichier, corpsOutils, coutStrict, IMAGE_MAX_BASE64, LIMITES_STRICT, MAX_TOKENS, outilsClaude, refusModeleAnthropic,
   STRICT_ACTIF, versSchemaClaude,
 } from './ai-anthropic.ts';
-import { ASSISTANT_FUNCTIONS, functionsFor } from './assistant-actions-core.ts';
 import { PAYSLIP_SCHEMA } from './payslip-core.ts';
-import { WORKER_FUNCTIONS, WORKER_SCHEMA, workerFunctionsFor } from './worker-assistant-core.ts';
+import { WORKER_SCHEMA } from './worker-assistant-core.ts';
+import { WORKER_FUNCTIONS, workerFunctionsFor } from './worker-outils.ts';
 import { DECLARER_HEURES_LONG, NOUVEAU_CHANTIER_LONG, WORKER_FUNCTIONS_LONG, workerFunctionsForLong } from './worker-multi-prompt.ts';
 
 type Json = Record<string, any>; // deno-lint-ignore no-explicit-any

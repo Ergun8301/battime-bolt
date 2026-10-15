@@ -80,7 +80,7 @@ jobs:
           fi
 
       # --allow-read : les tests lisent le code (app/, components/, lib/) ; --allow-env : réglages REGISTRE_* du test de couverture. Rien d'autre :
-      # ni réseau, ni écriture. Les trois fichiers sont ceux de « npm run test:couverture » et « npm run test:registre » (package.json).
+      # ni réseau, ni écriture. Les quatre fichiers sont ceux de « npm run test:couverture » et « npm run test:registre » (package.json).
       - name: Tests du registre
         env:
           REGISTRE_DETTES_PERIMEES: ${{ steps.touche.outputs.dettes }}
@@ -89,3 +89,4 @@ jobs:
           supabase/functions/_shared/registre-couverture.test.ts
           supabase/functions/_shared/registre-surfaces.test.ts
           supabase/functions/_shared/registre-outils.test.ts
+          supabase/functions/_shared/registre-listes.test.ts
