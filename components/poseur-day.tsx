@@ -47,6 +47,10 @@ import { isReserveLifted } from '@/lib/reserves';
 // Lot 23 : chantier terminé — plus proposé dans les listes de choix, « Terminé le … » sur ses cartes.
 import TermineLe from '@/components/termine-le';
 import { choosableWorksites } from '@/supabase/functions/_shared/chantier-statut';
+// Design salarié, étape 4 : mini-frise de la journée (visible seulement avec ?ui=2).
+import { MiniFrise, type SegFrise } from '@/components/design/salarie/mini-frise';
+import { useUi2 } from '@/components/design/salarie/shell-v2';
+import { etatLigne } from '@/supabase/functions/_shared/salarie-vue';
 // Lot 4 : les réunions et les tâches du jour (lecture à part, rien sur les heures).
 import { MyMeetings, MyTasks, useMyMissions } from '@/components/missions-worker';
 
@@ -264,6 +268,7 @@ async function readLiveWithin(userId: string, ms: number): Promise<OwnLiveSessio
 }
 
 export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { date?: string; topBanner?: ReactNode; /** Lot 6 : bouton ✨ dans la barre (si l'assistant est activé). */ onAssistant?: () => void } = {}) {
+  const ui2 = useUi2();
   const { user } = useAuth();
   const [entries, setEntries] = useState<TimeEntryWithWorksite[]>([]);
   // Ce que le bureau (ou le chef) a corrigé sur MES heures. Le salarié doit le
@@ -1571,6 +1576,25 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
     ...pendingEntries.map((e) => ({ start: e.start_time.slice(0, 5), end: e.end_time.slice(0, 5) })),
   ];
   const plannedTodo = visiblePlannings(plannedRemaining, daySpans);
+  // Design salarié, étape 4 (?ui=2) : les segments de la mini-frise — lignes notées (envoyées / à envoyer / sortie oubliée), prévu pas encore noté, pointage en cours.
+  const friseSegments: SegFrise[] = !ui2 ? [] : (() => {
+    const segs: SegFrise[] = [
+      ...liveEntries.filter((e) => e.start_time && e.end_time && e.status !== 'cancelled').map((e): SegFrise => {
+        const et = etatLigne(e);
+        return { debut: e.start_time.slice(0, 5), fin: e.end_time.slice(0, 5), type: et === 'envoyee' || et === 'comptable' ? 'fait' : et === 'fin-a-completer' || et === 'sortie-oubliee' ? 'oublie' : 'a-envoyer' };
+      }),
+      ...pendingEntries.map((e): SegFrise => ({ debut: e.start_time.slice(0, 5), fin: e.end_time.slice(0, 5), type: 'a-envoyer' })),
+      ...plannedTodo.filter((p) => p.estimated_start).map((p): SegFrise => {
+        const d = p.estimated_start!.slice(0, 5);
+        const f = p.estimated_end ? p.estimated_end.slice(0, 5) : `${String(Math.min(23, Number(d.slice(0, 2)) + 4)).padStart(2, '0')}${d.slice(2)}`;
+        return { debut: d, fin: f, type: 'prevu' };
+      }),
+    ];
+    const ouvert = live.session;
+    if (ouvert?.started_at) { const c = parisClock(ouvert.started_at); if (c.date === date) segs.push({ debut: c.hm, fin: parisClock(Date.now()).hm, type: 'en-cours' }); }
+    // Dans l'ordre de la journée (une nuit à cheval garde l'ordre reçu : l'axe sait la lire).
+    return segs.some((s) => s.fin < s.debut) ? segs : segs.sort((a, b) => a.debut.localeCompare(b.debut));
+  })();
 
   /**
    * Le chrono ouvert, placé sur SA carte (lot 9) — même règle que le bureau et
@@ -1929,6 +1953,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant }: { 
             </button>
             )}
           </div>
+          {ui2 && <MiniFrise segments={friseSegments} />}
         </div>
 
         {/* Lot 4 : les réunions du jour, au-dessus des chantiers (jamais des heures). */}
