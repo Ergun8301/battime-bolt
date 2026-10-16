@@ -36,6 +36,9 @@ export const ADAPTATIONS = {
     ["{ cible: 'reserves.bandeau', via: 'touch' },", "{ cible: 'menu.reserves', via: 'touch' },",
       'Bascule : le guide « lever-reserve » commence par la ligne « Réserves à lever » de « Plus » (ancre menu.reserves) : la pastille de « Ma journée » disparaît pendant un pointage'],
     ['button:has-text("Close")','button:has-text("Fermer")', 'Étape 5 : le ✕ des fenêtres Radix s’appelle « Fermer » (l’ancien « Close » était en anglais)'],
+    ["    { cible: 'menu.compte', via: 'next' },\n    { cible: 'menu.semaine', via: 'touch', before: async () => { check(await menuOpen(p), 'tel planning 2 : menu ouvert par le guide'); } },",
+      "    { cible: 'barre.semaine', via: 'touch', before: async () => { check(!(await menuOpen(p)), 'tel planning 1 : le guide désigne la barre du bas, le menu « Mon compte » n’est pas ouvert'); } },",
+      'Navigation repensée (oct. 2026) : plus d’onglet « Plus » ni de ligne « Ma semaine » dans le menu (doublon de la barre du bas) ; le guide « planning » a donc DEUX pas (l’onglet « Semaine » de la barre du bas, ancre barre.semaine, puis un jour), au lieu de trois (nom, menu, jour) : même destination, un pas de moins'],
   ],
   'pointage-lot10': [],
   'heures-lot1': [],
@@ -56,18 +59,18 @@ export const ADAPTATIONS = {
       'G9 : la flèche de la Semaine v2 garde son nom (aria-label « Semaine précédente ») ; le balisage d’avant (div.flex + icône) n’existe plus'],
     ["await p.locator('p.font-semibold', { hasText: frLabel(d) }).first().click();", "await p.locator(`.dz-sem-jour[aria-label^=\"${frLabel(d)}\"]`).first().click();",
       'G9 : la ligne du jour de la Semaine v2 est repérée par son aria-label (le jour en toutes lettres), plus par un <p> gras'],
-    ["  await openDay(p);\n  await p.waitForSelector('[data-testid=team-day]', { timeout: 8000 });", "  await openDay(p);\n  await p.locator('[data-testid=dz-onglet-plus]').click(); await p.getByRole('menuitem', { name: 'Mon équipe' }).click();\n  await p.waitForSelector('[data-testid=team-day]', { timeout: 8000 });",
-      'G10 / E27 : « Mon équipe » (le chef) est une page rangée dans « Plus », plus une carte en haut de « Ma journée » : la copie y va par « Plus » → « Mon équipe » ; la règle testée (chantiers proposés selon le jour, chantier par défaut) est celle du même composant'],
-    ["  await openDay(p);\n  await p.waitForSelector('[data-testid=team-day]', { timeout: 8000 }).catch(() => {});", "  await openDay(p);\n  await p.locator('[data-testid=dz-onglet-plus]').click(); await p.getByRole('menuitem', { name: 'Mon équipe' }).click();\n  await p.waitForSelector('[data-testid=team-day]', { timeout: 8000 }).catch(() => {});",
-      'G7 / E27 : idem (« Mon équipe » par « Plus »)'],
+    ["  await openDay(p);\n  await p.waitForSelector('[data-testid=team-day]', { timeout: 8000 });", "  await openDay(p);\n  await p.locator('button[aria-label^=\"Mon compte\"]').click(); await p.getByRole('menuitem', { name: 'Mon équipe' }).click();\n  await p.waitForSelector('[data-testid=team-day]', { timeout: 8000 });",
+      'G10 / E27 : « Mon équipe » (le chef) est une page rangée dans « Mon compte » (avatar en haut à droite), plus une carte en haut de « Ma journée » : la copie y va par « Mon compte » → « Mon équipe » ; la règle testée (chantiers proposés selon le jour, chantier par défaut) est celle du même composant'],
+    ["  await openDay(p);\n  await p.waitForSelector('[data-testid=team-day]', { timeout: 8000 }).catch(() => {});", "  await openDay(p);\n  await p.locator('button[aria-label^=\"Mon compte\"]').click(); await p.getByRole('menuitem', { name: 'Mon équipe' }).click();\n  await p.waitForSelector('[data-testid=team-day]', { timeout: 8000 }).catch(() => {});",
+      'G7 / E27 : idem (« Mon équipe » par « Mon compte »)'],
   ],
   'fenetres-lot11': [],
   'reserves-lot11': [],
   // Étape 6 : les scripts des vues touchées (Plus, Mois, Historique, congés, formations, équipe, /pointer)
   'salarie-lot14': [
     ["const open = async () => { await p.goto(`http://localhost:${PORT}/poseur?ui=2`); await p.waitForSelector('.bt-total', { timeout: 15000 }); await p.waitForTimeout(900); };",
-      "const open = async () => { await p.goto(`http://localhost:${PORT}/poseur?ui=2`); await p.waitForSelector('.bt-total', { timeout: 15000 }); await p.waitForTimeout(900); if (D.users[0].role === 'lead') { await p.locator('[data-testid=dz-onglet-plus]').click(); await p.getByRole('menuitem', { name: 'Mon équipe' }).click(); await p.waitForSelector('[data-testid=team-day]', { timeout: 15000 }); await p.waitForTimeout(700); } };",
-      'E26 / E27 : « Mon équipe » n’est plus une carte en haut de « Ma journée » : c’est une page, rangée dans « Plus » (entrée « Mon équipe », étiquette « chef », chef d’équipe seulement). La copie y va par « Plus » → « Mon équipe » ; tout le reste (7 jours, salariés, Corriger, Envoyer, Ajouter des heures, OK) est le même composant, mêmes repères'],
+      "const open = async () => { await p.goto(`http://localhost:${PORT}/poseur?ui=2`); await p.waitForSelector('.bt-total', { timeout: 15000 }); await p.waitForTimeout(900); if (D.users[0].role === 'lead') { await p.locator('button[aria-label^=\"Mon compte\"]').click(); await p.getByRole('menuitem', { name: 'Mon équipe' }).click(); await p.waitForSelector('[data-testid=team-day]', { timeout: 15000 }); await p.waitForTimeout(700); } };",
+      'E26 / E27 : « Mon équipe » n’est plus une carte en haut de « Ma journée » : c’est une page, rangée dans « Mon compte » (entrée « Mon équipe », étiquette « chef », chef d’équipe seulement). La copie y va par « Mon compte » → « Mon équipe » ; tout le reste (7 jours, salariés, Corriger, Envoyer, Ajouter des heures, OK) est le même composant, mêmes repères'],
   ],
   'traces-lot3': [
     ['linkBox.height < 30, `lien discret, pas un gros bouton (', 'linkBox.height >= 43.5 && linkBox.height < 60, `lien discret, une ligne de 44 px (cible tactile), pas un gros bouton jaune (',
@@ -104,8 +107,10 @@ export const ADAPTATIONS = {
   'formations-lot6': [
     ["=== '2 2 formations à voir ›'", "=== '2 formations à voir ›'", 'la pastille chiffrée du bandeau n’est plus dite (puce de rappel de la planche, E05) ; le nombre reste dans le texte'],
     ["=== '1 1 formation à voir ›'", "=== '1 formation à voir ›'", 'idem, au singulier'],
-    ["(await txt(m)) === 'Formations 2'", "(await txt(m)) === 'Formations à voir 2'", 'le menu Plus (E26) nomme l’entrée « Formations à voir », avec son compteur'],
+    ["(await txt(m)) === 'Formations 2'", "(await txt(m)) === 'Formations à voir 2'", 'le menu « Mon compte » (E26, ex-« Plus ») nomme l’entrée « Formations à voir », avec son compteur'],
     ["wp.url().endsWith('/poseur')", "wp.url().endsWith('/poseur?ui=2')", 'l’adresse garde son ?ui=2 (le drapeau est lu dans l’adresse au chargement)'],
+    ["(await txt(wp.locator('.bt-phdr-back'))) === 'Formations'", "(await txt(wp.locator('.bt-phdr-back .bt-phdr-date'))) === 'Formations'",
+      'Équilibre (oct. 2026) : le bouton de retour de l’en-tête porte maintenant le petit mot jaune (« MON COMPTE ») au-dessus du titre, comme la Journée : le titre « Formations » se lit dans .bt-phdr-date ; le retour et le titre sont les mêmes'],
   ],
 };
 

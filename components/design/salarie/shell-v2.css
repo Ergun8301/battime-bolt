@@ -33,7 +33,9 @@
 .bt-ui2 .bt-phdr-back { gap: 10px; color: var(--dz-creme); min-height: 44px; }
 .bt-ui2 .bt-phdr-back > svg { width: 44px; height: 44px; padding: 10px; flex: none; border-radius: 50%; border: 1px solid var(--dz-creme-30); box-sizing: border-box; }
 .bt-ui2 .dz-assistant { flex: none; width: 44px; height: 44px; border-radius: 50%; border: 0; background: var(--dz-jaune); color: var(--dz-encre); font: 900 17px/1 var(--dz-font-ui); display: grid; place-items: center; cursor: pointer; padding: 0; }
-.bt-ui2 .bt-phdr-id { min-width: 44px; min-height: 44px; padding: 0; gap: 0; max-width: none; border-radius: 50%; background: transparent; }
+.bt-ui2 .bt-phdr-id { position: relative; min-width: 44px; min-height: 44px; padding: 0; gap: 0; max-width: none; border-radius: 50%; background: transparent; }
+/* La pastille rouge de l'avatar : les rubriques à voir (réserves, formations), que portait l'ancien onglet « Plus ». */
+.bt-ui2 .dz-avatar-badge { position: absolute; top: -3px; right: -3px; min-width: 20px; height: 20px; padding: 0 4px; border-radius: 10px; box-sizing: border-box; border: 2px solid var(--dz-encre); background: var(--dz-erreur); color: var(--dz-blanc); font: 900 var(--dz-fs-12)/16px var(--dz-font-ui); text-align: center; }
 .bt-ui2 .bt-phdr-id:hover, .bt-ui2 .bt-phdr-id:active { background: transparent; }
 .bt-ui2 .bt-phdr-id-av { width: 44px; height: 44px; border-radius: 50%; border: 2px solid var(--dz-creme-35); background: transparent; display: grid; place-items: center; overflow: hidden; }
 .bt-ui2 .bt-phdr-id-ini { font: 900 13px/1 var(--dz-font-ui); color: var(--dz-creme); }
@@ -290,7 +292,7 @@
 .bt-ui2 .bt-send.done { background: var(--dz-vert-plein); color: var(--dz-blanc); box-shadow: none; }
 .bt-ui2 .bt-send span { font-size: inherit; }
 .bt-ui2 .dz-aide { flex: 0 0 100%; margin: 0; text-align: center; font: 400 var(--dz-fs-12)/1.3 var(--dz-font-chiffres); letter-spacing: .08em; text-transform: uppercase; color: var(--dz-texte-3); }
-.bt-ui2 .dz-onglets { flex: none; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; padding: 6px 14px calc(env(safe-area-inset-bottom) + 10px); background: var(--dz-creme); border-top: 1px solid var(--dz-trait); }
+.bt-ui2 .dz-onglets { flex: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 6px 14px calc(env(safe-area-inset-bottom) + 10px); background: var(--dz-creme); border-top: 1px solid var(--dz-trait); }
 .bt-ui2 .bt-phbody:has(.bt-day-dock) + .dz-onglets { border-top: 0; }
 .bt-ui2 .dz-onglet { position: relative; height: 44px; border-radius: 12px; border: 0; background: transparent; color: var(--dz-texte-2); font: 800 var(--dz-fs-16)/1 var(--dz-font-ui); display: flex; align-items: center; justify-content: center; gap: 5px; cursor: pointer; }
 .bt-ui2 .dz-onglet.is-on { background: var(--dz-encre); color: var(--dz-jaune); }

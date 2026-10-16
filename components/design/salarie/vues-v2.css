@@ -178,3 +178,29 @@ html[data-bt-ui2] .dz-retour [data-title] { font: 700 var(--dz-fs-14)/1.3 var(--
 html[data-bt-ui2] .dz-retour .dz-retour__texte { color: var(--dz-creme-75); }
 html[data-bt-ui2] .dz-retour [data-button], html[data-bt-ui2] .dz-retour .dz-retour__action { flex: none; height: 44px; min-width: 44px; margin: 0 0 0 auto; padding: 0 14px; border: 0; border-radius: 999px; background: var(--dz-jaune); color: var(--dz-encre); font: 800 var(--dz-fs-14)/1 var(--dz-font-ui); cursor: pointer; }
 html[data-bt-ui2] .dz-retour :focus-visible { outline: 2px solid transparent; box-shadow: 0 0 0 2px var(--dz-encre), 0 0 0 4px var(--dz-creme); }
+
+/* ── Équilibre entre les pages : la grammaire de la Journée (bandeau sombre + petit mot jaune, cartes crème, tuiles) reprise par Mois et « Mon compte » ── */
+/* Résumé du mois : la carte sombre (comme le pointage), petit mot et reste à envoyer en jaune. */
+.bt-ui2 .dz-mois-resume { display: flex; flex-direction: column; gap: 4px; padding: 16px 18px; border-radius: var(--dz-r-l); background: var(--dz-encre-2); color: var(--dz-creme); }
+.bt-ui2 .dz-mois-resume .bt-total-k { color: var(--dz-jaune); }
+.bt-ui2 .dz-mois-resume .bt-total-big, .bt-ui2 .dz-mois-resume .dz-total-unite { color: var(--dz-creme); }
+.bt-ui2 .dz-mois-resume .dz-total-detail { color: var(--dz-creme-75); }
+.bt-ui2 .dz-mois-resume .dz-mois-reste { color: var(--dz-jaune); }
+/* « Mon compte » : un rond jaune devant chaque ligne (les icônes de l'ancien menu), la marque sans arlequin. */
+.bt-ui2 .dz-ligne-menu__icone { flex: none; width: 32px; height: 32px; border-radius: 50%; background: var(--dz-jaune); color: var(--dz-encre); display: grid; place-items: center; }
+.bt-ui2 .dz-mois-resume + .dz-compteurs .dz-compteur { padding: 8px 7px; }
+.bt-ui2 .dz-mois-resume + .dz-compteurs .dz-compteur-cle { letter-spacing: 0; white-space: nowrap; } /* « À envoyer » tient sur une ligne, à 360 px aussi (4 tuiles) */
+.bt-ui2 .dz-histo-titre { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; } /* le titre est déjà dans l'en-tête sombre (comme « Mon équipe ») */
+.bt-ui2 .dz-histo-tete { justify-content: flex-end; }
+/* Semaine : la même carte sombre que le Mois (barres des jours recolorées pour le noir : jamais d'encre sur de l'encre). */
+.bt-ui2 .bt-total.dz-sem-carte { background: var(--dz-encre-2); border-color: var(--dz-encre-2); color: var(--dz-creme); border-radius: var(--dz-r-l); padding: 16px 18px; }
+.bt-ui2 .dz-sem-carte .bt-total-k { color: var(--dz-jaune); }
+.bt-ui2 .dz-sem-carte .bt-total-big, .bt-ui2 .dz-sem-carte .dz-total-unite { color: var(--dz-creme); }
+.bt-ui2 .dz-sem-carte .dz-total-detail { color: var(--dz-creme-75); }
+.bt-ui2 .dz-sem-carte .dz-barre-jour { color: var(--dz-creme-75); }
+.bt-ui2 .dz-sem-carte .dz-barre-jour[data-etat="aujourdhui"] { color: var(--dz-jaune); }
+.bt-ui2 .dz-sem-carte .dz-barre-jour[data-etat="envoye"] .dz-barre-valeur { background: var(--dz-creme); }
+.bt-ui2 .dz-sem-carte .dz-barre-jour[data-etat="aujourdhui"] .dz-barre-valeur { border-color: var(--dz-jaune); }
+.bt-ui2 .dz-sem-carte .dz-barre-jour[data-etat="a-venir"] .dz-barre-valeur { border-color: var(--dz-creme-75); }
+.bt-ui2 .dz-sem-carte .dz-barre-jour[data-etat="cloture"] .dz-barre-valeur { background: var(--dz-creme-75); }
+.bt-ui2 .dz-sem-carte .dz-barre-jour[data-etat="vide"] .dz-barre-valeur { background: var(--dz-creme-30); }
