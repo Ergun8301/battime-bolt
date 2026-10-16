@@ -48,7 +48,11 @@ export const ADAPTATIONS = {
     ['linkBox.height < 30, `lien discret, pas un gros bouton (', 'linkBox.height >= 43.5 && linkBox.height < 60, `lien discret, une ligne de 44 px (cible tactile), pas un gros bouton jaune (',
       'E26 : « Interventions supprimées » reste un lien discret (contour fin, aucune couleur d’action) mais fait 44 px de haut (cible tactile ≥ 44 px, règle du dossier) au lieu de moins de 30 px'],
   ],
-  'qr-fixe-lot12': [],
+  'qr-fixe-lot12': [
+    ['/Arrivée enregistrée/.test(', '/Arrivée enregistrée/i.test(', 'P01 : le petit mot « Arrivée enregistrée » s’écrit en capitales espacées (planche) : innerText rend les capitales ; la copie compare sans tenir compte de la casse (le texte du code est le même)'],
+    ['/Départ enregistré/.test(', '/Départ enregistré/i.test(', 'P02 : idem pour « Départ enregistré »'],
+    ['/Pointage non enregistré/.test(t)', '/Pointage non enregistré/i.test(t)', 'P03 : idem pour « Pointage non enregistré »'],
+  ],
   'salarie-lot9': [
     ['lt2.toLowerCase().includes(`tu es pointé depuis ${parisHHmm(D.active_sessions[0].started_at)}`)', 'lt2.toLowerCase().includes(`pointage en cours · depuis ${parisHHmm(D.active_sessions[0].started_at)}`)',
       'E05 : la carte de pointage dit « POINTAGE EN COURS · DEPUIS hh:mm » à la place de « Tu es pointé depuis » (même adaptation que chantier-termine-lot23, G3) ; le chantier y est toujours'],
@@ -60,13 +64,15 @@ export const ADAPTATIONS = {
       'E05 : la tuile Panier de la planche dit « Pris ✓ » / « Non pris » (aria-pressed inchangé) à la place de « Panier ✓ »'],
   ],
   'salarie-lot10': [
-    ["m.zone === 'ailleurs' && !(m.type === 'childList'", "m.zone === 'ailleurs' && !m.target.includes('dz-frise') && m.attr !== 'data-pointage' && !(m.type === 'childList'",
-      'E05 : la mini-frise « Ma journée » (décor lu avec l’horloge) redessine son segment « en cours » quand le pointage apparaît, et la journée pose `data-pointage` sur sa zone de défilement pour masquer la ligne des deux pastilles (réserves, formations : elles restent dans « Plus ») : c’est leur rôle ; tout le reste ne bouge toujours pas'],
+    ["m.zone === 'ailleurs' && !(m.type === 'childList'", "m.zone === 'ailleurs' && !m.target.includes('dz-frise') && m.attr !== 'data-pointage' && !(m.type === 'childList' && m.added.length === 1 && m.added[0] === 'dz-aide') && !(m.type === 'childList'",
+      'E05 : la mini-frise « Ma journée » (décor lu avec l’horloge) redessine son segment « en cours » quand le pointage apparaît, la journée pose `data-pointage` sur sa zone de défilement pour masquer la ligne des deux pastilles (réserves, formations : elles restent dans « Plus »), et la barre du bas ajoute sa ligne d’aide « Le pointage en cours ne part pas » (E05) : c’est leur rôle ; tout le reste ne bouge toujours pas'],
   ],
   'site-rapide-lot5': [],
   'requetes-lot29': [
     ["e.name === 'planning' && e.select === 'work_date,absence_type'; // fetchPending (salarié)", "e.name === 'planning' && (e.select === 'work_date,absence_type' || e.select === 'work_date,absence_type,estimated_start,estimated_end'); // fetchPending (salarié)",
       'E05 : la même lecture « journées à envoyer » demande en plus les heures prévues (début et fin du planning, pour les barres des 7 jours) DANS la même requête : aucune requête de plus (le nombre au chargement reste 18, le contrôle 1 ne change pas) ; seul le repère de colonnes de la copie suit'],
+    ["(e.select === 'work_date,status' || e.select.startsWith('id,work_date,observation'))", "(e.select === 'work_date,status' || e.select.startsWith('work_date,status,submitted_at') || e.select.startsWith('id,work_date,observation'))",
+      'E05 : idem pour les heures saisies (état, envoi, verrou, début, fin, minutes : les barres et la bande des 7 jours) : même requête, plus de colonnes ; le nombre de lectures au retour reste 3'],
   ],
   'formations-lot6': [
     ["=== '2 2 formations à voir ›'", "=== '2 formations à voir ›'", 'la pastille chiffrée du bandeau n’est plus dite (puce de rappel de la planche, E05) ; le nombre reste dans le texte'],
