@@ -595,13 +595,13 @@ export default function PoseurPage() {
                   <DropdownMenuItem disabled={reserves.length === 0} data-testid="menu-reserves"
                     onClick={() => { if (!selectedDate && view !== 'day') goHome(); setReservesAsk(true); }}>
                     <AlertTriangle className="h-4 w-4 mr-2" /> Réserves à lever
-                    <span className={reserves.length > 0 ? 'ml-auto rounded-full bg-[#B5472E] px-1.5 text-[12px] font-extrabold leading-[17px] text-white' : 'ml-auto text-[12px] font-bold text-muted-foreground'} data-testid="menu-reserves-compteur">{reserves.length}</span>
+                    {reserves.length > 0 && <span className="ml-auto rounded-full bg-[#B5472E] px-1.5 text-[12px] font-extrabold leading-[17px] text-white" data-testid="menu-reserves-compteur">{reserves.length}</span>}
                   </DropdownMenuItem>
                 )}
-                {ui2 && trainings.available && (
+                {ui2 && trainingsMenu && (
                   <DropdownMenuItem onClick={() => goTo('formations')} data-testid="menu-formations">
                     <GraduationCap className="h-4 w-4 mr-2" /> Formations à voir
-                    <span className={trainings.unseen > 0 ? 'ml-auto rounded-full bg-[#B5472E] px-1.5 text-[12px] font-extrabold leading-[17px] text-white' : 'ml-auto text-[12px] font-bold text-muted-foreground'} data-testid="menu-formations-badge">{trainings.unseen}</span>
+                    {trainings.unseen > 0 && <span className="ml-auto rounded-full bg-[#B5472E] px-1.5 text-[12px] font-extrabold leading-[17px] text-white" data-testid="menu-formations-badge">{trainings.unseen}</span>}
                   </DropdownMenuItem>
                 )}
                 {!ui2 && trainingsMenu && (

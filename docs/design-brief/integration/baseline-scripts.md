@@ -76,3 +76,21 @@ Les captures que ces scripts écrivent dans `docs/captures-*` ne sont pas versio
 | `videos-lot13` | 110 / 0 | 110 / 0 | oui |  |
 
 **12 / 12 scripts identiques** à l'état d'avant.
+
+
+## Après l'étape 4 (cartes de chantier, réunion, tâches, journée vide : `?ui=2` seulement)
+
+Build de production de la branche, mêmes 31 scripts, mêmes conditions (3 voies, captures hors dépôt) : **tous identiques à l'état d'avant**, aucun script v1 modifié.
+
+| Mesure | Avant | Après |
+|---|---|---|
+| 31 scripts navigateur (✅ / ❌) | 3 566 / 2 | **3 567 / 1** (`guides-lot7` 682 / 0 : son ❌ instable n'est pas sorti cette fois ; `documents-lot24` 141 / 1 : E1, inchangé) |
+| 12 captures de référence v1 | identiques | identiques ; `07-copier-journee.png` diffère de 2 pixels (ligne y = 460) **une fois sur deux, aussi sur le build d'avant l'étape 4** (4 rejeux sur `ad9f2c5` : 4 fois) : animation du calendrier, pas un changement |
+| `reserves-lot11` et `formations-lot6` rejoués en `/poseur?ui=2` | — | **68 / 0** et **115 / 0** (la copie ne change que quatre phrases attendues : la pastille chiffrée du bandeau n'est plus dite, « Formations » devient « Formations à voir », l'adresse finit par `?ui=2`) : aucune fonction ne disparaît |
+| `/poseur` (First Load JS) | 275 kB (max 280) | 275 kB (max 280) |
+| `/admin` | 359 kB | 359 kB |
+| CSS `/poseur` gzip (max 32 kB) | 26,4 | 28,2 |
+| `npm run test:registre` | 139 / 3 ❌ (ancre du menu décalée de 3 lignes, `clics.snapshot`) | 142 / 0 ; `dettes.json` et `ids.snapshot.json` inchangés |
+| `test:creneaux`, `test:missions`, `test:salarie-vue`, `test:guides` | 5/5, 19/19, 14/14, 10/11 (ancres en double) | 5/5, 20/20, 14/14, 11/11 |
+
+Preuve de fidélité (planche | implémentation) : `node scripts/tests/fidelite-salarie.mjs out docs/design-brief/integration/captures-fidelite 4392` : 99 ✅ / 0 ❌ ; 12 images de moins de 150 ko dans `captures-fidelite/` (E05 ×2, E04 ×2, E03, E25, E05b, E05c, E12, E42, E14, E29).

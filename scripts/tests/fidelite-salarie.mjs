@@ -345,6 +345,8 @@ await r.ctx.close();
 const pE25 = await photographierPlanche('E25', 390, 844);
 r = await photographierImplementation('E25', 390, 844, semaineE05, async (p) => { await p.locator('[data-testid=dz-onglet-week]').click(); await p.waitForSelector('[data-testid=dz-semaine]', { timeout: 10000 }); await p.waitForTimeout(1200); });
 verifie((await r.p.locator('.dz-sem-jour').count()) === 7, 'E25 : sept jours dans la Semaine');
+verifie(((await r.p.locator('.bt-phdr-date').first().textContent()) || '').includes('Ma semaine'), 'E25 : l’en-tête garde « Ma semaine » (décision du patron)');
+verifie((await r.p.locator('[aria-label="Semaine précédente"], [aria-label="Semaine suivante"]').count()) === 2, 'E25 : les deux flèches de semaine sont gardées');
 verifie((await r.p.locator('.dz-sem-carte .dz-barre-jour').count()) === 7, 'E25 : la carte de la Semaine porte les 7 barres');
 verifie((await r.p.locator('.dz-assistant').count()) === 1, 'E25 : ✦ présent dans l’en-tête de la Semaine');
 await r.p.locator('.dz-sem-jour').nth(1).click(); await r.p.waitForSelector('.bt-phdr-back', { timeout: 10000 });

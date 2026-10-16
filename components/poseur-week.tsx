@@ -164,10 +164,14 @@ export default function PoseurWeek({ onSelectDay }: { onSelectDay?: (date: strin
       const noms = Array.from(new Set([...j.lignes.map((e) => e.worksite?.client_name || 'Autre'), ...(j.lignes.length ? [] : j.plan.filter((p) => !p.absence_type).map((p) => p.worksite?.client_name || 'Chantier'))]));
       return noms.join(' · ');
     };
+    // « prévu 08:00–16:00 », « prévu Matin » ; une heure de début seule donne déjà « Prévu · 16:30 » (jamais « prévu Prévu · … »).
+    const prevuDe = (p: PlanningWithWorksite) => { const l = plannedLabel(p.estimated_start, p.estimated_end) ?? ''; return l.startsWith('Prévu') ? l : `prévu ${l}`.trim(); };
     const sousDe = (j: (typeof jours)[number]) => {
-      if (j.lignes.length) return j.lignes.map((e) => `${e.start_time?.substring(0, 5)}–${e.end_time?.substring(0, 5)}`).join(' · ');
-      const p = j.plan.find((x) => !x.absence_type);
-      return p ? `prévu ${plannedLabel(p.estimated_start, p.estimated_end) ?? ''}`.trim() : '';
+      // Les heures notées d'abord ; un prévu d'un chantier pas encore noté ce jour-là reste visible à la suite (la Semaine d'avant le montrait aussi).
+      const heures = j.lignes.map((e) => `${e.start_time?.substring(0, 5)}–${e.end_time?.substring(0, 5)}`).join(' · ');
+      const restants = j.plan.filter((x) => !x.absence_type && !j.lignes.some((l) => l.worksite_id === x.worksite_id)).map(prevuDe);
+      if (j.lignes.length) return [heures, ...restants].join(' · ');
+      return restants[0] ?? '';
     };
     return (
       <div className="dz-semaine" data-testid="dz-semaine">
