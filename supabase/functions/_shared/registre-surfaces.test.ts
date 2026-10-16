@@ -476,9 +476,9 @@ Deno.test('Dépôt réel : les deux .from(variable) de lib/erase.ts se déclaren
   }
 });
 
-Deno.test('Dépôt réel : T10 — 604 gestionnaires onClick / onSelect / onSubmit dans 75 fichiers, tous dans app/ ou components/', async () => {
+Deno.test('Dépôt réel : T10 — 605 gestionnaires onClick / onSelect / onSubmit dans 75 fichiers, tous dans app/ ou components/', async () => {
   const { reel } = await depot();
-  egal([Object.keys(reel.clics).length, Object.values(reel.clics).reduce((a, b) => a + b, 0)], [75, 604], 'clics.snapshot (étape 1 : −3 avec le code mort de poseur-day.tsx, la liste des formations a son fichier ; puis +1 fichier, +10 gestionnaires : coque v2 shell-v2.tsx, carte-total, mini-frise, Semaine v2 ; puis +2 : entrées « Réserves à lever » et « Formations à voir » du menu Plus, ?ui=2 ; puis +1 : le ✕ de la feuille de l’éditeur, ?ui=2 ; puis +1 fichier, +13 gestionnaires (étape 6, ?ui=2) : page « Plus » page-plus.tsx (2), page.tsx (+1 : l’avatar), « Mes congés » en feuille (+5), Mois v2 (+3), Historique v2 (+2) ; puis +24 : étape 8, la variante v2 du panneau de l’assistant, components/assistant-panel.tsx 22 → 46, ?ui=2)');
+  egal([Object.keys(reel.clics).length, Object.values(reel.clics).reduce((a, b) => a + b, 0)], [75, 605], 'clics.snapshot (étape 1 : −3 avec le code mort de poseur-day.tsx, la liste des formations a son fichier ; puis +1 fichier, +10 gestionnaires : coque v2 shell-v2.tsx, carte-total, mini-frise, Semaine v2 ; puis +2 : entrées « Réserves à lever » et « Formations à voir » du menu Plus, ?ui=2 ; puis +1 : le ✕ de la feuille de l’éditeur, ?ui=2 ; puis +1 fichier, +13 gestionnaires (étape 6, ?ui=2) : page « Plus » page-plus.tsx (2), page.tsx (+1 : l’avatar), « Mes congés » en feuille (+5), Mois v2 (+3), Historique v2 (+2) ; puis +24 : étape 8, la variante v2 du panneau de l’assistant, components/assistant-panel.tsx 22 → 46, ?ui=2 ; puis +1 : la fiche à confirmer et la barre de saisie refaites, +trombone/micro, −rangée de langue, fiche, ?ui=2)');
   const dehors = Object.keys(reel.clics).filter((f) => !/^(app|components)\//.test(f));
   egal(dehors, [], 'aucun gestionnaire JSX hors app/ et components/');
 });
