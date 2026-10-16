@@ -43,7 +43,7 @@
   "components/planning-copy-dialog.tsx": 5,
   "components/planning-print.tsx": 6,
   "components/planning-versions-dialog.tsx": 7,
-  "components/poseur-day.tsx": 49,
+  "components/poseur-day.tsx": 50,
   "components/poseur-history.tsx": 2,
   "components/poseur-month.tsx": 3,
   "components/poseur-trainings-list.tsx": 2,

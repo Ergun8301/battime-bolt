@@ -41,3 +41,7 @@ next-env.d.ts
 
 # journal de build local (npm run budget -- build.log)
 build.log
+
+# Étape 5 du design salarié : copies de rejeu en ?ui=2, régénérées par scripts/tests/ui2-copies.mjs
+scripts/tests/ui2-*.mjs
+!scripts/tests/ui2-copies.mjs
