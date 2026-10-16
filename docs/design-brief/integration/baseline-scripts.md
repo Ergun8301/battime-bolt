@@ -135,5 +135,53 @@ Preuve de fidélité (planche | implémentation) : `node scripts/tests/fidelite-
 - **Ordre des boutons** : celui du code (le principal en premier dans « Terminer le pointage… » et « Oui, envoyer ma journée »), pas celui de la planche.
 - **Molette** : le tiroir « Réglage de l'heure » reste sombre (la molette `TimeCylinder` est inchangée et ses chiffres sont clairs) ; il reçoit le petit mot, le titre et les angles de la planche.
 - **Kickers** : « AVANT L'ENVOI » sans compteur ni « PLAGE 1 SUR 2 » (le code ne connaît pas le nombre de plages au moment de la question).
-- **Retour passager** : Sonner reste en haut de l'écran (la place « au-dessus de la barre » de la planche relève de l'étape 6).
+- **Retour passager** : Sonner reste en haut de l'écran à l'étape 5 (la place « au-dessus de la barre » de la planche est venue à l'étape 6, voir plus bas).
 - **E22 « Sur quel chantier ? »** n'est pas une feuille à part : le choix du chantier est la première section de la feuille de l'éditeur, comme dans le code ; pas de bouton « Continuer ».
+
+
+## Après les étapes 6 et 7 (Semaine, Mois, Historique, « Plus », équipe, congés, informations, formations, documents, retour passager, /pointer : `?ui=2` seulement)
+
+Build de production de la branche, copié à part (`out-run`), mêmes 31 scripts en trois voies : **tous identiques à l'état d'avant**, aucun script v1 modifié.
+
+| Mesure | Avant | Après |
+|---|---|---|
+| 31 scripts navigateur en v1 (✅ / ❌) | 3 567 / 1 | **3 567 / 1** (`documents-lot24` 141 / 1 : E1, inchangé ; `guides-lot7` 682 / 0) : chaque script donne le nombre d'avant. 1re passe : `enregistreur-lot14` 299 / 1 (« 100 Mo sur 100 : jauge visible », délai sous charge, écran du bureau) ; rejoué seul : 300 / 0 |
+| 12 captures de référence v1 | 12 / 12 | **11 / 12** pixel pour pixel ; `07-copier-journee.png` diffère de 2 pixels (ligne y = 460) **aussi sur le build du commit précédent `d9a0a2c`, reconstruit à part** (3 rejeux sur chaque : mêmes 2 pixels, mêmes octets) : animation du calendrier, pas un changement |
+| `/poseur` (First Load JS, max 280) | 276 kB | **278 kB** |
+| `/admin` (max 363) · `/pointer` (max 151) | 359 · 147 | **359 · 147** |
+| CSS `/poseur` gzip | 30,4 (max 32) | **32,9 (max relevé à 35)** : `vues-v2.css` ≈ 2,4 kB, justification écrite dans `scripts/bundle-budgets.json` |
+| CSS `/pointer` gzip | 12,1 (max 18) | **14,3 (max 18 inchangé)** : `pointer-v2.css` ≈ 2,2 kB |
+| `npm run test:registre` | 142 / 0 | 142 / 0 ; `clics.snapshot.json` : +1 fichier, +13 gestionnaires (commande officielle du README du registre) ; l'ancre dynamique du menu (`app/poseur/page.tsx`) passe de la ligne 588 à 669 ; `dettes.json` et `ids.snapshot.json` inchangés, **aucun plafond de dettes monté** |
+| `test:creneaux`, `test:missions`, `test:salarie-vue`, `test:guides` | 5/5, 20/20, 14/14, 11/11 | 5/5, 20/20, 14/14, 11/11 (`REPETEES` de `worker-tours.test.ts` : 6 repères montés deux fois, jamais ensemble, avec la raison) |
+| `npm run typecheck`, `npm run test:budget` | vert | vert |
+| `requetes-lot29` en `?ui=2` | non rejoué | **18 requêtes au chargement** (budget ≤ 18). Découvert au rejeu : 21 en `?ui=2` depuis l'étape 3, la lecture « journées à envoyer » partait deux fois (avant et après la lecture du drapeau) ; corrigé dans `app/poseur/page.tsx` : le drapeau est lu tout de suite, une seule lecture, mêmes colonnes. En v1 : même requête, mêmes colonnes |
+
+Preuve de fidélité (planche | implémentation) : `node scripts/tests/fidelite-salarie.mjs out docs/design-brief/integration/captures-fidelite 4392` : **518 ✅ / 0 ❌** ; 58 images de moins de 180 ko dans `captures-fidelite/` (les 35 d'avant, puis 36 à 58 : Semaine 360 × 640, Mois, Historique, Plus E26 ×2, équipe E27 ×2, congés ×2, informations, formations, lecteur de vidéo, documents du chantier, retour passager, P01 ×2, P02, P03, P03b, P03c, P00, P00b, P04). **Ce qui est dessiné par la planche est comparé à elle (E25, E26, E27, E20b, P00 à P04) ; le Mois, l'Historique, les congés, les informations, les formations et les documents n'y sont PAS dessinés (README § 3, S50 à S68) : l'image met à gauche l'écran voisin (même carte, même feuille, mêmes jetons) et le dit dans son titre.** Treize anciennes images ont bougé : sept de quelques pixels (anti-crénelage), six (E12, E42, E29, E35…) parce que le retour passager est maintenant au-dessus de la barre.
+
+### Rejeu en `/poseur?ui=2` : 18 copies générées (11 d'avant + 7 de plus)
+
+Toutes **vertes**, contre le même build. Seules les copies sont adaptées (table `ADAPTATIONS` de `scripts/tests/ui2-copies.mjs`, chaque ligne dit ce qui change à l'écran et pourquoi : un libellé, un repère ou un chemin qui change de forme, jamais une fonction qui disparaît).
+
+| Script (copie `ui2-…`) | ✅ / ❌ en v1 | ✅ / ❌ en `?ui=2` | Adaptations (nouvelles à l'étape 6) |
+|---|---|---|---|
+| `salarie-lot14` (« Mon équipe » du chef) | 20 / 0 | **20 / 0** | 1 : « Mon équipe » est une page rangée dans « Plus » (entrée « Mon équipe », étiquette « chef »), plus une carte en haut de « Ma journée » : la copie y va par « Plus » → « Mon équipe » |
+| `chantier-termine-lot23` | 111 / 0 | **111 / 0** | +2 (7 au total) : G7 et G10, « Mon équipe » par « Plus » |
+| `traces-lot3` (Historique, « Interventions supprimées ») | 65 / 0 | **65 / 0** | 1 : le lien reste discret mais fait 44 px de haut au lieu de moins de 30 (cible tactile) |
+| `qr-fixe-lot12` (/pointer#f=… en `?ui=2`, scanner, QR fixe) | 111 / 0 | **111 / 0** | 3 : « Arrivée enregistrée », « Départ enregistré », « Pointage non enregistré » s'écrivent en capitales espacées (planche) : `innerText` rend les capitales, la copie compare sans tenir compte de la casse |
+| `salarie-lot9` | 53 / 0 | **53 / 0** | 4 : « POINTAGE EN COURS · DEPUIS hh:mm » ; carte noire à grand chrono (≤ 240 px) ; tuile Panier « Pris ✓ » |
+| `salarie-lot10` | 26 / 0 | **26 / 0** | 1 : la mini-frise, `data-pointage` et la ligne d'aide « Le pointage en cours ne part pas » bougent quand le pointage apparaît : c'est leur rôle |
+| `salarie-lot12`, `site-rapide-lot5`, `reserves-lot11`, `formations-lot6`, `fenetres-lot11`, `pointage-lot10`, `pause-lot3bis`, `heures-lot1`, `heures-sures`, `brouillons-lot2`, `documents-lot24` | 28, 94, 68, 115, 120, 110, 79, 37, 66, 49, 141 / 1 | **identiques** | celles de l'étape 5 (aucune pour la plupart) |
+| `requetes-lot29` | 81 / 0 | **81 / 0** | 2 : les deux lectures « journées à envoyer » demandent plus de colonnes dans la même requête ; le nombre de requêtes ne change pas |
+
+Total des 18 copies : 1 374 ✅ / 1 ❌ (le ❌ est E1 de `documents-lot24`, le même qu'en v1).
+
+### Écarts à la planche, décidés et écrits (étapes 6 et 7)
+- **« Plus » (E26) est le menu du compte, pas une liste nouvelle** : mêmes entrées, mêmes libellés (« Ma journée », « Ma semaine », « Mon mois », « Historique », « Réserves à lever » + compteur, « Formations à voir » + compteur, « Mes congés », « Mon équipe » (chef), « Changer ma photo », « Assistant BEMEXO », « Informations », notifications « Activer / Couper les notifications / Notifications bloquées », « Déconnexion »), mêmes `role=menu` / `menuitem`, mêmes repères `data-guide`. Les trois vues restent aussi dans la barre du bas (la planche ne les met que là). Les pastilles « PDF », « 1 en attente », « Activer » et la ligne « Interventions supprimées 60 jours · lecture seule » de la planche ne sont pas reprises : elles demandent des lectures de plus ou des textes que le code n'a pas (le lien « Interventions supprimées » reste dans l'Historique).
+- **Nom de l'entreprise (kicker « ENTREPRISE TEST · POSEUR »)** : le salarié ne lit que 5 colonnes de `companies` (test `requetes-lot29`, 18 requêtes) et n'a donc pas le nom. Le petit mot dit « POSEUR » ou « CHEF D'ÉQUIPE » et ajoute le nom seulement quand la lecture commune l'a déjà (compte du bureau ou du support qui ouvre /poseur) : aucune requête de plus.
+- **« Plus » est posée SUR l'écran en cours, qui reste monté dessous mais inerte** (`inert`, `aria-hidden`) : ouvrir et refermer ne relit rien (comme l'ancien menu déroulant) ; Tab ne sort jamais vers l'écran du dessous ; Échap, l'avatar et le bouton « Journée » la referment ; elle passe sous la barre Journée · Semaine · Mois · Plus, qui reste touchable.
+- **« Mon équipe » (E27)** : une page (« Retour à ma journée », titre « Mon équipe ») à laquelle on va par « Plus » → « Mon équipe », et non plus une carte en haut de « Ma journée ». Le composant (`team-day.tsx`), ses droits, ses libellés et ses repères sont ceux d'avant ; la page lit en plus les chantiers actifs de l'entreprise À L'OUVERTURE (jamais au chargement : le chargement de /poseur reste à 18 requêtes). Le choix du salarié reste la liste déroulante d'avant (les trois pastilles de la planche changeraient le geste). Les guides « équipe » ouvrent cette page.
+- **Mois, Historique, Mes congés, Informations, Formations, Documents du chantier** : non dessinés par la planche, restylés avec les mêmes jetons et les mêmes formes (cartes de la Semaine, feuille du bas, boutons de 44 px) ; contenu, libellés (y compris « Envoye » sans accent dans l'Historique), gestes et repères du code. « Mes congés » devient une feuille du bas (pied fixe : « Faire une demande » puis « Envoyer la demande » / « Annuler ») ; « Informations » aussi, et le retour du téléphone la referme. Les Documents du chantier étaient déjà une feuille : seul l'intérieur est restylé (actions de 44 px).
+- **Semaine (E25)** : inchangée à l'étape 6 (en-tête « Ma semaine » et flèches gardés, décision du patron) ; une image à 360 × 640 s'ajoute.
+- **Retour passager (Sonner)** : au-dessus de la barre du bas, à la hauteur MESURÉE de la barre (`--dz-barre-h`, jamais 170 px en dur), « Annuler » de 44 px, un seul Toaster pour tout le site qui choisit sa place PAR ROUTE (drapeau posé sur `<html>` par `/poseur` et `/pointer` seulement avec `?ui=2`, retiré en partant). Sans `?ui=2` : en haut au centre, comme avant (vérifié).
+- **/pointer** : les huit écrans de la planche (P00, P00b, P01, P02, P03, P03b, P03c, P04) en trois ambiances (sombre ; rouge sombre pour le refus et l'erreur ; crème pour « annulé » et « rien à enregistrer »). Les textes sont ceux du code (la planche écrit « Hors zone », « QR expiré »… qui n'existent pas dans le code) ; le petit mot de la planche est le titre du code en capitales espacées. **P02 garde « Ouvrir mon espace »** (la planche l'avait retiré : fonction perdue, audit G1), en troisième ligne ; « Envoyer ma journée » est le bouton jaune. Sans `?ui=2` : la page garde sa feuille intégrée, sans aucune classe ni attribut de la v2 (vérifié).
+- **Budget** : le JS des vues reste différé (`poseur-month`, `poseur-history`, `poseur-week`, formations, congés, équipe sont des morceaux chargés à l'ouverture ; « Mon équipe » n'est jamais préchauffée, pour que l'ancienne interface ne télécharge rien de plus).
