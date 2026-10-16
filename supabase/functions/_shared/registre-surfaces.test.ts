@@ -475,9 +475,9 @@ Deno.test('Dépôt réel : les deux .from(variable) de lib/erase.ts se déclaren
   }
 });
 
-Deno.test('Dépôt réel : T10 — 564 gestionnaires onClick / onSelect / onSubmit dans 74 fichiers, tous dans app/ ou components/', async () => {
+Deno.test('Dépôt réel : T10 — 566 gestionnaires onClick / onSelect / onSubmit dans 74 fichiers, tous dans app/ ou components/', async () => {
   const { reel } = await depot();
-  egal([Object.keys(reel.clics).length, Object.values(reel.clics).reduce((a, b) => a + b, 0)], [74, 564], 'clics.snapshot (étape 1 : −3 avec le code mort de poseur-day.tsx, la liste des formations a son fichier ; puis +1 fichier, +10 gestionnaires : coque v2 shell-v2.tsx, carte-total, mini-frise, Semaine v2)');
+  egal([Object.keys(reel.clics).length, Object.values(reel.clics).reduce((a, b) => a + b, 0)], [74, 566], 'clics.snapshot (étape 1 : −3 avec le code mort de poseur-day.tsx, la liste des formations a son fichier ; puis +1 fichier, +10 gestionnaires : coque v2 shell-v2.tsx, carte-total, mini-frise, Semaine v2 ; puis +2 : entrées « Réserves à lever » et « Formations à voir » du menu Plus, ?ui=2)');
   const dehors = Object.keys(reel.clics).filter((f) => !/^(app|components)\//.test(f));
   egal(dehors, [], 'aucun gestionnaire JSX hors app/ et components/');
 });
