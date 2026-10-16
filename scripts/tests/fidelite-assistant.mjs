@@ -299,6 +299,13 @@ for (const [l, h] of [[390, 844], [360, 640]]) {
     fs.copyFileSync(await photo(p, `AVANT-bas-${suf}`, l, h), path.join(SH, `AVANT-fiche-bas-${suf}.png`));
     await ctx.close(); continue;
   }
+  // Copies brutes pour la composition avant | après de la PR (le même état que les images AVANT-… : haut de la fiche, puis bas de la conversation).
+  if (process.env.APRES) { // APRES=1 : copies brutes (à composer avec les AVANT-… ; non gardées dans le dépôt)
+    fs.copyFileSync(await photo(p, `APRES-haut-${suf}`, l, h), path.join(SH, `APRES-fiche-haut-${suf}.png`));
+    await p.evaluate(() => { const c = document.querySelector('.dz-as-corps'); c.scrollTop = c.scrollHeight; }); await p.waitForTimeout(400);
+    fs.copyFileSync(await photo(p, `APRES-bas-${suf}`, l, h), path.join(SH, `APRES-fiche-bas-${suf}.png`));
+    await p.evaluate(() => { document.querySelector('.dz-as-corps').scrollTop = 0; }); await p.waitForTimeout(300);
+  }
   verifie(await testid(p, 'wm-confirm').isDisabled(), `AS3b ${suf} : « Tout confirmer » est inactif (date hors période)`);
   const stop = testid(p, 'wm-bloquants');
   const txt = (await stop.innerText()).replace(/\s+/g, ' ');
