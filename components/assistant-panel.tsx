@@ -330,6 +330,8 @@ export default function AssistantPanel({
     try {
       const v = window.localStorage.getItem(LANG_KEY(memoryKey));
       if (v && langs.some((l) => l.code === v)) setLang(v);
+      // v2 : plus de commutateur à l'écran. Sans choix mémorisé, la dictée suit la langue du téléphone (turc si c'est le turc, français sinon).
+      else if (v2 && /^tr\b/i.test(window.navigator.language || '') && langs.some((l) => l.code === 'tr-TR')) setLang('tr-TR');
     } catch { /* stockage indisponible : le panneau marche sans */ }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const pickLang = (code: string) => {
@@ -602,15 +604,6 @@ export default function AssistantPanel({
                 {listening && (
                   <div className="dz-as-ecoute" role="status" data-testid="assistant-listening"><i /> J’écoute… appuyez sur ■ pour arrêter, ou Envoyer</div>
                 )}
-                {langs && canSpeak && (
-                  <div className="dz-as-langues" role="group" aria-label="Langue de la dictée" data-testid="assistant-langs">
-                    <span aria-hidden="true">Dictée :</span>
-                    {langs.map((l) => (
-                      <button type="button" key={l.code} aria-pressed={lang === l.code} aria-label={l.aria} disabled={listening} data-testid={`assistant-lang-${l.code}`}
-                        onClick={() => pickLang(l.code)}><span lang={l.code.slice(0, 2)}>{l.label}</span></button>
-                    ))}
-                  </div>
-                )}
                 {maxChars > 500 && text.length >= maxChars * 0.8 && (
                   <p className={`dz-as-compte${text.length >= maxChars ? ' is-plein' : ''}`} data-testid="assistant-count" aria-hidden="true">{fmtNum(text.length)} / {fmtNum(maxChars)}</p>
                 )}
@@ -620,7 +613,7 @@ export default function AssistantPanel({
                 <form className="dz-as-barre" onSubmit={(e) => { e.preventDefault(); ask(text); }}>
                   {attachments && (<>
                     <input ref={fileRef} type="file" accept={ATTACH_ACCEPT} hidden onChange={(e) => pickFile(e.target.files?.[0])} data-testid="assistant-file-input" />
-                    <button type="button" className="dz-as-rond" onClick={() => fileRef.current?.click()} aria-label="Joindre une photo ou un PDF" data-testid="assistant-attach"><span aria-hidden="true">⧉</span></button>
+                    <button type="button" className="dz-as-rond" onClick={() => fileRef.current?.click()} aria-label="Joindre un fichier ou une photo" data-testid="assistant-attach"><Paperclip className="h-5 w-5" aria-hidden="true" /></button>
                   </>)}
                   <textarea
                     ref={inputRef} className="dz-as-champ" lang={langs ? lang.slice(0, 2) : undefined}
@@ -631,7 +624,7 @@ export default function AssistantPanel({
                   />
                   {canSpeak && (
                     <button type="button" className={`dz-as-rond dz-as-micro${listening ? ' is-on' : ''}`} onClick={toggleMic} aria-label={listening ? 'Arrêter la dictée' : 'Dicter'} aria-pressed={listening} data-testid="assistant-mic">
-                      {listening ? <Square className="h-3.5 w-3.5" fill="currentColor" aria-hidden="true" /> : langs ? <span aria-hidden="true">FR·TR</span> : <Mic className="h-4 w-4" aria-hidden="true" />}
+                      {listening ? <Square className="h-3.5 w-3.5" fill="currentColor" aria-hidden="true" /> : <Mic className="h-5 w-5" aria-hidden="true" />}
                     </button>
                   )}
                   <button type="submit" className="dz-as-rond dz-as-envoyer" disabled={(!text.trim() && !file) || busy} aria-label="Envoyer"><span aria-hidden="true">↑</span></button>

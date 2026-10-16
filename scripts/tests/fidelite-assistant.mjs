@@ -57,7 +57,7 @@ async function photographierPlanche(ids, largeur, hauteur) {
 }
 const IDS = ['AS1', 'AS2', 'AS3', 'AS4', 'AS5', 'AS6', 'AS7', 'AS8', 'AS9', 'AS10'];
 await photographierPlanche(IDS, 390, 844);
-await photographierPlanche(['AS1', 'AS2', 'AS4'], 360, 640);
+await photographierPlanche(['AS1', 'AS2', 'AS3', 'AS4'], 360, 640);
 
 // ── 2. L'implémentation, sur la base simulée ─────────────────────────────────
 const T = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.png': 'image/png', '.json': 'application/json', '.webmanifest': 'application/json' };
@@ -103,6 +103,9 @@ const reponses = {
   'Qui est avec moi ?': { kind: 'answer', answer: 'Alex et Bruno sont prévus sur Villa Exemple lundi.', remaining: 15 },
   'Combien d’heures cette semaine ?': { kind: 'answer', answer: '22:42 notées, dont 16:00 envoyées. Mardi 13 reste à envoyer.', remaining: 14 },
   'Ouvre mardi': { kind: 'answer', answer: 'Je vous ouvre mardi 13.', remaining: 13, links: [{ label: 'Ouvrir mardi 13', action: 'ouvrir:jour.date?date=2026-10-13' }] },
+  'Patrick à confirmer': { kind: 'multi', answer: 'Vérifiez la fiche, puis « Tout confirmer » : rien n’est enregistré avant.', date: '2026-10-19', aujourdhui: today, remaining: 11, chantiers: CHANTIERS, ignores: [], non_prepare: [], deja_notees: [],
+    items: [{ id: 'i0', kind: 'heures', depend: [], draft: { date: '2026-10-19', errors: [], nouveau_chantier: { nom: 'Patrick Du Maine', adresse: '', code_postal: '', ville: 'Paris', description: '' },
+      lines: [{ key: 'L0', worksite_id: null, worksite_text: 'nouveau', nouveau: true, start: '08:00', end: '12:00', break_minutes: 0 }, { key: 'L1', worksite_id: null, worksite_text: 'nouveau', nouveau: true, start: '13:00', end: '17:00', break_minutes: 0 }] } }] },
   'Fiche à remplir': { kind: 'draft', answer: 'Vérifiez, puis enregistrez.', remaining: 12, chantiers: CHANTIERS, draft: { date: today, errors: ['Pause trop longue.'], lines: [ligneDraft(W1, '08:00', '12:00')] } },
 };
 const now = Math.floor(Date.now() / 1000); const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
@@ -237,7 +240,12 @@ for (const [l, h] of [[390, 844], [360, 640]]) {
     verifie(/Bonjour Sam/.test(await p.locator('.dz-as-titre').innerText()), `AS1 ${suf} : titre « Bonjour Sam »`);
     verifie((await p.locator('.dz-as-suggestions button').allInnerTexts()).map((t) => t.replace(/\s*›$/, '').trim()).join('|') === 'Ce matin 7h30-12h, après-midi 13h-16h30|J’ai fini ma journée|Demander un congé|Comment je signale une réserve ?', `AS1 ${suf} : les 4 suggestions, libellés exacts`);
     verifie((await p.locator('.dz-as-aide').innerText()).includes('Rien ne part avant « Envoyer »'), `AS1 ${suf} : ligne d’aide de la planche`);
-    verifie((await testid(p, 'assistant-attach').count()) === 1, `AS1 ${suf} : bouton pièce jointe (⧉)`);
+    verifie((await testid(p, 'assistant-attach').count()) === 1, `AS1 ${suf} : bouton pièce jointe`);
+    verifie((await testid(p, 'assistant-attach').getAttribute('aria-label')) === 'Joindre un fichier ou une photo' && (await testid(p, 'assistant-attach').locator('svg').count()) === 1, `AS1 ${suf} : la pièce jointe est un trombone (icône), libellé « Joindre un fichier ou une photo »`);
+    verifie((await testid(p, 'assistant-langs').count()) === 0 && !/FR·TR|Dictée|Türkçe/.test(await panneau(p).innerText()), `AS1 ${suf} : plus de rangée « Dictée : Français / Türkçe » ni de bouton « FR·TR »`);
+    const barre = await p.locator('.dz-as-barre').evaluate((f) => [...f.children].filter((e) => e.getBoundingClientRect().width > 0).map((e) => (e.matches('textarea') ? 'champ' : e.getAttribute('data-testid') || e.getAttribute('aria-label'))));
+    verifie(barre.join('|') === 'assistant-attach|champ|assistant-mic|Envoyer', `AS1 ${suf} : barre = [joindre] [champ] [micro] [envoyer] (${barre.join('|')})`);
+    verifie((await testid(p, 'assistant-mic').count()) === 0 || ((await testid(p, 'assistant-mic').locator('svg').count()) === 1 && !(await testid(p, 'assistant-mic').innerText()).trim()), `AS1 ${suf} : le micro est une icône sans lettres`);
     await contr(p, `AS1 ${suf}`);
     poids.push(await cote(`AS1-accueil-${suf}`, planchesDe('AS1', l, h), await photo(p, `AS1-${suf}`, l, h), `AS1 · accueil · ${l} × ${h}`));
     // ✕ ferme, ✦ rouvre au même endroit
@@ -269,10 +277,53 @@ if (veut('AS3-a-confirmer')) {
   const { p, ctx } = await ouvrir(390, 844);
   await demander(p, 'J’ai fini, envoie ma journée et mets le panier');
   await p.waitForSelector('[data-testid=multi-card], .wm', { timeout: 8000 }).catch(() => {});
-  verifie((await p.locator('.wm-confirm').count()) === 1 && (await p.locator('.wm-dismiss').count()) === 1, 'AS3 : « Tout confirmer » et « Ignorer » dans la fiche');
-  verifie(await p.locator('.wm-confirm').evaluate((e) => getComputedStyle(e).backgroundColor === 'rgb(255, 194, 26)'), 'AS3 : « Tout confirmer » en jaune');
+  verifie((await p.locator('.dz-f-ok').count()) === 1 && (await p.locator('.dz-f-non').count()) === 1, 'AS3 : « Tout confirmer » et « Ignorer » dans la fiche');
+  verifie(await p.locator('.dz-f-ok').evaluate((e) => getComputedStyle(e).backgroundColor === 'rgb(255, 194, 26)'), 'AS3 : « Tout confirmer » en jaune');
   await contr(p, 'AS3');
   poids.push(await cote('AS3-a-confirmer-390x844', planchesDe('AS3', 390, 844), await photo(p, 'AS3', 390, 844), 'AS3 · à confirmer · 390 × 844'));
+  await ctx.close();
+}
+// AS3b · la fiche d'Ergun (Patrick Du Maine, lundi 19 : hors période) : la raison du blocage est VISIBLE, entière, au-dessus des boutons ; champs alignés
+for (const [l, h] of [[390, 844], [360, 640]]) {
+  const suf = `${l}x${h}`;
+  if (!veut(`AS3-fiche-bloquee-${suf}`)) continue;
+  seedQuatre();
+  const { p, ctx } = await ouvrir(l, h);
+  await demander(p, 'Patrick à confirmer');
+  await p.waitForSelector('[data-testid=multi-card]', { timeout: 8000 });
+  await p.waitForTimeout(500);
+  // AVANT=1 : sur un ancien build (avant la refonte de la fiche), on photographie seulement (haut, puis bas de la conversation) : les images « avant » de la PR.
+  if (process.env.AVANT) {
+    fs.copyFileSync(await photo(p, `AVANT-haut-${suf}`, l, h), path.join(SH, `AVANT-fiche-haut-${suf}.png`));
+    await p.evaluate(() => { const c = document.querySelector('.dz-as-corps'); c.scrollTop = c.scrollHeight; }); await p.waitForTimeout(400);
+    fs.copyFileSync(await photo(p, `AVANT-bas-${suf}`, l, h), path.join(SH, `AVANT-fiche-bas-${suf}.png`));
+    await ctx.close(); continue;
+  }
+  verifie(await testid(p, 'wm-confirm').isDisabled(), `AS3b ${suf} : « Tout confirmer » est inactif (date hors période)`);
+  const stop = testid(p, 'wm-bloquants');
+  const txt = (await stop.innerText()).replace(/\s+/g, ' ');
+  verifie(/Impossible de confirmer : Date hors période : les heures se déclarent au plus tard le lendemain, et jusqu’à 31 jours en arrière\./.test(txt), `AS3b ${suf} : la raison COMPLÈTE est écrite au-dessus des boutons (« ${txt.slice(0, 70)}… »)`);
+  const g = await p.evaluate(() => {
+    const corps = document.querySelector('.dz-as-corps').getBoundingClientRect();
+    const s = document.querySelector('[data-testid=wm-bloquants]'); const sr = s.getBoundingClientRect();
+    const b = document.querySelector('.dz-f-btns').getBoundingClientRect();
+    const raisons = [...s.querySelectorAll('.dz-f-raison')].map((e) => ({ coupe: e.scrollHeight > e.clientHeight + 1 || e.scrollWidth > e.clientWidth + 1, bas: e.getBoundingClientRect().bottom, haut: e.getBoundingClientRect().top }));
+    const cp = document.querySelector('[data-testid=wm-cp]').getBoundingClientRect(); const vi = document.querySelector('[data-testid=wm-ville]').getBoundingClientRect();
+    const lc = document.querySelector('label[for$="-cp"]').getBoundingClientRect(); const lv = document.querySelector('label[for$="-ville"]').getBoundingClientRect();
+    const champs = ['wm-nom', 'wm-adresse', 'wm-cp', 'wm-ville', 'wm-travaux', 'wm-jour'].map((t) => Math.round(document.querySelector(`[data-testid=${t}]`).getBoundingClientRect().height));
+    return { visible: sr.top >= corps.top - 1 && sr.bottom <= corps.bottom + 1, auDessus: sr.bottom <= b.top + 1, coupe: raisons.some((x) => x.coupe), cpMemeLigne: Math.abs(cp.top - vi.top) < 1 && Math.abs(cp.height - vi.height) < 1 && Math.abs(lc.height - lv.height) < 1 && lc.height < 20, champs, boutons: b.bottom <= corps.bottom + 1 };
+  });
+  verifie(g.visible && g.auDessus && g.boutons, `AS3b ${suf} : le résumé et les boutons sont VISIBLES dans la zone défilante (rien sous la barre), résumé au-dessus des boutons`);
+  verifie(!g.coupe, `AS3b ${suf} : le message d’erreur n’est jamais tronqué`);
+  verifie(g.cpMemeLigne, `AS3b ${suf} : « Code postal » et « Ville » alignés (étiquettes sur une ligne, mêmes tops et hauteurs)`);
+  verifie(new Set(g.champs).size === 1 && g.champs[0] === 48, `AS3b ${suf} : tous les champs ont la même hauteur (${g.champs.join('/')} px)`);
+  await testid(p, 'multi-card').locator('.dz-f-voir').click(); await p.waitForTimeout(700);
+  verifie(await p.evaluate(() => { const c = document.querySelector('.dz-as-corps').getBoundingClientRect(); const e = document.querySelector('[data-dz-erreur]').getBoundingClientRect(); return e.bottom > c.top && e.top < c.bottom; }), `AS3b ${suf} : « Voir le point » met le premier champ en erreur en vue`);
+  await contr(p, `AS3b ${suf}`);
+  poids.push(await cote(`AS3-fiche-bloquee-${suf}`, planchesDe('AS3', l, h), await photo(p, `AS3b-${suf}`, l, h), `AS3 · fiche à confirmer, bloquée · ${l} × ${h}`));
+  await testid(p, 'wm-heures').evaluate((e) => e.scrollIntoView({ block: 'start' })); await p.waitForTimeout(400);
+  verifie(await p.evaluate(() => { const c = document.querySelector('.dz-as-corps').getBoundingClientRect(); const b = document.querySelector('.dz-f-barre').getBoundingClientRect(); return b.bottom <= c.bottom + 1 && b.top > c.top; }), `AS3b ${suf} : la barre de la fiche reste collée en bas de la zone défilante`);
+  poids.push(await cote(`AS3-fiche-creneaux-${suf}`, planchesDe('AS3', l, h), await photo(p, `AS3c-${suf}`, l, h), `AS3 · fiche à confirmer, créneaux · ${l} × ${h}`));
   await ctx.close();
 }
 // AS4 · historique, suppression en place + garde de 700 ms · AS6 · tout effacer

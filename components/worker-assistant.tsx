@@ -84,18 +84,18 @@ export default function WorkerAssistant({ onSaved, onNavigate, defaultOpen = fal
         if (isMultiExtra(extra)) {
           const exec = demo || !user ? demoWorkerExecutor : makeWorkerExecutor({ id: user.id, company_id: user.company_id });
           const deps = demo || !user ? demoMultiDeps() : makeMultiDeps({ id: user.id, company_id: user.company_id }, exec);
-          return <WorkerMultiCard extra={extra as MultiExtra} deps={deps} meal={meal} onDone={onSaved} ctl={ctl} />;
+          return <WorkerMultiCard extra={extra as MultiExtra} deps={deps} meal={meal} onDone={onSaved} ctl={ctl} v2={v2} />;
         }
         if ((extra as WorkerActionExtra).workerAction) {
           if (meal === false && (extra as WorkerActionExtra).workerAction.draft.type === 'panier_repas') return <MealOffNote ctl={ctl} />;
           const exec = demo || !user ? demoWorkerExecutor : makeWorkerExecutor({ id: user.id, company_id: user.company_id });
           // Lot 1 : la carte « effacer mes heures » lit d'abord ce qui partirait (pas en démo).
           const preview = demo || !user ? undefined : makeWorkerErasePreview({ id: user.id });
-          return <WorkerActionCard extra={extra as WorkerActionExtra} execute={exec} onDone={onSaved} ctl={ctl} preview={preview} />;
+          return <WorkerActionCard extra={extra as WorkerActionExtra} execute={exec} onDone={onSaved} ctl={ctl} preview={preview} v2={v2} />;
         }
         const x = extra as DraftExtra;
         const save = demo || !user ? demoSaver : makeWorkerSaver({ id: user.id, company_id: user.company_id }, x.chantiers);
-        return <WorkerDraftCard extra={x} save={save} onSaved={onSaved} ctl={ctl} />;
+        return <WorkerDraftCard extra={x} save={save} onSaved={onSaved} ctl={ctl} v2={v2} />;
       }}
     />
   );
