@@ -66,7 +66,9 @@ Deno.test('Semaine ISO, kicker, durées', () => {
 Deno.test('aideEnvoi : une phrase vraie selon l’état, jamais « le pointage en cours ne part pas » à tort', () => {
   const c = { pointageEnCours: false, brouillons: 2, enAttente: 0, finACompleter: false, cloture: false };
   egal(aideEnvoi('pret', c), null, 'prêt sans chrono : pas d’aide');
-  egal(aideEnvoi('pret', { ...c, pointageEnCours: true }), 'Le pointage en cours ne part pas : termine-le d’abord.', 'chrono ouvert');
+  egal(aideEnvoi('pret', { ...c, pointageEnCours: true }), 'Le pointage en cours ne part pas', 'chrono ouvert : une seule courte phrase');
+  egal(aideEnvoi('envoye', { ...c, pointageEnCours: true }), 'Envoyé. Le pointage reste ouvert.', 'envoyé avec un chrono ouvert : cohérent et court');
+  for (const e of ['pret', 'envoye'] as const) egal((aideEnvoi(e, { ...c, pointageEnCours: true }) ?? '').length <= 34, true, `${e} : tient sur une ligne à 360 px`);
   egal(aideEnvoi('envoi', c), 'Envoi en cours…', 'envoi');
   egal(aideEnvoi('hors-ligne', { ...c, enAttente: 1 }), 'Pas de réseau : 1 ligne partira toute seule au retour du réseau.', 'hors ligne, singulier');
   egal(aideEnvoi('hors-ligne', { ...c, enAttente: 3 }), 'Pas de réseau : 3 lignes partiront toutes seules au retour du réseau.', 'hors ligne, pluriel');
