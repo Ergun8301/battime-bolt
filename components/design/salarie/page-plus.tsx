@@ -39,7 +39,7 @@ export function PagePlus({ heures, compte, onDeconnexion }: { heures: EntreePlus
     lignes[j].focus();
   };
   const ligne = (x: EntreePlus): ReactNode => (
-    <button key={x.id} type="button" role="menuitem" className="dz-ligne-menu" data-guide={x.guide} data-testid={x.testid} data-nav={x.surPlace || x.occupe ? undefined : ''}
+    <button key={x.id} type="button" role="menuitem" className="dz-ligne-menu" {...(x.guide ? { 'data-guide': x.guide } : {})} data-testid={x.testid} data-nav={x.surPlace || x.occupe ? undefined : ''}
       aria-disabled={x.inactif || undefined} onClick={() => { if (!x.inactif) x.onSelect(); }}>
       <span className="dz-ligne-menu__texte">{x.label}</span>
       {x.compteur ? <span className="dz-ligne-menu__compteur" data-testid={x.compteurTestid}>{x.compteur}</span> : null}
