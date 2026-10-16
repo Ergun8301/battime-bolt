@@ -18,6 +18,7 @@ import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { loadPdf, preloadExportLibs, isExportLibError } from '@/lib/export-utils';
 import TermineLe from '@/components/termine-le'; // lot 23 : « Terminé le … »
+import { useUi2 } from '@/components/design/salarie/shell-v2'; // coque v2 (?ui=2) : l'Historique en cartes (E26, vue Historique)
 
 // Lot 3 : la liste n'est chargée que si on l'ouvre.
 const TracesDialog = dynamic(() => import('@/components/traces-dialog'), { ssr: false });
@@ -34,6 +35,7 @@ function formatMinutesToHours(minutes: number): string {
 
 export default function PoseurHistory() {
   const { user } = useAuth();
+  const ui2 = useUi2();
   const [entries, setEntries] = useState<TimeEntryWithWorksite[]>([]);
   const [companyName, setCompanyName] = useState<string>('');
   const [loading, setLoading] = useState(true);
@@ -198,6 +200,63 @@ export default function PoseurHistory() {
         <Skeleton className="h-12 w-48" />
         {[1, 2, 3].map((i) => (
           <Skeleton key={i} className="h-32" />
+        ))}
+      </div>
+    );
+  }
+
+  if (ui2) {
+    const nbPaniers = (l: TimeEntryWithWorksite[]) => l.filter((e) => isCounted(e.status) && e.meal_allowance).length;
+    return (
+      <div className="dz-histo" data-testid="dz-histo">
+        <div className="dz-histo-tete">
+          <h2 className="dz-histo-titre">Historique</h2>
+          <button type="button" className="dz-bouton-ligne" onClick={exportToPDF} disabled={exporting}>
+            {exporting ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <FileText className="h-4 w-4" />}
+            PDF
+          </button>
+        </div>
+        {tracesOn && (
+          <button type="button" className="dz-lien-ligne" onClick={() => setTracesOpen(true)} data-testid="history-traces">
+            Interventions supprimées
+          </button>
+        )}
+        {tracesOn && user && (
+          <TracesDialog open={tracesOpen} onOpenChange={setTracesOpen} companyId={user.company_id} viewerId={user.id} />
+        )}
+        {entries.length === 0 ? (
+          <p className="dz-vide">Aucune saisie dans l'historique</p>
+        ) : Object.entries(groupedEntries).map(([date, dayEntries]) => (
+          <section key={date} className="dz-sem-jour dz-histo-jour" data-guide="historique.jour">
+            <div className="dz-sem-ligne">
+              <p className="dz-sem-nom">{format(parseISO(date), 'EEEE d MMMM yyyy', { locale: fr })}</p>
+              <div className="dz-histo-total">
+                <b>{formatMinutesToHours(dayEntries.filter((e) => isCounted(e.status)).reduce((sum, e) => sum + e.total_minutes, 0))}</b>
+                {(mealOn || dayEntries.some((e) => isCounted(e.status) && e.meal_allowance)) && (
+                  <span data-testid="history-meal-count">{nbPaniers(dayEntries)} panier{nbPaniers(dayEntries) > 1 ? 's' : ''}</span>
+                )}
+              </div>
+            </div>
+            {dayEntries.map((entry) => (
+              <div key={entry.id} className={`dz-histo-ligne${entry.status === 'cancelled' ? ' dz-histo-ligne--retiree' : ''}`}>
+                <div className="dz-histo-nom">
+                  <p className="dz-sem-nom">{entry.worksite?.client_name || 'Autre'}</p>
+                  <TermineLe ws={entry.worksite} />
+                  {entry.worksite?.city && <p className="dz-sem-sous">{entry.worksite.city}</p>}
+                </div>
+                <div className="dz-histo-heures">
+                  <p className="dz-histo-horaire">{entry.start_time?.substring(0, 5)} - {entry.end_time?.substring(0, 5)}</p>
+                  <div className="dz-histo-etiquettes">
+                    {entry.meal_allowance && <span className="dz-etiq"><Utensils className="h-3 w-3" aria-hidden />Panier</span>}
+                    {entry.status === 'submitted' && <span className="dz-etiq dz-etiq--envoye">Envoye</span>}
+                    {entry.status === 'draft' && <span className="dz-etiq dz-etiq--brouillon">Brouillon</span>}
+                    {entry.status === 'cancelled' && <span className="dz-etiq">Retirée</span>}
+                  </div>
+                </div>
+                <b className="dz-histo-duree">{formatMinutesToHours(entry.total_minutes)}</b>
+              </div>
+            ))}
+          </section>
         ))}
       </div>
     );

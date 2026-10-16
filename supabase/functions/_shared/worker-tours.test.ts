@@ -53,6 +53,13 @@ const REPETEES: Record<string, string> = {
   'journee.assistant': 'bouton ✦ de l’ancienne barre du bas OU du nouvel en-tête (?ui=2) : jamais les deux à l’écran',
   'entete.scanner': 'icône QR de l’ancien en-tête OU bouton QR de la nouvelle barre du bas (?ui=2) : jamais les deux',
   'semaine.jour': 'la semaine en liste (téléphone) ou en grille (large) : un seul visible',
+  // Étape 6 (?ui=2) : une seule version de chaque écran est montée à la fois (le drapeau est fixe pour la session)
+  'menu.compte': 'avatar de l’en-tête : bouton qui ouvre le menu déroulant d’avant OU la page « Plus » (?ui=2) : jamais les deux',
+  'historique.jour': 'carte d’un jour de l’Historique : celle d’avant OU celle de la version ?ui=2 : jamais les deux',
+  'conges.faire': '« Faire une demande » de « Mes congés » : la fenêtre d’avant OU la feuille du bas (?ui=2) : jamais les deux',
+  'conges.type': 'choix du type de demande : la fenêtre d’avant OU la feuille du bas (?ui=2) : jamais les deux',
+  'conges.envoyer': '« Envoyer la demande » : la fenêtre d’avant OU la feuille du bas (?ui=2) : jamais les deux',
+  'conges.annuler': 'corbeille d’une demande en attente : la fenêtre d’avant OU la feuille du bas (?ui=2) : jamais les deux',
 };
 
 const BANNED = [

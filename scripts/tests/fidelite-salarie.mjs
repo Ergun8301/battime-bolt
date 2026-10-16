@@ -200,15 +200,23 @@ const match = (rows, sp) => {
   return out;
 };
 let delaiEcriture = 0; // ms : retarde les écritures simulées (pour voir « Envoi en cours… »)
-async function contexte(largeur, hauteur) {
+// Étapes 6 et 7 : la fonction Edge `kiosk` (page /pointer) et le stockage des documents sont simulés par l'écran qui en a besoin.
+let kioskReponse = (r) => r.fulfill({ json: {} });
+let VIDEO = null; // une vraie petite vidéo WebM (lecteur des formations), fabriquée par le navigateur au premier besoin
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==', 'base64');
+async function contexte(largeur, hauteur, { sansSession = false } = {}) {
   const ctx = await browser.newContext({ viewport: { width: largeur, height: hauteur }, deviceScaleFactor: 1, isMobile: true, hasTouch: true, locale: 'fr-FR', timezoneId: 'Europe/Paris', reducedMotion: 'reduce' });
   await ctx.clock.install(); await ctx.clock.setFixedTime(FIXED);
-  await ctx.addInitScript(([k, v]) => { localStorage.setItem(k, v); }, ['sb-sdperbcquvneohotjono-auth-token', JSON.stringify(session)]);
+  if (!sansSession) await ctx.addInitScript(([k, v]) => { localStorage.setItem(k, v); }, ['sb-sdperbcquvneohotjono-auth-token', JSON.stringify(session)]);
   await ctx.route('**/*.supabase.co/**', async (r) => {
     const req = r.request(); const u = new URL(req.url()); const method = req.method();
     if (u.pathname.startsWith('/auth/v1/user')) return r.fulfill({ json: session.user });
     if (u.pathname.startsWith('/auth/v1/')) return r.fulfill({ json: {} });
+    if (u.pathname.startsWith('/functions/v1/kiosk')) return kioskReponse(r);
     if (u.pathname.startsWith('/functions/v1/')) return r.fulfill({ json: {} });
+    if (u.pathname === '/storage/v1/object/sign/chantier-docs' && method === 'POST') { let b = {}; try { b = req.postDataJSON() || {}; } catch { /* corps vide */ } return r.fulfill({ json: (b.paths || []).map((x) => ({ path: x, signedURL: `/object/sign/chantier-docs/${x}?token=t`, error: null })) }); }
+    if (u.pathname.startsWith('/storage/v1/object/sign/formations')) return method === 'POST' ? r.fulfill({ json: { signedURL: '/object/sign/formations/v.webm?token=t' } }) : r.fulfill({ status: 200, contentType: 'video/webm', body: VIDEO || PNG });
+    if (u.pathname.startsWith('/storage/v1/')) return r.fulfill({ status: 200, contentType: 'image/png', body: PNG });
     if (u.pathname === '/rest/v1/rpc/my_trainings') return r.fulfill({ json: trainings });
     if (u.pathname.startsWith('/rest/v1/rpc/')) return r.fulfill({ json: [] });
     const t = u.pathname.replace('/rest/v1/', '');
@@ -748,6 +756,346 @@ if (!process.env.SEULEMENT || /retour/.test(process.env.SEULEMENT)) {
   verifie(await x.p.locator('.bt-send').isDisabled(), 'E33 : le bouton est inactif pendant l’écriture (aucun second envoi)');
   poids.push(await cote('35-E33-envoi-en-cours-390x844', pl33, x.f, 'E33 · envoi en cours · 390 × 844'));
   await x.ctx.close(); delaiEcriture = 0;
+}
+
+
+// ═══ ÉTAPES 6 ET 7 · Semaine, Mois, Historique, « Plus », congés, informations, formations, documents, équipe, retour passager, /pointer ═══════════════
+// La planche dessine E25 (Semaine), E26 (« Plus »), E27 (équipe), E20b (retour passager) et P00 à P04 : ces écrans sont comparés à elle. Le Mois, l'Historique, « Mes congés »,
+// « Informations », les Formations et les Documents du chantier n'y sont PAS dessinés (README § 3 : S50 à S68) : l'image met à gauche l'écran voisin (même carte, même feuille, mêmes jetons)
+// et le dit dans son titre. Le contenu vient du code (libellés, repères) ; la planche donne l'aspect.
+const USER0 = D.users[0];
+const COLLEGUES = [['u-alex', 'Alex', 'Martin'], ['u-bruno', 'Bruno', 'Petit'], ['u-chloe', 'Chloé', 'Durand']].map(([id, f, l]) => ({ id, company_id: CO, first_name: f, last_name: l, role: 'worker', email: `${id}@exemple.fr`, is_active: true, created_at: '2026-01-01' }));
+const reinit = () => { D.users = [USER0]; D.leave_requests = []; D.documents = []; };
+const apresReinit = (f) => () => { reinit(); f(); };
+const ouvrirMenuPlus = async (p) => { await p.locator('[data-testid=dz-onglet-plus]').click(); await p.waitForSelector('[data-testid=dz-plus]', { timeout: 10000 }); await p.waitForTimeout(400); };
+const viaPlus = (nom) => async (p) => { await ouvrirMenuPlus(p); await p.getByRole('menuitem', { name: nom }).click(); await p.waitForTimeout(1200); };
+const chef = () => { semaineE05(); reinit(); D.users = [{ ...USER0, role: 'lead' }, ...COLLEGUES]; };
+const equipe = () => {
+  chef();
+  D.time_entries = [
+    ligne('a1', today, W2, '08:00', '12:00', { user_id: 'u-alex', status: 'submitted', submitted_at: '2026-10-15T12:05:00Z' }),
+    ligne('a2', today, W1, '13:30', '17:00', { user_id: 'u-alex', status: 'draft', submitted_at: null }),
+    ligne('a3', today, W3, '17:00', '18:00', { user_id: 'u-alex', status: 'submitted', submitted_at: '2026-10-15T12:05:00Z', locked: true }),
+  ];
+  D.planning = []; D.active_sessions = [];
+};
+const demandes = () => { semaineE05(); reinit(); D.leave_requests = [
+  { id: 'l1', company_id: CO, user_id: ME, type: 'conge', start_date: '2026-10-16', end_date: '2026-10-16', status: 'pending', note: 'vacances', created_at: '2026-10-10T10:00:00Z' },
+  { id: 'l2', company_id: CO, user_id: ME, type: 'maladie', start_date: '2026-09-02', end_date: '2026-09-04', status: 'approved', created_at: '2026-09-01T10:00:00Z' },
+  { id: 'l3', company_id: CO, user_id: ME, type: 'conge', start_date: '2026-08-02', end_date: '2026-08-04', status: 'rejected', decision_note: 'Période chargée', created_at: '2026-07-01T10:00:00Z' }]; };
+const historique = () => { semaineE05(); reinit(); D.time_entries.push(ligne('h1', '2026-10-06', W1, '08:00', '16:00', { status: 'submitted', submitted_at: '2026-10-06T16:05:00Z', meal_allowance: true }), ligne('h2', '2026-10-07', W2, '08:00', '12:00', { status: 'cancelled' })); };
+const formations = () => { semaineE05(); reinit(); trainings = [formation('t1', 'Port du harnais'), { ...formation('t2', 'Gestes et postures'), seen_at: '2026-10-13T09:00:00Z' }, { ...formation('t3', 'Pose du garde-corps'), kind: 'upload', video_url: null, video_path: `${CO}/0f1e2d3c-4b5a-4968-8776-a5b4c3d2e001`, video_duration: 95, video_size: 3500000 }]; };
+const docsFixture = () => {
+  semaineE05(); reinit();
+  const doc = (id, label, mime, extra = {}) => ({ id, company_id: CO, worksite_id: 'w1', label, file_path: `c/w1/${id}`, file_name: label, mime_type: mime, size_bytes: 123456, created_at: '2026-10-14T08:00:00Z', uploaded_by: ME, work_date: today, time_entry_id: null, category: null, uploader: { first_name: 'Sam', last_name: 'Gérard' }, ...extra });
+  D.documents = [doc('d1', 'Photo 1 — 15/10/2026', 'image/png', { time_entry_id: 'jeu-1' }), doc('d2', 'Bon-de-livraison.pdf', 'application/pdf'), doc('d3', 'Plan-salle-de-bain.pdf', 'application/pdf', { work_date: '2026-10-12' })];
+  D.worksites = [{ ...W1, client_email: 'client@exemple.fr' }, W2, AUTRE, W3];
+};
+
+// Mesures d'une VUE (page) : le contenu (cibles, texte, contraste, débordement) ET l'en-tête et la barre du bas (mesures globales)
+async function ecranVue(fichier, code, titre, fixture, ouvrir, controles, { w = 390, h = 844, planche = code, sel = '.bt-phscroll', attente = 700 } = {}) {
+  if (process.env.SEULEMENT && !new RegExp(process.env.SEULEMENT).test(fichier)) return;
+  const pl = await photographierPlanche(planche, w, h);
+  const x = await photographierImplementation(`${code}v`, w, h, fixture, async (p) => { await ouvrir(p); await p.waitForTimeout(attente); });
+  const g = await mesures(x.p); const mm = await mesuresFeuille(x.p, sel);
+  const cibles = [...g.cibles, ...(mm ? mm.cibles : [])]; const petits = [...g.petits]; const faibles = [...g.faibles, ...(mm ? mm.faibles : [])];
+  verifie(!!mm, `${code} ${w}×${h} : la vue est à l’écran`);
+  verifie(cibles.length === 0, `${code} ${w}×${h} : cibles ≥ 44 px (${cibles.join(' ; ') || 'toutes'})`);
+  verifie(petits.length === 0, `${code} ${w}×${h} : texte ≥ 12 px (${petits.join(' ; ') || 'tout'})`);
+  verifie(faibles.length === 0, `${code} ${w}×${h} : contrastes ≥ 4,5:1 (${[...new Set(faibles)].join(' ; ') || 'tous'})`);
+  verifie(!g.debordeX && !(mm && mm.debordeX), `${code} ${w}×${h} : aucun défilement horizontal`);
+  if (controles) await controles(x.p, mm);
+  poids.push(await cote(fichier, pl, x.f, titre));
+  await x.ctx.close();
+}
+const ligneMenu = (p, nom) => p.getByRole('menuitem', { name: nom });
+
+// ── E25 · la Semaine à 360 × 640 (l'image à 390 est la n° 06) ───────────────────────────────────────────────────────────
+await ecranVue('36-E25-semaine-360x640', 'E25', 'E25 · Semaine · 360 × 640', apresReinit(semaineE05), async (p) => { await p.locator('[data-testid=dz-onglet-week]').click(); await p.waitForSelector('[data-testid=dz-semaine]', { timeout: 10000 }); }, async (p) => {
+  verifie(((await p.locator('.bt-phdr-date').first().textContent()) || '').includes('Ma semaine') && (await p.locator('[aria-label="Semaine précédente"]').count()) === 1, 'E25 à 360 × 640 : « Ma semaine » et les flèches sont gardés');
+}, { w: 360, h: 640 });
+
+// ── Mois : même carte et mêmes lignes que la Semaine ────────────────────────────────────────────────────────────────────
+await ecranVue('37-E25-mois-390x844', 'Mois', 'E25 (Semaine, même carte et mêmes lignes) · Mois · 390 × 844', apresReinit(semaineE05), async (p) => { await p.locator('[data-testid=dz-onglet-month]').click(); await p.waitForSelector('[data-testid=dz-mois]', { timeout: 10000 }); }, async (p) => {
+  verifie(((await p.locator('.bt-phdr-date').first().textContent()) || '').includes('Mon mois'), 'Mois : l’en-tête garde « Mon mois »');
+  verifie((await p.locator('[aria-label="Mois précédent"], [aria-label="Mois suivant"]').count()) === 2 && ((await p.locator('.dz-sem-nav-t').textContent()) || '').toLowerCase().includes('octobre 2026'), 'Mois : les deux flèches et « Octobre 2026 »');
+  verifie(((await p.locator('[data-testid=dz-mois-total]').textContent()) || '').includes('16h00 envoyées'), 'Mois : le total « 16h00 envoyées » est gardé (16:00 en grand)');
+  verifie((await p.locator('.dz-mois .dz-sem-jour').count()) === 6, 'Mois : six jours listés (12 au 17 octobre)');
+  const txt = (await p.locator('.dz-mois').textContent()) || '';
+  verifie(txt.includes('brouillon') && txt.includes('À déclarer') && txt.includes('Congé') && txt.includes('7h30'), 'Mois : « brouillon », « À déclarer », « Congé » et 7h30 sont affichés comme avant');
+  await p.locator('.dz-mois .dz-sem-jour').nth(1).click(); await p.waitForSelector('.bt-phdr-back', { timeout: 10000 });
+  verifie(((await p.locator('.bt-phdr-date').first().textContent()) || '').toLowerCase().includes('13 octobre'), 'Mois : toucher un jour ouvre cette journée');
+}, { planche: 'E25' });
+
+// ── Historique ──────────────────────────────────────────────────────────────────────────────────────────────────────────
+await ecranVue('38-E25-historique-390x844', 'Historique', 'E25 (cartes) · Historique · 390 × 844', historique, viaPlus('Historique'), async (p) => {
+  verifie((await p.locator('[data-guide="historique.jour"]').count()) >= 4, 'Historique : une carte par jour (historique.jour)');
+  verifie(((await p.locator('.dz-histo-tete button').textContent()) || '').includes('PDF') && (await p.locator('.dz-histo-tete button').boundingBox())?.height >= 43.5, 'Historique : le bouton « PDF » est gardé (44 px)');
+  const t = (await p.locator('.dz-histo').textContent()) || '';
+  verifie(t.includes('Envoye') && t.includes('Brouillon') && t.includes('Retirée') && t.includes('Panier') && /\d+ paniers?/.test(t), 'Historique : « Envoye », « Brouillon », « Retirée », « Panier » et les comptes de paniers sont ceux d’avant');
+}, { planche: 'E25' });
+
+// ── E26 · « Plus » : le menu du compte en page ──────────────────────────────────────────────────────────────────────────
+const ATTENDU_MENU = ['Ma journée', 'Ma semaine', 'Mon mois', 'Historique', 'Réserves à lever', 'Formations à voir', 'Mes congés', 'Mon équipe', 'Changer ma photo', 'Assistant BEMEXO', 'Informations', 'Déconnexion'];
+for (const [fichier, w, h] of [['39-E26-plus-390x844', 390, 844], ['40-E26-plus-360x640', 360, 640]]) {
+  await ecranVue(fichier, 'E26', `E26 · Plus (menu du compte) · ${w} × ${h}`, chef, ouvrirMenuPlus, async (p) => {
+    const noms = (await p.locator('[role=menu] [role=menuitem]').allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim());
+    verifie(ATTENDU_MENU.every((n) => noms.some((x) => x.startsWith(n))), `E26 ${w}×${h} : toutes les entrées de l’ancien menu sont là (${noms.length} lignes : ${noms.join(' | ')})`);
+    verifie((await p.locator('[data-testid=dz-plus][role=menu]').count()) === 1 && (await p.locator('[role=menu] [role=menuitem]').count()) === noms.length, 'E26 : role=menu et role=menuitem gardés');
+    verifie(((await p.locator('[data-testid=dz-kicker-plus]').textContent()) || '') === 'CHEF D’ÉQUIPE' && ((await p.locator('.bt-phdr-date').first().textContent()) || '') === 'Sam Gérard', 'E26 : petit mot (rôle) et nom du salarié dans l’en-tête, sans bouton de retour (nom de l’entreprise : absent, voir le rapport)');
+    verifie((await p.locator('.bt-phdr-back').count()) === 0 && (await p.locator('.dz-assistant').count()) === 1, 'E26 : ✦ et avatar dans l’en-tête, pas de flèche de retour');
+    verifie((await p.locator('[data-testid=menu-reserves-compteur]').textContent()) === '1' && (await p.locator('[data-testid=menu-formations-badge]').textContent()) === '2', 'E26 : compteurs « Réserves à lever » 1 et « Formations à voir » 2');
+    verifie(['menu.historique', 'menu.conges', 'menu.photo', 'menu.infos', 'menu.semaine', 'menu.mois', 'menu.journee'].every((g) => p.locator(`[data-guide="${g}"]`).count().then((n) => n === 1)) || true, 'E26 : repères de guide gardés');
+    const guides = await Promise.all(['menu.historique', 'menu.conges', 'menu.photo', 'menu.infos', 'menu.semaine', 'menu.mois', 'menu.journee', 'menu.compte'].map((g) => p.locator(`[data-guide="${g}"]`).count()));
+    verifie(guides.every((n) => n === 1), `E26 : les 8 repères de guide du menu (data-guide) existent une fois (${guides.join(',')})`);
+    verifie(await p.evaluate(() => document.querySelector('[data-testid=dz-onglet-plus]').getAttribute('aria-current') === 'page'), 'E26 : « Plus » est le bouton actif de la barre du bas');
+    // clavier : flèche bas passe à la ligne suivante
+    await p.locator('[role=menuitem]').first().focus(); await p.keyboard.press('ArrowDown');
+    verifie(await p.evaluate(() => document.activeElement?.textContent?.startsWith('Ma semaine')), 'E26 : la flèche bas passe à la ligne suivante (comme l’ancien menu)');
+    const rg = await anneau(p, '.dz-ligne-menu', 4);
+    verifie(!!rg && rg !== 'none', `E26 : focus visible sur une ligne (${rg})`);
+  }, { w, h, planche: 'E26' });
+}
+// « Plus » : les gestes d'avant, un par un
+{
+  let x = await photographierImplementation('E26-gestes', 390, 844, chef, async (p) => { await ouvrirMenuPlus(p); });
+  const p = x.p;
+  verifie(await p.locator('[role=menuitem]', { hasText: 'Mon équipe' }).evaluate((e) => e.textContent.includes('chef')), 'E26 : « Mon équipe » porte l’étiquette « chef » (le chef d’équipe seulement)');
+  await ligneMenu(p, 'Mon équipe').click(); await p.waitForSelector('[data-testid=team-day]', { timeout: 10000 });
+  verifie(((await p.locator('.bt-phdr-date').first().textContent()) || '') === 'Mon équipe' && (await p.locator('.bt-phdr-back').count()) === 1, 'E26 → Mon équipe : une page avec le retour « Retour à ma journée »');
+  verifie((await p.locator('.bt-day-scroll [data-testid=team-day]').count()) === 0, 'Mon équipe n’est plus dans « Ma journée » (elle a sa page)');
+  await p.locator('.bt-phdr-back').click(); await p.waitForSelector('.bt-day-scroll', { timeout: 10000 });
+  verifie((await p.locator('.bt-day-scroll [data-testid=team-day]').count()) === 0, 'Ma journée du chef : plus de feuille d’équipe en haut');
+  await p.locator('[aria-label="Mon compte et menu"]').click(); await p.waitForSelector('[data-testid=dz-plus]');
+  await p.locator('[aria-label="Mon compte et menu"]').click(); await p.waitForSelector('.bt-day-scroll', { timeout: 10000 });
+  verifie(true, 'l’avatar ouvre « Plus » puis ramène à l’écran d’où l’on vient (comme l’ancien menu qui s’ouvrait et se refermait)');
+  await x.ctx.close();
+  // « Plus » est POSÉE sur l'écran (qui reste monté dessous, inerte) : rien n'est relu, ni clavier ni lecteur d'écran n'atteignent l'écran du dessous, Échap la referme
+  x = await photographierImplementation('E26-couche', 390, 844, apresReinit(semaineE05), async () => {});
+  { const q = x.p; let lourdes = 0; q.on('request', (r) => { const u = r.url(); if (r.method() === 'GET' && (u.includes('/rest/v1/worksites?') || /\/rest\/v1\/time_entries\?select=\*%2C/.test(u) || /\/rest\/v1\/planning\?select=\*%2C/.test(u))) lourdes++; });
+    await q.waitForTimeout(500); const avant = lourdes;
+    await ouvrirMenuPlus(q);
+    verifie(await q.evaluate(() => { const c = document.querySelector('.bt-phbody'); return !!c && c.hasAttribute('inert') && c.getAttribute('aria-hidden') === 'true' && !!c.querySelector('.bt-day'); }), 'E26 : l’écran du dessous reste monté, mais inerte (inert, aria-hidden)');
+    let dehors = 0; await q.locator('[role=menuitem]').first().focus();
+    for (let i = 0; i < 24; i++) { await q.keyboard.press('Tab'); if (await q.evaluate(() => !!document.activeElement?.closest('.bt-phbody'))) dehors++; }
+    verifie(dehors === 0, `E26 : 24 touches Tab ne sortent jamais vers l’écran du dessous (${dehors} sorties)`);
+    verifie(await q.evaluate(() => { const e = document.querySelector('.bt-send'); if (!e) return true; const r = e.getBoundingClientRect(); const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return !!t && !!t.closest('.dz-plus-couche'); }), 'E26 : la couche recouvre aussi la barre d’envoi de la journée (un toucher n’atteint pas « Envoyer »)');
+    await q.keyboard.press('Escape'); await q.waitForTimeout(400);
+    verifie((await q.locator('[data-testid=dz-plus]').count()) === 0 && (await q.locator('.bt-day-scroll').count()) === 1, 'E26 : Échap referme « Plus » et ramène à la journée');
+    await ouvrirMenuPlus(q); await q.locator('[data-testid=dz-onglet-day]').click(); await q.waitForTimeout(400);
+    verifie((await q.locator('[data-testid=dz-plus]').count()) === 0, 'E26 : le bouton « Journée » de la barre referme « Plus »');
+    await ouvrirMenuPlus(q); await q.locator('[aria-label="Mon compte et menu"]').click(); await q.waitForTimeout(400);
+    verifie((await q.locator('[data-testid=dz-plus]').count()) === 0 && lourdes === avant, `E26 : ouvrir puis refermer « Plus » (3 fois) ne recharge pas la journée (chantiers, lignes, planning : ${lourdes - avant} lecture(s) ; avec la première version, une page à la place de l’écran, chaque ouverture relisait toute la journée)`);
+  }
+  await x.ctx.close();
+  x = await photographierImplementation('E26-nonchef', 390, 844, apresReinit(semaineE05), async (q) => { await ouvrirMenuPlus(q); });
+  verifie((await x.p.getByRole('menuitem', { name: 'Mon équipe' }).count()) === 0, 'E26 : pas de « Mon équipe » pour un salarié qui n’est pas chef');
+  verifie((await x.p.getByRole('menuitem', { name: 'Déconnexion' }).count()) === 1, 'E26 : « Déconnexion » reste');
+  await x.ctx.close();
+}
+
+// ── Mon équipe (E27) ────────────────────────────────────────────────────────────────────────────────────────────────────
+for (const [fichier, w, h] of [['41-E27-equipe-390x844', 390, 844], ['42-E27-equipe-360x640', 360, 640]]) {
+  await ecranVue(fichier, 'E27', `E27 · Mon équipe · ${w} × ${h}`, equipe, async (p) => { await ouvrirMenuPlus(p); await ligneMenu(p, 'Mon équipe').click(); await p.waitForSelector('[data-testid=td-row]', { timeout: 10000 }); }, async (p) => {
+    verifie((await p.locator('[data-testid=td-row]').count()) === 3 && (await p.locator('[data-testid=td-day]').count()) === 7, `E27 ${w}×${h} : les 3 lignes d’Alex et les 7 jours`);
+    const tags = (await p.locator('.bt-td-tag').allInnerTexts()).map((t) => t.trim().toLowerCase());
+    verifie(tags.join('|') === 'envoyé|à envoyer|chez le comptable', `E27 : les trois états sont ceux du code (${tags.join(' | ')})`);
+    verifie((await p.locator('[data-guide="equipe.jour"]').count()) === 1 && (await p.locator('[data-guide="equipe.salarie"]').count()) === 1 && (await p.locator('[data-guide="equipe.corriger"]').count()) >= 1 && (await p.locator('[data-guide="equipe.ajouter"]').count()) === 1, 'E27 : repères de guide gardés (equipe.jour, .salarie, .corriger, .ajouter)');
+    verifie(((await p.locator('[data-testid=td-add]').textContent()) || '').includes('Ajouter des heures pour Alex'), 'E27 : « Ajouter des heures pour Alex »');
+    verifie((await p.locator('[data-testid=td-send]').count()) === 1, 'E27 : « Envoyer » sur la ligne à envoyer');
+  }, { w, h, planche: 'E27', sel: '[data-testid=team-day]' });
+}
+{
+  // Le formulaire de correction (OK — envoyer au bureau) : ouvert depuis « Corriger »
+  const x = await photographierImplementation('E27-form', 390, 844, equipe, async (p) => { await ouvrirMenuPlus(p); await ligneMenu(p, 'Mon équipe').click(); await p.waitForSelector('[data-testid=td-row]', { timeout: 10000 }); await p.locator('[data-testid=td-edit]').nth(1).click(); await p.waitForSelector('[data-testid=td-form]'); });
+  const mm = await mesuresFeuille(x.p, '[data-testid=td-form]');
+  verifie(mm.cibles.length === 0 && mm.petits.length === 0 && mm.faibles.length === 0, `E27 formulaire : cibles, texte, contrastes conformes (${mm.cibles.concat(mm.petits, mm.faibles).join(' ; ') || 'ok'})`);
+  verifie((await x.p.locator('[data-guide="equipe.ok"]').boundingBox())?.height >= 51, 'E27 formulaire : « OK — envoyer au bureau » de 52 px');
+  await x.ctx.close();
+}
+
+// ── Mes congés (feuille) ────────────────────────────────────────────────────────────────────────────────────────────────
+await ecranFeuille('43-E24-conges-390x844', 'Congés', 'E24 (feuille « Dupliquer ») · Mes congés · 390 × 844', demandes, viaPlus('Mes congés'), async (p) => {
+  verifie(((await p.locator('[role=dialog].dz-feuille h2').first().textContent()) || '') === 'Mes congés', 'Congés : le titre est « Mes congés »');
+  verifie((await p.locator('[data-guide="conges.faire"]').count()) === 1 && (await p.locator('[data-guide="conges.annuler"]').count()) === 1, 'Congés : « Faire une demande » (conges.faire) et la corbeille d’une demande en attente (conges.annuler)');
+  const etiq = (await p.locator('.dz-demande .dz-etiq').allInnerTexts()).map((t) => t.trim().toLowerCase());
+  verifie(etiq.join('|') === 'en attente|acceptée|refusée', `Congés : les trois états sont ceux d’avant (${etiq.join(' | ')})`);
+  verifie(((await p.locator('.dz-demande__mot').textContent()) || '').includes('Période chargée'), 'Congés : le mot du bureau pour une demande refusée');
+  verifie((await p.locator('.dz-feuille__pied [data-guide="conges.faire"]').count()) === 1, 'Congés : « Faire une demande » est dans le pied fixe');
+}, { planche: 'E24', sel: '[data-testid=conges-dialog]' });
+await ecranFeuille('44-E24-conges-demande-390x844', 'Congés', 'E24 (feuille « Dupliquer ») · Faire une demande · 390 × 844', demandes, async (p) => { await viaPlus('Mes congés')(p); await p.waitForSelector('[data-testid=conges-dialog]'); await p.locator('[data-guide="conges.faire"]').click(); }, async (p) => {
+  verifie((await p.locator('[data-guide="conges.type"] button').count()) === 3 && (await p.locator('[data-guide="conges.envoyer"]').count()) === 1, 'Congés : trois types, « Envoyer la demande » (conges.envoyer)');
+  const types = (await p.locator('[data-guide="conges.type"] button').allInnerTexts()).map((t) => t.trim());
+  verifie(types.join('|') === 'Congé|Arrêt maladie|Intempérie', `Congés : types Congé · Arrêt maladie · Intempérie (${types.join(' | ')})`);
+  verifie((await p.locator('[data-testid=conges-dialog] input[type=date]').count()) === 2 && (await p.locator('[data-testid=conges-dialog] input[placeholder^="ex. "]').count()) === 1, 'Congés : « Du », « Au » et le mot pour le bureau');
+  await p.locator('[data-guide="conges.envoyer"]').click(); await p.waitForTimeout(300);
+  verifie(await p.evaluate(() => document.body.innerText.includes('Choisis les dates de début et de fin')), 'Congés : sans dates, le retour passager d’avant « Choisis les dates de début et de fin »');
+}, { planche: 'E24', sel: '[data-testid=conges-dialog]' });
+
+// ── Informations ────────────────────────────────────────────────────────────────────────────────────────────────────────
+{
+  if (!process.env.SEULEMENT || /infos/.test(process.env.SEULEMENT)) {
+    const pl = await photographierPlanche('E16', 390, 844);
+    const x = await photographierImplementation('Infos', 390, 844, apresReinit(semaineE05), viaPlus('Informations'));
+    const mm = await mesuresFeuille(x.p, '.bt-info');
+    verifie(((await x.p.locator('[role=dialog][aria-label="Informations"] h2').textContent()) || '').trim() === 'Informations' && (await x.p.locator('[data-guide="infos.fermer"]').count()) === 1, 'Informations : titre, texte, politique et « Fermer » (infos.fermer) gardés');
+    verifie(mm.cibles.length === 0 && mm.petits.length === 0 && mm.faibles.length === 0 && mm.dansEcran, `Informations : cibles, texte, contrastes, feuille dans l’écran (${mm.cibles.concat(mm.petits, mm.faibles).join(' ; ') || 'ok'})`);
+    verifie(mm.anglesHauts === '28px' && mm.principalVisible, 'Informations : angles hauts de 28 px, « Fermer » visible');
+    poids.push(await cote('45-E16-informations-390x844', pl, x.f, 'E16 (fenêtre « Compris ») · Informations · 390 × 844'));
+    await x.p.goBack(); await x.p.waitForTimeout(400);
+    verifie((await x.p.locator('[role=dialog][aria-label="Informations"]').count()) === 0 && x.p.url().includes('/poseur'), 'Informations : le retour du téléphone la referme');
+    await x.ctx.close();
+  }
+}
+
+// ── Formations : liste et lecteur ───────────────────────────────────────────────────────────────────────────────────────
+await ecranVue('46-E25-formations-390x844', 'Formations', 'E25 (cartes) · Formations · 390 × 844', formations, viaPlus('Formations à voir'), async (p) => {
+  verifie((await p.locator('[data-testid=training-row]').count()) === 3 && (await p.locator('[data-testid=training-seen]').count()) === 3, 'Formations : trois lignes, « Vue » sur chacune');
+  verifie((await p.locator('[data-testid=training-row][data-seen="1"]').count()) === 1, 'Formations : la ligne déjà vue est grisée (data-seen)');
+  const texte = (await p.locator('[data-testid=trainings-list]').textContent()) || '';
+  verifie(texte.includes('Ouvrir ↗') && texte.includes('▶ Regarder') && texte.includes('○ Vue') && texte.includes('✓ Vue le'), 'Formations : « Ouvrir ↗ », « ▶ Regarder », « ○ Vue », « ✓ Vue le … » comme avant');
+}, { planche: 'E25' });
+{
+  if (!process.env.SEULEMENT || /formations-lecteur/.test(process.env.SEULEMENT)) {
+    if (!VIDEO) {
+      const gen = await browser.newContext(); const gp = await gen.newPage();
+      const b64 = await gp.evaluate(async () => {
+        const c = document.createElement('canvas'); c.width = 320; c.height = 180; const g = c.getContext('2d');
+        const rec = new MediaRecorder(c.captureStream(25), { mimeType: 'video/webm;codecs=vp8' }); const chunks = [];
+        rec.ondataavailable = (e) => chunks.push(e.data);
+        let t = 0; const iv = setInterval(() => { g.fillStyle = `hsl(${(t * 9) % 360},45%,40%)`; g.fillRect(0, 0, 320, 180); g.fillStyle = '#fff'; g.font = '26px sans-serif'; g.fillText('Pose du garde-corps', 20, 100); t++; }, 40);
+        rec.start(200); await new Promise((r) => setTimeout(r, 2000)); rec.stop(); await new Promise((r) => { rec.onstop = r; }); clearInterval(iv);
+        const buf = new Uint8Array(await new Blob(chunks).arrayBuffer()); let s = ''; for (let i = 0; i < buf.length; i++) s += String.fromCharCode(buf[i]); return btoa(s);
+      });
+      await gen.close(); VIDEO = Buffer.from(b64, 'base64');
+    }
+    const pl = await photographierPlanche('E25', 390, 844);
+    const x = await photographierImplementation('Lecteur', 390, 844, formations, async (p) => { await viaPlus('Formations à voir')(p); await p.waitForSelector('[data-testid=training-watch]'); await p.locator('[data-testid=training-watch]').click(); await p.waitForSelector('[data-testid=video-player]'); await p.waitForTimeout(900); });
+    const mm = await mesuresFeuille(x.p, '[data-testid=trainings-list]');
+    verifie((await x.p.locator('[data-testid=video-player]').count()) === 1 && ((await x.p.locator('[data-testid=training-watch]').textContent()) || '').includes('Fermer la vidéo'), 'Lecteur : « ▶ Regarder » ouvre le lecteur intégré, le bouton devient « Fermer la vidéo »');
+    verifie((await x.p.locator('[data-testid=video-el]').count()) === 1 && (await x.p.locator('[data-testid=video-failed]').count()) === 0, 'Lecteur : la vidéo est chargée dans l’élément <video> (aucun « lecture impossible »)');
+    verifie(mm.cibles.length === 0 && mm.petits.length === 0 && mm.faibles.length === 0 && !mm.debordeX, `Lecteur : cibles, texte, contrastes, débordement conformes (${mm.cibles.concat(mm.petits, mm.faibles).join(' ; ') || 'ok'})`);
+    poids.push(await cote('47-E25-formations-lecteur-390x844', pl, x.f, 'E25 (cartes) · Formations, lecteur ouvert · 390 × 844'));
+    await x.ctx.close();
+  }
+}
+
+// ── Documents du chantier (feuille, ouverte depuis l'éditeur) ───────────────────────────────────────────────────────────
+await ecranFeuille('48-E21-documents-390x844', 'Documents', 'E21 (feuille de l’éditeur) · Documents du chantier · 390 × 844', docsFixture, async (p) => {
+  await p.locator('[data-testid=card-entry]').first().click(); await p.waitForSelector(EDITOR);
+  await p.locator('[data-guide="editeur.documents"]').click(); await p.waitForSelector('[data-guide="docs.photo"]'); await p.waitForTimeout(500);
+}, async (p, mm) => {
+  verifie((await p.locator('[data-guide="docs.photo"]').count()) === 1 && (await p.locator('[data-guide="docs.envoyer"]').count()) === 1, 'Documents : « Photo » (docs.photo) et « Ouvrir l’e-mail » (docs.envoyer) gardés');
+  verifie((await p.locator('.bt-doc-tabn').allInnerTexts()).join(',') === '1,2' && (await p.locator('.bt-doc-row.here').count()) === 1, 'Documents : « Photos 1 », « Fichiers 2 » ; la photo de cette intervention est en évidence');
+  verifie(((await p.locator('[role=dialog].dz-feuille h2').last().textContent()) || '').startsWith('Documents'), 'Documents : le titre commence par « Documents »');
+  verifie((await p.locator('.bt-doc-addbtn').first().boundingBox())?.height >= 51, 'Documents : « Photo » et « Fichier » de 52 px');
+}, { planche: 'E21', sel: '[data-testid=docs-dialog], [role=dialog].dz-feuille' });
+
+// ── Retour passager : « Réserve levée · Annuler », juste au-dessus de la barre ─────────────────────────────────────────
+{
+  if (!process.env.SEULEMENT || /retour-passager/.test(process.env.SEULEMENT)) {
+    const pl = await photographierPlanche('E20b', 390, 844);
+    const x = await photographierImplementation('E20b', 390, 844, apresReinit(semaineE42), async (p) => {
+      await p.locator('[data-testid=reserves-banner]').click(); await p.locator('[data-testid=wr-lift]').first().click(); await p.waitForSelector('[data-testid=reserve-lift-submit]');
+      await p.locator('[data-testid=reserve-lift-submit]').click(); await p.waitForSelector('[data-sonner-toast]', { timeout: 10000 }); await p.waitForTimeout(900);
+    });
+    const g = await x.p.evaluate(() => {
+      const t = document.querySelector('[data-sonner-toast]'); const r = t.getBoundingClientRect();
+      const barre = [...document.querySelectorAll('.dz-onglets, .bt-day-dock')].map((e) => e.getBoundingClientRect().top);
+      const a = t.querySelector('[data-button]'); const ar = a ? a.getBoundingClientRect() : null;
+      return { bas: Math.round(r.bottom), hautBarre: Math.round(Math.min(...barre)), classe: t.className, texte: t.innerText.replace(/\s+/g, ' '), action: ar ? [Math.round(ar.width), Math.round(ar.height)] : null, fond: getComputedStyle(t).backgroundColor, haut: Math.round(r.top), larg: Math.round(r.width) };
+    });
+    verifie(g.texte.includes('Réserve levée') && g.texte.includes('Annuler'), `Retour passager : « Réserve levée » avec « Annuler » (${g.texte})`);
+    verifie(g.bas <= g.hautBarre && g.hautBarre - g.bas < 40, `Retour passager : juste AU-DESSUS de la barre du bas (bas du retour ${g.bas} px, haut de la barre ${g.hautBarre} px)`);
+    verifie(g.action && g.action[1] >= 44 && g.action[0] >= 44, `Retour passager : « Annuler » fait ${g.action} px (≥ 44)`);
+    verifie(g.fond.replace(/\s/g, '') === 'rgb(21,18,15)' && g.classe.includes('dz-retour'), 'Retour passager : fond encre de la planche (classe dz-retour)');
+    await x.p.locator('[data-sonner-toast] [data-button]').click(); await x.p.waitForTimeout(500);
+    verifie(await x.p.evaluate(() => document.body.innerText.includes('Réserve remise à lever')), 'Retour passager : « Annuler » touche bien : « Réserve remise à lever »');
+    poids.push(await cote('49-E20b-retour-passager-390x844', pl, x.f, 'E20b · retour passager avec « Annuler » · 390 × 844'));
+    // 360 × 640 : le retour reste au-dessus de la barre, sans la couvrir
+    const y = await photographierImplementation('E20b-s', 360, 640, apresReinit(semaineE42), async (p) => {
+      await p.locator('[data-testid=reserves-banner]').click(); await p.locator('[data-testid=wr-lift]').first().click(); await p.waitForSelector('[data-testid=reserve-lift-submit]');
+      await p.locator('[data-testid=reserve-lift-submit]').click(); await p.waitForSelector('[data-sonner-toast]', { timeout: 10000 }); await p.waitForTimeout(900);
+    });
+    const g2 = await y.p.evaluate(() => { const r = document.querySelector('[data-sonner-toast]').getBoundingClientRect(); const barre = Math.min(...[...document.querySelectorAll('.dz-onglets, .bt-day-dock')].map((e) => e.getBoundingClientRect().top)); return { bas: Math.round(r.bottom), barre: Math.round(barre), gauche: Math.round(r.left), droite: Math.round(r.right) }; });
+    verifie(g2.bas <= g2.barre && g2.gauche >= 0 && g2.droite <= 360, `Retour passager à 360 × 640 : au-dessus de la barre (bas ${g2.bas}, barre ${g2.barre}) et dans l’écran (${g2.gauche}→${g2.droite})`);
+    await x.ctx.close(); await y.ctx.close();
+    // Sans ?ui=2 : Sonner reste en haut au centre (v1 inchangée)
+    const c1 = await contexte(390, 844); D.worksites = [W1, W2, AUTRE, W3]; apresReinit(semaineE42)();
+    const p1 = await c1.newPage(); await p1.goto(`http://localhost:${PORT}/poseur?ui=1`); await p1.waitForSelector('.bt-day-scroll', { timeout: 20000 }); await p1.waitForTimeout(1500);
+    await p1.locator('[data-testid=reserves-banner]').click(); await p1.locator('[data-testid=wr-lift]').first().click(); await p1.waitForSelector('[data-testid=reserve-lift-submit]');
+    await p1.locator('[data-testid=reserve-lift-submit]').click(); await p1.waitForSelector('[data-sonner-toast]', { timeout: 10000 }); await p1.waitForTimeout(600);
+    const pos = await p1.evaluate(() => { const t = document.querySelector('[data-sonner-toaster]'); return t ? [t.getAttribute('data-y-position'), t.getAttribute('data-x-position'), document.documentElement.hasAttribute('data-bt-ui2')] : null; });
+    verifie(JSON.stringify(pos) === '["top","center",false]', `v1 : le Toaster reste en haut au centre, sans drapeau ?ui=2 sur la page (${JSON.stringify(pos)})`);
+    await c1.close();
+  }
+}
+
+// ═══ ÉTAPE 7 · /pointer (P00 à P04) ═══════════════════════════════════════════════════════════════════════════════════
+const TICKET = { ticket: 'tk-1', kiosk_name: 'Tablette', company_name: 'Entreprise Exemple', needs_position: false, has_tablet: true };
+const reponseKiosk = (fn) => async (r) => { let b = {}; try { b = r.request().postDataJSON() || {}; } catch { /* corps vide */ } const x = fn(b); return r.fulfill(x && x.__statut ? { status: x.__statut, json: x.json } : { json: x }); };
+const PUNCH = { kiosk_name: 'Tablette', first_name: 'Sam' };
+async function ecranPointer(fichier, code, titre, { w = 390, h = 844, url = '/pointer?ui=2&k=k-test&c=12345678', reponse, sansSession = false, infoLue = false, positionRefusee = false, ambiance, controles, attente = 1800 } = {}) {
+  if (process.env.SEULEMENT && !new RegExp(process.env.SEULEMENT).test(fichier)) return;
+  const pl = await photographierPlanche(code, w, h);
+  kioskReponse = reponse;
+  const ctx = await contexte(w, h, { sansSession });
+  if (infoLue) await ctx.addInitScript(([k]) => { localStorage.setItem(k, '1'); }, [`bx_fixed_qr_info_v1:${ME}`]);
+  // Position refusée par le téléphone (le navigateur sans autorisation attend la réponse 8 s : on la donne tout de suite)
+  if (positionRefusee) await ctx.addInitScript(() => { navigator.geolocation.getCurrentPosition = (_ok, err) => { setTimeout(() => err && err({ code: 1, message: 'denied' }), 30); }; });
+  const p = await ctx.newPage(); p.on('pageerror', (e) => erreurs.push(`${code} : ${e.message}`));
+  await p.goto(`http://localhost:${PORT}${url}`); await p.waitForSelector('.dz-pointer', { timeout: 20000 }); await p.waitForTimeout(attente);
+  await p.mouse.move(2, 2); await p.evaluate(() => document.activeElement instanceof HTMLElement && document.activeElement.blur()).catch(() => {});
+  const f = path.join(TMP, `impl-${code}-pointer-${w}x${h}.png`); await p.screenshot({ path: f, animations: 'disabled' });
+  const mm = await mesuresFeuille(p, '.dz-pointer');
+  verifie(mm.cibles.length === 0 && mm.petits.length === 0 && mm.faibles.length === 0 && !mm.debordeX, `${code} ${w}×${h} : cibles ≥ 44 px, texte ≥ 12 px, contrastes ≥ 4,5:1, aucun débordement (${mm.cibles.concat(mm.petits, mm.faibles).join(' ; ') || 'ok'})`);
+  verifie((await p.locator('.dz-pointer').getAttribute('data-ambiance')) === ambiance, `${code} : ambiance « ${ambiance} » (fond ${await p.locator('.dz-pointer').evaluate((e) => getComputedStyle(e).backgroundColor)})`);
+  if (controles) await controles(p);
+  poids.push(await cote(fichier, pl, f, titre));
+  await ctx.close(); kioskReponse = (r) => r.fulfill({ json: {} });
+}
+const arrivee = reponseKiosk((b) => (b.action === 'ticket' ? TICKET : { ...PUNCH, kind: 'arrival', time: '07:45', worksite_name: 'Villa Exemple', range: null }));
+const depart = reponseKiosk((b) => (b.action === 'ticket' ? TICKET : { ...PUNCH, kind: 'departure', time: '16:30', worksite_name: null, range: { start: '07:45', end: '16:30' } }));
+const lien = (p, t) => p.getByRole('link', { name: t });
+await ecranPointer('50-P01-arrivee-390x844', 'P01', 'P01 · arrivée enregistrée · 390 × 844', { reponse: arrivee, ambiance: 'sombre' , controles: async (p) => {
+  verifie(((await p.locator('.kx-title').textContent()) || '') === 'Arrivée enregistrée' && (await p.locator('.kx-time').textContent()) === '07:45', 'P01 : « Arrivée enregistrée » et 07:45 (textes du code)');
+  verifie(((await p.locator('.kx-sub').textContent()) || '') === 'Bonne journée, Sam !' && ((await p.locator('.kx-chip').textContent()) || '') === 'Villa Exemple', 'P01 : « Bonne journée, Sam ! » et le chantier');
+  verifie((await lien(p, 'Ouvrir mon espace').count()) === 1 && (await p.locator('[data-testid=after-before]').count()) === 1 && ((await p.locator('[data-testid=after-before]').textContent()) || '').trim() === 'Ajouter une intervention faite avant', 'P01 : « Ouvrir mon espace » et « Ajouter une intervention faite avant » (after-before)');
+  verifie(await p.evaluate(() => { const b = document.querySelector('.dz-p-cadre').getBoundingClientRect(), a = document.querySelector('[data-testid=after-before]').getBoundingClientRect(); return b.bottom - a.bottom < 40; }), 'P01 : les boutons sont posés en bas de l’écran');
+} });
+await ecranPointer('51-P01-arrivee-360x640', 'P01', 'P01 · arrivée enregistrée · 360 × 640', { w: 360, h: 640, reponse: arrivee, ambiance: 'sombre' });
+await ecranPointer('52-P02-depart-390x844', 'P02', 'P02 · départ enregistré · 390 × 844', { reponse: depart, ambiance: 'sombre', controles: async (p) => {
+  verifie(((await p.locator('.kx-title').textContent()) || '') === 'Départ enregistré' && ((await p.locator('.kx-chip').textContent()) || '') === 'Heures enregistrées : 07:45 → 16:30', 'P02 : « Départ enregistré » et « Heures enregistrées : 07:45 → 16:30 »');
+  verifie((await p.locator('[data-testid=after-send]').count()) === 1 && (await p.locator('[data-testid=after-add]').count()) === 1 && (await lien(p, 'Ouvrir mon espace').count()) === 1, 'P02 : « Envoyer ma journée », « Ajouter une intervention » ET « Ouvrir mon espace » (la planche l’avait retiré : fonction gardée, G1)');
+  verifie((await p.locator('[data-testid=after-send]').evaluate((e) => getComputedStyle(e).backgroundColor)).replace(/\s/g, '') === 'rgb(255,194,26)', 'P02 : « Envoyer ma journée » est le bouton jaune');
+} });
+await ecranPointer('53-P03-refus-390x844', 'P03', 'P03 · pointage non enregistré (QR fixe refusé) · 390 × 844', { url: '/pointer?ui=2#f=jeton-test', infoLue: true, positionRefusee: true, reponse: reponseKiosk(() => ({ ...TICKET, needs_position: true, radius_m: 200 })), ambiance: 'alerte', controles: async (p) => {
+  verifie(((await p.locator('.kx-title').textContent()) || '') === 'Pointage non enregistré' && (await p.locator('[data-testid=fixed-refused-manual]').count()) === 1 && ((await p.locator('[data-testid=fixed-refused-retry]').textContent()) || '') === 'Réessayer', 'P03 : « Pointage non enregistré », « Ajouter mon intervention à la main » et « Réessayer » (repères fixed-refused-*)');
+} });
+await ecranPointer('54-P03b-qr-expire-390x844', 'P03b', 'P03b · QR expiré · 390 × 844', { reponse: reponseKiosk(() => ({ __statut: 400, json: { error: 'Ce QR a expiré. Scannez-le de nouveau sur la borne.', code: 'expired' } })), ambiance: 'alerte', controles: async (p) => {
+  verifie((await p.locator('.kx-sub').textContent()) === 'Ce QR a expiré. Scannez-le de nouveau sur la borne.' && (await lien(p, 'Ouvrir mon espace').count()) === 1, 'P03b : le message du serveur et « Ouvrir mon espace » seul');
+} });
+await ecranPointer('55-P03c-annule-390x844', 'P03c', 'P03c · pointage annulé · 390 × 844', { reponse: reponseKiosk((b) => (b.action === 'ticket' ? TICKET : { ...PUNCH, kind: 'departure', time: '07:46', worksite_name: null, range: null, cancelled: true })), ambiance: 'neutre', controles: async (p) => {
+  verifie((await p.locator('[data-testid=punch-cancelled]').count()) === 1 && ((await p.locator('.kx-title').textContent()) || '').startsWith('Pointage annulé'), 'P03c : « Pointage annulé (moins d’une minute) » (punch-cancelled)');
+} });
+await ecranPointer('56-P00-verification-390x844', 'P00', 'P00 · vérification du QR · 390 × 844', { reponse: () => new Promise(() => {}), ambiance: 'sombre', controles: async (p) => {
+  verifie((await p.locator('[data-testid=pointer-checking]').count()) === 1 && ((await p.locator('.kx-sub').textContent()) || '') === 'Vérification du QR…', 'P00 : « Vérification du QR… » (pointer-checking)');
+} });
+await ecranPointer('57-P00b-connexion-390x844', 'P00b', 'P00b · connexion sur place · 390 × 844', { sansSession: true, reponse: reponseKiosk(() => TICKET), ambiance: 'sombre', controles: async (p) => {
+  verifie((await p.locator('#kx-pass').count()) === 1 && (await p.locator('[data-testid=pointer-company]').textContent()) === 'Entreprise Exemple' && ((await p.locator('button[type=submit]').textContent()) || '') === 'Se connecter et pointer', 'P00b : #kx-pass, pointer-company « Entreprise Exemple » et « Se connecter et pointer »');
+  verifie(((await p.locator('.kx-card h1').textContent()) || '') === 'Connectez-vous pour pointer' && (await p.locator('#kx-email').count()) === 1, 'P00b : « Connectez-vous pour pointer », champ e-mail gardé');
+} });
+await ecranPointer('58-P04-qr-fixe-390x844', 'P04', 'P04 · information du QR fixe · 390 × 844', { url: '/pointer?ui=2#f=jeton-test', reponse: reponseKiosk(() => ({ ...TICKET, needs_position: true, radius_m: 200 })), ambiance: 'sombre', controles: async (p) => {
+  verifie((await p.locator('[data-testid=fixed-info]').count()) === 1 && (await p.locator('[data-testid=fixed-info-ok]').textContent()) === 'Continuer' && (await p.locator('[data-testid=fixed-info-no]').textContent()) === 'Je refuse', 'P04 : fixed-info, « Continuer » (fixed-info-ok), « Je refuse » (fixed-info-no)');
+} });
+// Sans ?ui=2 : la page garde sa feuille intégrée (aucune classe dz-)
+{
+  if (!process.env.SEULEMENT || /pointer-v1/.test(process.env.SEULEMENT)) {
+    kioskReponse = arrivee; const c = await contexte(390, 844); const p = await c.newPage();
+    await p.goto(`http://localhost:${PORT}/pointer?ui=1&k=k-test&c=12345678`); await p.waitForSelector('.kx.ok', { timeout: 20000 });
+    verifie((await p.locator('.dz-pointer, .dz-p-cadre, .dz-p-logo').count()) === 0 && (await p.locator('main.kx').getAttribute('data-ambiance')) === null, 'v1 : /pointer sans ?ui=2 n’a aucune classe ni attribut du design v2 (fond vert d’arrivée gardé)');
+    await c.close(); kioskReponse = (r) => r.fulfill({ json: {} });
+  }
 }
 
 verifie(poids.every((k) => k < 300), `chaque image côte à côte pèse moins de 300 ko (${poids.join(', ')} ko)`);

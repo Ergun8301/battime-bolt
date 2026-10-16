@@ -1939,7 +1939,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant, sema
             le jour courant ; le chef y choisit lui-même le jour (7 derniers)
             et le salarié (lot 14). La RLS décide seule de ce qu'il peut voir
             et écrire : cet écran n'ajoute aucun filtre de sécurité. */}
-        {user?.role === 'lead' && user?.company_id && date === mountedToday && (
+        {user?.role === 'lead' && user?.company_id && date === mountedToday && !ui2 && (
           <TeamDay
             me={user}
             today={mountedToday}
