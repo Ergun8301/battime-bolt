@@ -3,7 +3,7 @@
 // la construction de la fiche à plusieurs éléments, et le contrôle croisé « rien ne disparaît sans un mot ».
 // Les sorties du modèle ci-dessous sont des sorties plausibles (mesurées ou fabriquées pour le test).
 //   npm run test:worker-multi
-import { buildWorkerSnapshot, type Draft, type DraftLine, type WorkerLive, type WorkerSnapshot } from './worker-assistant-core.ts';
+import { buildWorkerSnapshot, handleLocally, type Draft, type DraftLine, type WorkerLive, type WorkerSnapshot } from './worker-assistant-core.ts';
 import {
   buildLongReply, cleanNewWorksite, DATE_ILLISIBLE, memeChantier, MULTI_ANSWER, MULTI_AUTORISES, nettoyerEcarts, normaliserHeures, parseDateTr, verifierFiche, villeDepuisCodePostal,
   type LongLegacy, type MultiItem, type WorkerMultiReply,
@@ -882,4 +882,40 @@ Deno.test('R3 : « … au Bureau Martin à Villeurbanne, demain je commence un n
   // Les formes où le nouveau chantier précède le nom restent réutilisées (français et turc).
   eq(heures({ lignes }, 'Aujourd’hui de 8h à 12h puis de 13h à 17h, nouveau chantier : Bureau Martin à Villeurbanne.').nouveau_chantier?.reutilise_id, 'w-martin', 'nouveau chantier : …');
   eq(heures({ lignes }, 'Bugün 8’den 12’ye 13’ten 17’ye kadar yeni bir şantiyede, Bureau Martin Villeurbanne’de çalıştım.').nouveau_chantier?.reutilise_id, 'w-martin', 'turc');
+});
+
+// ── Date hors période : une réponse en texte, jamais une fiche impossible à confirmer ─────────────
+const PATRICK = "Est-ce que tu peux me rajouter une intervention pour le chantier de Monsieur Patrick Du Maine, à Paris, pour lundi prochain de 8h à 17h avec 1h entre midi et 13h";
+const LIGNES_LUNDI = [{ chantier: 'nouveau', debut: '08:00', fin: '12:00' }, { chantier: 'nouveau', debut: '13:00', fin: '17:00' }];
+Deno.test('Date future hors période (lundi prochain) : réponse en texte, aucune fiche (français)', () => {
+  const r = build([call('declarer_heures', { date: '2026-10-05', lignes: LIGNES_LUNDI, nouveau_chantier: { nom: 'Patrick Du Maine', ville: 'Paris' } })], PATRICK) as { kind: string; answer?: string };
+  eq(r.kind, 'answer', 'pas de fiche');
+  for (const m of ['lundi 5 octobre', 'au plus tard le lendemain', 'le bureau', 'aujourd’hui ou hier']) if (!r.answer?.includes(m)) throw new Error(`« ${m} » absent : ${r.answer}`);
+});
+Deno.test('Date future hors période : réponse en texte aussi en turc', () => {
+  const r = build([call('declarer_heures', { date: '2026-10-05', lignes: LIGNES_LUNDI })], 'Haftaya pazartesi 8’den 12’ye ve 13’ten 17’ye kadar Patrick Du Maine şantiyesinde') as { kind: string; answer?: string };
+  eq(r.kind, 'answer', 'pas de fiche');
+  if (!/büro/.test(r.answer ?? '') || /Je ne peux/.test(r.answer ?? '')) throw new Error(`réponse turque attendue : ${r.answer}`);
+});
+Deno.test('Date trop ancienne (> 31 jours) : réponse en texte ; demain et la veille restent des fiches', () => {
+  eq((build([call('declarer_heures', { date: '2026-08-01', lignes: LIGNES_LUNDI })], 'le 1er août de 8h à 12h') as { kind: string }).kind, 'answer', 'trop ancien');
+  for (const date of ['2026-10-02', '2026-09-30', '2026-09-01']) eq(multi(build([call('declarer_heures', { date, lignes: [{ chantier: 'Dupont', debut: '08:00', fin: '12:00' }] })], 'x')).kind, 'multi', date);
+});
+Deno.test('Date hors période mêlée à une autre action : les heures sont dites « laissées de côté », l’autre action reste', () => {
+  const m = multi(build([call('declarer_heures', { date: '2026-10-05', lignes: LIGNES_LUNDI }), call('panier_repas', { valeur: true })], 'panier aujourd’hui, et lundi prochain 8h-12h 13h-17h'));
+  eq(m.items.some((i) => i.kind === 'heures'), false, 'pas de fiche d’heures');
+  eq(m.ignores.some((i) => i.name === 'declarer_heures' && /lendemain/.test(i.raison)), true, 'dit');
+});
+Deno.test('Lecteur local : une date dite hors période n’est plus rabattue en silence sur aujourd’hui', () => {
+  const r = handleLocally('lundi prochain de 8h à 12h', snap()) as { kind: string; answer?: string } | null;
+  if (r && r.kind === 'draft') throw new Error('une fiche à une date impossible ne doit pas exister');
+});
+
+// ── Un champ non dit reste vide ─────────────────────────────────────────────
+Deno.test('Travaux : une description que personne n’a dite (« Volet ») est vidée ; une description dite est gardée ; en turc (traduite) elle est gardée', () => {
+  const avec = (description: string, texte: string) => heures({ lignes: [{ chantier: 'nouveau', debut: '08:00', fin: '12:00' }], nouveau_chantier: { nom: 'Patrick Du Maine', ville: 'Paris', description } }, texte).nouveau_chantier?.description;
+  eq(avec('Volet', PATRICK), '', 'inventé → vide');
+  eq(avec('pose d’un store banne', ERGUN), 'pose d’un store banne', 'dit → gardé');
+  eq(avec('Volet roulant', 'Aujourd’hui de 8h à 12h, remplacement de volets roulants chez Patrick Du Maine à Paris'), 'Volet roulant', 'dit (pluriel) → gardé');
+  eq(avec('Pose de volets', 'Bugün 8’den 12’ye kadar Patrick Du Maine şantiyesinde panjur taktım, Paris'), 'Pose de volets', 'turc traduit → gardé');
 });

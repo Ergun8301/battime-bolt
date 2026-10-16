@@ -20,7 +20,7 @@ import { calendarForPrompt, cleanName, cleanSpoken, cleanTitle, dayPart, looksLi
 import { plannedState } from './day-hours.ts';
 import { DOC_CATEGORIES, LEAVE_KINDS, WORKER_NAV } from './registre/vocab.ts';
 import { WORKER_ATTACHMENT_ACTIONS as GENERE_WORKER_ATTACHMENT_ACTIONS, WORKER_REMOVAL_TYPES as GENERE_WORKER_REMOVAL_TYPES } from './outils-listes-salarie.ts';
-import { WORKER_TEXT_MAX } from './saisie-profil.ts';
+import { WORKER_TEXT_MAX, detecteTurc } from './saisie-profil.ts';
 import { hasWorkerTour, TOUR_LABEL, tourAction } from './worker-tours.ts';
 import { GUIDES_UI2 } from './guides-ui2.ts';
 import { blocAvantDemande, doitSauterLeCheminLocal, type MessageHistorique } from './assistant-history.ts';
@@ -195,6 +195,29 @@ export function placeOf(text: string): string {
   return `Intervention à ${place}`;
 }
 
+/** Un salarié déclare ses heures jusqu'à demain et 31 jours en arrière (même règle que checkDraft et le serveur de pointage). */
+export function dateDeclarable(date: string, today: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(date) && date <= addDays(today, 1) && date >= addDays(today, -31);
+}
+
+/**
+ * Réponse en texte (jamais une fiche inutilisable) quand la DATE CALCULÉE d'une déclaration d'heures est hors période.
+ * Décidé sur la donnée (la date), pas sur les mots de l'utilisateur. `demande` ne sert qu'à choisir la langue (français / turc).
+ */
+export function reponseHorsPeriode(date: string, today: string, demande = ''): string {
+  const tr = detecteTurc(demande);
+  const jour = new Date(`${date}T12:00:00Z`).toLocaleDateString(tr ? 'tr-TR' : 'fr-FR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' });
+  const futur = date > today;
+  if (tr) {
+    return futur
+      ? `${jour} için saat kaydedemem: saatler en geç ertesi gün bildirilir. İleriye dönük planlamayı büro yapar. Bugün veya dün için kaydetmemi isterseniz söyleyin.`
+      : `${jour} için saat kaydedemem: saatler en fazla 31 gün geriye dönük bildirilebilir. Gerekirse büroya başvurun. Bugün veya dün için kaydetmemi isterseniz söyleyin.`;
+  }
+  return futur
+    ? `Je ne peux pas noter des heures pour ${jour} : les heures se déclarent au plus tard le lendemain. Le planning à l’avance, c’est le bureau qui le fait. Si besoin, je peux les noter pour aujourd’hui ou hier.`
+    : `Je ne peux pas noter des heures pour ${jour} : les heures se déclarent jusqu’à 31 jours en arrière. Pour une date plus ancienne, voyez avec le bureau. Si besoin, je peux les noter pour aujourd’hui ou hier.`;
+}
+
 // ── Contrôles d'un brouillon (lecteur ET IA passent par ici) ────────────────
 export function checkDraft(date: string, lines: DraftLine[], snapshot: WorkerSnapshot): Draft {
   const errors: string[] = [];
@@ -253,7 +276,7 @@ export function parseHoursText(text: string, snapshot: WorkerSnapshot): Draft | 
   let date = snapshot.aujourdhui;
   if (/\bavant[- ]hier\b/.test(n)) date = addDays(date, -2);
   else if (/\bhier\b/.test(n)) date = addDays(date, -1);
-  else { const said = parseDateFr(text, snapshot.aujourdhui); if (said && said <= snapshot.aujourdhui) date = said; }
+  else { const said = parseDateFr(text, snapshot.aujourdhui); if (said && (said <= snapshot.aujourdhui || !dateDeclarable(said, snapshot.aujourdhui))) date = said; }
 
   const lines: DraftLine[] = [];
   const segments = n2.split(/\s*(?:,|;|\/|\n|\bpuis\b|\bensuite\b|\bet l'?apres[- ]?midi\b|\bet le soir\b|\bet\s+(?=(?:de\s+)?\d))\s*/).filter(Boolean);
@@ -321,6 +344,8 @@ export function answerSimpleQuestion(text: string, snapshot: WorkerSnapshot, opt
 /** Tout ce qui se règle sans IA. null → l'IA prend le relais. */
 export function handleLocally(text: string, snapshot: WorkerSnapshot, opts?: { sansHeures?: boolean }): WorkerReply | null {
   const draft = parseHoursText(text, snapshot);
+  // Date dite hors période : réponse en texte (jamais une fiche impossible à confirmer, jamais un repli silencieux sur aujourd'hui).
+  if (draft && !dateDeclarable(draft.date, snapshot.aujourdhui)) return { kind: 'answer', answer: reponseHorsPeriode(draft.date, snapshot.aujourdhui, text) };
   if (draft) return { kind: 'draft', draft, answer: draftSummary(draft) };
   const a = answerSimpleQuestion(text, snapshot, opts);
   return a ? { kind: 'answer', answer: a } : null;
@@ -1145,6 +1170,7 @@ export function fromWorkerCall(name: string, args: Record<string, unknown>, snap
   }
   if (name === 'declarer_heures') {
     const date = typeof args.date === 'string' ? (/^\d{4}-\d{2}-\d{2}$/.test(args.date) ? args.date : parseDateFr(args.date, snapshot.aujourdhui)) : '';
+    if (date && !dateDeclarable(date, snapshot.aujourdhui)) return { kind: 'answer', answer: reponseHorsPeriode(date, snapshot.aujourdhui, snapshot.demande) };
     return sanitizeWorkerAi({ kind: 'draft', date: date || snapshot.aujourdhui, lines: args.lignes }, snapshot);
   }
   if (name === 'planning_collegues') {
