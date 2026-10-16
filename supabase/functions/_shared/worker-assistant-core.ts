@@ -22,6 +22,8 @@ import { DOC_CATEGORIES, LEAVE_KINDS, WORKER_NAV } from './registre/vocab.ts';
 import { WORKER_ATTACHMENT_ACTIONS as GENERE_WORKER_ATTACHMENT_ACTIONS, WORKER_REMOVAL_TYPES as GENERE_WORKER_REMOVAL_TYPES } from './outils-listes-salarie.ts';
 import { WORKER_TEXT_MAX } from './saisie-profil.ts';
 import { hasWorkerTour, TOUR_LABEL, tourAction } from './worker-tours.ts';
+import { GUIDES_UI2 } from './guides-ui2.ts';
+import { WORKER_GUIDE_V2 } from './worker-tours-v2.ts';
 import { blocAvantDemande, doitSauterLeCheminLocal, type MessageHistorique } from './assistant-history.ts';
 export { looksLikeAction };
 
@@ -466,7 +468,7 @@ export function workerGuideLinks(g: WorkerGuideEntry): { label: string; action: 
 }
 
 /** Écrit à partir de app/poseur/page.tsx et components/poseur-*.tsx. */
-export const WORKER_GUIDE: WorkerGuideEntry[] = [
+const WORKER_GUIDE_UI1: WorkerGuideEntry[] = [
   { mots: ['signaler reserve', 'reserve', 'probleme chantier', 'malfacon'], id: 'reserve', titre: 'Signaler une réserve',
     etapes: ['Ouvrez le chantier du jour (« Mes heures ›»).', 'Statut du chantier : « Avec réserve ».', 'Un détail si vous voulez (facultatif), des photos via « Documents », puis « OK ».'], lien: 'journee' },
   { mots: ['ajouter photo', 'photo', 'document', 'fichier'], id: 'photo-document', titre: 'Ajouter une photo ou un document',
@@ -522,6 +524,14 @@ export const WORKER_GUIDE: WorkerGuideEntry[] = [
   { mots: ['assistant', 'dicter', 'micro', 'comment tu marches'], id: 'assistant', titre: 'Se servir de l’Assistant',
     etapes: ['Bouton ✨ de la barre du bas.', '🎤 pour dicter (appui = démarre, appui = arrête), 📎 pour une photo.', 'C’est fait tout de suite, avec « Annuler » ; pour effacer, vous confirmez d’abord.'], lien: 'ask:Combien d’heures cette semaine ?' },
 ];
+
+/**
+ * Les fiches servies : celles de la v1 tant que GUIDES_UI2 (worker-tours-v2.ts) vaut false — le MÊME tableau, donc la même consigne octet pour octet.
+ * À la bascule (v2 pour tous), le titre et les étapes décrivent la nouvelle interface ; `mots`, `id` et `lien` ne changent pas.
+ */
+export const WORKER_GUIDE: WorkerGuideEntry[] = GUIDES_UI2
+  ? WORKER_GUIDE_UI1.map((g) => { const v = WORKER_GUIDE_V2.find((x) => x.id === g.id); return v ? { ...g, etapes: v.etapes } : g; })
+  : WORKER_GUIDE_UI1;
 
 export function findWorkerGuide(text: string): WorkerGuideEntry | null {
   const q = norm(text);

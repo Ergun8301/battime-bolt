@@ -38,7 +38,7 @@
     "test:assistant-historique": "node scripts/tests/assistant-historique.mjs out docs/captures-assistant-historique",
     "test:collegues": "bash supabase/tests/run-rls.sh supabase/tests/lot7_collegues_documents.sql",
     "test:assistant-aide": "npx -y deno@2 test --allow-read supabase/functions/_shared/assistant-aide.test.ts",
-    "test:guides": "npx -y deno@2 test --allow-read supabase/functions/_shared/worker-tours.test.ts",
+    "test:guides": "npx -y deno@2 test --allow-read supabase/functions/_shared/worker-tours.test.ts supabase/functions/_shared/worker-tours-v2.test.ts",
     "test:guides-ecrans": "node scripts/tests/guides-lot7.mjs out docs/captures-lot7b",
     "test:guides-bureau": "npx -y deno@2 test --allow-env --allow-read supabase/functions/_shared/admin-tours.test.ts",
     "test:guides-bureau-ecrans": "node scripts/tests/guides-bureau-lot7.mjs out docs/captures-lot7-fin",

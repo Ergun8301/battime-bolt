@@ -13,6 +13,8 @@
 // idée), « Touchez » jamais « cliquez », le libellé exact du bouton entre « ».
 // Si le geste dépend d'un état (« S'il y a un pointage en cours… »), le dire.
 
+import { GUIDES_UI2 } from './guides-ui2.ts';
+
 /**
  * L'écran à préparer avant l'étape. Seulement de la NAVIGATION : jamais
  * 'notifications', 'photo' ni 'borne' (gestes qui agissent : le salarié les
@@ -39,6 +41,7 @@ export const tourIdOf = (action: string): string | null => (action.startsWith(PR
 const MENU: TourStep = { cible: 'menu.compte', texte: 'Touchez votre nom, en haut à droite.' };
 const CHANTIER = 'Dans « Chantiers du jour », touchez le chantier concerné.';
 
+// Les guides de la v1 (en production). Les textes du nouveau design, éteints, sont dans worker-tours-v2.ts (interrupteur GUIDES_UI2, guides-ui2.ts).
 export const WORKER_TOURS: WorkerTour[] = [
   { id: 'reserve', etapes: [
     { ecran: 'journee', cible: 'journee.chantier', texte: CHANTIER },
@@ -158,5 +161,12 @@ export const WORKER_TOURS: WorkerTour[] = [
   ] },
 ];
 
-export const findWorkerTour = (id: string): WorkerTour | null => WORKER_TOURS.find((t) => t.id === id) ?? null;
+/**
+ * Les guides SERVIS. Tant que GUIDES_UI2 vaut false : WORKER_TOURS, le même tableau. À la bascule (true) : ceux de la v2,
+ * chargés EN DIFFÉRÉ (un import() : ils ne pèsent pas dans le premier chargement de /poseur ni de /admin, que le budget de poids surveille).
+ */
+let servis: WorkerTour[] = WORKER_TOURS;
+if (GUIDES_UI2) import('./worker-tours-v2.ts').then((m) => { servis = m.WORKER_TOURS_V2; }, () => { /* hors ligne : les guides d'avant */ });
+
+export const findWorkerTour = (id: string): WorkerTour | null => servis.find((t) => t.id === id) ?? null;
 export const hasWorkerTour = (id: string): boolean => findWorkerTour(id) !== null;
