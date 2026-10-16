@@ -326,7 +326,7 @@ r = await photographierImplementation('E04', 390, 844, semaineE04);
 verifie((await r.p.locator('.bt-total').evaluate((e) => getComputedStyle(e).backgroundColor)) !== 'rgb(21, 18, 15)', 'E04 : sans pointage, le Total est la carte crème compacte (jamais un bloc noir)');
 verifie((await r.p.locator('.bt-total').evaluate((e) => e.getBoundingClientRect().height)) < 160, 'E04 : la carte Total (avec la ligne « prévues ») fait moins de 160 px de haut');
 verifie((await r.p.locator('.bt-lt').count()) === 0, 'E04 : pas de carte de pointage');
-verifie((await r.p.locator('.dz-onglet-badge').textContent()) === '2', 'E04 : la pastille rouge de « Plus » est là (2 rubriques à voir : réserves, formations), comme sur E05');
+verifie((await r.p.locator('.dz-avatar-badge').textContent()) === '2' && (await r.p.locator('.dz-onglet-badge').count()) === 0, 'E04 : la pastille rouge est sur l’avatar (2 rubriques à voir : réserves, formations) ; plus sur la barre du bas (ADAPTATION : « Plus » n’y est plus)');
 verifie((await r.p.locator('.dz-aide').count()) === 0, 'E04 : pas de ligne d’aide quand elle n’a rien à dire');
 m = await mesures(r.p);
 verifie(m.premierVisible, `E04 : le premier chantier du jour est visible sans défiler (haut ${m.premierHaut} px, barre du bas ${m.barreHaut} px)`);
@@ -376,13 +376,13 @@ await r.ctx.close();
 r = await photographierImplementation('E05-plus', 390, 844, semaineE05);
 verifie(!(await r.p.locator('.dz-rappels').first().isVisible()), 'pointage en cours : la ligne des deux pastilles (réserves, formations) est masquée');
 verifie(((await r.p.locator('.dz-aide').boundingBox())?.height ?? 99) < 22, 'pointage en cours : « Le pointage en cours ne part pas » tient sur UNE ligne (390 px)');
-await r.p.locator('[data-testid=dz-onglet-plus]').click(); await r.p.waitForSelector('[data-testid=menu-reserves]', { timeout: 10000 });
+await r.p.locator('button[aria-label^="Mon compte"]').click(); await r.p.waitForSelector('[data-testid=menu-reserves]', { timeout: 10000 });
 verifie(((await r.p.locator('[data-testid=menu-reserves]').textContent()) || '').includes('Réserves à lever') && (await r.p.locator('[data-testid=menu-reserves-compteur]').textContent()) === '1', 'menu Plus : « Réserves à lever » avec son compteur (1), pendant un pointage');
 verifie(((await r.p.locator('[data-testid=menu-formations]').textContent()) || '').includes('Formations à voir') && (await r.p.locator('[data-testid=menu-formations-badge]').textContent()) === '2', 'menu Plus : « Formations à voir » avec son compteur (2), pendant un pointage');
 await r.p.locator('[data-testid=menu-reserves]').click(); await r.p.waitForSelector('[data-testid=reserves-dialog]', { timeout: 10000 });
 verifie((await r.p.locator('[data-testid=wr-item]').count()) === 1, 'menu Plus → « Réserves à lever » ouvre la liste existante des réserves (1 réserve, bouton « Lever »)');
 await r.ctx.close();
-r = await photographierImplementation('E05-formations', 390, 844, semaineE05, async (p) => { await p.locator('[data-testid=dz-onglet-plus]').click(); await p.waitForSelector('[data-testid=menu-formations]', { timeout: 10000 }); await p.locator('[data-testid=menu-formations]').click(); await p.waitForTimeout(1500); });
+r = await photographierImplementation('E05-formations', 390, 844, semaineE05, async (p) => { await p.locator('button[aria-label^="Mon compte"]').click(); await p.waitForSelector('[data-testid=menu-formations]', { timeout: 10000 }); await p.locator('[data-testid=menu-formations]').click(); await p.waitForTimeout(1500); });
 verifie(((await r.p.locator('.bt-phscroll').textContent()) || '').includes('Port du harnais'), 'menu Plus → « Formations à voir » ouvre la liste existante des formations');
 await r.ctx.close();
 r = await photographierImplementation('E04-rappels', 390, 844, semaineE04);
@@ -767,7 +767,7 @@ const USER0 = D.users[0];
 const COLLEGUES = [['u-alex', 'Alex', 'Martin'], ['u-bruno', 'Bruno', 'Petit'], ['u-chloe', 'Chloé', 'Durand']].map(([id, f, l]) => ({ id, company_id: CO, first_name: f, last_name: l, role: 'worker', email: `${id}@exemple.fr`, is_active: true, created_at: '2026-01-01' }));
 const reinit = () => { D.users = [USER0]; D.leave_requests = []; D.documents = []; };
 const apresReinit = (f) => () => { reinit(); f(); };
-const ouvrirMenuPlus = async (p) => { await p.locator('[data-testid=dz-onglet-plus]').click(); await p.waitForSelector('[data-testid=dz-plus]', { timeout: 10000 }); await p.waitForTimeout(400); };
+const ouvrirMenuPlus = async (p) => { await p.locator('button[aria-label^="Mon compte"]').click(); await p.waitForSelector('[data-testid=dz-plus]', { timeout: 10000 }); await p.waitForTimeout(400); };
 const viaPlus = (nom) => async (p) => { await ouvrirMenuPlus(p); await p.getByRole('menuitem', { name: nom }).click(); await p.waitForTimeout(1200); };
 const chef = () => { semaineE05(); reinit(); D.users = [{ ...USER0, role: 'lead' }, ...COLLEGUES]; };
 const equipe = () => {
@@ -835,23 +835,26 @@ await ecranVue('38-E25-historique-390x844', 'Historique', 'E25 (cartes) · Histo
   verifie(t.includes('Envoye') && t.includes('Brouillon') && t.includes('Retirée') && t.includes('Panier') && /\d+ paniers?/.test(t), 'Historique : « Envoye », « Brouillon », « Retirée », « Panier » et les comptes de paniers sont ceux d’avant');
 }, { planche: 'E25' });
 
-// ── E26 · « Plus » : le menu du compte en page ──────────────────────────────────────────────────────────────────────────
-const ATTENDU_MENU = ['Ma journée', 'Ma semaine', 'Mon mois', 'Historique', 'Réserves à lever', 'Formations à voir', 'Mes congés', 'Mon équipe', 'Changer ma photo', 'Assistant BEMEXO', 'Informations', 'Déconnexion'];
+// ── E26 · « Mon compte » (ex-« Plus ») : le menu du compte en page, ouvert par l'avatar seulement ; Journée / Semaine / Mois et Assistant n'y sont plus (doublons de la barre du bas et du ✦ de l'en-tête) ──
+// (avant :) E26 · « Plus » : le menu du compte en page ──────────────────────────────────────────────────────────────────────────
+const ATTENDU_MENU = ['Historique', 'Réserves à lever', 'Formations à voir', 'Mes congés', 'Mon équipe', 'Changer ma photo', 'Informations', 'Déconnexion'];
+const RETIRES_MENU = ['Ma journée', 'Ma semaine', 'Mon mois', 'Assistant BEMEXO'];
 for (const [fichier, w, h] of [['39-E26-plus-390x844', 390, 844], ['40-E26-plus-360x640', 360, 640]]) {
   await ecranVue(fichier, 'E26', `E26 · Plus (menu du compte) · ${w} × ${h}`, chef, ouvrirMenuPlus, async (p) => {
     const noms = (await p.locator('[role=menu] [role=menuitem]').allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim());
-    verifie(ATTENDU_MENU.every((n) => noms.some((x) => x.startsWith(n))), `E26 ${w}×${h} : toutes les entrées de l’ancien menu sont là (${noms.length} lignes : ${noms.join(' | ')})`);
+    verifie(ATTENDU_MENU.every((n) => noms.some((x) => x.startsWith(n))), `E26 ${w}×${h} : toutes les entrées utiles du menu sont là (${noms.length} lignes : ${noms.join(' | ')})`);
+    verifie(RETIRES_MENU.every((n) => !noms.some((x) => x.startsWith(n))), `E26 ${w}×${h} : plus de doublon avec la barre du bas ni avec le ✦ (retirés : ${RETIRES_MENU.join(', ')})`);
     verifie((await p.locator('[data-testid=dz-plus][role=menu]').count()) === 1 && (await p.locator('[role=menu] [role=menuitem]').count()) === noms.length, 'E26 : role=menu et role=menuitem gardés');
-    verifie(((await p.locator('[data-testid=dz-kicker-plus]').textContent()) || '') === 'CHEF D’ÉQUIPE' && ((await p.locator('.bt-phdr-date').first().textContent()) || '') === 'Sam Gérard', 'E26 : petit mot (rôle) et nom du salarié dans l’en-tête, sans bouton de retour (nom de l’entreprise : absent, voir le rapport)');
+    verifie(((await p.locator('[data-testid=dz-kicker-plus]').textContent()) || '') === 'SAM · CHEF D’ÉQUIPE' && ((await p.locator('.bt-phdr-date').first().textContent()) || '') === 'Mon compte', 'E26 : petit mot jaune (prénom · rôle) et titre « Mon compte » dans l’en-tête, sans bouton de retour (ADAPTATION demandée par Ergun : le titre était le nom)');
     verifie((await p.locator('.bt-phdr-back').count()) === 0 && (await p.locator('.dz-assistant').count()) === 1, 'E26 : ✦ et avatar dans l’en-tête, pas de flèche de retour');
     verifie((await p.locator('[data-testid=menu-reserves-compteur]').textContent()) === '1' && (await p.locator('[data-testid=menu-formations-badge]').textContent()) === '2', 'E26 : compteurs « Réserves à lever » 1 et « Formations à voir » 2');
-    verifie(['menu.historique', 'menu.conges', 'menu.photo', 'menu.infos', 'menu.semaine', 'menu.mois', 'menu.journee'].every((g) => p.locator(`[data-guide="${g}"]`).count().then((n) => n === 1)) || true, 'E26 : repères de guide gardés');
-    const guides = await Promise.all(['menu.historique', 'menu.conges', 'menu.photo', 'menu.infos', 'menu.semaine', 'menu.mois', 'menu.journee', 'menu.compte'].map((g) => p.locator(`[data-guide="${g}"]`).count()));
-    verifie(guides.every((n) => n === 1), `E26 : les 8 repères de guide du menu (data-guide) existent une fois (${guides.join(',')})`);
-    verifie(await p.evaluate(() => document.querySelector('[data-testid=dz-onglet-plus]').getAttribute('aria-current') === 'page'), 'E26 : « Plus » est le bouton actif de la barre du bas');
+    verifie(['menu.historique', 'menu.conges', 'menu.photo', 'menu.infos'].every((g) => p.locator(`[data-guide="${g}"]`).count().then((n) => n === 1)) || true, 'E26 : repères de guide gardés');
+    const guides = await Promise.all(['menu.historique', 'menu.conges', 'menu.photo', 'menu.infos', 'menu.compte'].map((g) => p.locator(`[data-guide="${g}"]`).count()));
+    verifie(guides.every((n) => n === 1), `E26 : les 5 repères de guide du menu (data-guide) existent une fois (${guides.join(',')})`);
+    verifie(await p.evaluate(() => [...document.querySelectorAll('.dz-onglet')].length === 3 && document.querySelectorAll('.dz-onglet[aria-current=page]').length === 0), 'E26 : la barre du bas n’a que 3 onglets (Journée · Semaine · Mois) et aucun n’est allumé quand « Mon compte » est ouvert (ADAPTATION : « Plus » n’y est plus)');
     // clavier : flèche bas passe à la ligne suivante
     await p.locator('[role=menuitem]').first().focus(); await p.keyboard.press('ArrowDown');
-    verifie(await p.evaluate(() => document.activeElement?.textContent?.startsWith('Ma semaine')), 'E26 : la flèche bas passe à la ligne suivante (comme l’ancien menu)');
+    verifie(await p.evaluate(() => document.activeElement?.textContent?.startsWith('Réserves')), 'E26 : la flèche bas passe à la ligne suivante (comme l’ancien menu)');
     const rg = await anneau(p, '.dz-ligne-menu', 4);
     verifie(!!rg && rg !== 'none', `E26 : focus visible sur une ligne (${rg})`);
   }, { w, h, planche: 'E26' });
@@ -866,8 +869,8 @@ for (const [fichier, w, h] of [['39-E26-plus-390x844', 390, 844], ['40-E26-plus-
   verifie((await p.locator('.bt-day-scroll [data-testid=team-day]').count()) === 0, 'Mon équipe n’est plus dans « Ma journée » (elle a sa page)');
   await p.locator('.bt-phdr-back').click(); await p.waitForSelector('.bt-day-scroll', { timeout: 10000 });
   verifie((await p.locator('.bt-day-scroll [data-testid=team-day]').count()) === 0, 'Ma journée du chef : plus de feuille d’équipe en haut');
-  await p.locator('[aria-label="Mon compte et menu"]').click(); await p.waitForSelector('[data-testid=dz-plus]');
-  await p.locator('[aria-label="Mon compte et menu"]').click(); await p.waitForSelector('.bt-day-scroll', { timeout: 10000 });
+  await p.locator('button[aria-label^="Mon compte"]').click(); await p.waitForSelector('[data-testid=dz-plus]');
+  await p.locator('button[aria-label^="Mon compte"]').click(); await p.waitForSelector('.bt-day-scroll', { timeout: 10000 });
   verifie(true, 'l’avatar ouvre « Plus » puis ramène à l’écran d’où l’on vient (comme l’ancien menu qui s’ouvrait et se refermait)');
   await x.ctx.close();
   // « Plus » est POSÉE sur l'écran (qui reste monté dessous, inerte) : rien n'est relu, ni clavier ni lecteur d'écran n'atteignent l'écran du dessous, Échap la referme
@@ -884,7 +887,7 @@ for (const [fichier, w, h] of [['39-E26-plus-390x844', 390, 844], ['40-E26-plus-
     verifie((await q.locator('[data-testid=dz-plus]').count()) === 0 && (await q.locator('.bt-day-scroll').count()) === 1, 'E26 : Échap referme « Plus » et ramène à la journée');
     await ouvrirMenuPlus(q); await q.locator('[data-testid=dz-onglet-day]').click(); await q.waitForTimeout(400);
     verifie((await q.locator('[data-testid=dz-plus]').count()) === 0, 'E26 : le bouton « Journée » de la barre referme « Plus »');
-    await ouvrirMenuPlus(q); await q.locator('[aria-label="Mon compte et menu"]').click(); await q.waitForTimeout(400);
+    await ouvrirMenuPlus(q); await q.locator('button[aria-label^="Mon compte"]').click(); await q.waitForTimeout(400);
     verifie((await q.locator('[data-testid=dz-plus]').count()) === 0 && lourdes === avant, `E26 : ouvrir puis refermer « Plus » (3 fois) ne recharge pas la journée (chantiers, lignes, planning : ${lourdes - avant} lecture(s) ; avec la première version, une page à la place de l’écran, chaque ouverture relisait toute la journée)`);
   }
   await x.ctx.close();

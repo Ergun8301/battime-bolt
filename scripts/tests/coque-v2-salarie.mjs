@@ -127,7 +127,7 @@ verifie((await cls('2026-10-15')).includes('dz-jour-prevu'), 'B) jeudi 15 : pré
 verifie((await cls('2026-10-16')).includes('dz-jour-absence') && (await p.locator('[data-testid="dz-jour-2026-10-16"] .dz-jour-p').textContent()) === 'C', 'B) vendredi 16 : congé (lettre C)');
 verifie((await cls('2026-10-17')).includes('dz-jour-vide'), 'B) samedi 17 : vide');
 verifie((await p.locator('[data-testid=dz-kicker]').textContent()) === 'AUJOURD’HUI', 'B) petit mot : AUJOURD’HUI');
-verifie((await p.locator('.dz-onglet').allTextContents()).join('|') === 'Journée|Semaine|Mois|Plus', 'B) barre du bas : Journée · Semaine · Mois · Plus');
+verifie((await p.locator('.dz-onglet').allTextContents()).join('|') === 'Journée|Semaine|Mois', 'B) barre du bas : Journée · Semaine · Mois (plus de « Plus » : le menu s’ouvre par l’avatar seul, octobre 2026)');
 verifie((await p.locator('.dz-onglet.is-on').textContent()) === 'Journée', 'B) « Journée » est l’onglet actif');
 // cibles tactiles de 44 px au moins
 const petites = await p.evaluate(() => [...document.querySelectorAll('.dz-jour, .dz-onglet')].filter((e) => { const r = e.getBoundingClientRect(); return r.width < 44 || r.height < 44; }).length);
@@ -136,7 +136,7 @@ verifie(petites === 0, 'B) toutes les cibles de la bande et de la barre font 44 
 verifie(await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'B) aucun défilement horizontal à 390 px');
 await shot('b-coque-v2-journee');
 
-// C · Navigation : un jour de la bande, puis l'onglet Semaine, puis « Plus » (le menu du compte)
+// C · Navigation : un jour de la bande, puis l'onglet Semaine, puis l'avatar (le menu « Mon compte »)
 await p.locator('[data-testid="dz-jour-2026-10-13"]').click();
 await p.waitForSelector('.bt-phdr-back', { timeout: 10000 });
 verifie((await p.locator('.bt-phdr-date').first().textContent())?.toLowerCase().includes('13 octobre'), 'C) toucher mardi 13 ouvre ce jour');
@@ -146,9 +146,9 @@ await p.locator('[data-testid=dz-onglet-week]').click();
 await p.waitForTimeout(1200);
 verifie((await p.locator('.dz-onglet.is-on').textContent()) === 'Semaine', 'C) l’onglet Semaine devient actif');
 await shot('c-semaine');
-await p.locator('[data-testid=dz-onglet-plus]').click();
+await p.locator('button[aria-label^="Mon compte"]').click();
 await p.waitForTimeout(600);
-verifie((await p.getByText('Mes congés').count()) > 0, 'C) « Plus » ouvre le menu du compte');
+verifie((await p.getByText('Mes congés').count()) > 0, 'C) l’avatar ouvre le menu « Mon compte »');
 await shot('c-plus-menu');
 await p.keyboard.press('Escape');
 await p.locator('[data-testid=dz-onglet-day]').click();
