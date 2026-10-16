@@ -38,6 +38,36 @@ export const ADAPTATIONS = {
   ],
   'fenetres-lot11': [],
   'reserves-lot11': [],
+  // Étape 6 : les scripts des vues touchées (Plus, Mois, Historique, congés, formations, équipe, /pointer)
+  'salarie-lot14': [
+    ["const open = async () => { await p.goto(`http://localhost:${PORT}/poseur?ui=2`); await p.waitForSelector('.bt-total', { timeout: 15000 }); await p.waitForTimeout(900); };",
+      "const open = async () => { await p.goto(`http://localhost:${PORT}/poseur?ui=2`); await p.waitForSelector('.bt-total', { timeout: 15000 }); await p.waitForTimeout(900); if (D.users[0].role === 'lead') { await p.locator('[data-testid=dz-onglet-plus]').click(); await p.getByRole('menuitem', { name: 'Mon équipe' }).click(); await p.waitForSelector('[data-testid=team-day]', { timeout: 15000 }); await p.waitForTimeout(700); } };",
+      'E26 / E27 : « Mon équipe » n’est plus une carte en haut de « Ma journée » : c’est une page, rangée dans « Plus » (entrée « Mon équipe », étiquette « chef », chef d’équipe seulement). La copie y va par « Plus » → « Mon équipe » ; tout le reste (7 jours, salariés, Corriger, Envoyer, Ajouter des heures, OK) est le même composant, mêmes repères'],
+  ],
+  'traces-lot3': [
+    ['linkBox.height < 30, `lien discret, pas un gros bouton (', 'linkBox.height >= 43.5 && linkBox.height < 60, `lien discret, une ligne de 44 px (cible tactile), pas un gros bouton jaune (',
+      'E26 : « Interventions supprimées » reste un lien discret (contour fin, aucune couleur d’action) mais fait 44 px de haut (cible tactile ≥ 44 px, règle du dossier) au lieu de moins de 30 px'],
+  ],
+  'qr-fixe-lot12': [],
+  'salarie-lot9': [
+    ['lt2.toLowerCase().includes(`tu es pointé depuis ${parisHHmm(D.active_sessions[0].started_at)}`)', 'lt2.toLowerCase().includes(`pointage en cours · depuis ${parisHHmm(D.active_sessions[0].started_at)}`)',
+      'E05 : la carte de pointage dit « POINTAGE EN COURS · DEPUIS hh:mm » à la place de « Tu es pointé depuis » (même adaptation que chantier-termine-lot23, G3) ; le chantier y est toujours'],
+    ["!lt2.includes('Annuler') && !lt2.includes('POINTAGE EN COURS')", "!lt2.includes('Annuler')",
+      'E05 : le petit mot « POINTAGE EN COURS » est le titre de la carte de la planche ; il n’y a toujours ni gros bloc d’avant ni bouton « Annuler »'],
+    ['ltBox.height <= 130', 'ltBox.height <= 240',
+      'E05 : la carte de pointage est la carte noire à grand chrono de la planche (≈ 190 px) au lieu de la petite carte compacte d’avant ; elle reste une seule carte, sans bloc de plus'],
+    ["(await panier.innerText()).includes('Panier ✓')", "/^pris ✓$/i.test((await panier.locator('.bt-stat-n').innerText()).trim())",
+      'E05 : la tuile Panier de la planche dit « Pris ✓ » / « Non pris » (aria-pressed inchangé) à la place de « Panier ✓ »'],
+  ],
+  'salarie-lot10': [
+    ["m.zone === 'ailleurs' && !(m.type === 'childList'", "m.zone === 'ailleurs' && !m.target.includes('dz-frise') && m.attr !== 'data-pointage' && !(m.type === 'childList'",
+      'E05 : la mini-frise « Ma journée » (décor lu avec l’horloge) redessine son segment « en cours » quand le pointage apparaît, et la journée pose `data-pointage` sur sa zone de défilement pour masquer la ligne des deux pastilles (réserves, formations : elles restent dans « Plus ») : c’est leur rôle ; tout le reste ne bouge toujours pas'],
+  ],
+  'site-rapide-lot5': [],
+  'requetes-lot29': [
+    ["e.name === 'planning' && e.select === 'work_date,absence_type'; // fetchPending (salarié)", "e.name === 'planning' && (e.select === 'work_date,absence_type' || e.select === 'work_date,absence_type,estimated_start,estimated_end'); // fetchPending (salarié)",
+      'E05 : la même lecture « journées à envoyer » demande en plus les heures prévues (début et fin du planning, pour les barres des 7 jours) DANS la même requête : aucune requête de plus (le nombre au chargement reste 18, le contrôle 1 ne change pas) ; seul le repère de colonnes de la copie suit'],
+  ],
   'formations-lot6': [
     ["=== '2 2 formations à voir ›'", "=== '2 formations à voir ›'", 'la pastille chiffrée du bandeau n’est plus dite (puce de rappel de la planche, E05) ; le nombre reste dans le texte'],
     ["=== '1 1 formation à voir ›'", "=== '1 formation à voir ›'", 'idem, au singulier'],
@@ -46,7 +76,8 @@ export const ADAPTATIONS = {
   ],
 };
 
-const g = (s) => s.replace(/\/poseur(?=`)/g, '/poseur?ui=2').replace(/\/poseur\?a=/g, '/poseur?ui=2&a=');
+// /pointer (étape 7) : le même drapeau, devant le fragment (#f=…) ou les paramètres (?k=…), SEULEMENT dans une navigation (`goto`) : l'adresse du QR que le bureau affiche, elle, ne change pas
+const g = (s) => s.replace(/\/poseur(?=`)/g, '/poseur?ui=2').replace(/\/poseur\?a=/g, '/poseur?ui=2&a=').replace(/(goto\(`[^`]*?)\/pointer#f=/g, '$1/pointer?ui=2#f=').replace(/(goto\(`[^`]*?)\/pointer\?k=/g, '$1/pointer?ui=2&k=');
 
 const noms = process.argv.slice(2).length ? process.argv.slice(2) : Object.keys(ADAPTATIONS);
 for (const nom of noms) {

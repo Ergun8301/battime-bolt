@@ -30,8 +30,8 @@
   --dz-titre-section: #755800;     /* étiquettes « CHANTIERS DU JOUR » (était #8A6A00, 4,35:1) → 5,7:1 */
 
   /* --- focus : anneau double, visible sur clair ET sur noir --- */
-  /* --- couches (contrat z-index, de bas en haut) : contenu 0 · barre du bas 5 · pastille de la barre 6 · anciennes feuilles du jour 8-9 · en-tête 30 · retour de l'en-tête 31 · éditeur plein écran 40 · fenêtres Radix 50 · informations 95 --- */
-  --dz-z-barre: 5; --dz-z-pastille: 6; --dz-z-entete: 30; --dz-z-retour: 31; --dz-z-fenetre: 50;
+  /* --- couches (contrat z-index, de bas en haut) : contenu 0 · barre du bas 5 · pastille de la barre 6 · page « Plus » 7 · barre Journée · Semaine · Mois · Plus 8 · anciennes feuilles du jour 8-9 · en-tête 30 · retour de l'en-tête 31 · éditeur plein écran 40 · fenêtres Radix 50 · informations 95 --- */
+  --dz-z-barre: 5; --dz-z-pastille: 6; --dz-z-plus: 7; --dz-z-onglets: 8; --dz-z-entete: 30; --dz-z-retour: 31; --dz-z-fenetre: 50;
 
   --dz-focus: 0 0 0 2px #FFFDF8, 0 0 0 4px #15120F;
 

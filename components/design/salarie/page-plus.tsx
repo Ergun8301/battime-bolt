@@ -39,12 +39,12 @@ export function PagePlus({ heures, compte, onDeconnexion }: { heures: EntreePlus
     lignes[j].focus();
   };
   const ligne = (x: EntreePlus): ReactNode => (
-    <button key={x.id} type="button" role="menuitem" className="dz-ligne-menu" data-guide={x.guide} data-testid={x.testid}
+    <button key={x.id} type="button" role="menuitem" className="dz-ligne-menu" data-guide={x.guide} data-testid={x.testid} data-nav={x.surPlace || x.occupe ? undefined : ''}
       aria-disabled={x.inactif || undefined} onClick={() => { if (!x.inactif) x.onSelect(); }}>
       <span className="dz-ligne-menu__texte">{x.label}</span>
       {x.compteur ? <span className="dz-ligne-menu__compteur" data-testid={x.compteurTestid}>{x.compteur}</span> : null}
       {x.etiquette ? <span className="dz-ligne-menu__etiquette">{x.etiquette}</span> : null}
-      {x.occupe ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden /> : x.surPlace ? null : <span className="dz-ligne-menu__chevron" aria-hidden="true">›</span>}
+      {x.occupe ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden /> : null}
     </button>
   );
   return (

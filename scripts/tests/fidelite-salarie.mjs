@@ -202,6 +202,7 @@ const match = (rows, sp) => {
 let delaiEcriture = 0; // ms : retarde les écritures simulées (pour voir « Envoi en cours… »)
 // Étapes 6 et 7 : la fonction Edge `kiosk` (page /pointer) et le stockage des documents sont simulés par l'écran qui en a besoin.
 let kioskReponse = (r) => r.fulfill({ json: {} });
+let VIDEO = null; // une vraie petite vidéo WebM (lecteur des formations), fabriquée par le navigateur au premier besoin
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==', 'base64');
 async function contexte(largeur, hauteur, { sansSession = false } = {}) {
   const ctx = await browser.newContext({ viewport: { width: largeur, height: hauteur }, deviceScaleFactor: 1, isMobile: true, hasTouch: true, locale: 'fr-FR', timezoneId: 'Europe/Paris', reducedMotion: 'reduce' });
@@ -214,6 +215,7 @@ async function contexte(largeur, hauteur, { sansSession = false } = {}) {
     if (u.pathname.startsWith('/functions/v1/kiosk')) return kioskReponse(r);
     if (u.pathname.startsWith('/functions/v1/')) return r.fulfill({ json: {} });
     if (u.pathname === '/storage/v1/object/sign/chantier-docs' && method === 'POST') { let b = {}; try { b = req.postDataJSON() || {}; } catch { /* corps vide */ } return r.fulfill({ json: (b.paths || []).map((x) => ({ path: x, signedURL: `/object/sign/chantier-docs/${x}?token=t`, error: null })) }); }
+    if (u.pathname.startsWith('/storage/v1/object/sign/formations')) return method === 'POST' ? r.fulfill({ json: { signedURL: '/object/sign/formations/v.webm?token=t' } }) : r.fulfill({ status: 200, contentType: 'video/webm', body: VIDEO || PNG });
     if (u.pathname.startsWith('/storage/v1/')) return r.fulfill({ status: 200, contentType: 'image/png', body: PNG });
     if (u.pathname === '/rest/v1/rpc/my_trainings') return r.fulfill({ json: trainings });
     if (u.pathname.startsWith('/rest/v1/rpc/')) return r.fulfill({ json: [] });
@@ -782,7 +784,7 @@ const demandes = () => { semaineE05(); reinit(); D.leave_requests = [
   { id: 'l2', company_id: CO, user_id: ME, type: 'maladie', start_date: '2026-09-02', end_date: '2026-09-04', status: 'approved', created_at: '2026-09-01T10:00:00Z' },
   { id: 'l3', company_id: CO, user_id: ME, type: 'conge', start_date: '2026-08-02', end_date: '2026-08-04', status: 'rejected', decision_note: 'Période chargée', created_at: '2026-07-01T10:00:00Z' }]; };
 const historique = () => { semaineE05(); reinit(); D.time_entries.push(ligne('h1', '2026-10-06', W1, '08:00', '16:00', { status: 'submitted', submitted_at: '2026-10-06T16:05:00Z', meal_allowance: true }), ligne('h2', '2026-10-07', W2, '08:00', '12:00', { status: 'cancelled' })); };
-const formations = () => { semaineE05(); reinit(); trainings = [formation('t1', 'Port du harnais'), { ...formation('t2', 'Gestes et postures'), seen_at: '2026-10-13T09:00:00Z' }, { ...formation('t3', 'Pose du garde-corps'), kind: 'upload', video_url: null, video_path: 'c/t3.webm', video_duration: 95, video_size: 3500000 }]; };
+const formations = () => { semaineE05(); reinit(); trainings = [formation('t1', 'Port du harnais'), { ...formation('t2', 'Gestes et postures'), seen_at: '2026-10-13T09:00:00Z' }, { ...formation('t3', 'Pose du garde-corps'), kind: 'upload', video_url: null, video_path: `${CO}/0f1e2d3c-4b5a-4968-8776-a5b4c3d2e001`, video_duration: 95, video_size: 3500000 }]; };
 const docsFixture = () => {
   semaineE05(); reinit();
   const doc = (id, label, mime, extra = {}) => ({ id, company_id: CO, worksite_id: 'w1', label, file_path: `c/w1/${id}`, file_name: label, mime_type: mime, size_bytes: 123456, created_at: '2026-10-14T08:00:00Z', uploaded_by: ME, work_date: today, time_entry_id: null, category: null, uploader: { first_name: 'Sam', last_name: 'Gérard' }, ...extra });
@@ -823,7 +825,7 @@ await ecranVue('37-E25-mois-390x844', 'Mois', 'E25 (Semaine, même carte et mêm
   verifie(txt.includes('brouillon') && txt.includes('À déclarer') && txt.includes('Congé') && txt.includes('7h30'), 'Mois : « brouillon », « À déclarer », « Congé » et 7h30 sont affichés comme avant');
   await p.locator('.dz-mois .dz-sem-jour').nth(1).click(); await p.waitForSelector('.bt-phdr-back', { timeout: 10000 });
   verifie(((await p.locator('.bt-phdr-date').first().textContent()) || '').toLowerCase().includes('13 octobre'), 'Mois : toucher un jour ouvre cette journée');
-});
+}, { planche: 'E25' });
 
 // ── Historique ──────────────────────────────────────────────────────────────────────────────────────────────────────────
 await ecranVue('38-E25-historique-390x844', 'Historique', 'E25 (cartes) · Historique · 390 × 844', historique, viaPlus('Historique'), async (p) => {
@@ -831,7 +833,7 @@ await ecranVue('38-E25-historique-390x844', 'Historique', 'E25 (cartes) · Histo
   verifie(((await p.locator('.dz-histo-tete button').textContent()) || '').includes('PDF') && (await p.locator('.dz-histo-tete button').boundingBox())?.height >= 43.5, 'Historique : le bouton « PDF » est gardé (44 px)');
   const t = (await p.locator('.dz-histo').textContent()) || '';
   verifie(t.includes('Envoye') && t.includes('Brouillon') && t.includes('Retirée') && t.includes('Panier') && /\d+ paniers?/.test(t), 'Historique : « Envoye », « Brouillon », « Retirée », « Panier » et les comptes de paniers sont ceux d’avant');
-});
+}, { planche: 'E25' });
 
 // ── E26 · « Plus » : le menu du compte en page ──────────────────────────────────────────────────────────────────────────
 const ATTENDU_MENU = ['Ma journée', 'Ma semaine', 'Mon mois', 'Historique', 'Réserves à lever', 'Formations à voir', 'Mes congés', 'Mon équipe', 'Changer ma photo', 'Assistant BEMEXO', 'Informations', 'Déconnexion'];
@@ -868,6 +870,24 @@ for (const [fichier, w, h] of [['39-E26-plus-390x844', 390, 844], ['40-E26-plus-
   await p.locator('[aria-label="Mon compte et menu"]').click(); await p.waitForSelector('.bt-day-scroll', { timeout: 10000 });
   verifie(true, 'l’avatar ouvre « Plus » puis ramène à l’écran d’où l’on vient (comme l’ancien menu qui s’ouvrait et se refermait)');
   await x.ctx.close();
+  // « Plus » est POSÉE sur l'écran (qui reste monté dessous, inerte) : rien n'est relu, ni clavier ni lecteur d'écran n'atteignent l'écran du dessous, Échap la referme
+  x = await photographierImplementation('E26-couche', 390, 844, apresReinit(semaineE05), async () => {});
+  { const q = x.p; let lourdes = 0; q.on('request', (r) => { const u = r.url(); if (r.method() === 'GET' && (u.includes('/rest/v1/worksites?') || /\/rest\/v1\/time_entries\?select=\*%2C/.test(u) || /\/rest\/v1\/planning\?select=\*%2C/.test(u))) lourdes++; });
+    await q.waitForTimeout(500); const avant = lourdes;
+    await ouvrirMenuPlus(q);
+    verifie(await q.evaluate(() => { const c = document.querySelector('.bt-phbody'); return !!c && c.hasAttribute('inert') && c.getAttribute('aria-hidden') === 'true' && !!c.querySelector('.bt-day'); }), 'E26 : l’écran du dessous reste monté, mais inerte (inert, aria-hidden)');
+    let dehors = 0; await q.locator('[role=menuitem]').first().focus();
+    for (let i = 0; i < 24; i++) { await q.keyboard.press('Tab'); if (await q.evaluate(() => !!document.activeElement?.closest('.bt-phbody'))) dehors++; }
+    verifie(dehors === 0, `E26 : 24 touches Tab ne sortent jamais vers l’écran du dessous (${dehors} sorties)`);
+    verifie(await q.evaluate(() => { const e = document.querySelector('.bt-send'); if (!e) return true; const r = e.getBoundingClientRect(); const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return !!t && !!t.closest('.dz-plus-couche'); }), 'E26 : la couche recouvre aussi la barre d’envoi de la journée (un toucher n’atteint pas « Envoyer »)');
+    await q.keyboard.press('Escape'); await q.waitForTimeout(400);
+    verifie((await q.locator('[data-testid=dz-plus]').count()) === 0 && (await q.locator('.bt-day-scroll').count()) === 1, 'E26 : Échap referme « Plus » et ramène à la journée');
+    await ouvrirMenuPlus(q); await q.locator('[data-testid=dz-onglet-day]').click(); await q.waitForTimeout(400);
+    verifie((await q.locator('[data-testid=dz-plus]').count()) === 0, 'E26 : le bouton « Journée » de la barre referme « Plus »');
+    await ouvrirMenuPlus(q); await q.locator('[aria-label="Mon compte et menu"]').click(); await q.waitForTimeout(400);
+    verifie((await q.locator('[data-testid=dz-plus]').count()) === 0 && lourdes === avant, `E26 : ouvrir puis refermer « Plus » (3 fois) ne recharge pas la journée (chantiers, lignes, planning : ${lourdes - avant} lecture(s) ; avec la première version, une page à la place de l’écran, chaque ouverture relisait toute la journée)`);
+  }
+  await x.ctx.close();
   x = await photographierImplementation('E26-nonchef', 390, 844, apresReinit(semaineE05), async (q) => { await ouvrirMenuPlus(q); });
   verifie((await x.p.getByRole('menuitem', { name: 'Mon équipe' }).count()) === 0, 'E26 : pas de « Mon équipe » pour un salarié qui n’est pas chef');
   verifie((await x.p.getByRole('menuitem', { name: 'Déconnexion' }).count()) === 1, 'E26 : « Déconnexion » reste');
@@ -896,10 +916,10 @@ for (const [fichier, w, h] of [['41-E27-equipe-390x844', 390, 844], ['42-E27-equ
 
 // ── Mes congés (feuille) ────────────────────────────────────────────────────────────────────────────────────────────────
 await ecranFeuille('43-E24-conges-390x844', 'Congés', 'E24 (feuille « Dupliquer ») · Mes congés · 390 × 844', demandes, viaPlus('Mes congés'), async (p) => {
-  verifie(((await p.locator('.dz-feuille__titre, [role=dialog] h2').first().textContent()) || '') === 'Mes congés', 'Congés : le titre est « Mes congés »');
+  verifie(((await p.locator('[role=dialog].dz-feuille h2').first().textContent()) || '') === 'Mes congés', 'Congés : le titre est « Mes congés »');
   verifie((await p.locator('[data-guide="conges.faire"]').count()) === 1 && (await p.locator('[data-guide="conges.annuler"]').count()) === 1, 'Congés : « Faire une demande » (conges.faire) et la corbeille d’une demande en attente (conges.annuler)');
-  const etiq = (await p.locator('.dz-demande .dz-etiq').allInnerTexts()).map((t) => t.trim());
-  verifie(etiq.join('|') === 'En attente|Acceptée|Refusée', `Congés : les trois états sont ceux d’avant (${etiq.join(' | ')})`);
+  const etiq = (await p.locator('.dz-demande .dz-etiq').allInnerTexts()).map((t) => t.trim().toLowerCase());
+  verifie(etiq.join('|') === 'en attente|acceptée|refusée', `Congés : les trois états sont ceux d’avant (${etiq.join(' | ')})`);
   verifie(((await p.locator('.dz-demande__mot').textContent()) || '').includes('Période chargée'), 'Congés : le mot du bureau pour une demande refusée');
   verifie((await p.locator('.dz-feuille__pied [data-guide="conges.faire"]').count()) === 1, 'Congés : « Faire une demande » est dans le pied fixe');
 }, { planche: 'E24', sel: '[data-testid=conges-dialog]' });
@@ -934,13 +954,27 @@ await ecranVue('46-E25-formations-390x844', 'Formations', 'E25 (cartes) · Forma
   verifie((await p.locator('[data-testid=training-row][data-seen="1"]').count()) === 1, 'Formations : la ligne déjà vue est grisée (data-seen)');
   const texte = (await p.locator('[data-testid=trainings-list]').textContent()) || '';
   verifie(texte.includes('Ouvrir ↗') && texte.includes('▶ Regarder') && texte.includes('○ Vue') && texte.includes('✓ Vue le'), 'Formations : « Ouvrir ↗ », « ▶ Regarder », « ○ Vue », « ✓ Vue le … » comme avant');
-});
+}, { planche: 'E25' });
 {
   if (!process.env.SEULEMENT || /formations-lecteur/.test(process.env.SEULEMENT)) {
+    if (!VIDEO) {
+      const gen = await browser.newContext(); const gp = await gen.newPage();
+      const b64 = await gp.evaluate(async () => {
+        const c = document.createElement('canvas'); c.width = 320; c.height = 180; const g = c.getContext('2d');
+        const rec = new MediaRecorder(c.captureStream(25), { mimeType: 'video/webm;codecs=vp8' }); const chunks = [];
+        rec.ondataavailable = (e) => chunks.push(e.data);
+        let t = 0; const iv = setInterval(() => { g.fillStyle = `hsl(${(t * 9) % 360},45%,40%)`; g.fillRect(0, 0, 320, 180); g.fillStyle = '#fff'; g.font = '26px sans-serif'; g.fillText('Pose du garde-corps', 20, 100); t++; }, 40);
+        rec.start(200); await new Promise((r) => setTimeout(r, 2000)); rec.stop(); await new Promise((r) => { rec.onstop = r; }); clearInterval(iv);
+        const buf = new Uint8Array(await new Blob(chunks).arrayBuffer()); let s = ''; for (let i = 0; i < buf.length; i++) s += String.fromCharCode(buf[i]); return btoa(s);
+      });
+      await gen.close(); VIDEO = Buffer.from(b64, 'base64');
+    }
     const pl = await photographierPlanche('E25', 390, 844);
     const x = await photographierImplementation('Lecteur', 390, 844, formations, async (p) => { await viaPlus('Formations à voir')(p); await p.waitForSelector('[data-testid=training-watch]'); await p.locator('[data-testid=training-watch]').click(); await p.waitForSelector('[data-testid=video-player]'); await p.waitForTimeout(900); });
     const mm = await mesuresFeuille(x.p, '[data-testid=trainings-list]');
     verifie((await x.p.locator('[data-testid=video-player]').count()) === 1 && ((await x.p.locator('[data-testid=training-watch]').textContent()) || '').includes('Fermer la vidéo'), 'Lecteur : « ▶ Regarder » ouvre le lecteur intégré, le bouton devient « Fermer la vidéo »');
+    if (process.env.DEBUG_LECTEUR) console.log('DEBUG', VIDEO && VIDEO.length, await x.p.locator('[data-testid=video-el]').count(), await x.p.locator('[data-testid=video-failed]').count(), await x.p.evaluate(() => { const v = document.querySelector('video'); return v ? [v.src, v.error && v.error.code, v.readyState] : null; }));
+    verifie((await x.p.locator('[data-testid=video-el]').count()) === 1 && (await x.p.locator('[data-testid=video-failed]').count()) === 0, 'Lecteur : la vidéo est chargée dans l’élément <video> (aucun « lecture impossible »)');
     verifie(mm.cibles.length === 0 && mm.petits.length === 0 && mm.faibles.length === 0 && !mm.debordeX, `Lecteur : cibles, texte, contrastes, débordement conformes (${mm.cibles.concat(mm.petits, mm.faibles).join(' ; ') || 'ok'})`);
     poids.push(await cote('47-E25-formations-lecteur-390x844', pl, x.f, 'E25 (cartes) · Formations, lecteur ouvert · 390 × 844'));
     await x.ctx.close();
@@ -953,8 +987,8 @@ await ecranFeuille('48-E21-documents-390x844', 'Documents', 'E21 (feuille de l�
   await p.locator('[data-guide="editeur.documents"]').click(); await p.waitForSelector('[data-guide="docs.photo"]'); await p.waitForTimeout(500);
 }, async (p, mm) => {
   verifie((await p.locator('[data-guide="docs.photo"]').count()) === 1 && (await p.locator('[data-guide="docs.envoyer"]').count()) === 1, 'Documents : « Photo » (docs.photo) et « Ouvrir l’e-mail » (docs.envoyer) gardés');
-  verifie((await p.locator('.bt-doc-row').count()) === 3 && (await p.locator('.bt-doc-row.here').count()) === 1, 'Documents : trois documents, celui de cette intervention en évidence');
-  verifie(((await p.locator('.dz-feuille__titre, [role=dialog] h2').first().textContent()) || '').startsWith('Documents'), 'Documents : le titre commence par « Documents »');
+  verifie((await p.locator('.bt-doc-tabn').allInnerTexts()).join(',') === '1,2' && (await p.locator('.bt-doc-row.here').count()) === 1, 'Documents : « Photos 1 », « Fichiers 2 » ; la photo de cette intervention est en évidence');
+  verifie(((await p.locator('[role=dialog].dz-feuille h2').last().textContent()) || '').startsWith('Documents'), 'Documents : le titre commence par « Documents »');
   verifie((await p.locator('.bt-doc-addbtn').first().boundingBox())?.height >= 51, 'Documents : « Photo » et « Fichier » de 52 px');
 }, { planche: 'E21', sel: '[data-testid=docs-dialog], [role=dialog].dz-feuille' });
 
@@ -990,8 +1024,10 @@ await ecranFeuille('48-E21-documents-390x844', 'Documents', 'E21 (feuille de l�
     // Sans ?ui=2 : Sonner reste en haut au centre (v1 inchangée)
     const c1 = await contexte(390, 844); D.worksites = [W1, W2, AUTRE, W3]; apresReinit(semaineE42)();
     const p1 = await c1.newPage(); await p1.goto(`http://localhost:${PORT}/poseur?ui=1`); await p1.waitForSelector('.bt-day-scroll', { timeout: 20000 }); await p1.waitForTimeout(1500);
-    const pos = await p1.evaluate(() => { const t = document.querySelector('[data-sonner-toaster]'); return t ? [t.getAttribute('data-y-position'), t.getAttribute('data-x-position')] : null; });
-    verifie(JSON.stringify(pos) === '["top","center"]', `v1 : le Toaster reste en haut au centre (${JSON.stringify(pos)})`);
+    await p1.locator('[data-testid=reserves-banner]').click(); await p1.locator('[data-testid=wr-lift]').first().click(); await p1.waitForSelector('[data-testid=reserve-lift-submit]');
+    await p1.locator('[data-testid=reserve-lift-submit]').click(); await p1.waitForSelector('[data-sonner-toast]', { timeout: 10000 }); await p1.waitForTimeout(600);
+    const pos = await p1.evaluate(() => { const t = document.querySelector('[data-sonner-toaster]'); return t ? [t.getAttribute('data-y-position'), t.getAttribute('data-x-position'), document.documentElement.hasAttribute('data-bt-ui2')] : null; });
+    verifie(JSON.stringify(pos) === '["top","center",false]', `v1 : le Toaster reste en haut au centre, sans drapeau ?ui=2 sur la page (${JSON.stringify(pos)})`);
     await c1.close();
   }
 }
@@ -1000,13 +1036,15 @@ await ecranFeuille('48-E21-documents-390x844', 'Documents', 'E21 (feuille de l�
 const TICKET = { ticket: 'tk-1', kiosk_name: 'Tablette', company_name: 'Entreprise Exemple', needs_position: false, has_tablet: true };
 const reponseKiosk = (fn) => async (r) => { let b = {}; try { b = r.request().postDataJSON() || {}; } catch { /* corps vide */ } const x = fn(b); return r.fulfill(x && x.__statut ? { status: x.__statut, json: x.json } : { json: x }); };
 const PUNCH = { kiosk_name: 'Tablette', first_name: 'Sam' };
-async function ecranPointer(fichier, code, titre, { w = 390, h = 844, url = '/pointer?ui=2&k=k-test&c=12345678', reponse, sansSession = false, infoLue = false, ambiance, controles, attente = 1800 } = {}) {
+async function ecranPointer(fichier, code, titre, { w = 390, h = 844, url = '/pointer?ui=2&k=k-test&c=12345678', reponse, sansSession = false, infoLue = false, positionRefusee = false, ambiance, controles, attente = 1800 } = {}) {
   if (process.env.SEULEMENT && !new RegExp(process.env.SEULEMENT).test(fichier)) return;
   const pl = await photographierPlanche(code, w, h);
   kioskReponse = reponse;
   const ctx = await contexte(w, h, { sansSession });
   if (infoLue) await ctx.addInitScript(([k]) => { localStorage.setItem(k, '1'); }, [`bx_fixed_qr_info_v1:${ME}`]);
-  const p = await ctx.newPage(); p.on('pageerror', (e) => erreurs.push(e.message));
+  // Position refusée par le téléphone (le navigateur sans autorisation attend la réponse 8 s : on la donne tout de suite)
+  if (positionRefusee) await ctx.addInitScript(() => { navigator.geolocation.getCurrentPosition = (_ok, err) => { setTimeout(() => err && err({ code: 1, message: 'denied' }), 30); }; });
+  const p = await ctx.newPage(); p.on('pageerror', (e) => erreurs.push(`${code} : ${e.message}`));
   await p.goto(`http://localhost:${PORT}${url}`); await p.waitForSelector('.dz-pointer', { timeout: 20000 }); await p.waitForTimeout(attente);
   await p.mouse.move(2, 2); await p.evaluate(() => document.activeElement instanceof HTMLElement && document.activeElement.blur()).catch(() => {});
   const f = path.join(TMP, `impl-${code}-pointer-${w}x${h}.png`); await p.screenshot({ path: f, animations: 'disabled' });
@@ -1032,7 +1070,7 @@ await ecranPointer('52-P02-depart-390x844', 'P02', 'P02 · départ enregistré �
   verifie((await p.locator('[data-testid=after-send]').count()) === 1 && (await p.locator('[data-testid=after-add]').count()) === 1 && (await lien(p, 'Ouvrir mon espace').count()) === 1, 'P02 : « Envoyer ma journée », « Ajouter une intervention » ET « Ouvrir mon espace » (la planche l’avait retiré : fonction gardée, G1)');
   verifie((await p.locator('[data-testid=after-send]').evaluate((e) => getComputedStyle(e).backgroundColor)).replace(/\s/g, '') === 'rgb(255,194,26)', 'P02 : « Envoyer ma journée » est le bouton jaune');
 } });
-await ecranPointer('53-P03-refus-390x844', 'P03', 'P03 · pointage non enregistré (QR fixe refusé) · 390 × 844', { url: '/pointer?ui=2#f=jeton-test', infoLue: true, reponse: reponseKiosk(() => ({ ...TICKET, needs_position: true, radius_m: 200 })), ambiance: 'alerte', controles: async (p) => {
+await ecranPointer('53-P03-refus-390x844', 'P03', 'P03 · pointage non enregistré (QR fixe refusé) · 390 × 844', { url: '/pointer?ui=2#f=jeton-test', infoLue: true, positionRefusee: true, reponse: reponseKiosk(() => ({ ...TICKET, needs_position: true, radius_m: 200 })), ambiance: 'alerte', controles: async (p) => {
   verifie(((await p.locator('.kx-title').textContent()) || '') === 'Pointage non enregistré' && (await p.locator('[data-testid=fixed-refused-manual]').count()) === 1 && ((await p.locator('[data-testid=fixed-refused-retry]').textContent()) || '') === 'Réessayer', 'P03 : « Pointage non enregistré », « Ajouter mon intervention à la main » et « Réessayer » (repères fixed-refused-*)');
 } });
 await ecranPointer('54-P03b-qr-expire-390x844', 'P03b', 'P03b · QR expiré · 390 × 844', { reponse: reponseKiosk(() => ({ __statut: 400, json: { error: 'Ce QR a expiré. Scannez-le de nouveau sur la borne.', code: 'expired' } })), ambiance: 'alerte', controles: async (p) => {

@@ -1,9 +1,9 @@
 /* Design salarié · étape 7 · /pointer (P00 à P04 de la planche) : fond sombre, logo en haut à gauche, texte à gauche, boutons en bas.
    Tout est sous `.dz-pointer` (posée par app/pointer/page.tsx seulement avec ?ui=2) : sans ?ui=2 la page garde sa feuille intégrée (`.kx-*`) et ne change pas d'un octet.
    Couleurs et tailles : jetons de dz-jetons.css. Trois ambiances : sombre (attente, connexion, QR fixe, arrivée, départ), rouge sombre (refus, erreur), crème (annulé, rien à enregistrer). */
-.kx.dz-pointer { padding: 0; align-items: center; justify-content: flex-start; text-align: left; background: var(--dz-encre); color: var(--dz-creme); font-family: var(--dz-font-ui); }
-.dz-pointer[data-ambiance="alerte"] { background: var(--dz-erreur-sombre); }
-.dz-pointer[data-ambiance="neutre"] { background: var(--dz-creme); color: var(--dz-encre); }
+.kx.dz-pointer[data-ambiance] { padding: 0; align-items: center; justify-content: flex-start; text-align: left; background: var(--dz-encre); color: var(--dz-creme); font-family: var(--dz-font-ui); } /* [data-ambiance] : passe devant .kx.ok / .bye / .bad de la feuille intégrée */
+.kx.dz-pointer[data-ambiance="alerte"] { background: var(--dz-erreur-sombre); }
+.kx.dz-pointer[data-ambiance="neutre"] { background: var(--dz-creme); color: var(--dz-encre); }
 .dz-pointer .dz-p-cadre { width: 100%; max-width: 432px; min-height: 100vh; min-height: 100svh; display: flex; flex-direction: column; box-sizing: border-box; padding: 24px 24px calc(24px + env(safe-area-inset-bottom)); }
 .dz-pointer .dz-p-logo { display: block; flex: none; width: 112px; height: auto; }
 .dz-pointer .kx-wrap { flex: 1; display: flex; flex-direction: column; max-width: none; padding-top: clamp(40px, 22svh, 200px); text-align: left; }

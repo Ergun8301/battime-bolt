@@ -5,18 +5,21 @@ import { useEffect, useState } from 'react';
 import { isPreviewHost } from '@/lib/hosting';
 
 const CLE = 'bt-ui2';
-/** `?ui=2` (mémorisé pour la session, `?ui=1` l'éteint) sur un hôte d'aperçu seulement. Lu après le montage : pas d'écart d'hydratation. */
+/** `?ui=2` (mémorisé pour la session, `?ui=1` l'éteint) sur un hôte d'aperçu seulement. Lecture immédiate, côté navigateur seulement (jamais pendant le rendu : écart d'hydratation). */
+export function ui2Maintenant(): boolean {
+  try {
+    if (typeof window === 'undefined' || !isPreviewHost()) return false;
+    const q = new URLSearchParams(window.location.search).get('ui');
+    if (q === '2') sessionStorage.setItem(CLE, '1');
+    else if (q === '1') sessionStorage.removeItem(CLE);
+    return sessionStorage.getItem(CLE) === '1';
+  } catch { return false; /* stockage indisponible : ancienne interface */ }
+}
+
+/** Le drapeau pour un composant, lu après le montage : pas d'écart d'hydratation. */
 export function useUi2(): boolean {
   const [on, setOn] = useState(false);
-  useEffect(() => {
-    try {
-      if (!isPreviewHost()) return;
-      const q = new URLSearchParams(window.location.search).get('ui');
-      if (q === '2') sessionStorage.setItem(CLE, '1');
-      else if (q === '1') sessionStorage.removeItem(CLE);
-      setOn(sessionStorage.getItem(CLE) === '1');
-    } catch { /* stockage indisponible : ancienne interface */ }
-  }, []);
+  useEffect(() => { setOn(ui2Maintenant()); }, []);
   return on;
 }
 

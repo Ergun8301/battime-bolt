@@ -39,6 +39,8 @@ import { BandeJours, BoutonAssistant, Kicker, NoteEntete, OngletsBas, useUi2, ty
 // Étape 6 : la page « Plus » (E26), « Mon équipe » (E27) et le retour passager au-dessus de la barre ; tout derrière ?ui=2.
 import { PagePlus, type EntreePlus } from '@/components/design/salarie/page-plus';
 import { useRetourPassager } from '@/components/design/salarie/retour-passager';
+import { useRetourFerme } from '@/components/design/salarie/retour';
+import { ui2Maintenant } from '@/lib/use-ui2';
 import type { BarreJour } from '@/components/design/salarie/carte-total';
 import { bandeJours, etatJour, minutesDe, type JourBrut } from '@/supabase/functions/_shared/salarie-vue';
 
@@ -158,8 +160,12 @@ export default function PoseurPage() {
   const hdrRef = useRef<HTMLElement>(null);
   const [hdrHidden, setHdrHidden] = useState(false);
 
+  // ?ui=2 : les colonnes de plus se lisent dès la PREMIÈRE lecture (le drapeau est lu tout de suite, pas après le montage) : une seule lecture au chargement, pas deux (requetes-lot29 : 18 au plus).
+  const lueAvecUi2 = useRef(false);
   const fetchPending = useCallback(async () => {
     if (!user) return;
+    const v2 = ui2Maintenant();
+    lueAvecUi2.current = v2;
     // Look back far enough to catch any planned-but-not-declared day still open.
     const windowStart = format(subDays(new Date(), 60), 'yyyy-MM-dd');
     // Lot 29 : UN seul saut. Les heures déjà envoyées/validées ET les brouillons viennent de la
@@ -168,8 +174,8 @@ export default function PoseurPage() {
     // levées par le bureau ni par moi (définition partagée : lib/reserves.ts).
     // Une lecture en échec garde le bandeau tel quel (pas de « 0 » à tort).
     const [planRes, entRes, { data: res, error: resErr }] = await Promise.all([
-      supabase.from('planning').select(ui2Ref.current ? 'work_date, absence_type, estimated_start, estimated_end' : 'work_date, absence_type').eq('user_id', user.id).gte('work_date', windowStart),
-      supabase.from('time_entries').select(ui2Ref.current ? 'work_date, status, submitted_at, locked, exported_at, exit_forgotten, start_time, end_time, total_minutes' : 'work_date, status').eq('user_id', user.id).in('status', ['draft', 'submitted', 'validated']).gte('work_date', windowStart),
+      supabase.from('planning').select(v2 ? 'work_date, absence_type, estimated_start, estimated_end' : 'work_date, absence_type').eq('user_id', user.id).gte('work_date', windowStart),
+      supabase.from('time_entries').select(v2 ? 'work_date, status, submitted_at, locked, exported_at, exit_forgotten, start_time, end_time, total_minutes' : 'work_date, status').eq('user_id', user.id).in('status', ['draft', 'submitted', 'validated']).gte('work_date', windowStart),
       supabase.from('time_entries')
         .select('id, work_date, observation, worksite_id, worksite:worksites(client_name, city)')
         .eq('user_id', user.id).eq('reception', 'avec')
@@ -190,7 +196,7 @@ export default function PoseurPage() {
     // Borné à aujourd'hui : « Dupliquer cette journée » prépare des brouillons
     // sur des jours à venir, ce n'est pas un oubli et ça n'a rien à faire ici.
     const todayStr = format(new Date(), 'yyyy-MM-dd');
-    if (ui2Ref.current) {
+    if (v2) {
       const brut: Record<string, Omit<JourBrut, 'date'>> = {};
       const jour = (d: string) => (brut[d] ??= { lignes: [] });
       for (const r of rows) { const j = jour(r.work_date); if (r.absence_type) j.absence = r.absence_type; else j.prevu = true; }
@@ -229,7 +235,7 @@ export default function PoseurPage() {
   }, [fetchPending]);
 
   // La coque v2 vient d'être allumée : la bande des jours se remplit tout de suite (pas dans la minute).
-  useEffect(() => { if (ui2) fetchPending(); }, [ui2, fetchPending]);
+  useEffect(() => { if (ui2 && !lueAvecUi2.current) fetchPending(); }, [ui2, fetchPending]);
 
   // Photo de profil du salarié (depuis users.photo_url).
   useEffect(() => { setPhotoUrl(user?.photo_url || ''); }, [user?.photo_url]);
@@ -377,8 +383,8 @@ export default function PoseurPage() {
     warmAll(); // le guide ne cherche sa cible que 1,5 s : les écrans différés doivent déjà être là
     setHdrHidden(false); // l'en-tête peut porter la cible (votre nom, le scanner)
     const on = (v: string) => here.current.view === v && !here.current.selectedDate;
-    // ?ui=2 : le menu est la page « Plus » et « Mon équipe » une page à part (mêmes repères, mêmes phrases de guide).
-    if (ui2Ref.current && (s.ecran === 'menu' || s.cible.startsWith('equipe.'))) { setMenuOpen(false); const v = s.ecran === 'menu' ? 'plus' : 'team'; if (!on(v)) goTo(v); return; }
+    // ?ui=2 : « Mon équipe » est une page à part (mêmes repères, mêmes phrases de guide) ; le menu (`menuOpen`) est la page « Plus », posée sur l'écran.
+    if (ui2Ref.current && s.cible.startsWith('equipe.')) { setMenuOpen(false); if (!on('team')) goTo('team'); return; }
     setMenuOpen(s.ecran === 'menu');
     if (s.ecran === 'journee') { if (!on('day')) goHome(); }
     else if (s.ecran === 'semaine') { if (!on('week')) goTo('week'); }
@@ -395,7 +401,7 @@ export default function PoseurPage() {
   const isToday = view === 'day' && !selectedDate;
   // « Ma journée » garde le format téléphone ; les écrans hérités (semaine/mois/
   // historique) restent larges sur ordinateur — on ne les bride pas à 480 px.
-  const wide = !selectedDate && view !== 'day' && view !== 'formations' && view !== 'plus' && view !== 'team';
+  const wide = !selectedDate && view !== 'day' && view !== 'formations' && view !== 'team';
   const headerTitle = selectedDate
     ? format(parseISO(selectedDate), 'EEEE d MMMM', { locale: fr })
     : view === 'team' ? 'Mon équipe' : (ALL_TABS.find((t) => t.value === view)?.label || 'Ma journée');
@@ -514,32 +520,63 @@ export default function PoseurPage() {
   const bande = ui2 ? bandeJours(selectedDate || todayIso, todayIso, new Map(Object.entries(joursBrut))) : [];
   const jourAffiche = selectedDate || todayIso;
   const etatAffiche = ui2 ? etatJour({ date: jourAffiche, ...(joursBrut[jourAffiche] ?? { lignes: [] }) }) : 'vide';
-  const plusOuvert = ui2 && !selectedDate && view === 'plus'; // la page « Plus » (E26) remplace le menu déroulant
-  const ongletActif: OngletBas | null = selectedDate || view === 'day' ? 'day' : view === 'week' ? 'week' : view === 'month' ? 'month' : 'plus';
+  const plusOuvert = ui2 && menuOpen; // la page « Plus » (E26) remplace le menu déroulant : posée sur l'écran, qui reste monté dessous (rien n'est relu)
+  const ongletActif: OngletBas | null = plusOuvert ? 'plus' : selectedDate || view === 'day' ? 'day' : view === 'week' ? 'week' : view === 'month' ? 'month' : 'plus';
   // Les 7 barres de la carte Total : les minutes notées de chaque jour de la semaine affichée (les mêmes lectures que la bande).
   const barres: BarreJour[] | undefined = ui2 ? bande.map((c) => ({
     date: c.date, jour: c.jour, etat: c.etat, aujourdhui: c.aujourdhui, affiche: c.affiche, prevu: prevuMin[c.date],
     minutes: (joursBrut[c.date]?.lignes ?? []).reduce((t, l) => t + (Number((l as { total_minutes?: number | null }).total_minutes) || 0), 0),
   })) : undefined;
-  const avant = useRef('day'); // l'écran d'où l'on est venu ouvrir « Plus » : l'avatar y revient (il ouvrait puis refermait le menu)
-  const allerOnglet = (o: OngletBas) => { if (o === 'day') goHome(); else if (o === 'plus') { if (view !== 'plus' || selectedDate) avant.current = selectedDate ? 'day' : view; goTo('plus'); } else goTo(o); };
-  const avatar = () => { if (plusOuvert) goTo(avant.current === 'plus' ? 'day' : avant.current); else allerOnglet('plus'); };
+  useRetourFerme(ui2 && infoOpen, () => setInfoOpen(false)); // ?ui=2 : le retour du téléphone referme « Informations » comme les autres feuilles
+  const allerOnglet = (o: OngletBas) => { if (o === 'plus') { setMenuOpen(true); return; } setMenuOpen(false); if (o === 'day') goHome(); else goTo(o); };
+  // Échap referme « Plus » comme il refermait le menu déroulant (sauf si une fenêtre est ouverte par-dessus).
+  useEffect(() => {
+    if (!plusOuvert) return;
+    const f = (e: KeyboardEvent) => { if (e.key === 'Escape' && !document.querySelector('[role=dialog]')) setMenuOpen(false); };
+    document.addEventListener('keydown', f);
+    return () => document.removeEventListener('keydown', f);
+  }, [plusOuvert]);
+  const avatar = () => setMenuOpen((o) => !o); // il ouvrait puis refermait le menu : même geste
   const roleKicker = user?.role === 'lead' ? 'Chef d’équipe' : 'Poseur';
   const kickerPlus = [reglages?.name, roleKicker].filter(Boolean).join(' · ').toUpperCase();
   const nomComplet = `${user?.first_name ?? ''} ${user?.last_name ?? ''}`.trim();
   const entreesHeures: EntreePlus[] = ui2 ? [
-    ...TABS.map((t): EntreePlus => ({ id: t.value, label: t.label, guide: MENU_GUIDE[t.value], onSelect: () => goTo(t.value) })),
-    { id: 'reserves', label: 'Réserves à lever', testid: 'menu-reserves', inactif: reserves.length === 0, compteur: reserves.length, compteurTestid: 'menu-reserves-compteur', onSelect: () => { if (!selectedDate && view !== 'day') goHome(); setReservesAsk(true); } },
-    ...(trainingsMenu ? [{ id: 'formations', label: 'Formations à voir', testid: 'menu-formations', compteur: trainings.unseen, compteurTestid: 'menu-formations-badge', onSelect: () => goTo('formations') }] : []),
-    { id: 'conges', label: 'Mes congés', guide: 'menu.conges', onSelect: () => setLeaveOpen(true) },
-    ...(user?.role === 'lead' ? [{ id: 'equipe', label: 'Mon équipe', etiquette: 'chef', testid: 'menu-equipe', onSelect: () => goTo('team') }] : []),
+    ...TABS.map((t): EntreePlus => ({ id: t.value, label: t.label, guide: MENU_GUIDE[t.value], onSelect: () => { setMenuOpen(false); goTo(t.value); } })),
+    { id: 'reserves', label: 'Réserves à lever', testid: 'menu-reserves', inactif: reserves.length === 0, compteur: reserves.length, compteurTestid: 'menu-reserves-compteur', onSelect: () => { setMenuOpen(false); if (!selectedDate && view !== 'day') goHome(); setReservesAsk(true); } },
+    ...(trainingsMenu ? [{ id: 'formations', label: 'Formations à voir', testid: 'menu-formations', compteur: trainings.unseen, compteurTestid: 'menu-formations-badge', onSelect: () => { setMenuOpen(false); goTo('formations'); } }] : []),
+    { id: 'conges', label: 'Mes congés', guide: 'menu.conges', onSelect: () => { setMenuOpen(false); setLeaveOpen(true); } },
+    ...(user?.role === 'lead' ? [{ id: 'equipe', label: 'Mon équipe', etiquette: 'chef', testid: 'menu-equipe', onSelect: () => { setMenuOpen(false); goTo('team'); } }] : []),
   ] : [];
   const entreesCompte: EntreePlus[] = ui2 ? [
     { id: 'photo', label: 'Changer ma photo', guide: 'menu.photo', surPlace: true, occupe: uploadingPhoto, onSelect: () => photoInputRef.current?.click() },
-    ...(aiOn ? [{ id: 'assistant', label: 'Assistant BEMEXO', onSelect: () => setAssistantOpen(true) }] : []),
-    { id: 'infos', label: 'Informations', guide: 'menu.infos', onSelect: () => setInfoOpen(true) },
+    ...(aiOn ? [{ id: 'assistant', label: 'Assistant BEMEXO', onSelect: () => { setMenuOpen(false); setAssistantOpen(true); } }] : []),
+    { id: 'infos', label: 'Informations', guide: 'menu.infos', onSelect: () => { setMenuOpen(false); setInfoOpen(true); } },
     ...(pushState !== 'unsupported' ? [{ id: 'notifications', label: pushState === 'on' ? 'Couper les notifications' : pushState === 'denied' ? 'Notifications bloquées' : 'Activer les notifications', guide: 'menu.notifications', surPlace: true, occupe: pushBusy, onSelect: () => { if (!pushBusy) togglePush(); } }] : []),
   ] : [];
+
+  const corps = (
+    <>
+    {selectedDate ? (
+      <PoseurDay key={dayKey} date={selectedDate} topBanner={ui2 ? <>{offlineBanner}<div className="dz-rappels">{reservesBanner}{trainingsBanner}</div></> : offlineBanner} onAssistant={aiOn && !ui2 ? () => setAssistantOpen(true) : undefined} semaine={barres} onScan={ui2 && kioskOn ? () => setScanOpen(true) : undefined} onScanWarm={() => QrScanner.preload()} />
+    ) : view === 'day' ? (
+      <PoseurDay key={dayKey} topBanner={ui2 ? <>{offlineBanner}<div className="dz-rappels">{reservesBanner}{trainingsBanner}</div></> : <>{offlineBanner}{toSendBanner}{reservesBanner}{trainingsBanner}</>} onAssistant={aiOn && !ui2 ? () => setAssistantOpen(true) : undefined} semaine={barres} onScan={ui2 && kioskOn ? () => setScanOpen(true) : undefined} onScanWarm={() => QrScanner.preload()} />
+    ) : (
+      <div className="bt-phscroll bt-skin">
+        {view === 'team' && ui2 && user ? (
+          <PageEquipe me={user} onChanged={fetchPending} />
+        ) : view === 'formations' ? (
+          <PoseurTrainings items={trainings.items} companyId={user?.company_id} onPatch={trainings.patch} />
+        ) : view === 'week' ? (
+          <PoseurWeek onSelectDay={openDay} />
+        ) : view === 'month' ? (
+          <PoseurMonth onSelectDay={openDay} />
+        ) : (
+          <PoseurHistory />
+        )}
+      </div>
+    )}
+    </>
+  );
 
   return (
     <div className={`bt-poseur${ui2 ? ' bt-ui2' : ''}`}>
@@ -550,15 +587,15 @@ export default function PoseurPage() {
           <div className="bt-phdr-row">
             <div className="bt-phdr-left">
               <img src="/favicon.svg" alt="BEMEXO" className="bt-phdr-logo" />
-              {isToday ? (
-                <div>
-                  {ui2 && <Kicker date={todayIso} aujourdhui etat={etatAffiche} />}
-                  <div className="bt-phdr-date">{todayLabel}</div>
-                </div>
-              ) : plusOuvert ? (
+              {plusOuvert ? (
                 <div>
                   <div className="dz-kicker" data-testid="dz-kicker-plus">{kickerPlus}</div>
                   <div className="bt-phdr-date">{nomComplet}</div>
+                </div>
+              ) : isToday ? (
+                <div>
+                  {ui2 && <Kicker date={todayIso} aujourdhui etat={etatAffiche} />}
+                  <div className="bt-phdr-date">{todayLabel}</div>
                 </div>
               ) : (
                 <button onClick={goHome} className="bt-phdr-back" aria-label="Retour à ma journée">
@@ -661,34 +698,20 @@ export default function PoseurPage() {
             </DropdownMenu>
             )}
           </div>
-          {ui2 && (isToday || selectedDate) && <BandeJours jours={bande} onSelect={openDay} />}
-          {ui2 && (isToday || selectedDate) && toSendBanner}
+          {ui2 && !plusOuvert && (isToday || selectedDate) && <BandeJours jours={bande} onSelect={openDay} />}
+          {ui2 && !plusOuvert && (isToday || selectedDate) && toSendBanner}
         </header>
 
         {/* ===== CORPS ===== */}
-        <div className="bt-phbody">
-          {selectedDate ? (
-            <PoseurDay key={dayKey} date={selectedDate} topBanner={ui2 ? <>{offlineBanner}<div className="dz-rappels">{reservesBanner}{trainingsBanner}</div></> : offlineBanner} onAssistant={aiOn && !ui2 ? () => setAssistantOpen(true) : undefined} semaine={barres} onScan={ui2 && kioskOn ? () => setScanOpen(true) : undefined} onScanWarm={() => QrScanner.preload()} />
-          ) : view === 'day' ? (
-            <PoseurDay key={dayKey} topBanner={ui2 ? <>{offlineBanner}<div className="dz-rappels">{reservesBanner}{trainingsBanner}</div></> : <>{offlineBanner}{toSendBanner}{reservesBanner}{trainingsBanner}</>} onAssistant={aiOn && !ui2 ? () => setAssistantOpen(true) : undefined} semaine={barres} onScan={ui2 && kioskOn ? () => setScanOpen(true) : undefined} onScanWarm={() => QrScanner.preload()} />
-          ) : (
-            <div className="bt-phscroll bt-skin">
-              {view === 'plus' && ui2 ? (
-                <PagePlus heures={entreesHeures} compte={entreesCompte} onDeconnexion={signOut} />
-              ) : view === 'team' && ui2 && user ? (
-                <PageEquipe me={user} onChanged={fetchPending} />
-              ) : view === 'formations' ? (
-                <PoseurTrainings items={trainings.items} companyId={user?.company_id} onPatch={trainings.patch} />
-              ) : view === 'week' ? (
-                <PoseurWeek onSelectDay={openDay} />
-              ) : view === 'month' ? (
-                <PoseurMonth onSelectDay={openDay} />
-              ) : (
-                <PoseurHistory />
-              )}
-            </div>
-          )}
+        {/* ?ui=2 : la page « Plus » est posée sur l'écran en cours, qui reste monté dessous (rien n'est relu) mais inerte : ni clavier ni lecteur d'écran n'y accèdent. */}
+        <div className="bt-phbody" {...(plusOuvert ? ({ inert: '', 'aria-hidden': true } as object) : {})}>
+          {corps}
         </div>
+        {plusOuvert && (
+          <div className="dz-plus-couche bt-phscroll bt-skin">
+            <PagePlus heures={entreesHeures} compte={entreesCompte} onDeconnexion={signOut} />
+          </div>
+        )}
 
         {ui2 && <OngletsBas actif={ongletActif} onGo={allerOnglet} badgePlus={(reserves.length > 0 ? 1 : 0) + (trainings.unseen > 0 ? 1 : 0)} />}
 

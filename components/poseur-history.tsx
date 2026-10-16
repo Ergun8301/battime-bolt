@@ -218,7 +218,7 @@ export default function PoseurHistory() {
         </div>
         {tracesOn && (
           <button type="button" className="dz-lien-ligne" onClick={() => setTracesOpen(true)} data-testid="history-traces">
-            Interventions supprimées<span aria-hidden="true">›</span>
+            Interventions supprimées
           </button>
         )}
         {tracesOn && user && (

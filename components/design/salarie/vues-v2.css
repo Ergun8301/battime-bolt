@@ -18,6 +18,7 @@
 .bt-ui2 .dz-bouton-ligne, .bt-ui2 .dz-lien-ligne { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 0 16px; border-radius: 999px; border: 1.5px solid var(--dz-trait-fort); background: var(--dz-carte); color: var(--dz-encre); font: 800 var(--dz-fs-16)/1 var(--dz-font-ui); cursor: pointer; }
 .bt-ui2 .dz-bouton-ligne:disabled { background: var(--dz-inactif-fond); color: var(--dz-inactif-texte); border-color: var(--dz-inactif-fond); }
 .bt-ui2 .dz-lien-ligne { justify-content: space-between; width: 100%; border-radius: var(--dz-r-m); border-color: var(--dz-trait); }
+.bt-ui2 .dz-lien-ligne::after { content: "›"; font: 400 20px/1 var(--dz-font-ui); color: var(--dz-texte-3); }
 .bt-ui2 .dz-histo-jour { cursor: default; gap: 0; }
 .bt-ui2 .dz-histo-jour > .dz-sem-ligne { padding-bottom: 6px; }
 .bt-ui2 .dz-histo-jour p { margin: 0; }
@@ -35,7 +36,8 @@
 .bt-ui2 .dz-etiq--envoye { background: var(--dz-vert-plein); color: var(--dz-blanc); }
 .bt-ui2 .dz-etiq--brouillon { background: var(--dz-a-envoyer-fond); color: var(--dz-a-envoyer-texte-2); }
 
-/* ── Page « Plus » (E26) : le menu du compte en page ── */
+/* ── Page « Plus » (E26) : le menu du compte, posée sur l'écran en cours (qui reste monté dessous, inerte) ── */
+.bt-ui2 .dz-plus-couche { position: absolute; inset: 0; z-index: var(--dz-z-plus); padding-bottom: calc(env(safe-area-inset-bottom) + 76px); background: var(--dz-creme); } /* sous l'en-tête (30), sur la barre d'envoi de la journée (5), SOUS la barre Journée · Semaine · Mois · Plus (8) qui reste touchable */
 .bt-ui2 .dz-plus { display: flex; flex-direction: column; gap: 10px; }
 .bt-ui2 .dz-plus__titre { margin: 8px 2px 0; font: 700 var(--dz-fs-12)/1.2 var(--dz-font-chiffres); letter-spacing: .14em; color: var(--dz-titre-section); }
 .bt-ui2 .dz-plus__titre:first-child { margin-top: 0; }
@@ -46,7 +48,7 @@
 .bt-ui2 .dz-ligne-menu__texte { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .bt-ui2 .dz-ligne-menu__compteur { min-width: 22px; height: 22px; padding: 0 7px; box-sizing: border-box; border-radius: 11px; background: var(--dz-erreur); color: var(--dz-blanc); font: 900 var(--dz-fs-12)/22px var(--dz-font-ui); text-align: center; }
 .bt-ui2 .dz-ligne-menu__etiquette { padding: 4px 10px; border-radius: 999px; background: var(--dz-sable); color: var(--dz-encre); font: 700 var(--dz-fs-12)/1.2 var(--dz-font-chiffres); }
-.bt-ui2 .dz-ligne-menu__chevron { color: var(--dz-texte-3); font: 400 20px/1 var(--dz-font-ui); }
+.bt-ui2 .dz-ligne-menu[data-nav]::after { content: "›"; color: var(--dz-texte-3); font: 400 20px/1 var(--dz-font-ui); } /* le chevron est dessiné, pas écrit : le texte d'une ligne reste celui de l'ancien menu */
 .bt-ui2 .dz-plus__sortie { min-height: 52px; margin-top: 4px; border-radius: 999px; border: 1px solid var(--dz-erreur-bord-doux); background: var(--dz-erreur-fond); color: var(--dz-erreur-texte); font: 900 var(--dz-fs-16)/1 var(--dz-font-ui); cursor: pointer; }
 .bt-ui2 .dz-plus button:disabled { cursor: default; }
 
@@ -71,7 +73,7 @@
 
 /* ── « Mon équipe » (E27) : la feuille d'heures du chef ── */
 .bt-ui2 .dz-equipe .bt-td { margin: 0; padding: 0; border: 0; background: none; display: flex; flex-direction: column; gap: 10px; }
-.bt-ui2 .dz-equipe .bt-td-h { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; } /* le titre est déjà dans l'en-tête */
+.bt-ui2 .dz-equipe .bt-td-h { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; font-size: var(--dz-fs-12); } /* le titre est déjà dans l'en-tête */
 .bt-ui2 .dz-equipe .bt-td-sub { margin: 0; font: 400 var(--dz-fs-13)/1.4 var(--dz-font-ui); color: var(--dz-texte-2); }
 .bt-ui2 .dz-equipe .bt-td-days { margin: 0; padding: 0; gap: 8px; }
 .bt-ui2 .dz-equipe .bt-td-day { min-height: 48px; padding: 0 16px; border: 1.5px solid var(--dz-trait-fort); border-radius: 999px; background: var(--dz-carte); color: var(--dz-encre); font: 800 var(--dz-fs-16)/1.1 var(--dz-font-ui); }
@@ -100,6 +102,9 @@
 .bt-ui2 .dz-equipe .bt-td-save { min-height: 52px; border-radius: 999px; background: var(--dz-jaune); color: var(--dz-encre); font: 800 var(--dz-fs-16)/1.2 var(--dz-font-ui); box-shadow: inset 0 -3px 0 var(--dz-jaune-ombre); }
 .bt-ui2 .dz-equipe .bt-td-save:disabled { opacity: 1; background: var(--dz-inactif-fond); color: var(--dz-inactif-texte); box-shadow: none; }
 .bt-ui2 .dz-equipe .bt-td-note { font: 400 var(--dz-fs-125)/1.4 var(--dz-font-ui); color: var(--dz-texte-2); }
+
+.bt-ui2 .dz-equipe .bt-td-two input { height: 52px; border-color: var(--dz-trait-fort); border-radius: 12px 0 0 12px; font-size: var(--dz-fs-16); }
+.bt-ui2 .dz-equipe .bt-td-two button { height: 52px; width: 48px; border-color: var(--dz-trait-fort); border-radius: 0 12px 12px 0; background: var(--dz-sable); }
 
 /* ── Mes congés : feuille du bas ── */
 .dz-portail .dz-champ-lib { display: block; margin: 0 0 4px; font: 700 var(--dz-fs-12)/1.2 var(--dz-font-chiffres); letter-spacing: .1em; text-transform: uppercase; color: var(--dz-texte-2); }
@@ -149,7 +154,8 @@
 .dz-portail .bt-doc-row { padding: 8px 10px; border: 1px solid var(--dz-trait); border-radius: 14px; background: var(--dz-blanc); }
 .dz-portail .bt-doc-row.here { border: 2px solid var(--dz-jaune); background: var(--dz-jaune-pale); }
 .dz-portail .bt-doc-thumb { border-radius: 10px; background: var(--dz-sable); border-color: var(--dz-trait); color: var(--dz-encre); }
-.dz-portail .bt-doc-name { font: 800 var(--dz-fs-14)/1.25 var(--dz-font-ui); color: var(--dz-encre); }
+.dz-portail .bt-doc-name { padding: 13px 0; font: 800 var(--dz-fs-14)/1.25 var(--dz-font-ui); color: var(--dz-encre); }
+.dz-portail .bt-doc-hint [data-testid="doc-tip"] { width: 44px; height: 44px; flex: none; color: var(--dz-encre); }
 .dz-portail .bt-doc-sub { font: 400 var(--dz-fs-12)/1.3 var(--dz-font-ui); color: var(--dz-texte-2); }
 .dz-portail .bt-doc-here { color: var(--dz-jaune-texte); }
 .dz-portail .bt-doc-act { color: var(--dz-encre); }
@@ -165,10 +171,10 @@
 .dz-portail .bt-doc-send-btn:disabled { opacity: 1; background: var(--dz-inactif-fond); border-color: var(--dz-inactif-fond); color: var(--dz-inactif-texte); }
 .dz-portail .bt-doc-send-note { font: 400 var(--dz-fs-125)/1.35 var(--dz-font-ui); color: var(--dz-texte-2); }
 
-/* ── Retour passager (Sonner) : juste au-dessus de la barre du bas, 44 px pour « Annuler » ── */
-.dz-retour { box-sizing: border-box; display: flex; align-items: center; gap: 10px; width: 100%; max-width: 456px; min-height: 52px; margin-inline: auto; padding: 6px 6px 6px 16px; border: 0; border-radius: 16px; background: var(--dz-encre); color: var(--dz-creme); font: 600 var(--dz-fs-14)/1.3 var(--dz-font-ui); box-shadow: var(--dz-ombre-flottant); }
-.dz-retour [data-title] { font: 700 var(--dz-fs-14)/1.3 var(--dz-font-ui); color: var(--dz-creme); overflow-wrap: anywhere; }
-.dz-retour__texte { color: var(--dz-creme-75); }
-.dz-retour__action { flex: none; height: 44px; min-width: 44px; margin-left: auto; padding: 0 14px; border: 0; border-radius: 999px; background: var(--dz-jaune); color: var(--dz-encre); font: 800 var(--dz-fs-14)/1 var(--dz-font-ui); cursor: pointer; }
-.dz-retour :focus-visible { outline: 2px solid transparent; box-shadow: 0 0 0 2px var(--dz-encre), 0 0 0 4px var(--dz-creme); }
-html[data-bt-ui2] [data-sonner-toaster] { --width: 456px; }
+/* ── Retour passager (Sonner) : juste au-dessus de la barre du bas, 44 px pour « Annuler ». `html[data-bt-ui2]` : posé par la page avec ?ui=2 ; passe devant la feuille de Sonner, injectée plus tard ── */
+html[data-bt-ui2] [data-sonner-toaster][data-y-position="bottom"] { bottom: max(calc(var(--dz-barre-h, 0px) + 12px), env(safe-area-inset-bottom)); }
+html[data-bt-ui2] [data-sonner-toast].dz-retour { box-sizing: border-box; display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 6px 6px 6px 16px; border: 0; border-radius: 16px; background: var(--dz-encre); color: var(--dz-creme); font: 600 var(--dz-fs-14)/1.3 var(--dz-font-ui); box-shadow: var(--dz-ombre-flottant); }
+html[data-bt-ui2] .dz-retour [data-title] { font: 700 var(--dz-fs-14)/1.3 var(--dz-font-ui); color: var(--dz-creme); overflow-wrap: anywhere; }
+html[data-bt-ui2] .dz-retour .dz-retour__texte { color: var(--dz-creme-75); }
+html[data-bt-ui2] .dz-retour [data-button], html[data-bt-ui2] .dz-retour .dz-retour__action { flex: none; height: 44px; min-width: 44px; margin: 0 0 0 auto; padding: 0 14px; border: 0; border-radius: 999px; background: var(--dz-jaune); color: var(--dz-encre); font: 800 var(--dz-fs-14)/1 var(--dz-font-ui); cursor: pointer; }
+html[data-bt-ui2] .dz-retour :focus-visible { outline: 2px solid transparent; box-shadow: 0 0 0 2px var(--dz-encre), 0 0 0 4px var(--dz-creme); }
