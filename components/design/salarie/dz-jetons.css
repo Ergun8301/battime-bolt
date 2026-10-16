@@ -16,6 +16,9 @@
   --dz-creme: #F2EDE3;
   --dz-carte: #FFFDF8;
   --dz-sable: #E6DDCD;
+  --dz-telephone-fond: #E6DDCD; --dz-comptable-fond: #EFE9DE;   /* « Sur le téléphone » ; « Chez le comptable » et « Retiré » */
+  --dz-jaune-pale: #FFF3CC; --dz-jaune-texte: #5C4300;           /* encadré de correction du bureau */
+  --dz-texte-note: #3A332B;                                      /* texte des notes sur sable, 9:1 */
   --dz-trait: #E3DACB;
   --dz-trait-fort: #D6CBB7;
   --dz-texte-2: #5B534A;
@@ -27,6 +30,9 @@
   --dz-titre-section: #755800;     /* étiquettes « CHANTIERS DU JOUR » (était #8A6A00, 4,35:1) → 5,7:1 */
 
   /* --- focus : anneau double, visible sur clair ET sur noir --- */
+  /* --- couches (contrat z-index, de bas en haut) : contenu 0 · barre du bas 5 · pastille de la barre 6 · anciennes feuilles du jour 8-9 · en-tête 30 · retour de l'en-tête 31 · éditeur plein écran 40 · fenêtres Radix 50 · informations 95 --- */
+  --dz-z-barre: 5; --dz-z-pastille: 6; --dz-z-entete: 30; --dz-z-retour: 31; --dz-z-fenetre: 50;
+
   --dz-focus: 0 0 0 2px #FFFDF8, 0 0 0 4px #15120F;
 
   /* --- états des heures --- */
@@ -37,7 +43,7 @@
   --dz-a-envoyer-fond: #FFE4A8; --dz-a-envoyer-texte: #9A3412; --dz-a-envoyer-trait: #C98500; --dz-a-envoyer-texte-2: #7A3A00;
   /* à envoyer ≠ après-midi : fond ΔE 20,3 (était 2,1), trait séparé du trait après-midi. Texte 5,89:1 */
   --dz-en-cours-fond: #E7F6EE; --dz-en-cours: #2FA36B; --dz-en-cours-texte: #17663F; --dz-en-cours-vif: #2ED3A0;
-  --dz-prevu-trait: #9C907E;  /* pointillé 1.5px */
+  --dz-prevu-trait: #7D7261;  /* pointillé 1.5px : 4,0:1 sur crème (était #9C907E, 2,68:1) */
   --dz-erreur-fond: #FCE4E1; --dz-erreur: #C62828; --dz-erreur-bord-doux: #F0B8AE; --dz-erreur-texte-2: #7A2A22; --dz-erreur-vif: #FF6B6B; --dz-erreur-texte: #8E1B14; --dz-erreur-sombre: #3A1414;
   --dz-oubli: #FF6B3D; --dz-oubli-sombre: #3A1A14;
   --dz-cloture: #655B50; --dz-cloture-sombre: #1F1B17;
@@ -45,7 +51,9 @@
 
   /* --- créneaux (constantes TS : day-part.ts) --- */
   /* matin inchangé ; soir = valeur rejouée sur le dépôt : matin/soir ΔE 15,02, réunion/soir 11,81 (test:creneaux 5/5) */
+  --dz-matin: #DDEBFA;      --dz-matin-trait: #4A8FE0;
   --dz-apres-midi: #FCE3CF; --dz-apres-midi-trait: #EE8A43;
+  --dz-soir: #EAD6F4;       --dz-soir-trait: #9A6FD6;
   --dz-journee: #FFFFFF;    --dz-journee-trait: #15120F;
   /* réunion : valeurs rejouées sur le dépôt (test:missions 19/19). Pas de barre à gauche (missions.ts:144). */
   --dz-reunion: #FFE2EC;
