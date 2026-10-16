@@ -107,11 +107,11 @@
     }
   },
   "css": {
-    "_aide": "Budget du CSS du premier chargement (kB, gzip niveau 9 des feuilles /_next/static/css/ de la page exportée), lu par scripts/check-css-budget.mjs (npm run budget:css après npm run build). Le « First Load JS » ci-dessus ne voit pas le CSS : depuis que le CSS de l'écran salarié est en fichiers .css (plan d'intégration du design salarié, étape 1 : /poseur 12,1 → 22,0 kB gzip de CSS, pour ≈ 66 kB de JavaScript de moins au premier chargement), il est mesuré ici. max = mesure arrondie au kB supérieur + 5.",
+    "_aide": "Budget du CSS du premier chargement (kB, gzip niveau 9 des feuilles /_next/static/css/ de la page exportée), lu par scripts/check-css-budget.mjs (npm run budget:css après npm run build). Le « First Load JS » ci-dessus ne voit pas le CSS : depuis que le CSS de l'écran salarié est en fichiers .css (plan d'intégration du design salarié, étape 1 : /poseur 12,1 → 22,0 kB gzip de CSS, pour ≈ 66 kB de JavaScript de moins au premier chargement), il est mesuré ici. max = mesure arrondie au kB supérieur + 5. /poseur 22,0 → 26,4 kB (coque v2 fidèle à la planche : jetons dz-jetons.css + shell-v2.css, ≈ 4,4 kB gzip, derrière ?ui=2 mais chargés pour tous ; la planche annonçait 8,2 kB pour ses deux fichiers).",
     "routes": {
       "/poseur": {
-        "mesure": 22.0,
-        "max": 27
+        "mesure": 26.4,
+        "max": 32
       },
       "/pointer": {
         "mesure": 12.1,

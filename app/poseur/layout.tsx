@@ -27,6 +27,7 @@ import '@/components/reserve-lift-form.css';
 import '@/components/chantier-documents.css';
 import '@/components/geo-info-dialog.css';
 // Coque v2 (étape 3) : toutes les règles sont sous `.bt-ui2`, inactives sans `?ui=2`.
+import '@/components/design/salarie/dz-jetons.css';
 import '@/components/design/salarie/shell-v2.css';
 
 export default function PoseurLayout({
