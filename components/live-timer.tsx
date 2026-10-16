@@ -40,6 +40,7 @@ import { addDays, format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import type { Worksite } from '@/lib/types';
+import { useUi2 } from '@/components/design/salarie/shell-v2'; // coque v2 (?ui=2) : la carte de pointage de la planche
 import TermineLe from '@/components/termine-le'; // lot 23 : « Terminé le … » (le pointage en cours continue normalement)
 
 interface Props {
@@ -71,6 +72,7 @@ const fmtElapsed = (ms: number) => {
 };
 
 export default function LiveTimer({ userId, session, today, worksites }: Props) {
+  const ui2 = useUi2();
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   // Heure de fin proposée quand le chrono a été oublié d'un jour sur l'autre.
@@ -193,6 +195,19 @@ export default function LiveTimer({ userId, session, today, worksites }: Props) 
             </div>
           )}
         </>
+      ) : ui2 ? (
+        // Coque v2 (planche, E05) : « ● POINTAGE EN COURS · DEPUIS 12:30 », le chrono en grand (h:mm), le lieu à droite, « Terminer ma journée » en crème.
+        <div className="bt-lt-one">
+          <div className="dz-pointage-k"><span className="dz-pointage-point" aria-hidden="true" />Pointage en cours · depuis {startedHHmm}</div>
+          <div className="dz-pointage-ligne">
+            <span className="dz-pointage-temps bt-lt-el" title="Temps écoulé">{fmtElapsed(elapsed).slice(0, -3)}</span>
+            <span className="dz-pointage-lieu">{site?.client_name || 'Chantier'}{site?.city ? <><br />{site.city}</> : null}</span>
+          </div>
+          <TermineLe ws={site} dark />
+          <button type="button" className="bt-lt-btn stop" disabled={busy} onClick={() => stop()} data-testid="lt-finish" data-guide="journee.terminer">
+            {busy && <Loader2 className="h-4 w-4 animate-spin" />} Terminer ma journée
+          </button>
+        </div>
       ) : (
         <div className="bt-lt-one">
           <div className="bt-lt-txt">
