@@ -195,29 +195,28 @@ export default function LiveTimer({ userId, session, today, worksites }: Props) 
             </div>
           )}
         </>
-      ) : ui2 ? (
-        // Coque v2 (planche, E05) : « ● POINTAGE EN COURS · DEPUIS 12:30 », le chrono en grand (h:mm), le lieu à droite, « Terminer ma journée » en crème.
-        <div className="bt-lt-one">
-          <div className="dz-pointage-k"><span className="dz-pointage-point" aria-hidden="true" />Pointage en cours · depuis {startedHHmm}</div>
-          <div className="dz-pointage-ligne">
-            <span className="dz-pointage-temps bt-lt-el" title="Temps écoulé">{fmtElapsed(elapsed).slice(0, -3)}</span>
-            <span className="dz-pointage-lieu">{site?.client_name || 'Chantier'}{site?.city ? <><br />{site.city}</> : null}</span>
-          </div>
-          <TermineLe ws={site} dark />
-          <button type="button" className="bt-lt-btn stop" disabled={busy} onClick={() => stop()} data-testid="lt-finish" data-guide="journee.terminer">
-            {busy && <Loader2 className="h-4 w-4 animate-spin" />} Terminer ma journée
-          </button>
-        </div>
       ) : (
         <div className="bt-lt-one">
-          <div className="bt-lt-txt">
-            <div className="bt-lt-k"><Clock className="h-3.5 w-3.5" /> Tu es pointé depuis {startedHHmm}</div>
-            <div className="bt-lt-line">
-              <span className="bt-lt-site">{site?.client_name || 'Chantier'}</span>
-              <span className="bt-lt-since bt-lt-el" title="Temps écoulé">{fmtElapsed(elapsed)}</span>
+          {ui2 ? (
+            // Coque v2 (planche, E05) : « ● POINTAGE EN COURS · DEPUIS 12:30 », le chrono en grand (h:mm), le lieu à droite, « Terminer ma journée » en crème.
+            <>
+              <div className="dz-pointage-k"><span className="dz-pointage-point" aria-hidden="true" />Pointage en cours · depuis {startedHHmm}</div>
+              <div className="dz-pointage-ligne">
+                <span className="dz-pointage-temps bt-lt-el" title="Temps écoulé">{fmtElapsed(elapsed).slice(0, -3)}</span>
+                <span className="dz-pointage-lieu">{site?.client_name || 'Chantier'}{site?.city ? <><br />{site.city}</> : null}</span>
+              </div>
+              <TermineLe ws={site} dark />
+            </>
+          ) : (
+            <div className="bt-lt-txt">
+              <div className="bt-lt-k"><Clock className="h-3.5 w-3.5" /> Tu es pointé depuis {startedHHmm}</div>
+              <div className="bt-lt-line">
+                <span className="bt-lt-site">{site?.client_name || 'Chantier'}</span>
+                <span className="bt-lt-since bt-lt-el" title="Temps écoulé">{fmtElapsed(elapsed)}</span>
+              </div>
+              <TermineLe ws={site} dark />
             </div>
-            <TermineLe ws={site} dark />
-          </div>
+          )}
           <button type="button" className="bt-lt-btn stop" disabled={busy} onClick={() => stop()} data-testid="lt-finish" data-guide="journee.terminer">
             {busy && <Loader2 className="h-4 w-4 animate-spin" />} Terminer ma journée
           </button>

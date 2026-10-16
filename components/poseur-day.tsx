@@ -1643,6 +1643,42 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant, sema
   // Coque v2 : la phrase d'aide sous « Envoyer ma journée ».
   const etatEnvoiV2: EtatEnvoi = !isOnline ? 'hors-ligne' : submitting ? 'envoi' : pendingEntries.length > 0 ? 'pret' : canSend ? 'pret' : allSubmitted ? 'envoye' : 'rien';
   const aideV2 = ui2 ? aideEnvoi(etatEnvoiV2, { pointageEnCours: !!live.session && live.session.work_date === date, brouillons: liveEntries.filter((e) => e.status === 'draft').length, enAttente: pendingEntries.length, finACompleter: false, cloture: false }) : null;
+  /* PANIER REPAS — la case EST l'interrupteur (lot 9) : un appui,
+      pris / non pris. Mêmes données qu'avant (meal_allowance, une
+      ligne par jour), mêmes garde-fous : mois clos → fenêtre « Mois
+      clôturé », journée envoyée → confirmation, lignes chez le
+      comptable → grisée. La ligne blanche « Panier repas » a disparu.
+      Lot 3 bis : absente si l'entreprise n'utilise pas le panier. */
+  const panierBtn = meal !== false ? (
+    <button
+      type="button"
+      className={ui2 ? 'bt-stat dz-compteur dz-compteur-panier' : `bt-stat${dayMeal ? ' on' : ''}`}
+      data-ton={ui2 && dayMeal ? 'pris' : undefined}
+      aria-label="Panier repas"
+      aria-pressed={dayMeal}
+      data-testid="panier"
+      data-guide="journee.panier"
+      disabled={mealLocked}
+      title={mealLocked ? 'Journée chez le comptable : vois avec la secrétaire.' : undefined}
+      onClick={() => {
+        if (monthLocked) { setLateOpen(true); return; }
+        if (frozen) { askCorrect(() => toggleDayMeal(!dayMeal, true)); return; }
+        toggleDayMeal(!dayMeal);
+      }}
+    >
+      {ui2 ? (
+        <>
+          <span className="dz-compteur-cle">Panier</span>
+          <span className="bt-stat-n">{dayMeal ? 'Pris ✓' : 'Non pris'}</span>
+        </>
+      ) : (
+        <>
+          <span className="bt-stat-n">{dayMeal ? 'Panier ✓' : 'Panier'}</span>
+          <span className="bt-stat-l">{dayMeal ? 'repas pris' : 'non pris'}</span>
+        </>
+      )}
+    </button>
+  ) : null;
 
   /**
    * Lot 1 : « travaillées » = les heures SAISIES (lignes, file du téléphone,
@@ -1937,27 +1973,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant, sema
                 <span className="dz-compteur-cle">Route</span>
                 <span className="bt-stat-n">{fmtHM(routeMinutes)}</span>
               </div>
-              {meal !== false && (
-                <button
-                  type="button"
-                  className="bt-stat dz-compteur dz-compteur-panier"
-                  data-ton={dayMeal ? 'pris' : undefined}
-                  aria-label="Panier repas"
-                  aria-pressed={dayMeal}
-                  data-testid="panier"
-                  data-guide="journee.panier"
-                  disabled={mealLocked}
-                  title={mealLocked ? 'Journée chez le comptable : vois avec la secrétaire.' : undefined}
-                  onClick={() => {
-                    if (monthLocked) { setLateOpen(true); return; }
-                    if (frozen) { askCorrect(() => toggleDayMeal(!dayMeal, true)); return; }
-                    toggleDayMeal(!dayMeal);
-                  }}
-                >
-                  <span className="dz-compteur-cle">Panier</span>
-                  <span className="bt-stat-n">{dayMeal ? 'Pris ✓' : 'Non pris'}</span>
-                </button>
-              )}
+              {panierBtn}
             </div>
             <MiniFrise segments={friseSegments} />
           </>
@@ -1992,32 +2008,7 @@ export default function PoseurDay({ date: dateProp, topBanner, onAssistant, sema
                   <div className="bt-stat-l">route{travelPaid ? ' · payée' : ''}</div>
                 </div>
               )}
-              {/* PANIER REPAS — la case EST l'interrupteur (lot 9) : un appui,
-                  pris / non pris. Mêmes données qu'avant (meal_allowance, une
-                  ligne par jour), mêmes garde-fous : mois clos → fenêtre « Mois
-                  clôturé », journée envoyée → confirmation, lignes chez le
-                  comptable → grisée. La ligne blanche « Panier repas » a disparu.
-                  Lot 3 bis : absente si l'entreprise n'utilise pas le panier. */}
-              {meal !== false && (
-              <button
-                type="button"
-                className={`bt-stat${dayMeal ? ' on' : ''}`}
-                aria-label="Panier repas"
-                aria-pressed={dayMeal}
-                data-testid="panier"
-                data-guide="journee.panier"
-                disabled={mealLocked}
-                title={mealLocked ? 'Journée chez le comptable : vois avec la secrétaire.' : undefined}
-                onClick={() => {
-                  if (monthLocked) { setLateOpen(true); return; }
-                  if (frozen) { askCorrect(() => toggleDayMeal(!dayMeal, true)); return; }
-                  toggleDayMeal(!dayMeal);
-                }}
-              >
-                <span className="bt-stat-n">{dayMeal ? 'Panier ✓' : 'Panier'}</span>
-                <span className="bt-stat-l">{dayMeal ? 'repas pris' : 'non pris'}</span>
-              </button>
-              )}
+              {panierBtn}
             </div>
           </div>
         )}

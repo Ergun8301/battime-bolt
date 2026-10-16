@@ -417,31 +417,43 @@ export default function PoseurPage() {
    * « journée du 18 septembre saisie mais pas envoyée ». On garde la phrase,
    * on change le vocabulaire.
    */
-  const toSendBanner = toSend.length === 1 ? (
+  // Coque v2 : la note de l'en-tête (« Mardi 13 à envoyer · Ouvrir › ») montre les AUTRES jours à envoyer (le jour affiché a déjà son bouton « Envoyer ma journée »).
+  const jourNote = selectedDate || format(new Date(), 'yyyy-MM-dd');
+  const toSendShown = ui2 ? toSend.filter((d) => d !== jourNote) : toSend;
+  const jourCourt = (d: string) => { const t = format(parseISO(d), 'EEEE d', { locale: fr }); return t.charAt(0).toUpperCase() + t.slice(1); };
+  const toSendBanner = toSendShown.length === 1 ? (
+    ui2 ? (
+      <NoteEntete texte={`${jourCourt(toSendShown[0])} à envoyer`} label={`Journée du ${format(parseISO(toSendShown[0]), 'd MMMM', { locale: fr })} à envoyer`} onClick={() => openDay(toSendShown[0])} />
+    ) : (
     <button
       className="bt-alert"
-      onClick={() => openDay(toSend[0])}
-      aria-label={`Journée du ${format(parseISO(toSend[0]), 'd MMMM', { locale: fr })} à envoyer`}
+      onClick={() => openDay(toSendShown[0])}
+      aria-label={`Journée du ${format(parseISO(toSendShown[0]), 'd MMMM', { locale: fr })} à envoyer`}
     >
       <span className="bt-alert-badge">1</span>
       <span className="bt-alert-txt">
-        journée du {format(parseISO(toSend[0]), 'd MMMM', { locale: fr })} à envoyer
+        journée du {format(parseISO(toSendShown[0]), 'd MMMM', { locale: fr })} à envoyer
       </span>
       <span className="bt-alert-chev">›</span>
     </button>
-  ) : toSend.length > 1 ? (
+    )
+  ) : toSendShown.length > 1 ? (
     <Popover open={pendingOpen} onOpenChange={setPendingOpen}>
       <PopoverTrigger asChild>
+        {ui2 ? (
+          <NoteEntete texte={`${toSendShown.length} journées à envoyer`} label="Journées à envoyer" />
+        ) : (
         <button className="bt-alert" aria-label="Journées à envoyer">
-          <span className="bt-alert-badge">{toSend.length}</span>
+          <span className="bt-alert-badge">{toSendShown.length}</span>
           <span className="bt-alert-txt">journées à envoyer</span>
           <span className="bt-alert-chev">›</span>
         </button>
+        )}
       </PopoverTrigger>
       <PopoverContent align="center" className="w-72 bt-skin">
         <p className="text-sm font-medium mb-2">Journées à envoyer</p>
         <div className="space-y-1.5">
-          {toSend.map((d) => (
+          {toSendShown.map((d) => (
             <button
               key={d}
               onClick={() => openDay(d)}
@@ -488,28 +500,6 @@ export default function PoseurPage() {
   const jourAffiche = selectedDate || todayIso;
   const etatAffiche = ui2 ? etatJour({ date: jourAffiche, ...(joursBrut[jourAffiche] ?? { lignes: [] }) }) : 'vide';
   const ongletActif: OngletBas | null = selectedDate || view === 'day' ? 'day' : view === 'week' ? 'week' : view === 'month' ? 'month' : 'plus';
-  // La note de l'en-tête (« Mardi 13 à envoyer · Ouvrir › ») : les AUTRES jours à envoyer ; le jour affiché a déjà son bouton « Envoyer ma journée ».
-  const aEnvoyerV2 = ui2 ? toSend.filter((d) => d !== jourAffiche) : [];
-  const jourCourt = (d: string) => { const t = format(parseISO(d), 'EEEE d', { locale: fr }); return t.charAt(0).toUpperCase() + t.slice(1); };
-  const noteV2 = aEnvoyerV2.length === 1 ? (
-    <NoteEntete texte={`${jourCourt(aEnvoyerV2[0])} à envoyer`} label={`Journée du ${format(parseISO(aEnvoyerV2[0]), 'd MMMM', { locale: fr })} à envoyer`} onClick={() => openDay(aEnvoyerV2[0])} />
-  ) : aEnvoyerV2.length > 1 ? (
-    <Popover open={pendingOpen} onOpenChange={setPendingOpen}>
-      <PopoverTrigger asChild>
-        <NoteEntete texte={`${aEnvoyerV2.length} journées à envoyer`} label="Journées à envoyer" />
-      </PopoverTrigger>
-      <PopoverContent align="center" className="w-72 bt-skin">
-        <p className="text-sm font-medium mb-2">Journées à envoyer</p>
-        <div className="space-y-1.5">
-          {aEnvoyerV2.map((d) => (
-            <button key={d} onClick={() => openDay(d)} className="w-full truncate rounded-md border px-3 py-2.5 text-left text-sm font-medium capitalize hover:bg-muted/50 transition-colors">
-              {format(parseISO(d), 'EEEE d MMMM', { locale: fr })}
-            </button>
-          ))}
-        </div>
-      </PopoverContent>
-    </Popover>
-  ) : null;
   // Les 7 barres de la carte Total : les minutes notées de chaque jour de la semaine affichée (les mêmes lectures que la bande).
   const barres: BarreJour[] | undefined = ui2 ? bande.map((c) => ({
     date: c.date, jour: c.jour, etat: c.etat, aujourdhui: c.aujourdhui, affiche: c.affiche, prevu: prevuMin[c.date],
@@ -610,7 +600,7 @@ export default function PoseurPage() {
             </DropdownMenu>
           </div>
           {ui2 && (isToday || selectedDate) && <BandeJours jours={bande} onSelect={openDay} />}
-          {ui2 && (isToday || selectedDate) && noteV2}
+          {ui2 && (isToday || selectedDate) && toSendBanner}
         </header>
 
         {/* ===== CORPS ===== */}
