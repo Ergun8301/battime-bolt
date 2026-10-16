@@ -111,7 +111,7 @@ function semaineE05() {
 // E04 : planifiée, rien saisi (lundi à mercredi envoyés, jeudi prévu, vendredi et samedi prévus).
 function semaineE04() {
   D.time_entries = [
-    ligne('lun-1', '2026-10-12', W1, '08:00', '16:00', envoyee),
+    ligne('lun-1', '2026-10-12', W1, '08:00', '16:00', { ...envoyee, reception: 'avec' }),
     ligne('mar-1', '2026-10-13', W1, '08:00', '16:00', { status: 'submitted', submitted_at: '2026-10-13T16:05:00Z' }),
     ligne('mer-1', '2026-10-14', W1, '08:00', '16:30', { status: 'submitted', submitted_at: '2026-10-14T16:35:00Z' }),
   ];
@@ -119,7 +119,8 @@ function semaineE04() {
     prevu('pj1', today, W1, '08:00', '12:00'), prevu('pj2', today, W2, '13:30', '17:00'),
     prevu('p16', '2026-10-16', W1, '08:00', '16:00'), prevu('p17', '2026-10-17', W2, '08:00', '12:00'),
   ];
-  D.active_sessions = []; trainings = [];
+  // Comme sur la planche : le badge rouge de « Plus » (une réserve à lever, des formations à voir).
+  D.active_sessions = []; trainings = [formation('t1', 'Port du harnais'), formation('t2', 'Gestes et postures')];
 }
 // E03 : journée vide.
 function semaineE03() {
@@ -242,6 +243,7 @@ r = await photographierImplementation('E04', 390, 844, semaineE04);
 verifie((await r.p.locator('.bt-total').evaluate((e) => getComputedStyle(e).backgroundColor)) !== 'rgb(21, 18, 15)', 'E04 : sans pointage, le Total est la carte crème compacte (jamais un bloc noir)');
 verifie((await r.p.locator('.bt-total').evaluate((e) => e.getBoundingClientRect().height)) < 160, 'E04 : la carte Total (avec la ligne « prévues ») fait moins de 160 px de haut');
 verifie((await r.p.locator('.bt-lt').count()) === 0, 'E04 : pas de carte de pointage');
+verifie((await r.p.locator('.dz-onglet-badge').textContent()) === '2', 'E04 : la pastille rouge de « Plus » est là (2 rubriques à voir : réserves, formations), comme sur E05');
 verifie((await r.p.locator('.dz-aide').count()) === 0, 'E04 : pas de ligne d’aide quand elle n’a rien à dire');
 m = await mesures(r.p);
 verifie(m.premierVisible, `E04 : le premier chantier du jour est visible sans défiler (haut ${m.premierHaut} px, barre du bas ${m.barreHaut} px)`);

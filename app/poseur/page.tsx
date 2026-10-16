@@ -624,7 +624,7 @@ export default function PoseurPage() {
           )}
         </div>
 
-        {ui2 && <OngletsBas actif={ongletActif} onGo={allerOnglet} badgePlus={trainings.unseen} />}
+        {ui2 && <OngletsBas actif={ongletActif} onGo={allerOnglet} badgePlus={(reserves.length > 0 ? 1 : 0) + (trainings.unseen > 0 ? 1 : 0)} />}
 
         <LeaveRequestDialog open={leaveOpen} onOpenChange={setLeaveOpen} userId={user?.id} />
         {/* Lot 12 : un QR fixe (/pointer#f=…) s'ouvre par une vraie navigation, pour que la page lise le fragment. */}
