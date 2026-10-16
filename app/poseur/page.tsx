@@ -521,15 +521,16 @@ export default function PoseurPage() {
   const jourAffiche = selectedDate || todayIso;
   const etatAffiche = ui2 ? etatJour({ date: jourAffiche, ...(joursBrut[jourAffiche] ?? { lignes: [] }) }) : 'vide';
   const plusOuvert = ui2 && menuOpen; // la page « Plus » (E26) remplace le menu déroulant : posée sur l'écran, qui reste monté dessous (rien n'est relu)
-  const ongletActif: OngletBas | null = plusOuvert ? 'plus' : selectedDate || view === 'day' ? 'day' : view === 'week' ? 'week' : view === 'month' ? 'month' : 'plus';
+  // La barre du bas n'a plus que Journée · Semaine · Mois : Historique, Formations, Mon équipe (rangés dans « Mon compte ») et la page « Mon compte » elle-même n'allument aucun onglet.
+  const ongletActif: OngletBas | null = plusOuvert ? null : selectedDate || view === 'day' ? 'day' : view === 'week' ? 'week' : view === 'month' ? 'month' : null;
   // Les 7 barres de la carte Total : les minutes notées de chaque jour de la semaine affichée (les mêmes lectures que la bande).
   const barres: BarreJour[] | undefined = ui2 ? bande.map((c) => ({
     date: c.date, jour: c.jour, etat: c.etat, aujourdhui: c.aujourdhui, affiche: c.affiche, prevu: prevuMin[c.date],
     minutes: (joursBrut[c.date]?.lignes ?? []).reduce((t, l) => t + (Number((l as { total_minutes?: number | null }).total_minutes) || 0), 0),
   })) : undefined;
   useRetourFerme(ui2 && infoOpen, () => setInfoOpen(false)); // ?ui=2 : le retour du téléphone referme « Informations » comme les autres feuilles
-  const allerOnglet = (o: OngletBas) => { if (o === 'plus') { setMenuOpen(true); return; } setMenuOpen(false); if (o === 'day') goHome(); else goTo(o); };
-  // Échap referme « Plus » comme il refermait le menu déroulant (sauf si une fenêtre est ouverte par-dessus).
+  const allerOnglet = (o: OngletBas) => { setMenuOpen(false); if (o === 'day') goHome(); else goTo(o); };
+  // Échap referme « Mon compte » comme il refermait le menu déroulant (sauf si une fenêtre est ouverte par-dessus).
   useEffect(() => {
     if (!plusOuvert) return;
     const f = (e: KeyboardEvent) => { if (e.key === 'Escape' && !document.querySelector('[role=dialog]')) setMenuOpen(false); };
@@ -538,20 +539,21 @@ export default function PoseurPage() {
   }, [plusOuvert]);
   const avatar = () => setMenuOpen((o) => !o); // il ouvrait puis refermait le menu : même geste
   const roleKicker = user?.role === 'lead' ? 'Chef d’équipe' : 'Poseur';
-  const kickerPlus = [reglages?.name, roleKicker].filter(Boolean).join(' · ').toUpperCase();
-  const nomComplet = `${user?.first_name ?? ''} ${user?.last_name ?? ''}`.trim();
+  // « Mon compte » : le petit mot jaune de l'en-tête = le prénom et le rôle de la personne (le titre est « Mon compte »).
+  const kickerPlus = [user?.first_name, roleKicker].filter(Boolean).join(' · ').toUpperCase(); // le prénom seul : « SAM · CHEF D’ÉQUIPE » tient sur une ligne à 360 px (le nom complet passait à la ligne et allongeait l'en-tête)
+  const aVoir = (reserves.length > 0 ? 1 : 0) + (trainings.unseen > 0 ? 1 : 0); // pastille rouge de l'avatar (l'ancienne de « Plus »)
   const entreesHeures: EntreePlus[] = ui2 ? [
-    ...TABS.map((t): EntreePlus => ({ id: t.value, label: t.label, guide: MENU_GUIDE[t.value], onSelect: () => { setMenuOpen(false); goTo(t.value); } })),
-    { id: 'reserves', label: 'Réserves à lever', guide: 'menu.reserves', testid: 'menu-reserves', inactif: reserves.length === 0, compteur: reserves.length, compteurTestid: 'menu-reserves-compteur', onSelect: () => { setMenuOpen(false); if (!selectedDate && view !== 'day') goHome(); setReservesAsk(true); } },
-    ...(trainingsMenu ? [{ id: 'formations', label: 'Formations à voir', testid: 'menu-formations', compteur: trainings.unseen, compteurTestid: 'menu-formations-badge', onSelect: () => { setMenuOpen(false); goTo('formations'); } }] : []),
-    { id: 'conges', label: 'Mes congés', guide: 'menu.conges', onSelect: () => { setMenuOpen(false); setLeaveOpen(true); } },
-    ...(user?.role === 'lead' ? [{ id: 'equipe', label: 'Mon équipe', guide: 'menu.equipe', etiquette: 'chef', testid: 'menu-equipe', onSelect: () => { setMenuOpen(false); goTo('team'); } }] : []),
+    // Journée · Semaine · Mois sont dans la barre du bas : le menu ne les répète pas.
+    ...TABS.filter((t) => t.value === 'history').map((t): EntreePlus => ({ id: t.value, label: t.label, icone: 'historique', guide: MENU_GUIDE[t.value], onSelect: () => { setMenuOpen(false); goTo(t.value); } })),
+    { id: 'reserves', label: 'Réserves à lever', icone: 'reserves', guide: 'menu.reserves', testid: 'menu-reserves', inactif: reserves.length === 0, compteur: reserves.length, compteurTestid: 'menu-reserves-compteur', onSelect: () => { setMenuOpen(false); if (!selectedDate && view !== 'day') goHome(); setReservesAsk(true); } },
+    ...(trainingsMenu ? [{ id: 'formations', label: 'Formations à voir', icone: 'formations' as const, testid: 'menu-formations', compteur: trainings.unseen, compteurTestid: 'menu-formations-badge', onSelect: () => { setMenuOpen(false); goTo('formations'); } }] : []),
+    { id: 'conges', label: 'Mes congés', icone: 'conges', guide: 'menu.conges', onSelect: () => { setMenuOpen(false); setLeaveOpen(true); } },
+    ...(user?.role === 'lead' ? [{ id: 'equipe', label: 'Mon équipe', icone: 'equipe' as const, guide: 'menu.equipe', etiquette: 'chef', testid: 'menu-equipe', onSelect: () => { setMenuOpen(false); goTo('team'); } }] : []),
   ] : [];
   const entreesCompte: EntreePlus[] = ui2 ? [
-    { id: 'photo', label: 'Changer ma photo', guide: 'menu.photo', surPlace: true, occupe: uploadingPhoto, onSelect: () => photoInputRef.current?.click() },
-    ...(aiOn ? [{ id: 'assistant', label: 'Assistant BEMEXO', onSelect: () => { setMenuOpen(false); setAssistantOpen(true); } }] : []),
-    { id: 'infos', label: 'Informations', guide: 'menu.infos', onSelect: () => { setMenuOpen(false); setInfoOpen(true); } },
-    ...(pushState !== 'unsupported' ? [{ id: 'notifications', label: pushState === 'on' ? 'Couper les notifications' : pushState === 'denied' ? 'Notifications bloquées' : 'Activer les notifications', guide: 'menu.notifications', surPlace: true, occupe: pushBusy, onSelect: () => { if (!pushBusy) togglePush(); } }] : []),
+    { id: 'photo', label: 'Changer ma photo', icone: 'photo', guide: 'menu.photo', surPlace: true, occupe: uploadingPhoto, onSelect: () => photoInputRef.current?.click() },
+    { id: 'infos', label: 'Informations', icone: 'infos', guide: 'menu.infos', onSelect: () => { setMenuOpen(false); setInfoOpen(true); } },
+    ...(pushState !== 'unsupported' ? [{ id: 'notifications', icone: (pushState === 'on' ? 'notifications-off' : 'notifications') as 'notifications' | 'notifications-off', label: pushState === 'on' ? 'Couper les notifications' : pushState === 'denied' ? 'Notifications bloquées' : 'Activer les notifications', guide: 'menu.notifications', surPlace: true, occupe: pushBusy, onSelect: () => { if (!pushBusy) togglePush(); } }] : []),
   ] : [];
 
   const corps = (
@@ -590,17 +592,30 @@ export default function PoseurPage() {
               {plusOuvert ? (
                 <div>
                   <div className="dz-kicker" data-testid="dz-kicker-plus">{kickerPlus}</div>
-                  <div className="bt-phdr-date">{nomComplet}</div>
+                  <div className="bt-phdr-date">Mon compte</div>
                 </div>
               ) : isToday ? (
                 <div>
                   {ui2 && <Kicker date={todayIso} aujourdhui etat={etatAffiche} />}
                   <div className="bt-phdr-date">{todayLabel}</div>
                 </div>
+              ) : ui2 && !selectedDate && (view === 'week' || view === 'month') ? (
+                // Semaine et Mois sont dans la barre du bas : pas de flèche de retour, le même petit mot jaune que la Journée.
+                <div>
+                  <div className="dz-kicker" data-testid="dz-kicker-vue">MES HEURES</div>
+                  <div className="bt-phdr-date">{headerTitle}</div>
+                </div>
               ) : (
                 <button onClick={goHome} className="bt-phdr-back" aria-label="Retour à ma journée">
                   <ArrowLeft className="h-5 w-5 shrink-0" />
-                  <span className="bt-phdr-date truncate">{headerTitle}</span>
+                  {ui2 && !selectedDate ? (
+                    <span className="truncate">
+                      <span className="dz-kicker" data-testid="dz-kicker-vue">{view === 'team' ? 'MON ÉQUIPE' : view === 'formations' ? 'MON COMPTE' : 'MES HEURES'}</span>
+                      <span className="bt-phdr-date truncate">{headerTitle}</span>
+                    </span>
+                  ) : (
+                    <span className="bt-phdr-date truncate">{headerTitle}</span>
+                  )}
                 </button>
               )}
             </div>
@@ -615,11 +630,12 @@ export default function PoseurPage() {
             {/* Identité du salarié = déclencheur du menu (nom + rond photo/initiales). */}
             <input type="file" accept="image/*" hidden ref={photoInputRef} onChange={(e) => onPickPhoto(e.target.files?.[0])} />
             {ui2 ? (
-              <button className="bt-phdr-id" aria-label="Mon compte et menu" aria-haspopup="menu" aria-expanded={plusOuvert} data-guide="menu.compte" onClick={avatar}>
+              <button className="bt-phdr-id" aria-label={aVoir > 0 ? `Mon compte, ${aVoir} à voir` : 'Mon compte'} aria-haspopup="menu" aria-expanded={plusOuvert} data-guide="menu.compte" onClick={avatar}>
                 <span className="bt-phdr-id-name">{user?.first_name}<span className="bt-phdr-id-last">{user?.last_name ? ` ${user.last_name}` : ''}</span></span>
                 <span className="bt-phdr-id-av">
                   {photoUrl ? <img src={photoUrl} alt="" /> : <span className="bt-phdr-id-ini">{(user?.first_name?.[0] || '')}{(user?.last_name?.[0] || '')}</span>}
                 </span>
+                {aVoir > 0 && <span className="dz-avatar-badge" data-testid="dz-avatar-badge" aria-hidden="true">{aVoir}</span>}
               </button>
             ) : (
             <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
@@ -713,7 +729,7 @@ export default function PoseurPage() {
           </div>
         )}
 
-        {ui2 && <OngletsBas actif={ongletActif} onGo={allerOnglet} badgePlus={(reserves.length > 0 ? 1 : 0) + (trainings.unseen > 0 ? 1 : 0)} />}
+        {ui2 && <OngletsBas actif={ongletActif} onGo={allerOnglet} />}
 
         <LeaveRequestDialog open={leaveOpen} onOpenChange={setLeaveOpen} userId={user?.id} />
         {/* Lot 12 : un QR fixe (/pointer#f=…) s'ouvre par une vraie navigation, pour que la page lise le fragment. */}
