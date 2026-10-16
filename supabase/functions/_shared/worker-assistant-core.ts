@@ -23,7 +23,6 @@ import { WORKER_ATTACHMENT_ACTIONS as GENERE_WORKER_ATTACHMENT_ACTIONS, WORKER_R
 import { WORKER_TEXT_MAX } from './saisie-profil.ts';
 import { hasWorkerTour, TOUR_LABEL, tourAction } from './worker-tours.ts';
 import { GUIDES_UI2 } from './guides-ui2.ts';
-import { WORKER_GUIDE_V2 } from './worker-tours-v2.ts';
 import { blocAvantDemande, doitSauterLeCheminLocal, type MessageHistorique } from './assistant-history.ts';
 export { looksLikeAction };
 
@@ -529,9 +528,11 @@ const WORKER_GUIDE_UI1: WorkerGuideEntry[] = [
  * Les fiches servies : celles de la v1 tant que GUIDES_UI2 (worker-tours-v2.ts) vaut false — le MÊME tableau, donc la même consigne octet pour octet.
  * À la bascule (v2 pour tous), le titre et les étapes décrivent la nouvelle interface ; `mots`, `id` et `lien` ne changent pas.
  */
-export const WORKER_GUIDE: WorkerGuideEntry[] = GUIDES_UI2
-  ? WORKER_GUIDE_UI1.map((g) => { const v = WORKER_GUIDE_V2.find((x) => x.id === g.id); return v ? { ...g, etapes: v.etapes } : g; })
-  : WORKER_GUIDE_UI1;
+export let WORKER_GUIDE: WorkerGuideEntry[] = WORKER_GUIDE_UI1;
+// Les fiches v2 sont chargées EN DIFFÉRÉ (un import() : elles ne pèsent pas dans le premier chargement, que le budget de poids surveille).
+if (GUIDES_UI2) import('./worker-tours-v2.ts').then((m) => {
+  WORKER_GUIDE = WORKER_GUIDE_UI1.map((g) => { const v = m.WORKER_GUIDE_V2.find((x) => x.id === g.id); return v ? { ...g, etapes: v.etapes } : g; });
+}, () => { /* hors ligne : les fiches d'avant */ });
 
 export function findWorkerGuide(text: string): WorkerGuideEntry | null {
   const q = norm(text);
