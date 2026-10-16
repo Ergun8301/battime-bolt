@@ -154,7 +154,7 @@ async function ouvrir(largeur, hauteur, { ui2 = true } = {}) {
   D.time_entries = [{ id: 'jeu-1', company_id: CO, user_id: ME, worksite_id: 'w1', planning_id: null, work_date: today, start_time: '07:30:00', end_time: '12:00:00', break_minutes: 0, total_minutes: 270, meal_allowance: false, status: 'draft', locked: false, exported_at: null, observation: null, reception: null, gap_before: null, worksite: W1 }];
   const ctx = await contexte(largeur, hauteur);
   const p = await ctx.newPage(); p.on('pageerror', (e) => erreurs.push(e.message));
-  await p.goto(`http://localhost:${PORT}/poseur${ui2 ? '?ui=2' : ''}`);
+  await p.goto(`http://localhost:${PORT}/poseur?ui=${ui2 ? 2 : 1}`);
   await p.waitForSelector(ui2 ? '.dz-bande' : '.bt-total', { timeout: 20000 }); await p.waitForTimeout(1500);
   await p.locator('[data-testid=dock-assistant]').click(); await p.waitForSelector('[data-testid=assistant-panel]'); await p.waitForTimeout(600);
   return { p, ctx };

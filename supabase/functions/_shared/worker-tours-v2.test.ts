@@ -1,5 +1,5 @@
-// Étape 9 — les guides du NOUVEAU design (?ui=2) sont prêts, vrais et ÉTEINTS.
-//   · l'interrupteur GUIDES_UI2 vaut false : ce que la v1 reçoit n'a pas bougé (mêmes objets, mêmes textes) ;
+// Étape 9 puis bascule (étape 11) — les guides du NOUVEAU design (v2) sont vrais et SERVIS (GUIDES_UI2 = true).
+//   · l'interrupteur GUIDES_UI2 vaut true : les guides et fiches servis sont ceux de la v2 ; remis à false, la v1 reçoit ce qu'elle recevait (mêmes objets, mêmes textes) ;
 //   · chaque cible de la variante v2 existe dans le code, sur le chemin v2 (preuve par cible) ;
 //   · chaque phrase existe en français ET en turc, jamais vide, avec les règles de worker-tours.test.ts ;
 //   · chaque fiche d'aide a sa version v2 (français + turc) dont les libellés « » existent dans le code.
@@ -52,6 +52,8 @@ function ancres(src: Record<string, string>): Set<string> {
 const PREUVES: Record<string, [string, string?]> = {
   'menu.compte': ['app/poseur/page.tsx', 'aria-haspopup="menu"'],         // l'avatar v2 : ouvre la page « Plus »
   'menu.conges': ['app/poseur/page.tsx', "id: 'conges'"],                  // ligne de la page « Plus »
+  'menu.reserves': ['app/poseur/page.tsx', "id: 'reserves'"],              // ligne de la page « Plus » (ancre ajoutée à la bascule)
+  'menu.equipe': ['app/poseur/page.tsx', "id: 'equipe'"],                  // ligne de la page « Plus », chef d'équipe seulement (ancre ajoutée à la bascule)
   'menu.semaine': ['app/poseur/page.tsx'],             // MENU_GUIDE (vérifié plus bas : la page « Plus » l'utilise)
   'menu.historique': ['app/poseur/page.tsx'],
   'menu.photo': ['app/poseur/page.tsx', "id: 'photo'"],
@@ -71,18 +73,18 @@ const PREUVES: Record<string, [string, string?]> = {
   'editeur.autre': ['components/poseur-day.tsx'], 'editeur.ajouter-chantier': ['components/poseur-day.tsx'], 'editeur.retirer': ['components/poseur-day.tsx'],
   'confirmer.retirer': ['components/poseur-day.tsx'], 'copier.valider': ['components/poseur-day.tsx'],
   'docs.photo': ['components/chantier-documents.tsx'], 'docs.envoyer': ['components/chantier-documents.tsx'],
-  'reserves.bandeau': ['components/worker-reserves.tsx'], 'reserves.lever': ['components/worker-reserves.tsx'], 'reserves.valider': ['components/reserve-lift-form.tsx'],
+  'reserves.lever': ['components/worker-reserves.tsx'], 'reserves.valider': ['components/reserve-lift-form.tsx'],
   'semaine.jour': ['components/poseur-week.tsx', 'if (ui2) {'],
   'historique.jour': ['components/poseur-history.tsx', 'if (ui2) {'],
   'conges.faire': ['components/leave-request-dialog.tsx', 'if (ui2) {'], 'conges.type': ['components/leave-request-dialog.tsx', 'if (ui2) {'],
   'conges.envoyer': ['components/leave-request-dialog.tsx', 'if (ui2) {'], 'conges.annuler': ['components/leave-request-dialog.tsx', 'if (ui2) {'],
   'infos.fermer': ['app/poseur/page.tsx', 'infoOpen && ('],
   // « Mon équipe » : en v2 la page est ouverte par le guide lui-même (tourStep) ; la feuille d'heures est celle d'avant (team-day.tsx).
-  'equipe.jour': ['components/team-day.tsx'], 'equipe.salarie': ['components/team-day.tsx'], 'equipe.corriger': ['components/team-day.tsx'],
+  'equipe.salarie': ['components/team-day.tsx'], 'equipe.corriger': ['components/team-day.tsx'],
   'equipe.ajouter': ['components/team-day.tsx'], 'equipe.ok': ['components/team-day.tsx'],
 };
 
-Deno.test('Guides v2 : éteints par défaut — la v1 reçoit exactement ce qu’elle recevait (et, une fois allumés, la v2 reçoit la v2)', async () => {
+Deno.test('Guides v2 : l’interrupteur GUIDES_UI2 sert la v2 (bascule) ; à false, la v1 reçoit exactement ce qu’elle recevait', async () => {
   if (GUIDES_UI2) {
     // APRÈS LA BASCULE (étape 11) : les guides et les fiches servis sont ceux de la v2 (chargés en différé côté navigateur).
     await new Promise((r) => setTimeout(r, 20));

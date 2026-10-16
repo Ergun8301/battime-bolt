@@ -39,6 +39,8 @@ Contrat : `docs/ia-etape3/00-conception-etape3.md` (§1, §2). Aucune seconde li
 
 Exception documentée (2026-10-15, relecture 3b-1) : `avant-3b1.snapshot.json` a été régénéré UNE fois, volontairement, parce que le texte de quatre fiches du GUIDE bureau a changé (étapes fusionnées pour respecter « 3 étapes au plus » ; PR #200). Commande : supprimer le fichier puis `ETAPE3_ETALON=ecrire … etape3-eteint.test.ts`. Écart prouvé : seuls `guides.bureau`, `global`, les consignes qui portent le GUIDE (83 cas) et 5 réponses du lecteur local « Aide » (b29, gu01, gu02, gu04, gu05) bougent ; outils, liens et GUIDE salarié sont identiques.
 
+Seconde exception documentée (2026-10-16, bascule du design salarié, étape 11) : `avant-3b1.snapshot.json` a été régénéré une seconde fois (suppression + `ETAPE3_ETALON=ecrire`) parce que `GUIDES_UI2` passe à `true` (`guides-ui2.ts`) : les fiches d'aide du GUIDE **salarié** décrivent désormais le nouveau design. Écart prouvé (comparaison champ par champ avec l'ancien fichier) : seuls `guides.salarie`, `global`, la consigne de 55 cas salarié (ceux qui portent le GUIDE) et la réponse du lecteur local « Aide » de 2 cas (s21, s25) bougent ; **`guides.bureau` (SHA 5766f6e9…3198), `liens_bureau`, `liens_salarie`, tous les outils et tous les cas bureau sont identiques**.
+
 Les tests échouent tant qu'un fichier généré n'est pas à jour (`registre-listes.test.ts`, `registre-ouvreurs.test.ts`, T9). `npm run test:registre` lance toute la famille (couverture, scanner, outils, listes, ouvreurs, interrupteur, éteint à l'octet, ouvrir).
 
 ## La règle : le navigateur n'importe jamais `index.ts`
