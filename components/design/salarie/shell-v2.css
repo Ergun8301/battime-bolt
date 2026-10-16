@@ -177,7 +177,7 @@
 .bt-ui2 .bt-iv-tap:active { transform: none; }
 /* étiquettes d'état */
 .bt-ui2 .bt-badge, .bt-ui2 .dz-etiquette, .bt-ui2 .bt-iv-live-k, .bt-ui2 .bt-plan-k, .bt-ui2 .bt-cancel-badge { font: 700 var(--dz-fs-12)/1.2 var(--dz-font-chiffres); letter-spacing: .06em; text-transform: uppercase; padding: 4px 7px; border-radius: var(--dz-r-xs); }
-.bt-ui2 .dz-etiquette { color: var(--dz-texte-2); padding-left: 0; }
+.bt-ui2 .dz-etiquette { color: var(--dz-texte-2); }
 .bt-ui2 .dz-sep { display: none; }
 .bt-ui2 .bt-plan-k, .bt-ui2 .bt-iv-cancel .bt-cancel-badge { padding: 0; }
 .bt-ui2 .bt-badge .dot { display: none; }
@@ -191,7 +191,6 @@
 .bt-ui2 [data-dz-etat="envoyee"] { background: var(--dz-encre); color: var(--dz-creme); }
 .bt-ui2 [data-dz-etat="envoyee"] .bt-iv-times-v { color: var(--dz-jaune); }
 .bt-ui2 [data-dz-etat="envoyee"] .bt-iv-city, .bt-ui2 [data-dz-etat="envoyee"] .bt-iv-docs { color: var(--dz-creme-75); }
-.bt-ui2 [data-dz-etat="envoyee"] [data-testid="termine-le"] { color: var(--dz-creme-75) !important; } /* style en ligne du composant : seul !important le passe */
 .bt-ui2 [data-dz-etat="comptable"] { background: var(--dz-comptable-fond); border-color: var(--dz-trait-fort); }
 .bt-ui2 [data-dz-etat="comptable"] .bt-badge-ok { background: var(--dz-encre); color: var(--dz-jaune); }
 .bt-ui2 [data-dz-etat="renvoyee"] { border: 2px solid var(--dz-erreur); }
@@ -209,6 +208,8 @@
 .bt-ui2 .bt-iv-cancel .bt-cancel-time { color: var(--dz-texte-2); text-decoration: none; }
 .bt-ui2 .bt-iv.off { margin: 0; border: 1.5px dashed var(--dz-prevu-trait); border-radius: var(--dz-r-m); background: var(--dz-carte); padding: 10px 14px 12px 18px; }
 .bt-ui2 .bt-iv.off .bt-badge-off { background: var(--dz-telephone-fond); border: 0; color: var(--dz-encre); }
+/* « Terminé le … » : un encadré sable (style en ligne du composant : seul !important le passe) */
+.bt-ui2 .bt-iv [data-testid="termine-le"], .bt-ui2 .bt-iv-plan [data-testid="termine-le"] { grid-column: 1 / -1; display: block; margin: 3px 0 0 !important; padding: 8px 10px; border-radius: 10px; background: var(--dz-sable); color: var(--dz-texte-note) !important; font: 400 var(--dz-fs-125)/1.35 var(--dz-font-ui) !important; }
 /* encadrés dans la carte : réserve, correction du bureau, endroit noté, observation, avertissement du prévu */
 .bt-ui2 .bt-iv-reserve, .bt-ui2 .bt-iv-corr, .bt-ui2 .bt-iv-geo, .bt-ui2 .bt-iv-note, .bt-ui2 .bt-plan-warn { display: block; width: auto; margin: 3px 0 0; padding: 8px 10px; border: 0; border-radius: 10px; font: 400 var(--dz-fs-125)/1.35 var(--dz-font-ui); color: var(--dz-encre); box-sizing: border-box; }
 .bt-ui2 .bt-iv-reserve.avec, .bt-ui2 .bt-plan-warn, .bt-ui2 [data-dz-etat="sortie-oubliee"] .bt-iv-reserve.avec, .bt-ui2 [data-dz-etat="fin-a-completer"] .bt-iv-reserve.avec { background: var(--dz-erreur-fond); color: var(--dz-erreur-texte); font-weight: 600; }

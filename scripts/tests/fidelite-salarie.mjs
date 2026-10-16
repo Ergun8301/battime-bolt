@@ -132,6 +132,59 @@ function semaineE03() {
   D.planning = []; D.active_sessions = []; trainings = [];
 }
 
+// ── Cartes de chantier (étape 4) : une journée par état de ligne, comme E05b / E05c / E12 / E14 / E29 / E42 de la planche ──
+const W3 = { id: 'w3', company_id: CO, client_name: 'Résidence Test', city: 'Villeurbanne', is_active: true };
+const LONG = 'Résidence Les Jardins de la Doua - Bâtiment C lot 14';
+D.worksites.push(W3);
+const base = () => [
+  ligne('lun-1', '2026-10-12', W1, '08:00', '16:00', envoyee),
+  ligne('mar-1', '2026-10-13', W1, '08:00', '16:00', { status: 'submitted', submitted_at: '2026-10-13T16:05:00Z' }),
+  ligne('mer-1', '2026-10-14', W1, '08:00', '16:30', { status: 'submitted', submitted_at: '2026-10-14T16:35:00Z' }),
+];
+// E05b / E05c : en cours, un trou, un prévu qui chevauche, la réunion, les tâches
+function semaineE05c() {
+  semaineE05();
+  D.planning.push({ ...prevu('pj-w3', today, W3, '16:30', '17:00'), estimated_end: null });
+  D.meetings = [{ id: 'm1', company_id: CO, title: 'Réunion sécurité', meeting_date: today, start_time: '17:15:00', end_time: null, place: 'Dépôt', all_team: true }];
+  D.meeting_participants = [];
+  const tache = (id, texte, part, fait, debut) => ({ id, company_id: CO, user_id: ME, work_date: today, text: texte, part, created_by: null, created_at: `2026-10-15T06:0${id.slice(1)}:00Z`, done_at: fait ? '2026-10-15T09:00:00Z' : null, done_by: fait ? ME : null, start_time: debut, end_time: null });
+  D.day_tasks = [tache('t1', 'Ranger le dépôt', 'matin', true, null), tache('t2', 'Photos avant pose', null, false, null), tache('t3', 'Rendre la clé', null, false, '17:00:00')];
+}
+// E12 : journée envoyée (envoyé, retiré, envoyé avec « endroit noté »)
+function semaineE12() {
+  D.time_entries = [...base(),
+    ligne('j-1', today, W1, '07:30', '11:30', { status: 'submitted', submitted_at: '2026-10-15T12:05:00Z' }),
+    ligne('j-2', today, W3, '16:00', '16:30', { status: 'cancelled' }),
+    ligne('j-3', today, W2, '12:00', '15:30', { status: 'submitted', submitted_at: '2026-10-15T12:05:00Z' }),
+  ];
+  D.time_entry_positions = [{ id: 'pos1', entry_id: 'j-3', moment: 'start', latitude: 45.7, longitude: 4.9, accuracy_m: 20, captured_at: '2026-10-15T10:00:00Z' }];
+  D.planning = []; D.active_sessions = []; trainings = [];
+}
+// E42 : une réserve à lever, une levée par le bureau, une levée par le salarié
+function semaineE42() {
+  D.time_entries = [...base(),
+    ligne('j-1', today, W3, '07:30', '11:30', { status: 'submitted', submitted_at: '2026-10-15T12:05:00Z', reception: 'avec', observation: 'Joint du portail' }),
+    ligne('j-2', today, W1, '12:30', '15:00', { status: 'submitted', submitted_at: '2026-10-15T12:05:00Z', reception: 'avec', reserve_resolved_at: '2026-10-15T13:00:00Z' }),
+    ligne('j-3', today, W2, '15:30', '17:00', { status: 'submitted', submitted_at: '2026-10-15T12:05:00Z', reception: 'avec', reserve_fixed_at: '2026-10-12T13:00:00Z' }),
+  ];
+  D.planning = []; D.active_sessions = []; trainings = [];
+}
+// E14 : mardi 13 renvoyée par le bureau (à corriger)
+function semaineE14() {
+  D.time_entries = [base()[0], ligne('mar-1', '2026-10-13', W1, '08:00', '16:00', { status: 'draft', submitted_at: '2026-10-13T16:05:00Z' }), base()[2]];
+  D.planning = []; D.active_sessions = []; trainings = [];
+}
+// E29 : noms de 52 caractères (à envoyer, en cours, chez le comptable)
+function semaineE29() {
+  const L = (n) => ({ ...W1, id: `wl${n}`, client_name: LONG, city: ['Villeurbanne', 'Saint-Priest', 'Villeurbanne'][n] });
+  D.worksites.push(L(0), L(1), L(2));
+  D.time_entries = [...base(),
+    ligne('j-1', today, L(0), '07:30', '11:30', { status: 'draft', submitted_at: null }),
+    ligne('j-3', today, L(2), '13:00', '17:30', { status: 'submitted', submitted_at: '2026-10-15T12:05:00Z', locked: true }),
+  ];
+  D.planning = []; D.active_sessions = [{ user_id: ME, company_id: CO, worksite_id: 'wl1', planning_id: null, work_date: today, started_at: '2026-10-15T10:30:00Z' }]; trainings = [];
+}
+
 const now = Math.floor(Date.now() / 1000); const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
 const jwt = `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64({ sub: ME, role: 'authenticated', exp: now + 36000, aal: 'aal1' })}.sig`;
 const session = { access_token: jwt, refresh_token: 'r', expires_at: now + 36000, expires_in: 36000, token_type: 'bearer', user: { id: ME, email: 'sam@exemple.fr', aud: 'authenticated', role: 'authenticated' } };
@@ -193,7 +246,7 @@ let ok = 0, ko = 0;
 const verifie = (cond, msg) => { if (cond) { ok++; console.log('✅', msg); } else { ko++; console.log('❌', msg); } };
 const mesures = async (p) => p.evaluate(() => {
   const vis = (e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
-  const cibles = [...document.querySelectorAll('.bt-phdr button, .dz-onglet, .bt-day-dock button, .dz-rappels button, .dz-note, .dz-jour, .bt-lt-btn, button.bt-stat')].filter(vis)
+  const cibles = [...document.querySelectorAll('.bt-phdr button, .dz-onglet, .bt-day-dock button, .dz-rappels button, .dz-note, .dz-jour, .bt-lt-btn, button.bt-stat, .bt-alert, .bt-gap-b, .bt-iv-fixbtn, .bt-ghostbtn, .bt-dup, .dz-assistant')].filter(vis)
     .filter((e) => { const r = e.getBoundingClientRect(); return r.width < 43.5 || r.height < 43.5; }).map((e) => `${e.className} ${Math.round(e.getBoundingClientRect().width)}×${Math.round(e.getBoundingClientRect().height)}`);
   const petits = []; const w = document.createTreeWalker(document.querySelector('.bt-poseur'), NodeFilter.SHOW_TEXT);
   for (let n = w.nextNode(); n; n = w.nextNode()) { if (!n.textContent.trim() || !n.parentElement || !vis(n.parentElement)) continue; const fs = parseFloat(getComputedStyle(n.parentElement).fontSize); if (fs < 11.99) petits.push(`${n.textContent.trim().slice(0, 24)} ${fs}px`); }
@@ -201,7 +254,20 @@ const mesures = async (p) => p.evaluate(() => {
   const premier = document.querySelector('[data-testid="card-entry"], [data-testid="card-planned"], [data-testid="card-live"]');
   const haut = dock ? dock.getBoundingClientRect().top : innerHeight;
   const r1 = premier ? premier.getBoundingClientRect() : null;
-  return { cibles, petits, debordeX: document.documentElement.scrollWidth > innerWidth, premierVisible: !!r1 && r1.top < haut - 8, premierHaut: r1 ? Math.round(r1.top) : null, barreHaut: Math.round(haut), ...(scroll ? {} : {}) };
+  // Contraste (WCAG) de chaque texte visible : couleur du texte contre le fond opaque le plus proche ; 4,5:1 (3:1 pour le grand texte). Les composants inactifs et les décors aria-hidden sont exclus.
+  const lum = ([r, g, b]) => { const f = (c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+  const rgba = (c) => { const m = c.match(/[\d.]+/g).map(Number); return [m[0], m[1], m[2], m[3] ?? 1]; };
+  const melange = (fg, bg) => [0, 1, 2].map((i) => fg[i] * fg[3] + bg[i] * (1 - fg[3]));
+  const fondDe = (e) => { let c = [255, 255, 255]; const pile = []; for (let n = e; n; n = n.parentElement) { const st = getComputedStyle(n); if (st.backgroundImage !== 'none' && !st.backgroundImage.includes('gradient(') ) { /* image : ignorée */ } const b = rgba(st.backgroundColor); if (b[3] > 0) pile.push(b); if (b[3] >= 0.99) break; } for (const b of pile.reverse()) c = melange(b, [...c, 1]); return c; };
+  const faibles = []; const w2 = document.createTreeWalker(document.querySelector('.bt-poseur'), NodeFilter.SHOW_TEXT);
+  for (let n = w2.nextNode(); n; n = w2.nextNode()) {
+    const e = n.parentElement; if (!n.textContent.trim() || !e || !vis(e) || e.closest('[aria-hidden="true"], button:disabled, .dz-sr, .dz-frise, .dz-barres')) continue;
+    const st = getComputedStyle(e); const fond = fondDe(e); const fg = rgba(st.color); const texte = melange(fg, [...fond, 1]);
+    const L1 = lum(texte), L2 = lum(fond); const ratio = (Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05);
+    const grand = parseFloat(st.fontSize) >= 24 || (parseFloat(st.fontSize) >= 18.66 && Number(st.fontWeight) >= 700);
+    if (ratio < (grand ? 3 : 4.5)) faibles.push(`« ${n.textContent.trim().slice(0, 22)} » ${ratio.toFixed(2)}:1`);
+  }
+  return { cibles, petits, faibles, debordeX: document.documentElement.scrollWidth > innerWidth, premierVisible: !!r1 && r1.top < haut - 8, premierHaut: r1 ? Math.round(r1.top) : null, barreHaut: Math.round(haut), ...(scroll ? {} : {}) };
 });
 
 const poids = [];
@@ -220,6 +286,7 @@ verifie((await r.p.locator('[data-testid=scan-open]').count()) === 1, 'E05 : bou
 let m = await mesures(r.p);
 verifie(m.cibles.length === 0, `E05 : cibles ≥ 44 px (${m.cibles.join(' ; ') || 'toutes'})`);
 verifie(m.petits.length === 0, `E05 : texte ≥ 12 px (${m.petits.join(' ; ') || 'tout'})`);
+verifie(m.faibles.length === 0, `E05 : contrastes ≥ 4,5:1 (${m.faibles.join(' ; ') || 'tous'})`);
 verifie(!m.debordeX, 'E05 : aucun défilement horizontal');
 console.log(`   E05 : premier chantier à ${m.premierHaut} px, barre du bas à ${m.barreHaut} px`);
 poids.push(await cote('01-E05-pointage-en-cours-390x844', pE05, r.f, 'E05 · en cours · 390 × 844'));
@@ -249,6 +316,7 @@ m = await mesures(r.p);
 verifie(m.premierVisible, `E04 : le premier chantier du jour est visible sans défiler (haut ${m.premierHaut} px, barre du bas ${m.barreHaut} px)`);
 verifie(m.cibles.length === 0, `E04 : cibles ≥ 44 px (${m.cibles.join(' ; ') || 'toutes'})`);
 verifie(m.petits.length === 0, `E04 : texte ≥ 12 px (${m.petits.join(' ; ') || 'tout'})`);
+verifie(m.faibles.length === 0, `E04 : contrastes ≥ 4,5:1 (${m.faibles.join(' ; ') || 'tous'})`);
 poids.push(await cote('03-E04-sans-pointage-390x844', pE04, r.f, 'E04 · planifiée, sans pointage · 390 × 844'));
 // la bande reste cliquable : un jour → la journée de ce jour
 await r.p.locator('[data-testid="dz-jour-2026-10-13"]').click(); await r.p.waitForSelector('.bt-phdr-back', { timeout: 10000 });
@@ -266,6 +334,10 @@ await r.ctx.close();
 const pE03 = await photographierPlanche('E03', 390, 844);
 r = await photographierImplementation('E03', 390, 844, semaineE03);
 verifie((await r.p.locator('.bt-total').evaluate((e) => getComputedStyle(e).backgroundColor)) !== 'rgb(21, 18, 15)', 'E03 : journée vide, Total crème');
+verifie(((await r.p.locator('.bt-empty').textContent()) || '').includes('Aucun chantier aujourd’hui.') && ((await r.p.locator('.bt-empty').evaluate((e) => getComputedStyle(e).borderTopStyle)) === 'dashed'), 'E03 : « Aucun chantier aujourd’hui. » dans un cadre en pointillé');
+verifie((await r.p.locator('.bt-empty .bt-ghostbtn').boundingBox())?.height >= 43.5 && (await r.p.locator('.bt-sec').first().isHidden()), 'E03 : « Copier la journée d’hier » de 44 px, sans titre « Chantiers du jour »');
+m = await mesures(r.p);
+verifie(m.cibles.length === 0 && m.petits.length === 0 && m.faibles.length === 0, `E03 : cibles, texte, contrastes conformes (${m.cibles.concat(m.petits, m.faibles).join(' ; ') || 'ok'})`);
 poids.push(await cote('05-E03-journee-vide-390x844', pE03, r.f, 'E03 · journée vide · 390 × 844'));
 await r.ctx.close();
 
@@ -281,6 +353,83 @@ await r.ctx.close();
 r = await photographierImplementation('E25', 390, 844, semaineE05, async (p) => { await p.locator('[data-testid=dz-onglet-week]').click(); await p.waitForSelector('[data-testid=dz-semaine]', { timeout: 10000 }); await p.waitForTimeout(1200); });
 poids.push(await cote('06-E25-semaine-390x844', pE25, r.f, 'E25 · Semaine · 390 × 844'));
 await r.ctx.close();
+
+// ── Étape 4 · pointage en cours : la ligne des pastilles se masque, « Réserves à lever » et « Formations à voir » vivent dans « Plus » ──
+r = await photographierImplementation('E05-plus', 390, 844, semaineE05);
+verifie(!(await r.p.locator('.dz-rappels').first().isVisible()), 'pointage en cours : la ligne des deux pastilles (réserves, formations) est masquée');
+verifie(((await r.p.locator('.dz-aide').boundingBox())?.height ?? 99) < 22, 'pointage en cours : « Le pointage en cours ne part pas » tient sur UNE ligne (390 px)');
+await r.p.locator('[data-testid=dz-onglet-plus]').click(); await r.p.waitForSelector('[data-testid=menu-reserves]', { timeout: 10000 });
+verifie(((await r.p.locator('[data-testid=menu-reserves]').textContent()) || '').includes('Réserves à lever') && (await r.p.locator('[data-testid=menu-reserves-compteur]').textContent()) === '1', 'menu Plus : « Réserves à lever » avec son compteur (1), pendant un pointage');
+verifie(((await r.p.locator('[data-testid=menu-formations]').textContent()) || '').includes('Formations à voir') && (await r.p.locator('[data-testid=menu-formations-badge]').textContent()) === '2', 'menu Plus : « Formations à voir » avec son compteur (2), pendant un pointage');
+await r.p.locator('[data-testid=menu-reserves]').click(); await r.p.waitForSelector('[data-testid=reserves-dialog]', { timeout: 10000 });
+verifie((await r.p.locator('[data-testid=wr-item]').count()) === 1, 'menu Plus → « Réserves à lever » ouvre la liste existante des réserves (1 réserve, bouton « Lever »)');
+await r.ctx.close();
+r = await photographierImplementation('E05-formations', 390, 844, semaineE05, async (p) => { await p.locator('[data-testid=dz-onglet-plus]').click(); await p.waitForSelector('[data-testid=menu-formations]', { timeout: 10000 }); await p.locator('[data-testid=menu-formations]').click(); await p.waitForTimeout(1500); });
+verifie(((await r.p.locator('.bt-phscroll').textContent()) || '').includes('Port du harnais'), 'menu Plus → « Formations à voir » ouvre la liste existante des formations');
+await r.ctx.close();
+r = await photographierImplementation('E04-rappels', 390, 844, semaineE04);
+verifie((await r.p.locator('.dz-rappels').first().isVisible()) && (await r.p.locator('.dz-rappels button').count()) === 2, 'sans pointage en cours : les deux pastilles restent affichées (1 réserve, 2 formations)');
+await r.ctx.close();
+
+// ── Étape 4 · cartes de chantier à plusieurs états, comparées à la planche ──
+const rgb = (c) => c.replace(/\s/g, '');
+const lisere = (p, sel) => p.locator(sel).first().evaluate((e) => getComputedStyle(e, '::before').backgroundColor);
+const defilerVers = (sel) => async (p) => { await p.evaluate((sel) => { const sc = document.querySelector('.bt-day-scroll'); const el = document.querySelector(sel); const h = document.querySelector('.bt-phdr').getBoundingClientRect().bottom; sc.scrollTop += el.getBoundingClientRect().top - h - 10; }, sel); await p.waitForTimeout(400); };
+async function ecranCartes(fichier, code, titre, fixture, apres, controles) {
+  const pl = await photographierPlanche(code, 390, 844);
+  const x = await photographierImplementation(code, 390, 844, fixture, apres);
+  const mm = await mesures(x.p);
+  verifie(mm.cibles.length === 0, `${code} : cibles ≥ 44 px (${mm.cibles.join(' ; ') || 'toutes'})`);
+  verifie(mm.petits.length === 0, `${code} : texte ≥ 12 px (${mm.petits.join(' ; ') || 'tout'})`);
+  verifie(mm.faibles.length === 0, `${code} : contrastes ≥ 4,5:1 (3:1 grand texte) (${mm.faibles.join(' ; ') || 'tous'})`);
+  verifie(!mm.debordeX, `${code} : aucun défilement horizontal`);
+  if (controles) await controles(x.p);
+  poids.push(await cote(fichier, pl, x.f, titre));
+  await x.ctx.close();
+}
+await ecranCartes('07-E05b-chantiers-390x844', 'E05b', 'E05b · chantiers, trou, prévu', semaineE05c, defilerVers('.bt-sec'), async (p) => {
+  verifie(rgb(await lisere(p, '[data-testid=card-entry]')) === 'rgb(74,143,224)', 'E05b : liseré du matin (07:30) = bleu de tokens.css');
+  verifie((await p.locator('[data-testid=card-entry]').first().evaluate((e) => getComputedStyle(e).backgroundColor.replace(/\s/g, ''))) === 'rgb(221,235,250)', 'E05b : la carte du matin a le fond « matin » de tokens.css');
+  verifie(/^À ENVOYER$|^● À ENVOYER$/.test(((await p.locator('[data-testid=card-entry] .bt-badge').first().textContent()) || '').trim().toUpperCase().replace(/\s+/g, ' ')), 'E05b : étiquette d’état « À ENVOYER » en haut de la carte');
+  verifie(await p.evaluate(() => { const c = document.querySelector('[data-testid=card-entry]').getBoundingClientRect(), b = document.querySelector('[data-testid=card-entry] .bt-badge').getBoundingClientRect(), n = document.querySelector('[data-testid=card-entry] .bt-iv-name').getBoundingClientRect(); return b.bottom <= n.top + 1 && b.top - c.top < 20; }), 'E05b : l’étiquette est AU-DESSUS du nom, en haut de la carte');
+  verifie((await p.locator('.bt-gap-b').first().boundingBox())?.height >= 43.5, 'E05b : « Route » et « Pause » du trou font 44 px');
+  verifie(rgb(await p.locator('[data-testid=card-live] .dz-etiquette, [data-testid=card-live] .bt-iv-live-k').first().evaluate((e) => getComputedStyle(e).backgroundColor)) === 'rgb(31,122,77)', 'E05b : étiquette « EN COURS » verte');
+  verifie((await p.locator('[data-testid=card-planned]').first().evaluate((e) => getComputedStyle(e).borderStyle)) === 'dashed', 'E05b : le prévu est en pointillé');
+  verifie(rgb(await p.locator('[data-testid=card-planned-incomplete]').evaluate((e) => getComputedStyle(e).backgroundColor)) === 'rgb(252,228,225)', 'E05b : l’avertissement du prévu est un encadré rouge pâle');
+});
+await ecranCartes('08-E05c-reunion-taches-390x844', 'E05c', 'E05c · réunion, tâches, Dupliquer', semaineE05c, async (p) => { await p.evaluate(() => { document.querySelector('.bt-day-scroll').scrollTop = 99999; }); await p.waitForTimeout(400); }, async (p) => {
+  const m = p.locator('.bt-meet').first();
+  verifie((await m.evaluate((e) => getComputedStyle(e).boxShadow)) === 'none' && (await m.evaluate((e) => getComputedStyle(e, '::before').content)) === 'none', 'E05c : la carte réunion n’a pas de barre à gauche');
+  verifie(rgb(await m.evaluate((e) => getComputedStyle(e).backgroundColor)) === 'rgb(255,226,236)', 'E05c : réunion rose de tokens.css');
+  const lignes = await p.locator('.bt-task').evaluateAll((es) => es.map((e) => Math.round(e.getBoundingClientRect().height)));
+  verifie(lignes.length === 3 && lignes.every((h) => h >= 44), `E05c : trois lignes de tâche de 44 px au moins (${lignes.join(', ')})`);
+  verifie((await p.locator('.bt-task-ok .bx').first().evaluate((e) => Math.round(e.getBoundingClientRect().width))) === 26, 'E05c : la case dessinée fait 26 px');
+  verifie(await p.evaluate(() => [...document.querySelectorAll('.bt-task')].every((row) => { const r = row.getBoundingClientRect(); return [[r.left + 6, r.top + 4], [r.left + r.width / 2, r.top + r.height / 2], [r.right - 6, r.bottom - 4]].every(([x, y]) => document.elementFromPoint(x, y)?.closest('.bt-task-ok')); })), 'E05c : toute la ligne de tâche (gauche, milieu, droite) est la cible de la case');
+  verifie(((await p.locator('.bt-tasks-h').textContent()) || '').includes('1/3'), 'E05c : compteur « 1/3 » dans la carte des tâches');
+});
+await ecranCartes('09-E12-journee-envoyee-390x844', 'E12', 'E12 · journée envoyée (envoyé, retiré, endroit noté)', semaineE12, defilerVers('.bt-sec'), async (p) => {
+  const e0 = p.locator('[data-testid=card-entry]').first();
+  verifie(rgb(await e0.evaluate((e) => getComputedStyle(e).backgroundColor)) === 'rgb(21,18,15)', 'E12 : la ligne envoyée est noire');
+  verifie(rgb(await e0.locator('.bt-iv-times-v').evaluate((e) => getComputedStyle(e).color)) === 'rgb(255,194,26)', 'E12 : ses heures sont jaunes');
+  verifie(((await e0.locator('.bt-badge').textContent()) || '').toUpperCase().includes('ENVOYÉ'), 'E12 : étiquette « ENVOYÉ ✓ »');
+  verifie((await p.locator('.bt-iv-cancel .bt-cancel-name').evaluate((e) => getComputedStyle(e).textDecorationLine)) === 'line-through' && ((await p.locator('.bt-iv-cancel .bt-cancel-badge').textContent()) || '').toUpperCase().includes('RETIRÉ'), 'E12 : la ligne retirée est barrée avec l’étiquette « RETIRÉ »');
+  verifie(rgb(await p.locator('.bt-iv-geo').evaluate((e) => getComputedStyle(e).backgroundColor)) === 'rgb(230,221,205)', 'E12 : « Endroit noté » est un encadré sable');
+  verifie(((await p.locator('.bt-send').textContent()) || '').includes('Journée envoyée'), 'E12 : bouton « Journée envoyée ✓ »');
+});
+await ecranCartes('10-E42-reserves-390x844', 'E42', 'E42 · réserve à lever / levée par le bureau / levée le …', semaineE42, defilerVers('.bt-sec'), async (p) => {
+  const fond = (sel) => p.locator(sel).first().evaluate((e) => getComputedStyle(e).backgroundColor.replace(/\s/g, ''));
+  verifie((await fond('.bt-iv-reserve.avec')) === 'rgb(252,228,225)', 'E42 : réserve à lever = encadré rouge pâle');
+  verifie((await fond('.bt-iv-reserve.levee')) === 'rgb(231,246,238)', 'E42 : levée par le bureau = encadré vert pâle');
+  verifie((await fond('.bt-iv-reserve.corrige')) === 'rgb(230,221,205)', 'E42 : levée par le salarié = encadré sable');
+  verifie((await p.locator('[data-testid=card-lift]').boundingBox())?.height >= 43.5, 'E42 : « Lever la réserve » fait 44 px');
+});
+await ecranCartes('11-E14-a-corriger-390x844', 'E14', 'E14 · renvoyée par le bureau (à corriger)', semaineE14, async (p) => { await p.locator('[data-testid="dz-jour-2026-10-13"]').click(); await p.waitForSelector('.bt-phdr-back', { timeout: 10000 }); await p.waitForTimeout(1200); }, async (p) => {
+  verifie(rgb(await p.locator('[data-testid=badge-renvoyee]').evaluate((e) => getComputedStyle(e).backgroundColor)) === 'rgb(252,228,225)' && ((await p.locator('[data-testid=badge-renvoyee]').textContent()) || '').toUpperCase().includes('À CORRIGER'), 'E14 : étiquette « À CORRIGER » rouge pâle');
+  verifie(rgb(await p.locator('[data-testid=card-entry]').evaluate((e) => getComputedStyle(e).borderTopColor)) === 'rgb(198,40,40)', 'E14 : la carte renvoyée a le contour rouge');
+});
+await ecranCartes('12-E29-noms-52-caracteres-390x844', 'E29', 'E29 · noms de 52 caractères', semaineE29, defilerVers('.bt-sec'), async (p) => {
+  verifie(await p.evaluate(() => [...document.querySelectorAll('.bt-iv-name')].every((e) => e.getBoundingClientRect().height <= parseFloat(getComputedStyle(e).lineHeight) * 2 + 1)), 'E29 : un nom de 52 caractères tient sur 2 lignes au plus');
+});
 
 verifie(poids.every((k) => k < 300), `chaque image côte à côte pèse moins de 300 ko (${poids.join(', ')} ko)`);
 verifie(bloquees.length > 0 && bloquees.every((u) => !u.includes('claude')), `la planche a tourné sans réseau (${bloquees.length} requêtes sortantes refusées, 0 passée)`);
